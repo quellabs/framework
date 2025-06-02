@@ -29,11 +29,8 @@ my-app/
 ├── public/                # Web server document root
 │   ├── index.php          # Application entry point
 │   └── .htaccess          # Apache URL rewriting
-├── resources/             # Views and other resources
+├── templates/             # Views
 ├── storage/               # Application storage
-│   ├── logs/              # Log files
-│   ├── cache/             # Cache files
-│   └── sessions/          # Session storage
 └── .env                   # Environment configuration
 ```
 
