@@ -84,9 +84,9 @@ For detailed documentation about the Canvas framework features:
 ## Development
 
 Refer to the [Canvas Framework documentation](https://github.com/quellabs/canvas) for details on:
-- Creating controllers and models
+- Creating controllers
 - Defining routes
-- Working with views and templates
+- Working with views
 - Database integration
 - Testing your application
 
