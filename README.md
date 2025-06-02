@@ -1,6 +1,6 @@
 # Canvas Application Skeleton
 
-A modern PHP application skeleton for the [Quellabs Canvas Framework](https://github.com/quellabs/canvas). Get started building your Canvas application in seconds.
+A PHP application skeleton for the [Quellabs Canvas Framework](https://github.com/quellabs/canvas).
 
 ## Quick Start
 
@@ -147,7 +147,3 @@ The Canvas Application Skeleton is open-sourced software licensed under the [MIT
 - **Documentation**: [Canvas Docs](https://canvas.quellabs.com/docs)
 - **Issues**: [GitHub Issues](https://github.com/quellabs/canvas-skeleton/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/quellabs/canvas/discussions)
-
----
-
-**Happy building with Canvas! 🎨**
