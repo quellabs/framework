@@ -9,8 +9,9 @@
 		
 		/**
 		 * Main setup method that orchestrates the installation process
+		 * @return void
 		 */
-		public static function setup() {
+		public static function setup(): void {
 			// Create directory structure
 			self::createDirectories();
 			
@@ -20,8 +21,9 @@
 		
 		/**
 		 * Creates the complete directory structure for a Canvas project
+		 * @return void
 		 */
-		private static function createDirectories() {
+		private static function createDirectories(): void {
 			// Define the directory structure as an associative array
 			// Key = parent directory, Value = array of subdirectories
 			$directories = [
@@ -79,8 +81,9 @@
 		
 		/**
 		 * Removes the installer file and cleans up temporary installation artifacts
+		 * @return void
 		 */
-		private static function cleanup() {
+		private static function cleanup(): void {
 			// Remove the installer file itself using the magic constant __FILE__
 			if (file_exists(__FILE__)) {
 				unlink(__FILE__);
