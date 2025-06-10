@@ -7,13 +7,7 @@
 	
 	require_once __DIR__ . '/../vendor/autoload.php';
 	
-	if (file_exists(__DIR__ . '/../config/app.php')) {
-		$options = require __DIR__ . '/../config/app.php';
-	} else {
-		$options = [];
-	}
-	
-	$kernel = new Kernel($options);
+	$kernel = new Kernel();
 	$request = Request::createFromGlobals();
 	$response = $kernel->handle($request);
 	
