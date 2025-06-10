@@ -1,14 +1,20 @@
 <?php
 	
+	declare(strict_types=1);
+	
 	use Quellabs\Canvas\Kernel;
 	use Symfony\Component\HttpFoundation\Request;
 	
-	//error_reporting(E_ALL);
-	//ini_set('display_errors', 1);
+	require_once __DIR__ . '/../vendor/autoload.php';
 	
-	include_once(__DIR__ . "/../vendor/autoload.php");
-
-	$kernel = new Kernel();
+	if (file_exists(__DIR__ . '/../config/app.php')) {
+		$options = require __DIR__ . '/../config/app.php';
+	} else {
+		$options = [];
+	}
+	
+	$kernel = new Kernel($options);
 	$request = Request::createFromGlobals();
 	$response = $kernel->handle($request);
+	
 	$response->send();
