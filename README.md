@@ -47,9 +47,6 @@ my-app/
 Edit the `.env` file to match your setup:
 
 ```env
-APP_NAME="My Canvas App"
-APP_URL=http://localhost:8000
-
 DSN=mysql://root:root@localhost:3306/database_name?charset=utf8mb4
 ```
 
@@ -99,7 +96,7 @@ Adds Smarty templating engine support for powerful template rendering.
 
 **ORM:**
 ```bash
-composer require quellabs/objectquel
+composer require quellabs/canvas-objectquel
 ```
 Provides ObjectQuel ORM for elegant database interactions and object-relational mapping.
 
