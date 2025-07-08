@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\Canvas\Security;
 	
+	use Quellabs\Canvas\Security\Helpers\CsrfTokenManager;
 	use Quellabs\Contracts\AOP\BeforeAspect;
 	use Quellabs\Contracts\AOP\MethodContext;
 	use Symfony\Component\HttpFoundation\JsonResponse;
