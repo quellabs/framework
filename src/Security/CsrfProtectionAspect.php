@@ -101,6 +101,29 @@
 		}
 		
 		/**
+		 * Creates appropriate error response for CSRF validation failure
+		 *
+		 * Returns different response formats based on request type:
+		 * - JSON response for AJAX requests
+		 * - Plain text response for regular form submissions
+		 *
+		 * @param Request $request The HTTP request
+		 * @return Response The error response
+		 */
+		protected function createErrorResponse(Request $request): Response {
+			// Handle AJAX requests with JSON response
+			if ($request->isXmlHttpRequest()) {
+				return new JsonResponse([
+					'error'   => 'CSRF token validation failed',
+					'message' => 'Invalid or missing CSRF token'
+				], 403);
+			}
+			
+			// Handle regular form submissions with plain text response
+			return new Response('CSRF token validation failed', 403);
+		}
+		
+		/**
 		 * Attempts to retrieve the token from POST data first, then falls back
 		 * to checking the request headers (useful for AJAX requests).
 		 * @param CsrfTokenManager $csrfManager Service for generating and validating CSRF tokens
@@ -137,28 +160,5 @@
 			$token = $csrfManager->getToken($this->intention);
 			$request->attributes->set('csrf_token', $token);
 			$request->attributes->set('csrf_token_name', $this->tokenName);
-		}
-		
-		/**
-		 * Creates appropriate error response for CSRF validation failure
-		 *
-		 * Returns different response formats based on request type:
-		 * - JSON response for AJAX requests
-		 * - Plain text response for regular form submissions
-		 *
-		 * @param Request $request The HTTP request
-		 * @return Response The error response
-		 */
-		private function createErrorResponse(Request $request): Response {
-			// Handle AJAX requests with JSON response
-			if ($request->isXmlHttpRequest()) {
-				return new JsonResponse([
-					'error'   => 'CSRF token validation failed',
-					'message' => 'Invalid or missing CSRF token'
-				], 403);
-			}
-			
-			// Handle regular form submissions with plain text response
-			return new Response('CSRF token validation failed', 403);
 		}
 	}
