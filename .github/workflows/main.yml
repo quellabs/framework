@@ -15,6 +15,7 @@ jobs:
           - dependency-injection
           - sculpt
           - objectquel
+          - signal-hub
           - canvas
           - canvas-objectquel
           - canvas-smarty
