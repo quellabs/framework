@@ -20,6 +20,7 @@
       "Quellabs\\AnnotationReader\\": "packages/annotation-reader/src/",
       "Quellabs\\Sculpt\\": "packages/sculpt/src/",
       "Quellabs\\ObjectQuel\\": "packages/objectquel/src/",
+      "Quellabs\\SignalHub\\": "packages/signal-hub/src/",
       "Quellabs\\Canvas\\": "packages/canvas/src/",
       "Quellabs\\Canvas\\ObjectQuel\\": "packages/canvas-objectquel/src/",
       "Quellabs\\Canvas\\Smarty\\": "packages/canvas-smarty/src/"

@@ -1,0 +1,16 @@
+{
+  "name": "quellabs/signal-hub",
+  "description": "Type-safe signal/slot event system",
+  "type": "library",
+  "license": "MIT",
+  "config": {
+    "platform": {
+      "php": "8.2"
+    }
+  },
+  "autoload": {
+    "psr-4": {
+      "Quellabs\\SignalHub\\": "src/"
+    }
+  }
+}
