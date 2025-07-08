@@ -13,8 +13,11 @@
 	 * - Process-level locking for expensive operations
 	 * - Safe directory operations with race condition handling
 	 *
-	 * Cache files are stored in a hierarchical structure:
-	 * /cache/context/ab/abcdef123456...cache
+	 * Cache files are stored directly in the context directory:
+	 * /cache/context/abcdef123456...cache
+	 *
+	 * Lock files are placed next to cache files:
+	 * /cache/context/abcdef123456...lock
 	 *
 	 * Where the first 2 characters of the hash create subdirectories
 	 * to prevent too many files in a single directory.
@@ -65,7 +68,7 @@
 				if ($data !== null) {
 					$this->forget($key);
 				}
-
+				
 				return $default;
 			}
 			
@@ -84,8 +87,7 @@
 			$filePath = $this->getFilePath($key);
 			
 			// Ensure the directory exists before writing
-			// This handles the case where subdirectories don't exist yet
-			$this->ensureDirectoryExists(dirname($filePath));
+			$this->ensureDirectoryExists($this->getContextPath());
 			
 			// Prepare cache data structure
 			$data = [
@@ -199,17 +201,18 @@
 		 */
 		private function getFilePath(string $key): string {
 			$hashedKey = $this->hashKey($key);
-			return $this->getContextPath() . '/' . substr($hashedKey, 0, 2) . '/' . $hashedKey . '.cache';
+			return $this->getContextPath() . '/' . $hashedKey . '.cache';
 		}
 		
 		/**
 		 * Get the lock file path for a cache key
+		 * Places lock file next to cache file with .lock extension
 		 * @param string $key Cache key
 		 * @return string Lock file path
 		 */
 		private function getLockFilePath(string $key): string {
 			$hashedKey = $this->hashKey($key);
-			return $this->getContextPath() . '/' . substr($hashedKey, 0, 2) . '/' . $hashedKey . '.lock';
+			return $this->getContextPath() . '/' . $hashedKey . '.lock';
 		}
 		
 		/**
@@ -271,12 +274,14 @@
 				
 				// Get file size for efficient reading
 				$fileSize = filesize($filePath);
+				
 				if ($fileSize === false || $fileSize === 0) {
 					return null;
 				}
 				
 				// Read entire file content
 				$contents = fread($handle, $fileSize);
+				
 				if ($contents === false) {
 					return null;
 				}
@@ -374,11 +379,11 @@
 		 */
 		private function acquireLock(string $lockPath) {
 			// Ensure lock directory exists
-			$this->ensureDirectoryExists(dirname($lockPath));
+			$this->ensureDirectoryExists($this->getContextPath());
 			
 			// Create/open lock file
 			$handle = @fopen($lockPath, 'w');
-
+			
 			if ($handle === false) {
 				return false;
 			}
@@ -473,7 +478,7 @@
 			
 			// Get directory contents
 			$files = @scandir($path);
-
+			
 			if ($files === false) {
 				return false;
 			}
