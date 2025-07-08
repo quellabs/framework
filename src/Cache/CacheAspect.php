@@ -5,8 +5,6 @@
 	use Quellabs\Canvas\Cache\Foundation\FileCache;
 	use Quellabs\Contracts\AOP\AroundAspect;
 	use Quellabs\Contracts\AOP\MethodContext;
-	use Psr\Log\LoggerInterface;
-	use Psr\Log\NullLogger;
 	use Quellabs\Discover\Discover;
 	
 	/**
@@ -39,9 +37,6 @@
 		/** @var string Cache storage path */
 		private string $cachePath;
 		
-		/** @var LoggerInterface Logger for cache operations */
-		private LoggerInterface $logger;
-		
 		/** @var int Lock timeout for cache operations */
 		private int $lockTimeout;
 		
@@ -54,7 +49,6 @@
 		 * @param int $ttl Time to live in seconds (0 = never expires)
 		 * @param string $context Cache context for namespacing
 		 * @param string $cachePath Base cache directory path
-		 * @param LoggerInterface|null $logger Logger for cache operations
 		 * @param int $lockTimeout Lock timeout in seconds for cache operations
 		 * @param bool $gracefulFallback Whether to execute method if caching fails
 		 */
@@ -63,7 +57,6 @@
 			int              $ttl = 3600,
 			string           $context = 'default',
 			string           $cachePath = '/storage/cache',
-			?LoggerInterface $logger = null,
 			int              $lockTimeout = 5,
 			bool             $gracefulFallback = true
 		) {
@@ -73,7 +66,6 @@
 			$this->ttl = max(0, $ttl); // Ensure non-negative TTL
 			$this->context = $context;
 			$this->cachePath = $discover->resolveProjectPath($cachePath, true);
-			$this->logger = $logger ?? new NullLogger();
 			$this->lockTimeout = max(1, $lockTimeout); // Ensure positive timeout
 			$this->gracefulFallback = $gracefulFallback;
 		}
@@ -108,23 +100,13 @@
 				
 				// Use cache remember pattern for atomic cache-aside operations
 				return $cache->remember($cacheKey, $this->ttl, function () use ($proceed, $cacheKey) {
-					$this->logger->debug('Cache miss, executing original method', ['key' => $cacheKey]);
 					return $proceed();
 				});
 				
 			} catch (\Exception $e) {
-				// Log cache failure
-				$this->logger->error('Cache aspect failed', [
-					'error'      => $e->getMessage(),
-					'key'        => $cacheKey ?? 'unknown',
-					'controller' => get_class($context->getTarget()),
-					'method'     => $context->getMethodName()
-				]);
-				
 				// Handle cache failure based on configuration
 				if ($this->gracefulFallback) {
 					// Execute original method without caching
-					$this->logger->info('Cache aspect failed. Falling back to uncached execution');
 					return $proceed();
 				}
 				
@@ -306,20 +288,5 @@
 			
 			// Ensure we have a valid key
 			return $key ?: 'default.cache.key';
-		}
-		
-		/**
-		 * Get cache statistics for monitoring
-		 * @return array Cache configuration and statistics
-		 */
-		public function getCacheInfo(): array {
-			return [
-				'key_template'      => $this->key ?? 'auto-generated',
-				'ttl'               => $this->ttl,
-				'context'           => $this->context,
-				'cache_path'        => $this->cachePath,
-				'lock_timeout'      => $this->lockTimeout,
-				'graceful_fallback' => $this->gracefulFallback
-			];
 		}
 	}
