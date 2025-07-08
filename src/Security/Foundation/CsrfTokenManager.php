@@ -1,6 +1,6 @@
 <?php
 	
-	namespace Quellabs\Canvas\Security\Helpers;
+	namespace Quellabs\Canvas\Security\Foundation;
 	
 	use Random\RandomException;
 	use Symfony\Component\HttpFoundation\Session\SessionInterface;
