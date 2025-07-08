@@ -7,6 +7,7 @@
 	use Quellabs\Contracts\AOP\MethodContext;
 	use Psr\Log\LoggerInterface;
 	use Psr\Log\NullLogger;
+	use Quellabs\Discover\Discover;
 	
 	/**
 	 * Caches the return value of controller methods using configurable cache keys and TTL.
@@ -68,10 +69,12 @@
 			int              $lockTimeout = 5,
 			bool             $gracefulFallback = true
 		) {
+			$discover = new Discover();
+
 			$this->key = $key;
 			$this->ttl = max(0, $ttl); // Ensure non-negative TTL
 			$this->context = $context;
-			$this->cachePath = $cachePath;
+			$this->cachePath = $discover->resolveProjectPath($cachePath, true);
 			$this->logger = $logger ?? new NullLogger();
 			$this->lockTimeout = max(1, $lockTimeout); // Ensure positive timeout
 			$this->gracefulFallback = $gracefulFallback;
