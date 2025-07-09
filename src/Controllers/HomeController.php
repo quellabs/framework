@@ -14,8 +14,7 @@
 		 * @return Response
 		 */
 		public function index(): Response {
-
-			return new JsonResponse($map);
+			return new Response("<h1>Welcome to Canvas Blog!</h1>");
 		}
 		
 		/**
