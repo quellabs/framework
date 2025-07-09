@@ -1,13 +1,16 @@
 parameters:
-    level: 0
+    level: 1
     paths:
         - packages/canvas/src
     bootstrapFiles:
         - vendor/autoload.php
     scanDirectories:
         - packages/annotation-reader/src
+        - packages/canvas-objectquel/src
+        - packages/canvas-smarty/src
         - packages/contracts/src
-        - packages/discover/src
         - packages/dependency-injection/src
-        - packages/sculpt/src
+        - packages/discover/src
         - packages/objectquel/src
+        - packages/sculpt/src
+        - packages/signal-hub/src
