@@ -29,7 +29,7 @@
     }
   },
   "require": {
-    "quellabs/objectquel": "^1.0"
+    "quellabs/objectquel": "^1."
   },
   "autoload": {
     "psr-4": {

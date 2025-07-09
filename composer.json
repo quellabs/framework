@@ -60,16 +60,16 @@
     "phpstan/phpstan": "^1.10",
     "pestphp/pest": "^2.0",
     "composer/composer": "^2.0",
-    "quellabs/sculpt": "dev-main as 1.0.9",
-    "quellabs/contracts": "dev-main as 1.0.9",
-    "quellabs/annotation-reader": "dev-main as 1.0.9",
-    "quellabs/canvas": "dev-main as 1.0.9",
-    "quellabs/canvas-objectquel": "dev-main as 1.0.9",
-    "quellabs/canvas-smarty": "dev-main as 1.0.9",
-    "quellabs/dependency-injection": "dev-main as 1.0.9",
-    "quellabs/discover": "dev-main as 1.0.9",
-    "quellabs/objectquel": "dev-main as 1.0.9",
-    "quellabs/signal-hub": "dev-main as 1.0.9"
+    "quellabs/sculpt": "dev-main as 1.999.999",
+    "quellabs/contracts": "dev-main as 1.999.999",
+    "quellabs/annotation-reader": "dev-main as 1.999.999",
+    "quellabs/canvas": "dev-main as 1.999.999",
+    "quellabs/canvas-objectquel": "dev-main as 1.999.999",
+    "quellabs/canvas-smarty": "dev-main as 1.999.999",
+    "quellabs/dependency-injection": "dev-main as 1.999.999",
+    "quellabs/discover": "dev-main as 1.999.999",
+    "quellabs/objectquel": "dev-main as 1.999.999",
+    "quellabs/signal-hub": "dev-main as 1.999.999"
   },
   "autoload": {
     "psr-4": {
