@@ -833,40 +833,10 @@ composer dump-autoload
 
 ### Running the Task Scheduler
 
-Create a script to run the task scheduler (e.g., `bin/schedule.php`):
+Running the task scheduler is done through sculpt:
 
-```php
-<?php
-require_once __DIR__ . '/../vendor/autoload.php';
-
-use Quellabs\Canvas\TaskScheduler\TaskScheduler;
-use Quellabs\Canvas\TaskScheduler\Storage\FileTaskStorage;
-use Psr\Log\NullLogger;
-
-// Initialize storage (you can also use custom storage implementations)
-$storage = new FileTaskStorage(
-    sys_get_temp_dir() . '/canvas_tasks', // Storage directory
-    300,  // Lock timeout in seconds (5 minutes)
-    60    // Max lock wait time in seconds (1 minute)
-);
-
-// Initialize logger (use your preferred logger)
-$logger = new NullLogger(); // or new Logger('task-scheduler')
-
-// Create and run the scheduler
-$scheduler = new TaskScheduler($storage, $logger);
-$results = $scheduler->run();
-
-// Process results
-foreach ($results as $result) {
-    if ($result->isSuccess()) {
-        echo "✓ Task completed: " . $result->getTask()->getName() . 
-             " (Duration: " . $result->getDuration() . "ms)\n";
-    } else {
-        echo "✗ Task failed: " . $result->getTask()->getName() . 
-             " - " . $result->getException()->getMessage() . "\n";
-    }
-}
+```bash
+php ./vendor/bin/sculpt schedule:run
 ```
 
 ### Setting Up Cron
@@ -878,7 +848,7 @@ Add this to your system's crontab to run the scheduler every minute:
 crontab -e
 
 # Add this line (adjust path to your script)
-* * * * * /usr/bin/php /path/to/your/app/bin/schedule.php >> /var/log/canvas-scheduler.log 2>&1
+* * * * * /usr/bin/php /path/to/your/app/bin/sculpt schedule:run
 ```
 
 ### Cron Schedule Format
@@ -911,82 +881,9 @@ Canvas uses standard cron expressions for scheduling:
 
 Canvas automatically selects the best timeout strategy based on your system:
 
-#### 1. No Timeout Strategy
-Used when `getTimeout()` returns 0:
-
-```php
-public function getTimeout(): int {
-    return 0; // No timeout - task runs until completion
-}
-```
-
-#### 2. PCNTL Strategy (Preferred)
-Used on systems with PCNTL support. Uses signals for efficient timeout handling:
-
-```php
-public function getTimeout(): int {
-    return 300; // 5 minutes - uses SIGALRM for timeout
-}
-```
-
-#### 3. Process Strategy (Fallback)
-Used on systems without PCNTL. Runs tasks in separate processes:
-
-```php
-public function getTimeout(): int {
-    return 600; // 10 minutes - uses separate process with monitoring
-}
-```
-
-### Storage Options
-
-#### File Storage (Default)
-
-The file-based storage system uses the filesystem to track task states:
-
-```php
-$storage = new FileTaskStorage(
-    '/var/lib/canvas/tasks',  // Storage directory
-    300,                      // Lock timeout (5 minutes)
-    60                        // Max lock wait time (1 minute)
-);
-```
-
-**Features:**
-- Distributed locking prevents concurrent task execution
-- Automatic cleanup of stale locks and task files
-- Process tracking with PID validation
-- Exponential backoff for lock acquisition
-
-#### Custom Storage
-
-Implement `TaskStorageInterface` for custom storage backends:
-
-```php
-<?php
-namespace App\TaskStorage;
-
-use Quellabs\Canvas\TaskScheduler\Storage\TaskStorageInterface;
-
-class RedisTaskStorage implements TaskStorageInterface {
-    
-    public function markAsBusy(string $taskName, \DateTime $dateTime): void {
-        // Redis implementation
-    }
-    
-    public function markAsDone(string $taskName, \DateTime $dateTime): void {
-        // Redis implementation
-    }
-    
-    public function isBusy(string $taskName): bool {
-        // Redis implementation
-    }
-    
-    public function cleanup(): void {
-        // Redis cleanup implementation
-    }
-}
-```
+- **No Timeout Strategy**: Used when `getTimeout()` returns 0
+- **PCNTL Strategy (Preferred)**: Used on systems with PCNTL support. Uses signals for efficient timeout handling
+- **Process Strategy (Fallback)**: Used on systems without PCNTL. Runs tasks in separate processes:
 
 ## Event-Driven Architecture with SignalHub
 
