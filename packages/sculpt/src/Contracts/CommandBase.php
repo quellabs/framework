@@ -5,6 +5,7 @@
 	use Quellabs\Contracts\Discovery\ProviderInterface;
 	use Quellabs\Contracts\IO\ConsoleInput;
 	use Quellabs\Contracts\IO\ConsoleOutput;
+	use Quellabs\ObjectQuel\Sculpt\ServiceProvider;
 	
 	/**
 	 * Abstract base class for all command implementations
@@ -26,9 +27,9 @@
 		protected ConsoleOutput $output;
 		
 		/**
-		 * @var ProviderInterface|null Optional service provider for dependency injection
+		 * @var ServiceProvider|null Optional service provider for dependency injection
 		 */
-		protected ?ProviderInterface $provider;
+		protected ?ServiceProvider $provider;
 		
 		/**
 		 * @var string|null Cached $projectRoot
@@ -39,9 +40,9 @@
 		 * Initialize a new command instance
 		 * @param ConsoleInput $input Input handler to process command arguments and options
 		 * @param ConsoleOutput $output Output handler to display results and messages
-		 * @param ProviderInterface|null $provider Optional service provider for dependency injection
+		 * @param ServiceProvider|null $provider Optional service provider for dependency injection
 		 */
-		public function __construct(ConsoleInput $input, ConsoleOutput $output, ?ProviderInterface $provider = null) {
+		public function __construct(ConsoleInput $input, ConsoleOutput $output, ?ServiceProvider $provider = null) {
 			$this->input = $input;
 			$this->output = $output;
 			$this->provider = $provider;
@@ -65,9 +66,9 @@
 		
 		/**
 		 * Get the service provider instance if set
-		 * @return ProviderInterface|null The service provider or null if not set
+		 * @return ServiceProvider|null The service provider or null if not set
 		 */
-		public function getProvider(): ?ProviderInterface {
+		public function getProvider(): ?ServiceProvider {
 			return $this->provider;
 		}
 		
