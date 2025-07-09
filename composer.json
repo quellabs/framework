@@ -6,7 +6,10 @@
     "php": "^8.3",
     "monolog/monolog": "*",
     "symfony/http-foundation": "*",
-    "dragonmantank/cron-expression": "*"
+    "dragonmantank/cron-expression": "*",
+    "robmorgan/phinx": "*",
+    "cakephp/database": "*",
+    "softcreatr/jsonpath": "*"
   },
   "require-dev": {
     "phpstan/phpstan": "^1.10",

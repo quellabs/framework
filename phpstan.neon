@@ -1,7 +1,7 @@
 parameters:
-    level: 5
+    level: 0
     paths:
-        - packages/annotation-reader/src
+        - packages/objectquel/src
     bootstrapFiles:
         - vendor/autoload.php
     scanDirectories:
