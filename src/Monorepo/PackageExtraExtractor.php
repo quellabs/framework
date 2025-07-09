@@ -83,6 +83,9 @@ PHP;
 			$content .= $this->varExportPretty($extraMap, 0);
 			$content .= ";\n";
 			
+			// Ensure the output path exists
+			$this->ensurePathExists($outputPath);
+			
 			// Write the content to the file
 			if (file_put_contents($outputPath, $content) === false) {
 				throw new \RuntimeException("Failed to write extra map to: {$outputPath}");
@@ -215,5 +218,25 @@ PHP;
 			
 			// Fallback to directory name
 			return basename(dirname($filePath));
+		}
+		
+		/**
+		 * Ensures that the directory path for a given file path exists.
+		 * Creates the directory structure recursively if it doesn't exist.
+		 * @param string $path The full file path (including filename)
+		 * @return void
+		 */
+		private function ensurePathExists(string $path): void {
+			// Extract the directory path from the full file path
+			// dirname() removes the filename and returns just the directory portion
+			$outputDir = dirname($path);
+			
+			// Check if the directory already exists
+			if (!is_dir($outputDir)) {
+				// Create the directory with full recursive structure
+				// 0755 = owner: read/write/execute, group & others: read/execute
+				// true = create parent directories recursively if they don't exist
+				mkdir($outputDir, 0755, true);
+			}
 		}
 	}
