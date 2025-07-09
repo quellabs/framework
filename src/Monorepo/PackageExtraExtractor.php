@@ -91,48 +91,7 @@ PHP;
 				throw new \RuntimeException("Failed to write extra map to: {$outputPath}");
 			}
 		}
-		
-		/**
-		 * Pretty print var_export with proper indentation
-		 * @param mixed $var The variable to format (typically an array)
-		 * @param int $indent Current indentation level (used for recursion)
-		 * @return string Formatted PHP code representation of the variable
-		 */
-		private function varExportPretty(mixed $var, int $indent = 0): string {
-			// Create the indentation string based on current level
-			$indentStr = str_repeat('    ', $indent);
-			
-			if (is_array($var)) {
-				// Handle empty arrays
-				if (empty($var)) {
-					return '[]';
-				}
-				
-				// Determine if this is an associative array or indexed array
-				$isAssoc = array_keys($var) !== range(0, count($var) - 1);
-				$output = "[\n";
-				
-				// Process each array element
-				foreach ($var as $key => $value) {
-					$output .= $indentStr . '    ';
-					
-					// For associative arrays, include the key
-					if ($isAssoc) {
-						$output .= var_export($key, true) . ' => ';
-					}
-					
-					// Recursively format the value with increased indentation
-					$output .= $this->varExportPretty($value, $indent + 1);
-					$output .= ",\n";
-				}
-				
-				$output .= $indentStr . ']';
-				return $output;
-			}
-			
-			// For non-arrays, use standard var_export
-			return var_export($var, true);
-		}
+
 		
 		/**
 		 * Find all composer.json files in the packages directory
@@ -238,5 +197,47 @@ PHP;
 				// true = create parent directories recursively if they don't exist
 				mkdir($outputDir, 0755, true);
 			}
+		}
+		
+		/**
+		 * Pretty print var_export with proper indentation
+		 * @param mixed $var The variable to format (typically an array)
+		 * @param int $indent Current indentation level (used for recursion)
+		 * @return string Formatted PHP code representation of the variable
+		 */
+		private function varExportPretty(mixed $var, int $indent = 0): string {
+			// Create the indentation string based on current level
+			$indentStr = str_repeat('    ', $indent);
+			
+			if (is_array($var)) {
+				// Handle empty arrays
+				if (empty($var)) {
+					return '[]';
+				}
+				
+				// Determine if this is an associative array or indexed array
+				$isAssoc = array_keys($var) !== range(0, count($var) - 1);
+				$output = "[\n";
+				
+				// Process each array element
+				foreach ($var as $key => $value) {
+					$output .= $indentStr . '    ';
+					
+					// For associative arrays, include the key
+					if ($isAssoc) {
+						$output .= var_export($key, true) . ' => ';
+					}
+					
+					// Recursively format the value with increased indentation
+					$output .= $this->varExportPretty($value, $indent + 1);
+					$output .= ",\n";
+				}
+				
+				$output .= $indentStr . ']';
+				return $output;
+			}
+			
+			// For non-arrays, use standard var_export
+			return var_export($var, true);
 		}
 	}
