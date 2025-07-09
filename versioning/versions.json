@@ -1,0 +1,12 @@
+{
+  "contracts": "1.0.9",
+  "discover": "1.0.8",
+  "dependency-injection": "1.0.4",
+  "sculpt": "1.0.2",
+  "objectquel": "1.0.8",
+  "signal-hub": "1.0.0",
+  "annotation-reader": "1.0.11",
+  "canvas": "1.0.11",
+  "canvas-objectquel": "1.0.3",
+  "canvas-smarty": "1.0.2"
+}
