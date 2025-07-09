@@ -3,10 +3,14 @@
 	namespace App\Controllers;
 	
 	use Quellabs\Canvas\Annotations\Route;
+	use Quellabs\Canvas\Annotations\RoutePrefix;
 	use Quellabs\Canvas\Controllers\BaseController;
 	use Symfony\Component\HttpFoundation\JsonResponse;
 	use Symfony\Component\HttpFoundation\Response;
 	
+	/**
+	 * @RoutePrefix("x")
+	 */
 	class HomeController extends BaseController {
 		
 		/**
@@ -27,11 +31,11 @@
 		}
 		
 		/**
-		 * @Route("/user/v{id}")
-		 * @param $id $name
+		 * @Route("/user/{path:**}")
+		 * @param string $path
 		 * @return Response
 		 */
-		public function user(int $id): Response {
-			return  new Response("Hello, " . $id);
+		public function user(string $path): Response {
+			return  new Response("Hello, " . $path);
 		}
 	}
