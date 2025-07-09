@@ -104,7 +104,7 @@ For complex queries, ObjectQuel provides a natural language syntax:
 // Basic ObjectQuel query
 $results = $this->em->executeQuery("
     range of p is App\\Entity\\Post
-    retrieve p where p.published = true
+    retrieve (p) where p.published = true
     sort by p.publishedAt desc
 ");
 
@@ -184,14 +184,6 @@ class FileController extends BaseController {
         // /files/css/style.css → path = "css/style.css"
         // /files/images/icons/user.png → path = "images/icons/user.png"
         return $this->serveFile($path);
-    }
-    
-    /**
-     * @Route("/api/v{version:int}/users/{uuid:uuid}")
-     */
-    public function apiUser(int $version, string $uuid) {
-        // Combines multiple validators
-        // /api/v1/users/550e8400-e29b-41d4-a716-446655440000 ✓
     }
 }
 ```
@@ -428,6 +420,320 @@ Use custom rules in your validation classes:
     new Length(8),
     new StrongPassword()
 ]
+```
+
+## Built-in Aspects
+
+Canvas includes three powerful built-in aspects that handle common web application concerns. These aspects demonstrate the framework's commitment to security, performance, and best practices.
+
+### CSRF Protection Aspect
+
+The `CsrfProtectionAspect` implements Cross-Site Request Forgery protection using tokens to ensure requests originate from your application.
+
+#### Features
+
+- **Automatic Token Generation** - Creates unique tokens for each user session
+- **Smart Validation** - Checks tokens in both form data and headers (for AJAX requests)
+- **Safe Method Exemption** - Skips protection for GET, HEAD, and OPTIONS requests
+- **Session Management** - Prevents session bloat with configurable token limits
+- **Flexible Response Handling** - Returns appropriate error formats for web and API requests
+
+#### Basic Usage
+
+```php
+<?php
+use Quellabs\Canvas\Security\CsrfProtectionAspect;
+
+class ContactController extends BaseController {
+    
+    /**
+     * @Route("/contact", methods={"GET", "POST"})
+     * @InterceptWith(CsrfProtectionAspect::class)
+     */
+    public function contact(Request $request) {
+        if ($request->isMethod('POST')) {
+            // CSRF token automatically validated before this method runs
+            $this->processContactForm($request);
+            return $this->redirect('/contact/success');
+        }
+        
+        // Token available in template via request attributes
+        return $this->render('contact.twig', [
+            'csrf_token' => $request->attributes->get('csrf_token'),
+            'csrf_token_name' => $request->attributes->get('csrf_token_name')
+        ]);
+    }
+}
+```
+
+#### Template Integration
+
+Use the CSRF token in your forms:
+
+```html
+<form method="POST" action="/contact">
+    <input type="hidden" name="{$csrf_token_name}" value="{$csrf_token}">
+    <!-- Rest of your form -->
+    <button type="submit">Send Message</button>
+</form>
+```
+
+#### AJAX Integration
+
+For AJAX requests, include the token in headers:
+
+```javascript
+// Get token from meta tag or hidden field
+const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+
+fetch('/api/data', {
+    method: 'POST',
+    headers: {
+        'X-CSRF-Token': csrfToken,
+        'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ data: 'value' })
+});
+```
+
+#### Configuration Options
+
+Customize CSRF protection behavior:
+
+```php
+/**
+ * @InterceptWith(CsrfProtectionAspect::class, 
+ *     tokenName="_token", 
+ *     headerName="X-Custom-CSRF-Token",
+ *     intention="contact_form",
+ *     exemptMethods={"GET", "HEAD"},
+ *     maxTokens=20
+ * )
+ */
+public function sensitiveAction() {
+    // Custom CSRF configuration
+}
+```
+
+**Parameters:**
+- `tokenName` - Form field name for the token (default: `_csrf_token`)
+- `headerName` - HTTP header name for AJAX tokens (default: `X-CSRF-Token`)
+- `intention` - Token scope/purpose for different contexts (default: `default`)
+- `exemptMethods` - HTTP methods that skip validation (default: `['GET', 'HEAD', 'OPTIONS']`)
+- `maxTokens` - Maximum tokens per intention to prevent session bloat (default: `10`)
+
+### Security Headers Aspect
+
+The `SecurityHeadersAspect` automatically adds security-related HTTP headers to protect against common web vulnerabilities following OWASP recommendations.
+
+#### Protected Attacks
+
+- **Clickjacking** - X-Frame-Options prevents embedding in malicious frames
+- **MIME Sniffing** - X-Content-Type-Options prevents content type confusion
+- **XSS** - X-XSS-Protection enables browser XSS filtering
+- **Man-in-the-Middle** - Strict-Transport-Security enforces HTTPS
+- **Information Leakage** - Referrer-Policy controls referrer information
+- **Code Injection** - Content-Security-Policy prevents unauthorized script execution
+
+#### Basic Usage
+
+```php
+<?php
+use Quellabs\Canvas\Security\SecurityHeadersAspect;
+
+/**
+ * @InterceptWith(SecurityHeadersAspect::class)
+ */
+class SecureController extends BaseController {
+    
+    /**
+     * @Route("/admin/dashboard")
+     */
+    public function dashboard() {
+        // Response automatically includes security headers
+        return $this->render('admin/dashboard.twig');
+    }
+}
+```
+
+#### Configuration Options
+
+Customize security headers for different needs:
+
+```php
+/**
+ * @InterceptWith(SecurityHeadersAspect::class,
+ *     frameOptions="DENY",
+ *     noSniff=true,
+ *     xssProtection=true,
+ *     hstsMaxAge=31536000,
+ *     hstsIncludeSubdomains=true,
+ *     referrerPolicy="strict-origin-when-cross-origin",
+ *     csp="default-src 'self'; script-src 'self' 'unsafe-inline'"
+ * )
+ */
+public function secureApi() {
+    // Strict security headers for sensitive operations
+}
+```
+
+**Parameters:**
+- `frameOptions` - X-Frame-Options value: `DENY`, `SAMEORIGIN`, or `ALLOW-FROM` (default: `SAMEORIGIN`)
+- `noSniff` - Enable X-Content-Type-Options: nosniff (default: `true`)
+- `xssProtection` - Enable X-XSS-Protection (default: `true`)
+- `hstsMaxAge` - HSTS max-age in seconds, 0 disables (default: `31536000` = 1 year)
+- `hstsIncludeSubdomains` - Include subdomains in HSTS (default: `true`)
+- `referrerPolicy` - Referrer-Policy value (default: `strict-origin-when-cross-origin`)
+- `csp` - Content-Security-Policy value, null disables (default: `null`)
+
+#### Content Security Policy Examples
+
+Common CSP configurations for different application types:
+
+```php
+// Strict policy for admin areas
+csp: "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'"
+
+// Moderate policy for regular pages
+csp: "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:"
+
+// Development policy (more permissive)
+csp: "default-src 'self' 'unsafe-inline' 'unsafe-eval'; img-src 'self' data: blob:"
+```
+
+### Cache Aspect
+
+The `CacheAspect` provides method-level caching with intelligent key generation, configurable TTL, and thread-safe operations.
+
+#### Features
+
+- **Automatic Key Generation** - Creates cache keys from method signature and arguments
+- **Thread-Safe Operations** - Uses file locking to prevent cache corruption
+- **Graceful Fallback** - Executes original method if caching fails
+- **Flexible TTL** - Configurable time-to-live with never-expire option
+- **Context Namespacing** - Separate cache contexts for different application areas
+- **Argument-Aware** - Different cache entries for different method arguments
+
+#### Basic Usage
+
+```php
+<?php
+use Quellabs\Canvas\Cache\CacheAspect;
+
+class ReportController extends BaseController {
+    
+    /**
+     * @Route("/reports/monthly")
+     * @InterceptWith(CacheAspect::class, ttl=3600)
+     */
+    public function monthlyReport() {
+        // Expensive operation cached for 1 hour
+        return $this->generateMonthlyReport();
+    }
+    
+    /**
+     * @Route("/reports/user/{id:int}")
+     * @InterceptWith(CacheAspect::class, ttl=1800, context="user_reports")
+     */
+    public function userReport(int $id) {
+        // Each user ID gets separate cache entry
+        // Cached for 30 minutes in "user_reports" context
+        return $this->generateUserReport($id);
+    }
+}
+```
+
+#### Custom Cache Keys
+
+Override automatic key generation:
+
+```php
+/**
+ * @InterceptWith(CacheAspect::class, 
+ *     key="product_catalog", 
+ *     ttl=7200,
+ *     context="products"
+ * )
+ */
+public function productCatalog() {
+    // Uses fixed cache key regardless of arguments
+    // Useful for methods that always return the same data
+}
+```
+
+#### Configuration Options
+
+```php
+/**
+ * @InterceptWith(CacheAspect::class,
+ *     key=null,                                    // Auto-generate from method
+ *     ttl=3600,                                   // 1 hour cache
+ *     context="api_responses",                    // Cache namespace
+ *     cachePath="/var/cache/canvas",              // Storage location
+ *     lockTimeout=10,                             // File lock timeout
+ *     gracefulFallback=true                       // Execute method if caching fails
+ * )
+ */
+public function expensiveOperation($param1, $param2) {
+    // Custom cache configuration
+}
+```
+
+**Parameters:**
+- `key` - Custom cache key template, null for auto-generation (default: `null`)
+- `ttl` - Time to live in seconds, 0 for never expires (default: `3600`)
+- `context` - Cache namespace for organization (default: `default`)
+- `cachePath` - Base cache directory path (default: `/storage/cache`)
+- `lockTimeout` - File lock timeout in seconds (default: `5`)
+- `gracefulFallback` - Execute method if caching fails (default: `true`)
+
+#### Cache Key Generation
+
+The aspect automatically generates intelligent cache keys:
+
+```php
+// Method: ProductController::getProduct($id, $includeReviews)
+// Arguments: [123, true]
+// Generated key: "product_controller.get_product.arg0:123_arg1:true"
+
+// Method: UserController::search($query, $filters)
+// Arguments: ["admin", ["active" => true, "role" => "admin"]]
+// Generated key: "user_controller.search.arg0:admin_arg1:array_a1b2c3"
+```
+
+#### Performance Considerations
+
+- **Argument Serialization** - Complex objects are hashed to keep keys manageable
+- **Key Length Limits** - Long keys are automatically truncated and hashed
+- **Lock Timeouts** - Configurable timeouts prevent indefinite blocking
+- **Storage Efficiency** - File-based storage with automatic cleanup
+
+#### Context Usage Examples
+
+```php
+class DataController extends BaseController {
+    
+    /**
+     * @InterceptWith(CacheAspect::class, context="public_data", ttl=86400)
+     */
+    public function publicStats() {
+        // Long cache for public data (24 hours)
+    }
+    
+    /**
+     * @InterceptWith(CacheAspect::class, context="user_data", ttl=300)
+     */
+    public function userDashboard() {
+        // Short cache for user-specific data (5 minutes)
+    }
+    
+    /**
+     * @InterceptWith(CacheAspect::class, context="admin_reports", ttl=0)
+     */
+    public function adminReport() {
+        // Never expires - manual cache invalidation required
+    }
+}
 ```
 
 ## Task Scheduling
