@@ -5,7 +5,7 @@
 	
 	return [
 		// True to put the framework in debug mode; this mainly affects caching
-		'debug_mode'             => true,
+		'debug_mode'             => false,
 		
 		// Path to controller classes
 		'controller_directory'   => $srcDir . '/Controllers',
