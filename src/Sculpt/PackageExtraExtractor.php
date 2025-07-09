@@ -1,6 +1,6 @@
 <?php
 	
-	namespace App\Monorepo;
+	namespace App\Sculpt;
 	
 	use FilesystemIterator;
 	
@@ -23,12 +23,12 @@
 		/**
 		 * Extract all 'extra' sections from composer.json files in packages directory
 		 * @return array Array with package name as key and extra section as value
-		 * @throws \RuntimeException if packages directory doesn't exist
+		 * @throws \Exception if packages directory doesn't exist
 		 */
 		public function getMap(): array {
 			// Validate that the packages directory exists before proceeding
 			if (!is_dir($this->packagesDir)) {
-				throw new \RuntimeException("Packages directory '{$this->packagesDir}' does not exist");
+				throw new \Exception("Packages directory '{$this->packagesDir}' does not exist");
 			}
 			
 			// Find all composer.json files in the packages directory

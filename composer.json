@@ -57,8 +57,8 @@
     "composer-plugin-api": "^2.0"
   },
   "require-dev": {
-    "phpstan/phpstan": "^1.10",
-    "pestphp/pest": "^2.0",
+    "phpstan/phpstan": "*",
+    "phpunit/phpunit": "^9",
     "composer/composer": "^2.0",
     "quellabs/sculpt": "dev-main as 1.999.999",
     "quellabs/contracts": "dev-main as 1.999.999",

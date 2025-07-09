@@ -2,13 +2,8 @@
 	
 	namespace App\Controllers;
 	
-	use App\Monorepo\PackageExtraExtractor;
 	use Quellabs\Canvas\Annotations\Route;
-	use Quellabs\Canvas\Annotations\InterceptWith;
 	use Quellabs\Canvas\Controllers\BaseController;
-	use Quellabs\Canvas\Controllers\SecureController;
-	use Quellabs\Canvas\Sanitization\SanitizeAspect;
-	use Quellabs\Canvas\Cache\CacheAspect;
 	use Symfony\Component\HttpFoundation\JsonResponse;
 	use Symfony\Component\HttpFoundation\Response;
 	
