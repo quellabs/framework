@@ -31,7 +31,7 @@
 		}
 		
 		/**
-		 * @Route("/user/{path:**}")
+		 * @Route("/user/v{path:**}")
 		 * @param string $path
 		 * @return Response
 		 */
