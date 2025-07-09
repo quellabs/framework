@@ -17,6 +17,7 @@
   },
   "autoload": {
     "psr-4": {
+      "App\\": "src/",
       "Quellabs\\Contracts\\": "packages/contracts/src/",
       "Quellabs\\Discover\\": "packages/discover/src/",
       "Quellabs\\DependencyInjection\\": "packages/dependency-injection/src/",
