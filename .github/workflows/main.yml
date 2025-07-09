@@ -3,6 +3,13 @@ on:
   push:
     branches: [main]
     tags: ['v*', '*.*.*']
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Run in dry-run mode (no actual changes)'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   sync:
@@ -51,9 +58,15 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y jq
 
       - name: Release packages based on versions.json
+        env:
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
         run: |
           set -e
           echo "Checking versions.json for packages to release..."
+          
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "🔍 DRY RUN MODE - No actual changes will be made"
+          fi
           
           # Validate versions.json exists
           if [ ! -f "versioning/versions.json" ]; then
@@ -115,7 +128,9 @@ jobs:
               fi
           
               # Create and push tag
-              if git tag -a "$target_version" -m "Release $target_version" && \
+              if [ "$DRY_RUN" = "true" ]; then
+                echo "  🔍 DRY RUN: Would tag $package with $target_version"
+              elif git tag -a "$target_version" -m "Release $target_version" && \
                  git push origin "$target_version"; then
                 echo "  ✅ Tagged $package with $target_version"
               else
