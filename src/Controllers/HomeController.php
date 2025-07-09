@@ -8,9 +8,6 @@
 	use Symfony\Component\HttpFoundation\JsonResponse;
 	use Symfony\Component\HttpFoundation\Response;
 	
-	/**
-	 * @RoutePrefix("x")
-	 */
 	class HomeController extends BaseController {
 		
 		/**
