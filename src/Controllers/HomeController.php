@@ -28,11 +28,11 @@
 		}
 		
 		/**
-		 * @Route("/user/v{path:**}")
-		 * @param string $path
+		 * @Route("/user/v{path:int}")
+		 * @param int $path
 		 * @return Response
 		 */
-		public function user(string $path): Response {
+		public function user(int $path): Response {
 			return  new Response("Hello, " . $path);
 		}
 	}
