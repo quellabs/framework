@@ -15,7 +15,7 @@
 		 * @param string $template The template file name or path to render
 		 * @param array $data Associative array of variables to pass to the template
 		 * @return string The rendered template content
-		 * @throws \RuntimeException If template rendering fails
+		 * @throws TemplateRenderException If template rendering fails
 		 */
 		public function render(string $template, array $data = []): string;
 		
@@ -24,7 +24,7 @@
 		 * @param string $templateString The template content as a string
 		 * @param array $data Associative array of variables to pass to the template
 		 * @return string The rendered template content
-		 * @throws \RuntimeException If template rendering fails
+		 * @throws TemplateRenderException If template rendering fails
 		 */
 		public function renderString(string $templateString, array $data = []): string;
 		
