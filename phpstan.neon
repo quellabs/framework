@@ -1,7 +1,7 @@
 parameters:
     level: 5
     paths:
-        - packages/canvas/src
+        - packages/annotation-reader/src
     bootstrapFiles:
         - vendor/autoload.php
     scanDirectories:

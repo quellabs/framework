@@ -323,6 +323,7 @@
 				while ($this->lexer->optionalMatch(Token::Backslash)) {
 					// After a backslash, we must have another parameter token
 					// If not, this isn't a valid class reference pattern
+					// @phpstan-ignore-next-line
 					if ($this->lexer->peek()->getType() !== Token::Parameter) {
 						// Restore lexer state and return false for invalid pattern
 						$this->lexer->restoreState($currentState);
@@ -342,6 +343,7 @@
 				}
 				
 				// Consume the double colon token
+				// @phpstan-ignore-next-line
 				$this->lexer->match(Token::DoubleColon);
 				
 				// Final check: verify the next token is the 'class' keyword

@@ -65,9 +65,9 @@
 		/**
 		 * Token constructor.
 		 * @param int|string $type
-		 * @param null $value
+		 * @param mixed|null $value
 		 */
-		public function __construct(int|string $type = Token::None, $value = null) {
+		public function __construct(int|string $type = Token::None, mixed $value = null) {
 			$this->type = $type;
 			$this->value = $value;
 		}
