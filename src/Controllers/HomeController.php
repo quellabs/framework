@@ -27,8 +27,8 @@
 		}
 		
 		/**
-		 * @Route("/user/{id:int}")
-		 * @param int $id
+		 * @Route("/user/v{id}")
+		 * @param $id $name
 		 * @return Response
 		 */
 		public function user(int $id): Response {
