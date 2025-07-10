@@ -92,12 +92,20 @@
 						continue;
 					}
 					
+					// Handle union types (e.g., "string|null", "int|string")
+					if (str_contains($propertyType, '|')) {
+						$schema[$fieldName] = $propertyType;
+						continue;
+					}
+					
 					// If the property type is primitive, store it directly
 					if ($this->isPrimitiveType($propertyType)) {
 						$schema[$fieldName] = $propertyType;
-					} else {
-						$schema[$fieldName] = $this->generateClassSchema($propertyType, $publicOnly);
+						continue;
 					}
+
+					// Handle class types
+					$schema[$fieldName] = $this->generateClassSchema($propertyType, $publicOnly);
 				}
 			} catch (\ReflectionException $e) {
 				// If reflection fails (class doesn't exist, etc.), return error indicator
@@ -119,7 +127,7 @@
 		private function isPrimitiveType(string $type): bool {
 			return in_array($type, ['int', 'integer', 'float', 'double', 'string', 'bool', 'boolean', 'array', 'object', 'mixed', 'null']);
 		}
-
+		
 		/**
 		 * Get the property type using reflection
 		 * @param \ReflectionProperty $property The property to examine
@@ -133,9 +141,16 @@
 				return 'mixed';
 			}
 			
-			// Single named type (e.g., string, int, MyClass)
+			// Single named type (e.g., string, int, MyClass, ?string)
 			if ($type instanceof \ReflectionNamedType) {
-				return $type->getName();
+				$typeName = $type->getName();
+				
+				// Handle nullable types (?string becomes string|null)
+				if ($type->allowsNull() && $typeName !== 'mixed') {
+					return $typeName . '|null';
+				}
+				
+				return $typeName;
 			}
 			
 			// Union type (e.g., string|int|null)
