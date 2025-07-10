@@ -1,12 +1,12 @@
 {
-  "contracts": "1.0.9",
-  "discover": "1.0.8",
-  "dependency-injection": "1.0.4",
-  "sculpt": "1.0.2",
-  "objectquel": "1.0.8",
-  "signal-hub": "1.0.0",
-  "annotation-reader": "1.0.11",
-  "canvas": "1.0.12",
-  "canvas-objectquel": "1.0.3",
-  "canvas-smarty": "1.0.2"
+  "contracts": "1.0.20",
+  "discover": "1.0.20",
+  "dependency-injection": "1.0.20",
+  "sculpt": "1.0.20",
+  "objectquel": "1.0.20",
+  "signal-hub": "1.0.20",
+  "annotation-reader": "1.0.20",
+  "canvas": "1.0.20",
+  "canvas-objectquel": "1.0.20",
+  "canvas-smarty": "1.0.20"
 }
