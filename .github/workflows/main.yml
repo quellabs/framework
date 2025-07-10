@@ -60,23 +60,7 @@ jobs:
           
           echo "✅ Successfully synced $PACKAGE"
           
-          # Step 2: Check if we should release (only if trigger conditions are met)
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            should_release=true
-          elif [[ "${{ contains(github.event.head_commit.message, '[release]') }}" == "true" ]]; then
-            should_release=true
-          elif [[ "${{ contains(toJSON(github.event.head_commit.modified), 'versioning/versions.json') }}" == "true" ]]; then
-            should_release=true
-          else
-            should_release=false
-          fi
-          
-          if [ "$should_release" = "false" ]; then
-            echo "🔄 No release trigger detected for this push - skipping release step"
-            exit 0
-          fi
-          
-          # Step 3: Release logic (only if triggered)
+          # Step 2: Release logic (always check versions.json)
           echo "🏷️  Checking release for $PACKAGE..."
           
           # Validate versions.json exists
