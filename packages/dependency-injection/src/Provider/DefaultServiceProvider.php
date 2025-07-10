@@ -79,7 +79,7 @@
 		private function createServiceProvider(string $className): object {
 			// Ensure discovery has been run to populate provider definitions
 			// This is a lazy check - only runs discovery if not already done
-			if (!$this->discovery->hasDiscovered()) {
+			if (!$this->discovery->hasProviders()) {
 				$this->discovery->discover();
 			}
 			

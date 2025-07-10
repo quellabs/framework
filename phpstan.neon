@@ -1,7 +1,7 @@
 parameters:
     level: 2
     paths:
-        - packages/objectquel/src
+        - packages/discover/src
     bootstrapFiles:
         - vendor/autoload.php
     scanDirectories:
