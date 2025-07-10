@@ -40,7 +40,7 @@
 		 * @return string|array Returns string for primitives, array for classes
 		 * @throws \RuntimeException
 		 */
-		private function generateTypeSchema(string $type, bool $publicOnly): string|array {
+		public function generateTypeSchema(string $type, bool $publicOnly): string|array {
 			// Handle primitive types (int, string, bool, etc.)
 			if ($this->isPrimitiveType($type)) {
 				return $this->normalizeType($type);

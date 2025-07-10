@@ -2,14 +2,20 @@
 	
 	namespace Quellabs\SignalHub;
 	
+	use Quellabs\SignalHub\Transport\MethodSchemaGenerator;
+	use Quellabs\SignalHub\Transport\SchemaComparator;
+	use Quellabs\SignalHub\Transport\SchemaGenerator;
+	use Quellabs\SignalHub\Transport\SchemaValidator;
+	
 	/**
-	 * Signal class for Qt-like event handling in PHP
+	 * Signal class for Qt-like event handling in PHP with schema support
 	 */
 	class Signal {
+		
 		/**
-		 * @var array Expected parameter types for this signal
+		 * @var array Schema of parameter types
 		 */
-		private array $parameterTypes;
+		private array $schema;
 		
 		/**
 		 * @var array Direct connections (receivers and their slots)
@@ -24,12 +30,18 @@
 		/**
 		 * @var string|null Name of this signal (for debugging)
 		 */
-		private ?string $name = null;
+		private ?string $name;
 		
 		/**
 		 * @var object|null Object that owns this signal
 		 */
-		private ?object $owner = null;
+		private ?object $owner;
+		
+		/**
+		 * Object uses to compare schemas
+		 * @var SchemaComparator
+		 */
+		private SchemaComparator $schemaComparator;
 		
 		/**
 		 * Constructor to initialize the signal with parameter types
@@ -38,9 +50,42 @@
 		 * @param object|null $owner Optional owner object
 		 */
 		public function __construct(array $parameterTypes, ?string $name = null, ?object $owner = null) {
-			$this->parameterTypes = $parameterTypes;
 			$this->name = $name;
 			$this->owner = $owner;
+			$this->schema = $this->generateSchema($parameterTypes);
+			$this->schemaComparator = new SchemaComparator();
+		}
+		
+		/**
+		 * Convert the parameter types to a schema
+		 * @param array $parameterTypes
+		 * @return array
+		 */
+		private function generateSchema(array $parameterTypes): array {
+			$schemaGenerator = new SchemaGenerator();
+			return $schemaGenerator->extract($parameterTypes);
+		}
+		
+		/**
+		 * Validates the parameters against the stored schema
+		 * @param array $parameters
+		 * @return bool
+		 */
+		private function validateParameters(array $parameters): bool {
+			try {
+				$schemaValidator = new SchemaValidator();
+				return $schemaValidator->validate($parameters, $this->schema);
+			} catch (\Exception $e) {
+				return false;
+			}
+		}
+		
+		/**
+		 * Get the schema for this signal
+		 * @return array
+		 */
+		public function getSchema(): array {
+			return $this->schema;
 		}
 		
 		/**
@@ -79,18 +124,13 @@
 		 */
 		public function emit(...$args): void {
 			// Check argument count
-			if (count($args) !== count($this->parameterTypes)) {
-				throw new \Exception("Argument count mismatch for signal emission.");
+			if (count($args) !== count($this->schema)) {
+				throw new \Exception("Argument count mismatch for signal emission: expected " . count($this->schema) . ", got " . count($args));
 			}
 			
-			// Check argument types
-			foreach ($args as $index => $arg) {
-				$expectedType = $this->parameterTypes[$index];
-				$actualType = is_object($arg) ? get_class($arg) : gettype($arg);
-				
-				if (!$this->isTypeCompatible($actualType, $expectedType)) {
-					throw new \Exception("Type mismatch for argument {$index} of signal emission: expected {$expectedType}, got {$actualType}.");
-				}
+			// Validate arguments against schema
+			if (!$this->validateParameters($args)) {
+				throw new \Exception("Arguments do not match signal schema");
 			}
 			
 			// Call the direct connections
@@ -124,22 +164,6 @@
 					}
 				}
 			}
-		}
-		
-		/**
-		 * Get parameter types for this signal
-		 * @return array
-		 */
-		public function getParameterTypes(): array {
-			return $this->parameterTypes;
-		}
-		
-		/**
-		 * Get number of connections
-		 * @return int
-		 */
-		public function countConnections(): int {
-			return count($this->connections) + count($this->patternConnections);
 		}
 		
 		/**
@@ -177,143 +201,9 @@
 			$this->owner = $owner;
 			return $this;
 		}
-
-		/**
-		 * Normalizes type strings to consistent notation
-		 * @param string $type Raw type string
-		 * @return string Normalized type string
-		 */
-		private function normalizeType(string $type): string {
-			$typeMap = [
-				'integer' => 'int',
-				'boolean' => 'bool',
-				'double'  => 'float',
-			];
-			
-			return $typeMap[$type] ?? $type;
-		}
-		
-		/**
-		 * Checks if a type from a signal parameter is compatible with a slot parameter type
-		 * @param string $signalType The type of the value being passed (from signal emission)
-		 * @param string $slotType The type declaration of the receiving parameter
-		 * @return bool True if types are compatible, false otherwise
-		 */
-		private function isTypeCompatible(string $signalType, string $slotType): bool {
-			// Normalize type names to handle aliases
-			$signalType = $this->normalizeType($signalType);
-			$slotType = $this->normalizeType($slotType);
-			
-			// Handle the special case for generic 'object' type
-			if ($this->isGenericObjectCompatibility($signalType, $slotType)) {
-				return true;
-			}
-			
-			// If types are exactly the same, they're compatible
-			if ($signalType === $slotType) {
-				return true;
-			}
-			
-			// Handle primitive types compatibility
-			if ($this->involvesNonCompatiblePrimitives($signalType, $slotType)) {
-				return false;
-			}
-			
-			// Check class inheritance for compatibility
-			return $this->hasInheritanceRelationship($signalType, $slotType);
-		}
-		
-		/**
-		 * Checks if either type is a generic 'object' type and the other is a class
-		 * @param string $typeA First type to check
-		 * @param string $typeB Second type to check
-		 * @return bool True if one is 'object' and the other is a class
-		 */
-		private function isGenericObjectCompatibility(string $typeA, string $typeB): bool {
-			// If typeB is generic 'object', check if typeA is a class
-			if ($typeB === 'object' && $this->isClassName($typeA)) {
-				return true;
-			}
-			
-			// If typeA is generic 'object', check if typeB is a class
-			if ($typeA === 'object' && $this->isClassName($typeB)) {
-				return true;
-			}
-			
-			return false;
-		}
-		
-		/**
-		 * Determines if a type string represents a class name
-		 * @param string $type Type to check
-		 * @return bool True if the type is likely a class name
-		 */
-		private function isClassName(string $type): bool {
-			return str_starts_with($type, '\\') || class_exists($type);
-		}
-		
-		/**
-		 * Checks if the types involve non-compatible primitive types
-		 * @param string $typeA First type to check
-		 * @param string $typeB Second type to check
-		 * @return bool True if types are primitive and not compatible
-		 */
-		private function involvesNonCompatiblePrimitives(string $typeA, string $typeB): bool {
-			$primitiveTypes = ['int', 'float', 'string', 'bool', 'array'];
-			
-			$isTypeAPrimitive = in_array($typeA, $primitiveTypes);
-			$isTypeBPrimitive = in_array($typeB, $primitiveTypes);
-			
-			// If one is primitive and the other isn't, they're not compatible
-			if ($isTypeAPrimitive !== $isTypeBPrimitive) {
-				return true;
-			}
-			
-			// If both are primitives but different types, they're not compatible
-			if ($isTypeAPrimitive && $isTypeBPrimitive && $typeA !== $typeB) {
-				return true;
-			}
-			
-			return false;
-		}
-		
-		/**
-		 * Checks if two class types have an inheritance relationship
-		 * @param string $classA First class name
-		 * @param string $classB Second class name
-		 * @return bool True if one class inherits from the other
-		 */
-		private function hasInheritanceRelationship(string $classA, string $classB): bool {
-			// Check if either class inherits from the other
-			return is_subclass_of($classA, $classB) || is_subclass_of($classB, $classA);
-		}
-		
-		/**
-		 * Check if a pattern matches this signal's name
-		 * @param string $pattern Pattern with wildcards
-		 * @return bool True if matches
-		 */
-		private function matchesPattern(string $pattern): bool {
-			if ($this->name === null) {
-				return false;
-			}
-			
-			// If there's no wildcard, it's only a match if exact
-			if (!str_contains($pattern, '*')) {
-				return $pattern === $this->name;
-			}
-			
-			// Convert the pattern to a regex
-			// Escape dots in the pattern and replace * with .*
-			$regex = '/^' . str_replace(['.', '*'], ['\.', '.*'], $pattern) . '$/';
-			
-			// Check if the signal name matches the pattern
-			return (bool) preg_match($regex, $this->name);
-		}
 		
 		/**
 		 * Connect an object's method or a callable to this signal
-		 * This method now supports both direct connections and pattern-based connections
 		 * @param callable|object $receiver Object or callable to receive the signal
 		 * @param string|null $slotOrPattern Method name (if receiver is an object) or pattern string
 		 * @param int $priority Connection priority (higher executes first)
@@ -349,6 +239,14 @@
 		}
 		
 		/**
+		 * Get number of connections
+		 * @return int
+		 */
+		public function countConnections(): int {
+			return count($this->connections) + count($this->patternConnections);
+		}
+
+		/**
 		 * Connect using a pattern
 		 * @param string $pattern Pattern to match
 		 * @param callable|object $receiver Receiver
@@ -364,6 +262,29 @@
 			];
 			
 			return true;
+		}
+		
+		/**
+		 * Check if a pattern matches this signal's name
+		 * @param string $pattern Pattern with wildcards
+		 * @return bool True if matches
+		 */
+		private function matchesPattern(string $pattern): bool {
+			if ($this->name === null) {
+				return false;
+			}
+			
+			// If there's no wildcard, it's only a match if exact
+			if (!str_contains($pattern, '*')) {
+				return $pattern === $this->name;
+			}
+			
+			// Convert the pattern to a regex
+			// Escape dots in the pattern and replace * with .*
+			$regex = '/^' . str_replace(['.', '*'], ['\.', '.*'], $pattern) . '$/';
+			
+			// Check if the signal name matches the pattern
+			return (bool) preg_match($regex, $this->name);
 		}
 		
 		/**
@@ -387,35 +308,13 @@
 				}
 			}
 			
-			// Get reflection of slot method
+			// Validate schema compatibility
 			$slotReflection = new \ReflectionMethod($receiver, $slot);
-			$slotParams = $slotReflection->getParameters();
+			$methodSchemaGenerator = new MethodSchemaGenerator();
+			$slotSchema = $methodSchemaGenerator->generateFromMethod($slotReflection);
 			
-			// Check parameter count
-			if (count($this->parameterTypes) !== count($slotParams)) {
-				throw new \Exception("Signal and slot parameter count mismatch.");
-			}
-			
-			// Check type compatibility for each parameter
-			for ($i = 0; $i < count($this->parameterTypes); $i++) {
-				$signalType = $this->parameterTypes[$i];
-				$slotType = $slotParams[$i]->getType();
-				
-				if ($slotType === null) {
-					throw new \Exception("Slot parameter {$i} is not typed.");
-				}
-				
-				// Fetch the name of the slot by casting to string.
-				// This will call the __toString magic method.
-				// We can't use ->getName() because it may not be present
-				$slotTypeName = (string)$slotType;
-				
-				/**
-				 * Check type compatibility
-				 */
-				if (!$this->isTypeCompatible($signalType, $slotTypeName)) {
-					throw new \Exception("Type mismatch for parameter {$i} between signal ({$signalType}) and slot ({$slotTypeName}).");
-				}
+			if (!$this->schemaComparator->areCompatible($this->schema, $slotSchema)) {
+				throw new \Exception("Schema mismatch between signal and slot '{$slot}': signal schema " . json_encode($this->schema) . " vs slot schema " . json_encode($slotSchema));
 			}
 			
 			// Add connection
@@ -428,15 +327,12 @@
 			// Sort connections by priority (higher first)
 			$this->sortConnectionsByPriority();
 			
+			// Connection successfully established
 			return true;
 		}
 		
 		/**
 		 * Connect a callable to this signal
-		 *
-		 * This method establishes a connection between the signal and a callable function.
-		 * It performs type checking to ensure signal and receiver parameters are compatible,
-		 * prevents duplicate connections, and organizes connections by priority.
 		 * @param callable $receiver Callable function to receive the signal
 		 * @param int $priority Connection priority - higher priority connections are executed first
 		 * @return bool Whether connection was successful (false if connection already exists)
@@ -456,38 +352,15 @@
 				return $this->connectObject($receiver[0], $receiver[1], $priority);
 			}
 			
-			// Create a reflection of the callable to inspect its parameters
-			$slotReflection = new \ReflectionFunction($receiver);
-			$slotParams = $slotReflection->getParameters();
+			// Validate schema compatibility
+			$methodSchemaGenerator = new MethodSchemaGenerator();
+			$callableSchema = $methodSchemaGenerator->generateFromCallable($receiver);
 			
-			// Verify that the signal and receiver have the same number of parameters
-			if (count($this->parameterTypes) !== count($slotParams)) {
-				throw new \Exception("Signal and slot parameter count mismatch.");
-			}
-			
-			// Iterate through each parameter to verify type compatibility
-			for ($i = 0; $i < count($this->parameterTypes); $i++) {
-				$signalType = $this->parameterTypes[$i];
-				$slotType = $slotParams[$i]->getType();
-				
-				// Ensure all slot parameters have type declarations
-				if ($slotType === null) {
-					throw new \Exception("Slot parameter {$i} is not typed.");
-				}
-				
-				// Fetch the name of the slot by casting to string.
-				// This will call the __toString magic method.
-				// We can't use ->getName() because it may not be present
-				$slotTypeName = (string)$slotType;
-				
-				// Check if the signal type is compatible with the slot type
-				if (!$this->isTypeCompatible($signalType, $slotTypeName)) {
-					throw new \Exception("Type mismatch for parameter {$i} between signal ({$signalType}) and slot ({$slotTypeName}).");
-				}
+			if (!$this->schemaComparator->areCompatible($this->schema, $callableSchema)) {
+				throw new \Exception("Schema mismatch between signal and callable: signal schema " . json_encode($this->schema) . " vs callable schema " . json_encode($callableSchema));
 			}
 			
 			// Add the new connection to the connections array
-			// 'slot' is null because this is a direct callable, not an object method
 			$this->connections[] = [
 				'receiver' => $receiver,  // The callable function
 				'slot' => null,           // No slot name for direct callables
@@ -495,7 +368,6 @@
 			];
 			
 			// Re-sort all connections based on priority value
-			// Higher priority connections will be executed first when the signal is emitted
 			$this->sortConnectionsByPriority();
 			
 			// Connection successfully established
@@ -510,5 +382,4 @@
 				return $b['priority'] <=> $a['priority'];
 			});
 		}
-		
 	}
