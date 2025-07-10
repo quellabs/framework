@@ -24,7 +24,12 @@
 		 * @throws \InvalidArgumentException If validation fails
 		 */
 		public function validate(array $data, array $schema): bool {
-			// Reset validation path for each new validation
+			// Check argument count
+			if (count($data) !== count($schema)) {
+				return false;
+			}
+			
+			// Reset the validation path for each new validation
 			$this->validationPath = [];
 			
 			// Validate each parameter in the schema
@@ -60,6 +65,12 @@
 		public function validateWithErrors(array $data, array $schema): array {
 			$errors = [];
 			
+			// Check argument count
+			if (count($data) !== count($schema)) {
+				$errors[] = 'Wrong argument count';
+			}
+			
+			// Validate the schema
 			try {
 				$this->validate($data, $schema);
 			} catch (\InvalidArgumentException $e) {
@@ -188,7 +199,7 @@
 			$typeAliases = [
 				'integer' => 'int',     // 'integer' is an alias for 'int'
 				'boolean' => 'bool',    // 'boolean' is an alias for 'bool'
-				'double' => 'float'     // 'double' is an alias for 'float'
+				'double'  => 'float'     // 'double' is an alias for 'float'
 			];
 			
 			// Normalize both types using the aliases map

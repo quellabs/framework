@@ -123,11 +123,6 @@
 		 * @throws \Exception If argument types or count mismatch
 		 */
 		public function emit(...$args): void {
-			// Check argument count
-			if (count($args) !== count($this->schema)) {
-				throw new \Exception("Argument count mismatch for signal emission: expected " . count($this->schema) . ", got " . count($args));
-			}
-			
 			// Validate arguments against schema
 			if (!$this->validateParameters($args)) {
 				throw new \Exception("Arguments do not match signal schema");
