@@ -59,7 +59,7 @@ jobs:
 
       - name: Release packages based on versions.json
         env:
-          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+          DRY_RUN: ${{ (github.event.inputs.dry_run || 'false') == 'true' }}
         run: |
           set -e
           echo "Checking versions.json for packages to release..."
@@ -92,13 +92,21 @@ jobs:
               continue
             fi
           
-            # Get current version from GitHub API with error handling
+            # Fetch all tags and determine the highest semver tag
             if ! tags_response=$(curl -s -f -H "Authorization: token ${{ secrets.SYNC_TOKEN }}" \
               "https://api.github.com/repos/quellabs/$package/tags" 2>/dev/null); then
               echo "  ❌ Failed to fetch tags for $package (repo might not exist yet)"
               current_version="0.0.0"
             else
-              current_version=$(echo "$tags_response" | jq -r '.[0].name // "0.0.0"')
+              current_version=$(echo "$tags_response" \
+              | jq -r '.[].name' \
+              | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' \
+              | sort -V \
+              | tail -n 1)
+            
+              if [ -z "$current_version" ]; then
+                current_version="0.0.0"
+              fi
             fi
           
             echo "  Current: $current_version"
@@ -132,9 +140,15 @@ jobs:
                 echo "  🔍 DRY RUN: Would tag $package with $target_version"
               elif git tag -a "$target_version" -m "Release $target_version" && \
                  git push origin "$target_version"; then
-                echo "  ✅ Tagged $package with $target_version"
+                 echo "  ✅ Tagged $package with $target_version"
               else
-                echo "  ❌ Failed to tag or push $package"
+                 echo "  ❌ Failed to tag or push $package. Diagnostics:"
+                 echo "  → Last few commits:"
+                 git log -3 --oneline || true
+                 echo "  → Git status:"
+                 git status || true
+                 echo "  → Existing tags:"
+                 git tag --sort=-creatordate | head -5 || true
               fi
           
               cd ..
