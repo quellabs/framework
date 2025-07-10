@@ -22,7 +22,7 @@
 		
 		/**
 		 * Creates a new instance of the specified class with the provided dependencies
-		 * @template T
+		 * @template T of object
 		 * @param class-string<T> $className The fully qualified class name to instantiate
 		 * @param array $dependencies An array of resolved dependencies to pass to the constructor
 		 * @return T The newly created instance of the specified class

@@ -85,7 +85,7 @@
 			$this->defaultFamily = $defaultFamily;
 			$this->utilities = new ComposerPathResolver();
 			$this->logger = $logger;
-			$this->providerValidator = new ProviderValidator($logger, "DirectoryScanner");
+			$this->providerValidator = new ProviderValidator();
 		}
 		
 		/**

@@ -1,6 +1,79 @@
 {
+  "name": "quellabs/framework-dev",
+  "description": "Quellabs Framework Development Environment",
+  "type": "project",
+  "minimum-stability": "dev",
+  "prefer-stable": true,
+  "repositories": [
+    {
+      "type": "path",
+      "url": "./packages/annotation-reader"
+    },
+    {
+      "type": "path",
+      "url": "./packages/canvas"
+    },
+    {
+      "type": "path",
+      "url": "./packages/canvas-objectquel"
+    },
+    {
+      "type": "path",
+      "url": "./packages/canvas-smarty"
+    },
+    {
+      "type": "path",
+      "url": "./packages/contracts"
+    },
+    {
+      "type": "path",
+      "url": "./packages/dependency-injection"
+    },
+    {
+      "type": "path",
+      "url": "./packages/discover"
+    },
+    {
+      "type": "path",
+      "url": "./packages/objectquel"
+    },
+    {
+      "type": "path",
+      "url": "./packages/sculpt"
+    },
+    {
+      "type": "path",
+      "url": "./packages/signal-hub"
+    }
+  ],
+  "require": {
+    "php": "^8.3",
+    "monolog/monolog": "*",
+    "symfony/http-foundation": "*",
+    "dragonmantank/cron-expression": "*",
+    "robmorgan/phinx": "*",
+    "cakephp/database": "*",
+    "softcreatr/jsonpath": "*",
+    "composer-plugin-api": "^2.0"
+  },
+  "require-dev": {
+    "phpstan/phpstan": "*",
+    "phpunit/phpunit": "^9",
+    "composer/composer": "^2.0",
+    "quellabs/sculpt": "dev-main as 1.999.999",
+    "quellabs/contracts": "dev-main as 1.999.999",
+    "quellabs/annotation-reader": "dev-main as 1.999.999",
+    "quellabs/canvas": "dev-main as 1.999.999",
+    "quellabs/canvas-objectquel": "dev-main as 1.999.999",
+    "quellabs/canvas-smarty": "dev-main as 1.999.999",
+    "quellabs/dependency-injection": "dev-main as 1.999.999",
+    "quellabs/discover": "dev-main as 1.999.999",
+    "quellabs/objectquel": "dev-main as 1.999.999",
+    "quellabs/signal-hub": "dev-main as 1.999.999"
+  },
   "autoload": {
     "psr-4": {
+      "App\\": "src/",
       "Quellabs\\Contracts\\": "packages/contracts/src/",
       "Quellabs\\Discover\\": "packages/discover/src/",
       "Quellabs\\DependencyInjection\\": "packages/dependency-injection/src/",
@@ -11,6 +84,19 @@
       "Quellabs\\Canvas\\": "packages/canvas/src/",
       "Quellabs\\Canvas\\ObjectQuel\\": "packages/canvas-objectquel/src/",
       "Quellabs\\Canvas\\Smarty\\": "packages/canvas-smarty/src/"
+    }
+  },
+  "config": {
+    "allow-plugins": {
+      "pestphp/pest-plugin": true,
+      "quellabs/discover": false
+    }
+  },
+  "extra": {
+    "discover": {
+      "sculpt": {
+        "provider": "App\\Sculpt\\ServiceProvider"
+      }
     }
   }
 }

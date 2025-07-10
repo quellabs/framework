@@ -35,13 +35,13 @@
 			
 			// Set cache lifetime if specified
 			// Only configure cache lifetime if explicitly provided in config
-			if (isset($config['cache_lifetime'])) {
-				$this->smarty->cache_lifetime = $config['cache_lifetime'];
+			if (isset($this->config['cache_lifetime'])) {
+				$this->smarty->cache_lifetime = $this->config['cache_lifetime'];
 			}
 			
 			// Enable security if specified
 			// Optionally enable Smarty's security policy to restrict template operations
-			if (isset($config['security']) && $config['security']) {
+			if (isset($this->config['security']) && $this->config['security']) {
 				try {
 					$this->smarty->enableSecurity();
 				} catch (\Exception $e) {

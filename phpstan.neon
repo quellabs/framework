@@ -1,0 +1,16 @@
+parameters:
+    level: 2
+    paths:
+        - packages/canvas-objectquel/src
+    bootstrapFiles:
+        - vendor/autoload.php
+    scanDirectories:
+        - packages/annotation-reader/src
+        - packages/canvas-objectquel/src
+        - packages/canvas-smarty/src
+        - packages/contracts/src
+        - packages/dependency-injection/src
+        - packages/discover/src
+        - packages/objectquel/src
+        - packages/sculpt/src
+        - packages/signal-hub/src

@@ -54,9 +54,10 @@
 		public function getMethodArguments(string $className, string $methodName, array $parameters = []): array {
 			// Get method parameter metadata (name, types, defaults, etc.)
 			$methodParams = $this->getMethodParameters($className, $methodName);
-			$arguments = [];
 			
 			// Process each method parameter in order
+			$arguments = [];
+
 			foreach ($methodParams as $param) {
 				$paramName = $param['name'];
 				$paramTypes = $param['types'] ?? [];

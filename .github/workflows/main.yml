@@ -2,10 +2,17 @@ name: Sync to Public Repos
 on:
   push:
     branches: [main]
-    tags: ['v*']
+    tags: ['v*', '*.*.*']
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Run in dry-run mode (no actual changes)'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
-  sync:
+  sync-and-release:
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -16,16 +23,153 @@ jobs:
           - sculpt
           - objectquel
           - signal-hub
+          - annotation-reader
           - canvas
           - canvas-objectquel
           - canvas-smarty
-      fail-fast: false
+      fail-fast: false  # Let each package complete independently
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           token: ${{ secrets.SYNC_TOKEN }}
-          
-      - name: Sync ${{ matrix.package }}
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Sync and Release ${{ matrix.package }}
+        env:
+          PACKAGE: ${{ matrix.package }}
+          DRY_RUN: ${{ (github.event.inputs.dry_run || 'false') == 'true' }}
         run: |
-          git subtree push --prefix=packages/${{ matrix.package }} https://${{ secrets.SYNC_TOKEN }}@github.com/quellabs/${{ matrix.package }}.git main
+          set -e
+          echo "Processing $PACKAGE..."
+          
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "🔍 DRY RUN MODE - No actual changes will be made"
+          fi
+          
+          # Step 1: Sync the package
+          echo "📦 Syncing $PACKAGE..."
+          
+          if ! git subtree push --prefix=packages/$PACKAGE \
+            https://${{ secrets.SYNC_TOKEN }}@github.com/quellabs/$PACKAGE.git main; then
+            echo "❌ Failed to sync $PACKAGE"
+            exit 1
+          fi
+          
+          echo "✅ Successfully synced $PACKAGE"
+          
+          # Step 2: Check if we should release (only if trigger conditions are met)
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            should_release=true
+          elif [[ "${{ contains(github.event.head_commit.message, '[release]') }}" == "true" ]]; then
+            should_release=true
+          elif [[ "${{ contains(toJSON(github.event.head_commit.modified), 'versioning/versions.json') }}" == "true" ]]; then
+            should_release=true
+          else
+            should_release=false
+          fi
+          
+          if [ "$should_release" = "false" ]; then
+            echo "🔄 No release trigger detected for this push - skipping release step"
+            exit 0
+          fi
+          
+          # Step 3: Release logic (only if triggered)
+          echo "🏷️  Checking release for $PACKAGE..."
+          
+          # Validate versions.json exists
+          if [ ! -f "versioning/versions.json" ]; then
+            echo "❌ versioning/versions.json not found - skipping release"
+            exit 0
+          fi
+          
+          # Get target version for this package
+          target_version=$(jq -r --arg pkg "$PACKAGE" '.[$pkg] // empty' versioning/versions.json)
+          
+          if [ -z "$target_version" ] || [ "$target_version" = "null" ]; then
+            echo "📝 No version specified for $PACKAGE in versions.json - skipping release"
+            exit 0
+          fi
+          
+          # Validate version format (no 'v' prefix)
+          if ! [[ "$target_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+.*$ ]]; then
+            echo "❌ Invalid version format: $target_version (should be like 1.0.0)"
+            exit 1
+          fi
+          
+          # Function to compare semantic versions
+          version_gt() {
+            test "$(printf '%s\n' "$@" | sort -V | head -n 1)" != "$1"
+          }
+          
+          # Fetch all tags and determine the highest semver tag
+          if ! tags_response=$(curl -s -f -H "Authorization: token ${{ secrets.SYNC_TOKEN }}" \
+            "https://api.github.com/repos/quellabs/$PACKAGE/tags" 2>/dev/null); then
+            echo "  ❌ Failed to fetch tags for $PACKAGE (repo might not exist yet)"
+            current_version="0.0.0"
+          else
+            current_version=$(echo "$tags_response" \
+            | jq -r '.[].name' \
+            | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' \
+            | sort -V \
+            | tail -n 1)
+          
+            if [ -z "$current_version" ]; then
+              current_version="0.0.0"
+            fi
+          fi
+          
+          echo "  Current: $current_version"
+          echo "  Target:  $target_version"
+          
+          # Compare versions directly
+          if version_gt "$target_version" "$current_version"; then
+            echo "  → New version detected! Releasing $target_version"
+          
+            # Clean up any existing temp directory for this package
+            rm -rf "temp-$PACKAGE"
+          
+            # Clone individual repo and tag it
+            if ! git clone "https://${{ secrets.SYNC_TOKEN }}@github.com/quellabs/$PACKAGE.git" "temp-$PACKAGE" 2>/dev/null; then
+              echo "  ❌ Failed to clone $PACKAGE repository"
+              exit 1
+            fi
+          
+            cd "temp-$PACKAGE"
+          
+            # Check if tag already exists
+            if git tag -l | grep -q "^$target_version$"; then
+              echo "  ❌ Tag $target_version already exists in $PACKAGE"
+              cd ..
+              rm -rf "temp-$PACKAGE"
+              exit 1
+            fi
+          
+            # Create and push tag
+            if [ "$DRY_RUN" = "true" ]; then
+              echo "  🔍 DRY RUN: Would tag $PACKAGE with $target_version"
+            elif git tag -a "$target_version" -m "Release $target_version" && \
+               git push origin "$target_version"; then
+               echo "  ✅ Tagged $PACKAGE with $target_version"
+            else
+               echo "  ❌ Failed to tag or push $PACKAGE. Diagnostics:"
+               echo "  → Last few commits:"
+               git log -3 --oneline || true
+               echo "  → Git status:"
+               git status || true
+               echo "  → Existing tags:"
+               git tag --sort=-creatordate | head -5 || true
+               exit 1
+            fi
+          
+            cd ..
+            rm -rf "temp-$PACKAGE"
+          elif [ "$current_version" = "$target_version" ]; then
+            echo "  ✅ Already up to date"
+          else
+            echo "  ⚠️  Target version ($target_version) is older than current ($current_version)"
+          fi
+          
+          echo "🎉 Completed processing $PACKAGE"

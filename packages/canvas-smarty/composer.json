@@ -33,10 +33,10 @@
   },
   "require": {
     "smarty/smarty": "^5.0",
-    "quellabs/discover": "^1.0",
-    "quellabs/dependency-injection": "^1.0",
-    "quellabs/contracts": "^1.0",
-    "quellabs/sculpt": "^1.0"
+    "quellabs/discover": "^1.",
+    "quellabs/dependency-injection": "^1.",
+    "quellabs/contracts": "^1.",
+    "quellabs/sculpt": "^1."
   },
   "autoload": {
     "psr-4": {

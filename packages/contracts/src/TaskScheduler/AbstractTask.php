@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\Contracts\TaskScheduler;
 	
+	use http\Exception\RuntimeException;
 	use Quellabs\Contracts\Discovery\ProviderInterface;
 	
 	/**
@@ -33,10 +34,16 @@
 			// This ensures we only get the actual class name, not the full qualified name
 			$className = (new \ReflectionClass($this))->getShortName();
 			
-			// Convert CamelCase to kebab-case using regex
+			// Replace
+			$replacedClassName = preg_replace('/([a-z0-9])([A-Z])/', '$1-$2', $className);
+			
 			// Pattern matches a lowercase letter followed by an uppercase letter and inserts hyphen
-			// Example: "SendEmailTask" -> "send-email-task"
-			return strtolower(preg_replace('/([a-z])([A-Z])/', '$1-$2', $className));
+			if ($replacedClassName === null) {
+				throw new \RuntimeException("Can't preg_replace $className");
+			}
+			
+			// Convert to lowercase
+			return strtolower($replacedClassName);
 		}
 		
 		/**

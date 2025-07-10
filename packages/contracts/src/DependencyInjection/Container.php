@@ -37,7 +37,7 @@
 		
 		/**
 		 * Get a service with centralized dependency resolution.
-		 * @template T
+		 * @template T of object
 		 * @param class-string<T> $className Class or interface name to resolve
 		 * @param array $parameters Additional parameters for creation
 		 * @return T|null The resolved service instance or null if resolution fails
@@ -47,7 +47,7 @@
 		
 		/**
 		 * Create an instance with autowired constructor parameters.
-		 * @template T
+		 * @template T of object
 		 * @param class-string<T> $className The fully qualified class name to instantiate
 		 * @param array $parameters Additional/override parameters for constructor
 		 * @return T|null The created instance or null if creation fails
