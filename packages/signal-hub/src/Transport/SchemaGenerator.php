@@ -21,7 +21,7 @@
 		 * @param array $parameterTypes Array of parameter types like [int::class, Order::class, string::class]
 		 * @param bool $publicOnly Whether to only include public properties (default: true)
 		 * @return array Schema in format [0 => 'int', 1 => [...], 2 => 'string']
-		 * @throws \InvalidArgumentException
+		 * @throws \RuntimeException
 		 */
 		public function extract(array $parameterTypes, bool $publicOnly = true): array {
 			// Reset processing stack for each new schema generation
@@ -38,7 +38,7 @@
 		 * @param string $type The type name (e.g., 'int', 'Order', 'MyClass')
 		 * @param bool $publicOnly Whether to only include public properties
 		 * @return string|array Returns string for primitives, array for classes
-		 * @throws \InvalidArgumentException
+		 * @throws \RuntimeException
 		 */
 		private function generateTypeSchema(string $type, bool $publicOnly): string|array {
 			// Handle primitive types (int, string, bool, etc.)
@@ -61,12 +61,12 @@
 		 * @param string $className Fully qualified class name
 		 * @param bool $publicOnly Whether to only include public properties
 		 * @return array Schema array with property names as keys and types as values
-		 * @throws \InvalidArgumentException
+		 * @throws \RuntimeException
 		 */
 		private function generateClassSchema(string $className, bool $publicOnly): array {
 			// Prevent infinite recursion by tracking processed classes
 			if (in_array($className, $this->processingStack)) {
-				throw new \InvalidArgumentException("Circular reference detected for class: $className");
+				throw new \RuntimeException("Circular reference detected for class: $className");
 			}
 			
 			// Mark this class as being processed
