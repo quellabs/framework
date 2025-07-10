@@ -129,12 +129,14 @@
 					
 					if (isset($this->ignore_annotations_set[$value])) {
 						$token = $this->lexer->get();
+						$this->lexer->setAnnotationMode(false);
 						continue;
 					}
 					
 					// Skip swagger docs
 					if (str_starts_with($value, self::SWAGGER_PREFIX)) {
 						$token = $this->lexer->get();
+						$this->lexer->setAnnotationMode(false);
 						continue;
 					}
 					

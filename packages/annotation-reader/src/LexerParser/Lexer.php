@@ -144,6 +144,17 @@
 		}
 		
 		/**
+		 * Toggles between annotation parsing and content parsing modes.
+		 * When enabled, the parser processes annotation syntax and metadata.
+		 * When disabled, the parser processes the surrounding document content.
+		 * @param bool $mode True
+		 * @return void
+		 */
+		public function setAnnotationMode(bool $mode): void {
+			$this->annotation_mode = $mode;
+		}
+		
+		/**
 		 * Find the next annotation in the string
 		 * @return bool True if an annotation was found, false otherwise
 		 */

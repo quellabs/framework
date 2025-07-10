@@ -6,6 +6,7 @@
 	 * Signal trait - can be used by classes to easily define signals
 	 */
 	trait HasSignals {
+		
 		/**
 		 * @var array<string, Signal> Signals defined on this object
 		 */
