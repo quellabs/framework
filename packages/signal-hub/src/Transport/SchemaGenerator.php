@@ -6,18 +6,28 @@
 	 * Auto-generates schema from parameter types
 	 *
 	 * This class uses PHP reflection to automatically generate schema definitions
-	 * from class types and primitive types.
+	 * from class types and primitive types with recursive object handling.
 	 */
 	class SchemaGenerator {
+		
+		/**
+		 * Track current processing path to detect circular references
+		 * @var array
+		 */
+		private array $processingStack = [];
 		
 		/**
 		 * Generate a schema array from signal parameter types
 		 * @param array $parameterTypes Array of parameter types like [int::class, Order::class, string::class]
 		 * @param bool $publicOnly Whether to only include public properties (default: true)
 		 * @return array Schema in format [0 => 'int', 1 => [...], 2 => 'string']
+		 * @throws \InvalidArgumentException
 		 */
 		public function extract(array $parameterTypes, bool $publicOnly = true): array {
-			// Map each parameter type to its corresponding schema representation
+			// Reset processing stack for each new schema generation
+			$this->processingStack = [];
+			
+			// Generate the schema array
 			return array_map(function ($type) use ($publicOnly) {
 				return $this->generateTypeSchema($type, $publicOnly);
 			}, $parameterTypes);
@@ -28,6 +38,7 @@
 		 * @param string $type The type name (e.g., 'int', 'Order', 'MyClass')
 		 * @param bool $publicOnly Whether to only include public properties
 		 * @return string|array Returns string for primitives, array for classes
+		 * @throws \InvalidArgumentException
 		 */
 		private function generateTypeSchema(string $type, bool $publicOnly): string|array {
 			// Handle primitive types (int, string, bool, etc.)
@@ -46,12 +57,22 @@
 		
 		/**
 		 * Uses PHP reflection to inspect a class and extract its data structure
-		 * by examining properties based on visibility settings.
+		 * by examining properties based on visibility settings. Now recursive!
 		 * @param string $className Fully qualified class name
 		 * @param bool $publicOnly Whether to only include public properties
 		 * @return array Schema array with property names as keys and types as values
+		 * @throws \InvalidArgumentException
 		 */
 		private function generateClassSchema(string $className, bool $publicOnly): array {
+			// Prevent infinite recursion by tracking processed classes
+			if (in_array($className, $this->processingStack)) {
+				throw new \InvalidArgumentException("Circular reference detected for class: $className");
+			}
+			
+			// Mark this class as being processed
+			$this->processingStack[] = $className;
+			
+			// Create the schema for the class
 			$schema = [];
 			
 			try {
@@ -66,19 +87,27 @@
 					$fieldName = $property->getName();
 					$propertyType = $this->getPropertyType($property);
 					
-					// If the property type is a class, recursively generate its schema
-					if ($this->isClassType($propertyType)) {
-						$schema[$fieldName] = $this->generateClassSchema($propertyType, $publicOnly);
-					} else {
+					// Filter out parent class properties - only include properties declared in this class
+					if ($property->getDeclaringClass()->getName() !== $className) {
+						continue;
+					}
+					
+					// If the property type is primitive, store it directly
+					if ($this->isPrimitiveType($propertyType)) {
 						$schema[$fieldName] = $propertyType;
+					} else {
+						$schema[$fieldName] = $this->generateClassSchema($propertyType, $publicOnly);
 					}
 				}
 			} catch (\ReflectionException $e) {
 				// If reflection fails (class doesn't exist, etc.), return error indicator
 				// This helps with debugging schema generation issues
-				$schema['_error'] = 'reflection_failed';
+				throw new \InvalidArgumentException("Can't fetch class data for {$className}: {$e->getMessage()}");
+			} finally {
+				array_pop($this->processingStack);
 			}
 			
+			// Return the schema
 			return $schema;
 		}
 		
@@ -88,26 +117,11 @@
 		 * @return bool True if the type is a primitive type
 		 */
 		private function isPrimitiveType(string $type): bool {
-			return in_array($type, ['int', 'integer', 'float', 'double', 'string', 'bool', 'boolean', 'array', 'object', 'mixed']);
+			return in_array($type, ['int', 'integer', 'float', 'double', 'string', 'bool', 'boolean', 'array', 'object', 'mixed', 'null']);
 		}
-		
+
 		/**
-		 * Check if a type represents a class that should be recursively processed
-		 * @param string $type The type name to check
-		 * @return bool True if the type is a class type
-		 */
-		private function isClassType(string $type): bool {
-			// Skip union types for now (could be enhanced later)
-			if (str_contains($type, '|')) {
-				return false;
-			}
-			
-			// Check if it's a class and not a primitive type
-			return class_exists($type) && !$this->isPrimitiveType($type);
-		}
-		
-		/**
-		 * Get the type of a property using reflection
+		 * Get the property type using reflection
 		 * @param \ReflectionProperty $property The property to examine
 		 * @return string The property's type as a string
 		 */
@@ -121,12 +135,12 @@
 			
 			// Single named type (e.g., string, int, MyClass)
 			if ($type instanceof \ReflectionNamedType) {
-				return $this->normalizeType($type->getName());
+				return $type->getName();
 			}
 			
 			// Union type (e.g., string|int|null)
 			if ($type instanceof \ReflectionUnionType) {
-				$types = array_map(fn($t) => $this->normalizeType($t->getName()), $type->getTypes());
+				$types = array_map(fn($t) => $t->getName(), $type->getTypes());
 				return implode('|', $types);
 			}
 			
@@ -135,9 +149,7 @@
 		}
 		
 		/**
-		 * Converts type names to their canonical forms and handles class types.
-		 * For class types, returns 'object' to maintain schema simplicity,
-		 * though you could return the full class name if needed.
+		 * Converts type names to their canonical forms.
 		 * @param string $typeName The type name to normalize
 		 * @return string The normalized type name
 		 */
@@ -154,13 +166,7 @@
 				return $typeMap[$typeName];
 			}
 			
-			// For class types, return 'object' for schema simplicity
-			// Alternative: return $typeName if you want the full class name in schema
-			if (class_exists($typeName)) {
-				return 'object';
-			}
-			
-			// Return original type name for everything else
+			// Return original type name
 			return $typeName;
 		}
 	}
