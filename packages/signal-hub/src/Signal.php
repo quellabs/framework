@@ -204,7 +204,7 @@
 			$signalType = $this->normalizeType($signalType);
 			$slotType = $this->normalizeType($slotType);
 			
-			// Handle special case for generic 'object' type
+			// Handle the special case for generic 'object' type
 			if ($this->isGenericObjectCompatibility($signalType, $slotType)) {
 				return true;
 			}
@@ -405,8 +405,14 @@
 					throw new \Exception("Slot parameter {$i} is not typed.");
 				}
 				
-				$slotTypeName = $slotType->getName();
+				// Fetch the name of the slot by casting to string.
+				// This will call the __toString magic method.
+				// We can't use ->getName() because it may not be present
+				$slotTypeName = (string)$slotType;
 				
+				/**
+				 * Check type compatibility
+				 */
 				if (!$this->isTypeCompatible($signalType, $slotTypeName)) {
 					throw new \Exception("Type mismatch for parameter {$i} between signal ({$signalType}) and slot ({$slotTypeName}).");
 				}
@@ -415,7 +421,7 @@
 			// Add connection
 			$this->connections[] = [
 				'receiver' => $receiver,
-				'slot' => $slot,
+				'slot'     => $slot,
 				'priority' => $priority
 			];
 			
@@ -469,7 +475,10 @@
 					throw new \Exception("Slot parameter {$i} is not typed.");
 				}
 				
-				$slotTypeName = $slotType->getName();
+				// Fetch the name of the slot by casting to string.
+				// This will call the __toString magic method.
+				// We can't use ->getName() because it may not be present
+				$slotTypeName = (string)$slotType;
 				
 				// Check if the signal type is compatible with the slot type
 				if (!$this->isTypeCompatible($signalType, $slotTypeName)) {
