@@ -44,13 +44,13 @@
 			try {
 				// Create extractor instance pointing to the packages directory
 				// Uses relative path from current file location
-				$x = new PackageExtraExtractor(dirname(__FILE__) . '/../../packages');
+				$extractor = new PackageExtraExtractor(dirname(__FILE__) . '/../../packages');
 				
 				// Extract package information and generate a mapping array
-				$map = $x->getMap();
+				$map = $extractor->getMap();
 				
 				// Write the mapping to the discovery configuration file
-				$x->writeExtraMapFile(dirname(__FILE__) . '/../../config/discovery-mapping.php', $map);
+				$extractor->writeExtraMapFile(dirname(__FILE__) . '/../../config/discovery-mapping.php', $map);
 				
 				// Output success message to user
 				$this->output->success("Mapping file created");
