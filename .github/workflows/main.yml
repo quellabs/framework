@@ -123,6 +123,10 @@ jobs:
           
             cd "temp-$PACKAGE"
           
+            # Configure git identity for tagging
+            git config user.name "GitHub Actions"
+            git config user.email "actions@github.com"
+          
             # Check if tag already exists
             if git tag -l | grep -q "^$target_version$"; then
               echo "  ❌ Tag $target_version already exists in $PACKAGE"
