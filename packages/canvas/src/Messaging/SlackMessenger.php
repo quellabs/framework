@@ -1,43 +1,40 @@
 <?php
 	
-	namespace Quellabs\SignalHub\Slots;
+	namespace Quellabs\Canvas\Messaging;
 	
 	use Quellabs\SignalHub\HasSignals;
 	
 	/**
-	 * Slack messaging slot - part of the SignalHub framework
-	 *
-	 * This slot provides standardized Slack integration for any signals in your application.
-	 * It can be connected to various signal types to send notifications, errors, and messages.
+	 * This class provides standardized Slack integration
 	 */
 	class SlackMessenger {
 		use HasSignals;
 		
 		private string $webhookUrl;
-		private string $defaultChannel;
+		private string $channel;
 		private string $defaultUsername;
-		private string $defaultIcon;
+		private string $icon;
 		private int $timeout;
 		
 		/**
 		 * Constructor
 		 * @param string $webhookUrl Slack webhook URL
-		 * @param string $defaultChannel Default channel to send to (e.g., '#general')
-		 * @param string $defaultUsername Default username for messages
-		 * @param string $defaultIcon Default icon/emoji for messages
+		 * @param string $channel Default channel to send to (e.g., '#general')
+		 * @param string $username Default username for messages
+		 * @param string $icon Default icon/emoji for messages
 		 * @param int $timeout HTTP timeout in seconds
 		 */
 		public function __construct(
 			string $webhookUrl,
-			string $defaultChannel = '#general',
-			string $defaultUsername = 'SignalBot',
-			string $defaultIcon = ':robot_face:',
+			string $channel = '#general',
+			string $username = 'SignalBot',
+			string $icon = ':robot_face:',
 			int    $timeout = 10
 		) {
 			$this->webhookUrl = $webhookUrl;
-			$this->defaultChannel = $defaultChannel;
-			$this->defaultUsername = $defaultUsername;
-			$this->defaultIcon = $defaultIcon;
+			$this->channel = $channel;
+			$this->defaultUsername = $username;
+			$this->icon = $icon;
 			$this->timeout = $timeout;
 		}
 		
@@ -50,9 +47,9 @@
 		public function sendMessage(string $message): void {
 			$this->sendToSlack([
 				'text'       => $message,
-				'channel'    => $this->defaultChannel,
+				'channel'    => $this->channel,
 				'username'   => $this->defaultUsername,
-				'icon_emoji' => $this->defaultIcon
+				'icon_emoji' => $this->icon
 			]);
 		}
 		
@@ -69,7 +66,7 @@
 				'text'       => $message,
 				'channel'    => $channel,
 				'username'   => $username,
-				'icon_emoji' => $this->defaultIcon
+				'icon_emoji' => $this->icon
 			]);
 		}
 		
@@ -85,7 +82,7 @@
 			
 			$this->sendToSlack([
 				'text'        => $formattedMessage,
-				'channel'     => $this->defaultChannel,
+				'channel'     => $this->channel,
 				'username'    => 'ErrorBot',
 				'icon_emoji'  => ':warning:',
 				'attachments' => [
@@ -135,9 +132,9 @@
 			
 			$this->sendToSlack([
 				'text'        => "{$icon} Status Update",
-				'channel'     => $this->defaultChannel,
+				'channel'     => $this->channel,
 				'username'    => $this->defaultUsername,
-				'icon_emoji'  => $this->defaultIcon,
+				'icon_emoji'  => $this->icon,
 				'attachments' => [
 					[
 						'color' => $color,
@@ -160,7 +157,7 @@
 			
 			$this->sendToSlack([
 				'text'       => $message,
-				'channel'    => $this->defaultChannel,
+				'channel'    => $this->channel,
 				'username'   => 'ActivityBot',
 				'icon_emoji' => ':bust_in_silhouette:'
 			]);
@@ -178,9 +175,9 @@
 		public function sendNotification(string $title, string $message, string $color, array $fields): void {
 			$payload = [
 				'text'        => $title,
-				'channel'     => $this->defaultChannel,
+				'channel'     => $this->channel,
 				'username'    => $this->defaultUsername,
-				'icon_emoji'  => $this->defaultIcon,
+				'icon_emoji'  => $this->icon,
 				'attachments' => [
 					[
 						'color'  => $color,
@@ -206,7 +203,7 @@
 			
 			$this->sendToSlack([
 				'text'       => $message,
-				'channel'    => $this->defaultChannel,
+				'channel'    => $this->channel,
 				'username'   => 'DebugBot',
 				'icon_emoji' => ':mag:'
 			]);
