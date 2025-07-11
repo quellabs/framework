@@ -27,13 +27,10 @@ composer require quellabs/signal-hub
 ### Standalone Signals
 
 ```php
-use Quellabs\SignalHub\SignalHub;
-
-// Fetch the signal hub for registration and discovery
-$hub = new \Quellabs\SignalHub\SignalHub();
+use Quellabs\SignalHub\Signal;
 
 // Create a standalone signal with a string parameter
-$buttonClickedSignal = $hub->createSignal(['string'], 'button.clicked');
+$buttonClickedSignal = new Signal(['string'], 'button.clicked');
 
 // Connect a handler to the signal
 $buttonClickedSignal->connect(function(string $buttonId) {
@@ -49,18 +46,21 @@ $buttonClickedSignal->emit('submit-button');
 ```php
 use Quellabs\SignalHub\HasSignals;
 use Quellabs\SignalHub\SignalHub;
+use Quellabs\SignalHub\Signal;
 
 class Button {
+
     use HasSignals;
     
     private string $label;
-    private string $clickedSignal;
+    private Signal $clickedSignal;
     
     public function __construct(SignalHub $hub, string $label) {
-        $this->label = $label;
-        
         // Store the signal hub in this object (optional)
         $this->setSignalHub($hub);
+
+        // Store the label        
+        $this->label = $label;
         
         // Define signals for this object
         // Signals are automatically registered with the hub now
@@ -118,8 +118,8 @@ foreach ($allSignals as $signalInfo) {
 Control the order in which slots are executed:
 
 ```php
-$signal->connect($debugHandler, null, 100);  // Will be called first (higher priority)
-$signal->connect($normalHandler, null, 0);   // Will be called second (normal priority)
+$signal->connect($debugHandler, 100);  // Will be called first
+$signal->connect($normalHandler, 0);   // Will be called second
 ```
 
 ### Type Checking
@@ -149,13 +149,7 @@ $signal->connect(function(string $username, string $userId) {
 ### Disconnecting Handlers
 
 ```php
-// Connect a handler
-$signal->connect($handler, 'handleEvent');
-
 // Disconnect the handler
-$signal->disconnect($handler, 'handleEvent');
-
-// Or disconnect all handlers for this receiver
 $signal->disconnect($handler);
 ```
 
@@ -164,10 +158,9 @@ $signal->disconnect($handler);
 The system consists of three main components:
 
 1. **SignalHub**: Registry for signal creation and discovery
-   - `createSignal()` - Create signals
+   - `registerSignal()` - Register signals with the hub
    - `getSignal()` - Get a signal by name with optional owner
    - `findSignals()` - Find signals by pattern with optional owner
-   - `registerSignal()` - Register signals with the hub
 
 2. **Signal**: Core signal functionality
    - `connect()` - Connect handlers (callable or object methods)
@@ -176,9 +169,9 @@ The system consists of three main components:
 
 3. **HasSignals trait**: Makes any class capable of having signals
    - `createSignal()` - Create signals owned by the object
-   - `emit()` - Emit object signals
-   - `signal()` - Get a specific signal
-   - `registerWithHub()` - Register with the SignalHub
+   - `hasSignal()` - Checks if a specific signal exists in the object
+   - `getSignal()` - Get a specific signal
+   - `setSignalHub()` - Sets the SignalHub reference for automatic registration
 
 ## Differences from Qt
 
@@ -193,31 +186,34 @@ While inspired by Qt, there are some differences:
 ### Form Validation Example
 
 ```php
+use Quellabs\SignalHub\HasSignals;
+use Quellabs\SignalHub\SignalHub;
+use Quellabs\SignalHub\Signal;
+
 class Form {
+
     use HasSignals;
     
     private string $name;
+    private Signal $submitted;
+    private Signal $validated;
     
     public function __construct(string $name, SignalHub $hub = null) {
+        $this->setSignalHub($hub);
         $this->name = $name;
-        
-        $this->createSignal('submitted', ['string', 'array']); // form name, form data
-        $this->createSignal('validated', ['string', 'bool']);  // form name, is valid
-        
-        if ($hub !== null) {
-            $this->registerWithHub($hub);
-        }
+        $this->submitted = $this->createSignal(['string', 'array'], 'submitted'); // form name, form data
+        $this->validated = $this->createSignal(['string', 'bool'], 'validated');  // form name, is valid
     }
     
     public function submit(array $data): void {
         // Emit submitted signal
-        $this->emit('submitted', $this->name, $data);
+        $this->submitted->emit($this->name, $data);
         
         // Validate data
         $isValid = $this->validate($data);
         
         // Emit validation result
-        $this->emit('validated', $this->name, $isValid);
+        $this->validated->emit($this->name, $isValid);
     }
     
     private function validate(array $data): bool {
@@ -231,12 +227,12 @@ $hub = new SignalHub();
 $loginForm = new Form('login', $hub);
 
 // Connect to form submission
-$loginForm->signal('submitted')->connect(function(string $formName, array $data) {
+$loginForm->getSignal('submitted')->connect(function(string $formName, array $data) {
     echo "Form {$formName} was submitted with data: " . json_encode($data) . "\n";
 });
 
 // Connect to validation result
-$loginForm->signal('validated')->connect(function(string $formName, bool $isValid) {
+$loginForm->getSignal('validated')->connect(function(string $formName, bool $isValid) {
     if ($isValid) {
         echo "Form {$formName} is valid\n";
     } else {
@@ -246,37 +242,6 @@ $loginForm->signal('validated')->connect(function(string $formName, bool $isVali
 
 // Submit the form
 $loginForm->submit(['username' => 'john', 'password' => 'secret']);
-```
-
-## Signal Access from Different Components
-
-Access signals from various parts of your application through the unified API:
-
-```php
-// Component 1: Creating and using signals directly
-$button = new Button('Submit', $hub);
-$button->click();
-
-// Component 2: Working with buttons via the hub
-$buttonSignal = $hub->getSignal('clicked', $button);
-$buttonSignal->connect(function(string $label) {
-    echo "Button handler attached via hub: {$label}\n";
-});
-
-// Component 3: Listening for all form signals
-$formSignals = $hub->findSignals('form.*');
-
-// Component 4: Creating a logger for all signals
-$allSignals = $hub->getAllSignals();
-
-foreach ($allSignals as $info) {
-    $signal = $info['signal'];
-
-    $signal->connect(function(...$args) use ($info) {
-        $name = $info['standalone'] ? $info['name'] : "{$info['class']}::{$info['name']}";
-        echo "LOG: Signal {$name} emitted\n";
-    });
-}
 ```
 
 ## Best Practices

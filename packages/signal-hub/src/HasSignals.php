@@ -33,10 +33,10 @@
 		
 		/**
 		 * Set the default signal hub for this object
-		 * @param SignalHub $hub The signal hub to use as default
+		 * @param SignalHub|null $hub The signal hub to use as default
 		 * @return void
 		 */
-		protected function setSignalHub(SignalHub $hub): void {
+		protected function setSignalHub(?SignalHub $hub): void {
 			$this->__signalHub = $hub;
 		}
 		
