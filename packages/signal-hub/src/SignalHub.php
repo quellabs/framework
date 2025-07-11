@@ -173,22 +173,21 @@
 			return $count;
 		}
 		
-		/**
-		 * Get a signal by name, optionally specifying an owner object
-		 * @param string $name Signal name
-		 * @param object|null $owner Optional owner object (null for standalone signals)
-		 * @return Signal|null The requested signal or null if not found
-		 */
 		public function getSignal(string $name, ?object $owner = null): ?Signal {
-			// Look for standalone signal if no owner specified
-			if ($owner === null) {
-				// Return standalone signal or null if not found
-				return $this->standaloneSignals[$name] ?? null;
+			// Look for object-owned signal when owner is specified
+			if ($owner !== null) {
+				return $this->objectSignals[$owner][$name] ?? null;
 			}
 			
-			// Look for object-owned signal
-			// Uses null coalescing to return null if object or signal doesn't exist
-			return $this->objectSignals[$owner][$name] ?? null;
+			// When no owner specified, search through all object signals first
+			foreach ($this->objectSignals as $signals) {
+				if (isset($signals[$name])) {
+					return $signals[$name];
+				}
+			}
+			
+			// Fall back to standalone signals
+			return $this->standaloneSignals[$name] ?? null;
 		}
 		
 		/**
