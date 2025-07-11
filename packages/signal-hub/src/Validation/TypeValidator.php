@@ -23,7 +23,7 @@
 			$slotType = TypeNormalizer::normalize($slotType);
 			
 			// Handle the special case for generic 'object' type
-			if (self::isGenericObjectCompatibility($signalType, $slotType)) {
+			if (self::isObjectTypeCompatible ($signalType, $slotType)) {
 				return true;
 			}
 			
@@ -33,7 +33,7 @@
 			}
 			
 			// Handle primitive types compatibility
-			if (self::involvesNonCompatiblePrimitives($signalType, $slotType)) {
+			if (self::arePrimitivesIncompatible ($signalType, $slotType)) {
 				return false;
 			}
 			
@@ -47,7 +47,7 @@
 		 * @param string $typeB Second type to check
 		 * @return bool True if one is 'object' and the other is a class
 		 */
-		private static function isGenericObjectCompatibility(string $typeA, string $typeB): bool {
+		private static function isObjectTypeCompatible(string $typeA, string $typeB): bool {
 			// If typeB is generic 'object', check if typeA is a class
 			if ($typeB === 'object' && self::isClassName($typeA)) {
 				return true;
@@ -76,7 +76,7 @@
 		 * @param string $typeB Second type to check
 		 * @return bool True if types are primitive and not compatible
 		 */
-		private static function involvesNonCompatiblePrimitives(string $typeA, string $typeB): bool {
+		private static function arePrimitivesIncompatible(string $typeA, string $typeB): bool {
 			$isTypeAPrimitive = in_array($typeA, self::$primitiveTypes);
 			$isTypeBPrimitive = in_array($typeB, self::$primitiveTypes);
 			
