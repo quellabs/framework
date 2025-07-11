@@ -2,7 +2,7 @@
   "contracts": "1.0.20",
   "discover": "1.0.20",
   "dependency-injection": "1.0.20",
-  "sculpt": "1.0.20",
+  "sculpt": "1.0.21",
   "objectquel": "1.0.21",
   "signal-hub": "1.0.21",
   "annotation-reader": "1.0.21",
