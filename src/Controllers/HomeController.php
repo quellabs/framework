@@ -3,9 +3,7 @@
 	namespace App\Controllers;
 	
 	use Quellabs\Canvas\Annotations\Route;
-	use Quellabs\Canvas\Annotations\RoutePrefix;
 	use Quellabs\Canvas\Controllers\BaseController;
-	use Symfony\Component\HttpFoundation\JsonResponse;
 	use Symfony\Component\HttpFoundation\Response;
 	
 	class HomeController extends BaseController {

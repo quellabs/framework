@@ -3,10 +3,10 @@
   "discover": "1.0.20",
   "dependency-injection": "1.0.20",
   "sculpt": "1.0.20",
-  "objectquel": "1.0.20",
-  "signal-hub": "1.0.20",
-  "annotation-reader": "1.0.20",
-  "canvas": "1.0.20",
+  "objectquel": "1.0.21",
+  "signal-hub": "1.0.21",
+  "annotation-reader": "1.0.21",
+  "canvas": "1.0.21",
   "canvas-objectquel": "1.0.20",
   "canvas-smarty": "1.0.20"
 }
