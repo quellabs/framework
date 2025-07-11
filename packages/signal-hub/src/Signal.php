@@ -2,8 +2,8 @@
 	
 	namespace Quellabs\SignalHub;
 	
-	use Quellabs\SignalHub\TypeValidation\SignalEmissionValidator;
-	use Quellabs\SignalHub\TypeValidation\ConnectionTypeValidator;
+	use Quellabs\SignalHub\Validation\EmissionValidator;
+	use Quellabs\SignalHub\Validation\ConnectionValidator;
 	
 	/**
 	 * Signal class for Qt-like event handling in PHP
@@ -27,12 +27,12 @@
 		/**
 		 * @var string|null Name of this signal (for debugging)
 		 */
-		private ?string $name = null;
+		private ?string $name;
 		
 		/**
 		 * @var object|null Object that owns this signal
 		 */
-		private ?object $owner = null;
+		private ?object $owner;
 		
 		/**
 		 * Constructor to initialize the signal with parameter types
@@ -82,7 +82,7 @@
 		 */
 		public function emit(...$args): void {
 			// Validate emission arguments using the type validation system
-			SignalEmissionValidator::validateEmission($args, $this->parameterTypes);
+			EmissionValidator::validateEmission($args, $this->parameterTypes);
 			
 			// Call the direct connections
 			foreach ($this->connections as $connection) {
@@ -264,7 +264,7 @@
 			}
 			
 			// Validate the connection using the type validation system
-			ConnectionTypeValidator::validateObjectMethodConnection($receiver, $slot, $this->parameterTypes);
+			ConnectionValidator::validateObjectMethodConnection($receiver, $slot, $this->parameterTypes);
 			
 			// Add connection
 			$this->connections[] = [
@@ -305,7 +305,7 @@
 			}
 			
 			// Validate the connection using the type validation system
-			ConnectionTypeValidator::validateCallableConnection($receiver, $this->parameterTypes);
+			ConnectionValidator::validateCallableConnection($receiver, $this->parameterTypes);
 			
 			// Add the new connection to the connections array
 			// 'slot' is null because this is a direct callable, not an object method

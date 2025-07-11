@@ -1,11 +1,11 @@
 <?php
 	
-	namespace Quellabs\SignalHub\TypeValidation;
+	namespace Quellabs\SignalHub\Validation;
 	
 	/**
 	 * Signal emission type validator
 	 */
-	class SignalEmissionValidator {
+	class EmissionValidator {
 		
 		/**
 		 * Validates arguments against expected parameter types for signal emission
@@ -24,7 +24,7 @@
 				$expectedType = $expectedTypes[$index];
 				$actualType = is_object($arg) ? get_class($arg) : gettype($arg);
 				
-				if (!TypeCompatibilityChecker::isCompatible($actualType, $expectedType)) {
+				if (!TypeValidator::isCompatible($actualType, $expectedType)) {
 					throw new \Exception("Type mismatch for argument {$index} of signal emission: expected {$expectedType}, got {$actualType}.");
 				}
 			}

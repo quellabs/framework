@@ -1,11 +1,11 @@
 <?php
 	
-	namespace Quellabs\SignalHub\TypeValidation;
+	namespace Quellabs\SignalHub\Validation;
 	
 	/**
 	 * Type compatibility checker
 	 */
-	class TypeCompatibilityChecker {
+	class TypeValidator {
 		/**
 		 * @var array List of primitive types
 		 */

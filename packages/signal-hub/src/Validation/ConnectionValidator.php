@@ -1,11 +1,11 @@
 <?php
 	
-	namespace Quellabs\SignalHub\TypeValidation;
+	namespace Quellabs\SignalHub\Validation;
 	
 	/**
 	 * Connection type validator for signal-slot connections
 	 */
-	class ConnectionTypeValidator {
+	class ConnectionValidator {
 		/**
 		 * Validates that a callable's parameters are compatible with signal parameters
 		 * @param callable $receiver The callable to validate
@@ -67,7 +67,7 @@
 				$slotTypeName = (string)$slotType;
 				
 				// Check type compatibility
-				if (!TypeCompatibilityChecker::isCompatible($signalType, $slotTypeName)) {
+				if (!TypeValidator::isCompatible($signalType, $slotTypeName)) {
 					throw new \Exception("Type mismatch for parameter {$i} between signal ({$signalType}) and slot ({$slotTypeName}).");
 				}
 			}

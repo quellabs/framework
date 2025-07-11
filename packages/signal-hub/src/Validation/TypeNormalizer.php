@@ -1,6 +1,6 @@
 <?php
 	
-	namespace Quellabs\SignalHub\TypeValidation;
+	namespace Quellabs\SignalHub\Validation;
 	
 	/**
 	 * Type normalizer for consistent type handling
