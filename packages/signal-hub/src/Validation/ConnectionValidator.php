@@ -19,27 +19,7 @@
 			
 			self::validateParameterCompatibility($signalParameterTypes, $slotParams);
 		}
-		
-		/**
-		 * Validates that an object method's parameters are compatible with signal parameters
-		 * @param object $receiver The object containing the method
-		 * @param string $slot The method name to validate
-		 * @param array $signalParameterTypes Expected signal parameter types
-		 * @throws \Exception If types mismatch, parameter count differs, or method doesn't exist
-		 */
-		public static function validateObjectMethodConnection(object $receiver, string $slot, array $signalParameterTypes): void {
-			// Check if slot method exists on receiver
-			if (!method_exists($receiver, $slot)) {
-				throw new \Exception("Slot '{$slot}' does not exist on receiver.");
-			}
-			
-			// Get reflection of slot method
-			$slotReflection = new \ReflectionMethod($receiver, $slot);
-			$slotParams = $slotReflection->getParameters();
-			
-			self::validateParameterCompatibility($signalParameterTypes, $slotParams);
-		}
-		
+
 		/**
 		 * Validates parameter compatibility between signal and slot parameters
 		 * @param array $signalParameterTypes Signal parameter types

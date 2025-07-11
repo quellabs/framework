@@ -28,13 +28,12 @@ composer require quellabs/signal-hub
 
 ```php
 use Quellabs\SignalHub\SignalHub;
-use Quellabs\SignalHub\SignalHubLocator;
 
 // Fetch the signal hub for registration and discovery
-$hub = SignalHubLocator::getInstance();
+$hub = new \Quellabs\SignalHub\SignalHub();
 
 // Create a standalone signal with a string parameter
-$buttonClickedSignal = $hub->createSignal('button.clicked', ['string']);
+$buttonClickedSignal = $hub->createSignal(['string'], 'button.clicked');
 
 // Connect a handler to the signal
 $buttonClickedSignal->connect(function(string $buttonId) {
@@ -55,65 +54,25 @@ class Button {
     use HasSignals;
     
     private string $label;
+    private string $clickedSignal;
     
-    public function __construct(string $label) {
+    public function __construct(SignalHub $hub, string $label) {
         $this->label = $label;
         
-        // Define signals for this object
-        $this->createSignal('clicked', ['string']);    // Passes button label
-        $this->createSignal('pressed', ['string']);    // Passes button label
+        // Store the signal hub in this object (optional)
+        $this->setSignalHub($hub);
         
-        // Register with the hub (optional)
-        $this->registerWithHub($hub);
+        // Define signals for this object
+        // Signals are automatically registered with the hub now
+        $this->clickedSignal = $this->createSignal(['string'], 'clicked');    // Passes button label
     }
     
     public function click(): void {
         echo "Button '{$this->label}' was clicked\n";
         // Emit the signal with the button label as parameter
-        $this->emit('clicked', $this->label);
+        $this->clickedSignal->emit($this->label);
     }
 }
-
-// Create a button
-use Quellabs\SignalHub\SignalHub;
-use Quellabs\SignalHub\SignalHubLocator;
-
-// Fetch the signal hub for registration and discovery
-$hub = SignalHubLocator::getInstance();
-
-// Instantiate the button class
-$button = new Button('Submit', $hub);
-
-// Connect to the button's clicked signal
-$button->signal('clicked')->connect(function(string $label) {
-    echo "Handler received click from '{$label}'\n";
-});
-
-// Trigger the button click
-$button->click();
-```
-
-## Using Patterns for Connection
-
-### Direct Pattern Connection
-
-You can use wildcards to connect to signals based on pattern matching:
-
-```php
-// Create several signals
-$buttonClickedSignal = $hub->createSignal('button.clicked', ['string']);
-$buttonPressedSignal = $hub->createSignal('button.pressed', ['string']);
-
-// Connect handler with a pattern directly on one signal
-$buttonClickedSignal->connect(function(string $id) {
-    echo "Pattern handler caught button event: {$id}\n";
-}, 'button.*');
-
-// This will trigger the handler when buttonClickedSignal is emitted
-$buttonClickedSignal->emit('submit-button');
-
-// But NOT when buttonPressedSignal is emitted
-$buttonPressedSignal->emit('submit-button'); // Pattern handler not called
 ```
 
 ## Signal Discovery with the Hub
@@ -142,6 +101,7 @@ $globalSignal = $hub->getSignal('application.started');     // Get standalone si
 
 // Get info about all registered signals
 $allSignals = $hub->getAllSignals();
+
 foreach ($allSignals as $signalInfo) {
     if ($signalInfo['standalone']) {
         echo "Standalone signal: {$signalInfo['name']}\n";
@@ -168,7 +128,7 @@ The system enforces strict type checking:
 
 ```php
 // Create a signal with specific parameter types
-$signal = $hub->createSignal('user.login', ['string', 'int']);
+$signal = new \Quellabs\SignalHub\Signal(['string', 'int'], 'user.login');
 
 // This will work - types match
 $signal->connect(function(string $username, int $userId) {

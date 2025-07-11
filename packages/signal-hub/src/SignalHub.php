@@ -56,7 +56,7 @@
 			}
 			
 			// Handle object-owned signals
-			// Initialize signal array for this object if it doesn't exist
+			// Initialize the signal array for this object if it doesn't exist
 			if (!isset($this->objectSignals[$owner])) {
 				$this->objectSignals[$owner] = [];
 			}
@@ -74,7 +74,7 @@
 		/**
 		 * Unregister a signal from the hub
 		 * @param Signal $signal Signal object to unregister
-		 * @return bool True if signal was found and removed, false otherwise
+		 * @return bool True if the signal was found and removed, false otherwise
 		 */
 		public function unregisterSignal(Signal $signal): bool {
 			$name = $signal->getName();
@@ -124,11 +124,12 @@
 			// Handle standalone signals (no owner specified)
 			if ($owner === null) {
 				// Check if standalone signal exists
+				// Remove from standalone registry
 				if (isset($this->standaloneSignals[$name])) {
-					// Remove from standalone registry
 					unset($this->standaloneSignals[$name]);
 					return true;
 				}
+				
 				return false; // Standalone signal not found
 			}
 			
@@ -247,7 +248,7 @@
 			
 			// Add standalone signals to the result set
 			foreach ($this->standaloneSignals as $name => $signal) {
-				// Create metadata array for each standalone signal
+				// Create a metadata array for each standalone signal
 				$result[] = [
 					'name'        => $name,                                    // Signal name
 					'signal'      => $signal,                               // Actual Signal object
@@ -264,7 +265,7 @@
 				
 				// Process each signal belonging to this object
 				foreach ($signals as $signalName => $signal) {
-					// Create metadata array for each object signal
+					// Create a metadata array for each object signal
 					$result[] = [
 						'owner'       => $object,                                // Reference to owner object
 						'class'       => $ownerClass,                           // Owner class name
@@ -292,7 +293,7 @@
 				return $pattern === $name;
 			}
 			
-			// Complex case: convert wildcard pattern to regex
+			// Complex case: convert the wildcard pattern to regex
 			// First, escape all regex metacharacters to make pattern safe
 			$regex = '/^' . preg_quote($pattern, '/') . '$/';
 			
