@@ -30,12 +30,19 @@
 		
 		/**
 		 * Register a signal with the hub
-		 * @param object|null $owner Owner object (can be null for standalone signals)
-		 * @param string $name Signal name
 		 * @param Signal $signal Signal object
 		 * @return void
 		 */
-		public function registerSignal(?object $owner, string $name, Signal $signal): void {
+		public function registerSignal(Signal $signal): void {
+			// Fetch the signal name
+			$name = $signal->getName();
+			$owner = $signal->getOwner();
+			
+			// Check if the signal actually a name
+			if ($name === null) {
+				throw new \RuntimeException("Signal name is null");
+			}
+			
 			// Store as a standalone signal
 			if ($owner === null) {
 				$this->standaloneSignals[$name] = $signal;

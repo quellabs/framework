@@ -4,80 +4,90 @@
 	
 	/**
 	 * Signal trait - can be used by classes to easily define signals
+	 *
+	 * This trait provides a convenient way for classes to implement the signal-slot pattern,
+	 * allowing objects to emit signals and connect to other objects' slots for event handling.
+	 * It manages signal creation, connection, disconnection, and emission automatically.
 	 */
 	trait HasSignals {
 		
 		/**
-		 * @var array<string, Signal> Signals defined on this object
+		 * Default signal hub for this object
+		 * @var SignalHub|null
 		 */
-		private array $signals = [];
+		private ?SignalHub $__signalHub = null;
 		
 		/**
-		 * @var SignalHub|null The SignalHub this object is registered with
+		 * List of named signals
+		 * @var array<string, Signal>
 		 */
-		private ?SignalHub $signalHub = null;
+		private array $__signals = [];
 		
 		/**
-		 * Define a signal for this object
-		 * @param string $name Signal name
-		 * @param array $parameterTypes Parameter types for the signal
-		 * @return Signal The created signal
+		 * Get the default signal hub for this object
+		 * @return SignalHub|null The default signal hub
 		 */
-		protected function createSignal(string $name, array $parameterTypes): Signal {
+		protected function getSignalHub(): ?SignalHub {
+			return $this->__signalHub;
+		}
+		
+		/**
+		 * Set the default signal hub for this object
+		 * @param SignalHub $hub The signal hub to use as default
+		 * @return void
+		 */
+		protected function setSignalHub(SignalHub $hub): void {
+			$this->__signalHub = $hub;
+		}
+		
+		/**
+		 * Creates a new signal with the specified parameter types and optionally registers
+		 * it with a signal hub. If a name is provided and a hub is available, the signal
+		 * will be automatically registered for centralized management.
+		 * @param array $parameterTypes Parameter types for the signal (e.g., ['string', 'int'])
+		 * @param string|null $name Signal name for identification, null for anonymous signals
+		 * @return Signal The created signal instance
+		 */
+		protected function createSignal(array $parameterTypes, ?string $name=null): Signal {
+			// Create new signal with this object as the emitter
 			$signal = new Signal($parameterTypes, $name, $this);
-			$this->signals[$name] = $signal;
 			
-			// Register signals with hub if available
-			if ($this->signalHub !== null) {
-				$this->signalHub->registerSignal($this, $name, $signal);
+			// Add signal to register
+			if ($name !== null) {
+				$this->__signals[$name] = $signal;
+			}
+			
+			// Register named signals with the hub for centralized management
+			if ($name !== null && $this->__signalHub !== null) {
+				$this->__signalHub->registerSignal($signal);
 			}
 			
 			return $signal;
 		}
-		
+
 		/**
-		 * Register this object with a SignalHub
-		 * @param SignalHub|null $hub
-		 * @return void
-		 */
-		protected function registerWithHub(?SignalHub $hub = null): void {
-			$this->signalHub = $hub ?? SignalHubLocator::getInstance();
-			
-			// Register signals as before
-			foreach ($this->signals as $name => $signal) {
-				$this->signalHub->registerSignal($this, $name, $signal);
-			}
-		}
-		
-		/**
-		 * Get a defined signal by name
-		 * @param string $name Signal name
-		 * @return Signal|null The signal, or null if not found
-		 */
-		public function signal(string $name): ?Signal {
-			return $this->signals[$name] ?? null;
-		}
-		
-		/**
-		 * Get all signals defined on this object
-		 * @return array<string, Signal>
+		 * Get all named signals created by this object
+		 * @return array Array of Signal objects indexed by signal name
 		 */
 		public function getSignals(): array {
-			return $this->signals;
+			return $this->__signals;
 		}
 		
 		/**
-		 * Emit a signal by name
-		 * @param string $name Signal name
-		 * @param mixed ...$args Arguments to pass
-		 * @throws \Exception If signal doesn't exist or argument mismatch
+		 * Returns true if the object has the named signal, false if not
+		 * @param string $name
+		 * @return bool
 		 */
-		protected function emit(string $name, ...$args): void {
-			if (!isset($this->signals[$name])) {
-				throw new \Exception("Signal '{$name}' does not exist.");
-			}
-			
-			// Simply emit the signal directly - no hub relay needed anymore
-			$this->signals[$name]->emit(...$args);
+		protected function hasSignal(string $name): bool {
+			return isset($this->__signals[$name]);
+		}
+		
+		/**
+		 * Retrieves the signal stored with the given name.
+		 * @param string $name Name of the signal
+		 * @return Signal|null The signal if found, null otherwise
+		 */
+		public function getSignal(string $name): ?Signal {
+			return $this->__signals[$name] ?? null;
 		}
 	}
