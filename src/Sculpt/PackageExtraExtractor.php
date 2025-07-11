@@ -37,16 +37,28 @@
 
 			foreach ($this->findComposerFiles() as $composerFile) {
 				// Parse the composer.json file to get package data
-				$packageData = $this->parseComposerFile($composerFile);
+				$package = $this->parseComposerFile($composerFile);
 				
 				// Only process packages that have valid data and contain an 'extra' section
-				if ($packageData && !empty($packageData['extra'])) {
-					// Get the package name (either from 'name' field or derive from file path)
-					$packageName = $this->getPackageName($packageData, $composerFile);
-					
-					// Store the extra section using package name as key
-					$result[$packageName] = $packageData['extra'];
+				if (!$package || empty($package['extra'])) {
+					continue;
 				}
+				
+				// Filter out 'thanks' and 'branch-alias' keys
+				$mapEntry = array_filter($package['extra'], function ($key) {
+					return !in_array($key, ['thanks', 'branch-alias', 'class']);
+				}, ARRAY_FILTER_USE_KEY);
+				
+				// Skip if nothing left after filter
+				if (empty($mapEntry)) {
+					continue;
+				}
+				
+				// Get the package name (either from 'name' field or derive from file path)
+				$packageName = $this->getPackageName($package, $composerFile);
+				
+				// Store the extra section using package name as key
+				$result[$packageName] = $package['extra'];
 			}
 			
 			return $result;
