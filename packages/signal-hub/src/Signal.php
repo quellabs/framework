@@ -2,20 +2,17 @@
 	
 	namespace Quellabs\SignalHub;
 	
-	use Quellabs\SignalHub\Transport\MethodSchemaGenerator;
-	use Quellabs\SignalHub\Transport\SchemaComparator;
-	use Quellabs\SignalHub\Transport\SchemaGenerator;
-	use Quellabs\SignalHub\Transport\SchemaValidator;
+	use Quellabs\SignalHub\TypeValidation\SignalEmissionValidator;
+	use Quellabs\SignalHub\TypeValidation\ConnectionTypeValidator;
 	
 	/**
-	 * Signal class for Qt-like event handling in PHP with schema support
+	 * Signal class for Qt-like event handling in PHP
 	 */
 	class Signal {
-		
 		/**
-		 * @var array Schema of parameter types
+		 * @var array Expected parameter types for this signal
 		 */
-		private array $schema;
+		private array $parameterTypes;
 		
 		/**
 		 * @var array Direct connections (receivers and their slots)
@@ -30,18 +27,12 @@
 		/**
 		 * @var string|null Name of this signal (for debugging)
 		 */
-		private ?string $name;
+		private ?string $name = null;
 		
 		/**
 		 * @var object|null Object that owns this signal
 		 */
-		private ?object $owner;
-		
-		/**
-		 * Object uses to compare schemas
-		 * @var SchemaComparator
-		 */
-		private SchemaComparator $schemaComparator;
+		private ?object $owner = null;
 		
 		/**
 		 * Constructor to initialize the signal with parameter types
@@ -50,42 +41,9 @@
 		 * @param object|null $owner Optional owner object
 		 */
 		public function __construct(array $parameterTypes, ?string $name = null, ?object $owner = null) {
+			$this->parameterTypes = $parameterTypes;
 			$this->name = $name;
 			$this->owner = $owner;
-			$this->schema = $this->generateSchema($parameterTypes);
-			$this->schemaComparator = new SchemaComparator();
-		}
-		
-		/**
-		 * Convert the parameter types to a schema
-		 * @param array $parameterTypes
-		 * @return array
-		 */
-		private function generateSchema(array $parameterTypes): array {
-			$schemaGenerator = new SchemaGenerator();
-			return $schemaGenerator->extract($parameterTypes);
-		}
-		
-		/**
-		 * Validates the parameters against the stored schema
-		 * @param array $parameters
-		 * @return bool
-		 */
-		private function validateParameters(array $parameters): bool {
-			try {
-				$schemaValidator = new SchemaValidator();
-				return $schemaValidator->validate($parameters, $this->schema);
-			} catch (\Exception $e) {
-				return false;
-			}
-		}
-		
-		/**
-		 * Get the schema for this signal
-		 * @return array
-		 */
-		public function getSchema(): array {
-			return $this->schema;
 		}
 		
 		/**
@@ -123,10 +81,8 @@
 		 * @throws \Exception If argument types or count mismatch
 		 */
 		public function emit(...$args): void {
-			// Validate arguments against schema
-			if (!$this->validateParameters($args)) {
-				throw new \Exception("Arguments do not match signal schema");
-			}
+			// Validate emission arguments using the type validation system
+			SignalEmissionValidator::validateEmission($args, $this->parameterTypes);
 			
 			// Call the direct connections
 			foreach ($this->connections as $connection) {
@@ -159,6 +115,22 @@
 					}
 				}
 			}
+		}
+		
+		/**
+		 * Get parameter types for this signal
+		 * @return array
+		 */
+		public function getParameterTypes(): array {
+			return $this->parameterTypes;
+		}
+		
+		/**
+		 * Get number of connections
+		 * @return int
+		 */
+		public function countConnections(): int {
+			return count($this->connections) + count($this->patternConnections);
 		}
 		
 		/**
@@ -198,7 +170,31 @@
 		}
 		
 		/**
+		 * Check if a pattern matches this signal's name
+		 * @param string $pattern Pattern with wildcards
+		 * @return bool True if matches
+		 */
+		private function matchesPattern(string $pattern): bool {
+			if ($this->name === null) {
+				return false;
+			}
+			
+			// If there's no wildcard, it's only a match if exact
+			if (!str_contains($pattern, '*')) {
+				return $pattern === $this->name;
+			}
+			
+			// Convert the pattern to a regex
+			// Escape dots in the pattern and replace * with .*
+			$regex = '/^' . str_replace(['.', '*'], ['\.', '.*'], $pattern) . '$/';
+			
+			// Check if the signal name matches the pattern
+			return (bool)preg_match($regex, $this->name);
+		}
+		
+		/**
 		 * Connect an object's method or a callable to this signal
+		 * This method now supports both direct connections and pattern-based connections
 		 * @param callable|object $receiver Object or callable to receive the signal
 		 * @param string|null $slotOrPattern Method name (if receiver is an object) or pattern string
 		 * @param int $priority Connection priority (higher executes first)
@@ -234,14 +230,6 @@
 		}
 		
 		/**
-		 * Get number of connections
-		 * @return int
-		 */
-		public function countConnections(): int {
-			return count($this->connections) + count($this->patternConnections);
-		}
-
-		/**
 		 * Connect using a pattern
 		 * @param string $pattern Pattern to match
 		 * @param callable|object $receiver Receiver
@@ -251,35 +239,12 @@
 		private function connectPattern(string $pattern, callable|object $receiver, int $priority = 0): bool {
 			// Add to pattern connections
 			$this->patternConnections[] = [
-				'pattern' => $pattern,
+				'pattern'  => $pattern,
 				'receiver' => $receiver,
 				'priority' => $priority
 			];
 			
 			return true;
-		}
-		
-		/**
-		 * Check if a pattern matches this signal's name
-		 * @param string $pattern Pattern with wildcards
-		 * @return bool True if matches
-		 */
-		private function matchesPattern(string $pattern): bool {
-			if ($this->name === null) {
-				return false;
-			}
-			
-			// If there's no wildcard, it's only a match if exact
-			if (!str_contains($pattern, '*')) {
-				return $pattern === $this->name;
-			}
-			
-			// Convert the pattern to a regex
-			// Escape dots in the pattern and replace * with .*
-			$regex = '/^' . str_replace(['.', '*'], ['\.', '.*'], $pattern) . '$/';
-			
-			// Check if the signal name matches the pattern
-			return (bool) preg_match($regex, $this->name);
 		}
 		
 		/**
@@ -291,11 +256,6 @@
 		 * @throws \Exception If types mismatch or slot doesn't exist
 		 */
 		private function connectObject(object $receiver, string $slot, int $priority = 0): bool {
-			// Check if slot method exists on receiver
-			if (!method_exists($receiver, $slot)) {
-				throw new \Exception("Slot '{$slot}' does not exist on receiver.");
-			}
-			
 			// Check if this connection already exists
 			foreach ($this->connections as $connection) {
 				if ($connection['receiver'] === $receiver && $connection['slot'] === $slot) {
@@ -303,14 +263,8 @@
 				}
 			}
 			
-			// Validate schema compatibility
-			$slotReflection = new \ReflectionMethod($receiver, $slot);
-			$methodSchemaGenerator = new MethodSchemaGenerator();
-			$slotSchema = $methodSchemaGenerator->generateFromMethod($slotReflection);
-			
-			if (!$this->schemaComparator->areCompatible($this->schema, $slotSchema)) {
-				throw new \Exception("Schema mismatch between signal and slot '{$slot}': signal schema " . json_encode($this->schema) . " vs slot schema " . json_encode($slotSchema));
-			}
+			// Validate the connection using the type validation system
+			ConnectionTypeValidator::validateObjectMethodConnection($receiver, $slot, $this->parameterTypes);
 			
 			// Add connection
 			$this->connections[] = [
@@ -322,12 +276,15 @@
 			// Sort connections by priority (higher first)
 			$this->sortConnectionsByPriority();
 			
-			// Connection successfully established
 			return true;
 		}
 		
 		/**
 		 * Connect a callable to this signal
+		 *
+		 * This method establishes a connection between the signal and a callable function.
+		 * It performs type checking to ensure signal and receiver parameters are compatible,
+		 * prevents duplicate connections, and organizes connections by priority.
 		 * @param callable $receiver Callable function to receive the signal
 		 * @param int $priority Connection priority - higher priority connections are executed first
 		 * @return bool Whether connection was successful (false if connection already exists)
@@ -347,22 +304,19 @@
 				return $this->connectObject($receiver[0], $receiver[1], $priority);
 			}
 			
-			// Validate schema compatibility
-			$methodSchemaGenerator = new MethodSchemaGenerator();
-			$callableSchema = $methodSchemaGenerator->generateFromCallable($receiver);
-			
-			if (!$this->schemaComparator->areCompatible($this->schema, $callableSchema)) {
-				throw new \Exception("Schema mismatch between signal and callable: signal schema " . json_encode($this->schema) . " vs callable schema " . json_encode($callableSchema));
-			}
+			// Validate the connection using the type validation system
+			ConnectionTypeValidator::validateCallableConnection($receiver, $this->parameterTypes);
 			
 			// Add the new connection to the connections array
+			// 'slot' is null because this is a direct callable, not an object method
 			$this->connections[] = [
 				'receiver' => $receiver,  // The callable function
-				'slot' => null,           // No slot name for direct callables
+				'slot'     => null,       // No slot name for direct callables
 				'priority' => $priority   // Priority determines execution order
 			];
 			
 			// Re-sort all connections based on priority value
+			// Higher priority connections will be executed first when the signal is emitted
 			$this->sortConnectionsByPriority();
 			
 			// Connection successfully established
@@ -373,7 +327,7 @@
 		 * Sort connections by priority (higher first)
 		 */
 		private function sortConnectionsByPriority(): void {
-			usort($this->connections, function($a, $b) {
+			usort($this->connections, function ($a, $b) {
 				return $b['priority'] <=> $a['priority'];
 			});
 		}
