@@ -26,7 +26,7 @@
 		}
 		
 		/**
-		 * @Route("/user/v{path}")
+		 * @Route("/user/{path:**}/hallo")
 		 * @param string $path
 		 * @return Response
 		 */
