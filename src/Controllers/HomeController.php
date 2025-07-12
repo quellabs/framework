@@ -22,15 +22,15 @@
 		 * @return Response
 		 */
 		public function hello(string $name): Response {
-			return  new Response("Hello, " . $name);
+			return new Response("Hello, " . $name);
 		}
 		
 		/**
-		 * @Route("/user/v{path:**}")
+		 * @Route("/user/v{path}")
 		 * @param string $path
 		 * @return Response
 		 */
 		public function user(string $path): Response {
-			return  new Response("Hello, " . $path);
+			return new Response("Hello, " . $path);
 		}
 	}

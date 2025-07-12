@@ -1,7 +1,7 @@
 parameters:
-    level: 2
+    level: 4
     paths:
-        - packages/canvas-objectquel/src
+        - packages/canvas/src
     bootstrapFiles:
         - vendor/autoload.php
     scanDirectories:
