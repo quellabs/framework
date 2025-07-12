@@ -12,16 +12,16 @@
 	interface MethodContext {
 		
 		/**
-		 * Get the target object instance.
-		 * @return object The original object on which the method is being called
+		 * Get the controller object
+		 * @return object
 		 */
-		public function getTarget(): object;
+		public function getController(): object;
 		
 		/**
 		 * Get the name of the method being called.
 		 * @return string The method name
 		 */
-		public function getMethodName(): string;
+		public function getMethod(): string;
 		
 		/**
 		 * Get all arguments passed to the method.
