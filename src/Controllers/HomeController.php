@@ -22,7 +22,7 @@
 		 * @return Response
 		 */
 		public function hello(string $name): Response {
-			return  new Response("Hello, " . $name);
+			return new Response("Hello, " . $name);
 		}
 		
 		/**
@@ -31,6 +31,6 @@
 		 * @return Response
 		 */
 		public function user(string $path): Response {
-			return  new Response("Hello, " . $path);
+			return new Response("Hello, " . $path);
 		}
 	}
