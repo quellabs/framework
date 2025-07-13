@@ -55,7 +55,7 @@
 			$className = is_object($class) ? get_class($class) : $class;
 			
 			// Create a context
-			$methodContext = is_object($class) ? new MethodContext($class, $methodName) : null;
+			$methodContext = new MethodContext($className, $methodName);
 			
 			// Get method parameter metadata (name, types, defaults, etc.)
 			$methodParams = $this->getMethodParameters($className, $methodName);

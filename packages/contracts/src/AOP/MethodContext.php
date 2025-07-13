@@ -12,6 +12,12 @@
 	interface MethodContext extends \Quellabs\Contracts\Context\MethodContext {
 		
 		/**
+		 * Get the class object
+		 * @return object The class being called
+		 */
+		public function getClass(): object;
+		
+		/**
 		 * Get all arguments passed to the method.
 		 * @return array Array of method arguments in order
 		 */

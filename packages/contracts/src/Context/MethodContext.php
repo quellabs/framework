@@ -1,6 +1,5 @@
 <?php
 
-	// Base shared interface
 	namespace Quellabs\Contracts\Context;
 	
 	/**
@@ -10,9 +9,9 @@
 		
 		/**
 		 * Get the class name
-		 * @return object The class being called
+		 * @return string The class name
 		 */
-		public function getClass(): object;
+		public function getClassName(): string;
 		
 		/**
 		 * Get the name of the method being called
