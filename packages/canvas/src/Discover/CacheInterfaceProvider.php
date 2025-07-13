@@ -3,7 +3,7 @@
 	namespace Quellabs\Canvas\Discover;
 	
 	use Quellabs\Discover\Discover;
-	use Quellabs\Canvas\Annotations\CacheNamespace;
+	use Quellabs\Canvas\Annotations\CacheContext;
 	use Quellabs\Contracts\Context\MethodContext;
 	use Quellabs\AnnotationReader\AnnotationReader;
 	use Quellabs\Canvas\Cache\Foundation\FileCache;
@@ -92,34 +92,37 @@
 			$namespace = self::DEFAULT_NAMESPACE;
 			
 			// Read the annotations of the class/method
+			$annotationContext = [];
+			$annotationContextHash = $namespace;
+
 			if ($methodContext !== null) {
 				$annotations = $this->annotationReader->getMethodAnnotations(
 					$methodContext->getClassName(),
 					$methodContext->getMethodName(),
-					CacheNamespace::class
+					CacheContext::class
 				);
 				
 				if (!$annotations->isEmpty()) {
-					$namespace = $annotations[0]->getNamespace();
+					$annotationContext = $annotations[0]->getParameters();
+					$annotationContextHash .= ":" . md5(serialize($annotationContext));
+					$namespace = !empty($annotationContext['namespace']) ? $annotationContext['namespace'] : $namespace;
 				}
 			}
 			
 			// Check which kind of cache we want to create
-			$providerClass = $this->getProviderClass($metadata['provider'] ?? null);
+			$providerClass = $this->getProviderClass( $metadata['provider'] ?? $annotationContext['driver'] ?? null);
 			
 			// Return existing instance if already created (singleton pattern)
-			if (isset($this->cache["{$providerClass}:{$namespace}"])) {
-				return $this->cache["{$providerClass}:{$namespace}"];
+			if (isset($this->cache["{$providerClass}:{$annotationContextHash}"])) {
+				return $this->cache["{$providerClass}:{$annotationContextHash}"];
 			}
 			
-			// Build the cache directory path: {project_root}/storage/cache/auto
-			$cachePath = $this->discover->getProjectRoot() . DIRECTORY_SEPARATOR . 'storage' . DIRECTORY_SEPARATOR . 'cache';
-			
 			// Create and store the FileCache instance, then return it
-			return $this->cache["{$providerClass}:{$namespace}"] = $this->dependencyInjector->make($providerClass, [
-				'cachePath' => $cachePath,
-				'namespace' => $namespace,
-			]);
+			return $this->cache["{$providerClass}:{$annotationContextHash}"] = $this->dependencyInjector->make($providerClass, array_merge(
+				$annotationContext, [
+					'namespace' => $namespace
+				]
+			));
 		}
 		
 		/**
