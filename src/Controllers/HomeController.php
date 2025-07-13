@@ -3,7 +3,7 @@
 	namespace App\Controllers;
 	
 	use Quellabs\Canvas\Annotations\Route;
-	use Quellabs\Canvas\Annotations\CacheKey;
+	use Quellabs\Canvas\Annotations\CacheGroup;
 	use Quellabs\Canvas\Cache\Contracts\CacheInterface;
 	use Quellabs\Canvas\Controllers\BaseController;
 	use Symfony\Component\HttpFoundation\Response;
@@ -12,7 +12,7 @@
 		
 		/**
 		 * @Route("/")
-		 * @CacheKey(key="hallo")
+		 * @CacheGroup(group="hallo")
 		 * @return Response
 		 */
 		public function index(CacheInterface $cache): Response {
