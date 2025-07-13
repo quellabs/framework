@@ -2,6 +2,8 @@
 	
 	namespace Quellabs\DependencyInjection;
 	
+	use PhpParser\Builder\Method;
+	use Quellabs\DependencyInjection\Autowiring\MethodContext;
 	use Quellabs\Discover\Discover;
 	use Quellabs\Discover\Scanner\ComposerScanner;
 	use Quellabs\DependencyInjection\Autowiring\Autowirer;
@@ -141,10 +143,11 @@
 		 * Get a service with centralized dependency resolution
 		 * @param string $className Class name to resolve
 		 * @param array $parameters Additional parameters for creation
+		 * @param MethodContext|null $methodContext
 		 * @return object|null
 		 */
-		public function get(string $className, array $parameters = []): ?object {
-			return $this->resolveWithDependencies($className, $parameters, true);
+		public function get(string $className, array $parameters = [], ?MethodContext $methodContext=null): ?object {
+			return $this->resolveWithDependencies($className, $parameters, true, $methodContext);
 		}
 		
 		/**
@@ -167,7 +170,7 @@
 		 */
 		public function invoke(object $instance, string $methodName, array $parameters = []): mixed {
 			// Get method arguments with all dependencies resolved
-			$args = $this->autowire->getMethodArguments(get_class($instance), $methodName, $parameters);
+			$args = $this->autowire->getMethodArguments($instance, $methodName, $parameters);
 			
 			// Call the method with the resolved arguments
 			return $instance->$methodName(...$args);
@@ -182,7 +185,12 @@
 		 * @return object|null The resolved instance or null if resolution fails
 		 * @throws \RuntimeException When circular dependencies are detected
 		 */
-		protected function resolveWithDependencies(string $className, array $parameters, bool $useServiceProvider): ?object {
+		protected function resolveWithDependencies(
+			string $className,
+			array $parameters,
+			bool $useServiceProvider,
+			MethodContext $methodContext = null
+		): ?object {
 			try {
 				// Special case: Return container instance when requesting the container itself
 				// This allows for self-injection of the container into other services
@@ -217,7 +225,9 @@
 					// Use service provider pattern for more complex instantiation logic
 					// Service providers can handle custom initialization, configuration, etc.
 					$provider = $this->findProvider($className);
-					$instance = $provider->createInstance($className, $dependencies);
+					
+					// Use the provider to create an instance
+					$instance = $provider->createInstance($className, $dependencies, $this->context, $methodContext);
 				} else {
 					// Direct reflection-based instantiation for simple cases
 					// Creates instance directly using PHP's reflection API

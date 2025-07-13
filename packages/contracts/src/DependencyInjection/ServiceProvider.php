@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\Contracts\DependencyInjection;
 	
+	use Quellabs\Contracts\Context\MethodContext;
 	use Quellabs\Contracts\Discovery\ProviderInterface;
 	
 	/**
@@ -21,7 +22,9 @@
 		 * Create an instance of the class with pre-resolved dependencies
 		 * @param string $className The class to instantiate
 		 * @param array $dependencies Pre-resolved constructor dependencies
+		 * @param array $metadata Metadata as received by supports()
+		 * @param MethodContext|null $methodContext Method context of the caller
 		 * @return object
 		 */
-		public function createInstance(string $className, array $dependencies): object;
+		public function createInstance(string $className, array $dependencies, array $metadata, ?MethodContext $methodContext=null): object;
 	}

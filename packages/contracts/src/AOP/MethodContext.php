@@ -9,32 +9,19 @@
 	 * Used in AOP (Aspect-Oriented Programming) scenarios to provide
 	 * interceptors and decorators with complete method execution context.
 	 */
-	interface MethodContext {
+	interface MethodContext extends \Quellabs\Contracts\Context\MethodContext {
 		
 		/**
-		 * Get the target object instance.
-		 * @return object The original object on which the method is being called
+		 * Get the class object
+		 * @return object The class being called
 		 */
-		public function getTarget(): object;
-		
-		/**
-		 * Get the name of the method being called.
-		 * @return string The method name
-		 */
-		public function getMethodName(): string;
+		public function getClass(): object;
 		
 		/**
 		 * Get all arguments passed to the method.
 		 * @return array Array of method arguments in order
 		 */
 		public function getArguments(): array;
-		
-		/**
-		 * Get the ReflectionMethod object for accessing method metadata.
-		 * Provides access to method visibility, parameters, return type, etc.
-		 * @return \ReflectionMethod The reflection object for the method
-		 */
-		public function getReflection(): \ReflectionMethod;
 		
 		/**
 		 * Returns the request object
@@ -48,10 +35,4 @@
 		 * @return void
 		 */
 		public function setRequest(Request $request): void;
-		
-		/**
-		 * Returns the method arguments metadata
-		 * @return array Array of parameter information including name, type, and default value
-		 */
-		public function getMethodArguments(): array;
 	}
