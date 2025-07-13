@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\Canvas\ObjectQuel\Discovery;
 	
+	use Quellabs\Contracts\Context\MethodContext;
 	use Quellabs\ObjectQuel\Configuration;
 	use Quellabs\ObjectQuel\EntityManager;
 	use Quellabs\DependencyInjection\Provider\ServiceProvider;
@@ -54,9 +55,10 @@
 		 * Creates a new EntityManager instance with proper configuration
 		 * @param string $className The class name to instantiate (EntityManager)
 		 * @param array $dependencies Additional autowired dependencies (currently unused)
+		 * @param MethodContext|null $methodContext
 		 * @return object A configured EntityManager instance
 		 */
-		public function createInstance(string $className, array $dependencies): object {
+		public function createInstance(string $className, array $dependencies, ?MethodContext $methodContext=null): object {
 			// Return existing instance if already created (singleton behavior)
 			if (self::$instance !== null) {
 				return self::$instance;

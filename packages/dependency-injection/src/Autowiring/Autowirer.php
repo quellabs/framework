@@ -45,13 +45,18 @@
 		/**
 		 * Resolves and returns arguments for a specific method by matching parameters
 		 * with provided values, attempting dependency injection, or using defaults.
-		 * @param string $className The fully qualified class name
+		 * @param object|string $class
 		 * @param string $methodName The method name to resolve arguments for
 		 * @param array $parameters Optional associative array of parameter values
 		 * @return array Ordered array of resolved arguments for the method
-		 * @throws \RuntimeException When a required parameter cannot be resolved
 		 */
-		public function getMethodArguments(string $className, string $methodName, array $parameters = []): array {
+		public function getMethodArguments(object|string $class, string $methodName, array $parameters = []): array {
+			// Fetch the name of the class
+			$className = is_object($class) ? get_class($class) : $class;
+			
+			// Create a context
+			$methodContext = is_object($class) ? new MethodContext($class, $methodName) : null;
+			
 			// Get method parameter metadata (name, types, defaults, etc.)
 			$methodParams = $this->getMethodParameters($className, $methodName);
 			
@@ -77,7 +82,7 @@
 				
 				// Strategy 3: Attempt dependency injection using type hints
 				// Tries to resolve parameter from container/service locator
-				$resolvedValue = $this->resolveParameterFromTypes($paramTypes);
+				$resolvedValue = $this->resolveParameterFromTypes($paramTypes, $methodContext);
 				
 				if ($resolvedValue !== null) {
 					$arguments[] = $resolvedValue;
@@ -103,9 +108,10 @@
 		 * Attempts to resolve a parameter value by trying each type hint in order
 		 * through the dependency injection container.
 		 * @param array $types Array of type hints/class names to attempt resolution
+		 * @param MethodContext $methodContext
 		 * @return mixed The resolved instance, or null if no type could be resolved
 		 */
-		protected function resolveParameterFromTypes(array $types): mixed {
+		protected function resolveParameterFromTypes(array $types, MethodContext $methodContext): mixed {
 			// Skip resolution if no types are provided
 			if (empty($types)) {
 				return null;
@@ -126,7 +132,7 @@
 				
 				try {
 					// Attempt to retrieve instance from the DI container
-					$instance = $this->container->get($type);
+					$instance = $this->container->get($type, [], $methodContext);
 					
 					// Return the first successfully resolved instance
 					if ($instance !== null) {
@@ -205,18 +211,22 @@
 			// Handle union types (Type1|Type2|Type3)
 			if ($type instanceof \ReflectionUnionType) {
 				$types = [];
+				
 				foreach ($type->getTypes() as $unionType) {
 					$types = array_merge($types, $this->extractTypes($unionType));
 				}
+				
 				return $types;
 			}
 			
 			// Handle intersection types (Type1&Type2&Type3)
 			if ($type instanceof \ReflectionIntersectionType) {
 				$types = [];
+				
 				foreach ($type->getTypes() as $intersectionType) {
 					$types = array_merge($types, $this->extractTypes($intersectionType));
 				}
+				
 				return $types;
 			}
 			

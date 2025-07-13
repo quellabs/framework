@@ -2,6 +2,8 @@
 	
 	namespace Quellabs\Contracts\DependencyInjection;
 	
+	use Quellabs\DependencyInjection\Autowiring\MethodContext;
+	
 	/**
 	 * Container interface for dependency injection with autowiring capabilities
 	 */
@@ -40,10 +42,11 @@
 		 * @template T of object
 		 * @param class-string<T> $className Class or interface name to resolve
 		 * @param array $parameters Additional parameters for creation
+		 * @param MethodContext|null $methodContext
 		 * @return T|null The resolved service instance or null if resolution fails
 		 * @throws \RuntimeException When circular dependencies are detected or resolution fails
 		 */
-		public function get(string $className, array $parameters = []): ?object;
+		public function get(string $className, array $parameters = [], ?MethodContext $methodContext=null): ?object;
 		
 		/**
 		 * Create an instance with autowired constructor parameters.

@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\DependencyInjection\Provider;
 	
+	use Quellabs\Contracts\Context\MethodContext;
 	use Quellabs\Discover\Discover;
 	use Quellabs\Discover\Scanner\ComposerScanner;
 	use Quellabs\Contracts\Discovery\ProviderInterface;
@@ -42,9 +43,10 @@
 		 * Create instance with basic instantiation using singleton pattern
 		 * @param string $className The class to instantiate
 		 * @param array $dependencies Pre-resolved constructor dependencies
+		 * @param MethodContext|null $methodContext
 		 * @return object
 		 */
-		public function createInstance(string $className, array $dependencies): object {
+		public function createInstance(string $className, array $dependencies, ?MethodContext $methodContext=null): object {
 			// Check if the class exists
 			if (!class_exists($className)) {
 				throw new \RuntimeException("Class '$className' does not exist");
@@ -61,7 +63,7 @@
 			}
 			
 			// Create a new instance using the parent method
-			$instance = parent::createInstance($className, $dependencies);
+			$instance = parent::createInstance($className, $dependencies, $methodContext);
 			
 			// Store the instance for future use
 			$this->instances[$className] = $instance;
