@@ -80,10 +80,11 @@
 		 * Creates and configures a new Smarty template engine instance
 		 * @param string $className The requested interface (TemplateEngineInterface)
 		 * @param array $dependencies Resolved dependencies (unused in this case)
+		 * @param array $metadata Metadata as passed by Discover
 		 * @param MethodContext|null $methodContext
 		 * @return object Configured SmartyTemplate instance
 		 */
-		public function createInstance(string $className, array $dependencies, ?MethodContext $methodContext=null): object {
+		public function createInstance(string $className, array $dependencies, array $metadata, ?MethodContext $methodContext=null): object {
 			// Return cached instance
 			if (self::$instance !== null) {
 				return self::$instance;

@@ -55,10 +55,11 @@
 		 * Creates a new EntityManager instance with proper configuration
 		 * @param string $className The class name to instantiate (EntityManager)
 		 * @param array $dependencies Additional autowired dependencies (currently unused)
+		 * @param array $metadata Metadata as passed by Discover
 		 * @param MethodContext|null $methodContext
 		 * @return object A configured EntityManager instance
 		 */
-		public function createInstance(string $className, array $dependencies, ?MethodContext $methodContext=null): object {
+		public function createInstance(string $className, array $dependencies, array $metadata, ?MethodContext $methodContext=null): object {
 			// Return existing instance if already created (singleton behavior)
 			if (self::$instance !== null) {
 				return self::$instance;

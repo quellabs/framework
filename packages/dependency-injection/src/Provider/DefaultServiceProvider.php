@@ -46,7 +46,7 @@
 		 * @param MethodContext|null $methodContext
 		 * @return object
 		 */
-		public function createInstance(string $className, array $dependencies, ?MethodContext $methodContext=null): object {
+		public function createInstance(string $className, array $dependencies, array $metadata=[], ?MethodContext $methodContext=null): object {
 			// Check if the class exists
 			if (!class_exists($className)) {
 				throw new \RuntimeException("Class '$className' does not exist");
@@ -63,7 +63,7 @@
 			}
 			
 			// Create a new instance using the parent method
-			$instance = parent::createInstance($className, $dependencies, $methodContext);
+			$instance = parent::createInstance($className, $dependencies, $metadata, $methodContext);
 			
 			// Store the instance for future use
 			$this->instances[$className] = $instance;

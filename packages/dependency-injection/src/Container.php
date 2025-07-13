@@ -227,7 +227,7 @@
 					$provider = $this->findProvider($className);
 					
 					// Use the provider to create an instance
-					$instance = $provider->createInstance($className, $dependencies, $methodContext);
+					$instance = $provider->createInstance($className, $dependencies, $this->context, $methodContext);
 				} else {
 					// Direct reflection-based instantiation for simple cases
 					// Creates instance directly using PHP's reflection API
