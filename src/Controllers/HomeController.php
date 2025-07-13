@@ -3,7 +3,7 @@
 	namespace App\Controllers;
 	
 	use Quellabs\Canvas\Annotations\Route;
-	use Quellabs\Canvas\Annotations\CacheNamespace;
+	use Quellabs\Canvas\Annotations\CacheContext;
 	use Quellabs\Canvas\Cache\Contracts\CacheInterface;
 	use Quellabs\Canvas\Controllers\BaseController;
 	use Symfony\Component\HttpFoundation\Response;
