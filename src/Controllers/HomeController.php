@@ -12,7 +12,7 @@
 		
 		/**
 		 * @Route("/")
-		 * @CacheGroup(group="hallo")
+		 * @CacheGroup("hallo")
 		 * @return Response
 		 */
 		public function index(CacheInterface $cache): Response {
