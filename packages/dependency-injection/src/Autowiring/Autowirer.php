@@ -108,10 +108,10 @@
 		 * Attempts to resolve a parameter value by trying each type hint in order
 		 * through the dependency injection container.
 		 * @param array $types Array of type hints/class names to attempt resolution
-		 * @param MethodContext $methodContext
+		 * @param MethodContext|null $methodContext
 		 * @return mixed The resolved instance, or null if no type could be resolved
 		 */
-		protected function resolveParameterFromTypes(array $types, MethodContext $methodContext): mixed {
+		protected function resolveParameterFromTypes(array $types, ?MethodContext $methodContext=null): mixed {
 			// Skip resolution if no types are provided
 			if (empty($types)) {
 				return null;
