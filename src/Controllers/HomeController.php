@@ -12,7 +12,7 @@
 		
 		/**
 		 * @Route("/")
-		 * @CacheNamespace("hallo")
+		 * @CacheNamespace("hallo", lockTimeout=10)
 		 * @return Response
 		 */
 		public function index(CacheInterface $cache): Response {
