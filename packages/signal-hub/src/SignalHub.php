@@ -173,6 +173,13 @@
 			return $count;
 		}
 		
+		/**
+		 * Find signal by name and optional owner.
+		 * If multiple signals exist, only the first is returned.
+		 * @param string $name
+		 * @param object|null $owner
+		 * @return Signal|null
+		 */
 		public function getSignal(string $name, ?object $owner = null): ?Signal {
 			// Look for object-owned signal when owner is specified
 			if ($owner !== null) {
@@ -219,18 +226,10 @@
 					continue;
 				}
 				
-				// Get the class name for qualified signal names
-				$ownerClass = get_class($object);
-				
 				// Check each signal belonging to this object
 				foreach ($signals as $signalName => $signal) {
-					// Create qualified name in format "ClassName::signalName"
-					$qualifiedName = $ownerClass . '::' . $signalName;
-					
-					// Check if the qualified name matches the pattern
-					if ($this->matchesPattern($pattern, $qualifiedName)) {
-						// Add to results using qualified name as key
-						$results[$qualifiedName] = $signal;
+					if ($this->matchesPattern($pattern, $signalName)) {
+						$results[$signalName] = $signal;
 					}
 				}
 			}

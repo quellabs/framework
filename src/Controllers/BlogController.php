@@ -4,6 +4,8 @@
 	
 	use App\Entities\PostEntity;
 	use Quellabs\Canvas\Annotations\Route;
+	use Quellabs\Canvas\Annotations\InterceptWith;
+	use Quellabs\Canvas\Debugbar\DebugbarAspect;
 	use Quellabs\Canvas\Controllers\BaseController;
 	use Symfony\Component\HttpFoundation\Response;
 	
@@ -11,6 +13,7 @@
 		
 		/**
 		 * @Route("/posts/")
+		 * @InterceptWith(DebugbarAspect::class)
 		 * @return Response
 		 */
 		public function index(): Response {

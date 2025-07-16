@@ -9,11 +9,11 @@
 		
 		/**
 		 * Validates that a callable's parameters are compatible with signal parameters
-		 * @param callable $receiver The callable to validate
+		 * @param callable|array $receiver The callable to validate
 		 * @param array $signalParameterTypes Expected signal parameter types
 		 * @throws \Exception If types mismatch or parameter count differs
 		 */
-		public static function validateCallableConnection(callable $receiver, array $signalParameterTypes): void {
+		public static function validateCallableConnection(callable|array $receiver, array $signalParameterTypes): void {
 			if (is_array($receiver)) {
 				self::validateArrayCallable($receiver, $signalParameterTypes);
 			} elseif (is_string($receiver)) {
@@ -30,9 +30,30 @@
 		 * @throws \Exception If types mismatch or parameter count differs
 		 */
 		private static function validateArrayCallable(array $receiver, array $signalParameterTypes): void {
+			// Destructure the array callable into object/class and method name
+			// $receiver[0] can be either an object instance or a class name string
+			// $receiver[1] is always the method name string
 			[$objectOrClass, $method] = $receiver;
+			
+			// Get the actual class name regardless of whether we have an object or class string
+			// If it's an object, get its class name; if it's already a string, use it as-is
+			$className = is_object($objectOrClass) ? get_class($objectOrClass) : $objectOrClass;
+			
+			// Create a reflection object for the method to inspect its properties
+			// This works for both instance methods (object) and static methods (class string)
 			$slotReflection = new \ReflectionMethod($objectOrClass, $method);
+			
+			// Get all parameters of the target method for validation
 			$slotParams = $slotReflection->getParameters();
+			
+			// Ensure the method is publicly accessible
+			// Private and protected methods cannot be called from external contexts
+			if ($slotReflection->isPrivate() || $slotReflection->isProtected()) {
+				throw new \Exception("Cannot connect signal: Method {$className}::{$method}() must be public");
+			}
+			
+			// Validate that the signal parameters are compatible with the slot method parameters
+			// This checks parameter count, types, and other compatibility requirements
 			self::validateParameterCompatibility($signalParameterTypes, $slotParams);
 		}
 		
