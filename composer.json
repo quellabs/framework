@@ -50,17 +50,17 @@
     "discover": {
       "di": {
         "provider": "Quellabs\\Canvas\\Twig\\ServiceProvider",
-        "config": "config/smarty.php"
+        "config": "config/twig.php"
       },
       "sculpt": {
         "provider": "Quellabs\\Canvas\\Twig\\Sculpt\\ServiceProvider",
-        "config": "config/smarty.php"
+        "config": "config/twig.php"
       }
     }
   },
   "scripts": {
     "post-install-cmd": [
-      "php -r \"copy('vendor/quellabs/canvas-smarty/config/twig.php', 'public/config/twig.php');\""
+      "php -r \"copy('vendor/quellabs/canvas-twig/config/twig.php', 'public/config/twig.php');\""
     ]
   }
 }
