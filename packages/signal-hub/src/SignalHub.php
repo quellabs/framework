@@ -250,6 +250,22 @@
 		}
 		
 		/**
+		 * Get the signal that is emitted when a new signal is registered with the hub
+		 * @return Signal The signal that emits when signals are registered (parameter: Signal object)
+		 */
+		public function signalRegistered(): Signal {
+			return $this->signalRegisteredEvent;
+		}
+		
+		/**
+		 * Get the signal that is emitted when a signal is unregistered from the hub
+		 * @return Signal The signal that emits when signals are unregistered (parameter: Signal object)
+		 */
+		public function signalUnregistered(): Signal {
+			return $this->signalUnregisteredEvent;
+		}
+		
+		/**
 		 * Check if a name matches a pattern with wildcards
 		 * @param string $pattern Pattern with wildcards (* matches any sequence)
 		 * @param string $name Name to check against the pattern
