@@ -43,12 +43,12 @@
 		
 		/**
 		 * Connect a callable to this signal
-		 * @param callable $receiver Callable to receive the signal
+		 * @param callable|array $receiver Callable to receive the signal
 		 * @param int $priority Connection priority (higher executes first)
 		 * @return void
 		 * @throws \Exception If types mismatch
 		 */
-		public function connect(callable $receiver, int $priority = 0): void {
+		public function connect(callable|array $receiver, int $priority = 0): void {
 			// Check if this exact connection already exists
 			foreach ($this->slots as $connection) {
 				if ($connection['receiver'] === $receiver) {
