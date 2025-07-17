@@ -3,7 +3,7 @@
   "discover": "1.0.20",
   "dependency-injection": "1.0.21",
   "sculpt": "1.0.20",
-  "objectquel": "1.0.21",
+  "objectquel": "1.0.22",
   "signal-hub": "1.0.21",
   "annotation-reader": "1.0.21",
   "canvas": "1.0.30",
