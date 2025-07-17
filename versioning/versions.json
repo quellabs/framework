@@ -4,7 +4,7 @@
   "dependency-injection": "1.0.21",
   "sculpt": "1.0.20",
   "objectquel": "1.0.22",
-  "signal-hub": "1.0.21",
+  "signal-hub": "1.0.22",
   "annotation-reader": "1.0.21",
   "canvas": "1.0.30",
   "canvas-objectquel": "1.0.21",
