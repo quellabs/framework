@@ -39,7 +39,7 @@
 			
 			// Grab signalhub and create signal
 			$this->setSignalHub(SignalHubLocator::getInstance());
-			$this->templateSignal = $this->createSignal(['array'], 'debug.template');
+			$this->templateSignal = $this->createSignal(['array'], 'debug.template.query');
 			
 			// Create Smarty instance
 			$this->smarty = new Smarty();
