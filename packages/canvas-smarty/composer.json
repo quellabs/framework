@@ -37,6 +37,7 @@
     "quellabs/dependency-injection": "^1.",
     "quellabs/contracts": "^1.",
     "quellabs/sculpt": "^1."
+    "quellabs/signal-hub": "^1."
   },
   "autoload": {
     "psr-4": {
