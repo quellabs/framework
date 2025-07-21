@@ -1,6 +1,6 @@
 <?php
 	
-	namespace Quellabs\Contracts\Debugbar;
+	namespace Quellabs\Contracts\Inspector;
 	
 	use Quellabs\SignalHub\Signal;
 	use Quellabs\SignalHub\SignalHub;
@@ -11,7 +11,7 @@
 	 * This interface defines the contract for classes that automatically collect
 	 * debug events from a SignalHub and provide methods to retrieve them.
 	 */
-	interface DebugEventCollectorInterface {
+	interface EventCollectorInterface {
 		/**
 		 * Constructor - sets up signal listeners for debug events
 		 *

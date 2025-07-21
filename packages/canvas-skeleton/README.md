@@ -1010,16 +1010,16 @@ Extend the debug bar with custom panels for your specific debugging needs:
 <?php
 namespace App\Debug;
 
-use Quellabs\Canvas\Debugbar\DebugPanelInterface;
-use Quellabs\Canvas\Debugbar\DebugEventCollector;
+use Quellabs\Canvas\Inspector\DebugPanelInterface;
+use Quellabs\Canvas\Inspector\EventCollector;
 use Symfony\Component\HttpFoundation\Request;
 
 class CachePanel implements DebugPanelInterface {
     
-    private DebugEventCollector $collector;
+    private EventCollector $collector;
     private array $cacheEvents = [];
     
-    public function __construct(DebugEventCollector $collector) {
+    public function __construct(EventCollector $collector) {
         $this->collector = $collector;
     }
     

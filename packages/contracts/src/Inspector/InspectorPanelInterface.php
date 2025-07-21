@@ -1,13 +1,13 @@
 <?php
 	
-	namespace Quellabs\Contracts\Debugbar;
+	namespace Quellabs\Contracts\Inspector;
 	
 	use Symfony\Component\HttpFoundation\Request;
 	
 	/**
 	 * Interface for debug panels in the Canvas debug bar
 	 */
-	interface DebugPanelInterface {
+	interface InspectorPanelInterface {
 
 		/**
 		 * Get the unique identifier name for this panel
