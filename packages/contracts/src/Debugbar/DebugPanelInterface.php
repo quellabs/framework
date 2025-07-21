@@ -1,6 +1,6 @@
 <?php
 	
-	namespace Quellabs\Canvas\Debugbar;
+	namespace Quellabs\Contracts\Debugbar;
 	
 	use Symfony\Component\HttpFoundation\Request;
 	
