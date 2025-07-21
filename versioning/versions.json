@@ -8,5 +8,6 @@
   "annotation-reader": "1.0.21",
   "canvas": "1.0.30",
   "canvas-objectquel": "1.0.21",
-  "canvas-smarty": "1.0.21"
+  "canvas-smarty": "1.0.21",
+  "canvas-skeleton": "1.0.3"
 }
