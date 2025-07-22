@@ -1,13 +1,13 @@
 {
-  "contracts": "1.0.21",
+  "contracts": "1.0.22",
   "discover": "1.0.20",
   "dependency-injection": "1.0.21",
   "sculpt": "1.0.20",
-  "objectquel": "1.0.22",
-  "signal-hub": "1.0.22",
+  "objectquel": "1.0.23",
+  "signal-hub": "1.0.23",
   "annotation-reader": "1.0.21",
-  "canvas": "1.0.30",
+  "canvas": "1.0.31",
   "canvas-objectquel": "1.0.21",
-  "canvas-smarty": "1.0.21",
-  "canvas-skeleton": "1.0.3"
+  "canvas-smarty": "1.0.22",
+  "canvas-skeleton": "1.0.4"
 }
