@@ -4,6 +4,8 @@
 	
 	use App\Entities\PostEntity;
 	use Quellabs\Canvas\Annotations\Route;
+	use Quellabs\Canvas\Annotations\InterceptWith;
+	use Quellabs\Canvas\Cache\CacheAspect;
 	use Quellabs\Canvas\Controllers\BaseController;
 	use Symfony\Component\HttpFoundation\Response;
 	

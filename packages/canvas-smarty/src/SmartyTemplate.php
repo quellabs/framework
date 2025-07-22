@@ -2,10 +2,17 @@
 	
 	namespace Quellabs\Canvas\Smarty;
 	
+	use Quellabs\Contracts\Templates\TemplateRenderException;
+	use Quellabs\SignalHub\HasSignals;
+	use Quellabs\SignalHub\Signal;
+	use Quellabs\SignalHub\SignalHubLocator;
+	use Smarty\Exception;
 	use Smarty\Smarty;
 	use Quellabs\Contracts\Templates\TemplateEngineInterface;
 	
 	class SmartyTemplate implements TemplateEngineInterface {
+		
+		use HasSignals;
 		
 		/**
 		 * @var Smarty|null Smarty instance
@@ -18,12 +25,21 @@
 		private array $config;
 		
 		/**
+		 * @var Signal Signal for performance monitoring
+		 */
+		private Signal $templateSignal;
+		
+		/**
 		 * SmartyTemplate constructor
 		 * @param array $configuration
 		 */
 		public function __construct(array $configuration) {
 			// Store the configuration
 			$this->config = $configuration;
+			
+			// Grab signalhub and create signal
+			$this->setSignalHub(SignalHubLocator::getInstance());
+			$this->templateSignal = $this->createSignal(['array'], 'debug.template.query');
 			
 			// Create Smarty instance
 			$this->smarty = new Smarty();
@@ -55,7 +71,7 @@
 		 * @param string $template The template file name/path to render
 		 * @param array $data Associative array of variables to pass to the template
 		 * @return string The rendered template content as a string
-		 * @throws \Exception If template rendering fails for any reason
+		 * @throws TemplateRenderException If template rendering fails for any reason
 		 */
 		public function render(string $template, array $data = []): string {
 			return $this->renderTemplate($template, $data, false);
@@ -66,7 +82,7 @@
 		 * @param string $templateString The template content as a string
 		 * @param array $data Associative array of variables to pass to the template
 		 * @return string The rendered template content
-		 * @throws \Exception If template rendering fails for any reason
+		 * @throws TemplateRenderException If template rendering fails for any reason
 		 */
 		public function renderString(string $templateString, array $data = []): string {
 			return $this->renderTemplate($templateString, $data, true);
@@ -191,7 +207,11 @@
 		public function clearTemplateCache(string $template): void {
 			// Clear cache only for the specified template
 			// This is more efficient than clearing all cache when only one template changed
-			$this->smarty->clearCache($template);
+			try {
+				$this->smarty->clearCache($template);
+			} catch (Exception $e) {
+				error_log("SmartyTemplateProvider: unable to clear template cache: {$e->getMessage()}");
+			}
 		}
 		
 		/**
@@ -202,7 +222,7 @@
 		public function isCached(string $template): bool {
 			try {
 				// Check if Smarty has a cached version of this template available
-				// Returns true if cached and valid, false if needs rendering
+				// Returns true if cached and valid, false if it needs rendering
 				return $this->smarty->isCached($template);
 			} catch (\Exception $e) {
 				return false;
@@ -215,10 +235,13 @@
 		 * @param array $data Associative array of variables to pass to the template
 		 * @param bool $isString Whether the template parameter is a string (true) or file path (false)
 		 * @return string The rendered template content
-		 * @throws \Exception
+		 * @throws TemplateRenderException
 		 */
 		private function renderTemplate(string $template, array $data, bool $isString): string {
 			try {
+				// Mark start for performance monitoring
+				$start = microtime(true);
+				
 				// Create a data object with local scope that inherits from the Smarty instance
 				// This allows access to global variables while keeping local variables isolated
 				// Local variables will override global ones with the same name
@@ -235,7 +258,19 @@
 				$templateSource = $isString ? 'string:' . $template : $template;
 				
 				// Fetch/render the template with local data scope
-				return $this->smarty->fetch($templateSource, $localData);
+				$result = $this->smarty->fetch($templateSource, $localData);
+				
+				// Send event
+				$this->templateSignal->emit([
+					'template'          => $template,
+					'bound_parameters'  => $data,
+					'is_string'         => $isString,
+					'execution_time_ms' => microtime(true) - $start,
+				]);
+				
+				// Return the result
+				return $result;
+
 			} catch (\Exception $e) {
 				// Create the appropriate error message based on the template type
 				if ($isString) {
@@ -245,7 +280,7 @@
 					$errorContext = "template '{$template}'";
 				}
 				
-				throw new \Exception("Failed to render {$errorContext}: " . $e->getMessage(), 0, $e);
+				throw new TemplateRenderException("Failed to render {$errorContext}: " . $e->getMessage(), 0, $e);
 			}
 		}
 	}

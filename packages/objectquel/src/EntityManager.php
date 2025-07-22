@@ -15,25 +15,43 @@
 	 * @package     Quellabs\ObjectQuel
 	 */
 	
-    namespace Quellabs\ObjectQuel;
+	namespace Quellabs\ObjectQuel;
 	
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
 	use Quellabs\ObjectQuel\ObjectQuel\QuelException;
 	use Quellabs\ObjectQuel\ObjectQuel\QuelResult;
-	use Quellabs\ObjectQuel\ProxyGenerator\ProxyGenerator;
 	use Quellabs\ObjectQuel\ProxyGenerator\ProxyInterface;
 	use Quellabs\ObjectQuel\QueryManagement\QueryBuilder;
 	use Quellabs\ObjectQuel\QueryManagement\QueryExecutor;
 	use Quellabs\ObjectQuel\ReflectionManagement\PropertyHandler;
 	use Quellabs\ObjectQuel\Validation\EntityToValidation;
+	use Quellabs\SignalHub\HasSignals;
+	use Quellabs\SignalHub\Signal;
+	use Quellabs\SignalHub\SignalHub;
+	use Quellabs\SignalHub\SignalHubLocator;
 	
 	/**
 	 * Represents an Entity Manager.
 	 */
 	class EntityManager {
+		
+		/**
+		 * This class uses signals
+		 */
+		use HasSignals;
+		
+		/**
+		 * Signals
+		 */
+		protected Signal $debugQuerySignal;
+		
+		/**
+		 * Properties
+		 */
 		protected Configuration $configuration;
-        protected DatabaseAdapter $connection;
-        protected UnitOfWork $unit_of_work;
+		protected SignalHub $signal_hub;
+		protected DatabaseAdapter $connection;
+		protected UnitOfWork $unit_of_work;
 		protected EntityStore $entity_store;
 		protected QueryBuilder $query_builder;
 		protected PropertyHandler $property_handler;
@@ -43,16 +61,21 @@
 		 * EntityManager constructor - accepts optional configuration or discovers it
 		 * @param Configuration|null $configuration
 		 */
-        public function __construct(?Configuration $configuration = null) {
-	        $this->configuration = $configuration;
-            $this->connection = new DatabaseAdapter($configuration);
-	        $this->entity_store = new EntityStore($configuration);
-            $this->unit_of_work = new UnitOfWork($this);
+		public function __construct(?Configuration $configuration = null) {
+			$this->configuration = $configuration;
+			$this->signal_hub = SignalHubLocator::getInstance();
+			$this->connection = new DatabaseAdapter($configuration);
+			$this->entity_store = new EntityStore($configuration);
+			$this->unit_of_work = new UnitOfWork($this, $this->signal_hub);
 			$this->query_builder = new QueryBuilder($this->entity_store);
 			$this->query_executor = new QueryExecutor($this);
 			$this->property_handler = new PropertyHandler();
-        }
-
+			
+			// Assign the signal hub to this class
+			$this->setSignalHub(SignalHubLocator::getInstance());
+			$this->debugQuerySignal = $this->createSignal(['array'], 'debug.objectquel.query');
+		}
+		
 		/**
 		 * Returns the DatabaseAdapter
 		 * @return DatabaseAdapter
@@ -85,19 +108,19 @@
 			return $this->property_handler;
 		}
 		
-        /**
-         * Adds an entity to the entity manager list
-         * @param $entity
-         * @return bool
-         */
-        public function persist(&$entity): bool {
-            if (!is_object($entity)) {
+		/**
+		 * Adds an entity to the entity manager list
+		 * @param $entity
+		 * @return bool
+		 */
+		public function persist(&$entity): bool {
+			if (!is_object($entity)) {
 				return false;
 			}
 			
 			return $this->unit_of_work->persistNew($entity);
-        }
-    
+		}
+		
 		/**
 		 * Flush all changed entities to the database
 		 * If an error occurs, an OrmException is thrown.
@@ -105,9 +128,9 @@
 		 * @return void
 		 * @throws OrmException
 		 */
-        public function flush(mixed $entity = null): void {
-            $this->unit_of_work->commit($entity);
-        }
+		public function flush(mixed $entity = null): void {
+			$this->unit_of_work->commit($entity);
+		}
 		
 		/**
 		 * Detach an entity from the EntityManager.
@@ -126,7 +149,27 @@
 		 * @throws QuelException
 		 */
 		public function executeQuery(string $query, array $parameters = []): ?QuelResult {
-			return $this->query_executor->executeQuery($query, $parameters);
+			// Record start time for performance monitoring
+			$start = microtime(true);
+			
+			// Execute the query through the query executor
+			$result = $this->query_executor->executeQuery($query, $parameters);
+			
+			// Record end time to calculate execution duration
+			$end = microtime(true);
+			
+			// Emit debug signal with comprehensive query execution information
+			// Time is converted to milliseconds for easier readability
+			$this->debugQuerySignal->emit([
+				'query'             => $query,
+				'bound_parameters'  => $parameters,
+				'execution_time_ms' => round(($end - $start) * 1000),
+				'timestamp'         => date('Y-m-d H:i:s'),
+				'memory_usage_kb'   => memory_get_usage(true) / 1024,
+				'peak_memory_kb'    => memory_get_peak_usage(true) / 1024
+			]);
+			
+			return $result;
 		}
 		
 		/**

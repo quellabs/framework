@@ -14,6 +14,10 @@
 		 * @var \WeakMap Map of objects to their signal collections
 		 * Using WeakMap prevents memory leaks - objects are automatically
 		 * removed when they go out of scope elsewhere in the application
+		 *
+		 * Structure: WeakMap<object, array<string, Signal>>
+		 * - Key: The object that owns the signals
+		 * - Value: Associative array where keys are signal names and values are Signal objects
 		 */
 		private \WeakMap $objectSignals;
 		
@@ -227,48 +231,6 @@
 			}
 			
 			return $results;
-		}
-		
-		/**
-		 * Get all registered signals
-		 * @return array
-		 */
-		public function getAllSignals(): array {
-			$result = [];
-			
-			// Add standalone signals to the result set
-			foreach ($this->standaloneSignals as $name => $signal) {
-				// Create a metadata array for each standalone signal
-				$result[] = [
-					'name'        => $name,                                    // Signal name
-					'signal'      => $signal,                               // Actual Signal object
-					'paramTypes'  => $signal->getParameterTypes(),     // Expected parameter types
-					'connections' => $signal->countConnections(),     // Number of connected slots
-					'standalone'  => true                               // Flag indicating this is standalone
-				];
-			}
-			
-			// Add object signals to the result set
-			foreach ($this->objectSignals as $object => $signals) {
-				// Get class name for identification
-				$ownerClass = get_class($object);
-				
-				// Process each signal belonging to this object
-				foreach ($signals as $signalName => $signal) {
-					// Create a metadata array for each object signal
-					$result[] = [
-						'owner'       => $object,                                // Reference to owner object
-						'class'       => $ownerClass,                           // Owner class name
-						'name'        => $signalName,                            // Signal name
-						'signal'      => $signal,                              // Actual Signal object
-						'paramTypes'  => $signal->getParameterTypes(),    // Expected parameter types
-						'connections' => $signal->countConnections(),    // Number of connected slots
-						'standalone'  => false                             // Flag indicating this is object-owned
-					];
-				}
-			}
-			
-			return $result;
 		}
 		
 		/**

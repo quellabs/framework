@@ -27,6 +27,7 @@ jobs:
           - canvas
           - canvas-objectquel
           - canvas-smarty
+          - canvas-skeleton
       fail-fast: false  # Let each package complete independently
     steps:
       - uses: actions/checkout@v4
