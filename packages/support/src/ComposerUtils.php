@@ -1,35 +1,35 @@
 <?php
 	
-	namespace Quellabs\Discover\Utilities;
+	namespace Quellabs\Support;
 	
 	use RuntimeException;
 	use Composer\Autoload\ClassLoader;
 	
-	class ComposerPathResolver {
-		
+	class ComposerUtils {
+
 		/**
 		 * @var string|null Cached project root
 		 */
-		protected ?string $projectRootPathCache = null;
+		private static ?string $projectRootPathCache = null;
 		
 		/**
 		 * Cache of parsed composer.json files
 		 * @var array<string, array|null>
 		 */
-		private array $composerJsonCache = [];
+		private static array $composerJsonCache = [];
 		
 		/**
 		 * Cache for path resolving paths
 		 * @var array
 		 */
-		private array $normalizedPaths = [];
+		private static array $normalizedPaths = [];
 		
 		/**
 		 * Gets the Composer autoloader instance
 		 * @return ClassLoader
 		 * @throws RuntimeException If autoloader can't be found
 		 */
-		public function getComposerAutoloader(): ClassLoader {
+		public static function getComposerAutoloader(): ClassLoader {
 			// Try to find the Composer autoloader
 			foreach (spl_autoload_functions() as $autoloader) {
 				if (is_array($autoloader) && $autoloader[0] instanceof ClassLoader) {
@@ -62,28 +62,28 @@
 		 * @param string|null $directory Directory to start searching from (defaults to current directory)
 		 * @return string|null Directory containing composer.json if found, null otherwise
 		 */
-		public function getProjectRoot(?string $directory = null): ?string {
+		public static function getProjectRoot(?string $directory = null): ?string {
 			// Return the cached result if available to avoid repeated filesystem operations
-			if ($this->projectRootPathCache !== null) {
-				return $this->projectRootPathCache;
+			if (self::$projectRootPathCache !== null) {
+				return self::$projectRootPathCache;
 			}
 			
 			// Try multiple detection strategies in order of efficiency
 			$strategies = [
 				// Strategy 1: Check for common shared hosting directory patterns
 				// This is faster than traversing and works well for cPanel/Plesk environments
-				fn() => $this->getSharedHostingRoot($directory),
+				fn() => self::getSharedHostingRoot($directory),
 				
 				// Strategy 2: Traditional traversal method - walk up directory tree looking for composer.json
 				// This handles custom setups and non-standard hosting environments
-				fn() => $this->getProjectRootFromComposerJson($directory),
+				fn() => self::getProjectRootFromComposerJson($directory),
 			];
 			
 			foreach ($strategies as $strategy) {
 				$projectRoot = $strategy();
 				
 				if ($projectRoot !== null) {
-					return $this->projectRootPathCache = $projectRoot;
+					return self::$projectRootPathCache = $projectRoot;
 				}
 			}
 			
@@ -96,9 +96,9 @@
 		 * @param string|null $startDirectory Directory to start searching from (defaults to current directory)
 		 * @return string|null Path to composer.json if found, null otherwise
 		 */
-		public function getComposerJsonFilePath(?string $startDirectory = null): ?string {
+		public static function getComposerJsonFilePath(?string $startDirectory = null): ?string {
 			// Find the directory containing composer.json, starting from provided directory or current directory
-			$projectRoot = $this->getProjectRoot($startDirectory);
+			$projectRoot = self::getProjectRoot($startDirectory);
 			
 			// If we couldn't find the project root, we can't locate installed.json
 			if ($projectRoot === null) {
@@ -114,9 +114,9 @@
 		 * @param string|null $startDirectory Directory to start searching from (defaults to current directory)
 		 * @return string|null Path to the discovery mapping file if found, null otherwise
 		 */
-		public function getDiscoveryMappingPath(?string $startDirectory = null): ?string {
+		public static function getDiscoveryMappingPath(?string $startDirectory = null): ?string {
 			// Find the directory containing composer.json, starting from provided directory or current directory
-			$projectRoot = $this->getProjectRoot($startDirectory);
+			$projectRoot = self::getProjectRoot($startDirectory);
 			
 			// If we couldn't find the project root, we can't locate any mapping files
 			if (!$projectRoot) {
@@ -127,7 +127,7 @@
 			$composerJsonPath = $projectRoot . DIRECTORY_SEPARATOR . 'composer.json';
 			
 			if (file_exists($composerJsonPath)) {
-				$composerJson = $this->parseComposerJson($composerJsonPath);
+				$composerJson = self::parseComposerJson($composerJsonPath);
 				$customPath = $composerJson['extra']['discover']['mapping-file'] ?? null;
 				
 				if ($customPath) {
@@ -147,9 +147,9 @@
 		 * @param string|null $startDirectory Directory to start searching from (defaults to current directory)
 		 * @return string|null Path to installed.json if found, null otherwise
 		 */
-		public function getComposerInstalledJsonPath(?string $startDirectory = null): ?string {
+		public static function getComposerInstalledJsonPath(?string $startDirectory = null): ?string {
 			// Find the project root to navigate to vendor/composer from there
-			$projectRoot = $this->getProjectRoot($startDirectory);
+			$projectRoot = self::getProjectRoot($startDirectory);
 			
 			// If we couldn't find the project root, we can't locate the file
 			if ($projectRoot === null) {
@@ -171,7 +171,7 @@
 		 * @param string $directory Directory path to map to a namespace
 		 * @return string|null The corresponding namespace if found, null otherwise
 		 */
-		public function resolveNamespaceFromPath(string $directory): ?string {
+		public static function resolveNamespaceFromPath(string $directory): ?string {
 			// Convert to the absolute real path to ensure consistent path comparison
 			$directory = realpath($directory);
 			
@@ -182,7 +182,7 @@
 			
 			// First approach: Use the already registered Composer autoloader
 			// This works well for packages/dependencies that have been autoloaded
-			$composerNamespace = $this->resolveNamespaceFromAutoloader($directory);
+			$composerNamespace = self::resolveNamespaceFromAutoloader($directory);
 			
 			// If we found a matching namespace through the autoloader, return it immediately
 			if ($composerNamespace !== null) {
@@ -192,7 +192,7 @@
 			// Second approach: Parse the main project's composer.json file directly
 			// This is necessary when dealing with the current project's namespaces
 			// which might not be fully registered in the autoloader yet
-			return $this->resolveNamespaceFromComposerJson($directory);
+			return self::resolveNamespaceFromComposerJson($directory);
 		}
 		
 		/**
@@ -201,7 +201,7 @@
 		 * @param callable|null $filter Optional callback function to filter classes (receives className as parameter)
 		 * @return array<string> Array of fully qualified class names
 		 */
-		public function findClassesInDirectory(string $directory, ?callable $filter = null): array {
+		public static function findClassesInDirectory(string $directory, ?callable $filter = null): array {
 			// Early return if directory doesn't exist or is not readable
 			$absoluteDir = realpath($directory);
 			
@@ -210,7 +210,7 @@
 			}
 			
 			// Get the namespace for this directory using our preferred method
-			$namespaceForDir = $this->resolveNamespaceFromPath($absoluteDir);
+			$namespaceForDir = self::resolveNamespaceFromPath($absoluteDir);
 			
 			// If no namespace was found for the directory, we can return early
 			// This is an optimization as we avoid scanning directories that aren't part of a PSR-4 namespace
@@ -224,7 +224,7 @@
 			
 			foreach ($entries as $entry) {
 				// Skip current directory, parent directory, and hidden files
-				if ($this->shouldSkipEntry($entry)) {
+				if (self::shouldSkipEntry($entry)) {
 					continue;
 				}
 				
@@ -233,18 +233,18 @@
 				
 				// Recursively scan subdirectories and merge results
 				if (is_dir($fullPath)) {
-					$subDirClasses = $this->findClassesInDirectory($fullPath, $filter);
+					$subDirClasses = self::findClassesInDirectory($fullPath, $filter);
 					$classNames = array_merge($classNames, $subDirClasses);
 					continue; // Early continue to next iteration
 				}
 				
 				// Skip if not a PHP file
-				if (!$this->isPhpFile($entry)) {
+				if (!self::isPhpFile($entry)) {
 					continue;
 				}
 				
 				// Fetch class name from the file
-				$className = $this->extractClassNameFromFile($entry);
+				$className = self::extractClassNameFromFile($entry);
 				
 				// Build the fully qualified class name
 				$fullyQualifiedClassName = $namespaceForDir . '\\' . $className;
@@ -266,17 +266,17 @@
 		 * @param string $path The path to resolve (e.g., "hallo/../test")
 		 * @return string The resolved path (e.g., "test")
 		 */
-		public function normalizePath(string $path): string {
+		public static function normalizePath(string $path): string {
 			// Check if this path has already been resolved and cached
-			if (isset($this->normalizedPaths[$path])) {
-				return $this->normalizedPaths[$path];
+			if (isset(self::$normalizedPaths[$path])) {
+				return self::$normalizedPaths[$path];
 			}
 			
 			// Perform the actual path resolution logic
-			$resolved = $this->doResolvePath($path);
+			$resolved = self::doResolvePath($path);
 			
 			// Cache the resolved path for future lookups to improve performance
-			$this->normalizedPaths[$path] = $resolved;
+			self::$normalizedPaths[$path] = $resolved;
 			
 			// Return the resolved path
 			return $resolved;
@@ -288,17 +288,27 @@
 		 * @param bool $treatAsRelative Force path to be treated as relative to project root
 		 * @return string The resolved absolute path
 		 */
-		public function resolveProjectPath(string $path, bool $treatAsRelative = false): string {
+		public static function resolveProjectPath(string $path, bool $treatAsRelative = false): string {
 			// Treat as relative to project root when flag is set, or when path is actually relative
-			if (!$treatAsRelative && $this->isAbsolutePath($path)) {
+			if (!$treatAsRelative && self::isAbsolutePath($path)) {
 				return rtrim($path, '/\\');
 			}
 			
 			// Resolve as relative to project root
-			$resolvedPath = $this->getProjectRoot() . DIRECTORY_SEPARATOR . ltrim($path, '/\\');
+			$resolvedPath = self::getProjectRoot() . DIRECTORY_SEPARATOR . ltrim($path, '/\\');
 			
 			// Normalize path separators and remove trailing separator
 			return rtrim($resolvedPath, DIRECTORY_SEPARATOR);
+		}
+		
+		/**
+		 * Clear all static caches
+		 * @return void
+		 */
+		public static function clearCache(): void {
+			self::$projectRootPathCache = null;
+			self::$composerJsonCache = [];
+			self::$normalizedPaths = [];
 		}
 		
 		/**
@@ -306,16 +316,16 @@
 		 * @param string $directory Resolved realpath to directory
 		 * @return string|null Namespace if found
 		 */
-		private function resolveNamespaceFromAutoloader(string $directory): ?string {
+		private static function resolveNamespaceFromAutoloader(string $directory): ?string {
 			try {
 				// Get the Composer autoloader
-				$composerAutoloader = $this->getComposerAutoloader();
+				$composerAutoloader = self::getComposerAutoloader();
 				
 				// Get PSR-4 prefixes from the autoloader
 				$prefixesPsr4 = $composerAutoloader->getPrefixesPsr4();
 				
 				// Find the longest matching namespace prefix
-				return $this->findMostSpecificNamespace($directory, $prefixesPsr4);
+				return self::findMostSpecificNamespace($directory, $prefixesPsr4);
 			} catch (\Exception $e) {
 				return null;
 			}
@@ -328,9 +338,9 @@
 		 * @param string $directory Resolved realpath to the directory we need to find a namespace for
 		 * @return string|null The namespace corresponding to the directory, or null if not found
 		 */
-		private function resolveNamespaceFromComposerJson(string $directory): ?string {
+		private static function resolveNamespaceFromComposerJson(string $directory): ?string {
 			// First, locate the project's composer.json file by traversing upwards from the current directory
-			$composerJsonPath = $this->getComposerJsonFilePath();
+			$composerJsonPath = self::getComposerJsonFilePath();
 			
 			// If we can't find composer.json, we can't determine the namespace
 			if (!$composerJsonPath) {
@@ -338,7 +348,7 @@
 			}
 			
 			// Parse the composer.json file with caching to avoid repeated parsing
-			$composerJson = $this->parseComposerJson($composerJsonPath);
+			$composerJson = self::parseComposerJson($composerJsonPath);
 			
 			// Verify the composer.json contains PSR-4 autoloading configuration
 			// This is necessary because not all projects use PSR-4 autoloading
@@ -377,7 +387,7 @@
 			
 			// Use the same logic as the autoloader-based approach to find the best namespace match
 			// This ensures consistent namespace resolution regardless of which method finds it
-			return $this->findMostSpecificNamespace($directory, $prefixesPsr4);
+			return self::findMostSpecificNamespace($directory, $prefixesPsr4);
 		}
 		
 		/**
@@ -388,7 +398,7 @@
 		 * @param array<string, array<string>|string> $prefixesPsr4 PSR-4 namespace prefixes and their directories
 		 * @return string|null The complete namespace for the directory, or null if no match found
 		 */
-		private function findMostSpecificNamespace(string $directory, array $prefixesPsr4): ?string {
+		private static function findMostSpecificNamespace(string $directory, array $prefixesPsr4): ?string {
 			// Track best match found so far
 			$matchedNamespace = null;
 			$longestMatch = 0;
@@ -449,17 +459,17 @@
 		 * @param string $path Path to composer.json
 		 * @return array|null Parsed composer.json as array or null on failure
 		 */
-		private function parseComposerJson(string $path): ?array {
+		private static function parseComposerJson(string $path): ?array {
 			// Return cached result if available
-			if (isset($this->composerJsonCache[$path])) {
-				return $this->composerJsonCache[$path];
+			if (isset(self::$composerJsonCache[$path])) {
+				return self::$composerJsonCache[$path];
 			}
 			
 			// Parse the file
-			$result = $this->parseComposerJsonWithoutCache($path);
+			$result = self::parseComposerJsonWithoutCache($path);
 			
 			// Cache the result
-			$this->composerJsonCache[$path] = $result;
+			self::$composerJsonCache[$path] = $result;
 			
 			// Return the result
 			return $result;
@@ -470,7 +480,7 @@
 		 * @param string $path Path to composer.json
 		 * @return array|null Parsed composer.json as array or null on failure
 		 */
-		private function parseComposerJsonWithoutCache(string $path): ?array {
+		private static function parseComposerJsonWithoutCache(string $path): ?array {
 			// Attempt to read the file at the given path
 			// Note: file_get_contents returns string on success, false on failure
 			$content = file_get_contents($path);
@@ -499,7 +509,7 @@
 		 * @param string $entry Directory entry name
 		 * @return bool True if entry should be skipped
 		 */
-		private function shouldSkipEntry(string $entry): bool {
+		private static function shouldSkipEntry(string $entry): bool {
 			return in_array($entry, ['.', '..', '.htaccess'], true);
 		}
 		
@@ -508,7 +518,7 @@
 		 * @param string $filename Filename to check
 		 * @return bool True if the file is a PHP file
 		 */
-		private function isPhpFile(string $filename): bool {
+		private static function isPhpFile(string $filename): bool {
 			return str_ends_with($filename, '.php');
 		}
 		
@@ -517,7 +527,7 @@
 		 * @param string $filename File name
 		 * @return string Class name
 		 */
-		private function extractClassNameFromFile(string $filename): string {
+		private static function extractClassNameFromFile(string $filename): string {
 			return pathinfo($filename, PATHINFO_FILENAME);
 		}
 		
@@ -526,7 +536,7 @@
 		 * @param string $path Path to check
 		 * @return bool True if path is absolute, false if relative
 		 */
-		private function isAbsolutePath(string $path): bool {
+		private static function isAbsolutePath(string $path): bool {
 			// Empty path is considered relative
 			if (empty($path)) {
 				return false;
@@ -558,7 +568,7 @@
 		 * @param string|null $directory Directory to start searching from (defaults to current directory)
 		 * @return string|null Directory containing composer.json if found, null otherwise
 		 */
-		private function getProjectRootFromComposerJson(?string $directory = null): ?string {
+		private static function getProjectRootFromComposerJson(?string $directory = null): ?string {
 			// If no directory provided, use current directory
 			// Otherwise, convert the given path to an absolute path if it's not already
 			$directory = $directory !== null ? realpath($directory) : getcwd();
@@ -603,7 +613,7 @@
 		 * @param string|null $directory Directory to start searching from (defaults to current directory)
 		 * @return string|null Project root directory if found, null otherwise
 		 */
-		private function getSharedHostingRoot(?string $directory = null): ?string {
+		private static function getSharedHostingRoot(?string $directory = null): ?string {
 			// Start from provided directory or current working directory
 			$directory = $directory !== null ? realpath($directory) : getcwd();
 			
@@ -679,7 +689,7 @@
 		 * @param string $path The path to resolve (can be Unix or Windows format)
 		 * @return string The resolved path using system directory separators
 		 */
-		private function doResolvePath(string $path): string {
+		private static function doResolvePath(string $path): string {
 			// Handle empty paths early - nothing to resolve
 			if ($path === '') {
 				return '';

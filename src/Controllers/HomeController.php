@@ -16,7 +16,7 @@
 		 * @return Response
 		 */
 		public function index(CacheInterface $cache): Response {
-			return $this->render('index.html.twig');
+			return new Response("<h1>Welcome to Canvas Blog!</h1>");
 		}
 		
 		/**

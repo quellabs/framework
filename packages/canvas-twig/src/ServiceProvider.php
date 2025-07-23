@@ -5,6 +5,7 @@
 	use Quellabs\Contracts\Context\MethodContext;
 	use Quellabs\Contracts\Templates\TemplateEngineInterface;
 	use Quellabs\Discover\Discover;
+	use Quellabs\Support\ComposerUtils;
 	
 	/**
 	 * Twig Template Engine Service Provider for Canvas Framework
@@ -35,8 +36,7 @@
 		 * @return array Default configuration array
 		 */
 		public static function getDefaults(): array {
-			$discover = new Discover();
-			$projectRoot = $discover->getProjectRoot();
+			$projectRoot = ComposerUtils::getProjectRoot();
 			
 			return [
 				// Directory where Twig template files (.twig) are stored

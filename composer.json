@@ -52,6 +52,10 @@
     {
       "type": "path",
       "url": "./packages/signal-hub"
+    },
+    {
+      "type": "path",
+      "url": "./packages/support"
     }
   ],
   "require": {
@@ -70,6 +74,7 @@
     "composer/composer": "^2.0",
     "quellabs/sculpt": "dev-main as 1.999.999",
     "quellabs/contracts": "dev-main as 1.999.999",
+    "quellabs/support": "dev-main as 1.999.999",
     "quellabs/annotation-reader": "dev-main as 1.999.999",
     "quellabs/canvas": "dev-main as 1.999.999",
     "quellabs/canvas-objectquel": "dev-main as 1.999.999",
@@ -85,6 +90,7 @@
     "psr-4": {
       "App\\": "src/",
       "Quellabs\\Contracts\\": "packages/contracts/src/",
+      "Quellabs\\Support\\": "packages/support/src/",
       "Quellabs\\Discover\\": "packages/discover/src/",
       "Quellabs\\DependencyInjection\\": "packages/dependency-injection/src/",
       "Quellabs\\AnnotationReader\\": "packages/annotation-reader/src/",

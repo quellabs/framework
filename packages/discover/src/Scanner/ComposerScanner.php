@@ -4,7 +4,6 @@
 	
 	use Quellabs\Discover\Utilities\ComposerInstalledLoader;
 	use Quellabs\Discover\Utilities\ComposerJsonLoader;
-	use Quellabs\Discover\Utilities\ComposerPathResolver;
 	use Quellabs\Discover\Utilities\ProviderValidator;
 	use InvalidArgumentException;
 	use Quellabs\Contracts\Discovery\ProviderDefinition;
@@ -37,11 +36,6 @@
 		private readonly string $discoverySection;
 		
 		/**
-		 * @var ComposerPathResolver PSR-4 utilities
-		 */
-		private readonly ComposerPathResolver $utilities;
-		
-		/**
 		 * Class responsible for validating providers are valid
 		 * @var ProviderValidator
 		 */
@@ -66,7 +60,6 @@
 		) {
 			$this->familyName = $familyName;
 			$this->discoverySection = $discoverySection;
-			$this->utilities = new ComposerPathResolver();
 			$this->providerValidator = new ProviderValidator();
 			$this->logger = $logger ?? new NullLogger();
 		}
@@ -77,8 +70,8 @@
 		 */
 		public function scan(): array {
 			// Fetch extra data sections from composer.json and composer.lock ("config/discovery-mapping.php")
-			$composerInstalledLoader = new ComposerInstalledLoader($this->utilities);
-			$composerJsonLoader = new ComposerJsonLoader($this->utilities);
+			$composerInstalledLoader = new ComposerInstalledLoader();
+			$composerJsonLoader = new ComposerJsonLoader();
 			
 			// Discover providers defined within the current project structure
 			$discoveryMapping = array_merge($composerInstalledLoader->getData(), $composerJsonLoader->getData());

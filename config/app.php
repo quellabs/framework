@@ -8,7 +8,7 @@
 		'debug_mode'             => false,
 		
 		// Template engine
-		'template_engine'        => 'twig',
+		'template_engine'        => 'smarty',
 
 		// Path to controller classes
 		'controller_directory'   => $srcDir . '/Controllers',

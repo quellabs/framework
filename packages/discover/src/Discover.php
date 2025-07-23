@@ -2,12 +2,10 @@
 	
 	namespace Quellabs\Discover;
 	
-	use RuntimeException;
-	use Composer\Autoload\ClassLoader;
+	use Quellabs\Support\ComposerUtils;
 	use Quellabs\Discover\Scanner\ScannerInterface;
 	use Quellabs\Contracts\Discovery\ProviderInterface;
 	use Quellabs\Contracts\Discovery\ProviderDefinition;
-	use Quellabs\Discover\Utilities\ComposerPathResolver;
 	
 	class Discover {
 		
@@ -15,11 +13,6 @@
 		 * @var array<ScannerInterface>
 		 */
 		protected array $scanners = [];
-		
-		/**
-		 * @var ComposerPathResolver PSR-4 Utility Class
-		 */
-		private ComposerPathResolver $utilities;
 		
 		/**
 		 * @var array<string, ProviderDefinition> Provider definitions indexed by unique keys
@@ -30,13 +23,6 @@
 		 * @var array Map of instantiated providers by definition key
 		 */
 		protected array $instantiatedProviders = [];
-		
-		/**
-		 * Create a new Discover instance
-		 */
-		public function __construct() {
-			$this->utilities = new ComposerPathResolver();
-		}
 		
 		/**
 		 * Discover providers using all registered scanners
@@ -332,75 +318,6 @@
 			// Return self to allow method chaining
 			return $this;
 		}
-		
-		/**
-		 * Gets the Composer autoloader instance
-		 * @return ClassLoader
-		 * @throws RuntimeException If autoloader can't be found
-		 */
-		public function getComposerAutoloader(): ClassLoader {
-			return $this->utilities->getComposerAutoloader();
-		}
-		
-		/**
-		 * Find directory containing composer.json by traversing up from the given directory
-		 * @param string|null $directory Directory to start searching from (defaults to current directory)
-		 * @return string|null Directory containing composer.json if found, null otherwise
-		 */
-		public function getProjectRoot(?string $directory = null): ?string {
-			return $this->utilities->getProjectRoot($directory);
-		}
-		
-		/**
-		 * Maps a directory path to a namespace based on PSR-4 rules.
-		 * This method attempts to determine the correct namespace for a directory by:
-		 * 1. First checking against registered autoloader PSR-4 mappings (for dependencies)
-		 * 2. Then checking against the main project's composer.json PSR-4 mappings if necessary
-		 * @param string $directory Directory path to map to a namespace
-		 * @return string|null The corresponding namespace if found, null otherwise
-		 */
-		public function resolveNamespaceFromPath(string $directory): ?string {
-			return $this->utilities->resolveNamespaceFromPath($directory);
-		}
-		
-		/**
-		 * Recursively scans a directory and maps files to namespaced classes based on PSR-4 rules
-		 * @param string $directory Directory to scan
-		 * @param callable|null $filter Optional callback function to filter classes (receives className as parameter)
-		 * @return array<string> Array of fully qualified class names
-		 */
-		public function findClassesInDirectory(string $directory, ?callable $filter = null): array {
-			return $this->utilities->findClassesInDirectory($directory, $filter);
-		}
-		
-		/**
-		 * Resolves relative path components without checking file existence
-		 * @param string $path The path to resolve (e.g., "hallo/../test")
-		 * @return string The resolved path (e.g., "test")
-		 * @deprecated Use normalizePath instead
-		 */
-		public function resolvePath(string $path): string {
-			return $this->utilities->normalizePath($path);
-		}
-		
-		/**
-		 * Resolves relative path components without checking file existence
-		 * @param string $path The path to resolve (e.g., "hallo/../test")
-		 * @return string The resolved path (e.g., "test")
-		 */
-		public function normalizePath(string $path): string {
-			return $this->utilities->normalizePath($path);
-		}
-		
-		/**
-		 * Resolve path to absolute path within project root
-		 * @param string $path Path to resolve (relative or absolute)
-		 * @param bool $treatAsRelative Force path to be treated as relative to project root
-		 * @return string The resolved absolute path
-		 */
-		public function resolveProjectPath(string $path, bool $treatAsRelative = false): string {
-			return $this->utilities->resolveProjectPath($path, $treatAsRelative);
-		}
 
 		/**
 		 * Get or instantiate a provider from its definition
@@ -508,7 +425,7 @@
 			}
 			
 			// Get the project's root directory
-			$rootDir = $this->utilities->getProjectRoot();
+			$rootDir = ComposerUtils::getProjectRoot();
 
 			// Fetch and merge all given config files
 			$result = [];
