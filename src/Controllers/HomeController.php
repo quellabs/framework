@@ -35,6 +35,6 @@
 		 * @return Response
 		 */
 		public function user(string $path): Response {
-			return new Response("Hello, " . $path);
+			return new Response("<h1>Hello, " . $path . "</h1>");
 		}
 	}
