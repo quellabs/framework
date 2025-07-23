@@ -1,0 +1,66 @@
+{
+  "name": "quellabs/canvas-twig",
+  "description": "Twig template engine integration for the Canvas PHP framework",
+  "keywords": [
+    "canvas-framework",
+    "twiog-template",
+    "template-integration",
+    "php-templating"
+  ],
+  "type": "library",
+  "license": "MIT",
+  "homepage": "https://github.com/quellabs/canvas-twig",
+  "support": {
+    "issues": "https://github.com/quellabs/canvas-twig/issues",
+    "source": "https://github.com/quellabs/canvas-twig"
+  },
+  "authors": [
+    {
+      "name": "Quellabs",
+      "email": "info@quellabs.com",
+      "homepage": "https://quellabs.com"
+    }
+  ],
+  "minimum-stability": "stable",
+  "prefer-stable": true,
+  "config": {
+    "platform": {
+      "php": "8.2"
+    },
+    "sort-packages": true,
+    "optimize-autoloader": true,
+    "classmap-authoritative": true,
+    "allow-plugins": {
+      "quellabs/discover": false
+    }
+  },
+  "require": {
+    "twig/twig": "^3.0",
+    "quellabs/discover": "^1.",
+    "quellabs/dependency-injection": "^1.",
+    "quellabs/contracts": "^1.",
+    "quellabs/sculpt": "^1."
+  },
+  "autoload": {
+    "psr-4": {
+      "Quellabs\\Canvas\\Twig\\": "src/"
+    }
+  },
+  "extra": {
+    "discover": {
+      "di": {
+        "provider": "Quellabs\\Canvas\\Twig\\ServiceProvider",
+        "config": "config/twig.php"
+      },
+      "sculpt": {
+        "provider": "Quellabs\\Canvas\\Twig\\Sculpt\\ServiceProvider",
+        "config": "config/twig.php"
+      }
+    }
+  },
+  "scripts": {
+    "post-install-cmd": [
+      "php -r \"copy('vendor/quellabs/canvas-twig/config/twig.php', 'public/config/twig.php');\""
+    ]
+  }
+}
