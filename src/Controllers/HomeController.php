@@ -13,7 +13,6 @@
 		
 		/**
 		 * @Route("/")
-		 * @InterceptWith(RateLimitAspect::class)
 		 * @return Response
 		 */
 		public function index(CacheInterface $cache): Response {

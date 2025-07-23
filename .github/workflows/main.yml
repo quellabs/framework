@@ -18,6 +18,7 @@ jobs:
       matrix:
         package:
           - contracts
+          - support
           - discover
           - dependency-injection
           - sculpt
@@ -27,6 +28,7 @@ jobs:
           - canvas
           - canvas-objectquel
           - canvas-smarty
+          - canvas-twig
           - canvas-skeleton
       fail-fast: false  # Let each package complete independently
     steps:

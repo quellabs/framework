@@ -21,8 +21,6 @@
 			return $this->render("blog/index.tpl", [
 				'posts' => $posts
 			]);
-			
-			
 		}
 		
 		/**

@@ -67,13 +67,19 @@
 				return false;
 			}
 			
-			// If no specific provider is requested, we can handle it
-			if (empty($metadata['provider'])) {
-				return true;
+			// Priority 1: Explicit provider request via context/metadata
+			if (!empty($metadata['provider'])) {
+				return $metadata['provider'] === 'smarty';
 			}
 			
-			// Only handle requests specifically asking for 'smarty' provider
-			return $metadata['provider'] === 'smarty';
+			// Priority 2: Check app.php configuration
+			if ($this->hasConfigValue('template_engine')) {
+				return $this->getConfigValue('template_engine') === 'smarty';
+			}
+			
+			// Return true to indicate this provider is available
+			// The discovery system should handle "first encountered" logic
+			return true;
 		}
 		
 		/**

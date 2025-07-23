@@ -1,0 +1,24 @@
+{
+  "name": "quellabs/support",
+  "description": "Support utilities for the Quellabs ecosystem including Composer path resolution and class discovery",
+  "type": "library",
+  "license": "MIT",
+  "keywords": [
+    "composer",
+    "utilities",
+    "psr-4"
+  ],
+  "config": {
+    "platform": {
+      "php": "8.2"
+    }
+  },
+  "require": {
+    "php": "^8.2"
+  },
+  "autoload": {
+    "psr-4": {
+      "Quellabs\\Support\\": "src/"
+    }
+  }
+}
