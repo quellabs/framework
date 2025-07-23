@@ -2,10 +2,9 @@
 	
 	namespace Quellabs\Canvas\Twig;
 	
+	use Quellabs\Support\ComposerUtils;
 	use Quellabs\Contracts\Context\MethodContext;
 	use Quellabs\Contracts\Templates\TemplateEngineInterface;
-	use Quellabs\Discover\Discover;
-	use Quellabs\Support\ComposerUtils;
 	
 	/**
 	 * Twig Template Engine Service Provider for Canvas Framework
