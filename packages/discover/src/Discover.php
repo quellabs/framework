@@ -476,7 +476,7 @@
 				}
 				
 				// Load configuration from the file if specified in the definition
-				$loadedConfig = $this->loadConfigFile($definition->configFile);
+				$loadedConfig = $this->loadConfigFiles($definition->configFiles);
 				
 				// Merge default configuration with loaded config (loaded config takes precedence)
 				$finalConfig = array_merge($definition->defaults, $loadedConfig);
@@ -498,29 +498,36 @@
 		
 		/**
 		 * Loads a configuration file and returns its contents as an array.
-		 * @param string|null $configFile Relative path to the configuration file from project root
+		 * @param array $configFiles List of config files to load
 		 * @return array The configuration array from the file, or empty array if the file doesn't exist
 		 */
-		protected function loadConfigFile(?string $configFile): array {
+		protected function loadConfigFiles(array $configFiles): array {
 			// Return empty config when no file given
-			if ($configFile === null) {
+			if (empty($configFiles)) {
 				return [];
 			}
 			
 			// Get the project's root directory
 			$rootDir = $this->utilities->getProjectRoot();
+
+			// Fetch and merge all given config files
+			$result = [];
 			
-			// Build the absolute path to the configuration file
-			$completeDir = $rootDir . DIRECTORY_SEPARATOR . $configFile;
-			
-			// Make sure the file exists before attempting to load it
-			if (!file_exists($completeDir)) {
-				return [];
+			foreach($configFiles as $configFile) {
+				// Build the absolute path to the configuration file
+				$completeDir = $rootDir . DIRECTORY_SEPARATOR . $configFile;
+				
+				// Make sure the file exists before attempting to load it
+				if (!file_exists($completeDir)) {
+					continue;
+				}
+				
+				// Include the file and return its contents
+				// This works because PHP's include statement returns the result of the included file,
+				// which should be an array if the file contains 'return []' or similar
+				$result = array_merge($result, include $completeDir);
 			}
 			
-			// Include the file and return its contents
-			// This works because PHP's include statement returns the result of the included file,
-			// which should be an array if the file contains 'return []' or similar
-			return include $completeDir;
+			return $result;
 		}
 	}
