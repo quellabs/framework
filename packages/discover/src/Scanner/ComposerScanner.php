@@ -168,10 +168,18 @@
 			$metadata = $className::getMetadata();
 			$defaults = $className::getDefaults();
 			
+			if (!isset($providerData['config'])) {
+				$configFiles = [];
+			} elseif (is_array($providerData['config'])) {
+				$configFiles = $providerData['config'];
+			} else {
+				$configFiles = [$providerData['config']];
+			}
+			
 			return new ProviderDefinition(
 				className: $className,
 				family: $providerData['family'],
-				configFile: $providerData['config'] ?? null,
+				configFiles: $configFiles,
 				metadata: $metadata,
 				defaults: $defaults
 			);

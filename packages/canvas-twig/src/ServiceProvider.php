@@ -4,6 +4,7 @@
 	
 	use Quellabs\Contracts\Context\MethodContext;
 	use Quellabs\Contracts\Templates\TemplateEngineInterface;
+	use Quellabs\Discover\Discover;
 	
 	/**
 	 * Twig Template Engine Service Provider for Canvas Framework
@@ -34,12 +35,15 @@
 		 * @return array Default configuration array
 		 */
 		public static function getDefaults(): array {
+			$discover = new Discover();
+			$projectRoot = $discover->getProjectRoot();
+			
 			return [
 				// Directory where Twig template files (.twig) are stored
-				'template_dir'     => dirname(__FILE__) . '/../templates/',
+				'template_dir'     => $projectRoot . '/templates/',
 				
 				// Directory where Twig stores cached compiled templates
-				'cache_dir'        => dirname(__FILE__) . '/../storage/cache/twig/',
+				'cache_dir'        => $projectRoot . '/storage/cache/twig/',
 				
 				// Enable/disable Twig's debug mode
 				'debugging'        => false,
@@ -79,13 +83,19 @@
 				return false;
 			}
 			
-			// If no specific provider is requested, we can handle it
-			if (empty($metadata['provider'])) {
-				return true;
+			// Priority 1: Explicit provider request via context/metadata
+			if (!empty($metadata['provider'])) {
+				return $metadata['provider'] === 'twig';
 			}
 			
-			// Only handle requests specifically asking for 'twig' provider
-			return $metadata['provider'] === 'twig';
+			// Priority 2: Check app.php configuration
+			if ($this->hasConfigValue('template_engine')) {
+				return $this->getConfigValue('template_engine') === 'twig';
+			}
+			
+			// Return true to indicate this provider is available
+			// The discovery system should handle "first encountered" logic
+			return true;
 		}
 		
 		/**

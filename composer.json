@@ -23,6 +23,10 @@
     },
     {
       "type": "path",
+      "url": "./packages/canvas-twig"
+    },
+    {
+      "type": "path",
       "url": "./packages/canvas-skeleton"
     },
     {
@@ -70,6 +74,7 @@
     "quellabs/canvas": "dev-main as 1.999.999",
     "quellabs/canvas-objectquel": "dev-main as 1.999.999",
     "quellabs/canvas-smarty": "dev-main as 1.999.999",
+    "quellabs/canvas-twig": "dev-main as 1.999.999",
     "quellabs/canvas-skeleton": "dev-main as 1.999.999",
     "quellabs/dependency-injection": "dev-main as 1.999.999",
     "quellabs/discover": "dev-main as 1.999.999",
@@ -88,7 +93,8 @@
       "Quellabs\\SignalHub\\": "packages/signal-hub/src/",
       "Quellabs\\Canvas\\": "packages/canvas/src/",
       "Quellabs\\Canvas\\ObjectQuel\\": "packages/canvas-objectquel/src/",
-      "Quellabs\\Canvas\\Smarty\\": "packages/canvas-smarty/src/"
+      "Quellabs\\Canvas\\Smarty\\": "packages/canvas-smarty/src/",
+      "Quellabs\\Canvas\\Twig\\": "packages/canvas-twig/src/"
     }
   },
   "config": {

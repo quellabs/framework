@@ -50,7 +50,7 @@
     "discover": {
       "di": {
         "provider": "Quellabs\\Canvas\\Twig\\ServiceProvider",
-        "config": "config/twig.php"
+        "config": ["config/twig.php", "config/app.php"]
       },
       "sculpt": {
         "provider": "Quellabs\\Canvas\\Twig\\Sculpt\\ServiceProvider",

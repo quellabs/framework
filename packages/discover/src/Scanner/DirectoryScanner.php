@@ -157,7 +157,7 @@
 					$definitions[] = new ProviderDefinition(
 						className: $className,
 						family: $this->defaultFamily,
-						configFile: null,
+						configFiles: [],
 						metadata: $className::getMetadata(),
 						defaults: $className::getDefaults()
 					);

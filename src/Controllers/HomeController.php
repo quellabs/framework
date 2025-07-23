@@ -13,11 +13,10 @@
 		
 		/**
 		 * @Route("/")
-		 * @InterceptWith(RateLimitAspect::class)
 		 * @return Response
 		 */
 		public function index(CacheInterface $cache): Response {
-			return new Response("<h1>Welcome to Canvas Blog!</h1>");
+			return $this->render('index.html.twig');
 		}
 		
 		/**

@@ -50,4 +50,23 @@
 		public function setConfig(array $config): void {
 			$this->config = array_merge(static::getDefaults(), $config);
 		}
+		
+		/**
+		 * Return true if the config value is present
+		 * @param string $key
+		 * @return mixed
+		 */
+		public function hasConfigValue(string $key): bool {
+			return isset($this->config[$key]);
+		}
+		
+		/**
+		 * Returns a certain value from the config array
+		 * @param string $key
+		 * @param mixed $default
+		 * @return mixed
+		 */
+		public function getConfigValue(string $key, mixed $default = null): mixed {
+			return $this->config[$key] ?? $default;
+		}
 	}
