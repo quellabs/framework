@@ -36,10 +36,10 @@
   },
   "require": {
     "twig/twig": "^3.0",
-    "quellabs/discover": "^1.",
     "quellabs/dependency-injection": "^1.",
     "quellabs/contracts": "^1.",
-    "quellabs/sculpt": "^1."
+    "quellabs/sculpt": "^1.",
+    "quellabs/support": "^1."
   },
   "autoload": {
     "psr-4": {
