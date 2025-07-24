@@ -554,13 +554,8 @@
 					return true;
 				}
 			}
-			
 			// Windows UNC paths (\\server\share)
-			if (PHP_OS_FAMILY === 'Windows' && strlen($path) >= 2 && $path[0] === '\\' && $path[1] === '\\') {
-				return true;
-			}
-			
-			return false;
+			return PHP_OS_FAMILY === 'Windows' && strlen($path) >= 2 && $path[0] === '\\' && $path[1] === '\\';
 		}
 		
 		/**

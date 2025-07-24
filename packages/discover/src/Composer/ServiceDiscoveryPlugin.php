@@ -197,14 +197,8 @@
 			if (str_starts_with($path, '/')) {
 				return true;
 			}
-			
-			// Windows-style absolute path (C:\, D:\, etc.)
-			if (PHP_OS_FAMILY === 'Windows' && preg_match('/^[A-Za-z]:[\/\\\\]/', $path)) {
-				return true;
-			}
-			
-			// Not an absolute path
-			return false;
+			// Windows-style absolute path (C:\, D:\, etc.) and not an absolute path
+			return PHP_OS_FAMILY === 'Windows' && preg_match('/^[A-Za-z]:[\/\\\\]/', $path);
 		}
 		
 		/**
