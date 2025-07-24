@@ -80,7 +80,7 @@
 			// These are usually third-party providers from vendor/ directory
 			$definitions = [];
 			
-			foreach ($discoveryMapping as $packageName => $extraData) {
+			foreach ($discoveryMapping as $extraData) {
 				// Check if package has opted into auto-discovery via 'extra.discover' section
 				// This is the standard convention for packages that want their providers discovered
 				if (isset($extraData[$this->discoverySection])) {

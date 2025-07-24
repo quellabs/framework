@@ -71,6 +71,7 @@
   "require-dev": {
     "phpstan/phpstan": "*",
     "phpunit/phpunit": "^9",
+    "rector/rector": "*",
     "composer/composer": "^2.0",
     "quellabs/sculpt": "dev-main as 1.999.999",
     "quellabs/contracts": "dev-main as 1.999.999",

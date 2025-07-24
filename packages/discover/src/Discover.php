@@ -298,7 +298,7 @@
 			}
 			
 			// Iterate through each provider family in the cache data
-			foreach ($cacheData['providers'] as $family => $familyProviders) {
+			foreach ($cacheData['providers'] as $familyProviders) {
 				// Process each provider within the current family
 				foreach ($familyProviders as $providerData) {
 					try {
