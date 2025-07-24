@@ -35,6 +35,10 @@
     },
     {
       "type": "path",
+      "url": "./packages/cache"
+    },
+    {
+      "type": "path",
       "url": "./packages/dependency-injection"
     },
     {
@@ -85,7 +89,8 @@
     "quellabs/dependency-injection": "dev-main as 1.999.999",
     "quellabs/discover": "dev-main as 1.999.999",
     "quellabs/objectquel": "dev-main as 1.999.999",
-    "quellabs/signal-hub": "dev-main as 1.999.999"
+    "quellabs/signal-hub": "dev-main as 1.999.999",
+    "quellabs/cache": "dev-main as 1.999.999"
   },
   "autoload": {
     "psr-4": {
@@ -101,7 +106,8 @@
       "Quellabs\\Canvas\\": "packages/canvas/src/",
       "Quellabs\\Canvas\\ObjectQuel\\": "packages/canvas-objectquel/src/",
       "Quellabs\\Canvas\\Smarty\\": "packages/canvas-smarty/src/",
-      "Quellabs\\Canvas\\Twig\\": "packages/canvas-twig/src/"
+      "Quellabs\\Canvas\\Twig\\": "packages/canvas-twig/src/",
+      "Quellabs\\Canvas\\Cache\\": "packages/cache/src/"
     }
   },
   "config": {

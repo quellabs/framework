@@ -5,6 +5,7 @@
   "dependency-injection": "1.0.21",
   "sculpt": "1.0.20",
   "objectquel": "1.0.25",
+  "cache": "1.0.0",
   "signal-hub": "1.0.23",
   "annotation-reader": "1.0.21",
   "canvas": "1.0.34",

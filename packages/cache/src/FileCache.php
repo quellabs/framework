@@ -1,6 +1,6 @@
 <?php
 	
-	namespace Quellabs\Canvas\Cache\Foundation;
+	namespace Quellabs\Cache;
 	
 	use Quellabs\Contracts\Cache\CacheInterface;
 	use Quellabs\Support\ComposerUtils;

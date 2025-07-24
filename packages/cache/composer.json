@@ -1,0 +1,22 @@
+{
+  "name": "quellabs/cache",
+  "description": "",
+  "keywords": [
+  ],
+  "type": "library",
+  "license": "MIT",
+  "config": {
+    "platform": {
+      "php": "8.3"
+    }
+  },
+  "require": {
+    "quellabs/contracts": "^1.",
+    "quellabs/support": "^1."
+  },
+  "autoload": {
+    "psr-4": {
+      "Quellabs\\Cache\\": "src/"
+    }
+  }
+}
