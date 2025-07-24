@@ -5,7 +5,7 @@
 	use Quellabs\Canvas\Annotations\Route;
 	use Quellabs\Canvas\Annotations\InterceptWith;
 	use Quellabs\Canvas\RateLimiting\RateLimitAspect;
-	use Quellabs\Canvas\Cache\Contracts\CacheInterface;
+	use Quellabs\Contracts\Cache\CacheInterface;
 	use Quellabs\Canvas\Controllers\BaseController;
 	use Symfony\Component\HttpFoundation\Response;
 	

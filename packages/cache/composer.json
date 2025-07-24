@@ -1,18 +1,42 @@
 {
   "name": "quellabs/cache",
-  "description": "",
+  "description": "High-performance caching component for the Quellabs ecosystem",
   "keywords": [
+    "cache",
+    "caching",
+    "performance",
+    "storage",
+    "quellabs"
   ],
   "type": "library",
   "license": "MIT",
+  "homepage": "https://github.com/quellabs/cache",
+  "support": {
+    "issues": "https://github.com/quellabs/cache/issues",
+    "source": "https://github.com/quellabs/cache"
+  },
+  "authors": [
+    {
+      "name": "Quellabs Team",
+      "email": "team@quellabs.com"
+    }
+  ],
+  "minimum-stability": "stable",
+  "prefer-stable": true,
   "config": {
+    "sort-packages": true,
     "platform": {
       "php": "8.3"
     }
   },
   "require": {
-    "quellabs/contracts": "^1.",
-    "quellabs/support": "^1."
+    "php": "^8.3",
+    "quellabs/contracts": "^1.0",
+    "quellabs/support": "^1.0"
+  },
+  "require-dev": {
+    "phpunit/phpunit": "^10.0",
+    "phpstan/phpstan": "^1.10"
   },
   "autoload": {
     "psr-4": {
