@@ -33,10 +33,11 @@
   },
   "require": {
     "smarty/smarty": "^5.0",
-    "quellabs/discover": "^1.",
     "quellabs/dependency-injection": "^1.",
     "quellabs/contracts": "^1.",
-    "quellabs/sculpt": "^1."
+    "quellabs/sculpt": "^1.",
+    "quellabs/signal-hub": "^1.",
+    "quellabs/support": "^1."
   },
   "autoload": {
     "psr-4": {
@@ -47,7 +48,7 @@
     "discover": {
       "di": {
         "provider": "Quellabs\\Canvas\\Smarty\\ServiceProvider",
-        "config": "config/smarty.php"
+        "config": ["config/smarty.php", "config/app.php"]
       },
       "sculpt": {
         "provider": "Quellabs\\Canvas\\Smarty\\Sculpt\\ServiceProvider",

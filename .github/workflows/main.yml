@@ -18,15 +18,19 @@ jobs:
       matrix:
         package:
           - contracts
+          - support
           - discover
           - dependency-injection
           - sculpt
+          - cache
           - objectquel
           - signal-hub
           - annotation-reader
           - canvas
           - canvas-objectquel
           - canvas-smarty
+          - canvas-twig
+          - canvas-skeleton
       fail-fast: false  # Let each package complete independently
     steps:
       - uses: actions/checkout@v4

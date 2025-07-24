@@ -168,14 +168,9 @@
 		    
 		    // Get the parent class name using the ReflectionHandler
 		    $parentClass = $this->getReflectionHandler()->getParent($normalizedClass);
-		    
 		    // Check if the parent class exists in the entity_table_name array
-		    if ($parentClass !== null && isset($this->entity_table_name[$parentClass])) {
-			    return true;
-		    }
-		    
 		    // Return false if neither the entity nor its parent class exists in the entity_table_name array
-		    return false;
+		    return $parentClass !== null && isset($this->entity_table_name[$parentClass]);
 	    }
 	    
 	    /**
@@ -719,12 +714,12 @@
 	     */
 	    private function internalGetDependencies(mixed $entity, string $desiredAnnotationType): array {
 		    // Determine the class name of the entity
-		    if (!is_object($entity)) {
-			    $entityClass = ltrim($entity, "\\");
-		    } elseif ($entity instanceof \ReflectionClass) {
+		    if ($entity instanceof \ReflectionClass) {
 			    $entityClass = $entity->getName();
-		    } else {
+		    } elseif (is_object($entity)) {
 			    $entityClass = get_class($entity);
+		    } else {
+			    $entityClass = ltrim($entity, "\\");
 		    }
 		    
 		    // If the class name is a proxy, get the class from the parent

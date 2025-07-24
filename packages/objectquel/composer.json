@@ -26,9 +26,6 @@
   "config": {
     "platform": {
       "php": "8.2"
-    },
-    "allow-plugins": {
-      "quellabs/discover": false
     }
   },
   "require": {
@@ -39,10 +36,11 @@
     "ext-gd": "*",
     "ext-fileinfo": "*",
     "quellabs/contracts": "^1.",
+    "quellabs/support": "^1.",
+    "quellabs/cache": "^1.",
     "quellabs/signal-hub": "^1.",
     "quellabs/annotation-reader": "^1.",
     "quellabs/sculpt": "^1.",
-    "quellabs/discover": "^1.",
     "quellabs/dependency-injection": "^1.",
     "robmorgan/phinx": "*",
     "cakephp/database": "*",

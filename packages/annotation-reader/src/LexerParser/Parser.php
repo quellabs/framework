@@ -426,12 +426,13 @@
 				}
 				
 				// Try to match a string token for the attribute key
-				if (!$this->lexer->optionalMatch(Token::String, $attributeKey)) {
-					// If not a string, try to match a number token
-					if (!$this->lexer->optionalMatch(Token::Number, $attributeKey)) {
-						// If neither string nor number, throw an exception
-						throw new ParserException("Expected number or string, got " . $attributeKey->toString($attributeKey->getType()));
-					}
+				// If not a string, try to match a number token
+				if (
+					!$this->lexer->optionalMatch(Token::String, $attributeKey) &&
+					!$this->lexer->optionalMatch(Token::Number, $attributeKey)
+				) {
+					// If neither string nor number, throw an exception
+					throw new ParserException("Expected number or string, got " . $attributeKey->toString($attributeKey->getType()));
 				}
 				
 				// Check if this is a key-value pair (has an equals sign)

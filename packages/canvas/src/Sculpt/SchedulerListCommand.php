@@ -6,6 +6,7 @@
 	use Quellabs\Sculpt\ConfigurationManager;
 	use Quellabs\Canvas\TaskScheduler\TaskScheduler;
 	use Quellabs\Canvas\TaskScheduler\Storage\FileTaskStorage;
+	use Quellabs\Support\ComposerUtils;
 	
 	/**
 	 * Command class for listing scheduled tasks
@@ -49,7 +50,7 @@
 			// Create a task scheduler instance with file-based storage
 			// The storage directory is set to {project_root}/storage/task-scheduler
 			$scheduler = new TaskScheduler(
-				new FileTaskStorage($discover->getProjectRoot() . "/storage/task-scheduler")
+				new FileTaskStorage(ComposerUtils::getProjectRoot() . "/storage/task-scheduler")
 			);
 			
 			// Build the task list with sorting data
@@ -112,7 +113,7 @@
 				['pattern' => '/^\*\/([2-5])(\s|$)/', 'priority' => 2], // Every 2-5 minutes
 				['pattern' => '/^\*\/([6-9]|1[0-5])(\s|$)/', 'priority' => 3], // Every 6-15 minutes
 				['pattern' => '/^\*\/([1-2][6-9]|30)(\s|$)/', 'priority' => 4], // Every 16-30 minutes
-				['pattern' => '/^\*\/([3-5][0-9])(\s|$)/', 'priority' => 5], // Every 31-59 minutes
+				['pattern' => '/^\*\/([3-5]\d)(\s|$)/', 'priority' => 5], // Every 31-59 minutes
 				
 				// Specific minute patterns
 				['pattern' => '/^\d+\/\d+ \* \* \* \*$/', 'priority' => 2], // Every X minutes (alternative format)

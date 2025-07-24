@@ -23,7 +23,19 @@
     },
     {
       "type": "path",
+      "url": "./packages/canvas-twig"
+    },
+    {
+      "type": "path",
+      "url": "./packages/canvas-skeleton"
+    },
+    {
+      "type": "path",
       "url": "./packages/contracts"
+    },
+    {
+      "type": "path",
+      "url": "./packages/cache"
     },
     {
       "type": "path",
@@ -44,6 +56,10 @@
     {
       "type": "path",
       "url": "./packages/signal-hub"
+    },
+    {
+      "type": "path",
+      "url": "./packages/support"
     }
   ],
   "require": {
@@ -59,22 +75,28 @@
   "require-dev": {
     "phpstan/phpstan": "*",
     "phpunit/phpunit": "^9",
+    "rector/rector": "*",
     "composer/composer": "^2.0",
     "quellabs/sculpt": "dev-main as 1.999.999",
     "quellabs/contracts": "dev-main as 1.999.999",
+    "quellabs/support": "dev-main as 1.999.999",
     "quellabs/annotation-reader": "dev-main as 1.999.999",
     "quellabs/canvas": "dev-main as 1.999.999",
     "quellabs/canvas-objectquel": "dev-main as 1.999.999",
     "quellabs/canvas-smarty": "dev-main as 1.999.999",
+    "quellabs/canvas-twig": "dev-main as 1.999.999",
+    "quellabs/canvas-skeleton": "dev-main as 1.999.999",
     "quellabs/dependency-injection": "dev-main as 1.999.999",
     "quellabs/discover": "dev-main as 1.999.999",
     "quellabs/objectquel": "dev-main as 1.999.999",
-    "quellabs/signal-hub": "dev-main as 1.999.999"
+    "quellabs/signal-hub": "dev-main as 1.999.999",
+    "quellabs/cache": "dev-main as 1.999.999"
   },
   "autoload": {
     "psr-4": {
       "App\\": "src/",
       "Quellabs\\Contracts\\": "packages/contracts/src/",
+      "Quellabs\\Support\\": "packages/support/src/",
       "Quellabs\\Discover\\": "packages/discover/src/",
       "Quellabs\\DependencyInjection\\": "packages/dependency-injection/src/",
       "Quellabs\\AnnotationReader\\": "packages/annotation-reader/src/",
@@ -83,7 +105,9 @@
       "Quellabs\\SignalHub\\": "packages/signal-hub/src/",
       "Quellabs\\Canvas\\": "packages/canvas/src/",
       "Quellabs\\Canvas\\ObjectQuel\\": "packages/canvas-objectquel/src/",
-      "Quellabs\\Canvas\\Smarty\\": "packages/canvas-smarty/src/"
+      "Quellabs\\Canvas\\Smarty\\": "packages/canvas-smarty/src/",
+      "Quellabs\\Canvas\\Twig\\": "packages/canvas-twig/src/",
+      "Quellabs\\Canvas\\Cache\\": "packages/cache/src/"
     }
   },
   "config": {

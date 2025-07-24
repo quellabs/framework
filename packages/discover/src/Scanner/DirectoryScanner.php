@@ -3,9 +3,9 @@
 	namespace Quellabs\Discover\Scanner;
 	
 	use Psr\Log\LoggerInterface;
-	use Quellabs\Discover\Utilities\ComposerPathResolver;
 	use Quellabs\Discover\Utilities\ProviderValidator;
 	use Quellabs\Contracts\Discovery\ProviderDefinition;
+	use Quellabs\Support\ComposerUtils;
 	
 	/**
 	 * Scans directories for classes that implement ProviderInterface
@@ -58,10 +58,6 @@
 		protected array $scannedClasses = [];
 		
 		/**
-		 * @var ComposerPathResolver PSR-4 utilities
-		 */
-		protected ComposerPathResolver $utilities;
-		
 		/**
 		 * Class responsible for validating providers are valid
 		 * @var ProviderValidator
@@ -83,7 +79,6 @@
 			$this->directories = $directories;
 			$this->pattern = $pattern;
 			$this->defaultFamily = $defaultFamily;
-			$this->utilities = new ComposerPathResolver();
 			$this->logger = $logger;
 			$this->providerValidator = new ProviderValidator();
 		}
@@ -138,7 +133,7 @@
 			
 			// Fetch all provider classes found in the directory
 			// Filter out the class names we don't want (filter)
-			$classes = $this->utilities->findClassesInDirectory($directory, function($className) {
+			$classes = ComposerUtils::findClassesInDirectory($directory, function($className) {
 				// Check class validity
 				if (!$this->providerValidator->validate($className)) {
 					return false;
@@ -157,7 +152,7 @@
 					$definitions[] = new ProviderDefinition(
 						className: $className,
 						family: $this->defaultFamily,
-						configFile: null,
+						configFiles: [],
 						metadata: $className::getMetadata(),
 						defaults: $className::getDefaults()
 					);

@@ -2,13 +2,16 @@
 	
 	namespace Quellabs\Canvas\Configuration;
 	
+	use Quellabs\Contracts\Configuration\ConfigurationInterface;
+	use Traversable;
+	
 	/**
 	 * Configuration management class for handling application settings
 	 *
 	 * This class provides a centralized way to manage configuration data with
 	 * support for type casting, default values, and dynamic configuration updates.
 	 */
-	class Configuration {
+	class Configuration implements ConfigurationInterface {
 
 		/** @var array The internal configuration storage array */
 		private array $config;
@@ -21,6 +24,15 @@
 			$this->config = $config;
 		}
 		
+		/**
+		 * Get an iterator for the configuration data
+		 * Allows the configuration object to be used in foreach loops
+		 * @return Traversable Iterator over the configuration array
+		 */
+		public function getIterator(): Traversable {
+			return new \ArrayIterator($this->config);
+		}
+
 		/**
 		 * Get the entire configuration array
 		 * @return array Complete configuration data
@@ -133,7 +145,7 @@
 				return array_map('trim', explode(',', $value));
 			}
 			
-			// Return arrays as-is, wrap other types in array
+			// Return arrays as-is, wrap other types in an array
 			return is_array($value) ? $value : [$value];
 		}
 	}

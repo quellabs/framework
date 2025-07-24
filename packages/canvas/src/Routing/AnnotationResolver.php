@@ -4,8 +4,9 @@
 	
 	use Quellabs\AnnotationReader\Exception\AnnotationReaderException;
 	use Quellabs\Canvas\Kernel;
+	use Quellabs\Support\ComposerUtils;
 	use Symfony\Component\HttpFoundation\Request;
-	use Quellabs\Canvas\Cache\Foundation\FileCache;
+	use Quellabs\Cache\FileCache;
 	use Quellabs\Canvas\Exceptions\RouteNotFoundException;
 	use Quellabs\Canvas\Routing\Components\RouteCacheManager;
 	use Quellabs\Canvas\Routing\Components\RouteDiscovery;
@@ -207,17 +208,20 @@
 		 * @return array Parsed URL segments
 		 */
 		private function parseRequestUrl(string $requestUri): array {
-			// Parse URL into segments
-			return array_values(array_filter(
-				explode('/', $requestUri),
-				fn($segment) => $segment !== ''
-			));
+			$result = [];
+			
+			foreach (explode('/', $requestUri) as $segment) {
+				if ($segment !== '') {
+					$result[] = $segment;
+				}
+			}
+			
+			return $result;
 		}
 		
 		/**
 		 * Get or build route index for fast lookups
 		 * @return array Complete route index ready for lookups
-		 * @throws AnnotationReaderException
 		 */
 		private function getRouteIndex(): array {
 			// Return cached index if available
@@ -243,7 +247,7 @@
 			
 			$this->debugMode = $config->getAs('debug_mode', 'bool', false);
 			$this->matchTrailingSlashes = $config->getAs('match_trailing_slashes', 'bool', false);
-			$this->cacheDirectory = $config->get('cache_dir', $this->kernel->getDiscover()->getProjectRoot() . "/storage/cache");
+			$this->cacheDirectory = $config->get('cache_dir', ComposerUtils::getProjectRoot() . "/storage/cache");
 			$this->controllerDirectory = $this->getControllerDirectory();
 		}
 		
@@ -295,11 +299,13 @@
 		 * @return void
 		 */
 		private function initializeCacheDirectory(): void {
-			if (!$this->debugMode && !is_dir($this->cacheDirectory)) {
-				if (!@mkdir($this->cacheDirectory, 0755, true)) {
-					error_log("AnnotationResolver: Cannot create cache directory: {$this->cacheDirectory}");
-					$this->debugMode = true;
-				}
+			if (
+				!$this->debugMode &&
+				!is_dir($this->cacheDirectory) &&
+				!@mkdir($this->cacheDirectory, 0755, true)
+			) {
+				error_log("AnnotationResolver: Cannot create cache directory: {$this->cacheDirectory}");
+				$this->debugMode = true;
 			}
 		}
 		
@@ -308,8 +314,7 @@
 		 * @return string Absolute path to controllers directory
 		 */
 		private function getControllerDirectory(): string {
-			$projectRoot = $this->kernel->getDiscover()->getProjectRoot();
-			$fullPath = $projectRoot . DIRECTORY_SEPARATOR . "src" . DIRECTORY_SEPARATOR . "Controllers";
+			$fullPath = ComposerUtils::getProjectRoot() . DIRECTORY_SEPARATOR . "src" . DIRECTORY_SEPARATOR . "Controllers";
 			
 			if (!is_dir($fullPath)) {
 				return "";

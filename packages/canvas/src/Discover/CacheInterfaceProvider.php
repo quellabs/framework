@@ -2,15 +2,15 @@
 	
 	namespace Quellabs\Canvas\Discover;
 	
-	use Quellabs\Discover\Discover;
 	use Quellabs\Canvas\Annotations\CacheContext;
 	use Quellabs\Contracts\Context\MethodContext;
 	use Quellabs\AnnotationReader\AnnotationReader;
-	use Quellabs\Canvas\Cache\Foundation\FileCache;
-	use Quellabs\Canvas\Cache\Contracts\CacheInterface;
+	use Quellabs\Cache\FileCache;
+	use Quellabs\Contracts\Cache\CacheInterface;
 	use Quellabs\Contracts\DependencyInjection\Container;
 	use Quellabs\DependencyInjection\Provider\ServiceProvider;
 	use Quellabs\AnnotationReader\Exception\AnnotationReaderException;
+	use Quellabs\Support\ComposerUtils;
 	
 	/**
 	 * This class is responsible for providing a CacheInterface implementation
@@ -37,9 +37,6 @@
 		/** @var Container Used for dependency injection */
 		private Container $dependencyInjector;
 		
-		/** @var Discover Discovery component for fetching the project root */
-		private Discover $discover;
-		
 		/** @var string|null Project root folder */
 		private ?string $projectRoot;
 		
@@ -51,19 +48,16 @@
 		
 		/**
 		 * CacheInterfaceProvider constructor
-		 * @param Discover $discover
 		 * @param Container $dependencyInjector
 		 * @param AnnotationReader $annotationReader
 		 */
 		public function __construct(
-			Discover $discover,
 			Container $dependencyInjector,
 			AnnotationReader $annotationReader
 		) {
 			$this->dependencyInjector = $dependencyInjector;
-			$this->discover = $discover;
 			$this->annotationReader = $annotationReader;
-			$this->projectRoot = $this->discover->getProjectRoot();
+			$this->projectRoot = ComposerUtils::getProjectRoot();
 			$this->pathToConfig = $this->projectRoot . DIRECTORY_SEPARATOR . "config" . DIRECTORY_SEPARATOR . "cache.php";
 			$this->cacheConfig = $this->getCacheConfig();
 		}
@@ -148,7 +142,7 @@
 			} catch (\Throwable $e) {
 				// Wrap any exception in a more specific RuntimeException
 				// This provides better error context for debugging
-				throw new \RuntimeException("Failed to load cache configuration: " . $e->getMessage());
+				throw new \RuntimeException("Failed to load cache configuration: " . $e->getMessage(), $e->getCode(), $e);
 			}
 		}
 		

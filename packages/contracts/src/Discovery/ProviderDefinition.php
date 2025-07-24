@@ -11,7 +11,7 @@
 	readonly class ProviderDefinition {
 		public string $className;
 		public string $family;
-		public ?string $configFile;
+		public array $configFiles;
 		public array $metadata;
 		public array $defaults;
 		
@@ -19,20 +19,20 @@
 		 * ProviderDefinition constructor
 		 * @param string $className
 		 * @param string $family
-		 * @param string|null $configFile
+		 * @param array $configFiles
 		 * @param array $metadata
 		 * @param array $defaults
 		 */
 		public function __construct(
 			string  $className,
 			string  $family,
-			?string $configFile = null,
+			array   $configFiles = [],
 			array   $metadata = [],
 			array   $defaults = []
 		) {
 			$this->defaults = $defaults;
 			$this->metadata = $metadata;
-			$this->configFile = $configFile;
+			$this->configFiles = $configFiles;
 			$this->family = $family;
 			$this->className = $className;
 			
@@ -46,7 +46,7 @@
 		}
 		
 		/**
-		 * Create from array (backward compatibility)
+		 * Create from an array (backward compatibility)
 		 * @param array $data
 		 * @return self
 		 */
@@ -55,10 +55,18 @@
 				throw new InvalidArgumentException('Missing required class or family');
 			}
 			
+			if (!isset($data['config'])) {
+				$configFiles = [];
+			} elseif (is_array($data['config'])) {
+				$configFiles = $data['config'];
+			} else {
+				$configFiles = [$data['config']];
+			}
+			
 			return new self(
 				className: $data['class'],
 				family: $data['family'],
-				configFile: $data['config'] ?? null,
+				configFiles: $configFiles,
 				metadata: $data['metadata'] ?? [],
 				defaults: $data['defaults'] ?? []
 			);
@@ -72,7 +80,7 @@
 			return [
 				'class'    => $this->className,
 				'family'   => $this->family,
-				'config'   => $this->configFile,
+				'config'   => $this->configFiles,
 				'metadata' => $this->metadata,
 				'defaults' => $this->defaults
 			];
@@ -100,7 +108,7 @@
 		 * @return bool
 		 */
 		public function hasConfigFile(): bool {
-			return $this->configFile !== null;
+			return !empty($this->configFiles);
 		}
 		
 		/**

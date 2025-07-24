@@ -4,17 +4,13 @@
 	
 	use Psr\Log\NullLogger;
 	use Psr\Log\LoggerInterface;
+	use Quellabs\Support\ComposerUtils;
 	
 	/**
 	 * Handles loading and parsing the main composer.json configuration file
 	 * Uses PSR4 utility class for file path resolution
 	 */
 	class ComposerJsonLoader {
-		
-		/**
-		 * @var ComposerPathResolver Path resolution utility
-		 */
-		private ComposerPathResolver $pathResolver;
 		
 		/**
 		 * @var array|null Cached composer.json data
@@ -28,14 +24,9 @@
 		
 		/**
 		 * ComposerJsonLoader constructor
-		 * @param ComposerPathResolver|null $pathResolver Optional PSR4 instance (creates new one if not provided)
 		 * @param LoggerInterface|null $logger Logger instance (uses NullLogger if not provided)
 		 */
-		public function __construct(
-			?ComposerPathResolver $pathResolver = null,
-			?LoggerInterface      $logger = null
-		) {
-			$this->pathResolver = $pathResolver ?? new ComposerPathResolver();
+		public function __construct(?LoggerInterface $logger = null) {
 			$this->logger = $logger ?? new NullLogger();
 		}
 		
@@ -51,7 +42,7 @@
 			}
 			
 			// Use pathResolver to locate the composer.json file
-			$composerJsonPath = $this->pathResolver->getComposerJsonFilePath($startDirectory);
+			$composerJsonPath = ComposerUtils::getComposerJsonFilePath($startDirectory);
 			
 			if ($composerJsonPath === null) {
 				// Silent return - composer.json is optional and may not exist in valid scenarios

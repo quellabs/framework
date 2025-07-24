@@ -28,6 +28,14 @@
 			// Replace http_response_code() calls with Canvas header collection function
 			$content = $this->replaceHttpResponseCodeCalls($content);
 			
+			// Replace mysqli_query() calls with monitored version
+			$content = $this->replaceMysqliQueryCalls($content);
+			$content = $this->replaceMysqliPrepareCalls($content);
+			
+			// Replace PDO query methods with monitored versions
+			$content = $this->replacePdoQueryCalls($content);
+			$content = $this->replacePdoPrepareCalls($content);
+			
 			// Inject Canvas helper functions at the appropriate location
 			return $this->addCanvasHelper($content);
 		}
@@ -112,7 +120,82 @@
 				return "canvas_header('Status: {$statusCode}', true)";
 			}, $content);
 		}
-
+		
+		/**
+		 * Replace mysqli_query() calls with the monitored version for inspection.
+		 * This allows automatic monitoring of all database queries in the inspector.
+		 * @param string $content The PHP content to process
+		 * @return string Content with mysqli_query() calls replaced
+		 */
+		private function replaceMysqliQueryCalls(string $content): string {
+			// Pattern to match mysqli_query calls with various parameter combinations
+			// mysqli_query($connection, $query) or mysqli_query($connection, $query, $resultmode)
+			$pattern = '/\bmysqli_query\s*\(\s*([^,]+),\s*([^,)]+)(?:\s*,\s*([^)]+))?\s*\)/';
+			
+			return preg_replace_callback($pattern, function ($matches) {
+				$connection = trim($matches[1]);
+				$query = trim($matches[2]);
+				$resultMode = isset($matches[3]) ? ', ' . trim($matches[3]) : '';
+				
+				// Replace with monitored version
+				return "canvas_mysqli_query({$connection}, {$query}{$resultMode})";
+			}, $content);
+		}
+		
+		/**
+		 * Replace mysqli_prepare() calls with monitored version.
+		 * @param string $content The PHP content to process
+		 * @return string Content with mysqli_prepare() calls replaced
+		 */
+		private function replaceMysqliPrepareCalls(string $content): string {
+			// Pattern to match mysqli_prepare calls
+			$pattern = '/\bmysqli_prepare\s*\(\s*([^,]+),\s*([^)]+)\s*\)/';
+			
+			return preg_replace_callback($pattern, function ($matches) {
+				$connection = trim($matches[1]);
+				$query = trim($matches[2]);
+				
+				// Replace with monitored version
+				return "canvas_mysqli_prepare({$connection}, {$query})";
+			}, $content);
+		}
+		
+		/**
+		 * Replace PDO::query() calls with monitored version.
+		 * @param string $content The PHP content to process
+		 * @return string Content with PDO::query() calls replaced
+		 */
+		private function replacePdoQueryCalls(string $content): string {
+			// Pattern to match $pdo->query() calls
+			$pattern = '/(\$\w+)->query\s*\(\s*([^)]+)\s*\)/';
+			
+			return preg_replace_callback($pattern, function ($matches) {
+				$pdoVar = $matches[1];
+				$query = trim($matches[2]);
+				
+				// Replace with monitored version
+				return "canvas_pdo_query({$pdoVar}, {$query})";
+			}, $content);
+		}
+		
+		/**
+		 * Replace PDO::prepare() calls with monitored version.
+		 * @param string $content The PHP content to process
+		 * @return string Content with PDO::prepare() calls replaced
+		 */
+		private function replacePdoPrepareCalls(string $content): string {
+			// Pattern to match $pdo->prepare() calls
+			$pattern = '/(\$\w+)->prepare\s*\(\s*([^)]+)\s*\)/';
+			
+			return preg_replace_callback($pattern, function ($matches) {
+				$pdoVar = $matches[1];
+				$query = trim($matches[2]);
+				
+				// Replace with monitored version
+				return "canvas_pdo_prepare({$pdoVar}, {$query})";
+			}, $content);
+		}
+		
 		/**
 		 * Find the best insertion point for Canvas helper code.
 		 * This method analyzes the file structure to inject helpers AFTER namespace
@@ -134,7 +217,7 @@
 			}
 			
 			// Find all use statements after the namespace (or after <?php if no namespace)
-			$usePattern = '/\buse\s+(?:[^;{]+(?:\{[^}]*\})?[^;]*);/i';
+			$usePattern = '/\buse\s+[^;{]+(?:\{[^}]*})?[^;]*;/i';
 			$searchPos = $insertPos;
 			
 			// Keep finding use statements and update insertion point to after the last one
@@ -142,7 +225,7 @@
 				$insertPos = (int)$matches[0][1] + strlen($matches[0][0]);
 				$searchPos = $insertPos;
 			}
-		
+			
 			// Return the insertion point
 			return $insertPos;
 		}

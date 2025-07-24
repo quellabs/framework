@@ -1,6 +1,6 @@
 <?php
 	
-	namespace Quellabs\Canvas\Cache\Contracts;
+	namespace Quellabs\Contracts\Cache;
 	
 	interface CacheInterface {
 		

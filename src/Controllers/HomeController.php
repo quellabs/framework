@@ -5,7 +5,7 @@
 	use Quellabs\Canvas\Annotations\Route;
 	use Quellabs\Canvas\Annotations\InterceptWith;
 	use Quellabs\Canvas\RateLimiting\RateLimitAspect;
-	use Quellabs\Canvas\Cache\Contracts\CacheInterface;
+	use Quellabs\Contracts\Cache\CacheInterface;
 	use Quellabs\Canvas\Controllers\BaseController;
 	use Symfony\Component\HttpFoundation\Response;
 	
@@ -13,7 +13,6 @@
 		
 		/**
 		 * @Route("/")
-		 * @InterceptWith(RateLimitAspect::class)
 		 * @return Response
 		 */
 		public function index(CacheInterface $cache): Response {
@@ -35,6 +34,6 @@
 		 * @return Response
 		 */
 		public function user(string $path): Response {
-			return new Response("Hello, " . $path);
+			return new Response("<h1>Hello, " . $path . "</h1>");
 		}
 	}
