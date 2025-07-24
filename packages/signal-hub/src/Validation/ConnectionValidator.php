@@ -98,9 +98,11 @@
 			if (count($signalParameterTypes) !== count($slotParams)) {
 				throw new \Exception("Signal and slot parameter count mismatch.");
 			}
+			// Check type compatibility for each parameter
+			$counter = count($signalParameterTypes);
 			
 			// Check type compatibility for each parameter
-			for ($i = 0; $i < count($signalParameterTypes); $i++) {
+			for ($i = 0; $i < $counter; $i++) {
 				$signalType = $signalParameterTypes[$i];
 				$slotType = $slotParams[$i]->getType();
 				

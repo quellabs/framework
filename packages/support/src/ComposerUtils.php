@@ -548,12 +548,18 @@
 			}
 			
 			// Windows absolute paths (C:\, D:\, etc.)
-			if (PHP_OS_FAMILY === 'Windows' && strlen($path) >= 3) {
-				// Check for drive letter pattern: C:\, D:\, etc.
-				if (ctype_alpha($path[0]) && $path[1] === ':' && ($path[2] === '\\' || $path[2] === '/')) {
-					return true;
-				}
+			// Check for drive letter pattern: C:\, D:\, etc.
+			if (
+				PHP_OS_FAMILY === 'Windows' &&
+				strlen($path) >= 3 &&
+				ctype_alpha($path[0]) &&
+				$path[1] === ':' && (
+					$path[2] === '\\' || $path[2] === '/'
+				)
+			) {
+				return true;
 			}
+			
 			// Windows UNC paths (\\server\share)
 			return PHP_OS_FAMILY === 'Windows' && strlen($path) >= 2 && $path[0] === '\\' && $path[1] === '\\';
 		}
