@@ -43,7 +43,7 @@
 		/**
 		 * Signals
 		 */
-		protected Signal $debugQuerySignal;
+		protected ?Signal $debugQuerySignal;
 		
 		/**
 		 * Properties
@@ -72,8 +72,15 @@
 			$this->property_handler = new PropertyHandler();
 			
 			// Assign the signal hub to this class
-			$this->setSignalHub(SignalHubLocator::getInstance());
-			$this->debugQuerySignal = $this->createSignal(['array'], 'debug.objectquel.query');
+			$signalHub = SignalHubLocator::getInstance();
+			$this->setSignalHub($signalHub);
+			
+			// Fetch Signal or create if it doesn't exist
+			$this->debugQuerySignal = $signalHub->getSignal('debug.database.query');
+			
+			if ($this->debugQuerySignal === null) {
+				$this->debugQuerySignal = $this->createSignal(['array'], 'debug.database.query');
+			}
 		}
 		
 		/**
@@ -113,7 +120,7 @@
 		 * @param $entity
 		 * @return bool
 		 */
-		public function persist(&$entity): bool {
+		public function persist($entity): bool {
 			if (!is_object($entity)) {
 				return false;
 			}
@@ -153,7 +160,7 @@
 			$start = microtime(true);
 			
 			// Execute the query through the query executor
-			$result = $this->query_executor->executeQuery($query, $parameters);
+			$result = $this->query_executor->executeQuery(trim($query), $parameters);
 			
 			// Record end time to calculate execution duration
 			$end = microtime(true);
@@ -161,6 +168,7 @@
 			// Emit debug signal with comprehensive query execution information
 			// Time is converted to milliseconds for easier readability
 			$this->debugQuerySignal->emit([
+				'driver' => 'objectquel',
 				'query'             => $query,
 				'bound_parameters'  => $parameters,
 				'execution_time_ms' => round(($end - $start) * 1000),

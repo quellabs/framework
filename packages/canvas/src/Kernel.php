@@ -4,7 +4,7 @@
 	
 	use Quellabs\AnnotationReader\AnnotationReader;
 	use Quellabs\Canvas\Configuration\Configuration;
-	use Quellabs\Canvas\Http\RequestHandler;
+	use Quellabs\Canvas\Routing\RequestHandler;
 	use Quellabs\Canvas\Inspector\EventCollector;
 	use Quellabs\Canvas\Discover\AnnotationsReaderProvider;
 	use Quellabs\Canvas\Discover\CacheInterfaceProvider;
@@ -63,7 +63,7 @@
 			$this->dependencyInjector->register(new ConfigurationProvider($this->configuration));
 			$this->dependencyInjector->register(new DiscoverProvider($this->discover));
 			$this->dependencyInjector->register(new SignalHubProvider());
-			$this->dependencyInjector->register(new CacheInterfaceProvider($this->discover, $this->dependencyInjector, $this->annotationsReader));
+			$this->dependencyInjector->register(new CacheInterfaceProvider($this->dependencyInjector, $this->annotationsReader));
 			$this->dependencyInjector->register(new AnnotationsReaderProvider($this->annotationsReader));
 			
 			// Initialize legacy fallback handler to null explicitly to please phpstan
@@ -210,6 +210,13 @@
 				return;
 			}
 			
+			// Route
+			if ($isLegacyPath || $urlData === null) {
+				$pattern = '';
+			} else {
+				$pattern = $urlData['route']?->getRoute();
+			}
+			
 			// Send signal for performance monitoring
 			$this->canvasQuerySignal->emit([
 				'request'           => $request,
@@ -217,7 +224,7 @@
 				'http_methods'      => $urlData['http_methods'] ?? null,
 				'controller'        => $urlData['controller'] ?? null,
 				'method'            => $urlData['method'] ?? null,
-				'pattern'           => $urlData['route']?->getRoute() ?? null,
+				'pattern' => $pattern,
 				'parameters'        => $urlData['variables'] ?? null,
 				'execution_time_ms' => (microtime(true) - $start) * 1000,
 				'memory_used_bytes' => memory_get_usage(true) - $memoryStart

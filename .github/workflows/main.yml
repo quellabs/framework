@@ -22,6 +22,7 @@ jobs:
           - discover
           - dependency-injection
           - sculpt
+          - cache
           - objectquel
           - signal-hub
           - annotation-reader

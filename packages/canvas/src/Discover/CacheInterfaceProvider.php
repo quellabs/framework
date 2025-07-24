@@ -2,12 +2,11 @@
 	
 	namespace Quellabs\Canvas\Discover;
 	
-	use Quellabs\Discover\Discover;
 	use Quellabs\Canvas\Annotations\CacheContext;
 	use Quellabs\Contracts\Context\MethodContext;
 	use Quellabs\AnnotationReader\AnnotationReader;
-	use Quellabs\Canvas\Cache\Foundation\FileCache;
-	use Quellabs\Canvas\Cache\Contracts\CacheInterface;
+	use Quellabs\Cache\FileCache;
+	use Quellabs\Contracts\Cache\CacheInterface;
 	use Quellabs\Contracts\DependencyInjection\Container;
 	use Quellabs\DependencyInjection\Provider\ServiceProvider;
 	use Quellabs\AnnotationReader\Exception\AnnotationReaderException;
@@ -49,12 +48,10 @@
 		
 		/**
 		 * CacheInterfaceProvider constructor
-		 * @param Discover $discover
 		 * @param Container $dependencyInjector
 		 * @param AnnotationReader $annotationReader
 		 */
 		public function __construct(
-			Discover $discover,
 			Container $dependencyInjector,
 			AnnotationReader $annotationReader
 		) {
@@ -145,7 +142,7 @@
 			} catch (\Throwable $e) {
 				// Wrap any exception in a more specific RuntimeException
 				// This provides better error context for debugging
-				throw new \RuntimeException("Failed to load cache configuration: " . $e->getMessage());
+				throw new \RuntimeException("Failed to load cache configuration: " . $e->getMessage(), $e->getCode(), $e);
 			}
 		}
 		

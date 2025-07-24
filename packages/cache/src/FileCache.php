@@ -1,9 +1,8 @@
 <?php
 	
-	namespace Quellabs\Canvas\Cache\Foundation;
+	namespace Quellabs\Cache;
 	
-	use Quellabs\Canvas\Cache\Contracts\CacheInterface;
-	use Quellabs\Discover\Discover;
+	use Quellabs\Contracts\Cache\CacheInterface;
 	use Quellabs\Support\ComposerUtils;
 	
 	/**

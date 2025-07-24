@@ -52,13 +52,8 @@
 			if ($typeB === 'object' && self::isClassName($typeA)) {
 				return true;
 			}
-			
 			// If typeA is generic 'object', check if typeB is a class
-			if ($typeA === 'object' && self::isClassName($typeB)) {
-				return true;
-			}
-			
-			return false;
+			return $typeA === 'object' && self::isClassName($typeB);
 		}
 		
 		/**
@@ -84,13 +79,8 @@
 			if ($isTypeAPrimitive !== $isTypeBPrimitive) {
 				return true;
 			}
-			
 			// If both are primitives but different types, they're not compatible
-			if ($isTypeAPrimitive && $isTypeBPrimitive && $typeA !== $typeB) {
-				return true;
-			}
-			
-			return false;
+			return $isTypeAPrimitive && $isTypeBPrimitive && $typeA !== $typeB;
 		}
 		
 		/**

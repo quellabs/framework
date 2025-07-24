@@ -6,7 +6,7 @@
 	use Quellabs\Canvas\Kernel;
 	use Quellabs\Support\ComposerUtils;
 	use Symfony\Component\HttpFoundation\Request;
-	use Quellabs\Canvas\Cache\Foundation\FileCache;
+	use Quellabs\Cache\FileCache;
 	use Quellabs\Canvas\Exceptions\RouteNotFoundException;
 	use Quellabs\Canvas\Routing\Components\RouteCacheManager;
 	use Quellabs\Canvas\Routing\Components\RouteDiscovery;
@@ -299,11 +299,13 @@
 		 * @return void
 		 */
 		private function initializeCacheDirectory(): void {
-			if (!$this->debugMode && !is_dir($this->cacheDirectory)) {
-				if (!@mkdir($this->cacheDirectory, 0755, true)) {
-					error_log("AnnotationResolver: Cannot create cache directory: {$this->cacheDirectory}");
-					$this->debugMode = true;
-				}
+			if (
+				!$this->debugMode &&
+				!is_dir($this->cacheDirectory) &&
+				!@mkdir($this->cacheDirectory, 0755, true)
+			) {
+				error_log("AnnotationResolver: Cannot create cache directory: {$this->cacheDirectory}");
+				$this->debugMode = true;
 			}
 		}
 		
