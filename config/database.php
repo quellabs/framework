@@ -5,7 +5,7 @@
 		'host'             => 'localhost',              // Database server hostname or IP address
 		'database'         => 'canvas_blog',            // Name of the database to connect to
 		'username'         => 'root',                   // Database username for authentication
-		'password'         => 'root',                   // Database password for authentication
+		'password'         => '',                       // Database password for authentication
 		'port'             => 3306,                     // Database server port (3306 is MySQL default)
 		'charset'          => 'utf8mb4',                // Character set for database connection
 		'collation'        => 'utf8mb4_unicode_ci',     // Collation for text comparison and sorting
