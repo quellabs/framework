@@ -9,7 +9,7 @@
 		
 		// Template engine
 		'template_engine'        => 'smarty',
-
+		
 		// Path to controller classes
 		'controller_directory'   => $srcDir . '/Controllers',
 		
