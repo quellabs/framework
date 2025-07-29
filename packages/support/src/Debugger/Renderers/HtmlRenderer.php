@@ -138,13 +138,13 @@
 		 */
 		protected static function renderObject(object $object): void {
 			$className = get_class($object);
-			$hash = spl_object_hash($object);
+			$objectId = spl_object_id($object);
 			$id = self::getNextId();
 			
 			echo '<div id="canvas-dump-' . $id . '" class="canvas-dump-item">';
 			echo '<span class="canvas-dump-expandable" onclick="toggleCanvasDump(' . $id . ')">';
 			echo '<span class="canvas-dump-toggle">−</span>';
-			echo '<span style="color: ' . Colors::getHtml('object') . '">' . $className . '</span> {#' . substr($hash, -4);
+			echo '<span style="color: ' . Colors::getHtml('object') . '">' . $className . '</span> {#' . $objectId;
 			
 			// Add special handling for common objects
 			$objectValue = self::getObjectStringRepresentation($object);
