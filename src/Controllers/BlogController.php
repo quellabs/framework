@@ -18,6 +18,8 @@
 		public function index(): Response {
 			$posts = $this->em->findBy(PostEntity::class, ['published' => true]);
 			
+			d($posts);
+			
 			return $this->render("blog/index.tpl", [
 				'posts' => $posts
 			]);

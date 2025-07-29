@@ -108,7 +108,10 @@
       "Quellabs\\Canvas\\Smarty\\": "packages/canvas-smarty/src/",
       "Quellabs\\Canvas\\Twig\\": "packages/canvas-twig/src/",
       "Quellabs\\Canvas\\Cache\\": "packages/cache/src/"
-    }
+    },
+    "files": [
+      "packages/support/src/bootstrap.php"
+    ]
   },
   "config": {
     "allow-plugins": {
