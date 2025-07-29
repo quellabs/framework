@@ -98,7 +98,7 @@
 		 * Render arrays with collapsible HTML interface
 		 * @param array $array The array to render
 		 */
-		protected static function renderArray(array $array) {
+		protected static function renderArray(array $array): void {
 			$count = count($array);
 			$id = self::getNextId();
 			
@@ -212,7 +212,7 @@
 		 * Render simple values inline
 		 * @param mixed $value The value to render
 		 */
-		private static function renderSimpleValueInline($value): void {
+		private static function renderSimpleValueInline(mixed $value): void {
 			$type = gettype($value);
 			
 			if ($type === 'string') {
