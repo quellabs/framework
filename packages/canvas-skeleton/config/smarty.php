@@ -5,6 +5,6 @@
 		'compile_dir'    => dirname(__FILE__) . '/../storage/smarty/compile/',
 		'cache_dir'      => dirname(__FILE__) . '/../storage/smarty/cache/',
 		'debugging'      => false,
-		'caching'        => true,
+		'caching'        => false,
 		'clear_compiled' => true,
 	];
