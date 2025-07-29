@@ -10,7 +10,7 @@
   "annotation-reader": "1.0.22",
   "canvas": "1.0.38",
   "canvas-objectquel": "1.0.21",
-  "canvas-smarty": "1.0.24",
+  "canvas-smarty": "1.0.25",
   "canvas-twig": "1.0.1",
-  "canvas-skeleton": "1.0.4"
+  "canvas-skeleton": "1.0.5"
 }
