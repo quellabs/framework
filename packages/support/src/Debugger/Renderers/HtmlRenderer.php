@@ -7,7 +7,7 @@
 	use Quellabs\Support\Debugger\Colors;
 	
 	/**
-	 * HTML renderer for web output - Refactored to eliminate duplication
+	 * HTML renderer for web output - Now properly utilizing BaseRenderer
 	 */
 	class HtmlRenderer extends BaseRenderer {
 		
@@ -18,28 +18,22 @@
 		private static bool $stylesOutputted = false;
 		
 		/**
-		 * Value type rendering strategies
-		 * @var array
+		 * Initialize HTML-specific type renderers
 		 */
-		private static array $typeRenderers = [];
-		
-		/**
-		 * Initialize type renderers
-		 */
-		private static function initTypeRenderers(): void {
-			if (!empty(self::$typeRenderers)) {
+		protected static function initTypeRenderers(): void {
+			if (!empty(static::$typeRenderers)) {
 				return;
 			}
 			
-			self::$typeRenderers = [
-				'string'   => [self::class, 'renderString'],
-				'integer'  => [self::class, 'renderNumber'],
-				'double'   => [self::class, 'renderNumber'],
-				'boolean'  => [self::class, 'renderBoolean'],
-				'NULL'     => [self::class, 'renderNull'],
-				'array'    => [self::class, 'renderArrayType'],
-				'object'   => [self::class, 'renderObjectType'],
-				'resource' => [self::class, 'renderResource'],
+			static::$typeRenderers = [
+				'string' => [static::class, 'renderString'],
+				'integer' => [static::class, 'renderInteger'],
+				'double' => [static::class, 'renderFloat'],
+				'boolean' => [static::class, 'renderBoolean'],
+				'NULL' => [static::class, 'renderNull'],
+				'array' => [static::class, 'renderArray'],
+				'object' => [static::class, 'renderObject'],
+				'resource' => [static::class, 'renderResource'],
 			];
 		}
 		
@@ -48,247 +42,284 @@
 		 * @param array $vars Variables to render
 		 */
 		public static function render(array $vars): void {
+			// Reset state for fresh render
+			static::reset();
+			
+			// Initialize type renderers
+			static::initTypeRenderers();
+			
 			// Only output styles once per request
-			if (!self::$stylesOutputted) {
+			if (!static::$stylesOutputted) {
 				echo StyleSheet::get();
 				echo JavaScript::get();
-				self::$stylesOutputted = true;
+				static::$stylesOutputted = true;
 			}
-			
-			self::initTypeRenderers();
 			
 			// Render each variable in its own container
 			foreach ($vars as $var) {
 				echo '<div class="canvas-dump">';
-				self::renderValue($var);
+				static::renderValue($var);
 				echo '</div>';
-			}
-		}
-		
-		/**
-		 * Render a single value with HTML formatting
-		 * @param mixed $value The value to render
-		 * @param string|null $key Optional key name
-		 * @param bool $inline Whether to render inline (for object properties)
-		 */
-		protected static function renderValue($value, $key = null, bool $inline = false) {
-			$type = gettype($value);
-			
-			// Render key if provided
-			if ($key !== null) {
-				if (!$inline) {
-					echo '<div class="canvas-dump-line">' . self::getIndent();
-				}
 				
-				echo '<span class="canvas-dump-key" style="color: ' . Colors::getHtml('key') . '">"' . htmlspecialchars($key) . '"</span> => ';
-			} elseif (!$inline) {
-				echo '<div class="canvas-dump-line">' . self::getIndent();
+				// Reset for next variable
+				static::$processedObjects = [];
 			}
-			
-			// Use type-specific renderer
-			$renderer = self::$typeRenderers[$type] ?? [self::class, 'renderUnknown'];
-			$result = call_user_func($renderer, $value, $inline);
-			
-			// Close div if not inline
-			if (!$inline && !in_array($type, ['array', 'object'])) {
-				echo '</div>';
-			}
-			
-			return $result;
 		}
 		
 		/**
 		 * Render string values
 		 * @param string $value
-		 * @return void [html_content, should_close_div]
+		 * @param string|null $key
+		 * @param array $context
 		 */
-		private static function renderString(string $value): void {
-			echo '<span style="color: ' . Colors::getHtml('string') . '">"' . htmlspecialchars($value) . '"</span>';
-			echo ' <span class="canvas-dump-type canvas-dump-length">(' . strlen($value) . ')</span>';
+		protected static function renderString(string $value, $key = null, array $context = []): void {
+			static::renderKeyIfPresent($key);
+			
+			$truncated = static::truncateString($value);
+			$wasTruncated = $truncated !== $value;
+			
+			echo '<span style="color: ' . Colors::getHtml('string') . '">"' . htmlspecialchars($truncated) . '"</span>';
+			echo ' <span class="canvas-dump-type canvas-dump-length">(' . strlen($value) . ')';
+			
+			if ($wasTruncated) {
+				echo ' truncated';
+			}
+			
+			echo '</span>';
+			static::closeLineIfNotInline($context);
 		}
 		
 		/**
-		 * Render numeric values (int/float)
-		 * @param int|float $value
-		 * @param bool $inline
+		 * Render integer values
+		 * @param int $value
+		 * @param string|null $key
+		 * @param array $context
 		 */
-		private static function renderNumber($value, bool $inline = false): void {
-			$type = is_int($value) ? 'integer' : 'float';
-			echo '<span style="color: ' . Colors::getHtml($type) . '">' . $value . '</span>';
-			
-			if ($inline) {
-				echo '</div>';
-			}
+		protected static function renderInteger(int $value, $key = null, array $context = []): void {
+			static::renderKeyIfPresent($key);
+			echo '<span style="color: ' . Colors::getHtml('integer') . '">' . $value . '</span>';
+			static::closeLineIfNotInline($context);
+		}
+		
+		/**
+		 * Render float values
+		 * @param float $value
+		 * @param string|null $key
+		 * @param array $context
+		 */
+		protected static function renderFloat(float $value, $key = null, array $context = []): void {
+			static::renderKeyIfPresent($key);
+			echo '<span style="color: ' . Colors::getHtml('float') . '">' . $value . '</span>';
+			static::closeLineIfNotInline($context);
 		}
 		
 		/**
 		 * Render boolean values
 		 * @param bool $value
-		 * @param bool $inline
+		 * @param string|null $key
+		 * @param array $context
 		 */
-		private static function renderBoolean(bool $value, bool $inline = false): void {
+		protected static function renderBoolean(bool $value, $key = null, array $context = []): void {
+			static::renderKeyIfPresent($key);
 			echo '<span style="color: ' . Colors::getHtml('boolean') . '">' . ($value ? 'true' : 'false') . '</span>';
-			
-			if ($inline) {
-				echo '</div>';
-			}
+			static::closeLineIfNotInline($context);
 		}
 		
 		/**
 		 * Render null values
 		 * @param null $value
-		 * @param bool $inline
+		 * @param string|null $key
+		 * @param array $context
 		 */
-		private static function renderNull($value, bool $inline = false): void {
+		protected static function renderNull($value, $key = null, array $context = []): void {
+			static::renderKeyIfPresent($key);
 			echo '<span style="color: ' . Colors::getHtml('null') . '">null</span>';
-			
-			if ($inline) {
-				echo '</div>';
-			}
+			static::closeLineIfNotInline($context);
 		}
 		
 		/**
 		 * Render resource values
 		 * @param resource $value
-		 * @param bool $inline
+		 * @param string|null $key
+		 * @param array $context
 		 */
-		private static function renderResource($value, bool $inline = false): void {
+		protected static function renderResource($value, $key = null, array $context = []): void {
+			static::renderKeyIfPresent($key);
 			echo '<span style="color: ' . Colors::getHtml('resource') . '">resource(' . get_resource_type($value) . ')</span>';
-			
-			if ($inline) {
-				echo '</div>';
-			}
-		}
-		
-		/**
-		 * Render unknown types
-		 * @param mixed $value
-		 * @param bool $inline
-		 */
-		private static function renderUnknown($value, bool $inline = false): void {
-			$type = gettype($value);
-			echo '<span style="color: ' . Colors::getHtml('null') . '">' . htmlspecialchars($type) . '</span>';
-			
-			if ($inline) {
-				echo '</div>';
-			}
-		}
-		
-		/**
-		 * Handle array type rendering (delegates to renderArray)
-		 * @param array $value
-		 * @param bool $inline
-		 */
-		private static function renderArrayType(array $value, bool $inline = false): void {
-			if (!$inline) {
-				echo '</div>';
-			}
-			self::renderArray($value);
-		}
-		
-		/**
-		 * Handle object type rendering (delegates to renderObject)
-		 * @param object $value
-		 * @param bool $inline
-		 */
-		private static function renderObjectType(object $value, bool $inline = false): void {
-			if (!$inline) {
-				echo '</div>';
-			}
-			self::renderObject($value);
+			static::closeLineIfNotInline($context);
 		}
 		
 		/**
 		 * Render arrays with collapsible HTML interface
-		 * @param array $array The array to render
+		 * @param array $value
+		 * @param string|null $key
+		 * @param array $context
 		 */
-		protected static function renderArray(array $array): void {
-			$count = count($array);
-			$id = self::getNextId();
+		protected static function renderArray(array $value, $key = null, array $context = []): void {
+			$count = count($value);
+			$id = static::getNextId();
+			
+			static::renderKeyIfPresent($key);
 			
 			if ($count === 0) {
 				echo '<span style="color: ' . Colors::getHtml('array') . '">array:0</span> []';
+				static::closeLineIfNotInline($context);
 				return;
 			}
+			
+			// Check if array should be truncated
+			$shouldTruncate = static::shouldTruncateArray($value);
+			$displayArray = $shouldTruncate ? static::getTruncatedArray($value) : $value;
+			$displayCount = count($displayArray);
 			
 			echo '<div id="canvas-dump-' . $id . '" class="canvas-dump-item">';
 			echo '<span class="canvas-dump-expandable" onclick="toggleCanvasDump(' . $id . ')">';
 			echo '<span class="canvas-dump-toggle">−</span>';
-			echo '<span style="color: ' . Colors::getHtml('array') . '">array:' . $count . '</span> [';
-			echo '</span>';
+			echo '<span style="color: ' . Colors::getHtml('array') . '">array:' . $count . '</span>';
 			
-			echo '<div class="canvas-dump-content">';
-			
-			if (!self::isMaxDepthReached()) {
-				self::increaseDepth();
-				
-				foreach ($array as $key => $value) {
-					self::renderValue($value, $key);
-				}
-				
-				self::decreaseDepth();
-			} else {
-				echo '<div class="canvas-dump-line">' . str_repeat('  ', self::$depth + 1) . '<span style="color: ' . Colors::getHtml('null') . '">...</span></div>';
+			if ($shouldTruncate) {
+				echo ' <span class="canvas-dump-type">(showing ' . $displayCount . ')</span>';
 			}
 			
-			echo '<div class="canvas-dump-line">' . self::getIndent() . ']</div>';
-			echo '</div>';
-			echo '</div>';
+			echo ' [</span>';
+			echo '<div class="canvas-dump-content">';
+			
+			static::increaseDepth();
+			foreach ($displayArray as $arrayKey => $arrayValue) {
+				echo '<div class="canvas-dump-line">' . static::getIndent();
+				static::renderValue($arrayValue, $arrayKey, ['inline' => false]);
+				echo '</div>';
+			}
+			
+			if ($shouldTruncate) {
+				echo '<div class="canvas-dump-line">' . static::getIndent();
+				echo '<span style="color: ' . Colors::getHtml('null') . '">... and ' . ($count - $displayCount) . ' more elements</span>';
+				echo '</div>';
+			}
+			
+			static::decreaseDepth();
+			echo '<div class="canvas-dump-line">' . static::getIndent() . ']</div>';
+			echo '</div></div>';
 		}
 		
 		/**
 		 * Render objects with HTML formatting
-		 * @param object $object The object to render
+		 * @param object $value
+		 * @param string|null $key
+		 * @param array $context
 		 */
-		protected static function renderObject(object $object): void {
-			$className = get_class($object);
-			$objectId = spl_object_id($object);
-			$id = self::getNextId();
+		protected static function renderObject(object $value, $key = null, array $context = []): void {
+			$className = get_class($value);
+			$objectId = spl_object_id($value);
+			$id = static::getNextId();
+			
+			static::renderKeyIfPresent($key);
 			
 			echo '<div id="canvas-dump-' . $id . '" class="canvas-dump-item">';
 			echo '<span class="canvas-dump-expandable" onclick="toggleCanvasDump(' . $id . ')">';
 			echo '<span class="canvas-dump-toggle">−</span>';
 			echo '<span style="color: ' . Colors::getHtml('object') . '">' . htmlspecialchars($className) . '</span> {#' . $objectId;
 			
-			// Add special handling for common objects
-			$objectValue = self::getObjectStringRepresentation($object);
-			echo '<span style="color: ' . Colors::getHtml('string') . '">' . $objectValue . '</span>';
-			echo '</span>';
-			
-			echo '<div class="canvas-dump-content">';
-			
-			if (!self::isMaxDepthReached()) {
-				self::increaseDepth();
-				
-				$properties = self::getObjectProperties($object);
-				
-				foreach ($properties as $property) {
-					$value = self::getPropertyValue($property, $object);
-					$visibility = self::getVisibilitySymbol($property);
-					$visibilityClass = $property->isPublic() ? '' : ($property->isProtected() ? 'canvas-dump-protected' : 'canvas-dump-private');
-					
-					echo '<div class="canvas-dump-line">' . self::getIndent() . '<span class="' . $visibilityClass . '" style="color: ' . Colors::getHtml('property') . '">' . $visibility . htmlspecialchars($property->getName()) . '</span>: ';
-					
-					if ($value === '*** uninitialized ***') {
-						echo '<span style="color: ' . Colors::getHtml('null') . '">*** uninitialized ***</span></div>';
-					} else {
-						self::renderValue($value, null, true);
-					}
-				}
-				
-				self::decreaseDepth();
-			} else {
-				echo '<div class="canvas-dump-line">' . str_repeat('  ', self::$depth + 1) . '<span style="color: ' . Colors::getHtml('null') . '">...</span></div>';
+			// Add string representation if available
+			$stringRepresentation = static::getObjectStringRepresentation($value);
+			if ($stringRepresentation) {
+				echo '<span style="color: ' . Colors::getHtml('string') . '">' . $stringRepresentation . '</span>';
 			}
 			
-			echo '<div class="canvas-dump-line">' . self::getIndent() . '}</div>';
-			echo '</div>';
+			echo '</span>';
+			echo '<div class="canvas-dump-content">';
+			
+			static::increaseDepth();
+			$properties = static::getObjectProperties($value);
+			
+			foreach ($properties as $property) {
+				$propertyValue = static::getPropertyValue($property, $value);
+				$visibility = static::getVisibilitySymbol($property);
+				$visibilityClass = $property->isPublic() ? '' :
+					($property->isProtected() ? 'canvas-dump-protected' : 'canvas-dump-private');
+				
+				echo '<div class="canvas-dump-line">' . static::getIndent();
+				echo '<span class="' . $visibilityClass . '" style="color: ' . Colors::getHtml('property') . '">';
+				echo $visibility . htmlspecialchars($property->getName()) . '</span>: ';
+				
+				if (is_string($propertyValue) && strpos($propertyValue, '***') === 0) {
+					echo '<span style="color: ' . Colors::getHtml('null') . '">' . htmlspecialchars($propertyValue) . '</span>';
+				} else {
+					static::renderValue($propertyValue, null, ['inline' => true]);
+				}
+				echo '</div>';
+			}
+			
+			static::decreaseDepth();
+			echo '<div class="canvas-dump-line">' . static::getIndent() . '}</div>';
+			echo '</div></div>';
+			
+			// Remove from circular reference tracking
+			static::removeFromCircularTracking($value);
+		}
+		
+		/**
+		 * Render circular reference indicator
+		 * @param object $object
+		 * @param string|null $key
+		 */
+		protected static function renderCircularReference(object $object, $key = null): void {
+			static::renderKeyIfPresent($key);
+			$className = get_class($object);
+			$objectId = spl_object_id($object);
+			
+			echo '<span style="color: ' . Colors::getHtml('null') . '">*CIRCULAR REFERENCE* ';
+			echo htmlspecialchars($className) . ' {#' . $objectId . '}</span>';
 			echo '</div>';
 		}
 		
 		/**
+		 * Render max depth indicator
+		 * @param string|null $key
+		 */
+		protected static function renderMaxDepthIndicator($key = null): void {
+			static::renderKeyIfPresent($key);
+			echo '<span style="color: ' . Colors::getHtml('null') . '">*MAX DEPTH REACHED*</span>';
+			echo '</div>';
+		}
+		
+		/**
+		 * Render unknown type
+		 * @param mixed $value
+		 * @param string|null $key
+		 * @param array $context
+		 */
+		protected static function renderUnknownType($value, $key = null, array $context = []): void {
+			static::renderKeyIfPresent($key);
+			$type = gettype($value);
+			echo '<span style="color: ' . Colors::getHtml('null') . '">unknown(' . htmlspecialchars($type) . ')</span>';
+			static::closeLineIfNotInline($context);
+		}
+		
+		/**
+		 * Helper: Render key if present
+		 * @param string|null $key
+		 */
+		private static function renderKeyIfPresent($key): void {
+			if ($key !== null) {
+				echo '<span class="canvas-dump-key" style="color: ' . Colors::getHtml('key') . '">';
+				echo '"' . htmlspecialchars($key) . '"</span> => ';
+			}
+		}
+		
+		/**
+		 * Helper: Close line div if not inline
+		 * @param array $context
+		 */
+		private static function closeLineIfNotInline(array $context): void {
+			if (!($context['inline'] ?? false)) {
+				echo '</div>';
+			}
+		}
+		
+		/**
 		 * Get string representation of common objects
-		 * @param object $object The object to get string representation for
+		 * @param object $object
 		 * @return string
 		 */
 		private static function getObjectStringRepresentation(object $object): string {
@@ -299,14 +330,28 @@
 			if (method_exists($object, '__toString')) {
 				try {
 					$stringValue = (string)$object;
-					if (strlen($stringValue) <= 100) {
-						return ' "' . htmlspecialchars($stringValue) . '"';
+					$truncated = static::truncateString($stringValue);
+					if ($truncated) {
+						return ' "' . htmlspecialchars($truncated) . '"';
 					}
 				} catch (\Exception $e) {
-					// Ignore if __toString() throws
+					return ' "*toString() error*"';
 				}
 			}
 			
 			return '';
+		}
+		
+		/**
+		 * Override beforeRenderValue to handle HTML-specific setup
+		 * @param mixed $value
+		 * @param string|null $key
+		 * @param array $context
+		 */
+		protected static function beforeRenderValue($value, $key = null, array $context = []): void {
+			// Only start a new line div if we're not inline and not handling complex types
+			if (!($context['inline'] ?? false) && !in_array(gettype($value), ['array', 'object'])) {
+				echo '<div class="canvas-dump-line">' . static::getIndent();
+			}
 		}
 	}
