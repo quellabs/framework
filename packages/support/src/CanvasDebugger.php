@@ -21,6 +21,9 @@
 		 * @return void
 		 */
 		public static function dump(...$vars): void {
+			// Capture call location IMMEDIATELY, before any other processing
+			$callLocation = self::getCallLocation();
+			
 			// Check if we're in a web context (not command line interface)
 			// php_sapi_name() returns 'cli' when running from command line
 			if (php_sapi_name() !== 'cli') {
@@ -50,74 +53,122 @@
 			
 			// Route to appropriate renderer based on environment
 			// Use specialized renderers that provide enhanced formatting for each context
-			RendererFactory::create(php_sapi_name())->render($vars);
+			$renderer = RendererFactory::create(php_sapi_name());
+			$renderer->setCallLocation($callLocation);
+			$renderer->render($vars);
 		}
 		
 		/**
 		 * This is equivalent to dump() + die() but with better error handling.
-		 * Useful for debugging when you want to stop execution at a specific point
-		 * and examine variable states without continuing script execution.
 		 * @param mixed ...$vars Variables to dump before dying - accepts any number of variables
 		 * @return void This method never returns as it terminates execution
 		 */
 		public static function dumpAndDie(...$vars): void {
+			// Capture call location IMMEDIATELY
+			$callLocation = self::getCallLocation();
+			
 			try {
-				// Clear any existing output buffers to prevent interference
-				// This ensures our debug output appears cleanly without mixed content
 				if (php_sapi_name() !== 'cli') {
-					// ob_get_level() returns current nesting level of output buffers
-					// We clear all buffers to start with a clean slate
 					while (ob_get_level()) {
-						ob_end_clean(); // Discard buffer contents and turn off buffering
+						ob_end_clean();
 					}
-					
-					ob_start(); // Start fresh output buffer for our debug output
+					ob_start();
 				}
 				
-				// Use our standard dump method to output the variables
-				self::dump(...$vars);
+				$renderer = RendererFactory::create(php_sapi_name());
+				$renderer->setCallLocation($callLocation);
+				$renderer->render($vars);
 				
-				// Flush the output buffer to ensure content reaches the browser
 				if (php_sapi_name() !== 'cli') {
-					ob_end_flush(); // Send buffer contents to browser and turn off buffering
+					ob_end_flush();
 				}
 				
 			} catch (\Throwable $e) {
-				// Fallback to basic output if our fancy debug fails
-				// This ensures we always get some output even if the renderers fail
 				echo '<h3>Canvas Debug Error - Falling back to simple output:</h3>';
 				echo '<pre>';
 				
-				// Use basic var_dump as last resort
 				foreach ($vars as $var) {
 					var_dump($var);
 				}
 				
 				echo '</pre>';
-				// Show the original error that caused the fallback
 				echo '<p>Original error: ' . $e->getMessage() . '</p>';
 			}
 			
-			// Terminate script execution - this method never returns
 			die();
 		}
 		
 		/**
-		 * Simple, guaranteed-to-work dump method
-		 * @param mixed ...$vars Variables to dump using basic formatting
-		 * @return void
+		 * Get stack trace information for where dump was called
+		 * THIS IS CALLED FROM THE ENTRY POINT, not from renderers
+		 * @return array Stack trace info with file, line, function details
 		 */
-		public static function safeDump(...$vars): void {
-			// Output a simple pre-formatted block with inline styling
-			// This approach works even when CSS files aren't loaded or custom headers can't be sent
-			echo '<pre style="background:#f8f9fa;padding:10px;border:1px solid #ddd;margin:10px 0;font-family:monospace;">';
+		private static function getCallLocation(): array {
+			// Get the full stack trace without arguments to save memory
+			$trace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS);
 			
-			// Use PHP's native var_dump for each variable
-			// This is the most reliable way to output variable information
-			foreach ($vars as $var) {
-				var_dump($var);
+			// Find the d() call and then look at what called it
+			for ($i = 0; $i < count($trace); $i++) {
+				$frame = $trace[$i];
+				
+				// Look for the d() or dd() function call in the current frame
+				if (isset($frame['function']) && in_array($frame['function'], ['d', 'dd'])) {
+					// The frame that shows d() contains the file/line where d() was called
+					if (isset($frame['file']) && isset($frame['line'])) {
+						// But we need to get the class/method context from the next frame
+						// The next frame shows what method/class contained the d() call
+						$contextFrame = $trace[$i + 1] ?? null;
+						
+						return [
+							'file'     => $frame['file'],           // File where d() was called
+							'line'     => $frame['line'],           // Line where d() was called
+							'function' => $contextFrame['function'] ?? 'unknown',  // Method that contains the d() call
+							'class'    => $contextFrame['class'] ?? null,            // Class that contains the d() call
+							'type'     => $contextFrame['type'] ?? null              // Call type (-> or ::)
+						];
+					}
+				}
 			}
 			
-			echo '</pre>';
+			// Fallback: skip our internal debugger stuff and find the first external caller
+			foreach ($trace as $frame) {
+				// Skip frames without file/line info (internal PHP functions)
+				if (!isset($frame['file']) || !isset($frame['line'])) {
+					continue;
+				}
+				
+				// Skip frames from our own debugger classes to avoid showing internal calls
+				if (isset($frame['class'])) {
+					if (
+						$frame['class'] === 'Quellabs\\Support\\CanvasDebugger' ||
+						str_starts_with($frame['class'], 'Quellabs\\Support\\Debugger\\')
+					) {
+						continue; // Skip this frame, it's part of our debugger
+					}
+				}
+				
+				// Skip the d() and dd() helper functions themselves
+				if (isset($frame['function']) && in_array($frame['function'], ['d', 'dd'])) {
+					continue;
+				}
+				
+				// This is the first external frame - return it
+				return [
+					'file'     => $frame['file'],
+					'line'     => $frame['line'],
+					'function' => $frame['function'] ?? 'unknown',
+					'class'    => $frame['class'] ?? null,
+					'type'     => $frame['type'] ?? null
+				];
+			}
+			
+			// Ultimate fallback if we can't find any valid frame
+			return [
+				'file'     => 'unknown',
+				'line'     => 0,
+				'function' => 'unknown',
+				'class'    => null,
+				'type'     => null
+			];
 		}
 	}

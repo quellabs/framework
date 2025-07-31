@@ -13,29 +13,24 @@
 		 */
 		public static function get(): string {
 			return '
-				<script>
-		            function toggleCanvasDump(id) {
-		                const element = document.getElementById("canvas-dump-" + id);
-		                
-		                if (!element) {
-		                    return;
-		                }
-		                
-		                const toggle = element.querySelector(".canvas-dump-toggle");
-		                
-		                if (!toggle) {
-		                    return;
-		                }
-		                
-		                if (element.classList.contains("canvas-dump-collapsed")) {
-		                    element.classList.remove("canvas-dump-collapsed");
-		                    toggle.textContent = "−";
-		                } else {
-		                    element.classList.add("canvas-dump-collapsed");
-		                    toggle.textContent = "+";
-		                }
-		            }
-		        </script>
-	        ';
+             <script>
+                   const toggleCanvasDump = id => {
+                       const element = document.getElementById(`canvas-dump-${id}`);
+                       
+                       if (!element) {
+                           return;
+                       }
+                       
+                       const toggle = element.querySelector(".canvas-dump-toggle");
+                       
+                       if (!toggle) {
+                           return;
+                       }
+                       
+                       const isCollapsed = element.classList.toggle("canvas-dump-collapsed");
+                       toggle.textContent = isCollapsed ? "+" : "−";
+                   };
+               </script>
+            ';
 		}
 	}

@@ -1,23 +1,23 @@
 <?php
 	
-	if (!function_exists('dump')) {
+	if (!function_exists('d')) {
 		/**
 		 * Canvas dump - dump variables without dying
 		 * @param mixed ...$vars
 		 * @return void
 		 */
-		function dump(...$vars): void {
+		function d(...$vars): void {
 			\Quellabs\Support\CanvasDebugger::dump(...$vars);
 		}
 	}
 	
-	if (!function_exists('d')) {
+	if (!function_exists('dd')) {
 		/**
-		 * Canvas dump - dump variables and dying
+		 * Canvas dump - dump variables and die
 		 * @param mixed ...$vars
 		 * @return void
 		 */
-		function d(...$vars) {
+		function dd(...$vars): void {
 			\Quellabs\Support\CanvasDebugger::dumpAndDie(...$vars);
 		}
 	}

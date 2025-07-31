@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\Support\Debugger\Renderers;
 	
+	use Quellabs\DependencyInjection\Container;
 	use ReflectionClass;
 	use ReflectionProperty;
 	
@@ -37,6 +38,12 @@
 		protected array $processedObjects = [];
 		
 		/**
+		 * Call location information
+		 * @var array|null
+		 */
+		protected ?array $callLocation = null;
+		
+		/**
 		 * Configuration options
 		 *
 		 * Controls various aspects of the rendering behavior:
@@ -51,13 +58,13 @@
 		 * @var array
 		 */
 		protected array $config = [
-			'maxDepth' => 10,
-			'maxStringLength' => 1000,
-			'maxArrayElements' => 100,
-			'showPrivateProperties' => true,
+			'maxDepth'                => 10,
+			'maxStringLength'         => 1000,
+			'maxArrayElements'        => 100,
+			'showPrivateProperties'   => true,
 			'showProtectedProperties' => true,
-			'showMethods' => false,
-			'showConstants' => false,
+			'showMethods'             => false,
+			'showConstants'           => false,
 		];
 		
 		/**
@@ -79,6 +86,28 @@
 				$this->renderValue($var);
 				echo "\n"; // Separate each variable with a newline
 			}
+		}
+		
+		/**
+		 * Set the call location (called from CanvasDebugger)
+		 * @param array $callLocation Call location info
+		 */
+		public function setCallLocation(array $callLocation): void {
+			$this->callLocation = $callLocation;
+		}
+		
+		/**
+		 * Get call location info
+		 * @return array Call location details
+		 */
+		protected function getCallLocation(): array {
+			return $this->callLocation ?? [
+				'file'     => 'unknown',
+				'line'     => 0,
+				'function' => 'unknown',
+				'class'    => null,
+				'type'     => null
+			];
 		}
 		
 		/**
@@ -135,38 +164,38 @@
 			// Set up default renderers for all PHP primitive types
 			$this->typeRenderers = [
 				// String values: wrap in quotes and show key if present
-				'string' => function($value, $key = null, $context = []) {
+				'string'   => function ($value, $key = null, $context = []) {
 					echo ($key ? "\"{$key}\" => " : '') . "\"{$value}\"";
 				},
 				
 				// Integer values: display as-is
-				'integer' => function($value, $key = null, $context = []) {
+				'integer'  => function ($value, $key = null, $context = []) {
 					echo ($key ? "\"{$key}\" => " : '') . $value;
 				},
 				
 				// Float/double values: display as-is
-				'double' => function($value, $key = null, $context = []) {
+				'double'   => function ($value, $key = null, $context = []) {
 					echo ($key ? "\"{$key}\" => " : '') . $value;
 				},
 				
 				// Boolean values: convert to 'true'/'false' strings
-				'boolean' => function($value, $key = null, $context = []) {
+				'boolean'  => function ($value, $key = null, $context = []) {
 					echo ($key ? "\"{$key}\" => " : '') . ($value ? 'true' : 'false');
 				},
 				
 				// NULL values: display as 'null'
-				'NULL' => function($value, $key = null, $context = []) {
+				'NULL'     => function ($value, $key = null, $context = []) {
 					echo ($key ? "\"{$key}\" => " : '') . 'null';
 				},
 				
 				// Arrays: delegate to specialized array renderer
-				'array' => [$this, 'renderArrayDefault'],
+				'array'    => [$this, 'renderArrayDefault'],
 				
 				// Objects: delegate to specialized object renderer
-				'object' => [$this, 'renderObjectDefault'],
+				'object'   => [$this, 'renderObjectDefault'],
 				
 				// Resources: show type information
-				'resource' => function($value, $key = null, $context = []) {
+				'resource' => function ($value, $key = null, $context = []) {
 					echo ($key ? "\"{$key}\" => " : '') . 'resource(' . get_resource_type($value) . ')';
 				},
 			];
@@ -252,7 +281,7 @@
 			$properties = $reflection->getProperties();
 			
 			// Filter properties based on configuration settings
-			return array_filter($properties, function(ReflectionProperty $property) {
+			return array_filter($properties, function (ReflectionProperty $property) {
 				// Skip private properties if configured to do so
 				if ($property->isPrivate() && !$this->getConfig('showPrivateProperties')) {
 					return false;
@@ -422,70 +451,37 @@
 		}
 		
 		/**
-		 * Get stack trace information for where dump was called
-		 * @return array Stack trace info with file, line, function details
-		 */
-		protected function getCallLocation(): array {
-			$trace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS);
-			
-			// Skip internal debugger frames to find the actual caller
-			$skipClasses = [
-				'Quellabs\\Support\\CanvasDebugger',
-				'Quellabs\\Support\\Debugger\\Renderers\\BaseRenderer',
-				'Quellabs\\Support\\Debugger\\Renderers\\HtmlRenderer',
-				'Quellabs\\Support\\Debugger\\Renderers\\CliRenderer'
-			];
-			
-			foreach ($trace as $frame) {
-				// Skip frames without file info (internal PHP functions)
-				if (!isset($frame['file'])) {
-					continue;
-				}
-				
-				// Skip our internal debugger classes
-				if (isset($frame['class']) && in_array($frame['class'], $skipClasses)) {
-					continue;
-				}
-				
-				// This is the actual caller
-				return [
-					'file' => $frame['file'],
-					'line' => $frame['line'] ?? 0,
-					'function' => $frame['function'] ?? 'unknown',
-					'class' => $frame['class'] ?? null,
-					'type' => $frame['type'] ?? null
-				];
-			}
-			
-			// Fallback if we can't determine the caller
-			return [
-				'file' => 'unknown',
-				'line' => 0,
-				'function' => 'unknown',
-				'class' => null,
-				'type' => null
-			];
-		}
-		
-		/**
 		 * Format the call location for display
 		 * @param array $location Call location info
 		 * @return string Formatted location string
 		 */
 		protected function formatCallLocation(array $location): string {
+			// Extract the filename without the full path for cleaner display
 			$file = basename($location['file']);
 			$line = $location['line'];
 			
-			$caller = '';
+			// Check if we have class information in the call stack
 			if ($location['class']) {
-				$caller = $location['class'] . $location['type'] . $location['function'] . '()';
+				// Get just the class name without namespace for readability
+				// Convert namespace separators to forward slashes, then get basename
+				$className = basename(str_replace('\\', '/', $location['class']));
+				
+				// Build the caller string: ClassName->method() or ClassName::method()
+				$caller = $className . $location['type'] . $location['function'] . '()';
 			} elseif ($location['function'] !== 'unknown') {
+				// For standalone functions (not class methods)
 				$caller = $location['function'] . '()';
+			} else {
+				// No identifiable function/method name available
+				$caller = '';
 			}
 			
+			// Build the final location string
 			if ($caller) {
+				// Include both file location and caller info
 				return "{$file}:{$line} in {$caller}";
 			} else {
+				// Fall back to just file and line number
 				return "{$file}:{$line}";
 			}
 		}

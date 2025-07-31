@@ -58,7 +58,7 @@
 				echo '</div>';
 			}
 		}
-		
+
 		/**
 		 * Render string values with proper HTML formatting and metadata
 		 * @param string $value The string value to render
@@ -518,7 +518,7 @@
 				return ' "*toString() error: ' . $this->escapeHtml($e->getMessage()) . '*"';
 			}
 		}
-		
+
 		/**
 		 * Safely escape any string for HTML output to prevent XSS and display issues
 		 * Centralized escaping method for consistency across all render methods
