@@ -31,6 +31,8 @@
 		public function show(int $id): Response {
 			$post = $this->em->find(PostEntity::class, $id);
 			
+			dd($post);
+
 			if (!$post) {
 				return $this->notFound('Post does not exist.');
 			}
