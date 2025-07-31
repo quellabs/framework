@@ -421,6 +421,75 @@
 			$this->removeFromCircularTracking($value);
 		}
 		
+		/**
+		 * Get stack trace information for where dump was called
+		 * @return array Stack trace info with file, line, function details
+		 */
+		protected function getCallLocation(): array {
+			$trace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS);
+			
+			// Skip internal debugger frames to find the actual caller
+			$skipClasses = [
+				'Quellabs\\Support\\CanvasDebugger',
+				'Quellabs\\Support\\Debugger\\Renderers\\BaseRenderer',
+				'Quellabs\\Support\\Debugger\\Renderers\\HtmlRenderer',
+				'Quellabs\\Support\\Debugger\\Renderers\\CliRenderer'
+			];
+			
+			foreach ($trace as $frame) {
+				// Skip frames without file info (internal PHP functions)
+				if (!isset($frame['file'])) {
+					continue;
+				}
+				
+				// Skip our internal debugger classes
+				if (isset($frame['class']) && in_array($frame['class'], $skipClasses)) {
+					continue;
+				}
+				
+				// This is the actual caller
+				return [
+					'file' => $frame['file'],
+					'line' => $frame['line'] ?? 0,
+					'function' => $frame['function'] ?? 'unknown',
+					'class' => $frame['class'] ?? null,
+					'type' => $frame['type'] ?? null
+				];
+			}
+			
+			// Fallback if we can't determine the caller
+			return [
+				'file' => 'unknown',
+				'line' => 0,
+				'function' => 'unknown',
+				'class' => null,
+				'type' => null
+			];
+		}
+		
+		/**
+		 * Format the call location for display
+		 * @param array $location Call location info
+		 * @return string Formatted location string
+		 */
+		protected function formatCallLocation(array $location): string {
+			$file = basename($location['file']);
+			$line = $location['line'];
+			
+			$caller = '';
+			if ($location['class']) {
+				$caller = $location['class'] . $location['type'] . $location['function'] . '()';
+			} elseif ($location['function'] !== 'unknown') {
+				$caller = $location['function'] . '()';
+			}
+			
+			if ($caller) {
+				return "{$file}:{$line} in {$caller}";
+			} else {
+				return "{$file}:{$line}";
+			}
+		}
+		
 		// Default implementations that concrete renderers can override
 		
 		/**

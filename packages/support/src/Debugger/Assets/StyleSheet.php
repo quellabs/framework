@@ -30,6 +30,7 @@
 			            z-index: 9999;
 			            backdrop-filter: blur(10px);
 			        }
+			        
 			        .canvas-dump-type {
 			            font-weight: 500;
 			            opacity: 0.7;
@@ -40,6 +41,7 @@
 			            border-radius: 4px;
 			            margin-left: 8px;
 			        }
+			        
 			        .canvas-dump-expandable {
 			            cursor: pointer;
 			            user-select: none;
@@ -49,10 +51,12 @@
 			            transition: all 0.2s ease;
 			            margin: 0;
 			        }
+			        
 			        .canvas-dump-expandable:hover {
 			            background: rgba(0, 123, 255, 0.1);
 			            transform: translateY(-1px);
 			        }
+			        
 			        .canvas-dump-toggle {
 			            display: inline-block;
 			            width: 16px;
@@ -69,30 +73,37 @@
 			            transition: all 0.2s ease;
 			            box-shadow: 0 2px 8px rgba(0, 123, 255, 0.25);
 			        }
+			        
 			        .canvas-dump-toggle:hover {
 			            transform: scale(1.1);
 			            box-shadow: 0 4px 12px rgba(0, 123, 255, 0.4);
 			        }
+			        
 			        .canvas-dump-content {
 			            margin-left: 16px;
 			            border-left: 2px solid rgba(0, 123, 255, 0.2);
 			            padding-left: 12px;
 			            margin-top: 0;
 			        }
+			        
 			        .canvas-dump-collapsed .canvas-dump-content {
 			            display: none;
 			        }
+			        
 			        .canvas-dump-key {
 			            font-weight: 600;
 			            text-shadow: 0 0 10px rgba(0, 123, 255, 0.1);
 			        }
+			        
 			        .canvas-dump-private {
 			            opacity: 0.6;
 			            font-style: italic;
 			        }
+			        
 			        .canvas-dump-protected {
 			            opacity: 0.75;
 			        }
+			        
 			        .canvas-dump-length {
 			            color: #6c757d;
 			            font-style: italic;
@@ -102,6 +113,7 @@
 			            border-radius: 3px;
 			            margin-left: 6px;
 			        }
+			        
 			        .canvas-dump-item {
 			            margin: 0;
 			            line-height: 1.2;
@@ -119,33 +131,77 @@
 			            color: #28a745 !important;
 			            font-weight: 500;
 			        }
+			        
 			        .canvas-dump [style*="#005cc5"] { /* numbers/methods */
 			            color: #007bff !important;
 			            font-weight: 500;
 			        }
+			        
 			        .canvas-dump [style*="#6f42c1"] { /* booleans/properties */
 			            color: #6f42c1 !important;
 			            font-weight: 500;
 			        }
+			        
 			        .canvas-dump [style*="#6a737d"] { /* null */
 			            color: #6c757d !important;
 			            font-style: italic;
 			        }
+			        
 			        .canvas-dump [style*="#e36209"] { /* arrays */
 			            color: #fd7e14 !important;
 			            font-weight: 600;
 			        }
+			        
 			        .canvas-dump [style*="#28a745"] { /* objects */
 			            color: #20c997 !important;
 			            font-weight: 600;
 			        }
+			        
 			        .canvas-dump [style*="#fd7e14"] { /* resources */
 			            color: #e83e8c !important;
 			        }
+			        
 			        .canvas-dump [style*="#032f62"] { /* keys */
 			            color: #495057 !important;
 			            font-weight: 600;
 			        }
+			        
+			        .canvas-dump-location {
+		                background: rgba(0, 123, 255, 0.1);
+		                border: 1px solid rgba(0, 123, 255, 0.2);
+		                border-radius: 6px;
+		                padding: 8px 12px;
+		                margin-bottom: 16px;
+		                font-size: 12px;
+		                color: #495057;
+		                font-family: inherit;
+		                display: flex;
+		                align-items: center;
+		                gap: 8px;
+		            }
+		            
+		            .canvas-dump-location-icon {
+		                font-size: 14px;
+		            }
+		            
+		            .canvas-dump-location-text {
+		                font-weight: 600;
+		                color: #007bff;
+		            }
+		            
+		            .canvas-dump-location-path {
+		                margin-left: auto;
+		                opacity: 0.6;
+		                font-size: 11px;
+		                max-width: 300px;
+		                overflow: hidden;
+		                text-overflow: ellipsis;
+		                white-space: nowrap;
+		            }
+		            
+		            .canvas-dump-location:hover .canvas-dump-location-path {
+		                opacity: 1;
+		            }
 			    </style>
 		    ';
 		}

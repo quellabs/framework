@@ -14,18 +14,25 @@
 		 * @param array $vars Variables to render
 		 */
 		public function render(array $vars): void {
+			// Get call location
+			$callLocation = $this->getCallLocation();
+			
 			// Initialize type renderers - maps PHP data types to their corresponding render methods
 			// This allows for polymorphic rendering based on variable type
 			$this->typeRenderers = [
-				'string' => [$this, 'renderString'],    // Handle string values
-				'integer' => [$this, 'renderInteger'],  // Handle integer values
-				'double' => [$this, 'renderFloat'],     // Handle float/double values (PHP uses 'double' internally)
-				'boolean' => [$this, 'renderBoolean'],  // Handle boolean true/false values
-				'NULL' => [$this, 'renderNull'],        // Handle null values
-				'array' => [$this, 'renderArray'],      // Handle array structures
-				'object' => [$this, 'renderObject'],    // Handle object instances
+				'string'   => [$this, 'renderString'],    // Handle string values
+				'integer'  => [$this, 'renderInteger'],  // Handle integer values
+				'double'   => [$this, 'renderFloat'],     // Handle float/double values (PHP uses 'double' internally)
+				'boolean'  => [$this, 'renderBoolean'],  // Handle boolean true/false values
+				'NULL'     => [$this, 'renderNull'],        // Handle null values
+				'array'    => [$this, 'renderArray'],      // Handle array structures
+				'object'   => [$this, 'renderObject'],    // Handle object instances
 				'resource' => [$this, 'renderResource'], // Handle resource types (file handles, etc.)
 			];
+			
+			// Show location with colored output
+			echo "\033[36m📍 " . $this->formatCallLocation($callLocation) . "\033[0m\n";
+			echo str_repeat('─', 60) . "\n";
 			
 			// Process each variable in the input array
 			foreach ($vars as $var) {
@@ -112,6 +119,7 @@
 			// Add newline unless we're in inline rendering mode (maintains formatting consistency)
 			$this->newLineIfNotInline($context);
 		}
+		
 		/**
 		 * Render boolean values with color coding for CLI output
 		 * @param bool $value The boolean value to render (true or false)
@@ -149,6 +157,7 @@
 			// Add newline unless we're in inline rendering mode (maintains formatting consistency)
 			$this->newLineIfNotInline($context);
 		}
+		
 		/**
 		 * Render resource values with type information and color coding for CLI output
 		 * @param resource $value The resource value to render (file handle, database connection, etc.)
@@ -376,7 +385,7 @@
 			// Add newline unless we're in inline rendering mode (maintains formatting consistency)
 			$this->newLineIfNotInline($context);
 		}
-
+		
 		/**
 		 * Apply proper indentation for scalar values in block rendering mode
 		 * This ensures consistent visual hierarchy in nested structures

@@ -41,14 +41,21 @@
 				$this->stylesOutputted = true;
 			}
 			
+			// Get call location info
+			$callLocation = $this->getCallLocation();
+			
 			// Render each variable in its own container
 			foreach ($vars as $var) {
 				echo '<div class="canvas-dump">';
-				$this->renderValue($var);
-				echo '</div>';
 				
-				// Reset for next variable
-				$this->processedObjects = [];
+				// Add call location header
+				$this->renderCallLocation($callLocation);
+				
+				// Render value
+				$this->renderValue($var);
+				
+				// Close div
+				echo '</div>';
 			}
 		}
 		
@@ -58,12 +65,13 @@
 		 * @param string|null $key Optional key name if this string is part of a key-value pair
 		 * @param array $context Rendering context options (e.g., inline mode, depth level)
 		 */
-		protected function renderString(string $value, $key = null, array $context = []): void {
+		protected function renderString(string $value, ?string $key = null, array $context = []): void {
 			// Render the key name if one was provided (for associative arrays/objects)
 			$this->renderKeyIfPresent($key);
 			
 			// Apply string truncation if the value exceeds maximum display length
 			$truncated = $this->truncateString($value);
+			
 			// Track whether truncation occurred for display purposes
 			$wasTruncated = $truncated !== $value;
 			
@@ -423,6 +431,27 @@
 		}
 		
 		/**
+		 * Render call location information in HTML
+		 * @param array $location Call location details
+		 */
+		private function renderCallLocation(array $location): void {
+			echo '<div class="canvas-dump-location">';
+			echo '<span class="canvas-dump-location-icon">📍</span>';
+			echo '<span class="canvas-dump-location-text">';
+			echo $this->escapeHtml($this->formatCallLocation($location));
+			echo '</span>';
+			
+			// Add clickable file link if it's a local file
+			if ($location['file'] !== 'unknown' && file_exists($location['file'])) {
+				echo '<span class="canvas-dump-location-path" title="' . $this->escapeHtml($location['file']) . '">';
+				echo $this->escapeHtml($location['file']);
+				echo '</span>';
+			}
+			
+			echo '</div>';
+		}
+		
+		/**
 		 * Helper: Render key if present for associative arrays and object properties
 		 * This method handles the display of array keys and object property names
 		 * @param string|null $key The key/property name to display, or null if not applicable
@@ -432,7 +461,7 @@
 			if ($key !== null) {
 				// Wrap key in styled span with appropriate color coding
 				echo '<span class="canvas-dump-key" style="color: ' . Colors::getHtml('key') . '">';
-
+				
 				// Display key in quotes with HTML escaping for safety
 				// Format: "key_name" => (matches PHP array syntax)
 				echo '"' . $this->escapeHtml($key) . '"</span> => ';
