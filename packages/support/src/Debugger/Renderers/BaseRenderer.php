@@ -9,37 +9,37 @@
 	 * Base renderer implementing common debugging functionality
 	 * Provides default implementations that can be overridden by concrete renderers
 	 */
-	class BaseRenderer {
+	class BaseRenderer implements RendererInterface {
 		
 		/**
 		 * Current nesting depth for recursive structures
 		 * @var int
 		 */
-		protected static int $depth = 0;
+		protected int $depth = 0;
 		
 		/**
 		 * Maximum depth to prevent infinite recursion
 		 * @var int
 		 */
-		protected static int $maxDepth = 10;
+		protected int $maxDepth = 10;
 		
 		/**
 		 * Counter for generating unique IDs
 		 * @var int
 		 */
-		protected static int $idCounter = 0;
+		protected int $idCounter = 0;
 		
 		/**
 		 * Track processed objects to detect circular references
 		 * @var array
 		 */
-		protected static array $processedObjects = [];
+		protected array $processedObjects = [];
 		
 		/**
 		 * Configuration options
 		 * @var array
 		 */
-		protected static array $config = [
+		protected array $config = [
 			'maxDepth' => 10,
 			'maxStringLength' => 1000,
 			'maxArrayElements' => 100,
@@ -53,19 +53,18 @@
 		 * Type rendering strategies - to be implemented by concrete renderers
 		 * @var array
 		 */
-		protected static array $typeRenderers = [];
+		protected array $typeRenderers = [];
 		
 		/**
 		 * Main render method - can be implemented by concrete renderers
 		 * @param array $vars Variables to render
 		 */
-		public static function render(array $vars): void {
+		public function render(array $vars): void {
 			// Default implementation - just render each variable
-			static::reset();
-			static::initTypeRenderers();
+			$this->initTypeRenderers();
 			
 			foreach ($vars as $var) {
-				static::renderValue($var);
+				$this->renderValue($var);
 				echo "\n";
 			}
 		}
@@ -76,47 +75,47 @@
 		 * @param string|null $key Optional key name
 		 * @param array $context Additional context information
 		 */
-		protected static function renderValue($value, $key = null, array $context = []): void {
+		protected function renderValue(mixed $value, ?string $key = null, array $context = []): void {
 			// Pre-render hook
-			static::beforeRenderValue($value, $key, $context);
+			$this->beforeRenderValue($value, $key, $context);
 			
 			// Check for circular references
-			if (is_object($value) && static::isCircularReference($value)) {
-				static::renderCircularReference($value, $key);
+			if (is_object($value) && $this->isCircularReference($value)) {
+				$this->renderCircularReference($value, $key);
 				return;
 			}
 			
 			// Check depth limits
-			if (static::isMaxDepthReached()) {
-				static::renderMaxDepthIndicator($key);
+			if ($this->isMaxDepthReached()) {
+				$this->renderMaxDepthIndicator($key);
 				return;
 			}
 			
 			$type = gettype($value);
 			
 			// Get type-specific renderer
-			$renderer = static::$typeRenderers[$type] ?? null;
+			$renderer = $this->typeRenderers[$type] ?? null;
 			
 			if ($renderer && is_callable($renderer)) {
 				call_user_func($renderer, $value, $key, $context);
 			} else {
-				static::renderUnknownType($value, $key, $context);
+				$this->renderUnknownType($value, $key, $context);
 			}
 			
 			// Post-render hook
-			static::afterRenderValue($value, $key, $context);
+			$this->afterRenderValue($value, $key, $context);
 		}
 		
 		/**
 		 * Initialize type renderers - can be overridden by concrete classes
 		 */
-		protected static function initTypeRenderers(): void {
-			if (!empty(static::$typeRenderers)) {
+		protected function initTypeRenderers(): void {
+			if (!empty($this->typeRenderers)) {
 				return;
 			}
 			
 			// Default type renderers that just echo the value
-			static::$typeRenderers = [
+			$this->typeRenderers = [
 				'string' => function($value, $key = null, $context = []) {
 					echo ($key ? "\"{$key}\" => " : '') . "\"{$value}\"";
 				},
@@ -132,8 +131,8 @@
 				'NULL' => function($value, $key = null, $context = []) {
 					echo ($key ? "\"{$key}\" => " : '') . 'null';
 				},
-				'array' => [static::class, 'renderArrayDefault'],
-				'object' => [static::class, 'renderObjectDefault'],
+				'array' => [$this, 'renderArrayDefault'],
+				'object' => [$this, 'renderObjectDefault'],
 				'resource' => function($value, $key = null, $context = []) {
 					echo ($key ? "\"{$key}\" => " : '') . 'resource(' . get_resource_type($value) . ')';
 				},
@@ -144,38 +143,38 @@
 		 * Check if we've reached maximum depth
 		 * @return bool
 		 */
-		protected static function isMaxDepthReached(): bool {
-			return static::$depth >= static::getConfig('maxDepth');
+		protected function isMaxDepthReached(): bool {
+			return $this->depth >= $this->getConfig('maxDepth');
 		}
 		
 		/**
 		 * Increase rendering depth
 		 */
-		protected static function increaseDepth(): void {
-			static::$depth++;
+		protected function increaseDepth(): void {
+			$this->depth++;
 		}
 		
 		/**
 		 * Decrease rendering depth
 		 */
-		protected static function decreaseDepth(): void {
-			static::$depth = max(0, static::$depth - 1);
+		protected function decreaseDepth(): void {
+			$this->depth = max(0, $this->depth - 1);
 		}
 		
 		/**
 		 * Get current indentation based on depth
 		 * @return string
 		 */
-		protected static function getIndent(): string {
-			return str_repeat('  ', static::$depth);
+		protected function getIndent(): string {
+			return str_repeat('  ', $this->depth);
 		}
 		
 		/**
 		 * Generate next unique ID
 		 * @return int
 		 */
-		protected static function getNextId(): int {
-			return ++static::$idCounter;
+		protected function getNextId(): int {
+			return ++$this->idCounter;
 		}
 		
 		/**
@@ -183,14 +182,14 @@
 		 * @param object $object
 		 * @return bool
 		 */
-		protected static function isCircularReference(object $object): bool {
+		protected function isCircularReference(object $object): bool {
 			$objectId = spl_object_id($object);
 			
-			if (in_array($objectId, static::$processedObjects)) {
+			if (in_array($objectId, $this->processedObjects)) {
 				return true;
 			}
 			
-			static::$processedObjects[] = $objectId;
+			$this->processedObjects[] = $objectId;
 			return false;
 		}
 		
@@ -198,11 +197,11 @@
 		 * Remove object from circular reference tracking
 		 * @param object $object
 		 */
-		protected static function removeFromCircularTracking(object $object): void {
+		protected function removeFromCircularTracking(object $object): void {
 			$objectId = spl_object_id($object);
-			$key = array_search($objectId, static::$processedObjects);
+			$key = array_search($objectId, $this->processedObjects);
 			if ($key !== false) {
-				unset(static::$processedObjects[$key]);
+				unset($this->processedObjects[$key]);
 			}
 		}
 		
@@ -211,15 +210,15 @@
 		 * @param object $object
 		 * @return ReflectionProperty[]
 		 */
-		protected static function getObjectProperties(object $object): array {
+		protected function getObjectProperties(object $object): array {
 			$reflection = new ReflectionClass($object);
 			$properties = $reflection->getProperties();
 			
 			return array_filter($properties, function(ReflectionProperty $property) {
-				if ($property->isPrivate() && !static::getConfig('showPrivateProperties')) {
+				if ($property->isPrivate() && !$this->getConfig('showPrivateProperties')) {
 					return false;
 				}
-				if ($property->isProtected() && !static::getConfig('showProtectedProperties')) {
+				if ($property->isProtected() && !$this->getConfig('showProtectedProperties')) {
 					return false;
 				}
 				return true;
@@ -232,7 +231,7 @@
 		 * @param object $object
 		 * @return mixed
 		 */
-		protected static function getPropertyValue(ReflectionProperty $property, object $object) {
+		protected function getPropertyValue(ReflectionProperty $property, object $object): mixed {
 			try {
 				$property->setAccessible(true);
 				
@@ -242,7 +241,7 @@
 				
 				return $property->getValue($object);
 			} catch (\Exception $e) {
-				return '*** error: ' . $e->getMessage() . ' ***';
+				return '*** error: ' . htmlspecialchars($e->getMessage()) . ' ***';
 			}
 		}
 		
@@ -251,13 +250,14 @@
 		 * @param ReflectionProperty $property
 		 * @return string
 		 */
-		protected static function getVisibilitySymbol(ReflectionProperty $property): string {
+		protected function getVisibilitySymbol(ReflectionProperty $property): string {
 			if ($property->isPrivate()) {
 				return '-';
 			} elseif ($property->isProtected()) {
 				return '#';
+			} else {
+				return '+';
 			}
-			return '+';
 		}
 		
 		/**
@@ -265,13 +265,14 @@
 		 * @param string $string
 		 * @return string
 		 */
-		protected static function truncateString(string $string): string {
-			$maxLength = static::getConfig('maxStringLength');
+		protected function truncateString(string $string): string {
+			$maxLength = $this->getConfig('maxStringLength');
+			
 			if (strlen($string) <= $maxLength) {
 				return $string;
+			} else {
+				return substr($string, 0, $maxLength) . '... [truncated]';
 			}
-			
-			return substr($string, 0, $maxLength) . '... [truncated]';
 		}
 		
 		/**
@@ -279,8 +280,8 @@
 		 * @param array $array
 		 * @return bool
 		 */
-		protected static function shouldTruncateArray(array $array): bool {
-			return count($array) > static::getConfig('maxArrayElements');
+		protected function shouldTruncateArray(array $array): bool {
+			return count($array) > $this->getConfig('maxArrayElements');
 		}
 		
 		/**
@@ -288,8 +289,8 @@
 		 * @param array $array
 		 * @return array
 		 */
-		protected static function getTruncatedArray(array $array): array {
-			$maxElements = static::getConfig('maxArrayElements');
+		protected function getTruncatedArray(array $array): array {
+			$maxElements = $this->getConfig('maxArrayElements');
 			return array_slice($array, 0, $maxElements, true);
 		}
 		
@@ -298,8 +299,8 @@
 		 * @param string $key
 		 * @return mixed
 		 */
-		protected static function getConfig(string $key) {
-			return static::$config[$key] ?? null;
+		protected function getConfig(string $key): mixed {
+			return $this->config[$key] ?? null;
 		}
 		
 		/**
@@ -307,17 +308,8 @@
 		 * @param string $key
 		 * @param mixed $value
 		 */
-		public static function setConfig(string $key, $value): void {
-			static::$config[$key] = $value;
-		}
-		
-		/**
-		 * Reset renderer state (useful for testing or multiple renders)
-		 */
-		public static function reset(): void {
-			static::$depth = 0;
-			static::$idCounter = 0;
-			static::$processedObjects = [];
+		public function setConfig(string $key, mixed $value): void {
+			$this->config[$key] = $value;
 		}
 		
 		/**
@@ -326,18 +318,20 @@
 		 * @param string|null $key
 		 * @param array $context
 		 */
-		protected static function renderArrayDefault(array $value, $key = null, array $context = []): void {
+		protected function renderArrayDefault(array $value, ?string $key = null, array $context = []): void {
 			echo ($key ? "\"{$key}\" => " : '') . "array(" . count($value) . ") [\n";
 			
-			static::increaseDepth();
+			$this->increaseDepth();
+			
 			foreach ($value as $arrayKey => $arrayValue) {
-				echo static::getIndent();
-				static::renderValue($arrayValue, $arrayKey);
+				echo $this->getIndent();
+				$this->renderValue($arrayValue, $arrayKey);
 				echo "\n";
 			}
-			static::decreaseDepth();
 			
-			echo static::getIndent() . "]";
+			$this->decreaseDepth();
+			
+			echo $this->getIndent() . "]";
 		}
 		
 		/**
@@ -346,29 +340,30 @@
 		 * @param string|null $key
 		 * @param array $context
 		 */
-		protected static function renderObjectDefault(object $value, $key = null, array $context = []): void {
+		protected function renderObjectDefault(object $value, $key = null, array $context = []): void {
 			$className = get_class($value);
 			$objectId = spl_object_id($value);
 			
 			echo ($key ? "\"{$key}\" => " : '') . "{$className} #{$objectId} {\n";
 			
-			static::increaseDepth();
-			$properties = static::getObjectProperties($value);
+			$this->increaseDepth();
+			
+			$properties = $this->getObjectProperties($value);
 			
 			foreach ($properties as $property) {
-				$propertyValue = static::getPropertyValue($property, $value);
-				$visibility = static::getVisibilitySymbol($property);
+				$propertyValue = $this->getPropertyValue($property, $value);
+				$visibility = $this->getVisibilitySymbol($property);
 				
-				echo static::getIndent() . $visibility . $property->getName() . ': ';
-				static::renderValue($propertyValue);
+				echo $this->getIndent() . $visibility . $property->getName() . ': ';
+				$this->renderValue($propertyValue);
 				echo "\n";
 			}
-			static::decreaseDepth();
 			
-			echo static::getIndent() . "}";
+			$this->decreaseDepth();
+			echo $this->getIndent() . "}";
 			
 			// Remove from circular reference tracking
-			static::removeFromCircularTracking($value);
+			$this->removeFromCircularTracking($value);
 		}
 		
 		// Default implementations that concrete renderers can override
@@ -378,7 +373,7 @@
 		 * @param object $object
 		 * @param string|null $key
 		 */
-		protected static function renderCircularReference(object $object, $key = null): void {
+		protected function renderCircularReference(object $object, string $key = null): void {
 			$className = get_class($object);
 			$objectId = spl_object_id($object);
 			echo "*CIRCULAR REFERENCE* {$className} #{$objectId}";
@@ -388,7 +383,7 @@
 		 * Render max depth indicator
 		 * @param string|null $key
 		 */
-		protected static function renderMaxDepthIndicator($key = null): void {
+		protected function renderMaxDepthIndicator(?string $key = null): void {
 			echo "*MAX DEPTH REACHED*";
 		}
 		
@@ -398,9 +393,8 @@
 		 * @param string|null $key
 		 * @param array $context
 		 */
-		protected static function renderUnknownType($value, $key = null, array $context = []): void {
-			$type = gettype($value);
-			echo "unknown({$type})";
+		protected function renderUnknownType(mixed $value, ?string $key = null, array $context = []): void {
+			echo "unknown(" . gettype($value) . ")";
 		}
 		
 		// Hooks for extending behavior
@@ -411,7 +405,7 @@
 		 * @param string|null $key
 		 * @param array $context
 		 */
-		protected static function beforeRenderValue($value, $key = null, array $context = []): void {
+		protected function beforeRenderValue(mixed $value, ?string $key = null, array $context = []): void {
 			// Override in concrete classes if needed
 		}
 		
@@ -421,7 +415,7 @@
 		 * @param string|null $key
 		 * @param array $context
 		 */
-		protected static function afterRenderValue($value, $key = null, array $context = []): void {
+		protected function afterRenderValue(mixed $value, ?string $key = null, array $context = []): void {
 			// Override in concrete classes if needed
 		}
 	}

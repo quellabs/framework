@@ -10,43 +10,29 @@
 	class CliRenderer extends BaseRenderer {
 		
 		/**
-		 * Initialize CLI-specific type renderers
-		 */
-		protected static function initTypeRenderers(): void {
-			if (!empty(static::$typeRenderers)) {
-				return;
-			}
-			
-			static::$typeRenderers = [
-				'string' => [static::class, 'renderString'],
-				'integer' => [static::class, 'renderInteger'],
-				'double' => [static::class, 'renderFloat'],
-				'boolean' => [static::class, 'renderBoolean'],
-				'NULL' => [static::class, 'renderNull'],
-				'array' => [static::class, 'renderArray'],
-				'object' => [static::class, 'renderObject'],
-				'resource' => [static::class, 'renderResource'],
-			];
-		}
-		
-		/**
 		 * Render multiple variables for CLI output
 		 * @param array $vars Variables to render
 		 */
-		public static function render(array $vars): void {
-			// Reset state for fresh render
-			static::reset();
-			
+		public function render(array $vars): void {
 			// Initialize type renderers
-			static::initTypeRenderers();
+			$this->typeRenderers = [
+				'string' => [$this, 'renderString'],
+				'integer' => [$this, 'renderInteger'],
+				'double' => [$this, 'renderFloat'],
+				'boolean' => [$this, 'renderBoolean'],
+				'NULL' => [$this, 'renderNull'],
+				'array' => [$this, 'renderArray'],
+				'object' => [$this, 'renderObject'],
+				'resource' => [$this, 'renderResource'],
+			];
 			
 			// Render each variable with separation
 			foreach ($vars as $var) {
-				static::renderValue($var);
+				$this->renderValue($var);
 				echo "\n\n";
 				
 				// Reset for next variable
-				static::$processedObjects = [];
+				$this->processedObjects = [];
 			}
 		}
 		
@@ -56,10 +42,10 @@
 		 * @param string|null $key
 		 * @param array $context
 		 */
-		protected static function renderString(string $value, ?string $key = null, array $context = []): void {
-			static::renderKeyIfPresent($key);
+		protected function renderString(string $value, ?string $key = null, array $context = []): void {
+			$this->renderKeyIfPresent($key);
 			
-			$truncated = static::truncateString($value);
+			$truncated = $this->truncateString($value);
 			$wasTruncated = $truncated !== $value;
 			
 			echo Colors::wrapAnsi('"' . $truncated . '"', 'string');
@@ -69,7 +55,7 @@
 				echo ' ' . Colors::wrapAnsi('[truncated]', 'null');
 			}
 			
-			static::newLineIfNotInline($context);
+			$this->newLineIfNotInline($context);
 		}
 		
 		/**
@@ -78,10 +64,10 @@
 		 * @param string|null $key
 		 * @param array $context
 		 */
-		protected static function renderInteger(int $value, ?string $key = null, array $context = []): void {
-			static::renderKeyIfPresent($key);
+		protected function renderInteger(int $value, ?string $key = null, array $context = []): void {
+			$this->renderKeyIfPresent($key);
 			echo Colors::wrapAnsi((string)$value, 'integer');
-			static::newLineIfNotInline($context);
+			$this->newLineIfNotInline($context);
 		}
 		
 		/**
@@ -90,10 +76,10 @@
 		 * @param string|null $key
 		 * @param array $context
 		 */
-		protected static function renderFloat(float $value, ?string $key = null, array $context = []): void {
-			static::renderKeyIfPresent($key);
+		protected function renderFloat(float $value, ?string $key = null, array $context = []): void {
+			$this->renderKeyIfPresent($key);
 			echo Colors::wrapAnsi((string)$value, 'float');
-			static::newLineIfNotInline($context);
+			$this->newLineIfNotInline($context);
 		}
 		
 		/**
@@ -102,10 +88,10 @@
 		 * @param string|null $key
 		 * @param array $context
 		 */
-		protected static function renderBoolean(bool $value, ?string $key = null, array $context = []): void {
-			static::renderKeyIfPresent($key);
+		protected function renderBoolean(bool $value, ?string $key = null, array $context = []): void {
+			$this->renderKeyIfPresent($key);
 			echo Colors::wrapAnsi($value ? 'true' : 'false', 'boolean');
-			static::newLineIfNotInline($context);
+			$this->newLineIfNotInline($context);
 		}
 		
 		/**
@@ -114,10 +100,10 @@
 		 * @param string|null $key
 		 * @param array $context
 		 */
-		protected static function renderNull(null $value, ?string $key = null, array $context = []): void {
-			static::renderKeyIfPresent($key);
+		protected function renderNull(null $value, ?string $key = null, array $context = []): void {
+			$this->renderKeyIfPresent($key);
 			echo Colors::wrapAnsi('null', 'null');
-			static::newLineIfNotInline($context);
+			$this->newLineIfNotInline($context);
 		}
 		
 		/**
@@ -126,10 +112,10 @@
 		 * @param string|null $key
 		 * @param array $context
 		 */
-		protected static function renderResource($value, ?string $key = null, array $context = []): void {
-			static::renderKeyIfPresent($key);
+		protected function renderResource($value, ?string $key = null, array $context = []): void {
+			$this->renderKeyIfPresent($key);
 			echo Colors::wrapAnsi('resource(' . get_resource_type($value) . ')', 'resource');
-			static::newLineIfNotInline($context);
+			$this->newLineIfNotInline($context);
 		}
 		
 		/**
@@ -138,20 +124,20 @@
 		 * @param string|null $key
 		 * @param array $context
 		 */
-		protected static function renderArray(array $value, ?string $key = null, array $context = []): void {
+		protected function renderArray(array $value, ?string $key = null, array $context = []): void {
 			$count = count($value);
 			
-			static::renderKeyIfPresent($key);
+			$this->renderKeyIfPresent($key);
 			
 			if ($count === 0) {
 				echo Colors::wrapAnsi('array:0', 'array') . ' []';
-				static::newLineIfNotInline($context);
+				$this->newLineIfNotInline($context);
 				return;
 			}
 			
 			// Check if array should be truncated
-			$shouldTruncate = static::shouldTruncateArray($value);
-			$displayArray = $shouldTruncate ? static::getTruncatedArray($value) : $value;
+			$shouldTruncate = $this->shouldTruncateArray($value);
+			$displayArray = $shouldTruncate ? $this->getTruncatedArray($value) : $value;
 			$displayCount = count($displayArray);
 			
 			echo Colors::wrapAnsi('array:' . $count, 'array');
@@ -162,21 +148,21 @@
 			
 			echo " [\n";
 			
-			static::increaseDepth();
+			$this->increaseDepth();
 			foreach ($displayArray as $arrayKey => $arrayValue) {
-				echo static::getIndent();
-				static::renderValue($arrayValue, $arrayKey, ['inline' => false]);
+				echo $this->getIndent();
+				$this->renderValue($arrayValue, $arrayKey, ['inline' => false]);
 			}
 			
 			if ($shouldTruncate) {
-				echo static::getIndent();
+				echo $this->getIndent();
 				echo Colors::wrapAnsi('... and ' . ($count - $displayCount) . ' more elements', 'null');
 				echo "\n";
 			}
 			
-			static::decreaseDepth();
-			echo static::getIndent() . ']';
-			static::newLineIfNotInline($context);
+			$this->decreaseDepth();
+			echo $this->getIndent() . ']';
+			$this->newLineIfNotInline($context);
 		}
 		
 		/**
@@ -185,16 +171,16 @@
 		 * @param string|null $key
 		 * @param array $context
 		 */
-		protected static function renderObject(object $value, ?string $key = null, array $context = []): void {
+		protected function renderObject(object $value, ?string $key = null, array $context = []): void {
 			$className = get_class($value);
 			$objectId = spl_object_id($value);
 			
-			static::renderKeyIfPresent($key);
+			$this->renderKeyIfPresent($key);
 			
 			echo Colors::wrapAnsi($className, 'object') . ' {#' . $objectId;
 			
 			// Add string representation if available
-			$stringRepresentation = static::getObjectStringRepresentation($value);
+			$stringRepresentation = $this->getObjectStringRepresentation($value);
 			
 			if ($stringRepresentation) {
 				echo ' ' . Colors::wrapAnsi($stringRepresentation, 'string');
@@ -202,30 +188,30 @@
 			
 			echo "\n";
 			
-			static::increaseDepth();
-			$properties = static::getObjectProperties($value);
+			$this->increaseDepth();
+			$properties = $this->getObjectProperties($value);
 			
 			foreach ($properties as $property) {
-				$propertyValue = static::getPropertyValue($property, $value);
-				$visibility = static::getVisibilitySymbol($property);
+				$propertyValue = $this->getPropertyValue($property, $value);
+				$visibility = $this->getVisibilitySymbol($property);
 				
-				echo static::getIndent();
+				echo $this->getIndent();
 				echo Colors::wrapAnsi($visibility . $property->getName(), 'property') . ': ';
 				
 				if (is_string($propertyValue) && str_starts_with($propertyValue, '***')) {
 					echo Colors::wrapAnsi($propertyValue, 'null');
 					echo "\n";
 				} else {
-					static::renderValue($propertyValue, null, ['inline' => true]);
+					$this->renderValue($propertyValue, null, ['inline' => true]);
 				}
 			}
 			
-			static::decreaseDepth();
-			echo static::getIndent() . '}';
-			static::newLineIfNotInline($context);
+			$this->decreaseDepth();
+			echo $this->getIndent() . '}';
+			$this->newLineIfNotInline($context);
 			
 			// Remove from circular reference tracking
-			static::removeFromCircularTracking($value);
+			$this->removeFromCircularTracking($value);
 		}
 		
 		/**
@@ -233,8 +219,8 @@
 		 * @param object $object
 		 * @param string|null $key
 		 */
-		protected static function renderCircularReference(object $object, $key = null): void {
-			static::renderKeyIfPresent($key);
+		protected function renderCircularReference(object $object, string $key = null): void {
+			$this->renderKeyIfPresent($key);
 			$className = get_class($object);
 			$objectId = spl_object_id($object);
 			
@@ -247,8 +233,8 @@
 		 * Override max depth rendering for CLI
 		 * @param string|null $key
 		 */
-		protected static function renderMaxDepthIndicator(?string $key = null): void {
-			static::renderKeyIfPresent($key);
+		protected function renderMaxDepthIndicator(string $key = null): void {
+			$this->renderKeyIfPresent($key);
 			echo Colors::wrapAnsi('*MAX DEPTH REACHED*', 'null');
 			echo "\n";
 		}
@@ -259,18 +245,18 @@
 		 * @param string|null $key
 		 * @param array $context
 		 */
-		protected static function renderUnknownType(mixed $value, ?string $key = null, array $context = []): void {
-			static::renderKeyIfPresent($key);
+		protected function renderUnknownType(mixed $value, string $key = null, array $context = []): void {
+			$this->renderKeyIfPresent($key);
 			$type = gettype($value);
 			echo Colors::wrapAnsi('unknown(' . $type . ')', 'null');
-			static::newLineIfNotInline($context);
+			$this->newLineIfNotInline($context);
 		}
 		
 		/**
 		 * Helper: Render key if present
 		 * @param string|null $key
 		 */
-		private static function renderKeyIfPresent(?string $key): void {
+		private function renderKeyIfPresent(?string $key): void {
 			if ($key !== null) {
 				echo Colors::wrapAnsi('"' . $key . '"', 'key') . ' => ';
 			}
@@ -280,7 +266,7 @@
 		 * Helper: Add newline if not inline
 		 * @param array $context
 		 */
-		private static function newLineIfNotInline(array $context): void {
+		private function newLineIfNotInline(array $context): void {
 			if (!($context['inline'] ?? false)) {
 				echo "\n";
 			}
@@ -291,7 +277,7 @@
 		 * @param object $object
 		 * @return string
 		 */
-		private static function getObjectStringRepresentation(object $object): string {
+		private function getObjectStringRepresentation(object $object): string {
 			if ($object instanceof \DateTime || $object instanceof \DateTimeImmutable) {
 				return '"' . $object->format('Y-m-d H:i:s T') . '"';
 			}
@@ -299,7 +285,7 @@
 			if (method_exists($object, '__toString')) {
 				try {
 					$stringValue = (string)$object;
-					$truncated = static::truncateString($stringValue);
+					$truncated = $this->truncateString($stringValue);
 					
 					if ($truncated) {
 						return '"' . $truncated . '"';
@@ -318,10 +304,10 @@
 		 * @param string|null $key
 		 * @param array $context
 		 */
-		protected static function beforeRenderValue(mixed $value, ?string $key = null, array $context = []): void {
+		protected function beforeRenderValue(mixed $value, ?string $key = null, array $context = []): void {
 			// Add indentation for non-inline renders
 			if (!($context['inline'] ?? false) && !in_array(gettype($value), ['array', 'object'])) {
-				echo static::getIndent();
+				echo $this->getIndent();
 			}
 		}
 	}

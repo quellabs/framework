@@ -2,8 +2,7 @@
 	
 	namespace Quellabs\Support;
 	
-	use Quellabs\Support\Debugger\Renderers\HtmlRenderer;
-	use Quellabs\Support\Debugger\Renderers\CliRenderer;
+	use Quellabs\Support\Debugger\Renderers\RendererFactory;
 	
 	/**
 	 * CanvasDebugger - A sophisticated debugging utility for PHP
@@ -51,13 +50,7 @@
 			
 			// Route to appropriate renderer based on environment
 			// Use specialized renderers that provide enhanced formatting for each context
-			if (php_sapi_name() === 'cli') {
-				// CLI renderer provides colored terminal output with better formatting
-				CliRenderer::render($vars);
-			} else {
-				// HTML renderer provides interactive, collapsible web output with syntax highlighting
-				HtmlRenderer::render($vars);
-			}
+			RendererFactory::create(php_sapi_name())->render($vars);
 		}
 		
 		/**
