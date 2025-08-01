@@ -36,10 +36,14 @@
 		 * @param int $maxRetries Maximum operation retry attempts
 		 */
 		public function __construct(
-			string  $namespace = 'default',
-			array   $config = [],
-			int     $maxRetries = 3
+			string $namespace = 'default',
+			array  $config = [],
+			int    $maxRetries = 3
 		) {
+			// Verify memcached extension is available
+			$this->checkExtension();
+			
+			// Store configuration options
 			$this->namespace = $namespace;
 			$this->maxRetries = $maxRetries;
 			$this->keyPrefix = "cache:{$namespace}:";
@@ -118,7 +122,7 @@
 				return $default;
 			}
 		}
-
+		
 		/**
 		 * Store an item in the cache
 		 * @param string $key Cache key
@@ -283,7 +287,7 @@
 				return false;
 			}
 		}
-
+		
 		/**
 		 * Get cache statistics for monitoring
 		 * @return array Cache statistics and server info
@@ -359,6 +363,27 @@
 		 */
 		public function getNamespace(): string {
 			return $this->namespace;
+		}
+		
+		/**
+		 * Check if memcached extension and class are available
+		 * @throws \RuntimeException If memcached extension is not available
+		 */
+		private function checkExtension(): void {
+			// Check if memcached extension is loaded
+			if (!extension_loaded('memcached')) {
+				throw new \RuntimeException(
+					'The memcached PHP extension is required but not installed. ' .
+					'Please install php-memcached extension or use a different cache driver.'
+				);
+			}
+			
+			// Check if Memcached class is available (additional safety check)
+			if (!class_exists('Memcached')) {
+				throw new \RuntimeException(
+					'Memcached class is not available. Please ensure the memcached extension is properly loaded.'
+				);
+			}
 		}
 		
 		/**

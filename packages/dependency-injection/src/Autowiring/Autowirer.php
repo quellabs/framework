@@ -82,7 +82,7 @@
 				
 				// Strategy 3: Attempt dependency injection using type hints
 				// Tries to resolve parameter from container/service locator
-				$resolvedValue = $this->resolveParameterFromTypes($paramTypes, $methodContext);
+				$resolvedValue = $this->resolveParameterFromTypes($paramName, $paramTypes, $methodContext);
 				
 				if ($resolvedValue !== null) {
 					$arguments[] = $resolvedValue;
@@ -106,47 +106,54 @@
 		
 		/**
 		 * Attempts to resolve a parameter value by trying each type hint in order
-		 * through the dependency injection container.
+		 * @param string $paramName Parameter name for better error messages
 		 * @param array $types Array of type hints/class names to attempt resolution
 		 * @param MethodContext|null $methodContext
-		 * @return mixed The resolved instance, or null if no type could be resolved
+		 * @return mixed The resolved instance
+		 * @throws \RuntimeException If no types could be resolved
 		 */
-		protected function resolveParameterFromTypes(array $types, ?MethodContext $methodContext=null): mixed {
-			// Skip resolution if no types are provided
+		protected function resolveParameterFromTypes(string $paramName, array $types, ?MethodContext $methodContext = null): mixed {
+			// Early return if no types provided - nothing to resolve
 			if (empty($types)) {
 				return null;
 			}
 			
-			// Attempt to resolve each type in priority order
-			foreach ($types as $type) {
-				// Skip built-in PHP types (string, int, bool, etc.) as they
-				// cannot be resolved through dependency injection
-				if ($this->isBuiltinType($type)) {
-					continue;
-				}
-				
-				// Skip null type as it's not resolvable
-				if ($type === 'null') {
-					continue;
-				}
-				
+			// Track resolution failures for detailed error reporting
+			$failures = [];
+			
+			// Filter out built-in PHP types (int, string, bool, etc.) and null type
+			// as these cannot be resolved through dependency injection
+			$resolvableTypes = array_filter($types, fn($type) => !$this->isBuiltinType($type) && $type !== 'null');
+			
+			// If all types are built-in or null, there's nothing we can resolve via DI
+			if (empty($resolvableTypes)) {
+				return null;
+			}
+			
+			// Attempt to resolve each resolvable type in order
+			foreach ($resolvableTypes as $type) {
 				try {
-					// Attempt to retrieve instance from the DI container
+					// Try to get an instance of this type from the container
 					$instance = $this->container->get($type, [], $methodContext);
 					
-					// Return the first successfully resolved instance
+					// If we successfully got a non-null instance, return it immediately
+					// This implements a "first successful resolution wins" strategy
 					if ($instance !== null) {
 						return $instance;
 					}
 				} catch (\Throwable $e) {
-					// Silently continue to next type - this is expected behavior
-					// for union types where not all types may be available
-					continue;
+					// Store the failure reason for this type to include in final error message
+					// This helps with debugging by showing why each type failed to resolve
+					$failures[$type] = $e->getMessage();
 				}
 			}
 			
-			// No types could be resolved - let caller handle this scenario
-			return null;
+			// If we reach here, none of the types could be resolved successfully.
+			// Throw a comprehensive error with details about all failed attempts
+			throw new \RuntimeException(
+				"Cannot resolve parameter {$methodContext->getClassName()}::{$paramName}:\n" .
+				implode("\n", $failures)
+			);
 		}
 		
 		/**
@@ -157,8 +164,6 @@
 		 */
 		protected function getMethodParameters(string $className, string $methodName): array {
 			try {
-				$result = [];
-				
 				// New reflection class to get information about the class name
 				$reflectionClass = new \ReflectionClass($className);
 				
@@ -175,6 +180,8 @@
 				}
 				
 				// Process each parameter
+				$result = [];
+				
 				foreach ($methodReflector->getParameters() as $parameter) {
 					// Get the name of the parameter
 					$param = ['name' => $parameter->getName()];

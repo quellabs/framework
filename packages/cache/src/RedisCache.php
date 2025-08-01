@@ -34,12 +34,17 @@
 		 * @param string $namespace Cache context for namespacing (e.g., 'pages', 'data')
 		 * @param array $config Redis connection configuration
 		 * @param int $maxRetries Maximum connection retry attempts
+		 * @throws \RuntimeException If redis extension is not available
 		 */
 		public function __construct(
 			string $namespace = 'default',
 			array  $config = [],
 			int    $maxRetries = 3
 		) {
+			// Verify redis extension is available
+			$this->checkExtension();
+			
+			// Store configuration options
 			$this->namespace = $namespace;
 			$this->maxRetries = $maxRetries;
 			$this->keyPrefix = "cache:{$namespace}:";
@@ -300,6 +305,27 @@
 		 */
 		public function getNamespace(): string {
 			return $this->namespace;
+		}
+		
+		/**
+		 * Check if redis extension and class are available
+		 * @throws \RuntimeException If redis extension is not available
+		 */
+		private function checkExtension(): void {
+			// Check if redis extension is loaded
+			if (!extension_loaded('redis')) {
+				throw new \RuntimeException(
+					'The redis PHP extension is required but not installed. ' .
+					'Please install php-redis extension or use a different cache driver.'
+				);
+			}
+			
+			// Check if Redis class is available (additional safety check)
+			if (!class_exists('Redis')) {
+				throw new \RuntimeException(
+					'Redis class is not available. Please ensure the redis extension is properly loaded.'
+				);
+			}
 		}
 		
 		/**
