@@ -2,7 +2,6 @@
 	
 	namespace Quellabs\DependencyInjection;
 	
-	use PhpParser\Builder\Method;
 	use Quellabs\DependencyInjection\Autowiring\MethodContext;
 	use Quellabs\Discover\Discover;
 	use Quellabs\Discover\Scanner\ComposerScanner;
@@ -191,17 +190,84 @@
 			bool $useServiceProvider,
 			MethodContext $methodContext = null
 		): ?object {
-			try {
-				// Special case: Return container instance when requesting the container itself
-				// This allows for self-injection of the container into other services
-				if (
-					$className === self::class ||
-					$className === \Quellabs\Contracts\DependencyInjection\Container::class ||
-					is_a($this, $className)
-				) {
-					return $this;
-				}
+			// Special case: Return container instance when requesting the container itself
+			// This allows for self-injection of the container into other services
+			if (
+				$className === self::class ||
+				$className === \Quellabs\Contracts\DependencyInjection\Container::class ||
+				is_a($this, $className)
+			) {
+				return $this;
+			}
+			
+			// Use safe resolution wrapper to handle circular dependencies
+			return $this->safeResolve($className, function() use ($className, $parameters, $useServiceProvider, $methodContext) {
+				return $this->createInstance($className, $parameters, $useServiceProvider, $methodContext);
+			});
+		}
+		
+		/**
+		 * Creates an instance of the specified class using either service provider or direct instantiation.
+		 * @param string $className The fully qualified class name to resolve
+		 * @param array $parameters Manual parameters to override autowired dependencies
+		 * @param bool $useServiceProvider Whether to use service provider for instantiation
+		 * @param MethodContext|null $methodContext Optional method context for advanced scenarios
+		 * @return object The created instance
+		 * @throws \RuntimeException|\ReflectionException When instantiation fails
+		 */
+		protected function createInstance(
+			string $className,
+			array $parameters,
+			bool $useServiceProvider,
+			MethodContext $methodContext = null
+		): object {
+			// Check if this is an interface
+			$reflection = new \ReflectionClass($className);
+			$isInterface = $reflection->isInterface();
+			
+			// Show error when user tries to make() an interface
+			if ($isInterface && !$useServiceProvider) {
+				throw new \RuntimeException(
+					"Cannot instantiate interface '{$className}' without a service provider. " .
+					"Use get() instead of make() for interface resolution."
+				);
+			}
+			
+			// For interfaces, skip autowiring and pass raw parameters to service provider
+			// Interfaces have no constructors, so autowiring would fail anyway
+			if ($isInterface) {
+				$provider = $this->findProvider($className);
+				return $provider->createInstance($className, $parameters, $this->context, $methodContext);
+			}
+			
+			// For concrete classes, autowire constructor dependencies
+			// Merges manual parameters with automatically resolved dependencies
+			$arguments = $this->autowire->getMethodArguments($className, '__construct', $parameters);
+			
+			// Choose instantiation method based on configuration
+			if ($useServiceProvider) {
+				// Use service provider pattern for more complex instantiation logic
+				// Service providers can handle custom initialization, configuration, etc.
+				$provider = $this->findProvider($className);
 				
+				// Use the provider to create an instance
+				return $provider->createInstance($className, $arguments, $this->context, $methodContext);
+			}
+			
+			// Direct reflection-based instantiation for simple cases
+			// Creates instance directly using PHP's reflection API
+			return $reflection->newInstanceArgs($arguments);
+		}
+		
+		/**
+		 * Safely executes a resolution callback while managing the resolution stack for circular dependency detection.
+		 * @param string $className The class being resolved
+		 * @param callable $resolutionCallback The callback that performs the actual resolution
+		 * @return object The resolved instance
+		 * @throws \RuntimeException When circular dependencies are detected or resolution fails
+		 */
+		protected function safeResolve(string $className, callable $resolutionCallback): object {
+			try {
 				// Circular dependency protection: Check if we're already resolving this class
 				// This prevents infinite recursion when Class A depends on Class B which depends on Class A
 				if (in_array($className, $this->resolutionStack)) {
@@ -216,30 +282,13 @@
 				// This maintains a breadcrumb trail of what we're currently resolving
 				$this->resolutionStack[] = $className;
 				
-				// Autowire constructor dependencies by analyzing the class constructor
-				// Merges manual parameters with automatically resolved dependencies
-				$arguments = $this->autowire->getMethodArguments($className, '__construct', $parameters);
-				
-				// Choose instantiation method based on configuration
-				if ($useServiceProvider) {
-					// Use service provider pattern for more complex instantiation logic
-					// Service providers can handle custom initialization, configuration, etc.
-					$provider = $this->findProvider($className);
-					
-					// Use the provider to create an instance
-					$instance = $provider->createInstance($className, $arguments, $this->context, $methodContext);
-				} else {
-					// Direct reflection-based instantiation for simple cases
-					// Creates instance directly using PHP's reflection API
-					$reflection = new \ReflectionClass($className);
-					$instance = $reflection->newInstanceArgs($arguments);
-				}
+				// Execute the resolution callback
+				$instance = $resolutionCallback();
 				
 				// Clean up: Remove current class from resolution stack since we're done
 				// This allows the same class to be resolved again in different dependency chains
 				array_pop($this->resolutionStack);
 				
-				// Return the instance
 				return $instance;
 				
 			} catch (\Throwable $e) {
@@ -256,11 +305,11 @@
 				}
 				
 				// Wrap and rethrow with additional context
-			    throw new \RuntimeException(
-				    $e->getMessage(),
-				    $e->getCode(),
-				    $e
-			    );
+				throw new \RuntimeException(
+					$e->getMessage(),
+					$e->getCode(),
+					$e
+				);
 			}
 		}
 		
