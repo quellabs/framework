@@ -337,6 +337,7 @@
 				
 				// Calculate overall hit ratio
 				$totalRequests = $aggregatedStats['total_hits'] + $aggregatedStats['total_misses'];
+				
 				if ($totalRequests > 0) {
 					$aggregatedStats['hit_ratio'] = round(($aggregatedStats['total_hits'] / $totalRequests) * 100, 2);
 				}
