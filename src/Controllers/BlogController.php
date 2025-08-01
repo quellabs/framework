@@ -4,19 +4,21 @@
 	
 	use App\Entities\PostEntity;
 	use Quellabs\Canvas\Annotations\Route;
+	use Quellabs\Canvas\Annotations\CacheContext;
 	use Quellabs\Canvas\Annotations\InterceptWith;
 	use Quellabs\Canvas\Cache\CacheAspect;
 	use Quellabs\Canvas\Controllers\BaseController;
+	use Quellabs\Contracts\Cache\CacheInterface;
 	use Symfony\Component\HttpFoundation\Response;
 	
 	class BlogController extends BaseController {
 		
 		/**
 		 * @Route("/posts/")
-		 * @InterceptWith(CacheAspect::class, compression=false)
+		 * @CacheContext(lockTimeout=10)
 		 * @return Response
 		 */
-		public function index(): Response {
+		public function index(CacheInterface $cache): Response {
 			$posts = $this->em->findBy(PostEntity::class, ['published' => true]);
 			
 			return $this->render("blog/index.tpl", [
