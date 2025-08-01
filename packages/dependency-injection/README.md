@@ -13,6 +13,7 @@ A lightweight, PSR-compliant dependency injection container for PHP with advance
 - **Method Injection**: Support for dependency injection in any method, not just constructors
 - **Default Service Fallback**: Automatically handle classes with no dedicated provider
 - **Singleton by Default**: The default service provider resolves all classes as singletons
+- **All Parameters Magic**: Special `$__all__` parameter for accessing all injection parameters
 
 ## Installation
 
@@ -346,6 +347,51 @@ $processor2 = $container->make(OrderProcessor::class);
 $service1 = $container->get(OrderService::class);
 $service2 = $container->get(OrderService::class); // Same instance as service1
 ```
+
+## The `$__all__` Magic Parameter
+
+The dependency injection container supports a special magic parameter named `$__all__` that provides access to all parameters passed to the container during method resolution. This is particularly useful for services that need flexible configuration or want to access additional context data.
+
+### How It Works
+
+When the container encounters a parameter named `$__all__` in a constructor or method signature, it automatically injects the complete parameters array that was passed to the container, giving you access to all available data, including parameters that don't have corresponding method arguments.
+
+### Basic Example
+
+```php
+class ConfigurableService {
+    public function __construct(
+        private DatabaseConnection $db,
+        private LoggerInterface $logger,
+        private array $__all__ = []
+    ) {
+        // $db and $logger are resolved normally
+        // $__all__ contains all parameters passed to the container
+    }
+}
+
+// Usage
+$service = $container->get(ConfigurableService::class, [
+    'database_host' => 'localhost',
+    'log_level' => 'debug',
+    'api_key' => 'secret123'
+]);
+
+// Inside ConfigurableService constructor:
+// $__all__ = [
+//     'database_host' => 'localhost',
+//     'log_level' => 'debug', 
+//     'api_key' => 'secret123'
+// ]
+```
+
+### Important Notes
+
+- The `$__all__` parameter receives the original parameters array passed to the container - no resolution or transformation is applied to these values
+- Other constructor/method parameters are resolved normally through the dependency injection process
+- If no parameters are passed to the container, `$__all__` will be an empty array
+- The `$__all__` parameter should typically have a default value of `[]` to handle cases where no additional parameters are provided
+- This feature works with both `get()` and `make()` methods, as well as `invoke()` for method injection
 
 ## Advanced Configuration
 
