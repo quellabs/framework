@@ -43,65 +43,118 @@
 		}
 		
 		/**
-		 * Resolves and returns arguments for a specific method by matching parameters
-		 * with provided values, attempting dependency injection, or using defaults.
-		 * @param object|string $class
-		 * @param string $methodName The method name to resolve arguments for
-		 * @param array $parameters Optional associative array of parameter values
-		 * @return array Ordered array of resolved arguments for the method
+		 * Resolves and returns arguments for a specific method.
+		 * @param object|string $class The class instance or class name
+		 * @param string $methodName The name of the method to resolve arguments for
+		 * @param array $parameters Optional array of parameters to use for resolution
+		 * @return array The resolved arguments array ready for method invocation
 		 */
 		public function getMethodArguments(object|string $class, string $methodName, array $parameters = []): array {
-			// Fetch the name of the class
+			// Fetch the name of the class - handle both object instances and class name strings
 			$className = is_object($class) ? get_class($class) : $class;
 			
-			// Create a context
+			// Create a context object to track method resolution state and metadata
 			$methodContext = new MethodContext($className, $methodName);
 			
 			// Get method parameter metadata (name, types, defaults, etc.)
+			// This likely uses reflection to analyze the method signature
 			$methodParams = $this->getMethodParameters($className, $methodName);
 			
-			// Process each method parameter in order
+			// Process each method parameter to build the argument array
 			$arguments = [];
-
-			foreach ($methodParams as $param) {
-				$paramName = $param['name'];
-				$paramTypes = $param['types'] ?? [];
-				
-				// Strategy 1: Check if parameter value is directly provided
-				if (isset($parameters[$paramName])) {
-					$arguments[] = $parameters[$paramName];
-					continue;
+			$allParameterIndex = null; // Track position of special "all parameter" if found
+			
+			foreach ($methodParams as $index => $param) {
+				// Check if this parameter is a special "all parameter" type
+				// This might be a parameter that receives all other resolved parameters
+				if ($this->isAllParameter($param)) {
+					$allParameterIndex = $index; // Remember where the all parameter is located
+					$arguments[] = null; // Placeholder - will be filled later with all parameter data
+					continue; // Skip normal parameter resolution for this parameter
 				}
 				
-				// Strategy 2: Try camelCase version of parameter name
-				// (handles snake_case to camelCase conversion)
-				if (isset($parameters[$this->camelToSnake($paramName)])) {
-					$arguments[] = $parameters[$this->camelToSnake($paramName)];
-					continue;
-				}
-				
-				// Strategy 3: Attempt dependency injection using type hints
-				// Tries to resolve parameter from container/service locator
-				$resolvedValue = $this->resolveParameterFromTypes($paramName, $paramTypes, $methodContext);
-				
-				if ($resolvedValue !== null) {
-					$arguments[] = $resolvedValue;
-					continue;
-				}
-				
-				// Strategy 4: Fall back to parameter's default value if defined
-				if (array_key_exists('default_value', $param)) {
-					$arguments[] = $param['default_value'];
-					continue;
-				}
-				
-				// Strategy 5: All resolution strategies failed - throw exception
-				// This indicates a required parameter that cannot be satisfied
-				throw new \RuntimeException("Cannot autowire parameter '$paramName' for $className::$methodName");
+				// Resolve the current parameter using the provided parameters and context
+				// This handles type conversion, default values, dependency injection, etc.
+				$arguments[] = $this->resolveParameter($param, $parameters, $methodContext, $className, $methodName);
 			}
 			
-			// Return the complete argument list in the correct order
+			// If we found an "all parameter", give it the entire original parameters array
+			// This allows access to all input parameters, including those not defined in the method signature
+			if ($allParameterIndex !== null) {
+				$arguments[$allParameterIndex] = $parameters;
+			}
+			
+			// Return the final array of resolved arguments in correct order for method call
 			return $arguments;
+		}
+		
+		/**
+		 * Resolves a single method parameter value using multiple resolution strategies.
+		 * Tries strategies in priority order until one succeeds or all fail.
+		 * @param array $param Parameter metadata (name, types, default_value, etc.)
+		 * @param array $parameters User-provided parameter values
+		 * @param MethodContext|null $methodContext Context object for dependency injection
+		 * @param string $className Class name for error reporting
+		 * @param string $methodName Method name for error reporting
+		 * @return mixed The resolved parameter value
+		 */
+		protected function resolveParameter(
+			array $param,
+			array $parameters,
+			?MethodContext $methodContext,
+			string $className,
+			string $methodName
+		): mixed {
+			$paramName = $param['name'];
+			$paramTypes = $param['types'] ?? [];
+			
+			// Strategy 1: Direct parameter name match
+			// Check if user provided exact parameter name
+			if (isset($parameters[$paramName])) {
+				return $parameters[$paramName];
+			}
+			
+			// Strategy 2: Snake case conversion attempt
+			// Handle camelCase method params with snake_case user input
+			if (isset($parameters[$this->camelToSnake($paramName)])) {
+				return $parameters[$this->camelToSnake($paramName)];
+			}
+			
+			// Strategy 3: Dependency injection resolution
+			// Attempt to autowire parameter using type hints and container
+			$resolved = $this->resolveParameterFromTypes($paramName, $paramTypes, $methodContext);
+			
+			if ($resolved !== null) {
+				return $resolved;
+			}
+			
+			// Strategy 4: Use parameter's default value
+			// Fall back to method signature default if available
+			if (array_key_exists('default_value', $param)) {
+				return $param['default_value'];
+			}
+			
+			// All strategies failed - parameter is required but unresolvable
+			throw new \RuntimeException("Cannot autowire parameter '$paramName' for $className::$methodName");
+		}
+		
+		/**
+		 * Determines if a parameter is the magic **all parameter
+		 * This checks if the parameter name is 'all' and has a type hint of 'array'
+		 * @param array $param Parameter metadata
+		 * @return bool
+		 */
+		protected function isAllParameter(array $param): bool {
+			// Must be named '__all__'
+			if ($param['name'] !== '__all__') {
+				return false;
+			}
+			
+			// Must have array type hint or no type hint (allowing mixed/flexible typing)
+			$types = $param['types'] ?? [];
+			
+			// Check if variable is of the correct type
+			return empty($types) || in_array('array', $types);
 		}
 		
 		/**

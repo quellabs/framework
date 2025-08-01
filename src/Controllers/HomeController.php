@@ -15,7 +15,7 @@
 		 * @Route("/")
 		 * @return Response
 		 */
-		public function index(CacheInterface $cache): Response {
+		public function index(): Response {
 			return new Response("<h1>Welcome to Canvas Blog!</h1>");
 		}
 		
