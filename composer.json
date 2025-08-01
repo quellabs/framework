@@ -71,7 +71,8 @@
     "cakephp/database": "*",
     "softcreatr/jsonpath": "*",
     "composer-plugin-api": "^2.0",
-    "ext-redis": "*"
+    "ext-redis": "*",
+    "ext-memcached": "*"
   },
   "require-dev": {
     "phpstan/phpstan": "*",
