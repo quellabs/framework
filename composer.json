@@ -70,7 +70,8 @@
     "robmorgan/phinx": "*",
     "cakephp/database": "*",
     "softcreatr/jsonpath": "*",
-    "composer-plugin-api": "^2.0"
+    "composer-plugin-api": "^2.0",
+    "ext-redis": "*"
   },
   "require-dev": {
     "phpstan/phpstan": "*",
