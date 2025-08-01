@@ -218,7 +218,7 @@
 				
 				// Autowire constructor dependencies by analyzing the class constructor
 				// Merges manual parameters with automatically resolved dependencies
-				$dependencies = $this->autowire->getMethodArguments($className, '__construct', $parameters);
+				$arguments = $this->autowire->getMethodArguments($className, '__construct', $parameters);
 				
 				// Choose instantiation method based on configuration
 				if ($useServiceProvider) {
@@ -227,12 +227,12 @@
 					$provider = $this->findProvider($className);
 					
 					// Use the provider to create an instance
-					$instance = $provider->createInstance($className, $dependencies, $this->context, $methodContext);
+					$instance = $provider->createInstance($className, $arguments, $this->context, $methodContext);
 				} else {
 					// Direct reflection-based instantiation for simple cases
 					// Creates instance directly using PHP's reflection API
 					$reflection = new \ReflectionClass($className);
-					$instance = $reflection->newInstanceArgs($dependencies);
+					$instance = $reflection->newInstanceArgs($arguments);
 				}
 				
 				// Clean up: Remove current class from resolution stack since we're done

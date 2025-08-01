@@ -13,7 +13,7 @@
 		
 		/**
 		 * @Route("/posts/")
-		 * @InterceptWith(CacheAspect::class)
+		 * @InterceptWith(CacheAspect::class, compression=false)
 		 * @return Response
 		 */
 		public function index(): Response {
