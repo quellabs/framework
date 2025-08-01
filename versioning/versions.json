@@ -1,16 +1,16 @@
 {
   "contracts": "1.0.24",
   "support": "1.0.2",
-  "discover": "1.0.23",
-  "dependency-injection": "1.0.21",
+  "discover": "1.0.24",
+  "dependency-injection": "1.0.22",
   "sculpt": "1.0.20",
   "objectquel": "1.0.27",
-  "cache": "1.0.0",
+  "cache": "1.0.1",
   "signal-hub": "1.0.24",
   "annotation-reader": "1.0.22",
   "canvas": "1.0.38",
   "canvas-objectquel": "1.0.21",
   "canvas-smarty": "1.0.25",
   "canvas-twig": "1.0.1",
-  "canvas-skeleton": "1.0.5"
+  "canvas-skeleton": "1.0.6"
 }

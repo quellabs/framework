@@ -255,13 +255,10 @@
 					array_pop($this->resolutionStack);
 				}
 				
-				// Log the error for debugging
-				error_log("Failed to resolve dependency '{$className}': " . $e->getMessage());
-				
 				// Wrap and rethrow with additional context
 			    throw new \RuntimeException(
-				    "Failed to resolve dependency '{$className}': " . $e->getMessage(),
-				    0,
+				    $e->getMessage(),
+				    $e->getCode(),
 				    $e
 			    );
 			}

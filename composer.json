@@ -72,6 +72,10 @@
     "softcreatr/jsonpath": "*",
     "composer-plugin-api": "^2.0"
   },
+  "suggest": {
+    "ext-redis": "Required for Redis cache driver",
+    "ext-memcached": "Required for Memcached cache driver"
+  },
   "require-dev": {
     "phpstan/phpstan": "*",
     "phpunit/phpunit": "^9",
