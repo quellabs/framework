@@ -16,7 +16,7 @@
 		 * @return Response
 		 */
 		public function index(): Response {
-			return new Response("<h1>Welcome to Canvas Blog!</h1>");
+			return $this->render("home/index2.tpl");
 		}
 		
 		/**

@@ -11,7 +11,18 @@
 	use Quellabs\Contracts\Cache\CacheInterface;
 	use Symfony\Component\HttpFoundation\Response;
 	
+	function fixDate(string $date): string {
+		$parts = explode('/', $date);
+		
+		if (strlen($parts[2]) == 2) {
+			$parts[2] = '19' . $parts[2];
+		}
+		
+		return $parts[2] . '-' . $parts[1] . '-' . $parts[0];
+	}
+	
 	class BlogController extends BaseController {
+
 		
 		/**
 		 * @Route("/posts/")
