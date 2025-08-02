@@ -103,7 +103,7 @@
 </div>
 
 <!-- Include the optimized PAC framework -->
-<script src="wakapac.js"></script>
+<script src="wakapac.min.js"></script>
 
 <!-- Your original example code -->
 <script>
