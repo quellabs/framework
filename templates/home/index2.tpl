@@ -69,6 +69,7 @@
         <p>Hello, <strong>{{ name }}</strong>!</p>
         <p>Count: <span class="status-{{ status }}">{{ count }}</span></p>
         <p>Status: <span class="status-{{ status }}" data-pac-bind="click:toggleStatus" style="cursor: pointer; text-decoration: underline;">{{ status }}</span> (click to change)</p>
+        <p>Bla: {{ fullName }}</p>
 
         <div>
             <button class="primary" data-pac-bind="click:increment">Increment</button>
@@ -103,7 +104,7 @@
 </div>
 
 <!-- Include the optimized PAC framework -->
-<script src="wakapac.min.js"></script>
+<script src="wakapac.js"></script>
 
 <!-- Your original example code -->
 <script>
@@ -171,8 +172,15 @@
         status: 'low',
         statusText: 'Change mode test',
 
+        computed: {
+            fullName() {
+                return this.name + ' ' + this.status + ' ' + this.count;
+            }
+        },
+
         increment() {
             this.count++;
+
             // Update status based on count value
             if (this.count <= 2) {
                 this.status = 'low';

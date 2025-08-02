@@ -21,16 +21,25 @@
  * ║  • Hierarchical Components - Parent-child relationships with communication           ║
  * ║  • Performance Optimized - Batched DOM updates and intelligent caching               ║
  * ║  • Multiple Update Modes - Immediate, delayed, or change-triggered updates           ║
+ * ║  • Computed Properties - Reactive derived values that auto-update when deps change   ║
+ * ║  • Conditional Rendering - Show/hide elements based on reactive properties           ║
  * ║                                                                                      ║
  * ║  Example Usage:                                                                      ║
  * ║    wakaPAC('#my-component', {                                                        ║
- * ║      name: 'World',                                                                  ║
+ * ║      firstName: 'John',                                                              ║
+ * ║      lastName: 'Doe',                                                                ║
  * ║      count: 0,                                                                       ║
+ * ║      isVisible: true,                                                                ║
+ * ║      computed: {                                                                     ║
+ * ║        fullName() { return this.firstName + ' ' + this.lastName; },                 ║
+ * ║        doubleCount() { return this.count * 2; }                                     ║
+ * ║      },                                                                              ║
  * ║      increment() { this.count++; }                                                   ║
  * ║    });                                                                               ║
  * ║                                                                                      ║
  * ║    HTML: <div id="my-component">                                                     ║
- * ║            Hello {{name}}! Count: {{count}}                                          ║
+ * ║            Hello {{fullName}}! Count: {{count}} (Double: {{doubleCount}})           ║
+ * ║            <div data-pac-bind="visible:isVisible">Conditionally shown</div>          ║
  * ║            <button data-pac-bind="click:increment">+</button>                        ║
  * ║          </div>                                                                      ║
  * ║                                                                                      ║
@@ -204,6 +213,9 @@
             pendingUpdates: null,         // Values for pending updates
             originalAbstraction: abstraction, // Original abstraction object
             config: config,               // Configuration options
+            computedCache: new Map(),     // Cache for computed property values
+            computedDependencies: new Map(), // Tracks which properties each computed property depends on
+            propertyDependents: new Map(), // Tracks which computed properties depend on each property
 
             /**
              * Queue a DOM update for batching
@@ -273,6 +285,10 @@
                                 }
 
                                 break;
+
+                            case 'visible':
+                                self.updateVisibilityBinding(binding, newValue);
+                                break;
                         }
                     });
                 });
@@ -280,6 +296,38 @@
                 // Clear pending updates
                 this.pendingDOMUpdates = null;
                 this.pendingUpdates = null;
+            },
+
+            /**
+             * Update a visibility binding by showing/hiding the element
+             * @param {Object} binding - The visibility binding object
+             * @param {*} newValue - New value to determine visibility (truthy/falsy)
+             */
+            updateVisibilityBinding: function (binding, newValue) {
+                const element = binding.element;
+                const shouldShow = this.evaluateVisibilityCondition(binding.condition, newValue);
+
+                if (shouldShow) {
+                    // Show the element
+                    if (element.hasAttribute('data-pac-hidden')) {
+                        // Restore original display value if it was stored
+                        const originalDisplay = element.getAttribute('data-pac-original-display');
+                        element.style.display = originalDisplay || '';
+                        element.removeAttribute('data-pac-hidden');
+                        element.removeAttribute('data-pac-original-display');
+                    }
+                } else {
+                    // Hide the element
+                    if (!element.hasAttribute('data-pac-hidden')) {
+                        // Store original display value before hiding
+                        const originalDisplay = window.getComputedStyle(element).display;
+                        if (originalDisplay !== 'none') {
+                            element.setAttribute('data-pac-original-display', originalDisplay);
+                        }
+                        element.style.display = 'none';
+                        element.setAttribute('data-pac-hidden', 'true');
+                    }
+                }
             },
 
             /**
@@ -302,17 +350,141 @@
             },
 
             /**
-             * Create a reactive version of the abstraction object
-             * This adds getters/setters to make properties reactive
-             * @returns {Object} Reactive abstraction object
+             * Analyze computed property function to determine its dependencies
+             * This uses static analysis of the function source code to find property references
+             * Also analyzes visibility conditions for negation support
+             * @param {Function} computedFunction - The computed property function
+             * @returns {Array} Array of property names this computed property depends on
+             */
+            analyzeComputedDependencies: function (computedFunction) {
+                const dependencies = [];
+                const functionSource = computedFunction.toString();
+
+                // Simple regex to find 'this.propertyName' patterns
+                // This catches most common dependency patterns in computed properties
+                const thisPropertyRegex = /this\.([a-zA-Z_$][a-zA-Z0-9_$]*)/g;
+                let match;
+
+                while ((match = thisPropertyRegex.exec(functionSource)) !== null) {
+                    const propertyName = match[1];
+
+                    // Only include if it's a property we know about and not already in dependencies
+                    if (this.originalAbstraction.hasOwnProperty(propertyName) &&
+                        dependencies.indexOf(propertyName) === -1) {
+                        dependencies.push(propertyName);
+                    }
+                }
+
+                return dependencies;
+            },
+
+            /**
+             * Analyze visibility condition to extract the actual property name
+             * Handles negation (!) in visibility conditions
+             * @param {string} condition - The visibility condition (e.g., 'property' or '!property')
+             * @returns {string} The actual property name without negation
+             */
+            analyzeVisibilityCondition: function (condition) {
+                // Remove leading ! if present to get the actual property name
+                return condition.startsWith('!') ? condition.substring(1) : condition;
+            },
+
+            /**
+             * Update computed properties that depend on a changed property
+             * This implements the reactive computed property system
+             * @param {string} changedProperty - Name of the property that changed
+             */
+            updateComputedProperties: function (changedProperty) {
+                const self = this;
+
+                // Get all computed properties that depend on the changed property
+                const dependentComputeds = this.propertyDependents.get(changedProperty) || [];
+
+                // Update each dependent computed property
+                dependentComputeds.forEach(function (computedName) {
+                    const oldValue = self.computedCache.get(computedName);
+
+                    // Recalculate the computed property value
+                    const computedFunction = self.originalAbstraction.computed[computedName];
+                    const newValue = computedFunction.call(self.abstraction);
+
+                    // Only update if the value actually changed
+                    if (oldValue !== newValue) {
+                        self.computedCache.set(computedName, newValue);
+
+                        // Trigger DOM update for the computed property
+                        self.updateDOM(computedName, newValue);
+
+                        // Notify parent of computed property change
+                        self.notifyParent('propertyChange', {
+                            property: computedName,
+                            oldValue: oldValue,
+                            newValue: newValue,
+                            computed: true
+                        });
+
+                        // Check if any other computed properties depend on this computed property
+                        // This handles chains of computed dependencies (computed A depends on computed B)
+                        self.updateComputedProperties(computedName);
+                    }
+                });
+            },
+
+            /**
+             * Create a new PAC (Presentation-Abstraction-Control) Unit
+             * This is the main factory function that creates reactive DOM components
+             * @param {string} selector - CSS selector for the container element
+             * @param {Object} abstraction - Object containing properties and methods for the component
+             * @param {Object} options - Configuration options for the PAC unit
+             * @returns {Object} Public API object for interacting with the PAC unit
              */
             createReactiveAbstraction: function () {
                 const reactiveAbstraction = {};
                 const self = this;
 
-                // Process each property/method in the original abstraction
+                // First, process computed properties if they exist
+                if (this.originalAbstraction.computed) {
+                    for (const computedName in this.originalAbstraction.computed) {
+                        if (this.originalAbstraction.computed.hasOwnProperty(computedName)) {
+                            const computedFunction = this.originalAbstraction.computed[computedName];
+
+                            if (typeof computedFunction === 'function') {
+                                // Analyze dependencies for this computed property
+                                const dependencies = this.analyzeComputedDependencies(computedFunction);
+                                this.computedDependencies.set(computedName, dependencies);
+
+                                // Build reverse dependency map (property -> computed properties that depend on it)
+                                dependencies.forEach(function (dependency) {
+                                    if (!self.propertyDependents.has(dependency)) {
+                                        self.propertyDependents.set(dependency, []);
+                                    }
+                                    self.propertyDependents.get(dependency).push(computedName);
+                                });
+
+                                // Create getter-only property for computed value
+                                Object.defineProperty(reactiveAbstraction, computedName, {
+                                    get: function () {
+                                        // Return cached value if available
+                                        if (self.computedCache.has(computedName)) {
+                                            return self.computedCache.get(computedName);
+                                        }
+
+                                        // Calculate and cache the value
+                                        const value = computedFunction.call(reactiveAbstraction);
+                                        self.computedCache.set(computedName, value);
+                                        return value;
+                                    },
+                                    enumerable: true,
+                                    configurable: true
+                                });
+                            }
+                        }
+                    }
+                }
+
+                // Process regular properties and methods from the original abstraction
                 for (const key in this.originalAbstraction) {
-                    if (this.originalAbstraction.hasOwnProperty(key)) {
+                    if (this.originalAbstraction.hasOwnProperty(key) && key !== 'computed') {
                         const value = this.originalAbstraction[key];
 
                         if (typeof value === 'function') {
@@ -350,11 +522,14 @@
                     set: function (newValue) {
                         // Only trigger updates if value actually changed
                         if (value !== newValue) {
-                            var oldValue = value;
+                            const oldValue = value;
                             value = newValue;
 
                             // Trigger DOM update
                             self.updateDOM(key, newValue);
+
+                            // Update any computed properties that depend on this property
+                            self.updateComputedProperties(key);
 
                             // Notify parent of property change
                             self.notifyParent('propertyChange', {
@@ -467,7 +642,7 @@
                     const matches = text.match(/\{\{\s*(\w+)\s*\}\}/g);
 
                     if (matches) {
-                        var element = node.parentElement;
+                        const element = node.parentElement;
 
                         // Create binding for each match
                         for (i = 0; i < matches.length; i++) {
@@ -535,16 +710,29 @@
                                     }
                                 });
                             } else {
-                                // Attribute binding
-                                attributeBindings.push({
-                                    key: bindingKey,
-                                    binding: {
-                                        type: 'attribute',
-                                        property: target,
-                                        element: element,
-                                        attribute: type
-                                    }
-                                });
+                                // Attribute binding - check if it's a visibility binding
+                                if (type === 'visible') {
+                                    attributeBindings.push({
+                                        key: bindingKey,
+                                        binding: {
+                                            type: 'visible',
+                                            property: target,
+                                            element: element,
+                                            condition: target  // Store the original condition for negation support
+                                        }
+                                    });
+                                } else {
+                                    // Regular attribute binding
+                                    attributeBindings.push({
+                                        key: bindingKey,
+                                        binding: {
+                                            type: 'attribute',
+                                            property: target,
+                                            element: element,
+                                            attribute: type
+                                        }
+                                    });
+                                }
                             }
                         } else {
                             // Simple property binding for form inputs
@@ -565,9 +753,16 @@
                     }
                 }
 
-                // Batch register all attribute bindings
+                // Batch register all attribute bindings and set up visibility bindings
                 for (i = 0; i < attributeBindings.length; i++) {
-                    this.bindings.set(attributeBindings[i].key, attributeBindings[i].binding);
+                    const bindingData = attributeBindings[i];
+                    this.bindings.set(bindingData.key, bindingData.binding);
+
+                    // For visibility bindings, we need to track the actual property being watched
+                    if (bindingData.binding.type === 'visible') {
+                        const actualProperty = this.analyzeVisibilityCondition(bindingData.binding.condition);
+                        bindingData.binding.property = actualProperty;
+                    }
                 }
             },
 
@@ -596,8 +791,8 @@
 
                 // Add delegated event listeners
                 for (let i = 0; i < eventTypes.length; i++) {
-                    var eventType = eventTypes[i];
-                    var handler = this.createEventHandler(eventType);
+                    const eventType = eventTypes[i];
+                    const handler = this.createEventHandler(eventType);
                     this.container.addEventListener(eventType, handler);
                     this.eventListeners.set(eventType, handler);
                 }
@@ -702,7 +897,8 @@
 
                 // Fallback to legacy data attribute approach
                 if (!handled) {
-                    var action = event.target.getAttribute('data-pac-' + eventType);
+                    const action = event.target.getAttribute('data-pac-' + eventType);
+
                     if (action) {
                         const method = this.abstraction[action];
 
@@ -823,11 +1019,25 @@
             /**
              * Perform initial DOM update to sync abstraction state with DOM
              * This ensures the UI reflects the initial state of the abstraction
+             * Now includes computed properties in the initial sync
              */
             initialDOMUpdate: function () {
-                for (var key in this.abstraction) {
+                // Update regular properties
+                for (const key in this.abstraction) {
                     if (this.abstraction.hasOwnProperty(key) && typeof this.abstraction[key] !== 'function') {
                         this.updateDOM(key, this.abstraction[key]);
+                    }
+                }
+
+                // Force initial computation of all computed properties
+                // This ensures they are cached and available for DOM binding
+                if (this.originalAbstraction.computed) {
+                    for (const computedName in this.originalAbstraction.computed) {
+                        if (this.originalAbstraction.computed.hasOwnProperty(computedName)) {
+                            // Access the computed property to trigger initial calculation
+                            var computedValue = this.abstraction[computedName];
+                            this.updateDOM(computedName, computedValue);
+                        }
                     }
                 }
             },
@@ -835,6 +1045,7 @@
             /**
              * Clean up the PAC unit and remove all references/listeners
              * This prevents memory leaks and ensures proper cleanup
+             * Now includes cleanup of computed property caches
              */
             destroy: function () {
                 const self = this;
@@ -861,6 +1072,11 @@
                 this.children.forEach(function (child) {
                     child.parent = null;
                 });
+
+                // Clear computed property caches and dependency maps
+                this.computedCache.clear();
+                this.computedDependencies.clear();
+                this.propertyDependents.clear();
 
                 // Clear all references
                 this.bindings.clear();
