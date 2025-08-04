@@ -971,7 +971,10 @@
                     this.pendingVals = {};           // Map of property -> new value
 
                     // Schedule flush for next animation frame (or fallback to setTimeout)
-                    (window.requestAnimationFrame || (f => setTimeout(f, 0)))(() => this.flushDOM());
+                    const self = this;
+                    (window.requestAnimationFrame || (f => setTimeout(f, 0)))(() => {
+                        self.flushDOM();
+                    });
                 }
 
                 // Add this property to the pending updates queue
@@ -992,10 +995,8 @@
 
                 // Process each property that has pending changes
                 this.pending.forEach(prop => {
-                    const val = this.pendingVals[prop];
-
                     // Apply the property change to all relevant bindings
-                    this.bindings.forEach(binding => this.updateBinding(binding, prop, val));
+                    this.bindings.forEach(binding => this.updateBinding(binding, prop, this.pendingVals[prop]));
                 });
 
                 // Clear the pending updates queue after processing
@@ -1294,7 +1295,7 @@
                         if (typeof val === 'function') {
                             // Bind methods to reactive object so 'this' refers to reactive instance
                             // This ensures methods have access to reactive properties and other methods
-                            reactive[key] = val.bind(reactive);
+                            reactive[key] = val;
                         } else {
                             // Handle data properties by creating reactive getters/setters
                             // This enables automatic updates and change detection
@@ -2246,13 +2247,6 @@
         function createPublicAPI(unit, control) {
             const api = {};
 
-            // Copy all abstraction properties and methods to the public API
-            Object.keys(unit.abstraction).forEach(key => {
-                if (unit.abstraction.hasOwnProperty(key)) {
-                    api[key] = unit.abstraction[key];
-                }
-            });
-
             // Add public methods for component management and communication
             Object.assign(api, {
                 /**
@@ -2327,15 +2321,6 @@
                     })
                         .then(r => r.json())
                         .then(data => {
-                            // Automatically update component properties if requested
-                            if (opts.updateProperties) {
-                                Object.keys(data).forEach(k => {
-                                    if (control.abstraction.hasOwnProperty(k)) {
-                                        control.abstraction[k] = data[k];
-                                    }
-                                });
-                            }
-
                             // Call success callback if provided
                             if (opts.onSuccess) {
                                 opts.onSuccess.call(control.abstraction, data);
@@ -2357,6 +2342,23 @@
                  * Component lifecycle method
                  */
                 destroy: () => control.destroy()
+            });
+
+            // Copy all abstraction properties and methods
+            Object.entries(Object.getOwnPropertyDescriptors(unit.abstraction)).forEach(([key, descriptor]) => {
+                if (typeof descriptor.value === 'function') {
+                    if (!api.hasOwnProperty(key)) {
+                        api[key] = descriptor.value.bind(api);
+                    }
+                } else if (descriptor.get || descriptor.set) {
+                    Object.defineProperty(api, key, {
+                        ...descriptor,
+                        get: descriptor.get,
+                        set: descriptor.set
+                    });
+                } else {
+                    api[key] = descriptor.value;
+                }
             });
 
             // Define read-only properties for component introspection
