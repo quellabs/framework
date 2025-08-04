@@ -25,7 +25,7 @@
 
 		
 		/**
-		 * @Route("/posts/")
+		 * @Route("/postsx/")
 		 * @CacheContext(lockTimeout=10)
 		 * @return Response
 		 */
@@ -38,7 +38,7 @@
 		}
 		
 		/**
-		 * @Route("/posts/{id:int}")
+		 * @Route("/postsx/{id:int}")
 		 * @param int $id
 		 * @return Response
 		 */

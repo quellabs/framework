@@ -16,7 +16,19 @@
 		 * @return Response
 		 */
 		public function index(): Response {
-			return $this->render("home/index2.tpl");
+			return $this->render("home/index3.tpl");
+		}
+		
+		/**
+		 * @Route("/posts/{id}", methods={"GET", "POST"})
+		 * @return Response
+		 */
+		public function xyz(int $id): Response {
+			return $this->json([
+				'id'      => 10,
+				'title'   => 'test',
+				'content' => 'test'
+			]);
 		}
 		
 		/**

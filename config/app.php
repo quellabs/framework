@@ -5,7 +5,7 @@
 	
 	return [
 		// True to put the framework in debug mode; this mainly affects caching
-		'debug_mode' => true,
+		'debug_mode'             => true,
 		
 		// Template engine
 		'template_engine'        => 'smarty',

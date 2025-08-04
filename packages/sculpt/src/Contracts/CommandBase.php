@@ -5,7 +5,7 @@
 	use Quellabs\Contracts\Discovery\ProviderInterface;
 	use Quellabs\Contracts\IO\ConsoleInput;
 	use Quellabs\Contracts\IO\ConsoleOutput;
-	use Quellabs\ObjectQuel\Sculpt\ServiceProvider;
+	use Quellabs\Sculpt\ServiceProvider;
 	
 	/**
 	 * Abstract base class for all command implementations
