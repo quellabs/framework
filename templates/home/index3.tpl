@@ -7,8 +7,7 @@
 
 <!-- Basic Features Demo -->
 <div id="demo">
-    <span>{{ id }}</span>
-    <span>{{ title }}</span>
+    {{ id }} {{ title }}
 </div>
 
 <!-- Communication Log -->
@@ -21,10 +20,13 @@
 
 // Add this diagnostic to your original example:
 <script>
-    window.waka = wakaPAC('#demo', createPostAbstraction());
+    const waka = wakaPAC('#demo', createPostAbstraction());
+    waka.load(1);
 
-    waka.id = 999;
-    waka.title = 'xManual Test';
+    setInterval(function(e) {
+        ++waka.id;
+    }, 1000);
+
     //waka.load(1);
 </script>
 </body>
