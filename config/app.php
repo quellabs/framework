@@ -8,6 +8,9 @@
 		'debug_mode'             => true,
 		
 		// Template engine
+		'public_directory'       => 'public',
+		
+		// Template engine
 		'template_engine'        => 'smarty',
 		
 		// Path to controller classes
