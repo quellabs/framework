@@ -20,18 +20,6 @@
 		}
 		
 		/**
-		 * @Route("/posts/{id}", methods={"GET", "POST"})
-		 * @return Response
-		 */
-		public function xyz(int $id): Response {
-			return $this->json([
-				'id'      => 10,
-				'title'   => 'test',
-				'content' => 'test'
-			]);
-		}
-		
-		/**
 		 * @Route("/hello/{name}")
 		 * @param string $name
 		 * @return Response
