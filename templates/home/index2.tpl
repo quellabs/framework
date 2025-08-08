@@ -301,7 +301,7 @@
 
             <div data-pac-bind="foreach:filteredTodos" data-pac-item="todo" data-pac-index="index" style="margin-top: 10px;">
                 <div style="display: flex; align-items: center; padding: 8px; border: 1px solid #ddd; margin: 5px 0; border-radius: 4px;" data-pac-bind="class:todo.completed">
-                    <input type="checkbox" data-pac-bind="checked:todo.completed,change:toggleTodoById" style="margin-right: 10px;">
+                    <input type="checkbox" data-pac-bind="checked:todo.completed" style="margin-right: 10px;">
                     <span style="flex: 1;" data-pac-bind="class:todo.completed">{{todo.text}}</span>
                     <button class="btn-danger" data-pac-bind="click:removeTodoById" style="padding: 4px 8px; font-size: 12px;">✕</button>
                 </div>
@@ -590,11 +590,6 @@
 
                 this.newTodo = '';
             }
-        },
-
-        toggleTodoById(todo, index, event) {
-            // Demonstrate deep reactivity - nested property changes
-            todo.completed = !todo.completed;
         },
 
         removeTodoById(todo, index, event) {
