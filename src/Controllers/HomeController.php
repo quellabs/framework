@@ -2,11 +2,10 @@
 	
 	namespace App\Controllers;
 	
+	use App\Entities\PostEntity;
 	use Quellabs\Canvas\Annotations\Route;
-	use Quellabs\Canvas\Annotations\InterceptWith;
-	use Quellabs\Canvas\RateLimiting\RateLimitAspect;
-	use Quellabs\Contracts\Cache\CacheInterface;
 	use Quellabs\Canvas\Controllers\BaseController;
+	use RectorPrefix202507\Nette\Utils\DateTime;
 	use Symfony\Component\HttpFoundation\Response;
 	
 	class HomeController extends BaseController {
@@ -16,6 +15,11 @@
 		 * @return Response
 		 */
 		public function index(): Response {
+			$this->em->executeQuery("
+				range of x is App\\Entities\\PostEntity
+				retrieve (sum(x.id))
+			");
+			
 			return $this->render("home/index3.tpl");
 		}
 		

@@ -1,17 +1,22 @@
 <?php
 	
-	namespace Quellabs\ObjectQuel\QueryManagement;
+	namespace Quellabs\ObjectQuel\Execution;
 	
-	use Quellabs\ObjectQuel\Execution\ExecutionPlan;
-	use Quellabs\ObjectQuel\Execution\ExecutionStage;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAlias;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstBinaryOperator;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstCount;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstCountU;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAvg;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAvgU;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstExpression;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstMax;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstMin;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstFactor;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIdentifier;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRange;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabase;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstSum;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstTerm;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstUnaryOperation;
 	use Quellabs\ObjectQuel\ObjectQuel\AstInterface;
@@ -374,19 +379,30 @@
 		 * @return bool True if the condition involves the range
 		 */
 		protected function hasReferenceToRange(AstInterface $condition, AstRange $range): bool {
-			// For aliases, check the matching identifier
-			if ($condition instanceof AstAlias) {
-				return $this->hasReferenceToRange($condition->getExpression(), $range);
-			}
-			
 			// For property access, check if the base entity matches our range
 			if ($condition instanceof AstIdentifier) {
 				return $condition->getRange()->getName() === $range->getName();
 			}
 			
-			// For unary operations (NOT, etc.)
-			if ($condition instanceof AstUnaryOperation) {
+			// For aliases and AstUnaryOperations, check the matching identifier
+			if (
+				$condition instanceof AstAlias ||
+				$condition instanceof AstUnaryOperation
+			) {
 				return $this->hasReferenceToRange($condition->getExpression(), $range);
+			}
+			
+			// For aggregates, check the matching identifier
+			if (
+				$condition instanceof AstCount ||
+				$condition instanceof AstCountU ||
+				$condition instanceof AstAvg ||
+				$condition instanceof AstAvgU ||
+				$condition instanceof AstMax ||
+				$condition instanceof AstMin ||
+				$condition instanceof AstSum
+			) {
+				return $this->hasReferenceToRange($condition->getIdentifier(), $range);
 			}
 			
 			// For comparison operations, check each side
