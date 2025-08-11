@@ -120,7 +120,7 @@
 				
 				// Convert entity property names to their corresponding database column names
 				$databaseColumns = [];
-
+				
 				foreach ($columns as $column) {
 					// If the indexed column does not exist, throw an error and abort migration creation
 					if (!isset($columnMap[$column])) {
@@ -133,9 +133,9 @@
 				
 				// Build the index configuration array
 				$result[$annotation->getName()] = [
-					'columns' => $databaseColumns,                 // Database column names for this index
-					'type'    => $isUnique ? 'UNIQUE' : 'INDEX',   // Index type identifier
-					'unique'  => $isUnique                         // Boolean flag for uniqueness constraint
+					'columns' => $databaseColumns,                // Database column names for this index
+					'type'    => $isUnique ? 'UNIQUE' : 'INDEX',  // Index type identifier
+					'unique'  => $isUnique                        // Boolean flag for uniqueness constraint
 				];
 			}
 			
