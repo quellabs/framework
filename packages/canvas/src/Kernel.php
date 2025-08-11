@@ -1,5 +1,24 @@
 <?php
 	
+	/*
+	 * ╔══════════════════════════════════════════════════════════════════════════════════════╗
+	 * ║                                                                                      ║
+	 * ║     ██████╗ █████╗ ███╗   ██╗██╗   ██╗ █████╗ ███████╗                              ║
+	 * ║    ██╔════╝██╔══██╗████╗  ██║██║   ██║██╔══██╗██╔════╝                              ║
+	 * ║    ██║     ███████║██╔██╗ ██║██║   ██║███████║███████╗                              ║
+	 * ║    ██║     ██╔══██║██║╚██╗██║╚██╗ ██╔╝██╔══██║╚════██║                              ║
+	 * ║    ╚██████╗██║  ██║██║ ╚████║ ╚████╔╝ ██║  ██║███████║                              ║
+	 * ║     ╚═════╝╚═╝  ╚═╝╚═╝  ╚═══╝  ╚═══╝  ╚═╝  ╚═╝╚══════╝                              ║
+	 * ║                                                                                      ║
+	 * ║  Canvas - A lightweight, modern PHP framework built for real-world projects          ║
+	 * ║                                                                                      ║
+	 * ║  Drop into existing PHP projects without rewriting routes or structure. Features    ║
+	 * ║  annotation-based routing, contextual dependency injection, ObjectQuel ORM, and     ║
+	 * ║  aspect-oriented programming. No magic, no bloat — just the tools you need.         ║
+	 * ║                                                                                      ║
+	 * ╚══════════════════════════════════════════════════════════════════════════════════════╝
+	 */
+	
 	namespace Quellabs\Canvas;
 	
 	use Quellabs\AnnotationReader\AnnotationReader;
@@ -74,15 +93,6 @@
 			
 			// Add a custom exception handler for some nicer exception messages
 			set_exception_handler([$this, 'customExceptionHandler']);
-		}
-		
-		/**
-		 * Returns the Service Discovery object
-		 * This also provides PSR-4 utilities
-		 * @return Discover
-		 */
-		public function getDiscover(): Discover {
-			return $this->discover;
 		}
 		
 		/**
@@ -206,6 +216,7 @@
 			float           $start,
 			int             $memoryStart
 		): void {
+			// Do nothing when the debug collector is not activated
 			if (!$debugCollector) {
 				return;
 			}
@@ -224,7 +235,7 @@
 				'http_methods'      => $urlData['http_methods'] ?? null,
 				'controller'        => $urlData['controller'] ?? null,
 				'method'            => $urlData['method'] ?? null,
-				'pattern' => $pattern,
+				'pattern'           => $pattern,
 				'parameters'        => $urlData['variables'] ?? null,
 				'execution_time_ms' => (microtime(true) - $start) * 1000,
 				'memory_used_bytes' => memory_get_usage(true) - $memoryStart
