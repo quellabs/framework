@@ -16,6 +16,13 @@
 		 * @return Response
 		 */
 		public function index(): Response {
+			$query = "
+				range of x is App\\Entities\\PostEntity
+				retrieve (avg(x))
+			";
+			
+			$this->em->executeQuery($query);
+			
 			return $this->render("home/index3.tpl");
 		}
 		
