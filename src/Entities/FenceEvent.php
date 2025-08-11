@@ -5,7 +5,7 @@
 	
 	/**
 	 * @Orm\Table(name="fence_events")
-	 * @Orm\Index(name="idx_user_fence", columns={"user_id", "fence_id"})
+	 * @Orm\Index(name="idx_user_fence", columns={"userId", "fenceId"})
 	 * @Orm\Index(name="idx_event_timestamp", columns={"timestamp"})
 	 */
 	class FenceEvent {

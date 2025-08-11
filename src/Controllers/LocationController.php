@@ -1,6 +1,6 @@
 <?php
 	
-	namespace Quellabs\GeoFencing\Controllers;
+	namespace App\Controllers;
 	
 	use App\Services\GeoFenceService;
 	use Quellabs\Canvas\Controllers\BaseController;
@@ -24,20 +24,24 @@
 		
 		public function __construct(
 			?TemplateEngineInterface $templateEngine,
-			?EntityManager $entityManager,
-			GeoFenceService $geoFenceService,
-			LocationTracker $locationTracker
+			?EntityManager           $entityManager,
+			GeoFenceService          $geoFenceService,
+			LocationTracker          $locationTracker
 		) {
 			$this->locationTracker = $locationTracker;
 			$this->geoFenceService = $geoFenceService;
 			parent::__construct($templateEngine, $entityManager);
 		}
 		
+		public function getCurrentUserId(): int {
+			return 1;
+		}
+		
 		/**
 		 * @Route("/update", methods={"POST"})
 		 * @InterceptWith(ValidateAspect::class, validator=LocationValidation::class, auto_respond=true)
 		 */
-		public function updateLocation(Request $request) {
+		public function updateLocation(Request $request): JsonResponse {
 			$userId = $this->getCurrentUserId(); // Your auth implementation
 			$lat = (float)$request->request->get('latitude');
 			$lng = (float)$request->request->get('longitude');
@@ -59,16 +63,18 @@
 		/**
 		 * @Route("/history", methods={"GET"})
 		 */
-		public function locationHistory(Request $request) {
+		public function locationHistory(Request $request): JsonResponse {
 			$userId = $this->getCurrentUserId();
 			$limit = (int)$request->query->get('limit', 100);
 			
 			$locations = $this->em->executeQuery("
-            range of l is Quellabs\\GeoFencing\\Entities\\LocationLog
-            retrieve l where l.userId = :userId
-            sort by l.timestamp desc
-            limit :limit
-        ", ['userId' => $userId, 'limit' => $limit]);
+                range of l is Quellabs\\GeoFencing\\Entities\\LocationLog
+                retrieve l where l.userId = :userId
+                sort by l.timestamp desc
+                window 0 using window_size {$limit}
+            ", [
+				'userId' => $userId
+			]);
 			
 			return $this->json($locations);
 		}
@@ -81,15 +87,14 @@
 			$limit = (int)$request->query->get('limit', 50);
 			
 			$events = $this->em->executeQuery("
-                range of e is Quellabs\\GeoFencing\\Entities\\FenceEvent
-                range of f is Quellabs\\GeoFencing\\Entities\\GeoFence via e.fenceId
+                range of e is App\\Entities\\FenceEvent
+                range of f is App\\Entities\\GeoFence via e.fenceId
                 retrieve (e, f.name)
                 where e.userId = :userId
                 sort by e.timestamp desc
-                limit {$limit}
+                window 0 using window_size {$limit}
             ", [
-				'userId' => $userId,
-				'limit'  => $limit
+				'userId' => $userId
 			]);
 			
 			return $this->json($events);

@@ -6,7 +6,7 @@
 	
 	/**
 	 * @Orm\Table(name="location_logs")
-	 * @Orm\Index(name="idx_user_timestamp", columns={"user_id", "timestamp"})
+	 * @Orm\Index(name="idx_user_timestamp", columns={"userId", "timestamp"})
 	 */
 	class LocationLog {
 		
