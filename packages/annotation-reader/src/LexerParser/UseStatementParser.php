@@ -132,6 +132,9 @@
 				$baseNamespace = trim($matches[1]);
 				$classListString = trim($matches[2]);
 				
+				// Normalize base namespace - remove trailing backslashes
+				$baseNamespace = rtrim($baseNamespace, '\\');
+				
 				// Split individual classes by comma
 				$classes = explode(',', $classListString);
 				
