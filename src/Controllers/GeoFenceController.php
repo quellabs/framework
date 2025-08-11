@@ -7,6 +7,7 @@
 	use Quellabs\Canvas\Controllers\BaseController;
 	use Quellabs\Contracts\Templates\TemplateEngineInterface;
 	use Quellabs\ObjectQuel\EntityManager;
+	use Quellabs\ObjectQuel\ObjectQuel\QuelException;
 	use Quellabs\Canvas\Annotations\{Route, RoutePrefix, InterceptWith};
 	use Quellabs\Canvas\Validation\ValidateAspect;
 	use Symfony\Component\HttpFoundation\JsonResponse;
@@ -57,6 +58,7 @@
 		 * @Route("/{id:int}", methods={"GET"})
 		 * @param int $id The geofence ID
 		 * @return JsonResponse The GeoFence entity or error message
+		 * @throws QuelException
 		 */
 		public function show(int $id): JsonResponse {
 			// Find the geofence by primary key
