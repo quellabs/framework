@@ -18,10 +18,10 @@
 		public function index(): Response {
 			$query = "
 				range of x is App\\Entities\\PostEntity
-				retrieve (avg(x))
+				retrieve (y = max(x))
 			";
 			
-			$this->em->executeQuery($query);
+			dd($this->em->getAll($query));
 			
 			return $this->render("home/index3.tpl");
 		}
