@@ -21,8 +21,8 @@
 	use Quellabs\ObjectQuel\ObjectQuel\QuelException;
 	use Quellabs\ObjectQuel\ObjectQuel\QuelResult;
 	use Quellabs\ObjectQuel\ProxyGenerator\ProxyInterface;
-	use Quellabs\ObjectQuel\QueryManagement\QueryBuilder;
-	use Quellabs\ObjectQuel\QueryManagement\QueryExecutor;
+	use Quellabs\ObjectQuel\Execution\QueryBuilder;
+	use Quellabs\ObjectQuel\Execution\QueryExecutor;
 	use Quellabs\ObjectQuel\ReflectionManagement\PropertyHandler;
 	use Quellabs\ObjectQuel\Validation\EntityToValidation;
 	use Quellabs\SignalHub\HasSignals;
@@ -160,7 +160,7 @@
 			$start = microtime(true);
 			
 			// Execute the query through the query executor
-			$result = $this->query_executor->executeQuery(trim($query), $parameters);
+			$result = $this->query_executor->executeQuery($query, $parameters);
 			
 			// Record end time to calculate execution duration
 			$end = microtime(true);

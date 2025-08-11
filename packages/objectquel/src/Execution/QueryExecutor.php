@@ -1,12 +1,10 @@
 <?php
 	
-	namespace Quellabs\ObjectQuel\QueryManagement;
+	namespace Quellabs\ObjectQuel\Execution;
 	
 	use Flow\JSONPath\JSONPathException;
 	use Quellabs\ObjectQuel\EntityManager;
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
-	use Quellabs\ObjectQuel\Execution\ExecutionStage;
-	use Quellabs\ObjectQuel\Execution\PlanExecutor;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeJsonSource;
 	use Quellabs\ObjectQuel\ObjectQuel\ObjectQuel;
 	use Quellabs\ObjectQuel\ObjectQuel\QuelException;
@@ -114,7 +112,7 @@
 		 */
 		public function executeQuery(string $query, array $parameters = []): QuelResult {
 			// Parse the input query string into an Abstract Syntax Tree (AST)
-			$ast = $this->getObjectQuel()->parse($query);
+			$ast = $this->getObjectQuel()->parse(trim($query));
 			
 			// Decompose the query
 			$decomposer = new QueryDecomposer();

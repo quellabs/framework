@@ -6,9 +6,9 @@
 	use Quellabs\ObjectQuel\ObjectQuel\AstVisitorInterface;
 	
 	/**
-	 * Class AstUCount
+	 * Class AstMin
 	 */
-	class AstUCount extends Ast {
+	class AstMin extends Ast {
 		
 		/**
 		 * @var AstInterface The right-hand operand of the AND expression.
@@ -16,7 +16,7 @@
 		protected AstInterface $identifier;
 		
 		/**
-		 * AstCount constructor.
+		 * AstMin constructor.
 		 * @param AstInterface $entityOrIdentifier
 		 */
 		public function __construct(AstInterface $entityOrIdentifier) {
@@ -47,13 +47,5 @@
 		 */
 		public function setIdentifier(AstIdentifier $ast): void {
 			$this->identifier = $ast;
-		}
-		
-		/**
-		 * Returns the return type of this node
-		 * @return string|null
-		 */
-		public function getReturnType(): ?string {
-			return "integer";
 		}
 	}
