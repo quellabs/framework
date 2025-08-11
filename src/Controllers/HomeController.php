@@ -16,14 +16,6 @@
 		 * @return Response
 		 */
 		public function index(): Response {
-			$query = "
-				range of x is App\\Entities\\PostEntity
-				retrieve (x)
-				where count(x) = 2
-			";
-			
-			dd($this->em->getAll($query));
-			
 			return $this->render("home/index3.tpl");
 		}
 		
