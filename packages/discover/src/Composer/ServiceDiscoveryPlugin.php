@@ -22,11 +22,13 @@
 		
 		/**
 		 * @var Composer The Composer instance
+		 * @phpstan-ignore property.onlyWritten
 		 */
 		private Composer $composer;
 		
 		/**
 		 * @var IOInterface The IO interface for output messages
+		 * @phpstan-ignore property.onlyWritten
 		 */
 		private IOInterface $io;
 		

@@ -12,14 +12,13 @@
 	use Symfony\Component\HttpFoundation\Response;
 	
 	class BlogController extends BaseController {
-
 		
 		/**
 		 * @Route("/posts/")
 		 * @return Response
 		 */
 		public function index(CacheInterface $cache): Response {
-			$posts = $this->em->findBy(PostEntity::class, ['published' => true]);
+			$posts = $this->em()->findBy(PostEntity::class, ['published' => true]);
 			
 			return $this->render("blog/index.tpl", [
 				'posts' => $posts
@@ -32,7 +31,7 @@
 		 * @return Response
 		 */
 		public function show(int $id): Response {
-			$post = $this->em->find(PostEntity::class, $id);
+			$post = $this->em()->find(PostEntity::class, $id);
 			
 			if (!$post) {
 				return $this->notFound('Post does not exist.');

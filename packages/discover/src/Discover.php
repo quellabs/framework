@@ -35,9 +35,7 @@
 			// Iterate through each registered scanner to discover providers
 			foreach ($this->scanners as $scanner) {
 				foreach ($scanner->scan() as $definition) {
-					if ($definition instanceof ProviderDefinition) {
-						$this->addProviderDefinition($definition);
-					}
+					$this->addProviderDefinition($definition);
 				}
 			}
 			
