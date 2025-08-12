@@ -282,12 +282,12 @@
 		/**
 		 * Parses class-level annotations from a docblock comment
 		 * @param \ReflectionClass $reflection Reflection class
-		 * @param array &$result Reference to the result array where parsed annotations will be stored
+		 * @param array|AnnotationCollection &$result Reference to the result array where parsed annotations will be stored
 		 * @param array $imports Array of imported namespaces/classes for annotation resolution
 		 * @return void
 		 * @throws AnnotationReaderException When annotation parsing fails
 		 */
-		protected function parseClassAnnotations(\ReflectionClass $reflection, array &$result, array $imports) : void {
+		protected function parseClassAnnotations(\ReflectionClass $reflection, array|AnnotationCollection &$result, array $imports) : void {
 			// Early return if no docblock comment exists or if it's empty
 			if (empty($reflection->getDocComment())) {
 				return;

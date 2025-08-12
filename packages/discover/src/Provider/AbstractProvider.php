@@ -54,7 +54,7 @@
 		/**
 		 * Return true if the config value is present
 		 * @param string $key
-		 * @return mixed
+		 * @return bool
 		 */
 		public function hasConfigValue(string $key): bool {
 			return isset($this->config[$key]);
