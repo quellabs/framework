@@ -843,6 +843,7 @@
 			
 			// Maak een nieuw AST-element voor de primaire sleutel.
 			$astIdentifier = new AstIdentifier($primaryKeyInfo['entityName']);
+			$astIdentifier->setRange(clone $primaryKeyInfo['range']);
 			$astIdentifier->setNext(new AstIdentifier($primaryKeyInfo['primaryKey']));
 			$e->setValues([new AstAlias("primary", $astIdentifier)]);
 			

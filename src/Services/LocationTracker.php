@@ -1,6 +1,6 @@
 <?php
 	
-	namespace Quellabs\GeoFencing\Services;
+	namespace App\Services;
 	
 	use App\Entities\LocationLog;
 	use Quellabs\ObjectQuel\EntityManager;

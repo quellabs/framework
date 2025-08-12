@@ -6,6 +6,7 @@
 	use App\Services\GeoFenceService;
 	use Quellabs\Canvas\Controllers\BaseController;
 	use Quellabs\Contracts\Templates\TemplateEngineInterface;
+	use Quellabs\DependencyInjection\Container;
 	use Quellabs\ObjectQuel\EntityManager;
 	use Quellabs\ObjectQuel\ObjectQuel\QuelException;
 	use Quellabs\Canvas\Annotations\{Route, RoutePrefix, InterceptWith};
@@ -27,17 +28,15 @@
 		
 		/**
 		 * Constructor - initializes the controller with required dependencies
-		 * @param TemplateEngineInterface|null $templateEngine Template engine for rendering views
-		 * @param EntityManager|null $entityManager ORM entity manager for database operations
+		 * @param Container $container
 		 * @param GeoFenceService $geoFenceService Service for geofence-specific operations
 		 */
 		public function __construct(
-			?TemplateEngineInterface $templateEngine,
-			?EntityManager $entityManager,
+			Container $container,
 			GeoFenceService $geoFenceService
 		) {
 			$this->geoFenceService = $geoFenceService;
-			parent::__construct($templateEngine, $entityManager);
+			parent::__construct($container);
 		}
 		
 		/**
@@ -48,7 +47,7 @@
 		 */
 		public function index(): JsonResponse {
 			// Fetch only active geofences from the database
-			$fences = $this->em->findBy(GeoFence::class, ['active' => true]);
+			$fences = $this->em()->findBy(GeoFence::class, ['active' => true]);
 			return $this->json($fences);
 		}
 		
@@ -62,7 +61,7 @@
 		 */
 		public function show(int $id): JsonResponse {
 			// Find the geofence by primary key
-			$fence = $this->em->find(GeoFence::class, $id);
+			$fence = $this->em()->find(GeoFence::class, $id);
 			
 			// Return 404 if geofence doesn't exist
 			if (!$fence) {
@@ -125,7 +124,7 @@
 		 */
 		public function delete(int $id): JsonResponse {
 			// Find the geofence to delete
-			$fence = $this->em->find(GeoFence::class, $id);
+			$fence = $this->em()->find(GeoFence::class, $id);
 			
 			// Return 404 if geofence doesn't exist
 			if (!$fence) {
@@ -136,7 +135,7 @@
 			$fence->setActive(false);
 			
 			// Persist changes to database
-			$this->em->flush();
+			$this->em()->flush();
 	
 			// Return message to user
 			return $this->json(['message' => 'Fence deleted']);

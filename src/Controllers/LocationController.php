@@ -3,9 +3,10 @@
 	namespace App\Controllers;
 	
 	use App\Services\GeoFenceService;
+	use App\Services\LocationTracker;
 	use Quellabs\Canvas\Controllers\BaseController;
 	use Quellabs\Contracts\Templates\TemplateEngineInterface;
-	use Quellabs\GeoFencing\Services\LocationTracker;
+	use Quellabs\DependencyInjection\Container;
 	use Quellabs\ObjectQuel\EntityManager;
 	use Quellabs\Canvas\Annotations\{Route, RoutePrefix, InterceptWith};
 	use Quellabs\Canvas\Validation\ValidateAspect;
@@ -15,7 +16,6 @@
 	
 	/**
 	 * @RoutePrefix("/api/location")
-	 * @InterceptWith(LocationTrackingAspect::class)
 	 */
 	class LocationController extends BaseController {
 		
@@ -23,14 +23,13 @@
 		private LocationTracker $locationTracker;
 		
 		public function __construct(
-			?TemplateEngineInterface $templateEngine,
-			?EntityManager           $entityManager,
+			Container $container,
 			GeoFenceService          $geoFenceService,
 			LocationTracker          $locationTracker
 		) {
 			$this->locationTracker = $locationTracker;
 			$this->geoFenceService = $geoFenceService;
-			parent::__construct($templateEngine, $entityManager);
+			parent::__construct($container);
 		}
 		
 		public function getCurrentUserId(): int {
@@ -67,9 +66,10 @@
 			$userId = $this->getCurrentUserId();
 			$limit = (int)$request->query->get('limit', 100);
 			
-			$locations = $this->em->executeQuery("
-                range of l is Quellabs\\GeoFencing\\Entities\\LocationLog
-                retrieve l where l.userId = :userId
+			$locations = $this->em()->executeQuery("
+                range of l is App\\Entities\\LocationLog
+                retrieve (l)
+                where l.userId = :userId
                 sort by l.timestamp desc
                 window 0 using window_size {$limit}
             ", [
@@ -86,7 +86,7 @@
 			$userId = $this->getCurrentUserId();
 			$limit = (int)$request->query->get('limit', 50);
 			
-			$events = $this->em->executeQuery("
+			$events = $this->em()->executeQuery("
                 range of e is App\\Entities\\FenceEvent
                 range of f is App\\Entities\\GeoFence via e.fenceId
                 retrieve (e, f.name)
