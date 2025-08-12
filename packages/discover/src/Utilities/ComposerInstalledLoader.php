@@ -52,9 +52,9 @@
 			$mappingPath = ComposerUtils::getDiscoveryMappingPath($this->startDirectory);
 			
 			if ($mappingPath !== null) {
-				// Found a mapping file, pull it in
 				try {
-					return $this->installedDataCache[$mappingPath] = include $mappingPath;
+					$this->installedDataCache[$mappingPath] = include $mappingPath;
+					return $this->installedDataCache[$mappingPath];
 				} catch (\Throwable $e) {
 					$this->logger->warning('Failed to include discovery mapping file', [
 						'scanner'       => 'ComposerScanner',
