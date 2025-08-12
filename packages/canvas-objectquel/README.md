@@ -80,7 +80,7 @@ class ProductController extends BaseController {
      * @Route('/')
      */
     public function index() {
-        $products = $this->em->findBy(ProductEntity::class, [
+        $products = $this->em()->findBy(ProductEntity::class, [
             'active' => true
         ]);
         
@@ -218,8 +218,8 @@ class ProductController extends BaseController {
         $product->setName('New Product');
         $product->setPrice(29.99);
         
-        $this->em->persist($product);
-        $this->em->flush();
+        $this->em()->persist($product);
+        $this->em()->flush();
         
         return $this->redirect('/products');
     }
@@ -228,7 +228,7 @@ class ProductController extends BaseController {
      * @Route('/products')
      */
     public function index() {
-        $products = $this->em->executeQuery("
+        $products = $this->em()->executeQuery("
             range of p is App\\Entity\\ProductEntity
             retrieve (p) where p.active = true
             sort by p.name asc
@@ -274,7 +274,7 @@ class OrderController extends BaseController {
      * @Route('/orders/{id}', methods={['GET']})
      */
     public function show(int $id) {
-        $order = $this->em->find(OrderEntity::class, $id);
+        $order = $this->em()->find(OrderEntity::class, $id);
         
         if (!$order) {
             return $this->notFound();
@@ -287,11 +287,11 @@ class OrderController extends BaseController {
      * @Route('/orders/{id}', methods={['PUT', 'PATCH']})
      */
     public function update(int $id, array $data) {
-        $order = $this->em->find(OrderEntity::class, $id);
+        $order = $this->em()->find(OrderEntity::class, $id);
         $order->setStatus($data['status']);
         
-        $this->em->persist($order);
-        $this->em->flush();
+        $this->em()->persist($order);
+        $this->em()->flush();
         
         return $this->json(['success' => true]);
     }
@@ -303,7 +303,7 @@ class OrderController extends BaseController {
 ```php
 // Using ObjectQuel query language
 public function getRecentOrdersWithCustomers() {
-    return $this->em->executeQuery("
+    return $this->em()->executeQuery("
         range of o is App\\Entity\\OrderEntity
         range of c is App\\Entity\\CustomerEntity via o.customer
         retrieve (o, c.name) 
@@ -334,7 +334,7 @@ class ProductRepository extends Repository {
      * @return array<ProductEntity> Matching products
      */
     public function findFeaturedProducts(): QuelResult {
-        return $this->em->executeQuery("
+        return $this->em()->executeQuery("
             range of p is App\\Entity\\ProductEntity
             retrieve (p) where p.featured = true
             sort by p.sortOrder asc
