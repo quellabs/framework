@@ -1,6 +1,6 @@
 <?php
 	
-	namespace Quellabs\GeoFencing\Validation\Rules;
+	namespace App\Validation;
 	
 	class ValidatePolygonCoordinates {
 		
