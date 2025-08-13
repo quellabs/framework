@@ -5,9 +5,7 @@
 	use App\Services\GeoFenceService;
 	use App\Services\LocationTracker;
 	use Quellabs\Canvas\Controllers\BaseController;
-	use Quellabs\Contracts\Templates\TemplateEngineInterface;
 	use Quellabs\DependencyInjection\Container;
-	use Quellabs\ObjectQuel\EntityManager;
 	use Quellabs\Canvas\Annotations\{Route, RoutePrefix, InterceptWith};
 	use Quellabs\Canvas\Validation\ValidateAspect;
 	use App\Validation\LocationValidation;
