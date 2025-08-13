@@ -2014,18 +2014,15 @@
                         break;
 
                     case 'checked':
-                        element.checked = Boolean(value);
+                        this.applyCheckedBinding(element, Boolean(value));
                         break;
 
                     case 'class':
-                        this.handleClassBinding(element, target, value);
+                        this.applyClassBinding(element, target, value);
                         break;
 
                     default:
-                        if (value != null) {
-                            element.setAttribute(type, value);
-                        }
-
+                        this.applyAttributeBinding(element, type, value);
                         break;
                 }
             },
@@ -2463,27 +2460,35 @@
             },
 
             /**
-             *
-             * @param element
-             * @param shouldShow
+             * Applies visibility binding to an element by showing or hiding it
+             * while preserving the original display style value
+             * @param {HTMLElement} element - The DOM element to show or hide.
+             * @param {boolean} shouldShow - Determines the visibility action to perform
              */
             applyVisibilityBinding(element, shouldShow) {
                 if (shouldShow) {
                     // Show element: restore original display value
                     if (element.hasAttribute('data-pac-hidden')) {
+                        // Restore the original display value (or empty string if none was saved)
                         element.style.display = element.getAttribute('data-pac-orig-display') || '';
+
+                        // Clean up our tracking attributes
                         element.removeAttribute('data-pac-hidden');
                         element.removeAttribute('data-pac-orig-display');
                     }
                 } else {
                     // Hide element: save current display and set to none
                     if (!element.hasAttribute('data-pac-hidden')) {
+                        // Get the computed display style before we change it
                         const currentDisplay = getComputedStyle(element).display;
 
+                        // Only save the display value if it's not already 'none'
+                        // (no point in saving 'none' as the original value)
                         if (currentDisplay !== 'none') {
                             element.setAttribute('data-pac-orig-display', currentDisplay);
                         }
 
+                        // Hide the element and mark it as hidden by our binding
                         element.style.display = 'none';
                         element.setAttribute('data-pac-hidden', 'true');
                     }
@@ -2491,12 +2496,21 @@
             },
 
             /**
-             * Handles CSS class binding by extracting the class name and adding it to the element
+             * Applies checked state to an element
+             * @param {HTMLElement} element - The target DOM element
+             * @param {boolean} checked - Whether the element should be checked
+             */
+            applyCheckedBinding(element, checked) {
+                element.checked = checked;
+            },
+
+            /**
+             * Applies CSS class binding by extracting the class name and adding it to the element
              * @param {HTMLElement} element - The target DOM element
              * @param {string} target - The class expression (may include dot notation)
              * @param {*} value - The evaluated expression value
              */
-            handleClassBinding(element, target, value) {
+            applyClassBinding(element, target, value) {
                 // Only add class if the expression evaluates to truthy
                 if (!value) {
                     return;
@@ -2505,6 +2519,18 @@
                 // Extract class name from dot notation (e.g., "item.active" -> "active")
                 const className = target.includes('.') ? target.split('.').pop() : target;
                 element.classList.add(className);
+            },
+
+            /**
+             * Applies attribute binding to an element
+             * @param {HTMLElement} element - The target DOM element
+             * @param {string} attributeName - The name of the attribute to set
+             * @param {*} value - The value to set for the attribute
+             */
+            applyAttributeBinding(element, attributeName, value) {
+                if (value != null) {
+                    element.setAttribute(attributeName, value);
+                }
             },
 
             /**
