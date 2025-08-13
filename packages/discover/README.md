@@ -6,36 +6,6 @@
 
 A lightweight, flexible service discovery component for PHP applications that automatically discovers service providers across your application and its dependencies with advanced caching and lazy loading capabilities.
 
-## 📋 Table of Contents
-
-- [Introduction](#introduction)
-- [Installation](#installation)
-- [Quick Start](#quick-start)
-- [Service Providers](#service-providers)
-  - [Creating a Service Provider](#creating-a-service-provider)
-  - [Provider Interface](#provider-interface)
-- [Discovery Methods](#discovery-methods)
-  - [Composer Configuration](#composer-configuration)
-  - [Directory Scanning](#directory-scanning)
-- [Caching and Performance](#caching-and-performance)
-  - [Provider Definition Caching](#provider-definition-caching)
-  - [Performance Best Practices](#performance-best-practices)
-- [Provider Configuration](#provider-configuration)
-  - [Basic Configuration File](#basic-configuration-file)
-  - [Registering Provider with Configuration](#registering-provider-with-configuration)
-  - [Using Configuration in Providers](#using-configuration-in-providers)
-- [Provider Families](#provider-families)
-  - [Defining Provider Families](#defining-provider-families)
-  - [Using Multiple Family Scanners](#using-multiple-family-scanners)
-  - [Accessing Providers by Family](#accessing-providers-by-family)
-- [PSR-4 Utilities](#psr-4-utilities)
-  - [Namespace/Path Mapping](#namespacepath-mapping)
-  - [Finding Classes in Directories](#finding-classes-in-directories)
-  - [Advanced PSR-4 Techniques](#advanced-psr-4-techniques)
-- [Framework Integration](#framework-integration)
-- [Extending Discover](#extending-discover)
-- [License](#license)
-
 ## Introduction
 
 Quellabs Discover solves the common challenge of service discovery in PHP applications. It focuses solely on locating service providers defined in your application and its dependencies, giving you complete control over how to use these providers in your application architecture. Unlike other service discovery solutions that force specific patterns, Discover is framework-agnostic and can be integrated into any PHP application.
@@ -256,7 +226,7 @@ $capabilities = $discover->getAllProviderMetadata();
 
 ### Performance Best Practices
 
-#### 1. Use Caching in Production
+#### Use Caching in Production
 
 ```php
 // Development: Always discover fresh for changes
@@ -275,7 +245,7 @@ if (app()->environment('local')) {
 }
 ```
 
-#### 2. Use Filtered Access
+#### Use Filtered Access
 
 ```php
 // ❌ Don't do this if you only need specific providers
@@ -285,7 +255,7 @@ $allProviders = $discover->getProviders(); // Instantiates everything!
 $databaseProviders = $discover->findProvidersByFamily('database');
 ```
 
-#### 3. Optimize Static Methods
+#### Optimize Static Methods
 
 Since static methods are called during discovery, keep them lightweight:
 

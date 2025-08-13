@@ -1,5 +1,23 @@
 <?php
 	
+	/*
+	 * ╔═══════════════════════════════════════════════════════════════════════════════════════╗
+	 * ║                                                                                       ║
+	 * ║  ███████╗ ██████╗██╗   ██╗██╗     ██████╗ ████████╗                                   ║
+	 * ║  ██╔════╝██╔════╝██║   ██║██║     ██╔══██╗╚══██╔══╝                                   ║
+	 * ║  ███████╗██║     ██║   ██║██║     ██████╔╝   ██║                                      ║
+	 * ║  ╚════██║██║     ██║   ██║██║     ██╔═══╝    ██║                                      ║
+	 * ║  ███████║╚██████╗╚██████╔╝███████╗██║        ██║                                      ║
+	 * ║  ╚══════╝ ╚═════╝ ╚═════╝ ╚══════╝╚═╝        ╚═╝                                      ║
+	 * ║                                                                                       ║
+	 * ║  Sculpt - Modern CLI framework for the Quellabs ecosystem                             ║
+	 * ║                                                                                       ║
+	 * ║  Provides an elegant command-line interface for rapid development, code generation,   ║
+	 * ║  and project management with seamless ObjectQuel ORM integration.                     ║
+	 * ║                                                                                       ║
+	 * ╚═══════════════════════════════════════════════════════════════════════════════════════╝
+	 */
+	
 	namespace Quellabs\Sculpt;
 	
 	use Quellabs\Discover\Provider\AbstractProvider;

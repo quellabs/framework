@@ -1,5 +1,23 @@
 <?php
 	
+	/*
+	 * ╔═══════════════════════════════════════════════════════════════════════════════════════╗
+	 * ║                                                                                       ║
+	 * ║  ██████╗ ██╗███████╗ ██████╗ ██████╗ ██╗   ██╗███████╗██████╗                         ║
+	 * ║  ██╔══██╗██║██╔════╝██╔════╝██╔═══██╗██║   ██║██╔════╝██╔══██╗                        ║
+	 * ║  ██║  ██║██║███████╗██║     ██║   ██║██║   ██║█████╗  ██████╔╝                        ║
+	 * ║  ██║  ██║██║╚════██║██║     ██║   ██║╚██╗ ██╔╝██╔══╝  ██╔══██╗                        ║
+	 * ║  ██████╔╝██║███████║╚██████╗╚██████╔╝ ╚████╔╝ ███████╗██║  ██║                        ║
+	 * ║  ╚═════╝ ╚═╝╚══════╝ ╚═════╝ ╚═════╝   ╚═══╝  ╚══════╝╚═╝  ╚═╝                        ║
+	 * ║                                                                                       ║
+	 * ║  Discover - Lightweight, flexible service discovery for PHP applications              ║
+	 * ║                                                                                       ║
+	 * ║  Automatically discovers service providers across your application and dependencies   ║
+	 * ║  with advanced caching, lazy loading, and framework-agnostic architecture.            ║
+	 * ║                                                                                       ║
+	 * ╚═══════════════════════════════════════════════════════════════════════════════════════╝
+	 */
+	
 	namespace Quellabs\Discover;
 	
 	use Quellabs\Support\ComposerUtils;
