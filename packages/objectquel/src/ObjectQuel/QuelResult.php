@@ -235,7 +235,6 @@
 		
 		/**
 		 * Countable implementation: Returns the number of elements in the result set
-		 * This allows empty() to work properly with this object
 		 * @return int Number of elements in the result set
 		 */
 		public function count(): int {
