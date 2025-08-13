@@ -69,19 +69,20 @@
         </div>
     </div>
 
-    <!-- Active Fences -->
+    <!-- Active Fences - FIXED VERSION -->
     <div class="fences-section">
         <h3>Active Geo-Fences ({{activeFences.length}})</h3>
         <div data-pac-bind="foreach:activeFences" data-pac-item="fence" class="fences-list">
             <div class="fence-item">
                 <h4>{{fence.name}}</h4>
                 <p>Type: {{fence.type}}</p>
+                <!-- FIXED: Use the flattened properties that exist in your data -->
                 <p data-pac-bind="visible:fence.type === 'circle'">
-                    Center: {{fence.centerLat}}, {{fence.centerLng}}
-                    <br>Radius: {{fence.radiusMeters}}m
+                    Center: {{fence.center_lat}}, {{fence.center_lng}}
+                    <br>Radius: {{fence.radius_meters}}m
                 </p>
                 <p data-pac-bind="visible:fence.type === 'polygon'">
-                    Vertices: {{fence.polygonCoordinates.length}}
+                    Vertices: {{fence.vertex_count}}
                 </p>
                 <button data-pac-bind="click:toggleFence, class:fence.active ? 'btn-danger' : 'btn-success'">
                     {{fence.active ? 'Disable' : 'Enable'}}

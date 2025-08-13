@@ -158,7 +158,7 @@ const geofencingApp = wakaPAC('#geofencing-app', {
 
     async loadActiveFences() {
         try {
-            const fences = await this.control(this.settings.apiBase, {
+            const fences = await this.control(`${this.settings.apiBase}/geofences/`, {
                 method: 'GET',
                 onError: (error) => {
                     this.error = `Failed to load fences: ${error.message}`;
