@@ -4,6 +4,8 @@
 		'enabled' => true,
 		
 		'panels' => [
-			'geolocation' => \App\Inspector\GeoLocationPanel::class,
+			\Quellabs\Canvas\Inspector\Panels\RequestPanel::class,
+			\Quellabs\Canvas\Inspector\Panels\QueryPanel::class,
+			\App\Inspector\GeoLocationPanel::class,
 		]
 	];
