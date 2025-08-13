@@ -180,19 +180,19 @@
 		 */
 		private function wasUserInsideFence(int $userId, int $fenceId): bool {
 			// Query for the most recent fence event for this user/fence pair
-			$lastEvent = $this->em->executeQuery("
+			$lastEvent = $this->em->getCol("
                 range of e is App\\Entities\\FenceEvent
                 retrieve (e)
                 where e.userId = :userId and e.fenceId = :fenceId
                 sort by e.timestamp desc
-                window 0 using window_size 1
+                window 0,1
             ", [
 				'userId'  => $userId,
 				'fenceId' => $fenceId
 			]);
 			
 			// User is considered inside if their last event was an 'enter' event
-			return !empty($lastEvent) && $lastEvent[0]['e']->getEventType() === 'enter';
+			return !empty($lastEvent) && $lastEvent[0]->getEventType() === 'enter';
 		}
 		
 		/**

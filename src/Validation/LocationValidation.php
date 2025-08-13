@@ -22,20 +22,16 @@
 					new RegExp('/^-?(180(\.0+)?|((1[0-7]\d)|([1-9]?\d))(\.\d+)?)$/', 'Longitude must be between -180 and 180 degrees')
 				],
 				'accuracy'  => [
-					new Type('float', 'Accuracy must be a valid number'),
-					new RegExp('/^[0-9]+(\.[0-9]+)?$/', 'Accuracy must be a positive number')
+					new Type('numeric', 'Accuracy must be a valid number'),
 				],
 				'altitude'  => [
-					new Type('float', 'Altitude must be a valid number')
-					// Altitude can be negative (below sea level), so no range restriction
+					new Type('numeric', 'Altitude must be a valid number')
 				],
 				'heading'   => [
-					new Type('float', 'Heading must be a valid number'),
-					new RegExp('/^(360(\.0+)?|([0-2]?\d{1,2}|3[0-5]\d)(\.\d+)?)$/', 'Heading must be between 0 and 360 degrees')
+					new Type('numeric', 'Heading must be a valid number'),
 				],
 				'speed'     => [
-					new Type('float', 'Speed must be a valid number'),
-					new RegExp('/^[0-9]+(\.[0-9]+)?$/', 'Speed must be a positive number')
+					new Type('numeric', 'Speed must be a valid number'),
 				],
 				'timestamp' => [
 					// Optional: validate ISO 8601 format if provided

@@ -68,6 +68,7 @@ const geofencingApp = wakaPAC('#geofencing-app', {
 
     stopTracking() {
         this.tracking = false;
+
         if (this.watchId) {
             navigator.geolocation.clearWatch(this.watchId);
             this.watchId = null;
@@ -76,6 +77,7 @@ const geofencingApp = wakaPAC('#geofencing-app', {
 
     async handlePosition(position) {
         const coords = position.coords;
+
         const location = {
             latitude: coords.latitude,
             longitude: coords.longitude,

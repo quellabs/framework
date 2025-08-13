@@ -35,7 +35,7 @@
 		}
 		
 		/**
-		 * @Route("/update", methods={"POST", "GET"})
+		 * @Route("/update", methods={"POST"})
 		 * @InterceptWith(ValidateAspect::class, validator=LocationValidation::class, auto_respond=true)
 		 */
 		public function updateLocation(Request $request): JsonResponse {
