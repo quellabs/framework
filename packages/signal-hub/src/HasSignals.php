@@ -1,10 +1,26 @@
 <?php
 	
+	/*
+	 * ╔═══════════════════════════════════════════════════════════════════════════════════════╗
+	 * ║                                                                                       ║
+	 * ║  ███████╗██╗ ██████╗ ███╗   ██╗ █████╗ ██╗     ██╗  ██╗██╗   ██╗██████╗               ║
+	 * ║  ██╔════╝██║██╔════╝ ████╗  ██║██╔══██╗██║     ██║  ██║██║   ██║██╔══██╗              ║
+	 * ║  ███████╗██║██║  ███╗██╔██╗ ██║███████║██║     ███████║██║   ██║██████╔╝              ║
+	 * ║  ╚════██║██║██║   ██║██║╚██╗██║██╔══██║██║     ██╔══██║██║   ██║██╔══██╗              ║
+	 * ║  ███████║██║╚██████╔╝██║ ╚████║██║  ██║███████╗██║  ██║╚██████╔╝██████╔╝              ║
+	 * ║  ╚══════╝╚═╝ ╚═════╝ ╚═╝  ╚═══╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝               ║
+	 * ║                                                                                       ║
+	 * ║  SignalHub - Type-Safe Signal-Slot System for PHP                                     ║
+	 * ║                                                                                       ║
+	 * ║  Qt-inspired signal-slot implementation with strong type checking and flexible        ║
+	 * ║  connection options for loose coupling between components while maintaining safety.   ║
+	 * ║                                                                                       ║
+	 * ╚═══════════════════════════════════════════════════════════════════════════════════════╝
+	 */
+	
 	namespace Quellabs\SignalHub;
 	
 	/**
-	 * Signal trait - can be used by classes to easily define signals
-	 *
 	 * This trait provides a convenient way for classes to implement the signal-slot pattern,
 	 * allowing objects to emit signals and connect to other objects' slots for event handling.
 	 * It manages signal creation, connection, disconnection, and emission automatically.
