@@ -17,9 +17,7 @@
 		public function index(): Response {
 			$this->em()->executeQuery("
 				range of x is App\\Entities\\PostEntity
-				retrieve (x)
-				where x.published = 1
-				window 0,1
+				retrieve (ANY(x.id))
 			");
 			
 			return $this->render("home/index3.tpl");
