@@ -17,7 +17,7 @@
 		public function index(): Response {
 			$this->em()->executeQuery("
 				range of x is App\\Entities\\PostEntity
-				retrieve (sum(x.id))
+				retrieve (any(x.id))
 			");
 			
 			return $this->render("home/index3.tpl");
