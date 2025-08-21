@@ -5,7 +5,6 @@
 	use App\Entities\PostEntity;
 	use Quellabs\Canvas\Annotations\Route;
 	use Quellabs\Canvas\Controllers\BaseController;
-	use RectorPrefix202507\Nette\Utils\DateTime;
 	use Symfony\Component\HttpFoundation\Response;
 	
 	class HomeController extends BaseController {
