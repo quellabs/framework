@@ -17,7 +17,8 @@
 		public function index(): Response {
 			$this->em()->executeQuery("
 				range of x is App\\Entities\\PostEntity
-				retrieve (ANY(x.id))
+				range of y is App\\Entities\\PostEntity via y.id=x.id
+				retrieve (x.id) WHERE ANY(y.id)
 			");
 			
 			return $this->render("home/index3.tpl");
