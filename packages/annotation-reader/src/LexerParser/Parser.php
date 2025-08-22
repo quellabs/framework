@@ -5,6 +5,7 @@
 	use Quellabs\AnnotationReader\Collection\AnnotationCollection;
 	use Quellabs\AnnotationReader\Exception\LexerException;
 	use Quellabs\AnnotationReader\Exception\ParserException;
+	use Quellabs\Support\NamespaceResolver;
 	
 	class Parser {
 
@@ -21,57 +22,27 @@
 		/** @var array Fast lookup set for ignored annotations (using array keys for O(1) lookup) */
 		private array $ignore_annotations_set;
 		
-		/**
-		 * @var array<string, array{segments: string[], fqcn: string, lastPart: string, namespace: string}>
-		 * Preprocessed import data for faster class resolution
-		 */
-		private array $preprocessed_imports = [];
-		
-		/**
-		 * @var array<string, string[]>
-		 * Reverse mapping from namespace segments to full namespaces for quick lookups
-		 */
-		private array $namespace_map = [];
-		
-		/**
-		 * @var array<string, string> Map of aliases to fully qualified class names
-		 */
-		private array $imports = [];
-		
-		/**
-		 * @var array Cache for resolved class references to avoid repeated resolution
-		 */
-		private array $classReferenceCache = [];
-		
-		/**
-		 * @var array<string, mixed> Configuration array for resolving configuration placeholders
-		 */
+		/** @var array<string, mixed> Configuration array for resolving configuration placeholders */
 		private array $configuration;
 		
-		/**
-		 * @var string|null The current namespace context for resolving relative class names
-		 */
-		private ?string $currentNamespace = null;
-
+		/** @var \ReflectionClass|null Reflection class */
+		private ?\ReflectionClass $reflection;
+		
 		/**
 		 * Parser constructor.
 		 * @param Lexer $lexer The lexer instance for tokenizing input
 		 * @param array<string, mixed> $configuration Configuration array for placeholder resolution
-		 * @param array<string, string> $imports Optional map of aliases to fully qualified class names
-		 * @param string|null $currentNamespace Optional namespace of the file we are currently reading
+		 * @param \ReflectionClass|null $reflection Optional reflection class
 		 */
-		public function __construct(Lexer $lexer, array $configuration=[], array $imports = [], ?string $currentNamespace=null) {
+		public function __construct(Lexer $lexer, array $configuration=[], ?\ReflectionClass $reflection=null) {
 			// Store the lexer instance for token processing
 			$this->lexer = $lexer;
 			
-			// Store the namespace if any
-			$this->currentNamespace = $currentNamespace;
+			// Store the reflection class if any
+			$this->reflection = $reflection;
 			
 			// Store configuration for resolving ${config.key} placeholders
 			$this->configuration = $configuration;
-			
-			// Store import mappings for class resolution
-			$this->imports = $imports;
 			
 			// Define standard PHP doc annotations that should be ignored during parsing
 			$this->ignore_annotations = [
@@ -102,9 +73,6 @@
 			
 			// Create a fast lookup set from ignored annotations (O(1) instead of O(n) lookups)
 			$this->ignore_annotations_set = array_flip($this->ignore_annotations);
-			
-			// Preprocess imports for faster class resolution during parsing
-			$this->preprocessImports();
 		}
 		
 		/**
@@ -156,29 +124,6 @@
 			}
 		}
 
-		/**
-		 * Preprocess imports for faster class resolution
-		 */
-		private function preprocessImports(): void {
-			foreach ($this->imports as $alias => $fqcn) {
-				// Split each import into segments for easier matching
-				$segments = explode('\\', $fqcn);
-				
-				$this->preprocessed_imports[$alias] = [
-					'segments'  => $segments,
-					'fqcn'      => $fqcn,
-					'lastPart'  => end($segments),
-					'namespace' => implode('\\', array_slice($segments, 0, -1))
-				];
-				
-				// Create reverse mapping for namespace lookups
-				foreach ($segments as $index => $segment) {
-					$partialNamespace = implode('\\', array_slice($segments, 0, $index + 1));
-					$this->namespace_map[$segment][] = $partialNamespace;
-				}
-			}
-		}
-		
 		/**
 		 * Parses a configuration key in the format {parameter.parameter.parameter}
 		 * converting it into a dot-notation string like "parameter.parameter.parameter"
@@ -241,7 +186,7 @@
 			}
 			
 			// Resolve the class name using existing resolution logic
-			return $this->resolveClassName($className);
+			return NamespaceResolver::resolveClassName($className, $this->reflection);
 		}
 		
 		/**
@@ -270,7 +215,10 @@
 			}
 			
 			// Handle string or number literals
-			if ($this->lexer->optionalMatch(Token::String, $token) || $this->lexer->optionalMatch(Token::Number, $token)) {
+			if (
+				$this->lexer->optionalMatch(Token::String, $token) ||
+				$this->lexer->optionalMatch(Token::Number, $token)
+			) {
 				// Return the actual value of the token
 				return $token->getValue();
 			}
@@ -418,7 +366,10 @@
 				
 				// Handle annotation syntax (@AnnotationName)
 				if ($this->lexer->optionalMatch(Token::Annotation, $annotationToken)) {
-					// Parse the annotation
+					/**
+					 * Parse the annotation
+					 * @var Token $annotationToken
+					 */
 					$annotation = $this->parseAnnotation($annotationToken);
 					
 					// Store it using its class name as the key
@@ -492,6 +443,7 @@
 		/**
 		 * Check if the next tokens form a named parameter (parameter=value)
 		 * @return bool
+		 * @throws LexerException
 		 */
 		private function isNamedParameter(): bool {
 			$savedState = $this->lexer->saveState();
@@ -596,7 +548,7 @@
 			$value = $token->getValue();
 			
 			// Resolve the annotation class name using imports
-			$tokenName = $this->resolveClassName($value);
+			$tokenName = NamespaceResolver::resolveClassName($value, $this->reflection);
 			
 			// Check if the class exists
 			if (!class_exists($tokenName)) {
@@ -635,137 +587,5 @@
 			}
 			
 			return $current;
-		}
-		
-		/**
-		 * Resolves a partially qualified class name against imported namespaces.
-		 * Caches results for faster repeated lookups.
-		 * @param string $className The class name to resolve (e.g., "Validation\Type")
-		 * @return string Fully qualified class name if resolved, otherwise original class name.
-		 */
-		private function resolveClassReference(string $className): string {
-			// Return cached data if available
-			if (isset($this->classReferenceCache[$className])) {
-				return $this->classReferenceCache[$className];
-			}
-			
-			// If the class name does not contain a namespace separator, no resolution needed
-			if (!str_contains($className, '\\')) {
-				return $this->classReferenceCache[$className] = $className;
-			}
-			
-			// Fetch parts information
-			$parts = explode('\\', $className);
-			$firstPart = $parts[0];
-			$lastPart = end($parts);
-
-			// 1. Look for direct alias match with the first part
-			if (isset($this->preprocessed_imports[$firstPart])) {
-				$import = $this->preprocessed_imports[$firstPart];
-				$candidateClass = $import['namespace'] . '\\' . $className;
-				
-				if (class_exists($candidateClass) || interface_exists($candidateClass)) {
-					return $this->classReferenceCache[$className] = $candidateClass;
-				}
-			}
-			
-			// 2. Look for imports that contain the first part in their segments
-			foreach ($this->preprocessed_imports as $import) {
-				$position = array_search($firstPart, $import['segments'], true);
-				
-				if ($position !== false) {
-					$baseNamespace = implode('\\', array_slice($import['segments'], 0, $position));
-					$candidateClass = $baseNamespace . '\\' . $className;
-					
-					if (class_exists($candidateClass) || interface_exists($candidateClass)) {
-						return $this->classReferenceCache[$className] = $candidateClass;
-					}
-				}
-			}
-			
-			// 3. Try to match the last part with imported classes that contain the first part
-			foreach ($this->preprocessed_imports as $import) {
-				if ($import['lastPart'] === $lastPart &&
-					in_array($firstPart, $import['segments'], true)) {
-					return $this->classReferenceCache[$className] = $import['fqcn'];
-				}
-			}
-			
-			// 4. Try namespace-based resolution using the preprocessed namespace map
-			if (isset($this->namespace_map[$firstPart])) {
-				foreach ($this->namespace_map[$firstPart] as $namespace) {
-					$candidateClass = $namespace . '\\' . implode('\\', array_slice($parts, 1));
-					
-					if (class_exists($candidateClass) || interface_exists($candidateClass)) {
-						return $this->classReferenceCache[$className] = $candidateClass;
-					}
-				}
-			}
-			
-			return $this->classReferenceCache[$className] = $className;
-		}
-		
-		/**
-		 * Resolves a class name to its fully qualified form using available imports and namespace context.
-		 *
-		 * This method handles multiple resolution strategies:
-		 * 1. Fully qualified names (starting with \)
-		 * 2. Imported aliases and their compound variations
-		 * 3. Current namespace resolution with fallback to global scope
-		 *
-		 * @param string $className The class name to resolve (can be simple name, alias, or compound)
-		 * @return string The fully qualified class name without leading backslash
-		 */
-		private function resolveClassName(string $className): string {
-			// Handle fully qualified names - remove leading backslash and return
-			if (str_starts_with($className, '\\')) {
-				return substr($className, 1);
-			}
-			
-			// Strategy 1: Direct alias lookup
-			// Check if the entire class name matches an imported alias
-			if (isset($this->imports[$className])) {
-				return $this->imports[$className];
-			}
-			
-			// Strategy 2: Compound name resolution using imports
-			// Handle cases like 'AliasedNamespace\ClassName' where 'AliasedNamespace' is imported
-			if (str_contains($className, '\\')) {
-				$parts = explode('\\', $className, 2);
-				$rootAlias = $parts[0];
-				$remainingPath = $parts[1];
-				
-				// Check if the root part matches an imported alias
-				if (isset($this->imports[$rootAlias])) {
-					return $this->imports[$rootAlias] . '\\' . $remainingPath;
-				}
-				
-				// Attempt resolution using generic partial namespace resolver
-				$resolved = $this->resolveClassReference($className);
-				
-				// If generic resolver found a different result, use it
-				if ($resolved !== $className) {
-					return ltrim($resolved, '\\');
-				}
-			}
-			
-			// Strategy 3: Current namespace resolution with global fallback
-			// Try to resolve within the current namespace, then fall back to global scope
-			if ($this->currentNamespace !== null) {
-				$candidates = [
-					$this->currentNamespace . '\\' . $className,   // Current namespace
-					$className                                     // Global namespace
-				];
-				
-				// Test each candidate to see if it exists
-				foreach ($candidates as $candidate) {
-					if (class_exists($candidate) || interface_exists($candidate)) {
-						return $candidate;
-					}
-				}
-			}
-			
-			// No resolution found - return the original class name unchanged
-			return $className;
 		}
 	}

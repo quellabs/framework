@@ -6,7 +6,7 @@
 	 * A utility class that detects which PHP framework is currently being used
 	 * in the application by checking for the presence of framework-specific classes.
 	 */
-	class FrameworkDetector {
+	class FrameworkResolver {
 		
 		/**
 		 * Cached framework detection result to avoid repeated detection calls

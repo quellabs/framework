@@ -1,6 +1,6 @@
 <?php
 	
-	namespace Quellabs\AnnotationReader\LexerParser;
+	namespace Quellabs\Support;
 	
 	/**
 	 * Class UseStatementParser
@@ -11,26 +11,27 @@
 		/**
 		 * @var array<string, array<string, string>> Cache of imports by class
 		 */
-		private array $importsCache = [];
+		private static array $importsCache = [];
 		
 		/**
 		 * Get all imported class aliases from use statements in the given class
 		 * @param \ReflectionClass $class
 		 * @return array<string, string> Map of aliases to fully qualified class names
 		 */
-		public function getImportsForClass(\ReflectionClass $class): array {
+		public static function getImportsForClass(\ReflectionClass $class): array {
+			// Get class name using refection
 			$className = $class->getName();
 			
 			// Return cached result if available
-			if (isset($this->importsCache[$className])) {
-				return $this->importsCache[$className];
+			if (isset(self::$importsCache[$className])) {
+				return self::$importsCache[$className];
 			}
 			
 			// Get namespace and imports
-			$imports = $this->parseUseStatements($class);
+			$imports = self::parseUseStatements($class);
 			
 			// Cache and return
-			$this->importsCache[$className] = $imports;
+			self::$importsCache[$className] = $imports;
 			return $imports;
 		}
 		
@@ -39,7 +40,7 @@
 		 * @param \ReflectionClass $class The reflection class to analyze
 		 * @return array<string, string> Map of aliases to fully qualified class names
 		 */
-		private function parseUseStatements(\ReflectionClass $class): array {
+		private static function parseUseStatements(\ReflectionClass $class): array {
 			// Skip for classes defined in PHP core (e.g., stdClass, Exception)
 			// Internal classes don't have source files and therefore no use statements
 			if ($class->isInternal()) {
@@ -88,9 +89,9 @@
 					// Example: use Some\Namespace\{ClassA, ClassB, ClassC};
 					// Look for both opening and closing curly braces
 					if (str_contains($useStatement, '{') && str_contains($useStatement, '}')) {
-						$this->parseGroupedUseStatement($useStatement, $imports);
+						self::parseGroupedUseStatement($useStatement, $imports);
 					} else {
-						$this->parseSingleUseStatement($useStatement, $imports);
+						self::parseSingleUseStatement($useStatement, $imports);
 					}
 				}
 			}
@@ -105,7 +106,7 @@
 		 * @param array &$imports Reference to the imports array to populate
 		 * @return void
 		 */
-		private function parseSingleUseStatement(string $useStatement, array &$imports): void {
+		private static function parseSingleUseStatement(string $useStatement, array &$imports): void {
 			// Handle aliased use statements: "ClassName as Alias"
 			if (str_contains($useStatement, ' as ')) {
 				list($className, $alias) = explode(' as ', $useStatement, 2);
@@ -115,7 +116,7 @@
 			} else {
 				// Regular use statement: extract short name from full namespace
 				$className = trim($useStatement);
-				$shortName = $this->getShortClassName($className);
+				$shortName = self::getShortClassName($className);
 				$imports[$shortName] = $className;
 			}
 		}
@@ -126,7 +127,7 @@
 		 * @param array &$imports Reference to the imports array to populate
 		 * @return void
 		 */
-		private function parseGroupedUseStatement(string $useStatement, array &$imports): void {
+		private static function parseGroupedUseStatement(string $useStatement, array &$imports): void {
 			// Extract base namespace and class list from: "Namespace\{Class1, Class2}"
 			if (preg_match('/^(.+?)\s*\{\s*([^}]+)\s*}$/', $useStatement, $matches)) {
 				$baseNamespace = trim($matches[1]);
@@ -157,7 +158,7 @@
 						// Regular class: combine base namespace with class name
 						$className = trim($classItem);
 						$fullClassName = $baseNamespace . '\\' . $className;
-						$shortName = $this->getShortClassName($className);
+						$shortName = self::getShortClassName($className);
 						$imports[$shortName] = $fullClassName;
 					}
 				}
@@ -169,7 +170,7 @@
 		 * @param string $className Fully qualified class name
 		 * @return string Short class name
 		 */
-		private function getShortClassName(string $className): string {
+		private static function getShortClassName(string $className): string {
 			// Remove any leading backslash
 			$className = ltrim($className, '\\');
 			

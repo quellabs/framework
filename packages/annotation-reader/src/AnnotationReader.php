@@ -8,11 +8,9 @@
 	use Quellabs\AnnotationReader\Exception\ParserException;
 	use Quellabs\AnnotationReader\LexerParser\Lexer;
 	use Quellabs\AnnotationReader\LexerParser\Parser;
-	use Quellabs\AnnotationReader\LexerParser\UseStatementParser;
 	
 	class AnnotationReader {
 		
-		protected UseStatementParser $use_statement_parser;
 		protected string $annotationCachePath;
 		protected bool $useCache;
 		protected array $configuration;
@@ -25,9 +23,6 @@
 			// Store annotation cache information
 			$this->useCache = $configuration->useAnnotationCache();
 			$this->annotationCachePath = $configuration->getAnnotationCachePath();
-			
-			// Instantiate use statement parser
-			$this->use_statement_parser = new UseStatementParser();
 			
 			// Store the configuration array
 			$this->configuration = [];
@@ -126,6 +121,7 @@
 		 * Takes a property's docComment and parses it
 		 * @param mixed $class
 		 * @param string $propertyName
+		 * @param string|null $annotationClass
 		 * @return AnnotationCollection
 		 * @throws AnnotationReaderException
 		 */
@@ -283,11 +279,10 @@
 		 * Parses class-level annotations from a docblock comment
 		 * @param \ReflectionClass $reflection Reflection class
 		 * @param array|AnnotationCollection &$result Reference to the result array where parsed annotations will be stored
-		 * @param array $imports Array of imported namespaces/classes for annotation resolution
 		 * @return void
 		 * @throws AnnotationReaderException When annotation parsing fails
 		 */
-		protected function parseClassAnnotations(\ReflectionClass $reflection, array|AnnotationCollection &$result, array $imports) : void {
+		protected function parseClassAnnotations(\ReflectionClass $reflection, array|AnnotationCollection &$result) : void {
 			// Early return if no docblock comment exists or if it's empty
 			if (empty($reflection->getDocComment())) {
 				return;
@@ -296,7 +291,7 @@
 			try {
 				// Create a lexer and parser and parse the class
 				$lexer = new Lexer($reflection->getDocComment());
-				$parser = new Parser($lexer, $this->configuration, $imports, $reflection->getNamespaceName());
+				$parser = new Parser($lexer, $this->configuration, $reflection);
 				
 				// Parse the class and store the result
 				$result = $parser->parse();
@@ -315,12 +310,11 @@
 		 * Parse annotations for properties or methods and update the result array.
 		 * @param array $items An array of ReflectionProperty or ReflectionMethod objects.
 		 * @param array $result The result array to be updated with parsed annotations.
-		 * @param array $imports The import list
-		 * @param string|null $currentNamespace The namespace of the file we're currently reading
+		 * @param \ReflectionClass|null $reflection The reflection class
 		 * @return void
 		 * @throws AnnotationReaderException
 		 */
-		protected function parseAnnotations(array $items, array &$result, array $imports, ?string $currentNamespace=null): void {
+		protected function parseAnnotations(array $items, array &$result, ?\ReflectionClass $reflection=null): void {
 			// Loop through each Reflection item (either property or method)
 			foreach ($items as $item) {
 				try {
@@ -334,7 +328,7 @@
 					
 					// Retrieve annotations from the doc comment with imports
 					$lexer = new Lexer($docComment);
-					$parser = new Parser($lexer, $this->configuration, $imports, $currentNamespace);
+					$parser = new Parser($lexer, $this->configuration, $reflection);
 					$annotations = $parser->parse();
 					
 					// Skip if there are no annotations
@@ -373,13 +367,10 @@
 				'methods'    => []
 			];
 			
-			// Load the use statements of this file
-			$imports = $this->use_statement_parser->getImportsForClass($reflection);
-			
 			// Parse the annotations and return result
-			$this->parseClassAnnotations($reflection, $result['class'], $imports);
-			$this->parseAnnotations($reflection->getProperties(), $result['properties'], $imports, $reflection->getNamespaceName());
-			$this->parseAnnotations($reflection->getMethods(), $result['methods'], $imports, $reflection->getNamespaceName());
+			$this->parseClassAnnotations($reflection, $result['class']);
+			$this->parseAnnotations($reflection->getProperties(), $result['properties'], $reflection);
+			$this->parseAnnotations($reflection->getMethods(), $result['methods'], $reflection);
 			return $result;
 		}
 
