@@ -14,12 +14,6 @@
 		 * @return Response
 		 */
 		public function index(): Response {
-			$this->em()->executeQuery("
-				range of x is PostEntity
-				range of y is PostEntity via y.id=x.id
-				retrieve (x.id) WHERE ANY(y.id)
-			");
-			
 			return $this->render("home/index3.tpl");
 		}
 		
