@@ -3,6 +3,7 @@
 	
 	namespace Quellabs\ObjectQuel\ObjectQuel\Rules;
 	
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAny;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAvg;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAvgU;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstMax;
@@ -20,6 +21,7 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstString;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstCountU;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstSum;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstSumU;
 	use Quellabs\ObjectQuel\ObjectQuel\AstInterface;
 	use Quellabs\ObjectQuel\ObjectQuel\Lexer;
 	use Quellabs\ObjectQuel\ObjectQuel\LexerException;
@@ -73,6 +75,8 @@
 				'max' => $this->parseMax(),
 				'min' => $this->parseMin(),
 				'sum' => $this->parseSum(),
+				'sumu' => $this->parseSumU(),
+				'any' => $this->parseAny(),
 				'concat' => $this->parseConcat(),
 				'search' => $this->parseSearch(),
 				'is_empty' => $this->parseIsEmpty(),
@@ -186,6 +190,30 @@
 		 */
 		protected function parseSum(): AstSum {
 			return $this->parseSingleParameter(AstSum::class, true);
+		}
+		
+		/**
+		 * Parse SUMU() function - calculates the sum of unique numeric values
+		 * Returns the total of all non-null numeric values from the input.
+		 * @return AstSumU The AstSum AST node
+		 * @throws LexerException When token matching fails
+		 * @throws ParserException When parsing fails
+		 */
+		protected function parseSumU(): AstSumU {
+			return $this->parseSingleParameter(AstSumU::class, true);
+		}
+		
+		/**
+		 * Parses the ANY aggregate function from the ObjectQuel query.
+		 * ANY is a specialized aggregate function that returns 1 if any matching records exist,
+		 * or 0 if no records exist. Unlike COUNT, ANY is optimized to stop execution as soon
+		 * as the first matching record is found, making it more efficient for existence checks.
+		 * @return AstAny The parsed ANY function AST node containing the field reference
+		 * @throws LexerException When the lexer encounters invalid tokens during parsing
+		 * @throws ParserException When the parser encounters invalid syntax or missing parameters
+		 */
+		protected function parseAny(): AstAny {
+			return $this->parseSingleParameter(AstAny::class, true);
 		}
 		
 		/**

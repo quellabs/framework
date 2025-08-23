@@ -280,7 +280,7 @@
 					$errorContext = "template '{$template}'";
 				}
 				
-				throw new TemplateRenderException("Failed to render {$errorContext}: " . $e->getMessage(), 0, $e);
+				throw new TemplateRenderException("Failed to render {$errorContext}: ", $e->getMessage(), $e);
 			}
 		}
 	}

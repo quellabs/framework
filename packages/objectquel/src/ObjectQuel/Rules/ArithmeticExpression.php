@@ -179,12 +179,10 @@
 				// Parse the next property name
 				$token = $this->lexer->match(Token::Identifier);
 				$nextIdentifier = new AstIdentifier($token->getValue());
+				$nextIdentifier->setParent($currentIdentifier);
 				
 				// Link it to the current identifier
 				$currentIdentifier->setNext($nextIdentifier);
-				
-				// And also link back
-				$nextIdentifier->setParent($currentIdentifier);
 				
 				// Move to the new current identifier for potential next iteration
 				$currentIdentifier = $nextIdentifier;
@@ -256,7 +254,8 @@
 					return $expression;
 					
 				default :
-					throw new ParserException("Unexpected token '{$tokenValue}' on line {$this->lexer->getLineNumber()}");
+					$tokenTypeName = Token::toString($tokenType);
+					throw new ParserException("Unexpected token '{$tokenTypeName}' on line {$this->lexer->getLineNumber()}");
 			}
 		}
 		

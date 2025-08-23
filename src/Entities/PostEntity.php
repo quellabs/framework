@@ -8,11 +8,14 @@
 	use Quellabs\ObjectQuel\Annotations\Orm\OneToOne;
 	use Quellabs\ObjectQuel\Annotations\Orm\OneToMany;
 	use Quellabs\ObjectQuel\Annotations\Orm\ManyToOne;
+	use Quellabs\ObjectQuel\Annotations\Orm\LifecycleAware;
+	use Quellabs\ObjectQuel\Annotations\Orm\PreUpdate;
 	use Quellabs\ObjectQuel\Collections\Collection;
 	use Quellabs\ObjectQuel\Collections\CollectionInterface;
 	
 	/**
 	 * @Orm\Table(name="posts")
+	 * @Orm\LifecycleAware
 	 */
 	class PostEntity {
 		
@@ -120,5 +123,14 @@
 		public function setCreatedAt(\DateTime $createdAt): self {
 			$this->createdAt = $createdAt;
 			return $this;
+		}
+		
+		/**
+		 *
+		 * @Orm\PreUpdate
+		 * @return void
+		 */
+		public function test(): void {
+			$this->setCreatedAt(new \DateTime());
 		}
 	}

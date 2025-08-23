@@ -20,7 +20,6 @@
 	
 	namespace Quellabs\ObjectQuel;
     
-    use Quellabs\AnnotationReader\AnnotationInterface;
     use Quellabs\AnnotationReader\AnnotationReader;
     use Quellabs\AnnotationReader\Collection\AnnotationCollection;
     use Quellabs\AnnotationReader\Exception\ParserException;
@@ -36,6 +35,7 @@
     use Quellabs\ObjectQuel\ProxyGenerator\ProxyGenerator;
     use Quellabs\ObjectQuel\ReflectionManagement\EntityLocator;
     use Quellabs\ObjectQuel\ReflectionManagement\ReflectionHandler;
+    use Quellabs\Support\NamespaceResolver;
     
     class EntityStore {
 	    protected Configuration $configuration;
@@ -140,7 +140,7 @@
 			    } elseif (str_contains($class, "\\")) {
 				    $this->completed_entity_name_cache[$class] = $class;
 			    } else {
-				    $this->completed_entity_name_cache[$class] = "{$this->entity_namespace}\\{$class}";
+				    $this->completed_entity_name_cache[$class] = NamespaceResolver::resolveClassName($class);
 			    }
 		    }
 		    

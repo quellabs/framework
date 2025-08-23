@@ -34,8 +34,8 @@
 		}
 		
 		/**
-		 * Accepteer een bezoeker om de AST te verwerken.
-		 * @param AstVisitorInterface $visitor Bezoeker object voor AST-manipulatie.
+		 * Accept a visitor to process the AST.
+		 * @param AstVisitorInterface $visitor Visitor object for AST manipulation.
 		 */
 		public function accept(AstVisitorInterface $visitor): void {
 			parent::accept($visitor);
@@ -105,7 +105,15 @@
 		public function isRoot(): bool {
 			return !$this->hasParent();
 		}
-
+		
+		/**
+		 * Returns true if the node has a parent, false if not
+		 * @return bool
+		 */
+		public function hasParent(): bool {
+			return is_a($this->getParent(), AstIdentifier::class);
+		}
+		
 		/**
 		 * Returns true if the identifier contains another entry
 		 * @return bool
@@ -148,6 +156,28 @@
 		}
 		
 		/**
+		 * Returns true if this is a base identifier, false if not
+		 * @return bool
+		 */
+		public function isBaseIdentifier(): bool {
+			return !($this->getParent() instanceof AstIdentifier);
+		}
+		
+		/**
+		 * Returns the first available identifier by traversing up the parent hierarchy.
+		 * @return $this
+		 */
+		public function getBaseIdentifier(): AstIdentifier {
+			$current = $this;
+			
+			while (!$current->isBaseIdentifier()) {
+				$current = $current->getParent();
+			}
+			
+			return $current;
+		}
+		
+		/**
 		 * Sets or clears a range
 		 * @param AstRange|null $range
 		 * @return void
@@ -157,14 +187,19 @@
 		}
 		
 		/**
-		 * Deep clone the identifier
-		 * @return AstIdentifier|null
+		 * Clone the node
+		 * @return $this
 		 */
-		public function deepClone(): ?AstIdentifier {
-			$clone = clone $this;
+		public function deepClone(): static {
+			// Create new instance with the same identifier
+			$clone = new static($this->identifier);
 			
-			if ($clone->hasNext()) {
-				$clone->setNext($this->getNext()->deepClone());
+			// Set the range
+			$clone->range = $this->range;
+			
+			// Clone the next identifier in the chain if it exists
+			if ($this->next !== null) {
+				$clone->next = $this->next->deepClone();
 			}
 			
 			return $clone;
