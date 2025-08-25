@@ -89,14 +89,14 @@
 			
 			// Walk through the call stack to find non-framework code
 			foreach ($trace as $frame) {
-				// Skip frames without class info or frames from excluded namespaces
-				// This ensures we find the actual application code, not internal framework calls
-				if (!isset($frame['class']) || self::isExcludedClass($frame['class'])) {
+				// Skip excluded namespaces
+				// This ensures we find actual application code, not internal framework calls
+				if (isset($frame['class']) && self::isExcludedClass($frame['class'])) {
 					continue;
 				}
 				
 				// Use class name as cache key for performance
-				$cacheKey = $frame['class'];
+				$cacheKey = $frame['class'] ?? $frame['file'] ?? uniqid();
 				
 				// Return cached context if available
 				if (isset(self::$contextCache[$cacheKey])) {
@@ -104,19 +104,14 @@
 				}
 				
 				// Build context information using reflection
-				try {
-					$reflection = new \ReflectionClass($frame['class']);
-					
-					return self::$contextCache[$cacheKey] = [
-						'file'     => $reflection->getFileName() ?: null, // Source file path
-						'class'    => $frame['class'],                   // Fully qualified class name
-						'function' => $frame['function'] ?? null,        // Method name that made the call
-						'line'     => $frame['line'] ?? null             // Line number of the call
-					];
-				} catch (\ReflectionException $e) {
-					// If reflection fails for this class, try the next frame
-					continue;
-				}
+				$fileName = self::getFileName($frame['class'], $frame['file']);
+				
+				return self::$contextCache[$cacheKey] = [
+					'file'     => $fileName,                       // Source file path
+					'class'    => $frame['class'],                 // Fully qualified class name
+					'function' => $frame['function'] ?? null,      // Method name that made the call
+					'line'     => $frame['line'] ?? null           // Line number of the call
+				];
 			}
 			
 			// No suitable calling context found
@@ -136,5 +131,24 @@
 			}
 			
 			return false;
+		}
+		
+		/**
+		 * Returns the filename corresponding to the class name. If no class
+		 * is passed (null) or the filename can't be fetched, a default value is returned.
+		 * @param string|null $className
+		 * @param string $default
+		 * @return string
+		 */
+		private static function getFileName(?string $className, string $default): string {
+			try {
+				if ($className !== null) {
+					$reflection = new \ReflectionClass($className);
+					return $reflection->getFileName() ?: $default;
+				}
+			} catch (\ReflectionException $e) {
+			}
+			
+			return $default;
 		}
 	}
