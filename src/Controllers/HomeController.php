@@ -14,6 +14,11 @@
 		 * @return Response
 		 */
 		public function index(): Response {
+			$rs = $this->em()->executeQuery("
+				range of c is PostEntity
+				retrieve (c)
+			");
+			
 			return $this->render("home/index3.tpl");
 		}
 		

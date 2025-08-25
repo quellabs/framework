@@ -90,6 +90,9 @@
 			// Directory for generated proxy classes
 			$config->setProxyDir($configData["proxy_path"] ?? $defaults["proxy_path"]  ?? null);
 			
+			// Set entity namespace
+			$config->setEntityNameSpace($configData["entity_namespace"] ?? $defaults["entity_namespace"]  ?? null);
+			
 			// Enable metadata caching
 			if (!empty($configData["metadata_cache_path"])) {
 				$config->setUseMetadataCache(true);
