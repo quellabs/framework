@@ -17,7 +17,8 @@
 			$rs = $this->em()->executeQuery("
 				range of c is PostEntity
 				range of d is PostAnotherEntity via d.id=c.id
-				retrieve (ANY(c.id))
+				retrieve (AVG(d.id))
+				where ANY(c.id)
 			");
 			
 			return $this->render("home/index3.tpl");
