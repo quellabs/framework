@@ -16,7 +16,9 @@
 		public function index(): Response {
 			$rs = $this->em()->executeQuery("
 				range of c is PostEntity
-				retrieve (IFNULL(c.id, 'hallo'))
+				range of d is PostEntity via d.id=c.id
+				retrieve (c.id)
+				where ANY(d)
 			");
 			
 			return $this->render("home/index3.tpl");
