@@ -4,7 +4,7 @@
   "discover": "1.0.25",
   "dependency-injection": "1.0.24",
   "sculpt": "1.0.21",
-  "objectquel": "1.0.39",
+  "objectquel": "1.0.40",
   "cache": "1.0.3",
   "signal-hub": "1.0.24",
   "annotation-reader": "1.0.26",

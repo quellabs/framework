@@ -17,6 +17,7 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstExpression;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstFactor;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIdentifier;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIfnull;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIn;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIsEmpty;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIsFloat;
@@ -93,7 +94,7 @@
 			// Initialize helper classes with proper dependencies and references
 			$this->sqlBuilder = new SqlBuilderHelper($this->entityStore, $this->parameters, $this->partOfQuery, $this);
 			$this->typeInference = new TypeInferenceHelper($this->entityStore);
-			$this->aggregateHandler = new AggregateHandler($this->entityStore, $this->partOfQuery, $this->sqlBuilder);
+			$this->aggregateHandler = new AggregateHandler($this->entityStore, $this->partOfQuery, $this->sqlBuilder, $this);
 			$this->expressionHandler = new ExpressionHandler($this->sqlBuilder, $this->typeInference, $this->parameters, $this);
 		}
 		
@@ -110,9 +111,6 @@
 				return;
 			}
 			
-			// Mark this node as visited
-			$this->visitedNodes[$objectHash] = true;
-			
 			// Extract class name and determine handler method name
 			$className = $this->extractClassName($node);
 			$handleMethod = 'handle' . substr($className, 3); // Remove 'Ast' prefix
@@ -121,6 +119,9 @@
 			if (method_exists($this, $handleMethod)) {
 				$this->{$handleMethod}($node);
 			}
+			
+			// Mark this node as visited
+			$this->addToVisitedNodes($node);
 		}
 		
 		/**
@@ -386,13 +387,6 @@
 		 * @param AstCount $count The COUNT function node to process
 		 */
 		protected function handleCount(AstCount $count): void {
-			// Mark the identifier as visited to prevent duplicate processing
-			$identifier = $count->getIdentifier();
-
-			if ($identifier instanceof AstIdentifier) {
-				$this->addToVisitedNodes($identifier);
-			}
-			
 			$this->result[] = $this->aggregateHandler->handleCount($count);
 		}
 		
@@ -402,13 +396,6 @@
 		 * @param AstCountU $count The COUNT UNIQUE function node to process
 		 */
 		protected function handleCountU(AstCountU $count): void {
-			// Mark the identifier as visited to prevent duplicate processing
-			$identifier = $count->getIdentifier();
-
-			if ($identifier instanceof AstIdentifier) {
-				$this->addToVisitedNodes($identifier);
-			}
-			
 			$this->result[] = $this->aggregateHandler->handleCountU($count);
 		}
 		
@@ -418,13 +405,6 @@
 		 * @param AstAvg $avg The AVG function node to process
 		 */
 		protected function handleAvg(AstAvg $avg): void {
-			// Mark the identifier as visited to prevent duplicate processing
-			$identifier = $avg->getIdentifier();
-
-			if ($identifier instanceof AstIdentifier) {
-				$this->addToVisitedNodes($identifier);
-			}
-			
 			$this->result[] = $this->aggregateHandler->handleAvg($avg);
 		}
 		
@@ -434,13 +414,6 @@
 		 * @param AstAvgU $avg The AVG UNIQUE function node to process
 		 */
 		protected function handleAvgU(AstAvgU $avg): void {
-			// Mark the identifier as visited to prevent duplicate processing
-			$identifier = $avg->getIdentifier();
-
-			if ($identifier instanceof AstIdentifier) {
-				$this->addToVisitedNodes($identifier);
-			}
-			
 			$this->result[] = $this->aggregateHandler->handleAvgU($avg);
 		}
 		
@@ -450,13 +423,6 @@
 		 * @param AstMax $max The MAX function node to process
 		 */
 		protected function handleMax(AstMax $max): void {
-			// Mark the identifier as visited to prevent duplicate processing
-			$identifier = $max->getIdentifier();
-
-			if ($identifier instanceof AstIdentifier) {
-				$this->addToVisitedNodes($identifier);
-			}
-			
 			$this->result[] = $this->aggregateHandler->handleMax($max);
 		}
 		
@@ -466,13 +432,6 @@
 		 * @param AstMin $min The MIN function node to process
 		 */
 		protected function handleMin(AstMin $min): void {
-			// Mark the identifier as visited to prevent duplicate processing
-			$identifier = $min->getIdentifier();
-
-			if ($identifier instanceof AstIdentifier) {
-				$this->addToVisitedNodes($identifier);
-			}
-			
 			$this->result[] = $this->aggregateHandler->handleMin($min);
 		}
 		
@@ -482,13 +441,6 @@
 		 * @param AstSum $sum The SUM function node to process
 		 */
 		protected function handleSum(AstSum $sum): void {
-			// Mark the identifier as visited to prevent duplicate processing
-			$identifier = $sum->getIdentifier();
-
-			if ($identifier instanceof AstIdentifier) {
-				$this->addToVisitedNodes($identifier);
-			}
-			
 			$this->result[] = $this->aggregateHandler->handleSum($sum);
 		}
 		
@@ -498,13 +450,6 @@
 		 * @param AstSumU $sum The SUM UNIQUE function node to process
 		 */
 		protected function handleSumU(AstSumU $sum): void {
-			// Mark the identifier as visited to prevent duplicate processing
-			$identifier = $sum->getIdentifier();
-
-			if ($identifier instanceof AstIdentifier) {
-				$this->addToVisitedNodes($identifier);
-			}
-			
 			$this->result[] = $this->aggregateHandler->handleSumU($sum);
 		}
 		
@@ -514,14 +459,16 @@
 		 * @param AstAny $ast The ANY function node to process
 		 */
 		protected function handleAny(AstAny $ast): void {
-			// Mark the identifier as visited in the main visitor to prevent duplicate processing
-			$identifier = $ast->getIdentifier();
-
-			if ($identifier instanceof AstIdentifier) {
-				$this->addToVisitedNodes($identifier);
-			}
-			
 			$this->result[] = $this->aggregateHandler->handleAny($ast);
+		}
+		
+		/**
+		 * Handle IFNULL function
+		 * @param AstIfnull $ast
+		 * @return void
+		 */
+		protected function handleIfnull(AstIfnull $ast): void {
+			$this->result[] = $this->expressionHandler->handleIfnull($ast);
 		}
 		
 		/**
@@ -535,6 +482,16 @@
 			// For chained identifiers (e.g., table.column.subfield), mark the entire chain
 			if ($ast instanceof AstIdentifier && $ast->hasNext()) {
 				$this->addToVisitedNodes($ast->getNext());
+			}
+			
+			// Also handle expressions
+			if (
+				$ast instanceof AstTerm ||
+				$ast instanceof AstFactor ||
+				$ast instanceof AstExpression
+			) {
+				$this->addToVisitedNodes($ast->getLeft());
+				$this->addToVisitedNodes($ast->getRight());
 			}
 		}
 		
