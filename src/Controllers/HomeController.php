@@ -17,8 +17,7 @@
 			$rs = $this->em()->executeQuery("
 				range of c is PostEntity
 				range of d is PostAnotherEntity via d.id=c.id
-				range of e is PostYetAnotherEntity via d.id=c.id
-				retrieve (SUM(d.id WHERE d.id=c.id AND e.title = 'hello'))
+				retrieve (SUM(d.id WHERE d.id=c.id AND d.title = 'hello'))
 			");
 			
 			return $this->render("home/index3.tpl");
