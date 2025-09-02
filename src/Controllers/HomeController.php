@@ -17,8 +17,8 @@
 			$rs = $this->em()->executeQuery("
 				range of c is PostEntity
 				range of d is PostAnotherEntity via d.id=c.id
-				range of e is PostAnotherEntity via d.id=c.id
-				retrieve (SUM(e.id + d.id))
+				range of e is PostAnotherEntity via e.id=c.id
+				retrieve (SUM(d.id WHERE d.id > 10))
 			");
 			
 			/*
