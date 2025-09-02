@@ -17,8 +17,18 @@
 			$rs = $this->em()->executeQuery("
 				range of c is PostEntity
 				range of d is PostAnotherEntity via d.id=c.id
-				retrieve (SUM(d.id WHERE d.id=c.id AND d.title = 'hello'))
+				range of e is PostAnotherEntity via d.id=c.id
+				retrieve (SUM(e.id + d.id))
 			");
+			
+			/*
+			
+			$rs = $this->em()->executeQuery("
+				range of c is PostEntity
+				range of d is PostAnotherEntity via d.id=c.id
+				retrieve (SUM(d.id + d.id WHERE d.id=c.id AND d.title = 'hello'))
+			");
+			*/
 			
 			return $this->render("home/index3.tpl");
 		}
