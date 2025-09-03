@@ -17,7 +17,7 @@
 			$rs = $this->em()->executeQuery("
 				range of c is PostEntity
 				range of d is PostEntity via d.title=c.title
-				retrieve (ANY(d.id))
+				retrieve (ANY(c.id))
 			");
 			
 			/*
