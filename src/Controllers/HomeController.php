@@ -16,7 +16,8 @@
 		public function index(): Response {
 			$rs = $this->em()->executeQuery("
 				range of c is PostEntity
-				retrieve (SUM(c.id), c.title)
+				range of d is PostEntity via d.title=c.title
+				retrieve (ANY(d.id))
 			");
 			
 			/*
