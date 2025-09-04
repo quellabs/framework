@@ -4,6 +4,7 @@
 	
 	use Quellabs\ObjectQuel\ObjectQuel\AstInterface;
 	use Quellabs\ObjectQuel\ObjectQuel\AstVisitorInterface;
+	use Quellabs\ObjectQuel\ObjectQuel\Visitors\CollectIdentifiers;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\ContainsJsonIdentifier;
 	
 	/**
@@ -23,6 +24,7 @@
 		protected bool $unique;
 		protected ?int $window;
 		protected ?int $window_size;
+		protected array $group_by;
 		
 		/**
 		 * AstRetrieve constructor.
@@ -41,6 +43,7 @@
 			$this->sort_in_application_logic = false;
 			$this->window = null;
 			$this->window_size = null;
+			$this->group_by = [];
 		}
 		
 		/**
@@ -176,6 +179,47 @@
 		 */
 		public function addRange(AstRangeDatabase $range): void {
 			$this->ranges[] = $range;
+		}
+		
+		public function hasRange(AstRange $rangeToCheck): bool {
+			foreach($this->ranges as $range) {
+				if ($range->getName() === $rangeToCheck->getName()) {
+					return true;
+				}
+			}
+			
+			return false;
+		}
+		
+		public function removeRange(AstRange $rangeToRemove): void {
+			$result = [];
+			
+			foreach($this->ranges as $range) {
+				if ($range->getName() !== $rangeToRemove->getName()) {
+					$result[] = $range;
+				}
+			}
+			
+			$this->ranges = $result;
+		}
+		
+		/**
+		 * Returns the main database range
+		 *
+		 * Main range criteria:
+		 *     1. Must be a database table (not subquery)
+		 *     2. Must not have a join condition (it's the FROM table)
+		 *
+		 * @return AstRangeDatabase|null
+		 */
+		public function getMainDatabaseRange(): ?AstRangeDatabase {
+			foreach ($this->getRanges() as $range) {
+				if ($range instanceof AstRangeDatabase && $range->getJoinProperty() === null) {
+					return $range;
+				}
+			}
+			
+			return null;
 		}
 		
 		/**
@@ -345,8 +389,65 @@
 			$this->sort_in_application_logic = $setSort;
 		}
 		
-		public function isSingleRangeQuery(): bool {
+		public function isSingleRangeQuery(bool $useIncludedTag=false): bool {
+			if ($useIncludedTag) {
+				$filter = array_filter($this->ranges, function($range) { return $range->includeAsJoin(); });
+				return count($filter) === 1;
+			}
+			
 			return count($this->ranges) === 1;
+		}
+		
+		public function getAllIdentifiers(?AstRange $range=null): array {
+			$visitor = new CollectIdentifiers();
+			
+			foreach($this->values as $value) {
+				$value->accept($visitor);
+			}
+			
+			if ($this->conditions !== null) {
+				$this->conditions->accept($visitor);
+			}
+			
+			$result = $visitor->getCollectedNodes();
+			
+			if ($range !== null) {
+				return array_filter($result, function($value) use ($range) {
+					return $value->getRange() === $range;
+				});
+			}
+			
+			return $result;
+		}
+		
+		public function getLocationOfChild(AstInterface $ast): ?string {
+			foreach($this->values as $value) {
+				if ($ast->isAncestorOf($value)) {
+					return "select";
+				}
+			}
+			
+			if ($this->conditions !== null) {
+				if ($ast->isAncestorOf($this->conditions)) {
+					return "conditions";
+				}
+			}
+			
+			foreach($this->sort as $value) {
+				if ($ast['ast']->isAncestorOf($value)) {
+					return "order_by";
+				}
+			}
+			
+			return null;
+		}
+	
+		public function getGroupBy(): array {
+			return $this->group_by;
+		}
+		
+		public function setGroupBy(array $groups): void {
+			$this->group_by = $groups;
 		}
 		
 		public function deepClone(): static {

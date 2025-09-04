@@ -4,6 +4,7 @@
 	
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIdentifier;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabase;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
 	use Quellabs\ObjectQuel\ObjectQuel\AstInterface;
 	use Quellabs\ObjectQuel\ObjectQuel\AstVisitorInterface;
 	
@@ -14,6 +15,15 @@
 	class GatherReferenceJoinValues implements AstVisitorInterface {
 		
 		private array $identifiers = [];
+		private AstRetrieve $retrieve;
+		
+		/**
+		 * Constructor
+		 * @param AstRetrieve $retrieve
+		 */
+		public function __construct(AstRetrieve $retrieve) {
+			$this->retrieve = $retrieve;
+		}
 		
 		/**
 		 * Returns a list of range name used in the  query
@@ -40,8 +50,15 @@
 				return;
 			}
 			
+			/*
+			 * Range is present in query
+			 */
+			if (!$this->retrieve->hasRange($node->getRange())) {
+				return;
+			}
+			
 			/**
-			 * Do not use if we optimized the range anyway using a subquery
+			 * Do not use if we optimized the range away using a subquery
 			 */
 			if (!$node->getRange()->includeAsJoin()) {
 				return;

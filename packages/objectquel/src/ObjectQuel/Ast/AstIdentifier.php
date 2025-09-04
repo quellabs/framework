@@ -77,6 +77,14 @@
 			$this->identifier = $name;
 		}
 		
+		public function getPropertyName(): string {
+			if ($this->getNext() !== null) {
+				return $this->getNext()->getName();
+			}
+			
+			return $this->getName();
+		}
+		
 		/**
 		 * Chains all the names of identifiers together
 		 * @return string
@@ -113,6 +121,34 @@
 		 */
 		public function hasParent(): bool {
 			return is_a($this->getParent(), AstIdentifier::class);
+		}
+		
+		/**
+		 * Returns the parent aggregate if any
+		 * @return AstInterface|null
+		 */
+		public function getParentAggregate(): ?AstInterface {
+			$current = $this->getParent();
+			
+			while ($current !== null) {
+				if (
+					$current instanceof AstMin ||
+					$current instanceof AstMax ||
+					$current instanceof AstAvg ||
+					$current instanceof AstAvgU ||
+					$current instanceof AstSum ||
+					$current instanceof AstSumU ||
+					$current instanceof AstCount ||
+					$current instanceof AstCountU ||
+					$current instanceof AstAny
+				) {
+					return $current;
+				}
+				
+				$current = $current->getParent();
+			}
+			
+			return null;
 		}
 		
 		/**

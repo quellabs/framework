@@ -16,12 +16,20 @@
 		protected AstInterface $identifier;
 		
 		/**
+		 * @var AstInterface|null The conditions for this aggregator
+		 */
+		private ?AstInterface $conditions;
+		
+		/**
 		 * AstMin constructor.
 		 * @param AstInterface $entityOrIdentifier
 		 */
-		public function __construct(AstInterface $entityOrIdentifier) {
+		public function __construct(AstInterface $entityOrIdentifier, ?AstInterface $conditions = null) {
 			$this->identifier = $entityOrIdentifier;
+			$this->conditions = $conditions;
+			
 			$this->identifier->setParent($this);
+			$conditions?->setParent($this);
 		}
 		
 		/**
@@ -31,6 +39,15 @@
 		public function accept(AstVisitorInterface $visitor): void {
 			parent::accept($visitor);
 			$this->identifier->accept($visitor);
+			$this->conditions?->accept($visitor);
+		}
+		
+		/**
+		 * Returns string representation of aggregate
+		 * @return string
+		 */
+		public function getType(): string {
+			return "MIN";
 		}
 		
 		/**
@@ -43,11 +60,28 @@
 		
 		/**
 		 * Updates the identifier with a new AST
-		 * @param AstIdentifier $ast
+		 * @param AstInterface $ast
 		 * @return void
 		 */
-		public function setIdentifier(AstIdentifier $ast): void {
+		public function setIdentifier(AstInterface $ast): void {
 			$this->identifier = $ast;
+		}
+		
+		/**
+		 * Returns the conditions for this aggregator
+		 * @return AstInterface|null
+		 */
+		public function getConditions(): ?AstInterface {
+			return $this->conditions;
+		}
+		
+		/**
+		 * Updates the conditions for this aggregator
+		 * @param AstInterface|null $conditions
+		 * @return void
+		 */
+		public function setConditions(?AstInterface $conditions): void {
+			$this->conditions = $conditions;
 		}
 		
 		/**
@@ -57,15 +91,11 @@
 		public function deepClone(): static {
 			// Clone the identifier
 			$clonedIdentifier = $this->identifier->deepClone();
+			$clonedConditions = $this->conditions?->deepClone();
 			
 			// Create new instance with cloned identifier
 			// @phpstan-ignore-next-line new.static
-			$clone = new static($clonedIdentifier);
-			
-			// Set the parent relationship
-			$clonedIdentifier->setParent($clone);
-			
 			// Return cloned node
-			return $clone;
+			return new static($clonedIdentifier, $clonedConditions);
 		}
 	}

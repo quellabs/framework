@@ -4,6 +4,8 @@
 	
 	use Quellabs\ObjectQuel\ObjectQuel\AstInterface;
 	use Quellabs\ObjectQuel\ObjectQuel\AstVisitorInterface;
+	use Quellabs\ObjectQuel\ObjectQuel\Visitors\ContainsNode;
+	use Quellabs\ObjectQuel\ObjectQuel\Visitors\ContainsNodeObject;
 	
 	/**
 	 * Class Ast
@@ -56,6 +58,74 @@
 		 */
 		public function setParent(?AstInterface $parent): void {
 			$this->parent = $parent;
+		}
+		
+		/**
+		 * Returns the parent AST path from root to the immediate parent of this node.
+		 * The path is built by walking up the parent chain and is ordered from
+		 * root (index 0) to immediate parent (last index).
+		 * @return AstInterface[]
+		 */
+		public function getParentPath(): array {
+			$path = [];
+			$current = $this->parent;
+			
+			while ($current !== null) {
+				array_unshift($path, $current);
+				$current = $current->getParent();
+			}
+			
+			return $path;
+		}
+		
+		/**
+		 * Returns true if one the parents is $className
+		 * @param string $className
+		 * @return bool
+		 */
+		public function parentContains(string $className): bool {
+			$current = $this->parent;
+			
+			while ($current !== null) {
+				if (is_a($current, $className)) {
+					return true;
+				}
+				
+				$current = $current->getParent();
+			}
+			
+			return false;
+		}
+		
+		/**
+		 * Returns true if one the parents is $className
+		 * @param array $classNames
+		 * @return bool
+		 */
+		public function parentIsOneOf(array $classNames): bool {
+			$current = $this->parent;
+			
+			while ($current !== null) {
+				foreach ($classNames as $className) {
+					if (is_a($current, $className)) {
+						return true;
+					}
+				}
+				
+				$current = $current->getParent();
+			}
+			
+			return false;
+		}
+	
+		public function isAncestorOf(AstInterface $node): bool {
+			try {
+				$visitor = new ContainsNodeObject($this);
+				$node->accept($visitor);
+				return false;
+			} catch (\Exception $exception) {
+				return true;
+			}
 		}
 		
 		/**
