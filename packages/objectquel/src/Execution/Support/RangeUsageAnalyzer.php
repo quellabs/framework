@@ -1,6 +1,6 @@
 <?php
 	
-	namespace Quellabs\ObjectQuel\Execution\Optimizers;
+	namespace Quellabs\ObjectQuel\Execution\Support;
 	
 	use Quellabs\ObjectQuel\EntityStore;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAny;
@@ -79,17 +79,29 @@
 		 *
 		 * @param AstAny $any The ANY(...) AST node to analyze.
 		 * @param AstRange[] $ranges Ordered list of ranges declared for this ANY.
-		 *
+		 * @return QueryAnalysisResult A shape of boolean maps, one entry per provided range name.
+		 */
+		public function analyze(AstAny $any, array $ranges): QueryAnalysisResult {
+			// Analyze the usage
+			$usage = $this->performUsageAnalysis($any->getIdentifier(), $any->getConditions(), $ranges);
+			
+			// Transform the usage to a QueryAnalysisResult object
+			return $this->createAnalysisFromUsage($usage);
+		}
+		
+		/**
+		 * Core analysis logic
+		 * @param AstInterface|null $expr The expression to analyze for identifier usage
+		 * @param AstInterface|null $cond The condition to analyze for identifier usage and IS NULL checks
+		 * @param AstRange[] $ranges Ordered list of ranges to analyze
 		 * @return array{
 		 *   usedInExpr: array<string,bool>,
 		 *   usedInCond: array<string,bool>,
 		 *   hasIsNullInCond: array<string,bool>,
 		 *   nonNullableUse: array<string,bool>
-		 * } A shape of boolean maps, one entry per provided range name.
-		 *
-		 * @phpstan-return RangeUsageMap
+		 * }
 		 */
-		public function analyze(AstAny $any, array $ranges): array {
+		private function performUsageAnalysis(?AstInterface $expr, ?AstInterface $cond, array $ranges): array {
 			// Build an ordered list of range names so that we can pre-seed all maps
 			// with false and only flip to true when we detect usage.
 			$names = array_map(
@@ -104,10 +116,10 @@
 			$hasIsNullInCond = array_fill_keys($names, false);
 			$nonNullableUse = array_fill_keys($names, false);
 			
-			// Collect identifiers from the ANY projection/expression and from the predicate.
+			// Collect identifiers from the expression and from the condition.
 			// This avoids re-walking the same subtrees multiple times.
-			$exprIds = $this->collectIdentifiers($any->getIdentifier());
-			$condIds = $this->collectIdentifiers($any->getConditions());
+			$exprIds = $this->collectIdentifiers($expr);
+			$condIds = $this->collectIdentifiers($cond);
 			
 			// Mark ranges seen in the expression (projection).
 			foreach ($exprIds as $id) {
@@ -129,19 +141,57 @@
 			
 			// Single walk dedicated to finding explicit "IS NULL" checks per range
 			// within the condition tree (if there is any condition at all).
-			if ($any->getConditions() !== null) {
-				$this->walkForIsNull($any->getConditions(), $hasIsNullInCond);
+			if ($cond !== null) {
+				$this->walkForIsNull($cond, $hasIsNullInCond);
 			}
 			
-			// Compact to keep return statement concise and keyed exactly as documented.
+			// Return arrays
 			return compact('usedInExpr', 'usedInCond', 'hasIsNullInCond', 'nonNullableUse');
 		}
 		
 		/**
-		 * Collect all {@see AstIdentifier} nodes reachable from the given AST node.
+		 * Convert usage analysis arrays into a structured analysis object.
 		 *
-		 * This uses the {@see CollectIdentifiers} visitor for a single pass over the
-		 * subtree. If the node is null, an empty array is returned.
+		 * The RangeUsageAnalyzer returns raw arrays mapping table names to boolean flags.
+		 * This method converts that into a more structured QueryAnalysisResult object
+		 * that contains TableUsageInfo objects for easier manipulation.
+		 *
+		 * The four usage flags are:
+		 * - usedInExpr: table is referenced in the ANY expression itself
+		 * - usedInCond: table is referenced in WHERE conditions
+		 * - hasIsNullInCond: table has IS NULL checks (affects LEFT JOIN safety)
+		 * - nonNullableUse: table is used in a way that requires non-null values
+		 *
+		 * @param array $usage Raw usage analysis from performUsageAnalysis
+		 * @return QueryAnalysisResult Structured analysis object
+		 */
+		private function createAnalysisFromUsage(array $usage): QueryAnalysisResult {
+			$tableUsageMap = [];
+			
+			// Collect all table names mentioned in any usage category
+			// This ensures we don't miss tables that appear in only one category
+			$allTableNames = array_unique(array_merge(
+				array_keys($usage['usedInExpr'] ?? []),
+				array_keys($usage['usedInCond'] ?? []),
+				array_keys($usage['hasIsNullInCond'] ?? []),
+				array_keys($usage['nonNullableUse'] ?? [])
+			));
+			
+			// Create structured TableUsageInfo objects for each table
+			foreach ($allTableNames as $tableName) {
+				$tableUsageMap[$tableName] = new TableUsageInfo(
+					!empty($usage['usedInExpr'][$tableName]),     // Convert to boolean
+					!empty($usage['usedInCond'][$tableName]),     // Handle missing keys safely
+					!empty($usage['hasIsNullInCond'][$tableName]),
+					!empty($usage['nonNullableUse'][$tableName])
+				);
+			}
+			
+			return new QueryAnalysisResult($tableUsageMap);
+		}
+		
+		/**
+		 * Collect all {@see AstIdentifier} nodes reachable from the given AST node.
 		 * @param AstInterface|null $node Root of the subtree to traverse (or null).
 		 * @return AstIdentifier[] In-order list of encountered identifiers.
 		 */
@@ -152,16 +202,11 @@
 			
 			$visitor = new CollectIdentifiers();
 			$node->accept($visitor);
-			
 			return $visitor->getCollectedNodes();
 		}
 		
 		/**
 		 * Determine whether the provided identifier refers to a known, non-nullable field.
-		 *
-		 * The method expects an identifier that ultimately resolves to `Entity.field`.
-		 * It consults {@see EntityStore::extractEntityColumnDefinitions()} for the
-		 * field's nullability. Unknown fields are treated conservatively as nullable.
 		 * @param AstIdentifier $id Identifier pointing to (or starting from) an entity member.
 		 * @return bool True if the field exists in metadata and is marked non-nullable; false otherwise.
 		 */
@@ -185,23 +230,14 @@
 			// Default nullable=true if the key is absent; invert to signal non-nullable use.
 			$nullable = (bool)($columnMap[$field]['nullable'] ?? true);
 			
+			// Return value
 			return !$nullable;
 		}
 		
 		/**
 		 * Detect explicit `IS NULL` checks inside the given subtree and mark the range map.
-		 *
-		 * For every occurrence of an {@see AstCheckNull} node, we collect identifiers
-		 * referenced by its expression. Each such identifier's range is flagged as having
-		 * an `IS NULL` usage in the provided output map.
-		 *
-		 * This traversal also drills down through binary operators to cover arbitrary
-		 * boolean expressions in the condition tree.
-		 *
 		 * @param AstInterface $node Root of the subtree to analyze.
-		 * @param array<string,bool> $hasIsNullInCond Output map, mutated in place:
-		 *                                            keys are range names; values flip to true when found.
-		 *
+		 * @param array<string,bool> $hasIsNullInCond
 		 * @return void
 		 */
 		private function walkForIsNull(AstInterface $node, array &$hasIsNullInCond): void {
@@ -222,68 +258,5 @@
 				$this->walkForIsNull($node->getLeft(), $hasIsNullInCond);
 				$this->walkForIsNull($node->getRight(), $hasIsNullInCond);
 			}
-			
-			// If the AST has other composite node types (UNARY, PAREN, etc.),
-			// consider extending this method to recurse into them as needed.
-		}
-		
-		/**
-		 * Generic analyzer for aggregate-like nodes (SUM/COUNT/AVG/MIN/MAX, incl. U variants)
-		 * that expose getIdentifier() and getConditions().
-		 *
-		 * @param AstInterface $owner
-		 * @param AstRange[] $ranges
-		 * @return array{
-		 *   usedInExpr: array<string,bool>,
-		 *   usedInCond: array<string,bool>,
-		 *   hasIsNullInCond: array<string,bool>,
-		 *   nonNullableUse: array<string,bool>
-		 * }
-		 */
-		public function analyzeAggregate(AstInterface $owner, array $ranges): array {
-			// Build ordered list of range names
-			$names = array_map(
-			/** @return string */
-				static fn(AstRange $r) => $r->getName(),
-				$ranges
-			);
-			
-			// Seed result maps
-			$usedInExpr = array_fill_keys($names, false);
-			$usedInCond = array_fill_keys($names, false);
-			$hasIsNullInCond = array_fill_keys($names, false);
-			$nonNullableUse = array_fill_keys($names, false);
-			
-			// Collect identifiers from the aggregate expression and its condition
-			$exprIds = $this->collectIdentifiers($owner->getIdentifier());
-			$cond = method_exists($owner, 'getConditions') ? $owner->getConditions() : null;
-			$condIds = $this->collectIdentifiers($cond);
-			
-			// Mark ranges seen in the aggregate expression
-			foreach ($exprIds as $id) {
-				$usedInExpr[$id->getRange()->getName()] = true;
-			}
-			
-			// Mark ranges seen in the aggregate condition and track non-nullable usage
-			foreach ($condIds as $id) {
-				$rangeName = $id->getRange()->getName();
-				$usedInCond[$rangeName] = true;
-				
-				if ($this->isNonNullableField($id)) {
-					$nonNullableUse[$rangeName] = true;
-				}
-			}
-			
-			// Detect explicit IS NULL checks inside the condition tree
-			if ($cond !== null) {
-				$this->walkForIsNull($cond, $hasIsNullInCond);
-			}
-			
-			return [
-				'usedInExpr'      => $usedInExpr,
-				'usedInCond'      => $usedInCond,
-				'hasIsNullInCond' => $hasIsNullInCond,
-				'nonNullableUse'  => $nonNullableUse,
-			];
 		}
 	}

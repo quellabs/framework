@@ -17,7 +17,8 @@
 			$rs = $this->em()->executeQuery("
 				range of c is PostEntity
 				range of d is PostEntity via d.title=c.title
-				retrieve (AVG(d.id)) where d.id > 0
+				retrieve (c.id)
+				where ANY(d.id)
 			");
 			
 			// SELECT COALESCE(SUM(d.id), 0) as `SUM(d.id)` FROM `posts` as `c` LEFT JOIN `posts` as `d` ON d.title = c.title

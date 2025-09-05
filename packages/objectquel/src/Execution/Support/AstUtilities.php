@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\ObjectQuel\Execution\Support;
 	
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAggregate;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAny;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAvg;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAvgU;
@@ -56,10 +57,10 @@
 			}
 			
 			// Build a simple left-deep AND tree; balancing offers no real advantage here.
-			$acc = new AstBinaryOperator($parts[0], $parts[1], 'AND');
+			$acc = AstFactory::createBinaryAndOperator($parts[0], $parts[1]);
 			
 			for ($i = 2; $i < $n; $i++) {
-				$acc = new AstBinaryOperator($acc, $parts[$i], 'AND');
+				$acc = AstFactory::createBinaryAndOperator($acc, $parts[$i]);
 			}
 			
 			return $acc;
@@ -81,15 +82,6 @@
 		 */
 		public static function isBinaryOrOperator(AstInterface $node): bool {
 			return $node instanceof AstBinaryOperator && strtoupper($node->getOperator()) === 'OR';
-		}
-		
-		/**
-		 * Return binary operator children when present; otherwise empty array.
-		 * @param AstInterface $node Node to get children from
-		 * @return AstInterface[] Child nodes (left and right for binary operators)
-		 */
-		public static function getChildrenFromBinaryOperator(AstInterface $node): array {
-			return $node instanceof AstBinaryOperator ? [$node->getLeft(), $node->getRight()] : [];
 		}
 		
 		/**
@@ -119,14 +111,6 @@
 		}
 		
 		/**
-		 * @param AstInterface $expr
-		 * @return bool True if $expr is one of the supported aggregate classes
-		 */
-		public static function isAggregateExpression(AstInterface $expr): bool {
-			return in_array(get_class($expr), AggregateConstants::AGGREGATE_NODE_TYPES, true);
-		}
-		
-		/**
 		 * Collect all ANY nodes under the retrieve AST in one pass.
 		 * @param AstRetrieve $ast Root query AST
 		 * @return AstAny[] Array of ANY nodes found
@@ -143,8 +127,11 @@
 		 * @return bool
 		 */
 		public static function areAllSelectFieldsAggregates(AstRetrieve $root): bool {
-			foreach($root->getValues() as $value) {
-				if (!AstUtilities::isAggregateExpression($value->getExpression())) {
+			foreach ($root->getValues() as $value) {
+				if (
+					!$value->getExpression() instanceof AstAggregate ||
+					$value->getExpression() instanceof AstAny
+				) {
 					return false;
 				}
 			}
@@ -161,7 +148,10 @@
 			$result = [];
 			
 			foreach ($root->getValues() as $selectItem) {
-				if (!AstUtilities::isAggregateExpression($selectItem->getExpression())) {
+				if (
+					!$selectItem->getExpression() instanceof AstAggregate ||
+					$selectItem->getExpression() instanceof AstAny
+				) {
 					$result[] = $selectItem;
 				}
 			}
