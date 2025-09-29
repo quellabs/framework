@@ -198,6 +198,47 @@ $imports = UseStatementParser::getImportsForClass($reflection);
 - Efficient caching
 - PSR-4 compatibility
 
+### Tools
+
+General utility functions for common operations:
+
+```php
+use Quellabs\Support\Tools;
+
+// Get client IP address with proxy support
+$ip = Tools::getIPAddress();
+// Returns: "192.168.1.100" or null if no valid IP found
+
+// Generate a new GUID/UUID
+$guid = Tools::createGUID();
+// Returns: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+
+// Validate GUID format
+$isValid = Tools::validateGUID('a1b2c3d4-e5f6-7890-abcd-ef1234567890');
+// Returns: true
+
+$isValid = Tools::validateGUID('invalid-guid');
+// Returns: false
+```
+
+**IP Address Detection:**
+- Handles proxy headers (X-Forwarded-For, X-Real-IP, etc.)
+- Validates IPv4 addresses
+- Filters private and reserved IP ranges
+- Returns only public-facing IP addresses
+
+**GUID Generation:**
+- Cross-platform support (uses COM on Windows, OpenSSL elsewhere)
+- RFC 4122 compliant UUID v4 format
+- Cryptographically secure when OpenSSL available
+- Fallback to pseudo-random generation
+
+**GUID Validation:**
+- Validates format: 8-4-4-4-12 hexadecimal pattern
+- Accepts GUIDs with or without curly braces
+- Checks hexadecimal character validity
+- Returns boolean result
+
 ## Performance Considerations
 
 The library includes several performance optimizations:
