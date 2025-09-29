@@ -46,6 +46,11 @@
 		protected \DateTime $createdAt;
 		
 		/**
+		 * @Orm\Column(name="test_enum", type="enum", enumType=\App\Enums\TestEnum::class)
+		 */
+		protected \App\Enums\TestEnum $TestEnum;
+		
+		/**
 		 * Get id
 		 * @return int
 		 */
@@ -132,5 +137,23 @@
 		 */
 		public function test(): void {
 			$this->setCreatedAt(new \DateTime());
+		}
+		
+		/**
+		 * Get TestEnum
+		 * @return \App\Enums\TestEnum
+		 */
+		public function getTestEnum(): \App\Enums\TestEnum {
+			return $this->TestEnum;
+		}
+		
+		/**
+		 * Set TestEnum
+		 * @param \App\Enums\TestEnum $TestEnum
+		 * @return $this
+		 */
+		public function setTestEnum(\App\Enums\TestEnum $TestEnum): self {
+			$this->TestEnum = $TestEnum;
+			return $this;
 		}
 	}

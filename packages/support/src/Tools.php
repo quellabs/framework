@@ -105,4 +105,43 @@
 			// If all checks pass, the GUID is valid
 			return true;
 		}
+		
+		
+		/**
+		 * Gets the length of the longest value in an enum.
+		 * For backed enums, measures the value length.
+		 * For pure enums, measures the name length.
+		 * @param string $enumClass The fully qualified enum class name
+		 * @return int The length of the longest enum value
+		 * @throws \InvalidArgumentException If the class is not an enum
+		 */
+		public static function getMaxEnumValueLength(string $enumClass): int {
+			// Verify the provided class is actually an enum
+			if (!enum_exists($enumClass)) {
+				throw new \InvalidArgumentException("{$enumClass} is not a valid enum");
+			}
+			
+			// Get all enum cases
+			$cases = $enumClass::cases();
+			
+			// Handle empty enums (edge case)
+			if (empty($cases)) {
+				return 0;
+			}
+			
+			// Track the maximum length found
+			$maxLength = 0;
+			
+			// Iterate through each enum case
+			foreach ($cases as $case) {
+				// For backed enums, use the value; for pure enums, use the name
+				// Cast to string to handle int-backed enums correctly
+				$value = $case instanceof \BackedEnum ? (string)$case->value : $case->name;
+				
+				// Update max length if current value is longer
+				$maxLength = max($maxLength, strlen($value));
+			}
+			
+			return $maxLength;
+		}
 	}
