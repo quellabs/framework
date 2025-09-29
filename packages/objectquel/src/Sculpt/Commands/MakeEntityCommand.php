@@ -138,7 +138,7 @@
 				// Prompt user to select property data type from available options
 				$propertyType = $this->input->choice("\nField type", [
 					'tinyinteger', 'smallinteger','integer', 'biginteger', 'string', 'char', 'text', 'float',
-					'decimal', 'boolean', 'date', 'datetime', 'time', 'timestamp', 'relationship'
+					'decimal', 'boolean', 'date', 'datetime', 'time', 'timestamp', 'enum', 'relationship',
 				]);
 				
 				// If the type is relationship, collect relationship details
@@ -276,6 +276,24 @@
 					}
 				}
 				
+				// For enum types, ask for enum details
+				$enumType = null;
+				
+				if ($propertyType === 'enum') {
+					while ($enumType === null) {
+						// Ask for enum class name.
+						$enumType = $this->input->ask("Enter fully qualified enum class name (e.g. App\Enum\OrderStatus)");
+						
+						// Check if it exists. If so, continue
+						if (enum_exists($enumType)) {
+							break;
+						}
+						
+						// Show error when the enum class does not exist
+						$this->output->error("Invalid enum class name");
+					}
+				}
+				
 				// Ask if property can be nullable in the database
 				$propertyNullable = $this->input->confirm("\nAllow this field to be empty/null in the database?", false);
 				
@@ -288,6 +306,7 @@
 					"nullable"  => $propertyNullable,
 					'precision' => $precision,
 					'scale'     => $scale,
+					'enumType'  => $enumType
 				];
 			}
 			

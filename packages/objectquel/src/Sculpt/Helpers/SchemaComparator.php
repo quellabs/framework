@@ -2,7 +2,9 @@
 	
 	namespace Quellabs\ObjectQuel\Sculpt\Helpers;
 	
+	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
 	use Quellabs\ObjectQuel\DatabaseAdapter\TypeMapper;
+	use Quellabs\Support\Tools;
 	
 	/**
 	 * Class SchemaComparator
@@ -13,6 +15,17 @@
 		
 		private const array NUMERIC_PROPERTIES = ['limit', 'precision', 'scale'];
 		private const array BOOLEAN_PROPERTIES = ['null', 'unsigned', 'signed', 'identity'];
+		
+		/** @var DatabaseAdapter Database connection adapter for querying schema information */
+		private DatabaseAdapter $connection;
+		
+		/**
+		 * SchemaComparator constructor
+		 * @param DatabaseAdapter $connection
+		 */
+		public function __construct(DatabaseAdapter $connection) {
+			$this->connection = $connection;
+		}
 		
 		/**
 		 * Main public method to compare entity properties with table columns
@@ -61,46 +74,21 @@
 		 */
 		private function getModifiedColumns(array $entityColumns, array $tableColumns): array {
 			$result = [];
-			$commonColumns = array_intersect_key($entityColumns, $tableColumns);
 			
-			foreach ($commonColumns as $columnName => $entityColumn) {
-				$tableColumn = $tableColumns[$columnName];
+			foreach (array_intersect_key($entityColumns, $tableColumns) as $columnName => $entityColumn) {
+				$normalizedEntity = $this->normalizeColumnDefinition($entityColumn);
+				$normalizedTable = $this->normalizeColumnDefinition($tableColumns[$columnName]);
 				
-				if ($this->hasColumnChanged($entityColumn, $tableColumn)) {
-					$result[$columnName] = $this->buildChangeDetails($entityColumn, $tableColumn);
+				if ($normalizedEntity !== $normalizedTable) {
+					$result[$columnName] = [
+						'from'    => $normalizedTable,
+						'to'      => $normalizedEntity,
+						'changes' => $this->identifySpecificChanges($normalizedTable, $normalizedEntity)
+					];
 				}
 			}
 			
 			return $result;
-		}
-		
-		/**
-		 * Check if a specific column has changed between entity and table definitions
-		 * @param array $entityColumn Column definition from entity model
-		 * @param array $tableColumn Column definition from database table
-		 * @return bool True if the column has changed, false otherwise
-		 */
-		private function hasColumnChanged(array $entityColumn, array $tableColumn): bool {
-			$normalizedEntity = $this->normalizeColumnDefinition($entityColumn);
-			$normalizedTable = $this->normalizeColumnDefinition($tableColumn);
-			return $normalizedEntity !== $normalizedTable;
-		}
-		
-		/**
-		 * Build detailed change information for a modified column
-		 * @param array $entityColumn Column definition from entity model
-		 * @param array $tableColumn Column definition from database table
-		 * @return array Detailed change information including from/to values and specific changes
-		 */
-		private function buildChangeDetails(array $entityColumn, array $tableColumn): array {
-			$normalizedEntity = $this->normalizeColumnDefinition($entityColumn);
-			$normalizedTable = $this->normalizeColumnDefinition($tableColumn);
-			
-			return [
-				'from'    => $tableColumn,
-				'to'      => $entityColumn,
-				'changes' => $this->identifySpecificChanges($normalizedTable, $normalizedEntity)
-			];
 		}
 		
 		/**
@@ -137,15 +125,25 @@
 			// Step 1: Add any missing default values to ensure all required properties are present
 			$normalized = $this->addDefaultValues($columnDefinition);
 			
-			// Step 2: Remove irrelevant or comparison-specific properties that shouldn't affect equality
+			// Step 2: If database does not support ENUM, normalize enum to string
+			if (
+				isset($normalized['type']) &&
+				$normalized['type'] === 'enum' &&
+				!$this->connection->supportsNativeEnums()
+			) {
+				$normalized['type'] = 'string';
+			}
+			
+			// Step 4: Remove irrelevant or comparison-specific properties that shouldn't affect equality
 			$normalized = $this->filterRelevantProperties($normalized);
 			
-			// Step 3: Standardize property values to a consistent format - pass full context
+			// Step 5: Standardize property values to a consistent format - pass full context
 			$normalized = $this->normalizePropertyValues($normalized);
 			
-			// Step 4: Sort the array keys alphabetically for consistent ordering
+			// Step 5: Sort the array keys alphabetically for consistent ordering
 			ksort($normalized);
 			
+			// Return the sorted result
 			return $normalized;
 		}
 		
@@ -160,7 +158,11 @@
 			
 			// Add default limit if missing
 			if (!isset($result['limit'])) {
-				$result['limit'] = TypeMapper::getDefaultLimit($columnType);
+				if ($result["type"] === 'enum' && !empty($columnDefinition['enumType'])) {
+					$result['limit'] = max(Tools::getMaxEnumValueLength($columnDefinition['enumType']), 32);
+				} else {
+					$result['limit'] = TypeMapper::getDefaultLimit($columnType);
+				}
 			}
 			
 			return $result;
@@ -184,10 +186,13 @@
 		 * @return array Column definition with normalized property values
 		 */
 		private function normalizePropertyValues(array $columnDefinition): array {
-			$result = $columnDefinition;
-			$columnType = $result['type'] ?? 'string';
+			// Extract column type, defaulting to 'string' if not specified
+			$columnType = $columnDefinition['type'] ?? 'string';
 			
-			foreach ($result as $property => $value) {
+			// Normalize each property value based on its property name and the column type
+			$result = [];
+			
+			foreach ($columnDefinition as $property => $value) {
 				$result[$property] = $this->normalizePropertyValue($property, $value, $columnType);
 			}
 			
@@ -234,9 +239,14 @@
 		/**
 		 * Normalize boolean default values to handle database tinyint(1) vs PHP boolean differences
 		 * @param mixed $value The default value to normalize (can be bool, int, string, or other types)
-		 * @return int Normalized boolean value as integer for consistency (0 or 1)
+		 * @return int|null Normalized boolean value as integer for consistency (0 or 1)
 		 */
-		private function normalizeBooleanDefault(mixed $value): int {
+		private function normalizeBooleanDefault(mixed $value): ?int {
+			// Check for null values
+			if ($value === null) {
+				return null;
+			}
+			
 			// Handle all truthy boolean representations
 			// Covers: PHP true, integer 1, string '1', string 'true' (case-sensitive)
 			if ($value === true || $value === 1 || $value === '1' || $value === 'true') {
@@ -250,7 +260,12 @@
 			}
 			
 			// Fallback for unexpected values
-			return is_numeric($value) ? (int)$value : 0;
+			if (is_numeric($value)) {
+				return (int)$value;
+			}
+			
+			// Fallback for unexpected values - treat as falsy
+			return 0;
 		}
 		
 		/**

@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\ObjectQuel\Sculpt\Helpers;
 	
+	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
 	use Quellabs\ObjectQuel\DatabaseAdapter\TypeMapper;
 	
 	/**
@@ -11,13 +12,20 @@
 	 * migration code for creating, modifying, or removing database tables, columns, and indexes.
 	 */
 	class PhinxMigrationBuilder {
+		
+		/** @var DatabaseAdapter Database connection adapter for querying schema information */
+		private DatabaseAdapter $connection;
+		
+		/** @var string The migrations folder */
 		private string $migrationsPath;
 		
 		/**
 		 * PhinxMigrationBuilder constructor
+		 * @param DatabaseAdapter $adapter
 		 * @param string $migrationsPath Path where migration files will be stored
 		 */
-		public function __construct(string $migrationsPath) {
+		public function __construct(DatabaseAdapter $adapter, string $migrationsPath) {
+			$this->connection = $adapter;
 			$this->migrationsPath = $migrationsPath;
 		}
 		
@@ -60,7 +68,6 @@
 				];
 			}
 			
-			// If file writing failed, inform the user
 			return [
 				'success' => false,
 				'message' => "Failed to create migration file."
@@ -78,6 +85,9 @@
 			$downMethod = [];
 			
 			foreach ($allChanges as $tableName => $changes) {
+				// Validate changes structure
+				$changes = $this->validateChangesStructure($changes);
+				
 				// Add table if it doesn't exist
 				if (!empty($changes['table_not_exists'])) {
 					$upMethod[] = $this->buildCreateTableCode($tableName, $changes['added'], $changes['indexes']);
@@ -93,8 +103,8 @@
 				
 				// Modify columns
 				if (!empty($changes['modified'])) {
-					$upMethod[] = $this->buildModifyColumnsCode($tableName, $changes['modified']);
-					$downMethod[] = $this->buildReverseModifyColumnsCode($tableName, $changes['modified']);
+					$upMethod[] = $this->buildChangeColumnsCode($tableName, $changes['modified'], 'to');
+					$downMethod[] = $this->buildChangeColumnsCode($tableName, $changes['modified'], 'from');
 				}
 				
 				// Remove columns
@@ -111,7 +121,6 @@
 						$downMethod[] = $this->buildRemoveIndexesCode($tableName, $changes['indexes']['added']);
 					}
 					
-					// Modify existing indexes
 					if (!empty($changes['indexes']['modified'])) {
 						$upMethod[] = $this->buildModifyIndexesCode($tableName, $changes['indexes']['modified']);
 						
@@ -161,6 +170,27 @@ $downMethodContent
     }
 }
 PHP;
+		}
+		
+		/**
+		 * Validate and normalize changes structure to prevent undefined index errors
+		 * @param array $changes Changes array
+		 * @return array Normalized changes with all expected keys
+		 */
+		private function validateChangesStructure(array $changes): array {
+			$defaults = [
+				'added' => [],
+				'modified' => [],
+				'deleted' => [],
+				'indexes' => [
+					'added' => [],
+					'modified' => [],
+					'deleted' => []
+				],
+				'table_not_exists' => false
+			];
+			
+			return array_merge($defaults, $changes);
 		}
 		
 		/**
@@ -279,7 +309,11 @@ PHP;
 				
 				// Generate the complete addColumn() method call with proper indentation
 				// This follows Phinx's fluent interface pattern for table operations
-				$columnDefs[] = "            ->addColumn('$columnName', '$type'$optionsStr)";
+				if ($type !== 'enum' || $this->connection->supportsNativeEnums()) {
+					$columnDefs[] = "            ->addColumn('{$columnName}', '{$type}'{$optionsStr})";
+				} else {
+					$columnDefs[] = "            ->addColumn('{$columnName}', 'string'{$optionsStr})";
+				}
 			}
 			
 			// Return all column definitions as an array of strings
@@ -350,7 +384,7 @@ PHP;
 				$indexOptions[] = "'name' => '$indexName'";
 				
 				// Add unique constraint if specified
-				if ($indexConfig['unique']) {
+				if (!empty($indexConfig['unique'])) {
 					$indexOptions[] = "'unique' => true";
 				}
 				
@@ -375,152 +409,170 @@ PHP;
 		 * @return string Generated PHP code for Phinx migration to add columns
 		 */
 		private function buildAddColumnsCode(string $tableName, array $entityColumns): string {
-			// Step 1: Analyze columns to extract metadata (reuse existing method)
+			// Step 1: Analyze columns to extract metadata
 			$columnInfo = $this->analyzeColumns($entityColumns);
-			$primaryKeys = $columnInfo['primaryKeys'];
+			$newPrimaryKeys = $columnInfo['primaryKeys'];
 			$hasAutoIncrement = $columnInfo['hasAutoIncrement'];
 			$autoIncrementColumn = $columnInfo['autoIncrementColumn'];
 			
-			// Step 2: Determine if auto-increment column needs unique index
-			$needsUniqueIndex = $hasAutoIncrement && !in_array($autoIncrementColumn, $primaryKeys);
-			
-			// Step 3: Generate column definitions (reuse existing method)
+			// Step 2: Generate column definitions
 			$columnDefinitions = $this->generateColumnDefinitions($entityColumns);
 			
-			// Step 4: Start with table declaration
+			// Step 3: Start with table declaration
 			$tableCode = "        \$this->table('$tableName')";
 			
-			// Step 5: Add all column definitions
+			// Step 4: Add all column definitions
 			$tableCode .= "\n" . implode("\n", $columnDefinitions);
 			
-			// Step 6: Add indexes for primary keys
-			if (!empty($primaryKeys)) {
-				// Transform primary keys to string
-				$primaryKeysStr = implode("', '", $primaryKeys);
+			// Step 5: Handle primary key changes ONLY if new columns are actually primary keys
+			if (!empty($newPrimaryKeys)) {
+				// Fetch existing primary keys from the database
+				$existingPrimaryKeys = $this->connection->getPrimaryKeyColumns($tableName);
 				
-				// Remove any existing indexes on these columns first
-				$tableCode .= "\n            ->removeIndex(['$primaryKeysStr'])\n";
-				$tableCode .= "            ->addIndex(['$primaryKeysStr'], ['unique' => true, 'name' => 'PRIMARY'])";
+				// Merge existing and new primary keys, removing duplicates
+				$allPrimaryKeys = array_unique(array_merge($existingPrimaryKeys, $newPrimaryKeys));
+				
+				// Only call changePrimaryKey if the primary key composition actually changed
+				if ($existingPrimaryKeys !== $allPrimaryKeys) {
+					$primaryKeysStr = "'" . implode("', '", $allPrimaryKeys) . "'";
+					$tableCode .= "\n            ->changePrimaryKey([$primaryKeysStr])";
+				}
 			}
 			
-			// Step 7: Add separate unique index for auto-increment column if needed
-			if ($needsUniqueIndex) {
-				$tableCode .= "\n            ->addIndex(['$autoIncrementColumn'], ['unique' => true, 'name' => 'uidx_{$tableName}_{$autoIncrementColumn}'])";
+			// Step 6: Add separate unique index for auto-increment column if needed
+			// Only add if this column isn't already part of the primary key
+			if ($hasAutoIncrement && !in_array($autoIncrementColumn, $newPrimaryKeys)) {
+				// Generate a unique index name to avoid collisions
+				$indexName = 'uidx_' . $tableName . '_' . $autoIncrementColumn . '_' . substr(md5($tableName . $autoIncrementColumn), 0, 8);
+				$tableCode .= "\n            ->addIndex(['$autoIncrementColumn'], ['unique' => true, 'name' => '$indexName'])";
 			}
 			
-			// Step 8: Finalize the table update
+			// Step 7: Finalize the table update
 			$tableCode .= "\n            ->update();";
-		
-			// Return the result
+			
+			// Return result
 			return $tableCode;
 		}
 		
 		/**
 		 * Build code for removing columns from a table
 		 * @param string $tableName Table name
-		 * @param array $columns Column definitions
+		 * @param array $columns Column definitions to be removed (indexed by column name)
 		 * @return string Code for removing columns
 		 */
 		private function buildRemoveColumnsCode(string $tableName, array $columns): string {
 			$columnDefs = [];
 			
 			foreach ($columns as $columnName => $columnDef) {
+				// Add column removal statement for each column
 				$columnDefs[] = "            ->removeColumn('$columnName')";
 			}
 			
+			// Generate complete table modification code with method chaining
 			return "        \$this->table('$tableName')\n" . implode("\n", $columnDefs) . "\n            ->update();";
 		}
 		
 		/**
-		 * Build code for modifying columns in a table
+		 * Build code for modifying columns in a table (supports both forward and reverse migrations)
 		 * @param string $tableName Table name
-		 * @param array $modifiedColumns Modified column definitions
+		 * @param array $modifiedColumns Modified column definitions with 'to' and 'from' states
+		 * @param string $direction Either 'to' for forward migration or 'from' for rollback
 		 * @return string Code for modifying columns
 		 */
-		private function buildModifyColumnsCode(string $tableName, array $modifiedColumns): string {
+		private function buildChangeColumnsCode(string $tableName, array $modifiedColumns, string $direction): string {
 			$columnDefs = [];
 			
 			foreach ($modifiedColumns as $columnName => $changes) {
-				$type = $changes['to']['type'];
+				// Extract column type for the specified migration direction
+				$type = $changes[$direction]['type'];
 				
-				$options = $this->buildColumnOptions($changes['to']);
+				// Build column options (null, default, limit, etc.) based on direction
+				$options = $this->buildColumnOptions($changes[$direction]);
 				
+				// Assemble options string if any options exist
 				$optionsStr = empty($options) ? "" : ", [" . implode(", ", $options) . "]";
+				
+				// Add column modification statement
 				$columnDefs[] = "            ->changeColumn('$columnName', '$type'$optionsStr)";
 			}
 			
+			// Generate complete table modification code with method chaining
 			return "        \$this->table('$tableName')\n" . implode("\n", $columnDefs) . "\n            ->update();";
 		}
 		
 		/**
-		 * Build code for reversing column modifications
+		 * Build code for adding new indexes to a table
 		 * @param string $tableName Table name
-		 * @param array $modifiedColumns Modified column definitions
-		 * @return string Code for reversing column modifications
-		 */
-		private function buildReverseModifyColumnsCode(string $tableName, array $modifiedColumns): string {
-			$columnDefs = [];
-			
-			foreach ($modifiedColumns as $columnName => $changes) {
-				$type = $changes['from']['type'];
-				
-				$options = $this->buildColumnOptions($changes['from']);
-				
-				$optionsStr = empty($options) ? "" : ", [" . implode(", ", $options) . "]";
-				$columnDefs[] = "            ->changeColumn('$columnName', '$type'$optionsStr)";
-			}
-			
-			return "        \$this->table('$tableName')\n" . implode("\n", $columnDefs) . "\n            ->update();";
-		}
-		
-		/**
-		 * Build code for adding indexes to a table
-		 * @param string $tableName Table name
-		 * @param array $indexes Indexes to add
+		 * @param array $indexes Index configurations with 'columns' and optional 'unique' properties
 		 * @return string Code for adding indexes
 		 */
 		private function buildAddIndexesCode(string $tableName, array $indexes): string {
 			$indexDefs = [];
 			
 			foreach ($indexes as $name => $indexConfig) {
+				// Build comma-separated column list for the index
 				$columns = "'" . implode("', '", $indexConfig['columns']) . "'";
+				
+				// Initialize options array with index name
 				$options = ["'name' => '$name'"];
 				
-				if ($indexConfig['unique']) {
+				// Add unique constraint if specified
+				if (!empty($indexConfig['unique'])) {
 					$options[] = "'unique' => true";
 				}
 				
+				// Assemble options string for addIndex call
 				$optionsStr = ", [" . implode(", ", $options) . "]";
+				
+				// Add index creation statement
 				$indexDefs[] = "            ->addIndex([$columns]$optionsStr)";
 			}
 			
+			// Generate complete table modification code with method chaining
 			return "        \$this->table('$tableName')\n" . implode("\n", $indexDefs) . "\n            ->update();";
 		}
 		
 		/**
 		 * Build code for modifying indexes in a table
 		 * @param string $tableName Table name
-		 * @param array $indexes Index modifications
+		 * @param array $indexes Index modifications with 'entity' and 'database' configurations
 		 * @return string Code for modifying indexes
 		 */
 		private function buildModifyIndexesCode(string $tableName, array $indexes): string {
 			$indexDefs = [];
 			
 			foreach ($indexes as $name => $configs) {
-				// We need to drop and recreate the index, as Phinx doesn't have a direct "modify index" function
-				$indexDefs[] = "            ->removeIndex([], ['name' => '$name'])";
+				// Validate structure and fail fast instead of silently continuing
+				if (!isset($configs['entity']['columns']) || !isset($configs['entity']['unique'])) {
+					throw new \InvalidArgumentException(
+						"Invalid index configuration for '$name' in table '$tableName'. " .
+						"Expected 'entity' key with 'columns' and 'unique' properties."
+					);
+				}
 				
+				// Drop existing index before recreation
+				// Note: Phinx doesn't support direct index modification - must drop and recreate
+				$indexDefs[] = "            ->removeIndexByName('$name')";
+				
+				// Build column list for new index
 				$columns = "'" . implode("', '", $configs['entity']['columns']) . "'";
+				
+				// Configure index options
 				$options = ["'name' => '$name'"];
 				
+				// Add unique constraint if specified
 				if ($configs['entity']['unique']) {
 					$options[] = "'unique' => true";
 				}
 				
+				// Assemble options string for addIndex call
 				$optionsStr = ", [" . implode(", ", $options) . "]";
+				
+				// Add index recreation statement
 				$indexDefs[] = "            ->addIndex([$columns]$optionsStr)";
 			}
 			
+			// Generate complete table modification code with method chaining
 			return "        \$this->table('$tableName')\n" . implode("\n", $indexDefs) . "\n            ->update();";
 		}
 		
@@ -534,7 +586,7 @@ PHP;
 			$indexDefs = [];
 			
 			foreach ($indexes as $name => $indexConfig) {
-				$indexDefs[] = "            ->removeIndex([], ['name' => '$name'])";
+				$indexDefs[] = "            ->removeIndexByName('$name')";
 			}
 			
 			return "        \$this->table('$tableName')\n" . implode("\n", $indexDefs) . "\n            ->update();";
@@ -563,6 +615,9 @@ PHP;
 			// Handle unsigned flag for numeric types
 			$this->addSignednessOption($options, $propertyDef);
 			
+			// Handle enum values
+			$this->addEnumValues($options, $propertyDef);
+			
 			// Return result
 			return $options;
 		}
@@ -573,7 +628,10 @@ PHP;
 		 * @param array $propertyDef Property definition
 		 */
 		private function addLimitOption(array &$options, array $propertyDef): void {
-			if (!empty($propertyDef['limit'])) {
+			if (
+				!empty($propertyDef['limit']) &&
+				($propertyDef['type'] !== 'enum' || !$this->connection->supportsNativeEnums())
+			) {
 				$options[] = "'limit' => " . TypeMapper::formatValue($propertyDef['limit']);
 			}
 		}
@@ -629,6 +687,18 @@ PHP;
 			if (isset($propertyDef['unsigned'])) {
 				// Note: Phinx uses 'signed' (opposite of 'unsigned')
 				$options[] = "'signed' => " . ($propertyDef['unsigned'] ? 'false' : 'true');
+			}
+		}
+		
+		/**
+		 * Add enum values
+		 * @param array &$options Options array to modify
+		 * @param array $propertyDef Property definition
+		 */
+		private function addEnumValues(array &$options, array $propertyDef): void {
+			if (!empty($propertyDef['values']) && $this->connection->supportsNativeEnums()) {
+				$enumValues = array_map(function ($value) { return "'" . addslashes($value) . "'"; }, $propertyDef["values"]);
+				$options[] = "'values' => [" . implode(', ', $enumValues) . "]";
 			}
 		}
 	}
