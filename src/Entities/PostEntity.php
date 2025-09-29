@@ -46,7 +46,7 @@
 		protected \DateTime $createdAt;
 		
 		/**
-		 * @Orm\Column(name="test_enum", type="enum", enumType=\App\Enums\TestEnum::class)
+		 * @Orm\Column(name="test_enum", type="enum", enumType=App\Enums\TestEnum::class)
 		 */
 		protected \App\Enums\TestEnum $TestEnum;
 		
