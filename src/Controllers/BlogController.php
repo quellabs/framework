@@ -3,6 +3,7 @@
 	namespace App\Controllers;
 	
 	use App\Entities\PostEntity;
+	use App\Entities\VlaflipEntity;
 	use Quellabs\Canvas\Annotations\Route;
 	use Quellabs\Canvas\Annotations\CacheContext;
 	use Quellabs\Canvas\Annotations\InterceptWith;
@@ -18,6 +19,8 @@
 		 * @return Response
 		 */
 		public function index(CacheInterface $cache): Response {
+			$test = $this->em()->find(VlaflipEntity::class, 1);
+			
 			$posts = $this->em()->findBy(PostEntity::class, ['published' => true]);
 			
 			return $this->render("blog/index.tpl", [
