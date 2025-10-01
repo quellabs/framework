@@ -52,6 +52,15 @@
 		protected \App\Enums\TestEnum $TestEnum;
 		
 		/**
+		 * @Orm\OneToMany(targetEntity=VlaflipEntity::class, mappedBy="id", fetch="EAGER")
+		 */
+		protected CollectionInterface $vlaflip;
+		
+		public function __construct() {
+			$this->vlaflip = new Collection();
+		}
+		
+		/**
 		 * Get id
 		 * @return int
 		 */
