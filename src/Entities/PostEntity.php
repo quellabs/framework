@@ -52,15 +52,6 @@
 		protected \App\Enums\TestEnum $TestEnum;
 		
 		/**
-		 * @Orm\OneToMany(targetEntity="VlaflipEntity", mappedBy="id")
-		 */
-		protected CollectionInterface $vlaflips;
-		
-		public function __construct() {
-			$this->vlaflips = new Collection();
-		}
-		
-		/**
 		 * Get id
 		 * @return int
 		 */
