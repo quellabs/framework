@@ -90,16 +90,18 @@
 				return $this->entityStore->normalizeEntityName($e->getTargetEntity()) === $entityType;
 			});
 			
-			foreach ($oneToOneDependenciesFiltered as $relation) {
+			foreach ($oneToOneDependenciesFiltered as $property => $relation) {
 				// Create a unique alias for the range.
 				$alias = $this->createAlias($rangeCounter);
 				
-				// Get relationship columns
-				$inversedBy = $relation->getInversedBy();
-				$relationColumn = $relation->getRelationColumn();
+				// Relation column in the current entity
+				$relationColumn = $relation->getRelationColumn() ?? "{$property}Id";
+				
+				// Get the relation column from the relation
+				$targetColumn = $relation->getTargetColumn() ?? $this->entityStore->getPrimaryKey($entityType);
 				
 				// Add the range
-				$ranges[$alias] = "range of {$alias} is {$dependentEntityType} via {$alias}.{$relationColumn}=main.{$inversedBy}";
+				$ranges[$alias] = "range of {$alias} is {$dependentEntityType} via {$alias}.{$relationColumn}=main.{$targetColumn}";
 				
 				// Increment the range counter for the next unique range.
 				++$rangeCounter;
@@ -126,16 +128,18 @@
 				return $this->entityStore->normalizeEntityName($e->getTargetEntity()) === $entityType;
 			});
 			
-			foreach ($manyToOneDependenciesFiltered as $relation) {
+			foreach ($manyToOneDependenciesFiltered as $property => $relation) {
 				// Create a unique alias for the range.
 				$alias = $this->createAlias($rangeCounter);
 				
-				// Get relationship columns
-				$inversedBy = $relation->getInversedBy();
-				$relationColumn = $relation->getRelationColumn();
+				// Fetch the column in this entity
+				$relationColumn = $relation->getRelationColumn() ?? "{$property}Id";
+				
+				// Get the relation column from the relation
+				$targetColumn = $relation->getTargetColumn() ?? $this->entityStore->getPrimaryKey($entityType);
 				
 				// Add the new range to the list.
-				$ranges[$alias] = "range of {$alias} is {$dependentEntityType} via {$alias}.{$relationColumn}=main.{$inversedBy}";
+				$ranges[$alias] = "range of {$alias} is {$dependentEntityType} via {$alias}.{$relationColumn}=main.{$targetColumn}";
 				
 				// Increment the range counter for the next unique range.
 				++$rangeCounter;

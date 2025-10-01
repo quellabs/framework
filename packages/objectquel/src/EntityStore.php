@@ -128,6 +128,28 @@
 	    }
 	    
 	    /**
+	     * Creates and initializes a proxy instance for a given entity
+	     * @param string $targetEntity The fully qualified class name of the target entity
+	     * @param EntityManager $entityManager The entity manager instance
+	     * @return object The created proxy instance
+	     */
+	    public function createProxy(string $targetEntity, EntityManager $entityManager): object {
+		    // Get the proxy class name
+		    $proxyClassName = $this->getProxyClass($targetEntity);
+		    
+		    // Get the proxy file path
+		    $proxyFilePath = $this->getProxyFilePath($targetEntity);
+		    
+		    // Require the proxy file if the class doesn't exist yet
+		    if (!class_exists($proxyClassName, false)) {
+			    require_once $proxyFilePath;
+		    }
+		    
+		    // Instantiate and return the proxy
+		    return new $proxyClassName($entityManager);
+	    }
+		
+	    /**
 	     * Normalizes the entity name by resolving proxies and namespaces.
 	     * @param string $class Fully qualified class name or short name.
 	     * @return string Normalized class name.
@@ -620,6 +642,30 @@
 	    }
 	    
 	    /**
+	     * Retrieves the primary key field name for a given entity.
+	     * @param mixed $entity The entity object or class to inspect
+	     * @return string|null The primary key column name, or null if none exists
+	     */
+	    public function getPrimaryKey(mixed $entity): ?string {
+		    // Retrieve all field annotations from the entity store
+		    $annotations = $this->getAnnotations($entity);
+		    
+		    // Iterate through each field's annotation collection
+		    foreach ($annotations as $fieldName => $annotationSet) {
+			    // Check each annotation on the current field
+			    foreach ($annotationSet as $annotation) {
+				    // Identify Column annotations that are marked as primary keys
+				    if ($annotation instanceof Column && $annotation->isPrimaryKey()) {
+					    return $fieldName;
+				    }
+			    }
+		    }
+		    
+		    // No primary key found in any field
+		    return null;
+	    }
+		
+		/**
 	     * This method finds primary key columns that are configured to receive
 	     * database-generated values, which are either:
 	     * 1. Primary keys with a PrimaryKeyStrategy annotation set to "identity", or

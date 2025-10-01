@@ -3,6 +3,7 @@
 	namespace App\Controllers;
 	
 	use App\Entities\PostEntity;
+	use App\Entities\VlaflipEntity;
 	use Quellabs\Canvas\Annotations\Route;
 	use Quellabs\Canvas\Annotations\CacheContext;
 	use Quellabs\Canvas\Annotations\InterceptWith;

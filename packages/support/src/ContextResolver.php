@@ -85,7 +85,7 @@
 		 */
 		public static function getCallingContext(): ?array {
 			// Get call stack trace (limit to 50 frames for performance, ignore function arguments)
-			$trace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS);
+			$trace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 50);
 			
 			// Walk through the call stack to find non-framework code
 			foreach ($trace as $frame) {
@@ -104,11 +104,12 @@
 				}
 				
 				// Build context information using reflection
-				$fileName = self::getFileName($frame['class'], $frame['file']);
+				$className = $frame['class'] ?? null;
+				$fileName = self::getFileName($className, $frame['file'] ?? 'unknown');
 				
 				return self::$contextCache[$cacheKey] = [
 					'file'     => $fileName,                       // Source file path
-					'class'    => $frame['class'],                 // Fully qualified class name
+					'class'    => $className,                      // Fully qualified class name (can be null)
 					'function' => $frame['function'] ?? null,      // Method name that made the call
 					'line'     => $frame['line'] ?? null           // Line number of the call
 				];
