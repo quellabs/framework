@@ -19,8 +19,6 @@
 		 * @return Response
 		 */
 		public function index(CacheInterface $cache): Response {
-			$test = $this->em()->find(VlaflipEntity::class, 1);
-			
 			$posts = $this->em()->findBy(PostEntity::class, ['published' => true]);
 			
 			return $this->render("blog/index.tpl", [
