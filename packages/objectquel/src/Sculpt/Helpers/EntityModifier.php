@@ -324,7 +324,7 @@
 		protected function generateEntityContent(string $entityName, array $properties): string {
 			// Namespace
 			$namespace = $this->configuration->getEntityNameSpace();
-			$content = "<?php\n\n   namespace $namespace;\n";
+			$content = "<?php\n\n   namespace {$namespace};\n";
 			
 			// Use statements
 			$content .= "\n";
@@ -395,18 +395,21 @@
 			// Add getters and setters
 			foreach ($properties as $property) {
 				// Skip adding getter/setter for OneToMany relationships
+				$readOnly = $property['readonly'] ?? false;
 				$isOneToMany = isset($property['relationshipType']) && $property['relationshipType'] === 'OneToMany';
-				
-				// Add getter and setter only if not a OneToMany relationship
-				if (!$isOneToMany) {
-					$content .= $this->generateGetter($property);
-					$content .= $this->generateSetter($property);
-				}
 				
 				// For OneToMany relationships, add additional methods
 				if ($isOneToMany) {
 					$content .= $this->generateCollectionAdder($property, $entityName);
 					$content .= $this->generateCollectionRemover($property, $entityName);
+					continue;
+				}
+				
+				// Add getter and setter only if not a OneToMany relationship
+				$content .= $this->generateGetter($property);
+				
+				if (!$readOnly) {
+					$content .= $this->generateSetter($property);
 				}
 			}
 			
