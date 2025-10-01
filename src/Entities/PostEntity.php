@@ -12,6 +12,7 @@
 	use Quellabs\ObjectQuel\Annotations\Orm\PreUpdate;
 	use Quellabs\ObjectQuel\Collections\Collection;
 	use Quellabs\ObjectQuel\Collections\CollectionInterface;
+	use Quellabs\ObjectQuel\Collections\EntityCollection;
 	
 	/**
 	 * @Orm\Table(name="posts")
@@ -49,6 +50,15 @@
 		 * @Orm\Column(name="test_enum", type="enum", enumType=App\Enums\TestEnum::class)
 		 */
 		protected \App\Enums\TestEnum $TestEnum;
+		
+		/**
+		 * @Orm\OneToMany(targetEntity="VlaflipEntity", mappedBy="id")
+		 */
+		protected CollectionInterface $vlaflips;
+		
+		public function __construct() {
+			$this->vlaflips = new Collection();
+		}
 		
 		/**
 		 * Get id
