@@ -2,10 +2,6 @@
 	
 	namespace Quellabs\ObjectQuel\Sculpt\Commands;
 	
-	/**
-	 * Import required classes for entity management and console interaction
-	 */
-	
 	use Quellabs\ObjectQuel\Configuration;
 	use Quellabs\ObjectQuel\EntityStore;
 	use Quellabs\ObjectQuel\Sculpt\Helpers\EntityModifier;
@@ -14,38 +10,30 @@
 	use Quellabs\Sculpt\ConfigurationManager;
 	use Quellabs\Sculpt\Console\ConsoleInput;
 	use Quellabs\Sculpt\Console\ConsoleOutput;
+	use Quellabs\Support\StringInflector;
 	
 	/**
-	 * MakeEntityCommand - CLI command for creating or updating entity classes
+	 * CLI command for creating or updating entity classes with properties and relationships.
 	 *
-	 * This command allows users to interactively create or update entity classes
-	 * through a command-line interface, collecting properties with their types
-	 * and constraints, including relationship definitions with primary key selection.
+	 * Supports standard data types (string, integer, decimal, etc.) and ORM relationships
+	 * (OneToOne, OneToMany, ManyToOne) with automatic foreign key generation.
 	 */
 	class MakeEntityCommand extends CommandBase {
 		
-		/**
-		 * Entity modifier service for handling entity creation/modification operations
-		 * @var EntityModifier|null
-		 */
+		/** @var EntityModifier|null Lazy-loaded entity modifier for creating/updating entity files */
 		private ?EntityModifier $entityModifier = null;
 		
-		/**
-		 * Entity store for handling entity metadata
-		 * @var EntityStore|null
-		 */
+		/** @var EntityStore|null Lazy-loaded entity store for metadata access */
 		private ?EntityStore $entityStore = null;
 		
-		/**
-		 * @var Configuration
-		 */
+		/** @var Configuration ORM configuration instance */
 		private Configuration $configuration;
 		
 		/**
-		 * MakeEntityCommand constructor
-		 * @param ConsoleInput $input
-		 * @param ConsoleOutput $output
-		 * @param ServiceProvider|null $provider
+		 * Constructor
+		 * @param ConsoleInput $input Console input handler
+		 * @param ConsoleOutput $output Console output handler
+		 * @param ServiceProvider|null $provider Service provider containing configuration
 		 */
 		public function __construct(ConsoleInput $input, ConsoleOutput $output, ?ServiceProvider $provider = null) {
 			parent::__construct($input, $output, $provider);
@@ -53,7 +41,7 @@
 		}
 		
 		/**
-		 * Get the command signature/name for registration in the CLI
+		 * Get the command signature used to invoke this command.
 		 * @return string Command signature
 		 */
 		public function getSignature(): string {
@@ -61,7 +49,7 @@
 		}
 		
 		/**
-		 * Get a short description of what the command does
+		 * Get a short description of what this command does.
 		 * @return string Command description
 		 */
 		public function getDescription(): string {
@@ -69,39 +57,31 @@
 		}
 		
 		/**
-		 * Get detailed help information for the command
-		 * @return string Command help text
+		 * Get detailed help text for this command.
+		 * @return string Help text
 		 */
 		public function getHelp(): string {
 			return "Creates or updates an entity class with standard properties and ORM relationship mappings.\n" .
-				"Supported relationship types: OneToOne, OneToMany, ManyToOne.\n\n" .
-				"Relationships can be established with specific primary key columns in the target entity.";
+				"Supported relationship types: OneToOne, OneToMany, ManyToOne.";
 		}
 		
 		/**
-		 * Execute the command
-		 * @param ConfigurationManager $config Parameters passed to the command
+		 * Execute the command - prompts for entity name and properties, then generates/updates the entity class.
+		 * @param ConfigurationManager $config Configuration manager instance
 		 * @return int Exit code (0 for success)
 		 */
 		public function execute(ConfigurationManager $config): int {
-			// Get the entity name from user input
 			$entityName = $this->input->ask("Class name of the entity to create or update (e.g. AgreeableElephant)");
 			
-			// Exit gracefully if no entity name provided
 			if (empty($entityName)) {
 				return 0;
 			}
 			
-			// Display appropriate message based on whether entity exists
 			$this->displayEntityOperationMessage($entityName);
 			
-			// Get all available entities for relationship selection
 			$availableEntities = $this->getAvailableEntities();
-			
-			// Collect all property definitions from user
 			$properties = $this->collectProperties($availableEntities, $entityName);
 			
-			// Create or update the entity if properties were defined
 			if (!empty($properties)) {
 				$this->getEntityModifier()->createOrUpdateEntity($entityName, $properties);
 				$this->output->writeLn("Entity details written");
@@ -111,112 +91,89 @@
 		}
 		
 		/**
-		 * Returns the EntityStore object
-		 * @return EntityStore
+		 * Lazy-load EntityStore instance.
+		 * @return EntityStore Entity store instance
 		 */
 		private function getEntityStore(): EntityStore {
-			if ($this->entityStore === null) {
-				$this->entityStore = new EntityStore($this->configuration);
-			}
-			
-			return $this->entityStore;
+			return $this->entityStore ??= new EntityStore($this->configuration);
 		}
 		
 		/**
-		 * Returns the EntityModifier object
-		 * @return EntityModifier
+		 * Lazy-load EntityModifier instance.
+		 * @return EntityModifier Entity modifier instance
 		 */
 		private function getEntityModifier(): EntityModifier {
-			if ($this->entityModifier === null) {
-				$this->entityModifier = new EntityModifier($this->configuration);
-			}
-			
-			return $this->entityModifier;
+			return $this->entityModifier ??= new EntityModifier($this->configuration);
 		}
 		
 		/**
-		 * Displays a message indicating whether a new entity will be created or an existing one updated
-		 * @param string $entityName Base name of the entity
-		 * @return void
+		 * Display whether we're creating a new entity or updating an existing one.
+		 * @param string $entityName Name of the entity (without 'Entity' suffix)
 		 */
 		private function displayEntityOperationMessage(string $entityName): void {
 			$entityNamePlus = $entityName . "Entity";
 			$entityPath = realpath($this->configuration->getEntityPath());
+			$action = $this->getEntityModifier()->entityExists($entityNamePlus) ? "Updating existing" : "Creating new";
 			
-			if (!$this->getEntityModifier()->entityExists($entityNamePlus)) {
-				$this->output->writeLn("\nCreating new entity: {$entityPath}/{$entityNamePlus}.php\n");
-			} else {
-				$this->output->writeLn("\nUpdating existing entity: {$entityPath}/{$entityNamePlus}.php\n");
-			}
+			$this->output->writeLn("\n{$action} entity: {$entityPath}/{$entityNamePlus}.php\n");
 		}
 		
 		/**
-		 * Scans the entity directory and returns a list of available entity names
-		 * @return array List of entity names without the "Entity" suffix
+		 * Scan entity directory and return list of existing entity names (without 'Entity' suffix).
+		 * @return array List of entity names
 		 */
 		private function getAvailableEntities(): array {
 			$entityPath = realpath($this->configuration->getEntityPath());
-			$availableEntities = [];
 			
 			if (!is_dir($entityPath)) {
-				return $availableEntities;
+				return [];
 			}
 			
-			$files = scandir($entityPath);
-			
-			foreach ($files as $file) {
-				// Skip directories and non-php files
-				if (is_dir($entityPath . '/' . $file) || pathinfo($file, PATHINFO_EXTENSION) !== 'php') {
+			$entities = [];
+			foreach (scandir($entityPath) as $file) {
+				if (pathinfo($file, PATHINFO_EXTENSION) !== 'php') {
 					continue;
 				}
 				
-				// Extract entity name without "Entity" suffix and .php extension
 				$entityFileName = pathinfo($file, PATHINFO_FILENAME);
-				
 				if (str_ends_with($entityFileName, 'Entity')) {
-					$availableEntities[] = substr($entityFileName, 0, -6);
+					$entities[] = substr($entityFileName, 0, -6);
 				}
 			}
 			
-			return $availableEntities;
+			return $entities;
 		}
 		
 		/**
-		 * Interactively collects property definitions from the user
-		 * @param array $availableEntities List of available entities for relationships
-		 * @param string $entityName Name of the current entity being created/updated
+		 * Interactively collect all properties for the entity.
+		 * Loops until user presses enter without entering a property name.
+		 * @param array $availableEntities List of available entity names
+		 * @param string $entityName Name of the current entity being created
 		 * @return array Array of property definitions
 		 */
 		private function collectProperties(array $availableEntities, string $entityName): array {
 			$properties = [];
 			
-			// Loop until user stops adding properties
 			while (true) {
-				// Get property name or break if empty
 				$propertyName = $this->input->ask("New property name (press enter to stop adding fields)");
 				
 				if (empty($propertyName)) {
 					break;
 				}
 				
-				// Get property type from user
 				$propertyType = $this->input->choice("\nField type", [
-					'tinyinteger', 'smallinteger','integer', 'biginteger', 'string', 'char', 'text', 'float',
+					'tinyinteger', 'smallinteger', 'integer', 'biginteger', 'string', 'char', 'text', 'float',
 					'decimal', 'boolean', 'date', 'datetime', 'time', 'timestamp', 'enum', 'relationship',
 				]);
 				
 				if ($propertyType === 'relationship') {
-					// Handle relationship types separately
-					$relationshipProperties = $this->collectRelationshipProperties(
+					$properties = array_merge($properties, $this->collectRelationshipProperties(
 						$propertyName,
 						$availableEntities,
 						$entityName
-					);
-					
-					$properties = array_merge($properties, $relationshipProperties);
+					));
 				} else {
-					// Collect standard property definition
-					$properties[] = $this->collectStandardProperties($propertyName, $propertyType);
+					$properties[] = $this->collectStandardProperty($propertyName, $propertyType);
 				}
 			}
 			
@@ -224,236 +181,314 @@
 		}
 		
 		/**
-		 * Collects relationship property details and returns property definitions
-		 * Includes both the relationship property and any auto-generated foreign key columns
-		 * @param string $propertyName Name of the relationship property
-		 * @param array $availableEntities List of available entities
-		 * @param string $entityName Name of the current entity
-		 * @return array Array of property definitions (may include multiple properties)
+		 * Collect configuration for a relationship property.
+		 * Returns array of properties (relationship + FK column if applicable).
+		 * @param array $availableEntities List of available entity names
+		 * @param string $entityName Name of the current entity being created
+		 * @return array Array of property definitions for the relationship
 		 */
 		private function collectRelationshipProperties(string $propertyName, array $availableEntities, string $entityName): array {
-			$properties = [];
+			$relationshipType = $this->input->choice("\nRelationship type", ['OneToOne', 'OneToMany', 'ManyToOne']);
 			
-			// Get relationship type from user
-			$relationshipType = $this->input->choice("\nRelationship type", [
-				'OneToOne', 'OneToMany', 'ManyToOne'
-			]);
+			$targetInfo = $this->getTargetEntityInfo($availableEntities);
 			
-			// Get target entity and referenced field information
-			$targetInfo = $this->getTargetEntityAndReferenceField($availableEntities);
-			$targetEntity = $targetInfo['targetEntity'];
-			$referencedField = $targetInfo['referencedField'];
-			$foreignColumn = $targetInfo['foreignColumn'];
+			// Determine FK details for owning side
+			$isOwningSide = in_array($relationshipType, ['ManyToOne', 'OneToOne']);
+			$relationColumn = $isOwningSide ? $propertyName . "Id" : null;
+			$fkInfo = $isOwningSide ? $this->determineForeignKeyType($targetInfo['targetEntity'], $targetInfo['referencedField']) : null;
 			
-			// Determine foreign key column details for owning side relationships
-			$relationColumn = null;
-			$fkColumnType = 'integer';
-			$fkUnsigned = true;
-			
-			if ($relationshipType === 'ManyToOne' || $relationshipType === 'OneToOne') {
-				// Derive join column from relation name + attached "Id"
-				$relationColumn = $propertyName . "Id";
-				
-				// Introspect target entity to determine FK column type
-				$fkInfo = $this->determineForeignKeyType($targetEntity, $referencedField);
-				$fkColumnType = $fkInfo['type'];
-				$fkUnsigned = $fkInfo['unsigned'];
-			}
-			
-			// Get relationship mapping configuration based on type
-			$mappingConfig = $this->collectRelationshipMapping($relationshipType, $entityName, $referencedField);
-			
-			// Determine PHP type for the property
-			if (($relationshipType === 'OneToMany')) {
-				$propertyPhpType = "CollectionInterface";
-			} else {
-				$propertyPhpType = $targetEntity . "Entity";
-			}
-			
-			// Ask if the relationship can be null
-			$relationshipNullable = $this->input->confirm(
-				"\nAllow this relationship to be null?",
-				$relationshipType === 'ManyToOne'
+			// Get bidirectional mapping configuration
+			$mappingConfig = $this->collectRelationshipMapping(
+				$relationshipType,
+				$entityName,
+				$targetInfo['targetEntity']
 			);
 			
-			// Add the relationship property
+			$propertyPhpType = ($relationshipType === 'OneToMany') ? "CollectionInterface" : $targetInfo['targetEntity'] . "Entity";
+			$nullable = $this->input->confirm("\nAllow this relationship to be null?", $relationshipType === 'ManyToOne');
+			
+			$properties = [];
+			
+			// Add relationship property
 			$properties[] = [
 				"name"             => $propertyName,
 				"type"             => $propertyPhpType,
 				"relationshipType" => $relationshipType,
-				"targetEntity"     => $targetEntity,
+				"targetEntity"     => $targetInfo['targetEntity'],
 				"mappedBy"         => $mappingConfig['mappedBy'],
 				"inversedBy"       => $mappingConfig['inversedBy'],
 				"relationColumn"   => $relationColumn,
-				"foreignColumn"    => $foreignColumn,
+				"foreignColumn"    => $targetInfo['foreignColumn'],
+				"nullable"         => $nullable,
 				"readonly"         => false
 			];
 			
-			// Auto-add foreign key column for owning side relationships
-			if (
-				($relationshipType === 'ManyToOne' || ($relationshipType === 'OneToOne' && $mappingConfig['mappedBy'] === null)) &&
-				$relationColumn !== null
-			) {
+			// Add FK column for owning side
+			if ($isOwningSide && $relationColumn !== null && $mappingConfig['mappedBy'] === null) {
 				$properties[] = [
 					"name"     => $relationColumn,
-					"type"     => $fkColumnType,
-					"unsigned" => $fkUnsigned,
-					"nullable" => $relationshipNullable,
+					"type"     => $fkInfo['type'],
+					"unsigned" => $fkInfo['unsigned'],
+					"nullable" => $nullable,
 					"readonly" => true
 				];
+			}
+			
+			// Create inverse/owning side in target entity if requested
+			if ($mappingConfig['createInTarget'] ?? false) {
+				$this->createRelationshipInTargetEntity(
+					$targetInfo['targetEntity'],
+					$entityName,
+					$mappingConfig['targetPropertyName'],
+					$mappingConfig['targetRelationType'],
+					$propertyName,
+					$targetInfo['foreignColumn']
+				);
 			}
 			
 			return $properties;
 		}
 		
 		/**
-		 * Determines the foreign key column type by introspecting the target entity
-		 * @param string $targetEntity Name of the target entity
-		 * @param string $referencedField Field name in the target entity
-		 * @return array Associative array with 'type' and 'unsigned' keys
-		 */
-		private function determineForeignKeyType(string $targetEntity, string $referencedField): array {
-			$result = [
-				'type' => 'integer',
-				'unsigned' => true
-			];
-			
-			try {
-				$fullEntityName = $this->configuration->getEntityNameSpace() . '\\' . $targetEntity . 'Entity';
-				
-				if ($this->getEntityStore()->exists($fullEntityName)) {
-					// Get column definitions for the target entity
-					$columnDefinitions = $this->getEntityStore()->extractEntityColumnDefinitions($fullEntityName);
-					
-					// Get the column map to find the database column name
-					$columnMap = $this->getEntityStore()->getColumnMap($fullEntityName);
-					$referencedDbColumn = $columnMap[$referencedField] ?? null;
-					
-					// Look up the column type from the definitions
-					if ($referencedDbColumn && isset($columnDefinitions[$referencedDbColumn])) {
-						$result['type'] = $columnDefinitions[$referencedDbColumn]['type'];
-						$result['unsigned'] = $columnDefinitions[$referencedDbColumn]['unsigned'] ?? true;
-					}
-				}
-			} catch (\Exception $e) {
-				// Fallback to integer if we can't determine type
-				$this->output->writeLn("\nCouldn't determine FK type, defaulting to integer");
-			}
-			
-			return $result;
-		}
-		
-		/**
-		 * Collects relationship mapping configuration (mappedBy/inversedBy) based on relationship type
+		 * Collect bidirectional mapping configuration for a relationship.
+		 * Returns mappedBy/inversedBy values and whether to create property in target entity.
 		 * @param string $relationshipType Type of relationship (OneToOne, OneToMany, ManyToOne)
 		 * @param string $entityName Name of the current entity
-		 * @param string $referencedField Field name being referenced in the target entity
-		 * @return array Associative array with 'mappedBy' and 'inversedBy' keys
+		 * @param string $targetEntity Name of the target entity
+		 * @return array Mapping configuration with 'mappedBy', 'inversedBy', and optional creation flags
 		 */
-		private function collectRelationshipMapping(string $relationshipType, string $entityName, string $referencedField): array {
-			// OneToMany relationships are always the inverse side
-			// They must reference the owning side's field via mappedBy
+		private function collectRelationshipMapping(string $relationshipType, string $entityName, string $targetEntity): array {
+			// OneToMany: always inverse side
 			if ($relationshipType === 'OneToMany') {
-				$this->output->writeLn("\nUsing '{$referencedField}' as the mappedBy field in the related entity");
-				return [
-					'mappedBy' => $referencedField,
-					'inversedBy' => null
-				];
+				return $this->handleInverseSideMapping($targetEntity, $entityName, 'ManyToOne');
 			}
 			
-			// ManyToOne relationships are always the owning side
-			// They only need inversedBy if the relationship is bidirectional
-			if ($relationshipType === 'ManyToOne') {
-				$bidirectional = $this->input->confirm("\nIs this a bidirectional relationship?", false);
-				
-				// Unidirectional ManyToOne needs no mapping configuration
-				if (!$bidirectional) {
-					return [
-						'mappedBy' => null,
-						'inversedBy' => null
-					];
-				}
-				
-				// Bidirectional ManyToOne needs inversedBy to point to the collection field on the other side
-				$suggestedCollectionName = lcfirst($entityName) . 's';
-				$inversedBy = $this->input->ask(
-					"\nInversedBy field name in the related entity",
-					$suggestedCollectionName
+			// OneToOne: ask which side is owning
+			if ($relationshipType === 'OneToOne' && !$this->input->confirm("\nIs this the owning side?", true)) {
+				return $this->handleInverseSideMapping($targetEntity, $entityName, 'OneToOne');
+			}
+			
+			// ManyToOne or OneToOne (owning side)
+			return $this->handleOwningSideMapping($relationshipType, $entityName, $targetEntity);
+		}
+		
+		/**
+		 * Handle mapping for the inverse side of a relationship.
+		 * @param string $targetEntity Name of the target entity (contains the owning side)
+		 * @param string $currentEntity Name of the current entity (inverse side)
+		 * @param string $targetRelationType Relationship type on the target side (ManyToOne or OneToOne)
+		 * @return array Mapping configuration
+		 */
+		private function handleInverseSideMapping(string $targetEntity, string $currentEntity, string $targetRelationType): array {
+			// Try to find existing owning side property
+			$mappedBy = $this->findRelationshipProperty($targetEntity, $currentEntity);
+			
+			if ($mappedBy !== null) {
+				$this->output->writeLn("\nFound existing property '{$mappedBy}' in {$targetEntity}Entity");
+				return ['mappedBy' => $mappedBy, 'inversedBy' => null];
+			}
+			
+			// Offer to create owning side property
+			$createTarget = $this->input->confirm(
+				"\nDo you want to add a new property to {$targetEntity}Entity to map the inverse of the relationship?",
+				true
+			);
+			
+			if (!$createTarget) {
+				$mappedBy = $this->input->ask(
+					"\nProperty name in {$targetEntity}Entity (you'll need to create it manually)",
+					lcfirst($currentEntity)
 				);
-				
-				return [
-					'mappedBy' => null,
-					'inversedBy' => $inversedBy
-				];
+				return ['mappedBy' => $mappedBy, 'inversedBy' => null];
 			}
 			
-			// OneToOne relationships can be either owning or inverse side
-			if ($relationshipType === 'OneToOne') {
-				$isOwningSide = $this->input->confirm("\nIs this the owning side of the relationship?", true);
-				
-				// Inverse side must use mappedBy to reference the owning side's field
-				if (!$isOwningSide) {
-					$suggestedFieldName = lcfirst($entityName);
-					$mappedBy = $this->input->ask(
-						"\nMappedBy field name in the related entity",
-						$suggestedFieldName
-					);
-					
-					return [
-						'mappedBy' => $mappedBy,
-						'inversedBy' => null
-					];
-				}
-				
-				// Owning side only needs inversedBy if bidirectional
-				$bidirectional = $this->input->confirm("\nIs this a bidirectional relationship?", false);
-				
-				// Unidirectional OneToOne from owning side needs no mapping configuration
-				if (!$bidirectional) {
-					return [
-						'mappedBy' => null,
-						'inversedBy' => null
-					];
-				}
-				
-				// Bidirectional OneToOne from owning side needs inversedBy to point to the inverse side's field
-				$suggestedFieldName = lcfirst($entityName);
-				$inversedBy = $this->input->ask(
-					"\nInversedBy field name in the related entity",
-					$suggestedFieldName
-				);
-				
-				return [
-					'mappedBy' => null,
-					'inversedBy' => $inversedBy
-				];
+			$targetPropertyName = $this->input->ask("\nNew property name inside {$targetEntity}Entity", lcfirst($currentEntity));
+			
+			if (($targetRelationType === 'ManyToOne')) {
+				$inversedBy = StringInflector::pluralize(lcfirst($currentEntity));
+			} else {
+				$inversedBy = lcfirst($currentEntity);
 			}
 			
-			// Fallback for unknown relationship types
 			return [
-				'mappedBy' => null,
-				'inversedBy' => null
+				'mappedBy'           => $targetPropertyName,
+				'inversedBy'         => null,
+				'createInTarget'     => true,
+				'targetPropertyName' => $targetPropertyName,
+				'targetRelationType' => $targetRelationType,
+				'targetInversedBy'   => $inversedBy
 			];
 		}
 		
 		/**
-		 * Collects details for a standard (non-relationship) property
+		 * Handle mapping for the owning side of a relationship.
+		 * @param string $relationshipType Type of relationship (ManyToOne or OneToOne)
+		 * @param string $entityName Name of the current entity (owning side)
+		 * @param string $targetEntity Name of the target entity
+		 * @return array Mapping configuration
+		 */
+		private function handleOwningSideMapping(string $relationshipType, string $entityName, string $targetEntity): array {
+			$bidirectional = $this->input->confirm("\nIs this a bidirectional relationship?", false);
+			
+			if (!$bidirectional) {
+				return ['mappedBy' => null, 'inversedBy' => null];
+			}
+			
+			if (($relationshipType === 'ManyToOne')) {
+				$inversedBy = StringInflector::pluralize(lcfirst($entityName));
+			} else {
+				$inversedBy = lcfirst($entityName);
+			}
+			
+			// Offer to create inverse side in target entity
+			$createTarget = $this->input->confirm(
+				"\nDo you want to add a new property to {$targetEntity}Entity to map the inverse of the relationship?",
+				true
+			);
+			
+			if ($createTarget) {
+				$targetRelationType = ($relationshipType === 'ManyToOne') ? 'OneToMany' : 'OneToOne';
+				
+				return [
+					'mappedBy'           => null,
+					'inversedBy'         => $inversedBy,
+					'createInTarget'     => true,
+					'targetPropertyName' => $inversedBy,
+					'targetRelationType' => $targetRelationType,
+					'targetInversedBy'   => null
+				];
+			}
+			
+			return ['mappedBy' => null, 'inversedBy' => $inversedBy];
+		}
+		
+		/**
+		 * Create a relationship property in the target entity.
+		 * @param string $targetEntity Name of the target entity
+		 * @param string $currentEntity Name of the current entity
+		 * @param string $propertyName Name of the property to create
+		 * @param string $relationshipType Type of relationship (OneToOne, OneToMany, ManyToOne)
+		 * @param string|null $inversedBy Property name for the inverse side (if bidirectional)
+		 * @param string $foreignColumn Database column name being referenced
+		 */
+		private function createRelationshipInTargetEntity(
+			string  $targetEntity,
+			string  $currentEntity,
+			string  $propertyName,
+			string  $relationshipType,
+			?string $inversedBy,
+			string  $foreignColumn
+		): void {
+			if (!$this->getEntityModifier()->entityExists($targetEntity . "Entity")) {
+				$this->output->warning(
+					"\nTarget entity '{$targetEntity}Entity' doesn't exist yet. " .
+					"Create it first, then add the relationship."
+				);
+				return;
+			}
+			
+			$properties = [];
+			$isOwningSide = in_array($relationshipType, ['ManyToOne', 'OneToOne']);
+			$phpType = ($relationshipType === 'OneToMany') ? "CollectionInterface" : $currentEntity . "Entity";
+			
+			// FIX: For OneToMany (inverse side), mappedBy should reference the property name
+			// in the owning entity that we're creating the inverse for.
+			// The $inversedBy parameter contains the ManyToOne property name (e.g., "post")
+			$mappedBy = $isOwningSide ? null : $inversedBy;
+			
+			// Add relationship property
+			$properties[] = [
+				"name"             => $propertyName,
+				"type"             => $phpType,
+				"relationshipType" => $relationshipType,
+				"targetEntity"     => $currentEntity,
+				"mappedBy"         => $mappedBy,
+				"inversedBy"       => null,  // Inverse side doesn't have inversedBy
+				"relationColumn"   => $isOwningSide ? $propertyName . "Id" : null,
+				"foreignColumn"    => $foreignColumn,
+				"nullable"         => true,
+				"readonly"         => false
+			];
+			
+			// Add FK column for owning side
+			if ($isOwningSide) {
+				$fkInfo = $this->determineForeignKeyType($currentEntity, $this->getEntityPrimaryKeys($currentEntity)[0]);
+				
+				$properties[] = [
+					"name"     => $propertyName . "Id",
+					"type"     => $fkInfo['type'],
+					"unsigned" => $fkInfo['unsigned'],
+					"nullable" => true,
+					"readonly" => true
+				];
+			}
+			
+			$this->getEntityModifier()->createOrUpdateEntity($targetEntity, $properties);
+			$this->output->writeLn("\nAdded property '{$propertyName}' to {$targetEntity}Entity");
+		}
+		
+		/**
+		 * Find an existing property in target entity that references the current entity.
+		 * Returns property name if found, null otherwise.
+		 * @param string $targetEntity Name of the target entity to search in
+		 * @param string $currentEntity Name of the current entity being referenced
+		 * @return string|null Property name if found, null otherwise
+		 */
+		private function findRelationshipProperty(string $targetEntity, string $currentEntity): ?string {
+			$fullTargetEntity = $this->configuration->getEntityNameSpace() . '\\' . $targetEntity . 'Entity';
+			
+			if (!$this->getEntityStore()->exists($fullTargetEntity)) {
+				return null;
+			}
+			
+			$reflectionClass = new \ReflectionClass($fullTargetEntity);
+			$currentEntityFullName = $this->configuration->getEntityNameSpace() . '\\' . $currentEntity . 'Entity';
+			$matchingProperties = [];
+			
+			foreach ($reflectionClass->getProperties() as $property) {
+				$propertyType = $property->getType();
+				
+				if (!$propertyType instanceof \ReflectionNamedType) {
+					continue;
+				}
+				
+				$typeName = $propertyType->getName();
+				
+				if ($typeName === $currentEntityFullName || $typeName === $currentEntity . 'Entity') {
+					$matchingProperties[] = $property->getName();
+				}
+			}
+			
+			if (count($matchingProperties) === 1) {
+				return $matchingProperties[0];
+			}
+			
+			if (count($matchingProperties) > 1) {
+				return $this->input->choice("\nMultiple properties found. Select the owning side property:", $matchingProperties);
+			}
+			
+			return null;
+		}
+		
+		/**
+		 * Collect configuration for a standard (non-relationship) property.
 		 * @param string $propertyName Name of the property
-		 * @param string $propertyType Type of the property
+		 * @param string $propertyType Type of the property (string, integer, decimal, etc.)
 		 * @return array Property definition array
 		 */
-		private function collectStandardProperties(string $propertyName, string $propertyType): array {
+		private function collectStandardProperty(string $propertyName, string $propertyType): array {
 			$property = [
 				"name"     => $propertyName,
 				"type"     => $propertyType,
 				"readonly" => false
 			];
 			
-			// Collect type-specific attributes
+			// String length limit
 			if ($propertyType === 'string') {
 				$property['limit'] = $this->input->ask("\nCharacter limit for this string field", "255");
 			}
 			
+			// Integer unsigned flag
 			if (in_array($propertyType, ['tinyinteger', 'smallinteger', 'integer', 'biginteger'])) {
 				$property['unsigned'] = $this->input->confirm(
 					"\nShould this number field store positive values only (unsigned)?",
@@ -461,45 +496,42 @@
 				);
 			}
 			
+			// Decimal precision/scale
 			if ($propertyType === 'decimal') {
 				$decimalConfig = $this->collectDecimalConfiguration();
 				$property['precision'] = $decimalConfig['precision'];
 				$property['scale'] = $decimalConfig['scale'];
 			}
 			
+			// Enum type
 			if ($propertyType === 'enum') {
 				$property['enumType'] = $this->collectEnumType();
 			}
 			
-			// Ask if property can be nullable
-			$property['nullable'] = $this->input->confirm(
-				"\nAllow this field to be empty/null in the database?",
-				false
-			);
+			$property['nullable'] = $this->input->confirm("\nAllow this field to be empty/null in the database?", false);
 			
 			return $property;
 		}
 		
 		/**
-		 * Collects precision and scale configuration for decimal fields
-		 * @return array Associative array with 'precision' and 'scale' keys
+		 * Collect and validate decimal precision and scale configuration.
+		 * @return array Array with 'precision' and 'scale' keys
 		 */
 		private function collectDecimalConfiguration(): array {
 			$precision = null;
-			$scale = null;
 			
-			// Collect precision with validation
 			while ($precision === null || $precision <= 0) {
-				$precision = (int) $this->input->ask("\nPrecision (total digits, e.g. 10)?", 10);
+				$precision = (int)$this->input->ask("\nPrecision (total digits, e.g. 10)?", 10);
 				
 				if ($precision <= 0) {
 					$this->output->warning("Precision must be greater than 0.");
 				}
 			}
 			
-			// Collect scale with validation against precision
+			$scale = null;
+			
 			while ($scale === null || $scale < 0 || $scale > $precision) {
-				$scale = (int) $this->input->ask("\nScale (decimal digits, e.g. 2)?", 2);
+				$scale = (int)$this->input->ask("\nScale (decimal digits, e.g. 2)?", 2);
 				
 				if ($scale < 0) {
 					$this->output->warning("Scale cannot be negative.");
@@ -508,135 +540,118 @@
 				}
 			}
 			
-			return [
-				'precision' => $precision,
-				'scale' => $scale
-			];
+			return ['precision' => $precision, 'scale' => $scale];
 		}
 		
 		/**
-		 * Collects and validates the enum type for enum fields
+		 * Collect and validate enum class name.
 		 * @return string Fully qualified enum class name
 		 */
 		private function collectEnumType(): string {
-			$enumType = null;
-			
-			while ($enumType === null) {
-				// Ask for enum class name
+			while (true) {
 				$enumType = $this->input->ask("Enter fully qualified enum class name (e.g. App\Enum\OrderStatus)");
 				
-				// Validate that the enum exists
 				if (enum_exists($enumType)) {
-					break;
+					return $enumType;
 				}
 				
-				// Show error if enum class doesn't exist
 				$this->output->error("Invalid enum class name");
-				$enumType = null;
 			}
-			
-			return $enumType;
-		}
-
-		/**
-		 * Gets the target entity and reference field information for a relationship
-		 * @param array $availableEntities List of available entities
-		 * @return array Associative array with targetEntity, referencedField, and foreignColumn
-		 */
-		private function getTargetEntityAndReferenceField(array $availableEntities): array {
-			// Set default values
-			$result = [
-				'targetEntity'    => '',
-				'referencedField' => 'id',
-				'foreignColumn'   => 'id'
-			];
-			
-			// Get the target entity (either from selection or manual entry)
-			$result['targetEntity'] = $this->selectTargetEntity($availableEntities);
-			
-			// If we have a valid existing entity, get its primary key
-			if (in_array($result['targetEntity'], $availableEntities)) {
-				$referenceInfo = $this->getTargetEntityReferenceField($result['targetEntity']);
-				$result['referencedField'] = $referenceInfo['field'];
-				$result['foreignColumn'] = $referenceInfo['column'];
-			}
-			
-			return $result;
 		}
 		
 		/**
-		 * Asks the user to select a target entity from available options or enter one manually
-		 * @param array $availableEntities List of available entities
-		 * @return string Selected or entered entity name
+		 * Get target entity name and its primary key information.
+		 * @param array $availableEntities List of available entity names
+		 * @return array Array with 'targetEntity', 'referencedField', and 'foreignColumn' keys
+		 */
+		private function getTargetEntityInfo(array $availableEntities): array {
+			$targetEntity = $this->selectTargetEntity($availableEntities);
+			
+			// If entity doesn't exist yet, assume default 'id' column
+			if (!in_array($targetEntity, $availableEntities)) {
+				return [
+					'targetEntity'    => $targetEntity,
+					'referencedField' => 'id',
+					'foreignColumn'   => 'id'
+				];
+			}
+			
+			// Get actual primary key info
+			$primaryKeys = $this->getEntityPrimaryKeys($targetEntity);
+			$primaryKeyField = $primaryKeys[0] ?? 'id';
+			
+			$fullEntityName = $this->configuration->getEntityNameSpace() . '\\' . $targetEntity . 'Entity';
+			$columnMap = $this->getEntityStore()->getColumnMap($fullEntityName);
+			
+			return [
+				'targetEntity'    => $targetEntity,
+				'referencedField' => $primaryKeyField,
+				'foreignColumn'   => $columnMap[$primaryKeyField] ?? $primaryKeyField
+			];
+		}
+		
+		/**
+		 * Prompt user to select target entity from available entities or enter manually.
+		 * @param array $availableEntities List of available entity names
+		 * @return string Selected entity name
 		 */
 		private function selectTargetEntity(array $availableEntities): string {
-			// If no entities available, ask for manual entry
 			if (empty($availableEntities)) {
 				return $this->input->ask("\nTarget entity name (without 'Entity' suffix)");
 			}
 			
-			// Allow selecting from list or manual entry
-			$targetEntityOptions = array_merge($availableEntities, ['[Enter manually]']);
-			$targetEntityChoice = $this->input->choice("\nSelect target entity", $targetEntityOptions);
+			$options = array_merge($availableEntities, ['[Enter manually]']);
+			$choice = $this->input->choice("\nSelect target entity", $options);
 			
-			if ($targetEntityChoice === '[Enter manually]') {
+			if ($choice === '[Enter manually]') {
 				return $this->input->ask("\nTarget entity name (without 'Entity' suffix)");
+			} else {
+				return $choice;
 			}
-			
-			return $targetEntityChoice;
 		}
 		
 		/**
-		 * Get primary key properties for an entity using EntityStore
-		 * @param string $entityName Entity name without "Entity" suffix
-		 * @return array Array of primary key property names
+		 * Get primary key field names for an entity.
+		 * @param string $entityName Name of the entity (without 'Entity' suffix)
+		 * @return array Array of primary key field names
 		 */
 		public function getEntityPrimaryKeys(string $entityName): array {
 			$fullEntityName = $this->configuration->getEntityNameSpace() . '\\' . $entityName . 'Entity';
 			
-			// Use the EntityStore to get primary keys if possible
 			if ($this->getEntityStore()->exists($fullEntityName)) {
 				return $this->getEntityStore()->getIdentifierKeys($fullEntityName);
+			} else {
+				return ['id'];
 			}
-			
-			// Fallback to looking for 'id' property if EntityStore doesn't have the entity
-			return ['id'];
 		}
 		
 		/**
-		 * Gets the reference field and column information for a target entity
+		 * Determine the column type and unsigned flag for a foreign key based on the referenced column.
 		 * @param string $targetEntity Name of the target entity
-		 * @return array Associative array with field and column names
+		 * @param string $referencedField Name of the referenced field in the target entity
+		 * @return array Array with 'type' and 'unsigned' keys
 		 */
-		private function getTargetEntityReferenceField(string $targetEntity): array {
-			// Get primary keys from the target entity
-			$primaryKeys = $this->getEntityPrimaryKeys($targetEntity);
+		private function determineForeignKeyType(string $targetEntity, string $referencedField): array {
+			$result = ['type' => 'integer', 'unsigned' => true];
 			
-			// Default values
-			$result = [
-				'field'  => 'id',
-				'column' => 'id'
-			];
-			
-			if (empty($primaryKeys)) {
-				$this->output->writeLn("\nNo primary keys found in target entity. Using 'id' as default.");
-				return $result;
+			try {
+				$fullEntityName = $this->configuration->getEntityNameSpace() . '\\' . $targetEntity . 'Entity';
+				
+				if (!$this->getEntityStore()->exists($fullEntityName)) {
+					return $result;
+				}
+				
+				$columnDefinitions = $this->getEntityStore()->extractEntityColumnDefinitions($fullEntityName);
+				$columnMap = $this->getEntityStore()->getColumnMap($fullEntityName);
+				$referencedDbColumn = $columnMap[$referencedField] ?? null;
+				
+				if ($referencedDbColumn && isset($columnDefinitions[$referencedDbColumn])) {
+					$result['type'] = $columnDefinitions[$referencedDbColumn]['type'];
+					$result['unsigned'] = $columnDefinitions[$referencedDbColumn]['unsigned'] ?? true;
+				}
+			} catch (\Exception $e) {
+				$this->output->writeLn("\nCouldn't determine FK type, defaulting to integer");
 			}
-			
-			// If we have multiple primary keys, let the user choose
-			if (count($primaryKeys) > 1) {
-				$this->output->writeLn("\nMultiple primary keys found in target entity:");
-				$result['field'] = $this->input->choice("\nSelect the primary key field to reference", $primaryKeys);
-			} else {
-				$result['field'] = $primaryKeys[0];
-			}
-			
-			// Get the actual column name for the selected primary key
-			$fullEntityName = $this->configuration->getEntityNameSpace() . '\\' . $targetEntity . 'Entity';
-			$columnMap = $this->getEntityStore()->getColumnMap($fullEntityName);
-			$result['column'] = $columnMap[$result['field']] ?? $result['field'];
-			
-			$this->output->writeLn("\nUsing primary key: {$result['field']} (DB column: {$result['column']})");
 			
 			return $result;
 		}

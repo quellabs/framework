@@ -1,10 +1,10 @@
 {
   "contracts": "1.0.24",
-  "support": "1.0.8",
+  "support": "1.0.9",
   "discover": "1.0.25",
   "dependency-injection": "1.0.24",
   "sculpt": "1.0.21",
-  "objectquel": "1.0.51",
+  "objectquel": "1.0.52",
   "cache": "1.0.3",
   "signal-hub": "1.0.24",
   "annotation-reader": "1.0.26",
