@@ -1,11 +1,7 @@
 <?php
 	
 	/**
-	 * StringInflector - A utility class for pluralization and singularization of English words
-	 *
-	 * This class provides static methods to convert English words between singular and plural forms.
-	 * It handles most common English pluralization rules including irregular words, uncountable nouns,
-	 * and various suffix patterns.
+	 * StringInflector - A string utility class
 	 */
 	
 	namespace Quellabs\Support;
@@ -106,7 +102,6 @@
 		
 		/**
 		 * Convert a singular word to its plural form
-		 *
 		 * @param string $word The singular word to pluralize
 		 * @return string The pluralized word
 		 */
@@ -164,6 +159,7 @@
 			
 			// Check for irregular forms (reverse lookup)
 			$irregularFlipped = array_flip(self::$irregular);
+			
 			if (isset($irregularFlipped[$lowercaseWord])) {
 				return self::preserveCase($word, $irregularFlipped[$lowercaseWord]);
 			}
@@ -228,6 +224,28 @@
 			}
 			
 			return !self::isPlural($word);
+		}
+		
+		/**
+		 * Converts camelCase or PascalCase string to snake_case
+		 * @param string $string String to convert
+		 * @return string Lowercase snake_case string
+		 */
+		public static function snakeCase(string $string): string {
+			return strtolower(preg_replace(['/([a-z\d])([A-Z])/', '/([^_])([A-Z][a-z])/'], '$1_$2', $string));
+		}
+		
+		/**
+		 * Converts snake_case to camelCase format.
+		 * @param string $snakeStr The snake_case string to convert
+		 * @return string The converted camelCase string
+		 */
+		public static function camelCase(string $snakeStr): string {
+			// Split the string by underscores to get individual words
+			$words = explode('_', $snakeStr);
+			
+			// Keep the first word lowercase, capitalize the first letter of remaining words
+			return $words[0] . implode('', array_map('ucfirst', array_slice($words, 1)));
 		}
 		
 		/**
