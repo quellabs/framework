@@ -138,7 +138,10 @@
 			$routeAnnotations = $this->getMethodRouteAnnotations($controller);
 			
 			// Process each method's route annotation to create complete route definitions
-			foreach ($routeAnnotations as $method => $routeAnnotation) {
+			foreach ($routeAnnotations as $routeData) {
+				// Store annotation data
+				$routeAnnotation = $routeData['annotation'];
+				
 				// Get the method-specific route path from the annotation
 				$routePath = $routeAnnotation->getRoute();
 				
@@ -152,7 +155,7 @@
 				$routes[] = [
 					'http_methods' => $routeAnnotation->getMethods(),
 					'controller'   => $controller,
-					'method'       => $method,
+					'method'       => $routeData['method'],
 					'route'        => $routeAnnotation,
 					'route_path'   => $completeRoutePath,
 					'priority'     => $priority
@@ -223,7 +226,7 @@
 				
 				// Calculated average with protection against division by zero
 				// Rounds to 2 decimal places for readability
-				'average_routes_per_controller' => count($controllers) > 0 ? round($totalRoutes / count($controllers), 2) : 0,
+				'average_routes_per_controller' => count($controllers) > 0 ? round($totalRoutes / count($controllers), 2, PHP_ROUND_HALF_UP) : 0,
 				
 				// Detailed breakdown showing route count per controller class
 				'routes_by_controller'          => $routesByController,
@@ -302,8 +305,10 @@
 					
 					// Process each Route annotation found on this method
 					foreach ($annotations as $annotation) {
-						$result[$method->getName()] = $annotation;
-						break; // Only use the first route annotation per method
+						$result[] = [
+							'method'     => $method->getName(),
+							'annotation' => $annotation
+						];
 					}
 				}
 				
