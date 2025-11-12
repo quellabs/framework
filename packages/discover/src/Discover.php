@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\Discover;
 	
+	use Quellabs\Discover\Exceptions\ProviderInstantiationException;
 	use Quellabs\Discover\ProviderQuery\ProviderQuery;
 	use Quellabs\Support\ComposerUtils;
 	use Quellabs\Discover\Scanner\ScannerInterface;
@@ -73,20 +74,12 @@
 		 * @return T|null The provider instance if found, null otherwise
 		 */
 		public function get(string $className) {
-			// Use indexed lookup for O(1) performance
-			$definition = $this->providerDefinitionsByClass[$className] ?? null;
-			
-			// Return null if the definition does not exist
-			if ($definition === null) {
+			if (!isset($this->providerDefinitionsByClass[$className])) {
 				return null;
 			}
 			
-			// Get the definition key for cache lookup
-			$definitionKey = $definition->getKey();
-			
-			// Attempt to get or create a provider instance from the definition
-			// Uses lazy instantiation helper that handles caching and reconstruction
-			return $this->getOrInstantiateProvider($definitionKey, $definition);
+			$definition = $this->providerDefinitionsByClass[$className];
+			return $this->getOrInstantiateProvider($definition->getKey(), $definition);
 		}
 		
 		/**
@@ -99,8 +92,9 @@
 		}
 		
 		/**
-		 * Get all providers (instantiates all definitions
-		 * WARNING: This will instantiate ALL providers, which can be expensive
+		 * Get all providers (instantiates lazily as you iterate)
+		 * NOTE: Providers are instantiated one-at-a-time during iteration,
+		 * not all at once. Use foreach() to maintain memory efficiency.
 		 * @return \Generator
 		 */
 		public function getProviders(): \Generator {
@@ -284,45 +278,80 @@
 		 * Creates a new provider instance, loads its configuration from file (if specified),
 		 * merges it with defaults, and applies the final configuration to the provider.
 		 * @param ProviderDefinition $definition Provider definition
-		 * @return ProviderInterface|null Successfully instantiated and configured provider or null on failure
+		 * @return ProviderInterface Successfully instantiated and configured provider
+		 * @throws ProviderInstantiationException If instantiation or configuration fails
 		 */
-		protected function instantiateProvider(ProviderDefinition $definition): ?ProviderInterface {
-			// Extract the class name from the provider definition
+		protected function instantiateProvider(ProviderDefinition $definition): ProviderInterface {
+			// Fetch and store the class name
 			$className = $definition->className;
 			
-			// Verify that the class exists before attempting to instantiate
+			// Verify the provider class exists before attempting instantiation
+			// Prevents fatal errors and provides clear feedback about missing classes
 			if (!class_exists($className)) {
-				return null;
+				throw new ProviderInstantiationException(
+					"Provider class '{$className}' does not exist",
+					ProviderInstantiationException::CLASS_NOT_FOUND,
+					$definition
+				);
 			}
 			
+			// Attempt to instantiate the provider class
+			// Catch specific errors to provide targeted feedback about constructor issues
 			try {
-				// Create a new instance of the provider class
 				$provider = new $className();
-				
-				// Ensure the instantiated object implements the required interface
-				if (!$provider instanceof ProviderInterface) {
-					return null;
-				}
-				
-				// Load configuration from the file if specified in the definition
+			} catch (\ArgumentCountError $e) {
+				// Constructor requires arguments but none were provided
+				// This indicates a mismatch between the provider's requirements and the discovery system
+				throw new ProviderInstantiationException(
+					"Provider '{$className}' constructor requires arguments but none provided",
+					ProviderInstantiationException::CONSTRUCTOR_ARGS_MISMATCH,
+					$definition,
+					$e
+				);
+			} catch (\Error $e) {
+				// Catch all other instantiation errors (missing dependencies, syntax errors, etc.)
+				throw new ProviderInstantiationException(
+					"Failed to instantiate provider '{$className}': {$e->getMessage()}",
+					ProviderInstantiationException::INSTANTIATION_FAILED,
+					$definition,
+					$e
+				);
+			}
+			
+			// Verify the instantiated object implements the required interface
+			// This is a safety check since PHP allows instantiation of any class
+			if (!$provider instanceof ProviderInterface) {
+				throw new ProviderInstantiationException(
+					"Provider '{$className}' does not implement ProviderInterface",
+					ProviderInstantiationException::INTERFACE_NOT_IMPLEMENTED,
+					$definition
+				);
+			}
+			
+			// Load and apply configuration to the provider
+			// Configuration loading and merging is wrapped in try-catch to handle file I/O errors
+			// or issues with the provider's setConfig() implementation
+			try {
+				// Load configuration from external files if specified
 				$loadedConfig = $this->loadConfigFiles($definition->configFiles);
 				
-				// Merge default configuration with loaded config (loaded config takes precedence)
+				// Merge default configuration with loaded config (loaded values take precedence)
 				$finalConfig = array_merge($definition->defaults, $loadedConfig);
 				
-				// Apply the final merged configuration to the provider
+				// Apply the merged configuration to the provider instance
 				$provider->setConfig($finalConfig);
-				
-				// Return the fully configured provider instance
-				return $provider;
-				
 			} catch (\Throwable $e) {
-				// Log error
-				error_log("Couldn't instantiate provider {$className}: {$e->getMessage()}");
-
-				// Return null if any exception occurs during instantiation or configuration
-				return null;
+				// Catch any errors during configuration (file errors, invalid config format, setConfig failures)
+				throw new ProviderInstantiationException(
+					"Failed to configure provider '{$className}': {$e->getMessage()}",
+					ProviderInstantiationException::CONFIGURATION_FAILED,
+					$definition,
+					$e
+				);
 			}
+			
+			// Return the fully instantiated and configured provider
+			return $provider;
 		}
 		
 		/**

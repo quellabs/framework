@@ -17,6 +17,7 @@
 	 *     ->get();
 	 */
 	class ProviderQuery {
+		
 		/**
 		 * @var \Closure Callback that instantiates provider instances from definitions
 		 */
@@ -39,7 +40,6 @@
 		
 		/**
 		 * Initialize a new provider query.
-		 *
 		 * @param \Closure $instantiator Callback that converts a definition to a provider instance
 		 * @param array $definitions Array of provider definitions to filter
 		 */
@@ -50,10 +50,8 @@
 		
 		/**
 		 * Filter providers that have a specific capability.
-		 *
 		 * Checks if the provider's metadata contains a 'capabilities' array
 		 * that includes the specified capability string.
-		 *
 		 * @param string $capability The capability name to require
 		 * @return self Returns $this for method chaining
 		 */
@@ -63,15 +61,14 @@
 					is_array($metadata['capabilities']) &&
 					in_array($capability, $metadata['capabilities'], true);
 			};
+			
 			return $this;
 		}
 		
 		/**
 		 * Filter providers with a minimum priority value.
-		 *
 		 * Checks if the provider's metadata contains a numeric 'priority' value
 		 * that is greater than or equal to the specified threshold.
-		 *
 		 * @param int $priority The minimum priority value required
 		 * @return self Returns $this for method chaining
 		 */
@@ -81,16 +78,15 @@
 					is_numeric($metadata['priority']) &&
 					$metadata['priority'] >= $priority;
 			};
+			
 			return $this;
 		}
 		
 		/**
 		 * Filter providers by family name.
-		 *
 		 * Unlike other filters, this operates on the definition's family property
 		 * rather than metadata. Only one family filter can be active at a time;
 		 * calling this multiple times will replace the previous family filter.
-		 *
 		 * @param string $family The family name to filter by
 		 * @return self Returns $this for method chaining
 		 */
@@ -101,10 +97,8 @@
 		
 		/**
 		 * Add a custom filter function.
-		 *
 		 * The callable receives the provider's metadata array and must return
 		 * a boolean indicating whether the provider passes the filter.
-		 *
 		 * @param callable $filter Filter function with signature: fn(array $metadata): bool
 		 * @return self Returns $this for method chaining
 		 */
@@ -116,7 +110,8 @@
 		/**
 		 * Execute the query and return instantiated providers.
 		 *
-		 * Applies all filters in order:
+		 * Applies all filters in a single pass to avoid creating intermediate arrays.
+		 * Filters are applied in order:
 		 * 1. Family filter (if set) - operates on definition.family
 		 * 2. All metadata filters - operate on definition.metadata
 		 *
@@ -125,20 +120,30 @@
 		 * @return array Array of instantiated provider instances that match all filters
 		 */
 		public function get(): array {
-			$filtered = $this->definitions;
+			$result = [];
 			
-			// Apply family filter first (it checks definition, not metadata)
-			if ($this->familyFilter !== null) {
-				$filtered = array_filter($filtered, fn($def) => $def->family === $this->familyFilter);
+			foreach ($this->definitions as $def) {
+				// Apply family filter first
+				if ($this->familyFilter !== null && $def->family !== $this->familyFilter) {
+					continue;
+				}
+				
+				// Apply all metadata filters - short-circuit on first failure
+				$passesAllFilters = true;
+				foreach ($this->filters as $filter) {
+					if (!$filter($def->metadata)) {
+						$passesAllFilters = false;
+						break;
+					}
+				}
+				
+				// Only instantiate if all filters passed
+				if ($passesAllFilters) {
+					$result[] = ($this->instantiator)($def);
+				}
 			}
 			
-			// Apply metadata filters
-			foreach ($this->filters as $filter) {
-				$filtered = array_filter($filtered, fn($def) => $filter($def->metadata));
-			}
-			
-			// Instantiate and return providers
-			return array_map($this->instantiator, array_values($filtered));
+			return $result;
 		}
 		
 		/**
@@ -148,21 +153,25 @@
 		 * @return \Generator Generator yielding instantiated provider instances
 		 */
 		public function lazy(): \Generator {
-			$filtered = $this->definitions;
-			
-			// Apply family filter first (it checks definition, not metadata)
-			if ($this->familyFilter !== null) {
-				$filtered = array_filter($filtered, fn($def) => $def->family === $this->familyFilter);
-			}
-			
-			// Apply metadata filters
-			foreach ($this->filters as $filter) {
-				$filtered = array_filter($filtered, fn($def) => $filter($def->metadata));
-			}
-			
-			// Instantiate and yield providers one at a time
-			foreach ($filtered as $definition) {
-				yield ($this->instantiator)($definition);
+			foreach ($this->definitions as $def) {
+				// Apply family filter first
+				if ($this->familyFilter !== null && $def->family !== $this->familyFilter) {
+					continue;
+				}
+				
+				// Apply all metadata filters - short-circuit on first failure
+				$passesAllFilters = true;
+				foreach ($this->filters as $filter) {
+					if (!$filter($def->metadata)) {
+						$passesAllFilters = false;
+						break;
+					}
+				}
+				
+				// Only instantiate and yield if all filters passed
+				if ($passesAllFilters) {
+					yield ($this->instantiator)($def);
+				}
 			}
 		}
 	}
