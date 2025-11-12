@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\Discover;
 	
+	use Quellabs\Discover\ProviderQuery\ProviderQuery;
 	use Quellabs\Support\ComposerUtils;
 	use Quellabs\Discover\Scanner\ScannerInterface;
 	use Quellabs\Contracts\Discovery\ProviderInterface;
@@ -18,6 +19,11 @@
 		 * @var array<string, ProviderDefinition> Provider definitions indexed by unique keys
 		 */
 		protected array $providerDefinitions = [];
+		
+		/**
+		 * @var array<string, ProviderDefinition> Provider definitions indexed by class name
+		 */
+		protected array $providerDefinitionsByClass = [];
 		
 		/**
 		 * @var array Map of instantiated providers by definition key
@@ -52,29 +58,12 @@
 		}
 		
 		/**
-		 * Returns the raw provider definitions array containing metadata for all
-		 * discovered providers. Each definition includes class name, family, configuration
-		 * file path, and other metadata gathered during the discovery process.
-		 * This is useful for debugging, caching, or external analysis of discovered providers.
-		 * @return array<ProviderDefinition> Array of provider definitions
-		 */
-		public function getDefinitions(): array {
-			return array_values($this->providerDefinitions);
-		}
-		
-		/**
 		 * Get a specific provider definition by class name
 		 * @param string $className The fully qualified class name of the provider
 		 * @return ProviderDefinition|null The provider definition if found, null if not found
 		 */
 		public function getDefinition(string $className): ?ProviderDefinition {
-			foreach ($this->providerDefinitions as $definition) {
-				if ($definition->className === $className) {
-					return $definition;
-				}
-			}
-			
-			return null;
+			return $this->providerDefinitionsByClass[$className] ?? null;
 		}
 		
 		/**
@@ -84,17 +73,20 @@
 		 * @return T|null The provider instance if found, null otherwise
 		 */
 		public function get(string $className) {
-			// Iterate through all discovered provider definitions.
-			// Each definition contains metadata gathered during discovery without instantiation.
-			foreach ($this->providerDefinitions as $definitionKey => $definition) {
-				if ($definition->className === $className) {
-					// Attempt to get or create a provider instance from the definition
-					// Uses lazy instantiation helper that handles caching and reconstruction
-					return $this->getOrInstantiateProvider($definitionKey, $definition);
-				}
+			// Use indexed lookup for O(1) performance
+			$definition = $this->providerDefinitionsByClass[$className] ?? null;
+			
+			// Return null if the definition does not exist
+			if ($definition === null) {
+				return null;
 			}
 			
-			return null;
+			// Get the definition key for cache lookup
+			$definitionKey = $definition->getKey();
+			
+			// Attempt to get or create a provider instance from the definition
+			// Uses lazy instantiation helper that handles caching and reconstruction
+			return $this->getOrInstantiateProvider($definitionKey, $definition);
 		}
 		
 		/**
@@ -103,15 +95,7 @@
 		 * @return bool True if a provider definition exists for the class, false otherwise
 		 */
 		public function exists(string $className): bool {
-			// Search through all discovered provider definitions for a matching class name
-			foreach ($this->providerDefinitions as $definition) {
-				if ($definition->className === $className) {
-					return true;
-				}
-			}
-			
-			// No matching provider definition found
-			return false;
+			return isset($this->providerDefinitionsByClass[$className]);
 		}
 		
 		/**
@@ -140,6 +124,7 @@
 		 */
 		public function clearProviders(): self {
 			$this->providerDefinitions = [];
+			$this->providerDefinitionsByClass = [];
 			$this->instantiatedProviders = [];
 			return $this;
 		}
@@ -155,100 +140,25 @@
 		}
 		
 		/**
-		 * Get all available provider types (no instantiation needed)
-		 * @return array<string> Array of unique provider types
+		 * Create a new provider query builder for fluent filtering
+		 * @return ProviderQuery A query builder for filtering and retrieving providers
 		 */
-		public function getProviderTypes(): array {
-			$types = [];
-
-			foreach ($this->providerDefinitions as $definition) {
-				// Check if this family type hasn't been added yet to maintain uniqueness
-				if (!in_array($definition->family, $types)) {
-					// Add the new family type to the collection
-					$types[] = $definition->family;
-				}
-			}
+		public function findProviders(): ProviderQuery {
+			// Create closure that respects the instantiation cache
+			// This ensures providers are only instantiated once and reused across queries
+			$instantiator = function(ProviderDefinition $def) {
+				// Get the unique key for this provider definition
+				// This key is used to check if we already have a cached instance
+				$key = $def->getKey();
+				
+				// Use the lazy instantiation helper that checks cache first
+				// Returns cached instance if available, otherwise creates and caches new one
+				return $this->getOrInstantiateProvider($key, $def);
+			};
 			
-			return $types;
-		}
-		
-		/**
-		 * Get metadata from all providers without instantiation
-		 * @return array<string, array> Provider metadata indexed by class name
-		 */
-		public function getAllProviderMetadata(): array {
-			$metadata = [];
-			
-			foreach ($this->providerDefinitions as $definition) {
-				// Store metadata using class name as key for easy lookup
-				// This allows quick access to provider metadata without creating instances
-				$metadata[$definition->className] = $definition->metadata;
-			}
-			
-			return $metadata;
-		}
-		
-		/**
-		 * Find providers by metadata using a filter function (with lazy instantiation)
-		 * @param callable $metadataFilter Function that receives metadata and returns bool
-		 * @return \Generator
-		 */
-		public function findProvidersByMetadata(callable $metadataFilter): \Generator {
-			foreach ($this->providerDefinitions as $definitionKey => $definition) {
-				// Apply the metadata filter function to determine if this provider matches
-				if ($metadataFilter($definition->metadata)) {
-					// Lazily instantiate the provider only when metadata filter passes
-					// This avoids creating provider instances for non-matching definitions
-					$provider = $this->getOrInstantiateProvider($definitionKey, $definition);
-					
-					// Add provider to results only if instantiation succeeded
-					if ($provider) {
-						yield $provider;
-					}
-				}
-			}
-		}
-		
-		/**
-		 * Find all providers of a specific family type (with lazy instantiation)
-		 * @param string $family The family type to filter by
-		 * @return \Generator
-		 */
-		public function findProvidersByFamily(string $family): \Generator {
-			foreach ($this->providerDefinitions as $definitionKey => $definition) {
-				// Check if the current definition belongs to the requested family
-				if ($definition->belongsToFamily($family)) {
-					// Lazily instantiate the provider only when it matches the family criteria
-					// This defers object creation until we know the provider is needed
-					$provider = $this->getOrInstantiateProvider($definitionKey, $definition);
-					
-					// Add the provider to results only if instantiation was successful
-					if ($provider) {
-						yield $provider;
-					}
-				}
-			}
-		}
-		
-		/**
-		 * Find providers that match a specific family and metadata filter (with lazy instantiation)
-		 * @param string $family The family to filter by
-		 * @param callable $metadataFilter Function that receives metadata and returns bool
-		 * @return \Generator
-		 */
-		public function findProvidersByFamilyAndMetadata(string $family, callable $metadataFilter): \Generator {
-			foreach ($this->providerDefinitions as $definitionKey => $definition) {
-				if ($definition->belongsToFamily($family) && $metadataFilter($definition->metadata)) {
-					// Lazily instantiate the provider only when it matches both criteria.
-					// This avoids creating unnecessary provider instances for non-matching definitions.
-					$provider = $this->getOrInstantiateProvider($definitionKey, $definition);
-					
-					// Only add successfully instantiated providers to the result
-					if ($provider) {
-						yield $provider;
-					}
-				}
-			}
+			// Create and return the query builder with the caching instantiator
+			// Pass all provider definitions so the query can filter them
+			return new ProviderQuery($instantiator, $this->providerDefinitions);
 		}
 		
 		/**
@@ -363,6 +273,10 @@
 			// Store the provider definition using its key for fast lookup
 			// This allows efficient retrieval of providers by their unique identifier
 			$this->providerDefinitions[$key] = $definition;
+			
+			// Also index by class name for O(1) lookup by class
+			// Enables fast retrieval when searching for specific provider classes
+			$this->providerDefinitionsByClass[$definition->className] = $definition;
 		}
 		
 		/**
