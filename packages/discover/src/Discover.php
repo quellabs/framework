@@ -318,16 +318,6 @@
 				);
 			}
 			
-			// Verify the instantiated object implements the required interface
-			// This is a safety check since PHP allows instantiation of any class
-			if (!$provider instanceof ProviderInterface) {
-				throw new ProviderInstantiationException(
-					"Provider '{$className}' does not implement ProviderInterface",
-					ProviderInstantiationException::INTERFACE_NOT_IMPLEMENTED,
-					$definition
-				);
-			}
-			
 			// Load and apply configuration to the provider
 			// Configuration loading and merging is wrapped in try-catch to handle file I/O errors
 			// or issues with the provider's setConfig() implementation
