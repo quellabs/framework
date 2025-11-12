@@ -238,15 +238,9 @@
 			// Delegate the complex instantiation logic to the specialized reconstruction method
 			$provider = $this->instantiateProvider($definition);
 			
-			// If instantiation was successful, cache the new provider instance
-			if ($provider) {
-				// Store in cache using the definition key for future lookups
-				// This ensures subsequent calls for the same provider return the same instance
-				$this->instantiatedProviders[$definitionKey] = $provider;
-			}
-			
-			// Return either the newly created provider or null if instantiation failed
-			return $provider;
+			// Store in cache using the definition key for future lookups
+			// This ensures subsequent calls for the same provider return the same instance
+			return $this->instantiatedProviders[$definitionKey] = $provider;
 		}
 		
 		/**
