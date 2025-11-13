@@ -23,10 +23,10 @@
 		
 		/**
 		 * DefaultServiceProvider constructor
+		 * @param Discover $discovery
 		 */
-		public function __construct() {
-			$this->discovery = new Discover();
-			$this->discovery->addScanner(new ComposerScanner());
+		public function __construct(Discover $discovery) {
+			$this->discovery = $discovery;
 		}
 		
 		/**
