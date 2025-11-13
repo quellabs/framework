@@ -250,6 +250,44 @@ $objectQuelEM = $container->for('objectquel')->get(EntityManagerInterface::class
 $doctrineEM = $container->for('doctrine')->get(EntityManagerInterface::class);
 ```
 
+### Simple Bindings
+
+For straightforward interface-to-concrete mappings where no custom instantiation logic is needed, you can use the `SimpleBinding` helper class instead of creating a full service provider:
+
+```php
+use Quellabs\DependencyInjection\Provider\SimpleBinding;
+
+// Instead of creating a full ServiceProvider class
+$container->register(new SimpleBinding(LoggerInterface::class, FileLogger::class));
+```
+
+This is equivalent to:
+```php
+class LoggerProvider extends ServiceProvider {
+    public function supports(string $className, array $context): bool {
+        return $className === LoggerInterface::class;
+    }
+    
+    public function createInstance(...): object {
+        return new FileLogger(...$dependencies);
+    }
+}
+$container->register(new LoggerProvider());
+```
+
+**When to use SimpleBinding:**
+- Pure interface-to-concrete mappings
+- No custom instantiation logic needed
+- No contextual binding requirements
+- Reducing boilerplate for multiple simple bindings
+
+**When to use a full ServiceProvider:**
+- Custom instantiation logic (configuration, factory methods)
+- Contextual bindings (different implementations per context)
+- Post-instantiation setup (calling setters, initialization)
+- Transient (non-singleton) services
+- Conditional logic
+
 ## Automatic Service Discovery
 
 The container can automatically discover and register service providers through multiple methods. The Dependency Injection package integrates the Quellabs Discover functionality, giving you powerful service discovery capabilities right out of the box.
