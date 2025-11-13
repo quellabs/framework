@@ -27,6 +27,9 @@ composer require quellabs/dependency-injection
 // Create a container
 $container = new \Quellabs\DependencyInjection\Container();
 
+// Checks if the container can resolve the class or interface
+$canResolve = $container->has(MyService::class);
+
 // Get a service (automatically resolves all dependencies)
 $service = $container->get(MyService::class);
 
@@ -39,7 +42,20 @@ $result = $container->invoke($service, 'doSomething', ['extraParam' => 'value'])
 
 ## Service Resolution Methods
 
-The container provides two primary methods for resolving dependencies:
+The container provides three primary methods for resolving dependencies:
+
+### `has()` - Checking Service Availability
+
+Use `has()` to check if a service can be resolved:
+
+```php
+// Check before resolving
+if ($container->has(LoggerInterface::class)) {
+    $logger = $container->get(LoggerInterface::class);
+}
+```
+
+**Note:** `has()` returns `true` if the container can *attempt* resolution. Concrete classes always return `true` (handled by DefaultServiceProvider), while interfaces require a registered provider.
 
 ### `get()` - Service Provider Resolution
 

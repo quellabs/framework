@@ -133,6 +133,42 @@
 		}
 		
 		/**
+		 * Determine if the container can resolve a given service.
+		 * PSR-11 ContainerInterface requirement.
+		 * @param string $id Service identifier (class name or interface)
+		 * @return bool True if the service can be resolved
+		 */
+		public function has(string $id): bool {
+			// Check if it's the container itself
+			if (
+				$id === self::class ||
+				$id === \Quellabs\Contracts\DependencyInjection\Container::class ||
+				is_a($this, $id)
+			) {
+				return true;
+			}
+			
+			// Check if it's a concrete class that exists
+			if (class_exists($id)) {
+				return true;
+			}
+			
+			// Check if any provider supports this interface
+			if (interface_exists($id)) {
+				foreach ($this->providers as $provider) {
+					if ($provider->supports($id, $this->context)) {
+						return true;
+					}
+				}
+				
+				// Check if default provider supports it
+				return $this->defaultProvider->supports($id, $this->context);
+			}
+			
+			return false;
+		}
+		
+		/**
 		 * Get a service with centralized dependency resolution
 		 * @param string $className Class name to resolve
 		 * @param array $parameters Additional parameters for creation
