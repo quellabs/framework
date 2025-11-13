@@ -203,8 +203,10 @@
 			
 			// If we reach here, none of the types could be resolved successfully.
 			// Throw a comprehensive error with details about all failed attempts
+			$contextInfo = $methodContext ? "{$methodContext->getClassName()}::{$methodContext->getMethodName()}" : "unknown context";
+			
 			throw new \RuntimeException(
-				"Cannot resolve parameter {$methodContext->getClassName()}::{$paramName}:\n" .
+				"Cannot resolve parameter '{$paramName}' in {$contextInfo}:\n" .
 				implode("\n", $failures)
 			);
 		}
@@ -306,19 +308,6 @@
 		 */
 		protected function isBuiltinType(string $type): bool {
 			return in_array($type, self::BUILTIN_TYPES);
-		}
-		
-		/**
-		 * Converts a snake_case string to camelCase format.
-		 * @param string $snakeStr The snake_case string to convert
-		 * @return string The converted camelCase string
-		 */
-		protected function snakeToCamel(string $snakeStr): string {
-			// Split the string by underscores to get individual words
-			$words = explode('_', $snakeStr);
-			
-			// Keep the first word lowercase, capitalize the first letter of remaining words
-			return $words[0] . implode('', array_map('ucfirst', array_slice($words, 1)));
 		}
 		
 		/**

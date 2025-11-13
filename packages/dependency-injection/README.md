@@ -194,7 +194,7 @@ class MyServiceProvider extends ServiceProvider {
      * @param array $dependencies Array of dependencies to inject into the constructor
      * @return object The instantiated object
      */
-    public function createInstance(string $className, array $dependencies): object {
+    public function createInstance(string $className, array $dependencies, array $metadata, ?MethodContext $methodContext=null): object
         // Instantiate the class by passing all dependencies to the constructor
         $instance = new $className(...$dependencies);
         
@@ -228,7 +228,7 @@ class ObjectQuelServiceProvider extends ServiceProvider {
             && ($context['provider'] ?? null) === 'objectquel';
     }
     
-    public function createInstance(string $className, array $dependencies): object {
+    public function createInstance(string $className, array $dependencies, array $metadata, ?MethodContext $methodContext=null): object
         return new ObjectQuelEntityManager($this->createConfiguration());
     }
 }
@@ -240,7 +240,7 @@ class DoctrineServiceProvider extends ServiceProvider {
             && ($context['provider'] ?? null) === 'doctrine';
     }
     
-    public function createInstance(string $className, array $dependencies): object {
+    public function createInstance(string $className, array $dependencies, array $metadata, ?MethodContext $methodContext=null): object
         return new DoctrineEntityManager($this->createConfiguration());
     }
 }
@@ -328,7 +328,7 @@ class TransientServiceProvider extends ServiceProvider {
      * @param array $dependencies Array of constructor dependencies already resolved
      * @return object A new instance of the requested class
      */
-    public function createInstance(string $className, array $dependencies): object {
+    public function createInstance(string $className, array $dependencies, array $metadata, ?MethodContext $methodContext=null): object
         // Always create a new instance without caching
         // The spread operator (...) unpacks the dependencies array as arguments
         return new $className(...$dependencies);

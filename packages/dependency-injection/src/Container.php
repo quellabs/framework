@@ -26,11 +26,6 @@
 		protected Autowirer $autowire;
 		
 		/**
-		 * Base path where the application is installed
-		 */
-		protected string $basePath;
-		
-		/**
 		 * Dependency resolution stack to detect circular dependencies
 		 */
 		protected array $resolutionStack = [];
@@ -53,20 +48,19 @@
 		
 		/**
 		 * Container constructor with automatic service discovery
-		 * @param string|null $basePath Base path of the application
 		 * @param string $familyName The key to look for in composer.json (default: 'di')
 		 */
-		public function __construct(?string $basePath = null, string $familyName = 'di') {
-			$this->autowire = new Autowirer($this);
-			$this->basePath = $basePath ?? getcwd();
-			
-			// Create the default provider
-			$this->defaultProvider = new DefaultServiceProvider();
-			
+		public function __construct(string $familyName = 'di') {
 			// Create the service discoverer
 			$this->discovery = new Discover();
 			$this->discovery->addScanner(new ComposerScanner($familyName));
 			$this->discovery->discover();
+			
+			// Create the default provider
+			$this->defaultProvider = new DefaultServiceProvider($this->discovery);
+			
+			// Create autowirer AFTER default provider
+			$this->autowire = new Autowirer($this);
 			
 			// Automatically discover and register service providers
 			$this->registerProviders();
@@ -176,6 +170,21 @@
 		}
 		
 		/**
+		 * Handles proper cloning of the container to ensure contextual isolation.
+		 * @return void
+		 */
+		public function __clone(): void {
+			// Clone and update autowirer's container reference
+			$this->autowire = new Autowirer($this);
+			
+			// Reset context for the cloned instance
+			$this->context = [];
+			
+			// Resolution stack must be independent
+			$this->resolutionStack = [];
+		}
+		
+		/**
 		 * Resolves a class instance with its dependencies, handling circular dependency detection
 		 * and supporting both service provider and direct instantiation methods.
 		 * @param string $className The fully qualified class name to resolve
@@ -221,7 +230,12 @@
 			bool $useServiceProvider,
 			MethodContext $methodContext = null
 		): object {
-			// Check if this is an interface
+			// Validate class/interface exists first
+			if (!class_exists($className) && !interface_exists($className)) {
+				throw new \RuntimeException("Class or interface '{$className}' does not exist");
+			}
+			
+			// Now check if it's an interface
 			$reflection = new \ReflectionClass($className);
 			$isInterface = $reflection->isInterface();
 			
