@@ -20,7 +20,7 @@
 					range of x is PostEntity
 					retrieve(x.id)
 				)
-				range of d is PostEntity via c.id=d.id
+				range of d is PostEntity
 				retrieve (d.id)
 				
 			");
