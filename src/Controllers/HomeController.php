@@ -18,7 +18,7 @@
 			
 				range of c is (
 					range of x is PostEntity
-					retrieve(x)   <--- error!
+					retrieve(x)
 				)
 				range of d is PostEntity via d.id=c.x.id
 				retrieve (d.id)
