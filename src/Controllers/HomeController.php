@@ -15,10 +15,14 @@
 		 */
 		public function index(): Response {
 			$rs = $this->em()->executeQuery("
-				range of c is PostEntity
-				range of d is PostEntity via d.title=c.title
-				retrieve (c.id)
-				where ANY(d.id)
+			
+				range of c is (
+					range of x is PostEntity
+					retrieve(x)   <--- error!
+				)
+				range of d is PostEntity via d.id=c.x.id
+				retrieve (d.id)
+				
 			");
 			
 			// SELECT COALESCE(SUM(d.id), 0) as `SUM(d.id)` FROM `posts` as `c` LEFT JOIN `posts` as `d` ON d.title = c.title
