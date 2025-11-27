@@ -20,8 +20,8 @@
 					range of x is PostEntity
 					retrieve(x.id)
 				)
-				range of d is PostEntity via d.id=c.id
-				retrieve (d.id)
+				range of d is PostEntity
+				retrieve (d.id) where d.id=c.id
 				
 			");
 			
