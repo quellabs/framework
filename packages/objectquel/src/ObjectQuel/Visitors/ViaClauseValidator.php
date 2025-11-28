@@ -5,21 +5,22 @@
 	
 	use Quellabs\ObjectQuel\EntityStore;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIdentifier;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabase;
 	use Quellabs\ObjectQuel\ObjectQuel\AstInterface;
 	use Quellabs\ObjectQuel\ObjectQuel\AstVisitorInterface;
 	use Quellabs\ObjectQuel\ObjectQuel\QuelException;
 	
 	/**
-	 * Class EntityExistenceValidator
+	 * Class ViaClauseValidator
 	 * Validates the existence of entities within an AST.
 	 */
-	class ValidateRelationInViaValid implements AstVisitorInterface {
+	class ViaClauseValidator implements AstVisitorInterface {
 		
 		private EntityStore $entityStore;
 		private string $entityName;
 		
 		/**
-		 * ValidateRelationInViaValid constructor.
+		 * ViaClauseValidator constructor.
 		 * @param EntityStore $entityStore
 		 * @param string $entityName
 		 */
@@ -50,6 +51,11 @@
 			// Do nothing if the identifier has no properties
 			if (!$node->hasNext()) {
 				return;
+			}
+			
+			// Skip validation if this identifier references a temporary table (subquery range)
+			if (!$node->isFromEntity()) {
+				return;  // Skip temporary tables
 			}
 			
 			// Get all dependencies.

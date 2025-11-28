@@ -3,6 +3,7 @@
 	namespace App\Controllers;
 	
 	use App\Entities\PostEntity;
+	use App\Enums\TestEnum;
 	use Quellabs\Canvas\Annotations\Route;
 	use Quellabs\Canvas\Controllers\BaseController;
 	use Symfony\Component\HttpFoundation\Response;
@@ -14,23 +15,15 @@
 		 * @return Response
 		 */
 		public function index(): Response {
-			$rs = $this->em()->executeQuery("
-				range of c is PostEntity
-				range of d is PostEntity via d.title=c.title
-				retrieve (c.id)
-				where ANY(d.id)
-			");
+			$entity = new PostEntity();
+			$entity->setTitle("hallo 2");
+			$entity->setContent("hallo 2");
+			$entity->setPublished(true);
+			$entity->setTestEnum(TestEnum::CANCELLED);
+			$entity->setCreatedAt(new \DateTime());
 			
-			// SELECT COALESCE(SUM(d.id), 0) as `SUM(d.id)` FROM `posts` as `c` LEFT JOIN `posts` as `d` ON d.title = c.title
-			
-			/*
-			
-			$rs = $this->em()->executeQuery("
-				range of c is PostEntity
-				range of d is PostAnotherEntity via d.id=c.id
-				retrieve (SUM(d.id + d.id WHERE d.id=c.id AND d.title = 'hello'))
-			");
-			*/
+			$this->em()->persist($entity);
+			$this->em()->flush();
 			
 			return $this->render("home/index3.tpl");
 		}

@@ -12,7 +12,7 @@
 	 * Class AddNamespacesToEntities
 	 * Validates the existence of entities within an AST.
 	 */
-	class AddNamespacesToEntities implements AstVisitorInterface {
+	class EntityNameNormalizer implements AstVisitorInterface {
 		
 		/**
 		 * The EntityStore for storing and fetching entity metadata.
@@ -78,6 +78,11 @@
 			
 			// Checks that the node is not part of a chain
 			if ($node->getParent() instanceof AstIdentifier) {
+				return;
+			}
+			
+			// Check if the range is attached to an entity. If not, abort.
+			if (!$node->isFromEntity()) {
 				return;
 			}
 			

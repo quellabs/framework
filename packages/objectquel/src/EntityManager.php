@@ -21,6 +21,7 @@
 	namespace Quellabs\ObjectQuel;
 	
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
+	use Quellabs\ObjectQuel\Execution\ResultProcessor;
 	use Quellabs\ObjectQuel\ObjectQuel\QuelException;
 	use Quellabs\ObjectQuel\ObjectQuel\QuelResult;
 	use Quellabs\ObjectQuel\ProxyGenerator\ProxyInterface;
@@ -119,26 +120,26 @@
 		}
 		
 		/**
-		 * Adds an entity to the entity manager list
-		 * @param $entity
-		 * @return bool
+		 * Persists (inserts) an entity into the database
+		 *
+		 * For entities with composite primary keys where multiple keys use the identity strategy,
+		 * only the first identity key will receive the database-generated value. Other identity
+		 * keys must be set manually before calling flush().
+		 *
+		 * @param object $entity The entity to be inserted into the database
 		 */
-		public function persist($entity): bool {
-			if (!is_object($entity)) {
-				return false;
-			}
-			
+		public function persist(object $entity): bool {
 			return $this->unit_of_work->persistNew($entity);
 		}
 		
 		/**
 		 * Flush all changed entities to the database
 		 * If an error occurs, an OrmException is thrown.
-		 * @param mixed|null $entity
+		 * @param object|array|null $entity
 		 * @return void
 		 * @throws OrmException
 		 */
-		public function flush(mixed $entity = null): void {
+		public function flush(object|array|null $entity = null): void {
 			$this->unit_of_work->commit($entity);
 		}
 		
@@ -242,7 +243,7 @@
 			}
 			
 			// Remove duplicate objects from the result array before returning
-			return $this->query_executor->deDuplicateObjects($result);
+			return ResultProcessor::deDuplicateObjects($result);
 		}
 		
 		/**
@@ -272,7 +273,7 @@
 			$filteredResult = array_column($result, "main");
 			
 			// Return deduplicated results
-			return $this->query_executor->deDuplicateObjects($filteredResult);
+			return ResultProcessor::deDuplicateObjects($filteredResult);
 		}
 		
 		/**

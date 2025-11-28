@@ -23,7 +23,7 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstSumU;
 	use Quellabs\ObjectQuel\ObjectQuel\AstInterface;
 	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQL;
-	use Quellabs\ObjectQuel\ObjectQuel\Visitors\CollectNodes;
+	use Quellabs\ObjectQuel\ObjectQuel\Visitors\NodeCollector;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\GetMainEntityInAst;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\GetMainEntityInAstException;
 	
@@ -272,7 +272,7 @@
 		 * @return void
 		 */
 		private function addImpossibleCondition(AstRetrieve $ast): void {
-			$condition = new AstBinaryOperator(new AstNumber(1), new AstNumber(0), "=");
+			$condition = new AstBinaryOperator(new AstNumber("1"), new AstNumber("0"), "=");
 			
 			if ($ast->getConditions() === null) {
 				$ast->setConditions($condition);

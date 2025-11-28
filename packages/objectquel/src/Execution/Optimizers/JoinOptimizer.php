@@ -5,10 +5,12 @@
 	use Quellabs\ObjectQuel\EntityManager;
 	use Quellabs\ObjectQuel\EntityStore;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRange;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabase;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\ContainsCheckIsNullForRange;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\ContainsNonNullableFieldForRange;
-	use Quellabs\ObjectQuel\ObjectQuel\Visitors\ContainsRange;
+	use Quellabs\ObjectQuel\ObjectQuel\Visitors\ContainsNonNullableFieldForRangeTemporary;
+	use Quellabs\ObjectQuel\ObjectQuel\Visitors\UsesRange;
 	
 	/**
 	 * Optimizes JOIN types based on WHERE clause analysis.
@@ -113,7 +115,7 @@
 		private function conditionsListHasFieldReferences(AstRetrieve $ast, AstRange $range): bool {
 			try {
 				// Use visitor pattern to traverse condition tree
-				$visitor = new ContainsRange($range->getName());
+				$visitor = new UsesRange($range->getName());
 				$ast->getConditions()->accept($visitor);
 				// No references found if we reach here
 				return false;
@@ -132,13 +134,21 @@
 		 */
 		private function conditionListHasNonNullableReferences(AstRetrieve $ast, AstRange $range): bool {
 			try {
-				// Check field nullability using entity metadata
-				$visitor = new ContainsNonNullableFieldForRange($range->getName(), $this->entityStore);
+				// For temporary ranges (subqueries), use custom visitor
+				if ($range instanceof AstRangeDatabase && $range->containsQuery()) {
+					$visitor = new ContainsNonNullableFieldForRangeTemporary(
+						$range->getName(),
+						$range->getQuery(),
+						$this->entityStore
+					);
+				} else {
+					// Regular entity ranges use normal entity metadata
+					$visitor = new ContainsNonNullableFieldForRange($range->getName(), $this->entityStore);
+				}
+				
 				$ast->getConditions()->accept($visitor);
-				// No non-nullable references found
 				return false;
 			} catch (\Exception $e) {
-				// Exception indicates non-nullable field reference was found
 				return true;
 			}
 		}

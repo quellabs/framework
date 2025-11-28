@@ -3,12 +3,13 @@
 	namespace Quellabs\ObjectQuel\ObjectQuel;
 	
 	use Quellabs\ObjectQuel\EntityStore;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabase;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
-	use Quellabs\ObjectQuel\ObjectQuel\Visitors\AddNamespacesToEntities;
-	use Quellabs\ObjectQuel\ObjectQuel\Visitors\AddNamespacesToRanges;
-	use Quellabs\ObjectQuel\ObjectQuel\Visitors\AddRangeToEntityWhenItsMissing;
-	use Quellabs\ObjectQuel\ObjectQuel\Visitors\EntityPlugMacros;
-	use Quellabs\ObjectQuel\ObjectQuel\Visitors\EntityProcessMacro;
+	use Quellabs\ObjectQuel\ObjectQuel\Visitors\EntityNameNormalizer;
+	use Quellabs\ObjectQuel\ObjectQuel\Visitors\RangeDatabaseEntityNormalizer;
+	use Quellabs\ObjectQuel\ObjectQuel\Visitors\ImplicitRangeResolver;
+	use Quellabs\ObjectQuel\ObjectQuel\Visitors\MacroSubstitutor;
+	use Quellabs\ObjectQuel\ObjectQuel\Visitors\MacroExpander;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\EntityProcessRange;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\TransformRelationInViaToPropertyLookup;
 	
@@ -41,13 +42,17 @@
 		 * @return void Modifies the AST in-place
 		 */
 		public function transform(AstRetrieve $ast): void {
+			// First, recursively transform all nested queries in temporary ranges
+			// This ensures inner queries are fully resolved before outer query processing
+			$this->transformNestedQueries($ast);
+			
 			// Step 1: Plug macro placeholders into the AST structure
 			// This visitor finds macro references and creates placeholder nodes for later expansion
-			$this->processWithVisitor($ast, EntityPlugMacros::class, $ast->getMacros());
+			$this->processWithVisitor($ast, MacroSubstitutor::class, $ast->getMacros());
 			
 			// Step 2: Add proper namespaces to all ranges
 			// Resolves entity names to their fully qualified forms using the entity store
-			$this->processWithVisitor($ast, AddNamespacesToRanges::class, $this->entityStore);
+			$this->processWithVisitor($ast, RangeDatabaseEntityNormalizer::class, $this->entityStore);
 			
 			// Step 3: Process range definitions (table joins, aliases, and FROM clauses)
 			// Converts range specifications into proper join conditions and table references
@@ -55,19 +60,41 @@
 			
 			// Step 4: Expand macro definitions with their actual implementations
 			// Replaces macro placeholder nodes with the full macro body/logic
-			$this->processWithVisitor($ast, EntityProcessMacro::class, $ast->getMacros());
+			$this->processWithVisitor($ast, MacroExpander::class, $ast->getMacros());
 			
 			// Step 5: Automatically add missing table ranges for referenced entities
 			// Analyzes field references and adds necessary JOIN clauses for tables not explicitly included
-			$this->plugMissingRanges($ast);
+			$this->resolveImplicitEntityReferences($ast);
 			
 			// Step 6: Add proper namespaces to all entity references
 			// Resolves entity names to their fully qualified forms using the entity store
-			$this->processWithVisitor($ast, AddNamespacesToEntities::class, $this->entityStore, $ast->getRanges(), $ast->getMacros());
+			$this->processWithVisitor($ast, EntityNameNormalizer::class, $this->entityStore, $ast->getRanges(), $ast->getMacros());
 			
 			// Step 7: Transform complex 'via' relationships into direct property lookups
 			// Converts indirect relationships through intermediate entities into direct SQL joins
 			$this->transformViaRelations($ast);
+		}
+		
+		/**
+		 * Recursively transform all nested queries in temporary range definitions.
+		 * Ensures that inner queries are fully resolved before the outer query is processed.
+		 * @param AstRetrieve $ast The query AST containing potential nested queries
+		 * @return void Modifies nested queries in-place
+		 */
+		private function transformNestedQueries(AstRetrieve $ast): void {
+			foreach ($ast->getRanges() as $range) {
+				// Only process temporary ranges that contain nested queries
+				if (!$range instanceof AstRangeDatabase) {
+					continue;
+				}
+				
+				if ($range->getQuery() === null) {
+					continue;
+				}
+				
+				// Recursively transform the inner query with full transformation pipeline
+				$this->transform($range->getQuery());
+			}
 		}
 		
 		/**
@@ -109,20 +136,12 @@
 		 * @param AstRetrieve $ast The query AST to analyze and modify
 		 * @return void Modifies the AST by adding missing ranges and updating entity references
 		 */
-		private function plugMissingRanges(AstRetrieve $ast): void {
-			// Use a specialized visitor to traverse the AST and identify missing entity references
-			// AddRangeToEntityWhenItsMissing analyzes field references like "user.name"
-			// and determines if "user" table is properly joined in the query
-			$processor = $this->processWithVisitor($ast, AddRangeToEntityWhenItsMissing::class, $this->entityStore);
+		private function resolveImplicitEntityReferences(AstRetrieve $ast): void {
+			// Use a specialized visitor to traverse the AST and identify direct entity references
+			$processor = $this->processWithVisitor($ast, ImplicitRangeResolver::class, $this->entityStore);
 			
-			// Retrieve all the missing ranges that the visitor discovered during traversal
-			// Each range represents a table that needs to be joined to satisfy field references
-			// For example, if query references "user.email" but user table isn't joined,
-			// processor will create a range for the user table
+			// Add all generated ranges to the query
 			foreach ($processor->getRanges() as $range) {
-				// Add the missing range/table to the query's range collection
-				// This effectively adds the table to the FROM/JOIN clause of the eventual SQL
-				// The range contains join conditions, table aliases, and relationship information
 				$ast->addRange($range);
 			}
 		}

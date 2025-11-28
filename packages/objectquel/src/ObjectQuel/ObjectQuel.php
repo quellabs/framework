@@ -7,7 +7,7 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAlias;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\AliasPlugAliasPattern;
-	use Quellabs\ObjectQuel\ObjectQuel\Visitors\GatherReferenceJoinValues;
+	use Quellabs\ObjectQuel\ObjectQuel\Visitors\CollectJoinConditionIdentifiers;
 	
 	/**
 	 * Main ObjectQuel query processor that handles parsing and validation
@@ -16,7 +16,7 @@
 	class ObjectQuel {
 		private EntityStore $entityStore;
 		private QueryTransformer $queryTransformer;
-		private QueryValidator $queryValidator;
+		private SemanticAnalyzer $queryValidator;
 		
 		/**
 		 * Constructor to inject the EntityManager dependencies.
@@ -25,7 +25,7 @@
 		public function __construct(EntityManager $entityManager) {
 			$this->entityStore = $entityManager->getEntityStore();
 			$this->queryTransformer = new QueryTransformer($this->entityStore);
-			$this->queryValidator = new QueryValidator($this->entityStore);
+			$this->queryValidator = new SemanticAnalyzer($this->entityStore);
 		}
 		
 		/**
@@ -44,9 +44,6 @@
 				
 				// Validation phase - Ensure AST integrity and correctness
 				$this->queryValidator->validate($ast);
-				
-				// Final processing phase - Apply final transformations
-				$this->processWithVisitor($ast, AliasPlugAliasPattern::class);
 				
 				// The AST is now fully validated
 				return $ast;
@@ -94,20 +91,5 @@
 				// The original exception is chained for debugging purposes
 				throw new QuelException("Query parsing failed: " . $e->getMessage(), 0, $e);
 			}
-		}
-		
-		// ========== PROCESSING METHODS ==========
-		
-		/**
-		 * Generic method to process AST with a visitor pattern.
-		 * @param AstRetrieve $ast The AST to process
-		 * @param string $visitorClass The visitor class name
-		 * @param mixed ...$args Arguments to pass to visitor constructor
-		 * @return object The visitor instance after processing
-		 */
-		private function processWithVisitor(AstRetrieve $ast, string $visitorClass, ...$args): object {
-			$visitor = new $visitorClass(...$args);
-			$ast->accept($visitor);
-			return $visitor;
 		}
 	}

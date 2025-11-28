@@ -22,6 +22,9 @@
 		/** @var string Default sort order when ASC/DESC is not explicitly specified */
 		private const string DEFAULT_SORT_ORDER = '';
 		
+		/** @var bool Whether this retrieve is for a temporary table (affects column aliasing) */
+		private bool $isTemporaryTable;
+		
 		/** @var Lexer The lexer instance that tokenizes input and provides tokens for parsing */
 		private Lexer $lexer;
 		
@@ -35,8 +38,9 @@
 		 * Initialize the Retrieve parser with required dependencies.
 		 * @param Lexer $lexer The lexer instance for token processing
 		 */
-		public function __construct(Lexer $lexer) {
+		public function __construct(Lexer $lexer, bool $isTemporaryTable = false) {
 			$this->lexer = $lexer;
+			$this->isTemporaryTable = $isTemporaryTable;
 			$this->expressionRule = new ArithmeticExpression($this->lexer);
 			$this->filterExpressionRule = new FilterExpression($this->lexer);
 		}
@@ -104,9 +108,6 @@
 			// Parse the actual expression (right side of alias or standalone expression)
 			$expression = $this->expressionRule->parse();
 			
-			// Validate that the parsed expression is suitable for use in a field context
-			$this->validateFieldExpression($expression);
-			
 			// Determine the final alias name (either from explicit token or auto-generated)
 			$aliasName = $this->determineAliasName($aliasToken, $startPos);
 			
@@ -127,30 +128,29 @@
 		}
 		
 		/**
-		 * Validate that the parsed expression is allowed in field lists.
-		 * @param mixed $expression The parsed expression to validate
-		 * @throws ParserException if expression type is not allowed in field lists
-		 */
-		private function validateFieldExpression($expression): void {
-			if ($expression instanceof AstRegExp) {
-				throw new ParserException(
-					'Regular expressions are not allowed in the value list. Please remove the regular expression.'
-				);
-			}
-		}
-		
-		/**
 		 * Determine the appropriate alias name for a field expression.
-		 * @param Token|null $aliasToken The explicit alias token if present
+		 *
+		 * For explicit aliases (e.g., "custom_id = x.id"), returns the explicit name unchanged.
+		 * For auto-generated aliases (e.g., "x.id"), generates from source and may rewrite
+		 * for temporary table context.
+		 *
+		 * @param Token|null $aliasToken The explicit alias token if present, null for auto-generated
 		 * @param int $startPos Starting position for source slice calculation
 		 * @return string The resolved alias name
 		 */
 		private function determineAliasName(?Token $aliasToken, int $startPos): string {
+			// Explicit aliases are used as-is and never rewritten
+			// Example: "custom_id = x.id" -> always "custom_id"
 			if ($aliasToken) {
 				return $aliasToken->getValue();
 			}
 			
-			return $this->lexer->getSourceSlice($startPos, $this->lexer->getPos() - $startPos);
+			// Auto-generated aliases are derived from source text
+			$sourceSlice = $this->lexer->getSourceSlice($startPos, $this->lexer->getPos() - $startPos);
+			
+			// For temporary tables, strip range prefix from property access (x.id -> id)
+			// But NOT for entity retrievals (x) which will be expanded
+			return $this->isTemporaryTable && str_contains($sourceSlice, '.') ? $this->stripRangePrefixFromAlias($sourceSlice) : $sourceSlice;
 		}
 		
 		/**
@@ -311,5 +311,25 @@
 			if ($this->lexer->lookahead() === Token::Semicolon) {
 				$this->lexer->match(Token::Semicolon);
 			}
+		}
+		
+		/**
+		 * Strip the range prefix from an auto-generated alias for temporary table columns.
+		 * Converts "x.id" to "id", "x.title" to "title", etc.
+		 * Leaves simple identifiers without dots unchanged.
+		 *
+		 * @param string $alias The auto-generated alias to process
+		 * @return string The alias with range prefix removed
+		 */
+		private function stripRangePrefixFromAlias(string $alias): string {
+			// If no dot present, return as-is (no range prefix to strip)
+			if (!str_contains($alias, '.')) {
+				return $alias;
+			}
+			
+			// Split on first dot and return everything after it
+			// Example: "x.id" -> ["x", "id"] -> "id"
+			$parts = explode('.', $alias, 2);
+			return $parts[1];
 		}
 	}

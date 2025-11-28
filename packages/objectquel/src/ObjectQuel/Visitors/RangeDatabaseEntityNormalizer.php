@@ -4,8 +4,6 @@
 	namespace Quellabs\ObjectQuel\ObjectQuel\Visitors;
 	
 	use Quellabs\ObjectQuel\EntityStore;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIdentifier;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRange;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabase;
 	use Quellabs\ObjectQuel\ObjectQuel\AstInterface;
 	use Quellabs\ObjectQuel\ObjectQuel\AstVisitorInterface;
@@ -13,7 +11,7 @@
 	/**
 	 * Class AddNamespacesToRanges
 	 */
-	class AddNamespacesToRanges implements AstVisitorInterface {
+	class RangeDatabaseEntityNormalizer implements AstVisitorInterface {
 		
 		/**
 		 * The EntityStore for storing and fetching entity metadata.
@@ -36,6 +34,11 @@
 		public function visitNode(AstInterface $node): void {
 			// Checks if the node is an instance of AstIdentifier. If not, the function stops.
 			if (!$node instanceof AstRangeDatabase) {
+				return;
+			}
+			
+			// Do nothing when no entity name was found
+			if (empty($node->getEntityName())) {
 				return;
 			}
 			

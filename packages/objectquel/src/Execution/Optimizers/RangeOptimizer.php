@@ -14,6 +14,7 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\CollectRanges;
 	use Quellabs\ObjectQuel\Execution\Support\BinaryOperationHelper;
+	use Quellabs\ObjectQuel\ObjectQuel\Visitors\ContainsNonNullableFieldForRangeTemporary;
 	
 	/**
 	 * Handles range-specific optimizations including required annotations
@@ -62,6 +63,64 @@
 			// Then check for annotation-based requirements
 			// This uses ORM metadata to determine semantic requirements
 			$this->setRangesRequiredThroughAnnotations($ast);
+		}
+		
+		/**
+		 * Normalizes query structure when temporary ranges would incorrectly become the main range.
+		 *
+		 * Problem:
+		 * When a temporary range has no via clause and an entity range does, the temporary range
+		 * becomes the main range (FROM clause). This is semantically backwards - entity tables
+		 * should be the primary source with temporary ranges joined to them.
+		 *
+		 * Solution:
+		 * For the simple case of one temporary + one entity range, swap the via clause to make
+		 * the entity range the main range.
+		 *
+		 * Before normalization:
+		 *   range of c is (subquery)                 // becomes main (wrong)
+		 *   range of d is PostEntity via d.id=c.id   // becomes joined
+		 *   SQL: FROM temp_c LEFT JOIN posts d ON d.id=c.id
+		 *
+		 * After normalization:
+		 *   range of c is (subquery) via d.id=c.id   // becomes joined
+		 *   range of d is PostEntity                 // becomes main (correct)
+		 *   SQL: FROM posts d LEFT JOIN temp_c ON d.id=c.id
+		 *
+		 * The required status is also transferred to maintain correct INNER/LEFT JOIN semantics.
+		 *
+		 * Limitation:
+		 * Currently only handles the simple case of exactly two ranges. Complex scenarios with
+		 * multiple temporary ranges or multi-range via clauses are not yet supported.
+		 *
+		 * @param AstRetrieve $ast The query AST to normalize
+		 */
+		public function normalizeTemporaryRangeStructure(AstRetrieve $ast): void {
+			$ranges = $ast->getRanges();
+			
+			// Only handle the simple case: exactly two ranges
+			if (count($ranges) !== 2) {
+				return;
+			}
+			
+			// Check if first range is temporary and second is entity with via clause
+			if (
+				$ranges[0] instanceof AstRangeDatabase &&
+				$ranges[0]->containsQuery() &&
+				$ranges[1] instanceof AstRangeDatabase &&
+				$ranges[1]->getJoinProperty() !== null
+			) {
+				// Swap the via clause from entity to temporary range
+				$tmp = $ranges[1]->getJoinProperty();
+				$ranges[0]->setJoinProperty($tmp);
+				$ranges[1]->setJoinProperty(null);
+				
+				// Transfer the required status to maintain INNER/LEFT JOIN semantics
+				// The entity range (now main) becomes required
+				// The temporary range inherits the previous required status
+				$ranges[0]->setRequired($ranges[1]->isRequired());
+				$ranges[1]->setRequired();
+			}
 		}
 		
 		/**
@@ -182,26 +241,91 @@
 			$mainRange = $ast->getMainDatabaseRange();
 			$usedRanges = $this->getUsedRanges($ast, $traverseSubqueries);
 			
-			// Filter ranges to keep only necessary ones
+			// NEW: Also collect ranges used in join conditions
+			$joinRanges = $this->getRangesUsedInJoinConditions($ast);
+			
 			foreach ($ast->getRanges() as $range) {
-				// Always preserve the main table range and explicitly required joins
 				if ($range === $mainRange || $range->isRequired()) {
 					$result[] = $range;
 					continue;
 				}
 				
-				// Check if this range is referenced anywhere in the query
-				// (SELECT values, WHERE conditions, ORDER BY clauses)
-				foreach ($usedRanges as $usedRange) {
+				// Check both query usage AND join condition usage
+				$isUsed = false;
+				
+				foreach (array_merge($usedRanges, $joinRanges) as $usedRange) {
 					if ($usedRange->getName() === $range->getName()) {
-						$result[] = $range;
+						$isUsed = true;
 						break;
 					}
 				}
+				
+				if ($isUsed) {
+					$result[] = $range;
+				}
 			}
 			
-			// Update the AST with the filtered ranges (removing unused LEFT JOINs)
 			$ast->setRanges($result);
+		}
+		
+		/**
+		 * Removes unused temporary ranges from the query.
+		 *
+		 * A temporary range is considered unused if:
+		 * - It's not referenced in the RETRIEVE values
+		 * - It's not referenced in the WHERE clause
+		 * - It's not referenced in ORDER BY
+		 * - It's not referenced in any other range's via clause
+		 *
+		 * This is different from removeUnusedLeftJoinRanges() because temporary ranges
+		 * may be main ranges (no join type), but still be completely unused.
+		 *
+		 * @param AstRetrieve $ast The query AST to optimize
+		 */
+		public function removeUnusedTemporaryRanges(AstRetrieve $ast): void {
+			$usedRanges = $this->getUsedRanges($ast, false);
+			$joinRanges = $this->getRangesUsedInJoinConditions($ast);
+			$allUsedRanges = array_merge($usedRanges, $joinRanges);
+			
+			$result = [];
+			
+			foreach ($ast->getRanges() as $range) {
+				// Keep non-temporary ranges
+				if (!($range instanceof AstRangeDatabase) || !$range->containsQuery()) {
+					$result[] = $range;
+					continue;
+				}
+				
+				// For temporary ranges, check if they're actually used
+				$isUsed = false;
+				foreach ($allUsedRanges as $usedRange) {
+					if ($usedRange->getName() === $range->getName()) {
+						$isUsed = true;
+						break;
+					}
+				}
+				
+				if ($isUsed) {
+					$result[] = $range;
+				}
+			}
+			
+			$ast->setRanges($result);
+		}
+		
+		/**
+		 * Collects ranges used in join conditions (via clauses)
+		 * @param AstRetrieve $ast
+		 * @return array
+		 */
+		private function getRangesUsedInJoinConditions(AstRetrieve $ast): array {
+			$visitor = new CollectRanges(false);
+			
+			foreach ($ast->getRanges() as $range) {
+				$range->getJoinProperty()?->accept($visitor);
+			}
+			
+			return $visitor->getCollectedNodes();
 		}
 		
 		/**
@@ -241,7 +365,7 @@
 		 * Process Flow:
 		 * 1. Determine the direction of the relationship (which table owns the foreign key)
 		 * 2. Extract property names from both sides of the JOIN condition
-		 * 3. Look up entity annotations for the owning entity
+		 * 3. Look up entity annotations for the owning entity (or analyze temporary range structure)
 		 * 4. Search for RequiredRelation annotations that match this relationship
 		 * 5. If found, mark the range as required (converting LEFT JOIN to INNER JOIN)
 		 *
@@ -253,6 +377,11 @@
 		 * - Target entity must match the joined table
 		 * - Relation column must match the foreign key field
 		 * - Inverse property must match the back-reference field
+		 *
+		 * Temporary Range Handling:
+		 * - For subqueries, uses nullability analysis instead of annotations
+		 * - Traces through the subquery structure to find source field nullability
+		 * - Converts LEFT JOIN to INNER JOIN if the joined field is non-nullable
 		 *
 		 * @param AstRangeDatabase $mainRange The main table range
 		 * @param AstRangeDatabase $range The range being checked for requirement
@@ -271,10 +400,17 @@
 			
 			// Extract property and entity names based on join direction
 			// These will be used to match against annotation metadata
-			$ownPropertyName = $isMainRange ? $right->getName() : $left->getName();
 			$ownEntityName = $isMainRange ? $right->getEntityName() : $left->getEntityName();
+			$ownPropertyName = $isMainRange ? $right->getName() : $left->getName();
 			$relatedPropertyName = $isMainRange ? $left->getName() : $right->getName();
 			$relatedEntityName = $isMainRange ? $left->getEntityName() : $right->getEntityName();
+			
+			// Handle temporary ranges (subqueries) with nullability analysis
+			// Temporary tables have no entity metadata or annotations
+			if (empty($ownEntityName)) {
+				$this->checkTemporaryRangeRequired($range, $isMainRange, $left, $right);
+				return;
+			}
 			
 			// Get all annotations for the entity that owns the relationship
 			// Annotations are grouped by property/method they're applied to
@@ -304,6 +440,57 @@
 			
 			// No matching RequiredRelation annotation found - leave as LEFT JOIN
 			// This preserves the original query semantics
+		}
+		
+		/**
+		 * Checks if a temporary range (subquery) join should be marked as required.
+		 *
+		 * Uses the existing ContainsNonNullableFieldForRangeTemporary visitor to determine
+		 * if the joined field is non-nullable. If so, converts LEFT JOIN to INNER JOIN.
+		 *
+		 * Logic:
+		 * - Identifies which side of the join is the temporary range
+		 * - Uses visitor pattern to check if the field being joined is non-nullable
+		 * - Non-nullable fields in join conditions make LEFT JOIN equivalent to INNER JOIN
+		 *
+		 * @param AstRangeDatabase $range The range being checked
+		 * @param bool $isMainRange Whether the main range is on the right side
+		 * @param AstIdentifier $left Left side of join condition
+		 * @param AstIdentifier $right Right side of join condition
+		 */
+		private function checkTemporaryRangeRequired(
+			AstRangeDatabase $range,
+			bool             $isMainRange,
+			AstIdentifier    $left,
+			AstIdentifier    $right
+		): void {
+			// Identify which side contains the temporary range
+			$joinedRange = $isMainRange ? $right->getRange() : $left->getRange();
+			
+			// Only process if it's actually a temporary range with a subquery
+			if (!($joinedRange instanceof AstRangeDatabase) || !$joinedRange->containsQuery()) {
+				return;
+			}
+			
+			try {
+				// Reuse existing visitor to check field nullability
+				$visitor = new ContainsNonNullableFieldForRangeTemporary(
+					$joinedRange->getName(),
+					$joinedRange->getQuery(),
+					$this->entityStore
+				);
+				
+				// Create a test identifier to check the specific field
+				// The visitor will analyze if this field reference is non-nullable
+				$testIdentifier = $isMainRange ? $right : $left;
+				$testIdentifier->accept($visitor);
+				
+				// If visitor didn't throw, field is nullable - keep as LEFT JOIN
+			} catch (\Exception $e) {
+				// Visitor throws exception when non-nullable field is found
+				// Non-nullable field in join = can safely convert to INNER JOIN
+				$range->setRequired();
+			}
 		}
 		
 		/**

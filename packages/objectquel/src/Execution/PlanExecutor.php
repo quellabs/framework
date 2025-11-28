@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\ObjectQuel\Execution;
 	
+	use Quellabs\ObjectQuel\EntityStore;
 	use Quellabs\ObjectQuel\ObjectQuel\QuelException;
 	use Quellabs\ObjectQuel\Execution\Joins\JoinStrategyInterface;
 	use Quellabs\ObjectQuel\Execution\Joins\CrossJoinStrategy;
@@ -41,6 +42,14 @@
 		public function __construct(QueryExecutor $queryExecutor, ConditionEvaluator $conditionEvaluator) {
 			$this->queryExecutor = $queryExecutor;
 			$this->conditionEvaluator = $conditionEvaluator;
+		}
+		
+		/**
+		 * Returns the EntityStore object
+		 * @return EntityStore
+		 */
+		public function getEntityStore(): EntityStore {
+			return $this->queryExecutor->getEntityManager()->getEntityStore();
 		}
 		
 		/**
@@ -104,11 +113,11 @@
 		
 		/**
 		 * Process an individual stage with dependencies
-		 * @param ExecutionStage $stage The stage to execute
+		 * @param ExecutionStageInterface $stage The stage to execute
 		 * @return array The result of this stage's execution
 		 * @throws QuelException When dependencies cannot be satisfied or execution fails
 		 */
-		private function executeStage(ExecutionStage $stage): array {
+		private function executeStage(ExecutionStageInterface $stage): array {
 			// Execute the query with static parameters defined in the stage
 			$result = $this->queryExecutor->executeStage($stage, $stage->getStaticParams());
 			
@@ -165,12 +174,23 @@
 					continue;
 				}
 				
+				// Skip temporary tables - they're internal only, not part of final output
+				if ($stage instanceof ExecutionStageTempTable) {
+					continue;
+				}
+				
+				// Skip everything that's not a ExecutionStage.
+				// There are no other stages at this moment, but this is to keep PhpStan happy
+				if (!($stage instanceof ExecutionStage)) {
+					continue;
+				}
+				
 				// Perform the join using the appropriate strategy based on the stage's join type
 				$combinedResult = $this->performJoin(
-					$combinedResult,           // Current combined result (left side of join)
-					$stageResult,             // Current stage result (right side of join)
-					$stage->getJoinType(),    // Type of join to perform (inner, left, cross, etc.)
-					$stage->getJoinConditions() // Conditions for the join operation
+					$combinedResult,             // Current combined result (left side of join)
+					$stageResult,                // Current stage result (right side of join)
+					$stage->getJoinType(),       // Type of join to perform (inner, left, cross, etc.)
+					$stage->getJoinConditions()  // Conditions for the join operation
 				);
 			}
 			
@@ -203,9 +223,9 @@
 		 * Find a stage by name from the stages array
 		 * @param array $stages Array of ExecutionStage objects
 		 * @param string $stageName Name of the stage to find
-		 * @return ExecutionStage|null The found stage or null if not found
+		 * @return ExecutionStageInterface|null The found stage or null if not found
 		 */
-		private function findStageByName(array $stages, string $stageName): ?ExecutionStage {
+		private function findStageByName(array $stages, string $stageName): ?ExecutionStageInterface {
 			// Linear search through stages array
 			foreach ($stages as $stage) {
 				if ($stage->getName() === $stageName) {

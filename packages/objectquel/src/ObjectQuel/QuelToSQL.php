@@ -133,7 +133,11 @@
 				$rangeName = $range->getName();
 				
 				// Get the corresponding table name for the entity.
-				$owningTable = $this->entityStore->getOwningTable($range->getEntityName());
+				if ($range->getTableName() !== null) {
+					$owningTable = $range->getTableName();
+				} else {
+					$owningTable = $this->entityStore->getOwningTable($range->getEntityName());
+				}
 				
 				// Add the table name and alias to the list for the FROM clause.
 				$tableNames[] = "`{$owningTable}` as `{$rangeName}`";
@@ -330,10 +334,13 @@
 				// Get the name and join property of the entity.
 				$rangeName = $range->getName();
 				$joinProperty = $range->getJoinProperty();
-				$entityName = $range->getEntityName();
 				
 				// Find the table associated with the entity.
-				$owningTable = $this->entityStore->getOwningTable($entityName);
+				if ($range->getQuery() !== null) {
+					$owningTable = $range->getTableName();
+				} else {
+					$owningTable = $this->entityStore->getOwningTable($range->getEntityName());
+				}
 				
 				// Convert the join condition to a SQL string.
 				// This involves translating the join condition to a format that SQL understands.

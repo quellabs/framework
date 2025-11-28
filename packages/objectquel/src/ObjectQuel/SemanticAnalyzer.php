@@ -7,23 +7,25 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAvgU;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstCount;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstCountU;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIdentifier;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstMax;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstMin;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabase;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRegExp;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstSum;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstSumU;
-	use Quellabs\ObjectQuel\ObjectQuel\Visitors\ContainsNode;
-	use Quellabs\ObjectQuel\ObjectQuel\Visitors\EntityExistenceValidator;
+	use Quellabs\ObjectQuel\ObjectQuel\Visitors\NodeTypeValidator;
+	use Quellabs\ObjectQuel\ObjectQuel\Visitors\EntityReferenceValidator;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\EntityPropertyValidator;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\NoExpressionsAllowedOnEntitiesValidator;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\RangeOnlyReferencesOtherRanges;
-	use Quellabs\ObjectQuel\ObjectQuel\Visitors\ValidateRelationInViaValid;
+	use Quellabs\ObjectQuel\ObjectQuel\Visitors\ViaClauseValidator;
 	
 	/**
-	 * QueryValidator class responsible for validating ObjectQuel query ASTs
+	 * SemanticAnalyzer class responsible for validating ObjectQuel query ASTs
 	 */
-	class QueryValidator {
+	class SemanticAnalyzer {
 		
 		/**
 		 * Entity store containing schema information for validation
@@ -42,16 +44,22 @@
 		/**
 		 * Main validation entry point - performs comprehensive query validation
 		 * @param AstRetrieve $ast The parsed query AST to validate
+		 * @param bool $isSubquery True if we are validating a nested query
 		 * @throws QuelException If any validation fails
 		 */
-		public function validate(AstRetrieve $ast): void {
+		public function validate(AstRetrieve $ast, bool $isSubquery = false): void {
+			// First, recursively validate all nested queries in temporary ranges
+			// This ensures inner queries are valid before validating the outer query
+			$this->validateNestedQueries($ast);
+			
 			// Step 1: Validate basic structural integrity
+			$this->validateNoRegExpInValueList($ast);
 			$this->validateNoDuplicateRanges($ast);
 			$this->validateAtLeastOneRangeWithoutVia($ast);
 			$this->validateRangesOnlyReferenceOtherRanges($ast);
 			
 			// Step 2: Validate against schema - ensure entities exist
-			$this->processWithVisitor($ast, EntityExistenceValidator::class, $this->entityStore);
+			$this->processWithVisitor($ast, EntityReferenceValidator::class, $this->entityStore);
 			
 			// Step 3: Validate relationship definitions in 'via' clauses
 			$this->validateRangeViaRelations($ast);
@@ -64,6 +72,32 @@
 			
 			// Step 6: Validate SQL compliance rules (aggregate placement)
 			$this->validateNoAggregatesInWhereClause($ast);
+			
+			// Step 7: Validate no entire entities in nested queries
+			if ($isSubquery) {
+				$this->validateNoEntireEntitiesInValueList($ast);
+			}
+		}
+		
+		/**
+		 * Recursively validate all nested queries in temporary range definitions.
+		 * Ensures that inner queries are valid before the outer query is validated.
+		 * @param AstRetrieve $ast The query AST containing potential nested queries
+		 * @throws QuelException If any nested query validation fails
+		 */
+		private function validateNestedQueries(AstRetrieve $ast): void {
+			foreach ($ast->getRanges() as $range) {
+				if (!$range instanceof AstRangeDatabase) {
+					continue;
+				}
+				
+				if ($range->getQuery() === null) {
+					continue;
+				}
+				
+				// Recursively validate the inner query with full validation pipeline
+				$this->validate($range->getQuery(), true);
+			}
 		}
 		
 		/**
@@ -168,6 +202,21 @@
 		}
 		
 		/**
+		 * Validate that the parsed expression is allowed in field lists.
+		 * @param AstRetrieve $ast
+		 * @throws QuelException if expression type is not allowed in field lists
+		 */
+		private function validateNoRegExpInValueList(AstRetrieve $ast): void {
+			foreach ($ast->getValues() as $value) {
+				if ($value->getExpression() instanceof AstRegExp) {
+					throw new QuelException(
+						'Regular expressions are not allowed in the value list. Please remove the regular expression.'
+					);
+				}
+			}
+		}
+		
+		/**
 		 * Validates that 'via' clause relations are valid and exist.
 		 * The 'via' clause in ObjectQuel can specify complex relationship paths through
 		 * intermediate entities. This validation ensures all entities and properties
@@ -187,7 +236,7 @@
 					try {
 						// Create a validator to check that all 'via' relations in the join property are valid
 						// This verifies that intermediate entities and properties exist in the entity store
-						$validator = new ValidateRelationInViaValid($this->entityStore, $range->getEntityName());
+						$validator = new ViaClauseValidator($this->entityStore, $range->getEntityName());
 						
 						// Apply the validator to the join property tree
 						// This traverses all parts of the join definition looking for invalid 'via' references
@@ -231,7 +280,7 @@
 			try {
 				// Create a visitor that searches for any of the prohibited aggregate
 				// function types in the condition tree
-				$visitor = new ContainsNode($aggregateTypes);
+				$visitor = new NodeTypeValidator($aggregateTypes);
 				
 				// Traverse the WHERE clause conditions looking for aggregate functions
 				// If any are found, the visitor will throw an exception
@@ -246,6 +295,32 @@
 				
 				// Throw a user-friendly error explaining the SQL rule violation
 				throw new QuelException("Aggregate function '{$nodeType}' is not allowed in WHERE clause");
+			}
+		}
+		
+		/**
+		 * Validate that temporary table field lists don't retrieve entire entities.
+		 *
+		 * Temporary tables require explicit column definitions. Retrieving entire entities
+		 * (e.g., "retrieve(x)") creates ambiguous column names in joins. Users must specify
+		 * individual properties (e.g., "retrieve(x.id, x.title)") for clear column mapping.
+		 *
+		 * @throws QuelException if an entire entity is retrieved without property access
+		 */
+		private function validateNoEntireEntitiesInValueList(AstRetrieve $ast): void {
+			foreach ($ast->getValues() as $value) {
+				$expression = $value->getExpression();
+				
+				// Skip non-identifier expressions (literals, function calls, etc.)
+				if (!$expression instanceof AstIdentifier) {
+					continue;
+				}
+				
+				// Check if identifier lacks property access (e.g., "x" instead of "x.id")
+				// hasNext() returns false when there's no chained property access
+				if (!$expression->hasNext()) {
+					throw new QuelException("Temporary table requires explicit column definitions.");
+				}
 			}
 		}
 	}

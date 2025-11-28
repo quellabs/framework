@@ -11,7 +11,7 @@
 		
 		/**
 		 * Collection of execution stages that make up this plan
-		 * @var ExecutionStage[]
+		 * @var ExecutionStageInterface[]
 		 */
 		private array $stages;
 		
@@ -23,31 +23,48 @@
 		 * @return string The name of the main output stage
 		 */
 		public function getMainStageName(): string {
-			// Try to find a database stage
-			foreach($this->stages as $stage) {
-				if ($stage->getRange() === null) {
+			foreach ($this->stages as $stage) {
+				// Skip temporary table stages - they're subqueries, not main stages
+				if ($stage instanceof ExecutionStageTempTable) {
+					continue;
+				}
+				
+				// Skip everything that's not a ExecutionStage.
+				// There are no other stages at this moment, but this is to keep PhpStan happy
+				if (!($stage instanceof ExecutionStage)) {
+					continue;
+				}
+				
+				// Find the stage without a join property (the main FROM table)
+				$range = $stage->getRange();
+				
+				if ($range && $range->getJoinProperty() === null) {
 					return $stage->getName();
 				}
 			}
 			
-			// If none, return the first json stage
-			$firstKey = array_key_first($this->stages);
-			return $this->stages[$firstKey]->getName();
+			// If no main stage found, return first stage (could be temp table or joined)
+			if (!empty($this->stages)) {
+				$firstKey = array_key_first($this->stages);
+				return $this->stages[$firstKey]->getName();
+			}
+			
+			throw new \RuntimeException('Execution plan has no stages');
 		}
-
+		
 		/**
 		 * Adds a new execution stage to the plan
-		 * @param ExecutionStage $stage
+		 * @param ExecutionStageInterface $stage
 		 * @return void
 		 */
-		public function addStage(ExecutionStage $stage): void {
+		public function addStage(ExecutionStageInterface $stage): void {
 			$this->stages[] = $stage;
 		}
 		
 		/**
 		 * Returns all stages arranged in the correct execution order that respects dependencies.
 		 * The order is critical to ensure that stages are executed only after their dependencies.
-		 * @return ExecutionStage[] Array of stages in dependency-respecting execution order
+		 * @return ExecutionStageInterface[] Array of stages in dependency-respecting execution order
 		 * @todo Implement proper topological sorting of the stage dependency graph
 		 */
 		public function getStagesInOrder(): array {
