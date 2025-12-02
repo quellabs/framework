@@ -54,6 +54,12 @@
 				return;
 			}
 			
+			// Only handle base identifiers
+			if (!($node->isBaseIdentifier())) {
+				return;
+			}
+			
+			// Check the range name
 			if ($node->getRange()->getName() !== $this->rangeName) {
 				return;
 			}
@@ -76,7 +82,6 @@
 		
 		/**
 		 * Finds the expression in the subquery's retrieve list that produces the given alias.
-		 *
 		 * @param string $alias The field alias to search for
 		 * @return AstInterface|null The expression producing this alias, or null if not found
 		 */
@@ -86,6 +91,7 @@
 					return $astAlias->getExpression();
 				}
 			}
+			
 			return null;
 		}
 		

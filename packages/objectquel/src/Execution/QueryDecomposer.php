@@ -17,6 +17,7 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIdentifier;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRange;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabase;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeJsonSource;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstSum;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstSumU;
@@ -318,9 +319,11 @@
 		 * operations that can be handled directly by the database engine,
 		 * removing any parts that would require in-memory processing.
 		 * @param AstRetrieve $query The original query to be analyzed
+		 * @param AstRangeDatabase|AstRangeJsonSource $range
+		 * @param array $staticParams
 		 * @return ExecutionStage A new query containing only database-executable operations
 		 */
-		protected function createRangeExecutionStage(AstRetrieve $query, AstRange $range, array $staticParams): ExecutionStage {
+		protected function createRangeExecutionStage(AstRetrieve $query, AstRangeDatabase|AstRangeJsonSource $range, array $staticParams): ExecutionStage {
 			// Clone the query to avoid modifying the original
 			// This ensures we preserve the complete query for potential in-memory operations later
 			$dbQuery = clone $query;
@@ -641,7 +644,7 @@
 		 */
 		protected function doesConditionInvolveRangeCached(AstInterface $condition, AstRange $range): bool {
 			// Generate a cache key based on object identities
-			$cacheKey = 'involve_' . spl_object_id($condition) . '_' . spl_object_id($range);
+			$cacheKey = 'involve_' . spl_object_hash($condition) . '_' . spl_object_hash($range);
 			
 			// Return cached result if available
 			if (isset($this->cache[$cacheKey])) {

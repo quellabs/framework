@@ -9,9 +9,11 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstBinaryOperator;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstCount;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstCountU;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstExpression;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIdentifier;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstMax;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstMin;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabase;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstSum;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstSumU;
@@ -40,12 +42,10 @@
 		 *   [a]       → a
 		 *   [a,b,c]   → ((a AND b) AND c)
 		 *
-		 * @param AstInterface[] $parts Predicates to AND together (nulls are ignored).
+		 * @param AstInterface[] $parts Predicates to AND together (must not be null).
 		 * @return AstInterface|null Combined predicate or null if no parts
 		 */
 		public static function combinePredicatesWithAnd(array $parts): ?AstInterface {
-			// Drop nulls/empties early to keep the tree lean.
-			$parts = array_values(array_filter($parts));
 			$n = count($parts);
 			
 			if ($n === 0) {
@@ -102,7 +102,7 @@
 		
 		/**
 		 * @param AstRetrieve $root Query to visit
-		 * @return AstInterface[] Aggregate nodes found in the tree
+		 * @return AstAggregate[] Aggregate nodes found in the tree
 		 */
 		public static function collectAggregateNodes(AstRetrieve $root): array {
 			$visitor = new AggregateCollector(false);
@@ -158,5 +158,27 @@
 			}
 			
 			return $result;
+		}
+		
+		/**
+		 * Checks if a condition expression references only the specified range.
+		 * @param AstExpression $condition The condition to check (e.g., "temp.id = 5")
+		 * @param AstRangeDatabase $range The range to test against
+		 * @return bool True if left OR right side of condition references the range
+		 */
+		public static function conditionReferencesRange(AstExpression $condition, AstRangeDatabase $range): bool {
+			$rangeName = $range->getName();
+			
+			// Check if left side is an identifier from this range
+			$leftMatches =
+				$condition->getLeft() instanceof AstIdentifier &&
+				$condition->getLeft()->getRange()->getName() === $rangeName;
+			
+			// Check if right side is an identifier from this range
+			$rightMatches =
+				$condition->getRight() instanceof AstIdentifier &&
+				$condition->getRight()->getRange()->getName() === $rangeName;
+			
+			return $leftMatches || $rightMatches;
 		}
 	}
