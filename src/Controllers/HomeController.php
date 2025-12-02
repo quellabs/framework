@@ -15,15 +15,14 @@
 		 * @return Response
 		 */
 		public function index(): Response {
-			$entity = new PostEntity();
-			$entity->setTitle("hallo 2");
-			$entity->setContent("hallo 2");
-			$entity->setPublished(true);
-			$entity->setTestEnum(TestEnum::CANCELLED);
-			$entity->setCreatedAt(new \DateTime());
-			
-			$this->em()->persist($entity);
-			$this->em()->flush();
+			$this->em()->executeQuery("
+				range of x is (
+					range of y is PostEntity
+					retrieve(y.id)
+				)
+				range of z is PostEntity
+				retrieve(z) where z.id=x.id
+			");
 			
 			return $this->render("home/index3.tpl");
 		}
