@@ -249,6 +249,7 @@
 		 */
 		public function setQuery(?AstRetrieve $query): AstRange {
 			$this->query = $query;
+			$this->query->setParent($this);
 			return $this;
 		}
 	}

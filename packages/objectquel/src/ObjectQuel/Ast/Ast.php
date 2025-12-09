@@ -98,6 +98,25 @@
 		}
 		
 		/**
+		 * @template T of object
+		 * @param class-string<T> $className The fully qualified class name of the service to resolve
+		 * @return T|null The resolved service instance of type T, or null if resolution fails
+		 */
+		public function getParentOfType(string $className): ?AstInterface {
+			$current = $this->parent;
+			
+			while ($current !== null) {
+				if (is_a($current, $className)) {
+					return $current;
+				}
+				
+				$current = $current->getParent();
+			}
+			
+			return null;
+		}
+		
+		/**
 		 * Returns true if one the parents is $className
 		 * @param array $classNames
 		 * @return bool

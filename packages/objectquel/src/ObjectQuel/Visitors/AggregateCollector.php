@@ -50,7 +50,7 @@
 			}
 
 			// If we're not traversing subqueries, check if this node is inside a subquery
-			if (!$this->traverseSubqueries && $node->parentIsOneOf([AstSubquery::class])) {
+			if (!$this->traverseSubqueries && $node->parentIsOneOf([AstSubquery::class, ])) {
 				return;
 			}
 			

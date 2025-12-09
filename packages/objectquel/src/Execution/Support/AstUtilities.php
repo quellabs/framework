@@ -4,19 +4,12 @@
 	
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAggregate;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAny;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAvg;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAvgU;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstBinaryOperator;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstCount;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstCountU;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstExpression;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIdentifier;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstMax;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstMin;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRange;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabase;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstSum;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstSumU;
 	use Quellabs\ObjectQuel\ObjectQuel\AstInterface;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\AggregateCollector;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\IdentifierCollector;
@@ -105,9 +98,23 @@
 		 * @return AstAggregate[] Aggregate nodes found in the tree
 		 */
 		public static function collectAggregateNodes(AstRetrieve $root): array {
+			// Collect all aggregates
 			$visitor = new AggregateCollector(false);
 			$root->accept($visitor);
-			return $visitor->getCollectedNodes();
+			$collectedNodes = $visitor->getCollectedNodes();
+			
+			// Filter out aggregates inside scalar ranges
+			return array_filter($collectedNodes, static function (AstAggregate $node): bool {
+				$parent = $node->getParentOfType(AstRange::class);
+				
+				// If no range parent, it's in the outer query (keep it)
+				if ($parent === null) {
+					return true;
+				}
+				
+				// If range parent is scalar, skip this aggregate
+				return !$parent->isScalar();
+			});
 		}
 		
 		/**
