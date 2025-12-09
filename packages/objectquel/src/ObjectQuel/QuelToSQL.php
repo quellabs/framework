@@ -337,8 +337,7 @@
 				
 				// Find the table associated with the entity.
 				if ($range->containsQuery()) {
-					$converter = new QuelToSQL($this->entityStore, $this->parameters);
-					$owningTable = "({$converter->convertToSQL($range->getQuery())})";
+					$owningTable = "({$this->convertToSQL($range->getQuery())})";
 				} elseif ($range->getQuery() !== null) {
 					$owningTable = "`{$range->getTableName()}`";
 				} else {
