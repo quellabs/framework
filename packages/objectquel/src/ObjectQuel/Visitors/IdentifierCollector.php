@@ -40,7 +40,7 @@
 		
 		/**
 		 * Returns all collected nodes
-		 * @return array
+		 * @return AstIdentifier[]
 		 */
 		public function getCollectedNodes(): array {
 			return $this->collectedNodes;

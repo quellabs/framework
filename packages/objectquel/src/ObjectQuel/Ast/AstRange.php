@@ -4,6 +4,7 @@
 	
 	use Quellabs\ObjectQuel\ObjectQuel\AstInterface;
 	use Quellabs\ObjectQuel\ObjectQuel\AstVisitorInterface;
+	use Quellabs\ObjectQuel\ObjectQuel\Visitors\IdentifierCollector;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\IdentifierLocator;
 	
 	/**
@@ -77,6 +78,45 @@
 		 */
 		public function isRequired(): bool {
 			return $this->required;
+		}
+		
+		/**
+		 * Gets the unique names of all ranges referenced in this range's join property (via clause).
+		 *
+		 * This is used to build dependency graphs between ranges. For example, if a range has
+		 * "via price < stats.avg_price AND price > threshold.min", this returns ['stats', 'threshold'].
+		 *
+		 * Self-references are excluded - if the via clause references the range's own columns,
+		 * those are not included in the result.
+		 *
+		 * @return array Array of unique range names referenced in the via clause, excluding self
+		 */
+		public function getUniqueReferencedRangeNames(): array {
+			// No join property means no external range dependencies
+			if ($this->getJoinProperty() === null) {
+				return [];
+			}
+			
+			// Collect all identifier nodes from the via clause expression tree
+			$collector = new IdentifierCollector();
+			$this->getJoinProperty()->accept($collector);
+			$identifiers = $collector->getCollectedNodes();
+			
+			// Use array keys to automatically deduplicate range names
+			$result = [];
+			$ownName = $this->getName();
+			
+			foreach($identifiers as $identifier) {
+				$rangeName = $identifier->getRange()->getName();
+				
+				// Exclude self-references (e.g., "cheap.price" when this range is "cheap")
+				if ($rangeName !== $ownName) {
+					$result[$rangeName] = true;
+				}
+			}
+			
+			// Return just the unique range names
+			return array_keys($result);
 		}
 
 		public function deepClone(): static {
