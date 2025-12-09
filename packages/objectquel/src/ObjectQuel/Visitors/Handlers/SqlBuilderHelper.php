@@ -77,12 +77,20 @@
 			// Get the entity name to determine range type
 			$entityName = $identifier->getEntityName();
 			
-			// Check if this is a temporary table (no entity name)
+			// Check if this is a scalar range - inline as subquery
+			if ($range->isScalar()) {
+				$converter = new QuelToSQLConvertToString($this->entityStore, $this->parameters, "WHERE");
+				$range->getQuery()->accept($converter);
+				return "({$converter->getResult()})";
+			}
+			
+			// Check if this is a non-scalar temporary table (no entity name)
 			if (empty($entityName)) {
 				return $this->buildColumnNameForTemporaryTable($identifier, $rangeName);
-			} else {
-				return $this->buildColumnNameForEntity($identifier, $rangeName, $entityName);
 			}
+			
+			// This is a regular entity-based range
+			return $this->buildColumnNameForEntity($identifier, $rangeName, $entityName);
 		}
 		
 		/**

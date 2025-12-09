@@ -28,6 +28,12 @@
 		private bool $required;
 		
 		/**
+		 * True if the subquery is scalar, false if not
+		 * @var bool
+		 */
+		private bool $isScalar;
+		
+		/**
 		 * AstRange constructor.
 		 * @param string $name The name/alias for this range (used as table alias)
 		 * @param bool $required Whether this is a required join (INNER) or optional (LEFT)
@@ -35,6 +41,7 @@
 		public function __construct(string $name, bool $required = false) {
 			$this->name = $name;
 			$this->required = $required;
+			$this->isScalar = false;
 		}
 		
 		/**
@@ -78,6 +85,23 @@
 		 */
 		public function isRequired(): bool {
 			return $this->required;
+		}
+		
+		/**
+		 * Set whether the subquery is scalar
+		 * @param bool $scalar
+		 * @return void
+		 */
+		public function setScalar(bool $scalar = true): void {
+			$this->isScalar = $scalar;
+		}
+		
+		/**
+		 * Check if the subquery is scalar.
+		 * @return bool True if this is a required relation (INNER JOIN)
+		 */
+		public function isScalar(): bool {
+			return $this->isScalar;
 		}
 		
 		/**

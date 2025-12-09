@@ -129,6 +129,11 @@
 					continue;
 				}
 				
+				// Skip scalar ranges
+				if ($range->isScalar()) {
+					continue;
+				}
+				
 				// Get the name of the range
 				$rangeName = $range->getName();
 				
