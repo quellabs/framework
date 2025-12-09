@@ -21,7 +21,7 @@
 	                retrieve(y.id)
 				)
 				range of z is PostEntity
-				retrieve(z) where z.id=x.id
+				retrieve(z) where z.id=p.id
 			");
 			
 			return $this->render("home/index3.tpl");
