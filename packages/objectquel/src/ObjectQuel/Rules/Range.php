@@ -98,7 +98,6 @@
 			// Create the database range with a temporary name
 			$range = new AstRangeDatabase($alias);
 			$range->setQuery($retrieve);
-			$range->setTableName(uniqid($alias));
 			return $range;
 		}
 		

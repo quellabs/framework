@@ -334,14 +334,17 @@
 				// Get the name and join property of the entity.
 				$rangeName = $range->getName();
 				$joinProperty = $range->getJoinProperty();
-				
-				// Find the table associated with the entity.
-				if ($range->containsQuery()) {
-					$owningTable = "({$this->convertToSQL($range->getQuery())})";
-				} elseif ($range->getQuery() !== null) {
+
+				// Determine the table source for this range
+				if ($range->getQuery() === null) {
+					// Base table - lookup from entity metadata
+					$owningTable = "`{$this->entityStore->getOwningTable($range->getEntityName())}`";
+				} elseif ($range->getTableName() !== null) {
+					// Derived range materialized as temp table
 					$owningTable = "`{$range->getTableName()}`";
 				} else {
-					$owningTable = "`{$this->entityStore->getOwningTable($range->getEntityName())}`";
+					// Derived range as inline subquery
+					$owningTable = "({$this->convertToSQL($range->getQuery())})";
 				}
 				
 				// Convert the join condition to a SQL string.
