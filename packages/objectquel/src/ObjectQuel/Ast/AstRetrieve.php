@@ -499,6 +499,44 @@
 		}
 		
 		/**
+		 * Counts how many ranges reference the given range name in their via clauses.
+		 * Used to determine if a derived range should be materialized as a temp table
+		 * (referenced multiple times) or used as an inline subquery (single reference).
+		 * @param string $targetRangeName The range name to count references to
+		 * @return int Number of ranges that reference the target range
+		 */
+		public function countReferencesToRange(string $targetRangeName): int {
+			$count = 0;
+			
+			foreach ($this->getRanges() as $range) {
+				// Skip ranges without via clauses
+				if ($range->getJoinProperty() === null) {
+					continue;
+				}
+				
+				// Skip self-references (range can't count as referencing itself)
+				if ($range->getName() === $targetRangeName) {
+					continue;
+				}
+				
+				// Collect all identifiers in this range's via clause
+				$collector = new IdentifierCollector();
+				$range->getJoinProperty()->accept($collector);
+				$identifiers = $collector->getCollectedNodes();
+				
+				// Check if any identifier references the target range
+				foreach ($identifiers as $identifier) {
+					if ($identifier->getRange()->getName() === $targetRangeName) {
+						$count++;
+						break;
+					}
+				}
+			}
+			
+			return $count;
+		}
+		
+		/**
 		 * Creates a deep clone of this retrieve operation.
 		 * @return static A complete deep copy of this retrieve operation
 		 */

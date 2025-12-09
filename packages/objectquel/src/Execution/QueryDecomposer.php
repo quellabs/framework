@@ -50,9 +50,8 @@
 			$this->clearCache();
 			$plan = new ExecutionPlan();
 
-			/*
 			// 1. Extract and sort temp ranges by dependency
-			$temporaryRanges = $this->extractTemporaryRanges($query);
+			$temporaryRanges = $this->extractTemporaryRangesWithMultipleReferences($query);
 			$sortedTempRanges = $this->sortByDependency($temporaryRanges);
 			
 			// 2. Recursively decompose each temp range
@@ -65,7 +64,6 @@
 				
 				// Convert from definition to materialized range
 				$tempRange->setTableName($tempTableName);
-				//$tempRange->setQuery(null);
 				
 				// Add plan as a stage
 				$plan->addStage(new ExecutionStageTempTable(
@@ -74,7 +72,6 @@
 					$tempRange
 				));
 			}
-			*/
 			
 			// 3. Build main query stage (treating temp tables as available ranges)
 			$databaseStage = $this->createDatabaseExecutionStage($query, $staticParams);
@@ -125,11 +122,12 @@
 		 * Returns only the database projections
 		 * @return array<AstRangeDatabase>
 		 */
-		protected function extractTemporaryRanges(AstRetrieve $query): array {
-			return array_filter($query->getRanges(), function($range) {
+		protected function extractTemporaryRangesWithMultipleReferences(AstRetrieve $query): array {
+			return array_filter($query->getRanges(), function($range) use ($query) {
 				return
 					$range instanceof AstRangeDatabase &&
-					$range->getQuery() !== null;
+					$range->getQuery() !== null &&
+					$query->countReferencesToRange($range->getName()) > 1;
 			});
 		}
 		
