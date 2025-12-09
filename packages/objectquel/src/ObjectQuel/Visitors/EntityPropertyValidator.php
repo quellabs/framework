@@ -40,18 +40,21 @@
 				return;
 			}
 			
+			// Fetch parent
+			$parent = $node->getParent();
+			
 			// If this is not a property, do nothing
-			if (!$node->getParent() instanceof AstIdentifier) {
+			if (!$parent instanceof AstIdentifier) {
 				return;
 			}
 			
 			// Skip validation if this identifier references a temporary table (subquery range)
-			if (!$node->getParent()->isFromEntity()) {
+			if (!$parent->isFromEntity()) {
 				return;
 			}
 
 			// Get the column map for this entity.
-			$entityName = $node->getParent()->getEntityName();
+			$entityName = $parent->getEntityName();
 			$propertyName = $node->getName();
 			$columnMap = $this->entityStore->getColumnMap($entityName);
 			

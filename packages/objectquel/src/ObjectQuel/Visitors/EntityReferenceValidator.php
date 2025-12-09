@@ -72,7 +72,7 @@
 			
 			// Skip validation if no entity name is specified
 			if ($entityName === null) {
-				return;
+				//return;
 			}
 			
 			// Validate entity existence in the entity store

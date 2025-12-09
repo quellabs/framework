@@ -188,4 +188,53 @@
 			
 			return $leftMatches || $rightMatches;
 		}
+		
+		/**
+		 * Collect identifiers from the current query level only (not from nested range definitions).
+		 *
+		 * When validating a query, we only want to check identifiers that belong to that specific
+		 * query level. Identifiers inside nested range definitions belong to those inner queries
+		 * and will be validated separately during recursive validation.
+		 *
+		 * Example:
+		 *   range of x is (
+		 *       range of y is PostEntity
+		 *       retrieve(y.id)  // <- This identifier belongs to inner query
+		 *   )
+		 *   range of z is PostEntity
+		 *   retrieve(z.id)  // <- This identifier belongs to outer query
+		 *
+		 * When validating the outer query, we only want to collect z.id, not y.id.
+		 *
+		 * @param AstRetrieve $root The query level to collect identifiers from
+		 * @return AstIdentifier[] Identifiers that belong to this query level only
+		 */
+		public static function collectQueryIdentifiers(AstRetrieve $root): array {
+			// Collect all identifiers in the tree (including nested queries)
+			$visitor = new IdentifierCollector();
+			$root->accept($visitor);
+			$collectedNodes = $visitor->getCollectedNodes();
+			
+			// Filter to keep only identifiers whose nearest AstRetrieve parent is the root
+			// This excludes identifiers that belong to nested range definitions
+			return array_filter($collectedNodes, static function (AstIdentifier $node) use ($root) {
+				// Walk up the parent chain to find the nearest AstRetrieve node
+				// This tells us which query level this identifier belongs to
+				$current = $node->getParent();
+				
+				while ($current !== null) {
+					if ($current instanceof AstRetrieve) {
+						// Found the nearest containing query - check if it's our root
+						// If yes, this identifier belongs to the current query level
+						// If no, this identifier belongs to a nested query
+						return $current === $root;
+					}
+					
+					$current = $current->getParent();
+				}
+				
+				// No AstRetrieve parent found (shouldn't happen in valid AST)
+				return false;
+			});
+		}
 	}

@@ -31,10 +31,6 @@
 				return;
 			}
 			
-			if ($node->getRange() === null) {
-				return;
-			}
-			
 			$this->collectedNodes[] = $node;
 		}
 		

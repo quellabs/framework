@@ -3,6 +3,7 @@
 	namespace Quellabs\ObjectQuel\ObjectQuel;
 	
 	use Quellabs\ObjectQuel\EntityStore;
+	use Quellabs\ObjectQuel\Execution\Support\AstUtilities;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAvg;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAvgU;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstCount;
@@ -53,6 +54,7 @@
 			$this->validateNestedQueries($ast);
 			
 			// Step 1: Validate basic structural integrity
+			$this->validateRangeExistence($ast);
 			$this->validateNoRegExpInValueList($ast);
 			$this->validateNoDuplicateRanges($ast);
 			$this->validateAtLeastOneRangeWithoutVia($ast);
@@ -197,6 +199,27 @@
 						// This helps identify which range has the invalid reference
 						throw new QuelException(sprintf($e->getMessage(), $range->getName()));
 					}
+				}
+			}
+		}
+		
+		/**
+		 * Validates that all referenced ranges exist in the query definition.
+		 * Ensures that identifiers like "k.id" reference a range "k" that has been declared.
+		 * @param AstRetrieve $ast The AST to validate
+		 * @throws QuelException If undefined range is referenced
+		 */
+		private function validateRangeExistence(AstRetrieve $ast): void {
+			// Collect identifiers from this query level only (not nested)
+			$identifiers = AstUtilities::collectQueryIdentifiers($ast);
+			
+			// Check each identifier references a defined range
+			foreach ($identifiers as $identifier) {
+				if ($identifier->getRange() === null) {
+					throw new QuelException(
+						"Undefined range '{$identifier->getName()}' referenced in query. " .
+						"All referenced ranges must be defined in a 'range of {$identifier->getName()} is ...' clause."
+					);
 				}
 			}
 		}

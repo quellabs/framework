@@ -100,6 +100,6 @@
 			
 			// If none of the above checks are true, the function adds a namespace
 			// to the name of the node. This is done by a method of the entityStore object.
-			$node->setName($this->entityStore->normalizeEntityName($node->getEntityName()));
+			$node->setName($this->entityStore->normalizeEntityName($node->getName()));
 		}
 	}
