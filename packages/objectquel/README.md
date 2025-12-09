@@ -528,9 +528,32 @@ In this example:
 
 #### How Temporary Ranges Work
 
-1. **Subquery Execution**: The inner query executes first, creating an intermediate result set
-2. **Result Materialization**: The result set is stored in a temporary table in the database
-3. **Join Operations**: The temporary table is then joined with other ranges in the outer query
+ObjectQuel automatically optimizes temporary ranges based on usage:
+
+1. **Single Reference (Derived Table)**: When a temporary range is referenced only once, ObjectQuel generates it as an inline derived table (subquery in FROM clause). This is the most common and efficient approach:
+```sql
+   FROM categories c
+   JOIN (
+       SELECT category_id, AVG(price) as avgPrice
+       FROM products
+       GROUP BY category_id
+   ) AS summary ON c.category_id = summary.category_id
+```
+
+2. **Multiple References (Materialized Temporary Table)**: When a temporary range is referenced by multiple other ranges, ObjectQuel automatically materializes it as an actual temporary table to avoid executing the same subquery multiple times:
+```sql
+   CREATE TEMPORARY TABLE temp_summary AS (
+       SELECT category_id, AVG(price) as avgPrice
+       FROM products
+       GROUP BY category_id
+   );
+   
+   -- Later queries reference the temporary table
+   FROM categories c
+   JOIN temp_summary summary ON c.category_id = summary.category_id
+```
+
+This optimization happens automatically - you don't need to specify which approach to use. ObjectQuel analyzes your query structure and chooses the most efficient strategy.
 
 #### Common Use Cases
 
@@ -560,18 +583,38 @@ range of p is App\\Entity\\ProductEntity via p.productId=margins.productId
 retrieve (p.name, margins.margin)
 ```
 
+**3. Multiple references triggering materialization:**
+```php
+// Compare products to category statistics
+range of stats is (
+    range of p is App\\Entity\\ProductEntity
+    retrieve (
+        categoryId=p.categoryId,
+        avgPrice=AVG(p.price),
+        maxPrice=MAX(p.price)
+    )
+)
+range of cheap is App\\Entity\\ProductEntity via cheap.categoryId=stats.categoryId
+range of expensive is App\\Entity\\ProductEntity via expensive.categoryId=stats.categoryId
+retrieve (cheap.name, expensive.name, stats.avgPrice)
+where cheap.price < stats.avgPrice AND expensive.price > stats.avgPrice
+```
+
+In this example, `stats` is referenced by both `cheap` and `expensive`, so ObjectQuel automatically creates a temporary table to avoid calculating the statistics twice.
+
 #### Performance Considerations
 
-- **Temporary table creation**: Each temporary range creates an actual temporary table in the database
-- **Optimization**: ObjectQuel automatically optimizes JOIN types based on nullability analysis
+- **Automatic optimization**: ObjectQuel chooses the best approach (derived table vs temporary table) based on usage
+- **Database optimizer**: Derived tables allow the database to make its own optimization decisions
+- **Materialization threshold**: Temporary tables are only created when actually beneficial (multiple references)
 - **Unused ranges**: Temporary ranges that aren't referenced in the outer query are automatically removed
 - **Complex subqueries**: Keep subqueries focused and use appropriate indexes on joined columns
 
 #### Limitations
 
 - Temporary ranges cannot have `via` clauses themselves (they define the result set others join against)
-- Multiple temporary ranges in a single query may require explicit join conditions
 - Very large temporary result sets may impact memory and performance
+- Scalar temporary ranges (single row, single column) are automatically inlined in WHERE clauses instead of being joined
 
 ### Pagination
 
