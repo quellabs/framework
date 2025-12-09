@@ -654,6 +654,16 @@
 		    return null;
 	    }
 		
+	    /**
+	     * Retrieves the primary key field name for a given entity.
+	     * @param mixed $entity The entity object or class to inspect
+	     * @return string|null The primary key column name, or null if none exists
+	     */
+	    public function isPrimaryKey(mixed $entity, string $name): ?string {
+			$primaryKey = $this->getPrimaryKey($entity);
+			return $primaryKey === $name;
+	    }
+		
 		/**
 	     * This method finds primary key columns that are configured to receive
 	     * database-generated values, which are either:

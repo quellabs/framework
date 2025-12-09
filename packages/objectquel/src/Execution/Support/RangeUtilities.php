@@ -2,18 +2,24 @@
 	
 	namespace Quellabs\ObjectQuel\Execution\Support;
 	
+	use Quellabs\ObjectQuel\EntityStore;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAggregate;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAvg;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAvgU;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstCount;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstCountU;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstExpression;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstMax;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstMin;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstNumber;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRange;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstSum;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstSumU;
 	use Quellabs\ObjectQuel\ObjectQuel\AstInterface;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\CollectRanges;
+	use Quellabs\ObjectQuel\ObjectQuel\Visitors\IdentifierCollector;
+	use Quellabs\ObjectQuel\ObjectQuel\Visitors\PrimaryKeyCollector;
 	
 	class RangeUtilities {
 		
@@ -262,5 +268,137 @@
 					$root->removeRange($range);
 				}
 			}
+		}
+		
+		/**
+		 * Determines if a query is guaranteed to return a single-row, single-column result (scalar).
+		 *
+		 * A query is considered scalar when it structurally guarantees exactly one row and one column.
+		 * This is used to optimize SQL generation - scalar queries can be inlined as subqueries in
+		 * WHERE clauses instead of requiring JOINs.
+		 *
+		 * A query is scalar if it has exactly one column AND meets one of these conditions:
+		 * 1. LIMIT 1 (window size = 1)
+		 * 2. Single aggregate function with no GROUP BY (e.g., COUNT(*), AVG(price))
+		 * 3. Primary key equality with literal value (e.g., WHERE id = 5)
+		 *
+		 * @param AstRetrieve $ast The retrieve AST node to analyze
+		 * @param EntityStore $entityStore Store containing entity metadata for PK validation
+		 * @return bool True if the query will return a single row and single column
+		 */
+		public static function isScalar(AstRetrieve $ast, EntityStore $entityStore): bool {
+			// Scalar queries must return exactly one column
+			if (count($ast->getValues()) !== 1) {
+				return false;
+			}
+			
+			// 'LIMIT 1' guarantees single row (combined with single column = scalar)
+			if ($ast->getWindowSize() === 1) {
+				return true;
+			}
+			
+			// Aggregate functions without GROUP BY return exactly one row
+			// (e.g., SELECT AVG(price) always returns one row)
+			if (empty($ast->getGroupBy())) {
+				$allAggregates = true;
+				
+				foreach($ast->getValues() as $value) {
+					if (!$value->getExpression() instanceof AstAggregate) {
+						$allAggregates = false;
+						break;
+					}
+				}
+				
+				if ($allAggregates) {
+					return true;
+				}
+			}
+			
+			// Primary key with literal equality guarantees at most one row
+			return self::hasSatisfiedPrimaryKey($ast, $entityStore);
+		}
+		
+		/**
+		 * Determines if a primary key constraint in the query guarantees a single row result.
+		 *
+		 * Checks if any entity referenced in the WHERE conditions has its primary key
+		 * satisfied with a literal equality condition (e.g., user_id = 5).
+		 *
+		 * @param AstRetrieve $ast The retrieve AST node to analyze
+		 * @param EntityStore $entityStore Store containing entity metadata
+		 * @return bool True if a primary key is fully satisfied with literal values
+		 */
+		public static function hasSatisfiedPrimaryKey(AstRetrieve $ast, EntityStore $entityStore): bool {
+			// No conditions means no PK constraints
+			if ($ast->getConditions() === null) {
+				return false;
+			}
+			
+			// Collect all primary key column references in the query
+			$collector = new PrimaryKeyCollector($entityStore);
+			$ast->getConditions()->accept($collector);
+			$identifiers = $collector->getCollectedNodes();
+			
+			// Track which PK columns have literal equality conditions
+			// Structure: ['EntityName' => ['columnName' => true]]
+			$satisfiedColumns = [];
+			
+			foreach ($identifiers as $identifier) {
+				$parent = $identifier->getParent();
+				
+				// Only process identifiers that are part of an expression
+				if (!$parent instanceof AstExpression) {
+					continue;
+				}
+				
+				// Only equality operators guarantee PK uniqueness
+				if ($parent->getOperator() !== '=') {
+					continue;
+				}
+				
+				$hasLiteralValue = false;
+				
+				// Check if identifier is compared to a literal number
+				// Handles both: column = 5 and 5 = column
+				if (
+					$parent->getLeft() === $identifier &&
+					$parent->getRight() instanceof AstNumber
+				) {
+					$hasLiteralValue = true;
+				}
+				
+				if (
+					$parent->getRight() === $identifier &&
+					$parent->getLeft() instanceof AstNumber
+				) {
+					$hasLiteralValue = true;
+				}
+				
+				// Record this column as satisfied for its entity
+				if ($hasLiteralValue) {
+					$entityName = $identifier->getEntityName();
+					$columnName = $identifier->getColumnName();
+					
+					if (!isset($satisfiedColumns[$entityName])) {
+						$satisfiedColumns[$entityName] = [];
+					}
+					
+					// Mark this column as satisfied (handles duplicate conditions like x=5 AND x=5)
+					$satisfiedColumns[$entityName][$columnName] = true;
+				}
+			}
+			
+			// Check if any entity has its primary key column satisfied
+			// If so, the query is guaranteed to return at most one row
+			foreach ($satisfiedColumns as $entityName => $columns) {
+				$pkColumn = $entityStore->getPrimaryKey($entityName);
+				
+				if (isset($columns[$pkColumn])) {
+					return true;
+				}
+			}
+			
+			// No entity has a satisfied primary key
+			return false;
 		}
 	}

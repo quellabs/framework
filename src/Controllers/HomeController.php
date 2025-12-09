@@ -15,11 +15,14 @@
 		 * @return Response
 		 */
 		public function index(): Response {
-			$tmp = $this->em()->find(PostEntity::class, 5);
-			$tmp->setCreatedAt(new \DateTime());
-			
-			$this->em()->persist($tmp);
-			$this->em()->flush();
+			$tmp = $this->em()->executeQuery("
+				range of x is (
+		            range of y is PostEntity
+	                retrieve(y.id)
+				)
+				range of z is PostEntity via z.id=x.id
+				retrieve(z)
+			");
 			
 			return $this->render("home/index3.tpl");
 		}
