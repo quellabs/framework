@@ -45,12 +45,12 @@
 		 * @param AstRetrieve $query The ObjectQuel query to decompose
 		 * @param array $staticParams Optional static parameters for the query
 		 * @return ExecutionPlan|null The execution plan containing all stages, or null if decomposition failed
-		 * @throws QuelException If the query cannot be properly decomposed
 		 */
 		public function buildExecutionPlan(AstRetrieve $query, array $staticParams = []): ?ExecutionPlan {
 			$this->clearCache();
 			$plan = new ExecutionPlan();
-			
+
+			/*
 			// 1. Extract and sort temp ranges by dependency
 			$temporaryRanges = $this->extractTemporaryRanges($query);
 			$sortedTempRanges = $this->sortByDependency($temporaryRanges);
@@ -74,6 +74,7 @@
 					$tempRange
 				));
 			}
+			*/
 			
 			// 3. Build main query stage (treating temp tables as available ranges)
 			$databaseStage = $this->createDatabaseExecutionStage($query, $staticParams);

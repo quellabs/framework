@@ -336,10 +336,13 @@
 				$joinProperty = $range->getJoinProperty();
 				
 				// Find the table associated with the entity.
-				if ($range->getQuery() !== null) {
-					$owningTable = $range->getTableName();
+				if ($range->containsQuery()) {
+					$converter = new QuelToSQL($this->entityStore, $this->parameters);
+					$owningTable = "({$converter->convertToSQL($range->getQuery())})";
+				} elseif ($range->getQuery() !== null) {
+					$owningTable = "`{$range->getTableName()}`";
 				} else {
-					$owningTable = $this->entityStore->getOwningTable($range->getEntityName());
+					$owningTable = "`{$this->entityStore->getOwningTable($range->getEntityName())}`";
 				}
 				
 				// Convert the join condition to a SQL string.
@@ -351,7 +354,7 @@
 				
 				// Add the SQL JOIN instruction to the result.
 				// This results in a LEFT JOIN instruction for the relevant entity.
-				$result[] = "{$joinType} JOIN `{$owningTable}` as `{$rangeName}` ON {$joinColumn}";
+				$result[] = "{$joinType} JOIN {$owningTable} as `{$rangeName}` ON {$joinColumn}";
 			}
 			
 			// Convert the list of JOIN instructions to a single string.
