@@ -75,9 +75,6 @@
 			// Step 7: Transform complex 'via' relationships into direct property lookups
 			// Converts indirect relationships through intermediate entities into direct SQL joins
 			$this->transformViaRelations($ast);
-			
-			// Step 8: mark scalar temporary ranges
-			$this->markScalarTemporaryRanges($ast);
 		}
 		
 		/**
@@ -100,6 +97,9 @@
 				// Recursively transform the inner query with full transformation pipeline
 				$this->transform($range->getQuery());
 			}
+			
+			// Mark scalar ranges
+			$this->markScalarTemporaryRanges($ast);
 		}
 		
 		/**

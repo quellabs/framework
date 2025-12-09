@@ -18,10 +18,10 @@
 			$tmp = $this->em()->executeQuery("
 				range of x is (
 		            range of y is PostEntity
-	                retrieve(y.id)
+	                retrieve(average=avg(y.id))
 				)
-				range of z is PostEntity via z.id=x.id
-				retrieve(z)
+				range of z is PostEntity
+				retrieve(z) where x.average > 10
 			");
 			
 			return $this->render("home/index3.tpl");

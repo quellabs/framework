@@ -3,6 +3,7 @@
 	namespace Quellabs\ObjectQuel\Execution;
 	
 	use Quellabs\ObjectQuel\EntityManager;
+	use Quellabs\ObjectQuel\Execution\Support\RangeUtilities;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabase;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
 	
@@ -99,6 +100,31 @@
 				
 				// Recursively optimize the inner query with full optimization pipeline
 				$this->optimize($range->getQuery());
+			}
+		}
+		
+		
+		/**
+		 * Identifies and marks scalar temporary ranges for optimization.
+		 * Scalar ranges (single row, single column results) are marked so they can be
+		 * inlined as subqueries in WHERE/SELECT clauses instead of being joined as tables.
+		 */
+		private function markScalarTemporaryRanges(AstRetrieve $ast): void {
+			foreach ($ast->getRanges() as $range) {
+				// Only process database ranges (not computed or external ranges)
+				if (!$range instanceof AstRangeDatabase) {
+					continue;
+				}
+				
+				// Skip base tables - only derived queries can be scalar
+				if ($range->getQuery() === null) {
+					continue;
+				}
+				
+				// Check if this derived query returns a single row and single column
+				if (RangeUtilities::isScalar($range->getQuery(), $this->entityStore)) {
+					$range->setScalar();
+				}
 			}
 		}
 	}

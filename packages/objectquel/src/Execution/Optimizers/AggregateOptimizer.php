@@ -81,9 +81,7 @@
 			foreach (AstUtilities::collectAggregateNodes($root) as $agg) {
 				// Determine the best rewriting strategy for this specific aggregate
 				// Considers factors like correlation, grouping, and SQL dialect capabilities
-				$strategy = $this->chooseStrategy($root, $agg);
-				
-				switch ($strategy) {
+				switch ($this->chooseStrategy($root, $agg)) {
 					case self::STRATEGY_DIRECT:
 						// Keep aggregate in main query - most efficient when possible
 						// Ensure proper GROUP BY clause if mixing aggregates with non-aggregates
@@ -115,6 +113,11 @@
 		 * @return string One of self::STRATEGY_* constants
 		 */
 		private function chooseStrategy(AstRetrieve $root, AstAggregate $aggregate): string {
+			// Do not rewrite when aggregate has no conditions
+			if ($aggregate->getConditions() === null) {
+				return self::STRATEGY_DIRECT;
+			}
+			
 			// If aggregate has filtering conditions, must use subquery to apply WHERE before aggregation
 			if ($aggregate->getConditions() !== null) {
 				return self::STRATEGY_SUBQUERY;

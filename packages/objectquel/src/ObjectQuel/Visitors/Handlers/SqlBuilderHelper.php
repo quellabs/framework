@@ -63,6 +63,7 @@
 		public function buildColumnName(AstIdentifier $identifier): string {
 			// Get the range (table alias) from the identifier
 			$range = $identifier->getRange();
+			
 			if (!$range) {
 				return '';
 			}
@@ -76,13 +77,6 @@
 			
 			// Get the entity name to determine range type
 			$entityName = $identifier->getEntityName();
-			
-			// Check if this is a scalar range - inline as subquery
-			if ($range->isScalar()) {
-				$converter = new QuelToSQLConvertToString($this->entityStore, $this->parameters, "WHERE");
-				$range->getQuery()->accept($converter);
-				return "({$converter->getResult()})";
-			}
 			
 			// Check if this is a non-scalar temporary table (no entity name)
 			if (empty($entityName)) {
@@ -223,8 +217,12 @@
 			
 			// Build aliased column selections for each property
 			foreach ($columnMap as $item => $value) {
-				// Format: table.column as `alias.property`
-				$result[] = "{$rangeName}.{$value} as `{$rangeName}.{$item}`";
+				if ($this->partOfQuery !== 'GROUP_BY') {
+					// Format: table.column as `alias.property`
+					$result[] = "{$rangeName}.`{$value}` as `{$rangeName}.{$item}`";
+				} else {
+					$result[] = "{$rangeName}.`{$value}`";
+				}
 			}
 			
 			return implode(",", $result);
@@ -317,9 +315,9 @@
 		 */
 		public function identifierIsEntity(AstInterface $ast): bool {
 			return (
-				$ast instanceof AstIdentifier &&           // Must be an identifier
-				$ast->getRange() instanceof AstRangeDatabase && // Must have database range
-				!$ast->hasNext()                          // Must not have property chain
+				$ast instanceof AstIdentifier &&                 // Must be an identifier
+				$ast->getRange() instanceof AstRangeDatabase &&  // Must have database range
+				!$ast->hasNext()                                 // Must not have property chain
 			);
 		}
 		

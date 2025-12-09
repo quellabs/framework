@@ -147,6 +147,7 @@
 			// @phpstan-ignore-next-line new.static
 			$clone = new static($this->name, $this->required);
 			$clone->setParent($this);
+			$clone->setScalar($this->isScalar());
 			return $clone;
 		}
 	}

@@ -77,7 +77,7 @@
 			}
 			
 			// Checks that the node is not part of a chain
-			if ($node->getParent() instanceof AstIdentifier) {
+			if (!$node->isBaseIdentifier()) {
 				return;
 			}
 			
@@ -100,6 +100,6 @@
 			
 			// If none of the above checks are true, the function adds a namespace
 			// to the name of the node. This is done by a method of the entityStore object.
-			$node->setName($this->entityStore->normalizeEntityName($node->getName()));
+			$node->setName($this->entityStore->normalizeEntityName($node->getEntityName()));
 		}
 	}

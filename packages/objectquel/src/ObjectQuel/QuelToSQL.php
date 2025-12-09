@@ -295,7 +295,7 @@
 			}
 			
 			$groupSQL = [];
-			$visitor = new QuelToSQLConvertToString($this->entityStore, $this->parameters, "CONDITION");
+			$visitor = new QuelToSQLConvertToString($this->entityStore, $this->parameters, "GROUP_BY");
 
 			foreach($groupBy as $group) {
 				$group->accept($visitor);
@@ -352,12 +352,14 @@
 					$owningTable = "({$this->convertToSQL($range->getQuery())})";
 				}
 				
+				// Determine join type
+				$joinType = $range->isRequired() ? "INNER" : "LEFT";
+				
 				// Convert the join condition to a SQL string.
 				// This involves translating the join condition to a format that SQL understands.
 				$visitor = new QuelToSQLConvertToString($this->entityStore, $this->parameters, "CONDITION");
 				$joinProperty->accept($visitor);
 				$joinColumn = $visitor->getResult();
-				$joinType = $range->isRequired() ? "INNER" : "LEFT";
 				
 				// Add the SQL JOIN instruction to the result.
 				// This results in a LEFT JOIN instruction for the relevant entity.
