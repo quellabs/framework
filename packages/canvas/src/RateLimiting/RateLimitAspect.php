@@ -408,7 +408,7 @@
 		 * @param $request
 		 * @return string
 		 */
-		private function getUserIdentifier($request): string {
+		protected function getUserIdentifier($request): string {
 			// Try to get user from session, JWT, or other auth mechanism
 			if ($request->hasSession() && $request->getSession()->has('user_id')) {
 				return 'user_' . $request->getSession()->get('user_id');
