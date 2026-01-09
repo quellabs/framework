@@ -6,9 +6,11 @@
 	use App\Enums\TestEnum;
 	use Quellabs\Canvas\Annotations\Route;
 	use Quellabs\Canvas\Controllers\BaseController;
+	use Quellabs\Canvas\Controllers\SecureController;
+	use Quellabs\Canvas\Routing\Contracts\MethodContextInterface;
 	use Symfony\Component\HttpFoundation\Response;
 	
-	class HomeController extends BaseController {
+	class HomeController extends SecureController {
 		
 		/**
 		 * @Route("/")

@@ -1,7 +1,8 @@
 <?php
 	
-	namespace Quellabs\Contracts\AOP;
+	namespace Quellabs\Canvas\AOP\Contracts;
 	
+	use Quellabs\Canvas\Routing\Contracts\MethodContextInterface;
 	use Symfony\Component\HttpFoundation\Response;
 	
 	/**
@@ -12,7 +13,7 @@
 	 * replace it entirely. This ensures all after aspects in the chain
 	 * can contribute to the final response.
 	 */
-	interface AfterAspect extends AspectAnnotation {
+	interface AfterAspectInterfaceInterface extends AspectAnnotationInterface {
 		
 		/**
 		 * Executes after the target method has completed.
@@ -31,11 +32,11 @@
 		 * - Compressing response content
 		 * - Adding security headers
 		 *
-		 * @param MethodContext $context Contains metadata about the intercepted method
+		 * @param MethodContextInterface $context Contains metadata about the intercepted method
 		 * @param Response $response The response object to be modified in-place.
 		 *                          This is the response returned by the controller method.
 		 *
 		 * @return void No return value expected
 		 */
-		public function after(MethodContext $context, Response $response): void;
+		public function after(MethodContextInterface $context, Response $response): void;
 	}
