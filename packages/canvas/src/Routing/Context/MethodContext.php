@@ -1,16 +1,16 @@
 <?php
 	
-	namespace Quellabs\Canvas\AOP;
+	namespace Quellabs\Canvas\Routing\Context;
 	
+	use Quellabs\Canvas\Routing\Contracts\MethodContextInterface;
 	use Symfony\Component\HttpFoundation\Request;
-	use Symfony\Component\HttpFoundation\Session\SessionInterface;
 	
 	/**
 	 * Context object that encapsulates information about a method call.
 	 * Used in AOP (Aspect-Oriented Programming) scenarios to provide
 	 * interceptors and decorators with complete method execution context.
 	 */
-	class MethodContext implements \Quellabs\Contracts\AOP\MethodContext {
+	class MethodContext implements MethodContextInterface {
 		
 		private Request $request;
 		private object $class;

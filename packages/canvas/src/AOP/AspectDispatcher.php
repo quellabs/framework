@@ -4,12 +4,12 @@
 	
 	use Quellabs\AnnotationReader\AnnotationReader;
 	use Quellabs\AnnotationReader\Exception\AnnotationReaderException;
-	use Quellabs\Contracts\AOP\AfterAspect;
-	use Quellabs\Contracts\AOP\AroundAspect;
-	use Quellabs\Contracts\AOP\BeforeAspect;
-	use Quellabs\Contracts\AOP\RequestAspect;
+	use Quellabs\Canvas\Routing\Contracts\MethodContextInterface;
+	use Quellabs\Canvas\AOP\Contracts\AfterAspectInterfaceInterface;
+	use Quellabs\Canvas\AOP\Contracts\AroundAspectInterfaceInterface;
+	use Quellabs\Canvas\AOP\Contracts\BeforeAspectInterface;
+	use Quellabs\Canvas\AOP\Contracts\RequestAspectInterface;
 	use Quellabs\DependencyInjection\Container;
-	use Symfony\Component\HttpFoundation\Request;
 	use Symfony\Component\HttpFoundation\Response;
 	
 	class AspectDispatcher {
@@ -44,31 +44,19 @@
 		 * 6. Executes after aspects for response post-processing
 		 * 7. Returns the final response
 		 *
-		 * @param Request $request The incoming HTTP request object
-		 * @param object $controller The controller instance containing the target method
-		 * @param string $method The name of the method to execute on the controller
-		 * @param array $arguments Method arguments resolved from route parameters
+		 * @param MethodContextInterface $context Pre-created method context (already registered with DI)
 		 * @return Response The final HTTP response after all aspect processing
 		 * @throws AnnotationReaderException
 		 */
-		public function dispatch(Request $request, object $controller, string $method, array $arguments): Response {
+		public function dispatch(MethodContextInterface $context): Response {
 			try {
-				// Create a comprehensive method context containing all execution metadata
-				// This context object is passed to all aspects for introspection
-				$context = new MethodContext(
-					request: $request,
-					target: $controller,
-					methodName: $method,
-					arguments: $arguments
-				);
-				
 				// Discover and instantiate all aspects that apply to this method
 				// Uses annotation scanning and dependency injection for aspect creation
-				$aspects = $this->getResolvedAspects($controller, $method);
+				$aspects = $this->getResolvedAspects($context->getClass(), $context->getMethodName());
 				
 				// Phase 1: Transform the incoming request.
 				// Request aspects can modify headers, parameters, or add computed attributes
-				$this->handleRequestAspects($aspects, $request);
+				$this->handleRequestAspects($aspects, $context);
 				
 				// Phase 2: Execute pre-execution logic
 				// Before aspects can perform authorization, validation, or early returns
@@ -76,7 +64,8 @@
 				
 				// Phase 3: Execute the controller method with interception
 				// Around aspects can modify execution, add caching, or replace method entirely
-				$result = $this->handleAroundAspects($controller, $method, $aspects, $context);
+				// The aspect will also call the controller's method
+				$result = $this->handleAroundAspects($aspects, $context);
 				
 				// Phase 4: Post-process the response
 				// After aspects can add headers, cookies, logging, or response transformations
@@ -121,14 +110,13 @@
 		/**
 		 * Execute request transformation aspects on the incoming HTTP request
 		 * @param array $aspects Array of aspect instances to process
-		 * @param Request $request The Symfony Request object to transform
+		 * @param MethodContextInterface $context Context object containing method metadata and parameters
 		 * @return void
 		 */
-		private function handleRequestAspects(array $aspects, Request $request): void {
+		private function handleRequestAspects(array $aspects, MethodContextInterface $context): void {
 			foreach ($aspects as $aspect) {
-				if ($aspect instanceof RequestAspect) {
-					// Transform the request object in-place
-					$aspect->transformRequest($request);
+				if ($aspect instanceof RequestAspectInterface) {
+					$aspect->transformRequest($context);
 				}
 			}
 		}
@@ -136,13 +124,13 @@
 		/**
 		 * Execute before aspects prior to controller method execution
 		 * @param array $aspects Array of aspect instances to process
-		 * @param MethodContext $context Context object containing method metadata and parameters
+		 * @param MethodContextInterface $context Context object containing method metadata and parameters
 		 * @return void
 		 * @throws AopException When an aspect returns a Response object to short-circuit execution
 		 */
-		private function handleBeforeAspects(array $aspects, MethodContext $context): void {
+		private function handleBeforeAspects(array $aspects, MethodContextInterface $context): void {
 			foreach ($aspects as $aspect) {
-				if ($aspect instanceof BeforeAspect) {
+				if ($aspect instanceof BeforeAspectInterface) {
 					// Execute the before logic and check for early response
 					$response = $aspect->before($context);
 					
@@ -157,14 +145,14 @@
 		/**
 		 * Execute after aspects following controller method execution
 		 * @param array $aspects Array of aspect instances to process
-		 * @param MethodContext $context Context object containing method metadata and parameters
+		 * @param MethodContextInterface $context Context object containing method metadata and parameters
 		 * @param Response|null $response The response object from the controller method to be modified
 		 * @return void
 		 */
-		private function handleAfterAspects(array $aspects, MethodContext $context, ?Response $response): void {
+		private function handleAfterAspects(array $aspects, MethodContextInterface $context, ?Response $response): void {
 			if ($response !== null) {
 				foreach ($aspects as $aspect) {
-					if ($aspect instanceof AfterAspect) {
+					if ($aspect instanceof AfterAspectInterfaceInterface) {
 						// After aspects modify the response object directly.
 						// No return value expected - modifications happen in-place
 						$aspect->after($context, $response);
@@ -176,24 +164,22 @@
 		/**
 		 * Executes the controller method wrapped by around aspects in a nested chain
 		 * Around aspects can intercept, modify, or completely replace method execution
-		 * @param object $controller The controller instance
-		 * @param string $method The method name to execute
 		 * @param array $aspects All resolved aspects for this method
-		 * @param MethodContext $context Context information about the method call
+		 * @param MethodContextInterface $context Context information about the method call
 		 * @return mixed The result from the method or final around aspect
 		 */
-		private function handleAroundAspects(object $controller, string $method, array $aspects, MethodContext $context): mixed {
+		private function handleAroundAspects(array $aspects, MethodContextInterface $context): mixed {
 			// Filter to get only around aspects from all resolved aspects
-			$aroundAspects = array_filter($aspects, fn($aspect) => $aspect instanceof AroundAspect);
+			$aroundAspects = array_filter($aspects, fn($aspect) => $aspect instanceof AroundAspectInterfaceInterface);
 			
 			// If no around aspects exist, execute the method directly without interception
 			if (empty($aroundAspects)) {
-				return $this->di->invoke($controller, $method, $context->getArguments());
+				return $this->di->invoke($context->getClass(), $context->getMethodName(), $context->getArguments());
 			}
 			
 			// Create the base "proceed" function that calls the actual controller method
 			// This is the innermost function in the chain
-			$proceed = fn() => $this->di->invoke($controller, $method, $context->getArguments());
+			$proceed = fn() => $this->di->invoke($context->getClass(), $context->getMethodName(), $context->getArguments());
 			
 			// Build a nested chain of around aspects in reverse order.
 			// Reverse order ensures the first declared aspect becomes outermost wrapper.

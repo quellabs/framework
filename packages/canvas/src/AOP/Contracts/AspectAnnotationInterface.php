@@ -1,6 +1,6 @@
 <?php
 	
-	namespace Quellabs\Contracts\AOP;
+	namespace Quellabs\Canvas\AOP\Contracts;
 	
 	/**
 	 * Base marker interface for all aspect annotations in the Canvas framework.
@@ -20,7 +20,7 @@
 	 * Implementation classes typically use PHP attributes (annotations) to define
 	 * where and how the aspect should be applied to target methods or classes.
 	 */
-	interface AspectAnnotation {
+	interface AspectAnnotationInterface {
 		// This interface intentionally contains no methods.
 		// It serves as a marker interface for type identification
 		// and polymorphic processing of aspect annotations.

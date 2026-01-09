@@ -1,7 +1,8 @@
 <?php
 	
-	namespace Quellabs\Contracts\AOP;
+	namespace Quellabs\Canvas\Routing\Contracts;
 	
+	use Quellabs\Contracts\Context\MethodContext;
 	use Symfony\Component\HttpFoundation\Request;
 	
 	/**
@@ -9,7 +10,7 @@
 	 * Used in AOP (Aspect-Oriented Programming) scenarios to provide
 	 * interceptors and decorators with complete method execution context.
 	 */
-	interface MethodContext extends \Quellabs\Contracts\Context\MethodContext {
+	interface MethodContextInterface extends MethodContext {
 		
 		/**
 		 * Get the class object
