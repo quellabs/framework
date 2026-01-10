@@ -403,6 +403,7 @@
 				// Array access returns array of matching annotations, last() returns null for empty collections
 				$relationAnnotation = $collection[$relationType]->last();
 				
+				// Add relation to list
 				if ($relationAnnotation) {
 					$result[$propertyName] = $relationAnnotation;
 				}
