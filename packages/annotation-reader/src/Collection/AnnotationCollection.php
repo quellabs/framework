@@ -145,7 +145,7 @@
 		 * @return mixed The last annotation or null if collection is empty
 		 */
 		public function last(): mixed {
-			return end($this->annotations) ?: null;
+			return $this->annotations[array_key_last($this->annotations)] ?? null;
 		}
 		
 		/**

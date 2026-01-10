@@ -37,24 +37,11 @@
 	
 	/**
 	 * Immutable value object containing all metadata for a single entity.
-	 *
-	 * This class consolidates all entity metadata that was previously scattered across
-	 * multiple cache arrays in EntityStore. It is built once per entity and cached
-	 * by EntityStore, eliminating the need for multiple cache lookups and providing
-	 * a single, type-safe interface for accessing entity information.
-	 *
-	 * All properties are readonly to ensure immutability and prevent accidental
-	 * modification of cached metadata.
-	 *
-	 * The class uses a static factory method (fromClass) to build itself from annotations,
-	 * keeping construction logic encapsulated within the metadata object rather than
-	 * spreading it across multiple classes.
 	 */
 	readonly class EntityMetadata {
 		
 		/**
 		 * Private constructor - use EntityMetadata::fromClass() to create instances.
-		 *
 		 * @param string $className Fully qualified, normalized class name
 		 * @param string $tableName Database table name from @Table annotation
 		 * @param array<string, mixed> $properties Property names and their reflection info
@@ -85,15 +72,11 @@
 			public array   $indexes,
 			public ?string $autoIncrementColumn,
 			public array   $columnDefinitions,
-		) {}
+		) {
+		}
 		
 		/**
 		 * Factory method to build EntityMetadata from a class using annotations.
-		 *
-		 * This is the primary way to create EntityMetadata objects. It handles all
-		 * the complexity of reading annotations, extracting metadata, and computing
-		 * derived properties.
-		 *
 		 * @param string $className Fully qualified, normalized class name
 		 * @param AnnotationReader $annotationReader The annotation reader to use
 		 * @return self A fully populated EntityMetadata instance
@@ -126,10 +109,10 @@
 			$indexes = self::extractIndexes($className, $annotationReader);
 			
 			// Determine auto-increment column
-			$autoIncrementColumn = self::findAutoIncrementColumn($annotations);
+			$autoIncrementColumn = self::extractAutoIncrementColumn($annotations);
 			
 			// Build full column definitions for schema generation
-			$columnDefinitions = self::extractColumnDefinitions($className, $annotationReader, $annotations);
+			$columnDefinitions = self::extractColumnDefinitions($className, $annotations);
 			
 			// Create and return the immutable metadata object
 			return new self(
@@ -159,6 +142,14 @@
 		 */
 		public function getPrimaryKey(): ?string {
 			return $this->identifierKeys[0] ?? null;
+		}
+		
+		/**
+		 * Retrieves all primary keys of the entity.
+		 * @return array The primary keys
+		 */
+		public function getPrimaryKeys(): array {
+			return $this->identifierKeys;
 		}
 		
 		/**
@@ -204,8 +195,7 @@
 		 * @return string|null The corresponding property name, or null if column doesn't map to a property
 		 */
 		public function getPropertyName(string $columnName): ?string {
-			$flipped = array_flip($this->columnMap);
-			return $flipped[$columnName] ?? null;
+			return array_flip($this->columnMap)[$columnName] ?? null;
 		}
 		
 		/**
@@ -242,8 +232,7 @@
 			}
 			
 			// Otherwise, get the first identifier key and create an array with the proper key and value
-			$firstKey = $this->identifierKeys[0] ?? null;
-			return $firstKey ? [$firstKey => $primaryKey] : [];
+			return ($key = $this->identifierKeys[0] ?? null) ? [$key => $primaryKey] : [];
 		}
 		
 		// ==================== Private Extraction Methods ====================
@@ -373,15 +362,7 @@
 		 * @return array<string> Array of column names that are primary keys
 		 */
 		private static function buildIdentifierColumns(array $identifierKeys, array $columnMap): array {
-			$identifierColumns = [];
-			
-			foreach ($identifierKeys as $propertyName) {
-				if (isset($columnMap[$propertyName])) {
-					$identifierColumns[] = $columnMap[$propertyName];
-				}
-			}
-			
-			return $identifierColumns;
+			return array_values(array_intersect_key($columnMap, array_flip($identifierKeys)));
 		}
 		
 		/**
@@ -393,15 +374,15 @@
 			$versionColumns = [];
 			
 			foreach ($annotations as $propertyName => $collection) {
-				// Array access returns arrays of matching annotations
-				$columnAnnotations = $collection[Column::class];
-				$versionAnnotations = $collection[Version::class];
+				// Array access returns arrays of matching annotations, last() returns null for empty collections
+				$columnAnnotation = $collection[Column::class]->last();
+				$versionAnnotation = $collection[Version::class]->last();
 				
-				if (!$columnAnnotations->isEmpty() && !$versionAnnotations->isEmpty()) {
+				if ($columnAnnotation && $versionAnnotation) {
 					$versionColumns[$propertyName] = [
-						'name'    => $columnAnnotations->last()->getName(),
-						'column'  => $columnAnnotations->last(),
-						'version' => $versionAnnotations->last(),
+						'name'    => $columnAnnotation->getName(),
+						'column'  => $columnAnnotation,
+						'version' => $versionAnnotation,
 					];
 				}
 			}
@@ -419,12 +400,11 @@
 			$result = [];
 			
 			foreach ($annotations as $propertyName => $collection) {
-				// Array access returns array of matching annotations
-				$relationAnnotations = $collection[$relationType];
+				// Array access returns array of matching annotations, last() returns null for empty collections
+				$relationAnnotation = $collection[$relationType]->last();
 				
-				if (!$relationAnnotations->isEmpty()) {
-					// Use the last (and should be only) relationship annotation
-					$result[$propertyName] = $relationAnnotations->last();
+				if ($relationAnnotation) {
+					$result[$propertyName] = $relationAnnotation;
 				}
 			}
 			
@@ -443,11 +423,9 @@
 			$classAnnotations = $annotationReader->getClassAnnotations($className);
 			
 			// Filter to only Index and UniqueIndex annotations
-			$indexes = $classAnnotations->filter(function ($annotation) {
+			return $classAnnotations->filter(function ($annotation) {
 				return $annotation instanceof Index || $annotation instanceof UniqueIndex;
-			});
-			
-			return $indexes->toArray();
+			})->toIndexedArray();
 		}
 		
 		/**
@@ -473,28 +451,29 @@
 		}
 		
 		/**
+		 * Extract the auto-increment column if one exists.
+		 * @param array $annotations The property annotations
+		 * @return string|null The property name of the auto-increment column, or null if none exists
+		 */
+		private static function extractAutoIncrementColumn(array $annotations): ?string {
+			foreach ($annotations as $propertyName => $collection) {
+				if (self::isIdentityColumn($collection)) {
+					return $propertyName;
+				}
+			}
+			
+			return null;
+		}
+		
+		/**
 		 * Extract full column definitions for schema generation.
-		 *
-		 * This method builds comprehensive metadata for each database column,
-		 * including type information, constraints, defaults, and other properties
-		 * needed for creating or migrating database schemas.
-		 *
-		 * The extracted information includes:
-		 * - Database column type and PHP property type
-		 * - Length limits and precision/scale for numeric types
-		 * - Nullable, unsigned, and default value settings
-		 * - Primary key and auto-increment detection
-		 * - Enum value lists for enum columns
-		 *
 		 * @param string $className The fully qualified class name
-		 * @param AnnotationReader $annotationReader The annotation reader instance
 		 * @param array $annotations Pre-extracted annotations (for performance)
 		 * @return array Column name => column definition mapping
 		 */
 		private static function extractColumnDefinitions(
-			string $className,
-			AnnotationReader $annotationReader,
-			array $annotations
+			string           $className,
+			array            $annotations
 		): array {
 			$definitions = [];
 			
@@ -511,31 +490,22 @@
 						continue;
 					}
 					
-					$collection = $annotations[$propertyName];
-					
-					// Array access returns array of matching annotations
-					$columnAnnotations = $collection[Column::class];
+					// Get the Column annotation for this property (last() returns null for empty collections)
+					$columnAnnotation = $annotations[$propertyName][Column::class]->last();
 					
 					// Skip if no Column annotation
-					if ($columnAnnotations->isEmpty()) {
+					if (!$columnAnnotation) {
 						continue;
 					}
-					
-					$columnAnnotation = $columnAnnotations->last();
 					
 					// Use the column name from the annotation
 					$columnName = $columnAnnotation->getName();
-					
-					// If no column name found, skip this property
-					if (empty($columnName)) {
-						continue;
-					}
 					
 					// Fetch the database column type
 					$columnType = $columnAnnotation->getType();
 					
 					// Determine if this is an identity column
-					$isIdentity = self::isIdentityColumn($collection);
+					$isIdentity = self::isIdentityColumn($annotations[$propertyName]);
 					
 					// Build a comprehensive array of column metadata
 					$definitions[$columnName] = [
@@ -569,28 +539,22 @@
 		
 		/**
 		 * Determines if a property represents an auto-increment column.
-		 *
-		 * A column is considered auto-increment if it:
-		 * 1. Has a Column annotation marked as primary key, AND
-		 * 2. Either:
-		 *    - Has a PrimaryKeyStrategy annotation with value 'identity', OR
-		 *    - Has no PrimaryKeyStrategy annotation at all (defaulting to auto-increment)
-		 *
 		 * @param AnnotationCollection $collection The annotations for a single property
 		 * @return bool Returns true if the property is an auto-increment column, false otherwise
 		 */
 		private static function isIdentityColumn(AnnotationCollection $collection): bool {
-			// Array access returns arrays of matching annotations
-			$columnAnnotations = $collection[Column::class];
+			// Get the Column annotation (last() returns null for empty collections)
+			$columnAnnotation = $collection[Column::class]->last();
 			
 			// Must be a primary key
-			if (empty($columnAnnotations) || !$columnAnnotations[0]->isPrimaryKey()) {
+			if (!$columnAnnotation || !$columnAnnotation->isPrimaryKey()) {
 				return false;
 			}
 			
-			$strategyAnnotations = $collection[PrimaryKeyStrategy::class];
+			// Get the PrimaryKeyStrategy annotation (last() returns null for empty collections)
+			$strategyAnnotation = $collection[PrimaryKeyStrategy::class]->last();
 			
 			// Identity if no strategy (default) or explicitly set to identity
-			return empty($strategyAnnotations) || $strategyAnnotations[0]->getValue() === 'identity';
+			return !$strategyAnnotation || $strategyAnnotation->getValue() === 'identity';
 		}
 	}
