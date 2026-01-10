@@ -46,7 +46,7 @@
 				}
 				
 				// Add prefix to the list
-				$routePrefix = $annotations[0]->getRoutePrefix();
+				$routePrefix = $annotations->last()->getRoutePrefix();
 				
 				// Only add prefix if it's not empty
 				if ($routePrefix !== '') {

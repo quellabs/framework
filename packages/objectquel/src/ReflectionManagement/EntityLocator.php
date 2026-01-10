@@ -152,11 +152,7 @@
 		 * @throws AnnotationReaderException
 		 */
 		private function isEntity(string $entityName): bool {
-			try {
-				$annotations = $this->annotationReader->getClassAnnotations($entityName, Table::class);
-				return !$annotations->isEmpty();
-			} catch (ParserException $e) {
-				return false;
-			}
+			$annotations = $this->annotationReader->getClassAnnotations($entityName, Table::class);
+			return !$annotations->isEmpty();
 		}
 	}

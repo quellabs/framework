@@ -138,9 +138,9 @@
 					CacheContext::class
 				);
 				
-				// Extract parameters from the first annotation if it exists
+				// Extract parameters from the last annotation if it exists
 				if (!$annotations->isEmpty()) {
-					$params = $annotations[0]->getParameters();
+					$params = $annotations->last()->getParameters();
 					$namespace = $params['namespace'] ?? $namespace;
 				}
 			}

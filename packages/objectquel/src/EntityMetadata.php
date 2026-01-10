@@ -17,17 +17,23 @@
 	 * ║                                                                                       ║
 	 * ╚═══════════════════════════════════════════════════════════════════════════════════════╝
 	 */
-
+	
 	namespace Quellabs\ObjectQuel;
 	
+	use Quellabs\AnnotationReader\AnnotationReader;
 	use Quellabs\AnnotationReader\Collection\AnnotationCollection;
+	use Quellabs\AnnotationReader\Exception\AnnotationReaderException;
+	use Quellabs\AnnotationReader\Exception\ParserException;
 	use Quellabs\ObjectQuel\Annotations\Orm\Column;
 	use Quellabs\ObjectQuel\Annotations\Orm\Index;
 	use Quellabs\ObjectQuel\Annotations\Orm\OneToMany;
 	use Quellabs\ObjectQuel\Annotations\Orm\OneToOne;
 	use Quellabs\ObjectQuel\Annotations\Orm\ManyToOne;
+	use Quellabs\ObjectQuel\Annotations\Orm\PrimaryKeyStrategy;
+	use Quellabs\ObjectQuel\Annotations\Orm\Table;
 	use Quellabs\ObjectQuel\Annotations\Orm\UniqueIndex;
 	use Quellabs\ObjectQuel\Annotations\Orm\Version;
+	use Quellabs\ObjectQuel\DatabaseAdapter\TypeMapper;
 	
 	/**
 	 * Immutable value object containing all metadata for a single entity.
@@ -39,11 +45,16 @@
 	 *
 	 * All properties are readonly to ensure immutability and prevent accidental
 	 * modification of cached metadata.
+	 *
+	 * The class uses a static factory method (fromClass) to build itself from annotations,
+	 * keeping construction logic encapsulated within the metadata object rather than
+	 * spreading it across multiple classes.
 	 */
 	readonly class EntityMetadata {
 		
 		/**
-		 * Constructor for EntityMetadata.
+		 * Private constructor - use EntityMetadata::fromClass() to create instances.
+		 *
 		 * @param string $className Fully qualified, normalized class name
 		 * @param string $tableName Database table name from @Table annotation
 		 * @param array<string, mixed> $properties Property names and their reflection info
@@ -59,7 +70,7 @@
 		 * @param string|null $autoIncrementColumn Property name of auto-increment primary key (if any)
 		 * @param array<string, array> $columnDefinitions Full column definitions for schema generation
 		 */
-		public function __construct(
+		private function __construct(
 			public string  $className,
 			public string  $tableName,
 			public array   $properties,
@@ -75,6 +86,71 @@
 			public ?string $autoIncrementColumn,
 			public array   $columnDefinitions,
 		) {}
+		
+		/**
+		 * Factory method to build EntityMetadata from a class using annotations.
+		 *
+		 * This is the primary way to create EntityMetadata objects. It handles all
+		 * the complexity of reading annotations, extracting metadata, and computing
+		 * derived properties.
+		 *
+		 * @param string $className Fully qualified, normalized class name
+		 * @param AnnotationReader $annotationReader The annotation reader to use
+		 * @return self A fully populated EntityMetadata instance
+		 * @throws \ReflectionException If the class cannot be reflected
+		 * @throws AnnotationReaderException
+		 */
+		public static function fromClass(string $className, AnnotationReader $annotationReader): self {
+			// Get reflection for the entity class
+			$reflection = new \ReflectionClass($className);
+			
+			// Extract table name from @Table annotation
+			$tableName = self::extractTableName($className, $annotationReader);
+			
+			// Extract property-level information
+			$properties = self::extractProperties($reflection);
+			$annotations = self::extractPropertyAnnotations($className, $annotationReader, $properties);
+			
+			// Build derived metadata from annotations
+			$columnMap = self::buildColumnMap($annotations);
+			$identifierKeys = self::buildIdentifierKeys($annotations);
+			$identifierColumns = self::buildIdentifierColumns($identifierKeys, $columnMap);
+			$versionColumns = self::extractVersionColumns($annotations);
+			
+			// Extract relationship annotations
+			$manyToOneRelations = self::extractRelations($annotations, ManyToOne::class);
+			$oneToManyRelations = self::extractRelations($annotations, OneToMany::class);
+			$oneToOneRelations = self::extractRelations($annotations, OneToOne::class);
+			
+			// Extract class-level annotations
+			$indexes = self::extractIndexes($className, $annotationReader);
+			
+			// Determine auto-increment column
+			$autoIncrementColumn = self::findAutoIncrementColumn($annotations);
+			
+			// Build full column definitions for schema generation
+			$columnDefinitions = self::extractColumnDefinitions($className, $annotationReader, $annotations);
+			
+			// Create and return the immutable metadata object
+			return new self(
+				className: $className,
+				tableName: $tableName,
+				properties: $properties,
+				annotations: $annotations,
+				columnMap: $columnMap,
+				identifierKeys: $identifierKeys,
+				identifierColumns: $identifierColumns,
+				versionColumns: $versionColumns,
+				manyToOneRelations: $manyToOneRelations,
+				oneToManyRelations: $oneToManyRelations,
+				oneToOneRelations: $oneToOneRelations,
+				indexes: $indexes,
+				autoIncrementColumn: $autoIncrementColumn,
+				columnDefinitions: $columnDefinitions,
+			);
+		}
+		
+		// ==================== Public API Methods ====================
 		
 		/**
 		 * Retrieves the primary key of the entity.
@@ -168,5 +244,353 @@
 			// Otherwise, get the first identifier key and create an array with the proper key and value
 			$firstKey = $this->identifierKeys[0] ?? null;
 			return $firstKey ? [$firstKey => $primaryKey] : [];
+		}
+		
+		// ==================== Private Extraction Methods ====================
+		
+		/**
+		 * Extract the table name from the @Table annotation.
+		 *
+		 * With the updated AnnotationCollection, array access returns an array of all
+		 * matching annotations. We validate that exactly one @Table annotation exists.
+		 *
+		 * @param string $className The fully qualified class name
+		 * @param AnnotationReader $annotationReader The annotation reader instance
+		 * @return string The database table name
+		 * @throws \RuntimeException|AnnotationReaderException If no @Table annotation is found or multiple exist
+		 */
+		private static function extractTableName(string $className, AnnotationReader $annotationReader): string {
+			try {
+				// Read the class annotations
+				$classAnnotations = $annotationReader->getClassAnnotations($className);
+				
+				// Array access returns AnnotationCollection of all matching annotations
+				$tableAnnotations = $classAnnotations[Table::class];
+				
+				// Show error when table has no @Table annotations
+				if ($tableAnnotations->isEmpty()) {
+					throw new \RuntimeException("Entity {$className} is missing required @Table annotation");
+				}
+				
+				return $tableAnnotations->last()->getName();
+			} catch (ParserException $e) {
+				throw new \RuntimeException("Failed to parse annotations for {$className}: " . $e->getMessage(), 0, $e);
+			}
+		}
+		
+		/**
+		 * Extract all properties from the entity class.
+		 * Returns property names as keys with their ReflectionProperty objects as values.
+		 * @param \ReflectionClass $reflection The reflection object for the entity
+		 * @return array<string, \ReflectionProperty> Property name => ReflectionProperty mapping
+		 */
+		private static function extractProperties(\ReflectionClass $reflection): array {
+			$properties = [];
+			
+			foreach ($reflection->getProperties() as $property) {
+				$properties[$property->getName()] = $property;
+			}
+			
+			return $properties;
+		}
+		
+		/**
+		 * Extract all annotations for all properties in the entity.
+		 * @param string $className The fully qualified class name
+		 * @param AnnotationReader $annotationReader The annotation reader instance
+		 * @param array $properties The properties extracted from the entity
+		 * @return array<string, AnnotationCollection> Property name => AnnotationCollection mapping
+		 * @throws AnnotationReaderException
+		 */
+		private static function extractPropertyAnnotations(string $className, AnnotationReader $annotationReader, array $properties): array {
+			$annotations = [];
+			
+			foreach (array_keys($properties) as $propertyName) {
+				try {
+					// Get all annotations for this property
+					$propertyAnnotations = $annotationReader->getPropertyAnnotations($className, $propertyName);
+					
+					// Only store if there are annotations present
+					if (!$propertyAnnotations->isEmpty()) {
+						$annotations[$propertyName] = $propertyAnnotations;
+					}
+				} catch (ParserException $e) {
+					// Skip properties with annotation parse errors
+					continue;
+				}
+			}
+			
+			return $annotations;
+		}
+		
+		/**
+		 * Build the property => column name mapping from Column annotations.
+		 * @param array $annotations The property annotations
+		 * @return array<string, string> Property name => column name mapping
+		 */
+		private static function buildColumnMap(array $annotations): array {
+			$result = [];
+			
+			foreach ($annotations as $propertyName => $collection) {
+				// Array access returns array of all Column annotations
+				$columnAnnotations = $collection[Column::class];
+				
+				// Check if any column annotation exist, if so add name to map
+				// Use the last (and should be only) Column annotation
+				if (!$columnAnnotations->isEmpty()) {
+					$result[$propertyName] = $columnAnnotations->last()->getName();
+				}
+			}
+			
+			return $result;
+		}
+		
+		/**
+		 * Build the list of identifier (primary key) property names.
+		 * @param array $annotations The property annotations
+		 * @return array<string> Array of property names that are primary keys
+		 */
+		private static function buildIdentifierKeys(array $annotations): array {
+			$identifierKeys = [];
+			
+			foreach ($annotations as $propertyName => $collection) {
+				// Get all Column annotations for this property (returns AnnotationCollection)
+				$columnAnnotations = $collection[Column::class];
+				
+				// If property has Column annotation(s) and the last one marks it as primary key, include it
+				if (!$columnAnnotations->isEmpty() && $columnAnnotations->last()->isPrimaryKey()) {
+					$identifierKeys[] = $propertyName;
+				}
+			}
+			
+			return $identifierKeys;
+		}
+		
+		/**
+		 * Build the list of identifier (primary key) column names.
+		 * @param array $identifierKeys The identifier property names
+		 * @param array $columnMap The property => column name mapping
+		 * @return array<string> Array of column names that are primary keys
+		 */
+		private static function buildIdentifierColumns(array $identifierKeys, array $columnMap): array {
+			$identifierColumns = [];
+			
+			foreach ($identifierKeys as $propertyName) {
+				if (isset($columnMap[$propertyName])) {
+					$identifierColumns[] = $columnMap[$propertyName];
+				}
+			}
+			
+			return $identifierColumns;
+		}
+		
+		/**
+		 * Extract version columns used for optimistic locking.
+		 * @param array $annotations The property annotations
+		 * @return array<string, array{name: string, column: Column, version: Version}> Property name => version info mapping
+		 */
+		private static function extractVersionColumns(array $annotations): array {
+			$versionColumns = [];
+			
+			foreach ($annotations as $propertyName => $collection) {
+				// Array access returns arrays of matching annotations
+				$columnAnnotations = $collection[Column::class];
+				$versionAnnotations = $collection[Version::class];
+				
+				if (!$columnAnnotations->isEmpty() && !$versionAnnotations->isEmpty()) {
+					$versionColumns[$propertyName] = [
+						'name'    => $columnAnnotations->last()->getName(),
+						'column'  => $columnAnnotations->last(),
+						'version' => $versionAnnotations->last(),
+					];
+				}
+			}
+			
+			return $versionColumns;
+		}
+		
+		/**
+		 * Extract relationship annotations of a specific type.
+		 * @param array $annotations The property annotations
+		 * @param class-string $relationType The relationship annotation class (ManyToOne, OneToMany, or OneToOne)
+		 * @return array Property name => relationship annotation mapping
+		 */
+		private static function extractRelations(array $annotations, string $relationType): array {
+			$result = [];
+			
+			foreach ($annotations as $propertyName => $collection) {
+				// Array access returns array of matching annotations
+				$relationAnnotations = $collection[$relationType];
+				
+				if (!$relationAnnotations->isEmpty()) {
+					// Use the last (and should be only) relationship annotation
+					$result[$propertyName] = $relationAnnotations->last();
+				}
+			}
+			
+			return $result;
+		}
+		
+		/**
+		 * Extract index annotations from class level.
+		 * @param string $className The fully qualified class name
+		 * @param AnnotationReader $annotationReader The annotation reader instance
+		 * @return array Array of Index and UniqueIndex annotation objects
+		 * @throws AnnotationReaderException
+		 */
+		private static function extractIndexes(string $className, AnnotationReader $annotationReader): array {
+			// Get all class-level annotations
+			$classAnnotations = $annotationReader->getClassAnnotations($className);
+			
+			// Filter to only Index and UniqueIndex annotations
+			$indexes = $classAnnotations->filter(function ($annotation) {
+				return $annotation instanceof Index || $annotation instanceof UniqueIndex;
+			});
+			
+			return $indexes->toArray();
+		}
+		
+		/**
+		 * Find the auto-increment column if one exists.
+		 *
+		 * A column is considered auto-increment if it:
+		 * 1. Has a Column annotation marked as primary key, AND
+		 * 2. Either:
+		 *    - Has a PrimaryKeyStrategy annotation with value 'identity', OR
+		 *    - Has no PrimaryKeyStrategy annotation at all (defaulting to auto-increment)
+		 *
+		 * @param array $annotations The property annotations
+		 * @return string|null The property name of the auto-increment column, or null if none exists
+		 */
+		private static function findAutoIncrementColumn(array $annotations): ?string {
+			foreach ($annotations as $propertyName => $collection) {
+				if (self::isIdentityColumn($collection)) {
+					return $propertyName;
+				}
+			}
+			
+			return null;
+		}
+		
+		/**
+		 * Extract full column definitions for schema generation.
+		 *
+		 * This method builds comprehensive metadata for each database column,
+		 * including type information, constraints, defaults, and other properties
+		 * needed for creating or migrating database schemas.
+		 *
+		 * The extracted information includes:
+		 * - Database column type and PHP property type
+		 * - Length limits and precision/scale for numeric types
+		 * - Nullable, unsigned, and default value settings
+		 * - Primary key and auto-increment detection
+		 * - Enum value lists for enum columns
+		 *
+		 * @param string $className The fully qualified class name
+		 * @param AnnotationReader $annotationReader The annotation reader instance
+		 * @param array $annotations Pre-extracted annotations (for performance)
+		 * @return array Column name => column definition mapping
+		 */
+		private static function extractColumnDefinitions(
+			string $className,
+			AnnotationReader $annotationReader,
+			array $annotations
+		): array {
+			$definitions = [];
+			
+			try {
+				// Create a reflection object for the provided class to inspect its properties
+				$reflection = new \ReflectionClass($className);
+				
+				// Iterate through all properties of the class
+				foreach ($reflection->getProperties() as $property) {
+					$propertyName = $property->getName();
+					
+					// Skip if we don't have annotations for this property
+					if (!isset($annotations[$propertyName])) {
+						continue;
+					}
+					
+					$collection = $annotations[$propertyName];
+					
+					// Array access returns array of matching annotations
+					$columnAnnotations = $collection[Column::class];
+					
+					// Skip if no Column annotation
+					if ($columnAnnotations->isEmpty()) {
+						continue;
+					}
+					
+					$columnAnnotation = $columnAnnotations->last();
+					
+					// Use the column name from the annotation
+					$columnName = $columnAnnotation->getName();
+					
+					// If no column name found, skip this property
+					if (empty($columnName)) {
+						continue;
+					}
+					
+					// Fetch the database column type
+					$columnType = $columnAnnotation->getType();
+					
+					// Determine if this is an identity column
+					$isIdentity = self::isIdentityColumn($collection);
+					
+					// Build a comprehensive array of column metadata
+					$definitions[$columnName] = [
+						'property_name' => $propertyName,                           // PHP property name
+						'type'          => $columnType,                             // Database column type
+						'php_type'      => $property->getType(),                    // PHP type (from reflection)
+						
+						// Get column limit from annotation or use default based on the column type
+						'limit'         => $columnAnnotation->getLimit() ?? TypeMapper::getDefaultLimit($columnType),
+						'nullable'      => $columnAnnotation->isNullable(),         // Whether column allows NULL values
+						'unsigned'      => $columnAnnotation->isUnsigned(),         // Whether numeric column is unsigned
+						'default'       => $columnAnnotation->getDefault(),         // Default value for the column
+						'primary_key'   => $columnAnnotation->isPrimaryKey(),       // Whether column is a primary key
+						'scale'         => $columnAnnotation->getScale(),           // Decimal scale (for numeric types)
+						'precision'     => $columnAnnotation->getPrecision(),       // Decimal precision (for numeric types)
+						
+						// Whether this column is an auto-incrementing identity column
+						'identity'      => $isIdentity,
+						
+						// Read enum values if this is an enum type
+						'values'        => TypeMapper::getEnumCases($columnAnnotation->getEnumType())
+					];
+				}
+			} catch (\ReflectionException $e) {
+				// Silently handle reflection exceptions - return what we have so far
+			}
+			
+			// Return the complete set of column definitions
+			return $definitions;
+		}
+		
+		/**
+		 * Determines if a property represents an auto-increment column.
+		 *
+		 * A column is considered auto-increment if it:
+		 * 1. Has a Column annotation marked as primary key, AND
+		 * 2. Either:
+		 *    - Has a PrimaryKeyStrategy annotation with value 'identity', OR
+		 *    - Has no PrimaryKeyStrategy annotation at all (defaulting to auto-increment)
+		 *
+		 * @param AnnotationCollection $collection The annotations for a single property
+		 * @return bool Returns true if the property is an auto-increment column, false otherwise
+		 */
+		private static function isIdentityColumn(AnnotationCollection $collection): bool {
+			// Array access returns arrays of matching annotations
+			$columnAnnotations = $collection[Column::class];
+			
+			// Must be a primary key
+			if (empty($columnAnnotations) || !$columnAnnotations[0]->isPrimaryKey()) {
+				return false;
+			}
+			
+			$strategyAnnotations = $collection[PrimaryKeyStrategy::class];
+			
+			// Identity if no strategy (default) or explicitly set to identity
+			return empty($strategyAnnotations) || $strategyAnnotations[0]->getValue() === 'identity';
 		}
 	}

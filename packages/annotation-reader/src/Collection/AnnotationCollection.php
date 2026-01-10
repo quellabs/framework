@@ -33,13 +33,19 @@
 			}
 			
 			// For class name access - check if any annotation is of this type
-			return $this->getFirst($offset) !== null;
+			foreach ($this->annotations as $annotation) {
+				if ($annotation instanceof $offset) {
+					return true;
+				}
+			}
+			
+			return false;
 		}
 		
 		/**
 		 * Get the value at the specified offset.
 		 * @param mixed $offset The annotation type (class name) or numeric index
-		 * @return mixed The first annotation of that type or annotation at index
+		 * @return mixed The annotation at index, or AnnotationCollection of annotations matching the type
 		 */
 		public function offsetGet(mixed $offset): mixed {
 			// Numeric access - return annotation at index
@@ -47,8 +53,16 @@
 				return $this->annotations[$offset] ?? null;
 			}
 			
-			// Class name access - return first annotation of that type
-			return $this->getFirst($offset);
+			// Class name access - return AnnotationCollection of all annotations of that type
+			$matches = [];
+			
+			foreach ($this->annotations as $annotation) {
+				if ($annotation instanceof $offset) {
+					$matches[] = $annotation;
+				}
+			}
+			
+			return new self($matches);
 		}
 		
 		/**
@@ -147,22 +161,33 @@
 		 * @return array Array with both numeric indices and class names as keys
 		 */
 		public function toArray(): array {
+			// First pass: count occurrences of each class
+			$classCounts = [];
+
+			foreach ($this->annotations as $annotation) {
+				$className = get_class($annotation);
+				$classCounts[$className] = ($classCounts[$className] ?? 0) + 1;
+			}
+			
+			// Second pass
 			$result = [];
 			$seenClasses = [];
 			$numericIndex = 0;
 			
 			foreach ($this->annotations as $annotation) {
-				// Get the fully qualified class name of the current annotation
+				// Fetch class name
 				$className = get_class($annotation);
 				
-				// First occurrence of this class: use class name as key
-				if (!isset($seenClasses[$className])) {
+				// Increment counter for this class
+				$seenClasses[$className] = ($seenClasses[$className] ?? 0) + 1;
+				
+				// Last occurrence of this class: use class name as key
+				if ($seenClasses[$className] === $classCounts[$className]) {
 					$result[$className] = $annotation;
-					$seenClasses[$className] = true;
 					continue;
 				}
 				
-				// Subsequent occurrences: use a numeric key
+				// Not the last occurrence: use a numeric key
 				$result[$numericIndex++] = $annotation;
 			}
 			
@@ -175,32 +200,6 @@
 		 */
 		public function toIndexedArray(): array {
 			return $this->annotations;
-		}
-		
-		/**
-		 * Convert the collection to a grouped array with class names as keys.
-		 * @return array Associative array where keys are class names and values are
-		 *               indexed arrays of annotations of that type
-		 */
-		public function toGroupedArray(): array {
-			$result = [];
-
-			foreach ($this->annotations as $annotation) {
-				// Get the fully qualified class name of the current annotation
-				$className = get_class($annotation);
-				
-				// If this class name hasn't been encountered yet, create a new array for it
-				if (!isset($result[$className])) {
-					$result[$className] = [];
-				}
-				
-				// Add the current annotation to the array for its class
-				$result[$className][] = $annotation;
-			}
-			
-			// Return the grouped annotations array where keys are class names
-			// and values are arrays of annotation instances of that class
-			return $result;
 		}
 		
 		/**
@@ -218,21 +217,6 @@
 			}
 			
 			return new self($filtered);
-		}
-		
-		/**
-		 * Get the first annotation of a specific type.
-		 * @param string $className The annotation class name
-		 * @return mixed The first annotation of that type or null if not found
-		 */
-		public function getFirst(string $className): mixed {
-			foreach ($this->annotations as $annotation) {
-				if ($annotation instanceof $className) {
-					return $annotation;
-				}
-			}
-			
-			return null;
 		}
 		
 		/**

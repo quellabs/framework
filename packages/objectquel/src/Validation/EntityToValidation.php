@@ -4,6 +4,7 @@
 	
 	use Quellabs\AnnotationReader\Configuration;
 	use Quellabs\AnnotationReader\AnnotationReader;
+	use Quellabs\AnnotationReader\Exception\AnnotationReaderException;
 	use Quellabs\ObjectQuel\Validation\Rules\Date;
 	use Quellabs\ObjectQuel\Validation\Rules\Email;
 	use Quellabs\ObjectQuel\Validation\Rules\Length;
@@ -37,6 +38,7 @@
 		 * between annotation classes and validation rule classes.
 		 * @param object $entity The entity object whose annotations need to be converted
 		 * @return array An array with validation rules for each property of the entity
+		 * @throws AnnotationReaderException
 		 */
 		public function convert(object $entity): array {
 			// Mapping of annotation classes to validation rule classes
