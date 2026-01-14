@@ -2,7 +2,7 @@
   "contracts": "1.0.25",
   "support": "1.0.9",
   "discover": "1.0.26",
-  "dependency-injection": "1.0.25",
+  "dependency-injection": "1.0.26",
   "sculpt": "1.0.21",
   "objectquel": "1.0.58",
   "cache": "1.0.3",

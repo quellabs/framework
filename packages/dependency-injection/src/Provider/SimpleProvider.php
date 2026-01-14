@@ -15,17 +15,17 @@
 		/** @var string The interface or abstract class to bind */
 		private string $abstract;
 		
-		/** @var string The concrete class to instantiate */
-		private string $concrete;
+		/** @var object The concrete object */
+		private object $concrete;
 		
 		/**
 		 * Constructor
 		 * @param string $abstract The interface or abstract class to bind
-		 * @param string $concrete The concrete class to instantiate
+		 * @param object $concrete The concrete class to return
 		 */
 		public function __construct(
 			string $abstract,
-			string $concrete
+			object $concrete
 		) {
 			$this->concrete = $concrete;
 			$this->abstract = $abstract;
@@ -55,23 +55,6 @@
 			array $metadata,
 			?MethodContext $methodContext = null
 		): object {
-			// Instantiate the concrete class with autowired dependencies
-			return new $this->concrete(...$dependencies);
-		}
-		
-		/**
-		 * Get the abstract type (interface/abstract class) this binding handles.
-		 * @return string The abstract type
-		 */
-		public function getAbstract(): string {
-			return $this->abstract;
-		}
-		
-		/**
-		 * Get the concrete type this binding resolves to.
-		 * @return string The concrete class name
-		 */
-		public function getConcrete(): string {
 			return $this->concrete;
 		}
 	}
