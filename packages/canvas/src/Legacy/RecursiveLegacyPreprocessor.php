@@ -32,27 +32,65 @@
 		private string $legacyBasePath;
 		
 		/**
+		 * Array of path patterns to exclude from preprocessing
+		 */
+		private array $excludedPaths;
+		
+		
+		/**
 		 * Constructor that takes the cache directory and legacy base path
 		 * @param string $cacheDir Directory where processed files will be stored
 		 * @param string $legacyBasePath Base path for legacy files (default: 'legacy/')
+		 * @param array $excludedPaths
 		 */
-		public function __construct(string $cacheDir, string $legacyBasePath = 'legacy/') {
+		public function __construct(string $cacheDir, string $legacyBasePath = 'legacy/', array $excludedPaths = []) {
 			$this->cacheDir = $cacheDir;
 			$this->legacyBasePath = rtrim($legacyBasePath, '/') . '/';
+			$this->excludedPaths = $excludedPaths;
+		}
+		
+		/**
+		 * Check if a file should be preprocessed or used as-is
+		 * @param string $filePath Path to check
+		 * @return bool True if file should be preprocessed, false to use original
+		 */
+		private function shouldPreprocess(string $filePath): bool {
+			$normalizedPath = str_replace('\\', '/', $filePath);
+			
+			foreach ($this->excludedPaths as $excluded) {
+				if (str_contains($normalizedPath, $excluded)) {
+					return false;
+				}
+			}
+			
+			return true;
 		}
 		
 		/**
 		 * Process a legacy file and all its dependencies recursively
 		 * @param string $mainFilePath Path to the main legacy file
 		 * @return string Path to the processed main file
+		 * @throws \Exception
 		 */
 		public function processFileRecursively(string $mainFilePath): string {
+			// Resolve to absolute path first
+			$realPath = realpath($mainFilePath);
+			
+			if (!$realPath) {
+				throw new \Exception("File not found: {$mainFilePath}");
+			}
+			
+			// Check if file should be preprocessed at all
+			if (!$this->shouldPreprocess($realPath)) {
+				return $realPath; // Return original file path
+			}
+			
 			// Reset state for new processing run to avoid cross-contamination
 			$this->processedFiles = [];
 			$this->fileMapping = [];
 			
 			// Process the main file and all its dependencies
-			return $this->processFileWithIncludes($mainFilePath);
+			return $this->processFileWithIncludes($realPath);
 		}
 		
 		/**
@@ -71,23 +109,21 @@
 		 * @throws \Exception If file is not found
 		 */
 		private function processFileWithIncludes(string $filePath): string {
-			// Normalize path to prevent issues with relative paths and symlinks
-			$realPath = realpath($filePath);
-			
-			if (!$realPath) {
-				throw new \Exception("File not found: {$filePath}");
+			// Check if this specific file should be preprocessed
+			if (!$this->shouldPreprocess($filePath)) {
+				return $filePath;
 			}
 			
 			// Skip if already processed (prevents infinite recursion and duplicate work)
-			if (isset($this->processedFiles[$realPath])) {
-				return $this->processedFiles[$realPath];
+			if (isset($this->processedFiles[$filePath])) {
+				return $this->processedFiles[$filePath];
 			}
 			
 			// Read original file content
-			$content = file_get_contents($realPath);
+			$content = file_get_contents($filePath);
 			
 			// Find all include/require statements in this file
-			$includes = $this->discoverIncludes($content, dirname($realPath));
+			$includes = $this->discoverIncludes($content, dirname($filePath));
 			
 			// Process all discovered includes first (depth-first approach)
 			// This ensures dependencies are processed before the files that depend on them
@@ -100,19 +136,19 @@
 			}
 			
 			// Now process this file's content using parent's preprocessing logic
-			$processedContent = parent::preprocess($realPath);
+			$processedContent = parent::preprocess($filePath);
 			
 			// Rewrite include paths to point to processed files instead of originals
-			$processedContent = $this->rewriteIncludePaths($processedContent, dirname($realPath));
+			$processedContent = $this->rewriteIncludePaths($processedContent, dirname($filePath));
 			
 			// Generate a unique path for the processed file
-			$processedFilePath = $this->generateProcessedFilePath($realPath);
+			$processedFilePath = $this->generateProcessedFilePath($filePath);
 			
 			// Write the processed content to the cache directory
 			file_put_contents($processedFilePath, $processedContent);
 			
 			// Cache the result to avoid reprocessing
-			$this->processedFiles[$realPath] = $processedFilePath;
+			$this->processedFiles[$filePath] = $processedFilePath;
 			
 			// Return the path
 			return $processedFilePath;
@@ -142,6 +178,7 @@
 			$patterns = [
 				// Matches: include('file.php') or include_once('file.php')
 				'/\b(include|require|include_once|require_once)\s*\(\s*([\'"])([^\2]*?)\2\s*\)\s*;/i',
+				
 				// Matches: include 'file.php' or include_once 'file.php' (without parentheses)
 				'/\b(include|require|include_once|require_once)\s+([\'"])([^\2]*?)\2\s*;/i'
 			];
