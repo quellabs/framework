@@ -73,7 +73,7 @@
 		 */
 		public function register(ServiceProvider $provider): self {
 			// Store the provider in the providers array using its class name as the key
-			$this->providers[get_class($provider)] = $provider;
+			$this->providers[spl_object_hash($provider)] = $provider;
 			
 			// Return the current instance to allow method chaining
 			return $this;
@@ -86,7 +86,7 @@
 		 */
 		public function unregister(ServiceProvider $provider): self {
 			// Remove the provider from the providers array using its class name as the key
-			unset($this->providers[get_class($provider)]);
+			unset($this->providers[spl_object_hash($provider)]);
 			
 			// Return the current instance to allow method chaining
 			return $this;

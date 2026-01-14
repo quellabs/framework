@@ -3,11 +3,9 @@
 	namespace App\Controllers;
 	
 	use App\Entities\PostEntity;
-	use App\Enums\TestEnum;
 	use Quellabs\Canvas\Annotations\Route;
-	use Quellabs\Canvas\Controllers\BaseController;
 	use Quellabs\Canvas\Controllers\SecureController;
-	use Quellabs\Canvas\Routing\Contracts\MethodContextInterface;
+	use Symfony\Component\HttpFoundation\Request;
 	use Symfony\Component\HttpFoundation\Response;
 	
 	class HomeController extends SecureController {
@@ -16,7 +14,7 @@
 		 * @Route("/")
 		 * @return Response
 		 */
-		public function index(): Response {
+		public function index(Request $request): Response {
 			$tmp = $this->em()->find(PostEntity::class, 5);
 			$tmp->setCreatedAt(new \DateTime());
 			
