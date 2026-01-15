@@ -25,7 +25,7 @@
 		}
 		
 		/**
-		 * @Route("/hello/{name}")
+		 * @Route("/hello/{name:int}")
 		 * @param string $name
 		 * @return Response
 		 */
