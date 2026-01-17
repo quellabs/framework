@@ -145,6 +145,17 @@
 		}
 		
 		/**
+		 * Store an item in the cache (alias for set)
+		 * @param string $key Cache key
+		 * @param mixed $value Value to cache
+		 * @param int $ttl Time to live in seconds (0 = forever)
+		 * @return bool True on success
+		 */
+		public function put(string $key, mixed $value, int $ttl = 3600): bool {
+			return $this->set($key, $value, $ttl);
+		}
+		
+		/**
 		 * Get an item or execute callback and store result
 		 * @param string $key Cache key
 		 * @param int $ttl Time to live in seconds

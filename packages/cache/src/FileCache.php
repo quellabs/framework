@@ -30,7 +30,7 @@
 		 * @param string $namespace Cache context for namespacing (e.g., 'pages', 'data')
 		 * @param array $config Configuration
 		 */
-		public function __construct(string $namespace = 'default', array $config=[]) {
+		public function __construct(string $namespace = 'default', array $config = []) {
 			// Store namespace
 			$this->namespace = $namespace;
 			
@@ -102,17 +102,6 @@
 		
 		/**
 		 * Get an item or execute callback and store result
-		 *
-		 * This method implements the "cache-aside" pattern with proper
-		 * concurrency control. It prevents multiple processes from
-		 * executing expensive callbacks simultaneously for the same key.
-		 *
-		 * Process:
-		 * 1. Check cache (fast path)
-		 * 2. Acquire process lock if cache miss
-		 * 3. Double-check cache after lock acquisition
-		 * 4. Execute callback and store result if still missing
-		 *
 		 * @param string $key Cache key
 		 * @param int $ttl Time to live in seconds
 		 * @param callable $callback Callback to execute if cache miss
@@ -195,6 +184,80 @@
 		}
 		
 		/**
+		 * Store an item in the cache (alias for set)
+		 * @param string $key Cache key
+		 * @param mixed $value Value to cache
+		 * @param int $ttl Time to live in seconds (0 = forever)
+		 * @return bool True on success
+		 */
+		public function put(string $key, mixed $value, int $ttl = 3600): bool {
+			// Simply alias to set() - FileCache treats them identically
+			return $this->set($key, $value, $ttl);
+		}
+		
+		/**
+		 * Get the current cache namespace
+		 * @return string The namespace identifier
+		 */
+		public function getNamespace(): string {
+			return $this->namespace;
+		}
+		
+		/**
+		 * Get cache statistics for monitoring
+		 * @return array Statistics array
+		 */
+		public function getStats(): array {
+			$contextPath = $this->getContextPath();
+			
+			// Return minimal stats if directory doesn't exist
+			if (!is_dir($contextPath)) {
+				return [
+					'namespace'        => $this->namespace,
+					'total_keys'       => 0,
+					'total_files'      => 0,
+					'total_size'       => 0,
+					'total_size_human' => '0 B',
+					'cache_path'       => $contextPath,
+				];
+			}
+			
+			// Get all cache files (exclude lock files)
+			$files = glob($contextPath . '/*.cache');
+			
+			if ($files === false) {
+				$files = [];
+			}
+			
+			$totalSize = 0;
+			$validKeys = 0;
+			
+			// Iterate through cache files to gather statistics
+			foreach ($files as $file) {
+				// Accumulate file sizes
+				$fileSize = @filesize($file);
+				if ($fileSize !== false) {
+					$totalSize += $fileSize;
+				}
+				
+				// Check if cache entry is valid (not expired)
+				$data = $this->readCacheFileWithLock($file);
+				if ($data !== null && !$this->isExpired($data)) {
+					$validKeys++;
+				}
+			}
+			
+			return [
+				'namespace'        => $this->namespace,
+				'total_keys'       => $validKeys,         // Valid, non-expired keys
+				'total_files'      => count($files),      // All cache files (including expired)
+				'total_size'       => $totalSize,         // Total disk space in bytes
+				'total_size_human' => $this->formatBytes($totalSize),
+				'cache_path'       => $contextPath,
+			];
+		}
+		
+		/**
 		 * Get the full file path for a cache key
 		 * @param string $key Cache key
 		 * @return string Full file path
@@ -225,11 +288,6 @@
 		
 		/**
 		 * Hash a cache key for safe file naming
-		 *
-		 * Uses SHA-256 to create filesystem-safe filenames from arbitrary
-		 * cache keys. This handles keys with special characters, spaces,
-		 * or extreme lengths that would cause filesystem issues.
-		 *
 		 * @param string $key Cache key
 		 * @return string Hashed key (64 characters)
 		 */
@@ -239,17 +297,6 @@
 		
 		/**
 		 * Read and unserialize a cache file with proper locking
-		 *
-		 * This method implements safe file reading with shared locks
-		 * to prevent reading corrupted data during concurrent writes.
-		 *
-		 * Process:
-		 * 1. Check file existence (fast fail)
-		 * 2. Open file for reading
-		 * 3. Acquire shared lock with timeout
-		 * 4. Read and validate file contents
-		 * 5. Unserialize and validate data structure
-		 *
 		 * @param string $filePath File path
 		 * @return array|null Cache data or null if invalid/not found
 		 */
@@ -506,5 +553,17 @@
 			// Remove the now-empty directory
 			// Use @ to suppress warnings from concurrent operations
 			return @rmdir($path);
+		}
+		
+		/**
+		 * Format bytes into human-readable format
+		 * @param int $bytes Number of bytes
+		 * @return string Formatted string (e.g., "1.5 MB")
+		 */
+		private function formatBytes(int $bytes): string {
+			$units = ['B', 'KB', 'MB', 'GB', 'TB'];
+			$factor = floor((strlen((string)$bytes) - 1) / 3);
+			
+			return sprintf("%.2f %s", $bytes / pow(1024, $factor), $units[$factor]);
 		}
 	}
