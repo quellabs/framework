@@ -7,53 +7,56 @@
 	 */
 	class TypeValidator {
 		/**
-		 * @var array List of primitive types
+		 * @var array List of primitive and special types
 		 */
-		private static array $primitiveTypes = ['int', 'float', 'string', 'bool', 'array'];
+		private static array $primitiveTypes = ['int', 'float', 'string', 'bool', 'array', 'callable', 'iterable', 'object', 'mixed', 'null'];
 		
 		/**
-		 * Checks if a type from a signal parameter is compatible with a slot parameter type
-		 * @param string $signalType The type of the value being passed (from signal emission)
-		 * @param string $slotType The type declaration of the receiving parameter
-		 * @return bool True if types are compatible, false otherwise
+		 * Checks if a value of $providedType can be accepted by a parameter of $expectedType
+		 *
+		 * Think: "Can I pass a $providedType value to a parameter expecting $expectedType?"
+		 *
+		 * Examples:
+		 * - isCompatible('Dog', 'Animal') -> true (Dog can be passed to Animal parameter)
+		 * - isCompatible('Animal', 'Dog') -> false (Animal cannot be passed to Dog parameter)
+		 * - isCompatible('int', 'mixed') -> true (int can be passed to mixed parameter)
+		 *
+		 * @param string $providedType The type being provided (what we have)
+		 * @param string $expectedType The type being expected (what parameter accepts)
+		 * @return bool True if provided type can satisfy expected type
 		 */
-		public static function isCompatible(string $signalType, string $slotType): bool {
+		public static function isCompatible(string $providedType, string $expectedType): bool {
 			// Normalize type names to handle aliases
-			$signalType = TypeNormalizer::normalize($signalType);
-			$slotType = TypeNormalizer::normalize($slotType);
+			$providedType = TypeNormalizer::normalize($providedType);
+			$expectedType = TypeNormalizer::normalize($expectedType);
 			
-			// Handle the special case for generic 'object' type
-			if (self::isObjectTypeCompatible ($signalType, $slotType)) {
+			// Exact match is always compatible
+			if ($providedType === $expectedType) {
 				return true;
 			}
 			
-			// If types are exactly the same, they're compatible
-			if ($signalType === $slotType) {
+			// mixed accepts anything
+			if ($expectedType === 'mixed') {
 				return true;
 			}
 			
-			// Handle primitive types compatibility
-			if (self::arePrimitivesIncompatible ($signalType, $slotType)) {
+			// object type accepts any class instance
+			if ($expectedType === 'object' && self::isClassName($providedType)) {
+				return true;
+			}
+			
+			// Handle primitive type incompatibility
+			if (self::arePrimitivesIncompatible($providedType, $expectedType)) {
 				return false;
 			}
 			
-			// Check class inheritance for compatibility
-			return self::hasInheritanceRelationship($signalType, $slotType);
-		}
-		
-		/**
-		 * Checks if either type is a generic 'object' type and the other is a class
-		 * @param string $typeA First type to check
-		 * @param string $typeB Second type to check
-		 * @return bool True if one is 'object' and the other is a class
-		 */
-		private static function isObjectTypeCompatible(string $typeA, string $typeB): bool {
-			// If typeB is generic 'object', check if typeA is a class
-			if ($typeB === 'object' && self::isClassName($typeA)) {
-				return true;
+			// Both are class names - check inheritance (contravariant)
+			// Provided type must be same class or subclass of expected type
+			if (self::isClassName($providedType) && self::isClassName($expectedType)) {
+				return is_subclass_of($providedType, $expectedType);
 			}
-			// If typeA is generic 'object', check if typeB is a class
-			return $typeA === 'object' && self::isClassName($typeB);
+			
+			return false;
 		}
 		
 		/**
@@ -62,35 +65,39 @@
 		 * @return bool True if the type is likely a class name
 		 */
 		private static function isClassName(string $type): bool {
-			return str_starts_with($type, '\\') || class_exists($type);
+			// Not a primitive type and either starts with backslash or class exists
+			return
+				!in_array($type, self::$primitiveTypes, true) &&
+				(str_starts_with($type, '\\') || class_exists($type));
 		}
 		
 		/**
 		 * Checks if the types involve non-compatible primitive types
-		 * @param string $typeA First type to check
-		 * @param string $typeB Second type to check
+		 * @param string $providedType The type being provided
+		 * @param string $expectedType The type being expected
 		 * @return bool True if types are primitive and not compatible
 		 */
-		private static function arePrimitivesIncompatible(string $typeA, string $typeB): bool {
-			$isTypeAPrimitive = in_array($typeA, self::$primitiveTypes);
-			$isTypeBPrimitive = in_array($typeB, self::$primitiveTypes);
+		private static function arePrimitivesIncompatible(string $providedType, string $expectedType): bool {
+			$isProvidedPrimitive = in_array($providedType, self::$primitiveTypes, true);
+			$isExpectedPrimitive = in_array($expectedType, self::$primitiveTypes, true);
 			
-			// If one is primitive and the other isn't, they're not compatible
-			if ($isTypeAPrimitive !== $isTypeBPrimitive) {
+			// If one is primitive and the other isn't, they're incompatible
+			// Exception: object and mixed can accept class instances
+			if ($isProvidedPrimitive !== $isExpectedPrimitive) {
+				return !in_array($expectedType, ['object', 'mixed'], true);
+			}
+			
+			// Both are primitives - check special compatibility rules
+			if ($isProvidedPrimitive && $isExpectedPrimitive) {
+				// iterable accepts array
+				if ($expectedType === 'iterable' && $providedType === 'array') {
+					return false;
+				}
+				
+				// Different primitive types are incompatible
 				return true;
 			}
-			// If both are primitives but different types, they're not compatible
-			return $isTypeAPrimitive && $isTypeBPrimitive && $typeA !== $typeB;
-		}
-		
-		/**
-		 * Checks if two class types have an inheritance relationship
-		 * @param string $classA First class name
-		 * @param string $classB Second class name
-		 * @return bool True if one class inherits from the other
-		 */
-		private static function hasInheritanceRelationship(string $classA, string $classB): bool {
-			// Check if either class inherits from the other
-			return is_subclass_of($classA, $classB) || is_subclass_of($classB, $classA);
+			
+			return false;
 		}
 	}
