@@ -1,6 +1,6 @@
 {
   "contracts": "1.0.25",
-  "support": "1.0.11",
+  "support": "1.0.12",
   "discover": "1.0.26",
   "dependency-injection": "1.0.28",
   "sculpt": "1.0.21",
