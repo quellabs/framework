@@ -1,6 +1,6 @@
 <?php
 	
-	namespace Quellabs\Cache;
+	namespace Quellabs\Canvas\Cache;
 	
 	use Redis;
 	use RedisException;
