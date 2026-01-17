@@ -57,7 +57,7 @@
 		 * Register a signal with the hub
 		 * @param Signal $signal Signal object to register
 		 * @return void
-		 * @throws \RuntimeException If signal name is null or signal already registered
+		 * @throws \RuntimeException|\Exception If signal name is null or signal already registered
 		 */
 		public function registerSignal(Signal $signal): void {
 			// Get signal metadata for registration logic
