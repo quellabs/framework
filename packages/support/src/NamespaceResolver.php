@@ -92,6 +92,16 @@
 		}
 		
 		/**
+		 * Clear all caches - useful for testing or after loading new classes
+		 * @return void
+		 */
+		public static function clearCache(): void {
+			self::$resolutionCache = [];
+			self::$resolutionCacheAccess = [];
+			self::$enhancedImportsCache = [];
+		}
+		
+		/**
 		 * Apply resolution strategies in order of PHP's namespace resolution precedence
 		 * This follows PHP's actual resolution order to ensure consistent behavior
 		 * with how PHP itself would resolve the class name at runtime.
@@ -129,6 +139,7 @@
 			// Example: 'Helper' in namespace 'App\Utils' → 'App\Utils\Helper'
 			if (!$isQualified) {
 				$namespaceMatch = self::resolveWithCurrentNamespace($className, $reflection);
+
 				if ($namespaceMatch !== null) {
 					return $namespaceMatch;
 				}
@@ -161,7 +172,6 @@
 		 * @param array $importsEnhanced Enhanced imports array with direct and namespace mappings
 		 * @return string|null The resolved FQCN if found, null otherwise
 		 */
-		
 		private static function resolveQualifiedName(string $className, array $importsEnhanced): ?string {
 			// Split only once to get first segment and remainder
 			$separatorPos = strpos($className, '\\');
@@ -212,6 +222,7 @@
 		 * @return string|null The resolved FQCN if class exists in current namespace, null otherwise
 		 */
 		private static function resolveWithCurrentNamespace(string $className, \ReflectionClass $reflection): ?string {
+			// Fetch namespace
 			$currentNamespace = $reflection->getNamespaceName();
 			
 			// If we're already in the global namespace, can't prefix further
@@ -412,15 +423,5 @@
 			return class_exists($className) ||
 				interface_exists($className) ||
 				trait_exists($className);
-		}
-		
-		/**
-		 * Clear all caches - useful for testing or after loading new classes
-		 * @return void
-		 */
-		public static function clearCache(): void {
-			self::$resolutionCache = [];
-			self::$resolutionCacheAccess = [];
-			self::$enhancedImportsCache = [];
 		}
 	}
