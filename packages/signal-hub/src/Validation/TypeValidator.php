@@ -6,6 +6,7 @@
 	 * Type compatibility checker
 	 */
 	class TypeValidator {
+		
 		/**
 		 * @var array List of primitive and special types
 		 */
@@ -20,6 +21,7 @@
 		 * - isCompatible('Dog', 'Animal') -> true (Dog can be passed to Animal parameter)
 		 * - isCompatible('Animal', 'Dog') -> false (Animal cannot be passed to Dog parameter)
 		 * - isCompatible('int', 'mixed') -> true (int can be passed to mixed parameter)
+		 * - isCompatible('object', 'Dog') -> true (generic object accepted as Dog - runtime check)
 		 *
 		 * @param string $providedType The type being provided (what we have)
 		 * @param string $expectedType The type being expected (what parameter accepts)
@@ -42,6 +44,12 @@
 			
 			// object type accepts any class instance
 			if ($expectedType === 'object' && self::isClassName($providedType)) {
+				return true;
+			}
+			
+			// Generic object provided can be cast to specific class (runtime check required)
+			// This allows signals to emit generic 'object' to slots expecting specific classes
+			if ($providedType === 'object' && self::isClassName($expectedType)) {
 				return true;
 			}
 			
