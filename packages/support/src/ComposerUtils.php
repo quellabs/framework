@@ -6,7 +6,7 @@
 	use Composer\Autoload\ClassLoader;
 	
 	class ComposerUtils {
-
+		
 		/**
 		 * @var string|null Cached project root
 		 */
@@ -19,10 +19,16 @@
 		private static array $composerJsonCache = [];
 		
 		/**
-		 * Cache for path resolving paths
-		 * @var array
+		 * Cache for resolved paths
+		 * @var array<string, string>
 		 */
 		private static array $normalizedPaths = [];
+		
+		/**
+		 * Cache for loaded autoloader to prevent multiple loads
+		 * @var ClassLoader|null
+		 */
+		private static ?ClassLoader $autoloaderCache = null;
 		
 		/**
 		 * Gets the Composer autoloader instance
@@ -30,9 +36,15 @@
 		 * @throws RuntimeException If autoloader can't be found
 		 */
 		public static function getComposerAutoloader(): ClassLoader {
+			// Return cached autoloader if already loaded
+			if (self::$autoloaderCache !== null) {
+				return self::$autoloaderCache;
+			}
+			
 			// Try to find the Composer autoloader
 			foreach (spl_autoload_functions() as $autoloader) {
 				if (is_array($autoloader) && $autoloader[0] instanceof ClassLoader) {
+					self::$autoloaderCache = $autoloader[0];
 					return $autoloader[0];
 				}
 			}
@@ -49,7 +61,9 @@
 			
 			foreach ($autoloaderPaths as $path) {
 				if (file_exists($path)) {
-					return require $path;
+					$autoloader = require $path;
+					self::$autoloaderCache = $autoloader;
+					return $autoloader;
 				}
 			}
 			
@@ -100,7 +114,7 @@
 			// Find the directory containing composer.json, starting from provided directory or current directory
 			$projectRoot = self::getProjectRoot($startDirectory);
 			
-			// If we couldn't find the project root, we can't locate installed.json
+			// If we couldn't find the project root, we can't locate composer.json
 			if ($projectRoot === null) {
 				return null;
 			}
@@ -113,13 +127,14 @@
 		 * Find the path to the discovery mapping file
 		 * @param string|null $startDirectory Directory to start searching from (defaults to current directory)
 		 * @return string|null Path to the discovery mapping file if found, null otherwise
+		 * @throws RuntimeException If custom mapping file path attempts path traversal outside project root
 		 */
 		public static function getDiscoveryMappingPath(?string $startDirectory = null): ?string {
 			// Find the directory containing composer.json, starting from provided directory or current directory
 			$projectRoot = self::getProjectRoot($startDirectory);
 			
 			// If we couldn't find the project root, we can't locate any mapping files
-			if (!$projectRoot) {
+			if ($projectRoot === null) {
 				return null;
 			}
 			
@@ -128,11 +143,44 @@
 			
 			if (file_exists($composerJsonPath)) {
 				$composerJson = self::parseComposerJson($composerJsonPath);
-				$customPath = $composerJson['extra']['discover']['mapping-file'] ?? null;
 				
-				if ($customPath) {
+				// Validate composer.json structure before accessing nested keys
+				if (is_array($composerJson) &&
+					isset($composerJson['extra']['discover']['mapping-file']) &&
+					is_string($composerJson['extra']['discover']['mapping-file'])) {
+					
+					$customPath = $composerJson['extra']['discover']['mapping-file'];
+					
+					// Security: Prevent path traversal attacks
+					// Only allow absolute paths or paths relative to project root
+					if (self::isAbsolutePath($customPath)) {
+						// For absolute paths, verify they're within project root
+						$realCustomPath = realpath($customPath);
+						$realProjectRoot = realpath($projectRoot);
+						
+						if ($realCustomPath !== false &&
+							$realProjectRoot !== false &&
+							str_starts_with($realCustomPath, $realProjectRoot)) {
+							return $realCustomPath;
+						}
+						
+						throw new RuntimeException(
+							'Custom mapping file path must be within project root. ' .
+							'Attempted path traversal: ' . $customPath
+						);
+					}
+					
+					// Relative path - resolve against project root
 					$absolutePath = $projectRoot . DIRECTORY_SEPARATOR . $customPath;
-					return str_starts_with($customPath, '/') ? $customPath : $absolutePath;
+					$realAbsolutePath = realpath($absolutePath);
+					$realProjectRoot = realpath($projectRoot);
+					
+					// Verify the resolved path exists and is within project root
+					if ($realAbsolutePath !== false &&
+						$realProjectRoot !== false &&
+						str_starts_with($realAbsolutePath, $realProjectRoot)) {
+						return $realAbsolutePath;
+					}
 				}
 			}
 			
@@ -176,7 +224,7 @@
 			$directory = realpath($directory);
 			
 			// Early return if the directory doesn't exist or isn't readable
-			if (!$directory) {
+			if ($directory === false) {
 				return null;
 			}
 			
@@ -205,7 +253,7 @@
 			// Early return if directory doesn't exist or is not readable
 			$absoluteDir = realpath($directory);
 			
-			if (!$absoluteDir) {
+			if ($absoluteDir === false) {
 				return [];
 			}
 			
@@ -214,7 +262,7 @@
 			
 			// If no namespace was found for the directory, we can return early
 			// This is an optimization as we avoid scanning directories that aren't part of a PSR-4 namespace
-			if (!$namespaceForDir) {
+			if ($namespaceForDir === null) {
 				return [];
 			}
 			
@@ -267,16 +315,19 @@
 		 * @return string The resolved path (e.g., "test")
 		 */
 		public static function normalizePath(string $path): string {
+			// Normalize path before using as cache key to avoid duplicate entries
+			$normalizedKey = strtr($path, '\\', '/');
+			
 			// Check if this path has already been resolved and cached
-			if (isset(self::$normalizedPaths[$path])) {
-				return self::$normalizedPaths[$path];
+			if (isset(self::$normalizedPaths[$normalizedKey])) {
+				return self::$normalizedPaths[$normalizedKey];
 			}
 			
 			// Perform the actual path resolution logic
 			$resolved = self::doResolvePath($path);
 			
 			// Cache the resolved path for future lookups to improve performance
-			self::$normalizedPaths[$path] = $resolved;
+			self::$normalizedPaths[$normalizedKey] = $resolved;
 			
 			// Return the resolved path
 			return $resolved;
@@ -309,6 +360,7 @@
 			self::$projectRootPathCache = null;
 			self::$composerJsonCache = [];
 			self::$normalizedPaths = [];
+			self::$autoloaderCache = null;
 		}
 		
 		/**
@@ -343,7 +395,7 @@
 			$composerJsonPath = self::getComposerJsonFilePath();
 			
 			// If we can't find composer.json, we can't determine the namespace
-			if (!$composerJsonPath) {
+			if ($composerJsonPath === null) {
 				return null;
 			}
 			
@@ -352,7 +404,7 @@
 			
 			// Verify the composer.json contains PSR-4 autoloading configuration
 			// This is necessary because not all projects use PSR-4 autoloading
-			if (!$composerJson || !isset($composerJson['autoload']['psr-4'])) {
+			if (!is_array($composerJson) || !isset($composerJson['autoload']['psr-4'])) {
 				return null;
 			}
 			
@@ -372,12 +424,13 @@
 				// Convert relative paths to absolute paths, as required for path comparison
 				// Example: "src/" becomes "/var/www/project/src/"
 				$absolutePaths = array_map(function ($path) use ($projectDir) {
-					return realpath($projectDir . DIRECTORY_SEPARATOR . $path) ?: '';
+					$resolved = realpath($projectDir . DIRECTORY_SEPARATOR . $path);
+					return $resolved !== false ? $resolved : '';
 				}, $paths);
 				
 				// Remove any paths that don't exist or aren't directories
 				// This prevents issues with misconfigured or outdated composer.json files
-				$absolutePaths = array_filter($absolutePaths, 'is_dir');
+				$absolutePaths = array_filter($absolutePaths, fn($p) => $p !== '' && is_dir($p));
 				
 				// Only add this namespace if at least one valid directory exists for it
 				if (!empty($absolutePaths)) {
@@ -495,8 +548,8 @@
 			// Second parameter 'true' ensures the result is an array instead of an object
 			$data = json_decode($content, true);
 			
-			// Verify JSON decoding was successful
-			if (json_last_error() !== JSON_ERROR_NONE) {
+			// Verify JSON decoding was successful and result is an array
+			if (json_last_error() !== JSON_ERROR_NONE || !is_array($data)) {
 				return null;
 			}
 			
@@ -548,20 +601,34 @@
 			}
 			
 			// Windows absolute paths (C:\, D:\, etc.)
-			// Check for drive letter pattern: C:\, D:\, etc.
-			if (
-				PHP_OS_FAMILY === 'Windows' &&
-				strlen($path) >= 3 &&
-				ctype_alpha($path[0]) &&
-				$path[1] === ':' && (
-					$path[2] === '\\' || $path[2] === '/'
-				)
-			) {
-				return true;
+			// Check string length BEFORE accessing array indices to prevent edge cases
+			if (PHP_OS_FAMILY === 'Windows' && strlen($path) >= 2) {
+				// Check for drive letter pattern: C:\, D:\, etc.
+				if (strlen($path) >= 3 &&
+					ctype_alpha($path[0]) &&
+					$path[1] === ':' && (
+						$path[2] === '\\' || $path[2] === '/'
+					)
+				) {
+					return true;
+				}
+				
+				// Windows UNC paths (\\server\share)
+				if ($path[0] === '\\' && $path[1] === '\\') {
+					return true;
+				}
+				
+				// Windows long path prefix (\\?\) and device path prefix (\\.\)
+				if (strlen($path) >= 4 &&
+					$path[0] === '\\' && $path[1] === '\\' &&
+					($path[2] === '?' || $path[2] === '.') &&
+					$path[3] === '\\'
+				) {
+					return true;
+				}
 			}
 			
-			// Windows UNC paths (\\server\share)
-			return PHP_OS_FAMILY === 'Windows' && strlen($path) >= 2 && $path[0] === '\\' && $path[1] === '\\';
+			return false;
 		}
 		
 		/**
@@ -572,18 +639,18 @@
 		private static function getProjectRootFromComposerJson(?string $directory = null): ?string {
 			// If no directory provided, use current directory
 			// Otherwise, convert the given path to an absolute path if it's not already
-			$directory = $directory !== null ? realpath($directory) : getcwd();
+			$resolvedDir = $directory !== null ? realpath($directory) : getcwd();
 			
 			// Ensure we have a valid directory
-			if (!$directory || !is_dir($directory)) {
+			if ($resolvedDir === false || !is_dir($resolvedDir)) {
 				return null;
 			}
 			
 			// Start with the provided/default directory
-			$currentDir = $directory;
+			$currentDir = $resolvedDir;
 			
 			// Continue searching until we reach filesystem root or find composer.json
-			while ($currentDir) {
+			while ($currentDir !== false) {
 				// Construct the potential path to composer.json in the current directory
 				$composerPath = $currentDir . DIRECTORY_SEPARATOR . 'composer.json';
 				
@@ -616,10 +683,10 @@
 		 */
 		private static function getSharedHostingRoot(?string $directory = null): ?string {
 			// Start from provided directory or current working directory
-			$directory = $directory !== null ? realpath($directory) : getcwd();
+			$resolvedDir = $directory !== null ? realpath($directory) : getcwd();
 			
 			// Validate that directory exists and is actually a directory
-			if (!$directory || !is_dir($directory)) {
+			if ($resolvedDir === false || !is_dir($resolvedDir)) {
 				return null;
 			}
 			
@@ -659,7 +726,7 @@
 			// Test each pattern against the current directory path
 			foreach ($patterns as $pattern) {
 				// Check if the current directory matches any known shared hosting pattern
-				if (preg_match($pattern, $directory, $matches)) {
+				if (preg_match($pattern, $resolvedDir, $matches)) {
 					// Extract the project root from the regex match (first capture group)
 					$projectRoot = $matches[1]; // The domain/username directory, not the web root
 					
@@ -703,12 +770,15 @@
 			$isAbsolute = false;
 			$prefix = '';
 			
-			if (strlen($normalizedPath) >= 2 && $normalizedPath[1] === ':' && ctype_alpha($normalizedPath[0])) {
+			// Check string length BEFORE accessing indices
+			$pathLength = strlen($normalizedPath);
+			
+			if ($pathLength >= 3 && ctype_alpha($normalizedPath[0]) && $normalizedPath[1] === ':') {
 				// Windows drive letter format (C:, D:, etc.)
 				$isAbsolute = true;
 				$prefix = substr($normalizedPath, 0, 2) . DIRECTORY_SEPARATOR;
 				$pathWithoutPrefix = ltrim(substr($normalizedPath, 2), '/');
-			} elseif ($normalizedPath[0] === '/') {
+			} elseif ($pathLength >= 1 && $normalizedPath[0] === '/') {
 				// Unix root path format
 				$isAbsolute = true;
 				$prefix = DIRECTORY_SEPARATOR;
@@ -719,9 +789,7 @@
 			}
 			
 			// Step 3: Split into components and filter out empty parts
-			$components = array_filter(explode('/', $pathWithoutPrefix), function ($part) {
-				return $part !== '';
-			});
+			$components = array_filter(explode('/', $pathWithoutPrefix), fn($part) => $part !== '');
 			
 			// Step 4: Resolve components by handling . and .. references
 			$resolved = [];
