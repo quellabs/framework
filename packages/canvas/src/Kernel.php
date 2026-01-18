@@ -25,19 +25,16 @@
 	use Quellabs\Canvas\Configuration\Configuration;
 	use Quellabs\Canvas\Routing\RequestHandler;
 	use Quellabs\Canvas\Inspector\EventCollector;
-	use Quellabs\Canvas\Discover\AnnotationsReaderProvider;
-	use Quellabs\Canvas\Discover\CacheInterfaceProvider;
-	use Quellabs\Canvas\Discover\ConfigurationProvider;
-	use Quellabs\Canvas\Discover\DiscoverProvider;
-	use Quellabs\Canvas\Discover\KernelProvider;
-	use Quellabs\Canvas\Discover\SignalHubProvider;
+	use Quellabs\Canvas\Cache\CacheInterfaceProvider;
 	use Quellabs\Canvas\Inspector\Inspector;
 	use Quellabs\Canvas\Legacy\LegacyBridge;
 	use Quellabs\Canvas\Legacy\LegacyHandler;
 	use Quellabs\DependencyInjection\Container;
+	use Quellabs\DependencyInjection\Provider\SimpleBinding;
 	use Quellabs\Discover\Discover;
 	use Quellabs\SignalHub\HasSignals;
 	use Quellabs\SignalHub\Signal;
+	use Quellabs\SignalHub\SignalHub;
 	use Quellabs\SignalHub\SignalHubLocator;
 	use Quellabs\Support\ComposerUtils;
 	use Symfony\Component\HttpFoundation\Request;
@@ -78,12 +75,12 @@
 			
 			// Instantiate Dependency Injector and register default providers
 			$this->dependencyInjector = new Container();
-			$this->dependencyInjector->register(new KernelProvider($this));
-			$this->dependencyInjector->register(new ConfigurationProvider($this->configuration));
-			$this->dependencyInjector->register(new DiscoverProvider($this->discover));
-			$this->dependencyInjector->register(new SignalHubProvider());
+			$this->dependencyInjector->register(new SimpleBinding(Kernel::class, $this));
+			$this->dependencyInjector->register(new SimpleBinding(Configuration::class, $this->configuration));
+			$this->dependencyInjector->register(new SimpleBinding(Discover::class, $this->discover));
+			$this->dependencyInjector->register(new SimpleBinding(SignalHub::class, SignalHubLocator::getInstance()));
+			$this->dependencyInjector->register(new SimpleBinding(AnnotationReader::class, $this->annotationsReader));
 			$this->dependencyInjector->register(new CacheInterfaceProvider($this->dependencyInjector, $this->annotationsReader));
-			$this->dependencyInjector->register(new AnnotationsReaderProvider($this->annotationsReader));
 			
 			// Initialize legacy fallback handler to null explicitly to please phpstan
 			$this->legacyFallbackHandler = null;
@@ -343,7 +340,8 @@
 		}
 		
 		/**
-		 * Load app.php
+		 * Load config file with .local.php override support
+		 * @param string $filename
 		 * @return array
 		 */
 		private function getConfigFile(string $filename): array {
@@ -354,20 +352,25 @@
 			
 			// Fetch the project root
 			$projectRoot = ComposerUtils::getProjectRoot();
+			$configPath = $projectRoot . "/config/{$filename}";
 			
-			// If the config file can't be loaded, return an empty array
-			if (
-				!file_exists($projectRoot . "/config/{$filename}") ||
-				!is_readable($projectRoot . "/config/{$filename}")
-			) {
-				return $this->contents_of_app_php[$filename] = [];
+			// If the base config file doesn't exist, start with empty array
+			if (!file_exists($configPath) || !is_readable($configPath)) {
+				$config = [];
+			} else {
+				$config = require $configPath;
 			}
 			
-			// Otherwise, grab the contents
-			$this->contents_of_app_php[$filename] = require $projectRoot . "/config/{$filename}";
+			// Check for .local.php override
+			$localPath = $projectRoot . "/config/" . pathinfo($filename, PATHINFO_FILENAME) . ".local.php";
 			
-			// And return them
-			return $this->contents_of_app_php[$filename];
+			if (file_exists($localPath) && is_readable($localPath)) {
+				$local = require $localPath;
+				$config = array_replace_recursive($config, $local);
+			}
+			
+			// Cache and return
+			return $this->contents_of_app_php[$filename] = $config;
 		}
 		
 		/**
@@ -388,8 +391,11 @@
 				// Fetch the legacy path
 				$preprocessingEnabled = $this->configuration->get('legacy_preprocessing', true);
 				
+				// Fetch exclusion directories
+				$exclusionPaths = $this->configuration->get('exclusion_paths', []);
+				
 				// Create the fallthrough handler
-				$this->legacyFallbackHandler = new LegacyHandler($legacyPath, $preprocessingEnabled);
+				$this->legacyFallbackHandler = new LegacyHandler($legacyPath, $preprocessingEnabled, $exclusionPaths);
 			}
 		}
 		

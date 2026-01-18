@@ -111,7 +111,7 @@
 				}
 			}
 		}
-
+		
 		/**
 		 * Clear all providers and definitions
 		 * @return self
@@ -140,7 +140,7 @@
 		public function findProviders(): ProviderQuery {
 			// Create closure that respects the instantiation cache
 			// This ensures providers are only instantiated once and reused across queries
-			$instantiator = function(ProviderDefinition $def) {
+			$instantiator = function (ProviderDefinition $def) {
 				// Get the unique key for this provider definition
 				// This key is used to check if we already have a cached instance
 				$key = $def->getKey();
@@ -220,7 +220,7 @@
 			// Return self to allow method chaining
 			return $this;
 		}
-
+		
 		/**
 		 * Get or instantiate a provider from its definition
 		 * @param string $definitionKey Unique key for the provider definition
@@ -320,7 +320,7 @@
 				$loadedConfig = $this->loadConfigFiles($definition->configFiles);
 				
 				// Merge default configuration with loaded config (loaded values take precedence)
-				$finalConfig = array_merge($definition->defaults, $loadedConfig);
+				$finalConfig = array_replace_recursive($definition->defaults, $loadedConfig);
 				
 				// Apply the merged configuration to the provider instance
 				$provider->setConfig($finalConfig);
@@ -339,9 +339,10 @@
 		}
 		
 		/**
-		 * Loads a configuration file and returns its contents as an array.
+		 * Loads configuration files and returns merged contents as an array.
+		 * Supports .local.php override files that are merged over base configs.
 		 * @param array $configFiles List of config files to load
-		 * @return array The configuration array from the file, or empty array if the file doesn't exist
+		 * @return array The merged configuration array
 		 */
 		protected function loadConfigFiles(array $configFiles): array {
 			// Return empty config when no file given
@@ -351,23 +352,26 @@
 			
 			// Get the project's root directory
 			$rootDir = ComposerUtils::getProjectRoot();
-
+			
 			// Fetch and merge all given config files
 			$result = [];
 			
-			foreach($configFiles as $configFile) {
+			foreach ($configFiles as $configFile) {
 				// Build the absolute path to the configuration file
 				$completeDir = $rootDir . DIRECTORY_SEPARATOR . $configFile;
 				
-				// Make sure the file exists before attempting to load it
-				if (!file_exists($completeDir)) {
-					continue;
+				// Load base config file if it exists
+				if (file_exists($completeDir)) {
+					$result = array_replace_recursive($result, include $completeDir);
 				}
 				
-				// Include the file and return its contents
-				// This works because PHP's include statement returns the result of the included file,
-				// which should be an array if the file contains 'return []' or similar
-				$result = array_merge($result, include $completeDir);
+				// Check for .local.php override
+				$pathInfo = pathinfo($completeDir);
+				$localPath = $pathInfo['dirname'] . DIRECTORY_SEPARATOR . $pathInfo['filename'] . '.local.php';
+				
+				if (file_exists($localPath)) {
+					$result = array_replace_recursive($result, include $localPath);
+				}
 			}
 			
 			return $result;

@@ -37,8 +37,13 @@
 		 * Initialize the handler with a base legacy path.
 		 * @param string $legacyPath Base directory path for legacy files
 		 * @param bool $preprocessingEnabled
+		 * @param array $excludedPaths
 		 */
-		public function __construct(string $legacyPath = 'legacy/', bool $preprocessingEnabled = true) {
+		public function __construct(
+			string $legacyPath = 'legacy/',
+			bool $preprocessingEnabled = true,
+			array $excludedPaths=[]
+		) {
 			// Store the legacy path
 			$this->legacyPath = $legacyPath;
 			
@@ -55,7 +60,7 @@
 			
 			// Initialize the recursive legacy preprocessor
 			if ($this->preprocessingEnabled) {
-				$this->preprocessor = new RecursiveLegacyPreprocessor($this->cacheDir, $this->legacyPath);
+				$this->preprocessor = new RecursiveLegacyPreprocessor($this->cacheDir, $this->legacyPath, $excludedPaths);
 			}
 			
 			// Add default resolver for standard file resolution
@@ -79,6 +84,7 @@
 		 * @param Request $request The HTTP request to handle
 		 * @return Response The response from executing the legacy file
 		 * @throws RouteNotFoundException When no resolver can find a matching file
+		 * @throws \Exception
 		 */
 		public function handle(Request $request): Response {
 			// Fetch the path to resolve

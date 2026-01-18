@@ -1,16 +1,16 @@
 {
-  "contracts": "1.0.24",
-  "support": "1.0.9",
-  "discover": "1.0.26",
-  "dependency-injection": "1.0.25",
-  "sculpt": "1.0.21",
-  "objectquel": "1.0.57",
-  "cache": "1.0.3",
-  "signal-hub": "1.0.24",
+  "contracts": "1.0.26",
+  "support": "1.0.12",
+  "discover": "1.0.27",
+  "dependency-injection": "1.0.28",
+  "sculpt": "1.0.22",
+  "objectquel": "1.0.60",
+  "cache": "1.0.4",
+  "signal-hub": "1.0.25",
   "annotation-reader": "1.0.26",
-  "canvas": "1.0.56",
+  "canvas": "1.0.68",
   "canvas-objectquel": "1.0.23",
-  "canvas-smarty": "1.0.26",
+  "canvas-smarty": "1.0.27",
   "canvas-twig": "1.0.1",
-  "canvas-skeleton": "1.0.7"
+  "canvas-skeleton": "1.0.8"
 }

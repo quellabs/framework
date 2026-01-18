@@ -2,31 +2,27 @@
 	
 	namespace Quellabs\Canvas\Discover;
 	
-	use Quellabs\Canvas\Kernel;
+	use Quellabs\Canvas\Routing\Contracts\MethodContextInterface;
 	use Quellabs\Contracts\Context\MethodContext;
 	use Quellabs\DependencyInjection\Provider\ServiceProvider;
 	
 	/**
-	 * Service provider for the Canvas framework kernel.
-	 *
-	 * This class is responsible for providing the framework kernel instance
-	 * to the dependency injection container. It ensures that the same kernel
-	 * instance is returned whenever the Kernel class is requested.
+	 * Service provider for the Routing Method Context
 	 */
-	class KernelProvider extends ServiceProvider {
+	class MethodContextProvider extends ServiceProvider {
 		
 		/**
-		 * The framework kernel instance to be provided
-		 * @var Kernel
+		 * The method context instance to be provided
+		 * @var \Quellabs\Canvas\Routing\Context\MethodContext
 		 */
-		private Kernel $framework;
+		private \Quellabs\Canvas\Routing\Context\MethodContext $context;
 		
 		/**
-		 * Constructor - initializes the provider with a kernel instance
-		 * @param Kernel $framework The framework kernel instance to provide
+		 * Constructor - initializes the provider with a MethodContext instance
+		 * @param \Quellabs\Canvas\Routing\Context\MethodContext $context
 		 */
-		public function __construct(Kernel $framework) {
-			$this->framework = $framework;
+		public function __construct(MethodContext $context) {
+			$this->context = $context;
 		}
 		
 		/**
@@ -36,18 +32,20 @@
 		 * @return bool True if this provider supports the requested class, false otherwise
 		 */
 		public function supports(string $className, array $metadata = []): bool {
-			return $className === Kernel::class;
+			return
+				$className === MethodContextInterface::class ||
+				$className === MethodContext::class;
 		}
 		
 		/**
-		 * Creates and returns the kernel instance
-		 * @param string $className The class name being requested (should be Kernel::class)
+		 * Creates and returns the method context instance
+		 * @param string $className The class name being requested (should be \Quellabs\Canvas\Routing\MethodContext::class)
 		 * @param array $dependencies Dependencies for the class (unused since we return existing instance)
 		 * @param array $metadata Metadata as passed by Discover
 		 * @param MethodContext|null $methodContext
-		 * @return Kernel The framework kernel instance
+		 * @return MethodContext The method context instance
 		 */
 		public function createInstance(string $className, array $dependencies, array $metadata, ?MethodContext $methodContext=null): object {
-			return $this->framework;
+			return $this->context;
 		}
 	}

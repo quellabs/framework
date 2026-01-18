@@ -4,14 +4,16 @@
 	
 	use Quellabs\AnnotationReader\Exception\AnnotationReaderException;
 	use Quellabs\Canvas\AOP\AspectDispatcher;
-	use Quellabs\Canvas\Discover\RequestProvider;
-	use Quellabs\Canvas\Discover\SessionInterfaceProvider;
+	use Quellabs\Canvas\Discover\MethodContextProvider;
 	use Quellabs\Canvas\Exceptions\RouteNotFoundException;
 	use Quellabs\Canvas\Kernel;
+	use Quellabs\Canvas\Routing\Context\MethodContext;
+	use Quellabs\DependencyInjection\Provider\SimpleBinding;
 	use Quellabs\Support\ComposerUtils;
 	use Symfony\Component\HttpFoundation\Request;
 	use Symfony\Component\HttpFoundation\Response;
 	use Symfony\Component\HttpFoundation\Session\Session;
+	use Symfony\Component\HttpFoundation\Session\SessionInterface;
 	
 	class RequestHandler {
 		
@@ -72,8 +74,8 @@
 			}
 			
 			// Register providers with dependency injector for this request lifecycle
-			$requestProvider = new RequestProvider($request);
-			$sessionProvider = new SessionInterfaceProvider($request->getSession());
+			$requestProvider = new SimpleBinding(Request::class, $request);
+			$sessionProvider = new SimpleBinding(SessionInterface::class, $request->getSession());
 			$this->kernel->getDependencyInjector()->register($requestProvider);
 			$this->kernel->getDependencyInjector()->register($sessionProvider);
 			
@@ -137,9 +139,10 @@
 				return $this->createNotFoundResponse($request, $this->kernel->isLegacyEnabled());
 			}
 		}
-		
+	
 		/**
 		 * Execute a Canvas route
+		 * Creates MethodContext and registers it with DI for autowiring
 		 * @param Request $request
 		 * @param array $urlData
 		 * @return Response
@@ -149,16 +152,32 @@
 			// Get the controller instance from the dependency injection container
 			$controller = $this->kernel->getDependencyInjector()->get($urlData["controller"]);
 			
-			// Create aspect-aware dispatcher
-			$aspectDispatcher = new AspectDispatcher($this->kernel->getAnnotationsReader(), $this->kernel->getDependencyInjector());
-			
-			// Run the request through the aspect dispatcher
-			return $aspectDispatcher->dispatch(
-				$request,
-				$controller,
-				$urlData["method"],
-				$urlData["variables"]
+			// Create method context containing all execution metadata
+			$context = new MethodContext(
+				request: $request,
+				target: $controller,
+				methodName: $urlData["method"],
+				arguments: $urlData["variables"]
 			);
+			
+			// Register context with DI for autowiring into services
+			$methodContextProvider = new MethodContextProvider($context);
+			$this->kernel->getDependencyInjector()->register($methodContextProvider);
+			
+			try {
+				// Create aspect-aware dispatcher
+				$aspectDispatcher = new AspectDispatcher(
+					$this->kernel->getAnnotationsReader(),
+					$this->kernel->getDependencyInjector()
+				);
+				
+				// Run the request through the aspect dispatcher
+				return $aspectDispatcher->dispatch($context);
+				
+			} finally {
+				// Always unregister context, even if exception occurs
+				$this->kernel->getDependencyInjector()->unregister($methodContextProvider);
+			}
 		}
 		
 		/**

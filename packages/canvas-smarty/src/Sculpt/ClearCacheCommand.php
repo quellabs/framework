@@ -17,7 +17,7 @@
 		 * @return string The command signature
 		 */
 		public function getSignature(): string {
-			return "smarty:clear_cache";
+			return "smarty:clear-cache";
 		}
 		
 		/**

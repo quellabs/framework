@@ -9,6 +9,8 @@
 		
 		/**
 		 * Validates that a callable's parameters are compatible with signal parameters
+		 * The signal will emit certain types, and the slot must be able to receive them.
+		 * Slot can have fewer parameters (ignores extras) or optional parameters.
 		 * @param callable|array $receiver The callable to validate
 		 * @param array $signalParameterTypes Expected signal parameter types
 		 * @throws \Exception If types mismatch or parameter count differs
@@ -54,7 +56,7 @@
 			
 			// Validate that the signal parameters are compatible with the slot method parameters
 			// This checks parameter count, types, and other compatibility requirements
-			self::validateParameterCompatibility($signalParameterTypes, $slotParams);
+			self::validateParameterCompatibility($signalParameterTypes, $slotParams, "{$className}::{$method}");
 		}
 		
 		/**
@@ -72,7 +74,7 @@
 			}
 			
 			$slotParams = $slotReflection->getParameters();
-			self::validateParameterCompatibility($signalParameterTypes, $slotParams);
+			self::validateParameterCompatibility($signalParameterTypes, $slotParams, $receiver);
 		}
 		
 		/**
@@ -84,40 +86,65 @@
 		private static function validateClosureCallable(callable $receiver, array $signalParameterTypes): void {
 			$slotReflection = new \ReflectionFunction($receiver);
 			$slotParams = $slotReflection->getParameters();
-			self::validateParameterCompatibility($signalParameterTypes, $slotParams);
+			self::validateParameterCompatibility($signalParameterTypes, $slotParams, 'Closure');
 		}
 		
 		/**
-		 * Validates parameter compatibility between signal and slot parameters
-		 * @param array $signalParameterTypes Signal parameter types
-		 * @param array $slotParams Slot reflection parameters
-		 * @throws \Exception If types mismatch or parameter count differs
+		 * Validates parameter compatibility between signal emissions and slot expectations
+		 *
+		 * Rules:
+		 * 1. Slot can have fewer required parameters than signal provides (ignores extras)
+		 * 2. Slot cannot have more required parameters than signal provides
+		 * 3. Each slot parameter must accept the corresponding signal type
+		 * 4. Untyped slot parameters accept anything
+		 *
+		 * @param array $signalParameterTypes Signal parameter types (what will be emitted)
+		 * @param array $slotParams Slot reflection parameters (what slot expects)
+		 * @param string $slotName Name of the slot for error messages
+		 * @throws \Exception If parameters are incompatible
 		 */
-		private static function validateParameterCompatibility(array $signalParameterTypes, array $slotParams): void {
-			// Check parameter count
-			if (count($signalParameterTypes) !== count($slotParams)) {
-				throw new \Exception("Signal and slot parameter count mismatch.");
-			}
-			// Check type compatibility for each parameter
-			$counter = count($signalParameterTypes);
+		private static function validateParameterCompatibility(
+			array $signalParameterTypes,
+			array $slotParams,
+			string $slotName
+		): void {
+			// Count required parameters in slot (non-optional, non-variadic)
+			$requiredSlotParams = array_filter($slotParams, fn($p) => !$p->isOptional() && !$p->isVariadic());
+			$requiredCount = count($requiredSlotParams);
 			
-			// Check type compatibility for each parameter
-			for ($i = 0; $i < $counter; $i++) {
-				$signalType = $signalParameterTypes[$i];
-				$slotType = $slotParams[$i]->getType();
-				
-				if ($slotType === null) {
-					throw new \Exception("Slot parameter {$i} is not typed.");
+			// Slot cannot require more parameters than signal provides
+			if ($requiredCount > count($signalParameterTypes)) {
+				throw new \Exception(
+					"Slot '{$slotName}' requires {$requiredCount} parameters, " .
+					"but signal only provides " . count($signalParameterTypes)
+				);
+			}
+			
+			// Validate each parameter that the signal will provide
+			foreach ($signalParameterTypes as $i => $signalType) {
+				// If slot doesn't have this parameter, it's OK (slot ignores it)
+				if (!isset($slotParams[$i])) {
+					continue;
 				}
 				
-				// Fetch the name of the slot by casting to string.
-				// This will call the __toString magic method.
-				// We can't use ->getName() because it may not be present
+				$slotParam = $slotParams[$i];
+				$slotType = $slotParam->getType();
+				
+				// Untyped parameters accept anything
+				if ($slotType === null) {
+					continue;
+				}
+				
+				// Get type name (handle union types by using __toString)
 				$slotTypeName = (string)$slotType;
 				
-				// Check type compatibility
+				// Signal provides $signalType, slot expects $slotTypeName
+				// Check if what signal provides can be accepted by slot
 				if (!TypeValidator::isCompatible($signalType, $slotTypeName)) {
-					throw new \Exception("Type mismatch for parameter {$i} between signal ({$signalType}) and slot ({$slotTypeName}).");
+					throw new \Exception(
+						"Type mismatch for parameter #{$i} in slot '{$slotName}': " .
+						"signal provides '{$signalType}', but slot expects '{$slotTypeName}'"
+					);
 				}
 			}
 		}

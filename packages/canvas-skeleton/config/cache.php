@@ -4,10 +4,10 @@
 		'default' => 'file',
 		'drivers' => [
 			'file'      => [
-				'class' => \Quellabs\Cache\FileCache::class,
+				'class' => \Quellabs\Canvas\Cache\Drivers\FileCache::class,
 			],
 			'redis'     => [
-				'class'        => \Quellabs\Cache\RedisCache::class,
+				'class'        => \Quellabs\Canvas\Cache\Drivers\RedisCache::class,
 				'host'         => '127.0.0.1',
 				'port'         => 6379,
 				'timeout'      => 2.5,
@@ -16,7 +16,7 @@
 				'password'     => null,
 			],
 			'memcached' => [
-				'class'                 => \Quellabs\Cache\MemcachedCache::class,
+				'class'                 => \Quellabs\Canvas\Cache\Drivers\MemcachedCache::class,
 				'servers'               => [
 					['127.0.0.1', 11211, 100] // [host, port, weight]
 				],

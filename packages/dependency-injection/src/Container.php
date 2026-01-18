@@ -72,8 +72,8 @@
 		 * @return self Returns the current instance for method chaining
 		 */
 		public function register(ServiceProvider $provider): self {
-			// Store the provider in the providers array using its class name as the key
-			$this->providers[get_class($provider)] = $provider;
+			// Store the provider in the providers array using its hash as the key
+			$this->providers[spl_object_hash($provider)] = $provider;
 			
 			// Return the current instance to allow method chaining
 			return $this;
@@ -85,8 +85,8 @@
 		 * @return self Returns the current instance for method chaining
 		 */
 		public function unregister(ServiceProvider $provider): self {
-			// Remove the provider from the providers array using its class name as the key
-			unset($this->providers[get_class($provider)]);
+			// Remove the provider from the providers array using its hash as the key
+			unset($this->providers[spl_object_hash($provider)]);
 			
 			// Return the current instance to allow method chaining
 			return $this;

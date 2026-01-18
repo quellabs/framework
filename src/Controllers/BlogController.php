@@ -3,11 +3,7 @@
 	namespace App\Controllers;
 	
 	use App\Entities\PostEntity;
-	use App\Entities\VlaflipEntity;
 	use Quellabs\Canvas\Annotations\Route;
-	use Quellabs\Canvas\Annotations\CacheContext;
-	use Quellabs\Canvas\Annotations\InterceptWith;
-	use Quellabs\Canvas\Cache\CacheAspect;
 	use Quellabs\Canvas\Controllers\BaseController;
 	use Quellabs\Contracts\Cache\CacheInterface;
 	use Symfony\Component\HttpFoundation\Response;
