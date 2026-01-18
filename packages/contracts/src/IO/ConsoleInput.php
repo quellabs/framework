@@ -24,8 +24,8 @@
 		 * Multiple choice question
 		 * @param string $question
 		 * @param array $choices
-		 * @param mixed $default
+		 * @param ?int $default
 		 * @return string
 		 */
-		public function choice(string $question, array $choices, $default = null): string;
+		public function choice(string $question, array $choices, ?int $default = null): string;
 	}
