@@ -17,7 +17,7 @@
 		 * @return string The command signature
 		 */
 		public function getSignature(): string {
-			return "twig:clear_cache";
+			return "twig:clear-cache";
 		}
 		
 		/**
