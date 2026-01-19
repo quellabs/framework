@@ -52,12 +52,6 @@
 		protected string $defaultFamily;
 		
 		/**
-		 * Cache of classes that have already been scanned.
-		 * @var array<string, bool>
-		 */
-		protected array $scannedClasses = [];
-		
-		/**
 		 * Validates that providers are valid.
 		 * @var ProviderValidator
 		 */
@@ -87,10 +81,9 @@
 		 * @return array<ProviderDefinition> List of provider definitions
 		 */
 		public function scan(): array {
-			$dirs = $this->directories;
 			$providerData = [];
 			
-			foreach ($dirs as $directory) {
+			foreach ($this->directories as $directory) {
 				// Each scanDirectory call returns an array of ProviderDefinition objects
 				$providerData = array_merge($providerData, $this->scanDirectory($directory));
 			}
@@ -98,7 +91,7 @@
 			// Log a summary of the scan
 			$this->logger?->info('Directory scanning completed', [
 				'total_providers'     => count($providerData),
-				'directories_scanned' => count($dirs)
+				'directories_scanned' => count($this->directories)
 			]);
 			
 			return $providerData;
