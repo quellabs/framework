@@ -360,17 +360,19 @@
 				// Build the absolute path to the configuration file
 				$completeDir = $rootDir . DIRECTORY_SEPARATOR . $configFile;
 				
+				// Fetch path for local addition
+				$pathInfo = pathinfo($completeDir);
+				
 				// Load base config file if it exists
-				if (file_exists($completeDir)) {
-					$result = array_replace_recursive($result, include $completeDir);
+				if (file_exists($completeDir) && is_readable($completeDir)) {
+					$result = array_replace_recursive($result, require $completeDir);
 				}
 				
 				// Check for .local.php override
-				$pathInfo = pathinfo($completeDir);
 				$localPath = $pathInfo['dirname'] . DIRECTORY_SEPARATOR . $pathInfo['filename'] . '.local.php';
 				
-				if (file_exists($localPath)) {
-					$result = array_replace_recursive($result, include $localPath);
+				if (file_exists($localPath) && is_readable($localPath)) {
+					$result = array_replace_recursive($result, require $localPath);
 				}
 			}
 			
