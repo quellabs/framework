@@ -8,11 +8,11 @@
 	use Quellabs\Support\ComposerUtils;
 	
 	/**
-	 * Scans directories for classes that implement ProviderInterface
+	 * Scans directories for classes that implement ProviderInterface.
 	 *
 	 * This scanner recursively traverses directories to find PHP classes that:
-	 * 1. Match an optional naming pattern (e.g., '/Provider$/' for classes ending with "Provider")
-	 * 2. Implement the ProviderInterface
+	 * 1. Optionally match a naming pattern (e.g. '/Provider$/' for classes ending with "Provider")
+	 * 2. Implement ProviderInterface
 	 */
 	class DirectoryScanner implements ScannerInterface {
 		
@@ -22,52 +22,51 @@
 		private const string DEFAULT_FAMILY_NAME = 'default';
 		
 		/**
-		 * Class used for logging
+		 * Logger instance.
 		 * @var LoggerInterface|null
 		 */
 		private ?LoggerInterface $logger;
 		
 		/**
-		 * Directories to scan
+		 * Directories to scan.
 		 * @var array<string>
 		 */
 		protected array $directories = [];
 		
 		/**
-		 * Optional regular expression pattern to filter class names
+		 * Optional regular expression used to filter class names.
 		 *
 		 * Examples:
-		 * - '/Provider$/' - Only classes ending with "Provider"
-		 * - '/^App\\\\Service\\\\/' - Only classes in the App\Service namespace
-		 * - null - No filtering, all classes implementing ProviderInterface are included
+		 * - '/Provider$/' — only classes ending with "Provider"
+		 * - '/^App\\\\Service\\\\/' — only classes in the App\Service namespace
+		 * - null — no filtering; all classes implementing ProviderInterface are included
 		 *
 		 * @var string|null
 		 */
 		protected ?string $pattern;
 		
 		/**
-		 * Default family name for discovered providers
+		 * Default family name for discovered providers.
 		 * @var string
 		 */
 		protected string $defaultFamily;
 		
 		/**
-		 * Cache of already scanned classes
+		 * Cache of classes that have already been scanned.
 		 * @var array<string, bool>
 		 */
 		protected array $scannedClasses = [];
 		
 		/**
-		/**
-		 * Class responsible for validating providers are valid
+		 * Validates that providers are valid.
 		 * @var ProviderValidator
 		 */
 		protected ProviderValidator $providerValidator;
 		
 		/**
-		 * DirectoryScanner constructor
+		 * Constructor
 		 * @param array<string> $directories Directories to scan
-		 * @param string|null $pattern Regex pattern for class names (e.g., '/Provider$/')
+		 * @param string|null $pattern Regex pattern for class names (e.g. '/Provider$/')
 		 * @param string $defaultFamily Default family name for discovered providers
 		 */
 		public function __construct(
@@ -84,41 +83,35 @@
 		}
 		
 		/**
-		 * Scan directories for classes that implement ProviderInterface
-		 * @return array<ProviderDefinition> Array of provider definitions
+		 * Scan all configured directories for classes that implement ProviderInterface.
+		 * @return array<ProviderDefinition> List of provider definitions
 		 */
 		public function scan(): array {
-			// Get the configured directories to scan
 			$dirs = $this->directories;
-			
-			// Scan each directory and merge the results
 			$providerData = [];
-
+			
 			foreach ($dirs as $directory) {
-				// Scan individual directory and combine results with existing discoveries
 				// Each scanDirectory call returns an array of ProviderDefinition objects
 				$providerData = array_merge($providerData, $this->scanDirectory($directory));
 			}
 			
-			// Log the summary of the scan
+			// Log a summary of the scan
 			$this->logger?->info('Directory scanning completed', [
 				'total_providers'     => count($providerData),
 				'directories_scanned' => count($dirs)
 			]);
 			
-			// Return all discovered provider definitions across all directories
 			return $providerData;
 		}
 		
 		/**
-		 * This function traverses a directory structure, identifies all PHP files,
-		 * attempts to extract class names from them, and checks if each class implements
-		 * the ProviderInterface. All valid provider class data is returned.
-		 * @param string $directory The root directory path to begin scanning
-		 * @return array Array of provider data with class and family information
+		 * Traverses a directory, finds PHP files, extracts class names, and checks
+		 * whether they implement ProviderInterface. All valid provider classes are returned.
+		 * @param string $directory Root directory to scan
+		 * @return array<ProviderDefinition> Provider definitions found in this directory
 		 */
 		protected function scanDirectory(string $directory): array {
-			// Verify the directory exists and is accessible before attempting to scan
+			// Ensure the directory exists and is readable
 			if (!is_dir($directory) || !is_readable($directory)) {
 				$this->logger?->warning('Cannot scan directory', [
 					'scanner'   => 'DirectoryScanner',
@@ -127,24 +120,21 @@
 					'exists'    => is_dir($directory),
 					'readable'  => is_readable($directory)
 				]);
-
+				
 				return [];
 			}
 			
-			// Fetch all provider classes found in the directory
-			// Filter out the class names we don't want (filter)
+			// Retrieve provider classes, filtering by pattern and validator
 			$classes = ComposerUtils::findClassesInDirectory($directory, function($className) {
-				// Check class validity
 				if (!$this->providerValidator->validate($className)) {
 					return false;
 				}
 				
-				// If a naming pattern was specified, check if the class name matches
-				// This allows filtering for specific naming conventions (e.g., all classes ending with "Provider")
+				// Apply naming pattern if provided
 				return $this->pattern === null || preg_match($this->pattern, $className);
 			});
 			
-			// Process each valid class found in the directory structure
+			// Fetch definitions
 			$definitions = [];
 			
 			foreach ($classes as $className) {
@@ -165,7 +155,6 @@
 				}
 			}
 			
-			// Return all discovered provider class data from the directory
 			return $definitions;
 		}
 	}
