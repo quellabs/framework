@@ -1,7 +1,7 @@
 {
   "contracts": "1.0.26",
   "support": "1.0.12",
-  "discover": "1.0.27",
+  "discover": "1.0.28",
   "dependency-injection": "1.0.28",
   "sculpt": "1.0.22",
   "objectquel": "1.0.60",
