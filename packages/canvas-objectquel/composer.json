@@ -33,7 +33,7 @@
   },
   "autoload": {
     "psr-4": {
-      "Quellabs\\Canvas\\ObjectQuel\\": "src/"
+      "Quellabs\\CanvasObjectQuel\\": "src/"
     }
   },
   "scripts": {
@@ -44,15 +44,10 @@
   "extra": {
     "discover": {
       "di": {
-        "providers": [
-          {
-            "class": "Quellabs\\Canvas\\ObjectQuel\\Discovery\\EntityManagerServiceProvider"
-          },
-          {
-            "class": "Quellabs\\Canvas\\ObjectQuel\\Discovery\\ConfigurationServiceProvider",
-            "config": "config/database.php"
-          }
-        ]
+        "provider": {
+          "class": "Quellabs\\CanvasObjectQuel\\Discovery\\ConfigurationServiceProvider",
+          "config": "config/database.php"
+        }
       }
     }
   }
