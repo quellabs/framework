@@ -30,19 +30,17 @@ class MyController {
 
 ### Configuration
 
-Add database configuration to your Canvas config file:
+Add database configuration to config/database.php:
 
 ```php
 return [
-    'database' => [
-        'driver'   => 'mysql',
-        'host'     => 'localhost',
-        'database' => 'myapp',
-        'username' => 'root',
-        'password' => '',
-        'port'     => 3306,
-        'encoding' => 'utf8mb4',
-    ]
+    'driver'   => 'mysql',
+    'host'     => 'localhost',
+    'database' => 'myapp',
+    'username' => 'root',
+    'password' => '',
+    'port'     => 3306,
+    'encoding' => 'utf8mb4',
 ];
 ```
 
