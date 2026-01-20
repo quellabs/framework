@@ -134,6 +134,12 @@
 				return $param['default_value'];
 			}
 			
+			// Strategy 5: If the type is an array, pass an empty array
+			// This will prevent a crash in CakePHP Database connection when autowiring the config
+			if (in_array("array", $paramTypes, true)) {
+				return [];
+			}
+			
 			// All strategies failed - parameter is required but unresolvable
 			throw new \RuntimeException("Cannot autowire parameter '$paramName' for $className::$methodName");
 		}
