@@ -84,9 +84,12 @@
 			// Load user configuration from config file
 			$configData = $this->getConfig();
 			
+			// Resolve the driver
+			$driver = $this->resolveDriver($configData['driver'] ?? $defaults['driver']);
+			
 			// Build final configuration with defaults as fallback
 			return [
-				'driver'        => $this->resolveDriver($configData['driver'] ?? $defaults['driver']),
+				'driver'        => $driver,
 				'host'          => $configData['host'] ?? $defaults['host'],
 				'username'      => $configData['username'] ?? $defaults['username'],
 				'password'      => $configData['password'] ?? $defaults['password'],
@@ -101,12 +104,9 @@
 		}
 		
 		/**
-		 * Resolves a driver name to its fully qualified class name
-		 *
 		 * Converts short driver names (mysql, postgres, etc.) to their corresponding
 		 * CakePHP driver class names. If a fully qualified class name is already
 		 * provided, it is returned as-is.
-		 *
 		 * @param string $driver The driver name or class to resolve
 		 * @return string The fully qualified driver class name
 		 */
