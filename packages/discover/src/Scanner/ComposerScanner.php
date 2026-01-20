@@ -109,6 +109,7 @@
 							'Invalid discovery section structure: must be an array',
 							['section' => $this->discoverySection]
 						);
+						
 						continue;
 					}
 					

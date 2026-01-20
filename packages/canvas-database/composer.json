@@ -19,10 +19,10 @@
   "extra": {
     "discover": {
       "di": {
-        "provider": "Quellabs\\CanvasDatabase\\Discovery\\ServiceProvider",
-        "config": [
-          "config/database.php"
-        ]
+        "provider": {
+          "class": "Quellabs\\CanvasDatabase\\Discovery\\ServiceProvider",
+          "config": "config/database.php"
+        }
       }
     }
   }
