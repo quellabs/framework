@@ -10,5 +10,4 @@
 	$kernel = new Kernel();
 	$request = Request::createFromGlobals();
 	$response = $kernel->handle($request);
-	
 	$response->send();
