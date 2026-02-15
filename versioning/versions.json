@@ -8,10 +8,10 @@
   "cache": "1.0.4",
   "signal-hub": "1.0.25",
   "annotation-reader": "1.0.26",
-  "canvas": "1.0.72",
+  "canvas": "1.0.73",
   "canvas-objectquel": "1.0.24",
   "canvas-smarty": "1.0.27",
   "canvas-twig": "1.0.1",
-  "canvas-skeleton": "1.0.8",
+  "canvas-skeleton": "1.0.9",
   "canvas-database": "1.0.0"
 }
