@@ -1,9 +1,8 @@
 <?php
 	
-	namespace App\Error;
+	namespace App\Errors;
 	
 	use Quellabs\Canvas\Error\ErrorHandlerInterface;
-	use Quellabs\Canvas\Exceptions\RouteNotFoundException;
 	use Symfony\Component\HttpFoundation\Request;
 	use Symfony\Component\HttpFoundation\Response;
 	

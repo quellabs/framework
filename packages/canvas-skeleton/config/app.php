@@ -10,8 +10,14 @@
 		// Public directory (where CSS, etc. is stored)
 		'public_directory'       => 'public',
 		
+		// Template engine
+		'template_engine'         => 'smarty',
+		
 		// Path to controller classes
 		'controller_directory'   => $srcDir . '/Controllers',
+		
+		// Path to error handlers
+		'error_handler_directory' => $srcDir . '/Errors',
 		
 		// Path to aspect-oriented programming files
 		'aspect_directory'       => $srcDir . '/Aspects',
