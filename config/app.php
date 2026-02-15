@@ -5,23 +5,26 @@
 	
 	return [
 		// True to put the framework in debug mode; this mainly affects caching
-		'debug_mode'             => true,
+		'debug_mode'              => true,
 		
 		// Template engine
-		'public_directory'       => 'public',
+		'public_directory'        => 'public',
 		
 		// Template engine
-		'template_engine'        => 'smarty',
+		'template_engine'         => 'smarty',
 		
 		// Path to controller classes
-		'controller_directory'   => $srcDir . '/Controllers',
+		'controller_directory'    => $srcDir . '/Controllers',
+		
+		// Path to error handlers
+		'error_handler_directory' => $srcDir . '/Errors',
 		
 		// Path to aspect-oriented programming files
-		'aspect_directory'       => $srcDir . '/Aspects',
+		'aspect_directory'        => $srcDir . '/Aspects',
 		
 		// Path to aspect-oriented programming files
-		'entity_path'            => $srcDir . '/Entities',
+		'entity_path'             => $srcDir . '/Entities',
 		
 		// Whether to match routes with trailing slashes
-		'match_trailing_slashes' => false
+		'match_trailing_slashes'  => false
 	];
