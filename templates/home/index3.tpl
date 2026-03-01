@@ -7,7 +7,7 @@
 
 <!-- Basic Features Demo -->
 <div id="demo">
-    <textarea data-pac-bind="value: title"></textarea>
+    <textarea data-pac-bind="value: title" id="textarea"></textarea>
     <input data-pac-bind="value: title">
 </div>
 
