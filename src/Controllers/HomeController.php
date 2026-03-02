@@ -15,12 +15,6 @@
 		 * @return Response
 		 */
 		public function index(Request $request): Response {
-			$tmp = $this->em()->find(PostEntity::class, 5);
-			$tmp->setCreatedAt(new \DateTime());
-			
-			$this->em()->persist($tmp);
-			$this->em()->flush();
-			
 			return $this->render("home/index3.tpl");
 		}
 		
