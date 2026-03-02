@@ -1,5 +1,5 @@
 {
-  "contracts": "1.0.26",
+  "contracts": "1.0.27",
   "support": "1.0.12",
   "discover": "1.0.29",
   "dependency-injection": "1.0.29",
@@ -8,7 +8,7 @@
   "cache": "1.0.4",
   "signal-hub": "1.0.25",
   "annotation-reader": "1.0.26",
-  "canvas": "1.0.73",
+  "canvas": "1.0.74",
   "canvas-objectquel": "1.0.24",
   "canvas-smarty": "1.0.27",
   "canvas-twig": "1.0.1",
