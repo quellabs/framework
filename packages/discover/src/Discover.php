@@ -6,6 +6,7 @@
 	use Quellabs\Discover\ProviderQuery\ProviderQuery;
 	use Quellabs\Support\ComposerUtils;
 	use Quellabs\Discover\Scanner\ScannerInterface;
+	use Quellabs\Discover\Scanner\MetadataScannerInterface;
 	use Quellabs\Contracts\Discovery\ProviderInterface;
 	use Quellabs\Contracts\Discovery\ProviderDefinition;
 	
@@ -15,6 +16,16 @@
 		 * @var array<ScannerInterface>
 		 */
 		protected array $scanners = [];
+		
+		/**
+		 * @var array<MetadataScannerInterface>
+		 */
+		protected array $metadataScanners = [];
+		
+		/**
+		 * @var array<string, array<string, array<string, mixed>>> Collected metadata indexed by family, package, then key
+		 */
+		protected array $collectedMetadata = [];
 		
 		/**
 		 * @var array<string, ProviderDefinition> Provider definitions indexed by unique keys
@@ -32,17 +43,43 @@
 		protected array $instantiatedProviders = [];
 		
 		/**
-		 * Discover providers using all registered scanners
+		 * Add a scanner
+		 * @param ScannerInterface|MetadataScannerInterface $scanner
+		 * @return self
+		 */
+		public function addScanner(ScannerInterface|MetadataScannerInterface $scanner): self {
+			if ($scanner instanceof MetadataScannerInterface) {
+				$this->metadataScanners[] = $scanner;
+			} else {
+				$this->scanners[] = $scanner;
+			}
+			
+			return $this;
+		}
+		
+		/**
+		 * Discover providers and collect metadata using all registered scanners
 		 * @return self
 		 */
 		public function discover(): self {
 			// Clear any previously discovered providers to start fresh
 			$this->clearProviders();
 			
-			// Iterate through each registered scanner to discover providers
+			// Run all provider scanners and register each returned definition
 			foreach ($this->scanners as $scanner) {
 				foreach ($scanner->scan() as $definition) {
 					$this->addProviderDefinition($definition);
+				}
+			}
+			
+			// Run all metadata scanners and store results per package to preserve
+			// the relationship between keys declared together in the same composer.json
+			foreach ($this->metadataScanners as $scanner) {
+				$familyName = $scanner->getFamilyName();
+				
+				// collect() returns ['vendor/package' => ['controller' => 'src/...', ...]]
+				foreach ($scanner->collect() as $packageName => $packageData) {
+					$this->collectedMetadata[$familyName][$packageName] = $packageData;
 				}
 			}
 			
@@ -73,7 +110,7 @@
 		 * @param class-string<T> $className The fully qualified class name of the provider to retrieve
 		 * @return T|null The provider instance if found, null otherwise
 		 */
-		public function get(string $className) {
+		public function get(string $className): ?ProviderInterface {
 			if (!isset($this->providerDefinitionsByClass[$className])) {
 				return null;
 			}
@@ -120,17 +157,50 @@
 			$this->providerDefinitions = [];
 			$this->providerDefinitionsByClass = [];
 			$this->instantiatedProviders = [];
+			$this->collectedMetadata = [];
 			return $this;
+		}
+
+		/**
+		 * Retrieve all collected metadata across all families and packages.
+		 * @return array<string, array<string, array<string, mixed>>>
+		 */
+		public function getAllMetadata(): array {
+			return $this->collectedMetadata;
 		}
 		
 		/**
-		 * Add a scanner
-		 * @param ScannerInterface $scanner
-		 * @return self
+		 * Retrieve all collected metadata for a family, grouped by package.
+		 * @param string $familyName The family name (e.g. 'canvas')
+		 * @return array<string, array<string, string[]>> e.g. ['vendor/pkg' => ['controllers' => [...], ...]]
 		 */
-		public function addScanner(ScannerInterface $scanner): self {
-			$this->scanners[] = $scanner;
-			return $this;
+		public function getFamilyMetadata(string $familyName): array {
+			return $this->collectedMetadata[$familyName] ?? [];
+		}
+		
+		/**
+		 * Retrieve a flat deduplicated list of values for a specific key across all packages.
+		 * Handles both scalar values and arrays declared under the key.
+		 * @param string $familyName The family name (e.g. 'canvas')
+		 * @param string $metadataKey The key to collect (e.g. 'controller')
+		 * @return array
+		 */
+		public function getFamilyValues(string $familyName, string $metadataKey): array {
+			$result = [];
+			
+			foreach ($this->collectedMetadata[$familyName] ?? [] as $packageData) {
+				$value = $packageData[$metadataKey] ?? null;
+				
+				if ($value === null) {
+					continue;
+				}
+				
+				foreach ((array)$value as $item) {
+					$result[$item] = true;
+				}
+			}
+			
+			return array_keys($result);
 		}
 		
 		/**
@@ -153,72 +223,6 @@
 			// Create and return the query builder with the caching instantiator
 			// Pass all provider definitions so the query can filter them
 			return new ProviderQuery($instantiator, $this->providerDefinitions);
-		}
-		
-		/**
-		 * Export current provider definitions for caching
-		 * @return array Cacheable provider definitions
-		 */
-		public function exportForCache(): array {
-			// Initialize cache data structure with timestamp and empty providers array
-			$cacheData = [
-				'timestamp' => time(), // Record when this cache was created
-				'providers' => []      // Will hold provider definitions grouped by family
-			];
-			
-			// Iterate through all registered provider definitions
-			foreach ($this->providerDefinitions as $definition) {
-				// Extract the family name to group related providers together
-				$family = $definition->family;
-				
-				// Initialize the family array if it doesn't exist yet
-				if (!isset($cacheData['providers'][$family])) {
-					$cacheData['providers'][$family] = [];
-				}
-				
-				// Convert the definition to array format and add to the appropriate family group
-				$cacheData['providers'][$family][] = $definition->toArray();
-			}
-			
-			// Return the structured cache data ready for serialization/storage
-			return $cacheData;
-		}
-		
-		/**
-		 * Import provider definitions from cache
-		 * @param array $cacheData Previously exported provider data
-		 * @return self
-		 */
-		public function importDefinitionsFromCache(array $cacheData): self {
-			// Clear all existing providers before importing from cache
-			$this->clearProviders();
-			
-			// Validate that cache data contains the expected 'providers' key and is an array
-			if (!isset($cacheData['providers']) || !is_array($cacheData['providers'])) {
-				// Return early if cache data is invalid or missing providers
-				return $this;
-			}
-			
-			// Iterate through each provider family in the cache data
-			foreach ($cacheData['providers'] as $familyProviders) {
-				// Process each provider within the current family
-				foreach ($familyProviders as $providerData) {
-					try {
-						// Reconstruct the provider definition from the cached array data
-						$definition = ProviderDefinition::fromArray($providerData);
-						
-						// Add the reconstructed definition to the current instance
-						$this->addProviderDefinition($definition);
-					} catch (\InvalidArgumentException $e) {
-						// Skip invalid cached definitions and continue processing others
-						// This ensures corrupt or incompatible cache entries don't break the entire import
-						continue;
-					}
-				}
-			}
-			
-			// Return self to allow method chaining
-			return $this;
 		}
 		
 		/**
