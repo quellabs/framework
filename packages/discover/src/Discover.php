@@ -43,9 +43,20 @@
 		protected array $instantiatedProviders = [];
 		
 		/**
-		 * Discover providers using all registered scanners
+		 * Add a scanner
+		 * @param ScannerInterface|MetadataScannerInterface $scanner
 		 * @return self
 		 */
+		public function addScanner(ScannerInterface|MetadataScannerInterface $scanner): self {
+			if ($scanner instanceof MetadataScannerInterface) {
+				$this->metadataScanners[] = $scanner;
+			} else {
+				$this->scanners[] = $scanner;
+			}
+			
+			return $this;
+		}
+		
 		/**
 		 * Discover providers and collect metadata using all registered scanners
 		 * @return self
@@ -99,7 +110,7 @@
 		 * @param class-string<T> $className The fully qualified class name of the provider to retrieve
 		 * @return T|null The provider instance if found, null otherwise
 		 */
-		public function get(string $className) {
+		public function get(string $className): ?ProviderInterface {
 			if (!isset($this->providerDefinitionsByClass[$className])) {
 				return null;
 			}
@@ -149,19 +160,13 @@
 			$this->collectedMetadata = [];
 			return $this;
 		}
-		
+
 		/**
-		 * Add a scanner
-		 * @param ScannerInterface|MetadataScannerInterface $scanner
-		 * @return self
+		 * Retrieve all collected metadata across all families and packages.
+		 * @return array<string, array<string, array<string, mixed>>>
 		 */
-		public function addScanner(ScannerInterface|MetadataScannerInterface $scanner): self {
-			if ($scanner instanceof MetadataScannerInterface) {
-				$this->metadataScanners[] = $scanner;
-			} else {
-				$this->scanners[] = $scanner;
-			}
-			return $this;
+		public function getAllMetadata(): array {
+			return $this->collectedMetadata;
 		}
 		
 		/**
@@ -218,72 +223,6 @@
 			// Create and return the query builder with the caching instantiator
 			// Pass all provider definitions so the query can filter them
 			return new ProviderQuery($instantiator, $this->providerDefinitions);
-		}
-		
-		/**
-		 * Export current provider definitions for caching
-		 * @return array Cacheable provider definitions
-		 */
-		public function exportForCache(): array {
-			// Initialize cache data structure with timestamp and empty providers array
-			$cacheData = [
-				'timestamp' => time(), // Record when this cache was created
-				'providers' => []      // Will hold provider definitions grouped by family
-			];
-			
-			// Iterate through all registered provider definitions
-			foreach ($this->providerDefinitions as $definition) {
-				// Extract the family name to group related providers together
-				$family = $definition->family;
-				
-				// Initialize the family array if it doesn't exist yet
-				if (!isset($cacheData['providers'][$family])) {
-					$cacheData['providers'][$family] = [];
-				}
-				
-				// Convert the definition to array format and add to the appropriate family group
-				$cacheData['providers'][$family][] = $definition->toArray();
-			}
-			
-			// Return the structured cache data ready for serialization/storage
-			return $cacheData;
-		}
-		
-		/**
-		 * Import provider definitions from cache
-		 * @param array $cacheData Previously exported provider data
-		 * @return self
-		 */
-		public function importDefinitionsFromCache(array $cacheData): self {
-			// Clear all existing providers before importing from cache
-			$this->clearProviders();
-			
-			// Validate that cache data contains the expected 'providers' key and is an array
-			if (!isset($cacheData['providers']) || !is_array($cacheData['providers'])) {
-				// Return early if cache data is invalid or missing providers
-				return $this;
-			}
-			
-			// Iterate through each provider family in the cache data
-			foreach ($cacheData['providers'] as $familyProviders) {
-				// Process each provider within the current family
-				foreach ($familyProviders as $providerData) {
-					try {
-						// Reconstruct the provider definition from the cached array data
-						$definition = ProviderDefinition::fromArray($providerData);
-						
-						// Add the reconstructed definition to the current instance
-						$this->addProviderDefinition($definition);
-					} catch (\InvalidArgumentException $e) {
-						// Skip invalid cached definitions and continue processing others
-						// This ensures corrupt or incompatible cache entries don't break the entire import
-						continue;
-					}
-				}
-			}
-			
-			// Return self to allow method chaining
-			return $this;
 		}
 		
 		/**
