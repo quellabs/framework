@@ -85,13 +85,14 @@
 
     /**
      * Matches wp-if comment directives
-     * Format: <!-- wp-if: expression --> or <!-- /wp-if -->
+     * Format: <!-- wp-if: expression --> or <!-- /wp-if --> or <!-- wp-else -->
      * Captures: expression for opening tags
      * Note: Comment nodes don't include <!-- --> in their textContent
      * @type {RegExp}
      */
     const WP_IF_COMMENT_REGEX = /^\s*wp-if:\s*(.+?)\s*$/;
     const WP_IF_CLOSE_COMMENT_REGEX = /^\s*\/wp-if\s*$/;
+    const WP_ELSE_COMMENT_REGEX = /^\s*wp-else\s*$/;
 
     /**
      * This regexp finds runs of dots and square brackets.
@@ -162,6 +163,7 @@
     const MSG_LCLICK = 0x0210;
     const MSG_MCLICK = 0x0211;
     const MSG_RCLICK = 0x0212;
+    const MSG_CONTEXTMENU = 0x007B;
     const MSG_CAPTURECHANGED = 0x0215;
     const MSG_DRAGENTER = 0x0231;
     const MSG_DRAGOVER  = 0x0232;
@@ -178,6 +180,7 @@
     const MSG_KILLFOCUS = 0x0008;
     const MSG_KEYDOWN = 0x0100;
     const MSG_KEYUP = 0x0101;
+    const MSG_ACCEL = 0x0112;
     const MSG_TIMER = 0x0113;
     const MSG_MOUSEWHEEL = 0x020A;
     const MSG_GESTURE = 0x0250;
@@ -216,7 +219,7 @@
      * Hex values match Win32 API virtual key code identifiers
      * Reference: https://docs.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes
      */
-    // Control keys
+        // Control keys
     const VK_BACK = 0x08;           // Backspace
     const VK_TAB = 0x09;            // Tab
     const VK_RETURN = 0x0D;         // Enter
@@ -351,6 +354,127 @@
     const VK_OEM_7 = 0xDE;          // Quote ('")
     const VK_OEM_102 = 0xE2;        // Non-US backslash
 
+    /**
+     * Maps KeyboardEvent.code values to Win32 Virtual Key codes.
+     * Defined at module level to avoid per-call object allocation in getVirtualKeyCode().
+     * @type {Object<string, number>}
+     */
+    const VK_MAP = {
+        // Control keys
+        'Backspace': VK_BACK,
+        'Tab': VK_TAB,
+        'Enter': VK_RETURN,
+        'ShiftLeft': VK_SHIFT,
+        'ShiftRight': VK_SHIFT,
+        'ControlLeft': VK_CONTROL,
+        'ControlRight': VK_CONTROL,
+        'AltLeft': VK_MENU,
+        'AltRight': VK_MENU,
+        'Pause': VK_PAUSE,
+        'CapsLock': VK_CAPITAL,
+        'Escape': VK_ESCAPE,
+        'Space': VK_SPACE,
+
+        // Navigation keys
+        'PageUp': VK_PRIOR,
+        'PageDown': VK_NEXT,
+        'End': VK_END,
+        'Home': VK_HOME,
+        'ArrowLeft': VK_LEFT,
+        'ArrowUp': VK_UP,
+        'ArrowRight': VK_RIGHT,
+        'ArrowDown': VK_DOWN,
+        'PrintScreen': VK_SNAPSHOT,
+        'Insert': VK_INSERT,
+        'Delete': VK_DELETE,
+
+        // Number keys (top row)
+        'Digit0': VK_0, 'Digit1': VK_1, 'Digit2': VK_2, 'Digit3': VK_3, 'Digit4': VK_4,
+        'Digit5': VK_5, 'Digit6': VK_6, 'Digit7': VK_7, 'Digit8': VK_8, 'Digit9': VK_9,
+
+        // Letter keys
+        'KeyA': VK_A, 'KeyB': VK_B, 'KeyC': VK_C, 'KeyD': VK_D, 'KeyE': VK_E, 'KeyF': VK_F,
+        'KeyG': VK_G, 'KeyH': VK_H, 'KeyI': VK_I, 'KeyJ': VK_J, 'KeyK': VK_K, 'KeyL': VK_L,
+        'KeyM': VK_M, 'KeyN': VK_N, 'KeyO': VK_O, 'KeyP': VK_P, 'KeyQ': VK_Q, 'KeyR': VK_R,
+        'KeyS': VK_S, 'KeyT': VK_T, 'KeyU': VK_U, 'KeyV': VK_V, 'KeyW': VK_W, 'KeyX': VK_X,
+        'KeyY': VK_Y, 'KeyZ': VK_Z,
+
+        // Windows/Meta keys
+        'MetaLeft': VK_LWIN,
+        'MetaRight': VK_RWIN,
+        'ContextMenu': VK_APPS,
+
+        // Numpad keys
+        'Numpad0': VK_NUMPAD0, 'Numpad1': VK_NUMPAD1, 'Numpad2': VK_NUMPAD2,
+        'Numpad3': VK_NUMPAD3, 'Numpad4': VK_NUMPAD4, 'Numpad5': VK_NUMPAD5,
+        'Numpad6': VK_NUMPAD6, 'Numpad7': VK_NUMPAD7, 'Numpad8': VK_NUMPAD8,
+        'Numpad9': VK_NUMPAD9,
+        'NumpadMultiply': VK_MULTIPLY,
+        'NumpadAdd': VK_ADD,
+        'NumpadSubtract': VK_SUBTRACT,
+        'NumpadDecimal': VK_DECIMAL,
+        'NumpadDivide': VK_DIVIDE,
+
+        // Function keys
+        'F1': VK_F1, 'F2': VK_F2, 'F3': VK_F3, 'F4': VK_F4, 'F5': VK_F5, 'F6': VK_F6,
+        'F7': VK_F7, 'F8': VK_F8, 'F9': VK_F9, 'F10': VK_F10, 'F11': VK_F11, 'F12': VK_F12,
+
+        // Lock keys
+        'NumLock': VK_NUMLOCK,
+        'ScrollLock': VK_SCROLL,
+
+        // Browser keys
+        'BrowserBack': VK_BROWSER_BACK,
+        'BrowserForward': VK_BROWSER_FORWARD,
+        'BrowserRefresh': VK_BROWSER_REFRESH,
+        'BrowserStop': VK_BROWSER_STOP,
+        'BrowserSearch': VK_BROWSER_SEARCH,
+        'BrowserFavorites': VK_BROWSER_FAVORITES,
+        'BrowserHome': VK_BROWSER_HOME,
+
+        // Media keys
+        'AudioVolumeMute': VK_VOLUME_MUTE,
+        'AudioVolumeDown': VK_VOLUME_DOWN,
+        'AudioVolumeUp': VK_VOLUME_UP,
+        'MediaTrackNext': VK_MEDIA_NEXT_TRACK,
+        'MediaTrackPrevious': VK_MEDIA_PREV_TRACK,
+        'MediaStop': VK_MEDIA_STOP,
+        'MediaPlayPause': VK_MEDIA_PLAY_PAUSE,
+
+        // OEM keys (punctuation - US layout)
+        'Semicolon': VK_OEM_1,
+        'Equal': VK_OEM_PLUS,
+        'Comma': VK_OEM_COMMA,
+        'Minus': VK_OEM_MINUS,
+        'Period': VK_OEM_PERIOD,
+        'Slash': VK_OEM_2,
+        'Backquote': VK_OEM_3,
+        'BracketLeft': VK_OEM_4,
+        'Backslash': VK_OEM_5,
+        'BracketRight': VK_OEM_6,
+        'Quote': VK_OEM_7,
+        'IntlBackslash': VK_OEM_102
+    };
+
+    /**
+     * Maps data-pac-event modifier names to KeyboardEvent.key values.
+     * Defined at module level to avoid per-call object allocation in processEventModifiers().
+     * @type {Object<string, string>}
+     */
+    const KEY_MODIFIER_MAP = {
+        enter: 'Enter',
+        escape: 'Escape',
+        esc: 'Escape',
+        space: ' ',
+        tab: 'Tab',
+        delete: 'Delete',
+        del: 'Delete',
+        up: 'ArrowUp',
+        down: 'ArrowDown',
+        left: 'ArrowLeft',
+        right: 'ArrowRight'
+    };
+
     // =============================================================================
     // UTILITY FUNCTIONS
     // =============================================================================
@@ -379,6 +503,28 @@
             // Combine prefix + base ID + optional random suffix.
             // Random suffix is a truncated 8-digit random number for additional entropy
             return `${prefix}${id}${random ? `.${Math.trunc(Math.random() * 100000000)}` : ""}`;
+        },
+
+        /**
+         * Returns true if the given value is a plain object (i.e. created via object
+         * literal, Object.create(null), or new Object()), and false for class instances,
+         * arrays, null, primitives, and other built-ins.
+         * Cross-realm safe (works across iframes and vm contexts).
+         * @param {*} value - The value to check
+         * @returns {boolean}
+         */
+        isPlainObject(value) {
+            // Reject if the type is not 'object'
+            if (value === null || typeof value !== 'object') {
+                return false;
+            }
+
+            // Get prototype
+            const proto = Object.getPrototypeOf(value);
+
+            // Accept Object.create(null) (no prototype) and plain objects whose
+            // prototype chain is exactly: value -> Object.prototype -> null
+            return proto === null || Object.getPrototypeOf(proto) === null;
         },
 
         /**
@@ -1063,17 +1209,26 @@
                 return val;
             }
 
-            // CRITICAL FIX: Lazy wrapping of nested objects and arrays
             // If the value is an object/array and not already reactive, wrap it in a proxy
             if (val && typeof val === 'object' && !val._isReactive && shouldMakeReactive(prop)) {
+                // Return raw value if the data is already proxied
+                if (val._externalProxy) {
+                    return val;
+                }
+
                 const propertyPath = currentPath.concat([prop]);
                 const proxiedVal = createProxy(val, propertyPath);
                 proxiedVal._isReactive = true;
 
-                // Update the original object with the proxy
-                target[prop] = proxiedVal;
+                // Write directly to target without going through the proxy set trap.
+                // This caches the proxy without firing pac:change.
+                Object.defineProperty(target, prop, {
+                    value: proxiedVal,
+                    writable: true,
+                    enumerable: true,
+                    configurable: true
+                });
 
-                // Return proxiedVal
                 return proxiedVal;
             }
 
@@ -1221,6 +1376,7 @@
         /** @private {boolean} Flag to prevent multiple initializations */
         _initialized: false,
 
+
         /** @private {boolean} Flag indicating if mouse capture is currently active */
         _captureActive: false,
 
@@ -1326,6 +1482,17 @@
                         online: navigator.onLine, // Current connectivity flag
                         networkType: Utils.getNetworkEffectiveType(),
                         networkQuality: Utils.detectNetworkQuality(),
+                    });
+                });
+            }
+
+            // Screen orientation changes
+            // Fires when the device is rotated and the screen orientation changes
+            if (screen.orientation) {
+                screen.orientation.addEventListener('change', function() {
+                    self.dispatchBrowserStateEvent('orientation', {
+                        angle: screen.orientation.angle,
+                        type: screen.orientation.type
                     });
                 });
             }
@@ -1446,6 +1613,14 @@
                 // Resolve container and dispatch message
                 const container = self.getContainerForEvent(messageType, event);
                 self.dispatchMouseMessage(messageType, event, container);
+
+                // Synthesize MSG_RCLICK on right button release, parallel to how the
+                // browser's 'click' event synthesizes MSG_LCLICK on left button release.
+                // Guard against gesture: if a gesture was just recognized the contextmenu
+                // handler will suppress it, and we should not fire a click either.
+                if (event.button === 2 && !MouseGestureRecognizer.gestureJustDispatched) {
+                    self.dispatchMouseMessage(MSG_RCLICK, event, container);
+                }
             });
 
             // Left click
@@ -1462,19 +1637,22 @@
                 }
             });
 
-            // Right click / context menu
-            // Normalize context interactions and optionally suppress native menu
+            // Context menu
+            // Fires on right-click AND the keyboard context menu key.
+            // Dispatched as MSG_CONTEXTMENU so components can intercept and suppress
+            // the native browser menu via event.preventDefault().
             document.addEventListener('contextmenu', function(event) {
-                // Prevent brwowser context menu if a gesture was just dispatched
+                // Suppress native menu if a gesture was just dispatched
                 if (MouseGestureRecognizer.gestureJustDispatched) {
                     MouseGestureRecognizer.gestureJustDispatched = false;
                     event.preventDefault();
                     return;
                 }
 
-                // Dispatch MSG_RCLICK if no gesture recognized
-                const container = self.getContainerForEvent(MSG_RCLICK, event);
-                self.dispatchMouseMessage(MSG_RCLICK, event, container);
+                // Dispatch MSG_CONTEXTMENU — calling event.preventDefault() inside
+                // msgProc will suppress the native browser context menu
+                const container = self.getContainerForEvent(MSG_CONTEXTMENU, event);
+                self.dispatchMouseMessage(MSG_CONTEXTMENU, event, container);
             });
 
             // Double click (left button only)
@@ -2023,6 +2201,14 @@
                     key: event.key,   // Logical key value
                     code: event.code  // Physical key identifier
                 });
+
+                // Translate accelerators before dispatch. If a match is found,
+                // MSG_ACCEL is sent to the container, the keydown is suppressed,
+                // and the browser default action is prevented.
+                if (container && _translateAccelerator(keyDownEvent, container)) {
+                    event.preventDefault();
+                    return;
+                }
 
                 // Dispatch the key event
                 self.dispatchToContainer(container, keyDownEvent);
@@ -2711,12 +2897,9 @@
                 return;
             }
 
-            // Stamp the container onto the event so hooks and handlers always know the pacId
-            Object.defineProperty(event, 'pacId', {
-                value: container.getAttribute('data-pac-id'),
-                enumerable: true,
-                configurable: true
-            });
+            // Stamp the container onto the event so hooks and handlers always know the pacId.
+            // _pacId is cached on the element at registration time to avoid a DOM attribute read here.
+            event.pacId = container._pacId || container.getAttribute('data-pac-id');
 
             // Snapshot the hook array at dispatch time. This prevents mutations to _hooks
             // (installs or uninstalls that happen inside a hook function) from affecting
@@ -3025,105 +3208,6 @@
          * @returns {number|null} The Win32 VK_ code, or null if no mapping exists
          */
         getVirtualKeyCode(code) {
-            // Win32 Virtual Key Code mapping
-            // Maps KeyboardEvent.code values to VK constants
-            const VK_MAP = {
-                // Control keys
-                'Backspace': VK_BACK,
-                'Tab': VK_TAB,
-                'Enter': VK_RETURN,
-                'ShiftLeft': VK_SHIFT,
-                'ShiftRight': VK_SHIFT,
-                'ControlLeft': VK_CONTROL,
-                'ControlRight': VK_CONTROL,
-                'AltLeft': VK_MENU,
-                'AltRight': VK_MENU,
-                'Pause': VK_PAUSE,
-                'CapsLock': VK_CAPITAL,
-                'Escape': VK_ESCAPE,
-                'Space': VK_SPACE,
-
-                // Navigation keys
-                'PageUp': VK_PRIOR,
-                'PageDown': VK_NEXT,
-                'End': VK_END,
-                'Home': VK_HOME,
-                'ArrowLeft': VK_LEFT,
-                'ArrowUp': VK_UP,
-                'ArrowRight': VK_RIGHT,
-                'ArrowDown': VK_DOWN,
-                'PrintScreen': VK_SNAPSHOT,
-                'Insert': VK_INSERT,
-                'Delete': VK_DELETE,
-
-                // Number keys (top row)
-                'Digit0': VK_0, 'Digit1': VK_1, 'Digit2': VK_2, 'Digit3': VK_3, 'Digit4': VK_4,
-                'Digit5': VK_5, 'Digit6': VK_6, 'Digit7': VK_7, 'Digit8': VK_8, 'Digit9': VK_9,
-
-                // Letter keys
-                'KeyA': VK_A, 'KeyB': VK_B, 'KeyC': VK_C, 'KeyD': VK_D, 'KeyE': VK_E, 'KeyF': VK_F,
-                'KeyG': VK_G, 'KeyH': VK_H, 'KeyI': VK_I, 'KeyJ': VK_J, 'KeyK': VK_K, 'KeyL': VK_L,
-                'KeyM': VK_M, 'KeyN': VK_N, 'KeyO': VK_O, 'KeyP': VK_P, 'KeyQ': VK_Q, 'KeyR': VK_R,
-                'KeyS': VK_S, 'KeyT': VK_T, 'KeyU': VK_U, 'KeyV': VK_V, 'KeyW': VK_W, 'KeyX': VK_X,
-                'KeyY': VK_Y, 'KeyZ': VK_Z,
-
-                // Windows/Meta keys
-                'MetaLeft': VK_LWIN,
-                'MetaRight': VK_RWIN,
-                'ContextMenu': VK_APPS,
-
-                // Numpad keys
-                'Numpad0': VK_NUMPAD0, 'Numpad1': VK_NUMPAD1, 'Numpad2': VK_NUMPAD2,
-                'Numpad3': VK_NUMPAD3, 'Numpad4': VK_NUMPAD4, 'Numpad5': VK_NUMPAD5,
-                'Numpad6': VK_NUMPAD6, 'Numpad7': VK_NUMPAD7, 'Numpad8': VK_NUMPAD8,
-                'Numpad9': VK_NUMPAD9,
-                'NumpadMultiply': VK_MULTIPLY,
-                'NumpadAdd': VK_ADD,
-                'NumpadSubtract': VK_SUBTRACT,
-                'NumpadDecimal': VK_DECIMAL,
-                'NumpadDivide': VK_DIVIDE,
-
-                // Function keys
-                'F1': VK_F1, 'F2': VK_F2, 'F3': VK_F3, 'F4': VK_F4, 'F5': VK_F5, 'F6': VK_F6,
-                'F7': VK_F7, 'F8': VK_F8, 'F9': VK_F9, 'F10': VK_F10, 'F11': VK_F11, 'F12': VK_F12,
-
-                // Lock keys
-                'NumLock': VK_NUMLOCK,
-                'ScrollLock': VK_SCROLL,
-
-                // Browser keys
-                'BrowserBack': VK_BROWSER_BACK,
-                'BrowserForward': VK_BROWSER_FORWARD,
-                'BrowserRefresh': VK_BROWSER_REFRESH,
-                'BrowserStop': VK_BROWSER_STOP,
-                'BrowserSearch': VK_BROWSER_SEARCH,
-                'BrowserFavorites': VK_BROWSER_FAVORITES,
-                'BrowserHome': VK_BROWSER_HOME,
-
-                // Media keys
-                'AudioVolumeMute': VK_VOLUME_MUTE,
-                'AudioVolumeDown': VK_VOLUME_DOWN,
-                'AudioVolumeUp': VK_VOLUME_UP,
-                'MediaTrackNext': VK_MEDIA_NEXT_TRACK,
-                'MediaTrackPrevious': VK_MEDIA_PREV_TRACK,
-                'MediaStop': VK_MEDIA_STOP,
-                'MediaPlayPause': VK_MEDIA_PLAY_PAUSE,
-
-                // OEM keys (punctuation - US layout)
-                'Semicolon': VK_OEM_1,
-                'Equal': VK_OEM_PLUS,
-                'Comma': VK_OEM_COMMA,
-                'Minus': VK_OEM_MINUS,
-                'Period': VK_OEM_PERIOD,
-                'Slash': VK_OEM_2,
-                'Backquote': VK_OEM_3,
-                'BracketLeft': VK_OEM_4,
-                'Backslash': VK_OEM_5,
-                'BracketRight': VK_OEM_6,
-                'Quote': VK_OEM_7,
-                'IntlBackslash': VK_OEM_102
-            };
-
             return VK_MAP[code] || null;
         },
 
@@ -3156,19 +3240,7 @@
             const isKeyboard = originalEvent.type === 'keyup' || originalEvent.type === 'keydown';
 
             // Map modifier names to required KeyboardEvent.key values
-            const keyMap = {
-                enter: 'Enter',
-                escape: 'Escape',
-                esc: 'Escape',
-                space: ' ',
-                tab: 'Tab',
-                delete: 'Delete',
-                del: 'Delete',
-                up: 'ArrowUp',
-                down: 'ArrowDown',
-                left: 'ArrowLeft',
-                right: 'ArrowRight'
-            };
+            const keyMap = KEY_MODIFIER_MAP;
 
             for (const raw of modifiers) {
                 // transform modifier to lowercase
@@ -3209,17 +3281,18 @@
          */
         isCaptureAffected(messageType) {
             return messageType === MSG_MOUSEMOVE ||
-                   messageType === MSG_MOUSEWHEEL ||
-                   messageType === MSG_LBUTTONDOWN ||
-                   messageType === MSG_LBUTTONUP ||
-                   messageType === MSG_LBUTTONDBLCLK ||
-                   messageType === MSG_RBUTTONDOWN ||
-                   messageType === MSG_RBUTTONUP ||
-                   messageType === MSG_MBUTTONDOWN ||
-                   messageType === MSG_MBUTTONUP ||
-                   messageType === MSG_LCLICK ||
-                   messageType === MSG_MCLICK ||
-                   messageType === MSG_RCLICK;
+                messageType === MSG_MOUSEWHEEL ||
+                messageType === MSG_LBUTTONDOWN ||
+                messageType === MSG_LBUTTONUP ||
+                messageType === MSG_LBUTTONDBLCLK ||
+                messageType === MSG_RBUTTONDOWN ||
+                messageType === MSG_RBUTTONUP ||
+                messageType === MSG_MBUTTONDOWN ||
+                messageType === MSG_MBUTTONUP ||
+                messageType === MSG_LCLICK ||
+                messageType === MSG_MCLICK ||
+                messageType === MSG_RCLICK ||
+                messageType === MSG_CONTEXTMENU;
         },
 
         /**
@@ -3275,8 +3348,8 @@
 
             // Send capture changed message to container losing the capture
             if (this._capturedContainer?.isConnected) {
-                const pacId = this._capturedContainer.getAttribute('data-pac-id');
-                
+                const pacId = this._capturedContainer._pacId || this._capturedContainer.getAttribute('data-pac-id');
+
                 if (pacId !== null) {
                     wakaPAC.sendMessage(pacId, wakaPAC.MSG_CAPTURECHANGED, 0, 0);
                 }
@@ -3328,6 +3401,26 @@
             '>=': 'comparison', '<=': 'comparison', '>': 'comparison', '<': 'comparison',
             '+': 'arithmetic', '-': 'arithmetic', '*': 'arithmetic', '/': 'arithmetic',
             '%': 'arithmetic'
+        },
+
+        /** Lookup table for keyword literal values — avoids a switch in parsePrimary */
+        KEYWORD_VALUES: {
+            'true': true,
+            'false': false,
+            'null': null,
+            'undefined': undefined
+        },
+
+        /** Single-character token type map — hoisted out of tokenize() to avoid per-call allocation */
+        SINGLE_CHAR_TOKENS: {
+            '(': 'LPAREN',
+            ')': 'RPAREN',
+            '{': 'LBRACE',
+            '}': 'RBRACE',
+            '[': 'LBRACKET',
+            ']': 'RBRACKET',
+            ',': 'COMMA',
+            '.': 'DOT'
         },
 
         /**
@@ -3396,16 +3489,7 @@
                 }
 
                 // Single character tokens
-                const singleCharTokens = {
-                    '(': 'LPAREN',
-                    ')': 'RPAREN',
-                    '{': 'LBRACE',
-                    '}': 'RBRACE',
-                    '[': 'LBRACKET',
-                    ']': 'RBRACKET',
-                    ',': 'COMMA',
-                    '.': 'DOT'
-                };
+                const singleCharTokens = this.SINGLE_CHAR_TOKENS;
 
                 if (singleCharTokens[char]) {
                     tokens.push({type: singleCharTokens[char], value: char});
@@ -3650,16 +3734,8 @@
                 return this.parsePostfixOperators(this.parseObjectLiteral());
             }
 
-            // String literals
-            if (this.check('STRING')) {
-                return this.parsePostfixOperators({
-                    type: 'literal',
-                    value: this.advance().value
-                });
-            }
-
-            // Number literals
-            if (this.check('NUMBER')) {
+            // String and number literals share the same AST shape
+            if (this.check('STRING') || this.check('NUMBER')) {
                 return this.parsePostfixOperators({
                     type: 'literal',
                     value: this.advance().value
@@ -3668,30 +3744,9 @@
 
             // Keywords (true, false, null, undefined)
             if (this.check('KEYWORD')) {
-                const token = this.advance();
-
-                let value;
-                switch (token.value) {
-                    case 'true':
-                        value = true;
-                        break;
-
-                    case 'false':
-                        value = false;
-                        break;
-
-                    case 'null':
-                        value = null;
-                        break;
-
-                    case 'undefined':
-                        value = undefined;
-                        break;
-                }
-
                 return this.parsePostfixOperators({
                     type: 'literal',
-                    value: value
+                    value: ExpressionParser.KEYWORD_VALUES[this.advance().value]
                 });
             }
 
@@ -4217,14 +4272,15 @@
 
             // Split path by both dots and brackets, handling bracket notation correctly
             const parts = resolvedPath.split(DOTS_AND_BRACKETS_PATTERN).filter(Boolean);
-
             let current = obj;
+
             for (let i = 0; i < parts.length; i++) {
                 if (current == null) {
                     return undefined;
                 }
 
                 const part = parts[i];
+
                 current = current[part];
             }
 
@@ -4708,6 +4764,20 @@
     // DOM UPDATER - Handles ALL binding applications
     // ========================================================================
 
+    /**
+     * Factory that creates a scopeResolver object for ExpressionParser.evaluate().
+     * All scopeResolver instances share the same shape — this avoids repeating the
+     * object literal at every call site and gives the minifier a single declaration to mangle.
+     * @param {Function} normalizeFn - Bound normalizePath function (already bound to correct `this`)
+     * @param {Element} element - The DOM element to use as path scope anchor
+     * @returns {{ resolveScopedPath: function(string): * }}
+     */
+    function makeScopeResolver(normalizeFn, element) {
+        return {
+            resolveScopedPath: (path) => normalizeFn(path, element)
+        };
+    }
+
     function DomUpdater(context) {
         this.context = context;
     }
@@ -4728,11 +4798,7 @@
                 const parsed = ExpressionCache.parseExpression(expression);
 
                 // Resolve the scope - use parentElement for text nodes
-                const scopeResolver = {
-                    resolveScopedPath: (path) => {
-                        return self.context.normalizePath(path, element);
-                    }
-                };
+                const scopeResolver = makeScopeResolver(self.context.normalizePath.bind(self.context), element);
 
                 // Evaluate the expression using the scope resolver
                 const result = ExpressionParser.evaluate(parsed, self.context.abstraction, scopeResolver);
@@ -4760,9 +4826,7 @@
         const parsed = ExpressionCache.parseExpression(bindingData.target);
 
         // Resolver translates scoped paths into normalized context paths
-        const scopeResolver = {
-            resolveScopedPath: (path) => this.context.normalizePath(path, element)
-        };
+        const scopeResolver = makeScopeResolver(this.context.normalizePath.bind(this.context), element);
 
         // Evaluate expression using the abstraction model and resolver
         return ExpressionParser.evaluate(parsed, this.context.abstraction, scopeResolver);
@@ -5220,51 +5284,74 @@
     };
 
     /**
-     * Analyzes computed properties to build a dependency graph showing which computed
-     * properties depend on which data properties.
-     * @returns {Map<string, string[]>} A Map where keys are property names that are accessed
+     * Builds a dependency graph by executing each computed property through a tracking
+     * proxy, then transitively expanding chains so that upstream data changes propagate
+     * through all computed layers.
+     * @returns {Map<string, Set<string>>} Keys are accessed property names; values are
+     *   the set of computed properties that ultimately depend on them.
      */
-    Context.prototype.getDependencies = function() {
-        /** @type {Map<string, string[]>} Dependency map from property names to computed property names */
-        const dependencies = new Map();
+    Context.prototype.getDependencies = function () {
+        const computed = this.originalAbstraction.computed ?? {};
+        const computedNames = new Set(Object.keys(computed));
 
-        /** @type {Object<string, Function>} Computed properties from the original abstraction */
-        const computed = this.originalAbstraction.computed || {};
-
-        /** @type {Set<string>} Tracks which properties are accessed during each computed property execution */
+        // Build the direct dependency map by executing each computed property
+        // through a proxy that records every property access.
         const accessed = new Set();
-
-        /** @type {Object} Proxy that intercepts property access to track dependencies */
         const proxy = new Proxy(this.originalAbstraction, {
-            /**
-             * Trap for property access - records accessed property names
-             * @param {Object} target - The original abstraction object
-             * @param {string|symbol} prop - The property being accessed
-             * @returns {*} The property value
-             */
             get(target, prop) {
                 if (typeof prop === 'string') {
                     accessed.add(prop);
                 }
 
-                return target[prop];
+                // Transparently invoke computed properties so that computed-on-computed
+                // access resolves to a value rather than recording a function reference.
+                const value = target[prop];
+                return (typeof value === 'function' && computedNames.has(prop))
+                    ? value.call(proxy)
+                    : value;
             }
         });
 
-        // Execute each computed property to discover its dependencies
-        Object.keys(computed).forEach(name => {
+        /** @type {Map<string, Set<string>>} */
+        const dependencies = new Map();
+
+        for (const name of computedNames) {
             accessed.clear();
             computed[name].call(proxy);
 
-            // For each accessed property, add this computed property as a dependent
-            accessed.forEach(prop => {
+            for (const prop of accessed) {
                 if (!dependencies.has(prop)) {
-                    dependencies.set(prop, []);
+                    dependencies.set(prop, new Set());
                 }
 
-                dependencies.get(prop).push(name);
-            });
-        });
+                dependencies.get(prop).add(name);
+            }
+        }
+
+        // Transitively expand the graph so that data → computed → computed chains
+        // are flattened. A change to `rawData` must list every downstream computed
+        // property as a dependent, not only the first one in the chain.
+        // The loop converges because duplicates are never added to a Set.
+        let changed = true;
+
+        while (changed) {
+            changed = false;
+
+            for (const [, dependents] of dependencies) {
+                for (const dep of [...dependents]) {
+                    if (!computedNames.has(dep)) {
+                        continue;
+                    }
+
+                    for (const transitive of (dependencies.get(dep) ?? [])) {
+                        if (!dependents.has(transitive)) {
+                            dependents.add(transitive);
+                            changed = true;
+                        }
+                    }
+                }
+            }
+        }
 
         return dependencies;
     };
@@ -5281,7 +5368,7 @@
             const rootValue = this.abstraction[rootProperty];
             const isArrayRoot = Array.isArray(rootValue);
 
-            if (dependentList.includes(computedName) && isArrayRoot) {
+            if (dependentList.has(computedName) && isArrayRoot) {
                 return rootProperty; // e.g. "todos"
             }
         }
@@ -5474,7 +5561,7 @@
             // Similar to Win32: returning 0 from WndProc means "I handled this, skip default processing"
             const cancellableEvents = [
                 MSG_LBUTTONUP, MSG_MBUTTONUP, MSG_RBUTTONUP,
-                MSG_LCLICK, MSG_MCLICK, MSG_RCLICK,
+                MSG_LCLICK, MSG_MCLICK, MSG_RCLICK, MSG_CONTEXTMENU,
                 MSG_SUBMIT, MSG_CHANGE, MSG_GESTURE,
                 MSG_COPY, MSG_PASTE, MSG_KEYDOWN, MSG_KEYUP
             ];
@@ -5575,9 +5662,7 @@
 
             // Get the foreach configuration and set up scope resolution
             const foreachData = this.interpolationMap.get(foreachElement);
-            const scopeResolver = {
-                resolveScopedPath: (path) => this.normalizePath(path, event.target)
-            };
+            const scopeResolver = makeScopeResolver(this.normalizePath.bind(this), event.target);
 
             // Evaluate the foreach expression to get the source array
             const array = ExpressionParser.evaluate(
@@ -5847,11 +5932,7 @@
 
             // Build the scope resolver once per element rather than per binding,
             // since it only depends on the element for path normalization
-            const scopeResolver = {
-                resolveScopedPath: function(path) {
-                    return self.normalizePath(path, element);
-                }
-            };
+            const scopeResolver = makeScopeResolver(self.normalizePath.bind(self), element);
 
             // Initialize the previous values store on first encounter.
             // Cache the reference to avoid repeated DOM element property access
@@ -5887,7 +5968,7 @@
                     if (!Utils.isEqual(previousValues[bindingType], currentValue)) {
                         // Update value
                         previousValues[bindingType] = currentValue;
-                        
+
                         // Update DOM — pass pre-computed value to avoid re-evaluating
                         // the same expression through a second normalizePath chain
                         domUpdater.updateAttributeBinding(element, bindingType, bindingData, currentValue);
@@ -5916,11 +5997,7 @@
 
                 // Build the scope resolver once per text node, not once per expression.
                 // The resolver only depends on the text node for path normalization.
-                const scopeResolver = {
-                    resolveScopedPath: function(path) {
-                        return self.normalizePath(path, textNode);
-                    }
-                };
+                const scopeResolver = makeScopeResolver(self.normalizePath.bind(self), textNode);
 
                 const newText = mappingData.template.replace(INTERPOLATION_REGEX, function(match, expression) {
                     try {
@@ -5979,6 +6056,12 @@
         // Don't trigger watchers for array element changes
         // Arrays are handled by foreach rebuilds, not watchers
         if (Array.isArray(newParentObject)) {
+            return;
+        }
+
+        // Cannot reconstruct old state for externally managed proxies
+        if (newParentObject && newParentObject._externalProxy) {
+            this.triggerWatcher(rootProperty, newParentObject, null);
             return;
         }
 
@@ -6042,7 +6125,7 @@
 
             // Indirect match: this foreach is bound to a computed property
             // that depends on the changed property (e.g., filter → filteredTodos)
-            if (dependents.indexOf(expr) !== -1 || dependents.indexOf(source) !== -1) {
+            if (dependents.has(expr) || dependents.has(source)) {
                 if (this.shouldRebuildForeach(element)) {
                     this.renderForeach(element);
                 }
@@ -6128,6 +6211,14 @@
                 // Use Utils for consistent visibility calculation
                 this.abstraction.containerVisible = Utils.isElementVisible(this.container);
                 this.abstraction.containerFullyVisible = Utils.isElementFullyVisible(this.container);
+                break;
+            }
+
+            case 'orientation': {
+                // Screen orientation angle in degrees (0, 90, 180, 270)
+                // and type string e.g. 'portrait-primary', 'landscape-secondary'
+                this.abstraction.browserOrientationAngle = stateData.angle;
+                this.abstraction.browserOrientationType = stateData.type;
                 break;
             }
 
@@ -6292,7 +6383,7 @@
                 template: element.innerHTML, // Capture clean template
                 itemVar: itemVar,
                 indexVar: indexVar,
-				depth: depth
+                depth: depth
             });
 
             interpolationMap.set(element, mappingData);
@@ -6339,10 +6430,25 @@
     };
 
     /**
+     * Calls scanAndRegisterNewElements on every Element node in the given array.
+     * Extracted as a module-level helper so it is defined once rather than
+     * recreated as a closure on each updateCommentConditional call.
+     * @param {Context} context
+     * @param {Node[]} nodes
+     */
+    function scanElementNodes(context, nodes) {
+        nodes.forEach(node => {
+            if (node.nodeType === Node.ELEMENT_NODE) {
+                context.scanAndRegisterNewElements(node);
+            }
+        });
+    }
+
+    /**
      * Scans the container for comment nodes with wp-if conditionals
      * Builds mapping similar to element bindings but for comment-based conditionals
      * @param {Element} parentElement - The parent element to scan
-     * @returns {Map<Comment, {expression: string, closingComment: Comment, content: Node[]}>}
+     * @returns {Map<Comment, {expression: string, closingComment: Comment, content: Node[], elseContent: Node[]}>}
      */
     Context.prototype.scanCommentBindings = function(parentElement) {
         const commentBindingMap = new Map();
@@ -6383,18 +6489,53 @@
             // pop comment off array
             const { comment: openComment, expression } = openComments.pop();
 
-            // Collect all nodes between opening and closing comments
+            // Collect all nodes between opening and closing comments,
+            // splitting at an optional <!-- wp-else --> into two buckets.
             const content = [];
+            const elseContent = [];
+            let elseComment = null;
+
             for (let node = openComment.nextSibling; node && node !== commentNode; node = node.nextSibling) {
-                content.push(node);
+                if (node.nodeType === Node.COMMENT_NODE && node.nodeValue.match(WP_ELSE_COMMENT_REGEX)) {
+                    elseComment = node;
+                    continue;
+                }
+
+                if (elseComment) {
+                    elseContent.push(node);
+                } else {
+                    content.push(node);
+                }
             }
+
+            // Build the scopeResolver once at scan time. The comment's parent
+            // element is stable for the lifetime of the binding, so there is
+            // no benefit to rebuilding this on every evaluation.
+            let scopeParent = openComment.parentNode;
+
+            while (scopeParent && scopeParent.nodeType !== Node.ELEMENT_NODE) {
+                scopeParent = scopeParent.parentNode;
+            }
+
+            const scopeResolver = {
+                resolveScopedPath: (path) => scopeParent
+                    ? this.normalizePath(path, scopeParent)
+                    : path
+            };
 
             // Store in map
             commentBindingMap.set(openComment, {
                 expression,
                 closingComment: commentNode,
                 content,
-                isVisible: true // Track current visibility state
+                elseContent,
+                scopeResolver,
+                isVisible: null,           // null sentinel forces first evaluation to always run
+                // NOTE: these flags assume content/elseContent nodes are never
+                // replaced after initial scan. If the framework ever supports
+                // keyed re-renders that swap these nodes, the flags must be reset.
+                contentScanned: false,     // Guards against re-scanning on repeated toggles
+                elseContentScanned: false  // Same guard for the else branch
             });
         }
 
@@ -6408,53 +6549,47 @@
     };
 
     /**
-     * Updates the visibility of content controlled by a wp-if comment
+     * Updates the visibility of content controlled by a wp-if comment.
+     * If the binding includes an elseContent branch (from <!-- wp-else -->),
+     * it is toggled in the opposite direction.
      * @param {Comment} commentNode - The wp-if comment node
      * @param {Object} mappingData - The binding data for this comment
      */
     Context.prototype.updateCommentConditional = function(commentNode, mappingData) {
-        const self = this;
-
-        const scopeResolver = {
-            resolveScopedPath: (path) => {
-                let parentElement = commentNode.parentNode;
-
-                while (parentElement && parentElement.nodeType !== Node.ELEMENT_NODE) {
-                    parentElement = parentElement.parentNode;
-                }
-
-                return parentElement ? self.normalizePath(path, parentElement) : path;
-            }
-        };
-
         try {
             const parsed = ExpressionCache.parseExpression(mappingData.expression);
-            const value = ExpressionParser.evaluate(parsed, this.abstraction, scopeResolver);
+            const value = ExpressionParser.evaluate(parsed, this.abstraction, mappingData.scopeResolver);
             const shouldShow = !!value;
 
-            // Do not toggle node if visibility status did not change
+            // Do not toggle nodes if visibility status did not change
             if (shouldShow === mappingData.isVisible) {
                 return;
             }
 
-            // Toggle DOM first, then update flag — ensures isVisible
-            // stays in sync with actual DOM state even if the DOM
-            // operation silently fails for some nodes.
+            // Update DOM before the flag. If toggleNodeVisibility throws,
+            // isVisible remains consistent with the actual DOM state.
             this.domUpdater.toggleNodeVisibility(mappingData.content, shouldShow);
 
-            // Set new visible flag after successful DOM update
+            // Toggle else branch in the opposite direction (if present)
+            if (mappingData.elseContent.length > 0) {
+                this.domUpdater.toggleNodeVisibility(mappingData.elseContent, !shouldShow);
+            }
+
+            // Flag update after DOM operations succeed
             mappingData.isVisible = shouldShow;
 
-            // Scan new nodes
-            if (shouldShow) {
-                mappingData.content.forEach(node => {
-                    if (node.nodeType === Node.ELEMENT_NODE) {
-                        self.scanAndRegisterNewElements(node);
-                    }
-                });
+            // Scan each branch once — on first show only — to register any
+            // reactive bindings inside. Without this, a branch that starts
+            // hidden would have no registered bindings when first revealed.
+            if (shouldShow && !mappingData.contentScanned) {
+                scanElementNodes(this, mappingData.content);
+                mappingData.contentScanned = true;
+            } else if (!shouldShow && mappingData.elseContent.length > 0 && !mappingData.elseContentScanned) {
+                scanElementNodes(this, mappingData.elseContent);
+                mappingData.elseContentScanned = true;
             }
         } catch (error) {
-            console.warn('Error evaluating wp-if comment expression:', mappingData.expression, error);
+            console.warn('WakaPAC: Error processing wp-if comment directive:', mappingData.expression, error);
         }
     };
 
@@ -6503,28 +6638,6 @@
          * Hierarchy communication methods
          */
         Object.assign(proxiedReactive, {
-            /**
-             * Sends a notification to the parent component
-             * @param {string} type - Type of notification
-             * @param {*} data - Data to send with the notification
-             */
-            notifyParent: (type, data) => self.notifyParent(type, data),
-
-            /**
-             * Sends a command to all child components
-             * @param {string} cmd - Command to send
-             * @param {*} data - Data to send with the command
-             */
-            notifyChildren: (cmd, data) => self.notifyChildren(cmd, data),
-
-            /**
-             * Sends a command to a specific child component
-             * @param {string|Function} selector - Selector to find the target child
-             * @param {string} cmd - Command to send
-             * @param {*} data - Data to send with the command
-             */
-            notifyChild: (selector, cmd, data) => self.notifyChild(selector, cmd, data),
-
             /**
              * Serializing the reactive object to JSON (excluding non-serializable properties)
              * @returns {Object}
@@ -6658,7 +6771,7 @@
     Context.prototype.injectSystemProperties = function(abstraction) {
         // Add container element reference and identification
         abstraction.container = this.container;
-        abstraction.pacId = this.container.getAttribute('data-pac-id') || this.container.id;
+        abstraction.pacId = this.container._pacId || this.container.getAttribute('data-pac-id');
 
         // Initialize online/offline state and network quality
         abstraction.browserOnline = navigator.onLine;
@@ -6706,6 +6819,11 @@
         abstraction.containerClientRect = {top: 0, left: 0, right: 0, bottom: 0, width: 0, height: 0, x: 0, y: 0};
         abstraction.containerWidth = this.container.clientWidth;
         abstraction.containerHeight = this.container.clientHeight;
+
+        // Screen orientation
+        abstraction.browserOrientationAngle = screen.orientation ? screen.orientation.angle : 0;
+        abstraction.browserOrientationType = screen.orientation ? screen.orientation.type : 'unknown';
+
     };
 
     /**
@@ -6755,9 +6873,7 @@
 
         // Create scope resolver for this foreach element
         // This handles variable resolution in nested contexts (e.g., converting "todo.subs" to "todos[0].subs")
-        const scopeResolver = {
-            resolveScopedPath: (path) => this.normalizePath(path, foreachElement)
-        };
+        const scopeResolver = makeScopeResolver(this.normalizePath.bind(this), foreachElement);
 
         try {
             // Evaluate the foreach expression (e.g., "todos" or "todo.subs")
@@ -7201,9 +7317,7 @@
         }
 
         // Create scope resolver to handle scoped path resolution within foreach context
-        const scopeResolver = {
-            resolveScopedPath: (path) => this.normalizePath(path, foreachElement)
-        };
+        const scopeResolver = makeScopeResolver(this.normalizePath.bind(this), foreachElement);
 
         // Evaluate the foreach expression to get the current array
         const newArray = ExpressionParser.evaluate(
@@ -7483,93 +7597,6 @@
             child.parent = this;
             this.children.add(child);
         });
-    };
-
-    /**
-     * Notifies parent component with optional bubbling
-     * @param {string} type - Event type
-     * @param {*} data - Event payload
-     * @param {boolean} bubble - Whether to continue bubbling up the chain (default: false)
-     */
-    Context.prototype.notifyParent = function(type, data, bubble = false) {
-        if (!this.parent) {
-            return;
-        }
-
-        // Call parent's handler if it exists
-        if (typeof this.parent.receiveUpdate === 'function') {
-            const result = this.parent.receiveUpdate(type, data, this);
-
-            // If bubbling is enabled, only stop if handler explicitly returns false
-            if (bubble && result === false) {
-                return;
-            }
-        }
-
-        // Continue bubbling if requested
-        if (bubble) {
-            this.parent.notifyParent(type, data, bubble);
-        }
-    };
-
-    /**
-     * Receives updates from children
-     * @param {string} type - Event type
-     * @param {*} data - Event payload
-     * @param {Object} child - Source child component
-     * @returns {boolean} Return false to stop bubbling, anything else continues
-     */
-    Context.prototype.receiveUpdate = function(type, data, child) {
-        if (this.abstraction.receiveFromChild && typeof this.abstraction.receiveFromChild === 'function') {
-            return this.abstraction.receiveFromChild(type, data, child);
-        }
-
-        // Default: continue bubbling
-        return true;
-    };
-
-    /**
-     * Receives and processes commands sent down from parent component
-     * @param {string} cmd - The command identifier
-     * @param {*} data - The command data payload
-     */
-    Context.prototype.receiveFromParent = function(cmd, data) {
-        if (this.abstraction.receiveFromParent && typeof this.abstraction.receiveFromParent === 'function') {
-            this.abstraction.receiveFromParent(cmd, data);
-        }
-    };
-
-    /**
-     * Sends a command to all direct child components
-     * @param {string} cmd - The command identifier
-     * @param {*} data - The command data payload
-     */
-    Context.prototype.notifyChildren = function(cmd, data) {
-        // Iterate through all child components
-        this.children.forEach(child => {
-            // Ensure child has the receiveFromParent method before calling
-            if (child && typeof child.receiveFromParent === 'function') {
-                child.receiveFromParent(cmd, data);
-            }
-        });
-    };
-
-    /**
-     * Sends a command to a specific child component matching the given selector
-     * @param {string} selector - CSS selector to identify the target child
-     * @param {string} cmd - The command identifier
-     * @param {*} data - The command data payload
-     */
-    Context.prototype.notifyChild = function(selector, cmd, data) {
-        // Find the child by its pac-id attribute
-        const child = Array.from(this.children).find(c =>
-            c.container.getAttribute('data-pac-id') === selector
-        );
-
-        // If matching child found and has receiveFromParent method, send the command
-        if (child && typeof child.receiveFromParent === 'function') {
-            child.receiveFromParent(cmd, data);
-        }
     };
 
     // =============================================================================
@@ -8847,6 +8874,173 @@
     };
 
     // ========================================================================
+    // ACCELERATOR TABLES
+    // ========================================================================
+    /**
+     * Accelerator table registry.
+     * Keys are pac-id strings (or the sentinel value ACCEL_GLOBAL_KEY for the
+     * application-wide table).  Values are arrays of accelerator descriptors:
+     *   { vk, modifiers, cmdId }
+     *   vk        — Win32 virtual key code (number)
+     *   modifiers — bitmask of ACCEL_* flags (see below)
+     *   cmdId     — command identifier posted in wParam of MSG_ACCEL
+     * @type {Map<string|symbol, Array<{vk:number, modifiers:number, cmdId:number}>>}
+     */
+    const _accelTables = new Map();
+
+    /**
+     * Sentinel key used to store the application-wide (global) accelerator table.
+     * A global table fires regardless of which container currently has focus.
+     * Container-scoped tables take priority over the global table.
+     * @type {symbol}
+     */
+    const ACCEL_GLOBAL_KEY = Symbol('global');
+
+    /**
+     * Returns the ordered list of accelerator tables to search for a container,
+     * walking up the hierarchy innermost-first with the global table as fallback.
+     * @param {HTMLElement} container
+     * @returns {Array}
+     * @private
+     */
+    function _accelTablesForContainer(container) {
+        const tables = [];
+
+        // Walk up the container hierarchy, innermost first.
+        // Uses closest() on parentElement to skip non-container ancestors in one step.
+        for (let el = container; el; el = el.parentElement?.closest(CONTAINER_SEL)) {
+            // Fetch pacId
+            const id = el.getAttribute('data-pac-id');
+
+            // Use !== null rather than truthiness to correctly handle id="0" or id=""
+            if (id !== null) {
+                const table = _accelTables.get(id);
+
+                if (table) {
+                    tables.push(table);
+                }
+            }
+        }
+
+        // Append the global table last so local bindings always take precedence.
+        const global = _accelTables.get(ACCEL_GLOBAL_KEY);
+
+        if (global) {
+            tables.push(global);
+        }
+
+        return tables;
+    }
+
+    /**
+     * Translates a MSG_KEYDOWN event into MSG_ACCEL if the key combination
+     * matches a registered accelerator entry. Tables are checked innermost-first
+     * by walking up the container hierarchy, with the global table as final fallback.
+     * Returns true and dispatches MSG_ACCEL on a match (suppressing the keydown);
+     * returns false otherwise.
+     * @param {CustomEvent}  pacEvent  — The MSG_KEYDOWN PAC event.
+     * @param {HTMLElement}  container — The target container element.
+     * @returns {boolean} True if the message was translated (caller should swallow it).
+     * @private
+     */
+    function _translateAccelerator(pacEvent, container) {
+        // Skip immediately if no tables are registered — common case when the
+        // feature is not in use.
+        if (_accelTables.size === 0) {
+            return false;
+        }
+
+        // wParam carries the virtual key code for keyboard messages
+        const vk = pacEvent.wParam;
+
+        // Isolate the modifier bits from lParam — other bits carry repeat count,
+        // extended key flag, etc. and must not affect the comparison.
+        const modifiers = pacEvent.lParam & (KM_SHIFT | KM_CONTROL | KM_ALT);
+
+        // Fetch the pacId from the container
+        const pacId = container._pacId || container.getAttribute('data-pac-id');
+
+        // Fetch accelerator tables of this container and parent containers
+        const tables = _accelTablesForContainer(container);
+
+        // Walk them to map accelerators
+        for (const table of tables) {
+            if (!table) {
+                continue;
+            }
+
+            for (const entry of table) {
+                // Both the key code and the exact modifier combination must match.
+                // Partial modifier matches are intentionally rejected — Ctrl+Shift+S
+                // must not trigger a Ctrl+S entry.
+                if (entry.vk === vk && entry.modifiers === modifiers) {
+                    wakaPAC.sendMessage(pacId, MSG_ACCEL, entry.cmdId, 0);
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Parses a shortcut string into a { vk, modifiers } descriptor.
+     * @param {string} key - Shortcut string, e.g. "Ctrl+S", "Ctrl+Shift+Z", "F5"
+     * @returns {{ vk: number, modifiers: number }}
+     * @throws {TypeError} If the string is empty, the key name is missing or unknown, or more than one key name is present.
+     * @private
+     */
+    function _parseAcceleratorKey(key) {
+        // Reject early so the rest of the function can assume a non-empty string
+        if (typeof key !== 'string' || key.trim() === '') {
+            throw new TypeError(`wakaPAC: accelerator key must be a non-empty string, got: ${JSON.stringify(key)}`);
+        }
+
+        // Map the three recognised modifier names to their KM_* bitmask values
+        const MODIFIER_TOKENS = { CTRL: KM_CONTROL, SHIFT: KM_SHIFT, ALT: KM_ALT };
+
+        // Split on "+" and trim each token to tolerate "Ctrl + S" as well as "Ctrl+S"
+        const tokens = key.split('+').map(t => t.trim());
+
+        // Consume all but the last token as modifiers. Iterating up to length - 1
+        // means the final token is always treated as the key name, which makes
+        // the two phases structurally separate rather than distinguished by a flag.
+        let i = 0;
+        let modifiers = 0;
+
+        while (i < tokens.length - 1) {
+            // Isolate bit
+            const bit = MODIFIER_TOKENS[tokens[i].toUpperCase()];
+
+            // Any non-modifier token in this position is a mistake — the key name
+            // must come last, so an unknown token here can't be anything valid.
+            if (!bit) {
+                throw new TypeError(`wakaPAC: unknown token "${tokens[i]}" in accelerator key: ${JSON.stringify(key)}`);
+            }
+
+            modifiers |= bit;
+            i++;
+        }
+
+        // Whatever remains after the modifiers is the key name
+        const keyName = tokens[i];
+
+        if (!keyName) {
+            throw new TypeError(`wakaPAC: no key name found in accelerator key: ${JSON.stringify(key)}`);
+        }
+
+        // Look up the VK_* constant by prepending the prefix and uppercasing,
+        // so "s", "S", and "s" all resolve to VK_S
+        const vkName = 'VK_' + keyName.toUpperCase();
+
+        if (!(vkName in wakaPAC)) {
+            throw new TypeError(`wakaPAC: unknown key "${keyName}" in accelerator key: ${JSON.stringify(key)} (no constant ${vkName})`);
+        }
+
+        return { vk: wakaPAC[vkName], modifiers };
+    }
+
+    // ========================================================================
     // MAIN FRAMEWORK
     // ========================================================================
 
@@ -8889,6 +9083,10 @@
                 pacId = container.id || Utils.uniqid('pac-');
                 container.setAttribute('data-pac-id', pacId);
             }
+
+            // Cache on the element itself so dispatchToContainer can read it without
+            // a DOM attribute lookup on every message dispatch
+            container._pacId = pacId;
 
             // Check if component already exists for this container
             // If so, return existing abstraction instead of creating new one
@@ -8952,6 +9150,11 @@
      * @returns {CustomEvent}
      */
     wakaPAC.createPacMessage = function (messageId, wParam, lParam, extended = {}) {
+        // Throw error when extended is not an object
+        if (extended !== null && !Utils.isPlainObject(extended)) {
+            throw new TypeError(`wakaPAC.createPacMessage(): extended must be a plain object, got ${typeof extended}`);
+        }
+
         // Create a custom wakapac event that carries Win32-style message data.
         const event = new CustomEvent('pac:event', {
             bubbles: false,
@@ -8987,6 +9190,22 @@
         }
 
         return context.container;
+    };
+
+    /**
+     * Returns the data-pac-id of the parent component of the given container, or null if it has none.
+     * Intended for use inside msgProc to forward messages up the hierarchy.
+     * @param {string} pacId - The data-pac-id of the child container
+     * @returns {string|null} The parent's data-pac-id, or null if no parent exists
+     */
+    wakaPAC.getParentPacId = function(pacId) {
+        const context = window.PACRegistry.get(pacId);
+
+        if (!context || !context.parent) {
+            return null;
+        }
+
+        return context.parent.container._pacId || context.parent.container.getAttribute('data-pac-id');
     };
 
     /**
@@ -9031,8 +9250,7 @@
      * @param {Object} [extended={}] - Additional data stored in event.detail for custom use cases
      */
     wakaPAC.sendMessage = function (pacId, messageId, wParam, lParam, extended = {}) {
-        // Resolve the target container from the registry.
-        // If the container does not exist, the message is dropped.
+        // Resolve the target container. If it does not exist, the message is dropped.
         const container = this.getContainerByPacId(pacId);
 
         if (!container) {
@@ -9065,6 +9283,40 @@
         window.PACRegistry.components.forEach((context) => {
             DomUpdateTracker.dispatchToContainer(context.container, event);
         });
+    };
+
+    /**
+     * Broadcasts a message to all descendant components of the given container,
+     * traversing the full subtree depth-first. The container itself does not receive
+     * the message — only its children, grandchildren, and so on.
+     * @param {string} pacId - data-pac-id of the root container whose subtree receives the message
+     * @param {number} messageId - Message identifier (integer constant, e.g., wakaPAC.MSG_USER + 1)
+     * @param {number} wParam - First message parameter (integer)
+     * @param {number} lParam - Second message parameter (integer)
+     * @param {Object} [extended={}] - Additional data stored in 'event.detail' for custom use cases
+     */
+    wakaPAC.broadcastToChildren = function(pacId, messageId, wParam, lParam, extended = {}) {
+        // Resolve the root container. If it does not exist, the broadcast is dropped.
+        const container = window.PACRegistry.get(pacId);
+
+        if (!container) {
+            return;
+        }
+
+        // Construct the message once — shared across all dispatches in the subtree.
+        const event = this.createPacMessage(messageId, wParam, lParam, extended);
+
+        // Iterative depth-first traversal using an explicit stack.
+        // Avoids call-stack overflow on deeply nested component hierarchies and
+        // eliminates the recursive closure overhead of the previous implementation.
+        // Uses the in-memory children sets rather than DOM queries for performance.
+        const stack = [...container.children];
+
+        while (stack.length) {
+            const node = stack.pop();
+            DomUpdateTracker.dispatchToContainer(node.container, event);
+            stack.push(...node.children);
+        }
     };
 
     /**
@@ -9312,7 +9564,7 @@
 
         // Extract the pac-id from the captured container element
         // Use optional chaining since container might be removed from DOM
-        const pacId = DomUpdateTracker._capturedContainer?.getAttribute('data-pac-id');
+        const pacId = DomUpdateTracker._capturedContainer?._pacId || DomUpdateTracker._capturedContainer?.getAttribute('data-pac-id');
 
         // Return pac-id or null if container no longer has the attribute
         return pacId || null;
@@ -9401,6 +9653,94 @@
     };
 
     // ========================================================================
+    // PUBLIC ACCELERATOR API
+    // ========================================================================
+
+    /**
+     * Loads (registers) an accelerator table for a PAC container or for the
+     * application globally.
+     *
+     * Each entry is a plain object with a human-readable shortcut string and a
+     * command identifier:
+     *   { key: "Ctrl+S", cmdId: 101 }
+     *
+     * The key string consists of optional modifier tokens (Ctrl, Shift, Alt)
+     * followed by a key name, all joined by "+". The key name is a VK_* constant
+     * name with the "VK_" prefix omitted. Parsing is case-insensitive.
+     *
+     *   "Ctrl+S"           → Ctrl + S
+     *   "Ctrl+Shift+Z"     → Ctrl + Shift + Z
+     *   "F5"               → F5 (no modifiers)
+     *   "Ctrl+OEM_PLUS"    → Ctrl + = / +  key
+     *   "Alt+F4"           → Alt + F4
+     *
+     * Calling loadAcceleratorTable() for the same pacId a second time completely
+     * replaces the existing table — entries are not merged.
+     *
+     * @param {string|null} pacId — Target container's data-pac-id, or null for global.
+     * @param {Array<{key: string, cmdId: number}>} entries
+     * @throws {TypeError} If entries is not an array, any entry is malformed, or any key string cannot be parsed.
+     */
+    wakaPAC.loadAcceleratorTable = function(pacId, entries) {
+        if (!Array.isArray(entries)) {
+            throw new TypeError('wakaPAC.loadAcceleratorTable(): entries must be an array');
+        }
+
+        // Parse and validate every entry up-front so callers get a clear error
+        // message rather than a silent misfire at dispatch time.
+        const parsed = [];
+
+        for (let i = 0; i < entries.length; i++) {
+            const e = entries[i];
+
+            if (typeof e !== 'object' || e === null) {
+                throw new TypeError(`wakaPAC.loadAcceleratorTable(): entry[${i}] must be an object`);
+            }
+
+            if (typeof e.key !== 'string') {
+                throw new TypeError(`wakaPAC.loadAcceleratorTable(): entry[${i}].key must be a string`);
+            }
+
+            if (typeof e.cmdId !== 'number' || e.cmdId <= 0) {
+                throw new TypeError(`wakaPAC.loadAcceleratorTable(): entry[${i}].cmdId must be a positive number`);
+            }
+
+            // _parseAcceleratorKey throws a descriptive TypeError on bad input
+            const { vk, modifiers } = _parseAcceleratorKey(e.key);
+
+            // Add parsed accelerator key to list
+            parsed.push({ vk, modifiers, cmdId: e.cmdId, key: e.key });
+        }
+
+        // Store the data
+        const tableKey = (pacId === null || pacId === undefined) ? ACCEL_GLOBAL_KEY : pacId;
+        _accelTables.set(tableKey, parsed);
+    };
+
+    /**
+     * Destroys the accelerator table for a container or for the global scope.
+     * @param {string|null} pacId — Container pac-id, or null for global.
+     */
+    wakaPAC.destroyAcceleratorTable = function(pacId) {
+        const tableKey = (pacId === null || pacId === undefined) ? ACCEL_GLOBAL_KEY : pacId;
+        _accelTables.delete(tableKey);
+    };
+
+    /**
+     * Returns a copy of the registered entries for a container or the global scope.
+     * Each entry includes the original key string, making this suitable for
+     * rendering a keyboard shortcuts help dialog.
+     * Returns null if no table is registered for the given scope.
+     * @param {string|null} pacId — Container pac-id, or null for global.
+     * @returns {Array<{key: string, cmdId: number}>|null}
+     */
+    wakaPAC.getAcceleratorTable = function(pacId) {
+        const tableKey = (pacId === null || pacId === undefined) ? ACCEL_GLOBAL_KEY : pacId;
+        const table = _accelTables.get(tableKey);
+        return table ? table.map(e => ({ key: e.key, cmdId: e.cmdId })) : null;
+    };
+
+    // ========================================================================
     // EXPORTS
     // ========================================================================
 
@@ -9415,10 +9755,10 @@
         // Message types
         MSG_UNKNOWN, MSG_MOUSEMOVE, MSG_LBUTTONDOWN, MSG_LBUTTONUP, MSG_LBUTTONDBLCLK,
         MSG_RBUTTONDOWN, MSG_RBUTTONUP, MSG_MBUTTONDOWN, MSG_MBUTTONUP, MSG_LCLICK,
-        MSG_MCLICK, MSG_RCLICK, MSG_CHAR, MSG_CHANGE, MSG_SUBMIT, MSG_INPUT, MSG_INPUT_COMPLETE,
-        MSG_SETFOCUS, MSG_KILLFOCUS, MSG_KEYDOWN, MSG_KEYUP, MSG_USER, MSG_TIMER, MSG_COPY,
-        MSG_PASTE, MSG_MOUSEWHEEL, MSG_GESTURE, MSG_SIZE, MSG_MOUSEENTER, MSG_MOUSELEAVE,
-        MSG_MOUSEENTER_DESCENDANT, MSG_MOUSELEAVE_DESCENDANT, MSG_CAPTURECHANGED,
+        MSG_MCLICK, MSG_RCLICK, MSG_CONTEXTMENU, MSG_CHAR, MSG_CHANGE, MSG_SUBMIT, MSG_INPUT,
+        MSG_INPUT_COMPLETE, MSG_SETFOCUS, MSG_KILLFOCUS, MSG_KEYDOWN, MSG_KEYUP, MSG_USER, MSG_TIMER,
+        MSG_ACCEL, MSG_COPY, MSG_PASTE, MSG_MOUSEWHEEL, MSG_GESTURE, MSG_SIZE, MSG_MOUSEENTER,
+        MSG_MOUSELEAVE, MSG_MOUSEENTER_DESCENDANT, MSG_MOUSELEAVE_DESCENDANT, MSG_CAPTURECHANGED,
         MSG_DRAGENTER, MSG_DRAGOVER, MSG_DRAGLEAVE, MSG_DROP,
 
         // Mouse modifier keys
