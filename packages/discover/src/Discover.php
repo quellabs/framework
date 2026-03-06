@@ -6,6 +6,7 @@
 	use Quellabs\Discover\ProviderQuery\ProviderQuery;
 	use Quellabs\Support\ComposerUtils;
 	use Quellabs\Discover\Scanner\ScannerInterface;
+	use Quellabs\Discover\Scanner\MetadataScannerInterface;
 	use Quellabs\Contracts\Discovery\ProviderInterface;
 	use Quellabs\Contracts\Discovery\ProviderDefinition;
 	
@@ -15,6 +16,16 @@
 		 * @var array<ScannerInterface>
 		 */
 		protected array $scanners = [];
+		
+		/**
+		 * @var array<MetadataScannerInterface>
+		 */
+		protected array $metadataScanners = [];
+		
+		/**
+		 * @var array<string, array<string, array<string, string[]>>> Collected metadata indexed by family, package, then key
+		 */
+		protected array $collectedMetadata = [];
 		
 		/**
 		 * @var array<string, ProviderDefinition> Provider definitions indexed by unique keys
@@ -35,14 +46,34 @@
 		 * Discover providers using all registered scanners
 		 * @return self
 		 */
+		/**
+		 * Discover providers and collect metadata using all registered scanners
+		 * @return self
+		 */
 		public function discover(): self {
 			// Clear any previously discovered providers to start fresh
 			$this->clearProviders();
 			
-			// Iterate through each registered scanner to discover providers
+			// Run all provider scanners and register each returned definition
 			foreach ($this->scanners as $scanner) {
 				foreach ($scanner->scan() as $definition) {
 					$this->addProviderDefinition($definition);
+				}
+			}
+			
+			// Run all metadata scanners and store results per package to preserve
+			// the relationship between keys declared together in the same composer.json
+			foreach ($this->metadataScanners as $scanner) {
+				$familyName = $scanner->getFamilyName();
+				
+				// collect() returns ['vendor/package' => ['controllers' => [...], ...]]
+				foreach ($scanner->collect() as $packageName => $keys) {
+					foreach ($keys as $metadataKey => $values) {
+						$existing = $this->collectedMetadata[$familyName][$packageName][$metadataKey] ?? [];
+						$this->collectedMetadata[$familyName][$packageName][$metadataKey] = array_values(
+							array_unique(array_merge($existing, $values))
+						);
+					}
 				}
 			}
 			
@@ -120,17 +151,50 @@
 			$this->providerDefinitions = [];
 			$this->providerDefinitionsByClass = [];
 			$this->instantiatedProviders = [];
+			$this->collectedMetadata = [];
 			return $this;
 		}
 		
 		/**
 		 * Add a scanner
-		 * @param ScannerInterface $scanner
+		 * @param ScannerInterface|MetadataScannerInterface $scanner
 		 * @return self
 		 */
-		public function addScanner(ScannerInterface $scanner): self {
-			$this->scanners[] = $scanner;
+		public function addScanner(ScannerInterface|MetadataScannerInterface $scanner): self {
+			if ($scanner instanceof MetadataScannerInterface) {
+				$this->metadataScanners[] = $scanner;
+			} else {
+				$this->scanners[] = $scanner;
+			}
+			
 			return $this;
+		}
+		
+		/**
+		 * Retrieve all collected metadata for a family, grouped by package.
+		 * @param string $familyName The family name (e.g. 'canvas')
+		 * @return array<string, array<string, string[]>> e.g. ['vendor/pkg' => ['controllers' => [...], ...]]
+		 */
+		public function getFamilyMetadata(string $familyName): array {
+			return $this->collectedMetadata[$familyName] ?? [];
+		}
+		
+		/**
+		 * Retrieve a flat deduplicated list of values for a specific key across all packages.
+		 * @param string $familyName The family name (e.g. 'canvas')
+		 * @param string $metadataKey The key to collect (e.g. 'controllers')
+		 * @return string[]
+		 */
+		public function getFamilyValues(string $familyName, string $metadataKey): array {
+			$result = [];
+			
+			foreach ($this->collectedMetadata[$familyName] ?? [] as $packageData) {
+				foreach ($packageData[$metadataKey] ?? [] as $value) {
+					$result[$value] = true;
+				}
+			}
+			
+			return array_keys($result);
 		}
 		
 		/**
