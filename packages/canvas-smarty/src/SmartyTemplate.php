@@ -66,6 +66,14 @@
 		}
 		
 		/**
+		 * Remove template signal from hub
+		 */
+		public function __destruct() {
+			$signalHub = SignalHubLocator::getInstance();
+			$signalHub->unregisterSignal($this->templateSignal);
+		}
+		
+		/**
 		 * Renders a template using the Smarty template engine
 		 * @param string $template The template file name/path to render
 		 * @param array $data Associative array of variables to pass to the template
