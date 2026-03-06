@@ -2,12 +2,11 @@
 	
 	namespace Quellabs\Canvas\Smarty;
 	
-	use Quellabs\Contracts\Templates\TemplateRenderException;
-	use Quellabs\SignalHub\HasSignals;
+	use Smarty\Smarty;
+	use Smarty\Exception;
 	use Quellabs\SignalHub\Signal;
 	use Quellabs\SignalHub\SignalHubLocator;
-	use Smarty\Exception;
-	use Smarty\Smarty;
+	use Quellabs\Contracts\Templates\TemplateRenderException;
 	use Quellabs\Contracts\Templates\TemplateEngineInterface;
 	
 	class SmartyTemplate implements TemplateEngineInterface {
