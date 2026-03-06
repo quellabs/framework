@@ -90,7 +90,7 @@
 		 * results grouped by package name to preserve the relationship between keys
 		 * declared together in the same composer.json.
 		 *
-		 * @return array<string, array<string, string[]>> e.g. ['vendor/pkg' => ['controllers' => [...], ...]]
+		 * @return array<string, array<string, mixed>> e.g. ['vendor/pkg' => ['controller' => 'src/Controllers', ...]]
 		 */
 		public function collect(): array {
 			$installedLoader = new ComposerInstalledLoader();
@@ -128,78 +128,23 @@
 					continue;
 				}
 				
-				$installPath = $this->resolveInstallPath($packageData);
-				
-				// Iterate every key declared under the family (e.g. 'controllers', 'middleware')
-				foreach ($familyConfig as $metadataKey => $rawValues) {
-					// Normalise: accept both a bare string and an array of strings
-					if (is_string($rawValues)) {
-						$rawValues = [$rawValues];
-					}
-					
-					if (!is_array($rawValues)) {
+				// Iterate every key declared under the family (e.g. 'controller', 'middleware')
+				foreach ($familyConfig as $metadataKey => $rawValue) {
+					if (!is_string($rawValue) && !is_array($rawValue)) {
 						$this->handleError(
-							'Key "{key}" must be a string or array of strings in family "{family}" (package: {package})',
+							'Key "{key}" must be a string or array in family "{family}" (package: {package})',
 							['key' => $metadataKey, 'family' => $this->familyName, 'package' => $packageName]
 						);
 						continue;
 					}
 					
-					foreach ($rawValues as $value) {
-						if (!is_string($value)) {
-							$this->handleError(
-								'Non-string value found under "{key}" in family "{family}" (package: {package})',
-								['key' => $metadataKey, 'family' => $this->familyName, 'package' => $packageName]
-							);
-							continue;
-						}
-						
-						$absolutePath = $this->toAbsolutePath($value, $installPath);
-						
-						if (!file_exists($absolutePath)) {
-							$this->handleError(
-								'Declared path does not exist: {path} (package: {package})',
-								['path' => $absolutePath, 'package' => $packageName]
-							);
-							continue;
-						}
-						
-						// Store under package name to preserve per-package grouping
-						$collected[$packageName][$metadataKey][$absolutePath] = true;
-					}
+					// Store value as-is — scalars stay scalar, arrays stay arrays
+					$collected[$packageName][$metadataKey] = $rawValue;
 				}
 			}
 			
-			// Convert inner deduplication maps to plain indexed arrays
-			return array_map(fn($keys) => array_map('array_keys', $keys), $collected);
-		}
-		
-		/**
-		 * Resolve the filesystem install path for a package.
-		 * ComposerInstalledLoader includes 'install-path'; local project falls back to project root.
-		 * @param array $packageData Raw package data from the loader
-		 * @return string Absolute directory path (no trailing separator)
-		 */
-		private function resolveInstallPath(array $packageData): string {
-			if (!empty($packageData['install-path']) && is_string($packageData['install-path'])) {
-				return rtrim($packageData['install-path'], '/\\');
-			}
-			
-			return rtrim(\Quellabs\Support\ComposerUtils::getProjectRoot(), '/\\');
-		}
-		
-		/**
-		 * Convert a potentially relative path to an absolute path.
-		 * @param string $path The path as declared in composer.json
-		 * @param string $basePath Absolute base directory to resolve relative paths against
-		 * @return string
-		 */
-		private function toAbsolutePath(string $path, string $basePath): string {
-			if (str_starts_with($path, '/') || preg_match('/^[A-Za-z]:[\/\\\\]/', $path)) {
-				return $path;
-			}
-			
-			return $basePath . DIRECTORY_SEPARATOR . ltrim($path, '/\\');
+			// Return results grouped by package name
+			return $collected;
 		}
 		
 		/**

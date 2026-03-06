@@ -23,7 +23,7 @@
 		protected array $metadataScanners = [];
 		
 		/**
-		 * @var array<string, array<string, array<string, string[]>>> Collected metadata indexed by family, package, then key
+		 * @var array<string, array<string, array<string, mixed>>> Collected metadata indexed by family, package, then key
 		 */
 		protected array $collectedMetadata = [];
 		
@@ -66,14 +66,9 @@
 			foreach ($this->metadataScanners as $scanner) {
 				$familyName = $scanner->getFamilyName();
 				
-				// collect() returns ['vendor/package' => ['controllers' => [...], ...]]
-				foreach ($scanner->collect() as $packageName => $keys) {
-					foreach ($keys as $metadataKey => $values) {
-						$existing = $this->collectedMetadata[$familyName][$packageName][$metadataKey] ?? [];
-						$this->collectedMetadata[$familyName][$packageName][$metadataKey] = array_values(
-							array_unique(array_merge($existing, $values))
-						);
-					}
+				// collect() returns ['vendor/package' => ['controller' => 'src/...', ...]]
+				foreach ($scanner->collect() as $packageName => $packageData) {
+					$this->collectedMetadata[$familyName][$packageName] = $packageData;
 				}
 			}
 			
@@ -166,7 +161,6 @@
 			} else {
 				$this->scanners[] = $scanner;
 			}
-			
 			return $this;
 		}
 		
@@ -181,16 +175,23 @@
 		
 		/**
 		 * Retrieve a flat deduplicated list of values for a specific key across all packages.
+		 * Handles both scalar values and arrays declared under the key.
 		 * @param string $familyName The family name (e.g. 'canvas')
-		 * @param string $metadataKey The key to collect (e.g. 'controllers')
-		 * @return string[]
+		 * @param string $metadataKey The key to collect (e.g. 'controller')
+		 * @return array
 		 */
 		public function getFamilyValues(string $familyName, string $metadataKey): array {
 			$result = [];
 			
 			foreach ($this->collectedMetadata[$familyName] ?? [] as $packageData) {
-				foreach ($packageData[$metadataKey] ?? [] as $value) {
-					$result[$value] = true;
+				$value = $packageData[$metadataKey] ?? null;
+				
+				if ($value === null) {
+					continue;
+				}
+				
+				foreach ((array)$value as $item) {
+					$result[$item] = true;
 				}
 			}
 			
