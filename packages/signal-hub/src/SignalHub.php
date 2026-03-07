@@ -243,6 +243,16 @@
 			// No owner specified — standalone signals only
 			return $this->standaloneSignals[$name] ?? null;
 		}
+		
+		/**
+		 * Check whether a signal is registered with the hub.
+		 * @param string $name Signal name
+		 * @param object|string|null $owner Object reference, class name, or null for standalone signals
+		 * @return bool True if the signal exists, false otherwise
+		 */
+		public function hasSignal(string $name, object|string|null $owner = null): bool {
+			return $this->getSignal($name, $owner) !== null;
+		}
 
 		/**
 		 * Find signals whose names match a wildcard pattern, optionally filtered by owner.
