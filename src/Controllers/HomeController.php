@@ -15,6 +15,13 @@
 		 * @return Response
 		 */
 		public function index(Request $request): Response {
+			$this->em()->executeQuery("
+				range of p is App\Entities\PostEntity
+				retrieve (p, score=search_score(p.content, :term))
+				where p.published = true and search(p.content, :term)
+				sort by score desc
+			");
+			
 			return $this->render("home/index3.tpl");
 		}
 		
