@@ -20,7 +20,9 @@
 				retrieve (p, score=search_score(p.content, :term))
 				where p.published = true and search(p.content, :term)
 				sort by score desc
-			");
+			", [
+				'term' => "hello",
+			]);
 			
 			return $this->render("home/index3.tpl");
 		}
