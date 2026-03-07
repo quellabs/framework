@@ -31,13 +31,16 @@ class MollieController {
 }
 ```
 
-Connect directly if you hold a reference, or via the hub if you don't:
+Connect directly if you hold a reference, or via the hub if you don't.
+The hub needs to know about the object first — call `registerSignals()` when instantiating it:
 
 ```php
-// Direct
+$hub->registerSignals($controller);
+
+// Then connect directly...
 $controller->paymentPaid->connect(fn(Payment $p) => ...);
 
-// Via hub (no object reference needed)
+// ...or via the hub if you don't hold a reference
 $hub->getSignal(MollieController::class, 'paymentPaid')->connect(fn(Payment $p) => ...);
 ```
 
