@@ -82,10 +82,10 @@
 		/**
 		 * Discover all Signal-typed properties on an object and register them with the hub.
 		 * @param object $object Object to scan for Signal properties
-		 * @return void
+		 * @return array List of found signals
 		 * @throws \RuntimeException|\ReflectionException If the object was already discovered, or a Signal property is uninitialized
 		 */
-		public function discoverSignals(object $object): void {
+		public function discoverSignals(object $object): array {
 			// Guard against double discovery — silent overwrite would mask bugs in the dispatcher
 			if (isset($this->objectSignals[$object])) {
 				throw new \RuntimeException(
@@ -107,7 +107,7 @@
 
 			// Nothing to register if this class has no Signal properties
 			if (empty($this->signalPropertyCache[$class])) {
-				return;
+				return [];
 			}
 			
 			// Find and all register all signals
@@ -128,10 +128,12 @@
 				// Use the signal's own name if set, otherwise fall back to the property name
 				$key = $signal->getName() ?? $propertyName;
 				$this->objectSignals[$object][$key] = $signal;
-
+				
 				// Notify any meta-signal listeners that a new signal is available
 				$this->signalRegisteredEvent->emit($signal);
 			}
+			
+			return array_values($this->objectSignals[$object]);
 		}
 
 		/**
