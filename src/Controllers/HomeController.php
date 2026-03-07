@@ -5,11 +5,13 @@
 	use App\Entities\PostEntity;
 	use Quellabs\Canvas\Annotations\Route;
 	use Quellabs\Canvas\Controllers\SecureController;
+	use Quellabs\DependencyInjection\Container;
+	use Quellabs\SignalHub\Signal;
 	use Symfony\Component\HttpFoundation\Request;
 	use Symfony\Component\HttpFoundation\Response;
 	
 	class HomeController extends SecureController {
-		
+	
 		/**
 		 * @Route("/")
 		 * @return Response
