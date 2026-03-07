@@ -10,12 +10,14 @@
 	use Quellabs\ObjectQuel\Annotations\Orm\ManyToOne;
 	use Quellabs\ObjectQuel\Annotations\Orm\LifecycleAware;
 	use Quellabs\ObjectQuel\Annotations\Orm\PreUpdate;
+	use Quellabs\ObjectQuel\Annotations\Orm\FullTextIndex;
 	use Quellabs\ObjectQuel\Collections\Collection;
 	use Quellabs\ObjectQuel\Collections\CollectionInterface;
 	use Quellabs\ObjectQuel\Collections\EntityCollection;
 	
 	/**
 	 * @Orm\Table(name="posts")
+	 * @Orm\FullTextIndex(name="idx_content", columns={"content"})
 	 * @Orm\LifecycleAware
 	 */
 	class PostEntity {
