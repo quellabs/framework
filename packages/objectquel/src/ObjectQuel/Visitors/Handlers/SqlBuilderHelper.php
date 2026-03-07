@@ -3,11 +3,15 @@
 	namespace Quellabs\ObjectQuel\ObjectQuel\Visitors\Handlers;
 	
 	use Quellabs\ObjectQuel\Annotations\Orm\Column;
+	use Quellabs\ObjectQuel\Annotations\Orm\FullTextIndex;
 	use Quellabs\ObjectQuel\DatabaseAdapter\TypeMapper;
 	use Quellabs\ObjectQuel\EntityStore;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIdentifier;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstParameter;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabase;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstSearch;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstSearchScore;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstString;
 	use Quellabs\ObjectQuel\ObjectQuel\AstInterface;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\QuelToSQLConvertToString;
 	
@@ -223,32 +227,155 @@
 		}
 		
 		/**
-		 * Builds search conditions for multiple identifiers based on parsed search terms
-		 * Creates WHERE clause conditions for search functionality. Supports OR, AND,
-		 * and NOT search terms across multiple entity properties/columns.
+		 * Builds search conditions for multiple identifiers based on parsed search terms.
+		 *
+		 * If all identifiers belong to the same entity and that entity has a FullTextIndex
+		 * covering all the searched columns, emits a single MATCH...AGAINST condition.
+		 * Otherwise falls back to LIKE chains for maximum compatibility.
+		 *
 		 * @param AstSearch $search The search AST node containing identifiers
 		 * @param array $parsed Parsed search terms (or_terms, and_terms, not_terms)
 		 * @param string $searchKey Unique key for parameter naming
 		 * @return array Array of SQL condition strings
 		 */
 		public function buildSearchConditions(AstSearch $search, array $parsed, string $searchKey): array {
+			$fullTextIndex = $this->detectFullTextIndex($search->getIdentifiers());
+			
+			if ($fullTextIndex !== null) {
+				return [$this->buildFullTextCondition($search->getIdentifiers(), $search->getSearchString(), $searchKey)];
+			}
+			
+			// Fall back to LIKE chains per identifier
 			$conditions = [];
 			
-			// Process each identifier (column) in the search
 			foreach ($search->getIdentifiers() as $identifier) {
-				// Convert identifier to SQL column name
 				$columnName = $this->buildColumnName($identifier);
-				
-				// Build conditions for this specific field
 				$fieldConditions = $this->buildFieldConditions($columnName, $parsed, $searchKey);
 				
-				// Add grouped conditions for this field
 				if (!empty($fieldConditions)) {
 					$conditions[] = '(' . implode(' AND ', $fieldConditions) . ')';
 				}
 			}
 			
 			return $conditions;
+		}
+		
+		/**
+		 * Builds a MATCH...AGAINST expression for use in SELECT / ORDER BY clauses.
+		 *
+		 * Unlike buildSearchConditions() which wraps the result in a WHERE condition,
+		 * this method returns the raw MATCH...AGAINST value expression so it can be
+		 * used as a numeric score column.
+		 *
+		 * When no FullTextIndex covers the requested columns, returns the literal 0.0.
+		 * All rows score equally, meaning no relevance ranking occurs, but the query
+		 * succeeds. Add a @FullTextIndex annotation to the entity to enable real scoring.
+		 *
+		 * @param AstSearchScore $searchScore The search_score AST node
+		 * @return string SQL MATCH...AGAINST expression, or '0.0' if no full-text index exists
+		 */
+		public function buildSearchScoreExpression(AstSearchScore $searchScore): string {
+			$identifiers = $searchScore->getIdentifiers();
+			$fullTextIndex = $this->detectFullTextIndex($identifiers);
+			
+			if ($fullTextIndex === null) {
+				return '0.0';
+			}
+			
+			return $this->buildFullTextCondition($identifiers, $searchScore->getSearchString(), uniqid());
+		}
+		
+		/**
+		 * Checks whether all given identifiers belong to the same entity and whether
+		 * that entity has a FullTextIndex covering all of them. Returns the matching
+		 * FullTextIndex if found, null otherwise.
+		 * @param AstIdentifier[] $identifiers
+		 * @return FullTextIndex|null
+		 */
+		private function detectFullTextIndex(array $identifiers): ?FullTextIndex {
+			// Don't do anything if identifiers is empty
+			if (empty($identifiers)) {
+				return null;
+			}
+			
+			// All identifiers must belong to the same entity for a single MATCH() to be valid
+			$entityNames = array_unique(array_map(fn($id) => $id->getEntityName(), $identifiers));
+			
+			// MATCH() across multiple entities would require separate MATCH() calls per entity,
+			// which can't be expressed as a single full-text condition
+			if (count($entityNames) !== 1) {
+				return null;
+			}
+			
+			// Grab entity name
+			$entityName = reset($entityNames);
+			
+			// Temporary table ranges have no entity name and therefore no annotation metadata
+			if (empty($entityName)) {
+				return null;
+			}
+			
+			// Collect the property names being searched
+			$propertyNames = $this->extractPropertyNames($identifiers);
+			return $this->entityStore->getFullTextIndexForColumns($entityName, $propertyNames);
+		}
+		
+		/**
+		 * Builds a single MATCH...AGAINST condition from a raw search string node.
+		 *
+		 * The search string is passed directly to MySQL in boolean mode, which parses
+		 * the +/- prefixes natively. This avoids the double-parse that would occur if
+		 * we reconstructed the boolean string from the already-parsed terms array.
+		 *
+		 * Used by both search() (boolean condition) and search_score() (value expression)
+		 * to ensure both code paths produce identical SQL for the same inputs.
+		 *
+		 * @param AstIdentifier[] $identifiers
+		 * @param AstString|AstParameter $searchString The raw search term node
+		 * @param string $searchKey Unique key for parameter naming
+		 * @return string SQL MATCH...AGAINST expression
+		 */
+		private function buildFullTextCondition(array $identifiers, AstString|AstParameter $searchString, string $searchKey): string {
+			// MATCH() requires bare column names — no table alias prefix.
+			// buildColumnName() returns `alias.column`; we extract only the column part.
+			$columns = array_map(function($id) {
+				$full = $this->buildColumnName($id);
+				// Strip "alias." prefix if present — MATCH(content) not MATCH(p.content)
+				$dotPos = strpos($full, '.');
+				return $dotPos !== false ? substr($full, $dotPos + 1) : $full;
+			}, $identifiers);
+			
+			$columnList = implode(', ', $columns);
+			
+			if ($searchString instanceof AstParameter) {
+				// Pass the caller's named parameter through directly.
+				// MATCH...AGAINST() rejects named params with MySQL native prepares —
+				// DatabaseAdapter::execute() enables emulated prepares for MATCH queries.
+				$term = ':' . $searchString->getName();
+			} else {
+				// Inline string literal — bind under a unique ft_ key
+				$paramName = 'ft_' . $searchKey;
+				$this->parameters[$paramName] = $searchString->getValue();
+				$term = ':' . $paramName;
+			}
+			
+			return "MATCH({$columnList}) AGAINST({$term} IN BOOLEAN MODE)";
+		}
+		
+		/**
+		 * Extracts the property name from each identifier in the chain.
+		 * For an identifier like p.name, the property name is "name" (the next node).
+		 * For an entity-level identifier with no next, returns the identifier's own name.
+		 *
+		 * @param AstIdentifier[] $identifiers
+		 * @return string[]
+		 */
+		private function extractPropertyNames(array $identifiers): array {
+			return array_map(function (AstIdentifier $identifier) {
+				return $identifier->hasNext()
+					? $identifier->getNext()->getName()
+					: $identifier->getName();
+			}, $identifiers);
 		}
 		
 		/**
@@ -260,6 +387,13 @@
 		 */
 		public function buildSortableColumn(AstIdentifier $ast): string {
 			$range = $ast->getRange();
+			
+			// Alias identifier (e.g. `score` from `score=search_score(...)`) —
+			// no range, no next node. Return the bare name so ORDER BY score works.
+			if ($range === null || !$ast->hasNext()) {
+				return $ast->getName();
+			}
+			
 			$rangeName = $range->getName();
 			$entityName = $ast->getEntityName();
 			$propertyName = $ast->getNext()->getName();

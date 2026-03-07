@@ -19,6 +19,7 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIsNumeric;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstParameter;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstSearch;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstSearchScore;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstString;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstCountU;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstSum;
@@ -80,6 +81,7 @@
 				'any' => $this->parseAny(),
 				'concat' => $this->parseConcat(),
 				'search' => $this->parseSearch(),
+				'search_score' => $this->parseSearchScore(),
 				'is_empty' => $this->parseIsEmpty(),
 				'is_numeric' => $this->parseIsNumeric(),
 				'is_integer' => $this->parseIsInteger(),
@@ -354,7 +356,47 @@
 		}
 		
 		/**
-		 * Parse SEARCH() function - performs text search across multiple fields
+		 * Parse SEARCH_SCORE() function - returns the full-text relevance score for a set of fields.
+		 * Uses the same syntax as SEARCH() but emits a MATCH...AGAINST value expression instead
+		 * of a boolean condition. Intended for use in SELECT and ORDER BY clauses.
+		 *
+		 * Requires a @FullTextIndex annotation on the entity covering all searched columns.
+		 * An exception is thrown at SQL generation time if no matching index is found.
+		 *
+		 * Example:
+		 *   retrieve (p, search_score(p.name, p.description, :term) as score)
+		 *   where search(p.name, p.description, :term)
+		 *   sort by score desc
+		 *
+		 * @return AstSearchScore The SEARCH_SCORE AST node
+		 * @throws LexerException When token matching fails
+		 * @throws ParserException When identifier list is empty or search string is invalid
+		 */
+		protected function parseSearchScore(): AstSearchScore {
+			$this->lexer->match(Token::ParenthesesOpen);
+			
+			$identifiers = $this->parseIdentifierList();
+			
+			if (empty($identifiers)) {
+				throw new ParserException("Missing identifier list for SEARCH_SCORE operator.");
+			}
+			
+			$searchString = $this->expressionRule->parse();
+			
+			if ((!$searchString instanceof AstString) && (!$searchString instanceof AstParameter)) {
+				throw new ParserException(
+					"SEARCH_SCORE() requires a string literal or :parameter as its last argument, got " . get_class($searchString) . ". " .
+					"Did you mean to quote the search term or use a :parameter?"
+				);
+			}
+			
+			$this->lexer->match(Token::ParenthesesClose);
+			
+			return new AstSearchScore($identifiers, $searchString);
+		}
+		
+		/**
+		 * Parse SEARCH() function - performs text search across multiple fields.
 		 * Searches for the given search string across the specified identifier fields.
 		 * The last parameter must be a string literal or parameter containing the search term.
 		 * @return AstSearch The SEARCH AST node
@@ -374,9 +416,14 @@
 			// Parse the search string/parameter
 			$searchString = $this->expressionRule->parse();
 			
-			// Validate that search string is either a string literal or parameter
+			// Validate that search string is either a string literal or parameter.
+			// A bare identifier here means the user forgot to quote the search term
+			// or forgot to prefix a parameter with ':'.
 			if ((!$searchString instanceof AstString) && (!$searchString instanceof AstParameter)) {
-				throw new ParserException("Missing search string for SEARCH operator.");
+				throw new ParserException(
+					"SEARCH() requires a string literal or :parameter as its last argument, got " . get_class($searchString) . ". " .
+					"Did you mean to quote the search term or use a :parameter?"
+				);
 			}
 			
 			$this->lexer->match(Token::ParenthesesClose);
@@ -385,16 +432,27 @@
 		}
 		
 		/**
-		 * Helper method that parses a sequence of identifiers separated by commas.
-		 * Stops parsing when encountering a non-identifier token.
+		 * Helper method that parses a sequence of identifiers separated by commas,
+		 * stopping before the final search string argument.
+		 *
+		 * Identifiers are field references (e.g. p.name, p.description). The list ends
+		 * when the next token after a comma is not an identifier — that token is the
+		 * search string. A trailing comma with no following identifier is an error.
+		 *
 		 * @return AstIdentifier[] Array of parsed identifier AST nodes
-		 * @throws LexerException|ParserException When token matching fails
+		 * @throws LexerException|ParserException When token matching fails or a trailing comma is found
 		 */
 		private function parseIdentifierList(): array {
 			$identifiers = [];
 			
 			do {
+				// Not an identifier — stop here, the caller will parse the search term next
 				if ($this->lexer->lookahead() !== Token::Identifier) {
+					// A closing paren after a comma is a genuine trailing comma error: search(p.content, )
+					if (!empty($identifiers) && $this->lexer->lookahead() === Token::ParenthesesClose) {
+						throw new ParserException("Unexpected token after comma in SEARCH() identifier list. Expected a field identifier or search string.");
+					}
+					
 					break;
 				}
 				

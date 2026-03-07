@@ -353,6 +353,47 @@
 		// ==================== Query Execution ====================
 		
 		/**
+		 * Rewrites duplicate named parameters so PDO can bind them.
+		 * @param string $sql The SQL query, modified in place
+		 * @param array $parameters The parameter bindings, expanded in place
+		 * @return void
+		 */
+		protected function deduplicateParameters(string &$sql, array &$parameters): void {
+			// Track how many times each named parameter has been seen so far
+			$seen = [];
+			
+			// The regex alternation is ordered so that string literals are consumed first
+			// and never reach the callback as a match group — only bare :param placeholders do.
+			// This prevents false positives like WHERE x = ':term' from being rewritten.
+			$sql = preg_replace_callback(
+				"/'[^']*'|\"[^\"]*\"|:([a-zA-Z_][a-zA-Z0-9_]*)/",
+				function (array $match) use (&$seen, &$parameters): string {
+					// No capture group means this was a string literal — return it unchanged
+					if (!isset($match[1]) || $match[1] === '') {
+						return $match[0];
+					}
+					
+					// Fetch the match
+					$name = $match[1];
+					
+					// First occurrence — leave the placeholder as-is
+					if (!isset($seen[$name])) {
+						$seen[$name] = 1;
+						return $match[0];
+					}
+					
+					// Subsequent occurrence — rename to :name_2, :name_3, etc.
+					// and copy the original value so the new placeholder gets bound
+					$seen[$name]++;
+					$newName = $name . '_' . $seen[$name];
+					$parameters[$newName] = $parameters[$name];
+					return ':' . $newName;
+				},
+				$sql
+			);
+		}
+		
+		/**
 		 * Executes a SQL query with optional parameter binding
 		 * @param string $query SQL query to execute
 		 * @param array $parameters Parameter values for prepared statement placeholders
@@ -360,6 +401,7 @@
 		 */
 		public function execute(string $query, array $parameters = []): StatementInterface|false {
 			try {
+				$this->deduplicateParameters($query, $parameters);
 				return $this->connection->execute($query, $parameters);
 			} catch (\Exception $exception) {
 				$this->last_error = $exception->getCode();
