@@ -113,7 +113,7 @@
 		 * @param IOInterface $io The IO interface for output messages
 		 * @param bool $devMode Whether dev dependencies are installed
 		 */
-		private function generateServiceMap(Composer $composer, IOInterface $io, bool $devMode = false): void {
+		private function generateServiceMap(Composer $composer, IOInterface $io, bool $devMode): void {
 			try {
 				// Output message
 				$io->write('<info>Discover: Building service discovery map from package metadata...</info>');
@@ -210,15 +210,15 @@
 		 * @param bool $devMode Whether to include packages-dev entries
 		 * @return array Associative array mapping package names to their extra data
 		 */
-		private function extractServiceMap(array $lockData, bool $devMode = false): array {
+		private function extractServiceMap(array $lockData, bool $devMode): array {
 			$extraMap = [];
 			
 			// Determine which package sets to process
 			// In dev mode, include packages-dev so dev providers are discoverable
-			$packageSets = ['packages'];
-			
 			if ($devMode) {
-				$packageSets[] = 'packages-dev';
+				$packageSets = ['packages', 'packages-dev'];
+			} else {
+				$packageSets = ['packages'];
 			}
 			
 			foreach ($packageSets as $packageSet) {
