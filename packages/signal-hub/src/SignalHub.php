@@ -112,6 +112,7 @@
 			
 			// Find and all register all signals
 			foreach ($this->signalPropertyCache[$class] as $propertyName) {
+				// Fetch property data
 				$property = new \ReflectionProperty($object, $propertyName);
 
 				// Signal properties must be initialized before discovery — the hub is a registry,
