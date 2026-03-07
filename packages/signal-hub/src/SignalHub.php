@@ -3,39 +3,66 @@
 	namespace Quellabs\SignalHub;
 	
 	/**
-	 * This class acts as a centralized registry for all signals in the application,
-	 * providing registration, discovery, and lifecycle management capabilities.
-	 * It supports both standalone signals and object-owned signals with automatic
-	 * memory management through WeakMap usage.
+	 * Centralized registry for signals in the application, providing registration,
+	 * discovery, and lifecycle management.
+	 *
+	 * Two kinds of signals are supported:
+	 *
+	 * - Object-owned signals: declared as typed `Signal` properties on a class.
+	 *   Discovered automatically via reflection using discoverSignals(). Stored in
+	 *   a WeakMap so they are garbage collected when the owning object goes out of scope.
+	 *
+	 * - Standalone signals: not tied to any object. Registered manually via registerSignal()
+	 *   and looked up by name.
+	 *
+	 * The hub is the rendezvous point for consumers that need to connect to signals on
+	 * objects they don't hold a direct reference to. For example, a service can connect
+	 * to a signal on an auto-discovered controller using only its class name:
+	 *
+	 *   $hub->getSignal(MollieController::class, 'paymentPaid')->connect($handler);
+	 *
+	 * Only one instance per class may be registered at a time. If multiple instances of
+	 * the same class are discovered, the class name lookup in getSignal() will return the
+	 * first match, which may not be the intended one. Design your emitting classes so that
+	 * only one instance is active at any given time.
 	 */
 	class SignalHub {
 		
 		/**
-		 * @var \WeakMap Map of objects to their signal collections
-		 * Using WeakMap prevents memory leaks - objects are automatically
-		 * removed when they go out of scope elsewhere in the application
+		 * @var \WeakMap<object, array<string, Signal>>
 		 *
-		 * Structure: WeakMap<object, array<string, Signal>>
-		 * - Key: The object that owns the signals
-		 * - Value: Associative array where keys are signal names and values are Signal objects
+		 * Maps objects to their discovered signals. Using WeakMap means the hub does not
+		 * prevent garbage collection — when an object is destroyed, its entry here is
+		 * automatically removed without any manual cleanup.
 		 */
 		private \WeakMap $objectSignals;
-		
+
 		/**
-		 * @var array Map of standalone signals (not owned by objects)
-		 * These are signals created directly by the hub, not associated with any object
+		 * @var array<string, list<string>>
+		 *
+		 * Caches the names of Signal-typed properties per class, so reflection is only
+		 * performed once per class regardless of how many instances are discovered.
+		 */
+		private array $signalPropertyCache = [];
+
+		/**
+		 * @var array<string, Signal>
+		 *
+		 * Standalone signals registered manually via registerSignal(). Keyed by signal name.
+		 * Unlike object signals, these are not garbage collected automatically and must be
+		 * removed explicitly via unregisterSignal() when no longer needed.
 		 */
 		private array $standaloneSignals = [];
 		
 		/**
-		 * Built in events - Meta-signals that notify about hub state changes
-		 * These signals are emitted when other signals are registered/unregistered
-		 * @var Signal Emitted when a signal is registered with the hub
+		 * @var Signal Emitted when any signal is registered with or discovered by the hub.
+		 * Receives the Signal object that was just registered as its argument.
 		 */
 		private Signal $signalRegisteredEvent;
 		
 		/**
-		 * @var Signal Emitted when a signal is unregistered from the hub
+		 * @var Signal Emitted when any signal is unregistered from the hub.
+		 * Receives the Signal object that is about to be removed as its argument.
 		 */
 		private Signal $signalUnregisteredEvent;
 		
@@ -43,237 +70,278 @@
 		 * SignalHub constructor
 		 */
 		public function __construct() {
-			// Initialize WeakMap for automatic memory management
-			// WeakMap automatically removes entries when the key object is garbage collected
 			$this->objectSignals = new \WeakMap();
 			
-			// Create meta-signals for hub events
-			// These allow other components to listen for registration/unregistration events
-			$this->signalRegisteredEvent = new Signal(['object'], 'hub.signal.registered');
-			$this->signalUnregisteredEvent = new Signal(['object'], 'hub.signal.unregistered');
+			// Meta-signals are standalone signals owned by the hub itself.
+			// They allow external code to monitor registration and unregistration activity,
+			// useful for debugging, audit logging, or dynamic auto-connect patterns.
+			$this->signalRegisteredEvent = new Signal('hub.signal.registered');
+			$this->signalUnregisteredEvent = new Signal('hub.signal.unregistered');
 		}
-		
+
 		/**
-		 * Register a signal with the hub
-		 * @param Signal $signal Signal object to register
-		 * @return void
-		 * @throws \RuntimeException|\Exception If signal name is null or signal already registered
+		 * Discover all Signal-typed properties on an object and register them with the hub.
+		 * @param object $object Object to scan for Signal properties
+		 * @return array List of found signals
+		 * @throws \RuntimeException|\ReflectionException If the object was already discovered, or a Signal property is uninitialized
 		 */
-		public function registerSignal(Signal $signal): void {
-			// Get signal metadata for registration logic
-			$name = $signal->getName();
-			$owner = $signal->getOwner();
-			
-			// Signals must have names to be registered in the hub
-			// Anonymous signals cannot be discovered or referenced
-			if ($name === null) {
-				throw new \RuntimeException("Signal name is null");
+		public function discoverSignals(object $object): array {
+			// Guard against double discovery — silent overwrite would mask bugs in the dispatcher
+			if (isset($this->objectSignals[$object])) {
+				throw new \RuntimeException(
+					sprintf('Signals for "%s" are already registered', get_class($object))
+				);
+			}
+
+			// Fetch class name
+			$class = get_class($object);
+
+			// Reflect only once per class — subsequent instances reuse the cached property names
+			if (!isset($this->signalPropertyCache[$class])) {
+				$this->signalPropertyCache[$class] = $this->resolveSignalProperties($class);
+			}
+
+			// Always create the entry, even if the class has no Signal properties,
+			// so the double-discovery guard works correctly on subsequent calls
+			$this->objectSignals[$object] = [];
+
+			// Nothing to register if this class has no Signal properties
+			if (empty($this->signalPropertyCache[$class])) {
+				return [];
 			}
 			
-			// Handle standalone signals (no owner object)
-			if ($owner === null) {
-				// Prevent duplicate standalone signal names
-				// Each standalone signal must have a unique name across the entire hub
-				if (isset($this->standaloneSignals[$name])) {
-					throw new \RuntimeException("Standalone signal '{$name}' already registered");
+			// Find and all register all signals
+			foreach ($this->signalPropertyCache[$class] as $propertyName) {
+				// Fetch property data
+				$property = new \ReflectionProperty($object, $propertyName);
+
+				// Signal properties must be initialized before discovery — the hub is a registry,
+				// not a factory. If this throws, the owning class forgot to initialize the property.
+				if (!$property->isInitialized($object)) {
+					throw new \RuntimeException(
+						sprintf('Signal property "%s::$%s" is not initialized', $class, $propertyName)
+					);
 				}
+
+				// Get the signal
+				$signal = $property->getValue($object);
+
+				// Use the signal's own name if set, otherwise fall back to the property name
+				$key = $signal->getName() ?? $propertyName;
+				$this->objectSignals[$object][$key] = $signal;
 				
-				// Emit registration event before actual registration
-				// This allows listeners to react to new signals being added
+				// Notify any meta-signal listeners that a new signal is available
 				$this->signalRegisteredEvent->emit($signal);
-				
-				// Register in standalone signals registry
-				$this->standaloneSignals[$name] = $signal;
+			}
+			
+			return array_values($this->objectSignals[$object]);
+		}
+
+		/**
+		 * Unregister all signals previously discovered on an object.
+		 *
+		 * Should be called when the object is done handling its task — for example, at the
+		 * end of a request in a dispatcher's finally block. This prevents stale connections
+		 * from accumulating across requests.
+		 *
+		 * Note: because objectSignals uses a WeakMap, signals will eventually be garbage
+		 * collected even without calling this method. However, explicit unregistration ensures
+		 * meta-signal listeners are notified and connections are cleaned up promptly.
+		 *
+		 * @param object $object Object whose signals should be removed
+		 * @return void
+		 */
+		public function unregisterSignals(object $object): void {
+			if (!isset($this->objectSignals[$object])) {
 				return;
 			}
+
+			// Notify meta-signal listeners before removal so they can react while the signal
+			// is still accessible
+			foreach ($this->objectSignals[$object] as $signal) {
+				$this->signalUnregisteredEvent->emit($signal);
+			}
+
+			unset($this->objectSignals[$object]);
+		}
+
+		/**
+		 * Manually register a standalone signal with the hub.
+		 *
+		 * Use this for signals that are not properties of any object — for example, application
+		 * lifecycle signals like 'app.booted' or 'app.shutdown'. Unlike object signals, standalone
+		 * signals are not garbage collected automatically and must be removed via unregisterSignal().
+		 *
+		 * @param Signal $signal Signal to register
+		 * @return void
+		 * @throws \RuntimeException If the signal has no name, or a signal with that name is already registered
+		 */
+		public function registerSignal(Signal $signal): void {
+			$name = $signal->getName();
 			
-			// Handle object-owned signals
-			// Initialize the signal array for this object if it doesn't exist
-			// WeakMap entries are created on-demand
-			if (!isset($this->objectSignals[$owner])) {
-				$this->objectSignals[$owner] = [];
+			if ($name === null) {
+				throw new \RuntimeException("Cannot register a signal without a name");
 			}
 			
-			// Check for duplicate signal names within the same object
-			// Each object can have multiple signals, but names must be unique per object
-			if (isset($this->objectSignals[$owner][$name])) {
-				$ownerClass = get_class($owner);
-				throw new \RuntimeException("Signal '{$ownerClass}::{$name}' already registered");
+			if (isset($this->standaloneSignals[$name])) {
+				throw new \RuntimeException("Standalone signal '{$name}' is already registered");
 			}
 			
-			// Emit registration event before actual registration
 			$this->signalRegisteredEvent->emit($signal);
-			
-			// Register the signal under this object
-			// Object can have multiple signals, each with unique names
-			$this->objectSignals[$owner][$name] = $signal;
+			$this->standaloneSignals[$name] = $signal;
 		}
 		
 		/**
-		 * Unregister a signal from the hub
-		 * @param Signal $signal Signal object to unregister
-		 * @return bool True if the signal was found and removed, false otherwise
+		 * Unregister a standalone signal.
+		 * @param Signal $signal Signal to unregister
+		 * @return bool True if the signal was found and removed, false if it wasn't registered
 		 */
 		public function unregisterSignal(Signal $signal): bool {
-			// Get signal metadata for unregistration logic
 			$name = $signal->getName();
-			$owner = $signal->getOwner();
 			
-			// Can't unregister signals without names
-			// Anonymous signals are not tracked in the registry
-			if ($name === null) {
+			if ($name === null || !isset($this->standaloneSignals[$name])) {
 				return false;
 			}
 			
-			// Handle standalone signals
-			if ($owner === null) {
-				// Remove from standalone signals registry
-				if (isset($this->standaloneSignals[$name])) {
-					// Emit unregistration event before removal
-					$this->signalUnregisteredEvent->emit($this->standaloneSignals[$name]);
-					
-					// Remove the signal from registry
-					unset($this->standaloneSignals[$name]);
-					return true;
-				}
-				
-				return false; // Signal not found in standalone registry
-			}
-			
-			// Handle object-owned signals
-			// Check if this object has signals and this specific signal exists
-			if (isset($this->objectSignals[$owner][$name])) {
-				// Send meta event before removal
-				// Note: This should emit the actual signal being removed, not from standaloneSignals
-				$this->signalUnregisteredEvent->emit($this->objectSignals[$owner][$name]);
-				
-				// Remove the specific signal from the object's signal collection
-				unset($this->objectSignals[$owner][$name]);
-				
-				// Clean up empty signal arrays to keep WeakMap tidy
-				// This is optional but helps with memory efficiency
-				// If object has no more signals, remove it entirely from WeakMap
-				if (empty($this->objectSignals[$owner])) {
-					unset($this->objectSignals[$owner]);
-				}
-				
-				return true;
-			}
-			
-			return false; // Signal not found in object signals
+			$this->signalUnregisteredEvent->emit($this->standaloneSignals[$name]);
+			unset($this->standaloneSignals[$name]);
+			return true;
 		}
-		
+
 		/**
-		 * Find signal by name and optional owner.
-		 * @param string $name Signal name to search for
-		 * @param object|null $owner Optional owner object to limit search scope
-		 * @return Signal|null The found signal or null if not found
+		 * Get a signal by name, optionally scoped to a specific owner.
+		 * @param string $name Signal name
+		 * @param object|string|null $owner Object reference, class name, or null for standalone signals
+		 * @return Signal|null The signal if found, null otherwise
 		 */
-		public function getSignal(string $name, ?object $owner = null): ?Signal {
-			// Look for object-owned signal when owner is specified
-			// This provides direct access to signals owned by specific objects
+		public function getSignal(string $name, object|string|null $owner = null): ?Signal {
 			if ($owner !== null) {
+				if (is_string($owner)) {
+					// Class name or interface lookup — O(n) scan, but only one instance per class should be
+					// registered at a time (see class docblock). Using instanceof means interface names
+					// work transparently alongside concrete class names.
+					foreach ($this->objectSignals as $object => $signals) {
+						if ($object instanceof $owner) {
+							return $signals[$name] ?? null;
+						}
+					}
+
+					return null;
+				}
+
+				// Direct object reference lookup — O(1) via WeakMap
+				// WeakMap throws an Error (not a warning) when the key doesn't exist, so we
+				// must guard with isset rather than relying on ?? null
+				if (!isset($this->objectSignals[$owner])) {
+					return null;
+				}
+
+				// Return the signal
 				return $this->objectSignals[$owner][$name] ?? null;
 			}
-			
-			// When no owner specified, search through all object signals first
-			// This prioritizes object-owned signals over standalone signals
-			foreach ($this->objectSignals as $signals) {
-				if (isset($signals[$name])) {
-					return $signals[$name];
-				}
-			}
-			
-			// Fall back to standalone signals if not found in any object
-			// Standalone signals are checked last in the search hierarchy
+
+			// No owner specified — standalone signals only
 			return $this->standaloneSignals[$name] ?? null;
 		}
-		
+
 		/**
-		 * Find signals matching a pattern, optionally filtering by owner
-		 * @param string $pattern Signal name pattern with optional wildcards (*)
-		 * @param object|null $owner Optional owner to filter by
-		 * @return array<Signal> Array of matching signals keyed by signal name
+		 * Find signals whose names match a wildcard pattern, optionally filtered by owner.
+		 * @param string $pattern Signal name pattern, optionally containing * wildcards
+		 * @param object|string|null $owner Object instance, class name, interface name, or null for standalone signals
+		 * @return array<string, Signal> Matching signals keyed by name
 		 */
-		public function findSignals(string $pattern, ?object $owner = null): array {
+		public function findSignals(string $pattern, object|string|null $owner = null): array {
 			$results = [];
-			
-			// Search standalone signals if no specific owner requested
+
+			// No owner specified — search standalone signals only
 			if ($owner === null) {
-				// Iterate through all standalone signals
 				foreach ($this->standaloneSignals as $name => $signal) {
-					// Check if signal name matches the pattern
 					if ($this->matchesPattern($pattern, $name)) {
-						// Add matching signal to results using its name as key
-						// This prevents duplicates and provides easy access by name
 						$results[$name] = $signal;
 					}
 				}
+
+				return $results;
 			}
-			
-			// Search object signals
-			// WeakMap iteration works like a regular array
+
+			// Object instance — direct WeakMap lookup
+			if (is_object($owner)) {
+				foreach ($this->objectSignals[$owner] ?? [] as $signalName => $signal) {
+					if ($this->matchesPattern($pattern, $signalName)) {
+						$results[$signalName] = $signal;
+					}
+				}
+
+				return $results;
+			}
+
+			// Class or interface name — collect signals from all matching objects
 			foreach ($this->objectSignals as $object => $signals) {
-				// Skip objects that don't match the requested owner filter
-				if ($owner !== null && $object !== $owner) {
+				if (!($object instanceof $owner)) {
 					continue;
 				}
-				
-				// Check each signal belonging to this object
+
 				foreach ($signals as $signalName => $signal) {
-					// Test signal name against the pattern
 					if ($this->matchesPattern($pattern, $signalName)) {
-						// Add to results, potentially overwriting standalone signals
-						// This gives object signals precedence over standalone signals
 						$results[$signalName] = $signal;
 					}
 				}
 			}
-			
+
 			return $results;
 		}
-		
+
 		/**
-		 * Get the signal that is emitted when a new signal is registered with the hub
-		 * @return Signal The signal that emits when signals are registered (parameter: Signal object)
+		 * Get the meta-signal emitted when any signal is registered or discovered.
+		 * Connect to this to monitor hub activity or auto-connect to signals as they appear.
+		 * @return Signal
 		 */
 		public function signalRegistered(): Signal {
 			return $this->signalRegisteredEvent;
 		}
-		
+
 		/**
-		 * Get the signal that is emitted when a signal is unregistered from the hub
-		 * @return Signal The signal that emits when signals are unregistered (parameter: Signal object)
+		 * Get the meta-signal emitted when any signal is unregistered from the hub.
+		 * @return Signal
 		 */
 		public function signalUnregistered(): Signal {
 			return $this->signalUnregisteredEvent;
 		}
 		
 		/**
-		 * Check if a name matches a pattern with wildcards
-		 * @param string $pattern Pattern with wildcards (* matches any sequence)
-		 * @param string $name Name to check against the pattern
-		 * @return bool True if name matches pattern, false otherwise
+		 * Use reflection to find all Signal-typed property names on a class.
+		 * Results are used to populate the signalPropertyCache.
+		 * @param string $class Fully qualified class name
+		 * @return list<string> Property names typed as Signal
+		 * @throws \ReflectionException
+		 */
+		private function resolveSignalProperties(string $class): array {
+			$properties = [];
+
+			foreach ((new \ReflectionClass($class))->getProperties() as $property) {
+				$type = $property->getType();
+
+				if ($type instanceof \ReflectionNamedType && $type->getName() === Signal::class) {
+					$properties[] = $property->getName();
+				}
+			}
+
+			return $properties;
+		}
+
+		/**
+		 * Test whether a signal name matches a wildcard pattern.
+		 * * matches any sequence of characters. Exact matches are handled without regex.
+		 * @param string $pattern Pattern to test against
+		 * @param string $name Signal name to test
+		 * @return bool
 		 */
 		private function matchesPattern(string $pattern, string $name): bool {
-			// Simple case: if no wildcards, only exact matches count
-			// This optimization avoids regex overhead for simple exact matches
 			if (!str_contains($pattern, '*')) {
 				return $pattern === $name;
 			}
-			
-			// Complex case: convert the wildcard pattern to regex
-			// First, escape all regex metacharacters to make pattern safe
-			// This prevents pattern characters from being interpreted as regex syntax
-			$regex = '/^' . preg_quote($pattern, '/') . '$/';
-			
-			// Then restore wildcards by converting escaped \* back to .*
-			// This allows * to match any sequence of characters
-			// preg_quote() escapes * to \*, so we convert it back to .* for regex
-			$regex = str_replace('\\*', '.*', $regex);
-			
-			// Test the name against the regex pattern
-			// ^ and $ anchors ensure the entire string must match
+
+			$regex = '/^' . str_replace('\\*', '.*', preg_quote($pattern, '/')) . '$/';
 			return (bool)preg_match($regex, $name);
 		}
 	}

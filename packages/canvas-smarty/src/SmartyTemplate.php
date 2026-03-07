@@ -2,17 +2,14 @@
 	
 	namespace Quellabs\Canvas\Smarty;
 	
-	use Quellabs\Contracts\Templates\TemplateRenderException;
-	use Quellabs\SignalHub\HasSignals;
+	use Smarty\Smarty;
+	use Smarty\Exception;
 	use Quellabs\SignalHub\Signal;
 	use Quellabs\SignalHub\SignalHubLocator;
-	use Smarty\Exception;
-	use Smarty\Smarty;
+	use Quellabs\Contracts\Templates\TemplateRenderException;
 	use Quellabs\Contracts\Templates\TemplateEngineInterface;
 	
 	class SmartyTemplate implements TemplateEngineInterface {
-		
-		use HasSignals;
 		
 		/**
 		 * @var Smarty|null Smarty instance
@@ -25,7 +22,7 @@
 		private array $config;
 		
 		/**
-		 * @var Signal Signal for performance monitoring
+		 * @var Signal Signal used to send debug data to Canvas
 		 */
 		private Signal $templateSignal;
 		
@@ -37,9 +34,10 @@
 			// Store the configuration
 			$this->config = $configuration;
 			
-			// Grab signalhub and create signal
-			$this->setSignalHub(SignalHubLocator::getInstance());
-			$this->templateSignal = $this->createSignal(['array'], 'debug.template.query');
+			// Create signal
+			$signalHub = SignalHubLocator::getInstance();
+			$this->templateSignal = new Signal('debug.template.query');
+			$signalHub->registerSignal($this->templateSignal);
 			
 			// Create Smarty instance
 			$this->smarty = new Smarty();
@@ -64,6 +62,14 @@
 					error_log("SmartyTemplateProvider: unable to set Smarty security ({$e->getMessage()}");
 				}
 			}
+		}
+		
+		/**
+		 * Remove template signal from hub
+		 */
+		public function __destruct() {
+			$signalHub = SignalHubLocator::getInstance();
+			$signalHub->unregisterSignal($this->templateSignal);
 		}
 		
 		/**

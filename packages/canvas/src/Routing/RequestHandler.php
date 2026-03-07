@@ -7,6 +7,7 @@
 	use Quellabs\Canvas\Discover\MethodContextProvider;
 	use Quellabs\Canvas\Exceptions\RouteNotFoundException;
 	use Quellabs\Canvas\Kernel;
+	use Quellabs\Canvas\Routing\Components\SignalConnector;
 	use Quellabs\Canvas\Routing\Context\MethodContext;
 	use Quellabs\DependencyInjection\Provider\SimpleBinding;
 	use Quellabs\Support\ComposerUtils;
@@ -132,7 +133,7 @@
 			// Delegate to the legacy routing handler
 			return $this->kernel->getLegacyHandler()->handle($request);
 		}
-	
+		
 		/**
 		 * Execute a Canvas route
 		 * Creates MethodContext and registers it with DI for autowiring
@@ -140,10 +141,18 @@
 		 * @param array $urlData
 		 * @return Response
 		 * @throws AnnotationReaderException
+		 * @throws \ReflectionException
 		 */
 		private function executeCanvasRoute(Request $request, array $urlData): Response {
 			// Get the controller instance from the dependency injection container
 			$controller = $this->kernel->getDependencyInjector()->get($urlData["controller"]);
+			
+			// Register controller signals with the hub
+			$hub = $this->kernel->getSignalHub();
+			$signals = $hub->discoverSignals($controller);
+			
+			// Auto-connect signals to slots — resolved from container so discovery runs once
+			$this->kernel->getDependencyInjector()->get(SignalConnector::class)->connect($signals);
 			
 			// Create method context containing all execution metadata
 			$context = new MethodContext(
@@ -171,6 +180,9 @@
 			} finally {
 				// Always unregister context, even if exception occurs
 				$this->kernel->getDependencyInjector()->unregister($methodContextProvider);
+				
+				// Unregister signals
+				$hub->unregisterSignals($controller);
 			}
 		}
 	}
