@@ -19,13 +19,18 @@
 		 * @return Response
 		 */
 		public function index(Request $request): Response {
+			/*
 			$p = new PostEntity();
 			$p->setTitle('x');
 			$p->setContent('x');
 			$p->setPublished(true);
 			$p->setCreatedAt(new \DateTime());
 			$p->setTestEnum(TestEnum::DELIVERED);
+			*/
 			
+			$p = $this->em()->find(PostEntity::class, 18);
+			
+			$this->em()->remove($p);
 			$this->em()->persist($p);
 			$this->em()->flush();
 			
