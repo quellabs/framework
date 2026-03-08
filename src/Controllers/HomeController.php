@@ -3,8 +3,10 @@
 	namespace App\Controllers;
 	
 	use App\Entities\PostEntity;
+	use App\Enums\TestEnum;
 	use Quellabs\Canvas\Annotations\Route;
 	use Quellabs\Canvas\Controllers\SecureController;
+	use Quellabs\Canvas\Validation\Rules\Date;
 	use Quellabs\DependencyInjection\Container;
 	use Quellabs\SignalHub\Signal;
 	use Symfony\Component\HttpFoundation\Request;
@@ -17,11 +19,22 @@
 		 * @return Response
 		 */
 		public function index(Request $request): Response {
-			$this->em()->executeQuery("
-				range of p is App\Entities\PostEntity
-				retrieve (p)
-				where p.title = /smartphone/i
-			");
+			/*
+			$p = new PostEntity();
+			$p->setTitle('x');
+			$p->setContent('x');
+			$p->setPublished(true);
+			$p->setCreatedAt(new \DateTime());
+			$p->setTestEnum(TestEnum::DELIVERED);
+			*/
+			
+			$p = $this->em()->find(PostEntity::class, 18);
+			
+			$this->em()->remove($p);
+			$this->em()->persist($p);
+			$this->em()->flush();
+			
+			
 			
 			return $this->render("home/index3.tpl");
 		}
