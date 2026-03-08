@@ -4,7 +4,8 @@
 	
 	use Quellabs\ObjectQuel\Annotations\Orm\Column;
 	use Quellabs\ObjectQuel\Annotations\Orm\FullTextIndex;
-	use Quellabs\ObjectQuel\DatabaseAdapter\TypeMapper;
+	use Quellabs\ObjectQuel\Capabilities\PlatformCapabilitiesInterface;
+	use Quellabs\ObjectQuel\Capabilities\NullPlatformCapabilities;
 	use Quellabs\ObjectQuel\EntityStore;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIdentifier;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstParameter;
@@ -25,6 +26,9 @@
 		/** @var EntityStore Stores entity metadata and column mappings */
 		private EntityStore $entityStore;
 		
+		/** @var PlatformCapabilitiesInterface Database engine capability descriptor */
+		private PlatformCapabilitiesInterface $platform;
+		
 		/** @var array Reference to query parameters array for prepared statements */
 		private array $parameters;
 		
@@ -41,11 +45,18 @@
 		 * @param string $partOfQuery Current query part being processed
 		 * @param mixed|null $mainVisitor Optional reference to main visitor instance
 		 */
-		public function __construct(EntityStore $entityStore, array &$parameters, string $partOfQuery, mixed $mainVisitor = null) {
+		public function __construct(
+			EntityStore $entityStore,
+			array &$parameters,
+			string $partOfQuery,
+			mixed $mainVisitor = null,
+			PlatformCapabilitiesInterface $platform = new NullPlatformCapabilities()
+		) {
 			$this->entityStore = $entityStore;
 			$this->parameters = &$parameters; // Store reference to allow parameter modification
 			$this->partOfQuery = $partOfQuery;
 			$this->mainVisitor = $mainVisitor;
+			$this->platform = $platform;
 		}
 		
 		/**
@@ -179,7 +190,8 @@
 				$visitor = new QuelToSQLConvertToString(
 					$this->entityStore,
 					$this->parameters,
-					$this->partOfQuery
+					$this->partOfQuery,
+					$this->platform
 				);
 				
 				try {
