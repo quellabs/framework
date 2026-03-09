@@ -152,8 +152,11 @@
 			$hub = $this->kernel->getSignalHub();
 			$signals = $hub->discoverSignals($controller);
 			
-			// Auto-connect signals to slots — resolved from container so discovery runs once
-			$this->kernel->getSignalConnector()->connect($signals);
+			// If signals found, auto-connect them to slots
+			if (!empty($signals)) {
+				$connector = new SignalConnector($this->kernel);
+				$connector->connect($signals);
+			}
 			
 			// Create method context containing all execution metadata
 			$context = new MethodContext(

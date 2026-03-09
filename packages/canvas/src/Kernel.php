@@ -26,7 +26,6 @@
 	use Quellabs\Canvas\Discover\DependencyAwareDiscover;
 	use Quellabs\Canvas\Error\DefaultErrorHandler;
 	use Quellabs\Canvas\Error\ErrorHandlerInterface;
-	use Quellabs\Canvas\Routing\Components\SignalConnector;
 	use Quellabs\Canvas\Routing\RequestHandler;
 	use Quellabs\Canvas\Inspector\EventCollector;
 	use Quellabs\Canvas\Cache\CacheInterfaceProvider;
@@ -54,7 +53,6 @@
 		private bool $legacyEnabled;
 		private ?LegacyHandler $legacyFallbackHandler;
 		private Container $dependencyInjector;
-		private ?SignalConnector $signalConnector = null;
 		private array $errorHandlers;
 		
 		/**
@@ -145,14 +143,6 @@
 		 */
 		public function getSignalHub(): SignalHub {
 			return $this->signalHub;
-		}
-		
-		/**
-		 * Returns the signal connector, instantiating it on first use
-		 * @return SignalConnector
-		 */
-		public function getSignalConnector(): SignalConnector {
-			return $this->signalConnector ??= new SignalConnector($this);
 		}
 		
 		/**
