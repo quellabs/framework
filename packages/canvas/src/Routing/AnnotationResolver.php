@@ -4,6 +4,7 @@
 	
 	use Quellabs\AnnotationReader\Exception\AnnotationReaderException;
 	use Quellabs\Canvas\Kernel;
+	use Quellabs\Canvas\Routing\Components\ControllersDiscovery;
 	use Quellabs\Support\ComposerUtils;
 	use Symfony\Component\HttpFoundation\Request;
 	use Quellabs\Canvas\Cache\Drivers\FileCache;
@@ -61,7 +62,6 @@
 		private bool $debugMode;
 		private bool $matchTrailingSlashes;
 		private string $cacheDirectory;
-		private string $controllerDirectory;
 		
 		// Component dependencies
 		private RouteMatcher $routeMatcher;
@@ -137,7 +137,7 @@
 			
 			return $results;
 		}
-
+		
 		/**
 		 * Clear all caches and force rebuild
 		 * @return bool True if all caches were cleared successfully
@@ -145,7 +145,6 @@
 		public function clearAllCaches(): bool {
 			$this->routeIndex = [];
 			$this->indexBuilder->clearIndex();
-			$this->routeDiscovery->clearReflectionCache();
 			return $this->cacheManager->clearCache();
 		}
 		
@@ -196,7 +195,6 @@
 			$this->debugMode = $config->getAs('debug_mode', 'bool', false);
 			$this->matchTrailingSlashes = $config->getAs('match_trailing_slashes', 'bool', false);
 			$this->cacheDirectory = $config->get('cache_dir', ComposerUtils::getProjectRoot() . "/storage/cache");
-			$this->controllerDirectory = $this->getControllerDirectory();
 		}
 		
 		/**
@@ -204,6 +202,8 @@
 		 * @return void
 		 */
 		private function initializeComponents(): void {
+			$controllerDiscovery = new ControllersDiscovery($this->kernel);
+			
 			// Create analyzer for parsing and validating route segments (URL parts)
 			$segmentAnalyzer = new RouteSegmentAnalyzer();
 			
@@ -228,6 +228,7 @@
 			// and compiler for pattern compilation
 			$this->routeDiscovery = new RouteDiscovery(
 				$this->kernel,           // Application kernel instance
+				$controllerDiscovery,    // Controller discovery service
 				$segmentAnalyzer,        // Route segment parsing service
 				$patternCompiler         // Route pattern compilation service
 			);
@@ -236,9 +237,9 @@
 			// Uses file cache for persistence, debug mode affects caching behavior,
 			// and controller directory for locating route definitions
 			$this->cacheManager = new RouteCacheManager(
-				$fileCache,              // File-based cache storage
-				$this->debugMode,        // Debug mode flag (affects cache invalidation)
-				$this->controllerDirectory // Path to controller files
+				$fileCache,                   // File-based cache storage
+				$controllerDiscovery,         // Discovery component
+				$this->debugMode,             // Debug mode flag (affects cache invalidation)
 			);
 		}
 		
@@ -255,19 +256,5 @@
 				error_log("AnnotationResolver: Cannot create cache directory: {$this->cacheDirectory}");
 				$this->debugMode = true;
 			}
-		}
-		
-		/**
-		 * Get the absolute path to the controllers directory
-		 * @return string Absolute path to controllers directory
-		 */
-		private function getControllerDirectory(): string {
-			$fullPath = ComposerUtils::getProjectRoot() . DIRECTORY_SEPARATOR . "src" . DIRECTORY_SEPARATOR . "Controllers";
-			
-			if (!is_dir($fullPath)) {
-				return "";
-			}
-			
-			return realpath($fullPath) ?: "";
 		}
 	}

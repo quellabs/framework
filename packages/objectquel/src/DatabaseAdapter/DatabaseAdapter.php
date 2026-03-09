@@ -41,9 +41,6 @@
 		/** @var array Cached index definitions for tables */
 		protected array $indexes;
 		
-		/** @var bool|null Cached result of window function support detection (null = not yet tested) */
-		private ?bool $supportsWindowFunctionsCache;
-		
 		/** @var string|null Cached database type identifier (null = not yet determined) */
 		private ?string $databaseTypeCache;
 		
@@ -62,7 +59,6 @@
 			$this->last_error = 0;
 			$this->last_error_message = '';
 			$this->transaction_depth = 0;
-			$this->supportsWindowFunctionsCache = null;
 			$this->databaseTypeCache = null;
 		}
 		
@@ -86,16 +82,23 @@
 			}
 			
 			$driver = $this->connection->getDriver();
-			$driverClass = get_class($driver);
 			
-			$this->databaseTypeCache = match ($driverClass) {
-				'Cake\Database\Driver\Postgres' => 'pgsql',
-				'Cake\Database\Driver\Sqlite' => 'sqlite',
-				'Cake\Database\Driver\Sqlserver' => 'sqlsrv',
-				default => 'mysql'
+			$this->databaseTypeCache = match (get_class($driver)) {
+				'Cake\Database\Driver\Postgres'   => 'pgsql',
+				'Cake\Database\Driver\Sqlite'     => 'sqlite',
+				'Cake\Database\Driver\Sqlserver'  => 'sqlsrv',
+				default => stripos($driver->version(), 'mariadb') !== false ? 'mariadb' : 'mysql'
 			};
 			
 			return $this->databaseTypeCache;
+		}
+		
+		/**
+		 * Returns the database version number
+		 * @return string
+		 */
+		public function getMysqlVersion(): string {
+			return $this->connection->getDriver()->version();
 		}
 		
 		/**
@@ -145,40 +148,6 @@
 		}
 		
 		// ==================== Database Capability Detection ====================
-		
-		/**
-		 * Tests whether the database supports SQL window functions (OVER clause)
-		 *
-		 * Performs feature detection by executing a test query. Result is cached
-		 * for the lifetime of the adapter instance.
-		 *
-		 * @return bool True if window functions are supported, false otherwise
-		 */
-		public function supportsWindowFunctions(): bool {
-			if ($this->supportsWindowFunctionsCache !== null) {
-				return $this->supportsWindowFunctionsCache;
-			}
-			
-			// Portable probe: COUNT(...) OVER () over a single-row derived table.
-			// If window functions aren't supported, this will raise a syntax error.
-			$probeSql = 'SELECT COUNT(1) OVER () AS __wf FROM (SELECT 1) t';
-			
-			try {
-				// Bypass our execute() wrapper so we don't set last_error on capability checks
-				$stmt = $this->connection->execute($probeSql);
-				
-				// Some drivers need an explicit close to free the cursor
-				$stmt->closeCursor();
-				
-				// Return true if window functions are supported
-				$this->supportsWindowFunctionsCache = true;
-				return true;
-			} catch (\Throwable $e) {
-				// Window functions not supported (or extremely old engine quirks) → treat as false
-				$this->supportsWindowFunctionsCache = false;
-				return false;
-			}
-		}
 		
 		/**
 		 * Checks whether the database supports native ENUM column types
@@ -353,6 +322,47 @@
 		// ==================== Query Execution ====================
 		
 		/**
+		 * Rewrites duplicate named parameters so PDO can bind them.
+		 * @param string $sql The SQL query, modified in place
+		 * @param array $parameters The parameter bindings, expanded in place
+		 * @return void
+		 */
+		protected function deduplicateParameters(string &$sql, array &$parameters): void {
+			// Track how many times each named parameter has been seen so far
+			$seen = [];
+			
+			// The regex alternation is ordered so that string literals are consumed first
+			// and never reach the callback as a match group — only bare :param placeholders do.
+			// This prevents false positives like WHERE x = ':term' from being rewritten.
+			$sql = preg_replace_callback(
+				"/'[^']*'|\"[^\"]*\"|:([a-zA-Z_][a-zA-Z0-9_]*)/",
+				function (array $match) use (&$seen, &$parameters): string {
+					// No capture group means this was a string literal — return it unchanged
+					if (!isset($match[1]) || $match[1] === '') {
+						return $match[0];
+					}
+					
+					// Fetch the match
+					$name = $match[1];
+					
+					// First occurrence — leave the placeholder as-is
+					if (!isset($seen[$name])) {
+						$seen[$name] = 1;
+						return $match[0];
+					}
+					
+					// Subsequent occurrence — rename to :name_2, :name_3, etc.
+					// and copy the original value so the new placeholder gets bound
+					$seen[$name]++;
+					$newName = $name . '_' . $seen[$name];
+					$parameters[$newName] = $parameters[$name];
+					return ':' . $newName;
+				},
+				$sql
+			);
+		}
+		
+		/**
 		 * Executes a SQL query with optional parameter binding
 		 * @param string $query SQL query to execute
 		 * @param array $parameters Parameter values for prepared statement placeholders
@@ -360,6 +370,7 @@
 		 */
 		public function execute(string $query, array $parameters = []): StatementInterface|false {
 			try {
+				$this->deduplicateParameters($query, $parameters);
 				return $this->connection->execute($query, $parameters);
 			} catch (\Exception $exception) {
 				$this->last_error = $exception->getCode();

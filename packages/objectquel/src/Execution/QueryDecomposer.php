@@ -24,6 +24,8 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstTerm;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstUnaryOperation;
 	use Quellabs\ObjectQuel\ObjectQuel\AstInterface;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstSearch;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstSearchScore;
 	use Quellabs\ObjectQuel\ObjectQuel\QuelException;
 	
 	/**
@@ -408,6 +410,16 @@
 				return null;
 			}
 			
+			
+			// Handle full-text search conditions — they belong to the database
+			if ($condition instanceof AstSearch) {
+				if ($this->hasReferenceToAnyRange($condition, $dbRanges)) {
+					return clone $condition;
+				}
+				
+				return null;
+			}
+			
 			// Handle binary operators (AND, OR)
 			if ($condition instanceof AstBinaryOperator) {
 				// Recursively process both sides of the operator
@@ -563,6 +575,17 @@
 					$this->containsAnyRangeReference($condition->getRight());
 			}
 			
+			// Full-text search nodes contain identifiers that may reference ranges
+			if ($condition instanceof AstSearch || $condition instanceof AstSearchScore) {
+				foreach ($condition->getIdentifiers() as $identifier) {
+					if ($this->containsAnyRangeReference($identifier)) {
+						return true;
+					}
+				}
+
+				return false;
+			}
+
 			// Literals (numbers, strings) and other node types don't involve ranges
 			return false;
 		}
@@ -601,6 +624,18 @@
 				$condition instanceof AstAny
 			) {
 				return $this->hasReferenceToRange($condition->getIdentifier(), $range);
+			}
+			
+			
+			// Full-text search nodes — check if any identifier belongs to this range
+			if ($condition instanceof AstSearch || $condition instanceof AstSearchScore) {
+				foreach ($condition->getIdentifiers() as $identifier) {
+					if ($this->hasReferenceToRange($identifier, $range)) {
+						return true;
+					}
+				}
+				
+				return false;
 			}
 			
 			// For comparison operations, check each side

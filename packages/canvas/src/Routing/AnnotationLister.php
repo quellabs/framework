@@ -7,27 +7,37 @@
 	use Quellabs\AnnotationReader\Exception\AnnotationReaderException;
 	use Quellabs\Canvas\Annotations\Route;
 	use Quellabs\Canvas\AOP\AspectResolver;
+	use Quellabs\Canvas\Kernel;
+	use Quellabs\Canvas\Routing\Components\ControllersDiscovery;
+	use Quellabs\Canvas\Routing\Components\RouteDiscovery;
 	use Quellabs\Sculpt\ConfigurationManager;
 	use Quellabs\Support\ComposerUtils;
 	
 	class AnnotationLister extends AnnotationBase {
 		
 		/**
-		 * Cache for repeated route fetching
+		 * @var Kernel Application kernel
 		 */
-		private ?array $cache = null;
+		private Kernel $kernel;
 		
 		/**
-		 * Cache for route name lookups to avoid repeated searches
+		 * @var ControllersDiscovery Controller discovery component
 		 */
-		private array $routeNameCache = [];
+		private ControllersDiscovery $controllersDiscovery;
+		
+		/**
+		 * @var AspectResolver Resolves aspects/interceptors for methods
+		 */
+		private AspectResolver $aspectResolver;
 		
 		/**
 		 * AnnotationLister constructor
 		 */
 		public function __construct() {
-			$annotationsReaderConfig = new Configuration();
-			parent::__construct(new AnnotationReader($annotationsReaderConfig));
+			$this->kernel = new Kernel();
+			parent::__construct($this->kernel->getAnnotationsReader());
+			$this->controllersDiscovery = new ControllersDiscovery($this->kernel);
+			$this->aspectResolver = new AspectResolver($this->annotationsReader);
 		}
 		
 		/**
@@ -38,69 +48,70 @@
 		 * @throws AnnotationReaderException
 		 */
 		public function getRoutes(?ConfigurationManager $config = null): array {
-			// Get from cache if possible
-			if (is_array($this->cache)) {
-				return $this->cache;
-			}
-			
-			// Scan the Controller directory to find all controller classes
-			// This assumes controllers are located in /src/Controller relative to project root
-			$controllers = ComposerUtils::findClassesInDirectory(ComposerUtils::getProjectRoot() . "/src/Controllers");
-			
-			// Iterate through each discovered controller class
+			$routes = $this->discoverRoutes();
+			return $config ? $this->filterRoutes($routes, $config) : $routes;
+		}
+		
+		/**
+		 * Discovers all routes by scanning controllers and their annotated methods.
+		 * Populates the route name cache as a side effect.
+		 * @return array Sorted array of route configurations
+		 * @throws \ReflectionException
+		 * @throws AnnotationReaderException
+		 */
+		private function discoverRoutes(): array {
 			$result = [];
 			
-			foreach ($controllers as $controller) {
-				// Create a reflection object to inspect the controller class structure
-				$classReflection = new \ReflectionClass($controller);
-				
-				// Fetch the route prefix, if any
-				$routePrefix = $this->getRoutePrefix($controller);
-				
-				// Examine each method in the current controller
-				foreach ($classReflection->getMethods() as $method) {
-					// Look for Route annotations on this method
-					// Only methods with Route annotations are considered route handlers
-					$routes = $this->annotationsReader->getMethodAnnotations(
-						$method->getDeclaringClass()->getName(),
-						$method->getName(),
-						Route::class
-					);
+			// Iterate through each discovered controller class
+			foreach($this->controllersDiscovery->fetch() as $directory) {
+				// Scan the controller directory to find all controller classes
+				foreach (ComposerUtils::findClassesInDirectory($directory) as $controller) {
+					// Create a reflection object to inspect the controller class structure
+					$classReflection = new \ReflectionClass($controller);
 					
-					// A single method can have multiple Route annotations (multiple routes to same handler)
-					foreach ($routes as $routeAnnotation) {
-						// Extract the route path pattern (e.g., "/users/{id}", "/api/products")
-						$routePath = $routeAnnotation->getRoute();
+					// Fetch the route prefix, if any
+					$routePrefix = $this->getRoutePrefix($controller);
+					
+					// Examine each method in the current controller
+					foreach ($classReflection->getMethods() as $method) {
+						// Look for Route annotations on this method.
+						// Only methods with Route annotations are considered route handlers.
+						$routes = $this->annotationsReader->getMethodAnnotations(
+							$method->getDeclaringClass()->getName(),
+							$method->getName(),
+							Route::class
+						);
 						
-						// Combine route with prefix
-						$completeRoutePath = "/" . $routePrefix . ltrim($routePath, "/");
-						
-						// Create the record
-						$record = [
-							'name'         => $routeAnnotation->getName(),    // The name of the route (can be null)
-							'http_methods' => $routeAnnotation->getMethods(), // A list of http methods
-							'controller'   => $controller,                    // Controller class name
-							'method'       => $method->getName(),             // Method name that handles this route
-							'route'        => $completeRoutePath,             // Route string
-							'aspects'      => $this->getAspectsOfMethod(      // Any interceptors/middleware for this method
-								$method->getDeclaringClass()->getName(),
-								$method->getName()
-							),
-						];
-						
-						// Add to named cache
-						if ($routeAnnotation->getName() !== null) {
-							$this->routeNameCache[$routeAnnotation->getName()] = $record;
+						// A single method can have multiple Route annotations (multiple routes to same handler)
+						foreach ($routes as $routeAnnotation) {
+							// Extract the route path pattern (e.g., "/users/{id}", "/api/products")
+							$routePath = $routeAnnotation->getRoute();
+							
+							// Combine route with prefix
+							$completeRoutePath = "/" . $routePrefix . ltrim($routePath, "/");
+							
+							// Create the record
+							$record = [
+								'name'         => $routeAnnotation->getName(),    // The name of the route (can be null)
+								'http_methods' => $routeAnnotation->getMethods(), // A list of http methods
+								'controller'   => $controller,                    // Controller class name
+								'method'       => $method->getName(),             // Method name that handles this route
+								'route'        => $completeRoutePath,             // Route string
+								'aspects'      => $this->getAspectsOfMethod(      // Any interceptors/middleware for this method
+									$method->getDeclaringClass()->getName(),
+									$method->getName()
+								),
+							];
+							
+							// Build complete route configuration including metadata
+							$result[] = $record;
 						}
-						
-						// Build complete route configuration including metadata
-						$result[] = $record;
 					}
 				}
 			}
 			
-			// Sort routes by route first, controller name second, third by method name
-			// This makes the route list more predictable and easier to debug
+			// Sort routes by route first, controller name second, then by method name.
+			// This makes the route list more predictable and easier to debug.
 			usort($result, function ($a, $b) {
 				// Primary sort: by route
 				$routeComparison = $a['route'] <=> $b['route'];
@@ -120,29 +131,7 @@
 				return $a['method'] <=> $b['method'];
 			});
 			
-			// Store the list in cache
-			$this->cache = $result;
-			
-			// Filter the routes if needed, then cache and return
-			return $config ? $this->filterRoutes($result, $config) : $result;
-		}
-		
-		/**
-		 * Check if a route with the given name exists in the route collection.
-		 * Uses the pre-built route name cache for O(1) lookup performance.
-		 * @param string $name The name of the route to search for
-		 * @return bool True if the route exists, false otherwise
-		 */
-		public function routeExists(string $name): bool {
-			try {
-				// Ensure routes are discovered and the cache is populated
-				$this->getRoutes();
-				
-				// Use the name cache built during route discovery for instant lookup
-				return isset($this->routeNameCache[$name]);
-			} catch (AnnotationReaderException | \ReflectionException $e) {
-				return false;
-			}
+			return $result;
 		}
 		
 		/**
@@ -152,12 +141,14 @@
 		 * @return array|null The route array if found, null if not found
 		 */
 		public function getRouteByName(string $name): ?array {
-			// Ensure routes are discovered and the cache is populated
 			try {
-				$this->getRoutes();
+				foreach ($this->getRoutes() as $route) {
+					if ($route['name'] === $name) {
+						return $route;
+					}
+				}
 				
-				// Return route from name cache (null if not found)
-				return $this->routeNameCache[$name] ?? null;
+				return null;
 			} catch (AnnotationReaderException | \ReflectionException $e) {
 				return null;
 			}
@@ -170,16 +161,13 @@
 		 * @return array Array of interceptor class names ordered by precedence (class-level first, then method-level)
 		 */
 		public function getAspectsOfMethod(string $class, string $method): array {
-			// Initialize the aspect discovery utility
-			$aspectResolver = new AspectResolver($this->annotationsReader);
-			
-			// Fetch all annotation classes in order
-			$aspectsClass = $aspectResolver->resolve($class, $method);
-			
-			// Extract the actual interceptor class names
-			return array_map(function ($e) { return $e['class']; }, $aspectsClass);
+			// Fetch all annotation classes in order and extract the interceptor class names
+			return array_map(
+				function ($e) { return $e['class']; },
+				$this->aspectResolver->resolve($class, $method)
+			);
 		}
-
+		
 		/**
 		 * Filter routes based on configuration options
 		 * @param array $routes Collection of routes to filter

@@ -32,45 +32,84 @@
 	use Quellabs\ObjectQuel\ProxyGenerator\ProxyInterface;
 	use Quellabs\ObjectQuel\ReflectionManagement\PropertyHandler;
 	use Quellabs\ObjectQuel\Serialization\Serializers\SQLSerializer;
-	use Quellabs\SignalHub\HasSignals;
+	use Quellabs\SignalHub\Signal;
 	use Quellabs\SignalHub\SignalHub;
+	use Quellabs\SignalHub\SignalHubLocator;
 	
 	class UnitOfWork {
 		
-		use HasSignals;
-		
-		protected array $original_entity_data;
-		protected array $identity_map;
-		protected array $entity_removal_list;
-		protected EntityManager $entity_manager;
-		protected EntityStore $entity_store;
-		protected PropertyHandler $property_handler;
+		protected array $originalEntityData;
+		protected array $identityMap;
+		protected array $entityRemovalList;
+		private SignalHub $signalHub;
+		protected EntityManager $entityManager;
+		protected EntityStore $entityStore;
+		protected PropertyHandler $propertyHandler;
 		protected ?SQLSerializer $serializer;
 		protected ?DatabaseAdapter $connection;
 		protected EntityLifecycleManager $lifecycleManager;
+		protected InsertPersister $insertPersister;
+		protected UpdatePersister $updatePersister;
+		protected DeletePersister $deletePersister;
+		
+		public Signal $signalPrePersist;
+		public Signal $signalPostPersist;
+		public Signal $signalPreUpdate;
+		public Signal $signalPostUpdate;
+		public Signal $signalPreDelete;
+		public Signal $signalPostDelete;
 		
 		/**
 		 * UnitOfWork constructor.
 		 * @param EntityManager $entityManager
-		 * @param SignalHub $signalHub
 		 */
-		public function __construct(EntityManager $entityManager, SignalHub $signalHub) {
-			$this->setSignalHub($signalHub);
-
+		public function __construct(EntityManager $entityManager) {
+			$this->signalHub = SignalHubLocator::getInstance();
 			$this->connection = $entityManager->getConnection();
-			$this->entity_manager = $entityManager;
-			$this->entity_store = $entityManager->getEntityStore();
-			$this->property_handler = new PropertyHandler();
+			$this->entityManager = $entityManager;
+			$this->entityStore = $entityManager->getEntityStore();
+			$this->propertyHandler = new PropertyHandler();
 			$this->serializer = new SQLSerializer($entityManager->getEntityStore());
-			$this->original_entity_data = [];
-			$this->entity_removal_list = [];
-			$this->identity_map = [];
+			$this->originalEntityData = [];
+			$this->entityRemovalList = [];
+			$this->identityMap = [];
 			
 			// Register the signals
-			$this->registerLifecycleSignals();
+			$this->signalPrePersist = new Signal('orm.prePersist');
+			$this->signalPostPersist = new Signal('orm.postPersist');
+			$this->signalPreUpdate = new Signal('orm.preUpdate');
+			$this->signalPostUpdate = new Signal('orm.postUpdate');
+			$this->signalPreDelete = new Signal('orm.preDelete');
+			$this->signalPostDelete = new Signal('orm.postDelete');
+			
+			// Hook the signals up
+			$this->signalHub->registerSignal($this->signalPrePersist);
+			$this->signalHub->registerSignal($this->signalPostPersist);
+			$this->signalHub->registerSignal($this->signalPreUpdate);
+			$this->signalHub->registerSignal($this->signalPostUpdate);
+			$this->signalHub->registerSignal($this->signalPreDelete);
+			$this->signalHub->registerSignal($this->signalPostDelete);
 			
 			// Create the EntityLifecycleManager instance
-			$this->lifecycleManager = new EntityLifecycleManager($this->getSignalHub(), $this->entity_store);
+			$this->lifecycleManager = new EntityLifecycleManager($this);
+			
+			// Instantiate persisters once for reuse across commits
+			$primaryKeyFactory = new PrimaryKeyFactory();
+			$this->insertPersister = new InsertPersister($this, $primaryKeyFactory);
+			$this->updatePersister = new UpdatePersister($this);
+			$this->deletePersister = new DeletePersister($this);
+		}
+		
+		/**
+		 * Remove signals from hub
+		 */
+		public function __destruct() {
+			$this->signalHub->unregisterSignal($this->signalPostDelete);
+			$this->signalHub->unregisterSignal($this->signalPreDelete);
+			$this->signalHub->unregisterSignal($this->signalPostUpdate);
+			$this->signalHub->unregisterSignal($this->signalPreUpdate);
+			$this->signalHub->unregisterSignal($this->signalPostPersist);
+			$this->signalHub->unregisterSignal($this->signalPrePersist);
 		}
 		
 		/**
@@ -78,7 +117,7 @@
 		 * @return PropertyHandler
 		 */
 		public function getPropertyHandler(): PropertyHandler {
-			return $this->property_handler;
+			return $this->propertyHandler;
 		}
 		
 		/**
@@ -86,7 +125,7 @@
 		 * @return EntityManager
 		 */
 		public function getEntityManager(): EntityManager {
-			return $this->entity_manager;
+			return $this->entityManager;
 		}
 		
 		/**
@@ -94,7 +133,7 @@
 		 * @return EntityStore
 		 */
 		public function getEntityStore(): EntityStore {
-			return $this->entity_store;
+			return $this->entityStore;
 		}
 		
 		/**
@@ -125,7 +164,7 @@
 			$normalizedEntityName = $this->getEntityStore()->normalizeEntityName($entityType);
 			
 			// Check if the class exists in the identity map and return null if it doesn't
-			if (empty($this->identity_map[$normalizedEntityName])) {
+			if (empty($this->identityMap[$normalizedEntityName])) {
 				return null;
 			}
 			
@@ -133,8 +172,8 @@
 			$primaryKeyString = $this->convertPrimaryKeysToString($primaryKeys);
 			
 			// Check if the entity exists in the identity map
-			$hash = $this->identity_map[$normalizedEntityName]['index'][$primaryKeyString] ?? null;
-			return $hash !== null ? $this->identity_map[$normalizedEntityName][$hash] : null;
+			$hash = $this->identityMap[$normalizedEntityName]['index'][$primaryKeyString] ?? null;
+			return $hash !== null ? $this->identityMap[$normalizedEntityName][$hash] : null;
 		}
 
 		/**
@@ -144,7 +183,7 @@
 		 * @return array|null
 		 */
 		public function getOriginalEntityData(mixed $entity): ?array {
-			return $this->original_entity_data[spl_object_hash($entity)] ?? null;
+			return $this->originalEntityData[spl_object_hash($entity)] ?? null;
 		}
 		
 		/**
@@ -172,8 +211,8 @@
 			
 			// Initialize the index structure for this entity class if it doesn't exist yet
 			// The index allows for quick entity lookups by primary key without iterating through all entities
-			if (!isset($this->identity_map[$class]['index'])) {
-				$this->identity_map[$class]['index'] = [];
+			if (!isset($this->identityMap[$class]['index'])) {
+				$this->identityMap[$class]['index'] = [];
 			}
 			
 			// Generate a unique object identifier using PHP's built-in function
@@ -190,15 +229,15 @@
 			
 			// Store the hash in the index for quick lookup by primary key
 			// This mapping enables finding entities by their database identifiers
-			$this->identity_map[$class]['index'][$primaryKeysString] = $hash;
+			$this->identityMap[$class]['index'][$primaryKeysString] = $hash;
 			
 			// Add the actual entity object to the identity map
 			// This creates a two-way reference system: hash→entity and primaryKey→hash
-			$this->identity_map[$class][$hash] = $entity;
+			$this->identityMap[$class][$hash] = $entity;
 			
 			// Create a snapshot of the entity's current state by serializing it
 			// This baseline is used later to detect changes when flush() is called
-			$this->original_entity_data[$hash] = $this->getSerializer()->serialize($entity);
+			$this->originalEntityData[$hash] = $this->getSerializer()->serialize($entity);
 		}
 		
 		/**
@@ -240,16 +279,16 @@
 			
 			// Add the entity object to the identity map using its hash as the key
 			// This registers the entity for tracking in the current unit of work
-			$this->identity_map[$class][$hash] = $entity;
+			$this->identityMap[$class][$hash] = $entity;
 			
 			// Only index by primary key if the entity already has primary key values
 			// This handles both cases: entities with manually set IDs and those awaiting generated IDs
 			if (!empty($primaryKeysString)) {
 				// Initialize the index array if it doesn't exist yet (using null coalescing operator)
-				$this->identity_map[$class]['index'] ??= [];
+				$this->identityMap[$class]['index'] ??= [];
 				
 				// Store a reference to the entity by its primary key for quick lookups
-				$this->identity_map[$class]['index'][$primaryKeysString] = $hash;
+				$this->identityMap[$class]['index'][$primaryKeysString] = $hash;
 			}
 			
 			// Return true to indicate successful registration of the new entity
@@ -280,12 +319,6 @@
 				}
 				
 				if (!empty($sortedEntities)) {
-					// Instantiate helper classes
-					$primaryKeyFactory = new PrimaryKeyFactory();
-					$insertPersister = new InsertPersister($this, $primaryKeyFactory);
-					$updatePersister = new UpdatePersister($this);
-					$deletePersister = new DeletePersister($this);
-					
 					// Start a database transaction.
 					$this->connection->beginTrans();
 					
@@ -297,7 +330,7 @@
 						// Copy the primary keys from the parent entity to this entity, if available.
 						// This only happens if the relationship is not self-referential.
 						foreach($this->fetchParentEntitiesPrimaryKeyData($entity) as $parentEntity) {
-							$this->property_handler->set($entity, $parentEntity["property"], $parentEntity["value"]);
+							$this->propertyHandler->set($entity, $parentEntity["property"], $parentEntity["value"]);
 						}
 						
 						// Perform the corresponding database operation based on the state of the entity.
@@ -311,9 +344,9 @@
 
 								$changed[] = $entity; // Add entity to the changed list
 								
-								$this->getSignalHub()->getSignal('orm.prePersist')->emit($entity);
-								$insertPersister->persist($entity); // Insert if the entity is new.
-								$this->getSignalHub()->getSignal('orm.postPersist')->emit($entity);
+								$this->signalPrePersist->emit($entity);
+								$this->insertPersister->persist($entity); // Insert if the entity is new.
+								$this->signalPostPersist->emit($entity);
 								break;
 							
 							case DirtyState::Dirty:
@@ -325,9 +358,9 @@
 								
 								$changed[] = $entity; // Add entity to the changed list
 								
-								$this->getSignalHub()->getSignal('orm.preUpdate')->emit($entity);
-								$updatePersister->persist($entity); // Update if the entity has been modified.
-								$this->getSignalHub()->getSignal('orm.postUpdate')->emit($entity);
+								$this->signalPreUpdate->emit($entity);
+								$this->updatePersister->persist($entity); // Update if the entity has been modified.
+								$this->signalPostUpdate->emit($entity);
 								break;
 							
 							case DirtyState::Deleted:
@@ -339,9 +372,9 @@
 
 								$deleted[] = $entity; // Add entity to the deleted list
 								
-								$this->getSignalHub()->getSignal('orm.preDelete')->emit($entity);
-								$deletePersister->persist($entity); // Delete if the entity is marked for deletion.
-								$this->getSignalHub()->getSignal('orm.postDelete')->emit($entity);
+								$this->signalPreDelete->emit($entity);
+								$this->deletePersister->persist($entity); // Delete if the entity is marked for deletion.
+								$this->signalPostDelete->emit($entity);
 								break;
 						}
 					}
@@ -352,11 +385,15 @@
 					// Update the identity map and reset change tracking
 					$this->updateIdentityMapAndResetChangeTracking($changed, $deleted);
 				}
-			} catch (OrmException $e) {
-				// Roll back the transaction if an error occurs.
+			} catch (\Throwable $e) {
+				// Roll back the transaction if any error or exception occurs.
 				$this->connection->rollbackTrans();
 				
-				// Re-throw the exception to allow handling elsewhere.
+				// Wrap non-ORM exceptions for a consistent exception contract
+				if (!$e instanceof OrmException) {
+					throw new OrmException($e->getMessage(), (int) $e->getCode(), $e);
+				}
+				
 				throw $e;
 			}
 		}
@@ -366,14 +403,12 @@
 		 * @return void
 		 */
 		public function clear(): void {
-			$this->identity_map = [];
-			$this->original_entity_data = [];
-			$this->entity_removal_list = [];
+			$this->identityMap = [];
+			$this->originalEntityData = [];
+			$this->entityRemovalList = [];
 			
 			// Add garbage collection hint for large datasets
-			if (extension_loaded('gc')) {
-				gc_collect_cycles();
-			}
+			gc_collect_cycles();
 		}
 		
 		/**
@@ -394,25 +429,25 @@
 			
 			// Remove the entity from the main identity map using its hash
 			// This stops the entity from being included in any future persistence operations
-			unset($this->identity_map[$class][$hash]);
+			unset($this->identityMap[$class][$hash]);
 			
 			// Search for this entity's hash in the primary key index
 			// The index maps primary key strings to object hashes for quick lookups
-			$index = array_search($hash, $this->identity_map[$class]['index']);
+			$index = array_search($hash, $this->identityMap[$class]['index']);
 			
 			// If found in the index, remove it to prevent the detached entity from being
 			// retrieved via its primary key in future operations
 			if ($index !== false) {
-				unset($this->identity_map[$class]['index'][$index]);
+				unset($this->identityMap[$class]['index'][$index]);
 			}
 			
 			// Remove the entity's original data snapshot used for change detection
 			// This effectively stops tracking any changes to the entity's properties
-			unset($this->original_entity_data[$hash]);
+			unset($this->originalEntityData[$hash]);
 			
 			// If the entity was previously scheduled for deletion, remove it from that list
 			// This prevents it from being included in the next DELETE operation
-			unset($this->entity_removal_list[$hash]);
+			unset($this->entityRemovalList[$hash]);
 		}
 		
 		/**
@@ -429,7 +464,7 @@
 			}
 			
 			// Mark entity for deletion first (prevents infinite recursion with circular references)
-			$this->entity_removal_list[$entityId] = true;
+			$this->entityRemovalList[$entityId] = true;
 			
 			// Process dependent entities that should be cascade deleted
 			$this->processCascadingDeletions($entity);
@@ -455,12 +490,12 @@
 			}
 			
 			// Checks if the entity is new based on the absence of original data.
-			if (!isset($this->original_entity_data[$entityHash])) {
+			if (!isset($this->originalEntityData[$entityHash])) {
 				return DirtyState::New;
 			}
 			
 			// Checks if the entity is new based on the absence of primary keys.
-			$primaryKeys = $this->entity_store->getIdentifierKeys($entity);
+			$primaryKeys = $this->entityStore->getIdentifierKeys($entity);
 			
 			if ($this->hasNullPrimaryKeys($entity, $primaryKeys)) {
 				return DirtyState::New;
@@ -499,7 +534,7 @@
 		 */
 		private function hasNullPrimaryKeys(object $entity, array $primaryKeys): bool {
 			foreach ($primaryKeys as $primaryKey) {
-				if ($this->property_handler->get($entity, $primaryKey) === null) {
+				if ($this->propertyHandler->get($entity, $primaryKey) === null) {
 					return true;
 				}
 			}
@@ -515,7 +550,7 @@
 		 */
 		private function isEntityDirty(array $extractedEntity, array $originalData): bool {
 			foreach ($extractedEntity as $key => $value) {
-				if ($value !== $originalData[$key]) {
+				if ($value !== ($originalData[$key] ?? null)) {
 					return true;
 				}
 			}
@@ -529,7 +564,7 @@
 		 * @return bool
 		 */
 		private function isEntityScheduledForDeletion(string $entityId): bool {
-			return isset($this->entity_removal_list[$entityId]);
+			return isset($this->entityRemovalList[$entityId]);
 		}
 		
 		/**
@@ -549,7 +584,7 @@
 			
 			// Fallback to using the property handler if no getter method exists
 			// This likely accesses properties through alternative means (e.g., reflection)
-			return $this->property_handler->get($entity, $property);
+			return $this->propertyHandler->get($entity, $property);
 		}
 		
 		/**
@@ -564,8 +599,8 @@
 			$result = [];
 			
 			// Loop through each entity class in the identity map
-			// The identity_map is structured as [entityClass => [objectId => entity, ...], ...]
-			foreach ($this->identity_map as $subArray) {
+			// The identityMap is structured as [entityClass => [objectId => entity, ...], ...]
+			foreach ($this->identityMap as $subArray) {
 				// For each class, loop through all the stored entities and meta-entries
 				foreach ($subArray as $key => $value) {
 					// Skip the special 'index' entry which contains lookup maps for primary keys
@@ -637,7 +672,7 @@
 				// Process all parent dependencies (both ManyToOne and qualifying OneToOne)
 				foreach (array_merge($manyToOneParents, $oneToOneParents) as $property => $annotation) {
 					// Get the actual parent entity object from the current entity's property
-					$parentEntity = $this->property_handler->get($entity, $property);
+					$parentEntity = $this->propertyHandler->get($entity, $property);
 					
 					// Skip if the relationship is null (no parent entity assigned)
 					if ($parentEntity === null) {
@@ -717,12 +752,12 @@
 			$normalizedEntityName = $this->getEntityStore()->normalizeEntityName(get_class($entity));
 			
 			// Check if the class name does not exist in the identity map.
-			if (!isset($this->identity_map[$normalizedEntityName])) {
+			if (!isset($this->identityMap[$normalizedEntityName])) {
 				return false;
 			}
 			
 			// Check if the object itself exists in the identity map using its unique ID.
-			return isset($this->identity_map[$normalizedEntityName][spl_object_hash($entity)]);
+			return isset($this->identityMap[$normalizedEntityName][spl_object_hash($entity)]);
 		}
 		
 		/**
@@ -742,11 +777,11 @@
 				// Add primary key to index cache for easy lookup
 				$primaryKeys = $this->getIdentifiers($entity);
 				$primaryKeysString = $this->convertPrimaryKeysToString($primaryKeys);
-				$this->identity_map[$class]['index'][$primaryKeysString] = $hash;
+				$this->identityMap[$class]['index'][$primaryKeysString] = $hash;
 				
 				// Store the original data of the entity for later comparison
 				// This helps track changes in the entity over time
-				$this->original_entity_data[$hash] = $this->getSerializer()->serialize($entity);
+				$this->originalEntityData[$hash] = $this->getSerializer()->serialize($entity);
 			}
 			
 			// Remove deleted entities from tracking
@@ -786,7 +821,7 @@
 					
 					// Use the property_handler to retrieve the value of the related parent entity.
 					// This is the actual object reference to the parent entity
-					$parentEntity = $this->property_handler->get($entity, $property);
+					$parentEntity = $this->propertyHandler->get($entity, $property);
 					
 					// If the parent entity exists, add it to the result with its relationship details.
 					if (!empty($parentEntity)) {
@@ -839,7 +874,7 @@
 
 			foreach ($primaryKeys as $key) {
 				// Fetch the corresponding value for each primary key from the entity using the property handler
-				$result[$key] = $this->property_handler->get($entity, $key);
+				$result[$key] = $this->propertyHandler->get($entity, $key);
 			}
 			
 			return $result;
@@ -861,12 +896,12 @@
 			
 			// Normalize the entity class name to ensure consistent format
 			// Normalization handles variations in namespace notation
-			$normalizedClass = $this->entity_store->normalizeEntityName($entityClass);
+			$normalizedClass = $this->entityStore->normalizeEntityName($entityClass);
 			
 			// Retrieve all entity classes that depend on this entity
 			// These are entities that have relationships annotated with cascade="remove"
 			// or similar configurations that indicate cascading deletes
-			$dependentEntityClasses = $this->entity_store->getDependentEntities($entity);
+			$dependentEntityClasses = $this->entityStore->getDependentEntities($entity);
 			
 			// Process each dependent entity class to find and mark instances for deletion
 			// This handles OneToMany and OneToOne relationships where the parent is being deleted
@@ -890,11 +925,11 @@
 		private function processDependentEntityClass(string $dependentEntityClass, string $normalizedClass, object $entity): void {
 			// Retrieve all ManyToOne relationships defined in the dependent entity class
 			// These are relationships where the dependent entity has a foreign key to some parent
-			$manyToOneDependencies = $this->entity_store->getManyToOneDependencies($dependentEntityClass);
+			$manyToOneDependencies = $this->entityStore->getManyToOneDependencies($dependentEntityClass);
 			
 			// Retrieve all OneToOne relationships defined in the dependent entity class
 			// These are one-to-one associations between entities
-			$oneToOneDependencies = $this->entity_store->getOneToOneDependencies($dependentEntityClass);
+			$oneToOneDependencies = $this->entityStore->getOneToOneDependencies($dependentEntityClass);
 			
 			// Filter OneToOne relationships to only include bidirectional ones
 			// We only want relationships where both sides reference each other
@@ -907,7 +942,7 @@
 			foreach (array_merge($manyToOneDependencies, $oneToOneDependencies) as $property => $annotation) {
 				// Skip if this relationship doesn't point to our parent entity class
 				// This ensures we only process relationships relevant to the deleted entity
-				if ($this->entity_store->normalizeEntityName($annotation->getTargetEntity()) !== $normalizedClass) {
+				if ($this->entityStore->normalizeEntityName($annotation->getTargetEntity()) !== $normalizedClass) {
 					continue;
 				}
 				
@@ -943,7 +978,7 @@
 		 */
 		private function getCascadeInfo(string $entityClass, string $property): ?object {
 			// Retrieve all annotations for the specified entity class from the entity store
-			$entityAnnotations = $this->entity_store->getAnnotations($entityClass);
+			$entityAnnotations = $this->entityStore->getAnnotations($entityClass);
 			
 			// Check if the specified property exists in the entity annotations
 			// If not, return null immediately since no cascade can exist
@@ -1003,14 +1038,19 @@
 			// This returns an array of primary key field names and their values
 			$parentPrimaryKeys = $this->getIdentifiers($parentEntity);
 			
-			// Get the first (and typically only) primary key value
-			// array_key_first() returns the first key, then we use that to get the corresponding value
+			// Composite primary keys are not supported for cascade delete lookup;
+			// the dependent objects query expects a single scalar foreign key value.
+			if (count($parentPrimaryKeys) !== 1) {
+				return;
+			}
+			
+			// Get the first (and only) primary key value
 			$parentId = $parentPrimaryKeys[array_key_first($parentPrimaryKeys)];
 			
 			// Query the entity manager to find all dependent objects
 			// that have a foreign key relationship to the parent entity
 			// Uses the specified property name to match against the parent's ID
-			$dependentObjects = $this->entity_manager->findBy($dependentEntityClass, [
+			$dependentObjects = $this->entityManager->findBy($dependentEntityClass, [
 				$property => $parentId
 			]);
 			
@@ -1091,7 +1131,7 @@
 				}
 				
 				// Get the actual collection of related entities from the entity's property
-				$collection = $this->property_handler->get($entity, $property);
+				$collection = $this->propertyHandler->get($entity, $property);
 				
 				// Skip if the collection property is null (no collection initialized)
 				if ($collection === null) {
@@ -1146,7 +1186,7 @@
 				}
 				
 				// Get the single related entity from the entity's property
-				$relatedEntity = $this->property_handler->get($entity, $property);
+				$relatedEntity = $this->propertyHandler->get($entity, $property);
 				
 				// Skip if no related entity exists (the property is null)
 				if ($relatedEntity === null) {
@@ -1169,19 +1209,5 @@
 				// Recursively process the related entity's own cascading relationships
 				$this->processCascadingPersistsForEntity($relatedEntity);
 			}
-		}
-		
-		/**
-		 * Create the lifetime signals
-		 * @return void
-		 */
-		private function registerLifecycleSignals(): void {
-			// Define standard ORM lifecycle signals
-			$this->createSignal(['object'], 'orm.prePersist');
-			$this->createSignal(['object'], 'orm.postPersist');
-			$this->createSignal(['object'], 'orm.preUpdate');
-			$this->createSignal(['object'], 'orm.postUpdate');
-			$this->createSignal(['object'], 'orm.preDelete');
-			$this->createSignal(['object'], 'orm.postDelete');
 		}
 	}

@@ -1,11 +1,17 @@
+# Enable mod_rewrite
 RewriteEngine On
 
-# Redirect all requests to index.php except for existing files and directories
-RewriteCond %{REQUEST_FILENAME} !-f
-RewriteCond %{REQUEST_FILENAME} !-d
-RewriteRule ^(.*)$ index.php [QSA,L]
+# Block WebDAV methods
+<Limit PROPFIND PROPPATCH MKCOL COPY MOVE LOCK UNLOCK>
+    Require all denied
+</Limit>
 
 # Prevent access to sensitive files
 <FilesMatch "^\.">
     Require all denied
 </FilesMatch>
+
+# Redirect all requests to index.php except for existing files and directories
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ index.php [QSA,L]

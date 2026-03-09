@@ -3,27 +3,35 @@
 	namespace Quellabs\ObjectQuel\ObjectQuel;
 	
 	use Quellabs\ObjectQuel\EntityStore;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAlias;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIdentifier;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabase;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\GetMainEntityInAst;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\GetMainEntityInAstException;
+	use Quellabs\ObjectQuel\Capabilities\PlatformCapabilitiesInterface;
+	use Quellabs\ObjectQuel\Capabilities\NullPlatformCapabilities;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\QuelToSQLConvertToString;
 	
 	class QuelToSQL {
 		
 		private EntityStore $entityStore;
 		private array $parameters;
+		private PlatformCapabilitiesInterface $platform;
 		
 		/**
 		 * QuelToSQL constructor
 		 * @param EntityStore $entityStore
 		 * @param array $parameters
+		 * @param PlatformCapabilitiesInterface $platform Database engine capability descriptor
 		 */
-		public function __construct(EntityStore $entityStore, array &$parameters) {
+		public function __construct(
+			EntityStore $entityStore,
+			array &$parameters,
+			PlatformCapabilitiesInterface $platform = new NullPlatformCapabilities()
+		) {
 			$this->entityStore = $entityStore;
 			$this->parameters = &$parameters;
+			$this->platform = $platform;
 		}
 		
 		/**
@@ -32,15 +40,21 @@
 		 * @return string
 		 */
 		public function convertToSQL(AstRetrieve $retrieve): string {
-			return trim(sprintf("SELECT %s%s%s %s %s%s%s",
-				$this->getUnique($retrieve),
-				$this->getFieldNames($retrieve),
+			// Build each clause independently, then join non-empty parts with a single
+			// space so the output never contains runs of whitespace when optional clauses
+			// are absent. Clause order follows the SQL standard:
+			//   SELECT … FROM … JOIN … WHERE … GROUP BY … ORDER BY …
+			$parts = array_filter([
+				"SELECT",
+				$this->getUnique($retrieve) . $this->getFieldNames($retrieve),
 				$this->getFrom($retrieve),
 				$this->getJoins($retrieve),
 				$this->getWhere($retrieve),
-				$this->getSort($retrieve),
 				$this->getGroupBy($retrieve),
-			));
+				$this->getSort($retrieve),
+			], fn(string $p) => $p !== "");
+			
+			return implode(" ", $parts);
 		}
 
 		/**
@@ -77,7 +91,7 @@
 			// Loop through each value in the AstRetrieve object
 			foreach ($retrieve->getValues() as $value) {
 				// Create a new QuelToSQLConvertToString converter
-				$quelToSQLConvertToString = new QuelToSQLConvertToString($this->entityStore, $this->parameters, "VALUES");
+				$quelToSQLConvertToString = new QuelToSQLConvertToString($this->entityStore, $this->parameters, "VALUES", $this->platform);
 				
 				// Accept the value for conversion
 				$value->accept($quelToSQLConvertToString);
@@ -99,8 +113,29 @@
 				}
 			}
 			
-			// Convert the array to a string and remove duplicate values
+			// array_unique is intentional: buildEntityColumns() can expand a whole entity
+			// into a comma-joined column list that may overlap with individually-referenced
+			// columns elsewhere in the query. isDuplicateField only guards against adding
+			// the same string twice within this loop; array_unique catches cross-expansion
+			// duplicates after the fact.
 			return implode(",", array_unique($result));
+		}
+		
+		/**
+		 * Resolve the physical table name for a database range.
+		 *
+		 * Both getFrom() and getJoins() need the same logic: if the range has an
+		 * explicit table name (e.g. a derived/subquery range), use it directly;
+		 * otherwise look it up from the entity store. Centralising this prevents
+		 * the two call sites from drifting out of sync and eliminates the null-table
+		 * bug that existed in getJoins() when getQuery() was non-null but
+		 * getTableName() returned null.
+		 *
+		 * @param AstRangeDatabase $range
+		 * @return string
+		 */
+		protected function resolveOwningTable(AstRangeDatabase $range): string {
+			return $range->getTableName() ?? $this->entityStore->getOwningTable($range->getEntityName());
 		}
 		
 		/**
@@ -138,11 +173,7 @@
 				$rangeName = $range->getName();
 				
 				// Get the corresponding table name for the entity.
-				if ($range->getTableName() !== null) {
-					$owningTable = $range->getTableName();
-				} else {
-					$owningTable = $this->entityStore->getOwningTable($range->getEntityName());
-				}
+				$owningTable = $this->resolveOwningTable($range);
 				
 				// Add the table name and alias to the list for the FROM clause.
 				$tableNames[] = "`{$owningTable}` as `{$rangeName}`";
@@ -154,7 +185,7 @@
 			}
 			
 			// Combine the table names with commas to generate the FROM part of the SQL query.
-			return " FROM " . implode(",", $tableNames);
+			return "FROM " . implode(",", $tableNames);
 		}
 		
 		/**
@@ -174,7 +205,7 @@
 			
 			// Create a new instance of QuelToSQLConvertToString to convert the conditions to a SQL string.
 			// This object will process the Quel conditions and convert them into a format that SQL understands.
-			$retrieveEntitiesVisitor = new QuelToSQLConvertToString($this->entityStore, $this->parameters, "WHERE");
+			$retrieveEntitiesVisitor = new QuelToSQLConvertToString($this->entityStore, $this->parameters, "WHERE", $this->platform);
 			
 			// Use the accept method of the conditions to let the QuelToSQLConvertToString object perform the processing.
 			// This activates the logic for converting Quel to SQL.
@@ -209,7 +240,7 @@
 				$astObject = $exception->getAstObject();
 				
 				// Convert Quel conditions to a SQL string
-				$retrieveEntitiesVisitor = new QuelToSQLConvertToString($this->entityStore, $this->parameters, "SORT");
+				$retrieveEntitiesVisitor = new QuelToSQLConvertToString($this->entityStore, $this->parameters, "SORT", $this->platform);
 				$astObject->getIdentifier()->accept($retrieveEntitiesVisitor);
 				
 				// Process the results into an SQL ORDER BY clause
@@ -225,7 +256,7 @@
 				$parametersSql = implode(",", array_unique(array_filter($mappedParameters)));
 				
 				// Return results
-				return " ORDER BY FIELD(" . $retrieveEntitiesVisitor->getResult() . ", " . $parametersSql . ")";
+				return "ORDER BY FIELD(" . $retrieveEntitiesVisitor->getResult() . ", " . $parametersSql . ")";
 			}
 		}
 		
@@ -249,7 +280,7 @@
 			foreach($sort as $s) {
 				// Create a new instance of QuelToSQLConvertToString to convert the conditions to a SQL string.
 				// This object will process the Quel conditions and convert them into a format that SQL understands.
-				$retrieveEntitiesVisitor = new QuelToSQLConvertToString($this->entityStore, $this->parameters, "SORT");
+				$retrieveEntitiesVisitor = new QuelToSQLConvertToString($this->entityStore, $this->parameters, "SORT", $this->platform);
 				
 				// Guide the QUEL through to get a SQL query back
 				$s['ast']->accept($retrieveEntitiesVisitor);
@@ -258,9 +289,8 @@
 				$sqlSort[] = $retrieveEntitiesVisitor->getResult() . " " . $s["order"];
 			}
 			
-			// Get the result, which is now a SQL-compliant string, and add 'WHERE' for the SQL query.
-			// This is the result of converting Quel conditions to SQL.
-			return " ORDER BY " . implode(",", $sqlSort);
+			// Combine sort expressions into the ORDER BY clause.
+			return "ORDER BY " . implode(",", $sqlSort);
 		}
 		
 		/**
@@ -295,9 +325,9 @@
 			}
 			
 			$groupSQL = [];
-			$visitor = new QuelToSQLConvertToString($this->entityStore, $this->parameters, "GROUP_BY");
 
 			foreach($groupBy as $group) {
+				$visitor = new QuelToSQLConvertToString($this->entityStore, $this->parameters, "CONDITION", $this->platform);
 				$group->accept($visitor);
 				$groupSQL[] = $visitor->getResult();
 			}
@@ -339,31 +369,20 @@
 				// Get the name and join property of the entity.
 				$rangeName = $range->getName();
 				$joinProperty = $range->getJoinProperty();
-
-				// Determine the table source for this range
-				if ($range->getQuery() === null) {
-					// Base table - lookup from entity metadata
-					$owningTable = "`{$this->entityStore->getOwningTable($range->getEntityName())}`";
-				} elseif ($range->getTableName() !== null) {
-					// Derived range materialized as temp table
-					$owningTable = "`{$range->getTableName()}`";
-				} else {
-					// Derived range as inline subquery
-					$owningTable = "({$this->convertToSQL($range->getQuery())})";
-				}
 				
-				// Determine join type
-				$joinType = $range->isRequired() ? "INNER" : "LEFT";
+				// Find the table associated with the entity.
+				$owningTable = $this->resolveOwningTable($range);
 				
 				// Convert the join condition to a SQL string.
 				// This involves translating the join condition to a format that SQL understands.
-				$visitor = new QuelToSQLConvertToString($this->entityStore, $this->parameters, "CONDITION");
+				$visitor = new QuelToSQLConvertToString($this->entityStore, $this->parameters, "CONDITION", $this->platform);
 				$joinProperty->accept($visitor);
 				$joinColumn = $visitor->getResult();
+				$joinType = $range->isRequired() ? "INNER" : "LEFT";
 				
 				// Add the SQL JOIN instruction to the result.
 				// This results in a LEFT JOIN instruction for the relevant entity.
-				$result[] = "{$joinType} JOIN {$owningTable} as `{$rangeName}` ON {$joinColumn}";
+				$result[] = "{$joinType} JOIN `{$owningTable}` as `{$rangeName}` ON {$joinColumn}";
 			}
 			
 			// Convert the list of JOIN instructions to a single string.
@@ -373,9 +392,20 @@
 		
 		/**
 		 * Checks if a SQL field name is already present in the list of fields.
-		 * @param array $existingFields Array of existing field names or field groups
+		 *
+		 * @param array $existingFields Array of existing field names or field groups.
+		 *   Some entries may be comma-separated strings produced by buildEntityColumns()
+		 *   when a whole entity is expanded (e.g. "`u`.`id`,`u`.`name`,`u`.`email`").
 		 * @param string $fieldToCheck Field name to check for duplicates
 		 * @return bool True if the field already exists, false otherwise
+		 *
+		 * @note Case 2 splits entries on literal commas to detect membership inside an
+		 *   entity-column group. This works correctly for bare column references but will
+		 *   produce false negatives (missed duplicates) or false positives if any column
+		 *   expression itself contains a comma — e.g. FIELD(col,1,2), CONCAT(a,b), or
+		 *   CASE expressions. The correct long-term fix is to store individual field
+		 *   strings in $result rather than joining them in buildEntityColumns(), making
+		 *   a plain in_array() check sufficient and eliminating the split entirely.
 		 */
 		protected function isDuplicateField(array $existingFields, string $fieldToCheck): bool {
 			// Normalize the field to check (trim whitespace)

@@ -7,6 +7,7 @@
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
 	use Quellabs\ObjectQuel\Execution\ExecutionStage;
 	use Quellabs\ObjectQuel\Execution\QueryOptimizer;
+	use Quellabs\ObjectQuel\Capabilities\PlatformCapabilities;
 	use Quellabs\ObjectQuel\Execution\QueryTransformer;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
 	use Quellabs\ObjectQuel\ObjectQuel\QuelException;
@@ -20,12 +21,14 @@
 		private DatabaseAdapter $connection;
 		private QueryTransformer $queryTransformer;
 		private QueryOptimizer $queryOptimizer;
+		private PlatformCapabilities $platform;
 		
 		public function __construct(EntityManager $entityManager) {
 			$this->entityManager = $entityManager;
 			$this->connection = $entityManager->getConnection();
-			$this->queryTransformer = new QueryTransformer($this->entityManager);
-			$this->queryOptimizer = new QueryOptimizer($this->entityManager);
+			$this->platform = new PlatformCapabilities($this->connection);
+			$this->queryTransformer = new QueryTransformer($this->entityManager, $this->platform);
+			$this->queryOptimizer = new QueryOptimizer($this->entityManager, $this->platform);
 		}
 		
 		/**
@@ -67,7 +70,7 @@
 		 * @return string The generated SQL query
 		 */
 		private function convertToSQL(AstRetrieve $retrieve, array &$parameters): string {
-			$quelToSQL = new QuelToSQL($this->entityManager->getEntityStore(), $parameters);
+			$quelToSQL = new QuelToSQL($this->entityManager->getEntityStore(), $parameters, $this->platform);
 			return $quelToSQL->convertToSQL($retrieve);
 		}
 	}

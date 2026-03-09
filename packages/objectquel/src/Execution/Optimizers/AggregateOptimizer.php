@@ -2,6 +2,8 @@
 	
 	namespace Quellabs\ObjectQuel\Execution\Optimizers;
 	
+	use Quellabs\ObjectQuel\Capabilities\PlatformCapabilitiesInterface;
+	use Quellabs\ObjectQuel\Capabilities\NullPlatformCapabilities;
 	use Quellabs\ObjectQuel\EntityManager;
 	use Quellabs\ObjectQuel\Execution\Support\AggregateConstants;
 	use Quellabs\ObjectQuel\Execution\Support\AggregateRewriter;
@@ -36,13 +38,18 @@
 		
 		/** @var EntityManager EntityManager is the portal to the ORM */
 		private EntityManager $entityManager;
+
+		/** @var PlatformCapabilitiesInterface Database engine capability descriptor */
+		private PlatformCapabilitiesInterface $platform;
 		
 		/**
 		 * AggregateOptimizer constructor
-		 * @param EntityManager $entityManager Provides DB capabilities (e.g. window support)
+		 * @param EntityManager $entityManager Provides entity metadata
+		 * @param PlatformCapabilitiesInterface $platform Database engine capability descriptor
 		 */
-		public function __construct(EntityManager $entityManager) {
+		public function __construct(EntityManager $entityManager, PlatformCapabilitiesInterface $platform = new NullPlatformCapabilities()) {
 			$this->entityManager = $entityManager;
+			$this->platform = $platform;
 		}
 		
 		// ---------------------------------------------------------------------
@@ -311,7 +318,7 @@
 			}
 			
 			// Database capability
-			if (!$this->entityManager->getConnection()->supportsWindowFunctions()) {
+			if (!$this->platform->supportsWindowFunctions()) {
 				return false;
 			}
 			

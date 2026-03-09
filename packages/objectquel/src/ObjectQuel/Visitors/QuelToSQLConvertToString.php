@@ -32,12 +32,15 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstParameter;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeJsonSource;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstSearch;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstSearchScore;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstString;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstSubquery;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstSum;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstSumU;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstTerm;
 	use Quellabs\ObjectQuel\ObjectQuel\AstInterface;
+	use Quellabs\ObjectQuel\Capabilities\PlatformCapabilitiesInterface;
+	use Quellabs\ObjectQuel\Capabilities\NullPlatformCapabilities;
 	use Quellabs\ObjectQuel\ObjectQuel\AstVisitorInterface;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\Handlers\AggregateHandler;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\Handlers\ExpressionHandler;
@@ -78,6 +81,9 @@
 		
 		/** @var ExpressionHandler Handles expressions, operators, and data types */
 		private ExpressionHandler $expressionHandler;
+
+		/** @var PlatformCapabilitiesInterface Database engine capability descriptor */
+		private PlatformCapabilitiesInterface $platform;
 		
 		/**
 		 * Initialize the SQL converter with required dependencies
@@ -85,19 +91,20 @@
 		 * @param array $parameters Reference to parameters array for parameterized queries
 		 * @param string $partOfQuery Current query part being processed (default: "VALUES")
 		 */
-		public function __construct(EntityStore $store, array &$parameters, string $partOfQuery = "VALUES") {
+		public function __construct(EntityStore $store, array &$parameters, string $partOfQuery = "VALUES", PlatformCapabilitiesInterface $platform = new NullPlatformCapabilities()) {
 			// Initialize core properties
 			$this->result = [];
 			$this->visitedNodes = [];
 			$this->entityStore = $store;
 			$this->parameters = &$parameters; // Use reference to allow parameter modification
 			$this->partOfQuery = $partOfQuery;
+			$this->platform = $platform;
 			
 			// Initialize helper classes with proper dependencies and references
-			$this->sqlBuilder = new SqlBuilderHelper($this->entityStore, $this->parameters, $this->partOfQuery, $this);
+			$this->sqlBuilder = new SqlBuilderHelper($this->entityStore, $this->parameters, $this->partOfQuery, $this, $this->platform);
 			$this->typeInference = new TypeInferenceHelper($this->entityStore);
 			$this->aggregateHandler = new AggregateHandler($this->entityStore, $this->partOfQuery, $this->sqlBuilder, $this);
-			$this->expressionHandler = new ExpressionHandler($this->sqlBuilder, $this->typeInference, $this->parameters, $this);
+			$this->expressionHandler = new ExpressionHandler($this->sqlBuilder, $this->typeInference, $this->parameters, $this, $this->platform);
 		}
 		
 		/**
@@ -113,8 +120,25 @@
 				return;
 			}
 			
-			// Extract class name and determine handler method name
+			// Extract class name and determine handler method name.
+			// All AST node classes must follow the 'Ast' prefix convention.
 			$className = $this->extractClassName($node);
+			
+			if (!str_starts_with($className, 'Ast')) {
+				// A node reached the visitor that doesn't follow the naming convention.
+				// This is a programming error — flag it loudly in debug mode rather
+				// than silently producing incomplete SQL.
+				trigger_error(
+					sprintf(
+						'%s: node class "%s" does not follow the Ast* naming convention; no handler will be invoked.',
+						self::class,
+						$className
+					),
+					E_USER_WARNING
+				);
+				return;
+			}
+			
 			$handleMethod = 'handle' . substr($className, 3); // Remove 'Ast' prefix
 			
 			// Call the appropriate handler method if it exists
@@ -127,25 +151,26 @@
 		}
 		
 		/**
-		 * Visit a node and return the generated SQL without adding to main result
+		 * Visit a node and return the generated SQL without adding to main result.
+		 * Saves and restores $this->result so the main buffer is unaffected even if
+		 * an exception propagates out of the handler.
 		 * @param AstInterface $node The AST node to process
 		 * @return string The generated SQL for this node
 		 */
 		public function visitNodeAndReturnSQL(AstInterface $node): string {
-			// Remember current position in result array
-			$pos = count($this->result);
+			// Swap in a clean buffer so visitNode writes only this node's output
+			$saved = $this->result;
+			$this->result = [];
 			
-			// Process the node (this adds to result array)
-			$this->visitNode($node);
+			try {
+				$this->visitNode($node);
+				$sql = implode("", $this->result);
+			} finally {
+				// Always restore the main buffer, even if visitNode throws
+				$this->result = $saved;
+			}
 			
-			// Extract the SQL that was just added
-			$slice = implode("", array_slice($this->result, $pos));
-			
-			// Restore result array to original state
-			$this->result = array_slice($this->result, 0, $pos);
-			
-			// Return slice
-			return $slice;
+			return $sql;
 		}
 		
 		/**
@@ -167,6 +192,15 @@
 		protected function handleAlias(AstAlias $ast): void {
 			// Fetch expression
 			$expression = $ast->getExpression();
+			
+			// search_score() aliased as a SELECT column: score=search_score(p.content, :term)
+			// Emit only the MATCH...AGAINST expression — QuelToSQL::getFieldNames() appends
+			// AS `name` itself for all non-entity expressions, so we must not add it here.
+			if ($expression instanceof AstSearchScore) {
+				$this->addToVisitedNodes($expression);
+				$this->result[] = $this->expressionHandler->handleSearchScore($expression);
+				return;
+			}
 			
 			// Only process if the expression is an identifier
 			if (!$expression instanceof AstIdentifier) {
@@ -384,6 +418,15 @@
 		}
 		
 		/**
+		 * Process a search_score() operation — returns the MATCH...AGAINST relevance score
+		 * as a numeric value for use in SELECT and ORDER BY clauses.
+		 * @param AstSearchScore $searchScore The search_score node to process
+		 */
+		protected function handleSearchScore(AstSearchScore $searchScore): void {
+			$this->result[] = $this->expressionHandler->handleSearchScore($searchScore);
+		}
+		
+		/**
 		 * Process a subquery
 		 * @param AstSubquery $subquery
 		 */
@@ -392,8 +435,8 @@
 		}
 		
 		/**
-		 * Process an IN operation (value IN (list))
-		 * @param AstCase $ast The IN operation node to process
+		 * Process a CASE expression (CASE WHEN ... THEN ... ELSE ... END)
+		 * @param AstCase $ast The CASE expression node to process
 		 */
 		protected function handleCase(AstCase $ast): void {
 			$this->result[] = $this->aggregateHandler->handleCase($ast);
@@ -477,13 +520,6 @@
 		 * @param AstAny $ast The ANY function node to process
 		 */
 		protected function handleAny(AstAny $ast): void {
-			$objectHash = spl_object_hash($ast);
-			$isVisited = isset($this->visitedNodes[$objectHash]);
-			
-			if ($isVisited) {
-				return;
-			}
-			
 			$this->result[] = $this->aggregateHandler->handleAny($ast);
 		}
 		
@@ -497,11 +533,58 @@
 		}
 		
 		/**
-		 * Mark an AST node and its chain as visited
+		 * Returns the child nodes of an AST node that must also be marked visited.
+		 *
+		 * This centralises child-traversal knowledge so that addToVisitedNodes() stays
+		 * a simple loop and adding a new node type only requires touching this one method.
+		 *
+		 * Ideally this logic lives on the nodes themselves via a getChildren(): array
+		 * method on AstInterface, eliminating all instanceof checks here. That refactor
+		 * can be done incrementally: once AstInterface declares getChildren(), remove
+		 * the corresponding branch below and rely on the interface instead.
+		 *
+		 * @param AstInterface $ast
+		 * @return array<AstInterface|null> Direct children (nulls are filtered by addToVisitedNodes)
+		 */
+		private function getAstChildren(AstInterface $ast): array {
+			// Chained identifier: table.column.subfield — walk the chain
+			if ($ast instanceof AstIdentifier) {
+				return $ast->hasNext() ? [$ast->getNext()] : [];
+			}
+			
+			// Binary-ish expression nodes share a left/right structure
+			if (
+				$ast instanceof AstTerm ||
+				$ast instanceof AstFactor ||
+				$ast instanceof AstExpression ||
+				$ast instanceof AstBinaryOperator
+			) {
+				return [$ast->getLeft(), $ast->getRight()];
+			}
+			
+			if ($ast instanceof AstAny) {
+				return [$ast->getConditions(), $ast->getIdentifier()];
+			}
+			
+			if ($ast instanceof AstSubquery) {
+				return [$ast->getAggregation(), $ast->getConditions()];
+			}
+			
+			// AstSearch and AstSearchScore share the same child shape
+			if ($ast instanceof AstSearch || $ast instanceof AstSearchScore) {
+				return [...$ast->getIdentifiers(), $ast->getSearchString()];
+			}
+			
+			return [];
+		}
+		
+		/**
+		 * Mark an AST node and all its descendants as visited.
+		 * Child discovery is delegated to getAstChildren() — add new node types there,
+		 * not here.
 		 * @param AstInterface|null $ast The AST node to mark as visited
 		 */
 		protected function addToVisitedNodes(?AstInterface $ast): void {
-			// Do not process empty nodes
 			if ($ast === null) {
 				return;
 			}
@@ -509,32 +592,9 @@
 			// Mark this node as visited using its unique object ID
 			$this->visitedNodes[spl_object_hash($ast)] = true;
 			
-			// For chained identifiers (e.g., table.column.subfield), mark the entire chain
-			if ($ast instanceof AstIdentifier && $ast->hasNext()) {
-				$this->addToVisitedNodes($ast->getNext());
-			}
-			
-			// Also handle expressions
-			if (
-				$ast instanceof AstTerm ||
-				$ast instanceof AstFactor ||
-				$ast instanceof AstExpression ||
-				$ast instanceof AstBinaryOperator
-			) {
-				$this->addToVisitedNodes($ast->getLeft());
-				$this->addToVisitedNodes($ast->getRight());
-			}
-			
-			// And AstAny
-			if ($ast instanceof AstAny) {
-				$this->addToVisitedNodes($ast->getConditions());
-				$this->addToVisitedNodes($ast->getIdentifier());
-			}
-
-			// And AstSubQuery
-			if ($ast instanceof AstSubquery) {
-				$this->addToVisitedNodes($ast->getAggregation());
-				$this->addToVisitedNodes($ast->getConditions());
+			// Recursively mark all children
+			foreach ($this->getAstChildren($ast) as $child) {
+				$this->addToVisitedNodes($child);
 			}
 		}
 		
