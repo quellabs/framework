@@ -28,12 +28,21 @@
 		/**
 		 * FileCache Constructor
 		 * @param string $namespace Cache context for namespacing (e.g., 'pages', 'data')
-		 * @param int $lockTimeout Maximum time to wait for locks in seconds
+		 * @param array $config Configuration
 		 */
-		public function __construct(string $namespace = 'default', int $lockTimeout = 5) {
-			$this->cachePath = rtrim(ComposerUtils::getProjectRoot() . DIRECTORY_SEPARATOR . "storage" . DIRECTORY_SEPARATOR . "cache");
+		public function __construct(string $namespace = 'default', array $config=[]) {
+			// Store namespace
 			$this->namespace = $namespace;
-			$this->lockTimeout = $lockTimeout;
+			
+			// Store lock timeout
+			if (!empty($config['lockTimeout'])) {
+				$this->lockTimeout = max(1, $config['lockTimeout']);
+			} else {
+				$this->lockTimeout = 5;
+			}
+			
+			// Store the path to cache files
+			$this->cachePath = rtrim(ComposerUtils::getProjectRoot() . DIRECTORY_SEPARATOR . "storage" . DIRECTORY_SEPARATOR . "cache");
 			
 			// Ensure cache directory exists at construction time
 			// This prevents directory creation race conditions later

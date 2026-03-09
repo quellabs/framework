@@ -4,9 +4,10 @@
 	
 	use Quellabs\AnnotationReader\Exception\AnnotationReaderException;
 	use Quellabs\Canvas\Kernel;
+	use Quellabs\Canvas\Routing\Components\ControllersDiscovery;
 	use Quellabs\Support\ComposerUtils;
 	use Symfony\Component\HttpFoundation\Request;
-	use Quellabs\Cache\FileCache;
+	use Quellabs\Canvas\Cache\Drivers\FileCache;
 	use Quellabs\Canvas\Exceptions\RouteNotFoundException;
 	use Quellabs\Canvas\Routing\Components\RouteCacheManager;
 	use Quellabs\Canvas\Routing\Components\RouteDiscovery;
@@ -61,7 +62,6 @@
 		private bool $debugMode;
 		private bool $matchTrailingSlashes;
 		private string $cacheDirectory;
-		private string $controllerDirectory;
 		
 		// Component dependencies
 		private RouteMatcher $routeMatcher;
@@ -89,7 +89,8 @@
 		 * Resolves an HTTP request to find the first matching route
 		 * @param Request $request The incoming HTTP request to resolve
 		 * @return array Returns the first matched route info
-		 * @throws RouteNotFoundException|AnnotationReaderException When no matching route is found
+		 * @throws RouteNotFoundException When no matching route is found
+		 * @throws AnnotationReaderException On error reading annotations
 		 */
 		public function resolve(Request $request): array {
 			$result = $this->resolveAll($request);
@@ -116,35 +117,18 @@
 		 * @throws AnnotationReaderException
 		 */
 		public function resolveAll(Request $request): array {
-			$requestUrl = $this->parseRequestUrl($request->getRequestUri());
-			$routeIndex = $this->getRouteIndex();
+			$requestUrl = $this->parseRequestUrl($request->getPathInfo());
 			
 			$candidates = $this->indexBuilder->getFilteredCandidates(
 				$requestUrl,
 				$request->getMethod(),
-				$routeIndex
+				$this->getRouteIndex()
 			);
 			
-			if (empty($candidates)) {
-				return [];
-			}
-			
-			return $this->matchCandidates($candidates, $requestUrl, $request->getRequestUri(), $request->getMethod());
-		}
-		
-		/**
-		 * NEW METHOD: Match filtered candidates against URL
-		 * @param array $candidates Pre-filtered route candidates
-		 * @param array $requestUrl Parsed URL segments
-		 * @param string $originalUrl Original URL string
-		 * @param string $requestMethod HTTP method
-		 * @return array Array of matched routes
-		 */
-		private function matchCandidates(array $candidates, array $requestUrl, string $originalUrl, string $requestMethod): array {
 			$results = [];
 			
 			foreach ($candidates as $route) {
-				$match = $this->routeMatcher->matchRoute($route, $requestUrl, $originalUrl, $requestMethod);
+				$match = $this->routeMatcher->matchRoute($route, $requestUrl, $request->getRequestUri(), $request->getMethod());
 				
 				if ($match !== null) {
 					$results[] = $match;
@@ -155,50 +139,12 @@
 		}
 		
 		/**
-		 * Get comprehensive routing statistics including pre-filtering metrics
-		 * @return array Comprehensive routing statistics
-		 * @throws AnnotationReaderException
-		 */
-		public function getRoutingStatistics(): array {
-			$baseStats = [
-				'configuration' => [
-					'debug_mode'             => $this->debugMode,
-					'match_trailing_slashes' => $this->matchTrailingSlashes,
-					'cache_directory'        => $this->cacheDirectory,
-					'controller_directory'   => $this->controllerDirectory
-				],
-				'cache'         => $this->cacheManager->getCacheInfo(),
-				'discovery'     => $this->routeDiscovery->getDiscoveryStatistics(),
-				'index'         => $this->indexBuilder->getIndexStatistics(),
-				'performance'   => [
-					'route_index_built' => !empty($this->routeIndex)
-				]
-			];
-			
-			// Add enhanced filtering information
-			$indexStats = $this->indexBuilder->getIndexStatistics();
-			
-			$baseStats['enhanced_filtering'] = [
-				'strategies_enabled' => [
-					'http_method_filtering'        => 'Enabled',
-					'segment_count_filtering'      => 'Enabled',
-					'multi_level_static_filtering' => 'Enabled',
-					'prefix_trie_lookup'           => 'Enabled'
-				],
-				'index_metrics'      => $indexStats
-			];
-			
-			return $baseStats;
-		}
-		
-		/**
 		 * Clear all caches and force rebuild
 		 * @return bool True if all caches were cleared successfully
 		 */
 		public function clearAllCaches(): bool {
 			$this->routeIndex = [];
 			$this->indexBuilder->clearIndex();
-			$this->routeDiscovery->clearReflectionCache();
 			return $this->cacheManager->clearCache();
 		}
 		
@@ -222,6 +168,7 @@
 		/**
 		 * Get or build route index for fast lookups
 		 * @return array Complete route index ready for lookups
+		 * @throws AnnotationReaderException
 		 */
 		private function getRouteIndex(): array {
 			// Return cached index if available
@@ -248,7 +195,6 @@
 			$this->debugMode = $config->getAs('debug_mode', 'bool', false);
 			$this->matchTrailingSlashes = $config->getAs('match_trailing_slashes', 'bool', false);
 			$this->cacheDirectory = $config->get('cache_dir', ComposerUtils::getProjectRoot() . "/storage/cache");
-			$this->controllerDirectory = $this->getControllerDirectory();
 		}
 		
 		/**
@@ -256,6 +202,8 @@
 		 * @return void
 		 */
 		private function initializeComponents(): void {
+			$controllerDiscovery = new ControllersDiscovery($this->kernel);
+			
 			// Create analyzer for parsing and validating route segments (URL parts)
 			$segmentAnalyzer = new RouteSegmentAnalyzer();
 			
@@ -280,6 +228,7 @@
 			// and compiler for pattern compilation
 			$this->routeDiscovery = new RouteDiscovery(
 				$this->kernel,           // Application kernel instance
+				$controllerDiscovery,    // Controller discovery service
 				$segmentAnalyzer,        // Route segment parsing service
 				$patternCompiler         // Route pattern compilation service
 			);
@@ -288,9 +237,9 @@
 			// Uses file cache for persistence, debug mode affects caching behavior,
 			// and controller directory for locating route definitions
 			$this->cacheManager = new RouteCacheManager(
-				$fileCache,              // File-based cache storage
-				$this->debugMode,        // Debug mode flag (affects cache invalidation)
-				$this->controllerDirectory // Path to controller files
+				$fileCache,                   // File-based cache storage
+				$controllerDiscovery,         // Discovery component
+				$this->debugMode,             // Debug mode flag (affects cache invalidation)
 			);
 		}
 		
@@ -307,19 +256,5 @@
 				error_log("AnnotationResolver: Cannot create cache directory: {$this->cacheDirectory}");
 				$this->debugMode = true;
 			}
-		}
-		
-		/**
-		 * Get the absolute path to the controllers directory
-		 * @return string Absolute path to controllers directory
-		 */
-		private function getControllerDirectory(): string {
-			$fullPath = ComposerUtils::getProjectRoot() . DIRECTORY_SEPARATOR . "src" . DIRECTORY_SEPARATOR . "Controllers";
-			
-			if (!is_dir($fullPath)) {
-				return "";
-			}
-			
-			return realpath($fullPath) ?: "";
 		}
 	}

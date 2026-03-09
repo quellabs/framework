@@ -8,11 +8,17 @@
 	use Quellabs\ObjectQuel\Annotations\Orm\OneToOne;
 	use Quellabs\ObjectQuel\Annotations\Orm\OneToMany;
 	use Quellabs\ObjectQuel\Annotations\Orm\ManyToOne;
+	use Quellabs\ObjectQuel\Annotations\Orm\LifecycleAware;
+	use Quellabs\ObjectQuel\Annotations\Orm\PreUpdate;
+	use Quellabs\ObjectQuel\Annotations\Orm\FullTextIndex;
 	use Quellabs\ObjectQuel\Collections\Collection;
 	use Quellabs\ObjectQuel\Collections\CollectionInterface;
+	use Quellabs\ObjectQuel\Collections\EntityCollection;
 	
 	/**
 	 * @Orm\Table(name="posts")
+	 * @Orm\FullTextIndex(name="idx_content", columns={"content"})
+	 * @Orm\LifecycleAware
 	 */
 	class PostEntity {
 		
@@ -41,6 +47,20 @@
 		 * @Orm\Column(name="created_at", type="datetime")
 		 */
 		protected \DateTime $createdAt;
+		
+		/**
+		 * @Orm\Column(name="test_enum", type="enum", enumType=App\Enums\TestEnum::class)
+		 */
+		protected \App\Enums\TestEnum $TestEnum;
+		
+		/**
+		 * @Orm\OneToMany(targetEntity=VlaflipEntity::class, mappedBy="id", fetch="EAGER")
+		 */
+		protected CollectionInterface $vlaflip;
+		
+		public function __construct() {
+			$this->vlaflip = new Collection();
+		}
 		
 		/**
 		 * Get id
@@ -119,6 +139,33 @@
 		 */
 		public function setCreatedAt(\DateTime $createdAt): self {
 			$this->createdAt = $createdAt;
+			return $this;
+		}
+		
+		/**
+		 *
+		 * @Orm\PreUpdate
+		 * @return void
+		 */
+		public function test(): void {
+			$this->setCreatedAt(new \DateTime());
+		}
+		
+		/**
+		 * Get TestEnum
+		 * @return \App\Enums\TestEnum
+		 */
+		public function getTestEnum(): \App\Enums\TestEnum {
+			return $this->TestEnum;
+		}
+		
+		/**
+		 * Set TestEnum
+		 * @param \App\Enums\TestEnum $TestEnum
+		 * @return $this
+		 */
+		public function setTestEnum(\App\Enums\TestEnum $TestEnum): self {
+			$this->TestEnum = $TestEnum;
 			return $this;
 		}
 	}

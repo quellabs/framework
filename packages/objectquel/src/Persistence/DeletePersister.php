@@ -10,7 +10,6 @@
 	
 	/**
 	 * Specialized persister class responsible for handling entity deletion operations
-	 * Extends the PersisterBase to inherit common persistence functionality
 	 * This class specifically manages the process of removing entities from the database
 	 */
 	class DeletePersister {
@@ -19,19 +18,19 @@
 		 * Reference to the UnitOfWork that manages persistence operations
 		 * This is a duplicate of the parent's unitOfWork property with a different naming convention
 		 */
-		protected UnitOfWork $unit_of_work;
+		protected UnitOfWork $unitOfWork;
 		
 		/**
 		 * The EntityStore that maintains metadata about entities and their mappings
 		 * Used to retrieve information about entity tables, columns and identifiers
 		 */
-		protected EntityStore $entity_store;
+		protected EntityStore $entityStore;
 		
 		/**
 		 * Utility for handling entity property access and manipulation
 		 * Provides methods to get and set entity properties regardless of their visibility
 		 */
-		protected PropertyHandler $property_handler;
+		protected PropertyHandler $propertyHandler;
 		
 		/**
 		 * Database connection adapter used for executing SQL queries
@@ -45,9 +44,9 @@
 		 * @param UnitOfWork $unitOfWork The UnitOfWork that will coordinate deletion operations
 		 */
 		public function __construct(UnitOfWork $unitOfWork) {
-			$this->unit_of_work = $unitOfWork;
-			$this->entity_store = $unitOfWork->getEntityStore();
-			$this->property_handler = $unitOfWork->getPropertyHandler();
+			$this->unitOfWork = $unitOfWork;
+			$this->entityStore = $unitOfWork->getEntityStore();
+			$this->propertyHandler = $unitOfWork->getPropertyHandler();
 			$this->connection = $unitOfWork->getConnection();
 		}
 		
@@ -63,7 +62,7 @@
 			$result = [];
 			
 			foreach($primaryKeys as $index => $key) {
-				$result[$primaryKeyColumns[$index]] = $this->property_handler->get($entity, $key);
+				$result[$primaryKeyColumns[$index]] = $this->propertyHandler->get($entity, $key);
 			}
 			
 			return $result;
@@ -78,26 +77,49 @@
 		 */
 		public function persist(object $entity): void {
 			// Get the name of the table where the entity is stored
-			$tableName = $this->entity_store->getOwningTable($entity);
+			$tableName = $this->entityStore->getOwningTable($entity);
+			$tableNameEscaped = $this->escapeIdentifier($tableName);
 			
 			// Obtain the primary keys and corresponding column names of the entity
-			$primaryKeys = $this->entity_store->getIdentifierKeys($entity);
-			$primaryKeyColumns = $this->entity_store->getIdentifierColumnNames($entity);
+			$primaryKeys = $this->entityStore->getIdentifierKeys($entity);
+			$primaryKeyColumns = $this->entityStore->getIdentifierColumnNames($entity);
 			
 			// Create a mapping of primary key column names to their values for this specific entity
 			$primaryKeyValues = $this->extractPrimaryKeyValueMap($entity, $primaryKeys, $primaryKeyColumns);
 			
 			// Construct the SQL query for deleting the entity, using each primary key value
-			// in the WHERE clause to target this specific entity
-			// Uses `AND` to ensure all conditions must match
-			$sql = implode(" AND ", array_map(fn($key) => "`{$key}`=:{$key}", array_keys($primaryKeyValues)));
+			// in the WHERE clause to target this specific entity.
+			// Parameters are prefixed with "pk_" to ensure valid PDO parameter names
+			// regardless of the underlying column name (consistent with UpdatePersister).
+			$params = [];
+			$whereParts = [];
+			
+			foreach ($primaryKeyValues as $columnName => $value) {
+				$paramName = "pk_{$columnName}";
+				$whereParts[] = $this->escapeIdentifier($columnName) . "=:{$paramName}";
+				$params[$paramName] = $value;
+			}
+			
+			// Put all WHERE parts in a string to use in the query
+			$sql = implode(" AND ", $whereParts);
 			
 			// Execute the DELETE query with the constructed conditions
 			// Use the primary key values as parameters for the prepared statement to prevent SQL injection
-			if (!$this->connection->execute("DELETE FROM `{$tableName}` WHERE {$sql}", $primaryKeyValues)) {
+			if (!$this->connection->execute("DELETE FROM {$tableNameEscaped} WHERE {$sql}", $params)) {
 				// If execution fails, throw an exception with the last error message and error code
 				// from the database connection to help identify and resolve the issue
 				throw new OrmException("Error deleting entity: " . $this->connection->getLastErrorMessage(), $this->connection->getLastError());
 			}
+		}
+		
+		/**
+		 * Escapes a SQL identifier (table or column name) by wrapping it in backticks
+		 * and doubling any backticks that appear within the name.
+		 * Duplicated from VersionValueHandler until escapeIdentifier is moved to a shared utility.
+		 * @param string $identifier The raw identifier to escape
+		 * @return string The backtick-delimited identifier safe for use in SQL
+		 */
+		private function escapeIdentifier(string $identifier): string {
+			return '`' . str_replace('`', '``', $identifier) . '`';
 		}
 	}

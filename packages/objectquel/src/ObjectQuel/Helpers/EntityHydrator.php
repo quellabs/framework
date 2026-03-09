@@ -279,7 +279,7 @@
 			// Process each value node in the abstract syntax tree
 			foreach ($ast as $value) {
 				// Skip the value if designated to do so
-				if (!$value->isVisibleInResult()) {
+				if (!$value->showInResult()) {
 					continue;
 				}
 				
@@ -312,7 +312,7 @@
 				// This helps avoid duplicate processing and enables relationship loading
 				if ($isEntity && ($processedValue !== null)) {
 					// Generate a unique hash for the entity object
-					$hash = spl_object_id($processedValue);
+					$hash = spl_object_hash($processedValue);
 					
 					// Only add the entity to the tracking collection if not already present
 					// This ensures we maintain a set of unique entity instances

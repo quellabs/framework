@@ -2,10 +2,9 @@
 	
 	namespace Quellabs\Canvas\Inspector\Helpers;
 	
-	use Quellabs\Canvas\Configuration\Configuration;
-	use Quellabs\Canvas\Inspector\EventCollector;
 	use Quellabs\Canvas\Inspector\Panels\QueryPanel;
 	use Quellabs\Canvas\Inspector\Panels\RequestPanel;
+	use Quellabs\Canvas\Inspector\Panels\WakaPACPanel;
 	use Quellabs\Contracts\Configuration\ConfigurationInterface;
 	use Quellabs\Contracts\Inspector\EventCollectorInterface;
 	use Quellabs\Contracts\Inspector\InspectorPanelInterface;
@@ -21,9 +20,17 @@
 	class Registry {
 		
 		/**
-		 * @var EventCollector Collects all debug events during request processing
+		 * Default panels shipped with the Canvas inspector
 		 */
-		private EventCollector $eventCollector;
+		private const array DEFAULT_PANELS = [
+			RequestPanel::class
+		];
+		
+		
+		/**
+		 * @var EventCollectorInterface Event collector
+		 */
+		private EventCollectorInterface $eventCollector;
 		
 		/**
 		 * @var InspectorPanelInterface[] Array of registered panels indexed by name
@@ -32,19 +39,19 @@
 		
 		/**
 		 * Initialize the debug registry with an event collector
-		 * @param EventCollector $eventCollector Service for collecting debug events
-		 * @param ConfigurationInterface $config
+		 * @param EventCollectorInterface $eventCollector Service for collecting debug events
+		 * @param ConfigurationInterface $config Inspector configuration
 		 */
 		public function __construct(EventCollectorInterface $eventCollector, ConfigurationInterface $config) {
 			$this->eventCollector = $eventCollector;
 			
-			if (empty($config->get('panels', []))) {
-				$this->initializeDefaultPanels();
-			} else {
-				$this->initializePanels($config);
-			}
+			// Merge default panels with user-defined panels, ensuring defaults appear first
+			// in tab order and duplicates are removed
+			$panels = array_unique(array_merge(self::DEFAULT_PANELS, $config->get('panels', [])));
+			
+			// Instantiate the requested panels
+			$this->initializePanels($panels);
 		}
-		
 		/**
 		 * Register a new debug panel
 		 * @param InspectorPanelInterface $panel The panel to add to the registry
@@ -59,6 +66,7 @@
 		 */
 		public function getStats(): array {
 			$stats = [];
+			
 			foreach ($this->panels as $panel) {
 				$stats = array_merge($stats, $panel->getStats());
 			}
@@ -67,39 +75,24 @@
 		}
 		
 		/**
-		 * Get all registered panels
-		 * @return array Array of registered debug panels
-		 */
-		public function getPanels(): array {
-			return $this->panels;
-		}
-		
-		/**
 		 * Render the complete debug bar with all panels
-		 *
-		 * This method orchestrates the entire rendering process:
-		 * 1. Processes events in all panels
-		 * 2. Collects data, templates, and CSS from panels
-		 * 3. Renders the final HTML output
-		 *
 		 * @param Request $request The current HTTP request
 		 * @return string Complete HTML for the debug bar
+		 * @throws \JsonException
 		 */
 		public function render(Request $request): string {
-			// Process events in all panels first to ensure data is up-to-date
-			foreach ($this->panels as $panel) {
-				$panel->processEvents();
-			}
-			
-			$css = []; // Collect JavaScript templates for dynamic panel rendering
-			$panelData = []; // Collect CSS from all panels
-			$jsTemplates = []; // Collect data from all panels with additional metadata
+			$css = [];
+			$panelData = [];
+			$jsTemplates = [];
 			
 			foreach ($this->panels as $panel) {
-				// Generate JavaScript function name from panel name (e.g., 'database' -> 'renderDatabasePanel')
+				// Let the panel pull its relevant events from the collector
+				$panel->processEvents($this->eventCollector);
+				
+				// Build a unique JS function name for client-side rendering (e.g. "renderQueryPanel")
 				$functionName = 'render' . ucfirst($panel->getName()) . 'Panel';
 				
-				// Collect panel-specific JS
+				// Store the JS template with its function name for later registration on window
 				$jsTemplates[$panel->getName()] = [
 					'function' => $functionName,
 					'code'     => $panel->getJsTemplate()
@@ -108,23 +101,24 @@
 				// Collect panel-specific CSS
 				$css[] = $panel->getCss();
 				
-				// Collect panel data with additional metadata for tab rendering
+				// Merge the panel's data with its display metadata (icon, tab label)
 				$panelData[$panel->getName()] = array_merge($panel->getData($request), [
 					'icon'  => $panel->getIcon(),
 					'label' => $panel->getTabLabel()
 				]);
 			}
 			
+			// Combine everything into the final debug bar HTML
 			return $this->renderDebugBar($jsTemplates, $css, $panelData, $this->getStats());
 		}
 		
 		/**
-		 * Initialize panels based on configuration
-		 * @param Configuration $config Array where key = panel name, value = class name
+		 * Initialize panels from a list of class names
+		 * @param array $panels Array of fully qualified panel class names
 		 * @return void
 		 */
-		private function initializePanels(ConfigurationInterface $config): void {
-			foreach ($config as $panelName => $className) {
+		private function initializePanels(array $panels): void {
+			foreach ($panels as $className) {
 				try {
 					// Validate that the class exists
 					if (!class_exists($className)) {
@@ -133,32 +127,20 @@
 					
 					// Validate that the class implements the required interface
 					if (!in_array(InspectorPanelInterface::class, class_implements($className))) {
-						throw new \InvalidArgumentException("Panel class '{$className}' must implement DebugPanelInterface");
+						throw new \InvalidArgumentException("Panel class '{$className}' must implement InspectorPanelInterface");
 					}
 					
 					// Create the panel
-					$panel = new $className($this->eventCollector);
+					$panel = new $className();
 					
 					// Register the panel
 					$this->addPanel($panel);
 					
 				} catch (\Exception $e) {
 					// Log the error but don't break the entire debugbar
-					error_log("Failed to initialize panel '{$panelName}': " . $e->getMessage());
+					error_log("Failed to initialize panel '{$className}': " . $e->getMessage());
 				}
 			}
-		}
-		
-		/**
-		 * Register the default debug panels that come with the debugbar.
-		 * These provide basic debugging information like request details and database queries.
-		 */
-		private function initializeDefaultPanels(): void {
-			// Panel for displaying request information (headers, parameters, etc.)
-			$this->addPanel(new RequestPanel($this->eventCollector));
-			
-			// Panel for displaying database queries and performance metrics
-			$this->addPanel(new QueryPanel($this->eventCollector));
 		}
 		
 		/**
@@ -168,6 +150,7 @@
 		 * @param array $panelData Data for all panels including metadata
 		 * @param array $stats Statistics to display in the header
 		 * @return string Complete HTML markup for the debug bar
+		 * @throws \JsonException
 		 */
 		private function renderDebugBar(array $jsTemplates, array $css, array $panelData, array $stats): string {
 			// Combine all panel-specific CSS
@@ -191,7 +174,7 @@
 				'stats'     => $stats,
 				'panels'    => $panelData,
 				'templates' => $templateMapping
-			], JSON_HEX_TAG | JSON_HEX_AMP);
+			], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
 			
 			return <<<HTML
 <!-- Canvas Inspector -->

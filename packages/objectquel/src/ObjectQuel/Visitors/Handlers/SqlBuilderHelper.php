@@ -1,0 +1,537 @@
+<?php
+	
+	namespace Quellabs\ObjectQuel\ObjectQuel\Visitors\Handlers;
+	
+	use Quellabs\ObjectQuel\Annotations\Orm\Column;
+	use Quellabs\ObjectQuel\Annotations\Orm\FullTextIndex;
+	use Quellabs\ObjectQuel\Capabilities\PlatformCapabilitiesInterface;
+	use Quellabs\ObjectQuel\Capabilities\NullPlatformCapabilities;
+	use Quellabs\ObjectQuel\EntityStore;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIdentifier;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstParameter;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabase;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstSearch;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstSearchScore;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstString;
+	use Quellabs\ObjectQuel\ObjectQuel\AstInterface;
+	use Quellabs\ObjectQuel\ObjectQuel\Visitors\QuelToSQLConvertToString;
+	
+	/**
+	 * This class serves as a utility for converting ObjectQuel AST nodes into SQL fragments.
+	 * It handles column name resolution, join conditions, search conditions, and entity
+	 * property mapping to database columns.
+	 */
+	class SqlBuilderHelper {
+		
+		/** @var EntityStore Stores entity metadata and column mappings */
+		private EntityStore $entityStore;
+		
+		/** @var PlatformCapabilitiesInterface Database engine capability descriptor */
+		private PlatformCapabilitiesInterface $platform;
+		
+		/** @var array Reference to query parameters array for prepared statements */
+		private array $parameters;
+		
+		/** @var string Current part of query being processed (SELECT, WHERE, SORT, etc.) */
+		private string $partOfQuery;
+		
+		/** @var mixed Reference to the main visitor instance for delegating node processing */
+		private mixed $mainVisitor; // Reference to main visitor
+		
+		/**
+		 * Constructor - initializes the SQL builder helper with required dependencies
+		 * @param EntityStore $entityStore Entity metadata store
+		 * @param array $parameters Reference to parameters array for prepared statements
+		 * @param string $partOfQuery Current query part being processed
+		 * @param mixed|null $mainVisitor Optional reference to main visitor instance
+		 */
+		public function __construct(
+			EntityStore $entityStore,
+			array &$parameters,
+			string $partOfQuery,
+			mixed $mainVisitor = null,
+			PlatformCapabilitiesInterface $platform = new NullPlatformCapabilities()
+		) {
+			$this->entityStore = $entityStore;
+			$this->parameters = &$parameters; // Store reference to allow parameter modification
+			$this->partOfQuery = $partOfQuery;
+			$this->mainVisitor = $mainVisitor;
+			$this->platform = $platform;
+		}
+		
+		/**
+		 * Get the EntityStore instance
+		 * @return EntityStore The entity store containing metadata
+		 */
+		public function getEntityStore(): EntityStore {
+			return $this->entityStore;
+		}
+		
+		/**
+		 * Builds a fully qualified column name for SQL queries based on an AST identifier.
+		 * Handles both entity-based ranges (with metadata) and temporary table ranges
+		 * (derived from subqueries).
+		 *
+		 * @param AstIdentifier $identifier The AST identifier to convert
+		 * @return string Fully qualified SQL column name or empty string if invalid
+		 */
+		public function buildColumnName(AstIdentifier $identifier): string {
+			// Get the range (table alias) from the identifier
+			$range = $identifier->getRange();
+			if (!$range) {
+				return '';
+			}
+			
+			// Extract the range name (table alias)
+			$rangeName = $range->getName();
+			
+			if (empty($rangeName)) {
+				return '';
+			}
+			
+			// Get the entity name to determine range type
+			$entityName = $identifier->getEntityName();
+			
+			// Check if this is a temporary table (no entity name)
+			if (empty($entityName)) {
+				return $this->buildColumnNameForTemporaryTable($identifier, $rangeName);
+			} else {
+				return $this->buildColumnNameForEntity($identifier, $rangeName, $entityName);
+			}
+		}
+		
+		/**
+		 * Builds column name for entity-based ranges using entity metadata.
+		 * Converts entity properties to their corresponding database column names
+		 * using the entity store's column mappings.
+		 *
+		 * @param AstIdentifier $identifier The AST identifier to convert
+		 * @param string $rangeName The table alias
+		 * @param string $entityName The entity class name
+		 * @return string Fully qualified SQL column name or empty string if invalid
+		 */
+		private function buildColumnNameForEntity(AstIdentifier $identifier, string $rangeName, string $entityName): string {
+			// Handle case where identifier refers to the entity itself (primary key)
+			if ($this->identifierIsEntity($identifier)) {
+				$identifierColumns = $this->entityStore->getIdentifierColumnNames($entityName);
+				
+				if (empty($identifierColumns)) {
+					return '';
+				}
+				
+				// Return first identifier column (usually primary key)
+				return "{$rangeName}.{$identifierColumns[0]}";
+			}
+			
+			// Handle property identifiers - need to check if there's a property name
+			if (!$identifier->hasNext()) {
+				return '';
+			}
+			
+			// Get the property name from the next node in the identifier chain
+			$property = $identifier->getNext()->getName();
+			
+			if (empty($property)) {
+				return '';
+			}
+			
+			// Look up the database column name for this property
+			$columnMap = $this->entityStore->getColumnMap($entityName);
+			
+			if (!isset($columnMap[$property])) {
+				return '';
+			}
+			
+			// Return fully qualified column name
+			return "{$rangeName}.{$columnMap[$property]}";
+		}
+		
+		/**
+		 * Builds column name for temporary table ranges (subquery results).
+		 * Uses the identifier's own name as the column name since temporary tables
+		 * have no entity metadata. The column names come directly from the subquery's
+		 * SELECT clause aliases.
+		 *
+		 * @param AstIdentifier $identifier The AST identifier to convert
+		 * @param string $rangeName The table alias
+		 * @return string Fully qualified SQL column name or empty string if invalid
+		 */
+		private function buildColumnNameForTemporaryTable(AstIdentifier $identifier, string $rangeName): string {
+			// For temporary tables, we can't reference the table itself without a property
+			if (!$identifier->hasNext()) {
+				return '';
+			}
+			
+			// Get the column name from the next node in the identifier chain
+			// For temporary tables, this is the column alias from the subquery's SELECT
+			$columnName = $identifier->getNext()->getCompleteName();
+			
+			if (empty($columnName)) {
+				return '';
+			}
+			
+			// Return fully qualified column name using the identifier's name directly
+			// No mapping needed since temporary table columns are already in SQL format
+			return "{$rangeName}.`{$columnName}`";
+		}
+		
+		/**
+		 * Builds the join condition SQL from a join property AST
+		 * Delegates to the main visitor to process join condition AST nodes and
+		 * return the appropriate SQL string. Falls back to creating a new visitor
+		 * if main visitor is not available.
+		 * @param AstInterface $joinCondition The AST node representing the join condition
+		 * @return string SQL join condition or empty string on error
+		 */
+		public function buildJoinCondition(AstInterface $joinCondition): string {
+			// Check if we have access to the main visitor
+			if (!$this->mainVisitor) {
+				// Fallback: create new visitor only if main visitor not available
+				$visitor = new QuelToSQLConvertToString(
+					$this->entityStore,
+					$this->parameters,
+					$this->partOfQuery,
+					$this->platform
+				);
+				
+				try {
+					// Process the join condition AST node
+					$joinCondition->accept($visitor);
+					return $visitor->getResult();
+				} catch (\Exception $e) {
+					// Return empty string on any processing error
+					return '';
+				}
+			}
+			
+			// Use main visitor's visitNodeAndReturnSQL method for consistency
+			try {
+				return $this->mainVisitor->visitNodeAndReturnSQL($joinCondition);
+			} catch (\Exception $e) {
+				// Return empty string on any processing error
+				return '';
+			}
+		}
+		
+		/**
+		 * Generates SQL for entity column selections with proper aliasing
+		 * Creates a comma-separated list of all columns for an entity with aliases
+		 * in the format "table.column as `alias.property`". This is used in SELECT
+		 * clauses when selecting entire entities.
+		 * @param AstIdentifier $ast The entity identifier
+		 * @return string Comma-separated list of aliased columns or empty string
+		 */
+		public function buildEntityColumns(AstIdentifier $ast): string {
+			$result = [];
+			$range = $ast->getRange();
+			$rangeName = $range->getName(); // Table alias
+			
+			// Get all column mappings for this entity
+			$columnMap = $this->entityStore->getColumnMap($ast->getEntityName());
+			
+			// Build aliased column selections for each property
+			foreach ($columnMap as $item => $value) {
+				// Format: table.column as `alias.property`
+				$result[] = "{$rangeName}.{$value} as `{$rangeName}.{$item}`";
+			}
+			
+			return implode(",", $result);
+		}
+		
+		/**
+		 * Builds search conditions for multiple identifiers based on parsed search terms.
+		 *
+		 * If all identifiers belong to the same entity and that entity has a FullTextIndex
+		 * covering all the searched columns, emits a single MATCH...AGAINST condition.
+		 * Otherwise falls back to LIKE chains for maximum compatibility.
+		 *
+		 * @param AstSearch $search The search AST node containing identifiers
+		 * @param array $parsed Parsed search terms (or_terms, and_terms, not_terms)
+		 * @param string $searchKey Unique key for parameter naming
+		 * @return array Array of SQL condition strings
+		 */
+		public function buildSearchConditions(AstSearch $search, array $parsed, string $searchKey): array {
+			$fullTextIndex = $this->detectFullTextIndex($search->getIdentifiers());
+			
+			if ($fullTextIndex !== null) {
+				return [$this->buildFullTextCondition($search->getIdentifiers(), $search->getSearchString(), $searchKey)];
+			}
+			
+			// Fall back to LIKE chains per identifier
+			$conditions = [];
+			
+			foreach ($search->getIdentifiers() as $identifier) {
+				$columnName = $this->buildColumnName($identifier);
+				$fieldConditions = $this->buildFieldConditions($columnName, $parsed, $searchKey);
+				
+				if (!empty($fieldConditions)) {
+					$conditions[] = '(' . implode(' AND ', $fieldConditions) . ')';
+				}
+			}
+			
+			return $conditions;
+		}
+		
+		/**
+		 * Builds a MATCH...AGAINST expression for use in SELECT / ORDER BY clauses.
+		 *
+		 * Unlike buildSearchConditions() which wraps the result in a WHERE condition,
+		 * this method returns the raw MATCH...AGAINST value expression so it can be
+		 * used as a numeric score column.
+		 *
+		 * When no FullTextIndex covers the requested columns, returns the literal 0.0.
+		 * All rows score equally, meaning no relevance ranking occurs, but the query
+		 * succeeds. Add a @FullTextIndex annotation to the entity to enable real scoring.
+		 *
+		 * @param AstSearchScore $searchScore The search_score AST node
+		 * @return string SQL MATCH...AGAINST expression, or '0.0' if no full-text index exists
+		 */
+		public function buildSearchScoreExpression(AstSearchScore $searchScore): string {
+			$identifiers = $searchScore->getIdentifiers();
+			$fullTextIndex = $this->detectFullTextIndex($identifiers);
+			
+			if ($fullTextIndex === null) {
+				return '0.0';
+			}
+			
+			return $this->buildFullTextCondition($identifiers, $searchScore->getSearchString(), uniqid());
+		}
+		
+		/**
+		 * Checks whether all given identifiers belong to the same entity and whether
+		 * that entity has a FullTextIndex covering all of them. Returns the matching
+		 * FullTextIndex if found, null otherwise.
+		 * @param AstIdentifier[] $identifiers
+		 * @return FullTextIndex|null
+		 */
+		private function detectFullTextIndex(array $identifiers): ?FullTextIndex {
+			// Don't do anything if identifiers is empty
+			if (empty($identifiers)) {
+				return null;
+			}
+			
+			// All identifiers must belong to the same entity for a single MATCH() to be valid
+			$entityNames = array_unique(array_map(fn($id) => $id->getEntityName(), $identifiers));
+			
+			// MATCH() across multiple entities would require separate MATCH() calls per entity,
+			// which can't be expressed as a single full-text condition
+			if (count($entityNames) !== 1) {
+				return null;
+			}
+			
+			// Grab entity name
+			$entityName = reset($entityNames);
+			
+			// Temporary table ranges have no entity name and therefore no annotation metadata
+			if (empty($entityName)) {
+				return null;
+			}
+			
+			// Collect the property names being searched
+			$propertyNames = $this->extractPropertyNames($identifiers);
+			return $this->entityStore->getFullTextIndexForColumns($entityName, $propertyNames);
+		}
+		
+		/**
+		 * Builds a single MATCH...AGAINST condition from a raw search string node.
+		 *
+		 * The search string is passed directly to MySQL in boolean mode, which parses
+		 * the +/- prefixes natively. This avoids the double-parse that would occur if
+		 * we reconstructed the boolean string from the already-parsed terms array.
+		 *
+		 * Used by both search() (boolean condition) and search_score() (value expression)
+		 * to ensure both code paths produce identical SQL for the same inputs.
+		 *
+		 * @param AstIdentifier[] $identifiers
+		 * @param AstString|AstParameter $searchString The raw search term node
+		 * @param string $searchKey Unique key for parameter naming
+		 * @return string SQL MATCH...AGAINST expression
+		 */
+		private function buildFullTextCondition(array $identifiers, AstString|AstParameter $searchString, string $searchKey): string {
+			// MATCH() requires bare column names — no table alias prefix.
+			// buildColumnName() returns `alias.column`; we extract only the column part.
+			$columns = array_map(function($id) {
+				$full = $this->buildColumnName($id);
+				// Strip "alias." prefix if present — MATCH(content) not MATCH(p.content)
+				$dotPos = strpos($full, '.');
+				return $dotPos !== false ? substr($full, $dotPos + 1) : $full;
+			}, $identifiers);
+			
+			$columnList = implode(', ', $columns);
+			
+			if ($searchString instanceof AstParameter) {
+				// Pass the caller's named parameter through directly.
+				// MATCH...AGAINST() rejects named params with MySQL native prepares —
+				// DatabaseAdapter::execute() enables emulated prepares for MATCH queries.
+				$term = ':' . $searchString->getName();
+			} else {
+				// Inline string literal — bind under a unique ft_ key
+				$paramName = 'ft_' . $searchKey;
+				$this->parameters[$paramName] = $searchString->getValue();
+				$term = ':' . $paramName;
+			}
+			
+			return "MATCH({$columnList}) AGAINST({$term} IN BOOLEAN MODE)";
+		}
+		
+		/**
+		 * Extracts the property name from each identifier in the chain.
+		 * For an identifier like p.name, the property name is "name" (the next node).
+		 * For an entity-level identifier with no next, returns the identifier's own name.
+		 *
+		 * @param AstIdentifier[] $identifiers
+		 * @return string[]
+		 */
+		private function extractPropertyNames(array $identifiers): array {
+			return array_map(function (AstIdentifier $identifier) {
+				return $identifier->hasNext()
+					? $identifier->getNext()->getName()
+					: $identifier->getName();
+			}, $identifiers);
+		}
+		
+		/**
+		 * Builds identifier column with COALESCE for sorting
+		 * Creates sortable column expressions that handle NULL values appropriately.
+		 * Uses COALESCE to provide default values for nullable columns during sorting.
+		 * @param AstIdentifier $ast The identifier to create sortable column for
+		 * @return string SQL column expression with appropriate NULL handling
+		 */
+		public function buildSortableColumn(AstIdentifier $ast): string {
+			$range = $ast->getRange();
+			
+			// Alias identifier (e.g. `score` from `score=search_score(...)`) —
+			// no range, no next node. Return the bare name so ORDER BY score works.
+			if ($range === null || !$ast->hasNext()) {
+				return $ast->getName();
+			}
+			
+			$rangeName = $range->getName();
+			$entityName = $ast->getEntityName();
+			$propertyName = $ast->getNext()->getName();
+			
+			// Handle temporary tables - no metadata available
+			if (empty($entityName)) {
+				// For temporary tables, use column name directly without COALESCE
+				return "{$rangeName}.{$propertyName}";
+			}
+			
+			$columnMap = $this->entityStore->getColumnMap($entityName);
+			
+			// For non-sorting contexts, return simple column reference
+			if ($this->partOfQuery !== "SORT") {
+				return $rangeName . "." . $columnMap[$propertyName];
+			}
+			
+			// Get column annotations to check nullability and type
+			$annotations = $this->entityStore->getAnnotations($entityName);
+			
+			$annotationsOfProperty = array_values(array_filter(
+				$annotations[$propertyName]->toArray(),
+				function ($e) {
+					return $e instanceof Column;
+				}
+			));
+			
+			// If column is not nullable, no COALESCE needed
+			// For nullable integer columns, use 0 as default
+			// For other nullable columns, use empty string as default
+			if (!$annotationsOfProperty[0]->isNullable()) {
+				return $rangeName . "." . $columnMap[$propertyName];
+			} elseif ($annotationsOfProperty[0]->getType() === "integer") {
+				return "COALESCE({$rangeName}.{$columnMap[$propertyName]}, 0)";
+			} else {
+				return "COALESCE({$rangeName}.{$columnMap[$propertyName]}, '')";
+			}
+		}
+		
+		/**
+		 * Returns true if the identifier is an entity, false if not
+		 * Determines whether an AST identifier refers to an entire entity (table)
+		 * or a specific property within an entity. Entity identifiers don't have
+		 * a "next" node in the identifier chain.
+		 * @param AstInterface $ast The AST node to check
+		 * @return bool True if identifier represents an entity, false otherwise
+		 */
+		public function identifierIsEntity(AstInterface $ast): bool {
+			return (
+				$ast instanceof AstIdentifier &&           // Must be an identifier
+				$ast->getRange() instanceof AstRangeDatabase && // Must have database range
+				!$ast->hasNext()                          // Must not have property chain
+			);
+		}
+		
+		/**
+		 * Builds field-specific conditions for different term types (OR, AND, NOT)
+		 * Creates SQL conditions for a single field based on parsed search terms.
+		 * Handles three types of search logic: OR (any term matches), AND (all terms
+		 * must match), and NOT (terms must not match).
+		 * @param string $columnName The SQL column name to search in
+		 * @param array $parsed Parsed search terms with or_terms, and_terms, not_terms
+		 * @param string $searchKey Unique key for parameter naming
+		 * @return array Array of SQL condition groups
+		 */
+		private function buildFieldConditions(string $columnName, array $parsed, string $searchKey): array {
+			$fieldConditions = [];
+			
+			// Define term types and their SQL operators
+			$termTypes = [
+				'or_terms'  => ['operator' => 'OR', 'comparison' => 'LIKE'],      // Any term matches
+				'and_terms' => ['operator' => 'AND', 'comparison' => 'LIKE'],     // All terms match
+				'not_terms' => ['operator' => 'AND', 'comparison' => 'NOT LIKE']  // No terms match
+			];
+			
+			// Process each term type
+			foreach ($termTypes as $termType => $config) {
+				$termConditions = $this->buildTermConditions(
+					$columnName,
+					$parsed[$termType],
+					$config,
+					$termType,
+					$searchKey
+				);
+				
+				// Group conditions for this term type
+				if (!empty($termConditions)) {
+					$fieldConditions[] = '(' . implode(" {$config['operator']} ", $termConditions) . ')';
+				}
+			}
+			
+			return $fieldConditions;
+		}
+		
+		/**
+		 * Builds conditions for a specific term type (or_terms, and_terms, not_terms)
+		 * Creates individual SQL LIKE/NOT LIKE conditions for each search term
+		 * and adds the corresponding parameters to the parameters array.
+		 * @param string $columnName The SQL column name to search in
+		 * @param array $terms Array of search terms for this type
+		 * @param array $config Configuration with operator and comparison type
+		 * @param string $termType The type of terms being processed
+		 * @param string $searchKey Unique key for parameter naming
+		 * @return array Array of individual SQL conditions
+		 */
+		private function buildTermConditions(
+			string $columnName,
+			array  $terms,
+			array  $config,
+			string $termType,
+			string $searchKey
+		): array {
+			$termConditions = [];
+			
+			// Create a condition for each search term
+			foreach ($terms as $index => $term) {
+				// Generate unique parameter name
+				$paramName = "{$termType}{$searchKey}{$index}";
+				
+				// Create SQL condition with parameter placeholder
+				$termConditions[] = "{$columnName} {$config['comparison']} :{$paramName}";
+				
+				// Add parameter with wildcard wrapping for LIKE operations
+				$this->parameters[$paramName] = "%{$term}%";
+			}
+			
+			return $termConditions;
+		}
+	}

@@ -36,30 +36,70 @@
 		/**
 		 * Parse a JSON source definition in a RANGE clause
 		 * Format: RANGE OF alias IS JSON_SOURCE("path/to/file.json"[, "optional filter expression"])
-		 * @param Token $alias The token containing the alias identifier
+		 * @param string $alias The alias
 		 * @return AstRangeJsonSource AST node representing a JSON data source
 		 * @throws LexerException If token matching fails
 		 */
-		private function parseJsonSource(Token $alias): AstRangeJsonSource {
-			// Match opening parenthesis after JSON_SOURCE
-			$this->lexer->match(Token::ParenthesesOpen);
-			
+		private function parseJson(string $alias): AstRangeJsonSource {
 			// Get the file path string
 			$path = $this->lexer->match(Token::String);
 			
 			// Check for an optional filter expression (separated by comma)
 			$expression = null;
 
-			if ($this->lexer->optionalMatch(Token::Comma)) {
+			if ($this->lexer->optionalMatch(Token::Filter)) {
 				$expression = $this->lexer->match(Token::String);
 				$expression = $expression->getValue();
 			}
 			
-			// Match closing parenthesis
+			// Create and return the AST node for a JSON source with the alias, path, and optional filter
+			return new AstRangeJsonSource($alias, $path->getValue(), $expression);
+		}
+		
+		/**
+		 * Parse ranges
+		 * @return array
+		 * @throws LexerException
+		 * @throws ParserException
+		 */
+		protected function parseRanges(): array {
+			$ranges = [];
+			
+			$rangeRule = new Range($this->lexer);
+			
+			while ($this->lexer->peek()->getType() == Token::Range) {
+				$ranges[] = $rangeRule->parse();
+			}
+			
+			return $ranges;
+		}
+		
+		/**
+		 * Parses a database query expression wrapped in parentheses.
+		 * @param string $alias The alias to assign to the resulting range
+		 * @return AstRangeDatabase The parsed database range with query attached
+		 * @throws LexerException If lexer encounters invalid tokens
+		 * @throws ParserException If syntax structure is invalid
+		 */
+		private function parseQuery(string $alias): AstRangeDatabase {
+			// Match opening parenthesis - start of query expression
+			$this->lexer->match(Token::ParenthesesOpen);
+			
+			// Parse range definitions that will be available to the query
+			$ranges = $this->parseRanges();
+			
+			// Parse the actual retrieve query using the defined ranges
+			$query = new Retrieve($this->lexer, true);
+			$retrieve = $query->parse([], $ranges);
+			
+			// Match closing parenthesis - end of query expression
 			$this->lexer->match(Token::ParenthesesClose);
 			
-			// Create and return the AST node for a JSON source with the alias, path, and optional filter
-			return new AstRangeJsonSource($alias->getValue(), $path->getValue(), $expression);
+			// Create the database range with a temporary name
+			$range = new AstRangeDatabase($alias);
+			$range->setQuery($retrieve);
+			$range->setTableName(uniqid($alias));
+			return $range;
 		}
 		
 		/**
@@ -120,10 +160,16 @@
 			// Match and consume the 'IS' keyword
 			$this->lexer->match(Token::Is);
 			
-			// Check if the next token is 'JSON_SOURCE' to determine the type of data source
-			if ($this->lexer->optionalMatch(Token::JsonSource)) {
+			// Check if the next token is an opening parenthesis; if so it's a temp table specification
+			if ($this->lexer->lookahead() == Token::ParenthesesOpen) {
 				// Handle JSON source definition
-				return $this->parseJsonSource($alias);
+				return $this->parseQuery($alias->getValue());
+			}
+			
+			// Check if the next token is 'JSON' to determine the type of data source
+			if ($this->lexer->optionalMatch(Token::Json)) {
+				// Handle JSON source definition
+				return $this->parseJson($alias->getValue());
 			}
 			
 			// Otherwise, treat it as a database entity source

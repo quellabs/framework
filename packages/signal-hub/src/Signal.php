@@ -2,17 +2,10 @@
 	
 	namespace Quellabs\SignalHub;
 	
-	use Quellabs\SignalHub\Validation\EmissionValidator;
-	use Quellabs\SignalHub\Validation\ConnectionValidator;
-	
 	/**
-	 * Signal class for Qt-like event handling in PHP
+	 * Signal class for Qt-inspired event handling in PHP
 	 */
 	class Signal {
-		/**
-		 * @var array Expected parameter types for this signal
-		 */
-		private array $parameterTypes;
 		
 		/**
 		 * @var array Connections (callables and their priorities)
@@ -20,7 +13,7 @@
 		private array $slots = [];
 		
 		/**
-		 * @var string|null Name of this signal (for debugging)
+		 * @var string|null Name of this signal
 		 */
 		private ?string $name;
 		
@@ -30,83 +23,60 @@
 		private ?object $owner;
 		
 		/**
-		 * Constructor to initialize the signal with parameter types
-		 * @param array $parameterTypes Expected parameter types for this signal
 		 * @param string|null $name Optional name for this signal
 		 * @param object|null $owner Optional owner object
 		 */
-		public function __construct(array $parameterTypes, ?string $name = null, ?object $owner = null) {
-			$this->parameterTypes = $parameterTypes;
+		public function __construct(?string $name = null, ?object $owner = null) {
 			$this->name = $name;
 			$this->owner = $owner;
 		}
 		
 		/**
 		 * Connect a callable to this signal
-		 * @param callable|array $receiver Callable to receive the signal
-		 * @param int $priority Connection priority (higher executes first)
+		 * @param callable $receiver Callable to receive the signal
+		 * @param int $priority Higher priority executes first
 		 * @return void
-		 * @throws \Exception If types mismatch
 		 */
-		public function connect(callable|array $receiver, int $priority = 0): void {
-			// Check if this exact connection already exists
-			foreach ($this->slots as $connection) {
-				if ($connection['receiver'] === $receiver) {
-					return; // Connection already exists
+		public function connect(callable $receiver, int $priority = 0): void {
+			// Skip if already connected
+			foreach ($this->slots as $slot) {
+				if ($slot['receiver'] === $receiver) {
+					return;
 				}
 			}
 			
-			// Validate the connection using the type validation system
-			ConnectionValidator::validateCallableConnection($receiver, $this->parameterTypes);
-			
-			// Add connection
 			$this->slots[] = [
 				'receiver' => $receiver,
 				'priority' => $priority
 			];
 			
-			// Sort connections by priority (higher first)
 			$this->sortConnectionsByPriority();
 		}
 		
 		/**
 		 * Disconnect a specific callable
 		 * @param callable $receiver Callable to disconnect
-		 * @return bool Whether any connections were removed
+		 * @return bool True if any connections were removed
 		 */
 		public function disconnect(callable $receiver): bool {
 			$originalCount = count($this->slots);
 			
-			// Filter out matching connections
-			$this->slots = array_filter($this->slots, function ($connection) use ($receiver) {
-				return $connection['receiver'] !== $receiver;
-			});
+			$this->slots = array_values(array_filter(
+				$this->slots,
+				fn($slot) => $slot['receiver'] !== $receiver
+			));
 			
-			// Return true if any connections were removed
 			return count($this->slots) < $originalCount;
 		}
 		
 		/**
 		 * Emit the signal to all connected receivers
 		 * @param mixed ...$args Arguments to pass to slots
-		 * @throws \Exception If argument types or count mismatch
 		 */
-		public function emit(...$args): void {
-			// Validate emission arguments using the type validation system
-			EmissionValidator::validateEmission($args, $this->parameterTypes);
-			
-			// Call all connected callables
+		public function emit(mixed ...$args): void {
 			foreach ($this->slots as $slot) {
 				$slot['receiver'](...$args);
 			}
-		}
-		
-		/**
-		 * Get parameter types for this signal
-		 * @return array
-		 */
-		public function getParameterTypes(): array {
-			return $this->parameterTypes;
 		}
 		
 		/**
@@ -157,8 +127,6 @@
 		 * Sort connections by priority (higher first)
 		 */
 		private function sortConnectionsByPriority(): void {
-			usort($this->slots, function ($a, $b) {
-				return $b['priority'] <=> $a['priority'];
-			});
+			usort($this->slots, fn($a, $b) => $b['priority'] <=> $a['priority']);
 		}
 	}

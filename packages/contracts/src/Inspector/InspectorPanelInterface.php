@@ -40,16 +40,11 @@
 		public function getCss(): string;
 		
 		/**
-		 * Get array of signal patterns this panel wants to listen for
-		 * @return array Array of signal pattern strings
-		 */
-		public function getSignalPatterns(): array;
-		
-		/**
 		 * Process collected events and prepare panel data
+		 * @param EventCollectorInterface $collector
 		 * @return void
 		 */
-		public function processEvents(): void;
+		public function processEvents(EventCollectorInterface $collector): void;
 		
 		/**
 		 * Get the data array to pass to the JavaScript template

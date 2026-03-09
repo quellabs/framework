@@ -25,9 +25,7 @@
 	 */
 	class MakeMigrationsCommand extends CommandBase {
 		private ?DatabaseAdapter $connection = null;
-		private ?AnnotationReader $annotationReader = null;
 		private ?EntityStore $entityStore = null;
-		private array $entityPaths;
 		private string $migrationsPath;
 		private Configuration $configuration;
 		
@@ -40,7 +38,6 @@
 		public function __construct(ConsoleInput $input, ConsoleOutput $output, ?ServiceProvider $provider = null) {
 			parent::__construct($input, $output, $provider);
 			$this->configuration = $provider->getConfiguration();
-			$this->entityPaths = $this->configuration->getEntityPaths();
 			$this->migrationsPath = $this->configuration->getMigrationsPath();
 		}
 		
@@ -52,6 +49,9 @@
 		public function execute(ConfigurationManager $config): int {
 			$this->output->writeLn("Generating database migrations based on entity changes...");
 			
+			// Fetch the database adapter
+			$databaseAdapter = $this->provider->getDatabaseAdapter();
+			
 			// Step 1: Fetch the entity map from the Entity Store
 			$entityMap = $this->getEntityStore()->getEntityMap();
 			
@@ -61,11 +61,14 @@
 			}
 			
 			// Step 2: Analyze changes between entities and database
-			$entitySchemaAnalyzer = new EntitySchemaAnalyzer($this->getConnection(), $this->getEntityStore());
+			// Instantiate the schema analyzer
+			$entitySchemaAnalyzer = new EntitySchemaAnalyzer($databaseAdapter, $this->getEntityStore());
+			
+			// And perform the analysis
 			$allChanges = $entitySchemaAnalyzer->analyzeEntityChanges($entityMap);
 			
 			// Step 3: Generate a migration file based on changes
-			$migrationBuilder = new PhinxMigrationBuilder($this->migrationsPath);
+			$migrationBuilder = new PhinxMigrationBuilder($databaseAdapter, $this->migrationsPath);
 			$result = $migrationBuilder->generateMigrationFile($allChanges);
 			
 			if (!$result['success']) {
@@ -100,47 +103,7 @@
 		public function getHelp(): string {
 			return "Creates a new database migration file by comparing entity definitions with current database schema to synchronize changes.";
 		}
-		
-		/**
-		 * Returns the database connector using lazy initialization pattern
-		 * @return DatabaseAdapter The database adapter instance
-		 */
-		private function getConnection(): DatabaseAdapter {
-			// Check if connection has already been established
-			if ($this->connection === null) {
-				// Create a new database adapter with stored configuration
-				// This only happens on first call (lazy initialization)
-				$this->connection = new DatabaseAdapter($this->configuration);
-			}
-			
-			// Return the existing or newly created connection
-			return $this->connection;
-		}
-		
-		/**
-		 * Returns the AnnotationReader object
-		 * @return AnnotationReader
-		 */
-		private function getAnnotationReader(): AnnotationReader {
-			// Check if annotation reader is already initialized to avoid recreating it
-			if ($this->annotationReader === null) {
-				// Create a new configuration object for the annotation reader
-				$annotationReaderConfiguration = new \Quellabs\AnnotationReader\Configuration();
-				
-				// Configure whether to use annotation caching based on the main configuration
-				$annotationReaderConfiguration->setUseAnnotationCache($this->configuration->useMetadataCache());
-				
-				// Set the cache path for annotations from the main configuration
-				$annotationReaderConfiguration->setAnnotationCachePath($this->configuration->getMetadataCachePath());
-				
-				// Initialize the annotation reader with the configured settings
-				$this->annotationReader = new AnnotationReader($annotationReaderConfiguration);
-			}
-			
-			// Return the initialized annotation reader instance
-			return $this->annotationReader;
-		}
-		
+
 		/**
 		 * Returns the EntityStore object
 		 * @return EntityStore

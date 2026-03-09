@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\Canvas\Sculpt;
 	
+	use Quellabs\AnnotationReader\Exception\AnnotationReaderException;
 	use Quellabs\Canvas\Routing\AnnotationLister;
 	use Quellabs\Contracts\Discovery\ProviderInterface;
 	use Quellabs\Sculpt\ConfigurationManager;
@@ -25,18 +26,22 @@
 		 */
 		public function __construct(ConsoleInput $input, ConsoleOutput $output, ?ProviderInterface $provider = null) {
 			parent::__construct($input, $output, $provider);
-
+			
 			// Config for AnnotationsReader
 			// Instantiate annotation listing class
 			$this->lister = new AnnotationLister();
 		}
-
+		
 		/**
 		 * Discovers and builds a complete list of all routes in the application
 		 * by scanning controller classes and their annotated methods
 		 * @return array Array of route configurations with controller, method, route, and aspects info
 		 */
 		protected function getRoutes(ConfigurationManager $config): array {
-			return $this->lister->getRoutes($config);
+			try {
+				return $this->lister->getRoutes($config);
+			} catch (AnnotationReaderException|\ReflectionException $e) {
+				return [];
+			}
 		}
 	}

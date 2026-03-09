@@ -19,6 +19,9 @@
   "autoload": {
     "psr-4": {
       "Quellabs\\Support\\": "src/"
-    }
+    },
+    "files": [
+      "src/bootstrap.php"
+    ]
   }
 }

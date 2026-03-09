@@ -10,12 +10,13 @@
 		public function register(Application $application): void {
 			// Register the commands into the Sculpt application
 			$this->registerCommands($application, [
+				CreateControllerCommand::class,
 				ListRoutesCommand::class,
 				MatchRoutesCommand::class,
 				RoutesCacheClearCommand::class,
-				PublishCommand::class,
 				SchedulerRunCommand::class,
-				SchedulerListCommand::class
+				SchedulerListCommand::class,
+				CacheInitCommand::class,
 			]);
 		}
 	}

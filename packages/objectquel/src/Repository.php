@@ -1,20 +1,23 @@
 <?php
 	
-	/**
-	 * ObjectQuel - A Sophisticated Object-Relational Mapping (ORM) System
-	 *
-	 * ObjectQuel is an ORM that brings a fresh approach to database interaction,
-	 * featuring a unique query language, a streamlined architecture, and powerful
-	 * entity relationship management. It implements the Data Mapper pattern for
-	 * clear separation between domain models and underlying database structures.
-	 *
-	 * @author      Floris van den Berg
-	 * @copyright   Copyright (c) 2025 ObjectQuel
-	 * @license     MIT
-	 * @version     1.0.0
-	 * @package     Quellabs\ObjectQuel
+	/*
+	 * ╔═══════════════════════════════════════════════════════════════════════════════════════╗
+	 * ║                                                                                       ║
+	 * ║   ██████╗ ██████╗      ██╗███████╗ ██████╗████████╗ ██████╗ ██╗   ██╗███████╗██╗      ║
+	 * ║  ██╔═══██╗██╔══██╗     ██║██╔════╝██╔════╝╚══██╔══╝██╔═══██╗██║   ██║██╔════╝██║      ║
+	 * ║  ██║   ██║██████╔╝     ██║█████╗  ██║        ██║   ██║   ██║██║   ██║█████╗  ██║      ║
+	 * ║  ██║   ██║██╔══██╗██   ██║██╔══╝  ██║        ██║   ██║▄▄ ██║██║   ██║██╔══╝  ██║      ║
+	 * ║  ╚██████╔╝██████╔╝╚█████╔╝███████╗╚██████╗   ██║   ╚██████╔╝╚██████╔╝███████╗███████╗ ║
+	 * ║   ╚═════╝ ╚═════╝  ╚════╝ ╚══════╝ ╚═════╝   ╚═╝    ╚══▀▀═╝  ╚═════╝ ╚══════╝╚══════╝ ║
+	 * ║                                                                                       ║
+	 * ║  ObjectQuel - Powerful Object-Relational Mapping built on the Data Mapper pattern     ║
+	 * ║                                                                                       ║
+	 * ║  Clean separation between entities and persistence logic with an intuitive,           ║
+	 * ║  object-oriented query language. Powered by CakePHP's robust database foundation.     ║
+	 * ║                                                                                       ║
+	 * ╚═══════════════════════════════════════════════════════════════════════════════════════╝
 	 */
-
+	
 	namespace Quellabs\ObjectQuel;
 	
 	use Quellabs\ObjectQuel\ObjectQuel\QuelException;
@@ -49,13 +52,21 @@
 		}
 		
 		/**
+		 * Convenience method to retrieve the ObjectQuel EntityManager service.
+		 * @return EntityManager The entity manager instance
+		 */
+		protected function em(): EntityManager {
+			return $this->entityManager;
+		}
+		
+		/**
 		 * Find a single entity by its primary key/identifier
 		 * @param mixed $id The primary key value to search for
 		 * @return object|null The found entity or null if not found
 		 * @throws QuelException If a database error occurs during the operation
 		 */
 		public function find(mixed $id): ?object {
-			return $this->entityManager->find($this->entityClass, $id);
+			return $this->em()->find($this->entityClass, $id);
 		}
 		
 		/**
@@ -65,6 +76,6 @@
 		 * @throws QuelException If a database error occurs during the operation
 		 */
 		public function findBy(array $criteria): array {
-			return $this->entityManager->findBy($this->entityClass, $criteria);
+			return $this->em()->findBy($this->entityClass, $criteria);
 		}
 	}

@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\ObjectQuel\Sculpt\Helpers;
 	
+	use Quellabs\ObjectQuel\Annotations\Orm\FullTextIndex;
 	use Quellabs\ObjectQuel\Annotations\Orm\UniqueIndex;
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
 	use Quellabs\ObjectQuel\EntityStore;
@@ -102,6 +103,7 @@
 		 * Retrieves database index configurations for an entity
 		 * @param mixed $entity The entity object or class to get indexes for
 		 * @return array Formatted array of database indexes with their configurations
+		 * @throws \Exception
 		 */
 		public function getEntityIndexes(mixed $entity): array {
 			// Fetch the column map
@@ -111,23 +113,36 @@
 			$result = [];
 
 			foreach ($this->entityStore->getIndexes($entity) as $annotation) {
-				// Check if this is a unique index or a regular index
-				$isUnique = $annotation instanceof UniqueIndex;
+				// Determine the index type from the annotation class
+				if ($annotation instanceof FullTextIndex) {
+					$indexType = 'FULLTEXT';
+				} elseif ($annotation instanceof UniqueIndex) {
+					$indexType = 'UNIQUE';
+				} else {
+					$indexType = 'INDEX';
+				}
 				
 				// Get the entity property names that make up this index
 				$columns = $annotation->getColumns();
 				
 				// Convert entity property names to their corresponding database column names
 				$databaseColumns = [];
+				
 				foreach ($columns as $column) {
+					// If the indexed column does not exist, throw an error and abort migration creation
+					if (!isset($columnMap[$column])) {
+						$tableName = $this->entityStore->getOwningTable($entity);
+						throw new \Exception("Column '$column' not found in '$tableName'.");
+					}
+					
 					$databaseColumns[] = $columnMap[$column];
 				}
 				
 				// Build the index configuration array
 				$result[$annotation->getName()] = [
-					'columns' => $databaseColumns,    // Database column names for this index
-					'type'    => $isUnique ? 'UNIQUE' : 'INDEX',  // Index type identifier
-					'unique'  => $isUnique            // Boolean flag for uniqueness constraint
+					'columns' => $databaseColumns,
+					'type'    => $indexType,
+					'unique'  => $annotation instanceof UniqueIndex
 				];
 			}
 			
@@ -146,8 +161,8 @@
 				return true;
 			}
 			
-			// Check uniqueness (single boolean comparison)
-			if ($dbConfig['unique'] !== $entityConfig['unique']) {
+			// Compare index type explicitly — this catches FULLTEXT vs INDEX vs UNIQUE
+			if (strtoupper($dbConfig['type']) !== strtoupper($entityConfig['type'])) {
 				return true;
 			}
 			

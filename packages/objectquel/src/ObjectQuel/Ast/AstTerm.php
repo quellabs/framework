@@ -71,4 +71,15 @@
 		public function setRight(AstInterface $ast): void {
 			$this->right = $ast;
 		}
+		
+		public function deepClone(): static {
+			// Clone both operands
+			$clonedLeft = $this->left->deepClone();
+			$clonedRight = $this->right->deepClone();
+			
+			// Create new instance with cloned operands
+			// Parent relationships are already set by the constructor
+			// @phpstan-ignore-next-line new.static
+			return new static($clonedLeft, $clonedRight, $this->operator);
+		}
 	}
