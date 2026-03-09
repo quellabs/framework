@@ -9193,22 +9193,6 @@
     };
 
     /**
-     * Returns the data-pac-id of the parent component of the given container, or null if it has none.
-     * Intended for use inside msgProc to forward messages up the hierarchy.
-     * @param {string} pacId - The data-pac-id of the child container
-     * @returns {string|null} The parent's data-pac-id, or null if no parent exists
-     */
-    wakaPAC.getParentPacId = function(pacId) {
-        const context = window.PACRegistry.get(pacId);
-
-        if (!context || !context.parent) {
-            return null;
-        }
-
-        return context.parent.container._pacId || context.parent.container.getAttribute('data-pac-id');
-    };
-
-    /**
      * Send a message to a specific WakaPAC container by its data-pac-id
      * Similar to Win32 PostMessage with a specific HWND
      * @param {string} pacId - Target container's data-pac-id attribute value
@@ -9267,6 +9251,48 @@
     };
 
     /**
+     * Send a message to the parent component of the given container (synchronous).
+     * Similar to Win32 SendMessage directed at the parent HWND.
+     * If the container has no parent, the message is dropped.
+     * @param {string} pacId - The data-pac-id of the child container
+     * @param {number} messageId - Message identifier (integer constant, e.g., WM_USER + 1)
+     * @param {number} wParam - First message parameter (integer)
+     * @param {number} lParam - Second message parameter (integer)
+     * @param {Object} [extended={}] - Additional data stored in event.detail for custom use cases
+     */
+    wakaPAC.sendMessageToParent = function(pacId, messageId, wParam, lParam, extended = {}) {
+        const context = window.PACRegistry.get(pacId);
+
+        if (!context || !context.parent) {
+            return;
+        }
+
+        const parentId = context.parent.container._pacId || context.parent.container.getAttribute('data-pac-id');
+        this.sendMessage(parentId, messageId, wParam, lParam, extended);
+    };
+
+    /**
+     * Post a message to the parent component of the given container (asynchronous).
+     * Similar to Win32 PostMessage directed at the parent HWND.
+     * If the container has no parent, the message is dropped.
+     * @param {string} pacId - The data-pac-id of the child container
+     * @param {number} messageId - Message identifier (integer constant, e.g., WM_USER + 1)
+     * @param {number} wParam - First message parameter (integer)
+     * @param {number} lParam - Second message parameter (integer)
+     * @param {Object} [extended={}] - Additional data stored in event.detail for custom use cases
+     */
+    wakaPAC.postMessageToParent = function(pacId, messageId, wParam, lParam, extended = {}) {
+        const context = window.PACRegistry.get(pacId);
+
+        if (!context || !context.parent) {
+            return;
+        }
+
+        const parentId = context.parent.container._pacId || context.parent.container.getAttribute('data-pac-id');
+        this.postMessage(parentId, messageId, wParam, lParam, extended);
+    };
+
+    /**
      * Broadcast a message to all WakaPAC containers
      * @param {number} messageId - Message identifier (integer constant, e.g., WM_USER + 1)
      * @param {number} wParam - First message parameter (integer)
@@ -9306,16 +9332,13 @@
         // Construct the message once — shared across all dispatches in the subtree.
         const event = this.createPacMessage(messageId, wParam, lParam, extended);
 
-        // Iterative depth-first traversal using an explicit stack.
-        // Avoids call-stack overflow on deeply nested component hierarchies and
-        // eliminates the recursive closure overhead of the previous implementation.
-        // Uses the in-memory children sets rather than DOM queries for performance.
-        const stack = [...container.children];
+        // Iterative breadth-first traversal using a queue.
+        const queue = [...container.children];
 
-        while (stack.length) {
-            const node = stack.pop();
+        while (queue.length) {
+            const node = queue.shift();
             DomUpdateTracker.dispatchToContainer(node.container, event);
-            stack.push(...node.children);
+            queue.push(...node.children);
         }
     };
 
