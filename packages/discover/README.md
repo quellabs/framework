@@ -6,36 +6,6 @@
 
 A lightweight, flexible service discovery component for PHP applications that automatically discovers service providers across your application and its dependencies with advanced caching and lazy loading capabilities.
 
-## 📋 Table of Contents
-
-- [Introduction](#introduction)
-- [Installation](#installation)
-- [Quick Start](#quick-start)
-- [Service Providers](#service-providers)
-  - [Creating a Service Provider](#creating-a-service-provider)
-  - [Provider Interface](#provider-interface)
-- [Discovery Methods](#discovery-methods)
-  - [Composer Configuration](#composer-configuration)
-  - [Directory Scanning](#directory-scanning)
-- [Caching and Performance](#caching-and-performance)
-  - [Provider Definition Caching](#provider-definition-caching)
-  - [Performance Best Practices](#performance-best-practices)
-- [Provider Configuration](#provider-configuration)
-  - [Basic Configuration File](#basic-configuration-file)
-  - [Registering Provider with Configuration](#registering-provider-with-configuration)
-  - [Using Configuration in Providers](#using-configuration-in-providers)
-- [Provider Families](#provider-families)
-  - [Defining Provider Families](#defining-provider-families)
-  - [Using Multiple Family Scanners](#using-multiple-family-scanners)
-  - [Accessing Providers by Family](#accessing-providers-by-family)
-- [PSR-4 Utilities](#psr-4-utilities)
-  - [Namespace/Path Mapping](#namespacepath-mapping)
-  - [Finding Classes in Directories](#finding-classes-in-directories)
-  - [Advanced PSR-4 Techniques](#advanced-psr-4-techniques)
-- [Framework Integration](#framework-integration)
-- [Extending Discover](#extending-discover)
-- [License](#license)
-
 ## Introduction
 
 Quellabs Discover solves the common challenge of service discovery in PHP applications. It focuses solely on locating service providers defined in your application and its dependencies, giving you complete control over how to use these providers in your application architecture. Unlike other service discovery solutions that force specific patterns, Discover is framework-agnostic and can be integrated into any PHP application.
@@ -44,9 +14,10 @@ Quellabs Discover solves the common challenge of service discovery in PHP applic
 - **Framework Agnostic**: Works with any PHP application or framework
 - **Multiple Discovery Methods**: Composer configuration, directory scanning, and custom scanners
 - **Provider Families**: Organize providers into logical groups
+- **Fluent Query Builder**: Chainable API for filtering providers
 - **Efficient Discovery**: Uses static methods to gather metadata without instantiation
-- **Efficient Caching**: Export and import provider definitions for lightning-fast subsequent loads
-- **Composer Path Resolving**: Built-in tools for namespace and class discovery
+- **Efficient Caching**: Export and import provider definitions for fast subsequent loads
+- **Lazy Instantiation**: Providers are only created when actually needed
 
 ## Installation
 
@@ -77,10 +48,13 @@ $discover->addScanner(new DirectoryScanner([
 // Run the discovery process (gathers metadata without instantiation)
 $discover->discover();
 
-// Get and use the discovered providers (instantiated on-demand)
-$providers = $discover->getProviders();
+// Use the fluent query builder to find specific providers
+$cacheProviders = $discover->findProviders()
+    ->withCapability('redis')
+    ->withMinPriority(5)
+    ->get();
 
-foreach ($providers as $provider) {
+foreach ($cacheProviders as $provider) {
     // Register with your container or use directly
     $yourContainer->register($provider);
 }
@@ -144,11 +118,7 @@ interface ProviderInterface {
 }
 ```
 
-This interface specifies:
-1. **Static discovery methods** - Called during discovery without instantiation
-2. **Instance configuration methods** - Used when providers are actually needed
-
-The actual implementation of how services are created and used is left to your application.
+Static methods are called during discovery without instantiation; instance methods are used at runtime when providers are actually needed.
 
 ## Discovery Methods
 
@@ -191,131 +161,265 @@ $discover->addScanner(new DirectoryScanner([
 ], '/Provider$/', 'cache')); // Pattern and family name
 ```
 
+## Metadata Scanning
+
+In addition to discovering service providers, Quellabs Discover can collect arbitrary key/value metadata that packages advertise in their `composer.json`. This is useful when packages need to expose configuration paths, resource directories, or other structured data to the host application — without registering a full service provider.
+
+Provider scanning and metadata scanning are separate systems that run in the same `discover()` call. A single `Discover` instance can run both simultaneously.
+
+### How It Works
+
+Metadata scanners read from the `extra.discover.<family>` section of every installed package's `composer.json`. Each package can declare any number of keys under the family. Values can be a scalar string or an array of strings — they are returned as-is without transformation.
+
+```json
+{
+  "name": "vendor/my-package",
+  "extra": {
+    "discover": {
+      "canvas": {
+        "controllers": ["src/Controllers", "src/Api"],
+        "middleware": "src/Middleware"
+      }
+    }
+  }
+}
+```
+
+### MetadataScannerInterface
+
+Custom metadata scanners implement `MetadataScannerInterface`, which requires two methods:
+
+```php
+interface MetadataScannerInterface {
+    // The family name this scanner reads from (e.g. 'canvas')
+    public function getFamilyName(): string;
+
+    // Returns all metadata for this family, grouped by package name
+    // e.g. ['vendor/pkg' => ['controllers' => 'src/Controllers', ...]]
+    public function collect(): array;
+}
+```
+
+Unlike `ScannerInterface` (which produces `ProviderDefinition` objects), metadata scanners return raw values. Results are grouped by package name to preserve the relationship between keys declared together in the same `composer.json`.
+
+### Using MetadataCollector
+
+`MetadataCollector` is the built-in implementation. Register it via the same `addScanner()` method used for provider scanners — `Discover` automatically routes it to the metadata pipeline based on the interface it implements:
+
+```php
+use Quellabs\Discover\Discover;
+use Quellabs\Discover\Scanner\ComposerScanner;
+use Quellabs\Discover\Scanner\MetadataCollector;
+
+$discover = new Discover();
+
+// Provider scanner and metadata scanner can coexist
+$discover->addScanner(new ComposerScanner('canvas'));
+$discover->addScanner(new MetadataCollector('canvas'));
+
+$discover->discover();
+```
+
+The `MetadataCollector` constructor accepts a few optional parameters:
+
+```php
+new MetadataCollector(
+    familyName: 'canvas',          // Required: the family to read
+    discoverySection: 'discover',  // Optional: top-level key in extra (default: 'discover')
+    logger: $logger,               // Optional: PSR-3 logger for non-fatal warnings
+    strictMode: false              // Optional: throw exceptions instead of logging warnings
+);
+```
+
+In strict mode, malformed entries (wrong types, non-array family blocks) throw a `\RuntimeException` instead of being silently skipped.
+
+### Retrieving Collected Metadata
+
+After `discover()` runs, three methods are available for accessing collected metadata:
+
+#### `getAllMetadata(): array`
+
+Returns everything collected, nested as `[family][package][key]`:
+
+```php
+$all = $discover->getAllMetadata();
+// [
+//   'canvas' => [
+//     'vendor/controllers-pkg' => ['controllers' => ['src/Controllers', 'src/Api']],
+//     'vendor/middleware-pkg'  => ['middleware' => 'src/Middleware'],
+//   ]
+// ]
+```
+
+#### `getFamilyMetadata(string $familyName): array`
+
+Returns all metadata for a single family, grouped by package name. Useful when you need to know which package declared what — for example, to resolve paths relative to each package's install directory:
+
+```php
+$canvasMeta = $discover->getFamilyMetadata('canvas');
+// [
+//   'vendor/controllers-pkg' => ['controllers' => ['src/Controllers', 'src/Api']],
+//   'vendor/middleware-pkg'  => ['middleware' => 'src/Middleware'],
+// ]
+
+foreach ($canvasMeta as $packageName => $packageData) {
+    $dirs = (array)($packageData['controllers'] ?? []);
+    // resolve $dirs relative to $packageName's install path
+}
+```
+
+#### `getFamilyValues(string $familyName, string $metadataKey): array`
+
+Returns a flat, deduplicated list of all values for a specific key across all packages. Handles both scalar values and arrays transparently. This is the most convenient method when you just need a merged list and don't care which package contributed each entry:
+
+```php
+$controllerDirs = $discover->getFamilyValues('canvas', 'controllers');
+// ['src/Controllers', 'src/Api', 'vendor/other-pkg/src/Controllers']
+
+$middlewareDirs = $discover->getFamilyValues('canvas', 'middleware');
+// ['src/Middleware']
+```
+
+### Strict Mode and Logging
+
+By default, `MetadataCollector` silently skips malformed entries and logs a warning if a PSR-3 logger is provided. Enable strict mode to surface these issues as exceptions instead:
+
+```php
+use Monolog\Logger;
+use Monolog\Handler\StreamHandler;
+
+$logger = new Logger('discover');
+$logger->pushHandler(new StreamHandler('php://stderr'));
+
+// Log warnings but continue on bad entries
+$discover->addScanner(new MetadataCollector('canvas', 'discover', $logger));
+
+// Throw on first malformed entry
+$discover->addScanner(new MetadataCollector('canvas', 'discover', $logger, strictMode: true));
+```
+
+Warnings are emitted for:
+- A family block that is not an array (e.g. `"canvas": "invalid"`)
+- A metadata value that is neither a string nor an array
+
+### Custom Metadata Scanners
+
+For sources other than `composer.json`, implement `MetadataScannerInterface` directly:
+
+```php
+use Quellabs\Discover\Scanner\MetadataScannerInterface;
+
+class DatabaseMetadataScanner implements MetadataScannerInterface {
+
+    public function getFamilyName(): string {
+        return 'canvas';
+    }
+
+    public function collect(): array {
+        // Return data grouped by a logical "package" identifier
+        return [
+            'app/core' => [
+                'controllers' => ['src/Controllers'],
+                'middleware'  => ['src/Middleware'],
+            ],
+        ];
+    }
+}
+
+$discover->addScanner(new DatabaseMetadataScanner());
+$discover->discover();
+```
+
+The results are merged with any data collected from `MetadataCollector` under the same family name, so multiple scanners for the same family work transparently.
+
+## Querying Providers
+
+### Fluent Query Builder
+
+The `findProviders()` method returns a query builder that allows you to chain filter methods for expressive, readable queries:
+
+```php
+// Find Redis providers with high priority
+$providers = $discover->findProviders()
+    ->withCapability('redis')
+    ->withMinPriority(10)
+    ->get();
+
+// Find database providers in a specific family
+$dbProviders = $discover->findProviders()
+    ->withFamily('database')
+    ->get();
+
+// Combine multiple filters
+$providers = $discover->findProviders()
+    ->withCapability('clustering')
+    ->withFamily('cache')
+    ->withMinPriority(5)
+    ->get();
+```
+
+### Query Methods
+
+| Method | Description |
+|--------|-------------|
+| `withCapability(string $capability)` | Matches providers declaring the capability in their `metadata['capabilities']` array |
+| `withMinPriority(int $priority)` | Matches providers with `metadata['priority'] >= $priority` |
+| `withFamily(string $family)` | Matches providers belonging to the named family |
+| `where(callable $fn)` | Custom filter receiving the provider's metadata array |
+
+Use `get()` to return all matches as an array, or `lazy()` to get a generator that instantiates providers one at a time — preferable for large result sets.
+
+```php
+// Custom filter example
+$providers = $discover->findProviders()
+    ->withFamily('cache')
+    ->where(fn($meta) => isset($meta['region']) && $meta['region'] === 'us-east-1')
+    ->lazy();
+```
+
+
+
+### Direct Access Methods
+
+For simple lookups without the query builder:
+
+```php
+// Get a specific provider by class name (O(1) lookup)
+$provider = $discover->get('App\\Providers\\RedisProvider');
+
+// Check if a provider exists
+if ($discover->exists('App\\Providers\\RedisProvider')) {
+    // Provider is available
+}
+
+// Get the definition for a provider (metadata without instantiation)
+$definition = $discover->getDefinition('App\\Providers\\RedisProvider');
+
+// Get all providers (warning: instantiates everything)
+foreach ($discover->getProviders() as $provider) {
+    // Use provider
+}
+```
+
 ## Caching and Performance
 
-Quellabs Discover includes sophisticated caching mechanisms to dramatically improve performance, especially in production environments.
-
-### Provider Definition Caching
-
-The discovery process gathers provider metadata using static methods without instantiation. This is already efficient, but you can cache the gathered definitions for even better performance.
-
-#### Exporting Cache Data
-
-After running discovery, export the provider definitions for caching:
+Provider definitions can be exported after discovery and re-imported on subsequent requests, bypassing the scanning process entirely.
 
 ```php
-// Perform discovery (gathers metadata using static methods - no instantiation)
+// First request: discover and cache
 $discover = new Discover();
 $discover->addScanner(new ComposerScanner());
-$discover->addScanner(new DirectoryScanner([__DIR__ . '/app/Providers']));
 $discover->discover();
 
-// Export definitions for caching
-$cacheData = $discover->exportForCache();
+$cache->set('providers_' . md5_file('composer.lock'), $discover->exportForCache());
 
-// Store in your preferred cache system
-file_put_contents('cache/providers.json', json_encode($cacheData));
-// Or use Redis, Memcached, etc.
-$redis->set('app:providers', serialize($cacheData));
-```
-
-#### Importing from Cache
-
-On subsequent requests, bypass the discovery process entirely:
-
-```php
-// Load from cache
-$cacheData = json_decode(file_get_contents('cache/providers.json'), true);
-// Or from Redis: $cacheData = unserialize($redis->get('app:providers'));
-
-// Import cached definitions (no scanning or static method calls needed)
+// Subsequent requests: skip discovery
 $discover = new Discover();
-$discover->importDefinitionsFromCache($cacheData);
-
-// Providers are now available without running discovery!
-$providers = $discover->findProvidersByFamily('database');
+$discover->importDefinitionsFromCache($cache->get($cacheKey));
 ```
 
-#### Understanding Access Patterns
+Provider instances are cached after first instantiation, so repeated calls to `get()` or `findProviders()` for the same class never re-instantiate.
 
-```php
-// ⚠️ BULK ACCESS: Instantiates all providers
-$allProviders = $discover->getProviders(); // Use when you need everything
-
-// ✅ FILTERED ACCESS: Only instantiates matching providers
-$specificProviders = $discover->findProvidersByFamily('cache');
-$filteredProviders = $discover->findProvidersByMetadata(function($metadata) {
-    return isset($metadata['capabilities']) && 
-           in_array('redis', $metadata['capabilities']);
-});
-
-// ✅ METADATA ONLY: No instantiation at all
-$families = $discover->getProviderTypes();
-$capabilities = $discover->getAllProviderMetadata();
-```
-
-### Performance Best Practices
-
-#### 1. Use Caching in Production
-
-```php
-// Development: Always discover fresh for changes
-if (app()->environment('local')) {
-    $discover->discover();
-} else {
-    // Production: Use cache to avoid scanning
-    $cacheData = $this->cache->get('provider_definitions');
-    
-    if ($cacheData) {
-        $discover->importDefinitionsFromCache($cacheData);
-    } else {
-        $discover->discover();
-        $this->cache->set('provider_definitions', $discover->exportForCache());
-    }
-}
-```
-
-#### 2. Use Filtered Access
-
-```php
-// ❌ Don't do this if you only need specific providers
-$allProviders = $discover->getProviders(); // Instantiates everything!
-
-// ✅ Do this - get only what you need
-$databaseProviders = $discover->findProvidersByFamily('database');
-```
-
-#### 3. Optimize Static Methods
-
-Since static methods are called during discovery, keep them lightweight:
-
-```php
-class ExampleServiceProvider implements ProviderInterface {
-    
-    // ✅ Good: Lightweight static methods
-    public static function getMetadata(): array {
-        return [
-            'capabilities' => ['redis'],
-            'version' => '1.0.0'
-        ];
-    }
-    
-    // ❌ Avoid: Heavy operations in static methods
-    public static function getMetadata(): array {
-        // Don't do expensive operations here
-        $config = file_get_contents('/path/to/config.json'); // This runs during discovery!
-        return json_decode($config, true);
-    }
-    
-    // ✅ Better: Keep static methods simple
-    public static function getDefaults(): array {
-        return [
-            'host' => 'localhost',
-            'port' => 6379
-        ];
-    }
-}
-```
 
 ## Provider Configuration
 
@@ -422,128 +526,15 @@ $discover = new Discover();
 $discover->addScanner(new ComposerScanner('database'));
 $discover->addScanner(new ComposerScanner('cache'));
 $discover->discover();
-```
 
-### Accessing Providers by Family
+// Query by family
+$databaseProviders = $discover->findProviders()
+    ->withFamily('database')
+    ->get();
 
-Filter providers by family:
-
-```php
-// Get all providers of the 'database' family
-$databaseProviders = $discover->findProvidersByFamily('database');
-
-// Get all available families
-$families = $discover->getProviderTypes();
-
-// Find providers by both family and capability
-$redisProviders = $discover->findProvidersByFamilyAndMetadata('cache', function($metadata) {
-    return isset($metadata['capabilities']) && 
-           in_array('redis', $metadata['capabilities']);
-});
-```
-
-## PSR-4 Utilities
-
-Quellabs Discover includes utilities for working with PSR-4 namespaces and paths.
-
-### Namespace/Path Mapping
-
-Map between directories and namespaces:
-
-```php
-// Get the namespace for a directory
-$namespace = $discover->resolveNamespaceFromPath('/path/to/your/project/src/Controllers');
-// Returns "App\Controllers" or similar
-```
-
-### Finding Classes in Directories
-
-Find classes based on PSR-4 rules:
-
-```php
-// Find all controller classes
-$controllers = $discover->findClassesInDirectory(
-    __DIR__ . '/app/Controllers',
-    fn($className) => str_ends_with($className, 'Controller')
-);
-
-// Find all classes implementing an interface
-$repositories = $discover->findClassesInDirectory(
-    __DIR__ . '/app/Repositories',
-    fn($className) => class_exists($className) && 
-                      is_subclass_of($className, RepositoryInterface::class)
-);
-```
-
-### Advanced PSR-4 Techniques
-
-Use sophisticated filters for custom class discovery:
-
-```php
-// Find only concrete (non-abstract) controller classes with specific methods
-$controllers = $discover->findClassesInDirectory(
-    __DIR__ . '/app/Controllers',
-    function($className) {
-        if (!class_exists($className)) {
-            return false;
-        }
-        
-        $reflection = new ReflectionClass($className);
-        
-        return str_ends_with($className, 'Controller') && 
-               !$reflection->isAbstract() && 
-               $reflection->hasMethod('handle');
-    }
-);
-```
-
-## Framework Integration
-
-### Integration with Canvas
-
-```php
-// In your Canvas bootstrap file
-use Quellabs\Canvas\Container;
-use Quellabs\Discover\Discover;
-
-$discover = new Discover();
-$discover->addScanner(new ComposerScanner());
-$discover->discover();
-
-$container = new Container();
-foreach ($discover->getProviders() as $provider) {
-    $container->register($provider);
-}
-```
-
-### Production Optimization Example
-
-```php
-// In your application bootstrap
-class ApplicationBootstrap {
-    public function initializeProviders(): Discover {
-        $discover = new Discover();
-        
-        // Check if we have valid cached provider definitions
-        $cacheKey = 'app_providers_' . md5(filemtime('composer.lock'));
-        $cached = $this->cache->get($cacheKey);
-        
-        if ($cached && $this->isProduction()) {
-            // Use cached definitions in production (no scanning needed)
-            $discover->importDefinitionsFromCache($cached);
-        } else {
-            // Perform discovery and cache results
-            $discover->addScanner(new ComposerScanner());
-            $discover->addScanner(new DirectoryScanner([__DIR__ . '/app/Providers']));
-            $discover->discover();
-            
-            // Cache gathered provider information for future requests
-            $this->cache->set($cacheKey, $discover->exportForCache(), 3600);
-        }
-        
-        return $discover;
-    }
-}
+$cacheProviders = $discover->findProviders()
+    ->withFamily('cache')
+    ->get();
 ```
 
 ## Extending Discover
@@ -559,19 +550,18 @@ namespace App\Discovery;
 
 use Quellabs\Contracts\Discovery\ProviderDefinition;
 use Quellabs\Discover\Scanner\ScannerInterface;
-use Quellabs\Discover\Config\DiscoveryConfig;
 
 class CustomScanner implements ScannerInterface {
     public function scan(): array {
         // Your custom discovery logic
-        // Return an array of ['class' => $className, 'family' => $family, 'config' => $configFile]
+        // Return an array of ProviderDefinition objects
         return [
             new ProviderDefinition(
-                className: 'xyz',
-				family: 'custom',
-				configFile: 'config/config.php',
-				metadata: [],
-				defaults: []                
+                className: 'App\\Providers\\CustomProvider',
+                family: 'custom',
+                configFiles: ['config/custom.php'],
+                metadata: ['capability' => 'special'],
+                defaults: ['enabled' => true]
             )
         ];
     }

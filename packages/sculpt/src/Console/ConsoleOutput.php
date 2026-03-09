@@ -3,10 +3,17 @@
 	
 	namespace Quellabs\Sculpt\Console;
 	
+	/**
+	 * Console Output Handler
+	 *
+	 * Provides formatted console output with ANSI color support, table rendering,
+	 * and styled messages (success, warning, error). Automatically detects terminal
+	 * capabilities and handles multibyte characters correctly.
+	 */
 	class ConsoleOutput implements \Quellabs\Contracts\IO\ConsoleOutput {
 		
 		/**
-		 * @var false|resource The output stream (usually STDOUT)
+		 * @var resource The output stream (usually STDOUT)
 		 */
 		protected $output;
 		
@@ -49,9 +56,10 @@
 		
 		/**
 		 * ConsoleOutput Constructor
+		 * @param resource|null $output Output stream (defaults to STDOUT)
 		 */
-		public function __construct() {
-			$this->output = STDOUT;
+		public function __construct($output = null) {
+			$this->output = $output ?? STDOUT;
 		}
 		
 		/**
@@ -61,12 +69,23 @@
 		 * @return void
 		 */
 		public function table(array $headers, array $rows): void {
-			// Calculate column widths
-			$widths = array_map('strlen', $headers);
+			// Normalize headers to sequential array
+			$headers = array_values($headers);
+			
+			// Calculate column widths using multibyte-aware strlen
+			$widths = array_map(function($header) {
+				return mb_strlen($header, 'UTF-8');
+			}, $headers);
 			
 			foreach ($rows as $row) {
+				// Normalize row to sequential array
+				$row = array_values($row);
+				
 				foreach ($row as $key => $value) {
-					$widths[$key] = max($widths[$key], strlen($value));
+					if (!isset($widths[$key])) {
+						$widths[$key] = 0;
+					}
+					$widths[$key] = max($widths[$key], mb_strlen((string)$value, 'UTF-8'));
 				}
 			}
 			
@@ -76,7 +95,7 @@
 			
 			// Print rows
 			foreach ($rows as $row) {
-				$this->printRow($row, $widths);
+				$this->printRow(array_values($row), $widths);
 			}
 		}
 		
@@ -87,15 +106,20 @@
 		 * @return void
 		 */
 		public function printRow(array $row, array $widths): void {
-			$cells = array_map(function ($value, $width) {
-				return str_pad($value, $width);
-			}, $row, $widths);
+			$cells = [];
+			
+			foreach ($widths as $index => $width) {
+				$value = isset($row[$index]) ? (string)$row[$index] : '';
+				$valueLength = mb_strlen($value, 'UTF-8');
+				$padding = str_repeat(' ', max(0, $width - $valueLength));
+				$cells[] = $value . $padding;
+			}
 			
 			$this->write("| " . implode(" | ", $cells) . " |\n");
 		}
 		
 		/**
-		 * Print seperator
+		 * Print separator
 		 * @param array $widths
 		 * @return void
 		 */
@@ -131,7 +155,8 @@
 		 * @return void
 		 */
 		public function success(string $message): void {
-			$prefix = "<bg_green><white>✓ SUCCESS:</white></bg_green> ";  // White text on a green background with checkmark symbol
+			// Use ASCII alternative that works everywhere instead of Unicode checkmark
+			$prefix = "<bg_green><white> SUCCESS:</white></bg_green> ";
 			$this->writeLn($prefix . "<green>{$message}</green>");
 		}
 		
@@ -141,7 +166,8 @@
 		 * @return void
 		 */
 		public function warning(string $message): void {
-			$prefix = "<yellow>⚠ WARNING:</yellow>";  // Yellow color with warning symbol
+			// Use ASCII alternative that works everywhere instead of Unicode warning symbol
+			$prefix = "<yellow>! WARNING:</yellow> ";
 			$this->writeLn($prefix . $message);
 		}
 		
@@ -151,7 +177,8 @@
 		 * @return void
 		 */
 		public function error(string $message): void {
-			$prefix = "<bg_red><white>✖ ERROR:</white></bg_red> ";  // White text on a red background with error symbol
+			// Use ASCII alternative that works everywhere instead of Unicode error symbol
+			$prefix = "<bg_red><white> ERROR:</white></bg_red> ";
 			$this->writeLn($prefix . "<red>{$message}</red>");
 		}
 		
@@ -160,13 +187,35 @@
 		 * @return bool
 		 */
 		protected function supportsColors(): bool {
-			// Windows detection
-			if (DIRECTORY_SEPARATOR === '\\') {
-				return false !== getenv('ANSICON') || 'ON' === getenv('ConEmuANSI') || 'xterm' === getenv('TERM');
+			// Check if output is not a TTY (e.g., redirected to file)
+			if (function_exists('stream_isatty') && !@stream_isatty($this->output)) {
+				return false;
 			}
 			
-			// Linux/macOS detection
-			return function_exists('posix_isatty') && @posix_isatty(STDOUT);
+			// Windows detection - modern Windows 10+ supports ANSI
+			if (DIRECTORY_SEPARATOR === '\\') {
+				// Windows 10+ with VT100 support
+				$version = php_uname('v');
+				if (preg_match('/build (\d+)/', $version, $matches) && (int)$matches[1] >= 10586) {
+					return true;
+				}
+				
+				// Legacy Windows terminal emulators
+				return false !== getenv('ANSICON')
+					|| 'ON' === getenv('ConEmuANSI')
+					|| 'xterm' === getenv('TERM')
+					|| 'Hyper' === getenv('TERM_PROGRAM')
+					|| false !== getenv('WT_SESSION'); // Windows Terminal
+			}
+			
+			// Unix/Linux/macOS detection
+			if (function_exists('posix_isatty')) {
+				return @posix_isatty($this->output);
+			}
+			
+			// Fallback: check TERM environment variable
+			$term = getenv('TERM');
+			return $term && $term !== 'dumb';
 		}
 		
 		/**

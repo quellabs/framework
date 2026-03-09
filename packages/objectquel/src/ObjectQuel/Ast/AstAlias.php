@@ -13,7 +13,6 @@
 		
 		protected string $name;
 		protected AstInterface $expression;
-		protected ?string $aliasPattern;
 		private bool $visibleInResult;
 		
 		/**
@@ -21,13 +20,13 @@
 		 * Initializes the node with an alias and the associated expression.
 		 * @param string $name The alias name.
 		 * @param AstInterface $expression The associated expression.
-		 * @param string|null $aliasPattern The pattern used to find the results
 		 */
-		public function __construct(string $name, AstInterface $expression, ?string $aliasPattern=null) {
+		public function __construct(string $name, AstInterface $expression) {
 			$this->name = $name;
 			$this->expression = $expression;
-			$this->aliasPattern = $aliasPattern;
 			$this->visibleInResult = true;
+			
+			$this->expression->setParent($this);
 		}
 		
 		/**
@@ -57,27 +56,20 @@
 		}
 		
 		/**
-		 * Returns the pattern used to find the information in the SQL result
-		 * @return string|null
-		 */
-		public function getAliasPattern(): ?string {
-			return $this->aliasPattern;
-		}
-
-		/**
-		 * Sets the alias pattern
+		 * Retrieves the associated expression stored in this AST node.
+		 * @param AstInterface $expression
 		 * @return void
 		 */
-		public function setAliasPattern(?string $aliasPattern): void {
-			$this->aliasPattern = $aliasPattern;
+		public function setExpression(AstInterface $expression): void {
+			$this->expression = $expression;
 		}
 		
 		/**
 		 * Returns true if this field is present in the eventual result, false if not
 		 * A field may be invisible if it was automatically added for join purposes
-		 * @return true
+		 * @return bool
 		 */
-		public function isVisibleInResult(): bool {
+		public function showInResult(): bool {
 			return $this->visibleInResult;
 		}
 		
@@ -86,9 +78,28 @@
 		 * @param bool $visibleInResult
 		 * @return void
 		 */
-		public function setVisibleInResult(bool $visibleInResult): void {
+		public function setShowInResult(bool $visibleInResult): void {
 			$this->visibleInResult = $visibleInResult;
 		}
 		
-		
+		/**
+		 * Clone this node
+		 * @return static
+		 */
+		public function deepClone(): static {
+			// Create new instance with cloned expression
+			$clonedExpression = $this->expression->deepClone();
+			
+			// @phpstan-ignore-next-line new.static
+			$clone = new static($this->name, $clonedExpression);
+			
+			// Set the parent relationship
+			$clonedExpression->setParent($clone);
+			
+			// Copy other primitive properties
+			$clone->visibleInResult = $this->visibleInResult;
+	
+			// Return the clone
+			return $clone;
+		}
 	}

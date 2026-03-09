@@ -2,13 +2,15 @@
 	
 	namespace Quellabs\Contracts\Configuration;
 	
+	use IteratorAggregate;
+	
 	/**
 	 * Interface for configuration management implementations
 	 *
 	 * Defines the contract for classes that handle application configuration data
 	 * with support for type casting, default values, and dynamic updates.
 	 */
-	interface ConfigurationInterface {
+	interface ConfigurationInterface extends IteratorAggregate {
 		
 		/**
 		 * Get the entire configuration array

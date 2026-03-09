@@ -2,7 +2,9 @@
 	
 	namespace Quellabs\ObjectQuel\Sculpt\Helpers;
 	
+	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
 	use Quellabs\ObjectQuel\DatabaseAdapter\TypeMapper;
+	use Quellabs\Support\Tools;
 	
 	/**
 	 * Class SchemaComparator
@@ -11,16 +13,18 @@
 	 */
 	class SchemaComparator {
 		
-		/**
-		 * @var TypeMapper Class responsible for mapping phinx types to php and vice versa
-		 */
-		private TypeMapper $typeMapper;
+		private const array NUMERIC_PROPERTIES = ['limit', 'precision', 'scale'];
+		private const array BOOLEAN_PROPERTIES = ['null', 'unsigned', 'signed', 'identity'];
+		
+		/** @var DatabaseAdapter Database connection adapter for querying schema information */
+		private DatabaseAdapter $connection;
 		
 		/**
 		 * SchemaComparator constructor
+		 * @param DatabaseAdapter $connection
 		 */
-		public function __construct() {
-			$this->typeMapper = new TypeMapper();
+		public function __construct(DatabaseAdapter $connection) {
+			$this->connection = $connection;
 		}
 		
 		/**
@@ -29,60 +33,57 @@
 		 * @param array $entityColumns Map of property names to definitions from entity model
 		 * @param array $tableColumns Map of column names to definitions from database
 		 * @return array Structured array of all detected changes
+		 * @throws \InvalidArgumentException If input arrays are malformed
 		 */
 		public function analyzeSchemaChanges(array $entityColumns, array $tableColumns): array {
+			$this->validateInput($entityColumns, 'entityColumns');
+			$this->validateInput($tableColumns, 'tableColumns');
+			
 			return [
-				'added'    => array_diff_key($entityColumns, $tableColumns),
-				'modified' => $this->detectColumnChanges($entityColumns, $tableColumns),
-				'deleted'  => array_diff_key($tableColumns, $entityColumns)
+				'added'    => $this->getAddedColumns($entityColumns, $tableColumns),
+				'modified' => $this->getModifiedColumns($entityColumns, $tableColumns),
+				'deleted'  => $this->getDeletedColumns($entityColumns, $tableColumns)
 			];
 		}
 		
 		/**
-		 * Identifies columns that exist in both entity and table but have differences
+		 * Get columns that exist in entity but not in table
+		 * @param array $entityColumns Map of property names to definitions from entity model
+		 * @param array $tableColumns Map of column names to definitions from database
+		 * @return array Columns that need to be added to the table
+		 */
+		private function getAddedColumns(array $entityColumns, array $tableColumns): array {
+			return array_diff_key($entityColumns, $tableColumns);
+		}
+		
+		/**
+		 * Get columns that exist in table but not in entity
+		 * @param array $entityColumns Map of property names to definitions from entity model
+		 * @param array $tableColumns Map of column names to definitions from database
+		 * @return array Columns that need to be deleted from the table
+		 */
+		private function getDeletedColumns(array $entityColumns, array $tableColumns): array {
+			return array_diff_key($tableColumns, $entityColumns);
+		}
+		
+		/**
+		 * Get columns that exist in both but have differences
 		 * @param array $entityColumns Definition of properties from the entity model
 		 * @param array $tableColumns Definition of columns from the database table
 		 * @return array Columns that need to be modified in the table
 		 */
-		private function detectColumnChanges(array $entityColumns, array $tableColumns): array {
+		private function getModifiedColumns(array $entityColumns, array $tableColumns): array {
 			$result = [];
 			
-			foreach (array_intersect_key($entityColumns, $tableColumns) as $name => $entityColumn) {
-				// Fetch column information from database
-				$tableColumn = $tableColumns[$name];
+			foreach (array_intersect_key($entityColumns, $tableColumns) as $columnName => $entityColumn) {
+				$normalizedEntity = $this->normalizeColumnDefinition($entityColumn);
+				$normalizedTable = $this->normalizeColumnDefinition($tableColumns[$columnName]);
 				
-				// Use the correct column type for comparison - entity's type takes precedence
-				$columnType = $entityColumn['type'] ?? 'string';
-				
-				// Get only the relevant properties for this specific column type
-				$relevantProperties = $this->typeMapper->getRelevantProperties($columnType);
-				
-				// Filter the entity and table columns to include ONLY the relevant properties
-				// This automatically ignores any properties not relevant to this column type
-				$entityCompare = array_intersect_key($entityColumn, array_flip($relevantProperties));
-				$tableCompare = array_intersect_key($tableColumn, array_flip($relevantProperties));
-
-				// Normalize entity column definition by adding default limit if missing
-				// This handles cases where the entity relies on database defaults
-				if (!isset($entityCompare['limit'])) {
-					$entityCompare['limit'] = $this->typeMapper->getDefaultLimit($entityCompare['type']);
-				}
-
-				// Normalize database column metadata by adding default limit if missing
-				// This handles cases where database metadata doesn't explicitly report standard limits
-				if (!isset($tableCompare['limit'])) {
-					$tableCompare['limit'] = $this->typeMapper->getDefaultLimit($tableCompare['type']);
-				}
-				
-				// Normalize the values for proper comparison
-				$entityCompare = $this->normalizeColumnValues($entityCompare);
-				$tableCompare = $this->normalizeColumnValues($tableCompare);
-				
-				// Only flag as changed if the normalized values differ
-				if ($entityCompare != $tableCompare) {
-					$result[$name] = [
-						'from' => $tableColumn,
-						'to'   => $entityColumn,
+				if ($normalizedEntity !== $normalizedTable) {
+					$result[$columnName] = [
+						'from'    => $normalizedTable,
+						'to'      => $normalizedEntity,
+						'changes' => $this->identifySpecificChanges($normalizedTable, $normalizedEntity)
 					];
 				}
 			}
@@ -91,26 +92,202 @@
 		}
 		
 		/**
-		 * Normalize column values for consistent comparison
+		 * Identify specific properties that changed between two column definitions
+		 * @param array $from Original column definition (normalized)
+		 * @param array $to New column definition (normalized)
+		 * @return array Map of property names to their before/after values
+		 */
+		private function identifySpecificChanges(array $from, array $to): array {
+			$changes = [];
+			$allKeys = array_unique(array_merge(array_keys($from), array_keys($to)));
+			
+			foreach ($allKeys as $key) {
+				$fromValue = $from[$key] ?? null;
+				$toValue = $to[$key] ?? null;
+				
+				if ($fromValue !== $toValue) {
+					$changes[$key] = [
+						'from' => $fromValue,
+						'to'   => $toValue
+					];
+				}
+			}
+			
+			return $changes;
+		}
+		
+		/**
+		 * Normalize column definition for consistent comparison
 		 * @param array $columnDefinition The column definition to normalize
 		 * @return array Normalized column definition
 		 */
-		private function normalizeColumnValues(array $columnDefinition): array {
-			$result = $columnDefinition;
+		private function normalizeColumnDefinition(array $columnDefinition): array {
+			// Step 1: Add any missing default values to ensure all required properties are present
+			$normalized = $this->addDefaultValues($columnDefinition);
 			
-			// Convert numeric values to their appropriate types
-			foreach ($result as $property => $value) {
-				// Convert limit, precision, scale to integers
-				if (in_array($property, ['limit', 'precision', 'scale']) && is_numeric($value)) {
-					$result[$property] = (int)$value;
-				}
-				
-				// Normalize boolean values
-				if (in_array($property, ['null', 'unsigned', 'signed', 'identity'])) {
-					$result[$property] = (bool)$value;
+			// Step 2: If database does not support ENUM, normalize enum to string
+			if (
+				isset($normalized['type']) &&
+				$normalized['type'] === 'enum' &&
+				!$this->connection->supportsNativeEnums()
+			) {
+				$normalized['type'] = 'string';
+			}
+			
+			// Step 4: Remove irrelevant or comparison-specific properties that shouldn't affect equality
+			$normalized = $this->filterRelevantProperties($normalized);
+			
+			// Step 5: Standardize property values to a consistent format - pass full context
+			$normalized = $this->normalizePropertyValues($normalized);
+			
+			// Step 5: Sort the array keys alphabetically for consistent ordering
+			ksort($normalized);
+			
+			// Return the sorted result
+			return $normalized;
+		}
+		
+		/**
+		 * Add default values where missing
+		 * @param array $columnDefinition Raw column definition
+		 * @return array Column definition with default values added
+		 */
+		private function addDefaultValues(array $columnDefinition): array {
+			$result = $columnDefinition;
+			$columnType = $result['type'] ?? 'string';
+			
+			// Add default limit if missing
+			if (!isset($result['limit'])) {
+				if ($result["type"] === 'enum' && !empty($columnDefinition['enumType'])) {
+					$result['limit'] = max(Tools::getMaxEnumValueLength($columnDefinition['enumType']), 32);
+				} else {
+					$result['limit'] = TypeMapper::getDefaultLimit($columnType);
 				}
 			}
 			
 			return $result;
+		}
+		
+		/**
+		 * Filter to only include properties relevant to the column type
+		 * @param array $columnDefinition Column definition with all properties
+		 * @return array Column definition with only type-relevant properties
+		 */
+		private function filterRelevantProperties(array $columnDefinition): array {
+			$columnType = $columnDefinition['type'] ?? 'string';
+			$relevantProperties = TypeMapper::getRelevantProperties($columnType);
+			
+			return array_intersect_key($columnDefinition, array_flip($relevantProperties));
+		}
+		
+		/**
+		 * Normalize property values for consistent comparison
+		 * @param array $columnDefinition Column definition to normalize
+		 * @return array Column definition with normalized property values
+		 */
+		private function normalizePropertyValues(array $columnDefinition): array {
+			// Extract column type, defaulting to 'string' if not specified
+			$columnType = $columnDefinition['type'] ?? 'string';
+			
+			// Normalize each property value based on its property name and the column type
+			$result = [];
+			
+			foreach ($columnDefinition as $property => $value) {
+				$result[$property] = $this->normalizePropertyValue($property, $value, $columnType);
+			}
+			
+			return $result;
+		}
+		
+		/**
+		 * Normalize a specific property value based on its type and column context
+		 * @param string $property Property name
+		 * @param mixed $value Property value to normalize
+		 * @param string $columnType The column type for context
+		 * @return mixed Normalized property value
+		 */
+		private function normalizePropertyValue(string $property, mixed $value, string $columnType): mixed {
+			// Convert numeric properties to integers if the value is numeric
+			// This ensures consistent data types for properties like length, precision, scale, etc.
+			if (in_array($property, self::NUMERIC_PROPERTIES) && is_numeric($value)) {
+				return (int)$value;
+			}
+			
+			// Convert boolean properties to actual boolean values
+			// This handles properties like nullable, unsigned, auto_increment, etc.
+			if (in_array($property, self::BOOLEAN_PROPERTIES)) {
+				return (bool)$value;
+			}
+			
+			// Special case: handle default values for boolean columns
+			// Boolean column defaults need special normalization (e.g., "0"/"1" strings to booleans)
+			if ($property === 'default' && $columnType === 'boolean') {
+				return $this->normalizeBooleanDefault($value);
+			}
+			
+			// Clean up string values by removing leading/trailing whitespace
+			// This ensures consistent formatting for string properties
+			if (is_string($value)) {
+				return trim($value);
+			}
+			
+			// Return the value unchanged if no specific normalization rules apply
+			// This preserves the original value for unsupported types or edge cases
+			return $value;
+		}
+		
+		/**
+		 * Normalize boolean default values to handle database tinyint(1) vs PHP boolean differences
+		 * @param mixed $value The default value to normalize (can be bool, int, string, or other types)
+		 * @return int|null Normalized boolean value as integer for consistency (0 or 1)
+		 */
+		private function normalizeBooleanDefault(mixed $value): ?int {
+			// Check for null values
+			if ($value === null) {
+				return null;
+			}
+			
+			// Handle all truthy boolean representations
+			// Covers: PHP true, integer 1, string '1', string 'true' (case-sensitive)
+			if ($value === true || $value === 1 || $value === '1' || $value === 'true') {
+				return 1;
+			}
+			
+			// Handle all falsy boolean representations
+			// Covers: PHP false, integer 0, string '0', string 'false' (case-sensitive)
+			if ($value === false || $value === 0 || $value === '0' || $value === 'false') {
+				return 0;
+			}
+			
+			// Fallback for unexpected values
+			if (is_numeric($value)) {
+				return (int)$value;
+			}
+			
+			// Fallback for unexpected values - treat as falsy
+			return 0;
+		}
+		
+		/**
+		 * Validate input arrays to ensure they have the expected structure
+		 * @param array $columns Array of column definitions to validate
+		 * @param string $parameterName Name of the parameter being validated (for error messages)
+		 * @return void
+		 * @throws \InvalidArgumentException If validation fails
+		 */
+		private function validateInput(array $columns, string $parameterName): void {
+			foreach ($columns as $columnName => $columnDefinition) {
+				if (!is_string($columnName)) {
+					throw new \InvalidArgumentException(
+						"Invalid column name in {$parameterName}: expected string, got " . gettype($columnName)
+					);
+				}
+				
+				if (!is_array($columnDefinition)) {
+					throw new \InvalidArgumentException(
+						"Invalid column definition for '{$columnName}' in {$parameterName}: expected array, got " . gettype($columnDefinition)
+					);
+				}
+			}
 		}
 	}

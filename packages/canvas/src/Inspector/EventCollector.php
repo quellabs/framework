@@ -22,7 +22,6 @@
 		/**
 		 * Constructor - sets up signal listeners for debug events
 		 * @param SignalHub $signalHub The signal hub instance to monitor
-		 * @throws \Exception
 		 */
 		public function __construct(SignalHub $signalHub) {
 			// Register a listener for when new signals are created
@@ -30,7 +29,7 @@
 			$signalHub->signalRegistered()->connect([$this, 'handleNewSignal']);
 			
 			// Connect to any debug signals that already exist in the hub
-			$this->connectToExistingSignals($signalHub);
+			$this->connectToCanvasQuerySignal($signalHub);
 		}
 		
 		/**
@@ -44,7 +43,7 @@
 			// Only connect to signals that start with 'debug.'
 			if ($name && str_starts_with($name, 'debug.')) {
 				// Connect an anonymous function to capture the signal's data
-				$signal->connect(function (array $data) use ($name) {
+				$signal->connect(function (array $data) use ($name): void {
 					// Store the event with signal name, data, and high-precision timestamp
 					$this->events[] = [
 						'signal'    => $name,
@@ -90,19 +89,21 @@
 		/**
 		 * Connects to debug signals that already exist in the SignalHub
 		 * @param SignalHub $signalHub The signal hub to check for existing signals
-		 * @throws \Exception
 		 */
-		private function connectToExistingSignals(SignalHub $signalHub): void {
+		private function connectToCanvasQuerySignal(SignalHub $signalHub): void {
 			// Connect to the specific debug signal for canvas queries
 			// This is needed because the signal might already exist when this collector is created
-			$signalHub->getSignal('debug.canvas.query')->connect(function (array $data) {
-				// Store the event data with timestamp
-				$this->events[] = [
-					'signal'    => 'debug.canvas.query',
-					'data'      => $data,
-					'timestamp' => microtime(true),
-				];
-			});
+			try {
+				$signalHub->getSignal('debug.canvas.query')->connect(function (array $data): void {
+					// Store the event data with timestamp
+					$this->events[] = [
+						'signal'    => 'debug.canvas.query',
+						'data'      => $data,
+						'timestamp' => microtime(true),
+					];
+				});
+			} catch (\Throwable $exception) {
+			}
 		}
 		
 		/**

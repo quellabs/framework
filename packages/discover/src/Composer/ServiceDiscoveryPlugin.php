@@ -22,11 +22,13 @@
 		
 		/**
 		 * @var Composer The Composer instance
+		 * @phpstan-ignore property.onlyWritten
 		 */
 		private Composer $composer;
 		
 		/**
 		 * @var IOInterface The IO interface for output messages
+		 * @phpstan-ignore property.onlyWritten
 		 */
 		private IOInterface $io;
 		
@@ -87,16 +89,16 @@
 		 * Handle the post-install event
 		 * @param Event $event The Composer event object
 		 */
-		public function onPostInstall(Event $event) {
-			$this->generateServiceMap($event->getComposer(), $event->getIO());
+		public function onPostInstall(Event $event): void {
+			$this->generateServiceMap($event->getComposer(), $event->getIO(), $event->isDevMode());
 		}
 		
 		/**
 		 * Handle the post-update event
 		 * @param Event $event The Composer event object
 		 */
-		public function onPostUpdate(Event $event) {
-			$this->generateServiceMap($event->getComposer(), $event->getIO());
+		public function onPostUpdate(Event $event): void {
+			$this->generateServiceMap($event->getComposer(), $event->getIO(), $event->isDevMode());
 		}
 		
 		/**
@@ -109,8 +111,9 @@
 		 *
 		 * @param Composer $composer The Composer instance
 		 * @param IOInterface $io The IO interface for output messages
+		 * @param bool $devMode Whether dev dependencies are installed
 		 */
-		private function generateServiceMap(Composer $composer, IOInterface $io): void {
+		private function generateServiceMap(Composer $composer, IOInterface $io, bool $devMode): void {
 			try {
 				// Output message
 				$io->write('<info>Discover: Building service discovery map from package metadata...</info>');
@@ -129,7 +132,7 @@
 				$lockData = $locker->getLockData();
 				
 				// Extract the extra data from all packages in the lock file
-				$extraMap = $this->extractServiceMap($lockData);
+				$extraMap = $this->extractServiceMap($lockData, $devMode);
 				
 				// Skip file generation if no packages have extra data
 				if (empty($extraMap)) {
@@ -197,28 +200,33 @@
 			if (str_starts_with($path, '/')) {
 				return true;
 			}
-			
-			// Windows-style absolute path (C:\, D:\, etc.)
-			if (PHP_OS_FAMILY === 'Windows' && preg_match('/^[A-Za-z]:[\/\\\\]/', $path)) {
-				return true;
-			}
-			
-			// Not an absolute path
-			return false;
+			// Windows-style absolute path (C:\, D:\, etc.) and not an absolute path
+			return PHP_OS_FAMILY === 'Windows' && preg_match('/^[A-Za-z]:[\/\\\\]/', $path);
 		}
 		
 		/**
 		 * Extract extra data from the service discovery config file
 		 * @param array $lockData
+		 * @param bool $devMode Whether to include packages-dev entries
 		 * @return array Associative array mapping package names to their extra data
 		 */
-		private function extractServiceMap(array $lockData): array {
+		private function extractServiceMap(array $lockData, bool $devMode): array {
 			$extraMap = [];
 			
-			// Process main packages only (no dev packages)
-			// The 'packages' key contains production dependencies
-			if (isset($lockData['packages'])) {
-				foreach ($lockData['packages'] as $package) {
+			// Determine which package sets to process
+			// In dev mode, include packages-dev so dev providers are discoverable
+			if ($devMode) {
+				$packageSets = ['packages', 'packages-dev'];
+			} else {
+				$packageSets = ['packages'];
+			}
+			
+			foreach ($packageSets as $packageSet) {
+				if (!isset($lockData[$packageSet])) {
+					continue;
+				}
+				
+				foreach ($lockData[$packageSet] as $package) {
 					// Skip invalid packages  (shouldn't happen but safety first)
 					if (
 						empty($package['name']) ||

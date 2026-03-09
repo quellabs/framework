@@ -1,7 +1,10 @@
 parameters:
     level: 4
     paths:
+        - packages/objectquel/src
         - packages/canvas/src
+        - packages/annotation-reader/src
+        - packages/discover/src
     bootstrapFiles:
         - vendor/autoload.php
     scanDirectories:
@@ -9,8 +12,12 @@ parameters:
         - packages/canvas-objectquel/src
         - packages/canvas-smarty/src
         - packages/contracts/src
+        - packages/support/src
+        - packages/cache/src
         - packages/dependency-injection/src
         - packages/discover/src
         - packages/objectquel/src
         - packages/sculpt/src
         - packages/signal-hub/src
+    tips:
+        treatPhpDocTypesAsCertain: false

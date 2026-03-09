@@ -100,65 +100,6 @@
 		}
 		
 		/**
-		 * Get comprehensive statistics about the enhanced route index
-		 * @return array Detailed statistics about route distribution and index efficiency
-		 */
-		public function getIndexStatistics(): array {
-			$index = $this->getRouteIndex();
-			
-			// Calculate total routes registered in the system
-			$totalRoutes = 0;
-			
-			// Count groups organized by segment count (routes with 1 segment, 2 segments, etc.)
-			$segmentCountGroups = count($index['segment_count'] ?? []);
-			
-			// Count groups organized by HTTP method (GET, POST, PUT, etc.)
-			$httpMethodGroups = count($index['http_methods'] ?? []);
-			
-			// Count positions in the multi-level index structure
-			// Multi-level index organizes routes by parameter positions for faster lookup
-			$multiLevelPositions = count($index['multi_level'] ?? []);
-			
-			// Count total routes from segment count index
-			foreach ($index['segment_count'] ?? [] as $routes) {
-				$totalRoutes += count($routes);
-			}
-			
-			// Calculate multi-level index efficiency
-			$totalStaticSegmentMappings = 0;
-			
-			foreach ($index['multi_level'] ?? [] as $positionGroup) {
-				foreach ($positionGroup as $staticGroup) {
-					$totalStaticSegmentMappings += count($staticGroup);
-				}
-			}
-			
-			// Calculate the maximum depth of the prefix tree structure
-			$trieDepth = $this->calculateTrieDepth($index['prefix_tree'] ?? []);
-			
-			// Count total nodes in the prefix tree
-			$trieNodes = $this->countTrieNodes($index['prefix_tree'] ?? []);
-			
-			return [
-				// Basic route counts by category
-				'total_routes'            => $totalRoutes,                 // Total number of routes
-				
-				// Enhanced index metrics
-				'segment_count_groups'    => $segmentCountGroups,         // Groups by path segment count
-				'http_method_groups'      => $httpMethodGroups,           // Groups by HTTP method
-				'multi_level_positions'   => $multiLevelPositions,        // Positions in multi-level index
-				'static_segment_mappings' => $totalStaticSegmentMappings, // Static mappings in multi-level index
-				
-				// Trie metrics - prefix tree performance indicators
-				'trie_depth'              => $trieDepth,                  // Maximum depth of the prefix tree
-				'trie_nodes'              => $trieNodes,                  // Total nodes in the prefix tree
-				
-				// Performance indicators
-				'pre_filter_potential'    => $this->calculatePreFilterPotential($index), // Routing efficiency score
-			];
-		}
-		
-		/**
 		 * Clear the cached route index
 		 * @return void
 		 */
@@ -260,7 +201,7 @@
 			// consider routes that both match the segment count AND the HTTP method
 			$candidates = $this->intersectRoutes($methodCandidates, $exactMatches);
 			
-			// Phase 2: ENHANCED - Check routes with fewer segments that have wildcards
+			// Phase 2: ENHANCED - Check routes with fewer segments that have wildcards.
 			// Wildcards can consume multiple URL segments, so a 2-segment route pattern
 			// like "/user/v{path:**}" can match a 3-segment URL like "/user/v10/20"
 			// We need to check all routes with fewer segments than the request
@@ -368,7 +309,9 @@
 		 * @param array &$index Reference to index structure
 		 */
 		private function addToMultiLevelIndex(array $route, array $compiledPattern, array &$index): void {
-			for ($position = 0; $position < count($compiledPattern); $position++) {
+			$counter = count($compiledPattern);
+			
+			for ($position = 0; $position < $counter; $position++) {
 				$segment = $compiledPattern[$position];
 				
 				// Only index static segments for fast elimination
@@ -551,12 +494,12 @@
 				// HTTP method reduction: percentage of routes eliminated by filtering on HTTP method
 				// Formula: (1 - average_routes_per_method / total_routes) * 100
 				// Higher percentage means better filtering efficiency
-				'http_method_reduction'   => $methodCount > 0 ? round((1 - $avgRoutesPerMethod / $totalRoutes) * 100, 2) : 0,
+				'http_method_reduction'   => $methodCount > 0 ? round((1 - $avgRoutesPerMethod / $totalRoutes) * 100, 2, PHP_ROUND_HALF_UP ) : 0,
 				
 				// Segment count reduction: percentage of routes eliminated by filtering on segment count
 				// Formula: (1 - average_routes_per_segment_count / total_routes) * 100
 				// Higher percentage means better filtering efficiency
-				'segment_count_reduction' => $segmentCountGroups > 0 ? round((1 - $avgRoutesPerSegmentCount / $totalRoutes) * 100, 2) : 0,
+				'segment_count_reduction' => $segmentCountGroups > 0 ? round((1 - $avgRoutesPerSegmentCount / $totalRoutes) * 100, 2, PHP_ROUND_HALF_UP ) : 0,
 				
 				// Combined potential is difficult to calculate precisely since it depends on
 				// the specific combination of HTTP method and segment count for each request
@@ -693,9 +636,11 @@
 			// Extract the multi-level index structure that maps position -> static_segment -> routes
 			// This index allows O(1) lookup of routes that have specific static segments at specific positions
 			$multiLevelIndex = $routeIndex['multi_level'] ?? [];
-			
+
 			// Iterate through each position in the request URL to progressively filter candidates
-			for ($position = 0; $position < count($requestUrl); $position++) {
+			$counter = count($requestUrl);
+			
+			for ($position = 0; $position < $counter; $position++) {
 				// Get the URL segment at current position (e.g., 'users' in '/users/123/edit')
 				$urlSegment = $requestUrl[$position];
 				

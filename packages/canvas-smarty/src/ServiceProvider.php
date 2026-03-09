@@ -48,7 +48,7 @@
 				'debugging'      => false,
 				
 				// Enable/disable template caching for better performance
-				'caching'        => true,
+				'caching'        => false,
 				
 				// Clear the compiled directory on cache flush
 				'clear_compiled' => true,

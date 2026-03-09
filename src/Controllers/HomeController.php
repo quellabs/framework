@@ -2,25 +2,28 @@
 	
 	namespace App\Controllers;
 	
+	use App\Entities\PostEntity;
+	use App\Enums\TestEnum;
 	use Quellabs\Canvas\Annotations\Route;
-	use Quellabs\Canvas\Annotations\InterceptWith;
-	use Quellabs\Canvas\RateLimiting\RateLimitAspect;
-	use Quellabs\Canvas\Cache\Contracts\CacheInterface;
-	use Quellabs\Canvas\Controllers\BaseController;
+	use Quellabs\Canvas\Controllers\SecureController;
+	use Quellabs\Canvas\Validation\Rules\Date;
+	use Quellabs\DependencyInjection\Container;
+	use Quellabs\SignalHub\Signal;
+	use Symfony\Component\HttpFoundation\Request;
 	use Symfony\Component\HttpFoundation\Response;
 	
-	class HomeController extends BaseController {
-		
+	class HomeController extends SecureController {
+	
 		/**
 		 * @Route("/")
 		 * @return Response
 		 */
-		public function index(CacheInterface $cache): Response {
-			return new Response("<h1>Welcome to Canvas Blog!</h1>");
+		public function index(Request $request): Response {
+			return $this->render("home/index3.tpl");
 		}
 		
 		/**
-		 * @Route("/hello/{name}")
+		 * @Route("/hello/{name:int}")
 		 * @param string $name
 		 * @return Response
 		 */

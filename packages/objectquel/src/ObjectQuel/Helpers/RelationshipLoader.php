@@ -9,6 +9,7 @@
 	use Quellabs\ObjectQuel\Collections\EntityCollection;
 	use Quellabs\ObjectQuel\EntityStore;
 	use Quellabs\ObjectQuel\EntityManager;
+	use Quellabs\ObjectQuel\ObjectQuel\QuelException;
 	use Quellabs\ObjectQuel\UnitOfWork;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIdentifier;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabase;
@@ -67,7 +68,7 @@
 			}
 			
 			// Determine the column and value for the relation based on the dependency.
-			$relationColumn = $dependency->getRelationColumn();
+			$relationColumn = $dependency->getRelationColumn() ?? "{$property}Id";
 			$relationColumnValue = $this->propertyHandler->get($entity, $relationColumn);
 			
 			// If the value of the relation column is 0 or null, the operation does not continue.
@@ -126,7 +127,7 @@
 		 */
 		private function createAndSetProxy(object $entity, string $property, object $dependency): void {
 			// Determine the relation column (the column containing the foreign key)
-			$relationColumn = $this->getRelationColumn($entity, $dependency);
+			$relationColumn = $dependency->getRelationColumn() ?? $this->entityStore->getPrimaryKey($entity);
 			
 			// Get the primary key value. If it's empty, clear the relationship
 			$relationColumnValue = $this->propertyHandler->get($entity, $relationColumn);
@@ -138,7 +139,6 @@
 			
 			// Gather information needed to create the proxy
 			$targetEntityName = $dependency->getTargetEntity();
-			$proxyClassName = $this->entityManager->getEntityStore()->getProxyGenerator()->getProxyClass($targetEntityName);
 			
 			if ($dependency instanceof ManyToOne) {
 				$relationPropertyName = $dependency->getInversedBy();
@@ -153,8 +153,23 @@
 			
 			// Create a new proxy if no existing entity was found
 			if ($proxyEntity === null) {
+				$proxyGenerator = $this->entityStore->getProxyGenerator();
+				$proxyClassName = $proxyGenerator->getProxyClass($targetEntityName);
+				$proxyFilePath = $proxyGenerator->getProxyFilePath($targetEntityName);
+				
+				// Load the proxy class file if it doesn't exist
+				if (!class_exists($proxyClassName, false)) {
+					require_once $proxyFilePath;
+				}
+				
+				// Instantiate the proxy
 				$proxyEntity = new $proxyClassName($this->entityManager);
-				$this->propertyHandler->set($proxyEntity, $relationPropertyName, $relationColumnValue);
+				
+				// Set the primary key on the proxy using the target entity's primary key property name
+				$targetPrimaryKeys = $this->entityStore->getIdentifierKeys($targetEntityName);
+				$this->propertyHandler->set($proxyEntity, $targetPrimaryKeys[0], $relationColumnValue);
+
+				// Put the proxy under ownership
 				$this->entityManager->persist($proxyEntity);
 			}
 			
@@ -219,26 +234,6 @@
 			
 			// Return the array of valid dependencies
 			return $validDependencies;
-		}
-		
-		/**
-		 * Determines the relation column for a given entity and dependency.
-		 * This method finds the appropriate column that stores the foreign key value
-		 * for the relationship, either using the explicitly defined relation column
-		 * or falling back to the primary key of the entity.
-		 * @param object $entity The entity for which the relation column is determined
-		 * @param object $dependency The dependency object describing the relationship
-		 * @return string The name of the relation column
-		 */
-		private function getRelationColumn(object $entity, object $dependency): string {
-			$relationColumn = $dependency->getRelationColumn();
-			
-			if (empty($relationColumn)) {
-				$primaryKeys = $this->entityStore->getIdentifierKeys($entity);
-				$relationColumn = $primaryKeys[0];
-			}
-			
-			return $relationColumn;
 		}
 		
 		/**
@@ -345,12 +340,13 @@
 		 * Promotes empty OneToMany relationships to lazy-loaded collections for the given filtered rows.
 		 * @param array $filteredRows The rows that need to be processed
 		 * @return void
+		 * @throws QuelException
 		 */
 		private function setupOneToManyCollections(array $filteredRows): void {
 			// Loop through all filtered rows
-			foreach ($filteredRows as $value) {
+			foreach ($filteredRows as $entity) {
 				// Get the normalized name of the entity class
-				$objectClass = $this->entityStore->normalizeEntityName(get_class($value));
+				$objectClass = $this->entityStore->normalizeEntityName(get_class($entity));
 				
 				// Get all dependencies of the entity class
 				$entityDependencies = $this->entityStore->getAllDependencies($objectClass);
@@ -358,13 +354,21 @@
 				// Loop through all properties and their dependencies
 				foreach ($entityDependencies as $property => $dependencies) {
 					// Filter empty One-to-Many dependencies for the current value and property
-					$validDependencies = $this->filterEmptyOneToManyDependencies($value, $property, $dependencies);
+					$validDependencies = $this->filterEmptyOneToManyDependencies($entity, $property, $dependencies);
 					
 					// Create and set a collection of entities for each valid dependency
 					foreach ($validDependencies as $dependency) {
 						$targetEntity = $this->entityStore->normalizeEntityName($dependency->getTargetEntity());
-						$relationColumn = $this->getRelationColumn($value, $dependency);
+						$relationColumn = $dependency->getRelationColumn() ?? $this->entityStore->getPrimaryKey($entity);
+						
+						// Check if OneToMany has mappedBy. If not error out
 						$mappedBy = $dependency->getMappedBy();
+
+						if (empty($mappedBy)) {
+							throw new QuelException(
+								"OneToMany on {$objectClass}::{$property} requires mappedBy"
+							);
+						}
 						
 						// Do nothing if the data for this query was requested. There is simply no data,
 						// so there's no point in lazy loading this data. We keep the empty collection.
@@ -373,14 +377,14 @@
 						}
 						
 						// Create an Entity Collection
-						$primaryKeyValue = $this->propertyHandler->get($value, $relationColumn);
+						$primaryKeyValue = $this->propertyHandler->get($entity, $relationColumn);
 						
 						$proxy = new EntityCollection(
 							$this->entityManager, $targetEntity, $dependency->getMappedBy(),
 							$primaryKeyValue, $dependency->getOrderBy()
 						);
 						
-						$this->propertyHandler->set($value, $property, $proxy);
+						$this->propertyHandler->set($entity, $property, $proxy);
 					}
 				}
 			}

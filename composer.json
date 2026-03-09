@@ -35,6 +35,10 @@
     },
     {
       "type": "path",
+      "url": "./packages/cache"
+    },
+    {
+      "type": "path",
       "url": "./packages/dependency-injection"
     },
     {
@@ -56,6 +60,10 @@
     {
       "type": "path",
       "url": "./packages/support"
+    },
+    {
+      "type": "path",
+      "url": "./packages/canvas-database"
     }
   ],
   "require": {
@@ -68,9 +76,14 @@
     "softcreatr/jsonpath": "*",
     "composer-plugin-api": "^2.0"
   },
+  "suggest": {
+    "ext-redis": "Required for Redis cache driver",
+    "ext-memcached": "Required for Memcached cache driver"
+  },
   "require-dev": {
     "phpstan/phpstan": "*",
     "phpunit/phpunit": "^9",
+    "rector/rector": "*",
     "composer/composer": "^2.0",
     "quellabs/sculpt": "dev-main as 1.999.999",
     "quellabs/contracts": "dev-main as 1.999.999",
@@ -81,10 +94,12 @@
     "quellabs/canvas-smarty": "dev-main as 1.999.999",
     "quellabs/canvas-twig": "dev-main as 1.999.999",
     "quellabs/canvas-skeleton": "dev-main as 1.999.999",
+    "quellabs/canvas-database": "dev-main as 1.999.999",
     "quellabs/dependency-injection": "dev-main as 1.999.999",
     "quellabs/discover": "dev-main as 1.999.999",
     "quellabs/objectquel": "dev-main as 1.999.999",
-    "quellabs/signal-hub": "dev-main as 1.999.999"
+    "quellabs/signal-hub": "dev-main as 1.999.999",
+    "quellabs/cache": "dev-main as 1.999.999"
   },
   "autoload": {
     "psr-4": {
@@ -98,10 +113,15 @@
       "Quellabs\\ObjectQuel\\": "packages/objectquel/src/",
       "Quellabs\\SignalHub\\": "packages/signal-hub/src/",
       "Quellabs\\Canvas\\": "packages/canvas/src/",
-      "Quellabs\\Canvas\\ObjectQuel\\": "packages/canvas-objectquel/src/",
+      "Quellabs\\CanvasDatabase\\": "packages/canvas-database/src/",
+      "Quellabs\\CanvasObjectQuel\\": "packages/canvas-objectquel/src/",
       "Quellabs\\Canvas\\Smarty\\": "packages/canvas-smarty/src/",
-      "Quellabs\\Canvas\\Twig\\": "packages/canvas-twig/src/"
-    }
+      "Quellabs\\Canvas\\Twig\\": "packages/canvas-twig/src/",
+      "Quellabs\\Canvas\\Cache\\": "packages/cache/src/"
+    },
+    "files": [
+      "packages/support/src/bootstrap.php"
+    ]
   },
   "config": {
     "allow-plugins": {

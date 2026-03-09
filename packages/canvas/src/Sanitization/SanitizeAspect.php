@@ -2,9 +2,10 @@
 	
 	namespace Quellabs\Canvas\Sanitization;
 	
-	use Quellabs\Contracts\AOP\BeforeAspect;
+	use Quellabs\Canvas\AOP\Contracts\BeforeAspectInterface;
+	use Quellabs\Canvas\Routing\Context\MethodContext;
 	use Quellabs\Canvas\Sanitization\Contracts\SanitizationInterface;
-	use Quellabs\Contracts\AOP\MethodContext;
+	use Quellabs\Canvas\Routing\Contracts\MethodContextInterface;
 	use Quellabs\Contracts\DependencyInjection\Container;
 	use Symfony\Component\HttpFoundation\Request;
 	use Symfony\Component\HttpFoundation\Response;
@@ -14,7 +15,7 @@
 	 * before method execution. This aspect can be applied to controller methods
 	 * to automatically sanitize incoming POST and GET data.
 	 */
-	class SanitizeAspect implements BeforeAspect {
+	class SanitizeAspect implements BeforeAspectInterface {
 		
 		/**
 		 * @var Container The Dependency Injector container
@@ -43,7 +44,7 @@
 		 * @param MethodContext $context The method execution context containing request data
 		 * @return Response|null Returns null to continue execution, or a Response to short-circuit
 		 */
-		public function before(MethodContext $context): ?Response {
+		public function before(MethodContextInterface $context): ?Response {
 			// Skip sanitization if no sanitizer is configured
 			if (!$this->sanitizationClass) {
 				return null;
@@ -95,13 +96,20 @@
 		 * @param array $rules The sanitization rules
 		 */
 		private function sanitizeRequestData(Request $request, array $rules): void {
-			// Sanitize POST data and replace the original request data
-			$post = $request->request->all();
-			$request->request->replace($this->applySanitization($post, $rules));
+			// Capture original data
+			$originalPost = $request->request->all();
+			$originalQuery = $request->query->all();
 			
-			// Sanitize GET data and replace the original query parameters
-			$query = $request->query->all();
-			$request->query->replace($this->applySanitization($query, $rules));
+			// Apply sanitization rules
+			$sanitizedPost = $this->applySanitization($originalPost, $rules);
+			$sanitizedQuery = $this->applySanitization($originalQuery, $rules);
+			
+			// Store sanitized results in request attributes for explicit downstream access
+			$request->attributes->set('sanitized', [
+				'post'   => $sanitizedPost,
+				'query'  => $sanitizedQuery,
+				'merged' => array_replace($sanitizedQuery, $sanitizedPost),
+			]);
 		}
 		
 		/**

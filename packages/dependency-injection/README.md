@@ -13,6 +13,7 @@ A lightweight, PSR-compliant dependency injection container for PHP with advance
 - **Method Injection**: Support for dependency injection in any method, not just constructors
 - **Default Service Fallback**: Automatically handle classes with no dedicated provider
 - **Singleton by Default**: The default service provider resolves all classes as singletons
+- **All Parameters Magic**: Special `$__all__` parameter for accessing all injection parameters
 
 ## Installation
 
@@ -26,6 +27,9 @@ composer require quellabs/dependency-injection
 // Create a container
 $container = new \Quellabs\DependencyInjection\Container();
 
+// Checks if the container can resolve the class or interface
+$canResolve = $container->has(MyService::class);
+
 // Get a service (automatically resolves all dependencies)
 $service = $container->get(MyService::class);
 
@@ -38,7 +42,20 @@ $result = $container->invoke($service, 'doSomething', ['extraParam' => 'value'])
 
 ## Service Resolution Methods
 
-The container provides two primary methods for resolving dependencies:
+The container provides three primary methods for resolving dependencies:
+
+### `has()` - Checking Service Availability
+
+Use `has()` to check if a service can be resolved:
+
+```php
+// Check before resolving
+if ($container->has(LoggerInterface::class)) {
+    $logger = $container->get(LoggerInterface::class);
+}
+```
+
+**Note:** `has()` returns `true` if the container can *attempt* resolution. Concrete classes always return `true` (handled by DefaultServiceProvider), while interfaces require a registered provider.
 
 ### `get()` - Service Provider Resolution
 
@@ -193,7 +210,7 @@ class MyServiceProvider extends ServiceProvider {
      * @param array $dependencies Array of dependencies to inject into the constructor
      * @return object The instantiated object
      */
-    public function createInstance(string $className, array $dependencies): object {
+    public function createInstance(string $className, array $dependencies, array $metadata, ?MethodContext $methodContext=null): object
         // Instantiate the class by passing all dependencies to the constructor
         $instance = new $className(...$dependencies);
         
@@ -227,7 +244,7 @@ class ObjectQuelServiceProvider extends ServiceProvider {
             && ($context['provider'] ?? null) === 'objectquel';
     }
     
-    public function createInstance(string $className, array $dependencies): object {
+    public function createInstance(string $className, array $dependencies, array $metadata, ?MethodContext $methodContext=null): object
         return new ObjectQuelEntityManager($this->createConfiguration());
     }
 }
@@ -239,7 +256,7 @@ class DoctrineServiceProvider extends ServiceProvider {
             && ($context['provider'] ?? null) === 'doctrine';
     }
     
-    public function createInstance(string $className, array $dependencies): object {
+    public function createInstance(string $className, array $dependencies, array $metadata, ?MethodContext $methodContext=null): object
         return new DoctrineEntityManager($this->createConfiguration());
     }
 }
@@ -248,6 +265,44 @@ class DoctrineServiceProvider extends ServiceProvider {
 $objectQuelEM = $container->for('objectquel')->get(EntityManagerInterface::class);
 $doctrineEM = $container->for('doctrine')->get(EntityManagerInterface::class);
 ```
+
+### Simple Bindings
+
+For straightforward interface-to-concrete mappings where no custom instantiation logic is needed, you can use the `SimpleBinding` helper class instead of creating a full service provider:
+
+```php
+use Quellabs\DependencyInjection\Provider\SimpleBinding;
+
+// Instead of creating a full ServiceProvider class
+$container->register(new SimpleBinding(LoggerInterface::class, FileLogger::class));
+```
+
+This is equivalent to:
+```php
+class LoggerProvider extends ServiceProvider {
+    public function supports(string $className, array $context): bool {
+        return $className === LoggerInterface::class;
+    }
+    
+    public function createInstance(...): object {
+        return new FileLogger(...$dependencies);
+    }
+}
+$container->register(new LoggerProvider());
+```
+
+**When to use SimpleBinding:**
+- Pure interface-to-concrete mappings
+- No custom instantiation logic needed
+- No contextual binding requirements
+- Reducing boilerplate for multiple simple bindings
+
+**When to use a full ServiceProvider:**
+- Custom instantiation logic (configuration, factory methods)
+- Contextual bindings (different implementations per context)
+- Post-instantiation setup (calling setters, initialization)
+- Transient (non-singleton) services
+- Conditional logic
 
 ## Automatic Service Discovery
 
@@ -327,7 +382,7 @@ class TransientServiceProvider extends ServiceProvider {
      * @param array $dependencies Array of constructor dependencies already resolved
      * @return object A new instance of the requested class
      */
-    public function createInstance(string $className, array $dependencies): object {
+    public function createInstance(string $className, array $dependencies, array $metadata, ?MethodContext $methodContext=null): object
         // Always create a new instance without caching
         // The spread operator (...) unpacks the dependencies array as arguments
         return new $className(...$dependencies);
@@ -346,6 +401,51 @@ $processor2 = $container->make(OrderProcessor::class);
 $service1 = $container->get(OrderService::class);
 $service2 = $container->get(OrderService::class); // Same instance as service1
 ```
+
+## The `$__all__` Magic Parameter
+
+The dependency injection container supports a special magic parameter named `$__all__` that provides access to all parameters passed to the container during method resolution. This is particularly useful for services that need flexible configuration or want to access additional context data.
+
+### How It Works
+
+When the container encounters a parameter named `$__all__` in a constructor or method signature, it automatically injects the complete parameters array that was passed to the container, giving you access to all available data, including parameters that don't have corresponding method arguments.
+
+### Basic Example
+
+```php
+class ConfigurableService {
+    public function __construct(
+        private DatabaseConnection $db,
+        private LoggerInterface $logger,
+        private array $__all__ = []
+    ) {
+        // $db and $logger are resolved normally
+        // $__all__ contains all parameters passed to the container
+    }
+}
+
+// Usage
+$service = $container->get(ConfigurableService::class, [
+    'database_host' => 'localhost',
+    'log_level' => 'debug',
+    'api_key' => 'secret123'
+]);
+
+// Inside ConfigurableService constructor:
+// $__all__ = [
+//     'database_host' => 'localhost',
+//     'log_level' => 'debug', 
+//     'api_key' => 'secret123'
+// ]
+```
+
+### Important Notes
+
+- The `$__all__` parameter receives the original parameters array passed to the container - no resolution or transformation is applied to these values
+- Other constructor/method parameters are resolved normally through the dependency injection process
+- If no parameters are passed to the container, `$__all__` will be an empty array
+- The `$__all__` parameter should typically have a default value of `[]` to handle cases where no additional parameters are provided
+- This feature works with both `get()` and `make()` methods, as well as `invoke()` for method injection
 
 ## Advanced Configuration
 

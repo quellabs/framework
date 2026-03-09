@@ -3,6 +3,7 @@
 	namespace Quellabs\Canvas\Twig;
 	
 	use Quellabs\Contracts\Templates\TemplateRenderException;
+	use Quellabs\Support\ComposerUtils;
 	use Twig\Environment;
 	use Twig\Loader\FilesystemLoader;
 	use Twig\Loader\ArrayLoader;
@@ -56,7 +57,7 @@
 			$this->config = $configuration;
 			
 			// Create filesystem loader
-			$this->loader = new FilesystemLoader($configuration['template_dir']);
+			$this->loader = new FilesystemLoader($configuration['template_dir'] ?? ComposerUtils::getProjectRoot() . DIRECTORY_SEPARATOR . 'templates');
 			
 			// Configure Twig environment options
 			$options = [

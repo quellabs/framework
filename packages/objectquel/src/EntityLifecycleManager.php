@@ -1,20 +1,23 @@
 <?php
 	
-	/**
-	 * ObjectQuel - A Sophisticated Object-Relational Mapping (ORM) System
-	 *
-	 * ObjectQuel is an ORM that brings a fresh approach to database interaction,
-	 * featuring a unique query language, a streamlined architecture, and powerful
-	 * entity relationship management. It implements the Data Mapper pattern for
-	 * clear separation between domain models and underlying database structures.
-	 *
-	 * @author      Floris van den Berg
-	 * @copyright   Copyright (c) 2025 ObjectQuel
-	 * @license     MIT
-	 * @version     1.0.0
-	 * @package     Quellabs\ObjectQuel
+	/*
+	 * ╔═══════════════════════════════════════════════════════════════════════════════════════╗
+	 * ║                                                                                       ║
+	 * ║   ██████╗ ██████╗      ██╗███████╗ ██████╗████████╗ ██████╗ ██╗   ██╗███████╗██╗      ║
+	 * ║  ██╔═══██╗██╔══██╗     ██║██╔════╝██╔════╝╚══██╔══╝██╔═══██╗██║   ██║██╔════╝██║      ║
+	 * ║  ██║   ██║██████╔╝     ██║█████╗  ██║        ██║   ██║   ██║██║   ██║█████╗  ██║      ║
+	 * ║  ██║   ██║██╔══██╗██   ██║██╔══╝  ██║        ██║   ██║▄▄ ██║██║   ██║██╔══╝  ██║      ║
+	 * ║  ╚██████╔╝██████╔╝╚█████╔╝███████╗╚██████╗   ██║   ╚██████╔╝╚██████╔╝███████╗███████╗ ║
+	 * ║   ╚═════╝ ╚═════╝  ╚════╝ ╚══════╝ ╚═════╝   ╚═╝    ╚══▀▀═╝  ╚═════╝ ╚══════╝╚══════╝ ║
+	 * ║                                                                                       ║
+	 * ║  ObjectQuel - Powerful Object-Relational Mapping built on the Data Mapper pattern     ║
+	 * ║                                                                                       ║
+	 * ║  Clean separation between entities and persistence logic with an intuitive,           ║
+	 * ║  object-oriented query language. Powered by CakePHP's robust database foundation.     ║
+	 * ║                                                                                       ║
+	 * ╚═══════════════════════════════════════════════════════════════════════════════════════╝
 	 */
-
+	
 	namespace Quellabs\ObjectQuel;
 	
 	use Quellabs\AnnotationReader\Exception\ParserException;
@@ -25,7 +28,6 @@
 	use Quellabs\ObjectQuel\Annotations\Orm\PostUpdate;
 	use Quellabs\ObjectQuel\Annotations\Orm\PreDelete;
 	use Quellabs\ObjectQuel\Annotations\Orm\PostDelete;
-	use Quellabs\SignalHub\SignalHub;
 	
 	/**
 	 * Manages lifecycle event callbacks for entities
@@ -33,9 +35,9 @@
 	class EntityLifecycleManager {
 		
 		/**
-		 * @var SignalHub The SignalHub instance for connecting to signals
+		 * @var UnitOfWork UnitOfWork object
 		 */
-		private SignalHub $signalHub;
+		private UnitOfWork $unitOfWork;
 		
 		/**
 		 * @var EntityStore The EntityStore for accessing annotations
@@ -54,29 +56,31 @@
 		
 		/**
 		 * Constructor
-		 * @param SignalHub $signalHub
-		 * @param EntityStore $entityStore
+		 * @param UnitOfWork $unitOfWork
 		 */
-		public function __construct(SignalHub $signalHub, EntityStore $entityStore) {
-			$this->signalHub = $signalHub;
-			$this->entityStore = $entityStore;
+		public function __construct(UnitOfWork $unitOfWork) {
+			$this->unitOfWork = $unitOfWork;
+			$this->entityStore = $unitOfWork->getEntityStore();
 			
 			// Connect to all entity lifecycle signals
-			$this->connectToSignals();
+			$this->unitOfWork->signalPrePersist->connect([$this, 'handlePrePersist']);
+			$this->unitOfWork->signalPostPersist->connect([$this, 'handlePostPersist']);
+			$this->unitOfWork->signalPreUpdate->connect([$this, 'handlePreUpdate']);
+			$this->unitOfWork->signalPostUpdate->connect([$this, 'handlePostUpdate']);
+			$this->unitOfWork->signalPreDelete->connect([$this, 'handlePreDelete']);
+			$this->unitOfWork->signalPostDelete->connect([$this, 'handlePostDelete']);
 		}
 		
 		/**
-		 * Connect to all entity lifecycle signals
-		 * @return void
-		 * @throws \Exception
+		 * Disconnect the slots from the events
 		 */
-		private function connectToSignals(): void {
-			$this->signalHub->getSignal('orm.prePersist')->connect([$this, 'handlePrePersist']);
-			$this->signalHub->getSignal('orm.postPersist')->connect([$this, 'handlePostPersist']);
-			$this->signalHub->getSignal('orm.preUpdate')->connect([$this, 'handlePreUpdate']);
-			$this->signalHub->getSignal('orm.postUpdate')->connect([$this, 'handlePostUpdate']);
-			$this->signalHub->getSignal('orm.preDelete')->connect([$this, 'handlePreDelete']);
-			$this->signalHub->getSignal('orm.postDelete')->connect([$this, 'handlePostDelete']);
+		public function __destruct() {
+			$this->unitOfWork->signalPostDelete->disconnect([$this, 'handlePostDelete']);
+			$this->unitOfWork->signalPreDelete->disconnect([$this, 'handlePreDelete']);
+			$this->unitOfWork->signalPostUpdate->disconnect([$this, 'handlePostUpdate']);
+			$this->unitOfWork->signalPreUpdate->disconnect([$this, 'handlePreUpdate']);
+			$this->unitOfWork->signalPostPersist->disconnect([$this, 'handlePostPersist']);
+			$this->unitOfWork->signalPrePersist->disconnect([$this, 'handlePrePersist']);
 		}
 		
 		/**

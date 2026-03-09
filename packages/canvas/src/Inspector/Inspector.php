@@ -6,6 +6,7 @@
 	use Quellabs\Canvas\Inspector\Helpers\HtmlAnalyzer;
 	use Quellabs\Contracts\Configuration\ConfigurationInterface;
 	use Quellabs\Contracts\Inspector\EventCollectorInterface;
+	use Random\RandomException;
 	use Symfony\Component\HttpFoundation\Request;
 	use Symfony\Component\HttpFoundation\Response;
 	
@@ -22,7 +23,7 @@
 		private HtmlAnalyzer $htmlAnalyzer;
 		
 		/**
-		 * Initialize the debugbar with required dependencies.
+		 * Initialize the inspector with required dependencies.
 		 * @param EventCollectorInterface $eventCollector The event collector for gathering debug data
 		 * @param ConfigurationInterface $config
 		 */
@@ -36,8 +37,10 @@
 		 * This is the main entry point for adding the debugbar to responses.
 		 * @param Request $request The HTTP request object
 		 * @param Response $response The HTTP response object to modify
+		 * @throws \JsonException
 		 */
 		public function inject(Request $request, Response $response): void {
+			// Fetch the response that came out of the controller
 			$content = $response->getContent();
 			
 			// Only inject debug info into HTML responses
@@ -105,16 +108,16 @@
 			if ($this->htmlAnalyzer->looksLikeHtml($content)) {
 				// Create a complete HTML document structure
 				$newContent = sprintf("
-                <!DOCTYPE html>
-                <html lang='en'>
-                <head>
-                    <title>Debug</title>
-                </head>
-                <body>
-                    %s
-                    %s
-                </body>
-                </html>
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+    <title>Debug</title>
+</head>
+<body>
+    %s
+    %s
+</body>
+</html>
             ",
 					$content,  // Original content
 					$debugHtml // Debug information

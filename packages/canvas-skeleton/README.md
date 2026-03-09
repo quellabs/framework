@@ -43,7 +43,7 @@ my-app/
 
 ### 1. Configure Your Environment
 
-Edit the `config/database.php` file to match your setup.
+Edit `config/app.php` file to match your setup.
 
 ### 2. Start the Development Server
 

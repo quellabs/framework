@@ -12,17 +12,17 @@
 	| PHP annotations from docblocks and returns the expected results.
 	*/
 	
-	beforeEach(function () {
+	beforeEach(function (): void {
 		// Create a new AnnotationReader instance before each test
 		$this->config = new Configuration();
 		$this->reader = new AnnotationReader($this->config);
 	});
 	
-	it('instantiates without errors', function () {
+	it('instantiates without errors', function (): void {
 		expect($this->reader)->toBeInstanceOf(AnnotationReader::class);
 	});
 	
-	it('reads annotation correctly', function () {
+	it('reads annotation correctly', function (): void {
 		$classWithMethodAnnotations = new class {
 			/**
 			 * @Quellabs\AnnotationReader\AnnotationTest\Test(
@@ -55,7 +55,7 @@
 			->and($annotation->getParameters()['name'])->toBe('test');
 	});
 	
-	it('handles invalid annotations gracefully', function () {
+	it('handles invalid annotations gracefully', function (): void {
 		$classWithInvalidAnnotation = new class {
 			/**
 			 * @InvalidAnnotation(unclosed="value)
@@ -68,7 +68,7 @@
 			->toThrow(\Quellabs\AnnotationReader\Exception\AnnotationReaderException::class);
 	});
 	
-	it('has use statement parser', function () {
+	it('has use statement parser', function (): void {
 		// This test would require a file to parse with use statements
 		// For this example, we'll just verify the UseStatementParser exists and is used
 		$reflectionReader = new ReflectionClass($this->reader);
@@ -78,8 +78,8 @@
 		expect($property->getValue($this->reader))
 			->toBeInstanceOf(\Quellabs\AnnotationReader\LexerParser\UseStatementParser::class);
 	});
-
-	it('handles annotations with use statements correctly', function () {
+	
+	it('handles annotations with use statements correctly', function (): void {
 		// Create a temporary test file
 		$tempFile = sys_get_temp_dir() . '/annotation_use_test_' . uniqid() . '.php';
 		

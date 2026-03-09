@@ -7,7 +7,11 @@
 	
 	require_once __DIR__ . '/../vendor/autoload.php';
 	
-	$kernel = new Kernel();
+	$kernel = new Kernel([
+		'legacy_enabled' => true,
+		'legacy_path'    => __DIR__ . '/../'
+	]);
+	
 	$request = Request::createFromGlobals();
 	$response = $kernel->handle($request);
 	

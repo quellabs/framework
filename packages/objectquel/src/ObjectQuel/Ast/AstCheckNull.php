@@ -15,6 +15,7 @@
 		 */
 		public function __construct(AstInterface $expression) {
 			$this->expression = $expression;
+			$this->expression->setParent($this);
 		}
 		
 		/**
@@ -49,5 +50,18 @@
 		 */
 		public function getReturnType(): ?string {
 			return "boolean";
+		}
+		
+		/**
+		 * Clone this node
+		 * @return static
+		 */
+		public function deepClone(): static {
+			// Clone the identifier
+			$clonedIdentifier = $this->getExpression()->deepClone();
+			
+			// Return cloned node
+			// @phpstan-ignore-next-line new.static
+			return new static($clonedIdentifier);
 		}
 	}

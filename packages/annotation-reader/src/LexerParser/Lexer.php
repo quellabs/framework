@@ -233,12 +233,10 @@
 		 */
 		protected function handleAnnotationMode(): bool {
 			// If we're not in annotation mode, try to find the next annotation
-			if (!$this->annotation_mode) {
-				// If we can't find another annotation, advance to the end of the string
-				if (!$this->findNextAnnotation()) {
-					$this->pos = $this->length;
-					return false;
-				}
+			// If we can't find another annotation, advance to the end of the string
+			if (!$this->annotation_mode && !$this->findNextAnnotation()) {
+				$this->pos = $this->length;
+				return false;
 			}
 			
 			// Check if we've reached the end of an annotation
@@ -416,7 +414,7 @@
 			$this->advance();
 			
 			// end of file
-			if ($this->pos == $this->length) {
+			if ($this->pos === $this->length) {
 				return new Token(Token::Eof);
 			}
 			

@@ -2,7 +2,6 @@
 	
 	namespace Quellabs\DependencyInjection;
 	
-	use PhpParser\Builder\Method;
 	use Quellabs\DependencyInjection\Autowiring\MethodContext;
 	use Quellabs\Discover\Discover;
 	use Quellabs\Discover\Scanner\ComposerScanner;
@@ -27,11 +26,6 @@
 		protected Autowirer $autowire;
 		
 		/**
-		 * Base path where the application is installed
-		 */
-		protected string $basePath;
-		
-		/**
 		 * Dependency resolution stack to detect circular dependencies
 		 */
 		protected array $resolutionStack = [];
@@ -54,20 +48,19 @@
 		
 		/**
 		 * Container constructor with automatic service discovery
-		 * @param string|null $basePath Base path of the application
 		 * @param string $familyName The key to look for in composer.json (default: 'di')
 		 */
-		public function __construct(?string $basePath = null, string $familyName = 'di') {
-			$this->autowire = new Autowirer($this);
-			$this->basePath = $basePath ?? getcwd();
-			
-			// Create the default provider
-			$this->defaultProvider = new DefaultServiceProvider();
-			
+		public function __construct(string $familyName = 'di') {
 			// Create the service discoverer
 			$this->discovery = new Discover();
 			$this->discovery->addScanner(new ComposerScanner($familyName));
 			$this->discovery->discover();
+			
+			// Create the default provider
+			$this->defaultProvider = new DefaultServiceProvider($this->discovery);
+			
+			// Create autowirer AFTER default provider
+			$this->autowire = new Autowirer($this);
 			
 			// Automatically discover and register service providers
 			$this->registerProviders();
@@ -79,8 +72,8 @@
 		 * @return self Returns the current instance for method chaining
 		 */
 		public function register(ServiceProvider $provider): self {
-			// Store the provider in the providers array using its class name as the key
-			$this->providers[get_class($provider)] = $provider;
+			// Store the provider in the providers array using its hash as the key
+			$this->providers[spl_object_hash($provider)] = $provider;
 			
 			// Return the current instance to allow method chaining
 			return $this;
@@ -92,8 +85,8 @@
 		 * @return self Returns the current instance for method chaining
 		 */
 		public function unregister(ServiceProvider $provider): self {
-			// Remove the provider from the providers array using its class name as the key
-			unset($this->providers[get_class($provider)]);
+			// Remove the provider from the providers array using its hash as the key
+			unset($this->providers[spl_object_hash($provider)]);
 			
 			// Return the current instance to allow method chaining
 			return $this;
@@ -140,6 +133,41 @@
 		}
 		
 		/**
+		 * Determine if the container can resolve a given service.
+		 * @param string $className Service identifier (class name or interface)
+		 * @return bool True if the service can be resolved, false if not
+		 */
+		public function has(string $className): bool {
+			// Check if it's the container itself
+			if (
+				$className === self::class ||
+				$className === \Quellabs\Contracts\DependencyInjection\Container::class ||
+				is_a($this, $className)
+			) {
+				return true;
+			}
+			
+			// Check if it's a concrete class that exists
+			if (class_exists($className)) {
+				return true;
+			}
+			
+			// Check if any provider supports this interface
+			if (interface_exists($className)) {
+				foreach ($this->providers as $provider) {
+					if ($provider->supports($className, $this->context)) {
+						return true;
+					}
+				}
+				
+				// Check if default provider supports it
+				return $this->defaultProvider->supports($className, $this->context);
+			}
+			
+			return false;
+		}
+		
+		/**
 		 * Get a service with centralized dependency resolution
 		 * @param string $className Class name to resolve
 		 * @param array $parameters Additional parameters for creation
@@ -177,6 +205,21 @@
 		}
 		
 		/**
+		 * Handles proper cloning of the container to ensure contextual isolation.
+		 * @return void
+		 */
+		public function __clone(): void {
+			// Clone and update autowirer's container reference
+			$this->autowire = new Autowirer($this);
+			
+			// Reset context for the cloned instance
+			$this->context = [];
+			
+			// Resolution stack must be independent
+			$this->resolutionStack = [];
+		}
+		
+		/**
 		 * Resolves a class instance with its dependencies, handling circular dependency detection
 		 * and supporting both service provider and direct instantiation methods.
 		 * @param string $className The fully qualified class name to resolve
@@ -191,17 +234,89 @@
 			bool $useServiceProvider,
 			MethodContext $methodContext = null
 		): ?object {
-			try {
-				// Special case: Return container instance when requesting the container itself
-				// This allows for self-injection of the container into other services
-				if (
-					$className === self::class ||
-					$className === \Quellabs\Contracts\DependencyInjection\Container::class ||
-					is_a($this, $className)
-				) {
-					return $this;
-				}
+			// Special case: Return container instance when requesting the container itself
+			// This allows for self-injection of the container into other services
+			if (
+				$className === self::class ||
+				$className === \Quellabs\Contracts\DependencyInjection\Container::class ||
+				is_a($this, $className)
+			) {
+				return $this;
+			}
+			
+			// Use safe resolution wrapper to handle circular dependencies
+			return $this->safeResolve($className, function() use ($className, $parameters, $useServiceProvider, $methodContext) {
+				return $this->createInstance($className, $parameters, $useServiceProvider, $methodContext);
+			});
+		}
+		
+		/**
+		 * Creates an instance of the specified class using either service provider or direct instantiation.
+		 * @param string $className The fully qualified class name to resolve
+		 * @param array $parameters Manual parameters to override autowired dependencies
+		 * @param bool $useServiceProvider Whether to use service provider for instantiation
+		 * @param MethodContext|null $methodContext Optional method context for advanced scenarios
+		 * @return object The created instance
+		 * @throws \RuntimeException|\ReflectionException When instantiation fails
+		 */
+		protected function createInstance(
+			string $className,
+			array $parameters,
+			bool $useServiceProvider,
+			MethodContext $methodContext = null
+		): object {
+			// Validate class/interface exists first
+			if (!class_exists($className) && !interface_exists($className)) {
+				throw new \RuntimeException("Class or interface '{$className}' does not exist");
+			}
+			
+			// Now check if it's an interface
+			$reflection = new \ReflectionClass($className);
+			$isInterface = $reflection->isInterface();
+			
+			// Show error when user tries to make() an interface
+			if ($isInterface && !$useServiceProvider) {
+				throw new \RuntimeException(
+					"Cannot instantiate interface '{$className}' without a service provider. " .
+					"Use get() instead of make() for interface resolution."
+				);
+			}
+			
+			// For interfaces, skip autowiring and pass raw parameters to service provider
+			// Interfaces have no constructors, so autowiring would fail anyway
+			if ($isInterface) {
+				$provider = $this->findProvider($className);
+				return $provider->createInstance($className, $parameters, $this->context, $methodContext);
+			}
+			
+			// For concrete classes, autowire constructor dependencies
+			// Merges manual parameters with automatically resolved dependencies
+			$arguments = $this->autowire->getMethodArguments($className, '__construct', $parameters);
+			
+			// Choose instantiation method based on configuration
+			if ($useServiceProvider) {
+				// Use service provider pattern for more complex instantiation logic
+				// Service providers can handle custom initialization, configuration, etc.
+				$provider = $this->findProvider($className);
 				
+				// Use the provider to create an instance
+				return $provider->createInstance($className, $arguments, $this->context, $methodContext);
+			}
+			
+			// Direct reflection-based instantiation for simple cases
+			// Creates instance directly using PHP's reflection API
+			return $reflection->newInstanceArgs($arguments);
+		}
+		
+		/**
+		 * Safely executes a resolution callback while managing the resolution stack for circular dependency detection.
+		 * @param string $className The class being resolved
+		 * @param callable $resolutionCallback The callback that performs the actual resolution
+		 * @return object The resolved instance
+		 * @throws \RuntimeException When circular dependencies are detected or resolution fails
+		 */
+		protected function safeResolve(string $className, callable $resolutionCallback): object {
+			try {
 				// Circular dependency protection: Check if we're already resolving this class
 				// This prevents infinite recursion when Class A depends on Class B which depends on Class A
 				if (in_array($className, $this->resolutionStack)) {
@@ -216,30 +331,13 @@
 				// This maintains a breadcrumb trail of what we're currently resolving
 				$this->resolutionStack[] = $className;
 				
-				// Autowire constructor dependencies by analyzing the class constructor
-				// Merges manual parameters with automatically resolved dependencies
-				$dependencies = $this->autowire->getMethodArguments($className, '__construct', $parameters);
-				
-				// Choose instantiation method based on configuration
-				if ($useServiceProvider) {
-					// Use service provider pattern for more complex instantiation logic
-					// Service providers can handle custom initialization, configuration, etc.
-					$provider = $this->findProvider($className);
-					
-					// Use the provider to create an instance
-					$instance = $provider->createInstance($className, $dependencies, $this->context, $methodContext);
-				} else {
-					// Direct reflection-based instantiation for simple cases
-					// Creates instance directly using PHP's reflection API
-					$reflection = new \ReflectionClass($className);
-					$instance = $reflection->newInstanceArgs($dependencies);
-				}
+				// Execute the resolution callback
+				$instance = $resolutionCallback();
 				
 				// Clean up: Remove current class from resolution stack since we're done
 				// This allows the same class to be resolved again in different dependency chains
 				array_pop($this->resolutionStack);
 				
-				// Return the instance
 				return $instance;
 				
 			} catch (\Throwable $e) {
@@ -255,15 +353,12 @@
 					array_pop($this->resolutionStack);
 				}
 				
-				// Log the error for debugging
-				error_log("Failed to resolve dependency '{$className}': " . $e->getMessage());
-				
 				// Wrap and rethrow with additional context
-			    throw new \RuntimeException(
-				    "Failed to resolve dependency '{$className}': " . $e->getMessage(),
-				    0,
-				    $e
-			    );
+				throw new \RuntimeException(
+					$e->getMessage(),
+					$e->getCode(),
+					$e
+				);
 			}
 		}
 		
