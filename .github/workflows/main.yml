@@ -32,6 +32,7 @@ jobs:
           - canvas-smarty
           - canvas-twig
           - canvas-blade
+          - canvas-latte
           - canvas-skeleton
           - canvas-database
       fail-fast: false

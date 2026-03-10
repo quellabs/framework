@@ -11,7 +11,7 @@
 		'public_directory'        => 'public',
 		
 		// Template engine
-		'template_engine'         => 'smarty',
+		'template_engine'         => 'latte',
 		
 		// Path to controller classes
 		'controller_directory'    => $srcDir . '/Controllers',

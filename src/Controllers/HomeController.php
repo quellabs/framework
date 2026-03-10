@@ -19,11 +19,11 @@
 		 * @return Response
 		 */
 		public function index(Request $request): Response {
-			return $this->render("test", [
-				'page_title'   => 'Blade Test',
-				'name'         => 'Floris',
-				'show_message' => true,
-				'items'        => ['Apples', 'Bananas', 'Cherries'],
+			return $this->render('test', [
+				'title' => 'Hello',
+				'items' => [
+					'one', 'two', 'three'
+				]
 			]);
 		}
 		
