@@ -19,12 +19,7 @@
 		 * @return Response
 		 */
 		public function index(Request $request): Response {
-			return $this->render('test', [
-				'title' => 'Hello',
-				'items' => [
-					'one', 'two', 'three'
-				]
-			]);
+			return $this->render('home/index3.tpl');
 		}
 		
 		/**

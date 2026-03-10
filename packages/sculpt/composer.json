@@ -36,6 +36,7 @@
   },
   "require": {
     "quellabs/contracts": "^1.",
+    "quellabs/support": "^1.",
     "quellabs/discover": "^1."
   },
   "autoload": {
