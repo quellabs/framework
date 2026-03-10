@@ -13,7 +13,7 @@
   "canvas-smarty": "1.0.29",
   "canvas-twig": "1.0.2",
   "canvas-blade": "1.0.1",
-  "canvas-latte": "1.0.0",
+  "canvas-latte": "1.0.1",
   "canvas-skeleton": "1.0.10",
   "canvas-database": "1.0.0"
 }
