@@ -27,52 +27,34 @@ The package includes Twig as a dependency and automatically copies the configura
 
 The package automatically creates a configuration file at `config/twig.php` during installation.
 
-## Basic Usage
+## Selecting the Default Template Engine
 
-### Using the Template Engine Interface
+To use Twig as the default template engine across your application, set the following in `config/app.php`:
 
 ```php
-use Quellabs\Contracts\Templates\TemplateEngineInterface;
-
-// Get the template engine instance (via dependency injection)
-$template = $container->for('twig')->get(TemplateEngineInterface::class);
-
-// Render a template file
-$output = $template->render('pages/home.twig', [
-    'title' => 'Welcome',
-    'user' => $userData
-]);
-
-// Render a template string
-$stringTemplate = '<h1>Hello {{ name }}!</h1>';
-$output = $template->renderString($stringTemplate, ['name' => 'World']);
-
-// Check if a template exists
-if ($template->exists('pages/about.twig')) {
-    $output = $template->render('pages/about.twig');
-}
-
-// Add global variables
-$template->addGlobal('current_year', date('Y'));
-
-// Clear cache
-$template->clearCache();
+'template_engine' => 'twig',
 ```
 
-### Direct Usage
+Once set, rendering templates in your controllers works as normal:
 
 ```php
-use Quellabs\Canvas\Twig\TwigTemplate;
+/**
+ * @Route("/")
+ * @return Response
+ */
+public function index(Request $request): Response {
+    return $this->render('pages/home.twig', [
+        'title' => 'Welcome',
+    ]);
+}
+```
 
-$config = [
-    'template_dir' => '/path/to/templates',
-    'cache_dir' => '/path/to/cache',
-    'debugging' => false,
-    'caching' => true
-];
+If you need to mix multiple template engines in the same project, you can request a specific engine explicitly via the container:
 
-$twig = new TwigTemplate($config);
-$output = $twig->render('template.twig', ['data' => $value]);
+```php
+$template = $container->for('smarty')->get(TemplateEngineInterface::class);
+$template = $container->for('twig')->get(TemplateEngineInterface::class);
+$template = $container->for('blade')->get(TemplateEngineInterface::class);
 ```
 
 ## Error Handling
@@ -110,17 +92,6 @@ Use the debug function in templates:
 ```twig
 {{ dump(variable) }}
 ```
-
-## Comparison with Smarty
-
-| Feature     | Twig                  | Smarty                   |
-|-------------|-----------------------|--------------------------|
-| Syntax      | `{{ variable }}`      | `{$variable}`            |
-| Filters     | `{{ value\|filter }}` | `{$value\|modifier}`     |
-| Comments    | `{# comment #}`       | `{* comment *}`          |
-| Inheritance | `{% extends %}`       | `{extends}`              |
-| Blocks      | `{% block %}`         | `{block}`                |
-| Security    | Built-in escaping     | Optional security policy |
 
 ## Requirements
 

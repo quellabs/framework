@@ -11,7 +11,8 @@
   "canvas": "1.0.82",
   "canvas-objectquel": "1.0.24",
   "canvas-smarty": "1.0.28",
-  "canvas-twig": "1.0.1",
+  "canvas-twig": "1.0.2",
+  "canvas-blade": "1.0.0",
   "canvas-skeleton": "1.0.10",
   "canvas-database": "1.0.0"
 }
