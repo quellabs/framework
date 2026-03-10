@@ -1,18 +1,18 @@
 {
-  "name": "quellabs/canvas-twig",
-  "description": "Twig template engine integration for the Canvas PHP framework",
+  "name": "quellabs/canvas-blade",
+  "description": "Blade template engine integration for the Canvas PHP framework",
   "keywords": [
     "canvas-framework",
-    "twig-template",
+    "blade-template",
     "template-integration",
     "php-templating"
   ],
   "type": "library",
   "license": "MIT",
-  "homepage": "https://github.com/quellabs/canvas-twig",
+  "homepage": "https://github.com/quellabs/canvas-blade",
   "support": {
-    "issues": "https://github.com/quellabs/canvas-twig/issues",
-    "source": "https://github.com/quellabs/canvas-twig"
+    "issues": "https://github.com/quellabs/canvas-blade/issues",
+    "source": "https://github.com/quellabs/canvas-blade"
   },
   "authors": [
     {
@@ -35,32 +35,32 @@
     }
   },
   "require": {
-    "twig/twig": "^3.0",
-    "quellabs/dependency-injection": "^1.",
+    "jenssegers/blade": "^2.0",
     "quellabs/contracts": "^1.",
+    "quellabs/dependency-injection": "^1.",
     "quellabs/sculpt": "^1.",
     "quellabs/support": "^1."
   },
   "autoload": {
     "psr-4": {
-      "Quellabs\\Canvas\\Twig\\": "src/"
+      "Quellabs\\Canvas\\Blade\\": "src/"
     }
   },
   "extra": {
     "discover": {
       "di": {
-        "provider": "Quellabs\\Canvas\\Twig\\ServiceProvider",
-        "config": ["config/twig.php", "config/app.php"]
+        "provider": "Quellabs\\Canvas\\Blade\\ServiceProvider",
+        "config": ["config/blade.php", "config/app.php"]
       },
       "sculpt": {
-        "provider": "Quellabs\\Canvas\\Twig\\Sculpt\\ServiceProvider",
-        "config": "config/twig.php"
+        "provider": "Quellabs\\Canvas\\Blade\\Sculpt\\ServiceProvider",
+        "config": "config/blade.php"
       }
     }
   },
   "scripts": {
     "post-install-cmd": [
-      "php -r \"copy('vendor/quellabs/canvas-twig/config/twig.php', 'config/twig.php');\""
+      "php -r \"copy('vendor/quellabs/canvas-blade/config/blade.php', 'config/blade.php');\""
     ]
   }
 }

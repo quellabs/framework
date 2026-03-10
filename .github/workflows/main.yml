@@ -31,6 +31,7 @@ jobs:
           - canvas-objectquel
           - canvas-smarty
           - canvas-twig
+          - canvas-blade
           - canvas-skeleton
           - canvas-database
       fail-fast: false
