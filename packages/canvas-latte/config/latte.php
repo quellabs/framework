@@ -1,8 +1,13 @@
 <?php
 	
 	return [
+		// Directory where Latte template files are stored
 		'template_dir' => dirname(__FILE__) . '/../templates/',
+		
+		// Directory where Latte stores compiled PHP templates
 		'cache_dir'    => dirname(__FILE__) . '/../storage/cache/latte/',
+		
+		// Enable/disable caching
 		'caching'      => true,
 		
 		// Additional template directories, keyed by namespace (e.g. 'admin' => '/path')
@@ -18,5 +23,5 @@
 		'filters'      => [],
 		
 		// Global variables available in all templates
-		'globals'      => [],
+		'globals'      => []
 	];
