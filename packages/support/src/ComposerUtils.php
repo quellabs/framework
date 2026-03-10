@@ -106,6 +106,30 @@
 		}
 		
 		/**
+		 * Get the root namespace of the project from its PSR-4 autoload config.
+		 * Returns the namespace with the longest path match to the project root's src directory,
+		 * or simply the first PSR-4 entry if no src directory is found.
+		 * @param string $default Fallback value if no PSR-4 mapping exists
+		 * @return string
+		 */
+		public static function getRootNamespace(string $default = 'App'): string {
+			$composerJsonPath = self::getComposerJsonFilePath();
+			
+			if ($composerJsonPath === null) {
+				return $default;
+			}
+			
+			$composer = self::parseComposerJson($composerJsonPath);
+			$psr4 = $composer['autoload']['psr-4'] ?? [];
+			
+			if (empty($psr4)) {
+				return $default;
+			}
+			
+			return rtrim(array_key_first($psr4), '\\');
+		}
+		
+		/**
 		 * Find the path to the local composer.json file
 		 * @param string|null $startDirectory Directory to start searching from (defaults to current directory)
 		 * @return string|null Path to composer.json if found, null otherwise
