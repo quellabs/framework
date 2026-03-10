@@ -2,7 +2,15 @@
 	
 	namespace Quellabs\Canvas\Blade;
 	
-	use Jenssegers\Blade\Blade;
+	use Illuminate\Container\Container;
+	use Illuminate\Events\Dispatcher;
+	use Illuminate\Filesystem\Filesystem;
+	use Illuminate\View\Compilers\BladeCompiler;
+	use Illuminate\View\Engines\CompilerEngine;
+	use Illuminate\View\Engines\EngineResolver;
+	use Illuminate\View\Engines\PhpEngine;
+	use Illuminate\View\Factory;
+	use Illuminate\View\FileViewFinder;
 	use Quellabs\Contracts\Templates\TemplateEngineInterface;
 	use Quellabs\Contracts\Templates\TemplateRenderException;
 	use Quellabs\Support\ComposerUtils;
@@ -10,9 +18,19 @@
 	class BladeTemplate implements TemplateEngineInterface {
 		
 		/**
-		 * @var Blade The jenssegers/blade wrapper instance
+		 * @var Factory The Illuminate View Factory
 		 */
-		private Blade $blade;
+		private Factory $factory;
+		
+		/**
+		 * @var BladeCompiler The Blade compiler instance
+		 */
+		private BladeCompiler $compiler;
+		
+		/**
+		 * @var FileViewFinder The view finder instance
+		 */
+		private FileViewFinder $finder;
 		
 		/**
 		 * @var array Configuration data provided by ServiceProvider
@@ -32,9 +50,33 @@
 			$this->config = $configuration;
 			
 			$viewPaths = (array) ($configuration['template_dir'] ?? ComposerUtils::getProjectRoot() . DIRECTORY_SEPARATOR . 'templates');
-			$cachePath = $configuration['caching'] ? ($configuration['cache_dir'] ?? null) : null;
+			$cachePath = ($configuration['caching'] ?? true) ? ($configuration['cache_dir'] ?? null) : null;
 			
-			$this->blade = new Blade($viewPaths, $cachePath);
+			// Set up filesystem
+			$filesystem = new Filesystem();
+			
+			// Set up Blade compiler
+			$this->compiler = new BladeCompiler($filesystem, $cachePath);
+			
+			// Set up engine resolver and register the Blade engine
+			$resolver = new EngineResolver();
+			$resolver->register('blade', function () use ($filesystem) {
+				return new CompilerEngine($this->compiler, $filesystem);
+			});
+			
+			// Also register plain PHP engine for non-Blade files
+			$resolver->register('php', function () use ($filesystem) {
+				return new PhpEngine($filesystem);
+			});
+			
+			// Set up view finder with the configured template paths
+			$this->finder = new FileViewFinder($filesystem, $viewPaths);
+			
+			// Set up event dispatcher
+			$dispatcher = new Dispatcher(new Container());
+			
+			// Set up the view factory
+			$this->factory = new Factory($resolver, $this->finder, $dispatcher);
 			
 			// Add additional view paths if configured
 			if (!empty($configuration['paths'])) {
@@ -83,9 +125,9 @@
 		public function render(string $template, array $data = []): string {
 			try {
 				$mergedData = array_merge($this->globals, $data);
-				return $this->blade->make($template, $mergedData)->render();
+				return $this->factory->make($template, $mergedData)->render();
 			} catch (\Throwable $e) {
-				throw new TemplateRenderException("Failed to render template '{$template}': " . $e->getMessage(), 0, $e);
+				throw new TemplateRenderException($template, "Failed to render template: " . $e->getMessage(), $e);
 			}
 		}
 		
@@ -111,12 +153,12 @@
 				}
 				
 				$mergedData = array_merge($this->globals, $data);
-				return $this->blade->make($tmpName, $mergedData)->render();
+				return $this->factory->make($tmpName, $mergedData)->render();
 			} catch (\RuntimeException $e) {
 				throw $e;
 			} catch (\Throwable $e) {
 				$snippet = strlen($templateString) > 50 ? substr($templateString, 0, 50) . '...' : $templateString;
-				throw new TemplateRenderException("Failed to render template string '{$snippet}': " . $e->getMessage(), 0, $e);
+				throw new TemplateRenderException($snippet, "Failed to render template string: " . $e->getMessage(), $e);
 			} finally {
 				// Always clean up the temp file
 				if (file_exists($tmpFile)) {
@@ -133,7 +175,7 @@
 		 */
 		public function addGlobal(string $key, mixed $value): void {
 			$this->globals[$key] = $value;
-			$this->blade->share($key, $value);
+			$this->factory->share($key, $value);
 		}
 		
 		/**
@@ -143,7 +185,7 @@
 		 */
 		public function exists(string $template): bool {
 			try {
-				return $this->blade->exists($template);
+				return $this->factory->exists($template);
 			} catch (\Exception $e) {
 				return false;
 			}
@@ -180,7 +222,7 @@
 		 */
 		public function registerDirective(string $name, callable $callback): void {
 			try {
-				$this->blade->directive($name, $callback);
+				$this->compiler->directive($name, $callback);
 			} catch (\Exception $e) {
 				error_log("BladeTemplate: unable to register directive '{$name}' ({$e->getMessage()})");
 			}
@@ -195,7 +237,7 @@
 		 */
 		public function registerIfDirective(string $name, callable $callback): void {
 			try {
-				$this->blade->if($name, $callback);
+				$this->compiler->if($name, $callback);
 			} catch (\Exception $e) {
 				error_log("BladeTemplate: unable to register if-directive '{$name}' ({$e->getMessage()})");
 			}
@@ -210,11 +252,9 @@
 		public function addPath(string $path, ?string $namespace = null): void {
 			try {
 				if ($namespace) {
-					// addNamespace is proxied to Factory via __call
-					$this->blade->addNamespace($namespace, $path);
+					$this->finder->addNamespace($namespace, $path);
 				} else {
-					// prependLocation is proxied to Factory via __call
-					$this->blade->prependLocation($path);
+					$this->finder->addLocation($path);
 				}
 			} catch (\Exception $e) {
 				error_log("BladeTemplate: unable to add path '{$path}' ({$e->getMessage()})");
@@ -222,11 +262,29 @@
 		}
 		
 		/**
-		 * Get the underlying Blade instance
-		 * @return Blade
+		 * Get the underlying View Factory instance
+		 * @return Factory
 		 */
-		public function getBlade(): Blade {
-			return $this->blade;
+		public function getFactory(): Factory {
+			return $this->factory;
+		}
+		
+		/**
+		 * Get the underlying BladeCompiler instance
+		 * @return BladeCompiler
+		 */
+		public function getCompiler(): BladeCompiler {
+			return $this->compiler;
+		}
+		
+		/**
+		 * Resolves a dot-notation template name to its full file path
+		 * @param string $template Template name in dot-notation
+		 * @return string Full path to the template file
+		 */
+		private function resolveTemplatePath(string $template): string {
+			$relative = str_replace('.', DIRECTORY_SEPARATOR, $template) . '.blade.php';
+			return rtrim($this->config['template_dir'], '/\\') . DIRECTORY_SEPARATOR . $relative;
 		}
 		
 		/**
@@ -236,8 +294,7 @@
 		 */
 		public function isCached(string $template): bool {
 			try {
-				$compiler = $this->blade->compiler();
-				$compiled = $compiler->getCompiledPath($this->resolveTemplatePath($template));
+				$compiled = $this->compiler->getCompiledPath($this->resolveTemplatePath($template));
 				return file_exists($compiled);
 			} catch (\Exception $e) {
 				return false;
@@ -251,8 +308,7 @@
 		 */
 		public function clearTemplateCache(string $template): void {
 			try {
-				$compiler = $this->blade->compiler();
-				$compiled = $compiler->getCompiledPath($this->resolveTemplatePath($template));
+				$compiled = $this->compiler->getCompiledPath($this->resolveTemplatePath($template));
 				
 				if (file_exists($compiled)) {
 					unlink($compiled);
@@ -290,15 +346,5 @@
 			
 			// Remove the now-empty directory
 			rmdir($dir);
-		}
-		
-		/**
-		 * Resolves a dot-notation template name to its full file path
-		 * @param string $template Template name in dot-notation
-		 * @return string Full path to the template file
-		 */
-		private function resolveTemplatePath(string $template): string {
-			$relative = str_replace('.', DIRECTORY_SEPARATOR, $template) . '.blade.php';
-			return rtrim($this->config['template_dir'], '/\\') . DIRECTORY_SEPARATOR . $relative;
 		}
 	}

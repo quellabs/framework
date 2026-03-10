@@ -35,7 +35,10 @@
     }
   },
   "require": {
-    "jenssegers/blade": "^2.0",
+    "illuminate/container": "^11.0",
+    "illuminate/events": "^11.0",
+    "illuminate/filesystem": "^11.0",
+    "illuminate/view": "^11.0",
     "quellabs/contracts": "^1.",
     "quellabs/dependency-injection": "^1.",
     "quellabs/sculpt": "^1.",
@@ -60,7 +63,7 @@
   },
   "scripts": {
     "post-install-cmd": [
-      "php -r \"copy('vendor/quellabs/canvas-blade/config/blade.php', 'config/blade.php');\""
+      "php -r \"copy('vendor/quellabs/canvas-blade/config/blade.php', 'public/config/blade.php');\""
     ]
   }
 }
