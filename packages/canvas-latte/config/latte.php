@@ -18,9 +18,5 @@
 		'filters'      => [],
 		
 		// Global variables available in all templates
-		'globals'      => [
-			'site_name'   => 'My Website',
-			'version'     => '1.0.0',
-			'environment' => 'production',
-		],
+		'globals'      => [],
 	];

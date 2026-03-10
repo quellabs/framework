@@ -45,12 +45,11 @@
 			
 			// Build the engine
 			$this->engine = new Engine();
-			
-			// Latte's FileLoader resolves templates relative to a base directory.
-			// We use the primary template_dir as the base; namespaced paths are
-			// resolved manually in resolveTemplatePath().
-			$this->engine->setLoader(new FileLoader($this->paths['']));
-			
+
+			// FileLoader without a base path — resolveTemplatePath() always returns
+			// absolute paths, so we don't want FileLoader prepending anything.
+			$this->engine->setLoader(new FileLoader());
+
 			// null disables the cache (Latte accepts null here)
 			$this->engine->setCacheDirectory($cachePath);
 			
