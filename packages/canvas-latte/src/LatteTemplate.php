@@ -38,24 +38,24 @@
 			$this->config = $configuration;
 			
 			$templateDir = $configuration['template_dir'] ?? ComposerUtils::getProjectRoot() . DIRECTORY_SEPARATOR . 'templates';
-			$cachePath   = ($configuration['caching'] ?? true) ? ($configuration['cache_dir'] ?? null) : null;
+			$cachePath = ($configuration['caching'] ?? true) ? ($configuration['cache_dir'] ?? null) : null;
 			
 			// Store the primary path under the default (empty) namespace
 			$this->paths[''] = rtrim($templateDir, '/\\');
 			
 			// Build the engine
 			$this->engine = new Engine();
-
+			
 			// FileLoader without a base path — resolveTemplatePath() always returns
 			// absolute paths, so we don't want FileLoader prepending anything.
 			$this->engine->setLoader(new FileLoader());
-
+			
 			// null disables the cache (Latte accepts null here)
 			$this->engine->setCacheDirectory($cachePath);
 			
 			// Register additional namespaced/plain paths if configured
 			if (!empty($configuration['paths'])) {
-				foreach ((array) $configuration['paths'] as $namespace => $path) {
+				foreach ((array)$configuration['paths'] as $namespace => $path) {
 					$this->addPath($path, is_string($namespace) ? $namespace : null);
 				}
 			}
@@ -104,7 +104,7 @@
 		 */
 		public function render(string $template, array $data = []): string {
 			try {
-				$mergedData  = array_merge($this->globals, $data);
+				$mergedData = array_merge($this->globals, $data);
 				$resolvedPath = $this->resolveTemplatePath($template);
 				return $this->engine->renderToString($resolvedPath, $mergedData);
 			} catch (\Throwable $e) {
@@ -234,7 +234,7 @@
 		 */
 		public function isCached(string $template): bool {
 			try {
-				$sourcePath  = $this->resolveTemplatePath($template);
+				$sourcePath = $this->resolveTemplatePath($template);
 				$compiledPath = $this->resolveCompiledPath($sourcePath);
 				return file_exists($compiledPath);
 			} catch (\Exception $e) {
@@ -249,7 +249,7 @@
 		 */
 		public function clearTemplateCache(string $template): void {
 			try {
-				$sourcePath   = $this->resolveTemplatePath($template);
+				$sourcePath = $this->resolveTemplatePath($template);
 				$compiledPath = $this->resolveCompiledPath($sourcePath);
 				
 				if (file_exists($compiledPath)) {
@@ -267,17 +267,32 @@
 		 * @throws \InvalidArgumentException If the namespace is unknown
 		 */
 		private function resolveTemplatePath(string $template): string {
+			// Handle namespaced templates e.g. 'admin:users/list'
 			if (str_contains($template, ':')) {
-				[$namespace, $relative] = explode(':', $template, 2);
+				// Collect parts
+				$parts = explode(':', $template, 2);
+				$namespace = $parts[0];
+				$relative = $parts[1];
 				
+				// Ensure the requested namespace has a registered path
 				if (!isset($this->paths[$namespace])) {
 					throw new \InvalidArgumentException("Unknown Latte template namespace '{$namespace}'.");
 				}
 				
-				return $this->paths[$namespace] . DIRECTORY_SEPARATOR . ltrim($relative, '/\\') . '.latte';
+				// Strip leading slashes to prevent double separators
+				$relative = ltrim($relative, '/\\');
+				$path = $this->paths[$namespace] . DIRECTORY_SEPARATOR . $relative;
+				
+				// Append .latte only if no extension was provided
+				return str_contains($relative, '.') ? $path : $path . '.latte';
 			}
 			
-			return $this->paths[''] . DIRECTORY_SEPARATOR . ltrim($template, '/\\') . '.latte';
+			// Strip leading slashes to prevent double separators
+			$relative = ltrim($template, '/\\');
+			$path = $this->paths[''] . DIRECTORY_SEPARATOR . $relative;
+			
+			// Append .latte only if no extension was provided
+			return str_contains($relative, '.') ? $path : $path . '.latte';
 		}
 		
 		/**

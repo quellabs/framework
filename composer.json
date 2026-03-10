@@ -82,7 +82,8 @@
     "robmorgan/phinx": "*",
     "cakephp/database": "*",
     "softcreatr/jsonpath": "*",
-    "composer-plugin-api": "^2.0"
+    "composer-plugin-api": "^2.0",
+    "quellabs/canvas-authorization": "dev-feature/stub"
   },
   "suggest": {
     "ext-redis": "Required for Redis cache driver",
