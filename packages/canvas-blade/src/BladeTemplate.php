@@ -2,7 +2,6 @@
 	
 	namespace Quellabs\Canvas\Blade;
 	
-	use Illuminate\View\Factory;
 	use Jenssegers\Blade\Blade;
 	use Quellabs\Contracts\Templates\TemplateEngineInterface;
 	use Quellabs\Contracts\Templates\TemplateRenderException;
@@ -14,11 +13,6 @@
 		 * @var Blade The jenssegers/blade wrapper instance
 		 */
 		private Blade $blade;
-		
-		/**
-		 * @var Factory The underlying Illuminate View Factory
-		 */
-		private Factory $factory;
 		
 		/**
 		 * @var array Configuration data provided by ServiceProvider
@@ -40,8 +34,7 @@
 			$viewPaths = (array) ($configuration['template_dir'] ?? ComposerUtils::getProjectRoot() . DIRECTORY_SEPARATOR . 'templates');
 			$cachePath = $configuration['caching'] ? ($configuration['cache_dir'] ?? null) : null;
 			
-			$this->blade   = new Blade($viewPaths, $cachePath);
-			$this->factory = $this->blade->view();
+			$this->blade = new Blade($viewPaths, $cachePath);
 			
 			// Add additional view paths if configured
 			if (!empty($configuration['paths'])) {
@@ -90,7 +83,7 @@
 		public function render(string $template, array $data = []): string {
 			try {
 				$mergedData = array_merge($this->globals, $data);
-				return $this->factory->make($template, $mergedData)->render();
+				return $this->blade->make($template, $mergedData)->render();
 			} catch (\Throwable $e) {
 				throw new TemplateRenderException("Failed to render template '{$template}': " . $e->getMessage(), 0, $e);
 			}
@@ -108,23 +101,19 @@
 		 * @throws TemplateRenderException If template rendering fails for any reason
 		 */
 		public function renderString(string $templateString, array $data = []): string {
-			// Write to a temp .blade.php file in the system temp dir
-			$tmpDir  = sys_get_temp_dir();
+			// Write to a temp file in the template directory — already known to Blade
 			$tmpName = 'blade_str_' . md5($templateString) . '_' . getmypid();
-			$tmpFile = $tmpDir . DIRECTORY_SEPARATOR . $tmpName . '.blade.php';
+			$tmpFile = rtrim($this->config['template_dir'], '/\\') . DIRECTORY_SEPARATOR . $tmpName . '.blade.php';
 			
 			try {
 				if (file_put_contents($tmpFile, $templateString) === false) {
 					throw new \RuntimeException("Unable to write temporary template file.");
 				}
 				
-				// Temporarily register the temp directory as a view path
-				$this->blade->addLocation($tmpDir);
-				
 				$mergedData = array_merge($this->globals, $data);
-				$result = $this->factory->make($tmpName, $mergedData)->render();
-				
-				return $result;
+				return $this->blade->make($tmpName, $mergedData)->render();
+			} catch (\RuntimeException $e) {
+				throw $e;
 			} catch (\Throwable $e) {
 				$snippet = strlen($templateString) > 50 ? substr($templateString, 0, 50) . '...' : $templateString;
 				throw new TemplateRenderException("Failed to render template string '{$snippet}': " . $e->getMessage(), 0, $e);
@@ -144,7 +133,7 @@
 		 */
 		public function addGlobal(string $key, mixed $value): void {
 			$this->globals[$key] = $value;
-			$this->factory->share($key, $value);
+			$this->blade->share($key, $value);
 		}
 		
 		/**
@@ -154,7 +143,7 @@
 		 */
 		public function exists(string $template): bool {
 			try {
-				return $this->factory->exists($template);
+				return $this->blade->exists($template);
 			} catch (\Exception $e) {
 				return false;
 			}
@@ -191,7 +180,7 @@
 		 */
 		public function registerDirective(string $name, callable $callback): void {
 			try {
-				$this->blade->compiler()->directive($name, $callback);
+				$this->blade->directive($name, $callback);
 			} catch (\Exception $e) {
 				error_log("BladeTemplate: unable to register directive '{$name}' ({$e->getMessage()})");
 			}
@@ -206,7 +195,7 @@
 		 */
 		public function registerIfDirective(string $name, callable $callback): void {
 			try {
-				$this->blade->compiler()->if($name, $callback);
+				$this->blade->if($name, $callback);
 			} catch (\Exception $e) {
 				error_log("BladeTemplate: unable to register if-directive '{$name}' ({$e->getMessage()})");
 			}
@@ -221,9 +210,11 @@
 		public function addPath(string $path, ?string $namespace = null): void {
 			try {
 				if ($namespace) {
-					$this->factory->getFinder()->addNamespace($namespace, $path);
+					// addNamespace is proxied to Factory via __call
+					$this->blade->addNamespace($namespace, $path);
 				} else {
-					$this->blade->addLocation($path);
+					// prependLocation is proxied to Factory via __call
+					$this->blade->prependLocation($path);
 				}
 			} catch (\Exception $e) {
 				error_log("BladeTemplate: unable to add path '{$path}' ({$e->getMessage()})");
@@ -239,24 +230,14 @@
 		}
 		
 		/**
-		 * Get the underlying Illuminate View Factory
-		 * @return Factory
-		 */
-		public function getFactory(): Factory {
-			return $this->factory;
-		}
-		
-		/**
 		 * Check if a specific template is currently compiled/cached
 		 * @param string $template Template name in dot-notation
 		 * @return bool True if a compiled file exists for this template
 		 */
 		public function isCached(string $template): bool {
 			try {
-				$compiler  = $this->blade->compiler();
-				$viewPath  = $this->factory->getFinder()->find($template);
-				$compiled  = $compiler->getCompiledPath($viewPath);
-				
+				$compiler = $this->blade->compiler();
+				$compiled = $compiler->getCompiledPath($this->resolveTemplatePath($template));
 				return file_exists($compiled);
 			} catch (\Exception $e) {
 				return false;
@@ -271,8 +252,7 @@
 		public function clearTemplateCache(string $template): void {
 			try {
 				$compiler = $this->blade->compiler();
-				$viewPath = $this->factory->getFinder()->find($template);
-				$compiled = $compiler->getCompiledPath($viewPath);
+				$compiled = $compiler->getCompiledPath($this->resolveTemplatePath($template));
 				
 				if (file_exists($compiled)) {
 					unlink($compiled);
@@ -288,22 +268,37 @@
 		 * @return void
 		 */
 		private function recursiveDelete(string $dir): void {
+			// Nothing to do if the directory doesn't exist
 			if (!is_dir($dir)) {
 				return;
 			}
 			
+			// List directory contents, excluding . and ..
 			$files = array_diff(scandir($dir), ['.', '..']);
 			
 			foreach ($files as $file) {
 				$path = $dir . DIRECTORY_SEPARATOR . $file;
 				
 				if (is_dir($path)) {
+					// Recurse into subdirectories
 					$this->recursiveDelete($path);
 				} else {
+					// Delete the file
 					unlink($path);
 				}
 			}
 			
+			// Remove the now-empty directory
 			rmdir($dir);
+		}
+		
+		/**
+		 * Resolves a dot-notation template name to its full file path
+		 * @param string $template Template name in dot-notation
+		 * @return string Full path to the template file
+		 */
+		private function resolveTemplatePath(string $template): string {
+			$relative = str_replace('.', DIRECTORY_SEPARATOR, $template) . '.blade.php';
+			return rtrim($this->config['template_dir'], '/\\') . DIRECTORY_SEPARATOR . $relative;
 		}
 	}
