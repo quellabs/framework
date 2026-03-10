@@ -120,42 +120,6 @@
 				'globals'       => $configuration['globals']       ?? $defaults['globals'],
 			]);
 			
-			// Add additional paths if configured
-			if (!empty($configuration['paths'])) {
-				foreach ($configuration['paths'] as $namespace => $path) {
-					if (is_string($namespace)) {
-						$instance->addPath($path, $namespace); // Namespaced path
-					} else {
-						$instance->addPath($path); // Non-namespaced path
-					}
-				}
-			}
-			
-			// Register custom directives if configured
-			if (!empty($configuration['directives'])) {
-				foreach ($configuration['directives'] as $name => $callback) {
-					if (is_callable($callback)) {
-						$instance->registerDirective($name, $callback);
-					}
-				}
-			}
-			
-			// Register custom if-directives if configured
-			if (!empty($configuration['if_directives'])) {
-				foreach ($configuration['if_directives'] as $name => $callback) {
-					if (is_callable($callback)) {
-						$instance->registerIfDirective($name, $callback);
-					}
-				}
-			}
-			
-			// Add global variables if configured
-			if (!empty($configuration['globals'])) {
-				foreach ($configuration['globals'] as $key => $value) {
-					$instance->addGlobal($key, $value);
-				}
-			}
-			
 			// Cache and return instance
 			return self::$instance = $instance;
 		}
