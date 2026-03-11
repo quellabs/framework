@@ -19,7 +19,11 @@
 		 * @return Response
 		 */
 		public function index(Request $request): Response {
-			return $this->render('home/index3.tpl');
+			return $this->render('home_plates', [
+				'title' => 'Test Page',
+				'name'  => 'Floris',
+				'items' => ['Foo', 'Bar', 'Baz'],
+			]);
 		}
 		
 		/**
