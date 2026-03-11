@@ -33,6 +33,7 @@ jobs:
           - canvas-twig
           - canvas-blade
           - canvas-latte
+          - canvas-plates
           - canvas-skeleton
           - canvas-database
       fail-fast: false
