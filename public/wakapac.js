@@ -148,6 +148,8 @@
      */
     const MSG_UNKNOWN = 0x0000;
     const MSG_SIZE = 0x0005;
+    const MSG_PAINT = 0x000F;
+    const MSG_DPR_CHANGE = 0x0010;
     const MSG_MOUSEMOVE = 0x0200;
     const MSG_LBUTTONDOWN = 0x0201;
     const MSG_LBUTTONUP = 0x0202;
@@ -1030,6 +1032,21 @@
             const end = Math.max(rawStart, rawEnd);
 
             return { start, end };
+        },
+
+        /**
+         * Computes the union of two axis-aligned rectangles.
+         * The union is the smallest rectangle that contains both input rectangles.
+         * @param {{x:number, y:number, width:number, height:number}} a
+         * @param {{x:number, y:number, width:number, height:number}} b
+         * @returns {{x:number, y:number, width:number, height:number}}
+         */
+        unionRect(a, b) {
+            const x = Math.min(a.x, b.x);
+            const y = Math.min(a.y, b.y);
+            const right  = Math.max(a.x + a.width,  b.x + b.width);
+            const bottom = Math.max(a.y + a.height, b.y + b.height);
+            return { x, y, width: right - x, height: bottom - y };
         }
     }
 
@@ -1496,6 +1513,23 @@
                     });
                 });
             }
+
+            // Device pixel ratio changes
+            // Fires when the display DPR changes (monitor switch, OS scaling change)
+            (function watchDPR() {
+                const dpr = window.devicePixelRatio || 1;
+                const mq = window.matchMedia(`(resolution: ${dpr}dppx)`);
+
+                mq.addEventListener('change', function onChange() {
+                    mq.removeEventListener('change', onChange);
+                    
+                    self.dispatchBrowserStateEvent('dpr', {
+                        ratio: window.devicePixelRatio || 1
+                    });
+
+                    watchDPR(); // Re-register for the next change
+                });
+            })();
         },
 
         /**
@@ -6214,14 +6248,18 @@
                 break;
             }
 
-            case 'orientation': {
+            case 'orientation':
                 // Screen orientation angle in degrees (0, 90, 180, 270)
                 // and type string e.g. 'portrait-primary', 'landscape-secondary'
                 this.abstraction.browserOrientationAngle = stateData.angle;
                 this.abstraction.browserOrientationType = stateData.type;
                 break;
-            }
 
+            case 'dpr':
+                this.abstraction.browserDevicePixelRatio = stateData.ratio;
+                wakaPAC.sendMessage(this.abstraction.pacId, MSG_DPR_CHANGE, Math.round(stateData.ratio * 100), 0);
+                break;
+                
             default:
                 console.warn('Unknown browser state message ' + stateType);
                 break;
@@ -6797,9 +6835,9 @@
         abstraction.browserContentHeight = document.documentElement.scrollHeight;
 
         // Container scroll properties
-        abstraction.containerIsScrollable =  false;                               // Can scroll in any direction
-        abstraction.containerScrollX = this.container.scrollLeft;                 // Current horizontal scroll position
-        abstraction.containerScrollY = this.container.scrollTop;                  // Current vertical scroll position
+        abstraction.containerIsScrollable =  false;                         // Can scroll in any direction
+        abstraction.containerScrollX = this.container.scrollLeft;           // Current horizontal scroll position
+        abstraction.containerScrollY = this.container.scrollTop;            // Current vertical scroll position
         abstraction.containerContentWidth = this.container.scrollWidth;     // Total scrollable content width
         abstraction.containerContentHeight = this.container.scrollHeight;   // Total scrollable content height
         abstraction.containerScrollWindow = {
@@ -6824,6 +6862,8 @@
         abstraction.browserOrientationAngle = screen.orientation ? screen.orientation.angle : 0;
         abstraction.browserOrientationType = screen.orientation ? screen.orientation.type : 'unknown';
 
+        // Pixel ratio
+        abstraction.browserDevicePixelRatio = window.devicePixelRatio || 1;
     };
 
     /**
@@ -9128,6 +9168,13 @@
                 }
             }
 
+            // Synchronously flush any paint requests queued during observation
+            // to avoid a blank frame before the first animation frame fires
+            if (container instanceof HTMLCanvasElement) {
+                _invalidateRect(container._pacId);
+                _flushPaintQueue();
+            }
+
             // Signal that a new component is ready
             document.dispatchEvent(new CustomEvent('pac:component-ready', {
                 detail: { component: context, selector: selector, pacId: pacId }
@@ -9190,6 +9237,41 @@
         }
 
         return context.container;
+    };
+
+    /**
+     * Shows a PAC container by removing its HTML hidden attribute.
+     * Equivalent to Win32 ShowWindow(hWnd, SW_SHOW).
+     * Has no effect if the container is already visible or does not exist.
+     * @param {string} pacId - data-pac-id of the target container
+     */
+    wakaPAC.showContainer = function(pacId) {
+        const container = this.getContainerByPacId(pacId);
+
+        if (!container) {
+            return;
+        }
+
+        container.removeAttribute('hidden');
+    };
+
+    /**
+     * Hides a PAC container by setting its HTML hidden attribute.
+     * Equivalent to Win32 ShowWindow(hWnd, SW_HIDE).
+     * The component remains registered and continues to receive messages
+     * while hidden — callers are responsible for suppressing irrelevant
+     * messages in their msgProc if needed.
+     * Has no effect if the container is already hidden or does not exist.
+     * @param {string} pacId - data-pac-id of the target container
+     */
+    wakaPAC.hideContainer = function(pacId) {
+        const container = this.getContainerByPacId(pacId);
+
+        if (!container) {
+            return;
+        }
+
+        container.setAttribute('hidden', '');
     };
 
     /**
@@ -9676,6 +9758,108 @@
     };
 
     // ========================================================================
+    // PAINT INVALIDATION ENGINE
+    // ========================================================================
+
+    /**
+     * Tracks canvas containers that have been invalidated and are waiting for
+     * their MSG_PAINT to be dispatched on the next animation frame.
+     *
+     * Key:   pacId (string)
+     * Value: { container: HTMLCanvasElement, rcPaint: {x, y, width, height} }
+     *
+     * A container is present in this map if and only if a rAF flush is already
+     * scheduled for it. Multiple invalidateRect() calls before the next frame
+     * collapse into a single entry via rect union — identical to how Win32
+     * coalesces WM_PAINT messages in the message queue.
+     *
+     * @type {Map<string, {container: HTMLCanvasElement, rcPaint: {x:number, y:number, width:number, height:number}}>}
+     */
+    const _dirtyCanvases = new Map();
+
+    /**
+     * Dispatches MSG_PAINT to all invalidated canvas containers, then clears
+     * the dirty set. Called once per animation frame by requestAnimationFrame.
+     */
+    function _flushPaintQueue() {
+        _dirtyCanvases.forEach(function(entry) {
+            const { container } = entry;
+
+            // Skip containers that were removed from the DOM before the frame fired
+            if (!container.isConnected) {
+                return;
+            }
+
+            // Mark as actively painting so getDC() knows to apply the clip
+            entry.painting = true;
+
+            DomUpdateTracker.dispatchToContainer(container, DomUpdateTracker.wrapDomEventAsMessage(
+                MSG_PAINT,
+                null,   // No originating DOM event
+                0,      // wParam unused
+                0       // lParam unused
+            ));
+
+            // Clear the painting flag — releaseDC() uses this to decide whether
+            // to restore the context state
+            entry.painting = false;
+        });
+
+        _dirtyCanvases.clear();
+    }
+
+    /**
+     * Marks a canvas PAC container as needing repaint and schedules a
+     * requestAnimationFrame flush if one is not already pending.
+     *
+     * Multiple calls with different rects before the next frame are coalesced
+     * into a single MSG_PAINT carrying the union rectangle — equivalent to
+     * Win32 InvalidateRect() accumulating into the update region.
+     *
+     * @param {string} pacId  - data-pac-id of the target canvas container
+     * @param {{x:number, y:number, width:number, height:number}|null} [rect]
+     *   Rectangle to invalidate in canvas-local coordinates.
+     *   Pass null (or omit) to invalidate the entire canvas.
+     * @returns {void}
+     */
+    function _invalidateRect(pacId, rect) {
+        // Fetch the container
+        const container = wakaPAC.getContainerByPacId(pacId);
+
+        // If not found, bail
+        if (!container) {
+            return;
+        }
+
+        // Do nothing if the container is not a canvas
+        if (!(container instanceof HTMLCanvasElement)) {
+            return;
+        }
+
+        // Normalize: null rect means the whole canvas
+        const fullRect = {
+            x: 0,
+            y: 0,
+            width:  container.width,
+            height: container.height
+        };
+
+        // Fetch the rect or default to the entire canvas right if omitted
+        const incoming = rect || fullRect;
+
+        // Queue the repaint
+        if (_dirtyCanvases.has(pacId)) {
+            // Container already queued — union the new rect into the existing one
+            const existing = _dirtyCanvases.get(pacId);
+            existing.rcPaint = Utils.unionRect(existing.rcPaint, incoming);
+        } else {
+            // First invalidation this frame — schedule the flush
+            _dirtyCanvases.set(pacId, { container, rcPaint: incoming });
+            requestAnimationFrame(_flushPaintQueue);
+        }
+    }
+
+    // ========================================================================
     // PUBLIC ACCELERATOR API
     // ========================================================================
 
@@ -9764,6 +9948,146 @@
     };
 
     // ========================================================================
+    // PUBLIC PAINT API
+    // ========================================================================
+
+    /**
+     * Returns the CanvasRenderingContext2D for a canvas PAC container.
+     * Equivalent to Win32 GetDC() — retrieves the drawing context for a window.
+     * Returns null if the container does not exist or is not a <canvas> element.
+     * @param {string} pacId
+     * @returns {CanvasRenderingContext2D|null}
+     */
+    wakaPAC.getDC = function(pacId) {
+        const container = this.getContainerByPacId(pacId);
+
+        if (!container || !(container instanceof HTMLCanvasElement)) {
+            return null;
+        }
+
+        const context = window.PACRegistry.get(pacId);
+        const attributes = context?.config?.dcAttributes;
+        const ctx = container.getContext('2d', attributes);
+
+        // If we're inside a MSG_PAINT dispatch, automatically restrict drawing
+        // to the invalidated rectangle — equivalent to Win32 BeginPaint() setting
+        // up a clip region over the update rect.  Callers must balance this with
+        // a matching releaseDC() call so the saved state is properly unwound.
+        const entry = _dirtyCanvases.get(pacId);
+
+        if (entry?.painting && entry.rcPaint) {
+            const r = entry.rcPaint;
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(r.x, r.y, r.width, r.height);
+            ctx.clip();
+        }
+
+        return ctx;
+    };
+
+    /**
+     * Releases a device context previously obtained with getDC().
+     * Must be called once for every getDC() call made inside a MSG_PAINT
+     * handler; outside of paint cycles this is a no-op and safe to call
+     * unconditionally.
+     * @param {CanvasRenderingContext2D} ctx - the context returned by getDC()
+     */
+    wakaPAC.releaseDC = function (ctx) {
+        // Bail if no ctx passed
+        if (!ctx) {
+            return;
+        }
+
+        // Recover the pacId from the canvas element the context belongs to
+        const pacId = ctx.canvas?.dataset?.pacId;
+
+        if (!pacId) {
+            return;
+        }
+
+        // Fetch entry from the store
+        const entry = _dirtyCanvases.get(pacId);
+
+        // Only restore if getDC() pushed a save — it does so only during painting
+        if (entry?.painting && entry.rcPaint) {
+            ctx.restore();
+        }
+    };
+
+    /**
+     * Marks a canvas PAC container as needing repaint.
+     * @param {string} pacId - data-pac-id of the target canvas container
+     * @param {{x:number, y:number, width:number, height:number}|null} [rect]
+     *   Rectangle to invalidate in canvas-local pixel coordinates.
+     *   Omit or pass null to invalidate the entire canvas surface.
+     */
+    wakaPAC.invalidateRect = function(pacId, rect) {
+        _invalidateRect(pacId, rect || null);
+    };
+
+    /**
+     * Returns the bounding rectangle of the invalidated region for a canvas
+     * PAC container, or null if no repaint is currently pending.
+     * @param {string} pacId - data-pac-id of the target canvas container
+     * @returns {{x:number, y:number, width:number, height:number}|null}
+     */
+    wakaPAC.getInvalidatedRect = function(pacId) {
+        const entry = _dirtyCanvases.get(pacId);
+        return entry ? { ...entry.rcPaint } : null;
+    };
+
+    /**
+     * Resizes the backing store of a canvas PAC container to the given dimensions.
+     * @param {string} pacId  - data-pac-id of the target canvas container
+     * @param {number} width  - New backing store width in pixels
+     * @param {number} height - New backing store height in pixels
+     */
+    wakaPAC.resizeCanvas = function(pacId, width, height) {
+        // Fetch the container
+        const container = this.getContainerByPacId(pacId);
+
+        // resizeCanvas is only meaningful for canvas containers
+        if (!container || !(container instanceof HTMLCanvasElement)) {
+            return;
+        }
+
+        // Skip if dimensions are unchanged — assigning to width/height clears the
+        // backing store even when the value is the same, so avoid it entirely
+        if (container.width === width && container.height === height) {
+            return;
+        }
+
+        // Resize the backing store; existing pixel data is cleared by the browser
+        container.width  = width;
+        container.height = height;
+
+        // Schedule a repaint — the canvas content is invalid after every resize
+        _invalidateRect(pacId, null);
+    };
+
+    /**
+     * Returns the current backing store dimensions of a canvas PAC container.
+     * These reflect the actual pixel dimensions of the canvas element, which may
+     * differ from the CSS layout size when devicePixelRatio scaling is in use.
+     * Returns null if the pacId does not refer to a canvas container.
+     * @param {string} pacId - data-pac-id of the target canvas container
+     * @returns {{width:number, height:number}|null}
+     */
+    wakaPAC.getCanvasSize = function(pacId) {
+        const container = this.getContainerByPacId(pacId);
+
+        if (!container || !(container instanceof HTMLCanvasElement)) {
+            return null;
+        }
+
+        return {
+            width: container.width,
+            height: container.height
+        };
+    };
+
+    // ========================================================================
     // EXPORTS
     // ========================================================================
 
@@ -9780,9 +10104,9 @@
         MSG_RBUTTONDOWN, MSG_RBUTTONUP, MSG_MBUTTONDOWN, MSG_MBUTTONUP, MSG_LCLICK,
         MSG_MCLICK, MSG_RCLICK, MSG_CONTEXTMENU, MSG_CHAR, MSG_CHANGE, MSG_SUBMIT, MSG_INPUT,
         MSG_INPUT_COMPLETE, MSG_SETFOCUS, MSG_KILLFOCUS, MSG_KEYDOWN, MSG_KEYUP, MSG_USER, MSG_TIMER,
-        MSG_ACCEL, MSG_COPY, MSG_PASTE, MSG_MOUSEWHEEL, MSG_GESTURE, MSG_SIZE, MSG_MOUSEENTER,
-        MSG_MOUSELEAVE, MSG_MOUSEENTER_DESCENDANT, MSG_MOUSELEAVE_DESCENDANT, MSG_CAPTURECHANGED,
-        MSG_DRAGENTER, MSG_DRAGOVER, MSG_DRAGLEAVE, MSG_DROP,
+        MSG_ACCEL, MSG_COPY, MSG_PASTE, MSG_MOUSEWHEEL, MSG_GESTURE, MSG_PAINT, MSG_SIZE,
+        MSG_MOUSEENTER, MSG_MOUSELEAVE, MSG_MOUSEENTER_DESCENDANT, MSG_MOUSELEAVE_DESCENDANT,
+        MSG_CAPTURECHANGED, MSG_DRAGENTER, MSG_DRAGOVER, MSG_DRAGLEAVE, MSG_DROP, MSG_DPR_CHANGE,
 
         // Mouse modifier keys
         MK_LBUTTON, MK_RBUTTON, MK_MBUTTON, MK_SHIFT, MK_CONTROL, MK_ALT,

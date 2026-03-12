@@ -160,6 +160,14 @@
 			$this->collectedMetadata = [];
 			return $this;
 		}
+		
+		/**
+		 * Returns all provider definitions
+		 * @return ProviderDefinition[]
+		 */
+		public function getDefinitions(): array {
+			return $this->providerDefinitions;
+		}
 
 		/**
 		 * Retrieve all collected metadata across all families and packages.
