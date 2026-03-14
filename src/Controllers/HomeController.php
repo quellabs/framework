@@ -27,12 +27,11 @@
 		}
 		
 		/**
-		 * @Route("/hello/{name:int}")
-		 * @param string $name
+		 * @Route("routes::test")
 		 * @return Response
 		 */
-		public function hello(string $name): Response {
-			return new Response("Hello, " . $name);
+		public function hello(): Response {
+			return new Response("Hello from routes file");
 		}
 		
 		/**
