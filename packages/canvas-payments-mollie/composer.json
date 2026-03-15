@@ -41,5 +41,12 @@
     "post-autoload-dump": [
       "php -r \"if(!file_exists('config/mollie.php')) copy('vendor/quellabs/canvas-payments-mollie/config/mollie.php', 'config/mollie.php');\""
     ]
+  },
+  "extra": {
+    "discover": {
+      "canvas": {
+        "controller": "Quellabs\\Payments\\Mollie\\MollieController"
+      }
+    }
   }
 }
