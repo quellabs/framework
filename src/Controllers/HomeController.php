@@ -7,8 +7,11 @@
 	use Quellabs\Canvas\Annotations\Route;
 	use Quellabs\Canvas\Controllers\SecureController;
 	use Quellabs\Canvas\Validation\Rules\Date;
+	use Quellabs\Contracts\Payment\PaymentRequest;
 	use Quellabs\DependencyInjection\Container;
+	use Quellabs\Payments\Mollie\Mollie;
 	use Quellabs\SignalHub\Signal;
+	use Symfony\Component\HttpFoundation\JsonResponse;
 	use Symfony\Component\HttpFoundation\Request;
 	use Symfony\Component\HttpFoundation\Response;
 	
@@ -18,15 +21,17 @@
 		 * @Route("/")
 		 * @return Response
 		 */
-		public function index(Request $request): Response {
-			return $this->render('home_plates', [
-				'title' => 'Test Page',
-				'name'  => 'Floris',
-				'items' => ['Foo', 'Bar', 'Baz'],
-			]);
+		public function index(Mollie $mollie): Response {
+			return new JsonResponse($mollie->initiate(new PaymentRequest(
+				"mollie",
+				1.0,
+				"EUR",
+				"test",
+				"hallo",
+			)));
 		}
 		
-		/**
+		/**ho
 		 * @Route("routes::test")
 		 * @return Response
 		 */

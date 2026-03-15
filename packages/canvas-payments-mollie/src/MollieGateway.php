@@ -17,15 +17,16 @@
 		protected string $apiKey;
 		protected string $apiUserAgent;
 		protected bool $testMode;
-		protected string $curlVersion;
+		protected array $curlVersion;
 		
 		/**
 		 * Mollie constructor.
 		 */
 		public function __construct(Kernel $kernel) {
 			$configData = $kernel->loadConfigFile('mollie');
-			$this->apiKey = $configData->get("api_key");
+			$this->apiKey = $configData->get("api_key", "");
 			$this->curlVersion = curl_version();
+			$this->testMode = $configData->getAs("test_mode", "bool", false);
 			
 			$this->apiUserAgent = join(" ", [
 				"Mollie/1.1.0",
@@ -56,7 +57,7 @@
 					],
 					'verify_peer' => true,
 					'verify_host' => true,
-					'cafile'      => dirname(__FILE__) . '/security/cacert.pem'
+					'cafile'      => dirname(__FILE__) . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'security' . DIRECTORY_SEPARATOR . 'cacert.pem'
 				]);
 				
 				$response = $client->request($method, $action, ['json' => $data]);

@@ -146,7 +146,7 @@
 			$mollieStatus = $response["response"]["status"];
 			$currency = $response["response"]["amount"]["currency"];
 			$amount = (float)$response["response"]["amount"]["value"];
-			$amountRefunded   = (float)($response["response"]["amountRefunded"]["value"] ?? 0);
+			$amountRefunded = (float)($response["response"]["amountRefunded"]["value"] ?? 0);
 			$amountRefundable = (float)($response["response"]["amountRemaining"]["value"] ?? 0);
 			
 			// Return response
@@ -185,11 +185,11 @@
 			
 			foreach ($response["response"] as $refund) {
 				$refunds[] = new RefundResult(
-					provider:      'mollie',
+					provider: 'mollie',
 					transactionId: $transactionId,
-					refundId:      $refund["id"],
-					value:         (float)$refund["amount"]["value"],
-					currency:      $refund["amount"]["currency"],
+					refundId: $refund["id"],
+					value: (float)$refund["amount"]["value"],
+					currency: $refund["amount"]["currency"],
 				);
 			}
 			
@@ -246,14 +246,20 @@
 			$config = $this->kernel->loadConfigFile("mollie");
 			
 			// Use the request URL if set, otherwise fall back to config — throw if neither is available
-			$request->redirectUrl ??= $config->get("redirectUrl")
-				?? throw new \RuntimeException("Mollie redirectUrl is not configured");
+			$request->redirectUrl ??= $config->get("redirect_url")
+				?? throw new \RuntimeException(
+					"Mollie payment gateway is misconfigured: 'redirect_url' is missing or empty. " .
+					"Set 'redirect_url' in config/mollie.php."
+				);
 			
 			// Use the cancelUrl URL if set, otherwise fall back to config — throw if neither is available
-			$request->cancelUrl ??= $config->get("cancelUrl")
-				?? throw new \RuntimeException("Mollie cancelUrl is not configured");
+			$request->cancelUrl ??= $config->get("cancel_url")
+				?? throw new \RuntimeException(
+					"Mollie payment gateway is misconfigured: 'cancel_url' is missing or empty. " .
+					"Set 'cancel_url' in config/mollie.php."
+				);
 			
 			// webhookUrl is optional — fall back to the default Mollie webhook route
-			$request->webhookUrl ??= $config->get("webhookUrl", '/webhooks/mollie');
+			$request->webhookUrl ??= $config->get("webhook_url", '/webhooks/mollie');
 		}
 	}
