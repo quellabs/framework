@@ -199,11 +199,6 @@ Mollie's legacy webhook sends only a single POST parameter `id` — no payment d
 state from the Mollie API using that ID. This means a forged webhook call cannot cause your application to process a
 payment that was never made.
 
-## Adding other providers
-
-Implement `PaymentProviderInterface` from `quellabs/payment-contracts` and write a controller that emits your provider's
-signal. No changes are required to any existing code.
-
 ## License
 
 MIT
