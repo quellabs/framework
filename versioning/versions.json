@@ -16,5 +16,6 @@
   "canvas-latte": "1.0.1",
   "canvas-plates": "1.0.0",
   "canvas-skeleton": "1.0.10",
-  "canvas-database": "1.0.0"
+  "canvas-database": "1.0.0",
+  "canvas-payments-mollie": "1.0.0"
 }
