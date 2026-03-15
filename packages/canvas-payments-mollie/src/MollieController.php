@@ -14,7 +14,8 @@
 		
 		private Kernel $kernel;
 		private Mollie $mollie;
-		private Signal $signal;
+		
+		public Signal $signal;
 		
 		/**
 		 * Constructor
