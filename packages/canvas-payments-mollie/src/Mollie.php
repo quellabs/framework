@@ -199,14 +199,19 @@
 		/**
 		 * Returns payment options
 		 * @param string $paymentModule
-		 * @return array
+		 * @return PaymentResponse
 		 */
-		public function getPaymentOptions(string $paymentModule): array {
+		public function getPaymentOptions(string $paymentModule): PaymentResponse {
 			switch ($paymentModule) {
 				case "mollie_ideal" :
 				case "mollie_kbc" :
 				case "mollie_giftcard" :
 					$methods = $this->gateway->getPaymentMethodInfo(substr($paymentModule, 7));
+					
+					if ($methods["request"]["result"] == 0) {
+						return PaymentResponse::fail(204, "Failed to fetch options for payment method '{$paymentModule}'");
+					}
+					
 					$issuers = [];
 					
 					if (!empty($methods["response"]["issuers"])) {
@@ -222,10 +227,10 @@
 						}
 					}
 					
-					return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $issuers];
+					return PaymentResponse::ok($issuers);
 				
 				default :
-					return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => []];
+					return PaymentResponse::ok([]);
 			}
 		}
 		

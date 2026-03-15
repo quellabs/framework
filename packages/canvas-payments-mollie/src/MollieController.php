@@ -16,6 +16,11 @@
 		private Mollie $mollie;
 		private Signal $signal;
 		
+		/**
+		 * Constructor
+		 * @param Kernel $kernel
+		 * @param Mollie $mollie
+		 */
 		public function __construct(Kernel $kernel, Mollie $mollie) {
 			$this->kernel = $kernel;
 			$this->mollie = $mollie;
@@ -37,8 +42,8 @@
 			$response = $this->mollie->exchange($request->request->get("id"));
 			
 			// If the exchange failed, return 500 so Mollie will retry the webhook
-			if ($response->errorId !== 0) {
-				return new JsonResponse($response->errorMessage, 500);
+			if (!$response->success) {
+				return new JsonResponse($response->errorMessage, $response->errorId !== 0 ? $response->errorId : 500);
 			}
 			
 			// Notify listeners (e.g. order management) of the updated payment state
