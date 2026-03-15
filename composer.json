@@ -76,7 +76,7 @@
     {
       "type": "path",
       "url": "./packages/canvas-database"
-    }
+    },
     {
       "type": "path",
       "url": "./packages/canvas-payments-mollie"
@@ -93,7 +93,7 @@
     "cakephp/database": "*",
     "softcreatr/jsonpath": "*",
     "composer-plugin-api": "^2.0",
-    "quellabs/canvas-authorization": "dev-feature/stub",
+    "quellabs/canvas-authorization": "dev-feature/stub"
   },
   "suggest": {
     "ext-redis": "Required for Redis cache driver",
@@ -121,7 +121,7 @@
     "quellabs/discover": "dev-main as 1.999.999",
     "quellabs/objectquel": "dev-main as 1.999.999",
     "quellabs/signal-hub": "dev-main as 1.999.999",
-    "quellabs/cache": "dev-main as 1.999.999"
+    "quellabs/cache": "dev-main as 1.999.999",
     "quellabs/canvas-payments-mollie": "dev-main as 1.999.999"
   },
   "autoload": {

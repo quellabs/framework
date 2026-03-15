@@ -1,6 +1,6 @@
 {
   "name": "quellabs/canvas-payments-mollie",
-  "description": "Mollie Payments integration for Canvas",
+  "description": "Mollie payment gateway integration for the Canvas PHP framework",
   "type": "library",
   "license": "MIT",
   "authors": [
@@ -10,10 +10,11 @@
     }
   ],
   "keywords": [
-    "ORM",
-    "ObjectQuel",
-    "query language",
-    "entity manager"
+    "mollie",
+    "payments",
+    "payment gateway",
+    "canvas",
+    "canvas-payments"
   ],
   "support": {
     "email": "support@quellabs.com",
@@ -23,23 +24,19 @@
     "docs": "https://canvas.php/docs",
     "source": "https://github.com/quellabs/canvas-payments-mollie"
   },
-  "config": {
-    "platform": {
-      "php": "8.2"
-    }
-  },
   "require": {
-    "symfony/http-client": "*",
+    "php": "^8.2",
+    "mollie/mollie-api-php": "^2.0",
     "ext-curl": "*"
   },
   "autoload": {
     "psr-4": {
-      "Quellabs\\Payments\\Mollie": "src/"
+      "Quellabs\\Payments\\Mollie\\": "src/"
     }
   },
   "scripts": {
     "post-autoload-dump": [
-      "php -r \"if(!file_exists('config/mollie.php')) copy('vendor/quellabs/canvas-payments-mollie/config/mollie.php', 'config/mollie.php');\""
+      "php -r \"if (!file_exists('config/mollie.php') && !copy('vendor/quellabs/canvas-payments-mollie/config/mollie.php', 'config/mollie.php')) { echo 'Warning: Could not publish Mollie config file.' . PHP_EOL; }\""
     ]
   },
   "extra": {
