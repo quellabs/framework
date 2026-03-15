@@ -80,14 +80,16 @@
   ],
   "require": {
     "php": "^8.3",
+    "ext-curl": "*",
     "monolog/monolog": "*",
     "symfony/http-foundation": "*",
+    "symfony/http-client": "*",
     "dragonmantank/cron-expression": "*",
     "robmorgan/phinx": "*",
     "cakephp/database": "*",
     "softcreatr/jsonpath": "*",
     "composer-plugin-api": "^2.0",
-    "quellabs/canvas-authorization": "dev-feature/stub"
+    "quellabs/canvas-authorization": "dev-feature/stub",
   },
   "suggest": {
     "ext-redis": "Required for Redis cache driver",

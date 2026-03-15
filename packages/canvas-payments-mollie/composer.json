@@ -1,0 +1,45 @@
+{
+  "name": "quellabs/canvas-payments-mollie",
+  "description": "Mollie Payments integration for Canvas",
+  "type": "library",
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "Floris van den Berg",
+      "email": "info@quellabs.com"
+    }
+  ],
+  "keywords": [
+    "ORM",
+    "ObjectQuel",
+    "query language",
+    "entity manager"
+  ],
+  "support": {
+    "email": "support@quellabs.com",
+    "issues": "https://github.com/quellabs/canvas-payments-mollie/issues",
+    "forum": "https://github.com/quellabs/canvas-payments-mollie/discussions",
+    "wiki": "https://github.com/quellabs/canvas-payments-mollie/wiki",
+    "docs": "https://canvas.php/docs",
+    "source": "https://github.com/quellabs/canvas-payments-mollie"
+  },
+  "config": {
+    "platform": {
+      "php": "8.2"
+    }
+  },
+  "require": {
+    "symfony/http-client": "*",
+    "ext-curl": "*"
+  },
+  "autoload": {
+    "psr-4": {
+      "Quellabs\\Payments\\Mollie": "src/"
+    }
+  },
+  "scripts": {
+    "post-autoload-dump": [
+      "php -r \"if(!file_exists('config/mollie.php')) copy('vendor/quellabs/canvas-payments-mollie/config/mollie.php', 'config/mollie.php');\""
+    ]
+  }
+}
