@@ -15,6 +15,10 @@
 		private Kernel $kernel;
 		private Mollie $mollie;
 		
+		/**
+		 * This signal emits
+		 * @var Signal
+		 */
 		public Signal $signal;
 		
 		/**
