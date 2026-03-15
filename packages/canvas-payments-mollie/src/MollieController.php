@@ -28,7 +28,7 @@
 		}
 		
 		/**
-		 * @Route("/webhooks/mollie", methods={"POST"})
+		 * @Route("mollie::webhookUrl", fallback="/webhooks/mollie", methods={"POST"})
 		 * @param Request $request
 		 * @return Response
 		 */
@@ -54,7 +54,7 @@
 		}
 		
 		/**
-		 * @Route("/payment/return/mollie", methods={"GET"})
+		 * @Route("mollie::redirectUrl", fallback="/payment/return/mollie", methods={"GET"})
 		 * @url https://docs.mollie.com/payments/webhooks
 		 * @param Request $request
 		 * @return Response
@@ -62,5 +62,15 @@
 		public function handleReturn(Request $request): Response {
 			$config = $this->kernel->loadConfigFile('mollie');
 			return new RedirectResponse($config->get("returnUrl"));
+		}
+		
+		/**
+		 * @Route("mollie::cancelUrl", fallback="/payment/cancel/mollie", methods={"GET"})
+		 * @param Request $request
+		 * @return Response
+		 */
+		public function handleCancel(Request $request): Response {
+			$config = $this->kernel->loadConfigFile('mollie');
+			return new RedirectResponse($config->get("cancelReturnUrl"));
 		}
 	}
