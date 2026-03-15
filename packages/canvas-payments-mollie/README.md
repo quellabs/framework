@@ -1,7 +1,6 @@
-# quellabs/payments-mollie
+# Mollie Payment Provider
 
-A Mollie payment provider implementation for the Quellabs payment contracts layer. Part of the `quellabs/payments`
-ecosystem.
+A Mollie payment provider. Part of the Canvas ecosystem.
 
 ## Requirements
 
@@ -37,7 +36,7 @@ MollieGateway               (raw Mollie API calls)
 ```
 
 Webhook processing is decoupled from your application via signals. When Mollie calls your webhook, the controller emits
-a `mollie_exchange` signal carrying a `PaymentState`. Your application listens for that signal and handles it — the
+a `payment_exchange` signal carrying a `PaymentState`. Your application listens for that signal and handles it — the
 payment module never touches your database.
 
 ## Configuration

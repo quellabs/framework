@@ -24,7 +24,7 @@
 		public function __construct(Kernel $kernel, Mollie $mollie) {
 			$this->kernel = $kernel;
 			$this->mollie = $mollie;
-			$this->signal = new Signal("mollie_exchange");
+			$this->signal = new Signal("payment_exchange");
 		}
 		
 		/**
@@ -47,7 +47,7 @@
 			}
 			
 			// Notify listeners (e.g. order management) of the updated payment state
-			$this->signal->emit($response->data);
+			$this->signal->emit($response->response);
 			
 			// Mollie considers any 2xx response a successful delivery
 			return new JsonResponse("OK");
