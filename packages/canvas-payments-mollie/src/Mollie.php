@@ -189,7 +189,6 @@
 					provider: 'mollie',
 					transactionId: $transactionId,
 					refundId: $refund["id"],
-					// getRefunds()
 					value: (int)round((float)$refund["amount"]["value"] * 100),
 					currency: $refund["amount"]["currency"],
 				);
@@ -204,36 +203,33 @@
 		 * @return PaymentResponse
 		 */
 		public function getPaymentOptions(string $paymentModule): PaymentResponse {
-			switch ($paymentModule) {
-				case "mollie_ideal" :
-				case "mollie_kbc" :
-				case "mollie_giftcard" :
-					$methods = $this->gateway->getPaymentMethodInfo(substr($paymentModule, 7));
-					
-					if ($methods["request"]["result"] == 0) {
-						return PaymentResponse::fail(204, "Failed to fetch options for payment method '{$paymentModule}'");
-					}
-					
-					$issuers = [];
-					
-					if (!empty($methods["response"]["issuers"])) {
-						foreach ($methods["response"]["issuers"] as $issuer) {
-							$issuers[] = [
-								'id'        => $issuer["id"],
-								'name'      => $issuer["name"],
-								'issuerId'  => $issuer["id"],
-								'swift'     => $issuer["id"],
-								'icon'      => $issuer["image"]["size1x"],
-								'available' => 1
-							];
-						}
-					}
-					
-					return PaymentResponse::ok($issuers);
-				
-				default :
-					return PaymentResponse::ok([]);
+			// Only certain methods expose issuer selection (iDEAL banks, KBC, gift cards).
+			// Everything else has no options to present.
+			$modulesWithIssuers = ['mollie_ideal', 'mollie_kbc', 'mollie_giftcard'];
+			
+			if (!in_array($paymentModule, $modulesWithIssuers)) {
+				return PaymentResponse::ok([]);
 			}
+			
+			// Strip the 'mollie_' prefix to get the raw method name Mollie expects (e.g. 'ideal')
+			// Call the gateway to fetch payment method info
+			$methods = $this->gateway->getPaymentMethodInfo(substr($paymentModule, 7));
+			
+			if ($methods["request"]["result"] == 0) {
+				return PaymentResponse::fail(204, "Failed to fetch options for payment method '{$paymentModule}'");
+			}
+			
+			// Flatten the issuer list into a normalized shape for the frontend
+			$issuers = array_map(fn($issuer) => [
+				'id'        => $issuer["id"],
+				'name'      => $issuer["name"],
+				'issuerId'  => $issuer["id"],
+				'swift'     => $issuer["id"],
+				'icon'      => $issuer["image"]["size1x"],
+				'available' => 1,
+			], $methods["response"]["issuers"] ?? []);
+			
+			return PaymentResponse::ok($issuers);
 		}
 		
 		/**
