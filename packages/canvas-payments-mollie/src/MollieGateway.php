@@ -248,93 +248,12 @@
 				'issuer'          => !empty($request->issuerId) ? $request->issuerId : null,
 				'billingAddress'  => $request->billingAddress !== null ? $this->serializeAddress($request->billingAddress) : null,
 				'shippingAddress' => $request->shippingAddress !== null ? $this->serializeAddress($request->shippingAddress) : null,
-				'testmode'        => $this->testMode ?: null,
+				'testmode'        => $this->testMode(),
 			], [$this, 'notNull']);
 			
 			return $this->callHttpClient('POST', 'payments', $mollieData);
 		}
-		
-		/**
-		 * An order has an automatically created payment that your customer can use to pay for the order.
-		 * When the payment expires you can create a new payment for the order using this endpoint.
-		 * A new payment can only be created while the status of the order is created, and when the status of the
-		 * existing payment is either expired, canceled or failed.
-		 * @url https://docs.mollie.com/reference/v2/orders-api/create-order-payment
-		 * @param string $orderId
-		 * @param string $paymentMethod
-		 * @param int|null $customerId
-		 * @param string|null $mandateId
-		 * @return array
-		 */
-		public function createPaymentForOrder(string $orderId, string $paymentMethod, ?int $customerId = null, ?string $mandateId = null): array {
-			$mollieData = [
-				'method' => $paymentMethod
-			];
-			
-			if (!empty($customerId)) {
-				$mollieData["customerId"] = $customerId;
-			}
-			
-			if (!empty($mandateId)) {
-				$mollieData["mandateId"] = $mandateId;
-			}
-			
-			return $this->callHttpClient("POST", "orders/{$orderId}/payments", $mollieData);
-		}
-		
-		/**
-		 * When using the Orders API, refunds should be made against the Order. When using pay after delivery
-		 * payment methods such as Klarna Pay later and Klarna Slice it, this ensures that your customer will
-		 * receive credit invoices with the correct product information on them and generally have a great experience.
-		 * @url https://docs.mollie.com/reference/v2/orders-api/create-order-refund
-		 * @param string $orderId
-		 * @param array $data
-		 * @return array
-		 */
-		public function createRefundForOrder(string $orderId, array $data): array {
-			return $this->callHttpClient("POST", "orders/{$orderId}/refunds", $data);
-		}
-		
-		/**
-		 * Returns information about a mollie order
-		 * @url https://docs.mollie.com/reference/v2/orders-api/get-order
-		 * @param string $orderId
-		 * @return array
-		 */
-		public function getOrderInfo(string $orderId): array {
-			return $this->callHttpClient("GET", "orders/{$orderId}");
-		}
-		
-		/**
-		 * This endpoint can be used to update the billing and/or shipping address of an order.
-		 * @url https://docs.mollie.com/reference/v2/orders-api/update-order
-		 * @param string $orderId
-		 * @param array $data
-		 * @return array
-		 */
-		public function updateOrder(string $orderId, array $data): array {
-			return $this->callHttpClient("PATCH", "orders/{$orderId}", $data);
-		}
-		
-		/**
-		 * Cancels the order. The order can only be canceled when the order doesn’t have any open payments.
-		 * @url https://docs.mollie.com/reference/v2/orders-api/cancel-order
-		 * @param string $orderId
-		 * @return array
-		 */
-		public function cancelOrder(string $orderId): array {
-			return $this->callHttpClient("DELETE", "orders/{$orderId}");
-		}
-		
-		/**
-		 * Retrieve all orders. The results are paginated.
-		 * @url https://docs.mollie.com/reference/v2/orders-api/list-orders
-		 * @return array
-		 */
-		public function listOrders(): array {
-			return $this->callHttpClient("GET", "orders");
-		}
-		
+
 		/**
 		 * Retrieve all refunds for a payment
 		 * @url https://docs.mollie.com/reference/v2/refunds-api/list-payment-refunds
@@ -343,68 +262,6 @@
 		 */
 		public function listRefunds(string $transactionId): array {
 			return $this->callHttpClient("GET", "payments/{$transactionId}/refunds");
-		}
-		
-		/**
-		 * Retrieve all order refunds. The results are paginated.
-		 * @url https://docs.mollie.com/reference/v2/orders-api/list-order-refunds
-		 * @param string $orderId
-		 * @return array
-		 */
-		public function listOrderRefunds(string $orderId): array {
-			return $this->callHttpClient("GET", "order/{$orderId}/refunds");
-		}
-		
-		/**
-		 * Create a mandate for a specific customer. Mandates allow you to charge a customer’s credit card\
-		 * or bank account recurrently.
-		 * @url https://docs.mollie.com/reference/v2/mandates-api/create-mandate
-		 * @param string $customerId
-		 * @param string $consumerName
-		 * @param string $consumerAccount
-		 * @param array $data
-		 * @return array
-		 */
-		public function createMandate(string $customerId, string $consumerName, string $consumerAccount, array $data = []): array {
-			return $this->callHttpClient("POST", "customers/{$customerId}/mandates", array_merge($data, [
-				"method"          => "directdebit",
-				"consumerName"    => $consumerName,
-				"consumerAccount" => $consumerAccount
-			]));
-		}
-		
-		/**
-		 * Retrieve a mandate by its ID and its customer’s ID. The mandate will either contain IBAN or credit
-		 * card details, depending on the type of mandate.
-		 * @url https://docs.mollie.com/reference/v2/mandates-api/get-mandate
-		 * @param int $customerId
-		 * @param string $mandateId
-		 * @return array
-		 */
-		public function getMandateInfo(int $customerId, string $mandateId): array {
-			return $this->callHttpClient("GET", "customers/{$customerId}/mandates/{$mandateId}");
-		}
-		
-		/**
-		 * Revoke a customer’s mandate. You will no longer be able to charge the consumer’s bank account or
-		 * credit card with this mandate and all connected subscriptions will be canceled.
-		 * @url https://docs.mollie.com/reference/v2/mandates-api/revoke-mandate#
-		 * @param int $customerId
-		 * @param string $mandateId
-		 * @return array
-		 */
-		public function revokeMandate(int $customerId, string $mandateId): array {
-			return $this->callHttpClient("DELETE", "customers/{$customerId}/mandates/{$mandateId}");
-		}
-		
-		/**
-		 * Retrieve all mandates for the given customerId, ordered from newest to oldest. The results are paginated.
-		 * @url https://docs.mollie.com/reference/v2/mandates-api/list-mandates
-		 * @param int $customerId
-		 * @return array
-		 */
-		public function listMandates(int $customerId): array {
-			return $this->callHttpClient("GET", "customers/{$customerId}/mandates");
 		}
 		
 		/**

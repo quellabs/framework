@@ -57,6 +57,33 @@
 		}
 		
 		/**
+		 * Initiate a payment session using Mollie
+		 * @url https://docs.mollie.com/reference/v2/payments-api/create-payment
+		 * @param PaymentRequest $request
+		 * @return PaymentResponse
+		 */
+		public function initiate(PaymentRequest $request): PaymentResponse {
+			// Enhance the request
+			$this->resolveUrls($request);
+			
+			// Initiate the payment
+			$paymentMethod = ($request->paymentModule != "mollie") ? substr($request->paymentModule, 7) : "";
+			$response = $this->gateway->createPayment($request, $paymentMethod);
+			
+			// return error if any
+			if ($response["request"]["result"] == 0) {
+				return PaymentResponse::fail($response["request"]["errorId"], $response["request"]["errorMessage"]);
+			}
+			
+			// return formatted response
+			return PaymentResponse::ok(new InitiateResponse(
+				provider: "mollie",
+				transactionId: $response["response"]["id"],
+				redirectUrl: $response["response"]["_links"]["checkout"]["href"]
+			));
+		}
+		
+		/**
 		 * Refund a mollie payment
 		 * @param RefundRequest $refundRequest
 		 * @return PaymentResponse
@@ -82,33 +109,6 @@
 				refundId: $response["response"]["id"],
 				value: (float)$response["response"]["amount"]["value"],
 				currency: $response["response"]["amount"]["currency"]
-			));
-		}
-		
-		/**
-		 * Initiate a payment session using Mollie
-		 * @url https://docs.mollie.com/reference/v2/payments-api/create-payment
-		 * @param PaymentRequest $request
-		 * @return PaymentResponse
-		 */
-		public function initiate(PaymentRequest $request): PaymentResponse {
-			// Enhance the request
-			$this->resolveUrls($request);
-			
-			// Initiate the payment
-			$paymentMethod = ($request->paymentModule != "mollie") ? substr($request->paymentModule, 7) : "";
-			$response = $this->gateway->createPayment($request, $paymentMethod);
-			
-			// return error if any
-			if ($response["request"]["result"] == 0) {
-				return PaymentResponse::fail($response["request"]["errorId"], $response["request"]["errorMessage"]);
-			}
-			
-			// return formatted response
-			return PaymentResponse::ok(new InitiateResponse(
-				provider: "mollie",
-				transactionId: $response["response"]["id"],
-				redirectUrl: $response["response"]["_links"]["checkout"]["href"]
 			));
 		}
 		
