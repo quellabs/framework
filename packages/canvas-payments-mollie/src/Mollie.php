@@ -49,6 +49,10 @@
 				'mollie_paysafecard',
 				'mollie_przelewy24',
 				'mollie_sofort',
+				'mollie_billie',
+				'mollie_in3',
+				'mollie_klarna',
+				'mollie_riverty',
 			];
 		}
 		
