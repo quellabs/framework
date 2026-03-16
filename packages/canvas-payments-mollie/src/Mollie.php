@@ -1,9 +1,8 @@
 <?php
 	
-	
 	namespace Quellabs\Payments\Mollie;
 	
-	use Quellabs\Canvas\Kernel;
+	use Quellabs\Contracts\Configuration\ConfigProviderInterface;
 	use Quellabs\Contracts\Payment\InitiateResponse;
 	use Quellabs\Contracts\Payment\PaymentState;
 	use Quellabs\Contracts\Payment\PaymentProviderInterface;
@@ -15,16 +14,16 @@
 	
 	class Mollie implements PaymentProviderInterface {
 		
-		private Kernel $kernel;
+		private ConfigProviderInterface $config;
 		private MollieGateway $gateway;
 		
 		/**
 		 * Mollie constructor.
-		 * @param Kernel $kernel
+		 * @param ConfigProviderInterface $config
 		 * @param MollieGateway $mollie
 		 */
-		public function __construct(Kernel $kernel, MollieGateway $mollie) {
-			$this->kernel = $kernel;
+		public function __construct(ConfigProviderInterface $config, MollieGateway $mollie) {
+			$this->config = $config;
 			$this->gateway = $mollie;
 		}
 		
@@ -240,7 +239,7 @@
 		 */
 		private function resolveUrls(PaymentRequest $request): void {
 			// Load /config/mollie.php
-			$config = $this->kernel->loadConfigFile("mollie");
+			$config = $this->config->loadConfigFile("mollie");
 			
 			// Use the request URL if set, otherwise fall back to config — throw if neither is available
 			$request->redirectUrl ??= $config->get("redirect_url")
