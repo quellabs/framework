@@ -23,7 +23,9 @@
 			public ?string $webhookUrl = null,
 			public ?string $redirectUrl = null,
 			public ?string $cancelUrl = null,
-			public array   $metadata = []
+			public array   $metadata = [],
+			public ?PaymentAddress $billingAddress  = null,
+			public ?PaymentAddress $shippingAddress = null,
 		) {
 		}
 	}

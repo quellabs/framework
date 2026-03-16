@@ -3,6 +3,7 @@
 	namespace Quellabs\Payments\Mollie;
 	
 	use Quellabs\Canvas\Kernel;
+	use Quellabs\Contracts\Payment\PaymentAddress;
 	use Quellabs\Contracts\Payment\PaymentRequest;
 	use Quellabs\Contracts\Payment\RefundRequest;
 	use Symfony\Component\HttpClient\HttpClient;
@@ -227,38 +228,37 @@
 		
 		/**
 		 * Creates a new Mollie order
-		 * @url https://docs.mollie.com/reference/v2/orders-api/create-order
+		 * @url https://docs.mollie.com/reference/create-payment
 		 * @param PaymentRequest $request
 		 * @param string $paymentMethod
 		 * @return array|array[]
 		 */
+		/**
+		 * Creates a new Mollie payment
+		 * @url https://docs.mollie.com/reference/create-payment
+		 * @param PaymentRequest $request
+		 * @param string $paymentMethod
+		 * @return array
+		 */
 		public function createPayment(PaymentRequest $request, string $paymentMethod): array {
-			$mollieData = [
-				"amount"      => [
-					"currency" => $request->currency,
-					"value"    => number_format($request->amount, 2, '.', '')
+			$mollieData = array_filter([
+				'amount'          => [
+					'currency' => $request->currency,
+					'value'    => number_format($request->amount, 2, '.', ''),
 				],
-				"description" => $request->description,
-				"redirectUrl" => $request->redirectUrl,
-				"webhookUrl"  => $request->webhookUrl,
-				"metadata"    => [
-					"reference" => $request->reference,
-				],
-			];
+				'description'     => $request->description,
+				'redirectUrl'     => $request->redirectUrl,
+				'cancelUrl'       => $request->cancelUrl,
+				'webhookUrl'      => $request->webhookUrl,
+				'metadata'        => array_merge(['reference' => $request->reference], $request->metadata),
+				'method'          => !empty($paymentMethod) ? $paymentMethod : null,
+				'issuer'          => !empty($request->issuerId) ? $request->issuerId : null,
+				'billingAddress'  => $request->billingAddress !== null ? $this->serializeAddress($request->billingAddress) : null,
+				'shippingAddress' => $request->shippingAddress !== null ? $this->serializeAddress($request->shippingAddress) : null,
+				'testmode'        => $this->testMode ?: null,
+			], 'strlen');
 			
-			if ($this->testMode) {
-				$mollieData["testmode"] = true;
-			}
-			
-			if (!empty($paymentMethod)) {
-				$mollieData["method"] = $paymentMethod;
-			}
-			
-			if (!empty($request->issuerId)) {
-				$mollieData["issuer"] = $request->issuerId;
-			}
-			
-			return $this->callHttpClient("POST", "payments", $mollieData);
+			return $this->callHttpClient('POST', 'payments', $mollieData);
 		}
 		
 		/**
@@ -420,5 +420,27 @@
 		 */
 		public function testMode(): bool {
 			return $this->testMode;
+		}
+		
+		/**
+		 * Serializes a PaymentAddress into the array shape Mollie expects
+		 * @param PaymentAddress $address
+		 * @return array
+		 */
+		protected function serializeAddress(PaymentAddress $address): array {
+			return array_filter([
+				'title'            => $address->title,
+				'givenName'        => $address->givenName,
+				'familyName'       => $address->familyName,
+				'organizationName' => $address->organizationName,
+				'streetAndNumber'  => $address->streetAndNumber,
+				'streetAdditional' => $address->streetAdditional,
+				'postalCode'       => $address->postalCode,
+				'city'             => $address->city,
+				'region'           => $address->region,
+				'country'          => $address->country,
+				'email'            => $address->email,
+				'phone'            => $address->phone,
+			]);
 		}
 	}
