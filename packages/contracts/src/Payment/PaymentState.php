@@ -7,10 +7,10 @@
 			public string        $provider,
 			public string        $transactionId,
 			public PaymentStatus $state,
+			public int           $valueRequested,
+			public int           $valueRefunded,
+			public int           $valueRefundable,
 			public ?string       $internalState = null,
-			public ?float        $valueRequested,
-			public float         $valueRefunded,
-			public float         $valueRefundable,
 			public ?string       $currency = null,
 			public array         $metadata = [],
 		) {

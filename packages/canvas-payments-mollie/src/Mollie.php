@@ -20,6 +20,7 @@
 		
 		/**
 		 * Mollie constructor.
+		 * @param Kernel $kernel
 		 * @param MollieGateway $mollie
 		 */
 		public function __construct(Kernel $kernel, MollieGateway $mollie) {
@@ -106,7 +107,7 @@
 				provider: "mollie",
 				transactionId: $response["response"]["paymentId"],
 				refundId: $response["response"]["id"],
-				value: (float)$response["response"]["amount"]["value"],
+				value: (int)round((float)$response["response"]["amount"]["value"] * 100),
 				currency: $response["response"]["amount"]["currency"]
 			));
 		}
@@ -148,19 +149,19 @@
 			// Fetch mollie payment status
 			$mollieStatus = $response["response"]["status"];
 			$currency = $response["response"]["amount"]["currency"];
-			$amount = (float)$response["response"]["amount"]["value"];
-			$amountRefunded = (float)($response["response"]["amountRefunded"]["value"] ?? 0);
-			$amountRefundable = (float)($response["response"]["amountRemaining"]["value"] ?? 0);
-			
+			$amount = (int)round((float)$response["response"]["amount"]["value"] * 100);
+			$amountRefunded = (int)round((float)($response["response"]["amountRefunded"]["value"] ?? 0) * 100);
+			$amountRefundable = (int)round((float)($response["response"]["amountRemaining"]["value"] ?? 0) * 100);
+
 			// Return response
 			return PaymentResponse::ok(new PaymentState(
 				provider: 'mollie',
 				transactionId: $transactionId,
 				state: $stateMap[strtoupper($mollieStatus)] ?? PaymentStatus::Unknown,
-				internalState: $mollieStatus,
 				valueRequested: $amount,
 				valueRefunded: $amountRefunded,
 				valueRefundable: $amountRefundable,
+				internalState: $mollieStatus,
 				currency: $currency,
 				metadata: [
 					'description' => $response["response"]["description"],
@@ -191,7 +192,8 @@
 					provider: 'mollie',
 					transactionId: $transactionId,
 					refundId: $refund["id"],
-					value: (float)$refund["amount"]["value"],
+					// getRefunds()
+					value: (int)round((float)$refund["amount"]["value"] * 100),
 					currency: $refund["amount"]["currency"],
 				);
 			}

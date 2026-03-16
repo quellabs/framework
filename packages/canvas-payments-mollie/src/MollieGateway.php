@@ -170,7 +170,7 @@
 			}
 			
 			// Value to refund cannot be 0
-			if ($refundRequest->amount === 0.0) {
+			if ($refundRequest->amount === 0) {
 				return ['request' => ['result' => 0, 'errorId' => 500, 'errorMessage' => 'Invalid refund value']];
 			}
 			
@@ -183,7 +183,7 @@
 			return $this->callHttpClient("POST", "payments/{$transactionId}/refunds", [
 				"amount"      => [
 					"currency" => $currencyType,
-					"value"    => number_format($value, 2, '.', '')
+					"value" => number_format($value / 100, 2, '.', '')
 				],
 				"description" => $description,
 				"testmode"    => $this->testMode
@@ -211,13 +211,13 @@
 			$mollieData = array_filter([
 				'amount'          => [
 					'currency' => $request->currency,
-					'value'    => number_format($request->amount, 2, '.', ''),
+					'value' => number_format($request->amount / 100, 2, '.', ''),
 				],
 				'description'     => $request->description,
 				'redirectUrl'     => $request->redirectUrl,
 				'cancelUrl'       => $request->cancelUrl,
 				'webhookUrl'      => $request->webhookUrl,
-				'metadata'        => array_merge(['reference' => $request->reference], $request->metadata),
+				'metadata'        => $request->metadata,
 				'method'          => !empty($paymentMethod) ? $paymentMethod : null,
 				'issuer'          => !empty($request->issuerId) ? $request->issuerId : null,
 				'billingAddress'  => $request->billingAddress !== null ? $this->serializeAddress($request->billingAddress) : null,

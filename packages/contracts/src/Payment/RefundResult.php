@@ -7,7 +7,7 @@
 			public readonly string $provider,
 			public readonly string $transactionId,
 			public readonly string $refundId,
-			public readonly float  $value,
+			public readonly int    $value,
 			public readonly string $currency,
 		) {
 		}
