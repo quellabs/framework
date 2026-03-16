@@ -163,10 +163,7 @@
 				valueRefundable: $amountRefundable,
 				internalState: $mollieStatus,
 				currency: $currency,
-				metadata: [
-					'description' => $response["response"]["description"],
-					'reference'   => $response["response"]["metadata"]["reference"],
-				]
+				metadata: $response["response"]["metadata"] ?? []
 			));
 		}
 		
