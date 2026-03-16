@@ -226,7 +226,6 @@
 				'issuerId'  => $issuer["id"],
 				'swift'     => $issuer["id"],
 				'icon'      => $issuer["image"]["size1x"],
-				'available' => 1,
 			], $methods["response"]["issuers"] ?? []);
 			
 			return PaymentResponse::ok($issuers);
