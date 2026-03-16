@@ -2,7 +2,7 @@
 	
 	namespace Quellabs\Payments\Mollie;
 	
-	use Quellabs\Canvas\Kernel;
+	use Quellabs\Contracts\Configuration\ConfigProviderInterface;
 	use Quellabs\Contracts\Payment\PaymentAddress;
 	use Quellabs\Contracts\Payment\PaymentRequest;
 	use Quellabs\Contracts\Payment\RefundRequest;
@@ -23,8 +23,8 @@
 		/**
 		 * Mollie constructor.
 		 */
-		public function __construct(Kernel $kernel) {
-			$configData = $kernel->loadConfigFile('mollie');
+		public function __construct(ConfigProviderInterface $configProvider) {
+			$configData = $configProvider->loadConfigFile('mollie');
 			$this->apiKey = $configData->get("api_key", "");
 			$this->curlVersion = curl_version();
 			$this->testMode = $configData->getAs("test_mode", "bool", false);

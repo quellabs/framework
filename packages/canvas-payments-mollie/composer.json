@@ -26,7 +26,6 @@
   },
   "require": {
     "php": "^8.2",
-    "mollie/mollie-api-php": "^2.0",
     "ext-curl": "*"
   },
   "autoload": {
@@ -43,6 +42,9 @@
     "discover": {
       "canvas": {
         "controller": "Quellabs\\Payments\\Mollie\\MollieController"
+      },
+      "payments": {
+        "provider": "Quellabs\\Payments\\Mollie\\Mollie"
       }
     }
   }
