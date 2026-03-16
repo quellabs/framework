@@ -8,7 +8,7 @@
 			public string        $transactionId,
 			public PaymentStatus $state,
 			public ?string       $internalState = null,
-			public ?float        $valuePaid,
+			public ?float        $valueRequested,
 			public float         $valueRefunded,
 			public float         $valueRefundable,
 			public ?string       $currency = null,
