@@ -159,32 +159,6 @@
 		}
 		
 		/**
-		 * Retrieve all captures for a certain payment.
-		 * Captures are used for payments that have the authorize-then-capture flow. The only payment methods at
-		 * the moment that have this flow are Klarna Pay later and Klarna Slice it.
-		 * @url https://docs.mollie.com/reference/v2/captures-api/list-captures
-		 * @param string $paymentId
-		 * @return array
-		 */
-		public function listCaptures(string $paymentId): array {
-			return $this->callHttpClient("GET", "payments/{$paymentId}/captures");
-		}
-		
-		/**
-		 * Retrieve a single capture by its ID. Note the original payment’s ID is needed as well.
-		 * Captures are used for payments that have the authorize-then-capture flow. The only payment methods at
-		 * the moment that have this flow are Klarna Pay later and Klarna Slice it.
-		 * Example: /v2/payments/tr_7UhSN1zuXS/captures/cpt_4qqhO89gsT
-		 * @url https://docs.mollie.com/reference/v2/captures-api/get-capture
-		 * @param string $paymentId
-		 * @param string $captureId
-		 * @return array
-		 */
-		public function getCaptureInfo(string $paymentId, string $captureId): array {
-			return $this->callHttpClient("GET", "payments/{$paymentId}/{$captureId}");
-		}
-		
-		/**
 		 * Refund a mollie payment
 		 * @param RefundRequest $refundRequest
 		 * @return array
