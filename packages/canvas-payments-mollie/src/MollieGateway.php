@@ -227,13 +227,6 @@
 		}
 		
 		/**
-		 * Creates a new Mollie order
-		 * @url https://docs.mollie.com/reference/create-payment
-		 * @param PaymentRequest $request
-		 * @param string $paymentMethod
-		 * @return array|array[]
-		 */
-		/**
 		 * Creates a new Mollie payment
 		 * @url https://docs.mollie.com/reference/create-payment
 		 * @param PaymentRequest $request
@@ -256,7 +249,7 @@
 				'billingAddress'  => $request->billingAddress !== null ? $this->serializeAddress($request->billingAddress) : null,
 				'shippingAddress' => $request->shippingAddress !== null ? $this->serializeAddress($request->shippingAddress) : null,
 				'testmode'        => $this->testMode ?: null,
-			], 'strlen');
+			], [$this, 'notNull']);
 			
 			return $this->callHttpClient('POST', 'payments', $mollieData);
 		}
@@ -441,6 +434,16 @@
 				'country'          => $address->country,
 				'email'            => $address->email,
 				'phone'            => $address->phone,
-			]);
+			], [$this, 'notNull']);
+		}
+		
+		/**
+		 * Returns true if the value is not null, false otherwise.
+		 * Used as an array_filter callback to strip unset optional fields before sending to Mollie.
+		 * @param mixed $value
+		 * @return bool
+		 */
+		protected function notNull(mixed $value): bool {
+			return $value !== null;
 		}
 	}
