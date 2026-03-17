@@ -2,7 +2,7 @@
 	
 	namespace Quellabs\Payments;
 	
-	use Psr\Container\ContainerInterface;
+	use Quellabs\DependencyInjection\Container;
 	use Quellabs\Payments\Contracts\PaymentProviderInterface;
 	use Quellabs\Payments\Contracts\PaymentRequest;
 	use Quellabs\Payments\Contracts\PaymentResponse;
@@ -17,9 +17,9 @@
 		/**
 		 * PaymentRouter constructor.
 		 * Discovers all payment providers via composer metadata and builds the module map.
-		 * @param ContainerInterface $container
+		 * @param Container $container
 		 */
-		public function __construct(private ContainerInterface $container) {
+		public function __construct(private Container $container) {
 			foreach ($this->discoverProviders() as $class) {
 				foreach ($class::getSupportedModules() as $module) {
 					if (isset($this->moduleMap[$module])) {

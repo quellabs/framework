@@ -2,17 +2,11 @@
 	
 	namespace App\Controllers;
 	
-	use App\Entities\PostEntity;
-	use App\Enums\TestEnum;
 	use Quellabs\Canvas\Annotations\Route;
 	use Quellabs\Canvas\Controllers\SecureController;
-	use Quellabs\Canvas\Validation\Rules\Date;
-	use Quellabs\Contracts\Payment\PaymentRequest;
-	use Quellabs\DependencyInjection\Container;
-	use Quellabs\Payments\Mollie\Mollie;
-	use Quellabs\SignalHub\Signal;
+	use Quellabs\Payments\Contracts\PaymentRequest;
+	use Quellabs\Payments\PaymentRouter;
 	use Symfony\Component\HttpFoundation\JsonResponse;
-	use Symfony\Component\HttpFoundation\Request;
 	use Symfony\Component\HttpFoundation\Response;
 	
 	class HomeController extends SecureController {
@@ -21,14 +15,20 @@
 		 * @Route("/")
 		 * @return Response
 		 */
-		public function index(Mollie $mollie): Response {
-			return new JsonResponse($mollie->initiate(new PaymentRequest(
-				"mollie",
+		public function index(PaymentRouter $paymentRouter): Response {
+			$request = new PaymentRequest(
+				"mollie_ideal",
 				1.0,
 				"EUR",
 				"test",
 				"hallo",
-			)));
+			);
+			
+			return $this->json($paymentRouter->initiate($request)->response);
+
+			/*
+			return new JsonResponse($mollie->initiate();
+			*/
 		}
 		
 		/**ho

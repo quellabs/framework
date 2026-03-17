@@ -27,12 +27,13 @@
   },
   "require": {
     "php": "^8.2",
+    "quellabs/discover": "*",
+    "quellabs/contracts": "*",
     "quellabs/canvas-payments-contracts": "*",
-    "quellabs/discover": "*"
   },
   "autoload": {
     "psr-4": {
-      "Quellabs\\Payments": "src/"
+      "Quellabs\\Payments\\": "src/"
     }
   }
 }
