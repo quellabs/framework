@@ -211,15 +211,14 @@
 		 * is_subclass_of check is needed here.
 		 * @param class-string<ProviderInterface> $className Fully qualified class name
 		 * @return ProviderDefinition
-		 * @throws \Throwable If getMetadata() or getDefaults() throw
+		 * @throws \Throwable If getMetadata() throw
 		 */
 		private function createProviderDefinition(string $className): ProviderDefinition {
 			return new ProviderDefinition(
 				className: $className,
 				family: $this->defaultFamily,
 				configFiles: [],
-				metadata: $className::getMetadata(),
-				defaults: $className::getDefaults()
+				metadata: $className::getMetadata()
 			);
 		}
 		

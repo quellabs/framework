@@ -62,7 +62,13 @@
 		 * @return array
 		 */
 		public static function getDefaults(): array {
-			return [];
+			return [
+				'api_key'      => '',
+				'test_mode'    => false,
+				'webhook__url' => 'webhooks/mollie',
+				'redirect_url' => 'payment/return/mollie',
+				'cancel_url'   => 'payment/cancel/mollie',
+			];
 		}
 		
 		/**
@@ -70,7 +76,7 @@
 		 * @return array
 		 */
 		public function getConfig(): array {
-			return $this->config;
+			return array_replace_recursive($this->getDefaults(), $this->config);
 		}
 		
 		/**

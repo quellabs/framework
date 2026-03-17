@@ -56,7 +56,7 @@
 		 * @param string $className The class name to instantiate (Configuration)
 		 * @param array $dependencies Additional autowired dependencies (currently unused)
 		 * @param array $metadata Metadata as passed by Discover
-		 * @param MethodContext|null $methodContext Optional method context
+		 * @param MethodContextInterface|null $methodContext Optional method context
 		 * @return object A configured Configuration instance
 		 */
 		public function createInstance(string $className, array $dependencies, array $metadata, ?MethodContextInterface $methodContext = null): object {

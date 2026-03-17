@@ -207,7 +207,6 @@
 			
 			// Get metadata and defaults - interface guarantees these methods exist
 			$metadata = $className::getMetadata();
-			$defaults = $className::getDefaults();
 			
 			// Normalize and validate config files
 			$configFiles = $this->normalizeAndValidateConfigFiles(
@@ -219,8 +218,7 @@
 				className: $className,
 				family: $providerData['family'],
 				configFiles: $configFiles,
-				metadata: $metadata,
-				defaults: $defaults
+				metadata: $metadata
 			);
 		}
 		

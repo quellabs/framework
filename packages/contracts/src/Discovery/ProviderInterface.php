@@ -14,12 +14,6 @@
 		public static function getMetadata(): array;
 		
 		/**
-		 * Get default configuration
-		 * @return array
-		 */
-		public static function getDefaults(): array;
-		
-		/**
 		 * Returns the configuration
 		 * @return array
 		 */
