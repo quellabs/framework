@@ -31,7 +31,7 @@
 		 * Returns all modules that are supported by this class
 		 * @return array
 		 */
-		public function getSupportedModules(): array {
+		public static function getSupportedModules(): array {
 			return [
 				'mollie',
 				'mollie_applepay',

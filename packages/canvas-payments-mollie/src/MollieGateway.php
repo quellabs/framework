@@ -18,7 +18,6 @@
 		protected string $apiKey;
 		protected string $apiUserAgent;
 		protected bool $testMode;
-		protected array $curlVersion;
 		
 		/**
 		 * Mollie constructor.
@@ -26,14 +25,11 @@
 		public function __construct(ConfigProviderInterface $configProvider) {
 			$configData = $configProvider->loadConfigFile('mollie');
 			$this->apiKey = $configData->get("api_key", "");
-			$this->curlVersion = curl_version();
 			$this->testMode = $configData->getAs("test_mode", "bool", false);
 			
 			$this->apiUserAgent = join(" ", [
 				"Mollie/1.1.0",
 				"PHP/" . phpversion(),
-				"cURL/" . $this->curlVersion["version"],
-				$this->curlVersion["ssl_version"],
 			]);
 		}
 		
@@ -68,7 +64,7 @@
 				return ['request' => ['result' => 0, 'errorId' => $e->getCode(), 'errorMessage' => $e->getMessage()]];
 			}
 			
-			if (isset($jsonData['resource']) && in_array($jsonData['resource'], ['payment', 'method'])) {
+			if (isset($jsonData['resource']) && in_array($jsonData['resource'], ['payment', 'method', 'refund'])) {
 				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $jsonData];
 			}
 			
