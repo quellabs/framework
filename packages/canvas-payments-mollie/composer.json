@@ -27,6 +27,7 @@
   "require": {
     "php": "^8.2",
     "ext-curl": "*",
+    "quellabs/support": "*",
     "quellabs/canvas-contracts": "*",
     "quellabs/canvas-payments-contracts": "*"
   },

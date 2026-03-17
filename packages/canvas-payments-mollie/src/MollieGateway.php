@@ -6,6 +6,7 @@
 	use Quellabs\Payments\Contracts\PaymentAddress;
 	use Quellabs\Payments\Contracts\PaymentRequest;
 	use Quellabs\Payments\Contracts\RefundRequest;
+	use Quellabs\Support\Resources;
 	use Symfony\Component\HttpClient\HttpClient;
 	use Symfony\Contracts\HttpClient\Exception\ClientExceptionInterface;
 	use Symfony\Contracts\HttpClient\Exception\DecodingExceptionInterface;
@@ -37,9 +38,9 @@
 		protected function callHttpClient(string $method, string $action, array $data = []): array {
 			try {
 				$client = HttpClient::create([
-					'base_uri' => 'https://api.mollie.nl/v2/',
-					'timeout'  => 10,
-					'headers'  => [
+					'base_uri'    => 'https://api.mollie.nl/v2/',
+					'timeout'     => 10,
+					'headers'     => [
 						'Accept'        => 'application/json',
 						'Authorization' => "Bearer {$this->apiKey}",
 						'Content-Type'  => 'application/json',
@@ -48,12 +49,12 @@
 					// Enforce strict SSL verification using the bundled CA certificate
 					'verify_peer' => true,
 					'verify_host' => true,
-					'cafile'      => dirname(__FILE__) . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'security' . DIRECTORY_SEPARATOR . 'cacert.pem'
+					'cafile'      => Resources::cacertPem()
 				]);
 				
-				$response   = $client->request($method, $action, ['json' => $data]);
+				$response = $client->request($method, $action, ['json' => $data]);
 				$statusCode = $response->getStatusCode();
-				$jsonData   = $response->toArray();
+				$jsonData = $response->toArray();
 			} catch (\Exception|TransportExceptionInterface|DecodingExceptionInterface|ClientExceptionInterface|RedirectionExceptionInterface|ServerExceptionInterface $e) {
 				// Network failure, timeout, or non-2xx response — return a normalized error
 				return ['request' => ['result' => 0, 'errorId' => $e->getCode(), 'errorMessage' => $e->getMessage()]];
@@ -177,7 +178,7 @@
 			return $this->callHttpClient("POST", "payments/{$transactionId}/refunds", [
 				"amount"      => [
 					"currency" => $currencyType,
-					"value" => number_format($value / 100, 2, '.', '')
+					"value"    => number_format($value / 100, 2, '.', '')
 				],
 				"description" => $description,
 				"testmode"    => $this->testMode
@@ -205,7 +206,7 @@
 			$mollieData = array_filter([
 				'amount'          => [
 					'currency' => $request->currency,
-					'value' => number_format($request->amount / 100, 2, '.', ''),
+					'value'    => number_format($request->amount / 100, 2, '.', ''),
 				],
 				'description'     => $request->description,
 				'redirectUrl'     => $request->redirectUrl,
@@ -221,7 +222,7 @@
 			
 			return $this->callHttpClient('POST', 'payments', $mollieData);
 		}
-
+		
 		/**
 		 * Retrieve all refunds for a payment
 		 * @url https://docs.mollie.com/reference/v2/refunds-api/list-payment-refunds
