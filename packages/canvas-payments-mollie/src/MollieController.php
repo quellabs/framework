@@ -4,6 +4,7 @@
 	
 	use Quellabs\Canvas\Annotations\Route;
 	use Quellabs\Canvas\Kernel;
+	use Quellabs\Payments\Contracts\PaymentExchangeException;
 	use Quellabs\SignalHub\Signal;
 	use Symfony\Component\HttpFoundation\JsonResponse;
 	use Symfony\Component\HttpFoundation\RedirectResponse;
@@ -44,18 +45,17 @@
 			}
 			
 			// Fetch the current payment state from Mollie using the transaction ID
-			$response = $this->mollie->exchange($request->request->get("id"));
-			
-			// If the exchange failed, return 500 so Mollie will retry the webhook
-			if (!$response->success) {
-				return new JsonResponse($response->errorMessage, $response->errorId !== 0 ? $response->errorId : 500);
+			try {
+				$response = $this->mollie->exchange($request->request->get("id"));
+				
+				// Notify listeners (e.g. order management) of the updated payment state
+				$this->signal->emit($response);
+				
+				// Mollie considers any 2xx response a successful delivery
+				return new JsonResponse("OK");
+			} catch (PaymentExchangeException $exception) {
+				return new JsonResponse($exception->getMessage() . " (" . $exception->getErrorId(). ")", 502);
 			}
-			
-			// Notify listeners (e.g. order management) of the updated payment state
-			$this->signal->emit($response->response);
-			
-			// Mollie considers any 2xx response a successful delivery
-			return new JsonResponse("OK");
 		}
 		
 		/**

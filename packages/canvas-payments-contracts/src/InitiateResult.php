@@ -6,7 +6,7 @@
 	 * Immutable value object returned after successfully initiating a payment session.
 	 * Contains the data the caller needs to redirect the customer to the payment page.
 	 */
-	final readonly class InitiateResponse {
+	final readonly class InitiateResult {
 		
 		/**
 		 * InitiateResponse constructor

@@ -1,6 +1,7 @@
 # Canvas Payments Contracts
 
-Shared contracts for the Canvas payments ecosystem. Contains the interfaces and value objects that connect payment provider packages to your application.
+Shared contracts for the Canvas payments ecosystem. Contains the interfaces and value objects that connect payment
+provider packages to your application.
 
 ## Installation
 
@@ -10,17 +11,16 @@ composer require quellabs/canvas-payments-contracts
 
 ## What's in this package
 
-| Class / Interface            | Description                                                  |
-|------------------------------|--------------------------------------------------------------|
-| `PaymentProviderInterface`   | Interface all payment provider packages must implement       |
-| `PaymentRequest`             | Input for initiating a payment                               |
-| `PaymentResponse`            | Wrapper returned by every provider method                    |
-| `InitiateResponse`           | Payload inside `PaymentResponse` after a successful initiate |
-| `PaymentState`               | Current state of a payment, returned by `exchange()`         |
-| `PaymentStatus`              | Enum of possible payment states                              |
-| `RefundRequest`              | Input for issuing a refund                                   |
-| `RefundResult`               | Payload inside `PaymentResponse` after a successful refund   |
-| `PaymentAddress`             | Billing or shipping address attached to a payment            |
+| Class / Interface          | Description                                            |
+|----------------------------|--------------------------------------------------------|
+| `PaymentProviderInterface` | Interface all payment provider packages must implement |
+| `PaymentRequest`           | Input for initiating a payment                         |
+| `InitiateResult`           | Result after a successful initiate                     |
+| `PaymentState`             | Current state of a payment, returned by `exchange()`   |
+| `PaymentStatus`            | Enum of possible payment states                        |
+| `RefundRequest`            | Input for issuing a refund                             |
+| `RefundResult`             | Result after a successful refund initiation            |
+| `PaymentAddress`           | Billing or shipping address attached to a payment      |
 
 All amounts are in minor units (e.g. `999` for €9.99). All classes are in the `Quellabs\Payments\Contracts` namespace.
 

@@ -3,6 +3,7 @@
 	namespace Quellabs\Payments\Contracts;
 	
 	use Quellabs\Contracts\Discovery\ProviderInterface;
+	use Symfony\Component\HttpFoundation\Response;
 	
 	/**
 	 * Common interface for payment provider implementations.
@@ -17,40 +18,40 @@
 		/**
 		 * Initiate a new payment session and return a redirect URL for the customer.
 		 * @param PaymentRequest $request
-		 * @return PaymentResponse
+		 * @return InitiateResult
 		 */
-		public function initiate(PaymentRequest $request): PaymentResponse;
+		public function initiate(PaymentRequest $request): InitiateResult;
 		
 		/**
 		 * Issue a refund for a previously completed payment.
 		 * @param RefundRequest $refundRequest
-		 * @return PaymentResponse
+		 * @return RefundResult
 		 */
-		public function refund(RefundRequest $refundRequest): PaymentResponse;
+		public function refund(RefundRequest $refundRequest): RefundResult;
 		
 		/**
 		 * Fetch the current state of a payment from the provider.
 		 * Typically called from a webhook handler when the provider reports a status change.
 		 * @param string $transactionId
 		 * @param array $extraData
-		 * @return PaymentResponse
+		 * @return PaymentState
 		 */
-		public function exchange(string $transactionId, array $extraData = []): PaymentResponse;
+		public function exchange(string $transactionId, array $extraData = []): PaymentState;
 		
 		/**
 		 * Returns available options for the given payment module.
 		 * Used for modules that expose issuer or bank selection (e.g. iDEAL, KBC, gift cards).
 		 * Returns an empty array for modules with no selectable options.
 		 * @param string $paymentModule
-		 * @return PaymentResponse
+		 * @return array
 		 */
-		public function getPaymentOptions(string $paymentModule): PaymentResponse;
+		public function getPaymentOptions(string $paymentModule): array;
 		
 		/**
 		 * Returns all refunds issued for the given transaction.
 		 * @param string $transactionId
-		 * @return PaymentResponse
+		 * @return array
 		 */
-		public function getRefunds(string $transactionId): PaymentResponse;
+		public function getRefunds(string $transactionId): array;
 		
 	}
