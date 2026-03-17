@@ -21,12 +21,14 @@
     "issues": "https://github.com/quellabs/canvas-payments-mollie/issues",
     "forum": "https://github.com/quellabs/canvas-payments-mollie/discussions",
     "wiki": "https://github.com/quellabs/canvas-payments-mollie/wiki",
-    "docs": "https://canvas.php/docs",
+    "docs": "https://canvasphp.php/docs",
     "source": "https://github.com/quellabs/canvas-payments-mollie"
   },
   "require": {
     "php": "^8.2",
-    "ext-curl": "*"
+    "ext-curl": "*",
+    "quellabs/canvas-contracts": "*",
+    "quellabs/canvas-payments-contracts": "*"
   },
   "autoload": {
     "psr-4": {
