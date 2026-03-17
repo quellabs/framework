@@ -2,7 +2,7 @@
 	
 	namespace Quellabs\DependencyInjection\Autowiring;
 	
-	use Quellabs\Contracts\DependencyInjection\Container;
+	use Quellabs\Contracts\DependencyInjection\ContainerInterface;
 	
 	/**
 	 * Handles dependency injection through reflection
@@ -10,14 +10,14 @@
 	class Autowirer {
 		
 		/**
-		 * @var Container
+		 * @var ContainerInterface
 		 */
-		private Container $container;
+		private ContainerInterface $container;
 		
 		/**
 		 * Built-in PHP types that cannot be resolved from container
 		 */
-		private const array BUILTIN_TYPES = [
+		private const BUILTIN_TYPES = [
 			// Basic scalar types
 			'string', 'int', 'float', 'bool',
 			
@@ -36,9 +36,9 @@
 
 		/**
 		 * Autowirer constructor
-		 * @param Container $container
+		 * @param ContainerInterface $container
 		 */
-		public function __construct(Container $container) {
+		public function __construct(ContainerInterface $container) {
 			$this->container = $container;
 		}
 		
@@ -93,17 +93,17 @@
 		 * Tries strategies in priority order until one succeeds or all fail.
 		 * @param array $param Parameter metadata (name, types, default_value, etc.)
 		 * @param array $parameters User-provided parameter values
-		 * @param MethodContext|null $methodContext Context object for dependency injection
+		 * @param MethodContextInterface|null $methodContext Context object for dependency injection
 		 * @param string $className Class name for error reporting
 		 * @param string $methodName Method name for error reporting
 		 * @return mixed The resolved parameter value
 		 */
 		protected function resolveParameter(
-			array $param,
-			array $parameters,
+			array          $param,
+			array          $parameters,
 			?MethodContext $methodContext,
-			string $className,
-			string $methodName
+			string         $className,
+			string         $methodName
 		): mixed {
 			$paramName = $param['name'];
 			$paramTypes = $param['types'] ?? [];
@@ -167,7 +167,7 @@
 		 * Attempts to resolve a parameter value by trying each type hint in order
 		 * @param string $paramName Parameter name for better error messages
 		 * @param array $types Array of type hints/class names to attempt resolution
-		 * @param MethodContext|null $methodContext
+		 * @param MethodContextInterface|null $methodContext
 		 * @return mixed The resolved instance
 		 * @throws \RuntimeException If no types could be resolved
 		 */

@@ -58,7 +58,6 @@
 	 * performance improvements, especially for applications with large numbers of routes.
 	 */
 	class AnnotationResolver extends AnnotationBase {
-		private Kernel $kernel;
 		private bool $debugMode;
 		private bool $matchTrailingSlashes;
 		private string $cacheDirectory;
@@ -77,9 +76,7 @@
 		 * @param Kernel $kernel Application kernel for configuration and services
 		 */
 		public function __construct(Kernel $kernel) {
-			parent::__construct($kernel->getAnnotationsReader());
-			
-			$this->kernel = $kernel;
+			parent::__construct($kernel);
 			$this->initializeConfiguration();
 			$this->initializeComponents();
 			$this->initializeCacheDirectory();
@@ -120,12 +117,15 @@
 			// Strip query string and decode the path component for consistent matching
 			$requestUrl = $this->parseRequestUrl($request->getPathInfo());
 			
+			// Build the route index or fetch from cache
+			$routeIndex = $this->getRouteIndex();
+			
 			// Pre-filter the full route index to a smaller candidate set based on
 			// method and static path segments, avoiding full matching on every route
 			$candidates = $this->candidateFilter->getFilteredCandidates(
 				$requestUrl,
 				$request->getMethod(),
-				$this->getRouteIndex()
+				$routeIndex
 			);
 			
 			$results = [];

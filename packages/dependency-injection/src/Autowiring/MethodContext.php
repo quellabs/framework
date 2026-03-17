@@ -7,7 +7,7 @@
 	 * a specific method within a class instance, typically used during autowiring
 	 * processes to provide context about which method is being processed.
 	 */
-	class MethodContext implements \Quellabs\Contracts\Context\MethodContext {
+	class MethodContext implements \Quellabs\Contracts\Context\MethodContextInterface {
 		
 		/** @var string The class instance that contains the method */
 		private string $class;

@@ -2,31 +2,41 @@
 	
 	namespace App\Controllers;
 	
-	use App\Entities\PostEntity;
-	use App\Enums\TestEnum;
 	use Quellabs\Canvas\Annotations\Route;
+	use Quellabs\Canvas\Annotations\InterceptWith;
+	use Quellabs\Canvas\Translation\TranslationAspect;
 	use Quellabs\Canvas\Controllers\SecureController;
-	use Quellabs\Canvas\Validation\Rules\Date;
-	use Quellabs\DependencyInjection\Container;
-	use Quellabs\SignalHub\Signal;
-	use Symfony\Component\HttpFoundation\Request;
+	use Quellabs\Payments\Contracts\PaymentRequest;
+	use Quellabs\Payments\PaymentRouter;
+	use Symfony\Component\HttpFoundation\JsonResponse;
 	use Symfony\Component\HttpFoundation\Response;
 	
 	class HomeController extends SecureController {
 	
 		/**
+		 * @InterceptWith(TranslationAspect::class)
 		 * @Route("/")
 		 * @return Response
 		 */
-		public function index(Request $request): Response {
-			return $this->render('home_plates', [
-				'title' => 'Test Page',
-				'name'  => 'Floris',
-				'items' => ['Foo', 'Bar', 'Baz'],
-			]);
+		public function index(PaymentRouter $paymentRouter): Response {
+			$request = new PaymentRequest(
+				"mollie_ideal",
+				10,
+				"EUR",
+				"test",
+				"hallo",
+			);
+
+			$response = $paymentRouter->initiate($request);
+			
+			if (!$response->success) {
+				return $this->json([$response->errorId, $response->errorMessage]);
+			}
+			
+			return new Response("Hello from routes file");
 		}
 		
-		/**
+		/**ho
 		 * @Route("routes::test")
 		 * @return Response
 		 */

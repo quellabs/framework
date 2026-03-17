@@ -5,10 +5,10 @@
 	use Quellabs\AnnotationReader\Exception\AnnotationReaderException;
 	use Quellabs\Canvas\Annotations\CacheContext;
 	use Quellabs\Canvas\Cache\Drivers\FileCache;
-	use Quellabs\Contracts\Context\MethodContext;
+	use Quellabs\Contracts\Context\MethodContextInterface;
 	use Quellabs\AnnotationReader\AnnotationReader;
 	use Quellabs\Contracts\Cache\CacheInterface;
-	use Quellabs\Contracts\DependencyInjection\Container;
+	use Quellabs\Contracts\DependencyInjection\ContainerInterface;
 	use Quellabs\DependencyInjection\Provider\ServiceProvider;
 	use Quellabs\Support\ComposerUtils;
 	
@@ -23,7 +23,7 @@
 		/**
 		 * The default cache namespace
 		 */
-		private const string DEFAULT_NAMESPACE = "default";
+		private const DEFAULT_NAMESPACE = "default";
 		
 		/**
 		 * Singleton instances of cache implementations
@@ -34,19 +34,19 @@
 		/** @var AnnotationReader Used to read method annotations */
 		private AnnotationReader $annotationReader;
 		
-		/** @var Container Used for dependency injection */
-		private Container $dependencyInjector;
+		/** @var ContainerInterface Used for dependency injection */
+		private ContainerInterface $dependencyInjector;
 		
 		/** @var array Cache configuration loaded from config file */
 		private array $cacheConfig;
 		
 		/**
 		 * CacheInterfaceProvider constructor
-		 * @param Container $dependencyInjector
+		 * @param ContainerInterface $dependencyInjector
 		 * @param AnnotationReader $annotationReader
 		 */
 		public function __construct(
-			Container $dependencyInjector,
+			ContainerInterface $dependencyInjector,
 			AnnotationReader $annotationReader
 		) {
 			$this->dependencyInjector = $dependencyInjector;
@@ -69,7 +69,7 @@
 		 * @param string $className The class name being requested (should be CacheInterface::class)
 		 * @param array $dependencies Dependencies for the class (unused since we return existing instance)
 		 * @param array $metadata Metadata as passed by Discover - may contain 'provider' key
-		 * @param MethodContext|null $methodContext Context about the method requesting the cache
+		 * @param MethodContextInterface|null $methodContext Context about the method requesting the cache
 		 * @return CacheInterface The cache interface implementation
 		 * @throws AnnotationReaderException
 		 */
@@ -77,7 +77,7 @@
 			string $className,
 			array $dependencies,
 			array $metadata,
-			?MethodContext $methodContext = null
+			?MethodContextInterface $methodContext = null
 		): CacheInterface {
 			// Resolve the cache context from method annotations
 			$context = $this->resolveContext($methodContext, $dependencies);
@@ -126,11 +126,11 @@
 		
 		/**
 		 * Resolves cache context from method annotations.
-		 * @param MethodContext|null $methodContext The method context to analyze
+		 * @param MethodContextInterface|null $methodContext The method context to analyze
 		 * @return array Contains namespace, params, and hash for caching
 		 * @throws AnnotationReaderException
 		 */
-		private function resolveContext(?MethodContext $methodContext, array $dependencies): array {
+		private function resolveContext(?MethodContextInterface $methodContext, array $dependencies): array {
 			$params = $dependencies;
 			$namespace = self::DEFAULT_NAMESPACE;
 			

@@ -24,16 +24,7 @@
 		public static function getMetadata(): array {
 			return [];
 		}
-		
-		/**
-		 * Returns the default configuration settings for this provider.
-		 * Child classes can override this to provide their specific defaults.
-		 * @return array Default configuration values
-		 */
-		public static function getDefaults(): array {
-			return [];
-		}
-		
+	
 		/**
 		 * Returns the current configuration settings for this provider.
 		 * @return array The complete configuration array for this provider
@@ -48,7 +39,7 @@
 		 * @return void
 		 */
 		public function setConfig(array $config): void {
-			$this->config = array_merge(static::getDefaults(), $config);
+			$this->config = $config;
 		}
 		
 		/**

@@ -21,16 +21,13 @@
 		 * @param string $family
 		 * @param array $configFiles
 		 * @param array $metadata
-		 * @param array $defaults
 		 */
 		public function __construct(
 			string  $className,
 			string  $family,
 			array   $configFiles = [],
-			array   $metadata = [],
-			array   $defaults = []
+			array   $metadata = []
 		) {
-			$this->defaults = $defaults;
 			$this->metadata = $metadata;
 			$this->configFiles = $configFiles;
 			$this->family = $family;
@@ -67,8 +64,7 @@
 				className: $data['class'],
 				family: $data['family'],
 				configFiles: $configFiles,
-				metadata: $data['metadata'] ?? [],
-				defaults: $data['defaults'] ?? []
+				metadata: $data['metadata'] ?? []
 			);
 		}
 		
@@ -81,8 +77,7 @@
 				'class'    => $this->className,
 				'family'   => $this->family,
 				'config'   => $this->configFiles,
-				'metadata' => $this->metadata,
-				'defaults' => $this->defaults
+				'metadata' => $this->metadata
 			];
 		}
 		
@@ -93,31 +88,12 @@
 		public function getKey(): string {
 			return $this->family . '::' . $this->className;
 		}
-		
-		/**
-		 * Check if belongs to family
-		 * @param string $family
-		 * @return bool
-		 */
-		public function belongsToFamily(string $family): bool {
-			return $this->family === $family;
-		}
-		
+
 		/**
 		 * Check if the definition has a config file
 		 * @return bool
 		 */
 		public function hasConfigFile(): bool {
 			return !empty($this->configFiles);
-		}
-		
-		/**
-		 * Validate the provider class
-		 * @return bool
-		 */
-		public function isValidClass(): bool {
-			return
-				class_exists($this->className) &&
-				is_subclass_of($this->className, ProviderInterface::class);
 		}
 	}

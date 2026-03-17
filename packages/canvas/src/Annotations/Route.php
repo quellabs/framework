@@ -45,7 +45,18 @@
 		 * @return string The route path as defined in the "value" parameter
 		 */
 		public function getRoute(): string {
-			return $this->parameters["value"];
+			// Fetch unnamed route parameter
+			$route = $this->parameters["value"];
+			
+			// Only run parse_url for full URLs (http/https) to strip scheme and host.
+			// Config references (e.g. "mollie::redirectUrl") and plain paths are returned as-is.
+			if (str_starts_with($route, 'http://') || str_starts_with($route, 'https://')) {
+				$path = parse_url($route, PHP_URL_PATH);
+				return $path ?? $route;
+			}
+			
+			// Return result
+			return $route;
 		}
 		
 		/**

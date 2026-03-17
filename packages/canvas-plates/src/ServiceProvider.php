@@ -3,7 +3,7 @@
 	namespace Quellabs\Canvas\Plates;
 	
 	use Quellabs\Support\ComposerUtils;
-	use Quellabs\Contracts\Context\MethodContext;
+	use Quellabs\Contracts\Context\MethodContextInterface;
 	use Quellabs\Contracts\Templates\TemplateEngineInterface;
 	
 	/**
@@ -86,10 +86,10 @@
 		 * @param string $className The requested interface (TemplateEngineInterface)
 		 * @param array $dependencies Resolved dependencies (unused)
 		 * @param array $metadata Metadata as passed by Discover
-		 * @param MethodContext|null $methodContext
+		 * @param MethodContextInterface|null $methodContext
 		 * @return object Configured PlatesTemplate instance
 		 */
-		public function createInstance(string $className, array $dependencies, array $metadata, ?MethodContext $methodContext = null): object {
+		public function createInstance(string $className, array $dependencies, array $metadata, ?MethodContextInterface $methodContext = null): object {
 			if (self::$instance !== null) {
 				return self::$instance;
 			}

@@ -105,6 +105,14 @@
 		}
 		
 		/**
+		 * Returns all discovered provider class names without instantiating them.
+		 * @return array<string>
+		 */
+		public function getProviderClasses(): array {
+			return array_keys($this->providerDefinitionsByClass);
+		}
+		
+		/**
 		 * Retrieve a specific provider instance by class name
 		 * @template T of ProviderInterface
 		 * @param class-string<T> $className The fully qualified class name of the provider to retrieve
@@ -331,11 +339,8 @@
 				// Load configuration from external files if specified
 				$loadedConfig = $this->loadConfigFiles($definition->configFiles);
 				
-				// Merge default configuration with loaded config (loaded values take precedence)
-				$finalConfig = array_replace_recursive($definition->defaults, $loadedConfig);
-				
-				// Apply the merged configuration to the provider instance
-				$provider->setConfig($finalConfig);
+				// Apply the configuration to the provider instance
+				$provider->setConfig($loadedConfig);
 			} catch (\Throwable $e) {
 				// Catch any errors during configuration (file errors, invalid config format, setConfig failures)
 				throw new ProviderInstantiationException(

@@ -36,6 +36,9 @@ jobs:
           - canvas-plates
           - canvas-skeleton
           - canvas-database
+          - canvas-payments
+          - canvas-payments-contracts
+          - canvas-payments-mollie
       fail-fast: false
 
     steps:
