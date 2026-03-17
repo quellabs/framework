@@ -8,6 +8,9 @@
 	 * Common interface for payment provider implementations.
 	 * Each provider package (e.g. Mollie, Stripe) must implement this interface
 	 * and register itself via composer metadata for automatic discovery by PaymentRouter.
+	 *
+	 * Implementations must have a no-argument constructor. All configuration is
+	 * supplied via setConfig() after instantiation by the discovery system.
 	 */
 	interface PaymentProviderInterface extends ProviderInterface {
 		

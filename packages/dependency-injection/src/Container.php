@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\DependencyInjection;
 	
+	use Quellabs\Contracts\Context\MethodContextInterface;
 	use Quellabs\Contracts\DependencyInjection\ContainerInterface;
 	use Quellabs\DependencyInjection\Autowiring\MethodContext;
 	use Quellabs\Discover\Discover;
@@ -174,7 +175,7 @@
 		 * @param MethodContextInterface|null $methodContext
 		 * @return object|null
 		 */
-		public function get(string $className, array $parameters = [], ?MethodContext $methodContext=null): ?object {
+		public function get(string $className, array $parameters = [], ?MethodContextInterface $methodContext=null): ?object {
 			return $this->resolveWithDependencies($className, $parameters, true, $methodContext);
 		}
 		
@@ -238,7 +239,7 @@
 			// This allows for self-injection of the container into other services
 			if (
 				$className === self::class ||
-				$className === \Quellabs\Contracts\DependencyInjection\Container::class ||
+				$className === ContainerInterface::class ||
 				is_a($this, $className)
 			) {
 				return $this;
