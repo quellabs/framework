@@ -3,11 +3,12 @@
 	namespace Quellabs\Payments;
 	
 	use Quellabs\Discover\Scanner\ComposerScanner;
+	use Quellabs\Payments\Contracts\InitiateResult;
 	use Quellabs\Payments\Contracts\PaymentProviderInterface;
 	use Quellabs\Payments\Contracts\PaymentRequest;
-	use Quellabs\Payments\Contracts\PaymentResponse;
 	use Quellabs\Payments\Contracts\RefundRequest;
 	use Quellabs\Discover\Discover;
+	use Quellabs\Payments\Contracts\RefundResult;
 	
 	class PaymentRouter {
 		
@@ -54,27 +55,27 @@
 		/**
 		 * Initiate a payment using the provider registered for the request's payment module
 		 * @param PaymentRequest $request
-		 * @return PaymentResponse
+		 * @return InitiateResult
 		 */
-		public function initiate(PaymentRequest $request): PaymentResponse {
+		public function initiate(PaymentRequest $request): InitiateResult {
 			return $this->resolve($request->paymentModule)->initiate($request);
 		}
 		
 		/**
 		 * Refund a payment using the provider registered for the refund's payment module
 		 * @param RefundRequest $refundRequest
-		 * @return PaymentResponse
+		 * @return RefundResult
 		 */
-		public function refund(RefundRequest $refundRequest): PaymentResponse {
+		public function refund(RefundRequest $refundRequest): RefundResult {
 			return $this->resolve($refundRequest->paymentModule)->refund($refundRequest);
 		}
 		
 		/**
 		 * Returns payment options for the given module
 		 * @param string $paymentModule
-		 * @return PaymentResponse
+		 * @return array
 		 */
-		public function getPaymentOptions(string $paymentModule): PaymentResponse {
+		public function getPaymentOptions(string $paymentModule): array {
 			return $this->resolve($paymentModule)->getPaymentOptions($paymentModule);
 		}
 		

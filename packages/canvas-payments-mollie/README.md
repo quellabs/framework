@@ -31,8 +31,7 @@ MollieGateway               (raw Mollie API calls)
 ```
 
 Webhook processing is decoupled from your application via signals. When Mollie calls the webhook, the package emits
-a `payment_exchange` signal carrying a `PaymentState`. Your application listens for that signal and handles it — the
-payment module never touches your database.
+a `payment_exchange` signal carrying a `PaymentState`. Your application listens for that signal and handles it.
 
 ## Configuration
 
@@ -70,6 +69,7 @@ Inject `PaymentRouter` via Canvas DI and call `initiate()`:
 use Quellabs\Payments\PaymentRouter;
 use Quellabs\Canvas\Controllers\BaseController;
 use Quellabs\Payments\Contracts\PaymentRequest;
+use Quellabs\Payments\Contracts\PaymentInitiationException;
 
 class CheckoutController extends BaseController {
 
@@ -87,13 +87,12 @@ class CheckoutController extends BaseController {
             issuerId:      'ideal_INGBNL2A',
         );
 
-        $response = $this->router->initiate($request);
-
-        if (!$response->success) {
+        try {
+            $result = $this->router->initiate($request);
+            return $this->redirect($result->redirectUrl);
+        } catch (PaymentInitiationException $e) {
             // handle error
         }
-
-        return $this->redirect($response->response->redirectUrl);
     }
 }
 ```
@@ -101,6 +100,9 @@ class CheckoutController extends BaseController {
 ### Handling refunds
 
 ```php
+use Quellabs\Payments\Contracts\RefundRequest;
+use Quellabs\Payments\Contracts\PaymentRefundException;
+
 $request = new RefundRequest(
     transactionId: 'tr_7UhSN1zuXS',
     paymentModule: 'mollie_ideal',
@@ -109,7 +111,12 @@ $request = new RefundRequest(
     description:   'Partial refund for order #12345',
 );
 
-$response = $this->router->refund($request);
+try {
+    $result = $this->router->refund($request);
+    echo $result->refundId;
+} catch (PaymentRefundException $e) {
+    // handle error
+}
 ```
 
 ### Listening for payment state changes
