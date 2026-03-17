@@ -13,7 +13,7 @@
 	class MollieController {
 		
 		private Kernel $kernel;
-		private Mollie $mollie;
+		private Driver $mollie;
 		
 		/**
 		 * This signal emits
@@ -24,9 +24,9 @@
 		/**
 		 * Constructor
 		 * @param Kernel $kernel
-		 * @param Mollie $mollie
+		 * @param Driver $mollie
 		 */
-		public function __construct(Kernel $kernel, Mollie $mollie) {
+		public function __construct(Kernel $kernel, Driver $mollie) {
 			$this->kernel = $kernel;
 			$this->mollie = $mollie;
 			$this->signal = new Signal("payment_exchange");

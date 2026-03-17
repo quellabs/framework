@@ -47,7 +47,7 @@
         "controller": "Quellabs\\Payments\\Mollie\\MollieController"
       },
       "payments": {
-        "payment_provider": "Quellabs\\Payments\\Mollie\\Mollie"
+        "payment_provider": "Quellabs\\Payments\\Mollie\\Driver"
       }
     }
   }

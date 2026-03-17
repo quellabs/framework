@@ -12,7 +12,7 @@
 	use Quellabs\Payments\Contracts\RefundRequest;
 	use Quellabs\Payments\Contracts\RefundResult;
 	
-	class Mollie implements PaymentProviderInterface {
+	class Driver implements PaymentProviderInterface {
 		
 		private ConfigProviderInterface $config;
 		private MollieGateway $gateway;

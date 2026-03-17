@@ -1,12 +1,12 @@
 # Mollie Payment Provider
 
-A Mollie payment provider. Part of the Canvas ecosystem.
+A Mollie payment provider for the Canvas framework. Part of the Canvas payments ecosystem.
 
 ## Requirements
 
 - PHP 8.1+
 - Quellabs Canvas framework
-- `quellabs/payment-contracts`
+- `quellabs/canvas-payments-contracts`
 - `quellabs/signal-hub`
 - `symfony/http-client`
 - `symfony/http-foundation`
@@ -14,19 +14,23 @@ A Mollie payment provider. Part of the Canvas ecosystem.
 ## Installation
 
 ```bash
-composer require quellabs/payments-mollie
+composer require quellabs/canvas-payments-mollie
 ```
 
 ## Architecture
 
 This package sits between the Mollie API and your application. Your application only ever touches the contracts layer —
-it never depends on this package directly.
+it never depends on this package directly. `PaymentRouter` (from `quellabs/canvas-payments`) discovers this package
+automatically via composer metadata and routes payment calls to it.
 
 ```
 Your Application
       │
       ▼
-PaymentProviderInterface    (quellabs/payment-contracts)
+PaymentRouter               (quellabs/canvas-payments — discovery + routing)
+      │
+      ▼
+PaymentProviderInterface    (quellabs/canvas-payments-contracts)
       │
       ▼
 Mollie                      (this package — implements the interface)
@@ -45,75 +49,86 @@ Create `config/mollie.php` in your Canvas application:
 
 ```php
 return [
-    'api_key'    => 'live_xxxxxxxxxxxxxxxxxxxxxx',
-    'webhookUrl' => 'https://example.com/webhooks/mollie',
-    'redirectUrl' => 'https://example.com/payment/return/mollie',
-    'returnUrl'  => 'https://example.com/order/thankyou',
+    'api_key'           => 'live_xxxxxxxxxxxxxxxxxxxxxx',
+    'test_mode'         => false,
+    'webhook_url'       => 'https://example.com/webhooks/mollie',
+    'redirect_url'      => 'https://example.com/payment/return/mollie',
+    'cancel_url'        => 'https://example.com/payment/cancel/mollie',
+    'return_url'        => 'https://example.com/order/thankyou',
+    'cancel_return_url' => 'https://example.com/order/cancelled',
 ];
 ```
 
-| Key           | Description                                                   |
-|---------------|---------------------------------------------------------------|
-| `api_key`     | Your Mollie API key (live or test)                            |
-| `webhookUrl`  | URL Mollie POSTs payment status updates to                    |
-| `redirectUrl` | URL Mollie redirects the customer's browser to after checkout |
-| `returnUrl`   | URL your return controller redirects the customer onward to   |
+| Key                 | Required | Description                                                                |
+|---------------------|----------|----------------------------------------------------------------------------|
+| `api_key`           | Yes      | Your Mollie API key (live or test)                                         |
+| `test_mode`         | No       | Enable Mollie test mode. Defaults to `false`                               |
+| `webhook_url`       | No       | URL Mollie POSTs status updates to. Defaults to `/webhooks/mollie`         |
+| `redirect_url`      | Yes      | URL Mollie redirects the customer to after successful checkout             |
+| `cancel_url`        | Yes      | URL Mollie redirects the customer to when they cancel checkout             |
+| `return_url`        | Yes      | URL your return controller redirects the customer onward to                |
+| `cancel_return_url` | Yes      | URL your cancel controller redirects the customer onward to                |
 
 ## Usage
 
 ### Initiating a payment
 
+Inject `Quellabs\Payments\Mollie\Driver` via Canvas DI and call `initiate()`:
+
 ```php
-use Quellabs\Contracts\Payment\PaymentRequest;
+use Quellabs\Payments\Mollie\Driver;
+use Quellabs\Payments\Contracts\PaymentRequest;
 
 $request = new PaymentRequest(
-    amount:        10.00,
+    paymentModule: 'mollie_ideal',
+    amount:        999,   // in minor units — €9.99
     currency:      'EUR',
     description:   'Order #12345',
-    reference:     '12345',
-    paymentModule: 'mollie_ideal',
-    options:       ['issuer' => 'ideal_INGBNL2A'],
+    issuerId:      'ideal_INGBNL2A',
 );
 
-$response = $provider->initiate($request);
+public function __construct(private Driver $mollie) {}
+
+// ...
+
+$response = $mollie->initiate($request);
 
 if (!$response->success) {
     // handle error
 }
 
-// redirect customer to Mollie checkout
-header('Location: ' . $response->data->redirectUrl);
+header('Location: ' . $response->response->redirectUrl);
 ```
 
 ### Handling refunds
 
 ```php
-use Quellabs\Contracts\Payment\RefundRequest;
+use Quellabs\Payments\Contracts\RefundRequest;
 
 $request = new RefundRequest(
     transactionId: 'tr_7UhSN1zuXS',
-    amount:        5.00,
+    paymentModule: 'mollie_ideal',
+    amount:        500,   // in minor units — €5.00
     currency:      'EUR',
     description:   'Partial refund for order #12345',
 );
 
-$response = $provider->refund($request);
+$response = $mollie->refund($request);
 
 if (!$response->success) {
     // handle error
 }
 
-// $response->data is a RefundResult
-echo $response->data->refundId;
+echo $response->response->refundId;
 ```
 
 ### Fetching refunds for a transaction
 
 ```php
-$response = $provider->getRefunds('tr_7UhSN1zuXS');
+$response = $mollie->getRefunds('tr_7UhSN1zuXS');
 
 if ($response->success) {
-    foreach ($response->data as $refund) {
+    foreach ($response->response as $refund) {
         echo $refund->refundId . ': ' . $refund->value . ' ' . $refund->currency;
     }
 }
@@ -121,24 +136,29 @@ if ($response->success) {
 
 ### Listening for webhook events
 
-Register a listener for the `mollie_exchange` signal in your application:
+Canvas automatically connects listeners annotated with `@ListenTo` to the signal system. Add the annotation to any
+method in a Canvas-managed class:
 
 ```php
-use Quellabs\Contracts\Payment\PaymentState;
-use Quellabs\Contracts\Payment\PaymentStatus;
-use Quellabs\SignalHub\Signal;
+use Quellabs\Canvas\Annotations\ListenTo;
+use Quellabs\Payments\Contracts\PaymentState;
+use Quellabs\Payments\Contracts\PaymentStatus;
 
-$signal = new Signal('mollie_exchange');
+class OrderService {
 
-$signal->connect(function(PaymentState $state) {
-    match ($state->state) {
-        PaymentStatus::Paid     => $this->orders->markPaid($state->transactionId, $state->valuePaid),
-        PaymentStatus::Canceled => $this->orders->markCanceled($state->transactionId),
-        PaymentStatus::Expired  => $this->orders->markExpired($state->transactionId),
-        PaymentStatus::Refunded => $this->handleRefund($state),
-        default                 => null,
-    };
-});
+    /**
+     * @ListenTo("payment_exchange")
+     */
+    public function onPaymentExchange(PaymentState $state): void {
+        match ($state->state) {
+            PaymentStatus::Paid     => $this->markPaid($state->transactionId, $state->valueRequested),
+            PaymentStatus::Canceled => $this->markCanceled($state->transactionId),
+            PaymentStatus::Expired  => $this->markExpired($state->transactionId),
+            PaymentStatus::Refunded => $this->handleRefund($state),
+            default                 => null,
+        };
+    }
+}
 ```
 
 ## Payment state
@@ -151,10 +171,11 @@ $signal->connect(function(PaymentState $state) {
 | `transactionId`   | `string`        | Mollie transaction ID                       |
 | `state`           | `PaymentStatus` | Current payment state                       |
 | `internalState`   | `string`        | Raw Mollie status string                    |
-| `valuePaid`       | `float`         | Original charged amount                     |
-| `valueRefunded`   | `float`         | Total amount refunded so far                |
-| `valueRefundable` | `float`         | Remaining amount that can still be refunded |
+| `valueRequested`  | `int`           | Original charged amount in minor units      |
+| `valueRefunded`   | `int`           | Total amount refunded so far in minor units |
+| `valueRefundable` | `int`           | Remaining refundable amount in minor units  |
 | `currency`        | `string`        | ISO 4217 currency code                      |
+| `metadata`        | `array`         | Metadata passed through from the request    |
 
 ## Payment statuses
 
@@ -170,31 +191,33 @@ $signal->connect(function(PaymentState $state) {
 
 ## Supported payment methods
 
-| Module                | Method               |
-|-----------------------|----------------------|
-| `mollie`              | Any (Mollie decides) |
-| `mollie_ideal`        | iDEAL                |
-| `mollie_creditcard`   | Credit card          |
-| `mollie_paypal`       | PayPal               |
-| `mollie_banktransfer` | Bank transfer        |
-| `mollie_bancontact`   | Bancontact           |
-| `mollie_applepay`     | Apple Pay            |
-| `mollie_eps`          | EPS                  |
-| `mollie_giftcard`     | Gift card            |
-| `mollie_giropay`      | Giropay              |
-| `mollie_kbc`          | KBC/CBC              |
-| `mollie_mybank`       | MyBank               |
-| `mollie_paysafecard`  | Paysafecard          |
-| `mollie_przelewy24`   | Przelewy24           |
-| `mollie_sofort`       | SOFORT Banking       |
-| `mollie_belfius`      | Belfius              |
+| Module                  | Method               |
+|-------------------------|----------------------|
+| `mollie`                | Any (Mollie decides) |
+| `mollie_ideal`          | iDEAL                |
+| `mollie_creditcard`     | Credit card          |
+| `mollie_paypal`         | PayPal               |
+| `mollie_bancontact`     | Bancontact           |
+| `mollie_applepay`       | Apple Pay            |
+| `mollie_eps`            | EPS                  |
+| `mollie_giftcard`       | Gift card            |
+| `mollie_giropay`        | Giropay              |
+| `mollie_kbc`            | KBC/CBC              |
+| `mollie_mybank`         | MyBank               |
+| `mollie_paysafecard`    | Paysafecard          |
+| `mollie_przelewy24`     | Przelewy24           |
+| `mollie_sofort`         | SOFORT Banking       |
+| `mollie_belfius`        | Belfius              |
+| `mollie_billie`         | Billie               |
+| `mollie_in3`            | in3                  |
+| `mollie_klarna`         | Klarna               |
+| `mollie_riverty`        | Riverty              |
 
-Payment methods with issuer selection (iDEAL, KBC, gift cards) can fetch available issuers via
-`getPaymentOptions($paymentModule)`.
+Payment methods with issuer selection (iDEAL, KBC, gift cards) can fetch available issuers via `getPaymentOptions($paymentModule)`.
 
 ## Webhook security
 
-Mollie's legacy webhook sends only a single POST parameter `id` — no payment data. Your application fetches the current
+Mollie's webhook sends only a single POST parameter `id` — no payment data. Your application fetches the current
 state from the Mollie API using that ID. This means a forged webhook call cannot cause your application to process a
 payment that was never made.
 

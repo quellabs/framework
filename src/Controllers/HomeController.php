@@ -3,6 +3,8 @@
 	namespace App\Controllers;
 	
 	use Quellabs\Canvas\Annotations\Route;
+	use Quellabs\Canvas\Annotations\InterceptWith;
+	use Quellabs\Canvas\Translation\TranslationAspect;
 	use Quellabs\Canvas\Controllers\SecureController;
 	use Quellabs\Payments\Contracts\PaymentRequest;
 	use Quellabs\Payments\PaymentRouter;
@@ -12,6 +14,7 @@
 	class HomeController extends SecureController {
 	
 		/**
+		 * @InterceptWith(TranslationAspect::class)
 		 * @Route("/")
 		 * @return Response
 		 */
