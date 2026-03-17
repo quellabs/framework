@@ -68,12 +68,16 @@ Inject `PaymentRouter` via Canvas DI and call `initiate()`:
 
 ```php
 use Quellabs\Payments\PaymentRouter;
+use Quellabs\Canvas\Controllers\BaseController;
 use Quellabs\Payments\Contracts\PaymentRequest;
 
-class CheckoutController {
+class CheckoutController extends BaseController {
 
     public function __construct(private PaymentRouter $router) {}
 
+    /**
+     * @Route("...")
+     */
     public function checkout(): void {
         $request = new PaymentRequest(
             paymentModule: 'mollie_ideal',
@@ -89,7 +93,7 @@ class CheckoutController {
             // handle error
         }
 
-        header('Location: ' . $response->response->redirectUrl);
+        return $this->redirect($response->response->redirectUrl);
     }
 }
 ```
