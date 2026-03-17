@@ -152,6 +152,7 @@
 						'class'   => $providerData['class'],
 						'family'  => $providerData['family']
 					]);
+					
 					continue;
 				}
 				

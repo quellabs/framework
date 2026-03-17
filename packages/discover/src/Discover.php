@@ -105,6 +105,14 @@
 		}
 		
 		/**
+		 * Returns all discovered provider class names without instantiating them.
+		 * @return array<string>
+		 */
+		public function getProviderClasses(): array {
+			return array_keys($this->providerDefinitionsByClass);
+		}
+		
+		/**
 		 * Retrieve a specific provider instance by class name
 		 * @template T of ProviderInterface
 		 * @param class-string<T> $className The fully qualified class name of the provider to retrieve
