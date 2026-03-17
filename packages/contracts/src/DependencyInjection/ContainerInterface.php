@@ -7,21 +7,21 @@
 	/**
 	 * Container interface for dependency injection with autowiring capabilities
 	 */
-	interface Container {
+	interface ContainerInterface {
 		
 		/**
 		 * Registers a service provider with the container.
-		 * @param ServiceProvider $provider The service provider instance to register
+		 * @param ServiceProviderInterface $provider The service provider instance to register
 		 * @return self Returns the current instance for method chaining
 		 */
-		public function register(ServiceProvider $provider): self;
+		public function register(ServiceProviderInterface $provider): self;
 		
 		/**
 		 * Unregisters a service provider from the container.
-		 * @param ServiceProvider $provider The service provider instance to unregister
+		 * @param ServiceProviderInterface $provider The service provider instance to unregister
 		 * @return self Returns the current instance for method chaining
 		 */
-		public function unregister(ServiceProvider $provider): self;
+		public function unregister(ServiceProviderInterface $provider): self;
 		
 		/**
 		 * Set context for subsequent get() calls.
@@ -33,9 +33,9 @@
 		/**
 		 * Find the appropriate service provider for a given class name.
 		 * @param string $className The fully qualified class name to find a provider for
-		 * @return ServiceProvider The provider that supports the class or the default provider
+		 * @return ServiceProviderInterface The provider that supports the class or the default provider
 		 */
-		public function findProvider(string $className): ServiceProvider;
+		public function findProvider(string $className): ServiceProviderInterface;
 		
 		/**
 		 * Get a service with centralized dependency resolution.

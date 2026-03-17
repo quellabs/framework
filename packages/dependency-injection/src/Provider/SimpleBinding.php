@@ -2,7 +2,7 @@
 	
 	namespace Quellabs\DependencyInjection\Provider;
 	
-	use Quellabs\Contracts\Context\MethodContext;
+	use Quellabs\Contracts\Context\MethodContextInterface;
 	
 	/**
 	 * Simple binding provider for cases where you just need interface-to-concrete
@@ -53,7 +53,7 @@
 			string $className,
 			array $dependencies,
 			array $metadata,
-			?MethodContext $methodContext = null
+			?MethodContextInterface $methodContext = null
 		): object {
 			return $this->concrete;
 		}

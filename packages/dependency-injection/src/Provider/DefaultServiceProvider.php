@@ -2,7 +2,7 @@
 	
 	namespace Quellabs\DependencyInjection\Provider;
 	
-	use Quellabs\Contracts\Context\MethodContext;
+	use Quellabs\Contracts\Context\MethodContextInterface;
 	use Quellabs\Discover\Discover;
 	use Quellabs\Discover\Scanner\ComposerScanner;
 	use Quellabs\Contracts\Discovery\ProviderInterface;
@@ -46,7 +46,7 @@
 		 * @param MethodContext|null $methodContext
 		 * @return object
 		 */
-		public function createInstance(string $className, array $dependencies, array $metadata=[], ?MethodContext $methodContext=null): object {
+		public function createInstance(string $className, array $dependencies, array $metadata=[], ?MethodContextInterface $methodContext=null): object {
 			// Check if the class exists
 			if (!class_exists($className)) {
 				throw new \RuntimeException("Class '$className' does not exist");

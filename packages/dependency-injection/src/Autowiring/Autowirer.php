@@ -2,7 +2,7 @@
 	
 	namespace Quellabs\DependencyInjection\Autowiring;
 	
-	use Quellabs\Contracts\DependencyInjection\Container;
+	use Quellabs\Contracts\DependencyInjection\ContainerInterface;
 	
 	/**
 	 * Handles dependency injection through reflection
@@ -10,14 +10,14 @@
 	class Autowirer {
 		
 		/**
-		 * @var Container
+		 * @var ContainerInterface
 		 */
-		private Container $container;
+		private ContainerInterface $container;
 		
 		/**
 		 * Built-in PHP types that cannot be resolved from container
 		 */
-		private const array BUILTIN_TYPES = [
+		private const BUILTIN_TYPES = [
 			// Basic scalar types
 			'string', 'int', 'float', 'bool',
 			
@@ -36,9 +36,9 @@
 
 		/**
 		 * Autowirer constructor
-		 * @param Container $container
+		 * @param ContainerInterface $container
 		 */
-		public function __construct(Container $container) {
+		public function __construct(ContainerInterface $container) {
 			$this->container = $container;
 		}
 		
@@ -99,11 +99,11 @@
 		 * @return mixed The resolved parameter value
 		 */
 		protected function resolveParameter(
-			array $param,
-			array $parameters,
+			array          $param,
+			array          $parameters,
 			?MethodContext $methodContext,
-			string $className,
-			string $methodName
+			string         $className,
+			string         $methodName
 		): mixed {
 			$paramName = $param['name'];
 			$paramTypes = $param['types'] ?? [];

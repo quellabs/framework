@@ -2,21 +2,22 @@
 	
 	namespace Quellabs\DependencyInjection;
 	
+	use Quellabs\Contracts\DependencyInjection\ContainerInterface;
 	use Quellabs\DependencyInjection\Autowiring\MethodContext;
 	use Quellabs\Discover\Discover;
 	use Quellabs\Discover\Scanner\ComposerScanner;
 	use Quellabs\DependencyInjection\Autowiring\Autowirer;
-	use Quellabs\Contracts\DependencyInjection\ServiceProvider;
+	use Quellabs\Contracts\DependencyInjection\ServiceProviderInterface;
 	use Quellabs\DependencyInjection\Provider\DefaultServiceProvider;
 	
 	/**
 	 * Container with centralized autowiring for all services
 	 */
-	class Container implements \Quellabs\Contracts\DependencyInjection\Container {
+	class Container implements ContainerInterface {
 		
 		/**
 		 * Registered service providers
-		 * @var ServiceProvider[]
+		 * @var ServiceProviderInterface[]
 		 */
 		protected array $providers = [];
 		
@@ -68,10 +69,10 @@
 		
 		/**
 		 * Registers a service provider with the container.
-		 * @param ServiceProvider $provider The service provider instance to register
+		 * @param ServiceProviderInterface $provider The service provider instance to register
 		 * @return self Returns the current instance for method chaining
 		 */
-		public function register(ServiceProvider $provider): self {
+		public function register(ServiceProviderInterface $provider): self {
 			// Store the provider in the providers array using its hash as the key
 			$this->providers[spl_object_hash($provider)] = $provider;
 			
@@ -81,10 +82,10 @@
 		
 		/**
 		 * Unregisters a service provider from the container.
-		 * @param ServiceProvider $provider The service provider instance to unregister
+		 * @param ServiceProviderInterface $provider The service provider instance to unregister
 		 * @return self Returns the current instance for method chaining
 		 */
-		public function unregister(ServiceProvider $provider): self {
+		public function unregister(ServiceProviderInterface $provider): self {
 			// Remove the provider from the providers array using its hash as the key
 			unset($this->providers[spl_object_hash($provider)]);
 			
@@ -117,9 +118,9 @@
 		 **
 		 * Find the appropriate service provider for a given class name.
 		 * @param string $className The fully qualified class name to find a provider for
-		 * @return ServiceProvider The provider that supports the class or the default provider
+		 * @return ServiceProviderInterface The provider that supports the class or the default provider
 		 */
-		public function findProvider(string $className): ServiceProvider {
+		public function findProvider(string $className): ServiceProviderInterface {
 			// Iterate through all registered providers to find one that supports the class
 			foreach ($this->providers as $provider) {
 				// Check if this provider supports the class name with the current context
@@ -171,7 +172,7 @@
 		 * Get a service with centralized dependency resolution
 		 * @param string $className Class name to resolve
 		 * @param array $parameters Additional parameters for creation
-		 * @param MethodContext|null $methodContext
+		 * @param MethodContextInterface|null $methodContext
 		 * @return object|null
 		 */
 		public function get(string $className, array $parameters = [], ?MethodContext $methodContext=null): ?object {
@@ -255,7 +256,7 @@
 		 * @param string $className The fully qualified class name to resolve
 		 * @param array $parameters Manual parameters to override autowired dependencies
 		 * @param bool $useServiceProvider Whether to use service provider for instantiation
-		 * @param MethodContext|null $methodContext Optional method context for advanced scenarios
+		 * @param MethodContextInterface|null $methodContext Optional method context for advanced scenarios
 		 * @return object The created instance
 		 * @throws \RuntimeException|\ReflectionException When instantiation fails
 		 */
@@ -369,7 +370,7 @@
 		protected function registerProviders(): self {
 			// Register each discovered provider with the container
 			foreach ($this->discovery->getProviders() as $provider) {
-				if ($provider instanceof ServiceProvider) {
+				if ($provider instanceof ServiceProviderInterface) {
 					$this->register($provider);
 				}
 			}

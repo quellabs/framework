@@ -2,7 +2,7 @@
 	
 	namespace Quellabs\CanvasObjectQuel\Discovery;
 	
-	use Quellabs\Contracts\Context\MethodContext;
+	use Quellabs\Contracts\Context\MethodContextInterface;
 	use Quellabs\ObjectQuel\Configuration;
 	use Quellabs\DependencyInjection\Provider\ServiceProvider as BaseServiceProvider;
 	
@@ -59,7 +59,7 @@
 		 * @param MethodContext|null $methodContext Optional method context
 		 * @return object A configured Configuration instance
 		 */
-		public function createInstance(string $className, array $dependencies, array $metadata, ?MethodContext $methodContext = null): object {
+		public function createInstance(string $className, array $dependencies, array $metadata, ?MethodContextInterface $methodContext = null): object {
 			// Return existing instance if already created (singleton behavior)
 			if (self::$instance !== null) {
 				return self::$instance;

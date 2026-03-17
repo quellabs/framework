@@ -16,6 +16,7 @@
 		 * @return Response
 		 */
 		public function index(PaymentRouter $paymentRouter): Response {
+			/*
 			$request = new PaymentRequest(
 				"mollie_ideal",
 				1.0,
@@ -25,10 +26,9 @@
 			);
 			
 			return $this->json($paymentRouter->initiate($request)->response);
-
-			/*
-			return new JsonResponse($mollie->initiate();
 			*/
+			
+			return new Response("Hello from routes file");
 		}
 		
 		/**ho
