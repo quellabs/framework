@@ -68,7 +68,7 @@
 			return [
 				'api_key'      => '',
 				'test_mode'    => false,
-				'webhook__url' => 'webhooks/mollie',
+				'webhook_url'  => 'webhooks/mollie',
 				'redirect_url' => 'payment/return/mollie',
 				'cancel_url'   => 'payment/cancel/mollie',
 			];
