@@ -2,13 +2,29 @@
 	
 	namespace Quellabs\Payments\Contracts;
 	
-	final class RefundResult {
+	/**
+	 * Immutable result of a refund operation, returned by PaymentProviderInterface::refund()
+	 * and used within getRefunds() response lists.
+	 * All monetary values are in the smallest currency unit (e.g. cents).
+	 */
+	final readonly class RefundResult {
+		
 		public function __construct(
-			public readonly string $provider,
-			public readonly string $transactionId,
-			public readonly string $refundId,
-			public readonly int    $value,
-			public readonly string $currency,
+			/** The provider that processed this refund (e.g. 'mollie', 'stripe') */
+			public string $provider,
+			
+			/** The provider's unique identifier for the original payment */
+			public string $transactionId,
+			
+			/** The provider's unique identifier for this specific refund */
+			public string $refundId,
+			
+			/** The refunded amount, in the smallest currency unit */
+			public int    $value,
+			
+			/** ISO 4217 currency code (e.g. 'EUR', 'USD') */
+			public string $currency,
+			
 		) {
 		}
 	}
