@@ -70,11 +70,10 @@
 		 * Resolves a provider instance for the given module name
 		 * @param string $module
 		 * @return PaymentProviderInterface
+		 * @throws \RuntimeException
 		 */
 		private function resolve(string $module): PaymentProviderInterface {
-			$class = $this->moduleMap[$module]
-				?? throw new \RuntimeException("No payment provider registered for module '{$module}'");
-			
+			$class = $this->moduleMap[$module] ?? throw new \RuntimeException("No payment provider registered for module '{$module}'");
 			return $this->container->get($class);
 		}
 		
@@ -89,7 +88,19 @@
 			
 			return array_filter(
 				$discover->getFamilyValues('payments', 'payment_provider'),
-				fn($value) => is_string($value) && class_exists($value)
+				[$this, 'isValidPaymentProvider']
 			);
+		}
+		
+		/**
+		 * Returns true if the given value is a valid PaymentProviderInterface implementation
+		 * @param mixed $value
+		 * @return bool
+		 */
+		private function isValidPaymentProvider(mixed $value): bool {
+			return
+				is_string($value) &&
+				class_exists($value) &&
+				is_subclass_of($value, PaymentProviderInterface::class);
 		}
 	}
