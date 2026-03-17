@@ -93,7 +93,7 @@
 		 * Tries strategies in priority order until one succeeds or all fail.
 		 * @param array $param Parameter metadata (name, types, default_value, etc.)
 		 * @param array $parameters User-provided parameter values
-		 * @param MethodContext|null $methodContext Context object for dependency injection
+		 * @param MethodContextInterface|null $methodContext Context object for dependency injection
 		 * @param string $className Class name for error reporting
 		 * @param string $methodName Method name for error reporting
 		 * @return mixed The resolved parameter value
@@ -167,7 +167,7 @@
 		 * Attempts to resolve a parameter value by trying each type hint in order
 		 * @param string $paramName Parameter name for better error messages
 		 * @param array $types Array of type hints/class names to attempt resolution
-		 * @param MethodContext|null $methodContext
+		 * @param MethodContextInterface|null $methodContext
 		 * @return mixed The resolved instance
 		 * @throws \RuntimeException If no types could be resolved
 		 */

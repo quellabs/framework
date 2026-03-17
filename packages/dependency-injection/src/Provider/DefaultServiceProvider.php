@@ -43,7 +43,7 @@
 		 * Create instance with basic instantiation using singleton pattern
 		 * @param string $className The class to instantiate
 		 * @param array $dependencies Pre-resolved constructor dependencies
-		 * @param MethodContext|null $methodContext
+		 * @param MethodContextInterface|null $methodContext
 		 * @return object
 		 */
 		public function createInstance(string $className, array $dependencies, array $metadata=[], ?MethodContextInterface $methodContext=null): object {

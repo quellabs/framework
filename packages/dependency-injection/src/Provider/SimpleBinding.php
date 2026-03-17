@@ -46,7 +46,7 @@
 		 * @param string $className The class name being instantiated (will be the abstract type)
 		 * @param array $dependencies Pre-resolved constructor dependencies from autowiring
 		 * @param array $metadata Additional metadata (unused in simple bindings)
-		 * @param MethodContext|null $methodContext Optional method context (unused in simple bindings)
+		 * @param MethodContextInterface|null $methodContext Optional method context (unused in simple bindings)
 		 * @return object The instantiated concrete class
 		 */
 		public function createInstance(

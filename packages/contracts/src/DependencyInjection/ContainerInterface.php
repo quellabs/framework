@@ -42,7 +42,7 @@
 		 * @template T of object
 		 * @param class-string<T> $className Class or interface name to resolve
 		 * @param array $parameters Additional parameters for creation
-		 * @param MethodContext|null $methodContext
+		 * @param MethodContextInterface|null $methodContext
 		 * @return T|null The resolved service instance or null if resolution fails
 		 * @throws \RuntimeException When circular dependencies are detected or resolution fails
 		 */
