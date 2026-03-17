@@ -27,6 +27,7 @@
   "require": {
     "php": "^8.2",
     "ext-curl": "*",
+    "symfony/http-client": "*",
     "quellabs/support": "*",
     "quellabs/contracts": "*",
     "quellabs/canvas-payments-contracts": "*"
