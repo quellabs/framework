@@ -16,7 +16,6 @@
 	class MollieGateway {
 		
 		protected string $apiKey;
-		protected string $apiUserAgent;
 		protected bool $testMode;
 		
 		/**
@@ -26,15 +25,10 @@
 			$configData = $configProvider->loadConfigFile('mollie');
 			$this->apiKey = $configData->get("api_key", "");
 			$this->testMode = $configData->getAs("test_mode", "bool", false);
-			
-			$this->apiUserAgent = join(" ", [
-				"Mollie/1.0.0",
-				"PHP/" . phpversion(),
-			]);
 		}
 		
 		/**
-		 * Use curl to call mollie
+		 * Call the API and return the result
 		 * @param string $method
 		 * @param string $action
 		 * @param array $data
@@ -43,33 +37,39 @@
 		protected function callHttpClient(string $method, string $action, array $data = []): array {
 			try {
 				$client = HttpClient::create([
-					'base_uri'    => 'https://api.mollie.nl/v2/',
-					'timeout'     => 10,
-					'headers' => [
+					'base_uri' => 'https://api.mollie.nl/v2/',
+					'timeout'  => 10,
+					'headers'  => [
 						'Accept'        => 'application/json',
 						'Authorization' => "Bearer {$this->apiKey}",
 						'Content-Type'  => 'application/json',
 					],
+					
+					// Enforce strict SSL verification using the bundled CA certificate
 					'verify_peer' => true,
 					'verify_host' => true,
 					'cafile'      => dirname(__FILE__) . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'security' . DIRECTORY_SEPARATOR . 'cacert.pem'
 				]);
 				
-				$response = $client->request($method, $action, ['json' => $data]);
+				$response   = $client->request($method, $action, ['json' => $data]);
 				$statusCode = $response->getStatusCode();
-				$jsonData = $response->toArray();
+				$jsonData   = $response->toArray();
 			} catch (\Exception|TransportExceptionInterface|DecodingExceptionInterface|ClientExceptionInterface|RedirectionExceptionInterface|ServerExceptionInterface $e) {
+				// Network failure, timeout, or non-2xx response — return a normalized error
 				return ['request' => ['result' => 0, 'errorId' => $e->getCode(), 'errorMessage' => $e->getMessage()]];
 			}
 			
+			// Single-resource responses (payment, method, refund) are returned as-is
 			if (isset($jsonData['resource']) && in_array($jsonData['resource'], ['payment', 'method', 'refund'])) {
 				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $jsonData];
 			}
 			
+			// List responses are wrapped in _embedded — unwrap the methods collection
 			if (!empty($jsonData['_embedded'])) {
 				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $jsonData['_embedded']['methods']];
 			}
 			
+			// Anything else is an API-level error — surface the status code and detail message
 			return ['request' => ['result' => 0, 'errorId' => $statusCode, 'errorMessage' => $jsonData['detail']]];
 		}
 		
