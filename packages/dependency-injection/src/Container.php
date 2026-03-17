@@ -142,8 +142,7 @@
 			// Check if it's the container itself
 			if (
 				$className === self::class ||
-				$className === \Quellabs\Contracts\DependencyInjection\Container::class ||
-				is_a($this, $className)
+				$className === ContainerInterface::class
 			) {
 				return true;
 			}
