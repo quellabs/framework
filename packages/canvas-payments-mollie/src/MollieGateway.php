@@ -28,7 +28,7 @@
 			$this->testMode = $configData->getAs("test_mode", "bool", false);
 			
 			$this->apiUserAgent = join(" ", [
-				"Mollie/1.1.0",
+				"Mollie/1.0.0",
 				"PHP/" . phpversion(),
 			]);
 		}
@@ -45,12 +45,10 @@
 				$client = HttpClient::create([
 					'base_uri'    => 'https://api.mollie.nl/v2/',
 					'timeout'     => 10,
-					'headers'     => [
-						'Accept'               => 'application/json',
-						'Authorization'        => "Bearer {$this->apiKey}",
-						'User-Agent'           => $this->apiUserAgent,
-						'X-Mollie-Client-Info' => php_uname(),
-						'Content-Type'         => 'application/json',
+					'headers' => [
+						'Accept'        => 'application/json',
+						'Authorization' => "Bearer {$this->apiKey}",
+						'Content-Type'  => 'application/json',
 					],
 					'verify_peer' => true,
 					'verify_host' => true,
