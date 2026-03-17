@@ -1,6 +1,6 @@
 <?php
 	
-	namespace Quellabs\Contracts\Payment;
+	namespace Quellabs\Payments\Contracts;
 	
 	final class RefundResult {
 		public function __construct(

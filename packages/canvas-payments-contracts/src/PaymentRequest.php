@@ -2,7 +2,7 @@
 
 // quellabs/payment-contracts
 	
-	namespace Quellabs\Contracts\Payment;
+	namespace Quellabs\Payments\Contracts;
 	
 	final class PaymentRequest {
 		

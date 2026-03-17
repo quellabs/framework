@@ -1,6 +1,6 @@
 <?php
 	
-	namespace Quellabs\Contracts\Payment;
+	namespace Quellabs\Payments\Contracts;
 	
 	enum PaymentStatus: string {
 		case Pending = 'PENDING';

@@ -1,6 +1,6 @@
 <?php
 	
-	namespace Quellabs\Contracts\Payment;
+	namespace Quellabs\Payments\Contracts;
 	
 	/**
 	 * Immutable value object returned after successfully initiating a payment session.

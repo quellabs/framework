@@ -1,6 +1,6 @@
 <?php
 	
-	namespace Quellabs\Contracts\Payment;
+	namespace Quellabs\Payments\Contracts;
 	
 	final readonly class PaymentState {
 		public function __construct(

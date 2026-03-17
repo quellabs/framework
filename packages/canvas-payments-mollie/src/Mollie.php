@@ -3,14 +3,14 @@
 	namespace Quellabs\Payments\Mollie;
 	
 	use Quellabs\Contracts\Configuration\ConfigProviderInterface;
-	use Quellabs\Contracts\Payment\InitiateResponse;
-	use Quellabs\Contracts\Payment\PaymentState;
-	use Quellabs\Contracts\Payment\PaymentProviderInterface;
-	use Quellabs\Contracts\Payment\PaymentRequest;
-	use Quellabs\Contracts\Payment\PaymentResponse;
-	use Quellabs\Contracts\Payment\PaymentStatus;
-	use Quellabs\Contracts\Payment\RefundRequest;
-	use Quellabs\Contracts\Payment\RefundResult;
+	use Quellabs\Payments\Contracts\InitiateResponse;
+	use Quellabs\Payments\Contracts\PaymentState;
+	use Quellabs\Payments\Contracts\PaymentProviderInterface;
+	use Quellabs\Payments\Contracts\PaymentRequest;
+	use Quellabs\Payments\Contracts\PaymentResponse;
+	use Quellabs\Payments\Contracts\PaymentStatus;
+	use Quellabs\Payments\Contracts\RefundRequest;
+	use Quellabs\Payments\Contracts\RefundResult;
 	
 	class Mollie implements PaymentProviderInterface {
 		

@@ -3,9 +3,9 @@
 	namespace Quellabs\Payments\Mollie;
 	
 	use Quellabs\Contracts\Configuration\ConfigProviderInterface;
-	use Quellabs\Contracts\Payment\PaymentAddress;
-	use Quellabs\Contracts\Payment\PaymentRequest;
-	use Quellabs\Contracts\Payment\RefundRequest;
+	use Quellabs\Payments\Contracts\PaymentAddress;
+	use Quellabs\Payments\Contracts\PaymentRequest;
+	use Quellabs\Payments\Contracts\RefundRequest;
 	use Symfony\Component\HttpClient\HttpClient;
 	use Symfony\Contracts\HttpClient\Exception\ClientExceptionInterface;
 	use Symfony\Contracts\HttpClient\Exception\DecodingExceptionInterface;
