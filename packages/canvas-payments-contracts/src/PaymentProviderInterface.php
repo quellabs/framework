@@ -2,20 +2,14 @@
 	
 	namespace Quellabs\Payments\Contracts;
 	
+	use Quellabs\Contracts\Discovery\ProviderInterface;
+	
 	/**
 	 * Common interface for payment provider implementations.
 	 * Each provider package (e.g. Mollie, Stripe) must implement this interface
 	 * and register itself via composer metadata for automatic discovery by PaymentRouter.
 	 */
-	interface PaymentProviderInterface {
-		
-		/**
-		 * Returns all payment module identifiers supported by this provider.
-		 * Called statically during discovery — no instantiation required.
-		 * Example: ['mollie', 'mollie_ideal', 'mollie_creditcard']
-		 * @return array
-		 */
-		public static function getSupportedModules(): array;
+	interface PaymentProviderInterface extends ProviderInterface {
 		
 		/**
 		 * Initiate a new payment session and return a redirect URL for the customer.

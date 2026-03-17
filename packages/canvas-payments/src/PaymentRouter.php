@@ -2,26 +2,46 @@
 	
 	namespace Quellabs\Payments;
 	
-	use Quellabs\DependencyInjection\Container;
+	use Quellabs\Discover\Scanner\ComposerScanner;
 	use Quellabs\Payments\Contracts\PaymentProviderInterface;
 	use Quellabs\Payments\Contracts\PaymentRequest;
 	use Quellabs\Payments\Contracts\PaymentResponse;
 	use Quellabs\Payments\Contracts\RefundRequest;
 	use Quellabs\Discover\Discover;
-	use Quellabs\Discover\Scanner\MetadataCollector;
 	
 	class PaymentRouter {
 		
 		private array $moduleMap = [];
+		private Discover $discover;
 		
 		/**
 		 * PaymentRouter constructor.
 		 * Discovers all payment providers via composer metadata and builds the module map.
-		 * @param Container $container
 		 */
-		public function __construct(private Container $container) {
-			foreach ($this->discoverProviders() as $class) {
-				foreach ($class::getSupportedModules() as $module) {
+		public function __construct() {
+			// Run discovery to populate provider definitions and collected metadata
+			$this->discover = new Discover();
+			$this->discover->addScanner(new ComposerScanner("payments"));
+			$this->discover->discover();
+			
+			// Iterate all discovered provider classes and build the module map
+			foreach ($this->discover->getProviderClasses() as $class) {
+				// Skip classes that don't implement PaymentProviderInterface
+				if (!is_subclass_of($class, PaymentProviderInterface::class)) {
+					continue;
+				}
+				
+				// The metadata should include a list of modules
+				$metadata = $class::getMetadata();
+				
+				// Skip providers that declare no modules — nothing to route to
+				if (empty($metadata['modules'])) {
+					continue;
+				}
+				
+				// Register each module name, guarding against duplicate registrations
+				// across different provider packages
+				foreach ($metadata['modules'] as $module) {
 					if (isset($this->moduleMap[$module])) {
 						throw new \RuntimeException("Duplicate payment module '{$module}' registered by {$class} and {$this->moduleMap[$module]}");
 					}
@@ -74,33 +94,6 @@
 		 */
 		private function resolve(string $module): PaymentProviderInterface {
 			$class = $this->moduleMap[$module] ?? throw new \RuntimeException("No payment provider registered for module '{$module}'");
-			return $this->container->get($class);
-		}
-		
-		/**
-		 * Discovers all payment provider classes via composer metadata
-		 * @return array
-		 */
-		private function discoverProviders(): array {
-			$discover = new Discover();
-			$discover->addScanner(new MetadataCollector("payments"));
-			$discover->discover();
-			
-			return array_filter(
-				$discover->getFamilyValues('payments', 'payment_provider'),
-				[$this, 'isValidPaymentProvider']
-			);
-		}
-		
-		/**
-		 * Returns true if the given value is a valid PaymentProviderInterface implementation
-		 * @param mixed $value
-		 * @return bool
-		 */
-		private function isValidPaymentProvider(mixed $value): bool {
-			return
-				is_string($value) &&
-				class_exists($value) &&
-				is_subclass_of($value, PaymentProviderInterface::class);
+			return $this->discover->get($class);
 		}
 	}

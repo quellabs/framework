@@ -19,17 +19,19 @@
 		 * @return Response
 		 */
 		public function index(PaymentRouter $paymentRouter): Response {
-			/*
 			$request = new PaymentRequest(
 				"mollie_ideal",
-				1.0,
+				10,
 				"EUR",
 				"test",
 				"hallo",
 			);
+
+			$response = $paymentRouter->initiate($request);
 			
-			return $this->json($paymentRouter->initiate($request)->response);
-			*/
+			if (!$response->success) {
+				return $this->json([$response->errorId, $response->errorMessage]);
+			}
 			
 			return new Response("Hello from routes file");
 		}

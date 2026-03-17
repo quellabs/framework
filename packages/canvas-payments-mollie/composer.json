@@ -47,7 +47,8 @@
         "controller": "Quellabs\\Payments\\Mollie\\MollieController"
       },
       "payments": {
-        "payment_provider": "Quellabs\\Payments\\Mollie\\Driver"
+        "provider": "Quellabs\\Payments\\Mollie\\Driver",
+        "config": "config/mollie.php"
       }
     }
   }

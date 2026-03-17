@@ -1,6 +1,6 @@
 {
   "name": "quellabs/canvas-payments",
-  "description": "Payment gateway contracts and interfaces for the Canvas PHP framework",
+  "description": "Payment router for the Canvas PHP framework. Discovers and routes payment operations to installed provider packages.",
   "type": "library",
   "license": "MIT",
   "authors": [
@@ -11,9 +11,8 @@
   ],
   "keywords": [
     "payments",
-    "contracts",
-    "interfaces",
-    "abstractions",
+    "router",
+    "discovery",
     "canvas",
     "canvas-payments"
   ],
@@ -22,14 +21,14 @@
     "issues": "https://github.com/quellabs/canvas-payments/issues",
     "forum": "https://github.com/quellabs/canvas-payments/discussions",
     "wiki": "https://github.com/quellabs/canvas-payments/wiki",
-    "docs": "https://canvasphp.php/docs",
+    "docs": "https://canvasphp.com/docs",
     "source": "https://github.com/quellabs/canvas-payments"
   },
   "require": {
     "php": "^8.2",
     "quellabs/discover": "*",
     "quellabs/contracts": "*",
-    "quellabs/canvas-payments-contracts": "*",
+    "quellabs/canvas-payments-contracts": "*"
   },
   "autoload": {
     "psr-4": {

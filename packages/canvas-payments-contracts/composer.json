@@ -26,7 +26,8 @@
     "source": "https://github.com/quellabs/canvas-payments-contracts"
   },
   "require": {
-    "php": "^8.2"
+    "php": "^8.2",
+    "quellabs/contracts": "*"
   },
   "autoload": {
     "psr-4": {

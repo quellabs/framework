@@ -22,10 +22,10 @@
 		/**
 		 * Mollie constructor.
 		 */
-		public function __construct(ConfigProviderInterface $configProvider) {
-			$configData = $configProvider->loadConfigFile('mollie');
-			$this->apiKey = $configData->get("api_key", "");
-			$this->testMode = $configData->getAs("test_mode", "bool", false);
+		public function __construct(Driver $driver) {
+			$configData = $driver->getConfig();
+			$this->apiKey = $configData["api_key"] ?? "";
+			$this->testMode = $configData["test_mode"] ?? false;
 		}
 		
 		/**

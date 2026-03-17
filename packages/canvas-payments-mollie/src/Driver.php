@@ -2,7 +2,6 @@
 	
 	namespace Quellabs\Payments\Mollie;
 	
-	use Quellabs\Contracts\Configuration\ConfigProviderInterface;
 	use Quellabs\Payments\Contracts\InitiateResponse;
 	use Quellabs\Payments\Contracts\PaymentState;
 	use Quellabs\Payments\Contracts\PaymentProviderInterface;
@@ -14,45 +13,74 @@
 	
 	class Driver implements PaymentProviderInterface {
 		
-		private ConfigProviderInterface $config;
-		private MollieGateway $gateway;
+		/**
+		 * Active configuration for this provider, applied by the discovery system after instantiation.
+		 * @var array
+		 */
+		private array $config;
 		
 		/**
-		 * Mollie constructor.
-		 * @param ConfigProviderInterface $config
-		 * @param MollieGateway $mollie
+		 * Gateway instance, constructed lazily on first use to ensure config is available.
+		 * @var MollieGateway|null
 		 */
-		public function __construct(ConfigProviderInterface $config, MollieGateway $mollie) {
-			$this->config = $config;
-			$this->gateway = $mollie;
+		private ?MollieGateway $gateway = null;
+		
+		/**
+		 * Returns discovery metadata for this provider, including all supported payment modules.
+		 * Called statically during discovery — no instantiation required.
+		 * @return array<string, mixed>
+		 */
+		public static function getMetadata(): array {
+			return [
+				'modules' => [
+					'mollie',
+					'mollie_applepay',
+					'mollie_bancontact',
+					'mollie_belfius',
+					'mollie_creditcard',
+					'mollie_eps',
+					'mollie_giftcard',
+					'mollie_giropay',
+					'mollie_ideal',
+					'mollie_kbc',
+					'mollie_mybank',
+					'mollie_paypal',
+					'mollie_paysafecard',
+					'mollie_przelewy24',
+					'mollie_sofort',
+					'mollie_billie',
+					'mollie_in3',
+					'mollie_klarna',
+					'mollie_riverty',
+				],
+			];
 		}
 		
 		/**
-		 * Returns all modules that are supported by this class
+		 * Returns default configuration values for this provider.
+		 * Merged with loaded config files during discovery — values from config files take precedence.
 		 * @return array
 		 */
-		public static function getSupportedModules(): array {
-			return [
-				'mollie',
-				'mollie_applepay',
-				'mollie_bancontact',
-				'mollie_belfius',
-				'mollie_creditcard',
-				'mollie_eps',
-				'mollie_giftcard',
-				'mollie_giropay',
-				'mollie_ideal',
-				'mollie_kbc',
-				'mollie_mybank',
-				'mollie_paypal',
-				'mollie_paysafecard',
-				'mollie_przelewy24',
-				'mollie_sofort',
-				'mollie_billie',
-				'mollie_in3',
-				'mollie_klarna',
-				'mollie_riverty',
-			];
+		public static function getDefaults(): array {
+			return [];
+		}
+		
+		/**
+		 * Returns the active configuration for this provider instance.
+		 * @return array
+		 */
+		public function getConfig(): array {
+			return $this->config;
+		}
+		
+		/**
+		 * Applies configuration to this provider instance.
+		 * Called by the discovery system after instantiation, before any other methods are invoked.
+		 * @param array $config
+		 * @return void
+		 */
+		public function setConfig(array $config): void {
+			$this->config = $config;
 		}
 		
 		/**
@@ -67,7 +95,7 @@
 			
 			// Initiate the payment
 			$paymentMethod = ($request->paymentModule != "mollie") ? substr($request->paymentModule, 7) : "";
-			$response = $this->gateway->createPayment($request, $paymentMethod);
+			$response = $this->getGateway()->createPayment($request, $paymentMethod);
 			
 			// return error if any
 			if ($response["request"]["result"] == 0) {
@@ -89,7 +117,7 @@
 		 */
 		public function refund(RefundRequest $refundRequest): PaymentResponse {
 			// Create the refund
-			$response = $this->gateway->createRefund($refundRequest);
+			$response = $this->getGateway()->createRefund($refundRequest);
 			
 			// return error in case of error
 			if ($response["request"]["result"] == 0) {
@@ -121,7 +149,7 @@
 		 */
 		public function exchange(string $transactionId, array $extraData = []): PaymentResponse {
 			// Fetch payment information from gateway
-			$response = $this->gateway->getPaymentInfo($transactionId);
+			$response = $this->getGateway()->getPaymentInfo($transactionId);
 			
 			// Return the error if the gateway call failed
 			if ($response["request"]["result"] == 0) {
@@ -151,7 +179,7 @@
 			$amount = (int)round((float)$response["response"]["amount"]["value"] * 100);
 			$amountRefunded = (int)round((float)($response["response"]["amountRefunded"]["value"] ?? 0) * 100);
 			$amountRefundable = (int)round((float)($response["response"]["amountRemaining"]["value"] ?? 0) * 100);
-
+			
 			// Return response
 			return PaymentResponse::ok(new PaymentState(
 				provider: 'mollie',
@@ -173,7 +201,7 @@
 		 */
 		public function getRefunds(string $transactionId): PaymentResponse {
 			// Fetch refunds from Mollie
-			$response = $this->gateway->listRefunds($transactionId);
+			$response = $this->getGateway()->listRefunds($transactionId);
 			
 			// Return error if the gateway call failed
 			if ($response["request"]["result"] == 0) {
@@ -212,7 +240,7 @@
 			
 			// Strip the 'mollie_' prefix to get the raw method name Mollie expects (e.g. 'ideal')
 			// Call the gateway to fetch payment method info
-			$methods = $this->gateway->getPaymentMethodInfo(substr($paymentModule, 7));
+			$methods = $this->getGateway()->getPaymentMethodInfo(substr($paymentModule, 7));
 			
 			if ($methods["request"]["result"] == 0) {
 				return PaymentResponse::fail(204, "Failed to fetch options for payment method '{$paymentModule}'");
@@ -220,11 +248,11 @@
 			
 			// Flatten the issuer list into a normalized shape for the frontend
 			$issuers = array_map(fn($issuer) => [
-				'id'        => $issuer["id"],
-				'name'      => $issuer["name"],
-				'issuerId'  => $issuer["id"],
-				'swift'     => $issuer["id"],
-				'icon'      => $issuer["image"]["size1x"],
+				'id'       => $issuer["id"],
+				'name'     => $issuer["name"],
+				'issuerId' => $issuer["id"],
+				'swift'    => $issuer["id"],
+				'icon'     => $issuer["image"]["size1x"],
 			], $methods["response"]["issuers"] ?? []);
 			
 			return PaymentResponse::ok($issuers);
@@ -238,24 +266,29 @@
 		 * @throws \RuntimeException if redirectUrl or cancelUrl cannot be resolved
 		 */
 		private function resolveUrls(PaymentRequest $request): void {
-			// Load /config/mollie.php
-			$config = $this->config->loadConfigFile("mollie");
-			
 			// Use the request URL if set, otherwise fall back to config — throw if neither is available
-			$request->redirectUrl ??= $config->get("redirect_url")
+			$request->redirectUrl ??= $this->config["redirect_url"]
 				?? throw new \RuntimeException(
 					"Mollie payment gateway is misconfigured: 'redirect_url' is missing or empty. " .
 					"Set 'redirect_url' in config/mollie.php."
 				);
 			
 			// Use the cancelUrl URL if set, otherwise fall back to config — throw if neither is available
-			$request->cancelUrl ??= $config->get("cancel_url")
+			$request->cancelUrl ??= $this->config["cancel_url"]
 				?? throw new \RuntimeException(
 					"Mollie payment gateway is misconfigured: 'cancel_url' is missing or empty. " .
 					"Set 'cancel_url' in config/mollie.php."
 				);
 			
 			// webhookUrl is optional — fall back to the default Mollie webhook route
-			$request->webhookUrl ??= $config->get("webhook_url", '/webhooks/mollie');
+			$request->webhookUrl ??= $this->config["webhook_url"] ?? "/webhooks/mollie";
+		}
+		
+		/**
+		 * Lazily instantiated mollie gateway
+		 * @return MollieGateway
+		 */
+		private function getGateway(): MollieGateway {
+			return $this->gateway ??= new MollieGateway($this);
 		}
 	}
