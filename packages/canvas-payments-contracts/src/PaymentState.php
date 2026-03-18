@@ -18,9 +18,6 @@
 			/** Normalized payment status mapped from the provider's internal state */
 			public PaymentStatus $state,
 			
-			/** The original amount requested, in the smallest currency unit */
-			public int           $valueRequested,
-			
 			/** The total amount refunded so far, in the smallest currency unit */
 			public int           $valueRefunded,
 			

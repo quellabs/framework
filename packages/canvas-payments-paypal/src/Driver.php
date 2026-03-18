@@ -124,7 +124,6 @@
 				    provider:        "paypal",
 				    transactionId:   $transactionId,
 				    state:           PaymentStatus::Canceled,
-				    valueRequested:  0,
 				    valueRefunded:   0,
 				    valueRefundable: 0,
 				    internalState:   "cancel",
@@ -148,7 +147,6 @@
 					    provider: "paypal",
 					    transactionId: $transactionId,
 					    state: PaymentStatus::Pending,
-					    valueRequested: 0,
 					    valueRefunded: 0,
 					    valueRefundable: 0,
 					    internalState: "PaymentActionInProgress"
@@ -160,7 +158,6 @@
 					    provider: "paypal",
 					    transactionId: $transactionId,
 					    state: PaymentStatus::Failed,
-					    valueRequested: 0,
 					    valueRefunded: 0,
 					    valueRefundable: 0,
 					    internalState: "PaymentActionFailed"
@@ -321,26 +318,30 @@
 			    // Redirect them back to PayPal to choose a different payment method.
 			    // @see https://www.paypal-community.com/t5/NVP-SOAP-APIs/PayPal-Error-10486-Decline-recovery-redirect/td-p/1129543
 			    if ($result["request"]["errorId"] == 10486) {
-				    $base = $this->getGateway()->testMode()
-					    ? "https://www.sandbox.paypal.com/cgi-bin/webscr"
-					    : "https://www.paypal.com/cgi-bin/webscr";
+				    if ($this->getGateway()->testMode()) {
+					    $base = "https://www.sandbox.paypal.com/cgi-bin/webscr";
+				    } else {
+					    $base = "https://www.paypal.com/cgi-bin/webscr";
+				    }
 				    
 				    return new PaymentState(
 					    provider:        "paypal",
 					    transactionId:   $transactionId,
 					    state:           PaymentStatus::Redirect,
-					    valueRequested:  (int) round($amount * 100),
 					    valueRefunded:   0,
 					    valueRefundable: 0,
 					    internalState:   "10486",
 					    currency:        $currency,
-					    metadata:        ["redirectUrl" => "$base?cmd=_express-checkout&token=$transactionId"],
+					    metadata:        [
+							"redirectUrl" => "$base?cmd=_express-checkout&token={$transactionId}"
+					    ],
 				    );
 			    }
 			    
 			    throw new PaymentInitiationException("paypal", $result["request"]["errorId"], $result["request"]["errorMessage"]);
 		    }
 		    
+			// Convert Paypal status to state object
 		    $paymentStatus        = $result["response"]["PAYMENTINFO_0_PAYMENTSTATUS"];
 		    $paymentTransactionId = $result["response"]["PAYMENTINFO_0_TRANSACTIONID"];
 		    $amountMinorUnits     = (int) round((float) $result["response"]["PAYMENTINFO_0_AMT"] * 100);
@@ -356,7 +357,6 @@
 					    provider:        "paypal",
 					    transactionId:   $transactionId,
 					    state:           PaymentStatus::Paid,
-					    valueRequested:  $amountMinorUnits,
 					    valueRefunded:   0,
 					    valueRefundable: $amountMinorUnits,
 					    internalState:   $paymentStatus,
@@ -375,7 +375,6 @@
 					    provider:        "paypal",
 					    transactionId:   $transactionId,
 					    state:           PaymentStatus::Failed,
-					    valueRequested:  $amountMinorUnits,
 					    valueRefunded:   0,
 					    valueRefundable: 0,
 					    internalState:   $paymentStatus,
@@ -388,7 +387,6 @@
 					    provider:        "paypal",
 					    transactionId:   $transactionId,
 					    state:           PaymentStatus::Pending,
-					    valueRequested:  $amountMinorUnits,
 					    valueRefunded:   0,
 					    valueRefundable: 0,
 					    internalState:   $paymentStatus,
@@ -409,7 +407,6 @@
 				    provider:        "paypal",
 				    transactionId:   $token,
 				    state:           PaymentStatus::Paid,
-				    valueRequested:  0,
 				    valueRefunded:   0,
 				    valueRefundable: 0,
 				    internalState:   $internalState,
@@ -431,7 +428,6 @@
 			    provider:        "paypal",
 			    transactionId:   $token,
 			    state:           PaymentStatus::Paid,
-			    valueRequested:  $valueRequested,
 			    valueRefunded:   $valueRefunded,
 			    valueRefundable: $valueRefundable,
 			    internalState:   $r["PAYMENTSTATUS"] ?? $internalState,

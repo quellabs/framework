@@ -188,7 +188,6 @@
 			// Fetch mollie payment status
 			$mollieStatus = $response["response"]["status"];
 			$currency = $response["response"]["amount"]["currency"];
-			$amount = (int)round((float)$response["response"]["amount"]["value"] * 100);
 			$amountRefunded = (int)round((float)($response["response"]["amountRefunded"]["value"] ?? 0) * 100);
 			$amountRefundable = (int)round((float)($response["response"]["amountRemaining"]["value"] ?? 0) * 100);
 			
@@ -197,7 +196,6 @@
 				provider: 'mollie',
 				transactionId: $transactionId,
 				state: $stateMap[strtoupper($mollieStatus)] ?? PaymentStatus::Unknown,
-				valueRequested: $amount,
 				valueRefunded: $amountRefunded,
 				valueRefundable: $amountRefundable,
 				internalState: $mollieStatus,
