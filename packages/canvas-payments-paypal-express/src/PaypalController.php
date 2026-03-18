@@ -56,14 +56,14 @@
 					'action' => $action
 				]);
 				
-				// Notify listeners (e.g. order management) of the updated payment state
-				$this->signal->emit($response);
-				
 				// Error 10486: buyer's funding source was insufficient — redirect them back to PayPal
-				// to choose a different payment method. The redirect URL is in the payment state metadata.
+				// to choose a different payment method. No signal emitted — this is not a payment outcome.
 				if ($response->state === PaymentStatus::Redirect) {
 					return new RedirectResponse($response->metadata['redirectUrl']);
 				}
+
+				// Notify listeners (e.g. order management) of the updated payment state
+				$this->signal->emit($response);
 				
 				// Redirect the buyer to the configured post-payment return page
 				$config = $this->paypal->getConfig();

@@ -58,18 +58,18 @@ return [
 ];
 ```
 
-| Key                 | Required | Description                                                                                                       |
-|---------------------|----------|-------------------------------------------------------------------------------------------------------------------|
-| `test_mode`         | Yes      | Set to `true` for sandbox, `false` for production                                                                 |
-| `api_username`      | Yes      | NVP API username from PayPal account settings                                                                     |
-| `api_password`      | Yes      | NVP API password from PayPal account settings                                                                     |
-| `api_signature`     | Yes      | NVP API signature from PayPal account settings                                                                    |
-| `verify_ssl`        | No       | Whether to verify PayPal's SSL certificate. Always `true` in production. Defaults to `true`                      |
-| `account_optional`  | No       | When `true`, buyers can check out as a guest without a PayPal account. Defaults to `true`                        |
-| `brand_name`        | No       | Your store name shown on the PayPal checkout page. Leave empty to use your PayPal account name                    |
-| `return_url`        | Yes      | URL the customer is redirected to after a completed payment                                                       |
-| `cancel_return_url` | Yes      | URL the customer is redirected to after cancelling at PayPal                                                      |
-| `ipn_url`           | Yes      | Full URL PayPal POSTs IPN notifications to. Must be publicly accessible — localhost will not work                 |
+| Key                 | Required | Description                                                                                       |
+|---------------------|----------|---------------------------------------------------------------------------------------------------|
+| `test_mode`         | Yes      | Set to `true` for sandbox, `false` for production                                                 |
+| `api_username`      | Yes      | NVP API username from PayPal account settings                                                     |
+| `api_password`      | Yes      | NVP API password from PayPal account settings                                                     |
+| `api_signature`     | Yes      | NVP API signature from PayPal account settings                                                    |
+| `verify_ssl`        | No       | Whether to verify PayPal's SSL certificate. Always `true` in production. Defaults to `true`       |
+| `account_optional`  | No       | When `true`, buyers can check out as a guest without a PayPal account. Defaults to `true`         |
+| `brand_name`        | No       | Your store name shown on the PayPal checkout page. Leave empty to use your PayPal account name    |
+| `return_url`        | Yes      | URL the customer is redirected to after a completed payment                                       |
+| `cancel_return_url` | Yes      | URL the customer is redirected to after cancelling at PayPal                                      |
+| `ipn_url`           | Yes      | Full URL PayPal POSTs IPN notifications to. Must be publicly accessible — localhost will not work |
 
 ## Usage
 
@@ -170,7 +170,6 @@ class OrderService {
             PaymentStatus::Paid      => $this->markPaid($state->transactionId),
             PaymentStatus::Canceled  => $this->markCanceled($state->transactionId),
             PaymentStatus::Failed    => $this->markFailed($state->transactionId),
-            PaymentStatus::Redirect  => $this->redirectToPayPal($state->metadata['redirectUrl']),
             default                  => null,
         };
     }
