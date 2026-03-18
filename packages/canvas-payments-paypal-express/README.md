@@ -69,7 +69,7 @@ return [
 | `brand_name`        | No       | Your store name shown on the PayPal checkout page. Leave empty to use your PayPal account name    |
 | `return_url`        | Yes      | URL the customer is redirected to after a completed payment                                       |
 | `cancel_return_url` | Yes      | URL the customer is redirected to after cancelling at PayPal                                      |
-| `ipn_url`           | Yes      | Full URL PayPal POSTs IPN notifications to. Must be publicly accessible — localhost will not work |
+| `ipn_url`           | Yes      | Full URL PayPal POSTs IPN notifications to                                                        |
 
 ## Usage
 
@@ -113,8 +113,7 @@ class CheckoutController extends BaseController {
 Pass `amount: null` for a full refund, or a minor-unit integer for a partial refund.
 
 When your `payment_exchange` listener receives a `PaymentStatus::Paid` state, store
-`$state->metadata['paymentTransactionId']` in your orders table. This is PayPal's internal
-payment identifier — different from the checkout token — and is required when issuing refunds.
+`$state->metadata['paymentTransactionId']` — you'll need it as `RefundRequest::$transactionId`.
 
 ```php
 // In your payment_exchange listener — store the payment transaction ID when the payment succeeds
@@ -184,12 +183,8 @@ PayPal uses two different identifiers across the payment lifecycle, which is the
 
 - **Checkout token** (`EC-XXXXXXXXX`) — created by `SetExpressCheckout` and returned by `initiate()` as
   `InitiateResult::$transactionId`. Used to drive the checkout flow and passed to `exchange()`.
-- **Payment transaction ID** (e.g. `9N123456789`) — created by `DoExpressCheckoutPayment` after the buyer
-  completes payment. This is what PayPal's refund and transaction detail APIs operate on.
-
-The payment transaction ID is available in `PaymentState::$metadata['paymentTransactionId']` after a successful
-`exchange()` call. **Your application must persist this value** alongside the order — it is required as
-`RefundRequest::$transactionId` when issuing refunds.
+- **Payment transaction ID** (e.g. `9N123456789`) — available in `PaymentState::$metadata['paymentTransactionId']`
+  when a `PaymentStatus::Paid` event fires. **Persist this value** — it is required as `RefundRequest::$transactionId`.
 
 ### IPN vs. return URL
 
