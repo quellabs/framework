@@ -9,5 +9,6 @@
 		case Failed = 'FAILED';
 		case Paid = 'PAID';
 		case Refunded = 'REFUND';
+		case Redirect = 'REDIRECT';
 		case Unknown = 'UNKNOWN';
 	}

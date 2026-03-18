@@ -122,13 +122,13 @@
 		
 		/**
 		 * Refund a mollie payment
-		 * @param RefundRequest $refundRequest
+		 * @param RefundRequest $request
 		 * @return RefundResult
 		 * @throws PaymentRefundException
 		 */
-		public function refund(RefundRequest $refundRequest): RefundResult {
+		public function refund(RefundRequest $request): RefundResult {
 			// Create the refund
-			$response = $this->getGateway()->createRefund($refundRequest);
+			$response = $this->getGateway()->createRefund($request);
 			
 			// return error in case of error
 			if ($response["request"]["result"] == 0) {

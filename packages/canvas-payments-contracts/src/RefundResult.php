@@ -25,6 +25,9 @@
 			/** ISO 4217 currency code (e.g. 'EUR', 'USD') */
 			public string $currency,
 			
+			/** Attached provider specific metadata */
+			public array $metadata = [],
+			
 		) {
 		}
 	}

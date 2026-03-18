@@ -24,10 +24,10 @@
 		
 		/**
 		 * Issue a refund for a previously completed payment.
-		 * @param RefundRequest $refundRequest
+		 * @param RefundRequest $request
 		 * @return RefundResult
 		 */
-		public function refund(RefundRequest $refundRequest): RefundResult;
+		public function refund(RefundRequest $request): RefundResult;
 		
 		/**
 		 * Fetch the current state of a payment from the provider.
