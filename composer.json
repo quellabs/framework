@@ -161,7 +161,7 @@
       "Quellabs\\Canvas\\Cache\\": "packages/cache/src/",
       "Quellabs\\Payments\\": "packages/canvas-payments/src/",
       "Quellabs\\Payments\\Contracts\\": "packages/canvas-payments-contracts/src/",
-      "Quellabs\\Payments\\Mollie\\": "packages/canvas-payments-mollie/src/"
+      "Quellabs\\Payments\\Mollie\\": "packages/canvas-payments-mollie/src/",
       "Quellabs\\Payments\\PaypalExpress\\": "packages/canvas-payments-paypal-express/src/"
     },
     "files": [

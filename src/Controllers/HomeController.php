@@ -4,14 +4,14 @@
 	
 	use Quellabs\Canvas\Annotations\Route;
 	use Quellabs\Canvas\Annotations\InterceptWith;
+	use Quellabs\Canvas\Controllers\BaseController;
 	use Quellabs\Canvas\Translation\TranslationAspect;
 	use Quellabs\Canvas\Controllers\SecureController;
 	use Quellabs\Payments\Contracts\PaymentRequest;
 	use Quellabs\Payments\PaymentRouter;
-	use Symfony\Component\HttpFoundation\JsonResponse;
 	use Symfony\Component\HttpFoundation\Response;
 	
-	class HomeController extends SecureController {
+	class HomeController extends BaseController {
 	
 		/**
 		 * @InterceptWith(TranslationAspect::class)
@@ -28,11 +28,6 @@
 			);
 
 			$response = $paymentRouter->initiate($request);
-			
-			if (!$response->success) {
-				return $this->json([$response->errorId, $response->errorMessage]);
-			}
-			
 			return new Response("Hello from routes file");
 		}
 		

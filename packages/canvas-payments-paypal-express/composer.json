@@ -49,7 +49,7 @@
       },
       "payments": {
         "provider": "Quellabs\\Payments\\PaypalExpress\\Driver",
-        "config": "config/paypal.php"
+        "config": "config/paypal_express.php"
       }
     }
   }
