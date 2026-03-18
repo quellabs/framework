@@ -4,7 +4,6 @@
 	
 	use Quellabs\Canvas\Annotations\Route;
 	use Quellabs\Canvas\Configuration\ConfigLoader;
-	use Quellabs\Canvas\Kernel;
 	use Quellabs\Payments\Contracts\PaymentExchangeException;
 	use Quellabs\SignalHub\Signal;
 	use Symfony\Component\HttpFoundation\JsonResponse;
