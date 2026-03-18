@@ -80,7 +80,7 @@
                 $request->currency, [
                     "NOSHIPPING" => 2,
                     "ALLOWNOTE"  => 0,
-                    "BRANDNAME"  => "",
+                    "BRANDNAME"  => $this->config['brand_name'] ?? "",
                 ]
             );
             
@@ -119,7 +119,7 @@
 	    public function exchange(string $transactionId, array $extraData = []): PaymentState {
 		    // Special case: buyer clicked the cancel button at PayPal.
 		    // No payment was attempted — return a canceled state without querying the API.
-		    if (isset($_GET["action"]) && $_GET["action"] === "cancel") {
+		    if (($extraData['action'] ?? null) === 'cancel') {
 			    return new PaymentState(
 				    provider:        "paypal",
 				    transactionId:   $transactionId,
@@ -291,13 +291,23 @@
 	    }
 
 	    /**
+	     * Verifieert PayPal IPN (Instant Payment Notification) berichten.
+	     * Deze functie valideert IPN berichten door ze terug te sturen naar PayPal
+	     * voor verificatie volgens het PayPal IPN-protocol.
+	     * @param array $data De ontvangen IPN-data van PayPal
+	     * @return array Gestructureerde response met status en eventuele foutmeldingen
+	     */
+	    public function verifyIpnMessage(array $data): array {
+		    return $this->getGateway()->verifyIpnMessage($data);
+	    }
+	    
+	    /**
 	     * Lazily instantiated mollie gateway
 	     * @return PaypalGateway
 	     */
 	    private function getGateway(): PaypalGateway {
 		    return $this->gateway ??= new PaypalGateway($this);
 	    }
-	    
 	    
 	    /**
 	     * Execute a DoExpressCheckoutPayment call and map the result to a PaymentState.
