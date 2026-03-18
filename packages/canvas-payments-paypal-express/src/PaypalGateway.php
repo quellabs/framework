@@ -1,6 +1,6 @@
 <?php
 	
-	namespace Quellabs\Payments\Paypal;
+	namespace Quellabs\Payments\PaypalExpress;
 	
 	use Symfony\Component\HttpClient\HttpClient;
 	use Symfony\Contracts\HttpClient\Exception\ClientExceptionInterface;

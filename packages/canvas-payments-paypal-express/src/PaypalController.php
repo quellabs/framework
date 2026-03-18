@@ -1,6 +1,6 @@
 <?php
 	
-	namespace Quellabs\Payments\Paypal;
+	namespace Quellabs\Payments\PaypalExpress;
 	
 	use Quellabs\Canvas\Annotations\Route;
 	use Quellabs\Canvas\Configuration\ConfigLoader;

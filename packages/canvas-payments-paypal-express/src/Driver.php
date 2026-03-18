@@ -1,6 +1,6 @@
 <?php
 	
-	namespace Quellabs\Payments\Paypal;
+	namespace Quellabs\Payments\PaypalExpress;
 	
 	use Quellabs\Payments\Contracts\InitiateResult;
 	use Quellabs\Payments\Contracts\PaymentInitiationException;

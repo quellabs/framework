@@ -87,7 +87,11 @@
     },
     {
       "type": "path",
-      "url": "./packages/canvas-payments-mollie"
+      "url": "./packages/canvas-payments-contracts"
+    },
+    {
+      "type": "path",
+      "url": "./packages/canvas-payments-paypal-express"
     }
   ],
   "require": {
@@ -132,7 +136,8 @@
     "quellabs/cache": "dev-main as 1.999.999",
     "quellabs/canvas-payments": "dev-main as 1.999.999",
     "quellabs/canvas-payments-contracts": "dev-main as 1.999.999",
-    "quellabs/canvas-payments-mollie": "dev-main as 1.999.999"
+    "quellabs/canvas-payments-mollie": "dev-main as 1.999.999",
+    "quellabs/canvas-payments-paypal-express": "dev-main as 1.999.999"
   },
   "autoload": {
     "psr-4": {
@@ -157,6 +162,7 @@
       "Quellabs\\Payments\\": "packages/canvas-payments/src/",
       "Quellabs\\Payments\\Contracts\\": "packages/canvas-payments-contracts/src/",
       "Quellabs\\Payments\\Mollie\\": "packages/canvas-payments-mollie/src/"
+      "Quellabs\\Payments\\PaypalExpress\\": "packages/canvas-payments-paypal-express/src/"
     },
     "files": [
       "packages/support/src/bootstrap.php"

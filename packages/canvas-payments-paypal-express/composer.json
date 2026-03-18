@@ -1,6 +1,6 @@
 {
-  "name": "quellabs/canvas-payments-paypal",
-  "description": "PayPal payment gateway integration for the Canvas PHP framework",
+  "name": "quellabs/canvas-payments-paypal-express",
+  "description": "PayPal Express Checkout payment gateway integration for the Canvas PHP framework",
   "type": "library",
   "license": "MIT",
   "authors": [
@@ -10,7 +10,8 @@
     }
   ],
   "keywords": [
-    "mollie",
+    "paypal",
+    "paypal-express",
     "payments",
     "payment gateway",
     "canvas",
@@ -18,15 +19,14 @@
   ],
   "support": {
     "email": "support@quellabs.com",
-    "issues": "https://github.com/quellabs/canvas-payments-paypal/issues",
-    "forum": "https://github.com/quellabs/canvas-payments-paypal/discussions",
-    "wiki": "https://github.com/quellabs/canvas-payments-paypal/wiki",
-    "docs": "https://canvasphp.php/docs",
-    "source": "https://github.com/quellabs/canvas-payments-paypal"
+    "issues": "https://github.com/quellabs/canvas-payments-paypal-express/issues",
+    "forum": "https://github.com/quellabs/canvas-payments-paypal-express/discussions",
+    "wiki": "https://github.com/quellabs/canvas-payments-paypal-express/wiki",
+    "docs": "https://canvasphp.com/docs",
+    "source": "https://github.com/quellabs/canvas-payments-paypal-express"
   },
   "require": {
     "php": "^8.2",
-    "ext-curl": "*",
     "symfony/http-client": "*",
     "quellabs/support": "*",
     "quellabs/contracts": "*",
@@ -34,22 +34,22 @@
   },
   "autoload": {
     "psr-4": {
-      "Quellabs\\Payments\\Paypal\\": "src/"
+      "Quellabs\\Payments\\PaypalExpress\\": "src/"
     }
   },
   "scripts": {
     "post-autoload-dump": [
-      "php -r \"if (!file_exists('config/paypal.php') && !copy('vendor/quellabs/canvas-payments-mollie/config/paypal.php', 'config/paypal.php')) { echo 'Warning: Could not publish PayPal config file.' . PHP_EOL; }\""
+      "php -r \"if (!file_exists('config/paypal_express.php') && !copy('vendor/quellabs/canvas-payments-paypal-express/config/paypal_express.php', 'config/paypal_express.php')) { echo 'Warning: Could not publish PayPal Express config file.' . PHP_EOL; }\""
     ]
   },
   "extra": {
     "discover": {
       "canvas": {
-        "controller": "Quellabs\\Payments\\Paypal\\MollieController"
+        "controller": "Quellabs\\Payments\\PaypalExpress\\PaypalController"
       },
       "payments": {
-        "provider": "Quellabs\\Payments\\Paypal\\Driver",
-        "config": "config/mollie.php"
+        "provider": "Quellabs\\Payments\\PaypalExpress\\Driver",
+        "config": "config/paypal.php"
       }
     }
   }
