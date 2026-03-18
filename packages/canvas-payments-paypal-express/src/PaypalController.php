@@ -52,7 +52,9 @@
 			try {
 				// Call the exchange method in the driver to convert raw status to PaymentState
 				$action = $request->query->get('action');
-				$response = $this->paypal->exchange($token, ['action' => $action]);
+				$response = $this->paypal->exchange($token, [
+					'action' => $action
+				]);
 				
 				// Notify listeners (e.g. order management) of the updated payment state
 				$this->signal->emit($response);
@@ -109,9 +111,15 @@
 				return new JsonResponse("Missing parameter 'token'", 400);
 			}
 			
+			// txn_id is PayPal's payment transaction ID — required for refund state retrieval
+			$paymentTransactionId = $data['txn_id'] ?? null;
+			
 			try {
 				// Call Driver's exchange method to convert raw data to PaymentState
-				$response = $this->paypal->exchange($token);
+				$response = $this->paypal->exchange($token, [
+					'action'               => 'ipn',
+					'paymentTransactionId' => $paymentTransactionId,
+				]);
 				
 				// Notify listeners (e.g. order management) of the updated payment state
 				$this->signal->emit($response);

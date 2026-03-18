@@ -110,15 +110,26 @@ class CheckoutController extends BaseController {
 
 ### Handling refunds
 
-Pass `amount: null` for a full refund, or a minor-unit integer for a partial refund:
+Pass `amount: null` for a full refund, or a minor-unit integer for a partial refund.
+
+When your `payment_exchange` listener receives a `PaymentStatus::Paid` state, store
+`$state->metadata['paymentTransactionId']` in your orders table. This is PayPal's internal
+payment identifier — different from the checkout token — and is required when issuing refunds.
 
 ```php
-use Quellabs\Payments\Contracts\RefundRequest;
-use Quellabs\Payments\Contracts\PaymentRefundException;
+// In your payment_exchange listener — store the payment transaction ID when the payment succeeds
+public function onPaymentExchange(PaymentState $state): void {
+    if ($state->state === PaymentStatus::Paid) {
+        $this->orderRepository->updatePaymentTransactionId(
+            $state->transactionId,
+            $state->metadata['paymentTransactionId']
+        );
+    }
+}
 
 // Full refund
 $request = new RefundRequest(
-    transactionId: 'PAYMENTINFO_0_TRANSACTIONID value stored after exchange()',
+    transactionId: $order->paymentTransactionId,  // retrieved from your orders table
     paymentModule: 'paypal',
     amount:        null,   // null = full refund
     currency:      'EUR',
@@ -127,7 +138,7 @@ $request = new RefundRequest(
 
 // Partial refund
 $request = new RefundRequest(
-    transactionId: 'PAYMENTINFO_0_TRANSACTIONID value stored after exchange()',
+    transactionId: $order->paymentTransactionId,  // retrieved from your orders table
     paymentModule: 'paypal',
     amount:        500,   // in minor units — €5.00
     currency:      'EUR',

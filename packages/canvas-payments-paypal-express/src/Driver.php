@@ -146,6 +146,16 @@
 				throw new PaymentInitiationException("paypal", $details["request"]["errorId"], $details["request"]["errorMessage"]);
 			}
 			
+			// If we already have the payment transaction ID (e.g. from IPN), the payment is complete.
+			// Skip DoExpressCheckoutPayment and go straight to building the completed state.
+			if (!empty($extraData['paymentTransactionId'])) {
+				return $this->buildCompletedPaymentState(
+					$transactionId,
+					$extraData['paymentTransactionId'],
+					$details["response"]["CHECKOUTSTATUS"],
+				);
+			}
+			
 			// Return the correct status
 			switch ($details["response"]["CHECKOUTSTATUS"]) {
 				// DoExpressCheckoutPayment was called but a response hasn't been received yet.
@@ -299,18 +309,16 @@
 		}
 		
 		/**
-		 * Verifieert PayPal IPN (Instant Payment Notification) berichten.
-		 * Deze functie valideert IPN berichten door ze terug te sturen naar PayPal
-		 * voor verificatie volgens het PayPal IPN-protocol.
-		 * @param array $data De ontvangen IPN-data van PayPal
-		 * @return array Gestructureerde response met status en eventuele foutmeldingen
+		 * Verifies a PayPal IPN message by delegating to the gateway.
+		 * @param array $data The raw IPN POST data received from PayPal
+		 * @return array
 		 */
 		public function verifyIpnMessage(array $data): array {
 			return $this->getGateway()->verifyIpnMessage($data);
 		}
 		
 		/**
-		 * Lazily instantiated mollie gateway
+		 * Lazily instantiated PayPal gateway
 		 * @return PaypalGateway
 		 */
 		private function getGateway(): PaypalGateway {
@@ -414,43 +422,54 @@
 		}
 		
 		/**
-		 * Build a PaymentState for an already-completed payment using GetTransactionDetails.
-		 * This is the only PayPal API call that returns refund state.
+		 * Builds a PaymentState for a payment that has already been captured (CHECKOUTSTATUS=PaymentActionCompleted).
+		 * Called from exchange() when the payment was completed in a previous exchange() call.
+		 * Uses GetTransactionDetails to retrieve the current refund state, which is not available
+		 * from GetExpressCheckoutDetails.
+		 * @see https://developer.paypal.com/docs/classic/api/merchant/GetTransactionDetails_API_Operation_NVP/
+		 * @param string $token The checkout token (EC-XXXXXXXXX)
+		 * @param string|null $paymentTransactionId The payment transaction ID from PaymentState::$metadata['paymentTransactionId'].
+		 *                                          Required — throws PaymentInitiationException if null.
+		 * @param string $internalState
+		 * @return PaymentState
 		 */
 		private function buildCompletedPaymentState(string $token, ?string $paymentTransactionId, string $internalState): PaymentState {
+			// Throw error when $paymentTransactionId not passed
 			if ($paymentTransactionId === null) {
-				// No payment transaction ID available — return completed state without refund detail.
-				// Caller should persist paymentTransactionId from metadata after the first successful exchange().
-				return new PaymentState(
-					provider: "paypal",
-					transactionId: $token,
-					state: PaymentStatus::Paid,
-					valueRefunded: 0,
-					valueRefundable: 0,
-					internalState: $internalState,
+				throw new PaymentInitiationException(
+					"paypal",
+					500,
+					"Cannot retrieve payment state: paymentTransactionId is missing from extraData. " .
+					"Ensure your payment_exchange listener persists PaymentState::\$metadata['paymentTransactionId'] " .
+					"after the first successful payment. See the refund section in the README."
 				);
 			}
 			
+			// Fetch the current transaction state from PayPal.
+			// GetTransactionDetails is the only NVP call that returns refund amounts.
 			$txDetails = $this->getGateway()->getTransactionDetails($paymentTransactionId);
 			
 			if ($txDetails["request"]["result"] == 0) {
 				throw new PaymentInitiationException("paypal", $txDetails["request"]["errorId"], $txDetails["request"]["errorMessage"]);
 			}
 			
+			// AMT is the original captured amount. TOTALREFUNDEDAMOUNT accumulates across all refunds.
+			// Both are returned in major units — convert to minor units for consistency.
 			$r = $txDetails["response"];
-			$valueRequested = (int)round((float)($r["AMT"] ?? 0) * 100);
-			$valueRefunded = (int)round((float)($r["TOTALREFUNDEDAMOUNT"] ?? 0) * 100);
-			$valueRefundable = max(0, $valueRequested - $valueRefunded);
+			$valueRefunded   = (int) round((float) ($r["TOTALREFUNDEDAMOUNT"] ?? 0) * 100);
+			$valueRefundable = (int) round((float) ($r["AMT"] ?? 0) * 100) - $valueRefunded;
 			
 			return new PaymentState(
-				provider: "paypal",
-				transactionId: $token,
-				state: PaymentStatus::Paid,
-				valueRefunded: $valueRefunded,
-				valueRefundable: $valueRefundable,
-				internalState: $r["PAYMENTSTATUS"] ?? $internalState,
-				currency: $r["CURRENCYCODE"] ?? null,
-				metadata: ["paymentTransactionId" => $paymentTransactionId],
+				provider:        "paypal",
+				transactionId:   $token,
+				state:           PaymentStatus::Paid,
+				valueRefunded:   $valueRefunded,
+				valueRefundable: max(0, $valueRefundable),
+				internalState:   $r["PAYMENTSTATUS"] ?? $internalState,
+				currency:        $r["CURRENCYCODE"] ?? null,
+				metadata:        [
+					"paymentTransactionId" => $paymentTransactionId
+				],
 			);
 		}
 	}
