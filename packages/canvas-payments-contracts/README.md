@@ -57,7 +57,8 @@ class CheckoutService {
 
 ## Exceptions
 
-All exceptions extend `PaymentException`, which exposes `getProvider(): string` and `getErrorId(): int`. Catch the base class to handle any payment failure, or catch a specific subclass to handle a particular operation.
+All exceptions extend `PaymentException`, which exposes `getProvider(): string` and `getErrorId(): int`. Catch the base
+class to handle any payment failure, or catch a specific subclass to handle a particular operation.
 
 ```php
 use Quellabs\Payments\Contracts\PaymentException;
@@ -78,15 +79,16 @@ use Quellabs\Payments\Contracts\PaymentRefundException;
 
 ## PaymentStatus values
 
-| Case                      | Description                                    |
-|---------------------------|------------------------------------------------|
-| `PaymentStatus::Pending`  | Payment is open or pending                     |
-| `PaymentStatus::Paid`     | Payment completed successfully                 |
-| `PaymentStatus::Canceled` | Customer canceled — definitive                 |
-| `PaymentStatus::Expired`  | Customer abandoned, or bank transfer timed out |
-| `PaymentStatus::Failed`   | Payment failed and cannot be retried           |
-| `PaymentStatus::Refunded` | Payment was refunded                           |
-| `PaymentStatus::Unknown`  | Unrecognised status from provider              |
+| Case                      | Description                                         |
+|---------------------------|-----------------------------------------------------|
+| `PaymentStatus::Pending`  | Payment is open or pending                          |
+| `PaymentStatus::Paid`     | Payment completed successfully                      |
+| `PaymentStatus::Canceled` | Customer canceled — definitive                      |
+| `PaymentStatus::Expired`  | Customer abandoned, or bank transfer timed out      |
+| `PaymentStatus::Failed`   | Payment failed and cannot be retried                |
+| `PaymentStatus::Refunded` | Payment was refunded                                |
+| `PaymentStatus::Redirect` | Redirect user back to provider. Internally handled. |
+| `PaymentStatus::Unknown`  | Unrecognised status from provider                   |
 
 ## License
 
