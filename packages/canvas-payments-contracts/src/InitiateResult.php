@@ -18,14 +18,20 @@
 			public string $provider,
 			public string $transactionId,
 			public string $redirectUrl,
+			public array  $metadata = [],
 		) {
 		}
 		
+		/**
+		 * Convert contents to array
+		 * @return array
+		 */
 		public function toArray(): array {
 			return [
 				'provider'       => $this->provider,
 				'transaction_id' => $this->transactionId,
 				'redirect_url'   => $this->redirectUrl,
+				'metadata'       => $this->metadata,
 			];
 		}
 	}

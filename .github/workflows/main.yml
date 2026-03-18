@@ -39,6 +39,7 @@ jobs:
           - canvas-payments
           - canvas-payments-contracts
           - canvas-payments-mollie
+          - canvas-payments-paypal-express
       fail-fast: false
 
     steps:

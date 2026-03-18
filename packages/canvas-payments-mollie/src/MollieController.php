@@ -3,7 +3,7 @@
 	namespace Quellabs\Payments\Mollie;
 	
 	use Quellabs\Canvas\Annotations\Route;
-	use Quellabs\Canvas\Kernel;
+	use Quellabs\Canvas\Configuration\ConfigLoader;
 	use Quellabs\Payments\Contracts\PaymentExchangeException;
 	use Quellabs\SignalHub\Signal;
 	use Symfony\Component\HttpFoundation\JsonResponse;
@@ -13,7 +13,7 @@
 	
 	class MollieController {
 		
-		private Kernel $kernel;
+		private ConfigLoader $configLoader;
 		private Driver $mollie;
 		
 		/**
@@ -24,17 +24,17 @@
 		
 		/**
 		 * Constructor
-		 * @param Kernel $kernel
+		 * @param ConfigLoader $configLoader
 		 * @param Driver $mollie
 		 */
-		public function __construct(Kernel $kernel, Driver $mollie) {
-			$this->kernel = $kernel;
+		public function __construct(ConfigLoader $configLoader, Driver $mollie) {
+			$this->configLoader = $configLoader;
 			$this->mollie = $mollie;
 			$this->signal = new Signal("payment_exchange");
 		}
 		
 		/**
-		 * @Route("mollie::webhookUrl", fallback="/webhooks/mollie", methods={"POST"})
+		 * @Route("mollie::webhook_url", fallback="/webhooks/mollie", methods={"POST"})
 		 * @param Request $request
 		 * @return Response
 		 */
@@ -59,23 +59,23 @@
 		}
 		
 		/**
-		 * @Route("mollie::redirectUrl", fallback="/payment/return/mollie", methods={"GET"})
+		 * @Route("mollie::return_url", fallback="/payment/return/mollie", methods={"GET"})
 		 * @url https://docs.mollie.com/payments/webhooks
 		 * @param Request $request
 		 * @return Response
 		 */
 		public function handleReturn(Request $request): Response {
-			$config = $this->kernel->loadConfigFile('mollie');
+			$config = $this->configLoader->loadConfigFile('mollie');
 			return new RedirectResponse($config->get("return_url"));
 		}
 		
 		/**
-		 * @Route("mollie::cancelUrl", fallback="/payment/cancel/mollie", methods={"GET"})
+		 * @Route("mollie::cancel_url", fallback="/payment/cancel/mollie", methods={"GET"})
 		 * @param Request $request
 		 * @return Response
 		 */
 		public function handleCancel(Request $request): Response {
-			$config = $this->kernel->loadConfigFile('mollie');
+			$config = $this->configLoader->loadConfigFile('mollie');
 			return new RedirectResponse($config->get("cancel_return_url"));
 		}
 	}
