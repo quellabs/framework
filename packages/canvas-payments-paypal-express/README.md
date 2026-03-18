@@ -1,1 +1,1 @@
-# canvas-payments-paypal-express
+# canvas-payments-paypal
