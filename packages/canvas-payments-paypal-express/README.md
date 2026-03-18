@@ -197,13 +197,6 @@ PayPal notifies your application of payment state changes in two independent way
 Both routes call `exchange()` and emit the `payment_exchange` signal. Your application should be idempotent when
 handling this signal, as it may fire twice for the same transaction.
 
-### Error 10486 — insufficient funds redirect
-
-If the buyer selects a funding source with insufficient funds, `DoExpressCheckoutPayment` returns error code 10486.
-The package handles this transparently by returning a `PaymentState` with `state: PaymentStatus::Redirect` and
-`metadata['redirectUrl']` set to the PayPal checkout URL. Your `payment_exchange` listener should handle this case
-by redirecting the buyer back to PayPal to choose a different payment method.
-
 ### Refund type determination
 
 Pass `amount: null` to `RefundRequest` for a full refund. The driver uses this to call PayPal's `Full` refund type,
