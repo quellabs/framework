@@ -159,29 +159,31 @@
 		 * @return array
 		 */
 		public function createRefund(RefundRequest $refundRequest): array {
-			// Transaction cannot be empty
+			// Error when no transactionId passed
 			if (empty($refundRequest->transactionId)) {
 				return ['request' => ['result' => 0, 'errorId' => 500, 'errorMessage' => 'Missing transactionId']];
 			}
 			
-			// Value to refund cannot be 0
+			// Error when trying to refund €0.00
 			if ($refundRequest->amount === 0) {
 				return ['request' => ['result' => 0, 'errorId' => 500, 'errorMessage' => 'Invalid refund value']];
 			}
 			
-			// issue refund to mollie
-			$value = $refundRequest->amount;
-			$currencyType = $refundRequest->currency;
-			$description = $refundRequest->description;
-			$transactionId = $refundRequest->transactionId;
+			// Resolve the refund amount and currency
+			$resolved = $this->resolveRefundAmount($refundRequest);
 			
-			return $this->callHttpClient("POST", "payments/{$transactionId}/refunds", [
+			if ($resolved['request']['result'] === 0) {
+				return $resolved;
+			}
+			
+			// Issue the refund
+			return $this->callHttpClient("POST", "payments/{$refundRequest->transactionId}/refunds", [
 				"amount"      => [
-					"currency" => $currencyType,
-					"value"    => number_format($value / 100, 2, '.', '')
+					"currency" => $resolved['response']['currency'],
+					"value"    => $resolved['response']['amount'],
 				],
-				"description" => $description,
-				"testmode"    => $this->testMode
+				"description" => $refundRequest->description,
+				"testmode"    => $this->testMode,
 			]);
 		}
 		
@@ -261,6 +263,52 @@
 				'email'            => $address->email,
 				'phone'            => $address->phone,
 			], [$this, 'notNull']);
+		}
+		
+		/**
+		 * Resolves the refund amount and currency from a RefundRequest.
+		 * If amount is set, converts from minor units to major units as required by the Mollie API.
+		 * If amount is null, fetches the remaining refundable amount from the payment for a full refund.
+		 * @param RefundRequest $refundRequest
+		 * @return array
+		 */
+		protected function resolveRefundAmount(RefundRequest $refundRequest): array {
+			// Amount is set — convert from minor units (e.g. 1050) to major units (e.g. "10.50")
+			if ($refundRequest->amount !== null) {
+				return [
+					'request'  => ['result' => 1, 'errorId' => '', 'errorMessage' => ''],
+					'response' => [
+						'amount'   => number_format($refundRequest->amount / 100, 2, '.', ''),
+						'currency' => $refundRequest->currency,
+					],
+				];
+			}
+			
+			// Amount is null — full refund requested. Fetch the remaining refundable amount from Mollie.
+			$payment = $this->getPaymentInfo($refundRequest->transactionId);
+			
+			if ($payment["request"]["result"] == 0) {
+				return $payment;
+			}
+			
+			// amountRemaining is the portion of the payment not yet refunded.
+			// Already in major units — no conversion needed.
+			$amount = $payment["response"]["amountRemaining"]["value"] ?? null;
+			$currency = $payment["response"]["amountRemaining"]["currency"] ?? $refundRequest->currency;
+			
+			// amountRemaining may be absent or "0.00" when there is nothing left to refund
+			if ($amount === null || $amount === '0.00') {
+				return ['request' => ['result' => 0, 'errorId' => 500, 'errorMessage' => 'Payment has no refundable amount']];
+			}
+			
+			// Return value
+			return [
+				'request'  => ['result' => 1, 'errorId' => '', 'errorMessage' => ''],
+				'response' => [
+					'amount'   => $amount,
+					'currency' => $currency
+				]
+			];
 		}
 		
 		/**
