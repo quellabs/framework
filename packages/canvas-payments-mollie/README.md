@@ -21,7 +21,7 @@ Your Application
 PaymentRouter               (quellabs/canvas-payments — discovery + routing)
       │
       ▼
-PaymentProviderInterface    (quellabs/canvas-payments-contracts)
+PaymentInterface            (quellabs/canvas-payments-contracts)
       │
       ▼
 Mollie                      (this package — implements the interface)
@@ -63,17 +63,17 @@ return [
 
 ### Initiating a payment
 
-Inject `PaymentProviderInterface` via Canvas DI and call `initiate()`:
+Inject `PaymentInterface` via Canvas DI and call `initiate()`:
 
 ```php
-use Quellabs\Payments\Contracts\PaymentProviderInterface;
+use Quellabs\Payments\Contracts\PaymentInterface;
 use Quellabs\Canvas\Controllers\BaseController;
 use Quellabs\Payments\Contracts\PaymentRequest;
 use Quellabs\Payments\Contracts\PaymentInitiationException;
 
 class CheckoutController extends BaseController {
 
-    public function __construct(private PaymentProviderInterface $router) {}
+    public function __construct(private PaymentInterface $router) {}
 
     /**
      * @Route("...")

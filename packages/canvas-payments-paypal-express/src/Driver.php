@@ -64,13 +64,16 @@
 		 */
 		public function getDefaults(): array {
 			return [
-				'test_mode'        => false,
-				'api_username'     => '',
-				'api_password'     => '',
-				'api_signature'    => '',
-				'brand_name'       => '',
-				'account_optional' => true,
-				'verify_ssl'       => true,
+				'test_mode'         => false,
+				'api_username'      => '',
+				'api_password'      => '',
+				'api_signature'     => '',
+				'brand_name'        => '',
+				'account_optional'  => true,
+				'verify_ssl'        => true,
+				'return_url'        => '',
+				'cancel_return_url' => '',
+				'ipn_url'           => '',
 			];
 		}
 		
@@ -81,15 +84,20 @@
 		 * @return InitiateResult
 		 */
 		public function initiate(PaymentRequest $request): InitiateResult {
+			$brandName = $this->getConfig()['brand_name'] ?: null;
+			$emailAddress = $request->billingAddress?->email ?: null;
+			
+			// Call gateway
 			$result = $this->getGateway()->setExpressCheckout(
-				$request->billingAddress->email,
 				number_format($request->amount / 100, 2),
 				$request->description,
-				$request->currency, [
+				$request->currency,
+				array_filter([
+					"EMAIL"      => $emailAddress,
 					"NOSHIPPING" => 2,
 					"ALLOWNOTE"  => 0,
-					"BRANDNAME"  => $this->config['brand_name'] ?? "",
-				]
+					"BRANDNAME"  => $brandName,
+				], fn($v) => $v !== null)
 			);
 			
 			// return error if failed

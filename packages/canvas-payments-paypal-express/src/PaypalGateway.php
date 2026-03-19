@@ -37,14 +37,14 @@
 			$this->m_test_mode        = $config["test_mode"];
 			$this->m_transaction_url  = $this->m_test_mode ? 'https://api-3t.sandbox.paypal.com/nvp' : 'https://api-3t.paypal.com/nvp';
 			$this->m_ipn_url          = $this->m_test_mode ? 'https://ipnpb.sandbox.paypal.com/cgi-bin/webscr' : 'https://ipnpb.paypal.com/cgi-bin/webscr';
-			$this->m_api_username     = $config["api_username"];
-			$this->m_api_password     = $config["api_password"];
-			$this->m_api_signature    = $config["api_signature"];
-			$this->m_verify_ssl       = $config["verify_ssl"];
-			$this->m_account_optional = $config["account_optional"];
-			$this->m_return_url       = $config["return_url"];
-			$this->m_cancel_url       = $config["cancel_return_url"];
-			$this->m_notify_url       = $config["ipn_url"];
+			$this->m_api_username     = $config["api_username"] ?? "";
+			$this->m_api_password     = $config["api_password"] ?? "";
+			$this->m_api_signature    = $config["api_signature"] ?? "";
+			$this->m_verify_ssl       = $config["verify_ssl"] ?? true;
+			$this->m_account_optional = $config["account_optional"] ?? true;
+			$this->m_return_url       = $config["return_url"] ?? "";
+			$this->m_cancel_url       = $config["cancel_return_url"] ?? "";
+			$this->m_notify_url       = $config["ipn_url"] ?? "";
 		}
 		
 		
@@ -134,14 +134,13 @@
 		/**
 		 * Initiates a new Express Checkout session.
 		 * @see https://developer.paypal.com/docs/archive/express-checkout/ec-initiate-payment/
-		 * @param string $emailAddress Buyer's email address
 		 * @param float $value Payment amount in major units (e.g. 12.50)
 		 * @param string $description Order description shown on the PayPal checkout page
 		 * @param string $currency ISO 4217 currency code
 		 * @param array $data Additional NVP parameters to merge into the request
 		 * @return array
 		 */
-		public function setExpressCheckout(string $emailAddress, float $value, string $description, string $currency = "EUR", array $data = []): array {
+		public function setExpressCheckout(float $value, string $description, string $currency = "EUR", array $data = []): array {
 			return $this->sendTransactionToGateway(array_merge($data, [
 				"VERSION"                        => 112,
 				"METHOD"                         => "SetExpressCheckout",
@@ -150,7 +149,6 @@
 				"SIGNATURE"                      => $this->m_api_signature,
 				"SOLUTIONTYPE"                   => $this->m_account_optional ? "Sole" : "Mark",
 				"CHANNELTYPE"                    => "Merchant",
-				"EMAIL"                          => $emailAddress,
 				"PAYMENTREQUEST_0_PAYMENTACTION" => "Sale",
 				"PAYMENTREQUEST_0_CURRENCYCODE"  => $currency,
 				"PAYMENTREQUEST_0_AMT"           => $value,

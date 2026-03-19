@@ -12,7 +12,8 @@ composer require quellabs/canvas-payments-contracts
 
 | Class / Interface            | Description                                                  |
 |------------------------------|--------------------------------------------------------------|
-| `PaymentProviderInterface`   | Interface all payment provider packages must implement       |
+| `PaymentInterface`           | Interface for application code — exposes `initiate`, `refund`, `getRefunds`, `getPaymentOptions` |
+| `PaymentProviderInterface`   | Interface all driver packages must implement — extends `PaymentInterface`, adds discovery methods |
 | `PaymentRequest`             | Input for initiating a payment                               |
 | `InitiateResult`             | Result of a successful payment initiation                    |
 | `PaymentState`               | Payment snapshot delivered via the `payment_exchange` signal |
@@ -30,12 +31,12 @@ All amounts are in minor units (e.g. `999` for €9.99). All classes are in the 
 ## Usage
 
 ```php
-use Quellabs\Payments\Contracts\PaymentProviderInterface;
+use Quellabs\Payments\Contracts\PaymentInterface;
 use Quellabs\Payments\Contracts\PaymentRequest;
 use Quellabs\Payments\Contracts\PaymentInitiationException;
 
 class CheckoutService {
-    public function __construct(private PaymentProviderInterface $payment) {}
+    public function __construct(private PaymentInterface $payment) {}
 
     public function pay(): string {
         try {

@@ -25,7 +25,7 @@ Your Application
 PaymentRouter               (quellabs/canvas-payments — discovery + routing)
       │
       ▼
-PaymentProviderInterface    (quellabs/canvas-payments-contracts)
+PaymentInterface            (quellabs/canvas-payments-contracts)
       │
       ▼
 PayPal Express              (this package — implements the interface)
@@ -75,17 +75,17 @@ return [
 
 ### Initiating a payment
 
-Inject `PaymentProviderInterface` via Canvas DI and call `initiate()`:
+Inject `PaymentInterface` via Canvas DI and call `initiate()`:
 
 ```php
-use Quellabs\Payments\Contracts\PaymentProviderInterface;
+use Quellabs\Payments\Contracts\PaymentInterface;
 use Quellabs\Canvas\Controllers\BaseController;
 use Quellabs\Payments\Contracts\PaymentRequest;
 use Quellabs\Payments\Contracts\PaymentInitiationException;
 
 class CheckoutController extends BaseController {
 
-    public function __construct(private PaymentProviderInterface $router) {}
+    public function __construct(private PaymentInterface $router) {}
 
     /**
      * @Route("...")
@@ -116,7 +116,7 @@ When your `payment_exchange` listener receives a `PaymentStatus::Paid` state, st
 `$state->metadata['captureId']` — you'll need it as `RefundRequest::$transactionId`.
 
 ```php
-// In your payment_exchange listener — store the payment transaction ID when the payment succeeds
+// In your payment_exchange listener — store the capture ID when the payment succeeds
 public function onPaymentExchange(PaymentState $state): void {
     if ($state->state === PaymentStatus::Paid) {
         $this->orderRepository->updateCaptureId(
