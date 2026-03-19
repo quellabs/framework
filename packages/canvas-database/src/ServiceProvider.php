@@ -1,6 +1,6 @@
 <?php
 	
-	namespace Quellabs\CanvasDatabase\Discovery;
+	namespace Quellabs\CanvasDatabase;
 	
 	use Cake\Database\Connection;
 	use Quellabs\Contracts\Context\MethodContextInterface;
