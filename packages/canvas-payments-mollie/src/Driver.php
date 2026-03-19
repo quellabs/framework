@@ -64,7 +64,7 @@
 		 * Merged with loaded config files during discovery — values from config files take precedence.
 		 * @return array
 		 */
-		public static function getDefaults(): array {
+		public function getDefaults(): array {
 			return [
 				'api_key'      => '',
 				'test_mode'    => false,

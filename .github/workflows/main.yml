@@ -45,6 +45,7 @@ jobs:
           - canvas-payments-paypal
           - canvas-payments-paypal-express
           - canvas-payments-stripe
+          - canvas-payments-adyen
       fail-fast: false
 
     steps:
