@@ -65,13 +65,15 @@
 		 */
 		public function getDefaults(): array {
 			return [
-				'test_mode'        => false,
-				'client_id'        => '',
-				'client_secret'    => '',
-				'brand_name'       => '',
-				'account_optional' => true,
-				'verify_ssl'       => true,
-				'webhook_id'       => '',
+				'test_mode'         => false,
+				'client_id'         => '',
+				'client_secret'     => '',
+				'brand_name'        => '',
+				'account_optional'  => true,
+				'verify_ssl'        => true,
+				'webhook_id'        => '',
+				'return_url'        => '',
+				'cancel_return_url' => '',
 			];
 		}
 		
@@ -85,12 +87,15 @@
 		 * @throws PaymentInitiationException
 		 */
 		public function initiate(PaymentRequest $request): InitiateResult {
+			// Fetch config
+			$config = $this->getConfig();
+			
 			// Use the gateway to create a new order
 			$result = $this->getGateway()->createOrder(
 				$request->amount / 100,
 				$request->description,
 				$request->currency,
-				$this->config['brand_name'] ?? '',
+				$config['brand_name'] ?? '',
 			);
 			
 			// If that failed, throw error
@@ -166,7 +171,8 @@
 			// Map order status to PaymentState
 			$orderData    = $order["response"];
 			$orderStatus  = $orderData["status"];
-			$purchaseUnit = $orderData["purchase_units"][0] ?? [];
+			$purchaseUnits = $orderData["purchase_units"] ?? [];
+			$purchaseUnit  = $purchaseUnits[0] ?? [];
 			$currency     = $purchaseUnit["amount"]["currency_code"] ?? "EUR";
 			
 			switch ($orderStatus) {
@@ -181,6 +187,8 @@
 						valueRefundable: 0,
 						internalState: "CREATED",
 						currency: $currency,
+						createdAt: $orderData["create_time"] ?? null,
+						updatedAt: $orderData["update_time"] ?? null,
 					);
 				
 				// Buyer has approved payment at PayPal — capture it now
@@ -209,6 +217,8 @@
 							valueRefundable: 0,
 							internalState: "VOIDED",
 							currency: $currency,
+							createdAt: $orderData["create_time"] ?? null,
+							updatedAt: $orderData["update_time"] ?? null,
 						);
 					}
 					
@@ -244,6 +254,8 @@
 						valueRefundable: 0,
 						internalState: "PAYER_ACTION_REQUIRED",
 						currency: $currency,
+						createdAt: $orderData["create_time"] ?? null,
+						updatedAt: $orderData["update_time"] ?? null,
 						metadata: [
 							"redirectUrl" => $redirectUrl,
 						],
@@ -258,6 +270,8 @@
 						valueRefundable: 0,
 						internalState: $orderStatus,
 						currency: $currency,
+						createdAt: $orderData["create_time"] ?? null,
+						updatedAt: $orderData["update_time"] ?? null,
 					);
 			}
 		}
@@ -433,11 +447,15 @@
 				throw new PaymentExchangeException("paypal", $errorId, $result["request"]["errorMessage"]);
 			}
 			
-			$capture      = $result["response"]["purchase_units"][0]["payments"]["captures"][0] ?? [];
-			$captureId    = $capture["id"] ?? null;
+			$purchaseUnits = $result["response"]["purchase_units"] ?? [];
+			$captures = $purchaseUnits[0]["payments"]["captures"] ?? [];
+			$capture = $captures[0] ?? [];
+			$captureId = $capture["id"] ?? null;
 			$captureStatus = $capture["status"] ?? "UNKNOWN";
 			$captureAmount = (int)round((float)($capture["amount"]["value"] ?? 0) * 100);
 			$captureCurrency = $capture["amount"]["currency_code"] ?? $currency;
+			$captureCreated = $capture["create_time"] ?? null;
+			$captureUpdated = $capture["update_time"] ?? null;
 			
 			return match ($captureStatus) {
 				// Payment was successfully captured and funds are being transferred.
@@ -449,6 +467,8 @@
 					valueRefundable: $captureAmount,
 					internalState: "COMPLETED",
 					currency: $captureCurrency,
+					createdAt: $captureCreated,
+					updatedAt: $captureUpdated,
 					metadata: [
 						"captureId" => $captureId,
 					],
@@ -464,6 +484,8 @@
 					valueRefundable: 0,
 					internalState: $captureStatus,
 					currency: $captureCurrency,
+					createdAt: $captureCreated,
+					updatedAt: $captureUpdated,
 				),
 				
 				// PENDING or any unknown status — the capture was submitted but not yet settled
@@ -475,6 +497,8 @@
 					valueRefundable: 0,
 					internalState: $captureStatus,
 					currency: $captureCurrency,
+					createdAt: $captureCreated,
+					updatedAt: $captureUpdated,
 					metadata: [
 						"captureId" => $captureId,
 					],
@@ -516,6 +540,8 @@
 			$capturedAmount  = (int)round((float)($c["amount"]["value"] ?? 0) * 100);
 			$refundedAmount  = (int)round((float)($c["seller_receivable_breakdown"]["total_refunded_amount"]["value"] ?? 0) * 100);
 			$captureCurrency = $c["amount"]["currency_code"] ?? $currency;
+			$captureCreated  = $c["create_time"] ?? null;
+			$captureUpdated  = $c["update_time"] ?? null;
 			
 			// A PENDING capture means PayPal has not yet settled the funds (e-cheque, held funds,
 			// manual review, etc.). Do not report this as Paid — the money has not arrived.
@@ -533,6 +559,8 @@
 				valueRefundable: $paymentStatus === PaymentStatus::Paid ? max(0, $capturedAmount - $refundedAmount) : 0,
 				internalState: $captureStatus,
 				currency: $captureCurrency,
+				createdAt: $captureCreated,
+				updatedAt: $captureUpdated,
 				metadata: [
 					"captureId" => $captureId,
 				],

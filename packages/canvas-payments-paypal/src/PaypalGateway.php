@@ -41,8 +41,8 @@
 			$this->m_client_secret    = $config["client_secret"];
 			$this->m_verify_ssl       = $config["verify_ssl"];
 			$this->m_account_optional = $config["account_optional"];
-			$this->m_return_url       = $config["return_url"];
-			$this->m_cancel_url       = $config["cancel_return_url"];
+			$this->m_return_url       = $config["return_url"] ?? '';
+			$this->m_cancel_url       = $config["cancel_return_url"] ?? '';
 			$this->m_webhook_id       = $config["webhook_id"];
 		}
 		
@@ -285,7 +285,7 @@
 				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $this->m_access_token];
 			}
 			
-			// Fetch fresh access token and cache is
+			// Fetch fresh access token and cache it
 			$client = HttpClient::create();
 			
 			try {

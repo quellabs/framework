@@ -186,10 +186,11 @@
 			];
 			
 			// Fetch mollie payment status
-			$mollieStatus = $response["response"]["status"];
-			$currency = $response["response"]["amount"]["currency"];
-			$amountRefunded = (int)round((float)($response["response"]["amountRefunded"]["value"] ?? 0) * 100);
-			$amountRefundable = (int)round((float)($response["response"]["amountRemaining"]["value"] ?? 0) * 100);
+			$r                = $response["response"];
+			$mollieStatus     = $r["status"];
+			$currency         = $r["amount"]["currency"];
+			$amountRefunded   = (int)round((float)($r["amountRefunded"]["value"] ?? 0) * 100);
+			$amountRefundable = (int)round((float)($r["amountRemaining"]["value"] ?? 0) * 100);
 			
 			// Return response
 			return new PaymentState(
@@ -200,7 +201,9 @@
 				valueRefundable: $amountRefundable,
 				internalState: $mollieStatus,
 				currency: $currency,
-				metadata: $response["response"]["metadata"] ?? []
+				createdAt:       $r["createdAt"] ?? null,
+				updatedAt:       $r["paidAt"] ?? $r["canceledAt"] ?? $r["expiredAt"] ?? $r["failedAt"] ?? null,
+				metadata:        $r["metadata"] ?? []
 			);
 		}
 		

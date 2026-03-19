@@ -59,7 +59,13 @@
 				// to choose a different payment method or complete additional authentication.
 				// No signal emitted — this is not a payment outcome.
 				if ($response->state === PaymentStatus::Redirect) {
-					return new RedirectResponse($response->metadata['redirectUrl']);
+					$redirectUrl = $response->metadata['redirectUrl'] ?? null;
+					
+					if (!$redirectUrl) {
+						return new JsonResponse("Missing redirect URL", 500);
+					}
+					
+					return new RedirectResponse($redirectUrl);
 				}
 				
 				// Notify listeners (e.g. order management) of the updated payment state
@@ -72,6 +78,10 @@
 					$redirectUrl = $config["cancel_return_url"];
 				} else {
 					$redirectUrl = $config["return_url"];
+				}
+				
+				if (empty($redirectUrl)) {
+					return new JsonResponse("Missing return URL configuration", 500);
 				}
 				
 				return new RedirectResponse($redirectUrl);
@@ -169,7 +179,12 @@
 			foreach ($captureResource['links'] ?? [] as $link) {
 				if ($link['rel'] === 'up') {
 					// href is e.g. https://api.paypal.com/v2/checkout/orders/{orderId}
-					$orderId = basename(parse_url($link['href'], PHP_URL_PATH));
+					$path = parse_url($link['href'], PHP_URL_PATH);
+
+					if ($path !== false) {
+						$orderId = basename($path);
+					}
+
 					break;
 				}
 			}
