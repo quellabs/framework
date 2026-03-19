@@ -55,7 +55,7 @@ jobs:
           token: ${{ secrets.SYNC_TOKEN }}
 
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y jq golang
+        run: sudo apt-get update && sudo apt-get install -y jq golang libgit2-dev
 
       - name: Cache splitsh-lite
         id: cache-splitsh
