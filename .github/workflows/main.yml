@@ -14,7 +14,7 @@ on:
 
 jobs:
   sync-and-release:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     concurrency:
       group: sync-${{ github.workflow }}-${{ matrix.package }}
       cancel-in-progress: false
@@ -55,7 +55,21 @@ jobs:
           token: ${{ secrets.SYNC_TOKEN }}
 
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y jq
+        run: sudo apt-get update && sudo apt-get install -y jq libgit2-dev golang
+
+      - name: Cache splitsh-lite
+        id: cache-splitsh
+        uses: actions/cache@v5
+        with:
+          path: /usr/local/bin/splitsh-lite
+          key: splitsh-lite-${{ runner.os }}-ubuntu2204
+
+      - name: Install splitsh-lite
+        if: steps.cache-splitsh.outputs.cache-hit != 'true'
+        run: |
+          git clone https://github.com/splitsh/lite.git /tmp/splitsh-lite
+          cd /tmp/splitsh-lite
+          go build -o /usr/local/bin/splitsh-lite github.com/splitsh/lite
 
       - name: Sync package to public repo
         id: sync
@@ -78,14 +92,10 @@ jobs:
             exit 1
           fi
 
-          # Raise the stack size limit to prevent git subtree hitting the 1000-frame
-          # recursion limit on repos with deep commit history
-          ulimit -s unlimited
-
-          sha=$(git subtree split --prefix=packages/${{ matrix.package }})
+          sha=$(splitsh-lite --prefix=packages/${{ matrix.package }}/)
 
           if [ -z "$sha" ]; then
-            echo "❌ git subtree split produced no output"
+            echo "❌ splitsh-lite produced no output — no commits found for this prefix"
             exit 1
           fi
 
