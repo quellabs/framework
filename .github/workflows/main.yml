@@ -55,21 +55,31 @@ jobs:
           token: ${{ secrets.SYNC_TOKEN }}
 
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y jq libgit2-dev golang
+        run: sudo apt-get update && sudo apt-get install -y jq cmake pkg-config golang
 
       - name: Cache splitsh-lite
         id: cache-splitsh
         uses: actions/cache@v5
         with:
           path: /usr/local/bin/splitsh-lite
-          key: splitsh-lite-${{ runner.os }}-ubuntu2204
+          key: splitsh-lite-${{ runner.os }}-ubuntu2204-libgit2-1.5.0
 
       - name: Install splitsh-lite
         if: steps.cache-splitsh.outputs.cache-hit != 'true'
         run: |
+          # Build libgit2 v1.5.0 from source — git2go/v34 requires exactly v1.5.x
+          git clone --depth 1 --branch v1.5.0 https://github.com/libgit2/libgit2.git /tmp/libgit2
+          cmake -S /tmp/libgit2 -B /tmp/libgit2/build \
+            -DCMAKE_INSTALL_PREFIX=/usr/local \
+            -DBUILD_TESTS=OFF
+          sudo cmake --build /tmp/libgit2/build --target install
+          sudo ldconfig
+
+          # Build splitsh-lite against the correct libgit2
           git clone https://github.com/splitsh/lite.git /tmp/splitsh-lite
           cd /tmp/splitsh-lite
-          go build -o /usr/local/bin/splitsh-lite github.com/splitsh/lite
+          PKG_CONFIG_PATH=/usr/local/lib/pkgconfig \
+            go build -o /usr/local/bin/splitsh-lite github.com/splitsh/lite
 
       - name: Sync package to public repo
         id: sync
