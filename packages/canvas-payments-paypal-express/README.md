@@ -75,17 +75,17 @@ return [
 
 ### Initiating a payment
 
-Inject `PaymentRouter` via Canvas DI and call `initiate()`:
+Inject `PaymentProviderInterface` via Canvas DI and call `initiate()`:
 
 ```php
-use Quellabs\Payments\PaymentRouter;
+use Quellabs\Payments\Contracts\PaymentProviderInterface;
 use Quellabs\Canvas\Controllers\BaseController;
 use Quellabs\Payments\Contracts\PaymentRequest;
 use Quellabs\Payments\Contracts\PaymentInitiationException;
 
 class CheckoutController extends BaseController {
 
-    public function __construct(private PaymentRouter $router) {}
+    public function __construct(private PaymentProviderInterface $router) {}
 
     /**
      * @Route("...")
@@ -113,22 +113,22 @@ class CheckoutController extends BaseController {
 Pass `amount: null` for a full refund, or a minor-unit integer for a partial refund.
 
 When your `payment_exchange` listener receives a `PaymentStatus::Paid` state, store
-`$state->metadata['paymentTransactionId']` — you'll need it as `RefundRequest::$transactionId`.
+`$state->metadata['captureId']` — you'll need it as `RefundRequest::$transactionId`.
 
 ```php
 // In your payment_exchange listener — store the payment transaction ID when the payment succeeds
 public function onPaymentExchange(PaymentState $state): void {
     if ($state->state === PaymentStatus::Paid) {
-        $this->orderRepository->updatePaymentTransactionId(
+        $this->orderRepository->updateCaptureId(
             $state->transactionId,
-            $state->metadata['paymentTransactionId']
+            $state->metadata['captureId']
         );
     }
 }
 
 // Full refund
 $request = new RefundRequest(
-    transactionId: $order->paymentTransactionId,  // retrieved from your orders table
+    transactionId: $order->captureId,  // retrieved from your orders table
     paymentModule: 'paypal',
     amount:        null,   // null = full refund
     currency:      'EUR',
@@ -137,7 +137,7 @@ $request = new RefundRequest(
 
 // Partial refund
 $request = new RefundRequest(
-    transactionId: $order->paymentTransactionId,  // retrieved from your orders table
+    transactionId: $order->captureId,  // retrieved from your orders table
     paymentModule: 'paypal',
     amount:        500,   // in minor units — €5.00
     currency:      'EUR',
@@ -183,7 +183,7 @@ PayPal uses two different identifiers across the payment lifecycle, which is the
 
 - **Checkout token** (`EC-XXXXXXXXX`) — created by `SetExpressCheckout` and returned by `initiate()` as
   `InitiateResult::$transactionId`. Used to drive the checkout flow and passed to `exchange()`.
-- **Payment transaction ID** (e.g. `9N123456789`) — available in `PaymentState::$metadata['paymentTransactionId']`
+- **Capture ID** (e.g. `9N123456789`) — available in `PaymentState::$metadata['captureId']`
   when a `PaymentStatus::Paid` event fires. **Persist this value** — it is required as `RefundRequest::$transactionId`.
 
 ### IPN vs. return URL
