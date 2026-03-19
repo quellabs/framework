@@ -22,7 +22,7 @@
 		 */
 		public function index(PaymentInterface $paymentRouter): Response {
 			$request = new PaymentRequest(
-				"paypal_express",
+				"mollie",
 				10,
 				"EUR",
 				"test",
