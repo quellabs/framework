@@ -19,10 +19,10 @@
   "canvas-database": "1.0.2",
   "canvas-payments": "1.0.2",
   "canvas-payments-contracts": "1.0.4",
-  "canvas-payments-mollie": "1.0.6",
+  "canvas-payments-mollie": "1.0.7",
   "canvas-payments-paypal": "1.0.1",
   "canvas-payments-paypal-express": "1.0.2",
-  "canvas-payments-stripe": "1.0.1",
+  "canvas-payments-stripe": "1.0.2",
   "canvas-payments-adyen": "1.0.1",
   "canvas-payments-multisafepay": "1.0.0"
 }
