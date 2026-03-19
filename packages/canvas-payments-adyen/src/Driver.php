@@ -33,15 +33,15 @@
 		 * @see https://docs.adyen.com/payment-methods/
 		 */
 		private const MODULE_TYPE_MAP = [
-			'adyen_ideal'       => 'ideal',
-			'adyen_creditcard'  => 'scheme',
-			'adyen_bancontact'  => 'bcmc',
-			'adyen_sofort'      => 'directEbanking',
-			'adyen_giropay'     => 'giropay',
-			'adyen_klarna'      => 'klarna',
-			'adyen_applepay'    => 'applepay',
-			'adyen_googlepay'   => 'googlepay',
-			'adyen_paypal'      => 'paypal',
+			'adyen_ideal'      => 'ideal',
+			'adyen_creditcard' => 'scheme',
+			'adyen_bancontact' => 'bcmc',
+			'adyen_sofort'     => 'directEbanking',
+			'adyen_giropay'    => 'giropay',
+			'adyen_klarna'     => 'klarna',
+			'adyen_applepay'   => 'applepay',
+			'adyen_googlepay'  => 'googlepay',
+			'adyen_paypal'     => 'paypal',
 		];
 		
 		/**
@@ -90,19 +90,19 @@
 		 */
 		public function getDefaults(): array {
 			return [
-				'test_mode'         => false,
-				'api_key'           => '',
-				'merchant_account'  => '',
-				'hmac_key'          => '',
-				'brand_name'        => '',
-				'return_url'        => '',
-				'cancel_return_url' => '',
-				'webhook_url'       => '',
+				'test_mode'             => false,
+				'api_key'               => '',
+				'merchant_account'      => '',
+				'hmac_key'              => '',
+				'return_url'            => '',
+				'cancel_return_url'     => '',
+				'webhook_url'           => '',
+				'live_endpoint_prefix ' => '',
 				
 				// Used by getPaymentOptions() to filter the /paymentMethods response.
 				// Adyen returns a country-specific method list (e.g. iDEAL only for NL).
-				'default_country'   => 'NL',
-				'default_currency'  => 'EUR',
+				'default_country'       => 'NL',
+				'default_currency'      => 'EUR',
 			];
 		}
 		
@@ -155,7 +155,7 @@
 			$match = current(array_filter($methods, fn($m) => ($m['type'] ?? '') === $type));
 			return $this->normalizeIssuers($match['issuers'] ?? []);
 		}
-
+		
 		/**
 		 * Initiates a payment using Adyen Pay by Link.
 		 * Creates a hosted payment page via POST /paymentLinks and returns its URL.
@@ -191,7 +191,7 @@
 			if ($result['request']['result'] === 0) {
 				throw new PaymentInitiationException('adyen', $result['request']['errorId'], $result['request']['errorMessage']);
 			}
-
+			
 			// Grab the response
 			$response = $result['response'];
 			
@@ -416,10 +416,10 @@
 			$valueRefunded = ($eventCode === 'REFUND' && $success) ? $value : 0;
 			
 			// Set valuePaid to null (unknown) on refund. Adyen does not pass paid value
-			$valuePaid = match(true) {
-				$eventCode === 'REFUND'        => null,
+			$valuePaid = match (true) {
+				$eventCode === 'REFUND' => null,
 				$state === PaymentStatus::Paid => $value,
-				default                        => 0,
+				default => 0,
 			};
 			
 			return new PaymentState(

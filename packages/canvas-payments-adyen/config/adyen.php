@@ -23,9 +23,6 @@
 		// Format: <random>-<merchantAccount>
 		'live_endpoint_prefix' => '',
 		
-		// Your store or company name — used for display purposes where relevant.
-		'brand_name' => '',
-		
 		// Where to redirect the shopper after a completed payment (including async-pending).
 		'return_url' => 'https://example.com/order/thankyou',
 		
