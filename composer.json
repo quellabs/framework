@@ -104,6 +104,10 @@
     {
       "type": "path",
       "url": "./packages/canvas-payments-adyen"
+    },
+    {
+      "type": "path",
+      "url": "./packages/canvas-payments-multisafepay"
     }
   ],
   "require": {
@@ -152,7 +156,8 @@
     "quellabs/canvas-payments-paypal": "dev-main as 1.999.999",
     "quellabs/canvas-payments-paypal-express": "dev-main as 1.999.999",
     "quellabs/canvas-payments-stripe": "dev-main as 1.999.999",
-    "quellabs/canvas-payments-adyen": "dev-main as 1.999.999"
+    "quellabs/canvas-payments-adyen": "dev-main as 1.999.999",
+    "quellabs/canvas-payments-multisafepay": "dev-main as 1.999.999"
   },
   "autoload": {
     "psr-4": {
@@ -179,7 +184,8 @@
       "Quellabs\\Payments\\Mollie\\": "packages/canvas-payments-mollie/src/",
       "Quellabs\\Payments\\Paypal\\": "packages/canvas-payments-paypal/src/",
       "Quellabs\\Payments\\PaypalExpress\\": "packages/canvas-payments-paypal-express/src/",
-      "Quellabs\\Payments\\Adyen\\": "packages/canvas-payments-paypal-adyen/src/"
+      "Quellabs\\Payments\\Adyen\\": "packages/canvas-payments-adyen/src/",
+      "Quellabs\\Payments\\MultiSafepay\\": "packages/canvas-payments-multisafepay/src/"
     },
     "files": [
       "packages/support/src/bootstrap.php"
