@@ -21,5 +21,6 @@
   "canvas-payments-contracts": "1.0.3",
   "canvas-payments-mollie": "1.0.4",
   "canvas-payments-paypal": "1.0.0",
-  "canvas-payments-paypal-express": "1.0.1"
+  "canvas-payments-paypal-express": "1.0.1",
+  "canvas-payments-stripe": "1.0.0"
 }

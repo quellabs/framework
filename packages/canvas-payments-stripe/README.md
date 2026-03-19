@@ -54,17 +54,17 @@ return [
 ];
 ```
 
-| Key                 | Required | Description                                                                                              |
-|---------------------|----------|----------------------------------------------------------------------------------------------------------|
-| `test_mode`         | Yes      | Set to `true` for test mode, `false` for production                                                     |
-| `secret_key`        | Yes      | Secret API key from the Stripe Dashboard — `sk_test_*` for test, `sk_live_*` for production             |
-| `publishable_key`   | No       | Publishable API key — only needed if your frontend interacts with Stripe.js directly                     |
+| Key                 | Required | Description                                                                                                |
+|---------------------|----------|------------------------------------------------------------------------------------------------------------|
+| `test_mode`         | Yes      | Set to `true` for test mode, `false` for production                                                        |
+| `secret_key`        | Yes      | Secret API key from the Stripe Dashboard — `sk_test_*` for test, `sk_live_*` for production                |
+| `publishable_key`   | No       | Publishable API key — only needed if your frontend interacts with Stripe.js directly                       |
 | `webhook_secret`    | Yes      | Webhook signing secret (`whsec_*`) from your Stripe webhook endpoint — required for signature verification |
-| `verify_ssl`        | No       | Whether to verify Stripe's SSL certificate. Always `true` in production. Defaults to `true`              |
+| `verify_ssl`        | No       | Whether to verify Stripe's SSL certificate. Always `true` in production. Defaults to `true`                |
 | `brand_name`        | No       | Used as the payment statement descriptor (max 22 characters). Full branding is set in the Stripe Dashboard |
-| `return_url`        | Yes      | URL the customer is redirected to after a completed payment                                              |
-| `cancel_return_url` | Yes      | URL the customer is redirected to after cancelling at Stripe                                             |
-| `webhook_url`       | Yes      | Full URL Stripe POSTs webhook events to — must match the URL registered in your Stripe webhook settings  |
+| `return_url`        | Yes      | URL the customer is redirected to after a completed payment                                                |
+| `cancel_return_url` | Yes      | URL the customer is redirected to after cancelling at Stripe                                               |
+| `webhook_url`       | Yes      | Full URL Stripe POSTs webhook events to — must match the URL registered in your Stripe webhook settings    |
 
 ## Usage
 
@@ -180,7 +180,8 @@ Stripe uses two different identifiers across the payment lifecycle:
   `InitiateResult::$transactionId`. Stripe appends it to your `return_url` as `?session_id={cs_...}`
   so the return handler can retrieve the session without server-side storage.
 - **PaymentIntent ID** — available in `PaymentState::$metadata['captureId']` when a `PaymentStatus::Paid`
-  event fires. **Persist this value** — it is required as `RefundRequest::$transactionId` for refunds and `getRefunds()`.
+  event fires. **Persist this value** — it is required as `RefundRequest::$transactionId` for refunds and
+  `getRefunds()`.
 
 ### Webhooks vs. return URL
 
