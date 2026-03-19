@@ -288,7 +288,6 @@
 				valueRefunded: $valueRefunded,
 				internalState: $status,
 				metadata: array_filter([
-					'captureId'     => $order['transaction_id'] ?? null,
 					'paymentMethod' => $order['payment_details']['type'] ?? null,
 					'reason'        => $order['reason'] ?? null,
 				], fn($v) => $v !== null),
