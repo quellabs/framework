@@ -367,10 +367,10 @@
 				provider: 'adyen',
 				transactionId: $transactionId,
 				state: $state,
+				currency: $currency,
 				valuePaid: $state === PaymentStatus::Paid ? (int)$valuePaid : 0,
 				valueRefunded: 0,
 				internalState: $resultCode,
-				currency: $currency,
 				metadata: array_filter([
 					'captureId'     => $pspReference,
 					'paymentMethod' => $response['paymentMethod']['type'] ?? null,
@@ -426,10 +426,10 @@
 				provider: 'adyen',
 				transactionId: $transactionId,
 				state: $state,
+				currency: $currency,
 				valuePaid: $valuePaid,
 				valueRefunded: $valueRefunded,
 				internalState: $eventCode,
-				currency: $currency,
 				metadata: array_filter([
 					'captureId'         => $pspReference,
 					'merchantReference' => $notification['merchantReference'] ?? null,

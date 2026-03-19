@@ -141,10 +141,10 @@
 					provider: 'stripe',
 					transactionId: $transactionId,
 					state: PaymentStatus::Canceled,
+					currency: '',
 					valuePaid: 0,
 					valueRefunded: 0,
 					internalState: 'cancel',
-					currency: '',
 				);
 			}
 			
@@ -191,10 +191,10 @@
 					provider: 'stripe',
 					transactionId: $transactionId,
 					state: PaymentStatus::Expired,
+					currency: $currency,
 					valuePaid: 0,
 					valueRefunded: 0,
 					internalState: 'expired',
-					currency: $currency,
 				);
 			}
 			
@@ -208,10 +208,10 @@
 					provider: 'stripe',
 					transactionId: $transactionId,
 					state: PaymentStatus::Pending,
+					currency: $currency,
 					valuePaid: 0,
 					valueRefunded: 0,
 					internalState: $sessionStatus,
-					currency: $currency,
 				);
 			}
 			
@@ -353,10 +353,10 @@
 						provider: 'stripe',
 						transactionId: $sessionId,
 						state: PaymentStatus::Paid,
+						currency: $currency,
 						valuePaid: $amountReceived,
 						valueRefunded: $amountRefunded,
 						internalState: 'succeeded',
-						currency: $currency,
 						metadata: [
 							'captureId' => $paymentIntentId,
 						],
@@ -368,10 +368,10 @@
 						provider: 'stripe',
 						transactionId: $sessionId,
 						state: PaymentStatus::Redirect,
+						currency: $currency,
 						valuePaid: 0,
 						valueRefunded: 0,
 						internalState: 'requires_action',
-						currency: $currency,
 						metadata: [
 							'captureId'   => $paymentIntentId,
 							'redirectUrl' => $intent['next_action']['redirect_to_url']['url'] ?? null,
@@ -383,10 +383,10 @@
 						provider: 'stripe',
 						transactionId: $sessionId,
 						state: PaymentStatus::Canceled,
+						currency: $currency,
 						valuePaid: 0,
 						valueRefunded: 0,
 						internalState: 'canceled',
-						currency: $currency,
 						metadata: [
 							'captureId'          => $paymentIntentId,
 							'cancellationReason' => $intent['cancellation_reason'] ?? null,
@@ -399,10 +399,10 @@
 						provider: 'stripe',
 						transactionId: $sessionId,
 						state: PaymentStatus::Pending,
+						currency: $currency,
 						valuePaid: 0,
 						valueRefunded: 0,
 						internalState: $intentStatus,
-						currency: $currency,
 						metadata: [
 							'captureId' => $paymentIntentId,
 						],
