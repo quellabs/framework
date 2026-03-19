@@ -7,6 +7,7 @@
 	use Quellabs\Canvas\Controllers\BaseController;
 	use Quellabs\Canvas\Translation\TranslationAspect;
 	use Quellabs\Canvas\Controllers\SecureController;
+	use Quellabs\Payments\Contracts\PaymentProviderInterface;
 	use Quellabs\Payments\Contracts\PaymentRequest;
 	use Quellabs\Payments\PaymentRouter;
 	use Symfony\Component\HttpFoundation\Response;
@@ -18,9 +19,9 @@
 		 * @Route("/")
 		 * @return Response
 		 */
-		public function index(PaymentRouter $paymentRouter): Response {
+		public function index(PaymentProviderInterface $paymentRouter): Response {
 			$request = new PaymentRequest(
-				"mollie_ideal",
+				"paypal_express_checkout",
 				10,
 				"EUR",
 				"test",

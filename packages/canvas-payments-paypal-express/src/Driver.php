@@ -34,7 +34,7 @@
 		public static function getMetadata(): array {
 			return [
 				'modules' => [
-					'paypal'
+					'paypal_express'
 				]
 			];
 		}

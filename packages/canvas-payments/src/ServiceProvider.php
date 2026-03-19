@@ -4,6 +4,7 @@
 	
 	use Quellabs\Contracts\Context\MethodContextInterface;
 	use Quellabs\DependencyInjection\Provider\ServiceProvider as BaseServiceProvider;
+	use Quellabs\Payments\Contracts\PaymentInterface;
 	use Quellabs\Payments\Contracts\PaymentProviderInterface;
 	
 	/**
@@ -14,9 +15,9 @@
 	class ServiceProvider extends BaseServiceProvider {
 		
 		/**
-		 * @var PaymentRouter
+		 * @var PaymentProviderInterface|null
 		 */
-		private static PaymentRouter $instance;
+		private static ?PaymentInterface $instance = null;
 		
 		/**
 		 * Returns true if this provider can satisfy the requested class.
@@ -28,8 +29,8 @@
 		 */
 		public function supports(string $className, array $metadata): bool {
 			return
-				$className === PaymentProviderInterface::class ||
-				$className === ServiceProvider::class;
+				$className === PaymentInterface::class ||
+				$className === PaymentRouter::class;
 		}
 		
 		/**
