@@ -1,0 +1,65 @@
+{
+  "name": "quellabs/canvas-plates",
+  "description": "Plates template engine integration for the Canvas PHP framework",
+  "keywords": [
+    "canvas-framework",
+    "plates-template",
+    "template-integration",
+    "php-templating"
+  ],
+  "type": "library",
+  "license": "MIT",
+  "homepage": "https://github.com/quellabs/canvas-plates",
+  "support": {
+    "issues": "https://github.com/quellabs/canvas-plates/issues",
+    "source": "https://github.com/quellabs/canvas-plates"
+  },
+  "authors": [
+    {
+      "name": "Quellabs",
+      "email": "info@quellabs.com",
+      "homepage": "https://quellabs.com"
+    }
+  ],
+  "minimum-stability": "stable",
+  "prefer-stable": true,
+  "config": {
+    "platform": {
+      "php": "8.2"
+    },
+    "sort-packages": true,
+    "optimize-autoloader": true,
+    "classmap-authoritative": true,
+    "allow-plugins": {
+      "quellabs/discover": false
+    }
+  },
+  "require": {
+    "league/plates": "^3.0",
+    "quellabs/dependency-injection": "^1.",
+    "quellabs/contracts": "^1.",
+    "quellabs/sculpt": "^1.",
+    "quellabs/support": "^1."
+  },
+  "autoload": {
+    "psr-4": {
+      "Quellabs\\Canvas\\Plates\\": "src/"
+    }
+  },
+  "extra": {
+    "discover": {
+      "di": {
+        "provider": "Quellabs\\Canvas\\Plates\\ServiceProvider",
+        "config": [
+          "config/plates.php",
+          "config/app.php"
+        ]
+      }
+    }
+  },
+  "scripts": {
+    "post-install-cmd": [
+      "php -r \"copy('vendor/quellabs/canvas-plates/config/plates.php', 'config/plates.php');\""
+    ]
+  }
+}

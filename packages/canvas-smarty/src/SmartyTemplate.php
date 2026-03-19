@@ -22,6 +22,11 @@
 		private array $config;
 		
 		/**
+		 * @var array Global variables available to all templates
+		 */
+		private array $globals = [];
+		
+		/**
 		 * @var Signal Signal used to send debug data to Canvas
 		 */
 		private Signal $templateSignal;
@@ -60,6 +65,13 @@
 					$this->smarty->enableSecurity();
 				} catch (\Exception $e) {
 					error_log("SmartyTemplateProvider: unable to set Smarty security ({$e->getMessage()}");
+				}
+			}
+			
+			// Add global variables if configured
+			if (!empty($configuration['globals']) && is_array($configuration['globals'])) {
+				foreach ($configuration['globals'] as $key => $value) {
+					$this->addGlobal($key, $value);
 				}
 			}
 		}
@@ -101,10 +113,7 @@
 		 * @return void
 		 */
 		public function addGlobal(string $key, mixed $value): void {
-			// Assign the variable globally to the Smarty instance
-			// This makes the variable available in all subsequent template renders
-			// until the engine instance is reset or the variable is overwritten
-			$this->smarty->assign($key, $value);
+			$this->globals[$key] = $value;
 		}
 		
 		/**
@@ -248,15 +257,14 @@
 				// Mark start for performance monitoring
 				$start = microtime(true);
 				
-				// Create a data object with local scope that inherits from the Smarty instance
-				// This allows access to global variables while keeping local variables isolated
-				// Local variables will override global ones with the same name
+				// Merge globals and local data, local data takes precedence
+				$mergedData = array_merge($this->globals, $data);
+				
+				// Create a data object with local scope
 				$localData = $this->smarty->createData($this->smarty);
 				
-				// Assign variables to the local data object scope
-				// These variables will only be available for this specific render call
-				// and will override any global variables with the same name
-				foreach ($data as $key => $value) {
+				// Assign merged variables to the local data object scope
+				foreach ($mergedData as $key => $value) {
 					$localData->assign($key, $value);
 				}
 				

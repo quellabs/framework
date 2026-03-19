@@ -3,7 +3,7 @@
   "description": "Twig template engine integration for the Canvas PHP framework",
   "keywords": [
     "canvas-framework",
-    "twiog-template",
+    "twig-template",
     "template-integration",
     "php-templating"
   ],
@@ -60,7 +60,7 @@
   },
   "scripts": {
     "post-install-cmd": [
-      "php -r \"copy('vendor/quellabs/canvas-twig/config/twig.php', 'public/config/twig.php');\""
+      "php -r \"copy('vendor/quellabs/canvas-twig/config/twig.php', 'config/twig.php');\""
     ]
   }
 }

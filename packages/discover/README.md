@@ -86,18 +86,6 @@ class ExampleServiceProvider extends AbstractProvider {
             'priority'     => 10
         ];
     }
-    
-    /**
-     * Get default configuration values (static method)
-     * @return array
-     */
-    public static function getDefaults(): array {
-        return [
-            'host'    => 'localhost',
-            'port'    => 6379,
-            'timeout' => 2.5
-        ];
-    }
 }
 ```
 
@@ -110,7 +98,6 @@ interface ProviderInterface {
     
     // Static methods for discovery (no instantiation needed)
     public static function getMetadata(): array;
-    public static function getDefaults(): array;
     
     // Instance methods for runtime configuration
     public function setConfig(array $config): void;
@@ -470,14 +457,6 @@ Configuration is loaded and merged with defaults when providers are instantiated
 
 ```php
 class ExampleServiceProvider extends \Quellabs\Discover\Provider\AbstractProvider {
-
-    public static function getDefaults(): array {
-        return [
-            'option1' => 'default_value',
-            'option2' => 'default_value',
-            'enabled' => false
-        ];
-    }
 
     public function getServiceOptions(): array {
         return [

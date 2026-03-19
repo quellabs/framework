@@ -1,0 +1,69 @@
+{
+  "name": "quellabs/canvas-blade",
+  "description": "Blade template engine integration for the Canvas PHP framework",
+  "keywords": [
+    "canvas-framework",
+    "blade-template",
+    "template-integration",
+    "php-templating"
+  ],
+  "type": "library",
+  "license": "MIT",
+  "homepage": "https://github.com/quellabs/canvas-blade",
+  "support": {
+    "issues": "https://github.com/quellabs/canvas-blade/issues",
+    "source": "https://github.com/quellabs/canvas-blade"
+  },
+  "authors": [
+    {
+      "name": "Quellabs",
+      "email": "info@quellabs.com",
+      "homepage": "https://quellabs.com"
+    }
+  ],
+  "minimum-stability": "stable",
+  "prefer-stable": true,
+  "config": {
+    "platform": {
+      "php": "8.2"
+    },
+    "sort-packages": true,
+    "optimize-autoloader": true,
+    "classmap-authoritative": true,
+    "allow-plugins": {
+      "quellabs/discover": false
+    }
+  },
+  "require": {
+    "illuminate/container": "^11.0",
+    "illuminate/events": "^11.0",
+    "illuminate/filesystem": "^11.0",
+    "illuminate/view": "^11.0",
+    "quellabs/contracts": "^1.",
+    "quellabs/dependency-injection": "^1.",
+    "quellabs/sculpt": "^1.",
+    "quellabs/support": "^1."
+  },
+  "autoload": {
+    "psr-4": {
+      "Quellabs\\Canvas\\Blade\\": "src/"
+    }
+  },
+  "extra": {
+    "discover": {
+      "di": {
+        "provider": "Quellabs\\Canvas\\Blade\\ServiceProvider",
+        "config": ["config/blade.php", "config/app.php"]
+      },
+      "sculpt": {
+        "provider": "Quellabs\\Canvas\\Blade\\Sculpt\\ServiceProvider",
+        "config": "config/blade.php"
+      }
+    }
+  },
+  "scripts": {
+    "post-install-cmd": [
+      "php -r \"copy('vendor/quellabs/canvas-blade/config/blade.php', 'public/config/blade.php');\""
+    ]
+  }
+}

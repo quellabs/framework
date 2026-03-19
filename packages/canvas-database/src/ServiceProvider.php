@@ -1,9 +1,9 @@
 <?php
 	
-	namespace Quellabs\CanvasDatabase\Discovery;
+	namespace Quellabs\CanvasDatabase;
 	
 	use Cake\Database\Connection;
-	use Quellabs\Contracts\Context\MethodContext;
+	use Quellabs\Contracts\Context\MethodContextInterface;
 	use Quellabs\DependencyInjection\Provider\ServiceProvider as BaseServiceProvider;
 	
 	/**
@@ -54,10 +54,10 @@
 		 * @param string $className The class name to instantiate (Connection)
 		 * @param array $dependencies Additional autowired dependencies (currently unused)
 		 * @param array $metadata Metadata as passed by Discover
-		 * @param MethodContext|null $methodContext Optional method context
+		 * @param MethodContextInterface|null $methodContext Optional method context
 		 * @return object A configured Connection instance
 		 */
-		public function createInstance(string $className, array $dependencies, array $metadata, ?MethodContext $methodContext = null): object {
+		public function createInstance(string $className, array $dependencies, array $metadata, ?MethodContextInterface $methodContext = null): object {
 			// Return existing instance if already created (singleton behavior)
 			if (self::$instance !== null) {
 				return self::$instance;

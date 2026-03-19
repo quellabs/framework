@@ -1,0 +1,56 @@
+{
+  "name": "quellabs/canvas-payments-paypal-express",
+  "description": "PayPal Express Checkout payment gateway integration for the Canvas PHP framework",
+  "type": "library",
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "Floris van den Berg",
+      "email": "info@quellabs.com"
+    }
+  ],
+  "keywords": [
+    "paypal",
+    "paypal-express",
+    "payments",
+    "payment gateway",
+    "canvas",
+    "canvas-payments"
+  ],
+  "support": {
+    "email": "support@quellabs.com",
+    "issues": "https://github.com/quellabs/canvas-payments-paypal-express/issues",
+    "forum": "https://github.com/quellabs/canvas-payments-paypal-express/discussions",
+    "wiki": "https://github.com/quellabs/canvas-payments-paypal-express/wiki",
+    "docs": "https://canvasphp.com/docs",
+    "source": "https://github.com/quellabs/canvas-payments-paypal-express"
+  },
+  "require": {
+    "php": "^8.2",
+    "symfony/http-client": "*",
+    "quellabs/support": "*",
+    "quellabs/contracts": "*",
+    "quellabs/canvas-payments-contracts": "*"
+  },
+  "autoload": {
+    "psr-4": {
+      "Quellabs\\Payments\\PaypalExpress\\": "src/"
+    }
+  },
+  "scripts": {
+    "post-autoload-dump": [
+      "php -r \"if (!file_exists('config/paypal_express.php') && !copy('vendor/quellabs/canvas-payments-paypal-express/config/paypal_express.php', 'config/paypal_express.php')) { echo 'Warning: Could not publish PayPal Express config file.' . PHP_EOL; }\""
+    ]
+  },
+  "extra": {
+    "discover": {
+      "canvas": {
+        "controller": "Quellabs\\Payments\\PaypalExpress\\PaypalController"
+      },
+      "payments": {
+        "provider": "Quellabs\\Payments\\PaypalExpress\\Driver",
+        "config": "config/paypal_express.php"
+      }
+    }
+  }
+}

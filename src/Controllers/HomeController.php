@@ -2,33 +2,43 @@
 	
 	namespace App\Controllers;
 	
-	use App\Entities\PostEntity;
-	use App\Enums\TestEnum;
 	use Quellabs\Canvas\Annotations\Route;
+	use Quellabs\Canvas\Annotations\InterceptWith;
+	use Quellabs\Canvas\Controllers\BaseController;
+	use Quellabs\Canvas\Translation\TranslationAspect;
 	use Quellabs\Canvas\Controllers\SecureController;
-	use Quellabs\Canvas\Validation\Rules\Date;
-	use Quellabs\DependencyInjection\Container;
-	use Quellabs\SignalHub\Signal;
-	use Symfony\Component\HttpFoundation\Request;
+	use Quellabs\Payments\Contracts\PaymentInterface;
+	use Quellabs\Payments\Contracts\PaymentProviderInterface;
+	use Quellabs\Payments\Contracts\PaymentRequest;
+	use Quellabs\Payments\PaymentRouter;
 	use Symfony\Component\HttpFoundation\Response;
 	
-	class HomeController extends SecureController {
+	class HomeController extends BaseController {
 	
 		/**
+		 * @InterceptWith(TranslationAspect::class)
 		 * @Route("/")
 		 * @return Response
 		 */
-		public function index(Request $request): Response {
-			return $this->render("home/index3.tpl");
+		public function index(PaymentInterface $paymentRouter): Response {
+			$request = new PaymentRequest(
+				"mollie",
+				10,
+				"EUR",
+				"test",
+				"hallo",
+			);
+
+			$response = $paymentRouter->initiate($request);
+			return new Response("Hello from routes file");
 		}
 		
-		/**
-		 * @Route("/hello/{name:int}")
-		 * @param string $name
+		/**ho
+		 * @Route("routes::test")
 		 * @return Response
 		 */
-		public function hello(string $name): Response {
-			return new Response("Hello, " . $name);
+		public function hello(): Response {
+			return new Response("Hello from routes file");
 		}
 		
 		/**

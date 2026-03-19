@@ -22,6 +22,7 @@
 	namespace Quellabs\Canvas;
 	
 	use Quellabs\AnnotationReader\AnnotationReader;
+	use Quellabs\Canvas\Configuration\ConfigLoader;
 	use Quellabs\Canvas\Configuration\Configuration;
 	use Quellabs\Canvas\Discover\DependencyAwareDiscover;
 	use Quellabs\Canvas\Error\DefaultErrorHandler;
@@ -32,6 +33,8 @@
 	use Quellabs\Canvas\Inspector\Inspector;
 	use Quellabs\Canvas\Legacy\LegacyBridge;
 	use Quellabs\Canvas\Legacy\LegacyHandler;
+	use Quellabs\Contracts\Configuration\ConfigProviderInterface;
+	use Quellabs\Contracts\Configuration\ConfigurationInterface;
 	use Quellabs\DependencyInjection\Container;
 	use Quellabs\DependencyInjection\Provider\SimpleBinding;
 	use Quellabs\Discover\Discover;
@@ -44,12 +47,13 @@
 	
 	class Kernel {
 		
+		private ConfigLoader $configLoader;
 		private SignalHub $signalHub; // Event system
 		private Signal $canvasQuerySignal; // Signal for performance measuring
 		private AnnotationReader $annotationsReader; // Annotation reading
-		private Configuration $configuration;
-		private Configuration $inspector_configuration;
-		private ?array $contents_of_app_php = null;
+		private ConfigurationInterface $configuration;
+		private ConfigurationInterface $inspector_configuration;
+		private array $contents_of_app_php = [];
 		private bool $legacyEnabled;
 		private ?LegacyHandler $legacyFallbackHandler;
 		private Container $dependencyInjector;
@@ -60,6 +64,9 @@
 		 * @param array $configuration
 		 */
 		public function __construct(array $configuration = []) {
+			// Instantiate configuration loader
+			$this->configLoader = new ConfigLoader();
+			
 			// Connect SignalHub to this class
 			$this->signalHub = SignalHubLocator::getInstance();
 			
@@ -71,8 +78,9 @@
 			}
 			
 			// Store the configuration array
-			$this->configuration = new Configuration(array_merge($this->getConfigFile("app.php"), $configuration));
-			$this->inspector_configuration = new Configuration($this->getConfigFile("inspector.php"));
+			$defaultConfiguration = new Configuration($configuration);
+			$this->configuration = $this->loadConfigFile ("app.php")->merge($defaultConfiguration);
+			$this->inspector_configuration = $this->loadConfigFile ("inspector.php");
 			
 			// Register Annotations Reader
 			$this->annotationsReader = $this->createAnnotationReader();
@@ -91,6 +99,7 @@
 			
 			// Bind DI classes
 			$this->dependencyInjector->register(new SimpleBinding(Kernel::class, $this));
+			$this->dependencyInjector->register(new SimpleBinding(ConfigProviderInterface::class, $this->configLoader));
 			$this->dependencyInjector->register(new SimpleBinding(Configuration::class, $this->configuration));
 			$this->dependencyInjector->register(new SimpleBinding(Discover::class, $discover));
 			$this->dependencyInjector->register(new SimpleBinding(DependencyAwareDiscover::class, $discover));
@@ -209,6 +218,15 @@
 		}
 		
 		/**
+		 * Load config file with .local.php override support
+		 * @param string $filename Filename to load
+		 * @return Configuration
+		 */
+		public function loadConfigFile(string $filename): ConfigurationInterface {
+			return $this->configLoader->loadConfigFile($filename);
+		}
+
+		/**
 		 * Inject debug bar into response if debug collector is available
 		 * @param EventCollector|null $debugCollector Debug collector instance
 		 * @param Request $request The HTTP request
@@ -308,41 +326,7 @@
 			// Create and return the configured AnnotationReader instance
 			return new AnnotationReader($config);
 		}
-		
-		/**
-		 * Load config file with .local.php override support
-		 * @param string $filename
-		 * @return array
-		 */
-		private function getConfigFile(string $filename): array {
-			// Fetch from cache if we can
-			if (isset($this->contents_of_app_php[$filename])) {
-				return $this->contents_of_app_php[$filename];
-			}
-			
-			// Fetch the project root
-			$projectRoot = ComposerUtils::getProjectRoot();
-			$configPath = $projectRoot . "/config/{$filename}";
-			
-			// If the base config file doesn't exist, start with empty array
-			if (!file_exists($configPath) || !is_readable($configPath)) {
-				$config = [];
-			} else {
-				$config = require $configPath;
-			}
-			
-			// Check for .local.php override
-			$localPath = $projectRoot . "/config/" . pathinfo($filename, PATHINFO_FILENAME) . ".local.php";
-			
-			if (file_exists($localPath) && is_readable($localPath)) {
-				$local = require $localPath;
-				$config = array_replace_recursive($config, $local);
-			}
-			
-			// Cache and return
-			return $this->contents_of_app_php[$filename] = $config;
-		}
-		
+
 		/**
 		 * Initialize the legacy support system
 		 * @return void

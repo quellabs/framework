@@ -27,6 +27,18 @@
     },
     {
       "type": "path",
+      "url": "./packages/canvas-blade"
+    },
+    {
+      "type": "path",
+      "url": "./packages/canvas-latte"
+    },
+    {
+      "type": "path",
+      "url": "./packages/canvas-plates"
+    },
+    {
+      "type": "path",
       "url": "./packages/canvas-skeleton"
     },
     {
@@ -64,17 +76,52 @@
     {
       "type": "path",
       "url": "./packages/canvas-database"
+    },
+    {
+      "type": "path",
+      "url": "./packages/canvas-payments"
+    },
+    {
+      "type": "path",
+      "url": "./packages/canvas-payments-contracts"
+    },
+    {
+      "type": "path",
+      "url": "./packages/canvas-payments-contracts"
+    },
+    {
+      "type": "path",
+      "url": "./packages/canvas-payments-paypal"
+    },
+    {
+      "type": "path",
+      "url": "./packages/canvas-payments-paypal-express"
+    },
+    {
+      "type": "path",
+      "url": "./packages/canvas-payments-stripe"
+    },
+    {
+      "type": "path",
+      "url": "./packages/canvas-payments-adyen"
+    },
+    {
+      "type": "path",
+      "url": "./packages/canvas-payments-multisafepay"
     }
   ],
   "require": {
     "php": "^8.3",
+    "ext-curl": "*",
     "monolog/monolog": "*",
     "symfony/http-foundation": "*",
+    "symfony/http-client": "*",
     "dragonmantank/cron-expression": "*",
     "robmorgan/phinx": "*",
     "cakephp/database": "*",
     "softcreatr/jsonpath": "*",
-    "composer-plugin-api": "^2.0"
+    "composer-plugin-api": "^2.0",
+    "quellabs/canvas-authorization": "dev-feature/stub"
   },
   "suggest": {
     "ext-redis": "Required for Redis cache driver",
@@ -93,13 +140,24 @@
     "quellabs/canvas-objectquel": "dev-main as 1.999.999",
     "quellabs/canvas-smarty": "dev-main as 1.999.999",
     "quellabs/canvas-twig": "dev-main as 1.999.999",
+    "quellabs/canvas-blade": "dev-main as 1.999.999",
+    "quellabs/canvas-latte": "dev-main as 1.999.999",
+    "quellabs/canvas-plates": "dev-main as 1.999.999",
     "quellabs/canvas-skeleton": "dev-main as 1.999.999",
     "quellabs/canvas-database": "dev-main as 1.999.999",
     "quellabs/dependency-injection": "dev-main as 1.999.999",
     "quellabs/discover": "dev-main as 1.999.999",
     "quellabs/objectquel": "dev-main as 1.999.999",
     "quellabs/signal-hub": "dev-main as 1.999.999",
-    "quellabs/cache": "dev-main as 1.999.999"
+    "quellabs/cache": "dev-main as 1.999.999",
+    "quellabs/canvas-payments": "dev-main as 1.999.999",
+    "quellabs/canvas-payments-contracts": "dev-main as 1.999.999",
+    "quellabs/canvas-payments-mollie": "dev-main as 1.999.999",
+    "quellabs/canvas-payments-paypal": "dev-main as 1.999.999",
+    "quellabs/canvas-payments-paypal-express": "dev-main as 1.999.999",
+    "quellabs/canvas-payments-stripe": "dev-main as 1.999.999",
+    "quellabs/canvas-payments-adyen": "dev-main as 1.999.999",
+    "quellabs/canvas-payments-multisafepay": "dev-main as 1.999.999"
   },
   "autoload": {
     "psr-4": {
@@ -117,7 +175,17 @@
       "Quellabs\\CanvasObjectQuel\\": "packages/canvas-objectquel/src/",
       "Quellabs\\Canvas\\Smarty\\": "packages/canvas-smarty/src/",
       "Quellabs\\Canvas\\Twig\\": "packages/canvas-twig/src/",
-      "Quellabs\\Canvas\\Cache\\": "packages/cache/src/"
+      "Quellabs\\Canvas\\Blade\\": "packages/canvas-blade/src/",
+      "Quellabs\\Canvas\\Latte\\": "packages/canvas-latte/src/",
+      "Quellabs\\Canvas\\Plates\\": "packages/canvas-plates/src/",
+      "Quellabs\\Canvas\\Cache\\": "packages/cache/src/",
+      "Quellabs\\Payments\\": "packages/canvas-payments/src/",
+      "Quellabs\\Payments\\Contracts\\": "packages/canvas-payments-contracts/src/",
+      "Quellabs\\Payments\\Mollie\\": "packages/canvas-payments-mollie/src/",
+      "Quellabs\\Payments\\Paypal\\": "packages/canvas-payments-paypal/src/",
+      "Quellabs\\Payments\\PaypalExpress\\": "packages/canvas-payments-paypal-express/src/",
+      "Quellabs\\Payments\\Adyen\\": "packages/canvas-payments-adyen/src/",
+      "Quellabs\\Payments\\MultiSafepay\\": "packages/canvas-payments-multisafepay/src/"
     },
     "files": [
       "packages/support/src/bootstrap.php"

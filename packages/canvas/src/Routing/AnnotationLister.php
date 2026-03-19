@@ -16,11 +16,6 @@
 	class AnnotationLister extends AnnotationBase {
 		
 		/**
-		 * @var Kernel Application kernel
-		 */
-		private Kernel $kernel;
-		
-		/**
 		 * @var ControllersDiscovery Controller discovery component
 		 */
 		private ControllersDiscovery $controllersDiscovery;
@@ -35,7 +30,7 @@
 		 */
 		public function __construct() {
 			$this->kernel = new Kernel();
-			parent::__construct($this->kernel->getAnnotationsReader());
+			parent::__construct($this->kernel);
 			$this->controllersDiscovery = new ControllersDiscovery($this->kernel);
 			$this->aspectResolver = new AspectResolver($this->annotationsReader);
 		}
@@ -63,49 +58,46 @@
 			$result = [];
 			
 			// Iterate through each discovered controller class
-			foreach($this->controllersDiscovery->fetch() as $directory) {
-				// Scan the controller directory to find all controller classes
-				foreach (ComposerUtils::findClassesInDirectory($directory) as $controller) {
-					// Create a reflection object to inspect the controller class structure
-					$classReflection = new \ReflectionClass($controller);
+			foreach($this->controllersDiscovery->fetch() as $controller) {
+				// Create a reflection object to inspect the controller class structure
+				$classReflection = new \ReflectionClass($controller);
+				
+				// Fetch the route prefix, if any
+				$routePrefix = $this->getRoutePrefix($controller);
+				
+				// Examine each method in the current controller
+				foreach ($classReflection->getMethods() as $method) {
+					// Look for Route annotations on this method.
+					// Only methods with Route annotations are considered route handlers.
+					$routes = $this->annotationsReader->getMethodAnnotations(
+						$method->getDeclaringClass()->getName(),
+						$method->getName(),
+						Route::class
+					);
 					
-					// Fetch the route prefix, if any
-					$routePrefix = $this->getRoutePrefix($controller);
-					
-					// Examine each method in the current controller
-					foreach ($classReflection->getMethods() as $method) {
-						// Look for Route annotations on this method.
-						// Only methods with Route annotations are considered route handlers.
-						$routes = $this->annotationsReader->getMethodAnnotations(
-							$method->getDeclaringClass()->getName(),
-							$method->getName(),
-							Route::class
-						);
+					// A single method can have multiple Route annotations (multiple routes to same handler)
+					foreach ($routes as $routeAnnotation) {
+						// Extract the route path pattern (e.g., "/users/{id}", "/api/products")
+						$routePath = $this->normalizeRoute($routeAnnotation->getRoute(), $routeAnnotation->getFallback());
 						
-						// A single method can have multiple Route annotations (multiple routes to same handler)
-						foreach ($routes as $routeAnnotation) {
-							// Extract the route path pattern (e.g., "/users/{id}", "/api/products")
-							$routePath = $routeAnnotation->getRoute();
-							
-							// Combine route with prefix
-							$completeRoutePath = "/" . $routePrefix . ltrim($routePath, "/");
-							
-							// Create the record
-							$record = [
-								'name'         => $routeAnnotation->getName(),    // The name of the route (can be null)
-								'http_methods' => $routeAnnotation->getMethods(), // A list of http methods
-								'controller'   => $controller,                    // Controller class name
-								'method'       => $method->getName(),             // Method name that handles this route
-								'route'        => $completeRoutePath,             // Route string
-								'aspects'      => $this->getAspectsOfMethod(      // Any interceptors/middleware for this method
-									$method->getDeclaringClass()->getName(),
-									$method->getName()
-								),
-							];
-							
-							// Build complete route configuration including metadata
-							$result[] = $record;
-						}
+						// Combine route with prefix
+						$completeRoutePath = "/" . $routePrefix . ltrim($routePath, "/");
+						
+						// Create the record
+						$record = [
+							'name'         => $routeAnnotation->getName(),    // The name of the route (can be null)
+							'http_methods' => $routeAnnotation->getMethods(), // A list of http methods
+							'controller'   => $controller,                    // Controller class name
+							'method'       => $method->getName(),             // Method name that handles this route
+							'route'        => $completeRoutePath,             // Route string
+							'aspects'      => $this->getAspectsOfMethod(      // Any interceptors/middleware for this method
+								$method->getDeclaringClass()->getName(),
+								$method->getName()
+							),
+						];
+						
+						// Build complete route configuration including metadata
+						$result[] = $record;
 					}
 				}
 			}
@@ -133,27 +125,7 @@
 			
 			return $result;
 		}
-		
-		/**
-		 * Retrieve a route by its name from the route collection.
-		 * Uses the pre-built route name cache for O(1) lookup performance.
-		 * @param string $name The name of the route to retrieve
-		 * @return array|null The route array if found, null if not found
-		 */
-		public function getRouteByName(string $name): ?array {
-			try {
-				foreach ($this->getRoutes() as $route) {
-					if ($route['name'] === $name) {
-						return $route;
-					}
-				}
-				
-				return null;
-			} catch (AnnotationReaderException | \ReflectionException $e) {
-				return null;
-			}
-		}
-		
+
 		/**
 		 * Retrieves all aspect interceptors (middleware/filters) applied to a specific method
 		 * @param string $class The fully qualified class name to inspect

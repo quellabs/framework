@@ -1,0 +1,57 @@
+{
+  "name": "quellabs/canvas-payments-stripe",
+  "description": "Stripe Checkout Sessions and Payment Intents REST API payment gateway integration for the Canvas PHP framework",
+  "type": "library",
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "Floris van den Berg",
+      "email": "info@quellabs.com"
+    }
+  ],
+  "keywords": [
+    "stripe",
+    "stripe-checkout",
+    "stripe-payment-intents",
+    "payments",
+    "payment gateway",
+    "canvas",
+    "canvas-payments"
+  ],
+  "support": {
+    "email": "support@quellabs.com",
+    "issues": "https://github.com/quellabs/canvas-payments-stripe/issues",
+    "forum": "https://github.com/quellabs/canvas-payments-stripe/discussions",
+    "wiki": "https://github.com/quellabs/canvas-payments-stripe/wiki",
+    "docs": "https://canvasphp.com/docs",
+    "source": "https://github.com/quellabs/canvas-payments-stripe"
+  },
+  "require": {
+    "php": "^8.2",
+    "symfony/http-client": "*",
+    "quellabs/support": "*",
+    "quellabs/contracts": "*",
+    "quellabs/canvas-payments-contracts": "*"
+  },
+  "autoload": {
+    "psr-4": {
+      "Quellabs\\Payments\\Stripe\\": "src/"
+    }
+  },
+  "scripts": {
+    "post-autoload-dump": [
+      "php -r \"if (!file_exists('config/stripe.php') && !copy('vendor/quellabs/canvas-payments-stripe/config/stripe.php', 'config/stripe.php')) { echo 'Warning: Could not publish Stripe config file.' . PHP_EOL; }\""
+    ]
+  },
+  "extra": {
+    "discover": {
+      "canvas": {
+        "controller": "Quellabs\\Payments\\Stripe\\StripeController"
+      },
+      "payments": {
+        "provider": "Quellabs\\Payments\\Stripe\\Driver",
+        "config": "config/stripe.php"
+      }
+    }
+  }
+}

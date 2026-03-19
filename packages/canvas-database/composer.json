@@ -20,7 +20,7 @@
     "discover": {
       "di": {
         "provider": {
-          "class": "Quellabs\\CanvasDatabase\\Discovery\\ServiceProvider",
+          "class": "Quellabs\\CanvasDatabase\\ServiceProvider",
           "config": "config/database.php"
         }
       }

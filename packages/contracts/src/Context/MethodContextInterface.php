@@ -5,7 +5,7 @@
 	/**
 	 * Base interface for method execution context
 	 */
-	interface MethodContext {
+	interface MethodContextInterface {
 		
 		/**
 		 * Get the class name

@@ -14,16 +14,16 @@
 		'template_engine'         => 'smarty',
 		
 		// Path to controller classes
-		'controller_directory'    => $srcDir . '/Controllers',
+		'controller_directory'    => $srcDir . DIRECTORY_SEPARATOR . 'Controllers',
 		
 		// Path to error handlers
-		'error_handler_directory' => $srcDir . '/Errors',
+		'error_handler_directory' => $srcDir . DIRECTORY_SEPARATOR . 'Errors',
 		
 		// Path to aspect-oriented programming files
-		'aspect_directory'        => $srcDir . '/Aspects',
+		'aspect_directory'        => $srcDir . DIRECTORY_SEPARATOR . 'Aspects',
 		
 		// Path to aspect-oriented programming files
-		'entity_path'             => $srcDir . '/Entities',
+		'entity_path'             => $srcDir . DIRECTORY_SEPARATOR . 'Entities',
 		
 		// Whether to match routes with trailing slashes
 		'match_trailing_slashes'  => false
