@@ -205,10 +205,10 @@
 				provider: 'mollie',
 				transactionId: $transactionId,
 				state: $currentStatus,
+				currency: $currency,
 				valuePaid: $valuePaid,
 				valueRefunded: $amountRefunded,
 				internalState: $mollieStatus,
-				currency: $currency,
 				metadata: $r["metadata"] ?? []
 			);
 		}

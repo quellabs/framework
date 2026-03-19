@@ -140,10 +140,10 @@
 					provider: "paypal_express",
 					transactionId: $transactionId,
 					state: PaymentStatus::Canceled,
+					currency: "",
 					valuePaid: 0,
 					valueRefunded: 0,
 					internalState: "cancel",
-					currency: "",
 				);
 			}
 			
@@ -174,10 +174,10 @@
 						provider: "paypal_express",
 						transactionId: $transactionId,
 						state: PaymentStatus::Pending,
+						currency: $details["response"]["CURRENCYCODE"] ?? "",
 						valuePaid: 0,
 						valueRefunded: 0,
 						internalState: "PaymentActionInProgress",
-						currency: $details["response"]["CURRENCYCODE"] ?? "",
 					);
 				
 				// DoExpressCheckoutPayment was called but the payment failed.
@@ -186,10 +186,10 @@
 						provider: "paypal_express",
 						transactionId: $transactionId,
 						state: PaymentStatus::Failed,
+						currency: $details["response"]["CURRENCYCODE"] ?? "",
 						valuePaid: 0,
 						valueRefunded: 0,
 						internalState: "PaymentActionFailed",
-						currency: $details["response"]["CURRENCYCODE"] ?? "",
 					);
 				
 				// Payment was already captured in a previous exchange() call.
@@ -365,10 +365,10 @@
 						provider: "paypal_express",
 						transactionId: $transactionId,
 						state: PaymentStatus::Redirect,
+						currency: $currency,
 						valuePaid: 0,
 						valueRefunded: 0,
 						internalState: "10486",
-						currency: $currency,
 						metadata: [
 							"redirectUrl" => "$base?cmd=_express-checkout&token={$transactionId}"
 						],
@@ -394,10 +394,10 @@
 						provider: "paypal_express",
 						transactionId: $transactionId,
 						state: PaymentStatus::Paid,
+						currency: $currency,
 						valuePaid: $amountMinorUnits,
 						valueRefunded: 0,
 						internalState: $paymentStatus,
-						currency: $currency,
 						metadata: [
 							"captureId"     => $captureId,
 							"correlationId" => $result["response"]["CORRELATIONID"],
@@ -412,10 +412,10 @@
 						provider: "paypal_express",
 						transactionId: $transactionId,
 						state: PaymentStatus::Failed,
+						currency: $currency,
 						valuePaid: 0,
 						valueRefunded: 0,
 						internalState: $paymentStatus,
-						currency: $currency,
 					);
 				
 				// Any other status (e.g. Pending, Reversed) — treat as pending until resolved.
@@ -424,10 +424,10 @@
 						provider: "paypal_express",
 						transactionId: $transactionId,
 						state: PaymentStatus::Pending,
+						currency: $currency,
 						valuePaid: 0,
 						valueRefunded: 0,
 						internalState: $paymentStatus,
-						currency: $currency,
 					);
 			}
 		}
@@ -488,10 +488,10 @@
 				provider: "paypal_express",
 				transactionId: $token,
 				state: $state,
+				currency: $r["CURRENCYCODE"] ?? "",
 				valuePaid: $state === PaymentStatus::Paid ? $valueCaptured : 0,
 				valueRefunded: $valueRefunded,
 				internalState: $paymentStatus,
-				currency: $r["CURRENCYCODE"] ?? "",
 				metadata: [
 					"captureId" => $captureId
 				],

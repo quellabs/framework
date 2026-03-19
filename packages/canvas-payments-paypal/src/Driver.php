@@ -154,10 +154,10 @@
 					provider: "paypal",
 					transactionId: $transactionId,
 					state: PaymentStatus::Canceled,
+					currency: "",
 					valuePaid: 0,
 					valueRefunded: 0,
 					internalState: "cancel",
-					currency: "",
 				);
 			}
 			
@@ -184,10 +184,10 @@
 						provider: "paypal",
 						transactionId: $transactionId,
 						state: PaymentStatus::Pending,
+						currency: $currency,
 						valuePaid: 0,
 						valueRefunded: 0,
 						internalState: "CREATED",
-						currency: $currency,
 					);
 				
 				// Buyer has approved payment at PayPal — capture it now
@@ -212,10 +212,10 @@
 							provider: "paypal",
 							transactionId: $transactionId,
 							state: PaymentStatus::Canceled,
+							currency: $currency,
 							valuePaid: 0,
 							valueRefunded: 0,
 							internalState: "VOIDED",
-							currency: $currency,
 						);
 					}
 					
@@ -247,10 +247,10 @@
 						provider: "paypal",
 						transactionId: $transactionId,
 						state: PaymentStatus::Redirect,
+						currency: $currency,
 						valuePaid: 0,
 						valueRefunded: 0,
 						internalState: "PAYER_ACTION_REQUIRED",
-						currency: $currency,
 						metadata: [
 							"redirectUrl" => $redirectUrl,
 						],
@@ -261,10 +261,10 @@
 						provider: "paypal",
 						transactionId: $transactionId,
 						state: PaymentStatus::Pending,
+						currency: $currency,
 						valuePaid: 0,
 						valueRefunded: 0,
 						internalState: $orderStatus,
-						currency: $currency,
 					);
 			}
 		}
@@ -427,10 +427,10 @@
 						provider: "paypal",
 						transactionId: $orderId,
 						state: PaymentStatus::Redirect,
+						currency: $currency,
 						valuePaid: 0,
 						valueRefunded: 0,
 						internalState: "INSTRUMENT_DECLINED",
-						currency: $currency,
 						metadata: [
 							"redirectUrl" => $redirectUrl,
 						],
@@ -454,10 +454,10 @@
 					provider: "paypal",
 					transactionId: $orderId,
 					state: PaymentStatus::Paid,
+					currency: $captureCurrency,
 					valuePaid: $captureAmount,
 					valueRefunded: 0,
 					internalState: "COMPLETED",
-					currency: $captureCurrency,
 					metadata: [
 						"captureId" => $captureId,
 					],
@@ -469,10 +469,10 @@
 					provider: "paypal",
 					transactionId: $orderId,
 					state: PaymentStatus::Failed,
+					currency: $captureCurrency,
 					valuePaid: 0,
 					valueRefunded: 0,
 					internalState: $captureStatus,
-					currency: $captureCurrency,
 				),
 				
 				// PENDING or any unknown status — the capture was submitted but not yet settled
@@ -480,10 +480,10 @@
 					provider: "paypal",
 					transactionId: $orderId,
 					state: PaymentStatus::Pending,
+					currency: $captureCurrency,
 					valuePaid: 0,
 					valueRefunded: 0,
 					internalState: $captureStatus,
-					currency: $captureCurrency,
 					metadata: [
 						"captureId" => $captureId,
 					],
@@ -538,10 +538,10 @@
 				provider: "paypal",
 				transactionId: $orderId,
 				state: $paymentStatus,
+				currency: $captureCurrency,
 				valuePaid: $paymentStatus === PaymentStatus::Paid ? $capturedAmount : 0,
 				valueRefunded: $refundedAmount,
 				internalState: $captureStatus,
-				currency: $captureCurrency,
 				metadata: [
 					"captureId" => $captureId,
 				],
