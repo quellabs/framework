@@ -19,7 +19,7 @@
 		 * Active configuration for this provider, applied by the discovery system after instantiation.
 		 * @var array
 		 */
-		private array $config;
+		private array $config = [];
 		
 		/**
 		 * Gateway instance, constructed lazily on first use to ensure config is available.
@@ -82,12 +82,6 @@
 		
 		/**
 		 * Initiate a new payment session by creating a Stripe Checkout Session.
-		 *
-		 * Returns a redirect URL pointing to the Stripe-hosted checkout page.
-		 * The Checkout Session ID (cs_*) serves as the transactionId throughout the lifecycle —
-		 * it is appended by Stripe to the return URL as ?session_id={cs_...} so we can
-		 * retrieve the session on return without server-side storage.
-		 *
 		 * @see https://stripe.com/docs/api/checkout/sessions/create
 		 * @param PaymentRequest $request
 		 * @return InitiateResult
@@ -123,18 +117,6 @@
 		
 		/**
 		 * Resolves the current payment state from a Checkout Session ID or PaymentIntent ID.
-		 *
-		 * Called when:
-		 *   - The buyer returns from Stripe (action = 'return' | 'cancel')
-		 *   - A webhook arrives (action = 'webhook')
-		 *
-		 * extraData keys:
-		 *   'action'          — 'cancel' | 'return' | 'webhook'
-		 *   'paymentIntentId' — required for webhook events that carry a PaymentIntent ID
-		 *                       rather than a session ID. When present, the driver queries the
-		 *                       PaymentIntent directly and skips the session lookup.
-		 *   'eventType'       — the raw Stripe event type (e.g. 'payment_intent.succeeded')
-		 *
 		 * @see https://stripe.com/docs/api/checkout/sessions/retrieve
 		 * @see https://stripe.com/docs/api/payment_intents/retrieve
 		 * @param string $transactionId The Checkout Session ID (cs_*) returned by initiate()
@@ -143,6 +125,7 @@
 		 * @throws PaymentExchangeException
 		 */
 		public function exchange(string $transactionId, array $extraData = []): PaymentState {
+			// Fetch action (if any)
 			$action = $extraData['action'] ?? null;
 			
 			// Buyer clicked cancel on the Stripe checkout page — no payment was attempted.
@@ -175,13 +158,12 @@
 				throw new PaymentExchangeException('stripe', $sessionResult['request']['errorId'], $sessionResult['request']['errorMessage']);
 			}
 			
-			$session  = $sessionResult['response'];
-			$currency = strtoupper($session['currency'] ?? 'EUR');
-			
 			// Stripe Checkout Session statuses:
 			//   open      — the buyer has not yet completed checkout
 			//   complete  — checkout was completed; check payment_intent.status for capture outcome
 			//   expired   — the session expired without the buyer completing checkout
+			$session       = $sessionResult['response'] ?? [];
+			$currency      = strtoupper($session['currency'] ?? 'EUR');
 			$sessionStatus = $session['status'] ?? 'open';
 			
 			if ($sessionStatus === 'expired') {
@@ -220,7 +202,7 @@
 		 * Issue a refund against a Stripe PaymentIntent.
 		 *
 		 * Note: $request->transactionId must be the PaymentIntent ID (pi_*), not the session ID.
-		 * This is available in PaymentState::$metadata['paymentIntentId'] after a successful exchange().
+		 * This is available in PaymentState::$metadata['captureId'] after a successful exchange().
 		 *
 		 * The description is mapped to the most appropriate Stripe refund reason. Stripe accepts
 		 * only three reason values ('duplicate', 'fraudulent', 'requested_by_customer'); all other
@@ -280,7 +262,7 @@
 		 * Returns all refunds issued for a given PaymentIntent.
 		 *
 		 * Note: $transactionId must be the PaymentIntent ID (pi_*), not the session ID.
-		 * This is available in PaymentState::$metadata['paymentIntentId'] after a successful exchange().
+		 * This is available in PaymentState::$metadata['captureId'] after a successful exchange().
 		 *
 		 * @see https://stripe.com/docs/api/refunds/list
 		 * @param string $transactionId The PaymentIntent ID (pi_*)
@@ -334,21 +316,30 @@
 		/**
 		 * Fetches a PaymentIntent and maps it to a PaymentState.
 		 * Used for webhook actions where the event carries a PaymentIntent ID rather than a session ID.
-		 * @param string $sessionId       The Checkout Session ID (cs_*), used as transactionId
+		 * @param string $sessionId The Checkout Session ID (cs_*), used as transactionId
 		 * @param string $paymentIntentId The PaymentIntent ID (pi_*)
 		 * @return PaymentState
 		 * @throws PaymentExchangeException
 		 */
 		private function buildStateFromPaymentIntent(string $sessionId, string $paymentIntentId): PaymentState {
+			// Call API to fetch payment intent
 			$result = $this->getGateway()->getPaymentIntent($paymentIntentId);
 			
+			// If that failed, throw
 			if ($result['request']['result'] === 0) {
 				throw new PaymentExchangeException('stripe', $result['request']['errorId'], $result['request']['errorMessage']);
 			}
+		
+			// Fetch the response
+			$intent = $result['response'];
 			
-			$intent   = $result['response'];
+			// Stripe returns currency in lowercase (e.g. 'eur') — normalize to uppercase to match
+			// the ISO 4217 convention used throughout the contracts layer
 			$currency = strtoupper($intent['currency'] ?? 'EUR');
 			
+			// Use the session ID as the transactionId, not the PaymentIntent ID.
+			// The session ID is what initiate() returned to the caller, so it is what they have
+			// stored. Switching to the PaymentIntent ID here would break any lookup by transactionId.
 			return $this->mapPaymentIntentToState($sessionId, $intent, $paymentIntentId, $currency);
 		}
 		
@@ -374,63 +365,67 @@
 			$amountReceived = (int)($intent['amount_received'] ?? 0);
 			$amountRefunded = (int)($intent['amount_refunded'] ?? 0);
 			
-			return match ($intentStatus) {
-				'succeeded' => new PaymentState(
-					provider: 'stripe',
-					transactionId: $sessionId,
-					state: PaymentStatus::Paid,
-					valuePaid: $amountReceived,
-					valueRefunded: $amountRefunded,
-					internalState: 'succeeded',
-					currency: $currency,
-					metadata: [
-						'paymentIntentId' => $paymentIntentId,
-					],
-				),
+			switch ($intentStatus) {
+				case 'succeeded':
+					return new PaymentState(
+						provider: 'stripe',
+						transactionId: $sessionId,
+						state: PaymentStatus::Paid,
+						valuePaid: $amountReceived,
+						valueRefunded: $amountRefunded,
+						internalState: 'succeeded',
+						currency: $currency,
+						metadata: [
+							'captureId' => $paymentIntentId,
+						],
+					);
 				
 				// 3DS or other customer action required — redirect back to Stripe's next_action URL
-				'requires_action' => new PaymentState(
-					provider: 'stripe',
-					transactionId: $sessionId,
-					state: PaymentStatus::Redirect,
-					valuePaid: 0,
-					valueRefunded: 0,
-					internalState: 'requires_action',
-					currency: $currency,
-					metadata: [
-						'paymentIntentId' => $paymentIntentId,
-						'redirectUrl'     => $intent['next_action']['redirect_to_url']['url'] ?? null,
-					],
-				),
+				case 'requires_action':
+					return new PaymentState(
+						provider: 'stripe',
+						transactionId: $sessionId,
+						state: PaymentStatus::Redirect,
+						valuePaid: 0,
+						valueRefunded: 0,
+						internalState: 'requires_action',
+						currency: $currency,
+						metadata: [
+							'captureId'   => $paymentIntentId,
+							'redirectUrl' => $intent['next_action']['redirect_to_url']['url'] ?? null,
+						],
+					);
 				
-				'canceled' => new PaymentState(
-					provider: 'stripe',
-					transactionId: $sessionId,
-					state: PaymentStatus::Canceled,
-					valuePaid: 0,
-					valueRefunded: 0,
-					internalState: 'canceled',
-					currency: $currency,
-					metadata: [
-						'paymentIntentId'   => $paymentIntentId,
-						'cancellationReason' => $intent['cancellation_reason'] ?? null,
-					],
-				),
+				case 'canceled':
+					return new PaymentState(
+						provider: 'stripe',
+						transactionId: $sessionId,
+						state: PaymentStatus::Canceled,
+						valuePaid: 0,
+						valueRefunded: 0,
+						internalState: 'canceled',
+						currency: $currency,
+						metadata: [
+							'captureId'          => $paymentIntentId,
+							'cancellationReason' => $intent['cancellation_reason'] ?? null,
+						],
+					);
 				
 				// requires_payment_method, requires_confirmation, processing, or unknown
-				default => new PaymentState(
-					provider: 'stripe',
-					transactionId: $sessionId,
-					state: PaymentStatus::Pending,
-					valuePaid: 0,
-					valueRefunded: 0,
-					internalState: $intentStatus,
-					currency: $currency,
-					metadata: [
-						'paymentIntentId' => $paymentIntentId,
-					],
-				),
-			};
+				default:
+					return new PaymentState(
+						provider: 'stripe',
+						transactionId: $sessionId,
+						state: PaymentStatus::Pending,
+						valuePaid: 0,
+						valueRefunded: 0,
+						internalState: $intentStatus,
+						currency: $currency,
+						metadata: [
+							'captureId' => $paymentIntentId,
+						],
+					);
+			}
 		}
 		
 		/**
@@ -443,14 +438,20 @@
 		private function mapRefundReason(string $description): string {
 			$lower = strtolower($description);
 			
+			// 'dubbel' is Dutch for duplicate — included because Quellabs applications are
+			// often Dutch-language and RefundRequest::$description is a free-text field
 			if (str_contains($lower, 'duplicate') || str_contains($lower, 'dubbel')) {
 				return 'duplicate';
 			}
 			
+			// 'fraude' is Dutch for fraud
 			if (str_contains($lower, 'fraud') || str_contains($lower, 'fraude')) {
 				return 'fraudulent';
 			}
 			
+			// Stripe rejects any value outside its allowed set of three reasons.
+			// 'requested_by_customer' is the safest default for anything that doesn't
+			// clearly signal duplicate or fraud.
 			return 'requested_by_customer';
 		}
 	}

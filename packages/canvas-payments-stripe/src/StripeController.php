@@ -127,19 +127,13 @@
 				return new JsonResponse("OK");
 			}
 			
-			return $this->processWebhookPaymentIntent($parsed['sessionId'], $parsed['paymentIntentId'], $parsed['eventType']);
+			return $this->processWebhookPaymentIntent($parsed['paymentIntentId'], $parsed['eventType']);
 		}
 		
 		/**
 		 * Verifies the webhook signature and extracts the payment context from the raw request.
-		 *
-		 * Stripe webhook payloads contain a 'data.object' which for payment_intent.* events is
-		 * the PaymentIntent. The Checkout Session ID is stored in the intent's metadata (if we
-		 * embed it at creation time) or must be looked up separately. We store it in metadata
-		 * as 'session_id' during session creation to avoid an extra API call here.
-		 *
 		 * @param Request $request
-		 * @return array{payload: array, eventType: string, paymentIntentId: string|null, sessionId: string|null}
+		 * @return array{payload: array, eventType: string, paymentIntentId: string|null}
 		 * @throws WebhookValidationException on any validation or verification failure
 		 */
 		private function parseWebhookRequest(Request $request): array {
@@ -172,45 +166,32 @@
 			$intentObject    = $payload['data']['object'] ?? [];
 			$paymentIntentId = $intentObject['id'] ?? null;
 			
-			// We store the session ID in the PaymentIntent's metadata at initiation so we can
-			// correlate webhook events back to the original transactionId without an extra lookup.
-			// See StripeGateway::createCheckoutSession for where this would be set.
-			// Falls back to null — processWebhookPaymentIntent handles the null case gracefully.
-			$sessionId = $intentObject['metadata']['session_id'] ?? null;
-			
 			return [
 				'payload'         => $payload,
 				'eventType'       => $payload['type'] ?? '',
 				'paymentIntentId' => $paymentIntentId,
-				'sessionId'       => $sessionId,
 			];
 		}
 		
 		/**
 		 * Processes a verified payment_intent.* webhook event.
 		 *
-		 * Calls the payment exchange with the resolved PaymentIntent ID, emits the resulting
-		 * PaymentState to subscribers, and returns 200 OK. Returns 500 on exchange failure
-		 * so Stripe retries with exponential back-off.
+		 * Calls the payment exchange with the PaymentIntent ID as the transactionId, emits the
+		 * resulting PaymentState to subscribers, and returns 200 OK. Returns 500 on exchange
+		 * failure so Stripe retries with exponential back-off.
 		 *
-		 * @param string|null $sessionId       The session ID from intent metadata (used as transactionId)
 		 * @param string|null $paymentIntentId The PaymentIntent ID from the webhook payload
 		 * @param string      $eventType       The Stripe event type (e.g. payment_intent.succeeded)
 		 * @return Response
 		 */
-		private function processWebhookPaymentIntent(?string $sessionId, ?string $paymentIntentId, string $eventType): Response {
+		private function processWebhookPaymentIntent(?string $paymentIntentId, string $eventType): Response {
 			// Acknowledge but skip — we cannot reconstruct the payment context without the intent ID
 			if (empty($paymentIntentId)) {
 				return new JsonResponse("OK");
 			}
 			
-			// Fall back to the PaymentIntent ID as the transactionId if the session ID was not
-			// embedded in metadata. The stored PaymentState will have paymentIntentId in metadata
-			// either way, so refunds will still work.
-			$transactionId = $sessionId ?? $paymentIntentId;
-			
 			try {
-				$response = $this->stripe->exchange($transactionId, [
+				$response = $this->stripe->exchange($paymentIntentId, [
 					'action'          => 'webhook',
 					'paymentIntentId' => $paymentIntentId,
 					'eventType'       => $eventType,

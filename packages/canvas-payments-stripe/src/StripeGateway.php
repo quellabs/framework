@@ -58,12 +58,6 @@
 		
 		/**
 		 * Creates a Stripe Checkout Session in payment mode.
-		 *
-		 * Checkout Sessions handle the redirect flow and auto-capture for card payments.
-		 * The session ID is returned as the transactionId so it can be used as the lookup
-		 * key when the buyer returns. The underlying PaymentIntent ID is also included in
-		 * the response for webhook correlation.
-		 *
 		 * @see https://stripe.com/docs/api/checkout/sessions/create
 		 * @param int    $amount      Amount in the smallest currency unit (e.g. cents)
 		 * @param string $description Line item description shown on the Stripe-hosted checkout page
@@ -78,15 +72,15 @@
 			$cancelUrl = $this->m_cancel_url;
 			
 			$body = [
-				'mode'                   => 'payment',
-				'success_url'            => $returnUrl,
-				'cancel_url'             => $cancelUrl,
-				'currency'               => strtolower($currency),
-				'line_items[0][quantity]'                    => 1,
-				'line_items[0][price_data][currency]'        => strtolower($currency),
-				'line_items[0][price_data][unit_amount]'     => $amount,
+				'mode'                                          => 'payment',
+				'success_url'                                   => $returnUrl,
+				'cancel_url'                                    => $cancelUrl,
+				'currency'                                      => strtolower($currency),
+				'line_items[0][quantity]'                       => 1,
+				'line_items[0][price_data][currency]'           => strtolower($currency),
+				'line_items[0][price_data][unit_amount]'        => $amount,
 				'line_items[0][price_data][product_data][name]' => $description,
-				'payment_intent_data[description]'           => $description,
+				'payment_intent_data[description]'              => $description,
 			];
 			
 			if (!empty($brandName)) {
@@ -108,7 +102,7 @@
 		 */
 		public function getCheckoutSession(string $sessionId): array {
 			if (empty($sessionId)) {
-				return $this->errorEnvelope('MISSING_SESSION_ID', 'Missing Checkout Session ID');
+				return ['request' => ['result' => 0, 'errorId' => 'MISSING_SESSION_ID', 'errorMessage' => 'Missing Checkout Session ID']];
 			}
 			
 			// Expand the payment_intent object so we get status, amount, and currency inline
@@ -127,7 +121,7 @@
 		 */
 		public function getPaymentIntent(string $paymentIntentId): array {
 			if (empty($paymentIntentId)) {
-				return $this->errorEnvelope('MISSING_PAYMENT_INTENT_ID', 'Missing PaymentIntent ID');
+				return ['request' => ['result' => 0, 'errorId' => 'MISSING_PAYMENT_INTENT_ID', 'errorMessage' => 'Missing PaymentIntent ID']];
 			}
 			
 			return $this->sendRequest('GET', '/v1/payment_intents/' . urlencode($paymentIntentId));
@@ -187,40 +181,55 @@
 		 * @return bool True if the webhook is genuine and recent, false otherwise
 		 */
 		public function verifyWebhookSignature(string $signatureHeader, string $rawBody): bool {
+			// Reject immediately if either the header or the signing secret is absent —
+			// we cannot verify without both sides of the HMAC
 			if (empty($signatureHeader) || empty($this->m_webhook_secret)) {
 				return false;
 			}
 			
-			// Parse the header: "t=1492774577,v1=5257a869...,v0=..."
+			// The Stripe-Signature header is a comma-separated list of key=value pairs,
+			// e.g. "t=1492774577,v1=5257a869e3e8a1b...,v0=...".
+			// We collect all values under each key so multiple v1 signatures are handled correctly —
+			// Stripe may include more than one when rotating signing secrets.
 			$params = [];
 			
 			foreach (explode(',', $signatureHeader) as $part) {
+				// Limit to 2 so a base64 value containing '=' is not split
 				[$key, $value] = explode('=', $part, 2) + ['', ''];
 				$params[$key][] = $value;
 			}
 			
+			// 't' is the Unix timestamp Stripe embedded when signing the payload.
+			// A missing or zero timestamp means the header is malformed.
 			$timestamp = (int)($params['t'][0] ?? 0);
 			
 			if ($timestamp === 0) {
 				return false;
 			}
 			
-			// Reject events older than 5 minutes to mitigate replay attacks
+			// Reject events older than 5 minutes to mitigate replay attacks.
+			// An attacker who intercepts a genuine webhook cannot reuse it after this window.
 			if (abs(time() - $timestamp) > 300) {
 				return false;
 			}
 			
+			// v1 signatures are HMAC-SHA256. v0 is a legacy scheme we ignore.
+			// If no v1 entries are present the payload cannot be verified with the current secret.
 			$signatures = $params['v1'] ?? [];
 			
 			if (empty($signatures)) {
 				return false;
 			}
 			
-			// Compute the expected signature
+			// Stripe signs the string "{timestamp}.{rawBody}" — the dot is literal.
+			// Using the raw body is critical: any decoding or re-encoding before this point
+			// will produce a different byte sequence and cause verification to fail.
 			$signedPayload = $timestamp . '.' . $rawBody;
 			$expected      = hash_hmac('sha256', $signedPayload, $this->m_webhook_secret);
 			
-			// Use hash_equals to prevent timing attacks
+			// hash_equals performs a constant-time comparison to prevent timing attacks.
+			// We iterate all v1 signatures to handle secret rotation — Stripe sends signatures
+			// for both the old and new secret during the rotation window.
 			foreach ($signatures as $sig) {
 				if (hash_equals($expected, $sig)) {
 					return true;
@@ -244,17 +253,6 @@
 			
 			$separator = str_contains($url, '?') ? '&' : '?';
 			return $url . $separator . 'session_id={CHECKOUT_SESSION_ID}';
-		}
-		
-		/**
-		 * Builds a normalized error envelope without making an API call.
-		 * Used for early validation failures before a request is sent.
-		 * @param string $errorId
-		 * @param string $errorMessage
-		 * @return array
-		 */
-		private function errorEnvelope(string $errorId, string $errorMessage): array {
-			return ['request' => ['result' => 0, 'errorId' => $errorId, 'errorMessage' => $errorMessage], 'response' => []];
 		}
 		
 		/**
@@ -292,9 +290,10 @@
 					$options['headers']['Content-Type'] = 'application/x-www-form-urlencoded';
 				}
 				
+				// Call API
 				$response = $this->m_client->request($method, self::BASE_URL . $path, $options);
-				$data     = $response->toArray(false);
-				$status   = $response->getStatusCode();
+				$data = $response->toArray(false);
+				$status = $response->getStatusCode();
 				
 				// 2xx = success
 				if ($status >= 200 && $status < 300) {
@@ -306,9 +305,9 @@
 				$errorId      = $error['code'] ?? $error['type'] ?? 'UNKNOWN_ERROR';
 				$errorMessage = $error['message'] ?? 'Unknown Stripe error';
 				
-				return ['request' => ['result' => 0, 'errorId' => $errorId, 'errorMessage' => $errorMessage], 'response' => $data];
+				return ['request' => ['result' => 0, 'errorId' => $errorId, 'errorMessage' => $errorMessage]];
 			} catch (\Throwable $e) {
-				return ['request' => ['result' => 0, 'errorId' => (string)$e->getCode(), 'errorMessage' => $e->getMessage()], 'response' => []];
+				return ['request' => ['result' => 0, 'errorId' => (string)$e->getCode(), 'errorMessage' => $e->getMessage()]];
 			}
 		}
 	}
