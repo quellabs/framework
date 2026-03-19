@@ -198,20 +198,23 @@
 			
 			return $this->sendRequest('GET', '/v2/checkout/orders/' . urlencode($orderId));
 		}
-		
+
 		/**
 		 * Captures payment for an approved order.
 		 * Equivalent to NVP DoExpressCheckoutPayment.
 		 * @see https://developer.paypal.com/docs/api/orders/v2/#orders_capture
-		 * @param string $orderId The order ID returned by createOrder
+		 * @param string $orderId         The order ID returned by createOrder
+		 * @param string $idempotencyKey  Unique key to make this request safely retryable
 		 * @return array
 		 */
-		public function captureOrder(string $orderId): array {
+		public function captureOrder(string $orderId, string $idempotencyKey): array {
 			// Content-Type must be application/json but the body can be empty for a simple capture.
 			// PayPal still requires the header to be present, so we pass an empty body.
-			return $this->sendRequest('POST', '/v2/checkout/orders/' . urlencode($orderId) . '/capture', []);
+			return $this->sendRequest('POST', '/v2/checkout/orders/' . urlencode($orderId) . '/capture', [], [
+				'PayPal-Request-Id' => $idempotencyKey,
+			]);
 		}
-		
+
 		/**
 		 * Retrieves details for a capture, including refunded amounts.
 		 * Equivalent to NVP GetTransactionDetails.
@@ -227,15 +230,16 @@
 		 * Refunds a captured payment, either fully or partially.
 		 * Equivalent to NVP RefundTransaction.
 		 * @see https://developer.paypal.com/docs/api/payments/v2/#captures_refund
-		 * @param string      $captureId    The capture ID to refund
-		 * @param float|null  $value        Refund amount in major units, or null for a full refund
-		 * @param string|null $currencyType ISO 4217 currency code, required when $value is set
-		 * @param string      $note         Human-readable reason for the refund, shown to the buyer
+		 * @param string      $captureId      The capture ID to refund
+		 * @param float|null  $value          Refund amount in major units, or null for a full refund
+		 * @param string|null $currencyType   ISO 4217 currency code, required when $value is set
+		 * @param string      $note           Human-readable reason for the refund, shown to the buyer
+		 * @param string      $idempotencyKey Unique key to make this request safely retryable
 		 * @return array
 		 */
-		public function refund(string $captureId, ?float $value, ?string $currencyType, string $note): array {
+		public function refund(string $captureId, ?float $value, ?string $currencyType, string $note, string $idempotencyKey): array {
 			$body = ['note_to_payer' => substr($note, 0, 255)];
-			
+
 			// Omitting the amount field triggers a full refund on PayPal's side
 			if ($value !== null && $currencyType !== null) {
 				$body['amount'] = [
@@ -243,10 +247,12 @@
 					'currency_code' => $currencyType,
 				];
 			}
-			
-			return $this->sendRequest('POST', '/v2/payments/captures/' . urlencode($captureId) . '/refund', $body);
+
+			return $this->sendRequest('POST', '/v2/payments/captures/' . urlencode($captureId) . '/refund', $body, [
+				'PayPal-Request-Id' => $idempotencyKey,
+			]);
 		}
-		
+
 		/**
 		 * Returns all refunds issued for a given capture.
 		 * Equivalent to NVP TransactionSearch + type filter.

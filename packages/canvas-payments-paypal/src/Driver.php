@@ -367,11 +367,14 @@
 		 * @throws PaymentExchangeException
 		 */
 		private function captureOrder(string $orderId, string $currency): PaymentState {
-			$result = $this->getGateway()->captureOrder($orderId);
-			
+			// Deterministic key derived from the order ID — retrying the same order always
+			// produces the same key, so a network timeout cannot cause a double-capture.
+			$idempotencyKey = hash('sha256', 'capture:' . $orderId);
+			$result = $this->getGateway()->captureOrder($orderId, $idempotencyKey);
+
 			if ($result["request"]["result"] == 0) {
 				$errorId = $result["request"]["errorId"];
-				
+
 				// INSTRUMENT_DECLINED is the REST equivalent of NVP error 10486:
 				// the buyer's funding source was declined. Redirect them back to PayPal
 				// to choose a different payment method.
@@ -390,9 +393,11 @@
 					
 					// Fall back to constructing the URL if PayPal didn't include the link
 					if ($redirectUrl === null) {
-						$redirectUrl = $this->getGateway()->testMode()
-							? "https://www.sandbox.paypal.com/checkoutnow?token={$orderId}"
-							: "https://www.paypal.com/checkoutnow?token={$orderId}";
+						if ($this->getGateway()->testMode()) {
+							$redirectUrl = "https://www.sandbox.paypal.com/checkoutnow?token={$orderId}";
+						} else {
+							$redirectUrl = "https://www.paypal.com/checkoutnow?token={$orderId}";
+						}
 					}
 					
 					return new PaymentState(
