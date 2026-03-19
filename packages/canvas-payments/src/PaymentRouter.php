@@ -4,13 +4,15 @@
 	
 	use Quellabs\Discover\Scanner\ComposerScanner;
 	use Quellabs\Payments\Contracts\InitiateResult;
+	use Quellabs\Payments\Contracts\PaymentInterface;
 	use Quellabs\Payments\Contracts\PaymentProviderInterface;
 	use Quellabs\Payments\Contracts\PaymentRequest;
+	use Quellabs\Payments\Contracts\PaymentState;
 	use Quellabs\Payments\Contracts\RefundRequest;
 	use Quellabs\Discover\Discover;
 	use Quellabs\Payments\Contracts\RefundResult;
 	
-	class PaymentRouter {
+	class PaymentRouter implements PaymentInterface {
 		
 		private array $moduleMap = [];
 		private Discover $discover;
@@ -63,11 +65,11 @@
 		
 		/**
 		 * Refund a payment using the provider registered for the refund's payment module
-		 * @param RefundRequest $refundRequest
+		 * @param RefundRequest $request
 		 * @return RefundResult
 		 */
-		public function refund(RefundRequest $refundRequest): RefundResult {
-			return $this->resolve($refundRequest->paymentModule)->refund($refundRequest);
+		public function refund(RefundRequest $request): RefundResult {
+			return $this->resolve($request->paymentModule)->refund($request);
 		}
 		
 		/**
@@ -96,5 +98,25 @@
 		private function resolve(string $module): PaymentProviderInterface {
 			$class = $this->moduleMap[$module] ?? throw new \RuntimeException("No payment provider registered for module '{$module}'");
 			return $this->discover->get($class);
+		}
+		
+		public function exchange(string $transactionId, array $extraData = []): PaymentState {
+			// TODO: Implement exchange() method.
+		}
+		
+		public function getRefunds(string $transactionId): array {
+			// TODO: Implement getRefunds() method.
+		}
+		
+		public static function getMetadata(): array {
+			// TODO: Implement getMetadata() method.
+		}
+		
+		public function getConfig(): array {
+			// TODO: Implement getConfig() method.
+		}
+		
+		public function setConfig(array $config): void {
+			// TODO: Implement setConfig() method.
 		}
 	}

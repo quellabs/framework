@@ -3,7 +3,6 @@
 	namespace Quellabs\Payments\PaypalExpress;
 	
 	use Quellabs\Canvas\Annotations\Route;
-	use Quellabs\Canvas\Configuration\ConfigLoader;
 	use Quellabs\Payments\Contracts\PaymentExchangeException;
 	use Quellabs\Payments\Contracts\PaymentStatus;
 	use Quellabs\SignalHub\Signal;
@@ -14,6 +13,9 @@
 	
 	class PaypalController {
 		
+		/**
+		 * @var Driver Paypal Express driver
+		 */
 		private Driver $paypal;
 		
 		/**
@@ -36,7 +38,7 @@
 		 * Handles the PayPal return URL — called when the buyer completes or cancels at PayPal.
 		 * PayPal appends the checkout token as ?token=EC-XXXXXXXXX and the action as ?action=return|cancel.
 		 * Captures the payment via DoExpressCheckoutPayment and emits the resulting PaymentState.
-		 * @Route("paypal::return_url", fallback="/payment/return/paypal", methods={"GET"})
+		 * @Route("paypal::return_url", fallback="/payment/return/paypal_express", methods={"GET"})
 		 * @see https://developer.paypal.com/docs/classic/express-checkout/integration-guide/ECInstantUpdateAPI/
 		 * @param Request $request
 		 * @return Response
@@ -85,7 +87,7 @@
 		 * payment status updates POSTed by PayPal after a transaction completes or changes state.
 		 * IPN is the authoritative source of payment state and may arrive before or after the
 		 * buyer returns to the return URL, so it must be handled independently.
-		 * @Route("paypal::ipn_url", fallback="/webhooks/paypal", methods={"POST"})
+		 * @Route("paypal::ipn_url", fallback="/webhooks/paypal_express", methods={"POST"})
 		 * @see https://developer.paypal.com/docs/api-basics/notifications/ipn/
 		 * @param Request $request
 		 * @return Response

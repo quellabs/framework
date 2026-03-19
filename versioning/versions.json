@@ -16,9 +16,10 @@
   "canvas-latte": "1.0.2",
   "canvas-plates": "1.0.1",
   "canvas-skeleton": "1.0.10",
-  "canvas-database": "1.0.1",
-  "canvas-payments": "1.0.1",
-  "canvas-payments-contracts": "1.0.2",
-  "canvas-payments-mollie": "1.0.3",
-  "canvas-payments-paypal-express": "1.0.0"
+  "canvas-database": "1.0.2",
+  "canvas-payments": "1.0.2",
+  "canvas-payments-contracts": "1.0.3",
+  "canvas-payments-mollie": "1.0.4",
+  "canvas-payments-paypal": "1.0.0",
+  "canvas-payments-paypal-express": "1.0.1"
 }
