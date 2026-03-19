@@ -30,6 +30,5 @@
 		'cancel_return_url' => 'https://example.com/order/cancelled',
 		
 		// The URL PayPal will POST IPN notifications to.
-		// Must be publicly accessible — localhost will not work.
-		'ipn_url' => 'https://example.com/webhooks/paypal',
+		'ipn_url' => 'https://example.com/webhooks/paypal_express',
 	];
