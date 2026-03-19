@@ -4,6 +4,7 @@
 	
 	use Quellabs\Canvas\Annotations\Route;
 	use Quellabs\Payments\Contracts\PaymentExchangeException;
+	use Quellabs\Payments\Contracts\WebhookValidationException;
 	use Quellabs\Payments\Contracts\PaymentStatus;
 	use Quellabs\SignalHub\Signal;
 	use Symfony\Component\HttpFoundation\JsonResponse;
@@ -98,11 +99,37 @@
 		 * @return Response
 		 */
 		public function handleWebhook(Request $request): Response {
+			try {
+				// Verify the signature and parse the payload into a normalized structure.
+				// Throws WebhookValidationException on any validation failure.
+				$parsed = $this->parseWebhookRequest($request);
+			} catch (WebhookValidationException $exception) {
+				return new JsonResponse($exception->getMessage(), $exception->getStatusCode());
+			}
+			
+			// Only process capture-level events. Other event types (CHECKOUT.ORDER.*, BILLING.*)
+			// are acknowledged with 200 but do not trigger a signal.
+			if (!str_starts_with($parsed['eventType'], 'PAYMENT.CAPTURE.')) {
+				return new JsonResponse("OK");
+			}
+			
+			return $this->processWebhookCapture($parsed['orderId'], $parsed['captureId']);
+		}
+		
+		/**
+		 * Verifies the webhook signature and extracts the capture context from the raw request.
+		 * Reads the raw body, validates the PayPal signature headers, decodes the JSON payload,
+		 * and resolves the order ID from the capture's HATEOAS "up" link.
+		 * @param Request $request
+		 * @return array{payload: array, eventType: string, captureId: string|null, orderId: string|null}
+		 * @throws WebhookValidationException on any validation or verification failure
+		 */
+		private function parseWebhookRequest(Request $request): array {
 			// Read the raw body before any decoding — the signature is computed over the raw bytes
 			$rawBody = $request->getContent();
 			
 			if (empty($rawBody)) {
-				return new JsonResponse("Empty request body", 400);
+				throw new WebhookValidationException("Empty request body");
 			}
 			
 			// Collect and lowercase all PayPal signature headers.
@@ -120,19 +147,18 @@
 			
 			// Reject if the signature cannot be verified — this protects against spoofed requests
 			if (!$this->paypal->verifyWebhookSignature($headers, $rawBody)) {
-				return new JsonResponse("Webhook signature verification failed", 400);
+				throw new WebhookValidationException("Webhook signature verification failed");
 			}
 			
+			// Validate the body is JSON
 			$payload   = json_decode($rawBody, true);
-			$eventType = $payload['event_type'] ?? '';
 			
-			// Only process capture-level events. Other event types (CHECKOUT.ORDER.*, BILLING.*)
-			// are acknowledged with 200 but do not trigger a signal.
-			if (!str_starts_with($eventType, 'PAYMENT.CAPTURE.')) {
-				return new JsonResponse("OK");
+			// Validate the body is JSON
+			if (json_last_error() !== JSON_ERROR_NONE) {
+				throw new WebhookValidationException("Invalid JSON");
 			}
 			
-			// The capture resource is nested in the webhook payload
+			// Extract the capture resource and its ID
 			$captureResource = $payload['resource'] ?? [];
 			$captureId       = $captureResource['id'] ?? null;
 			
@@ -148,12 +174,33 @@
 				}
 			}
 			
+			return [
+				'payload'   => $payload,
+				'eventType' => $payload['event_type'] ?? '',
+				'captureId' => $captureId,
+				'orderId'   => $orderId,
+			];
+		}
+		
+		/**
+		 * Processes a verified PAYMENT.CAPTURE.* webhook event.
+		 *
+		 * Calls the payment exchange with the resolved order and capture IDs,
+		 * emits the resulting PaymentState to subscribers, and returns a 200 OK.
+		 * Returns 500 on exchange failure so PayPal retries with exponential back-off.
+		 *
+		 * @param string|null $orderId   The order ID resolved from the capture's HATEOAS "up" link
+		 * @param string|null $captureId The capture ID from the webhook resource payload
+		 * @return Response
+		 */
+		private function processWebhookCapture(?string $orderId, ?string $captureId): Response {
+			// Acknowledge but skip — we cannot reconstruct the order context without the ID
 			if (empty($orderId)) {
-				// Acknowledge but log — we cannot reconstruct the order context without the ID
 				return new JsonResponse("OK");
 			}
 			
 			try {
+				// Call the driver's exchange to convert raw data to PaymentState
 				$response = $this->paypal->exchange($orderId, [
 					'action'    => 'webhook',
 					'captureId' => $captureId,
@@ -162,6 +209,7 @@
 				// Notify listeners (e.g. order management) of the updated payment state
 				$this->signal->emit($response);
 				
+				// Send OK
 				return new JsonResponse("OK");
 			} catch (PaymentExchangeException $exception) {
 				// Return 500 so PayPal retries — the failure was on our side, not a bad payload

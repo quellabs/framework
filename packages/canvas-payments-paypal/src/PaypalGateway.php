@@ -55,6 +55,208 @@
 		}
 		
 		/**
+		 * Creates a new PayPal order and returns its ID, which serves as the checkout token.
+		 * Equivalent to NVP SetExpressCheckout.
+		 * @see https://developer.paypal.com/docs/api/orders/v2/#orders_create
+		 * @param float  $value        Payment amount in major units (e.g. 12.50)
+		 * @param string $description  Order description shown on the PayPal checkout page
+		 * @param string $currency     ISO 4217 currency code (default: EUR)
+		 * @param string $brandName    Optional brand name shown on the PayPal checkout page
+		 * @return array
+		 */
+		public function createOrder(float $value, string $description, string $currency = "EUR", string $brandName = ""): array {
+			$experienceContext = array_filter([
+				'payment_method_preference' => $this->m_account_optional ? 'IMMEDIATE_PAYMENT_REQUIRED' : 'UNRESTRICTED',
+				'user_action'               => 'PAY_NOW',
+				'return_url'                => $this->m_return_url,
+				'cancel_url'                => $this->m_cancel_url,
+				'brand_name'                => $brandName ?: null,
+			]);
+			
+			$body = [
+				'intent'         => 'CAPTURE',
+				'payment_source' => [
+					'paypal' => [
+						'experience_context' => $experienceContext,
+					],
+				],
+				'purchase_units' => [[
+					'amount'      => [
+						'currency_code' => $currency,
+						'value'         => number_format($value, 2, '.', ''),
+					],
+					'description' => $description,
+				]],
+			];
+			
+			return $this->sendRequest('POST', '/v2/checkout/orders', $body);
+		}
+		
+		/**
+		 * Retrieves the current state of an order.
+		 * Equivalent to NVP GetExpressCheckoutDetails.
+		 * @see https://developer.paypal.com/docs/api/orders/v2/#orders_get
+		 * @param string $orderId The order ID returned by createOrder
+		 * @return array
+		 */
+		public function getOrder(string $orderId): array {
+			if (empty($orderId)) {
+				return ['request' => ['result' => 0, 'errorId' => 'MISSING_ORDER_ID', 'errorMessage' => 'Missing order ID']];
+			}
+			
+			return $this->sendRequest('GET', '/v2/checkout/orders/' . urlencode($orderId));
+		}
+		
+		/**
+		 * Captures payment for an approved order.
+		 * Equivalent to NVP DoExpressCheckoutPayment.
+		 * @see https://developer.paypal.com/docs/api/orders/v2/#orders_capture
+		 * @param string $orderId         The order ID returned by createOrder
+		 * @param string $idempotencyKey  Unique key to make this request safely retryable
+		 * @return array
+		 */
+		public function captureOrder(string $orderId, string $idempotencyKey): array {
+			// Content-Type must be application/json but the body can be empty for a simple capture.
+			// PayPal still requires the header to be present, so we pass an empty body.
+			return $this->sendRequest('POST', '/v2/checkout/orders/' . urlencode($orderId) . '/capture', [], [
+				'PayPal-Request-Id' => $idempotencyKey,
+			]);
+		}
+		
+		/**
+		 * Retrieves details for a capture, including refunded amounts.
+		 * Equivalent to NVP GetTransactionDetails.
+		 * @see https://developer.paypal.com/docs/api/payments/v2/#captures_get
+		 * @param string $captureId The capture ID from captureOrder (purchase_units[0].payments.captures[0].id)
+		 * @return array
+		 */
+		public function getCapture(string $captureId): array {
+			return $this->sendRequest('GET', '/v2/payments/captures/' . urlencode($captureId));
+		}
+		
+		/**
+		 * Refunds a captured payment, either fully or partially.
+		 * Equivalent to NVP RefundTransaction.
+		 * @see https://developer.paypal.com/docs/api/payments/v2/#captures_refund
+		 * @param string      $captureId      The capture ID to refund
+		 * @param float|null  $value          Refund amount in major units, or null for a full refund
+		 * @param string|null $currencyType   ISO 4217 currency code, required when $value is set
+		 * @param string      $note           Human-readable reason for the refund, shown to the buyer
+		 * @param string      $idempotencyKey Unique key to make this request safely retryable
+		 * @return array
+		 */
+		public function refund(string $captureId, ?float $value, ?string $currencyType, string $note, string $idempotencyKey): array {
+			// Add payment note
+			$body = [
+				'note_to_payer' => substr($note, 0, 255)
+			];
+			
+			// Omitting the amount field triggers a full refund on PayPal's side
+			if ($value !== null && $currencyType !== null) {
+				$body['amount'] = [
+					'value'         => number_format($value, 2, '.', ''),
+					'currency_code' => $currencyType,
+				];
+			}
+			
+			// Call the gateway
+			return $this->sendRequest('POST', '/v2/payments/captures/' . urlencode($captureId) . '/refund', $body, [
+				'PayPal-Request-Id' => $idempotencyKey,
+			]);
+		}
+		
+		/**
+		 * Returns all refunds issued for a given capture.
+		 * Equivalent to NVP TransactionSearch + type filter.
+		 * @see https://developer.paypal.com/docs/api/payments/v2/#captures_get (refunds are nested in the capture response)
+		 * @see https://developer.paypal.com/docs/api/payments/v2/#refunds_get
+		 * @param string $captureId The capture ID
+		 * @return array Normalized result; on success 'response' is an array of refund objects
+		 */
+		public function getRefundsForCapture(string $captureId): array {
+			// Step 1: Fetch the capture — refund IDs are embedded under purchase_units[0].payments.refunds
+			$capture = $this->getCapture($captureId);
+			
+			if ($capture['request']['result'] == 0) {
+				return $capture;
+			}
+			
+			// Step 2: Extract the list of refund stubs from the capture response
+			$refundLinks = $capture['response']['purchase_units'][0]['payments']['refunds'] ?? [];
+			
+			if (empty($refundLinks)) {
+				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => []];
+			}
+			
+			// Step 3: Fetch each refund individually — the stubs only contain an ID and a link,
+			// not the full details (amount, currency, status) needed by the caller
+			$refunds = [];
+			
+			foreach ($refundLinks as $refundStub) {
+				$result = $this->sendRequest('GET', '/v2/payments/refunds/' . urlencode($refundStub['id']));
+				
+				if ($result['request']['result'] == 0) {
+					return $result;
+				}
+				
+				$refunds[] = $result['response'];
+			}
+			
+			return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $refunds];
+		}
+		
+		/**
+		 * Verifies a PayPal webhook notification by validating its signature headers.
+		 * Replaces the NVP IPN echo-back verification mechanism.
+		 * The webhook_id from your PayPal app settings is required to prevent replay attacks
+		 * from other apps sending genuine but unrelated PayPal webhook payloads.
+		 * @see https://developer.paypal.com/docs/api/webhooks/v1/#verify-webhook-signature_post
+		 * @param array  $headers     The HTTP request headers (lowercased keys expected)
+		 * @param string $rawBody     The raw, unmodified request body string
+		 * @return bool True if the webhook is genuine, false otherwise
+		 */
+		public function verifyWebhookSignature(array $headers, string $rawBody): bool {
+			// PayPal's signature verification requires these five headers.
+			// If any are missing the payload is malformed — reject immediately.
+			$required = [
+				'paypal-auth-algo',
+				'paypal-cert-url',
+				'paypal-transmission-id',
+				'paypal-transmission-sig',
+				'paypal-transmission-time',
+			];
+			
+			// Validate all headers are present
+			foreach ($required as $key) {
+				if (empty($headers[$key])) {
+					return false;
+				}
+			}
+			
+			// Build body
+			$body = [
+				'auth_algo'         => $headers['paypal-auth-algo'],
+				'cert_url'          => $headers['paypal-cert-url'],
+				'transmission_id'   => $headers['paypal-transmission-id'],
+				'transmission_sig'  => $headers['paypal-transmission-sig'],
+				'transmission_time' => $headers['paypal-transmission-time'],
+				'webhook_id'        => $this->m_webhook_id,
+				'webhook_event'     => json_decode($rawBody, true),
+			];
+			
+			// Call API to verify webhook signature
+			$result = $this->sendRequest('POST', '/v1/notifications/verify-webhook-signature', $body);
+			
+			// If this call failed, return false
+			if ($result['request']['result'] == 0) {
+				return false;
+			}
+			
+			// PayPal returns "SUCCESS" or "FAILURE"
+			return ($result['response']['verification_status'] ?? '') === 'SUCCESS';
+		}
+		
+		/**
 		 * Returns a valid OAuth2 access token, refreshing it if expired.
 		 * PayPal access tokens expire after 32400 seconds (9 hours) but we treat
 		 * them as expired 60 seconds early to avoid clock-skew edge cases.
@@ -157,203 +359,5 @@
 			} catch (\Exception|TransportExceptionInterface|ClientExceptionInterface|RedirectionExceptionInterface|ServerExceptionInterface $e) {
 				return ['request' => ['result' => 0, 'errorId' => (string)$e->getCode(), 'errorMessage' => $e->getMessage()]];
 			}
-		}
-		
-		/**
-		 * Creates a new PayPal order and returns its ID, which serves as the checkout token.
-		 * Equivalent to NVP SetExpressCheckout.
-		 * @see https://developer.paypal.com/docs/api/orders/v2/#orders_create
-		 * @param float  $value        Payment amount in major units (e.g. 12.50)
-		 * @param string $description  Order description shown on the PayPal checkout page
-		 * @param string $currency     ISO 4217 currency code (default: EUR)
-		 * @param string $brandName    Optional brand name shown on the PayPal checkout page
-		 * @return array
-		 */
-		public function createOrder(float $value, string $description, string $currency = "EUR", string $brandName = ""): array {
-			$experienceContext = array_filter([
-				'payment_method_preference' => $this->m_account_optional ? 'IMMEDIATE_PAYMENT_REQUIRED' : 'UNRESTRICTED',
-				'user_action'               => 'PAY_NOW',
-				'return_url'                => $this->m_return_url,
-				'cancel_url'                => $this->m_cancel_url,
-				'brand_name'                => $brandName ?: null,
-			]);
-			
-			$body = [
-				'intent'         => 'CAPTURE',
-				'payment_source' => [
-					'paypal' => [
-						'experience_context' => $experienceContext,
-					],
-				],
-				'purchase_units' => [[
-					'amount'      => [
-						'currency_code' => $currency,
-						'value'         => number_format($value, 2, '.', ''),
-					],
-					'description' => $description,
-				]],
-			];
-			
-			return $this->sendRequest('POST', '/v2/checkout/orders', $body);
-		}
-		
-		/**
-		 * Retrieves the current state of an order.
-		 * Equivalent to NVP GetExpressCheckoutDetails.
-		 * @see https://developer.paypal.com/docs/api/orders/v2/#orders_get
-		 * @param string $orderId The order ID returned by createOrder
-		 * @return array
-		 */
-		public function getOrder(string $orderId): array {
-			if (empty($orderId)) {
-				return ['request' => ['result' => 0, 'errorId' => 'MISSING_ORDER_ID', 'errorMessage' => 'Missing order ID']];
-			}
-			
-			return $this->sendRequest('GET', '/v2/checkout/orders/' . urlencode($orderId));
-		}
-
-		/**
-		 * Captures payment for an approved order.
-		 * Equivalent to NVP DoExpressCheckoutPayment.
-		 * @see https://developer.paypal.com/docs/api/orders/v2/#orders_capture
-		 * @param string $orderId         The order ID returned by createOrder
-		 * @param string $idempotencyKey  Unique key to make this request safely retryable
-		 * @return array
-		 */
-		public function captureOrder(string $orderId, string $idempotencyKey): array {
-			// Content-Type must be application/json but the body can be empty for a simple capture.
-			// PayPal still requires the header to be present, so we pass an empty body.
-			return $this->sendRequest('POST', '/v2/checkout/orders/' . urlencode($orderId) . '/capture', [], [
-				'PayPal-Request-Id' => $idempotencyKey,
-			]);
-		}
-
-		/**
-		 * Retrieves details for a capture, including refunded amounts.
-		 * Equivalent to NVP GetTransactionDetails.
-		 * @see https://developer.paypal.com/docs/api/payments/v2/#captures_get
-		 * @param string $captureId The capture ID from captureOrder (purchase_units[0].payments.captures[0].id)
-		 * @return array
-		 */
-		public function getCapture(string $captureId): array {
-			return $this->sendRequest('GET', '/v2/payments/captures/' . urlencode($captureId));
-		}
-		
-		/**
-		 * Refunds a captured payment, either fully or partially.
-		 * Equivalent to NVP RefundTransaction.
-		 * @see https://developer.paypal.com/docs/api/payments/v2/#captures_refund
-		 * @param string      $captureId      The capture ID to refund
-		 * @param float|null  $value          Refund amount in major units, or null for a full refund
-		 * @param string|null $currencyType   ISO 4217 currency code, required when $value is set
-		 * @param string      $note           Human-readable reason for the refund, shown to the buyer
-		 * @param string      $idempotencyKey Unique key to make this request safely retryable
-		 * @return array
-		 */
-		public function refund(string $captureId, ?float $value, ?string $currencyType, string $note, string $idempotencyKey): array {
-			// Add payment note
-			$body = [
-				'note_to_payer' => substr($note, 0, 255)
-			];
-
-			// Omitting the amount field triggers a full refund on PayPal's side
-			if ($value !== null && $currencyType !== null) {
-				$body['amount'] = [
-					'value'         => number_format($value, 2, '.', ''),
-					'currency_code' => $currencyType,
-				];
-			}
-
-			// Call the gateway
-			return $this->sendRequest('POST', '/v2/payments/captures/' . urlencode($captureId) . '/refund', $body, [
-				'PayPal-Request-Id' => $idempotencyKey,
-			]);
-		}
-
-		/**
-		 * Returns all refunds issued for a given capture.
-		 * Equivalent to NVP TransactionSearch + type filter.
-		 * @see https://developer.paypal.com/docs/api/payments/v2/#captures_get (refunds are nested in the capture response)
-		 * @see https://developer.paypal.com/docs/api/payments/v2/#refunds_get
-		 * @param string $captureId The capture ID
-		 * @return array Normalized result; on success 'response' is an array of refund objects
-		 */
-		public function getRefundsForCapture(string $captureId): array {
-			// Step 1: Fetch the capture — refund IDs are embedded under purchase_units[0].payments.refunds
-			$capture = $this->getCapture($captureId);
-
-			if ($capture['request']['result'] == 0) {
-				return $capture;
-			}
-
-			// Step 2: Extract the list of refund stubs from the capture response
-			$refundLinks = $capture['response']['purchase_units'][0]['payments']['refunds'] ?? [];
-
-			if (empty($refundLinks)) {
-				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => []];
-			}
-
-			// Step 3: Fetch each refund individually — the stubs only contain an ID and a link,
-			// not the full details (amount, currency, status) needed by the caller
-			$refunds = [];
-
-			foreach ($refundLinks as $refundStub) {
-				$result = $this->sendRequest('GET', '/v2/payments/refunds/' . urlencode($refundStub['id']));
-
-				if ($result['request']['result'] == 0) {
-					return $result;
-				}
-
-				$refunds[] = $result['response'];
-			}
-
-			return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $refunds];
-		}
-
-		/**
-		 * Verifies a PayPal webhook notification by validating its signature headers.
-		 * Replaces the NVP IPN echo-back verification mechanism.
-		 * The webhook_id from your PayPal app settings is required to prevent replay attacks
-		 * from other apps sending genuine but unrelated PayPal webhook payloads.
-		 * @see https://developer.paypal.com/docs/api/webhooks/v1/#verify-webhook-signature_post
-		 * @param array  $headers     The HTTP request headers (lowercased keys expected)
-		 * @param string $rawBody     The raw, unmodified request body string
-		 * @return bool True if the webhook is genuine, false otherwise
-		 */
-		public function verifyWebhookSignature(array $headers, string $rawBody): bool {
-			// PayPal's signature verification requires these five headers.
-			// If any are missing the payload is malformed — reject immediately.
-			$required = [
-				'paypal-auth-algo',
-				'paypal-cert-url',
-				'paypal-transmission-id',
-				'paypal-transmission-sig',
-				'paypal-transmission-time',
-			];
-			
-			foreach ($required as $key) {
-				if (empty($headers[$key])) {
-					return false;
-				}
-			}
-			
-			$body = [
-				'auth_algo'         => $headers['paypal-auth-algo'],
-				'cert_url'          => $headers['paypal-cert-url'],
-				'transmission_id'   => $headers['paypal-transmission-id'],
-				'transmission_sig'  => $headers['paypal-transmission-sig'],
-				'transmission_time' => $headers['paypal-transmission-time'],
-				'webhook_id'        => $this->m_webhook_id,
-				'webhook_event'     => json_decode($rawBody, true),
-			];
-			
-			$result = $this->sendRequest('POST', '/v1/notifications/verify-webhook-signature', $body);
-			
-			if ($result['request']['result'] == 0) {
-				return false;
-			}
-			
-			// PayPal returns "SUCCESS" or "FAILURE"
-			return ($result['response']['verification_status'] ?? '') === 'SUCCESS';
 		}
 	}
