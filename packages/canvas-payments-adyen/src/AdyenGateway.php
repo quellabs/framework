@@ -7,21 +7,31 @@
 	use Symfony\Contracts\HttpClient\Exception\RedirectionExceptionInterface;
 	use Symfony\Contracts\HttpClient\Exception\ServerExceptionInterface;
 	use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
+	use Symfony\Contracts\HttpClient\HttpClientInterface;
 	
 	/**
 	 * Low-level wrapper around the Adyen Checkout REST API (v71).
 	 * Handles raw HTTP communication, authentication, and response normalisation.
-	 * All methods return a normalised array:
+	 * All methods return a normalized array:
 	 *   ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => [...]]
 	 *   ['request' => ['result' => 0, 'errorId' => <code>, 'errorMessage' => <msg>]]
 	 * @see https://docs.adyen.com/api-explorer/Checkout/71/overview
 	 */
 	class AdyenGateway {
 		
+		// Adyen Checkout API version — update here when migrating to a newer version.
 		private const CHECKOUT_VERSION = 'v71';
 		
+		/** @var HttpClientInterface // Shared HTTP client instance */
+		private HttpClientInterface $client;
+		
+		/** @var string Test or live endpoint, resolved from config at construction */
 		private string $baseUrl;
+		
+		/** @var string X-API-Key header value for all requests */
 		private string $apiKey;
+		
+		/** @var string Identifies which merchant account processes the payment */
 		private string $merchantAccount;
 		
 		/**
@@ -31,7 +41,8 @@
 		public function __construct(Driver $driver) {
 			$config = $driver->getConfig();
 			
-			$this->apiKey          = $config['api_key'] ?? '';
+			$this->client = HttpClient::create();
+			$this->apiKey = $config['api_key'] ?? '';
 			$this->merchantAccount = $config['merchant_account'] ?? '';
 			
 			// Live endpoint prefix differs per merchant; for testing the test endpoint is fixed.
@@ -40,26 +51,26 @@
 			if ($config['test_mode']) {
 				$this->baseUrl = 'https://checkout-test.adyen.com/' . self::CHECKOUT_VERSION;
 			} else {
-				$livePrefix    = $config['live_endpoint_prefix'] ?? '';
+				$livePrefix = $config['live_endpoint_prefix'] ?? '';
 				$this->baseUrl = "https://{$livePrefix}-checkout-live.adyenpayments.com/checkout/" . self::CHECKOUT_VERSION;
 			}
 		}
 		
 		/**
-		 * Creates an Adyen payment session (Sessions flow).
-		 * The returned sessionId + sessionData are passed to the front-end Drop-in component.
-		 * @see https://docs.adyen.com/api-explorer/Checkout/71/post/sessions
+		 * Creates an Adyen Pay by Link hosted payment page.
+		 * Returns a url the shopper is redirected to. After payment, Adyen redirects them
+		 * back to the returnUrl with ?redirectResult= appended.
+		 * @see https://docs.adyen.com/unified-commerce/pay-by-link/create-payment-links/api
 		 * @param array $payload Request body — must include merchantAccount, amount, reference, returnUrl
 		 * @return array
 		 */
-		public function createSession(array $payload): array {
-			return $this->post('/sessions', $payload);
+		public function createPaymentLink(array $payload): array {
+			return $this->post('/paymentLinks', $payload);
 		}
 		
 		/**
-		 * Submits a redirectResult returned by the Drop-in after a payment redirect.
-		 * Required for payment methods that redirect the shopper away from your site
-		 * (e.g. iDEAL, 3DS redirect). Not needed when Drop-in handles the entire flow inline.
+		 * Resolves the final payment status after the shopper returns from the hosted payment page.
+		 * Adyen appends ?redirectResult= to the returnUrl — submit it here to get the resultCode.
 		 * @see https://docs.adyen.com/api-explorer/Checkout/71/post/payments/details
 		 * @param array $payload Must contain details['redirectResult'], optionally paymentData
 		 * @return array
@@ -79,7 +90,7 @@
 		public function getPaymentMethods(array $payload): array {
 			return $this->post('/paymentMethods', $payload);
 		}
-
+		
 		/**
 		 * Refunds a previously captured payment.
 		 * Adyen returns status='received' immediately; the final outcome arrives via a REFUND webhook.
@@ -138,8 +149,8 @@
 				$this->escapeHmacValue((string)($notification['success'] ?? '')),
 			]);
 			
-			$binaryKey       = pack('H*', $hmacKey);
-			$expectedRaw     = hash_hmac('sha256', $signingString, $binaryKey, true);
+			$binaryKey = pack('H*', $hmacKey);
+			$expectedRaw = hash_hmac('sha256', $signingString, $binaryKey, true);
 			$expectedEncoded = base64_encode($expectedRaw);
 			
 			return hash_equals($expectedEncoded, $receivedSignature);
@@ -163,10 +174,9 @@
 		 * @return array
 		 */
 		private function post(string $endpoint, array $payload): array {
-			$client = HttpClient::create();
 			
 			try {
-				$response = $client->request('POST', $this->baseUrl . $endpoint, [
+				$response = $this->client->request('POST', $this->baseUrl . $endpoint, [
 					'headers' => [
 						'Content-Type' => 'application/json',
 						'X-API-Key'    => $this->apiKey,
@@ -175,18 +185,18 @@
 				]);
 				
 				$statusCode = $response->getStatusCode();
-				$body       = json_decode($response->getContent(false), true);
+				$body = json_decode($response->getContent(false), true);
 				
 				// Adyen returns HTTP 4xx/5xx for API-level errors, with a JSON body containing
 				// 'errorCode' and 'message'. A 2xx response always indicates the request was accepted.
 				if ($statusCode >= 400) {
-					$errorCode    = $body['errorCode'] ?? $statusCode;
+					$errorCode = $body['errorCode'] ?? $statusCode;
 					$errorMessage = $body['message'] ?? "HTTP {$statusCode}";
 					return ['request' => ['result' => 0, 'errorId' => $errorCode, 'errorMessage' => $errorMessage]];
 				}
 				
 				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $body];
-			} catch (\Exception|TransportExceptionInterface|ClientExceptionInterface|RedirectionExceptionInterface|ServerExceptionInterface $e) {
+			} catch (\Throwable $e) {
 				// Network or HTTP-level failure — the request never reached Adyen or couldn't be read
 				return ['request' => ['result' => 0, 'errorId' => $e->getCode(), 'errorMessage' => $e->getMessage()]];
 			}

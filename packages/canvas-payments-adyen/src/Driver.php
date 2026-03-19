@@ -93,7 +93,6 @@
 				'test_mode'         => false,
 				'api_key'           => '',
 				'merchant_account'  => '',
-				'client_key'        => '',
 				'hmac_key'          => '',
 				'brand_name'        => '',
 				'return_url'        => '',
@@ -158,11 +157,11 @@
 		}
 
 		/**
-		 * Initiates a new Adyen payment session using the Sessions flow.
-		 * Creates a server-side session via POST /checkout/v71/sessions. The returned
-		 * sessionId and sessionData are handed to the front-end Drop-in component, which
-		 * handles the payment UI and 3DS entirely — no server-side capture step is needed.
-		 * @see https://docs.adyen.com/api-explorer/Checkout/71/post/sessions
+		 * Initiates a payment using Adyen Pay by Link.
+		 * Creates a hosted payment page via POST /paymentLinks and returns its URL.
+		 * The shopper is redirected to an Adyen-hosted page to complete payment,
+		 * then returned to return_url with ?redirectResult= appended.
+		 * @see https://docs.adyen.com/unified-commerce/pay-by-link/create-payment-links/api
 		 * @param PaymentRequest $request
 		 * @return InitiateResult
 		 * @throws PaymentInitiationException
@@ -183,14 +182,10 @@
 				'shopperEmail'    => $request->billingAddress?->email ?: null,
 				'shopperLocale'   => 'nl-NL',
 				'countryCode'     => $request->billingAddress?->country ?: null,
-				'channel'         => 'Web',
-				'metadata'        => [
-					'brandName' => $config['brand_name'] ?: null,
-				],
 			], fn($v) => $v !== null && $v !== '' && $v !== []);
 			
-			// Create a new payment session
-			$result = $this->getGateway()->createSession($payload);
+			// Create a new payment link
+			$result = $this->getGateway()->createPaymentLink($payload);
 			
 			// If that failed, throw an error
 			if ($result['request']['result'] === 0) {
@@ -200,19 +195,11 @@
 			// Grab the response
 			$response = $result['response'];
 			
-			// The front-end Drop-in is initialised with sessionId + sessionData and drives
-			// the entire payment flow — including any redirects for iDEAL, Sofort, etc.
-			// The returnUrl was passed in the session payload above; the Drop-in uses it
-			// internally. There is no redirect URL to hand back to the caller here.
+			// Return the result
 			return new InitiateResult(
-				'adyen',
-				$response['id'],
-				null,
-				[
-					'sessionData' => $response['sessionData'],
-					'clientKey'   => $config['client_key'],
-					'environment' => $config['test_mode'] ? 'test' : 'live',
-				]
+				provider: 'adyen',
+				transactionId: $response['id'],
+				redirectUrl: $response['url'],
 			);
 		}
 		
@@ -276,31 +263,35 @@
 		 * @throws PaymentRefundException
 		 */
 		public function refund(RefundRequest $request): RefundResult {
-			// pspReference of the original payment must be stored in PaymentState::$metadata['pspReference']
-			$pspReference = $request->metadata['pspReference'] ?? null;
+			// captureId of the original payment must be stored in PaymentState::$metadata['captureId']
+			$captureId = $request->metadata['captureId'] ?? null;
 			
-			if (empty($pspReference)) {
+			// If none given, throw error
+			if (empty($captureId)) {
 				throw new PaymentRefundException(
 					'adyen',
 					0,
-					"Cannot refund: pspReference is missing from metadata. " .
-					"Ensure your payment_exchange listener persists PaymentState::\$metadata['pspReference']."
+					"Cannot refund: captureId is missing from metadata. " .
+					"Ensure your payment_exchange listener persists PaymentState::\$metadata['captureId']."
 				);
 			}
 			
+			// Call the API to initiate the refund
 			$result = $this->getGateway()->refundPayment(
-				$pspReference,
+				$captureId,
 				$request->amount,
 				$request->currency,
 				$request->note ?? ''
 			);
 			
+			// If that failed throw an error
 			if ($result['request']['result'] === 0) {
 				throw new PaymentRefundException('adyen', $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 			
 			// Adyen returns status='received' immediately; the actual outcome arrives via REFUND webhook.
-			// We return the refund pspReference so callers can correlate the incoming webhook.
+			// Adyen assigns the refund its own pspReference, distinct from the original payment's.
+			// We store it as refundId so callers can correlate the incoming REFUND webhook.
 			return new RefundResult(
 				provider: 'adyen',
 				transactionId: $request->transactionId,
@@ -355,14 +346,18 @@
 			$valuePaid = $response['amount']['value'] ?? 0;
 			
 			$state = match ($resultCode) {
-				// Payment was authorised and (for ecommerce with auto-capture) funds will be collected.
+				// Payment was authorized and (for ecommerce with auto-capture) funds will be collected.
 				'Authorised' => PaymentStatus::Paid,
-				// Shopper cancelled before completing — treat as a clean cancellation.
+				
+				// Shopper canceled before completing — treat as a clean cancellation.
 				'Cancelled' => PaymentStatus::Canceled,
+				
 				// Payment was refused by the issuer or Adyen risk engine.
 				'Refused', 'Error' => PaymentStatus::Failed,
+				
 				// Asynchronous payment methods (e.g. bank transfers, vouchers) — await webhook.
 				'Pending', 'Received' => PaymentStatus::Pending,
+				
 				// presentToShopper, identifyShopper, challengeShopper: should not reach the return URL
 				// in the Sessions flow, but treat as pending to avoid data loss.
 				default => PaymentStatus::Pending,
@@ -377,7 +372,7 @@
 				internalState: $resultCode,
 				currency: $currency,
 				metadata: array_filter([
-					'pspReference'  => $pspReference,
+					'captureId'     => $pspReference,
 					'paymentMethod' => $response['paymentMethod']['type'] ?? null,
 					'refusalReason' => $response['refusalReason'] ?? null,
 				], fn($v) => $v !== null),
@@ -400,11 +395,13 @@
 			$currency = $notification['amount']['currency'] ?? '';
 			$value = (int)($notification['amount']['value'] ?? 0);
 			
+			// Convert adyen raw state to PaymentStatus
 			$state = match (true) {
 				$eventCode === 'AUTHORISATION' && $success => PaymentStatus::Paid,
 				$eventCode === 'AUTHORISATION' && !$success => PaymentStatus::Failed,
 				$eventCode === 'CANCELLATION' && $success => PaymentStatus::Canceled,
 				$eventCode === 'REFUND' && $success => PaymentStatus::Refunded,
+				
 				// CAPTURE and CAPTURE_FAILED are only relevant when using manual capture.
 				// In the default Sessions flow with auto-capture, AUTHORISATION is the terminal event.
 				$eventCode === 'CAPTURE' && $success => PaymentStatus::Paid,
@@ -412,31 +409,35 @@
 				default => PaymentStatus::Pending,
 			};
 			
-			$valueRefunded = 0;
 			
-			if ($eventCode === 'REFUND' && $success) {
-				// For REFUND webhooks the amount field reflects the refunded amount.
-				$valueRefunded = $value;
-				$value = 0;
-			}
+			// For REFUND webhooks the amount field is the refunded amount, not the original paid amount.
+			// valuePaid is unknown — use null to signal that the caller should preserve the original
+			// paid amount from their stored AUTHORISATION state rather than overwrite it.
+			$valueRefunded = ($eventCode === 'REFUND' && $success) ? $value : 0;
+			
+			// Set valuePaid to null (unknown) on refund. Adyen does not pass paid value
+			$valuePaid = match(true) {
+				$eventCode === 'REFUND'        => null,
+				$state === PaymentStatus::Paid => $value,
+				default                        => 0,
+			};
 			
 			return new PaymentState(
 				provider: 'adyen',
 				transactionId: $transactionId,
 				state: $state,
-				valuePaid: in_array($state, [PaymentStatus::Paid]) ? $value : 0,
+				valuePaid: $valuePaid,
 				valueRefunded: $valueRefunded,
 				internalState: $eventCode,
 				currency: $currency,
 				metadata: array_filter([
-					'pspReference'      => $pspReference,
+					'captureId'         => $pspReference,
 					'merchantReference' => $notification['merchantReference'] ?? null,
 					'paymentMethod'     => $notification['paymentMethod'] ?? null,
 					'reason'            => $notification['reason'] ?? null,
 				], fn($v) => $v !== null),
 			);
 		}
-		
 		
 		/**
 		 * Normalizes an Adyen issuer list into the flat shape expected by the frontend.
@@ -454,6 +455,7 @@
 				'name'     => $issuer['name'],
 				'issuerId' => $issuer['id'],
 				'swift'    => $issuer['id'],
+				
 				// Adyen does not return icons in the issuer list — null here is intentional.
 				// To display bank logos, fetch them from:
 				// https://checkoutshopper-live.adyen.com/checkoutshopper/images/logos/<id>.svg

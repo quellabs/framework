@@ -13,10 +13,6 @@
 		// Found in your Customer Area — the value shown next to the account switcher.
 		'merchant_account' => '',
 		
-		// Your Adyen client key — used by the front-end Drop-in component to initialise.
-		// Found in your Customer Area under Developers > API credentials > Client key.
-		'client_key' => '',
-		
 		// HMAC key used to verify incoming webhook signatures.
 		// Generated in your Customer Area under Developers > Webhooks > Edit webhook > HMAC key.
 		// Each webhook endpoint has its own HMAC key.

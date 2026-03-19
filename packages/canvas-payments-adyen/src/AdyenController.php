@@ -4,6 +4,7 @@
 	
 	use Quellabs\Canvas\Annotations\Route;
 	use Quellabs\Payments\Contracts\PaymentExchangeException;
+	use Quellabs\Payments\Contracts\PaymentState;
 	use Quellabs\Payments\Contracts\PaymentStatus;
 	use Quellabs\SignalHub\Signal;
 	use Symfony\Component\HttpFoundation\JsonResponse;
@@ -51,18 +52,22 @@
 		 * @return Response
 		 */
 		public function handleReturn(Request $request): Response {
+			// Extract return parameters passed back by Adyen after the payment flow
 			$sessionId      = $request->query->get('sessionId');
 			$redirectResult = $request->query->get('redirectResult');
 			
+			// Validate sessionId
 			if (empty($sessionId)) {
 				return new JsonResponse("Missing parameter 'sessionId'", 400);
 			}
 			
+			// Validate redirectResult
 			if (empty($redirectResult)) {
 				return new JsonResponse("Missing parameter 'redirectResult'", 400);
 			}
 			
 			try {
+				// Finalize the session and retrieve the resulting payment state
 				$response = $this->adyen->exchange($sessionId, [
 					'action'         => 'return',
 					'redirectResult' => $redirectResult,
@@ -71,16 +76,20 @@
 				// Notify listeners (e.g. order management) of the updated payment state
 				$this->signal->emit($response);
 				
+				// Fetch the adyen configuration
 				$config = $this->adyen->getConfig();
 				
+				// Determine redirect target based on whether the payment was canceled
 				if ($response->state === PaymentStatus::Canceled) {
 					$redirectUrl = $config['cancel_return_url'];
 				} else {
 					$redirectUrl = $config['return_url'];
 				}
 				
+				// Return response
 				return new RedirectResponse($redirectUrl);
 			} catch (PaymentExchangeException $exception) {
+				// Surface Adyen-specific errors with their error ID for traceability
 				return new JsonResponse($exception->getMessage() . ' (' . $exception->getErrorId() . ')', 502);
 			}
 		}
@@ -104,7 +113,13 @@
 		 * @return Response
 		 */
 		public function handleWebhook(Request $request): Response {
+			// Decode the body
 			$body = json_decode($request->getContent(), true);
+			
+			// Return error when that failed
+			if (json_last_error() !== JSON_ERROR_NONE) {
+				return new JsonResponse("Invalid JSON (" . json_last_error_msg() . ")", 400);
+			}
 			
 			// Adyen wraps all notifications in a notificationItems array.
 			// JSON and HTTP POST webhooks contain exactly one item; SOAP may contain up to six.
@@ -114,9 +129,12 @@
 				return new JsonResponse('Missing notificationItems', 400);
 			}
 			
+			// Unwrap notification items
 			foreach ($notificationItems as $item) {
+				// Grab NotificationRequestItem
 				$notification = $item['NotificationRequestItem'] ?? null;
 				
+				// Ignore if it's empty or missing
 				if (empty($notification)) {
 					continue;
 				}
@@ -132,11 +150,13 @@
 				// pspReference is the payment reference; merchantReference is your own order ID.
 				$pspReference = $notification['pspReference'] ?? null;
 				
+				// Ignore if pspReference empty or missing
 				if (empty($pspReference)) {
 					continue;
 				}
 				
 				try {
+					// Call driver to convert raw data to PaymentState
 					$response = $this->adyen->exchange($pspReference, [
 						'action'       => 'webhook',
 						'notification' => $notification,
