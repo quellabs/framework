@@ -3,6 +3,7 @@
 	namespace Quellabs\Payments\Stripe;
 	
 	use Symfony\Component\HttpClient\HttpClient;
+	use Symfony\Contracts\HttpClient\HttpClientInterface;
 	
 	/**
 	 * Low-level wrapper around the Stripe Payment Intents and Checkout Sessions APIs.
@@ -29,7 +30,7 @@
 		private bool    $m_test_mode;
 		private string  $m_return_url;
 		private string  $m_cancel_url;
-		private \Symfony\Contracts\HttpClient\HttpClientInterface $m_client;
+		private HttpClientInterface $m_client;
 		
 		/**
 		 * StripeGateway constructor.
@@ -44,7 +45,7 @@
 			$this->m_verify_ssl     = $config['verify_ssl'];
 			$this->m_return_url     = $config['return_url'] ?? '';
 			$this->m_cancel_url     = $config['cancel_return_url'] ?? '';
-			$this->m_client         = HttpClient::create();
+			$this->m_client         = HttpClient::create(['timeout' => 10]);
 		}
 		
 		/**

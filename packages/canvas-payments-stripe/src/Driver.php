@@ -103,9 +103,9 @@
 			if ($result['request']['result'] === 0) {
 				throw new PaymentInitiationException('stripe', $result['request']['errorId'], $result['request']['errorMessage']);
 			}
-
+			
 			// Extract data
-			$sessionId  = $result['response']['id'];
+			$sessionId = $result['response']['id'];
 			$checkoutUrl = $result['response']['url'];
 			
 			// Validate the existence of checkout url
@@ -126,17 +126,16 @@
 		 * @see https://stripe.com/docs/api/checkout/sessions/retrieve
 		 * @see https://stripe.com/docs/api/payment_intents/retrieve
 		 * @param string $transactionId The Checkout Session ID (cs_*) returned by initiate()
-		 * @param array  $extraData
+		 * @param array $extraData
 		 * @return PaymentState
 		 * @throws PaymentExchangeException
 		 */
 		public function exchange(string $transactionId, array $extraData = []): PaymentState {
-			// Fetch action (if any)
 			$action = $extraData['action'] ?? null;
 			$paymentIntentId = $extraData['paymentIntentId'] ?? null;
 			
-			// Buyer clicked cancel on the Stripe checkout page — no payment was attempted.
-			// Return a canceled state immediately without querying the API.
+			// Branch 1: Buyer explicitly canceled on the Stripe-hosted checkout page.
+			// No API call needed — the absence of any payment attempt is definitive.
 			if ($action === 'cancel') {
 				return new PaymentState(
 					provider: 'stripe',
@@ -149,32 +148,42 @@
 				);
 			}
 			
-			// Webhook events carry a PaymentIntent ID, not a session ID. Stripe does not expose
-			// a way to look up the session from the PaymentIntent, so we query the intent directly.
-			// If paymentIntentId is absent on a webhook the event cannot be processed — throw rather
-			// than fall through to a session lookup with the wrong ID.
+			// Branch 2: Webhook event — requires a PaymentIntent ID, not a session ID.
+			// Stripe offers no reverse lookup from intent to session, so we query the intent directly.
 			if ($action === 'webhook') {
+				// The webhook payload must supply a PaymentIntent ID via extraData; without it
+				// there is no way to identify which payment this event refers to.
 				if (empty($paymentIntentId)) {
 					throw new PaymentExchangeException('stripe', 'MISSING_PAYMENT_INTENT_ID', 'Webhook exchange requires a paymentIntentId in extraData.');
 				}
-			
-				return $this->buildStateFromPaymentIntent($transactionId, $paymentIntentId);
+				
+				// Call the gateway to fetch the payment intent
+				$intentResult = $this->getGateway()->getPaymentIntent($paymentIntentId);
+				
+				// Gateway failure — surface Stripe's error directly rather than swallowing it.
+				if ($intentResult['request']['result'] === 0) {
+					throw new PaymentExchangeException('stripe', $intentResult['request']['errorId'], $intentResult['request']['errorMessage']);
+				}
+				
+				// Use the session ID as transactionId, not the PaymentIntent ID —
+				// the session ID is what initiate() returned to the caller and what they have stored.
+				$intent = $intentResult['response'];
+				$currency = strtoupper($intent['currency'] ?? 'EUR'); // Stripe returns lowercase (e.g. 'eur') — normalize to ISO 4217
+				return $this->mapPaymentIntentToState($transactionId, $intent, $paymentIntentId, $currency);
 			}
 			
-			// Return URL: transactionId is the session ID. Fetch the session with the PaymentIntent
-			// expanded inline to avoid a second round-trip.
+			// Branch 3: Return URL — transactionId is the session ID.
+			// Fetch the session with payment_intent expanded to avoid a second round-trip.
 			$sessionResult = $this->getGateway()->getCheckoutSession($transactionId);
 			
+			// Throw when api call failed
 			if ($sessionResult['request']['result'] === 0) {
 				throw new PaymentExchangeException('stripe', $sessionResult['request']['errorId'], $sessionResult['request']['errorMessage']);
 			}
 			
-			// Stripe Checkout Session statuses:
-			//   open      — the buyer has not yet completed checkout
-			//   complete  — checkout was completed; check payment_intent.status for capture outcome
-			//   expired   — the session expired without the buyer completing checkout
-			$session       = $sessionResult['response'] ?? [];
-			$currency      = strtoupper($session['currency'] ?? 'EUR');
+			// Branch 3a: Session expired before the buyer completed checkout.
+			$session = $sessionResult['response'] ?? [];
+			$currency = strtoupper($session['currency'] ?? 'EUR');
 			$sessionStatus = $session['status'] ?? 'open';
 			
 			if ($sessionStatus === 'expired') {
@@ -189,12 +198,12 @@
 				);
 			}
 			
-			// The payment_intent is expanded on the session response — extract it directly
+			// Branch 3b: Session is open but has no attached PaymentIntent yet —
+			// buyer has not completed checkout.
 			$intent = is_array($session['payment_intent']) ? $session['payment_intent'] : [];
 			$paymentIntentId = $intent['id'] ?? null;
 			
 			if (empty($intent)) {
-				// Session is still open (buyer hasn't completed yet) or intent not expanded
 				return new PaymentState(
 					provider: 'stripe',
 					transactionId: $transactionId,
@@ -206,6 +215,7 @@
 				);
 			}
 			
+			// Branch 3c: Session complete, PaymentIntent present — map intent status to state.
 			return $this->mapPaymentIntentToState($transactionId, $intent, $paymentIntentId, $currency);
 		}
 		
@@ -309,7 +319,7 @@
 		/**
 		 * Verifies a Stripe webhook notification by delegating HMAC signature validation to the gateway.
 		 * @param string $signatureHeader The raw Stripe-Signature header value
-		 * @param string $rawBody         The raw, unmodified request body string
+		 * @param string $rawBody The raw, unmodified request body string
 		 * @return bool
 		 */
 		public function verifyWebhookSignature(string $signatureHeader, string $rawBody): bool {
@@ -325,50 +335,11 @@
 		}
 		
 		/**
-		 * Fetches a PaymentIntent and maps it to a PaymentState.
-		 * Used for webhook actions where the event carries a PaymentIntent ID rather than a session ID.
-		 * @param string $sessionId The Checkout Session ID (cs_*), used as transactionId
-		 * @param string $paymentIntentId The PaymentIntent ID (pi_*)
-		 * @return PaymentState
-		 * @throws PaymentExchangeException
-		 */
-		private function buildStateFromPaymentIntent(string $sessionId, string $paymentIntentId): PaymentState {
-			// Call API to fetch payment intent
-			$result = $this->getGateway()->getPaymentIntent($paymentIntentId);
-			
-			// If that failed, throw
-			if ($result['request']['result'] === 0) {
-				throw new PaymentExchangeException('stripe', $result['request']['errorId'], $result['request']['errorMessage']);
-			}
-		
-			// Fetch the response
-			$intent = $result['response'];
-			
-			// Stripe returns currency in lowercase (e.g. 'eur') — normalize to uppercase to match
-			// the ISO 4217 convention used throughout the contracts layer
-			$currency = strtoupper($intent['currency'] ?? 'EUR');
-			
-			// Use the session ID as the transactionId, not the PaymentIntent ID.
-			// The session ID is what initiate() returned to the caller, so it is what they have
-			// stored. Switching to the PaymentIntent ID here would break any lookup by transactionId.
-			return $this->mapPaymentIntentToState($sessionId, $intent, $paymentIntentId, $currency);
-		}
-		
-		/**
 		 * Maps a Stripe PaymentIntent object to a normalized PaymentState.
-		 *
-		 * PaymentIntent statuses and their meanings:
-		 *   requires_payment_method — no card yet (buyer never completed); treat as Pending
-		 *   requires_confirmation   — intent created but not confirmed; treat as Pending
-		 *   requires_action         — SCA/3DS required; redirect the buyer back to Stripe
-		 *   processing              — funds being captured; treat as Pending (not yet settled)
-		 *   succeeded               — payment captured successfully; treat as Paid
-		 *   canceled                — intent was canceled (no funds moved); treat as Canceled
-		 *
-		 * @param string      $sessionId       Used as transactionId on the returned state
-		 * @param array       $intent          The PaymentIntent object from the Stripe API
+		 * @param string $sessionId Used as transactionId on the returned state
+		 * @param array $intent The PaymentIntent object from the Stripe API
 		 * @param string|null $paymentIntentId Stored in metadata so callers can use it for refunds
-		 * @param string      $currency        ISO 4217 currency code (already uppercased)
+		 * @param string $currency ISO 4217 currency code (already uppercased)
 		 * @return PaymentState
 		 */
 		private function mapPaymentIntentToState(string $sessionId, array $intent, ?string $paymentIntentId, string $currency): PaymentState {
