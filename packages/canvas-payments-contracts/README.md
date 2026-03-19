@@ -1,7 +1,6 @@
 # Canvas Payments Contracts
 
-Shared contracts for the Canvas payments ecosystem. Contains the interfaces and value objects that connect payment
-provider packages to your application.
+Shared contracts for the Canvas payments ecosystem. Contains the interfaces and value objects that connect payment  provider packages to your application.
 
 ## Installation
 
@@ -11,20 +10,20 @@ composer require quellabs/canvas-payments-contracts
 
 ## What's in this package
 
-| Class / Interface            | Description                                            |
-|------------------------------|--------------------------------------------------------|
-| `PaymentProviderInterface`   | Interface all payment provider packages must implement |
-| `PaymentRequest`             | Input for initiating a payment                         |
-| `InitiateResult`             | Result of a successful payment initiation              |
-| `PaymentState`               | Current state of a payment, returned by `exchange()`   |
-| `PaymentStatus`              | Enum of possible payment states                        |
-| `RefundRequest`              | Input for issuing a refund                             |
-| `RefundResult`               | Result of a successful refund                          |
-| `PaymentAddress`             | Billing or shipping address attached to a payment      |
-| `PaymentException`           | Base exception for all payment failures                |
-| `PaymentInitiationException` | Thrown when `initiate()` fails                         |
-| `PaymentRefundException`     | Thrown when `refund()` or `getRefunds()` fails         |
-| `PaymentExchangeException`   | Thrown when `exchange()` fails                         |
+| Class / Interface            | Description                                                  |
+|------------------------------|--------------------------------------------------------------|
+| `PaymentProviderInterface`   | Interface all payment provider packages must implement       |
+| `PaymentRequest`             | Input for initiating a payment                               |
+| `InitiateResult`             | Result of a successful payment initiation                    |
+| `PaymentState`               | Payment snapshot delivered via the `payment_exchange` signal |
+| `PaymentStatus`              | Enum of possible payment states                              |
+| `RefundRequest`              | Input for issuing a refund                                   |
+| `RefundResult`               | Result of a successful refund                                |
+| `PaymentAddress`             | Billing or shipping address attached to a payment            |
+| `PaymentException`           | Base exception for all payment failures                      |
+| `PaymentInitiationException` | Thrown when `initiate()` fails                               |
+| `PaymentRefundException`     | Thrown when `refund()` or `getRefunds()` fails               |
+| `PaymentExchangeException`   | Thrown internally by the controller layer                    |
 
 All amounts are in minor units (e.g. `999` for €9.99). All classes are in the `Quellabs\Payments\Contracts` namespace.
 
@@ -55,6 +54,29 @@ class CheckoutService {
 }
 ```
 
+## PaymentState
+
+`PaymentState` is an immutable snapshot of a payment's current status. Your application receives it by subscribing
+to the `payment_exchange` signal, which is emitted by the controller layer after a return URL visit or webhook.
+
+| Property         | Type            | Description                                                   |
+|------------------|-----------------|---------------------------------------------------------------|
+| `$provider`      | `string`        | Provider identifier, e.g. `'mollie'`, `'paypal'`              |
+| `$transactionId` | `string`        | Provider's unique identifier for this payment                 |
+| `$state`         | `PaymentStatus` | Normalised payment status                                     |
+| `$currency`      | `string`        | ISO 4217 currency code, e.g. `'EUR'`                          |
+| `$valuePaid`     | `int`           | Amount actually captured, in minor units. `0` if not yet paid |
+| `$valueRefunded` | `int`           | Total amount refunded so far, in minor units                  |
+| `$internalState` | `?string`       | Raw status string from the provider, before normalisation     |
+| `$metadata`      | `array`         | Provider-specific data, e.g. `captureId` required for refunds |
+
+`$valuePaid` is only non-zero when `$state` is `PaymentStatus::Paid` or `PaymentStatus::Refunded`. For all other
+states — including `Pending` — it is `0`. Use `$state` to determine whether funds have actually moved, and
+`$valuePaid` to know how much.
+
+To issue a refund after a successful payment, persist `$metadata['captureId']` from the `PaymentState` — it is
+required as `RefundRequest::$transactionId`.
+
 ## Exceptions
 
 All exceptions extend `PaymentException`, which exposes `getProvider(): string` and `getErrorId(): int`. Catch the base
@@ -73,8 +95,8 @@ use Quellabs\Payments\Contracts\PaymentRefundException;
 }
 
 // Or catch specific failures
-} catch (PaymentInitiationException $e) { ... }
-} catch (PaymentRefundException $e) { ... }
+} catch (PaymentInitiationException $e) { ... }  // initiate() failed
+} catch (PaymentRefundException $e) { ... }      // refund() or getRefunds() failed
 ```
 
 ## PaymentStatus values

@@ -34,5 +34,14 @@
     "psr-4": {
       "Quellabs\\Payments\\": "src/"
     }
+  },
+  "extra": {
+    "discover": {
+      "di": {
+        "provider": {
+          "class": "Quellabs\\Payments\\ServiceProvider"
+        }
+      }
+    }
   }
 }
