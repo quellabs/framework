@@ -61,7 +61,10 @@ jobs:
         id: cache-splitsh
         uses: actions/cache@v5
         with:
-          path: /usr/local/bin/splitsh-lite
+          path: |
+            /usr/local/bin/splitsh-lite
+            /usr/local/lib/libgit2.so.1.5
+            /usr/local/lib/libgit2.so
           key: splitsh-lite-${{ runner.os }}-ubuntu2204-libgit2-1.5.0
 
       - name: Install splitsh-lite
@@ -80,6 +83,9 @@ jobs:
           cd /tmp/splitsh-lite
           PKG_CONFIG_PATH=/usr/local/lib/pkgconfig \
             go build -o /usr/local/bin/splitsh-lite github.com/splitsh/lite
+
+      - name: Register libgit2
+        run: sudo ldconfig
 
       - name: Sync package to public repo
         id: sync
