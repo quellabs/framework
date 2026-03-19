@@ -2,7 +2,7 @@
 	
 	namespace Quellabs\DependencyInjection\Provider;
 	
-	use Quellabs\Contracts\Context\MethodContext;
+	use Quellabs\Contracts\Context\MethodContextInterface;
 	
 	/**
 	 * Simple binding provider for cases where you just need interface-to-concrete
@@ -46,14 +46,14 @@
 		 * @param string $className The class name being instantiated (will be the abstract type)
 		 * @param array $dependencies Pre-resolved constructor dependencies from autowiring
 		 * @param array $metadata Additional metadata (unused in simple bindings)
-		 * @param MethodContext|null $methodContext Optional method context (unused in simple bindings)
+		 * @param MethodContextInterface|null $methodContext Optional method context (unused in simple bindings)
 		 * @return object The instantiated concrete class
 		 */
 		public function createInstance(
 			string $className,
 			array $dependencies,
 			array $metadata,
-			?MethodContext $methodContext = null
+			?MethodContextInterface $methodContext = null
 		): object {
 			return $this->concrete;
 		}

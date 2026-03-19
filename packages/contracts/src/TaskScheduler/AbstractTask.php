@@ -139,14 +139,6 @@
 		}
 		
 		/**
-		 * Get default configuration values
-		 * @return array<string, mixed> Default configuration values
-		 */
-		public static function getDefaults(): array {
-			return [];
-		}
-		
-		/**
 		 * Get current configuration
 		 * @return array<string, mixed> Current configuration values
 		 */

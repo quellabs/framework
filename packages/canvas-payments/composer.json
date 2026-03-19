@@ -1,0 +1,47 @@
+{
+  "name": "quellabs/canvas-payments",
+  "description": "Payment router for the Canvas PHP framework. Discovers and routes payment operations to installed provider packages.",
+  "type": "library",
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "Floris van den Berg",
+      "email": "info@quellabs.com"
+    }
+  ],
+  "keywords": [
+    "payments",
+    "router",
+    "discovery",
+    "canvas",
+    "canvas-payments"
+  ],
+  "support": {
+    "email": "support@quellabs.com",
+    "issues": "https://github.com/quellabs/canvas-payments/issues",
+    "forum": "https://github.com/quellabs/canvas-payments/discussions",
+    "wiki": "https://github.com/quellabs/canvas-payments/wiki",
+    "docs": "https://canvasphp.com/docs",
+    "source": "https://github.com/quellabs/canvas-payments"
+  },
+  "require": {
+    "php": "^8.2",
+    "quellabs/discover": "*",
+    "quellabs/contracts": "*",
+    "quellabs/canvas-payments-contracts": "*"
+  },
+  "autoload": {
+    "psr-4": {
+      "Quellabs\\Payments\\": "src/"
+    }
+  },
+  "extra": {
+    "discover": {
+      "di": {
+        "provider": {
+          "class": "Quellabs\\Payments\\ServiceProvider"
+        }
+      }
+    }
+  }
+}

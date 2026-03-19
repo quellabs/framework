@@ -1,0 +1,37 @@
+{
+  "name": "quellabs/canvas-payments-contracts",
+  "description": "Payment gateway contracts and interfaces for the Canvas PHP framework",
+  "type": "library",
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "Floris van den Berg",
+      "email": "info@quellabs.com"
+    }
+  ],
+  "keywords": [
+    "payments",
+    "contracts",
+    "interfaces",
+    "abstractions",
+    "canvas",
+    "canvas-payments"
+  ],
+  "support": {
+    "email": "support@quellabs.com",
+    "issues": "https://github.com/quellabs/canvas-payments-contracts/issues",
+    "forum": "https://github.com/quellabs/canvas-payments-contracts/discussions",
+    "wiki": "https://github.com/quellabs/canvas-payments-contracts/wiki",
+    "docs": "https://canvasphp.php/docs",
+    "source": "https://github.com/quellabs/canvas-payments-contracts"
+  },
+  "require": {
+    "php": "^8.2",
+    "quellabs/contracts": "*"
+  },
+  "autoload": {
+    "psr-4": {
+      "Quellabs\\Payments\\Contracts\\": "src/"
+    }
+  }
+}

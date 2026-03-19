@@ -1,0 +1,66 @@
+{
+  "name": "quellabs/canvas-latte",
+  "description": "Latte template engine integration for the Canvas PHP framework",
+  "keywords": [
+    "canvas-framework",
+    "latte-template",
+    "template-integration",
+    "php-templating"
+  ],
+  "type": "library",
+  "license": "MIT",
+  "homepage": "https://github.com/quellabs/canvas-latte",
+  "support": {
+    "issues": "https://github.com/quellabs/canvas-latte/issues",
+    "source": "https://github.com/quellabs/canvas-latte"
+  },
+  "authors": [
+    {
+      "name": "Quellabs",
+      "email": "info@quellabs.com",
+      "homepage": "https://quellabs.com"
+    }
+  ],
+  "minimum-stability": "stable",
+  "prefer-stable": true,
+  "config": {
+    "platform": {
+      "php": "8.2"
+    },
+    "sort-packages": true,
+    "optimize-autoloader": true,
+    "classmap-authoritative": true,
+    "allow-plugins": {
+      "quellabs/discover": false
+    }
+  },
+  "require": {
+    "latte/latte": "^3.0",
+    "quellabs/dependency-injection": "^1.",
+    "quellabs/contracts": "^1.",
+    "quellabs/sculpt": "^1.",
+    "quellabs/support": "^1."
+  },
+  "autoload": {
+    "psr-4": {
+      "Quellabs\\Canvas\\Latte\\": "src/"
+    }
+  },
+  "extra": {
+    "discover": {
+      "di": {
+        "provider": "Quellabs\\Canvas\\Latte\\ServiceProvider",
+        "config": ["config/latte.php", "config/app.php"]
+      },
+      "sculpt": {
+        "provider": "Quellabs\\Canvas\\Latte\\Sculpt\\ServiceProvider",
+        "config": "config/latte.php"
+      }
+    }
+  },
+  "scripts": {
+    "post-install-cmd": [
+      "php -r \"copy('vendor/quellabs/canvas-latte/config/latte.php', 'config/latte.php');\""
+    ]
+  }
+}
