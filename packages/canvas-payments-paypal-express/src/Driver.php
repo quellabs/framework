@@ -93,7 +93,7 @@
 			);
 			
 			// return error if failed
-			if ($result["request"]["result"] == 0) {
+			if ($result["request"]["result"] === 0) {
 				throw new PaymentInitiationException("paypal_express", $result["request"]["errorId"], $result["request"]["errorMessage"]);
 			}
 			
@@ -129,12 +129,13 @@
 			// No payment was attempted — return a canceled state without querying the API.
 			if (($extraData['action'] ?? null) === 'cancel') {
 				return new PaymentState(
-					provider: "paypal",
+					provider: "paypal_express",
 					transactionId: $transactionId,
 					state: PaymentStatus::Canceled,
+					valuePaid: 0,
 					valueRefunded: 0,
-					valueRefundable: 0,
 					internalState: "cancel",
+					currency: "",
 				);
 			}
 			
@@ -142,7 +143,7 @@
 			$details = $this->getGateway()->getExpressCheckoutDetails($transactionId);
 			
 			// Throw error when that failed
-			if ($details["request"]["result"] == 0) {
+			if ($details["request"]["result"] === 0) {
 				throw new PaymentInitiationException("paypal_express", $details["request"]["errorId"], $details["request"]["errorMessage"]);
 			}
 			
@@ -162,23 +163,25 @@
 				// This should be rare in practice.
 				case "PaymentActionInProgress":
 					return new PaymentState(
-						provider: "paypal",
+						provider: "paypal_express",
 						transactionId: $transactionId,
 						state: PaymentStatus::Pending,
+						valuePaid: 0,
 						valueRefunded: 0,
-						valueRefundable: 0,
-						internalState: "PaymentActionInProgress"
+						internalState: "PaymentActionInProgress",
+						currency: $details["response"]["CURRENCYCODE"] ?? "",
 					);
 				
 				// DoExpressCheckoutPayment was called but the payment failed.
 				case "PaymentActionFailed":
 					return new PaymentState(
-						provider: "paypal",
+						provider: "paypal_express",
 						transactionId: $transactionId,
 						state: PaymentStatus::Failed,
+						valuePaid: 0,
 						valueRefunded: 0,
-						valueRefundable: 0,
-						internalState: "PaymentActionFailed"
+						internalState: "PaymentActionFailed",
+						currency: $details["response"]["CURRENCYCODE"] ?? "",
 					);
 				
 				// Payment was already captured in a previous exchange() call.
@@ -231,13 +234,13 @@
 			}
 			
 			// If that failed through an exception
-			if ($response["request"]["result"] == 0) {
+			if ($response["request"]["result"] === 0) {
 				throw new PaymentRefundException("paypal_express", $response["request"]["errorId"], $response["request"]["errorMessage"]);
 			}
 			
 			// GROSSREFUNDAMT is returned in major units — convert back to minor units for consistency.
 			return new RefundResult(
-				provider: "paypal",
+				provider: "paypal_express",
 				transactionId: $request->transactionId,
 				refundId: $response["response"]["REFUNDTRANSACTIONID"],
 				value: (int)round((float)$response["response"]["GROSSREFUNDAMT"] * 100),
@@ -275,14 +278,14 @@
 			// search start date. Refunds cannot predate the original payment.
 			$txDetails = $this->getGateway()->getTransactionDetails($transactionId);
 			
-			if ($txDetails["request"]["result"] == 0) {
+			if ($txDetails["request"]["result"] === 0) {
 				throw new PaymentRefundException("paypal_express", $txDetails["request"]["errorId"], $txDetails["request"]["errorMessage"]);
 			}
 			
 			// Search for all transactions from the payment date until now
 			$search = $this->getGateway()->transactionSearch($txDetails["response"]["ORDERTIME"], $transactionId);
 			
-			if ($search["request"]["result"] == 0) {
+			if ($search["request"]["result"] === 0) {
 				throw new PaymentRefundException("paypal_express", $search["request"]["errorId"], $search["request"]["errorMessage"]);
 			}
 			
@@ -294,7 +297,7 @@
 			while (isset($search["response"]["L_TRANSACTIONID{$i}"])) {
 				if ($search["response"]["L_TYPE{$i}"] === "Refund") {
 					$refunds[] = new RefundResult(
-						provider: "paypal",
+						provider: "paypal_express",
 						transactionId: $transactionId,
 						refundId: $search["response"]["L_TRANSACTIONID{$i}"],
 						value: (int)round(abs((float)$search["response"]["L_AMT{$i}"]) * 100),
@@ -339,11 +342,11 @@
 		private function executeCheckoutPayment(string $transactionId, float $amount, string $currency, string $payerId): PaymentState {
 			$result = $this->getGateway()->doExpressCheckoutPayment($transactionId, $amount, $currency, $payerId);
 			
-			if ($result["request"]["result"] == 0) {
+			if ($result["request"]["result"] === 0) {
 				// Error 10486 means the buyer's funding source has insufficient funds.
 				// Redirect them back to PayPal to choose a different payment method.
 				// @see https://www.paypal-community.com/t5/NVP-SOAP-APIs/PayPal-Error-10486-Decline-recovery-redirect/td-p/1129543
-				if ($result["request"]["errorId"] == 10486) {
+				if ($result["request"]["errorId"] === 10486) {
 					if ($this->getGateway()->testMode()) {
 						$base = "https://www.sandbox.paypal.com/cgi-bin/webscr";
 					} else {
@@ -351,11 +354,11 @@
 					}
 					
 					return new PaymentState(
-						provider: "paypal",
+						provider: "paypal_express",
 						transactionId: $transactionId,
 						state: PaymentStatus::Redirect,
+						valuePaid: 0,
 						valueRefunded: 0,
-						valueRefundable: 0,
 						internalState: "10486",
 						currency: $currency,
 						metadata: [
@@ -380,11 +383,11 @@
 				case "Completed":
 				case "Completed-Funds-Held":
 					return new PaymentState(
-						provider: "paypal",
+						provider: "paypal_express",
 						transactionId: $transactionId,
 						state: PaymentStatus::Paid,
+						valuePaid: $amountMinorUnits,
 						valueRefunded: 0,
-						valueRefundable: $amountMinorUnits,
 						internalState: $paymentStatus,
 						currency: $currency,
 						metadata: [
@@ -398,11 +401,11 @@
 				case "Failed":
 				case "Voided":
 					return new PaymentState(
-						provider: "paypal",
+						provider: "paypal_express",
 						transactionId: $transactionId,
 						state: PaymentStatus::Failed,
+						valuePaid: 0,
 						valueRefunded: 0,
-						valueRefundable: 0,
 						internalState: $paymentStatus,
 						currency: $currency,
 					);
@@ -410,11 +413,11 @@
 				// Any other status (e.g. Pending, Reversed) — treat as pending until resolved.
 				default:
 					return new PaymentState(
-						provider: "paypal",
+						provider: "paypal_express",
 						transactionId: $transactionId,
 						state: PaymentStatus::Pending,
+						valuePaid: 0,
 						valueRefunded: 0,
-						valueRefundable: 0,
 						internalState: $paymentStatus,
 						currency: $currency,
 					);
@@ -474,14 +477,14 @@
 			};
 
 			return new PaymentState(
-				provider:        "paypal_express",
-				transactionId:   $token,
-				state:           $state,
-				valueRefunded:   $valueRefunded,
-				valueRefundable: $state === PaymentStatus::Paid ? max(0, $valueCaptured - $valueRefunded) : 0,
-				internalState:   $paymentStatus,
-				currency:        $r["CURRENCYCODE"] ?? null,
-				metadata:        [
+				provider: "paypal_express",
+				transactionId: $token,
+				state: $state,
+				valuePaid: $state === PaymentStatus::Paid ? $valueCaptured : 0,
+				valueRefunded: $valueRefunded,
+				internalState: $paymentStatus,
+				currency: $r["CURRENCYCODE"] ?? "",
+				metadata: [
 					"captureId" => $captureId
 				],
 			);

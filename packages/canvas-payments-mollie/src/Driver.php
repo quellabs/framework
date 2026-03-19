@@ -186,19 +186,27 @@
 			];
 			
 			// Fetch mollie payment status
-			$r                = $response["response"];
-			$mollieStatus     = $r["status"];
-			$currency         = $r["amount"]["currency"];
-			$amountRefunded   = (int)round((float)($r["amountRefunded"]["value"] ?? 0) * 100);
-			$amountRefundable = (int)round((float)($r["amountRemaining"]["value"] ?? 0) * 100);
+			$r = $response["response"];
+			$mollieStatus = $r["status"];
+			$currentStatus = $stateMap[strtoupper($mollieStatus)] ?? PaymentStatus::Unknown;
+			$currency = $r["amount"]["currency"];
+			$amountRefunded = (int)round((float)($r["amountRefunded"]["value"] ?? 0) * 100);
+			$paidStatuses = [PaymentStatus::Paid, PaymentStatus::Refunded];
+
+			// Determine the value the customer paid
+			if (in_array($currentStatus, $paidStatuses)) {
+				$valuePaid = (int)round((float)($r["amount"]["value"] ?? 0) * 100);
+			} else {
+				$valuePaid = 0;
+			}
 			
 			// Return response
 			return new PaymentState(
 				provider: 'mollie',
 				transactionId: $transactionId,
-				state: $stateMap[strtoupper($mollieStatus)] ?? PaymentStatus::Unknown,
+				state: $currentStatus,
+				valuePaid: $valuePaid,
 				valueRefunded: $amountRefunded,
-				valueRefundable: $amountRefundable,
 				internalState: $mollieStatus,
 				currency: $currency,
 				metadata: $r["metadata"] ?? []

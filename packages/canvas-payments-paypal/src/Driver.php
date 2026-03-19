@@ -99,7 +99,7 @@
 			);
 			
 			// If that failed, throw error
-			if ($result["request"]["result"] == 0) {
+			if ($result["request"]["result"] === 0) {
 				throw new PaymentInitiationException("paypal", $result["request"]["errorId"], $result["request"]["errorMessage"]);
 			}
 			
@@ -154,9 +154,10 @@
 					provider: "paypal",
 					transactionId: $transactionId,
 					state: PaymentStatus::Canceled,
+					valuePaid: 0,
 					valueRefunded: 0,
-					valueRefundable: 0,
 					internalState: "cancel",
+					currency: "",
 				);
 			}
 			
@@ -164,7 +165,7 @@
 			$order = $this->getGateway()->getOrder($transactionId);
 			
 			// Validate this went correctly
-			if ($order["request"]["result"] == 0) {
+			if ($order["request"]["result"] === 0) {
 				throw new PaymentExchangeException("paypal", $order["request"]["errorId"], $order["request"]["errorMessage"]);
 			}
 			
@@ -183,10 +184,10 @@
 						provider: "paypal",
 						transactionId: $transactionId,
 						state: PaymentStatus::Pending,
+						valuePaid: 0,
 						valueRefunded: 0,
-						valueRefundable: 0,
 						internalState: "CREATED",
-						currency: $currency
+						currency: $currency,
 					);
 				
 				// Buyer has approved payment at PayPal — capture it now
@@ -211,10 +212,10 @@
 							provider: "paypal",
 							transactionId: $transactionId,
 							state: PaymentStatus::Canceled,
+							valuePaid: 0,
 							valueRefunded: 0,
-							valueRefundable: 0,
 							internalState: "VOIDED",
-							currency: $currency
+							currency: $currency,
 						);
 					}
 					
@@ -246,8 +247,8 @@
 						provider: "paypal",
 						transactionId: $transactionId,
 						state: PaymentStatus::Redirect,
+						valuePaid: 0,
 						valueRefunded: 0,
-						valueRefundable: 0,
 						internalState: "PAYER_ACTION_REQUIRED",
 						currency: $currency,
 						metadata: [
@@ -260,10 +261,10 @@
 						provider: "paypal",
 						transactionId: $transactionId,
 						state: PaymentStatus::Pending,
+						valuePaid: 0,
 						valueRefunded: 0,
-						valueRefundable: 0,
 						internalState: $orderStatus,
-						currency: $currency
+						currency: $currency,
 					);
 			}
 		}
@@ -298,7 +299,7 @@
 			);
 			
 			// Validate this went well
-			if ($response["request"]["result"] == 0) {
+			if ($response["request"]["result"] === 0) {
 				throw new PaymentRefundException("paypal", $response["request"]["errorId"], $response["request"]["errorMessage"]);
 			}
 			
@@ -342,7 +343,7 @@
 		public function getRefunds(string $transactionId): array {
 			$result = $this->getGateway()->getRefundsForCapture($transactionId);
 			
-			if ($result["request"]["result"] == 0) {
+			if ($result["request"]["result"] === 0) {
 				throw new PaymentRefundException("paypal", $result["request"]["errorId"], $result["request"]["errorMessage"]);
 			}
 			
@@ -394,7 +395,7 @@
 			$idempotencyKey = hash('sha256', 'capture:' . $orderId);
 			$result = $this->getGateway()->captureOrder($orderId, $idempotencyKey);
 
-			if ($result["request"]["result"] == 0) {
+			if ($result["request"]["result"] === 0) {
 				$errorId = $result["request"]["errorId"];
 
 				// INSTRUMENT_DECLINED is the REST equivalent of NVP error 10486:
@@ -426,8 +427,8 @@
 						provider: "paypal",
 						transactionId: $orderId,
 						state: PaymentStatus::Redirect,
+						valuePaid: 0,
 						valueRefunded: 0,
-						valueRefundable: 0,
 						internalState: "INSTRUMENT_DECLINED",
 						currency: $currency,
 						metadata: [
@@ -446,8 +447,6 @@
 			$captureStatus = $capture["status"] ?? "UNKNOWN";
 			$captureAmount = (int)round((float)($capture["amount"]["value"] ?? 0) * 100);
 			$captureCurrency = $capture["amount"]["currency_code"] ?? $currency;
-			$captureCreated = $capture["create_time"] ?? null;
-			$captureUpdated = $capture["update_time"] ?? null;
 			
 			return match ($captureStatus) {
 				// Payment was successfully captured and funds are being transferred.
@@ -455,8 +454,8 @@
 					provider: "paypal",
 					transactionId: $orderId,
 					state: PaymentStatus::Paid,
+					valuePaid: $captureAmount,
 					valueRefunded: 0,
-					valueRefundable: $captureAmount,
 					internalState: "COMPLETED",
 					currency: $captureCurrency,
 					metadata: [
@@ -470,8 +469,8 @@
 					provider: "paypal",
 					transactionId: $orderId,
 					state: PaymentStatus::Failed,
+					valuePaid: 0,
 					valueRefunded: 0,
-					valueRefundable: 0,
 					internalState: $captureStatus,
 					currency: $captureCurrency,
 				),
@@ -481,8 +480,8 @@
 					provider: "paypal",
 					transactionId: $orderId,
 					state: PaymentStatus::Pending,
+					valuePaid: 0,
 					valueRefunded: 0,
-					valueRefundable: 0,
 					internalState: $captureStatus,
 					currency: $captureCurrency,
 					metadata: [
@@ -517,7 +516,7 @@
 			
 			$result = $this->getGateway()->getCapture($captureId);
 			
-			if ($result["request"]["result"] == 0) {
+			if ($result["request"]["result"] === 0) {
 				throw new PaymentExchangeException("paypal", $result["request"]["errorId"], $result["request"]["errorMessage"]);
 			}
 			
@@ -526,8 +525,6 @@
 			$capturedAmount  = (int)round((float)($c["amount"]["value"] ?? 0) * 100);
 			$refundedAmount  = (int)round((float)($c["seller_receivable_breakdown"]["total_refunded_amount"]["value"] ?? 0) * 100);
 			$captureCurrency = $c["amount"]["currency_code"] ?? $currency;
-			$captureCreated  = $c["create_time"] ?? null;
-			$captureUpdated  = $c["update_time"] ?? null;
 			
 			// A PENDING capture means PayPal has not yet settled the funds (e-cheque, held funds,
 			// manual review, etc.). Do not report this as Paid — the money has not arrived.
@@ -541,8 +538,8 @@
 				provider: "paypal",
 				transactionId: $orderId,
 				state: $paymentStatus,
+				valuePaid: $paymentStatus === PaymentStatus::Paid ? $capturedAmount : 0,
 				valueRefunded: $refundedAmount,
-				valueRefundable: $paymentStatus === PaymentStatus::Paid ? max(0, $capturedAmount - $refundedAmount) : 0,
 				internalState: $captureStatus,
 				currency: $captureCurrency,
 				metadata: [
