@@ -167,28 +167,44 @@
 		
 		/**
 		 * Returns all refunds issued for a given capture.
-		 * Equivalent to NVP TransactionSearch + type filter.
-		 * @see https://developer.paypal.com/docs/api/payments/v2/#captures_get (refunds are nested in the capture response)
+		 * @see https://developer.paypal.com/docs/api/payments/v2/#captures_get
+		 * @see https://developer.paypal.com/docs/api/orders/v2/#orders_get
 		 * @see https://developer.paypal.com/docs/api/payments/v2/#refunds_get
 		 * @param string $captureId The capture ID
 		 * @return array Normalized result; on success 'response' is an array of refund objects
 		 */
 		public function getRefundsForCapture(string $captureId): array {
-			// Step 1: Fetch the capture — refund IDs are embedded under purchase_units[0].payments.refunds
+			// Step 1: Fetch the capture to get the order ID.
+			// The capture endpoint (GET /v2/payments/captures/{id}) does NOT embed refund stubs —
+			// that structure lives on the order. The order ID is available via supplementary_data.
 			$capture = $this->getCapture($captureId);
 			
 			if ($capture['request']['result'] == 0) {
 				return $capture;
 			}
 			
-			// Step 2: Extract the list of refund stubs from the capture response
-			$refundLinks = $capture['response']['purchase_units'][0]['payments']['refunds'] ?? [];
+			// Step 2: Resolve the order ID from the capture's supplementary_data.
+			$orderId = $capture['response']['supplementary_data']['related_ids']['order_id'] ?? null;
+			
+			if ($orderId === null) {
+				return ['request' => ['result' => 0, 'errorId' => 'MISSING_ORDER_ID', 'errorMessage' => 'Could not resolve order ID from capture supplementary_data'], 'response' => []];
+			}
+			
+			// Step 3: Fetch the order — refund stubs are under purchase_units[0].payments.refunds
+			$order = $this->sendRequest('GET', '/v2/checkout/orders/' . urlencode($orderId));
+			
+			if ($order['request']['result'] == 0) {
+				return $order;
+			}
+			
+			// Step 4: Extract the list of refund stubs from the order response
+			$refundLinks = $order['response']['purchase_units'][0]['payments']['refunds'] ?? [];
 			
 			if (empty($refundLinks)) {
 				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => []];
 			}
 			
-			// Step 3: Fetch each refund individually — the stubs only contain an ID and a link,
+			// Step 5: Fetch each refund individually — the stubs only contain an ID and a link,
 			// not the full details (amount, currency, status) needed by the caller
 			$refunds = [];
 			

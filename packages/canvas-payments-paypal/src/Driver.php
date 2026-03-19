@@ -220,10 +220,19 @@
 				case "PAYER_ACTION_REQUIRED":
 					$redirectUrl = null;
 					
-					foreach ($orderData["links"] as $link) {
+					foreach ($orderData["links"] ?? [] as $link) {
 						if ($link["rel"] === "payer-action") {
 							$redirectUrl = $link["href"];
 							break;
+						}
+					}
+					
+					// Fall back to constructing the URL if PayPal didn't include the link
+					if ($redirectUrl === null) {
+						if ($this->getGateway()->testMode()) {
+							$redirectUrl = "https://www.sandbox.paypal.com/checkoutnow?token={$transactionId}";
+						} else {
+							$redirectUrl = "https://www.paypal.com/checkoutnow?token={$transactionId}";
 						}
 					}
 					
