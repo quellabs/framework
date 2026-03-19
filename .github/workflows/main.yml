@@ -2,8 +2,8 @@ name: Sync to Public Repos
 
 on:
   push:
-    branches: [ main ]
-    tags: [ '*.*.*' ]
+    branches: [main]
+    tags: ['*.*.*']
   workflow_dispatch:
     inputs:
       dry_run:
@@ -55,21 +55,7 @@ jobs:
           token: ${{ secrets.SYNC_TOKEN }}
 
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y jq golang libgit2-dev
-
-      - name: Cache splitsh-lite
-        id: cache-splitsh
-        uses: actions/cache@v5
-        with:
-          path: /usr/local/bin/splitsh-lite
-          key: splitsh-lite-${{ runner.os }}
-
-      - name: Install splitsh-lite
-        if: steps.cache-splitsh.outputs.cache-hit != 'true'
-        run: |
-          git clone https://github.com/splitsh/lite.git /tmp/splitsh-lite
-          cd /tmp/splitsh-lite
-          go build -o /usr/local/bin/splitsh-lite github.com/splitsh/lite
+        run: sudo apt-get update && sudo apt-get install -y jq
 
       - name: Sync package to public repo
         id: sync
@@ -92,10 +78,10 @@ jobs:
             exit 1
           fi
 
-          sha=$(splitsh-lite --prefix=packages/${{ matrix.package }}/)
+          sha=$(git subtree split --prefix=packages/${{ matrix.package }})
 
           if [ -z "$sha" ]; then
-            echo "❌ splitsh-lite produced no output — no commits found for this prefix"
+            echo "❌ git subtree split produced no output"
             exit 1
           fi
 
