@@ -88,8 +88,10 @@
 		 * @throws PaymentInitiationException
 		 */
 		public function initiate(PaymentRequest $request): InitiateResult {
+			// Fetch the config
 			$config = $this->getConfig();
 			
+			// Call the API for a new checkout session
 			$result = $this->getGateway()->createCheckoutSession(
 				$request->amount,
 				$request->description,
@@ -97,17 +99,21 @@
 				$config['brand_name'] ?? '',
 			);
 			
+			// If tha failed, throw
 			if ($result['request']['result'] === 0) {
 				throw new PaymentInitiationException('stripe', $result['request']['errorId'], $result['request']['errorMessage']);
 			}
-			
+
+			// Extract data
 			$sessionId  = $result['response']['id'];
 			$checkoutUrl = $result['response']['url'];
 			
+			// Validate the existence of checkout url
 			if (empty($checkoutUrl)) {
 				throw new PaymentInitiationException('stripe', 'MISSING_CHECKOUT_URL', 'Stripe response did not include a checkout URL.');
 			}
 			
+			// Return response
 			return new InitiateResult(
 				'stripe',
 				$sessionId,
@@ -127,6 +133,7 @@
 		public function exchange(string $transactionId, array $extraData = []): PaymentState {
 			// Fetch action (if any)
 			$action = $extraData['action'] ?? null;
+			$paymentIntentId = $extraData['paymentIntentId'] ?? null;
 			
 			// Buyer clicked cancel on the Stripe checkout page — no payment was attempted.
 			// Return a canceled state immediately without querying the API.
@@ -144,9 +151,13 @@
 			
 			// Webhook events carry a PaymentIntent ID, not a session ID. Stripe does not expose
 			// a way to look up the session from the PaymentIntent, so we query the intent directly.
-			$paymentIntentId = $extraData['paymentIntentId'] ?? null;
+			// If paymentIntentId is absent on a webhook the event cannot be processed — throw rather
+			// than fall through to a session lookup with the wrong ID.
+			if ($action === 'webhook') {
+				if (empty($paymentIntentId)) {
+					throw new PaymentExchangeException('stripe', 'MISSING_PAYMENT_INTENT_ID', 'Webhook exchange requires a paymentIntentId in extraData.');
+				}
 			
-			if ($action === 'webhook' && !empty($paymentIntentId)) {
 				return $this->buildStateFromPaymentIntent($transactionId, $paymentIntentId);
 			}
 			
@@ -180,6 +191,7 @@
 			
 			// The payment_intent is expanded on the session response — extract it directly
 			$intent = is_array($session['payment_intent']) ? $session['payment_intent'] : [];
+			$paymentIntentId = $intent['id'] ?? null;
 			
 			if (empty($intent)) {
 				// Session is still open (buyer hasn't completed yet) or intent not expanded
@@ -194,7 +206,6 @@
 				);
 			}
 			
-			$paymentIntentId = $intent['id'] ?? null;
 			return $this->mapPaymentIntentToState($transactionId, $intent, $paymentIntentId, $currency);
 		}
 		
