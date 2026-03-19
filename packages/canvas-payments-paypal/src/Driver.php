@@ -85,22 +85,12 @@
 		 * @throws PaymentInitiationException
 		 */
 		public function initiate(PaymentRequest $request): InitiateResult {
-			$extraFields = array_filter([
-				'payer' => [
-					'email_address' => $request->billingAddress->email,
-				],
-			]);
-			
-			if (!empty($this->config['brand_name'])) {
-				$extraFields['payment_source']['paypal']['experience_context']['brand_name'] = $this->config['brand_name'];
-			}
-			
 			$result = $this->getGateway()->createOrder(
 				$request->billingAddress->email,
 				$request->amount / 100,
 				$request->description,
 				$request->currency,
-				$extraFields,
+				$this->config['brand_name'] ?? '',
 			);
 			
 			if ($result["request"]["result"] == 0) {
@@ -200,17 +190,28 @@
 					
 					return $this->buildCompletedPaymentState($transactionId, $captureId, "COMPLETED", $currency);
 				
-				// Order was voided or all captures were refunded
+				// Order was voided. This can mean a genuine cancellation (valueRefunded = 0)
+				// or that all captures were fully refunded. Fetch the capture to determine
+				// the actual refunded amount rather than assuming zero.
 				case "VOIDED":
-					return new PaymentState(
-						provider: "paypal",
-						transactionId: $transactionId,
-						state: PaymentStatus::Canceled,
-						valueRefunded: 0,
-						valueRefundable: 0,
-						internalState: "VOIDED",
-						currency: $currency,
-					);
+					$captureId = $extraData['captureId']
+						?? ($purchaseUnit["payments"]["captures"][0]["id"] ?? null);
+					
+					// No capture means the order was cancelled before payment — clean cancellation
+					if ($captureId === null) {
+						return new PaymentState(
+							provider: "paypal",
+							transactionId: $transactionId,
+							state: PaymentStatus::Canceled,
+							valueRefunded: 0,
+							valueRefundable: 0,
+							internalState: "VOIDED",
+							currency: $currency,
+						);
+					}
+					
+					// Capture exists — fetch it to get the refunded amount
+					return $this->buildCompletedPaymentState($transactionId, $captureId, "VOIDED", $currency);
 				
 				// PAYER_ACTION_REQUIRED — 3DS or other additional authentication needed.
 				// Equivalent to NVP error 10486: redirect buyer back to PayPal.
@@ -370,11 +371,25 @@
 				// INSTRUMENT_DECLINED is the REST equivalent of NVP error 10486:
 				// the buyer's funding source was declined. Redirect them back to PayPal
 				// to choose a different payment method.
+				// PayPal includes a payer-action HATEOAS link in the error response body pointing
+				// to the correct retry URL — prefer that over constructing the URL manually.
 				// @see https://developer.paypal.com/docs/checkout/standard/customize/handle-funding-failures/
 				if ($errorId === "INSTRUMENT_DECLINED") {
-					$redirectUrl = $this->getGateway()->testMode()
-						? "https://www.sandbox.paypal.com/checkoutnow?token={$orderId}"
-						: "https://www.paypal.com/checkoutnow?token={$orderId}";
+					$redirectUrl = null;
+					
+					foreach ($result["response"]["links"] ?? [] as $link) {
+						if ($link["rel"] === "payer-action") {
+							$redirectUrl = $link["href"];
+							break;
+						}
+					}
+					
+					// Fall back to constructing the URL if PayPal didn't include the link
+					if ($redirectUrl === null) {
+						$redirectUrl = $this->getGateway()->testMode()
+							? "https://www.sandbox.paypal.com/checkoutnow?token={$orderId}"
+							: "https://www.paypal.com/checkoutnow?token={$orderId}";
+					}
 					
 					return new PaymentState(
 						provider: "paypal",
@@ -472,17 +487,26 @@
 			}
 			
 			$c               = $result["response"];
+			$captureStatus   = $c["status"] ?? $internalState;
 			$capturedAmount  = (int)round((float)($c["amount"]["value"] ?? 0) * 100);
 			$refundedAmount  = (int)round((float)($c["seller_receivable_breakdown"]["total_refunded_amount"]["value"] ?? 0) * 100);
 			$captureCurrency = $c["amount"]["currency_code"] ?? $currency;
 			
+			// A PENDING capture means PayPal has not yet settled the funds (e-cheque, held funds,
+			// manual review, etc.). Do not report this as Paid — the money has not arrived.
+			$paymentStatus = match ($captureStatus) {
+				"COMPLETED"                    => PaymentStatus::Paid,
+				"DECLINED", "FAILED", "VOIDED" => PaymentStatus::Failed,
+				default                        => PaymentStatus::Pending,
+			};
+			
 			return new PaymentState(
 				provider: "paypal",
 				transactionId: $orderId,
-				state: PaymentStatus::Paid,
+				state: $paymentStatus,
 				valueRefunded: $refundedAmount,
-				valueRefundable: max(0, $capturedAmount - $refundedAmount),
-				internalState: $c["status"] ?? $internalState,
+				valueRefundable: $paymentStatus === PaymentStatus::Paid ? max(0, $capturedAmount - $refundedAmount) : 0,
+				internalState: $captureStatus,
 				currency: $captureCurrency,
 				metadata: [
 					"captureId" => $captureId,

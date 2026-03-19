@@ -455,17 +455,31 @@
 			
 			// AMT is the original captured amount. TOTALREFUNDEDAMOUNT accumulates across all refunds.
 			// Both are returned in major units — convert to minor units for consistency.
-			$r = $txDetails["response"];
-			$valueRefunded   = (int) round((float) ($r["TOTALREFUNDEDAMOUNT"] ?? 0) * 100);
-			$valueRefundable = (int) round((float) ($r["AMT"] ?? 0) * 100) - $valueRefunded;
-			
+			$r              = $txDetails["response"];
+			$paymentStatus  = $r["PAYMENTSTATUS"] ?? $internalState;
+			$valueRefunded  = (int) round((float) ($r["TOTALREFUNDEDAMOUNT"] ?? 0) * 100);
+			$valueCaptured  = (int) round((float) ($r["AMT"] ?? 0) * 100);
+
+			// Map NVP PAYMENTSTATUS to PaymentStatus. GetTransactionDetails can return statuses
+			// beyond Completed — do not assume Paid without checking.
+			$state = match ($paymentStatus) {
+				"Processed",
+				"Completed",
+				"Completed-Funds-Held" => PaymentStatus::Paid,
+				"Failed",
+				"Voided",
+				"Reversed",
+				"Canceled-Reversal"    => PaymentStatus::Failed,
+				default                => PaymentStatus::Pending,
+			};
+
 			return new PaymentState(
-				provider:        "paypal",
+				provider:        "paypal_express",
 				transactionId:   $token,
-				state:           PaymentStatus::Paid,
+				state:           $state,
 				valueRefunded:   $valueRefunded,
-				valueRefundable: max(0, $valueRefundable),
-				internalState:   $r["PAYMENTSTATUS"] ?? $internalState,
+				valueRefundable: $state === PaymentStatus::Paid ? max(0, $valueCaptured - $valueRefunded) : 0,
+				internalState:   $paymentStatus,
 				currency:        $r["CURRENCYCODE"] ?? null,
 				metadata:        [
 					"paymentTransactionId" => $paymentTransactionId

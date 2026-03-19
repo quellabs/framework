@@ -4,6 +4,7 @@
 	
 	use Symfony\Component\HttpClient\HttpClient;
 	use Symfony\Contracts\HttpClient\Exception\ClientExceptionInterface;
+	use Symfony\Contracts\HttpClient\Exception\DecodingExceptionInterface;
 	use Symfony\Contracts\HttpClient\Exception\RedirectionExceptionInterface;
 	use Symfony\Contracts\HttpClient\Exception\ServerExceptionInterface;
 	use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
@@ -59,7 +60,7 @@
 		 * PayPal access tokens expire after 32400 seconds (9 hours) but we treat
 		 * them as expired 60 seconds early to avoid clock-skew edge cases.
 		 * @return string
-		 * @throws \RuntimeException on authentication failure
+		 * @throws \RuntimeException|DecodingExceptionInterface on authentication failure
 		 */
 		private function getAccessToken(): string {
 			if ($this->m_access_token !== null && time() < $this->m_token_expires) {
@@ -88,11 +89,12 @@
 		/**
 		 * Send an authenticated REST request and return a normalized response array.
 		 * All API methods funnel through here to keep HTTP handling in one place.
-		 * @param string $method  HTTP method: GET, POST, PATCH
-		 * @param string $path    API path, e.g. /v2/checkout/orders
-		 * @param array  $body    Request body (JSON-encoded), empty for GET
-		 * @param array  $headers Extra headers to merge in
+		 * @param string $method HTTP method: GET, POST, PATCH
+		 * @param string $path API path, e.g. /v2/checkout/orders
+		 * @param array $body Request body (JSON-encoded), empty for GET
+		 * @param array $headers Extra headers to merge in
 		 * @return array ['request' => ['result' => 1|0, 'errorId' => ..., 'errorMessage' => ...], 'response' => [...]]
+		 * @throws DecodingExceptionInterface
 		 */
 		private function sendRequest(string $method, string $path, array $body = [], array $headers = []): array {
 			$client = HttpClient::create();
@@ -134,11 +136,11 @@
 					}
 				}
 				
-				return ['request' => ['result' => 0, 'errorId' => $errorName, 'errorMessage' => $errorMessage]];
+				return ['request' => ['result' => 0, 'errorId' => $errorName, 'errorMessage' => $errorMessage], 'response' => $data];
 			} catch (\RuntimeException $e) {
 				// OAuth2 failure — rethrow so the caller can distinguish auth errors from API errors
 				throw $e;
-			} catch (\Exception|TransportExceptionInterface|ClientExceptionInterface|RedirectionExceptionInterface|ServerExceptionInterface $e) {
+			} catch (\Exception|TransportExceptionInterface $e) {
 				return ['request' => ['result' => 0, 'errorId' => (string)$e->getCode(), 'errorMessage' => $e->getMessage()]];
 			}
 		}
@@ -151,23 +153,27 @@
 		 * @param float  $value        Payment amount in major units (e.g. 12.50)
 		 * @param string $description  Order description shown on the PayPal checkout page
 		 * @param string $currency     ISO 4217 currency code (default: EUR)
+		 * @param string $brandName    Optional brand name shown on the PayPal checkout page
 		 * @param array  $extraFields  Additional top-level order fields to merge into the request
 		 * @return array
 		 */
-		public function createOrder(string $emailAddress, float $value, string $description, string $currency = "EUR", array $extraFields = []): array {
+		public function createOrder(string $emailAddress, float $value, string $description, string $currency = "EUR", string $brandName = "", array $extraFields = []): array {
+			$experienceContext = array_filter([
+				'payment_method_preference' => $this->m_account_optional ? 'IMMEDIATE_PAYMENT_REQUIRED' : 'UNRESTRICTED',
+				'user_action'               => 'PAY_NOW',
+				'return_url'                => $this->m_return_url,
+				'cancel_url'                => $this->m_cancel_url,
+				'brand_name'                => $brandName ?: null,
+			]);
+			
 			$body = array_merge([
-				'intent'              => 'CAPTURE',
-				'payment_source'      => [
+				'intent'         => 'CAPTURE',
+				'payment_source' => [
 					'paypal' => [
-						'experience_context' => array_filter([
-							'payment_method_preference' => $this->m_account_optional ? 'IMMEDIATE_PAYMENT_REQUIRED' : 'UNRESTRICTED',
-							'user_action'               => 'PAY_NOW',
-							'return_url'                => $this->m_return_url,
-							'cancel_url'                => $this->m_cancel_url,
-						]),
+						'experience_context' => $experienceContext,
 					],
 				],
-				'purchase_units'      => [[
+				'purchase_units' => [[
 					'amount'      => [
 						'currency_code' => $currency,
 						'value'         => number_format($value, 2, '.', ''),
