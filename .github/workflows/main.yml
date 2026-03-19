@@ -2,8 +2,8 @@ name: Sync to Public Repos
 
 on:
   push:
-    branches: [main]
-    tags: ['*.*.*']
+    branches: [ main ]
+    tags: [ '*.*.*' ]
   workflow_dispatch:
     inputs:
       dry_run:
@@ -15,6 +15,9 @@ on:
 jobs:
   sync-and-release:
     runs-on: ubuntu-latest
+    concurrency:
+      group: sync-${{ github.workflow }}-${{ matrix.package }}
+      cancel-in-progress: false
     strategy:
       matrix:
         package:
@@ -52,54 +55,84 @@ jobs:
           token: ${{ secrets.SYNC_TOKEN }}
 
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y jq
+        run: sudo apt-get update && sudo apt-get install -y jq golang
+
+      - name: Cache splitsh-lite
+        id: cache-splitsh
+        uses: actions/cache@v5
+        with:
+          path: /usr/local/bin/splitsh-lite
+          key: splitsh-lite-${{ runner.os }}
+
+      - name: Install splitsh-lite
+        if: steps.cache-splitsh.outputs.cache-hit != 'true'
+        run: |
+          git clone https://github.com/splitsh/lite.git /tmp/splitsh-lite
+          cd /tmp/splitsh-lite
+          go build -o /usr/local/bin/splitsh-lite github.com/splitsh/lite
 
       - name: Sync package to public repo
+        id: sync
         env:
-          DRY_RUN: ${{ github.event.inputs.dry_run || false }}
+          DRY_RUN: ${{ github.event.inputs.dry_run == 'true' && 'true' || 'false' }}
         run: |
           set -e
-          
+
           if [ "$DRY_RUN" = "true" ]; then
             echo "🔍 DRY RUN MODE - No actual changes"
             echo "Would sync ${{ matrix.package }} to public repo"
+            echo "split_sha=dry-run" >> $GITHUB_OUTPUT
             exit 0
           fi
-          
+
           echo "📦 Syncing ${{ matrix.package }}..."
-          
-          if ! git subtree push --prefix=packages/${{ matrix.package }} \
-            https://${{ secrets.SYNC_TOKEN }}@github.com/quellabs/${{ matrix.package }}.git main; then
+
+          if ! git ls-tree -d HEAD "packages/${{ matrix.package }}" >/dev/null 2>&1; then
+            echo "❌ Package directory packages/${{ matrix.package }} does not exist"
+            exit 1
+          fi
+
+          sha=$(splitsh-lite --prefix=packages/${{ matrix.package }}/)
+
+          if [ -z "$sha" ]; then
+            echo "❌ splitsh-lite produced no output — no commits found for this prefix"
+            exit 1
+          fi
+
+          if ! git push \
+            "https://${{ secrets.SYNC_TOKEN }}@github.com/quellabs/${{ matrix.package }}.git" \
+            "$sha:refs/heads/main"; then
             echo "❌ Sync failed"
             exit 1
           fi
-          
+
+          echo "split_sha=$sha" >> $GITHUB_OUTPUT
           echo "✅ Sync complete"
 
       - name: Check for release requirement
         id: check_release
         run: |
           echo "🏷️  Checking release for ${{ matrix.package }}..."
-          
+
           if [ ! -f "versioning/versions.json" ]; then
             echo "skip=true" >> $GITHUB_OUTPUT
             echo "reason=versions.json not found" >> $GITHUB_OUTPUT
             exit 0
           fi
-          
+
           target_version=$(jq -r --arg pkg "${{ matrix.package }}" '.[$pkg] // empty' versioning/versions.json)
-          
+
           if [ -z "$target_version" ] || [ "$target_version" = "null" ]; then
             echo "skip=true" >> $GITHUB_OUTPUT
             echo "reason=no version specified" >> $GITHUB_OUTPUT
             exit 0
           fi
-          
+
           if ! [[ "$target_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+.*$ ]]; then
             echo "❌ Invalid version format: $target_version (expected semver without v prefix)"
             exit 1
           fi
-          
+
           echo "skip=false" >> $GITHUB_OUTPUT
           echo "target_version=$target_version" >> $GITHUB_OUTPUT
 
@@ -120,22 +153,22 @@ jobs:
         if: steps.check_release.outputs.skip == 'false'
         run: |
           if ! tags_response=$(curl -sf -H "Authorization: token ${{ secrets.SYNC_TOKEN }}" \
-            "https://api.github.com/repos/quellabs/${{ matrix.package }}/tags" 2>/dev/null); then
+            "https://api.github.com/repos/quellabs/${{ matrix.package }}/tags?per_page=100" 2>/dev/null); then
             echo "current_version=0.0.0" >> $GITHUB_OUTPUT
             echo "  Current: 0.0.0 (repo not found or no tags)"
             exit 0
           fi
-          
+
           current_version=$(echo "$tags_response" \
             | jq -r '.[].name' \
             | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' \
             | sort -V \
             | tail -n 1)
-          
+
           if [ -z "$current_version" ]; then
             current_version="0.0.0"
           fi
-          
+
           echo "current_version=$current_version" >> $GITHUB_OUTPUT
           echo "  Current: $current_version"
           echo "  Target:  ${{ steps.check_release.outputs.target_version }}"
@@ -147,10 +180,10 @@ jobs:
           version_gt() {
             test "$(printf '%s\n' "$@" | sort -V | head -n 1)" != "$1"
           }
-          
+
           current="${{ steps.get_version.outputs.current_version }}"
           target="${{ steps.check_release.outputs.target_version }}"
-          
+
           if version_gt "$target" "$current"; then
             echo "create=true" >> $GITHUB_OUTPUT
             echo "  → New version detected! Releasing $target"
@@ -167,38 +200,44 @@ jobs:
         env:
           DRY_RUN: ${{ github.event.inputs.dry_run == 'true' && 'true' || 'false' }}
           TARGET_VERSION: ${{ steps.check_release.outputs.target_version }}
+          SPLIT_SHA: ${{ steps.sync.outputs.split_sha }}
         run: |
           set -e
-          
+
           if [ "$DRY_RUN" = "true" ]; then
             echo "🔍 DRY RUN: Would tag ${{ matrix.package }} with $TARGET_VERSION"
             exit 0
           fi
-          
+
           rm -rf "temp-${{ matrix.package }}"
-          
+
           if ! git clone "https://${{ secrets.SYNC_TOKEN }}@github.com/quellabs/${{ matrix.package }}.git" "temp-${{ matrix.package }}" 2>/dev/null; then
             echo "❌ Failed to clone repository"
             exit 1
           fi
-          
+
           cd "temp-${{ matrix.package }}"
-          
+
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
-          
+
+          if ! git cat-file -e "$SPLIT_SHA^{commit}" 2>/dev/null; then
+            echo "❌ Commit $SPLIT_SHA not found in repository"
+            exit 1
+          fi
+
           if git tag -l | grep -q "^$TARGET_VERSION$"; then
             echo "❌ Tag $TARGET_VERSION already exists"
             cd ..
             rm -rf "temp-${{ matrix.package }}"
             exit 1
           fi
-          
-          if ! git tag -a "$TARGET_VERSION" -m "Release $TARGET_VERSION"; then
+
+          if ! git tag -a "$TARGET_VERSION" "$SPLIT_SHA" -m "Release $TARGET_VERSION"; then
             echo "❌ Failed to create tag"
             exit 1
           fi
-          
+
           if ! git push origin "$TARGET_VERSION"; then
             echo "❌ Failed to push tag. Diagnostics:"
             echo "→ Recent commits:"
@@ -211,9 +250,9 @@ jobs:
             rm -rf "temp-${{ matrix.package }}"
             exit 1
           fi
-          
+
           echo "✅ Tagged ${{ matrix.package }} with $TARGET_VERSION"
-          
+
           cd ..
           rm -rf "temp-${{ matrix.package }}"
 
