@@ -2,8 +2,8 @@ name: Sync to Public Repos
 
 on:
   push:
-    branches: [main]
-    tags: ['*.*.*']
+    branches: [ main ]
+    tags: [ '*.*.*' ]
   workflow_dispatch:
     inputs:
       dry_run:
@@ -77,6 +77,10 @@ jobs:
             echo "❌ Package directory packages/${{ matrix.package }} does not exist"
             exit 1
           fi
+
+          # Raise the stack size limit to prevent git subtree hitting the 1000-frame
+          # recursion limit on repos with deep commit history
+          ulimit -s unlimited
 
           sha=$(git subtree split --prefix=packages/${{ matrix.package }})
 
