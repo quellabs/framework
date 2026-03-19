@@ -20,7 +20,34 @@
 		 * Active configuration for this provider, applied by the discovery system after instantiation.
 		 * @var array
 		 */
-		private array $config;
+		private array $config = [];
+		
+		/**
+		 * Maps our internal module names to MultiSafepay's gateway type strings.
+		 * These are passed as 'type' when creating an order.
+		 * @see https://docs.multisafepay.com/docs/payment-methods
+		 */
+		private const MODULE_TYPE_MAP = [
+			'mollie'             => '',
+			'mollie_applepay'    => 'applepay',
+			'mollie_bancontact'  => 'bancontact',
+			'mollie_belfius'     => 'belfius',
+			'mollie_creditcard'  => 'creditcard',
+			'mollie_eps'         => 'eps',
+			'mollie_giftcard'    => 'giftcard',
+			'mollie_giropay'     => 'giropay',
+			'mollie_ideal'       => 'ideal',
+			'mollie_kbc'         => 'kbc',
+			'mollie_mybank'      => 'mybank',
+			'mollie_paypal'      => 'paypal',
+			'mollie_paysafecard' => 'paysafecard',
+			'mollie_przelewy24'  => 'przelewy24',
+			'mollie_sofort'      => 'sofort',
+			'mollie_billie'      => 'billie',
+			'mollie_in3'         => 'in3',
+			'mollie_klarna'      => 'klarna',
+			'mollie_riverty'     => 'riverty',
+		];
 		
 		/**
 		 * Gateway instance, constructed lazily on first use to ensure config is available.
@@ -35,27 +62,7 @@
 		 */
 		public static function getMetadata(): array {
 			return [
-				'modules' => [
-					'mollie',
-					'mollie_applepay',
-					'mollie_bancontact',
-					'mollie_belfius',
-					'mollie_creditcard',
-					'mollie_eps',
-					'mollie_giftcard',
-					'mollie_giropay',
-					'mollie_ideal',
-					'mollie_kbc',
-					'mollie_mybank',
-					'mollie_paypal',
-					'mollie_paysafecard',
-					'mollie_przelewy24',
-					'mollie_sofort',
-					'mollie_billie',
-					'mollie_in3',
-					'mollie_klarna',
-					'mollie_riverty',
-				],
+				'modules' => array_keys(self::MODULE_TYPE_MAP),
 			];
 		}
 		
@@ -104,15 +111,15 @@
 			$this->resolveUrls($request);
 			
 			// Initiate the payment
-			$paymentMethod = ($request->paymentModule != "mollie") ? substr($request->paymentModule, 7) : "";
+			$paymentMethod = self::MODULE_TYPE_MAP[$request->paymentModule];
 			$response = $this->getGateway()->createPayment($request, $paymentMethod);
 			
-			// return error if any
+			// Return error if payment creation failed
 			if ($response["request"]["result"] == 0) {
 				throw new PaymentInitiationException("mollie", $response["request"]["errorId"], $response["request"]["errorMessage"]);
 			}
 			
-			// return formatted response
+			// Return result
 			return new InitiateResult(
 				provider: "mollie",
 				transactionId: $response["response"]["id"],
@@ -192,7 +199,7 @@
 			$currency = $r["amount"]["currency"];
 			$amountRefunded = (int)round((float)($r["amountRefunded"]["value"] ?? 0) * 100);
 			$paidStatuses = [PaymentStatus::Paid, PaymentStatus::Refunded];
-
+			
 			// Determine the value the customer paid
 			if (in_array($currentStatus, $paidStatuses)) {
 				$valuePaid = (int)round((float)($r["amount"]["value"] ?? 0) * 100);

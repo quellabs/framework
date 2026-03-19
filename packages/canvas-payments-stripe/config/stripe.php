@@ -21,12 +21,6 @@
 		// Should always be true in production. Only disable for local debugging.
 		'verify_ssl' => true,
 		
-		// Your store or company name. For Stripe, this is used as the payment intent's
-		// statement_descriptor (truncated to 22 characters). Full branding (logo, colors)
-		// is configured in the Stripe Dashboard under Settings > Branding.
-		// @see https://dashboard.stripe.com/settings/branding
-		'brand_name' => '',
-		
 		// Where to redirect the buyer after a successfully completed payment.
 		// Stripe appends ?session_id={CHECKOUT_SESSION_ID} automatically — do not add it manually.
 		'return_url' => 'https://example.com/order/thankyou',
