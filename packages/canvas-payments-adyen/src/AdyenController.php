@@ -140,11 +140,9 @@
 				}
 				
 				// Verify the HMAC signature before processing.
-				// Never process a notification that fails validation — it may be forged.
 				if (!$this->adyen->verifyWebhookSignature($notification)) {
-					// Return 401 to signal the rejection without leaking details.
-					// Adyen will retry — if retries also fail, investigate the HMAC key.
-					return new JsonResponse('Webhook HMAC validation failed', 401);
+					error_log('Adyen webhook HMAC validation failed for pspReference: ' . ($notification['pspReference'] ?? 'unknown'));
+					continue;
 				}
 				
 				// pspReference is the payment reference; merchantReference is your own order ID.

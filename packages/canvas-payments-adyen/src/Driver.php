@@ -97,7 +97,7 @@
 				'return_url'            => '',
 				'cancel_return_url'     => '',
 				'webhook_url'           => '',
-				'live_endpoint_prefix ' => '',
+				'live_endpoint_prefix'  => '',
 				
 				// Used by getPaymentOptions() to filter the /paymentMethods response.
 				// Adyen returns a country-specific method list (e.g. iDEAL only for NL).
@@ -127,7 +127,7 @@
 			$config = $this->getConfig();
 			
 			// Amount is required by some methods to filter correctly (e.g. BNPL minimum thresholds)
-			if (isset($config['default_currency'])) {
+			if (!empty($config['default_currency'])) {
 				$currency = ['currency' => $config['default_currency'], 'value' => 0];
 			} else {
 				$currency = null;
