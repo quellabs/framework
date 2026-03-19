@@ -30,12 +30,6 @@
 			/** ISO 4217 currency code (e.g. 'EUR', 'USD') */
 			public ?string       $currency = null,
 			
-			/** The timestamp at which the payment was created at the provider, as an ISO 8601 string */
-			public ?string       $createdAt = null,
-			
-			/** The timestamp at which the payment was last updated at the provider, as an ISO 8601 string */
-			public ?string       $updatedAt = null,
-			
 			/** Additional provider-specific metadata attached to the payment */
 			public array         $metadata = [],
 		

@@ -186,9 +186,7 @@
 						valueRefunded: 0,
 						valueRefundable: 0,
 						internalState: "CREATED",
-						currency: $currency,
-						createdAt: $orderData["create_time"] ?? null,
-						updatedAt: $orderData["update_time"] ?? null,
+						currency: $currency
 					);
 				
 				// Buyer has approved payment at PayPal — capture it now
@@ -216,9 +214,7 @@
 							valueRefunded: 0,
 							valueRefundable: 0,
 							internalState: "VOIDED",
-							currency: $currency,
-							createdAt: $orderData["create_time"] ?? null,
-							updatedAt: $orderData["update_time"] ?? null,
+							currency: $currency
 						);
 					}
 					
@@ -254,8 +250,6 @@
 						valueRefundable: 0,
 						internalState: "PAYER_ACTION_REQUIRED",
 						currency: $currency,
-						createdAt: $orderData["create_time"] ?? null,
-						updatedAt: $orderData["update_time"] ?? null,
 						metadata: [
 							"redirectUrl" => $redirectUrl,
 						],
@@ -269,9 +263,7 @@
 						valueRefunded: 0,
 						valueRefundable: 0,
 						internalState: $orderStatus,
-						currency: $currency,
-						createdAt: $orderData["create_time"] ?? null,
-						updatedAt: $orderData["update_time"] ?? null,
+						currency: $currency
 					);
 			}
 		}
@@ -467,8 +459,6 @@
 					valueRefundable: $captureAmount,
 					internalState: "COMPLETED",
 					currency: $captureCurrency,
-					createdAt: $captureCreated,
-					updatedAt: $captureUpdated,
 					metadata: [
 						"captureId" => $captureId,
 					],
@@ -484,8 +474,6 @@
 					valueRefundable: 0,
 					internalState: $captureStatus,
 					currency: $captureCurrency,
-					createdAt: $captureCreated,
-					updatedAt: $captureUpdated,
 				),
 				
 				// PENDING or any unknown status — the capture was submitted but not yet settled
@@ -497,8 +485,6 @@
 					valueRefundable: 0,
 					internalState: $captureStatus,
 					currency: $captureCurrency,
-					createdAt: $captureCreated,
-					updatedAt: $captureUpdated,
 					metadata: [
 						"captureId" => $captureId,
 					],
@@ -559,8 +545,6 @@
 				valueRefundable: $paymentStatus === PaymentStatus::Paid ? max(0, $capturedAmount - $refundedAmount) : 0,
 				internalState: $captureStatus,
 				currency: $captureCurrency,
-				createdAt: $captureCreated,
-				updatedAt: $captureUpdated,
 				metadata: [
 					"captureId" => $captureId,
 				],

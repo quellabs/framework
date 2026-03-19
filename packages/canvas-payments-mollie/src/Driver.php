@@ -201,9 +201,7 @@
 				valueRefundable: $amountRefundable,
 				internalState: $mollieStatus,
 				currency: $currency,
-				createdAt:       $r["createdAt"] ?? null,
-				updatedAt:       $r["paidAt"] ?? $r["canceledAt"] ?? $r["expiredAt"] ?? $r["failedAt"] ?? null,
-				metadata:        $r["metadata"] ?? []
+				metadata: $r["metadata"] ?? []
 			);
 		}
 		

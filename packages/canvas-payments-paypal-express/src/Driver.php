@@ -481,7 +481,6 @@
 				valueRefundable: $state === PaymentStatus::Paid ? max(0, $valueCaptured - $valueRefunded) : 0,
 				internalState:   $paymentStatus,
 				currency:        $r["CURRENCYCODE"] ?? null,
-				createdAt:       $r["ORDERTIME"] ?? null,
 				metadata:        [
 					"captureId" => $captureId
 				],

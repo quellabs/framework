@@ -3,10 +3,6 @@
 	namespace Quellabs\Payments\Paypal;
 	
 	use Symfony\Component\HttpClient\HttpClient;
-	use Symfony\Contracts\HttpClient\Exception\ClientExceptionInterface;
-	use Symfony\Contracts\HttpClient\Exception\RedirectionExceptionInterface;
-	use Symfony\Contracts\HttpClient\Exception\ServerExceptionInterface;
-	use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 	
 	/**
 	 * Low-level wrapper around the PayPal Orders v2 and Payments v2 REST APIs.
@@ -27,6 +23,7 @@
 		private string  $m_webhook_id;
 		private ?string $m_access_token  = null;
 		private int     $m_token_expires = 0;
+		private \Symfony\Contracts\HttpClient\HttpClientInterface $m_client;
 		
 		/**
 		 * PaypalGateway constructor.
@@ -44,6 +41,7 @@
 			$this->m_return_url       = $config["return_url"] ?? '';
 			$this->m_cancel_url       = $config["cancel_return_url"] ?? '';
 			$this->m_webhook_id       = $config["webhook_id"];
+			$this->m_client           = HttpClient::create();
 		}
 		
 		/**
@@ -66,7 +64,7 @@
 		 */
 		public function createOrder(float $value, string $description, string $currency = "EUR", string $brandName = ""): array {
 			$experienceContext = array_filter([
-				'payment_method_preference' => $this->m_account_optional ? 'IMMEDIATE_PAYMENT_REQUIRED' : 'UNRESTRICTED',
+				'payment_method_preference' => $this->m_account_optional ? 'UNRESTRICTED' : 'IMMEDIATE_PAYMENT_REQUIRED',
 				'user_action'               => 'PAY_NOW',
 				'return_url'                => $this->m_return_url,
 				'cancel_url'                => $this->m_cancel_url,
@@ -179,7 +177,7 @@
 			// that structure lives on the order. The order ID is available via supplementary_data.
 			$capture = $this->getCapture($captureId);
 			
-			if ($capture['request']['result'] == 0) {
+			if ($capture['request']['result'] === 0) {
 				return $capture;
 			}
 			
@@ -193,7 +191,7 @@
 			// Step 3: Fetch the order — refund stubs are under purchase_units[0].payments.refunds
 			$order = $this->sendRequest('GET', '/v2/checkout/orders/' . urlencode($orderId));
 			
-			if ($order['request']['result'] == 0) {
+			if ($order['request']['result'] === 0) {
 				return $order;
 			}
 			
@@ -211,7 +209,7 @@
 			foreach ($refundLinks as $refundStub) {
 				$result = $this->sendRequest('GET', '/v2/payments/refunds/' . urlencode($refundStub['id']));
 				
-				if ($result['request']['result'] == 0) {
+				if ($result['request']['result'] === 0) {
 					return $result;
 				}
 				
@@ -252,6 +250,11 @@
 			// Build body
 			$body = [
 				'auth_algo'         => $headers['paypal-auth-algo'],
+				
+				// PayPal validates cert_url server-side (only their own cert domains are accepted),
+				// so SSRF via a spoofed cert_url header is mitigated by PayPal's own verification API.
+				// If you ever switch to local signature verification, validate cert_url against
+				// an allowlist of PayPal cert domains before fetching it.
 				'cert_url'          => $headers['paypal-cert-url'],
 				'transmission_id'   => $headers['paypal-transmission-id'],
 				'transmission_sig'  => $headers['paypal-transmission-sig'],
@@ -264,7 +267,7 @@
 			$result = $this->sendRequest('POST', '/v1/notifications/verify-webhook-signature', $body);
 			
 			// If this call failed, return false
-			if ($result['request']['result'] == 0) {
+			if ($result['request']['result'] === 0) {
 				return false;
 			}
 			
@@ -277,7 +280,6 @@
 		 * PayPal access tokens expire after 32400 seconds (9 hours) but we treat
 		 * them as expired 60 seconds early to avoid clock-skew edge cases.
 		 * @return array Returns the standard result envelope; on success 'response' contains the access token string
-		 * @noinspection PhpDocMissingThrowsInspection
 		 */
 		private function getAccessToken(): array {
 			// Return cached access token if there is one
@@ -286,29 +288,29 @@
 			}
 			
 			// Fetch fresh access token and cache it
-			$client = HttpClient::create();
-			
 			try {
 				// Call the gateway
-				$response = $client->request('POST', $this->m_base_url . '/v1/oauth2/token', [
+				$response = $this->m_client->request('POST', $this->m_base_url . '/v1/oauth2/token', [
 					'auth_basic'  => [$this->m_client_id, $this->m_client_secret],
 					'body'        => ['grant_type' => 'client_credentials'],
 					'verify_peer' => $this->m_verify_ssl,
 				]);
 				
-				/** @noinspection PhpUnhandledExceptionInspection */
+				// Fetch return data as array
 				$data = $response->toArray(false);
 
+				// If no access_token in response, return failure
 				if (empty($data['access_token'])) {
 					$error = $data['error_description'] ?? $data['error'] ?? 'Unexpected response from PayPal OAuth2 endpoint';
 					return ['request' => ['result' => 0, 'errorId' => 'OAUTH2_FAILURE', 'errorMessage' => $error], 'response' => []];
 				}
 
+				// Cache the token and expires date
 				$this->m_access_token  = $data['access_token'];
 				$this->m_token_expires = time() + $data['expires_in'] - 60;
 				
 				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $this->m_access_token];
-			} catch (\Exception|TransportExceptionInterface|ClientExceptionInterface|RedirectionExceptionInterface|ServerExceptionInterface $e) {
+			} catch (\Throwable $e) {
 				return ['request' => ['result' => 0, 'errorId' => 'OAUTH2_FAILURE', 'errorMessage' => 'PayPal authentication failed: ' . $e->getMessage()], 'response' => []];
 			}
 		}
@@ -321,15 +323,12 @@
 		 * @param array  $body    Request body (JSON-encoded), empty for GET
 		 * @param array  $headers Extra headers to merge in
 		 * @return array ['request' => ['result' => 1|0, 'errorId' => ..., 'errorMessage' => ...], 'response' => [...]]
-		 * @noinspection PhpDocMissingThrowsInspection
 		 */
 		private function sendRequest(string $method, string $path, array $body = [], array $headers = []): array {
-			$client = HttpClient::create();
-			
 			try {
 				$tokenResult = $this->getAccessToken();
 				
-				if ($tokenResult['request']['result'] == 0) {
+				if ($tokenResult['request']['result'] === 0) {
 					return $tokenResult;
 				}
 				
@@ -347,9 +346,7 @@
 				}
 
 				// Call the gateway
-				$response = $client->request($method, $this->m_base_url . $path, $options);
-				
-				/** @noinspection PhpUnhandledExceptionInspection */
+				$response = $this->m_client->request($method, $this->m_base_url . $path, $options);
 				$data     = $response->toArray(false);
 				$status   = $response->getStatusCode();
 
@@ -372,7 +369,7 @@
 				}
 				
 				return ['request' => ['result' => 0, 'errorId' => $errorName, 'errorMessage' => $errorMessage], 'response' => $data];
-			} catch (\Exception|TransportExceptionInterface|ClientExceptionInterface|RedirectionExceptionInterface|ServerExceptionInterface $e) {
+			} catch (\Throwable $e) {
 				return ['request' => ['result' => 0, 'errorId' => (string)$e->getCode(), 'errorMessage' => $e->getMessage()]];
 			}
 		}
