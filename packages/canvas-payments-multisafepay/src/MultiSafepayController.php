@@ -42,9 +42,6 @@
 		 * The parameter name is 'transactionid' (lowercase, no underscore) — this is MSP's term
 		 * for your order_id / reference, not an MSP-internal identifier.
 		 *
-		 * Unlike Adyen, MSP does not append a resultCode or redirectResult. The payment status
-		 * must always be fetched by calling GET /orders/{order_id} — exchange() handles this.
-		 *
 		 * Note: the shopper may return before MSP has finished processing the payment (race
 		 * condition on async methods). If the status is 'initialized', the order has not yet
 		 * been settled — the final state arrives via the webhook notification_url.
@@ -55,9 +52,10 @@
 		 * @return Response
 		 */
 		public function handleReturn(Request $request): Response {
-			// MSP appends ?transactionid= (their naming, not ours) to the redirect_url.
+			// MSP appends ?transactionid= (their naming) to the redirect_url.
 			$transactionId = $request->query->get('transactionid');
 			
+			// If transaction is missing, return error
 			if (empty($transactionId)) {
 				return new JsonResponse("Missing parameter 'transactionid'", 400);
 			}
@@ -70,9 +68,10 @@
 				// Notify listeners (e.g. order management) of the updated payment state.
 				$this->signal->emit($response);
 				
+				// Fetch the contents of msp's config file
 				$config = $this->msp->getConfig();
 				
-				// Route the shopper to the cancel URL if they cancelled, otherwise to the
+				// Route the shopper to the cancel URL if they canceled, otherwise to the
 				// success page. Note: 'initialized' / 'pending' lands on the success page
 				// intentionally — the order exists and the shopper should be shown a
 				// "payment pending" confirmation, not an error.
@@ -98,10 +97,6 @@
 		 * Important: the POST body contains only the order_id and a timestamp — no status, no
 		 * amount, no signature. The authoritative state must always be fetched from the API.
 		 *
-		 * There is no HMAC mechanism for MSP webhooks. Authenticity is validated implicitly:
-		 * exchange() calls GET /orders/{order_id} using the configured API key, so a forged
-		 * notification with a valid order_id will still only return the real MSP-side status.
-		 *
 		 * MSP requires an HTTP 200 response. Any non-200 response causes MSP to retry.
 		 *
 		 * @Route("msp::notification_url", fallback="/webhooks/multisafepay", methods={"POST"})
@@ -113,12 +108,14 @@
 			// MSP POSTs form-encoded data; 'transactionid' is the order_id from order creation.
 			$transactionId = $request->request->get('transactionid');
 			
+			// If no transactionId passed, try to fetch it from $_GET
 			if (empty($transactionId)) {
 				// MSP may also send the transactionid as a query parameter on the notification_url
 				// when configured via the Customer Portal. Check both locations.
 				$transactionId = $request->query->get('transactionid');
 			}
 			
+			// No transaction id in either $_POST or $_GET. Return error
 			if (empty($transactionId)) {
 				return new JsonResponse("Missing parameter 'transactionid'", 400);
 			}
@@ -130,9 +127,6 @@
 				// Notify listeners (e.g. order management) of the updated payment state.
 				$this->signal->emit($response);
 			} catch (PaymentExchangeException $exception) {
-				// Log the failure. Unlike Adyen, MSP does not require a specific literal response
-				// body — but we must return HTTP 200 to prevent retries.
-				// Replace error_log with your application's logger.
 				error_log('MultiSafepay webhook exchange failed: ' . $exception->getMessage() . ' (' . $exception->getErrorId() . ')');
 			}
 			
