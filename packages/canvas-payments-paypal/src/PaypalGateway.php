@@ -61,10 +61,12 @@
 		 * @return array Returns the standard result envelope; on success 'response' contains the access token string
 		 */
 		private function getAccessToken(): array {
+			// Return cached access token if there is one
 			if ($this->m_access_token !== null && time() < $this->m_token_expires) {
 				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $this->m_access_token];
 			}
 			
+			// Fetch fresh access token and cache is
 			$client = HttpClient::create();
 			
 			try {
@@ -74,7 +76,14 @@
 					'verify_peer' => $this->m_verify_ssl,
 				]);
 				
-				$data = $response->toArray();
+				/** @noinspection PhpUnhandledExceptionInspection */
+				$data = $response->toArray(false);
+
+				if (empty($data['access_token'])) {
+					$error = $data['error_description'] ?? $data['error'] ?? 'Unexpected response from PayPal OAuth2 endpoint';
+					return ['request' => ['result' => 0, 'errorId' => 'OAUTH2_FAILURE', 'errorMessage' => $error], 'response' => []];
+				}
+
 				$this->m_access_token  = $data['access_token'];
 				$this->m_token_expires = time() + $data['expires_in'] - 60;
 				
@@ -115,11 +124,14 @@
 				if (!empty($body)) {
 					$options['json'] = $body;
 				}
-				
+
+				// Call the gateway
 				$response = $client->request($method, $this->m_base_url . $path, $options);
+				
+				/** @noinspection PhpUnhandledExceptionInspection */
 				$data     = $response->toArray(false);
 				$status   = $response->getStatusCode();
-				
+
 				// 2xx = success
 				if ($status >= 200 && $status < 300) {
 					return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $data];
@@ -148,15 +160,13 @@
 		 * Creates a new PayPal order and returns its ID, which serves as the checkout token.
 		 * Equivalent to NVP SetExpressCheckout.
 		 * @see https://developer.paypal.com/docs/api/orders/v2/#orders_create
-		 * @param string $emailAddress Buyer's email address (used to pre-fill the PayPal login)
 		 * @param float  $value        Payment amount in major units (e.g. 12.50)
 		 * @param string $description  Order description shown on the PayPal checkout page
 		 * @param string $currency     ISO 4217 currency code (default: EUR)
 		 * @param string $brandName    Optional brand name shown on the PayPal checkout page
-		 * @param array  $extraFields  Additional top-level order fields to merge into the request
 		 * @return array
 		 */
-		public function createOrder(string $emailAddress, float $value, string $description, string $currency = "EUR", string $brandName = "", array $extraFields = []): array {
+		public function createOrder(float $value, string $description, string $currency = "EUR", string $brandName = ""): array {
 			$experienceContext = array_filter([
 				'payment_method_preference' => $this->m_account_optional ? 'IMMEDIATE_PAYMENT_REQUIRED' : 'UNRESTRICTED',
 				'user_action'               => 'PAY_NOW',
@@ -165,7 +175,7 @@
 				'brand_name'                => $brandName ?: null,
 			]);
 			
-			$body = array_merge([
+			$body = [
 				'intent'         => 'CAPTURE',
 				'payment_source' => [
 					'paypal' => [
@@ -179,7 +189,7 @@
 					],
 					'description' => $description,
 				]],
-			], $extraFields);
+			];
 			
 			return $this->sendRequest('POST', '/v2/checkout/orders', $body);
 		}
@@ -262,35 +272,37 @@
 		 * @return array Normalized result; on success 'response' is an array of refund objects
 		 */
 		public function getRefundsForCapture(string $captureId): array {
-			// Fetch the capture object — it embeds a list of refund IDs under payments.refunds
+			// Step 1: Fetch the capture — refund IDs are embedded under purchase_units[0].payments.refunds
 			$capture = $this->getCapture($captureId);
-			
+
 			if ($capture['request']['result'] == 0) {
 				return $capture;
 			}
-			
+
+			// Step 2: Extract the list of refund stubs from the capture response
 			$refundLinks = $capture['response']['purchase_units'][0]['payments']['refunds'] ?? [];
-			
+
 			if (empty($refundLinks)) {
 				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => []];
 			}
-			
-			// Fetch each refund object individually to get full details (amount, currency, status)
+
+			// Step 3: Fetch each refund individually — the stubs only contain an ID and a link,
+			// not the full details (amount, currency, status) needed by the caller
 			$refunds = [];
-			
+
 			foreach ($refundLinks as $refundStub) {
 				$result = $this->sendRequest('GET', '/v2/payments/refunds/' . urlencode($refundStub['id']));
-				
+
 				if ($result['request']['result'] == 0) {
 					return $result;
 				}
-				
+
 				$refunds[] = $result['response'];
 			}
-			
+
 			return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $refunds];
 		}
-		
+
 		/**
 		 * Verifies a PayPal webhook notification by validating its signature headers.
 		 * Replaces the NVP IPN echo-back verification mechanism.

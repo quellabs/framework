@@ -86,7 +86,6 @@
 		 */
 		public function initiate(PaymentRequest $request): InitiateResult {
 			$result = $this->getGateway()->createOrder(
-				$request->billingAddress->email,
 				$request->amount / 100,
 				$request->description,
 				$request->currency,
@@ -267,12 +266,18 @@
 			$value    = $request->amount !== null ? $request->amount / 100 : null;
 			$currency = $request->amount !== null ? $request->currency : null;
 			
-			// Call gateway
+			// Deterministic key derived from capture ID + amount — retrying the same refund
+			// request always produces the same key, so a timeout cannot cause a double-refund.
+			// Amount is included so a partial refund followed by a different partial refund
+			// on the same capture produces a distinct key.
+			$idempotencyKey = hash('sha256', 'refund:' . $request->transactionId . ':' . ($request->amount ?? 'full'));
+
 			$response = $this->getGateway()->refund(
 				$request->transactionId,
 				$value,
 				$currency,
 				$request->description,
+				$idempotencyKey,
 			);
 			
 			// Validate this went well
