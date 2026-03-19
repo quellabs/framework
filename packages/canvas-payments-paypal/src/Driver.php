@@ -97,6 +97,7 @@
 				throw new PaymentInitiationException("paypal", $result["request"]["errorId"], $result["request"]["errorMessage"]);
 			}
 			
+			// Fetch orderId
 			$orderId = $result["response"]["id"];
 			
 			// Extract the HATEOAS approve link — this is the URL we redirect the buyer to.
@@ -111,10 +112,12 @@
 				}
 			}
 			
+			// Validate approveUrl
 			if ($approveUrl === null) {
 				throw new PaymentInitiationException("paypal", "MISSING_APPROVE_LINK", "PayPal response did not include a payer-action link.");
 			}
 			
+			// Return result
 			return new InitiateResult(
 				"paypal",
 				$orderId,
@@ -139,7 +142,7 @@
 		 */
 		public function exchange(string $transactionId, array $extraData = []): PaymentState {
 			// Buyer clicked cancel at PayPal — no payment was attempted.
-			// Return a cancelled state without querying the API.
+			// Return a canceled state without querying the API.
 			if (($extraData['action'] ?? null) === 'cancel') {
 				return new PaymentState(
 					provider: "paypal",
@@ -154,16 +157,17 @@
 			// Fetch the current order state from PayPal
 			$order = $this->getGateway()->getOrder($transactionId);
 			
+			// Validate this went correctly
 			if ($order["request"]["result"] == 0) {
 				throw new PaymentExchangeException("paypal", $order["request"]["errorId"], $order["request"]["errorMessage"]);
 			}
 			
+			// Map order status to PaymentState
 			$orderData    = $order["response"];
 			$orderStatus  = $orderData["status"];
 			$purchaseUnit = $orderData["purchase_units"][0] ?? [];
 			$currency     = $purchaseUnit["amount"]["currency_code"] ?? "EUR";
 			
-			// Map order status to PaymentState
 			switch ($orderStatus) {
 				// Order was created but the buyer hasn't approved it yet (should not normally
 				// reach exchange() in this state)
@@ -185,17 +189,14 @@
 				// Payment was already captured in a previous exchange() call.
 				// Build state from the existing capture to retrieve current refund amounts.
 				case "COMPLETED":
-					$captureId = $extraData['captureId']
-						?? ($purchaseUnit["payments"]["captures"][0]["id"] ?? null);
-					
+					$captureId = $extraData['captureId'] ?? ($purchaseUnit["payments"]["captures"][0]["id"] ?? null);
 					return $this->buildCompletedPaymentState($transactionId, $captureId, "COMPLETED", $currency);
 				
 				// Order was voided. This can mean a genuine cancellation (valueRefunded = 0)
 				// or that all captures were fully refunded. Fetch the capture to determine
 				// the actual refunded amount rather than assuming zero.
 				case "VOIDED":
-					$captureId = $extraData['captureId']
-						?? ($purchaseUnit["payments"]["captures"][0]["id"] ?? null);
+					$captureId = $extraData['captureId'] ?? ($purchaseUnit["payments"]["captures"][0]["id"] ?? null);
 					
 					// No capture means the order was cancelled before payment — clean cancellation
 					if ($captureId === null) {
@@ -266,6 +267,7 @@
 			$value    = $request->amount !== null ? $request->amount / 100 : null;
 			$currency = $request->amount !== null ? $request->currency : null;
 			
+			// Call gateway
 			$response = $this->getGateway()->refund(
 				$request->transactionId,
 				$value,
@@ -273,10 +275,12 @@
 				$request->description,
 			);
 			
+			// Validate this went well
 			if ($response["request"]["result"] == 0) {
 				throw new PaymentRefundException("paypal", $response["request"]["errorId"], $response["request"]["errorMessage"]);
 			}
 			
+			// Send response back to user
 			$r = $response["response"];
 			
 			return new RefundResult(

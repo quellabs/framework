@@ -4,7 +4,6 @@
 	
 	use Symfony\Component\HttpClient\HttpClient;
 	use Symfony\Contracts\HttpClient\Exception\ClientExceptionInterface;
-	use Symfony\Contracts\HttpClient\Exception\DecodingExceptionInterface;
 	use Symfony\Contracts\HttpClient\Exception\RedirectionExceptionInterface;
 	use Symfony\Contracts\HttpClient\Exception\ServerExceptionInterface;
 	use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
@@ -59,12 +58,11 @@
 		 * Returns a valid OAuth2 access token, refreshing it if expired.
 		 * PayPal access tokens expire after 32400 seconds (9 hours) but we treat
 		 * them as expired 60 seconds early to avoid clock-skew edge cases.
-		 * @return string
-		 * @throws \RuntimeException|DecodingExceptionInterface on authentication failure
+		 * @return array Returns the standard result envelope; on success 'response' contains the access token string
 		 */
-		private function getAccessToken(): string {
+		private function getAccessToken(): array {
 			if ($this->m_access_token !== null && time() < $this->m_token_expires) {
-				return $this->m_access_token;
+				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $this->m_access_token];
 			}
 			
 			$client = HttpClient::create();
@@ -80,30 +78,34 @@
 				$this->m_access_token  = $data['access_token'];
 				$this->m_token_expires = time() + $data['expires_in'] - 60;
 				
-				return $this->m_access_token;
+				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $this->m_access_token];
 			} catch (\Exception|TransportExceptionInterface|ClientExceptionInterface|RedirectionExceptionInterface|ServerExceptionInterface $e) {
-				throw new \RuntimeException("PayPal OAuth2 authentication failed: " . $e->getMessage(), $e->getCode(), $e);
+				return ['request' => ['result' => 0, 'errorId' => 'OAUTH2_FAILURE', 'errorMessage' => 'PayPal authentication failed: ' . $e->getMessage()], 'response' => []];
 			}
 		}
 		
 		/**
 		 * Send an authenticated REST request and return a normalized response array.
 		 * All API methods funnel through here to keep HTTP handling in one place.
-		 * @param string $method HTTP method: GET, POST, PATCH
-		 * @param string $path API path, e.g. /v2/checkout/orders
-		 * @param array $body Request body (JSON-encoded), empty for GET
-		 * @param array $headers Extra headers to merge in
+		 * @param string $method  HTTP method: GET, POST, PATCH
+		 * @param string $path    API path, e.g. /v2/checkout/orders
+		 * @param array  $body    Request body (JSON-encoded), empty for GET
+		 * @param array  $headers Extra headers to merge in
 		 * @return array ['request' => ['result' => 1|0, 'errorId' => ..., 'errorMessage' => ...], 'response' => [...]]
-		 * @throws DecodingExceptionInterface
 		 */
 		private function sendRequest(string $method, string $path, array $body = [], array $headers = []): array {
 			$client = HttpClient::create();
 			
 			try {
-				$token   = $this->getAccessToken();
+				$tokenResult = $this->getAccessToken();
+				
+				if ($tokenResult['request']['result'] == 0) {
+					return $tokenResult;
+				}
+				
 				$options = [
 					'headers'     => array_merge([
-						'Authorization' => "Bearer $token",
+						'Authorization' => "Bearer {$tokenResult['response']}",
 						'Content-Type'  => 'application/json',
 						'Prefer'        => 'return=representation',
 					], $headers),
@@ -137,10 +139,7 @@
 				}
 				
 				return ['request' => ['result' => 0, 'errorId' => $errorName, 'errorMessage' => $errorMessage], 'response' => $data];
-			} catch (\RuntimeException $e) {
-				// OAuth2 failure — rethrow so the caller can distinguish auth errors from API errors
-				throw $e;
-			} catch (\Exception|TransportExceptionInterface $e) {
+			} catch (\Exception|TransportExceptionInterface|ClientExceptionInterface|RedirectionExceptionInterface|ServerExceptionInterface $e) {
 				return ['request' => ['result' => 0, 'errorId' => (string)$e->getCode(), 'errorMessage' => $e->getMessage()]];
 			}
 		}
