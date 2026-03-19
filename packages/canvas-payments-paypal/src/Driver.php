@@ -85,6 +85,7 @@
 		 * @throws PaymentInitiationException
 		 */
 		public function initiate(PaymentRequest $request): InitiateResult {
+			// Use the gateway to create a new order
 			$result = $this->getGateway()->createOrder(
 				$request->amount / 100,
 				$request->description,
@@ -92,6 +93,7 @@
 				$this->config['brand_name'] ?? '',
 			);
 			
+			// If that failed, throw error
 			if ($result["request"]["result"] == 0) {
 				throw new PaymentInitiationException("paypal", $result["request"]["errorId"], $result["request"]["errorMessage"]);
 			}

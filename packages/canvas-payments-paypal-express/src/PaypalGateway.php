@@ -125,7 +125,6 @@
 				"SIGNATURE"                      => $this->m_api_signature,
 				"TOKEN"                          => $transactionId,
 				"PAYERID"                        => $payerId,
-				"BUTTONSOURCE"                   => "Shoptrader_EC_NL",
 				"PAYMENTREQUEST_0_PAYMENTACTION" => "Sale",
 				"PAYMENTREQUEST_0_AMT"           => $value,
 				"PAYMENTREQUEST_0_CURRENCYCODE"  => $currencyType,

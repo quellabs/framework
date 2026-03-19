@@ -59,6 +59,7 @@
 		 * PayPal access tokens expire after 32400 seconds (9 hours) but we treat
 		 * them as expired 60 seconds early to avoid clock-skew edge cases.
 		 * @return array Returns the standard result envelope; on success 'response' contains the access token string
+		 * @noinspection PhpDocMissingThrowsInspection
 		 */
 		private function getAccessToken(): array {
 			// Return cached access token if there is one
@@ -70,6 +71,7 @@
 			$client = HttpClient::create();
 			
 			try {
+				// Call the gateway
 				$response = $client->request('POST', $this->m_base_url . '/v1/oauth2/token', [
 					'auth_basic'  => [$this->m_client_id, $this->m_client_secret],
 					'body'        => ['grant_type' => 'client_credentials'],
@@ -101,6 +103,7 @@
 		 * @param array  $body    Request body (JSON-encoded), empty for GET
 		 * @param array  $headers Extra headers to merge in
 		 * @return array ['request' => ['result' => 1|0, 'errorId' => ..., 'errorMessage' => ...], 'response' => [...]]
+		 * @noinspection PhpDocMissingThrowsInspection
 		 */
 		private function sendRequest(string $method, string $path, array $body = [], array $headers = []): array {
 			$client = HttpClient::create();
@@ -248,7 +251,10 @@
 		 * @return array
 		 */
 		public function refund(string $captureId, ?float $value, ?string $currencyType, string $note, string $idempotencyKey): array {
-			$body = ['note_to_payer' => substr($note, 0, 255)];
+			// Add payment note
+			$body = [
+				'note_to_payer' => substr($note, 0, 255)
+			];
 
 			// Omitting the amount field triggers a full refund on PayPal's side
 			if ($value !== null && $currencyType !== null) {
@@ -258,6 +264,7 @@
 				];
 			}
 
+			// Call the gateway
 			return $this->sendRequest('POST', '/v2/payments/captures/' . urlencode($captureId) . '/refund', $body, [
 				'PayPal-Request-Id' => $idempotencyKey,
 			]);
