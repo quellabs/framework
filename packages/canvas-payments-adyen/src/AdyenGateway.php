@@ -39,14 +39,16 @@
 		 * @param Driver $driver
 		 */
 		public function __construct(Driver $driver) {
+			// Fetch config from driveer
 			$config = $driver->getConfig();
 			
+			// Extract information
 			$this->client = HttpClient::create();
 			$this->apiKey = $config['api_key'] ?? '';
 			$this->merchantAccount = $config['merchant_account'] ?? '';
 			
 			// Live endpoint prefix differs per merchant; for testing the test endpoint is fixed.
-			// In production you must replace 'YOUR_LIVE_PREFIX' with the prefix from your Customer Area.
+			// In production, you must replace 'YOUR_LIVE_PREFIX' with the prefix from your Customer Area.
 			// @see https://docs.adyen.com/development-resources/live-endpoints
 			if ($config['test_mode']) {
 				$this->baseUrl = 'https://checkout-test.adyen.com/' . self::CHECKOUT_VERSION;
@@ -125,12 +127,15 @@
 		 * @return bool
 		 */
 		public function verifyHmacSignature(array $notification, string $hmacKey): bool {
+			// Bail if no hmacKey passed
 			if (empty($hmacKey)) {
 				return false;
 			}
 			
+			// Extract hmacSignature
 			$receivedSignature = $notification['additionalData']['hmacSignature'] ?? null;
 			
+			// Bail if none found
 			if (empty($receivedSignature)) {
 				return false;
 			}
@@ -149,10 +154,12 @@
 				$this->escapeHmacValue((string)($notification['success'] ?? '')),
 			]);
 			
+			// Build the hashes to compare
 			$binaryKey = pack('H*', $hmacKey);
 			$expectedRaw = hash_hmac('sha256', $signingString, $binaryKey, true);
 			$expectedEncoded = base64_encode($expectedRaw);
 			
+			// Do the comparison
 			return hash_equals($expectedEncoded, $receivedSignature);
 		}
 		
