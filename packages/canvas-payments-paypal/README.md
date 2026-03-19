@@ -72,17 +72,17 @@ return [
 
 ### Initiating a payment
 
-Inject `PaymentRouter` via Canvas DI and call `initiate()`:
+Inject `PaymentProviderInterface` via Canvas DI and call `initiate()`:
 
 ```php
-use Quellabs\Payments\PaymentRouter;
+use Quellabs\Payments\Contracts\PaymentProviderInterface;
 use Quellabs\Canvas\Controllers\BaseController;
 use Quellabs\Payments\Contracts\PaymentRequest;
 use Quellabs\Payments\Contracts\PaymentInitiationException;
 
 class CheckoutController extends BaseController {
 
-    public function __construct(private PaymentRouter $router) {}
+    public function __construct(private PaymentProviderInterface $router) {}
 
     /**
      * @Route("...")
