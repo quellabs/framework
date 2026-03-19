@@ -94,7 +94,7 @@
 			
 			// return error if failed
 			if ($result["request"]["result"] == 0) {
-				throw new PaymentInitiationException("paypal", $result["request"]["errorId"], $result["request"]["errorMessage"]);
+				throw new PaymentInitiationException("paypal_express", $result["request"]["errorId"], $result["request"]["errorMessage"]);
 			}
 			
 			// transform output
@@ -143,7 +143,7 @@
 			
 			// Throw error when that failed
 			if ($details["request"]["result"] == 0) {
-				throw new PaymentInitiationException("paypal", $details["request"]["errorId"], $details["request"]["errorMessage"]);
+				throw new PaymentInitiationException("paypal_express", $details["request"]["errorId"], $details["request"]["errorMessage"]);
 			}
 			
 			// If we already have the payment transaction ID (e.g. from IPN), the payment is complete.
@@ -232,7 +232,7 @@
 			
 			// If that failed through an exception
 			if ($response["request"]["result"] == 0) {
-				throw new PaymentRefundException("paypal", $response["request"]["errorId"], $response["request"]["errorMessage"]);
+				throw new PaymentRefundException("paypal_express", $response["request"]["errorId"], $response["request"]["errorMessage"]);
 			}
 			
 			// GROSSREFUNDAMT is returned in major units — convert back to minor units for consistency.
@@ -276,14 +276,14 @@
 			$txDetails = $this->getGateway()->getTransactionDetails($transactionId);
 			
 			if ($txDetails["request"]["result"] == 0) {
-				throw new PaymentRefundException("paypal", $txDetails["request"]["errorId"], $txDetails["request"]["errorMessage"]);
+				throw new PaymentRefundException("paypal_express", $txDetails["request"]["errorId"], $txDetails["request"]["errorMessage"]);
 			}
 			
 			// Search for all transactions from the payment date until now
 			$search = $this->getGateway()->transactionSearch($txDetails["response"]["ORDERTIME"], $transactionId);
 			
 			if ($search["request"]["result"] == 0) {
-				throw new PaymentRefundException("paypal", $search["request"]["errorId"], $search["request"]["errorMessage"]);
+				throw new PaymentRefundException("paypal_express", $search["request"]["errorId"], $search["request"]["errorMessage"]);
 			}
 			
 			// Results are returned as flat indexed keys: L_TYPEn, L_TRANSACTIONIDn, etc.
@@ -364,7 +364,7 @@
 					);
 				}
 				
-				throw new PaymentInitiationException("paypal", $result["request"]["errorId"], $result["request"]["errorMessage"]);
+				throw new PaymentInitiationException("paypal_express", $result["request"]["errorId"], $result["request"]["errorMessage"]);
 			}
 			
 			// Convert Paypal status to state object
@@ -437,7 +437,7 @@
 			// Throw error when $paymentTransactionId not passed
 			if ($paymentTransactionId === null) {
 				throw new PaymentInitiationException(
-					"paypal",
+					"paypal_express",
 					500,
 					"Cannot retrieve payment state: paymentTransactionId is missing from extraData. " .
 					"Ensure your payment_exchange listener persists PaymentState::\$metadata['paymentTransactionId'] " .
@@ -450,7 +450,7 @@
 			$txDetails = $this->getGateway()->getTransactionDetails($paymentTransactionId);
 			
 			if ($txDetails["request"]["result"] == 0) {
-				throw new PaymentInitiationException("paypal", $txDetails["request"]["errorId"], $txDetails["request"]["errorMessage"]);
+				throw new PaymentInitiationException("paypal_express", $txDetails["request"]["errorId"], $txDetails["request"]["errorMessage"]);
 			}
 			
 			// AMT is the original captured amount. TOTALREFUNDEDAMOUNT accumulates across all refunds.
