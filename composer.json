@@ -96,6 +96,10 @@
     {
       "type": "path",
       "url": "./packages/canvas-payments-paypal-express"
+    },
+    {
+      "type": "path",
+      "url": "./packages/canvas-payments-stripe"
     }
   ],
   "require": {
@@ -142,7 +146,8 @@
     "quellabs/canvas-payments-contracts": "dev-main as 1.999.999",
     "quellabs/canvas-payments-mollie": "dev-main as 1.999.999",
     "quellabs/canvas-payments-paypal": "dev-main as 1.999.999",
-    "quellabs/canvas-payments-paypal-express": "dev-main as 1.999.999"
+    "quellabs/canvas-payments-paypal-express": "dev-main as 1.999.999",
+    "quellabs/canvas-payments-stripe": "dev-main as 1.999.999"
   },
   "autoload": {
     "psr-4": {

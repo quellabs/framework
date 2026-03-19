@@ -41,6 +41,7 @@ jobs:
           - canvas-payments-mollie
           - canvas-payments-paypal
           - canvas-payments-paypal-express
+          - canvas-payments-stripe
       fail-fast: false
 
     steps:
