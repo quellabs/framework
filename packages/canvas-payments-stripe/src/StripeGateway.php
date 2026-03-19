@@ -63,10 +63,9 @@
 		 * @param int    $amount      Amount in the smallest currency unit (e.g. cents)
 		 * @param string $description Line item description shown on the Stripe-hosted checkout page
 		 * @param string $currency    ISO 4217 currency code (e.g. 'eur', 'usd')
-		 * @param string $brandName   Optional display name shown on the Stripe checkout page
 		 * @return array Normalized result envelope
 		 */
-		public function createCheckoutSession(int $amount, string $description, string $currency, string $brandName = ''): array {
+		public function createCheckoutSession(int $amount, string $description, string $currency, array $paymentMethodTypes = []): array {
 			// Stripe appends the session ID to return_url automatically when {CHECKOUT_SESSION_ID}
 			// is present in the URL. This is how we correlate the return visit to the session.
 			$returnUrl = $this->appendSessionPlaceholder($this->m_return_url);
@@ -84,13 +83,13 @@
 				'payment_intent_data[description]'              => $description,
 			];
 			
-			if (!empty($brandName)) {
-				// Checkout Sessions do not have a direct brand_name field — the branding is
-				// controlled in the Stripe Dashboard under Branding settings. The closest
-				// per-session equivalent is setting the statement_descriptor.
-				$body['payment_intent_data[statement_descriptor]'] = substr($brandName, 0, 22);
+			// When specific payment methods are requested, pass them explicitly.
+			// Without this, Stripe uses Dashboard defaults — which typically means card only.
+			foreach ($paymentMethodTypes as $index => $type) {
+				$body["payment_method_types[$index]"] = $type;
 			}
-			
+
+			// Send request to API
 			return $this->sendRequest('POST', '/v1/checkout/sessions', $body);
 		}
 		

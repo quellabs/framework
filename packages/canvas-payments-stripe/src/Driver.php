@@ -22,6 +22,17 @@
 		private array $config = [];
 		
 		/**
+		 * Maps our internal module names to stripe's gateway type strings.
+		 * These are passed as 'type' when creating an order.
+		 */
+		private const MODULE_TYPE_MAP = [
+			'stripe'            => 'stripe',
+			'stripe_card'       => 'card',
+			'stripe_ideal'      => 'ideal',
+			'stripe_bancontact' => 'bancontact',
+		];
+		
+		/**
 		 * Gateway instance, constructed lazily on first use to ensure config is available.
 		 * @var StripeGateway|null
 		 */
@@ -34,13 +45,7 @@
 		 */
 		public static function getMetadata(): array {
 			return [
-				'modules' => [
-					'stripe',
-					'card',        // Generic card payments via Stripe
-					'ideal',       // iDEAL (Netherlands)
-					'bancontact',  // Bancontact (Belgium)
-					'sepa_debit',  // SEPA Direct Debit
-				]
+				'modules' => array_keys(self::MODULE_TYPE_MAP),
 			];
 		}
 		
@@ -88,15 +93,18 @@
 		 * @throws PaymentInitiationException
 		 */
 		public function initiate(PaymentRequest $request): InitiateResult {
-			// Fetch the config
-			$config = $this->getConfig();
+			// Resolve the module name to the Stripe payment method type.
+			// 'stripe' (generic) passes no types — lets Stripe use Dashboard defaults.
+			// 'stripe_ideal', 'stripe_card', etc. pin the session to that specific method.
+			$moduleType = self::MODULE_TYPE_MAP[$request->paymentModule] ?? null;
+			$paymentMethodTypes = ($moduleType !== null && $moduleType !== 'stripe') ? [$moduleType] : [];
 			
 			// Call the API for a new checkout session
 			$result = $this->getGateway()->createCheckoutSession(
 				$request->amount,
 				$request->description,
 				$request->currency,
-				$config['brand_name'] ?? '',
+				$paymentMethodTypes,
 			);
 			
 			// If tha failed, throw
@@ -104,11 +112,10 @@
 				throw new PaymentInitiationException('stripe', $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 			
-			// Extract data
+			// Validate the existence of checkout url
 			$sessionId = $result['response']['id'];
 			$checkoutUrl = $result['response']['url'];
-			
-			// Validate the existence of checkout url
+
 			if (empty($checkoutUrl)) {
 				throw new PaymentInitiationException('stripe', 'MISSING_CHECKOUT_URL', 'Stripe response did not include a checkout URL.');
 			}

@@ -1,0 +1,56 @@
+{
+  "name": "quellabs/canvas-payments-multisafepay",
+  "description": "MultiSafepay payment gateway integration for the Canvas PHP framework",
+  "type": "library",
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "Floris van den Berg",
+      "email": "info@quellabs.com"
+    }
+  ],
+  "keywords": [
+    "multisafepay",
+    "payments",
+    "payment gateway",
+    "canvas",
+    "canvas-payments"
+  ],
+  "support": {
+    "email": "support@quellabs.com",
+    "issues": "https://github.com/quellabs/canvas-payments-multisafepay/issues",
+    "forum": "https://github.com/quellabs/canvas-payments-multisafepay/discussions",
+    "wiki": "https://github.com/quellabs/canvas-payments-multisafepay/wiki",
+    "docs": "https://canvasphp.php/docs",
+    "source": "https://github.com/quellabs/canvas-payments-multisafepay"
+  },
+  "require": {
+    "php": "^8.2",
+    "ext-curl": "*",
+    "symfony/http-client": "*",
+    "quellabs/support": "*",
+    "quellabs/contracts": "*",
+    "quellabs/canvas-payments-contracts": "*"
+  },
+  "autoload": {
+    "psr-4": {
+      "Quellabs\\Payments\\MultiSafepay\\": "src/"
+    }
+  },
+  "scripts": {
+    "post-autoload-dump": [
+      "php -r \"if (!file_exists('config/multisafepay.php') && !copy('vendor/quellabs/canvas-payments-multisafepay/config/multisafepay.php', 'config/multisafepay.php')) { echo 'Warning: Could not publish MultiSafepay config file.' . PHP_EOL; }\""
+    ]
+  },
+  "extra": {
+    "discover": {
+      "canvas": {
+        "controller": "Quellabs\\Payments\\MultiSafepay\\MultiSafepayController"
+      },
+      "payments": {
+        "provider": "Quellabs\\Payments\\MultiSafepay\\Driver",
+        "config": "config/multisafepay.php"
+      }
+    }
+  }
+}
