@@ -1,0 +1,59 @@
+{
+  "name": "quellabs/canvas-payments-paynl",
+  "description": "Pay.nl payment gateway integration for the Canvas PHP framework",
+  "type": "library",
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "Floris van den Berg",
+      "email": "info@quellabs.com"
+    }
+  ],
+  "keywords": [
+    "pay.nl",
+    "paynl",
+    "payments",
+    "payment gateway",
+    "canvas",
+    "canvas-payments",
+    "ideal",
+    "netherlands"
+  ],
+  "support": {
+    "email": "support@quellabs.com",
+    "issues": "https://github.com/quellabs/canvas-payments-paynl/issues",
+    "forum": "https://github.com/quellabs/canvas-payments-paynl/discussions",
+    "wiki": "https://github.com/quellabs/canvas-payments-paynl/wiki",
+    "docs": "https://canvasphp.com/docs",
+    "source": "https://github.com/quellabs/canvas-payments-paynl"
+  },
+  "require": {
+    "php": "^8.2",
+    "ext-curl": "*",
+    "symfony/http-client": "*",
+    "quellabs/support": "*",
+    "quellabs/contracts": "*",
+    "quellabs/canvas-payments-contracts": "*"
+  },
+  "autoload": {
+    "psr-4": {
+      "Quellabs\\Payments\\PayNL\\": "src/"
+    }
+  },
+  "scripts": {
+    "post-autoload-dump": [
+      "php -r \"if (!file_exists('config/paynl.php') && !copy('vendor/quellabs/canvas-payments-paynl/config/paynl.php', 'config/paynl.php')) { echo 'Warning: Could not publish Pay.nl config file.' . PHP_EOL; }\""
+    ]
+  },
+  "extra": {
+    "discover": {
+      "canvas": {
+        "controller": "Quellabs\\Payments\\PayNL\\PayNLController"
+      },
+      "payments": {
+        "provider": "Quellabs\\Payments\\PayNL\\Driver",
+        "config": "config/paynl.php"
+      }
+    }
+  }
+}
