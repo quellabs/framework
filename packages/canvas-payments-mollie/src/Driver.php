@@ -3,6 +3,7 @@
 	namespace Quellabs\Payments\Mollie;
 	
 	use Quellabs\Payments\Contracts\InitiateResult;
+	use Quellabs\Payments\Contracts\PaymentAddress;
 	use Quellabs\Payments\Contracts\PaymentException;
 	use Quellabs\Payments\Contracts\PaymentExchangeException;
 	use Quellabs\Payments\Contracts\PaymentInitiationException;
@@ -48,6 +49,11 @@
 			'mollie_klarna'      => 'klarna',
 			'mollie_riverty'     => 'riverty',
 		];
+		
+		/**
+		 * List of modules with listeners
+		 */
+		const MODULES_WITH_LISTENERS = ['mollie_ideal', 'mollie_kbc', 'mollie_giftcard'];
 		
 		/**
 		 * Gateway instance, constructed lazily on first use to ensure config is available.
@@ -107,19 +113,43 @@
 		 * @throws PaymentInitiationException
 		 */
 		public function initiate(PaymentRequest $request): InitiateResult {
-			// Enhance the request
+			// Resolve missing redirect/cancel/webhook URLs from config
 			$this->resolveUrls($request);
 			
-			// Initiate the payment
+			// Map the module name (e.g. 'mollie_ideal') to Mollie's method string (e.g. 'ideal')
 			$paymentMethod = self::MODULE_TYPE_MAP[$request->paymentModule];
-			$response = $this->getGateway()->createPayment($request, $paymentMethod);
 			
-			// Return error if payment creation failed
+			// Build the Mollie payment payload, stripping null fields before sending
+			$payload = array_filter([
+				'amount'          => [
+					'currency' => $request->currency,
+					'value'    => number_format($request->amount / 100, 2, '.', ''),
+				],
+				'description'     => $request->description,
+				'redirectUrl'     => $request->redirectUrl,
+				'cancelUrl'       => $request->cancelUrl,
+				'webhookUrl'      => $request->webhookUrl,
+				'metadata'        => $request->metadata,
+				
+				// Empty string means no method preference — let the customer choose on Mollie's hosted page
+				'method'          => !empty($paymentMethod) ? $paymentMethod : null,
+				
+				// Only included for methods that support issuer pre-selection (e.g. iDEAL bank)
+				'issuer'          => !empty($request->issuerId) ? $request->issuerId : null,
+				'billingAddress'  => $request->billingAddress !== null ? $this->serializeAddress($request->billingAddress) : null,
+				'shippingAddress' => $request->shippingAddress !== null ? $this->serializeAddress($request->shippingAddress) : null,
+				'testmode'        => $this->getGateway()->testMode(),
+			], fn($v) => $v !== null);
+			
+			// Call the API
+			$response = $this->getGateway()->createPayment($payload);
+			
+			// If API call failed, throw error
 			if ($response["request"]["result"] == 0) {
 				throw new PaymentInitiationException("mollie", $response["request"]["errorId"], $response["request"]["errorMessage"]);
 			}
 			
-			// Return result
+			// Extract the hosted checkout URL Mollie generated for this payment
 			return new InitiateResult(
 				provider: "mollie",
 				transactionId: $response["response"]["id"],
@@ -135,14 +165,19 @@
 		 */
 		public function refund(RefundRequest $request): RefundResult {
 			// Create the refund
-			$response = $this->getGateway()->createRefund($request);
+			$response = $this->getGateway()->createRefund(
+				$request->paymentReference,
+				$request->amount,
+				$request->currency,
+				$request->description,
+			);
 			
-			// return error in case of error
-			if ($response["request"]["result"] == 0) {
+			// Throw error in case of API error
+			if ($response["request"]["result"] === 0) {
 				throw new PaymentRefundException("mollie", $response["request"]["errorId"], $response["request"]["errorMessage"]);
 			}
 			
-			// response resource has to be "refund"
+			// Response resource has to be "refund"
 			if ($response["response"]["resource"] !== "refund") {
 				throw new PaymentRefundException("mollie", 204, "Invalid resource '{$response["response"]["resource"]}'");
 			}
@@ -150,7 +185,7 @@
 			// Return the data
 			return new RefundResult(
 				provider: "mollie",
-				transactionId: $response["response"]["paymentId"],
+				paymentReference: $response["response"]["paymentId"],
 				refundId: $response["response"]["id"],
 				value: (int)round((float)$response["response"]["amount"]["value"] * 100),
 				currency: $response["response"]["amount"]["currency"]
@@ -222,12 +257,14 @@
 		
 		/**
 		 * Returns all refunds for a given transaction
-		 * @param string $transactionId
+		 * @param string $paymentReference In Mollie's payment model there is no separate capture step,
+		 *                                 so this is the payment transaction ID (e.g. tr_7UhSN1zuXS).
 		 * @return array<RefundResult>
+		 * @throws PaymentRefundException
 		 */
-		public function getRefunds(string $transactionId): array {
+		public function getRefunds(string $paymentReference): array {
 			// Fetch refunds from Mollie
-			$response = $this->getGateway()->listRefunds($transactionId);
+			$response = $this->getGateway()->listRefunds($paymentReference);
 			
 			// Return error if the gateway call failed
 			if ($response["request"]["result"] == 0) {
@@ -240,7 +277,7 @@
 			foreach ($response["response"] as $refund) {
 				$refunds[] = new RefundResult(
 					provider: 'mollie',
-					transactionId: $transactionId,
+					paymentReference: $paymentReference,
 					refundId: $refund["id"],
 					value: (int)round((float)$refund["amount"]["value"] * 100),
 					currency: $refund["amount"]["currency"],
@@ -258,17 +295,16 @@
 		public function getPaymentOptions(string $paymentModule): array {
 			// Only certain methods expose issuer selection (iDEAL banks, KBC, gift cards).
 			// Everything else has no options to present.
-			$modulesWithIssuers = ['mollie_ideal', 'mollie_kbc', 'mollie_giftcard'];
-			
-			if (!in_array($paymentModule, $modulesWithIssuers)) {
+			if (!in_array($paymentModule, self::MODULES_WITH_LISTENERS)) {
 				return [];
 			}
 			
 			// Strip the 'mollie_' prefix to get the raw method name Mollie expects (e.g. 'ideal')
 			// Call the gateway to fetch payment method info
-			$methods = $this->getGateway()->getPaymentMethodInfo(substr($paymentModule, 7));
+			$methods = $this->getGateway()->getPaymentMethodInfo(self::MODULE_TYPE_MAP[$paymentModule]);
 			
-			if ($methods["request"]["result"] == 0) {
+			// If that failed, throw an error
+			if ($methods["request"]["result"] === 0) {
 				throw new PaymentException("mollie", $methods["request"]["errorId"], $methods["request"]["errorMessage"]);
 			}
 			
@@ -317,5 +353,26 @@
 			
 			// webhookUrl is optional — fall back to the default Mollie webhook route
 			$request->webhookUrl ??= $config["webhook_url"] ?? "/webhooks/mollie";
+		}
+		
+		/**
+		 * Serializes a PaymentAddress into the array shape Mollie expects
+		 * @param PaymentAddress $address
+		 * @return array
+		 */
+		protected function serializeAddress(PaymentAddress $address): array {
+			return array_filter([
+				'title'            => $address->title,
+				'givenName'        => $address->givenName,
+				'familyName'       => $address->familyName,
+				'organizationName' => $address->organizationName,
+				'streetAndNumber'  => trim($address->street . ' ' . $address->houseNumber . ($address->houseNumberSuffix !== null ? ' ' . $address->houseNumberSuffix : '')),
+				'postalCode'       => $address->postalCode,
+				'city'             => $address->city,
+				'region'           => $address->region,
+				'country'          => $address->country,
+				'email'            => $address->email,
+				'phone'            => $address->phone,
+			], [$this, 'notNull']);
 		}
 	}

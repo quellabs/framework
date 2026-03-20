@@ -156,11 +156,16 @@
 		 * @throws PaymentInitiationException
 		 */
 		public function initiate(PaymentRequest $request): InitiateResult {
+			// Grab config
 			$config = $this->getConfig();
 			
 			// Resolve the MSP gateway type from the module name.
-			// Fall back to the raw module name so callers can pass a native MSP type directly.
-			$type = self::MODULE_TYPE_MAP[$request->module] ?? strtoupper($request->module);
+			if (!isset(self::MODULE_TYPE_MAP[$request->paymentModule])) {
+				throw new PaymentInitiationException('multisafepay', 0, "Unknown payment module: '{$request->paymentModule}'");
+			}
+			
+			// Convert payment module to internal Multisafepay type
+			$type = self::MODULE_TYPE_MAP[$request->paymentModule];
 			
 			// Build order payload.
 			// amount is in minor units (e.g. 1250 = €12.50) — same convention as Adyen.
@@ -189,12 +194,15 @@
 				], fn($v) => $v !== null);
 			}
 			
+			// Call gateway to create the order
 			$result = $this->getGateway()->createOrder($payload);
 			
+			// If that failed, throw error
 			if ($result['request']['result'] === 0) {
 				throw new PaymentInitiationException('multisafepay', $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 			
+			// Return response
 			$response = $result['response']['data'];
 			
 			return new InitiateResult(
@@ -238,8 +246,8 @@
 			}
 			
 			// Determine payment status
-			$status = strtolower($order['status'] ?? '');
 			$order = $result['response']['data'] ?? [];
+			$status = strtolower($order['status'] ?? '');
 			$currency = $order['currency'] ?? '';
 			$amount = (int)($order['amount'] ?? 0);
 			
@@ -307,11 +315,11 @@
 			$payload = array_filter([
 				'currency'    => $request->currency,
 				'amount'      => $request->amount,
-				'description' => $request->note ?? '',
+				'description' => $request->description ?? '',
 			], fn($v) => $v !== null);
 			
 			// Call API to issue the refund
-			$result = $this->getGateway()->refundOrder($request->transactionId, $payload);
+			$result = $this->getGateway()->refundOrder($request->paymentReference, $payload);
 			
 			// If that failed, throw exception
 			if ($result['request']['result'] === 0) {
@@ -324,7 +332,7 @@
 			// Return the refund result
 			return new RefundResult(
 				provider: 'multisafepay',
-				transactionId: $request->transactionId,
+				paymentReference: $request->paymentReference,
 				refundId: $refundId,
 				value: $request->amount,
 				currency: $request->currency,
@@ -334,13 +342,13 @@
 		/**
 		 * Returns a list of RefundResult objects for all refunds associated with a transaction.
 		 * @see https://docs.multisafepay.com/reference/getorder
-		 * @param string $transactionId
+		 * @param string $paymentReference
 		 * @return RefundResult[]
 		 * @throws PaymentExchangeException
 		 */
-		public function getRefunds(string $transactionId): array {
+		public function getRefunds(string $paymentReference): array {
 			// Fetch order info
-			$result = $this->getGateway()->getOrder($transactionId);
+			$result = $this->getGateway()->getOrder($paymentReference);
 			
 			// If that failed, throw exception
 			if ($result['request']['result'] === 0) {
@@ -366,7 +374,7 @@
 				// If so, add it to the list
 				$refunds[] = new RefundResult(
 					provider: 'multisafepay',
-					transactionId: $transactionId,
+					paymentReference: $paymentReference,
 					refundId: (string)($related['id'] ?? ''),
 					value: (int)($related['amount'] ?? 0),
 					currency: $related['currency'] ?? $order['currency'] ?? '',

@@ -229,8 +229,8 @@
 		/**
 		 * Issue a refund against a Stripe PaymentIntent.
 		 *
-		 * Note: $request->transactionId must be the PaymentIntent ID (pi_*), not the session ID.
-		 * This is available in PaymentState::$metadata['captureId'] after a successful exchange().
+		 * Note: $request->paymentReference must be the PaymentIntent ID (pi_*), not the session ID.
+		 * This is available in PaymentState::$metadata['paymentReference'] after a successful exchange().
 		 *
 		 * The description is mapped to the most appropriate Stripe refund reason. Stripe accepts
 		 * only three reason values ('duplicate', 'fraudulent', 'requested_by_customer'); all other
@@ -244,27 +244,30 @@
 		public function refund(RefundRequest $request): RefundResult {
 			// Deterministic idempotency key — retrying the same refund request always produces
 			// the same key, so a network timeout cannot cause a double-refund.
-			$idempotencyKey = hash('sha256', 'refund:' . $request->transactionId . ':' . ($request->amount ?? 'full'));
+			$idempotencyKey = hash('sha256', 'refund:' . $request->paymentReference . ':' . ($request->amount ?? 'full'));
 			
 			// Map description to one of Stripe's accepted refund reason values
 			$reason = $this->mapRefundReason($request->description);
 			
+			// Call the API
 			$result = $this->getGateway()->refund(
-				$request->transactionId,
+				$request->paymentReference,
 				$request->amount,
 				$reason,
 				$idempotencyKey,
 			);
 			
+			// If that failed, throw an exception
 			if ($result['request']['result'] === 0) {
 				throw new PaymentRefundException('stripe', $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 			
+			// Return the result
 			$r = $result['response'];
 			
 			return new RefundResult(
 				provider: 'stripe',
-				transactionId: $request->transactionId,
+				paymentReference: $request->paymentReference,
 				refundId: $r['id'],
 				value: (int)($r['amount'] ?? 0),
 				currency: strtoupper($r['currency'] ?? $request->currency),
@@ -290,15 +293,15 @@
 		 * Returns all refunds issued for a given PaymentIntent.
 		 *
 		 * Note: $transactionId must be the PaymentIntent ID (pi_*), not the session ID.
-		 * This is available in PaymentState::$metadata['captureId'] after a successful exchange().
+		 * This is available in PaymentState::$metadata['paymentReference'] after a successful exchange().
 		 *
 		 * @see https://stripe.com/docs/api/refunds/list
-		 * @param string $transactionId The PaymentIntent ID (pi_*)
+		 * @param string $paymentReference The PaymentIntent ID (pi_*)
 		 * @return array<RefundResult>
 		 * @throws PaymentRefundException
 		 */
-		public function getRefunds(string $transactionId): array {
-			$result = $this->getGateway()->getRefundsForPaymentIntent($transactionId);
+		public function getRefunds(string $paymentReference): array {
+			$result = $this->getGateway()->getRefundsForPaymentIntent($paymentReference);
 			
 			if ($result['request']['result'] === 0) {
 				throw new PaymentRefundException('stripe', $result['request']['errorId'], $result['request']['errorMessage']);
@@ -309,7 +312,7 @@
 			foreach ($result['response']['data'] ?? [] as $refund) {
 				$refunds[] = new RefundResult(
 					provider: 'stripe',
-					transactionId: $transactionId,
+					paymentReference: $paymentReference,
 					refundId: $refund['id'],
 					value: (int)($refund['amount'] ?? 0),
 					currency: strtoupper($refund['currency'] ?? ''),
@@ -365,7 +368,7 @@
 						valueRefunded: $amountRefunded,
 						internalState: 'succeeded',
 						metadata: [
-							'captureId' => $paymentIntentId,
+							'paymentReference' => $paymentIntentId,
 						],
 					);
 				
@@ -380,8 +383,8 @@
 						valueRefunded: 0,
 						internalState: 'requires_action',
 						metadata: [
-							'captureId'   => $paymentIntentId,
-							'redirectUrl' => $intent['next_action']['redirect_to_url']['url'] ?? null,
+							'paymentReference' => $paymentIntentId,
+							'redirectUrl'      => $intent['next_action']['redirect_to_url']['url'] ?? null,
 						],
 					);
 				
@@ -395,7 +398,7 @@
 						valueRefunded: 0,
 						internalState: 'canceled',
 						metadata: [
-							'captureId'          => $paymentIntentId,
+							'paymentReference'   => $paymentIntentId,
 							'cancellationReason' => $intent['cancellation_reason'] ?? null,
 						],
 					);
@@ -411,7 +414,7 @@
 						valueRefunded: 0,
 						internalState: $intentStatus,
 						metadata: [
-							'captureId' => $paymentIntentId,
+							'paymentReference' => $paymentIntentId,
 						],
 					);
 			}

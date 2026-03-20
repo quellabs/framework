@@ -2,10 +2,6 @@
 	
 	namespace Quellabs\Payments\Mollie;
 	
-	use Quellabs\Contracts\Configuration\ConfigProviderInterface;
-	use Quellabs\Payments\Contracts\PaymentAddress;
-	use Quellabs\Payments\Contracts\PaymentRequest;
-	use Quellabs\Payments\Contracts\RefundRequest;
 	use Quellabs\Support\Resources;
 	use Symfony\Component\HttpClient\HttpClient;
 	use Symfony\Contracts\HttpClient\Exception\ClientExceptionInterface;
@@ -65,9 +61,10 @@
 				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $jsonData];
 			}
 			
-			// List responses are wrapped in _embedded — unwrap the methods collection
+			// List responses are wrapped in _embedded — unwrap the first collection regardless of key name
+			// (methods use 'methods', refunds use 'refunds', etc.)
 			if (!empty($jsonData['_embedded'])) {
-				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $jsonData['_embedded']['methods']];
+				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => reset($jsonData['_embedded'])];
 			}
 			
 			// Anything else is an API-level error — surface the status code and detail message
@@ -155,34 +152,38 @@
 		
 		/**
 		 * Refund a mollie payment
-		 * @param RefundRequest $refundRequest
+		 * @param string $transactionId
+		 * @param int|null $amount
+		 * @param string $currency
+		 * @param string|null $description
 		 * @return array
 		 */
-		public function createRefund(RefundRequest $refundRequest): array {
+		public function createRefund(string $transactionId, ?int $amount, string $currency, ?string $description = null): array {
 			// Error when no transactionId passed
-			if (empty($refundRequest->transactionId)) {
+			if (empty($transactionId)) {
 				return ['request' => ['result' => 0, 'errorId' => 500, 'errorMessage' => 'Missing transactionId']];
 			}
 			
 			// Error when trying to refund €0.00
-			if ($refundRequest->amount === 0) {
+			if ($amount === 0) {
 				return ['request' => ['result' => 0, 'errorId' => 500, 'errorMessage' => 'Invalid refund value']];
 			}
 			
 			// Resolve the refund amount and currency
-			$resolved = $this->resolveRefundAmount($refundRequest);
+			$resolved = $this->resolveRefundAmount($transactionId, $amount, $currency);
 			
+			// If that failed, return an error
 			if ($resolved['request']['result'] === 0) {
 				return $resolved;
 			}
 			
 			// Issue the refund
-			return $this->callHttpClient("POST", "payments/{$refundRequest->transactionId}/refunds", [
+			return $this->callHttpClient("POST", "payments/{$transactionId}/refunds", [
 				"amount"      => [
 					"currency" => $resolved['response']['currency'],
 					"value"    => $resolved['response']['amount'],
 				],
-				"description" => $refundRequest->description,
+				"description" => $description,
 				"testmode"    => $this->testMode,
 			]);
 		}
@@ -200,29 +201,11 @@
 		/**
 		 * Creates a new Mollie payment
 		 * @url https://docs.mollie.com/reference/create-payment
-		 * @param PaymentRequest $request
-		 * @param string $paymentMethod
+		 * @param array $payload Raw Mollie payment payload, already serialized and in Mollie's expected shape
 		 * @return array
 		 */
-		public function createPayment(PaymentRequest $request, string $paymentMethod): array {
-			$mollieData = array_filter([
-				'amount'          => [
-					'currency' => $request->currency,
-					'value'    => number_format($request->amount / 100, 2, '.', ''),
-				],
-				'description'     => $request->description,
-				'redirectUrl'     => $request->redirectUrl,
-				'cancelUrl'       => $request->cancelUrl,
-				'webhookUrl'      => $request->webhookUrl,
-				'metadata'        => $request->metadata,
-				'method'          => !empty($paymentMethod) ? $paymentMethod : null,
-				'issuer'          => !empty($request->issuerId) ? $request->issuerId : null,
-				'billingAddress'  => $request->billingAddress !== null ? $this->serializeAddress($request->billingAddress) : null,
-				'shippingAddress' => $request->shippingAddress !== null ? $this->serializeAddress($request->shippingAddress) : null,
-				'testmode'        => $this->testMode(),
-			], [$this, 'notNull']);
-			
-			return $this->callHttpClient('POST', 'payments', $mollieData);
+		public function createPayment(array $payload): array {
+			return $this->callHttpClient('POST', 'payments', $payload);
 		}
 		
 		/**
@@ -244,48 +227,28 @@
 		}
 		
 		/**
-		 * Serializes a PaymentAddress into the array shape Mollie expects
-		 * @param PaymentAddress $address
-		 * @return array
-		 */
-		protected function serializeAddress(PaymentAddress $address): array {
-			return array_filter([
-				'title'            => $address->title,
-				'givenName'        => $address->givenName,
-				'familyName'       => $address->familyName,
-				'organizationName' => $address->organizationName,
-				'streetAndNumber'  => $address->streetAndNumber,
-				'streetAdditional' => $address->streetAdditional,
-				'postalCode'       => $address->postalCode,
-				'city'             => $address->city,
-				'region'           => $address->region,
-				'country'          => $address->country,
-				'email'            => $address->email,
-				'phone'            => $address->phone,
-			], [$this, 'notNull']);
-		}
-		
-		/**
 		 * Resolves the refund amount and currency from a RefundRequest.
 		 * If amount is set, converts from minor units to major units as required by the Mollie API.
 		 * If amount is null, fetches the remaining refundable amount from the payment for a full refund.
-		 * @param RefundRequest $refundRequest
+		 * @param string $transactionId
+		 * @param int|null $amount
+		 * @param string $currency
 		 * @return array
 		 */
-		protected function resolveRefundAmount(RefundRequest $refundRequest): array {
+		protected function resolveRefundAmount(string $transactionId, ?int $amount, string $currency): array {
 			// Amount is set — convert from minor units (e.g. 1050) to major units (e.g. "10.50")
-			if ($refundRequest->amount !== null) {
+			if ($amount !== null) {
 				return [
 					'request'  => ['result' => 1, 'errorId' => '', 'errorMessage' => ''],
 					'response' => [
-						'amount'   => number_format($refundRequest->amount / 100, 2, '.', ''),
-						'currency' => $refundRequest->currency,
+						'amount'   => number_format($amount / 100, 2, '.', ''),
+						'currency' => $currency,
 					],
 				];
 			}
 			
 			// Amount is null — full refund requested. Fetch the remaining refundable amount from Mollie.
-			$payment = $this->getPaymentInfo($refundRequest->transactionId);
+			$payment = $this->getPaymentInfo($transactionId);
 			
 			if ($payment["request"]["result"] == 0) {
 				return $payment;
@@ -293,11 +256,11 @@
 			
 			// amountRemaining is the portion of the payment not yet refunded.
 			// Already in major units — no conversion needed.
-			$amount = $payment["response"]["amountRemaining"]["value"] ?? null;
-			$currency = $payment["response"]["amountRemaining"]["currency"] ?? $refundRequest->currency;
+			$resolvedAmount = $payment["response"]["amountRemaining"]["value"] ?? null;
+			$resolvedCurrency = $payment["response"]["amountRemaining"]["currency"] ?? $currency;
 			
 			// amountRemaining may be absent or "0.00" when there is nothing left to refund
-			if ($amount === null || $amount === '0.00') {
+			if ($resolvedAmount === null || $resolvedAmount === '0.00') {
 				return ['request' => ['result' => 0, 'errorId' => 500, 'errorMessage' => 'Payment has no refundable amount']];
 			}
 			
@@ -305,9 +268,9 @@
 			return [
 				'request'  => ['result' => 1, 'errorId' => '', 'errorMessage' => ''],
 				'response' => [
-					'amount'   => $amount,
-					'currency' => $currency
-				]
+					'amount'   => $resolvedAmount,
+					'currency' => $resolvedCurrency,
+				],
 			];
 		}
 		

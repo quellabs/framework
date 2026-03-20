@@ -1,0 +1,58 @@
+{
+  "name": "quellabs/canvas-payments-buckaroo",
+  "description": "Buckaroo payment gateway integration for the Canvas PHP framework",
+  "type": "library",
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "Floris van den Berg",
+      "email": "info@quellabs.com"
+    }
+  ],
+  "keywords": [
+    "buckaroo",
+    "payments",
+    "payment gateway",
+    "canvas",
+    "canvas-payments",
+    "ideal",
+    "netherlands"
+  ],
+  "support": {
+    "email": "support@quellabs.com",
+    "issues": "https://github.com/quellabs/canvas-payments-buckaroo/issues",
+    "forum": "https://github.com/quellabs/canvas-payments-buckaroo/discussions",
+    "wiki": "https://github.com/quellabs/canvas-payments-buckaroo/wiki",
+    "docs": "https://canvasphp.com/docs",
+    "source": "https://github.com/quellabs/canvas-payments-buckaroo"
+  },
+  "require": {
+    "php": "^8.2",
+    "ext-curl": "*",
+    "symfony/http-client": "*",
+    "quellabs/support": "*",
+    "quellabs/contracts": "*",
+    "quellabs/canvas-payments-contracts": "*"
+  },
+  "autoload": {
+    "psr-4": {
+      "Quellabs\\Payments\\Buckaroo\\": "src/"
+    }
+  },
+  "scripts": {
+    "post-autoload-dump": [
+      "php -r \"if (!file_exists('config/buckaroo.php') && !copy('vendor/quellabs/canvas-payments-buckaroo/config/buckaroo.php', 'config/buckaroo.php')) { echo 'Warning: Could not publish Buckaroo config file.' . PHP_EOL; }\""
+    ]
+  },
+  "extra": {
+    "discover": {
+      "canvas": {
+        "controller": "Quellabs\\Payments\\Buckaroo\\BuckarooController"
+      },
+      "payments": {
+        "provider": "Quellabs\\Payments\\Buckaroo\\Driver",
+        "config": "config/buckaroo.php"
+      }
+    }
+  }
+}

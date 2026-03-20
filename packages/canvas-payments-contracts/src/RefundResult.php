@@ -13,8 +13,8 @@
 			/** The provider that processed this refund (e.g. 'mollie', 'stripe') */
 			public string $provider,
 			
-			/** The provider's unique identifier for the original payment */
-			public string $transactionId,
+			/** The provider's unique identifier for the capture */
+			public string $paymentReference,
 			
 			/** The provider's unique identifier for this specific refund */
 			public string $refundId,

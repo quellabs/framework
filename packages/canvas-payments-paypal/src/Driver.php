@@ -137,7 +137,7 @@
 		 *
 		 * extraData keys:
 		 *   'action'    — 'cancel' | 'return' | 'webhook'
-		 *   'captureId' — the capture ID from a PAYMENT.CAPTURE.* webhook payload, enables
+		 *   'paymentReference' — the capture ID from a PAYMENT.CAPTURE.* webhook payload, enables
 		 *                 refund-state retrieval without re-fetching the order
 		 *
 		 * @see https://developer.paypal.com/docs/api/orders/v2/#orders_get
@@ -197,14 +197,14 @@
 				// Payment was already captured in a previous exchange() call.
 				// Build state from the existing capture to retrieve current refund amounts.
 				case "COMPLETED":
-					$captureId = $extraData['captureId'] ?? ($purchaseUnit["payments"]["captures"][0]["id"] ?? null);
+					$captureId = $extraData['paymentReference'] ?? ($purchaseUnit["payments"]["captures"][0]["id"] ?? null);
 					return $this->buildCompletedPaymentState($transactionId, $captureId, "COMPLETED", $currency);
 				
 				// Order was voided. This can mean a genuine cancellation (valueRefunded = 0)
 				// or that all captures were fully refunded. Fetch the capture to determine
 				// the actual refunded amount rather than assuming zero.
 				case "VOIDED":
-					$captureId = $extraData['captureId'] ?? ($purchaseUnit["payments"]["captures"][0]["id"] ?? null);
+					$captureId = $extraData['paymentReference'] ?? ($purchaseUnit["payments"]["captures"][0]["id"] ?? null);
 					
 					// No capture means the order was cancelled before payment — clean cancellation
 					if ($captureId === null) {
@@ -272,8 +272,8 @@
 		/**
 		 * Refund a PayPal payment, either fully or partially.
 		 *
-		 * Note: $request->transactionId must be the capture ID, not the order ID.
-		 * This is available in PaymentState::$metadata['captureId'] after a successful exchange().
+		 * Note: $request->paymentReference must be the capture ID, not the order ID.
+		 * This is available in PaymentState::$metadata['paymentReference'] after a successful exchange().
 		 *
 		 * @see https://developer.paypal.com/docs/api/payments/v2/#captures_refund
 		 * @param RefundRequest $request amount=null for full refund, or a minor-unit integer for partial
@@ -288,17 +288,18 @@
 			// request always produces the same key, so a timeout cannot cause a double-refund.
 			// Amount is included so a partial refund followed by a different partial refund
 			// on the same capture produces a distinct key.
-			$idempotencyKey = hash('sha256', 'refund:' . $request->transactionId . ':' . ($request->amount ?? 'full'));
+			$idempotencyKey = hash('sha256', 'refund:' . $request->paymentReference . ':' . ($request->amount ?? 'full'));
 
+			// Call API to create the refund
 			$response = $this->getGateway()->refund(
-				$request->transactionId,
+				$request->paymentReference,
 				$value,
 				$currency,
 				$request->description,
 				$idempotencyKey,
 			);
 			
-			// Validate this went well
+			// If that failed, throw an exception
 			if ($response["request"]["result"] === 0) {
 				throw new PaymentRefundException("paypal", $response["request"]["errorId"], $response["request"]["errorMessage"]);
 			}
@@ -308,7 +309,7 @@
 			
 			return new RefundResult(
 				provider: "paypal",
-				transactionId: $request->transactionId,
+				paymentReference: $request->paymentReference,
 				refundId: $r["id"],
 				value: (int)round((float)($r["amount"]["value"] ?? 0) * 100),
 				currency: $r["amount"]["currency_code"] ?? $request->currency,
@@ -333,26 +334,29 @@
 		 * Returns all refunds issued for a given capture.
 		 *
 		 * Note: $transactionId must be the capture ID, not the order ID.
-		 * This is available in PaymentState::$metadata['captureId'] after a successful exchange().
+		 * This is available in PaymentState::$metadata['paymentReference'] after a successful exchange().
 		 *
 		 * @see https://developer.paypal.com/docs/api/payments/v2/#captures_get
-		 * @param string $transactionId The capture ID
+		 * @param string $paymentReference The capture ID
 		 * @return array<RefundResult>
 		 * @throws PaymentRefundException
 		 */
-		public function getRefunds(string $transactionId): array {
-			$result = $this->getGateway()->getRefundsForCapture($transactionId);
+		public function getRefunds(string $paymentReference): array {
+			// Call the API to fetch all refunds
+			$result = $this->getGateway()->getRefundsForCapture($paymentReference);
 			
+			// If that failed, throw an error
 			if ($result["request"]["result"] === 0) {
 				throw new PaymentRefundException("paypal", $result["request"]["errorId"], $result["request"]["errorMessage"]);
 			}
 			
+			// Flatten the response
 			$refunds = [];
 			
 			foreach ($result["response"] as $refund) {
 				$refunds[] = new RefundResult(
 					provider: "paypal",
-					transactionId: $transactionId,
+					paymentReference: $paymentReference,
 					refundId: $refund["id"],
 					value: (int)round((float)($refund["amount"]["value"] ?? 0) * 100),
 					currency: $refund["amount"]["currency_code"],
@@ -497,7 +501,7 @@
 		 * Called from exchange() when order status is COMPLETED.
 		 * @see https://developer.paypal.com/docs/api/payments/v2/#captures_get
 		 * @param string      $orderId   The order ID
-		 * @param string|null $captureId The capture ID from PaymentState::$metadata['captureId']
+		 * @param string|null $captureId The capture ID from PaymentState::$metadata['paymentReference']
 		 * @param string      $internalState
 		 * @param string      $currency  Fallback currency from the order
 		 * @return PaymentState
@@ -509,17 +513,20 @@
 					"paypal",
 					"MISSING_CAPTURE_ID",
 					"Cannot retrieve payment state: captureId is missing from extraData. " .
-					"Ensure your payment_exchange listener persists PaymentState::\$metadata['captureId'] " .
+					"Ensure your payment_exchange listener persists PaymentState::\$metadata['paymentReference'] " .
 					"after the first successful exchange. See the refund section in the README."
 				);
 			}
 			
+			// Call API to get the capture
 			$result = $this->getGateway()->getCapture($captureId);
 			
+			// If that failed, throw error
 			if ($result["request"]["result"] === 0) {
 				throw new PaymentExchangeException("paypal", $result["request"]["errorId"], $result["request"]["errorMessage"]);
 			}
 			
+			// Grab response
 			$c               = $result["response"];
 			$captureStatus   = $c["status"] ?? $internalState;
 			$capturedAmount  = (int)round((float)($c["amount"]["value"] ?? 0) * 100);
@@ -543,7 +550,7 @@
 				valueRefunded: $refundedAmount,
 				internalState: $captureStatus,
 				metadata: [
-					"captureId" => $captureId,
+					"paymentReference" => $captureId,
 				],
 			);
 		}

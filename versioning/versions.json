@@ -18,11 +18,12 @@
   "canvas-skeleton": "1.0.10",
   "canvas-database": "1.0.2",
   "canvas-payments": "1.0.2",
-  "canvas-payments-contracts": "1.0.4",
-  "canvas-payments-mollie": "1.0.7",
-  "canvas-payments-paypal": "1.0.1",
-  "canvas-payments-paypal-express": "1.0.2",
-  "canvas-payments-stripe": "1.0.2",
-  "canvas-payments-adyen": "1.0.1",
-  "canvas-payments-multisafepay": "1.0.0"
+  "canvas-payments-contracts": "1.0.5",
+  "canvas-payments-mollie": "1.0.8",
+  "canvas-payments-paypal": "1.0.2",
+  "canvas-payments-paypal-express": "1.0.3",
+  "canvas-payments-stripe": "1.0.3",
+  "canvas-payments-adyen": "1.0.2",
+  "canvas-payments-multisafepay": "1.0.1",
+  "canvas-payments-buckaroo": "1.0.1"
 }
