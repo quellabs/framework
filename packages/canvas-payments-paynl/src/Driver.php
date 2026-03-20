@@ -50,7 +50,6 @@
 			'paynl_klarna'       => 1717,
 			'paynl_in3'          => 1813,
 			'paynl_riverty'      => 2561,  // Riverty (formerly AfterPay NL)
-			'paynl_banktransfer' => 136,
 			'paynl_eps'          => 2062,
 			'paynl_trustly'      => 2718,
 			'paynl_paybybank'    => 2970,
