@@ -108,7 +108,7 @@ class CheckoutController extends BaseController {
 Pass `amount: null` for a full refund, or a minor-unit integer for a partial refund.
 
 When your `payment_exchange` listener receives a `PaymentStatus::Paid` state, store
-`$state->metadata['captureId']` — you'll need it as `RefundRequest::$transactionId`.
+`$state->metadata['paymentReference']` — you'll need it as `RefundRequest::$paymentReference`.
 
 ```php
 // In your payment_exchange listener — store the PaymentIntent ID when the payment succeeds
@@ -116,27 +116,27 @@ public function onPaymentExchange(PaymentState $state): void {
     if ($state->state === PaymentStatus::Paid) {
         $this->orderRepository->updateCaptureId(
             $state->transactionId,
-            $state->metadata['captureId']
+            $state->metadata['paymentReference']
         );
     }
 }
 
 // Full refund
 $request = new RefundRequest(
-    transactionId: $order->captureId,   // retrieved from your orders table
-    paymentModule: 'stripe',
-    amount:        null,                      // null = full refund
-    currency:      'EUR',
-    description:   'Full refund for order #12345',
+    paymentReference: $order->paymentReference, // retrieved from your orders table
+    paymentModule:    'stripe',
+    amount:           null, // null = full refund
+    currency:         'EUR',
+    description:      'Full refund for order #12345',
 );
 
 // Partial refund
 $request = new RefundRequest(
-    transactionId: $order->captureId,   // retrieved from your orders table
-    paymentModule: 'stripe',
-    amount:        500,                       // in minor units — €5.00
-    currency:      'EUR',
-    description:   'Partial refund for order #12345',
+    paymentReference: $order->paymentReference, // retrieved from your orders table
+    paymentModule:   'stripe',
+    amount:          500, // in minor units — €5.00
+    currency:        'EUR',
+    description:     'Partial refund for order #12345',
 );
 
 try {
@@ -179,8 +179,8 @@ Stripe uses two different identifiers across the payment lifecycle:
 - **Session ID** — created by `POST /v1/checkout/sessions` and returned by `initiate()` as
   `InitiateResult::$transactionId`. Stripe appends it to your `return_url` as `?session_id={cs_...}`
   so the return handler can retrieve the session without server-side storage.
-- **PaymentIntent ID** — available in `PaymentState::$metadata['captureId']` when a `PaymentStatus::Paid`
-  event fires. **Persist this value** — it is required as `RefundRequest::$transactionId` for refunds and
+- **paymentReference** — available in `PaymentState::$metadata['paymentReference']` when a `PaymentStatus::Paid`
+  event fires. **Persist this value** — it is required as `RefundRequest::$paymentReference` for refunds and
   `getRefunds()`.
 
 ### Webhooks vs. return URL

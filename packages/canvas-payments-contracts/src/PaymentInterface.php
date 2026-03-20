@@ -39,9 +39,9 @@
 		
 		/**
 		 * Returns all refunds issued for the given transaction.
-		 * @param string $captureId
+		 * @param string $paymentReference
 		 * @return array
 		 */
-		public function getRefunds(string $captureId): array;
+		public function getRefunds(string $paymentReference): array;
 		
 	}

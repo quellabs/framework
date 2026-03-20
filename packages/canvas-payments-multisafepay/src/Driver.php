@@ -311,7 +311,7 @@
 			], fn($v) => $v !== null);
 			
 			// Call API to issue the refund
-			$result = $this->getGateway()->refundOrder($request->captureId, $payload);
+			$result = $this->getGateway()->refundOrder($request->paymentReference, $payload);
 			
 			// If that failed, throw exception
 			if ($result['request']['result'] === 0) {
@@ -324,7 +324,7 @@
 			// Return the refund result
 			return new RefundResult(
 				provider: 'multisafepay',
-				captureId: $request->captureId,
+				paymentReference: $request->paymentReference,
 				refundId: $refundId,
 				value: $request->amount,
 				currency: $request->currency,
@@ -334,13 +334,13 @@
 		/**
 		 * Returns a list of RefundResult objects for all refunds associated with a transaction.
 		 * @see https://docs.multisafepay.com/reference/getorder
-		 * @param string $captureId
+		 * @param string $paymentReference
 		 * @return RefundResult[]
 		 * @throws PaymentExchangeException
 		 */
-		public function getRefunds(string $captureId): array {
+		public function getRefunds(string $paymentReference): array {
 			// Fetch order info
-			$result = $this->getGateway()->getOrder($captureId);
+			$result = $this->getGateway()->getOrder($paymentReference);
 			
 			// If that failed, throw exception
 			if ($result['request']['result'] === 0) {
@@ -366,7 +366,7 @@
 				// If so, add it to the list
 				$refunds[] = new RefundResult(
 					provider: 'multisafepay',
-					captureId: $captureId,
+					paymentReference: $paymentReference,
 					refundId: (string)($related['id'] ?? ''),
 					value: (int)($related['amount'] ?? 0),
 					currency: $related['currency'] ?? $order['currency'] ?? '',

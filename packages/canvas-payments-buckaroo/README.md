@@ -10,7 +10,9 @@ composer require quellabs/canvas-payments-buckaroo
 
 ## Architecture
 
-This package sits between the Buckaroo JSON API and your application. Your application only ever touches the contracts layer — it never depends on this package directly. `PaymentRouter` (from `quellabs/canvas-payments`) discovers this package automatically via composer metadata and routes payment calls to it.
+This package sits between the Buckaroo JSON API and your application. Your application only ever touches the contracts
+layer — it never depends on this package directly. `PaymentRouter` (from `quellabs/canvas-payments`) discovers this
+package automatically via composer metadata and routes payment calls to it.
 
 ```
 Your Application
@@ -28,7 +30,8 @@ Buckaroo Driver             (this package — implements the interface)
 BuckarooGateway             (raw Buckaroo JSON API calls)
 ```
 
-Push processing is decoupled from your application via signals. When Buckaroo posts to the push URL, the package emits a `payment_exchange` signal carrying a `PaymentState`. Your application listens for that signal and handles it.
+Push processing is decoupled from your application via signals. When Buckaroo posts to the push URL, the package emits a
+`payment_exchange` signal carrying a `PaymentState`. Your application listens for that signal and handles it.
 
 ## Configuration
 
@@ -48,17 +51,17 @@ return [
 ];
 ```
 
-| Key                 | Required | Description                                                                                    |
-|---------------------|----------|------------------------------------------------------------------------------------------------|
-| `website_key`       | Yes      | Your Buckaroo website key, found in Plaza under My Buckaroo > Websites > {your site}          |
-| `secret_key`        | Yes      | Your Buckaroo secret key, generated in Plaza under Configuration > Secret Key                 |
-| `test_mode`         | No       | Use the Buckaroo test environment (`testcheckout.buckaroo.nl`). Defaults to `false`           |
-| `return_url`        | Yes      | URL the shopper is redirected to after a completed or pending payment                         |
-| `return_url_cancel` | Yes      | URL the shopper is redirected to after cancelling payment                                     |
-| `return_url_error`  | No       | URL for technical errors during payment. Falls back to `return_url_cancel` if empty           |
-| `return_url_reject` | No       | URL for acquirer-rejected payments. Falls back to `return_url_cancel` if empty                |
-| `push_url`          | Yes      | Full URL Buckaroo POSTs push notifications to. Must be publicly reachable                     |
-| `default_culture`   | No       | BCP 47 culture tag for hosted page language and email templates. Defaults to `nl-NL`          |
+| Key                 | Required | Description                                                                          |
+|---------------------|----------|--------------------------------------------------------------------------------------|
+| `website_key`       | Yes      | Your Buckaroo website key, found in Plaza under My Buckaroo > Websites > {your site} |
+| `secret_key`        | Yes      | Your Buckaroo secret key, generated in Plaza under Configuration > Secret Key        |
+| `test_mode`         | No       | Use the Buckaroo test environment (`testcheckout.buckaroo.nl`). Defaults to `false`  |
+| `return_url`        | Yes      | URL the shopper is redirected to after a completed or pending payment                |
+| `return_url_cancel` | Yes      | URL the shopper is redirected to after cancelling payment                            |
+| `return_url_error`  | No       | URL for technical errors during payment. Falls back to `return_url_cancel` if empty  |
+| `return_url_reject` | No       | URL for acquirer-rejected payments. Falls back to `return_url_cancel` if empty       |
+| `push_url`          | Yes      | Full URL Buckaroo POSTs push notifications to. Must be publicly reachable            |
+| `default_culture`   | No       | BCP 47 culture tag for hosted page language and email templates. Defaults to `nl-NL` |
 
 ### Buckaroo Plaza configuration
 
@@ -81,43 +84,55 @@ The signing string is: `websiteKey + METHOD + urlencode(host+path, lowercase) + 
 
 ### Amounts
 
-Buckaroo amounts are **decimal floats** (`10.00` = €10.00), not minor units. The driver converts automatically — `PaymentRequest::$amount` stays in minor units (e.g. `1000` for €10.00).
+Buckaroo amounts are **decimal floats** (`10.00` = €10.00), not minor units. The driver converts automatically —
+`PaymentRequest::$amount` stays in minor units (e.g. `1000` for €10.00).
 
 ### Transaction identity
 
-Buckaroo issues its own transaction key (`Key` in the response, 32-char hex). This key is stored as `transactionId` in `PaymentState` and `InitiateResult`. Your order reference is passed as `Invoice` and returned as `BRQ_INVOICENUMBER` in the return URL.
+Buckaroo issues its own transaction key (`Key` in the response, 32-char hex). This key is stored as `transactionId` in
+`PaymentState` and `InitiateResult`. Your order reference is passed as `Invoice` and returned as `BRQ_INVOICENUMBER` in
+the return URL.
 
 ### Push vs webhook
 
 Buckaroo's push sends a **JSON body** (not form-encoded like MultiSafepay):
 
 ```json
-{ "Transaction": { "Key": "<32-char key>", "Status": { ... }, ... } }
+{
+  "Transaction": {
+    "Key": "<32-char key>",
+    "Status": {
+      ...
+    },
+    ...
+  }
+}
 ```
 
-The controller reads `Transaction.Key` from the JSON body and falls back to `brq_transactions` query param for legacy configurations.
+The controller reads `Transaction.Key` from the JSON body and falls back to `brq_transactions` query param for legacy
+configurations.
 
 ### Return URL parameters
 
 Buckaroo appends these to the configured `ReturnURL`:
 
-| Parameter         | Value                                   |
-|-------------------|-----------------------------------------|
-| `BRQ_TRANSACTIONS`| Buckaroo transaction key (our `transactionId`) |
-| `BRQ_INVOICENUMBER`| Your `Invoice` reference              |
-| `BRQ_STATUSCODE`  | Numeric status code (informational only) |
+| Parameter           | Value                                          |
+|---------------------|------------------------------------------------|
+| `BRQ_TRANSACTIONS`  | Buckaroo transaction key (our `transactionId`) |
+| `BRQ_INVOICENUMBER` | Your `Invoice` reference                       |
+| `BRQ_STATUSCODE`    | Numeric status code (informational only)       |
 
 We always call the API for the authoritative status and do not rely on the return URL params.
 
 ### Status codes
 
-| Code     | Meaning                                  | Maps to          |
-|----------|------------------------------------------|------------------|
-| 190      | Success — payment completed              | `PaymentStatus::Paid`     |
-| 790–793  | Pending — awaiting processor/consumer    | `PaymentStatus::Pending`  |
-| 890      | Cancelled by consumer                    | `PaymentStatus::Canceled` |
-| 490–492  | Failure                                  | `PaymentStatus::Failed`   |
-| 690      | Rejected by Buckaroo or acquirer         | `PaymentStatus::Failed`   |
+| Code    | Meaning                               | Maps to                   |
+|---------|---------------------------------------|---------------------------|
+| 190     | Success — payment completed           | `PaymentStatus::Paid`     |
+| 790–793 | Pending — awaiting processor/consumer | `PaymentStatus::Pending`  |
+| 890     | Cancelled by consumer                 | `PaymentStatus::Canceled` |
+| 490–492 | Failure                               | `PaymentStatus::Failed`   |
+| 690     | Rejected by Buckaroo or acquirer      | `PaymentStatus::Failed`   |
 
 ## Usage
 
@@ -164,20 +179,20 @@ use Quellabs\Payments\Contracts\PaymentRefundException;
 
 // Full refund (omit amount)
 $request = new RefundRequest(
-    transactionId: $state->transactionId,   // Buckaroo Key from your payment_exchange listener
+    paymentReference: $state->transactionId,
     paymentModule: 'bkr_ideal',
-    amount:        null,                    // null = full refund
+    amount:        null, // null = full refund
     currency:      'EUR',
-    note:          'Full refund for order #12345',
+    description:   'Full refund for order #12345',
 );
 
 // Partial refund
 $request = new RefundRequest(
-    transactionId: $state->transactionId,
-    paymentModule: 'bkr_ideal',
-    amount:        500,                     // in minor units — €5.00
-    currency:      'EUR',
-    note:          'Partial refund for order #12345',
+    paymentReference: $state->transactionId,
+    paymentModule:    'bkr_ideal',
+    amount:           500, // in minor units — €5.00
+    currency:         'EUR',
+    description:      'Partial refund for order #12345',
 );
 
 try {

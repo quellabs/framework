@@ -109,19 +109,19 @@
 		 */
 		public function getDefaults(): array {
 			return [
-				'test_mode'             => false,
-				'api_key'               => '',
-				'merchant_account'      => '',
-				'hmac_key'              => '',
-				'return_url'            => '',
-				'cancel_return_url'     => '',
-				'webhook_url'           => '',
-				'live_endpoint_prefix'  => '',
+				'test_mode'            => false,
+				'api_key'              => '',
+				'merchant_account'     => '',
+				'hmac_key'             => '',
+				'return_url'           => '',
+				'cancel_return_url'    => '',
+				'webhook_url'          => '',
+				'live_endpoint_prefix' => '',
 				
 				// Used by getPaymentOptions() to filter the /paymentMethods response.
 				// Adyen returns a country-specific method list (e.g. iDEAL only for NL).
-				'default_country'       => 'NL',
-				'default_currency'      => 'EUR',
+				'default_country'      => 'NL',
+				'default_currency'     => 'EUR',
 			];
 		}
 		
@@ -188,8 +188,8 @@
 		public function initiate(PaymentRequest $request): InitiateResult {
 			$config = $this->getConfig();
 			$billing = $request->billingAddress;
-			$module  = $request->paymentModule;
-			$useAddressData  = in_array($module, self::MODULES_REQUIRING_ADDRESS_DATA, true);
+			$module = $request->paymentModule;
+			$useAddressData = in_array($module, self::MODULES_REQUIRING_ADDRESS_DATA, true);
 			$useShopperEmail = $useAddressData || in_array($module, self::MODULES_REQUIRING_SHOPPER_EMAIL, true);
 			
 			// Build shopperName — only when address data is relevant.
@@ -326,36 +326,36 @@
 			// resultCode is the canonical status field for synchronous /payments/details responses.
 			$state = match ($resultCode) {
 				// Payment authorized — funds will be collected (auto-capture) or reserved (manual).
-				'Authorised'           => PaymentStatus::Paid,
+				'Authorised' => PaymentStatus::Paid,
 				
 				// Shopper abandoned or explicitly canceled before completing.
-				'Cancelled'            => PaymentStatus::Canceled,
+				'Cancelled' => PaymentStatus::Canceled,
 				
 				// Issuer or Adyen risk engine declined the payment.
-				'Refused', 'Error'     => PaymentStatus::Failed,
+				'Refused', 'Error' => PaymentStatus::Failed,
 				
 				// Async methods (bank transfer, voucher) — final state arrives via webhook.
-				'Pending', 'Received'  => PaymentStatus::Pending,
+				'Pending', 'Received' => PaymentStatus::Pending,
 				
 				// presentToShopper / identifyShopper / challengeShopper should not reach the
 				// return URL in the Sessions flow, but treat as pending to avoid data loss.
-				default                => PaymentStatus::Pending,
+				default => PaymentStatus::Pending,
 			};
 			
 			return new PaymentState(
-				provider:      'adyen',
+				provider: 'adyen',
 				transactionId: $transactionId,
-				state:         $state,
-				currency:      $currency,
+				state: $state,
+				currency: $currency,
 				// Only record a paid amount when the payment is actually authorized
-				valuePaid:     $state === PaymentStatus::Paid ? (int)$valuePaid : 0,
+				valuePaid: $state === PaymentStatus::Paid ? (int)$valuePaid : 0,
 				valueRefunded: 0,
 				internalState: $resultCode,
 				metadata: array_filter([
 					// pspReference is required for future captures and refunds
-					'captureId'     => $pspReference,
-					'paymentMethod' => $response['paymentMethod']['type'] ?? null,
-					'refusalReason' => $response['refusalReason'] ?? null,
+					'paymentReference' => $pspReference,
+					'paymentMethod'    => $response['paymentMethod']['type'] ?? null,
+					'refusalReason'    => $response['refusalReason'] ?? null,
 				], fn($v) => $v !== null),
 			);
 		}
@@ -365,9 +365,9 @@
 		 * For a full refund pass $request->amount === $originalAmount.
 		 * Adyen handles partial refunds with the same endpoint — the difference is solely the amount.
 		 *
-		 * IMPORTANT: $request->captureId must be the Adyen pspReference of the original
+		 * IMPORTANT: $request->paymentReference must be the Adyen pspReference of the original
 		 * AUTHORISATION, not the sessionId. The pspReference is available as
-		 * PaymentState::$metadata['captureId'] after a successful payment exchange — persist
+		 * PaymentState::$metadata['paymentReference'] after a successful payment exchange — persist
 		 * it when handling the payment_exchange signal and pass it here as captureId.
 		 *
 		 * @see https://docs.adyen.com/api-explorer/Checkout/71/post/payments/{paymentPspReference}/refunds
@@ -378,21 +378,21 @@
 		public function refund(RefundRequest $request): RefundResult {
 			// captureId must be the pspReference from the original AUTHORISATION.
 			// Adyen's refund endpoint uses it as the URL path parameter to identify the payment.
-			$captureId = $request->captureId;
+			$paymentReference = $request->paymentReference;
 			
 			// If none given, throw error
-			if (empty($captureId)) {
+			if (empty($paymentReference)) {
 				throw new PaymentRefundException(
 					'adyen',
 					0,
-					"Cannot refund: captureId is empty. " .
-					"Pass the Adyen pspReference (PaymentState::\$metadata['captureId']) as captureId."
+					"Cannot refund: paymentReference is empty. " .
+					"Pass the Adyen pspReference (PaymentState::\$metadata['paymentReference']) as captureId."
 				);
 			}
 			
 			// Call the API to initiate the refund
 			$result = $this->getGateway()->refundPayment(
-				$captureId,
+				$paymentReference,
 				$request->amount,
 				$request->currency,
 				$request->description ?? ''
@@ -408,7 +408,7 @@
 			// We store it as refundId so callers can correlate the incoming REFUND webhook.
 			return new RefundResult(
 				provider: 'adyen',
-				captureId: $captureId,
+				paymentReference: $paymentReference,
 				refundId: $result['response']['pspReference'],
 				value: $request->amount,
 				currency: $request->currency,
@@ -420,10 +420,10 @@
 		 * Adyen does not provide a search-by-transaction API in the Sessions flow.
 		 * Refund history must be reconstructed from webhook events stored by the application.
 		 * This method is intentionally not implemented here — return an empty array as a safe default.
-		 * @param string $captureId
+		 * @param string $paymentReference
 		 * @return RefundResult[]
 		 */
-		public function getRefunds(string $captureId): array {
+		public function getRefunds(string $paymentReference): array {
 			return [];
 		}
 		
@@ -497,7 +497,7 @@
 				valueRefunded: $valueRefunded,
 				internalState: $eventCode,
 				metadata: array_filter([
-					'captureId'         => $pspReference,
+					'paymentReference'  => $pspReference,
 					'merchantReference' => $notification['merchantReference'] ?? null,
 					'paymentMethod'     => $notification['paymentMethod'] ?? null,
 					'reason'            => $notification['reason'] ?? null,

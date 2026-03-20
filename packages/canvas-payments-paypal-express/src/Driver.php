@@ -128,7 +128,7 @@
 		 * or maps the existing state to a PaymentState if already resolved.
 		 * @see https://developer.paypal.com/docs/classic/api/merchant/GetExpressCheckoutDetails_API_Operation_NVP/
 		 * @param string $transactionId The checkout token (EC-XXXXXXXXX) from SetExpressCheckout
-		 * @param array $extraData Optional extra data. Accepts 'captureId' (the NVP PAYMENTINFO_0_TRANSACTIONID)
+		 * @param array $extraData Optional extra data. Accepts 'paymentReference' (the NVP PAYMENTINFO_0_TRANSACTIONID)
 		 *                         for already-completed payments to enable refund state retrieval.
 		 * @return PaymentState
 		 */
@@ -157,10 +157,10 @@
 			
 			// If we already have the payment transaction ID (e.g. from IPN), the payment is complete.
 			// Skip DoExpressCheckoutPayment and go straight to building the completed state.
-			if (!empty($extraData['captureId'])) {
+			if (!empty($extraData['paymentReference'])) {
 				return $this->buildCompletedPaymentState(
 					$transactionId,
-					$extraData['captureId'],
+					$extraData['paymentReference'],
 					$details["response"]["CHECKOUTSTATUS"],
 				);
 			}
@@ -197,7 +197,7 @@
 				case "PaymentActionCompleted":
 					return $this->buildCompletedPaymentState(
 						$transactionId,
-						$extraData['captureId'] ?? null,
+						$extraData['paymentReference'] ?? null,
 						"PaymentActionCompleted"
 					);
 				
@@ -215,8 +215,8 @@
 		
 		/**
 		 * Refund a PayPal payment, either fully or partially.
-		 * Note: $request->captureId must be the capture ID (the NVP PAYMENTINFO_0_TRANSACTIONID),
-		 * not the checkout token. This is available in PaymentState::$metadata['captureId']
+		 * Note: $request->paymentReference must be the capture ID (the NVP PAYMENTINFO_0_TRANSACTIONID),
+		 * not the checkout token. This is available in PaymentState::$metadata['paymentReference']
 		 * after a successful exchange() call.
 		 * @see https://developer.paypal.com/docs/classic/express-checkout/ht_basicRefund-curl-etc/
 		 * @param RefundRequest $request amount=null for a full refund, or a minor-unit integer for a partial refund
@@ -227,14 +227,14 @@
 			// PayPal handles the amount calculation internally for full refunds.
 			if ($request->amount === null) {
 				$response = $this->getGateway()->fullRefund(
-					$request->captureId,
+					$request->paymentReference,
 					$request->description,
 				);
 			} else {
 				// Partial refund — convert from minor units (cents) to major units (e.g. 1050 → 10.50)
 				// as required by the PayPal NVP API.
 				$response = $this->getGateway()->partialRefund(
-					$request->captureId,
+					$request->paymentReference,
 					$request->amount / 100,
 					$request->currency,
 					$request->description,
@@ -249,7 +249,7 @@
 			// GROSSREFUNDAMT is returned in major units — convert back to minor units for consistency.
 			return new RefundResult(
 				provider: "paypal_express",
-				captureId: $request->captureId,
+				paymentReference: $request->paymentReference,
 				refundId: $response["response"]["REFUNDTRANSACTIONID"],
 				value: (int)round((float)$response["response"]["GROSSREFUNDAMT"] * 100),
 				currency: $response["response"]["CURRENCYCODE"],
@@ -278,20 +278,20 @@
 		 * Note: $transactionId must be the capture ID (the NVP PAYMENTINFO_0_TRANSACTIONID),
 		 * not the checkout token.
 		 * @see https://developer.paypal.com/docs/classic/api/merchant/TransactionSearch_API_Operation_NVP/
-		 * @param string $captureId
+		 * @param string $paymentReference
 		 * @return array<RefundResult>
 		 */
-		public function getRefunds(string $captureId): array {
+		public function getRefunds(string $paymentReference): array {
 			// Fetch the original payment to get its timestamp, which is required as the
 			// search start date. Refunds cannot predate the original payment.
-			$txDetails = $this->getGateway()->getTransactionDetails($captureId);
+			$txDetails = $this->getGateway()->getTransactionDetails($paymentReference);
 			
 			if ($txDetails["request"]["result"] === 0) {
 				throw new PaymentRefundException("paypal_express", $txDetails["request"]["errorId"], $txDetails["request"]["errorMessage"]);
 			}
 			
 			// Search for all transactions from the payment date until now
-			$search = $this->getGateway()->transactionSearch($txDetails["response"]["ORDERTIME"], $captureId);
+			$search = $this->getGateway()->transactionSearch($txDetails["response"]["ORDERTIME"], $paymentReference);
 			
 			// If the API call failed, throw an exception
 			if ($search["request"]["result"] === 0) {
@@ -307,7 +307,7 @@
 				if ($search["response"]["L_TYPE{$i}"] === "Refund") {
 					$refunds[] = new RefundResult(
 						provider: "paypal_express",
-						captureId: $captureId,
+						paymentReference: $paymentReference,
 						refundId: $search["response"]["L_TRANSACTIONID{$i}"],
 						value: (int)round(abs((float)$search["response"]["L_AMT{$i}"]) * 100),
 						currency: $search["response"]["L_CURRENCYCODE{$i}"],
@@ -440,7 +440,7 @@
 		 * from GetExpressCheckoutDetails.
 		 * @see https://developer.paypal.com/docs/classic/api/merchant/GetTransactionDetails_API_Operation_NVP/
 		 * @param string $token The checkout token (EC-XXXXXXXXX)
-		 * @param string|null $captureId The capture ID (NVP PAYMENTINFO_0_TRANSACTIONID) from PaymentState::$metadata['captureId'].
+		 * @param string|null $captureId The capture ID (NVP PAYMENTINFO_0_TRANSACTIONID) from PaymentState::$metadata['paymentReference'].
 		 *                                          Required — throws PaymentInitiationException if null.
 		 * @param string $internalState
 		 * @return PaymentState
@@ -452,7 +452,7 @@
 					"paypal_express",
 					500,
 					"Cannot retrieve payment state: captureId is missing from extraData. " .
-					"Ensure your payment_exchange listener persists PaymentState::\$metadata['captureId'] " .
+					"Ensure your payment_exchange listener persists PaymentState::\$metadata['paymentReference'] " .
 					"after the first successful payment. See the refund section in the README."
 				);
 			}

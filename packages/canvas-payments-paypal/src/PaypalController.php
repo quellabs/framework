@@ -123,7 +123,8 @@
 				return new JsonResponse("OK");
 			}
 			
-			return $this->processWebhookCapture($parsed['orderId'], $parsed['captureId']);
+			// Process the captured data
+			return $this->processWebhookCapture($parsed['orderId'], $parsed['paymentReference']);
 		}
 		
 		/**
@@ -190,10 +191,10 @@
 			}
 			
 			return [
-				'payload'   => $payload,
-				'eventType' => $payload['event_type'] ?? '',
-				'captureId' => $captureId,
-				'orderId'   => $orderId,
+				'payload'          => $payload,
+				'eventType'        => $payload['event_type'] ?? '',
+				'paymentReference' => $captureId,
+				'orderId'          => $orderId,
 			];
 		}
 		
@@ -217,8 +218,8 @@
 			try {
 				// Call the driver's exchange to convert raw data to PaymentState
 				$response = $this->paypal->exchange($orderId, [
-					'action'    => 'webhook',
-					'captureId' => $captureId,
+					'action'           => 'webhook',
+					'paymentReference' => $captureId,
 				]);
 				
 				// Notify listeners (e.g. order management) of the updated payment state

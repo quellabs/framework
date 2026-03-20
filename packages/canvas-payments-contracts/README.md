@@ -75,8 +75,8 @@ to the `payment_exchange` signal, which is emitted by the controller layer after
 states — including `Pending` — it is `0`. Use `$state` to determine whether funds have actually moved, and
 `$valuePaid` to know how much.
 
-To issue a refund after a successful payment, persist `$metadata['captureId']` from the `PaymentState` — it is
-required as `RefundRequest::$transactionId`.
+To issue a refund after a successful payment, persist `$metadata['paymentReference']` from the `PaymentState` — it is
+required as `RefundRequest::$paymentReference`.
 
 ## Exceptions
 

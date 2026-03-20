@@ -415,8 +415,8 @@
 			// Build payload
 			$payload = [
 				'Currency'               => $request->currency,
-				'Invoice'                => $request->captureId . '-refund-' . time(),
-				'OriginalTransactionKey' => $request->captureId,
+				'Invoice'                => $request->paymentReference . '-refund-' . time(),
+				'OriginalTransactionKey' => $request->paymentReference,
 				'Services'               => [
 					'ServiceList' => [
 						[
@@ -456,7 +456,7 @@
 			// Return the result
 			return new RefundResult(
 				provider: 'buckaroo',
-				captureId: $request->captureId,
+				paymentReference: $request->paymentReference,
 				refundId: $refundKey,
 				value: $refundedMinor,
 				currency: $request->currency,
@@ -471,13 +471,13 @@
 		 * we must call getTransactionStatus() on each refund key to retrieve the amount.
 		 *
 		 * @see https://docs.buckaroo.io/docs/integration-status
-		 * @param string $captureId The original transaction Key
+		 * @param string $paymentReference The original transaction Key
 		 * @return RefundResult[]
 		 * @throws PaymentExchangeException
 		 */
-		public function getRefunds(string $captureId): array {
+		public function getRefunds(string $paymentReference): array {
 			// Fetch the original transaction to find related refund keys
-			$result = $this->getGateway()->getTransactionStatus($captureId);
+			$result = $this->getGateway()->getTransactionStatus($paymentReference);
 			
 			// If that failed, throw exception
 			if ($result['request']['result'] === 0) {
@@ -522,7 +522,7 @@
 				
 				$refunds[] = new RefundResult(
 					provider: 'buckaroo',
-					captureId: $captureId,
+					paymentReference: $paymentReference,
 					refundId: $refundKey,
 					value: (int)round($amountDecimal * 100),
 					currency: $refundData['Currency'] ?? $originalCurrency,

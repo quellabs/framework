@@ -14,7 +14,7 @@
 			public string $provider,
 			
 			/** The provider's unique identifier for the capture */
-			public string $captureId,
+			public string $paymentReference,
 			
 			/** The provider's unique identifier for this specific refund */
 			public string $refundId,

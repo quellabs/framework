@@ -108,20 +108,20 @@ use Quellabs\Payments\Contracts\PaymentRefundException;
 
 // Full refund
 $request = new RefundRequest(
-    captureId:     $state->transactionId,  // from your payment_exchange listener
-    paymentModule: 'mollie_ideal',
-    amount:        null,   // null = full refund
-    currency:      'EUR',
-    description:   'Full refund for order #12345',
+    paymentReference: $state->transactionId,
+    paymentModule:    'mollie_ideal',
+    amount:           null, // null = full refund
+    currency:         'EUR',
+    description:      'Full refund for order #12345',
 );
 
 // Partial refund
 $request = new RefundRequest(
-    captureId:     $state->transactionId,  // from your payment_exchange listener
-    paymentModule: 'mollie_ideal',
-    amount:        500,   // in minor units — €5.00
-    currency:      'EUR',
-    description:   'Partial refund for order #12345',
+    paymentReference: $state->transactionId,
+    paymentModule:    'mollie_ideal',
+    amount:           500, // in minor units — €5.00
+    currency:         'EUR',
+    description:      'Partial refund for order #12345',
 );
 
 try {
