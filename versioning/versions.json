@@ -24,5 +24,6 @@
   "canvas-payments-paypal-express": "1.0.2",
   "canvas-payments-stripe": "1.0.2",
   "canvas-payments-adyen": "1.0.1",
-  "canvas-payments-multisafepay": "1.0.0"
+  "canvas-payments-multisafepay": "1.0.0",
+  "canvas-payments-buckaroo": "1.0.0"
 }

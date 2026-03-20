@@ -108,6 +108,10 @@
     {
       "type": "path",
       "url": "./packages/canvas-payments-multisafepay"
+    },
+    {
+      "type": "path",
+      "url": "./packages/canvas-payments-buckaroo"
     }
   ],
   "require": {
@@ -157,7 +161,8 @@
     "quellabs/canvas-payments-paypal-express": "dev-main as 1.999.999",
     "quellabs/canvas-payments-stripe": "dev-main as 1.999.999",
     "quellabs/canvas-payments-adyen": "dev-main as 1.999.999",
-    "quellabs/canvas-payments-multisafepay": "dev-main as 1.999.999"
+    "quellabs/canvas-payments-multisafepay": "dev-main as 1.999.999",
+    "quellabs/canvas-payments-buckaroo": "dev-main as 1.999.999"
   },
   "autoload": {
     "psr-4": {
@@ -185,7 +190,8 @@
       "Quellabs\\Payments\\Paypal\\": "packages/canvas-payments-paypal/src/",
       "Quellabs\\Payments\\PaypalExpress\\": "packages/canvas-payments-paypal-express/src/",
       "Quellabs\\Payments\\Adyen\\": "packages/canvas-payments-adyen/src/",
-      "Quellabs\\Payments\\MultiSafepay\\": "packages/canvas-payments-multisafepay/src/"
+      "Quellabs\\Payments\\MultiSafepay\\": "packages/canvas-payments-multisafepay/src/",
+      "Quellabs\\Payments\\Buckaroo\\": "packages/canvas-payments-multisafepay/src/"
     },
     "files": [
       "packages/support/src/bootstrap.php"
