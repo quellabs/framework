@@ -36,7 +36,7 @@
 		// My Buckaroo > Websites > {your site} > Push Settings.
 		// The per-request PushURL field takes precedence over the Plaza configuration.
 		// @see https://docs.buckaroo.io/docs/integration-push-messages
-		'push_url' => 'https://example.com/webhooks/buckaroo',
+		'webhook_url' => 'https://example.com/webhooks/buckaroo',
 		
 		// BCP 47 culture tag sent to Buckaroo for hosted page language and email templates.
 		// Supported values: nl-NL, en-US, de-DE, fr-FR, etc.

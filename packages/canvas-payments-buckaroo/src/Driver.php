@@ -3,6 +3,7 @@
 	namespace Quellabs\Payments\Buckaroo;
 	
 	use Quellabs\Payments\Contracts\InitiateResult;
+	use Quellabs\Payments\Contracts\PaymentAddress;
 	use Quellabs\Payments\Contracts\PaymentExchangeException;
 	use Quellabs\Payments\Contracts\PaymentInitiationException;
 	use Quellabs\Payments\Contracts\PaymentProviderInterface;
@@ -99,7 +100,7 @@
 				'return_url_cancel' => '',
 				'return_url_error'  => '',
 				'return_url_reject' => '',
-				'push_url'          => '',
+				'webhook_url'       => '',
 				'default_culture'   => 'nl-NL',
 			];
 		}
@@ -189,12 +190,27 @@
 			$amount = round($request->amount / 100, 2);
 			
 			// Build the service parameter list.
-			// For iDEAL an issuer BIC is required; other methods typically need no parameters
-			// for the basic redirect flow — the shopper enters details on the hosted page.
 			$serviceParams = [];
 			
+			// iDEAL: pass the selected bank BIC so Buckaroo skips the issuer selection screen.
 			if ($service === 'ideal' && !empty($request->issuerId)) {
 				$serviceParams[] = ['Name' => 'issuer', 'Value' => $request->issuerId];
+			}
+			
+			// BNPL: inject billing address as BillingCustomer parameters.
+			if ($request->billingAddress !== null && $this->serviceRequiresAddressParams($service)) {
+				array_push($serviceParams, ...$this->buildAddressParams($request->billingAddress, 'BillingCustomer'));
+			}
+
+			// BNPL: inject shipping address as ShippingCustomer parameters.
+			// Buckaroo requires this group to be present even when shipping equals billing —
+			// fall back to the billing address rather than omitting it and getting a rejection.
+			if ($this->serviceRequiresAddressParams($service)) {
+				if ($request->shippingAddress !== null) {
+					array_push($serviceParams, ...$this->buildAddressParams($request->shippingAddress, 'ShippingCustomer'));
+				} elseif ($request->billingAddress !== null) {
+					array_push($serviceParams, ...$this->buildAddressParams($request->billingAddress, 'ShippingCustomer'));
+				}
 			}
 			
 			$payload = [
@@ -206,7 +222,7 @@
 				'ReturnURLCancel' => $config['return_url_cancel'],
 				'ReturnURLError'  => $config['return_url_error'],
 				'ReturnURLReject' => $config['return_url_reject'],
-				'PushURL'         => $config['push_url'],
+				'PushURL'         => $config['webhook_url'],
 				'Services'        => [
 					'ServiceList' => [
 						[
@@ -218,15 +234,17 @@
 				],
 			];
 			
-			// Attach customer data when a billing address is provided.
-			// Buckaroo uses this for fraud scoring and to pre-fill the hosted page.
-			if ($request->billingAddress !== null) {
-				if (!empty($request->billingAddress->email)) {
-					$payload['CustomerEmail'] = $request->billingAddress->email;
+			// Attach top-level customer fields — valid for all payment methods.
+			// CustomerEmail and CustomerCountry feed into fraud scoring and hosted page pre-fill.
+			$billingOrShipping = $request->billingAddress ?? $request->shippingAddress;
+
+			if ($billingOrShipping !== null) {
+				if (!empty($billingOrShipping->email)) {
+					$payload['CustomerEmail'] = $billingOrShipping->email;
 				}
 				
-				if (!empty($request->billingAddress->country)) {
-					$payload['CustomerCountry'] = $request->billingAddress->country;
+				if (!empty($billingOrShipping->country)) {
+					$payload['CustomerCountry'] = $billingOrShipping->country;
 				}
 			}
 			
@@ -488,24 +506,22 @@
 				// transaction individually to get its AmountCredit and Currency.
 				$refundResult = $this->getGateway()->getTransactionStatus($refundKey);
 				
-				// if this failed, log and skip rather than throw — one failed lookup should not abort the list.
+				// A failed lookup means the refund list would be incomplete — throw rather than
+				// return a partial result that could cause incorrect business logic downstream.
 				if ($refundResult['request']['result'] === 0) {
-					error_log('Buckaroo: could not fetch refund transaction ' . $refundKey . ': ' . $refundResult['request']['errorMessage']);
-					continue;
+					throw new PaymentExchangeException('buckaroo', $refundResult['request']['errorId'], $refundResult['request']['errorMessage']);
 				}
 				
 				// Add result to list
 				$refundData = $refundResult['response'];
 				$amountDecimal = (float)($refundData['AmountCredit'] ?? 0);
-				$amountMinor = (int)round($amountDecimal * 100);
-				$currency = $refundData['Currency'] ?? $originalCurrency;
 				
 				$refunds[] = new RefundResult(
 					provider: 'buckaroo',
 					transactionId: $transactionId,
 					refundId: $refundKey,
-					value: $amountMinor,
-					currency: $currency,
+					value: (int)round($amountDecimal * 100),
+					currency: $refundData['Currency'] ?? $originalCurrency,
 				);
 			}
 			
@@ -540,10 +556,10 @@
 				// transaction individually to get its AmountCredit.
 				$refundResult = $this->getGateway()->getTransactionStatus($refundKey);
 				
-				// If the status call fails, skip this entry — a partial sum is better than an
-				// exception that aborts the entire exchange() call.
+				// A failed lookup means valueRefunded would be incorrect — throw rather than
+				// return a silently wrong total that could affect payment state transitions.
 				if ($refundResult['request']['result'] === 0) {
-					continue;
+					throw new PaymentExchangeException('buckaroo', $refundResult['request']['errorId'], $refundResult['request']['errorMessage']);
 				}
 				
 				// Refund transactions carry AmountCredit (decimal); convert to minor units.
@@ -554,6 +570,49 @@
 			return $total;
 		}
 		
+		/**
+		 * Returns true for payment services that require full address parameters
+		 * @param string $service Buckaroo service name (e.g. 'klarna', 'in3')
+		 * @return bool
+		 */
+		private function serviceRequiresAddressParams(string $service): bool {
+			return in_array($service, ['klarna', 'in3', 'afterpay', 'billink'], true);
+		}
+		
+		/**
+		 * Maps a PaymentAddress onto Buckaroo service Parameters entries for the
+		 * given group type ('BillingCustomer' or 'ShippingCustomer').
+		 * @param PaymentAddress $address
+		 * @param string $groupType 'BillingCustomer' or 'ShippingCustomer'
+		 * @return array<int, array{Name: string, GroupType: string, GroupID: string, Value: string}>
+		 */
+		private function buildAddressParams(PaymentAddress $address, string $groupType): array {
+			$fields = [
+				'Title'             => $address->title,
+				'FirstName'         => $address->givenName,
+				'LastName'          => $address->familyName,
+				'Email'             => $address->email,
+				'Phone'             => $address->phone,
+				'Street'            => $address->street,
+				'HouseNumber'       => $address->houseNumber,
+				'HouseNumberSuffix' => $address->houseNumberSuffix,
+				'PostalCode'        => $address->postalCode,
+				'City'              => $address->city,
+				'Country'           => $address->country,
+				'Region'            => $address->region,
+			];
+			
+			$params = [];
+			
+			foreach ($fields as $name => $value) {
+				if ($value !== null && $value !== '') {
+					$params[] = ['Name' => $name, 'GroupType' => $groupType, 'GroupID' => '', 'Value' => $value];
+				}
+			}
+			
+			return $params;
+		}
+
 		/**
 		 * Lazily instantiates the BuckarooGateway.
 		 * @return BuckarooGateway
