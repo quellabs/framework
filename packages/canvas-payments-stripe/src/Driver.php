@@ -249,22 +249,25 @@
 			// Map description to one of Stripe's accepted refund reason values
 			$reason = $this->mapRefundReason($request->description);
 			
+			// Call the API
 			$result = $this->getGateway()->refund(
-				$request->transactionId,
+				$request->captureId,
 				$request->amount,
 				$reason,
 				$idempotencyKey,
 			);
 			
+			// If that failed, throw an exception
 			if ($result['request']['result'] === 0) {
 				throw new PaymentRefundException('stripe', $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 			
+			// Return the result
 			$r = $result['response'];
 			
 			return new RefundResult(
 				provider: 'stripe',
-				transactionId: $request->transactionId,
+				captureId: $request->captureId,
 				refundId: $r['id'],
 				value: (int)($r['amount'] ?? 0),
 				currency: strtoupper($r['currency'] ?? $request->currency),
@@ -293,12 +296,12 @@
 		 * This is available in PaymentState::$metadata['captureId'] after a successful exchange().
 		 *
 		 * @see https://stripe.com/docs/api/refunds/list
-		 * @param string $transactionId The PaymentIntent ID (pi_*)
+		 * @param string $captureId The PaymentIntent ID (pi_*)
 		 * @return array<RefundResult>
 		 * @throws PaymentRefundException
 		 */
-		public function getRefunds(string $transactionId): array {
-			$result = $this->getGateway()->getRefundsForPaymentIntent($transactionId);
+		public function getRefunds(string $captureId): array {
+			$result = $this->getGateway()->getRefundsForPaymentIntent($captureId);
 			
 			if ($result['request']['result'] === 0) {
 				throw new PaymentRefundException('stripe', $result['request']['errorId'], $result['request']['errorMessage']);
@@ -309,7 +312,7 @@
 			foreach ($result['response']['data'] ?? [] as $refund) {
 				$refunds[] = new RefundResult(
 					provider: 'stripe',
-					transactionId: $transactionId,
+					captureId: $captureId,
 					refundId: $refund['id'],
 					value: (int)($refund['amount'] ?? 0),
 					currency: strtoupper($refund['currency'] ?? ''),

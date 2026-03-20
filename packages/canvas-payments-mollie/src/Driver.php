@@ -51,6 +51,11 @@
 		];
 		
 		/**
+		 * List of modules with listeners
+		 */
+		const MODULES_WITH_LISTENERS = ['mollie_ideal', 'mollie_kbc', 'mollie_giftcard'];
+		
+		/**
 		 * Gateway instance, constructed lazily on first use to ensure config is available.
 		 * @var MollieGateway|null
 		 */
@@ -125,10 +130,10 @@
 				'cancelUrl'       => $request->cancelUrl,
 				'webhookUrl'      => $request->webhookUrl,
 				'metadata'        => $request->metadata,
-			
+				
 				// Empty string means no method preference — let the customer choose on Mollie's hosted page
 				'method'          => !empty($paymentMethod) ? $paymentMethod : null,
-			
+				
 				// Only included for methods that support issuer pre-selection (e.g. iDEAL bank)
 				'issuer'          => !empty($request->issuerId) ? $request->issuerId : null,
 				'billingAddress'  => $request->billingAddress !== null ? $this->serializeAddress($request->billingAddress) : null,
@@ -161,18 +166,18 @@
 		public function refund(RefundRequest $request): RefundResult {
 			// Create the refund
 			$response = $this->getGateway()->createRefund(
-				$request->transactionId,
+				$request->captureId,
 				$request->amount,
 				$request->currency,
 				$request->description,
 			);
 			
-			// return error in case of error
+			// Throw error in case of API error
 			if ($response["request"]["result"] === 0) {
 				throw new PaymentRefundException("mollie", $response["request"]["errorId"], $response["request"]["errorMessage"]);
 			}
 			
-			// response resource has to be "refund"
+			// Response resource has to be "refund"
 			if ($response["response"]["resource"] !== "refund") {
 				throw new PaymentRefundException("mollie", 204, "Invalid resource '{$response["response"]["resource"]}'");
 			}
@@ -180,7 +185,7 @@
 			// Return the data
 			return new RefundResult(
 				provider: "mollie",
-				transactionId: $response["response"]["paymentId"],
+				captureId: $response["response"]["paymentId"],
 				refundId: $response["response"]["id"],
 				value: (int)round((float)$response["response"]["amount"]["value"] * 100),
 				currency: $response["response"]["amount"]["currency"]
@@ -252,12 +257,12 @@
 		
 		/**
 		 * Returns all refunds for a given transaction
-		 * @param string $transactionId
+		 * @param string $captureId
 		 * @return array<RefundResult>
 		 */
-		public function getRefunds(string $transactionId): array {
+		public function getRefunds(string $captureId): array {
 			// Fetch refunds from Mollie
-			$response = $this->getGateway()->listRefunds($transactionId);
+			$response = $this->getGateway()->listRefunds($captureId);
 			
 			// Return error if the gateway call failed
 			if ($response["request"]["result"] == 0) {
@@ -270,7 +275,7 @@
 			foreach ($response["response"] as $refund) {
 				$refunds[] = new RefundResult(
 					provider: 'mollie',
-					transactionId: $transactionId,
+					captureId: $captureId,
 					refundId: $refund["id"],
 					value: (int)round((float)$refund["amount"]["value"] * 100),
 					currency: $refund["amount"]["currency"],
@@ -288,17 +293,16 @@
 		public function getPaymentOptions(string $paymentModule): array {
 			// Only certain methods expose issuer selection (iDEAL banks, KBC, gift cards).
 			// Everything else has no options to present.
-			$modulesWithIssuers = ['mollie_ideal', 'mollie_kbc', 'mollie_giftcard'];
-			
-			if (!in_array($paymentModule, $modulesWithIssuers)) {
+			if (!in_array($paymentModule, self::MODULES_WITH_LISTENERS)) {
 				return [];
 			}
 			
 			// Strip the 'mollie_' prefix to get the raw method name Mollie expects (e.g. 'ideal')
 			// Call the gateway to fetch payment method info
-			$methods = $this->getGateway()->getPaymentMethodInfo(substr($paymentModule, 7));
+			$methods = $this->getGateway()->getPaymentMethodInfo(self::MODULE_TYPE_MAP[$paymentModule]);
 			
-			if ($methods["request"]["result"] == 0) {
+			// If that failed, throw an error
+			if ($methods["request"]["result"] === 0) {
 				throw new PaymentException("mollie", $methods["request"]["errorId"], $methods["request"]["errorMessage"]);
 			}
 			

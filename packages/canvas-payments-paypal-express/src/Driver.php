@@ -215,7 +215,7 @@
 		
 		/**
 		 * Refund a PayPal payment, either fully or partially.
-		 * Note: $request->transactionId must be the capture ID (the NVP PAYMENTINFO_0_TRANSACTIONID),
+		 * Note: $request->captureId must be the capture ID (the NVP PAYMENTINFO_0_TRANSACTIONID),
 		 * not the checkout token. This is available in PaymentState::$metadata['captureId']
 		 * after a successful exchange() call.
 		 * @see https://developer.paypal.com/docs/classic/express-checkout/ht_basicRefund-curl-etc/
@@ -227,14 +227,14 @@
 			// PayPal handles the amount calculation internally for full refunds.
 			if ($request->amount === null) {
 				$response = $this->getGateway()->fullRefund(
-					$request->transactionId,
+					$request->captureId,
 					$request->description,
 				);
 			} else {
 				// Partial refund — convert from minor units (cents) to major units (e.g. 1050 → 10.50)
 				// as required by the PayPal NVP API.
 				$response = $this->getGateway()->partialRefund(
-					$request->transactionId,
+					$request->captureId,
 					$request->amount / 100,
 					$request->currency,
 					$request->description,
@@ -249,7 +249,7 @@
 			// GROSSREFUNDAMT is returned in major units — convert back to minor units for consistency.
 			return new RefundResult(
 				provider: "paypal_express",
-				transactionId: $request->transactionId,
+				captureId: $request->captureId,
 				refundId: $response["response"]["REFUNDTRANSACTIONID"],
 				value: (int)round((float)$response["response"]["GROSSREFUNDAMT"] * 100),
 				currency: $response["response"]["CURRENCYCODE"],
@@ -278,21 +278,22 @@
 		 * Note: $transactionId must be the capture ID (the NVP PAYMENTINFO_0_TRANSACTIONID),
 		 * not the checkout token.
 		 * @see https://developer.paypal.com/docs/classic/api/merchant/TransactionSearch_API_Operation_NVP/
-		 * @param string $transactionId
+		 * @param string $captureId
 		 * @return array<RefundResult>
 		 */
-		public function getRefunds(string $transactionId): array {
+		public function getRefunds(string $captureId): array {
 			// Fetch the original payment to get its timestamp, which is required as the
 			// search start date. Refunds cannot predate the original payment.
-			$txDetails = $this->getGateway()->getTransactionDetails($transactionId);
+			$txDetails = $this->getGateway()->getTransactionDetails($captureId);
 			
 			if ($txDetails["request"]["result"] === 0) {
 				throw new PaymentRefundException("paypal_express", $txDetails["request"]["errorId"], $txDetails["request"]["errorMessage"]);
 			}
 			
 			// Search for all transactions from the payment date until now
-			$search = $this->getGateway()->transactionSearch($txDetails["response"]["ORDERTIME"], $transactionId);
+			$search = $this->getGateway()->transactionSearch($txDetails["response"]["ORDERTIME"], $captureId);
 			
+			// If the API call failed, throw an exception
 			if ($search["request"]["result"] === 0) {
 				throw new PaymentRefundException("paypal_express", $search["request"]["errorId"], $search["request"]["errorMessage"]);
 			}
@@ -306,14 +307,14 @@
 				if ($search["response"]["L_TYPE{$i}"] === "Refund") {
 					$refunds[] = new RefundResult(
 						provider: "paypal_express",
-						transactionId: $transactionId,
+						captureId: $captureId,
 						refundId: $search["response"]["L_TRANSACTIONID{$i}"],
 						value: (int)round(abs((float)$search["response"]["L_AMT{$i}"]) * 100),
 						currency: $search["response"]["L_CURRENCYCODE{$i}"],
 					);
 				}
 				
-				$i++;
+				++$i;
 			}
 			
 			return $refunds;

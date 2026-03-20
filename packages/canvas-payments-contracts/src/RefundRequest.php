@@ -5,7 +5,7 @@
 	final class RefundRequest {
 		
 		/**
-		 * @param string $transactionId
+		 * @param string $captureId The provider-specific identifier of the payment to refund
 		 * @param string $paymentModule
 		 * @param string $currency ISO 4217 currency code (EUR, USD, ...)
 		 * @param string $description Human-readable description shown to the customer
@@ -13,7 +13,7 @@
 		 * @param \DateTimeImmutable $issueDate
 		 */
 		public function __construct(
-			public string             $transactionId,
+			public string             $captureId,
 			public string             $paymentModule,
 			public string             $currency,
 			public string             $description,

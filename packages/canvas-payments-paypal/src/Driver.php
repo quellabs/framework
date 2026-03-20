@@ -288,10 +288,10 @@
 			// request always produces the same key, so a timeout cannot cause a double-refund.
 			// Amount is included so a partial refund followed by a different partial refund
 			// on the same capture produces a distinct key.
-			$idempotencyKey = hash('sha256', 'refund:' . $request->transactionId . ':' . ($request->amount ?? 'full'));
+			$idempotencyKey = hash('sha256', 'refund:' . $request->captureId . ':' . ($request->amount ?? 'full'));
 
 			$response = $this->getGateway()->refund(
-				$request->transactionId,
+				$request->captureId,
 				$value,
 				$currency,
 				$request->description,
@@ -308,7 +308,7 @@
 			
 			return new RefundResult(
 				provider: "paypal",
-				transactionId: $request->transactionId,
+				captureId: $request->captureId,
 				refundId: $r["id"],
 				value: (int)round((float)($r["amount"]["value"] ?? 0) * 100),
 				currency: $r["amount"]["currency_code"] ?? $request->currency,
@@ -336,23 +336,26 @@
 		 * This is available in PaymentState::$metadata['captureId'] after a successful exchange().
 		 *
 		 * @see https://developer.paypal.com/docs/api/payments/v2/#captures_get
-		 * @param string $transactionId The capture ID
+		 * @param string $captureId The capture ID
 		 * @return array<RefundResult>
 		 * @throws PaymentRefundException
 		 */
-		public function getRefunds(string $transactionId): array {
-			$result = $this->getGateway()->getRefundsForCapture($transactionId);
+		public function getRefunds(string $captureId): array {
+			// Call the API to fetch all refunds
+			$result = $this->getGateway()->getRefundsForCapture($captureId);
 			
+			// If that failed, throw an error
 			if ($result["request"]["result"] === 0) {
 				throw new PaymentRefundException("paypal", $result["request"]["errorId"], $result["request"]["errorMessage"]);
 			}
 			
+			// Flatten the response
 			$refunds = [];
 			
 			foreach ($result["response"] as $refund) {
 				$refunds[] = new RefundResult(
 					provider: "paypal",
-					transactionId: $transactionId,
+					captureId: $captureId,
 					refundId: $refund["id"],
 					value: (int)round((float)($refund["amount"]["value"] ?? 0) * 100),
 					currency: $refund["amount"]["currency_code"],

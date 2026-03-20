@@ -57,6 +57,9 @@
 			'bkr_billink'         => 'billink',
 		];
 		
+		// Methods that require or meaningfully use address/shopper data
+		private const METHODS_REQUIRING_SHOPPER_DATA = ['bkr_klarna', 'bkr_in3', 'bkr_afterpay', 'bkr_billink'];
+		
 		/**
 		 * Returns discovery metadata for this provider, including all supported payment modules.
 		 * Called statically during discovery — no instantiation required.
@@ -197,15 +200,16 @@
 				$serviceParams[] = ['Name' => 'issuer', 'Value' => $request->issuerId];
 			}
 			
-			// BNPL: inject billing address as BillingCustomer parameters.
-			if ($request->billingAddress !== null && $this->serviceRequiresAddressParams($service)) {
-				array_push($serviceParams, ...$this->buildAddressParams($request->billingAddress, 'BillingCustomer'));
-			}
-
-			// BNPL: inject shipping address as ShippingCustomer parameters.
-			// Buckaroo requires this group to be present even when shipping equals billing —
-			// fall back to the billing address rather than omitting it and getting a rejection.
-			if ($this->serviceRequiresAddressParams($service)) {
+			// Inject billing and shipping addresses
+			if (in_array($request->paymentModule, self::METHODS_REQUIRING_SHOPPER_DATA)) {
+				// BNPL: inject billing address as BillingCustomer parameters.
+				if ($request->billingAddress !== null && in_array($request->paymentModule, self::METHODS_REQUIRING_SHOPPER_DATA)) {
+					array_push($serviceParams, ...$this->buildAddressParams($request->billingAddress, 'BillingCustomer'));
+				}
+				
+				// BNPL: inject shipping address as ShippingCustomer parameters.
+				// Buckaroo requires this group to be present even when shipping equals billing —
+				// fall back to the billing address rather than omitting it and getting a rejection.
 				if ($request->shippingAddress !== null) {
 					array_push($serviceParams, ...$this->buildAddressParams($request->shippingAddress, 'ShippingCustomer'));
 				} elseif ($request->billingAddress !== null) {
@@ -411,8 +415,8 @@
 			// Build payload
 			$payload = [
 				'Currency'               => $request->currency,
-				'Invoice'                => $request->transactionId . '-refund-' . time(),
-				'OriginalTransactionKey' => $request->transactionId,
+				'Invoice'                => $request->captureId . '-refund-' . time(),
+				'OriginalTransactionKey' => $request->captureId,
 				'Services'               => [
 					'ServiceList' => [
 						[
@@ -452,7 +456,7 @@
 			// Return the result
 			return new RefundResult(
 				provider: 'buckaroo',
-				transactionId: $request->transactionId,
+				captureId: $request->captureId,
 				refundId: $refundKey,
 				value: $refundedMinor,
 				currency: $request->currency,
@@ -467,13 +471,13 @@
 		 * we must call getTransactionStatus() on each refund key to retrieve the amount.
 		 *
 		 * @see https://docs.buckaroo.io/docs/integration-status
-		 * @param string $transactionId The original transaction Key
+		 * @param string $captureId The original transaction Key
 		 * @return RefundResult[]
 		 * @throws PaymentExchangeException
 		 */
-		public function getRefunds(string $transactionId): array {
+		public function getRefunds(string $captureId): array {
 			// Fetch the original transaction to find related refund keys
-			$result = $this->getGateway()->getTransactionStatus($transactionId);
+			$result = $this->getGateway()->getTransactionStatus($captureId);
 			
 			// If that failed, throw exception
 			if ($result['request']['result'] === 0) {
@@ -518,7 +522,7 @@
 				
 				$refunds[] = new RefundResult(
 					provider: 'buckaroo',
-					transactionId: $transactionId,
+					captureId: $captureId,
 					refundId: $refundKey,
 					value: (int)round($amountDecimal * 100),
 					currency: $refundData['Currency'] ?? $originalCurrency,
@@ -569,16 +573,7 @@
 			
 			return $total;
 		}
-		
-		/**
-		 * Returns true for payment services that require full address parameters
-		 * @param string $service Buckaroo service name (e.g. 'klarna', 'in3')
-		 * @return bool
-		 */
-		private function serviceRequiresAddressParams(string $service): bool {
-			return in_array($service, ['klarna', 'in3', 'afterpay', 'billink'], true);
-		}
-		
+
 		/**
 		 * Maps a PaymentAddress onto Buckaroo service Parameters entries for the
 		 * given group type ('BillingCustomer' or 'ShippingCustomer').

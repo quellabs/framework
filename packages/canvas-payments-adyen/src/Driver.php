@@ -3,6 +3,7 @@
 	namespace Quellabs\Payments\Adyen;
 	
 	use Quellabs\Payments\Contracts\InitiateResult;
+	use Quellabs\Payments\Contracts\PaymentAddress;
 	use Quellabs\Payments\Contracts\PaymentExchangeException;
 	use Quellabs\Payments\Contracts\PaymentInitiationException;
 	use Quellabs\Payments\Contracts\PaymentProviderInterface;
@@ -45,23 +46,41 @@
 		];
 		
 		/**
+		 * Payment modules that require full address and shopper identity data.
+		 * Used for AVS (address verification) on card payments, and mandatory for all BNPL
+		 * methods. Sending this data to other methods adds noise to risk signals and may
+		 * hurt acceptance rates.
+		 * @see https://docs.adyen.com/payment-methods/
+		 */
+		private const MODULES_REQUIRING_ADDRESS_DATA = [
+			'adyen_creditcard',  // AVS check
+			'adyen_klarna',      // Required: address, name, email, phone
+			'adyen_in3',         // Required: address, name, email, phone
+			'adyen_riverty',     // Required: address, name, email, phone
+			'adyen_billie',      // Required: address, name, email, phone, companyName
+		];
+		
+		/**
+		 * Payment modules that benefit from shopperEmail even without full address data.
+		 * Email is low-risk and triggers auto-sent payment instructions for bank transfers.
+		 * Methods in MODULES_REQUIRING_ADDRESS_DATA implicitly include email — this list
+		 * covers the remaining methods where only email is useful.
+		 * @see https://docs.adyen.com/payment-methods/bank-transfer
+		 */
+		private const MODULES_REQUIRING_SHOPPER_EMAIL = [
+			'adyen_bancontact',
+			'adyen_sofort',
+			'adyen_giropay',
+		];
+		
+		/**
 		 * Returns discovery metadata for this provider, including all supported payment modules.
 		 * Called statically during discovery — no instantiation required.
 		 * @return array<string, mixed>
 		 */
 		public static function getMetadata(): array {
 			return [
-				'modules' => [
-					'adyen_ideal',
-					'adyen_creditcard',
-					'adyen_bancontact',
-					'adyen_sofort',
-					'adyen_giropay',
-					'adyen_klarna',
-					'adyen_applepay',
-					'adyen_googlepay',
-					'adyen_paypal',
-				]
+				'modules' => array_keys(self::MODULE_TYPE_MAP),
 			];
 		}
 		
@@ -168,6 +187,21 @@
 		 */
 		public function initiate(PaymentRequest $request): InitiateResult {
 			$config = $this->getConfig();
+			$billing = $request->billingAddress;
+			$module  = $request->paymentModule;
+			$useAddressData  = in_array($module, self::MODULES_REQUIRING_ADDRESS_DATA, true);
+			$useShopperEmail = $useAddressData || in_array($module, self::MODULES_REQUIRING_SHOPPER_EMAIL, true);
+			
+			// Build shopperName — only when address data is relevant.
+			// Required by all BNPL methods; must have at least one component to be worth sending.
+			$shopperName = null;
+			
+			if ($useAddressData && $billing !== null && ($billing->givenName !== null || $billing->familyName !== null)) {
+				$shopperName = array_filter([
+					'firstName' => $billing->givenName,
+					'lastName'  => $billing->familyName,
+				], fn($v) => $v !== null);
+			}
 			
 			// Build the session payload. Amount is already in minor units (e.g. 1250 = €12.50).
 			$payload = array_filter([
@@ -179,9 +213,14 @@
 				'reference'       => $request->reference,
 				'returnUrl'       => $config['return_url'],
 				'description'     => $request->description,
-				'shopperEmail'    => $request->billingAddress?->email ?: null,
 				'shopperLocale'   => 'nl-NL',
-				'countryCode'     => $request->billingAddress?->country ?: null,
+				'countryCode'     => $billing?->country ?: null,
+				'shopperEmail'    => $useShopperEmail ? ($billing?->email ?: null) : null,
+				'telephoneNumber' => $useAddressData ? ($billing?->phone ?: null) : null,
+				'shopperName'     => $shopperName ?: null,
+				'billingAddress'  => $useAddressData && $billing !== null ? $this->buildAddressPayload($billing) : null,
+				'deliveryAddress' => $useAddressData && $request->shippingAddress !== null ? $this->buildAddressPayload($request->shippingAddress) : null,
+				'companyName'     => $useAddressData ? ($billing?->organizationName ?: null) : null,
 			], fn($v) => $v !== null && $v !== '' && $v !== []);
 			
 			// Create a new payment link
@@ -204,16 +243,13 @@
 		}
 		
 		/**
-		 * Exchanges a redirectResult (appended to the return URL after a Drop-in redirect)
-		 * or a webhook pspReference for a normalised PaymentState.
+		 * Dispatches a payment event to the appropriate handler based on action.
 		 *
-		 * For return-URL calls: Adyen appends ?sessionId=...&redirectResult=... to the return URL.
-		 * The controller passes action='return' and the redirectResult in extraData.
-		 * We submit it to POST /checkout/v71/payments/details to resolve the final result code.
+		 * For action='return': delegates to buildStateFromReturn(), which submits the
+		 * redirectResult to POST /payments/details to resolve the final result code.
 		 *
-		 * For webhook calls: the AUTHORISATION or REFUND notification already contains the final
-		 * state. The controller passes action='webhook' and the decoded NotificationRequestItem
-		 * in extraData['notification']. No API call is needed.
+		 * For action='webhook': delegates to buildStateFromWebhook(), which maps the
+		 * NotificationRequestItem directly — no API call needed.
 		 *
 		 * @see https://docs.adyen.com/api-explorer/Checkout/71/post/payments/details
 		 * @param string $transactionId The Adyen sessionId (return flow) or pspReference (webhook flow)
@@ -230,49 +266,127 @@
 			
 			if ($action === 'webhook') {
 				return $this->buildStateFromWebhook($transactionId, $extraData['notification'] ?? []);
+			} else {
+				return $this->buildStateFromReturn($transactionId, $extraData);
 			}
-			
-			// action='return': resolve the redirectResult against /payments/details
+		}
+		
+		/**
+		 * Resolves the final payment state after the shopper returns from the hosted payment page.
+		 * Submits the redirectResult to POST /payments/details and maps the resultCode to a PaymentState.
+		 *
+		 * redirectResult is appended by Adyen to the returnUrl after a redirect-based payment
+		 * (e.g. iDEAL, 3DS). For inline completions (card without redirect) the Drop-in handles
+		 * this call itself and the shopper never hits the return URL.
+		 *
+		 * paymentData is optional context from the session — include it when available, Adyen
+		 * uses it to correlate the details call back to the original session.
+		 *
+		 * @see https://docs.adyen.com/api-explorer/Checkout/71/post/payments/details
+		 * @see https://docs.adyen.com/online-payments/payment-result-codes/
+		 * @param string $transactionId The Adyen sessionId from the return URL query string
+		 * @param array $extraData
+		 *   - redirectResult: (string, required) URL-decoded redirectResult query param
+		 *   - paymentData: (string|null, optional) paymentData from session if available
+		 * @return PaymentState
+		 * @throws PaymentExchangeException
+		 */
+		private function buildStateFromReturn(string $transactionId, array $extraData): PaymentState {
+			// Fetch redirectResult
 			$redirectResult = $extraData['redirectResult'] ?? null;
 			
+			// redirectResult is mandatory — without it there is nothing to submit to /payments/details
 			if (empty($redirectResult)) {
 				throw new PaymentExchangeException('adyen', 0, "Missing 'redirectResult' in extraData for action='return'.");
 			}
 			
+			// Build the /payments/details payload. paymentData is optional but should be included
+			// when available — array_filter drops it cleanly when null.
 			$payload = array_filter([
 				'details'     => ['redirectResult' => $redirectResult],
 				'paymentData' => $extraData['paymentData'] ?? null,
 			], fn($v) => $v !== null);
 			
+			// Submit to Adyen — this resolves the pending redirect into a final resultCode
 			$result = $this->getGateway()->getPaymentDetails($payload);
 			
+			// If that failed, throw exception
 			if ($result['request']['result'] === 0) {
 				throw new PaymentExchangeException('adyen', $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 			
-			return $this->buildStateFromResultCode($transactionId, $result['response']);
+			// Extract the fields needed to build a PaymentState
+			$response = $result['response'];
+			$resultCode = $response['resultCode'] ?? 'Unknown';
+			$pspReference = $response['pspReference'] ?? null;
+			$currency = $response['amount']['currency'] ?? '';
+			$valuePaid = $response['amount']['value'] ?? 0;
+			
+			// Map Adyen's resultCode to our internal PaymentStatus.
+			// resultCode is the canonical status field for synchronous /payments/details responses.
+			$state = match ($resultCode) {
+				// Payment authorized — funds will be collected (auto-capture) or reserved (manual).
+				'Authorised'           => PaymentStatus::Paid,
+				
+				// Shopper abandoned or explicitly canceled before completing.
+				'Cancelled'            => PaymentStatus::Canceled,
+				
+				// Issuer or Adyen risk engine declined the payment.
+				'Refused', 'Error'     => PaymentStatus::Failed,
+				
+				// Async methods (bank transfer, voucher) — final state arrives via webhook.
+				'Pending', 'Received'  => PaymentStatus::Pending,
+				
+				// presentToShopper / identifyShopper / challengeShopper should not reach the
+				// return URL in the Sessions flow, but treat as pending to avoid data loss.
+				default                => PaymentStatus::Pending,
+			};
+			
+			return new PaymentState(
+				provider:      'adyen',
+				transactionId: $transactionId,
+				state:         $state,
+				currency:      $currency,
+				// Only record a paid amount when the payment is actually authorized
+				valuePaid:     $state === PaymentStatus::Paid ? (int)$valuePaid : 0,
+				valueRefunded: 0,
+				internalState: $resultCode,
+				metadata: array_filter([
+					// pspReference is required for future captures and refunds
+					'captureId'     => $pspReference,
+					'paymentMethod' => $response['paymentMethod']['type'] ?? null,
+					'refusalReason' => $response['refusalReason'] ?? null,
+				], fn($v) => $v !== null),
+			);
 		}
 		
 		/**
 		 * Refunds a previously captured payment.
 		 * For a full refund pass $request->amount === $originalAmount.
 		 * Adyen handles partial refunds with the same endpoint — the difference is solely the amount.
+		 *
+		 * IMPORTANT: $request->captureId must be the Adyen pspReference of the original
+		 * AUTHORISATION, not the sessionId. The pspReference is available as
+		 * PaymentState::$metadata['captureId'] after a successful payment exchange — persist
+		 * it when handling the payment_exchange signal and pass it here as captureId.
+		 *
 		 * @see https://docs.adyen.com/api-explorer/Checkout/71/post/payments/{paymentPspReference}/refunds
 		 * @param RefundRequest $request
 		 * @return RefundResult
 		 * @throws PaymentRefundException
 		 */
 		public function refund(RefundRequest $request): RefundResult {
-			// captureId of the original payment must be stored in PaymentState::$metadata['captureId']
-			$captureId = $request->metadata['captureId'] ?? null;
+			// captureId must be the pspReference from the original AUTHORISATION.
+			// Adyen's refund endpoint uses it as the URL path parameter to identify the payment.
+			$captureId = $request->captureId;
 			
 			// If none given, throw error
 			if (empty($captureId)) {
 				throw new PaymentRefundException(
 					'adyen',
 					0,
-					"Cannot refund: captureId is missing from metadata. " .
-					"Ensure your payment_exchange listener persists PaymentState::\$metadata['captureId']."
+					"Cannot refund: captureId is empty. " .
+					"Pass the Adyen pspReference (PaymentState::\$metadata['captureId']) as captureId."
 				);
 			}
 			
@@ -294,7 +408,7 @@
 			// We store it as refundId so callers can correlate the incoming REFUND webhook.
 			return new RefundResult(
 				provider: 'adyen',
-				transactionId: $request->transactionId,
+				captureId: $captureId,
 				refundId: $result['response']['pspReference'],
 				value: $request->amount,
 				currency: $request->currency,
@@ -306,10 +420,10 @@
 		 * Adyen does not provide a search-by-transaction API in the Sessions flow.
 		 * Refund history must be reconstructed from webhook events stored by the application.
 		 * This method is intentionally not implemented here — return an empty array as a safe default.
-		 * @param string $transactionId
+		 * @param string $captureId
 		 * @return RefundResult[]
 		 */
-		public function getRefunds(string $transactionId): array {
+		public function getRefunds(string $captureId): array {
 			return [];
 		}
 		
@@ -329,54 +443,6 @@
 		 */
 		private function getGateway(): AdyenGateway {
 			return $this->gateway ??= new AdyenGateway($this);
-		}
-		
-		/**
-		 * Maps an Adyen /payments/details resultCode response to a PaymentState.
-		 * resultCode is the canonical status field for synchronous responses.
-		 * @see https://docs.adyen.com/online-payments/payment-result-codes/
-		 * @param string $transactionId The sessionId used to initiate the payment
-		 * @param array $response The decoded /payments/details response body
-		 * @return PaymentState
-		 */
-		private function buildStateFromResultCode(string $transactionId, array $response): PaymentState {
-			$resultCode = $response['resultCode'] ?? 'Unknown';
-			$pspReference = $response['pspReference'] ?? null;
-			$currency = $response['amount']['currency'] ?? '';
-			$valuePaid = $response['amount']['value'] ?? 0;
-			
-			$state = match ($resultCode) {
-				// Payment was authorized and (for ecommerce with auto-capture) funds will be collected.
-				'Authorised' => PaymentStatus::Paid,
-				
-				// Shopper canceled before completing — treat as a clean cancellation.
-				'Cancelled' => PaymentStatus::Canceled,
-				
-				// Payment was refused by the issuer or Adyen risk engine.
-				'Refused', 'Error' => PaymentStatus::Failed,
-				
-				// Asynchronous payment methods (e.g. bank transfers, vouchers) — await webhook.
-				'Pending', 'Received' => PaymentStatus::Pending,
-				
-				// presentToShopper, identifyShopper, challengeShopper: should not reach the return URL
-				// in the Sessions flow, but treat as pending to avoid data loss.
-				default => PaymentStatus::Pending,
-			};
-			
-			return new PaymentState(
-				provider: 'adyen',
-				transactionId: $transactionId,
-				state: $state,
-				currency: $currency,
-				valuePaid: $state === PaymentStatus::Paid ? (int)$valuePaid : 0,
-				valueRefunded: 0,
-				internalState: $resultCode,
-				metadata: array_filter([
-					'captureId'     => $pspReference,
-					'paymentMethod' => $response['paymentMethod']['type'] ?? null,
-					'refusalReason' => $response['refusalReason'] ?? null,
-				], fn($v) => $v !== null),
-			);
 		}
 		
 		/**
@@ -437,6 +503,29 @@
 					'reason'            => $notification['reason'] ?? null,
 				], fn($v) => $v !== null),
 			);
+		}
+		
+		/**
+		 * Maps a PaymentAddress to Adyen's billingAddress / deliveryAddress shape.
+		 * @see https://docs.adyen.com/api-explorer/Checkout/71/post/paymentLinks#request-billingAddress
+		 * @param PaymentAddress $address
+		 * @return array
+		 */
+		private function buildAddressPayload(PaymentAddress $address): array {
+			$houseNumberOrName = $address->houseNumber;
+			
+			if (!empty($address->houseNumberSuffix)) {
+				$houseNumberOrName .= ' ' . $address->houseNumberSuffix;
+			}
+			
+			return [
+				'street'            => $address->street,
+				'houseNumberOrName' => $houseNumberOrName,
+				'postalCode'        => $address->postalCode,
+				'city'              => $address->city,
+				'country'           => $address->country,
+				'stateOrProvince'   => $address->region ?? 'N/A',
+			];
 		}
 		
 		/**
