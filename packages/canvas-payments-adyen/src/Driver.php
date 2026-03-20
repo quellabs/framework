@@ -281,7 +281,7 @@
 				$captureId,
 				$request->amount,
 				$request->currency,
-				$request->note ?? ''
+				$request->description ?? ''
 			);
 			
 			// If that failed throw an error

@@ -307,7 +307,7 @@
 			$payload = array_filter([
 				'currency'    => $request->currency,
 				'amount'      => $request->amount,
-				'description' => $request->note ?? '',
+				'description' => $request->description ?? '',
 			], fn($v) => $v !== null);
 			
 			// Call API to issue the refund
