@@ -101,55 +101,19 @@
 		/**
 		 * Returns the normalized issuer list for the given payment module.
 		 *
-		 * For iDEAL, MultiSafepay provides a dedicated GET /issuers/ideal endpoint that returns
-		 * the current list of participating banks. The issuer_id must be passed as
-		 * gateway_info.issuer_id when creating an iDEAL order.
+		 * MultiSafepay exposes a GET /issuers/ideal endpoint, but iDEAL issuer pre-selection
+		 * was discontinued with iDEAL 2.0 (31-12-2024). Bank selection now happens exclusively
+		 * on the hosted payment page. This method always returns an empty array.
 		 *
-		 * For other payment methods that do not use an issuer pre-selection step (e.g. cards,
-		 * PayPal), this returns an empty array — the method picker handles all UI on the
-		 * hosted payment page.
-		 *
-		 * @see https://docs.multisafepay.com/reference/issuers
 		 * @param string $paymentModule e.g. 'msp_ideal'
 		 * @return array
-		 * @throws PaymentInitiationException
 		 */
 		public function getPaymentOptions(string $paymentModule): array {
-			// Only iDEAL uses an explicit issuer list; all other methods redirect to the hosted page.
-			if ($paymentModule !== 'msp_ideal') {
-				return [];
-			}
-			
-			// Fetch issuers
-			$result = $this->getGateway()->getIssuers('ideal');
-			
-			// If that failed, throw exception
-			if ($result['request']['result'] === 0) {
-				throw new PaymentInitiationException('multisafepay', $result['request']['errorId'], $result['request']['errorMessage']);
-			}
-			
-			// Return data
-			return array_values(array_map(fn($issuer) => [
-				'id'       => $issuer['code'],
-				'name'     => $issuer['description'],
-				'issuerId' => $issuer['code'],
-				'swift'    => $issuer['code'],
-				
-				// MSP does not provide issuer icons in the API response.
-				'icon'     => null,
-			], $result['response']['data'] ?? []));
+			return [];
 		}
 		
 		/**
 		 * Initiates a payment by creating a MultiSafepay order.
-		 *
-		 * MultiSafepay returns a payment_url that the shopper is redirected to.
-		 * After the shopper completes (or abandons) payment, MultiSafepay redirects them
-		 * to redirect_url with ?transactionid=<order_id> appended.
-		 *
-		 * The order type is always 'redirect' — this creates a hosted payment page.
-		 * Direct (server-to-server) orders are not handled here.
-		 *
 		 * @see https://docs.multisafepay.com/reference/createorder
 		 * @param PaymentRequest $request
 		 * @return InitiateResult

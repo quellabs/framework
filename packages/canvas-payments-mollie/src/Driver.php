@@ -24,9 +24,10 @@
 		private array $config = [];
 		
 		/**
-		 * Maps our internal module names to MultiSafepay's gateway type strings.
-		 * These are passed as 'type' when creating an order.
-		 * @see https://docs.multisafepay.com/docs/payment-methods
+		 * Maps our internal module names to Mollie's payment method strings.
+		 * These are passed as 'method' when creating a payment.
+		 * An empty string means no method preference — the customer chooses on Mollie's hosted page.
+		 * @see https://docs.mollie.com/reference/v2/payments-api/create-payment
 		 */
 		private const MODULE_TYPE_MAP = [
 			'mollie'             => '',
@@ -51,9 +52,11 @@
 		];
 		
 		/**
-		 * List of modules with listeners
+		 * Modules that require issuer pre-selection before redirecting.
+		 * KBC and gift cards need an issuer passed at payment creation — Mollie errors without it.
+		 * iDEAL excluded: issuer pre-selection was discontinued with iDEAL 2.0 (31-12-2024).
 		 */
-		const MODULES_WITH_LISTENERS = ['mollie_ideal', 'mollie_kbc', 'mollie_giftcard'];
+		const MODULES_WITH_ISSUERS = ['mollie_kbc', 'mollie_giftcard'];
 		
 		/**
 		 * Gateway instance, constructed lazily on first use to ensure config is available.
@@ -134,7 +137,8 @@
 				// Empty string means no method preference — let the customer choose on Mollie's hosted page
 				'method'          => !empty($paymentMethod) ? $paymentMethod : null,
 				
-				// Only included for methods that support issuer pre-selection (e.g. iDEAL bank)
+				// Only included for methods that require issuer pre-selection (KBC, gift cards).
+				// iDEAL no longer accepts an issuer — bank selection moved to the hosted page in iDEAL 2.0.
 				'issuer'          => !empty($request->issuerId) ? $request->issuerId : null,
 				'billingAddress'  => $request->billingAddress !== null ? $this->serializeAddress($request->billingAddress) : null,
 				'shippingAddress' => $request->shippingAddress !== null ? $this->serializeAddress($request->shippingAddress) : null,
@@ -288,19 +292,23 @@
 		}
 		
 		/**
-		 * Returns payment options
-		 * @param string $paymentModule
+		 * Returns the issuer list for payment modules that require pre-selection.
+		 * KBC requires an issuer to be passed when creating the payment — Mollie returns
+		 * an error if it is omitted. Gift cards require an issuer to identify the card brand.
+		 * All other modules return an empty array — the hosted page handles all UI.
+		 * @see https://docs.mollie.com/reference/v2/methods-api/get-method
+		 * @param string $paymentModule e.g. 'mollie_kbc'
 		 * @return array
+		 * @throws PaymentException
 		 */
 		public function getPaymentOptions(string $paymentModule): array {
-			// Only certain methods expose issuer selection (iDEAL banks, KBC, gift cards).
-			// Everything else has no options to present.
-			if (!in_array($paymentModule, self::MODULES_WITH_LISTENERS)) {
+			// Only KBC and gift cards expose issuer selection at the merchant checkout.
+			// Everything else redirects to the hosted page with no pre-selection needed.
+			if (!in_array($paymentModule, self::MODULES_WITH_ISSUERS)) {
 				return [];
 			}
 			
-			// Strip the 'mollie_' prefix to get the raw method name Mollie expects (e.g. 'ideal')
-			// Call the gateway to fetch payment method info
+			// Look up the Mollie method string (e.g. 'kbc') and fetch issuers for it.
 			$methods = $this->getGateway()->getPaymentMethodInfo(self::MODULE_TYPE_MAP[$paymentModule]);
 			
 			// If that failed, throw an error

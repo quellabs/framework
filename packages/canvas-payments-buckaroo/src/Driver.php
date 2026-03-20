@@ -111,56 +111,15 @@
 		/**
 		 * Returns the normalized issuer list for the given payment module.
 		 *
-		 * For iDEAL, Buckaroo provides a dedicated specification endpoint that returns
-		 * the current list of participating banks. The issuer BIC must be passed as the
-		 * 'issuer' parameter in Services when creating a transaction.
+		 * Buckaroo exposes a specification endpoint for iDEAL issuers, but iDEAL issuer
+		 * pre-selection was discontinued with iDEAL 2.0 (31-12-2024). Bank selection now
+		 * happens exclusively on the hosted payment page. This method always returns an empty array.
 		 *
-		 * For all other payment methods this returns an empty array — the shopper selects
-		 * or enters details on the Buckaroo hosted payment page.
-		 *
-		 * @see https://docs.buckaroo.io/docs/ideal-requests
 		 * @param string $paymentModule e.g. 'bkr_ideal'
 		 * @return array
-		 * @throws PaymentInitiationException
 		 */
 		public function getPaymentOptions(string $paymentModule): array {
-			// Only iDEAL uses an explicit issuer list; all other methods redirect to the hosted page.
-			if ($paymentModule !== 'bkr_ideal') {
-				return [];
-			}
-			
-			// Fetch the iDEAL issuer list from the specification endpoint
-			$result = $this->getGateway()->getIdealIssuers();
-			
-			// If API call failed, throw exception
-			if ($result['request']['result'] === 0) {
-				throw new PaymentInitiationException('buckaroo', $result['request']['errorId'], $result['request']['errorMessage']);
-			}
-			
-			// The /json/Transaction/Specification/ideal endpoint returns a single iDEAL service entry.
-			// Issuers are nested as AllowedValues under the parameter named 'issuer'.
-			$parameters = $result['response']['Services'][0]['Parameters'] ?? [];
-			$issuers = [];
-			
-			foreach ($parameters as $param) {
-				if (strtolower($param['Name'] ?? '') !== 'issuer') {
-					continue;
-				}
-				
-				foreach ($param['AllowedValues'] ?? [] as $allowed) {
-					$issuers[] = [
-						'id'       => $allowed['Value'],
-						'name'     => $allowed['Name'],
-						'issuerId' => $allowed['Value'],
-						'swift'    => $allowed['Value'],
-						
-						// Buckaroo does not return issuer icons via the API.
-						'icon'     => null,
-					];
-				}
-			}
-			
-			return $issuers;
+			return [];
 		}
 		
 		/**
@@ -194,12 +153,7 @@
 			
 			// Build the service parameter list.
 			$serviceParams = [];
-			
-			// iDEAL: pass the selected bank BIC so Buckaroo skips the issuer selection screen.
-			if ($service === 'ideal' && !empty($request->issuerId)) {
-				$serviceParams[] = ['Name' => 'issuer', 'Value' => $request->issuerId];
-			}
-			
+	
 			// Inject billing and shipping addresses
 			if (in_array($request->paymentModule, self::METHODS_REQUIRING_SHOPPER_DATA)) {
 				// BNPL: inject billing address as BillingCustomer parameters.

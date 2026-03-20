@@ -126,53 +126,18 @@
 		}
 		
 		/**
-		 * Returns the normalized issuer list for the given payment module.
-		 * @see https://docs.adyen.com/api-explorer/Checkout/71/post/paymentMethods
+		 * Returns the normalised issuer list for the given payment module.
 		 *
-		 * For iDEAL the issuer id is the BIC (e.g. BUNKNL2A), which doubles as the SWIFT code.
-		 * Adyen does not include icons in the issuer list — 'icon' is always null here.
-		 * To display bank logos, construct the URL from the id:
-		 * https://checkoutshopper-live.adyen.com/checkoutshopper/images/logos/<id>.svg
+		 * This driver uses Pay by Link (/paymentLinks), which has no issuer field —
+		 * there is no mechanism to pass a pre-selected bank to the hosted payment page.
+		 * Additionally, iDEAL issuer pre-selection was discontinued with iDEAL 2.0 (01-04-2025).
+		 * This method always returns an empty array.
 		 *
-		 * @param string $paymentModule Adyen payment method type, e.g. 'ideal', 'eps'
+		 * @param string $paymentModule e.g. 'adyen_ideal'
 		 * @return array
-		 * @throws PaymentInitiationException
 		 */
 		public function getPaymentOptions(string $paymentModule): array {
-			// Translate internal module name (e.g. 'adyen_ideal') to Adyen's type string (e.g. 'ideal')
-			$type = self::MODULE_TYPE_MAP[$paymentModule] ?? $paymentModule;
-			
-			// Fetch config
-			$config = $this->getConfig();
-			
-			// Amount is required by some methods to filter correctly (e.g. BNPL minimum thresholds)
-			if (!empty($config['default_currency'])) {
-				$currency = ['currency' => $config['default_currency'], 'value' => 0];
-			} else {
-				$currency = null;
-			}
-			
-			// Remove countryCode from payload if it's null
-			$payload = array_filter([
-				'merchantAccount'       => $config['merchant_account'],
-				'countryCode'           => $config['default_country'] ?? null,
-				'amount'                => $currency,
-				'channel'               => 'Web',
-				'allowedPaymentMethods' => [$type],
-			], fn($v) => $v !== null);
-			
-			// Call API to get payment methods
-			$result = $this->getGateway()->getPaymentMethods($payload);
-			
-			// If this failed, throw exception
-			if ($result['request']['result'] === 0) {
-				throw new PaymentInitiationException('adyen', $result['request']['errorId'], $result['request']['errorMessage']);
-			}
-			
-			// Issuers are embedded inside the matching method object, not returned as a top-level list
-			$methods = $result['response']['paymentMethods'] ?? [];
-			$match = current(array_filter($methods, fn($m) => ($m['type'] ?? '') === $type));
-			return $this->normalizeIssuers($match['issuers'] ?? []);
+			return [];
 		}
 		
 		/**
@@ -528,27 +493,4 @@
 			];
 		}
 		
-		/**
-		 * Normalizes an Adyen issuer list into the flat shape expected by the frontend.
-		 * Adyen issuer objects contain: id (string), name (string), disabled (bool, optional).
-		 * For iDEAL, the id is the BIC (e.g. BUNKNL2A), which is also the SWIFT code.
-		 * Adyen does not include icons in the /paymentMethods issuer list — use the logo
-		 * download endpoint to enrich icons if needed.
-		 * @see https://docs.adyen.com/payment-methods/downloading-logos/
-		 * @param array $issuers Raw issuer list from the Adyen /paymentMethods response
-		 * @return array
-		 */
-		private function normalizeIssuers(array $issuers): array {
-			return array_values(array_map(fn($issuer) => [
-				'id'       => $issuer['id'],
-				'name'     => $issuer['name'],
-				'issuerId' => $issuer['id'],
-				'swift'    => $issuer['id'],
-				
-				// Adyen does not return icons in the issuer list — null here is intentional.
-				// To display bank logos, fetch them from:
-				// https://checkoutshopper-live.adyen.com/checkoutshopper/images/logos/<id>.svg
-				'icon'     => null,
-			], $issuers));
-		}
 	}
