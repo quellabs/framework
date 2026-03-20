@@ -229,7 +229,7 @@
 		/**
 		 * Issue a refund against a Stripe PaymentIntent.
 		 *
-		 * Note: $request->transactionId must be the PaymentIntent ID (pi_*), not the session ID.
+		 * Note: $request->paymentReference must be the PaymentIntent ID (pi_*), not the session ID.
 		 * This is available in PaymentState::$metadata['paymentReference'] after a successful exchange().
 		 *
 		 * The description is mapped to the most appropriate Stripe refund reason. Stripe accepts
