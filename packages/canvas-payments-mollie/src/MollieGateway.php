@@ -61,9 +61,10 @@
 				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $jsonData];
 			}
 			
-			// List responses are wrapped in _embedded — unwrap the methods collection
+			// List responses are wrapped in _embedded — unwrap the first collection regardless of key name
+			// (methods use 'methods', refunds use 'refunds', etc.)
 			if (!empty($jsonData['_embedded'])) {
-				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $jsonData['_embedded']['methods']];
+				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => reset($jsonData['_embedded'])];
 			}
 			
 			// Anything else is an API-level error — surface the status code and detail message

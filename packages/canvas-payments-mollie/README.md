@@ -100,7 +100,7 @@ class CheckoutController extends BaseController {
 ### Handling refunds
 
 Unlike PayPal, Mollie does not use a separate capture ID. The `transactionId` from `PaymentState` is used
-directly as `RefundRequest::$transactionId`, so no additional metadata needs to be persisted.
+directly as `RefundRequest::$captureId`, so no additional metadata needs to be persisted.
 
 ```php
 use Quellabs\Payments\Contracts\RefundRequest;
@@ -108,7 +108,7 @@ use Quellabs\Payments\Contracts\PaymentRefundException;
 
 // Full refund
 $request = new RefundRequest(
-    transactionId: $state->transactionId,  // from your payment_exchange listener
+    captureId:     $state->transactionId,  // from your payment_exchange listener
     paymentModule: 'mollie_ideal',
     amount:        null,   // null = full refund
     currency:      'EUR',
@@ -117,7 +117,7 @@ $request = new RefundRequest(
 
 // Partial refund
 $request = new RefundRequest(
-    transactionId: $state->transactionId,  // from your payment_exchange listener
+    captureId:     $state->transactionId,  // from your payment_exchange listener
     paymentModule: 'mollie_ideal',
     amount:        500,   // in minor units — €5.00
     currency:      'EUR',

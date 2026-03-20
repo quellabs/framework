@@ -257,11 +257,14 @@
 		
 		/**
 		 * Returns all refunds for a given transaction
-		 * @param string $captureId
+		 * @param string $captureId In Mollie's payment model there is no separate capture step, so this is
+		 *                          actually the payment transaction ID (e.g. tr_7UhSN1zuXS). The parameter
+		 *                          is named $captureId to satisfy the shared PaymentProviderInterface.
 		 * @return array<RefundResult>
+		 * @throws PaymentRefundException
 		 */
 		public function getRefunds(string $captureId): array {
-			// Fetch refunds from Mollie
+			// Fetch refunds from Mollie — $captureId is Mollie's payment ID (see param note above)
 			$response = $this->getGateway()->listRefunds($captureId);
 			
 			// Return error if the gateway call failed
