@@ -135,10 +135,15 @@
 		 */
 		public function refund(RefundRequest $request): RefundResult {
 			// Create the refund
-			$response = $this->getGateway()->createRefund($request);
+			$response = $this->getGateway()->createRefund(
+				$request->transactionId,
+				$request->amount,
+				$request->currency,
+				$request->description,
+			);
 			
 			// return error in case of error
-			if ($response["request"]["result"] == 0) {
+			if ($response["request"]["result"] === 0) {
 				throw new PaymentRefundException("mollie", $response["request"]["errorId"], $response["request"]["errorMessage"]);
 			}
 			
