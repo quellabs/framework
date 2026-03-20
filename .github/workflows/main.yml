@@ -28,21 +28,26 @@ jobs:
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y cmake pkg-config golang jq
 
-      - name: Build splitsh-lite
+      - name: Build splitsh-lite (static)
         run: |
           # Build libgit2 v1.5.0 from source — git2go/v34 requires exactly v1.5.x
+          # Static build so the binary is self-contained across runners
           git clone --depth 1 --branch v1.5.0 https://github.com/libgit2/libgit2.git /tmp/libgit2
           cmake -S /tmp/libgit2 -B /tmp/libgit2/build \
             -DCMAKE_INSTALL_PREFIX=/usr/local \
-            -DBUILD_TESTS=OFF
+            -DBUILD_TESTS=OFF \
+            -DBUILD_SHARED_LIBS=OFF
           sudo cmake --build /tmp/libgit2/build --target install
           sudo ldconfig
 
-          # Build splitsh-lite against the correct libgit2
           git clone https://github.com/splitsh/lite.git /tmp/splitsh-lite
           cd /tmp/splitsh-lite
           PKG_CONFIG_PATH=/usr/local/lib/pkgconfig \
-            go build -o /tmp/splitsh-lite-bin github.com/splitsh/lite
+            CGO_ENABLED=1 \
+            CGO_LDFLAGS="-static-libgcc -L/usr/local/lib" \
+            go build -tags static,system_libgit2 \
+              -o /tmp/splitsh-lite-bin \
+              github.com/splitsh/lite
 
       - name: Upload splitsh-lite binary
         uses: actions/upload-artifact@v7
@@ -61,21 +66,48 @@ jobs:
 
           mapfile -t ALL_PACKAGES < <(jq -r 'keys[]' versioning/versions.json)
 
+          declare -A seen
           packages=()
+
+          add_package() {
+            local pkg="$1"
+            if [ -z "${seen[$pkg]+x}" ]; then
+              seen[$pkg]=1
+              packages+=("$pkg")
+            fi
+          }
 
           if [[ "${{ github.ref_type }}" == "tag" || "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             echo "📦 Selecting all packages from versions.json"
-            packages=("${ALL_PACKAGES[@]}")
+            for pkg in "${ALL_PACKAGES[@]}"; do
+              add_package "$pkg"
+            done
 
           else
-            # Branch push: only packages whose files changed
             echo "📦 Branch push — detecting changed packages"
             changed=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} 2>/dev/null || git diff --name-only HEAD~1 HEAD)
+
+            # Packages with changed source files
             for pkg in "${ALL_PACKAGES[@]}"; do
               if echo "$changed" | grep -q "^packages/$pkg/"; then
-                packages+=("$pkg")
+                echo "  Source change detected: $pkg"
+                add_package "$pkg"
               fi
             done
+
+            # Packages with a version bump in versions.json
+            if echo "$changed" | grep -q "^versioning/versions.json$"; then
+              echo "  versions.json changed — checking for version bumps"
+              before_versions=$(git show ${{ github.event.before }}:versioning/versions.json 2>/dev/null || echo '{}')
+              for pkg in "${ALL_PACKAGES[@]}"; do
+                before_ver=$(echo "$before_versions" | jq -r --arg p "$pkg" '.[$p] // empty')
+                after_ver=$(jq -r --arg p "$pkg" '.[$p] // empty' versioning/versions.json)
+                if [ "$before_ver" != "$after_ver" ] && [ -n "$after_ver" ]; then
+                  echo "  Version bump detected: $pkg ($before_ver → $after_ver)"
+                  add_package "$pkg"
+                fi
+              done
+            fi
           fi
 
           if [ ${#packages[@]} -eq 0 ]; then
@@ -84,7 +116,6 @@ jobs:
             exit 0
           fi
 
-          # Encode as JSON array for matrix
           json=$(printf '%s\n' "${packages[@]}" | jq -R . | jq -sc .)
           echo "packages=$json" >> $GITHUB_OUTPUT
           echo "📋 Packages to sync: ${packages[*]}"
@@ -118,9 +149,6 @@ jobs:
         run: |
           chmod +x /usr/local/bin/splitsh-lite-bin
           sudo mv /usr/local/bin/splitsh-lite-bin /usr/local/bin/splitsh-lite
-          # Install libgit2 runtime for dynamic linking
-          sudo apt-get update -qq && sudo apt-get install -y -qq libgit2-dev
-          sudo ldconfig
 
       - name: Sync package to public repo
         id: sync
@@ -192,10 +220,10 @@ jobs:
         run: |
           case "${{ steps.check_release.outputs.reason }}" in
             "versions.json not found")
-              echo "📝 versioning/versions.json not found - skipping release"
+              echo "📝 versioning/versions.json not found — skipping release"
               ;;
             "no version specified")
-              echo "📝 No version specified for ${{ matrix.package }} - skipping release"
+              echo "📝 No version specified for ${{ matrix.package }} — skipping release"
               ;;
           esac
 
