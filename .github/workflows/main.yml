@@ -13,42 +13,11 @@ on:
         type: boolean
 
 jobs:
-  sync-and-release:
+  prepare:
     runs-on: ubuntu-22.04
-    concurrency:
-      group: sync-${{ github.workflow }}-${{ matrix.package }}
-      cancel-in-progress: false
-    strategy:
-      matrix:
-        package:
-          - contracts
-          - support
-          - discover
-          - dependency-injection
-          - sculpt
-          - cache
-          - objectquel
-          - signal-hub
-          - annotation-reader
-          - canvas
-          - canvas-objectquel
-          - canvas-smarty
-          - canvas-twig
-          - canvas-blade
-          - canvas-latte
-          - canvas-plates
-          - canvas-skeleton
-          - canvas-database
-          - canvas-payments
-          - canvas-payments-contracts
-          - canvas-payments-mollie
-          - canvas-payments-paypal
-          - canvas-payments-paypal-express
-          - canvas-payments-stripe
-          - canvas-payments-adyen
-          - canvas-payments-multisafepay
-      fail-fast: false
-
+    outputs:
+      packages: ${{ steps.detect.outputs.packages }}
+      splitsh_artifact: splitsh-lite-${{ github.run_id }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -57,20 +26,9 @@ jobs:
           token: ${{ secrets.SYNC_TOKEN }}
 
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y jq cmake pkg-config golang
+        run: sudo apt-get update && sudo apt-get install -y cmake pkg-config golang jq
 
-      - name: Cache splitsh-lite
-        id: cache-splitsh
-        uses: actions/cache@v5
-        with:
-          path: |
-            /usr/local/bin/splitsh-lite
-            /usr/local/lib/libgit2.so.1.5
-            /usr/local/lib/libgit2.so
-          key: splitsh-lite-${{ runner.os }}-ubuntu2204-libgit2-1.5.0
-
-      - name: Install splitsh-lite
-        if: steps.cache-splitsh.outputs.cache-hit != 'true'
+      - name: Build splitsh-lite
         run: |
           # Build libgit2 v1.5.0 from source — git2go/v34 requires exactly v1.5.x
           git clone --depth 1 --branch v1.5.0 https://github.com/libgit2/libgit2.git /tmp/libgit2
@@ -84,10 +42,85 @@ jobs:
           git clone https://github.com/splitsh/lite.git /tmp/splitsh-lite
           cd /tmp/splitsh-lite
           PKG_CONFIG_PATH=/usr/local/lib/pkgconfig \
-            go build -o /usr/local/bin/splitsh-lite github.com/splitsh/lite
+            go build -o /tmp/splitsh-lite-bin github.com/splitsh/lite
 
-      - name: Register libgit2
-        run: sudo ldconfig
+      - name: Upload splitsh-lite binary
+        uses: actions/upload-artifact@v7
+        with:
+          name: splitsh-lite-${{ github.run_id }}
+          path: /tmp/splitsh-lite-bin
+          retention-days: 1
+
+      - name: Detect packages to sync
+        id: detect
+        run: |
+          if [ ! -f "versioning/versions.json" ]; then
+            echo "❌ versioning/versions.json not found"
+            exit 1
+          fi
+
+          mapfile -t ALL_PACKAGES < <(jq -r 'keys[]' versioning/versions.json)
+
+          packages=()
+
+          if [[ "${{ github.ref_type }}" == "tag" || "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "📦 Selecting all packages from versions.json"
+            packages=("${ALL_PACKAGES[@]}")
+
+          else
+            # Branch push: only packages whose files changed
+            echo "📦 Branch push — detecting changed packages"
+            changed=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} 2>/dev/null || git diff --name-only HEAD~1 HEAD)
+            for pkg in "${ALL_PACKAGES[@]}"; do
+              if echo "$changed" | grep -q "^packages/$pkg/"; then
+                packages+=("$pkg")
+              fi
+            done
+          fi
+
+          if [ ${#packages[@]} -eq 0 ]; then
+            echo "⚠️  No packages to sync"
+            echo "packages=[]" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Encode as JSON array for matrix
+          json=$(printf '%s\n' "${packages[@]}" | jq -R . | jq -sc .)
+          echo "packages=$json" >> $GITHUB_OUTPUT
+          echo "📋 Packages to sync: ${packages[*]}"
+
+  sync-and-release:
+    needs: prepare
+    if: needs.prepare.outputs.packages != '[]' && needs.prepare.outputs.packages != ''
+    runs-on: ubuntu-22.04
+    concurrency:
+      group: sync-${{ github.workflow }}-${{ matrix.package }}
+      cancel-in-progress: false
+    strategy:
+      matrix:
+        package: ${{ fromJson(needs.prepare.outputs.packages) }}
+      fail-fast: false
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.SYNC_TOKEN }}
+
+      - name: Download splitsh-lite binary
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.prepare.outputs.splitsh_artifact }}
+          path: /usr/local/bin
+
+      - name: Prepare splitsh-lite
+        run: |
+          chmod +x /usr/local/bin/splitsh-lite-bin
+          sudo mv /usr/local/bin/splitsh-lite-bin /usr/local/bin/splitsh-lite
+          # Install libgit2 runtime for dynamic linking
+          sudo apt-get update -qq && sudo apt-get install -y -qq libgit2-dev
+          sudo ldconfig
 
       - name: Sync package to public repo
         id: sync
