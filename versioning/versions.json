@@ -25,5 +25,6 @@
   "canvas-payments-stripe": "1.0.3",
   "canvas-payments-adyen": "1.0.2",
   "canvas-payments-multisafepay": "1.0.1",
-  "canvas-payments-buckaroo": "1.0.1"
+  "canvas-payments-buckaroo": "1.0.1",
+  "canvas-payments-paynl": "1.0.0"
 }
