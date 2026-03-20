@@ -49,10 +49,9 @@
 			'paynl_googlepay'    => 2558,
 			'paynl_klarna'       => 1717,
 			'paynl_in3'          => 1813,
-			'paynl_afterpay'     => 2561,  // Riverty (formerly AfterPay NL)
+			'paynl_riverty'      => 2561,  // Riverty (formerly AfterPay NL)
 			'paynl_banktransfer' => 136,
 			'paynl_eps'          => 2062,
-			'paynl_giropay'      => 694,   // Deprecated by Pay.nl — kept for compatibility
 			'paynl_trustly'      => 2718,
 			'paynl_paybybank'    => 2970,
 		];
@@ -106,26 +105,23 @@
 		}
 		
 		/**
-		 * Returns the normalised issuer list for the given payment module.
+		 * Returns the normalized issuer list for the given payment module.
 		 *
-		 * Pay.nl does not expose a standalone issuer list endpoint for iDEAL.
-		 * Since iDEAL 2.0, bank pre-selection at the merchant checkout is optional —
-		 * the hosted payment page handles bank selection when no issuer is pre-selected.
+		 * Pay.nl does not support bank pre-selection for iDEAL. Direct issuer redirect
+		 * was part of iDEAL 1.0 and was permanently discontinued on 31-12-2024. Under
+		 * iDEAL 2.0, bank selection always happens on the hosted payment page — there is
+		 * no issuer list to fetch and no subId to pass when creating an order.
 		 *
-		 * If you want to offer a bank picker in your own checkout, retrieve the service
-		 * configuration via GET /v1/services/{serviceId} and read the paymentMethods
-		 * entry for id=10. Each subOption represents an iDEAL issuer (bank).
+		 * This method always returns an empty array for all payment modules.
 		 *
-		 * For all other methods this always returns an empty array — the hosted payment
-		 * page handles all method-specific UI.
-		 *
-		 * @see https://developer.pay.nl/docs/payment-option-ids-subids
+		 * @see https://developer.pay.nl/docs/ideal
 		 * @param string $paymentModule e.g. 'paynl_ideal'
-		 * @return array
+		 * @return array Always empty — Pay.nl handles payment method UI on the hosted page
 		 */
 		public function getPaymentOptions(string $paymentModule): array {
-			// Pay.nl does not provide a dedicated issuer API endpoint.
-			// The hosted page handles bank selection for iDEAL 2.0 without pre-selection.
+			// Pay.nl removed direct issuer redirect in iDEAL 2.0 (deprecated 31-12-2024).
+			// All payment method selection, including iDEAL bank picking, is handled on
+			// the hosted checkout page. There is nothing to return here.
 			return [];
 		}
 		
@@ -156,31 +152,25 @@
 				throw new PaymentInitiationException('paynl', 0, "Unknown payment module: '{$request->paymentModule}'");
 			}
 			
+			// Convert payment module to internal PayNL id
 			$paymentMethodId = self::MODULE_OPTION_MAP[$request->paymentModule];
 			
 			// Build the core order payload.
 			// amount.value is in minor units (e.g. 1250 = €12.50).
 			$payload = [
-				'serviceId'   => $config['service_id'],
-				'description' => $request->description,
-				'reference'   => $request->reference,
-				'amount'      => [
+				'serviceId'     => $config['service_id'],
+				'description'   => $request->description,
+				'reference'     => $request->reference,
+				'amount'        => [
 					'value'    => $request->amount,
 					'currency' => $request->currency,
 				],
 				'paymentMethod' => [
 					'id' => $paymentMethodId,
 				],
-				'returnUrl'   => $config['return_url'],
-				'exchangeUrl' => $config['exchange_url'],
+				'returnUrl'     => $config['return_url'],
+				'exchangeUrl'   => $config['exchange_url'],
 			];
-			
-			// For iDEAL with a pre-selected bank, attach the issuer sub-option.
-			// The issuerId maps to paymentMethod.input.subId as an integer.
-			// Omitting this is valid — the hosted page shows the bank picker instead.
-			if ($request->paymentModule === 'paynl_ideal' && !empty($request->issuerId)) {
-				$payload['paymentMethod']['input'] = ['subId' => (int)$request->issuerId];
-			}
 			
 			// Attach a customer block when billing address data is available.
 			// Pay.nl uses this to pre-fill the hosted page and for risk scoring.
@@ -212,12 +202,10 @@
 			
 			// The UUID (id) is the stable identifier used for all subsequent API calls.
 			// orderId is a legacy human-readable reference — not used for API calls.
-			$data = $result['response'];
-			
 			return new InitiateResult(
 				provider: 'paynl',
-				transactionId: $data['id'],
-				redirectUrl: $data['links']['redirect'],
+				transactionId: $result['response']['id'],
+				redirectUrl: $result['response']['links']['redirect'],
 			);
 		}
 		
@@ -269,26 +257,26 @@
 			}
 			
 			// Unpack the top-level fields we need for state mapping.
-			$data         = $result['response'];
-			$statusCode   = (int)($data['status']['code'] ?? 20);
+			$data = $result['response'];
+			$statusCode = (int)($data['status']['code'] ?? 20);
 			$statusAction = strtoupper($data['status']['action'] ?? '');
-			$currency     = $data['amount']['currency'] ?? '';
-			$amount       = (int)($data['amount']['value'] ?? 0);
+			$currency = $data['amount']['currency'] ?? '';
+			$amount = (int)($data['amount']['value'] ?? 0);
 			
 			// Map the numeric Pay.nl status code to our internal PaymentStatus enum.
 			// Positive codes >= 100 are successful outcomes; negative codes are terminal
 			// failures or post-payment events. Codes 20–99 are all in-progress states.
 			$state = match (true) {
-				$statusCode === 100                        => PaymentStatus::Paid,
-				$statusCode === -81                        => PaymentStatus::Refunded,      // Full refund completed
-				$statusCode === -82                        => PaymentStatus::Paid,          // Partial refund — original payment still succeeded
-				$statusCode === -90                        => PaymentStatus::Canceled,      // Cancelled by the user
-				$statusCode === -80                        => PaymentStatus::Canceled,      // Authorisation or paylink expired
-				$statusCode === -60                        => PaymentStatus::Failed,        // Processing error at the payment method or issuer
+				$statusCode === 100 => PaymentStatus::Paid,
+				$statusCode === -81 => PaymentStatus::Refunded,      // Full refund completed
+				$statusCode === -82 => PaymentStatus::Paid,          // Partial refund — original payment still succeeded
+				$statusCode === -90 => PaymentStatus::Canceled,      // Cancelled by the user
+				$statusCode === -80 => PaymentStatus::Canceled,      // Authorisation or paylink expired
+				$statusCode === -60 => PaymentStatus::Failed,        // Processing error at the payment method or issuer
 				$statusCode === -63 || $statusCode === -64 => PaymentStatus::Failed,        // Declined by processor or by API call
-				$statusCode === -71                        => PaymentStatus::Failed,        // Chargeback received — funds reclaimed
-				$statusCode >= 20 && $statusCode < 100    => PaymentStatus::Pending,       // Any in-progress state including AUTHORIZE (95)
-				default                                    => PaymentStatus::Pending,       // Unknown code — assume still in progress
+				$statusCode === -71 => PaymentStatus::Failed,        // Chargeback received — funds reclaimed
+				$statusCode >= 20 && $statusCode < 100 => PaymentStatus::Pending,       // Any in-progress state including AUTHORIZE (95)
+				default => PaymentStatus::Pending,       // Unknown code — assume still in progress
 			};
 			
 			// valuePaid reflects the original authorised amount for Paid and Refunded states.
@@ -321,6 +309,7 @@
 				}
 			}
 			
+			// Return the payment state
 			return new PaymentState(
 				provider: 'paynl',
 				transactionId: $transactionId,
@@ -410,15 +399,15 @@
 			
 			// The order-level currency is used as a fallback when a payment entry
 			// does not carry its own currency field.
-			$data     = $result['response'];
+			$data = $result['response'];
 			$currency = $data['amount']['currency'] ?? '';
-			$refunds  = [];
+			$refunds = [];
 			
 			foreach ($data['payments'] ?? [] as $payment) {
 				$paymentStatusCode = (int)($payment['status']['code'] ?? 0);
 				
 				// Skip any payment entry that is not a refund transaction.
-				// Regular payment attempts, authorisations, and chargebacks are excluded.
+				// Regular payment attempts, authorizations, and chargebacks are excluded.
 				if ($paymentStatusCode !== -81 && $paymentStatusCode !== -82) {
 					continue;
 				}

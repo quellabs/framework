@@ -2,7 +2,7 @@
 	
 	return [
 		// Set to true to use Pay.nl test mode, false for production.
-		// Test mode is signalled per-order via integration.test=true in the request body.
+		// Test mode is signaled per-order via integration.test=true in the request body.
 		'test_mode' => true,
 		
 		// Your Pay.nl token code (AT-xxxx-xxxx format).
