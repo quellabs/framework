@@ -272,7 +272,7 @@
 		/**
 		 * Refund a PayPal payment, either fully or partially.
 		 *
-		 * Note: $request->transactionId must be the capture ID, not the order ID.
+		 * Note: $request->paymentReference must be the capture ID, not the order ID.
 		 * This is available in PaymentState::$metadata['paymentReference'] after a successful exchange().
 		 *
 		 * @see https://developer.paypal.com/docs/api/payments/v2/#captures_refund
@@ -290,6 +290,7 @@
 			// on the same capture produces a distinct key.
 			$idempotencyKey = hash('sha256', 'refund:' . $request->paymentReference . ':' . ($request->amount ?? 'full'));
 
+			// Call API to create the refund
 			$response = $this->getGateway()->refund(
 				$request->paymentReference,
 				$value,
@@ -298,7 +299,7 @@
 				$idempotencyKey,
 			);
 			
-			// Validate this went well
+			// If that failed, throw an exception
 			if ($response["request"]["result"] === 0) {
 				throw new PaymentRefundException("paypal", $response["request"]["errorId"], $response["request"]["errorMessage"]);
 			}
@@ -517,12 +518,15 @@
 				);
 			}
 			
+			// Call API to get the capture
 			$result = $this->getGateway()->getCapture($captureId);
 			
+			// If that failed, throw error
 			if ($result["request"]["result"] === 0) {
 				throw new PaymentExchangeException("paypal", $result["request"]["errorId"], $result["request"]["errorMessage"]);
 			}
 			
+			// Grab response
 			$c               = $result["response"];
 			$captureStatus   = $c["status"] ?? $internalState;
 			$capturedAmount  = (int)round((float)($c["amount"]["value"] ?? 0) * 100);
@@ -546,7 +550,7 @@
 				valueRefunded: $refundedAmount,
 				internalState: $captureStatus,
 				metadata: [
-					"captureId" => $captureId,
+					"paymentReference" => $captureId,
 				],
 			);
 		}

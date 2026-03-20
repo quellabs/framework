@@ -244,7 +244,7 @@
 		public function refund(RefundRequest $request): RefundResult {
 			// Deterministic idempotency key — retrying the same refund request always produces
 			// the same key, so a network timeout cannot cause a double-refund.
-			$idempotencyKey = hash('sha256', 'refund:' . $request->transactionId . ':' . ($request->amount ?? 'full'));
+			$idempotencyKey = hash('sha256', 'refund:' . $request->paymentReference . ':' . ($request->amount ?? 'full'));
 			
 			// Map description to one of Stripe's accepted refund reason values
 			$reason = $this->mapRefundReason($request->description);

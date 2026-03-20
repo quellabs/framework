@@ -113,7 +113,7 @@
 			}
 			
 			return new InitiateResult(
-				"paypal",
+				"paypal_express",
 				$result["response"]["TOKEN"],
 				$paymentURL,
 				[
@@ -381,7 +381,7 @@
 			
 			// Convert Paypal status to state object
 			$paymentStatus = $result["response"]["PAYMENTINFO_0_PAYMENTSTATUS"];
-			$captureId = $result["response"]["PAYMENTINFO_0_TRANSACTIONID"];
+			$paymentReference = $result["response"]["PAYMENTINFO_0_TRANSACTIONID"];
 			$amountMinorUnits = (int)round((float)$result["response"]["PAYMENTINFO_0_AMT"] * 100);
 			$currency = $result["response"]["PAYMENTINFO_0_CURRENCYCODE"] ?? $currency;
 			
@@ -400,9 +400,9 @@
 						valueRefunded: 0,
 						internalState: $paymentStatus,
 						metadata: [
-							"captureId"     => $captureId,
-							"correlationId" => $result["response"]["CORRELATIONID"],
-							"paymentType"   => $result["response"]["PAYMENTINFO_0_PAYMENTTYPE"],
+							"paymentReference" => $paymentReference,
+							"correlationId"    => $result["response"]["CORRELATIONID"],
+							"paymentType"      => $result["response"]["PAYMENTINFO_0_PAYMENTTYPE"],
 						],
 					);
 				
@@ -467,11 +467,11 @@
 			
 			// AMT is the original captured amount. TOTALREFUNDEDAMOUNT accumulates across all refunds.
 			// Both are returned in major units — convert to minor units for consistency.
-			$r              = $txDetails["response"];
-			$paymentStatus  = $r["PAYMENTSTATUS"] ?? $internalState;
-			$valueRefunded  = (int) round((float) ($r["TOTALREFUNDEDAMOUNT"] ?? 0) * 100);
-			$valueCaptured  = (int) round((float) ($r["AMT"] ?? 0) * 100);
-
+			$r = $txDetails["response"];
+			$paymentStatus = $r["PAYMENTSTATUS"] ?? $internalState;
+			$valueRefunded = (int)round((float)($r["TOTALREFUNDEDAMOUNT"] ?? 0) * 100);
+			$valueCaptured = (int)round((float)($r["AMT"] ?? 0) * 100);
+			
 			// Map NVP PAYMENTSTATUS to PaymentStatus. GetTransactionDetails can return statuses
 			// beyond Completed — do not assume Paid without checking.
 			$state = match ($paymentStatus) {
@@ -481,10 +481,10 @@
 				"Failed",
 				"Voided",
 				"Reversed",
-				"Canceled-Reversal"    => PaymentStatus::Failed,
-				default                => PaymentStatus::Pending,
+				"Canceled-Reversal" => PaymentStatus::Failed,
+				default => PaymentStatus::Pending,
 			};
-
+			
 			return new PaymentState(
 				provider: "paypal_express",
 				transactionId: $token,

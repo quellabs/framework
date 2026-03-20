@@ -186,7 +186,7 @@
 		 */
 		public function initiate(PaymentRequest $request): InitiateResult {
 			$config = $this->getConfig();
-			$service = self::MODULE_SERVICE_MAP[$request->module] ?? strtolower($request->module);
+			$service = self::MODULE_SERVICE_MAP[$request->paymentModule] ?? strtolower($request->module);
 			
 			// Buckaroo uses decimal amounts (€10.00 = 10.00), not minor units (€10.00 = 1000).
 			// PaymentRequest::$amount is in minor units, so divide by 100.
