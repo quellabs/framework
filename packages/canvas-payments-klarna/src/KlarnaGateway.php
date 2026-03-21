@@ -71,6 +71,14 @@
 		}
 		
 		/**
+		 * Returns the active base URL for use by the driver when building payload URLs.
+		 * @return string
+		 */
+		public function getBaseUrl(): string {
+			return $this->baseUrl;
+		}
+
+		/**
 		 * Creates a Klarna Payments session (KP session).
 		 *
 		 * This is the first step in the HPP flow. The KP session carries the order

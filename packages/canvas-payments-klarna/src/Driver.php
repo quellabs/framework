@@ -393,7 +393,7 @@
 				'locale'            => $config['locale'],
 				'order_amount'      => $request->amount,
 				'order_tax_amount'  => 0,
-				'order_lines'       => $this->buildOrderLines($request, $currency),
+				'order_lines'       => $this->buildOrderLines($request),
 				'acquiring_channel' => 'ECOMMERCE',
 			];
 			
@@ -439,7 +439,7 @@
 			$config = $this->getConfig();
 			
 			// Build payload
-			$baseUrl = $config['test_mode'] ? 'https://api.playground.klarna.com' : 'https://api.klarna.com';
+			$baseUrl    = $this->getGateway()->getBaseUrl();
 			$successUrl = $config['return_url'];
 			$cancelUrl = $config['cancel_return_url'];
 			
@@ -501,18 +501,10 @@
 		
 		/**
 		 * Builds a valid order_lines array for the Klarna KP session payload.
-		 *
-		 * Klarna mandates at least one line item containing name, quantity, unit_price,
-		 * total_amount, tax_rate, and total_discount_amount. When the PaymentRequest
-		 * does not carry structured line items, a single catch-all line is synthesized.
-		 *
-		 * All amounts are in minor units (cents). tax_rate is in basis points (2500 = 25%).
-		 *
 		 * @param PaymentRequest $request The payment request
-		 * @param string $currency ISO 4217 currency code
 		 * @return array<int, array> Valid order_lines array
 		 */
-		private function buildOrderLines(PaymentRequest $request, string $currency): array {
+		private function buildOrderLines(PaymentRequest $request): array {
 			// Synthesize a single catch-all line from the total amount.
 			// When PaymentRequest gains a structured orderLines property, pass those through here instead.
 			return [
