@@ -3,6 +3,7 @@
 	namespace Quellabs\Payments\Klarna;
 	
 	use Quellabs\Payments\Contracts\InitiateResult;
+	use Quellabs\Payments\Contracts\PaymentAddress;
 	use Quellabs\Payments\Contracts\PaymentExchangeException;
 	use Quellabs\Payments\Contracts\PaymentInitiationException;
 	use Quellabs\Payments\Contracts\PaymentProviderInterface;
@@ -93,6 +94,7 @@
 		 * @return array
 		 */
 		public function getConfig(): array {
+			// Defaults are the base; any key set in $this->config takes precedence.
 			return array_replace_recursive($this->getDefaults(), $this->config);
 		}
 		
@@ -120,15 +122,15 @@
 		 */
 		public function getDefaults(): array {
 			return [
-				'test_mode'        => false,
-				'api_username'     => '',    // Klarna merchant ID-linked username from dashboard
-				'api_password'     => '',    // API password associated with the username
+				'test_mode'         => false,
+				'api_username'      => '',    // Klarna merchant ID-linked username from dashboard
+				'api_password'      => '',    // API password associated with the username
 				'return_url'        => '',    // Redirect after successful payment
 				'cancel_return_url' => '',    // Redirect after cancellation or failure
-				'default_currency' => 'EUR',
-				'default_country'  => 'NL',
-				'locale'           => 'nl-NL',
-				'place_order_mode' => 'CAPTURE_ORDER', // Change to PLACE_ORDER for physical goods
+				'default_currency'  => 'EUR',
+				'default_country'   => 'NL',
+				'locale'            => 'nl-NL',
+				'place_order_mode'  => 'CAPTURE_ORDER', // Change to PLACE_ORDER for physical goods
 			];
 		}
 		
@@ -143,155 +145,47 @@
 		 * @return array Always empty — Klarna handles payment method UI on the hosted page
 		 */
 		public function getPaymentOptions(string $paymentModule): array {
+			// Klarna has no issuer list — method selection happens on the hosted page.
 			return [];
 		}
 		
 		/**
-		 * Initiates a payment by creating a Klarna KP session and an HPP session.
-		 *
-		 * The flow:
-		 *   1. Build the KP session payload with order details and POST to /payments/v1/sessions.
-		 *   2. Use the returned kp_session_id to build the HPP session payload.
-		 *   3. POST the HPP session to /hpp/v1/sessions.
-		 *   4. Return the redirect_url from the HPP session response.
-		 *
-		 * The hppSessionId is stored in InitiateResult metadata and must be persisted by
-		 * the application alongside the order, as it is required for exchange() when
-		 * place_order_mode is NONE (where the order_id is not available from the redirect).
-		 *
+		 * Initiates a payment by creating a KP session and an HPP session, then returning
+		 * the redirect URL for the Klarna hosted checkout page.
 		 * @param PaymentRequest $request
 		 * @return InitiateResult
 		 * @throws PaymentInitiationException
-		 * @throws \Exception
 		 */
 		public function initiate(PaymentRequest $request): InitiateResult {
-			$config = $this->getConfig();
-			
-			// Validate the payment module
+			// Reject unknown modules before making any API calls.
 			if (!isset(self::MODULE_TYPE_MAP[$request->paymentModule])) {
 				throw new PaymentInitiationException(self::DRIVER_NAME, 0, "Unknown payment module: '{$request->paymentModule}'");
 			}
 			
-			$currency = $request->currency ?: $config['default_currency'];
-			$locale   = $config['locale'];
+			// Create the KP session first
+			$kpSessionId = $this->createKpSession($request);
 			
-			// Derive purchase country from billing address when available; fall back to config.
-			// Klarna uses purchase_country for payment method eligibility and risk assessment.
-			$country = $request->billingAddress?->country ?: $config['default_country'];
+			// Use the session ID to initiate a Hosted Payment Page
+			$hppData = $this->createHppSession($kpSessionId);
 			
-			// --- Step 1: Build the order_lines for the KP session ---
-			// Klarna mandates at least one order line. If the request doesn't carry
-			// structured line items, synthesise a single catch-all line.
-			$orderLines = $this->buildOrderLines($request, $currency);
-			
-			// --- Step 2: Build the KP (Klarna Payments) session payload ---
-			$kpPayload = [
-				'intent'            => 'buy',
-				'purchase_country'  => $country,
-				'purchase_currency' => $currency,
-				'locale'            => $locale,
-				'order_amount'      => $request->amount,      // In minor units (cents)
-				'order_tax_amount'  => 0,                     // Include if you have tax data
-				'order_lines'       => $orderLines,
-				'acquiring_channel' => 'ECOMMERCE',
-			];
-			
-			// Pre-fill customer data when available to improve Klarna's approval rate
-			// and provide a smoother checkout experience via pre-filled fields on the HPP.
-			if ($request->billingAddress !== null) {
-				$addr = $request->billingAddress;
-				
-				// Klarna's street_address field expects the full street line including
-				// house number (and suffix). PaymentAddress stores these separately,
-				// so combine them here.
-				$streetLine = trim(implode(' ', array_filter([
-					$addr->street,
-					$addr->houseNumber,
-					$addr->houseNumberSuffix,
-				])));
-				
-				$billingAddress = array_filter([
-					'given_name'     => $addr->givenName ?: null,
-					'family_name'    => $addr->familyName ?: null,
-					'email'          => $addr->email ?: null,
-					'phone'          => $addr->phone ?: null,
-					'street_address' => $streetLine ?: null,
-					'postal_code'    => $addr->postalCode ?: null,
-					'city'           => $addr->city ?: null,
-					'region'         => $addr->region ?: null,
-					'country'        => $addr->country,        // Non-nullable on PaymentAddress
-				], fn($v) => $v !== null && $v !== '');
-				
-				if (!empty($billingAddress)) {
-					$kpPayload['billing_address'] = $billingAddress;
-				}
-			}
-			
-			// --- Step 3: Create the KP session ---
-			$kpResult = $this->getGateway()->createPaymentSession($kpPayload);
-			
-			if ($kpResult['request']['result'] === 0) {
-				throw new PaymentInitiationException(
-					self::DRIVER_NAME,
-					$kpResult['request']['errorId'],
-					'KP session creation failed: ' . $kpResult['request']['errorMessage']
-				);
-			}
-			
-			$kpSessionId = $kpResult['response']['session_id'] ?? '';
-			
-			if (empty($kpSessionId)) {
-				throw new PaymentInitiationException(self::DRIVER_NAME, 0, 'KP session response missing session_id');
-			}
-			
-			// --- Step 4: Build the HPP session payload ---
-			// The {{order_id}} placeholder is substituted by Klarna in the success URL
-			// at runtime. The application extracts order_id from the query string on return.
-			$baseUrl = $config['test_mode'] ? 'https://api.playground.klarna.com' : 'https://api.klarna.com';
-			
-			$successUrl = $config['return_url'];
-			$cancelUrl  = $config['cancel_return_url'];
-			
-			$hppPayload = [
-				'payment_session_url' => $baseUrl . '/payments/v1/sessions/' . $kpSessionId,
-				'merchant_urls'       => [
-					'success' => $successUrl . (str_contains($successUrl, '?') ? '&' : '?')
-						. 'order_id={{order_id}}&authorization_token={{authorization_token}}',
-					'failure' => $cancelUrl,
-					'cancel'  => $cancelUrl,
-					'error'   => $cancelUrl,
-				],
-				'place_order_mode' => $config['place_order_mode'],
-			];
-			
-			// --- Step 5: Create the HPP session ---
-			$hppResult = $this->getGateway()->createHppSession($hppPayload);
-			
-			if ($hppResult['request']['result'] === 0) {
-				throw new PaymentInitiationException(
-					self::DRIVER_NAME,
-					$hppResult['request']['errorId'],
-					'HPP session creation failed: ' . $hppResult['request']['errorMessage']
-				);
-			}
-			
-			$hppData   = $hppResult['response'];
+			// Extract info from result
 			$redirectUrl = $hppData['redirect_url'] ?? '';
 			$hppSessionId = $hppData['session_id'] ?? '';
 			
+			// If redirect url is missing, throw
 			if (empty($redirectUrl)) {
 				throw new PaymentInitiationException(self::DRIVER_NAME, 0, 'HPP session response missing redirect_url');
 			}
 			
-			// Return result. The hppSessionId is critical: if place_order_mode is NONE,
-			// the application needs it to poll /hpp/v1/sessions/{id} for the order_id.
+			// The HPP session ID is our primary transaction reference for this payment.
+			// The KP session ID is stored in metadata for diagnostics.
 			return new InitiateResult(
 				provider: self::DRIVER_NAME,
-				transactionId: $hppSessionId,   // HPP session ID is our primary reference
+				transactionId: $hppSessionId,
 				redirectUrl: $redirectUrl,
 				metadata: [
-					'kpSessionId'   => $kpSessionId,
-					'hppSessionId'  => $hppSessionId,
+					'kpSessionId'  => $kpSessionId,
+					'hppSessionId' => $hppSessionId,
 				],
 			);
 		}
@@ -308,7 +202,7 @@
 		 * consumer lands on the success page. The Order Management API confirms this.
 		 *
 		 * @param string $transactionId Klarna order_id (UUID from the success redirect)
-		 * @param array  $extraData     Not used for Klarna; kept for interface compatibility
+		 * @param array $extraData Not used for Klarna; kept for interface compatibility
 		 * @return PaymentState
 		 * @throws PaymentExchangeException
 		 */
@@ -325,20 +219,19 @@
 				);
 			}
 			
-			$order       = $result['response'];
+			$order = $result['response'];
 			$orderStatus = strtoupper($order['status'] ?? '');
 			$fraudStatus = strtoupper($order['fraud_status'] ?? '');
 			
 			// Map Klarna order status to our internal PaymentStatus.
-			// Klarna order statuses: AUTHORIZED, PART_CAPTURED, CAPTURED, CANCELLED, EXPIRED.
 			// AUTHORIZED means approved but not yet captured (PLACE_ORDER mode).
 			// CAPTURED means funds collected (CAPTURE_ORDER mode or after manual capture).
 			$state = match ($orderStatus) {
 				'CAPTURED', 'PART_CAPTURED' => PaymentStatus::Paid,
-				'AUTHORIZED'                => PaymentStatus::Pending,
-				'CANCELLED'                 => PaymentStatus::Canceled,
-				'EXPIRED'                   => PaymentStatus::Expired,
-				default                     => PaymentStatus::Pending,
+				'AUTHORIZED' => PaymentStatus::Pending,
+				'CANCELLED' => PaymentStatus::Canceled,
+				'EXPIRED' => PaymentStatus::Expired,
+				default => PaymentStatus::Pending,
 			};
 			
 			// Klarna may hold an order for fraud review. Treat REJECTED as failed.
@@ -346,10 +239,6 @@
 				$state = PaymentStatus::Failed;
 			}
 			
-			$capturedAmount  = (int)($order['captured_amount'] ?? 0);
-			$refundedAmount  = (int)($order['refunded_amount'] ?? 0);
-			$currency        = $order['purchase_currency'] ?? '';
-			$valuePaid       = ($state === PaymentStatus::Paid) ? $capturedAmount : 0;
 			
 			// order_id is the authoritative reference for refunds. If it is absent from
 			// the API response the state is unusable — throw rather than silently corrupt.
@@ -358,7 +247,13 @@
 			if (empty($orderId)) {
 				throw new PaymentExchangeException(self::DRIVER_NAME, 0, 'Order Management API response missing order_id');
 			}
-			
+
+			// Return the state
+			$capturedAmount = (int)($order['captured_amount'] ?? 0);
+			$refundedAmount = (int)($order['refunded_amount'] ?? 0);
+			$currency = $order['purchase_currency'] ?? '';
+			$valuePaid = ($state === PaymentStatus::Paid) ? $capturedAmount : 0;
+
 			return new PaymentState(
 				provider: self::DRIVER_NAME,
 				transactionId: $transactionId,
@@ -368,7 +263,7 @@
 				valueRefunded: $refundedAmount,
 				internalState: $orderStatus,
 				metadata: array_filter([
-					'paymentReference' => $orderId,
+					'paymentReference' => $orderId,       // Use this for refund calls
 					'fraudStatus'      => $fraudStatus ?: null,
 					'klarnaReference'  => $order['klarna_reference'] ?? null,
 				], fn($v) => $v !== null && $v !== ''),
@@ -388,15 +283,17 @@
 		 *
 		 * @param RefundRequest $request
 		 * @return RefundResult
-		 * @throws PaymentRefundException
+		 * @throws PaymentRefundException|\Exception
 		 */
 		public function refund(RefundRequest $request): RefundResult {
 			// Klarna's refund API requires an explicit refunded_amount.
 			// When the caller passes null (meaning "refund everything"), fetch the order
 			// to derive the remaining refundable amount: captured_amount - refunded_amount.
 			if ($request->amount === null) {
+				// Fetch order to determine the refundable value
 				$orderResult = $this->getGateway()->getOrder($request->paymentReference);
 				
+				// If that failed, throw
 				if ($orderResult['request']['result'] === 0) {
 					throw new PaymentRefundException(
 						self::DRIVER_NAME,
@@ -405,10 +302,12 @@
 					);
 				}
 				
-				$captured        = (int)($orderResult['response']['captured_amount'] ?? 0);
+				// Fetch the captured_amount and refunded_amount to calculate the refundable amount
+				$captured = (int)($orderResult['response']['captured_amount'] ?? 0);
 				$alreadyRefunded = (int)($orderResult['response']['refunded_amount'] ?? 0);
-				$refundAmount    = $captured - $alreadyRefunded;
+				$refundAmount = $captured - $alreadyRefunded;
 				
+				// If no refundable amount remains, throw
 				if ($refundAmount <= 0) {
 					throw new PaymentRefundException(
 						self::DRIVER_NAME,
@@ -424,6 +323,7 @@
 			// On retry after a network failure, the same key must be reused.
 			$idempotencyKey = Tools::createUUIDv4();
 			
+			// Call API to issue refund
 			$result = $this->getGateway()->refundOrder(
 				$request->paymentReference,
 				$refundAmount,
@@ -431,6 +331,7 @@
 				$request->description
 			);
 			
+			// If that failed, throw
 			if ($result['request']['result'] === 0) {
 				throw new PaymentRefundException(
 					self::DRIVER_NAME,
@@ -441,7 +342,7 @@
 			
 			// Klarna's refund response body is empty (201 Created with no body).
 			// The refund_id may be available in the Location header, but Symfony HttpClient
-			// normalises the response body only. We fall back to a generated reference.
+			// normalises the response body only. We fall back to the idempotency key.
 			$refundId = (string)($result['response']['refund_id'] ?? $idempotencyKey);
 			
 			return new RefundResult(
@@ -471,30 +372,157 @@
 		}
 		
 		/**
+		 * Creates a Klarna Payments (KP) session and returns its session_id.
+		 * @param PaymentRequest $request
+		 * @return string KP session_id
+		 * @throws PaymentInitiationException
+		 */
+		private function createKpSession(PaymentRequest $request): string {
+			// Fetch config
+			$config = $this->getConfig();
+			
+			// Derive purchase_country from the billing address when available.
+			// Klarna uses this to determine which payment methods are eligible.
+			$currency = $request->currency ?: $config['default_currency'];
+			$country = $request->billingAddress?->country ?: $config['default_country'];
+			
+			$payload = [
+				'intent'            => 'buy',
+				'purchase_country'  => $country,
+				'purchase_currency' => $currency,
+				'locale'            => $config['locale'],
+				'order_amount'      => $request->amount,
+				'order_tax_amount'  => 0,
+				'order_lines'       => $this->buildOrderLines($request, $currency),
+				'acquiring_channel' => 'ECOMMERCE',
+			];
+			
+			// Pre-filling the billing address improves Klarna's approval rate and
+			// reduces friction on the hosted page by pre-populating customer fields.
+			if ($request->billingAddress !== null) {
+				$payload['billing_address'] = $this->buildBillingAddress($request->billingAddress);
+			}
+			
+			// Call API to create payment session
+			$result = $this->getGateway()->createPaymentSession($payload);
+			
+			// If that failed, throw exception
+			if ($result['request']['result'] === 0) {
+				throw new PaymentInitiationException(
+					self::DRIVER_NAME,
+					$result['request']['errorId'],
+					'KP session creation failed: ' . $result['request']['errorMessage']
+				);
+			}
+			
+			// Fetch the session_id from the result
+			$sessionId = $result['response']['session_id'] ?? '';
+			
+			// If it's not there, throw exception
+			if (empty($sessionId)) {
+				throw new PaymentInitiationException(self::DRIVER_NAME, 0, 'KP session response missing session_id');
+			}
+			
+			// Return the session id
+			return $sessionId;
+		}
+		
+		/**
+		 * Creates a Hosted Payment Page (HPP) session linked to a KP session and returns
+		 * the raw HPP response array containing redirect_url and session_id.
+		 * @param string $kpSessionId The KP session_id returned by createKpSession()
+		 * @return array HPP session response
+		 * @throws PaymentInitiationException
+		 */
+		private function createHppSession(string $kpSessionId): array {
+			// Fetch configuration data
+			$config = $this->getConfig();
+			
+			// Build payload
+			$baseUrl = $config['test_mode'] ? 'https://api.playground.klarna.com' : 'https://api.klarna.com';
+			$successUrl = $config['return_url'];
+			$cancelUrl = $config['cancel_return_url'];
+			
+			$payload = [
+				// Link this HPP session to the KP session we just created.
+				'payment_session_url' => $baseUrl . '/payments/v1/sessions/' . $kpSessionId,
+				'merchant_urls'       => [
+					// {{order_id}} is a Klarna placeholder substituted at redirect time.
+					'success' => $successUrl . (str_contains($successUrl, '?') ? '&' : '?') . 'order_id={{order_id}}',
+					'failure' => $cancelUrl,
+					'cancel'  => $cancelUrl,
+					'error'   => $cancelUrl,
+				],
+				'place_order_mode'    => $config['place_order_mode'],
+			];
+			
+			// Call gateway to initiate a payment session
+			$result = $this->getGateway()->createHppSession($payload);
+			
+			// If that failed, throw
+			if ($result['request']['result'] === 0) {
+				throw new PaymentInitiationException(
+					self::DRIVER_NAME,
+					$result['request']['errorId'],
+					'HPP session creation failed: ' . $result['request']['errorMessage']
+				);
+			}
+			
+			// Return the result data
+			return $result['response'];
+		}
+		
+		/**
+		 * Builds a Klarna-compatible billing address array from a PaymentAddress.
+		 * @param PaymentAddress $address
+		 * @return array
+		 */
+		private function buildBillingAddress(PaymentAddress $address): array {
+			// Klarna expects a single street_address string; combine the split fields.
+			$streetLine = trim(implode(' ', array_filter([
+				$address->street,
+				$address->houseNumber,
+				$address->houseNumberSuffix,
+			])));
+			
+			// Strip null and empty-string values — Klarna rejects unexpected empty fields.
+			return array_filter([
+				'given_name'     => $address->givenName ?: null,
+				'family_name'    => $address->familyName ?: null,
+				'email'          => $address->email ?: null,
+				'phone'          => $address->phone ?: null,
+				'street_address' => $streetLine ?: null,
+				'postal_code'    => $address->postalCode ?: null,
+				'city'           => $address->city ?: null,
+				'region'         => $address->region ?: null,
+				'country'        => $address->country,   // Non-nullable on PaymentAddress
+			], fn($v) => $v !== null && $v !== '');
+		}
+		
+		/**
 		 * Builds a valid order_lines array for the Klarna KP session payload.
 		 *
 		 * Klarna mandates at least one line item containing name, quantity, unit_price,
 		 * total_amount, tax_rate, and total_discount_amount. When the PaymentRequest
-		 * does not carry structured line items, a single catch-all line is synthesised.
+		 * does not carry structured line items, a single catch-all line is synthesized.
 		 *
 		 * All amounts are in minor units (cents). tax_rate is in basis points (2500 = 25%).
 		 *
-		 * @param PaymentRequest $request  The payment request
-		 * @param string         $currency ISO 4217 currency code
+		 * @param PaymentRequest $request The payment request
+		 * @param string $currency ISO 4217 currency code
 		 * @return array<int, array> Valid order_lines array
 		 */
 		private function buildOrderLines(PaymentRequest $request, string $currency): array {
-			// If the request carries structured order lines, use them directly.
-			// (Future: PaymentRequest may expose an orderLines property.)
-			// For now, always synthesise a single catch-all line.
+			// Synthesize a single catch-all line from the total amount.
+			// When PaymentRequest gains a structured orderLines property, pass those through here instead.
 			return [
 				[
 					'type'                  => 'physical',
 					'reference'             => 'ORDER',
 					'name'                  => mb_substr($request->description ?: 'Order', 0, 255),
 					'quantity'              => 1,
-					'unit_price'            => $request->amount,  // In minor units
-					'tax_rate'              => 0,                  // 0 = no tax included
+					'unit_price'            => $request->amount,   // In minor units (cents)
+					'tax_rate'              => 0,                  // 0 = no tax breakdown provided
 					'total_amount'          => $request->amount,
 					'total_discount_amount' => 0,
 					'total_tax_amount'      => 0,
@@ -508,6 +536,7 @@
 		 * @return KlarnaGateway
 		 */
 		private function getGateway(): KlarnaGateway {
+			// Instantiate on first use; reuse the same instance for subsequent calls.
 			return $this->gateway ??= new KlarnaGateway($this);
 		}
 	}
