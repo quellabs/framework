@@ -156,10 +156,10 @@
 			
 			// Build the core order payload.
 			// amount.value is in minor units (e.g. 1250 = €12.50).
-			$payload = [
+			$payload = array_filter([
 				'serviceId'     => $config['service_id'],
 				'description'   => $request->description,
-				'reference'     => $request->reference,
+				'reference'     => $request->metadata['reference'] ?? null,
 				'amount'        => [
 					'value'    => $request->amount,
 					'currency' => $request->currency,
@@ -169,7 +169,7 @@
 				],
 				'returnUrl'     => $config['return_url'],
 				'exchangeUrl'   => $config['exchange_url'],
-			];
+			], fn($v) => $v !== null);
 			
 			// Attach a customer block when billing address data is available.
 			// Pay.nl uses this to pre-fill the hosted page and for risk scoring.
