@@ -144,14 +144,13 @@
 				throw new PaymentInitiationException('rabosmartpay', 0, "Unknown payment module: '{$request->paymentModule}'");
 			}
 			
-			// Convert module to brand
 			$paymentBrand = self::MODULE_BRAND_MAP[$request->paymentModule];
 			
 			// Generate a unique merchant order ID. This is returned in the return URL as
 			// ?order_id= and in the Status Pull response, so the application must store it
 			// from InitiateResult metadata to correlate those callbacks to this payment.
 			$merchantOrderId = uniqid('order', more_entropy: true);
-
+			
 			// Build the order announcement payload.
 			// amount.amount is in euro cents (minor units), passed as an integer string.
 			// Rabo Smart Pay only supports EUR; other currencies are rejected.
@@ -166,7 +165,6 @@
 				'merchantReturnURL' => $config['return_url'],
 				'skipHppResultPage' => (bool)$config['skip_result_page'],
 				'paymentBrand'      => $paymentBrand,
-				
 				// FORCE_ONCE skips brand selection on the hosted page for this order only.
 				// Use FORCE_ALWAYS when you never want brand selection shown.
 				'paymentBrandForce' => 'FORCE_ONCE',
@@ -175,21 +173,19 @@
 			// Attach customer information when billing address data is available.
 			// Rabo Smart Pay uses this to pre-fill the hosted page and for risk scoring.
 			if ($request->billingAddress !== null) {
-				// Add billing information
 				$customerInfo = array_filter([
-					'emailAddress' => $request->billingAddress->email ?: null,
-					'fullName'     => trim(implode(' ', array_filter([
+					'emailAddress'    => $request->billingAddress->email ?: null,
+					'fullName'        => trim(implode(' ', array_filter([
 						$request->billingAddress->givenName,
 						$request->billingAddress->familyName,
 					]))) ?: null,
 					'telephoneNumber' => $request->billingAddress->phone ?: null,
 				], fn($v) => $v !== null);
 				
-				// Add customer information
 				if (!empty($customerInfo)) {
 					$payload['customerInformation'] = $customerInfo;
 				}
-
+				
 				// Attach billing address when full address fields are present.
 				$billingDetail = array_filter([
 					'firstName'           => $request->billingAddress->givenName ?: null,
@@ -201,12 +197,12 @@
 					'city'                => $request->billingAddress->city ?: null,
 					'countryCode'         => $request->billingAddress->country ?: null,
 				], fn($v) => $v !== null);
-
+				
 				if (!empty($billingDetail)) {
 					$payload['billingDetail'] = $billingDetail;
 				}
 			}
-
+			
 			// Attach shipping address when available.
 			if ($request->shippingAddress !== null) {
 				$shippingDetail = array_filter([
@@ -219,7 +215,7 @@
 					'city'                => $request->shippingAddress->city ?: null,
 					'countryCode'         => $request->shippingAddress->country ?: null,
 				], fn($v) => $v !== null);
-
+				
 				if (!empty($shippingDetail)) {
 					$payload['shippingDetail'] = $shippingDetail;
 				}
@@ -236,17 +232,19 @@
 				);
 			}
 			
-			// Grab the API response
-			$data = $result['response'];
+			$extraData = $result['response'];
 			
-			// Validate the existence of omnikassaOrderId
-			if (empty($data['omnikassaOrderId'])) {
-				throw new PaymentInitiationException('rabosmartpay', 0, 'Order announce returned no omnikassaOrderId');
-			}
-
-			// Validate the existence of redirectUrl
+			// redirectUrl: the hosted checkout page URL to redirect the shopper to.
+			// transactionId is Rabo Smart Pay's omnikassaOrderId UUID — the stable identifier
+			// for all subsequent status and refund calls. Failing to receive it is a fatal
+			// error; falling back to merchantOrderId would be wrong since they serve different
+			// API roles and are not interchangeable.
 			if (empty($data['redirectUrl'])) {
 				throw new PaymentInitiationException('rabosmartpay', 0, 'Order announce returned no redirectUrl');
+			}
+			
+			if (empty($data['omnikassaOrderId'])) {
+				throw new PaymentInitiationException('rabosmartpay', 0, 'Order announce returned no omnikassaOrderId');
 			}
 			
 			return new InitiateResult(
@@ -259,62 +257,36 @@
 			);
 		}
 		
+		
 		/**
-		 * Performs the Status Pull loop using a webhook notification token and emits
-		 * one PaymentState per order result via the provided callback.
-		 * Handles moreOrderResultsAvailable pagination internally.
+		 * Performs the Status Pull call using the token from a webhook notification.
+		 * Delegates to the gateway.
 		 *
-		 * @param string   $notificationToken The authentication token from the webhook notification body
-		 * @param callable $emit              Called with each resolved PaymentState
-		 * @throws PaymentExchangeException
+		 * @param string $notificationToken The authentication token from the webhook notification body
+		 * @return array Normalised response containing orderResults[]
 		 */
-		public function exchangeFromNotification(string $notificationToken, callable $emit): void {
-			$moreResultsAvailable = true;
-
-			while ($moreResultsAvailable) {
-				$result = $this->getGateway()->pullOrderStatuses($notificationToken);
-
-				if ($result['request']['result'] === 0) {
-					throw new PaymentExchangeException(
-						'rabosmartpay',
-						$result['request']['errorId'],
-						$result['request']['errorMessage']
-					);
-				}
-
-				$pullData = $result['response'];
-				$moreResultsAvailable = (bool)($pullData['moreOrderResultsAvailable'] ?? false);
-
-				foreach ($pullData['orderResults'] ?? [] as $orderResult) {
-					$omnikassaOrderId = $orderResult['omnikassaOrderId'] ?? '';
-
-					if (empty($omnikassaOrderId)) {
-						continue;
-					}
-
-					$emit($this->exchange($omnikassaOrderId, $orderResult));
-				}
-			}
+		public function pullOrderStatuses(string $notificationToken): array {
+			return $this->getGateway()->pullOrderStatuses($notificationToken);
 		}
-
+		
 		/**
-		 * Resolves a single order result into a PaymentState.
-		 * Called from both exchange() (return URL) and exchangeFromNotification() (webhook).
-		 *
+		 * Resolves an order result into a PaymentState.
 		 * @param string $transactionId omnikassaOrderId UUID or merchantOrderId (return URL flow)
-		 * @param array  $extraData     Order result data from Status Pull or return URL extraData
+		 * @param array $extraData Order result data; if empty, fetches status from the API
 		 * @return PaymentState
 		 * @throws PaymentExchangeException
 		 */
 		public function exchange(string $transactionId, array $extraData = []): PaymentState {
-			// The orderStatus field is the authoritative source of truth.
+			// Grab the order status
 			$orderStatus = strtoupper($extraData['orderStatus'] ?? '');
 			
 			// If status is absent, fall back to a direct API call.
 			// This should only happen if the return URL is visited without parameters.
 			if (empty($orderStatus)) {
+				// Call the gateway to fetch the order status
 				$result = $this->getGateway()->getOrderStatus($transactionId);
 				
+				// If that failed, throw error exception
 				if ($result['request']['result'] === 0) {
 					throw new PaymentExchangeException(
 						'rabosmartpay',
@@ -323,24 +295,29 @@
 					);
 				}
 				
+				// Merge the API response with the passed data
 				$extraData = array_merge($extraData, $result['response']);
 				$orderStatus = strtoupper($extraData['orderStatus'] ?? 'IN_PROGRESS');
 			}
 			
+			// Match Rabobank state with our own
 			$state = match ($orderStatus) {
-				'COMPLETED'   => PaymentStatus::Paid,
-				'CANCELLED'   => PaymentStatus::Canceled,
-				'EXPIRED'     => PaymentStatus::Expired,
-				'FAILURE'     => PaymentStatus::Failed,
+				'COMPLETED' => PaymentStatus::Paid,
+				'CANCELLED' => PaymentStatus::Canceled,
+				'EXPIRED' => PaymentStatus::Expired,
+				'FAILURE' => PaymentStatus::Failed,
 				'IN_PROGRESS' => PaymentStatus::Pending,
-				default       => PaymentStatus::Pending,
+				default => PaymentStatus::Pending,
 			};
 			
+			// Extract data from url or api response
 			$paidAmount = (int)($extraData['paidAmount']['amount'] ?? 0);
-			$currency   = $extraData['paidAmount']['currency'] ?? ($extraData['totalAmount']['currency'] ?? '');
-			$valuePaid   = ($state === PaymentStatus::Paid) ? $paidAmount : 0;
+			$currency = $extraData['paidAmount']['currency'] ?? ($extraData['totalAmount']['currency'] ?? '');
+			$valuePaid = ($state === PaymentStatus::Paid) ? $paidAmount : 0;
 			
+			// Find the brand type
 			$paymentBrand = null;
+			
 			foreach ($extraData['transactions'] ?? [] as $transaction) {
 				if (strtoupper($transaction['type'] ?? '') === 'PAYMENT' &&
 					strtoupper($transaction['status'] ?? '') === 'SUCCESS') {
@@ -349,6 +326,7 @@
 				}
 			}
 			
+			// Return state
 			return new PaymentState(
 				provider: 'rabosmartpay',
 				transactionId: $transactionId,
@@ -366,21 +344,13 @@
 		
 		/**
 		 * Refunds a previously completed payment.
-		 *
-		 * Rabo Smart Pay processes refunds asynchronously. A COMPLETED order is required —
-		 * attempting to refund an IN_PROGRESS or CANCELLED order will be rejected.
-		 *
-		 * Full refund: omit amount from the payload.
-		 * Partial refund: include amount.amount in euro cents and amount.currency.
-		 *
-		 * The refund response contains a refundId that can be used to retrieve refund status.
-		 *
 		 * @see https://docs.developer.rabobank.com/smartpay/reference/create-refund
 		 * @param RefundRequest $request
 		 * @return RefundResult
 		 * @throws PaymentRefundException
 		 */
 		public function refund(RefundRequest $request): RefundResult {
+			// Fetch config
 			$config = $this->getConfig();
 			
 			// Build the refund payload.
@@ -394,8 +364,10 @@
 				] : null,
 			], fn($v) => $v !== null && $v !== '');
 			
+			// Call the API to refund the transaction
 			$result = $this->getGateway()->refundOrder($request->paymentReference, $payload);
 			
+			// If that failed, throw error
 			if ($result['request']['result'] === 0) {
 				throw new PaymentRefundException(
 					'rabosmartpay',
@@ -407,14 +379,12 @@
 			// The refund response contains an id field identifying this specific refund operation.
 			$refundId = (string)($result['response']['id'] ?? $request->paymentReference);
 			
+			// Return the refund result
 			return new RefundResult(
 				provider: 'rabosmartpay',
 				paymentReference: $request->paymentReference,
 				refundId: $refundId,
-				
-				// For full refunds, amount is null — pass 0 as the value since the actual
-				// refunded amount is unknown until the webhook confirms it.
-				value: $request->amount ?? 0,
+				value: $request->amount,
 				currency: $request->currency,
 			);
 		}
@@ -422,41 +392,28 @@
 		/**
 		 * Returns refund records for a previously completed payment.
 		 *
-		 * Rabo Smart Pay does not embed refund data in the order status response.
-		 * This method uses the dedicated refund details endpoint to retrieve refund records.
+		 * Rabo Smart Pay's refund detail endpoint requires both the transaction ID and a
+		 * specific refund ID — it cannot list all refunds for an order. Since we have no
+		 * way to enumerate refund IDs without prior tracking, this method cannot be
+		 * implemented without the application maintaining its own refund ID records.
 		 *
 		 * @see https://docs.developer.rabobank.com/smartpay/reference/get-refund-details
 		 * @param string $paymentReference The omnikassaOrderId (Rabo Smart Pay UUID)
 		 * @return RefundResult[]
-		 * @throws PaymentExchangeException
 		 */
 		public function getRefunds(string $paymentReference): array {
-			// Rabo Smart Pay does not currently offer a list-all-refunds endpoint per order
-			// in the standard Online Payment API. Return an empty array and let callers
-			// track refunds via the refund() return value or the webhook exchange.
-			// This can be expanded when the Merchant Services API is integrated.
 			return [];
 		}
 		
 		/**
 		 * Verifies the HMAC-SHA512 signature on a webhook notification or return URL.
 		 * Delegates to the gateway for the actual cryptographic check.
-		 *
 		 * @param string $payload Comma-joined field values exactly as documented
 		 * @param string $providedSignature Hex-encoded signature from the notification or URL
 		 * @return bool True when the signature is valid
 		 */
 		public function verifySignature(string $payload, string $providedSignature): bool {
 			$config = $this->getConfig();
-			
-			// If no signing key is configured, skip verification.
-			// This allows local development without a dashboard key, but should never
-			// occur in production — log a warning so the gap doesn't go unnoticed.
-			if (empty($config['signing_key'])) {
-				error_log('Rabo Smart Pay: verifySignature called with no signing_key configured — skipping verification');
-				return true;
-			}
-			
 			return $this->getGateway()->verifySignature($payload, $providedSignature, $config['signing_key']);
 		}
 		

@@ -4,7 +4,6 @@
 	
 	use Quellabs\Canvas\Annotations\Route;
 	use Quellabs\Payments\Contracts\PaymentExchangeException;
-	use Quellabs\Payments\Contracts\PaymentStatus;
 	use Quellabs\SignalHub\Signal;
 	use Symfony\Component\HttpFoundation\JsonResponse;
 	use Symfony\Component\HttpFoundation\RedirectResponse;
@@ -39,84 +38,40 @@
 		/**
 		 * Handles the Rabo Smart Pay return URL — called when the hosted checkout page
 		 * redirects the shopper back after completing (or abandoning) a payment.
-		 *
-		 * Rabo Smart Pay appends the following parameters to merchantReturnURL:
-		 *   ?order_id={merchantOrderId}&status={orderStatus}&signature={hex}
-		 *
-		 * 'order_id' is our merchantOrderId — not the omnikassaOrderId UUID.
-		 * 'status' is one of: IN_PROGRESS, COMPLETED, CANCELLED, EXPIRED, FAILURE.
-		 *
-		 * The omnikassaOrderId (UUID) is not in the return URL. It must have been stored
-		 * at initiation time by the application and retrieved here using the merchantOrderId.
-		 *
-		 * Signature verification:
-		 * The return URL parameters are signed with HMAC-SHA512. The payload is:
-		 *   "{merchantOrderId},{orderStatus}"
-		 * Reject requests where the signature does not match — they may be forged.
-		 *
-		 * Race condition: iDEAL and some other methods may return IN_PROGRESS because the
-		 * bank confirmation is still pending. The webhook will deliver the final status.
-		 * We still redirect to the success page for IN_PROGRESS — the shopper has done
-		 * their part and should see a confirmation, not an error.
-		 *
 		 * @Route("rabosmartpay::return_url", fallback="/payment/return/rabosmartpay", methods={"GET"})
 		 * @see https://developer.rabobank.nl/rabo-smart-pay-online-payment-api
 		 * @param Request $request Incoming HTTP request from the shopper's browser
 		 * @return Response Redirect to success or cancel page, or 400/502 on failure
 		 */
 		public function handleReturn(Request $request): Response {
-			// 'order_id' in the return URL is our merchantOrderId, not the omnikassaOrderId UUID.
-			$merchantOrderId = $request->query->get('order_id');
+			// Extract request data
 			$orderStatus = $request->query->get('status', '');
 			$signature = $request->query->get('signature', '');
+			$merchantOrderId = $request->query->get('order_id', '');
 			
-			// Reject requests missing the mandatory merchant order identifier.
-			if (empty($merchantOrderId)) {
-				return new JsonResponse("Missing parameter 'order_id'", 400);
+			// Rabo Smart Pay always signs the return URL. Reject unsigned requests.
+			if (empty($signature)) {
+				return new JsonResponse('Missing signature on return URL', 400);
 			}
 			
-			// Grab the contents of the configuration file
+			// Verify the signature
+			$payload = implode(',', [$merchantOrderId, $orderStatus]);
+			
+			if (!$this->rabo->verifySignature($payload, $signature)) {
+				return new JsonResponse('Invalid signature on return URL', 400);
+			}
+			
+			// Fetch the config from the driver
 			$config = $this->rabo->getConfig();
 			
-			// Verify the HMAC-SHA512 signature to confirm the return URL originated from Rabo Smart Pay.
-			// Payload: "{merchantOrderId},{orderStatus}" — exact format per the SDK documentation.
-			// Reject unsigned or tampered requests — they cannot be trusted.
-			if (!empty($signature) && !empty($config['signing_key'])) {
-				$payload = implode(',', [$merchantOrderId, $orderStatus]);
-				
-				if (!$this->rabo->verifySignature($payload, $signature)) {
-					return new JsonResponse('Invalid signature on return URL', 400);
-				}
-			}
-			
-			try {
-				// The return URL carries merchantOrderId (our generated reference) and the order
-				// status, but not the omnikassaOrderId UUID. We pass merchantOrderId as the
-				// transactionId so the signal listener can look up their order. Since orderStatus
-				// is already known, exchange() will not make an API call.
-				$response = $this->rabo->exchange($merchantOrderId, [
-					'orderStatus' => $orderStatus,
-				]);
-				
-				// Broadcast the resolved state to any registered listeners.
-				$this->signal->emit($response);
-				
-				// Route the shopper based on the resolved payment state.
-				// Cancelled, expired, and failed payments go to the cancel URL so the shopper can retry.
-				// All other states — including IN_PROGRESS — land on the success page so the
-				// shopper sees a meaningful "payment received / pending" confirmation.
-				if (in_array($response->state, [PaymentStatus::Canceled, PaymentStatus::Expired, PaymentStatus::Failed], true)) {
-					$redirectUrl = $config['cancel_return_url'];
-				} else {
-					$redirectUrl = $config['return_url'];
-				}
-				
-				return new RedirectResponse($redirectUrl);
-			} catch (PaymentExchangeException $exception) {
-				return new JsonResponse(
-					$exception->getMessage() . ' (' . $exception->getErrorId() . ')',
-					502
-				);
+			// Route the shopper based on the status in the return URL.
+			// The authoritative payment state is delivered via the webhook — this redirect
+			// is purely a UX cue. IN_PROGRESS lands on the success page so the shopper
+			// sees a confirmation rather than an error while the webhook is still pending.
+			if (in_array(strtoupper($orderStatus), ['CANCELLED', 'EXPIRED', 'FAILURE'], true)) {
+				return new RedirectResponse($config['cancel_return_url']);
+			} else {
+				return new RedirectResponse($config['return_url']);
 			}
 		}
 		
@@ -156,6 +111,7 @@
 			// Rabo Smart Pay sends JSON; parse the body regardless of Content-Type header.
 			$body = json_decode($request->getContent(), true);
 			
+			// Validate the passed JSON
 			if (json_last_error() !== JSON_ERROR_NONE || !is_array($body)) {
 				return new Response('Invalid JSON body', 400, ['Content-Type' => 'text/plain']);
 			}
@@ -163,36 +119,89 @@
 			// The notification token is required to perform the Status Pull call.
 			$notificationToken = $body['authentication'] ?? '';
 			
+			// Validate the presence of an authentication token
 			if (empty($notificationToken)) {
 				return new Response("Missing 'authentication' in notification body", 400, ['Content-Type' => 'text/plain']);
 			}
 			
 			// Verify the notification signature before processing any order data.
 			// Payload: "{authentication},{expiry},{eventName},{poiId}"
-			if (!empty($body['signature'])) {
-				$signaturePayload = implode(',', [
-					$body['authentication'] ?? '',
-					$body['expiry'] ?? '',
-					$body['eventName'] ?? '',
-					$body['poiId'] ?? '',
-				]);
-				
-				// Validate the signature
-				if (!$this->rabo->verifySignature($signaturePayload, $body['signature'])) {
-					// Returning 400 here is safe — a tampered notification should not be
-					// acknowledged. Rabo Smart Pay will not retry, which is acceptable.
-					error_log('Rabo Smart Pay: rejected webhook notification with invalid signature');
-					return new Response('Invalid signature', 400, ['Content-Type' => 'text/plain']);
-				}
+			// Reject requests without a signature — Rabo Smart Pay always signs notifications.
+			if (empty($body['signature'])) {
+				error_log('Rabo Smart Pay: rejected webhook notification with no signature');
+				return new Response('Missing signature', 400, ['Content-Type' => 'text/plain']);
 			}
 			
+			// Verify the signature
+			$signaturePayload = implode(',', [
+				$body['authentication'] ?? '',
+				$body['expiry'] ?? '',
+				$body['eventName'] ?? '',
+				$body['poiId'] ?? '',
+			]);
+			
+			if (!$this->rabo->verifySignature($signaturePayload, $body['signature'])) {
+				error_log('Rabo Smart Pay: rejected webhook notification with invalid signature');
+				return new Response('Invalid signature', 400, ['Content-Type' => 'text/plain']);
+			}
+			
+			// Pull all statuses
 			try {
-				$this->rabo->exchangeFromNotification($notificationToken, fn($state) => $this->signal->emit($state));
+				$this->handleStatusPull($notificationToken);
 			} catch (PaymentExchangeException $exception) {
 				error_log('Rabo Smart Pay webhook: ' . $exception->getMessage() . ' (' . $exception->getErrorId() . ')');
 			}
 			
 			// HTTP 200 acknowledges the notification. Rabo Smart Pay does not retry.
 			return new Response('', 200);
+		}
+		
+		/**
+		 * Performs the Status Pull loop using a webhook notification token.
+		 * Handles moreOrderResultsAvailable pagination and emits a PaymentState signal
+		 * for each order result in the batch.
+		 * @param string $notificationToken The authentication token from the webhook notification body
+		 * @throws PaymentExchangeException
+		 */
+		private function handleStatusPull(string $notificationToken): void {
+			// Rabo Smart Pay may paginate results across multiple pulls using the same token.
+			$moreResultsAvailable = true;
+			
+			while ($moreResultsAvailable) {
+				// Call the API to fetch the order statuses
+				$result = $this->rabo->pullOrderStatuses($notificationToken);
+				
+				// If that failed, throw error
+				if ($result['request']['result'] === 0) {
+					throw new PaymentExchangeException(
+						'rabosmartpay',
+						$result['request']['errorId'],
+						$result['request']['errorMessage']
+					);
+				}
+				
+				// Grab the response
+				$pullData = $result['response'];
+				
+				// If true, loop and pull again with the same token to get the remaining results.
+				$moreResultsAvailable = (bool)($pullData['moreOrderResultsAvailable'] ?? false);
+				
+				foreach ($pullData['orderResults'] ?? [] as $orderResult) {
+					// omnikassaOrderId is Rabo Smart Pay's UUID — the transactionId for exchange() and refunds.
+					$omnikassaOrderId = $orderResult['omnikassaOrderId'] ?? '';
+					
+					// Skip malformed results that are missing the order identifier.
+					if (empty($omnikassaOrderId)) {
+						continue;
+					}
+					
+					// Resolve the order result into a PaymentState and broadcast it to listeners.
+					// The full orderResult is passed so exchange() doesn't need to make an API call.
+					$paymentState = $this->rabo->exchange($omnikassaOrderId, $orderResult);
+					
+					// Emit the payment state to listeners
+					$this->signal->emit($paymentState);
+				}
+			}
 		}
 	}
