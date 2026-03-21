@@ -167,8 +167,8 @@
 		 * automatic — do not call this method in that case.
 		 *
 		 * @see https://docs.klarna.com/acquirer/klarna/after-payments/order-management/manage-orders-with-the-api/capture-and-track-orders/
-		 * @param string $orderId        The Klarna order_id (UUID)
-		 * @param int    $capturedAmount Amount in minor units (cents) to capture
+		 * @param string $orderId The Klarna order_id (UUID)
+		 * @param int $capturedAmount Amount in minor units (cents) to capture
 		 * @param string $idempotencyKey UUID v4; prevents duplicate capture on retry
 		 * @return array Normalised response containing capture_id
 		 */
@@ -177,6 +177,7 @@
 				'POST',
 				'/ordermanagement/v1/orders/' . urlencode($orderId) . '/captures',
 				['captured_amount' => $capturedAmount],
+				// Idempotency key ensures a network retry doesn't trigger a duplicate capture.
 				['Klarna-Idempotency-Key' => $idempotencyKey]
 			);
 		}
@@ -188,13 +189,14 @@
 		 * For full refunds, pass the full captured_amount. For partial refunds, pass less.
 		 *
 		 * @see https://docs.klarna.com/acquirer/klarna/after-payments/order-management/manage-orders-with-the-api/refund-orders-and-manage-authorizations/
-		 * @param string      $orderId         The Klarna order_id (UUID)
-		 * @param int         $refundedAmount  Amount to refund in minor units (cents)
-		 * @param string      $idempotencyKey  UUID v4; prevents duplicate refund on retry
-		 * @param string|null $description     Optional description shown to the customer
+		 * @param string $orderId The Klarna order_id (UUID)
+		 * @param int $refundedAmount Amount to refund in minor units (cents)
+		 * @param string $idempotencyKey UUID v4; prevents duplicate refund on retry
+		 * @param string|null $description Optional description shown to the customer
 		 * @return array Normalised response containing refund_id
 		 */
 		public function refundOrder(string $orderId, int $refundedAmount, string $idempotencyKey, ?string $description = null): array {
+			// Strip null and empty description rather than sending an empty field.
 			$payload = array_filter([
 				'refunded_amount' => $refundedAmount,
 				'description'     => $description,
@@ -204,26 +206,28 @@
 				'POST',
 				'/ordermanagement/v1/orders/' . urlencode($orderId) . '/refunds',
 				$payload,
+				// Idempotency key ensures a network retry doesn't trigger a duplicate refund.
 				['Klarna-Idempotency-Key' => $idempotencyKey]
 			);
 		}
 		
 		/**
 		 * Sends an authenticated request to the Klarna REST API and returns a
-		 * normalised result array. All public gateway methods delegate to this.
+		 * normalized result array. All public gateway methods delegate to this.
 		 *
 		 * Klarna returns 201 for creates (captures, refunds) and 204 for no-content
 		 * responses (acknowledge). Both are treated as success. 2xx bodies may be
 		 * empty (acknowledge/capture) or JSON (order details, session data).
 		 *
-		 * @param string      $method      HTTP method: GET or POST
-		 * @param string      $endpoint    Path relative to baseUrl
-		 * @param array|null  $payload     JSON body for POST; null for GET or body-less POST
-		 * @param array       $extraHeaders Additional headers (e.g. Klarna-Idempotency-Key)
+		 * @param string $method HTTP method: GET or POST
+		 * @param string $endpoint Path relative to baseUrl
+		 * @param array|null $payload JSON body for POST; null for GET or body-less POST
+		 * @param array $extraHeaders Additional headers (e.g. Klarna-Idempotency-Key)
 		 * @return array Normalised response
 		 */
 		private function request(string $method, string $endpoint, ?array $payload = null, array $extraHeaders = []): array {
 			try {
+				// Merge caller-supplied headers (e.g. Klarna-Idempotency-Key) over the base auth headers.
 				$headers = array_merge([
 					'Accept'        => 'application/json',
 					'Authorization' => 'Basic ' . $this->basicAuth,
@@ -231,69 +235,42 @@
 				
 				$options = ['headers' => $headers];
 				
+				// Only set Content-Type and body for requests that carry a payload.
 				if ($payload !== null) {
 					$options['headers']['Content-Type'] = 'application/json';
 					$options['json'] = $payload;
 				}
 				
+				// Send the request to klarna
 				$response = $this->client->request($method, $this->baseUrl . $endpoint, $options);
 				$statusCode = $response->getStatusCode();
+				$rawBody = $response->getContent(false); // Suppress Symfony's automatic exception on non-2xx so we can read the error body
 				
-				// 204 No Content is a valid success with no body (acknowledge, etc.)
-				if ($statusCode === 204) {
-					return [
-						'request'  => ['result' => 1, 'errorId' => '', 'errorMessage' => ''],
-						'response' => [],
-					];
+				// 204 No Content and empty 201 bodies are valid successes with no JSON to parse.
+				if ($statusCode === 204 || ($statusCode === 201 && empty($rawBody))) {
+					return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => []];
 				}
 				
-				// Decode with throw-on-error disabled so we can inspect error bodies.
-				$rawBody = $response->getContent(false);
-				
-				// Some 201 responses (captures) have an empty body; treat as success.
-				if ($statusCode === 201 && empty($rawBody)) {
-					return [
-						'request'  => ['result' => 1, 'errorId' => '', 'errorMessage' => ''],
-						'response' => [],
-					];
-				}
-				
+				// Decode the JSON result
 				$body = json_decode($rawBody, true);
 				
+				// If that failed, return an error
 				if (json_last_error() !== JSON_ERROR_NONE) {
-					return [
-						'request' => [
-							'result'       => 0,
-							'errorId'      => $statusCode,
-							'errorMessage' => 'Invalid JSON response: ' . json_last_error_msg(),
-						],
-					];
+					return ['request' => ['result' => 0, 'errorId' => $statusCode, 'errorMessage' => 'Invalid JSON response: ' . json_last_error_msg()]];
 				}
 				
-				if ($statusCode >= 200 && $statusCode < 300) {
-					return [
-						'request'  => ['result' => 1, 'errorId' => '', 'errorMessage' => ''],
-						'response' => $body ?? [],
-					];
+				// Non-2xx — extract the most informative message from the error body.
+				if ($statusCode < 200 || $statusCode >= 300) {
+					$errorMessage = $this->extractErrorMessage($body, $statusCode);
+					return ['request' => ['result' => 0, 'errorId' => $statusCode, 'errorMessage' => $errorMessage]];
 				}
 				
-				// Extract the most informative error message from the Klarna error body.
-				$errorMessage = $this->extractErrorMessage($body, $statusCode);
-				
-				return [
-					'request' => [
-						'result'       => 0,
-						'errorId'      => $statusCode,
-						'errorMessage' => $errorMessage,
-					],
-				];
+				// Return response
+				return ['request'  => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $body ?? []];
 			} catch (\Throwable $e) {
+				// Network errors, timeouts, and DNS failures land here.
 				return [
-					'request' => [
-						'result'       => 0,
-						'errorId'      => $e->getCode(),
-						'errorMessage' => $e->getMessage(),
-					],
+					'request' => ['result' => 0, 'errorId' => $e->getCode(), 'errorMessage' => $e->getMessage()],
 				];
 			}
 		}
@@ -304,11 +281,12 @@
 		 * Klarna uses: { "error_code": "...", "error_messages": ["..."], "correlation_id": "..." }
 		 * Some endpoints use: { "error_code": "...", "error_message": "..." }
 		 *
-		 * @param array|null $body       Decoded JSON body, or null if the body was empty
-		 * @param int        $statusCode HTTP status code, used as fallback
+		 * @param array|null $body Decoded JSON body, or null if the body was empty
+		 * @param int $statusCode HTTP status code, used as fallback
 		 * @return string Human-readable error message
 		 */
 		private function extractErrorMessage(?array $body, int $statusCode): string {
+			// No body passed. Return statuscode.
 			if ($body === null) {
 				return "HTTP {$statusCode}";
 			}

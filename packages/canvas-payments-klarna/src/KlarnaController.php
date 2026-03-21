@@ -49,7 +49,6 @@
 		
 		/**
 		 * Constructs the controller and wires up the payment_exchange signal.
-		 *
 		 * @param Driver $klarna Klarna driver with active configuration already applied
 		 */
 		public function __construct(Driver $klarna) {
@@ -77,17 +76,17 @@
 		 * @return Response Redirect to success or cancel page, or error response
 		 */
 		public function handleReturn(Request $request): Response {
+			// Fetch config from driver
 			$config = $this->klarna->getConfig();
 			
-			// Extract the Klarna order_id and authorization_token from the query string.
-			// These are present only on the success redirect; cancel/error carry nothing.
-			$orderId            = $request->query->get('order_id', '');
-			$authorizationToken = $request->query->get('authorization_token', '');
+			// Extract the Klarna order_id from the query string.
+			// Present only on the success redirect; cancel/error carry nothing.
+			$orderId = $request->query->get('order_id', '');
 			
-			// If no order_id is present, the consumer cancelled or encountered an error.
+			// If no order_id is present, the consumer canceled or encountered an error.
 			// Route to the cancel page without attempting an exchange — there is no
 			// authoritative order to look up yet (Klarna creates the order only on
-			// successful authorisation).
+			// successful authorization).
 			if (empty($orderId)) {
 				return new RedirectResponse($config['cancel_return_url']);
 			}
@@ -96,13 +95,12 @@
 			// This is the only reliable source of truth — the query string alone
 			// is not signed and should never be used to update order status.
 			try {
+				// Convert klarna state to our own state
 				$paymentState = $this->klarna->exchange($orderId);
+				
+				// Emit the state
 				$this->signal->emit($paymentState);
 			} catch (PaymentExchangeException $e) {
-				// Log and fall through to the success redirect. The consumer has
-				// completed payment on Klarna's side — an exchange failure here is
-				// a transient API issue, not a payment failure. The application
-				// should reconcile via the HPP status callback or manual lookup.
 				error_log('Klarna exchange error on return URL: ' . $e->getMessage() . ' (' . $e->getErrorId() . ')');
 			}
 			
@@ -146,11 +144,11 @@
 				return new Response('Invalid JSON body', 400, ['Content-Type' => 'text/plain']);
 			}
 			
-			$status  = strtoupper($body['status'] ?? '');
-			$orderId = $body['order_id'] ?? '';
-			
 			// Only COMPLETED sessions carry an order_id and are worth acting on.
 			// DISABLED, EXPIRED, and ERROR are terminal without an order to exchange.
+			$status = strtoupper($body['status'] ?? '');
+			$orderId = $body['order_id'] ?? '';
+			
 			if ($status !== 'COMPLETED' || empty($orderId)) {
 				// Acknowledge the notification so Klarna doesn't retry.
 				return new Response('', 200);
