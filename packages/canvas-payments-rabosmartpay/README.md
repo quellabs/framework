@@ -62,42 +62,39 @@ return [
 ];
 ```
 
-| Key                 | Required | Description                                                                                  |
-|---------------------|----------|----------------------------------------------------------------------------------------------|
-| `refresh_token`     | Yes      | Long-lived token from the Rabo Smart Pay dashboard (webshop settings)                        |
-| `signing_key`       | Yes      | Base64-encoded HMAC signing key from the Rabo Smart Pay dashboard                           |
-| `test_mode`         | No       | Routes to sandbox (`betalen.rabobank.nl`) when `true`. Defaults to `false`                  |
-| `return_url`        | Yes      | Shopper is redirected here after a completed or pending payment                              |
-| `cancel_return_url` | Yes      | Shopper is redirected here after a cancelled or failed payment                               |
-| `default_currency`  | No       | ISO 4217 currency code. Only `EUR` is supported. Defaults to `EUR`                          |
-| `language`          | No       | Language for the hosted checkout page. `NL`, `EN`, `FR`, `DE`. Defaults to `NL`            |
+| Key                 | Required | Description                                                                                    |
+|---------------------|----------|------------------------------------------------------------------------------------------------|
+| `refresh_token`     | Yes      | Long-lived token from the Rabo Smart Pay dashboard (webshop settings)                          |
+| `signing_key`       | Yes      | Base64-encoded HMAC signing key from the Rabo Smart Pay dashboard                              |
+| `test_mode`         | No       | Routes to sandbox (`betalen.rabobank.nl`) when `true`. Defaults to `false`                     |
+| `return_url`        | Yes      | Shopper is redirected here after a completed or pending payment                                |
+| `cancel_return_url` | Yes      | Shopper is redirected here after a cancelled or failed payment                                 |
+| `default_currency`  | No       | ISO 4217 currency code. Only `EUR` is supported. Defaults to `EUR`                             |
+| `language`          | No       | Language for the hosted checkout page. `NL`, `EN`, `FR`, `DE`. Defaults to `NL`                |
 | `skip_result_page`  | No       | Skip Rabo Smart Pay's own confirmation page, redirect directly to `return_url`. Default `true` |
 
-## Important: storing the paymentReference
+## Important: storing transactionId and orderReference
 
-When Rabo Smart Pay redirects the shopper back to your `return_url`, the `?order_id=` parameter contains
-your **merchantOrderId** (the `reference` field from `PaymentRequest`), not Rabo Smart Pay's internal UUID.
+After initiating a payment, `InitiateResult::$transactionId` holds Rabo Smart Pay's `omnikassaOrderId` UUID.
+Store this against your order — it is required for refund calls.
 
-Rabo Smart Pay's UUID is returned in `InitiateResult::$transactionId` and stored in `metadata['paymentReference']`
-at initiation time. You must store this against your order so that you can use it for refund calls and
-reconciliation.
-
-The webhook handler receives the UUID via the Status Pull response and uses it as the canonical
-`transactionId` in the emitted `PaymentState`.
+`InitiateResult::$metadata['orderReference']` holds the generated `merchantOrderId`. Store this too — it is
+what Rabo Smart Pay echoes back in the return URL `?order_id=` parameter and in the Status Pull response,
+allowing you to correlate those callbacks to your order.
 
 ## Supported payment methods
 
-| Module name        | Brand string   | Method                           |
-|--------------------|----------------|----------------------------------|
-| `rabo_ideal`       | `IDEAL`        | iDEAL 2.0 (NL)                  |
-| `rabo_bancontact`  | `BANCONTACT`   | Bancontact (BE)                  |
-| `rabo_mastercard`  | `MASTERCARD`   | Mastercard                       |
-| `rabo_visa`        | `VISA`         | Visa                             |
-| `rabo_maestro`     | `MAESTRO`      | Maestro                          |
-| `rabo_vpay`        | `V_PAY`        | V PAY                            |
-| `rabo_cards`       | `CARDS`        | All card methods combined        |
-| `rabo_applepay`    | `APPLE_PAY`    | Apple Pay                        |
-| `rabo_paypal`      | `PAYPAL`       | PayPal (contract-dependent)      |
+| Module name       | Brand string | Method                      |
+|-------------------|--------------|-----------------------------|
+| `rabo_ideal`      | `IDEAL`      | iDEAL 2.0 (NL)              |
+| `rabo_bancontact` | `BANCONTACT` | Bancontact (BE)             |
+| `rabo_mastercard` | `MASTERCARD` | Mastercard                  |
+| `rabo_visa`       | `VISA`       | Visa                        |
+| `rabo_maestro`    | `MAESTRO`    | Maestro                     |
+| `rabo_vpay`       | `V_PAY`      | V PAY                       |
+| `rabo_cards`      | `CARDS`      | All card methods combined   |
+| `rabo_applepay`   | `APPLE_PAY`  | Apple Pay                   |
+| `rabo_paypal`     | `PAYPAL`     | PayPal (contract-dependent) |
 
 Payment methods must be activated for your webshop in the Rabo Smart Pay dashboard before use.
 
@@ -124,15 +121,17 @@ class CheckoutController extends BaseController {
             amount:        999,   // in minor units — €9.99
             currency:      'EUR',
             description:   'Order #12345',
-            metadata:      ['order_id' => 'order-12345'],  // becomes merchantOrderId; max 24 alphanumeric chars
         );
 
         try {
             $result = $this->router->initiate($request);
 
-            // Store $result->transactionId (Rabo Smart Pay's UUID) as the paymentReference.
-            // You need it for refunds and reconciliation.
-            $this->orderService->setPaymentReference($orderId, $result->transactionId);
+            // Store both identifiers against your order.
+            // transactionId is the omnikassaOrderId UUID — needed for refunds.
+            // metadata['orderReference'] is the generated merchantOrderId — needed to
+            // correlate the return URL callback and webhook Status Pull to your order.
+            $this->orderService->setTransactionId($orderId, $result->transactionId);
+            $this->orderService->setOrderReference($orderId, $result->metadata['orderReference']);
 
             return $this->redirect($result->redirectUrl);
         } catch (PaymentInitiationException $e) {
@@ -221,15 +220,35 @@ return HTTP 200 to acknowledge receipt. Errors are logged server-side.
 
 Rabo Smart Pay appends the following to your `return_url`:
 
-| Parameter   | Description                                                      |
-|-------------|------------------------------------------------------------------|
-| `order_id`  | Your `merchantOrderId` (the `reference` from `PaymentRequest`)   |
-| `status`    | `IN_PROGRESS`, `COMPLETED`, `CANCELLED`, `EXPIRED`, or `FAILURE` |
-| `signature` | HMAC-SHA512 hex signature of `"{order_id},{status}"`             |
+| Parameter   | Description                                                                             |
+|-------------|-----------------------------------------------------------------------------------------|
+| `order_id`  | The generated `merchantOrderId` stored in `InitiateResult::$metadata['orderReference']` |
+| `status`    | `IN_PROGRESS`, `COMPLETED`, `CANCELLED`, `EXPIRED`, or `FAILURE`                        |
+| `signature` | HMAC-SHA512 hex signature of `"{order_id},{status}"`                                    |
 
-The return URL handler verifies the signature and emits a `payment_exchange` signal. For `IN_PROGRESS`
-statuses (common with iDEAL 2.0), the shopper is redirected to the success page and the final status
-arrives via the webhook.
+The return URL handler verifies the signature and redirects the shopper — no signal is emitted here.
+The authoritative payment state is delivered exclusively via the webhook. For `IN_PROGRESS` statuses
+(common with iDEAL 2.0), the shopper is redirected to the success page and the final status arrives
+via the webhook.
+
+## Missed webhooks and reconciliation
+
+Rabo Smart Pay does not retry failed webhook deliveries. If your server is temporarily unreachable, or if the webhook
+notification is lost for any reason, your order will remain in a pending state indefinitely.
+
+To handle this, implement a reconciliation job that periodically checks orders that have been in a pending state beyond
+a reasonable threshold (e.g. 15 minutes). For each such order, call `exchange()` directly using the stored
+`transactionId` (the `omnikassaOrderId` UUID from `InitiateResult`):
+
+```php
+// Reconciliation job — run periodically for orders stuck in pending state
+$state = $this->router->exchange($order->transactionId);
+$this->onPaymentExchange($state);
+```
+
+Rabo Smart Pay guarantees order status data is available for at least 24 hours after an order reaches a final state.
+Note that Rabo Smart Pay explicitly prohibits polling this endpoint — use it only as a fallback for orders where no
+webhook was received.
 
 ## License
 
