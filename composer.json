@@ -116,6 +116,10 @@
     {
       "type": "path",
       "url": "./packages/canvas-payments-paynl"
+    },
+    {
+      "type": "path",
+      "url": "./packages/canvas-payments-rabosmartpay"
     }
   ],
   "require": {
@@ -167,7 +171,8 @@
     "quellabs/canvas-payments-adyen": "dev-main as 1.999.999",
     "quellabs/canvas-payments-multisafepay": "dev-main as 1.999.999",
     "quellabs/canvas-payments-buckaroo": "dev-main as 1.999.999",
-    "quellabs/canvas-payments-paynl": "dev-main as 1.999.999"
+    "quellabs/canvas-payments-paynl": "dev-main as 1.999.999",
+    "quellabs/canvas-payments-rabosmartpay": "dev-main as 1.999.999"
   },
   "autoload": {
     "psr-4": {
@@ -198,6 +203,7 @@
       "Quellabs\\Payments\\MultiSafepay\\": "packages/canvas-payments-multisafepay/src/",
       "Quellabs\\Payments\\Buckaroo\\": "packages/canvas-payments-multisafepay/src/",
       "Quellabs\\Payments\\PayNL\\": "packages/canvas-payments-paynl/src/"
+      "Quellabs\\Payments\\RaboSmartPay\\": "packages/canvas-payments-rabosmartpay/src/"
     },
     "files": [
       "packages/support/src/bootstrap.php"
