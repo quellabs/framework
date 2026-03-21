@@ -207,8 +207,8 @@
       "Quellabs\\Payments\\Adyen\\": "packages/canvas-payments-adyen/src/",
       "Quellabs\\Payments\\MultiSafepay\\": "packages/canvas-payments-multisafepay/src/",
       "Quellabs\\Payments\\Buckaroo\\": "packages/canvas-payments-multisafepay/src/",
-      "Quellabs\\Payments\\PayNL\\": "packages/canvas-payments-paynl/src/"
-      "Quellabs\\Payments\\RaboSmartPay\\": "packages/canvas-payments-rabosmartpay/src/"
+      "Quellabs\\Payments\\PayNL\\": "packages/canvas-payments-paynl/src/",
+      "Quellabs\\Payments\\RaboSmartPay\\": "packages/canvas-payments-rabosmartpay/src/",
       "Quellabs\\Payments\\Klarna\\": "packages/canvas-payments-klarna/src/"
     },
     "files": [
