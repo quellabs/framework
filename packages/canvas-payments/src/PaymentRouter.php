@@ -15,6 +15,7 @@
 	class PaymentRouter implements PaymentInterface {
 		
 		private array $moduleMap = [];
+		private array $driverMap = [];
 		private Discover $discover;
 		
 		/**
@@ -50,6 +51,12 @@
 					}
 					
 					$this->moduleMap[$module] = $class;
+				}
+
+				// Register the driver name if provided, allowing exchange() and getRefunds()
+				// to be called with a stable driver name instead of a module name.
+				if (!empty($metadata['driver'])) {
+					$this->driverMap[$metadata['driver']] = $class;
 				}
 			}
 		}
@@ -90,7 +97,7 @@
 		}
 		
 		/**
-		 * Resolves a provider instance for the given module name
+		 * Resolves a provider instance for the given module name.
 		 * @param string $module
 		 * @return PaymentProviderInterface
 		 * @throws \RuntimeException
@@ -99,24 +106,36 @@
 			$class = $this->moduleMap[$module] ?? throw new \RuntimeException("No payment provider registered for module '{$module}'");
 			return $this->discover->get($class);
 		}
-		
-		public function exchange(string $transactionId, array $extraData = []): PaymentState {
-			// TODO: Implement exchange() method.
+
+		/**
+		 * Resolves a provider instance by driver name (e.g. 'rabosmartpay', 'paynl').
+		 * @param string $driver
+		 * @return PaymentProviderInterface
+		 * @throws \RuntimeException
+		 */
+		private function resolveDriver(string $driver): PaymentProviderInterface {
+			$class = $this->driverMap[$driver] ?? throw new \RuntimeException("No payment provider registered for driver '{$driver}'");
+			return $this->discover->get($class);
 		}
 		
-		public function getRefunds(string $transactionId): array {
-			// TODO: Implement getRefunds() method.
+		/**
+		 * Fetch the current state of a payment for reconciliation of missed webhooks.
+		 * @param string $driver Driver name as returned in PaymentState::$provider (e.g. 'rabosmartpay')
+		 * @param string $transactionId Provider-assigned transaction ID from InitiateResult
+		 * @param array $extraData Optional additional data to pass to the provider
+		 * @return PaymentState
+		 */
+		public function exchange(string $driver, string $transactionId, array $extraData = []): PaymentState {
+			return $this->resolveDriver($driver)->exchange($transactionId, $extraData);
 		}
 		
-		public static function getMetadata(): array {
-			// TODO: Implement getMetadata() method.
-		}
-		
-		public function getConfig(): array {
-			// TODO: Implement getConfig() method.
-		}
-		
-		public function setConfig(array $config): void {
-			// TODO: Implement setConfig() method.
+		/**
+		 * Returns all refunds issued for the given transaction.
+		 * @param string $driver Driver name as returned in PaymentState::$provider (e.g. 'rabosmartpay')
+		 * @param string $paymentReference
+		 * @return array
+		 */
+		public function getRefunds(string $driver, string $paymentReference): array {
+			return $this->resolveDriver($driver)->getRefunds($paymentReference);
 		}
 	}

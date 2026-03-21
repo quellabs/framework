@@ -19,8 +19,8 @@
 			/** The provider's unique identifier for this specific refund */
 			public string $refundId,
 			
-			/** The refunded amount, in the smallest currency unit */
-			public int    $value,
+			/** The refunded amount, in the smallest currency unit. Null if unknown */
+			public ?int    $value,
 			
 			/** ISO 4217 currency code (e.g. 'EUR', 'USD') */
 			public string $currency,

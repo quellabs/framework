@@ -17,6 +17,11 @@
 	class Driver implements PaymentProviderInterface {
 		
 		/**
+		 * Driver name
+		 */
+		const DRIVER_NAME = "buckaroo";
+		
+		/**
 		 * Active configuration for this provider, applied by the discovery system after instantiation.
 		 * @var array
 		 */
@@ -37,7 +42,7 @@
 		 *
 		 * @see https://docs.buckaroo.io/docs/payment-methods
 		 */
-		private const MODULE_SERVICE_MAP = [
+		private const MODULE_TYPE_MAP = [
 			'bkr_ideal'           => 'ideal',
 			'bkr_creditcard'      => 'creditcard',
 			'bkr_visa'            => 'visa',
@@ -67,7 +72,8 @@
 		 */
 		public static function getMetadata(): array {
 			return [
-				'modules' => array_keys(self::MODULE_SERVICE_MAP)
+				'driver'  => self::DRIVER_NAME,
+				'modules' => array_keys(self::MODULE_TYPE_MAP),
 			];
 		}
 		
@@ -145,7 +151,7 @@
 		 */
 		public function initiate(PaymentRequest $request): InitiateResult {
 			$config = $this->getConfig();
-			$service = self::MODULE_SERVICE_MAP[$request->paymentModule] ?? strtolower($request->module);
+			$service = self::MODULE_TYPE_MAP[$request->paymentModule] ?? strtolower($request->module);
 			
 			// Buckaroo uses decimal amounts (€10.00 = 10.00), not minor units (€10.00 = 1000).
 			// PaymentRequest::$amount is in minor units, so divide by 100.
@@ -211,7 +217,7 @@
 			
 			// If that failed, throw an exception
 			if ($result['request']['result'] === 0) {
-				throw new PaymentInitiationException('buckaroo', $result['request']['errorId'], $result['request']['errorMessage']);
+				throw new PaymentInitiationException(self::DRIVER_NAME, $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 			
 			// Grab the API response
@@ -224,17 +230,17 @@
 			
 			// If no transaction id was passed back, throw error
 			if (empty($transactionKey)) {
-				throw new PaymentInitiationException('buckaroo', 0, 'Missing transaction Key in Buckaroo response');
+				throw new PaymentInitiationException(self::DRIVER_NAME, 0, 'Missing transaction Key in Buckaroo response');
 			}
 			
 			// If no redirectUrl was passed back, throw error
 			if (empty($redirectUrl)) {
-				throw new PaymentInitiationException('buckaroo', 0, 'Missing RedirectURL in Buckaroo response');
+				throw new PaymentInitiationException(self::DRIVER_NAME, 0, 'Missing RedirectURL in Buckaroo response');
 			}
 			
 			// Return result
 			return new InitiateResult(
-				provider: 'buckaroo',
+				provider: self::DRIVER_NAME,
 				transactionId: $transactionKey,
 				redirectUrl: $redirectUrl,
 			);
@@ -279,7 +285,7 @@
 			
 			// If that faild, throw an exception
 			if ($result['request']['result'] === 0) {
-				throw new PaymentExchangeException('buckaroo', $result['request']['errorId'], $result['request']['errorMessage']);
+				throw new PaymentExchangeException(self::DRIVER_NAME, $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 			
 			// Grab response data
@@ -327,7 +333,7 @@
 			}
 			
 			return new PaymentState(
-				provider: 'buckaroo',
+				provider: self::DRIVER_NAME,
 				transactionId: $transactionId,
 				state: $state,
 				currency: $currency,
@@ -362,8 +368,8 @@
 		 */
 		public function refund(RefundRequest $request): RefundResult {
 			// Throw error when the desired paymentModule does not exist in the map
-			if (!isset(self::MODULE_SERVICE_MAP[$request->paymentModule])) {
-				throw new PaymentRefundException('buckaroo', 0, 'Unknown payment module: ' . $request->paymentModule);
+			if (!isset(self::MODULE_TYPE_MAP[$request->paymentModule])) {
+				throw new PaymentRefundException(self::DRIVER_NAME, 0, 'Unknown payment module: ' . $request->paymentModule);
 			}
 
 			// Build payload
@@ -374,7 +380,7 @@
 				'Services'               => [
 					'ServiceList' => [
 						[
-							'Name'   => self::MODULE_SERVICE_MAP[$request->paymentModule],
+							'Name'   => self::MODULE_TYPE_MAP[$request->paymentModule],
 							'Action' => 'Refund',
 						],
 					],
@@ -397,7 +403,7 @@
 			
 			// If that failed, throw exception
 			if ($result['request']['result'] === 0) {
-				throw new PaymentRefundException('buckaroo', $result['request']['errorId'], $result['request']['errorMessage']);
+				throw new PaymentRefundException(self::DRIVER_NAME, $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 			
 			// The refund transaction gets its own Key
@@ -409,7 +415,7 @@
 			
 			// Return the result
 			return new RefundResult(
-				provider: 'buckaroo',
+				provider: self::DRIVER_NAME,
 				paymentReference: $request->paymentReference,
 				refundId: $refundKey,
 				value: $refundedMinor,
@@ -435,7 +441,7 @@
 			
 			// If that failed, throw exception
 			if ($result['request']['result'] === 0) {
-				throw new PaymentExchangeException('buckaroo', $result['request']['errorId'], $result['request']['errorMessage']);
+				throw new PaymentExchangeException(self::DRIVER_NAME, $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 			
 			// Grab response
@@ -467,7 +473,7 @@
 				// A failed lookup means the refund list would be incomplete — throw rather than
 				// return a partial result that could cause incorrect business logic downstream.
 				if ($refundResult['request']['result'] === 0) {
-					throw new PaymentExchangeException('buckaroo', $refundResult['request']['errorId'], $refundResult['request']['errorMessage']);
+					throw new PaymentExchangeException(self::DRIVER_NAME, $refundResult['request']['errorId'], $refundResult['request']['errorMessage']);
 				}
 				
 				// Add result to list
@@ -475,7 +481,7 @@
 				$amountDecimal = (float)($refundData['AmountCredit'] ?? 0);
 				
 				$refunds[] = new RefundResult(
-					provider: 'buckaroo',
+					provider: self::DRIVER_NAME,
 					paymentReference: $paymentReference,
 					refundId: $refundKey,
 					value: (int)round($amountDecimal * 100),
@@ -517,7 +523,7 @@
 				// A failed lookup means valueRefunded would be incorrect — throw rather than
 				// return a silently wrong total that could affect payment state transitions.
 				if ($refundResult['request']['result'] === 0) {
-					throw new PaymentExchangeException('buckaroo', $refundResult['request']['errorId'], $refundResult['request']['errorMessage']);
+					throw new PaymentExchangeException(self::DRIVER_NAME, $refundResult['request']['errorId'], $refundResult['request']['errorMessage']);
 				}
 				
 				// Refund transactions carry AmountCredit (decimal); convert to minor units.

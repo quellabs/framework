@@ -16,6 +16,11 @@
 	class Driver implements PaymentProviderInterface {
 		
 		/**
+		 * Driver name
+		 */
+		const DRIVER_NAME = "stripe";
+		
+		/**
 		 * Active configuration for this provider, applied by the discovery system after instantiation.
 		 * @var array
 		 */
@@ -45,6 +50,7 @@
 		 */
 		public static function getMetadata(): array {
 			return [
+				'driver'  => self::DRIVER_NAME,
 				'modules' => array_keys(self::MODULE_TYPE_MAP),
 			];
 		}
@@ -94,10 +100,10 @@
 		 */
 		public function initiate(PaymentRequest $request): InitiateResult {
 			// Resolve the module name to the Stripe payment method type.
-			// 'stripe' (generic) passes no types — lets Stripe use Dashboard defaults.
+			// self::getMetadata()['driver'] (generic) passes no types — lets Stripe use Dashboard defaults.
 			// 'stripe_ideal', 'stripe_card', etc. pin the session to that specific method.
 			$moduleType = self::MODULE_TYPE_MAP[$request->paymentModule] ?? null;
-			$paymentMethodTypes = ($moduleType !== null && $moduleType !== 'stripe') ? [$moduleType] : [];
+			$paymentMethodTypes = ($moduleType !== null && $moduleType !== self::getMetadata()['driver']) ? [$moduleType] : [];
 			
 			// Call the API for a new checkout session
 			$result = $this->getGateway()->createCheckoutSession(
@@ -109,20 +115,20 @@
 			
 			// If tha failed, throw
 			if ($result['request']['result'] === 0) {
-				throw new PaymentInitiationException('stripe', $result['request']['errorId'], $result['request']['errorMessage']);
+				throw new PaymentInitiationException(self::getMetadata()['driver'], $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 			
 			// Validate the existence of checkout url
 			$sessionId = $result['response']['id'];
 			$checkoutUrl = $result['response']['url'];
-
+			
 			if (empty($checkoutUrl)) {
-				throw new PaymentInitiationException('stripe', 'MISSING_CHECKOUT_URL', 'Stripe response did not include a checkout URL.');
+				throw new PaymentInitiationException(self::getMetadata()['driver'], 'MISSING_CHECKOUT_URL', 'Stripe response did not include a checkout URL.');
 			}
 			
 			// Return response
 			return new InitiateResult(
-				'stripe',
+				self::getMetadata()['driver'],
 				$sessionId,
 				$checkoutUrl,
 			);
@@ -145,7 +151,7 @@
 			// No API call needed — the absence of any payment attempt is definitive.
 			if ($action === 'cancel') {
 				return new PaymentState(
-					provider: 'stripe',
+					provider: self::getMetadata()['driver'],
 					transactionId: $transactionId,
 					state: PaymentStatus::Canceled,
 					currency: '',
@@ -161,7 +167,7 @@
 				// The webhook payload must supply a PaymentIntent ID via extraData; without it
 				// there is no way to identify which payment this event refers to.
 				if (empty($paymentIntentId)) {
-					throw new PaymentExchangeException('stripe', 'MISSING_PAYMENT_INTENT_ID', 'Webhook exchange requires a paymentIntentId in extraData.');
+					throw new PaymentExchangeException(self::getMetadata()['driver'], 'MISSING_PAYMENT_INTENT_ID', 'Webhook exchange requires a paymentIntentId in extraData.');
 				}
 				
 				// Call the gateway to fetch the payment intent
@@ -169,7 +175,7 @@
 				
 				// Gateway failure — surface Stripe's error directly rather than swallowing it.
 				if ($intentResult['request']['result'] === 0) {
-					throw new PaymentExchangeException('stripe', $intentResult['request']['errorId'], $intentResult['request']['errorMessage']);
+					throw new PaymentExchangeException(self::getMetadata()['driver'], $intentResult['request']['errorId'], $intentResult['request']['errorMessage']);
 				}
 				
 				// Use the session ID as transactionId, not the PaymentIntent ID —
@@ -185,7 +191,7 @@
 			
 			// Throw when api call failed
 			if ($sessionResult['request']['result'] === 0) {
-				throw new PaymentExchangeException('stripe', $sessionResult['request']['errorId'], $sessionResult['request']['errorMessage']);
+				throw new PaymentExchangeException(self::getMetadata()['driver'], $sessionResult['request']['errorId'], $sessionResult['request']['errorMessage']);
 			}
 			
 			// Branch 3a: Session expired before the buyer completed checkout.
@@ -195,7 +201,7 @@
 			
 			if ($sessionStatus === 'expired') {
 				return new PaymentState(
-					provider: 'stripe',
+					provider: self::getMetadata()['driver'],
 					transactionId: $transactionId,
 					state: PaymentStatus::Expired,
 					currency: $currency,
@@ -212,7 +218,7 @@
 			
 			if (empty($intent)) {
 				return new PaymentState(
-					provider: 'stripe',
+					provider: self::getMetadata()['driver'],
 					transactionId: $transactionId,
 					state: PaymentStatus::Pending,
 					currency: $currency,
@@ -259,14 +265,14 @@
 			
 			// If that failed, throw an exception
 			if ($result['request']['result'] === 0) {
-				throw new PaymentRefundException('stripe', $result['request']['errorId'], $result['request']['errorMessage']);
+				throw new PaymentRefundException(self::getMetadata()['driver'], $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 			
 			// Return the result
 			$r = $result['response'];
 			
 			return new RefundResult(
-				provider: 'stripe',
+				provider: self::getMetadata()['driver'],
 				paymentReference: $request->paymentReference,
 				refundId: $r['id'],
 				value: (int)($r['amount'] ?? 0),
@@ -304,14 +310,14 @@
 			$result = $this->getGateway()->getRefundsForPaymentIntent($paymentReference);
 			
 			if ($result['request']['result'] === 0) {
-				throw new PaymentRefundException('stripe', $result['request']['errorId'], $result['request']['errorMessage']);
+				throw new PaymentRefundException(self::getMetadata()['driver'], $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 			
 			$refunds = [];
 			
 			foreach ($result['response']['data'] ?? [] as $refund) {
 				$refunds[] = new RefundResult(
-					provider: 'stripe',
+					provider: self::getMetadata()['driver'],
 					paymentReference: $paymentReference,
 					refundId: $refund['id'],
 					value: (int)($refund['amount'] ?? 0),
@@ -360,7 +366,7 @@
 			switch ($intentStatus) {
 				case 'succeeded':
 					return new PaymentState(
-						provider: 'stripe',
+						provider: self::getMetadata()['driver'],
 						transactionId: $sessionId,
 						state: PaymentStatus::Paid,
 						currency: $currency,
@@ -375,7 +381,7 @@
 				// 3DS or other customer action required — redirect back to Stripe's next_action URL
 				case 'requires_action':
 					return new PaymentState(
-						provider: 'stripe',
+						provider: self::getMetadata()['driver'],
 						transactionId: $sessionId,
 						state: PaymentStatus::Redirect,
 						currency: $currency,
@@ -390,7 +396,7 @@
 				
 				case 'canceled':
 					return new PaymentState(
-						provider: 'stripe',
+						provider: self::getMetadata()['driver'],
 						transactionId: $sessionId,
 						state: PaymentStatus::Canceled,
 						currency: $currency,
@@ -406,7 +412,7 @@
 				// requires_payment_method, requires_confirmation, processing, or unknown
 				default:
 					return new PaymentState(
-						provider: 'stripe',
+						provider: self::getMetadata()['driver'],
 						transactionId: $sessionId,
 						state: PaymentStatus::Pending,
 						currency: $currency,
