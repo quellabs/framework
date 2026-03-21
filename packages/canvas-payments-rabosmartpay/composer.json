@@ -1,0 +1,60 @@
+{
+  "name": "quellabs/canvas-payments-rabosmartpay",
+  "description": "Rabo Smart Pay (OmniKassa v2) payment gateway integration for the Canvas PHP framework",
+  "type": "library",
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "Floris van den Berg",
+      "email": "info@quellabs.com"
+    }
+  ],
+  "keywords": [
+    "rabobank",
+    "rabo-smart-pay",
+    "omnikassa",
+    "payments",
+    "payment gateway",
+    "canvas",
+    "canvas-payments",
+    "ideal",
+    "netherlands"
+  ],
+  "support": {
+    "email": "support@quellabs.com",
+    "issues": "https://github.com/quellabs/canvas-payments-rabosmartpay/issues",
+    "forum": "https://github.com/quellabs/canvas-payments-rabosmartpay/discussions",
+    "wiki": "https://github.com/quellabs/canvas-payments-rabosmartpay/wiki",
+    "docs": "https://canvasphp.com/docs",
+    "source": "https://github.com/quellabs/canvas-payments-rabosmartpay"
+  },
+  "require": {
+    "php": "^8.2",
+    "ext-curl": "*",
+    "symfony/http-client": "*",
+    "quellabs/support": "*",
+    "quellabs/contracts": "*",
+    "quellabs/canvas-payments-contracts": "*"
+  },
+  "autoload": {
+    "psr-4": {
+      "Quellabs\\Payments\\RaboSmartPay\\": "src/"
+    }
+  },
+  "scripts": {
+    "post-autoload-dump": [
+      "php -r \"if (!file_exists('config/rabosmartpay.php') && !copy('vendor/quellabs/canvas-payments-rabosmartpay/config/rabosmartpay.php', 'config/rabosmartpay.php')) { echo 'Warning: Could not publish Rabo Smart Pay config file.' . PHP_EOL; }\""
+    ]
+  },
+  "extra": {
+    "discover": {
+      "canvas": {
+        "controller": "Quellabs\\Payments\\RaboSmartPay\\RaboSmartPayController"
+      },
+      "payments": {
+        "provider": "Quellabs\\Payments\\RaboSmartPay\\Driver",
+        "config": "config/rabosmartpay.php"
+      }
+    }
+  }
+}
