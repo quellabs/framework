@@ -37,11 +37,4 @@
 		 */
 		public function getPaymentOptions(string $paymentModule): array;
 		
-		/**
-		 * Returns all refunds issued for the given transaction.
-		 * @param string $paymentReference
-		 * @return array
-		 */
-		public function getRefunds(string $paymentReference): array;
-		
 	}

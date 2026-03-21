@@ -62,6 +62,7 @@
 		 */
 		public static function getMetadata(): array {
 			return [
+				'driver'  => 'paynl',
 				'modules' => array_keys(self::MODULE_OPTION_MAP)
 			];
 		}
@@ -148,7 +149,7 @@
 			// Resolve the Pay.nl integer payment method ID from the module name.
 			// Every module name must be present in MODULE_OPTION_MAP before use.
 			if (!isset(self::MODULE_OPTION_MAP[$request->paymentModule])) {
-				throw new PaymentInitiationException('paynl', 0, "Unknown payment module: '{$request->paymentModule}'");
+				throw new PaymentInitiationException(self::getMetadata()['driver'], 0, "Unknown payment module: '{$request->paymentModule}'");
 			}
 			
 			// Convert payment module to internal PayNL id
@@ -196,13 +197,13 @@
 			
 			// A result code of 0 means the API call failed; surface it as an exception.
 			if ($result['request']['result'] === 0) {
-				throw new PaymentInitiationException('paynl', $result['request']['errorId'], $result['request']['errorMessage']);
+				throw new PaymentInitiationException(self::getMetadata()['driver'], $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 			
 			// The UUID (id) is the stable identifier used for all subsequent API calls.
 			// orderId is a legacy human-readable reference — not used for API calls.
 			return new InitiateResult(
-				provider: 'paynl',
+				provider: self::getMetadata()['driver'],
 				transactionId: $result['response']['id'],
 				redirectUrl: $result['response']['links']['redirect'],
 			);
@@ -252,7 +253,7 @@
 			
 			// A result code of 0 means the API call failed; surface it as an exception.
 			if ($result['request']['result'] === 0) {
-				throw new PaymentExchangeException('paynl', $result['request']['errorId'], $result['request']['errorMessage']);
+				throw new PaymentExchangeException(self::getMetadata()['driver'], $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 			
 			// Unpack the top-level fields we need for state mapping.
@@ -310,7 +311,7 @@
 			
 			// Return the payment state
 			return new PaymentState(
-				provider: 'paynl',
+				provider: self::getMetadata()['driver'],
 				transactionId: $transactionId,
 				state: $state,
 				currency: $currency,
@@ -357,7 +358,7 @@
 			
 			// A result code of 0 means the API call failed; surface it as an exception.
 			if ($result['request']['result'] === 0) {
-				throw new PaymentRefundException('paynl', $result['request']['errorId'], $result['request']['errorMessage']);
+				throw new PaymentRefundException(self::getMetadata()['driver'], $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 			
 			// Pay.nl returns the updated order object, not a discrete refund record.
@@ -366,7 +367,7 @@
 			$refundId = (string)($result['response']['id'] ?? $request->paymentReference);
 			
 			return new RefundResult(
-				provider: 'paynl',
+				provider: self::getMetadata()['driver'],
 				paymentReference: $request->paymentReference,
 				refundId: $refundId,
 				value: $request->amount,
@@ -393,7 +394,7 @@
 			
 			// A result code of 0 means the API call failed; surface it as an exception.
 			if ($result['request']['result'] === 0) {
-				throw new PaymentExchangeException('paynl', $result['request']['errorId'], $result['request']['errorMessage']);
+				throw new PaymentExchangeException(self::getMetadata()['driver'], $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 			
 			// The order-level currency is used as a fallback when a payment entry
@@ -413,7 +414,7 @@
 				
 				// Each refund entry has its own UUID, amount, and currency.
 				$refunds[] = new RefundResult(
-					provider: 'paynl',
+					provider: self::getMetadata()['driver'],
 					paymentReference: $paymentReference,
 					refundId: (string)($payment['id'] ?? ''),
 					value: (int)($payment['amount']['value'] ?? 0),

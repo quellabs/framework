@@ -242,7 +242,7 @@ a reasonable threshold (e.g. 15 minutes). For each such order, call `exchange()`
 
 ```php
 // Reconciliation job — run periodically for orders stuck in pending state
-$state = $this->router->exchange($order->transactionId);
+$state = $this->router->exchange('rabo_ideal', $order->transactionId);
 $this->onPaymentExchange($state);
 ```
 

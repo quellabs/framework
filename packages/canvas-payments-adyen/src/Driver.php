@@ -80,6 +80,7 @@
 		 */
 		public static function getMetadata(): array {
 			return [
+				'driver'  => 'adyen',
 				'modules' => array_keys(self::MODULE_TYPE_MAP),
 			];
 		}
@@ -193,7 +194,7 @@
 			
 			// If that failed, throw an error
 			if ($result['request']['result'] === 0) {
-				throw new PaymentInitiationException('adyen', $result['request']['errorId'], $result['request']['errorMessage']);
+				throw new PaymentInitiationException(self::getMetadata()['driver'], $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 			
 			// Grab the response
@@ -201,7 +202,7 @@
 			
 			// Return the result
 			return new InitiateResult(
-				provider: 'adyen',
+				provider: self::getMetadata()['driver'],
 				transactionId: $response['id'],
 				redirectUrl: $response['url'],
 			);
@@ -262,7 +263,7 @@
 			
 			// redirectResult is mandatory — without it there is nothing to submit to /payments/details
 			if (empty($redirectResult)) {
-				throw new PaymentExchangeException('adyen', 0, "Missing 'redirectResult' in extraData for action='return'.");
+				throw new PaymentExchangeException(self::getMetadata()['driver'], 0, "Missing 'redirectResult' in extraData for action='return'.");
 			}
 			
 			// Build the /payments/details payload. paymentData is optional but should be included
@@ -277,7 +278,7 @@
 			
 			// If that failed, throw exception
 			if ($result['request']['result'] === 0) {
-				throw new PaymentExchangeException('adyen', $result['request']['errorId'], $result['request']['errorMessage']);
+				throw new PaymentExchangeException(self::getMetadata()['driver'], $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 			
 			// Extract the fields needed to build a PaymentState
@@ -308,7 +309,7 @@
 			};
 			
 			return new PaymentState(
-				provider: 'adyen',
+				provider: self::getMetadata()['driver'],
 				transactionId: $transactionId,
 				state: $state,
 				currency: $currency,
@@ -348,7 +349,7 @@
 			// If none given, throw error
 			if (empty($paymentReference)) {
 				throw new PaymentRefundException(
-					'adyen',
+					self::getMetadata()['driver'],
 					0,
 					"Cannot refund: paymentReference is empty. " .
 					"Pass the Adyen pspReference (PaymentState::\$metadata['paymentReference']) as captureId."
@@ -365,14 +366,14 @@
 			
 			// If that failed throw an error
 			if ($result['request']['result'] === 0) {
-				throw new PaymentRefundException('adyen', $result['request']['errorId'], $result['request']['errorMessage']);
+				throw new PaymentRefundException(self::getMetadata()['driver'], $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 			
 			// Adyen returns status='received' immediately; the actual outcome arrives via REFUND webhook.
 			// Adyen assigns the refund its own pspReference, distinct from the original payment's.
 			// We store it as refundId so callers can correlate the incoming REFUND webhook.
 			return new RefundResult(
-				provider: 'adyen',
+				provider: self::getMetadata()['driver'],
 				paymentReference: $paymentReference,
 				refundId: $result['response']['pspReference'],
 				value: $request->amount,
@@ -454,7 +455,7 @@
 			};
 			
 			return new PaymentState(
-				provider: 'adyen',
+				provider: self::getMetadata()['driver'],
 				transactionId: $transactionId,
 				state: $state,
 				currency: $currency,

@@ -67,6 +67,7 @@
 		 */
 		public static function getMetadata(): array {
 			return [
+				'driver'  => 'buckaroo',
 				'modules' => array_keys(self::MODULE_SERVICE_MAP)
 			];
 		}
@@ -211,7 +212,7 @@
 			
 			// If that failed, throw an exception
 			if ($result['request']['result'] === 0) {
-				throw new PaymentInitiationException('buckaroo', $result['request']['errorId'], $result['request']['errorMessage']);
+				throw new PaymentInitiationException(self::getMetadata()['driver'], $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 			
 			// Grab the API response
@@ -224,17 +225,17 @@
 			
 			// If no transaction id was passed back, throw error
 			if (empty($transactionKey)) {
-				throw new PaymentInitiationException('buckaroo', 0, 'Missing transaction Key in Buckaroo response');
+				throw new PaymentInitiationException(self::getMetadata()['driver'], 0, 'Missing transaction Key in Buckaroo response');
 			}
 			
 			// If no redirectUrl was passed back, throw error
 			if (empty($redirectUrl)) {
-				throw new PaymentInitiationException('buckaroo', 0, 'Missing RedirectURL in Buckaroo response');
+				throw new PaymentInitiationException(self::getMetadata()['driver'], 0, 'Missing RedirectURL in Buckaroo response');
 			}
 			
 			// Return result
 			return new InitiateResult(
-				provider: 'buckaroo',
+				provider: self::getMetadata()['driver'],
 				transactionId: $transactionKey,
 				redirectUrl: $redirectUrl,
 			);
@@ -279,7 +280,7 @@
 			
 			// If that faild, throw an exception
 			if ($result['request']['result'] === 0) {
-				throw new PaymentExchangeException('buckaroo', $result['request']['errorId'], $result['request']['errorMessage']);
+				throw new PaymentExchangeException(self::getMetadata()['driver'], $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 			
 			// Grab response data
@@ -327,7 +328,7 @@
 			}
 			
 			return new PaymentState(
-				provider: 'buckaroo',
+				provider: self::getMetadata()['driver'],
 				transactionId: $transactionId,
 				state: $state,
 				currency: $currency,
@@ -363,7 +364,7 @@
 		public function refund(RefundRequest $request): RefundResult {
 			// Throw error when the desired paymentModule does not exist in the map
 			if (!isset(self::MODULE_SERVICE_MAP[$request->paymentModule])) {
-				throw new PaymentRefundException('buckaroo', 0, 'Unknown payment module: ' . $request->paymentModule);
+				throw new PaymentRefundException(self::getMetadata()['driver'], 0, 'Unknown payment module: ' . $request->paymentModule);
 			}
 
 			// Build payload
@@ -397,7 +398,7 @@
 			
 			// If that failed, throw exception
 			if ($result['request']['result'] === 0) {
-				throw new PaymentRefundException('buckaroo', $result['request']['errorId'], $result['request']['errorMessage']);
+				throw new PaymentRefundException(self::getMetadata()['driver'], $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 			
 			// The refund transaction gets its own Key
@@ -409,7 +410,7 @@
 			
 			// Return the result
 			return new RefundResult(
-				provider: 'buckaroo',
+				provider: self::getMetadata()['driver'],
 				paymentReference: $request->paymentReference,
 				refundId: $refundKey,
 				value: $refundedMinor,
@@ -435,7 +436,7 @@
 			
 			// If that failed, throw exception
 			if ($result['request']['result'] === 0) {
-				throw new PaymentExchangeException('buckaroo', $result['request']['errorId'], $result['request']['errorMessage']);
+				throw new PaymentExchangeException(self::getMetadata()['driver'], $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 			
 			// Grab response
@@ -467,7 +468,7 @@
 				// A failed lookup means the refund list would be incomplete — throw rather than
 				// return a partial result that could cause incorrect business logic downstream.
 				if ($refundResult['request']['result'] === 0) {
-					throw new PaymentExchangeException('buckaroo', $refundResult['request']['errorId'], $refundResult['request']['errorMessage']);
+					throw new PaymentExchangeException(self::getMetadata()['driver'], $refundResult['request']['errorId'], $refundResult['request']['errorMessage']);
 				}
 				
 				// Add result to list
@@ -475,7 +476,7 @@
 				$amountDecimal = (float)($refundData['AmountCredit'] ?? 0);
 				
 				$refunds[] = new RefundResult(
-					provider: 'buckaroo',
+					provider: self::getMetadata()['driver'],
 					paymentReference: $paymentReference,
 					refundId: $refundKey,
 					value: (int)round($amountDecimal * 100),
@@ -517,7 +518,7 @@
 				// A failed lookup means valueRefunded would be incorrect — throw rather than
 				// return a silently wrong total that could affect payment state transitions.
 				if ($refundResult['request']['result'] === 0) {
-					throw new PaymentExchangeException('buckaroo', $refundResult['request']['errorId'], $refundResult['request']['errorMessage']);
+					throw new PaymentExchangeException(self::getMetadata()['driver'], $refundResult['request']['errorId'], $refundResult['request']['errorMessage']);
 				}
 				
 				// Refund transactions carry AmountCredit (decimal); convert to minor units.

@@ -33,9 +33,8 @@
 		 */
 		public static function getMetadata(): array {
 			return [
-				'modules' => [
-					'paypal_express'
-				]
+				'driver'  => 'paypal_express',
+				'modules' => ['paypal_express']
 			];
 		}
 		
@@ -102,7 +101,7 @@
 			
 			// return error if failed
 			if ($result["request"]["result"] === 0) {
-				throw new PaymentInitiationException("paypal_express", $result["request"]["errorId"], $result["request"]["errorMessage"]);
+				throw new PaymentInitiationException(self::getMetadata()['driver'], $result["request"]["errorId"], $result["request"]["errorMessage"]);
 			}
 			
 			// transform output
@@ -113,7 +112,7 @@
 			}
 			
 			return new InitiateResult(
-				"paypal_express",
+				self::getMetadata()['driver'],
 				$result["response"]["TOKEN"],
 				$paymentURL,
 				[
@@ -137,7 +136,7 @@
 			// No payment was attempted — return a canceled state without querying the API.
 			if (($extraData['action'] ?? null) === 'cancel') {
 				return new PaymentState(
-					provider: "paypal_express",
+					provider: self::getMetadata()['driver'],
 					transactionId: $transactionId,
 					state: PaymentStatus::Canceled,
 					currency: "",
@@ -152,7 +151,7 @@
 			
 			// Throw error when that failed
 			if ($details["request"]["result"] === 0) {
-				throw new PaymentInitiationException("paypal_express", $details["request"]["errorId"], $details["request"]["errorMessage"]);
+				throw new PaymentInitiationException(self::getMetadata()['driver'], $details["request"]["errorId"], $details["request"]["errorMessage"]);
 			}
 			
 			// If we already have the payment transaction ID (e.g. from IPN), the payment is complete.
@@ -171,7 +170,7 @@
 				// This should be rare in practice.
 				case "PaymentActionInProgress":
 					return new PaymentState(
-						provider: "paypal_express",
+						provider: self::getMetadata()['driver'],
 						transactionId: $transactionId,
 						state: PaymentStatus::Pending,
 						currency: $details["response"]["CURRENCYCODE"] ?? "",
@@ -183,7 +182,7 @@
 				// DoExpressCheckoutPayment was called but the payment failed.
 				case "PaymentActionFailed":
 					return new PaymentState(
-						provider: "paypal_express",
+						provider: self::getMetadata()['driver'],
 						transactionId: $transactionId,
 						state: PaymentStatus::Failed,
 						currency: $details["response"]["CURRENCYCODE"] ?? "",
@@ -243,12 +242,12 @@
 			
 			// If that failed through an exception
 			if ($response["request"]["result"] === 0) {
-				throw new PaymentRefundException("paypal_express", $response["request"]["errorId"], $response["request"]["errorMessage"]);
+				throw new PaymentRefundException(self::getMetadata()['driver'], $response["request"]["errorId"], $response["request"]["errorMessage"]);
 			}
 			
 			// GROSSREFUNDAMT is returned in major units — convert back to minor units for consistency.
 			return new RefundResult(
-				provider: "paypal_express",
+				provider: self::getMetadata()['driver'],
 				paymentReference: $request->paymentReference,
 				refundId: $response["response"]["REFUNDTRANSACTIONID"],
 				value: (int)round((float)$response["response"]["GROSSREFUNDAMT"] * 100),
@@ -287,7 +286,7 @@
 			$txDetails = $this->getGateway()->getTransactionDetails($paymentReference);
 			
 			if ($txDetails["request"]["result"] === 0) {
-				throw new PaymentRefundException("paypal_express", $txDetails["request"]["errorId"], $txDetails["request"]["errorMessage"]);
+				throw new PaymentRefundException(self::getMetadata()['driver'], $txDetails["request"]["errorId"], $txDetails["request"]["errorMessage"]);
 			}
 			
 			// Search for all transactions from the payment date until now
@@ -295,7 +294,7 @@
 			
 			// If the API call failed, throw an exception
 			if ($search["request"]["result"] === 0) {
-				throw new PaymentRefundException("paypal_express", $search["request"]["errorId"], $search["request"]["errorMessage"]);
+				throw new PaymentRefundException(self::getMetadata()['driver'], $search["request"]["errorId"], $search["request"]["errorMessage"]);
 			}
 			
 			// Results are returned as flat indexed keys: L_TYPEn, L_TRANSACTIONIDn, etc.
@@ -306,7 +305,7 @@
 			while (isset($search["response"]["L_TRANSACTIONID{$i}"])) {
 				if ($search["response"]["L_TYPE{$i}"] === "Refund") {
 					$refunds[] = new RefundResult(
-						provider: "paypal_express",
+						provider: self::getMetadata()['driver'],
 						paymentReference: $paymentReference,
 						refundId: $search["response"]["L_TRANSACTIONID{$i}"],
 						value: (int)round(abs((float)$search["response"]["L_AMT{$i}"]) * 100),
@@ -363,7 +362,7 @@
 					}
 					
 					return new PaymentState(
-						provider: "paypal_express",
+						provider: self::getMetadata()['driver'],
 						transactionId: $transactionId,
 						state: PaymentStatus::Redirect,
 						currency: $currency,
@@ -376,7 +375,7 @@
 					);
 				}
 				
-				throw new PaymentInitiationException("paypal_express", $result["request"]["errorId"], $result["request"]["errorMessage"]);
+				throw new PaymentInitiationException(self::getMetadata()['driver'], $result["request"]["errorId"], $result["request"]["errorMessage"]);
 			}
 			
 			// Convert Paypal status to state object
@@ -392,7 +391,7 @@
 				case "Completed":
 				case "Completed-Funds-Held":
 					return new PaymentState(
-						provider: "paypal_express",
+						provider: self::getMetadata()['driver'],
 						transactionId: $transactionId,
 						state: PaymentStatus::Paid,
 						currency: $currency,
@@ -410,7 +409,7 @@
 				case "Failed":
 				case "Voided":
 					return new PaymentState(
-						provider: "paypal_express",
+						provider: self::getMetadata()['driver'],
 						transactionId: $transactionId,
 						state: PaymentStatus::Failed,
 						currency: $currency,
@@ -422,7 +421,7 @@
 				// Any other status (e.g. Pending, Reversed) — treat as pending until resolved.
 				default:
 					return new PaymentState(
-						provider: "paypal_express",
+						provider: self::getMetadata()['driver'],
 						transactionId: $transactionId,
 						state: PaymentStatus::Pending,
 						currency: $currency,
@@ -449,7 +448,7 @@
 			// Throw error when $captureId not passed
 			if ($captureId === null) {
 				throw new PaymentInitiationException(
-					"paypal_express",
+					self::getMetadata()['driver'],
 					500,
 					"Cannot retrieve payment state: captureId is missing from extraData. " .
 					"Ensure your payment_exchange listener persists PaymentState::\$metadata['paymentReference'] " .
@@ -462,7 +461,7 @@
 			$txDetails = $this->getGateway()->getTransactionDetails($captureId);
 			
 			if ($txDetails["request"]["result"] == 0) {
-				throw new PaymentInitiationException("paypal_express", $txDetails["request"]["errorId"], $txDetails["request"]["errorMessage"]);
+				throw new PaymentInitiationException(self::getMetadata()['driver'], $txDetails["request"]["errorId"], $txDetails["request"]["errorMessage"]);
 			}
 			
 			// AMT is the original captured amount. TOTALREFUNDEDAMOUNT accumulates across all refunds.
@@ -486,7 +485,7 @@
 			};
 			
 			return new PaymentState(
-				provider: "paypal_express",
+				provider: self::getMetadata()['driver'],
 				transactionId: $token,
 				state: $state,
 				currency: $r["CURRENCYCODE"] ?? "",

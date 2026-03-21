@@ -57,6 +57,7 @@
 		 */
 		public static function getMetadata(): array {
 			return [
+				'driver'  => 'rabosmartpay',
 				'modules' => array_keys(self::MODULE_BRAND_MAP)
 			];
 		}
