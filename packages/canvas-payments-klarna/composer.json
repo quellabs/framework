@@ -1,0 +1,59 @@
+{
+  "name": "quellabs/canvas-payments-klarna",
+  "description": "Klarna payment gateway integration for the Canvas PHP framework",
+  "type": "library",
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "Floris van den Berg",
+      "email": "info@quellabs.com"
+    }
+  ],
+  "keywords": [
+    "klarna",
+    "bnpl",
+    "buy-now-pay-later",
+    "payments",
+    "payment gateway",
+    "canvas",
+    "canvas-payments",
+    "netherlands"
+  ],
+  "support": {
+    "email": "support@quellabs.com",
+    "issues": "https://github.com/quellabs/canvas-payments-klarna/issues",
+    "forum": "https://github.com/quellabs/canvas-payments-klarna/discussions",
+    "wiki": "https://github.com/quellabs/canvas-payments-klarna/wiki",
+    "docs": "https://canvasphp.com/docs",
+    "source": "https://github.com/quellabs/canvas-payments-klarna"
+  },
+  "require": {
+    "php": "^8.2",
+    "ext-curl": "*",
+    "symfony/http-client": "*",
+    "quellabs/support": "*",
+    "quellabs/contracts": "*",
+    "quellabs/canvas-payments-contracts": "*"
+  },
+  "autoload": {
+    "psr-4": {
+      "Quellabs\\Payments\\Klarna\\": "src/"
+    }
+  },
+  "scripts": {
+    "post-autoload-dump": [
+      "php -r \"if (!file_exists('config/klarna.php') && !copy('vendor/quellabs/canvas-payments-klarna/config/klarna.php', 'config/klarna.php')) { echo 'Warning: Could not publish Klarna config file.' . PHP_EOL; }\""
+    ]
+  },
+  "extra": {
+    "discover": {
+      "canvas": {
+        "controller": "Quellabs\\Payments\\Klarna\\KlarnaController"
+      },
+      "payments": {
+        "provider": "Quellabs\\Payments\\Klarna\\Driver",
+        "config": "config/klarna.php"
+      }
+    }
+  }
+}

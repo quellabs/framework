@@ -27,5 +27,6 @@
   "canvas-payments-multisafepay": "1.0.3",
   "canvas-payments-buckaroo": "1.0.3",
   "canvas-payments-paynl": "1.0.1",
-  "canvas-payments-rabosmartpay": "1.0.0"
+  "canvas-payments-rabosmartpay": "1.0.1",
+  "canvas-payments-klarna": "1.0.0"
 }
