@@ -16,6 +16,11 @@
 	class Driver implements PaymentProviderInterface {
 		
 		/**
+		 * Driver name
+		 */
+		const DRIVER_NAME = "paypal";
+		
+		/**
 		 * Active configuration for this provider, applied by the discovery system after instantiation.
 		 * @var array
 		 */
@@ -34,7 +39,7 @@
 		 */
 		public static function getMetadata(): array {
 			return [
-				'driver'  => 'paypal',
+				'driver'  => self::DRIVER_NAME,
 				'modules' => ['paypal']
 			];
 		}
@@ -99,7 +104,7 @@
 			
 			// If that failed, throw error
 			if ($result["request"]["result"] === 0) {
-				throw new PaymentInitiationException(self::getMetadata()['driver'], $result["request"]["errorId"], $result["request"]["errorMessage"]);
+				throw new PaymentInitiationException(self::DRIVER_NAME, $result["request"]["errorId"], $result["request"]["errorMessage"]);
 			}
 			
 			// Fetch orderId
@@ -119,12 +124,12 @@
 			
 			// Validate approveUrl
 			if ($approveUrl === null) {
-				throw new PaymentInitiationException(self::getMetadata()['driver'], "MISSING_APPROVE_LINK", "PayPal response did not include a payer-action link.");
+				throw new PaymentInitiationException(self::DRIVER_NAME, "MISSING_APPROVE_LINK", "PayPal response did not include a payer-action link.");
 			}
 			
 			// Return result
 			return new InitiateResult(
-				self::getMetadata()['driver'],
+				self::DRIVER_NAME,
 				$orderId,
 				$approveUrl,
 			);
@@ -150,7 +155,7 @@
 			// Return a canceled state without querying the API.
 			if (($extraData['action'] ?? null) === 'cancel') {
 				return new PaymentState(
-					provider: self::getMetadata()['driver'],
+					provider: self::DRIVER_NAME,
 					transactionId: $transactionId,
 					state: PaymentStatus::Canceled,
 					currency: "",
@@ -165,7 +170,7 @@
 			
 			// Validate this went correctly
 			if ($order["request"]["result"] === 0) {
-				throw new PaymentExchangeException(self::getMetadata()['driver'], $order["request"]["errorId"], $order["request"]["errorMessage"]);
+				throw new PaymentExchangeException(self::DRIVER_NAME, $order["request"]["errorId"], $order["request"]["errorMessage"]);
 			}
 			
 			// Map order status to PaymentState
@@ -180,7 +185,7 @@
 				// reach exchange() in this state)
 				case "CREATED":
 					return new PaymentState(
-						provider: self::getMetadata()['driver'],
+						provider: self::DRIVER_NAME,
 						transactionId: $transactionId,
 						state: PaymentStatus::Pending,
 						currency: $currency,
@@ -208,7 +213,7 @@
 					// No capture means the order was cancelled before payment — clean cancellation
 					if ($captureId === null) {
 						return new PaymentState(
-							provider: self::getMetadata()['driver'],
+							provider: self::DRIVER_NAME,
 							transactionId: $transactionId,
 							state: PaymentStatus::Canceled,
 							currency: $currency,
@@ -243,7 +248,7 @@
 					}
 					
 					return new PaymentState(
-						provider: self::getMetadata()['driver'],
+						provider: self::DRIVER_NAME,
 						transactionId: $transactionId,
 						state: PaymentStatus::Redirect,
 						currency: $currency,
@@ -257,7 +262,7 @@
 				
 				default:
 					return new PaymentState(
-						provider: self::getMetadata()['driver'],
+						provider: self::DRIVER_NAME,
 						transactionId: $transactionId,
 						state: PaymentStatus::Pending,
 						currency: $currency,
@@ -300,14 +305,14 @@
 			
 			// If that failed, throw an exception
 			if ($response["request"]["result"] === 0) {
-				throw new PaymentRefundException(self::getMetadata()['driver'], $response["request"]["errorId"], $response["request"]["errorMessage"]);
+				throw new PaymentRefundException(self::DRIVER_NAME, $response["request"]["errorId"], $response["request"]["errorMessage"]);
 			}
 			
 			// Send response back to user
 			$r = $response["response"];
 			
 			return new RefundResult(
-				provider: self::getMetadata()['driver'],
+				provider: self::DRIVER_NAME,
 				paymentReference: $request->paymentReference,
 				refundId: $r["id"],
 				value: (int)round((float)($r["amount"]["value"] ?? 0) * 100),
@@ -346,7 +351,7 @@
 			
 			// If that failed, throw an error
 			if ($result["request"]["result"] === 0) {
-				throw new PaymentRefundException(self::getMetadata()['driver'], $result["request"]["errorId"], $result["request"]["errorMessage"]);
+				throw new PaymentRefundException(self::DRIVER_NAME, $result["request"]["errorId"], $result["request"]["errorMessage"]);
 			}
 			
 			// Flatten the response
@@ -354,7 +359,7 @@
 			
 			foreach ($result["response"] as $refund) {
 				$refunds[] = new RefundResult(
-					provider: self::getMetadata()['driver'],
+					provider: self::DRIVER_NAME,
 					paymentReference: $paymentReference,
 					refundId: $refund["id"],
 					value: (int)round((float)($refund["amount"]["value"] ?? 0) * 100),
@@ -427,7 +432,7 @@
 					}
 					
 					return new PaymentState(
-						provider: self::getMetadata()['driver'],
+						provider: self::DRIVER_NAME,
 						transactionId: $orderId,
 						state: PaymentStatus::Redirect,
 						currency: $currency,
@@ -440,7 +445,7 @@
 					);
 				}
 				
-				throw new PaymentExchangeException(self::getMetadata()['driver'], $errorId, $result["request"]["errorMessage"]);
+				throw new PaymentExchangeException(self::DRIVER_NAME, $errorId, $result["request"]["errorMessage"]);
 			}
 			
 			$purchaseUnits = $result["response"]["purchase_units"] ?? [];
@@ -454,7 +459,7 @@
 			return match ($captureStatus) {
 				// Payment was successfully captured and funds are being transferred.
 				"COMPLETED" => new PaymentState(
-					provider: self::getMetadata()['driver'],
+					provider: self::DRIVER_NAME,
 					transactionId: $orderId,
 					state: PaymentStatus::Paid,
 					currency: $captureCurrency,
@@ -469,7 +474,7 @@
 				// Capture was declined or voided
 				"DECLINED",
 				"FAILED"  => new PaymentState(
-					provider: self::getMetadata()['driver'],
+					provider: self::DRIVER_NAME,
 					transactionId: $orderId,
 					state: PaymentStatus::Failed,
 					currency: $captureCurrency,
@@ -480,7 +485,7 @@
 				
 				// PENDING or any unknown status — the capture was submitted but not yet settled
 				default => new PaymentState(
-					provider: self::getMetadata()['driver'],
+					provider: self::DRIVER_NAME,
 					transactionId: $orderId,
 					state: PaymentStatus::Pending,
 					currency: $captureCurrency,
@@ -509,7 +514,7 @@
 		private function buildCompletedPaymentState(string $orderId, ?string $captureId, string $internalState, string $currency): PaymentState {
 			if ($captureId === null) {
 				throw new PaymentExchangeException(
-					self::getMetadata()['driver'],
+					self::DRIVER_NAME,
 					"MISSING_CAPTURE_ID",
 					"Cannot retrieve payment state: captureId is missing from extraData. " .
 					"Ensure your payment_exchange listener persists PaymentState::\$metadata['paymentReference'] " .
@@ -522,7 +527,7 @@
 			
 			// If that failed, throw error
 			if ($result["request"]["result"] === 0) {
-				throw new PaymentExchangeException(self::getMetadata()['driver'], $result["request"]["errorId"], $result["request"]["errorMessage"]);
+				throw new PaymentExchangeException(self::DRIVER_NAME, $result["request"]["errorId"], $result["request"]["errorMessage"]);
 			}
 			
 			// Grab response
@@ -541,7 +546,7 @@
 			};
 			
 			return new PaymentState(
-				provider: self::getMetadata()['driver'],
+				provider: self::DRIVER_NAME,
 				transactionId: $orderId,
 				state: $paymentStatus,
 				currency: $captureCurrency,

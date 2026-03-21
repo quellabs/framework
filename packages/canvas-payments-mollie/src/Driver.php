@@ -18,6 +18,11 @@
 	class Driver implements PaymentProviderInterface {
 		
 		/**
+		 * Driver name
+		 */
+		const DRIVER_NAME = "mollie";
+		
+		/**
 		 * Active configuration for this provider, applied by the discovery system after instantiation.
 		 * @var array
 		 */
@@ -71,7 +76,7 @@
 		 */
 		public static function getMetadata(): array {
 			return [
-				'driver'  => 'mollie',
+				'driver'  => self::DRIVER_NAME,
 				'modules' => array_keys(self::MODULE_TYPE_MAP),
 			];
 		}
@@ -151,12 +156,12 @@
 			
 			// If API call failed, throw error
 			if ($response["request"]["result"] == 0) {
-				throw new PaymentInitiationException(self::getMetadata()['driver'], $response["request"]["errorId"], $response["request"]["errorMessage"]);
+				throw new PaymentInitiationException(self::DRIVER_NAME, $response["request"]["errorId"], $response["request"]["errorMessage"]);
 			}
 			
 			// Extract the hosted checkout URL Mollie generated for this payment
 			return new InitiateResult(
-				provider: self::getMetadata()['driver'],
+				provider: self::DRIVER_NAME,
 				transactionId: $response["response"]["id"],
 				redirectUrl: $response["response"]["_links"]["checkout"]["href"]
 			);
@@ -179,17 +184,17 @@
 			
 			// Throw error in case of API error
 			if ($response["request"]["result"] === 0) {
-				throw new PaymentRefundException(self::getMetadata()['driver'], $response["request"]["errorId"], $response["request"]["errorMessage"]);
+				throw new PaymentRefundException(self::DRIVER_NAME, $response["request"]["errorId"], $response["request"]["errorMessage"]);
 			}
 			
 			// Response resource has to be "refund"
 			if ($response["response"]["resource"] !== "refund") {
-				throw new PaymentRefundException(self::getMetadata()['driver'], 204, "Invalid resource '{$response["response"]["resource"]}'");
+				throw new PaymentRefundException(self::DRIVER_NAME, 204, "Invalid resource '{$response["response"]["resource"]}'");
 			}
 			
 			// Return the data
 			return new RefundResult(
-				provider: self::getMetadata()['driver'],
+				provider: self::DRIVER_NAME,
 				paymentReference: $response["response"]["paymentId"],
 				refundId: $response["response"]["id"],
 				value: (int)round((float)$response["response"]["amount"]["value"] * 100),
@@ -212,12 +217,12 @@
 			
 			// Return the error if the gateway call failed
 			if ($response["request"]["result"] == 0) {
-				throw new PaymentExchangeException(self::getMetadata()['driver'], $response["request"]["errorId"], $response["request"]["errorMessage"]);
+				throw new PaymentExchangeException(self::DRIVER_NAME, $response["request"]["errorId"], $response["request"]["errorMessage"]);
 			}
 			
 			// Response resource must be "payment"
 			if ($response["response"]["resource"] != "payment") {
-				throw new PaymentExchangeException(self::getMetadata()['driver'], 204, "Invalid resource '{$response["response"]["resource"]}'");
+				throw new PaymentExchangeException(self::DRIVER_NAME, 204, "Invalid resource '{$response["response"]["resource"]}'");
 			}
 			
 			// Map Mollie statuses to internal states
@@ -249,7 +254,7 @@
 			
 			// Return response
 			return new PaymentState(
-				provider: self::getMetadata()['driver'],
+				provider: self::DRIVER_NAME,
 				transactionId: $transactionId,
 				state: $currentStatus,
 				currency: $currency,
@@ -273,7 +278,7 @@
 			
 			// Return error if the gateway call failed
 			if ($response["request"]["result"] == 0) {
-				throw new PaymentRefundException(self::getMetadata()['driver'], $response["request"]["errorId"], $response["request"]["errorMessage"]);
+				throw new PaymentRefundException(self::DRIVER_NAME, $response["request"]["errorId"], $response["request"]["errorMessage"]);
 			}
 			
 			// Map each refund to a RefundResult
@@ -281,7 +286,7 @@
 			
 			foreach ($response["response"] as $refund) {
 				$refunds[] = new RefundResult(
-					provider: self::getMetadata()['driver'],
+					provider: self::DRIVER_NAME,
 					paymentReference: $paymentReference,
 					refundId: $refund["id"],
 					value: (int)round((float)$refund["amount"]["value"] * 100),
@@ -314,7 +319,7 @@
 			
 			// If that failed, throw an error
 			if ($methods["request"]["result"] === 0) {
-				throw new PaymentException(self::getMetadata()['driver'], $methods["request"]["errorId"], $methods["request"]["errorMessage"]);
+				throw new PaymentException(self::DRIVER_NAME, $methods["request"]["errorId"], $methods["request"]["errorMessage"]);
 			}
 			
 			// Flatten the issuer list into a normalized shape for the frontend
@@ -348,14 +353,14 @@
 			
 			// Use the request URL if set, otherwise fall back to config — throw if neither is available
 			$request->redirectUrl ??= $config["redirect_url"]
-				?? throw new PaymentInitiationException(self::getMetadata()['driver'], 500,
+				?? throw new PaymentInitiationException(self::DRIVER_NAME, 500,
 					"Mollie payment gateway is misconfigured: 'redirect_url' is missing or empty. " .
 					"Set 'redirect_url' in config/mollie.php."
 				);
 			
 			// Use the cancelUrl URL if set, otherwise fall back to config — throw if neither is available
 			$request->cancelUrl ??= $config["cancel_url"]
-				?? throw new PaymentInitiationException(self::getMetadata()['driver'], 500,
+				?? throw new PaymentInitiationException(self::DRIVER_NAME, 500,
 					"Mollie payment gateway is misconfigured: 'cancel_url' is missing or empty. " .
 					"Set 'cancel_url' in config/mollie.php."
 				);

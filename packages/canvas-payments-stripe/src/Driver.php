@@ -16,6 +16,11 @@
 	class Driver implements PaymentProviderInterface {
 		
 		/**
+		 * Driver name
+		 */
+		const DRIVER_NAME = "stripe";
+		
+		/**
 		 * Active configuration for this provider, applied by the discovery system after instantiation.
 		 * @var array
 		 */
@@ -45,7 +50,7 @@
 		 */
 		public static function getMetadata(): array {
 			return [
-				'driver'  => 'stripe',
+				'driver'  => self::DRIVER_NAME,
 				'modules' => array_keys(self::MODULE_TYPE_MAP),
 			];
 		}

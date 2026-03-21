@@ -16,6 +16,11 @@
 	class Driver implements PaymentProviderInterface {
 		
 		/**
+		 * Driver name
+		 */
+		const DRIVER_NAME = "multisafepay";
+		
+		/**
 		 * Active configuration for this provider, applied by the discovery system after instantiation.
 		 * @var array
 		 */
@@ -58,7 +63,7 @@
 		 */
 		public static function getMetadata(): array {
 			return [
-				'driver'  => 'multisafepay',
+				'driver'  => self::DRIVER_NAME,
 				'modules' => array_keys(self::MODULE_TYPE_MAP)
 			];
 		}
@@ -126,7 +131,7 @@
 			
 			// Resolve the MSP gateway type from the module name.
 			if (!isset(self::MODULE_TYPE_MAP[$request->paymentModule])) {
-				throw new PaymentInitiationException(self::getMetadata()['driver'], 0, "Unknown payment module: '{$request->paymentModule}'");
+				throw new PaymentInitiationException(self::DRIVER_NAME, 0, "Unknown payment module: '{$request->paymentModule}'");
 			}
 			
 			// Convert payment module to internal Multisafepay type
@@ -164,14 +169,14 @@
 			
 			// If that failed, throw error
 			if ($result['request']['result'] === 0) {
-				throw new PaymentInitiationException(self::getMetadata()['driver'], $result['request']['errorId'], $result['request']['errorMessage']);
+				throw new PaymentInitiationException(self::DRIVER_NAME, $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 			
 			// Return response
 			$response = $result['response']['data'];
 			
 			return new InitiateResult(
-				provider: self::getMetadata()['driver'],
+				provider: self::DRIVER_NAME,
 				transactionId: $response['order_id'],
 				redirectUrl: $response['payment_url'],
 			);
@@ -207,7 +212,7 @@
 			
 			// If that failed, throw an exception
 			if ($result['request']['result'] === 0) {
-				throw new PaymentExchangeException(self::getMetadata()['driver'], $result['request']['errorId'], $result['request']['errorMessage']);
+				throw new PaymentExchangeException(self::DRIVER_NAME, $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 			
 			// Determine payment status
@@ -253,7 +258,7 @@
 			
 			// Return result
 			return new PaymentState(
-				provider: self::getMetadata()['driver'],
+				provider: self::DRIVER_NAME,
 				transactionId: $transactionId,
 				state: $state,
 				currency: $currency,
@@ -288,7 +293,7 @@
 			
 			// If that failed, throw exception
 			if ($result['request']['result'] === 0) {
-				throw new PaymentRefundException(self::getMetadata()['driver'], $result['request']['errorId'], $result['request']['errorMessage']);
+				throw new PaymentRefundException(self::DRIVER_NAME, $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 			
 			// MSP returns 'transaction_id' for the refund identifier.
@@ -296,7 +301,7 @@
 			
 			// Return the refund result
 			return new RefundResult(
-				provider: self::getMetadata()['driver'],
+				provider: self::DRIVER_NAME,
 				paymentReference: $request->paymentReference,
 				refundId: $refundId,
 				value: $request->amount,
@@ -317,7 +322,7 @@
 			
 			// If that failed, throw exception
 			if ($result['request']['result'] === 0) {
-				throw new PaymentExchangeException(self::getMetadata()['driver'], $result['request']['errorId'], $result['request']['errorMessage']);
+				throw new PaymentExchangeException(self::DRIVER_NAME, $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 
 			// Grab order data
@@ -338,7 +343,7 @@
 				
 				// If so, add it to the list
 				$refunds[] = new RefundResult(
-					provider: self::getMetadata()['driver'],
+					provider: self::DRIVER_NAME,
 					paymentReference: $paymentReference,
 					refundId: (string)($related['id'] ?? ''),
 					value: (int)($related['amount'] ?? 0),

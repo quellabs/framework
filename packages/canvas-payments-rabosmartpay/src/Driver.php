@@ -12,8 +12,14 @@
 	use Quellabs\Payments\Contracts\PaymentStatus;
 	use Quellabs\Payments\Contracts\RefundRequest;
 	use Quellabs\Payments\Contracts\RefundResult;
+	use Quellabs\Support\Tools;
 	
 	class Driver implements PaymentProviderInterface {
+		
+		/**
+		 * Driver name
+		 */
+		const DRIVER_NAME = "rabosmartpay";
 		
 		/**
 		 * Active configuration for this provider, applied by the discovery system after instantiation.
@@ -38,7 +44,7 @@
 		 *
 		 * @see https://github.com/rabobank-nederland/omnikassa-sdk-doc (Field description: paymentBrand)
 		 */
-		private const MODULE_BRAND_MAP = [
+		private const MODULE_TYPE_MAP = [
 			'rabo_ideal'      => 'IDEAL',
 			'rabo_bancontact' => 'BANCONTACT',
 			'rabo_mastercard' => 'MASTERCARD',
@@ -57,8 +63,8 @@
 		 */
 		public static function getMetadata(): array {
 			return [
-				'driver'  => 'rabosmartpay',
-				'modules' => array_keys(self::MODULE_BRAND_MAP)
+				'driver'  => self::DRIVER_NAME,
+				'modules' => array_keys(self::MODULE_TYPE_MAP),
 			];
 		}
 		
@@ -136,21 +142,24 @@
 		 * @param PaymentRequest $request
 		 * @return InitiateResult
 		 * @throws PaymentInitiationException
+		 * @throws \Exception
 		 */
 		public function initiate(PaymentRequest $request): InitiateResult {
+			// Grab config
 			$config = $this->getConfig();
 			
 			// Resolve the Rabo Smart Pay payment brand string from the module name.
-			if (!isset(self::MODULE_BRAND_MAP[$request->paymentModule])) {
-				throw new PaymentInitiationException('rabosmartpay', 0, "Unknown payment module: '{$request->paymentModule}'");
+			if (!isset(self::MODULE_TYPE_MAP[$request->paymentModule])) {
+				throw new PaymentInitiationException(self::DRIVER_NAME, 0, "Unknown payment module: '{$request->paymentModule}'");
 			}
 			
-			$paymentBrand = self::MODULE_BRAND_MAP[$request->paymentModule];
+			// Transform payment module to rabobank type
+			$paymentBrand = self::MODULE_TYPE_MAP[$request->paymentModule];
 			
 			// Generate a unique merchant order ID. This is returned in the return URL as
 			// ?order_id= and in the Status Pull response, so the application must store it
 			// from InitiateResult metadata to correlate those callbacks to this payment.
-			$merchantOrderId = uniqid('order', more_entropy: true);
+			$merchantOrderId = Tools::createUUIDv4();
 			
 			// Build the order announcement payload.
 			// amount.amount is in euro cents (minor units), passed as an integer string.
@@ -166,6 +175,7 @@
 				'merchantReturnURL' => $config['return_url'],
 				'skipHppResultPage' => (bool)$config['skip_result_page'],
 				'paymentBrand'      => $paymentBrand,
+				
 				// FORCE_ONCE skips brand selection on the hosted page for this order only.
 				// Use FORCE_ALWAYS when you never want brand selection shown.
 				'paymentBrandForce' => 'FORCE_ONCE',
@@ -227,29 +237,28 @@
 			
 			if ($result['request']['result'] === 0) {
 				throw new PaymentInitiationException(
-					'rabosmartpay',
+					self::DRIVER_NAME,
 					$result['request']['errorId'],
 					$result['request']['errorMessage']
 				);
 			}
 			
-			$extraData = $result['response'];
+			// Fetch result data
+			$data = $result['response'];
 			
-			// redirectUrl: the hosted checkout page URL to redirect the shopper to.
-			// transactionId is Rabo Smart Pay's omnikassaOrderId UUID — the stable identifier
-			// for all subsequent status and refund calls. Failing to receive it is a fatal
-			// error; falling back to merchantOrderId would be wrong since they serve different
-			// API roles and are not interchangeable.
+			// Validate redirectUrl exists in API response
 			if (empty($data['redirectUrl'])) {
-				throw new PaymentInitiationException('rabosmartpay', 0, 'Order announce returned no redirectUrl');
+				throw new PaymentInitiationException(self::DRIVER_NAME, 0, 'Order announce returned no redirectUrl');
 			}
 			
+			// Validate omnikassaOrderId exists in API response
 			if (empty($data['omnikassaOrderId'])) {
-				throw new PaymentInitiationException('rabosmartpay', 0, 'Order announce returned no omnikassaOrderId');
+				throw new PaymentInitiationException(self::DRIVER_NAME, 0, 'Order announce returned no omnikassaOrderId');
 			}
 			
+			// Return result
 			return new InitiateResult(
-				provider: 'rabosmartpay',
+				provider: self::DRIVER_NAME,
 				transactionId: $data['omnikassaOrderId'],
 				redirectUrl: $data['redirectUrl'],
 				metadata: [
@@ -258,11 +267,9 @@
 			);
 		}
 		
-		
 		/**
 		 * Performs the Status Pull call using the token from a webhook notification.
 		 * Delegates to the gateway.
-		 *
 		 * @param string $notificationToken The authentication token from the webhook notification body
 		 * @return array Normalised response containing orderResults[]
 		 */
@@ -290,7 +297,7 @@
 				// If that failed, throw error exception
 				if ($result['request']['result'] === 0) {
 					throw new PaymentExchangeException(
-						'rabosmartpay',
+						self::DRIVER_NAME,
 						$result['request']['errorId'],
 						$result['request']['errorMessage']
 					);
@@ -329,7 +336,7 @@
 			
 			// Return state
 			return new PaymentState(
-				provider: 'rabosmartpay',
+				provider: self::DRIVER_NAME,
 				transactionId: $transactionId,
 				state: $state,
 				currency: $currency,
@@ -371,7 +378,7 @@
 			// If that failed, throw error
 			if ($result['request']['result'] === 0) {
 				throw new PaymentRefundException(
-					'rabosmartpay',
+					self::DRIVER_NAME,
 					$result['request']['errorId'],
 					$result['request']['errorMessage']
 				);
@@ -382,7 +389,7 @@
 			
 			// Return the refund result
 			return new RefundResult(
-				provider: 'rabosmartpay',
+				provider: self::DRIVER_NAME,
 				paymentReference: $request->paymentReference,
 				refundId: $refundId,
 				value: $request->amount,

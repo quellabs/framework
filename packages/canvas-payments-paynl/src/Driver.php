@@ -16,6 +16,11 @@
 	class Driver implements PaymentProviderInterface {
 		
 		/**
+		 * Driver name
+		 */
+		const DRIVER_NAME = "paynl";
+		
+		/**
 		 * Active configuration for this provider, applied by the discovery system after instantiation.
 		 * @var array
 		 */
@@ -38,7 +43,7 @@
 		 * as an e-commerce method. Giropay (694) is marked deprecated by Pay.nl as of 2024.
 		 * SOFORT is not available as a standalone method; use Trustly (2718) for bank transfers.
 		 */
-		private const MODULE_OPTION_MAP = [
+		private const MODULE_TYPE_MAP = [
 			'paynl_ideal'        => 10,
 			'paynl_bancontact'   => 436,
 			'paynl_creditcard'   => 706,   // Visa + Mastercard combined
@@ -62,8 +67,8 @@
 		 */
 		public static function getMetadata(): array {
 			return [
-				'driver'  => 'paynl',
-				'modules' => array_keys(self::MODULE_OPTION_MAP)
+				'driver'  => self::DRIVER_NAME,
+				'modules' => array_keys(self::MODULE_TYPE_MAP),
 			];
 		}
 		
@@ -148,12 +153,12 @@
 			
 			// Resolve the Pay.nl integer payment method ID from the module name.
 			// Every module name must be present in MODULE_OPTION_MAP before use.
-			if (!isset(self::MODULE_OPTION_MAP[$request->paymentModule])) {
-				throw new PaymentInitiationException(self::getMetadata()['driver'], 0, "Unknown payment module: '{$request->paymentModule}'");
+			if (!isset(self::MODULE_TYPE_MAP[$request->paymentModule])) {
+				throw new PaymentInitiationException(self::DRIVER_NAME, 0, "Unknown payment module: '{$request->paymentModule}'");
 			}
 			
 			// Convert payment module to internal PayNL id
-			$paymentMethodId = self::MODULE_OPTION_MAP[$request->paymentModule];
+			$paymentMethodId = self::MODULE_TYPE_MAP[$request->paymentModule];
 			
 			// Build the core order payload.
 			// amount.value is in minor units (e.g. 1250 = €12.50).
@@ -197,13 +202,13 @@
 			
 			// A result code of 0 means the API call failed; surface it as an exception.
 			if ($result['request']['result'] === 0) {
-				throw new PaymentInitiationException(self::getMetadata()['driver'], $result['request']['errorId'], $result['request']['errorMessage']);
+				throw new PaymentInitiationException(self::DRIVER_NAME, $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 			
 			// The UUID (id) is the stable identifier used for all subsequent API calls.
 			// orderId is a legacy human-readable reference — not used for API calls.
 			return new InitiateResult(
-				provider: self::getMetadata()['driver'],
+				provider: self::DRIVER_NAME,
 				transactionId: $result['response']['id'],
 				redirectUrl: $result['response']['links']['redirect'],
 			);
@@ -253,7 +258,7 @@
 			
 			// A result code of 0 means the API call failed; surface it as an exception.
 			if ($result['request']['result'] === 0) {
-				throw new PaymentExchangeException(self::getMetadata()['driver'], $result['request']['errorId'], $result['request']['errorMessage']);
+				throw new PaymentExchangeException(self::DRIVER_NAME, $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 			
 			// Unpack the top-level fields we need for state mapping.
@@ -311,7 +316,7 @@
 			
 			// Return the payment state
 			return new PaymentState(
-				provider: self::getMetadata()['driver'],
+				provider: self::DRIVER_NAME,
 				transactionId: $transactionId,
 				state: $state,
 				currency: $currency,
@@ -358,7 +363,7 @@
 			
 			// A result code of 0 means the API call failed; surface it as an exception.
 			if ($result['request']['result'] === 0) {
-				throw new PaymentRefundException(self::getMetadata()['driver'], $result['request']['errorId'], $result['request']['errorMessage']);
+				throw new PaymentRefundException(self::DRIVER_NAME, $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 			
 			// Pay.nl returns the updated order object, not a discrete refund record.
@@ -367,7 +372,7 @@
 			$refundId = (string)($result['response']['id'] ?? $request->paymentReference);
 			
 			return new RefundResult(
-				provider: self::getMetadata()['driver'],
+				provider: self::DRIVER_NAME,
 				paymentReference: $request->paymentReference,
 				refundId: $refundId,
 				value: $request->amount,
@@ -394,7 +399,7 @@
 			
 			// A result code of 0 means the API call failed; surface it as an exception.
 			if ($result['request']['result'] === 0) {
-				throw new PaymentExchangeException(self::getMetadata()['driver'], $result['request']['errorId'], $result['request']['errorMessage']);
+				throw new PaymentExchangeException(self::DRIVER_NAME, $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 			
 			// The order-level currency is used as a fallback when a payment entry
@@ -414,7 +419,7 @@
 				
 				// Each refund entry has its own UUID, amount, and currency.
 				$refunds[] = new RefundResult(
-					provider: self::getMetadata()['driver'],
+					provider: self::DRIVER_NAME,
 					paymentReference: $paymentReference,
 					refundId: (string)($payment['id'] ?? ''),
 					value: (int)($payment['amount']['value'] ?? 0),
