@@ -62,7 +62,7 @@
 			$this->defaultProvider = new DefaultServiceProvider($this->discovery);
 			
 			// Create autowirer AFTER default provider
-			$this->autowire = new Autowirer($this);
+			$this->autowire = $this->createAutowirer();
 			
 			// Automatically discover and register service providers
 			$this->registerProviders();
@@ -211,13 +211,21 @@
 		 */
 		public function __clone(): void {
 			// Clone and update autowirer's container reference
-			$this->autowire = new Autowirer($this);
+			$this->autowire = $this->createAutowirer();
 			
 			// Reset context for the cloned instance
 			$this->context = [];
 			
 			// Resolution stack must be independent
 			$this->resolutionStack = [];
+		}
+		
+		/**
+		 * Returns a new autowirer
+		 * @return Autowirer
+		 */
+		protected function createAutowirer(): Autowirer {
+			return new Autowirer($this);
 		}
 		
 		/**
