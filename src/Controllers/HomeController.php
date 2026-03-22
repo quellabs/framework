@@ -14,7 +14,6 @@
 	
 		/**
 		 * @InterceptWith(TranslationAspect::class)
-		 * @WithContext(parameter="engine", context="blade")
 		 * @Route("/")
 		 * @return Response
 		 */
