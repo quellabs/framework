@@ -4,32 +4,21 @@
 	
 	use Quellabs\Canvas\Annotations\Route;
 	use Quellabs\Canvas\Annotations\InterceptWith;
+	use Quellabs\Canvas\Annotations\WithContext;
 	use Quellabs\Canvas\Controllers\BaseController;
 	use Quellabs\Canvas\Translation\TranslationAspect;
-	use Quellabs\Canvas\Controllers\SecureController;
-	use Quellabs\Payments\Contracts\PaymentInterface;
-	use Quellabs\Payments\Contracts\PaymentProviderInterface;
-	use Quellabs\Payments\Contracts\PaymentRequest;
-	use Quellabs\Payments\PaymentRouter;
+	use Quellabs\Contracts\Templates\TemplateEngineInterface;
 	use Symfony\Component\HttpFoundation\Response;
 	
 	class HomeController extends BaseController {
 	
 		/**
 		 * @InterceptWith(TranslationAspect::class)
+		 * @WithContext(parameter="engine", context="blade")
 		 * @Route("/")
 		 * @return Response
 		 */
-		public function index(PaymentInterface $paymentRouter): Response {
-			$request = new PaymentRequest(
-				"mollie",
-				10,
-				"EUR",
-				"test",
-				"hallo",
-			);
-
-			$response = $paymentRouter->initiate($request);
+		public function index(TemplateEngineInterface $engine): Response {
 			return new Response("Hello from routes file");
 		}
 		
