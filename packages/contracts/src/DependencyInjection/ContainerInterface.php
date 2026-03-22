@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\Contracts\DependencyInjection;
 	
+	use Quellabs\Contracts\Context\MethodContextInterface;
 	use Quellabs\DependencyInjection\Autowiring\MethodContext;
 	
 	/**
@@ -46,7 +47,7 @@
 		 * @return T|null The resolved service instance or null if resolution fails
 		 * @throws \RuntimeException When circular dependencies are detected or resolution fails
 		 */
-		public function get(string $className, array $parameters = [], ?MethodContext $methodContext=null): ?object;
+		public function get(string $className, array $parameters = [], ?MethodContextInterface $methodContext=null): ?object;
 		
 		/**
 		 * Create an instance with autowired constructor parameters.

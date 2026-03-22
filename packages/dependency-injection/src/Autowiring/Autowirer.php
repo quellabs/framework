@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\DependencyInjection\Autowiring;
 	
+	use Quellabs\Contracts\Context\MethodContextInterface;
 	use Quellabs\Contracts\DependencyInjection\ContainerInterface;
 	
 	/**
@@ -12,7 +13,7 @@
 		/**
 		 * @var ContainerInterface
 		 */
-		private ContainerInterface $container;
+		protected ContainerInterface $container;
 		
 		/**
 		 * Built-in PHP types that cannot be resolved from container
@@ -171,7 +172,7 @@
 		 * @return mixed The resolved instance
 		 * @throws \RuntimeException If no types could be resolved
 		 */
-		protected function resolveParameterFromTypes(string $paramName, array $types, ?MethodContext $methodContext = null): mixed {
+		protected function resolveParameterFromTypes(string $paramName, array $types, ?MethodContextInterface $methodContext = null): mixed {
 			// Early return if no types provided - nothing to resolve
 			if (empty($types)) {
 				return null;
@@ -193,7 +194,7 @@
 			foreach ($resolvableTypes as $type) {
 				try {
 					// Try to get an instance of this type from the container
-					$instance = $this->container->get($type, [], $methodContext);
+					$instance = $this->resolveType($type, [], $methodContext);
 					
 					// If we successfully got a non-null instance, return it immediately
 					// This implements a "first successful resolution wins" strategy
@@ -314,6 +315,19 @@
 		 */
 		protected function isBuiltinType(string $type): bool {
 			return in_array($type, self::BUILTIN_TYPES);
+		}
+		
+		/**
+		 * Resolves a single type from the container.
+		 * Extracted as a separate method to allow subclasses to swap the container
+		 * used for resolution without duplicating the full resolution loop.
+		 * @param string $type The fully qualified class or interface name to resolve
+		 * @param array $parameters Additional parameters for resolution
+		 * @param MethodContext|null $methodContext
+		 * @return object|null The resolved instance or null
+		 */
+		protected function resolveType(string $type, array $parameters, ?MethodContext $methodContext): ?object {
+			return $this->container->get($type, [], $methodContext);
 		}
 		
 		/**
