@@ -5,6 +5,7 @@
 	use Quellabs\Contracts\Context\MethodContextInterface;
 	use Quellabs\ObjectQuel\Configuration;
 	use Quellabs\DependencyInjection\Provider\ServiceProvider as BaseServiceProvider;
+	use Quellabs\Support\ComposerUtils;
 	
 	/**
 	 * Registers a singleton ObjectQuel Configuration instance with the dependency injection
@@ -75,13 +76,16 @@
 			$config = new Configuration();
 			
 			// Configure entity class directory
-			$config->setEntityPath($configData["entity_path"] ?? $defaults["entity_path"] ?? '');
+			$defaultEntityPath = ComposerUtils::getProjectRoot() . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . 'Entities';
+			$config->setEntityPath($configData["entity_path"] ?? $defaults["entity_path"] ?? $defaultEntityPath);
 			
 			// Configure proxy class generation directory
-			$config->setProxyDir($configData["proxy_path"] ?? $defaults["proxy_path"] ?? null);
+			$defaultProxyPath = ComposerUtils::getProjectRoot() . DIRECTORY_SEPARATOR . 'storage' . DIRECTORY_SEPARATOR . 'objectquel' . DIRECTORY_SEPARATOR . 'proxies';
+			$config->setProxyDir($configData["proxy_path"] ?? $defaults["proxy_path"] ?? $defaultProxyPath);
 			
 			// Configure entity class namespace
-			$config->setEntityNameSpace($configData["entity_namespace"] ?? $defaults["entity_namespace"] ?? null);
+			$defaultEntityNameSpace = 'App\\Entities';
+			$config->setEntityNameSpace($configData["entity_namespace"] ?? $defaults["entity_namespace"] ?? $defaultEntityNameSpace);
 			
 			// Enable metadata caching if path is provided
 			if (!empty($configData["metadata_cache_path"])) {

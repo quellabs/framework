@@ -30,7 +30,8 @@
   },
   "require": {
     "quellabs/canvas-database": "*",
-    "quellabs/objectquel": "*"
+    "quellabs/objectquel": "*",
+    "quellabs/support": "*"
   },
   "autoload": {
     "psr-4": {
