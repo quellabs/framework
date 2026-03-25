@@ -48,121 +48,31 @@ return [
 ];
 ```
 
-| Key                 | Required | Description                                                                                   |
-|---------------------|----------|-----------------------------------------------------------------------------------------------|
-| `api_key`           | Yes      | Your XPay API key. Generate in Back Office under Admin > APIKey. Separate keys for test/live. |
-| `return_url`        | Yes      | URL the shopper is redirected to after a completed or pending payment                         |
-| `return_url_cancel` | Yes      | URL the shopper is redirected to after cancelling payment                                     |
-| `return_url_error`  | No       | URL for technical errors during payment. Falls back to `return_url_cancel` if empty           |
-| `webhook_url`       | Yes      | Full URL XPay POSTs push notifications to. Must be publicly reachable                         |
-| `default_language`  | No       | 3-letter language code for the hosted page (ENG, ITA, DEU, FRA…). Defaults to `ENG`          |
+| Key                 | Required | Description                                                                         |
+|---------------------|----------|-------------------------------------------------------------------------------------|
+| `api_key`           | Yes      | Your XPay API key. Generate in Back Office under Admin > APIKey > Add new APIKey.   |
+| `return_url`        | Yes      | URL the shopper is redirected to after a completed or pending payment               |
+| `return_url_cancel` | Yes      | URL the shopper is redirected to after cancelling payment                           |
+| `return_url_error`  | No       | URL for technical errors during payment. Falls back to `return_url_cancel` if empty |
+| `webhook_url`       | Yes      | Full URL XPay POSTs push notifications to. Must be publicly reachable               |
+| `default_language`  | No       | 3-letter language code for the hosted page (ENG, ITA, DEU, FRA…). Defaults to `ENG` |
 
-### XPay Back Office configuration
+## Payment modules
 
-In addition to `config/xpay.php`, configure the following in the XPay Back Office:
+| Module             | Description                                 |
+|--------------------|---------------------------------------------|
+| `xpay`             | All payment methods enabled on the terminal |
+| `xpay_cards`       | Credit/debit cards only                     |
+| `xpay_applepay`    | Apple Pay                                   |
+| `xpay_googlepay`   | Google Pay                                  |
+| `xpay_paypal`      | PayPal                                      |
+| `xpay_mybank`      | MyBank (EU bank transfers)                  |
+| `xpay_bancomatpay` | Bancomat Pay (Italian debit scheme)         |
+| `xpay_klarna`      | Klarna                                      |
+| `xpay_alipay`      | Alipay                                      |
+| `xpay_wechatpay`   | WeChat Pay                                  |
 
-- **API Key**: Admin > APIKey > Add new APIKey — select the correct terminal and generate a key
-- **Return URLs** are sent per-request in the `paymentSession` block; no Back Office configuration required
-- **Push URL** is sent per-request via `notificationUrl`; ensure the URL is publicly reachable
-
-## Key differences from Buckaroo
-
-### Authentication
-
-XPay uses a simple API key in the `X-API-KEY` header — no HMAC signing. Every request also carries a
-`Correlation-Id` UUID v4 header for tracing.
-
-```
-X-API-KEY: <your-api-key>
-Correlation-Id: <uuid-v4>
-```
-
-### Amounts
-
-XPay amounts are in the **smallest currency unit** (minor units): `5000` = €50.00, same as the contract convention.
-No conversion is needed.
-
-### Transaction identity
-
-XPay uses your `orderId` (our `PaymentRequest::$reference`) as the primary order reference. There is no separate
-Buckaroo-style `Key` — the orderId IS the identifier carried through return URLs, push notifications, and the
-status API. We store `request->reference` as `transactionId` in `InitiateResult`.
-
-Each payment action (CAPTURE, REFUND, etc.) gets its own XPay-assigned `operationId`. Refunds require the
-`operationId` of the original CAPTURE operation, not the orderId — the Driver resolves this automatically.
-
-### Hosted Payment Page
-
-XPay returns a `hostedPage` URL from `POST /orders/hpp`. The `securityToken` also returned should ideally be
-stored per-order and verified against the token in the return URL query parameters and push notification body.
-This package surfaces the token in `InitiateResult` metadata for application-layer verification.
-
-### Push vs webhook
-
-XPay push sends a **JSON body**:
-
-```json
-{
-  "eventId":      "554ccc00-28fb-4344-a3fa-4bb8d1999bd5",
-  "eventTime":    "2022-09-01T01:20:00.001Z",
-  "securityToken": "2f0ea5059b41414ca3744fe672327d85",
-  "operation": {
-    "orderId":          "ORDER-12345",
-    "operationId":      "3470744",
-    "operationType":    "CAPTURE",
-    "operationResult":  "AUTHORIZED",
-    "operationAmount":  "3545",
-    "operationCurrency":"EUR"
-  }
-}
-```
-
-The controller reads `operation.orderId` and calls `GET /orders/{orderId}` for the authoritative state.
-
-### Return URL parameters
-
-XPay appends these to the configured `resultUrl`:
-
-| Parameter      | Value                                             |
-|----------------|---------------------------------------------------|
-| `orderId`      | Your order reference (our `transactionId`)        |
-| `operationId`  | XPay-assigned operation identifier                |
-| `channel`      | Channel string (e.g. `ECOMMERCE`)                 |
-| `securityToken`| Token from the createOrder response               |
-| `esito`        | Informational outcome string — **do not trust**   |
-
-We always call the API for the authoritative status and do not rely on the return URL params.
-
-### operationResult to PaymentStatus mapping
-
-| operationResult    | Meaning                                  | Maps to                   |
-|--------------------|------------------------------------------|---------------------------|
-| `AUTHORIZED`       | Payment captured successfully            | `PaymentStatus::Paid`     |
-| `PENDING`          | Awaiting outcome (async methods)         | `PaymentStatus::Pending`  |
-| `VOIDED`           | Authorisation reversed before capture    | `PaymentStatus::Canceled` |
-| `CANCELLED`        | Order cancelled before payment           | `PaymentStatus::Canceled` |
-| `DENIED_BY_RISK`   | Rejected by risk engine                  | `PaymentStatus::Failed`   |
-| `THREEDS_VALIDATED`| 3DS passed, awaiting capture             | `PaymentStatus::Pending`  |
-| `THREEDS_FAILED`   | 3DS challenge failed                     | `PaymentStatus::Failed`   |
-| `FAILED`           | Payment failed at acquirer               | `PaymentStatus::Failed`   |
-| `REVERSED`         | Refund processed successfully            | `PaymentStatus::Refunded` |
-
-### Payment modules
-
-| Module            | XPay paymentService | Description                                  |
-|-------------------|---------------------|----------------------------------------------|
-| `xpay`            | *(omitted)*         | All payment methods enabled on the terminal  |
-| `xpay_cards`      | `CARDS`             | Credit/debit cards only                      |
-| `xpay_applepay`   | `APPLEPAY`          | Apple Pay                                    |
-| `xpay_googlepay`  | `GOOGLEPAY`         | Google Pay                                   |
-| `xpay_paypal`     | `PAYPAL`            | PayPal                                       |
-| `xpay_mybank`     | `MYBANK`            | MyBank (EU bank transfers)                   |
-| `xpay_bancomatpay`| `BANCOMATPAY`       | Bancomat Pay (Italian debit scheme)          |
-| `xpay_klarna`     | `KLARNA`            | Klarna                                       |
-| `xpay_alipay`     | `ALIPAY`            | Alipay                                       |
-| `xpay_wechatpay`  | `WECHATPAY`         | WeChat Pay                                   |
-
-Payment methods must be enabled on your XPay terminal in the Back Office before use.
+Payment methods must be enabled on your terminal in the XPay Back Office before use.
 
 ## Usage
 
@@ -184,10 +94,10 @@ class CheckoutController extends BaseController {
     public function checkout(): Response {
         $request = new PaymentRequest(
             paymentModule: 'xpay_cards',
-            amount:        999,   // in minor units — €9.99
+            amount:        999,         // in minor units — €9.99
             currency:      'EUR',
             description:   'Order #12345',
-            reference:     'ORDER-12345', // up to 27 chars; alphanumeric + # * + - . : ; = ? [ ] _ { | }
+            reference:     'ORDER-12345',
         );
 
         try {
@@ -208,9 +118,9 @@ use Quellabs\Payments\Contracts\PaymentRefundException;
 
 // Full refund (omit amount)
 $request = new RefundRequest(
-    paymentReference: $state->transactionId, // the orderId
+    paymentReference: $state->transactionId,
     paymentModule:    'xpay_cards',
-    amount:           null, // null = full refund
+    amount:           null,
     currency:         'EUR',
     description:      'Full refund for order #12345',
 );
@@ -226,7 +136,7 @@ $request = new RefundRequest(
 
 try {
     $result = $this->router->refund($request);
-    echo $result->refundId; // XPay refund operationId
+    echo $result->refundId;
 } catch (PaymentRefundException $e) {
     // handle error
 }
