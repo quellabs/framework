@@ -39,7 +39,7 @@
 			$config = $driver->getConfig();
 			
 			// Extract information
-			$this->client = HttpClient::create();
+			$this->client = HttpClient::create(['timeout' => 10]);
 			$this->apiKey = $config['api_key'] ?? '';
 			$this->merchantAccount = $config['merchant_account'] ?? '';
 			
@@ -178,12 +178,21 @@
 		 */
 		private function post(string $endpoint, array $payload): array {
 			
+			$headers = [
+				'Content-Type' => 'application/json',
+				'X-API-Key'    => $this->apiKey,
+			];
+			
+			// Attach an idempotency key when a reference is present so that retrying the same
+			// request (e.g. after a network timeout) returns the existing resource rather than
+			// creating a duplicate.
+			if (!empty($payload['reference'])) {
+				$headers['Idempotency-Key'] = $payload['reference'];
+			}
+			
 			try {
 				$response = $this->client->request('POST', $this->baseUrl . $endpoint, [
-					'headers' => [
-						'Content-Type' => 'application/json',
-						'X-API-Key'    => $this->apiKey,
-					],
+					'headers' => $headers,
 					'json'    => $payload,
 				]);
 				
