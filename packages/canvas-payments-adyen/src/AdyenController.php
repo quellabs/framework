@@ -145,17 +145,20 @@
 					continue;
 				}
 				
-				// pspReference is the payment reference; merchantReference is your own order ID.
-				$pspReference = $notification['pspReference'] ?? null;
+				// merchantReference is your own order/payment reference — the same value passed as
+				// 'reference' during initiate(). Use it as the transactionId so webhook PaymentState
+				// objects are consistent with those produced by the return flow and initiate().
+				$merchantReference = $notification['merchantReference'] ?? null;
 				
-				// Ignore if pspReference empty or missing
-				if (empty($pspReference)) {
+				// Ignore if merchantReference is empty or missing
+				if (empty($merchantReference)) {
+					error_log('Adyen webhook missing merchantReference for pspReference: ' . ($notification['pspReference'] ?? 'unknown'));
 					continue;
 				}
 				
 				try {
 					// Call driver to convert raw data to PaymentState
-					$response = $this->adyen->exchange($pspReference, [
+					$response = $this->adyen->exchange($merchantReference, [
 						'action'       => 'webhook',
 						'notification' => $notification,
 					]);

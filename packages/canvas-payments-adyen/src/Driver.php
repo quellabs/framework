@@ -25,7 +25,7 @@
 		 * Active configuration for this provider, applied by the discovery system after instantiation.
 		 * @var array
 		 */
-		private array $config;
+		private array $config = [];
 		
 		/**
 		 * Gateway instance, constructed lazily on first use to ensure config is available.
@@ -223,11 +223,10 @@
 		 * NotificationRequestItem directly — no API call needed.
 		 *
 		 * @see https://docs.adyen.com/api-explorer/Checkout/71/post/payments/details
-		 * @param string $transactionId The Adyen sessionId (return flow) or pspReference (webhook flow)
+		 * @param string $transactionId The merchantReference (return flow) or merchantReference from the notification (webhook flow)
 		 * @param array $extraData
 		 *   - action: 'return' | 'webhook'
 		 *   - redirectResult: (string, required for action='return') URL-decoded redirectResult query param
-		 *   - paymentData: (string|null, optional for action='return') paymentData from session if available
 		 *   - notification: (array, required for action='webhook') decoded NotificationRequestItem
 		 * @return PaymentState
 		 * @throws PaymentExchangeException
@@ -246,19 +245,13 @@
 		 * Resolves the final payment state after the shopper returns from the hosted payment page.
 		 * Submits the redirectResult to POST /payments/details and maps the resultCode to a PaymentState.
 		 *
-		 * redirectResult is appended by Adyen to the returnUrl after a redirect-based payment
-		 * (e.g. iDEAL, 3DS). For inline completions (card without redirect) the Drop-in handles
-		 * this call itself and the shopper never hits the return URL.
-		 *
-		 * paymentData is optional context from the session — include it when available, Adyen
-		 * uses it to correlate the details call back to the original session.
+		 * redirectResult is appended by Adyen to the returnUrl after a redirect-based payment (e.g. iDEAL, 3DS).
 		 *
 		 * @see https://docs.adyen.com/api-explorer/Checkout/71/post/payments/details
 		 * @see https://docs.adyen.com/online-payments/payment-result-codes/
-		 * @param string $transactionId The Adyen sessionId from the return URL query string
-		 * @param array $extraData
-		 *   - redirectResult: (string, required) URL-decoded redirectResult query param
-		 *   - paymentData: (string|null, optional) paymentData from session if available
+		 * @param string $transactionId The Adyen sessionId from the return URL — stored in metadata for traceability.
+		 *                              transactionId in the returned PaymentState is taken from merchantReference in the response.
+		 * @param array $extraData redirectResult: (string, required) URL-decoded redirectResult query param
 		 * @return PaymentState
 		 * @throws PaymentExchangeException
 		 */
@@ -271,12 +264,10 @@
 				throw new PaymentExchangeException(self::DRIVER_NAME, 0, "Missing 'redirectResult' in extraData for action='return'.");
 			}
 			
-			// Build the /payments/details payload. paymentData is optional but should be included
-			// when available — array_filter drops it cleanly when null.
-			$payload = array_filter([
+			// Build the /payments/details payload.
+			$payload = [
 				'details'     => ['redirectResult' => $redirectResult],
-				'paymentData' => $extraData['paymentData'] ?? null,
-			], fn($v) => $v !== null);
+			];
 			
 			// Submit to Adyen — this resolves the pending redirect into a final resultCode
 			$result = $this->getGateway()->getPaymentDetails($payload);
@@ -313,9 +304,17 @@
 				default => PaymentStatus::Pending,
 			};
 			
+			// merchantReference is the stable identifier across all payment flows — it matches
+			// the reference passed during initiate() and is echoed back by Adyen in all responses.
+			$merchantReference = $response['merchantReference'] ?? null;
+			
+			if (empty($merchantReference)) {
+				throw new PaymentExchangeException(self::DRIVER_NAME, 0, "Adyen /payments/details response missing merchantReference.");
+			}
+			
 			return new PaymentState(
 				provider: self::DRIVER_NAME,
-				transactionId: $transactionId,
+				transactionId: $merchantReference,
 				state: $state,
 				currency: $currency,
 				// Only record a paid amount when the payment is actually authorized
@@ -323,8 +322,8 @@
 				valueRefunded: 0,
 				internalState: $resultCode,
 				metadata: array_filter([
-					// pspReference is required for future captures and refunds
 					'paymentReference' => $pspReference,
+					'sessionId'        => $transactionId,
 					'paymentMethod'    => $response['paymentMethod']['type'] ?? null,
 					'refusalReason'    => $response['refusalReason'] ?? null,
 				], fn($v) => $v !== null),
@@ -446,7 +445,6 @@
 				default => PaymentStatus::Pending,
 			};
 			
-			
 			// For REFUND webhooks the amount field is the refunded amount, not the original paid amount.
 			// valuePaid is unknown — use null to signal that the caller should preserve the original
 			// paid amount from their stored AUTHORISATION state rather than overwrite it.
@@ -495,7 +493,7 @@
 				'postalCode'        => $address->postalCode,
 				'city'              => $address->city,
 				'country'           => $address->country,
-				'stateOrProvince'   => $address->region ?? 'N/A',
+				'stateOrProvince'   => $address->region ?? null,
 			];
 		}
 		
