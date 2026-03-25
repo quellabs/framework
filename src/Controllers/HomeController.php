@@ -11,17 +11,19 @@
 	use Symfony\Component\HttpFoundation\Response;
 	
 	class HomeController extends BaseController {
-	
+		
 		/**
 		 * @InterceptWith(TranslationAspect::class)
+		 * @WithContext(parameter="engine", context="blade")
 		 * @Route("/")
+		 * @param TemplateEngineInterface $engine
 		 * @return Response
 		 */
 		public function index(TemplateEngineInterface $engine): Response {
 			return new Response("Hello from routes file");
 		}
 		
-		/**ho
+		/**
 		 * @Route("routes::test")
 		 * @return Response
 		 */

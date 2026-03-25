@@ -53,6 +53,12 @@
      */
     const _hooks = [];
 
+    /** Registry of partial templates; keys are names, values are raw textContent strings. @type {Map<string, string>} */
+    const _partials = new Map();
+
+    /** Guards collectPartials() so it only runs once. @type {boolean} */
+    let _partialsCollected = false;
+
     /**
      * Monotonically increasing counter used to generate unique hook handles.
      * Returned by installMessageHook() and used by uninstallMessageHook() to
@@ -66,14 +72,14 @@
      * Captures variable name/expression with global flag
      * @type {RegExp}
      */
-    const INTERPOLATION_REGEX = /\{\{\s*([^}]+)\s*}}/g;
+    const INTERPOLATION_REGEX = /\{\{(?!>)\s*([^}]+)\s*}}/g;
 
     /**
      * Tests for presence of interpolation syntax without capture groups
      * More efficient for boolean checks than INTERPOLATION_REGEX
      * @type {RegExp}
      */
-    const INTERPOLATION_TEST_REGEX = /\{\{.*?}}/;
+    const INTERPOLATION_TEST_REGEX = /\{\{(?!>).*?}}/;
 
     /**
      * Extracts foreach item metadata from PAC syntax
@@ -93,6 +99,12 @@
     const WP_IF_COMMENT_REGEX = /^\s*wp-if:\s*(.+?)\s*$/;
     const WP_IF_CLOSE_COMMENT_REGEX = /^\s*\/wp-if\s*$/;
     const WP_ELSE_COMMENT_REGEX = /^\s*wp-else\s*$/;
+
+    /** Attribute for partial definition elements: <script type="text/template" data-pac-partial="name"> */
+    const PAC_PARTIAL_ATTR = 'data-pac-partial';
+
+    /** Matches {{> name}} injection syntax in raw (non-browser-parsed) strings. @type {RegExp} */
+    const PARTIAL_INJECT_REGEX = /\{\{>\s*([a-zA-Z_$][a-zA-Z0-9_$]*)\s*}}/g;
 
     /**
      * This regexp finds runs of dots and square brackets.
@@ -844,27 +856,6 @@
         },
 
         /**
-         * Simple djb2 hash algorithm implementation
-         * Provides good distribution for typical string inputs
-         * @param {string} str - String to hash
-         * @returns {string} Hexadecimal hash string
-         */
-        djb2Hash(str) {
-            let hash = 5381;
-
-            for (let i = 0; i < str.length; i++) {
-                // hash * 33 + char_code
-                hash = ((hash << 5) + hash) + str.charCodeAt(i);
-
-                // Keep within 32-bit integer range
-                hash = hash & 0xffffffff;
-            }
-
-            // Convert to positive hex string
-            return (hash >>> 0).toString(16);
-        },
-
-        /**
          * Builds the reverse key name mapping once for caching.
          * @returns {Object<number, string>}
          */
@@ -1522,7 +1513,7 @@
 
                 mq.addEventListener('change', function onChange() {
                     mq.removeEventListener('change', onChange);
-                    
+
                     self.dispatchBrowserStateEvent('dpr', {
                         ratio: window.devicePixelRatio || 1
                     });
@@ -4970,7 +4961,6 @@
         this.interpolationMap = new Map();
         this.textInterpolationMap = new Map();
         this.commentBindingMap = new Map();
-        this.arrayHashMaps = new Map();
         this._readyCalled = false;
 
         // Set up container-specific scroll tracking
@@ -5089,7 +5079,6 @@
         // Clean up all maps
         this.interpolationMap.clear();
         this.textInterpolationMap.clear();
-        this.arrayHashMaps.clear();
         this.commentBindingMap.clear();
         this.updateQueue.clear();
 
@@ -5241,6 +5230,10 @@
      */
     Context.prototype.scanAndRegisterNewElements = function(parentElement) {
         const self = this;
+
+        // Expand partial templates before scanning so injected markup
+        // is visible to scanBindings and scanTextBindings
+        expandPartials(parentElement);
 
         // Scan for new bound elements within this container
         const newBindings = this.scanBindings(parentElement);
@@ -6259,7 +6252,7 @@
                 this.abstraction.browserDevicePixelRatio = stateData.ratio;
                 wakaPAC.sendMessage(this.abstraction.pacId, MSG_DPR_CHANGE, Math.round(stateData.ratio * 100), 0);
                 break;
-                
+
             default:
                 console.warn('Unknown browser state message ' + stateType);
                 break;
@@ -6274,36 +6267,14 @@
      */
     Context.prototype.handleArrayChange = function(event) {
         const detail = event.detail;
-
-        // Convert the array path to a dot-notation string for easier matching
-        // e.g., ['users', 0, 'orders'] becomes 'users.0.orders'
         const pathString = Utils.pathArrayToString(detail.path);
-
-        // Locate all DOM elements with foreach directives that are bound to this array path.
-        // This method searches the DOM for elements whose foreach binding matches the changed array.
         const foreachElements = this.findForeachElementsByArrayPath(pathString);
 
-        // Nothing to update if no foreach elements are bound to this path
         if (foreachElements.length === 0) {
             return;
         }
 
-        // Compute the change classification once, shared across all affected elements.
-        // Avoids redundant diffing when multiple foreach elements bind to the same array.
-        const oldHashMap = this.arrayHashMaps.get(pathString) || new Map();
-        const changes = this.classifyArrayChanges(oldHashMap, detail.newValue);
-        const isSimple = this.canHandleSimply(changes);
-
-        // Re-render each affected foreach element to reflect the array changes
         for (let i = 0, len = foreachElements.length; i < len; i++) {
-            // Simple approach: handle common cases efficiently
-            if (isSimple) {
-                this.handleSimpleArrayChange(foreachElements[i], changes, detail.newValue, pathString);
-                continue;
-            }
-
-            // Trigger a complete re-render of the foreach element.
-            // This will recreate child elements based on the updated array data.
             this.renderForeach(foreachElements[i]);
         }
     };
@@ -6320,9 +6291,10 @@
         // Use a for loop instead of forEach to avoid closure creation per iteration
         for (let i = 0, len = elements.length; i < len; i++) {
             const element = elements[i];
+            const belongs = Utils.belongsToPacContainer(this.container, element);
 
             // Skip elements that don't belong to this container
-            if (!Utils.belongsToPacContainer(this.container, element)) {
+            if (!belongs) {
                 continue;
             }
 
@@ -6399,9 +6371,14 @@
                 const elementByForEach = self.findElementByForEachId(foreachId);
                 const elementData = self.interpolationMap.get(elementByForEach);
 
-                interpolationMap.set(element, elementData);
-                self.interpolationMap.delete(elementByForEach);
-                return;
+                if (elementByForEach && elementData) {
+                    interpolationMap.set(element, elementData);
+                    self.interpolationMap.delete(elementByForEach);
+                    return;
+                }
+
+                // Old element no longer exists — strip the stale id
+                element.removeAttribute('data-pac-foreach-id');
             }
 
             // Set a new foreachId
@@ -6466,6 +6443,131 @@
         // Return bindings map
         return interpolationMap;
     };
+
+    /**
+     * Collects <script type="text/template" data-pac-partial="name"> elements into
+     * _partials once on the first wakaPAC() call. Uses textContent so {{> name}}
+     * is never entity-encoded.
+     * @returns {void}
+     */
+    function collectPartials() {
+        if (_partialsCollected) {
+            return;
+        }
+
+        _partialsCollected = true;
+
+        // Find all partials
+        document.querySelectorAll('script[type="text/template"][' + PAC_PARTIAL_ATTR + ']').forEach(function(el) {
+            // Extract name
+            const name = el.getAttribute(PAC_PARTIAL_ATTR);
+
+            // If none passed, ignore
+            if (!name) {
+                return;
+            }
+
+            // If already defined, warn the user and ignore
+            if (_partials.has(name)) {
+                console.warn('wakaPAC: Duplicate partial "' + name + '" — only the first definition is used.');
+                return;
+            }
+
+            // textContent gives the raw unencoded string — > is never encoded
+            // inside a script tag, so {{> name}} injection syntax is preserved
+            _partials.set(name, el.textContent);
+        });
+    }
+
+    /**
+     * Expands {{> name}} injections in a raw HTML string. Recursive up to depth 10.
+     * Normalizes {{&gt; to {{> first to handle strings captured via element.innerHTML.
+     * @param {string} html
+     * @param {number} [depth=0]
+     * @returns {string}
+     */
+    function expandPartialsInString(html, depth) {
+        if (_partials.size === 0) {
+            return html;
+        }
+
+        depth = depth || 0;
+
+        if (depth >= 10) {
+            console.warn('wakaPAC: Partial expansion stopped at maximum depth (10). Check for circular partial references.');
+            return html;
+        }
+
+        // Normalize &gt; encoding from innerHTML-captured templates
+        html = html.replace(/\{\{&gt;/g, '{{>');
+
+        // Quick check before paying regex cost
+        if (html.indexOf('{{>') === -1) {
+            return html;
+        }
+
+        PARTIAL_INJECT_REGEX.lastIndex = 0;
+
+        const expanded = html.replace(PARTIAL_INJECT_REGEX, function (match, name) {
+            if (!_partials.has(name)) {
+                console.warn('wakaPAC: Unknown partial "{{> ' + name + '}}" — register a <div data-pac-partial="' + name + '"> element in the document.');
+                return match;
+            }
+
+            return _partials.get(name);
+        });
+
+        // Recurse only if something was replaced and depth allows
+        PARTIAL_INJECT_REGEX.lastIndex = 0;
+
+        if (expanded !== html && expanded.indexOf('{{>') !== -1) {
+            return expandPartialsInString(expanded, depth + 1);
+        }
+
+        return expanded;
+    }
+
+    /**
+     * Expands {{> name}} injections inside a live DOM element by walking its
+     * text nodes (textContent is never entity-encoded, unlike innerHTML).
+     * @param {Element} element
+     * @returns {void}
+     */
+    function expandPartials(element) {
+        if (_partials.size === 0) {
+            return;
+        }
+
+        const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+        const hits = [];
+
+        let node;
+        while ((node = walker.nextNode())) {
+            if (node.textContent.indexOf('{{>') !== -1) {
+                hits.push(node);
+            }
+        }
+
+        if (hits.length === 0) {
+            return;
+        }
+
+        hits.forEach(function (textNode) {
+            const expanded = expandPartialsInString(textNode.textContent, 0);
+
+            if (expanded === textNode.textContent) {
+                return;
+            }
+
+            // Replace the text node with parsed HTML nodes.
+            // Create a temporary container, parse the expanded HTML into it,
+            // then insert its children before the text node and remove it.
+            const temp = document.createElement('template');
+            temp.innerHTML = expanded;
+            const fragment = temp.content;
+            textNode.parentNode.replaceChild(fragment, textNode);
+        });
+    }
 
     /**
      * Calls scanAndRegisterNewElements on every Element node in the given array.
@@ -6891,6 +6993,30 @@
     // =============================================================================
 
     /**
+     * Builds a mapping from render indices to source indices, accounting for duplicate values.
+     * @param {Array} sourceArray - The original unfiltered array containing all items.
+     * @param {Array} filteredArray - A subset (or reordering) of sourceArray to map back to source positions.
+     * @returns {Map<number, number>} A Map where each key is a render index (position in filteredArray)
+     *                                and each value is the corresponding source index (position in sourceArray).
+     */
+    Context.prototype.buildIndexMap = function (sourceArray, filteredArray) {
+        const claimed = new Set();
+        const result = new Map(); // keyed by renderIndex
+
+        filteredArray.forEach((item, renderIndex) => {
+            for (let i = 0; i < sourceArray.length; i++) {
+                if (!claimed.has(i) && sourceArray[i] === item) {
+                    claimed.add(i);
+                    result.set(renderIndex, i);
+                    break;
+                }
+            }
+        });
+
+        return result;
+    }
+
+    /**
      * Renders a foreach loop by evaluating its array expression and generating DOM content.
      * @param {Element} foreachElement - DOM element with foreach binding
      * @returns {void}
@@ -6903,9 +7029,6 @@
             console.warn('No foreach binding found for element');
             return;
         }
-
-        // Keep array path for later use
-        const arrayPath = mappingData.sourceArray;
 
         // Clean up old elements from maps before clearing innerHTML
         // This prevents memory leaks when re-rendering dynamic content
@@ -6943,10 +7066,6 @@
             // Get the source array to find original indices
             const sourceArray = this.getSourceArrayForFiltered(mappingData.foreachExpr, array, mappingData);
 
-            // Get hash map and clear it
-            const hashMap = self.arrayHashMaps.get(arrayPath) || new Map();
-            hashMap.clear();
-
             // Store array to be able to compare later
             foreachElement._pacPreviousArray = array;
 
@@ -6954,29 +7073,26 @@
             // This prevents DOM corruption caused by repeated innerHTML += operations
             let completeHTML = '';
 
+            // Expand partial templates in the foreach template string once, up front,
+            // rather than on every iteration — partials are static markup
+            const expandedTemplate = expandPartialsInString(mappingData.template);
+
             // Generate DOM content for each array item
             // HTML comments mark the boundaries and context for each iteration
+            const indexMap = self.buildIndexMap(sourceArray, array);
+
             array.forEach((item, renderIndex) => {
                 // Find the original index in the source array
-                const originalIndex = self.findOriginalIndex(item, sourceArray, renderIndex);
-
-                // Store in mapping data for later diffing
-                const contentHash = self.createForeachEntryHash(item, originalIndex);
-
-                // Put hash in map
-                hashMap.set(contentHash, originalIndex);
+                const originalIndex = indexMap.has(renderIndex) ? indexMap.get(renderIndex) : renderIndex;
 
                 // Build the HTML for this item
                 completeHTML += self.buildForeachItemHTML(
-                    mappingData.foreachId, mappingData.template, originalIndex, renderIndex
+                    mappingData.foreachId, expandedTemplate, originalIndex, renderIndex
                 );
             });
 
             // Set the complete HTML at once - this preserves comment structure
             foreachElement.innerHTML = completeHTML;
-
-            // Add to hash map
-            this.arrayHashMaps.set(arrayPath, hashMap);
 
             // Cache context on item elements for fast lookups
             this.cacheContextOnItemElements(foreachElement);
@@ -7403,19 +7519,38 @@
      * @returns {HTMLElement[]} Elements whose foreach bindings depend on the array.
      */
     Context.prototype.findForeachElementsByArrayPath = function (arrayPath) {
-        // Collect elements that need to be re-rendered
         const elementsToUpdate = [];
 
-        // Scan all registered interpolation mappings
         for (const [element, mappingData] of this.interpolationMap) {
-            if (mappingData.bindings && mappingData.bindings.foreach) {
-                // Match either raw foreach expression or resolved source array
-                if (
-                    mappingData.foreachExpr === arrayPath ||
-                    mappingData.sourceArray === arrayPath
-                ) {
+            // Do not do anything if no foreach was mapped
+            if (!mappingData.bindings?.foreach) {
+                continue;
+            }
+
+            // Fetch the foreach expression and source array
+            const { foreachExpr, sourceArray } = mappingData;
+
+            // Check whether arrayPath is or descends from the bound expression.
+            // e.g. "rows[1].cells[3]" should match a foreach bound to "rows[1].cells".
+            const matches = (expr) => expr === arrayPath || arrayPath.startsWith(expr + '[');
+
+            // Try the raw expressions first — no allocation needed
+            if (matches(foreachExpr) || matches(sourceArray)) {
+                elementsToUpdate.push(element);
+                continue;
+            }
+
+            // foreachExpr may be scoped (e.g. "row.cells" inside an outer foreach),
+            // so resolve it against this element's context and try again.
+            // Result is cached on mappingData to avoid redundant resolution.
+            try {
+                const resolvedExpr = (mappingData._resolvedForeachExpr ??= this.normalizePath(foreachExpr, element));
+
+                if (matches(resolvedExpr)) {
                     elementsToUpdate.push(element);
                 }
+            } catch (_e) {
+                // normalizePath throws for malformed expressions — skip silently
             }
         }
 
@@ -7548,6 +7683,7 @@
             delete element._pacPreviousArray;
             delete element._pacDynamicClass;
             delete element._pacForeachChain;
+            delete element._pacForeachContext;
         });
 
         textNodesToRemove.forEach(textNode => {
@@ -7688,31 +7824,7 @@
     };
 
     /**
-     * Creates a stable hash for a foreach entry based on content data, foreach ID, and logical index.
-     * This hash can be used for change detection, caching, or reconciliation in foreach loops.
-     * @param {*} contentData - The data item being rendered (object, primitive, etc.)
-     * @param {number} index - The logical index in the source array (not renderIndex)
-     * @returns {string} A hash string representing this foreach entry
-     */
-    Context.prototype.createForeachEntryHash = function(contentData, index) {
-        if (typeof index !== 'number' || index < 0 || !Number.isInteger(index)) {
-            throw new Error('index must be a non-negative integer');
-        }
-
-        // Serialize the content data to a stable string representation
-        const contentHash = this.createContentHash(contentData);
-
-        // Combine all components with delimiters to avoid collisions
-        // Format: "foreachId|index|contentHash"
-        const combined = `${index}|${contentHash}`;
-
-        // Create a simple but effective hash using djb2 algorithm
-        return Utils.djb2Hash(combined);
-    }
-
-    /**
      * Builds the HTML string for a single foreach item, wrapped in boundary comments.
-     * Used by both renderForeach (full rebuild) and addItems (incremental insert).
      * @param {string} foreachId - The unique identifier for this foreach loop
      * @param {string} template - The raw HTML template for one iteration
      * @param {number} originalIndex - The item's index in the source array
@@ -7724,470 +7836,6 @@
             template +
             `<!-- /pac-foreach-item -->`;
     }
-
-    /**
-     * Classifies changes between old and new arrays based on content hashes.
-     * This function enables efficient DOM diffing by identifying what items were
-     * added, removed, moved, or remained unchanged between array renders.
-     * Uses the existing createForeachEntryHash method for consistent hashing.
-     * @param {Map<string, number>} oldHashMap - Map of hash -> index from previous render
-     * @param {Array} newArray - New array data to be rendered
-     * @returns {{removed: *[], moved: *[], added: *[], unchanged: *[]}} Classification object with arrays for each change type
-     * @returns {number[]} returns.removed - Indices of items to remove from DOM (sorted high to low)
-     * @returns {Object[]} returns.moved - Items that moved positions [{from: oldIndex, to: newIndex, hash}]
-     * @returns {number[]} returns.added - Indices where new items should be inserted
-     * @returns {number[]} returns.unchanged - Indices of items that stayed in same position
-     */
-    Context.prototype.classifyArrayChanges = function(oldHashMap, newArray) {
-        const self = this;
-
-        // Step 1: Generate hash map for the new array state
-        const newHashMap = new Map();
-
-        // Create hashes for new array
-        newArray.forEach((item, index) => {
-            const hash = self.createForeachEntryHash(item, index);
-            newHashMap.set(hash, index); // hash -> newIndex mapping
-        });
-
-        // Initialize result object to collect our classifications
-        const result = {
-            removed: [],    // Items present in old array but missing in new array
-            moved: [],      // Items present in both arrays but at different positions
-            added: [],      // Items present in new array but missing in old array
-            unchanged: []   // Items present in both arrays at the same position
-        };
-
-        // Step 2: Find removed items by checking old hashes against new array
-        // If an old hash is not found in the new array, the item was deleted
-        oldHashMap.forEach((oldIndex, hash) => {
-            if (!newHashMap.has(hash)) {
-                result.removed.push(oldIndex);
-            }
-        });
-
-        // Step 3: Process each item in the new array to find moves, adds, and unchanged
-        newHashMap.forEach((newIndex, hash) => {
-            if (oldHashMap.has(hash)) {
-                // This hash existed in the previous render
-                const oldIndex = oldHashMap.get(hash);
-
-                if (oldIndex === newIndex) {
-                    // Same position in both arrays - no DOM operation needed
-                    result.unchanged.push(newIndex);
-                } else {
-                    // Different position - DOM element needs to be moved
-                    result.moved.push({
-                        from: oldIndex,    // Where the DOM element currently is
-                        to: newIndex,      // Where it needs to move to
-                        hash: hash         // Hash for debugging/verification
-                    });
-                }
-            } else {
-                // This hash is new - DOM element needs to be created
-                result.added.push(newIndex);
-            }
-        });
-
-        // Step 4: Sort arrays to ensure safe DOM manipulation order
-        // CRITICAL: Process removals from highest index to lowest to avoid index shifting
-        result.removed.sort((a, b) => b - a);
-
-        // Process moves by target position to maintain proper order during DOM manipulation
-        result.moved.sort((a, b) => a.to - b.to);
-
-        // Process additions in ascending order to maintain natural insertion order
-        result.added.sort((a, b) => a - b);
-
-        // Return the result
-        return result;
-    }
-
-    /**
-     * Determines if changes can be handled with simple operations
-     * @param {Object} changes - The changes object containing arrays of added, removed, and moved items
-     * @param {Array} changes.added - Items that were added to the array
-     * @param {Array} changes.removed - Items that were removed from the array
-     * @param {Array} changes.moved - Items that were moved/reordered within the array
-     * @returns {boolean} True if changes can be handled with simple DOM operations, false if full rebuild needed
-     */
-    Context.prototype.canHandleSimply = function (changes) {
-        const totalChanges = changes.added.length + changes.removed.length + changes.moved.length;
-
-        // Skip simple handling if changes are too complex
-        if (totalChanges > 10) {
-            return false;
-        }
-
-        // Handle these patterns efficiently:
-        return (
-            // Pure additions anywhere
-            (changes.added.length > 0 && changes.removed.length === 0 && changes.moved.length === 0) ||
-
-            // Pure removals anywhere
-            (changes.removed.length > 0 && changes.added.length === 0 && changes.moved.length === 0) ||
-
-            // Pure moves (reordering without add/remove)
-            (changes.moved.length > 0 && changes.added.length === 0 && changes.removed.length === 0) ||
-
-            // Simple replace operations (same number of items added/removed, no moves)
-            (changes.added.length === changes.removed.length && changes.moved.length === 0) ||
-
-            // Small mixed operations (a few changes of different types)
-            (totalChanges <= 3)
-        );
-    };
-
-    /**
-     * Handles simple array changes with targeted DOM operations
-     * FIXED: Proper hash map cleanup and index management
-     * @param {HTMLElement} element - The DOM element containing the array representation
-     * @param {Object} changes - The changes object with added, removed, and moved arrays
-     * @param {Array} newArray - The complete updated array after changes
-     * @param {string} arrayPath - The property path to the array being updated
-     * @returns {void}
-     */
-    Context.prototype.handleSimpleArrayChange = function(element, changes, newArray, arrayPath) {
-        const mappingData = this.interpolationMap.get(element);
-
-        // Apply removals first (hash map will be rebuilt after all operations)
-        if (changes.removed.length > 0) {
-            this.removeItems(element, changes.removed);
-        }
-
-        if (changes.moved.length > 0) {
-            this.moveItems(element, changes.moved);
-        }
-
-        if (changes.added.length > 0) {
-            this.addItems(element, changes.added, newArray, mappingData);
-        }
-
-        // Scan newly added elements for bindings
-        this.scanAndRegisterNewElements(element);
-
-        // Rebuild hash map from scratch after all operations
-        this.rebuildHashMap(element, newArray, arrayPath);
-
-        // Store new array
-        element._pacPreviousArray = newArray;
-
-        // Sync <select> DOM state back to model after child elements changed
-        this.syncSelectAfterForeach(element);
-    };
-
-    /**
-     * Rebuilds the hash map from current DOM state
-     * This ensures the hash map stays synchronized with actual DOM content
-     * @param {HTMLElement} element - The foreach container
-     * @param {Array} currentArray - Current array data
-     * @param {string} arrayPath - Path to the array
-     */
-    Context.prototype.rebuildHashMap = function(element, currentArray, arrayPath) {
-        const newHashMap = new Map();
-
-        // Walk through current DOM and rebuild hash map
-        const walker = document.createTreeWalker(element, NodeFilter.SHOW_COMMENT);
-        let node;
-
-        while ((node = walker.nextNode())) {
-            const match = node.textContent.match(FOREACH_INDEX_REGEX);
-            if (match) {
-                const originalIndex = parseInt(match[2], 10);
-                const renderIndex = parseInt(match[3], 10);
-
-                // Get the current item data
-                if (renderIndex < currentArray.length) {
-                    const item = currentArray[renderIndex];
-                    const hash = this.createForeachEntryHash(item, originalIndex);
-                    newHashMap.set(hash, originalIndex);
-                }
-            }
-        }
-
-        // Replace the hash map
-        this.arrayHashMaps.set(arrayPath, newHashMap);
-    };
-
-    /**
-     * Removes items from a foreach-rendered element and cleans up all associated references
-     * to prevent memory leaks. This method handles both DOM removal and tracking map cleanup.
-     * @param {Element} element - The container element containing the items to remove
-     * @param {number[]} removedIndices - Array of original indices of items to remove
-     * @throws {TypeError} If element is not a valid DOM Element
-     * @throws {TypeError} If removedIndices is not an array
-     */
-    Context.prototype.removeItems = function(element, removedIndices) {
-        // Validate input parameters to catch programming errors early
-        if (!(element instanceof Element)) {
-            throw new TypeError('element must be a DOM Element');
-        }
-
-        if (!Array.isArray(removedIndices)) {
-            throw new TypeError('removedIndices must be an array');
-        }
-
-        // Store reference to context for use in walker callback
-        // (callbacks don't have access to 'this' unless bound or captured)
-        const self = this;
-
-        // Process each index that needs to be removed
-        removedIndices.forEach(index => {
-            // Find all DOM nodes associated with this foreach item
-            // (includes the comment markers and all content between them)
-            const nodes = this.findItemNodes(element, index);
-
-            nodes.forEach(node => {
-                // STEP 1: CLEANUP PHASE - Remove all map references before DOM removal
-                // This prevents memory leaks by ensuring removed nodes can be garbage collected
-
-                // Create a tree walker to traverse all descendant nodes
-                // We need to walk the entire subtree because nested elements might have their own bindings
-                const walker = document.createTreeWalker(
-                    // Start from the node itself if it's an element, otherwise from its parent
-                    // (text/comment nodes can't be tree roots, so we use their parent)
-                    node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement,
-
-                    // Walk elements, text nodes, and comment nodes
-                    // (all three types can have entries in our tracking maps)
-                    NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT | NodeFilter.SHOW_COMMENT,
-
-                    // Filter function to only process nodes that belong to this component
-                    // This prevents accidentally cleaning up nodes from nested child components
-                    {
-                        acceptNode(n) {
-                            // Check if this node belongs to our container, not a nested component
-                            // belongsToPacContainer returns true only if 'element' is the immediate PAC parent
-                            return Utils.belongsToPacContainer(element, n)
-                                ? NodeFilter.FILTER_ACCEPT  // Process this node
-                                : NodeFilter.FILTER_SKIP;   // Skip this node and its descendants
-                        }
-                    }
-                );
-
-                // Walk through all nodes in the subtree and clean up map references
-                let currentNode;
-
-                while ((currentNode = walker.nextNode())) {
-                    // Clean up based on node type - each type uses a different map
-
-                    if (currentNode instanceof Element) {
-                        // Element nodes have attribute bindings (wp-text, wp-class, etc.)
-                        // Remove from interpolationMap to release binding metadata
-                        self.interpolationMap.delete(currentNode);
-                    } else if (currentNode.nodeType === Node.TEXT_NODE) {
-                        // Text nodes have interpolation templates ({{variable}})
-                        // Remove from textInterpolationMap to release template data
-                        self.textInterpolationMap.delete(currentNode);
-                    } else if (currentNode.nodeType === Node.COMMENT_NODE) {
-                        // Comment nodes might have conditional directives (<!-- wp-if: condition -->)
-                        // Remove from commentBindingMap to release conditional metadata
-                        self.commentBindingMap.delete(currentNode);
-                    }
-                }
-
-                // STEP 2: DOM REMOVAL PHASE - Remove the node from the DOM tree
-                // At this point, all map references have been cleaned up, so the node
-                // and its descendants can be garbage collected once removed from the DOM
-                node.remove();
-            });
-        });
-    };
-
-    /**
-     * Handles DOM node repositioning while maintaining proper insertion order.
-     * Each move operation relocates nodes from their current position to a new target position.
-     * @param {Element} element - The container element containing the items to move
-     * @param {Object[]} moves - Array of move operations
-     * @param {number} moves[].from - Original index of the item to move
-     * @param {number} moves[].to - Target index where the item should be moved
-     */
-    Context.prototype.moveItems = function(element, moves) {
-        // Input validation
-        if (!(element instanceof Element)) {
-            throw new TypeError('element must be a DOM Element');
-        }
-
-        if (!Array.isArray(moves)) {
-            throw new TypeError('moves must be an array');
-        }
-
-        moves.forEach(move => {
-            // Validate move object structure
-            if (typeof move !== 'object' || move === null) {
-                throw new TypeError('each move must be an object');
-            }
-
-            if (typeof move.from !== 'number' || typeof move.to !== 'number') {
-                throw new TypeError('move objects must have numeric "from" and "to" properties');
-            }
-
-            if (move.from < 0 || move.to < 0) {
-                throw new RangeError('move indices cannot be negative');
-            }
-
-            const itemNodes = this.findItemNodes(element, move.from);
-            const insertPoint = this.findInsertionPoint(element, move.to);
-
-            itemNodes.forEach(node => {
-                if (insertPoint) {
-                    element.insertBefore(node, insertPoint);
-                } else {
-                    // Insert at end when no insertion point found (target index beyond current items)
-                    element.appendChild(node);
-                }
-            });
-        });
-    };
-
-    /**
-     * Adds new items to a foreach-rendered element at specified indices
-     * @param {HTMLElement} element - The DOM element containing the foreach-rendered items
-     * @param {number[]} addedIndices - Array of indices where new items should be inserted
-     * @param {Array} newArray - The updated array containing all items including new ones
-     * @param {Object} mappingData - Configuration object for the foreach mapping
-     * @param {string} mappingData.foreachId - Unique identifier for this foreach instance
-     * @param {string} mappingData.template - HTML template string for rendering items
-     * @param {string} mappingData.foreachExpr - The foreach expression used for filtering/mapping
-     */
-    Context.prototype.addItems = function(element, addedIndices, newArray, mappingData) {
-        // Get the source array to determine original indices
-        const sourceArray = this.getSourceArrayForFiltered(mappingData.foreachExpr, newArray, mappingData);
-
-        addedIndices.forEach(index => {
-            const item = newArray[index];
-
-            // Find the original index in the source array for this item
-            const originalIndex = this.findOriginalIndex(item, sourceArray, index);
-
-            // Create HTML with proper comments
-            const itemHTML = this.buildForeachItemHTML(
-                mappingData.foreachId, mappingData.template, originalIndex, index
-            );
-
-            // Create appropriate container based on parent element type
-            const tempContainer = this.createTemporaryContainer(element);
-            tempContainer.innerHTML = itemHTML;
-
-            // Cache context on the newly created item elements
-            this.cacheContextOnItemElements(tempContainer);
-
-            // Find insertion point
-            const insertPoint = this.findInsertionPoint(element, index);
-
-            // Insert all nodes
-            while (tempContainer.firstChild) {
-                if (insertPoint) {
-                    element.insertBefore(tempContainer.firstChild, insertPoint);
-                } else {
-                    element.appendChild(tempContainer.firstChild);
-                }
-            }
-        });
-    };
-
-    /**
-     * Creates an appropriate temporary container based on the parent element type
-     * This ensures the browser's HTML parser doesn't strip invalid element nesting
-     * @param {HTMLElement} parentElement - The parent element that will receive the content
-     * @returns {HTMLElement} A temporary container appropriate for the content type
-     */
-    Context.prototype.createTemporaryContainer = function(parentElement) {
-        const tagName = parentElement.tagName.toLowerCase();
-
-        switch(tagName) {
-            case 'table':
-            case 'tbody':
-            case 'thead':
-            case 'tfoot':
-                return document.createElement('tbody');
-
-            case 'tr':
-                return document.createElement('tr');
-
-            case 'ul':
-            case 'ol':
-                return document.createElement('ul');
-
-            case 'select':
-                return document.createElement('select');
-
-            default:
-                return document.createElement('div');
-        }
-    };
-
-    /**
-     * Finds all DOM nodes for a foreach item by its index, handling nested foreach loops
-     * @param {Element} element - The DOM element to search within
-     * @param {number} index - The index of the foreach item to find
-     * @returns {Node[]} Array of DOM nodes that belong to the foreach item at the specified index
-     */
-    Context.prototype.findItemNodes = function(element, index) {
-        const nodes = [];
-        const walker = document.createTreeWalker(element, NodeFilter.SHOW_ALL);
-
-        let collecting = false;  // Whether we're currently collecting nodes for our target item
-        let depth = 0;           // Nesting depth counter for handling nested foreach loops
-        let node;
-
-        while ((node = walker.nextNode())) {
-            if (node.nodeType === Node.COMMENT_NODE) {
-                const text = node.textContent.trim();
-                const match = text.match(FOREACH_INDEX_REGEX);
-
-                // Check if this is the start comment for our target index
-                if (match && parseInt(match[2], 10) === index && !collecting) {
-                    collecting = true;
-                    depth = 0;
-                    nodes.push(node);
-                } else if (collecting) {
-                    // We're collecting - add this comment node
-                    nodes.push(node);
-
-                    if (match) {
-                        // Found a nested foreach start - increment depth
-                        depth++;
-                    } else if (text === '/pac-foreach-item') {
-                        // Found a foreach end comment
-                        if (depth === 0) {
-                            // This closes our target item - stop collecting
-                            break;
-                        }
-
-                        // This closes a nested foreach item - decrement depth
-                        depth--;
-                    }
-                }
-            } else if (collecting) {
-                // Collect all non-comment nodes while we're in collection mode
-                nodes.push(node);
-            }
-        }
-
-        return nodes;
-    };
-
-    /**
-     * Finds the insertion point for an item at the given index within a foreach loop
-     * @param {Element} element - The DOM element to search within
-     * @param {number} targetIndex - The index where the new item should be inserted
-     * @returns {Comment|null} The comment node marking where to insert, or null to append at end
-     */
-    Context.prototype.findInsertionPoint = function(element, targetIndex) {
-        const walker = document.createTreeWalker(element, NodeFilter.SHOW_COMMENT);
-
-        let node;
-        while ((node = walker.nextNode())) {
-            const match = node.textContent.match(FOREACH_INDEX_REGEX);
-
-            if (match && parseInt(match[3], 10) >= targetIndex) {
-                return node;
-            }
-        }
-
-        return null; // Append at end
-    };
 
     // =============================================================================
     // CLEANUP OBSERVER
@@ -9081,6 +8729,133 @@
     }
 
     // ========================================================================
+    // PAINT INVALIDATION ENGINE
+    // ========================================================================
+
+    /**
+     * Tracks canvas containers that have been invalidated and are waiting for
+     * their MSG_PAINT to be dispatched on the next animation frame.
+     *
+     * Key:   pacId (string)
+     * Value: {
+     *   container: HTMLCanvasElement,
+     *   rcPaint:   {x, y, width, height}  — union of all dirty rects; used by getDC() for clipping
+     *   rects:     [{x, y, width, height}] — list of discrete dirty rects; exposed via getUpdateRgn()
+     * }
+     *
+     * A container is present in this map if and only if a rAF flush is already
+     * scheduled for it. Multiple invalidateRect() calls before the next frame
+     * are accumulated: rcPaint grows as the bounding union, while rects collects
+     * each distinct incoming rectangle (absorbed duplicates are dropped).
+     *
+     * @type {Map<string, {container: HTMLCanvasElement, rcPaint: {x:number, y:number, width:number, height:number}, rects: Array<{x:number, y:number, width:number, height:number}>}>}
+     */
+    const _dirtyCanvases = new Map();
+
+    /**
+     * Dispatches MSG_PAINT to all invalidated canvas containers, then clears
+     * the dirty set. Called once per animation frame by requestAnimationFrame.
+     */
+    function _flushPaintQueue() {
+        _dirtyCanvases.forEach(function(entry) {
+            const { container } = entry;
+
+            // Skip containers that were removed from the DOM before the frame fired
+            if (!container.isConnected) {
+                return;
+            }
+
+            // Mark as actively painting so getDC() knows to apply the clip
+            entry.painting = true;
+
+            DomUpdateTracker.dispatchToContainer(container, DomUpdateTracker.wrapDomEventAsMessage(
+                MSG_PAINT,
+                null,   // No originating DOM event
+                0,      // wParam unused
+                0       // lParam unused
+            ));
+
+            // Clear the painting flag — releaseDC() uses this to decide whether
+            // to restore the context state
+            entry.painting = false;
+        });
+
+        _dirtyCanvases.clear();
+    }
+
+    /**
+     * Marks a canvas PAC container as needing repaint and schedules a
+     * requestAnimationFrame flush if one is not already pending.
+     *
+     * Multiple calls with different rects before the next frame are accumulated
+     * into a dirty region: rcPaint tracks the bounding union (used by getDC()
+     * for clipping), while rects collects each distinct incoming rectangle for
+     * getUpdateRgn(). Incoming rects that are fully contained within an already-
+     * queued rect are dropped to keep the list compact.
+     *
+     * @param {string} pacId  - data-pac-id of the target canvas container
+     * @param {{x:number, y:number, width:number, height:number}|null} [rect]
+     *   Rectangle to invalidate in canvas-local coordinates.
+     *   Pass null (or omit) to invalidate the entire canvas.
+     * @returns {void}
+     */
+    function _invalidateRect(pacId, rect) {
+        // Fetch the container
+        const container = wakaPAC.getContainerByPacId(pacId);
+
+        // If not found, bail
+        if (!container) {
+            return;
+        }
+
+        // Do nothing if the container is not a canvas
+        if (!(container instanceof HTMLCanvasElement)) {
+            return;
+        }
+
+        // Normalize: null rect means the whole canvas
+        const fullRect = {
+            x: 0,
+            y: 0,
+            width: container.width,
+            height: container.height
+        };
+
+        // Fetch the rect or default to the entire canvas if omitted
+        const incoming = rect || fullRect;
+
+        // Queue the repaint
+        if (_dirtyCanvases.has(pacId)) {
+            const existing = _dirtyCanvases.get(pacId);
+
+            // If the canvas is already fully invalidated there is nothing more to accumulate
+            if (existing.rcPaint.x === 0 && existing.rcPaint.y === 0 &&
+                existing.rcPaint.width === container.width &&
+                existing.rcPaint.height === container.height) {
+                return;
+            }
+
+            // Drop the incoming rect if it is fully contained within any rect already
+            // in the list — it adds no new dirty area
+            const absorbed = existing.rects.some(r =>
+                incoming.x >= r.x &&
+                incoming.y >= r.y &&
+                incoming.x + incoming.width <= r.x + r.width &&
+                incoming.y + incoming.height <= r.y + r.height
+            );
+
+            if (!absorbed) {
+                existing.rects.push(incoming);
+                existing.rcPaint = Utils.unionRect(existing.rcPaint, incoming);
+            }
+        } else {
+            // First invalidation this frame — schedule the flush
+            _dirtyCanvases.set(pacId, { container, rcPaint: incoming, rects: [incoming] });
+            requestAnimationFrame(_flushPaintQueue);
+        }
+    }
+
+    // ========================================================================
     // MAIN FRAMEWORK
     // ========================================================================
 
@@ -9094,6 +8869,9 @@
      * @returns {Object|Object[]|undefined} Single abstraction for ID, array for class/tag selectors
      */
     function wakaPAC(selector, abstraction = {}, options = {}) {
+        // Collect data-pac-partial elements from the document (once only)
+        collectPartials();
+
         // Initialize global event tracking first
         DomUpdateTracker.initialize();
 
@@ -9152,7 +8930,7 @@
             // Let plugins augment the component
             _plugins.forEach(function(plugin) {
                 if (typeof plugin.onComponentCreated === 'function') {
-                    plugin.onComponentCreated(context.abstraction, pacId, config);
+                    plugin.onComponentCreated(context.abstraction, pacId, context.config);
                 }
             });
 
@@ -9758,108 +9536,6 @@
     };
 
     // ========================================================================
-    // PAINT INVALIDATION ENGINE
-    // ========================================================================
-
-    /**
-     * Tracks canvas containers that have been invalidated and are waiting for
-     * their MSG_PAINT to be dispatched on the next animation frame.
-     *
-     * Key:   pacId (string)
-     * Value: { container: HTMLCanvasElement, rcPaint: {x, y, width, height} }
-     *
-     * A container is present in this map if and only if a rAF flush is already
-     * scheduled for it. Multiple invalidateRect() calls before the next frame
-     * collapse into a single entry via rect union — identical to how Win32
-     * coalesces WM_PAINT messages in the message queue.
-     *
-     * @type {Map<string, {container: HTMLCanvasElement, rcPaint: {x:number, y:number, width:number, height:number}}>}
-     */
-    const _dirtyCanvases = new Map();
-
-    /**
-     * Dispatches MSG_PAINT to all invalidated canvas containers, then clears
-     * the dirty set. Called once per animation frame by requestAnimationFrame.
-     */
-    function _flushPaintQueue() {
-        _dirtyCanvases.forEach(function(entry) {
-            const { container } = entry;
-
-            // Skip containers that were removed from the DOM before the frame fired
-            if (!container.isConnected) {
-                return;
-            }
-
-            // Mark as actively painting so getDC() knows to apply the clip
-            entry.painting = true;
-
-            DomUpdateTracker.dispatchToContainer(container, DomUpdateTracker.wrapDomEventAsMessage(
-                MSG_PAINT,
-                null,   // No originating DOM event
-                0,      // wParam unused
-                0       // lParam unused
-            ));
-
-            // Clear the painting flag — releaseDC() uses this to decide whether
-            // to restore the context state
-            entry.painting = false;
-        });
-
-        _dirtyCanvases.clear();
-    }
-
-    /**
-     * Marks a canvas PAC container as needing repaint and schedules a
-     * requestAnimationFrame flush if one is not already pending.
-     *
-     * Multiple calls with different rects before the next frame are coalesced
-     * into a single MSG_PAINT carrying the union rectangle — equivalent to
-     * Win32 InvalidateRect() accumulating into the update region.
-     *
-     * @param {string} pacId  - data-pac-id of the target canvas container
-     * @param {{x:number, y:number, width:number, height:number}|null} [rect]
-     *   Rectangle to invalidate in canvas-local coordinates.
-     *   Pass null (or omit) to invalidate the entire canvas.
-     * @returns {void}
-     */
-    function _invalidateRect(pacId, rect) {
-        // Fetch the container
-        const container = wakaPAC.getContainerByPacId(pacId);
-
-        // If not found, bail
-        if (!container) {
-            return;
-        }
-
-        // Do nothing if the container is not a canvas
-        if (!(container instanceof HTMLCanvasElement)) {
-            return;
-        }
-
-        // Normalize: null rect means the whole canvas
-        const fullRect = {
-            x: 0,
-            y: 0,
-            width:  container.width,
-            height: container.height
-        };
-
-        // Fetch the rect or default to the entire canvas right if omitted
-        const incoming = rect || fullRect;
-
-        // Queue the repaint
-        if (_dirtyCanvases.has(pacId)) {
-            // Container already queued — union the new rect into the existing one
-            const existing = _dirtyCanvases.get(pacId);
-            existing.rcPaint = Utils.unionRect(existing.rcPaint, incoming);
-        } else {
-            // First invalidation this frame — schedule the flush
-            _dirtyCanvases.set(pacId, { container, rcPaint: incoming });
-            requestAnimationFrame(_flushPaintQueue);
-        }
-    }
-
-    // ========================================================================
     // PUBLIC ACCELERATOR API
     // ========================================================================
 
@@ -9958,7 +9634,7 @@
      * @param {string} pacId
      * @returns {CanvasRenderingContext2D|null}
      */
-    wakaPAC.getDC = function(pacId) {
+    wakaPAC.getDC = function (pacId) {
         const container = this.getContainerByPacId(pacId);
 
         if (!container || !(container instanceof HTMLCanvasElement)) {
@@ -9970,16 +9646,19 @@
         const ctx = container.getContext('2d', attributes);
 
         // If we're inside a MSG_PAINT dispatch, automatically restrict drawing
-        // to the invalidated rectangle — equivalent to Win32 BeginPaint() setting
-        // up a clip region over the update rect.  Callers must balance this with
-        // a matching releaseDC() call so the saved state is properly unwound.
+        // to the dirty region — equivalent to Win32 BeginPaint() setting up a
+        // clip region over the update region.  Callers must balance this with a
+        // matching releaseDC() call so the saved state is properly unwound.
         const entry = _dirtyCanvases.get(pacId);
 
-        if (entry?.painting && entry.rcPaint) {
-            const r = entry.rcPaint;
+        if (entry?.painting && entry.rects?.length) {
             ctx.save();
             ctx.beginPath();
-            ctx.rect(r.x, r.y, r.width, r.height);
+
+            for (const r of entry.rects) {
+                ctx.rect(r.x, r.y, r.width, r.height);
+            }
+
             ctx.clip();
         }
 
@@ -10010,7 +9689,7 @@
         const entry = _dirtyCanvases.get(pacId);
 
         // Only restore if getDC() pushed a save — it does so only during painting
-        if (entry?.painting && entry.rcPaint) {
+        if (entry?.painting && entry.rects?.length) {
             ctx.restore();
         }
     };
@@ -10032,9 +9711,93 @@
      * @param {string} pacId - data-pac-id of the target canvas container
      * @returns {{x:number, y:number, width:number, height:number}|null}
      */
-    wakaPAC.getInvalidatedRect = function(pacId) {
+    wakaPAC.getInvalidatedRect = function (pacId) {
         const entry = _dirtyCanvases.get(pacId);
-        return entry ? { ...entry.rcPaint } : null;
+
+        if (!entry) {
+            return null;
+        }
+
+        return entry.rects.reduce((acc, r) => Utils.unionRect(acc, r));
+    };
+
+    /**
+     * Returns the list of discrete invalidated rectangles for a canvas PAC
+     * container, or null if no repaint is pending.
+     * @param {string} pacId - data-pac-id of the target canvas container
+     * @returns {Array<{x:number, y:number, width:number, height:number}>|null}
+     */
+    wakaPAC.getUpdateRgn = function (pacId) {
+        const entry = _dirtyCanvases.get(pacId);
+
+        if (!entry) {
+            return null;
+        }
+
+        return entry.rects.map(r => ({...r}));
+    };
+
+    /**
+     * Creates an off-screen context sized to match the canvas backing store.
+     * The component owns the returned DC; recreate it in MSG_SIZE after resizing.
+     * @param {string} pacId
+     * @returns {CanvasRenderingContext2D|null}
+     */
+    wakaPAC.createCompatibleDC = function(pacId) {
+        const container = this.getContainerByPacId(pacId);
+
+        if (!container || !(container instanceof HTMLCanvasElement)) {
+            return null;
+        }
+
+        return /** @type {CanvasRenderingContext2D} */ (new OffscreenCanvas(container.width, container.height).getContext('2d'));
+    };
+
+    /**
+     * Releases a compatible DC. Zeros the OffscreenCanvas dimensions to free
+     * the pixel buffer promptly rather than waiting on GC.
+     * @param {CanvasRenderingContext2D} dc
+     */
+    wakaPAC.deleteCompatibleDC = function(dc) {
+        // OffscreenCanvas has no explicit destroy method — nulling the canvas
+        // width and height releases the pixel buffer immediately in most engines,
+        // allowing the GC to reclaim the backing store without waiting for a
+        // full collection cycle.
+        if (!dc) {
+            return;
+        }
+
+        const offscreen = dc.canvas;
+
+        if (offscreen instanceof OffscreenCanvas) {
+            offscreen.width  = 0;
+            offscreen.height = 0;
+        }
+    };
+
+    /**
+     * Blits srcDC onto destDC at (dx, dy). Optional dw/dh stretch the source;
+     * omit to copy at the source's natural dimensions.
+     * @param {CanvasRenderingContext2D} destDC
+     * @param {CanvasRenderingContext2D} srcDC
+     * @param {number} dx
+     * @param {number} dy
+     * @param {number} [dw]
+     * @param {number} [dh]
+     */
+    wakaPAC.bitBlt = function(destDC, srcDC, dx, dy, dw, dh) {
+        if (!destDC || !srcDC) {
+            return;
+        }
+
+        const source = srcDC.canvas;
+
+        destDC.drawImage(
+            source,
+            dx, dy,
+            dw ?? source.width,
+            dh ?? source.height
+        );
     };
 
     /**
@@ -10084,6 +9847,144 @@
         return {
             width: container.width,
             height: container.height
+        };
+    };
+
+    /**
+     * Loads a bitmap from a variety of sources, returning an opaque bitmap handle
+     * ready to pass to bitBlt, getBitmapSize, saveBitmap, and deleteBitmap.
+     * The caller owns the returned handle and must call deleteBitmap() when done.
+     *
+     * Accepted sources:
+     *   - string               URL or data URI; fetched and decoded via createImageBitmap()
+     *   - HTMLImageElement     Must be fully loaded (complete && naturalWidth > 0)
+     *   - ImageBitmap          Used directly; caller retains ownership and must close it themselves
+     *   - ImageData            Raw RGBA pixel buffer; drawn at its own dimensions
+     *   - Blob                 Decoded via createImageBitmap()
+     *   - HTMLCanvasElement    Snapshot of the canvas at call time
+     *   - OffscreenCanvas      Snapshot of the offscreen canvas at call time
+     *
+     * @param {string|HTMLImageElement|ImageBitmap|ImageData|Blob|HTMLCanvasElement|OffscreenCanvas} source
+     * @returns {Promise<CanvasRenderingContext2D|null>} Bitmap handle, or null on failure
+     */
+    wakaPAC.loadBitmap = async function(source) {
+        try {
+            let bitmap;
+
+            if (typeof source === 'string') {
+                // URL or data URI — fetch the resource and decode it;
+                // network or CORS failures propagate to the outer catch, returning null
+                bitmap = await createImageBitmap(await (await fetch(source)).blob());
+            } else if (source instanceof HTMLImageElement) {
+                // <img> element — must be fully decoded before we can read pixels
+                if (!source.complete || source.naturalWidth === 0) {
+                    return null;
+                }
+
+                bitmap = await createImageBitmap(source);
+            } else if (source instanceof ImageBitmap) {
+                // Already an ImageBitmap — use directly; caller retains ownership
+                // and is responsible for closing it
+                const dc = new OffscreenCanvas(source.width, source.height).getContext('2d');
+                dc.drawImage(source, 0, 0);
+                return /** @type {CanvasRenderingContext2D} */ (dc);
+            } else if (
+                source instanceof ImageData        ||
+                source instanceof Blob             ||
+                source instanceof HTMLCanvasElement ||
+                source instanceof OffscreenCanvas
+            ) {
+                // ImageData, Blob, canvas snapshot — all accepted directly by createImageBitmap()
+                bitmap = await createImageBitmap(source);
+            } else {
+                return null;
+            }
+
+            // Draw the bitmap into a fresh OffscreenCanvas-backed DC
+            const dc = new OffscreenCanvas(bitmap.width, bitmap.height).getContext('2d');
+            dc.drawImage(bitmap, 0, 0);
+
+            // ImageBitmap holds GPU-side memory and must be explicitly released;
+            // unlike Image, it is not GC'd cleanly without an explicit close()
+            bitmap.close();
+
+            return /** @type {CanvasRenderingContext2D} */ (dc);
+        } catch {
+            return null;
+        }
+    };
+
+    /**
+     * Saves the contents of a DC or bitmap handle to an image file, triggering a browser download.
+     * Works with DCs from createCompatibleDC, bitmap handles from loadBitmap, and DCs from getDC.
+     * The image format is derived from the filename extension: .png, .jpg/.jpeg, or .webp.
+     * Defaults to PNG if the extension is absent or unrecognized.
+     * @param {CanvasRenderingContext2D} dc                     - Source DC or bitmap handle to save
+     * @param {string}                  [filename='bitmap.png'] - Output filename
+     * @returns {Promise<boolean>} true on success, false on failure
+     */
+    wakaPAC.saveBitmap = async function(dc, filename = 'bitmap.png') {
+        if (!dc) {
+            return false;
+        }
+
+        // Derive MIME type from filename extension; fall back to PNG
+        const ext  = filename.split('.').pop().toLowerCase();
+        const mime = { jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp' }[ext] ?? 'image/png';
+
+        try {
+            let blob;
+
+            if (dc.canvas instanceof OffscreenCanvas) {
+                // OffscreenCanvas — compatible DCs and bitmap handles
+                blob = await dc.canvas.convertToBlob({ type: mime });
+            } else {
+                // HTMLCanvasElement — DCs from getDC()
+                blob = await new Promise((resolve, reject) =>
+                    dc.canvas.toBlob(b => b ? resolve(b) : reject(new Error('toBlob failed')), mime)
+                );
+            }
+
+            // createObjectURL creates a temporary URL pointing to the blob in memory.
+            // It must be revoked after use to release the memory; the download is
+            // already queued by the time revokeObjectURL is called so it is safe to
+            // revoke immediately.
+            const url = URL.createObjectURL(blob);
+            const a   = Object.assign(document.createElement('a'), { href: url, download: filename });
+
+            a.click();
+            URL.revokeObjectURL(url);
+            return true;
+        } catch {
+            return false;
+        }
+    };
+
+    /**
+     * Releases a bitmap handle created by loadBitmap().
+     * Alias for deleteCompatibleDC() — provided so call sites that use loadBitmap()
+     * can pair it with a semantically matching release call.
+     * @param {CanvasRenderingContext2D} hBitmap
+     */
+    wakaPAC.deleteBitmap = function(hBitmap) {
+        wakaPAC.deleteCompatibleDC(hBitmap);
+    };
+
+    /**
+     * Returns the dimensions of a bitmap handle created by loadBitmap().
+     * Equivalent to calling GetObject(hBitmap) to retrieve BITMAP.bmWidth/bmHeight in Win32.
+     * Returns null if hBitmap is invalid.
+     * @param {CanvasRenderingContext2D} hBitmap
+     * @returns {{width: number, height: number}|null}
+     */
+    wakaPAC.getBitmapSize = function(hBitmap) {
+        if (!hBitmap) {
+            return null;
+        }
+
+        return {
+            width:  hBitmap.canvas.width,
+            height: hBitmap.canvas.height
         };
     };
 
