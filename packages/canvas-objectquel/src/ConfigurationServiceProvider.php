@@ -1,6 +1,6 @@
 <?php
 	
-	namespace Quellabs\CanvasObjectQuel\Discovery;
+	namespace Quellabs\CanvasObjectQuel;
 	
 	use Quellabs\Contracts\Context\MethodContextInterface;
 	use Quellabs\ObjectQuel\Configuration;
