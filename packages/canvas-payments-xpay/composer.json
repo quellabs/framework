@@ -1,0 +1,57 @@
+{
+  "name": "quellabs/canvas-payments-xpay",
+  "description": "Nexi XPay Global payment gateway integration for the Canvas PHP framework",
+  "type": "library",
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "Floris van den Berg",
+      "email": "info@quellabs.com"
+    }
+  ],
+  "keywords": [
+    "xpay",
+    "nexi",
+    "payments",
+    "payment gateway",
+    "canvas",
+    "canvas-payments",
+    "europe"
+  ],
+  "support": {
+    "email": "support@quellabs.com",
+    "issues": "https://github.com/quellabs/canvas-payments-xpay/issues",
+    "forum": "https://github.com/quellabs/canvas-payments-xpay/discussions",
+    "wiki": "https://github.com/quellabs/canvas-payments-xpay/wiki",
+    "docs": "https://canvasphp.com/docs",
+    "source": "https://github.com/quellabs/canvas-payments-xpay"
+  },
+  "require": {
+    "php": "^8.2",
+    "symfony/http-client": "*",
+    "quellabs/support": "*",
+    "quellabs/contracts": "*",
+    "quellabs/canvas-payments-contracts": "*"
+  },
+  "autoload": {
+    "psr-4": {
+      "Quellabs\\Payments\\XPay\\": "src/"
+    }
+  },
+  "scripts": {
+    "post-autoload-dump": [
+      "php -r \"if (!file_exists('config/xpay.php') && !copy('vendor/quellabs/canvas-payments-xpay/config/xpay.php', 'config/xpay.php')) { echo 'Warning: Could not publish XPay config file.' . PHP_EOL; }\""
+    ]
+  },
+  "extra": {
+    "discover": {
+      "canvas": {
+        "controller": "Quellabs\\Payments\\XPay\\XPayController"
+      },
+      "payments": {
+        "provider": "Quellabs\\Payments\\XPay\\Driver",
+        "config": "config/xpay.php"
+      }
+    }
+  }
+}

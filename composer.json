@@ -124,6 +124,10 @@
     {
       "type": "path",
       "url": "./packages/canvas-payments-klarna"
+    },
+    {
+      "type": "path",
+      "url": "./packages/canvas-payments-xpay"
     }
   ],
   "require": {
@@ -177,7 +181,8 @@
     "quellabs/canvas-payments-buckaroo": "dev-main as 1.999.999",
     "quellabs/canvas-payments-paynl": "dev-main as 1.999.999",
     "quellabs/canvas-payments-rabosmartpay": "dev-main as 1.999.999",
-    "quellabs/canvas-payments-klarna": "dev-main as 1.999.999"
+    "quellabs/canvas-payments-klarna": "dev-main as 1.999.999",
+    "quellabs/canvas-payments-xpay": "dev-main as 1.999.999"
   },
   "autoload": {
     "psr-4": {
@@ -209,7 +214,8 @@
       "Quellabs\\Payments\\Buckaroo\\": "packages/canvas-payments-multisafepay/src/",
       "Quellabs\\Payments\\PayNL\\": "packages/canvas-payments-paynl/src/",
       "Quellabs\\Payments\\RaboSmartPay\\": "packages/canvas-payments-rabosmartpay/src/",
-      "Quellabs\\Payments\\Klarna\\": "packages/canvas-payments-klarna/src/"
+      "Quellabs\\Payments\\Klarna\\": "packages/canvas-payments-klarna/src/",
+      "Quellabs\\Payments\\XPay\\": "packages/canvas-payments-xpay/src/"
     },
     "files": [
       "packages/support/src/bootstrap.php"
