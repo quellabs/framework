@@ -29,7 +29,8 @@
     }
   },
   "require": {
-    "quellabs/objectquel": "^1."
+    "quellabs/canvas-database": "*",
+    "quellabs/objectquel": "*"
   },
   "autoload": {
     "psr-4": {
@@ -45,7 +46,7 @@
     "discover": {
       "di": {
         "provider": {
-          "class": "Quellabs\\CanvasObjectQuel\\Discovery\\ConfigurationServiceProvider",
+          "class": "Quellabs\\CanvasObjectQuel\\ConfigurationServiceProvider",
           "config": "config/database.php"
         }
       }
