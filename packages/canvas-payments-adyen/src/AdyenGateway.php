@@ -46,7 +46,7 @@
 			// Live endpoint prefix differs per merchant; for testing the test endpoint is fixed.
 			// In production, you must replace 'YOUR_LIVE_PREFIX' with the prefix from your Customer Area.
 			// @see https://docs.adyen.com/development-resources/live-endpoints
-			if ($config['test_mode']) {
+			if ($config['test_mode'] ?? false) {
 				$this->baseUrl = 'https://checkout-test.adyen.com/' . self::CHECKOUT_VERSION;
 			} else {
 				$livePrefix = $config['live_endpoint_prefix'] ?? '';
