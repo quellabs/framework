@@ -39,6 +39,10 @@
     },
     {
       "type": "path",
+      "url": "./packages/canvas-handlebars"
+    },
+    {
+      "type": "path",
       "url": "./packages/canvas-skeleton"
     },
     {
@@ -163,6 +167,7 @@
     "quellabs/canvas-blade": "dev-main as 1.999.999",
     "quellabs/canvas-latte": "dev-main as 1.999.999",
     "quellabs/canvas-plates": "dev-main as 1.999.999",
+    "quellabs/canvas-handlebars": "dev-main as 1.999.999",
     "quellabs/canvas-skeleton": "dev-main as 1.999.999",
     "quellabs/canvas-database": "dev-main as 1.999.999",
     "quellabs/dependency-injection": "dev-main as 1.999.999",
@@ -201,6 +206,7 @@
       "Quellabs\\Canvas\\Smarty\\": "packages/canvas-smarty/src/",
       "Quellabs\\Canvas\\Twig\\": "packages/canvas-twig/src/",
       "Quellabs\\Canvas\\Blade\\": "packages/canvas-blade/src/",
+      "Quellabs\\Canvas\\Handlebars\\": "packages/canvas-handlebars/src/",
       "Quellabs\\Canvas\\Latte\\": "packages/canvas-latte/src/",
       "Quellabs\\Canvas\\Plates\\": "packages/canvas-plates/src/",
       "Quellabs\\Canvas\\Cache\\": "packages/cache/src/",

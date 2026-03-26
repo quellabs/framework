@@ -1,0 +1,65 @@
+{
+  "name": "quellabs/canvas-handlebars",
+  "description": "Handlebars template engine integration for the Canvas PHP framework via LightnCandy, with contextual containers and automatic service discovery",
+  "keywords": [
+    "canvas-framework",
+    "handlebars",
+    "lightncandy",
+    "template-integration",
+    "php-templating"
+  ],
+  "type": "library",
+  "license": "MIT",
+  "homepage": "https://github.com/quellabs/canvas-handlebars",
+  "support": {
+    "issues": "https://github.com/quellabs/canvas-handlebars/issues",
+    "source": "https://github.com/quellabs/canvas-handlebars"
+  },
+  "authors": [
+    {
+      "name": "Quellabs",
+      "email": "info@quellabs.com",
+      "homepage": "https://quellabs.com"
+    }
+  ],
+  "minimum-stability": "stable",
+  "prefer-stable": true,
+  "config": {
+    "platform": {
+      "php": "8.2"
+    },
+    "sort-packages": true,
+    "optimize-autoloader": true,
+    "classmap-authoritative": true
+  },
+  "require": {
+    "zordius/lightncandy": "^1.2",
+    "quellabs/dependency-injection": "^1.",
+    "quellabs/contracts": "^1.",
+    "quellabs/sculpt": "^1.",
+    "quellabs/signal-hub": "^1.",
+    "quellabs/support": "^1."
+  },
+  "autoload": {
+    "psr-4": {
+      "Quellabs\\Canvas\\Handlebars\\": "src/"
+    }
+  },
+  "extra": {
+    "discover": {
+      "di": {
+        "provider": "Quellabs\\Canvas\\Handlebars\\ServiceProvider",
+        "config": ["config/handlebars.php", "config/app.php"]
+      },
+      "sculpt": {
+        "provider": "Quellabs\\Canvas\\Handlebars\\Sculpt\\ServiceProvider",
+        "config": "config/handlebars.php"
+      }
+    }
+  },
+  "scripts": {
+    "post-install-cmd": [
+      "php -r \"copy('vendor/quellabs/canvas-handlebars/config/handlebars.php', 'public/config/handlebars.php');\""
+    ]
+  }
+}
