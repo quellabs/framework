@@ -71,14 +71,18 @@
 		 * @return int Exit code (0 for success)
 		 */
 		public function execute(ConfigurationManager $config): int {
-			$entityName = $this->input->ask("Class name of the entity to create or update (e.g. AgreeableElephant)");
+			// Allow passing the entity name directly on the command line (e.g. `sculpt make:entity Elephant`),
+			// falling back to an interactive prompt if omitted
+			$entityName = $config->getPositional(0) ?? $this->input->ask("Class name of the entity to create or update (e.g. AgreeableElephant)");
 			
 			if (empty($entityName)) {
 				return 0;
 			}
 			
+			// Show message that we are making a new or modifying an exising entiy
 			$this->displayEntityOperationMessage($entityName);
 			
+			// Scan the entity directory so relationship prompts can offer existing entities as choices
 			$availableEntities = $this->getAvailableEntities();
 			$properties = $this->collectProperties($availableEntities, $entityName);
 			
@@ -111,11 +115,21 @@
 		 * @param string $entityName Name of the entity (without 'Entity' suffix)
 		 */
 		private function displayEntityOperationMessage(string $entityName): void {
-			$entityNamePlus = $entityName . "Entity";
+			$modifier = $this->getEntityModifier();
 			$entityPath = realpath($this->configuration->getEntityPath());
-			$action = $this->getEntityModifier()->entityExists($entityNamePlus) ? "Updating existing" : "Creating new";
 			
-			$this->output->writeLn("\n{$action} entity: {$entityPath}/{$entityNamePlus}.php\n");
+			if ($modifier->entityExists($entityName . "Entity")) {
+				$displayName = $entityName . "Entity";
+				$action = "Updating existing";
+			} elseif ($modifier->entityExists($entityName)) {
+				$displayName = $entityName;
+				$action = "Updating existing";
+			} else {
+				$displayName = $entityName . "Entity"; // default for new files
+				$action = "Creating new";
+			}
+			
+			$this->output->writeLn("\n{$action} entity: {$entityPath}/{$displayName}.php\n");
 		}
 		
 		/**
@@ -136,8 +150,12 @@
 				}
 				
 				$entityFileName = pathinfo($file, PATHINFO_FILENAME);
+				
+				// Support both ElephantEntity.php and Elephant.php
 				if (str_ends_with($entityFileName, 'Entity')) {
 					$entities[] = substr($entityFileName, 0, -6);
+				} else {
+					$entities[] = $entityFileName;
 				}
 			}
 			
