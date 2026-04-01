@@ -1,0 +1,48 @@
+{
+  "name": "quellabs/canvas-shipments",
+  "description": "Shipment router for the Canvas PHP framework. Discovers and routes shipment operations to installed provider packages.",
+  "type": "library",
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "Floris van den Berg",
+      "email": "info@quellabs.com"
+    }
+  ],
+  "keywords": [
+    "shipments",
+    "shipping",
+    "router",
+    "discovery",
+    "canvas",
+    "canvas-shipments"
+  ],
+  "support": {
+    "email": "support@quellabs.com",
+    "issues": "https://github.com/quellabs/canvas-shipments/issues",
+    "forum": "https://github.com/quellabs/canvas-shipments/discussions",
+    "wiki": "https://github.com/quellabs/canvas-shipments/wiki",
+    "docs": "https://canvasphp.com/docs",
+    "source": "https://github.com/quellabs/canvas-shipments"
+  },
+  "require": {
+    "php": "^8.2",
+    "quellabs/discover": "*",
+    "quellabs/contracts": "*",
+    "quellabs/canvas-shipments-contracts": "*"
+  },
+  "autoload": {
+    "psr-4": {
+      "Quellabs\\Shipments\\": "src/"
+    }
+  },
+  "extra": {
+    "discover": {
+      "di": {
+        "provider": {
+          "class": "Quellabs\\Shipments\\ServiceProvider"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "name": "quellabs/canvas-shipments-contracts",
+  "description": "Shipment gateway contracts and interfaces for the Canvas PHP framework",
+  "type": "library",
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "Floris van den Berg",
+      "email": "info@quellabs.com"
+    }
+  ],
+  "keywords": [
+    "shipments",
+    "shipping",
+    "contracts",
+    "interfaces",
+    "abstractions",
+    "canvas",
+    "canvas-shipments"
+  ],
+  "support": {
+    "email": "support@quellabs.com",
+    "issues": "https://github.com/quellabs/canvas-shipments-contracts/issues",
+    "forum": "https://github.com/quellabs/canvas-shipments-contracts/discussions",
+    "wiki": "https://github.com/quellabs/canvas-shipments-contracts/wiki",
+    "docs": "https://canvasphp.com/docs",
+    "source": "https://github.com/quellabs/canvas-shipments-contracts"
+  },
+  "require": {
+    "php": "^8.2",
+    "quellabs/contracts": "*"
+  },
+  "autoload": {
+    "psr-4": {
+      "Quellabs\\Shipments\\Contracts\\": "src/"
+    }
+  }
+}
