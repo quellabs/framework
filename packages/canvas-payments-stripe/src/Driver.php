@@ -31,7 +31,7 @@
 		 * These are passed as 'type' when creating an order.
 		 */
 		private const MODULE_TYPE_MAP = [
-			'stripe'            => 'stripe',
+			'stripe_multi'      => 'stripe',
 			'stripe_card'       => 'card',
 			'stripe_ideal'      => 'ideal',
 			'stripe_bancontact' => 'bancontact',

@@ -43,7 +43,7 @@
 		 * @see https://developer.nexigroup.com/xpayglobal/en-EU/docs/hosted-payment-page/
 		 */
 		private const MODULE_TYPE_MAP = [
-			'xpay'             => null,           // All enabled methods on the terminal
+			'xpay_multi'       => null,           // All enabled methods on the terminal
 			'xpay_cards'       => 'CARDS',
 			'xpay_applepay'    => 'APPLEPAY',
 			'xpay_googlepay'   => 'GOOGLEPAY',
@@ -53,8 +53,8 @@
 			'xpay_klarna'      => 'KLARNA',
 			'xpay_alipay'      => 'ALIPAY',
 			'xpay_wechatpay'   => 'WECHATPAY',
-			
-			
+		
+		
 		];
 		
 		/**
@@ -211,8 +211,8 @@
 				throw new PaymentInitiationException(self::DRIVER_NAME, $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 			
-			$response    = $result['response'];
-			$hostedPage  = $response['hostedPage'] ?? '';
+			$response = $result['response'];
+			$hostedPage = $response['hostedPage'] ?? '';
 			
 			if (empty($hostedPage)) {
 				throw new PaymentInitiationException(self::DRIVER_NAME, 0, 'Missing hostedPage URL in XPay response');
@@ -221,9 +221,9 @@
 			// The orderId (our reference) is the identifier we carry forward.
 			// XPay does not return a separate transaction key — the orderId IS the reference.
 			return new InitiateResult(
-				provider:      self::DRIVER_NAME,
+				provider: self::DRIVER_NAME,
 				transactionId: $request->reference,
-				redirectUrl:   $hostedPage,
+				redirectUrl: $hostedPage,
 			);
 		}
 		
@@ -256,18 +256,18 @@
 				throw new PaymentExchangeException(self::DRIVER_NAME, $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 			
-			$data       = $result['response'];
-			$orderData  = $data['orderStatus']['order'] ?? [];
+			$data = $result['response'];
+			$orderData = $data['orderStatus']['order'] ?? [];
 			$operations = $data['orderStatus']['operations'] ?? [];
-			$currency   = $orderData['currency'] ?? '';
+			$currency = $orderData['currency'] ?? '';
 			
 			// Walk operations to find the primary payment status and refund total.
 			// Operations are ordered chronologically; we want the most recent CAPTURE result.
-			$captureOp   = null;
+			$captureOp = null;
 			$refundTotal = 0;
 			
 			foreach ($operations as $op) {
-				$opType   = strtoupper($op['operationType'] ?? '');
+				$opType = strtoupper($op['operationType'] ?? '');
 				$opResult = strtoupper($op['operationResult'] ?? '');
 				
 				if ($opType === 'CAPTURE' || $opType === 'AUTHORIZATION') {
@@ -285,9 +285,9 @@
 				$captureOp = reset($operations);
 			}
 			
-			$opResult    = strtoupper($captureOp['operationResult'] ?? 'PENDING');
-			$opAmount    = (int)($captureOp['operationAmount'] ?? 0);
-			$opCurrency  = $captureOp['operationCurrency'] ?? $currency;
+			$opResult = strtoupper($captureOp['operationResult'] ?? 'PENDING');
+			$opAmount = (int)($captureOp['operationAmount'] ?? 0);
+			$opCurrency = $captureOp['operationCurrency'] ?? $currency;
 			$operationId = $captureOp['operationId'] ?? null;
 			
 			$state = self::RESULT_STATUS_MAP[$opResult] ?? PaymentStatus::Pending;
@@ -297,22 +297,22 @@
 				$state = PaymentStatus::Refunded;
 			}
 			
-			$valuePaid     = $state === PaymentStatus::Paid ? $opAmount : 0;
+			$valuePaid = $state === PaymentStatus::Paid ? $opAmount : 0;
 			$valueRefunded = $refundTotal;
 			
 			return new PaymentState(
-				provider:      self::DRIVER_NAME,
+				provider: self::DRIVER_NAME,
 				transactionId: $transactionId,
-				state:         $state,
-				currency:      $opCurrency ?: $currency,
-				valuePaid:     $valuePaid,
+				state: $state,
+				currency: $opCurrency ?: $currency,
+				valuePaid: $valuePaid,
 				valueRefunded: $valueRefunded,
 				internalState: $opResult,
-				metadata:      array_filter([
-					'operationId'   => $operationId,
-					'paymentMethod' => $captureOp['paymentMethod'] ?? null,
-					'paymentCircuit'=> $captureOp['paymentCircuit'] ?? null,
-					'operationType' => $captureOp['operationType'] ?? null,
+				metadata: array_filter([
+					'operationId'    => $operationId,
+					'paymentMethod'  => $captureOp['paymentMethod'] ?? null,
+					'paymentCircuit' => $captureOp['paymentCircuit'] ?? null,
+					'operationType'  => $captureOp['operationType'] ?? null,
 				], fn($v) => $v !== null),
 			);
 		}
@@ -342,7 +342,7 @@
 			
 			// Partial refund: include amount and currency
 			if ($request->amount !== null) {
-				$payload['amount']   = (string)$request->amount;
+				$payload['amount'] = (string)$request->amount;
 				$payload['currency'] = $request->currency;
 			}
 			
@@ -358,17 +358,17 @@
 			}
 			
 			// The refund response contains the new operation object for the refund itself
-			$response    = $result['response'];
-			$refundOpId  = $response['operationId'] ?? '';
+			$response = $result['response'];
+			$refundOpId = $response['operationId'] ?? '';
 			$refundedAmt = (int)($response['operationAmount'] ?? ($request->amount ?? 0));
-			$currency    = $response['operationCurrency'] ?? $request->currency;
+			$currency = $response['operationCurrency'] ?? $request->currency;
 			
 			return new RefundResult(
-				provider:         self::DRIVER_NAME,
+				provider: self::DRIVER_NAME,
 				paymentReference: $request->paymentReference,
-				refundId:         $refundOpId,
-				value:            $refundedAmt,
-				currency:         $currency,
+				refundId: $refundOpId,
+				value: $refundedAmt,
+				currency: $currency,
 			);
 		}
 		
@@ -390,11 +390,11 @@
 			}
 			
 			$operations = $result['response']['orderStatus']['operations'] ?? [];
-			$currency   = $result['response']['orderStatus']['order']['currency'] ?? '';
-			$refunds    = [];
+			$currency = $result['response']['orderStatus']['order']['currency'] ?? '';
+			$refunds = [];
 			
 			foreach ($operations as $op) {
-				$opType   = strtoupper($op['operationType'] ?? '');
+				$opType = strtoupper($op['operationType'] ?? '');
 				$opResult = strtoupper($op['operationResult'] ?? '');
 				
 				if ($opType !== 'REFUND' || $opResult !== 'AUTHORIZED') {
@@ -402,11 +402,11 @@
 				}
 				
 				$refunds[] = new RefundResult(
-					provider:         self::DRIVER_NAME,
+					provider: self::DRIVER_NAME,
 					paymentReference: $paymentReference,
-					refundId:         $op['operationId'] ?? '',
-					value:            (int)($op['operationAmount'] ?? 0),
-					currency:         $op['operationCurrency'] ?? $currency,
+					refundId: $op['operationId'] ?? '',
+					value: (int)($op['operationAmount'] ?? 0),
+					currency: $op['operationCurrency'] ?? $currency,
 				);
 			}
 			
@@ -433,7 +433,7 @@
 			$captureOpId = null;
 			
 			foreach ($operations as $op) {
-				$opType   = strtoupper($op['operationType'] ?? '');
+				$opType = strtoupper($op['operationType'] ?? '');
 				$opResult = strtoupper($op['operationResult'] ?? '');
 				
 				if (($opType === 'CAPTURE' || $opType === 'AUTHORIZATION') && $opResult === 'AUTHORIZED') {
@@ -461,9 +461,9 @@
 		private function buildCustomerInfo(PaymentRequest $request): array {
 			$info = [];
 			
-			$billing  = $request->billingAddress;
+			$billing = $request->billingAddress;
 			$shipping = $request->shippingAddress;
-			$primary  = $billing ?? $shipping;
+			$primary = $billing ?? $shipping;
 			
 			if ($primary === null) {
 				return [];
@@ -484,7 +484,7 @@
 					// Naive extraction: first 1-3 digits after '+' are the country code
 					if (preg_match('/^\+(\d{1,3})(\d+)$/', $primary->phone, $m)) {
 						$info['mobilePhoneCountryCode'] = $m[1];
-						$info['mobilePhone']            = $m[2];
+						$info['mobilePhone'] = $m[2];
 					}
 				} else {
 					$info['mobilePhone'] = $primary->phone;
