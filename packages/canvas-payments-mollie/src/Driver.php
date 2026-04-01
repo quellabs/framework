@@ -35,7 +35,7 @@
 		 * @see https://docs.mollie.com/reference/v2/payments-api/create-payment
 		 */
 		private const MODULE_TYPE_MAP = [
-			'mollie'             => '',
+			'mollie_multi'       => '',
 			'mollie_applepay'    => 'applepay',
 			'mollie_bancontact'  => 'bancontact',
 			'mollie_belfius'     => 'belfius',
