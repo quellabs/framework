@@ -228,6 +228,9 @@
     ]
   },
   "config": {
+    "platform": {
+      "php": "8.4.0"
+    },
     "allow-plugins": {
       "quellabs/discover": false
     }
