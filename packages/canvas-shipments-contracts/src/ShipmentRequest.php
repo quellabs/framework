@@ -35,9 +35,9 @@
 			
 			/**
 			 * The provider-specific shipping method ID (e.g. SendCloud shipping_method_id).
-			 * Obtain this from getShippingOptions() and persist it on the order.
+			 * Obtain this from getDeliveryOptions() and persist it on the order.
 			 */
-			public readonly int|string      $methodId,
+			public readonly int|string|null $methodId = null,
 			
 			/**
 			 * Declared value of the parcel contents in minor units (e.g. 1250 = €12.50).

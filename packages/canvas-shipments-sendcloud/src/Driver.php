@@ -136,6 +136,15 @@
 		 * @throws ShipmentCreationException
 		 */
 		public function create(ShipmentRequest $request): ShipmentResult {
+			// Validate presence of methodId
+			if ($request->methodId === null) {
+				throw new ShipmentCreationException(
+					self::DRIVER_NAME,
+					'missing_method_id',
+					'SendCloud requires a methodId. Fetch one from getDeliveryOptions() first.'
+				);
+			}
+			
 			// Build payload
 			$address = $request->deliveryAddress;
 			
