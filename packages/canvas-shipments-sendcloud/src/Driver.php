@@ -152,12 +152,23 @@
 				], fn($v) => $v !== null && $v !== '' && $v !== []),
 			];
 			
+			// Merge extra data into payload
 			if (!empty($request->extraData)) {
-				$payload['parcel'] = array_merge($payload['parcel'], $request->extraData);
+				$senderKeys = ['name', 'company_name', 'address', 'house_number', 'city', 'postal_code', 'country', 'email', 'telephone'];
+				$payload['parcel'] = array_merge($payload['parcel'], array_diff_key($request->extraData, array_flip($senderKeys)));
+			}
+
+			// Sender address is always applied last so it cannot be overridden.
+			$senderAddress = array_filter($this->getConfig()['sender_address'] ?? []);
+			
+			if (!empty($senderAddress)) {
+				$payload['parcel'] = array_merge($payload['parcel'], $senderAddress);
 			}
 			
+			// Call API
 			$result = $this->getGateway()->createParcel($payload);
 			
+			// If failed, throw an error
 			if ($result['request']['result'] === 0) {
 				throw new ShipmentCreationException(
 					self::DRIVER_NAME,
@@ -166,8 +177,10 @@
 				);
 			}
 			
+			// Fetch parcel data
 			$parcel = $result['response']['parcel'];
 			
+			// Return result
 			return new ShipmentResult(
 				provider: self::DRIVER_NAME,
 				parcelId: (string)$parcel['id'],
@@ -187,8 +200,10 @@
 		 * @throws ShipmentCancellationException
 		 */
 		public function cancel(CancelRequest $request): CancelResult {
+			// Send cancel request to API
 			$result = $this->getGateway()->cancelParcel($request->parcelId);
 			
+			// If that failed, throw an error
 			if ($result['request']['result'] === 0) {
 				throw new ShipmentCancellationException(
 					self::DRIVER_NAME,
@@ -197,8 +212,10 @@
 				);
 			}
 			
+			// Check if the cancellation was accepted
 			$isAccepted = ($result['response']['status'] ?? '') === 'cancelled';
 			
+			// Return response
 			return new CancelResult(
 				provider: self::DRIVER_NAME,
 				parcelId: $request->parcelId,
@@ -215,8 +232,10 @@
 		 * @throws ShipmentExchangeException
 		 */
 		public function exchange(string $parcelId): ShipmentState {
+			// Call API to fetch parcel data
 			$result = $this->getGateway()->getParcel($parcelId);
 			
+			// If that failed, throw an exception
 			if ($result['request']['result'] === 0) {
 				throw new ShipmentExchangeException(
 					self::DRIVER_NAME,
@@ -225,11 +244,12 @@
 				);
 			}
 			
+			// Build and return ShipmentState
 			return $this->buildStateFromParcel($result['response']['parcel']);
 		}
 		
 		/**
-		 * Returns normalised home delivery options for the given module.
+		 * Returns normalized home delivery options for the given module.
 		 *
 		 * Filters the SendCloud shipping methods list to those whose service_point_input
 		 * is 'none' (i.e. home delivery, not pickup). $address is not used — SendCloud
