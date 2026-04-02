@@ -4,6 +4,8 @@
 	
 	use Quellabs\Shipments\Contracts\CancelRequest;
 	use Quellabs\Shipments\Contracts\CancelResult;
+	use Quellabs\Shipments\Contracts\DeliveryOption;
+	use Quellabs\Shipments\Contracts\PickupOption;
 	use Quellabs\Shipments\Contracts\ShipmentAddress;
 	use Quellabs\Shipments\Contracts\ShipmentCancellationException;
 	use Quellabs\Shipments\Contracts\ShipmentCreationException;
@@ -37,9 +39,6 @@
 		/**
 		 * Maps our internal module names to MyParcel carrier IDs.
 		 *
-		 * MyParcel uses integer carrier IDs in the API payload, not names.
-		 * The 'be' modules route to the Belgian sendmyparcel.be endpoint.
-		 *
 		 * Carrier IDs per MyParcel documentation:
 		 *   1 = PostNL
 		 *   2 = bpost       (BE only)
@@ -66,34 +65,25 @@
 		 * @see https://developer.myparcel.nl/api-reference/06.track-trace.html
 		 */
 		private const STATUS_MAP = [
-			// Pre-transit
 			'registered'                        => ShipmentStatus::Created,
 			'handed_to_carrier'                 => ShipmentStatus::ReadyToSend,
-			// In transit
 			'sorting'                           => ShipmentStatus::InTransit,
 			'in_transit'                        => ShipmentStatus::InTransit,
 			'transit'                           => ShipmentStatus::InTransit,
 			'customs'                           => ShipmentStatus::InTransit,
-			// Out for delivery
 			'out_for_delivery'                  => ShipmentStatus::OutForDelivery,
-			// Delivered
 			'delivered'                         => ShipmentStatus::Delivered,
 			'delivered_at_neighbor'             => ShipmentStatus::Delivered,
 			'delivered_at_mailbox'              => ShipmentStatus::Delivered,
-			// Pickup
 			'available_for_pickup'              => ShipmentStatus::AwaitingPickup,
 			'available_for_pickup_postnl'       => ShipmentStatus::AwaitingPickup,
-			// Delivery issues
 			'delivery_failed'                   => ShipmentStatus::DeliveryFailed,
 			'not_delivered'                     => ShipmentStatus::DeliveryFailed,
 			'refused_by_recipient'              => ShipmentStatus::DeliveryFailed,
-			// Returns
 			'return_to_sender'                  => ShipmentStatus::ReturnedToSender,
 			'return_shipment_handed_to_carrier' => ShipmentStatus::ReturnedToSender,
-			// Destroyed / lost
 			'destroyed'                         => ShipmentStatus::Unknown,
 			'lost'                              => ShipmentStatus::Unknown,
-			// Explicitly unknown
 			'unknown'                           => ShipmentStatus::Unknown,
 		];
 		
@@ -135,21 +125,19 @@
 			return [
 				'api_key'        => '',
 				'api_key_test'   => '',
-				'region'         => 'nl',   // 'nl' → api.myparcel.nl, 'be' → api.sendmyparcel.be
-				'mode'           => 'live', // 'live' | 'test'
+				'region'         => 'nl',
+				'mode'           => 'live',
 				'sender_address' => [],
-				'package_type'   => 1,      // 1=Package, 2=Mailbox, 3=Letter, 4=Digital stamp
+				'package_type'   => 1,
 			];
 		}
 		
 		/**
 		 * Creates a parcel via MyParcel and returns a structured result.
 		 *
-		 * MyParcel's creation response does NOT include the barcode or label URL inline.
-		 * It only returns the internal shipment ID in data.ids[0].id.
-		 * A separate call to getLabel() is required to obtain the label PDF URL.
-		 * The barcode (tracking code) is assigned asynchronously by the carrier and must
-		 * be fetched later via exchange() / tracktraces.
+		 * The creation response contains only the internal shipment ID. Label URL is fetched
+		 * in a second call when requestLabel is true. Tracking code is assigned asynchronously
+		 * by the carrier — use exchange() or the webhook to obtain it later.
 		 *
 		 * @param ShipmentRequest $request
 		 * @return ShipmentResult
@@ -172,7 +160,7 @@
 				'recipient'            => $this->buildRecipient($request->deliveryAddress),
 				'options'              => array_filter([
 					'package_type'      => $this->getConfig()['package_type'],
-					'delivery_type'     => 2, // 2=Standard. Caller overrides via extraData if needed.
+					'delivery_type'     => 2,
 					'label_description' => $request->description,
 					'insurance'         => $request->declaredValueCents > 0 ? [
 						'amount'   => $request->declaredValueCents,
@@ -187,7 +175,6 @@
 				] : null,
 			], fn($v) => $v !== null && $v !== []);
 			
-			// Merge provider-specific extra data supplied by the caller
 			if (!empty($request->extraData)) {
 				$shipmentPayload = array_merge($shipmentPayload, $request->extraData);
 			}
@@ -204,7 +191,6 @@
 				);
 			}
 			
-			// MyParcel returns an array of IDs, one per shipment submitted
 			$parcelId = (string)($result['response']['data']['ids'][0]['id'] ?? '');
 			
 			if ($parcelId === '') {
@@ -215,8 +201,6 @@
 				);
 			}
 			
-			// Fetch the label PDF URL immediately if the caller requested it.
-			// This is a second API call because MyParcel does not embed the label in the creation response.
 			$labelUrl = null;
 			
 			if ($request->requestLabel) {
@@ -227,8 +211,6 @@
 				}
 			}
 			
-			// Tracking code is NOT available at creation time — MyParcel assigns it asynchronously.
-			// Use exchange() after a few minutes, or rely on the webhook, to obtain it.
 			return new ShipmentResult(
 				provider: self::DRIVER_NAME,
 				parcelId: $parcelId,
@@ -243,10 +225,7 @@
 		
 		/**
 		 * MyParcel does not provide a cancellation endpoint in API v1.1.
-		 *
-		 * Parcels can only be deleted from within the MyParcel panel, and only before
-		 * the label has been scanned by the carrier. Throwing here makes the limitation
-		 * explicit rather than silently failing or returning a misleading success result.
+		 * Parcels must be deleted manually via the MyParcel panel before carrier pickup.
 		 *
 		 * @param CancelRequest $request
 		 * @return CancelResult
@@ -264,9 +243,8 @@
 		/**
 		 * Fetches the current state of a parcel from MyParcel via the shipments endpoint.
 		 *
-		 * We use the shipments endpoint (by ID) rather than tracktraces (by barcode) because
-		 * the barcode may not yet be assigned immediately after creation, whereas the internal
-		 * ID is always available from ShipmentResult::$parcelId.
+		 * The shipments endpoint is used (by ID) rather than tracktraces (by barcode) because
+		 * the barcode may not yet be assigned immediately after creation.
 		 *
 		 * @param string $parcelId The MyParcel internal shipment ID from ShipmentResult::$parcelId
 		 * @return ShipmentState
@@ -297,23 +275,156 @@
 		}
 		
 		/**
-		 * Returns delivery options (timeframes and pickup points) for the given module.
+		 * Returns normalised home delivery options for the given module.
 		 *
-		 * MyParcel delivery options are computed per recipient address, so $address is
-		 * required for meaningful results. Returns an empty array if $address is null.
-		 *
-		 * The returned array contains:
-		 *   'delivery' — available home delivery timeframes
-		 *   'pickup'   — nearby pickup points with their timeframes
-		 *
-		 * Pass additional query parameters (cutoff_time, dropoff_delay, deliverydays_window,
-		 * etc.) via ShipmentRequest::$extraData or call the gateway directly.
+		 * Calls the MyParcel delivery_options endpoint and maps the 'delivery' array.
+		 * Each timeslot becomes one DeliveryOption. Returns an empty array if no address
+		 * is provided, as MyParcel requires a recipient location to compute availability.
 		 *
 		 * @param string $shippingModule
 		 * @param ShipmentAddress|null $address
-		 * @return array
+		 * @return DeliveryOption[]
 		 */
-		public function getShippingOptions(string $shippingModule, ?ShipmentAddress $address = null): array {
+		public function getDeliveryOptions(string $shippingModule, ?ShipmentAddress $address = null): array {
+			$data = $this->fetchDeliveryData($shippingModule, $address);
+			
+			if (empty($data)) {
+				return [];
+			}
+			
+			$carrierName = $this->carrierName(self::MODULE_CARRIER_MAP[$shippingModule]['carrierId'] ?? null) ?? '';
+			$options = [];
+			
+			foreach ($data['delivery'] ?? [] as $timeframe) {
+				$date = \DateTimeImmutable::createFromFormat('Y-m-d', $timeframe['date']) ?: null;
+				
+				foreach ($timeframe['time'] ?? [] as $slot) {
+					$start = substr($slot['start'] ?? '', 0, 5); // '09:00:00' → '09:00'
+					$end = substr($slot['end'] ?? '', 0, 5);
+					$type = $slot['price_comment'] ?? 'standard';
+					
+					$options[] = new DeliveryOption(
+						methodId: $timeframe['date'] . ':' . $start . ':' . $end,
+						label: $this->buildDeliveryLabel($date, $start, $end, $type),
+						carrierName: $carrierName,
+						deliveryDate: $date,
+						windowStart: $start ?: null,
+						windowEnd: $end ?: null,
+						metadata: array_filter([
+							'type'  => $type,
+							'price' => $slot['price'] ?? null,
+						], fn($v) => $v !== null),
+					);
+				}
+			}
+			
+			return $options;
+		}
+		
+		/**
+		 * Returns normalised pickup point options for the given module.
+		 *
+		 * Calls the MyParcel delivery_options endpoint and maps the 'pickup' array.
+		 * Each location becomes one PickupOption. Returns an empty array if no address
+		 * is provided, as MyParcel requires a search origin to find nearby points.
+		 *
+		 * @param string $shippingModule
+		 * @param ShipmentAddress|null $address
+		 * @return PickupOption[]
+		 */
+		public function getPickupOptions(string $shippingModule, ?ShipmentAddress $address = null): array {
+			$data = $this->fetchDeliveryData($shippingModule, $address);
+			
+			if (empty($data)) {
+				return [];
+			}
+			
+			$carrierName = $this->carrierName(self::MODULE_CARRIER_MAP[$shippingModule]['carrierId'] ?? null) ?? '';
+			$options = [];
+			
+			foreach ($data['pickup'] ?? [] as $location) {
+				$options[] = new PickupOption(
+					locationCode: $location['location_code'],
+					name: $location['location'] ?? '',
+					street: $location['street'] ?? '',
+					houseNumber: $location['number'] ?? '',
+					postalCode: $location['postal_code'] ?? '',
+					city: $location['city'] ?? '',
+					country: $location['cc'] ?? '',
+					carrierName: $carrierName,
+					latitude: isset($location['latitude']) ? (float)$location['latitude'] : null,
+					longitude: isset($location['longitude']) ? (float)$location['longitude'] : null,
+					distanceMetres: isset($location['distance']) ? (int)$location['distance'] : null,
+					metadata: array_filter([
+						'phone'           => $location['phone_number'] ?? null,
+						'comment'         => $location['comment'] ?? null,
+						'openingHours'    => $location['opening_hours'] ?? null,
+						'retailNetworkId' => $location['retail_network_id'] ?? null,
+					], fn($v) => $v !== null && $v !== []),
+				);
+			}
+			
+			return $options;
+		}
+		
+		/**
+		 * Builds a ShipmentState from a raw shipment array returned by the MyParcel API.
+		 * Used by exchange() and the webhook controller.
+		 * @param array $shipment The entry from data.shipments[] in the MyParcel response
+		 * @return ShipmentState
+		 */
+		public function buildStateFromShipment(array $shipment): ShipmentState {
+			$statusCode = $shipment['status'] ?? 'unknown';
+			$internalState = (string)$statusCode;
+			$status = self::STATUS_MAP[strtolower((string)$statusCode)] ?? ShipmentStatus::Unknown;
+			$barcode = $shipment['barcode'] ?? null;
+			$carrierId = $shipment['carrier_id'] ?? null;
+			
+			$trackingUrl = null;
+			
+			if ($barcode !== null) {
+				$trackingUrl = $this->buildTrackingUrl(
+					$barcode,
+					$shipment['recipient']['postal_code'] ?? '',
+					$carrierId
+				);
+			}
+			
+			return new ShipmentState(
+				provider: self::DRIVER_NAME,
+				parcelId: (string)($shipment['id'] ?? ''),
+				reference: $shipment['reference_identifier'] ?? '',
+				state: $status,
+				trackingCode: $barcode,
+				trackingUrl: $trackingUrl,
+				statusMessage: null,
+				internalState: $internalState,
+				metadata: array_filter([
+					'carrierId'   => $carrierId,
+					'carrierName' => $this->carrierName($carrierId),
+					'postalCode'  => $shipment['recipient']['postal_code'] ?? null,
+					'weightGrams' => $shipment['physical_properties']['weight'] ?? null,
+				], fn($v) => $v !== null),
+			);
+		}
+		
+		/**
+		 * Lazily instantiates and returns the MyParcel gateway.
+		 * @return MyParcelGateway
+		 */
+		private function getGateway(): MyParcelGateway {
+			return $this->gateway ??= new MyParcelGateway($this);
+		}
+		
+		/**
+		 * Fetches and returns the raw delivery_options data for the given module and address.
+		 * Shared by getDeliveryOptions() and getPickupOptions() to avoid a double API call.
+		 * Returns an empty array on missing address, unknown module, or API error.
+		 * @param string $shippingModule
+		 * @param ShipmentAddress|null $address
+		 * @return array Keys: 'delivery', 'pickup'
+		 */
+		private function fetchDeliveryData(string $shippingModule, ?ShipmentAddress $address): array {
 			if ($address === null) {
 				return [];
 			}
@@ -340,56 +451,7 @@
 		}
 		
 		/**
-		 * Builds a ShipmentState from a raw shipment array returned by the MyParcel API.
-		 * Used by exchange() and the webhook controller.
-		 * @param array $shipment The entry from data.shipments[] in the MyParcel response
-		 * @return ShipmentState
-		 */
-		public function buildStateFromShipment(array $shipment): ShipmentState {
-			$statusCode = $shipment['status'] ?? 'unknown';
-			$internalState = (string)$statusCode;
-			$status = self::STATUS_MAP[strtolower((string)$statusCode)] ?? ShipmentStatus::Unknown;
-			$barcode = $shipment['barcode'] ?? null;
-			$carrierId = $shipment['carrier_id'] ?? null;
-			
-			// Build the public tracking URL from the barcode and postal code when available.
-			// MyParcel does not return a tracking URL field directly; it must be constructed.
-			$trackingUrl = null;
-			
-			if ($barcode !== null) {
-				$postalCode = $shipment['recipient']['postal_code'] ?? '';
-				$trackingUrl = $this->buildTrackingUrl($barcode, $postalCode, $carrierId);
-			}
-			
-			return new ShipmentState(
-				provider: self::DRIVER_NAME,
-				parcelId: (string)($shipment['id'] ?? ''),
-				reference: $shipment['reference_identifier'] ?? '',
-				state: $status,
-				trackingCode: $barcode,
-				trackingUrl: $trackingUrl,
-				statusMessage: null, // MyParcel does not return a human status label in the shipments endpoint
-				internalState: $internalState,
-				metadata: array_filter([
-					'carrierId'   => $carrierId,
-					'carrierName' => $this->carrierName($carrierId),
-					'postalCode'  => $shipment['recipient']['postal_code'] ?? null,
-					'weightGrams' => $shipment['physical_properties']['weight'] ?? null,
-				], fn($v) => $v !== null),
-			);
-		}
-		
-		/**
-		 * Lazily instantiates and returns the MyParcel gateway.
-		 * @return MyParcelGateway
-		 */
-		private function getGateway(): MyParcelGateway {
-			return $this->gateway ??= new MyParcelGateway($this);
-		}
-		
-		/**
 		 * Builds the recipient block for the MyParcel shipment payload.
-		 * MyParcel expects street and house number as separate fields.
 		 * @param ShipmentAddress $address
 		 * @return array
 		 */
@@ -410,8 +472,25 @@
 		}
 		
 		/**
+		 * Builds a human-readable label for a delivery timeslot.
+		 * @param \DateTimeImmutable|null $date
+		 * @param string $start e.g. '09:00'
+		 * @param string $end e.g. '12:00'
+		 * @param string $type e.g. 'standard', 'morning', 'avond'
+		 * @return string
+		 */
+		private function buildDeliveryLabel(?\DateTimeImmutable $date, string $start, string $end, string $type): string {
+			$dateStr = $date ? $date->format('d-m-Y') : '';
+			
+			return match ($type) {
+				'morning' => trim("{$dateStr} Morning {$start}–{$end}"),
+				'avond' => trim("{$dateStr} Evening {$start}–{$end}"),
+				default => trim("{$dateStr} {$start}–{$end}"),
+			};
+		}
+		
+		/**
 		 * Constructs a public track-and-trace URL from a barcode.
-		 * MyParcel does not return a tracking URL field; it must be built from the barcode.
 		 * @param string $barcode
 		 * @param string $postalCode
 		 * @param int|null $carrierId

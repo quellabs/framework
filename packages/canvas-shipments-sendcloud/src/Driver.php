@@ -4,6 +4,8 @@
 	
 	use Quellabs\Shipments\Contracts\CancelRequest;
 	use Quellabs\Shipments\Contracts\CancelResult;
+	use Quellabs\Shipments\Contracts\DeliveryOption;
+	use Quellabs\Shipments\Contracts\PickupOption;
 	use Quellabs\Shipments\Contracts\ShipmentAddress;
 	use Quellabs\Shipments\Contracts\ShipmentCancellationException;
 	use Quellabs\Shipments\Contracts\ShipmentCreationException;
@@ -58,20 +60,20 @@
 		 * @see https://docs.sendcloud.com/api/v2/#parcel-statuses
 		 */
 		private const STATUS_MAP = [
-			1  => ShipmentStatus::Created,           // Announced (label created, not yet handed to carrier)
-			2  => ShipmentStatus::ReadyToSend,       // Ready to send (announced, awaiting carrier pickup)
-			3  => ShipmentStatus::InTransit,         // En route to sorting center
-			4  => ShipmentStatus::Delivered,         // Delivered
-			5  => ShipmentStatus::DeliveryFailed,    // Delivery attempt failed
-			6  => ShipmentStatus::AwaitingPickup,    // At service point / pickup location
-			7  => ShipmentStatus::ReturnedToSender,  // Returning to sender
-			11 => ShipmentStatus::InTransit,         // Sorted
-			12 => ShipmentStatus::InTransit,         // In transit
-			13 => ShipmentStatus::OutForDelivery,    // Out for delivery
-			91 => ShipmentStatus::Cancelled,         // Cancelled
-			92 => ShipmentStatus::Unknown,           // Unknown
-			93 => ShipmentStatus::DeliveryFailed,    // Lost in transit
-			99 => ShipmentStatus::Unknown,           // No label
+			1  => ShipmentStatus::Created,
+			2  => ShipmentStatus::ReadyToSend,
+			3  => ShipmentStatus::InTransit,
+			4  => ShipmentStatus::Delivered,
+			5  => ShipmentStatus::DeliveryFailed,
+			6  => ShipmentStatus::AwaitingPickup,
+			7  => ShipmentStatus::ReturnedToSender,
+			11 => ShipmentStatus::InTransit,
+			12 => ShipmentStatus::InTransit,
+			13 => ShipmentStatus::OutForDelivery,
+			91 => ShipmentStatus::Cancelled,
+			92 => ShipmentStatus::Unknown,
+			93 => ShipmentStatus::DeliveryFailed,
+			99 => ShipmentStatus::Unknown,
 		];
 		
 		/**
@@ -114,7 +116,7 @@
 				'secret_key'     => '',
 				'partner_id'     => '',
 				'webhook_secret' => '',
-				'sender_address' => [],  // Default sender address fields used in createParcel()
+				'sender_address' => [],
 				'from_country'   => 'NL',
 			];
 		}
@@ -126,30 +128,27 @@
 		 * @throws ShipmentCreationException
 		 */
 		public function create(ShipmentRequest $request): ShipmentResult {
-			$config = $this->getConfig();
-			
 			$payload = [
 				'parcel' => array_filter([
-					'name'                    => $request->deliveryAddress->name,
-					'company_name'            => $request->deliveryAddress->company,
-					'address'                 => $this->buildStreetLine($request->deliveryAddress),
-					'house_number'            => $request->deliveryAddress->houseNumber,
-					'city'                    => $request->deliveryAddress->city,
-					'postal_code'             => $request->deliveryAddress->postalCode,
-					'country'                 => ['iso_2' => $request->deliveryAddress->country],
-					'email'                   => $request->deliveryAddress->email,
-					'telephone'               => $request->deliveryAddress->phone,
-					'order_number'            => $request->reference,
-					'weight'                  => round($request->weightGrams / 1000, 3),
-					'shipment'                => ['id' => $request->methodId],
-					'insured_value'           => $request->declaredValueCents > 0 ? $request->declaredValueCents : null,
-					'to_service_point'        => $request->servicePointId,
-					'request_label'           => $request->requestLabel,
-					'apply_shipping_rules'    => true,
+					'name'                 => $request->deliveryAddress->name,
+					'company_name'         => $request->deliveryAddress->company,
+					'address'              => $this->buildStreetLine($request->deliveryAddress),
+					'house_number'         => $request->deliveryAddress->houseNumber,
+					'city'                 => $request->deliveryAddress->city,
+					'postal_code'          => $request->deliveryAddress->postalCode,
+					'country'              => ['iso_2' => $request->deliveryAddress->country],
+					'email'                => $request->deliveryAddress->email,
+					'telephone'            => $request->deliveryAddress->phone,
+					'order_number'         => $request->reference,
+					'weight'               => round($request->weightGrams / 1000, 3),
+					'shipment'             => ['id' => $request->methodId],
+					'insured_value'        => $request->declaredValueCents > 0 ? $request->declaredValueCents : null,
+					'to_service_point'     => $request->servicePointId,
+					'request_label'        => $request->requestLabel,
+					'apply_shipping_rules' => true,
 				], fn($v) => $v !== null && $v !== '' && $v !== []),
 			];
 			
-			// Merge in any provider-specific extra fields the caller supplied
 			if (!empty($request->extraData)) {
 				$payload['parcel'] = array_merge($payload['parcel'], $request->extraData);
 			}
@@ -208,7 +207,6 @@
 		
 		/**
 		 * Fetches the current state of a parcel from SendCloud.
-		 * Used to reconcile missed webhooks or poll for status on demand.
 		 * @param string $parcelId
 		 * @return ShipmentState
 		 * @throws ShipmentExchangeException
@@ -228,35 +226,48 @@
 		}
 		
 		/**
-		 * Returns available shipping methods for the given module.
-		 * Filters by the module's carrier set and the configured sender country.
-		 * $address is accepted for interface compatibility but not used by SendCloud,
-		 * which provides static shipping methods independent of recipient location.
+		 * Returns normalised home delivery options for the given module.
+		 *
+		 * Filters the SendCloud shipping methods list to those whose service_point_input
+		 * is 'none' (i.e. home delivery, not pickup). $address is not used — SendCloud
+		 * shipping methods are static and independent of recipient location.
+		 *
 		 * @param string               $shippingModule
 		 * @param ShipmentAddress|null $address
-		 * @return array
+		 * @return DeliveryOption[]
 		 */
-		public function getShippingOptions(string $shippingModule, ?ShipmentAddress $address = null): array {
-			$config = $this->getConfig();
-			$result = $this->getGateway()->getShippingMethods($config['from_country'] ?? null);
-			
-			if ($result['request']['result'] === 0) {
-				return [];
-			}
-			
-			$carriers = self::MODULE_CARRIER_MAP[$shippingModule] ?? [];
-			$methods  = $result['response']['shipping_methods'] ?? [];
-			
-			// Filter to methods belonging to the carriers this module covers.
-			// If no carriers are mapped, return everything.
-			if (!empty($carriers)) {
-				$methods = array_values(array_filter($methods, function (array $method) use ($carriers): bool {
-					$carrierName = strtolower($method['carrier'] ?? '');
-					return in_array($carrierName, $carriers, true);
-				}));
-			}
-			
-			return $methods;
+		public function getDeliveryOptions(string $shippingModule, ?ShipmentAddress $address = null): array {
+			return array_values(array_map(
+				fn(array $method) => $this->normaliseDeliveryMethod($method),
+				array_filter(
+					$this->fetchFilteredMethods($shippingModule),
+					fn(array $method) => ($method['service_point_input'] ?? 'none') === 'none'
+				)
+			));
+		}
+		
+		/**
+		 * Returns normalised pickup options for the given module.
+		 *
+		 * Filters the SendCloud shipping methods list to those that require a service point
+		 * (service_point_input !== 'none'). The $address is not used for method retrieval
+		 * but is available for service point proximity queries if needed in future.
+		 *
+		 * Note: SendCloud service point locations require a separate getServicePoints() call
+		 * on the gateway. This method returns the methods that support pickup; actual
+		 * location search is out of scope here and should be handled at the checkout layer.
+		 *
+		 * @param string               $shippingModule
+		 * @param ShipmentAddress|null $address
+		 * @return PickupOption[]
+		 */
+		public function getPickupOptions(string $shippingModule, ?ShipmentAddress $address = null): array {
+			// SendCloud does not return pickup point locations from the shipping methods endpoint.
+			// It requires a separate geographic search via getServicePoints() on the gateway,
+			// which needs bounding box coordinates rather than a simple address.
+			// Return an empty array — implement location search at the checkout layer using
+			// the gateway directly.
+			return [];
 		}
 		
 		/**
@@ -271,16 +282,15 @@
 		
 		/**
 		 * Builds a ShipmentState from a raw parcel array returned by the SendCloud API.
-		 * Used by both exchange() (API poll) and the controller's webhook handler.
+		 * Used by both exchange() and the controller's webhook handler.
 		 * @param array $parcel The 'parcel' key from the SendCloud API response
 		 * @return ShipmentState
 		 */
 		public function buildStateFromParcel(array $parcel): ShipmentState {
-			$statusId     = (int)($parcel['status']['id'] ?? 92);
-			$statusLabel  = $parcel['status']['message'] ?? null;
+			$statusId      = (int)($parcel['status']['id'] ?? 92);
+			$statusLabel   = $parcel['status']['message'] ?? null;
 			$internalState = $parcel['status']['id'] . ':' . ($parcel['status']['message'] ?? 'unknown');
-			
-			$status = self::STATUS_MAP[$statusId] ?? ShipmentStatus::Unknown;
+			$status        = self::STATUS_MAP[$statusId] ?? ShipmentStatus::Unknown;
 			
 			return new ShipmentState(
 				provider:      self::DRIVER_NAME,
@@ -310,8 +320,50 @@
 		}
 		
 		/**
+		 * Fetches shipping methods from the gateway and filters them by carrier module.
+		 * Shared by getDeliveryOptions() and getPickupOptions().
+		 * @param string $shippingModule
+		 * @return array Raw method arrays from the SendCloud API
+		 */
+		private function fetchFilteredMethods(string $shippingModule): array {
+			$result = $this->getGateway()->getShippingMethods($this->getConfig()['from_country'] ?? null);
+			
+			if ($result['request']['result'] === 0) {
+				return [];
+			}
+			
+			$carriers = self::MODULE_CARRIER_MAP[$shippingModule] ?? [];
+			$methods  = $result['response']['shipping_methods'] ?? [];
+			
+			if (empty($carriers)) {
+				return $methods;
+			}
+			
+			return array_values(array_filter($methods, function (array $method) use ($carriers): bool {
+				return in_array(strtolower($method['carrier'] ?? ''), $carriers, true);
+			}));
+		}
+		
+		/**
+		 * Normalises a raw SendCloud shipping method array into a DeliveryOption.
+		 * @param array $method
+		 * @return DeliveryOption
+		 */
+		private function normaliseDeliveryMethod(array $method): DeliveryOption {
+			return new DeliveryOption(
+				methodId:    (string)$method['id'],
+				label:       $method['name'] ?? '',
+				carrierName: $method['carrier'] ?? '',
+				metadata:    array_filter([
+					'minWeightGrams' => isset($method['min_weight']) ? (int)round($method['min_weight'] * 1000) : null,
+					'maxWeightGrams' => isset($method['max_weight']) ? (int)round($method['max_weight'] * 1000) : null,
+					'price'          => $method['price'] ?? null,
+				], fn($v) => $v !== null),
+			);
+		}
+		
+		/**
 		 * Builds a full street line from an address, appending suffix when present.
-		 * SendCloud's 'address' field expects street + house number combined.
 		 * @param ShipmentAddress $address
 		 * @return string
 		 */
