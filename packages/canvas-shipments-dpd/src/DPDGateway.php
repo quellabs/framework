@@ -85,9 +85,9 @@
 			$config = $driver->getConfig();
 			$isTest = (bool)($config['test_mode'] ?? false);
 			
-			$this->baseUrl = $isTest ? self::BASE_URL_TEST : self::BASE_URL_LIVE;
-			$this->delisId = $config['delis_id'];
-			$this->password = $config['password'];
+			$this->baseUrl  = $isTest ? self::BASE_URL_TEST : self::BASE_URL_LIVE;
+			$this->delisId  = $isTest ? ($config['test_delis_id'] ?? '') : ($config['delis_id'] ?? '');
+			$this->password = $isTest ? ($config['test_password'] ?? '') : ($config['password'] ?? '');
 			$this->labelCache = new LabelFileCache(
 				$config['cache_path'] ?? 'storage/dpd/labels',
 				(int)($config['label_cache_ttl_days'] ?? 30),

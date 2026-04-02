@@ -145,6 +145,9 @@
 				'password'             => '',
 				'sending_depot'        => '',
 				'test_mode'            => false,
+				'test_delis_id'        => '',
+				'test_password'        => '',
+				'test_sending_depot'   => '',
 				'cache_path'           => 'storage/dpd/labels',
 				'label_cache_ttl_days' => 30,
 				'sender_address'       => [],
@@ -176,6 +179,13 @@
 			
 			$config = $this->getConfig();
 			$address = $request->deliveryAddress;
+			$isTest = (bool)($config['test_mode'] ?? false);
+			
+			if ($isTest) {
+				$sendingDepot = $config['test_sending_depot'] ?: $config['sending_depot'];
+			} else {
+				$sendingDepot = $config['sending_depot'];
+			}
 			
 			// Build the productAndServiceData block
 			$productAndServiceData = ['orderType' => 'consignment'];
@@ -233,7 +243,7 @@
 			
 			$payload = [
 				'generalShipmentData'   => [
-					'sendingDepot' => $config['sending_depot'],
+					'sendingDepot' => $sendingDepot,
 					'product'      => $productInfo['product'],
 					'sender'       => $sender,
 					'recipient'    => $recipient,
