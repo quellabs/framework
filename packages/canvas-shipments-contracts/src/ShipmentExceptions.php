@@ -44,3 +44,9 @@
 	 */
 	class ShipmentExchangeException extends ShipmentException {
 	}
+
+/**
+ * Thrown when ShipmentProviderInterface::getLabelUrl() fails.
+ */
+class ShipmentLabelException extends ShipmentException {
+}

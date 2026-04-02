@@ -10,6 +10,7 @@
 	use Quellabs\Shipments\Contracts\ShipmentCancellationException;
 	use Quellabs\Shipments\Contracts\ShipmentCreationException;
 	use Quellabs\Shipments\Contracts\ShipmentExchangeException;
+	use Quellabs\Shipments\Contracts\ShipmentLabelException;
 	use Quellabs\Shipments\Contracts\ShipmentProviderInterface;
 	use Quellabs\Shipments\Contracts\ShipmentRequest;
 	use Quellabs\Shipments\Contracts\ShipmentResult;
@@ -61,7 +62,6 @@
 		/**
 		 * Maps MyParcel track-trace status codes to our normalised ShipmentStatus values.
 		 * Status codes are lowercase strings per the MyParcel API docs (v1.1).
-		 *
 		 * @see https://developer.myparcel.nl/api-reference/06.track-trace.html
 		 */
 		private const STATUS_MAP = [
@@ -365,6 +365,36 @@
 			}
 			
 			return $options;
+		}
+		
+		/**
+		 * Returns the URL where the label PDF for the given parcel can be downloaded.
+		 * @param string $parcelId
+		 * @return string
+		 * @throws ShipmentLabelException
+		 */
+		public function getLabelUrl(string $parcelId): string {
+			$result = $this->getGateway()->getLabel($parcelId);
+			
+			if ($result['request']['result'] === 0) {
+				throw new ShipmentLabelException(
+					self::DRIVER_NAME,
+					$result['request']['errorId'],
+					$result['request']['errorMessage']
+				);
+			}
+			
+			$url = $result['response']['data']['pdfs']['url'] ?? null;
+			
+			if ($url === null) {
+				throw new ShipmentLabelException(
+					self::DRIVER_NAME,
+					'missing_url',
+					"MyParcel returned no label URL for parcel {$parcelId}"
+				);
+			}
+			
+			return $url;
 		}
 		
 		/**

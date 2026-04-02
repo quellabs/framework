@@ -10,6 +10,7 @@
 	use Quellabs\Shipments\Contracts\ShipmentCancellationException;
 	use Quellabs\Shipments\Contracts\ShipmentCreationException;
 	use Quellabs\Shipments\Contracts\ShipmentExchangeException;
+	use Quellabs\Shipments\Contracts\ShipmentLabelException;
 	use Quellabs\Shipments\Contracts\ShipmentProviderInterface;
 	use Quellabs\Shipments\Contracts\ShipmentRequest;
 	use Quellabs\Shipments\Contracts\ShipmentResult;
@@ -278,6 +279,38 @@
 		 */
 		public function verifyWebhookSignature(string $rawBody, string $signature): bool {
 			return $this->getGateway()->verifyWebhookSignature($rawBody, $signature, $this->getConfig()['webhook_secret']);
+		}
+		
+		/**
+		 * Returns the URL where the label PDF for the given parcel can be downloaded.
+		 * @param string $parcelId
+		 * @return string
+		 * @throws ShipmentLabelException
+		 */
+		public function getLabelUrl(string $parcelId): string {
+			$result = $this->getGateway()->getLabel($parcelId);
+
+			if ($result['request']['result'] === 0) {
+				throw new ShipmentLabelException(
+					self::DRIVER_NAME,
+					$result['request']['errorId'],
+					$result['request']['errorMessage']
+				);
+			}
+
+			$url = $result['response']['label']['label_printer']
+				?? $result['response']['label']['normal_printer'][0]
+				?? null;
+
+			if ($url === null) {
+				throw new ShipmentLabelException(
+					self::DRIVER_NAME,
+					'missing_url',
+					"SendCloud returned no label URL for parcel {$parcelId}"
+				);
+			}
+
+			return $url;
 		}
 		
 		/**

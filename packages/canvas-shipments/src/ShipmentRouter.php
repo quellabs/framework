@@ -8,6 +8,7 @@
 	use Quellabs\Shipments\Contracts\CancelResult;
 	use Quellabs\Shipments\Contracts\ShipmentAddress;
 	use Quellabs\Shipments\Contracts\ShipmentInterface;
+	use Quellabs\Shipments\Contracts\ShipmentLabelException;
 	use Quellabs\Shipments\Contracts\ShipmentProviderInterface;
 	use Quellabs\Shipments\Contracts\ShipmentRequest;
 	use Quellabs\Shipments\Contracts\ShipmentResult;
@@ -108,6 +109,17 @@
 		 */
 		public function getPickupOptions(string $shippingModule, ?ShipmentAddress $address = null): array {
 			return $this->resolve($shippingModule)->getPickupOptions($shippingModule, $address);
+		}
+		
+		/**
+		 * Returns the URL where the label PDF for the given parcel can be downloaded.
+		 * @param string $shippingModule
+		 * @param string $parcelId
+		 * @return string
+		 * @throws ShipmentLabelException
+		 */
+		public function getLabelUrl(string $shippingModule, string $parcelId): string {
+			return $this->resolve($shippingModule)->getLabelUrl($parcelId);
 		}
 		
 		/**
