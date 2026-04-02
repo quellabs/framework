@@ -16,7 +16,6 @@
 	use Quellabs\Shipments\Contracts\ShipmentResult;
 	use Quellabs\Shipments\Contracts\ShipmentState;
 	use Quellabs\Shipments\Contracts\ShipmentStatus;
-	use Quellabs\Support\ComposerUtils;
 	use Quellabs\Support\Tools;
 	
 	class Driver implements ShipmentProviderInterface {
