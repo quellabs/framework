@@ -26,6 +26,11 @@ return [
 	// Used to filter available shipping methods by route.
 	'from_country' => 'NL',
 
+	// Radius in kilometres used when searching for nearby pickup points.
+	// A larger radius returns more results but may include inconvenient locations.
+	// Defaults to 5.0 km if not set.
+	'pickup_radius_km' => 5.0,
+	
 	// Default sender address fields pre-filled on every parcel.
 	// These can be overridden per-request via ShipmentRequest::$extraData if needed.
 	'sender_address' => [

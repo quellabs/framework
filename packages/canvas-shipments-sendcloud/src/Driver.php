@@ -44,13 +44,13 @@
 		 * Add entries here whenever a new module is introduced in getMetadata().
 		 */
 		private const MODULE_CARRIER_MAP = [
-			'sendcloud_postnl'   => ['postnl'],
-			'sendcloud_dhl'      => ['dhl'],
-			'sendcloud_dpd'      => ['dpd'],
-			'sendcloud_ups'      => ['ups'],
-			'sendcloud_bpost'    => ['bpost'],
-			'sendcloud_mondial'  => ['mondial_relay'],
-			'sendcloud_multi'    => ['postnl', 'dhl', 'dpd', 'ups', 'bpost', 'mondial_relay'],
+			'sendcloud_postnl'  => ['postnl'],
+			'sendcloud_dhl'     => ['dhl'],
+			'sendcloud_dpd'     => ['dpd'],
+			'sendcloud_ups'     => ['ups'],
+			'sendcloud_bpost'   => ['bpost'],
+			'sendcloud_mondial' => ['mondial_relay'],
+			'sendcloud_multi'   => ['postnl', 'dhl', 'dpd', 'ups', 'bpost', 'mondial_relay'],
 		];
 		
 		/**
@@ -113,12 +113,13 @@
 		 */
 		public function getDefaults(): array {
 			return [
-				'public_key'     => '',
-				'secret_key'     => '',
-				'partner_id'     => '',
-				'webhook_secret' => '',
-				'sender_address' => [],
-				'from_country'   => 'NL',
+				'public_key'       => '',
+				'secret_key'       => '',
+				'partner_id'       => '',
+				'webhook_secret'   => '',
+				'sender_address'   => [],
+				'from_country'     => 'NL',
+				'pickup_radius_km' => 5.0,
 			];
 		}
 		
@@ -167,14 +168,14 @@
 			$parcel = $result['response']['parcel'];
 			
 			return new ShipmentResult(
-				provider:     self::DRIVER_NAME,
-				parcelId:     (string)$parcel['id'],
-				reference:    $request->reference,
+				provider: self::DRIVER_NAME,
+				parcelId: (string)$parcel['id'],
+				reference: $request->reference,
 				trackingCode: $parcel['tracking_number'] ?? null,
-				trackingUrl:  $parcel['tracking_url'] ?? null,
-				labelUrl:     $parcel['label']['label_printer'] ?? $parcel['label']['normal_printer'][0] ?? null,
-				carrierName:  $parcel['carrier']['name'] ?? null,
-				rawResponse:  $parcel,
+				trackingUrl: $parcel['tracking_url'] ?? null,
+				labelUrl: $parcel['label']['label_printer'] ?? $parcel['label']['normal_printer'][0] ?? null,
+				carrierName: $parcel['carrier']['name'] ?? null,
+				rawResponse: $parcel,
 			);
 		}
 		
@@ -198,11 +199,11 @@
 			$isAccepted = ($result['response']['status'] ?? '') === 'cancelled';
 			
 			return new CancelResult(
-				provider:  self::DRIVER_NAME,
-				parcelId:  $request->parcelId,
+				provider: self::DRIVER_NAME,
+				parcelId: $request->parcelId,
 				reference: $request->reference,
-				accepted:  $isAccepted,
-				message:   $isAccepted ? null : ($result['response']['message'] ?? null),
+				accepted: $isAccepted,
+				message: $isAccepted ? null : ($result['response']['message'] ?? null),
 			);
 		}
 		
@@ -233,7 +234,7 @@
 		 * is 'none' (i.e. home delivery, not pickup). $address is not used — SendCloud
 		 * shipping methods are static and independent of recipient location.
 		 *
-		 * @param string               $shippingModule
+		 * @param string $shippingModule
 		 * @param ShipmentAddress|null $address
 		 * @return DeliveryOption[]
 		 */
@@ -258,22 +259,54 @@
 		 * on the gateway. This method returns the methods that support pickup; actual
 		 * location search is out of scope here and should be handled at the checkout layer.
 		 *
-		 * @param string               $shippingModule
+		 * @param string $shippingModule
 		 * @param ShipmentAddress|null $address
 		 * @return PickupOption[]
 		 */
 		public function getPickupOptions(string $shippingModule, ?ShipmentAddress $address = null): array {
-			// SendCloud does not return pickup point locations from the shipping methods endpoint.
-			// It requires a separate geographic search via getServicePoints() on the gateway,
-			// which needs bounding box coordinates rather than a simple address.
-			// Return an empty array — implement location search at the checkout layer using
-			// the gateway directly.
-			return [];
+			if ($address === null) {
+				return [];
+			}
+			
+			$carriers = self::MODULE_CARRIER_MAP[$shippingModule] ?? [];
+			
+			if (empty($carriers)) {
+				return [];
+			}
+			
+			$center = $this->geocodeAddress($address);
+			
+			if ($center === null) {
+				return [];
+			}
+			
+			$radiusKm = $this->getConfig()['pickup_radius_km'] ?? 5.0;
+			[$swLat, $swLng, $neLat, $neLng] = $this->boundingBox($center['lat'], $center['lng'], $radiusKm);
+			
+			$result = $this->getGateway()->getServicePoints(
+				$carriers,
+				$address->country,
+				$neLat,
+				$neLng,
+				$swLat,
+				$swLng
+			);
+			
+			if ($result['request']['result'] === 0) {
+				return [];
+			}
+			
+			$points = $result['response'] ?? [];
+			
+			return array_values(array_map(
+				fn(array $point) => $this->normaliseServicePoint($point),
+				$points
+			));
 		}
 		
 		/**
 		 * Verifies the HMAC-SHA256 signature on an incoming SendCloud webhook.
-		 * @param string $rawBody   The raw (un-decoded) request body
+		 * @param string $rawBody The raw (un-decoded) request body
 		 * @param string $signature Value of the Sendcloud-Signature header
 		 * @return bool
 		 */
@@ -289,7 +322,7 @@
 		 */
 		public function getLabelUrl(string $parcelId): string {
 			$result = $this->getGateway()->getLabel($parcelId);
-
+			
 			if ($result['request']['result'] === 0) {
 				throw new ShipmentLabelException(
 					self::DRIVER_NAME,
@@ -297,11 +330,11 @@
 					$result['request']['errorMessage']
 				);
 			}
-
+			
 			$url = $result['response']['label']['label_printer']
 				?? $result['response']['label']['normal_printer'][0]
 				?? null;
-
+			
 			if ($url === null) {
 				throw new ShipmentLabelException(
 					self::DRIVER_NAME,
@@ -309,7 +342,7 @@
 					"SendCloud returned no label URL for parcel {$parcelId}"
 				);
 			}
-
+			
 			return $url;
 		}
 		
@@ -320,21 +353,21 @@
 		 * @return ShipmentState
 		 */
 		public function buildStateFromParcel(array $parcel): ShipmentState {
-			$statusId      = (int)($parcel['status']['id'] ?? 92);
-			$statusLabel   = $parcel['status']['message'] ?? null;
+			$statusId = (int)($parcel['status']['id'] ?? 92);
+			$statusLabel = $parcel['status']['message'] ?? null;
 			$internalState = $parcel['status']['id'] . ':' . ($parcel['status']['message'] ?? 'unknown');
-			$status        = self::STATUS_MAP[$statusId] ?? ShipmentStatus::Unknown;
+			$status = self::STATUS_MAP[$statusId] ?? ShipmentStatus::Unknown;
 			
 			return new ShipmentState(
-				provider:      self::DRIVER_NAME,
-				parcelId:      (string)$parcel['id'],
-				reference:     $parcel['order_number'] ?? '',
-				state:         $status,
-				trackingCode:  $parcel['tracking_number'] ?? null,
-				trackingUrl:   $parcel['tracking_url'] ?? null,
+				provider: self::DRIVER_NAME,
+				parcelId: (string)$parcel['id'],
+				reference: $parcel['order_number'] ?? '',
+				state: $status,
+				trackingCode: $parcel['tracking_number'] ?? null,
+				trackingUrl: $parcel['tracking_url'] ?? null,
 				statusMessage: $statusLabel,
 				internalState: $internalState,
-				metadata:      array_filter([
+				metadata: array_filter([
 					'carrierId'      => $parcel['carrier']['id'] ?? null,
 					'carrierName'    => $parcel['carrier']['name'] ?? null,
 					'labelUrl'       => $parcel['label']['label_printer'] ?? null,
@@ -366,7 +399,7 @@
 			}
 			
 			$carriers = self::MODULE_CARRIER_MAP[$shippingModule] ?? [];
-			$methods  = $result['response']['shipping_methods'] ?? [];
+			$methods = $result['response']['shipping_methods'] ?? [];
 			
 			if (empty($carriers)) {
 				return $methods;
@@ -384,10 +417,10 @@
 		 */
 		private function normaliseDeliveryMethod(array $method): DeliveryOption {
 			return new DeliveryOption(
-				methodId:    (string)$method['id'],
-				label:       $method['name'] ?? '',
+				methodId: (string)$method['id'],
+				label: $method['name'] ?? '',
 				carrierName: $method['carrier'] ?? '',
-				metadata:    array_filter([
+				metadata: array_filter([
 					'minWeightGrams' => isset($method['min_weight']) ? (int)round($method['min_weight'] * 1000) : null,
 					'maxWeightGrams' => isset($method['max_weight']) ? (int)round($method['max_weight'] * 1000) : null,
 					'price'          => $method['price'] ?? null,
@@ -408,5 +441,72 @@
 			}
 			
 			return $line;
+		}
+		
+		/**
+		 * Geocodes a ShipmentAddress to a lat/lng center using Nominatim.
+		 * Returns null if geocoding fails or returns no results.
+		 * @param ShipmentAddress $address
+		 * @return array{lat: float, lng: float}|null
+		 */
+		private function geocodeAddress(ShipmentAddress $address): ?array {
+			$result = $this->getGateway()->geocodeAddress(
+				$address->postalCode,
+				$address->country,
+				$address->city,
+			);
+			
+			if ($result['request']['result'] === 0) {
+				return null;
+			}
+			
+			return $result['response'];
+		}
+		
+		/**
+		 * Computes a bounding box around a center point given a radius in km.
+		 * Uses the equirectangular approximation — accurate enough for <50 km radii.
+		 * Returns [swLat, swLng, neLat, neLng].
+		 * @param float $lat
+		 * @param float $lng
+		 * @param float $radiusKm
+		 * @return array{float, float, float, float}
+		 */
+		private function boundingBox(float $lat, float $lng, float $radiusKm): array {
+			$latDelta = $radiusKm / 111.0;
+			$lngDelta = $radiusKm / (111.0 * cos(deg2rad($lat)));
+			
+			return [
+				$lat - $latDelta, // swLat
+				$lng - $lngDelta, // swLng
+				$lat + $latDelta, // neLat
+				$lng + $lngDelta, // neLng
+			];
+		}
+		
+		/**
+		 * Normalizes a raw SendCloud service point array into a PickupOption.
+		 * @param array $point
+		 * @return PickupOption
+		 */
+		private function normaliseServicePoint(array $point): PickupOption {
+			return new PickupOption(
+				locationCode: (string)($point['id'] ?? ''),
+				name: $point['name'] ?? '',
+				street: $point['street'] ?? '',
+				houseNumber: (string)($point['house_number'] ?? ''),
+				postalCode: $point['postal_code'] ?? '',
+				city: $point['city'] ?? '',
+				country: $point['country'] ?? '',
+				carrierName: $point['carrier'] ?? '',
+				latitude: isset($point['latitude']) ? (float)$point['latitude'] : null,
+				longitude: isset($point['longitude']) ? (float)$point['longitude'] : null,
+				distanceMetres: isset($point['distance']) ? (int)$point['distance'] : null,
+				metadata: array_filter([
+					'openingHours' => $point['opening_hours'] ?? null,
+					'extraInfo'    => $point['extra_info'] ?? null,
+					'phone'        => $point['phone_number'] ?? null,
+				], fn($v) => $v !== null),
+			);
 		}
 	}

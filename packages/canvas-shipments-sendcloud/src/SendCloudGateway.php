@@ -4,6 +4,7 @@
 	
 	use Symfony\Component\HttpClient\HttpClient;
 	use Symfony\Contracts\HttpClient\HttpClientInterface;
+	use Symfony\Contracts\HttpClient\ResponseInterface;
 	
 	/**
 	 * Low-level wrapper around the SendCloud API v2.
@@ -20,8 +21,11 @@
 		private const BASE_URL = 'https://panel.sendcloud.sc/api/v2';
 		private const SERVICE_POINT_URL = 'https://servicepoints.sendcloud.sc/api/v2';
 		
-		/** @var HttpClientInterface Shared HTTP client instance */
+		/** @var HttpClientInterface Shared HTTP client instance for SendCloud API */
 		private HttpClientInterface $client;
+		
+		/** @var HttpClientInterface HTTP client for external geocoding requests */
+		private HttpClientInterface $geocodingClient;
 		
 		/**
 		 * SendCloudGateway constructor.
@@ -34,8 +38,14 @@
 				'auth_basic' => [$config['public_key'], $config['secret_key']],
 				'timeout'    => 10,
 				'headers'    => [
-					// Identifies this integration to SendCloud for partner analytics
 					'Sendcloud-Partner-Id' => $config['partner_id'] ?? '',
+				],
+			]);
+			
+			$this->geocodingClient = HttpClient::create([
+				'timeout' => 5,
+				'headers' => [
+					'User-Agent' => 'Quellabs-Shipments/1.0',
 				],
 			]);
 		}
@@ -146,6 +156,48 @@
 		}
 		
 		/**
+		 * Geocodes an address to a lat/lng center using Nominatim (OpenStreetMap).
+		 * Returns null if geocoding fails or returns no results.
+		 * @param string $postalCode
+		 * @param string $country ISO 3166-1 alpha-2
+		 * @param string|null $city
+		 * @return array{lat: float, lng: float}|null
+		 */
+		public function geocodeAddress(string $postalCode, string $country, ?string $city = null): array {
+			try {
+				// Build payload for nominatim.openstreetmap.org
+				$query = array_filter([
+					'postalcode' => $postalCode,
+					'country'    => $country,
+					'city'       => $city,
+					'format'     => 'json',
+					'limit'      => 1,
+				], fn($v) => $v !== null && $v !== '');
+				
+				// Call API
+				$response = $this->geocodingClient->request('GET', 'https://nominatim.openstreetmap.org/search', [
+					'query' => $query,
+				]);
+				
+				// Transform result to array
+				$results = $response->toArray(false);
+				
+				// Return error when returned data is invalid
+				if (empty($results[0]['lat']) || empty($results[0]['lon'])) {
+					return ['request' => ['result' => 0, 'errorId' => 'no_results', 'errorMessage' => 'Nominatim returned no results for the given address']];
+				}
+				
+				// Return response
+				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => [
+					'lat' => (float)$results[0]['lat'],
+					'lng' => (float)$results[0]['lon'],
+				]];
+			} catch (\Throwable $e) {
+				return ['request' => ['result' => 0, 'errorId' => $e->getCode(), 'errorMessage' => $e->getMessage()]];
+			}
+		}
+		
+		/**
 		 * Sends a GET request and returns a normalised response array.
 		 * @param string $endpoint Path relative to the base URL (e.g. '/parcels/123')
 		 * @param array $query Optional query string parameters
@@ -185,12 +237,12 @@
 		}
 		
 		/**
-		 * Normalises an HTTP response into the shared result envelope.
+		 * Normalizes an HTTP response into the shared result envelope.
 		 * SendCloud returns 4xx with a JSON body containing 'error.code' and 'error.message'.
-		 * @param \Symfony\Contracts\HttpClient\ResponseInterface $response
+		 * @param ResponseInterface $response
 		 * @return array
 		 */
-		private function normaliseResponse(\Symfony\Contracts\HttpClient\ResponseInterface $response): array {
+		private function normaliseResponse(ResponseInterface $response): array {
 			$statusCode = $response->getStatusCode();
 			$body = json_decode($response->getContent(false), true);
 			
