@@ -1,0 +1,57 @@
+{
+  "name": "quellabs/canvas-shipments-dpd",
+  "description": "DPD NL/BE shipping provider integration for the Canvas PHP framework",
+  "type": "library",
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "Floris van den Berg",
+      "email": "info@quellabs.com"
+    }
+  ],
+  "keywords": [
+    "dpd",
+    "shipping",
+    "shipment",
+    "canvas",
+    "canvas-shipments"
+  ],
+  "support": {
+    "email": "support@quellabs.com",
+    "issues": "https://github.com/quellabs/canvas-shipments-dpd/issues",
+    "forum": "https://github.com/quellabs/canvas-shipments-dpd/discussions",
+    "wiki": "https://github.com/quellabs/canvas-shipments-dpd/wiki",
+    "docs": "https://canvasphp.com/docs",
+    "source": "https://github.com/quellabs/canvas-shipments-dpd"
+  },
+  "require": {
+    "php": "^8.2",
+    "ext-simplexml": "*",
+    "ext-libxml": "*",
+    "symfony/http-client": "*",
+    "quellabs/support": "*",
+    "quellabs/contracts": "*",
+    "quellabs/canvas-shipments-contracts": "*"
+  },
+  "autoload": {
+    "psr-4": {
+      "Quellabs\\Shipments\\DPD\\": "src/"
+    }
+  },
+  "scripts": {
+    "post-autoload-dump": [
+      "php -r \"if (!file_exists('config/dpd.php') && !copy('vendor/quellabs/canvas-shipments-dpd/config/dpd.php', 'config/dpd.php')) { echo 'Warning: Could not publish DPD config file.' . PHP_EOL; }\""
+    ]
+  },
+  "extra": {
+    "discover": {
+      "canvas": {
+        "controller": "Quellabs\\Shipments\\DPD\\DPDController"
+      },
+      "shipments": {
+        "provider": "Quellabs\\Shipments\\DPD\\Driver",
+        "config": "config/dpd.php"
+      }
+    }
+  }
+}
