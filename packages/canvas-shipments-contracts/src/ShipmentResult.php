@@ -42,12 +42,6 @@
 			public readonly ?string $trackingUrl,
 			
 			/**
-			 * Direct URL to the shipping label PDF/ZPL.
-			 * Null if requestLabel was false or if the provider assigns labels asynchronously.
-			 */
-			public readonly ?string $labelUrl,
-			
-			/**
 			 * Human-readable carrier name (e.g. 'PostNL', 'DHL').
 			 * Derived from the provider's response — useful for display without a second lookup.
 			 */

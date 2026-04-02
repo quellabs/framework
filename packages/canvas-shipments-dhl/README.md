@@ -44,12 +44,10 @@ The key pair is shown only once — generating a new key invalidates the previou
 `$trackingUrl` are all populated immediately after `create()`. DHL assigns the barcode (tracker code)
 inline in the creation response.
 
-**Label retrieval requires a second API call.** DHL does not include the label in the creation
-response. When `ShipmentRequest::$requestLabel` is `true`, the driver makes a follow-up call to
-retrieve the label ID and returns its API endpoint URL in `ShipmentResult::$labelUrl`. This URL
-requires a valid Bearer token to access — proxy it server-side rather than exposing it to clients.
-If label retrieval fails at creation time it is treated as non-fatal; call `getLabelUrl()` on the
-driver to retry.
+**Labels are never returned at creation time.** `ShipmentResult::$labelUrl` is always `null`.
+Call `getLabelUrl()` on the driver when you need the label — it performs two API calls (resolve
+label ID, then build the endpoint URL) and returns a Bearer-token-protected URL. Fetch it
+server-side and proxy the PDF to clients; do not expose the URL directly.
 
 **Parcel type is auto-selected from weight.** The driver picks the smallest DHL parcel type that
 fits `ShipmentRequest::$weightGrams`:

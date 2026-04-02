@@ -125,7 +125,12 @@
 		}
 		
 		/**
-		 * Creates a parcel via SendCloud and returns structured result.
+		 * Creates a parcel via SendCloud and returns a structured result.
+		 *
+		 * Labels are not included in the result. The SendCloud API is instructed not to
+		 * generate a label at creation time (request_label=false). Call getLabelUrl()
+		 * explicitly when you need the label.
+		 *
 		 * @param ShipmentRequest $request
 		 * @return ShipmentResult
 		 * @throws ShipmentCreationException
@@ -150,7 +155,7 @@
 					'shipment'             => ['id' => $request->methodId],
 					'insured_value'        => $request->declaredValueCents > 0 ? $request->declaredValueCents : null,
 					'to_service_point'     => $request->servicePointId,
-					'request_label'        => $request->requestLabel,
+					'request_label'        => false,
 					'apply_shipping_rules' => true,
 				], fn($v) => $v !== null && $v !== '' && $v !== []),
 			];
@@ -190,7 +195,6 @@
 				reference: $request->reference,
 				trackingCode: $parcel['tracking_number'] ?? null,
 				trackingUrl: $parcel['tracking_url'] ?? null,
-				labelUrl: $parcel['label']['label_printer'] ?? $parcel['label']['normal_printer'][0] ?? null,
 				carrierName: $parcel['carrier']['name'] ?? null,
 				rawResponse: $parcel,
 			);
@@ -394,7 +398,7 @@
 				metadata: array_filter([
 					'carrierId'      => $parcel['carrier']['id'] ?? null,
 					'carrierName'    => $parcel['carrier']['name'] ?? null,
-					'labelUrl'       => $parcel['label']['label_printer'] ?? null,
+					'cachedLabelUrl' => $parcel['label']['label_printer'] ?? null,
 					'servicePointId' => $parcel['to_service_point'] ?? null,
 					'weightKg'       => $parcel['weight'] ?? null,
 				], fn($v) => $v !== null),

@@ -296,9 +296,8 @@
 		 * Creates a parcel via the PostNL Shipment API and returns a structured result.
 		 *
 		 * The PostNL API returns the barcode and label inline in the creation response,
-		 * so no second call is needed. The label is returned as a base64-encoded PDF;
-		 * the gateway decodes it and stores it, returning a data URI or a URL depending
-		 * on the configured label format.
+		 * but the label content is discarded here. Call getLabelUrl() explicitly when
+		 * you need the label — it re-requests it from the PostNL Confirming/Label endpoint.
 		 *
 		 * @param ShipmentRequest $request
 		 * @return ShipmentResult
@@ -417,28 +416,13 @@
 				);
 			}
 			
-			// Label is returned inline as base64-encoded PDF content
-			$labelUrl = null;
-			
-			if ($request->requestLabel) {
-				$labelContent = $responseShipment['Labels'][0]['Content'] ?? null;
-				
-				if ($labelContent !== null) {
-					// Store decoded label bytes as a data URI; callers needing a file
-					// should decode and write it themselves, or use getLabelUrl() for a
-					// server-side URL after persisting the PDF to storage.
-					$labelUrl = 'data:application/pdf;base64,' . $labelContent;
-				}
-			}
-			
-			// Return result
+			// Return result — call getLabelUrl() explicitly to fetch the label
 			return new ShipmentResult(
 				provider: self::DRIVER_NAME,
 				parcelId: $barcode,
 				reference: $request->reference,
 				trackingCode: $barcode,
 				trackingUrl: $this->buildTrackingUrl($barcode, $request->deliveryAddress->postalCode),
-				labelUrl: $labelUrl,
 				carrierName: 'PostNL',
 				rawResponse: $result['response'],
 			);
@@ -730,10 +714,10 @@
 		}
 		
 		/**
-		 * Returns the label URL for a given parcel barcode.
+		 * Returns the label for a given parcel barcode as a base64 data URI.
 		 *
-		 * Labels are returned inline at creation time. If a stored URL is not available,
-		 * re-request the label via the Confirming/Label endpoint using the barcode.
+		 * Calls the PostNL Confirming/Label endpoint using the barcode and returns
+		 * a data URI (data:application/pdf;base64,...) ready for decoding or storage.
 		 *
 		 * @param string $parcelId The PostNL barcode from ShipmentResult::$parcelId
 		 * @return string

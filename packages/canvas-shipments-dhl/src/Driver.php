@@ -258,27 +258,13 @@
 				);
 			}
 			
-			// Try to fetch label url
-			$labelUrl = null;
-			
-			if ($request->requestLabel) {
-				try {
-					$labelUrl = $this->getLabelUrl($trackerCode);
-				} catch (ShipmentLabelException) {
-					// Label retrieval failing is non-fatal at creation time.
-					// The caller can retry via getLabelUrl() when needed.
-					$labelUrl = null;
-				}
-			}
-			
-			// Return response
+			// Return response — labelUrl is always null for DHL; call getLabelUrl() explicitly
 			return new ShipmentResult(
 				provider: self::DRIVER_NAME,
 				parcelId: $trackerCode,
 				reference: $request->reference,
 				trackingCode: $trackerCode,
 				trackingUrl: $this->buildTrackingUrl($trackerCode, $request->deliveryAddress->postalCode),
-				labelUrl: $labelUrl,
 				carrierName: 'DHL',
 				rawResponse: $result['response'],
 			);
@@ -408,9 +394,8 @@
 		 *   1. GET /labels?trackerCodeFilter={code}  — returns the internal label ID.
 		 *   2. GET /labels/{id}                      — returns the PDF binary (Accept: application/pdf).
 		 *
-		 * Because returning a raw PDF as a "URL" does not fit the ShipmentResult::$labelUrl contract,
-		 * this method returns the API gateway URL for the label PDF endpoint. Callers that need
-		 * the actual PDF bytes should use DHLGateway::getLabelPdf() directly.
+		 * This method returns the API gateway URL for the label PDF endpoint.
+		 * Callers must fetch it server-side with a valid Bearer token.
 		 *
 		 * @param string $parcelId The DHL tracker code
 		 * @return string

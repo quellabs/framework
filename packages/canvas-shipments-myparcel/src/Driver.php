@@ -135,9 +135,9 @@
 		/**
 		 * Creates a parcel via MyParcel and returns a structured result.
 		 *
-		 * The creation response contains only the internal shipment ID. Label URL is fetched
-		 * in a second call when requestLabel is true. Tracking code is assigned asynchronously
-		 * by the carrier — use exchange() or the webhook to obtain it later.
+		 * The creation response contains only the internal shipment ID. Tracking code is assigned
+		 * asynchronously by the carrier — use exchange() or the webhook to obtain it later.
+		 * Labels are not included in the result; call getLabelUrl() explicitly when needed.
 		 *
 		 * @param ShipmentRequest $request
 		 * @return ShipmentResult
@@ -201,23 +201,12 @@
 				);
 			}
 			
-			$labelUrl = null;
-			
-			if ($request->requestLabel) {
-				$labelResult = $this->getGateway()->getLabel($parcelId);
-				
-				if ($labelResult['request']['result'] === 1) {
-					$labelUrl = $labelResult['response']['data']['pdfs']['url'] ?? null;
-				}
-			}
-			
 			return new ShipmentResult(
 				provider: self::DRIVER_NAME,
 				parcelId: $parcelId,
 				reference: $request->reference,
 				trackingCode: null,
 				trackingUrl: null,
-				labelUrl: $labelUrl,
 				carrierName: $this->carrierName($carrierInfo['carrierId']),
 				rawResponse: $result['response'],
 			);
