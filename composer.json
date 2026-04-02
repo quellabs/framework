@@ -138,12 +138,12 @@
     "php": "^8.3",
     "ext-curl": "*",
     "monolog/monolog": "*",
+    "dvdoug/boxpacker": "^4.0",
     "symfony/http-foundation": "*",
     "symfony/http-client": "*",
     "dragonmantank/cron-expression": "*",
     "robmorgan/phinx": "*",
     "cakephp/database": "*",
-    "softcreatr/jsonpath": "*",
     "composer-plugin-api": "^2.0",
     "quellabs/canvas-authorization": "dev-feature/stub"
   },
