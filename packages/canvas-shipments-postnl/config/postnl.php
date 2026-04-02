@@ -27,7 +27,16 @@
 		// Required for shipment creation. Example: '1234'
 		'collection_location' => '',
 		
-		// HMAC-SHA256 secret for verifying incoming webhook signatures.
+		// Delivery timeframe options to request when calling getDeliveryOptions().
+		// Only include options that are enabled on your PostNL contract.
+		// Requesting an option not covered by your contract may cause the API to reject
+		// the call or return no results for that option type.
+		//
+		// Available values: 'Daytime', 'Morning', 'Evening', 'Sunday'
+		// Morning, Evening, and Sunday carry an additional PostNL surcharge and require
+		// explicit activation by your PostNL account manager.
+		'delivery_options'    => ['Daytime'],
+		
 		// Configure the same value in your PostNL Developer Portal webhook subscription.
 		// Leave empty to disable signature verification (not recommended in production).
 		'webhook_secret'      => '',

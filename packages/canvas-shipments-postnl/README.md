@@ -21,6 +21,7 @@ return [
     'customer_number'     => '',     // from your PostNL contract
     'collection_location' => '',     // from your PostNL contract
     'webhook_secret'      => '',     // HMAC-SHA256 secret, set in the Developer Portal
+    'delivery_options'    => ['Daytime'], // add 'Morning', 'Evening', 'Sunday' if contracted
     'sender_address'      => [
         // 'company'     => 'My Webshop B.V.',
         // 'street'      => 'Keizersgracht',
@@ -56,13 +57,13 @@ the parcel has already been scanned by the carrier, the call returns a `CancelRe
 empty disables verification — do not do this in production.
 
 **Delivery options return one entry per available timeframe slot.** `getDeliveryOptions()` calls the
-PostNL Timeframe API and returns all available windows (Daytime, Morning, Evening, Sunday) across a
-5-day window starting tomorrow. Each slot is a separate `DeliveryOption`; the `methodId` encodes the
-date, window, and option type (`dd-mm-yyyy|HH:MM:SS|HH:MM:SS|OptionType`) so it can be passed back
-in `ShipmentRequest::$methodId` at order creation time. A recipient address is required; without it
-an empty array is returned. Morning, Evening, and Sunday slots are only included when available at
-the recipient address and enabled on your PostNL contract. Pickup point and locker modules return an
-empty array — use `getPickupOptions()` instead.
+PostNL Timeframe API and returns all available windows across a 5-day window starting tomorrow. The
+option types requested (Daytime, Morning, Evening, Sunday) are read from `delivery_options` in your
+config — only list types that are enabled on your PostNL contract. Each slot is a separate
+`DeliveryOption`; the `methodId` encodes the date, window, and option type
+(`dd-mm-yyyy|HH:MM:SS|HH:MM:SS|OptionType`) so it can be passed back in `ShipmentRequest::$methodId`
+at order creation time. A recipient address is required; without it an empty array is returned.
+Pickup point and locker modules return an empty array — use `getPickupOptions()` instead.
 
 **Pickup options require a recipient address.** Pass a `ShipmentAddress` as the second argument to
 `getPickupOptions()`. The address is used as the search origin for nearby service points.

@@ -287,6 +287,7 @@
 				'customer_code'       => '',
 				'customer_number'     => '',
 				'collection_location' => '',
+				'delivery_options'    => ['Daytime'],
 				'sender_address'      => [],
 			];
 		}
@@ -508,7 +509,35 @@
 				);
 			}
 			
-			return $this->buildStateFromShipment($shipmentData);
+			// PostNL returns status events ordered newest-first; the first entry is current state
+			$currentEvent = $shipmentData['Events'][0] ?? [];
+			$phaseCode = (int)($currentEvent['PhaseCode'] ?? 0);
+			$statusCode = (int)($currentEvent['StatusCode'] ?? 0);
+			$statusDescription = $currentEvent['Description'] ?? null;
+			
+			// StatusCode takes precedence for fine-grained mapping; fall back to PhaseCode
+			$status = self::STATUS_MAP[$statusCode] ?? self::STATUS_MAP[$phaseCode] ?? ShipmentStatus::Unknown;
+			$internalState = $phaseCode . '.' . $statusCode;
+			$barcode = $shipmentData['Barcode'] ?? '';
+			$postalCode = $shipmentData['Addresses'][0]['Zipcode'] ?? '';
+			$reference = $shipmentData['Reference'] ?? '';
+			
+			return new ShipmentState(
+				provider: self::DRIVER_NAME,
+				parcelId: $barcode,
+				reference: $reference,
+				state: $status,
+				trackingCode: $barcode,
+				trackingUrl: $this->buildTrackingUrl($barcode, $postalCode),
+				statusMessage: $statusDescription,
+				internalState: $internalState,
+				metadata: array_filter([
+					'phaseCode'   => $phaseCode ?: null,
+					'statusCode'  => $statusCode ?: null,
+					'postalCode'  => $postalCode ?: null,
+					'productCode' => $shipmentData['ProductCode'] ?? null,
+				], fn($v) => $v !== null),
+			);
 		}
 		
 		/**
@@ -545,6 +574,7 @@
 			
 			$startDate = (new \DateTimeImmutable('+1 day'))->format('d-m-Y');
 			$endDate = (new \DateTimeImmutable('+6 days'))->format('d-m-Y');
+			$options = $this->getConfig()['delivery_options'];
 			
 			$result = $this->getGateway()->getTimeframes(
 				$address->postalCode,
@@ -552,7 +582,7 @@
 				$address->country,
 				$startDate,
 				$endDate,
-				['Daytime', 'Morning', 'Evening', 'Sunday'],
+				$options,
 			);
 			
 			if ($result['request']['result'] === 0) {
@@ -721,44 +751,6 @@
 			}
 			
 			return 'data:application/pdf;base64,' . $labelContent;
-		}
-		
-		/**
-		 * Builds a ShipmentState from a raw shipment array returned by the PostNL Status API.
-		 * Used by exchange() and the webhook controller.
-		 * @param array $shipment The Shipment object from the PostNL Status API response
-		 * @return ShipmentState
-		 */
-		public function buildStateFromShipment(array $shipment): ShipmentState {
-			// PostNL returns status events ordered newest-first; the first entry is current state
-			$currentEvent = $shipment['Events'][0] ?? [];
-			$phaseCode = (int)($currentEvent['PhaseCode'] ?? 0);
-			$statusCode = (int)($currentEvent['StatusCode'] ?? 0);
-			$statusDescription = $currentEvent['Description'] ?? null;
-			
-			// StatusCode takes precedence for fine-grained mapping; fall back to PhaseCode
-			$status = self::STATUS_MAP[$statusCode] ?? self::STATUS_MAP[$phaseCode] ?? ShipmentStatus::Unknown;
-			$internalState = $phaseCode . '.' . $statusCode;
-			$barcode = $shipment['Barcode'] ?? '';
-			$postalCode = $shipment['Addresses'][0]['Zipcode'] ?? '';
-			$reference = $shipment['Reference'] ?? '';
-			
-			return new ShipmentState(
-				provider: self::DRIVER_NAME,
-				parcelId: $barcode,
-				reference: $reference,
-				state: $status,
-				trackingCode: $barcode,
-				trackingUrl: $this->buildTrackingUrl($barcode, $postalCode),
-				statusMessage: $statusDescription,
-				internalState: $internalState,
-				metadata: array_filter([
-					'phaseCode'   => $phaseCode ?: null,
-					'statusCode'  => $statusCode ?: null,
-					'postalCode'  => $postalCode ?: null,
-					'productCode' => $shipment['ProductCode'] ?? null,
-				], fn($v) => $v !== null),
-			);
 		}
 		
 		/**
