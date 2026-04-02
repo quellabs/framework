@@ -60,6 +60,17 @@
 		];
 		
 		/**
+		 * Maps the carrier-neutral packageType string from ShipmentRequest to MyParcel's integer codes.
+		 * @see https://developer.myparcel.nl/api-reference/02.shipments.html
+		 */
+		private const PACKAGE_TYPE_MAP = [
+			'parcel'        => 1,
+			'mailbox'       => 2,
+			'letter'        => 3,
+			'digital_stamp' => 4,
+		];
+		
+		/**
 		 * Maps MyParcel track-trace status codes to our normalised ShipmentStatus values.
 		 * Status codes are lowercase strings per the MyParcel API docs (v1.1).
 		 * @see https://developer.myparcel.nl/api-reference/06.track-trace.html
@@ -128,7 +139,6 @@
 				'region'         => 'nl',
 				'test_mode'      => false,
 				'sender_address' => [],
-				'package_type'   => 1,
 			];
 		}
 		
@@ -159,7 +169,7 @@
 				'reference_identifier' => $request->reference,
 				'recipient'            => $this->buildRecipient($request->deliveryAddress),
 				'options'              => array_filter([
-					'package_type'      => $this->getConfig()['package_type'],
+					'package_type'      => self::PACKAGE_TYPE_MAP[$request->packageType ?? 'parcel'] ?? 1,
 					'delivery_type'     => 2,
 					'label_description' => $request->description,
 					'insurance'         => $request->declaredValueCents > 0 ? [

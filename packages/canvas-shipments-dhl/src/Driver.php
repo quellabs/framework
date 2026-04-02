@@ -227,10 +227,10 @@
 			];
 			
 			// Merge any top-level extra fields (e.g. returnLabel, customsDeclaration).
-			// 'options' and 'parcelType' are driver-handled keys — exclude them from the
-			// top-level merge to prevent them appearing as stray fields in the DHL payload.
+			// 'options' is a driver-handled key — exclude it from the top-level merge
+			// to prevent it appearing as a stray field in the DHL payload.
 			if (!empty($request->extraData)) {
-				$extraWithoutOptions = array_diff_key($request->extraData, ['options' => true, 'parcelType' => true]);
+				$extraWithoutOptions = array_diff_key($request->extraData, ['options' => true]);
 				$payload = array_merge($payload, $extraWithoutOptions);
 			}
 			
@@ -484,44 +484,39 @@
 		/**
 		 * Resolves the DHL parcel type key for a shipment request.
 		 *
-		 * If the caller has supplied a 'parcelType' key inside ShipmentRequest::$extraData,
-		 * that value is used as-is — no weight check is performed, giving the caller full
-		 * control when needed (e.g. MAILBOX_PACKAGE has its own size constraints).
+		 * If ShipmentRequest::$packageType is set, it is used as-is — no weight check is
+		 * performed; the caller is assumed to know what they are sending.
 		 *
 		 * Otherwise, the parcel type is derived from ShipmentRequest::$weightGrams by finding
-		 * the smallest DHL type whose maximum weight accommodates the shipment. This ensures
-		 * the cheapest appropriate product is selected automatically.
+		 * the smallest DHL type whose maximum weight accommodates the shipment, ensuring the
+		 * cheapest appropriate product is selected automatically.
 		 *
-		 * Throws ShipmentCreationException when the weight exceeds XL (31 500 g / 31.5 kg),
-		 * since DHL has no standard product above that limit and the API would reject it anyway.
+		 * Throws ShipmentCreationException when auto-selection is used and the weight exceeds
+		 * XL (31 500 g / 31.5 kg), since DHL has no standard product above that limit.
 		 *
 		 * @param ShipmentRequest $request
 		 * @return string DHL parcel type key (e.g. 'SMALL', 'MEDIUM', 'LARGE', 'XL')
 		 * @throws ShipmentCreationException when weight exceeds the XL limit
 		 */
 		private function resolveParcelType(ShipmentRequest $request): string {
-			// Caller override: honor an explicit parcelType in extraData without weight-checking it
-			if (isset($request->extraData['parcelType'])) {
-				return (string)$request->extraData['parcelType'];
+			// Typed property takes priority over weight-based auto-selection
+			if ($request->packageType !== null) {
+				return $request->packageType;
 			}
 			
-			// Fetch weight
-			$weightGrams = $request->weightGrams;
-			
-			// Auto-select parcel type based on weight
+			// Weight-based auto-selection
 			foreach (self::PARCEL_TYPE_WEIGHT_MAP as $type => $maxGrams) {
-				if ($weightGrams <= $maxGrams) {
+				if ($request->weightGrams <= $maxGrams) {
 					return $type;
 				}
 			}
 			
-			// Weight exceeds limit, throw exception
 			$maxKg = max(self::PARCEL_TYPE_WEIGHT_MAP) / 1000;
 			
 			throw new ShipmentCreationException(
 				self::DRIVER_NAME,
 				'weight_exceeds_limit',
-				"Shipment weight of {$weightGrams} g exceeds the maximum DHL parcel weight of {$maxKg} kg (XL). " .
+				"Shipment weight of {$request->weightGrams} g exceeds the maximum DHL parcel weight of {$maxKg} kg (XL). " .
 				"Split the shipment into multiple parcels or use a freight service."
 			);
 		}

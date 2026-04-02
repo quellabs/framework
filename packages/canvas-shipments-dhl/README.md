@@ -59,8 +59,9 @@ fits `ShipmentRequest::$weightGrams`:
 | `LARGE`     | 20 kg      | 100 × 50 × 50 cm |
 | `XL`        | 31.5 kg    | —                |
 
-Shipments exceeding 31.5 kg throw `ShipmentCreationException`. To override for a specific shipment,
-pass `'parcelType'` in `ShipmentRequest::$extraData` — this bypasses auto-selection entirely.
+Shipments exceeding 31.5 kg throw `ShipmentCreationException`. To override, set
+`ShipmentRequest::$packageType` to the desired type key (`'SMALL'`, `'MEDIUM'`, `'LARGE'`, or
+`'XL'`) — this bypasses auto-selection entirely.
 
 **Cancellation is not supported via the public API.** `cancel()` always throws
 `ShipmentCancellationException`. Cancel shipments manually via the My DHL Parcel portal, or use

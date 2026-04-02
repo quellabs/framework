@@ -63,6 +63,15 @@
 			public readonly ?string         $servicePointId = null,
 			
 			/**
+			 * Optional package type hint for the carrier.
+			 * Accepted values vary per driver:
+			 *   MyParcel: 'parcel', 'mailbox', 'letter', 'digital_stamp' — defaults to 'parcel' if omitted.
+			 *   DHL:      'SMALL', 'MEDIUM', 'LARGE', 'XL'               — defaults to weight-based auto-selection if omitted.
+			 * Pass null (or omit) to let the driver decide.
+			 */
+			public readonly ?string         $packageType = null,
+			
+			/**
 			 * Whether to request the label immediately upon parcel creation.
 			 * Set to false if you want to batch-request labels separately.
 			 */
