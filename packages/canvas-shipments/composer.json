@@ -37,6 +37,11 @@
       "Quellabs\\Shipments\\": "src/"
     }
   },
+  "scripts": {
+    "post-autoload-dump": [
+      "php -r \"if (!file_exists('config/shipment_packing.php') && !copy('vendor/quellabs/canvas-shipments/config/shipment_packing.php', 'config/shipment_packing.php')) { echo 'Warning: Could not publish shipment config file.' . PHP_EOL; }\""
+    ]
+  },
   "extra": {
     "discover": {
       "di": {
