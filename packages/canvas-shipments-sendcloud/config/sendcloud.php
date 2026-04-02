@@ -31,6 +31,12 @@ return [
 	// Defaults to 5.0 km if not set.
 	'pickup_radius_km' => 5.0,
 	
+	// Optional Google Geocoding API key.
+	// When set, Google Maps Geocoding API is used instead of Nominatim (OpenStreetMap).
+	// Obtain a key at https://console.cloud.google.com — enable the Geocoding API.
+	// Leave empty to use Nominatim (free, no key required).
+	'geocoding_api_key' => '',
+	
 	// Default sender address fields pre-filled on every parcel.
 	// These can be overridden per-request via ShipmentRequest::$extraData if needed.
 	'sender_address' => [

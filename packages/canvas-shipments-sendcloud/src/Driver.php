@@ -113,13 +113,14 @@
 		 */
 		public function getDefaults(): array {
 			return [
-				'public_key'       => '',
-				'secret_key'       => '',
-				'partner_id'       => '',
-				'webhook_secret'   => '',
-				'sender_address'   => [],
-				'from_country'     => 'NL',
-				'pickup_radius_km' => 5.0,
+				'public_key'        => '',
+				'secret_key'        => '',
+				'partner_id'        => '',
+				'webhook_secret'    => '',
+				'sender_address'    => [],
+				'from_country'      => 'NL',
+				'pickup_radius_km'  => 5.0,
+				'geocoding_api_key' => '',
 			];
 		}
 		

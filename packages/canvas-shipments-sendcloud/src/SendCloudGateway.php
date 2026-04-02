@@ -156,14 +156,86 @@
 		}
 		
 		/**
-		 * Geocodes an address to a lat/lng center using Nominatim (OpenStreetMap).
-		 * Returns null if geocoding fails or returns no results.
+		 * Geocodes an address to a lat/lng using either Google Maps or Nominatim,
+		 * depending on whether a geocoding_api_key is configured.
 		 * @param string $postalCode
 		 * @param string $country ISO 3166-1 alpha-2
 		 * @param string|null $city
-		 * @return array{lat: float, lng: float}|null
+		 * @param string|null $apiKey Google Geocoding API key, or null to use Nominatim
+		 * @return array
 		 */
-		public function geocodeAddress(string $postalCode, string $country, ?string $city = null): array {
+		public function geocodeAddress(string $postalCode, string $country, ?string $city = null, ?string $apiKey = null): array {
+			if (!empty($apiKey)) {
+				return $this->geocodeWithGoogle($postalCode, $country, $city, $apiKey);
+			} else {
+				return $this->geocodeWithNominatim($postalCode, $country, $city);
+			}
+		}
+		
+		/**
+		 * Geocodes using the Google Maps Geocoding API.
+		 * @see https://developers.google.com/maps/documentation/geocoding
+		 * @param string $postalCode
+		 * @param string $country
+		 * @param string|null $city
+		 * @param string $apiKey
+		 * @return array
+		 */
+		private function geocodeWithGoogle(string $postalCode, string $country, ?string $city, string $apiKey): array {
+			try {
+				// Build payload for maps.googleapis.com
+				$components = array_filter([
+					'postal_code' => $postalCode,
+					'country'     => $country,
+				]);
+				
+				// Google uses a free-form 'address' plus structured 'components' for best accuracy
+				$address = implode(' ', array_filter([$postalCode, $city, $country]));
+				
+				// Call client
+				$response = $this->geocodingClient->request('GET', 'https://maps.googleapis.com/maps/api/geocode/json', [
+					'query' => [
+						'address'    => $address,
+						'components' => implode('|', array_map(
+							fn($k, $v) => "{$k}:{$v}",
+							array_keys($components),
+							$components
+						)),
+						'key' => $apiKey,
+					],
+				]);
+				
+				// Transform result to array
+				$body = $response->toArray(false);
+				
+				// If the call failed, return an error status
+				if (($body['status'] ?? '') !== 'OK' || empty($body['results'][0]['geometry']['location'])) {
+					$status = $body['status'] ?? 'UNKNOWN';
+					return ['request' => ['result' => 0, 'errorId' => $status, 'errorMessage' => "Google Geocoding returned status {$status}"]];
+				}
+				
+				// Fetch location data
+				$location = $body['results'][0]['geometry']['location'];
+				
+				// Return location data
+				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => [
+					'lat' => (float)$location['lat'],
+					'lng' => (float)$location['lng'],
+				]];
+			} catch (\Throwable $e) {
+				return ['request' => ['result' => 0, 'errorId' => $e->getCode(), 'errorMessage' => $e->getMessage()]];
+			}
+		}
+		
+		/**
+		 * Geocodes using Nominatim (OpenStreetMap). Free, no key required.
+		 * @see https://nominatim.org/release-docs/latest/api/Search/
+		 * @param string $postalCode
+		 * @param string $country
+		 * @param string|null $city
+		 * @return array
+		 */
+		private function geocodeWithNominatim(string $postalCode, string $country, ?string $city): array {
 			try {
 				// Build payload for nominatim.openstreetmap.org
 				$query = array_filter([
@@ -174,7 +246,7 @@
 					'limit'      => 1,
 				], fn($v) => $v !== null && $v !== '');
 				
-				// Call API
+				// Call client
 				$response = $this->geocodingClient->request('GET', 'https://nominatim.openstreetmap.org/search', [
 					'query' => $query,
 				]);
@@ -182,12 +254,12 @@
 				// Transform result to array
 				$results = $response->toArray(false);
 				
-				// Return error when returned data is invalid
+				// Validate location data
 				if (empty($results[0]['lat']) || empty($results[0]['lon'])) {
 					return ['request' => ['result' => 0, 'errorId' => 'no_results', 'errorMessage' => 'Nominatim returned no results for the given address']];
 				}
 				
-				// Return response
+				// Return location data
 				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => [
 					'lat' => (float)$results[0]['lat'],
 					'lng' => (float)$results[0]['lon'],
@@ -219,7 +291,7 @@
 		}
 		
 		/**
-		 * Sends a POST request and returns a normalised response array.
+		 * Sends a POST request and returns a normalized response array.
 		 * @param string $endpoint Path relative to the base URL
 		 * @param array $payload JSON request body
 		 * @return array
