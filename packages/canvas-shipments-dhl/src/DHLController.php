@@ -60,15 +60,19 @@
 		 * @return Response
 		 */
 		public function handleWebhook(Request $request): Response {
+			// Fetch and decode content
 			$rawBody = $request->getContent();
 			$body = json_decode($rawBody, true);
 			
+			// Error if invalid JSON
 			if (json_last_error() !== JSON_ERROR_NONE) {
 				return new JsonResponse('Invalid JSON (' . json_last_error_msg() . ')', 400);
 			}
 			
+			// Fetch barcode
 			$barcode = $body['barcode'] ?? null;
 			
+			// Error if no barcode present
 			if (empty($barcode)) {
 				return new JsonResponse('Missing or empty barcode', 400);
 			}
@@ -76,7 +80,7 @@
 			try {
 				// Fetch full event history to build a consistent ShipmentState.
 				// DHL's webhook payload includes status data, but exchange() ensures
-				// we always have the complete event chain and consistent normalisation.
+				// we always have the complete event chain and consistent normalization.
 				$state = $this->dhl->exchange($barcode);
 				
 				// Notify listeners (e.g. order management) of the updated shipment state
@@ -98,18 +102,19 @@
 		 * frontend or backend can call when it suspects a status is stale.
 		 *
 		 * @Route("dhl::refresh_url", fallback="/shipments/dhl/refresh/{shipmentId}", methods={"GET"})
-		 * @param Request $request
 		 * @param string $shipmentId The DHL tracker code (barcode)
 		 * @return Response
 		 */
-		public function handleRefresh(Request $request, string $shipmentId): Response {
+		public function handleRefresh(string $shipmentId): Response {
 			try {
+				// Call exchange to fetch state
 				$state = $this->dhl->exchange($shipmentId);
 				
 				// Notify listeners of the refreshed state, giving subscribers the same
 				// flow as a real webhook event
 				$this->signal->emit($state);
 				
+				// Return data
 				return new JsonResponse([
 					'shipmentId'  => $state->parcelId,
 					'reference'   => $state->reference,

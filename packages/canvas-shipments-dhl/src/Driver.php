@@ -92,6 +92,30 @@
 		];
 		
 		/**
+		 * Maps DHL parcel type keys to their maximum weight in grams.
+		 *
+		 * Entries are ordered lightest-first so resolveParcelType() can iterate and return
+		 * the first type whose max weight accommodates the shipment.
+		 *
+		 * Weight limits per DHL documentation:
+		 *   SMALL  — up to 2 kg   (2 000 g),  max 38 × 26 × 10 cm
+		 *   MEDIUM — up to 10 kg  (10 000 g), max 58 × 38 × 37 cm
+		 *   LARGE  — up to 20 kg  (20 000 g), max 100 × 50 × 50 cm
+		 *   XL     — up to 31.5 kg (31 500 g)
+		 *
+		 * Always verify limits against the capabilities endpoint for your destination
+		 * country, as they can vary per route.
+		 *
+		 * @see https://api-gw.dhlparcel.nl/docs/#/Parcel%20types
+		 */
+		private const PARCEL_TYPE_WEIGHT_MAP = [
+			'SMALL'  => 2_000,
+			'MEDIUM' => 10_000,
+			'LARGE'  => 20_000,
+			'XL'     => 31_500,
+		];
+		
+		/**
 		 * Returns discovery metadata for this provider.
 		 * Called statically during discovery — no instantiation required.
 		 * @return array<string, mixed>
@@ -129,9 +153,10 @@
 			return [
 				'user_id'        => '',
 				'api_key'        => '',
+				'user_id_test'   => '',
+				'api_key_test'   => '',
 				'account_id'     => '',
-				'mode'           => 'live',
-				'parcel_type'    => 'MEDIUM',
+				'test_mode'      => false,
 				'sender_address' => [],
 			];
 		}
@@ -195,17 +220,17 @@
 				'accountId'      => $config['account_id'],
 				'options'        => $options,
 				'pieces'         => [[
-					'parcelType' => $config['parcel_type'],
+					'parcelType' => $this->resolveParcelType($request),
 					'quantity'   => 1,
-					
-					// DHL expects weight in kilograms; ShipmentRequest stores grams
 					'weight'     => round($request->weightGrams / 1000, 3),
 				]],
 			];
 			
-			// Merge any top-level extra fields (e.g. returnLabel, customsDeclaration)
+			// Merge any top-level extra fields (e.g. returnLabel, customsDeclaration).
+			// 'options' and 'parcelType' are driver-handled keys — exclude them from the
+			// top-level merge to prevent them appearing as stray fields in the DHL payload.
 			if (!empty($request->extraData)) {
-				$extraWithoutOptions = array_diff_key($request->extraData, ['options' => true]);
+				$extraWithoutOptions = array_diff_key($request->extraData, ['options' => true, 'parcelType' => true]);
 				$payload = array_merge($payload, $extraWithoutOptions);
 			}
 			
@@ -245,8 +270,8 @@
 					$labelUrl = null;
 				}
 			}
-
-			// Return respnse
+			
+			// Return response
 			return new ShipmentResult(
 				provider: self::DRIVER_NAME,
 				parcelId: $trackerCode,
@@ -314,14 +339,7 @@
 		}
 		
 		/**
-		 * DHL Parcel NL does not provide a delivery timeslot options API equivalent to MyParcel's
-		 * delivery_options endpoint. Home delivery dates are determined by DHL at dispatch time.
-		 *
-		 * Capabilities (available products/services per route) can be queried via GET /capabilities,
-		 * but these describe product availability, not consumer-facing timeslot choices.
-		 * Implement this method if you need to expose DHL products as checkout delivery options
-		 * by querying the capabilities endpoint and mapping each product to a DeliveryOption.
-		 *
+		 * DHL Parcel NL does not provide a delivery timeslot options API
 		 * @param string $shippingModule
 		 * @param ShipmentAddress|null $address
 		 * @return DeliveryOption[]
@@ -425,7 +443,11 @@
 			// Return the direct API endpoint URL for the label PDF.
 			// The gateway injects the Authorization header; callers proxying this URL
 			// must fetch it server-side with a valid Bearer token.
-			return DHLGateway::BASE_URL . "/labels/{$labelId}";
+			// Build the label URL against the correct environment base URL.
+			// Callers must fetch this server-side with a valid Bearer token.
+			$config = $this->getConfig();
+			$baseUrl = $config['test_mode'] ? DHLGateway::BASE_URL_TEST : DHLGateway::BASE_URL_LIVE;
+			return $baseUrl . "/labels/{$labelId}";
 		}
 		
 		/**
@@ -471,6 +493,51 @@
 					'plannedDeliveryWindow' => $plannedWindow,
 					'facility'              => $latest['facility'] ?? null,
 				], fn($v) => $v !== null),
+			);
+		}
+		
+		/**
+		 * Resolves the DHL parcel type key for a shipment request.
+		 *
+		 * If the caller has supplied a 'parcelType' key inside ShipmentRequest::$extraData,
+		 * that value is used as-is — no weight check is performed, giving the caller full
+		 * control when needed (e.g. MAILBOX_PACKAGE has its own size constraints).
+		 *
+		 * Otherwise, the parcel type is derived from ShipmentRequest::$weightGrams by finding
+		 * the smallest DHL type whose maximum weight accommodates the shipment. This ensures
+		 * the cheapest appropriate product is selected automatically.
+		 *
+		 * Throws ShipmentCreationException when the weight exceeds XL (31 500 g / 31.5 kg),
+		 * since DHL has no standard product above that limit and the API would reject it anyway.
+		 *
+		 * @param ShipmentRequest $request
+		 * @return string DHL parcel type key (e.g. 'SMALL', 'MEDIUM', 'LARGE', 'XL')
+		 * @throws ShipmentCreationException when weight exceeds the XL limit
+		 */
+		private function resolveParcelType(ShipmentRequest $request): string {
+			// Caller override: honor an explicit parcelType in extraData without weight-checking it
+			if (isset($request->extraData['parcelType'])) {
+				return (string)$request->extraData['parcelType'];
+			}
+			
+			// Fetch weight
+			$weightGrams = $request->weightGrams;
+			
+			// Auto-select parcel type based on weight
+			foreach (self::PARCEL_TYPE_WEIGHT_MAP as $type => $maxGrams) {
+				if ($weightGrams <= $maxGrams) {
+					return $type;
+				}
+			}
+			
+			// Weight exceeds limit, throw exception
+			$maxKg = max(self::PARCEL_TYPE_WEIGHT_MAP) / 1000;
+			
+			throw new ShipmentCreationException(
+				self::DRIVER_NAME,
+				'weight_exceeds_limit',
+				"Shipment weight of {$weightGrams} g exceeds the maximum DHL parcel weight of {$maxKg} kg (XL). " .
+				"Split the shipment into multiple parcels or use a freight service."
 			);
 		}
 		
@@ -615,8 +682,7 @@
 		 * @return string
 		 */
 		private function buildTrackingUrl(string $trackerCode, string $postalCode): string {
-			// DHL NL public tracking URL; postal code improves the response detail
-			$encodedKey = rawurlencode($trackerCode . '+' . $postalCode);
+			// DHL NL public tracking URL; postal code unlocks extended shipment detail in the response
 			return "https://www.dhlparcel.nl/nl/volg-uw-zending-0?tt={$trackerCode}&pc=" . rawurlencode($postalCode);
 		}
 		

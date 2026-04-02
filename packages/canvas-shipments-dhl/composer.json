@@ -1,0 +1,55 @@
+{
+  "name": "quellabs/canvas-shipments-dhl",
+  "description": "DHL Parcel NL shipping provider integration for the Canvas PHP framework",
+  "type": "library",
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "Floris van den Berg",
+      "email": "info@quellabs.com"
+    }
+  ],
+  "keywords": [
+    "dhl",
+    "shipping",
+    "shipment",
+    "canvas",
+    "canvas-shipments"
+  ],
+  "support": {
+    "email": "support@quellabs.com",
+    "issues": "https://github.com/quellabs/canvas-shipments-dhl/issues",
+    "forum": "https://github.com/quellabs/canvas-shipments-dhl/discussions",
+    "wiki": "https://github.com/quellabs/canvas-shipments-dhl/wiki",
+    "docs": "https://canvasphp.com/docs",
+    "source": "https://github.com/quellabs/canvas-shipments-dhl"
+  },
+  "require": {
+    "php": "^8.2",
+    "symfony/http-client": "*",
+    "quellabs/support": "*",
+    "quellabs/contracts": "*",
+    "quellabs/canvas-shipments-contracts": "*"
+  },
+  "autoload": {
+    "psr-4": {
+      "Quellabs\\Shipments\\DHL\\": "src/"
+    }
+  },
+  "scripts": {
+    "post-autoload-dump": [
+      "php -r \"if (!file_exists('config/dhl.php') && !copy('vendor/quellabs/canvas-shipments-dhl/config/dhl.php', 'config/dhl.php')) { echo 'Warning: Could not publish DHL config file.' . PHP_EOL; }\""
+    ]
+  },
+  "extra": {
+    "discover": {
+      "canvas": {
+        "controller": "Quellabs\\Shipments\\DHL\\DHLController"
+      },
+      "shipments": {
+        "provider": "Quellabs\\Shipments\\DHL\\Driver",
+        "config": "config/dhl.php"
+      }
+    }
+  }
+}

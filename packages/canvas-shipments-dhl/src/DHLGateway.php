@@ -4,6 +4,7 @@
 	
 	use Symfony\Component\HttpClient\HttpClient;
 	use Symfony\Contracts\HttpClient\HttpClientInterface;
+	use Symfony\Contracts\HttpClient\ResponseInterface;
 	
 	/**
 	 * Low-level wrapper around the DHL Parcel NL API (api-gw.dhlparcel.nl).
@@ -35,16 +36,22 @@
 	class DHLGateway {
 		
 		/** DHL Parcel NL production base URL */
-		public const BASE_URL = 'https://api-gw.dhlparcel.nl';
+		public const BASE_URL_LIVE = 'https://api-gw.dhlparcel.nl';
 		
-		/** DHL authentication endpoint */
-		private const AUTH_URL = self::BASE_URL . '/authenticate/api-key';
-		
-		/** DHL token refresh endpoint */
-		private const REFRESH_URL = self::BASE_URL . '/authenticate/refresh-token';
+		/** DHL Parcel NL acceptance (test) base URL */
+		public const BASE_URL_TEST = 'https://api-gw-accept.dhlparcel.nl';
 		
 		/** @var HttpClientInterface Shared HTTP client (no Authorization header — added per-request) */
 		private HttpClientInterface $client;
+		
+		/** @var string Resolved base URL — production or acceptance depending on test_mode */
+		private string $baseUrl;
+		
+		/** @var string Authentication endpoint (derived from resolved base URL) */
+		private string $authUrl;
+		
+		/** @var string Token refresh endpoint (derived from resolved base URL) */
+		private string $refreshUrl;
 		
 		/** @var string|null Current access token (JWT) */
 		private ?string $accessToken = null;
@@ -70,8 +77,23 @@
 		 */
 		public function __construct(Driver $driver) {
 			$config = $driver->getConfig();
-			$this->userId = $config['user_id'];
-			$this->apiKey = ($config['mode'] === 'live') ? $config['api_key'] : ($config['api_key_test'] ?? $config['api_key']);
+			$isTest = (bool)($config['test_mode'] ?? false);
+			
+			// Select base URL and credentials based on test_mode.
+			// Falls back to live credentials when test credentials are not configured.
+			if ($isTest) {
+				$this->baseUrl = self::BASE_URL_TEST;
+				$this->userId = $config['user_id_test'] ?: $config['user_id'];
+				$this->apiKey = $config['api_key_test'] ?: $config['api_key'];
+			} else {
+				$this->baseUrl = self::BASE_URL_LIVE;
+				$this->userId = $config['user_id'];
+				$this->apiKey = $config['api_key'];
+			}
+			
+			// Auth endpoints are always relative to the resolved base URL
+			$this->authUrl = $this->baseUrl . '/authenticate/api-key';
+			$this->refreshUrl = $this->baseUrl . '/authenticate/refresh-token';
 			
 			$this->client = HttpClient::create(['timeout' => 15]);
 		}
@@ -103,42 +125,6 @@
 		}
 		
 		/**
-		 * Fetches the raw PDF bytes for a label by its internal label ID.
-		 * Returns the binary PDF content in response['pdf'] on success.
-		 *
-		 * Callers that need to serve the label to a browser or printer should use this
-		 * rather than getLabelUrl(), which returns a URL that requires a valid Bearer token.
-		 *
-		 * @see https://api-gw.dhlparcel.nl/docs/#/Labels/get_labels__labelId_
-		 * @param string $labelId Internal label ID from getLabelId()
-		 * @return array ['request' => [...], 'response' => ['pdf' => <binary>]]
-		 */
-		public function getLabelPdf(string $labelId): array {
-			try {
-				$token = $this->getValidToken();
-				$response = $this->client->request('GET', self::BASE_URL . "/labels/{$labelId}", [
-					'headers' => [
-						'Authorization' => "Bearer {$token}",
-						'Accept'        => 'application/pdf',
-					],
-				]);
-				
-				$statusCode = $response->getStatusCode();
-				
-				if ($statusCode >= 400) {
-					return $this->errorResult($statusCode, "HTTP {$statusCode}");
-				}
-				
-				return [
-					'request'  => ['result' => 1, 'errorId' => '', 'errorMessage' => ''],
-					'response' => ['pdf' => $response->getContent()],
-				];
-			} catch (\Throwable $e) {
-				return $this->errorResult($e->getCode(), $e->getMessage());
-			}
-		}
-		
-		/**
 		 * Retrieves track-and-trace events for a given tracker code.
 		 *
 		 * DHL returns an array of event objects ordered chronologically.
@@ -152,14 +138,14 @@
 		public function getTrackTrace(string $trackerCode): array {
 			// Track-trace endpoint does not require authentication
 			try {
-				$response = $this->client->request('GET', self::BASE_URL . '/track-trace', [
+				$response = $this->client->request('GET', $this->baseUrl . '/track-trace', [
 					'headers' => ['Accept' => 'application/json'],
 					'query'   => ['key' => $trackerCode],
 				]);
 				
 				return $this->normaliseResponse($response);
 			} catch (\Throwable $e) {
-				return $this->errorResult($e->getCode(), $e->getMessage());
+				return ['request' => ['result' => 0, 'errorId' => $e->getCode(), 'errorMessage' => $e->getMessage()]];
 			}
 		}
 		
@@ -182,27 +168,27 @@
 			], fn($v) => $v !== null && $v !== '');
 			
 			try {
-				$response = $this->client->request('GET', self::BASE_URL . "/parcel-shop-locations/{$countryCode}", [
+				$response = $this->client->request('GET', $this->baseUrl . "/parcel-shop-locations/{$countryCode}", [
 					'headers' => ['Accept' => 'application/json'],
 					'query'   => $query,
 				]);
 				
 				return $this->normaliseResponse($response);
 			} catch (\Throwable $e) {
-				return $this->errorResult($e->getCode(), $e->getMessage());
+				return ['request' => ['result' => 0, 'errorId' => $e->getCode(), 'errorMessage' => $e->getMessage()]];
 			}
 		}
 		
 		/**
 		 * Sends an authenticated GET request.
-		 * @param string $endpoint Path relative to BASE_URL
+		 * @param string $endpoint Path relative to the resolved base URL
 		 * @param array $query Optional query parameters
 		 * @return array
 		 */
 		private function get(string $endpoint, array $query = []): array {
 			try {
 				$token = $this->getValidToken();
-				$response = $this->client->request('GET', self::BASE_URL . $endpoint, [
+				$response = $this->client->request('GET', $this->baseUrl . $endpoint, [
 					'headers' => [
 						'Authorization' => "Bearer {$token}",
 						'Accept'        => 'application/json',
@@ -212,20 +198,20 @@
 				
 				return $this->normaliseResponse($response);
 			} catch (\Throwable $e) {
-				return $this->errorResult($e->getCode(), $e->getMessage());
+				return ['request' => ['result' => 0, 'errorId' => $e->getCode(), 'errorMessage' => $e->getMessage()]];
 			}
 		}
 		
 		/**
 		 * Sends an authenticated POST request.
-		 * @param string $endpoint Path relative to BASE_URL
+		 * @param string $endpoint Path relative to the resolved base URL
 		 * @param array $payload JSON request body
 		 * @return array
 		 */
 		private function post(string $endpoint, array $payload): array {
 			try {
 				$token = $this->getValidToken();
-				$response = $this->client->request('POST', self::BASE_URL . $endpoint, [
+				$response = $this->client->request('POST', $this->baseUrl . $endpoint, [
 					'headers' => [
 						'Authorization' => "Bearer {$token}",
 						'Content-Type'  => 'application/json',
@@ -236,7 +222,7 @@
 				
 				return $this->normaliseResponse($response);
 			} catch (\Throwable $e) {
-				return $this->errorResult($e->getCode(), $e->getMessage());
+				return ['request' => ['result' => 0, 'errorId' => $e->getCode(), 'errorMessage' => $e->getMessage()]];
 			}
 		}
 		
@@ -281,7 +267,7 @@
 		 */
 		private function authenticate(): void {
 			try {
-				$response = $this->client->request('POST', self::AUTH_URL, [
+				$response = $this->client->request('POST', $this->authUrl, [
 					'headers' => [
 						'Content-Type' => 'application/json',
 						'Accept'       => 'application/json',
@@ -310,11 +296,11 @@
 		
 		/**
 		 * Obtains a new access token using the stored refresh token.
-		 * @throws \RuntimeException on refresh failure (triggers full re-authentication)
+		 * Falls back to full re-authentication if the refresh token has expired.
 		 */
 		private function refreshAccessToken(): void {
 			try {
-				$response = $this->client->request('POST', self::REFRESH_URL, [
+				$response = $this->client->request('POST', $this->refreshUrl, [
 					'headers' => [
 						'Content-Type' => 'application/json',
 						'Accept'       => 'application/json',
@@ -360,10 +346,10 @@
 		 *   HTTP 4xx/5xx with JSON: { "title": "...", "detail": "...", "status": 422 }
 		 *   The "detail" field is the most descriptive; "title" is the fallback.
 		 *
-		 * @param \Symfony\Contracts\HttpClient\ResponseInterface $response
+		 * @param ResponseInterface $response
 		 * @return array
 		 */
-		private function normaliseResponse(\Symfony\Contracts\HttpClient\ResponseInterface $response): array {
+		private function normaliseResponse(ResponseInterface $response): array {
 			$statusCode = $response->getStatusCode();
 			
 			// getContent(false) suppresses exceptions on 4xx/5xx so we can read the body
@@ -372,6 +358,7 @@
 			
 			if ($statusCode >= 400) {
 				if (is_array($body)) {
+					// Read message
 					$message = $body['detail'] ?? $body['title'] ?? "HTTP {$statusCode}";
 					
 					// Append field-level validation errors when present
@@ -383,28 +370,9 @@
 					$message = $rawBody ?: "HTTP {$statusCode}";
 				}
 				
-				return $this->errorResult($statusCode, $message);
+				return ['request' => ['result' => 0, 'errorId' => $statusCode, 'errorMessage' => $message]];
 			}
 			
-			return [
-				'request'  => ['result' => 1, 'errorId' => '', 'errorMessage' => ''],
-				'response' => $body,
-			];
-		}
-		
-		/**
-		 * Returns a normalised error result array.
-		 * @param int|string $errorId
-		 * @param string $message
-		 * @return array
-		 */
-		private function errorResult(int|string $errorId, string $message): array {
-			return [
-				'request' => [
-					'result'       => 0,
-					'errorId'      => $errorId,
-					'errorMessage' => $message,
-				],
-			];
+			return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $body];
 		}
 	}

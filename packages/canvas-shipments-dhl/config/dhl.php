@@ -22,24 +22,11 @@
 		// on a single API key; specify the one to charge for each shipment here.
 		'account_id'     => '',
 		
-		// Operation mode.
-		//   'live' — uses api_key / user_id, sends real parcels via api-gw.dhlparcel.nl
-		//   'test' — uses api_key_test / user_id_test if set, otherwise falls back to live credentials
-		//
-		// Note: DHL does provide a dedicated acceptance environment (api-gw-accept.dhlparcel.nl).
-		// The driver currently targets production only. To switch base URLs for acceptance
-		// testing, override DHLGateway::BASE_URL or extend the gateway class.
-		'mode'           => 'live',
-		
-		// Default parcel type applied to every shipment unless overridden via ShipmentRequest::$extraData.
-		// Available types (from the DHL ParcelTypes endpoint):
-		//   SMALL  — up to 2 kg,  max 38 × 26 × 10 cm
-		//   MEDIUM — up to 10 kg, max 58 × 38 × 37 cm
-		//   LARGE  — up to 20 kg, max 100 × 50 × 50 cm
-		//   XL     — up to 31.5 kg
-		// Always verify against the capabilities endpoint for your destination country,
-		// as available types vary per route.
-		'parcel_type'    => 'MEDIUM',
+		// Test mode.
+		// When true, the driver targets the DHL acceptance environment (api-gw-accept.dhlparcel.nl)
+		// and uses user_id_test / api_key_test instead of the live credentials.
+		// Falls back to live credentials if test credentials are not configured.
+		'test_mode'      => false,
 		
 		// Sender address — required on every DHL shipment.
 		// DHL prints the shipper address on the label and uses it for returns.
