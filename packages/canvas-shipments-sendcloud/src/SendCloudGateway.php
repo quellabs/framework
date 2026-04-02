@@ -21,12 +21,18 @@
 		private const BASE_URL = 'https://panel.sendcloud.sc/api/v2';
 		private const SERVICE_POINT_URL = 'https://servicepoints.sendcloud.sc/api/v2';
 		
+		/** @var string|null Google Geocoding API key, read from config */
+		private ?string $geocodingApiKey;
+		
 		/** @var HttpClientInterface Shared HTTP client instance for SendCloud API */
 		private HttpClientInterface $client;
 		
-		/** @var HttpClientInterface HTTP client for external geocoding requests */
-		private HttpClientInterface $geocodingClient;
+		/** @var HttpClientInterface HTTP client for Nominatim (requires User-Agent) */
+		private HttpClientInterface $nominatimClient;
 		
+		/** @var HttpClientInterface HTTP client for Google Maps (no custom User-Agent) */
+		private HttpClientInterface $googleMapsClient;
+
 		/**
 		 * SendCloudGateway constructor.
 		 * @param Driver $driver
@@ -34,19 +40,26 @@
 		public function __construct(Driver $driver) {
 			$config = $driver->getConfig();
 			
+			// Store geocoding key
+			$this->geocodingApiKey = !empty($config['geocoding_api_key']) ? $config['geocoding_api_key'] : null;
+			
+			// Client for SendCloud calls
 			$this->client = HttpClient::create([
 				'auth_basic' => [$config['public_key'], $config['secret_key']],
-				'timeout'    => 10,
-				'headers'    => [
-					'Sendcloud-Partner-Id' => $config['partner_id'] ?? '',
-				],
+				'timeout'    => 10
 			]);
 			
-			$this->geocodingClient = HttpClient::create([
+			// Nominatim requires a descriptive User-Agent per OSM usage policy.
+			$this->nominatimClient = HttpClient::create([
 				'timeout' => 5,
 				'headers' => [
 					'User-Agent' => 'Quellabs-Shipments/1.0',
 				],
+			]);
+			
+			// Google Maps API authenticates via query param (key=). No custom User-Agent needed.
+			$this->googleMapsClient = HttpClient::create([
+				'timeout' => 5,
 			]);
 		}
 		
@@ -161,12 +174,11 @@
 		 * @param string $postalCode
 		 * @param string $country ISO 3166-1 alpha-2
 		 * @param string|null $city
-		 * @param string|null $apiKey Google Geocoding API key, or null to use Nominatim
 		 * @return array
 		 */
-		public function geocodeAddress(string $postalCode, string $country, ?string $city = null, ?string $apiKey = null): array {
+		public function geocodeAddress(string $postalCode, string $country, ?string $city = null): array {
 			if (!empty($apiKey)) {
-				return $this->geocodeWithGoogle($postalCode, $country, $city, $apiKey);
+				return $this->geocodeWithGoogle($postalCode, $country, $city);
 			} else {
 				return $this->geocodeWithNominatim($postalCode, $country, $city);
 			}
@@ -178,10 +190,9 @@
 		 * @param string $postalCode
 		 * @param string $country
 		 * @param string|null $city
-		 * @param string $apiKey
 		 * @return array
 		 */
-		private function geocodeWithGoogle(string $postalCode, string $country, ?string $city, string $apiKey): array {
+		private function geocodeWithGoogle(string $postalCode, string $country, ?string $city): array {
 			try {
 				// Build payload for maps.googleapis.com
 				$components = array_filter([
@@ -193,7 +204,7 @@
 				$address = implode(' ', array_filter([$postalCode, $city, $country]));
 				
 				// Call client
-				$response = $this->geocodingClient->request('GET', 'https://maps.googleapis.com/maps/api/geocode/json', [
+				$response = $this->googleMapsClient->request('GET', 'https://maps.googleapis.com/maps/api/geocode/json', [
 					'query' => [
 						'address'    => $address,
 						'components' => implode('|', array_map(
@@ -201,7 +212,7 @@
 							array_keys($components),
 							$components
 						)),
-						'key' => $apiKey,
+						'key' => $this->geocodingApiKey,
 					],
 				]);
 				
@@ -247,7 +258,7 @@
 				], fn($v) => $v !== null && $v !== '');
 				
 				// Call client
-				$response = $this->geocodingClient->request('GET', 'https://nominatim.openstreetmap.org/search', [
+				$response = $this->nominatimClient->request('GET', 'https://nominatim.openstreetmap.org/search', [
 					'query' => $query,
 				]);
 				
