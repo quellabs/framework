@@ -230,10 +230,13 @@
 		/**
 		 * Returns available shipping methods for the given module.
 		 * Filters by the module's carrier set and the configured sender country.
-		 * @param string $shippingModule
+		 * $address is accepted for interface compatibility but not used by SendCloud,
+		 * which provides static shipping methods independent of recipient location.
+		 * @param string               $shippingModule
+		 * @param ShipmentAddress|null $address
 		 * @return array
 		 */
-		public function getShippingOptions(string $shippingModule): array {
+		public function getShippingOptions(string $shippingModule, ?ShipmentAddress $address = null): array {
 			$config = $this->getConfig();
 			$result = $this->getGateway()->getShippingMethods($config['from_country'] ?? null);
 			

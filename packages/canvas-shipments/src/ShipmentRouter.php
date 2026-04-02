@@ -6,6 +6,7 @@ use Quellabs\Discover\Discover;
 use Quellabs\Discover\Scanner\ComposerScanner;
 use Quellabs\Shipments\Contracts\CancelRequest;
 use Quellabs\Shipments\Contracts\CancelResult;
+use Quellabs\Shipments\Contracts\ShipmentAddress;
 use Quellabs\Shipments\Contracts\ShipmentInterface;
 use Quellabs\Shipments\Contracts\ShipmentProviderInterface;
 use Quellabs\Shipments\Contracts\ShipmentRequest;
@@ -92,10 +93,11 @@ class ShipmentRouter implements ShipmentInterface {
 	/**
 	 * Returns available shipping options for the given module.
 	 * @param string $shippingModule
+	 * @param ShipmentAddress|null $address
 	 * @return array
 	 */
-	public function getShippingOptions(string $shippingModule): array {
-		return $this->resolve($shippingModule)->getShippingOptions($shippingModule);
+	public function getShippingOptions(string $shippingModule, ?ShipmentAddress $address = null): array {
+		return $this->resolve($shippingModule)->getShippingOptions($shippingModule, $address);
 	}
 
 	/**
