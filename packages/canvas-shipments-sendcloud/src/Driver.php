@@ -131,17 +131,20 @@
 		 * @throws ShipmentCreationException
 		 */
 		public function create(ShipmentRequest $request): ShipmentResult {
+			// Build payload
+			$address = $request->deliveryAddress;
+			
 			$payload = [
 				'parcel' => array_filter([
-					'name'                 => $request->deliveryAddress->name,
-					'company_name'         => $request->deliveryAddress->company,
-					'address'              => $this->buildStreetLine($request->deliveryAddress),
-					'house_number'         => $request->deliveryAddress->houseNumber,
-					'city'                 => $request->deliveryAddress->city,
-					'postal_code'          => $request->deliveryAddress->postalCode,
-					'country'              => ['iso_2' => $request->deliveryAddress->country],
-					'email'                => $request->deliveryAddress->email,
-					'telephone'            => $request->deliveryAddress->phone,
+					'name'                 => $address->name,
+					'company_name'         => $address->company,
+					'address'              => $address->street,
+					'house_number'         => $address->houseNumber . (!empty($address->houseNumberSuffix) ? ' ' . $address->houseNumberSuffix : ''),
+					'city'                 => $address->city,
+					'postal_code'          => $address->postalCode,
+					'country'              => ['iso_2' => $address->country],
+					'email'                => $address->email,
+					'telephone'            => $address->phone,
 					'order_number'         => $request->reference,
 					'weight'               => round($request->weightGrams / 1000, 3),
 					'shipment'             => ['id' => $request->methodId],
@@ -157,7 +160,7 @@
 				$senderKeys = ['name', 'company_name', 'address', 'house_number', 'city', 'postal_code', 'country', 'email', 'telephone'];
 				$payload['parcel'] = array_merge($payload['parcel'], array_diff_key($request->extraData, array_flip($senderKeys)));
 			}
-
+			
 			// Sender address is always applied last so it cannot be overridden.
 			$senderAddress = array_filter($this->getConfig()['sender_address'] ?? []);
 			
@@ -413,19 +416,24 @@
 		 * @return array Raw method arrays from the SendCloud API
 		 */
 		private function fetchFilteredMethods(string $shippingModule): array {
+			// Fetch shipping methods from API
 			$result = $this->getGateway()->getShippingMethods($this->getConfig()['from_country'] ?? null);
 			
+			// If that failed, return an empty array
 			if ($result['request']['result'] === 0) {
 				return [];
 			}
 			
+			// Fetch shipping methods from result
 			$carriers = self::MODULE_CARRIER_MAP[$shippingModule] ?? [];
 			$methods = $result['response']['shipping_methods'] ?? [];
 			
+			// If none, return empty array
 			if (empty($carriers)) {
 				return $methods;
 			}
 			
+			// Filter methods by carrier
 			return array_values(array_filter($methods, function (array $method) use ($carriers): bool {
 				return in_array(strtolower($method['carrier'] ?? ''), $carriers, true);
 			}));
@@ -447,21 +455,6 @@
 					'price'          => $method['price'] ?? null,
 				], fn($v) => $v !== null),
 			);
-		}
-		
-		/**
-		 * Builds a full street line from an address, appending suffix when present.
-		 * @param ShipmentAddress $address
-		 * @return string
-		 */
-		private function buildStreetLine(ShipmentAddress $address): string {
-			$line = trim($address->street . ' ' . $address->houseNumber);
-			
-			if (!empty($address->houseNumberSuffix)) {
-				$line .= ' ' . $address->houseNumberSuffix;
-			}
-			
-			return $line;
 		}
 		
 		/**
