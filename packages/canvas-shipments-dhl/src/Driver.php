@@ -16,6 +16,8 @@
 	use Quellabs\Shipments\Contracts\ShipmentResult;
 	use Quellabs\Shipments\Contracts\ShipmentState;
 	use Quellabs\Shipments\Contracts\ShipmentStatus;
+	use Quellabs\Support\ComposerUtils;
+	use Quellabs\Support\Tools;
 	
 	class Driver implements ShipmentProviderInterface {
 		
@@ -175,6 +177,7 @@
 		 * @param ShipmentRequest $request
 		 * @return ShipmentResult
 		 * @throws ShipmentCreationException
+		 * @throws \Exception
 		 */
 		public function create(ShipmentRequest $request): ShipmentResult {
 			$productKey = self::MODULE_PRODUCT_MAP[$request->shippingModule] ?? null;
@@ -192,7 +195,7 @@
 			
 			// DHL uses a caller-generated UUID as the idempotency key for the shipment.
 			// This is NOT the parcel identifier; the trackerCode returned by DHL serves that role.
-			$shipmentUuid = $this->generateUuid();
+			$shipmentUuid = Tools::createUUIDv4();
 			
 			// Build options
 			$options = [['key' => 'DOOR']];
@@ -664,17 +667,5 @@
 		private function buildTrackingUrl(string $trackerCode, string $postalCode): string {
 			// DHL NL public tracking URL; postal code unlocks extended shipment detail in the response
 			return "https://www.dhlparcel.nl/nl/volg-uw-zending-0?tt={$trackerCode}&pc=" . rawurlencode($postalCode);
-		}
-		
-		/**
-		 * Generates a RFC 4122 compliant UUID v4.
-		 * DHL uses UUIDs as shipment idempotency keys; PHP 8.3+ has Uuid but we support 8.1+.
-		 * @return string
-		 */
-		private function generateUuid(): string {
-			$data = random_bytes(16);
-			$data[6] = chr((ord($data[6]) & 0x0f) | 0x40); // version 4
-			$data[8] = chr((ord($data[8]) & 0x3f) | 0x80); // variant bits
-			return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($data), 4));
 		}
 	}
