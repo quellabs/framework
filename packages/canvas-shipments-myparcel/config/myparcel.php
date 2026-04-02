@@ -11,23 +11,16 @@
 		// If left empty, api_key is used in both modes.
 		'api_key_test'   => '',
 		
-		// API region. Determines which endpoint is used:
-		//   'nl' → https://api.myparcel.nl  (Netherlands, PostNL and others)
-		//   'be' → https://api.sendmyparcel.be  (Belgium, bpost and others)
-		'region'         => 'nl',
-		
 		// Test mode.
 		// When true, api_key_test is used if set, otherwise falls back to api_key.
 		// Note: MyParcel does not have a dedicated sandbox environment. Test shipments
 		// created while in test mode can be cancelled manually from the panel before carrier pickup.
 		'test_mode'      => false,
 		
-		// Default package type applied to every shipment unless overridden via ShipmentRequest::$extraData.
-		//   1 = Package (standaard pakket)
-		//   2 = Mailbox package (brievenbuspakje)
-		//   3 = Letter
-		//   4 = Digital stamp (ongefrankeerde brief)
-		'package_type'   => 1,
+		// API region. Determines which endpoint is used:
+		//   'nl' → https://api.myparcel.nl  (Netherlands, PostNL and others)
+		//   'be' → https://api.sendmyparcel.be  (Belgium, bpost and others)
+		'region'         => 'nl',
 		
 		// URL path for the MyParcel webhook endpoint, used by MyParcelController::handleWebhook().
 		// Register this URL in your MyParcel panel under Settings > Webhooks.
