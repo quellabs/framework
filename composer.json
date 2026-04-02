@@ -5,134 +5,37 @@
   "minimum-stability": "dev",
   "prefer-stable": true,
   "repositories": [
-    {
-      "type": "path",
-      "url": "./packages/annotation-reader"
-    },
-    {
-      "type": "path",
-      "url": "./packages/canvas"
-    },
-    {
-      "type": "path",
-      "url": "./packages/canvas-objectquel"
-    },
-    {
-      "type": "path",
-      "url": "./packages/canvas-smarty"
-    },
-    {
-      "type": "path",
-      "url": "./packages/canvas-twig"
-    },
-    {
-      "type": "path",
-      "url": "./packages/canvas-blade"
-    },
-    {
-      "type": "path",
-      "url": "./packages/canvas-latte"
-    },
-    {
-      "type": "path",
-      "url": "./packages/canvas-plates"
-    },
-    {
-      "type": "path",
-      "url": "./packages/canvas-handlebars"
-    },
-    {
-      "type": "path",
-      "url": "./packages/canvas-skeleton"
-    },
-    {
-      "type": "path",
-      "url": "./packages/contracts"
-    },
-    {
-      "type": "path",
-      "url": "./packages/cache"
-    },
-    {
-      "type": "path",
-      "url": "./packages/dependency-injection"
-    },
-    {
-      "type": "path",
-      "url": "./packages/discover"
-    },
-    {
-      "type": "path",
-      "url": "./packages/objectquel"
-    },
-    {
-      "type": "path",
-      "url": "./packages/sculpt"
-    },
-    {
-      "type": "path",
-      "url": "./packages/signal-hub"
-    },
-    {
-      "type": "path",
-      "url": "./packages/support"
-    },
-    {
-      "type": "path",
-      "url": "./packages/canvas-database"
-    },
-    {
-      "type": "path",
-      "url": "./packages/canvas-payments"
-    },
-    {
-      "type": "path",
-      "url": "./packages/canvas-payments-contracts"
-    },
-    {
-      "type": "path",
-      "url": "./packages/canvas-payments-contracts"
-    },
-    {
-      "type": "path",
-      "url": "./packages/canvas-payments-paypal"
-    },
-    {
-      "type": "path",
-      "url": "./packages/canvas-payments-paypal-express"
-    },
-    {
-      "type": "path",
-      "url": "./packages/canvas-payments-stripe"
-    },
-    {
-      "type": "path",
-      "url": "./packages/canvas-payments-adyen"
-    },
-    {
-      "type": "path",
-      "url": "./packages/canvas-payments-multisafepay"
-    },
-    {
-      "type": "path",
-      "url": "./packages/canvas-payments-buckaroo"
-    },
-    {
-      "type": "path",
-      "url": "./packages/canvas-payments-paynl"
-    },
-    {
-      "type": "path",
-      "url": "./packages/canvas-payments-rabosmartpay"
-    },
-    {
-      "type": "path",
-      "url": "./packages/canvas-payments-klarna"
-    },
-    {
-      "type": "path",
-      "url": "./packages/canvas-payments-xpay"
-    }
+    { "type": "path", "url": "./packages/annotation-reader", "options": { "symlink": true } },
+    { "type": "path", "url": "./packages/canvas", "options": { "symlink": true } },
+    { "type": "path", "url": "./packages/canvas-objectquel", "options": { "symlink": true } },
+    { "type": "path", "url": "./packages/canvas-smarty", "options": { "symlink": true } },
+    { "type": "path", "url": "./packages/canvas-twig", "options": { "symlink": true } },
+    { "type": "path", "url": "./packages/canvas-blade", "options": { "symlink": true } },
+    { "type": "path", "url": "./packages/canvas-latte", "options": { "symlink": true } },
+    { "type": "path", "url": "./packages/canvas-plates", "options": { "symlink": true } },
+    { "type": "path", "url": "./packages/canvas-handlebars", "options": { "symlink": true } },
+    { "type": "path", "url": "./packages/canvas-skeleton", "options": { "symlink": true } },
+    { "type": "path", "url": "./packages/contracts", "options": { "symlink": true } },
+    { "type": "path", "url": "./packages/cache", "options": { "symlink": true } },
+    { "type": "path", "url": "./packages/dependency-injection", "options": { "symlink": true } },
+    { "type": "path", "url": "./packages/discover", "options": { "symlink": true } },
+    { "type": "path", "url": "./packages/objectquel", "options": { "symlink": true } },
+    { "type": "path", "url": "./packages/sculpt", "options": { "symlink": true } },
+    { "type": "path", "url": "./packages/signal-hub", "options": { "symlink": true } },
+    { "type": "path", "url": "./packages/support", "options": { "symlink": true } },
+    { "type": "path", "url": "./packages/canvas-database", "options": { "symlink": true } },
+    { "type": "path", "url": "./packages/canvas-payments", "options": { "symlink": true } },
+    { "type": "path", "url": "./packages/canvas-payments-contracts", "options": { "symlink": true } },
+    { "type": "path", "url": "./packages/canvas-payments-paypal", "options": { "symlink": true } },
+    { "type": "path", "url": "./packages/canvas-payments-paypal-express", "options": { "symlink": true } },
+    { "type": "path", "url": "./packages/canvas-payments-stripe", "options": { "symlink": true } },
+    { "type": "path", "url": "./packages/canvas-payments-adyen", "options": { "symlink": true } },
+    { "type": "path", "url": "./packages/canvas-payments-multisafepay", "options": { "symlink": true } },
+    { "type": "path", "url": "./packages/canvas-payments-buckaroo", "options": { "symlink": true } },
+    { "type": "path", "url": "./packages/canvas-payments-paynl", "options": { "symlink": true } },
+    { "type": "path", "url": "./packages/canvas-payments-rabosmartpay", "options": { "symlink": true } },
+    { "type": "path", "url": "./packages/canvas-payments-klarna", "options": { "symlink": true } },
+    { "type": "path", "url": "./packages/canvas-payments-xpay", "options": { "symlink": true } }
   ],
   "require": {
     "php": "^8.3",
