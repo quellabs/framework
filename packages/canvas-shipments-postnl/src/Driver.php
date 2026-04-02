@@ -283,7 +283,7 @@
 			return [
 				'api_key'             => '',
 				'api_key_test'        => '',
-				'mode'                => 'live',
+				'test_mode'           => false,
 				'customer_code'       => '',
 				'customer_number'     => '',
 				'collection_location' => '',

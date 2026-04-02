@@ -16,7 +16,7 @@ Publish `config/postnl.php` and fill in your credentials:
 return [
     'api_key'             => '',
     'api_key_test'        => '',
-    'mode'                => 'live', // 'live' or 'sandbox'
+    'test_mode'           => false,
     'customer_code'       => '',     // from your PostNL contract
     'customer_number'     => '',     // from your PostNL contract
     'collection_location' => '',     // from your PostNL contract

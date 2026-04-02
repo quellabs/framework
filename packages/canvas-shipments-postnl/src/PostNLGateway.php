@@ -49,16 +49,16 @@
 		public function __construct(Driver $driver) {
 			$config = $driver->getConfig();
 			
-			if (($config['mode'] === 'live')) {
-				$this->baseUrl = self::BASE_URL_LIVE;
-			} else {
+			if ($config['test_mode']) {
 				$this->baseUrl = self::BASE_URL_SANDBOX;
+			} else {
+				$this->baseUrl = self::BASE_URL_LIVE;
 			}
 			
-			if (($config['mode'] === 'live')) {
-				$apiKey = $config['api_key'];
+			if ($config['test_mode']) {
+				$apiKey = $config['api_key_test'];
 			} else {
-				$apiKey = ($config['api_key_test'] ?: $config['api_key']);
+				$apiKey = $config['api_key'];
 			}
 			
 			$this->client = HttpClient::create([
