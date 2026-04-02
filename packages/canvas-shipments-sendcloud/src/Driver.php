@@ -72,7 +72,7 @@
 			13 => ShipmentStatus::OutForDelivery,
 			91 => ShipmentStatus::Cancelled,
 			92 => ShipmentStatus::Unknown,
-			93 => ShipmentStatus::DeliveryFailed,
+			93 => ShipmentStatus::Lost,           // Lost in transit
 			99 => ShipmentStatus::Unknown,
 		];
 		

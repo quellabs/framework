@@ -82,8 +82,8 @@
 			'refused_by_recipient'              => ShipmentStatus::DeliveryFailed,
 			'return_to_sender'                  => ShipmentStatus::ReturnedToSender,
 			'return_shipment_handed_to_carrier' => ShipmentStatus::ReturnedToSender,
-			'destroyed'                         => ShipmentStatus::Unknown,
-			'lost'                              => ShipmentStatus::Unknown,
+			'destroyed'                         => ShipmentStatus::Destroyed,
+			'lost'                              => ShipmentStatus::Lost,
 			'unknown'                           => ShipmentStatus::Unknown,
 		];
 		
