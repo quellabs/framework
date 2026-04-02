@@ -44,13 +44,13 @@
 		// Default sender address fields pre-filled on every parcel.
 		// Override per-request via ShipmentRequest::$extraData if needed.
 		'sender_address'      => [
-			// 'company'     => 'My Webshop B.V.',
-			// 'street'      => 'Keizersgracht',
-			// 'houseNumber' => '123',
-			// 'postalCode'  => '1015CJ',
-			// 'city'        => 'Amsterdam',
-			// 'country'     => 'NL',
-			// 'email'       => 'logistics@example.com',
-			// 'phone'       => '+31201234567',
+			'company'     => 'My Webshop B.V.',
+			'street'      => 'Keizersgracht',
+			'houseNumber' => '123',
+			'postalCode'  => '1015CJ',
+			'city'        => 'Amsterdam',
+			'country'     => 'NL',
+			'email'       => 'logistics@example.com',
+			'phone'       => '+31201234567',
 		],
 	];

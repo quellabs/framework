@@ -305,8 +305,10 @@
 		 * @throws ShipmentCreationException
 		 */
 		public function create(ShipmentRequest $request): ShipmentResult {
+			// Fetch shipment code from module map
 			$productInfo = self::MODULE_PRODUCT_MAP[$request->shippingModule] ?? null;
 			
+			// If not found, throw error
 			if ($productInfo === null) {
 				throw new ShipmentCreationException(
 					self::DRIVER_NAME,
@@ -315,6 +317,7 @@
 				);
 			}
 			
+			// Create the payload
 			$config = $this->getConfig();
 			
 			$shipmentPayload = [
@@ -373,12 +376,15 @@
 				],
 			];
 			
+			// Merge extradata into payload
 			if (!empty($request->extraData)) {
 				$shipmentPayload = array_merge_recursive($shipmentPayload, $request->extraData);
 			}
 			
+			// Call the API
 			$result = $this->getGateway()->createShipment($shipmentPayload);
 			
+			// If that failed, throw an error
 			if ($result['request']['result'] === 0) {
 				throw new ShipmentCreationException(
 					self::DRIVER_NAME,
@@ -387,8 +393,10 @@
 				);
 			}
 			
+			// Fetch the shipment data
 			$responseShipment = $result['response']['ResponseShipments'][0] ?? null;
 			
+			// If that failed, throw an error
 			if ($responseShipment === null) {
 				throw new ShipmentCreationException(
 					self::DRIVER_NAME,
@@ -397,8 +405,10 @@
 				);
 			}
 			
+			// Fetch the barcode
 			$barcode = $responseShipment['Barcode'] ?? null;
 			
+			// If that failed, throw an error
 			if (empty($barcode)) {
 				throw new ShipmentCreationException(
 					self::DRIVER_NAME,
@@ -421,14 +431,13 @@
 				}
 			}
 			
-			$postalCode = $request->deliveryAddress->postalCode;
-			
+			// Return result
 			return new ShipmentResult(
 				provider: self::DRIVER_NAME,
 				parcelId: $barcode,
 				reference: $request->reference,
 				trackingCode: $barcode,
-				trackingUrl: $this->buildTrackingUrl($barcode, $postalCode),
+				trackingUrl: $this->buildTrackingUrl($barcode, $request->deliveryAddress->postalCode),
 				labelUrl: $labelUrl,
 				carrierName: 'PostNL',
 				rawResponse: $result['response'],
@@ -447,8 +456,10 @@
 		 * @throws ShipmentCancellationException
 		 */
 		public function cancel(CancelRequest $request): CancelResult {
+			// Call the API to delete the shipment
 			$result = $this->getGateway()->deleteShipment($request->parcelId);
 			
+			// If that failed, throw an error
 			if ($result['request']['result'] === 0) {
 				// Distinguish "already in transit" (409 Conflict) from hard failures
 				$errorId = $result['request']['errorId'];
@@ -470,6 +481,7 @@
 				);
 			}
 			
+			// Return the result
 			return new CancelResult(
 				provider: self::DRIVER_NAME,
 				parcelId: $request->parcelId,
@@ -489,8 +501,10 @@
 		 * @throws ShipmentExchangeException
 		 */
 		public function exchange(string $parcelId): ShipmentState {
+			// Fetch the status
 			$result = $this->getGateway()->getStatus($parcelId);
 			
+			// If that failed, throw an error
 			if ($result['request']['result'] === 0) {
 				throw new ShipmentExchangeException(
 					self::DRIVER_NAME,
@@ -499,8 +513,10 @@
 				);
 			}
 			
+			// Fetch the shipment data
 			$shipmentData = $result['response']['Shipment'] ?? null;
 			
+			// If that failed, throw an error
 			if ($shipmentData === null) {
 				throw new ShipmentExchangeException(
 					self::DRIVER_NAME,
@@ -541,7 +557,7 @@
 		}
 		
 		/**
-		 * Returns normalised home delivery options for the given module.
+		 * Returns normalized home delivery options for the given module.
 		 *
 		 * Calls the PostNL Timeframe API, which returns all available delivery windows
 		 * (Daytime, Morning, Evening, Sunday) per day over a 5-day window from tomorrow.
@@ -562,16 +578,20 @@
 		 * @return DeliveryOption[]
 		 */
 		public function getDeliveryOptions(string $shippingModule, ?ShipmentAddress $address = null): array {
-			$productInfo = self::MODULE_PRODUCT_MAP[$shippingModule] ?? null;
-			
-			if ($productInfo === null || $this->isPickupModule($productInfo['productCode'])) {
-				return [];
-			}
-			
+			// If no address passed, bail
 			if ($address === null) {
 				return [];
 			}
 			
+			// Transform shipping module to product id
+			$productInfo = self::MODULE_PRODUCT_MAP[$shippingModule] ?? null;
+			
+			// If none found, or this is a pickup module, bail.
+			if ($productInfo === null || $this->isPickupModule($productInfo['productCode'])) {
+				return [];
+			}
+			
+			// Call the API to fetch timeframes
 			$startDate = (new \DateTimeImmutable('+1 day'))->format('d-m-Y');
 			$endDate = (new \DateTimeImmutable('+6 days'))->format('d-m-Y');
 			$options = $this->getConfig()['delivery_options'];
@@ -585,6 +605,7 @@
 				$options,
 			);
 			
+			// If that failed, return empty array
 			if ($result['request']['result'] === 0) {
 				return [];
 			}
@@ -597,6 +618,7 @@
 				$days = [$days];
 			}
 			
+			// Transform timeframes
 			$options = [];
 			
 			foreach ($days as $day) {
@@ -622,9 +644,11 @@
 					// Options is either a string or { "string": "Morning" }
 					$optionType = $slot['Options']['string'] ?? $slot['Options'] ?? 'Daytime';
 					
+					// Build window
 					$windowStart = substr($from, 0, 5); // '08:00:00' → '08:00'
 					$windowEnd = substr($to, 0, 5);
 					
+					// Add DeliveryOption
 					$options[] = new DeliveryOption(
 						methodId: "{$dateStr}|{$from}|{$to}|{$optionType}",
 						label: $this->buildDeliveryLabel($date, $windowStart, $windowEnd, $optionType),
@@ -644,27 +668,7 @@
 		}
 		
 		/**
-		 * Builds a human-readable label for a delivery timeframe slot.
-		 * @param \DateTimeImmutable|null $date
-		 * @param string $windowStart e.g. '08:00'
-		 * @param string $windowEnd e.g. '12:00'
-		 * @param string $optionType e.g. 'Morning', 'Evening', 'Daytime', 'Sunday'
-		 * @return string
-		 */
-		private function buildDeliveryLabel(?\DateTimeImmutable $date, string $windowStart, string $windowEnd, string $optionType): string {
-			$dateStr = $date ? $date->format('d-m-Y') : '';
-			$window = ($windowStart !== '' && $windowEnd !== '') ? " {$windowStart}–{$windowEnd}" : '';
-			
-			return match ($optionType) {
-				'Morning' => trim("{$dateStr} Morning{$window}"),
-				'Evening' => trim("{$dateStr} Evening{$window}"),
-				'Sunday' => trim("{$dateStr} Sunday{$window}"),
-				default => trim("{$dateStr}{$window}"),
-			};
-		}
-		
-		/**
-		 * Returns normalised pickup point options near the given address.
+		 * Returns normalized pickup point options near the given address.
 		 *
 		 * Calls the PostNL Location API to find the nearest service points.
 		 * Returns an empty array if no address is provided.
@@ -674,21 +678,27 @@
 		 * @return PickupOption[]
 		 */
 		public function getPickupOptions(string $shippingModule, ?ShipmentAddress $address = null): array {
+			// If no address passed, return empty array
 			if ($address === null) {
 				return [];
 			}
 			
+			// Fetch nearest locations from PostNL API
 			$result = $this->getGateway()->getNearestLocations(
 				$address->postalCode,
 				$address->houseNumber,
 				$address->country,
 			);
 			
+			// If that failed, return empty array
 			if ($result['request']['result'] === 0) {
 				return [];
 			}
 			
+			// Fetch location data
 			$locations = $result['response']['GetLocationsResult']['ResponseLocation'] ?? [];
+			
+			// Transform data to PickupOption objects
 			$options = [];
 			
 			foreach ($locations as $location) {
@@ -730,8 +740,10 @@
 		 * @throws ShipmentLabelException
 		 */
 		public function getLabelUrl(string $parcelId): string {
+			// Fetch label from PostNL api
 			$result = $this->getGateway()->getLabel($parcelId);
 			
+			// If that failed, throw error
 			if ($result['request']['result'] === 0) {
 				throw new ShipmentLabelException(
 					self::DRIVER_NAME,
@@ -740,8 +752,10 @@
 				);
 			}
 			
+			// Fetch the label content
 			$labelContent = $result['response']['ResponseShipments'][0]['Labels'][0]['Content'] ?? null;
 			
+			// If there's none, throw error
 			if ($labelContent === null) {
 				throw new ShipmentLabelException(
 					self::DRIVER_NAME,
@@ -750,6 +764,7 @@
 				);
 			}
 			
+			// Return label content as base64 encoded data
 			return 'data:application/pdf;base64,' . $labelContent;
 		}
 		
@@ -759,6 +774,26 @@
 		 */
 		private function getGateway(): PostNLGateway {
 			return $this->gateway ??= new PostNLGateway($this);
+		}
+		
+		/**
+		 * Builds a human-readable label for a delivery timeframe slot.
+		 * @param \DateTimeImmutable|null $date
+		 * @param string $windowStart e.g. '08:00'
+		 * @param string $windowEnd e.g. '12:00'
+		 * @param string $optionType e.g. 'Morning', 'Evening', 'Daytime', 'Sunday'
+		 * @return string
+		 */
+		private function buildDeliveryLabel(?\DateTimeImmutable $date, string $windowStart, string $windowEnd, string $optionType): string {
+			$dateStr = $date ? $date->format('d-m-Y') : '';
+			$window = ($windowStart !== '' && $windowEnd !== '') ? " {$windowStart}–{$windowEnd}" : '';
+			
+			return match ($optionType) {
+				'Morning' => trim("{$dateStr} Morning{$window}"),
+				'Evening' => trim("{$dateStr} Evening{$window}"),
+				'Sunday' => trim("{$dateStr} Sunday{$window}"),
+				default => trim("{$dateStr}{$window}"),
+			};
 		}
 		
 		/**
