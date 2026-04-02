@@ -41,12 +41,12 @@
 		 * from a scheduled job or from a "refresh tracking" action in your admin UI.
 		 *
 		 * @Route("dpd::refresh_url", fallback="/shipments/dpd/refresh/{shipmentId}", methods={"GET"})
-		 * @param Request $request
 		 * @param string $shipmentId The DPD parcel label number (14-digit barcode)
 		 * @return Response
 		 */
-		public function handleRefresh(Request $request, string $shipmentId): Response {
+		public function handleRefresh(string $shipmentId): Response {
 			try {
+				// Transform shipment id to state
 				$state = $this->dpd->exchange($shipmentId);
 				
 				// Notify listeners of the refreshed state

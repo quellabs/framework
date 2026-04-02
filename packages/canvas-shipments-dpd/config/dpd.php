@@ -44,4 +44,9 @@
 			'email'       => 'logistics@example.com',
 			'phone'       => '+31201234567',
 		],
+		
+		// URL path for the manual status refresh endpoint, used by DPDController::handleRefresh().
+		// Override this to place the endpoint behind a non-guessable path.
+		// DPD has no webhook support — polling via this endpoint is the only way to refresh status.
+		'refresh_url' => '/shipments/dpd/refresh/{shipmentId}',
 	];
