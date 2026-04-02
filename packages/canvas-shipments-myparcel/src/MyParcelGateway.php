@@ -49,16 +49,17 @@
 			$this->baseUrl = ($config['region'] === 'be') ? self::BASE_URL_BE : self::BASE_URL_NL;
 			
 			// Resolve which API key to use
-			$apiKey = ($config['mode'] === 'live')
-				? $config['api_key']
-				: ($config['api_key_test'] ?: $config['api_key']);
+			if ($config['test_mode']) {
+				$apiKey = $config['api_key_test'] ?: $config['api_key'];
+			} else {
+				$apiKey = $config['api_key'];
+			}
 			
 			// MyParcel authentication: single key, base64-encoded, sent as a custom header.
 			// This is NOT standard HTTP Basic Auth — we set the Authorization header directly.
 			$this->client = HttpClient::create([
 				'timeout' => 10,
 				'headers' => [
-					// MyParcel documents this header format exactly as: "basic <base64(api_key)>"
 					'Authorization' => 'basic ' . base64_encode($apiKey),
 					'Accept'        => 'application/json',
 				],

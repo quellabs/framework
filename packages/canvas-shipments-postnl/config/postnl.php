@@ -41,6 +41,16 @@
 		// Leave empty to disable signature verification (not recommended in production).
 		'webhook_secret'      => '',
 		
+		// URL path for the PostNL webhook endpoint, used by PostNLController::handleWebhook().
+		// Register this URL in your PostNL Developer Portal webhook subscription.
+		// Override to place the endpoint behind a non-guessable path for extra security,
+		// since PostNL webhook requests are HMAC-signed but IP restriction is not available.
+		'webhook_url'         => '/webhooks/postnl',
+		
+		// URL path for the manual status refresh endpoint, used by PostNLController::handleRefresh().
+		// Override to place the endpoint behind a non-guessable path.
+		'refresh_url'         => '/shipments/postnl/refresh/{barcode}',
+		
 		// Default sender address fields pre-filled on every parcel.
 		// Override per-request via ShipmentRequest::$extraData if needed.
 		'sender_address'      => [

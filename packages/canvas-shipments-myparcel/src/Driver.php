@@ -126,7 +126,7 @@
 				'api_key'        => '',
 				'api_key_test'   => '',
 				'region'         => 'nl',
-				'mode'           => 'live',
+				'test_mode'      => false,
 				'sender_address' => [],
 				'package_type'   => 1,
 			];
