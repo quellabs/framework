@@ -1,0 +1,56 @@
+{
+  "name": "quellabs/canvas-shipments-myparcel",
+  "description": "MyParcel shipping provider integration for the Canvas PHP framework",
+  "type": "library",
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "Floris van den Berg",
+      "email": "info@quellabs.com"
+    }
+  ],
+  "keywords": [
+    "myparcel",
+    "sendmyparcel",
+    "shipping",
+    "shipment",
+    "canvas",
+    "canvas-shipments"
+  ],
+  "support": {
+    "email": "support@quellabs.com",
+    "issues": "https://github.com/quellabs/canvas-shipments-myparcel/issues",
+    "forum": "https://github.com/quellabs/canvas-shipments-myparcel/discussions",
+    "wiki": "https://github.com/quellabs/canvas-shipments-myparcel/wiki",
+    "docs": "https://canvasphp.com/docs",
+    "source": "https://github.com/quellabs/canvas-shipments-myparcel"
+  },
+  "require": {
+    "php": "^8.2",
+    "symfony/http-client": "^7.0 || ^8.0",
+    "quellabs/support": "*",
+    "quellabs/contracts": "*",
+    "quellabs/canvas-shipments-contracts": "*"
+  },
+  "autoload": {
+    "psr-4": {
+      "Quellabs\\Shipments\\MyParcel\\": "src/"
+    }
+  },
+  "scripts": {
+    "post-autoload-dump": [
+      "php -r \"if (!file_exists('config/myparcel.php') && !copy('vendor/quellabs/canvas-shipments-myparcel/config/myparcel.php', 'config/myparcel.php')) { echo 'Warning: Could not publish MyParcel config file.' . PHP_EOL; }\""
+    ]
+  },
+  "extra": {
+    "discover": {
+      "canvas": {
+        "controller": "Quellabs\\Shipments\\MyParcel\\MyParcelController"
+      },
+      "shipments": {
+        "provider": "Quellabs\\Shipments\\MyParcel\\Driver",
+        "config": "config/myparcel.php"
+      }
+    }
+  }
+}

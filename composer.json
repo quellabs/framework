@@ -7,143 +7,232 @@
   "repositories": [
     {
       "type": "path",
-      "url": "./packages/annotation-reader"
+      "url": "./packages/annotation-reader",
+      "options": {
+        "symlink": true
+      }
     },
     {
       "type": "path",
-      "url": "./packages/canvas"
+      "url": "./packages/canvas",
+      "options": {
+        "symlink": true
+      }
     },
     {
       "type": "path",
-      "url": "./packages/canvas-objectquel"
+      "url": "./packages/canvas-objectquel",
+      "options": {
+        "symlink": true
+      }
     },
     {
       "type": "path",
-      "url": "./packages/canvas-smarty"
+      "url": "./packages/canvas-smarty",
+      "options": {
+        "symlink": true
+      }
     },
     {
       "type": "path",
-      "url": "./packages/canvas-twig"
+      "url": "./packages/canvas-twig",
+      "options": {
+        "symlink": true
+      }
     },
     {
       "type": "path",
-      "url": "./packages/canvas-blade"
+      "url": "./packages/canvas-blade",
+      "options": {
+        "symlink": true
+      }
     },
     {
       "type": "path",
-      "url": "./packages/canvas-latte"
+      "url": "./packages/canvas-latte",
+      "options": {
+        "symlink": true
+      }
     },
     {
       "type": "path",
-      "url": "./packages/canvas-plates"
+      "url": "./packages/canvas-plates",
+      "options": {
+        "symlink": true
+      }
     },
     {
       "type": "path",
-      "url": "./packages/canvas-handlebars"
+      "url": "./packages/canvas-handlebars",
+      "options": {
+        "symlink": true
+      }
     },
     {
       "type": "path",
-      "url": "./packages/canvas-skeleton"
+      "url": "./packages/canvas-skeleton",
+      "options": {
+        "symlink": true
+      }
     },
     {
       "type": "path",
-      "url": "./packages/contracts"
+      "url": "./packages/contracts",
+      "options": {
+        "symlink": true
+      }
     },
     {
       "type": "path",
-      "url": "./packages/cache"
+      "url": "./packages/cache",
+      "options": {
+        "symlink": true
+      }
     },
     {
       "type": "path",
-      "url": "./packages/dependency-injection"
+      "url": "./packages/dependency-injection",
+      "options": {
+        "symlink": true
+      }
     },
     {
       "type": "path",
-      "url": "./packages/discover"
+      "url": "./packages/discover",
+      "options": {
+        "symlink": true
+      }
     },
     {
       "type": "path",
-      "url": "./packages/objectquel"
+      "url": "./packages/objectquel",
+      "options": {
+        "symlink": true
+      }
     },
     {
       "type": "path",
-      "url": "./packages/sculpt"
+      "url": "./packages/sculpt",
+      "options": {
+        "symlink": true
+      }
     },
     {
       "type": "path",
-      "url": "./packages/signal-hub"
+      "url": "./packages/signal-hub",
+      "options": {
+        "symlink": true
+      }
     },
     {
       "type": "path",
-      "url": "./packages/support"
+      "url": "./packages/support",
+      "options": {
+        "symlink": true
+      }
     },
     {
       "type": "path",
-      "url": "./packages/canvas-database"
+      "url": "./packages/canvas-database",
+      "options": {
+        "symlink": true
+      }
     },
     {
       "type": "path",
-      "url": "./packages/canvas-payments"
+      "url": "./packages/canvas-payments",
+      "options": {
+        "symlink": true
+      }
     },
     {
       "type": "path",
-      "url": "./packages/canvas-payments-contracts"
+      "url": "./packages/canvas-payments-contracts",
+      "options": {
+        "symlink": true
+      }
     },
     {
       "type": "path",
-      "url": "./packages/canvas-payments-contracts"
+      "url": "./packages/canvas-payments-paypal",
+      "options": {
+        "symlink": true
+      }
     },
     {
       "type": "path",
-      "url": "./packages/canvas-payments-paypal"
+      "url": "./packages/canvas-payments-paypal-express",
+      "options": {
+        "symlink": true
+      }
     },
     {
       "type": "path",
-      "url": "./packages/canvas-payments-paypal-express"
+      "url": "./packages/canvas-payments-stripe",
+      "options": {
+        "symlink": true
+      }
     },
     {
       "type": "path",
-      "url": "./packages/canvas-payments-stripe"
+      "url": "./packages/canvas-payments-adyen",
+      "options": {
+        "symlink": true
+      }
     },
     {
       "type": "path",
-      "url": "./packages/canvas-payments-adyen"
+      "url": "./packages/canvas-payments-multisafepay",
+      "options": {
+        "symlink": true
+      }
     },
     {
       "type": "path",
-      "url": "./packages/canvas-payments-multisafepay"
+      "url": "./packages/canvas-payments-buckaroo",
+      "options": {
+        "symlink": true
+      }
     },
     {
       "type": "path",
-      "url": "./packages/canvas-payments-buckaroo"
+      "url": "./packages/canvas-payments-paynl",
+      "options": {
+        "symlink": true
+      }
     },
     {
       "type": "path",
-      "url": "./packages/canvas-payments-paynl"
+      "url": "./packages/canvas-payments-rabosmartpay",
+      "options": {
+        "symlink": true
+      }
     },
     {
       "type": "path",
-      "url": "./packages/canvas-payments-rabosmartpay"
+      "url": "./packages/canvas-payments-klarna",
+      "options": {
+        "symlink": true
+      }
     },
     {
       "type": "path",
-      "url": "./packages/canvas-payments-klarna"
-    },
-    {
-      "type": "path",
-      "url": "./packages/canvas-payments-xpay"
+      "url": "./packages/canvas-payments-xpay",
+      "options": {
+        "symlink": true
+      }
     }
   ],
   "require": {
     "php": "^8.3",
     "ext-curl": "*",
     "monolog/monolog": "*",
+    "dvdoug/boxpacker": "^4.0",
     "symfony/http-foundation": "*",
     "symfony/http-client": "*",
     "dragonmantank/cron-expression": "*",
     "robmorgan/phinx": "*",
     "cakephp/database": "*",
-    "softcreatr/jsonpath": "*",
     "composer-plugin-api": "^2.0",
     "quellabs/canvas-authorization": "dev-feature/stub"
   },
@@ -221,13 +310,23 @@
       "Quellabs\\Payments\\PayNL\\": "packages/canvas-payments-paynl/src/",
       "Quellabs\\Payments\\RaboSmartPay\\": "packages/canvas-payments-rabosmartpay/src/",
       "Quellabs\\Payments\\Klarna\\": "packages/canvas-payments-klarna/src/",
-      "Quellabs\\Payments\\XPay\\": "packages/canvas-payments-xpay/src/"
+      "Quellabs\\Payments\\XPay\\": "packages/canvas-payments-xpay/src/",
+      "Quellabs\\Shipments\\": "packages/canvas-shipments/src/",
+      "Quellabs\\Shipments\\Contracts\\": "packages/canvas-shipments-contracts/src/",
+      "Quellabs\\Shipments\\DHL\\": "packages/canvas-shipments-dhl/src/",
+      "Quellabs\\Shipments\\DPD\\": "packages/canvas-shipments-dpd/src/",
+      "Quellabs\\Shipments\\MyParcel\\": "packages/canvas-shipments-myparcel/src/",
+      "Quellabs\\Shipments\\PostNL\\": "packages/canvas-shipments-postnl/src/",
+      "Quellabs\\Shipments\\SendCloud\\": "packages/canvas-shipments-sendcloud/src/"
     },
     "files": [
       "packages/support/src/bootstrap.php"
     ]
   },
   "config": {
+    "platform": {
+      "php": "8.3.0"
+    },
     "allow-plugins": {
       "quellabs/discover": false
     }

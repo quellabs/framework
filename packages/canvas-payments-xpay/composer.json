@@ -27,8 +27,8 @@
     "source": "https://github.com/quellabs/canvas-payments-xpay"
   },
   "require": {
-    "php": "^8.2",
-    "symfony/http-client": "*",
+    "php": "^8.3",
+    "symfony/http-client": "^7.0 || ^8.0",
     "quellabs/support": "*",
     "quellabs/contracts": "*",
     "quellabs/canvas-payments-contracts": "*"

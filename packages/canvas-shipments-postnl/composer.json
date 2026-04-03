@@ -1,0 +1,55 @@
+{
+  "name": "quellabs/canvas-shipments-postnl",
+  "description": "PostNL shipping provider integration for the Canvas PHP framework",
+  "type": "library",
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "Floris van den Berg",
+      "email": "info@quellabs.com"
+    }
+  ],
+  "keywords": [
+    "postnl",
+    "shipping",
+    "shipment",
+    "canvas",
+    "canvas-shipments"
+  ],
+  "support": {
+    "email": "support@quellabs.com",
+    "issues": "https://github.com/quellabs/canvas-shipments-postnl/issues",
+    "forum": "https://github.com/quellabs/canvas-shipments-postnl/discussions",
+    "wiki": "https://github.com/quellabs/canvas-shipments-postnl/wiki",
+    "docs": "https://canvasphp.com/docs",
+    "source": "https://github.com/quellabs/canvas-shipments-postnl"
+  },
+  "require": {
+    "php": "^8.2",
+    "symfony/http-client": "^7.0 || ^8.0",
+    "quellabs/support": "*",
+    "quellabs/contracts": "*",
+    "quellabs/canvas-shipments-contracts": "*"
+  },
+  "autoload": {
+    "psr-4": {
+      "Quellabs\\Shipments\\PostNL\\": "src/"
+    }
+  },
+  "scripts": {
+    "post-autoload-dump": [
+      "php -r \"if (!file_exists('config/postnl.php') && !copy('vendor/quellabs/canvas-shipments-postnl/config/postnl.php', 'config/postnl.php')) { echo 'Warning: Could not publish PostNL config file.' . PHP_EOL; }\""
+    ]
+  },
+  "extra": {
+    "discover": {
+      "canvas": {
+        "controller": "Quellabs\\Shipments\\PostNL\\PostNLController"
+      },
+      "shipments": {
+        "provider": "Quellabs\\Shipments\\PostNL\\Driver",
+        "config": "config/postnl.php"
+      }
+    }
+  }
+}

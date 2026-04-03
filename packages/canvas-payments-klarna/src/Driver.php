@@ -70,10 +70,10 @@
 		 * @see https://docs.klarna.com/acquirer/klarna/web-payments/additional-resources/payment-method-grouping/
 		 */
 		private const MODULE_TYPE_MAP = [
-			'klarna'          => 'klarna',          // All Klarna payment methods (default)
-			'klarna_paynow'   => 'pay_now',          // Pay immediately (debit/card)
-			'klarna_paylater' => 'pay_later',        // Pay after delivery (invoice)
-			'klarna_sliceit'  => 'pay_over_time',    // Installment financing
+			'klarna_multi'    => 'klarna',          // All Klarna payment methods (default)
+			'klarna_paynow'   => 'pay_now',         // Pay immediately (debit/card)
+			'klarna_paylater' => 'pay_later',       // Pay after delivery (invoice)
+			'klarna_sliceit'  => 'pay_over_time',   // Installment financing
 		];
 		
 		/**
@@ -247,13 +247,13 @@
 			if (empty($orderId)) {
 				throw new PaymentExchangeException(self::DRIVER_NAME, 0, 'Order Management API response missing order_id');
 			}
-
+			
 			// Return the state
 			$capturedAmount = (int)($order['captured_amount'] ?? 0);
 			$refundedAmount = (int)($order['refunded_amount'] ?? 0);
 			$currency = $order['purchase_currency'] ?? '';
 			$valuePaid = ($state === PaymentStatus::Paid) ? $capturedAmount : 0;
-
+			
 			return new PaymentState(
 				provider: self::DRIVER_NAME,
 				transactionId: $transactionId,
@@ -439,7 +439,7 @@
 			$config = $this->getConfig();
 			
 			// Build payload
-			$baseUrl    = $this->getGateway()->getBaseUrl();
+			$baseUrl = $this->getGateway()->getBaseUrl();
 			$successUrl = $config['return_url'];
 			$cancelUrl = $config['cancel_return_url'];
 			
