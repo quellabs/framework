@@ -28,7 +28,7 @@
     "php": "^8.2",
     "ext-simplexml": "*",
     "ext-libxml": "*",
-    "symfony/http-client": "^8.0",
+    "symfony/http-client": "^7.0 || ^8.0",
     "quellabs/support": "*",
     "quellabs/contracts": "*",
     "quellabs/canvas-shipments-contracts": "*"
