@@ -30,5 +30,12 @@
   "canvas-payments-paynl": "1.0.1",
   "canvas-payments-rabosmartpay": "1.0.1",
   "canvas-payments-klarna": "1.0.0",
-  "canvas-payments-xpay": "1.0.0"
+  "canvas-payments-xpay": "1.0.0",
+  "canvas-shipments": "1.0.0",
+  "canvas-shipments-contracts": "1.0.0",
+  "canvas-shipments-dhl": "1.0.0",
+  "canvas-shipments-dpd": "1.0.0",
+  "canvas-shipments-myparcel": "1.0.0",
+  "canvas-shipments-postnl": "1.0.0",
+  "canvas-shipments-sendcloud": "1.0.0"
 }
