@@ -20,12 +20,6 @@
 		 * @return Response
 		 */
 		public function index(TemplateEngineInterface $engine): Response {
-			$this->em()->executeQuery("
-				range of a is Address
-				retrieve (a)
-				where a.customerId = 1
-			");
-			
 			return new Response("Hello from routes file");
 		}
 		
