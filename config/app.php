@@ -25,6 +25,9 @@
 		// Path to aspect-oriented programming files
 		'entity_path'             => $srcDir . DIRECTORY_SEPARATOR . 'Entities',
 		
+		// Path to signal listeners
+		'signal_listeners_path'   => $srcDir . DIRECTORY_SEPARATOR . 'Listeners',
+		
 		// Whether to match routes with trailing slashes
 		'match_trailing_slashes'  => false
 	];
