@@ -8,24 +8,27 @@
 	 * Contains one PackedBox entry per physical box needed, each describing
 	 * which items it holds and its gross weight. Feed this into your
 	 * ShipmentRequest to create multi-parcel shipments.
+	 *
+	 * Always call hasUnpackedItems() before proceeding — if true, some items
+	 * could not fit any box in the catalog and require manual handling.
 	 */
-	class PackingResult {
+	class PackingResult implements \JsonSerializable {
 		
-		/** @var PackedBox[] */
+		/** @var PackedBox[] One entry per physical box required */
 		private array $packedBoxes;
+		
+		/** @var PackableItem[] Items that could not be fitted into any available box */
+		private array $unpackedItems;
 		
 		private bool $hasUnpackedItems;
 		
-		/** @var PackableItem[] */
-		private array $unpackedItems;
-		
 		/**
-		 * @param PackedBox[]    $packedBoxes
+		 * @param PackedBox[] $packedBoxes
 		 * @param PackableItem[] $unpackedItems Items that could not be packed (oversize/overweight)
 		 */
 		public function __construct(array $packedBoxes, array $unpackedItems = []) {
-			$this->packedBoxes      = $packedBoxes;
-			$this->unpackedItems    = $unpackedItems;
+			$this->packedBoxes = $packedBoxes;
+			$this->unpackedItems = $unpackedItems;
 			$this->hasUnpackedItems = !empty($unpackedItems);
 		}
 		
@@ -34,6 +37,7 @@
 			return $this->packedBoxes;
 		}
 		
+		/** Number of physical boxes required. */
 		public function getBoxCount(): int {
 			return count($this->packedBoxes);
 		}
@@ -53,8 +57,26 @@
 			return $this->hasUnpackedItems;
 		}
 		
-		/** @return PackableItem[] */
+		/**
+		 * Items that could not be fitted into any box in the catalog.
+		 * Typically oversize or overweight items requiring a manual shipment.
+		 * @return PackableItem[]
+		 */
 		public function getUnpackedItems(): array {
 			return $this->unpackedItems;
+		}
+		
+		/**
+		 * Serialises the full packing result to a JSON-compatible array.
+		 * Automatically called by json_encode().
+		 */
+		public function jsonSerialize(): array {
+			return [
+				'boxes'          => $this->packedBoxes,
+				'unpacked_items' => $this->unpackedItems,
+				'box_count'      => $this->getBoxCount(),
+				'total_weight'   => $this->getTotalWeight(),
+				'has_unpacked'   => $this->hasUnpackedItems,
+			];
 		}
 	}

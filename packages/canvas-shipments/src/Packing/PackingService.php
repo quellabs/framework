@@ -3,7 +3,6 @@
 	namespace Quellabs\Shipments\Packing;
 	
 	use DVDoug\BoxPacker\Packer;
-	use DVDoug\BoxPacker\Test\TestItem;
 	use DVDoug\BoxPacker\WeightRedistributor;
 	
 	/**
@@ -28,22 +27,21 @@
 	 */
 	class PackingService {
 		
-		/** @var PackingBox[] */
+		/** @var PackingBox[] Box catalog after applying the global weight ceiling */
 		private array $boxCatalog;
 		
-		/** @var PackableItem[] */
+		/** @var PackableItem[] Items staged for the next pack() call */
 		private array $items = [];
 		
 		/**
-		 * @param PackingBox[] $boxCatalog     All box sizes available for packing.
-		 *                                     Each box's own maxWeight acts as its hard ceiling.
-		 *                                     Pass an empty array to use $maxWeightPerBox only.
-		 * @param int          $maxWeightPerBox Global weight ceiling in grams applied to every box
-		 *                                     in the catalog, overriding any higher per-box limit.
-		 *                                     Set to 0 to rely solely on per-box limits.
+		 * @param PackingBox[] $boxCatalog All box sizes available for packing.
+		 *                                      Each box's own maxWeight acts as its hard ceiling.
+		 * @param int $maxWeightPerBox Global weight ceiling in grams applied to every box
+		 *                                      in the catalog, clamping any higher per-box limit.
+		 *                                      Set to 0 to rely solely on per-box limits.
 		 */
 		public function __construct(
-			array          $boxCatalog,
+			array                $boxCatalog,
 			private readonly int $maxWeightPerBox = 0,
 		) {
 			$this->boxCatalog = $this->applyGlobalWeightCeiling($boxCatalog);
@@ -111,30 +109,38 @@
 			// WeightRedistributor only moves items between boxes of identical dimensions,
 			// so geometry is preserved while weight is equalised as much as possible.
 			$redistributor = new WeightRedistributor($this->boxCatalog);
-			$balanced      = $redistributor->redistributeWeight($packed);
+			$balanced = $redistributor->redistributeWeight($packed);
 			
-			// Map library types back to our own value objects
-			$packedBoxes   = [];
+			// Map library types back to our own value objects, preserving the placed
+			// x/y/z coordinates and post-rotation dimensions from the library's PackedItem.
+			$packedBoxes = [];
 			$unpackedItems = [];
 			
 			foreach ($balanced as $libPackedBox) {
-				$box   = $libPackedBox->getBox();
 				$items = [];
 				
-				foreach ($libPackedBox->getItems() as $packedItem) {
-					$items[] = $packedItem->getItem();
+				foreach ($libPackedBox->items as $libPackedItem) {
+					$items[] = new PackedItem(
+						item: $libPackedItem->item,
+						x: $libPackedItem->x,
+						y: $libPackedItem->y,
+						z: $libPackedItem->z,
+						width: $libPackedItem->width,
+						length: $libPackedItem->length,
+						depth: $libPackedItem->depth,
+					);
 				}
 				
 				$packedBoxes[] = new PackedBox(
-					box:         $box,
-					items:       $items,
+					box: $libPackedBox->box,
+					items: $items,
 					grossWeight: $libPackedBox->getWeight(),
 				);
 			}
 			
 			// Collect any items the packer could not fit (oversize or overweight for all boxes)
 			foreach ($packer->getUnpackedItems() as $unpackedItem) {
-				$unpackedItems[] = $unpackedItem->getItem();
+				$unpackedItems[] = $unpackedItem->item;
 			}
 			
 			return new PackingResult($packedBoxes, $unpackedItems);
@@ -142,8 +148,8 @@
 		
 		/**
 		 * Clamp each box's maxWeight to the global ceiling if one is configured.
-		 * We do this by wrapping boxes that exceed the ceiling — PackingBox is
-		 * a value object so we reconstruct them with the lower weight.
+		 * PackingBox is a value object so boxes that exceed the ceiling are
+		 * reconstructed with the lower weight rather than mutated.
 		 *
 		 * @param PackingBox[] $catalog
 		 * @return PackingBox[]
@@ -160,15 +166,15 @@
 				
 				// Reconstruct with the global ceiling as the effective max weight
 				return new PackingBox(
-					reference:   $box->getReference(),
-					outerWidth:  $box->getOuterWidth(),
+					reference: $box->getReference(),
+					outerWidth: $box->getOuterWidth(),
 					outerLength: $box->getOuterLength(),
-					outerDepth:  $box->getOuterDepth(),
+					outerDepth: $box->getOuterDepth(),
 					emptyWeight: $box->getEmptyWeight(),
-					innerWidth:  $box->getInnerWidth(),
+					innerWidth: $box->getInnerWidth(),
 					innerLength: $box->getInnerLength(),
-					innerDepth:  $box->getInnerDepth(),
-					maxWeight:   $this->maxWeightPerBox,
+					innerDepth: $box->getInnerDepth(),
+					maxWeight: $this->maxWeightPerBox,
 				);
 			}, $catalog);
 		}
