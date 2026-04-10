@@ -2,7 +2,6 @@
 	
 	namespace Quellabs\Shipments;
 	
-	use Quellabs\Canvas\Configuration\ConfigLoader;
 	use Quellabs\Contracts\Configuration\ConfigProviderInterface;
 	use Quellabs\Contracts\Context\MethodContextInterface;
 	use Quellabs\DependencyInjection\Container;

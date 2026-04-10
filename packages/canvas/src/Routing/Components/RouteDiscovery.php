@@ -102,17 +102,17 @@
 		/**
 		 * Get route prefix from controller class annotation
 		 * @param string $controller Fully qualified controller class name
-		 * @return string Route prefix (without leading slash)
+		 * @return RoutePrefix|null Route prefix (without leading slash)
 		 * @throws AnnotationReaderException
 		 */
-		private function getRoutePrefix(string $controller): string {
+		private function getRoutePrefix(string $controller): ?RoutePrefix {
 			$classAnnotations = $this->kernel->getAnnotationsReader()->getClassAnnotations($controller, RoutePrefix::class);
 			
 			if ($classAnnotations->isEmpty()) {
-				return '';
+				return null;
 			}
 			
-			return ltrim($classAnnotations[0]->getRoutePrefix(), '/');
+			return $classAnnotations[0];
 		}
 		
 		/**
@@ -127,11 +127,12 @@
 		private function getRoutesFromController(string $controller): array {
 			$routes = [];
 			$routePrefix = $this->getRoutePrefix($controller);
+			$normalizedPrefix = $routePrefix ? $this->normalizeRoute($routePrefix->getRoutePrefix(), $routePrefix->getFallback()) : "";
 			
 			foreach ($this->getMethodRouteAnnotations($controller) as $routeData) {
 				$routeAnnotation = $routeData['annotation'];
 				$normalizedRoute = $this->normalizeRoute($routeAnnotation->getRoute(), $routeAnnotation->getFallback());
-				$completeRoutePath = $this->buildCompleteRoutePath($routePrefix, $normalizedRoute);
+				$completeRoutePath = $this->buildCompleteRoutePath($normalizedPrefix, $normalizedRoute);
 				
 				$routes[] = [
 					'http_methods' => $routeAnnotation->getMethods(),
@@ -181,7 +182,7 @@
 				);
 			}
 		}
-
+		
 		/**
 		 * Build a complete route path by combining prefix and method route
 		 * @param string $prefix Controller route prefix
@@ -196,7 +197,7 @@
 			
 			// Strip surrounding slashes from prefix and leading slash from route
 			// to avoid double slashes when combining
-			$prefix    = trim($prefix, '/');
+			$prefix = trim($prefix, '/');
 			$routePath = ltrim($routePath, '/');
 			
 			// Combine prefix and route, or return just the route if no prefix
@@ -218,8 +219,8 @@
 			
 			// Split into filename and key components
 			$parts = explode("::", $route, 2);
-			$file  = $parts[0];
-			$key   = $parts[1];
+			$file = $parts[0];
+			$key = $parts[1];
 			
 			// Look up the key in the config file, falling back to $default if not found
 			$result = $this->kernel->loadConfigFile("{$file}.php")->get($key, $default);

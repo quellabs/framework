@@ -46,4 +46,12 @@
 		public function getRoutePrefix(): string {
 			return trim($this->parameters["value"], '/ ');
 		}
+		
+		/**
+		 * Fetches the fallback route
+		 * @return string|null
+		 */
+		public function getFallback(): ?string {
+			return $this->parameters["fallback"] ?? null;
+		}
 	}
