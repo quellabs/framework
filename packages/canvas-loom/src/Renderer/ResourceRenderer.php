@@ -2,8 +2,8 @@
 	
 	namespace Quellabs\Canvas\Loom\Renderer;
 	
+	use Quellabs\Canvas\Loom\AbstractRenderer;
 	use Quellabs\Canvas\Loom\RenderResult;
-	use Quellabs\Canvas\Loom\RendererInterface;
 	
 	/**
 	 * Renders the top-level resource container for a Loom page.
@@ -13,7 +13,7 @@
 	 * Override renderHeader() or renderBody() in a subclass to
 	 * customise either part independently.
 	 */
-	class ResourceRenderer implements RendererInterface {
+	class ResourceRenderer extends AbstractRenderer {
 		
 		/** @var string Form element class */
 		protected string $formClass = 'loom-resource';
@@ -35,10 +35,10 @@
 		
 		/**
 		 * Render the resource — header outside the form, body as the form itself
-		 * @param array $properties Node properties from the JSON definition
-		 * @param string $children Already-rendered HTML of all child nodes
-		 * @param array|null $parent Parent node
-		 * @param int $index Index of this node within its parent
+		 * @param array $properties
+		 * @param string $children
+		 * @param array|null $parent
+		 * @param int $index
 		 * @return RenderResult
 		 */
 		public function render(array $properties, string $children, ?array $parent = null, int $index = 0): RenderResult {

@@ -2,8 +2,8 @@
 	
 	namespace Quellabs\Canvas\Loom\Renderer;
 	
+	use Quellabs\Canvas\Loom\AbstractRenderer;
 	use Quellabs\Canvas\Loom\RenderResult;
-	use Quellabs\Canvas\Loom\RendererInterface;
 	
 	/**
 	 * Renders a tabbed interface container.
@@ -11,7 +11,7 @@
 	 * the active tab state. Tab definitions are provided explicitly
 	 * via the tabs property to avoid engine-level pre-processing.
 	 */
-	class TabsRenderer implements RendererInterface {
+	class TabsRenderer extends AbstractRenderer {
 		
 		/** @var string Wrapper div class */
 		protected string $wrapperClass = 'loom-tabs';
@@ -27,23 +27,23 @@
 		
 		/**
 		 * Render the tabs container
-		 * @param array  $properties Node properties from the JSON definition
-		 * @param string $children   Already-rendered HTML of all child nodes
-		 * @param array|null $parent Parent node
-		 * @param int $index         Index of this node within its parent
+		 * @param array $properties
+		 * @param string $children
+		 * @param array|null $parent
+		 * @param int $index
 		 * @return RenderResult
 		 */
 		public function render(array $properties, string $children, ?array $parent = null, int $index = 0): RenderResult {
-			$id     = $properties['id']     ?? 'loom-tabs';
+			$id = $properties['id'] ?? 'loom-tabs';
 			$active = $properties['active'] ?? '';
-			$class  = $properties['class']  ?? $this->wrapperClass;
-			$tabs   = $properties['tabs']   ?? [];
+			$class = $properties['class'] ?? $this->wrapperClass;
+			$tabs = $properties['tabs'] ?? [];
 			
 			// Build tab bar buttons from the explicit tabs property
 			$buttons = '';
 			
 			foreach ($tabs as $tab) {
-				$tabId    = $tab['id']    ?? '';
+				$tabId = $tab['id'] ?? '';
 				$tabLabel = $tab['label'] ?? $tabId;
 				$buttons .= "<button type=\"button\" class=\"{$this->tabButtonClass}\" data-pac-bind=\"click: setTab('{$tabId}'), class: { active: activeTab === '{$tabId}'}\">{$tabLabel}</button>\n";
 			}

@@ -2,8 +2,8 @@
 	
 	namespace Quellabs\Canvas\Loom\Renderer;
 	
+	use Quellabs\Canvas\Loom\AbstractRenderer;
 	use Quellabs\Canvas\Loom\RenderResult;
-	use Quellabs\Canvas\Loom\RendererInterface;
 	
 	/**
 	 * Renders a neutral container that groups related fields together.
@@ -13,7 +13,7 @@
 	 * CSS classes are defined as protected properties so theme packages
 	 * can extend this renderer and override only the class names.
 	 */
-	class SectionRenderer implements RendererInterface {
+	class SectionRenderer extends AbstractRenderer {
 		
 		/** @var string Wrapper div class */
 		protected string $wrapperClass = 'loom-section';

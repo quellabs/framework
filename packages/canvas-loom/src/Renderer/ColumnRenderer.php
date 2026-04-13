@@ -2,22 +2,24 @@
 	
 	namespace Quellabs\Canvas\Loom\Renderer;
 	
+	use Quellabs\Canvas\Loom\AbstractRenderer;
 	use Quellabs\Canvas\Loom\RenderResult;
-	use Quellabs\Canvas\Loom\RendererInterface;
 	
 	/**
 	 * Renders a single column within a columns layout.
 	 * Width is injected by the parent ColumnsRenderer as a percentage.
 	 */
-	class ColumnRenderer implements RendererInterface {
+	class ColumnRenderer extends AbstractRenderer {
 		
 		/** @var string Wrapper div class */
 		protected string $wrapperClass = 'loom-column';
 		
 		/**
 		 * Render the column
-		 * @param array $properties Node properties from the JSON definition
-		 * @param string $children Already-rendered HTML of all child nodes
+		 * @param array $properties
+		 * @param string $children
+		 * @param array|null $parent
+		 * @param int $index
 		 * @return RenderResult
 		 */
 		public function render(array $properties, string $children, ?array $parent = null, int $index = 0): RenderResult {

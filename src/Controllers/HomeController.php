@@ -44,7 +44,7 @@
 				</style>
 				</head>
 				<body>
-					{$loom->renderToString($y)}
+					{$loom->render($y)}
 				</body>
 				</html>
 			");

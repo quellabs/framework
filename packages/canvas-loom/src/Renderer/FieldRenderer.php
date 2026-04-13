@@ -2,8 +2,8 @@
 	
 	namespace Quellabs\Canvas\Loom\Renderer;
 	
+	use Quellabs\Canvas\Loom\AbstractRenderer;
 	use Quellabs\Canvas\Loom\RenderResult;
-	use Quellabs\Canvas\Loom\RendererInterface;
 	
 	/**
 	 * Renders a form field with label and wrapper element.
@@ -18,7 +18,7 @@
 	 * CSS classes are defined as protected properties so theme packages
 	 * can extend this renderer and override only the class names.
 	 */
-	class FieldRenderer implements RendererInterface {
+	class FieldRenderer extends AbstractRenderer {
 		
 		/** @var string Wrapper div class */
 		protected string $wrapperClass = 'loom-field';
@@ -53,22 +53,25 @@
 			$name = $properties['name'] ?? '';
 			$type = $properties['input'] ?? 'text';
 			$label = $properties['label'] ?? '';
-			$value = $properties['value'] ?? '';
 			$class = $properties['class'] ?? $this->wrapperClass;
 			$id = $properties['id'] ?? $name;
+			
+			// Data array takes precedence over value in JSON definition
+			$value = $this->resolveValue($name, $properties);
 			
 			// data-pac-field and data-pac-bind are derived from the field name by default,
 			// but can be overruled entirely via properties
 			$pacField = $properties['pac_field'] ?? 'data-pac-field';
 			$pacBind = $properties['pac_bind'] ?? "value: {$name}";
-			
 			$pacFieldAttr = $pacField ? " {$pacField}" : '';
 			$pacBindAttr = $pacBind ? " data-pac-bind=\"{$pacBind}\"" : '';
 			
 			// Only render a label element when a label is provided
-			$labelHtml = $label
-				? "<label for=\"{$id}\" class=\"{$this->labelClass}\">{$label}</label>"
-				: '';
+			if ($label) {
+				$labelHtml = "<label for=\"{$id}\" class=\"{$this->labelClass}\">{$label}</label>";
+			} else {
+				$labelHtml = '';
+			}
 			
 			// Delegate to the appropriate input renderer based on type
 			$inputHtml = match ($type) {
@@ -241,5 +244,48 @@
 			}
 			
 			return $attrs;
+		}
+		
+		/**
+		 * Resolve the field value from the data array or fall back to the JSON definition
+		 * @param string $name       Field name, used as path into the data array
+		 * @param array  $properties Node properties
+		 * @param array  $data       Data array passed from the controller
+		 * @return mixed
+		 */
+		private function resolveValue(string $name, array $properties): mixed {
+			$data = $this->loom->getData();
+			
+			if (!empty($data) && $name) {
+				$value = $this->getNestedValue($data, $name);
+				
+				if ($value !== null) {
+					return $value;
+				}
+			}
+			
+			// Fall back to value in JSON definition
+			return $properties['value'] ?? '';
+		}
+		
+		/**
+		 * Get a nested value from an array using dot and bracket notation
+		 * @param array  $data
+		 * @param string $path
+		 * @return mixed
+		 */
+		private function getNestedValue(array $data, string $path): mixed {
+			$parts   = preg_split('/[\.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY);
+			$current = $data;
+			
+			foreach ($parts as $part) {
+				if (!isset($current[$part])) {
+					return null;
+				}
+				
+				$current = $current[$part];
+			}
+			
+			return $current;
 		}
 	}
