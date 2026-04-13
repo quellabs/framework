@@ -7,12 +7,11 @@
 	
 	/**
 	 * Renders the top-level resource container for a Loom page.
-	 * Generates a <form> element with a header (title, cancel, save),
-	 * and a WakaPAC component for field interactivity. Form submission is
-	 * handled natively by the browser — WakaPAC manages reactivity only.
+	 * Generates a header (outside the form) and a form body with
+	 * WakaPAC component for field interactivity.
 	 *
-	 * CSS classes are defined as protected properties so theme packages
-	 * can extend this renderer and override only the class names.
+	 * Override renderHeader() or renderBody() in a subclass to
+	 * customise either part independently.
 	 */
 	class ResourceRenderer implements RendererInterface {
 		
@@ -28,9 +27,6 @@
 		/** @var string Header actions wrapper class */
 		protected string $headerActionsClass = 'loom-resource-header-actions';
 		
-		/** @var string Footer element class */
-		protected string $footerClass = 'loom-resource-footer';
-		
 		/** @var string Save button class */
 		protected string $saveClass = 'loom-resource-save';
 		
@@ -38,62 +34,91 @@
 		protected string $cancelClass = 'loom-resource-cancel';
 		
 		/**
-		 * Render the resource container
-		 * @param array $properties
-		 * @param string $children
-		 * @param array|null $parent
-		 * @param int $index
+		 * Render the resource — header outside the form, body as the form itself
+		 * @param array  $properties Node properties from the JSON definition
+		 * @param string $children   Already-rendered HTML of all child nodes
+		 * @param array|null $parent Parent node
+		 * @param int $index         Index of this node within its parent
 		 * @return RenderResult
 		 */
 		public function render(array $properties, string $children, ?array $parent = null, int $index = 0): RenderResult {
-			$id = $properties['id'] ?? '';
-			$action = $properties['action'] ?? '';
-			$method = strtoupper($properties['method'] ?? 'POST');
-			$class = $properties['class'] ?? $this->formClass;
-			$title = $properties['title'] ?? '';
-			$saveLabel = $properties['save_label'] ?? 'Save';
+			$id           = $properties['id']           ?? '';
+			$action       = $properties['action']       ?? '';
+			$method       = strtoupper($properties['method'] ?? 'POST');
 			$saveDisabled = !empty($properties['save_disabled']);
-			$part = $properties['_render_part'] ?? 'full';
+			$part         = $properties['_render_part'] ?? 'full';
 			
+			// id is required — without it WakaPAC cannot be initialised
 			if (!$id) {
 				throw new \InvalidArgumentException('ResourceRenderer requires an "id" property.');
 			}
 			
-			$methodAttr = in_array($method, ['GET', 'POST']) ? $method : 'POST';
+			// HTML method attribute only supports GET and POST —
+			// other methods (PUT, PATCH, DELETE) require a hidden _method field
+			$methodAttr      = in_array($method, ['GET', 'POST']) ? $method : 'POST';
 			$methodSpoofHtml = $methodAttr !== $method
 				? "<input type=\"hidden\" name=\"_method\" value=\"{$method}\">"
 				: '';
 			
 			$saveDisabledAttr = $saveDisabled ? ' disabled' : '';
 			
-			$headerHtml = <<<HTML
-    <div class="{$this->headerClass}">
-        <h1 class="{$this->titleClass}">{$title}</h1>
-        <div class="{$this->headerActionsClass}">
-            <button type="button" class="{$this->cancelClass}" onclick="history.back()">Cancel</button>
-            <button type="submit" form="{$id}" class="{$this->saveClass}"{$saveDisabledAttr}>{$saveLabel}</button>
-        </div>
-    </div>
-    HTML;
-			
-			$bodyHtml = <<<HTML
-    <form id="{$id}" action="{$action}" method="{$methodAttr}" class="{$class}" data-pac-id="{$id}">
-        {$methodSpoofHtml}
-        {$children}
-    </form>
-    HTML;
-			
 			// Scripts only generated for full or body — not for header-only renders
 			$scripts = $part !== 'header'
 				? ["wakaPAC('{$id}', {}, { hydrate: true });"]
 				: [];
 			
-			$html = match ($part) {
-				'header' => $headerHtml,
-				'body' => $bodyHtml,
-				default => $headerHtml . "\n" . $bodyHtml,
+			$html = match($part) {
+				'header' => $this->renderHeader($properties, $id, $saveDisabledAttr),
+				'body'   => $this->renderBody($properties, $children, $id, $methodAttr, $methodSpoofHtml),
+				default  => $this->renderHeader($properties, $id, $saveDisabledAttr) . "\n" .
+					$this->renderBody($properties, $children, $id, $methodAttr, $methodSpoofHtml),
 			};
 			
 			return new RenderResult($html, $scripts);
+		}
+		
+		/**
+		 * Render the page header with title, cancel and save button.
+		 * Override in a subclass to customise the header independently.
+		 * @param array  $properties Node properties
+		 * @param string $id         Form id, used to couple the submit button via the form attribute
+		 * @param string $saveDisabledAttr Rendered disabled attribute or empty string
+		 * @return string
+		 */
+		protected function renderHeader(array $properties, string $id, string $saveDisabledAttr): string {
+			$title     = $properties['title']      ?? '';
+			$saveLabel = $properties['save_label'] ?? 'Save';
+			
+			return <<<HTML
+        <div class="{$this->headerClass}">
+            <h1 class="{$this->titleClass}">{$title}</h1>
+            <div class="{$this->headerActionsClass}">
+                <button type="button" class="{$this->cancelClass}" onclick="history.back()">Cancel</button>
+                <button type="submit" form="{$id}" class="{$this->saveClass}"{$saveDisabledAttr}>{$saveLabel}</button>
+            </div>
+        </div>
+        HTML;
+		}
+		
+		/**
+		 * Render the form body with all child nodes.
+		 * Override in a subclass to customise the form independently.
+		 * @param array  $properties     Node properties
+		 * @param string $children       Already-rendered HTML of all child nodes
+		 * @param string $id             Form id, also used as WakaPAC component id
+		 * @param string $methodAttr     HTML method attribute value (GET or POST)
+		 * @param string $methodSpoofHtml Hidden _method field for PUT/PATCH/DELETE or empty string
+		 * @return string
+		 */
+		protected function renderBody(array $properties, string $children, string $id, string $methodAttr, string $methodSpoofHtml): string {
+			$class  = $properties['class'] ?? $this->formClass;
+			$action = $properties['action'] ?? '';
+			
+			return <<<HTML
+        <form id="{$id}" action="{$action}" method="{$methodAttr}" class="{$class}" data-pac-id="{$id}">
+            {$methodSpoofHtml}
+            {$children}
+        </form>
+        HTML;
 		}
 	}
