@@ -116,7 +116,7 @@
 			return new Response("
 				<html>
 				<head>				
-				<script src='https://cdn.jsdelivr.net/gh/quellabs/wakapac@main/wakapac.min.js'></script>
+				<script src='/wakapac.min.js'></script>
 				<link rel='stylesheet' type='text/css' href='/loom.css'>
 				<link rel='preconnect' href='https://fonts.googleapis.com'>
 				<link rel='preconnect' href='https://fonts.gstatic.com' crossorigin>

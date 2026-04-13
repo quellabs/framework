@@ -69,15 +69,12 @@
 			
 			$script = <<<JS
 (function() {
-    const el    = document.querySelector('[data-pac-id="{$id}"]');
-    const state = el && el.dataset.pacState ? JSON.parse(el.dataset.pacState) : {};
-
-    wakaPAC('{$id}', Object.assign(state, {
+    wakaPAC('{$id}', {
         activeTab: '{$active}',
         setTab(tabId) {
             this.activeTab = tabId;
         }
-    }), { hydrate: true });
+    }, { hydrate: true });
 })();
 JS;
 			

@@ -62,15 +62,14 @@
 				$methodSpoofHtml = '';
 			}
 			
+			// Disabled attribute
 			$saveDisabledAttr = $saveDisabled ? ' disabled' : '';
 
 			// Scripts only generated for full or body — not for header-only renders
 			if ($part !== 'header') {
 				$scripts = [<<<JS
 					(function() {
-					    const el = document.getElementById('{$id}');
-					    const state = el && el.dataset.pacState ? JSON.parse(el.dataset.pacState) : {};
-					    wakaPAC('{$id}', state, { hydrate: true });
+					    wakaPAC('{$id}', {}, { hydrate: true });
 					})();
 					JS];
 			} else {
