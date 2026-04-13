@@ -1,0 +1,28 @@
+{
+  "name": "quellabs/canvas-loom",
+  "description": "A resource-driven admin framework that weaves JSON definitions into interactive interfaces.",
+  "type": "library",
+  "license": "MIT",
+  "keywords": ["admin", "loom", "canvas", "json", "wakapac"],
+  "authors": [
+    {
+      "name": "Floris",
+      "role": "Developer"
+    }
+  ],
+  "require": {
+    "php": ">=8.3"
+  },
+  "autoload": {
+    "psr-4": {
+      "Quellabs\\Canvas\\Loom\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "Quellabs\\Canvas\\Loom\\Tests\\": "tests/"
+    }
+  },
+  "minimum-stability": "stable",
+  "prefer-stable": true
+}

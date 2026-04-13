@@ -241,7 +241,7 @@
     "robmorgan/phinx": "*",
     "cakephp/database": "*",
     "composer-plugin-api": "^2.0",
-    "quellabs/canvas-authorization": "dev-feature/stub"
+    "quellabs/canvas-authorization": "^1.0"
   },
   "suggest": {
     "ext-redis": "Required for Redis cache driver",
