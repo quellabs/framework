@@ -12,6 +12,7 @@
 	abstract class AbstractRenderer implements RendererInterface {
 		
 		/**
+		 * Constructor
 		 * @param Loom $loom The active Loom engine instance
 		 */
 		public function __construct(protected readonly Loom $loom) {}

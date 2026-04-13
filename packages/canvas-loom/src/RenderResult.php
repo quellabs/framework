@@ -18,6 +18,7 @@
 		public array $scripts;
 		
 		/**
+		 * Constructor
 		 * @param string $html    Rendered HTML
 		 * @param array  $scripts WakaPAC initialisation scripts, if any
 		 */
