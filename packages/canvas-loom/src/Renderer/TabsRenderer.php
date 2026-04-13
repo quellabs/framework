@@ -4,6 +4,7 @@
 	
 	use Quellabs\Canvas\Loom\AbstractRenderer;
 	use Quellabs\Canvas\Loom\RenderResult;
+	use Quellabs\Support\StringInflector;
 	
 	/**
 	 * Renders a tabbed interface container.
@@ -34,10 +35,11 @@
 		 * @return RenderResult
 		 */
 		public function render(array $properties, string $children, ?array $parent = null, int $index = 0): RenderResult {
-			$id     = $properties['id']     ?? 'loom-tabs';
-			$active = $properties['active'] ?? '';
-			$class  = $properties['class']  ?? $this->wrapperClass;
-			$tabs   = $properties['tabs']   ?? [];
+			$id       = $properties['id']       ?? 'loom-tabs';
+			$active   = $properties['active']   ?? '';
+			$class    = $properties['class']    ?? $this->wrapperClass;
+			$tabs     = $properties['tabs']     ?? [];
+			$nodes    = $properties['_children'] ?? [];
 			
 			// Build tab bar buttons from the explicit tabs property
 			$buttons = '';
@@ -48,12 +50,11 @@
 				$buttons .= "<button type=\"button\" class=\"{$this->tabButtonClass}\" data-pac-bind=\"click: setTab('{$tabId}'), class: {active: activeTab === '{$tabId}'}\">{$tabLabel}</button>\n";
 			}
 			
-			// Inject collection data into data-pac-state so dependent dropdowns
-			// can access it within the tabs component scope
-			$data      = $this->loom->getData();
-			$stateData = array_filter($data, fn($value) => is_array($value));
-			$stateJson = !empty($stateData) ? htmlspecialchars(json_encode($stateData), ENT_QUOTES) : '';
-			$stateAttr = $stateJson ? " data-pac-state=\"{$stateJson}\"" : '';
+			// Collect array properties from all field nodes in the tree
+			// so dependent dropdowns have their options available in WakaPAC state
+			$fieldState = $this->collectFieldProperties($nodes);
+			$stateJson  = !empty($fieldState) ? htmlspecialchars(json_encode($fieldState), ENT_QUOTES) : '';
+			$stateAttr  = $stateJson ? " data-pac-state=\"{$stateJson}\"" : '';
 			
 			$html = <<<HTML
     <div id="{$id}" class="{$class}" data-pac-id="{$id}"{$stateAttr}>
@@ -66,12 +67,11 @@
     </div>
     HTML;
 			
-			// Read state from data-pac-state attribute so collection data is available
-			// to dependent dropdowns within the tabs component scope
 			$script = <<<JS
 (function() {
     const el    = document.querySelector('[data-pac-id="{$id}"]');
     const state = el && el.dataset.pacState ? JSON.parse(el.dataset.pacState) : {};
+
     wakaPAC('{$id}', Object.assign(state, {
         activeTab: '{$active}',
         setTab(tabId) {
@@ -82,5 +82,38 @@
 JS;
 			
 			return new RenderResult($html, [$script]);
+		}
+		
+		/**
+		 * Recursively collect array properties from all field nodes in the tree.
+		 * Used to inject dependent dropdown options and other array data into
+		 * the WakaPAC state before the component is initialised.
+		 * @param array $nodes
+		 * @return array
+		 */
+		private function collectFieldProperties(array $nodes): array {
+			$state = [];
+			
+			foreach ($nodes as $node) {
+				if (($node['type'] ?? '') === 'field') {
+					$name = $node['properties']['name'] ?? '';
+					
+					if ($name) {
+						foreach ($node['properties'] as $key => $value) {
+							// Only include array properties — use pluralized name to match foreach_expression
+							if (is_array($value) && $key === 'options') {
+								$state[StringInflector::pluralize($name)] = $value;
+							}
+						}
+					}
+				}
+				
+				// Recurse into children
+				if (!empty($node['children'])) {
+					$state = array_merge($state, $this->collectFieldProperties($node['children']));
+				}
+			}
+			
+			return $state;
 		}
 	}

@@ -41,12 +41,55 @@
 									->add(Field::textarea('body', 'Content')->rows(10))
 								)
 								->add(Column::make()
-									->add(Field::select('status', 'Status')->options(['draft' => 'Draft', 'published' => 'Published']))
+									->add(Field::select('status', 'Status')
+										->options(['draft' => 'Draft', 'published' => 'Published'])
+									)
 									->add(Field::text('slug', 'Slug')->required())
 									->add(Field::checkbox('featured', 'Featured post')->value('1'))
-									->add(Field::select('country', 'Country')->dependsOn(null))
-									->add(Field::select('region', 'Region')->dependsOn('country'))
-									->add(Field::select('city', 'City')->dependsOn('region'))
+									->add(Field::select('country', 'Country')
+										->options([
+											['value' => 'nl', 'label' => 'Netherlands'],
+											['value' => 'de', 'label' => 'Germany'],
+										])
+									)
+									->add(Field::select('region', 'Region')
+										->dependsOn('country')
+										->options([
+											'nl' => [
+												['value' => 'nh', 'label' => 'Noord-Holland'],
+												['value' => 'zh', 'label' => 'Zuid-Holland'],
+											],
+											'de' => [
+												['value' => 'by', 'label' => 'Bayern'],
+												['value' => 'nw', 'label' => 'Nordrhein-Westfalen'],
+											],
+										])
+									)
+									->add(Field::select('city', 'City')
+										->dependsOn('region')
+										->options([
+											'nl' => [
+												'nh' => [
+													['value' => 'ams', 'label' => 'Amsterdam'],
+													['value' => 'hrl', 'label' => 'Haarlem'],
+												],
+												'zh' => [
+													['value' => 'rot', 'label' => 'Rotterdam'],
+													['value' => 'dhg', 'label' => 'Den Haag'],
+												],
+											],
+											'de' => [
+												'by' => [
+													['value' => 'muc', 'label' => 'München'],
+													['value' => 'nue', 'label' => 'Nürnberg'],
+												],
+												'nw' => [
+													['value' => 'col', 'label' => 'Köln'],
+													['value' => 'dus', 'label' => 'Düsseldorf'],
+												],
+											],
+										])
+									)
 								)
 							)
 						)
@@ -59,48 +102,15 @@
 					)
 				)
 				->build();
-
-			// Render with data
+			
 			$loom = new Loom();
 			$renderedDefinition = $loom->render($definition, [
-				'title'    => 'My First Post',
-				'slug'     => 'my-first-post',
-				'status'   => 'draft',
-				'country'  => 'nl',
-				'region'   => 'nh',
-				'city'     => 'ams',
-				'countries' => [
-					['value' => 'nl', 'label' => 'Netherlands'],
-					['value' => 'de', 'label' => 'Germany'],
-				],
-				'regions' => [
-					'nl' => [
-						['value' => 'nh', 'label' => 'Noord-Holland'],
-						['value' => 'zh', 'label' => 'Zuid-Holland'],
-					],
-					'de' => [
-						['value' => 'by', 'label' => 'Bayern'],
-						['value' => 'nw', 'label' => 'Nordrhein-Westfalen'],
-					],
-				],
-				'cities' => [
-					'nl' => [
-						'nh' => [
-							['value' => 'ams', 'label' => 'Amsterdam'],
-							['value' => 'hrl', 'label' => 'Haarlem'],
-						],
-						'zh' => [
-							['value' => 'rot', 'label' => 'Rotterdam'],
-							['value' => 'dhg', 'label' => 'Den Haag'],
-						],
-					],
-					'de' => [
-						'by' => [
-							['value' => 'muc', 'label' => 'München'],
-							['value' => 'nue', 'label' => 'Nürnberg'],
-						],
-					],
-				],
+				'title'   => 'My First Post',
+				'slug'    => 'my-first-post',
+				'status'  => 'draft',
+				'country' => 'nl',
+				'region'  => 'nh',
+				'city'    => 'ams',
 			]);
 			
 			return new Response("

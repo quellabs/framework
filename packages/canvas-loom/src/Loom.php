@@ -72,27 +72,23 @@
 		 */
 		public function _render(array $node, ?array $parent = null): RenderResult {
 			$childHtml = '';
-			$scripts = [];
+			$scripts   = [];
 			
-			// Render all children first (depth-first) so each renderer receives
-			// already-rendered HTML for its children
 			foreach ($node['children'] ?? [] as $i => $child) {
-				$result = $this->_render($child, $node);
+				$result     = $this->_render($child, $node);
 				$childHtml .= $result->html;
-				
-				// Collect scripts from children — they must appear before parent scripts
-				// to ensure child components are initialised before their parents
-				$scripts = array_merge($scripts, $result->scripts);
+				$scripts    = array_merge($scripts, $result->scripts);
 			}
 			
-			// Resolve and invoke the renderer for this node type
-			$renderer = $this->getRenderer($node['type']);
-			$result = $renderer->render($node['properties'] ?? [], $childHtml, $parent, $i ?? 0);
+			// Pass raw child nodes to renderer so container renderers can
+			// inspect the node tree without relying on already-rendered HTML
+			$properties              = $node['properties'] ?? [];
+			$properties['_children'] = $node['children']   ?? [];
 			
-			// Merge child scripts before parent scripts
+			$renderer        = $this->getRenderer($node['type']);
+			$result          = $renderer->render($properties, $childHtml, $parent, $i ?? 0);
 			$result->scripts = array_merge($scripts, $result->scripts);
 			
-			// Return result
 			return $result;
 		}
 		
