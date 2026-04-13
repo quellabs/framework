@@ -14,8 +14,32 @@
 	 * WakaPAC binding attributes (data-pac-field, data-pac-bind) are
 	 * added automatically based on the field name, and can be overruled
 	 * via properties when needed.
+	 *
+	 * CSS classes are defined as protected properties so theme packages
+	 * can extend this renderer and override only the class names.
 	 */
 	class FieldRenderer implements RendererInterface {
+		
+		/** @var string Wrapper div class */
+		protected string $wrapperClass = 'loom-field';
+		
+		/** @var string Label element class */
+		protected string $labelClass = 'loom-field-label';
+		
+		/** @var string Input element class */
+		protected string $inputClass = 'loom-field-input';
+		
+		/** @var string Textarea element class */
+		protected string $textareaClass = 'loom-field-textarea';
+		
+		/** @var string Select element class */
+		protected string $selectClass = 'loom-field-select';
+		
+		/** @var string Checkbox input class */
+		protected string $checkboxClass = 'loom-field-checkbox';
+		
+		/** @var string Radio input class */
+		protected string $radioClass = 'loom-field-radio';
 		
 		/**
 		 * Render a form field
@@ -28,7 +52,7 @@
 			$type = $properties['input'] ?? 'text';
 			$label = $properties['label'] ?? '';
 			$value = $properties['value'] ?? '';
-			$class = $properties['class'] ?? 'loom-field';
+			$class = $properties['class'] ?? $this->wrapperClass;
 			$id = $properties['id'] ?? $name;
 			
 			// data-pac-field and data-pac-bind are derived from the field name by default,
@@ -41,7 +65,7 @@
 			
 			// Only render a label element when a label is provided
 			$labelHtml = $label
-				? "<label for=\"{$id}\" class=\"loom-field-label\">{$label}</label>"
+				? "<label for=\"{$id}\" class=\"{$this->labelClass}\">{$label}</label>"
 				: '';
 			
 			// Delegate to the appropriate input renderer based on type
@@ -76,14 +100,11 @@
 		 * @return string
 		 */
 		private function renderInput(string $type, string $id, string $name, string $value, array $properties, string $pacField, string $pacBind): string {
+			$attrs = $this->buildValidationAttrs($properties);
 			$placeholder = $properties['placeholder'] ?? '';
 			$placeholderAttr = $placeholder ? " placeholder=\"{$placeholder}\"" : '';
 			
-			$attrs = $this->buildValidationAttrs($properties);
-			
-			return <<<HTML
-        <input type="{$type}" id="{$id}" name="{$name}" value="{$value}"{$placeholderAttr}{$attrs}{$pacField}{$pacBind}>
-        HTML;
+			return "<input type=\"{$type}\" id=\"{$id}\" name=\"{$name}\" value=\"{$value}\" class=\"{$this->inputClass}\"{$placeholderAttr}{$attrs}{$pacField}{$pacBind}>";
 		}
 		
 		/**
@@ -102,15 +123,13 @@
 			$placeholderAttr = $placeholder ? " placeholder=\"{$placeholder}\"" : '';
 			$rows = $properties['rows'] ?? 4;
 			
-			return <<<HTML
-        <textarea id="{$id}" name="{$name}" rows="{$rows}"{$placeholderAttr}{$attrs}{$pacField}{$pacBind}>{$value}</textarea>
-        HTML;
+			return "<textarea id=\"{$id}\" name=\"{$name}\" rows=\"{$rows}\" class=\"{$this->textareaClass}\"{$placeholderAttr}{$attrs}{$pacField}{$pacBind}>{$value}</textarea>";
 		}
 		
 		/**
-		 * Render a select dropdown with options
+		 * Render a select dropdown with options.
 		 * Options can be a flat array of strings or an array of
-		 * ['value' => '...', 'label' => '...'] objects
+		 * ['value' => '...', 'label' => '...'] objects.
 		 * @param string $id Element id attribute
 		 * @param string $name Field name used for form submission and WakaPAC binding
 		 * @param array $properties Full node properties including options and selected value
@@ -119,10 +138,8 @@
 		 * @return string
 		 */
 		private function renderSelect(string $id, string $name, array $properties, string $pacField, string $pacBind): string {
-			$selected = $properties['value'] ?? '';
-			
 			$attrs = $this->buildValidationAttrs($properties);
-			
+			$selected = $properties['value'] ?? '';
 			$options = '';
 			
 			foreach ($properties['options'] ?? [] as $option) {
@@ -130,15 +147,10 @@
 				$optValue = is_array($option) ? $option['value'] : $option;
 				$optLabel = is_array($option) ? $option['label'] : $option;
 				$selectedAttr = $optValue == $selected ? ' selected' : '';
-				
 				$options .= "<option value=\"{$optValue}\"{$selectedAttr}>{$optLabel}</option>\n";
 			}
 			
-			return <<<HTML
-        <select id="{$id}" name="{$name}"{$attrs}{$pacField}{$pacBind}>
-            {$options}
-        </select>
-        HTML;
+			return "<select id=\"{$id}\" name=\"{$name}\" class=\"{$this->selectClass}\"{$attrs}{$pacField}{$pacBind}>\n{$options}</select>";
 		}
 		
 		/**
@@ -153,12 +165,9 @@
 		 */
 		private function renderCheckbox(string $id, string $name, string $value, array $properties, string $pacField, string $pacBind): string {
 			$checked = !empty($properties['checked']) ? ' checked' : '';
-			
 			$attrs = $this->buildValidationAttrs($properties);
 			
-			return <<<HTML
-        <input type="checkbox" id="{$id}" name="{$name}" value="{$value}"{$checked}{$attrs}{$pacField}{$pacBind}>
-        HTML;
+			return "<input type=\"checkbox\" id=\"{$id}\" name=\"{$name}\" value=\"{$value}\" class=\"{$this->checkboxClass}\"{$checked}{$attrs}{$pacField}{$pacBind}>";
 		}
 		
 		/**
@@ -175,9 +184,7 @@
 			$checked = !empty($properties['checked']) ? ' checked' : '';
 			$attrs = $this->buildValidationAttrs($properties);
 			
-			return <<<HTML
-        <input type="radio" id="{$id}" name="{$name}" value="{$value}"{$checked}{$attrs}{$pacField}{$pacBind}>
-        HTML;
+			return "<input type=\"radio\" id=\"{$id}\" name=\"{$name}\" value=\"{$value}\" class=\"{$this->radioClass}\"{$checked}{$attrs}{$pacField}{$pacBind}>";
 		}
 		
 		/**

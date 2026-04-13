@@ -6,6 +6,7 @@
 	use Quellabs\Canvas\Annotations\InterceptWith;
 	use Quellabs\Canvas\Annotations\WithContext;
 	use Quellabs\Canvas\Controllers\BaseController;
+	use Quellabs\Canvas\Loom\Loom;
 	use Quellabs\Canvas\Translation\TranslationAspect;
 	use Quellabs\Contracts\Templates\TemplateEngineInterface;
 	use Symfony\Component\HttpFoundation\Response;
@@ -20,7 +21,21 @@
 		 * @return Response
 		 */
 		public function index(TemplateEngineInterface $engine): Response {
-			return new Response("Hello from routes file");
+			$x = file_get_contents(dirname(__FILE__) . "/test.json");
+			$y = json_decode($x, true);
+			
+			$loom = new Loom();
+
+			return new Response("
+				<html>
+				<head>
+				<link rel='stylesheet' type='text/css' href='/loom.css'>
+				</head>
+				<body>
+					{$loom->renderToString($y)}
+				</body>
+				</html>
+			");
 		}
 		
 		/**

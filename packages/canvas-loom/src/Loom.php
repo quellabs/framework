@@ -5,7 +5,7 @@
 	/**
 	 * The Loom render engine
 	 */
-	class Engine {
+	class Loom {
 		
 		/** @var array<string, class-string<RendererInterface>> */
 		private array $registry = [];

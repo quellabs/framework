@@ -9,18 +9,24 @@
 	 * Renders a neutral container that groups related fields together.
 	 * Does not carry any form semantics or WakaPAC initialisation —
 	 * those responsibilities belong to the ResourceRenderer.
+	 *
+	 * CSS classes are defined as protected properties so theme packages
+	 * can extend this renderer and override only the class names.
 	 */
 	class SectionRenderer implements RendererInterface {
 		
+		/** @var string Wrapper div class */
+		protected string $wrapperClass = 'loom-section';
+		
 		/**
 		 * Render the section container
-		 * @param array  $properties Node properties from the JSON definition
-		 * @param string $children   Already-rendered HTML of all child nodes
+		 * @param array $properties Node properties from the JSON definition
+		 * @param string $children Already-rendered HTML of all child nodes
 		 * @return RenderResult
 		 */
 		public function render(array $properties, string $children): RenderResult {
-			$id    = $properties['id']    ?? '';
-			$class = $properties['class'] ?? 'loom-section';
+			$id = $properties['id'] ?? '';
+			$class = $properties['class'] ?? $this->wrapperClass;
 			
 			// Only render id attribute when explicitly provided
 			$idAttr = $id ? " id=\"{$id}\"" : '';

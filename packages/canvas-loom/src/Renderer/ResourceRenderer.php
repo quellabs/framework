@@ -10,31 +10,37 @@
 	 * Generates a <form> element with a WakaPAC component for field
 	 * interactivity. Form submission is handled natively by the browser —
 	 * WakaPAC manages reactivity only.
+	 *
+	 * CSS classes are defined as protected properties so theme packages
+	 * can extend this renderer and override only the class names.
 	 */
 	class ResourceRenderer implements RendererInterface {
 		
+		/** @var string Form element class */
+		protected string $formClass = 'loom-resource';
+		
 		/**
 		 * Render the resource container
-		 * @param array  $properties Node properties from the JSON definition
-		 * @param string $children   Already-rendered HTML of all child nodes
+		 * @param array $properties Node properties from the JSON definition
+		 * @param string $children Already-rendered HTML of all child nodes
 		 * @return RenderResult
 		 */
 		public function render(array $properties, string $children): RenderResult {
-			$id     = $properties['id']     ?? '';
+			$id = $properties['id'] ?? '';
 			$action = $properties['action'] ?? '';
 			$method = strtoupper($properties['method'] ?? 'POST');
-			$class  = $properties['class']  ?? 'loom-resource';
+			$class = $properties['class'] ?? $this->formClass;
 			
-			// id is required — without it WakaPAC cannot be initialized
+			// id is required — without it WakaPAC cannot be initialised
 			if (!$id) {
 				throw new \InvalidArgumentException('ResourceRenderer requires an "id" property.');
 			}
 			
 			// HTML method attribute only supports GET and POST —
 			// other methods (PUT, PATCH, DELETE) require a hidden _method field
-			$methodAttr   = in_array($method, ['GET', 'POST']) ? $method : 'POST';
+			$methodAttr = in_array($method, ['GET', 'POST']) ? $method : 'POST';
 			$methodSpoofHtml = $methodAttr !== $method
-				? "<input type=\"hidden\" name=\"loom_method\" value=\"{$method}\">"
+				? "<input type=\"hidden\" name=\"_method\" value=\"{$method}\">"
 				: '';
 			
 			$html = <<<HTML
