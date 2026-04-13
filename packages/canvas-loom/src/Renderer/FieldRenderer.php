@@ -4,6 +4,7 @@
 	
 	use Quellabs\Canvas\Loom\AbstractRenderer;
 	use Quellabs\Canvas\Loom\RenderResult;
+	use Quellabs\Support\StringInflector;
 	
 	/**
 	 * Renders a form field with label and wrapper element.
@@ -149,21 +150,29 @@
 			$attrs    = $this->buildValidationAttrs($properties);
 			$selected = $this->resolveValue($name, $properties);
 			
-			// Dependent dropdown — options driven by WakaPAC foreach binding
+			// Dependent dropdown — options driven by WakaPAC foreach binding on the select
 			if (isset($properties['foreach_expression'])) {
-				$expression = $properties['foreach_expression'];
+				$expression  = $properties['foreach_expression'];
+				
+				// Merge foreach into existing pac bind expression
+				$pacBindAttr = str_replace('data-pac-bind="', "data-pac-bind=\"foreach: {$expression}, ", $pacBind);
 				
 				return <<<HTML
-        <select id="{$id}" name="{$name}" class="{$this->selectClass}"{$attrs}{$pacField}{$pacBind}>
-            <option data-pac-bind="foreach: {$expression}" value="{{item.value}}">{{item.label}}</option>
+        <select id="{$id}" name="{$name}" class="{$this->selectClass}"{$attrs}{$pacField}{$pacBindAttr}>
+            <option data-pac-bind="value: item.value">{{item.label}}</option>
         </select>
         HTML;
 			}
 			
+			// Resolve options from properties or fall back to data array via pluralized field name
+			$optionsData = $properties['options']
+				?? $this->loom->getData()[StringInflector::pluralize($name)]
+				?? [];
+			
 			// Static options
 			$options = '';
 			
-			foreach ($properties['options'] ?? [] as $option) {
+			foreach ($optionsData as $option) {
 				// Support both flat strings and value/label pairs
 				$optValue     = is_array($option) ? $option['value'] : $option;
 				$optLabel     = is_array($option) ? $option['label'] : $option;

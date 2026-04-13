@@ -34,40 +34,52 @@
 		 * @return RenderResult
 		 */
 		public function render(array $properties, string $children, ?array $parent = null, int $index = 0): RenderResult {
-			$id = $properties['id'] ?? 'loom-tabs';
+			$id     = $properties['id']     ?? 'loom-tabs';
 			$active = $properties['active'] ?? '';
-			$class = $properties['class'] ?? $this->wrapperClass;
-			$tabs = $properties['tabs'] ?? [];
+			$class  = $properties['class']  ?? $this->wrapperClass;
+			$tabs   = $properties['tabs']   ?? [];
 			
 			// Build tab bar buttons from the explicit tabs property
 			$buttons = '';
 			
 			foreach ($tabs as $tab) {
-				$tabId = $tab['id'] ?? '';
+				$tabId    = $tab['id']    ?? '';
 				$tabLabel = $tab['label'] ?? $tabId;
-				$buttons .= "<button type=\"button\" class=\"{$this->tabButtonClass}\" data-pac-bind=\"click: setTab('{$tabId}'), class: { active: activeTab === '{$tabId}'}\">{$tabLabel}</button>\n";
+				$buttons .= "<button type=\"button\" class=\"{$this->tabButtonClass}\" data-pac-bind=\"click: setTab('{$tabId}'), class: {active: activeTab === '{$tabId}'}\">{$tabLabel}</button>\n";
 			}
 			
-			$html = <<<HTML
-        <div id="{$id}" class="{$class}" data-pac-id="{$id}">
-            <div class="{$this->tabBarClass}">
-                {$buttons}
-            </div>
-            <div class="{$this->tabPanelsClass}">
-                {$children}
-            </div>
-        </div>
-        HTML;
+			// Inject collection data into data-pac-state so dependent dropdowns
+			// can access it within the tabs component scope
+			$data      = $this->loom->getData();
+			$stateData = array_filter($data, fn($value) => is_array($value));
+			$stateJson = !empty($stateData) ? htmlspecialchars(json_encode($stateData), ENT_QUOTES) : '';
+			$stateAttr = $stateJson ? " data-pac-state=\"{$stateJson}\"" : '';
 			
-			// WakaPAC initialisation — manages active tab state
+			$html = <<<HTML
+    <div id="{$id}" class="{$class}" data-pac-id="{$id}"{$stateAttr}>
+        <div class="{$this->tabBarClass}">
+            {$buttons}
+        </div>
+        <div class="{$this->tabPanelsClass}">
+            {$children}
+        </div>
+    </div>
+    HTML;
+			
+			// Read state from data-pac-state attribute so collection data is available
+			// to dependent dropdowns within the tabs component scope
 			$script = <<<JS
-        wakaPAC('{$id}', {
-            activeTab: '{$active}',
-            setTab(tabId) {
-                this.activeTab = tabId;
-            }
-        }, { hydrate: true });
-        JS;
+(function() {
+    const el    = document.querySelector('[data-pac-id="{$id}"]');
+    const state = el && el.dataset.pacState ? JSON.parse(el.dataset.pacState) : {};
+    wakaPAC('{$id}', Object.assign(state, {
+        activeTab: '{$active}',
+        setTab(tabId) {
+            this.activeTab = tabId;
+        }
+    }), { hydrate: true });
+})();
+JS;
 			
 			return new RenderResult($html, [$script]);
 		}

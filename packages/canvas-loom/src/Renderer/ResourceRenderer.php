@@ -63,10 +63,16 @@
 			}
 			
 			$saveDisabledAttr = $saveDisabled ? ' disabled' : '';
-			
+
 			// Scripts only generated for full or body — not for header-only renders
 			if ($part !== 'header') {
-				$scripts = ["wakaPAC('{$id}', {}, { hydrate: true });"];
+				$scripts = [<<<JS
+					(function() {
+					    const el = document.getElementById('{$id}');
+					    const state = el && el.dataset.pacState ? JSON.parse(el.dataset.pacState) : {};
+					    wakaPAC('{$id}', state, { hydrate: true });
+					})();
+					JS];
 			} else {
 				$scripts = [];
 			}
@@ -124,14 +130,21 @@
 		 * @return string
 		 */
 		protected function renderBody(array $properties, string $children, string $id, string $methodAttr, string $methodSpoofHtml): string {
-			$class = $properties['class'] ?? $this->formClass;
+			$class  = $properties['class']  ?? $this->formClass;
 			$action = $properties['action'] ?? '';
 			
+			// Separate field values from collection data —
+			// field values are hydrated from the DOM, collections go into data-pac-state
+			$data      = $this->loom->getData();
+			$stateData = array_filter($data, fn($value) => is_array($value));
+			$stateJson = !empty($stateData) ? htmlspecialchars(json_encode($stateData), ENT_QUOTES) : '';
+			$stateAttr = $stateJson ? " data-pac-state=\"{$stateJson}\"" : '';
+			
 			return <<<HTML
-        <form id="{$id}" action="{$action}" method="{$methodAttr}" class="{$class}" data-pac-id="{$id}">
-            {$methodSpoofHtml}
-            {$children}
-        </form>
-        HTML;
+    <form id="{$id}" action="{$action}" method="{$methodAttr}" class="{$class}" data-pac-id="{$id}"{$stateAttr}>
+        {$methodSpoofHtml}
+        {$children}
+    </form>
+    HTML;
 		}
 	}
