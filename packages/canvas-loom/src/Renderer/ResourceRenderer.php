@@ -46,29 +46,26 @@
 		 * @return RenderResult
 		 */
 		public function render(array $properties, string $children, ?array $parent = null, int $index = 0): RenderResult {
-			$id           = $properties['id']            ?? '';
-			$action       = $properties['action']        ?? '';
-			$method       = strtoupper($properties['method'] ?? 'POST');
-			$class        = $properties['class']         ?? $this->formClass;
-			$title        = $properties['title']         ?? '';
-			$saveLabel    = $properties['save_label']    ?? 'Save';
+			$id = $properties['id'] ?? '';
+			$action = $properties['action'] ?? '';
+			$method = strtoupper($properties['method'] ?? 'POST');
+			$class = $properties['class'] ?? $this->formClass;
+			$title = $properties['title'] ?? '';
+			$saveLabel = $properties['save_label'] ?? 'Save';
 			$saveDisabled = !empty($properties['save_disabled']);
+			$part = $properties['_render_part'] ?? 'full';
 			
-			// id is required — without it WakaPAC cannot be initialised
 			if (!$id) {
 				throw new \InvalidArgumentException('ResourceRenderer requires an "id" property.');
 			}
 			
-			// HTML method attribute only supports GET and POST —
-			// other methods (PUT, PATCH, DELETE) require a hidden _method field
-			$methodAttr      = in_array($method, ['GET', 'POST']) ? $method : 'POST';
+			$methodAttr = in_array($method, ['GET', 'POST']) ? $method : 'POST';
 			$methodSpoofHtml = $methodAttr !== $method
 				? "<input type=\"hidden\" name=\"_method\" value=\"{$method}\">"
 				: '';
 			
 			$saveDisabledAttr = $saveDisabled ? ' disabled' : '';
 			
-			// Header lives outside the form — save button uses form attribute to stay coupled
 			$headerHtml = <<<HTML
     <div class="{$this->headerClass}">
         <h1 class="{$this->titleClass}">{$title}</h1>
@@ -79,18 +76,24 @@
     </div>
     HTML;
 			
-			$html = <<<HTML
-    {$headerHtml}
+			$bodyHtml = <<<HTML
     <form id="{$id}" action="{$action}" method="{$methodAttr}" class="{$class}" data-pac-id="{$id}">
         {$methodSpoofHtml}
         {$children}
     </form>
     HTML;
 			
-			// Generate WakaPAC initialisation script —
-			// empty abstraction, hydrate reads all field values from the DOM
-			$script = "const test = wakaPAC('{$id}', {}, { hydrate: true });";
+			// Scripts only generated for full or body — not for header-only renders
+			$scripts = $part !== 'header'
+				? ["wakaPAC('{$id}', {}, { hydrate: true });"]
+				: [];
 			
-			return new RenderResult($html, [$script]);
+			$html = match ($part) {
+				'header' => $headerHtml,
+				'body' => $bodyHtml,
+				default => $headerHtml . "\n" . $bodyHtml,
+			};
+			
+			return new RenderResult($html, $scripts);
 		}
 	}

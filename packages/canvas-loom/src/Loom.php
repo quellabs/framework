@@ -46,7 +46,18 @@
 		 * @param array $node
 		 * @return string
 		 */
-		public function renderToString(array $node): string {
+		/**
+		 * Render a node tree to an HTML string with an optional inline script block
+		 * @param array  $node
+		 * @param array  $options  Supported options: 'part' => 'full' | 'header' | 'body'
+		 * @return string
+		 */
+		public function renderToString(array $node, array $options = []): string {
+			// Inject render part into root node properties
+			if (isset($options['part'])) {
+				$node['properties']['_render_part'] = $options['part'];
+			}
+			
 			$result = $this->render($node);
 			
 			if (empty($result->scripts)) {
