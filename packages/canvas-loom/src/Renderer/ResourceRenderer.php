@@ -35,18 +35,17 @@
 		
 		/**
 		 * Render the resource — header outside the form, body as the form itself
-		 * @param array  $properties Node properties from the JSON definition
-		 * @param string $children   Already-rendered HTML of all child nodes
+		 * @param array $properties Node properties from the JSON definition
+		 * @param string $children Already-rendered HTML of all child nodes
 		 * @param array|null $parent Parent node
-		 * @param int $index         Index of this node within its parent
+		 * @param int $index Index of this node within its parent
 		 * @return RenderResult
 		 */
 		public function render(array $properties, string $children, ?array $parent = null, int $index = 0): RenderResult {
-			$id           = $properties['id']           ?? '';
-			$action       = $properties['action']       ?? '';
-			$method       = strtoupper($properties['method'] ?? 'POST');
+			$id = $properties['id'] ?? '';
+			$method = strtoupper($properties['method'] ?? 'POST');
 			$saveDisabled = !empty($properties['save_disabled']);
-			$part         = $properties['_render_part'] ?? 'full';
+			$part = $properties['_render_part'] ?? 'full';
 			
 			// id is required — without it WakaPAC cannot be initialised
 			if (!$id) {
@@ -55,24 +54,38 @@
 			
 			// HTML method attribute only supports GET and POST —
 			// other methods (PUT, PATCH, DELETE) require a hidden _method field
-			$methodAttr      = in_array($method, ['GET', 'POST']) ? $method : 'POST';
-			$methodSpoofHtml = $methodAttr !== $method
-				? "<input type=\"hidden\" name=\"_method\" value=\"{$method}\">"
-				: '';
+			$methodAttr = in_array($method, ['GET', 'POST']) ? $method : 'POST';
+			
+			if ($methodAttr !== $method) {
+				$methodSpoofHtml = "<input type=\"hidden\" name=\"loom_method\" value=\"{$method}\">";
+			} else {
+				$methodSpoofHtml = '';
+			}
 			
 			$saveDisabledAttr = $saveDisabled ? ' disabled' : '';
 			
 			// Scripts only generated for full or body — not for header-only renders
-			$scripts = $part !== 'header'
-				? ["wakaPAC('{$id}', {}, { hydrate: true });"]
-				: [];
+			if ($part !== 'header') {
+				$scripts = ["wakaPAC('{$id}', {}, { hydrate: true });"];
+			} else {
+				$scripts = [];
+			}
 			
-			$html = match($part) {
-				'header' => $this->renderHeader($properties, $id, $saveDisabledAttr),
-				'body'   => $this->renderBody($properties, $children, $id, $methodAttr, $methodSpoofHtml),
-				default  => $this->renderHeader($properties, $id, $saveDisabledAttr) . "\n" .
-					$this->renderBody($properties, $children, $id, $methodAttr, $methodSpoofHtml),
-			};
+			switch ($part) {
+				case 'header':
+					$html = $this->renderHeader($properties, $id, $saveDisabledAttr);
+					break;
+				
+				case 'body':
+					$html = $this->renderBody($properties, $children, $id, $methodAttr, $methodSpoofHtml);
+					break;
+				
+				default:
+					$header = $this->renderHeader($properties, $id, $saveDisabledAttr);
+					$body = $this->renderBody($properties, $children, $id, $methodAttr, $methodSpoofHtml);
+					$html = $header . "\n" . $body;
+					break;
+			}
 			
 			return new RenderResult($html, $scripts);
 		}
@@ -80,13 +93,13 @@
 		/**
 		 * Render the page header with title, cancel and save button.
 		 * Override in a subclass to customise the header independently.
-		 * @param array  $properties Node properties
-		 * @param string $id         Form id, used to couple the submit button via the form attribute
+		 * @param array $properties Node properties
+		 * @param string $id Form id, used to couple the submit button via the form attribute
 		 * @param string $saveDisabledAttr Rendered disabled attribute or empty string
 		 * @return string
 		 */
 		protected function renderHeader(array $properties, string $id, string $saveDisabledAttr): string {
-			$title     = $properties['title']      ?? '';
+			$title = $properties['title'] ?? '';
 			$saveLabel = $properties['save_label'] ?? 'Save';
 			
 			return <<<HTML
@@ -103,15 +116,15 @@
 		/**
 		 * Render the form body with all child nodes.
 		 * Override in a subclass to customise the form independently.
-		 * @param array  $properties     Node properties
-		 * @param string $children       Already-rendered HTML of all child nodes
-		 * @param string $id             Form id, also used as WakaPAC component id
-		 * @param string $methodAttr     HTML method attribute value (GET or POST)
+		 * @param array $properties Node properties
+		 * @param string $children Already-rendered HTML of all child nodes
+		 * @param string $id Form id, also used as WakaPAC component id
+		 * @param string $methodAttr HTML method attribute value (GET or POST)
 		 * @param string $methodSpoofHtml Hidden _method field for PUT/PATCH/DELETE or empty string
 		 * @return string
 		 */
 		protected function renderBody(array $properties, string $children, string $id, string $methodAttr, string $methodSpoofHtml): string {
-			$class  = $properties['class'] ?? $this->formClass;
+			$class = $properties['class'] ?? $this->formClass;
 			$action = $properties['action'] ?? '';
 			
 			return <<<HTML

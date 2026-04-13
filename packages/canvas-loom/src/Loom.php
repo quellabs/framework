@@ -42,11 +42,6 @@
 		}
 		
 		/**
-		 * Render a node tree and return the final HTML with an inline script block
-		 * @param array $node
-		 * @return string
-		 */
-		/**
 		 * Render a node tree to an HTML string with an optional inline script block
 		 * @param array  $node
 		 * @param array  $options  Supported options: 'part' => 'full' | 'header' | 'body'
