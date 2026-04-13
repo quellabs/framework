@@ -25,13 +25,27 @@
 			return $this;
 		}
 		
+		public function getProperties(): array {
+			return $this->properties;
+		}
+		
+		/**
+		 * Get a property value
+		 * @param string $key
+		 * @param mixed  $default
+		 * @return mixed
+		 */
+		public function get(string $key, mixed $default = null): mixed {
+			return $this->properties[$key] ?? $default;
+		}
+		
 		/**
 		 * Set a property value
 		 * @param string $key
 		 * @param mixed  $value
 		 * @return static
 		 */
-		protected function set(string $key, mixed $value): static {
+		public function set(string $key, mixed $value): static {
 			$this->properties[$key] = $value;
 			return $this;
 		}

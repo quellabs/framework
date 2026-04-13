@@ -180,6 +180,21 @@
 			return $this->set('pac_bind', $bind);
 		}
 		
+		/**
+		 * Mark this select as dependent on another field.
+		 * The options will be filtered based on the selected value
+		 * of the parent field.
+		 * @param string|null $parentField Name of the field this select depends on
+		 * @return static
+		 */
+		public function dependsOn(?string $parentField): static {
+			if ($parentField !== null) {
+				return $this->set('depends_on', $parentField);
+			}
+			
+			return $this;
+		}
+		
 		protected function getType(): string {
 			return 'field';
 		}

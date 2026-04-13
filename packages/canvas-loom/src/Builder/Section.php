@@ -5,7 +5,7 @@
 	/**
 	 * Builds a section node — a neutral container grouping related fields.
 	 */
-	class Section extends AbstractNode {
+	class Section extends AbstractFieldContainer {
 		
 		/**
 		 * @param string $id Section id attribute

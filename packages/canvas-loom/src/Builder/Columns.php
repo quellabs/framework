@@ -5,7 +5,7 @@
 	/**
 	 * Builds a columns node — a flex layout container.
 	 */
-	class Columns extends AbstractNode {
+	class Columns extends AbstractFieldContainer {
 		
 		/**
 		 * @param array  $widths Column widths as percentages e.g. [70, 30]

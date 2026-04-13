@@ -5,7 +5,7 @@
 	/**
 	 * Builds a column node — a single column within a columns container.
 	 */
-	class Column extends AbstractNode {
+	class Column extends AbstractFieldContainer  {
 		
 		private function __construct() {}
 		

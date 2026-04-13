@@ -133,29 +133,49 @@
 		
 		/**
 		 * Render a select dropdown with options.
+		 * If the field has a foreach_expression property, it renders as a
+		 * dependent dropdown driven by a WakaPAC foreach binding.
+		 * Otherwise renders as a static dropdown with predefined options.
 		 * Options can be a flat array of strings or an array of
 		 * ['value' => '...', 'label' => '...'] objects.
-		 * @param string $id Element id attribute
-		 * @param string $name Field name used for form submission and WakaPAC binding
-		 * @param array $properties Full node properties including options and selected value
-		 * @param string $pacField Rendered data-pac-field attribute
-		 * @param string $pacBind Rendered data-pac-bind attribute
+		 * @param string $id        Element id attribute
+		 * @param string $name      Field name used for form submission and WakaPAC binding
+		 * @param array  $properties Full node properties including options and selected value
+		 * @param string $pacField  Rendered data-pac-field attribute
+		 * @param string $pacBind   Rendered data-pac-bind attribute
 		 * @return string
 		 */
 		private function renderSelect(string $id, string $name, array $properties, string $pacField, string $pacBind): string {
-			$attrs = $this->buildValidationAttrs($properties);
-			$selected = $properties['value'] ?? '';
+			$attrs    = $this->buildValidationAttrs($properties);
+			$selected = $this->resolveValue($name, $properties);
+			
+			// Dependent dropdown — options driven by WakaPAC foreach binding
+			if (isset($properties['foreach_expression'])) {
+				$expression = $properties['foreach_expression'];
+				
+				return <<<HTML
+        <select id="{$id}" name="{$name}" class="{$this->selectClass}"{$attrs}{$pacField}{$pacBind}>
+            <option data-pac-bind="foreach: {$expression}" value="{{item.value}}">{{item.label}}</option>
+        </select>
+        HTML;
+			}
+			
+			// Static options
 			$options = '';
 			
 			foreach ($properties['options'] ?? [] as $option) {
 				// Support both flat strings and value/label pairs
-				$optValue = is_array($option) ? $option['value'] : $option;
-				$optLabel = is_array($option) ? $option['label'] : $option;
+				$optValue     = is_array($option) ? $option['value'] : $option;
+				$optLabel     = is_array($option) ? $option['label'] : $option;
 				$selectedAttr = $optValue == $selected ? ' selected' : '';
-				$options .= "<option value=\"{$optValue}\"{$selectedAttr}>{$optLabel}</option>\n";
+				$options      .= "<option value=\"{$optValue}\"{$selectedAttr}>{$optLabel}</option>\n";
 			}
 			
-			return "<select id=\"{$id}\" name=\"{$name}\" class=\"{$this->selectClass}\"{$attrs}{$pacField}{$pacBind}>\n{$options}</select>";
+			return <<<HTML
+    <select id="{$id}" name="{$name}" class="{$this->selectClass}"{$attrs}{$pacField}{$pacBind}>
+        {$options}
+    </select>
+    HTML;
 		}
 		
 		/**
