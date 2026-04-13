@@ -24,22 +24,18 @@
 		 * @param array $node
 		 * @return RenderResult
 		 */
-		public function render(array $node): RenderResult {
-			// Render children first, collecting their scripts along the way
+		public function render(array $node, ?array $parent = null): RenderResult {
 			$childHtml = '';
 			$scripts = [];
 			
-			foreach ($node['children'] ?? [] as $child) {
-				$result = $this->render($child);
+			foreach ($node['children'] ?? [] as $i => $child) {
+				$result = $this->render($child, $node);
 				$childHtml .= $result->html;
 				$scripts = array_merge($scripts, $result->scripts);
 			}
 			
-			// Render this node using the appropriate renderer
 			$renderer = $this->getRenderer($node['type']);
-			$result = $renderer->render($node['properties'] ?? [], $childHtml);
-			
-			// Merge children scripts with this node's scripts
+			$result = $renderer->render($node['properties'] ?? [], $childHtml, $parent, $i ?? 0);
 			$result->scripts = array_merge($scripts, $result->scripts);
 			
 			return $result;

@@ -29,6 +29,7 @@
 			return new Response("
 				<html>
 				<head>
+				<script src='https://cdn.jsdelivr.net/gh/quellabs/wakapac@main/wakapac.min.js'></script>
 				<link rel='stylesheet' type='text/css' href='/loom.css'>
 				</head>
 				<body>

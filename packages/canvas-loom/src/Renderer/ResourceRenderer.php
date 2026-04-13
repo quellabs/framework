@@ -39,11 +39,13 @@
 		
 		/**
 		 * Render the resource container
-		 * @param array  $properties Node properties from the JSON definition
-		 * @param string $children   Already-rendered HTML of all child nodes
+		 * @param array $properties
+		 * @param string $children
+		 * @param array|null $parent
+		 * @param int $index
 		 * @return RenderResult
 		 */
-		public function render(array $properties, string $children): RenderResult {
+		public function render(array $properties, string $children, ?array $parent = null, int $index = 0): RenderResult {
 			$id           = $properties['id']            ?? '';
 			$action       = $properties['action']        ?? '';
 			$method       = strtoupper($properties['method'] ?? 'POST');
@@ -87,7 +89,7 @@
 			
 			// Generate WakaPAC initialisation script —
 			// empty abstraction, hydrate reads all field values from the DOM
-			$script = "wakaPAC('{$id}', {}, { hydrate: true });";
+			$script = "const test = wakaPAC('{$id}', {}, { hydrate: true });";
 			
 			return new RenderResult($html, [$script]);
 		}

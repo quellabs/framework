@@ -43,11 +43,13 @@
 		
 		/**
 		 * Render a form field
-		 * @param array $properties Node properties from the JSON definition
-		 * @param string $children Already-rendered HTML of all child nodes (unused for leaf nodes)
+		 * @param array $properties
+		 * @param string $children
+		 * @param array|null $parent
+		 * @param int $index
 		 * @return RenderResult
 		 */
-		public function render(array $properties, string $children): RenderResult {
+		public function render(array $properties, string $children, ?array $parent = null, int $index = 0): RenderResult {
 			$name = $properties['name'] ?? '';
 			$type = $properties['input'] ?? 'text';
 			$label = $properties['label'] ?? '';

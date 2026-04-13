@@ -202,3 +202,50 @@
     background-color: #f9fafb;
     border-color: #9ca3af;
 }
+
+/* ---------------------------------------------------------
+   Tabs
+   --------------------------------------------------------- */
+
+.loom-tabs {
+    display: flex;
+    flex-direction: column;
+}
+
+.loom-tabs-bar {
+    display: flex;
+    border-bottom: 2px solid #e2e2e2;
+    gap: 0;
+}
+
+.loom-tabs-button {
+    padding: 0.625rem 1.25rem;
+    font-size: 0.9375rem;
+    font-weight: 500;
+    color: #6b7280;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    cursor: pointer;
+    transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.loom-tabs-button:hover {
+    color: #111827;
+}
+
+.loom-tabs-button.active {
+    color: #6366f1;
+    border-bottom-color: #6366f1;
+}
+
+.loom-tabs-panels {
+    padding-top: 1.5rem;
+}
+
+.loom-tabs-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+}
