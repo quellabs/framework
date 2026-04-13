@@ -250,7 +250,6 @@
 		 * Resolve the field value from the data array or fall back to the JSON definition
 		 * @param string $name       Field name, used as path into the data array
 		 * @param array  $properties Node properties
-		 * @param array  $data       Data array passed from the controller
 		 * @return mixed
 		 */
 		private function resolveValue(string $name, array $properties): mixed {

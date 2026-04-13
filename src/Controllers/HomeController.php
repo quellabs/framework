@@ -58,6 +58,9 @@
 			
 			// Render page
 			$loom = new Loom();
+			$renderedDefinition = $loom->render($definition, [
+				'title' => 'henkie',
+			]);
 			
 			return new Response("
 				<html>
@@ -77,7 +80,7 @@
 				</style>
 				</head>
 				<body>
-					{$loom->render($definition)}
+					{$renderedDefinition}
 				</body>
 				</html>
 			");

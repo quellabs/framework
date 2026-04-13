@@ -66,7 +66,7 @@
             setTab(tabId) {
                 this.activeTab = tabId;
             }
-        });
+        }, { hydrate: true });
         JS;
 			
 			return new RenderResult($html, [$script]);

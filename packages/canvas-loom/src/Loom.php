@@ -26,11 +26,11 @@
 		 * Render a node tree to an HTML string with an optional inline script block.
 		 * This is the main entry point for rendering a Loom page definition.
 		 * @param array $node Root node of the JSON page definition
-		 * @param array $options Supported options: 'part' => 'full' | 'header' | 'body'
 		 * @param array $data Entity data to populate field values, keyed by field name
+		 * @param array $options Supported options: 'part' => 'full' | 'header' | 'body'
 		 * @return string        Rendered HTML with an inline script block if scripts were generated
 		 */
-		public function render(array $node, array $options = [], array $data = []): string {
+		public function render(array $node, array $data = [], array $options = []): string {
 			// Store data as context so renderers can access it via getData()
 			$this->currentData = $data;
 			
