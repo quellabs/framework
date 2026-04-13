@@ -28,9 +28,20 @@
 
 			return new Response("
 				<html>
-				<head>
+				<head>				
 				<script src='https://cdn.jsdelivr.net/gh/quellabs/wakapac@main/wakapac.min.js'></script>
 				<link rel='stylesheet' type='text/css' href='/loom.css'>
+				<link rel='preconnect' href='https://fonts.googleapis.com'>
+				<link rel='preconnect' href='https://fonts.gstatic.com' crossorigin>
+				<link href='https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100..900;1,100..900&display=swap' rel='stylesheet'>
+				
+				<style>
+				  body {
+				    font-family: 'Roboto', sans-serif;
+				    font-optical-sizing: auto;
+				    font-weight: 400;
+				  }
+				</style>
 				</head>
 				<body>
 					{$loom->renderToString($y)}
