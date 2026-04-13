@@ -6,6 +6,13 @@
 	use Quellabs\Canvas\Annotations\InterceptWith;
 	use Quellabs\Canvas\Annotations\WithContext;
 	use Quellabs\Canvas\Controllers\BaseController;
+	use Quellabs\Canvas\Loom\Builder\Column;
+	use Quellabs\Canvas\Loom\Builder\Columns;
+	use Quellabs\Canvas\Loom\Builder\Field;
+	use Quellabs\Canvas\Loom\Builder\Resource;
+	use Quellabs\Canvas\Loom\Builder\Section;
+	use Quellabs\Canvas\Loom\Builder\Tab;
+	use Quellabs\Canvas\Loom\Builder\Tabs;
 	use Quellabs\Canvas\Loom\Loom;
 	use Quellabs\Canvas\Translation\TranslationAspect;
 	use Quellabs\Contracts\Templates\TemplateEngineInterface;
@@ -21,11 +28,37 @@
 		 * @return Response
 		 */
 		public function index(TemplateEngineInterface $engine): Response {
-			$x = file_get_contents(dirname(__FILE__) . "/test.json");
-			$y = json_decode($x, true);
+			// Create page
+			$definition = Resource::make('post-form', '/admin/posts/save')
+				->title('Edit Post')
+				->add(Tabs::make('post-tabs', 'general')
+					->add(Tab::make('general', 'General')
+						->add(Section::make('post-details')
+							->add(Columns::make([70, 30])
+								->add(Column::make()
+									->add(Field::text('title', 'Title')->required()->maxlength(200))
+									->add(Field::textarea('body', 'Content')->rows(10))
+								)
+								->add(Column::make()
+									->add(Field::select('status', 'Status')->options(['draft' => 'Draft', 'published' => 'Published']))
+									->add(Field::text('slug', 'Slug')->required())
+									->add(Field::checkbox('featured', 'Featured post')->value('1'))
+								)
+							)
+						)
+					)
+					->add(Tab::make('seo', 'SEO')
+						->add(Section::make('post-seo')
+							->add(Field::text('meta_title', 'Meta title')->maxlength(60))
+							->add(Field::textarea('meta_description', 'Meta description')->rows(3)->maxlength(160))
+						)
+					)
+				)
+				->build();
 			
+			// Render page
 			$loom = new Loom();
-
+			
 			return new Response("
 				<html>
 				<head>				
@@ -44,7 +77,7 @@
 				</style>
 				</head>
 				<body>
-					{$loom->render($y)}
+					{$loom->render($definition)}
 				</body>
 				</html>
 			");
