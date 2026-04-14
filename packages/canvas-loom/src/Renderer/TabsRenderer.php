@@ -35,18 +35,35 @@
 		 * @return RenderResult
 		 */
 		public function render(array $properties, string $children, ?array $parent = null, int $index = 0): RenderResult {
-			$id = $properties['id'] ?? 'loom-tabs';
 			$active = $properties['active'] ?? '';
-			$class = $properties['class'] ?? $this->wrapperClass;
-			$tabs = $properties['tabs'] ?? [];
-			$nodes = $properties['_children'] ?? [];
+			$class  = $this->e($properties['class'] ?? $this->wrapperClass);
+			$tabs   = $properties['tabs']     ?? [];
+			$nodes  = $properties['_children'] ?? [];
+			
+			// id flows into JS string literals via buildScript() — restrict to safe identifier characters
+			$id = $properties['id'] ?? 'loom-tabs';
+			
+			if (!preg_match('/^[a-zA-Z0-9_-]+$/', $id)) {
+				throw new \InvalidArgumentException('TabsRenderer "id" must contain only alphanumerics, hyphens, and underscores.');
+			}
+			
+			// active tab id flows into a JS string literal — apply the same restriction
+			if ($active && !preg_match('/^[a-zA-Z0-9_-]+$/', $active)) {
+				throw new \InvalidArgumentException('TabsRenderer "active" must contain only alphanumerics, hyphens, and underscores.');
+			}
 			
 			// Build tab bar buttons from the explicit tabs property
 			$buttons = '';
 			
 			foreach ($tabs as $tab) {
-				$tabId = $tab['id'] ?? '';
-				$tabLabel = $tab['label'] ?? $tabId;
+				$tabId    = $tab['id'] ?? '';
+				$tabLabel = $this->e($tab['label'] ?? $tabId);
+				
+				// tabId appears in JS string literals inside data-pac-bind — restrict to safe identifier characters
+				if ($tabId && !preg_match('/^[a-zA-Z0-9_-]+$/', $tabId)) {
+					throw new \InvalidArgumentException("Tab id \"{$tabId}\" must contain only alphanumerics, hyphens, and underscores.");
+				}
+				
 				$buttons .= "<button type=\"button\" class=\"{$this->tabButtonClass}\" data-pac-bind=\"click: setTab('{$tabId}'), class: {active: activeTab === '{$tabId}'}\">{$tabLabel}</button>\n";
 			}
 			

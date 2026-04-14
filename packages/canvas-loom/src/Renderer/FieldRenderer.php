@@ -54,11 +54,11 @@
 		 * @return RenderResult
 		 */
 		public function render(array $properties, string $children, ?array $parent = null, int $index = 0): RenderResult {
-			$name = $properties['name'] ?? '';
-			$type = $properties['input'] ?? 'text';
-			$label = $properties['label'] ?? '';
-			$class = $properties['class'] ?? $this->wrapperClass;
-			$id = $properties['id'] ?? $name;
+			$name  = $properties['name'] ?? '';
+			$type  = $properties['input'] ?? 'text';
+			$label = $this->e($properties['label'] ?? '');
+			$class = $this->e($properties['class'] ?? $this->wrapperClass);
+			$id    = $this->e($properties['id'] ?? $name);
 			
 			// Data array takes precedence over value in JSON definition
 			$value = $this->resolveValue($name, $properties);
@@ -79,7 +79,7 @@
 			
 			// Hint
 			if (isset($properties['hint'])) {
-				$hintHtml = "<p class=\"{$this->hintClass}\">{$properties['hint']}</p>";
+				$hintHtml = "<p class=\"{$this->hintClass}\">{$this->e($properties['hint'])}</p>";
 			} else {
 				$hintHtml = '';
 			}
@@ -87,7 +87,7 @@
 			// Delegate to the appropriate input renderer based on type
 			$inputHtml = match ($type) {
 				'textarea' => $this->renderTextarea($id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
-				'select' => $this->renderSelect($id, $name, $properties, $pacFieldAttr, $pacBindAttr),
+				'select' => $this->renderSelect($id, $name, $properties, $pacFieldAttr, $pacBindAttr, $pacBind),
 				'checkbox' => $this->renderCheckbox($id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
 				'radio' => $this->renderRadio($id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
 				'number' => $this->renderInput('number', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
@@ -120,9 +120,9 @@
 		private function renderInput(string $type, string $id, string $name, string $value, array $properties, string $pacField, string $pacBind): string {
 			$attrs = $this->buildValidationAttrs($properties);
 			$placeholder = $properties['placeholder'] ?? '';
-			$placeholderAttr = $placeholder ? " placeholder=\"{$placeholder}\"" : '';
+			$placeholderAttr = $placeholder ? " placeholder=\"{$this->e($placeholder)}\"" : '';
 			
-			return "<input type=\"{$type}\" id=\"{$id}\" name=\"{$name}\" value=\"{$value}\" class=\"{$this->inputClass}\"{$placeholderAttr}{$attrs}{$pacField}{$pacBind}>";
+			return "<input type=\"{$this->e($type)}\" id=\"{$id}\" name=\"{$this->e($name)}\" value=\"{$this->e($value)}\" class=\"{$this->inputClass}\"{$placeholderAttr}{$attrs}{$pacField}{$pacBind}>";
 		}
 		
 		/**
@@ -138,10 +138,10 @@
 		private function renderTextarea(string $id, string $name, string $value, array $properties, string $pacField, string $pacBind): string {
 			$attrs = $this->buildValidationAttrs($properties);
 			$placeholder = $properties['placeholder'] ?? '';
-			$placeholderAttr = $placeholder ? " placeholder=\"{$placeholder}\"" : '';
-			$rows = $properties['rows'] ?? 4;
+			$placeholderAttr = $placeholder ? " placeholder=\"{$this->e($placeholder)}\"" : '';
+			$rows = (int) ($properties['rows'] ?? 4);
 			
-			return "<textarea id=\"{$id}\" name=\"{$name}\" rows=\"{$rows}\" class=\"{$this->textareaClass}\"{$placeholderAttr}{$attrs}{$pacField}{$pacBind}>{$value}</textarea>";
+			return "<textarea id=\"{$id}\" name=\"{$this->e($name)}\" rows=\"{$rows}\" class=\"{$this->textareaClass}\"{$placeholderAttr}{$attrs}{$pacField}{$pacBind}>{$this->e($value)}</textarea>";
 		}
 		
 		/**
@@ -154,11 +154,12 @@
 		 * @param string $id Element id attribute
 		 * @param string $name Field name used for form submission and WakaPAC binding
 		 * @param array $properties Full node properties including options and selected value
-		 * @param string $pacField Rendered data-pac-field attribute
-		 * @param string $pacBind Rendered data-pac-bind attribute
+		 * @param string $pacField Rendered data-pac-field attribute string
+		 * @param string $pacBind Rendered data-pac-bind attribute string
+		 * @param string $pacBindExpr Raw pac bind expression (before attribute wrapping), used when prepending foreach
 		 * @return string
 		 */
-		private function renderSelect(string $id, string $name, array $properties, string $pacField, string $pacBind): string {
+		private function renderSelect(string $id, string $name, array $properties, string $pacField, string $pacBind, string $pacBindExpr = ''): string {
 			$attrs = $this->buildValidationAttrs($properties);
 			$selected = $this->resolveValue($name, $properties);
 			
@@ -166,11 +167,12 @@
 			if (isset($properties['foreach_expression'])) {
 				$expression = $properties['foreach_expression'];
 				
-				// Merge foreach into existing pac bind expression
-				$pacBindAttr = str_replace('data-pac-bind="', "data-pac-bind=\"foreach: {$expression}, ", $pacBind);
+				// Prepend foreach to the raw expression string, then wrap in the attribute.
+				// Using the raw expression avoids brittle string manipulation on an already-rendered attribute.
+				$combinedBind = " data-pac-bind=\"foreach: {$expression}, {$pacBindExpr}\"";
 				
 				return <<<HTML
-        <select id="{$id}" name="{$name}" class="{$this->selectClass}"{$attrs}{$pacField}{$pacBindAttr}>
+        <select id="{$id}" name="{$name}" class="{$this->selectClass}"{$attrs}{$pacField}{$combinedBind}>
             <option data-pac-bind="value: item.value">{{item.label}}</option>
         </select>
         HTML;
@@ -189,11 +191,11 @@
 				$optValue = is_array($option) ? $option['value'] : $option;
 				$optLabel = is_array($option) ? $option['label'] : $option;
 				$selectedAttr = $optValue == $selected ? ' selected' : '';
-				$options .= "<option value=\"{$optValue}\"{$selectedAttr}>{$optLabel}</option>\n";
+				$options .= "<option value=\"{$this->e($optValue)}\"{$selectedAttr}>{$this->e($optLabel)}</option>\n";
 			}
 			
 			return <<<HTML
-    <select id="{$id}" name="{$name}" class="{$this->selectClass}"{$attrs}{$pacField}{$pacBind}>
+    <select id="{$id}" name="{$this->e($name)}" class="{$this->selectClass}"{$attrs}{$pacField}{$pacBind}>
         {$options}
     </select>
     HTML;
@@ -213,7 +215,7 @@
 			$checked = !empty($properties['checked']) ? ' checked' : '';
 			$attrs = $this->buildValidationAttrs($properties);
 			
-			return "<input type=\"checkbox\" id=\"{$id}\" name=\"{$name}\" value=\"{$value}\" class=\"{$this->checkboxClass}\"{$checked}{$attrs}{$pacField}{$pacBind}>";
+			return "<input type=\"checkbox\" id=\"{$id}\" name=\"{$this->e($name)}\" value=\"{$this->e($value)}\" class=\"{$this->checkboxClass}\"{$checked}{$attrs}{$pacField}{$pacBind}>";
 		}
 		
 		/**
@@ -230,7 +232,7 @@
 			$checked = !empty($properties['checked']) ? ' checked' : '';
 			$attrs = $this->buildValidationAttrs($properties);
 			
-			return "<input type=\"radio\" id=\"{$id}\" name=\"{$name}\" value=\"{$value}\" class=\"{$this->radioClass}\"{$checked}{$attrs}{$pacField}{$pacBind}>";
+			return "<input type=\"radio\" id=\"{$id}\" name=\"{$this->e($name)}\" value=\"{$this->e($value)}\" class=\"{$this->radioClass}\"{$checked}{$attrs}{$pacField}{$pacBind}>";
 		}
 		
 		/**
@@ -257,31 +259,33 @@
 			
 			// Value attributes — only rendered when explicitly set
 			if (isset($properties['maxlength'])) {
-				$attrs .= " maxlength=\"{$properties['maxlength']}\"";
+				$attrs .= ' maxlength="' . (int) $properties['maxlength'] . '"';
 			}
 			
 			if (isset($properties['minlength'])) {
-				$attrs .= " minlength=\"{$properties['minlength']}\"";
+				$attrs .= ' minlength="' . (int) $properties['minlength'] . '"';
 			}
 			
 			if (isset($properties['min'])) {
-				$attrs .= " min=\"{$properties['min']}\"";
+				$attrs .= ' min="' . (int) $properties['min'] . '"';
 			}
 			
 			if (isset($properties['max'])) {
-				$attrs .= " max=\"{$properties['max']}\"";
+				$attrs .= ' max="' . (int) $properties['max'] . '"';
 			}
 			
 			if (isset($properties['step'])) {
-				$attrs .= " step=\"{$properties['step']}\"";
+				// step can be "any" or a number
+				$step   = $properties['step'];
+				$attrs .= ' step="' . ($step === 'any' ? 'any' : (float) $step) . '"';
 			}
 			
 			if (isset($properties['pattern'])) {
-				$attrs .= " pattern=\"{$properties['pattern']}\"";
+				$attrs .= ' pattern="' . $this->e($properties['pattern']) . '"';
 			}
 			
 			if (isset($properties['autocomplete'])) {
-				$attrs .= " autocomplete=\"{$properties['autocomplete']}\"";
+				$attrs .= ' autocomplete="' . $this->e($properties['autocomplete']) . '"';
 			}
 			
 			return $attrs;

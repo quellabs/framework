@@ -27,8 +27,8 @@
 		 * @return RenderResult
 		 */
 		public function render(array $properties, string $children, ?array $parent = null, int $index = 0): RenderResult {
-			$id = $properties['id'] ?? '';
-			$class = $properties['class'] ?? $this->wrapperClass;
+			$id    = $this->e($properties['id']    ?? '');
+			$class = $this->e($properties['class'] ?? $this->wrapperClass);
 			
 			// Only render id attribute when explicitly provided
 			$idAttr = $id ? " id=\"{$id}\"" : '';

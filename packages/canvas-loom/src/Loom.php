@@ -7,6 +7,9 @@
 	 */
 	class Loom {
 		
+		/** @var array<string, class-string<RendererInterface>> Registered custom renderers, keyed by type */
+		private array $registry = [];
+		
 		/** @var array<string, RendererInterface> Renderer instance cache, keyed by class name */
 		private array $rendererCache = [];
 		
@@ -136,7 +139,7 @@
 				throw new \RuntimeException(
 					"No renderer found for type \"{$type}\". " .
 					"Create Quellabs\\Canvas\\Loom\\Renderer\\" . ucfirst($type) . "Renderer " .
-					"or register a custom renderer via Engine::register()."
+					"or register a custom renderer via Loom::register()."
 				);
 			}
 			

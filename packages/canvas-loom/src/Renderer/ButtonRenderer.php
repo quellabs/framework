@@ -37,10 +37,10 @@
 		 * @return RenderResult
 		 */
 		public function render(array $properties, string $children, ?array $parent = null, int $index = 0): RenderResult {
-			$label   = $properties['label']   ?? '';
+			$label   = $this->e($properties['label']   ?? '');
 			$action  = $properties['action']  ?? null;
 			$variant = $properties['variant'] ?? 'primary';
-			$type    = $properties['type']    ?? 'button';
+			$type    = $this->e($properties['type']    ?? 'button');
 			
 			// Build CSS class from base and variant
 			$variantClass = match($variant) {
@@ -49,11 +49,11 @@
 				default     => $this->primaryClass,
 			};
 			
-			$class = $properties['class'] ?? "{$this->buttonClass} {$variantClass}";
+			$class = $this->e($properties['class'] ?? "{$this->buttonClass} {$variantClass}");
 			
 			// Only render data-pac-bind when an action is provided
 			$bindAttr = $action
-				? " data-pac-bind=\"click: {$action}\""
+				? " data-pac-bind=\"click: {$this->e($action)}\""
 				: '';
 			
 			$html = "<button type=\"{$type}\" class=\"{$class}\"{$bindAttr}>{$label}</button>";

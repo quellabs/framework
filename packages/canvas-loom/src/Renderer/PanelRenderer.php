@@ -26,14 +26,21 @@
 		 * @return RenderResult
 		 */
 		public function render(array $properties, string $children, ?array $parent = null, int $index = 0): RenderResult {
-			$id    = $properties['id']        ?? '';
-			$class = $properties['class']     ?? $this->wrapperClass;
-			$nodes = $properties['_children'] ?? [];
+			// id flows into both HTML attributes and a JS string literal in buildScript().
+			// Restrict to characters safe in both contexts: alphanumerics, hyphens, underscores.
+			$rawId = $properties['id'] ?? '';
 			
-			// id is required — without it WakaPAC cannot be initialised
-			if (!$id) {
+			if (!$rawId) {
 				throw new \InvalidArgumentException('PanelRenderer requires an "id" property.');
 			}
+			
+			if (!preg_match('/^[a-zA-Z0-9_-]+$/', $rawId)) {
+				throw new \InvalidArgumentException('PanelRenderer "id" must contain only alphanumerics, hyphens, and underscores.');
+			}
+			
+			$id    = $rawId;
+			$class = $this->e($properties['class'] ?? $this->wrapperClass);
+			$nodes = $properties['_children'] ?? [];
 			
 			// Collect array properties from all field nodes in the tree
 			// so dependent dropdowns have their options available in WakaPAC state

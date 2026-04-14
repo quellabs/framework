@@ -25,7 +25,12 @@
 		 */
 		public function render(array $properties, string $children, ?array $parent = null, int $index = 0): RenderResult {
 			$id    = $properties['id']    ?? '';
-			$class = $properties['class'] ?? $this->panelClass;
+			$class = $this->e($properties['class'] ?? $this->panelClass);
+			
+			// id appears in a JS string literal inside data-pac-bind — restrict to safe identifier characters
+			if ($id && !preg_match('/^[a-zA-Z0-9_-]+$/', $id)) {
+				throw new \InvalidArgumentException("TabRenderer id \"{$id}\" must contain only alphanumerics, hyphens, and underscores.");
+			}
 			
 			// Visible binding references the parent tabs component's activeTab property
 			$html = <<<HTML

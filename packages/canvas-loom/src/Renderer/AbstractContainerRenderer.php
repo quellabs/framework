@@ -24,21 +24,19 @@
 			
 			foreach ($nodes as $node) {
 				if (($node['type'] ?? '') === 'field') {
-					$name = $node['properties']['name'] ?? '';
+					$name    = $node['properties']['name']    ?? '';
+					$options = $node['properties']['options'] ?? null;
 					
-					if ($name) {
-						foreach ($node['properties'] as $key => $value) {
-							// Only include array properties — use pluralized name to match foreach_expression
-							if (is_array($value) && $key === 'options') {
-								$state[StringInflector::pluralize($name)] = $value;
-							}
-						}
+					if ($name && is_array($options)) {
+						$state[StringInflector::pluralize($name)] = $options;
 					}
 				}
 				
 				// Recurse into children
 				if (!empty($node['children'])) {
-					$state = array_merge($state, $this->collectFieldProperties($node['children']));
+					foreach ($this->collectFieldProperties($node['children']) as $k => $v) {
+						$state[$k] = $v;
+					}
 				}
 			}
 			

@@ -2,7 +2,6 @@
 	
 	namespace Quellabs\Canvas\Loom\Renderer;
 	
-	use Quellabs\Canvas\Loom\AbstractRenderer;
 	use Quellabs\Canvas\Loom\RenderResult;
 	
 	/**
@@ -42,14 +41,19 @@
 		 * @return RenderResult
 		 */
 		public function render(array $properties, string $children, ?array $parent = null, int $index = 0): RenderResult {
-			$id = $properties['id'] ?? '';
-			$method = strtoupper($properties['method'] ?? 'POST');
+			$id           = $properties['id'] ?? '';
+			$method       = strtoupper($properties['method'] ?? 'POST');
 			$saveDisabled = !empty($properties['save_disabled']);
-			$part = $properties['_render_part'] ?? 'full';
+			$part         = $properties['_render_part'] ?? 'full';
 			
 			// id is required — without it WakaPAC cannot be initialised
 			if (!$id) {
 				throw new \InvalidArgumentException('ResourceRenderer requires an "id" property.');
+			}
+			
+			// id flows into JS string literals via buildScript() — restrict to safe identifier characters
+			if (!preg_match('/^[a-zA-Z0-9_-]+$/', $id)) {
+				throw new \InvalidArgumentException('ResourceRenderer "id" must contain only alphanumerics, hyphens, and underscores.');
 			}
 			
 			// HTML method attribute only supports GET and POST —
@@ -57,7 +61,7 @@
 			$methodAttr = in_array($method, ['GET', 'POST']) ? $method : 'POST';
 			
 			if ($methodAttr !== $method) {
-				$methodSpoofHtml = "<input type=\"hidden\" name=\"loom_method\" value=\"{$method}\">";
+				$methodSpoofHtml = "<input type=\"hidden\" name=\"loom_method\" value=\"{$this->e($method)}\">";
 			} else {
 				$methodSpoofHtml = '';
 			}
@@ -99,33 +103,38 @@
 		 * @param array $properties Node properties
 		 * @param string $id Form id, used to couple the submit button via the form attribute
 		 * @param string $saveDisabledAttr Rendered disabled attribute or empty string
-		 * @return string
+		 * @return RenderResult
 		 */
 		protected function renderHeader(array $properties, string $id, string $saveDisabledAttr): RenderResult {
-			$title = $properties['title'] ?? '';
-			$saveLabel = $properties['save_label'] ?? 'Save';
-			$headerId = "{$id}-header";
+			$title         = $this->e($properties['title']     ?? '');
+			$saveLabel     = $this->e($properties['save_label'] ?? 'Save');
+			$headerId      = "{$id}-header";
 			$headerButtons = $properties['header_buttons'] ?? [];
-			$scripts = [];
+			$scripts       = [];
 			
 			// Render extra header buttons with visibility binding
 			$extraButtons = '';
 			
 			foreach ($headerButtons as $button) {
-				$name = $button->get('name');
-				$label = $button->get('label') ?? '';
+				$name    = $button->get('name');
+				$label   = $this->e($button->get('label') ?? '');
 				$variant = $button->get('variant') ?? 'primary';
-				$action = $button->get('action') ?? '';
+				$action  = $button->get('action') ?? '';
+				
+				// name flows into JS property names and data-pac-bind expressions — restrict to identifier characters
+				if ($name && !preg_match('/^[a-zA-Z0-9_]+$/', $name)) {
+					throw new \InvalidArgumentException("Header button name \"{$name}\" must contain only alphanumerics and underscores.");
+				}
 				
 				$variantClass = match ($variant) {
 					'secondary' => 'loom-button loom-button-secondary',
-					'danger' => 'loom-button loom-button-danger',
-					default => 'loom-button loom-button-primary',
+					'danger'    => 'loom-button loom-button-danger',
+					default     => 'loom-button loom-button-primary',
 				};
 				
-				$binding = $name ? "visible: show_{$name}" : '';
-				$binding = ($binding && $action) ? "{$binding}, click: {$action}" : ($action ? "click: {$action}" : $binding);
-				$bindAttr = $binding ? " data-pac-bind=\"{$binding}\"" : '';
+				$binding   = $name ? "visible: show_{$name}" : '';
+				$binding   = ($binding && $action) ? "{$binding}, click: {$action}" : ($action ? "click: {$action}" : $binding);
+				$bindAttr  = $binding ? " data-pac-bind=\"{$binding}\"" : '';
 				
 				$extraButtons .= "<button type=\"button\" class=\"{$variantClass}\"{$bindAttr}>{$label}</button>\n";
 			}
@@ -178,12 +187,9 @@ JS;
 				}
 			}
 			
-			if ($constants) {
-				$scripts[] = $constants;
-			}
-			
 			$scripts[] = <<<JS
 (function() {
+    {$constants}
     wakaPAC('{$headerId}', {
         {$visibilityProps}
         msgProc(event) {
@@ -209,8 +215,8 @@ JS;
 		 * @return string
 		 */
 		protected function renderBody(array $properties, string $children, string $id, string $methodAttr, string $methodSpoofHtml): string {
-			$class         = $properties['class']  ?? $this->formClass;
-			$action        = $properties['action'] ?? '';
+			$class         = $this->e($properties['class']  ?? $this->formClass);
+			$action        = $this->e($properties['action'] ?? '');
 			$notifications = $this->loom->getNotifications();
 			
 			// Render notifications
@@ -220,8 +226,11 @@ JS;
 				$items = '';
 				
 				foreach ($notifications as $notification) {
-					$type    = htmlspecialchars($notification['type']);
-					$message = htmlspecialchars($notification['message']);
+					// Whitelist type to prevent CSS class injection — unknown types fall back to 'info'
+					$type    = in_array($notification['type'], ['success', 'error', 'warning', 'info'], true)
+						? $notification['type']
+						: 'info';
+					$message = htmlspecialchars($notification['message'], ENT_QUOTES, 'UTF-8');
 					$items  .= "<li class=\"loom-notification-item loom-notification-{$type}\">{$message}</li>\n";
 				}
 				$notificationsHtml = <<<HTML

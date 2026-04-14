@@ -34,9 +34,9 @@
 		 * @return RenderResult
 		 */
 		public function render(array $properties, string $children, ?array $parent = null, int $index = 0): RenderResult {
-			$label = $properties['label'] ?? '';
-			$value = $properties['value'] ?? '';
-			$class = $properties['class'] ?? $this->wrapperClass;
+			$label = $this->e($properties['label'] ?? '');
+			$value = $this->e($properties['value'] ?? '');
+			$class = $this->e($properties['class'] ?? $this->wrapperClass);
 			
 			// Only render a label element when a label is provided
 			$labelHtml = $label
