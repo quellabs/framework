@@ -1,20 +1,27 @@
 {
   "name": "quellabs/canvas-loom",
-  "description": "A resource-driven admin framework that weaves JSON definitions into interactive interfaces.",
+  "description": "Definition-driven page builder for Canvas that turns PHP builder definitions into data-bound admin interfaces.",
   "type": "library",
   "license": "MIT",
-  "keywords": ["admin", "loom", "canvas", "json", "wakapac"],
+  "homepage": "https://canvasphp.com",
+  "keywords": ["admin", "loom", "canvas", "wakapac", "form-builder", "admin-panel", "php"],
   "authors": [
     {
       "name": "Floris",
+      "email": "floris@quellabs.com",
+      "homepage": "https://canvasphp.com",
       "role": "Developer"
     }
   ],
+  "support": {
+    "email": "floris@quellabs.com",
+    "source": "https://canvasphp.com"
+  },
   "require": {
     "php": ">=8.3",
     "quellabs/support": "*",
-    "quellabs/contracts": "^1.",
-    "quellabs/sculpt": "^1."
+    "quellabs/contracts": "^1.0",
+    "quellabs/sculpt": "^1.0"
   },
   "autoload": {
     "psr-4": {
