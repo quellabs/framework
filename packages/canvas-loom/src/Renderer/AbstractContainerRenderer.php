@@ -47,18 +47,29 @@
 		 * Generate the WakaPAC initialisation script for a container component.
 		 * Includes submit() and post() methods on the abstraction so buttons
 		 * within the container can trigger form actions.
-		 * @param string $id        WakaPAC component id
-		 * @param array  $extra     Additional abstraction properties as JS string snippets
+		 * @param string $id          WakaPAC component id
+		 * @param array  $extra       Additional abstraction properties as JS string snippets
+		 * @param array  $abstraction Key-value pairs from the node's abstraction property (scalars and arrays only)
 		 * @return string
 		 */
-		protected function buildScript(string $id, array $extra = []): string {
+		protected function buildScript(string $id, array $extra = [], array $abstraction = []): string {
+			$abstractionJs = '';
+			
+			foreach ($abstraction as $key => $value) {
+				if (!is_scalar($value) && !is_array($value)) {
+					throw new \InvalidArgumentException("Abstraction property \"{$key}\" must be a scalar or array.");
+				}
+				
+				$abstractionJs .= $key . ': ' . json_encode($value) . ",\n        ";
+			}
+			
 			$extraJs = !empty($extra) ? implode(",\n        ", $extra) . ',' : '';
 			$notificationsId = "{$id}-notifications";
 
 			return <<<JS
 (function() {
     wakaPAC('{$id}', {
-        {$extraJs}
+        {$abstractionJs}{$extraJs}
 
         /**
          * Submits the form natively via the browser.

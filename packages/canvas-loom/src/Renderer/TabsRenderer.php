@@ -87,7 +87,7 @@
 			$script = $this->buildScript($id, [
 				"activeTab: '{$active}'",
 				"setTab(tabId) {\n            this.activeTab = tabId;\n        }"
-			]);
+			], $properties['abstraction'] ?? []);
 			
 			// Return result
 			return new RenderResult($html, [$script]);

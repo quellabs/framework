@@ -64,6 +64,18 @@
 		}
 		
 		/**
+		 * Set custom properties on the WakaPAC abstraction object.
+		 * Useful for exposing named message constants and other scalar
+		 * values that need to be accessible in bind expressions.
+		 * Values must be JSON-serialisable (scalars and arrays only).
+		 * @param array $properties Key-value pairs merged into the abstraction object
+		 * @return static
+		 */
+		public function abstraction(array $properties): static {
+			return $this->set('abstraction', $properties);
+		}
+		
+		/**
 		 * Returns the node type string used by the Loom renderer registry
 		 * @return string
 		 */
