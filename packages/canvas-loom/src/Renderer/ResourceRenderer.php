@@ -224,15 +224,14 @@ JS;
 					$message = htmlspecialchars($notification['message']);
 					$items  .= "<li class=\"loom-notification-item loom-notification-{$type}\">{$message}</li>\n";
 				}
-				
 				$notificationsHtml = <<<HTML
-        <div class="loom-notifications" data-pac-id="{$id}-notifications">
-            <ul class="loom-notifications-list">
-                {$items}
-            </ul>
-            <button type="button" class="loom-notifications-dismiss" data-pac-bind="click: dismiss">×</button>
-        </div>
-        HTML;
+<div id="{$id}-notifications" class="loom-notifications">
+    <ul class="loom-notifications-list">
+        {$items}
+    </ul>
+    <button type="button" class="loom-notifications-dismiss" data-pac-bind="click: dismiss">×</button>
+</div>
+HTML;
 			}
 			
 			// Separate field values from collection data
