@@ -12,7 +12,9 @@
   ],
   "require": {
     "php": ">=8.3",
-    "quellabs/support": "*"
+    "quellabs/support": "*",
+    "quellabs/contracts": "^1.",
+    "quellabs/sculpt": "^1."
   },
   "autoload": {
     "psr-4": {
@@ -25,5 +27,13 @@
     }
   },
   "minimum-stability": "stable",
-  "prefer-stable": true
+  "prefer-stable": true,
+  "extra": {
+    "discover": {
+      "sculpt": {
+        "provider": "Quellabs\\Canvas\\Loom\\Sculpt\\ServiceProvider",
+        "config": "config/app.php"
+      }
+    }
+  }
 }
