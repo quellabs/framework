@@ -60,21 +60,22 @@
 		 */
 		private static array $pluralRules = [
 			// Irregular endings
-			'/([^aeiou])y$/i'    => '$1ies',        // city -> cities
-			'/(x|ch|sh|ss|z)$/i' => '$1es',         // box -> boxes, church -> churches
-			'/([^f])fe?$/i'      => '$1ves',        // knife -> knives, life -> lives
-			'/alf$/i'            => 'alves',        // half -> halves
-			'/([aeiou])y$/i'     => '$1ys',         // boy -> boys
-			'/([aeiou])o$/i'     => '$1os',         // radio -> radios
-			'/([^aeiou])o$/i'    => '$1oes',        // hero -> heroes
-			'/(us)$/i'           => '$1es',         // campus -> campuses
-			'/(is)$/i'           => 'es',           // analysis -> analyses
-			'/(on)$/i'           => 'a',            // criterion -> criteria
-			'/um$/i'             => 'a',            // datum -> data
-			'/(eau)$/i'          => '$1x',          // tableau -> tableaux
+			'/([^aeiou])y$/i'            => '$1ies',    // city -> cities
+			'/(x|ch|sh|ss|z)$/i'        => '$1es',      // box -> boxes, church -> churches
+			'/([^f])fe?$/i'              => '$1ves',     // knife -> knives, life -> lives
+			'/alf$/i'                    => 'alves',     // half -> halves
+			'/([aeiou])y$/i'             => '$1ys',      // boy -> boys
+			'/([aeiou])o$/i'             => '$1os',      // radio -> radios
+			'/([^aeiou])o$/i'            => '$1oes',     // hero -> heroes
+			'/(us)$/i'                   => '$1es',      // campus -> campuses
+			'/(is)$/i'                   => 'es',        // analysis -> analyses
+			// Specific Latin -on endings only — not common English words ending in -on
+			'/(crit|phenomen|automat|polyhedr|axi)on$/i' => '$1a',
+			'/um$/i'                     => 'a',         // datum -> data
+			'/(eau)$/i'                  => '$1x',       // tableau -> tableaux
 			
 			// Default rule
-			'/$/i'               => 's'             // cat -> cats
+			'/$/i'                       => 's'          // cat -> cats
 		];
 		
 		/**
@@ -82,22 +83,23 @@
 		 * Ordered from most specific to most general
 		 */
 		private static array $singularRules = [
-			// Irregular endings
-			'/ies$/i'              => 'y',                       // cities -> city
-			'/(x|ch|sh|ss|z)es$/i' => '$1',         // boxes -> box, churches -> church
-			'/ves$/i'              => 'f',                       // knives -> knife
-			'/alves$/i'            => 'alf',                   // halves -> half
-			'/([aeiou])ys$/i'      => '$1y',             // boys -> boy
-			'/([aeiou])os$/i'      => '$1o',             // radios -> radio
-			'/([^aeiou])oes$/i'    => '$1o',           // heroes -> hero
-			'/(us)es$/i'           => '$1',                   // campuses -> campus
-			'/es$/i'               => 'is',                       // analyses -> analysis
-			'/ia$/i'               => 'ion',                      // criteria -> criterion
-			'/ta$/i'               => 'tum',                      // data -> datum
-			'/(eau)x$/i'           => '$1',                   // tableaux -> tableau
+			'/ies$/i'                    => 'y',         // cities -> city
+			'/(x|ch|sh|ss|z)es$/i'      => '$1',        // boxes -> box
+			'/ves$/i'                    => 'f',          // knives -> knife
+			'/alves$/i'                  => 'alf',        // halves -> half
+			'/([aeiou])ys$/i'            => '$1y',        // boys -> boy
+			'/([aeiou])os$/i'            => '$1o',        // radios -> radio
+			'/([^aeiou])oes$/i'          => '$1o',        // heroes -> hero
+			'/(us)es$/i'                 => '$1',         // campuses -> campus
+			'/es$/i'                     => 'is',         // analyses -> analysis
+			
+			// Specific Latin -a endings only
+			'/(crit|phenomen|automat|polyhedr|axi)a$/i'  => '$1on',
+			'/ta$/i'                     => 'tum',        // data -> datum
+			'/(eau)x$/i'                 => '$1',         // tableaux -> tableau
 			
 			// Default rule
-			'/s$/i'                => ''                           // cats -> cat
+			'/s$/i'                      => ''            // cats -> cat
 		];
 		
 		/**

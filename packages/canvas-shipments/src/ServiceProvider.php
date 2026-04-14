@@ -23,15 +23,15 @@
 		
 		/**
 		 * Dependency injection system
-		 * @var Container
+		 * @var Container|null
 		 */
-		private Container $container;
+		private ?Container $container;
 		
 		/**
 		 * ServiceProvider constructor
-		 * @param Container $container
+		 * @param Container|null $container
 		 */
-		public function __construct(Container $container) {
+		public function __construct(?Container $container = null) {
 			$this->container = $container;
 		}
 		

@@ -68,10 +68,10 @@
 		 * @param bool $strictMode Whether to throw exceptions on validation failures
 		 */
 		public function __construct(
-			string          $familyName = null,
-			string          $discoverySection = self::DEFAULT_DISCOVERY_SECTION,
-			LoggerInterface $logger = null,
-			bool            $strictMode = false
+			?string          $familyName = null,
+			string           $discoverySection = self::DEFAULT_DISCOVERY_SECTION,
+			?LoggerInterface $logger = null,
+			bool             $strictMode = false
 		) {
 			$this->familyName = $familyName;
 			$this->discoverySection = $discoverySection;

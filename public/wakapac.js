@@ -46,6 +46,21 @@
     const _plugins = [];
 
     /**
+     * Unit function registries keyed by unit name.
+     * Populated by plugins that return a `functions` object from createPacPlugin().
+     * @type {Map<string, Object>}
+     */
+    const _units = new Map();
+
+    /**
+     * Maps library objects to their registered unit names.
+     * Populated by wakaPAC.use() for libraries that expose a named function set.
+     * Enables wakaPAC.unit(CollectionUtils) as an alternative to wakaPAC.unit('CollectionUtils').
+     * @type {WeakMap<Object, string>}
+     */
+    const _unitNames = new WeakMap();
+
+    /**
      * Registered message hooks, installed via wakaPAC.installMessageHook().
      * Each entry holds a handle (for removal) and the hook function.
      * Hooks are invoked in registration order before the message reaches its container.
@@ -103,6 +118,11 @@
     /** Attribute for partial definition elements: <script type="text/template" data-pac-partial="name"> */
     const PAC_PARTIAL_ATTR = 'data-pac-partial';
 
+    /** Custom event names dispatched on PAC containers */
+    const EV_PAC_EVENT = 'pac:event';
+    const EV_PAC_CHANGE = 'pac:change';
+    const EV_PAC_BROWSER_STATE = 'pac:browser-state';
+
     /** Matches {{> name}} injection syntax in raw (non-browser-parsed) strings. @type {RegExp} */
     const PARTIAL_INJECT_REGEX = /\{\{>\s*([a-zA-Z_$][a-zA-Z0-9_$]*)\s*}}/g;
 
@@ -116,11 +136,11 @@
      * HTML attributes that are boolean (present = true, absent = false)
      * @constant {string[]}
      */
-    const BOOLEAN_ATTRIBUTES = [
+    const BOOLEAN_ATTRIBUTES = new Set([
         "readonly", "required", "selected", "checked", "hidden", "multiple", "autofocus",
         "disabled", "async", "defer", "formnovalidate", "ismap", "novalidate",
         "open", "reversed", "scoped", "seamless", "truespeed"
-    ];
+    ]);
 
     // List of extended keys
     const EXTENDED_KEYS = new Set([
@@ -198,34 +218,43 @@
     const MSG_TIMER = 0x0113;
     const MSG_MOUSEWHEEL = 0x020A;
     const MSG_GESTURE = 0x0250;
+    const MSG_FOREACH_REBUILT = 0x0400;
+    const MSG_WEBGL_READY = 0x0401;
+    const MSG_WEBGL_CONTEXT_LOST = 0x0402;
+    const MSG_WEBGL_CONTEXT_RESTORED = 0x0403;
     const MSG_USER = 0x1000;
+    const MSG_PLUGIN = 0x2000;
 
     /**
      * Mouse and keyboard modifier key state flags
      * Used as bitmask - multiple flags can be OR'd together
      */
-    const MK_LBUTTON = 0x0001;      // Left mouse button held down
-    const MK_RBUTTON = 0x0002;      // Right mouse button held down
-    const MK_MBUTTON = 0x0004;      // Middle mouse button held down
-    const MK_SHIFT = 0x0008;        // Shift key held down
-    const MK_CONTROL = 0x0010;      // Ctrl key held down
-    const MK_ALT = 0x0020;          // Alt key held down
+    const MK_LBUTTON  = 0x0001;  // Left mouse button
+    const MK_RBUTTON  = 0x0002;  // Right mouse button
+    const MK_SHIFT    = 0x0004;  // Shift key
+    const MK_CONTROL  = 0x0008;  // Ctrl key
+    const MK_MBUTTON  = 0x0010;  // Middle mouse button
+    const MK_XBUTTON1 = 0x0020;  // First extra mouse button (browser back)
+    const MK_XBUTTON2 = 0x0040;  // Second extra mouse button (browser forward)
+    const MK_ALT      = 0x0080;  // Alt key (extension, not in Win32 wParam)
+    const MK_META     = 0x0100;  // Meta/Windows key (extension, not in Win32 wParam)
 
     /**
      * Keyboard lParam modifier key state flags
      * Used for extracting modifier states from keyboard event lParam
      * These are at different bit positions than MK_* (which are for mouse wParam)
      */
-    const KM_SHIFT = (1 << 25);     // Shift key held down (lParam bit 25)
-    const KM_CONTROL = (1 << 26);   // Ctrl key held down (lParam bit 26)
-    const KM_ALT = (1 << 29);       // Alt key held down (lParam bit 29)
+    const KM_SHIFT   = (1 << 25);  // Shift key held down (lParam bit 25)
+    const KM_CONTROL = (1 << 26);  // Ctrl key held down (lParam bit 26)
+    const KM_META    = (1 << 27);  // Meta/Windows/Command key held down (lParam bit 27)
+    const KM_ALT     = (1 << 29);  // Alt key held down (lParam bit 29)
 
     /**
      * MSG_SIZE constants
      * @type {number}
      */
-    const SIZE_RESTORED = 0;   // Normal resize (user action, layout change)
-    const SIZE_HIDDEN = 1;     // Element became hidden (width/height = 0)
+    const SIZE_RESTORED   = 0; // Normal resize (user action, layout change)
+    const SIZE_HIDDEN     = 1; // Element became hidden (width/height = 0)
     const SIZE_FULLSCREEN = 2; // Element entered fullscreen mode
 
     /**
@@ -489,6 +518,47 @@
         right: 'ArrowRight'
     };
 
+    // ========================================================================
+    // METAFILE — Display list recording and playback
+    // ========================================================================
+
+    /**
+     * Maps metafile op names to their CanvasRenderingContext2D property names.
+     * Used by playMetaFile for direct property assignment: ctx[prop] = op.value.
+     * @type {Object<string, string>}
+     */
+    const _metaFileProps = {
+        setFillStyle:       'fillStyle',
+        setStrokeStyle:     'strokeStyle',
+        setLineWidth:       'lineWidth',
+        setLineCap:         'lineCap',
+        setLineJoin:        'lineJoin',
+        setLineDashOffset:  'lineDashOffset',
+        setMiterLimit:      'miterLimit',
+        setGlobalAlpha:     'globalAlpha',
+        setGlobalComposite: 'globalCompositeOperation',
+        setFont:            'font',
+        setTextAlign:       'textAlign',
+        setTextBaseline:    'textBaseline',
+        setTextRendering:   'textRendering',
+        setLetterSpacing:   'letterSpacing',
+        setWordSpacing:     'wordSpacing'
+    };
+
+    /**
+     * Maps metafile op names to their CanvasRenderingContext2D method names.
+     * Used by playMetaFile for no-argument method calls: ctx.method().
+     * @type {Object<string, string>}
+     */
+    const _metaFileMethods = {
+        save:           'save',
+        restore:        'restore',
+        beginPath:      'beginPath',
+        closePath:      'closePath',
+        stroke:         'stroke',
+        resetTransform: 'resetTransform'
+    };
+
     // =============================================================================
     // UTILITY FUNCTIONS
     // =============================================================================
@@ -539,6 +609,27 @@
             // Accept Object.create(null) (no prototype) and plain objects whose
             // prototype chain is exactly: value -> Object.prototype -> null
             return proto === null || Object.getPrototypeOf(proto) === null;
+        },
+
+        /**
+         * Gets a nested property value from an object using dot and bracket notation
+         * @param {object} obj - The object to read from
+         * @param {string} path - The property path (e.g., "configuration[theme]" or "todos[0].completed")
+         * @returns {*} The value at the given path, or undefined if any part of the path does not exist
+         */
+        getNestedValue(obj, path) {
+            const parts = path.split(DOTS_AND_BRACKETS_PATTERN).filter(Boolean);
+            let current = obj;
+
+            for (const part of parts) {
+                if (!(part in current)) {
+                    return undefined;
+                }
+
+                current = current[part];
+            }
+
+            return current;
         },
 
         /**
@@ -781,49 +872,6 @@
         },
 
         /**
-         * Formats a value for display in text content
-         * @param {*} value - Value to format
-         * @returns {string} Formatted string
-         */
-        formatValue(value) {
-            return value !== null ? String(value) : '';
-        },
-
-        /**
-         * Sanitizes user input by stripping HTML tags and returning escaped HTML
-         * Uses the browser's built-in text content handling to safely process untrusted input
-         * @param {string} html - The potentially unsafe HTML string to sanitize
-         * @returns {string} The sanitized string with HTML tags stripped and special characters escaped
-         */
-        sanitizeUserInput(html) {
-            // Create a temporary div element to leverage browser's text content handling
-            const div = document.createElement('div');
-
-            // Set textContent (not innerHTML) to automatically strip all HTML tags
-            // The browser treats the input as plain text, removing any markup
-            div.textContent = html;
-
-            // Return the innerHTML, which gives us the text with HTML entities properly escaped
-            // This converts characters like < > & " ' into their HTML entity equivalents
-            return div.innerHTML;
-        },
-
-        /**
-         * Manually escapes HTML special characters to prevent XSS attacks
-         * Converts potentially dangerous characters into their HTML entity equivalents
-         * @param {string} str - The string containing characters that need to be escaped
-         * @returns {string} The escaped string safe for insertion into HTML
-         */
-        escapeHTML(str) {
-            return String(str)
-                .replace(/&/g, '&amp;')    // Replace & first (must be done before other entities)
-                .replace(/</g, '&lt;')     // Replace < with less-than entity
-                .replace(/>/g, '&gt;')     // Replace > with greater-than entity
-                .replace(/"/g, '&quot;')   // Replace double quotes with quote entity
-                .replace(/'/g, '&#39;');   // Replace single quotes with apostrophe entity
-        },
-
-        /**
          * Deep equality comparison optimized for performance
          * @param {*} a - First value
          * @param {*} b - Second value
@@ -1038,8 +1086,75 @@
             const right  = Math.max(a.x + a.width,  b.x + b.width);
             const bottom = Math.max(a.y + a.height, b.y + b.height);
             return { x, y, width: right - x, height: bottom - y };
+        },
+
+        /**
+         * Returns a debounced version of fn that delays invocation until after `delay`
+         * milliseconds have elapsed since the last call. Any pending invocation is
+         * cancelled when the debounced function is called again before the timer fires.
+         *
+         * The returned function exposes a .cancel() method to abort a pending call,
+         * which is required for proper cleanup (e.g. component teardown).
+         *
+         * @param {Function} fn    - Function to debounce
+         * @param {number}   delay - Quiet period in milliseconds
+         * @returns {Function} Debounced wrapper with a .cancel() method
+         */
+        debounce(fn, delay) {
+            let timer = null;
+
+            function debounced(...args) {
+                clearTimeout(timer);
+                timer = setTimeout(() => {
+                    timer = null;
+                    fn.apply(this, args);
+                }, delay);
+            }
+
+            debounced.cancel = function() {
+                clearTimeout(timer);
+                timer = null;
+            };
+
+            return debounced;
         }
     }
+
+    // ========================================================================
+    // UNIT HANDLING
+    // ========================================================================
+
+    function _registerUnit(library, options = {}) {
+        // Prevent duplicate registration
+        if (_registeredLibs.indexOf(library) !== -1) {
+            return;
+        }
+
+        // The library must expose a factory method that returns
+        // a plugin descriptor. wakaPAC passes itself as the argument,
+        // so the library never needs a hard reference to wakaPAC.
+        if (typeof library.createPacPlugin !== 'function') {
+            throw new Error('wakaPAC.use(): library must implement createPacPlugin()');
+        }
+
+        // Add to registered libs array to prevent duplicates
+        _registeredLibs.push(library);
+
+        // Create the plugin and store
+        const plugin = library.createPacPlugin(wakaPAC, options);
+        _plugins.push(plugin);
+
+        // If the plugin exposes named functions, register it as a unit
+        if (plugin.name && Utils.isPlainObject(plugin.functions)) {
+            if (_units.get(plugin.name)) {
+                console.warn(`WakaPAC: unit "${plugin.name}" is already registered`);
+            } else {
+                _units.set(plugin.name, plugin.functions);
+                _unitNames.set(library, plugin.name);
+            }
+        }
+    }
+
 
     // ========================================================================
     // REACTIVE PROXY
@@ -1099,39 +1214,17 @@
                 }
 
                 // Dispatch events for the array change
-                dispatchArrayChangeEvents(currentPath, oldArray, target, methodName);
+                container.dispatchEvent(new CustomEvent(EV_PAC_CHANGE, {
+                    detail: {
+                        path: currentPath,
+                        oldValue: oldArray,
+                        newValue: target
+                    }
+                }));
 
                 // Return the result
                 return result;
             };
-        }
-
-        /**
-         * Dispatches array change and general change events
-         * @param {Array} path - Property path where change occurred
-         * @param {*} oldValue - Previous value
-         * @param {*} newValue - New value
-         * @param {string} method - Method or operation that triggered the change
-         */
-        function dispatchArrayChangeEvents(path, oldValue, newValue, method) {
-            // Dispatch array-specific event
-            container.dispatchEvent(new CustomEvent("pac:array-change", {
-                detail: {
-                    path: path,
-                    oldValue: oldValue,
-                    newValue: newValue,
-                    method: method
-                }
-            }));
-
-            // Also trigger computed property updates
-            container.dispatchEvent(new CustomEvent("pac:change", {
-                detail: {
-                    path: path,
-                    oldValue: oldValue,
-                    newValue: newValue
-                }
-            }));
         }
 
         /**
@@ -1156,12 +1249,13 @@
             target.length = newLength;
 
             // Dispatch events
-            dispatchArrayChangeEvents(
-                currentPath,
-                oldArray,
-                Array.prototype.slice.call(target),
-                'length'
-            );
+            container.dispatchEvent(new CustomEvent(EV_PAC_CHANGE, {
+                detail: {
+                    path: currentPath,
+                    oldValue: oldArray,
+                    newValue: Array.prototype.slice.call(target)
+                }
+            }));
 
             return true;
         }
@@ -1283,18 +1377,7 @@
             }
 
             // Dispatch array-specific event if this is an array assignment
-            if (Array.isArray(newValue)) {
-                container.dispatchEvent(new CustomEvent("pac:array-change", {
-                    detail: {
-                        path: propertyPath,
-                        oldValue: oldValue,
-                        newValue: target[prop],
-                        method: 'assignment'
-                    }
-                }));
-            }
-
-            container.dispatchEvent(new CustomEvent("pac:change", {
+            container.dispatchEvent(new CustomEvent(EV_PAC_CHANGE, {
                 detail: {
                     path: propertyPath,
                     oldValue: oldValue,
@@ -1334,7 +1417,7 @@
             delete target[prop];
 
             // Notify the DOM that this property is gone
-            container.dispatchEvent(new CustomEvent("pac:change", {
+            container.dispatchEvent(new CustomEvent(EV_PAC_CHANGE, {
                 detail: {
                     path: propertyPath,
                     oldValue: oldValue,
@@ -1530,33 +1613,67 @@
          * @returns {void}
          */
         _setupFocusEvents() {
-            // Preserve instance reference for use inside DOM callbacks
             const self = this;
 
-            // Focus in
-            // Fires when an element gains focus anywhere in the document
+            // Pending focus messages keyed by container element.
+            // Within a single tick, a KILLFOCUS followed by SETFOCUS on the same
+            // container nets to no change and both are dropped.
+            const pending = new Map();
+
+            // Single shared debounce timer for all focus events.
+            // Restarted on every focusin/focusout so the flush always happens
+            // after the last event in a burst has been processed.
+            let debounceTimer = null;
+
+            function scheduleFlush() {
+                // Cancel the previous pending flush — we haven't seen the full
+                // picture yet, more focus events may arrive in this tick
+                if (debounceTimer !== null) {
+                    clearTimeout(debounceTimer);
+                }
+
+                // Defer to the next task so both focusout and focusin have fired
+                // before we dispatch anything. By then pending holds the net state.
+                debounceTimer = setTimeout(function() {
+                    debounceTimer = null;
+
+                    // Dispatch only the net message per container — intermediate
+                    // transitions that cancelled out are never seen by msgProc
+                    for (const [container, { message, domEvent }] of pending) {
+                        const customEvent = self.wrapDomEventAsMessage(message, domEvent);
+                        self.dispatchToContainer(container, customEvent);
+                    }
+
+                    // Reset for the next focus burst
+                    pending.clear();
+                }, 0);
+            }
+
             document.addEventListener('focusin', function(event) {
-                // Resolve container responsible for the focused element
                 const container = self.getContainerForEvent(MSG_SETFOCUS, event);
 
-                // Wrap DOM focus event into unified message format
-                const customEvent = self.wrapDomEventAsMessage(MSG_SETFOCUS, event);
+                // Overwrite any pending KILLFOCUS for this container — if focus moved
+                // within the same container the net result is that focus stayed,
+                // so the kill is cancelled and only SETFOCUS remains
+                pending.set(container, { message: MSG_SETFOCUS, domEvent: event });
 
-                // Dispatch normalized focus message
-                self.dispatchToContainer(container, customEvent);
+                // Flush change
+                scheduleFlush();
             });
 
-            // Focus out
-            // Fires when an element loses focus
             document.addEventListener('focusout', function(event) {
-                // Resolve container responsible for the blurred element
                 const container = self.getContainerForEvent(MSG_KILLFOCUS, event);
 
-                // Wrap DOM blur event into unified message format
-                const customEvent = self.wrapDomEventAsMessage(MSG_KILLFOCUS, event);
+                // Only write KILLFOCUS if no SETFOCUS is already pending for this
+                // container. A pending SETFOCUS means focusin already fired (or will
+                // fire) in the same tick, so the kill would be cancelled anyway —
+                // skip it to avoid overwriting the more recent state.
+                if (!pending.has(container)) {
+                    pending.set(container, { message: MSG_KILLFOCUS, domEvent: event });
+                }
 
-                // Dispatch normalized blur message
-                self.dispatchToContainer(container, customEvent);
+                // Flush change
+                scheduleFlush();
             });
         },
 
@@ -1796,7 +1913,9 @@
 
                 // Dispatch normalized wheel message
                 self.dispatchToContainer(container, customEvent);
-            }, { passive: false }); // Allow preventDefault by consumers if needed
+            }, {
+                passive: true
+            });
         },
 
         /**
@@ -2592,6 +2711,30 @@
 
                         // Dispatch size update to the owning container/component
                         self.dispatchToContainer(container, customEvent);
+
+                        // For WebGL canvas components, dispatch MSG_WEBGL_READY after the first MSG_SIZE.
+                        // At this point the canvas is laid out and getDC() returns a valid context — safe to
+                        // compile shaders, upload geometry, and set up any other GL resources. Only fires once
+                        // per component lifetime.
+                        if (!component._webglReadySent) {
+                            component._webglReadySent = true;
+
+                            const pacContextType = container.dataset?.pacContext;
+
+                            if (pacContextType === 'webgl' || pacContextType === 'webgl2') {
+                                self.dispatchToContainer(container, self.wrapDomEventAsMessage(
+                                    MSG_WEBGL_READY,
+                                    null,
+                                    0,
+                                    0,
+                                    {
+                                        // Provide the GL context directly on the event so components
+                                        // can set up shaders in the handler without a separate getDC() call.
+                                        glContext: wakaPAC.getDC(container.dataset.pacId)
+                                    }
+                                ));
+                            }
+                        }
                     }
                 });
             });
@@ -2781,7 +2924,7 @@
          */
         wrapDomEventAsMessage(messageType, originalEvent, wParam = 0, lParam = 0, extended = {}, targetOverride = null) {
             // Create custom event with extended data in detail (optional)
-            const customEvent = new CustomEvent('pac:event', {
+            const customEvent = new CustomEvent(EV_PAC_EVENT, {
                 bubbles: true,
                 cancelable: true,
                 detail: extended
@@ -2991,7 +3134,7 @@
          */
         dispatchBrowserStateEvent(stateType, stateData) {
             window.PACRegistry.components.forEach((context) => {
-                const customEvent = new CustomEvent('pac:browser-state', {
+                const customEvent = new CustomEvent(EV_PAC_BROWSER_STATE, {
                     detail: {
                         target: context.container,
                         stateType: stateType,
@@ -3025,6 +3168,10 @@
                 wParam |= MK_ALT;
             }
 
+            if (event.metaKey) {
+                wParam |= MK_META;
+            }
+
             if (event.buttons !== undefined) {
                 // Real mouse event
                 if (event.buttons & 1) {
@@ -3037,6 +3184,14 @@
 
                 if (event.buttons & 4) {
                     wParam |= MK_MBUTTON;
+                }
+
+                if (event.buttons & 8) {
+                    wParam |= MK_XBUTTON1;
+                }
+
+                if (event.buttons & 16) {
+                    wParam |= MK_XBUTTON2;
                 }
             } else if (event.touches && event.touches.length > 0) {
                 // Touch event with active touches = simulate left button
@@ -3135,19 +3290,24 @@
                 lParam |= (1 << 24);
             }
 
-            // Bit 25: Shift key state (WakaPAC extension)
+            // Bit 25: Shift key state
             // 1 if Shift is pressed, 0 otherwise
             if (event.shiftKey) {
                 lParam |= KM_SHIFT;
             }
 
-            // Bit 26: Ctrl key state (WakaPAC extension)
+            // Bit 26: Ctrl key state
             // 1 if Ctrl is pressed, 0 otherwise
             if (event.ctrlKey) {
                 lParam |= KM_CONTROL;
             }
 
-            // Bit 27-28: Reserved (not used)
+            // Bit 27: Meta key state
+            if (event.metaKey) {
+                lParam |= KM_META;
+            }
+
+            // Bit 28: Reserved (not used)
 
             // Bit 29: Context code (Alt key state)
             // 1 if Alt is pressed, 0 otherwise
@@ -3410,7 +3570,6 @@
          */
         tokens: [],
         currentToken: 0,
-        functions: null,
 
         OPERATOR_PRECEDENCE: {
             '||': 1, '&&': 2,
@@ -3819,24 +3978,28 @@
                     if (this.check('IDENTIFIER')) {
                         const property = this.advance().value;
 
-                        // Distinguish between property access and method call by
-                        // looking ahead for an opening parenthesis.
                         if (this.match('LPAREN')) {
-                            // Method call: expr.name(args)
-                            // Arguments are comma-separated expressions parsed by
-                            // parseArgumentList, which returns an empty array for
-                            // zero-argument calls.
                             const args = this.parseArgumentList();
                             this.consume('RPAREN', 'Expected closing parenthesis');
 
-                            expr = {
-                                type: 'methodCall',
-                                object: expr,
-                                method: property,
-                                arguments: args
-                            };
+                            // Emit qualified_call only when the object is a bare root identifier.
+                            // Chained access (user.StringUtils.fn()) is unambiguously a method_call.
+                            if (expr.type === 'identifier') {
+                                expr = {
+                                    type: 'qualified_call',
+                                    unit: expr.name,
+                                    method: property,
+                                    arguments: args
+                                };
+                            } else {
+                                expr = {
+                                    type: 'method_call',
+                                    object: expr,
+                                    method: property,
+                                    arguments: args
+                                };
+                            }
                         } else {
-                            // Regular property access: expr.name
                             expr = {
                                 type: 'member',
                                 object: expr,
@@ -4198,7 +4361,7 @@
                     return obj && obj[node.property];
                 }
 
-                case 'methodCall': {
+                case 'method_call': {
                     const object = this.evaluate(node.object, context, scope);
 
                     // Handle array methods
@@ -4213,18 +4376,62 @@
                     return undefined;
                 }
 
-                case 'call': {
-                    if (!this.functions || typeof this.functions[node.name] !== 'function') {
-                        throw new Error('Unknown function: ' + node.name);
+                case 'qualified_call': {
+                    // Variable wins: if the identifier exists in the data context, treat as
+                    // a regular method call on that object.
+                    const obj = this.getProperty(node.unit, context, scope);
+
+                    if (obj !== undefined) {
+                        // Warn when a data variable is shadowing a registered unit
+                        if (_units.get(node.unit)) {
+                            console.warn(`WakaPAC: data property "${node.unit}" is shadowing a registered unit`);
+                        }
+
+                        const args = node.arguments.map(arg => this.evaluate(arg, context, scope));
+
+                        if (Array.isArray(obj)) {
+                            return this.evaluateArrayMethod(obj, node.method, args);
+                        }
+
+                        if (typeof obj[node.method] === 'function') {
+                            return obj[node.method](...args);
+                        }
+
+                        return undefined;
                     }
 
-                    const self = this;
+                    // Fall back to unit registry (namespaced call)
+                    const unit = _units.get(node.unit);
 
-                    return this.functions[node.name](node.arguments, {
-                        compute(argNode) {
-                            return self.evaluate(argNode, context, scope);
-                        }
-                    });
+                    if (unit && typeof unit[node.method] === 'function') {
+                        const args = node.arguments.map(arg => this.evaluate(arg, context, scope));
+                        return unit[node.method](...args);
+                    }
+
+                    console.warn(`WakaPAC: unknown qualified call ${node.unit}.${node.method}()`);
+                    return undefined;
+                }
+
+                case 'call': {
+                    // Check the component's own data context first
+                    const fn = this.getProperty(node.name, context, scope);
+
+                    if (typeof fn === 'function') {
+                        const args = node.arguments.map(arg => this.evaluate(arg, context, scope));
+                        return fn.call(context, ...args);
+                    }
+
+                    // Fall back to imported units (from data-pac-uses flat import)
+                    const importedUnits = scope?.importedUnits;
+
+                    if (importedUnits && typeof importedUnits[node.name] === 'function') {
+                        const args = node.arguments.map(arg => this.evaluate(arg, context, scope));
+                        return importedUnits[node.name](...args);
+                    }
+
+                    // Not found
+                    console.warn(`WakaPAC: unknown function call "${node.name}()" in template`);
+                    return undefined;
                 }
 
                 default:
@@ -4300,11 +4507,26 @@
             let current = obj;
 
             for (let i = 0; i < parts.length; i++) {
+                // Null check
                 if (current == null) {
                     return undefined;
                 }
 
-                const part = parts[i];
+                // Extract the part
+                let part = parts[i];
+
+                // If current is a string, access native string properties directly
+                if (typeof current === 'string') {
+                    return current[part];
+                }
+
+                // If the path segment is not a numeric index and not a direct key on the
+                // current object, try to resolve it as a variable from the root context.
+                // This allows dynamic bracket notation like regions[country] where 'country'
+                // is a reactive property rather than a literal key.
+                if (isNaN(part) && !(part in current) && part in obj) {
+                    part = obj[part];
+                }
 
                 current = current[part];
             }
@@ -4795,11 +5017,13 @@
      * object literal at every call site and gives the minifier a single declaration to mangle.
      * @param {Function} normalizeFn - Bound normalizePath function (already bound to correct `this`)
      * @param {Element} element - The DOM element to use as path scope anchor
+     * @param importedUnits - List of imported units
      * @returns {{ resolveScopedPath: function(string): * }}
      */
-    function makeScopeResolver(normalizeFn, element) {
+    function makeScopeResolver(normalizeFn, element, importedUnits) {
         return {
-            resolveScopedPath: (path) => normalizeFn(path, element)
+            resolveScopedPath: (path) => normalizeFn(path, element),
+            importedUnits: importedUnits || {}
         };
     }
 
@@ -4819,14 +5043,17 @@
 
         const newText = template.replace(INTERPOLATION_REGEX, (match, expression) => {
             try {
-                // Parse the expression
-                const parsed = ExpressionCache.parseExpression(expression);
-
-                // Resolve the scope - use parentElement for text nodes
-                const scopeResolver = makeScopeResolver(self.context.normalizePath.bind(self.context), element);
-
                 // Evaluate the expression using the scope resolver
-                const result = ExpressionParser.evaluate(parsed, self.context.abstraction, scopeResolver);
+                const result = ExpressionParser.evaluate(
+                    ExpressionCache.parseExpression(expression),
+                    self.context.abstraction,
+                    makeScopeResolver(
+                        self.context.normalizePath.bind(self.context),
+                        element,
+                        self.context.importedUnits
+                    )
+                );
+
                 return result != null ? String(result) : '';
             } catch (error) {
                 console.warn('Error in text interpolation:', expression, error);
@@ -4840,39 +5067,17 @@
     };
 
     /**
-     * Resolves the current value of a binding expression for a given element.
-     * Parses the expression, builds a scope resolver, and evaluates against the abstraction.
-     * @param {Element} element - The DOM element providing scope context
-     * @param {Object} bindingData - Binding configuration with a .target expression string
-     * @returns {*} The evaluated result of the binding expression
-     */
-    DomUpdater.prototype.resolveBindingValue = function (element, bindingData) {
-        // Parse (or retrieve cached) expression structure
-        const parsed = ExpressionCache.parseExpression(bindingData.target);
-
-        // Resolver translates scoped paths into normalized context paths
-        const scopeResolver = makeScopeResolver(this.context.normalizePath.bind(this.context), element);
-
-        // Evaluate expression using the abstraction model and resolver
-        return ExpressionParser.evaluate(parsed, this.context.abstraction, scopeResolver);
-    };
-
-    /**
      * Updates an element's attribute or property based on data binding configuration.
      * Evaluates the binding expression and applies the result using the appropriate binding method.
      * @param {Element} element - The DOM element to update
      * @param {string} bindingType - Type of binding (value, checked, visible, class, style, or attribute name)
      * @param {Object} bindingData - Binding configuration object
      * @param {string} bindingData.target - Expression string to evaluate for the binding value
-     * @param {*} [precomputedValue] - Optional pre-evaluated value to skip redundant expression evaluation
+     * @param {*} [value] - Pre-evaluated value to skip redundant expression evaluation
      * @returns {void}
      */
-    DomUpdater.prototype.updateAttributeBinding = function (element, bindingType, bindingData, precomputedValue) {
+    DomUpdater.prototype.updateAttributeBinding = function (element, bindingType, bindingData, value) {
         try {
-            // Use precomputed value if available (from updateElementBindings change-detection),
-            // otherwise evaluate the expression (for initial render and other call sites)
-            const value = arguments.length >= 4 ? precomputedValue : this.resolveBindingValue(element, bindingData);
-
             // Use registered handler if available
             const handler = BindingHandlers[bindingType];
 
@@ -4887,29 +5092,18 @@
             }
 
             // Default: set as attribute for unrecognized binding types
-            this.applyAttributeBinding(element, bindingType, value);
+            if (bindingType === 'enable') {
+                // Handle 'enable' as reverse of 'disabled'
+                element.toggleAttribute('disabled', !value);
+            } else if (BOOLEAN_ATTRIBUTES.has(bindingType)) {
+                element.toggleAttribute(bindingType, !!value);
+            } else if (value != null) {
+                element.setAttribute(bindingType, value);
+            } else {
+                element.removeAttribute(bindingType);
+            }
         } catch (error) {
             console.warn('Error updating binding:', bindingType, bindingData, error);
-        }
-    };
-
-    /**
-     * Applies attribute binding to an element with special handling for boolean attributes.
-     * Supports 'enable' as reverse of 'disabled' attribute.
-     * @param {Element} element - The DOM element to update
-     * @param {string} attribute - The attribute name to set
-     * @param {*} value - The attribute value (null/undefined removes attribute)
-     */
-    DomUpdater.prototype.applyAttributeBinding = function (element, attribute, value) {
-        if (attribute === 'enable') {
-            // Handle 'enable' as reverse of 'disabled'
-            element.toggleAttribute('disabled', !value);
-        } else if (BOOLEAN_ATTRIBUTES.includes(attribute)) {
-            element.toggleAttribute(attribute, !!value);
-        } else if (value != null) {
-            element.setAttribute(attribute, value);
-        } else {
-            element.removeAttribute(attribute);
         }
     };
 
@@ -4943,6 +5137,122 @@
         }
     };
 
+    // =============================================================================
+    // RAF Scheduler for timers
+    // =============================================================================
+
+    /**
+     * Shared requestAnimationFrame-based timer engine.
+     * Replaces setInterval for all WakaPAC component timers to avoid Firefox
+     * throttling issues that cause irregular MSG_TIMER delivery.
+     *
+     * All active timers across all components share a single rAF loop.
+     * The loop starts automatically when the first timer is added and stops
+     * itself when the last timer is removed — no idle overhead.
+     *
+     * Timer IDs are globally unique across all components, eliminating the need
+     * for compound keys or per-context ID sequences.
+     */
+    const RafTimerEngine = {
+        /** @type {number|null} Current rAF handle, null when loop is not running */
+        rafId: null,
+
+        /** @type {number} Global timer ID counter, incremented on each add() call */
+        nextTimerId: 1,
+
+        /** @type {Map<number, {context: Context, timerId: number, elapse: number, lastFired: number}>} */
+        timers: new Map(),
+
+        /**
+         * Registers a new timer entry and returns its globally unique ID.
+         * Starts the rAF loop if it wasn't already running.
+         * @param {Context} context - Owning context, used to resolve pacId for sendMessage
+         * @param {number} elapse - Desired interval in milliseconds
+         * @returns {number} Globally unique timer ID
+         */
+        add(context, elapse) {
+            // Generate a globally unique timer ID across all components
+            const timerId = this.nextTimerId++;
+
+            this.timers.set(timerId, {
+                context,
+                timerId,
+                elapse,
+                // Initialize to now so the first fire happens after one full interval,
+                // matching setInterval semantics rather than firing immediately
+                lastFired: performance.now()
+            });
+
+            // Start the loop only if it isn't already running
+            if (this.rafId === null) {
+                this.rafId = requestAnimationFrame(this.loop.bind(this));
+            }
+
+            // Return the ID so the context can store it for killTimer lookups
+            return timerId;
+        },
+
+        /**
+         * Removes a timer entry by its globally unique ID.
+         * Stops the rAF loop if no timers remain, avoiding idle rAF calls.
+         * @param {number} timerId - Globally unique timer ID to remove
+         */
+        remove(timerId) {
+            this.timers.delete(timerId);
+
+            // No timers left — stop the loop to avoid running it idle
+            if (this.timers.size === 0 && this.rafId !== null) {
+                cancelAnimationFrame(this.rafId);
+                this.rafId = null;
+            }
+        },
+
+        /**
+         * Removes all timers belonging to a specific context.
+         * Called by killAllTimers to clean up when a component is destroyed.
+         * @param {Context} context - The context whose timers should be removed
+         */
+        removeAllForContext(context) {
+            // Match entries by context reference — globally unique IDs make this safe
+            for (const [timerId, entry] of this.timers) {
+                if (entry.context === context) {
+                    this.timers.delete(timerId);
+                }
+            }
+
+            // Stop loop if no timers remain after the purge
+            if (this.timers.size === 0 && this.rafId !== null) {
+                cancelAnimationFrame(this.rafId);
+                this.rafId = null;
+            }
+        },
+
+        /**
+         * The rAF loop tick. Checks every registered timer against elapsed time
+         * and dispatches MSG_TIMER for any that have reached their interval.
+         * Reschedules itself as long as timers remain active.
+         * @param {number} now - Timestamp provided by requestAnimationFrame (via performance.now())
+         */
+        loop(now) {
+            for (const [, entry] of this.timers) {
+                if (now - entry.lastFired >= entry.elapse) {
+                    // Update lastFired before dispatch so that any re-entrant timer
+                    // operations inside msgProc see a consistent state
+                    entry.lastFired = now;
+                    wakaPAC.sendMessage(entry.context.abstraction.pacId, MSG_TIMER, entry.timerId, 0);
+                }
+            }
+
+            // Reschedule only if timers still exist — a killTimer inside msgProc
+            // may have emptied the map, in which case we let the loop die naturally
+            if (this.timers.size > 0) {
+                this.rafId = requestAnimationFrame(this.loop.bind(this));
+            } else {
+                this.rafId = null;
+            }
+        }
+    };
+
     // ========================================================================
     // CONTEXT
     // ========================================================================
@@ -4955,37 +5265,53 @@
         this.children = new Set();
         this.container = container;
         this.config = config;
-        this.abstraction = this.createReactiveAbstraction();
-        this.domUpdater = new DomUpdater(this);
-        this.dependencies = this.getDependencies();
         this.interpolationMap = new Map();
         this.textInterpolationMap = new Map();
         this.commentBindingMap = new Map();
-        this._readyCalled = false;
+        this.readyCalled = false;
+        this.abstraction = this.createReactiveAbstraction();
+        this.domUpdater = new DomUpdater(this);
+
+        // Resolve data-pac-uses into a flat function map for this component.
+        // Functions are merged in declaration order; last entry wins on collision.
+        this.importedUnits = {};
+        const usesAttr = container.getAttribute('data-pac-uses');
+
+        if (usesAttr) {
+            usesAttr.split(',').forEach(name => {
+                const unitName = name.trim();
+                const unit = _units.get(unitName);
+
+                if (!unit) {
+                    console.warn(`WakaPAC: data-pac-uses references unknown unit "${unitName}"`);
+                    return;
+                }
+
+                Object.assign(this.importedUnits, unit);
+            });
+        }
+
+        // Setup dependencies
+        this.dependencies = this.getDependencies();
 
         // Set up container-specific scroll tracking
         this.setupContainerScrollTracking();
 
-        // Clean up observers
+        // Register container to shared observers
         DomUpdateTracker.observeContainer(this.container);
 
         // Add interval for checking updateQueue
         this.updateQueue = new Map();
-        this._updateQueueTimer = null;
-        this._updateQueueFireAt = 0;
+        this.updateQueueTimer = null;
+        this.updateQueueFireAt = 0;
 
         // Handle click events
         this.boundHandlePacEvent = function(event) { self.handleEvent(event); };
 
         // Add listeners using the stored references
-        this.container.addEventListener('pac:event', this.boundHandlePacEvent);
-        this.container.addEventListener('pac:change', this.boundHandlePacEvent);
-        this.container.addEventListener('pac:array-change', this.boundHandlePacEvent);
-        this.container.addEventListener('pac:browser-state', this.boundHandlePacEvent);
-
-        // Add timers
-        this.timers = new Map();
-        this.nextTimerId = 1;
+        this.container.addEventListener(EV_PAC_EVENT, this.boundHandlePacEvent);
+        this.container.addEventListener(EV_PAC_CHANGE, this.boundHandlePacEvent);
+        this.container.addEventListener(EV_PAC_BROWSER_STATE, this.boundHandlePacEvent);
     }
 
     // =============================================================================
@@ -5029,29 +5355,22 @@
         DomUpdateTracker.unObserveContainer(this.container);
 
         // Remove event listeners
-        this.container.removeEventListener('pac:browser-state', this.boundHandlePacEvent);
-        this.container.removeEventListener('pac:array-change', this.boundHandlePacEvent);
-        this.container.removeEventListener('pac:change', this.boundHandlePacEvent);
-        this.container.removeEventListener('pac:event', this.boundHandlePacEvent);
-
-        // Clear debounce timer if exists
-        if (this.debounceTimer) {
-            clearTimeout(this.debounceTimer);
-            this.debounceTimer = null;
-        }
+        this.container.removeEventListener(EV_PAC_BROWSER_STATE, this.boundHandlePacEvent);
+        this.container.removeEventListener(EV_PAC_CHANGE, this.boundHandlePacEvent);
+        this.container.removeEventListener(EV_PAC_EVENT, this.boundHandlePacEvent);
 
         // Clear updateQueueTimer
-        if (this._updateQueueTimer !== null) {
-            clearTimeout(this._updateQueueTimer);
-            this._updateQueueTimer = null;
+        if (this.updateQueueTimer !== null) {
+            clearTimeout(this.updateQueueTimer);
+            this.updateQueueTimer = null;
         }
 
         // Clear boundHandlePacEvent callback
         this.boundHandlePacEvent = null;
 
-        // Clean up container scroll listener and the timeout for it
+        // Clean up container scroll listener and cancel any pending debounced call
         if (this.containerScrollHandler) {
-            clearTimeout(this.scrollTimeout);
+            this.containerScrollHandler.cancel();
             this.container.removeEventListener('scroll', this.containerScrollHandler);
             this.containerScrollHandler = null;
         }
@@ -5067,7 +5386,7 @@
             try {
                 this.abstraction.destroy();
             } catch (e) {
-                console.error('Error in user destroy() hook:', e);
+                console.warn('Error in user destroy() hook:', e);
             }
         }
 
@@ -5081,6 +5400,12 @@
         this.textInterpolationMap.clear();
         this.commentBindingMap.clear();
         this.updateQueue.clear();
+
+        // Cancel any active render loop for this component
+        if (this.abstraction?.pacId && _renderLoops.has(this.abstraction.pacId)) {
+            cancelAnimationFrame(_renderLoops.get(this.abstraction.pacId));
+            _renderLoops.delete(this.abstraction.pacId);
+        }
 
         // Remove from registry
         if (this.abstraction.pacId) {
@@ -5102,58 +5427,37 @@
     /**
      * Sets a timer for this component, similar to Win32 SetTimer.
      * Sends MSG_TIMER messages to the component's msgProc at the specified interval.
-     * Timer IDs are auto-generated and unique per component instance.
+     * Uses a shared requestAnimationFrame loop instead of setInterval to avoid
+     * Firefox timer throttling causing irregular MSG_TIMER delivery.
+     * Timer IDs are globally unique across all components.
      * @param {number} elapse - Timer interval in milliseconds
-     * @returns {number} The auto-generated timer ID (use this to kill the timer later)
+     * @returns {number} The globally unique timer ID (use this to kill the timer later)
      */
     Context.prototype.setTimer = function(elapse) {
-        // Generate unique timer ID for this component
-        const timerId = this.nextTimerId++;
-
-        // Create interval that sends MSG_TIMER message to component
-        const intervalId = setInterval(() => {
-            wakaPAC.sendMessage(this.abstraction.pacId, MSG_TIMER, timerId, 0);
-        }, elapse);
-
-        // Store mapping of timerId -> intervalId for later cleanup
-        this.timers.set(timerId, intervalId);
-
-        // Return the timerId
-        return timerId;
+        // Delegate ID generation and registration to the engine
+        return RafTimerEngine.add(this, elapse);
     };
 
     /**
      * Kills a specific timer for this component, similar to Win32 KillTimer.
      * Stops the timer from sending further MSG_TIMER messages.
      * @param {number} timerId - The timer ID returned from setTimer()
-     * @returns {boolean} True if timer was found and killed, false if timer ID not found
+     * @returns {void}
      */
     Context.prototype.killTimer = function(timerId) {
-        // Look up the browser's interval ID
-        const intervalId = this.timers.get(timerId);
-
-        // Do nothing if the timer does not exist
-        if (!intervalId) {
-            return false;
-        }
-
-        // Stop the interval and remove from registry
-        clearInterval(intervalId);
-        this.timers.delete(timerId);
-        return true;
+        // Delegate directly to the engine — timer IDs are globally unique
+        return RafTimerEngine.remove(timerId);
     };
 
     /**
      * Kills all timers for this component.
-     * Useful for cleanup or when resetting component state.
-     * Automatically called when component is destroyed.
-     * @returns {number} Number of timers that were killed
+     * Called automatically on component destruction to prevent MSG_TIMER delivery
+     * to a context that no longer exists.
+     * @returns {void}
      */
     Context.prototype.killAllTimers = function() {
-        const count = this.timers.size;
-        this.timers.forEach(clearInterval);
-        this.timers.clear();
-        return count;
+        // Delegate bulk removal to the engine, which matches by context reference
+        return RafTimerEngine.removeAllForContext(this);
     };
 
     // =============================================================================
@@ -5172,18 +5476,16 @@
         // First time setup
         requestAnimationFrame(() => this.updateContainerScrollState());
 
-        // Inline debounce implementation
-        const scrollHandler = () => {
-            clearTimeout(this.scrollTimeout); // Use instance property
-            this.scrollTimeout = setTimeout(() => {
-                this.updateContainerScrollState();
-            }, 16);
-        };
+        // Debounce scroll updates to ~1 frame (16 ms) so rapid scroll events
+        // are coalesced rather than triggering a state update on every pixel.
+        const scrollHandler = Utils.debounce(() => {
+            this.updateContainerScrollState();
+        }, 16);
 
         // Add scroll listener to this container
         this.container.addEventListener('scroll', scrollHandler, { passive: true });
 
-        // Store reference for cleanup
+        // Store reference for cleanup (scrollHandler.cancel() is called on teardown)
         this.containerScrollHandler = scrollHandler;
     }
 
@@ -5254,16 +5556,31 @@
         // Store comment bindings
         newCommentBindings.forEach((mappingData, commentNode) => {
             this.commentBindingMap.set(commentNode, mappingData);
-
-            // Apply initial state
             self.updateCommentConditional(commentNode, mappingData);
         });
 
         // Apply initial bindings to new elements
         newBindings.forEach((mappingData, element) => {
             Object.keys(mappingData.bindings).forEach(bindingType => {
+                // Skip event bindings — they are never evaluated eagerly, only on user interaction.
+                if (bindingType === 'click' || bindingType === 'submit') {
+                    return;
+                }
+
+                // Evaluate the expression
                 const bindingData = mappingData.bindings[bindingType];
-                self.domUpdater.updateAttributeBinding(element, bindingType, bindingData);
+
+                const value = ExpressionParser.evaluate(
+                    ExpressionCache.parseExpression(bindingData.target),
+                    self.abstraction,
+                    makeScopeResolver(
+                        self.normalizePath.bind(self),
+                        element,
+                        self.importedUnits
+                    )
+                );
+
+                self.domUpdater.updateAttributeBinding(element, bindingType, bindingData, value);
             });
         });
 
@@ -5419,8 +5736,8 @@
      */
     Context.prototype.updateQueueHandler = function() {
         // Clear timer reference — this callback is now executing
-        this._updateQueueTimer = null;
-        this._updateQueueFireAt = 0;
+        this.updateQueueTimer = null;
+        this.updateQueueFireAt = 0;
 
         // Fast exit when nothing is queued
         if (this.updateQueue.size === 0) {
@@ -5490,18 +5807,18 @@
         const fireAt = Date.now() + clampedDelay;
 
         // If an existing timer already covers this deadline, keep it
-        if (this._updateQueueTimer !== null && this._updateQueueFireAt <= fireAt) {
+        if (this.updateQueueTimer !== null && this.updateQueueFireAt <= fireAt) {
             return;
         }
 
         // Cancel the existing timer — the new one fires sooner
-        if (this._updateQueueTimer !== null) {
-            clearTimeout(this._updateQueueTimer);
+        if (this.updateQueueTimer !== null) {
+            clearTimeout(this.updateQueueTimer);
         }
 
         // Run timeout
-        this._updateQueueFireAt = fireAt;
-        this._updateQueueTimer = setTimeout(function() {
+        this.updateQueueFireAt = fireAt;
+        this.updateQueueTimer = setTimeout(function() {
             self.updateQueueHandler();
         }, clampedDelay);
     };
@@ -5546,13 +5863,12 @@
                 this.handlePacEvent(event);
                 break;
 
-            // Handle array modification events (insertions, deletions, reordering)
-            case 'pac:array-change':
-                this.handleArrayChange(event);
-                break;
-
             // Handle reactive data binding changes (property updates, computed value changes)
             case 'pac:change':
+                if (Array.isArray(event.detail.newValue)) {
+                    this.handleArrayChange(event);
+                }
+
                 this.handleReactiveChange(event);
                 break;
 
@@ -5589,7 +5905,7 @@
             const cancellableEvents = [
                 MSG_LBUTTONUP, MSG_MBUTTONUP, MSG_RBUTTONUP,
                 MSG_LCLICK, MSG_MCLICK, MSG_RCLICK, MSG_CONTEXTMENU,
-                MSG_SUBMIT, MSG_CHANGE, MSG_GESTURE,
+                MSG_SUBMIT, MSG_CHANGE, MSG_GESTURE, MSG_CHAR,
                 MSG_COPY, MSG_PASTE, MSG_KEYDOWN, MSG_KEYUP
             ];
 
@@ -5604,13 +5920,17 @@
             return;
         }
 
-        // Update reactive focus properties
-        if (event.message === MSG_SETFOCUS || event.message === MSG_KILLFOCUS) {
-            this.updateFocusProperties();
-        }
-
         // Call built in event handlers
         switch(event.message) {
+            case MSG_SETFOCUS:
+                this.updateFocusProperties();
+                break;
+
+            case MSG_KILLFOCUS:
+                this.updateFocusProperties();
+                this.handleDomBlur(event);
+                break;
+
             case MSG_LCLICK:
                 // Mouse button up events - handle DOM clicks
                 this.handleDomClicks(event);
@@ -5629,11 +5949,6 @@
             case MSG_INPUT_COMPLETE:
                 // Post-mutation input (input event - value is updated)
                 this.handleDomInputComplete(event);
-                break;
-
-            case MSG_KILLFOCUS:
-                // Blur events - handle change mode updates and other blur logic
-                this.handleDomBlur(event);
                 break;
         }
     }
@@ -5654,54 +5969,79 @@
      * @param {Element} event.target - The DOM element that was clicked
      * @throws {Error} Logs errors if method execution fails
      */
-    Context.prototype.handleDomClicks = function(event) {
+    Context.prototype.handleDomClicks = function (event) {
         // Get interpolation data for the clicked element
         const mappingData = this.interpolationMap.get(event.target);
         if (!mappingData?.bindings?.click) {
             return;
         }
 
-        // Resolve the target method from the abstraction object
-        const method = this.abstraction[mappingData.bindings.click.target];
-        if (typeof method !== 'function') {
-            return;
-        }
+        const bindingTarget = mappingData.bindings.click.target;
 
         try {
             // Check if click occurred within a foreach loop context
             const contextInfo = this.extractClosestForeachContext(event.target);
 
-            // Simple case: call method with just the event
-            if (!contextInfo) {
-                method.call(this.abstraction, event);
-                return;
+            // Build scope resolver once, shared across all evaluations below
+            const scopeResolver = makeScopeResolver(
+                this.normalizePath.bind(this),
+                event.target,
+                this.importedUnits
+            );
+
+            if (contextInfo) {
+                // Find the foreach element that contains this click target
+                const foreachElement = Array.from(this.interpolationMap.entries())
+                    .find(([, data]) => data.foreachId === contextInfo.foreachId)?.[0];
+
+                if (foreachElement) {
+                    // Evaluate the foreach expression to get the source array
+                    const foreachData = this.interpolationMap.get(foreachElement);
+                    const array = ExpressionParser.evaluate(
+                        ExpressionCache.parseExpression(foreachData.foreachExpr),
+                        this.abstraction,
+                        scopeResolver
+                    );
+
+                    // Inject foreach context into scope so expressions can reference $item, $index, $event
+                    const scopedAbstraction = Object.assign(Object.create(this.abstraction), {
+                        $item: array[contextInfo.index],
+                        $index: contextInfo.index,
+                        $event: event
+                    });
+
+                    const foreachResult = ExpressionParser.evaluate(
+                        ExpressionCache.parseExpression(bindingTarget),
+                        scopedAbstraction,
+                        scopeResolver
+                    );
+
+                    // Fallback: bare method name — call with (item, index, event)
+                    if (typeof foreachResult === 'function') {
+                        foreachResult.call(this.abstraction, array[contextInfo.index], contextInfo.index, event);
+                    }
+
+                    return;
+                }
             }
 
-            // Find the foreach element that contains this click target
-            const foreachElement = Array.from(this.interpolationMap.entries())
-                .find(([, data]) => data.foreachId === contextInfo.foreachId)?.[0];
+            // Simple case: evaluate expression with $event in scope
+            const scopedAbstraction = Object.assign(Object.create(this.abstraction), {
+                $event: event
+            });
 
-            if (!foreachElement) {
-                // Fallback to simple call if foreach element not found
-                method.call(this.abstraction, event);
-                return;
-            }
-
-            // Get the foreach configuration and set up scope resolution
-            const foreachData = this.interpolationMap.get(foreachElement);
-            const scopeResolver = makeScopeResolver(this.normalizePath.bind(this), event.target);
-
-            // Evaluate the foreach expression to get the source array
-            const array = ExpressionParser.evaluate(
-                ExpressionCache.parseExpression(foreachData.foreachExpr),
-                this.abstraction,
+            const result = ExpressionParser.evaluate(
+                ExpressionCache.parseExpression(bindingTarget),
+                scopedAbstraction,
                 scopeResolver
             );
 
-            // Call method with foreach context: (arrayItem, index, originalEvent)
-            method.call(this.abstraction, array[contextInfo.index], contextInfo.index, event);
+            // Fallback: bare method name — call with (event)
+            if (typeof result === 'function') {
+                result.call(this.abstraction, event);
+            }
         } catch (error) {
-            console.error(`Error executing click binding '${mappingData.bindings.click.target}':`, error);
+            console.warn(`Error executing click binding '${bindingTarget}':`, error);
         }
     }
 
@@ -5733,7 +6073,7 @@
             method.call(this.abstraction, event);
         } catch (error) {
             // Log execution errors with context for debugging
-            console.error(`Error executing submit binding '${mappingData.bindings.submit.target}':`, error);
+            console.warn(`Error executing submit binding '${mappingData.bindings.submit.target}':`, error);
         }
     };
 
@@ -5800,7 +6140,7 @@
                     // Execute the bound method with the abstraction as context
                     method.call(this.abstraction, event);
                 } catch (error) {
-                    console.error(`Error executing change binding '${mappingData.bindings.change.target}':`, error);
+                    console.warn(`Error executing change binding '${mappingData.bindings.change.target}':`, error);
                 }
             }
         }
@@ -5931,6 +6271,8 @@
         this.updateCommentConditionals();
         this.handleWatchersForChange(event);
         this.handleForeachRebuildForChange(event);
+
+        //wakaPAC.sendMessage(this.abstraction.pacId, MSG_VALUE_CHANGE, 0, 0, event.detail);
     };
 
     // =============================================================================
@@ -5957,10 +6299,6 @@
                 return;
             }
 
-            // Build the scope resolver once per element rather than per binding,
-            // since it only depends on the element for path normalization
-            const scopeResolver = makeScopeResolver(self.normalizePath.bind(self), element);
-
             // Initialize the previous values store on first encounter.
             // Cache the reference to avoid repeated DOM element property access
             // inside the binding loop.
@@ -5986,8 +6324,16 @@
                 try {
                     // Parse and evaluate the binding expression
                     const bindingData = bindings[bindingType];
-                    const parsed = ExpressionCache.parseExpression(bindingData.target);
-                    const currentValue = ExpressionParser.evaluate(parsed, abstraction, scopeResolver);
+
+                    const currentValue = ExpressionParser.evaluate(
+                        ExpressionCache.parseExpression(bindingData.target),
+                        abstraction,
+                        makeScopeResolver(
+                            self.normalizePath.bind(self),
+                            element,
+                            self.importedUnits
+                        )
+                    );
 
                     // Only touch the DOM if the value actually changed.
                     // DOM writes are expensive, so we diff against the cached
@@ -6024,12 +6370,18 @@
 
                 // Build the scope resolver once per text node, not once per expression.
                 // The resolver only depends on the text node for path normalization.
-                const scopeResolver = makeScopeResolver(self.normalizePath.bind(self), textNode);
-
                 const newText = mappingData.template.replace(INTERPOLATION_REGEX, function(match, expression) {
                     try {
-                        const parsed = ExpressionCache.parseExpression(expression);
-                        const result = ExpressionParser.evaluate(parsed, abstraction, scopeResolver);
+                        const result = ExpressionParser.evaluate(
+                            ExpressionCache.parseExpression(expression),
+                            abstraction,
+                            makeScopeResolver(
+                                self.normalizePath.bind(self),
+                                textNode,
+                                self.importedUnits
+                            )
+                        );
+
                         return result != null ? String(result) : '';
                     } catch (error) {
                         console.warn('Error evaluating text interpolation:', expression, error);
@@ -6131,7 +6483,7 @@
         }
 
         // Only handles computed/filtered foreach dependencies (e.g., filter → filteredTodos).
-        // Direct array assignments go through handleArrayChange via pac:array-change.
+        // Direct array assignments go through handleArrayChange via pac:change.
         const changedProp = path[0];
         const dependents = this.dependencies.get(changedProp);
 
@@ -6180,7 +6532,7 @@
             try {
                 this.originalAbstraction.watch[property].call(this.abstraction, newValue, oldValue);
             } catch (error) {
-                console.error('Error in watcher for \'' + property + '\':', error);
+                console.warn('Error in watcher for \'' + property + '\':', error);
             }
         }
     };
@@ -6813,42 +7165,6 @@
         Object.defineProperties(proxiedReactive, {
 
             /**
-             * Formats a value for display in text content or UI elements
-             * Handles null/undefined, objects, arrays, and primitives appropriately
-             * @param {*} value - Value to format for display
-             * @returns {string} Human-readable formatted string
-             */
-            formatValue: {
-                value: (value) => Utils.formatValue(value),
-                writable: false,
-                enumerable: false
-            },
-
-            /**
-             * Escapes HTML entities to prevent XSS when displaying user input
-             * Converts <, >, &, quotes to their HTML entity equivalents
-             * @param {string} str - String to escape HTML entities in
-             * @returns {string} HTML-safe escaped string
-             */
-            escapeHTML: {
-                value: (str) => Utils.escapeHTML(str),
-                writable: false,
-                enumerable: false
-            },
-
-            /**
-             * Strips all HTML tags from user input to get plain text
-             * Use this for user-generated content that should not contain HTML
-             * @param {string} html - HTML string to sanitize
-             * @returns {string} Plain text with all HTML tags removed
-             */
-            sanitizeUserInput: {
-                value: (html) => Utils.sanitizeUserInput(html),
-                writable: false,
-                enumerable: false
-            },
-
-            /**
              * Converts container-relative coordinates to viewport-absolute coordinates
              * Equivalent to Win32 ClientToScreen - converts client-area to screen coordinates
              * @param {number} x - Container-relative x coordinate
@@ -6858,6 +7174,7 @@
             containerToViewport: {
                 value: (x, y) => {
                     const rect = self.container.getBoundingClientRect();
+
                     return {
                         x: x + rect.left,
                         y: y + rect.top
@@ -6937,7 +7254,7 @@
         abstraction.browserContentHeight = document.documentElement.scrollHeight;
 
         // Container scroll properties
-        abstraction.containerIsScrollable =  false;                         // Can scroll in any direction
+        abstraction.containerIsScrollable = false;                         // Can scroll in any direction
         abstraction.containerScrollX = this.container.scrollLeft;           // Current horizontal scroll position
         abstraction.containerScrollY = this.container.scrollTop;            // Current vertical scroll position
         abstraction.containerContentWidth = this.container.scrollWidth;     // Total scrollable content width
@@ -6951,11 +7268,16 @@
             y: 0           // scrollTop (alias)
         };
 
+        // Initialised to null — DOM state is not reliable at construction time.
+        // IntersectionObserver will set the real value asynchronously, guaranteeing
+        // a null → true/false transition that always triggers watchers, including
+        // for elements that are already in the viewport on page load.
+        abstraction.containerVisible = null;
+        abstraction.containerFullyVisible = null;
+
         // Per-container viewport visibility properties
         abstraction.containerFocus = Utils.isElementDirectlyFocused(this.container);
         abstraction.containerFocusWithin = Utils.isElementFocusWithin(this.container);
-        abstraction.containerVisible = Utils.isElementVisible(this.container);
-        abstraction.containerFullyVisible = Utils.isElementFullyVisible(this.container);
         abstraction.containerClientRect = {top: 0, left: 0, right: 0, bottom: 0, width: 0, height: 0, x: 0, y: 0};
         abstraction.containerWidth = this.container.clientWidth;
         abstraction.containerHeight = this.container.clientHeight;
@@ -7034,16 +7356,16 @@
         // This prevents memory leaks when re-rendering dynamic content
         this.cleanupForeachMaps(foreachElement);
 
-        // Create scope resolver for this foreach element
-        // This handles variable resolution in nested contexts (e.g., converting "todo.subs" to "todos[0].subs")
-        const scopeResolver = makeScopeResolver(this.normalizePath.bind(this), foreachElement);
-
         try {
             // Evaluate the foreach expression (e.g., "todos" or "todo.subs")
             const array = ExpressionParser.evaluate(
                 ExpressionCache.parseExpression(mappingData.foreachExpr),
                 this.abstraction,
-                scopeResolver
+                makeScopeResolver(
+                    this.normalizePath.bind(this),
+                    foreachElement,
+                    this.importedUnits
+                )
             );
 
             // TIMING FIX: Handle the case where parent context doesn't exist yet
@@ -7063,8 +7385,12 @@
                 return;
             }
 
-            // Get the source array to find original indices
-            const sourceArray = this.getSourceArrayForFiltered(mappingData.foreachExpr, array, mappingData);
+            // Resolve the source array for index mapping.
+            // For filtered/sorted expressions the foreach may render a subset of a larger
+            // array — fall back to the evaluated array itself when no root can be found.
+            const sourceRootName = mappingData.sourceArray || this.inferArrayRoot(mappingData.foreachExpr);
+            const sourceRootArray = sourceRootName && this.abstraction[sourceRootName];
+            const sourceArray = Array.isArray(sourceRootArray) ? sourceRootArray : array;
 
             // Store array to be able to compare later
             foreachElement._pacPreviousArray = array;
@@ -7109,8 +7435,22 @@
             // a change event and all dependent bindings update naturally.
             this.syncSelectAfterForeach(foreachElement);
 
+            // Notify the component that this foreach has finished rendering.
+            // wParam carries the number of rendered items; detail carries the
+            // source array name so the handler can retrieve data and DOM elements.
+            wakaPAC.sendMessage(
+                this.abstraction.pacId,
+                MSG_FOREACH_REBUILT,
+                array.length,
+                0,
+                {
+                    arrayName: mappingData.foreachExpr,
+                    marker: foreachElement.getAttribute('data-pac-marker') ?? null
+                }
+            );
+
         } catch (error) {
-            console.error(`Error evaluating foreach expression "${mappingData.foreachExpr}":`, error);
+            console.warn(`Error evaluating foreach expression "${mappingData.foreachExpr}":`, error);
             // Don't clear innerHTML on error during initial scan - preserve template
             // The error might resolve itself when parent context becomes available
         }
@@ -7153,77 +7493,6 @@
 
         // Write the DOM value into the abstraction — the proxy handles the change event
         Utils.setNestedProperty(resolvedPath, domValue, this.abstraction);
-    };
-
-    /**
-     * Gets the source array for a potentially filtered expression
-     * @param {string} foreachExpr - The foreach expression (e.g., "filteredTodos")
-     * @param {Array} currentArray - The current evaluated array
-     * @param mappingData
-     * @returns {Array} The source array or current array if no source found
-     */
-    Context.prototype.getSourceArrayForFiltered = function (foreachExpr, currentArray, mappingData) {
-        const rootName = (mappingData && mappingData.sourceArray) || this.inferArrayRoot(foreachExpr);
-
-        if (!rootName) {
-            return currentArray;
-        }
-
-        const rootArray = this.abstraction[rootName];
-        return Array.isArray(rootArray) ? rootArray : currentArray;
-    };
-
-    /**
-     * Finds the original index of an item in the source array
-     * @param {*} item - The item to find
-     * @param {Array} sourceArray - The source array to search in
-     * @param {number} fallbackIndex - Fallback index if not found
-     * @returns {number} The original index in the source array
-     */
-    Context.prototype.findOriginalIndex = function(item, sourceArray, fallbackIndex) {
-        // For primitive arrays (like flatGrid with numbers), the renderIndex IS the correct index
-        // because the array items are primitives that appear in order
-        if (typeof item === 'number' || typeof item === 'string' || typeof item === 'boolean') {
-            return fallbackIndex;
-        }
-
-        // Pre-compute ID lookup capability once, outside the loop
-        const hasId = item && typeof item === 'object' && item.id !== undefined;
-        const itemId = hasId ? item.id : undefined;
-        const len = sourceArray.length;
-
-        // Single pass: reference equality (immediate return) + ID tracking (deferred)
-        let idMatch = -1;
-
-        for (let i = 0; i < len; i++) {
-            const sourceItem = sourceArray[i];
-
-            // Strategy 1: Direct reference comparison — highest priority, return immediately
-            if (sourceItem === item) {
-                return i;
-            }
-
-            // Strategy 2: Track first ID match for deferred return
-            if (hasId && idMatch === -1 &&
-                sourceItem && typeof sourceItem === 'object' && sourceItem.id === itemId) {
-                idMatch = i;
-            }
-        }
-
-        // Return ID match if found
-        if (idMatch !== -1) {
-            return idMatch;
-        }
-
-        // Strategy 3: Deep equality — expensive, only runs when reference and ID both failed
-        for (let i = 0; i < len; i++) {
-            if (Utils.isEqual(sourceArray[i], item)) {
-                return i;
-            }
-        }
-
-        // Strategy 4: Fallback to render index (maintains current behavior for edge cases)
-        return fallbackIndex;
     };
 
     /**
@@ -7324,24 +7593,6 @@
     };
 
     /**
-     * Count how many leading "parent" tokens appear in a path.
-     * These tokens indicate how many foreach scopes should be climbed.
-     * @param {Array<string|number>} path - Tokenized path.
-     * @returns {number} Number of parent climbs requested.
-     */
-    Context.prototype.extractParentClimbs = function (path) {
-        // Tracks how many scope levels to climb
-        let climbs = 0;
-
-        // Count consecutive "parent" tokens from the start
-        while (climbs < path.length && path[climbs] === "parent") {
-            climbs++;
-        }
-
-        return climbs;
-    };
-
-    /**
      * Build a scoped variable map from foreach frames.
      * @param {Array<Object>} frames - Effective foreach frames (outer → inner).
      * @returns {Map<string, string|number>} Scoped variable map.
@@ -7380,28 +7631,10 @@
     };
 
     /**
-     * Select the active foreach frames after applying parent climbs.
-     * Frames are returned in outer → inner order for correct scope resolution.
-     * @param {HTMLElement} element - Element inside a foreach hierarchy.
-     * @param {number} climbs - Number of scopes to climb.
-     * @returns {Array<Object>} Effective frame list.
-     */
-    Context.prototype.getEffectiveFrames = function (element, climbs) {
-        // Retrieve full foreach chain for the element
-        const frames = this.getForeachChain(element);
-
-        // Clamp climb count to available frames
-        if (climbs > frames.length) {
-            console.warn(`Cannot climb ${climbs} levels - only ${frames.length} available`);
-            climbs = frames.length;
-        }
-
-        // Remove climbed frames and reverse for dependency-safe processing
-        return frames.slice(climbs).reverse();
-    };
-
-    /**
      * Normalize a scoped path to a fully-qualified global data path.
+     * Counts leading "parent" tokens to determine how many foreach scopes to
+     * climb, selects the remaining frames, builds a scope map, and resolves
+     * the path through it.
      * @param {string|Array<string|number>} pathSegments - Local path expression.
      * @param {HTMLElement} element - Element inside a foreach hierarchy.
      * @returns {string|number} Fully-qualified path or direct numeric index.
@@ -7415,14 +7648,23 @@
             return "";
         }
 
-        // Determine how many leading "parent" tokens climb the scope chain
-        const climbs = this.extractParentClimbs(path);
+        // Count consecutive leading "parent" tokens — each one climbs one foreach scope
+        let climbs = 0;
+        while (climbs < path.length && path[climbs] === "parent") {
+            climbs++;
+        }
 
-        // Select the active foreach frames after climbing
-        const frames = this.getEffectiveFrames(element, climbs);
+        // Retrieve full foreach chain and apply parent climbs
+        const chain = this.getForeachChain(element);
+        if (climbs > chain.length) {
+            console.warn(`Cannot climb ${climbs} levels - only ${chain.length} available`);
+            climbs = chain.length;
+        }
 
-        // Fast path: if no foreach frames apply, skip scope resolution entirely.
-        // This avoids building an empty Map and running resolveScopedTokens as a no-op.
+        // Frames after climbing, reversed to outer → inner order for scope resolution
+        const frames = chain.slice(climbs).reverse();
+
+        // Fast path: no foreach frames in scope — return remaining path directly
         if (frames.length === 0) {
             const remaining = path.slice(climbs);
 
@@ -7472,14 +7714,15 @@
             return false;
         }
 
-        // Create scope resolver to handle scoped path resolution within foreach context
-        const scopeResolver = makeScopeResolver(this.normalizePath.bind(this), foreachElement);
-
         // Evaluate the foreach expression to get the current array
         const newArray = ExpressionParser.evaluate(
             ExpressionCache.parseExpression(mappingData.foreachExpr),
             this.abstraction,
-            scopeResolver
+            makeScopeResolver(
+                this.normalizePath.bind(this),
+                foreachElement,
+                this.importedUnits
+            )
         );
 
         // If evaluation doesn't result in an array, no rebuild needed
@@ -7558,14 +7801,33 @@
     };
 
     /**
+     * Parses a comment node as a foreach item marker.
+     * @param {Comment} commentNode - The DOM comment node to parse
+     * @returns {{foreachId: string, index: number, renderIndex: number}|null}
+     */
+    Context.parseForeachComment = function(commentNode) {
+        const match = commentNode.textContent.trim().match(FOREACH_INDEX_REGEX);
+
+        if (!match) {
+            return null;
+        }
+
+        return {
+            foreachId: match[1].trim(),
+            index: parseInt(match[2], 10),
+            renderIndex: parseInt(match[3], 10)
+        };
+    };
+
+    /**
      * Extracts the closest foreach context information by walking up the DOM tree
      * from a starting element, looking for comment markers that identify foreach items.
      * Checks cache first for O(1) lookup before falling back to comment parsing.
      * @param {Element} startElement - The DOM element to start searching from
-     * @returns {Object|null} Foreach context object with foreachId, index, and renderIndex or null
+     * @returns {number|null} Foreach context object with foreachId, index, and renderIndex or null
      * @returns {string} returns.foreachId - The identifier of the foreach loop
      * @returns {number} returns.index - The logical index in the data array
-     * @returns {number} returns.renderIndex - The rendering index (may differ from logical index)
+     * @returns {number|null} returns.renderIndex - The rendering index (may differ from logical index)
      */
     Context.prototype.extractClosestForeachContext = function(startElement) {
         // Cache container
@@ -7589,21 +7851,12 @@
             while (sibling) {
                 // Only process comment nodes
                 if (sibling.nodeType === COMMENT_NODE) {
-                    const match = sibling.textContent.trim().match(FOREACH_INDEX_REGEX);
+                    const context = Context.parseForeachComment(sibling);
 
-                    if (match) {
-                        // Build the context object from the regex capture groups
-                        const context = {
-                            foreachId: match[1].trim(),
-                            index: parseInt(match[2], 10),
-                            renderIndex: parseInt(match[3], 10)
-                        };
-
+                    if (context) {
                         // Cache on the starting element so subsequent lookups
                         // from the same element or its descendants are O(1)
                         startElement._pacForeachContext = context;
-
-                        // Return the context
                         return context;
                     }
                 }
@@ -7627,21 +7880,18 @@
      * @param {HTMLElement} foreachElement - The foreach container element
      */
     Context.prototype.cacheContextOnItemElements = function(foreachElement) {
-        const walker = document.createTreeWalker(foreachElement, NodeFilter.SHOW_ALL);
         let node;
         let currentContext = null;
 
+        const walker = document.createTreeWalker(foreachElement, NodeFilter.SHOW_ALL);
+
         while ((node = walker.nextNode())) {
             if (node.nodeType === Node.COMMENT_NODE) {
-                const match = node.textContent.match(FOREACH_INDEX_REGEX);
+                const context = Context.parseForeachComment(node);
 
-                if (match) {
+                if (context) {
                     // Found start marker - prepare context for next element
-                    currentContext = {
-                        foreachId: match[1].trim(),
-                        index: parseInt(match[2], 10),
-                        renderIndex: parseInt(match[3], 10)
-                    };
+                    currentContext = context;
                 } else if (node.textContent.trim() === '/pac-foreach-item') {
                     // Found end marker - clear context
                     currentContext = null;
@@ -7681,7 +7931,7 @@
             // Clean up cached state to prevent memory leaks
             delete element._pacPreviousValues;
             delete element._pacPreviousArray;
-            delete element._pacDynamicClass;
+            delete element._pacDynamicClasses;
             delete element._pacForeachChain;
             delete element._pacForeachContext;
         });
@@ -7719,16 +7969,16 @@
         // Call ready() method if it exists after all bindings have been applied
         // Only call once per component instance
         if (
-            !this._readyCalled &&
+            !this.readyCalled &&
             this.abstraction.ready &&
             typeof this.abstraction.ready === 'function'
         ) {
-            this._readyCalled = true;
+            this.readyCalled = true;
 
             try {
                 this.abstraction.ready.call(this.abstraction);
             } catch (error) {
-                console.error('Error in ready() method:', error);
+                console.warn('Error in ready() method:', error);
             }
         }
     };
@@ -7773,54 +8023,6 @@
             child.parent = this;
             this.children.add(child);
         });
-    };
-
-    // =============================================================================
-    // ARRAY CHANGE TRACKING (Diffing & Minimal DOM Updates)
-    // =============================================================================
-
-    /**
-     * Creates a stable hash from content data, handling various data types
-     * @returns {string} A string representation suitable for hashing
-     * @param inputData
-     */
-    Context.prototype.createContentHash = function(inputData) {
-        /**
-         * Convert any data structure into a deterministic string representation.
-         * This ensures that logically equivalent objects produce the same hash string,
-         * regardless of key order or formatting differences.
-         */
-        function createStableRepresentation(value) {
-            // Handle null or undefined explicitly
-            if (value === null || value === undefined) {
-                return String(value);
-            }
-
-            // Handle primitive types (string, number, boolean, etc.)
-            if (typeof value !== "object") {
-                return String(value);
-            }
-
-            // Handle arrays: recursively hash each item in order
-            if (Array.isArray(value)) {
-                const arrayRepresentation = value.map(function (element) {
-                    return createStableRepresentation(element);
-                });
-
-                return "[" + arrayRepresentation.join(",") + "]";
-            }
-
-            // Handle objects: sort keys to ensure consistent ordering
-            const sortedKeys = Object.keys(value).sort();
-            const objectRepresentation = sortedKeys.map(function(key) {
-                return key + ":" + createStableRepresentation(value[key]);
-            });
-
-            return "{" + objectRepresentation.join(",") + "}";
-        }
-
-        // Entry point: return stable representation for the given input
-        return createStableRepresentation(inputData);
     };
 
     /**
@@ -8377,8 +8579,13 @@
         /** @type {Set<Context>} Components waiting for hierarchy establishment */
         this.pendingHierarchy = new Set();
 
-        /** @type {number|null} Timer reference for batched hierarchy processing */
-        this.hierarchyTimer = null;
+        /**
+         * Debounced wrapper around establishAllHierarchies().
+         * Batches rapid registrations (e.g. from a single wakaPAC() call that mounts
+         * many child components) into one hierarchy pass 10 ms after the last one.
+         * @type {Function}
+         */
+        this._scheduleHierarchy = Utils.debounce(() => this.establishAllHierarchies(), 10);
     }
 
     ComponentRegistry.prototype = {
@@ -8391,13 +8598,8 @@
             this.components.set(selector, context);
             this.pendingHierarchy.add(context);
 
-            // Clear existing timer and start new one
-            clearTimeout(this.hierarchyTimer);
-
-            // Establish hierarchies
-            this.hierarchyTimer = setTimeout(() => {
-                this.establishAllHierarchies();
-            }, 10);
+            // Batch rapid registrations — hierarchy is established once the burst settles
+            this._scheduleHierarchy();
         },
 
         /**
@@ -8479,15 +8681,9 @@
             // Check if any new components were registered during processing
             // This happens when parent components dynamically create children
             if (this.pendingHierarchy.size > 0) {
-                // Cancel any pending hierarchy processing to avoid duplicate runs
-                clearTimeout(this.hierarchyTimer);
-
-                // Schedule another round after a brief delay
-                // The 10ms delay allows multiple rapid registrations to batch together
-                // rather than processing them one at a time
-                this.hierarchyTimer = setTimeout(() => {
-                    this.establishAllHierarchies();
-                }, 10);
+                // Schedule another pass — _scheduleHierarchy() will debounce any
+                // additional registrations that arrive before the 10 ms window closes
+                this._scheduleHierarchy();
             }
         },
 
@@ -8753,6 +8949,15 @@
     const _dirtyCanvases = new Map();
 
     /**
+     * Tracks active render loops for WebGL canvas components registered with renderLoop: true.
+     * Key:   pacId (string)
+     * Value: rAF handle (number) — the return value of the most recent requestAnimationFrame call,
+     *        used to cancel the loop via cancelAnimationFrame() when the component is destroyed.
+     * @type {Map<string, number>}
+     */
+    const _renderLoops = new Map();
+
+    /**
      * Dispatches MSG_PAINT to all invalidated canvas containers, then clears
      * the dirty set. Called once per animation frame by requestAnimationFrame.
      */
@@ -8856,6 +9061,161 @@
     }
 
     // ========================================================================
+    // PAINT INTERNAL HELPERS
+    // ========================================================================
+
+    /**
+     * Returns true if the given rendering context is a WebGL or WebGL2 context.
+     * @param {RenderingContext} ctx
+     * @returns {boolean}
+     */
+    function _isWebGLContext(ctx) {
+        return ctx instanceof WebGLRenderingContext || ctx instanceof WebGL2RenderingContext;
+    }
+
+    /**
+     * Copies srcCanvas onto a 2D destDC using drawImage.
+     * For WebGL sources, the source canvas must have been created with
+     * preserveDrawingBuffer: true in its glAttributes, otherwise the drawing
+     * buffer will have been cleared by the browser after compositing and the
+     * copy will produce a blank result.
+     * @param {CanvasRenderingContext2D} destCtx2D
+     * @param {HTMLCanvasElement} srcCanvas
+     * @param {number} sx - Source X
+     * @param {number} sy - Source Y
+     * @param {number} sw - Source width
+     * @param {number} sh - Source height
+     * @param {number} dx - Destination X
+     * @param {number} dy - Destination Y
+     * @param {number} dw - Destination width
+     * @param {number} dh - Destination height
+     */
+    function _blitToCanvas2D(destCtx2D, srcCanvas, sx, sy, sw, sh, dx, dy, dw, dh) {
+        destCtx2D.drawImage(srcCanvas, sx, sy, sw, sh, dx, dy, dw, dh);
+    }
+
+    /**
+     * Copies a source canvas onto a WebGL destination as a texture bound to
+     * the currently active texture unit. The caller is responsible for binding
+     * the target texture before calling this function.
+     * @param {WebGLRenderingContext|WebGL2RenderingContext} destGL
+     * @param {HTMLCanvasElement} srcCanvas
+     */
+    function _blitToWebGL(destGL, srcCanvas) {
+        destGL.texImage2D(
+            destGL.TEXTURE_2D,
+            0,                  // mip level
+            destGL.RGBA,             // internal format
+            destGL.RGBA,             // format
+            destGL.UNSIGNED_BYTE,
+            srcCanvas
+        );
+    }
+
+    // ========================================================================
+    // STDLIB — built-in unit
+    // ========================================================================
+
+    _registerUnit({
+        createPacPlugin() {
+            return {
+                /** Unit namespace — accessible in binds as Stdlib.fn() */
+                name: 'Stdlib',
+
+                functions: {
+                    /**
+                     * Logs one or more values to the browser console.
+                     * Useful for inspecting abstraction state from within bind expressions.
+                     * @param {...*} args - Values to log
+                     * @returns {void}
+                     */
+                    log: (...args) => console.log(...args),
+
+                    beep: (() => {
+                        /** Shared AudioContext — created once on first beep(), reused thereafter. */
+                        let _audioCtx = null;
+
+                        /**
+                         * Plays an audible beep using the Web Audio API.
+                         * Requires a prior user gesture (click, keypress, etc.) — browsers block
+                         * audio on pages the user hasn't interacted with yet.
+                         * Not meaningful as a {{ }} interpolation; use in event bindings.
+                         * @param {number} [frequency=440]  - Tone frequency in Hz
+                         * @param {number} [duration=200]   - Duration in milliseconds
+                         * @param {number} [volume=0.5]     - Gain level (0.0 – 1.0)
+                         * @param {string} [type='square']  - Oscillator type: sine|square|sawtooth|triangle
+                         * @returns {void}
+                         */
+                        return (frequency = 440, duration = 200, volume = 0.5, type = 'square') => {
+                            // Create or reuse the shared AudioContext
+                            if (!_audioCtx || _audioCtx.state === 'closed') {
+                                _audioCtx = new AudioContext();
+                            }
+
+                            const oscillator = _audioCtx.createOscillator();
+                            const gain       = _audioCtx.createGain();
+
+                            oscillator.connect(gain);
+                            gain.connect(_audioCtx.destination);
+
+                            oscillator.type            = type;
+                            oscillator.frequency.value = frequency;
+                            gain.gain.value            = volume;
+
+                            oscillator.start();
+                            oscillator.stop(_audioCtx.currentTime + duration / 1000);
+                        };
+                    })(),
+
+                    /**
+                     * Sends a message to a specific WakaPAC component by id.
+                     * Equivalent to calling wakaPAC.sendMessage() directly, but usable
+                     * in binding expressions via data-pac-bind.
+                     * @param {string} pacId            - The data-pac-id of the target component
+                     * @param {number} message          - Message identifier (e.g. wakaPAC.MSG_USER + 1)
+                     * @param {number} [wParam=0]       - First message parameter (integer)
+                     * @param {number} [lParam=0]       - Second message parameter (integer)
+                     * @param {Object} [extended={}]    - Additional data passed via event.detail
+                     * @returns {void}
+                     */
+                    sendMessage: (pacId, message, wParam = 0, lParam = 0, extended = {}) => {
+                        wakaPAC.sendMessage(pacId, message, wParam, lParam, extended);
+                    },
+
+                    /**
+                     * Sends a message to the parent component of the given container.
+                     * Equivalent to calling wakaPAC.sendMessageToParent() directly, but usable
+                     * in binding expressions via data-pac-bind.
+                     * @param {string} pacId            - The data-pac-id of the child component
+                     * @param {number} message          - Message identifier (e.g. wakaPAC.MSG_USER + 1)
+                     * @param {number} [wParam=0]       - First message parameter (integer)
+                     * @param {number} [lParam=0]       - Second message parameter (integer)
+                     * @param {Object} [extended={}]    - Additional data passed via event.detail
+                     * @returns {void}
+                     */
+                    sendMessageToParent: (pacId, message, wParam = 0, lParam = 0, extended = {}) => {
+                        wakaPAC.sendMessageToParent(pacId, message, wParam, lParam, extended);
+                    },
+
+                    /**
+                     * Broadcasts a message to all active WakaPAC components.
+                     * Equivalent to calling wakaPAC.broadcastMessage() directly, but usable
+                     * in binding expressions via data-pac-bind.
+                     * @param {number} message          - Message identifier (e.g. wakaPAC.MSG_USER + 1)
+                     * @param {number} [wParam=0]       - First message parameter (integer)
+                     * @param {number} [lParam=0]       - Second message parameter (integer)
+                     * @param {Object} [extended={}]    - Additional data passed via event.detail
+                     * @returns {void}
+                     */
+                    broadcastMessage: (message, wParam = 0, lParam = 0, extended = {}) => {
+                        wakaPAC.broadcastMessage(message, wParam, lParam, extended);
+                    }
+                }
+            };
+        }
+    });
+
+    // ========================================================================
     // MAIN FRAMEWORK
     // ========================================================================
 
@@ -8864,8 +9224,6 @@
      * @param {string} selector - CSS selector ('#id' returns single, '.class' returns array)
      * @param {Object} [abstraction={}] - Reactive data model with properties and methods
      * @param {Object} [options={}] - Configuration options
-     * @param {string} [options.updateMode='immediate'] - Update strategy ('immediate' or 'debounced')
-     * @param {number} [options.delay=300] - Debounce delay in milliseconds
      * @returns {Object|Object[]|undefined} Single abstraction for ID, array for class/tag selectors
      */
     function wakaPAC(selector, abstraction = {}, options = {}) {
@@ -8878,14 +9236,28 @@
         // Initialize automatic cleanup observer
         CleanupObserver.initialize();
 
+        // Allow passing a pac-id directly instead of a CSS selector
+        const originalSelector = selector;
+        let isPacId = false;
+
+        if (
+            !selector.startsWith('#') &&
+            !selector.startsWith('.') &&
+            !selector.startsWith('[') &&
+            !/\s/.test(selector)
+        ) {
+            selector = `[data-pac-id="${selector}"]`;
+            isPacId = true;
+        }
+
         // Fetch all matching elements (supports both ID and class selectors)
         const containers = document.querySelectorAll(selector);
 
         // Determine if selector is for multiple elements (class, attribute, tag)
-        const isMultiSelector = !selector.startsWith('#');
+        const isMultiSelector = !selector.startsWith('#') && !isPacId;
 
         if (containers.length === 0) {
-            console.warn(`wakaPAC: No elements found for selector "${selector}"`);
+            console.warn(`wakaPAC: No elements found for selector "${originalSelector}"`);
             return isMultiSelector ? [] : undefined;
         }
 
@@ -8921,8 +9293,76 @@
                 delay: 300
             }, options);
 
+            // Create a per-container copy so hydration does not bleed across containers
+            const containerAbstraction = isMultiSelector ? Object.assign({}, abstraction) : abstraction;
+
+            // Hydrate fields into abstraction before context is created
+            if (config?.hydrate === true) {
+                // Read initial state from data-pac-state attribute if present
+                const pacState = container.dataset.pacState;
+
+                if (pacState) {
+                    try {
+                        Object.assign(abstraction, JSON.parse(pacState));
+                    } catch (e) {
+                        console.warn('WakaPAC: Failed to parse data-pac-state:', e);
+                    }
+                }
+
+                // Scan data-pac-field elements and add to abstraction
+                container.querySelectorAll('[data-pac-field]').forEach(el => {
+                    // Element belongs to another container. Skip.
+                    if (!Utils.belongsToPacContainer(container, el)) {
+                        return;
+                    }
+
+                    // Fetch name attribute
+                    const name = el.getAttribute('name');
+
+                    // No name attribute exists. Skip.
+                    if (!name) {
+                        return;
+                    }
+
+                    switch (el.type) {
+                        case 'checkbox':
+                            // Read checked state as boolean
+                            Utils.setNestedProperty(name, el.checked, abstraction);
+                            break;
+
+                        case 'number':
+                        case 'range':
+                            // Convert numeric input values to actual numbers
+                            Utils.setNestedProperty(name, el.value !== '' ? Number(el.value) : '', abstraction);
+                            break;
+
+                        case 'radio':
+                            // Initialize the group property with an empty string on first encounter
+                            if (Utils.getNestedValue(abstraction, name) === undefined) {
+                                Utils.setNestedProperty(name, '', abstraction);
+                            }
+
+                            // Only overwrite if this radio button is the selected one
+                            if (el.checked) {
+                                Utils.setNestedProperty(name, el.value, abstraction);
+                            }
+
+                            break;
+
+                        case 'file':
+                            // File inputs cannot be hydrated — skip
+                            break;
+
+                        default:
+                            // For all other field types, read the current value or fall back to the HTML attribute
+                            Utils.setNestedProperty(name, el.value ?? el.getAttribute('value'), abstraction);
+                            break;
+                    }
+                });
+            }
+
             // Create context for this container
-            const context = new Context(container, abstraction, config);
+            const context = new Context(container, containerAbstraction, config);
 
             // Register using pac-id as key (not selector)
             window.PACRegistry.register(pacId, context);
@@ -8942,15 +9382,114 @@
                 try {
                     context.abstraction.init.call(context.abstraction);
                 } catch (error) {
-                    console.error('Error in init() method:', error);
+                    console.warn('Error in init() method:', error);
                 }
             }
 
-            // Synchronously flush any paint requests queued during observation
-            // to avoid a blank frame before the first animation frame fires
-            if (container instanceof HTMLCanvasElement) {
-                _invalidateRect(container._pacId);
-                _flushPaintQueue();
+            const isCanvasElement = container instanceof HTMLCanvasElement;
+            const contextType = isCanvasElement ? (container.dataset.pacContext || '2d') : '2d';
+
+            if (isCanvasElement) {
+                // Synchronously flush any paint requests queued during observation
+                // to avoid a blank frame before the first animation frame fires.
+                // Only applies to 2D canvases — WebGL canvases use MSG_PAINT via
+                // the render loop or manage their own redraws.
+                if (contextType === '2d') {
+                    _invalidateRect(container._pacId);
+                    _flushPaintQueue();
+                }
+
+                // Setup renderloop for webgl if renderLoop is set to true
+                if (contextType !== '2d' && config.renderLoop === true) {
+                    const loop = function () {
+                        if (!_renderLoops.has(pacId)) {
+                            return; // Loop was canceled — component destroyed
+                        }
+
+                        // Do not dispatch MSG_PAINT before MSG_WEBGL_READY has been sent —
+                        // shaders and GL resources are not yet initialized at that point.
+                        const _component = window.PACRegistry.getByElement(container);
+
+                        if (_component && _component._webglReadySent) {
+                            DomUpdateTracker.dispatchToContainer(container, DomUpdateTracker.wrapDomEventAsMessage(
+                                MSG_PAINT,
+                                null,
+                                0,
+                                0
+                            ));
+                        }
+
+                        _renderLoops.set(pacId, requestAnimationFrame(loop));
+                    };
+
+                    _renderLoops.set(pacId, requestAnimationFrame(loop));
+                }
+
+                // Attach WebGL context loss/restore handlers for all WebGL canvases,
+                // regardless of whether renderLoop is active.
+                if (contextType !== '2d') {
+                    container.addEventListener('webglcontextlost', function (e) {
+                        // Calling preventDefault() is required — without it the browser
+                        // will not attempt to restore the context after it is lost.
+                        e.preventDefault();
+
+                        // Pause the render loop while the context is unavailable.
+                        // Dispatching MSG_PAINT to a lost context produces GL errors and
+                        // is meaningless — suspend the loop until the context is restored.
+                        if (_renderLoops.has(pacId)) {
+                            cancelAnimationFrame(_renderLoops.get(pacId));
+                            // Use a sentinel value to indicate suspended (not destroyed).
+                            // The loop check uses _renderLoops.has(), so we must keep the
+                            // key present to allow resumption on restore.
+                            _renderLoops.set(pacId, null);
+                        }
+
+                        // Notify the component so it can null out all GL resource handles.
+                        // All WebGL objects (buffers, textures, programs, etc.) are invalid
+                        // after context loss and must not be used until MSG_WEBGL_CONTEXT_RESTORED.
+                        DomUpdateTracker.dispatchToContainer(container, DomUpdateTracker.wrapDomEventAsMessage(
+                            MSG_WEBGL_CONTEXT_LOST,
+                            e,
+                            0,
+                            0
+                        ));
+                    });
+
+                    container.addEventListener('webglcontextrestored', function (e) {
+                        // The context has been recreated by the browser — all GL resources
+                        // must be rebuilt from scratch (shaders, buffers, textures, etc.).
+                        // Provide the fresh context on event.glContext, mirroring MSG_WEBGL_READY.
+                        DomUpdateTracker.dispatchToContainer(container, DomUpdateTracker.wrapDomEventAsMessage(
+                            MSG_WEBGL_CONTEXT_RESTORED,
+                            e,
+                            0,
+                            0,
+                            {
+                                glContext: wakaPAC.getDC(pacId)
+                            }
+                        ));
+
+                        // Resume the render loop if it was running before context loss.
+                        if (_renderLoops.has(pacId) && _renderLoops.get(pacId) === null) {
+                            const loop = function () {
+                                if (!_renderLoops.has(pacId)) {
+                                    return;
+                                }
+
+                                DomUpdateTracker.dispatchToContainer(container, DomUpdateTracker.wrapDomEventAsMessage(
+                                    MSG_PAINT,
+                                    null,
+                                    0,
+                                    0
+                                ));
+
+                                _renderLoops.set(pacId, requestAnimationFrame(loop));
+                            };
+
+                            _renderLoops.set(pacId, requestAnimationFrame(loop));
+                        }
+                    });
+                }
             }
 
             // Signal that a new component is ready
@@ -8981,7 +9520,7 @@
         }
 
         // Create a custom wakapac event that carries Win32-style message data.
-        const event = new CustomEvent('pac:event', {
+        const event = new CustomEvent(EV_PAC_EVENT, {
             bubbles: false,
             cancelable: true,
             detail: extended
@@ -8999,6 +9538,15 @@
 
         // Return the constructed message for delivery by postMessage or sendMessage.
         return event;
+    };
+
+    /**
+     * Resolve a WakaPAC component by its data-pac-id.
+     * @param {string} pacId Identifier of the target container
+     * @returns {HTMLElement|null} The resolved container element, or null
+     */
+    wakaPAC.getContextByPacId = function (pacId) {
+        return window.PACRegistry.get(pacId);
     };
 
     /**
@@ -9513,26 +10061,30 @@
      * All hooks are optional. Duplicate registrations are silently ignored.
      *
      * @param {Object} library - Library to integrate (e.g. wakaSync)
+     * @param {Object} [options={}] - Options forwarded to createPacPlugin (e.g. { locale: 'nl-NL' })
      * @throws {Error} If lib does not implement createPacPlugin()
      */
-    wakaPAC.use = function(library) {
-        // Prevent duplicate registration
-        if (_registeredLibs.indexOf(library) !== -1) {
-            return;
+    wakaPAC.use = function(library, options = {}) {
+        _registerUnit(library, options);
+    };
+
+    /**
+     * Retrieves the function set exported by a registered unit.
+     * Accepts either the unit's string name or the original library object
+     * passed to wakaPAC.use() — both forms return the same result.
+     * @param {string|Object} name - Unit name (e.g. 'CollectionUtils') or library reference (e.g. CollectionUtils)
+     * @returns {Object|null} The unit's function set, or null if not found
+     */
+    wakaPAC.unit = function (name) {
+        if (typeof name === 'object') {
+            name = _unitNames.get(name) ?? null;
+
+            if (!name) {
+                return null;
+            }
         }
 
-        // The library must expose a factory method that returns
-        // a plugin descriptor. wakaPAC passes itself as the argument,
-        // so the library never needs a hard reference to wakaPAC.
-        if (typeof library.createPacPlugin !== 'function') {
-            throw new Error('wakaPAC.use(): library must implement createPacPlugin()');
-        }
-
-        // Add to registered libs array to prevent duplicates
-        _registeredLibs.push(library);
-
-        // Create the plugin and store
-        _plugins.push(library.createPacPlugin(wakaPAC));
+        return _units.get(name) ?? null;
     };
 
     // ========================================================================
@@ -9624,15 +10176,124 @@
     };
 
     // ========================================================================
+    // METAFILE BUILDER
+    // ========================================================================
+
+    /**
+     * Fluent display list builder.
+     *
+     * Provides a chainable API for constructing display lists (metafiles) without
+     * manually pushing raw op objects onto an array. Mirrors the CanvasRenderingContext2D
+     * API so drawing code reads naturally.
+     *
+     * Usage:
+     *   const dl = new wakaPAC.MetaFile()
+     *       .setFillStyle('#4e79a7')
+     *       .beginPath()
+     *       .arc(cx, cy, r, startAngle, endAngle)
+     *       .fill()
+     *       .build();
+     *
+     * For conditional ops, break the chain:
+     *   const dl = new wakaPAC.MetaFile();
+     *   dl.setFillStyle('#4e79a7').beginPath().arc(cx, cy, r, 0, Math.PI * 2).fill();
+     *   if (o.gap > 0) {
+     *       dl.setStrokeStyle('#ffffff').setLineWidth(o.gap).stroke();
+     *   }
+     *   return dl.build();
+     */
+    function MetaFile() {
+        this._ops = [];
+    }
+
+    // Single-value setters: method(value) → push {op, value}
+    [
+        'setFillStyle', 'setStrokeStyle', 'setLineWidth', 'setLineCap', 'setLineJoin',
+        'setLineDashOffset', 'setMiterLimit', 'setGlobalAlpha', 'setGlobalComposite',
+        'setFont', 'setTextAlign', 'setTextBaseline', 'setTextRendering',
+        'setLetterSpacing', 'setWordSpacing', 'setLineDash',
+    ].forEach(function (name) {
+        MetaFile.prototype[name] = function (value) {
+            this._ops.push({op: name, value});
+            return this;
+        };
+    });
+
+    // No-argument state ops: method() → push {op}
+    [
+        'save', 'restore', 'beginPath', 'closePath', 'stroke', 'resetTransform', 'clearShadow',
+    ].forEach(function (name) {
+        MetaFile.prototype[name] = function () {
+            this._ops.push({op: name});
+            return this;
+        };
+    });
+
+    // Other ops
+    MetaFile.prototype.moveTo = function(x, y) { this._ops.push({op: 'moveTo', x, y}); return this; };
+    MetaFile.prototype.lineTo = function(x, y) { this._ops.push({op: 'lineTo', x, y}); return this; };
+    MetaFile.prototype.arc = function(cx, cy, r, startAngle, endAngle, ccw = false) { this._ops.push({op: 'arc', cx, cy, r, startAngle, endAngle, ccw}); return this; };
+    MetaFile.prototype.arcTo = function(x1, y1, x2, y2, r) { this._ops.push({op: 'arcTo', x1, y1, x2, y2, r}); return this; };
+    MetaFile.prototype.ellipse = function(cx, cy, rx, ry, rotation, startAngle, endAngle, ccw = false) { this._ops.push({op: 'ellipse', cx, cy, rx, ry, rotation, startAngle, endAngle, ccw}); return this; };
+    MetaFile.prototype.rect = function(x, y, w, h) { this._ops.push({op: 'rect', x, y, w, h}); return this; };
+    MetaFile.prototype.roundRect = function(x, y, w, h, r) { this._ops.push({op: 'roundRect', x, y, w, h, r}); return this; };
+    MetaFile.prototype.fill = function(rule = 'nonzero') { this._ops.push({op: 'fill', rule}); return this; };
+    MetaFile.prototype.clip = function(rule = 'nonzero') { this._ops.push({op: 'clip', rule}); return this; };
+    MetaFile.prototype.fillRect = function(x, y, w, h) { this._ops.push({op: 'fillRect', x, y, w, h}); return this; };
+    MetaFile.prototype.strokeRect = function(x, y, w, h) { this._ops.push({op: 'strokeRect', x, y, w, h}); return this; };
+    MetaFile.prototype.clearRect = function(x, y, w, h) { this._ops.push({op: 'clearRect', x, y, w, h}); return this; };
+    MetaFile.prototype.fillText = function(text, x, y, maxWidth) { this._ops.push({op: 'fillText', text, x, y, maxWidth}); return this; };
+    MetaFile.prototype.strokeText = function(text, x, y, maxWidth) { this._ops.push({op: 'strokeText', text, x, y, maxWidth}); return this; };
+    MetaFile.prototype.bezierCurveTo = function(cp1x, cp1y, cp2x, cp2y, x, y) { this._ops.push({op: 'bezierCurveTo', cp1x, cp1y, cp2x, cp2y, x, y}); return this; };
+    MetaFile.prototype.quadraticCurveTo = function(cpx, cpy, x, y) { this._ops.push({op: 'quadraticCurveTo', cpx, cpy, x, y}); return this; };
+    MetaFile.prototype.drawImage = function(image, dx, dy, dw, dh) { this._ops.push({op: 'drawImage', image, dx, dy, dw, dh}); return this; };
+    MetaFile.prototype.translate = function(x, y) { this._ops.push({op: 'translate', x, y}); return this; };
+    MetaFile.prototype.rotate = function(angle) { this._ops.push({op: 'rotate', angle}); return this; };
+    MetaFile.prototype.scale = function(x, y) { this._ops.push({op: 'scale', x, y}); return this; };
+    MetaFile.prototype.transform = function(a, b, c, d, e, f) { this._ops.push({op: 'transform', a, b, c, d, e, f}); return this; };
+    MetaFile.prototype.setTransform = function(a, b, c, d, e, f) { this._ops.push({op: 'setTransform', a, b, c, d, e, f}); return this; };
+    MetaFile.prototype.setShadow = function(color, blur, offsetX = 0, offsetY = 0) { this._ops.push({op: 'setShadow', color, blur, offsetX, offsetY}); return this; };
+    MetaFile.prototype.setImageSmoothing = function(enabled, quality) { this._ops.push({op: 'setImageSmoothing', enabled, quality}); return this; };
+
+    /**
+     * Appends a hit area op. `shape` is 'rect' or 'sector'; `params` contains
+     * the shape-specific fields (x/y/w/h for rect, cx/cy/r/innerR/startAngle/endAngle
+     * for sector) plus a `data` payload returned by metaFileHitTest on a match.
+     * @param {string} shape
+     * @param {Object} params
+     */
+    MetaFile.prototype.hitArea = function(shape, params) { this._ops.push({op: 'hitArea', shape, ...params}); return this; };
+
+    /**
+     * Returns the completed display list array.
+     * The builder should not be used after calling build().
+     * @returns {Array<Object>}
+     */
+    MetaFile.prototype.build = function() { return this._ops; };
+
+    // ========================================================================
     // PUBLIC PAINT API
     // ========================================================================
 
     /**
-     * Returns the CanvasRenderingContext2D for a canvas PAC container.
+     * Returns the rendering context for a canvas PAC container.
      * Equivalent to Win32 GetDC() — retrieves the drawing context for a window.
-     * Returns null if the container does not exist or is not a <canvas> element.
+     *
+     * The context type is determined by the data-pac-context attribute on the
+     * canvas element (defaults to '2d' if absent):
+     *   '2d'     — returns CanvasRenderingContext2D  (dcAttributes from config)
+     *   'webgl'  — returns WebGLRenderingContext      (glAttributes from config)
+     *   'webgl2' — returns WebGL2RenderingContext     (glAttributes from config)
+     *
+     * Calling getDC() on a WebGL/WebGL2 canvas returns the WebGL context directly.
+     * The dirty-rect clip logic only applies to 2D contexts; WebGL components drive
+     * their own render loop via requestAnimationFrame and do not use invalidateRect.
+     *
+     * Returns null if the container does not exist, is not a <canvas> element, or
+     * if the requested context type is not supported by the browser.
+     *
      * @param {string} pacId
-     * @returns {CanvasRenderingContext2D|null}
+     * @returns {CanvasRenderingContext2D|WebGLRenderingContext|WebGL2RenderingContext|null}
      */
     wakaPAC.getDC = function (pacId) {
         const container = this.getContainerByPacId(pacId);
@@ -9641,25 +10302,36 @@
             return null;
         }
 
-        const context = window.PACRegistry.get(pacId);
-        const attributes = context?.config?.dcAttributes;
-        const ctx = container.getContext('2d', attributes);
+        // Resolve context attributes from component config
+        const pacContext = window.PACRegistry.get(pacId);
+        const contextType = container.dataset.pacContext || '2d';
+        const attributes = pacContext?.config?.dcAttributes;
 
-        // If we're inside a MSG_PAINT dispatch, automatically restrict drawing
-        // to the dirty region — equivalent to Win32 BeginPaint() setting up a
-        // clip region over the update region.  Callers must balance this with a
-        // matching releaseDC() call so the saved state is properly unwound.
-        const entry = _dirtyCanvases.get(pacId);
+        // Delegate context acquisition to getDCFromElement
+        const ctx = this.getDCFromElement(container, attributes);
 
-        if (entry?.painting && entry.rects?.length) {
-            ctx.save();
-            ctx.beginPath();
+        if (!ctx) {
+            return null;
+        }
 
-            for (const r of entry.rects) {
-                ctx.rect(r.x, r.y, r.width, r.height);
+        // For 2D contexts only: if we're inside a MSG_PAINT dispatch, restrict
+        // drawing to the dirty region — equivalent to Win32 BeginPaint() setting
+        // up a clip region over the update region. Callers must balance this with
+        // a matching releaseDC() call so the saved state is properly unwound.
+        // WebGL contexts drive their own render loop and do not use this mechanism.
+        if (contextType === '2d') {
+            const entry = _dirtyCanvases.get(pacId);
+
+            if (entry?.painting && entry.rects?.length) {
+                ctx.save();
+                ctx.beginPath();
+
+                for (const r of entry.rects) {
+                    ctx.rect(r.x, r.y, r.width, r.height);
+                }
+
+                ctx.clip();
             }
-
-            ctx.clip();
         }
 
         return ctx;
@@ -9668,13 +10340,20 @@
     /**
      * Releases a device context previously obtained with getDC().
      * Must be called once for every getDC() call made inside a MSG_PAINT
-     * handler; outside of paint cycles this is a no-op and safe to call
-     * unconditionally.
-     * @param {CanvasRenderingContext2D} ctx - the context returned by getDC()
+     * handler for 2D canvases; outside of paint cycles this is a no-op and
+     * safe to call unconditionally.
+     * For WebGL/WebGL2 contexts this is always a no-op — they do not use
+     * the dirty-rect clip mechanism.
+     * @param {CanvasRenderingContext2D|WebGLRenderingContext|WebGL2RenderingContext} ctx - the context returned by getDC()
      */
     wakaPAC.releaseDC = function (ctx) {
         // Bail if no ctx passed
         if (!ctx) {
+            return;
+        }
+
+        // WebGL contexts do not participate in the dirty-rect clip mechanism
+        if (ctx instanceof WebGLRenderingContext || ctx instanceof WebGL2RenderingContext) {
             return;
         }
 
@@ -9695,6 +10374,74 @@
     };
 
     /**
+     * Creates an off-screen context sized to match the canvas backing store.
+     * The context type matches the source canvas's data-pac-context attribute,
+     * so a WebGL2 canvas produces a WebGL2 OffscreenCanvas context.
+     * The component owns the returned DC; recreate it in MSG_SIZE after resizing.
+     * @param {string} pacId
+     * @returns {OffscreenCanvasRenderingContext2D|WebGLRenderingContext|WebGL2RenderingContext|null}
+     */
+    wakaPAC.createCompatibleDC = function(pacId) {
+        const container = this.getContainerByPacId(pacId);
+
+        if (!container || !(container instanceof HTMLCanvasElement)) {
+            return null;
+        }
+
+        const contextType = container.dataset.pacContext || '2d';
+        const pacContext = window.PACRegistry.get(pacId);
+        const attributes = pacContext?.config?.dcAttributes;
+
+        return new OffscreenCanvas(container.width, container.height).getContext(contextType, attributes);
+    };
+
+    /**
+     * Releases a compatible DC. Zeros the OffscreenCanvas dimensions to free
+     * the pixel buffer promptly rather than waiting on GC.
+     * @param {CanvasRenderingContext2D} dc
+     */
+    wakaPAC.deleteCompatibleDC = function(dc) {
+        // OffscreenCanvas has no explicit destroy method — nulling the canvas
+        // width and height releases the pixel buffer immediately in most engines,
+        // allowing the GC to reclaim the backing store without waiting for a
+        // full collection cycle.
+        if (!dc) {
+            return;
+        }
+
+        const offscreen = dc.canvas;
+
+        if (offscreen instanceof OffscreenCanvas) {
+            offscreen.width  = 0;
+            offscreen.height = 0;
+        }
+    };
+
+    /**
+     * Returns the rendering context for any canvas element — not tied to
+     * a PAC container. Use this to get a drawing context for canvas elements
+     * inside foreach items or other non-container canvases.
+     *
+     * The context type is determined by the data-pac-context attribute on the
+     * canvas element (defaults to '2d' if absent):
+     *   '2d'     — returns CanvasRenderingContext2D
+     *   'webgl'  — returns WebGLRenderingContext
+     *   'webgl2' — returns WebGL2RenderingContext
+     *
+     * @param {HTMLCanvasElement} canvasElement
+     * @param {Object} [attributes] - Context attributes passed to getContext()
+     * @returns {CanvasRenderingContext2D|WebGLRenderingContext|WebGL2RenderingContext|null}
+     */
+    wakaPAC.getDCFromElement = function(canvasElement, attributes) {
+        if (!canvasElement || !(canvasElement instanceof HTMLCanvasElement)) {
+            return null;
+        }
+
+        const contextType = canvasElement.dataset.pacContext || '2d';
+        return canvasElement.getContext(contextType, attributes);
+    };
+
+    /**
      * Marks a canvas PAC container as needing repaint.
      * @param {string} pacId - data-pac-id of the target canvas container
      * @param {{x:number, y:number, width:number, height:number}|null} [rect]
@@ -9703,6 +10450,51 @@
      */
     wakaPAC.invalidateRect = function(pacId, rect) {
         _invalidateRect(pacId, rect || null);
+    };
+
+    /**
+     * Schedules a single MSG_PAINT for a WebGL canvas component on the next
+     * animation frame. Equivalent to invalidateRect() for 2D canvases — use
+     * this to trigger an on-demand redraw on a WebGL canvas that does not use
+     * renderLoop: true.
+     *
+     * Safe to call multiple times before the next frame — only one MSG_PAINT
+     * will fire, since requestAnimationFrame deduplicates same-frame callbacks.
+     *
+     * Has no effect if the container does not exist, is not a canvas, or is
+     * not a WebGL/WebGL2 canvas.
+     *
+     * @param {string} pacId - data-pac-id of the target canvas container
+     */
+    wakaPAC.requestRender = function(pacId) {
+        const container = this.getContainerByPacId(pacId);
+
+        // Bail if the container does not exist or is not a canvas element
+        if (!container || !(container instanceof HTMLCanvasElement)) {
+            return;
+        }
+
+        const contextType = container.dataset.pacContext || '2d';
+
+        // requestRender is for WebGL canvases only — 2D canvases use invalidateRect()
+        if (contextType === '2d') {
+            console.warn(`wakaPAC.requestRender: "${pacId}" is a 2D canvas — use invalidateRect() instead.`);
+            return;
+        }
+
+        requestAnimationFrame(() => {
+            // Guard: component may have been destroyed before the frame fired
+            if (!window.PACRegistry.get(pacId)) {
+                return;
+            }
+
+            DomUpdateTracker.dispatchToContainer(container, DomUpdateTracker.wrapDomEventAsMessage(
+                MSG_PAINT,
+                null,
+                0,
+                0
+            ));
+        });
     };
 
     /**
@@ -9738,66 +10530,87 @@
     };
 
     /**
-     * Creates an off-screen context sized to match the canvas backing store.
-     * The component owns the returned DC; recreate it in MSG_SIZE after resizing.
-     * @param {string} pacId
-     * @returns {CanvasRenderingContext2D|null}
+     * Performs a bit-block transfer from srcDC to destDC.
+     * Equivalent to Win32 BitBlt() — copies a rectangle of pixels from the source
+     * to the destination at 1:1 scale. No stretching or compression is performed.
+     *
+     * cx/cy define the size of the rectangle copied; the same dimensions apply to
+     * both the source and the destination. sx/sy define the top-left corner of the
+     * source rectangle; omit to copy from (0, 0).
+     *
+     * Supports mixed 2D ↔ WebGL/WebGL2 copies:
+     *
+     *   2D   → 2D     drawImage() — straightforward
+     *   WebGL → 2D    drawImage() on the WebGL canvas — requires preserveDrawingBuffer: true
+     *                 in dcAttributes, otherwise the copy produces a blank result.
+     *   2D   → WebGL  texImage2D() on the currently bound TEXTURE_2D — caller must
+     *                 bind the target texture before calling bitBlt().
+     *   WebGL → WebGL drawImage() via the source canvas — requires preserveDrawingBuffer: true.
+     *
+     * @param {CanvasRenderingContext2D|WebGLRenderingContext|WebGL2RenderingContext} destDC
+     * @param {CanvasRenderingContext2D|WebGLRenderingContext|WebGL2RenderingContext} srcDC
+     * @param {number} dx - Destination X
+     * @param {number} dy - Destination Y
+     * @param {number} [cx] - Width of the rectangle to copy. Defaults to full source width
+     * @param {number} [cy] - Height of the rectangle to copy. Defaults to full source height
+     * @param {number} [sx=0] - Source X offset
+     * @param {number} [sy=0] - Source Y offset
      */
-    wakaPAC.createCompatibleDC = function(pacId) {
-        const container = this.getContainerByPacId(pacId);
-
-        if (!container || !(container instanceof HTMLCanvasElement)) {
-            return null;
-        }
-
-        return /** @type {CanvasRenderingContext2D} */ (new OffscreenCanvas(container.width, container.height).getContext('2d'));
-    };
-
-    /**
-     * Releases a compatible DC. Zeros the OffscreenCanvas dimensions to free
-     * the pixel buffer promptly rather than waiting on GC.
-     * @param {CanvasRenderingContext2D} dc
-     */
-    wakaPAC.deleteCompatibleDC = function(dc) {
-        // OffscreenCanvas has no explicit destroy method — nulling the canvas
-        // width and height releases the pixel buffer immediately in most engines,
-        // allowing the GC to reclaim the backing store without waiting for a
-        // full collection cycle.
-        if (!dc) {
-            return;
-        }
-
-        const offscreen = dc.canvas;
-
-        if (offscreen instanceof OffscreenCanvas) {
-            offscreen.width  = 0;
-            offscreen.height = 0;
-        }
-    };
-
-    /**
-     * Blits srcDC onto destDC at (dx, dy). Optional dw/dh stretch the source;
-     * omit to copy at the source's natural dimensions.
-     * @param {CanvasRenderingContext2D} destDC
-     * @param {CanvasRenderingContext2D} srcDC
-     * @param {number} dx
-     * @param {number} dy
-     * @param {number} [dw]
-     * @param {number} [dh]
-     */
-    wakaPAC.bitBlt = function(destDC, srcDC, dx, dy, dw, dh) {
+    wakaPAC.bitBlt = function(destDC, srcDC, dx, dy, cx, cy, sx = 0, sy = 0) {
         if (!destDC || !srcDC) {
             return;
         }
 
-        const source = srcDC.canvas;
+        const srcCanvas = srcDC.canvas;
+        const w = cx ?? srcCanvas.width;
+        const h = cy ?? srcCanvas.height;
+        const destIsGL = _isWebGLContext(destDC);
 
-        destDC.drawImage(
-            source,
-            dx, dy,
-            dw ?? source.width,
-            dh ?? source.height
-        );
+        if (destIsGL) {
+            // WebGL destination — upload source canvas as a texture.
+            // The caller must have bound the target texture before calling bitBlt().
+            _blitToWebGL(destDC, srcCanvas);
+        } else {
+            // 2D destination — drawImage handles both 2D and WebGL sources.
+            // WebGL sources require preserveDrawingBuffer: true.
+            _blitToCanvas2D(destDC, srcCanvas, sx, sy, w, h, dx, dy, w, h);
+        }
+    };
+
+    /**
+     * Blits srcDC onto destDC at (dx, dy) scaled to (dw, dh).
+     * Unlike bitBlt, the source is always stretched to fill the destination rect.
+     * Use this when the offscreen DC dimensions differ from the target canvas.
+     *
+     * Supports the same mixed 2D ↔ WebGL/WebGL2 copy paths as bitBlt().
+     * See bitBlt() for preserveDrawingBuffer and texture-binding requirements.
+     *
+     * @param {CanvasRenderingContext2D|WebGLRenderingContext|WebGL2RenderingContext} destDC
+     * @param {CanvasRenderingContext2D|WebGLRenderingContext|WebGL2RenderingContext} srcDC
+     * @param {number} dx - Destination X
+     * @param {number} dy - Destination Y
+     * @param {number} dw - Destination width
+     * @param {number} dh - Destination height
+     */
+    wakaPAC.stretchBlt = function(destDC, srcDC, dx, dy, dw, dh) {
+        if (!destDC || !srcDC) {
+            return;
+        }
+
+        const srcCanvas = srcDC.canvas;
+        const destIsGL = _isWebGLContext(destDC);
+
+        if (destIsGL) {
+            // WebGL destination — upload source canvas as a texture.
+            // The caller must have bound the target texture before calling stretchBlt().
+            // dx, dy, dw, dh are ignored; scaling is the caller's responsibility
+            // via their shader and geometry.
+            _blitToWebGL(destDC, srcCanvas);
+        } else {
+            // 2D destination — drawImage handles stretching natively.
+            // WebGL sources require preserveDrawingBuffer: true.
+            _blitToCanvas2D(destDC, srcCanvas, 0, 0, srcCanvas.width, srcCanvas.height, dx, dy, dw, dh);
+        }
     };
 
     /**
@@ -9806,7 +10619,7 @@
      * @param {number} width  - New backing store width in pixels
      * @param {number} height - New backing store height in pixels
      */
-    wakaPAC.resizeCanvas = function(pacId, width, height) {
+    wakaPAC.resizeCanvas = function (pacId, width, height) {
         // Fetch the container
         const container = this.getContainerByPacId(pacId);
 
@@ -9822,11 +10635,17 @@
         }
 
         // Resize the backing store; existing pixel data is cleared by the browser
-        container.width  = width;
+        container.width = width;
         container.height = height;
 
-        // Schedule a repaint — the canvas content is invalid after every resize
-        _invalidateRect(pacId, null);
+        // Schedule a repaint for 2D canvases — the canvas content is invalid after
+        // every resize. WebGL canvases drive their own render loop via
+        // requestAnimationFrame and do not use the dirty rect / MSG_PAINT mechanism.
+        const contextType = container.dataset.pacContext || '2d';
+
+        if (contextType === '2d') {
+            _invalidateRect(pacId, null);
+        }
     };
 
     /**
@@ -9988,12 +10807,297 @@
         };
     };
 
-    // ========================================================================
-    // EXPORTS
-    // ========================================================================
+    /**
+     * Executes a display list (metafile) onto a canvas context.
+     * Equivalent to Win32's PlayEnhMetaFile() — plays back a recorded sequence
+     * of drawing operations produced by ChartUtils or any other display list producer.
+     *
+     * The offset is applied via ctx.translate so all coordinates in the display
+     * list are naturally relative to (0, 0). State is saved and restored around
+     * the entire playback so the caller's context is unaffected.
+     *
+     * Non-drawing instructions (op: 'hitArea') are silently skipped.
+     *
+     * @param {CanvasRenderingContext2D} ctx
+     * @param {Array<Object>} dl - Display list returned by a chart or drawing function
+     * @param {number} [offsetX=0] - X offset to apply to the entire display list
+     * @param {number} [offsetY=0] - Y offset to apply to the entire display list
+     */
+    wakaPAC.playMetaFile = function(ctx, dl, offsetX = 0, offsetY = 0) {
+        if (!ctx || !Array.isArray(dl) || dl.length === 0) {
+            return;
+        }
+
+        ctx.save();
+
+        if (offsetX !== 0 || offsetY !== 0) {
+            ctx.translate(offsetX, offsetY);
+        }
+
+        for (let i = 0, len = dl.length; i < len; i++) {
+            const op = dl[i];
+
+            // Direct property assignments: op.value → ctx[property]
+            if (op.op in _metaFileProps) {
+                ctx[_metaFileProps[op.op]] = op.value;
+                continue;
+            }
+
+            // Direct no-argument method calls: ctx.method()
+            if (op.op in _metaFileMethods) {
+                ctx[_metaFileMethods[op.op]]();
+                continue;
+            }
+
+            // Ops requiring custom argument mapping
+            switch (op.op) {
+                case 'moveTo':
+                    ctx.moveTo(op.x, op.y);
+                    break;
+
+                case 'lineTo':
+                    ctx.lineTo(op.x, op.y);
+                    break;
+
+                case 'arc':
+                    ctx.arc(op.cx, op.cy, op.r, op.startAngle, op.endAngle, op.ccw ?? false);
+                    break;
+
+                case 'arcTo':
+                    ctx.arcTo(op.x1, op.y1, op.x2, op.y2, op.r);
+                    break;
+
+                case 'ellipse':
+                    ctx.ellipse(op.cx, op.cy, op.rx, op.ry, op.rotation, op.startAngle, op.endAngle, op.ccw ?? false);
+                    break;
+
+                case 'rect':
+                    ctx.rect(op.x, op.y, op.w, op.h);
+                    break;
+
+                case 'roundRect':
+                    ctx.roundRect(op.x, op.y, op.w, op.h, op.r);
+                    break;
+
+                case 'bezierCurveTo':
+                    ctx.bezierCurveTo(op.cp1x, op.cp1y, op.cp2x, op.cp2y, op.x, op.y);
+                    break;
+
+                case 'quadraticCurveTo':
+                    ctx.quadraticCurveTo(op.cpx, op.cpy, op.x, op.y);
+                    break;
+
+                case 'fill':
+                    ctx.fill(op.rule ?? 'nonzero');
+                    break;
+
+                case 'clip':
+                    ctx.clip(op.rule ?? 'nonzero');
+                    break;
+
+                case 'fillRect':
+                    ctx.fillRect(op.x, op.y, op.w, op.h);
+                    break;
+
+                case 'strokeRect':
+                    ctx.strokeRect(op.x, op.y, op.w, op.h);
+                    break;
+
+                case 'clearRect':
+                    ctx.clearRect(op.x, op.y, op.w, op.h);
+                    break;
+
+                case 'fillText':
+                    ctx.fillText(op.text, op.x, op.y, op.maxWidth);
+                    break;
+
+                case 'strokeText':
+                    ctx.strokeText(op.text, op.x, op.y, op.maxWidth);
+                    break;
+
+                case 'drawImage':
+                    ctx.drawImage(op.image, op.dx, op.dy, op.dw, op.dh);
+                    break;
+
+                case 'translate':
+                    ctx.translate(op.x, op.y);
+                    break;
+
+                case 'rotate':
+                    ctx.rotate(op.angle);
+                    break;
+
+                case 'scale':
+                    ctx.scale(op.x, op.y);
+                    break;
+
+                case 'transform':
+                    ctx.transform(op.a, op.b, op.c, op.d, op.e, op.f);
+                    break;
+
+                case 'setTransform':
+                    ctx.setTransform(op.a, op.b, op.c, op.d, op.e, op.f);
+                    break;
+
+                case 'setLineDash':
+                    ctx.setLineDash(op.value);
+                    break;
+
+                case 'setShadow':
+                    ctx.shadowColor = op.color;
+                    ctx.shadowBlur = op.blur;
+                    ctx.shadowOffsetX = op.offsetX ?? 0;
+                    ctx.shadowOffsetY = op.offsetY ?? 0;
+                    break;
+
+                case 'clearShadow':
+                    ctx.shadowColor = 'transparent';
+                    ctx.shadowBlur = 0;
+                    ctx.shadowOffsetX = 0;
+                    ctx.shadowOffsetY = 0;
+                    break;
+
+                case 'setImageSmoothing':
+                    ctx.imageSmoothingEnabled = op.enabled;
+
+                    if (op.quality) {
+                        ctx.imageSmoothingQuality = op.quality;
+                    }
+
+                    break;
+
+                case 'hitArea':
+                    break; // Non-drawing — skip
+
+                default:
+                    console.warn(`wakaPAC.playMetaFile: unknown op "${op.op}"`);
+                    break;
+            }
+        }
+
+        ctx.restore();
+    };
+
+    /**
+     * Hit-tests a point against the hitArea entries in a display list.
+     * Returns the data payload of the first matching hit area, or null if none matched.
+     *
+     * Supported hitArea shapes:
+     *   rect   — { x, y, w, h } axis-aligned rectangle
+     *   sector — { cx, cy, r, startAngle, endAngle } pie/donut sector
+     *
+     * Pass the same offsetX/offsetY that were passed to playMetaFile — the function
+     * subtracts them from the test point internally so the caller works in container
+     * coordinates throughout.
+     *
+     * @param {Array<Object>} dl - Display list to test against
+     * @param {number}        x        - X coordinate to test (container coordinates)
+     * @param {number}        y        - Y coordinate to test (container coordinates)
+     * @param {number}        [offsetX=0] - X offset passed to playMetaFile
+     * @param {number}        [offsetY=0] - Y offset passed to playMetaFile
+     * @returns {*|null} The matching hitArea's data payload, or null
+     */
+    wakaPAC.metaFileHitTest = function (dl, x, y, offsetX = 0, offsetY = 0) {
+        if (!Array.isArray(dl)) {
+            return null;
+        }
+
+        // Translate the test point into display list space
+        const lx = x - offsetX;
+        const ly = y - offsetY;
+
+        for (let i = 0, len = dl.length; i < len; i++) {
+            const op = dl[i];
+
+            if (op.op !== 'hitArea') {
+                continue;
+            }
+
+            const shape = op.shape ?? 'rect';
+
+            switch (shape) {
+                case 'rect':
+                    if (lx >= op.x && lx <= op.x + op.w &&
+                        ly >= op.y && ly <= op.y + op.h) {
+                        return op.data ?? null;
+                    }
+                    break;
+
+                case 'sector': {
+                    // Distance from centre
+                    const dx = lx - op.cx;
+                    const dy = ly - op.cy;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist > op.r) {
+                        break;
+                    }
+
+                    // Inner radius for donut charts — 0 means full pie
+                    if (op.innerR && dist < op.innerR) {
+                        break;
+                    }
+
+                    // Full circle — any point within radius is a hit
+                    if (Math.abs(op.endAngle - op.startAngle) >= Math.PI * 2) {
+                        return op.data ?? null;
+                    }
+
+                    // Angle from centre — atan2 returns [-π, π], normalise to [0, 2π]
+                    let angle = Math.atan2(dy, dx);
+
+                    if (angle < 0) {
+                        angle += Math.PI * 2;
+                    }
+
+                    // Normalise sector angles to [0, 2π] for consistent comparison
+                    let start = op.startAngle % (Math.PI * 2);
+                    let end = op.endAngle % (Math.PI * 2);
+
+                    if (start < 0) {
+                        start += Math.PI * 2;
+                    }
+
+                    if (end < 0) {
+                        end += Math.PI * 2;
+                    }
+
+                    const inSector = start <= end
+                        ? angle >= start && angle <= end
+                        : angle >= start || angle <= end; // wraps past 2π
+
+                    if (inSector) {
+                        return op.data ?? null;
+                    }
+
+                    break;
+                }
+            }
+        }
+
+        return null;
+    };
+
+    /**
+     * Returns true if the point falls within any hitArea entry in the display list.
+     * Equivalent to ptInElement() but for metafile hit areas.
+     * Pass the same offsetX/offsetY that were passed to playMetaFile.
+     * @param {Array<Object>} dl          - Display list to test against
+     * @param {number}        x           - X coordinate to test (container coordinates)
+     * @param {number}        y           - Y coordinate to test (container coordinates)
+     * @param {number}        [offsetX=0] - X offset passed to playMetaFile
+     * @param {number}        [offsetY=0] - Y offset passed to playMetaFile
+     * @returns {boolean}
+     */
+    wakaPAC.ptInMetaFile = function(dl, x, y, offsetX = 0, offsetY = 0) {
+        return wakaPAC.metaFileHitTest(dl, x, y, offsetX, offsetY) !== null;
+    };
 
     // Registry file
     window.PACRegistry = window.PACRegistry || new ComponentRegistry();
+
+    // Export Metafile
+    wakaPAC.MetaFile = MetaFile;
 
     // Export main function to global scope
     window.wakaPAC = wakaPAC;
@@ -10002,18 +11106,20 @@
     Object.assign(wakaPAC, {
         // Message types
         MSG_UNKNOWN, MSG_MOUSEMOVE, MSG_LBUTTONDOWN, MSG_LBUTTONUP, MSG_LBUTTONDBLCLK,
-        MSG_RBUTTONDOWN, MSG_RBUTTONUP, MSG_MBUTTONDOWN, MSG_MBUTTONUP, MSG_LCLICK,
-        MSG_MCLICK, MSG_RCLICK, MSG_CONTEXTMENU, MSG_CHAR, MSG_CHANGE, MSG_SUBMIT, MSG_INPUT,
-        MSG_INPUT_COMPLETE, MSG_SETFOCUS, MSG_KILLFOCUS, MSG_KEYDOWN, MSG_KEYUP, MSG_USER, MSG_TIMER,
-        MSG_ACCEL, MSG_COPY, MSG_PASTE, MSG_MOUSEWHEEL, MSG_GESTURE, MSG_PAINT, MSG_SIZE,
-        MSG_MOUSEENTER, MSG_MOUSELEAVE, MSG_MOUSEENTER_DESCENDANT, MSG_MOUSELEAVE_DESCENDANT,
-        MSG_CAPTURECHANGED, MSG_DRAGENTER, MSG_DRAGOVER, MSG_DRAGLEAVE, MSG_DROP, MSG_DPR_CHANGE,
+        MSG_RBUTTONDOWN, MSG_RBUTTONUP, MSG_MBUTTONDOWN, MSG_MBUTTONUP, MSG_LCLICK, MSG_MCLICK,
+        MSG_RCLICK, MSG_CONTEXTMENU, MSG_CHAR, MSG_CHANGE, MSG_SUBMIT, MSG_INPUT, MSG_INPUT_COMPLETE,
+        MSG_PLUGIN, MSG_SETFOCUS, MSG_KILLFOCUS, MSG_KEYDOWN, MSG_KEYUP, MSG_USER, MSG_TIMER, MSG_ACCEL,
+        MSG_COPY, MSG_PASTE, MSG_MOUSEWHEEL, MSG_GESTURE, MSG_PAINT, MSG_SIZE, MSG_FOREACH_REBUILT,
+        MSG_WEBGL_READY, MSG_WEBGL_CONTEXT_LOST, MSG_WEBGL_CONTEXT_RESTORED, MSG_MOUSEENTER, MSG_MOUSELEAVE,
+        MSG_MOUSEENTER_DESCENDANT, MSG_MOUSELEAVE_DESCENDANT, MSG_CAPTURECHANGED, MSG_DRAGENTER, MSG_DRAGOVER,
+        MSG_DRAGLEAVE, MSG_DROP, MSG_DPR_CHANGE,
 
         // Mouse modifier keys
         MK_LBUTTON, MK_RBUTTON, MK_MBUTTON, MK_SHIFT, MK_CONTROL, MK_ALT,
+        MK_XBUTTON1, MK_XBUTTON2, MK_META,
 
         // Keyboard modifier keys
-        KM_SHIFT, KM_CONTROL, KM_ALT,
+        KM_SHIFT, KM_CONTROL, KM_ALT, KM_META,
 
         // Constants for MSG_SIZE
         SIZE_RESTORED, SIZE_HIDDEN, SIZE_FULLSCREEN,

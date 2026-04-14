@@ -234,6 +234,7 @@
 		 * @param string $className The fully qualified class name to resolve
 		 * @param array $parameters Manual parameters to override autowired dependencies
 		 * @param bool $useServiceProvider Whether to use service provider for instantiation
+		 * @param MethodContextInterface|null $methodContext Optional method context for advanced scenarios
 		 * @return object|null The resolved instance or null if resolution fails
 		 * @throws \RuntimeException When circular dependencies are detected
 		 */
@@ -241,7 +242,7 @@
 			string $className,
 			array $parameters,
 			bool $useServiceProvider,
-			MethodContext $methodContext = null
+			?MethodContextInterface $methodContext = null
 		): ?object {
 			// Special case: Return container instance when requesting the container itself
 			// This allows for self-injection of the container into other services
@@ -266,13 +267,13 @@
 		 * @param bool $useServiceProvider Whether to use service provider for instantiation
 		 * @param MethodContextInterface|null $methodContext Optional method context for advanced scenarios
 		 * @return object The created instance
-		 * @throws \RuntimeException|\ReflectionException When instantiation fails
+		 * @throws \ReflectionException When instantiation fails
 		 */
 		protected function createInstance(
 			string $className,
 			array $parameters,
 			bool $useServiceProvider,
-			MethodContext $methodContext = null
+			?MethodContextInterface $methodContext = null
 		): object {
 			// Validate class/interface exists first
 			if (!class_exists($className) && !interface_exists($className)) {
