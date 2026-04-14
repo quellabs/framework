@@ -67,16 +67,10 @@
     </div>
     HTML;
 			
-			$script = <<<JS
-(function() {
-    wakaPAC('{$id}', {
-        activeTab: '{$active}',
-        setTab(tabId) {
-            this.activeTab = tabId;
-        }
-    }, { hydrate: true });
-})();
-JS;
+			$script = $this->buildScript($id, [
+				"activeTab: '{$active}'",
+				"setTab(tabId) {\n            this.activeTab = tabId;\n        }"
+			]);
 			
 			// Return result
 			return new RenderResult($html, [$script]);

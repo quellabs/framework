@@ -13,7 +13,7 @@
 	 * Override renderHeader() or renderBody() in a subclass to
 	 * customise either part independently.
 	 */
-	class ResourceRenderer extends AbstractRenderer {
+	class ResourceRenderer extends AbstractContainerRenderer {
 		
 		/** @var string Form element class */
 		protected string $formClass = 'loom-resource';
@@ -67,11 +67,7 @@
 
 			// Scripts only generated for full or body — not for header-only renders
 			if ($part !== 'header') {
-				$scripts = [<<<JS
-					(function() {
-					    wakaPAC('{$id}', {}, { hydrate: true });
-					})();
-					JS];
+				$scripts = [$this->buildScript($id)];
 			} else {
 				$scripts = [];
 			}

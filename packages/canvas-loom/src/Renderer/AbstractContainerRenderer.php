@@ -44,4 +44,44 @@
 			
 			return $state;
 		}
+		
+		/**
+		 * Generate the WakaPAC initialisation script for a container component.
+		 * Includes submit() and post() methods on the abstraction so buttons
+		 * within the container can trigger form actions.
+		 * @param string $id        WakaPAC component id
+		 * @param array  $extra     Additional abstraction properties as JS string snippets
+		 * @return string
+		 */
+		protected function buildScript(string $id, array $extra = []): string {
+			$extraJs = !empty($extra) ? implode(",\n        ", $extra) . ',' : '';
+			
+			return <<<JS
+(function() {
+    wakaPAC('{$id}', {
+        {$extraJs}
+
+        /**
+         * Submits the form natively via the browser.
+         * Use as a click action: data-pac-bind="click: submit()"
+         */
+        submit() {
+            this.container.submit();
+        },
+
+        /**
+         * Posts the form data to a custom endpoint via fetch.
+         * Use as a click action: data-pac-bind="click: post('/custom/endpoint')"
+         * @param {string} url - The endpoint URL to post to
+         */
+        post(url) {
+            fetch(url, {
+                method: 'POST',
+                body: new FormData(this.container)
+            });
+        }
+    }, { hydrate: true });
+})();
+JS;
+		}
 	}

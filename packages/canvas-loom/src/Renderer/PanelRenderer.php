@@ -41,6 +41,7 @@
 			$stateJson  = !empty($fieldState) ? htmlspecialchars(json_encode($fieldState), ENT_QUOTES) : '';
 			$stateAttr  = $stateJson ? " data-pac-state=\"{$stateJson}\"" : '';
 			
+			// HTML panel
 			$html = <<<HTML
         <div id="{$id}" class="{$class}" data-pac-id="{$id}"{$stateAttr}>
             {$children}
@@ -49,7 +50,7 @@
 			
 			// WakaPAC initialisation — empty abstraction, hydrate reads field values from DOM,
 			// data-pac-state provides collection data for dependent dropdowns
-			$script = "wakaPAC('{$id}', {}, { hydrate: true });";
+			$script = $this->buildScript($id);
 			
 			// Return result
 			return new RenderResult($html, [$script]);
