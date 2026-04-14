@@ -291,3 +291,26 @@
     flex-direction: column;
     gap: 1.75rem;
 }
+
+/* ---------------------------------------------------------
+   Text (read-only label/value)
+   --------------------------------------------------------- */
+
+.loom-text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+}
+
+.loom-text-label {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #374151;
+    margin: 0;
+}
+
+.loom-text-value {
+    font-size: 0.9375rem;
+    color: #111827;
+    margin: 0;
+}
