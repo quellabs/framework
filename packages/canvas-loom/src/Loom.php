@@ -13,6 +13,9 @@
 		/** @var array Current data context for the active render pass, populated by render() and accessed by renderers via getData() */
 		private array $currentData = [];
 		
+		/** @var array Notifications to display in the rendered form */
+		private array $notifications = [];
+		
 		/**
 		 * Register a custom renderer for a given type, overriding the default convention
 		 * @param string $type
@@ -90,6 +93,25 @@
 			$result->scripts = array_merge($scripts, $result->scripts);
 			
 			return $result;
+		}
+		
+		/**
+		 * Add a notification to display in the rendered form.
+		 * @param string $type    Notification type: success|error|warning|info
+		 * @param string $message Notification message
+		 * @return static
+		 */
+		public function notification(string $type, string $message): static {
+			$this->notifications[] = ['type' => $type, 'message' => $message];
+			return $this;
+		}
+		
+		/**
+		 * Returns all queued notifications.
+		 * @return array
+		 */
+		public function getNotifications(): array {
+			return $this->notifications;
 		}
 		
 		/**

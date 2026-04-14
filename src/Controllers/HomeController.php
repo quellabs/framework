@@ -116,6 +116,10 @@
 				->build();
 			
 			$loom = new Loom();
+			$loom->notification('error', 'Title is required.');
+			$loom->notification('error', 'Slug is required.');
+			$loom->notification('success', 'Post saved successfully.');
+			
 			$renderedDefinition = $loom->render($definition, [
 				'title'   => 'My First Post',
 				'slug'    => 'my-first-post',

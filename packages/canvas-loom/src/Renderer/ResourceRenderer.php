@@ -209,12 +209,34 @@ JS;
 		 * @return string
 		 */
 		protected function renderBody(array $properties, string $children, string $id, string $methodAttr, string $methodSpoofHtml): string {
-			$class = $properties['class'] ?? $this->formClass;
-			$action = $properties['action'] ?? '';
+			$class         = $properties['class']  ?? $this->formClass;
+			$action        = $properties['action'] ?? '';
+			$notifications = $this->loom->getNotifications();
 			
-			// Separate field values from collection data —
-			// field values are hydrated from the DOM, collections go into data-pac-state
-			$data = $this->loom->getData();
+			// Render notifications
+			$notificationsHtml = '';
+			
+			if (!empty($notifications)) {
+				$items = '';
+				
+				foreach ($notifications as $notification) {
+					$type    = htmlspecialchars($notification['type']);
+					$message = htmlspecialchars($notification['message']);
+					$items  .= "<li class=\"loom-notification-item loom-notification-{$type}\">{$message}</li>\n";
+				}
+				
+				$notificationsHtml = <<<HTML
+        <div class="loom-notifications" data-pac-id="{$id}-notifications">
+            <ul class="loom-notifications-list">
+                {$items}
+            </ul>
+            <button type="button" class="loom-notifications-dismiss" data-pac-bind="click: dismiss">×</button>
+        </div>
+        HTML;
+			}
+			
+			// Separate field values from collection data
+			$data      = $this->loom->getData();
 			$stateData = array_filter($data, fn($value) => is_array($value));
 			$stateJson = !empty($stateData) ? htmlspecialchars(json_encode($stateData), ENT_QUOTES) : '';
 			$stateAttr = $stateJson ? " data-pac-state=\"{$stateJson}\"" : '';
@@ -222,6 +244,7 @@ JS;
 			return <<<HTML
     <form id="{$id}" action="{$action}" method="{$methodAttr}" class="{$class}" data-pac-id="{$id}"{$stateAttr}>
         {$methodSpoofHtml}
+        {$notificationsHtml}
         {$children}
     </form>
     HTML;

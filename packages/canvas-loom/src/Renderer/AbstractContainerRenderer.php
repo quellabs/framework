@@ -55,7 +55,8 @@
 		 */
 		protected function buildScript(string $id, array $extra = []): string {
 			$extraJs = !empty($extra) ? implode(",\n        ", $extra) . ',' : '';
-			
+			$notificationsId = "{$id}-notifications";
+
 			return <<<JS
 (function() {
     wakaPAC('{$id}', {
@@ -79,6 +80,17 @@
                 method: 'POST',
                 body: new FormData(this.container)
             });
+        },
+        
+        /**
+         * Dismisses all notifications.
+         */
+        dismiss() {
+            const el = document.getElementById('{$notificationsId}');
+            
+            if (el) {
+                el.remove();
+            }
         }
     }, { hydrate: true });
 })();
