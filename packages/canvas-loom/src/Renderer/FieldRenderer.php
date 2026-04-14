@@ -291,21 +291,21 @@
 		 * Resolve the field value from the data array or fall back to the JSON definition
 		 * @param string $name Field name, used as path into the data array
 		 * @param array $properties Node properties
-		 * @return mixed
+		 * @return string
 		 */
-		private function resolveValue(string $name, array $properties): mixed {
+		private function resolveValue(string $name, array $properties): string {
 			$data = $this->loom->getData();
 			
 			if (!empty($data) && $name) {
 				$value = $this->getNestedValue($data, $name);
 				
 				if ($value !== null) {
-					return $value;
+					return (string) $value;
 				}
 			}
 			
 			// Fall back to value in JSON definition
-			return $properties['value'] ?? '';
+			return (string) ($properties['value'] ?? '');
 		}
 		
 		/**

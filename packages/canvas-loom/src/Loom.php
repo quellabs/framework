@@ -7,8 +7,8 @@
 	 */
 	class Loom {
 		
-		/** @var array<string, class-string<RendererInterface>> */
-		private array $registry = [];
+		/** @var array<string, RendererInterface> Renderer instance cache, keyed by class name */
+		private array $rendererCache = [];
 		
 		/** @var array Current data context for the active render pass, populated by render() and accessed by renderers via getData() */
 		private array $currentData = [];
@@ -76,6 +76,7 @@
 		public function _render(array $node, ?array $parent = null): RenderResult {
 			$childHtml = '';
 			$scripts   = [];
+			$i         = 0;
 			
 			foreach ($node['children'] ?? [] as $i => $child) {
 				$result     = $this->_render($child, $node);
@@ -89,7 +90,7 @@
 			$properties['_children'] = $node['children']   ?? [];
 			
 			$renderer        = $this->getRenderer($node['type']);
-			$result          = $renderer->render($properties, $childHtml, $parent, $i ?? 0);
+			$result          = $renderer->render($properties, $childHtml, $parent, $i);
 			$result->scripts = array_merge($scripts, $result->scripts);
 			
 			return $result;
@@ -125,7 +126,7 @@
 			// Check registry first (custom or overridden renderers)
 			if (isset($this->registry[$type])) {
 				$class = $this->registry[$type];
-				return new $class();
+				return $this->rendererCache[$class] ??= new $class($this);
 			}
 			
 			// Fall back to naming convention: "button" -> ButtonRenderer
@@ -139,6 +140,6 @@
 				);
 			}
 			
-			return new $class($this);
+			return $this->rendererCache[$class] ??= new $class($this);
 		}
 	}

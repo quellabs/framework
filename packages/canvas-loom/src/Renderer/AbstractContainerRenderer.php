@@ -13,9 +13,9 @@
 	abstract class AbstractContainerRenderer extends AbstractRenderer {
 		
 		/**
-		 * Recursively collect array properties from all field nodes in the tree.
-		 * Used to inject dependent dropdown options and other array data into
-		 * the WakaPAC state before the component is initialised.
+		 * Recursively collect options arrays from all field nodes in the tree.
+		 * Used to inject dependent dropdown options into the WakaPAC state
+		 * before the component is initialized.
 		 * @param array $nodes
 		 * @return array
 		 */

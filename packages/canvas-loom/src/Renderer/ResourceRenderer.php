@@ -234,9 +234,11 @@ JS;
 HTML;
 			}
 			
-			// Separate field values from collection data
+			// Explicit pac_state key takes precedence; falls back to top-level arrays in data
+			// for backwards compatibility, but callers should pass state separately to avoid
+			// ambiguity with array-valued fields (multi-select, tags, etc.)
 			$data      = $this->loom->getData();
-			$stateData = array_filter($data, fn($value) => is_array($value));
+			$stateData = $data['_pac_state'] ?? array_filter($data, fn($value) => is_array($value));
 			$stateJson = !empty($stateData) ? htmlspecialchars(json_encode($stateData), ENT_QUOTES) : '';
 			$stateAttr = $stateJson ? " data-pac-state=\"{$stateJson}\"" : '';
 			
