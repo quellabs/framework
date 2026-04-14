@@ -1,8 +1,7 @@
 <?php
 	
-	namespace Quellabs\Canvas\Latte\Sculpt;
+	namespace Quellabs\Canvas\Loom\Sculpt;
 	
-	use Quellabs\Canvas\Loom\Sculpt\InstallCssCommand;
 	use Quellabs\Sculpt\Application;
 	
 	/**
