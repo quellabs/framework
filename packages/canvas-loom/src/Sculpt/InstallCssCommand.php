@@ -34,8 +34,13 @@
 		 * @return int Exit code (0 for success)
 		 */
 		public function execute(ConfigurationManager $config): int {
-			$publicDirectory = $config->get("public_directory");
+			// Get current configuration from the provider
+			$configuration = $this->getProvider()->getConfig();
 			
+			// Read the public directory from app.php
+			$publicDirectory = $configuration["public_directory"] ?? 'public';
+
+			// If this does not exist, show error
 			if (empty($publicDirectory)) {
 				$this->output->error("Configuration key 'public_directory' is missing or empty.");
 				return 1;
