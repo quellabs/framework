@@ -200,4 +200,13 @@
 		protected function getType(): string {
 			return 'field';
 		}
+		
+		/**
+		 * Set a hint text shown below the field
+		 * @param string $hint
+		 * @return static
+		 */
+		public function hint(string $hint): static {
+			return $this->set('hint', $hint);
+		}
 	}

@@ -23,6 +23,10 @@
 			return new static($id);
 		}
 		
+		/**
+		 * Return node type
+		 * @return string
+		 */
 		protected function getType(): string {
 			return 'section';
 		}

@@ -8,6 +8,7 @@
 	class Columns extends AbstractFieldContainer {
 		
 		/**
+		 * Constructor
 		 * @param array  $widths Column widths as percentages e.g. [70, 30]
 		 * @param string $gap    CSS gap value between columns
 		 */
@@ -27,6 +28,10 @@
 			return new static($widths, $gap);
 		}
 		
+		/**
+		 * Return node type
+		 * @return string
+		 */
 		protected function getType(): string {
 			return 'columns';
 		}

@@ -40,6 +40,10 @@
 			return $this->properties['label'];
 		}
 		
+		/**
+		 * Return node type
+		 * @return string
+		 */
 		protected function getType(): string {
 			return 'tab';
 		}

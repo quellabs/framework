@@ -13,6 +13,10 @@
 			return new static();
 		}
 		
+		/**
+		 * Return node type
+		 * @return string
+		 */
 		protected function getType(): string {
 			return 'column';
 		}

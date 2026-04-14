@@ -12,7 +12,7 @@
 	 * the active tab state. Tab definitions are provided explicitly
 	 * via the tabs property to avoid engine-level pre-processing.
 	 */
-	class TabsRenderer extends AbstractRenderer {
+	class TabsRenderer extends AbstractContainerRenderer {
 		
 		/** @var string Wrapper div class */
 		protected string $wrapperClass = 'loom-tabs';
@@ -35,17 +35,17 @@
 		 * @return RenderResult
 		 */
 		public function render(array $properties, string $children, ?array $parent = null, int $index = 0): RenderResult {
-			$id       = $properties['id']       ?? 'loom-tabs';
-			$active   = $properties['active']   ?? '';
-			$class    = $properties['class']    ?? $this->wrapperClass;
-			$tabs     = $properties['tabs']     ?? [];
-			$nodes    = $properties['_children'] ?? [];
+			$id = $properties['id'] ?? 'loom-tabs';
+			$active = $properties['active'] ?? '';
+			$class = $properties['class'] ?? $this->wrapperClass;
+			$tabs = $properties['tabs'] ?? [];
+			$nodes = $properties['_children'] ?? [];
 			
 			// Build tab bar buttons from the explicit tabs property
 			$buttons = '';
 			
 			foreach ($tabs as $tab) {
-				$tabId    = $tab['id']    ?? '';
+				$tabId = $tab['id'] ?? '';
 				$tabLabel = $tab['label'] ?? $tabId;
 				$buttons .= "<button type=\"button\" class=\"{$this->tabButtonClass}\" data-pac-bind=\"click: setTab('{$tabId}'), class: {active: activeTab === '{$tabId}'}\">{$tabLabel}</button>\n";
 			}
@@ -53,8 +53,8 @@
 			// Collect array properties from all field nodes in the tree
 			// so dependent dropdowns have their options available in WakaPAC state
 			$fieldState = $this->collectFieldProperties($nodes);
-			$stateJson  = !empty($fieldState) ? htmlspecialchars(json_encode($fieldState), ENT_QUOTES) : '';
-			$stateAttr  = $stateJson ? " data-pac-state=\"{$stateJson}\"" : '';
+			$stateJson = !empty($fieldState) ? htmlspecialchars(json_encode($fieldState), ENT_QUOTES) : '';
+			$stateAttr = $stateJson ? " data-pac-state=\"{$stateJson}\"" : '';
 			
 			$html = <<<HTML
     <div id="{$id}" class="{$class}" data-pac-id="{$id}"{$stateAttr}>
@@ -78,39 +78,7 @@
 })();
 JS;
 			
+			// Return result
 			return new RenderResult($html, [$script]);
-		}
-		
-		/**
-		 * Recursively collect array properties from all field nodes in the tree.
-		 * Used to inject dependent dropdown options and other array data into
-		 * the WakaPAC state before the component is initialised.
-		 * @param array $nodes
-		 * @return array
-		 */
-		private function collectFieldProperties(array $nodes): array {
-			$state = [];
-			
-			foreach ($nodes as $node) {
-				if (($node['type'] ?? '') === 'field') {
-					$name = $node['properties']['name'] ?? '';
-					
-					if ($name) {
-						foreach ($node['properties'] as $key => $value) {
-							// Only include array properties — use pluralized name to match foreach_expression
-							if (is_array($value) && $key === 'options') {
-								$state[StringInflector::pluralize($name)] = $value;
-							}
-						}
-					}
-				}
-				
-				// Recurse into children
-				if (!empty($node['children'])) {
-					$state = array_merge($state, $this->collectFieldProperties($node['children']));
-				}
-			}
-			
-			return $state;
 		}
 	}

@@ -31,21 +31,25 @@
 		/**
 		 * Add a tab — registers it in the tabs index for the tab bar
 		 * and as a child node for the content panel
-		 * @param Tab $tab
+		 * @param Tab $node
 		 * @return static
 		 */
-		public function add(AbstractNode $tab): static {
+		public function add(AbstractNode $node): static {
 			// Register tab in the tabs index for the tab bar
-			if ($tab instanceof Tab) {
+			if ($node instanceof Tab) {
 				$this->properties['tabs'][] = [
-					'id'    => $tab->getId(),
-					'label' => $tab->getLabel(),
+					'id'    => $node->getId(),
+					'label' => $node->getLabel(),
 				];
 			}
 			
-			return parent::add($tab);
+			return parent::add($node);
 		}
 		
+		/**
+		 * Return node type
+		 * @return string
+		 */
 		protected function getType(): string {
 			return 'tabs';
 		}

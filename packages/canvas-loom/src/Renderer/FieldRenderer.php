@@ -42,6 +42,9 @@
 		/** @var string Radio input class */
 		protected string $radioClass = 'loom-field-radio';
 		
+		/** @var string Hint class */
+		protected string $hintClass = 'loom-field-hint';
+		
 		/**
 		 * Render a form field
 		 * @param array $properties
@@ -74,6 +77,13 @@
 				$labelHtml = '';
 			}
 			
+			// Hint
+			if (isset($properties['hint'])) {
+				$hintHtml = "<p class=\"{$this->hintClass}\">{$properties['hint']}</p>";
+			} else {
+				$hintHtml = '';
+			}
+			
 			// Delegate to the appropriate input renderer based on type
 			$inputHtml = match ($type) {
 				'textarea' => $this->renderTextarea($id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
@@ -84,10 +94,12 @@
 				default => $this->renderInput('text', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
 			};
 			
+			// Output element
 			$html = <<<HTML
         <div class="{$class}">
             {$labelHtml}
             {$inputHtml}
+            {$hintHtml}
         </div>
         HTML;
 			
@@ -139,20 +151,20 @@
 		 * Otherwise renders as a static dropdown with predefined options.
 		 * Options can be a flat array of strings or an array of
 		 * ['value' => '...', 'label' => '...'] objects.
-		 * @param string $id        Element id attribute
-		 * @param string $name      Field name used for form submission and WakaPAC binding
-		 * @param array  $properties Full node properties including options and selected value
-		 * @param string $pacField  Rendered data-pac-field attribute
-		 * @param string $pacBind   Rendered data-pac-bind attribute
+		 * @param string $id Element id attribute
+		 * @param string $name Field name used for form submission and WakaPAC binding
+		 * @param array $properties Full node properties including options and selected value
+		 * @param string $pacField Rendered data-pac-field attribute
+		 * @param string $pacBind Rendered data-pac-bind attribute
 		 * @return string
 		 */
 		private function renderSelect(string $id, string $name, array $properties, string $pacField, string $pacBind): string {
-			$attrs    = $this->buildValidationAttrs($properties);
+			$attrs = $this->buildValidationAttrs($properties);
 			$selected = $this->resolveValue($name, $properties);
 			
 			// Dependent dropdown — options driven by WakaPAC foreach binding on the select
 			if (isset($properties['foreach_expression'])) {
-				$expression  = $properties['foreach_expression'];
+				$expression = $properties['foreach_expression'];
 				
 				// Merge foreach into existing pac bind expression
 				$pacBindAttr = str_replace('data-pac-bind="', "data-pac-bind=\"foreach: {$expression}, ", $pacBind);
@@ -174,10 +186,10 @@
 			
 			foreach ($optionsData as $option) {
 				// Support both flat strings and value/label pairs
-				$optValue     = is_array($option) ? $option['value'] : $option;
-				$optLabel     = is_array($option) ? $option['label'] : $option;
+				$optValue = is_array($option) ? $option['value'] : $option;
+				$optLabel = is_array($option) ? $option['label'] : $option;
 				$selectedAttr = $optValue == $selected ? ' selected' : '';
-				$options      .= "<option value=\"{$optValue}\"{$selectedAttr}>{$optLabel}</option>\n";
+				$options .= "<option value=\"{$optValue}\"{$selectedAttr}>{$optLabel}</option>\n";
 			}
 			
 			return <<<HTML
@@ -277,8 +289,8 @@
 		
 		/**
 		 * Resolve the field value from the data array or fall back to the JSON definition
-		 * @param string $name       Field name, used as path into the data array
-		 * @param array  $properties Node properties
+		 * @param string $name Field name, used as path into the data array
+		 * @param array $properties Node properties
 		 * @return mixed
 		 */
 		private function resolveValue(string $name, array $properties): mixed {
@@ -298,12 +310,12 @@
 		
 		/**
 		 * Get a nested value from an array using dot and bracket notation
-		 * @param array  $data
+		 * @param array $data
 		 * @param string $path
 		 * @return mixed
 		 */
 		private function getNestedValue(array $data, string $path): mixed {
-			$parts   = preg_split('/[\.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY);
+			$parts = preg_split('/[\.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY);
 			$current = $data;
 			
 			foreach ($parts as $part) {

@@ -38,7 +38,7 @@
 							->add(Columns::make([70, 30])
 								->add(Column::make()
 									->add(Field::text('title', 'Title')->required()->maxlength(200))
-									->add(Field::textarea('body', 'Content')->rows(10))
+									->add(Field::textarea('body', 'Content')->rows(10)->hint('{{ body.length }} characters typed'))
 								)
 								->add(Column::make()
 									->add(Field::select('status', 'Status')
