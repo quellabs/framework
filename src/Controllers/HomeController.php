@@ -6,6 +6,7 @@
 	use Quellabs\Canvas\Annotations\InterceptWith;
 	use Quellabs\Canvas\Annotations\WithContext;
 	use Quellabs\Canvas\Controllers\BaseController;
+	use Quellabs\Canvas\Loom\Builder\Button;
 	use Quellabs\Canvas\Loom\Builder\Column;
 	use Quellabs\Canvas\Loom\Builder\Columns;
 	use Quellabs\Canvas\Loom\Builder\Field;
@@ -21,6 +22,9 @@
 	
 	class HomeController extends BaseController {
 		
+		const int MSG_SHOW_DELETE = 10000;
+		const int MSG_HIDE_DELETE = 10001;
+		
 		/**
 		 * @InterceptWith(TranslationAspect::class)
 		 * @WithContext(parameter="engine", context="blade")
@@ -32,6 +36,14 @@
 			// Create page
 			$definition = Resource::make('post-form', '/admin/posts/save')
 				->title('Edit Post')
+				->addHeaderButton(
+					Button::make('Delete')
+						->danger()
+						->name('delete')
+						->showMessage(self::MSG_SHOW_DELETE)
+						->hideMessage(self::MSG_HIDE_DELETE)
+						->action("Stdlib.sendMessage('post-form', MSG_DELETE, 0, 0)")
+				)
 				->add(Tabs::make('post-tabs', 'general')
 					->add(Tab::make('general', 'General')
 						->add(Section::make('post-details')

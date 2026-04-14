@@ -60,6 +60,18 @@
 		}
 		
 		/**
+		 * Add a button to the resource header.
+		 * Header buttons are hidden by default and can be shown via WakaPAC messages.
+		 * @param Button $button
+		 * @return static
+		 */
+		public function addHeaderButton(Button $button): static {
+			$buttons   = $this->get('header_buttons') ?? [];
+			$buttons[] = $button;
+			return $this->set('header_buttons', $buttons);
+		}
+		
+		/**
 		 * Build the node array for Loom::render()
 		 * @return array
 		 */
@@ -74,4 +86,5 @@
 		protected function getType(): string {
 			return 'resource';
 		}
+		
 	}

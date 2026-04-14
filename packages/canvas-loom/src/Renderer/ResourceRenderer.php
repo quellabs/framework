@@ -64,7 +64,7 @@
 			
 			// Disabled attribute
 			$saveDisabledAttr = $saveDisabled ? ' disabled' : '';
-
+			
 			// Scripts only generated for full or body — not for header-only renders
 			if ($part !== 'header') {
 				$scripts = [$this->buildScript($id)];
@@ -74,7 +74,9 @@
 			
 			switch ($part) {
 				case 'header':
-					$html = $this->renderHeader($properties, $id, $saveDisabledAttr);
+					$headerResult = $this->renderHeader($properties, $id, $saveDisabledAttr);
+					$html         = $headerResult->html;
+					$scripts      = array_merge($scripts, $headerResult->scripts);
 					break;
 				
 				case 'body':
@@ -82,9 +84,9 @@
 					break;
 				
 				default:
-					$header = $this->renderHeader($properties, $id, $saveDisabledAttr);
-					$body = $this->renderBody($properties, $children, $id, $methodAttr, $methodSpoofHtml);
-					$html = $header . "\n" . $body;
+					$headerResult = $this->renderHeader($properties, $id, $saveDisabledAttr);
+					$html         = $headerResult->html . "\n" . $this->renderBody($properties, $children, $id, $methodAttr, $methodSpoofHtml);
+					$scripts      = array_merge($scripts, $headerResult->scripts);
 					break;
 			}
 			
@@ -99,19 +101,101 @@
 		 * @param string $saveDisabledAttr Rendered disabled attribute or empty string
 		 * @return string
 		 */
-		protected function renderHeader(array $properties, string $id, string $saveDisabledAttr): string {
+		protected function renderHeader(array $properties, string $id, string $saveDisabledAttr): RenderResult {
 			$title = $properties['title'] ?? '';
 			$saveLabel = $properties['save_label'] ?? 'Save';
+			$headerId = "{$id}-header";
+			$headerButtons = $properties['header_buttons'] ?? [];
+			$scripts = [];
 			
-			return <<<HTML
-        <div class="{$this->headerClass}">
-            <h1 class="{$this->titleClass}">{$title}</h1>
-            <div class="{$this->headerActionsClass}">
-                <button type="button" class="{$this->cancelClass}" onclick="history.back()">Cancel</button>
-                <button type="submit" form="{$id}" class="{$this->saveClass}"{$saveDisabledAttr}>{$saveLabel}</button>
-            </div>
+			// Render extra header buttons with visibility binding
+			$extraButtons = '';
+			
+			foreach ($headerButtons as $button) {
+				$name = $button->get('name');
+				$label = $button->get('label') ?? '';
+				$variant = $button->get('variant') ?? 'primary';
+				$action = $button->get('action') ?? '';
+				
+				$variantClass = match ($variant) {
+					'secondary' => 'loom-button loom-button-secondary',
+					'danger' => 'loom-button loom-button-danger',
+					default => 'loom-button loom-button-primary',
+				};
+				
+				$binding = $name ? "visible: show_{$name}" : '';
+				$binding = ($binding && $action) ? "{$binding}, click: {$action}" : ($action ? "click: {$action}" : $binding);
+				$bindAttr = $binding ? " data-pac-bind=\"{$binding}\"" : '';
+				
+				$extraButtons .= "<button type=\"button\" class=\"{$variantClass}\"{$bindAttr}>{$label}</button>\n";
+			}
+			
+			$html = <<<HTML
+    <div class="{$this->headerClass}" data-pac-id="{$headerId}">
+        <h1 class="{$this->titleClass}">{$title}</h1>
+        <div class="{$this->headerActionsClass}">
+            {$extraButtons}
+            <button type="button" class="{$this->cancelClass}" onclick="history.back()">Cancel</button>
+            <button type="submit" form="{$id}" class="{$this->saveClass}"{$saveDisabledAttr}>{$saveLabel}</button>
         </div>
-        HTML;
+    </div>
+    HTML;
+			
+			// Generate header WakaPAC script with msgProc for visibility toggling
+			$constants = '';
+			$msgProcCases = '';
+			$visibilityProps = '';
+			
+			foreach ($headerButtons as $button) {
+				$name = $button->get('name');
+				$showMessage = $button->get('show_message');
+				$hideMessage = $button->get('hide_message');
+				
+				if ($name) {
+					$visibilityProps .= "show_{$name}: false,\n        ";
+					
+					if ($showMessage !== null) {
+						$constName = 'MSG_SHOW_' . strtoupper($name);
+						$constants .= "const {$constName} = {$showMessage};\n";
+						
+						$msgProcCases .= <<<JS
+                case {$constName}:
+                    this.show_{$name} = true;
+                    break;\n
+JS;
+					}
+					
+					if ($hideMessage !== null) {
+						$constName = 'MSG_HIDE_' . strtoupper($name);
+						$constants .= "const {$constName} = {$hideMessage};\n";
+						$msgProcCases .= <<<JS
+
+                case {$constName}:
+                    this.show_{$name} = false;
+                    break;\n
+JS;
+					}
+				}
+			}
+			
+			if ($constants) {
+				$scripts[] = $constants;
+			}
+			
+			$scripts[] = <<<JS
+(function() {
+    wakaPAC('{$headerId}', {
+        {$visibilityProps}
+        msgProc(event) {
+            switch (event.message) {
+{$msgProcCases}
+            }
+        }
+    }, { hydrate: false });
+})();
+JS;
+			
+			return new RenderResult($html, $scripts);
 		}
 		
 		/**
@@ -125,12 +209,12 @@
 		 * @return string
 		 */
 		protected function renderBody(array $properties, string $children, string $id, string $methodAttr, string $methodSpoofHtml): string {
-			$class  = $properties['class']  ?? $this->formClass;
+			$class = $properties['class'] ?? $this->formClass;
 			$action = $properties['action'] ?? '';
 			
 			// Separate field values from collection data —
 			// field values are hydrated from the DOM, collections go into data-pac-state
-			$data      = $this->loom->getData();
+			$data = $this->loom->getData();
 			$stateData = array_filter($data, fn($value) => is_array($value));
 			$stateJson = !empty($stateData) ? htmlspecialchars(json_encode($stateData), ENT_QUOTES) : '';
 			$stateAttr = $stateJson ? " data-pac-state=\"{$stateJson}\"" : '';

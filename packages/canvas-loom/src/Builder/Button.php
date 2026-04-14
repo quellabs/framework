@@ -66,7 +66,39 @@
 			return $this->set('type', $type);
 		}
 		
+		/**
+		 * Set the name of this button, used as the visibility property key
+		 * in the header component state (show_{name})
+		 * @param string $name
+		 * @return static
+		 */
+		public function name(string $name): static {
+			return $this->set('name', $name);
+		}
+		
+		/**
+		 * Return node type
+		 * @return string
+		 */
 		protected function getType(): string {
 			return 'button';
+		}
+		
+		/**
+		 * Set the WakaPAC message identifier that shows this button.
+		 * @param int $message Message identifier integer
+		 * @return static
+		 */
+		public function showMessage(int $message): static {
+			return $this->set('show_message', $message);
+		}
+		
+		/**
+		 * Set the WakaPAC message identifier that hides this button.
+		 * @param int $message Message identifier integer
+		 * @return static
+		 */
+		public function hideMessage(int $message): static {
+			return $this->set('hide_message', $message);
 		}
 	}
