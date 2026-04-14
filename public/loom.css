@@ -314,3 +314,29 @@
     color: #111827;
     margin: 0;
 }
+
+/* ---------------------------------------------------------
+   Column sidebar
+   --------------------------------------------------------- */
+
+.loom-column-sidebar {
+    padding-right: 1.5rem;
+    border-right: 1px solid #e2e2e2;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.loom-column-sidebar-title {
+    font-size: 0.9375rem;
+    font-weight: 500;
+    color: #111827;
+    margin: 0;
+}
+
+.loom-column-sidebar-hint {
+    font-size: 0.875rem;
+    color: #6b7280;
+    line-height: 1.6;
+    margin: 0;
+}
