@@ -55,6 +55,13 @@
 		}
 		
 		/**
+		 * Toggle (on/off switch) field
+		 */
+		public static function toggle(string $name, string $label): static {
+			return new static($name, $label, 'toggle');
+		}
+		
+		/**
 		 * Number input field
 		 */
 		public static function number(string $name, string $label): static {

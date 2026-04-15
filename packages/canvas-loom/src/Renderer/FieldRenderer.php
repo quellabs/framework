@@ -66,7 +66,7 @@
 			// data-pac-field and data-pac-bind are derived from the field name by default,
 			// but can be overruled entirely via properties
 			$pacField = $properties['pac_field'] ?? 'data-pac-field';
-			$pacBind = $properties['pac_bind'] ?? "value: {$name}";
+			$pacBind = $properties['pac_bind'] ?? ($type === 'toggle' ? "checked: {$name}" : "value: {$name}");
 			$pacFieldAttr = $pacField ? " {$pacField}" : '';
 			$pacBindAttr = $pacBind ? " data-pac-bind=\"{$pacBind}\"" : '';
 			
@@ -91,6 +91,7 @@
 				'checkbox' => $this->renderCheckbox($id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
 				'radio' => $this->renderRadio($id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
 				'number' => $this->renderInput('number', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
+				'toggle' => $this->renderToggle($id, $name, $properties, $pacFieldAttr),
 				default => $this->renderInput('text', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
 			};
 			
@@ -199,6 +200,36 @@
         {$options}
     </select>
     HTML;
+		}
+		
+		/**
+		 * Render a toggle switch input.
+		 * Uses a hidden checkbox + styled label pair. The pac_bind uses
+		 * "checked: name" so WakaPAC maps the boolean state correctly.
+		 * Note: pac_bind is intentionally excluded here — the hidden checkbox
+		 * carries data-pac-field, and the bind is on the visible label via JS,
+		 * so we pass pacBind directly to the checkbox input element.
+		 * @param string $id Element id attribute
+		 * @param string $name Field name
+		 * @param array $properties Full node properties
+		 * @param string $pacField Rendered data-pac-field attribute
+		 * @return string
+		 */
+		private function renderToggle(string $id, string $name, array $properties, string $pacField): string {
+			$checked  = !empty($properties['checked']) ? ' checked' : '';
+			$disabled = !empty($properties['disabled']) ? ' disabled' : '';
+			$pacBind  = $properties['pac_bind'] ?? "checked: {$name}";
+			
+			// The checkbox is visually hidden; the <label> provides the toggle UI.
+			// data-pac-bind goes on the checkbox so WakaPAC binds the boolean value.
+			return <<<HTML
+<label class="loom-toggle" for="{$id}">
+    <input type="checkbox" id="{$id}" name="{$this->e($name)}" class="loom-toggle-input"{$checked}{$disabled}{$pacField} data-pac-bind="{$this->e($pacBind)}">
+    <span class="loom-toggle-track" aria-hidden="true">
+        <span class="loom-toggle-thumb"></span>
+    </span>
+</label>
+HTML;
 		}
 		
 		/**

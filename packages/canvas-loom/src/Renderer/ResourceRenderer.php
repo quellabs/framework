@@ -71,7 +71,7 @@
 			
 			// Scripts only generated for full or body — not for header-only renders
 			if ($part !== 'header') {
-				$scripts = [$this->buildScript($id, [], $properties['abstraction'] ?? [])];
+				$scripts = [$this->buildScript($id, [], $properties['abstraction'] ?? [], $properties['scripts'] ?? [])];
 			} else {
 				$scripts = [];
 			}

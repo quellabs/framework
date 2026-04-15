@@ -52,7 +52,7 @@
 		 * @param array  $abstraction Key-value pairs from the node's abstraction property (scalars and arrays only)
 		 * @return string
 		 */
-		protected function buildScript(string $id, array $extra = [], array $abstraction = []): string {
+		protected function buildScript(string $id, array $extra = [], array $abstraction = [], array $scripts = []): string {
 			$abstractionJs = '';
 			
 			foreach ($abstraction as $key => $value) {
@@ -63,7 +63,9 @@
 				$abstractionJs .= $key . ': ' . json_encode($value) . ",\n        ";
 			}
 			
-			$extraJs = !empty($extra) ? implode(",\n        ", $extra) . ',' : '';
+			// Merge caller-supplied extra snippets with script() snippets from the builder
+			$allExtra = array_merge($extra, $scripts);
+			$extraJs  = !empty($allExtra) ? implode(",\n        ", $allExtra) . ',' : '';
 			$notificationsId = "{$id}-notifications";
 
 			return <<<JS

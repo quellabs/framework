@@ -57,7 +57,7 @@
 			
 			// WakaPAC initialisation — hydrate reads field values from DOM,
 			// data-pac-state provides collection data for dependent dropdowns
-			$script = $this->buildScript($id, [], $properties['abstraction'] ?? []);
+			$script = $this->buildScript($id, [], $properties['abstraction'] ?? [], $properties['scripts'] ?? []);
 			
 			// Return result
 			return new RenderResult($html, [$script]);

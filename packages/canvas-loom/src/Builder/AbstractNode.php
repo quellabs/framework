@@ -64,6 +64,31 @@
 		}
 		
 		/**
+		 * Append a raw JavaScript snippet to the WakaPAC abstraction object.
+		 * Use this to add methods, getters, or properties that extend the
+		 * component beyond what Loom generates automatically.
+		 *
+		 * The snippet is placed directly inside the abstraction object literal,
+		 * so it must be valid JS in that context — method definitions, getters,
+		 * arrow function properties, etc.
+		 *
+		 * Multiple calls are concatenated in order.
+		 *
+		 * Example:
+		 *   ->script("resetForm() { this.first_name = ''; this.last_name = ''; }")
+		 *   ->script("get fullName() { return this.first_name + ' ' + this.last_name; }")
+		 *
+		 * The code is emitted verbatim — never pass untrusted input here.
+		 * @param string $code Raw JavaScript to inject into the abstraction
+		 * @return static
+		 */
+		public function script(string $code): static {
+			$scripts   = $this->properties['scripts'] ?? [];
+			$scripts[] = $code;
+			return $this->set('scripts', $scripts);
+		}
+		
+		/**
 		 * Set custom properties on the WakaPAC abstraction object.
 		 * Useful for exposing named message constants and other scalar
 		 * values that need to be accessible in bind expressions.
