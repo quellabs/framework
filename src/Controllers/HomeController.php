@@ -18,6 +18,7 @@
 	use Quellabs\Canvas\Translation\TranslationAspect;
 	use Quellabs\Contracts\Templates\TemplateEngineInterface;
 	use Quellabs\Support\StringInflector;
+	use Symfony\Component\HttpFoundation\Request;
 	use Symfony\Component\HttpFoundation\Response;
 	
 	class HomeController extends BaseController {
@@ -34,7 +35,7 @@
 		 */
 		public function index(TemplateEngineInterface $engine): Response {
 			// Create page
-			$definition = Resource::make('post-form', '/admin/posts/save')
+			$definition = Resource::make('post-form', '/save')
 				->title('Edit Post')
 				->addHeaderButton(
 					Button::make('Delete')
@@ -160,19 +161,12 @@
 		}
 		
 		/**
-		 * @Route("routes::test")
-		 * @return Response
+		 * @Route("/save", methods={"POST"})
+		 * @param Request $request
+		 * @return void
 		 */
-		public function hello(): Response {
-			return new Response("Hello from routes file");
+		public function save(Request $request): Response {
+			return new Response("");
 		}
-		
-		/**
-		 * @Route("/user/{path:**}/hallo")
-		 * @param string $path
-		 * @return Response
-		 */
-		public function user(string $path): Response {
-			return new Response("<h1>Hello, " . $path . "</h1>");
-		}
+
 	}
