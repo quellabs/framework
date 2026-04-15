@@ -62,6 +62,14 @@
 		}
 		
 		/**
+		 * Hidden input field — no label, no wrapper, not reactive.
+		 * Value is populated from the data array passed to render().
+		 */
+		public static function hidden(string $name): static {
+			return new static($name, '', 'hidden');
+		}
+		
+		/**
 		 * Number input field
 		 */
 		public static function number(string $name, string $label): static {

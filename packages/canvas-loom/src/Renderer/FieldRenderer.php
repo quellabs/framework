@@ -54,6 +54,35 @@
 		 * @return RenderResult
 		 */
 		public function render(array $properties, string $children, ?array $parent = null, int $index = 0): RenderResult {
+			$type = $properties['input'] ?? 'text';
+			
+			if ($type === 'hidden') {
+				return $this->renderHidden($properties);
+			} else {
+				return $this->renderDefault($properties);
+			}
+		}
+		
+		/**
+		 * Render a hidden input field.
+		 * Bypasses all wrapper, label, hint, and WakaPAC binding logic.
+		 * @param array $properties
+		 * @return RenderResult
+		 */
+		protected function renderHidden(array $properties): RenderResult {
+			$name  = $properties['name'] ?? '';
+			$id    = $this->e($properties['id'] ?? $name);
+			$value = $this->resolveValue($name, $properties);
+			
+			return new RenderResult("<input type=\"hidden\" id=\"{$id}\" name=\"{$this->e($name)}\" value=\"{$this->e($value)}\">");
+		}
+		
+		/**
+		 * Render a standard visible field with label, input, and optional hint.
+		 * @param array $properties
+		 * @return RenderResult
+		 */
+		protected function renderDefault(array $properties): RenderResult {
 			$name  = $properties['name'] ?? '';
 			$type  = $properties['input'] ?? 'text';
 			$label = $this->e($properties['label'] ?? '');
@@ -65,10 +94,10 @@
 			
 			// data-pac-field and data-pac-bind are derived from the field name by default,
 			// but can be overruled entirely via properties
-			$pacField = $properties['pac_field'] ?? 'data-pac-field';
-			$pacBind = $properties['pac_bind'] ?? ($type === 'toggle' ? "checked: {$name}" : "value: {$name}");
+			$pacField     = $properties['pac_field'] ?? 'data-pac-field';
+			$pacBind      = $properties['pac_bind'] ?? ($type === 'toggle' ? "checked: {$name}" : "value: {$name}");
 			$pacFieldAttr = $pacField ? " {$pacField}" : '';
-			$pacBindAttr = $pacBind ? " data-pac-bind=\"{$pacBind}\"" : '';
+			$pacBindAttr  = $pacBind ? " data-pac-bind=\"{$pacBind}\"" : '';
 			
 			// Only render a label element when a label is provided
 			if ($label) {
@@ -87,12 +116,12 @@
 			// Delegate to the appropriate input renderer based on type
 			$inputHtml = match ($type) {
 				'textarea' => $this->renderTextarea($id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
-				'select' => $this->renderSelect($id, $name, $properties, $pacFieldAttr, $pacBindAttr, $pacBind),
+				'select'   => $this->renderSelect($id, $name, $properties, $pacFieldAttr, $pacBindAttr, $pacBind),
 				'checkbox' => $this->renderCheckbox($id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
-				'radio' => $this->renderRadio($id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
-				'number' => $this->renderInput('number', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
-				'toggle' => $this->renderToggle($id, $name, $properties, $pacFieldAttr),
-				default => $this->renderInput('text', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
+				'radio'    => $this->renderRadio($id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
+				'number'   => $this->renderInput('number', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
+				'toggle'   => $this->renderToggle($id, $name, $properties, $pacFieldAttr),
+				default    => $this->renderInput('text', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
 			};
 			
 			// Output element
