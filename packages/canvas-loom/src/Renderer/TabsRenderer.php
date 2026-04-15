@@ -70,8 +70,18 @@
 			// Collect array properties from all field nodes in the tree
 			// so dependent dropdowns have their options available in WakaPAC state
 			$fieldState = $this->collectFieldProperties($nodes);
-			$stateJson = !empty($fieldState) ? htmlspecialchars(json_encode($fieldState), ENT_QUOTES) : '';
-			$stateAttr = $stateJson ? " data-pac-state=\"{$stateJson}\"" : '';
+			
+			if (!empty($fieldState)) {
+				$stateJson = htmlspecialchars(json_encode($fieldState), ENT_QUOTES);
+			} else {
+				$stateJson = '';
+			}
+			
+			if ($stateJson) {
+				$stateAttr = " data-pac-state=\"{$stateJson}\"";
+			} else {
+				$stateAttr = '';
+			}
 			
 			$html = <<<HTML
     <div id="{$id}" class="{$class}" data-pac-id="{$id}"{$stateAttr}>
