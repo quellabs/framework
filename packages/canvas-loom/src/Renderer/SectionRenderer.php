@@ -27,11 +27,15 @@
 		 * @return RenderResult
 		 */
 		public function render(array $properties, string $children, ?array $parent = null, int $index = 0): RenderResult {
-			$id    = $this->e($properties['id']    ?? '');
+			$id = $this->e($properties['id'] ?? '');
 			$class = $this->e($properties['class'] ?? $this->wrapperClass);
 			
 			// Only render id attribute when explicitly provided
-			$idAttr = $id ? " id=\"{$id}\"" : '';
+			if ($id) {
+				$idAttr = " id=\"{$id}\"";
+			} else {
+				$idAttr = '';
+			}
 			
 			$html = <<<HTML
         <div{$idAttr} class="{$class}">

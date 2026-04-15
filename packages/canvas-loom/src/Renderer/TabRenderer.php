@@ -24,7 +24,7 @@
 		 * @return RenderResult
 		 */
 		public function render(array $properties, string $children, ?array $parent = null, int $index = 0): RenderResult {
-			$id    = $properties['id']    ?? '';
+			$id = $properties['id'] ?? '';
 			$class = $this->e($properties['class'] ?? $this->panelClass);
 			
 			// id appears in a JS string literal inside data-pac-bind — restrict to safe identifier characters

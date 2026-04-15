@@ -39,10 +39,13 @@
 			$class = $this->e($properties['class'] ?? $this->wrapperClass);
 			
 			// Only render a label element when a label is provided
-			$labelHtml = $label
-				? "<p class=\"{$this->labelClass}\">{$label}</p>"
-				: '';
+			if ($label) {
+				$labelHtml = "<p class=\"{$this->labelClass}\">{$label}</p>";
+			} else {
+				$labelHtml = '';
+			}
 			
+			// Output html
 			$html = <<<HTML
         <div class="{$class}">
             {$labelHtml}
@@ -50,6 +53,7 @@
         </div>
         HTML;
 			
+			// Return result
 			return new RenderResult($html);
 		}
 	}

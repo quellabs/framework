@@ -80,6 +80,16 @@
 					return true;
 				}
 				
+				// Field hint with WakaPAC interpolation
+				if ($type === 'field' && isset($properties['hint']) && str_contains($properties['hint'], '{{')) {
+					return true;
+				}
+				
+				// Button with an action expression
+				if ($type === 'button' && !empty($properties['action'])) {
+					return true;
+				}
+				
 				// Recurse into children
 				if (!empty($node['children']) && $this->requiresWakaPAC($node['children'])) {
 					return true;

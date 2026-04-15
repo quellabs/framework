@@ -36,9 +36,9 @@
 		 */
 		public function render(array $properties, string $children, ?array $parent = null, int $index = 0): RenderResult {
 			$active = $properties['active'] ?? '';
-			$class  = $this->e($properties['class'] ?? $this->wrapperClass);
-			$tabs   = $properties['tabs']     ?? [];
-			$nodes  = $properties['_children'] ?? [];
+			$class = $this->e($properties['class'] ?? $this->wrapperClass);
+			$tabs = $properties['tabs'] ?? [];
+			$nodes = $properties['_children'] ?? [];
 			
 			// id flows into JS string literals via buildScript() — restrict to safe identifier characters
 			$id = $properties['id'] ?? 'loom-tabs';
@@ -56,7 +56,7 @@
 			$buttons = '';
 			
 			foreach ($tabs as $tab) {
-				$tabId    = $tab['id'] ?? '';
+				$tabId = $tab['id'] ?? '';
 				$tabLabel = $this->e($tab['label'] ?? $tabId);
 				
 				// tabId appears in JS string literals inside data-pac-bind — restrict to safe identifier characters

@@ -19,10 +19,10 @@
 		
 		/**
 		 * Render the panel container
-		 * @param array      $properties Node properties from the JSON definition
-		 * @param string     $children   Already-rendered HTML of all child nodes
-		 * @param array|null $parent     Parent node
-		 * @param int        $index      Index of this node within its parent
+		 * @param array $properties Node properties from the JSON definition
+		 * @param string $children Already-rendered HTML of all child nodes
+		 * @param array|null $parent Parent node
+		 * @param int $index Index of this node within its parent
 		 * @return RenderResult
 		 */
 		public function render(array $properties, string $children, ?array $parent = null, int $index = 0): RenderResult {
@@ -38,17 +38,17 @@
 				throw new \InvalidArgumentException('PanelRenderer "id" must contain only alphanumerics, hyphens, and underscores.');
 			}
 			
-			$id    = $rawId;
+			$id = $rawId;
 			$class = $this->e($properties['class'] ?? $this->wrapperClass);
 			$nodes = $properties['_children'] ?? [];
 			
 			$needsWakaPAC = $this->requiresWakaPAC($nodes);
 			
 			// data-pac-id and data-pac-state are only meaningful when WakaPAC is initialised
-			$pacIdAttr  = $needsWakaPAC ? " data-pac-id=\"{$id}\"" : '';
+			$pacIdAttr = $needsWakaPAC ? " data-pac-id=\"{$id}\"" : '';
 			$fieldState = $needsWakaPAC ? $this->collectFieldProperties($nodes) : [];
-			$stateJson  = !empty($fieldState) ? htmlspecialchars(json_encode($fieldState), ENT_QUOTES) : '';
-			$stateAttr  = $stateJson ? " data-pac-state=\"{$stateJson}\"" : '';
+			$stateJson = !empty($fieldState) ? htmlspecialchars(json_encode($fieldState), ENT_QUOTES) : '';
+			$stateAttr = $stateJson ? " data-pac-state=\"{$stateJson}\"" : '';
 			
 			// HTML panel
 			$html = <<<HTML
