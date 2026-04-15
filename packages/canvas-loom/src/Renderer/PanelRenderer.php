@@ -42,18 +42,25 @@
 			$class = $this->e($properties['class'] ?? $this->wrapperClass);
 			$nodes = $properties['_children'] ?? [];
 			
-			// Collect array properties from all field nodes in the tree
-			// so dependent dropdowns have their options available in WakaPAC state
-			$fieldState = $this->collectFieldProperties($nodes);
+			$needsWakaPAC = $this->requiresWakaPAC($nodes);
+			
+			// data-pac-id and data-pac-state are only meaningful when WakaPAC is initialised
+			$pacIdAttr  = $needsWakaPAC ? " data-pac-id=\"{$id}\"" : '';
+			$fieldState = $needsWakaPAC ? $this->collectFieldProperties($nodes) : [];
 			$stateJson  = !empty($fieldState) ? htmlspecialchars(json_encode($fieldState), ENT_QUOTES) : '';
 			$stateAttr  = $stateJson ? " data-pac-state=\"{$stateJson}\"" : '';
 			
 			// HTML panel
 			$html = <<<HTML
-        <div id="{$id}" class="{$class}" data-pac-id="{$id}"{$stateAttr}>
+        <div id="{$id}" class="{$class}"{$pacIdAttr}{$stateAttr}>
             {$children}
         </div>
         HTML;
+			
+			// Skip WakaPAC initialisation if nothing in the tree requires it
+			if (!$needsWakaPAC) {
+				return new RenderResult($html);
+			}
 			
 			// WakaPAC initialisation — hydrate reads field values from DOM,
 			// data-pac-state provides collection data for dependent dropdowns

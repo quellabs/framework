@@ -44,6 +44,52 @@
 		}
 		
 		/**
+		 * Recursively scan a node tree to determine whether WakaPAC initialisation
+		 * is actually needed. Resource and Panel skip buildScript() entirely if not.
+		 *
+		 * WakaPAC is required if any node in the tree:
+		 * - Is a tabs container (always reactive)
+		 * - Has a pac_bind property (data-pac-bind attribute)
+		 * - Has scripts or abstraction properties set on a container
+		 * - Is a text node with {{ }} interpolation in its value
+		 * @param array $nodes
+		 * @return bool
+		 */
+		protected function requiresWakaPAC(array $nodes): bool {
+			foreach ($nodes as $node) {
+				$type       = $node['type']       ?? '';
+				$properties = $node['properties'] ?? [];
+				
+				// Tabs always requires WakaPAC for tab switching
+				if ($type === 'tabs') {
+					return true;
+				}
+				
+				// Any node with an explicit pac_bind
+				if (!empty($properties['pac_bind'])) {
+					return true;
+				}
+				
+				// Container with scripts or abstraction defined
+				if (!empty($properties['scripts']) || !empty($properties['abstraction'])) {
+					return true;
+				}
+				
+				// Text node with WakaPAC interpolation
+				if ($type === 'text' && isset($properties['value']) && str_contains($properties['value'], '{{')) {
+					return true;
+				}
+				
+				// Recurse into children
+				if (!empty($node['children']) && $this->requiresWakaPAC($node['children'])) {
+					return true;
+				}
+			}
+			
+			return false;
+		}
+		
+		/**
 		 * Generate the WakaPAC initialisation script for a container component.
 		 * Includes submit() and post() methods on the abstraction so buttons
 		 * within the container can trigger form actions.
