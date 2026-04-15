@@ -63,6 +63,7 @@
 									)
 									->add(Field::text('slug', 'Slug')->required())
 									->add(Field::toggle('featured', 'Featured post'))
+									->add(Field::time('date', 'Date'))
 									->add(Field::select('country', 'Country')
 										->options([
 											['value' => 'nl', 'label' => 'Netherlands'],

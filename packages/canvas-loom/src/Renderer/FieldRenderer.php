@@ -115,18 +115,22 @@
 			
 			// Delegate to the appropriate input renderer based on type
 			$inputHtml = match ($type) {
-				'textarea' => $this->renderTextarea($id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
-				'select'   => $this->renderSelect($id, $name, $properties, $pacFieldAttr, $pacBindAttr, $pacBind),
-				'checkbox' => $this->renderCheckbox($id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
-				'radio'    => $this->renderRadio($id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
-				'number'   => $this->renderInput('number', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
-				'email'    => $this->renderInput('email', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
-				'tel'      => $this->renderInput('tel', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
-				'url'      => $this->renderInput('url', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
-				'range'    => $this->renderInput('range', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
-				'date'     => $this->renderInput('date', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
-				'toggle'   => $this->renderToggle($id, $name, $properties, $pacFieldAttr),
-				default    => $this->renderInput('text', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
+				'textarea'       => $this->renderTextarea($id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
+				'select'         => $this->renderSelect($id, $name, $properties, $pacFieldAttr, $pacBindAttr, $pacBind),
+				'checkbox'       => $this->renderCheckbox($id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
+				'radio'          => $this->renderRadio($id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
+				'number'         => $this->renderInput('number', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
+				'email'          => $this->renderInput('email', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
+				'tel'            => $this->renderInput('tel', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
+				'url'            => $this->renderInput('url', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
+				'range'          => $this->renderInput('range', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
+				'date'           => $this->renderInput('date', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
+				'datetime-local' => $this->renderInput('datetime-local', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
+				'time'           => $this->renderInput('time', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
+				'week'           => $this->renderInput('week', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
+				'month'          => $this->renderInput('month', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
+				'toggle'         => $this->renderToggle($id, $name, $properties, $pacFieldAttr),
+				default          => $this->renderInput('text', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
 			};
 			
 			// Output element

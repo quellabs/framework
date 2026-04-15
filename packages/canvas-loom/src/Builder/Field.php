@@ -62,6 +62,34 @@
 		}
 		
 		/**
+		 * Date and time input field — value must be in Y-m-d\TH:i format
+		 */
+		public static function datetimeLocal(string $name, string $label): static {
+			return new static($name, $label, 'datetime-local');
+		}
+		
+		/**
+		 * Time input field — value must be in H:i or H:i:s format
+		 */
+		public static function time(string $name, string $label): static {
+			return new static($name, $label, 'time');
+		}
+		
+		/**
+		 * Week input field — value must be in Y-\WW format (e.g. 2024-W12)
+		 */
+		public static function week(string $name, string $label): static {
+			return new static($name, $label, 'week');
+		}
+		
+		/**
+		 * Month input field — value must be in Y-m format (e.g. 2024-03)
+		 */
+		public static function month(string $name, string $label): static {
+			return new static($name, $label, 'month');
+		}
+		
+		/**
 		 * Email input field
 		 */
 		public static function email(string $name, string $label): static {
