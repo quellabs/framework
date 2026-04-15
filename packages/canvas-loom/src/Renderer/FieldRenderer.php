@@ -120,6 +120,8 @@
 				'checkbox' => $this->renderCheckbox($id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
 				'radio'    => $this->renderRadio($id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
 				'number'   => $this->renderInput('number', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
+				'email'    => $this->renderInput('email', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
+				'tel'      => $this->renderInput('tel', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
 				'toggle'   => $this->renderToggle($id, $name, $properties, $pacFieldAttr),
 				default    => $this->renderInput('text', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
 			};

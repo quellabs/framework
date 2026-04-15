@@ -55,6 +55,20 @@
 		}
 		
 		/**
+		 * Email input field
+		 */
+		public static function email(string $name, string $label): static {
+			return new static($name, $label, 'email');
+		}
+		
+		/**
+		 * Telephone input field
+		 */
+		public static function tel(string $name, string $label): static {
+			return new static($name, $label, 'tel');
+		}
+		
+		/**
 		 * Toggle (on/off switch) field
 		 */
 		public static function toggle(string $name, string $label): static {
@@ -104,6 +118,10 @@
 		public function value(mixed $value): static {
 			if ($this->properties['input'] === 'toggle') {
 				throw new \LogicException('Field::value() cannot be used on toggle fields. Pass the initial state via the data array in Loom::render().');
+			}
+			
+			if ($this->properties['input'] === 'hidden') {
+				throw new \LogicException('Field::value() cannot be used on hidden fields. Pass the value via the data array in Loom::render().');
 			}
 			
 			return $this->set('value', $value);
