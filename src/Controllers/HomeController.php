@@ -60,7 +60,12 @@
 								)
 								->add(Column::make()
 									->add(Field::select('status', 'Status')
-										->options(['draft' => 'Draft', 'published' => 'Published'])
+										->options(
+											[
+												['value' => 'draft', 'label' => 'Draft'],
+												['value' => 'published', 'label' => 'Published'],
+											]
+										)
 									)
 									->add(Field::text('slug', 'Slug')->required())
 									->add(Field::toggle('featured', 'Featured post'))
@@ -168,5 +173,5 @@
 		public function save(Request $request): Response {
 			return new Response("");
 		}
-
+		
 	}

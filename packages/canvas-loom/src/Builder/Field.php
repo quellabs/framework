@@ -227,25 +227,11 @@
 		
 		/**
 		 * Set select options.
-		 * Flat associative arrays are normalized to value/label pairs.
-		 * Nested associative arrays (for dependent dropdowns) are preserved as-is.
 		 * @param array $options
 		 * @return static
 		 */
 		public function options(array $options): static {
-			$normalized = [];
-			
-			foreach ($options as $key => $value) {
-				if (is_array($value)) {
-					// Nested array — preserve as-is for dependent dropdowns
-					$normalized[$key] = $value;
-				} else {
-					// Flat associative — normalize to value/label pair
-					$normalized[] = ['value' => $key, 'label' => $value];
-				}
-			}
-			
-			return $this->set('options', $normalized);
+			return $this->set('options', $options);
 		}
 		
 		/**
