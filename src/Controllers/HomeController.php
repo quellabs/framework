@@ -45,6 +45,11 @@
 						->action("Stdlib.sendMessage('post-form', MSG_DELETE, 0, 0)")
 				)
 				->add(Tabs::make('post-tabs', 'general')
+					->script("
+				        testMethod() {
+				            console.log('abstraction extended, featured =', this.featured);
+				        }
+				    ")
 					->add(Tab::make('general', 'General')
 						->add(Section::make('post-details')
 							->add(Columns::make([70, 30])
@@ -57,7 +62,7 @@
 										->options(['draft' => 'Draft', 'published' => 'Published'])
 									)
 									->add(Field::text('slug', 'Slug')->required())
-									->add(Field::checkbox('featured', 'Featured post')->value('1'))
+									->add(Field::toggle('featured', 'Featured post')->value('1'))
 									->add(Field::select('country', 'Country')
 										->options([
 											['value' => 'nl', 'label' => 'Netherlands'],

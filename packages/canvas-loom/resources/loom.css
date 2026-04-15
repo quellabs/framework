@@ -174,7 +174,6 @@
     height: 1.5rem;
     background-color: #d1d5db;
     border-radius: 9999px;
-    transition: background-color 0.2s ease;
     flex-shrink: 0;
 }
 
@@ -186,7 +185,6 @@
     background-color: #ffffff;
     border-radius: 50%;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-    transition: transform 0.2s ease;
 }
 
 /* Checked state — track turns indigo, thumb slides right */
