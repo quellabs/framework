@@ -124,6 +124,7 @@
 				'tel'      => $this->renderInput('tel', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
 				'url'      => $this->renderInput('url', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
 				'range'    => $this->renderInput('range', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
+				'date'     => $this->renderInput('date', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
 				'toggle'   => $this->renderToggle($id, $name, $properties, $pacFieldAttr),
 				default    => $this->renderInput('text', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
 			};

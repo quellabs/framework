@@ -55,6 +55,13 @@
 		}
 		
 		/**
+		 * Date input field
+		 */
+		public static function date(string $name, string $label): static {
+			return new static($name, $label, 'date');
+		}
+		
+		/**
 		 * Email input field
 		 */
 		public static function email(string $name, string $label): static {
