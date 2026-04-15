@@ -216,9 +216,12 @@
 		 * @return string
 		 */
 		private function renderToggle(string $id, string $name, array $properties, string $pacField): string {
-			$checked  = !empty($properties['checked']) ? ' checked' : '';
-			$disabled = !empty($properties['disabled']) ? ' disabled' : '';
-			$pacBind  = $properties['pac_bind'] ?? "checked: {$name}";
+			// Resolve checked state from data array first, fall back to properties['checked']
+			$data          = $this->loom->getData();
+			$resolvedValue = (!empty($data) && $name && array_key_exists($name, $data)) ? $data[$name] : ($properties['checked'] ?? false);
+			$checked       = $resolvedValue ? ' checked' : '';
+			$disabled      = !empty($properties['disabled']) ? ' disabled' : '';
+			$pacBind       = $properties['pac_bind'] ?? "checked: {$name}";
 			
 			// The checkbox is visually hidden; the <label> provides the toggle UI.
 			// data-pac-bind goes on the checkbox so WakaPAC binds the boolean value.

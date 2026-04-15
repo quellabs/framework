@@ -90,9 +90,14 @@
 		}
 		
 		/**
-		 * Set the initial field value
+		 * Set the initial field value.
+		 * Not supported on toggle fields — use the data array passed to render() instead.
 		 */
 		public function value(mixed $value): static {
+			if ($this->properties['input'] === 'toggle') {
+				throw new \LogicException('Field::value() cannot be used on toggle fields. Pass the initial state via the data array in Loom::render().');
+			}
+			
 			return $this->set('value', $value);
 		}
 		

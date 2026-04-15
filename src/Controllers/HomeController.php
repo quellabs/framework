@@ -62,7 +62,7 @@
 										->options(['draft' => 'Draft', 'published' => 'Published'])
 									)
 									->add(Field::text('slug', 'Slug')->required())
-									->add(Field::toggle('featured', 'Featured post')->value('1'))
+									->add(Field::toggle('featured', 'Featured post'))
 									->add(Field::select('country', 'Country')
 										->options([
 											['value' => 'nl', 'label' => 'Netherlands'],
