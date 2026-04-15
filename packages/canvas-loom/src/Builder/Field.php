@@ -69,6 +69,20 @@
 		}
 		
 		/**
+		 * URL input field
+		 */
+		public static function url(string $name, string $label): static {
+			return new static($name, $label, 'url');
+		}
+		
+		/**
+		 * Range slider field
+		 */
+		public static function range(string $name, string $label): static {
+			return new static($name, $label, 'range');
+		}
+		
+		/**
 		 * Toggle (on/off switch) field
 		 */
 		public static function toggle(string $name, string $label): static {
