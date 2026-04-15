@@ -63,8 +63,10 @@
 				$abstractionJs .= $key . ': ' . json_encode($value) . ",\n        ";
 			}
 			
-			// Merge caller-supplied extra snippets with script() snippets from the builder
+			// Merge caller-supplied extra snippets with script() snippets from the builder.
+			// Trim trailing commas and whitespace from each snippet so the join comma is never doubled.
 			$allExtra = array_merge($extra, $scripts);
+			$allExtra = array_map(fn($s) => rtrim(trim($s), ','), $allExtra);
 			$extraJs  = !empty($allExtra) ? implode(",\n        ", $allExtra) . ',' : '';
 			$notificationsId = "{$id}-notifications";
 
