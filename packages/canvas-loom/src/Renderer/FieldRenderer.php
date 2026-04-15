@@ -253,12 +253,24 @@
 			$data          = $this->loom->getData();
 			$resolvedValue = (!empty($data) && $name && array_key_exists($name, $data)) ? $data[$name] : ($properties['checked'] ?? false);
 			$checked       = $resolvedValue ? ' checked' : '';
+			$disabled      = !empty($properties['disabled']);
 			$readonly      = !empty($properties['readonly']);
 			$pacBind       = $properties['pac_bind'] ?? "checked: {$name}";
 			
-			// readonly on a toggle: render as disabled visually (browser ignores readonly on checkboxes)
-			// but add a hidden input with the same name so the value still submits with the form.
-			// A truly disabled checkbox submits nothing — the hidden input compensates for that.
+			// disabled takes priority — a disabled toggle is fully inert, no submission needed
+			if ($disabled) {
+				return <<<HTML
+<label class="loom-toggle" for="{$id}">
+    <input type="checkbox" id="{$id}" class="loom-toggle-input"{$checked} {$pacField} data-pac-bind="{$this->e($pacBind)}" disabled>
+    <span class="loom-toggle-track" aria-hidden="true">
+        <span class="loom-toggle-thumb"></span>
+    </span>
+</label>
+HTML;
+			}
+			
+			// readonly: visually disabled but value still submits via a hidden input
+			// (browser ignores readonly on checkboxes; disabled checkboxes don't submit)
 			if ($readonly) {
 				$hiddenValue = $resolvedValue ? '1' : '0';
 				
@@ -273,13 +285,10 @@
 HTML;
 			}
 			
-			$disabled = !empty($properties['disabled']) ? ' disabled' : '';
-			
-			// The checkbox is visually hidden; the <label> provides the toggle UI.
-			// data-pac-bind goes on the checkbox so WakaPAC binds the boolean value.
+			// Normal toggle
 			return <<<HTML
 <label class="loom-toggle" for="{$id}">
-    <input type="checkbox" id="{$id}" name="{$this->e($name)}" class="loom-toggle-input"{$checked}{$disabled}{$pacField} data-pac-bind="{$this->e($pacBind)}">
+    <input type="checkbox" id="{$id}" name="{$this->e($name)}" class="loom-toggle-input"{$checked}{$pacField} data-pac-bind="{$this->e($pacBind)}">
     <span class="loom-toggle-track" aria-hidden="true">
         <span class="loom-toggle-thumb"></span>
     </span>
