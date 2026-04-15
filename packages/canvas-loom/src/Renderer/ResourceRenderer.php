@@ -80,7 +80,11 @@
 				case 'header':
 					$headerResult = $this->renderHeader($properties, $id, $saveDisabledAttr);
 					$html         = $headerResult->html;
-					$scripts      = array_merge($scripts, $headerResult->scripts);
+					
+					if ($headerResult->script !== null) {
+						$scripts[] = $headerResult->script;
+					}
+					
 					break;
 				
 				case 'body':
@@ -90,11 +94,15 @@
 				default:
 					$headerResult = $this->renderHeader($properties, $id, $saveDisabledAttr);
 					$html         = $headerResult->html . "\n" . $this->renderBody($properties, $children, $id, $methodAttr, $methodSpoofHtml);
-					$scripts      = array_merge($scripts, $headerResult->scripts);
+					
+					if ($headerResult->script !== null) {
+						$scripts[] = $headerResult->script;
+					}
+					
 					break;
 			}
 			
-			return new RenderResult($html, $scripts);
+			return new RenderResult($html, !empty($scripts) ? implode("\n", $scripts) : null);
 		}
 		
 		/**
@@ -187,7 +195,7 @@ JS;
 				}
 			}
 			
-			$scripts[] = <<<JS
+			$script = <<<JS
 (function() {
     {$constants}
     wakaPAC('{$headerId}', {
@@ -201,7 +209,7 @@ JS;
 })();
 JS;
 			
-			return new RenderResult($html, $scripts);
+			return new RenderResult($html, $script);
 		}
 		
 		/**

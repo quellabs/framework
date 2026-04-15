@@ -60,6 +60,6 @@
 			$script = $this->buildScript($id, [], $properties['abstraction'] ?? [], $properties['scripts'] ?? []);
 			
 			// Return result
-			return new RenderResult($html, [$script]);
+			return new RenderResult($html, $script);
 		}
 	}

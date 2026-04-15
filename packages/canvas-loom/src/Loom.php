@@ -49,13 +49,12 @@
 			$result = $this->_render($node);
 			
 			// No scripts generated — return HTML only
-			if (empty($result->scripts)) {
+			if ($result->script === null) {
 				return $result->html;
 			}
 			
-			// Append inline script block with all collected scripts
-			$scripts = implode("\n", $result->scripts);
-			return $result->html . "\n<script>\n{$scripts}\n</script>";
+			// Append inline script block
+			return $result->html . "\n<script>\n{$result->script}\n</script>";
 		}
 		
 		/**
@@ -84,7 +83,10 @@
 			foreach ($node['children'] ?? [] as $i => $child) {
 				$result     = $this->_render($child, $node);
 				$childHtml .= $result->html;
-				$scripts    = array_merge($scripts, $result->scripts);
+				
+				if ($result->script !== null) {
+					$scripts[] = $result->script;
+				}
 			}
 			
 			// Pass raw child nodes to renderer so container renderers can
@@ -92,11 +94,16 @@
 			$properties              = $node['properties'] ?? [];
 			$properties['_children'] = $node['children']   ?? [];
 			
-			$renderer        = $this->getRenderer($node['type']);
-			$result          = $renderer->render($properties, $childHtml, $parent, $i);
-			$result->scripts = array_merge($scripts, $result->scripts);
+			$renderer = $this->getRenderer($node['type']);
+			$result   = $renderer->render($properties, $childHtml, $parent, $i);
 			
-			return $result;
+			if ($result->script !== null) {
+				$scripts[] = $result->script;
+			}
+			
+			// Return a new result with accumulated scripts collapsed back to a single
+			// string so the parent can continue accumulating
+			return new RenderResult($result->html, !empty($scripts) ? implode("\n", $scripts) : null);
 		}
 		
 		/**
