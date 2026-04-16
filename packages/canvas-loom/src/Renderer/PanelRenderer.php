@@ -2,17 +2,17 @@
 	
 	namespace Quellabs\Canvas\Loom\Renderer;
 	
+	use Quellabs\Canvas\Loom\AbstractRenderer;
 	use Quellabs\Canvas\Loom\RenderResult;
 	
 	/**
-	 * Renders a WakaPAC component container without tab navigation.
-	 * Provides the same reactive field hydration as TabsRenderer but
-	 * as a simple panel without any tab bar or switching logic.
+	 * Renders a panel container — a layout grouping without its own WakaPAC instance.
+	 * Fields inside a Panel are bound to the parent Resource component.
 	 *
 	 * CSS classes are defined as protected properties so theme packages
 	 * can extend this renderer and override only the class names.
 	 */
-	class PanelRenderer extends AbstractContainerRenderer {
+	class PanelRenderer extends AbstractRenderer {
 		
 		/** @var string Wrapper div class */
 		protected string $wrapperClass = 'loom-panel';
@@ -26,47 +26,15 @@
 		 * @return RenderResult
 		 */
 		public function render(array $properties, string $children, ?array $parent = null, int $index = 0): RenderResult {
-			// id flows into both HTML attributes and a JS string literal in buildScript().
-			// Restrict to characters safe in both contexts: alphanumerics, hyphens, underscores.
-			$rawId = $properties['id'] ?? '';
-			
-			if (!$rawId) {
-				throw new \InvalidArgumentException('PanelRenderer requires an "id" property.');
-			}
-			
-			if (!preg_match('/^[a-zA-Z0-9_-]+$/', $rawId)) {
-				throw new \InvalidArgumentException('PanelRenderer "id" must contain only alphanumerics, hyphens, and underscores.');
-			}
-			
-			$id = $rawId;
+			$id = $this->e($properties['id'] ?? '');
 			$class = $this->e($properties['class'] ?? $this->wrapperClass);
-			$nodes = $properties['_children'] ?? [];
 			
-			$needsWakaPAC = $this->requiresWakaPAC($nodes);
-			
-			// data-pac-id and data-pac-state are only meaningful when WakaPAC is initialised
-			$pacIdAttr = $needsWakaPAC ? " data-pac-id=\"{$id}\"" : '';
-			$fieldState = $needsWakaPAC ? $this->collectFieldProperties($nodes) : [];
-			$stateJson = !empty($fieldState) ? htmlspecialchars(json_encode($fieldState), ENT_QUOTES) : '';
-			$stateAttr = $stateJson ? " data-pac-state=\"{$stateJson}\"" : '';
-			
-			// HTML panel
 			$html = <<<HTML
-        <div id="{$id}" class="{$class}"{$pacIdAttr}{$stateAttr}>
+        <div id="{$id}" class="{$class}">
             {$children}
         </div>
         HTML;
 			
-			// Skip WakaPAC initialisation if nothing in the tree requires it
-			if (!$needsWakaPAC) {
-				return new RenderResult($html);
-			}
-			
-			// WakaPAC initialisation — hydrate reads field values from DOM,
-			// data-pac-state provides collection data for dependent dropdowns
-			$script = $this->buildScript($id, [], $properties['abstraction'] ?? [], $properties['scripts'] ?? []);
-			
-			// Return result
-			return new RenderResult($html, $script);
+			return new RenderResult($html);
 		}
 	}

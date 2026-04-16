@@ -60,13 +60,13 @@
 				$type       = $node['type']       ?? '';
 				$properties = $node['properties'] ?? [];
 				
-				// Tabs always requires WakaPAC for tab switching
-				if ($type === 'tabs') {
+				// Any node with an explicit pac_bind
+				if (!empty($properties['pac_bind'])) {
 					return true;
 				}
 				
-				// Any node with an explicit pac_bind
-				if (!empty($properties['pac_bind'])) {
+				// Dependent dropdowns use implicit pac_bind via foreach_expression
+				if (!empty($properties['foreach_expression']) || !empty($properties['depends_on'])) {
 					return true;
 				}
 				

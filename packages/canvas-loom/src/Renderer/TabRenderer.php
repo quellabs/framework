@@ -7,8 +7,7 @@
 	
 	/**
 	 * Renders a single tab panel within a tabs container.
-	 * Visibility is controlled by the parent tabs WakaPAC component
-	 * via a visible binding on the activeTab property.
+	 * Visibility is controlled by the tabs inline script via the hidden attribute.
 	 */
 	class TabRenderer extends AbstractRenderer {
 		
@@ -24,7 +23,7 @@
 		 * @return RenderResult
 		 */
 		public function render(array $properties, string $children, ?array $parent = null, int $index = 0): RenderResult {
-			$id = $properties['id'] ?? '';
+			$id    = $properties['id']    ?? '';
 			$class = $this->e($properties['class'] ?? $this->panelClass);
 			
 			// id appears in a JS string literal inside data-pac-bind — restrict to safe identifier characters
@@ -32,13 +31,19 @@
 				throw new \InvalidArgumentException("TabRenderer id \"{$id}\" must contain only alphanumerics, hyphens, and underscores.");
 			}
 			
-			// Visible binding references the parent tabs component's activeTab property
+			// Non-active panels start hidden — the tabs inline script removes hidden on click.
+			// The active tab id is read from the parent Tabs node properties.
+			$activeTab = $parent['properties']['active'] ?? '';
+			$hidden    = ($id !== $activeTab) ? ' hidden' : '';
+			
+			// Build HTML
 			$html = <<<HTML
-        <div id="{$id}" class="{$class}" data-pac-bind="visible: activeTab === '{$id}'">
+        <div id="{$id}" class="{$class}"{$hidden}>
             {$children}
         </div>
         HTML;
 			
+			// Return HTML
 			return new RenderResult($html);
 		}
 	}
