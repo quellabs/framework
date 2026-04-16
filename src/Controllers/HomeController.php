@@ -46,11 +46,6 @@
 						->action("Stdlib.sendMessage('post-form', MSG_DELETE, 0, 0)")
 				)
 				->add(Tabs::make('post-tabs', 'general')
-					->script("
-				        testMethod() {
-				            console.log('abstraction extended, featured =', this.featured);
-				        }
-				    ")
 					->add(Tab::make('general', 'General')
 						->add(Section::make('post-details')
 							->add(Columns::make([70, 30])
