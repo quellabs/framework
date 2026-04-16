@@ -44,6 +44,62 @@
 		}
 		
 		/**
+		 * Recursively scan a node tree to determine whether WakaPAC initialisation
+		 * is actually needed. Resource and Panel skip buildScript() entirely if not.
+		 *
+		 * WakaPAC is required if any node in the tree:
+		 * - Is a tabs container (always reactive)
+		 * - Has a pac_bind property (data-pac-bind attribute)
+		 * - Has scripts or abstraction properties set on a container
+		 * - Is a text node with {{ }} interpolation in its value
+		 * @param array $nodes
+		 * @return bool
+		 */
+		protected function requiresWakaPAC(array $nodes): bool {
+			foreach ($nodes as $node) {
+				$type       = $node['type']       ?? '';
+				$properties = $node['properties'] ?? [];
+				
+				// Any node with an explicit pac_bind
+				if (!empty($properties['pac_bind'])) {
+					return true;
+				}
+				
+				// Dependent dropdowns use implicit pac_bind via foreach_expression
+				if (!empty($properties['foreach_expression']) || !empty($properties['depends_on'])) {
+					return true;
+				}
+				
+				// Container with scripts or abstraction defined
+				if (!empty($properties['scripts']) || !empty($properties['abstraction'])) {
+					return true;
+				}
+				
+				// Text node with WakaPAC interpolation
+				if ($type === 'text' && isset($properties['value']) && str_contains($properties['value'], '{{')) {
+					return true;
+				}
+				
+				// Field hint with WakaPAC interpolation
+				if ($type === 'field' && isset($properties['hint']) && str_contains($properties['hint'], '{{')) {
+					return true;
+				}
+				
+				// Button with an action expression
+				if ($type === 'button' && !empty($properties['action'])) {
+					return true;
+				}
+				
+				// Recurse into children
+				if (!empty($node['children']) && $this->requiresWakaPAC($node['children'])) {
+					return true;
+				}
+			}
+			
+			return false;
+		}
+		
+		/**
 		 * Generate the WakaPAC initialisation script for a container component.
 		 * Includes submit() and post() methods on the abstraction so buttons
 		 * within the container can trigger form actions.
@@ -52,7 +108,7 @@
 		 * @param array  $abstraction Key-value pairs from the node's abstraction property (scalars and arrays only)
 		 * @return string
 		 */
-		protected function buildScript(string $id, array $extra = [], array $abstraction = []): string {
+		protected function buildScript(string $id, array $extra = [], array $abstraction = [], array $scripts = []): string {
 			$abstractionJs = '';
 			
 			foreach ($abstraction as $key => $value) {
@@ -63,7 +119,11 @@
 				$abstractionJs .= $key . ': ' . json_encode($value) . ",\n        ";
 			}
 			
-			$extraJs = !empty($extra) ? implode(",\n        ", $extra) . ',' : '';
+			// Merge caller-supplied extra snippets with script() snippets from the builder.
+			// Trim trailing commas and whitespace from each snippet so the join comma is never doubled.
+			$allExtra = array_merge($extra, $scripts);
+			$allExtra = array_map(fn($s) => rtrim(trim($s), ','), $allExtra);
+			$extraJs  = !empty($allExtra) ? implode(",\n        ", $allExtra) . ',' : '';
 			$notificationsId = "{$id}-notifications";
 
 			return <<<JS

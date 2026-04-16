@@ -54,6 +54,35 @@
 		 * @return RenderResult
 		 */
 		public function render(array $properties, string $children, ?array $parent = null, int $index = 0): RenderResult {
+			$type = $properties['input'] ?? 'text';
+			
+			if ($type === 'hidden') {
+				return $this->renderHidden($properties);
+			} else {
+				return $this->renderDefault($properties);
+			}
+		}
+		
+		/**
+		 * Render a hidden input field.
+		 * Bypasses all wrapper, label, hint, and WakaPAC binding logic.
+		 * @param array $properties
+		 * @return RenderResult
+		 */
+		protected function renderHidden(array $properties): RenderResult {
+			$name  = $properties['name'] ?? '';
+			$id    = $this->e($properties['id'] ?? $name);
+			$value = $this->resolveValue($name, $properties);
+			
+			return new RenderResult("<input type=\"hidden\" id=\"{$id}\" name=\"{$this->e($name)}\" value=\"{$this->e($value)}\">");
+		}
+		
+		/**
+		 * Render a standard visible field with label, input, and optional hint.
+		 * @param array $properties
+		 * @return RenderResult
+		 */
+		protected function renderDefault(array $properties): RenderResult {
 			$name  = $properties['name'] ?? '';
 			$type  = $properties['input'] ?? 'text';
 			$label = $this->e($properties['label'] ?? '');
@@ -65,10 +94,10 @@
 			
 			// data-pac-field and data-pac-bind are derived from the field name by default,
 			// but can be overruled entirely via properties
-			$pacField = $properties['pac_field'] ?? 'data-pac-field';
-			$pacBind = $properties['pac_bind'] ?? "value: {$name}";
+			$pacField     = $properties['pac_field'] ?? 'data-pac-field';
+			$pacBind      = $properties['pac_bind'] ?? ($type === 'toggle' ? "checked: {$name}" : "value: {$name}");
 			$pacFieldAttr = $pacField ? " {$pacField}" : '';
-			$pacBindAttr = $pacBind ? " data-pac-bind=\"{$pacBind}\"" : '';
+			$pacBindAttr  = $pacBind ? " data-pac-bind=\"{$pacBind}\"" : '';
 			
 			// Only render a label element when a label is provided
 			if ($label) {
@@ -86,12 +115,22 @@
 			
 			// Delegate to the appropriate input renderer based on type
 			$inputHtml = match ($type) {
-				'textarea' => $this->renderTextarea($id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
-				'select' => $this->renderSelect($id, $name, $properties, $pacFieldAttr, $pacBindAttr, $pacBind),
-				'checkbox' => $this->renderCheckbox($id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
-				'radio' => $this->renderRadio($id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
-				'number' => $this->renderInput('number', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
-				default => $this->renderInput('text', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
+				'textarea'       => $this->renderTextarea($id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
+				'select'         => $this->renderSelect($id, $name, $properties, $pacFieldAttr, $pacBindAttr, $pacBind),
+				'checkbox'       => $this->renderCheckbox($id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
+				'radio'          => $this->renderRadio($id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
+				'number'         => $this->renderInput('number', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
+				'email'          => $this->renderInput('email', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
+				'tel'            => $this->renderInput('tel', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
+				'url'            => $this->renderInput('url', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
+				'range'          => $this->renderInput('range', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
+				'date'           => $this->renderInput('date', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
+				'datetime-local' => $this->renderInput('datetime-local', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
+				'time'           => $this->renderInput('time', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
+				'week'           => $this->renderInput('week', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
+				'month'          => $this->renderInput('month', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
+				'toggle'         => $this->renderToggle($id, $name, $properties, $pacFieldAttr),
+				default          => $this->renderInput('text', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
 			};
 			
 			// Output element
@@ -199,6 +238,67 @@
         {$options}
     </select>
     HTML;
+		}
+		
+		/**
+		 * Render a toggle switch input.
+		 * Uses a hidden checkbox + styled label pair. The pac_bind uses
+		 * "checked: name" so WakaPAC maps the boolean state correctly.
+		 * Note: pac_bind is intentionally excluded here — the hidden checkbox
+		 * carries data-pac-field, and the bind is on the visible label via JS,
+		 * so we pass pacBind directly to the checkbox input element.
+		 * @param string $id Element id attribute
+		 * @param string $name Field name
+		 * @param array $properties Full node properties
+		 * @param string $pacField Rendered data-pac-field attribute
+		 * @return string
+		 */
+		private function renderToggle(string $id, string $name, array $properties, string $pacField): string {
+			// Resolve checked state from data array first, fall back to properties['checked']
+			$data          = $this->loom->getData();
+			$resolvedValue = (!empty($data) && $name && array_key_exists($name, $data)) ? $data[$name] : ($properties['checked'] ?? false);
+			$checked       = $resolvedValue ? ' checked' : '';
+			$disabled      = !empty($properties['disabled']);
+			$readonly      = !empty($properties['readonly']);
+			$pacBind       = $properties['pac_bind'] ?? "checked: {$name}";
+			
+			// disabled takes priority — a disabled toggle is fully inert, no submission needed
+			if ($disabled) {
+				return <<<HTML
+<label class="loom-toggle" for="{$id}">
+    <input type="checkbox" id="{$id}" class="loom-toggle-input"{$checked} {$pacField} data-pac-bind="{$this->e($pacBind)}" disabled>
+    <span class="loom-toggle-track" aria-hidden="true">
+        <span class="loom-toggle-thumb"></span>
+    </span>
+</label>
+HTML;
+			}
+			
+			// readonly: visually disabled but value still submits via a hidden input
+			// (browser ignores readonly on checkboxes; disabled checkboxes don't submit)
+			if ($readonly) {
+				$hiddenValue = $resolvedValue ? '1' : '0';
+				
+				return <<<HTML
+<label class="loom-toggle" for="{$id}">
+    <input type="checkbox" id="{$id}" class="loom-toggle-input"{$checked} {$pacField} data-pac-bind="{$this->e($pacBind)}" disabled>
+    <span class="loom-toggle-track" aria-hidden="true">
+        <span class="loom-toggle-thumb"></span>
+    </span>
+</label>
+<input type="hidden" name="{$this->e($name)}" value="{$hiddenValue}">
+HTML;
+			}
+			
+			// Normal toggle
+			return <<<HTML
+<label class="loom-toggle" for="{$id}">
+    <input type="checkbox" id="{$id}" name="{$this->e($name)}" class="loom-toggle-input"{$checked}{$pacField} data-pac-bind="{$this->e($pacBind)}">
+    <span class="loom-toggle-track" aria-hidden="true">
+        <span class="loom-toggle-thumb"></span>
+    </span>
+</label>
+HTML;
 		}
 		
 		/**

@@ -30,31 +30,33 @@
 		
 		/**
 		 * Render the button element
-		 * @param array      $properties Node properties from the JSON definition
-		 * @param string     $children   Already-rendered HTML of all child nodes
-		 * @param array|null $parent     Parent node
-		 * @param int        $index      Index of this node within its parent
+		 * @param array $properties Node properties from the JSON definition
+		 * @param string $children Already-rendered HTML of all child nodes
+		 * @param array|null $parent Parent node
+		 * @param int $index Index of this node within its parent
 		 * @return RenderResult
 		 */
 		public function render(array $properties, string $children, ?array $parent = null, int $index = 0): RenderResult {
-			$label   = $this->e($properties['label']   ?? '');
-			$action  = $properties['action']  ?? null;
+			$label = $this->e($properties['label'] ?? '');
+			$action = $properties['action'] ?? null;
 			$variant = $properties['variant'] ?? 'primary';
-			$type    = $this->e($properties['type']    ?? 'button');
+			$type = $this->e($properties['type'] ?? 'button');
 			
 			// Build CSS class from base and variant
-			$variantClass = match($variant) {
+			$variantClass = match ($variant) {
 				'secondary' => $this->secondaryClass,
-				'danger'    => $this->dangerClass,
-				default     => $this->primaryClass,
+				'danger' => $this->dangerClass,
+				default => $this->primaryClass,
 			};
 			
 			$class = $this->e($properties['class'] ?? "{$this->buttonClass} {$variantClass}");
 			
 			// Only render data-pac-bind when an action is provided
-			$bindAttr = $action
-				? " data-pac-bind=\"click: {$this->e($action)}\""
-				: '';
+			if ($action) {
+				$bindAttr = " data-pac-bind=\"click: {$this->e($action)}\"";
+			} else {
+				$bindAttr = '';
+			}
 			
 			$html = "<button type=\"{$type}\" class=\"{$class}\"{$bindAttr}>{$label}</button>";
 			

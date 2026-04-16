@@ -51,13 +51,17 @@
 				$hint     = $properties['sidebar_hint']  ?? '';
 				$class    = $properties['class']         ?? $this->sidebarClass;
 				
-				$titleHtml = $title
-					? "<p class=\"{$this->sidebarTitleClass}\">{$title}</p>"
-					: '';
+				if ($title) {
+					$titleHtml = "<p class=\"{$this->sidebarTitleClass}\">{$title}</p>";
+				} else {
+					$titleHtml = '';
+				}
 				
-				$hintHtml = $hint
-					? "<p class=\"{$this->sidebarHintClass}\">{$hint}</p>"
-					: '';
+				if ($hint) {
+					$hintHtml = "<p class=\"{$this->sidebarHintClass}\">{$hint}</p>";
+				} else {
+					$hintHtml = '';
+				}
 				
 				$html = <<<HTML
             <div class="{$class}"{$styleAttr}>

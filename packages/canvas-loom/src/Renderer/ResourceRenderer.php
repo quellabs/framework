@@ -41,10 +41,10 @@
 		 * @return RenderResult
 		 */
 		public function render(array $properties, string $children, ?array $parent = null, int $index = 0): RenderResult {
-			$id           = $properties['id'] ?? '';
-			$method       = strtoupper($properties['method'] ?? 'POST');
+			$id = $properties['id'] ?? '';
+			$method = strtoupper($properties['method'] ?? 'POST');
 			$saveDisabled = !empty($properties['save_disabled']);
-			$part         = $properties['_render_part'] ?? 'full';
+			$part = $properties['_render_part'] ?? 'full';
 			
 			// id is required — without it WakaPAC cannot be initialised
 			if (!$id) {
@@ -69,32 +69,36 @@
 			// Disabled attribute
 			$saveDisabledAttr = $saveDisabled ? ' disabled' : '';
 			
-			// Scripts only generated for full or body — not for header-only renders
-			if ($part !== 'header') {
-				$scripts = [$this->buildScript($id, [], $properties['abstraction'] ?? [])];
-			} else {
-				$scripts = [];
-			}
-			
 			switch ($part) {
 				case 'header':
 					$headerResult = $this->renderHeader($properties, $id, $saveDisabledAttr);
-					$html         = $headerResult->html;
-					$scripts      = array_merge($scripts, $headerResult->scripts);
+					$html = $headerResult->html;
+					$scripts = $headerResult->script !== null ? [$headerResult->script] : [];
 					break;
 				
 				case 'body':
-					$html = $this->renderBody($properties, $children, $id, $methodAttr, $methodSpoofHtml);
+					$bodyResult = $this->renderBody($properties, $children, $id, $methodAttr, $methodSpoofHtml);
+					$html = $bodyResult->html;
+					$scripts = $bodyResult->script !== null ? [$bodyResult->script] : [];
 					break;
 				
 				default:
 					$headerResult = $this->renderHeader($properties, $id, $saveDisabledAttr);
-					$html         = $headerResult->html . "\n" . $this->renderBody($properties, $children, $id, $methodAttr, $methodSpoofHtml);
-					$scripts      = array_merge($scripts, $headerResult->scripts);
+					$bodyResult = $this->renderBody($properties, $children, $id, $methodAttr, $methodSpoofHtml);
+					$html = $headerResult->html . "\n" . $bodyResult->html;
+					$scripts = [];
+					
+					if ($headerResult->script !== null) {
+						$scripts[] = $headerResult->script;
+					}
+					
+					if ($bodyResult->script !== null) {
+						$scripts[] = $bodyResult->script;
+					}
 					break;
 			}
 			
-			return new RenderResult($html, $scripts);
+			return new RenderResult($html, !empty($scripts) ? implode("\n", $scripts) : null);
 		}
 		
 		/**
@@ -106,20 +110,20 @@
 		 * @return RenderResult
 		 */
 		protected function renderHeader(array $properties, string $id, string $saveDisabledAttr): RenderResult {
-			$title         = $this->e($properties['title']     ?? '');
-			$saveLabel     = $this->e($properties['save_label'] ?? 'Save');
-			$headerId      = "{$id}-header";
+			$title = $this->e($properties['title'] ?? '');
+			$saveLabel = $this->e($properties['save_label'] ?? 'Save');
+			$headerId = "{$id}-header";
 			$headerButtons = $properties['header_buttons'] ?? [];
-			$scripts       = [];
+			$scripts = [];
 			
 			// Render extra header buttons with visibility binding
 			$extraButtons = '';
 			
 			foreach ($headerButtons as $button) {
-				$name    = $button->get('name');
-				$label   = $this->e($button->get('label') ?? '');
+				$name = $button->get('name');
+				$label = $this->e($button->get('label') ?? '');
 				$variant = $button->get('variant') ?? 'primary';
-				$action  = $button->get('action') ?? '';
+				$action = $button->get('action') ?? '';
 				
 				// name flows into JS property names and data-pac-bind expressions — restrict to identifier characters
 				if ($name && !preg_match('/^[a-zA-Z0-9_]+$/', $name)) {
@@ -128,13 +132,13 @@
 				
 				$variantClass = match ($variant) {
 					'secondary' => 'loom-button loom-button-secondary',
-					'danger'    => 'loom-button loom-button-danger',
-					default     => 'loom-button loom-button-primary',
+					'danger' => 'loom-button loom-button-danger',
+					default => 'loom-button loom-button-primary',
 				};
 				
-				$binding   = $name ? "visible: show_{$name}" : '';
-				$binding   = ($binding && $action) ? "{$binding}, click: {$action}" : ($action ? "click: {$action}" : $binding);
-				$bindAttr  = $binding ? " data-pac-bind=\"{$binding}\"" : '';
+				$binding = $name ? "visible: show_{$name}" : '';
+				$binding = ($binding && $action) ? "{$binding}, click: {$action}" : ($action ? "click: {$action}" : $binding);
+				$bindAttr = $binding ? " data-pac-bind=\"{$binding}\"" : '';
 				
 				$extraButtons .= "<button type=\"button\" class=\"{$variantClass}\"{$bindAttr}>{$label}</button>\n";
 			}
@@ -187,7 +191,7 @@ JS;
 				}
 			}
 			
-			$scripts[] = <<<JS
+			$script = <<<JS
 (function() {
     {$constants}
     wakaPAC('{$headerId}', {
@@ -201,7 +205,7 @@ JS;
 })();
 JS;
 			
-			return new RenderResult($html, $scripts);
+			return new RenderResult($html, $script);
 		}
 		
 		/**
@@ -212,12 +216,16 @@ JS;
 		 * @param string $id Form id, also used as WakaPAC component id
 		 * @param string $methodAttr HTML method attribute value (GET or POST)
 		 * @param string $methodSpoofHtml Hidden _method field for PUT/PATCH/DELETE or empty string
-		 * @return string
+		 * @return RenderResult
 		 */
-		protected function renderBody(array $properties, string $children, string $id, string $methodAttr, string $methodSpoofHtml): string {
-			$class         = $this->e($properties['class']  ?? $this->formClass);
-			$action        = $this->e($properties['action'] ?? '');
+		protected function renderBody(array $properties, string $children, string $id, string $methodAttr, string $methodSpoofHtml): RenderResult {
+			$class = $this->e($properties['class'] ?? $this->formClass);
+			$action = $this->e($properties['action'] ?? '');
 			$notifications = $this->loom->getNotifications();
+			
+			// Determine whether WakaPAC is needed.
+			// Notifications force it because the dismiss button uses data-pac-bind.
+			$needsWakaPAC = !empty($notifications) || $this->requiresWakaPAC($properties['_children'] ?? []);
 			
 			// Render notifications
 			$notificationsHtml = '';
@@ -227,11 +235,11 @@ JS;
 				
 				foreach ($notifications as $notification) {
 					// Whitelist type to prevent CSS class injection — unknown types fall back to 'info'
-					$type    = in_array($notification['type'], ['success', 'error', 'warning', 'info'], true)
+					$type = in_array($notification['type'], ['success', 'error', 'warning', 'info'], true)
 						? $notification['type']
 						: 'info';
 					$message = htmlspecialchars($notification['message'], ENT_QUOTES, 'UTF-8');
-					$items  .= "<li class=\"loom-notification-item loom-notification-{$type}\">{$message}</li>\n";
+					$items .= "<li class=\"loom-notification-item loom-notification-{$type}\">{$message}</li>\n";
 				}
 				$notificationsHtml = <<<HTML
 <div id="{$id}-notifications" class="loom-notifications">
@@ -243,20 +251,27 @@ JS;
 HTML;
 			}
 			
-			// Explicit pac_state key takes precedence; falls back to top-level arrays in data
-			// for backwards compatibility, but callers should pass state separately to avoid
-			// ambiguity with array-valued fields (multi-select, tags, etc.)
-			$data      = $this->loom->getData();
-			$stateData = $data['_pac_state'] ?? array_filter($data, fn($value) => is_array($value));
+			// data-pac-id and data-pac-state are only emitted when WakaPAC is initialised
+			$pacIdAttr = $needsWakaPAC ? " data-pac-id=\"{$id}\"" : '';
+			$data = $this->loom->getData();
+			$stateData = $needsWakaPAC ? ($data['_pac_state'] ?? array_filter($data, fn($value) => is_array($value))) : [];
 			$stateJson = !empty($stateData) ? htmlspecialchars(json_encode($stateData), ENT_QUOTES) : '';
 			$stateAttr = $stateJson ? " data-pac-state=\"{$stateJson}\"" : '';
 			
-			return <<<HTML
-    <form id="{$id}" action="{$action}" method="{$methodAttr}" class="{$class}" data-pac-id="{$id}"{$stateAttr}>
+			$html = <<<HTML
+    <form id="{$id}" action="{$action}" method="{$methodAttr}" class="{$class}"{$pacIdAttr}{$stateAttr}>
         {$methodSpoofHtml}
         {$notificationsHtml}
         {$children}
     </form>
     HTML;
+			
+			if ($needsWakaPAC) {
+				$script = $this->buildScript($id, [], $properties['abstraction'] ?? [], $properties['scripts'] ?? []);
+			} else {
+				$script = null;
+			}
+			
+			return new RenderResult($html, $script);
 		}
 	}

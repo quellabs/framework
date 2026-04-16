@@ -55,6 +55,84 @@
 		}
 		
 		/**
+		 * Date input field
+		 */
+		public static function date(string $name, string $label): static {
+			return new static($name, $label, 'date');
+		}
+		
+		/**
+		 * Date and time input field — value must be in Y-m-d\TH:i format
+		 */
+		public static function datetimeLocal(string $name, string $label): static {
+			return new static($name, $label, 'datetime-local');
+		}
+		
+		/**
+		 * Time input field — value must be in H:i or H:i:s format
+		 */
+		public static function time(string $name, string $label): static {
+			return new static($name, $label, 'time');
+		}
+		
+		/**
+		 * Week input field — value must be in Y-\WW format (e.g. 2024-W12)
+		 */
+		public static function week(string $name, string $label): static {
+			return new static($name, $label, 'week');
+		}
+		
+		/**
+		 * Month input field — value must be in Y-m format (e.g. 2024-03)
+		 */
+		public static function month(string $name, string $label): static {
+			return new static($name, $label, 'month');
+		}
+		
+		/**
+		 * Email input field
+		 */
+		public static function email(string $name, string $label): static {
+			return new static($name, $label, 'email');
+		}
+		
+		/**
+		 * Telephone input field
+		 */
+		public static function tel(string $name, string $label): static {
+			return new static($name, $label, 'tel');
+		}
+		
+		/**
+		 * URL input field
+		 */
+		public static function url(string $name, string $label): static {
+			return new static($name, $label, 'url');
+		}
+		
+		/**
+		 * Range slider field
+		 */
+		public static function range(string $name, string $label): static {
+			return new static($name, $label, 'range');
+		}
+		
+		/**
+		 * Toggle (on/off switch) field
+		 */
+		public static function toggle(string $name, string $label): static {
+			return new static($name, $label, 'toggle');
+		}
+		
+		/**
+		 * Hidden input field — no label, no wrapper, not reactive.
+		 * Value is populated from the data array passed to render().
+		 */
+		public static function hidden(string $name): static {
+			return new static($name, '', 'hidden');
+		}
+		
+		/**
 		 * Number input field
 		 */
 		public static function number(string $name, string $label): static {
@@ -83,9 +161,18 @@
 		}
 		
 		/**
-		 * Set the initial field value
+		 * Set the initial field value.
+		 * Not supported on toggle fields — use the data array passed to render() instead.
 		 */
 		public function value(mixed $value): static {
+			if ($this->properties['input'] === 'toggle') {
+				throw new \LogicException('Field::value() cannot be used on toggle fields. Pass the initial state via the data array in Loom::render().');
+			}
+			
+			if ($this->properties['input'] === 'hidden') {
+				throw new \LogicException('Field::value() cannot be used on hidden fields. Pass the value via the data array in Loom::render().');
+			}
+			
 			return $this->set('value', $value);
 		}
 		
@@ -140,25 +227,11 @@
 		
 		/**
 		 * Set select options.
-		 * Flat associative arrays are normalized to value/label pairs.
-		 * Nested associative arrays (for dependent dropdowns) are preserved as-is.
 		 * @param array $options
 		 * @return static
 		 */
 		public function options(array $options): static {
-			$normalized = [];
-			
-			foreach ($options as $key => $value) {
-				if (is_array($value)) {
-					// Nested array — preserve as-is for dependent dropdowns
-					$normalized[$key] = $value;
-				} else {
-					// Flat associative — normalize to value/label pair
-					$normalized[] = ['value' => $key, 'label' => $value];
-				}
-			}
-			
-			return $this->set('options', $normalized);
+			return $this->set('options', $options);
 		}
 		
 		/**

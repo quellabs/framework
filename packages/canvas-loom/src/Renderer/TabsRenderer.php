@@ -2,15 +2,13 @@
 	
 	namespace Quellabs\Canvas\Loom\Renderer;
 	
-	use Quellabs\Canvas\Loom\AbstractRenderer;
 	use Quellabs\Canvas\Loom\RenderResult;
-	use Quellabs\Support\StringInflector;
 	
 	/**
 	 * Renders a tabbed interface container.
-	 * Generates a tab bar and content panels, with WakaPAC managing
-	 * the active tab state. Tab definitions are provided explicitly
-	 * via the tabs property to avoid engine-level pre-processing.
+	 * Tab switching is handled by a small inline script — no WakaPAC required.
+	 * Tabs that contain reactive fields will still trigger WakaPAC initialisation
+	 * via the parent Resource or Panel container.
 	 */
 	class TabsRenderer extends AbstractContainerRenderer {
 		
@@ -38,7 +36,6 @@
 			$active = $properties['active'] ?? '';
 			$class  = $this->e($properties['class'] ?? $this->wrapperClass);
 			$tabs   = $properties['tabs']     ?? [];
-			$nodes  = $properties['_children'] ?? [];
 			
 			// id flows into JS string literals via buildScript() — restrict to safe identifier characters
 			$id = $properties['id'] ?? 'loom-tabs';
@@ -52,11 +49,11 @@
 				throw new \InvalidArgumentException('TabsRenderer "active" must contain only alphanumerics, hyphens, and underscores.');
 			}
 			
-			// Build tab bar buttons from the explicit tabs property
+			// Build tab bar buttons — active class set directly on the initial active tab
 			$buttons = '';
 			
 			foreach ($tabs as $tab) {
-				$tabId    = $tab['id'] ?? '';
+				$tabId = $tab['id'] ?? '';
 				$tabLabel = $this->e($tab['label'] ?? $tabId);
 				
 				// tabId appears in JS string literals inside data-pac-bind — restrict to safe identifier characters
@@ -64,17 +61,13 @@
 					throw new \InvalidArgumentException("Tab id \"{$tabId}\" must contain only alphanumerics, hyphens, and underscores.");
 				}
 				
-				$buttons .= "<button type=\"button\" class=\"{$this->tabButtonClass}\" data-pac-bind=\"click: setTab('{$tabId}'), class: {active: activeTab === '{$tabId}'}\">{$tabLabel}</button>\n";
+				$activeClass = $tabId === $active ? " active" : '';
+				$buttons .= "<button type=\"button\" class=\"{$this->tabButtonClass}{$activeClass}\" data-tab=\"{$tabId}\">{$tabLabel}</button>\n";
 			}
 			
-			// Collect array properties from all field nodes in the tree
-			// so dependent dropdowns have their options available in WakaPAC state
-			$fieldState = $this->collectFieldProperties($nodes);
-			$stateJson = !empty($fieldState) ? htmlspecialchars(json_encode($fieldState), ENT_QUOTES) : '';
-			$stateAttr = $stateJson ? " data-pac-state=\"{$stateJson}\"" : '';
-			
+			// Build HTML
 			$html = <<<HTML
-    <div id="{$id}" class="{$class}" data-pac-id="{$id}"{$stateAttr}>
+    <div id="{$id}" class="{$class}">
         <div class="{$this->tabBarClass}">
             {$buttons}
         </div>
@@ -84,12 +77,22 @@
     </div>
     HTML;
 			
-			$script = $this->buildScript($id, [
-				"activeTab: '{$active}'",
-				"setTab(tabId) {\n            this.activeTab = tabId;\n        }"
-			], $properties['abstraction'] ?? []);
+			// Inline script for tab switching — no WakaPAC needed
+			$script = <<<JS
+(function() {
+    var el = document.getElementById('{$id}');
+    el.querySelectorAll('.{$this->tabBarClass} button[data-tab]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            el.querySelectorAll('.{$this->tabPanelsClass} > div').forEach(function(p) { p.hidden = true; });
+            el.querySelectorAll('.{$this->tabBarClass} button').forEach(function(b) { b.classList.remove('active'); });
+            document.getElementById(btn.dataset.tab).hidden = false;
+            btn.classList.add('active');
+        });
+    });
+})();
+JS;
 			
 			// Return result
-			return new RenderResult($html, [$script]);
+			return new RenderResult($html, $script);
 		}
 	}
