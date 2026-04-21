@@ -22,11 +22,20 @@
 		private array $notifications = [];
 		
 		/**
-		 * Register a custom renderer for a given type, overriding the default convention
+		 * Register a custom renderer for a given type, overriding the default convention.
 		 * @param string $type
 		 * @param class-string<RendererInterface> $class
+		 * @throws \InvalidArgumentException if the class does not exist or does not implement RendererInterface
 		 */
 		public function register(string $type, string $class): void {
+			if (!class_exists($class)) {
+				throw new \InvalidArgumentException("Renderer class \"{$class}\" does not exist.");
+			}
+
+			if (!is_subclass_of($class, RendererInterface::class)) {
+				throw new \InvalidArgumentException("Renderer class \"{$class}\" must implement " . RendererInterface::class . ".");
+			}
+
 			$this->registry[$type] = $class;
 		}
 		
