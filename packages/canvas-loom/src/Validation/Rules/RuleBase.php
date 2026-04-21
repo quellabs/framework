@@ -43,4 +43,13 @@
 		public function wakaFormSupported(): bool {
 			return false;
 		}
+
+		/**
+		 * @inheritDoc
+		 * Only called when wakaFormSupported() returns true.
+		 * Server-only rules do not need to implement this.
+		 */
+		public function toJs(): string {
+			throw new \LogicException(static::class . '::toJs() called but wakaFormSupported() returns false.');
+		}
 	}
