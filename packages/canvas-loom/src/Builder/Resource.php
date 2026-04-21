@@ -80,7 +80,7 @@
 		 * @return static
 		 */
 		public function useWakaForm(): static {
-			return $this->set('client_validation', true);
+			return $this->set('use_wakaform', true);
 		}
 
 		/**

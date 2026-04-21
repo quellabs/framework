@@ -46,6 +46,12 @@
 			$previousNotifications = $this->notifications;
 			
 			$this->currentData = $data;
+
+			// If the root node has use_wakaform, inject _use_wakaform into the
+			// data context so FieldRenderer can read it during child rendering.
+			if (!empty($node['properties']['use_wakaform'])) {
+				$this->currentData['_use_wakaform'] = true;
+			}
 			
 			// Inject render part into root node properties so ResourceRenderer
 			// knows which part to render

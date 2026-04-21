@@ -116,19 +116,13 @@
 			// data-pac-field marks the element as a WakaPAC-managed field.
 			// data-pac-bind wires the field value into the reactive abstraction.
 			// data-pac-field is a fixed WakaPAC convention and cannot be overridden.
-			// When the field has rules, bind into form.{name}.value so WakaForm
-			// validates against the actual input value. Otherwise bind to {name} directly.
+			// When the field has rules, data-pac-same-as aliases the field name to
+			// form.{name}.value so WakaForm validates the actual typed value.
 			$hasRules = !empty($properties['rules']);
-			
-			if (isset($properties['pac_bind'])) {
-				$pacBind = $properties['pac_bind'];
-			} elseif ($type === 'toggle') {
-				$pacBind = $hasRules ? "checked: form.{$name}.value" : "checked: {$name}";
-			} else {
-				$pacBind = $hasRules ? "value: form.{$name}.value" : "value: {$name}";
-			}
-			
-			$pacFieldAttr = ' data-pac-field';
+			$useWakaForm  = !empty($this->loom->getData()['_use_wakaform']);
+			$pacBind = $properties['pac_bind'] ?? ($type === 'toggle' ? "checked: {$name}" : "value: {$name}");
+			$sameAsAttr   = ($hasRules && $useWakaForm) ? " data-pac-same-as=\"form.{$name}.value\"" : '';
+			$pacFieldAttr = ' data-pac-field' . $sameAsAttr;
 			$pacBindAttr = $pacBind ? " data-pac-bind=\"{$pacBind}\"" : '';
 			
 			// Label is omitted entirely when not provided rather than rendering
@@ -161,7 +155,7 @@
 				// Server error message takes precedence over the first rule's message,
 				// which serves as the client-side fallback when no POST has occurred.
 				$displayMessage = $errorMessage ?: ($hasRules ? $this->e($properties['rules'][0]->getError()) : '');
-				$errorHtml      = "<p class=\"{$errorClass}\" data-pac-bind=\"visible: submitted && !form.{$name}.valid\">{$displayMessage}</p>";
+				$errorHtml = "<p class=\"{$errorClass}\" data-pac-bind=\"visible: submitted && !form.{$name}.valid\">{$displayMessage}</p>";
 			} else {
 				$errorHtml = '';
 			}

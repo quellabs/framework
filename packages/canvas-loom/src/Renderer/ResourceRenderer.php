@@ -114,7 +114,7 @@
 			$saveLabel = $this->e($properties['save_label'] ?? 'Save');
 			$headerId = "{$id}-header";
 			$headerButtons = $properties['header_buttons'] ?? [];
-			
+		
 			// Render extra header buttons with visibility binding
 			$extraButtons = '';
 			
@@ -278,15 +278,15 @@ HTML;
     HTML;
 			
 			if ($needsWakaPAC) {
-				if (!empty($properties['client_validation'])) {
+				$clientValidation = !empty($properties['use_wakaform']);
+				$serverErrors     = $this->loom->getData()['_errors'] ?? [];
+
+				if ($clientValidation) {
 					$fieldRules = $this->collectFieldRules($properties['_children'] ?? []);
 				} else {
 					$fieldRules = [];
 				}
 				
-				$clientValidation = !empty($properties['client_validation']);
-				$serverErrors     = $this->loom->getData()['_errors'] ?? [];
-
 				$script = $this->buildScript($id, [], $properties['abstraction'] ?? [], $properties['scripts'] ?? [], $fieldRules, $clientValidation, $serverErrors);
 			} else {
 				$script = null;
