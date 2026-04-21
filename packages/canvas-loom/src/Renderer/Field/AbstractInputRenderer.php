@@ -46,8 +46,8 @@
 			string $name,
 			string $value,
 			array  $properties,
-			string $pacField,
-			string $pacBind
+			string $pacField = '',
+			string $pacBind = ''
 		): string;
 		
 		/**

@@ -79,7 +79,14 @@
 				$name = $properties['name'] ?? '';
 				$id = $this->e($properties['id'] ?? $name);
 				$value = $this->resolveValue($name, $properties);
-				$html = $this->getInputRenderer('hidden')->renderInput($id, $name, $value, $properties, '', '');
+				
+				$html = $this->getInputRenderer('hidden')->renderInput(
+					$id,
+					$name,
+					$value,
+					$properties
+				);
+				
 				return new RenderResult($html);
 			}
 			
@@ -105,11 +112,10 @@
 			
 			// data-pac-field marks the element as a WakaPAC-managed field.
 			// data-pac-bind wires the field value into the reactive abstraction.
-			// Both default to conventions based on the field name but can be
-			// overridden entirely via properties when the default isn't appropriate.
-			$pacField = $properties['pac_field'] ?? 'data-pac-field';
+			// data-pac-field is a fixed WakaPAC convention and cannot be overridden.
+			// data-pac-bind defaults based on field type but can be overridden via properties.
 			$pacBind = $properties['pac_bind'] ?? ($type === 'toggle' ? "checked: {$name}" : "value: {$name}");
-			$pacFieldAttr = $pacField ? " {$pacField}" : '';
+			$pacFieldAttr = ' data-pac-field';
 			$pacBindAttr = $pacBind ? " data-pac-bind=\"{$pacBind}\"" : '';
 			
 			// Label is omitted entirely when not provided rather than rendering
