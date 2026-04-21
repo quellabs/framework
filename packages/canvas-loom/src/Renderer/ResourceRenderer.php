@@ -282,27 +282,24 @@ HTML;
 				$extra            = [];
 				$clientValidation = !empty($properties['use_wakaform']);
 				$serverErrors = $this->loom->getData()['_errors'] ?? [];
-				
+
 				if ($clientValidation) {
 					$fieldRules = $this->collectFieldRules($properties['_children'] ?? []);
 				} else {
 					$fieldRules = [];
 				}
+
 				
 				if ($clientValidation) {
 					$extra[] = <<<JS
 		validateAndSubmit() {
             this.submitted = true;
+            
             if (!form.validate()) {
                 return false;
             }
-                this.container.submit();
-        },
-        msgProc(event) {
-            if (event.message === wakaPAC.MSG_SUBMIT) {
-                event.originalEvent.preventDefault();
-                this.validateAndSubmit();
-            }
+            
+            this.container.submit();
         }
 JS;
 				}

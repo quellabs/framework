@@ -198,6 +198,16 @@
     const form = wakaForm.createForm({
 {$schemaEntries}    });
 
+    wakaPAC.installMessageHook(function(event, callNextHook) {
+        if (event.message === wakaPAC.MSG_SUBMIT && event.pacId === '{$id}') {
+            event.originalEvent.preventDefault();
+            var context = window.PACRegistry.get('{$id}');
+            if (context) { context.abstraction.validateAndSubmit(); }
+            return;
+        }
+        callNextHook();
+    });
+
 JS;
 				$formProperty = "\n        submitted: " . (!empty($serverErrors) ? 'true' : 'false') . ",\n        form,";
 			} else {
