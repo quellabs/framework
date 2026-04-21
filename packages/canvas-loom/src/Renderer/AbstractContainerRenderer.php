@@ -202,7 +202,7 @@
         if (event.message === wakaPAC.MSG_SUBMIT && event.pacId === '{$id}') {
             event.preventDefault();
             
-            const context = window.PACRegistry.get('{$id}');
+            const context = wakaPAC.getContextByPacId('{$id}');
             
             if (context) {
                 context.abstraction.validateAndSubmit();
