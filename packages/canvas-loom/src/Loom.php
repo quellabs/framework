@@ -2,6 +2,8 @@
 	
 	namespace Quellabs\Canvas\Loom;
 	
+	use Quellabs\Canvas\Loom\Validation\ValidationResult;
+
 	/**
 	 * The Loom render engine
 	 */
@@ -117,6 +119,56 @@
 			return new RenderResult($result->html, !empty($scripts) ? implode("\n", $scripts) : null);
 		}
 		
+		/**
+		 * Validate submitted data against the rules defined on field nodes in the tree.
+		 * Walks the node tree, finds all field nodes with rules, runs each rule against
+		 * the corresponding value in $data, and returns the first failing error per field.
+		 *
+		 * Usage in a controller:
+		 *   $result = $loom->validate($resource->build(), $request->post());
+		 *   if ($result->fails()) {
+		 *       return $loom->render($resource->build(), array_merge($request->post(), ['_errors' => $result->errors()]));
+		 *   }
+		 *
+		 * @param array $node Root node of the page definition (from Resource::build())
+		 * @param array $data Submitted form data, keyed by field name
+		 * @return ValidationResult
+		 */
+		public function validate(array $node, array $data): ValidationResult {
+			$errors = [];
+			$this->validateNode($node, $data, $errors);
+			return new ValidationResult($errors);
+		}
+
+		/**
+		 * Recursively walk the node tree and validate all field nodes that have rules.
+		 * @param array  $node
+		 * @param array  $data
+		 * @param array  $errors Collected errors, passed by reference
+		 */
+		private function validateNode(array $node, array $data, array &$errors): void {
+			if (($node['type'] ?? '') === 'field') {
+				$rules = $node['properties']['rules'] ?? [];
+				$name  = $node['properties']['name']  ?? '';
+
+				if ($name && !empty($rules)) {
+					$value = $data[$name] ?? null;
+
+					foreach ($rules as $rule) {
+						if (!$rule->validate($value)) {
+							$errors[$name] = $rule->getError();
+							// First failing rule wins — consistent with WakaForm behaviour
+							break;
+						}
+					}
+				}
+			}
+
+			foreach ($node['children'] ?? [] as $child) {
+				$this->validateNode($child, $data, $errors);
+			}
+		}
+
 		/**
 		 * Add a notification to display in the rendered form.
 		 * @param string $type    Notification type: success|error|warning|info

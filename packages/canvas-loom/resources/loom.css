@@ -66,6 +66,45 @@
 }
 
 /* ---------------------------------------------------------
+   Field validation error
+   --------------------------------------------------------- */
+
+.loom-field-error {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: #a32d2d;
+    background-color: #fef2f2;
+    border: 1px solid #fca5a5;
+    border-radius: 3px;
+    padding: 0.3125rem 0.625rem;
+    margin-top: 0.125rem;
+    line-height: 1.4;
+}
+
+.loom-field-error::before {
+    content: '⚠';
+    font-size: 0.75rem;
+    flex-shrink: 0;
+}
+
+/* Red border on the input when its field has an active error */
+.loom-field:has(.loom-field-error:not([style*="display:none"])) .loom-field-input,
+.loom-field:has(.loom-field-error:not([style*="display:none"])) .loom-field-textarea,
+.loom-field:has(.loom-field-error:not([style*="display:none"])) .loom-field-select {
+    border-color: #f87171;
+}
+
+.loom-field:has(.loom-field-error:not([style*="display:none"])) .loom-field-input:focus,
+.loom-field:has(.loom-field-error:not([style*="display:none"])) .loom-field-textarea:focus,
+.loom-field:has(.loom-field-error:not([style*="display:none"])) .loom-field-select:focus {
+    border-color: #ef4444;
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15);
+}
+
+/* ---------------------------------------------------------
    Inputs, textarea, select — shared base
    --------------------------------------------------------- */
 

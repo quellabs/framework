@@ -2,6 +2,8 @@
 	
 	namespace Quellabs\Canvas\Loom\Builder;
 	
+	use Quellabs\Canvas\Loom\Validation\RuleInterface;
+	
 	/**
 	 * Builds a field node — a form field with label and input element.
 	 * Use the static factory methods for each input type rather than make() directly.
@@ -281,5 +283,17 @@
 		 */
 		public function hint(string $hint): static {
 			return $this->set('hint', $hint);
+		}
+
+		/**
+		 * Attach validation rules to this field.
+		 * Rules are used by Loom::validate() for server-side validation and,
+		 * when client validation is enabled on the Resource, emitted as WakaForm
+		 * rules in the generated createForm() call.
+		 * @param RuleInterface[] $rules
+		 * @return static
+		 */
+		public function rules(array $rules): static {
+			return $this->set('rules', $rules);
 		}
 	}

@@ -33,6 +33,9 @@
 		
 		/** @var string Hint class */
 		protected string $hintClass = 'loom-field-hint';
+
+		/** @var string Validation error message class */
+		protected string $errorClass = 'loom-field-error';
 		
 		/**
 		 * Input renderer instances, keyed by input type.
@@ -132,21 +135,40 @@
 			} else {
 				$hintHtml = '';
 			}
-			
+
+			// Error message is injected from _errors in the data array after a failed
+			// server-side validation pass. The error element is only rendered when the
+			// field has rules attached (client validation) or has a server-side error —
+			// fields with neither don't need the element at all.
+			// When rendered, it starts hidden unless there is an active server-side error,
+			// and is toggled by WakaForm via data-pac-bind="visible: !form.{name}.valid".
+			$errors       = $this->loom->getData()['_errors'] ?? [];
+			$errorMessage = isset($errors[$name]) ? $this->e($errors[$name]) : '';
+			$hasRules     = !empty($properties['rules']);
+			$errorClass   = $this->e($properties['error_class'] ?? $this->errorClass);
+
+			if ($hasRules || $errorMessage) {
+				$errorStyle = $errorMessage ? '' : ' style="display:none"';
+				$errorHtml  = "<p class=\"{$errorClass}\" data-pac-bind=\"visible: !form.{$name}.valid\"{$errorStyle}>{$errorMessage}</p>";
+			} else {
+				$errorHtml = '';
+			}
+
 			// Delegate the actual input element to the type-specific renderer.
 			// pac attributes are passed pre-rendered so each renderer doesn't
 			// need to re-implement the same attribute construction logic.
 			$inputHtml = $this->getInputRenderer($type)->renderInput($id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr);
-			
+
 			// Build html
 			$html = <<<HTML
         <div class="{$class}">
             {$labelHtml}
             {$inputHtml}
+            {$errorHtml}
             {$hintHtml}
         </div>
         HTML;
-			
+
 			// Return result
 			return new RenderResult($html);
 		}

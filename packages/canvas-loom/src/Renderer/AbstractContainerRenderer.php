@@ -13,6 +13,52 @@
 	abstract class AbstractContainerRenderer extends AbstractRenderer {
 		
 		/**
+		 * Recursively collect validation rules from all field nodes in the tree.
+		 * Returns a map of fieldName => JS rules array string for use in createForm().
+		 * Fields without rules are omitted — createForm() only needs entries where
+		 * rules are defined.
+		 * @param array $nodes
+		 * @return array<string, string[]> fieldName => array of toJs() strings
+		 */
+		protected function collectFieldRules(array $nodes): array {
+			$result = [];
+			
+			foreach ($nodes as $node) {
+				if (($node['type'] ?? '') === 'field') {
+					$name = $node['properties']['name'] ?? '';
+					$rules = $node['properties']['rules'] ?? [];
+					
+					if ($name && !empty($rules)) {
+						$jsRules = [];
+						
+						foreach ($rules as $rule) {
+							$js = $rule->toJs();
+							
+							if ($js === null) {
+								// Rule has no JS equivalent — skip silently
+								continue;
+							}
+							
+							$jsRules[] = $js;
+						}
+						
+						if (!empty($jsRules)) {
+							$result[$name] = $jsRules;
+						}
+					}
+				}
+				
+				if (!empty($node['children'])) {
+					foreach ($this->collectFieldRules($node['children']) as $name => $jsRules) {
+						$result[$name] = $jsRules;
+					}
+				}
+			}
+			
+			return $result;
+		}
+		
+		/**
 		 * Recursively collect options arrays from all field nodes in the tree.
 		 * Used to inject dependent dropdown options into the WakaPAC state
 		 * before the component is initialized.
@@ -24,7 +70,7 @@
 			
 			foreach ($nodes as $node) {
 				if (($node['type'] ?? '') === 'field') {
-					$name    = $node['properties']['name']    ?? '';
+					$name = $node['properties']['name'] ?? '';
 					$options = $node['properties']['options'] ?? null;
 					
 					if ($name && is_array($options)) {
@@ -57,8 +103,13 @@
 		 */
 		protected function requiresWakaPAC(array $nodes): bool {
 			foreach ($nodes as $node) {
-				$type       = $node['type']       ?? '';
+				$type = $node['type'] ?? '';
 				$properties = $node['properties'] ?? [];
+				
+				// Field with validation rules needs WakaForm bindings (visible: !form.x.valid)
+				if ($type === 'field' && !empty($properties['rules'])) {
+					return true;
+				}
 				
 				// Any node with an explicit pac_bind
 				if (!empty($properties['pac_bind'])) {
@@ -103,12 +154,16 @@
 		 * Generate the WakaPAC initialisation script for a container component.
 		 * Includes submit() and post() methods on the abstraction so buttons
 		 * within the container can trigger form actions.
-		 * @param string $id          WakaPAC component id
-		 * @param array  $extra       Additional abstraction properties as JS string snippets
-		 * @param array  $abstraction Key-value pairs from the node's abstraction property (scalars and arrays only)
+		 * @param string $id WakaPAC component id
+		 * @param array $extra Additional abstraction properties as JS string snippets
+		 * @param array $abstraction Key-value pairs from the node's abstraction property (scalars and arrays only)
+		 * @param array $scripts Script snippets from the builder's script() calls
+		 * @param array $fieldRules Map of fieldName => JS rule constructor strings, from collectFieldRules().
+		 *                            When non-empty, a wakaForm.createForm() call is emitted and the form
+		 *                            proxy is injected into the abstraction as 'form'.
 		 * @return string
 		 */
-		protected function buildScript(string $id, array $extra = [], array $abstraction = [], array $scripts = []): string {
+		protected function buildScript(string $id, array $extra = [], array $abstraction = [], array $scripts = [], array $fieldRules = []): string {
 			$abstractionJs = '';
 			
 			foreach ($abstraction as $key => $value) {
@@ -123,12 +178,37 @@
 			// Trim trailing commas and whitespace from each snippet so the join comma is never doubled.
 			$allExtra = array_merge($extra, $scripts);
 			$allExtra = array_map(fn($s) => rtrim(trim($s), ','), $allExtra);
-			$extraJs  = !empty($allExtra) ? implode(",\n        ", $allExtra) . ',' : '';
+			$extraJs = !empty($allExtra) ? implode(",\n        ", $allExtra) . ',' : '';
 			$notificationsId = "{$id}-notifications";
+			
+			// Build createForm() call when field rules are present (client validation enabled).
+			// Each field gets a value: '' placeholder — WakaPAC hydration fills in the actual
+			// values from data-pac-field elements, so the initial value here is only relevant
+			// for fields that aren't rendered (e.g. hidden) which wouldn't have rules anyway.
+			if (!empty($fieldRules)) {
+				$schemaEntries = '';
+				
+				foreach ($fieldRules as $fieldName => $jsRules) {
+					$rulesJs = implode(', ', $jsRules);
+					$schemaEntries .= "        {$fieldName}: { value: '', rules: [{$rulesJs}] },\n";
+				}
+				
+				$formInit = <<<JS
 
+    const form = wakaForm.createForm({
+{$schemaEntries}    });
+
+JS;
+				$formProperty = "\n        form,";
+			} else {
+				$formInit = '';
+				$formProperty = '';
+			}
+			
 			return <<<JS
 (function() {
-    wakaPAC('{$id}', {
+{$formInit}
+    wakaPAC('{$id}', {{$formProperty}
         {$abstractionJs}{$extraJs}
 
         /**
@@ -150,13 +230,13 @@
                 body: new FormData(this.container)
             });
         },
-        
+
         /**
          * Dismisses all notifications.
          */
         dismiss() {
             const el = document.getElementById('{$notificationsId}');
-            
+
             if (el) {
                 el.remove();
             }
