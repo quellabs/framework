@@ -52,7 +52,6 @@
 							->add(Columns::make([70, 30])
 								->add(Column::make()
 									->add(Field::text('title', 'Title')
-										->required()
 										->maxlength(200)
 										->rules([new NotBlank(), new MaxLength(200)])
 									)
@@ -69,7 +68,6 @@
 										])
 									)
 									->add(Field::text('slug', 'Slug')
-										->required()
 										->rules([new NotBlank(), new MinLength(3), new MaxLength(200)])
 									)
 									->add(Field::text('email', 'Email')
@@ -198,8 +196,8 @@
 			return new Response("
 				<html>
 				<head>
-				<script src='/wakapac.min.js'></script>
-				<script src='https://cdn.jsdelivr.net/gh/quellabs/wakapac@main/plugins/wakaform.min.js'></script>
+				<script src='/wakapac.js'></script>
+				<script src='/wakaform.js'></script>
 				<link rel='stylesheet' type='text/css' href='/loom.css'>
 				<link rel='preconnect' href='https://fonts.googleapis.com'>
 				<link rel='preconnect' href='https://fonts.gstatic.com' crossorigin>

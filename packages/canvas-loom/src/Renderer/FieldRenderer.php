@@ -33,7 +33,7 @@
 		
 		/** @var string Hint class */
 		protected string $hintClass = 'loom-field-hint';
-
+		
 		/** @var string Validation error message class */
 		protected string $errorClass = 'loom-field-error';
 		
@@ -116,8 +116,18 @@
 			// data-pac-field marks the element as a WakaPAC-managed field.
 			// data-pac-bind wires the field value into the reactive abstraction.
 			// data-pac-field is a fixed WakaPAC convention and cannot be overridden.
-			// data-pac-bind defaults based on field type but can be overridden via properties.
-			$pacBind = $properties['pac_bind'] ?? ($type === 'toggle' ? "checked: {$name}" : "value: {$name}");
+			// When the field has rules, bind into form.{name}.value so WakaForm
+			// validates against the actual input value. Otherwise bind to {name} directly.
+			$hasRules = !empty($properties['rules']);
+			
+			if (isset($properties['pac_bind'])) {
+				$pacBind = $properties['pac_bind'];
+			} elseif ($type === 'toggle') {
+				$pacBind = $hasRules ? "checked: form.{$name}.value" : "checked: {$name}";
+			} else {
+				$pacBind = $hasRules ? "value: form.{$name}.value" : "value: {$name}";
+			}
+			
 			$pacFieldAttr = ' data-pac-field';
 			$pacBindAttr = $pacBind ? " data-pac-bind=\"{$pacBind}\"" : '';
 			
@@ -135,30 +145,32 @@
 			} else {
 				$hintHtml = '';
 			}
-
+			
 			// Error message is injected from _errors in the data array after a failed
 			// server-side validation pass. The error element is only rendered when the
 			// field has rules attached (client validation) or has a server-side error —
 			// fields with neither don't need the element at all.
 			// When rendered, it starts hidden unless there is an active server-side error,
 			// and is toggled by WakaForm via data-pac-bind="visible: !form.{name}.valid".
-			$errors       = $this->loom->getData()['_errors'] ?? [];
+			$errors = $this->loom->getData()['_errors'] ?? [];
 			$errorMessage = isset($errors[$name]) ? $this->e($errors[$name]) : '';
-			$hasRules     = !empty($properties['rules']);
-			$errorClass   = $this->e($properties['error_class'] ?? $this->errorClass);
-
+			$hasRules = !empty($properties['rules']);
+			$errorClass = $this->e($properties['error_class'] ?? $this->errorClass);
+			
 			if ($hasRules || $errorMessage) {
-				$errorStyle = $errorMessage ? '' : ' style="display:none"';
-				$errorHtml  = "<p class=\"{$errorClass}\" data-pac-bind=\"visible: !form.{$name}.valid\"{$errorStyle}>{$errorMessage}</p>";
+				// Server error message takes precedence over the first rule's message,
+				// which serves as the client-side fallback when no POST has occurred.
+				$displayMessage = $errorMessage ?: ($hasRules ? $this->e($properties['rules'][0]->getError()) : '');
+				$errorHtml      = "<p class=\"{$errorClass}\" data-pac-bind=\"visible: submitted && !form.{$name}.valid\">{$displayMessage}</p>";
 			} else {
 				$errorHtml = '';
 			}
-
+			
 			// Delegate the actual input element to the type-specific renderer.
 			// pac attributes are passed pre-rendered so each renderer doesn't
 			// need to re-implement the same attribute construction logic.
 			$inputHtml = $this->getInputRenderer($type)->renderInput($id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr);
-
+			
 			// Build html
 			$html = <<<HTML
         <div class="{$class}">
@@ -168,7 +180,7 @@
             {$hintHtml}
         </div>
         HTML;
-
+			
 			// Return result
 			return new RenderResult($html);
 		}

@@ -142,13 +142,15 @@
 				$extraButtons .= "<button type=\"button\" class=\"{$variantClass}\"{$bindAttr}>{$label}</button>\n";
 			}
 			
+			$saveButtonHtml = "<button type=\"submit\" form=\"{$id}\" class=\"{$this->saveClass}\"{$saveDisabledAttr}>{$saveLabel}</button>";
+
 			$html = <<<HTML
     <div class="{$this->headerClass}" data-pac-id="{$headerId}">
         <h1 class="{$this->titleClass}">{$title}</h1>
         <div class="{$this->headerActionsClass}">
             {$extraButtons}
             <button type="button" class="{$this->cancelClass}" onclick="history.back()">Cancel</button>
-            <button type="submit" form="{$id}" class="{$this->saveClass}"{$saveDisabledAttr}>{$saveLabel}</button>
+            {$saveButtonHtml}
         </div>
     </div>
     HTML;
@@ -281,8 +283,11 @@ HTML;
 				} else {
 					$fieldRules = [];
 				}
+				
+				$clientValidation = !empty($properties['client_validation']);
+				$serverErrors     = $this->loom->getData()['_errors'] ?? [];
 
-				$script = $this->buildScript($id, [], $properties['abstraction'] ?? [], $properties['scripts'] ?? [], $fieldRules);
+				$script = $this->buildScript($id, [], $properties['abstraction'] ?? [], $properties['scripts'] ?? [], $fieldRules, $clientValidation, $serverErrors);
 			} else {
 				$script = null;
 			}

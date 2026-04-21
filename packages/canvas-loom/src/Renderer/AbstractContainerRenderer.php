@@ -163,7 +163,7 @@
 		 *                            proxy is injected into the abstraction as 'form'.
 		 * @return string
 		 */
-		protected function buildScript(string $id, array $extra = [], array $abstraction = [], array $scripts = [], array $fieldRules = []): string {
+		protected function buildScript(string $id, array $extra = [], array $abstraction = [], array $scripts = [], array $fieldRules = [], bool $clientValidation = false, array $serverErrors = []): string {
 			$abstractionJs = '';
 			
 			foreach ($abstraction as $key => $value) {
@@ -182,15 +182,15 @@
 			$notificationsId = "{$id}-notifications";
 			
 			// Build createForm() call when field rules are present (client validation enabled).
-			// Each field gets a value: '' placeholder — WakaPAC hydration fills in the actual
-			// values from data-pac-field elements, so the initial value here is only relevant
-			// for fields that aren't rendered (e.g. hidden) which wouldn't have rules anyway.
 			if (!empty($fieldRules)) {
 				$schemaEntries = '';
+				$data = $this->loom->getData();
 				
 				foreach ($fieldRules as $fieldName => $jsRules) {
 					$rulesJs = implode(', ', $jsRules);
-					$schemaEntries .= "        {$fieldName}: { value: '', rules: [{$rulesJs}] },\n";
+					$initialValid = array_key_exists($fieldName, $serverErrors) ? 'false' : 'true';
+					$initialValue = json_encode((string)($data[$fieldName] ?? ''));
+					$schemaEntries .= "        {$fieldName}: { value: {$initialValue}, valid: {$initialValid}, rules: [{$rulesJs}] },\n";
 				}
 				
 				$formInit = <<<JS
@@ -198,8 +198,20 @@
     const form = wakaForm.createForm({
 {$schemaEntries}    });
 
+    document.getElementById('{$id}').addEventListener('submit', function(event) {
+        const pac = window.PACRegistry && window.PACRegistry.get('{$id}');
+        
+        if (pac) {
+            pac.abstraction.submitted = true;
+        }
+        
+        if (!form.validate()) {
+            event.preventDefault();
+        }
+    });
+
 JS;
-				$formProperty = "\n        form,";
+				$formProperty = "\n        submitted: " . (!empty($serverErrors) ? 'true' : 'false') . ",\n        form,";
 			} else {
 				$formInit = '';
 				$formProperty = '';
