@@ -195,10 +195,9 @@
 		 * @param array $properties Full node properties including options and selected value
 		 * @param string $pacField Rendered data-pac-field attribute string
 		 * @param string $pacBind Rendered data-pac-bind attribute string
-		 * @param string $pacBindExpr Raw pac bind expression (before attribute wrapping), used when prepending foreach
 		 * @return string
 		 */
-		private function renderSelect(string $id, string $name, array $properties, string $pacField, string $pacBind, string $pacBindExpr = ''): string {
+		private function renderSelect(string $id, string $name, array $properties, string $pacField, string $pacBind): string {
 			$attrs = $this->buildValidationAttrs($properties);
 			$selected = $this->resolveValue($name, $properties);
 			
@@ -206,9 +205,12 @@
 			if (isset($properties['foreach_expression'])) {
 				$expression = $properties['foreach_expression'];
 				
-				// Prepend foreach to the raw expression string, then wrap in the attribute.
-				// Using the raw expression avoids brittle string manipulation on an already-rendered attribute.
-				$combinedBind = " data-pac-bind=\"foreach: {$expression}, {$pacBindExpr}\"";
+				// Reset this field's value when the parent changes so downstream
+				// dependents don't evaluate against a stale key. For example, when
+				// country changes, region resets to '' before city re-evaluates
+				// cities[country][region] — without this, city gets cities[de][nh]
+				// which is undefined and the dropdown comes up empty.
+				$combinedBind = " data-pac-bind=\"foreach: {$expression}, value: {$name}, change: {$name} = ''\"";
 				
 				return <<<HTML
         <select id="{$id}" name="{$name}" class="{$this->selectClass}"{$attrs}{$pacField}{$combinedBind}>

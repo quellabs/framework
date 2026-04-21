@@ -18,66 +18,37 @@
 		 * to filter the dropdown options.
 		 */
 		protected function resolveDependencies(): void {
-			// This variable will receive the map
+			// Build a map of field name -> depends_on
 			$dependsOnMap = [];
 			
-			// Build a flat map of field name -> depends_on by walking the entire
-			// subtree, not just direct children. Fields nested inside Columns or
-			// Sections would otherwise never be resolved.
-			$this->collectDependsOn($this->children, $dependsOnMap);
+			foreach ($this->children as $child) {
+				if ($child instanceof Field && $child->get('depends_on')) {
+					$dependsOnMap[$child->get('name')] = $child->get('depends_on');
+				}
+			}
 			
-			// Do nothing when the map is empty
 			if (empty($dependsOnMap)) {
 				return;
 			}
 			
-			// Recursively walk the subtree and inject foreach_expression on dependent fields.
-			$this->applyForeachExpressions($this->children, $dependsOnMap);
-		}
-		
-		/**
-		 * Recursively collect depends_on declarations from the entire subtree.
-		 * @param array $nodes
-		 * @param array $map  Passed by reference — populated as [field_name => depends_on_name]
-		 */
-		private function collectDependsOn(array $nodes, array &$map): void {
-			foreach ($nodes as $child) {
-				if ($child instanceof Field && $child->get('depends_on')) {
-					$map[$child->get('name')] = $child->get('depends_on');
+			foreach ($this->children as $child) {
+				if (!$child instanceof Field || !$child->get('depends_on')) {
+					continue;
 				}
 				
-				if ($child instanceof AbstractNode) {
-					$this->collectDependsOn($child->getChildren(), $map);
-				}
-			}
-		}
-		
-		/**
-		 * Recursively walk the subtree and inject foreach_expression on dependent fields.
-		 * @param array $nodes
-		 * @param array $dependsOnMap
-		 */
-		private function applyForeachExpressions(array $nodes, array $dependsOnMap): void {
-			foreach ($nodes as $child) {
-				if ($child instanceof Field && $child->get('depends_on')) {
-					$chain   = [];
-					$current = $child->get('name');
-					
-					while (isset($dependsOnMap[$current])) {
-						$current = $dependsOnMap[$current];
-						$chain[] = $current;
-					}
-					
-					// Build foreach expression using pluralized field name as data key
-					$dataKey    = StringInflector::pluralize($child->get('name'));
-					$expression = $dataKey . implode('', array_map(fn($k) => "[{$k}]", array_reverse($chain)));
-					
-					$child->set('foreach_expression', $expression);
+				$chain   = [];
+				$current = $child->get('name');
+				
+				while (isset($dependsOnMap[$current])) {
+					$current = $dependsOnMap[$current];
+					$chain[] = $current;
 				}
 				
-				if ($child instanceof AbstractNode) {
-					$this->applyForeachExpressions($child->getChildren(), $dependsOnMap);
-				}
+				// Build foreach expression using pluralized field name as data key
+				$dataKey    = StringInflector::pluralize($child->get('name'));
+				$expression = $dataKey . implode('', array_map(fn($k) => "[{$k}]", array_reverse($chain)));
+				
+				$child->set('foreach_expression', $expression);
 			}
 		}
 		

@@ -30,14 +30,6 @@
 		}
 		
 		/**
-		 * Returns child nodes
-		 * @return array
-		 */
-		public function getChildren(): array {
-			return $this->children;
-		}
-		
-		/**
 		 * Get a property value
 		 * @param string $key
 		 * @param mixed $default
