@@ -38,7 +38,7 @@
 		/**
 		 * Recursively collect depends_on declarations from the entire subtree.
 		 * @param array $nodes
-		 * @param array $map Passed by reference — populated as [field_name => depends_on_name]
+		 * @param array $map  Passed by reference — populated as [field_name => depends_on_name]
 		 */
 		private function collectDependsOn(array $nodes, array &$map): void {
 			foreach ($nodes as $child) {
@@ -46,9 +46,8 @@
 					$map[$child->get('name')] = $child->get('depends_on');
 				}
 				
-				// Recurse into nested containers
-				if (property_exists($child, 'children')) {
-					$this->collectDependsOn($child->children ?? [], $map);
+				if ($child instanceof AbstractNode) {
+					$this->collectDependsOn($child->getChildren(), $map);
 				}
 			}
 		}
@@ -61,7 +60,7 @@
 		private function applyForeachExpressions(array $nodes, array $dependsOnMap): void {
 			foreach ($nodes as $child) {
 				if ($child instanceof Field && $child->get('depends_on')) {
-					$chain = [];
+					$chain   = [];
 					$current = $child->get('name');
 					
 					while (isset($dependsOnMap[$current])) {
@@ -70,15 +69,14 @@
 					}
 					
 					// Build foreach expression using pluralized field name as data key
-					$dataKey = StringInflector::pluralize($child->get('name'));
+					$dataKey    = StringInflector::pluralize($child->get('name'));
 					$expression = $dataKey . implode('', array_map(fn($k) => "[{$k}]", array_reverse($chain)));
 					
 					$child->set('foreach_expression', $expression);
 				}
 				
-				// Recurse into nested containers
-				if (property_exists($child, 'children')) {
-					$this->applyForeachExpressions($child->children ?? [], $dependsOnMap);
+				if ($child instanceof AbstractNode) {
+					$this->applyForeachExpressions($child->getChildren(), $dependsOnMap);
 				}
 			}
 		}

@@ -30,9 +30,17 @@
 		}
 		
 		/**
+		 * Returns child nodes
+		 * @return array
+		 */
+		public function getChildren(): array {
+			return $this->children;
+		}
+		
+		/**
 		 * Get a property value
 		 * @param string $key
-		 * @param mixed  $default
+		 * @param mixed $default
 		 * @return mixed
 		 */
 		public function get(string $key, mixed $default = null): mixed {
@@ -42,7 +50,7 @@
 		/**
 		 * Set a property value
 		 * @param string $key
-		 * @param mixed  $value
+		 * @param mixed $value
 		 * @return static
 		 */
 		public function set(string $key, mixed $value): static {
@@ -83,7 +91,7 @@
 		 * @return static
 		 */
 		public function script(string $code): static {
-			$scripts   = $this->properties['scripts'] ?? [];
+			$scripts = $this->properties['scripts'] ?? [];
 			$scripts[] = $code;
 			return $this->set('scripts', $scripts);
 		}

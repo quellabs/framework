@@ -254,7 +254,17 @@ HTML;
 			// data-pac-id and data-pac-state are only emitted when WakaPAC is initialised
 			$pacIdAttr = $needsWakaPAC ? " data-pac-id=\"{$id}\"" : '';
 			$data = $this->loom->getData();
-			$stateData = $needsWakaPAC ? ($data['_pac_state'] ?? array_filter($data, fn($value) => is_array($value))) : [];
+			
+			if ($needsWakaPAC) {
+				// Collect options defined on field nodes in the tree (dependent dropdowns)
+				// and merge with the caller-supplied data array. Caller data takes precedence
+				// so runtime values override build-time defaults.
+				$fieldOptions = $this->collectFieldProperties($properties['_children'] ?? []);
+				$baseState    = $data['_pac_state'] ?? array_filter($data, fn($value) => is_array($value));
+				$stateData    = array_merge($fieldOptions, $baseState);
+			} else {
+				$stateData = [];
+			}
 			$stateJson = !empty($stateData) ? htmlspecialchars(json_encode($stateData), ENT_QUOTES) : '';
 			$stateAttr = $stateJson ? " data-pac-state=\"{$stateJson}\"" : '';
 			
