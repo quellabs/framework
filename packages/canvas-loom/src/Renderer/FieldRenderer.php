@@ -156,12 +156,20 @@
 				if ($errorMessage) {
 					$displayMessage = $errorMessage;
 				} elseif (($properties['error_message'] ?? null)) {
-					$displayMessage = ($properties['error_message'] ?? null);
+					$displayMessage = $properties['error_message'];
 				} else {
-					$displayMessage = ($hasRules ? $this->e($properties['rules'][0]->getError()) : '');
+					$displayMessage = $hasRules ? $this->e($properties['rules'][0]->getError()) : '';
 				}
 
-				$errorHtml = "<p class=\"{$errorClass}\" data-pac-bind=\"visible: submitted && !form.{$name}.valid\">{$displayMessage}</p>";
+				if ($useWakaForm) {
+					// WakaForm manages visibility via the submitted flag and form.valid state
+					$errorHtml = "<p class=\"{$errorClass}\" data-pac-bind=\"visible: submitted && !form.{$name}.valid\">{$displayMessage}</p>";
+				} elseif ($errorMessage) {
+					// No WakaForm — just render the server error message as a plain visible element
+					$errorHtml = "<p class=\"{$errorClass}\">{$displayMessage}</p>";
+				} else {
+					$errorHtml = '';
+				}
 			} else {
 				$errorHtml = '';
 			}
