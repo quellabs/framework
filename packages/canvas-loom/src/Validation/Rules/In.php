@@ -41,7 +41,14 @@
 		/**
 		 * @inheritDoc
 		 */
-		public function toJs(): ?string {
+		public function wakaFormSupported(): bool {
+			return true;
+		}
+		
+		/**
+		 * @inheritDoc
+		 */
+		public function toJs(): string {
 			$encoded = json_encode(array_values($this->allowed));
 			return "new In({$encoded})";
 		}

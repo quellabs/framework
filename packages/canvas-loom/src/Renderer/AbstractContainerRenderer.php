@@ -32,14 +32,12 @@
 						$jsRules = [];
 						
 						foreach ($rules as $rule) {
-							$js = $rule->toJs();
-							
-							if ($js === null) {
+							if (!$rule->wakaFormSupported()) {
 								// Rule has no JS equivalent — skip silently
 								continue;
 							}
 							
-							$jsRules[] = $js;
+							$jsRules[] = $rule->toJs();
 						}
 						
 						if (!empty($jsRules)) {

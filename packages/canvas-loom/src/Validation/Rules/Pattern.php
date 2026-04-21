@@ -43,13 +43,20 @@
 		}
 		
 		/**
+		 * @inheritDoc
+		 */
+		public function wakaFormSupported(): bool {
+			return true;
+		}
+		
+		/**
 		 * Converts the PHP regex to a JS RegExp literal.
 		 * Strips the delimiter and transfers any flags, e.g.:
 		 *   '/^[A-Z]+$/i'  →  new Pattern(/^[A-Z]+$/i)
 		 *   '#^\d{4}$#'    →  new Pattern(/^\d{4}$/)
 		 * @inheritDoc
 		 */
-		public function toJs(): ?string {
+		public function toJs(): string {
 			// The first character is the delimiter — find where it ends.
 			$delimiter = $this->pattern[0];
 			
@@ -57,8 +64,7 @@
 			$close = strrpos($this->pattern, $delimiter, 1);
 			
 			if ($close === false || $close === 0) {
-				// Malformed pattern — skip rather than emit broken JS
-				return null;
+				throw new \InvalidArgumentException("Pattern \"{$this->pattern}\" is malformed and cannot be converted to a JS RegExp.");
 			}
 			
 			$body  = substr($this->pattern, 1, $close - 1);

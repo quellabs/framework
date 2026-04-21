@@ -35,4 +35,12 @@
 				return array_key_exists($m[1], $vars) ? $vars[$m[1]] : $m[0];
 			}, $template);
 		}
+
+		/**
+		 * @inheritDoc
+		 * Defaults to false — override in rules that have a WakaForm JS equivalent.
+		 */
+		public function wakaFormSupported(): bool {
+			return false;
+		}
 	}

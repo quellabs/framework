@@ -23,11 +23,18 @@
 		public function getError(): string;
 		
 		/**
+		 * Returns true when this rule has a WakaForm client-side equivalent
+		 * and toJs() will produce a valid constructor expression.
+		 * Returns false for server-only rules — toJs() will not be called.
+		 * @return bool
+		 */
+		public function wakaFormSupported(): bool;
+
+		/**
 		 * Emits the WakaForm JS constructor expression for this rule,
 		 * e.g. "new NotBlank()" or "new MinLength(8)".
-		 * Returns null for rules that have no client-side equivalent —
-		 * these rules are silently skipped when building the createForm() call.
-		 * @return string|null
+		 * Only called when wakaFormSupported() returns true.
+		 * @return string
 		 */
-		public function toJs(): ?string;
+		public function toJs(): string;
 	}

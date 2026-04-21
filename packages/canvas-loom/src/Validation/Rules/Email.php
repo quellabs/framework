@@ -29,7 +29,14 @@
 		/**
 		 * @inheritDoc
 		 */
-		public function toJs(): ?string {
+		public function wakaFormSupported(): bool {
+			return true;
+		}
+		
+		/**
+		 * @inheritDoc
+		 */
+		public function toJs(): string {
 			return 'new Email()';
 		}
 	}
