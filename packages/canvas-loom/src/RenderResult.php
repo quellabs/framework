@@ -5,7 +5,7 @@
 	/**
 	 * Holds the result of rendering a single node.
 	 * Each renderer produces at most one script — accumulation across
-	 * the tree is handled by Loom::_render(), not by this class.
+	 * the tree is handled by Loom::renderNode(), not by this class.
 	 */
 	class RenderResult {
 		

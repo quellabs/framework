@@ -70,8 +70,8 @@
 		 * @return RenderResult
 		 */
 		protected function renderHidden(array $properties): RenderResult {
-			$name  = $properties['name'] ?? '';
-			$id    = $this->e($properties['id'] ?? $name);
+			$name = $properties['name'] ?? '';
+			$id = $this->e($properties['id'] ?? $name);
 			$value = $this->resolveValue($name, $properties);
 			
 			return new RenderResult("<input type=\"hidden\" id=\"{$id}\" name=\"{$this->e($name)}\" value=\"{$this->e($value)}\">");
@@ -83,21 +83,21 @@
 		 * @return RenderResult
 		 */
 		protected function renderDefault(array $properties): RenderResult {
-			$name  = $properties['name'] ?? '';
-			$type  = $properties['input'] ?? 'text';
+			$name = $properties['name'] ?? '';
+			$type = $properties['input'] ?? 'text';
 			$label = $this->e($properties['label'] ?? '');
 			$class = $this->e($properties['class'] ?? $this->wrapperClass);
-			$id    = $this->e($properties['id'] ?? $name);
+			$id = $this->e($properties['id'] ?? $name);
 			
 			// Data array takes precedence over value in JSON definition
 			$value = $this->resolveValue($name, $properties);
 			
 			// data-pac-field and data-pac-bind are derived from the field name by default,
 			// but can be overruled entirely via properties
-			$pacField     = $properties['pac_field'] ?? 'data-pac-field';
-			$pacBind      = $properties['pac_bind'] ?? ($type === 'toggle' ? "checked: {$name}" : "value: {$name}");
+			$pacField = $properties['pac_field'] ?? 'data-pac-field';
+			$pacBind = $properties['pac_bind'] ?? ($type === 'toggle' ? "checked: {$name}" : "value: {$name}");
 			$pacFieldAttr = $pacField ? " {$pacField}" : '';
-			$pacBindAttr  = $pacBind ? " data-pac-bind=\"{$pacBind}\"" : '';
+			$pacBindAttr = $pacBind ? " data-pac-bind=\"{$pacBind}\"" : '';
 			
 			// Only render a label element when a label is provided
 			if ($label) {
@@ -115,22 +115,22 @@
 			
 			// Delegate to the appropriate input renderer based on type
 			$inputHtml = match ($type) {
-				'textarea'       => $this->renderTextarea($id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
-				'select'         => $this->renderSelect($id, $name, $properties, $pacFieldAttr, $pacBindAttr, $pacBind),
-				'checkbox'       => $this->renderCheckbox($id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
-				'radio'          => $this->renderRadio($id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
-				'number'         => $this->renderInput('number', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
-				'email'          => $this->renderInput('email', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
-				'tel'            => $this->renderInput('tel', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
-				'url'            => $this->renderInput('url', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
-				'range'          => $this->renderInput('range', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
-				'date'           => $this->renderInput('date', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
+				'textarea' => $this->renderTextarea($id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
+				'select' => $this->renderSelect($id, $name, $properties, $pacFieldAttr, $pacBindAttr, $pacBind),
+				'checkbox' => $this->renderCheckbox($id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
+				'radio' => $this->renderRadio($id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
+				'number' => $this->renderInput('number', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
+				'email' => $this->renderInput('email', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
+				'tel' => $this->renderInput('tel', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
+				'url' => $this->renderInput('url', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
+				'range' => $this->renderInput('range', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
+				'date' => $this->renderInput('date', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
 				'datetime-local' => $this->renderInput('datetime-local', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
-				'time'           => $this->renderInput('time', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
-				'week'           => $this->renderInput('week', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
-				'month'          => $this->renderInput('month', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
-				'toggle'         => $this->renderToggle($id, $name, $properties, $pacFieldAttr),
-				default          => $this->renderInput('text', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
+				'time' => $this->renderInput('time', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
+				'week' => $this->renderInput('week', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
+				'month' => $this->renderInput('month', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
+				'toggle' => $this->renderToggle($id, $name, $properties, $pacFieldAttr),
+				default => $this->renderInput('text', $id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr),
 			};
 			
 			// Output element
@@ -178,7 +178,7 @@
 			$attrs = $this->buildValidationAttrs($properties);
 			$placeholder = $properties['placeholder'] ?? '';
 			$placeholderAttr = $placeholder ? " placeholder=\"{$this->e($placeholder)}\"" : '';
-			$rows = (int) ($properties['rows'] ?? 4);
+			$rows = (int)($properties['rows'] ?? 4);
 			
 			return "<textarea id=\"{$id}\" name=\"{$this->e($name)}\" rows=\"{$rows}\" class=\"{$this->textareaClass}\"{$placeholderAttr}{$attrs}{$pacField}{$pacBind}>{$this->e($value)}</textarea>";
 		}
@@ -255,12 +255,12 @@
 		 */
 		private function renderToggle(string $id, string $name, array $properties, string $pacField): string {
 			// Resolve checked state from data array first, fall back to properties['checked']
-			$data          = $this->loom->getData();
+			$data = $this->loom->getData();
 			$resolvedValue = (!empty($data) && $name && array_key_exists($name, $data)) ? $data[$name] : ($properties['checked'] ?? false);
-			$checked       = $resolvedValue ? ' checked' : '';
-			$disabled      = !empty($properties['disabled']);
-			$readonly      = !empty($properties['readonly']);
-			$pacBind       = $properties['pac_bind'] ?? "checked: {$name}";
+			$checked = $resolvedValue ? ' checked' : '';
+			$disabled = !empty($properties['disabled']);
+			$readonly = !empty($properties['readonly']);
+			$pacBind = $properties['pac_bind'] ?? "checked: {$name}";
 			
 			// disabled takes priority — a disabled toggle is fully inert, no submission needed
 			if ($disabled) {
@@ -359,25 +359,25 @@ HTML;
 			
 			// Value attributes — only rendered when explicitly set
 			if (isset($properties['maxlength'])) {
-				$attrs .= ' maxlength="' . (int) $properties['maxlength'] . '"';
+				$attrs .= ' maxlength="' . (int)$properties['maxlength'] . '"';
 			}
 			
 			if (isset($properties['minlength'])) {
-				$attrs .= ' minlength="' . (int) $properties['minlength'] . '"';
+				$attrs .= ' minlength="' . (int)$properties['minlength'] . '"';
 			}
 			
 			if (isset($properties['min'])) {
-				$attrs .= ' min="' . (int) $properties['min'] . '"';
+				$attrs .= ' min="' . (float)$properties['min'] . '"';
 			}
 			
 			if (isset($properties['max'])) {
-				$attrs .= ' max="' . (int) $properties['max'] . '"';
+				$attrs .= ' max="' . (float)$properties['max'] . '"';
 			}
 			
 			if (isset($properties['step'])) {
 				// step can be "any" or a number
-				$step   = $properties['step'];
-				$attrs .= ' step="' . ($step === 'any' ? 'any' : (float) $step) . '"';
+				$step = $properties['step'];
+				$attrs .= ' step="' . ($step === 'any' ? 'any' : (float)$step) . '"';
 			}
 			
 			if (isset($properties['pattern'])) {
@@ -404,12 +404,12 @@ HTML;
 				$value = $this->getNestedValue($data, $name);
 				
 				if ($value !== null) {
-					return (string) $value;
+					return (string)$value;
 				}
 			}
 			
 			// Fall back to value in JSON definition
-			return (string) ($properties['value'] ?? '');
+			return (string)($properties['value'] ?? '');
 		}
 		
 		/**

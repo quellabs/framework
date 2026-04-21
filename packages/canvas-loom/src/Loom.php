@@ -37,7 +37,12 @@
 		 * @return string        Rendered HTML with an inline script block if scripts were generated
 		 */
 		public function render(array $node, array $data = [], array $options = []): string {
-			// Store data as context so renderers can access it via getData()
+			// Save and restore surrounding context so nested render() calls
+			// (e.g. rendering header and body separately on the same instance)
+			// do not pollute each other's data or notifications.
+			$previousData          = $this->currentData;
+			$previousNotifications = $this->notifications;
+			
 			$this->currentData = $data;
 			
 			// Inject render part into root node properties so ResourceRenderer
@@ -46,7 +51,12 @@
 				$node['properties']['_render_part'] = $options['part'];
 			}
 			
-			$result = $this->_render($node);
+			$result = $this->renderNode($node);
+			
+			// Restore previous context so sequential calls on the same instance
+			// are isolated from each other
+			$this->currentData   = $previousData;
+			$this->notifications = $previousNotifications;
 			
 			// No scripts generated — return HTML only
 			if ($result->script === null) {
@@ -75,14 +85,15 @@
 		 * @return RenderResult      Combined HTML and scripts for this node and all its descendants
 		 * @internal Do not call directly — use render() instead
 		 */
-		public function _render(array $node, ?array $parent = null): RenderResult {
+		private function renderNode(array $node, ?array $parent = null): RenderResult {
 			$childHtml = '';
 			$scripts   = [];
-			$i         = 0;
+			$childCount = 0;
 			
 			foreach ($node['children'] ?? [] as $i => $child) {
-				$result     = $this->_render($child, $node);
+				$result     = $this->renderNode($child, $node);
 				$childHtml .= $result->html;
+				$childCount++;
 				
 				if ($result->script !== null) {
 					$scripts[] = $result->script;
@@ -95,7 +106,7 @@
 			$properties['_children'] = $node['children']   ?? [];
 			
 			$renderer = $this->getRenderer($node['type']);
-			$result   = $renderer->render($properties, $childHtml, $parent, $i);
+			$result   = $renderer->render($properties, $childHtml, $parent, $childCount > 0 ? $i : 0);
 			
 			if ($result->script !== null) {
 				$scripts[] = $result->script;
