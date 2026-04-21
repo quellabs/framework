@@ -111,6 +111,11 @@
 					return true;
 				}
 				
+				// Resource with WakaForm enabled always needs WakaPAC
+				if (!empty($properties['use_wakaform'])) {
+					return true;
+				}
+				
 				// Any node with an explicit pac_bind
 				if (!empty($properties['pac_bind'])) {
 					return true;
