@@ -200,7 +200,7 @@
 
     wakaPAC.installMessageHook(function(event, callNextHook) {
         if (event.message === wakaPAC.MSG_SUBMIT && event.pacId === '{$id}') {
-            event.originalEvent.preventDefault();
+            event.preventDefault();
             
             const context = window.PACRegistry.get('{$id}');
             
