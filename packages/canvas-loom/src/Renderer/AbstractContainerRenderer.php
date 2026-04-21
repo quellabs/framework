@@ -94,10 +94,11 @@
 		 * is actually needed. Resource and Panel skip buildScript() entirely if not.
 		 *
 		 * WakaPAC is required if any node in the tree:
-		 * - Is a tabs container (always reactive)
 		 * - Has a pac_bind property (data-pac-bind attribute)
 		 * - Has scripts or abstraction properties set on a container
 		 * - Is a text node with {{ }} interpolation in its value
+		 * - Has validation rules (field.valid bindings)
+		 * - Has use_wakaform enabled on the resource
 		 * @param array $nodes
 		 * @return bool
 		 */
