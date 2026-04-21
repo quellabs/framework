@@ -73,6 +73,8 @@
 		public function render(array $properties, string $children, ?array $parent = null, int $index = 0): RenderResult {
 			$type = $properties['input'] ?? 'text';
 			
+			// Hidden fields bypass the wrapper, label, hint, and WakaPAC binding entirely —
+			// they are invisible and have no interactive state to track
 			if ($type === 'hidden') {
 				$name = $properties['name'] ?? '';
 				$id = $this->e($properties['id'] ?? $name);
@@ -81,6 +83,7 @@
 				return new RenderResult($html);
 			}
 			
+			// All other types go through the full wrapper/label/hint pipeline
 			return $this->renderDefault($properties);
 		}
 		
@@ -95,29 +98,41 @@
 			$label = $this->e($properties['label'] ?? '');
 			$class = $this->e($properties['class'] ?? $this->wrapperClass);
 			$id = $this->e($properties['id'] ?? $name);
+			
+			// Data array passed to Loom::render() takes precedence over any value
+			// set on the builder — this is how server-side data populates the form
 			$value = $this->resolveValue($name, $properties);
 			
-			// data-pac-field and data-pac-bind are derived from the field name by default,
-			// but can be overruled entirely via properties
+			// data-pac-field marks the element as a WakaPAC-managed field.
+			// data-pac-bind wires the field value into the reactive abstraction.
+			// Both default to conventions based on the field name but can be
+			// overridden entirely via properties when the default isn't appropriate.
 			$pacField = $properties['pac_field'] ?? 'data-pac-field';
 			$pacBind = $properties['pac_bind'] ?? ($type === 'toggle' ? "checked: {$name}" : "value: {$name}");
 			$pacFieldAttr = $pacField ? " {$pacField}" : '';
 			$pacBindAttr = $pacBind ? " data-pac-bind=\"{$pacBind}\"" : '';
 			
+			// Label is omitted entirely when not provided rather than rendering
+			// an empty element, so CSS :empty rules and screen readers aren't affected
 			if ($label) {
 				$labelHtml = "<label for=\"{$id}\" class=\"{$this->labelClass}\">{$label}</label>";
 			} else {
 				$labelHtml = '';
 			}
 			
+			// Hint is optional — only rendered when explicitly set on the field
 			if (isset($properties['hint'])) {
 				$hintHtml = "<p class=\"{$this->hintClass}\">{$this->e($properties['hint'])}</p>";
 			} else {
 				$hintHtml = '';
 			}
 			
+			// Delegate the actual input element to the type-specific renderer.
+			// pac attributes are passed pre-rendered so each renderer doesn't
+			// need to re-implement the same attribute construction logic.
 			$inputHtml = $this->getInputRenderer($type)->renderInput($id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr);
 			
+			// Build html
 			$html = <<<HTML
         <div class="{$class}">
             {$labelHtml}
@@ -126,6 +141,7 @@
         </div>
         HTML;
 			
+			// Return result
 			return new RenderResult($html);
 		}
 		
