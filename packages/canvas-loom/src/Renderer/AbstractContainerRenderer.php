@@ -201,10 +201,16 @@
     wakaPAC.installMessageHook(function(event, callNextHook) {
         if (event.message === wakaPAC.MSG_SUBMIT && event.pacId === '{$id}') {
             event.originalEvent.preventDefault();
-            var context = window.PACRegistry.get('{$id}');
-            if (context) { context.abstraction.validateAndSubmit(); }
+            
+            const context = window.PACRegistry.get('{$id}');
+            
+            if (context) {
+                context.abstraction.validateAndSubmit();
+            }
+            
             return;
         }
+        
         callNextHook();
     });
 

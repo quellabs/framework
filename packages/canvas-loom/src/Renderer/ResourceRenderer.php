@@ -236,12 +236,13 @@ JS;
 				
 				foreach ($notifications as $notification) {
 					// Whitelist type to prevent CSS class injection — unknown types fall back to 'info'
-					$type = in_array($notification['type'], ['success', 'error', 'warning', 'info'], true)
-						? $notification['type']
-						: 'info';
+					$type = in_array($notification['type'], ['success', 'error', 'warning', 'info'], true) ? $notification['type'] : 'info';
+					
 					$message = htmlspecialchars($notification['message'], ENT_QUOTES, 'UTF-8');
+					
 					$items .= "<li class=\"loom-notification-item loom-notification-{$type}\">{$message}</li>\n";
 				}
+				
 				$notificationsHtml = <<<HTML
 <div id="{$id}-notifications" class="loom-notifications">
     <ul class="loom-notifications-list">
