@@ -198,18 +198,6 @@
     const form = wakaForm.createForm({
 {$schemaEntries}    });
 
-    document.getElementById('{$id}').addEventListener('submit', function(event) {
-        const pac = window.PACRegistry && window.PACRegistry.get('{$id}');
-        
-        if (pac) {
-            pac.abstraction.submitted = true;
-        }
-        
-        if (!form.validate()) {
-            event.preventDefault();
-        }
-    });
-
 JS;
 				$formProperty = "\n        submitted: " . (!empty($serverErrors) ? 'true' : 'false') . ",\n        form,";
 			} else {
@@ -253,7 +241,9 @@ JS;
                 el.remove();
             }
         }
-    }, { hydrate: true });
+    }, {
+        hydrate: true
+    });
 })();
 JS;
 		}

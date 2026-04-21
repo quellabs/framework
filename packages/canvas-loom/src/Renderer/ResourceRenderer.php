@@ -279,6 +279,7 @@ HTML;
     HTML;
 			
 			if ($needsWakaPAC) {
+				$extra            = [];
 				$clientValidation = !empty($properties['use_wakaform']);
 				$serverErrors = $this->loom->getData()['_errors'] ?? [];
 				
@@ -288,7 +289,25 @@ HTML;
 					$fieldRules = [];
 				}
 				
-				$script = $this->buildScript($id, [], $properties['abstraction'] ?? [], $properties['scripts'] ?? [], $fieldRules, $clientValidation, $serverErrors);
+				if ($clientValidation) {
+					$extra[] = <<<JS
+		validateAndSubmit() {
+            this.submitted = true;
+            if (!form.validate()) {
+                return false;
+            }
+                this.container.submit();
+        },
+        msgProc(event) {
+            if (event.message === wakaPAC.MSG_SUBMIT) {
+                event.originalEvent.preventDefault();
+                this.validateAndSubmit();
+            }
+        }
+JS;
+				}
+				
+				$script = $this->buildScript($id, $extra, $properties['abstraction'] ?? [], $properties['scripts'] ?? [], $fieldRules, $clientValidation, $serverErrors);
 			} else {
 				$script = null;
 			}
