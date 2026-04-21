@@ -286,6 +286,16 @@
 		}
 
 		/**
+		 * Set a custom error message shown when client-side validation fails.
+		 * Overrides the default message from the first validation rule.
+		 * @param string $message
+		 * @return static
+		 */
+		public function errorMessage(string $message): static {
+			return $this->set('error_message', $message);
+		}
+
+		/**
 		 * Attach validation rules to this field.
 		 * Rules are used by Loom::validate() for server-side validation and,
 		 * when client validation is enabled on the Resource, emitted as WakaForm

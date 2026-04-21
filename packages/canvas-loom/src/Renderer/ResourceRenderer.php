@@ -114,7 +114,7 @@
 			$saveLabel = $this->e($properties['save_label'] ?? 'Save');
 			$headerId = "{$id}-header";
 			$headerButtons = $properties['header_buttons'] ?? [];
-		
+			
 			// Render extra header buttons with visibility binding
 			$extraButtons = '';
 			
@@ -143,7 +143,7 @@
 			}
 			
 			$saveButtonHtml = "<button type=\"submit\" form=\"{$id}\" class=\"{$this->saveClass}\"{$saveDisabledAttr}>{$saveLabel}</button>";
-
+			
 			$html = <<<HTML
     <div class="{$this->headerClass}" data-pac-id="{$headerId}">
         <h1 class="{$this->titleClass}">{$title}</h1>
@@ -261,11 +261,12 @@ HTML;
 				// and merge with the caller-supplied data array. Caller data takes precedence
 				// so runtime values override build-time defaults.
 				$fieldOptions = $this->collectFieldProperties($properties['_children'] ?? []);
-				$baseState    = $data['_pac_state'] ?? array_filter($data, fn($value) => is_array($value));
-				$stateData    = array_merge($fieldOptions, $baseState);
+				$baseState = $data['_pac_state'] ?? array_filter($data, fn($value) => is_array($value));
+				$stateData = array_merge($fieldOptions, $baseState);
 			} else {
 				$stateData = [];
 			}
+			
 			$stateJson = !empty($stateData) ? htmlspecialchars(json_encode($stateData), ENT_QUOTES) : '';
 			$stateAttr = $stateJson ? " data-pac-state=\"{$stateJson}\"" : '';
 			
@@ -279,8 +280,8 @@ HTML;
 			
 			if ($needsWakaPAC) {
 				$clientValidation = !empty($properties['use_wakaform']);
-				$serverErrors     = $this->loom->getData()['_errors'] ?? [];
-
+				$serverErrors = $this->loom->getData()['_errors'] ?? [];
+				
 				if ($clientValidation) {
 					$fieldRules = $this->collectFieldRules($properties['_children'] ?? []);
 				} else {

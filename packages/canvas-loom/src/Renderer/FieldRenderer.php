@@ -152,9 +152,15 @@
 			$errorClass = $this->e($properties['error_class'] ?? $this->errorClass);
 			
 			if ($hasRules || $errorMessage) {
-				// Server error message takes precedence over the first rule's message,
-				// which serves as the client-side fallback when no POST has occurred.
-				$displayMessage = $errorMessage ?: ($hasRules ? $this->e($properties['rules'][0]->getError()) : '');
+				// Priority: server error > custom error_message > first rule's getError()
+				if ($errorMessage) {
+					$displayMessage = $errorMessage;
+				} elseif (($properties['error_message'] ?? null)) {
+					$displayMessage = ($properties['error_message'] ?? null);
+				} else {
+					$displayMessage = ($hasRules ? $this->e($properties['rules'][0]->getError()) : '');
+				}
+
 				$errorHtml = "<p class=\"{$errorClass}\" data-pac-bind=\"visible: submitted && !form.{$name}.valid\">{$displayMessage}</p>";
 			} else {
 				$errorHtml = '';

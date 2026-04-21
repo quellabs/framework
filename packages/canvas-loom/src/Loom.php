@@ -3,7 +3,7 @@
 	namespace Quellabs\Canvas\Loom;
 	
 	use Quellabs\Canvas\Loom\Validation\ValidationResult;
-
+	
 	/**
 	 * The Loom render engine
 	 */
@@ -42,11 +42,11 @@
 			// Save and restore surrounding context so nested render() calls
 			// (e.g. rendering header and body separately on the same instance)
 			// do not pollute each other's data or notifications.
-			$previousData          = $this->currentData;
+			$previousData = $this->currentData;
 			$previousNotifications = $this->notifications;
 			
 			$this->currentData = $data;
-
+			
 			// If the root node has use_wakaform, inject _use_wakaform into the
 			// data context so FieldRenderer can read it during child rendering.
 			if (!empty($node['properties']['use_wakaform'])) {
@@ -63,7 +63,7 @@
 			
 			// Restore previous context so sequential calls on the same instance
 			// are isolated from each other
-			$this->currentData   = $previousData;
+			$this->currentData = $previousData;
 			$this->notifications = $previousNotifications;
 			
 			// No scripts generated — return HTML only
@@ -95,11 +95,11 @@
 		 */
 		private function renderNode(array $node, ?array $parent = null): RenderResult {
 			$childHtml = '';
-			$scripts   = [];
+			$scripts = [];
 			$childCount = 0;
 			
 			foreach ($node['children'] ?? [] as $i => $child) {
-				$result     = $this->renderNode($child, $node);
+				$result = $this->renderNode($child, $node);
 				$childHtml .= $result->html;
 				$childCount++;
 				
@@ -110,11 +110,11 @@
 			
 			// Pass raw child nodes to renderer so container renderers can
 			// inspect the node tree without relying on already-rendered HTML
-			$properties              = $node['properties'] ?? [];
-			$properties['_children'] = $node['children']   ?? [];
+			$properties = $node['properties'] ?? [];
+			$properties['_children'] = $node['children'] ?? [];
 			
 			$renderer = $this->getRenderer($node['type']);
-			$result   = $renderer->render($properties, $childHtml, $parent, $childCount > 0 ? $i : 0);
+			$result = $renderer->render($properties, $childHtml, $parent, $childCount > 0 ? $i : 0);
 			
 			if ($result->script !== null) {
 				$scripts[] = $result->script;
@@ -145,39 +145,40 @@
 			$this->validateNode($node, $data, $errors);
 			return new ValidationResult($errors);
 		}
-
+		
 		/**
 		 * Recursively walk the node tree and validate all field nodes that have rules.
-		 * @param array  $node
-		 * @param array  $data
-		 * @param array  $errors Collected errors, passed by reference
+		 * @param array $node
+		 * @param array $data
+		 * @param array $errors Collected errors, passed by reference
 		 */
 		private function validateNode(array $node, array $data, array &$errors): void {
 			if (($node['type'] ?? '') === 'field') {
 				$rules = $node['properties']['rules'] ?? [];
-				$name  = $node['properties']['name']  ?? '';
-
+				$name = $node['properties']['name'] ?? '';
+				
 				if ($name && !empty($rules)) {
 					$value = $data[$name] ?? null;
-
+					$errorOverride = $node['properties']['error_message'] ?? null;
+					
 					foreach ($rules as $rule) {
 						if (!$rule->validate($value)) {
-							$errors[$name] = $rule->getError();
+							$errors[$name] = $errorOverride ?? $rule->getError();
 							// First failing rule wins — consistent with WakaForm behaviour
 							break;
 						}
 					}
 				}
 			}
-
+			
 			foreach ($node['children'] ?? [] as $child) {
 				$this->validateNode($child, $data, $errors);
 			}
 		}
-
+		
 		/**
 		 * Add a notification to display in the rendered form.
-		 * @param string $type    Notification type: success|error|warning|info
+		 * @param string $type Notification type: success|error|warning|info
 		 * @param string $message Notification message
 		 * @return static
 		 */
