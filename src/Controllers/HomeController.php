@@ -69,6 +69,7 @@
 									)
 									->add(Field::text('slug', 'Slug')
 										->rules([new NotBlank(), new MinLength(3), new MaxLength(200)])
+										->errorMessage('test error')
 									)
 									->add(Field::text('email', 'Email')
 										->rules([new NotBlank(), new Email()])
