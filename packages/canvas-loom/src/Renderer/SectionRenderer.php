@@ -37,12 +37,14 @@
 				$idAttr = '';
 			}
 			
+			// Build HTML
 			$html = <<<HTML
         <div{$idAttr} class="{$class}">
             {$children}
         </div>
         HTML;
 			
+			// Return result
 			return new RenderResult($html);
 		}
 	}

@@ -23,7 +23,7 @@
 		 * @return RenderResult
 		 */
 		public function render(array $properties, string $children, ?array $parent = null, int $index = 0): RenderResult {
-			$id    = $properties['id']    ?? '';
+			$id = $properties['id'] ?? '';
 			$class = $this->e($properties['class'] ?? $this->panelClass);
 			
 			// id appears in a JS string literal inside data-pac-bind — restrict to safe identifier characters
@@ -34,7 +34,7 @@
 			// Non-active panels start hidden — the tabs inline script removes hidden on click.
 			// The active tab id is read from the parent Tabs node properties.
 			$activeTab = $parent['properties']['active'] ?? '';
-			$hidden    = ($id !== $activeTab) ? ' hidden' : '';
+			$hidden = ($id !== $activeTab) ? ' hidden' : '';
 			
 			// Build HTML
 			$html = <<<HTML
