@@ -104,8 +104,8 @@
 		
 		/**
 		 * Render the page header with title, cancel and save button.
-		 * @param array  $properties     Node properties
-		 * @param string $id             Form id, used to couple the submit button via the form attribute
+		 * @param array $properties Node properties
+		 * @param string $id Form id, used to couple the submit button via the form attribute
 		 * @param string $saveDisabledAttr Rendered disabled attribute or empty string
 		 * @return RenderResult
 		 */
@@ -116,7 +116,7 @@
 			$headerButtons = $properties['header_buttons'] ?? [];
 			
 			// Build the extra <button> elements from the header_buttons property list
-			$extraButtons   = $this->renderHeaderButtons($headerButtons);
+			$extraButtons = $this->renderHeaderButtons($headerButtons);
 			$saveButtonHtml = "<button type=\"submit\" form=\"{$id}\" class=\"{$this->saveClass}\"{$saveDisabledAttr}>{$saveLabel}</button>";
 			
 			// Build the HTML
@@ -184,7 +184,7 @@
 			
 			return $html;
 		}
-			
+		
 		/**
 		 * Build the WakaPAC initialisation script for the header component.
 		 *
@@ -203,8 +203,8 @@
 		 * Buttons without show_message or hide_message simply get no case for that
 		 * direction — they can still be shown/hidden by other means.
 		 *
-		 * @param string $headerId      WakaPAC component id for the header div
-		 * @param array  $headerButtons List of button node objects exposing a get() method
+		 * @param string $headerId WakaPAC component id for the header div
+		 * @param array $headerButtons List of button node objects exposing a get() method
 		 * @return string Ready-to-emit JavaScript IIFE
 		 */
 		protected function buildHeaderScript(string $headerId, array $headerButtons): string {
@@ -222,29 +222,29 @@
 				}
 				
 				// Each named button gets a reactive show_x property, defaulting to hidden.
-					$visibilityProps .= "show_{$name}: false,\n        ";
-					
-					if ($showMessage !== null) {
-						$constName = 'MSG_SHOW_' . strtoupper($name);
-						$constants .= "const {$constName} = {$showMessage};\n";
-						$msgProcCases .= <<<JS
+				$visibilityProps .= "show_{$name}: false,\n        ";
+				
+				if ($showMessage !== null) {
+					$constName = 'MSG_SHOW_' . strtoupper($name);
+					$constants .= "const {$constName} = {$showMessage};\n";
+					$msgProcCases .= <<<JS
                 case {$constName}:
                     this.show_{$name} = true;
                     break;\n
 JS;
-					}
-					
-					if ($hideMessage !== null) {
-						$constName = 'MSG_HIDE_' . strtoupper($name);
-						$constants .= "const {$constName} = {$hideMessage};\n";
-						$msgProcCases .= <<<JS
+				}
+				
+				if ($hideMessage !== null) {
+					$constName = 'MSG_HIDE_' . strtoupper($name);
+					$constants .= "const {$constName} = {$hideMessage};\n";
+					$msgProcCases .= <<<JS
 
                 case {$constName}:
                     this.show_{$name} = false;
                     break;\n
 JS;
-					}
 				}
+			}
 			
 			return <<<JS
 (function() {
@@ -288,7 +288,9 @@ JS;
 			
 			// Render the notifications
 			$notificationsHtml = $this->renderNotifications($notifications, $id);
-			$pacAttrs  = $this->resolveWakaPACAttributes($needsWakaPAC, $id, $childNodes);
+			
+			// Resolve data-pac-id and data-pac-state — both are empty strings when WakaPAC is not needed
+			$pacAttrs = $this->resolveWakaPACAttributes($needsWakaPAC, $id, $childNodes);
 			$pacIdAttr = $pacAttrs['pacIdAttr'];
 			$stateAttr = $pacAttrs['stateAttr'];
 			
@@ -299,8 +301,8 @@ JS;
         {$children}
     </form>
     HTML;
-		
-			// Build scripts
+			
+			// WakaPAC script is only emitted when the form actually needs reactive behaviour
 			if ($needsWakaPAC) {
 				$script = $this->buildBodyScript($id, $properties, $childNodes);
 			} else {
@@ -396,10 +398,10 @@ HTML;
 		 * @return string            Ready-to-emit JavaScript, already wrapped in an IIFE by buildScript()
 		 */
 		protected function buildBodyScript(string $id, array $properties, array $childNodes): string {
-			$extra = [];
 			$clientValidation = !empty($properties['use_wakaform']);
 			$serverErrors = $this->loom->getData()['_errors'] ?? [];
 			$fieldRules = $clientValidation ? $this->collectFieldRules($childNodes) : [];
+			$extra = [];
 			
 			if ($clientValidation) {
 				// Inject a validateAndSubmit() method that WakaForm calls instead of a plain submit,
