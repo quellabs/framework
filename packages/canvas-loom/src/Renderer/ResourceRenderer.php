@@ -95,6 +95,7 @@
 					if ($bodyResult->script !== null) {
 						$scripts[] = $bodyResult->script;
 					}
+					
 					break;
 			}
 			
@@ -103,9 +104,8 @@
 		
 		/**
 		 * Render the page header with title, cancel and save button.
-		 * Override in a subclass to customise the header independently.
-		 * @param array $properties Node properties
-		 * @param string $id Form id, used to couple the submit button via the form attribute
+		 * @param array  $properties     Node properties
+		 * @param string $id             Form id, used to couple the submit button via the form attribute
 		 * @param string $saveDisabledAttr Rendered disabled attribute or empty string
 		 * @return RenderResult
 		 */
@@ -115,8 +115,46 @@
 			$headerId = "{$id}-header";
 			$headerButtons = $properties['header_buttons'] ?? [];
 			
-			// Render extra header buttons with visibility binding
-			$extraButtons = '';
+			// Build the extra <button> elements from the header_buttons property list
+			$extraButtons   = $this->renderHeaderButtons($headerButtons);
+			$saveButtonHtml = "<button type=\"submit\" form=\"{$id}\" class=\"{$this->saveClass}\"{$saveDisabledAttr}>{$saveLabel}</button>";
+			
+			// Build the HTML
+			$html = <<<HTML
+    <div class="{$this->headerClass}" data-pac-id="{$headerId}">
+        <h1 class="{$this->titleClass}">{$title}</h1>
+        <div class="{$this->headerActionsClass}">
+            {$extraButtons}
+            <button type="button" class="{$this->cancelClass}" onclick="history.back()">Cancel</button>
+            {$saveButtonHtml}
+        </div>
+    </div>
+    HTML;
+			
+			// Build the WakaPAC IIFE that drives button visibility toggling via msgProc
+			$script = $this->buildHeaderScript($headerId, $headerButtons);
+			
+			// Return the result
+			return new RenderResult($html, $script);
+		}
+		
+		/**
+		 * Render the extra action buttons in the header bar.
+		 *
+		 * Each button node may carry a name (used to build a visibility binding),
+		 * a variant (primary/secondary/danger), and an action expression (a WakaPAC
+		 * click handler). Buttons without a name are rendered without a visibility
+		 * binding and are therefore always visible.
+		 *
+		 * Button names flow into JS property names and data-pac-bind expressions,
+		 * so they are restricted to alphanumerics and underscores.
+		 *
+		 * @param array $headerButtons List of button node objects exposing a get() method
+		 * @return string Concatenated <button> HTML, or an empty string when the list is empty
+		 * @throws \InvalidArgumentException When a button name contains disallowed characters
+		 */
+		protected function renderHeaderButtons(array $headerButtons): string {
+			$html = '';
 			
 			foreach ($headerButtons as $button) {
 				$name = $button->get('name');
@@ -135,43 +173,60 @@
 					default => 'loom-button loom-button-primary',
 				};
 				
+				// Compose the data-pac-bind value: visibility first, then click action.
+				// Either part is omitted when not applicable.
 				$binding = $name ? "visible: show_{$name}" : '';
 				$binding = ($binding && $action) ? "{$binding}, click: {$action}" : ($action ? "click: {$action}" : $binding);
 				$bindAttr = $binding ? " data-pac-bind=\"{$binding}\"" : '';
 				
-				$extraButtons .= "<button type=\"button\" class=\"{$variantClass}\"{$bindAttr}>{$label}</button>\n";
+				$html .= "<button type=\"button\" class=\"{$variantClass}\"{$bindAttr}>{$label}</button>\n";
 			}
 			
-			$saveButtonHtml = "<button type=\"submit\" form=\"{$id}\" class=\"{$this->saveClass}\"{$saveDisabledAttr}>{$saveLabel}</button>";
+			return $html;
+		}
 			
-			$html = <<<HTML
-    <div class="{$this->headerClass}" data-pac-id="{$headerId}">
-        <h1 class="{$this->titleClass}">{$title}</h1>
-        <div class="{$this->headerActionsClass}">
-            {$extraButtons}
-            <button type="button" class="{$this->cancelClass}" onclick="history.back()">Cancel</button>
-            {$saveButtonHtml}
-        </div>
-    </div>
-    HTML;
-			
-			// Generate header WakaPAC script with msgProc for visibility toggling
+		/**
+		 * Build the WakaPAC initialisation script for the header component.
+		 *
+		 * Iterates the header buttons to produce three things that are injected
+		 * into the IIFE:
+		 *
+		 * - $constants      — numeric message-id constants (MSG_SHOW_X / MSG_HIDE_X)
+		 *                     declared at the top of the IIFE scope so the switch
+		 *                     cases are readable rather than raw numbers.
+		 * - $visibilityProps — `show_x: false` reactive properties, one per named
+		 *                      button, that drive the visible: bindings on the buttons.
+		 * - $msgProcCases   — switch cases that set the relevant show_x property to
+		 *                     true or false when the matching message arrives.
+		 *
+		 * Buttons without a name are skipped because they have no visibility state.
+		 * Buttons without show_message or hide_message simply get no case for that
+		 * direction — they can still be shown/hidden by other means.
+		 *
+		 * @param string $headerId      WakaPAC component id for the header div
+		 * @param array  $headerButtons List of button node objects exposing a get() method
+		 * @return string Ready-to-emit JavaScript IIFE
+		 */
+		protected function buildHeaderScript(string $headerId, array $headerButtons): string {
 			$constants = '';
-			$msgProcCases = '';
 			$visibilityProps = '';
+			$msgProcCases = '';
 			
 			foreach ($headerButtons as $button) {
 				$name = $button->get('name');
 				$showMessage = $button->get('show_message');
 				$hideMessage = $button->get('hide_message');
 				
-				if ($name) {
+				if (!$name) {
+					continue;
+				}
+				
+				// Each named button gets a reactive show_x property, defaulting to hidden.
 					$visibilityProps .= "show_{$name}: false,\n        ";
 					
 					if ($showMessage !== null) {
 						$constName = 'MSG_SHOW_' . strtoupper($name);
 						$constants .= "const {$constName} = {$showMessage};\n";
-						
 						$msgProcCases .= <<<JS
                 case {$constName}:
                     this.show_{$name} = true;
@@ -190,9 +245,8 @@ JS;
 JS;
 					}
 				}
-			}
 			
-			$script = <<<JS
+			return <<<JS
 (function() {
     {$constants}
     wakaPAC('{$headerId}', {
@@ -205,8 +259,6 @@ JS;
     }, { hydrate: false });
 })();
 JS;
-			
-			return new RenderResult($html, $script);
 		}
 		
 		/**
@@ -236,9 +288,9 @@ JS;
 			
 			// Render the notifications
 			$notificationsHtml = $this->renderNotifications($notifications, $id);
-			
-			// Resolve the wakapac attributes
-			[$pacIdAttr, $stateAttr] = $this->resolveWakaPACAttributes($needsWakaPAC, $id, $childNodes);
+			$pacAttrs  = $this->resolveWakaPACAttributes($needsWakaPAC, $id, $childNodes);
+			$pacIdAttr = $pacAttrs['pacIdAttr'];
+			$stateAttr = $pacAttrs['stateAttr'];
 			
 			$html = <<<HTML
     <form id="{$id}" action="{$action}" method="{$methodAttr}" class="{$class}"{$pacIdAttr}{$stateAttr}>
@@ -307,12 +359,11 @@ HTML;
 		 * @param bool $needsWakaPAC Whether the form requires a WakaPAC component
 		 * @param string $id Component id, becomes the data-pac-id value
 		 * @param array $childNodes Raw child node tree, scanned for field-level state
-		 * @return array{0: string, 1: string} Tuple of [pacIdAttr, stateAttr], each a
-		 *                                     ready-to-interpolate HTML attribute string or ''
+		 * @return array{pacIdAttr: string, stateAttr: string}
 		 */
 		protected function resolveWakaPACAttributes(bool $needsWakaPAC, string $id, array $childNodes): array {
 			if (!$needsWakaPAC) {
-				return ['', ''];
+				return ['pacIdAttr' => '', 'stateAttr' => ''];
 			}
 			
 			$pacIdAttr = " data-pac-id=\"{$id}\"";
@@ -327,7 +378,7 @@ HTML;
 			$stateJson = !empty($stateData) ? htmlspecialchars(json_encode($stateData), ENT_QUOTES) : '';
 			$stateAttr = $stateJson ? " data-pac-state=\"{$stateJson}\"" : '';
 			
-			return [$pacIdAttr, $stateAttr];
+			return ['pacIdAttr' => $pacIdAttr, 'stateAttr' => $stateAttr];
 		}
 		
 		/**

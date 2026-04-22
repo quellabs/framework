@@ -156,72 +156,43 @@
 		
 		/**
 		 * Generate the WakaPAC initialisation script for a container component.
-		 * Includes submit() and post() methods on the abstraction so buttons
-		 * within the container can trigger form actions.
+		 *
+		 * Acts as the top-level assembler: serialises the abstraction object,
+		 * optionally prepends a WakaForm block, then wraps everything in a
+		 * self-contained IIFE with the standard submit/post/dismiss methods.
+		 *
 		 * @param string $id WakaPAC component id
-		 * @param array $extra Additional abstraction properties as JS string snippets
-		 * @param array $abstraction Key-value pairs from the node's abstraction property (scalars and arrays only)
-		 * @param array $scripts Script snippets from the builder's script() calls
-		 * @param array $fieldRules Map of fieldName => JS rule constructor strings, from collectFieldRules().
-		 *                            When non-empty, a wakaForm.createForm() call is emitted and the form
-		 *                            proxy is injected into the abstraction as 'form'.
-		 * @return string
+		 * @param array $extra Additional abstraction method snippets as raw JS strings
+		 * @param array $abstraction Key-value pairs from the node's abstraction property
+		 *                                 (scalars and arrays only — anything else throws)
+		 * @param array $scripts Script snippets from the builder's script() calls,
+		 *                                 appended after $extra in the abstraction body
+		 * @param array $fieldRules Map of fieldName => JS rule constructor strings from
+		 *                                 collectFieldRules(). When non-empty and $clientValidation
+		 *                                 is true, a wakaForm.createForm() block is emitted and the
+		 *                                 form proxy is injected as the 'form' property.
+		 * @param bool $clientValidation Whether WakaForm client-side validation is active
+		 * @param array $serverErrors Map of fieldName => error(s) from the last server round-trip,
+		 *                                 used to pre-mark fields invalid after a failed submission
+		 * @return string Ready-to-emit JavaScript wrapped in an IIFE
 		 */
 		protected function buildScript(string $id, array $extra = [], array $abstraction = [], array $scripts = [], array $fieldRules = [], bool $clientValidation = false, array $serverErrors = []): string {
-			$abstractionJs = '';
+			// Serialise the node's abstraction map to `key: value,` JS property lines
+			$abstractionJs = $this->serializeAbstraction($abstraction);
 			
-			foreach ($abstraction as $key => $value) {
-				if (!is_scalar($value) && !is_array($value)) {
-					throw new \InvalidArgumentException("Abstraction property \"{$key}\" must be a scalar or array.");
-				}
-				
-				$abstractionJs .= $key . ': ' . json_encode($value) . ",\n        ";
-			}
-			
-			// Merge caller-supplied extra snippets with script() snippets from the builder.
-			// Trim trailing commas and whitespace from each snippet so the join comma is never doubled.
-			$allExtra = array_merge($extra, $scripts);
-			$allExtra = array_map(fn($s) => rtrim(trim($s), ','), $allExtra);
-			$extraJs = !empty($allExtra) ? implode(",\n        ", $allExtra) . ',' : '';
+			// Merge caller extra snippets and builder script() snippets into a comma-joined JS block
+			$extraJs = $this->serializeExtraSnippets($extra, $scripts);
 			$notificationsId = "{$id}-notifications";
 			
-			// Build createForm() call when client validation is enabled.
+			// Build the WakaForm createForm() preamble and the form/submitted property injection.
+			// Both are empty strings when client validation is off so the IIFE template is always
+			// interpolated unconditionally regardless of whether validation is active.
 			if ($clientValidation && !empty($fieldRules)) {
-				$schemaEntries = '';
-				$data = $this->loom->getData();
-				
-				foreach ($fieldRules as $fieldName => $jsRules) {
-					$rulesJs = implode(', ', $jsRules);
-					$initialValid = array_key_exists($fieldName, $serverErrors) ? 'false' : 'true';
-					$initialValue = json_encode((string)($data[$fieldName] ?? ''));
-					$schemaEntries .= "        {$fieldName}: { value: {$initialValue}, valid: {$initialValid}, rules: [{$rulesJs}] },\n";
-				}
-				
-				$formInit = <<<JS
-
-    const form = wakaForm.createForm({
-{$schemaEntries}    });
-
-    wakaPAC.installMessageHook(function(event, callNextHook) {
-        if (event.message === wakaPAC.MSG_SUBMIT && event.pacId === '{$id}') {
-            event.preventDefault();
-            
-            const context = wakaPAC.getContextByPacId('{$id}');
-            
-            if (context) {
-                context.abstraction.validateAndSubmit();
-            }
-            
-            return;
-        }
-        
-        callNextHook();
-    });
-
-JS;
-				$formProperty = "\n        submitted: " . (!empty($serverErrors) ? 'true' : 'false') . ",\n        form,";
+				$wakaForm     = $this->buildWakaFormBlock($id, $fieldRules, $serverErrors);
+				$formInit     = $wakaForm['formInit'];
+				$formProperty = $wakaForm['formProperty'];
 			} else {
-				$formInit = '';
+				$formInit     = '';
 				$formProperty = '';
 			}
 			
@@ -266,5 +237,124 @@ JS;
     });
 })();
 JS;
+		}
+		
+		/**
+		 * Serialise the node's abstraction map to inline JS object properties.
+		 *
+		 * Each entry becomes a `key: <json_value>,` line ready to be placed
+		 * directly inside a wakaPAC() abstraction literal. Only scalars and
+		 * arrays are accepted — closures or objects would not survive
+		 * json_encode and are rejected early with a clear message.
+		 *
+		 * @param array $abstraction Key-value pairs from the node's abstraction property
+		 * @return string Zero or more `key: value,\n` lines, or an empty string when $abstraction is empty
+		 * @throws \InvalidArgumentException When a value is neither scalar nor array
+		 */
+		protected function serializeAbstraction(array $abstraction): string {
+			$js = '';
+			
+			foreach ($abstraction as $key => $value) {
+				if (!is_scalar($value) && !is_array($value)) {
+					throw new \InvalidArgumentException("Abstraction property \"{$key}\" must be a scalar or array.");
+				}
+				
+				$js .= $key . ': ' . json_encode($value) . ",\n        ";
+			}
+			
+			return $js;
+		}
+		
+		/**
+		 * Merge and normalise the caller extra snippets and builder script() snippets
+		 * into a single JS string ready for interpolation inside a wakaPAC() literal.
+		 *
+		 * Snippets are joined with commas. Trailing commas already present on individual
+		 * snippets are stripped first so the separator is never doubled. When there are
+		 * no snippets the returned string is empty, producing no output in the template.
+		 *
+		 * @param array $extra Raw JS method/property snippets supplied by the renderer
+		 * @param array $scripts Raw JS snippets from the node builder's script() calls
+		 * @return string Comma-joined snippet block with a trailing comma, or an empty string
+		 */
+		protected function serializeExtraSnippets(array $extra, array $scripts): string {
+			$all = array_merge($extra, $scripts);
+			
+			if (empty($all)) {
+				return '';
+			}
+			
+			// Normalise each snippet: strip surrounding whitespace and any trailing comma
+			// so the re-join below never produces `method() { ... },,` double-comma artefacts.
+			$all = array_map(fn($s) => rtrim(trim($s), ','), $all);
+			
+			return implode(",\n        ", $all) . ',';
+		}
+		
+		/**
+		 * Build the WakaForm createForm() block and the accompanying MSG_SUBMIT hook.
+		 *
+		 * This block is only emitted when client-side validation is active and at
+		 * least one field has rules. It produces two things returned as a tuple:
+		 *
+		 * 1. $formInit  — the IIFE-level preamble: a `const form = wakaForm.createForm({…})`
+		 *                 call (with per-field value, valid, and rules entries) followed by a
+		 *                 wakaPAC.installMessageHook() that intercepts MSG_SUBMIT and routes it
+		 *                 through validateAndSubmit() instead of a native submit.
+		 *
+		 * 2. $formProperty — the `submitted` flag and `form,` shorthand property injected at
+		 *                    the top of the wakaPAC() abstraction literal so every method in
+		 *                    the component has access to the form proxy.
+		 *
+		 * Fields that appear in $serverErrors are pre-marked invalid (valid: false) so
+		 * validation feedback is visible immediately after a failed server round-trip
+		 * without requiring the user to interact with the field first.
+		 *
+		 * @param string $id WakaPAC component id, used in the message hook comparison
+		 * @param array $fieldRules Map of fieldName => JS rule constructor strings
+		 * @param array $serverErrors Map of fieldName => error(s) from the last server submission
+		 * @return array{formInit: string, formProperty: string}
+		 */
+		protected function buildWakaFormBlock(string $id, array $fieldRules, array $serverErrors): array {
+			$schemaEntries = '';
+			$data = $this->loom->getData();
+			
+			foreach ($fieldRules as $fieldName => $jsRules) {
+				$rulesJs = implode(', ', $jsRules);
+				
+				// Pre-mark the field invalid when the server returned an error for it
+				// so the user sees inline feedback immediately on page load.
+				$initialValid = array_key_exists($fieldName, $serverErrors) ? 'false' : 'true';
+				$initialValue = json_encode((string)($data[$fieldName] ?? ''));
+				$schemaEntries .= "        {$fieldName}: { value: {$initialValue}, valid: {$initialValid}, rules: [{$rulesJs}] },\n";
+			}
+			
+			$formInit = <<<JS
+
+    const form = wakaForm.createForm({
+{$schemaEntries}    });
+
+    wakaPAC.installMessageHook(function(event, callNextHook) {
+        if (event.message === wakaPAC.MSG_SUBMIT && event.pacId === '{$id}') {
+            event.preventDefault();
+            
+            const context = wakaPAC.getContextByPacId('{$id}');
+            
+            if (context) {
+                context.abstraction.validateAndSubmit();
+            }
+            
+            return;
+        }
+        
+        callNextHook();
+    });
+
+JS;
+			// submitted is seeded true when there are server errors so the form
+			// immediately shows validation state without a first submit attempt.
+			$formProperty = "\n        submitted: " . (!empty($serverErrors) ? 'true' : 'false') . ",\n        form,";
+			
+			return ['formInit' => $formInit, 'formProperty' => $formProperty];
 		}
 	}
