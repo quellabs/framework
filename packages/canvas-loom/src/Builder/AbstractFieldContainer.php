@@ -36,7 +36,7 @@
 					continue;
 				}
 				
-				$chain = [];
+				$chain   = [];
 				$current = $child->get('name');
 				
 				while (isset($dependsOnMap[$current])) {
@@ -45,7 +45,7 @@
 				}
 				
 				// Build foreach expression using pluralized field name as data key
-				$dataKey = StringInflector::pluralize($child->get('name'));
+				$dataKey    = StringInflector::pluralize($child->get('name'));
 				$expression = $dataKey . implode('', array_map(fn($k) => "[{$k}]", array_reverse($chain)));
 				
 				$child->set('foreach_expression', $expression);

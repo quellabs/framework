@@ -15,9 +15,12 @@
 	use Quellabs\Canvas\Loom\Builder\Tab;
 	use Quellabs\Canvas\Loom\Builder\Tabs;
 	use Quellabs\Canvas\Loom\Loom;
+	use Quellabs\Canvas\Loom\Validation\Rules\Email;
+	use Quellabs\Canvas\Loom\Validation\Rules\MaxLength;
+	use Quellabs\Canvas\Loom\Validation\Rules\MinLength;
+	use Quellabs\Canvas\Loom\Validation\Rules\NotBlank;
 	use Quellabs\Canvas\Translation\TranslationAspect;
 	use Quellabs\Contracts\Templates\TemplateEngineInterface;
-	use Quellabs\Support\StringInflector;
 	use Symfony\Component\HttpFoundation\Request;
 	use Symfony\Component\HttpFoundation\Response;
 	
@@ -27,16 +30,14 @@
 		const int MSG_HIDE_DELETE = 10001;
 		
 		/**
-		 * @InterceptWith(TranslationAspect::class)
-		 * @WithContext(parameter="engine", context="blade")
-		 * @Route("/")
-		 * @param TemplateEngineInterface $engine
-		 * @return Response
+		 * Builds the resource definition, shared between GET and POST.
+		 * Rules are defined here once so both rendering and validation use
+		 * the same source.
 		 */
-		public function index(TemplateEngineInterface $engine): Response {
-			// Create page
-			$definition = Resource::make('post-form', '/save')
+		private function buildDefinition(): array {
+			return Resource::make('post-form', '/save')
 				->title('Edit Post')
+				->useWakaForm()
 				->addHeaderButton(
 					Button::make('Delete')
 						->danger()
@@ -50,19 +51,29 @@
 						->add(Section::make('post-details')
 							->add(Columns::make([70, 30])
 								->add(Column::make()
-									->add(Field::text('title', 'Title')->required()->maxlength(200))
-									->add(Field::textarea('body', 'Content')->rows(10)->hint('{{ body.length }} characters typed'))
+									->add(Field::text('title', 'Title')
+										->maxlength(200)
+										->rules([new NotBlank(), new MaxLength(200)])
+									)
+									->add(Field::textarea('body', 'Content')
+										->rows(10)
+										->hint('{{ body.length }} characters typed')
+									)
 								)
 								->add(Column::make()
 									->add(Field::select('status', 'Status')
-										->options(
-											[
-												['value' => 'draft', 'label' => 'Draft'],
-												['value' => 'published', 'label' => 'Published'],
-											]
-										)
+										->options([
+											['value' => 'draft',     'label' => 'Draft'],
+											['value' => 'published', 'label' => 'Published'],
+										])
 									)
-									->add(Field::text('slug', 'Slug')->required())
+									->add(Field::text('slug', 'Slug')
+										->rules([new NotBlank(), new MinLength(3), new MaxLength(200)])
+										->errorMessage('test error')
+									)
+									->add(Field::text('email', 'Email')
+										->rules([new NotBlank(), new Email()])
+									)
 									->add(Field::toggle('featured', 'Featured post'))
 									->add(Field::time('date', 'Date'))
 									->add(Field::select('country', 'Country')
@@ -115,17 +126,31 @@
 					)
 					->add(Tab::make('seo', 'SEO')
 						->add(Section::make('post-seo')
-							->add(Field::text('meta_title', 'Meta title')->maxlength(60))
-							->add(Field::textarea('meta_description', 'Meta description')->rows(3)->maxlength(160))
+							->add(Field::text('meta_title', 'Meta title')
+								->maxlength(60)
+								->rules([new MaxLength(60)])
+							)
+							->add(Field::textarea('meta_description', 'Meta description')
+								->rows(3)
+								->maxlength(160)
+								->rules([new MaxLength(160)])
+							)
 						)
 					)
 				)
 				->build();
-			
-			$loom = new Loom();
-			$loom->notification('error', 'Title is required.');
-			$loom->notification('error', 'Slug is required.');
-			$loom->notification('success', 'Post saved successfully.');
+		}
+		
+		/**
+		 * @InterceptWith(TranslationAspect::class)
+		 * @WithContext(parameter="engine", context="blade")
+		 * @Route("/")
+		 * @param TemplateEngineInterface $engine
+		 * @return Response
+		 */
+		public function index(TemplateEngineInterface $engine): Response {
+			$definition = $this->buildDefinition();
+			$loom       = new Loom();
 			
 			$renderedDefinition = $loom->render($definition, [
 				'title'   => 'My First Post',
@@ -136,15 +161,51 @@
 				'city'    => 'ams',
 			]);
 			
+			return $this->buildResponse($renderedDefinition);
+		}
+		
+		/**
+		 * @Route("/save", methods={"POST"})
+		 * @param Request $request
+		 * @return Response
+		 */
+		public function save(Request $request): Response {
+			$data       = $request->request->all();
+			$definition = $this->buildDefinition();
+			$loom       = new Loom();
+			$result     = $loom->validate($definition, $data);
+			
+			if ($result->fails()) {
+				// Re-render the form with submitted values and field errors
+				$renderedDefinition = $loom->render($definition, array_merge($data, [
+					'_errors' => $result->errors(),
+				]));
+				
+				return $this->buildResponse($renderedDefinition);
+			}
+			
+			// Validation passed — handle the save and redirect
+			return new Response('', 302, ['Location' => '/']);
+		}
+		
+		/**
+		 * Wraps rendered Loom output in a minimal HTML page.
+		 * @param string $body
+		 * @return Response
+		 */
+		private function buildResponse(string $body): Response {
 			return new Response("
 				<html>
-				<head>				
-				<script src='/wakapac.min.js'></script>
+				<head>
+				<script src='/wakapac.js'></script>
+				<script src='/wakaform.js'></script>
 				<link rel='stylesheet' type='text/css' href='/loom.css'>
 				<link rel='preconnect' href='https://fonts.googleapis.com'>
 				<link rel='preconnect' href='https://fonts.gstatic.com' crossorigin>
 				<link href='https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100..900;1,100..900&display=swap' rel='stylesheet'>
-				
+				<script>
+					wakaPAC.use(wakaForm);
+				</script>
 				<style>
 				  body {
 				    font-family: 'Roboto', sans-serif;
@@ -154,19 +215,9 @@
 				</style>
 				</head>
 				<body>
-					{$renderedDefinition}
+					{$body}
 				</body>
 				</html>
 			");
 		}
-		
-		/**
-		 * @Route("/save", methods={"POST"})
-		 * @param Request $request
-		 * @return void
-		 */
-		public function save(Request $request): Response {
-			return new Response("");
-		}
-		
 	}

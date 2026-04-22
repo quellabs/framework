@@ -72,6 +72,18 @@
 		}
 		
 		/**
+		 * Enable WakaForm client-side validation for this resource.
+		 * When set, buildScript() will emit a createForm() call with rules
+		 * derived from the field definitions. Only fields with rules attached
+		 * via Field::rules() are included in the createForm() schema.
+		 * Requires wakaForm to be registered as a wakaPAC plugin on the page.
+		 * @return static
+		 */
+		public function useWakaForm(): static {
+			return $this->set('use_wakaform', true);
+		}
+
+		/**
 		 * Build the node array for Loom::render()
 		 * @return array
 		 */

@@ -27,16 +27,21 @@
 		
 		/**
 		 * Render the text field
-		 * @param array      $properties Node properties from the JSON definition
-		 * @param string     $children   Already-rendered HTML of all child nodes
-		 * @param array|null $parent     Parent node
-		 * @param int        $index      Index of this node within its parent
+		 * @param array $properties Node properties from the JSON definition
+		 * @param string $children Already-rendered HTML of all child nodes
+		 * @param array|null $parent Parent node
+		 * @param int $index Index of this node within its parent
 		 * @return RenderResult
 		 */
 		public function render(array $properties, string $children, ?array $parent = null, int $index = 0): RenderResult {
 			$label = $this->e($properties['label'] ?? '');
-			$value = $this->e($properties['value'] ?? '');
 			$class = $this->e($properties['class'] ?? $this->wrapperClass);
+			
+			// Values containing WakaPAC {{ }} interpolations must not be escaped —
+			// htmlspecialchars would turn {{ into {{ which WakaPAC cannot match.
+			// Values without interpolations are escaped normally.
+			$rawValue = $properties['value'] ?? '';
+			$value = str_contains($rawValue, '{{') ? $rawValue : $this->e($rawValue);
 			
 			// Only render a label element when a label is provided
 			if ($label) {

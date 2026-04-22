@@ -31,14 +31,14 @@
 		
 		/**
 		 * Render the column
-		 * @param array      $properties Node properties from the JSON definition
-		 * @param string     $children   Already-rendered HTML of all child nodes
-		 * @param array|null $parent     Parent node
-		 * @param int        $index      Index of this node within its parent
+		 * @param array $properties Node properties from the JSON definition
+		 * @param string $children Already-rendered HTML of all child nodes
+		 * @param array|null $parent Parent node
+		 * @param int $index Index of this node within its parent
 		 * @return RenderResult
 		 */
 		public function render(array $properties, string $children, ?array $parent = null, int $index = 0): RenderResult {
-			$width   = $properties['width'] ?? null;
+			$width = $properties['width'] ?? null;
 			$sidebar = !empty($properties['sidebar']);
 			
 			// Apply width as inline flex style if provided
@@ -47,9 +47,9 @@
 				: " style=\"flex: 1; min-width: 0;\"";
 			
 			if ($sidebar) {
-				$title    = $properties['sidebar_title'] ?? '';
-				$hint     = $properties['sidebar_hint']  ?? '';
-				$class    = $properties['class']         ?? $this->sidebarClass;
+				$title = $this->e($properties['sidebar_title'] ?? '');
+				$hint = $this->e($properties['sidebar_hint'] ?? '');
+				$class = $this->e($properties['class'] ?? $this->sidebarClass);
 				
 				if ($title) {
 					$titleHtml = "<p class=\"{$this->sidebarTitleClass}\">{$title}</p>";

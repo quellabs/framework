@@ -35,21 +35,48 @@
 		public function render(array $properties, string $children, ?array $parent = null, int $index = 0): RenderResult {
 			$active = $properties['active'] ?? '';
 			$class  = $this->e($properties['class'] ?? $this->wrapperClass);
-			$tabs   = $properties['tabs']     ?? [];
+			$tabs   = $properties['tabs'] ?? [];
 			
-			// id flows into JS string literals via buildScript() — restrict to safe identifier characters
+			// id flows into getElementById() and buildTabScript() — must be a safe JS identifier
 			$id = $properties['id'] ?? 'loom-tabs';
+			$this->validateIdentifier($id, 'id');
 			
-			if (!preg_match('/^[a-zA-Z0-9_-]+$/', $id)) {
-				throw new \InvalidArgumentException('TabsRenderer "id" must contain only alphanumerics, hyphens, and underscores.');
+			// active flows into a JS string literal comparison — apply the same restriction
+			if ($active) {
+				$this->validateIdentifier($active, 'active');
 			}
 			
-			// active tab id flows into a JS string literal — apply the same restriction
-			if ($active && !preg_match('/^[a-zA-Z0-9_-]+$/', $active)) {
-				throw new \InvalidArgumentException('TabsRenderer "active" must contain only alphanumerics, hyphens, and underscores.');
-			}
+			// Build buttons first so the active class is stamped on the correct button at render time,
+			// avoiding a flash of unstyled tabs before JS runs
+			$buttons = $this->buildButtons($tabs, $active);
 			
-			// Build tab bar buttons — active class set directly on the initial active tab
+			// Return render result
+			return new RenderResult(
+				$this->buildTabHtml($id, $class, $buttons, $children),
+				$this->buildTabScript($id)
+			);
+		}
+		
+		/**
+		 * Validate that an identifier contains only safe characters for use in JS string literals.
+		 * @param string $value
+		 * @param string $fieldName
+		 * @return void
+		 * @throws \InvalidArgumentException
+		 */
+		protected function validateIdentifier(string $value, string $fieldName): void {
+			if (!preg_match('/^[a-zA-Z0-9_-]+$/', $value)) {
+				throw new \InvalidArgumentException("TabsRenderer \"{$fieldName}\" must contain only alphanumerics, hyphens, and underscores.");
+			}
+		}
+		
+		/**
+		 * Build the tab bar button HTML.
+		 * @param array $tabs
+		 * @param string $active
+		 * @return string
+		 */
+		protected function buildButtons(array $tabs, string $active): string {
 			$buttons = '';
 			
 			foreach ($tabs as $tab) {
@@ -57,16 +84,30 @@
 				$tabLabel = $this->e($tab['label'] ?? $tabId);
 				
 				// tabId appears in JS string literals inside data-pac-bind — restrict to safe identifier characters
-				if ($tabId && !preg_match('/^[a-zA-Z0-9_-]+$/', $tabId)) {
-					throw new \InvalidArgumentException("Tab id \"{$tabId}\" must contain only alphanumerics, hyphens, and underscores.");
+				if ($tabId) {
+					$this->validateIdentifier($tabId, "tab id \"{$tabId}\"");
 				}
 				
-				$activeClass = $tabId === $active ? " active" : '';
+				// Determine active class
+				$activeClass = $tabId === $active ? ' active' : '';
+				
+				// Add button
 				$buttons .= "<button type=\"button\" class=\"{$this->tabButtonClass}{$activeClass}\" data-tab=\"{$tabId}\">{$tabLabel}</button>\n";
 			}
 			
-			// Build HTML
-			$html = <<<HTML
+			return $buttons;
+		}
+		
+		/**
+		 * Build the tabs wrapper HTML.
+		 * @param string $id
+		 * @param string $class
+		 * @param string $buttons
+		 * @param string $children
+		 * @return string
+		 */
+		protected function buildTabHtml(string $id, string $class, string $buttons, string $children): string {
+			return <<<HTML
     <div id="{$id}" class="{$class}">
         <div class="{$this->tabBarClass}">
             {$buttons}
@@ -76,9 +117,15 @@
         </div>
     </div>
     HTML;
-			
-			// Inline script for tab switching — no WakaPAC needed
-			$script = <<<JS
+		}
+		
+		/**
+		 * Build the inline tab-switching script.
+		 * @param string $id
+		 * @return string
+		 */
+		protected function buildTabScript(string $id): string {
+			return <<<JS
 (function() {
     var el = document.getElementById('{$id}');
     el.querySelectorAll('.{$this->tabBarClass} button[data-tab]').forEach(function(btn) {
@@ -91,8 +138,5 @@
     });
 })();
 JS;
-			
-			// Return result
-			return new RenderResult($html, $script);
 		}
 	}
