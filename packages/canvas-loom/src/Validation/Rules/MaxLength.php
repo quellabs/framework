@@ -35,8 +35,7 @@
 		 * @inheritDoc
 		 */
 		public function getError(): string {
-			return $this->message
-				?? $this->interpolate('This value is too long. It should have {{ n }} characters or less.', ['n' => $this->n]);
+			return $this->message ?? $this->interpolate('This value is too long. It should have {{ n }} characters or less.', ['n' => $this->n]);
 		}
 		
 		/**

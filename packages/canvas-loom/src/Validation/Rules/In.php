@@ -28,7 +28,7 @@
 				return true;
 			}
 			
-			return in_array($value, $this->allowed, strict: false);
+			return in_array($value, $this->allowed);
 		}
 		
 		/**

@@ -39,8 +39,7 @@
 		 * @inheritDoc
 		 */
 		public function getError(): string {
-			return $this->message
-				?? $this->interpolate('This value should be {{ min }} or more.', ['min' => $this->n]);
+			return $this->message ?? $this->interpolate('This value should be {{ min }} or more.', ['min' => $this->n]);
 		}
 		
 		/**

@@ -84,10 +84,7 @@
 				$value = $this->resolveValue($name, $properties);
 				
 				$html = $this->getInputRenderer('hidden')->renderInput(
-					$id,
-					$name,
-					$value,
-					$properties
+					$id, $name, $value, $properties,'', ''
 				);
 				
 				return new RenderResult($html);

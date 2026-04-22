@@ -185,8 +185,8 @@
 			$extraJs = !empty($allExtra) ? implode(",\n        ", $allExtra) . ',' : '';
 			$notificationsId = "{$id}-notifications";
 			
-			// Build createForm() call when field rules are present (client validation enabled).
-			if (!empty($fieldRules)) {
+			// Build createForm() call when client validation is enabled.
+			if ($clientValidation && !empty($fieldRules)) {
 				$schemaEntries = '';
 				$data = $this->loom->getData();
 				

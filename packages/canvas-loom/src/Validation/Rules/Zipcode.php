@@ -73,8 +73,8 @@
 		];
 		
 		/**
-		 * @param string      $countryIso2 ISO 3166-1 alpha-2 country code (default 'NL')
-		 * @param string|null $message     Optional custom error message
+		 * @param string $countryIso2 ISO 3166-1 alpha-2 country code (default 'NL')
+		 * @param string|null $message Optional custom error message
 		 */
 		public function __construct(string $countryIso2 = 'NL', ?string $message = null) {
 			parent::__construct($message);
@@ -94,10 +94,12 @@
 		 * @inheritDoc
 		 */
 		public function validate(mixed $value): bool {
+			// Empty value is allowed
 			if ($value === null || $value === '') {
 				return true;
 			}
 			
+			// Fetch zipcode patterns
 			$formats = $this->formats[$this->countryIso2] ?? null;
 			
 			// Unknown country — pass validation
@@ -110,8 +112,10 @@
 				return true;
 			}
 			
+			// Remove whitespace
 			$trimmed = trim((string)$value);
 			
+			// Check patterns
 			foreach ($formats as $format) {
 				if (preg_match($this->formatToPattern($format), $trimmed)) {
 					return true;
