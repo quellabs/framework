@@ -283,8 +283,8 @@ JS;
 			$notifications = $this->loom->getNotifications();
 			$childNodes = $properties['_children'] ?? [];
 			
-			// Notifications force WakaPAC because the dismiss button uses data-pac-bind.
-			$needsWakaPAC = !empty($notifications) || $this->requiresWakaPAC($childNodes);
+			// True if wakaPAC will be used
+			$needsWakaPAC = $this->requiresWakaPAC($childNodes);
 			
 			// Render the notifications
 			$notificationsHtml = $this->renderNotifications($notifications, $id);
@@ -344,7 +344,7 @@ JS;
     <ul class="loom-notifications-list">
         {$items}
     </ul>
-    <button type="button" class="loom-notifications-dismiss" data-pac-bind="click: dismiss">×</button>
+    <button type="button" class="loom-notifications-dismiss" onclick="this.closest('.loom-notifications').remove()">×</button>
 </div>
 HTML;
 		}
@@ -386,11 +386,11 @@ HTML;
 		/**
 		 * Build the WakaPAC initialisation script for the form body component.
 		 *
-		 * Handles both the plain-reactive case (notifications dismiss, dependent
-		 * dropdowns) and the optional WakaForm client-validation case. When
-		 * client validation is enabled via the 'use_wakaform' property, field
-		 * rules are collected from the child tree and a validateAndSubmit()
-		 * method is injected so the save button can trigger validated submission.
+		 * Handles both the plain-reactive case (dependent dropdowns) and the optional
+		 * WakaForm client-validation case. When client validation is enabled via the
+		 * 'use_wakaform' property, field rules are collected from the child tree and a
+		 * validateAndSubmit() method is injected so the save button can trigger validated
+		 * submission.
 		 *
 		 * @param string $id WakaPAC component id (matches the form's data-pac-id)
 		 * @param array $properties Full node properties array
