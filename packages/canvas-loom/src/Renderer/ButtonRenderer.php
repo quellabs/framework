@@ -49,6 +49,7 @@
 				default => $this->primaryClass,
 			};
 			
+			// Determine the class to use
 			$class = $this->e($properties['class'] ?? "{$this->buttonClass} {$variantClass}");
 			
 			// Only render data-pac-bind when an action is provided
@@ -58,8 +59,10 @@
 				$bindAttr = '';
 			}
 			
+			// Output html
 			$html = "<button type=\"{$type}\" class=\"{$class}\"{$bindAttr}>{$label}</button>";
 			
+			// Return result
 			return new RenderResult($html);
 		}
 	}
