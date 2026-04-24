@@ -411,6 +411,21 @@ HTML;
             this.submitted = true;
             
             if (!form.validate()) {
+                // Update tab error indicators. Each tab button carries a
+                // data-loom-tab-fields attribute listing its field names.
+                // We check form[fieldName].valid for each and toggle the
+                // error indicator class accordingly.
+                const formEl = this.container;
+                
+                formEl.querySelectorAll('[data-loom-tab-fields]').forEach(function(btn) {
+                    const fields = btn.dataset.loomTabFields ? btn.dataset.loomTabFields.split(',') : [];
+                    const hasError = fields.some(function(name) {
+                        return name && form[name] && !form[name].valid;
+                    });
+                    
+                    btn.classList.toggle('loom-tabs-button--has-error', hasError);
+                });
+                
                 return false;
             }
             

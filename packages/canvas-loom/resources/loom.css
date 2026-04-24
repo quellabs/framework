@@ -383,6 +383,25 @@
     padding-bottom: 0.625rem;
 }
 
+.loom-tabs-button--has-error::after {
+    content: '';
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: #ef4444;
+}
+
+.loom-tabs-button--has-error {
+    color: #b91c1c;
+}
+
+.loom-tabs-button--has-error.active {
+    color: #b91c1c;
+}
+
 .loom-tabs-panels {
     background-color: #ffffff;
     border: 1px solid #d1d5db;
