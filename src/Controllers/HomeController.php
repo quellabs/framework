@@ -55,7 +55,7 @@
 										->maxlength(200)
 										->rules([new NotBlank(), new MaxLength(200)])
 									)
-									->add(Field::textarea('body', 'Content')
+									->add(Field::richtext('body', 'Content')
 										->rows(10)
 										->hint('{{ body.length }} characters typed')
 									)
@@ -199,12 +199,14 @@
 				<head>
 				<script src='/wakapac.js'></script>
 				<script src='/wakaform.js'></script>
+				<script src='/wakajodit.js'></script>
 				<link rel='stylesheet' type='text/css' href='/loom.css'>
 				<link rel='preconnect' href='https://fonts.googleapis.com'>
 				<link rel='preconnect' href='https://fonts.gstatic.com' crossorigin>
 				<link href='https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100..900;1,100..900&display=swap' rel='stylesheet'>
 				<script>
 					wakaPAC.use(wakaForm);
+					wakaPAC.use(WakaJodit);
 				</script>
 				<style>
 				  body {
