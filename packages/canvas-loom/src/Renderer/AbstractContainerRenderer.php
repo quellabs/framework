@@ -240,7 +240,11 @@
          * Use as a click action: data-pac-bind="click: submit()"
          */
         submit() {
-            this.container.submit();
+            // Call the native HTMLFormElement.prototype.submit() directly.
+            // Unlike form.requestSubmit(), the native .submit() does not fire
+            // the submit event, so the wakaPAC listener does not re-intercept
+            // this call and no bypass flag is needed.
+            HTMLFormElement.prototype.submit.call(this.container);
         },
 
         /**

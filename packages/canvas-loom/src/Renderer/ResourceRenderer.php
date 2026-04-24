@@ -116,10 +116,11 @@
 			$headerButtons = $properties['header_buttons'] ?? [];
 			
 			// Build the extra <button> elements from the header_buttons property list
-			$extraButtons = $this->renderHeaderButtons($headerButtons);
 			$saveButtonHtml = "<button type=\"submit\" form=\"{$id}\" class=\"{$this->saveClass}\"{$saveDisabledAttr}>{$saveLabel}</button>";
 			
 			// Build the HTML
+			$extraButtons = $this->renderHeaderButtons($headerButtons);
+
 			$html = <<<HTML
     <div class="{$this->headerClass}" data-pac-id="{$headerId}">
         <h1 class="{$this->titleClass}">{$title}</h1>
@@ -429,7 +430,9 @@ HTML;
                 return false;
             }
             
-            this.container.submit();
+            // Use the native HTMLFormElement.prototype.submit() directly so the
+            // wakaPAC submit event listener does not re-intercept this call.
+            HTMLFormElement.prototype.submit.call(this.container);
         }
 JS;
 			}
