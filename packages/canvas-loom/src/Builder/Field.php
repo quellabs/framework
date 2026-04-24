@@ -135,11 +135,20 @@
 		}
 		
 		/**
-		 * Rich text editor field (WakaJodit).
-		 * Requires WakaJodit to be registered as a wakaPAC plugin on the page.
+		 * Rich text editor field.
+		 * Requires the corresponding wakaPAC editor plugin to be registered on the page.
+		 * @param string $name
+		 * @param string $label
+		 * @param string $editor  One of: jodit, tinymce, ckeditor4, ckeditor5 (default: jodit)
 		 */
-		public static function richtext(string $name, string $label): static {
-			return new static($name, $label, 'richtext');
+		public static function richtext(string $name, string $label, string $editor = 'jodit'): static {
+			$valid = ['jodit', 'tinymce', 'ckeditor4', 'ckeditor5'];
+			
+			if (!in_array($editor, $valid, true)) {
+				throw new \InvalidArgumentException("Unknown richtext editor '{$editor}'. Valid options: " . implode(', ', $valid));
+			}
+			
+			return (new static($name, $label, 'richtext'))->set('editor', $editor);
 		}
 		
 		/**
