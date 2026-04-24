@@ -135,6 +135,14 @@
 		}
 		
 		/**
+		 * Rich text editor field (WakaJodit).
+		 * Requires WakaJodit to be registered as a wakaPAC plugin on the page.
+		 */
+		public static function richtext(string $name, string $label): static {
+			return new static($name, $label, 'richtext');
+		}
+		
+		/**
 		 * Number input field
 		 */
 		public static function number(string $name, string $label): static {
