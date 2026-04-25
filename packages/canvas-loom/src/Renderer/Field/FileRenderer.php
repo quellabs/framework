@@ -92,7 +92,7 @@
         </li>
     </ul>
     <span data-pac-bind="foreach: doneFiles">
-        <input type="hidden" data-pac-bind="attr: { name: '{$nameAttr}[]', value: item.id }">
+        <input type="hidden" name="{$nameAttr}[]" data-pac-bind="value: item.id">
     </span>
 </div>
 HTML;
