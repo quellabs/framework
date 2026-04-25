@@ -20,6 +20,32 @@
     "use strict";
 
     // =============================================================================
+    // CANVAS HELPERS
+    // =============================================================================
+
+    /**
+     * Creates a canvas context of the given dimensions and type.
+     * Uses OffscreenCanvas where available, falling back to HTMLCanvasElement
+     * for environments that do not support it (notably older Safari versions).
+     *
+     * @param {number} width
+     * @param {number} height
+     * @param {string} [contextType='2d']
+     * @param {Object} [attributes]
+     * @returns {RenderingContext}
+     */
+    function _createCanvas(width, height, contextType = '2d', attributes) {
+        if (typeof OffscreenCanvas !== 'undefined') {
+            return new OffscreenCanvas(width, height).getContext(contextType, attributes);
+        }
+
+        const canvas  = document.createElement('canvas');
+        canvas.width  = width;
+        canvas.height = height;
+        return canvas.getContext(contextType, attributes);
+    }
+
+    // =============================================================================
     // CONSTANTS AND CONFIGURATION
     // =============================================================================
 
@@ -172,7 +198,7 @@
     const INTERACTIVE_TAGS = new Set(['A', 'BUTTON', 'DETAILS', 'INPUT', 'LABEL', 'SELECT', 'SUMMARY', 'TEXTAREA',]);
 
     // Non-text input types that commit values via the change event.
-    const CHANGE_INPUT_TYPES = new Set(['checkbox', 'radio', 'color', 'range', 'date', 'datetime-local', 'month', 'week', 'time']);
+    const CHANGE_INPUT_TYPES = new Set(['checkbox', 'radio', 'color', 'range', 'date', 'datetime-local', 'month', 'week', 'time', 'file']);
 
     /**
      * Reverse mapping cache from virtual-key codes to human-readable names.
@@ -1916,7 +1942,7 @@
                 // Fetch all data
                 const container = self.getContainerForEvent(MSG_MOUSEWHEEL, event);
                 const modifiers = self.getModifierState(event);
-                const wParam = self.buildWheelWParam(event.deltaY, modifiers);
+                const wParam = self.buildWheelWParam(event.deltaY, modifiers, event.deltaMode);
                 const lParam = self.buildMouseLParam(event, container);
 
                 // Wrap DOM wheel event with raw delta metadata for downstream consumers
@@ -3272,13 +3298,32 @@
          * LOWORD = modifier key flags (MK_SHIFT, MK_CONTROL, etc.)
          * @param {number} delta - Raw wheel delta from event
          * @param {number} modifiers - Bitmask of MK_* flags
+         * @param {number} deltaMode - An unsigned long representing the unit of the delta values scroll amount
          * @returns {number} Packed wParam value
          */
-        buildWheelWParam(delta, modifiers) {
-            // Normalize delta to ±120 per notch (Win32 standard)
-            const normalizedDelta = Math.sign(delta) * WHEEL_DELTA;
+        buildWheelWParam(delta, modifiers, deltaMode) {
+            let normalizedDelta;
 
-            // Pack: HIWORD=delta (signed), LOWORD=modifiers
+            switch (deltaMode) {
+                case 1: // DOM_DELTA_LINE — Firefox default, delta is in lines
+                    normalizedDelta = Math.sign(delta) * WHEEL_DELTA;
+                    break;
+
+                case 2: // DOM_DELTA_PAGE
+                    normalizedDelta = Math.sign(delta) * WHEEL_DELTA * 10;
+                    break;
+
+                case 0: // DOM_DELTA_PIXEL
+                default:
+                    // Treat anything ≥1 pixel as a real notch; ignore sub-pixel noise
+                    if (Math.abs(delta) < 1) {
+                        return 0; // caller should skip dispatch
+                    }
+
+                    normalizedDelta = Math.sign(delta) * WHEEL_DELTA;
+                    break;
+            }
+
             return ((normalizedDelta & 0xFFFF) << 16) | (modifiers & 0xFFFF);
         },
 
@@ -7350,6 +7395,28 @@
             }
         });
 
+        // Inject container and pacId directly onto the proxy — not through
+        // makeDeepReactiveProxy — so the raw DOM element is never wrapped and
+        // pacId is never made reactive. Both are infrastructure, not state.
+        // Mark container as an external proxy so the reactive proxy's get trap
+        // returns it as-is without wrapping it in another proxy. DOM elements
+        // break when proxied — native methods receive the Proxy as 'this'.
+        this.container._externalProxy = true;
+
+        Object.defineProperty(proxiedReactive, 'container', {
+            value:        this.container,
+            writable:     false,
+            enumerable:   true,
+            configurable: true
+        });
+
+        Object.defineProperty(proxiedReactive, 'pacId', {
+            value:        this.container._pacId || this.container.getAttribute('data-pac-id'),
+            writable:     false,
+            enumerable:   true,
+            configurable: true
+        });
+
         // Return the proxy
         return proxiedReactive;
     };
@@ -7372,10 +7439,6 @@
      * @param {Object} abstraction - The abstraction to enhance
      */
     Context.prototype.injectSystemProperties = function(abstraction) {
-        // Add container element reference and identification
-        abstraction.container = this.container;
-        abstraction.pacId = this.container._pacId || this.container.getAttribute('data-pac-id');
-
         // Initialize online/offline state and network quality
         abstraction.browserOnline = navigator.onLine;
         abstraction.browserNetworkEffectiveType = Utils.getNetworkEffectiveType();
@@ -10581,7 +10644,7 @@
         const pacContext = window.PACRegistry.get(pacId);
         const attributes = pacContext?.config?.dcAttributes;
 
-        return new OffscreenCanvas(container.width, container.height).getContext(contextType, attributes);
+        return _createCanvas(container.width, container.height, contextType, attributes);
     };
 
     /**
@@ -10893,7 +10956,7 @@
             } else if (source instanceof ImageBitmap) {
                 // Already an ImageBitmap — use directly; caller retains ownership
                 // and is responsible for closing it
-                const dc = new OffscreenCanvas(source.width, source.height).getContext('2d');
+                const dc = _createCanvas(source.width, source.height);
                 dc.drawImage(source, 0, 0);
                 return /** @type {CanvasRenderingContext2D} */ (dc);
             } else if (
@@ -10908,8 +10971,8 @@
                 return null;
             }
 
-            // Draw the bitmap into a fresh OffscreenCanvas-backed DC
-            const dc = new OffscreenCanvas(bitmap.width, bitmap.height).getContext('2d');
+            // Draw the bitmap into a fresh canvas-backed DC
+            const dc = _createCanvas(bitmap.width, bitmap.height);
             dc.drawImage(bitmap, 0, 0);
 
             // ImageBitmap holds GPU-side memory and must be explicitly released;
@@ -11211,6 +11274,39 @@
                         return op.data ?? null;
                     }
                     break;
+
+                case 'polygon': {
+                    const pts = op.points;
+
+                    if (!pts || pts.length < 6) {
+                        break;
+                    }
+
+                    let inside = false;
+
+                    for (let i = 0, j = pts.length - 2; i < pts.length; i += 2) {
+                        const xi = pts[i];
+                        const yi = pts[i + 1];
+                        const xj = pts[j];
+                        const yj = pts[j + 1];
+
+                        const intersect =
+                            ((yi > ly) !== (yj > ly)) &&
+                            (lx < (xj - xi) * (ly - yi) / (yj - yi) + xi);
+
+                        if (intersect) {
+                            inside = !inside;
+                        }
+
+                        j = i;
+                    }
+
+                    if (inside) {
+                        return op.data ?? null;
+                    }
+
+                    break;
+                }
 
                 case 'sector': {
                     // Distance from centre

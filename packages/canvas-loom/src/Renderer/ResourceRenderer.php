@@ -116,10 +116,11 @@
 			$headerButtons = $properties['header_buttons'] ?? [];
 			
 			// Build the extra <button> elements from the header_buttons property list
-			$extraButtons = $this->renderHeaderButtons($headerButtons);
 			$saveButtonHtml = "<button type=\"submit\" form=\"{$id}\" class=\"{$this->saveClass}\"{$saveDisabledAttr}>{$saveLabel}</button>";
 			
 			// Build the HTML
+			$extraButtons = $this->renderHeaderButtons($headerButtons);
+
 			$html = <<<HTML
     <div class="{$this->headerClass}" data-pac-id="{$headerId}">
         <h1 class="{$this->titleClass}">{$title}</h1>
@@ -411,10 +412,27 @@ HTML;
             this.submitted = true;
             
             if (!form.validate()) {
+                // Update tab error indicators. Each tab button carries a
+                // data-loom-tab-fields attribute listing its field names.
+                // We check form[fieldName].valid for each and toggle the
+                // error indicator class accordingly.
+                const formEl = this.container;
+                
+                formEl.querySelectorAll('[data-loom-tab-fields]').forEach(function(btn) {
+                    const fields = btn.dataset.loomTabFields ? btn.dataset.loomTabFields.split(',') : [];
+                    const hasError = fields.some(function(name) {
+                        return name && form[name] && !form[name].valid;
+                    });
+                    
+                    btn.classList.toggle('loom-tabs-button--has-error', hasError);
+                });
+                
                 return false;
             }
             
-            this.container.submit();
+            // Use the native HTMLFormElement.prototype.submit() directly so the
+            // wakaPAC submit event listener does not re-intercept this call.
+            HTMLFormElement.prototype.submit.call(this.container);
         }
 JS;
 			}

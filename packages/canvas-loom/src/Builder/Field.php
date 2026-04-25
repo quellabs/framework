@@ -135,6 +135,40 @@
 		}
 		
 		/**
+		 * Rich text editor field.
+		 * Requires the corresponding wakaPAC editor plugin to be registered on the page.
+		 * @param string $name
+		 * @param string $label
+		 * @param string $editor  One of: jodit, tinymce, ckeditor4, ckeditor5 (default: jodit)
+		 */
+		public static function richtext(string $name, string $label, string $editor = 'jodit'): static {
+			$valid = ['jodit', 'tinymce', 'ckeditor4', 'ckeditor5'];
+			
+			if (!in_array($editor, $valid, true)) {
+				throw new \InvalidArgumentException("Unknown richtext editor '{$editor}'. Valid options: " . implode(', ', $valid));
+			}
+			
+			return (new static($name, $label, 'richtext'))->set('editor', $editor);
+		}
+		
+		/**
+		 * Async file upload field (WakaFile).
+		 * Requires WakaFile to be registered as a wakaPAC plugin on the page.
+		 * @param string $uploadUrl  Endpoint that receives the file and returns { id, name, size }
+		 * @param bool   $multiple   Allow selecting multiple files at once
+		 */
+		public static function file(string $name, string $label, string $uploadUrl, bool $multiple = false): static {
+			$field = new static($name, $label, 'file');
+			$field->set('upload_url', $uploadUrl);
+			
+			if ($multiple) {
+				$field->set('multiple', true);
+			}
+			
+			return $field;
+		}
+		
+		/**
 		 * Number input field
 		 */
 		public static function number(string $name, string $label): static {
@@ -272,6 +306,10 @@
 			return $this;
 		}
 		
+		/**
+		 * Return node type
+		 * @return string
+		 */
 		protected function getType(): string {
 			return 'field';
 		}

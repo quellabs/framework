@@ -55,10 +55,11 @@
 										->maxlength(200)
 										->rules([new NotBlank(), new MaxLength(200)])
 									)
-									->add(Field::textarea('body', 'Content')
+									->add(Field::richtext('body', 'Content')
 										->rows(10)
 										->hint('{{ body.length }} characters typed')
 									)
+									->add(Field::file('attachments', 'Attachments', '/upload', multiple: true))
 								)
 								->add(Column::make()
 									->add(Field::select('status', 'Status')
@@ -165,6 +166,24 @@
 		}
 		
 		/**
+		 * @Route("/upload", methods={"POST"})
+		 */
+		public function upload(Request $request): Response {
+			$file = $request->files->get('file');
+			
+			// Store the file however you like, return the reference
+			return new Response(
+				json_encode([
+					'id'   => uniqid(),
+					'name' => $file->getClientOriginalName(),
+					'size' => $file->getSize(),
+				]),
+				200,
+				['Content-Type' => 'application/json']
+			);
+		}
+		
+		/**
 		 * @Route("/save", methods={"POST"})
 		 * @param Request $request
 		 * @return Response
@@ -199,12 +218,16 @@
 				<head>
 				<script src='/wakapac.js'></script>
 				<script src='/wakaform.js'></script>
+				<script src='/wakajodit.js'></script>
+				<script src='/wakasync.js'></script>
 				<link rel='stylesheet' type='text/css' href='/loom.css'>
 				<link rel='preconnect' href='https://fonts.googleapis.com'>
 				<link rel='preconnect' href='https://fonts.gstatic.com' crossorigin>
 				<link href='https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100..900;1,100..900&display=swap' rel='stylesheet'>
 				<script>
 					wakaPAC.use(wakaForm);
+					wakaPAC.use(WakaJodit);
+					wakaPAC.use(wakaSync);
 				</script>
 				<style>
 				  body {

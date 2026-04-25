@@ -12,6 +12,8 @@
 	use Quellabs\Canvas\Loom\Renderer\Field\SelectRenderer;
 	use Quellabs\Canvas\Loom\Renderer\Field\TextareaRenderer;
 	use Quellabs\Canvas\Loom\Renderer\Field\ToggleRenderer;
+	use Quellabs\Canvas\Loom\Renderer\Field\RichtextRenderer;
+	use Quellabs\Canvas\Loom\Renderer\Field\FileRenderer;
 	
 	/**
 	 * Dispatches field rendering to a per-type input renderer.
@@ -68,6 +70,8 @@
 			'checkbox'       => CheckboxRenderer::class,
 			'radio'          => RadioRenderer::class,
 			'toggle'         => ToggleRenderer::class,
+			'richtext'       => RichtextRenderer::class,
+			'file'           => FileRenderer::class,
 		];
 		
 		/**
@@ -84,10 +88,21 @@
 				$value = $this->resolveValue($name, $properties);
 				
 				$html = $this->getInputRenderer('hidden')->renderInput(
-					$id, $name, $value, $properties,'', ''
+					$id, $name, $value, $properties, '', ''
 				);
 				
 				return new RenderResult($html);
+			}
+			
+			// Richtext fields have their own wakaPAC component and emit a script block.
+			// Bypass the standard wrapper pipeline entirely.
+			if ($type === 'richtext') {
+				return $this->renderRichtext($properties);
+			}
+			
+			// File fields are independent wakaPAC components like richtext.
+			if ($type === 'file') {
+				return $this->renderFile($properties);
 			}
 			
 			// All other types go through the full wrapper/label/hint pipeline
@@ -116,9 +131,9 @@
 			// When the field has rules, data-pac-same-as aliases the field name to
 			// form.{name}.value so WakaForm validates the actual typed value.
 			$hasRules = !empty($properties['rules']);
-			$useWakaForm  = !empty($this->loom->getData()['_use_wakaform']);
+			$useWakaForm = !empty($this->loom->getData()['_use_wakaform']);
 			$pacBind = $properties['pac_bind'] ?? ($type === 'toggle' ? "checked: {$name}" : "value: {$name}");
-			$sameAsAttr   = ($hasRules && $useWakaForm) ? " data-pac-same-as=\"form.{$name}.value\"" : '';
+			$sameAsAttr = ($hasRules && $useWakaForm) ? " data-pac-same-as=\"form.{$name}.value\"" : '';
 			$pacFieldAttr = ' data-pac-field' . $sameAsAttr;
 			$pacBindAttr = $pacBind ? " data-pac-bind=\"{$pacBind}\"" : '';
 			
@@ -157,7 +172,7 @@
 				} else {
 					$displayMessage = $hasRules ? $this->e($properties['rules'][0]->getError()) : '';
 				}
-
+				
 				if ($useWakaForm) {
 					// WakaForm manages visibility via the submitted flag and form.valid state
 					$errorHtml = "<p class=\"{$errorClass}\" data-pac-bind=\"visible: submitted && !form.{$name}.valid\">{$displayMessage}</p>";
@@ -188,6 +203,81 @@
 			
 			// Return result
 			return new RenderResult($html);
+		}
+		
+		/**
+		 * Render a richtext field using the <waka-jodit> custom element.
+		 *
+		 * Richtext fields are independent wakaPAC components -- they carry their
+		 * own data-pac-id and initialise separately from the parent form. The
+		 * standard wrapper (label, hint, error) still applies; only the input
+		 * element and its script are handled differently.
+		 *
+		 * @param array $properties
+		 * @return RenderResult
+		 */
+		protected function renderRichtext(array $properties): RenderResult {
+			$name = $properties['name'] ?? '';
+			$label = $this->e($properties['label'] ?? '');
+			$class = $this->e($properties['class'] ?? $this->wrapperClass);
+			$id = $this->e($properties['id'] ?? $name);
+			$value = $this->resolveValue($name, $properties);
+			
+			/** @var RichtextRenderer $renderer */
+			$renderer = $this->getInputRenderer('richtext');
+			$parts = $renderer->renderWithScript($id, $name, $value, $properties);
+			
+			$labelHtml = $label
+				? "<label for=\"{$id}\" class=\"{$this->labelClass}\">{$label}</label>"
+				: '';
+			
+			$hintHtml = isset($properties['hint'])
+				? "<p class=\"{$this->hintClass}\">{$this->e($properties['hint'])}</p>"
+				: '';
+			
+			$html = <<<HTML
+        <div class="{$class}">
+            {$labelHtml}
+            {$parts['html']}
+            {$hintHtml}
+        </div>
+        HTML;
+			
+			return new RenderResult($html, $parts['script']);
+		}
+		
+		/**
+		 * Render a file upload field using the <waka-file> custom element.
+		 * @param array $properties
+		 * @return RenderResult
+		 */
+		protected function renderFile(array $properties): RenderResult {
+			$name  = $properties['name'] ?? '';
+			$label = $this->e($properties['label'] ?? '');
+			$class = $this->e($properties['class'] ?? $this->wrapperClass);
+			$id    = $this->e($properties['id'] ?? $name);
+			
+			/** @var FileRenderer $renderer */
+			$renderer = $this->getInputRenderer('file');
+			$parts    = $renderer->renderWithScript($id, $name, $properties);
+			
+			$labelHtml = $label
+				? "<label class=\"{$this->labelClass}\">{$label}</label>"
+				: '';
+			
+			$hintHtml = isset($properties['hint'])
+				? "<p class=\"{$this->hintClass}\">{$this->e($properties['hint'])}</p>"
+				: '';
+			
+			$html = <<<HTML
+        <div class="{$class}">
+            {$labelHtml}
+            {$parts['html']}
+            {$hintHtml}
+        </div>
+        HTML;
+			
+			return new RenderResult($html, $parts['script']);
 		}
 		
 		/**

@@ -88,6 +88,39 @@
 		}
 		
 		/**
+		 * Recursively collect all field names from a node subtree.
+		 * Used by TabsRenderer to enumerate which fields belong to each tab,
+		 * both for server-side error detection at render time and for emitting
+		 * the data-loom-tab-fields attribute that drives client-side JS updates.
+		 * Hidden fields are excluded — they carry no validation state.
+		 * @param array $nodes
+		 * @return string[] Flat list of field name strings
+		 */
+		protected function collectFieldNames(array $nodes): array {
+			$names = [];
+			
+			foreach ($nodes as $node) {
+				if (($node['type'] ?? '') === 'field') {
+					$name = $node['properties']['name'] ?? '';
+					$input = $node['properties']['input'] ?? '';
+					
+					// Hidden fields have no visible validation state — exclude them
+					if ($name && $input !== 'hidden') {
+						$names[] = $name;
+					}
+				}
+				
+				if (!empty($node['children'])) {
+					foreach ($this->collectFieldNames($node['children']) as $name) {
+						$names[] = $name;
+					}
+				}
+			}
+			
+			return $names;
+		}
+		
+		/**
 		 * Recursively scan a node tree to determine whether WakaPAC initialisation
 		 * is actually needed. Resource and Panel skip buildScript() entirely if not.
 		 *
@@ -207,7 +240,11 @@
          * Use as a click action: data-pac-bind="click: submit()"
          */
         submit() {
-            this.container.submit();
+            // Call the native HTMLFormElement.prototype.submit() directly.
+            // Unlike form.requestSubmit(), the native .submit() does not fire
+            // the submit event, so the wakaPAC listener does not re-intercept
+            // this call and no bypass flag is needed.
+            HTMLFormElement.prototype.submit.call(this.container);
         },
 
         /**
