@@ -13,6 +13,7 @@
 	use Quellabs\Canvas\Loom\Renderer\Field\TextareaRenderer;
 	use Quellabs\Canvas\Loom\Renderer\Field\ToggleRenderer;
 	use Quellabs\Canvas\Loom\Renderer\Field\RichtextRenderer;
+	use Quellabs\Canvas\Loom\Renderer\Field\FileRenderer;
 	
 	/**
 	 * Dispatches field rendering to a per-type input renderer.
@@ -70,6 +71,7 @@
 			'radio'          => RadioRenderer::class,
 			'toggle'         => ToggleRenderer::class,
 			'richtext'       => RichtextRenderer::class,
+			'file'           => FileRenderer::class,
 		];
 		
 		/**
@@ -96,6 +98,11 @@
 			// Bypass the standard wrapper pipeline entirely.
 			if ($type === 'richtext') {
 				return $this->renderRichtext($properties);
+			}
+			
+			// File fields are independent wakaPAC components like richtext.
+			if ($type === 'file') {
+				return $this->renderFile($properties);
 			}
 			
 			// All other types go through the full wrapper/label/hint pipeline
@@ -222,6 +229,40 @@
 			
 			$labelHtml = $label
 				? "<label for=\"{$id}\" class=\"{$this->labelClass}\">{$label}</label>"
+				: '';
+			
+			$hintHtml = isset($properties['hint'])
+				? "<p class=\"{$this->hintClass}\">{$this->e($properties['hint'])}</p>"
+				: '';
+			
+			$html = <<<HTML
+        <div class="{$class}">
+            {$labelHtml}
+            {$parts['html']}
+            {$hintHtml}
+        </div>
+        HTML;
+			
+			return new RenderResult($html, $parts['script']);
+		}
+		
+		/**
+		 * Render a file upload field using the <waka-file> custom element.
+		 * @param array $properties
+		 * @return RenderResult
+		 */
+		protected function renderFile(array $properties): RenderResult {
+			$name  = $properties['name'] ?? '';
+			$label = $this->e($properties['label'] ?? '');
+			$class = $this->e($properties['class'] ?? $this->wrapperClass);
+			$id    = $this->e($properties['id'] ?? $name);
+			
+			/** @var FileRenderer $renderer */
+			$renderer = $this->getInputRenderer('file');
+			$parts    = $renderer->renderWithScript($id, $name, $properties);
+			
+			$labelHtml = $label
+				? "<label class=\"{$this->labelClass}\">{$label}</label>"
 				: '';
 			
 			$hintHtml = isset($properties['hint'])

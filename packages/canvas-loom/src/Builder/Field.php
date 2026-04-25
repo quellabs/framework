@@ -152,6 +152,23 @@
 		}
 		
 		/**
+		 * Async file upload field (WakaFile).
+		 * Requires WakaFile to be registered as a wakaPAC plugin on the page.
+		 * @param string $uploadUrl  Endpoint that receives the file and returns { id, name, size }
+		 * @param bool   $multiple   Allow selecting multiple files at once
+		 */
+		public static function file(string $name, string $label, string $uploadUrl, bool $multiple = false): static {
+			$field = new static($name, $label, 'file');
+			$field->set('upload_url', $uploadUrl);
+			
+			if ($multiple) {
+				$field->set('multiple', true);
+			}
+			
+			return $field;
+		}
+		
+		/**
 		 * Number input field
 		 */
 		public static function number(string $name, string $label): static {
