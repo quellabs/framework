@@ -14,7 +14,7 @@
 		 * @Route("/posts/")
 		 * @return Response
 		 */
-		public function index(CacheInterface $cache): Response {
+		public function index(): Response {
 			$posts = $this->em()->findBy(PostEntity::class, ['published' => true]);
 			
 			return $this->render("blog/index.tpl", [

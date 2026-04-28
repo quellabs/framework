@@ -7,7 +7,6 @@
 	use Quellabs\ObjectQuel\Annotations\Orm\RequiredRelation;
 	use Quellabs\ObjectQuel\EntityManager;
 	use Quellabs\ObjectQuel\EntityStore;
-	use Quellabs\ObjectQuel\Execution\Support\AstUtilities;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstExpression;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIdentifier;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRange;
@@ -64,106 +63,6 @@
 			// Then check for annotation-based requirements
 			// This uses ORM metadata to determine semantic requirements
 			$this->setRangesRequiredThroughAnnotations($ast);
-		}
-		
-		/**
-		 * Normalizes query structure when temporary ranges would incorrectly become the main range.
-		 *
-		 * Problem:
-		 * When a temporary range has no via clause and an entity range does, the temporary range
-		 * becomes the main range (FROM clause). This is semantically backwards - entity tables
-		 * should be the primary source with temporary ranges joined to them.
-		 *
-		 * Solution:
-		 * For the simple case of one temporary + one entity range, swap the via clause to make
-		 * the entity range the main range.
-		 *
-		 * Before normalization:
-		 *   range of c is (subquery)                 // becomes main (wrong)
-		 *   range of d is PostEntity via d.id=c.id   // becomes joined
-		 *   SQL: FROM temp_c LEFT JOIN posts d ON d.id=c.id
-		 *
-		 * After normalization:
-		 *   range of c is (subquery) via d.id=c.id   // becomes joined
-		 *   range of d is PostEntity                 // becomes main (correct)
-		 *   SQL: FROM posts d LEFT JOIN temp_c ON d.id=c.id
-		 *
-		 * The required status is also transferred to maintain correct INNER/LEFT JOIN semantics.
-		 *
-		 * Limitation:
-		 * Currently only handles the simple case of exactly two ranges. Complex scenarios with
-		 * multiple temporary ranges or multi-range via clauses are not yet supported.
-		 *
-		 * @param AstRetrieve $ast The query AST to normalize
-		 */
-		public function promoteEntityRangeToMainFrom(AstRetrieve $ast): void {
-			$ranges = $ast->getRanges();
-			
-			// Only handle the simple case: exactly two ranges
-			if (count($ranges) !== 2) {
-				return;
-			}
-			
-			// Check if first range is temporary and second is entity with via clause
-			if (
-				$ranges[0] instanceof AstRangeDatabase &&
-				$ranges[0]->containsQuery() &&
-				$ranges[1] instanceof AstRangeDatabase &&
-				$ranges[1]->getJoinProperty() !== null
-			) {
-				// Swap the via clause from entity to temporary range
-				$tmp = $ranges[1]->getJoinProperty();
-				$ranges[0]->setJoinProperty($tmp);
-				$ranges[1]->setJoinProperty(null);
-				
-				// Transfer the required status to maintain INNER/LEFT JOIN semantics
-				// The entity range (now main) becomes required
-				// The temporary range inherits the previous required status
-				$ranges[0]->setRequired($ranges[1]->isRequired());
-				$ranges[1]->setRequired();
-			}
-		}
-		
-		/**
-		 * Promotes WHERE conditions to range join properties when applicable.
-		 * @param AstRetrieve $ast The retrieve statement to optimize
-		 * @return void
-		 */
-		public function promoteWhereToEntityRange(AstRetrieve $ast): void {
-			$conditions = $ast->getConditions();
-			$ranges = $ast->getRanges();
-			
-			// Early exits for invalid states
-			if (!$conditions instanceof AstExpression || count($ranges) !== 2) {
-				return;
-			}
-			
-			// Identify temp and main ranges
-			$tempRange = null;
-			$mainRange = null;
-			
-			foreach ($ranges as $range) {
-				if (!$range instanceof AstRangeDatabase) {
-					return;
-				}
-				
-				if ($range->containsQuery()) {
-					$tempRange = $range;
-				} elseif ($range->getJoinProperty() === null) {
-					$mainRange = $range;
-				}
-			}
-			
-			// Need exactly one temp range and one main range without join property
-			if ($tempRange === null || $mainRange === null) {
-				return;
-			}
-			
-			// Move condition to temp range if it references only temp range
-			if (AstUtilities::conditionReferencesRange($conditions, $tempRange)) {
-				$tempRange->setJoinProperty($conditions);
-				$ast->setConditions(null);
-			}
 		}
 		
 		/**
@@ -227,10 +126,12 @@
 				$left = BinaryOperationHelper::getBinaryLeft($joinProperty);
 				$right = BinaryOperationHelper::getBinaryRight($joinProperty);
 				
-				// Type assertion: we've already verified these are identifiers in shouldSetRangeRequired()
-				// PHPStan can't track this across method boundaries, so we assert here
-				assert($left instanceof AstIdentifier);
-				assert($right instanceof AstIdentifier);
+				// shouldSetRangeRequired() already verified both sides are AstIdentifier instances,
+				// but PHPStan cannot track this guarantee across method boundaries.
+				// Re-check here to maintain type safety without relying on assert.
+				if (!$left instanceof AstIdentifier || !$right instanceof AstIdentifier) {
+					continue;
+				}
 				
 				// Normalize join direction: ensure range entity is on the left side
 				// This simplifies the annotation checking logic below
@@ -250,12 +151,12 @@
 		 * Collects all ranges (table references) that are actually used in the query
 		 * by traversing the AST nodes for SELECT values, ORDER BY clauses, and WHERE conditions
 		 * @param AstRetrieve $ast The query AST to analyze
-		 * @param bool $traverseSubQueries
+		 * @param bool $traverseSubqueries
 		 * @return array Array of range nodes that are referenced in the query
 		 */
-		private function getUsedRanges(AstRetrieve $ast, bool $traverseSubQueries=true): array {
+		private function getUsedRanges(AstRetrieve $ast, bool $traverseSubqueries = true): array {
 			// Initialize visitor pattern to collect range references
-			$visitor = new CollectRanges($traverseSubQueries);
+			$visitor = new CollectRanges($traverseSubqueries);
 			
 			// Traverse all SELECT clause values to find referenced ranges
 			foreach ($ast->getValues() as $value) {
@@ -275,6 +176,26 @@
 		}
 		
 		/**
+		 * Builds an indexed set of range names that are considered "in use" for pruning decisions.
+		 *
+		 * Centralizes the definition of what counts as usage so that both removeUnusedLeftJoinRanges()
+		 * and removeUnusedTemporaryRanges() apply identical criteria. Future changes to usage
+		 * semantics (e.g. adding GROUP BY traversal) only need to be made here.
+		 *
+		 * @param AstRetrieve $ast The query AST to analyze
+		 * @param bool $traverseSubqueries Whether to descend into subqueries when collecting ranges
+		 * @return array<string, true> Hash set of range names keyed for O(1) lookup
+		 */
+		private function collectUsedRangeNames(AstRetrieve $ast, bool $traverseSubqueries): array {
+			$allUsedRanges = array_merge(
+				$this->getUsedRanges($ast, $traverseSubqueries),
+				$this->getRangesUsedInJoinConditions($ast)
+			);
+			
+			return array_flip(array_map(fn($r) => $r->getName(), $allUsedRanges));
+		}
+		
+		/**
 		 * Removes unused LEFT JOIN ranges from the query AST to optimize the query.
 		 * Keeps the main range, required joins, and any ranges actually referenced
 		 * in SELECT, WHERE, or ORDER BY clauses.
@@ -282,31 +203,13 @@
 		 * @param bool $traverseSubqueries
 		 * @return void Modifies the AST in place
 		 */
-		public function removeUnusedLeftJoinRanges(AstRetrieve $ast, bool $traverseSubqueries=true): void {
+		public function removeUnusedLeftJoinRanges(AstRetrieve $ast, bool $traverseSubqueries = true): void {
 			$result = [];
 			$mainRange = $ast->getMainDatabaseRange();
-			$usedRanges = $this->getUsedRanges($ast, $traverseSubqueries);
-			
-			// NEW: Also collect ranges used in join conditions
-			$joinRanges = $this->getRangesUsedInJoinConditions($ast);
+			$usedRangeNames = $this->collectUsedRangeNames($ast, $traverseSubqueries);
 			
 			foreach ($ast->getRanges() as $range) {
-				if ($range === $mainRange || $range->isRequired()) {
-					$result[] = $range;
-					continue;
-				}
-				
-				// Check both query usage AND join condition usage
-				$isUsed = false;
-				
-				foreach (array_merge($usedRanges, $joinRanges) as $usedRange) {
-					if ($usedRange->getName() === $range->getName()) {
-						$isUsed = true;
-						break;
-					}
-				}
-				
-				if ($isUsed) {
+				if ($range === $mainRange || $range->isRequired() || isset($usedRangeNames[$range->getName()])) {
 					$result[] = $range;
 				}
 			}
@@ -329,29 +232,18 @@
 		 * @param AstRetrieve $ast The query AST to optimize
 		 */
 		public function removeUnusedTemporaryRanges(AstRetrieve $ast): void {
-			$usedRanges = $this->getUsedRanges($ast, false);
-			$joinRanges = $this->getRangesUsedInJoinConditions($ast);
-			$allUsedRanges = array_merge($usedRanges, $joinRanges);
-			
+			$usedRangeNames = $this->collectUsedRangeNames($ast, false);
 			$result = [];
 			
 			foreach ($ast->getRanges() as $range) {
-				// Keep non-temporary ranges
+				// Keep non-temporary ranges unconditionally
 				if (!($range instanceof AstRangeDatabase) || !$range->containsQuery()) {
 					$result[] = $range;
 					continue;
 				}
 				
-				// For temporary ranges, check if they're actually used
-				$isUsed = false;
-				foreach ($allUsedRanges as $usedRange) {
-					if ($usedRange->getName() === $range->getName()) {
-						$isUsed = true;
-						break;
-					}
-				}
-				
-				if ($isUsed) {
+				// For temporary ranges, keep only those actually referenced
+				if (isset($usedRangeNames[$range->getName()])) {
 					$result[] = $range;
 				}
 			}
@@ -491,7 +383,7 @@
 		/**
 		 * Checks if a temporary range (subquery) join should be marked as required.
 		 *
-		 * Uses the existing ContainsNonNullableFieldForRangeTemporary visitor to determine
+		 * Uses the ContainsNonNullableFieldForRangeTemporary visitor to determine
 		 * if the joined field is non-nullable. If so, converts LEFT JOIN to INNER JOIN.
 		 *
 		 * Logic:
@@ -518,23 +410,19 @@
 				return;
 			}
 			
-			try {
-				// Reuse existing visitor to check field nullability
-				$visitor = new ContainsNonNullableFieldForRangeTemporary(
-					$joinedRange->getName(),
-					$joinedRange->getQuery(),
-					$this->entityStore
-				);
-				
-				// Create a test identifier to check the specific field
-				// The visitor will analyze if this field reference is non-nullable
-				$testIdentifier = $isMainRange ? $right : $left;
-				$testIdentifier->accept($visitor);
-				
-				// If visitor didn't throw, field is nullable - keep as LEFT JOIN
-			} catch (\Exception $e) {
-				// Visitor throws exception when non-nullable field is found
-				// Non-nullable field in join = can safely convert to INNER JOIN
+			// Use visitor to check field nullability
+			$visitor = new ContainsNonNullableFieldForRangeTemporary(
+				$joinedRange->getName(),
+				$joinedRange->getQuery(),
+				$this->entityStore
+			);
+			
+			// The visitor will analyze if this field reference is non-nullable
+			$testIdentifier = $isMainRange ? $right : $left;
+			$testIdentifier->accept($visitor);
+			
+			// Non-nullable field in join condition = safe to convert to INNER JOIN
+			if ($visitor->isNonNullable()) {
 				$range->setRequired();
 			}
 		}
@@ -566,8 +454,9 @@
 		/**
 		 * Checks if an annotation matches the current join relationship for required relations.
 		 *
-		 * This method implements the core matching logic for determining when a LEFT JOIN
-		 * should be converted to an INNER JOIN based on ORM annotations.
+		 * This is the highest-impact method in the optimizer: a false positive here causes an
+		 * incorrect LEFT JOIN → INNER JOIN conversion, which silently drops rows from query
+		 * results. A false negative is safe (missed optimization), a false positive is not.
 		 *
 		 * Matching Criteria (ALL must be true):
 		 * 1. Annotation type: ManyToOne or OneToOne relationship
@@ -576,39 +465,37 @@
 		 *
 		 * 2. Target entity match: annotation.targetEntity === relatedEntityName
 		 *    - Ensures we're talking about the same destination entity
-		 *    - Prevents cross-wiring of different relationships
+		 *    - Prevents cross-wiring of different relationships to the same entity
 		 *
 		 * 3. Relation column match: annotation.relationColumn === ownPropertyName
-		 *    - The foreign key field must match the JOIN condition
-		 *    - Ensures semantic consistency between ORM and SQL
+		 *    - The foreign key property name on the owning entity must match the JOIN condition
+		 *    - Both sides operate in ORM property-name space, not database column-name space
+		 *    - INVARIANT: AstIdentifier::getName() returns the ORM property name, not the
+		 *      mapped column name. If the AST ever returns column names here, this comparison
+		 *      will silently fail to match even when the relationship is correct.
 		 *
 		 * 4. Inverse property match: annotation.inversedBy === relatedPropertyName
-		 *    - The back-reference field must match the other side of JOIN
-		 *    - Provides bidirectional relationship verification
+		 *    - inversedBy names the property on the related entity that references back
+		 *    - relatedPropertyName is derived from the JOIN condition's right-hand identifier
+		 *    - INVARIANT: This only matches when the JOIN condition uses the inverse-side
+		 *      property name (e.g. "id" on Department), not an arbitrary column. If a JOIN
+		 *      is written against a non-standard property on the related entity, this will
+		 *      not match, which is the correct safe behavior (no optimization applied).
 		 *
-		 * Example Scenario:
-		 * ```
-		 * class User {
-		 * @ManyToOne(targetEntity="Department", relationColumn="department_id", inversedBy="users")
-		 * @RequiredRelation
-		 *   private $department;
-		 * }
-		 *
-		 * SQL: SELECT * FROM users u LEFT JOIN departments d ON u.department_id = d.id
-		 * ```
-		 *
-		 * Matching Process:
-		 * - relatedEntityName = "Department" ✓
-		 * - ownPropertyName = "department_id" ✓
-		 * - relatedPropertyName = "id" → inversedBy = "users" ✗ (mismatch)
-		 *
-		 * This would NOT match because the inverse property doesn't align.
+		 * Known limitations:
+		 * - Composite keys: not supported. A JOIN on multiple columns cannot be expressed as
+		 *   a single binary equi-join and will be excluded earlier by shouldSetRangeRequired().
+		 * - Custom column mappings: if relationColumn in the annotation differs from the ORM
+		 *   property name used in the query, this match will fail. This is currently safe
+		 *   (false negative) but means some valid optimizations are missed.
+		 * - This method does NOT verify that a @RequiredRelation annotation is also present;
+		 *   that check is the caller's responsibility (see checkAndSetRangeRequired).
 		 *
 		 * @param mixed $annotation The annotation to check
-		 * @param string $relatedEntityName Entity being joined to
-		 * @param string $ownPropertyName Property on the owning side of the relationship
-		 * @param string $relatedPropertyName Property on the related side of the relationship
-		 * @return bool True if this annotation requires the relation
+		 * @param string $relatedEntityName Entity being joined to (ORM class name)
+		 * @param string $ownPropertyName ORM property name on the owning side of the relationship
+		 * @param string $relatedPropertyName ORM property name on the related side of the relationship
+		 * @return bool True if this annotation describes the current join relationship
 		 */
 		private function isMatchingRequiredRelation(
 			mixed  $annotation,

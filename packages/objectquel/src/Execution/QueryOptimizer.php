@@ -32,7 +32,7 @@
 			$this->anyOptimizer = new Optimizers\AnyOptimizer($entityManager);
 			$this->rangeOptimizer = new Optimizers\RangeOptimizer($entityManager);
 			$this->joinOptimizer = new Optimizers\JoinOptimizer($entityManager);
-			$this->aggregateOptimizer = new Optimizers\AggregateOptimizer($entityManager, $platform);
+			$this->aggregateOptimizer = new Optimizers\AggregateOptimizer($platform);
 			
 			// Initialize stateless optimizers that work on AST structure alone
 			$this->existsOptimizer = new Optimizers\ExistsOptimizer();
@@ -73,10 +73,6 @@
 			$this->joinOptimizer->optimize($ast);
 			$this->rangeOptimizer->removeUnusedLeftJoinRanges($ast, false);
 			$this->JoinConditionFieldInjector->optimize($ast);
-			
-			// Normalize structure first
-			$this->rangeOptimizer->promoteEntityRangeToMainFrom($ast);
-			$this->rangeOptimizer->promoteWhereToEntityRange($ast);
 		}
 		
 		/**
