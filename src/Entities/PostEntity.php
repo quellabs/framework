@@ -58,6 +58,9 @@
 		 */
 		protected CollectionInterface $vlaflip;
 		
+		/**
+		 * Constructor
+		 */
 		public function __construct() {
 			$this->vlaflip = new Collection();
 		}

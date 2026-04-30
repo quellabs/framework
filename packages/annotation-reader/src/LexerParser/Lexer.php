@@ -101,7 +101,7 @@
 		 * @return bool
 		 * @throws LexerException
 		 */
-		public function optionalMatch(int $token, Token &$result = null): bool {
+		public function optionalMatch(int $token, ?Token &$result = null): bool {
 			// Check if the current lookahead token matches the expected token type
 			if ($this->lookahead->getType() == $token) {
 				// Store the current token before advancing

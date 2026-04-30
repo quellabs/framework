@@ -2,7 +2,9 @@
 	
 	namespace Quellabs\Canvas\Twig\Sculpt;
 	
+	use Quellabs\Canvas\Twig\ServiceProvider;
 	use Quellabs\Canvas\Twig\TwigTemplate;
+	use Quellabs\Contracts\Discovery\ProviderInterface;
 	use Quellabs\Sculpt\ConfigurationManager;
 	use Quellabs\Sculpt\Contracts\CommandBase;
 	
@@ -11,6 +13,9 @@
 	 * Extends the base command contract to provide cache clearing functionality
 	 */
 	class ClearCacheCommand extends CommandBase {
+		
+		/** @var ServiceProvider|null */
+		protected ?ProviderInterface $provider;
 		
 		/**
 		 * Define the command signature/name that will be used to invoke this command
@@ -34,11 +39,11 @@
 		 * @return int Exit code (0 for success)
 		 */
 		public function execute(ConfigurationManager $config): int {
-			// Get default configuration values from the provider
-			$defaults = $this->getProvider()::getDefaults();
+			// Get default configuration values directly from the provider class
+			$defaults = ServiceProvider::getDefaults();
 			
-			// Get current configuration from the provider
-			$configuration = $this->getProvider()->getConfig();
+			// Get current configuration from the provider instance
+			$configuration = $this->provider !== null ? $this->provider->getConfig() : [];
 			
 			// Create Twig instance with configured directories
 			$twig = new TwigTemplate(array_merge($defaults, $configuration));

@@ -2,6 +2,8 @@
 	
 	namespace Quellabs\Canvas\Handlebars\Sculpt;
 	
+	use Quellabs\Canvas\Handlebars\ServiceProvider;
+	use Quellabs\Contracts\Discovery\ProviderInterface;
 	use Quellabs\Sculpt\ConfigurationManager;
 	use Quellabs\Sculpt\Contracts\CommandBase;
 	
@@ -12,6 +14,9 @@
 	 * This command removes them so templates are recompiled on next request.
 	 */
 	class ClearCacheCommand extends CommandBase {
+		
+		/** @var ServiceProvider|null */
+		protected ?ProviderInterface $provider;
 		
 		/**
 		 * Define the command signature used to invoke this command
@@ -35,8 +40,8 @@
 		 * @return int Exit code (0 for success, 1 for failure)
 		 */
 		public function execute(ConfigurationManager $config): int {
-			$defaults      = $this->getProvider()::getDefaults();
-			$configuration = $this->getProvider()->getConfig();
+			$defaults      = ServiceProvider::getDefaults();
+			$configuration = $this->provider !== null ? $this->provider->getConfig() : [];
 			
 			$compileDir = $configuration['compile_dir'] ?? $defaults['compile_dir'];
 			
