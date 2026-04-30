@@ -1,5 +1,5 @@
 parameters:
-    level: 4
+    level: 5
     paths:
         - packages/objectquel/src
         - packages/canvas/src
@@ -11,6 +11,10 @@ parameters:
         - packages/annotation-reader/src
         - packages/canvas-objectquel/src
         - packages/canvas-smarty/src
+        - packages/canvas-latte/src
+        - packages/canvas-handlebars/src
+        - packages/canvas-twig/src
+        - packages/canvas-blade/src
         - packages/contracts/src
         - packages/support/src
         - packages/cache/src
