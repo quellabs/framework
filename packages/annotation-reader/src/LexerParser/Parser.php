@@ -420,6 +420,7 @@
 		 * @throws LexerException|ParserException|\ReflectionException
 		 */
 		private function parseParameters(): array {
+			/** @var array<string, mixed> $parameters */
 			$parameters = [];
 			$isFirstParameter = true;
 			
@@ -529,7 +530,7 @@
 			}
 			
 			// Store the parsed value using the parameter name as the key
-			$parameters[$parameterKey->getValue()] = $value;
+			$parameters[(string)$parameterKey->getValue()] = $value;
 			
 			// Return true to indicate successful parsing of a named parameter
 			return true;
