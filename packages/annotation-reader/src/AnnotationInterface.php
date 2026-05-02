@@ -6,13 +6,13 @@
 		
 		/**
 		 * Annotation constructor.
-		 * @param array $parameters
+		 * @param array<string, mixed> $parameters
 		 */
 		public function __construct(array $parameters);
 		
 		/**
 		 * Returns all parameters
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getParameters(): array;
 	}

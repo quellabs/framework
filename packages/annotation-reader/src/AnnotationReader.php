@@ -9,11 +9,17 @@
 	use Quellabs\AnnotationReader\LexerParser\Lexer;
 	use Quellabs\AnnotationReader\LexerParser\Parser;
 	
+	/**
+	 * @phpstan-type AnnotationSet array{class: array<mixed>|AnnotationCollection, properties: array<string, AnnotationCollection>, methods: array<string, AnnotationCollection>}
+	 */
 	class AnnotationReader {
 		
 		protected string $annotationCachePath;
 		protected bool $useCache;
+		
+		/** @var array<string, mixed> */
 		protected array $configuration;
+		/** @var array<string, AnnotationSet> */
 		protected array $cached_annotations;
 		
 		/**
@@ -190,7 +196,7 @@
 		/**
 		 * Reads from cache
 		 * @param string $cacheFilename
-		 * @return array|null
+		 * @return AnnotationSet|null
 		 */
 		protected function readCacheFromFile(string $cacheFilename): ?array {
 			// Build the full path to the cache file by combining the base cache directory
@@ -223,7 +229,7 @@
 		/**
 		 * Updates the cache
 		 * @param string $cacheFilename
-		 * @param array $annotations
+		 * @param AnnotationSet $annotations
 		 * @return void
 		 */
 		protected function writeCacheToFile(string $cacheFilename, array $annotations): void {
@@ -246,7 +252,7 @@
 		/**
 		 * Validates whether the annotation cache for a class is still valid.
 		 * @param string $cacheFilename The name of the cache file to check
-		 * @param \ReflectionClass $reflection Reflection object for the class being cached
+		 * @param \ReflectionClass<object> $reflection Reflection object for the class being cached
 		 * @return bool Returns true if the cache is valid, false if it needs to be regenerated
 		 */
 		protected function cacheValid(string $cacheFilename, \ReflectionClass $reflection): bool {
@@ -277,8 +283,8 @@
 		
 		/**
 		 * Parses class-level annotations from a docblock comment
-		 * @param \ReflectionClass $reflection Reflection class
-		 * @param array|AnnotationCollection &$result Reference to the result array where parsed annotations will be stored
+		 * @param \ReflectionClass<object> $reflection Reflection class
+		 * @param array<mixed>|AnnotationCollection $result Reference to the result array where parsed annotations will be stored
 		 * @return void
 		 * @throws AnnotationReaderException When annotation parsing fails
 		 */
@@ -308,9 +314,9 @@
 		
 		/**
 		 * Parse annotations for properties or methods and update the result array.
-		 * @param array $items An array of ReflectionProperty or ReflectionMethod objects.
-		 * @param array $result The result array to be updated with parsed annotations.
-		 * @param \ReflectionClass|null $reflection The reflection class
+		 * @param array<\ReflectionProperty|\ReflectionMethod> $items An array of ReflectionProperty or ReflectionMethod objects.
+		 * @param array<string, AnnotationCollection> $result The result array to be updated with parsed annotations.
+		 * @param \ReflectionClass<object>|null $reflection The reflection class
 		 * @return void
 		 * @throws AnnotationReaderException
 		 */
@@ -355,8 +361,8 @@
 		
 		/**
 		 * Fetch all object annotations
-		 * @param \ReflectionClass $reflection
-		 * @return array
+		 * @param \ReflectionClass<object> $reflection
+		 * @return AnnotationSet
 		 * @throws AnnotationReaderException
 		 */
 		protected function readAllObjectAnnotations(\ReflectionClass $reflection): array {
@@ -377,7 +383,7 @@
 		/**
 		 * Retrieve all annotations for a given class, caching the results for performance.
 		 * @param mixed $class The fully qualified class name to get annotations for.
-		 * @return array An array containing all annotations for the class, its properties, and its methods.
+		 * @return AnnotationSet An array containing all annotations for the class, its properties, and its methods.
 		 * @throws AnnotationReaderException
 		 */
 		protected function getAllObjectAnnotations(mixed $class): array {
