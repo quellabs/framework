@@ -4,10 +4,12 @@
 	
 	/**
 	 * Immutable collection class for managing annotations.
+	 * @implements \ArrayAccess<int|string, object>
+	 * @implements \Iterator<int, object>
 	 */
 	class AnnotationCollection implements \ArrayAccess, \Countable, \Iterator {
 		
-		/** @var array Array to store annotation objects */
+		/** @var array<int, object> Array to store annotation objects */
 		private array $annotations = [];
 		
 		/** @var int Current position for iterator implementation */
@@ -15,7 +17,7 @@
 		
 		/**
 		 * Constructor to initialize the collection with annotations.
-		 * @param array $annotations Array of annotation objects to store
+		 * @param array<int, object> $annotations Array of annotation objects to store
 		 */
 		public function __construct(array $annotations = []) {
 			$this->annotations = array_values($annotations); // Always flat numeric array
@@ -39,7 +41,7 @@
 		/**
 		 * Get the value at the specified offset.
 		 * @param mixed $offset The annotation type (class name) or numeric index
-		 * @return mixed The first annotation of that type or annotation at index
+		 * @return object|null The first annotation of that type or annotation at index
 		 */
 		public function offsetGet(mixed $offset): mixed {
 			// Numeric access - return annotation at index
@@ -80,7 +82,7 @@
 		
 		/**
 		 * Get the current annotation during iteration.
-		 * @return mixed The current annotation or null if position is invalid
+		 * @return object|null The current annotation or null if position is invalid
 		 */
 		public function current(): mixed {
 			return $this->annotations[$this->position] ?? null;
@@ -120,7 +122,7 @@
 		
 		/**
 		 * Get the first annotation in the collection.
-		 * @return mixed The first annotation or null if collection is empty
+		 * @return object|null The first annotation or null if collection is empty
 		 */
 		public function first(): mixed {
 			return $this->annotations[0] ?? null;
@@ -128,7 +130,7 @@
 		
 		/**
 		 * Get the last annotation in the collection.
-		 * @return mixed The last annotation or null if collection is empty
+		 * @return object|null The last annotation or null if collection is empty
 		 */
 		public function last(): mixed {
 			return end($this->annotations) ?: null;
@@ -144,7 +146,7 @@
 		
 		/**
 		 * Convert the collection to a plain array with both numeric and class name keys.
-		 * @return array Array with both numeric indices and class names as keys
+		 * @return array<int|string, object> Array with both numeric indices and class names as keys
 		 */
 		public function toArray(): array {
 			$result = [];
@@ -171,7 +173,7 @@
 		
 		/**
 		 * Convert the annotations to a linear array format.
-		 * @return array The annotations in linear array format
+		 * @return array<int, object> The annotations in linear array format
 		 */
 		public function toIndexedArray(): array {
 			return $this->annotations;
@@ -179,7 +181,7 @@
 		
 		/**
 		 * Convert the collection to a grouped array with class names as keys.
-		 * @return array Associative array where keys are class names and values are
+		 * @return array<string, array<int, object>> Associative array where keys are class names and values are
 		 *               indexed arrays of annotations of that type
 		 */
 		public function toGroupedArray(): array {
@@ -223,7 +225,7 @@
 		/**
 		 * Get the first annotation of a specific type.
 		 * @param string $className The annotation class name
-		 * @return mixed The first annotation of that type or null if not found
+		 * @return object|null The first annotation of that type or null if not found
 		 */
 		public function getFirst(string $className): mixed {
 			foreach ($this->annotations as $annotation) {

@@ -16,23 +16,23 @@
 		/** @var Lexer The lexer instance for tokenizing input */
 		private Lexer $lexer;
 		
-		/** @var array List of annotation names to ignore during parsing */
+		/** @var array<int, string> List of annotation names to ignore during parsing */
 		private array $ignore_annotations;
 		
-		/** @var array Fast lookup set for ignored annotations (using array keys for O(1) lookup) */
+		/** @var array<string, int> Fast lookup set for ignored annotations (using array keys for O(1) lookup) */
 		private array $ignore_annotations_set;
 		
 		/** @var array<string, mixed> Configuration array for resolving configuration placeholders */
 		private array $configuration;
 		
-		/** @var \ReflectionClass|null Reflection class */
+		/** @var \ReflectionClass<object>|null Reflection class */
 		private ?\ReflectionClass $reflection;
 		
 		/**
 		 * Parser constructor.
 		 * @param Lexer $lexer The lexer instance for tokenizing input
 		 * @param array<string, mixed> $configuration Configuration array for placeholder resolution
-		 * @param \ReflectionClass|null $reflection Optional reflection class
+		 * @param \ReflectionClass<object>|null $reflection Optional reflection class
 		 */
 		public function __construct(Lexer $lexer, array $configuration=[], ?\ReflectionClass $reflection=null) {
 			// Store the lexer instance for token processing
@@ -350,7 +350,7 @@
 		/**
 		 * Parses an attribute list into an associative array
 		 * Can handle annotations, key-value pairs (key=value), and simple value arrays
-		 * @return array The parsed attributes as an associative or indexed array
+		 * @return array<int|string, mixed> The parsed attributes as an associative or indexed array
 		 * @throws LexerException If tokenization fails
 		 * @throws ParserException If the attribute structure is invalid
 		 * @throws \ReflectionException If annotation reflection fails
@@ -416,7 +416,7 @@
 		 * Parse a string of parameters
 		 * The first parameter can be nameless and can be an annotation
 		 * All subsequent parameters must be named
-		 * @return array
+		 * @return array<string, mixed>
 		 * @throws LexerException|ParserException|\ReflectionException
 		 */
 		private function parseParameters(): array {
@@ -461,7 +461,7 @@
 		
 		/**
 		 * Parse the first parameter which can be an annotation, named parameter, or unnamed value
-		 * @param array &$parameters Reference to parameters array to modify
+		 * @param array<string, mixed> &$parameters Reference to parameters array to modify
 		 * @throws LexerException|ParserException|\ReflectionException
 		 */
 		private function parseFirstParameter(array &$parameters): void {
@@ -507,7 +507,7 @@
 		
 		/**
 		 * Parse a named parameter and add it to the parameters array
-		 * @param array &$parameters Reference to parameters array to modify
+		 * @param array<string, mixed> &$parameters Reference to parameters array to modify
 		 * @return bool True if successfully parsed as named parameter, false otherwise
 		 * @throws LexerException|ParserException|\ReflectionException
 		 */
