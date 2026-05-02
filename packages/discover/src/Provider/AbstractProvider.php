@@ -13,13 +13,13 @@
 		
 		/**
 		 * Configuration settings for the provider.
-		 * @var array
+		 * @var array<string, mixed>
 		 */
 		private array $config;
 		
 		/**
 		 * Retrieves metadata associated with this provider.
-		 * @return array An associative array of metadata key-value pairs
+		 * @return array<string, mixed> An associative array of metadata key-value pairs
 		 */
 		public static function getMetadata(): array {
 			return [];
@@ -27,7 +27,7 @@
 	
 		/**
 		 * Returns the current configuration settings for this provider.
-		 * @return array The complete configuration array for this provider
+		 * @return array<string, mixed> The complete configuration array for this provider
 		 */
 		public function getConfig(): array {
 			return $this->config;
@@ -35,7 +35,7 @@
 		
 		/**
 		 * Sets the configuration for this provider.
-		 * @param array $config Configuration array to apply to this provider
+		 * @param array<string, mixed> $config Configuration array to apply to this provider
 		 * @return void
 		 */
 		public function setConfig(array $config): void {

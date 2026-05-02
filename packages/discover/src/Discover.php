@@ -38,7 +38,7 @@
 		protected array $providerDefinitionsByClass = [];
 		
 		/**
-		 * @var array Map of instantiated providers by definition key
+		 * @var array<string, ProviderInterface> Map of instantiated providers by definition key
 		 */
 		protected array $instantiatedProviders = [];
 		
@@ -199,7 +199,7 @@
 		 * Handles both scalar values and arrays declared under the key.
 		 * @param string $familyName The family name (e.g. 'canvas')
 		 * @param string $metadataKey The key to collect (e.g. 'controller')
-		 * @return array
+		 * @return array<int, string>
 		 */
 		public function getFamilyValues(string $familyName, string $metadataKey): array {
 			$result = [];
@@ -358,8 +358,8 @@
 		/**
 		 * Loads configuration files and returns merged contents as an array.
 		 * Supports .local.php override files that are merged over base configs.
-		 * @param array $configFiles List of config files to load
-		 * @return array The merged configuration array
+		 * @param array<int, string> $configFiles List of config files to load
+		 * @return array<string, mixed> The merged configuration array
 		 */
 		protected function loadConfigFiles(array $configFiles): array {
 			// Return empty config when no file given

@@ -76,7 +76,7 @@
 		
 		/**
 		 * Get the events this plugin subscribes to
-		 * @return array Array of event names mapped to method names
+		 * @return array<string, string> Array of event names mapped to method names
 		 */
 		public static function getSubscribedEvents(): array {
 			return [
@@ -206,9 +206,9 @@
 		
 		/**
 		 * Extract extra data from the service discovery config file
-		 * @param array $lockData
+		 * @param array<string, mixed> $lockData
 		 * @param bool $devMode Whether to include packages-dev entries
-		 * @return array Associative array mapping package names to their extra data
+		 * @return array<string, array<string, mixed>> Associative array mapping package names to their extra data
 		 */
 		private function extractServiceMap(array $lockData, bool $devMode): array {
 			$extraMap = [];
@@ -257,7 +257,7 @@
 		/**
 		 * Write the extra map to a PHP file
 		 * @param string $outputPath Full path where the file should be written
-		 * @param array $extraMap The complete mapping of package names to extra data
+		 * @param array<string, array<string, mixed>> $extraMap The complete mapping of package names to extra data
 		 * @throws \RuntimeException If the file cannot be written
 		 */
 		private function writeExtraMapFile(string $outputPath, array $extraMap): void {

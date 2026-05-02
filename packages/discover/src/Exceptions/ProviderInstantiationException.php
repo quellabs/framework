@@ -54,7 +54,7 @@
 		/**
 		 * Extracts key diagnostic information from the provider definition.
 		 * Useful for logging and debugging without exposing the full definition object.
-		 * @return array{className: string, family: string, configFiles: array, metadata: array}
+		 * @return array{className: string, family: string, configFiles: array<int, string>, metadata: array<string, mixed>}
 		 */
 		public function getContextInfo(): array {
 			return [
