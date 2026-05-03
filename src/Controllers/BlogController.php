@@ -30,8 +30,6 @@
 		public function show(int $id): Response {
 			$post = $this->em()->find(PostEntity::class, $id);
 			
-			echo $post->user->getId();
-			
 			if (!$post) {
 				return $this->notFound('Post does not exist.');
 			}
