@@ -10,7 +10,11 @@
 	use Quellabs\AnnotationReader\LexerParser\Parser;
 	
 	/**
-	 * @phpstan-type AnnotationSet array{class: array<mixed>|AnnotationCollection, properties: array<string, AnnotationCollection>, methods: array<string, AnnotationCollection>}
+	 * @phpstan-type AnnotationSet array{
+	 *    class: AnnotationCollection,
+	 *    properties: array<string, AnnotationCollection>,
+	 *    methods: array<string, AnnotationCollection>
+	 *  }
 	 */
 	class AnnotationReader {
 		
@@ -19,6 +23,7 @@
 		
 		/** @var array<string, mixed> */
 		protected array $configuration;
+		
 		/** @var array<string, AnnotationSet> */
 		protected array $cached_annotations;
 		
@@ -49,7 +54,7 @@
 			$annotations = $this->getAllObjectAnnotations($class);
 			
 			// Return an empty collection if no annotations found
-			if (empty($annotations['class'])) {
+			if ($annotations['class']->isEmpty()) {
 				return new AnnotationCollection();
 			}
 			
@@ -267,9 +272,17 @@
 				return false;
 			}
 			
+			// Fetch filename
+			$fileName = $reflection->getFileName();
+			
+			// If there is no filename, the cache is invalid
+			if ($fileName === false) {
+				return false;
+			}
+			
 			// Get the last modification time of the class file
 			// This helps us determine if the class has been changed since cache creation
-			$classCreateDate = filemtime($reflection->getFileName());
+			$classCreateDate = filemtime($fileName);
 			
 			// Get the last modification time of the cache file
 			// This tells us when the cache was last generated
@@ -284,11 +297,11 @@
 		/**
 		 * Parses class-level annotations from a docblock comment
 		 * @param \ReflectionClass<object> $reflection Reflection class
-		 * @param array<mixed>|AnnotationCollection $result Reference to the result array where parsed annotations will be stored
+		 * @param AnnotationCollection $result Reference to the result array where parsed annotations will be stored
 		 * @return void
 		 * @throws AnnotationReaderException When annotation parsing fails
 		 */
-		protected function parseClassAnnotations(\ReflectionClass $reflection, array|AnnotationCollection &$result) : void {
+		protected function parseClassAnnotations(\ReflectionClass $reflection, AnnotationCollection &$result) : void {
 			// Early return if no docblock comment exists or if it's empty
 			if (empty($reflection->getDocComment())) {
 				return;
@@ -368,7 +381,7 @@
 		protected function readAllObjectAnnotations(\ReflectionClass $reflection): array {
 			// Setup array which will receive the parse results
 			$result = [
-				'class'      => [],
+				'class'      => new AnnotationCollection(),
 				'properties' => [],
 				'methods'    => []
 			];
