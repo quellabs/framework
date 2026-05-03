@@ -10,10 +10,10 @@
 		/**
 		 * @Test(name="parent_method")
 		 */
-		public function annotatedMethod() {}
+		public function annotatedMethod(): void {}
 		
 		/**
 		 * @Test(name="parent_property")
 		 */
-		public $annotatedProperty;
+		public mixed $annotatedProperty;
 	}

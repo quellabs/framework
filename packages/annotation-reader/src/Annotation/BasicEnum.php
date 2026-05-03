@@ -7,11 +7,13 @@
 	 * @url https://stackoverflow.com/questions/254514/php-and-enumerations
 	 */
 	abstract class BasicEnum {
-		private static $constCache = null;
+		
+		/** @var array<string, mixed>|null */
+		private static ?array $constCache = null;
 		
 		/**
 		 * Returns all the constants in this Enum
-		 * @return array|null
+		 * @return array<string, mixed>|null
 		 * @throws \ReflectionException
 		 */
 		public static function getConstants(): ?array {
@@ -53,11 +55,11 @@
 		
 		/**
 		 * Returns true if the given value is present in the enum, false if not
-		 * @param $value
+		 * @param mixed $value
 		 * @return bool
 		 * @throws \ReflectionException
 		 */
-		public static function isValidValue($value): bool {
+		public static function isValidValue(mixed $value): bool {
 			$values = array_values(self::getConstants());
 			return in_array($value, $values);
 		}

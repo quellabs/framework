@@ -144,7 +144,7 @@
 		 */
 		private function createAndSetProxy(object $entity, string $property, object $dependency): void {
 			// Determine the relation column (the column containing the foreign key)
-			$relationColumn = $dependency->getRelationColumn() ?? $this->entityStore->getPrimaryKey($entity);
+			$relationColumn = $dependency->getRelationColumn() ?? "{$property}Id";
 			
 			// Get the primary key value. If it's empty, clear the relationship
 			$relationColumnValue = $this->propertyHandler->get($entity, $relationColumn);
@@ -198,8 +198,8 @@
 		 * Filters and returns an array of valid OneToOne and ManyToOne dependencies for a given entity and property.
 		 * @param object $entity The entity whose property is being checked.
 		 * @param string $property The name of the entity's property.
-		 * @param array $dependencies An array of dependencies to filter.
-		 * @return array An array of valid OneToOne and ManyToOne dependencies.
+		 * @param array<int, ManyToOne|OneToOne|OneToMany> $dependencies An array of dependencies to filter.
+		 * @return array<int, ManyToOne|OneToOne> An array of valid OneToOne and ManyToOne dependencies.
 		 */
 		private function filterValidDependencies(object $entity, string $property, array $dependencies): array {
 			$validDependencies = [];
@@ -227,8 +227,8 @@
 		 * Filters and returns an array of valid OneToMany dependencies for a given entity and property.
 		 * @param object $entity The entity whose property is being checked.
 		 * @param string $property The name of the entity's property.
-		 * @param array $dependencies An array of dependencies to filter.
-		 * @return array An array of valid OneToMany dependencies.
+		 * @param array<int, ManyToOne|OneToOne|OneToMany> $dependencies An array of dependencies to filter.
+		 * @return array<int, OneToMany> An array of valid OneToMany dependencies.
 		 */
 		private function filterEmptyOneToManyDependencies(object $entity, string $property, array $dependencies): array {
 			$validDependencies = [];
@@ -292,7 +292,7 @@
 		
 		/**
 		 * Sets both OneToOne and ManyToOne relationships for each entity in the given row.
-		 * @param array $filteredEntities An array of filtered entities for which the relationships should be set.
+		 * @param array<int, object> $filteredEntities An array of filtered entities.
 		 * @return void
 		 */
 		private function setDirectRelations(array $filteredEntities): void {
@@ -329,7 +329,7 @@
 		 * This method identifies entity properties that have OneToOne or ManyToOne relationships
 		 * which are currently null, and creates appropriate proxy objects for lazy loading
 		 * those relationships when they are accessed.
-		 * @param array $filteredRows The entities that need to be processed
+		 * @param array<int, object> $filteredRows The entities that need to be processed
 		 * @return void
 		 */
 		private function setupProxyRelations(array $filteredRows): void {
@@ -355,7 +355,7 @@
 		
 		/**
 		 * Promotes empty OneToMany relationships to lazy-loaded collections for the given filtered rows.
-		 * @param array $filteredRows The rows that need to be processed
+		 * @param array<int, object> $filteredRows The rows that need to be processed
 		 * @return void
 		 * @throws QuelException
 		 */
@@ -376,7 +376,7 @@
 					// Create and set a collection of entities for each valid dependency
 					foreach ($validDependencies as $dependency) {
 						$targetEntity = $this->entityStore->normalizeEntityName($dependency->getTargetEntity());
-						$relationColumn = $dependency->getRelationColumn() ?? $this->entityStore->getPrimaryKey($entity);
+						$relationColumn = $dependency->getRelationColumn() ?? "{$property}Id";;
 						
 						// Check if OneToMany has mappedBy. If not error out
 						$mappedBy = $dependency->getMappedBy();
@@ -409,7 +409,8 @@
 		
 		/**
 		 * Loads all relationships for a set of entities
-		 * @param array $entities The entities to load relationships for
+		 * @param array<int, object> $entities The entities to load relationships for
+		 * @throws QuelException
 		 */
 		public function loadRelationships(array $entities): void {
 			// Set direct entity-to-entity relationships

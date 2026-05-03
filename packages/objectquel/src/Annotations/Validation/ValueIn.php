@@ -4,13 +4,24 @@
 	
 	use Quellabs\AnnotationReader\AnnotationInterface;
 	
-	class ValueIn implements AnnotationInterface {
+	class ValueIn implements PropertyValidationInterface {
 		
+		/**
+		 * @var array{
+		 *     property?: string,
+		 *     values?: array<mixed>,
+		 *     message?: string|null
+		 * }
+		 */
 		protected array $parameters;
 		
 		/**
 		 * ValueIn constructor.
-		 * @param array $parameters
+		 * @param array{
+		 *      property?: string,
+		 *      values?: array<mixed>,
+		 *      message?: string|null
+		 *  } $parameters
 		 */
 		public function __construct(array $parameters) {
 			$this->parameters = $parameters;
@@ -18,7 +29,11 @@
 		
 		/**
 		 * Returns all parameters
-		 * @return array
+		 * @return array{
+		 *     property?: string,
+		 *     values?: array<mixed>,
+		 *     message?: string|null
+		 * }
 		 */
 		public function getParameters(): array {
 			return $this->parameters;
@@ -42,7 +57,7 @@
 		
 		/**
 		 * Returns the values to check
-		 * @return array|null
+		 * @return array<mixed>
 		 */
 		public function getValues(): ?array {
 			return $this->parameters['values'] ?? null;

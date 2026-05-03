@@ -6,34 +6,37 @@
 	
 	class NotBlank implements ValidationInterface {
 		
-		protected $conditions;
+		/** @var array<string, mixed> */
+		protected array $conditions;
+		protected ?string $errorMessage;
 		
 		/**
 		 * Email constructor
-		 * @param array $conditions
+		 * @param array<string, mixed> $conditions
+		 * @param string|null $errorMessage
 		 */
-		public function __construct(array $conditions = []) {
+		public function __construct(array $conditions = [], ?string $errorMessage = null) {
 			$this->conditions = $conditions;
+			$this->errorMessage = $errorMessage;
 		}
 		
 		/**
 		 * Returns the conditions used in this Rule
-		 * @return array
+		 * @return array<string, mixed>
 		 */
-		public function getConditions() : array {
+		public function getConditions(): array {
 			return $this->conditions;
 		}
 		
-		public function validate($value): bool {
+		public function validate(mixed $value): bool {
 			return strlen(trim($value)) > 0;
 		}
 		
 		public function getError(): string {
-			if (!isset($this->conditions["message"])) {
-				return "This value should not be blank";
+			if (!empty($this->errorMessage)) {
+				return $this->errorMessage;
 			}
 			
-			return $this->conditions["message"];
+			return "This value should not be blank";
 		}
-		
 	}

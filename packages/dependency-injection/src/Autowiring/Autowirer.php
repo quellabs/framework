@@ -47,8 +47,8 @@
 		 * Resolves and returns arguments for a specific method.
 		 * @param object|string $class The class instance or class name
 		 * @param string $methodName The name of the method to resolve arguments for
-		 * @param array $parameters Optional array of parameters to use for resolution
-		 * @return array The resolved arguments array ready for method invocation
+		 * @param array<string, mixed> $parameters Optional array of parameters to use for resolution
+		 * @return array<int, mixed> The resolved arguments array ready for method invocation
 		 */
 		public function getMethodArguments(object|string $class, string $methodName, array $parameters = []): array {
 			// Fetch the name of the class - handle both object instances and class name strings
@@ -92,8 +92,8 @@
 		/**
 		 * Resolves a single method parameter value using multiple resolution strategies.
 		 * Tries strategies in priority order until one succeeds or all fail.
-		 * @param array $param Parameter metadata (name, types, default_value, etc.)
-		 * @param array $parameters User-provided parameter values
+		 * @param array<string, mixed> $param Parameter metadata (name, types, default_value, etc.)
+		 * @param array<string, mixed> $parameters User-provided parameter values
 		 * @param MethodContextInterface|null $methodContext Context object for dependency injection
 		 * @param string $className Class name for error reporting
 		 * @param string $methodName Method name for error reporting
@@ -148,7 +148,7 @@
 		/**
 		 * Determines if a parameter is the magic **all parameter
 		 * This checks if the parameter name is 'all' and has a type hint of 'array'
-		 * @param array $param Parameter metadata
+		 * @param array<string, mixed> $param Parameter metadata
 		 * @return bool
 		 */
 		protected function isAllParameter(array $param): bool {
@@ -167,7 +167,7 @@
 		/**
 		 * Attempts to resolve a parameter value by trying each type hint in order
 		 * @param string $paramName Parameter name for better error messages
-		 * @param array $types Array of type hints/class names to attempt resolution
+		 * @param array<int, string> $types Array of type hints/class names to attempt resolution
 		 * @param MethodContextInterface|null $methodContext
 		 * @return mixed The resolved instance
 		 * @throws \RuntimeException If no types could be resolved
@@ -222,7 +222,7 @@
 		 * Get the parameters of a method including type hints and default values
 		 * @param string $className
 		 * @param string $methodName
-		 * @return array
+		 * @return array<int, array<string, mixed>>
 		 */
 		protected function getMethodParameters(string $className, string $methodName): array {
 			try {
@@ -274,7 +274,7 @@
 		 * Extract all possible types from a ReflectionType
 		 * Handles union types, intersection types, and named types
 		 * @param \ReflectionType $type
-		 * @return array
+		 * @return array<int, string>
 		 */
 		protected function extractTypes(\ReflectionType $type): array {
 			// Handle union types (Type1|Type2|Type3)
@@ -321,8 +321,9 @@
 		 * Resolves a single type from the container.
 		 * Extracted as a separate method to allow subclasses to swap the container
 		 * used for resolution without duplicating the full resolution loop.
+		 * @phpstan-param class-string $type
 		 * @param string $type The fully qualified class or interface name to resolve
-		 * @param array $parameters Additional parameters for resolution
+		 * @param array<string, mixed> $parameters Additional parameters for resolution
 		 * @param MethodContext|null $methodContext
 		 * @return object|null The resolved instance or null
 		 */

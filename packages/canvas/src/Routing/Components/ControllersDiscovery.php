@@ -20,7 +20,7 @@
 		
 		/**
 		 * Gets controller directories and class names from packages
-		 * @return array Absolute paths to controller directories and/or fully qualified class names
+		 * @return array<string> Absolute paths to controller directories and/or fully qualified class names
 		 */
 		public function fetch(): array {
 			// Get contents of config/app.php
@@ -45,7 +45,7 @@
 			// Collect class names advertised by packages
 			$packageClasses = array_filter(
 				$discover->getFamilyValues('canvas', 'controller'),
-				fn($value) => is_string($value) && class_exists($value)
+				fn($value) => class_exists($value)
 			);
 			
 			// Return a flat list of fully qualified controller class names

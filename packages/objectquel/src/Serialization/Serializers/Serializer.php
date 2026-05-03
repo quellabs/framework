@@ -12,13 +12,17 @@
 	
 	class Serializer {
 		
-		protected array $normalizers;
-		protected array $methodExistsCache;
 		protected string $serializationGroupName;
 		protected EntityStore $entityStore;
 		protected PropertyHandler $propertyHandler;
 		protected ReflectionHandler $reflectionHandler;
 		protected AnnotationReader $annotationReader;
+		
+		/** @var string[] */
+		protected array $normalizers;
+		
+		/** @var array<string, bool> */
+		protected array $methodExistsCache;
 		
 		/**
 		 * Serializer constructor
@@ -38,48 +42,6 @@
 			$this->initializeNormalizers();
 		}
 		
-		/**
-		 * This function initializes all entities in the "Entity" directory.
-		 * @return void
-		 */
-		private function initializeNormalizers(): void {
-			// Retrieve all file names in the "Entity" directory.
-			$normalizerFiles = scandir(dirname(__FILE__) . DIRECTORY_SEPARATOR . ".." . DIRECTORY_SEPARATOR . "Normalizer");
-			
-			// Iterate over all files in the "Entity" directory.
-			foreach ($normalizerFiles as $fileName) {
-				// Skip if the file is not a PHP file.
-				if (($fileName === 'NormalizerInterface.php') || !$this->isPHPFile($fileName)) {
-					continue;
-				}
-				
-				// Construct the entity name based on the file name.
-				$this->normalizers[] = strtolower(substr($fileName, 0, strpos($fileName, "Normalizer")));
-			}
-		}
-		
-		/**
-		 * Checks if the specified file is a PHP file.
-		 * @param string $fileName Name of the file.
-		 * @return bool True if it is a PHP file, otherwise false.
-		 */
-		private function isPHPFile(string $fileName): bool {
-			$fileExtension = pathinfo($fileName, PATHINFO_EXTENSION);
-			return ($fileExtension === 'php');
-		}
-		
-		/**
-		 * Convert a string to camelcase
-		 * @param string $input
-		 * @param string $separator
-		 * @return string
-		 */
-		protected function camelCase(string $input, string $separator = '_'): string {
-			$array = explode($separator, $input);
-			$parts = array_map('ucfirst', $array);
-			return implode('', $parts);
-		}
-
 		/**
 		 * Normalizes a value based on its column type annotation.
 		 *
@@ -163,7 +125,7 @@
 		 * Checks if a property belongs to a specific serialization group.
 		 * This function determines whether a given property should be included in the serialization
 		 * based on the specified serialization group and the annotations of the property.
-		 * @param array $annotations An array of annotations associated with the property.
+		 * @param object[] $annotations An array of annotations associated with the property.
 		 * @return bool True if the property should be serialized, otherwise false.
 		 */
 		public function propertyInSerializeGroup(array $annotations): bool {
@@ -187,7 +149,7 @@
 		/**
 		 * Extracts all values from the entity that are marked as Column.
 		 * @param object $entity The entity from which the values must be extracted.
-		 * @return array An array with property names as keys and their values.
+		 * @return array<string, mixed> An array with property names as keys and their values.
 		 */
 		public function serialize(object $entity): array {
 			// Early return if the entity does not exist in the entity store.
@@ -206,7 +168,7 @@
 				foreach ($annotations as $annotation) {
 					if ($annotation instanceof Column) {
 						// Check if the property is part of a serialization group. If not, skip the property
-						if (!$this->propertyInSerializeGroup($annotations->toArray())) {
+						if (!$this->propertyInSerializeGroup($annotations)) {
 							break;
 						}
 						
@@ -231,7 +193,7 @@
 		/**
 		 * Injecteert de gegeven waarden in de entiteit.
 		 * @param object $entity De entiteit waarin de waarden geïnjecteerd moeten worden.
-		 * @param array $values De te injecteren waarden, met property namen als keys.
+		 * @param array<string, mixed> $values De te injecteren waarden, met property namen als keys.
 		 * @return void
 		 */
 		public function deserialize(object $entity, array $values): void {
@@ -282,5 +244,47 @@
 					}
 				}
 			}
+		}
+		
+		/**
+		 * This function initializes all entities in the "Entity" directory.
+		 * @return void
+		 */
+		private function initializeNormalizers(): void {
+			// Retrieve all file names in the "Entity" directory.
+			$normalizerFiles = scandir(dirname(__FILE__) . DIRECTORY_SEPARATOR . ".." . DIRECTORY_SEPARATOR . "Normalizer");
+			
+			// Iterate over all files in the "Entity" directory.
+			foreach ($normalizerFiles as $fileName) {
+				// Skip if the file is not a PHP file.
+				if (($fileName === 'NormalizerInterface.php') || !$this->isPHPFile($fileName)) {
+					continue;
+				}
+				
+				// Construct the entity name based on the file name.
+				$this->normalizers[] = strtolower(substr($fileName, 0, strpos($fileName, "Normalizer")));
+			}
+		}
+		
+		/**
+		 * Checks if the specified file is a PHP file.
+		 * @param string $fileName Name of the file.
+		 * @return bool True if it is a PHP file, otherwise false.
+		 */
+		private function isPHPFile(string $fileName): bool {
+			$fileExtension = pathinfo($fileName, PATHINFO_EXTENSION);
+			return ($fileExtension === 'php');
+		}
+		
+		/**
+		 * Convert a string to camelcase
+		 * @param string $input
+		 * @param string $separator
+		 * @return string
+		 */
+		protected function camelCase(string $input, string $separator = '_'): string {
+			$array = explode($separator, $input);
+			$parts = array_map('ucfirst', $array);
+			return implode('', $parts);
 		}
 	}

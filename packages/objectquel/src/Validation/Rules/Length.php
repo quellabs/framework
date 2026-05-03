@@ -6,30 +6,34 @@
 	
 	class Length implements ValidationInterface {
 		
+		/** @var array{min?: int, max?: int} */
 		protected array $conditions;
-		protected $error;
+		protected string $error;
+		protected ?string $errorMessage;
 		
 		/**
 		 * Email constructor
-		 * @param array $conditions
+		 * @param array{min?: int, max?: int} $conditions
+		 * @param string|null $errorMessage
 		 */
-		public function __construct(array $conditions = []) {
+		public function __construct(array $conditions = [], ?string $errorMessage = null) {
 			$this->conditions = $conditions;
+			$this->errorMessage = $errorMessage;
 			$this->error = "";
 		}
 		
 		/**
 		 * Returns the conditions used in this Rule
-		 * @return array
+		 * @return array{min?: int, max?: int}
 		 */
-		public function getConditions() : array {
+		public function getConditions(): array {
 			return $this->conditions;
 		}
 		
-		public function validate($value): bool {
-            if (($value === "") || is_null($value)) {
-                return true;
-            }
+		public function validate(mixed $value): bool {
+			if (($value === "") || is_null($value)) {
+				return true;
+			}
 			
 			if (isset($this->conditions['min']) && strlen($value) < $this->conditions['min']) {
 				$this->error = "This value is too short. It should have {{ min }} characters or more.";
@@ -45,10 +49,10 @@
 		}
 		
 		public function getError(): string {
-			if (!isset($this->conditions["message"])) {
-				return $this->error;
+			if (!empty($this->errorMessage)) {
+				return $this->errorMessage;
 			}
 			
-			return $this->conditions["message"];
+			return $this->error;
 		}
 	}

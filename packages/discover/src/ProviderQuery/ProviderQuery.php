@@ -2,6 +2,9 @@
 	
 	namespace Quellabs\Discover\ProviderQuery;
 	
+	use Quellabs\Contracts\Discovery\ProviderDefinition;
+	use Quellabs\Contracts\Discovery\ProviderInterface;
+	
 	/**
 	 * Fluent query builder for filtering and retrieving service providers.
 	 *
@@ -24,7 +27,7 @@
 		private \Closure $instantiator;
 		
 		/**
-		 * @var array Provider definitions to query against
+		 * @var array<string, ProviderDefinition> Provider definitions to query against
 		 */
 		private array $definitions;
 		
@@ -41,7 +44,7 @@
 		/**
 		 * Initialize a new provider query.
 		 * @param \Closure $instantiator Callback that converts a definition to a provider instance
-		 * @param array $definitions Array of provider definitions to filter
+		 * @param array<string, ProviderDefinition> $definitions Array of provider definitions to filter
 		 */
 		public function __construct(\Closure $instantiator, array $definitions) {
 			$this->instantiator = $instantiator;
@@ -117,7 +120,7 @@
 		 *
 		 * Then instantiates each matching definition using the instantiator callback.
 		 *
-		 * @return array Array of instantiated provider instances that match all filters
+		 * @return array<int, ProviderInterface> Array of instantiated provider instances that match all filters
 		 */
 		public function get(): array {
 			$result = [];

@@ -54,16 +54,14 @@
 		protected \App\Enums\TestEnum $TestEnum;
 		
 		/**
-		 * @Orm\OneToMany(targetEntity=VlaflipEntity::class, mappedBy="id", fetch="EAGER")
+		 * @Orm\ManyToOne(targetEntity=UserEntity::class, inversedBy="id", fetch="EAGER")
 		 */
-		protected CollectionInterface $vlaflip;
+		public ?UserEntity $user;
 		
 		/**
-		 * Constructor
+		 * @Orm\Column(name="user_id", type="integer")
 		 */
-		public function __construct() {
-			$this->vlaflip = new Collection();
-		}
+		protected ?int $userId = null;
 		
 		/**
 		 * Get id

@@ -61,7 +61,7 @@
 		/** @var float Beta value for probabilistic early expiration (0.0-1.0) */
 		private float $beta;
 		
-		/** @var array All passed parameters from the InterceptWith */
+		/** @var array<string, mixed> All passed parameters from the InterceptWith */
 		private array $allParameters;
 		
 		/** @var int Maximum cache key length before hashing */
@@ -83,7 +83,7 @@
 		 * @param string $namespace Cache group for namespacing (prevents key collisions between features)
 		 * @param bool $gracefulFallback Whether to execute method if caching fails (recommended: true)
 		 * @param float $beta Probabilistic early expiration factor (0.0 = disabled, 0.5-1.0 = recommended, 1.0 = aggressive)
-		 * @param array $__all__ Special 'magic' variable that receives all InterceptWith parameters from DI
+		 * @param array<string, mixed> $__all__ Special 'magic' variable that receives all InterceptWith parameters from DI
 		 */
 		public function __construct(
 			Container $di = null,
@@ -237,7 +237,9 @@
 			
 			// Use method arguments for cache differentiation
 			// Same method with different arguments gets different cache entries
-			$argumentsKey = $this->generateArgumentsKey($context->getArguments());
+			$argumentsKey = $this->generateArgumentsKey(array_values($context->getArguments()));
+			
+			// Build cache key
 			$cacheKey = $methodKey . '.' . $argumentsKey;
 			
 			// Normalize and return the generated key
@@ -268,7 +270,7 @@
 		
 		/**
 		 * Generate a cache key component from method arguments
-		 * @param array $arguments Method arguments
+		 * @param array<int, mixed> $arguments Method arguments
 		 * @return string Sanitized arguments key
 		 */
 		private function generateArgumentsKey(array $arguments): string {
@@ -295,7 +297,7 @@
 		
 		/**
 		 * Serialize method arguments to a consistent string format
-		 * @param array $arguments Method arguments
+		 * @param array<int, mixed> $arguments Method arguments
 		 * @return string Serialized arguments
 		 */
 		private function serializeArguments(array $arguments): string {

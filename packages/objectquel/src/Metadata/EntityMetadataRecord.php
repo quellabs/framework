@@ -17,7 +17,7 @@
 	 * ║                                                                                       ║
 	 * ╚═══════════════════════════════════════════════════════════════════════════════════════╝
 	 */
-
+	
 	namespace Quellabs\ObjectQuel\Metadata;
 	
 	use Quellabs\AnnotationReader\Collection\AnnotationCollection;
@@ -47,7 +47,7 @@
 		 * Constructor for EntityMetadataRecord.
 		 * @param string $className Fully qualified, normalized class name
 		 * @param string $tableName Database table name from @Table annotation
-		 * @param array<string, mixed> $properties Property names and their reflection info
+		 * @param array<int, string> $properties Property names
 		 * @param array<string, AnnotationCollection> $annotations Property name => annotation collection mapping
 		 * @param array<string, string> $columnMap Property name => column name mapping
 		 * @param array<string> $identifierKeys Property names that serve as primary keys
@@ -58,7 +58,20 @@
 		 * @param array<string, OneToOne> $oneToOneRelations Property => OneToOne annotation mapping
 		 * @param array<Index|UniqueIndex|FullTextIndex> $indexes Index annotations from class level
 		 * @param string|null $autoIncrementColumn Property name of auto-increment primary key (if any)
-		 * @param array<string, array> $columnDefinitions Full column definitions for schema generation
+		 * @param array<string, array{
+		 *     property_name: string,
+		 *     type: string,
+		 *     php_type: \ReflectionType|null,
+		 *     limit: mixed,
+		 *     nullable: bool,
+		 *     unsigned: bool,
+		 *     default: mixed,
+		 *     primary_key: bool,
+		 *     scale: mixed,
+		 *     precision: mixed,
+		 *     identity: bool,
+		 *     values: mixed
+		 * }> $columnDefinitions
 		 */
 		public function __construct(
 			public string  $className,
@@ -75,7 +88,8 @@
 			public array   $indexes,
 			public ?string $autoIncrementColumn,
 			public array   $columnDefinitions,
-		) {}
+		) {
+		}
 		
 		/**
 		 * Retrieves the primary key of the entity.
@@ -98,17 +112,25 @@
 		/**
 		 * Retrieve the ManyToOne dependencies for this entity.
 		 * These represent entities that this entity has a foreign key reference to.
-		 * @return ManyToOne[] Array of ManyToOne annotations
+		 * @return array<string, ManyToOne> Array of ManyToOne annotations
 		 */
 		public function getManyToOneDependencies(): array {
-			return array_values($this->manyToOneRelations);
+			return $this->manyToOneRelations;
+		}
+		
+		/**
+		 * Retrieve the OneToMany dependencies for this entity.
+		 * @return array<string, OneToMany>
+		 */
+		public function getOneToManyDependencies(): array {
+			return $this->oneToManyRelations;
 		}
 		
 		/**
 		 * Retrieve the OneToOne dependencies where this entity is the owning side.
 		 * Only returns OneToOne relations that have an inversedBy property set,
 		 * indicating this entity owns the relationship.
-		 * @return OneToOne[] Array of OneToOne annotations for owned relationships
+		 * @return array<string, OneToOne> Array of OneToOne annotations for owned relationships
 		 */
 		public function getOneToOneDependencies(): array {
 			return array_filter($this->oneToOneRelations, fn($relation) => !empty($relation->getInversedBy()));
@@ -158,7 +180,7 @@
 		 * If not, it converts the primary key into an array with the proper key
 		 * based on the entity's identifier keys.
 		 * @param mixed $primaryKey The primary key to be normalized
-		 * @return array A normalized representation of the primary key as an array
+		 * @return array<string, mixed> A normalized representation of the primary key as an array
 		 */
 		public function formatPrimaryKeyAsArray(mixed $primaryKey): array {
 			// If the primary key is already an array, return it directly

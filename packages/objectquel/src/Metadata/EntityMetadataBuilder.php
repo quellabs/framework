@@ -3,6 +3,7 @@
 	namespace Quellabs\ObjectQuel\Metadata;
 	
 	use Quellabs\AnnotationReader\AnnotationReader;
+	use Quellabs\AnnotationReader\Collection\AnnotationCollection;
 	use Quellabs\AnnotationReader\Exception\ParserException;
 	use Quellabs\ObjectQuel\Annotations\Orm\Column;
 	use Quellabs\ObjectQuel\Annotations\Orm\FullTextIndex;
@@ -26,16 +27,32 @@
 	 */
 	class EntityMetadataBuilder {
 		
+		private readonly AnnotationReader $annotationReader;
+		private readonly ReflectionHandler $reflectionHandler;
+		private readonly string $proxyNamespace;
+		private readonly string $entityNamespace;
+
+		/** @var array<string, string> */
 		private array $normalizedNameCache = [];
 		
+		/**
+		 * EntityMetadataBuilder constructor
+		 * @param AnnotationReader $annotationReader
+		 * @param ReflectionHandler $reflectionHandler
+		 * @param string $proxyNamespace
+		 * @param string $entityNamespace
+		 */
 		public function __construct(
-			private readonly AnnotationReader  $annotationReader,
-			private readonly ReflectionHandler $reflectionHandler,
-			private readonly string            $proxyNamespace,
-			private readonly string            $entityNamespace,
-		) {}
-		
-		// ==================== Public API ====================
+			AnnotationReader  $annotationReader,
+			ReflectionHandler $reflectionHandler,
+			string            $proxyNamespace,
+			string            $entityNamespace,
+		) {
+			$this->entityNamespace = $entityNamespace;
+			$this->proxyNamespace = $proxyNamespace;
+			$this->reflectionHandler = $reflectionHandler;
+			$this->annotationReader = $annotationReader;
+		}
 		
 		/**
 		 * Build complete EntityMetadata for a given class.
@@ -47,7 +64,7 @@
 			try {
 				// Fetch class-level annotations to extract the @Table name
 				$classAnnotations = $this->annotationReader->getClassAnnotations($className);
-				$tableName        = $classAnnotations["Quellabs\\ObjectQuel\\Annotations\\Orm\\Table"]->getName();
+				$tableName = $classAnnotations["Quellabs\\ObjectQuel\\Annotations\\Orm\\Table"]->getName();
 				
 				// Get the list of declared properties via reflection
 				$properties = $this->reflectionHandler->getProperties($className);
@@ -72,20 +89,20 @@
 				] = $this->extractColumnData($annotations);
 				
 				return new EntityMetadataRecord(
-					className:           $className,
-					tableName:           $tableName,
-					properties:          $properties,
-					annotations:         $annotations,
-					columnMap:           $columnMap,
-					identifierKeys:      $identifierKeys,
-					identifierColumns:   $identifierColumns,
-					versionColumns:      $versionColumns,
-					manyToOneRelations:  $this->extractRelations($annotations, ManyToOne::class),
-					oneToManyRelations:  $this->extractRelations($annotations, OneToMany::class),
-					oneToOneRelations:   $this->extractRelations($annotations, OneToOne::class),
-					indexes:             $this->extractIndexes($className),        // class-level annotations only
+					className: $className,
+					tableName: $tableName,
+					properties: $properties,
+					annotations: $annotations,
+					columnMap: $columnMap,
+					identifierKeys: $identifierKeys,
+					identifierColumns: $identifierColumns,
+					versionColumns: $versionColumns,
+					manyToOneRelations: $this->extractRelations($annotations, ManyToOne::class),
+					oneToManyRelations: $this->extractRelations($annotations, OneToMany::class),
+					oneToOneRelations: $this->extractRelations($annotations, OneToOne::class),
+					indexes: $this->extractIndexes($className),
 					autoIncrementColumn: $autoIncrementColumn,
-					columnDefinitions:   $this->extractColumnDefinitions($className, $annotations),
+					columnDefinitions: $this->extractColumnDefinitions($className, $annotations),
 				);
 			} catch (\Exception $e) {
 				throw new \RuntimeException("Failed to build metadata for {$className}: " . $e->getMessage(), 0, $e);
@@ -150,25 +167,41 @@
 		/**
 		 * Single pass over property annotations to extract all column-related metadata.
 		 * Returns [columnMap, identifierKeys, identifierColumns, versionColumns, autoIncrementColumn].
+		 * @param array<string, AnnotationCollection> $annotations
+		 * @return array{
+		 *     0: array<string, string>,
+		 *     1: list<string>,
+		 *     2: list<string>,
+		 *     3: array<string, array{
+		 *         name: string,
+		 *         column: Column,
+		 *         version: Version
+		 *     }>,
+		 *     4: string|null
+		 *  }
 		 */
 		private function extractColumnData(array $annotations): array {
-			$columnMap           = [];
-			$identifierKeys      = [];
-			$identifierColumns   = [];
-			$versionColumns      = [];
+			$columnMap = [];
+			$identifierKeys = [];
+			$identifierColumns = [];
+			$versionColumns = [];
 			$autoIncrementColumn = null;
 			
 			foreach ($annotations as $property => $annotationCollection) {
 				// Collect the three annotation types we care about for this property.
 				// Using nulls means we can cheaply test presence below without array_filter.
-				$column   = null;
-				$version  = null;
+				$column = null;
+				$version = null;
 				$strategy = null;
 				
 				foreach ($annotationCollection as $annotation) {
-					if ($annotation instanceof Column)                 $column   = $annotation;
-					elseif ($annotation instanceof Version)            $version  = $annotation;
-					elseif ($annotation instanceof PrimaryKeyStrategy) $strategy = $annotation;
+					if ($annotation instanceof Column) {
+						$column = $annotation;
+					} elseif ($annotation instanceof Version) {
+						$version = $annotation;
+					} elseif ($annotation instanceof PrimaryKeyStrategy) {
+						$strategy = $annotation;
+					}
 				}
 				
 				// Properties without @Column have no database representation — skip them
@@ -177,11 +210,11 @@
 				}
 				
 				// Map property name → database column name for query building
-				$columnName           = $column->getName();
+				$columnName = $column->getName();
 				$columnMap[$property] = $columnName;
 				
 				if ($column->isPrimaryKey()) {
-					$identifierKeys[]    = $property;   // PHP property name of the PK
+					$identifierKeys[] = $property;   // PHP property name of the PK
 					$identifierColumns[] = $columnName; // Database column name of the PK
 					
 					// Only record the first PK we find as the auto-increment column.
@@ -212,9 +245,10 @@
 		
 		/**
 		 * Extract relationship annotations of a specific type from property annotations.
-		 * @param array $annotations Property name => AnnotationCollection mapping
-		 * @param string $annotationType The relationship annotation class to extract
-		 * @return array Property name => relationship annotation mapping
+		 * @template T of object
+		 * @param array<string, AnnotationCollection> $annotations
+		 * @param class-string<T> $annotationType
+		 * @return array<string, T>
 		 */
 		private function extractRelations(array $annotations, string $annotationType): array {
 			$relations = [];
@@ -240,7 +274,7 @@
 		/**
 		 * Extract index annotations from class-level annotations.
 		 * @param string $className The fully qualified class name
-		 * @return array Array of Index, UniqueIndex and FullTextIndex annotation objects
+		 * @return array<int, Index|UniqueIndex|FullTextIndex> Array of Index, UniqueIndex and FullTextIndex annotation objects
 		 */
 		private function extractIndexes(string $className): array {
 			try {
@@ -263,8 +297,21 @@
 		/**
 		 * Extract full column definitions for schema generation.
 		 * @param string $className The fully qualified class name
-		 * @param array $annotations Pre-extracted annotations (for performance)
-		 * @return array Column name => column definition mapping
+		 * @param array<string, AnnotationCollection> $annotations Pre-extracted annotations (for performance)
+		 * @return array<string, array{
+		 *     property_name: string,
+		 *     type: string,
+		 *     php_type: \ReflectionType|null,
+		 *     limit: mixed,
+		 *     nullable: bool,
+		 *     unsigned: bool,
+		 *     default: mixed,
+		 *     primary_key: bool,
+		 *     scale: mixed,
+		 *      precision: mixed,
+		 *     identity: bool,
+		 *     values: mixed
+		 * }>
 		 */
 		private function extractColumnDefinitions(string $className, array $annotations): array {
 			$definitions = [];
@@ -288,14 +335,14 @@
 						}
 						
 						$columnAnnotation = $propertyAnnotations[Column::class];
-						$columnName       = $columnAnnotation->getName();
+						$columnName = $columnAnnotation->getName();
 						
 						// A @Column without a name is misconfigured — skip rather than store a blank key
 						if (empty($columnName)) {
 							continue;
 						}
 						
-						$columnType              = $columnAnnotation->getType();
+						$columnType = $columnAnnotation->getType();
 						$definitions[$columnName] = [
 							'property_name' => $property->getName(),
 							'type'          => $columnType,
@@ -323,14 +370,13 @@
 		
 		/**
 		 * Determines if a property represents an auto-increment column.
-		 *
 		 * True when: primary key AND (strategy = 'identity' OR no strategy defined).
-		 * @param array $propertyAnnotations The annotations attached to the property
+		 * @param array<class-string, object> $propertyAnnotations The annotations attached to the property
 		 * @return bool
 		 */
 		private function isIdentityColumn(array $propertyAnnotations): bool {
-			$isPrimaryKey       = false;
-			$hasStrategy        = false;
+			$isPrimaryKey = false;
+			$hasStrategy = false;
 			$isIdentityStrategy = false;
 			
 			foreach ($propertyAnnotations as $annotation) {

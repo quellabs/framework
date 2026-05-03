@@ -15,17 +15,19 @@
 		public const string TYPE_CASE_WHEN = 'case_when';  // CASE WHEN EXISTS(...) THEN 1 ELSE 0 END
 		public const string TYPE_WINDOW = 'window';
 		
-		protected ?AstInterface $aggregation;
 		private string $type;
-		private array $correlatedRanges;
-		private ?AstInterface $conditions;
 		private ?string $origin;
+		private ?AstInterface $conditions;
+		protected ?AstInterface $aggregation;
+		
+		/** @var AstRange[] */
+		private array $correlatedRanges;
 		
 		/**
 		 * AstSubquery constructor
 		 * @param AstAggregate|null $aggregation
 		 * @param string $type
-		 * @param array $correlatedRanges
+		 * @param AstRange[] $correlatedRanges
 		 * @param AstInterface|null $conditions
 		 * @param string|null $origin
 		 */
@@ -95,11 +97,16 @@
 		
 		/**
 		 * Get all ranges referenced in this subquery
+		 * @return AstRange[]
 		 */
 		public function getCorrelatedRanges(): array {
 			return $this->correlatedRanges;
 		}
 		
+		/**
+		 * Returns contents of WHERE
+		 * @return AstInterface|null
+		 */
 		public function getConditions(): ?AstInterface {
 			return $this->conditions;
 		}

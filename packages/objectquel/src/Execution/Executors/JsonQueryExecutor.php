@@ -13,6 +13,8 @@
 	 * Handles JSON file query execution
 	 */
 	class JsonQueryExecutor {
+		
+		/** @var ConditionEvaluator */
 		private ConditionEvaluator $conditionEvaluator;
 		
 		/**
@@ -26,13 +28,20 @@
 		/**
 		 * Execute a JSON query and returns the result
 		 * @param ExecutionStageInterface $stage
-		 * @param array $initialParams
-		 * @return array
+		 * @param array<int|string, mixed> $initialParams
+		 * @return list<array<string, mixed>>
 		 * @throws QuelException
 		 */
 		public function execute(ExecutionStageInterface $stage, array $initialParams = []): array {
+			// Fetch the range
+			$jsonRange = $stage->getRange();
+			
+			// It's guaranteed to be AstRangeJsonSource, but phpstan does not know that.
+			// That's why this check was added. To satisfy phpstan's static analysis.
+			assert($jsonRange instanceof AstRangeJsonSource);
+			
 			// Load the JSON file and perform initial filtering
-			$contents = $this->loadAndFilterJsonFile($stage->getRange());
+			$contents = $this->loadAndFilterJsonFile($jsonRange);
 			
 			// Use the conditions to further filter the file
 			$result = [];
@@ -50,7 +59,7 @@
 		/**
 		 * Load and filter a JSON file from a JSON source
 		 * @param AstRangeJsonSource $source
-		 * @return array
+		 * @return list<array<string, mixed>>
 		 * @throws QuelException
 		 */
 		private function loadAndFilterJsonFile(AstRangeJsonSource $source): array {

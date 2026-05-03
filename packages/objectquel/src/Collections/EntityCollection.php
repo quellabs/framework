@@ -17,20 +17,34 @@
 	 */
 	class EntityCollection implements CollectionInterface {
 		
+		/** @var EntityManager */
 		protected EntityManager $entity_manager;
+		
+		/** @var EntityStore */
 		protected EntityStore $entity_store;
+		
+		/** @var PropertyHandler */
 		protected PropertyHandler $property_handler;
+		
+		/** @var Collection<T> */
 		protected Collection $collection;
-		protected mixed $target_entity;
-		protected mixed $property_name;
+		
+		/** @var class-string<T> */
+		protected string $target_entity;
+		
+		/** @var string Name of the property */
+		protected string $property_name;
+		
+		/** @var mixed */
 		protected mixed $id;
+		
+		/** @var bool */
 		protected bool $initialized;
-		protected mixed $iterator;
 		
 		/**
 		 * EntityCollection constructor.
 		 * @param EntityManager $entityManager The entity manager handling database operations
-		 * @param string $targetEntity The fully qualified class name of the target entity
+		 * @param class-string<T> $targetEntity The fully qualified class name of the target entity
 		 * @param string $propertyName The property name in the target entity that maps to the parent id
 		 * @param mixed $id The id value of the parent entity
 		 * @param string $sortOrder Optional sort order for the collection
@@ -44,7 +58,6 @@
 			$this->property_name = $propertyName;
 			$this->id = $id;
 			$this->initialized = false;
-			$this->iterator = false;
 		}
 		
 		/**

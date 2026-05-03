@@ -150,7 +150,7 @@
 		/**
 		 * Handle errors consistently — log in normal mode, throw in strict mode.
 		 * @param string $message Message template with {placeholder} syntax
-		 * @param array $context Placeholder values and additional log context
+		 * @param array<string, mixed> $context Placeholder values and additional log context
 		 * @param \Throwable|null $previous Chained exception, if any
 		 * @throws \RuntimeException In strict mode
 		 */
@@ -167,7 +167,7 @@
 		/**
 		 * Interpolate {placeholder} tokens in a message string.
 		 * @param string $message
-		 * @param array $context
+		 * @param array<string, mixed> $context
 		 * @return string
 		 */
 		private function formatMessage(string $message, array $context): string {

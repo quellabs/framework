@@ -57,13 +57,13 @@
 		/** @var EntityStore Entity storage for metadata and schema information */
 		private EntityStore $entityStore;
 		
-		/** @var array SQL fragments that will be concatenated to form the final query */
+		/** @var array<int, string> SQL fragments that will be concatenated to form the final query */
 		private array $result;
 		
-		/** @var array Track visited nodes to prevent infinite recursion and duplicate processing */
+		/** @var array<string, bool> Track visited nodes to prevent infinite recursion and duplicate processing */
 		private array $visitedNodes;
 		
-		/** @var array Reference to query parameters for parameterized queries */
+		/** @var array<string, mixed> Reference to query parameters for parameterized queries */
 		private array $parameters;
 		
 		/** @var string Current part of the query being processed (e.g., "VALUES", "SORT", "WHERE") */
@@ -88,7 +88,7 @@
 		/**
 		 * Initialize the SQL converter with required dependencies
 		 * @param EntityStore $store Entity storage containing schema and metadata
-		 * @param array $parameters Reference to parameters array for parameterized queries
+		 * @param array<string, mixed> $parameters Reference to parameters array for parameterized queries
 		 * @param string $partOfQuery Current query part being processed (default: "VALUES")
 		 */
 		public function __construct(EntityStore $store, array &$parameters, string $partOfQuery = "VALUES", PlatformCapabilitiesInterface $platform = new NullPlatformCapabilities()) {

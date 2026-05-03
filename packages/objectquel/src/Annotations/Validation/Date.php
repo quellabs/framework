@@ -4,13 +4,22 @@
 	
 	use Quellabs\AnnotationReader\AnnotationInterface;
 	
-	class Date implements AnnotationInterface {
+	class Date implements PropertyValidationInterface {
 		
+		/**
+		 * @var array{
+		 *     property?: string,
+		 *     message?: string|null
+		 * }
+		 */
 		protected array $parameters;
 		
 		/**
 		 * Date constructor.
-		 * @param array $parameters
+		 * @param array{
+		 *      property?: string,
+		 *      message?: string|null
+		 *  } $parameters
 		 */
 		public function __construct(array $parameters) {
 			$this->parameters = $parameters;
@@ -18,7 +27,10 @@
 		
 		/**
 		 * Returns all parameters
-		 * @return array
+		 * @return array{
+		 *     property?: string,
+		 *     message?: string|null
+		 * }
 		 */
 		public function getParameters(): array {
 			return $this->parameters;

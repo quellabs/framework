@@ -99,25 +99,30 @@
 		 * (declared on the subclass) and @DiscriminatorColumn (declared on the parent).
 		 *
 		 * @param string $entityName Fully qualified entity class name
-		 * @return array|null ['column' => columnName, 'value' => discriminatorValue], or null if not an STI subclass
+		 * @return array{column: string, value: string}|null
 		 */
 		private function getDiscriminatorInfo(string $entityName): ?array {
-			// A single getClassAnnotations() call returns annotations from the entire
-			// inheritance chain, so @DiscriminatorColumn on the parent class and
-			// @DiscriminatorValue on the subclass are both available here
-			$classAnnotations    = $this->entityStore->getAnnotationReader()->getClassAnnotations($entityName);
-			$discriminatorValue  = $classAnnotations[DiscriminatorValue::class] ?? null;
-			$discriminatorColumn = $classAnnotations[DiscriminatorColumn::class] ?? null;
+			/**
+			 * A single getClassAnnotations() call returns annotations from the entire
+			 * inheritance chain, so @DiscriminatorColumn on the parent class and
+			 * @DiscriminatorValue on the subclass are both available here
+			 */
+			$classAnnotations = $this->entityStore->getAnnotationReader()->getClassAnnotations($entityName);
+			$discriminatorValue = $classAnnotations->getFirst(DiscriminatorValue::class);
+			$discriminatorColumn = $classAnnotations->getFirst(DiscriminatorColumn::class);
 			
 			// If either annotation is absent the entity is not an STI subclass —
 			// @DiscriminatorColumn alone means this is the base class (no filter needed),
 			// @DiscriminatorValue alone would be a misconfigured entity
-			if ($discriminatorValue === null || $discriminatorColumn === null) {
+			if (
+				!$discriminatorValue instanceof DiscriminatorValue ||
+				!$discriminatorColumn instanceof DiscriminatorColumn
+			) {
 				return null;
 			}
 			
 			// Guard against incomplete annotation declarations
-			$value      = $discriminatorValue->getValue();
+			$value = $discriminatorValue->getValue();
 			$columnName = $discriminatorColumn->getName();
 			
 			if ($value === '' || $columnName === '') {
@@ -131,14 +136,14 @@
 		 * Build the AST subtree for `<rangeAlias>.<columnName> = '<value>'`.
 		 * @param string $rangeAlias The range alias (e.g. 't')
 		 * @param string $columnName The discriminator column name (e.g. 'type')
-		 * @param string $value      The discriminator value (e.g. 'truck')
+		 * @param string $value The discriminator value (e.g. 'truck')
 		 * @return AstExpression
 		 */
 		private function buildDiscriminatorCondition(string $rangeAlias, string $columnName, string $value): AstExpression {
 			// Build the left-hand side as a chained identifier: rangeAlias.columnName
 			// AstIdentifier chains represent dotted property access the same way
 			// user-written expressions like `t.type` are represented in the AST
-			$rangeIdentifier  = new AstIdentifier($rangeAlias);
+			$rangeIdentifier = new AstIdentifier($rangeAlias);
 			$columnIdentifier = new AstIdentifier($columnName);
 			$rangeIdentifier->setNext($columnIdentifier);
 			

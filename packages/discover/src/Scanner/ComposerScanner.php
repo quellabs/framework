@@ -132,8 +132,8 @@
 		 * definitions from composer configuration data, then validating each provider
 		 * to ensure it's properly implemented and can be instantiated. Only valid
 		 * providers are returned to prevent runtime errors during application bootstrap.
-		 * @param array $discoverSection Complete composer.json data array
-		 * @return array Array of validated provider data structures
+		 * @param array<string, mixed> $discoverSection Complete composer.json data array
+		 * @return array<ProviderDefinition> Array of validated provider definitions
 		 */
 		private function extractAndValidateProviders(array $discoverSection): array {
 			// Extract raw provider class definitions and their configurations
@@ -198,7 +198,7 @@
 		
 		/**
 		 * Create a ProviderDefinition from provider data
-		 * @param array $providerData Raw provider data
+		 * @param array<string, mixed> $providerData Raw provider data
 		 * @return ProviderDefinition
 		 */
 		private function createProviderDefinition(array $providerData): ProviderDefinition {
@@ -258,8 +258,8 @@
 		 * definitions. Supports multiple configuration formats and can filter by provider
 		 * family. This method handles the complexity of different discovery formats while
 		 * maintaining backward compatibility.
-		 * @param array $discoverSection The contents of the discovery section
-		 * @return array Array of provider data structures
+		 * @param array<string, mixed> $discoverSection The contents of the discovery section
+		 * @return array<array{class: string, config: array<string>|null, family: string}> Array of provider data structures
 		 */
 		protected function extractProviderClasses(array $discoverSection): array {
 			// Early filtering: if specific family is requested, filter before processing
@@ -371,9 +371,9 @@
 		
 		/**
 		 * Extract provider from singular 'provider' format
-		 * @param array $config Family configuration section that may contain a single provider
+		 * @param array<string, mixed> $config Family configuration section that may contain a single provider
 		 * @param string $familyName Name of the provider family for categorization
-		 * @return array Array containing single provider data structure, or empty array
+		 * @return array<array{class: string, config: array<string>|null, family: string}> Array containing single provider data structure, or empty array
 		 *               if no valid provider found
 		 */
 		protected function extractSingularProvider(array $config, string $familyName): array {
@@ -434,7 +434,7 @@
 		/**
 		 * Handle errors consistently - log in normal mode, throw in strict mode
 		 * @param string $message Error message with placeholders
-		 * @param array $context Context data for logging
+		 * @param array<string, mixed> $context Context data for logging
 		 * @param \Throwable|null $previous Previous exception if any
 		 * @return void
 		 * @throws RuntimeException In strict mode
@@ -455,7 +455,7 @@
 		/**
 		 * Format log message by replacing placeholders with context values
 		 * @param string $message Message with {placeholder} syntax
-		 * @param array $context Context data
+		 * @param array<string, mixed> $context Context data
 		 * @return string Formatted message
 		 */
 		private function formatLogMessage(string $message, array $context): string {

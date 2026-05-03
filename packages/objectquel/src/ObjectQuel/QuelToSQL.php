@@ -15,13 +15,15 @@
 	class QuelToSQL {
 		
 		private EntityStore $entityStore;
-		private array $parameters;
 		private PlatformCapabilitiesInterface $platform;
+		
+		/** @var array<string, mixed> */
+		private array $parameters;
 		
 		/**
 		 * QuelToSQL constructor
 		 * @param EntityStore $entityStore
-		 * @param array $parameters
+		 * @param array<string, mixed> $parameters
 		 * @param PlatformCapabilitiesInterface $platform Database engine capability descriptor
 		 */
 		public function __construct(
@@ -288,7 +290,13 @@
 				$s['ast']->accept($retrieveEntitiesVisitor);
 				
 				// Save the query result
-				$sqlSort[] = $retrieveEntitiesVisitor->getResult() . " " . $s["order"];
+				$direction = $s['direction'] ?? '';
+				
+				if ($direction !== '') {
+					$sqlSort[] = $retrieveEntitiesVisitor->getResult() . " " . $direction;
+				} else {
+					$sqlSort[] = $retrieveEntitiesVisitor->getResult();
+				}
 			}
 			
 			// Combine sort expressions into the ORDER BY clause.
@@ -397,7 +405,8 @@
 		/**
 		 * Checks if a SQL field name is already present in the list of fields.
 		 *
-		 * @param array $existingFields Array of existing field names or field groups.
+		 * @param array<string> $existingFields
+		 *   Array of existing field names or field groups.
 		 *   Some entries may be comma-separated strings produced by buildEntityColumns()
 		 *   when a whole entity is expanded (e.g. "`u`.`id`,`u`.`name`,`u`.`email`").
 		 * @param string $fieldToCheck Field name to check for duplicates

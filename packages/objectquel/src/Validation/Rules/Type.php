@@ -6,62 +6,67 @@
 	
 	class Type implements ValidationInterface {
 		
-		protected $conditions;
-		protected $error;
-		protected $is_a_types;
-		protected $ctype_types;
+		/** @var array<string, mixed> */
+		protected array $conditions;
+		protected ?string $errorMessage;
+		protected string $error = "";
+		
+		/** @var string[] */
+		protected array $is_a_types = [
+			'bool',
+			'boolean',
+			'int',
+			'integer',
+			'long',
+			'float',
+			'double',
+			'real',
+			'numeric',
+			'string',
+			'scalar',
+			'array',
+			'iterable',
+			'countable',
+			'callable',
+			'object',
+			'resource',
+			'null',
+		];
+		
+		/** @var string[] */
+		protected array $ctype_types = [
+			'alnum',
+			'alpha',
+			'cntrl',
+			'digit',
+			'graph',
+			'lower',
+			'print',
+			'punct',
+			'space',
+			'upper',
+			'xdigit',
+		];
 		
 		/**
 		 * Email constructor
-		 * @param array $conditions
+		 * @param array<string, mixed> $conditions
+		 * @param string|null $errorMessage
 		 */
-		public function __construct(array $conditions = []) {
+		public function __construct(array $conditions = [], ?string $errorMessage = null) {
 			$this->conditions = $conditions;
-			$this->error = "";
-			$this->is_a_types = [
-				'bool',
-				'boolean',
-				'int',
-				'integer',
-				'long',
-				'float',
-				'double',
-				'real',
-				'numeric',
-				'string',
-				'scalar',
-				'array',
-				'iterable',
-				'countable',
-				'callable',
-				'object',
-				'resource',
-				'null',
-			];
-			$this->ctype_types = [
-				'alnum',
-				'alpha',
-				'cntrl',
-				'digit',
-				'graph',
-				'lower',
-				'print',
-				'punct',
-				'space',
-				'upper',
-				'xdigit',
-			];
+			$this->errorMessage = $errorMessage;
 		}
 		
 		/**
 		 * Returns the conditions used in this Rule
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getConditions() : array {
 			return $this->conditions;
 		}
 		
-		public function validate($value): bool {
+		public function validate(mixed $value): bool {
 			// no value
             if ($value == '') {
                 return true;
@@ -104,10 +109,10 @@
 		}
 
 		public function getError(): string {
-			if (!isset($this->conditions["message"])) {
-				return $this->error;
+			if (!empty($this->errorMessage)) {
+				return $this->errorMessage;
 			}
 			
-			return $this->conditions["message"];
+			return $this->error;
 		}
 	}

@@ -81,7 +81,7 @@
 		 * @param TempTableStage $stage The stage to materialise
 		 * @param callable $innerQueryRunner callable(AstRetrieve $query, array $params): array
 		 *        Executes the inner query and returns raw rows. Provided by PlanExecutor.
-		 * @param array $params Parameters forwarded to the inner query
+		 * @param array<string, mixed> $params Parameters forwarded to the inner query
 		 * @throws QuelException On execution or DDL failure
 		 */
 		public function execute(TempTableStage $stage, callable $innerQueryRunner, array $params = []): void {
@@ -214,7 +214,7 @@
 		 * Batching avoids hitting MySQL's max_allowed_packet limit on large result sets.
 		 * @param string $tableName
 		 * @param string[] $columns
-		 * @param array $rows
+		 * @param list<array<string, bool|float|int|string|null>> $rows
 		 * @throws QuelException
 		 */
 		private function insertRows(string $tableName, array $columns, array $rows): void {
@@ -231,8 +231,7 @@
 				
 				foreach ($batch as $row) {
 					foreach ($columns as $col) {
-						$value = $row[$col] ?? null;
-						$params[] = is_scalar($value) || $value === null ? $value : (string)$value;
+						$params[] = $row[$col] ?? null;
 					}
 				}
 				

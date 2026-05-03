@@ -12,8 +12,14 @@
 		protected string $string;
 		protected int $pos;
 		protected int $length;
+		
+		/** @var array<int, Token> */
 		protected array $tokens;
+		
+		/** @var array<int, string> */
 		protected array $single_tokens;
+		
+		/** @var array<int, string> */
 		protected array $two_char_tokens;
 		protected Token $lookahead;
 		protected bool $annotation_mode = false;

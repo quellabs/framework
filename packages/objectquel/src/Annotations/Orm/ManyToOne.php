@@ -10,11 +10,12 @@
 	class ManyToOne implements AnnotationInterface {
 		
 		// Contains parameters that provide additional information about the relationship
+		/** @var array<string, mixed> */
 		protected array $parameters;
 		
 		/**
 		 * Constructor to initialize the parameters.
-		 * @param array $parameters Array with parameters that describe the relationship.
+		 * @param array<string, mixed> $parameters Array with parameters that describe the relationship.
 		 */
 		public function __construct(array $parameters) {
 			$this->parameters = $parameters;
@@ -22,7 +23,7 @@
 		
 		/**
 		 * Returns the parameters for this annotation
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getParameters(): array {
 			return $this->parameters;
@@ -30,7 +31,7 @@
 		
 		/**
 		 * Retrieves the target entity.
-		 * @return string The full namespace of the target entity.
+		 * @return class-string The full namespace of the target entity.
 		 */
 		public function getTargetEntity(): string {
 			return $this->parameters["targetEntity"];
@@ -38,8 +39,8 @@
 		
 		/**
 		 * Retrieve the target entity.
-		 * @param string $targetEntity
-		 * @return void The full namespace of the target entity.
+		 * @param class-string $targetEntity
+		 * @return void
 		 */
 		public function setTargetEntity(string $targetEntity): void {
 			$this->parameters["targetEntity"] = $targetEntity;

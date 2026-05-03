@@ -6,20 +6,21 @@
 		
 		/**
 		 * ValidationInterface constructor
-		 * @param array $conditions
+		 * @param array<string, mixed> $conditions
+		 * @param string|null $errorMessage
 		 */
-		public function __construct(array $conditions=[]);
+		public function __construct(array $conditions=[], ?string $errorMessage = null);
 		
 		/**
 		 * The value to validate
-		 * @param $value
+		 * @param mixed  $value
 		 * @return bool
 		 */
-		public function validate($value) : bool;
+		public function validate(mixed $value) : bool;
 		
 		/**
 		 * Returns the conditions used in this Rule
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getConditions() : array;
 		

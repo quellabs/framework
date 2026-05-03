@@ -4,13 +4,26 @@
 	
 	use Quellabs\AnnotationReader\AnnotationInterface;
 	
-	class Length implements AnnotationInterface {
+	class Length implements PropertyValidationInterface {
 		
+		/**
+		 * @var array{
+		 *     property?: string,
+		 *     message?: string,
+		 *     min?: int,
+		 *     max?: int
+		 * }
+		 */
 		protected array $parameters;
 		
 		/**
 		 * Length constructor.
-		 * @param array $parameters
+		 * @param array{
+		 *     property?: string,
+		 *     message?: string,
+		 *     min?: int,
+		 *     max?: int
+		 * } $parameters
 		 */
 		public function __construct(array $parameters) {
 			$this->parameters = $parameters;
@@ -18,7 +31,12 @@
 		
 		/**
 		 * Returns all parameters
-		 * @return array
+		 * @return array{
+		 *     property?: string,
+		 *     message?: string,
+		 *     min?: int,
+		 *     max?: int
+		 * }
 		 */
 		public function getParameters(): array {
 			return $this->parameters;
