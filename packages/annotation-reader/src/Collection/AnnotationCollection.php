@@ -29,13 +29,15 @@
 		 * @return bool True if offset exists, false otherwise
 		 */
 		public function offsetExists(mixed $offset): bool {
-			// For numeric access
-			if (is_numeric($offset)) {
+			if (is_int($offset)) {
 				return isset($this->annotations[$offset]);
 			}
 			
-			// For class name access - check if any annotation is of this type
-			return $this->getFirst($offset) !== null;
+			if (is_string($offset) && ctype_digit($offset)) {
+				return isset($this->annotations[(int)$offset]);
+			}
+			
+			return is_string($offset) && $this->getFirst($offset) !== null;
 		}
 		
 		/**
@@ -44,13 +46,15 @@
 		 * @return object|null The first annotation of that type or annotation at index
 		 */
 		public function offsetGet(mixed $offset): mixed {
-			// Numeric access - return annotation at index
-			if (is_numeric($offset)) {
+			if (is_int($offset)) {
 				return $this->annotations[$offset] ?? null;
 			}
 			
-			// Class name access - return first annotation of that type
-			return $this->getFirst($offset);
+			if (is_string($offset) && ctype_digit($offset)) {
+				return $this->annotations[(int)$offset] ?? null;
+			}
+			
+			return is_string($offset) ? $this->getFirst($offset) : null;
 		}
 		
 		/**
