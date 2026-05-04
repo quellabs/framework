@@ -184,29 +184,16 @@
 		}
 		
 		/**
-		 * Convert the collection to a grouped array with class names as keys.
-		 * @return array<string, array<int, object>> Associative array where keys are class names and values are
-		 *               indexed arrays of annotations of that type
+		 * @template T of object
+		 * @param class-string<T> $className
+		 * @return \Traversable<int, T>
 		 */
-		public function toGroupedArray(): array {
-			$result = [];
-
+		public function ofType(string $className): \Traversable {
 			foreach ($this->annotations as $annotation) {
-				// Get the fully qualified class name of the current annotation
-				$className = get_class($annotation);
-				
-				// If this class name hasn't been encountered yet, create a new array for it
-				if (!isset($result[$className])) {
-					$result[$className] = [];
+				if ($annotation instanceof $className) {
+					yield $annotation;
 				}
-				
-				// Add the current annotation to the array for its class
-				$result[$className][] = $annotation;
 			}
-			
-			// Return the grouped annotations array where keys are class names
-			// and values are arrays of annotation instances of that class
-			return $result;
 		}
 		
 		/**
