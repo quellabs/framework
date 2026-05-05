@@ -51,7 +51,19 @@
 			'hypothesis' => 'hypotheses',
 			'oasis'      => 'oases',
 			'synopsis'   => 'synopses',
-			'thesis'     => 'theses'
+			'thesis'     => 'theses',
+			'hello'      => 'hellos',
+			'silo'       => 'silos',
+			'piano'      => 'pianos',
+			'photo'      => 'photos',
+			'memo'       => 'memos',
+			'logo'       => 'logos',
+			'solo'       => 'solos',
+			'pro'        => 'pros',
+			'dynamo'     => 'dynamos',
+			'casino'     => 'casinos',
+			'volcano'    => 'volcanoes',  // keeps -es (native English)
+			'tornado'    => 'tornadoes',  // keeps -es (native English)
 		];
 		
 		/**
@@ -66,7 +78,8 @@
 			'/alf$/i'                    => 'alves',     // half -> halves
 			'/([aeiou])y$/i'             => '$1ys',      // boy -> boys
 			'/([aeiou])o$/i'             => '$1os',      // radio -> radios
-			'/([^aeiou])o$/i'            => '$1oes',     // hero -> heroes
+			'/oo$/i'                     => 'oos',       // zoo -> zoos, igloo -> igloos, tattoo -> tattoos
+			'/([^aeiou])o$/i'            => '$1oes',     // hero -> heroes, potato -> potatoes
 			'/(us)$/i'                   => '$1es',      // campus -> campuses
 			'/(is)$/i'                   => 'es',        // analysis -> analyses
 			// Specific Latin -on endings only — not common English words ending in -on
@@ -89,6 +102,7 @@
 			'/alves$/i'                  => 'alf',        // halves -> half
 			'/([aeiou])ys$/i'            => '$1y',        // boys -> boy
 			'/([aeiou])os$/i'            => '$1o',        // radios -> radio
+			'/oos$/i'                    => 'oo',         // zoos -> zoo, igloos -> igloo
 			'/([^aeiou])oes$/i'          => '$1o',        // heroes -> hero
 			'/(us)es$/i'                 => '$1',         // campuses -> campus
 			'/es$/i'                     => 'is',         // analyses -> analysis
