@@ -9,7 +9,7 @@
 	use Quellabs\Support\NamespaceResolver;
 	
 	class Parser {
-
+		
 		// Default keys used throughout the parser
 		private const string DEFAULT_VALUE_KEY = 'value';
 		private const string SWAGGER_PREFIX = 'OA\\';
@@ -35,7 +35,7 @@
 		 * @param array<string, mixed> $configuration Configuration array for placeholder resolution
 		 * @param \ReflectionClass<object>|null $reflection Optional reflection class
 		 */
-		public function __construct(Lexer $lexer, array $configuration=[], ?\ReflectionClass $reflection=null) {
+		public function __construct(Lexer $lexer, array $configuration = [], ?\ReflectionClass $reflection = null) {
 			// Store the lexer instance for token processing
 			$this->lexer = $lexer;
 			
@@ -125,7 +125,7 @@
 				throw new ParserException("Reflection error: {$e->getMessage()}", $e->getCode(), $e);
 			}
 		}
-
+		
 		/**
 		 * Parses a configuration key in the format {parameter.parameter.parameter}
 		 * converting it into a dot-notation string like "parameter.parameter.parameter"
@@ -217,12 +217,11 @@
 			}
 			
 			// Handle string or number literals
-			if (
-				$this->lexer->optionalMatch(Token::String, $token) ||
-				$this->lexer->optionalMatch(Token::Number, $token)
-			) {
-				// Return the actual value of the token
-				return $token->getValue();
+			$peekType = $this->lexer->peek()->getType();
+			
+			// Return the actual value of the token
+			if ($peekType === Token::String || $peekType === Token::Number) {
+				return $this->lexer->match($peekType)->getValue();
 			}
 			
 			// Handle negative numbers (e.g., -10)
@@ -333,8 +332,8 @@
 			if ($this->lexer->optionalMatch(Token::CurlyBraceOpen)) {
 				$value = $this->parseAttributeList();
 				$this->lexer->match(Token::CurlyBraceClose);
-			} elseif ($this->lexer->optionalMatch(Token::String, $parameterValue) || $this->lexer->optionalMatch(Token::Number, $parameterValue)) {
-				$value = $parameterValue->getValue();
+			} elseif (in_array($this->lexer->peek()->getType(), [Token::String, Token::Number], true)) {
+				$value = $this->lexer->match($this->lexer->peek()->getType())->getValue();
 			} elseif ($this->lexer->optionalMatch(Token::Minus)) {
 				$token = $this->lexer->match(Token::Number);
 				$value = 0 - $token->getValue();
@@ -383,13 +382,16 @@
 				
 				// Try to match a string token for the attribute key
 				// If not a string, try to match a number token
-				if (
-					!$this->lexer->optionalMatch(Token::String, $attributeKey) &&
-					!$this->lexer->optionalMatch(Token::Number, $attributeKey)
-				) {
-					// If neither string nor number, throw an exception
-					throw new ParserException("Expected number or string, got " . $attributeKey->toString($attributeKey->getType()));
+				$peekType = $this->lexer->peek()->getType();
+				
+				// If neither string nor number, throw an exception
+				if ($peekType !== Token::String && $peekType !== Token::Number) {
+					$next = $this->lexer->peek();
+					throw new ParserException("Expected number or string, got " . $next->toString($next->getType()));
 				}
+				
+				// Match the passed type (string or number)
+				$attributeKey = $this->lexer->match($peekType);
 				
 				// Check if this is a key-value pair (has an equals sign)
 				if (!$this->lexer->optionalMatch(Token::Equals)) {
