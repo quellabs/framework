@@ -193,11 +193,10 @@
 		
 		/**
 		 * Parses a value from the token stream based on its type
-		 * @param Token $token The token to parse
 		 * @return mixed The parsed value (array, string, number, boolean, or null)
 		 * @throws LexerException|ParserException|\ReflectionException
 		 */
-		private function parseValue(Token $token): mixed {
+		private function parseValue(): mixed {
 			// Handle a configuration string (e.g. ${config.cache.default_ttl})
 			if ($this->lexer->optionalMatch(Token::Dollar)) {
 				$configKey = $this->parseConfigurationKey();
@@ -327,8 +326,6 @@
 		 * @throws LexerException|ParserException|\ReflectionException
 		 */
 		protected function parseAttributeValue(): mixed {
-			$parameterValue = new Token();
-			
 			if ($this->lexer->optionalMatch(Token::CurlyBraceOpen)) {
 				$value = $this->parseAttributeList();
 				$this->lexer->match(Token::CurlyBraceClose);
@@ -500,7 +497,7 @@
 			
 			// If it's neither annotation nor named parameter, treat as unnamed value
 			// This handles cases like simple literals, expressions, or other value types
-			$value = $this->parseValue(new Token());
+			$value = $this->parseValue();
 			
 			// Only store the value if parsing was successful (not null)
 			// Null could indicate empty input or parsing failure
@@ -525,7 +522,7 @@
 			
 			// We found an equals sign, so now parse the value that comes after it
 			// Pass a new Token instance as context for value parsing
-			$value = $this->parseValue(new Token());
+			$value = $this->parseValue();
 			
 			// Validate that we successfully parsed a value
 			if ($value === null) {
