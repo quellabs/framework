@@ -31,6 +31,7 @@
 	use Quellabs\ObjectQuel\Annotations\Orm\OneToOne;
 	use Quellabs\ObjectQuel\Annotations\Orm\Table;
 	use Quellabs\ObjectQuel\Annotations\Orm\Version;
+	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
 	use Quellabs\ObjectQuel\Metadata\EntityMetadataRecord;
 	use Quellabs\ObjectQuel\Metadata\EntityMetadataBuilder;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
@@ -162,21 +163,18 @@
 		 * This is the main access point - all other methods delegate to this.
 		 * @param string|object $entity Entity object, class name, or ReflectionClass
 		 * @return EntityMetadataRecord Immutable metadata object containing all entity information
+		 * @throws EntityResolutionException
 		 */
 		public function getMetadata(string|object $entity): EntityMetadataRecord {
 			// Resolve entity name to a
-			if (is_object($entity)) {
-				$className = $this->resolveProxyClass($entity);
-			} else {
-				$className = $this->resolveProxyClass($entity);
-			}
+			$className = $this->resolveProxyClass($entity);
 			
 			// Return cached metadata if available
 			// Otherwise build and cache the metadata
 			if (!isset($this->metadataCache[$className])) {
 				// Check that the given class actually exists
 				if (!class_exists($className)) {
-					throw new \RuntimeException("Invalid entity class: {$className}");
+					throw new EntityResolutionException("Invalid entity class: {$className}");
 				}
 				
 				// Add metadata to cache
@@ -190,14 +188,11 @@
 		 * Checks if the entity or its parent exists in the entity registry.
 		 * @param string|object $entity The entity to check, either as an object or as a string class name
 		 * @return bool True if the entity or its parent class exists in the registry, false otherwise
+		 * @throws EntityResolutionException
 		 */
 		public function exists(string|object $entity): bool {
 			// Determine the class name of the entity
-			if (is_object($entity)) {
-				$normalizedClass = $this->resolveProxyClass($entity);
-			} else {
-				$normalizedClass = $this->resolveProxyClass($entity);
-			}
+			$normalizedClass = $this->resolveProxyClass($entity);
 			
 			// Check that the class exists
 			if (!class_exists($normalizedClass)) {
@@ -221,6 +216,7 @@
 		 * Returns the table name attached to the entity.
 		 * @param string|object $entity The entity object, class name, or ReflectionClass
 		 * @return string|null The database table name, or null if entity is not registered
+		 * @throws EntityResolutionException
 		 */
 		public function getOwningTable(string|object $entity): ?string {
 			return $this->getMetadata($entity)->tableName;
@@ -230,6 +226,7 @@
 		 * Normalizes the entity name by resolving proxies and namespaces.
 		 * @param string|object $entity Fully qualified class name, short name, object, or ReflectionClass
 		 * @return class-string Normalized, fully qualified class name
+		 * @throws EntityResolutionException
 		 */
 		public function resolveProxyClass(string|object $entity): string {
 			// Determine the class name of the entity
@@ -246,13 +243,13 @@
 			// If the class name is a proxy, get the parent class name
 			if (str_contains($className, $this->proxyNamespace)) {
 				if (!class_exists($className)) {
-					throw new \RuntimeException("Invalid entity class: {$className}");
+					throw new EntityResolutionException("Invalid entity class: {$className}");
 				}
 				
 				$parent = $this->reflectionHandler->getParent($className);
 				
 				if ($parent === null || !class_exists($parent)) {
-					throw new \RuntimeException("Cannot resolve parent of proxy class: {$className}");
+					throw new EntityResolutionException("Cannot resolve parent of proxy class: {$className}");
 				}
 				
 				return $this->normalizedNameCache[$className] = $parent;
@@ -261,7 +258,7 @@
 			// Already fully qualified
 			if (str_contains($className, "\\")) {
 				if (!class_exists($className)) {
-					throw new \RuntimeException("Invalid entity class: {$className}");
+					throw new EntityResolutionException("Invalid entity class: {$className}");
 				}
 				
 				return $this->normalizedNameCache[$className] = $className;
@@ -278,7 +275,7 @@
 			
 			// Assert existence
 			if (!class_exists($fullyQualifiedClassName)) {
-				throw new \RuntimeException("Invalid entity class: {$fullyQualifiedClassName}");
+				throw new EntityResolutionException("Invalid entity class: {$fullyQualifiedClassName}");
 			}
 			
 			// Add $fullyQualifiedClassName to list
@@ -294,14 +291,11 @@
 		 *
 		 * @param string|object $entity The entity for which you want to find dependent entities
 		 * @return array<int, class-string> A list of entity class names that depend on the specified entity
+		 * @throws EntityResolutionException
 		 */
 		public function getDependentEntities(string|object $entity): array {
 			// Resolve proxy classes to their parent entity class
-			if (is_object($entity)) {
-				$normalizedClass = $this->resolveProxyClass($entity);
-			} else {
-				$normalizedClass = $this->resolveProxyClass($entity);
-			}
+			$normalizedClass = $this->resolveProxyClass($entity);
 			
 			// Filter the dependency graph to entities that list $normalizedClass as a dependency,
 			// then return their class names. array_keys on array<class-string, ...> yields array<int, class-string>.
@@ -319,6 +313,7 @@
 		 *      entityName: string,
 		 *      primaryKey: string|null
 		 *  }|null An array with information about the range and primary key, or null if no suitable range is found
+		 * @throws EntityResolutionException
 		 */
 		public function fetchPrimaryKeyOfMainRange(AstRetrieve $astRetrieve): ?array {
 			foreach ($astRetrieve->getRanges() as $range) {
@@ -364,6 +359,7 @@
 		 * This function retrieves the primary keys of a given entity.
 		 * @param string|object $entity The entity from which the primary keys are retrieved
 		 * @return array<int, string> An array with the names of the properties that are the primary keys
+		 * @throws EntityResolutionException
 		 */
 		public function getIdentifierKeys(string|object $entity): array {
 			return $this->getMetadata($entity)->identifierKeys;
@@ -373,6 +369,7 @@
 		 * Retrieves the column names that serve as primary keys for a specific entity.
 		 * @param string|object $entity The entity for which the primary key columns are retrieved
 		 * @return array<int, string> An array with the names of the columns that serve as primary keys
+		 * @throws EntityResolutionException
 		 */
 		public function getIdentifierColumnNames(string|object $entity): array {
 			return $this->getMetadata($entity)->identifierColumns;
@@ -383,6 +380,7 @@
 		 * Version columns are used for optimistic locking.
 		 * @param string|object $entity The entity for which the version columns are retrieved
 		 * @return array<string, array{name: string, column: Column, version: Version}> An array with the names of the columns that serve as version columns
+		 * @throws EntityResolutionException
 		 */
 		public function getVersionColumns(string|object $entity): array {
 			return $this->getMetadata($entity)->versionColumns;
@@ -395,6 +393,7 @@
 		 * to prevent repeated calculations.
 		 * @param string|object $entity The object or class name of the entity
 		 * @return array<string, string> An associative array with the property as key and the column name as value
+		 * @throws EntityResolutionException
 		 */
 		public function getColumnMap(string|object $entity): array {
 			return $this->getMetadata($entity)->columnMap;
@@ -404,6 +403,7 @@
 		 * Returns all annotations grouped by property.
 		 * @param string|object $entity
 		 * @return array<string, array<int, AnnotationInterface>>
+		 * @throws EntityResolutionException
 		 */
 		public function getAnnotations(string|object $entity): array {
 			$result = [];
@@ -423,6 +423,7 @@
 		 * @param string|object $entity
 		 * @param class-string<T> $annotationType
 		 * @return array<string, array<int, T>>
+		 * @throws EntityResolutionException
 		 */
 		public function getAnnotationsOfType(string|object $entity, string $annotationType): array {
 			$result = [];
@@ -440,6 +441,7 @@
 		 * Returns all properties of an entity.
 		 * @param string|object $entity The entity object or class name string
 		 * @return array<int, string> An array of property names
+		 * @throws EntityResolutionException
 		 */
 		public function getProperties(string|object $entity): array {
 			return $this->getMetadata($entity)->properties;
@@ -452,6 +454,7 @@
 		 * The names of these related entities are returned as an array.
 		 * @param string|object $entity The name of the entity class to inspect
 		 * @return array<string, ManyToOne> An array of entity names with which the given class has a ManyToOne relationship
+		 * @throws EntityResolutionException
 		 */
 		public function getManyToOneDependencies(string|object $entity): array {
 			return $this->getMetadata($entity)->getManyToOneDependencies();
@@ -461,6 +464,7 @@
 		 * Retrieves all OneToMany dependencies for a specific entity.
 		 * @param string|object $entity The name of the entity for which you want to get the OneToMany dependencies
 		 * @return array<string, OneToMany> An associative array with the name of the target entity as key and the annotation as value
+		 * @throws EntityResolutionException
 		 */
 		public function getOneToManyDependencies(string|object $entity): array {
 			return $this->getMetadata($entity)->getOneToManyDependencies();
@@ -470,6 +474,7 @@
 		 * Retrieves all OneToOne dependencies for a specific entity.
 		 * @param string|object $entity The name of the entity for which you want to get the OneToOne dependencies
 		 * @return array<string, OneToOne> An associative array with the name of the target entity as key and the annotation as value
+		 * @throws EntityResolutionException
 		 */
 		public function getOneToOneDependencies(string|object $entity): array {
 			return $this->getMetadata($entity)->getOneToOneDependencies();
@@ -480,6 +485,7 @@
 		 * An immutable entity is marked with the @Immutable annotation.
 		 * @param string|object $entity The entity to check
 		 * @return bool True if the entity is immutable, false otherwise
+		 * @throws EntityResolutionException
 		 */
 		public function isImmutable(string|object $entity): bool {
 			$annotationList = $this->getAnnotationsOfType($entity, Immutable::class);
@@ -491,6 +497,7 @@
 		 * Returns all relationship annotations (ManyToOne, OneToMany, OneToOne) for the entity.
 		 * @param string|object $entity The name of the entity for which you want to get dependencies
 		 * @return array<string, array<int, ManyToOne|OneToOne|OneToMany>> Property name => array of relationship annotations
+		 * @throws EntityResolutionException
 		 */
 		public function getAllDependencies(string|object $entity): array {
 			$metadata = $this->getMetadata($entity);
@@ -518,6 +525,7 @@
 		 * Retrieves all index annotations defined for a given entity class.
 		 * @param string|object $entity The entity class to analyze (can be string classname or object instance)
 		 * @return array<int, object> A collection of Index, UniqueIndex and FullTextIndex annotation objects
+		 * @throws EntityResolutionException
 		 */
 		public function getIndexes(string|object $entity): array {
 			return $this->getMetadata($entity)->indexes;
@@ -536,6 +544,7 @@
 		 * @param string|object $entity The entity to inspect
 		 * @param array<int, string> $propertyNames $propertyNames The property names passed to search() or search_score()
 		 * @return FullTextIndex|null The matching index, or null if none covers all columns
+		 * @throws EntityResolutionException
 		 */
 		public function getFullTextIndexForColumns(string|object $entity, array $propertyNames): ?FullTextIndex {
 			$indexes = $this->getMetadata($entity)->indexes;
@@ -561,6 +570,7 @@
 		 * Retrieves the primary key field name for a given entity.
 		 * @param string|object $entity The entity object or class to inspect
 		 * @return string|null The primary key property name, or null if none exists
+		 * @throws EntityResolutionException
 		 */
 		public function getPrimaryKey(string|object $entity): ?string {
 			return $this->getMetadata($entity)->getPrimaryKey();
@@ -573,6 +583,7 @@
 		 * 2. Primary keys with no explicitly defined strategy (defaulting to auto-increment)
 		 * @param string|object $entity The entity to examine
 		 * @return string|null The name of the auto-incrementing primary key field, or null if none found
+		 * @throws EntityResolutionException
 		 */
 		public function findAutoIncrementPrimaryKey(string|object $entity): ?string {
 			return $this->getMetadata($entity)->autoIncrementColumn;
@@ -582,6 +593,7 @@
 		 * Extracts database column definitions from an entity class using reflection and annotations.
 		 * @param string $className The fully qualified class name of the entity
 		 * @return array<string, mixed> An associative array of column definitions indexed by column name
+		 * @throws EntityResolutionException
 		 */
 		public function extractEntityColumnDefinitions(string $className): array {
 			return $this->getMetadata($className)->columnDefinitions;
@@ -595,6 +607,7 @@
 		 * @param mixed $primaryKey The primary key to be normalized
 		 * @param string $entityType The type of entity for which the primary key is needed
 		 * @return array<string, mixed> A normalized representation of the primary key as an array
+		 * @throws EntityResolutionException
 		 */
 		public function formatPrimaryKeyAsArray(mixed $primaryKey, string $entityType): array {
 			return $this->getMetadata($entityType)->formatPrimaryKeyAsArray($primaryKey);
@@ -647,6 +660,7 @@
 		/**
 		 * Build dependency graph for all entities.
 		 * @return array<class-string, array<int, class-string>> Entity class name => array of dependent entity class names
+		 * @throws EntityResolutionException
 		 */
 		private function getAllEntityDependencies(): array {
 			// Build the dependency graph only once, then cache it
