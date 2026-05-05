@@ -1,5 +1,6 @@
 parameters:
     level: 7
+    treatPhpDocTypesAsCertain: false
     paths:
         - packages/objectquel/src
         - packages/canvas/src
