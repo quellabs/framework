@@ -8,21 +8,23 @@
 	 */
 	abstract class BasicEnum {
 		
-		/** @var array<string, mixed>|null */
-		private static ?array $constCache = null;
+		/** @var array<class-string, array<string, mixed>> */
+		private static array $constCache = [];
 		
 		/**
 		 * Returns all the constants in this Enum
-		 * @return array<string, mixed>|null
+		 * @return array<string, mixed>
 		 * @throws \ReflectionException
 		 */
-		public static function getConstants(): ?array {
-			if (self::$constCache === null) {
-				$reflect = new \ReflectionClass(get_called_class());
-				self::$constCache = $reflect->getConstants();
+		public static function getConstants(): array {
+			$class = get_called_class();
+			
+			if (!isset(self::$constCache[$class])) {
+				$reflect = new \ReflectionClass($class);
+				self::$constCache[$class] = $reflect->getConstants();
 			}
 			
-			return self::$constCache;
+			return self::$constCache[$class];
 		}
 		
 		/**
@@ -30,8 +32,13 @@
 		 * @return mixed
 		 * @throws \ReflectionException
 		 */
-		public static function lowestValue() {
+		public static function lowestValue(): mixed {
 			$values = array_values(self::getConstants());
+			
+			if ($values === []) {
+				throw new \LogicException('Enum has no constants');
+			}
+			
 			return min($values);
 		}
 		
@@ -50,7 +57,7 @@
 			}
 			
 			$keys = array_map('strtolower', array_keys($constants));
-			return in_array(strtolower($name), $keys);
+			return in_array(strtolower($name), $keys, true);
 		}
 		
 		/**
@@ -60,8 +67,7 @@
 		 * @throws \ReflectionException
 		 */
 		public static function isValidValue(mixed $value): bool {
-			$values = array_values(self::getConstants());
-			return in_array($value, $values);
+			return in_array($value, self::getConstants(), true);
 		}
 		
 		/**
@@ -78,7 +84,7 @@
 			}
 			
 			foreach($constants as $k => $v) {
-				if (strcasecmp($key, $k) == 0) {
+				if (strcasecmp($key, $k) === 0) {
 					return $v;
 				}
 			}
@@ -93,6 +99,6 @@
 		 * @throws \ReflectionException
 		 */
 		public static function toString(mixed $value): bool|int|string {
-			return array_search($value, self::getConstants());
+			return array_search($value, self::getConstants(), true);
 		}
 	}
