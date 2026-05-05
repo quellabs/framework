@@ -19,8 +19,16 @@ jobs:
           php-version: '8.3'
           tools: composer
 
+      - name: Override path repository versions
+        run: |
+          for pkg in packages/*/; do
+            if [ -f "$pkg/composer.json" ]; then
+              composer config version "dev-main" --working-dir="$pkg"
+            fi
+          done
+
       - name: Install dependencies
-        run: composer install --prefer-dist --no-progress --no-interaction
+        run: composer install --prefer-source --no-progress --no-interaction
 
       - name: Run PHPStan
         run: vendor/bin/phpstan analyse --no-progress --error-format=github
