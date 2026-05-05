@@ -66,9 +66,9 @@
 		
 		/**
 		 * Get the service provider instance if set
-		 * @return ServiceProvider|null The service provider or null if not set
+		 * @return ServiceProvider The service provider or null if not set
 		 */
-		public function getProvider(): ?ServiceProvider {
+		public function getProvider(): ServiceProvider {
 			return $this->provider;
 		}
 	}
