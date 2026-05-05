@@ -6,22 +6,11 @@
 	use Quellabs\ObjectQuel\Annotations\Orm\UniqueIndex;
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
 	use Quellabs\ObjectQuel\EntityStore;
+	use Quellabs\ObjectQuel\Sculpt\SculptTypes;
 	
 	/**
-	 * @phpstan-type IndexDefinition array{
-	 *     columns: array<int, string>,
-	 *     type: string,
-	 *     unique: bool
-	 * }
-	 *
-	 * @phpstan-type IndexChangeSet array{
-	 *     added: array<string, IndexDefinition>,
-	 *     modified: array<string, array{
-	 *         database: IndexDefinition,
-	 *         entity: IndexDefinition
-	 *     }>,
-	 *     deleted: array<string, IndexDefinition>
-	 * }
+	 * @phpstan-import-type IndexDefinition from SculptTypes
+	 * @phpstan-import-type IndexChangeSet from SculptTypes
 	 */
 	class IndexComparator {
 		
@@ -129,6 +118,7 @@
 			$result = [];
 
 			foreach ($this->entityStore->getIndexes($entity) as $annotation) {
+				/** @var FullTextIndex|UniqueIndex|\Quellabs\ObjectQuel\Annotations\Orm\Index $annotation */
 				// Determine the index type from the annotation class
 				if ($annotation instanceof FullTextIndex) {
 					$indexType = 'FULLTEXT';

@@ -2,6 +2,8 @@
 	
 	namespace Quellabs\AnnotationReader\Collection;
 	
+	use Quellabs\AnnotationReader\AnnotationInterface;
+	
 	/**
 	 * Immutable collection class for managing annotations.
 	 * @implements \ArrayAccess<int|string, object>
@@ -9,7 +11,7 @@
 	 */
 	class AnnotationCollection implements \ArrayAccess, \Countable, \Iterator {
 		
-		/** @var array<int, object> Array to store annotation objects */
+		/** @var array<int, AnnotationInterface> Array to store annotation objects */
 		private array $annotations = [];
 		
 		/** @var int Current position for iterator implementation */
@@ -17,7 +19,7 @@
 		
 		/**
 		 * Constructor to initialize the collection with annotations.
-		 * @param array<int, object> $annotations Array of annotation objects to store
+		 * @param array<int, AnnotationInterface> $annotations Array of annotation objects to store
 		 */
 		public function __construct(array $annotations = []) {
 			$this->annotations = array_values($annotations); // Always flat numeric array
@@ -184,29 +186,16 @@
 		}
 		
 		/**
-		 * Convert the collection to a grouped array with class names as keys.
-		 * @return array<string, array<int, object>> Associative array where keys are class names and values are
-		 *               indexed arrays of annotations of that type
+		 * @template T of object
+		 * @param class-string<T> $className
+		 * @return \Traversable<int, T>
 		 */
-		public function toGroupedArray(): array {
-			$result = [];
-
+		public function ofType(string $className): \Traversable {
 			foreach ($this->annotations as $annotation) {
-				// Get the fully qualified class name of the current annotation
-				$className = get_class($annotation);
-				
-				// If this class name hasn't been encountered yet, create a new array for it
-				if (!isset($result[$className])) {
-					$result[$className] = [];
+				if ($annotation instanceof $className) {
+					yield $annotation;
 				}
-				
-				// Add the current annotation to the array for its class
-				$result[$className][] = $annotation;
 			}
-			
-			// Return the grouped annotations array where keys are class names
-			// and values are arrays of annotation instances of that class
-			return $result;
 		}
 		
 		/**
@@ -215,6 +204,7 @@
 		 * @return self New filtered collection
 		 */
 		public function filter(callable $callback): self {
+			/** @var array<int, AnnotationInterface> $filtered */
 			$filtered = [];
 			
 			foreach ($this->annotations as $annotation) {
@@ -247,6 +237,7 @@
 		 * @return self Collection of annotations of the specified type
 		 */
 		public function all(string $className): self {
+			/** @var array<int, AnnotationInterface> $result */
 			$result = [];
 			
 			foreach ($this->annotations as $annotation) {
@@ -273,6 +264,8 @@
 		 * @return self
 		 */
 		public function merge(AnnotationCollection $other): self {
-			return new self(array_merge($this->annotations, $other->toIndexedArray()));
+			/** @var array<int, AnnotationInterface> $merged */
+			$merged = array_merge($this->annotations, $other->toIndexedArray());
+			return new self($merged);
 		}
 	}

@@ -22,13 +22,14 @@
 	
 	use Quellabs\AnnotationReader\AnnotationInterface;
 	use Quellabs\AnnotationReader\AnnotationReader;
-	use Quellabs\AnnotationReader\Collection\AnnotationCollection;
+	use Quellabs\AnnotationReader\Exception\AnnotationReaderException;
 	use Quellabs\ObjectQuel\Annotations\Orm\Column;
 	use Quellabs\ObjectQuel\Annotations\Orm\Immutable;
 	use Quellabs\ObjectQuel\Annotations\Orm\FullTextIndex;
 	use Quellabs\ObjectQuel\Annotations\Orm\ManyToOne;
 	use Quellabs\ObjectQuel\Annotations\Orm\OneToMany;
 	use Quellabs\ObjectQuel\Annotations\Orm\OneToOne;
+	use Quellabs\ObjectQuel\Annotations\Orm\Table;
 	use Quellabs\ObjectQuel\Annotations\Orm\Version;
 	use Quellabs\ObjectQuel\Metadata\EntityMetadataRecord;
 	use Quellabs\ObjectQuel\Metadata\EntityMetadataBuilder;
@@ -58,7 +59,7 @@
 		private string $entityNamespace;
 		
 		// Simple registry of normalized class name => table name
-		/** @var array<string, string> */
+		/** @var array<class-string, string> */
 		private array $entityRegistry = [];
 		
 		// Cache for normalized entity names
@@ -70,7 +71,7 @@
 		private array $metadataCache = [];
 		
 		// Dependency graph (calculated once on demand)
-		/** @var array<string, array<int, string>>|null */
+		/** @var array<class-string, array<int, class-string>>|null */
 		private ?array $dependencyGraph = null;
 		
 		/**
@@ -84,6 +85,7 @@
 		 * 5. Initializing the proxy generator for lazy loading
 		 *
 		 * @param Configuration $configuration The ObjectQuel configuration object
+		 * @throws AnnotationReaderException
 		 */
 		public function __construct(Configuration $configuration) {
 			$annotationReaderConfiguration = new \Quellabs\AnnotationReader\Configuration();
@@ -158,15 +160,26 @@
 		/**
 		 * Get complete metadata for an entity.
 		 * This is the main access point - all other methods delegate to this.
-		 * @param mixed $entity Entity object, class name, or ReflectionClass
+		 * @param string|object $entity Entity object, class name, or ReflectionClass
 		 * @return EntityMetadataRecord Immutable metadata object containing all entity information
 		 */
-		public function getMetadata(mixed $entity): EntityMetadataRecord {
-			$className = $this->normalizeEntityName($entity);
+		public function getMetadata(string|object $entity): EntityMetadataRecord {
+			// Resolve entity name to a
+			if (is_object($entity)) {
+				$className = $this->resolveProxyClass($entity);
+			} else {
+				$className = $this->resolveProxyClass($entity);
+			}
 			
 			// Return cached metadata if available
 			// Otherwise build and cache the metadata
 			if (!isset($this->metadataCache[$className])) {
+				// Check that the given class actually exists
+				if (!class_exists($className)) {
+					throw new \RuntimeException("Invalid entity class: {$className}");
+				}
+				
+				// Add metadata to cache
 				$this->metadataCache[$className] = $this->metadataBuilder->build($className);
 			}
 			
@@ -175,12 +188,21 @@
 		
 		/**
 		 * Checks if the entity or its parent exists in the entity registry.
-		 * @param mixed $entity The entity to check, either as an object or as a string class name
+		 * @param string|object $entity The entity to check, either as an object or as a string class name
 		 * @return bool True if the entity or its parent class exists in the registry, false otherwise
 		 */
-		public function exists(mixed $entity): bool {
+		public function exists(string|object $entity): bool {
 			// Determine the class name of the entity
-			$normalizedClass = $this->normalizeEntityName($entity);
+			if (is_object($entity)) {
+				$normalizedClass = $this->resolveProxyClass($entity);
+			} else {
+				$normalizedClass = $this->resolveProxyClass($entity);
+			}
+			
+			// Check that the class exists
+			if (!class_exists($normalizedClass)) {
+				return false;
+			}
 			
 			// Check if the entity class exists in the entity registry
 			if (isset($this->entityRegistry[$normalizedClass])) {
@@ -197,35 +219,51 @@
 		
 		/**
 		 * Returns the table name attached to the entity.
-		 * @param mixed $entity The entity object, class name, or ReflectionClass
+		 * @param string|object $entity The entity object, class name, or ReflectionClass
 		 * @return string|null The database table name, or null if entity is not registered
 		 */
-		public function getOwningTable(mixed $entity): ?string {
+		public function getOwningTable(string|object $entity): ?string {
 			return $this->getMetadata($entity)->tableName;
 		}
 		
 		/**
 		 * Normalizes the entity name by resolving proxies and namespaces.
-		 * @param mixed $entity Fully qualified class name, short name, object, or ReflectionClass
-		 * @return string Normalized, fully qualified class name
+		 * @param string|object $entity Fully qualified class name, short name, object, or ReflectionClass
+		 * @return class-string Normalized, fully qualified class name
 		 */
-		public function normalizeEntityName(mixed $entity): string {
+		public function resolveProxyClass(string|object $entity): string {
 			// Determine the class name of the entity
 			$className = $this->extractClassName($entity);
 			
 			// Return cached entity name if present
 			if (isset($this->normalizedNameCache[$className])) {
-				return $this->normalizedNameCache[$className];
+				/** @var class-string $cached */
+				$cached = $this->normalizedNameCache[$className];
+				return $cached;
 			}
 			
 			// Proxy class → resolve to parent
 			// If the class name is a proxy, get the parent class name
 			if (str_contains($className, $this->proxyNamespace)) {
-				return $this->normalizedNameCache[$className] = $this->reflectionHandler->getParent($className);
+				if (!class_exists($className)) {
+					throw new \RuntimeException("Invalid entity class: {$className}");
+				}
+				
+				$parent = $this->reflectionHandler->getParent($className);
+				
+				if ($parent === null || !class_exists($parent)) {
+					throw new \RuntimeException("Cannot resolve parent of proxy class: {$className}");
+				}
+				
+				return $this->normalizedNameCache[$className] = $parent;
 			}
 			
 			// Already fully qualified
 			if (str_contains($className, "\\")) {
+				if (!class_exists($className)) {
+					throw new \RuntimeException("Invalid entity class: {$className}");
+				}
+				
 				return $this->normalizedNameCache[$className] = $className;
 			}
 			
@@ -238,6 +276,12 @@
 				$fullyQualifiedClassName = $resolved;
 			}
 			
+			// Assert existence
+			if (!class_exists($fullyQualifiedClassName)) {
+				throw new \RuntimeException("Invalid entity class: {$fullyQualifiedClassName}");
+			}
+			
+			// Add $fullyQualifiedClassName to list
 			return $this->normalizedNameCache[$className] = $fullyQualifiedClassName;
 		}
 		
@@ -248,29 +292,23 @@
 		 * a ManyToOne or owning OneToOne relationship to the specified entity.
 		 * Useful for determining cascade deletion order and relationship integrity.
 		 *
-		 * @param mixed $entity The entity for which you want to find dependent entities
-		 * @return array<int, string> A list of entity class names that depend on the specified entity
+		 * @param string|object $entity The entity for which you want to find dependent entities
+		 * @return array<int, class-string> A list of entity class names that depend on the specified entity
 		 */
-		public function getDependentEntities(mixed $entity): array {
-			// Determine the class name of the entity
-			// If the class name is a proxy, get the parent class
-			$normalizedClass = $this->normalizeEntityName($entity);
-			
-			// Get all known entity dependencies
-			$dependencies = $this->getAllEntityDependencies();
-			
-			// Loop through each entity and its dependencies to check for the specified class
-			$result = [];
-			
-			foreach ($dependencies as $entityClass => $entityDependencies) {
-				// If the specified class exists in the dependencies list, add it to the result
-				if (in_array($normalizedClass, $entityDependencies, true)) {
-					$result[] = $entityClass;
-				}
+		public function getDependentEntities(string|object $entity): array {
+			// Resolve proxy classes to their parent entity class
+			if (is_object($entity)) {
+				$normalizedClass = $this->resolveProxyClass($entity);
+			} else {
+				$normalizedClass = $this->resolveProxyClass($entity);
 			}
 			
-			// Return the list of dependent entities
-			return $result;
+			// Filter the dependency graph to entities that list $normalizedClass as a dependency,
+			// then return their class names. array_keys on array<class-string, ...> yields array<int, class-string>.
+			return array_keys(array_filter(
+				$this->getAllEntityDependencies(),
+				fn(array $entityDependencies) => in_array($normalizedClass, $entityDependencies, true)
+			));
 		}
 		
 		/**
@@ -324,29 +362,29 @@
 		
 		/**
 		 * This function retrieves the primary keys of a given entity.
-		 * @param mixed $entity The entity from which the primary keys are retrieved
+		 * @param string|object $entity The entity from which the primary keys are retrieved
 		 * @return array<int, string> An array with the names of the properties that are the primary keys
 		 */
-		public function getIdentifierKeys(mixed $entity): array {
+		public function getIdentifierKeys(string|object $entity): array {
 			return $this->getMetadata($entity)->identifierKeys;
 		}
 		
 		/**
 		 * Retrieves the column names that serve as primary keys for a specific entity.
-		 * @param mixed $entity The entity for which the primary key columns are retrieved
+		 * @param string|object $entity The entity for which the primary key columns are retrieved
 		 * @return array<int, string> An array with the names of the columns that serve as primary keys
 		 */
-		public function getIdentifierColumnNames(mixed $entity): array {
+		public function getIdentifierColumnNames(string|object $entity): array {
 			return $this->getMetadata($entity)->identifierColumns;
 		}
 		
 		/**
 		 * Retrieves the columns that serve as version columns for a specific entity.
 		 * Version columns are used for optimistic locking.
-		 * @param mixed $entity The entity for which the version columns are retrieved
+		 * @param string|object $entity The entity for which the version columns are retrieved
 		 * @return array<string, array{name: string, column: Column, version: Version}> An array with the names of the columns that serve as version columns
 		 */
-		public function getVersionColumns(mixed $entity): array {
+		public function getVersionColumns(string|object $entity): array {
 			return $this->getMetadata($entity)->versionColumns;
 		}
 		
@@ -355,23 +393,23 @@
 		 * This function generates an associative array that links the properties of an entity
 		 * to their respective column names in the database. The results are cached
 		 * to prevent repeated calculations.
-		 * @param mixed $entity The object or class name of the entity
+		 * @param string|object $entity The object or class name of the entity
 		 * @return array<string, string> An associative array with the property as key and the column name as value
 		 */
-		public function getColumnMap(mixed $entity): array {
+		public function getColumnMap(string|object $entity): array {
 			return $this->getMetadata($entity)->columnMap;
 		}
 		
 		/**
 		 * Returns all annotations grouped by property.
-		 * @param mixed $entity
+		 * @param string|object $entity
 		 * @return array<string, array<int, AnnotationInterface>>
 		 */
-		public function getAnnotations(mixed $entity): array {
+		public function getAnnotations(string|object $entity): array {
 			$result = [];
 			
-			foreach ($this->getMetadata($entity)->annotations as $property => $annotationCollection) {
-				foreach ($annotationCollection as $annotation) {
+			foreach ($this->getMetadata($entity)->annotations as $property => $collection) {
+				foreach ($collection->ofType(AnnotationInterface::class) as $annotation) {
 					$result[$property][] = $annotation;
 				}
 			}
@@ -382,18 +420,16 @@
 		/**
 		 * Returns annotations filtered by a specific type.
 		 * @template T of AnnotationInterface
-		 * @param mixed $entity
+		 * @param string|object $entity
 		 * @param class-string<T> $annotationType
 		 * @return array<string, array<int, T>>
 		 */
-		public function getAnnotationsOfType(mixed $entity, string $annotationType): array {
+		public function getAnnotationsOfType(string|object $entity, string $annotationType): array {
 			$result = [];
 			
 			foreach ($this->getMetadata($entity)->annotations as $property => $annotationCollection) {
-				foreach ($annotationCollection as $annotation) {
-					if (is_a($annotation, $annotationType)) {
-						$result[$property][] = $annotation;
-					}
+				foreach ($annotationCollection->ofType($annotationType) as $annotation) {
+					$result[$property][] = $annotation;
 				}
 			}
 			
@@ -402,10 +438,10 @@
 		
 		/**
 		 * Returns all properties of an entity.
-		 * @param mixed $entity The entity object or class name string
+		 * @param string|object $entity The entity object or class name string
 		 * @return array<int, string> An array of property names
 		 */
-		public function getProperties(mixed $entity): array {
+		public function getProperties(string|object $entity): array {
 			return $this->getMetadata($entity)->properties;
 		}
 		
@@ -414,38 +450,38 @@
 		 * This function uses annotations to determine which other entities
 		 * are related to the given entity class via a ManyToOne relationship.
 		 * The names of these related entities are returned as an array.
-		 * @param mixed $entity The name of the entity class to inspect
+		 * @param string|object $entity The name of the entity class to inspect
 		 * @return array<string, ManyToOne> An array of entity names with which the given class has a ManyToOne relationship
 		 */
-		public function getManyToOneDependencies(mixed $entity): array {
+		public function getManyToOneDependencies(string|object $entity): array {
 			return $this->getMetadata($entity)->getManyToOneDependencies();
 		}
 		
 		/**
 		 * Retrieves all OneToMany dependencies for a specific entity.
-		 * @param mixed $entity The name of the entity for which you want to get the OneToMany dependencies
+		 * @param string|object $entity The name of the entity for which you want to get the OneToMany dependencies
 		 * @return array<string, OneToMany> An associative array with the name of the target entity as key and the annotation as value
 		 */
-		public function getOneToManyDependencies(mixed $entity): array {
+		public function getOneToManyDependencies(string|object $entity): array {
 			return $this->getMetadata($entity)->getOneToManyDependencies();
 		}
 		
 		/**
 		 * Retrieves all OneToOne dependencies for a specific entity.
-		 * @param mixed $entity The name of the entity for which you want to get the OneToOne dependencies
+		 * @param string|object $entity The name of the entity for which you want to get the OneToOne dependencies
 		 * @return array<string, OneToOne> An associative array with the name of the target entity as key and the annotation as value
 		 */
-		public function getOneToOneDependencies(mixed $entity): array {
+		public function getOneToOneDependencies(string|object $entity): array {
 			return $this->getMetadata($entity)->getOneToOneDependencies();
 		}
 		
 		/**
 		 * Return true if the entity is immutable (readonly), false if not.
 		 * An immutable entity is marked with the @Immutable annotation.
-		 * @param mixed $entity The entity to check
+		 * @param string|object $entity The entity to check
 		 * @return bool True if the entity is immutable, false otherwise
 		 */
-		public function isImmutable(mixed $entity): bool {
+		public function isImmutable(string|object $entity): bool {
 			$annotationList = $this->getAnnotationsOfType($entity, Immutable::class);
 			return !empty($annotationList);
 		}
@@ -453,10 +489,10 @@
 		/**
 		 * Internal helper function for retrieving properties with a specific annotation.
 		 * Returns all relationship annotations (ManyToOne, OneToMany, OneToOne) for the entity.
-		 * @param mixed $entity The name of the entity for which you want to get dependencies
+		 * @param string|object $entity The name of the entity for which you want to get dependencies
 		 * @return array<string, array<int, ManyToOne|OneToOne|OneToMany>> Property name => array of relationship annotations
 		 */
-		public function getAllDependencies(mixed $entity): array {
+		public function getAllDependencies(string|object $entity): array {
 			$metadata = $this->getMetadata($entity);
 			
 			// Combine all relationship types into a single result array
@@ -480,10 +516,10 @@
 		
 		/**
 		 * Retrieves all index annotations defined for a given entity class.
-		 * @param mixed $entity The entity class to analyze (can be string classname or object instance)
+		 * @param string|object $entity The entity class to analyze (can be string classname or object instance)
 		 * @return array<int, object> A collection of Index, UniqueIndex and FullTextIndex annotation objects
 		 */
-		public function getIndexes(mixed $entity): array {
+		public function getIndexes(string|object $entity): array {
 			return $this->getMetadata($entity)->indexes;
 		}
 		
@@ -497,11 +533,11 @@
 		 * Note: the columns defined on FullTextIndex annotations are property names,
 		 * not database column names. This method compares at the property level.
 		 *
-		 * @param mixed $entity The entity to inspect
+		 * @param string|object $entity The entity to inspect
 		 * @param array<int, string> $propertyNames $propertyNames The property names passed to search() or search_score()
 		 * @return FullTextIndex|null The matching index, or null if none covers all columns
 		 */
-		public function getFullTextIndexForColumns(mixed $entity, array $propertyNames): ?FullTextIndex {
+		public function getFullTextIndexForColumns(string|object $entity, array $propertyNames): ?FullTextIndex {
 			$indexes = $this->getMetadata($entity)->indexes;
 			
 			foreach ($indexes as $index) {
@@ -523,10 +559,10 @@
 		
 		/**
 		 * Retrieves the primary key field name for a given entity.
-		 * @param mixed $entity The entity object or class to inspect
+		 * @param string|object $entity The entity object or class to inspect
 		 * @return string|null The primary key property name, or null if none exists
 		 */
-		public function getPrimaryKey(mixed $entity): ?string {
+		public function getPrimaryKey(string|object $entity): ?string {
 			return $this->getMetadata($entity)->getPrimaryKey();
 		}
 		
@@ -535,10 +571,10 @@
 		 * database-generated values, which are either:
 		 * 1. Primary keys with a PrimaryKeyStrategy annotation set to "identity", or
 		 * 2. Primary keys with no explicitly defined strategy (defaulting to auto-increment)
-		 * @param mixed $entity The entity to examine
+		 * @param string|object $entity The entity to examine
 		 * @return string|null The name of the auto-incrementing primary key field, or null if none found
 		 */
-		public function findAutoIncrementPrimaryKey(mixed $entity): ?string {
+		public function findAutoIncrementPrimaryKey(string|object $entity): ?string {
 			return $this->getMetadata($entity)->autoIncrementColumn;
 		}
 		
@@ -568,10 +604,10 @@
 		
 		/**
 		 * Extract class name from various entity representations.
-		 * @param mixed $entity The entity in any supported format
+		 * @param string|object $entity The entity in any supported format
 		 * @return string The extracted class name
 		 */
-		private function extractClassName(mixed $entity): string {
+		private function extractClassName(string|object $entity): string {
 			if ($entity instanceof \ReflectionClass) {
 				return $entity->getName();
 			} elseif (is_object($entity)) {
@@ -584,20 +620,33 @@
 		/**
 		 * Initialize entity classes using the EntityLocator.
 		 * @return void
+		 * @throws AnnotationReaderException
 		 */
 		private function initializeEntities(): void {
 			$entityLocator = new EntityLocator($this->configuration, $this->annotationReader);
 			
 			foreach ($entityLocator->discoverEntities() as $entityName) {
-				$classAnnotations = $this->annotationReader->getClassAnnotations($entityName);
-				$tableName = $classAnnotations["Quellabs\\ObjectQuel\\Annotations\\Orm\\Table"]->getName();
-				$this->entityRegistry[$entityName] = $tableName;
+				// Find all table class annotations
+				$table = $this->annotationReader
+					->getClassAnnotations($entityName)
+					->getFirst(Table::class);
+				
+				// If none found, skip and continue to the next entity
+				if (!$table instanceof Table) {
+					continue;
+				}
+				
+				/**
+				 * Store in register
+				 * @var class-string $entityName
+				 */
+				$this->entityRegistry[$entityName] = $table->getName();
 			}
 		}
 		
 		/**
 		 * Build dependency graph for all entities.
-		 * @return array<string, array<int, string>> Entity class name => array of dependent entity class names
+		 * @return array<class-string, array<int, class-string>> Entity class name => array of dependent entity class names
 		 */
 		private function getAllEntityDependencies(): array {
 			// Build the dependency graph only once, then cache it
@@ -613,7 +662,7 @@
 					// Add ManyToOne dependencies
 					// These represent foreign key relationships where this entity depends on another
 					foreach ($metadata->manyToOneRelations as $relation) {
-						$dependencies[] = $this->normalizeEntityName($relation->getTargetEntity());
+						$dependencies[] = $this->resolveProxyClass ($relation->getTargetEntity());
 					}
 					
 					// Add OneToOne dependencies (owning side only)
@@ -621,7 +670,7 @@
 					// (indicated by the inversedBy property being set)
 					foreach ($metadata->oneToOneRelations as $relation) {
 						if (!empty($relation->getInversedBy())) {
-							$dependencies[] = $this->normalizeEntityName($relation->getTargetEntity());
+							$dependencies[] = $this->resolveProxyClass ($relation->getTargetEntity());
 						}
 					}
 					
@@ -632,4 +681,5 @@
 			
 			return $this->dependencyGraph;
 		}
+		
 	}

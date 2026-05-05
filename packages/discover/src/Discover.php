@@ -119,12 +119,37 @@
 		 * @return T|null The provider instance if found, null otherwise
 		 */
 		public function get(string $className): ?ProviderInterface {
+			// If no definition was scanned, abort
 			if (!isset($this->providerDefinitionsByClass[$className])) {
 				return null;
 			}
-			
+
+			// Fetch provider definition
 			$definition = $this->providerDefinitionsByClass[$className];
-			return $this->getOrInstantiateProvider($definition->getKey(), $definition);
+			
+			// Fetch provider
+			$provider = $this->getOrInstantiateProvider(
+				$definition->getKey(),
+				$definition
+			);
+			
+			// If that failed, return null
+			if ($provider === null) {
+				return null;
+			}
+			
+			// Validate that the provider implements the requested class
+			if (!$provider instanceof $className) {
+				throw new \LogicException(
+					"Provider instance does not match requested class '{$className}'"
+				);
+			}
+			
+			/**
+			 * Return the class
+			 * @var T $provider
+			 */
+			return $provider;
 		}
 		
 		/**
@@ -309,9 +334,9 @@
 				);
 			}
 			
-			// Attempt to instantiate the provider class
-			// Catch specific errors to provide targeted feedback about constructor issues
 			try {
+				// Attempt to instantiate the provider class
+				// Catch specific errors to provide targeted feedback about constructor issues
 				$provider = new $className();
 			} catch (\ArgumentCountError $e) {
 				// Constructor requires arguments but none were provided
@@ -329,6 +354,15 @@
 					ProviderInstantiationException::INSTANTIATION_FAILED,
 					$definition,
 					$e
+				);
+			}
+			
+			// Throw exception when the class is not an instance of ProviderInterface
+			if (!$provider instanceof ProviderInterface) {
+				throw new ProviderInstantiationException(
+					"Provider '{$className}' must implement ProviderInterface",
+					ProviderInstantiationException::INVALID_PROVIDER,
+					$definition
 				);
 			}
 			

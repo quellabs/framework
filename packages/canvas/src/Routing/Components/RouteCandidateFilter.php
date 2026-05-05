@@ -2,6 +2,8 @@
 	
 	namespace Quellabs\Canvas\Routing\Components;
 	
+	use Quellabs\Canvas\Routing\RouteTypes;
+	
 	/**
 	 * RouteCandidateFilter
 	 *
@@ -34,9 +36,9 @@
 	 * n = total routes and k = 3-5 remaining candidates, achieving 95%+ reduction
 	 * in computational work for typical applications.
 	 *
-	 * @phpstan-type CompiledSegment array{type: string, original?: string, is_multi_wildcard?: bool}
-	 * @phpstan-type Route array{controller: string, method: string, route_path: string, http_methods: list<string>, compiled_pattern: list<CompiledSegment>, priority: int, route: \Quellabs\Canvas\Annotations\Route}
-	 * @phpstan-type RouteIndex array{multi_level: array<int, array<string, list<Route>>>, segment_count: array<int, list<Route>>, http_methods: array<string, list<Route>>, prefix_tree: array<string, mixed>}
+	 * @phpstan-import-type CompiledSegment from RouteTypes
+	 * @phpstan-import-type RouteDefinition from RouteTypes
+	 * @phpstan-import-type RouteIndex from RouteTypes
 	 */
 	class RouteCandidateFilter {
 		
@@ -62,7 +64,7 @@
 		 * 3. HTTP method indexing for method-based filtering
 		 * 4. Prefix tree for ultra-fast static route lookups
 		 *
-		 * @param list<Route> $routes Array of compiled route definitions
+		 * @param list<RouteDefinition> $routes Array of compiled route definitions
 		 * @return RouteIndex Comprehensive index structure with multiple lookup strategies
 		 */
 		public function buildRouteIndex(array $routes): array {
@@ -97,7 +99,7 @@
 		 * @param list<string> $requestUrl Parsed URL segments
 		 * @param string $requestMethod HTTP method
 		 * @param RouteIndex $routeIndex Complete route index with all filtering structures
-		 * @return list<Route> Filtered array of route candidates for matching
+		 * @return list<RouteDefinition> Filtered array of route candidates for matching
 		 */
 		public function getFilteredCandidates(array $requestUrl, string $requestMethod, array $routeIndex): array {
 			// Count the number of segments in the incoming request URL
@@ -157,15 +159,15 @@
 			// SORT_REGULAR ensures proper comparison of route arrays
 			// This final step ensures no route is checked multiple times
 			// during the subsequent matching phase
-			return array_unique($candidates, SORT_REGULAR);
+			return array_values(array_unique($candidates, SORT_REGULAR));
 		}
 		
 		/**
 		 * Get candidates based on segment count with proper wildcard handling
 		 * @param int $segmentCount Number of URL segments
 		 * @param RouteIndex $routeIndex Complete route index
-		 * @param list<Route> $methodCandidates Routes already filtered by HTTP method
-		 * @return list<Route> Candidates that can handle the segment count
+		 * @param list<RouteDefinition> $methodCandidates Routes already filtered by HTTP method
+		 * @return list<RouteDefinition> Candidates that can handle the segment count
 		 */
 		private function getSegmentCountCandidates(int $segmentCount, array $routeIndex, array $methodCandidates): array {
 			// Phase 1: Get exact segment count matches
@@ -191,12 +193,12 @@
 				// This is crucial because only routes with wildcard parameters
 				// (like {path:**} or {args:*}) can match URLs with more segments
 				// than the route pattern itself contains
-				$wildcardRoutes = array_filter($routesWithFewerSegments, function ($route) {
+				$wildcardRoutes = array_values(array_filter($routesWithFewerSegments, function ($route) {
 					// Check if this route has parameters that can consume multiple segments
 					// Examples: {path:**} (greedy), {args:*} (non-greedy), or other
 					// variable-length parameter patterns
 					return $this->routeCanHandleVariableSegments($route);
-				});
+				}));
 				
 				// Intersect wildcard routes with method candidates
 				// This ensures we maintain the HTTP method constraint while
@@ -217,7 +219,7 @@
 		
 		/**
 		 * Index a single route using all available indexing strategies
-		 * @param Route $route Route configuration to index
+		 * @param RouteDefinition $route Route configuration to index
 		 * @param RouteIndex &$index Reference to the index structure being built
 		 */
 		private function indexRoute(array $route, array &$index): void {
@@ -281,7 +283,7 @@
 		 * - position 0, segment "api" -> all routes starting with /api/
 		 * - position 1, segment "users" -> all routes with users
 		 *
-		 * @param Route $route Route configuration
+		 * @param RouteDefinition $route Route configuration
 		 * @param list<CompiledSegment> $compiledPattern Compiled route pattern segments
 		 * @param RouteIndex &$index Reference to index structure
 		 */
@@ -292,7 +294,7 @@
 				$segment = $compiledPattern[$position];
 				
 				// Only index static segments for fast elimination
-				if ($segment['type'] === 'static') {
+				if ($segment['type'] === 'static' && isset($segment['original'])) {
 					$staticValue = $segment['original'];
 					
 					// Create nested index: position -> static_value -> routes
@@ -314,7 +316,7 @@
 		 * Builds a prefix tree where each node represents a path segment.
 		 * This enables O(k) lookups where k is the number of segments.
 		 *
-		 * @param Route $route Route configuration
+		 * @param RouteDefinition $route Route configuration
 		 * @param string $routePath Complete route path
 		 * @param RouteIndex &$index Reference to index structure
 		 */
@@ -328,14 +330,17 @@
 				if (!isset($current[$segment])) {
 					$current[$segment] = ['routes' => [], 'children' => []];
 				}
+				
 				$current = &$current[$segment]['children'];
 			}
 			
 			// Store route at the final node
 			$finalNode = &$index['prefix_tree'];
+			
 			foreach ($segments as $segment) {
 				$finalNode = &$finalNode[$segment];
 			}
+			
 			$finalNode['routes'][] = $route;
 		}
 		
@@ -559,19 +564,24 @@
 			// explode() splits the string into an array at each '/' character
 			$segments = explode('/', ltrim($routePath, '/'));
 			
-			// Filter out empty segments that might result from double slashes or trailing slashes
-			// array_filter() removes elements that evaluate to false (empty strings in this case)
-			// The anonymous function explicitly checks if segment is not empty for clarity
-			return array_filter($segments, function ($segment) {
-				return $segment !== ''; // Keep only non-empty segments
-			});
+			/**
+			 * Filter out empty segments that might result from double slashes or trailing slashes
+			 * array_filter() removes elements that evaluate to false (empty strings in this case)
+			 * The anonymous function explicitly checks if segment is not empty for clarity
+			 * @var list<string> $result
+			 */
+			$result = array_values(array_filter($segments, function ($segment) {
+				return $segment !== '';
+			}));
+			
+			return $result;
 		}
 		
 		/**
 		 * Find intersection of two route arrays
-		 * @param list<Route> $routes1 First route array
-		 * @param list<Route> $routes2 Second route array
-		 * @return list<Route> Intersection of routes
+		 * @param list<RouteDefinition> $routes1 First route array
+		 * @param list<RouteDefinition> $routes2 Second route array
+		 * @return list<RouteDefinition> Intersection of routes
 		 */
 		private function intersectRoutes(array $routes1, array $routes2): array {
 			$result = [];
@@ -607,10 +617,10 @@
 		
 		/**
 		 * Filter candidates by static segments at each position
-		 * @param list<Route> $candidates Current route candidates
+		 * @param list<RouteDefinition> $candidates Current route candidates
 		 * @param list<string> $requestUrl URL segments
 		 * @param RouteIndex $routeIndex Complete route index
-		 * @return list<Route> Filtered candidates
+		 * @return list<RouteDefinition> Filtered candidates
 		 */
 		private function filterByStaticSegments(array $candidates, array $requestUrl, array $routeIndex): array {
 			// Extract the multi-level index structure that maps position -> static_segment -> routes
@@ -635,7 +645,10 @@
 					// 1. Current candidates (routes that passed previous filters)
 					// 2. Position matches (routes with matching static segment at this position)
 					// This progressively eliminates non-matching routes as we check each position
-					$candidates = $this->intersectRoutes($candidates, $positionMatches);
+					$candidates = $this->intersectRoutes(
+						$candidates,
+						$positionMatches
+					);
 				}
 				
 				// Note: If no routes match the static segment at this position, we continue
@@ -651,7 +664,7 @@
 		 * Search trie index for exact static route match
 		 * @param list<string> $requestUrl URL segments
 		 * @param array<string, mixed> $trieIndex Trie structure
-		 * @return list<Route> Routes found in trie
+		 * @return list<RouteDefinition> Routes found in trie
 		 */
 		private function searchTrieIndex(array $requestUrl, array $trieIndex): array {
 			// Start at the root of the trie data structure
@@ -689,7 +702,7 @@
 		
 		/**
 		 * Check if route can handle variable segment counts (has wildcards)
-		 * @param Route $route Route configuration
+		 * @param RouteDefinition $route Route configuration
 		 * @return bool True if route has multi-wildcards
 		 */
 		private function routeCanHandleVariableSegments(array $route): bool {

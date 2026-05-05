@@ -25,7 +25,7 @@
 		/**
 		 * MatchingContext constructor
 		 * @param string[] $requestUrl
-		 * @param array<int, array<string, mixed>> $compiledPattern
+		 * @param list<array{type: string, original?: string, is_multi_wildcard?: bool}> $compiledPattern
 		 */
 		public function __construct(array $requestUrl, array $compiledPattern) {
 			$this->requestUrl = $requestUrl;
@@ -115,11 +115,13 @@
 		 * @return void
 		 */
 		public function addToVariableArray(string $name, string $value): void {
-			if (!isset($this->variables[$name])) {
-				$this->variables[$name] = [];
+			$current = $this->variables[$name] ?? [];
+			
+			if (is_string($current)) {
+				throw new \LogicException("Variable '$name' was already set as a scalar via setVariable().");
 			}
 			
-			$this->variables[$name][] = $value;
+			$this->variables[$name] = [...$current, $value];
 		}
 		
 		/**
@@ -143,7 +145,7 @@
 			// All URL segments should be processed, unless the last route segment is a multi-wildcard
 			if ($this->urlIndex < count($this->requestUrl)) {
 				$lastRouteSegment = end($this->compiledPattern);
-				return SegmentTypes::isMultiWildcard($lastRouteSegment);
+				return $lastRouteSegment !== false && SegmentTypes::isMultiWildcard($lastRouteSegment);
 			}
 			
 			return true;

@@ -57,8 +57,9 @@
 	 * The resolver maintains full backward compatibility while providing significant
 	 * performance improvements, especially for applications with large numbers of routes.
      *
-	 * @phpstan-import-type Route from \Quellabs\Canvas\Routing\Components\RouteCandidateFilter
-	 * @phpstan-import-type RouteIndex from \Quellabs\Canvas\Routing\Components\RouteCandidateFilter
+	 * @phpstan-import-type RouteDefinition from RouteTypes
+	 * @phpstan-import-type RouteIndex from RouteTypes
+	 * @phpstan-import-type MatchedRoute from RouteTypes
 	 */
 	class AnnotationResolver extends AnnotationBase {
 		private bool $debugMode;
@@ -71,8 +72,10 @@
 		private RouteDiscovery $routeDiscovery;
 		private RouteCacheManager $cacheManager;
 		
-		// Performance optimization cache
-		/** @var array{multi_level: array<int, array<string, list<array{controller: string, method: string, route_path: string, http_methods: list<string>, compiled_pattern: list<array{type: string, original?: string, is_multi_wildcard?: bool}>, priority: int}>>>, segment_count: array<int, list<array{controller: string, method: string, route_path: string, http_methods: list<string>, compiled_pattern: list<array{type: string, original?: string, is_multi_wildcard?: bool}>, priority: int}>>, http_methods: array<string, list<array{controller: string, method: string, route_path: string, http_methods: list<string>, compiled_pattern: list<array{type: string, original?: string, is_multi_wildcard?: bool}>, priority: int}>>, prefix_tree: array<string, mixed>}|null */
+		/**
+		 * Performance optimization cache
+		 * @var RouteIndex|null
+		 */
 		private ?array $routeIndex = null;
 		
 		/**
@@ -89,7 +92,7 @@
 		/**
 		 * Resolves an HTTP request to find the first matching route
 		 * @param Request $request The incoming HTTP request to resolve
-		 * @return array<string, mixed> Returns the first matched route info
+		 * @return MatchedRoute Returns the first matched route info
 		 * @throws RouteNotFoundException When no matching route is found
 		 * @throws AnnotationReaderException On error reading annotations
 		 */
@@ -114,7 +117,7 @@
 		 * 4. Prefix trie lookup for static routes
 		 *
 		 * @param Request $request The HTTP request object
-		 * @return array<int, array<string, mixed>> Array of matched route objects, empty if no matches found
+		 * @return list<MatchedRoute> Array of matched route objects, empty if no matches found
 		 * @throws AnnotationReaderException
 		 */
 		public function resolveAll(Request $request): array {
@@ -162,7 +165,7 @@
 		/**
 		 * Parse request URL into segments
 		 * @param string $requestUri Raw request URI
-		 * @return array<int, string> Parsed URL segments
+		 * @return list<string> Parsed URL segments
 		 */
 		private function parseRequestUrl(string $requestUri): array {
 			$result = [];
@@ -178,7 +181,7 @@
 		
 		/**
 		 * Get or build route index for fast lookups
-		 * @return array<string, mixed> Complete route index ready for lookups
+		 * @return RouteIndex Complete route index ready for lookups
 		 * @throws AnnotationReaderException
 		 */
 		private function getRouteIndex(): array {
@@ -188,7 +191,7 @@
 			}
 			
 			// Get all routes (from cache or fresh build)
-			/** @var list<array{controller: string, method: string, route_path: string, http_methods: list<string>, compiled_pattern: list<array{type: string, original?: string, is_multi_wildcard?: bool}>, priority: int, route: \Quellabs\Canvas\Annotations\Route}> $allRoutes */
+			/** @var list<RouteDefinition> $allRoutes */
 			$allRoutes = $this->cacheManager->getCachedRoutes(function() {
 				return $this->routeDiscovery->buildRoutesFromControllers();
 			});

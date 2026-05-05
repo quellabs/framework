@@ -80,7 +80,12 @@
 				);
 				
 				foreach ($annotations as $annotation) {
-					$withContextMap[$annotation->parameter] = $annotation->context;
+					// This was added to make phpstan happy
+					if (!$annotation instanceof WithContext) {
+						continue;
+					}
+					
+					$withContextMap[$annotation->getParameter()] = $annotation->getContext();
 				}
 			} catch (\Throwable) {
 				// Annotation parsing failed or no docblock present — proceed without

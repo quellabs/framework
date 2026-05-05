@@ -20,7 +20,7 @@
 		
 		/**
 		 * Gets controller directories and class names from packages
-		 * @return array<string> Absolute paths to controller directories and/or fully qualified class names
+		 * @return array<class-string> Absolute paths to controller directories and/or fully qualified class names
 		 */
 		public function fetch(): array {
 			// Get contents of config/app.php
@@ -49,6 +49,9 @@
 			);
 			
 			// Return a flat list of fully qualified controller class names
-			return array_merge($result, array_values($packageClasses));
+			return array_values(array_filter(
+				array_merge($result, array_values($packageClasses)),
+				fn($value) => class_exists($value)
+			));
 		}
 	}

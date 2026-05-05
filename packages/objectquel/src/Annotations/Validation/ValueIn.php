@@ -2,26 +2,23 @@
 	
 	namespace Quellabs\ObjectQuel\Annotations\Validation;
 	
-	use Quellabs\AnnotationReader\AnnotationInterface;
-	
+	/**
+	 * @phpstan-type ValueInParams array{
+	 *     property?: string,
+	 *     values?: array<mixed>,
+	 *     message?: string|null
+	 * }
+	 */
 	class ValueIn implements PropertyValidationInterface {
 		
 		/**
-		 * @var array{
-		 *     property?: string,
-		 *     values?: array<mixed>,
-		 *     message?: string|null
-		 * }
+		 * @var ValueInParams
 		 */
 		protected array $parameters;
 		
 		/**
 		 * ValueIn constructor.
-		 * @param array{
-		 *      property?: string,
-		 *      values?: array<mixed>,
-		 *      message?: string|null
-		 *  } $parameters
+		 * @param ValueInParams $parameters
 		 */
 		public function __construct(array $parameters) {
 			$this->parameters = $parameters;
@@ -29,11 +26,7 @@
 		
 		/**
 		 * Returns all parameters
-		 * @return array{
-		 *     property?: string,
-		 *     values?: array<mixed>,
-		 *     message?: string|null
-		 * }
+		 * @return ValueInParams
 		 */
 		public function getParameters(): array {
 			return $this->parameters;
@@ -57,7 +50,7 @@
 		
 		/**
 		 * Returns the values to check
-		 * @return array<mixed>
+		 * @return array<mixed>|null
 		 */
 		public function getValues(): ?array {
 			return $this->parameters['values'] ?? null;

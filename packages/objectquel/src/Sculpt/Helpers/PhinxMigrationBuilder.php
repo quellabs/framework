@@ -4,6 +4,7 @@
 	
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
 	use Quellabs\ObjectQuel\DatabaseAdapter\TypeMapper;
+	use Quellabs\ObjectQuel\Sculpt\SculptTypes;
 	
 	/**
 	 * Generates Phinx migration files from schema change descriptors.
@@ -27,35 +28,18 @@
 	 * An indexConfig is an associative array with keys:
 	 *   columns (string[]), type ('INDEX'|'UNIQUE'|'FULLTEXT'), unique (bool, optional)
 	 *
-	 * @phpstan-type ColumnDefinition array{
-	 *     type: string,
-	 *     limit?: int|string,
-	 *     nullable?: bool,
-	 *     default?: mixed,
-	 *     precision?: int,
-	 *     scale?: int,
-	 *     unsigned?: bool,
-	 *     identity?: bool,
-	 *     primary_key?: bool,
-	 *     values?: array<int, string>
-	 * }
+	 * @phpstan-import-type ColumnDefinition from SculptTypes
+	 * @phpstan-import-type ColumnModification from SculptTypes
+	 * @phpstan-import-type IndexDefinition from SculptTypes
+	 * @phpstan-import-type IndexChangeSet from SculptTypes
 	 *
-	 * @phpstan-type IndexConfig array{
-	 *     columns: array<int, string>,
-	 *     type: string,
-	 *     unique?: bool
-	 * }
-	 *
-	 * @phpstan-type IndexChanges array{
-	 *     added: array<string, IndexConfig>,
-	 *     modified: array<string, array{entity: IndexConfig, database: IndexConfig}>,
-	 *     deleted: array<string, IndexConfig>
-	 * }
+	 * @phpstan-type IndexConfig IndexDefinition
+	 * @phpstan-type IndexChanges IndexChangeSet
 	 *
 	 * @phpstan-type TableChanges array{
 	 *     table_not_exists?: bool,
 	 *     added?: array<string, ColumnDefinition>,
-	 *     modified?: array<string, array{from: ColumnDefinition, to: ColumnDefinition}>,
+	 *     modified?: array<string, ColumnModification>,
 	 *     deleted?: array<string, ColumnDefinition>,
 	 *     indexes?: IndexChanges
 	 * }
@@ -215,7 +199,7 @@ PHP;
 		 * @param TableChanges $changes Raw change descriptor, possibly missing optional keys
 		 * @return array{
 		 *     added: array<string, ColumnDefinition>,
-		 *     modified: array<string, array{from: ColumnDefinition, to: ColumnDefinition}>,
+		 *     modified: array<string, ColumnModification>,
 		 *     deleted: array<string, ColumnDefinition>,
 		 *     indexes: IndexChanges,
 		 *     table_not_exists: bool
@@ -362,8 +346,8 @@ PHP;
 		 * selects which side of each change to apply ('to' = forward, 'from' = rollback).
 		 *
 		 * @param string $tableName Table to modify
-		 * @param array<string, array{from: ColumnDefinition, to: ColumnDefinition}> $modifiedColumns
-		 * @param string $direction 'to' for up(), 'from' for down()
+		 * @param array<string, ColumnModification> $modifiedColumns
+		 * @param 'from'|'to' $direction 'to' for up(), 'from' for down()
 		 */
 		private function buildChangeColumnsCode(string $tableName, array $modifiedColumns, string $direction): string {
 			$builder = new MigrationCodeBuilder($tableName);

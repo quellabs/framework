@@ -170,23 +170,25 @@
 		
 		/**
 		 * Get a service with centralized dependency resolution
-		 * @param string $className Class name to resolve
+		 * @template T of object
+		 * @param class-string<T> $className Class name to resolve
 		 * @param array $parameters Additional parameters for creation
 		 * @param MethodContextInterface|null $methodContext
-		 * @return object|null
+		 * @return T
 		 */
-		public function get(string $className, array $parameters = [], ?MethodContextInterface $methodContext=null): ?object {
+		public function get(string $className, array $parameters = [], ?MethodContextInterface $methodContext=null): object {
 			return $this->resolveWithDependencies($className, $parameters, true, $methodContext);
 		}
 		
 		/**
 		 * Create an instance with autowired constructor parameters
 		 * Bypasses service providers - only handles dependency injection
-		 * @param string $className
+		 * @template T of object
+		 * @param class-string<T> $className Class name to resolve
 		 * @param array $parameters Additional/override parameters
-		 * @return object|null
+		 * @return T
 		 */
-		public function make(string $className, array $parameters = []): ?object {
+		public function make(string $className, array $parameters = []): object {
 			return $this->resolveWithDependencies($className, $parameters, false);
 		}
 		
@@ -348,6 +350,7 @@
 				// This allows the same class to be resolved again in different dependency chains
 				array_pop($this->resolutionStack);
 				
+				// Return the instance
 				return $instance;
 				
 			} catch (\Throwable $e) {

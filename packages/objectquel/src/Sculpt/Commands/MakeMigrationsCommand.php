@@ -9,6 +9,7 @@
 	use Quellabs\ObjectQuel\EntityStore;
 	use Quellabs\ObjectQuel\OrmException;
 	use Quellabs\ObjectQuel\Sculpt\Helpers\EntitySchemaAnalyzer;
+	use Quellabs\ObjectQuel\Sculpt\SculptTypes;
 	use Quellabs\ObjectQuel\Sculpt\Helpers\PhinxMigrationBuilder;
 	use Quellabs\ObjectQuel\Sculpt\ServiceProvider;
 	use Quellabs\Sculpt\Contracts\CommandBase;
@@ -22,6 +23,10 @@
 	 * This command uses the EntitySchemaAnalyzer to detect differences between entity definitions
 	 * and the database schema, then uses PhinxMigrationBuilder to create migration files that
 	 * synchronize the database with entity changes.
+	 *
+	 * @phpstan-import-type ColumnDefinition from SculptTypes
+	 * @phpstan-import-type ColumnModification from SculptTypes
+	 * @phpstan-import-type EntityChangeSet from SculptTypes
 	 */
 	class MakeMigrationsCommand extends CommandBase {
 		private ?EntityStore $entityStore = null;
@@ -95,22 +100,22 @@
 					$this->output->writeLn(" ✓ Dropped column: {$tableName}.{$columnName}");
 				}
 				
-				foreach ($changes['indexes']['added'] ?? [] as $indexName => $indexConfig) {
+				foreach ($changes['indexes']['added'] as $indexName => $indexConfig) {
 					$this->output->writeLn(" ✓ New index: {$tableName}.{$indexName}");
 				}
 				
-				foreach ($changes['indexes']['modified'] ?? [] as $indexName => $indexConfig) {
+				foreach ($changes['indexes']['modified'] as $indexName => $indexConfig) {
 					$this->output->writeLn(" ✓ Modified index: {$tableName}.{$indexName}");
 				}
 				
-				foreach ($changes['indexes']['deleted'] ?? [] as $indexName => $indexConfig) {
+				foreach ($changes['indexes']['deleted'] as $indexName => $indexConfig) {
 					$this->output->writeLn(" ✓ Dropped index: {$tableName}.{$indexName}");
 				}
 			}
 			
 			$this->output->writeLn("");
 			
-			// Step 4: Generate a migration file based on changes
+			// Step 4: Generate a migration file based on changes.
 			$migrationBuilder = new PhinxMigrationBuilder($databaseAdapter, $this->migrationsPath);
 			$result = $migrationBuilder->generateMigrationFile($allChanges);
 			
@@ -119,7 +124,8 @@
 				return 1;
 			}
 			
-			$this->output->writeLn(" Success! Created: " . $result['path']);
+			$path = $result['path'] ?? '';
+			$this->output->writeLn(" Success! Created: " . $path);
 			return 0;
 		}
 		
@@ -149,45 +155,26 @@
 		
 		/**
 		 * Produce a human-readable summary of what changed in a modified column
-		 *
-		 * @param array{
-		 *     from?: array{
-		 *         type?: string|null,
-		 *         limit?: int|null,
-		 *         nullable?: bool|null,
-		 *         unique?: bool|null
-		 *     },
-		 *     to?: array{
-		 *         type?: string|null,
-		 *         limit?: int|null,
-		 *         nullable?: bool|null,
-		 *         unique?: bool|null
-		 *     }
-		 * } $diff
-		 *
+		 * @param ColumnModification $diff
 		 * @return string Parenthesised description, or empty string if no description can be inferred
 		 */
 		private function describeColumnChange(array $diff): string {
-			$from = $diff['from'] ?? [];
-			$to = $diff['to'] ?? [];
+			$from = $diff['from'];
+			$to = $diff['to'];
 			$parts = [];
 			
-			if (($from['type'] ?? null) !== ($to['type'] ?? null)) {
-				$parts[] = "type changed to " . ($to['type'] ?? 'unknown');
+			if ($from['type'] !== $to['type']) {
+				$parts[] = "type changed to " . $to['type'];
 			}
 			
 			if (($from['limit'] ?? null) !== ($to['limit'] ?? null)) {
-				$parts[] = "length changed to " . ($to['limit'] ?? 'default');
+				$toLimit = $to['limit'] ?? null;
+				$limitStr = is_array($toLimit) ? json_encode($toLimit) : (string)($toLimit ?? 'default');
+				$parts[] = "length changed to " . $limitStr;
 			}
 			
 			if (($from['nullable'] ?? null) !== ($to['nullable'] ?? null)) {
 				$parts[] = ($to['nullable'] ?? false) ? "now nullable" : "now not nullable";
-			}
-			
-			if (empty($from['unique']) && !empty($to['unique'])) {
-				$parts[] = "added unique constraint";
-			} elseif (!empty($from['unique']) && empty($to['unique'])) {
-				$parts[] = "removed unique constraint";
 			}
 			
 			return empty($parts) ? "" : " (" . implode(", ", $parts) . ")";

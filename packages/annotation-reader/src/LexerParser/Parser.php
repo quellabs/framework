@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\AnnotationReader\LexerParser;
 	
+	use Quellabs\AnnotationReader\AnnotationInterface;
 	use Quellabs\AnnotationReader\Collection\AnnotationCollection;
 	use Quellabs\AnnotationReader\Exception\LexerException;
 	use Quellabs\AnnotationReader\Exception\ParserException;
@@ -82,6 +83,7 @@
 		 */
 		public function parse(): AnnotationCollection {
 			try {
+				/** @var array<int, AnnotationInterface> $result */
 				$result = [];
 				$token = $this->lexer->get();
 				
@@ -539,12 +541,12 @@
 		/**
 		 * Parses an annotation
 		 * @param Token $token
-		 * @return object
+		 * @return AnnotationInterface
 		 * @throws LexerException
 		 * @throws ParserException
 		 * @throws \ReflectionException
 		 */
-		private function parseAnnotation(Token $token): object {
+		private function parseAnnotation(Token $token): AnnotationInterface {
 			// Fetch the annotation class name
 			$value = $token->getValue();
 			
@@ -564,7 +566,15 @@
 				$this->lexer->match(Token::ParenthesesClose);
 			}
 			
-			return new $tokenName($parameters);
+			// Instantiate the annotation class
+			$instance = new $tokenName($parameters);
+			
+			// Check if the class implements AnnotationInterface
+			if (!$instance instanceof AnnotationInterface) {
+				throw new ParserException("Annotation must implement AnnotationInterface: {$tokenName}");
+			}
+			
+			return $instance;
 		}
 		
 		/**

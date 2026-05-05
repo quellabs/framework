@@ -24,6 +24,9 @@
 		/** Provider configuration/setup method failed after instantiation */
 		const int CONFIGURATION_FAILED = 5;
 		
+		/** Provider configuration/setup method failed after instantiation */
+		const int INVALID_PROVIDER = 6;
+		
 		/** The provider definition that failed to instantiate */
 		private ProviderDefinition $definition;
 		
