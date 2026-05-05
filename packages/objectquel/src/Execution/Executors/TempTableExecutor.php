@@ -3,8 +3,7 @@
 	namespace Quellabs\ObjectQuel\Execution\Executors;
 	
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
-	use Quellabs\ObjectQuel\Execution\TempTableStage;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAlias;
+	use Quellabs\ObjectQuel\Planner\TempTableStage;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
 	use Quellabs\ObjectQuel\Exception\QuelException;
 	
@@ -48,7 +47,7 @@
 		/**
 		 * Number of rows to insert per batch
 		 */
-		private const INSERT_BATCH_SIZE = 500;
+		private const int INSERT_BATCH_SIZE = 500;
 		
 		/**
 		 * Database connection used to create, populate, and drop temp tables
@@ -79,18 +78,17 @@
 		 * SQL generation treats it as an ordinary table reference.
 		 *
 		 * @param TempTableStage $stage The stage to materialise
-		 * @param callable $innerQueryRunner callable(AstRetrieve $query, array $params): array
-		 *        Executes the inner query and returns raw rows. Provided by PlanExecutor.
-		 * @param array<string, mixed> $params Parameters forwarded to the inner query
+		 * @param callable $runner
+		 * @return void
 		 * @throws QuelException On execution or DDL failure
 		 */
-		public function execute(TempTableStage $stage, callable $innerQueryRunner, array $params = []): void {
+		public function execute(TempTableStage $stage, callable $runner): void {
 			$range = $stage->getRange();
 			$innerQuery = $stage->getInnerQuery();
 			
 			// Execute the inner query through the full pipeline.
 			// This handles JSON stages, sub-decomposition, etc. transparently.
-			$rows = $innerQueryRunner($innerQuery, $params);
+			$rows = $runner($stage->getInnerPlan());
 			
 			if (empty($rows)) {
 				if ($range->isRequired()) {
@@ -128,7 +126,7 @@
 			// no further wiring is needed — the change is visible to QuelToSQL immediately.
 			//
 			// FROM vs JOIN determination: QuelToSQL::getFrom() picks the FROM by finding
-			// the first AstRangeDatabase with joinProperty === null. QueryDecomposer::
+			// the first AstRangeDatabase with joinProperty === null. ExecutionPlanBuilder::
 			// promoteTempTableRanges() promotes temp-table ranges to JOINs by extracting
 			// a join condition from the WHERE clause, so that a real database table can
 			// take the FROM position when one exists. If no real database table is present,

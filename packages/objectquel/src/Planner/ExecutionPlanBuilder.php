@@ -1,10 +1,12 @@
 <?php
 	
-	namespace Quellabs\ObjectQuel\Execution;
+	namespace Quellabs\ObjectQuel\Planner;
 	
-	use Quellabs\ObjectQuel\Execution\Decomposer\ConditionAnalyzer;
-	use Quellabs\ObjectQuel\Execution\Decomposer\ConditionFilter;
-	use Quellabs\ObjectQuel\Execution\Decomposer\StageFactory;
+	use Quellabs\ObjectQuel\Capabilities\PlatformCapabilities;
+	use Quellabs\ObjectQuel\EntityManager;
+	use Quellabs\ObjectQuel\Planner\Helpers\ConditionAnalyzer;
+	use Quellabs\ObjectQuel\Planner\Helpers\ConditionFilter;
+	use Quellabs\ObjectQuel\Planner\Helpers\StageFactory;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabase;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeJsonSource;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
@@ -18,30 +20,32 @@
 	 *   - ConditionFilter:   extracts and filters condition subtrees from the WHERE clause
 	 *   - StageFactory:      builds ExecutionStage objects from query ASTs
 	 *
-	 * QueryDecomposer itself is responsible for:
+	 * ExecutionPlanBuilder itself is responsible for:
 	 *   - Detecting which subquery ranges require temp-table materialisation
 	 *   - Topologically sorting those ranges by their inter-dependencies
 	 *   - Wiring TempTableStages and their dependency edges into the ExecutionPlan
 	 *   - Adding JSON/non-database range stages
 	 */
-	class QueryDecomposer {
+	class ExecutionPlanBuilder  {
 		
-		/**
-		 * @var ConditionAnalyzer
-		 */
+		/** @var ConditionAnalyzer */
 		private ConditionAnalyzer $analyzer;
 		
-		/**
-		 * @var StageFactory
-		 */
+		/** @var StageFactory */
 		private StageFactory $stageFactory;
+		
+		/** @var QueryTransformer */
+		private QueryTransformer $transformer;
 		
 		/**
 		 * Constructor
+		 * @param EntityManager $entityManager
+		 * @param PlatformCapabilities $capabilities
 		 */
-		public function __construct() {
+		public function __construct(EntityManager $entityManager, PlatformCapabilities $capabilities) {
 			$this->analyzer = new ConditionAnalyzer();
 			$this->stageFactory = new StageFactory($this->analyzer, new ConditionFilter($this->analyzer));
+			$this->transformer = new QueryTransformer($entityManager, $capabilities);
 		}
 		
 		/**
@@ -63,16 +67,21 @@
 		 * @return ExecutionPlan The execution plan containing all stages
 		 * @throws QuelException If the query cannot be properly decomposed
 		 */
-		public function buildExecutionPlan(AstRetrieve $query, array $staticParams = []): ExecutionPlan {
+		public function build(AstRetrieve $query, array $staticParams = []): ExecutionPlan {
 			$this->analyzer->clearCache();
+			
+			// Optimize the plan
+			$this->transformer->transform($query);
+			
+			// Create a new plan to populate
 			$plan = new ExecutionPlan();
 			
-			// Detect which temporary ranges need materialisation as real temp tables.
+			// Detect which temporary ranges need materialization as real temp tables.
 			// We must process these BEFORE creating the main database stage so that
 			// dependency edges can be registered correctly.
 			$tempRanges = $this->stageFactory->extractTemporaryRanges($query);
 			
-			// Sort temp ranges by their inter-dependencies (a temp range's inner query
+			// Sort temp ranges by their interdependencies (a temp range's inner query
 			// might reference another temp range; it must come after its dependency).
 			if (!empty($tempRanges)) {
 				$tempRanges = $this->sortByDependency($tempRanges);
@@ -89,6 +98,7 @@
 				$plan->addStage($this->stageFactory->createRangeExecutionStage($query, $otherRange, $staticParams));
 			}
 			
+			// Return the plan
 			return $plan;
 		}
 		
@@ -98,15 +108,13 @@
 		
 		/**
 		 * Creates TempTableStages for all external-source temporary ranges and registers
-		 * their inter-dependencies in the plan.
-		 *
-		 * Returns a map of rangeName → TempTableStage name so the database stage can
-		 * declare its own dependencies on them.
-		 *
+		 * their interdependencies in the plan. Returns a map of rangeName → TempTableStage
+		 * name so the database stage can declare its own dependencies on them.
 		 * @param ExecutionPlan $plan
 		 * @param AstRangeDatabase[] $tempRanges Already dependency-sorted temp ranges
 		 * @param array<string, mixed> $staticParams
 		 * @return string[] Map of rangeName → TempTableStage name
+		 * @throws QuelException
 		 */
 		private function buildTempTableStages(ExecutionPlan $plan, array $tempRanges, array $staticParams): array {
 			// rangeName → TempTableStage name, built up as stages are added so inter-stage
@@ -120,7 +128,9 @@
 				}
 				
 				$tempStageName = uniqid('tmp_stage_');
-				$plan->addStage(new TempTableStage($tempStageName, $tempRange, $staticParams));
+				$innerPlan = $this->build($tempRange->getQuery(), $staticParams);
+				
+				$plan->addStage(new TempTableStage($tempStageName, $tempRange, $innerPlan, $staticParams));
 				$tempTableStageNames[$tempRange->getName()] = $tempStageName;
 				
 				// If this TempTableStage itself depends on another TempTableStage
@@ -162,8 +172,8 @@
 			$plan->addStage($databaseStage);
 			
 			// The main database stage depends on every TempTableStage, because
-			// those must be fully materialised before the outer SQL can execute.
-			foreach ($tempTableStageNames as $rangeName => $tempStageName) {
+			// those must be fully materialized before the outer SQL can execute.
+			foreach ($tempTableStageNames as $tempStageName) {
 				$plan->addDependency($databaseStage->getName(), $tempStageName);
 			}
 		}

@@ -5,9 +5,7 @@
 	use Cake\Database\StatementInterface;
 	use Quellabs\ObjectQuel\EntityManager;
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
-	use Quellabs\ObjectQuel\Execution\ExecutionStage;
-	use Quellabs\ObjectQuel\Execution\ExecutionStageInterface;
-	use Quellabs\ObjectQuel\Execution\QueryOptimizer;
+	use Quellabs\ObjectQuel\Planner\ExecutionStageInterface;
 	use Quellabs\ObjectQuel\Capabilities\PlatformCapabilities;
 	use Quellabs\ObjectQuel\Execution\QueryTransformer;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
@@ -21,8 +19,7 @@
 		protected EntityManager $entityManager;
 		protected DatabaseAdapter $connection;
 		protected QueryTransformer $queryTransformer;
-		protected QueryOptimizer $queryOptimizer;
-		protected PlatformCapabilities $platform;
+		protected PlatformCapabilities $capabilities;
 		
 		/** @var list<string> */
 		protected array $lastExecutedSql = [];
@@ -31,12 +28,11 @@
 		 * Constructor
 		 * @param EntityManager $entityManager
 		 */
-		public function __construct(EntityManager $entityManager) {
+		public function __construct(EntityManager $entityManager, PlatformCapabilities $capabilities) {
 			$this->entityManager = $entityManager;
 			$this->connection = $entityManager->getConnection();
-			$this->platform = new PlatformCapabilities($this->connection);
-			$this->queryTransformer = new QueryTransformer($this->entityManager, $this->platform);
-			$this->queryOptimizer = new QueryOptimizer($this->entityManager, $this->platform);
+			$this->capabilities = $capabilities;
+			$this->queryTransformer = new QueryTransformer($this->entityManager, $this->capabilities);
 		}
 		
 		/**
@@ -47,8 +43,7 @@
 		 * @throws QuelException
 		 */
 		public function execute(ExecutionStageInterface $stage, array $initialParams = []): array {
-			// Transform and optimize the query
-			$this->queryOptimizer->optimize($stage->getQuery());
+			// Transform the query
 			$this->queryTransformer->transform($stage->getQuery(), $initialParams);
 			
 			// Convert the query to SQL
@@ -97,7 +92,7 @@
 		 * @return string The generated SQL query
 		 */
 		protected function convertToSQL(AstRetrieve $retrieve, array &$parameters): string {
-			$quelToSQL = new QuelToSQL($this->entityManager->getEntityStore(), $parameters, $this->platform);
+			$quelToSQL = new QuelToSQL($this->entityManager->getEntityStore(), $parameters, $this->capabilities);
 			return $quelToSQL->convertToSQL($retrieve);
 		}
 	}

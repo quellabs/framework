@@ -1,10 +1,8 @@
 <?php
 	
-	namespace Quellabs\ObjectQuel\Execution;
+	namespace Quellabs\ObjectQuel\Planner;
 	
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRange;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabase;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeJsonSource;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
 	use Quellabs\ObjectQuel\ObjectQuel\AstInterface;
 	
@@ -39,14 +37,7 @@
 		 * These are fixed values that don't depend on the execution of other stages
 		 * @var array<string, mixed>
 		 */
-		private array $staticParams = [];
-		
-		/**
-		 * Post-processing function to apply to results before passing to next stages
-		 * Allows for transformation or filtering of results before they're used by dependent stages
-		 * @var callable|null
-		 */
-		private $resultProcessor = null;
+		private array $staticParams;
 		
 		/**
 		 * The conditions for a join operation with other stages
@@ -84,32 +75,6 @@
 		 */
 		public function getQuery(): AstRetrieve {
 			return $this->query;
-		}
-		
-		/**
-		 * Checks if this stage has a result processor configured
-		 * @return bool True if a result processor has been configured, false otherwise
-		 */
-		public function hasResultProcessor(): bool {
-			return $this->resultProcessor !== null;
-		}
-		
-		/**
-		 * Returns the result processor function if one is configured
-		 * @return callable|null The processor function or null if none is set
-		 */
-		public function getResultProcessor(): ?callable {
-			return $this->resultProcessor;
-		}
-		
-		/**
-		 * Set a processor function to transform results before passing to dependent stages
-		 * @param callable|null $processor Function that takes results array and returns processed array
-		 * @return ExecutionStage This stage instance for method chaining
-		 */
-		public function setResultProcessor(?callable $processor): self {
-			$this->resultProcessor = $processor;
-			return $this;
 		}
 		
 		/**
