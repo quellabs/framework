@@ -20,6 +20,18 @@
 		];
 		
 		/**
+		 * Cached reverse lookup of $irregular (plural => singular)
+		 */
+		private static ?array $irregularFlipped = null;
+
+		/**
+		 * Returns the flipped $irregular array, computing it once and caching it.
+		 */
+		private static function getIrregularFlipped(): array {
+			return self::$irregularFlipped ??= array_flip(self::$irregular);
+		}
+
+		/**
 		 * Irregular singular to plural mappings
 		 */
 		private static array $irregular = [
@@ -52,6 +64,8 @@
 			'oasis'      => 'oases',
 			'synopsis'   => 'synopses',
 			'thesis'     => 'theses',
+			
+			// Consonant-o loanwords that take plain -s, not -es
 			'hello'      => 'hellos',
 			'silo'       => 'silos',
 			'piano'      => 'pianos',
@@ -64,29 +78,66 @@
 			'casino'     => 'casinos',
 			'volcano'    => 'volcanoes',  // keeps -es (native English)
 			'tornado'    => 'tornadoes',  // keeps -es (native English)
+			
+			// f/fe -> ves irregulars (avoids the ambiguous /ves/ -> 'f' vs 'fe' problem)
+			'knife'      => 'knives',
+			'life'       => 'lives',
+			'wife'       => 'wives',
+			'leaf'       => 'leaves',
+			'loaf'       => 'loaves',
+			'thief'      => 'thieves',
+			'shelf'      => 'shelves',
+			'self'       => 'selves',
+			'wolf'       => 'wolves',
+			'elf'        => 'elves',
+			'calf'       => 'calves',
+			'half'       => 'halves',
+			'scarf'      => 'scarves',
+
+			// f -> ves words where the fallback /ves$/ -> 'fe' would be wrong
+			// (these end in plain 'f', not 'fe', so they need explicit entries)
+			'hoof'       => 'hooves',
+			'roof'       => 'roofs',    // 'rooves' is archaic; 'roofs' is standard
+			'proof'      => 'proofs',
+			'belief'     => 'beliefs',
+			'chief'      => 'chiefs',
+			'grief'      => 'griefs',
+
+			// Common -um words that should not follow the Latin datum->data pattern
+			'album'      => 'albums',
+			'forum'      => 'forums',
+			'museum'     => 'museums',
+			'stadium'    => 'stadiums', // 'stadia' exists but is rare in modern English
+			'aquarium'   => 'aquariums',
+			'auditorium' => 'auditoriums',
 		];
 		
 		/**
 		 * Pluralization rules (regex pattern => replacement)
 		 * Ordered from most specific to most general
+		 *
+		 * Note: f/fe -> ves words are handled via $irregular to avoid the
+		 * ambiguity between knife->knif vs wolf->wolfe with a single rule.
+		 * The /ves$/ singularization fallback uses 'fe' as a default, so any
+		 * word ending in plain 'f' (hoof, roof, belief) must be in $irregular.
+		 *
+		 * Note: Latin -um -> -a is NOT applied as a general rule because it
+		 * breaks common English words (album, forum, museum). Only datum/medium
+		 * are handled, via $irregular.
 		 */
 		private static array $pluralRules = [
-			// Irregular endings
 			'/([^aeiou])y$/i'            => '$1ies',    // city -> cities
 			'/(x|ch|sh|ss|z)$/i'        => '$1es',      // box -> boxes, church -> churches
-			'/([^f])fe?$/i'              => '$1ves',     // knife -> knives, life -> lives
-			'/alf$/i'                    => 'alves',     // half -> halves
-			'/([aeiou])y$/i'             => '$1ys',      // boy -> boys
 			'/([aeiou])o$/i'             => '$1os',      // radio -> radios
-			'/oo$/i'                     => 'oos',       // zoo -> zoos, igloo -> igloos, tattoo -> tattoos
+			'/oo$/i'                     => 'oos',       // zoo -> zoos, igloo -> igloos
 			'/([^aeiou])o$/i'            => '$1oes',     // hero -> heroes, potato -> potatoes
-			'/(us)$/i'                   => '$1es',      // campus -> campuses
-			'/(is)$/i'                   => 'es',        // analysis -> analyses
+			'/(us)$/i'                   => '$1es',      // campus -> campuses, status -> statuses
+			'/(analys|bas|cris|diagnos|hypothes|oas|synops|thes)is$/i' => '$1es', // known -is -> -es words
+
 			// Specific Latin -on endings only — not common English words ending in -on
 			'/(crit|phenomen|automat|polyhedr|axi)on$/i' => '$1a',
-			'/um$/i'                     => 'a',         // datum -> data
 			'/(eau)$/i'                  => '$1x',       // tableau -> tableaux
-			
+
 			// Default rule
 			'/$/i'                       => 's'          // cat -> cats
 		];
@@ -94,24 +145,30 @@
 		/**
 		 * Singularization rules (regex pattern => replacement)
 		 * Ordered from most specific to most general
+		 *
+		 * Note: -ves words are handled via $irregular (reverse lookup) to avoid
+		 * the knife->knif vs wolf->wolfe ambiguity. The /ves$/ rule below is a
+		 * fallback for unlisted words and uses 'fe' as the safer default.
 		 */
 		private static array $singularRules = [
 			'/ies$/i'                    => 'y',         // cities -> city
 			'/(x|ch|sh|ss|z)es$/i'      => '$1',        // boxes -> box
-			'/ves$/i'                    => 'f',          // knives -> knife
-			'/alves$/i'                  => 'alf',        // halves -> half
+
+			// Note: 'halves -> half' is handled via $irregular reverse lookup.
+			// There is no /alves$/ rule here because it would incorrectly affect
+			// words like 'salves' (salve, not salf). /ves$/ -> 'fe' is the fallback.
+			'/ves$/i'                    => 'fe',        // knives -> knife, lives -> life (safer default than 'f')
 			'/([aeiou])ys$/i'            => '$1y',        // boys -> boy
 			'/([aeiou])os$/i'            => '$1o',        // radios -> radio
 			'/oos$/i'                    => 'oo',         // zoos -> zoo, igloos -> igloo
 			'/([^aeiou])oes$/i'          => '$1o',        // heroes -> hero
 			'/(us)es$/i'                 => '$1',         // campuses -> campus
-			'/es$/i'                     => 'is',         // analyses -> analysis
-			
+			'/(analys|bas|cris|diagnos|hypothes|oas|synops|thes)es$/i' => '$1is', // analyses -> analysis etc.
+
 			// Specific Latin -a endings only
 			'/(crit|phenomen|automat|polyhedr|axi)a$/i'  => '$1on',
-			'/ta$/i'                     => 'tum',        // data -> datum
 			'/(eau)x$/i'                 => '$1',         // tableaux -> tableau
-			
+
 			// Default rule
 			'/s$/i'                      => ''            // cats -> cat
 		];
@@ -133,7 +190,7 @@
 			$lowercaseWord = strtolower($word);
 			
 			// Check if the word is uncountable
-			if (in_array($lowercaseWord, self::$uncountable)) {
+			if (in_array($lowercaseWord, self::$uncountable, true)) {
 				return $word;
 			}
 			
@@ -144,8 +201,10 @@
 			
 			// Apply pluralization rules
 			foreach (self::$pluralRules as $pattern => $replacement) {
-				if (preg_match($pattern, $word)) {
-					return preg_replace($pattern, $replacement, $word);
+				$result = preg_replace($pattern, $replacement, $word, 1, $count);
+				
+				if ($count > 0) {
+					return $result;
 				}
 			}
 			
@@ -169,12 +228,12 @@
 			$lowercaseWord = strtolower($word);
 			
 			// Check if the word is uncountable
-			if (in_array($lowercaseWord, self::$uncountable)) {
+			if (in_array($lowercaseWord, self::$uncountable, true)) {
 				return $word;
 			}
 			
 			// Check for irregular forms (reverse lookup)
-			$irregularFlipped = array_flip(self::$irregular);
+			$irregularFlipped = self::getIrregularFlipped();
 			
 			if (isset($irregularFlipped[$lowercaseWord])) {
 				return self::preserveCase($word, $irregularFlipped[$lowercaseWord]);
@@ -182,8 +241,10 @@
 			
 			// Apply singularization rules
 			foreach (self::$singularRules as $pattern => $replacement) {
-				if (preg_match($pattern, $word)) {
-					return preg_replace($pattern, $replacement, $word);
+				$result = preg_replace($pattern, $replacement, $word, 1, $count);
+				
+				if ($count > 0) {
+					return $result;
 				}
 			}
 			
@@ -191,7 +252,9 @@
 		}
 		
 		/**
-		 * Check if a word is likely plural
+		 * Check if a word is likely plural.
+		 * Note: this is a heuristic and not 100% reliable for all edge cases
+		 * (e.g. "gas", "bus" may produce unexpected results).
 		 * @param string $word The word to check
 		 * @return bool True if the word appears to be plural
 		 */
@@ -205,12 +268,12 @@
 			}
 			
 			// Check if it's uncountable (neither singular nor plural)
-			if (in_array($lowercaseWord, self::$uncountable)) {
+			if (in_array($lowercaseWord, self::$uncountable, true)) {
 				return false;
 			}
 			
 			// Check if it's a known irregular plural
-			$irregularFlipped = array_flip(self::$irregular);
+			$irregularFlipped = self::getIrregularFlipped();
 			if (isset($irregularFlipped[$lowercaseWord])) {
 				return true;
 			}
@@ -222,12 +285,14 @@
 			
 			// Apply some heuristics for common plural patterns
 			return
+				strlen($word) > 3 &&
 				preg_match('/(ies|ves|oes|es|s)$/i', $word) &&
 				!preg_match('/(ss|us|is)$/i', $word);
 		}
 		
 		/**
-		 * Check if a word is likely singular
+		 * Check if a word is likely singular.
+		 * Note: this is a heuristic — see isPlural() for caveats.
 		 * @param string $word The word to check
 		 * @return bool True if the word appears to be singular
 		 */
@@ -235,7 +300,7 @@
 			$lowercaseWord = strtolower($word);
 			
 			// Check if it's uncountable (neither singular nor plural)
-			if (in_array($lowercaseWord, self::$uncountable)) {
+			if (in_array($lowercaseWord, self::$uncountable, true)) {
 				return false;
 			}
 			
