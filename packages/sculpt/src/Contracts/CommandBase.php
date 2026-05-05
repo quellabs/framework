@@ -27,9 +27,9 @@
 		protected ConsoleOutput $output;
 		
 		/**
-		 * @var ServiceProvider|null Optional service provider for dependency injection
+		 * @var ServiceProvider Service provider
 		 */
-		protected ?ProviderInterface $provider;
+		protected ProviderInterface $provider;
 		
 		/**
 		 * @var string|null Cached $projectRoot
@@ -40,9 +40,9 @@
 		 * Initialize a new command instance
 		 * @param ConsoleInput $input Input handler to process command arguments and options
 		 * @param ConsoleOutput $output Output handler to display results and messages
-		 * @param ProviderInterface|null $provider Optional service provider for dependency injection
+		 * @param ProviderInterface $provider Service provider
 		 */
-		public function __construct(ConsoleInput $input, ConsoleOutput $output, ?ProviderInterface $provider = null) {
+		public function __construct(ConsoleInput $input, ConsoleOutput $output, ProviderInterface $provider) {
 			$this->input = $input;
 			$this->output = $output;
 			$this->provider = $provider;

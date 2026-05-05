@@ -14,8 +14,8 @@
 	 */
 	class ClearCacheCommand extends CommandBase {
 		
-		/** @var ServiceProvider|null */
-		protected ?ProviderInterface $provider;
+		/** @var ServiceProvider */
+		protected ProviderInterface $provider;
 		
 		/**
 		 * Define the command signature/name that will be used to invoke this command
@@ -43,7 +43,7 @@
 			$defaults = ServiceProvider::getDefaults();
 			
 			// Get current configuration from the provider instance
-			$configuration = $this->provider !== null ? $this->provider->getConfig() : [];
+			$configuration = $this->provider->getConfig();
 			
 			// Create Twig instance with configured directories
 			$twig = new TwigTemplate(array_merge($defaults, $configuration));

@@ -15,8 +15,8 @@
 	 */
 	class ClearCacheCommand extends CommandBase {
 		
-		/** @var ServiceProvider|null */
-		protected ?ProviderInterface $provider;
+		/** @var ServiceProvider */
+		protected ProviderInterface $provider;
 		
 		/**
 		 * Define the command signature used to invoke this command
@@ -41,7 +41,7 @@
 		 */
 		public function execute(ConfigurationManager $config): int {
 			$defaults      = ServiceProvider::getDefaults();
-			$configuration = $this->provider !== null ? $this->provider->getConfig() : [];
+			$configuration = $this->provider->getConfig();
 			
 			$compileDir = $configuration['compile_dir'] ?? $defaults['compile_dir'];
 			
