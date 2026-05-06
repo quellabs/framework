@@ -6,6 +6,7 @@
 	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
 	use Quellabs\ObjectQuel\Exception\SemanticException;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIdentifier;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabase;
 	use Quellabs\ObjectQuel\ObjectQuel\AstInterface;
 	use Quellabs\ObjectQuel\ObjectQuel\AstVisitorInterface;
 	use Quellabs\ObjectQuel\Exception\QuelException;
@@ -66,7 +67,7 @@
 			$this->visitedNodes[$objectHash] = true;
 			
 			// Check if the node is attached to an entity
-			if (!$node->isFromEntity()) {
+			if (!$node->getSourceRange() instanceof AstRangeDatabase) {
 				return;
 			}
 			
@@ -80,17 +81,9 @@
 			
 			// Validate entity existence in the entity store
 			// Throw an exception with detailed error message if entity doesn't exist
-			try {
-				if (!$this->entityStore->exists($entityName)) {
-					throw new SemanticException(
-						"The entity or range {$entityName} referenced in the query does not exist"
-					);
-				}
-			} catch (EntityResolutionException $e) {
+			if (!$this->entityStore->exists($entityName)) {
 				throw new SemanticException(
-					"The entity or range {$entityName} referenced in the query does not exist.",
-					0,
-					$e
+					"The entity or range {$entityName} referenced in the query does not exist"
 				);
 			}
 		}

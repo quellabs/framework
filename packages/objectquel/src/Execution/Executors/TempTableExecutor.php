@@ -84,55 +84,36 @@
 		 */
 		public function execute(TempTableStage $stage, callable $runner): void {
 			$range = $stage->getRange();
+			$tableName = $range->getTableName();
 			$innerQuery = $stage->getInnerQuery();
 			
 			// Execute the inner query through the full pipeline.
 			// This handles JSON stages, sub-decomposition, etc. transparently.
 			$rows = $runner($stage->getInnerPlan());
 			
+			// INNER JOIN: an empty source means the outer query can produce no rows.
+			// Skip table creation entirely — PlanExecutor will produce an empty result set.
+			if (empty($rows) && $range->isRequired()) {
+				return;
+			}
+			
+			// Infer column schema from result rows when available, or fall back to the
+			// projection list for LEFT JOINs where the inner query returned no rows.
 			if (empty($rows)) {
-				if ($range->isRequired()) {
-					// INNER JOIN: an empty source means the outer query can produce no rows.
-					// Skip table creation entirely and return early — PlanExecutor will
-					// produce an empty result set, which is correct.
-					return;
-				}
-				
-				// LEFT JOIN: the outer query must still run and return its rows with NULLs
-				// for this range's columns. Create an empty temp table using column names
-				// derived from the inner query's projection list, since there are no result
-				// rows to infer the schema from.
 				$columns = $this->extractColumnNamesFromQuery($innerQuery);
-				$tempName = 'tmp_' . $range->getName() . '_' . uniqid();
-				$this->createTable($tempName, $columns);
 			} else {
-				// Infer column schema from the keys of the first result row
-				$columns = array_map(
-					fn($key) => (string)$key,
-					array_keys($rows[0])
-				);
-				
-				$tempName = 'tmp_' . $range->getName() . '_' . uniqid();
-				
-				$this->createTable($tempName, $columns);
-				$this->insertRows($tempName, $columns, $rows);
+				$columns = array_map(fn($key) => (string)$key, array_keys($rows[0]));
+			}
+			
+			// Create the temporary table and populate it
+			$this->createTable($tableName, $columns);
+			
+			if (!empty($rows)) {
+				$this->insertRows($tableName, $columns, $rows);
 			}
 			
 			// Register the table name so cleanup() can DROP it later
-			$this->createdTables[] = $tempName;
-			
-			// Mutate the range so QuelToSQL emits a plain table reference.
-			// Because this is the same object instance held by the outer ExecutionStage,
-			// no further wiring is needed — the change is visible to QuelToSQL immediately.
-			//
-			// FROM vs JOIN determination: QuelToSQL::getFrom() picks the FROM by finding
-			// the first AstRangeDatabase with joinProperty === null. ExecutionPlanBuilder::
-			// promoteTempTableRanges() promotes temp-table ranges to JOINs by extracting
-			// a join condition from the WHERE clause, so that a real database table can
-			// take the FROM position when one exists. If no real database table is present,
-			// the temp table legitimately becomes the FROM and is left untouched.
-			$range->setQuery(null);
-			$range->setTableName($tempName);
+			$this->createdTables[] = $tableName;
 		}
 		
 		/**
@@ -154,16 +135,7 @@
 			
 			$this->createdTables = [];
 		}
-		
-		/**
-		 * Returns the list of temporary table names created so far.
-		 * Useful for debugging and testing.
-		 * @return string[]
-		 */
-		public function getCreatedTables(): array {
-			return $this->createdTables;
-		}
-		
+
 		/**
 		 * Extracts column names from the inner query's projection list.
 		 * Used when the inner query returns no rows and the schema cannot be inferred

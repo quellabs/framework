@@ -1,22 +1,14 @@
 <?php
 	
-	namespace Quellabs\ObjectQuel\Execution\Support;
+	namespace Quellabs\ObjectQuel\Planner\Helpers;
 	
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAggregate;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAny;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAvg;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAvgU;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstBinaryOperator;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstCount;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstCountU;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstExpression;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIdentifier;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstMax;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstMin;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabase;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstSum;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstSumU;
 	use Quellabs\ObjectQuel\ObjectQuel\AstInterface;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\AggregateCollector;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\IdentifierCollector;
@@ -169,16 +161,25 @@
 		public static function conditionReferencesRange(AstExpression $condition, AstRangeDatabase $range): bool {
 			$rangeName = $range->getName();
 			
-			// Check if left side is an identifier from this range
-			$leftMatches =
-				$condition->getLeft() instanceof AstIdentifier &&
-				$condition->getLeft()->getRange()->getName() === $rangeName;
+			// Extract the range from the left operand, or null if it's not an identifier
+			if ($condition->getLeft() instanceof AstIdentifier) {
+				$leftRange = $condition->getLeft()->getRange();
+			} else {
+				$leftRange = null;
+			}
 			
-			// Check if right side is an identifier from this range
-			$rightMatches =
-				$condition->getRight() instanceof AstIdentifier &&
-				$condition->getRight()->getRange()->getName() === $rangeName;
+			// Extract the range from the right operand, or null if it's not an identifier
+			if ($condition->getRight() instanceof AstIdentifier) {
+				$rightRange = $condition->getRight()->getRange();
+			} else {
+				$rightRange = null;
+			}
 			
+			// getRange() can return null for unresolved identifiers, so guard before calling getName()
+			$leftMatches = $leftRange !== null && $leftRange->getName() === $rangeName;
+			$rightMatches = $rightRange !== null && $rightRange->getName() === $rangeName;
+			
+			// Return true if either operand references the given range
 			return $leftMatches || $rightMatches;
 		}
 	}

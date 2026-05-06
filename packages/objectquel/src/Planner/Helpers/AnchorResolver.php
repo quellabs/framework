@@ -1,10 +1,7 @@
 <?php
 	
-	namespace Quellabs\ObjectQuel\Planner\Optimizers;
+	namespace Quellabs\ObjectQuel\Planner\Helpers;
 	
-	use Quellabs\ObjectQuel\Execution\Support\AnchorCandidate;
-	use Quellabs\ObjectQuel\Execution\Support\AstFactory;
-	use Quellabs\ObjectQuel\Execution\Support\QueryAnalysisResult;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRange;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabase;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
@@ -24,7 +21,7 @@
 	 * BEFORE: SELECT * FROM users u, orders o WHERE u.id = o.user_id
 	 * AFTER:  SELECT * FROM users u INNER JOIN orders o ON u.id = o.user_id
 	 */
-	class AnchorOptimizer {
+	class AnchorResolver {
 		
 		// Priority scores for anchor selection (higher = better)
 		private const int PRIORITY_EXPRESSION_REFERENCED = 1000;  // Table used in SELECT expressions
@@ -151,7 +148,7 @@
 			}
 			
 			// Original anchor gets stability bonus, INNER JOINs get standard priority
-			if ($retrieveObject->getMainDatabaseRange()->getName() !== $rangeName) {
+			if ($retrieveObject->getMainDatabaseRange()?->getName() === $rangeName) {
 				$priority += self::PRIORITY_ORIGINAL_ANCHOR;
 			} else {
 				$priority += self::PRIORITY_INNER_JOIN;

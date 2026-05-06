@@ -5,6 +5,7 @@
 	use Quellabs\ObjectQuel\EntityStore;
 	use Quellabs\ObjectQuel\Exception\TransformationException;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabase;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabaseSubquery;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\EntityNameNormalizer;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\RangeDatabaseEntityNormalizer;
@@ -93,11 +94,7 @@
 		private function transformNestedQueries(AstRetrieve $ast): void {
 			foreach ($ast->getRanges() as $range) {
 				// Only process temporary ranges that contain nested queries
-				if (!$range instanceof AstRangeDatabase) {
-					continue;
-				}
-				
-				if ($range->getQuery() === null) {
+				if (!$range instanceof AstRangeDatabaseSubquery) {
 					continue;
 				}
 				

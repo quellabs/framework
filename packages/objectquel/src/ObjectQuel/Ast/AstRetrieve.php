@@ -338,10 +338,10 @@
 		
 		/**
 		 * Sets the maximum number of results to return.
-		 * @param int $windowSize
+		 * @param int|null $windowSize
 		 * @return void
 		 */
-		public function setWindowSize(int $windowSize): void {
+		public function setWindowSize(?int $windowSize): void {
 			$this->window_size = $windowSize;
 		}
 		
@@ -542,9 +542,7 @@
 				$macro->setParent($clone);
 			}
 			
-			if ($clonedConditions) {
-				$clonedConditions->setParent($clone);
-			}
+			$clonedConditions?->setParent($clone);
 			
 			foreach ($clonedSort as $sortItem) {
 				$sortItem['ast']->setParent($clone);

@@ -108,11 +108,30 @@
 		}
 		
 		/**
-		 * Returns the database version number
-		 * @return string
+		 * Returns the normalized server version string.
+		 *
+		 * MariaDB advertises itself to MySQL clients with a compatibility prefix to
+		 * maintain protocol compatibility with older MySQL clients:
+		 *   "5.5.5-10.6.1-MariaDB"
+		 *
+		 * CakePHP's Driver::version() returns this raw string verbatim. This method
+		 * strips the compatibility prefix so callers always receive the real version
+		 * number regardless of engine, making version_compare() calls safe for both
+		 * MySQL and MariaDB.
+		 *
+		 * @return string Normalized version string (e.g. "8.0.32", "10.6.1-MariaDB")
 		 */
-		public function getMysqlVersion(): string {
-			return $this->connection->getDriver()->version();
+		public function getServerVersion(): string {
+			// Fetch version number
+			$version = $this->connection->getDriver()->version();
+			
+			// MariaDB prefixes its version string with "5.5.5-" for MySQL client
+			// compatibility. Strip it to expose the real version number.
+			if (preg_match('/^\d+\.\d+\.\d+-(\d+\.\d+\.\d+-MariaDB.*)$/', $version, $matches)) {
+				return $matches[1];
+			} else {
+				return $version;
+			}
 		}
 		
 		/**
@@ -294,7 +313,7 @@
 				$constraintData = $schema->getConstraint($constraint);
 				
 				// Check if this constraint is a primary key constraint
-				if ($constraintData['type'] === 'primary') {
+				if (isset($constraintData['type']) && $constraintData['type'] === 'primary') {
 					// Return the column names that make up the primary key
 					// This supports both single and composite primary keys
 					return $constraintData['columns'];
@@ -345,15 +364,11 @@
 		
 		/**
 		 * Rewrites duplicate named parameters so PDO can bind them.
-		 * @param string|null $sql The SQL query, modified in place
+		 * @param string $sql The SQL query, modified in place
 		 * @param array<int|string, mixed> $parameters The parameter bindings, expanded in place
 		 * @return void
 		 */
-		protected function deduplicateParameters(?string &$sql, array &$parameters): void {
-			if ($sql === null) {
-				return;
-			}
-			
+		protected function deduplicateParameters(string &$sql, array &$parameters): void {
 			// Track how many times each named parameter has been seen so far
 			$seen = [];
 			
@@ -385,23 +400,23 @@
 					return ':' . $newName;
 				},
 				$sql
-			);
+			) ?? $sql;
 		}
 		
 		/**
 		 * Executes a SQL query with optional parameter binding
 		 * @param string $query SQL query to execute
 		 * @param array<int|string, mixed> $parameters Parameter values for prepared statement placeholders
-		 * @return StatementInterface|false Statement object on success, false on failure
+		 * @return StatementInterface|null Statement object on success, false on failure
 		 */
-		public function execute(string $query, array $parameters = []): StatementInterface|false {
+		public function execute(string $query, array $parameters = []): ?StatementInterface {
 			try {
 				$this->deduplicateParameters($query, $parameters);
 				return $this->connection->execute($query, $parameters);
 			} catch (\Exception $exception) {
 				$this->last_error = $exception->getCode();
 				$this->last_error_message = $exception->getMessage();
-				return false;
+				return null;
 			}
 		}
 		

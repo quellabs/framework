@@ -3,7 +3,6 @@
 	namespace Quellabs\ObjectQuel\ObjectQuel\Ast;
 	
 	use Quellabs\ObjectQuel\ObjectQuel\AstInterface;
-	use Quellabs\ObjectQuel\ObjectQuel\AstVisitorInterface;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\IdentifierLocator;
 	
 	/**
@@ -46,10 +45,7 @@
 			$this->name = $name;
 			$this->required = $required;
 			$this->joinProperty = $joinProperty;
-			
-			if ($joinProperty) {
-				$this->joinProperty->setParent($this);
-			}
+			$this->joinProperty?->setParent($this);
 		}
 		
 		/**

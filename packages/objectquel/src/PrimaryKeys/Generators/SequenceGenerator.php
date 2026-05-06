@@ -3,6 +3,8 @@
 	namespace Quellabs\ObjectQuel\PrimaryKeys\Generators;
 	
 	use Quellabs\ObjectQuel\EntityManager;
+	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
+	use Quellabs\ObjectQuel\Exception\QuelException;
 	use Quellabs\ObjectQuel\PrimaryKeys\PrimaryKeyGeneratorInterface;
 	
 	/**
@@ -15,6 +17,7 @@
 		 * @param EntityManager $em The EntityManager instance
 		 * @param object $entity The entity object for which to generate a primary key
 		 * @return mixed The generated primary key value
+		 * @throws QuelException|EntityResolutionException
 		 */
 		public function generate(EntityManager $em, object $entity): mixed {
 			// Get the database connection from the EntityManager
@@ -40,9 +43,9 @@
 				 FROM `{$tableName}`
 			  ");
 			
-			// execute() returns StatementInterface|false
-			if ($rs === false) {
-				return null;
+			// execute() returns StatementInterface|null
+			if ($rs === null) {
+				throw new \RuntimeException("SequenceGenerator could not generate a sequence for table `{$tableName}`.");
 			}
 			
 			// Fetch the single scalar result and return it

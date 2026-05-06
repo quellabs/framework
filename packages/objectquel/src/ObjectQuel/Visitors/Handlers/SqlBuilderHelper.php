@@ -73,7 +73,8 @@
 		 * (derived from subqueries).
 		 *
 		 * @param AstIdentifier $identifier The AST identifier to convert
-		 * @return string Fully qualified SQL column name or empty string if invalid
+		 * @return string Fully qualified SQL column name or empty string if no range
+		 * @throws \LogicException
 		 */
 		public function buildColumnName(AstIdentifier $identifier): string {
 			// Get the range (table alias) from the identifier
@@ -108,7 +109,8 @@
 		 * @param AstIdentifier $identifier The AST identifier to convert
 		 * @param string $rangeName The table alias
 		 * @param string $entityName The entity class name
-		 * @return string Fully qualified SQL column name or empty string if invalid
+		 * @return string Fully qualified SQL column name
+		 * @throws \LogicException
 		 */
 		private function buildColumnNameForEntity(AstIdentifier $identifier, string $rangeName, string $entityName): string {
 			// Handle case where identifier refers to the entity itself (primary key)
@@ -116,30 +118,42 @@
 				$identifierColumns = $this->entityStore->getIdentifierColumnNames($entityName);
 				
 				if (empty($identifierColumns)) {
-					return '';
+					throw new \LogicException(
+						"Entity '{$entityName}' has no identifier columns defined"
+					);
 				}
 				
 				// Return first identifier column (usually primary key)
 				return "{$rangeName}.{$identifierColumns[0]}";
 			}
 			
-			// Handle property identifiers - need to check if there's a property name
-			if (!$identifier->hasNext()) {
-				return '';
+			// Get the property name from the next node in the identifier chain
+			$next = $identifier->getNext();
+			
+			if ($next === null) {
+				// A non-entity identifier must have a property node — missing one is an AST bug
+				throw new \LogicException(
+					"Identifier for entity '{$entityName}' has no property node in chain"
+				);
 			}
 			
-			// Get the property name from the next node in the identifier chain
-			$property = $identifier->getNext()->getName();
+			$property = $next->getName();
 			
 			if (empty($property)) {
-				return '';
+				// A valid AST node must return a non-empty name
+				throw new \LogicException(
+					"Property node for entity '{$entityName}' returned an empty name"
+				);
 			}
 			
 			// Look up the database column name for this property
 			$columnMap = $this->entityStore->getColumnMap($entityName);
 			
 			if (!isset($columnMap[$property])) {
-				return '';
+				// If semantic validation ran correctly this should never happen
+				throw new \LogicException(
+					"Property '{$property}' has no column mapping in entity '{$entityName}'"
+				);
 			}
 			
 			// Return fully qualified column name
@@ -154,20 +168,33 @@
 		 *
 		 * @param AstIdentifier $identifier The AST identifier to convert
 		 * @param string $rangeName The table alias
-		 * @return string Fully qualified SQL column name or empty string if invalid
+		 * @return string Fully qualified SQL column name
+		 * @throws \LogicException
 		 */
 		private function buildColumnNameForTemporaryTable(AstIdentifier $identifier, string $rangeName): string {
 			// For temporary tables, we can't reference the table itself without a property
 			if (!$identifier->hasNext()) {
-				return '';
+				throw new \LogicException(
+					"Temporary table identifier '{$rangeName}' has no property node in chain"
+				);
 			}
 			
 			// Get the column name from the next node in the identifier chain
 			// For temporary tables, this is the column alias from the subquery's SELECT
-			$columnName = $identifier->getNext()->getCompleteName();
+			$nextNode = $identifier->getNext();
+			
+			if ($nextNode === null) {
+				throw new \LogicException(
+					"Temporary table identifier '{$rangeName}' returned null for next node despite hasNext() being true"
+				);
+			}
+			
+			$columnName = $nextNode->getCompleteName();
 			
 			if (empty($columnName)) {
-				return '';
+				throw new \LogicException(
+					"Property node for temporary table '{$rangeName}' returned an empty name"
+				);
 			}
 			
 			// Return fully qualified column name using the identifier's name directly
@@ -176,12 +203,12 @@
 		}
 		
 		/**
-		 * Builds the join condition SQL from a join property AST
+		 * Builds the join condition SQL from a join property AST.
 		 * Delegates to the main visitor to process join condition AST nodes and
 		 * return the appropriate SQL string. Falls back to creating a new visitor
 		 * if main visitor is not available.
 		 * @param AstInterface $joinCondition The AST node representing the join condition
-		 * @return string SQL join condition or empty string on error
+		 * @return string SQL join condition
 		 */
 		public function buildJoinCondition(AstInterface $joinCondition): string {
 			// Check if we have access to the main visitor
@@ -194,40 +221,46 @@
 					$this->platform
 				);
 				
-				try {
-					// Process the join condition AST node
-					$joinCondition->accept($visitor);
-					return $visitor->getResult();
-				} catch (\Exception $e) {
-					// Return empty string on any processing error
-					return '';
-				}
+				// Process the join condition AST node
+				$joinCondition->accept($visitor);
+				return $visitor->getResult();
 			}
 			
 			// Use main visitor's visitNodeAndReturnSQL method for consistency
-			try {
-				return $this->mainVisitor->visitNodeAndReturnSQL($joinCondition);
-			} catch (\Exception $e) {
-				// Return empty string on any processing error
-				return '';
-			}
+			return $this->mainVisitor->visitNodeAndReturnSQL($joinCondition);
 		}
 		
 		/**
-		 * Generates SQL for entity column selections with proper aliasing
+		 * Generates SQL for entity column selections with proper aliasing.
 		 * Creates a comma-separated list of all columns for an entity with aliases
 		 * in the format "table.column as `alias.property`". This is used in SELECT
 		 * clauses when selecting entire entities.
 		 * @param AstIdentifier $ast The entity identifier
-		 * @return string Comma-separated list of aliased columns or empty string
+		 * @return string Comma-separated list of aliased columns
+		 * @throws \LogicException
 		 */
 		public function buildEntityColumns(AstIdentifier $ast): string {
 			$result = [];
 			$range = $ast->getRange();
-			$rangeName = $range->getName(); // Table alias
+			
+			if (!$range) {
+				throw new \LogicException(
+					"buildEntityColumns called with an identifier that has no range"
+				);
+			}
+			
+			$rangeName = $range->getName();
 			
 			// Get all column mappings for this entity
-			$columnMap = $this->entityStore->getColumnMap($ast->getEntityName());
+			$entityName = $ast->getEntityName();
+			
+			if (empty($entityName)) {
+				throw new \LogicException(
+					"buildEntityColumns called with an identifier that has no entity name for range '{$rangeName}'"
+				);
+			}
+			
+			$columnMap = $this->entityStore->getColumnMap($entityName);
 			
 			// Build aliased column selections for each property
 			foreach ($columnMap as $item => $value) {
@@ -388,69 +421,104 @@
 		 */
 		private function extractPropertyNames(array $identifiers): array {
 			return array_map(function (AstIdentifier $identifier) {
-				return $identifier->hasNext()
-					? $identifier->getNext()->getName()
-					: $identifier->getName();
+				$next = $identifier->getNext();
+				
+				if ($next !== null) {
+					return $next->getName();
+				} else {
+					return $identifier->getName();
+				}
 			}, $identifiers);
 		}
 		
 		/**
-		 * Builds identifier column with COALESCE for sorting
-		 * Creates sortable column expressions that handle NULL values appropriately.
-		 * Uses COALESCE to provide default values for nullable columns during sorting.
-		 * @param AstIdentifier $ast The identifier to create sortable column for
-		 * @return string SQL column expression with appropriate NULL handling
+		 * Builds a SQL column expression for the given identifier.
+		 *
+		 * In SORT context, wraps nullable columns in COALESCE() to push NULLs to a
+		 * predictable position (0 for integers, '' for everything else). In all other
+		 * contexts, returns a plain table.column reference.
+		 *
+		 * @param AstIdentifier $ast The identifier to resolve to a SQL expression.
+		 * @return string SQL column expression, optionally wrapped in COALESCE().
+		 * @throws \LogicException
 		 */
 		public function buildSortableColumn(AstIdentifier $ast): string {
+			// Fetch the range
 			$range = $ast->getRange();
 			
-			// Alias identifier (e.g. `score` from `score=search_score(...)`) —
-			// no range, no next node. Return the bare name so ORDER BY score works.
-			if ($range === null || !$ast->hasNext()) {
+			// Alias identifiers (e.g. `score` from `score=search_score(...)`) have no
+			// range and no property chain. Return the bare name so ORDER BY score works.
+			if ($range === null) {
 				return $ast->getName();
 			}
 			
-			$rangeName = $range->getName();
-			$entityName = $ast->getEntityName();
-			$propertyName = $ast->getNext()->getName();
+			// Resolve the next node now so static analysis can track its nullability
+			// in one place, avoiding a redundant hasNext() + getNext() double-check.
+			$nextNode = $ast->getNext();
 			
-			// Handle temporary tables - no metadata available
+			// Range is set but there's no property — treat as alias-style reference.
+			if ($nextNode === null) {
+				return $ast->getName();
+			}
+			
+			// Temporary table ranges carry no entity metadata; the property name from
+			// the subquery's SELECT is already a valid column name, so use it directly.
+			$rangeName = $range->getName();
+			$propertyName = $nextNode->getName();
+			$entityName = $ast->getEntityName();
+			
 			if (empty($entityName)) {
-				// For temporary tables, use column name directly without COALESCE
 				return "{$rangeName}.{$propertyName}";
 			}
 			
+			// Map the ORM property name to its physical database column name.
 			$columnMap = $this->entityStore->getColumnMap($entityName);
 			
-			// For non-sorting contexts, return simple column reference
-			if ($this->partOfQuery !== "SORT") {
-				return $rangeName . "." . $columnMap[$propertyName];
+			if (!isset($columnMap[$propertyName])) {
+				// If semantic validation ran correctly this should never happen
+				throw new \LogicException(
+					"Property '{$propertyName}' has no column mapping in entity '{$entityName}'"
+				);
 			}
 			
-			// Get column annotations to check nullability and type
-			$annotations = $this->entityStore->getAnnotations($entityName);
+			// Create the column
+			$columnRef = "{$rangeName}.{$columnMap[$propertyName]}";
 			
-			$annotationsOfProperty = array_values(array_filter(
-				$annotations[$propertyName],
-				function ($e) {
-					return $e instanceof Column;
-				}
+			// Outside a SORT clause there is no need for NULL handling; return as-is.
+			if ($this->partOfQuery !== "SORT") {
+				return $columnRef;
+			}
+			
+			// In SORT context, find the Column annotation for this property so we can
+			// inspect nullability and type. Filter to Column instances only since a
+			// property may carry multiple annotation types (e.g. Index, Relation).
+			$annotations = $this->entityStore->getAnnotations($entityName);
+			$columnAnnotations = array_values(array_filter(
+				$annotations[$propertyName] ?? [],
+				fn($annotation) => $annotation instanceof Column
 			));
 			
-			// If column is not nullable, no COALESCE needed
-			// For nullable integer columns, use 0 as default
-			// For other nullable columns, use empty string as default
-			if (!$annotationsOfProperty[0]->isNullable()) {
-				return $rangeName . "." . $columnMap[$propertyName];
-			} elseif ($annotationsOfProperty[0]->getType() === "integer") {
-				return "COALESCE({$rangeName}.{$columnMap[$propertyName]}, 0)";
-			} else {
-				return "COALESCE({$rangeName}.{$columnMap[$propertyName]}, '')";
+			// No Column annotation found — can't determine nullability, return as-is.
+			if (empty($columnAnnotations)) {
+				return $columnRef;
 			}
+			
+			// Non-nullable columns sort correctly without COALESCE.
+			$columnAnnotation = $columnAnnotations[0];
+			
+			if (!$columnAnnotation->isNullable()) {
+				return $columnRef;
+			}
+			
+			// Nullable columns need a COALESCE default so NULLs sort consistently.
+			// Integers default to 0 (sorts before positive values);
+			// everything else defaults to '' (sorts before any non-empty string).
+			$default = $columnAnnotation->getType() === "integer" ? "0" : "''";
+			return "COALESCE({$columnRef}, {$default})";
 		}
 		
 		/**
-		 * Returns true if the identifier is an entity, false if not
+		 * Returns true if the identifier is an entity, false if not.
 		 * Determines whether an AST identifier refers to an entire entity (table)
 		 * or a specific property within an entity. Entity identifiers don't have
 		 * a "next" node in the identifier chain.
@@ -466,7 +534,7 @@
 		}
 		
 		/**
-		 * Builds field-specific conditions for different term types (OR, AND, NOT)
+		 * Builds field-specific conditions for different term types (OR, AND, NOT).
 		 * Creates SQL conditions for a single field based on parsed search terms.
 		 * Handles three types of search logic: OR (any term matches), AND (all terms
 		 * must match), and NOT (terms must not match).
@@ -509,7 +577,7 @@
 		}
 		
 		/**
-		 * Builds conditions for a specific term type (or_terms, and_terms, not_terms)
+		 * Builds conditions for a specific term type (or_terms, and_terms, not_terms).
 		 * Creates individual SQL LIKE/NOT LIKE conditions for each search term
 		 * and adds the corresponding parameters to the parameters array.
 		 * @param string $columnName The SQL column name to search in

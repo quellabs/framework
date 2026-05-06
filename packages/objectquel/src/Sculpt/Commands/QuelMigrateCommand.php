@@ -25,9 +25,9 @@
 		 * QuelMigrateCommand constructor
 		 * @param ConsoleInput $input
 		 * @param ConsoleOutput $output
-		 * @param ServiceProvider|null $provider
+		 * @param ServiceProvider $provider
 		 */
-		public function __construct(ConsoleInput $input, ConsoleOutput $output, ?ServiceProvider $provider = null) {
+		public function __construct(ConsoleInput $input, ConsoleOutput $output, ServiceProvider $provider) {
 			parent::__construct($input, $output, $provider);
 			$this->environment = 'development';
 		}
@@ -38,15 +38,18 @@
 		 * @return int Exit code (0 for success)
 		 */
 		public function execute(ConfigurationManager $config): int {
+			// Fetch service provider
+			$serviceProvider = $this->getProvider();
+
 			// Check if we can generate the phinx config
 			// This line exists to make PhpStan happy
-			if (!method_exists($this->getProvider(), 'createPhinxConfig')) {
+			if (!$serviceProvider instanceof \Quellabs\ObjectQuel\Sculpt\ServiceProvider) {
 				$this->output->error("Unable to fetch phinx configuration");
 				return 1;
 			}
 			
 			// Create a Phinx configuration
-			$phinxConfig = new Config($this->getProvider()->createPhinxConfig());
+			$phinxConfig = new Config($serviceProvider->createPhinxConfig());
 
 			// Create the manager with buffered output to capture all output
 			// Always use the 'development' environment since that's all our config supports

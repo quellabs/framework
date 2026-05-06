@@ -4,9 +4,12 @@
 	
 	use Quellabs\ObjectQuel\Annotations\Orm\Column;
 	use Quellabs\ObjectQuel\EntityStore;
+	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIdentifier;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabase;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabaseSubquery;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstSubquery;
 	use Quellabs\ObjectQuel\ObjectQuel\AstInterface;
 	use Quellabs\ObjectQuel\ObjectQuel\AstVisitorInterface;
 	
@@ -64,18 +67,26 @@
 			}
 			
 			// Check the range name
-			if ($node->getRange()->getName() !== $this->rangeName) {
+			$range = $node->getRange();
+			$next = $node->getNext();
+			
+			if (
+				$range === null ||
+				$next === null ||
+				$range->getName() !== $this->rangeName
+			) {
 				return;
 			}
 			
 			// Extract the field name being referenced (e.g., "id" from "temp.id")
-			$fieldName = $node->getNext()->getName();
+			$fieldName = $next->getName();
 			
 			// Find this field in the subquery's retrieve list
 			$expression = $this->findExpressionByAlias($fieldName);
 			
+			// Field not found in retrieve list
 			if ($expression === null) {
-				return; // Field not found in retrieve list
+				return;
 			}
 			
 			// Record if the retrieved expression is non-nullable
@@ -114,18 +125,26 @@
 		 *
 		 * @param AstInterface $expression The expression to check
 		 * @return bool True if the expression is a non-nullable field reference
+		 * @throws EntityResolutionException
 		 */
 		private function isExpressionNonNullable(AstInterface $expression): bool {
-			// Only check direct field references (e.g., x.id)
-			// For computed expressions, functions, or subquery references, assume nullable (safe default)
+			// Must be identifier node
 			if (!$expression instanceof AstIdentifier) {
 				return false;
 			}
 			
+			// Validate existence of essential ast nodes
+			if (
+				$expression->getRange() === null ||
+				$expression->getNext() === null
+			) {
+				return false;
+			}
+
+			// Find the source range in the subquery
 			$rangeName = $expression->getRange()->getName();
 			$fieldName = $expression->getNext()->getName();
-			
-			// Find the source range in the subquery
+
 			$sourceRange = null;
 			foreach ($this->subquery->getRanges() as $range) {
 				if ($range->getName() === $rangeName) {
@@ -134,17 +153,20 @@
 				}
 			}
 			
+			// Can't determine, assume nullable
 			if ($sourceRange === null) {
-				return false; // Can't determine, assume nullable
-			}
-			
-			// Only analyze entity ranges, not nested subqueries
-			if (!($sourceRange instanceof AstRangeDatabase) || $sourceRange->containsQuery()) {
 				return false;
 			}
 			
+			// Only analyze entity ranges, not nested subqueries
+			if ($sourceRange instanceof AstRangeDatabaseSubquery) {
+				return false;
+			}
+			
+			// Extract the entity name
 			$entityName = $sourceRange->getEntityName();
 			
+			// Abort if there's no entity
 			if ($entityName === null || !$this->entityStore->exists($entityName)) {
 				return false; // No entity metadata available
 			}
@@ -152,6 +174,7 @@
 			// Get annotations for this property
 			$annotations = $this->entityStore->getAnnotations($entityName);
 			
+			// Abort if the field has no annotations
 			if (!isset($annotations[$fieldName])) {
 				return false; // Property not found
 			}

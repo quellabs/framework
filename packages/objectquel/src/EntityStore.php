@@ -34,11 +34,13 @@
 	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
 	use Quellabs\ObjectQuel\Metadata\EntityMetadataRecord;
 	use Quellabs\ObjectQuel\Metadata\EntityMetadataBuilder;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabase;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
 	use Quellabs\ObjectQuel\ProxyGenerator\ProxyGenerator;
 	use Quellabs\ObjectQuel\ReflectionManagement\EntityLocator;
 	use Quellabs\ObjectQuel\ReflectionManagement\ReflectionHandler;
 	use Quellabs\Support\NamespaceResolver;
+	use Quellabs\ObjectQuel\ObjectQuel\PrimaryKeyInfo;
 	
 	/**
 	 * Entity metadata registry and access point.
@@ -188,37 +190,40 @@
 		 * Checks if the entity or its parent exists in the entity registry.
 		 * @param string|object $entity The entity to check, either as an object or as a string class name
 		 * @return bool True if the entity or its parent class exists in the registry, false otherwise
-		 * @throws EntityResolutionException
 		 */
 		public function exists(string|object $entity): bool {
-			// Determine the class name of the entity
-			$normalizedClass = $this->resolveProxyClass($entity);
-			
-			// Check that the class exists
-			if (!class_exists($normalizedClass)) {
+			try {
+				// Determine the class name of the entity
+				$normalizedClass = $this->resolveProxyClass($entity);
+				
+				// Check that the class exists
+				if (!class_exists($normalizedClass)) {
+					return false;
+				}
+				
+				// Check if the entity class exists in the entity registry
+				if (isset($this->entityRegistry[$normalizedClass])) {
+					return true;
+				}
+				
+				// Get the parent class name using the ReflectionHandler
+				$parentClass = $this->reflectionHandler->getParent($normalizedClass);
+				
+				// Check if the parent class exists in the entity registry
+				// Return false if neither the entity nor its parent class exists
+				return $parentClass !== null && isset($this->entityRegistry[$parentClass]);
+			} catch (EntityResolutionException $e) {
 				return false;
 			}
-			
-			// Check if the entity class exists in the entity registry
-			if (isset($this->entityRegistry[$normalizedClass])) {
-				return true;
-			}
-			
-			// Get the parent class name using the ReflectionHandler
-			$parentClass = $this->reflectionHandler->getParent($normalizedClass);
-			
-			// Check if the parent class exists in the entity registry
-			// Return false if neither the entity nor its parent class exists
-			return $parentClass !== null && isset($this->entityRegistry[$parentClass]);
 		}
 		
 		/**
 		 * Returns the table name attached to the entity.
 		 * @param string|object $entity The entity object, class name, or ReflectionClass
-		 * @return string|null The database table name, or null if entity is not registered
+		 * @return string The database table name, or null if entity is not registered
 		 * @throws EntityResolutionException
 		 */
-		public function getOwningTable(string|object $entity): ?string {
+		public function getOwningTable(string|object $entity): string {
 			return $this->getMetadata($entity)->tableName;
 		}
 		
@@ -308,35 +313,44 @@
 		/**
 		 * Retrieves the primary key of the main range from an AstRetrieve object.
 		 * @param AstRetrieve $astRetrieve A reference to the AstRetrieve object representing the query
-		 * @return array{
-		 *      range: mixed,
-		 *      entityName: string,
-		 *      primaryKey: string|null
-		 *  }|null An array with information about the range and primary key, or null if no suitable range is found
-		 * @throws EntityResolutionException
+		 * @return PrimaryKeyInfo
+		 * @throws EntityResolutionException|\LogicException
 		 */
-		public function fetchPrimaryKeyOfMainRange(AstRetrieve $astRetrieve): ?array {
+		public function fetchPrimaryKeyOfMainRange(AstRetrieve $astRetrieve): PrimaryKeyInfo {
 			foreach ($astRetrieve->getRanges() as $range) {
+				// Only accept database ranges
+				if (!$range instanceof AstRangeDatabase) {
+					continue;
+				}
+				
 				// Continue if the range contains a join property
 				if ($range->getJoinProperty() !== null) {
 					continue;
 				}
 				
-				// Get the entity name and its associated primary key if the range doesn't have a join property
+				// Continue if the range has no entity name
+				// Should never happen. This test is there for PHPStan's static testing.
+				if ($range->getEntityName() === null) {
+					continue;
+				}
+				
+				// Get the associated primary key if the range doesn't have a join property
 				$entityName = $range->getEntityName();
 				$metadata = $this->getMetadata($entityName);
+				$primaryKey = $metadata->getPrimaryKey();
+				
+				// Continue if there is no primary key
+				if ($primaryKey === null) {
+					continue;
+				}
 				
 				// Return the range name, entity name, and the primary key of the entity
-				return [
-					'range'      => $range,
-					'entityName' => $entityName,
-					'primaryKey' => $metadata->getPrimaryKey(),
-				];
+				return new PrimaryKeyInfo($range, $entityName, $primaryKey);
 			}
 			
 			// Return null if no range without a join property is found
 			// This should never happen in practice, as such a query cannot be created
-			return null;
+			throw new \LogicException("Malformed query: no primary range found in query");
 		}
 		
 		// ==================== Legacy Compatibility Methods ====================

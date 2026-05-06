@@ -1,6 +1,6 @@
 <?php
 	
-	namespace Quellabs\ObjectQuel\Execution\Support;
+	namespace Quellabs\ObjectQuel\Planner\Helpers;
 	
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRange;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabase;
@@ -39,7 +39,6 @@
 		/**
 		 * @param AstRange[] $allRanges
 		 * @return AstRange[]
-		 * @throws \Exception
 		 */
 		public function buildUpdatedRanges(array $allRanges): array {
 			$liveRangeNames = array_keys($this->liveRanges);
@@ -85,7 +84,7 @@
 		 * @param string[] $liveRangeNames Names of ranges that are part of this subquery level
 		 * @param string[] $correlationRangeNames Names of ranges from outer query contexts
 		 * @return AstRange[] Updated ranges with JOINs stripped of correlation-only parts
-		 * @throws \Exception
+		 * @throws \RuntimeException
 		 */
 		private static function buildUpdatedRangesWithInnerJoinsOnly(
 			array $allRanges,
@@ -123,7 +122,7 @@
 				// Check that range is AstRangeDatabase
 				// Not really needed, but to keep PHPStan happy
 				if (!$range instanceof AstRangeDatabase) {
-					throw new \Exception("JoinPredicate must use AstRangeDatabase");
+					throw new \RuntimeException("JoinPredicate must use AstRangeDatabase");
 				}
 				
 				// Replace the JOIN condition with only the inner part

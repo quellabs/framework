@@ -9,6 +9,7 @@
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
 	use Quellabs\ObjectQuel\EntityManager;
 	use Quellabs\ObjectQuel\EntityStore;
+	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
 	use Quellabs\ObjectQuel\Exception\QuelException;
 	use Quellabs\ObjectQuel\OrmException;
 	use Quellabs\ObjectQuel\PrimaryKeys\PrimaryKeyFactory;
@@ -88,7 +89,9 @@
 		 * Persists (inserts) an entity into the database
 		 * @param object $entity The entity to be inserted into the database
 		 * @throws OrmException If the database query fails
-		 * @throws AnnotationReaderException
+		 * @throws QuelException
+		 * @throws EntityResolutionException
+		 * @throws \Exception
 		 */
 		public function persist(object $entity): void {
 			// Gather the necessary information for the insert operation
@@ -239,6 +242,7 @@
 		 * @param object $entity The entity object to examine
 		 * @param string $primaryKey The name of the primary key field
 		 * @return string             The primary key strategy value
+		 * @throws EntityResolutionException
 		 */
 		protected function getPrimaryKeyStrategy(object $entity, string $primaryKey): string {
 			// Fetch owning table
@@ -270,6 +274,12 @@
 			return $this->strategyColumnCache[$table][$primaryKey] = "identity";
 		}
 		
+		/**
+		 * Returns the inital version column for new entities
+		 * @param string $columnType
+		 * @return int|string
+		 * @throws \Exception
+		 */
 		protected function getInitialVersionValue(string $columnType): int|string {
 			switch ($columnType) {
 				case 'int':

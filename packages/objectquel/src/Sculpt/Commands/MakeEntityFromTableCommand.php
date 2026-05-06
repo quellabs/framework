@@ -2,10 +2,6 @@
 	
 	namespace Quellabs\ObjectQuel\Sculpt\Commands;
 	
-	/**
-	 * Import required classes for entity management and console interaction
-	 */
-	
 	use Quellabs\Contracts\Discovery\ProviderInterface;
 	use Quellabs\ObjectQuel\Configuration;
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
@@ -26,18 +22,19 @@
 	 * @phpstan-import-type IndexDefinition from DatabaseAdapter
 	 */
 	class MakeEntityFromTableCommand extends CommandBase {
+		
 		private Configuration $configuration;
 		
-		/** @var ServiceProvider|null */
-		protected ?ProviderInterface $provider;
+		/** @var ServiceProvider */
+		protected ProviderInterface $provider;
 		
 		/**
 		 * MakeEntityFromTableCommand constructor
 		 * @param ConsoleInput $input
 		 * @param ConsoleOutput $output
-		 * @param ServiceProvider|null $provider
+		 * @param ServiceProvider $provider
 		 */
-		public function __construct(ConsoleInput $input, ConsoleOutput $output, ?ServiceProvider $provider = null) {
+		public function __construct(ConsoleInput $input, ConsoleOutput $output, ServiceProvider $provider) {
 			parent::__construct($input, $output, $provider);
 			$this->configuration = $provider->getConfiguration();
 		}

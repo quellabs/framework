@@ -7,6 +7,7 @@
 	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
 	use Quellabs\ObjectQuel\Exception\SemanticException;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIdentifier;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabase;
 	use Quellabs\ObjectQuel\ObjectQuel\AstInterface;
 	use Quellabs\ObjectQuel\ObjectQuel\AstVisitorInterface;
 	
@@ -33,6 +34,7 @@
 		 * @param AstInterface $node The node to visit.
 		 * @return void
 		 * @throws SemanticException Thrown when validation fails.
+		 * @throws EntityResolutionException
 		 */
 		public function visitNode(AstInterface $node): void {
 			// Validate the property if the node is of type AstIdentifier.
@@ -41,34 +43,34 @@
 			}
 			
 			// If this is not a property, do nothing
-			if (!$node->getParent() instanceof AstIdentifier) {
+			$parentNode = $node->getParent();
+			
+			if (!$parentNode instanceof AstIdentifier) {
 				return;
 			}
 			
 			// Skip validation if this identifier references a temporary table (subquery range)
-			if (!$node->getParent()->isFromEntity()) {
+			if (!$parentNode->getSourceRange() instanceof AstRangeDatabase) {
 				return;
 			}
 			
-			// Get the column map for this entity.
-			$entityName = $node->getParent()->getEntityName();
-			$propertyName = $node->getName();
+			// Fetch the entity name
+			$entityName = $parentNode->getEntityName();
 			
-			try {
-				// Fetch column map and relations
-				$columnMap = $this->entityStore->getColumnMap($entityName);
-				$relations = $this->entityStore->getOneToManyDependencies($entityName);
-				
-				// Check if the property exists in the entity.
-				if (!isset($columnMap[$propertyName]) && !isset($relations[$propertyName])) {
-					throw new SemanticException("The property {$propertyName} does not exist in entity {$entityName}. Please check for typos or verify that the correct entity is being referenced in the query.");
-				}
-			} catch (EntityResolutionException $e) {
-				throw new SemanticException(
-					"The entity or range {$entityName} referenced in the query does not exist.",
-					0,
-					$e
-				);
+			// Throw if none was attached
+			if ($entityName === null) {
+				throw new SemanticException("Missing entity name in AstIdentifier property");
+			}
+			
+			// Fetch column map and relations
+			$columnMap = $this->entityStore->getColumnMap($entityName);
+			$relations = $this->entityStore->getOneToManyDependencies($entityName);
+			
+			// Check if the property exists in the entity.
+			$propertyName = $node->getName();
+
+			if (!isset($columnMap[$propertyName]) && !isset($relations[$propertyName])) {
+				throw new SemanticException("The property {$propertyName} does not exist in entity {$entityName}. Please check for typos or verify that the correct entity is being referenced in the query.");
 			}
 		}
 	}

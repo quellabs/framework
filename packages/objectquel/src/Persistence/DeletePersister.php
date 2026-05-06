@@ -4,6 +4,7 @@
 	
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
 	use Quellabs\ObjectQuel\EntityStore;
+	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
 	use Quellabs\ObjectQuel\OrmException;
 	use Quellabs\ObjectQuel\ReflectionManagement\PropertyHandler;
 	use Quellabs\ObjectQuel\UnitOfWork;
@@ -74,6 +75,7 @@
 		 * constructs a DELETE SQL query to remove the specific entity
 		 * @param object $entity The entity to be removed from the database
 		 * @throws OrmException If the DELETE operation fails, an exception is thrown
+		 * @throws EntityResolutionException
 		 */
 		public function persist(object $entity): void {
 			// Get the name of the table where the entity is stored

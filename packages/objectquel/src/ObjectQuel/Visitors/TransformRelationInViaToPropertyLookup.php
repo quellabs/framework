@@ -42,20 +42,26 @@
 		 * @param string|null $entityName Fully qualified entity name; falls back to node's own entity name
 		 * @return bool
 		 * @throws TransformationException
+		 * @throws EntityResolutionException
 		 */
 		public function isRelationProperty(AstIdentifier $node, string $entityName = null): bool {
+			// Fetch the entity name
 			$entityName = $entityName ?? $node->getEntityName();
+			
+			// If none passed, this is not a relation property
+			if ($entityName === null) {
+				return false;
+			}
+			
+			// Fetch property name from node
 			$propertyName = $node->getName();
 			
-			try {
-				return array_key_exists($propertyName, array_merge(
-					$this->entityStore->getOneToOneDependencies($entityName),
-					$this->entityStore->getManyToOneDependencies($entityName),
-					$this->entityStore->getOneToManyDependencies($entityName)
-				));
-			} catch (EntityResolutionException $e) {
-				throw new TransformationException($e->getMessage(), $e->getCode(), $e);
-			}
+			// Check if the property is a key in any of the dependencies
+			return array_key_exists($propertyName, array_merge(
+				$this->entityStore->getOneToOneDependencies($entityName),
+				$this->entityStore->getManyToOneDependencies($entityName),
+				$this->entityStore->getOneToManyDependencies($entityName)
+			));
 		}
 		
 		/**
@@ -65,13 +71,26 @@
 		 * @param AstRange|AstRangeDatabase|AstRangeJsonSource $rangeB The other range
 		 * @param string $propertyB Property name on $rangeB
 		 * @return AstInterface
+		 * @throws TransformationException
 		 */
 		public function createPropertyLookupAst(string $propertyA, AstRange|AstRangeDatabase|AstRangeJsonSource $rangeB, string $propertyB): AstInterface {
-			$identifierA = new AstIdentifier($this->range->getEntityName());
+			$entityNameA = $this->range->getEntityName();
+			
+			if ($entityNameA === null) {
+				throw new TransformationException('Range A has no entity name');
+			}
+			
+			$entityNameB = $rangeB->getEntityName();
+			
+			if ($entityNameB === null) {
+				throw new TransformationException('Range B has no entity name');
+			}
+			
+			$identifierA = new AstIdentifier($entityNameA);
 			$identifierA->setRange($this->range);
 			$identifierA->setNext(new AstIdentifier($propertyA));
 			
-			$identifierB = new AstIdentifier($rangeB->getEntityName());
+			$identifierB = new AstIdentifier($entityNameB);
 			$identifierB->setRange($rangeB);
 			$identifierB->setNext(new AstIdentifier($propertyB));
 			
@@ -85,6 +104,7 @@
 		 * @param mixed $relation The relation annotation
 		 * @return AstInterface
 		 * @throws TransformationException
+		 * @throws EntityResolutionException
 		 */
 		public function createPropertyLookupAstUsingRelation(AstIdentifier $joinProperty, mixed $relation): AstInterface {
 			// The parent of the property node is the range identifier (e.g. 'c')
@@ -94,37 +114,65 @@
 				throw new TransformationException('Expected parent to be an AstIdentifier');
 			}
 			
-			try {
-				// Get the range object and resolve the relation column
-				$range = $entity->getRange();
-				$relationColumn = $relation->getRelationColumn();
-				
-				// Fall back to the first primary key of the parent entity using the fully qualified name
-				if ($relationColumn === null) {
-					$identifierKeys = $this->entityStore->getIdentifierKeys($entity->getEntityName());
-					$relationColumn = $identifierKeys[0];
-				}
-				
-				// ManyToOne: FK is on $this->range, PK is on the parent range
-				if ($relation instanceof ManyToOne) {
-					return $this->createPropertyLookupAst($relationColumn, $range, $relation->getInversedBy());
-				}
-				
-				// OneToMany: FK is on $this->range (the child), PK is on the parent range
-				if ($relation instanceof OneToMany) {
-					return $this->createPropertyLookupAst($relation->getMappedBy(), $range, $relationColumn);
-				}
-				
-				// OneToOne with inversedBy
-				if (!empty($relation->getInversedBy())) {
-					return $this->createPropertyLookupAst($relationColumn, $range, $relation->getInversedBy());
-				}
-				
-				// OneToOne with mappedBy
-				return $this->createPropertyLookupAst($relation->getMappedBy(), $range, $relationColumn);
-			} catch (EntityResolutionException $e) {
-				throw new TransformationException($e->getMessage(), $e->getCode(), $e);
+			// Get the range object and verify it is non-null
+			$range = $entity->getRange();
+			
+			if ($range === null) {
+				throw new TransformationException('Expected parent identifier to have an attached range');
 			}
+			
+			// Resolve the entity name for primary key fallback
+			$entityName = $entity->getEntityName();
+			
+			if ($entityName === null) {
+				throw new TransformationException('Expected parent identifier to belong to an entity range');
+			}
+			
+			$relationColumn = $relation->getRelationColumn();
+			
+			// Fall back to the first primary key of the parent entity
+			if ($relationColumn === null) {
+				$identifierKeys = $this->entityStore->getIdentifierKeys($entityName);
+				$relationColumn = $identifierKeys[0];
+			}
+			
+			// ManyToOne: FK is on $this->range, PK is on the parent range
+			if ($relation instanceof ManyToOne) {
+				$inversedBy = $relation->getInversedBy();
+				
+				if ($inversedBy === null) {
+					throw new TransformationException('ManyToOne relation is missing inversedBy');
+				}
+				
+				return $this->createPropertyLookupAst($relationColumn, $range, $inversedBy);
+			}
+			
+			// OneToMany: FK is on $this->range (the child), PK is on the parent range
+			if ($relation instanceof OneToMany) {
+				$mappedBy = $relation->getMappedBy();
+				
+				if ($mappedBy === null) {
+					throw new TransformationException('OneToMany relation is missing mappedBy');
+				}
+				
+				return $this->createPropertyLookupAst($mappedBy, $range, $relationColumn);
+			}
+			
+			// OneToOne with inversedBy
+			$inversedBy = $relation->getInversedBy();
+			
+			if (!empty($inversedBy)) {
+				return $this->createPropertyLookupAst($relationColumn, $range, $inversedBy);
+			}
+			
+			// OneToOne with mappedBy
+			$mappedBy = $relation->getMappedBy();
+			
+			if ($mappedBy === null) {
+				throw new TransformationException('OneToOne relation has neither inversedBy nor mappedBy');
+			}
+			
+			return $this->createPropertyLookupAst($mappedBy, $range, $relationColumn);
 		}
 		
 		/**
@@ -133,6 +181,7 @@
 		 * @param AstInterface $side
 		 * @return AstInterface
 		 * @throws TransformationException
+		 * @throws EntityResolutionException
 		 */
 		public function processNodeSide(AstInterface $side): AstInterface {
 			// Only process identifier chains with at least two segments (e.g. 'c.addresses')
@@ -141,39 +190,47 @@
 				return $side;
 			}
 			
-			try {
-				// The relation property is on the next node (e.g. 'addresses'), not the root ('c')
-				// The root node is the range alias; the next node is the property being accessed
-				$propertyNode = $side->getNext();
-				$entityName = $side->getEntityName();
-				
-				// Check if the property refers to a relation (OneToOne, ManyToOne, OneToMany)
-				// rather than a regular column — only relations need to be transformed
-				if (!$this->isRelationProperty($propertyNode, $entityName)) {
-					return $side;
-				}
-				
-				$propertyName = $propertyNode->getName();
-				
-				// Collect all relation types for this entity into a single flat map
-				// keyed by property name so we can look up the annotation directly
-				$relations = array_merge(
-					$this->entityStore->getOneToOneDependencies($entityName),
-					$this->entityStore->getManyToOneDependencies($entityName),
-					$this->entityStore->getOneToManyDependencies($entityName)
-				);
-				
-				// Safeguard: isRelationProperty confirmed it exists, but verify before using
-				if (!isset($relations[$propertyName])) {
-					return $side;
-				}
-				
-				// Replace the relation reference with a direct FK/PK property lookup
-				// that SQL can understand as a JOIN condition
-				return $this->createPropertyLookupAstUsingRelation($propertyNode, $relations[$propertyName]);
-			} catch (EntityResolutionException $e) {
-				throw new TransformationException($e->getMessage(), $e->getCode(), $e);
+			// The relation property is on the next node (e.g. 'addresses'), not the root ('c')
+			// getNext() is guaranteed non-null here because hasNext() returned true
+			$propertyNode = $side->getNext();
+			
+			// Validate property node
+			if ($propertyNode === null) {
+				return $side;
 			}
+			
+			// Fetch the entity name
+			$entityName = $side->getEntityName();
+			
+			// Not an entity range (e.g. a JSON source) — nothing to transform
+			if ($entityName === null) {
+				return $side;
+			}
+			
+			// Check if the property refers to a relation (OneToOne, ManyToOne, OneToMany)
+			// rather than a regular column — only relations need to be transformed
+			if (!$this->isRelationProperty($propertyNode, $entityName)) {
+				return $side;
+			}
+			
+			$propertyName = $propertyNode->getName();
+			
+			// Collect all relation types for this entity into a single flat map
+			// keyed by property name so we can look up the annotation directly
+			$relations = array_merge(
+				$this->entityStore->getOneToOneDependencies($entityName),
+				$this->entityStore->getManyToOneDependencies($entityName),
+				$this->entityStore->getOneToManyDependencies($entityName)
+			);
+			
+			// Safeguard: isRelationProperty confirmed it exists, but verify before using
+			if (!isset($relations[$propertyName])) {
+				return $side;
+			}
+			
+			// Replace the relation reference with a direct FK/PK property lookup
+			// that SQL can understand as a JOIN condition
+			return $this->createPropertyLookupAstUsingRelation($propertyNode, $relations[$propertyName]);
 		}
 		
 		/**
@@ -181,7 +238,7 @@
 		 * either side into direct property lookups.
 		 * @param AstInterface $node
 		 * @return void
-		 * @throws TransformationException
+		 * @throws TransformationException|EntityResolutionException
 		 */
 		public function visitNode(AstInterface $node): void {
 			if (!$node instanceof AstBinaryOperator) {

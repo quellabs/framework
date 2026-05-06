@@ -8,14 +8,18 @@
 	use Quellabs\ObjectQuel\Annotations\Orm\RequiredRelation;
 	use Quellabs\ObjectQuel\EntityManager;
 	use Quellabs\ObjectQuel\EntityStore;
+	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
+	use Quellabs\ObjectQuel\Exception\TransformationException;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstExpression;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIdentifier;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRange;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabase;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabaseMaterialized;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabaseTempTable;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\CollectRanges;
-	use Quellabs\ObjectQuel\Execution\Support\BinaryOperationHelper;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\ContainsNonNullableFieldForRangeTemporary;
+	use Quellabs\ObjectQuel\Planner\Helpers\BinaryOperationHelper;
 	
 	/**
 	 * Handles range-specific optimizations including required annotations
@@ -129,6 +133,13 @@
 				// Extract the join condition components
 				// JOIN conditions are typically: main_table.foreign_key = joined_table.primary_key
 				$joinProperty = $range->getJoinProperty();
+				
+				// shouldSetRangeRequired() guarantees $joinProperty is a non-null AstExpression,
+				// but PHPStan cannot track that invariant across method boundaries.
+				if ($joinProperty === null) {
+					continue;
+				}
+				
 				$left = BinaryOperationHelper::getBinaryLeft($joinProperty);
 				$right = BinaryOperationHelper::getBinaryRight($joinProperty);
 				
@@ -243,7 +254,7 @@
 			
 			foreach ($ast->getRanges() as $range) {
 				// Keep non-temporary ranges unconditionally
-				if (!($range instanceof AstRangeDatabase) || !$range->containsQuery()) {
+				if (!($range instanceof AstRangeDatabaseTempTable) && !($range instanceof AstRangeDatabaseMaterialized)) {
 					$result[] = $range;
 					continue;
 				}
@@ -331,6 +342,8 @@
 		 * @param AstRangeDatabase $range The range being checked for requirement
 		 * @param AstIdentifier $left Left side of the join condition
 		 * @param AstIdentifier $right Right side of the join condition
+		 * @throws TransformationException
+		 * @throws EntityResolutionException
 		 */
 		private function checkAndSetRangeRequired(
 			AstRangeDatabase $mainRange,
@@ -350,8 +363,10 @@
 			$relatedEntityName = $isMainRange ? $left->getEntityName() : $right->getEntityName();
 			
 			// Handle temporary ranges (subqueries) with nullability analysis
-			// Temporary tables have no entity metadata or annotations
-			if (empty($ownEntityName)) {
+			// Temporary tables have no entity metadata or annotations.
+			// Also bail out if $relatedEntityName is null, since isMatchingRequiredRelation()
+			// requires a non-null string and getEntityName() can return null.
+			if (empty($ownEntityName) || $relatedEntityName === null) {
 				$this->checkTemporaryRangeRequired($range, $isMainRange, $left, $right);
 				return;
 			}
@@ -400,22 +415,25 @@
 		 * - Uses visitor pattern to check if the field being joined is non-nullable
 		 * - Non-nullable fields in join conditions make LEFT JOIN equivalent to INNER JOIN
 		 *
-		 * @param AstRangeDatabase $range The range being checked
+		 * @param AstRange $range The range being checked
 		 * @param bool $isMainRange Whether the main range is on the right side
 		 * @param AstIdentifier $left Left side of join condition
 		 * @param AstIdentifier $right Right side of join condition
 		 */
 		private function checkTemporaryRangeRequired(
-			AstRangeDatabase $range,
-			bool             $isMainRange,
-			AstIdentifier    $left,
-			AstIdentifier    $right
+			AstRange      $range,
+			bool          $isMainRange,
+			AstIdentifier $left,
+			AstIdentifier $right
 		): void {
 			// Identify which side contains the temporary range
 			$joinedRange = $isMainRange ? $right->getRange() : $left->getRange();
 			
-			// Only process if it's actually a temporary range with a subquery
-			if (!($joinedRange instanceof AstRangeDatabase) || !$joinedRange->containsQuery()) {
+			// Only process if it's a materialized or temp table range
+			if (
+				!$joinedRange instanceof AstRangeDatabaseTempTable &&
+				!$joinedRange instanceof AstRangeDatabaseMaterialized
+			) {
 				return;
 			}
 			

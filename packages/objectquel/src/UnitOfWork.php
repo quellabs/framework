@@ -42,8 +42,8 @@
 		protected EntityManager $entityManager;
 		protected EntityStore $entityStore;
 		protected PropertyHandler $propertyHandler;
-		protected ?SQLSerializer $serializer;
-		protected ?DatabaseAdapter $connection;
+		protected SQLSerializer $serializer;
+		protected DatabaseAdapter $connection;
 		protected EntityLifecycleManager $lifecycleManager;
 		protected InsertPersister $insertPersister;
 		protected UpdatePersister $updatePersister;
@@ -154,9 +154,9 @@
 		
 		/**
 		 * Returns the database adapter
-		 * @return DatabaseAdapter|null
+		 * @return DatabaseAdapter
 		 */
-		public function getConnection(): ?DatabaseAdapter {
+		public function getConnection(): DatabaseAdapter {
 			return $this->connection;
 		}
 		
@@ -502,7 +502,7 @@
 			$originalData = $this->getOriginalEntityData($entity);
 			$serializedEntity = $this->getSerializer()->serialize($entity);
 			
-			if ($this->isEntityDirty($serializedEntity, $originalData)) {
+			if ($originalData === null || $this->isEntityDirty($serializedEntity, $originalData)) {
 				return DirtyState::Dirty;
 			}
 			

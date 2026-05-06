@@ -3,23 +3,28 @@
 	namespace Quellabs\ObjectQuel\ObjectQuel\Ast;
 	
 	use Quellabs\ObjectQuel\ObjectQuel\AstInterface;
+	use Quellabs\ObjectQuel\ObjectQuel\AstVisitorInterface;
 	
 	/**
-	 * Class AstRangeDatabase
+	 * Class AstRangeDatabaseSubquery
 	 *
-	 * Represents a direct table or entity reference in an ObjectQuel query.
-	 * Handles JOIN relationships, including the join condition and whether
-	 * the join is required (INNER) or optional (LEFT).
+	 * Represents a derived table (subquery) range in an ObjectQuel query.
+	 * Instead of referencing a physical table or entity, this range is defined
+	 * by a nested AstRetrieve that produces a temporary result set.
 	 *
-	 * For derived-table (subquery) ranges, use AstRangeDatabaseSubquery instead.
+	 * Both FROM-clause subqueries and JOIN-clause subqueries are represented
+	 * by this class; whether it appears in FROM or JOIN is determined by
+	 * whether a join property is set (inherited from AstRange).
+	 *
+	 * For direct table/entity references, use AstRangeDatabase instead.
 	 */
-	class AstRangeDatabase extends AstRange {
+	class AstRangeDatabaseSubquery extends AstRange {
 		
 		/**
-		 * Entity associated with the range
-		 * @var string|null
+		 * The subquery that defines this range as a derived table.
+		 * @var AstRetrieve
 		 */
-		private ?string $entityName;
+		private AstRetrieve $query;
 		
 		/**
 		 * Whether this range should be included as a JOIN in the query.
@@ -29,23 +34,34 @@
 		private bool $includeAsJoin;
 		
 		/**
-		 * AstRangeDatabase constructor.
-		 * @param string $name The alias for this range in the query
-		 * @param string|null $entityName Name of the entity associated with this range
-		 * @param AstInterface|null $joinProperty Expression defining the join condition
+		 * AstRangeDatabaseSubquery constructor.
+		 * @param string $name The alias for this derived table in the query
+		 * @param AstRetrieve $query The subquery defining this range
+		 * @param AstInterface|null $joinProperty Expression defining the join condition (null = FROM clause)
 		 * @param bool $required True for INNER JOIN, false for LEFT JOIN
 		 * @param bool $includeAsJoin Whether to include this range as a JOIN clause
 		 */
 		public function __construct(
 			string        $name,
-			?string       $entityName = null,
+			AstRetrieve   $query,
 			?AstInterface $joinProperty = null,
 			bool          $required = false,
 			bool          $includeAsJoin = true
 		) {
 			parent::__construct($name, $required, $joinProperty);
-			$this->entityName = $entityName;
+			$this->query = $query;
 			$this->includeAsJoin = $includeAsJoin;
+		}
+		
+		/**
+		 * Accept a visitor, ensuring it traverses the join property and the subquery.
+		 * @param AstVisitorInterface $visitor
+		 */
+		public function accept(AstVisitorInterface $visitor): void {
+			parent::accept($visitor);
+			
+			$this->getJoinProperty()?->accept($visitor);
+			$this->query->accept($visitor);
 		}
 		
 		/**
@@ -54,11 +70,12 @@
 		 */
 		public function deepClone(): static {
 			$joinProperty = $this->getJoinProperty()?->deepClone();
+			$query = $this->query->deepClone();
 			
 			// @phpstan-ignore-next-line new.static
 			$clone = new static(
 				$this->getName(),
-				$this->entityName,
+				$query,
 				$joinProperty,
 				$this->isRequired(),
 				$this->includeAsJoin
@@ -69,40 +86,24 @@
 			return $clone;
 		}
 		
-		// ========================================
-		// Entity Name Accessors
-		// ========================================
-		
 		/**
-		 * Get the entity name associated with this range.
-		 * @return string|null The entity name
+		 * Get the subquery that defines this derived table range.
+		 * @return AstRetrieve
 		 */
-		public function getEntityName(): ?string {
-			return $this->entityName;
+		public function getQuery(): AstRetrieve {
+			return $this->query;
 		}
 		
 		/**
-		 * Retrieve the entity name, assuming it has been fully resolved.
-		 * @return string
-		 * @throws \LogicException When the entity name has not been set
+		 * Replace the subquery that defines this range.
+		 * @param AstRetrieve $query
+		 * @return $this
 		 */
-		public function getResolvedEntityName(): string {
-			if ($this->entityName === null) {
-				throw new \LogicException("Entity name has not been resolved");
-			}
-			
-			return $this->entityName;
+		public function setQuery(AstRetrieve $query): static {
+			$this->query = $query;
+			return $this;
 		}
-		
-		/**
-		 * Set the entity name for this range.
-		 * @param string $entityName The new entity name
-		 * @return void
-		 */
-		public function setEntityName(string $entityName): void {
-			$this->entityName = $entityName;
-		}
-		
+
 		// ========================================
 		// Join Inclusion Control
 		// ========================================

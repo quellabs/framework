@@ -3,8 +3,13 @@
 	namespace Quellabs\ObjectQuel\ObjectQuel;
 	
 	use Quellabs\ObjectQuel\EntityStore;
+	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
+	use Quellabs\ObjectQuel\Exception\QuelException;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIdentifier;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabase;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabaseMaterialized;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabaseSubquery;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabaseTempTable;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\GetMainEntityInAst;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\GetMainEntityInAstException;
@@ -27,8 +32,8 @@
 		 * @param PlatformCapabilitiesInterface $platform Database engine capability descriptor
 		 */
 		public function __construct(
-			EntityStore $entityStore,
-			array &$parameters,
+			EntityStore                   $entityStore,
+			array                         &$parameters,
 			PlatformCapabilitiesInterface $platform = new NullPlatformCapabilities()
 		) {
 			$this->entityStore = $entityStore;
@@ -40,6 +45,8 @@
 		 * Convert a retrieve statement to SQL
 		 * @param AstRetrieve $retrieve
 		 * @return string
+		 * @throws EntityResolutionException
+		 * @throws QuelException
 		 */
 		public function convertToSQL(AstRetrieve $retrieve): string {
 			// Build each clause independently, then join non-empty parts with a single
@@ -58,7 +65,7 @@
 			
 			return implode(" ", $parts);
 		}
-
+		
 		/**
 		 * Returns the keyword DISTINCT if the query is unique
 		 * @param AstRetrieve $retrieve
@@ -124,26 +131,11 @@
 		}
 		
 		/**
-		 * Resolve the physical table name for a database range.
-		 *
-		 * Both getFrom() and getJoins() need the same logic: if the range has an
-		 * explicit table name (e.g. a derived/subquery range), use it directly;
-		 * otherwise look it up from the entity store. Centralising this prevents
-		 * the two call sites from drifting out of sync and eliminates the null-table
-		 * bug that existed in getJoins() when getQuery() was non-null but
-		 * getTableName() returned null.
-		 *
-		 * @param AstRangeDatabase $range
-		 * @return string
-		 */
-		protected function resolveOwningTable(AstRangeDatabase $range): string {
-			return $range->getTableName() ?? $this->entityStore->getOwningTable($range->getEntityName());
-		}
-		
-		/**
 		 * Generate the FROM part of the SQL query based on ranges without JOINS.
 		 * @param AstRetrieve $retrieve The retrieve object from which entities are extracted.
 		 * @return string The FROM part of the SQL query.
+		 * @throws EntityResolutionException
+		 * @throws QuelException
 		 */
 		protected function getFrom(AstRetrieve $retrieve): string {
 			// Obtain all entities used in the retrieve query.
@@ -156,8 +148,11 @@
 			
 			// Loop through all ranges (entities) in the retrieve query.
 			foreach ($ranges as $range) {
-				// Skip JSON ranges
-				if (!$range instanceof AstRangeDatabase) {
+				// Only use database ranges
+				if (
+					!$range instanceof AstRangeDatabase &&
+					!$range instanceof AstRangeDatabaseSubquery
+				) {
 					continue;
 				}
 				
@@ -171,12 +166,13 @@
 				
 				// Subquery ranges are emitted as derived tables inline in the FROM clause.
 				// Regular ranges reference a physical table looked up from the entity store.
-				if ($range->getQuery() !== null) {
+				if ($range instanceof AstRangeDatabaseSubquery) {
 					$subSQL = $this->convertToSQL($range->getQuery());
 					$tableNames[] = "({$subSQL}) as `{$rangeName}`";
 				} else {
 					// Get the corresponding table name for the entity.
-					$owningTable = $this->resolveOwningTable($range);
+					$entityName = $range->getResolvedEntityName();
+					$owningTable = $this->entityStore->getOwningTable($entityName);
 					
 					// Add the table name and alias to the list for the FROM clause.
 					$tableNames[] = "`{$owningTable}` as `{$rangeName}`";
@@ -224,21 +220,19 @@
 		 * Directly manipulate the values in IN() without extra queries
 		 * @param AstRetrieve $retrieve
 		 * @return string
+		 * @throws QuelException
+		 * @throws EntityResolutionException
 		 */
 		private function getSortUsingIn(AstRetrieve $retrieve): string {
 			// Check and retrieve the primary key information
 			$primaryKeyInfo = $this->entityStore->fetchPrimaryKeyOfMainRange($retrieve);
 			
-			if (!is_array($primaryKeyInfo)) {
-				return $this->getSortDefault($retrieve);
-			}
-			
 			// Create an AstIdentifier for searching for an IN() in the query
-			$astIdentifier = new AstIdentifier($primaryKeyInfo['entityName']);
+			$astIdentifier = new AstIdentifier($primaryKeyInfo->entityName);
 			
 			try {
 				$visitor = new GetMainEntityInAst($astIdentifier);
-				$retrieve->getConditions()->accept($visitor);
+				$retrieve->getConditions()?->accept($visitor);
 				return $this->getSortDefault($retrieve);
 			} catch (GetMainEntityInAstException $exception) {
 				$astObject = $exception->getAstObject();
@@ -281,7 +275,7 @@
 			// Convert the sort elements to SQL
 			$sqlSort = [];
 			
-			foreach($sort as $s) {
+			foreach ($sort as $s) {
 				// Create a new instance of QuelToSQLConvertToString to convert the conditions to a SQL string.
 				// This object will process the Quel conditions and convert them into a format that SQL understands.
 				$retrieveEntitiesVisitor = new QuelToSQLConvertToString($this->entityStore, $this->parameters, "SORT", $this->platform);
@@ -308,6 +302,8 @@
 		 * This function processes the conditions of the retrieve and converts them into a SQL-compliant ORDER BY clause.
 		 * @param AstRetrieve $retrieve
 		 * @return string
+		 * @throws EntityResolutionException
+		 * @throws QuelException
 		 */
 		protected function getSort(AstRetrieve $retrieve): string {
 			// If the compiler directive @InValuesAreFinal is provided, then we need to sort based on
@@ -335,8 +331,8 @@
 			}
 			
 			$groupSQL = [];
-
-			foreach($groupBy as $group) {
+			
+			foreach ($groupBy as $group) {
 				$visitor = new QuelToSQLConvertToString($this->entityStore, $this->parameters, "CONDITION", $this->platform);
 				$group->accept($visitor);
 				$groupSQL[] = $visitor->getResult();
@@ -351,6 +347,8 @@
 		 * to SQL JOIN instructions.
 		 * @param AstRetrieve $retrieve The retrieve object from which entities and their join properties are extracted.
 		 * @return string The JOIN part of the SQL query, formatted as a string.
+		 * @throws EntityResolutionException
+		 * @throws QuelException
 		 */
 		protected function getJoins(AstRetrieve $retrieve): string {
 			$result = [];
@@ -360,8 +358,12 @@
 			
 			// Loop through all entities (ranges) and process those with join properties.
 			foreach ($ranges as $range) {
-				// Skip the range if it is a json data-source
-				if (!$range instanceof AstRangeDatabase) {
+				// Only use database ranges
+				if (
+					!$range instanceof AstRangeDatabase &&
+					!$range instanceof AstRangeDatabaseTempTable &&
+					!$range instanceof AstRangeDatabaseMaterialized
+				) {
 					continue;
 				}
 				
@@ -378,22 +380,30 @@
 				// Get the name and join property of the entity.
 				$rangeName = $range->getName();
 				$joinProperty = $range->getJoinProperty();
-				$joinType = $range->isRequired() ? "INNER" : "LEFT";
 				
 				// Convert the join condition to a SQL string.
-				// This involves translating the join condition to a format that SQL understands.
 				$visitor = new QuelToSQLConvertToString($this->entityStore, $this->parameters, "CONDITION", $this->platform);
 				$joinProperty->accept($visitor);
 				$joinColumn = $visitor->getResult();
 				
+				// Determine join type
+				$joinType = $range->isRequired() ? "INNER" : "LEFT";
+				
 				// Subquery ranges are emitted as derived tables inline in the JOIN clause.
 				// Regular ranges reference a physical table looked up from the entity store.
-				if ($range->getQuery() !== null) {
+				if ($range instanceof AstRangeDatabaseMaterialized) {
 					$subSQL = $this->convertToSQL($range->getQuery());
 					$result[] = "{$joinType} JOIN ({$subSQL}) as `{$rangeName}` ON {$joinColumn}";
-				} else {
-					$owningTable = $this->resolveOwningTable($range);
+				} elseif ($range instanceof AstRangeDatabaseTempTable) {
+					$result[] = "{$joinType} JOIN `{$range->getTableName()}` as `{$rangeName}` ON {$joinColumn}";
+				} elseif ($range instanceof AstRangeDatabase) {
+					$entityName = $range->getResolvedEntityName();
+					$owningTable = $this->entityStore->getOwningTable($entityName);
 					$result[] = "{$joinType} JOIN `{$owningTable}` as `{$rangeName}` ON {$joinColumn}";
+				} else {
+					throw new \LogicException(
+						"Unresolved AstRangeDatabaseSubquery '{$rangeName}' reached QuelToSQL — planner did not complete substitution"
+					);
 				}
 			}
 			

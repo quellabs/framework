@@ -21,8 +21,9 @@
 	namespace Quellabs\ObjectQuel;
 	
 	use Cake\Database\Connection;
-	use Quellabs\ObjectQuel\Capabilities\PlatformCapabilities;
+	use Quellabs\AnnotationReader\Exception\AnnotationReaderException;
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
+	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
 	use Quellabs\ObjectQuel\Execution\ResultProcessor;
 	use Quellabs\ObjectQuel\Exception\QuelException;
 	use Quellabs\ObjectQuel\ObjectQuel\QuelResult;
@@ -60,10 +61,11 @@
 		
 		/**
 		 * EntityManager constructor
-		 * @param Configuration|null $configuration
+		 * @param Configuration $configuration
 		 * @param Connection $connection CakePHP database connection
+		 * @throws AnnotationReaderException
 		 */
-		public function __construct(?Configuration $configuration, Connection $connection) {
+		public function __construct(Configuration $configuration, Connection $connection) {
 			$this->configuration = $configuration;
 			$this->signalHub = SignalHubLocator::getInstance();
 			$this->connection = new DatabaseAdapter($connection);
@@ -86,7 +88,9 @@
 		 * Remove signal from hub
 		 */
 		public function __destruct() {
-			$this->signalHub->unregisterSignal($this->debugQuerySignal);
+			if ($this->debugQuerySignal !== null) {
+				$this->signalHub->unregisterSignal($this->debugQuerySignal);
+			}
 		}
 		
 		/**
@@ -173,7 +177,7 @@
 			
 			// Emit debug signal with comprehensive query execution information
 			// Time is converted to milliseconds for easier readability
-			$this->debugQuerySignal->emit([
+			$this->debugQuerySignal?->emit([
 				'driver'            => 'objectquel',
 				'query'             => $query,
 				'sql'               => $this->queryExecutor->getLastExecutedSql(),
@@ -200,7 +204,7 @@
 			$rs = $this->executeQuery($query, $parameters);
 			
 			// Check if the query returned any results
-			if ($rs->recordCount() == 0) {
+			if ($rs === null || $rs->recordCount() == 0) {
 				return [];
 			}
 			
@@ -227,7 +231,7 @@
 			$rs = $this->executeQuery($query, $parameters);
 			
 			// Return an empty array if the query returned no results
-			if ($rs->recordCount() == 0) {
+			if ($rs === null || $rs->recordCount() == 0) {
 				return [];
 			}
 			
@@ -256,13 +260,9 @@
 		 * @param mixed $primaryKey The primary key of the entity
 		 * @return T[] The found entities
 		 * @throws QuelException
+		 * @throws EntityResolutionException
 		 */
 		public function findBy(string $entityType, mixed $primaryKey): array {
-			// Check if the desired entity type is actually an entity
-			if (!$this->entityStore->exists($entityType)) {
-				throw new QuelException("The entity or range {$entityType} referenced in the query does not exist.");
-			}
-			
 			// Normalize the primary key
 			$primaryKeys = $this->entityStore->formatPrimaryKeyAsArray($primaryKey, $entityType);
 			
@@ -286,14 +286,10 @@
 		 * @param mixed $primaryKey The primary key of the entity
 		 * @return T|null The found entity or null if not found
 		 * @throws QuelException
+		 * @throws EntityResolutionException
 		 * @psalm-return T|null
 		 */
 		public function find(string $entityType, mixed $primaryKey): ?object {
-			// Check if the desired entity type is actually an entity
-			if (!$this->entityStore->exists($entityType)) {
-				throw new QuelException("The entity or range {$entityType} referenced in the query does not exist.");
-			}
-			
 			// Normalize the primary key
 			$primaryKeys = $this->entityStore->formatPrimaryKeyAsArray($primaryKey, $entityType);
 			
@@ -342,13 +338,5 @@
 		public function getValidationRules(object $entity): array {
 			$validate = new EntityToValidation();
 			return $validate->convert($entity);
-		}
-		
-		/**
-		 * Returns the default window size (for pagination)
-		 * @return int|null
-		 */
-		public function getDefaultWindowSize(): ?int {
-			return $this->configuration->getDefaultWindowSize();
 		}
 	}

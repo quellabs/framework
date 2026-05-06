@@ -8,6 +8,7 @@
 	use Quellabs\ObjectQuel\Exception\TransformationException;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIdentifier;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRange;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabase;
 	use Quellabs\ObjectQuel\ObjectQuel\AstInterface;
 	use Quellabs\ObjectQuel\ObjectQuel\AstVisitorInterface;
 	
@@ -75,6 +76,7 @@
 		 * @param AstInterface $node
 		 * @return void
 		 * @throws TransformationException
+		 * @throws EntityResolutionException
 		 */
 		public function visitNode(AstInterface $node): void {
 			// Checks if the node is an instance of AstIdentifier. If not, the function stops.
@@ -88,7 +90,7 @@
 			}
 			
 			// Check if the range is attached to an entity. If not, abort.
-			if (!$node->isFromEntity()) {
+			if ($node->getSourceRange() instanceof AstRangeDatabase) {
 				return;
 			}
 			
@@ -106,10 +108,6 @@
 			
 			// If none of the above checks are true, the function adds a namespace
 			// to the name of the node. This is done by a method of the entityStore object.
-			try {
-				$node->setName($this->entityStore->resolveProxyClass($node->getName()));
-			} catch (EntityResolutionException $e) {
-				throw new TransformationException($e->getMessage(), $e->getCode(), $e);
-			}
+			$node->setName($this->entityStore->resolveProxyClass($node->getName()));
 		}
 	}

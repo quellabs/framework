@@ -4,6 +4,8 @@
 	
 	use Quellabs\ObjectQuel\Capabilities\PlatformCapabilities;
 	use Quellabs\ObjectQuel\EntityManager;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabaseSubquery;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabaseTempTable;
 	use Quellabs\ObjectQuel\Planner\Helpers\ConditionAnalyzer;
 	use Quellabs\ObjectQuel\Planner\Helpers\ConditionFilter;
 	use Quellabs\ObjectQuel\Planner\Helpers\StageFactory;
@@ -111,7 +113,7 @@
 		 * their interdependencies in the plan. Returns a map of rangeName → TempTableStage
 		 * name so the database stage can declare its own dependencies on them.
 		 * @param ExecutionPlan $plan
-		 * @param AstRangeDatabase[] $tempRanges Already dependency-sorted temp ranges
+		 * @param AstRangeDatabaseSubquery[] $tempRanges Already dependency-sorted temp ranges
 		 * @param array<string, mixed> $staticParams
 		 * @return string[] Map of rangeName → TempTableStage name
 		 * @throws QuelException
@@ -122,15 +124,21 @@
 			$tempTableStageNames = [];
 			
 			foreach ($tempRanges as $tempRange) {
-				if (!$this->rangeQueryContainsExternalSource($tempRange)) {
-					// Pure SQL subquery — QuelToSQL handles it inline, no stage needed
+				// Only handle temporary tables
+				if (!$tempRange instanceof AstRangeDatabaseTempTable) {
 					continue;
 				}
 				
+				// Create a stage name
 				$tempStageName = uniqid('tmp_stage_');
+				
+				// Build the plan
 				$innerPlan = $this->build($tempRange->getQuery(), $staticParams);
 				
+				// Add the stage to the plan
 				$plan->addStage(new TempTableStage($tempStageName, $tempRange, $innerPlan, $staticParams));
+				
+				// Store in list
 				$tempTableStageNames[$tempRange->getName()] = $tempStageName;
 				
 				// If this TempTableStage itself depends on another TempTableStage
@@ -138,15 +146,13 @@
 				// register that dependency so ordering is preserved.
 				$innerQuery = $tempRange->getQuery();
 				
-				if ($innerQuery !== null) {
-					foreach ($tempTableStageNames as $otherRangeName => $otherStageName) {
-						if ($otherRangeName === $tempRange->getName()) {
-							continue;
-						}
-						
-						if ($this->innerQueryReferencesRange($innerQuery, $otherRangeName)) {
-							$plan->addDependency($tempStageName, $otherStageName);
-						}
+				foreach ($tempTableStageNames as $otherRangeName => $otherStageName) {
+					if ($otherRangeName === $tempRange->getName()) {
+						continue;
+					}
+					
+					if ($this->innerQueryReferencesRange($innerQuery, $otherRangeName)) {
+						$plan->addDependency($tempStageName, $otherStageName);
 					}
 				}
 			}
@@ -163,7 +169,7 @@
 		 * @param string[] $tempTableStageNames Map of rangeName → TempTableStage name
 		 */
 		private function buildDatabaseStage(ExecutionPlan $plan, AstRetrieve $query, array $staticParams, array $tempTableStageNames): void {
-			$databaseStage = $this->stageFactory->createDatabaseExecutionStage($query, $staticParams, array_keys($tempTableStageNames));
+			$databaseStage = $this->stageFactory->createDatabaseExecutionStage($query, $staticParams);
 			
 			if ($databaseStage === null) {
 				return;
@@ -182,46 +188,7 @@
 		// External-source detection
 		// =========================================================================
 		
-		/**
-		 * Recursively determines whether a temporary range's embedded query contains
-		 * any external (non-database) data source, such as AstRangeJsonSource.
-		 *
-		 * This is the primary gate for the temp-table materialisation path. A range
-		 * that returns false here is a pure SQL subquery and is left to QuelToSQL to
-		 * handle as an inline derived table.
-		 *
-		 * Extensibility: add new external source types (e.g. AstRangeCsvSource) to
-		 * the instanceof check inside the loop.
-		 *
-		 * Recursion safety: the AST is guaranteed acyclic by the parser, so no depth
-		 * guard is needed.
-		 *
-		 * @param AstRangeDatabase $range The range whose embedded query is to be checked
-		 * @return bool True if any range in the inner query (recursively) is external
-		 */
-		protected function rangeQueryContainsExternalSource(AstRangeDatabase $range): bool {
-			$innerQuery = $range->getQuery();
-			
-			if ($innerQuery === null) {
-				return false;
-			}
-			
-			foreach ($innerQuery->getRanges() as $innerRange) {
-				// Direct external source — JSON today, others in the future
-				if ($innerRange instanceof AstRangeJsonSource) {
-					return true;
-				}
-				
-				// Nested subquery: recurse to check its ranges as well
-				if ($innerRange instanceof AstRangeDatabase && $innerRange->getQuery() !== null) {
-					if ($this->rangeQueryContainsExternalSource($innerRange)) {
-						return true;
-					}
-				}
-			}
-			
-			return false;
-		}
+
 		
 		/**
 		 * Checks whether an inner query's ranges include a reference to a specific
@@ -261,8 +228,8 @@
 		 *     them), output order follows insertion order of the input array. This is
 		 *     deterministic but arbitrary — any valid topological order is correct here.
 		 *
-		 * @param AstRangeDatabase[] $temporaryRanges
-		 * @return AstRangeDatabase[] Sorted array where dependencies come before ranges that use them
+		 * @param AstRangeDatabaseSubquery[] $temporaryRanges
+		 * @return AstRangeDatabaseSubquery[] Sorted array where dependencies come before ranges that use them
 		 * @throws QuelException If a circular dependency is detected
 		 */
 		protected function sortByDependency(array $temporaryRanges): array {

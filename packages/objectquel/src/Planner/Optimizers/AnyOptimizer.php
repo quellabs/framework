@@ -4,20 +4,21 @@
 	
 	use Quellabs\ObjectQuel\EntityManager;
 	use Quellabs\ObjectQuel\EntityStore;
-	use Quellabs\ObjectQuel\Execution\Support\AstExpressionFactory;
-	use Quellabs\ObjectQuel\Execution\Support\AstFactory;
-	use Quellabs\ObjectQuel\Execution\Support\AstNodeReplacer;
-	use Quellabs\ObjectQuel\Execution\Support\AstUtilities;
-	use Quellabs\ObjectQuel\Execution\Support\JoinPredicateProcessor;
-	use Quellabs\ObjectQuel\Execution\Support\QueryAnalysisResult;
-	use Quellabs\ObjectQuel\Execution\Support\RangePartitioner;
-	use Quellabs\ObjectQuel\Execution\Support\RangeUsageAnalyzer;
+	use Quellabs\ObjectQuel\Planner\Helpers\AstExpressionFactory;
+	use Quellabs\ObjectQuel\Planner\Helpers\AstFactory;
+	use Quellabs\ObjectQuel\Planner\Helpers\AstNodeReplacer;
+	use Quellabs\ObjectQuel\Planner\Helpers\AstUtilities;
+	use Quellabs\ObjectQuel\Planner\Helpers\JoinPredicateProcessor;
+	use Quellabs\ObjectQuel\Planner\Helpers\QueryAnalysisResult;
+	use Quellabs\ObjectQuel\Planner\Helpers\RangePartitioner;
+	use Quellabs\ObjectQuel\Planner\Helpers\RangeUsageAnalyzer;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAny;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRange;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstSubquery;
 	use Quellabs\ObjectQuel\ObjectQuel\AstInterface;
 	use Quellabs\ObjectQuel\Exception\QuelException;
+	use Quellabs\ObjectQuel\Planner\Helpers\AnchorResolver;
 	
 	/**
 	 * ──────────────────────────────────────────────────────────────────────────────
@@ -103,6 +104,7 @@
 		 *
 		 * @param AstRetrieve $ast Root query AST.
 		 * @return void
+		 * @throws QuelException
 		 */
 		public function optimize(AstRetrieve $ast): void {
 			// Find all ANY nodes throughout the entire query tree
@@ -203,10 +205,10 @@
 			
 			// Step 6: Build final WHERE clause
 			// Combine the original ANY conditions with any predicates promoted from JOINs
-			$finalWhere = AstUtilities::combinePredicatesWithAnd([
+			$finalWhere = AstUtilities::combinePredicatesWithAnd(array_values(array_filter([
 				$node->getConditions(),
 				AstUtilities::combinePredicatesWithAnd($promotedPredicates)
-			]);
+			])));
 			
 			// Step 7: Keep only live ranges
 			// Remove correlation-only ranges since their conditions are now in WHERE
@@ -215,7 +217,7 @@
 			// Step 8: Configure anchor
 			// Ensure exactly one range has joinProperty == null (the subquery root)
 			// This is required for valid SQL subquery structure
-			$keptRanges = AnchorOptimizer::configureRangeAnchors($keptRanges, $finalWhere, $analysis);
+			$keptRanges = AnchorResolver::configureRangeAnchors($keptRanges, $finalWhere, $analysis);
 			
 			// Return the optimized subquery components
 			return [$keptRanges, $finalWhere];
@@ -303,18 +305,22 @@
 		 * @return void
 		 */
 		private function replaceAnyWithInlinedValue(AstRetrieve $ast, AstAny $node): void {
-			// Replace ANY(...) with literal 1
-			AstNodeReplacer::replaceChild(
-				$node->getParent(),
-				$node,
-				AstFactory::createNumber(1)
-			);
+			// AstAny implements NonRootAstInterface, so getParent() is guaranteed non-null.
+			$parent = $node->getParent();
 			
-			// Add LIMIT 1 if no window is already set
-			// This ensures we only return one row, which is correct for ANY semantics
+			// Swap the ANY(...) node for the literal integer 1.
+			// The outer query already guarantees at least one row exists (this path is
+			// only reached when ANY references only the anchor with no conditions),
+			// so 1 is always the correct result value.
+			AstNodeReplacer::replaceChild($parent, $node, AstFactory::createNumber(1));
+			
+			// Without a LIMIT the outer query would return every row from the anchor
+			// table. ANY semantics require "at least one", so cap the result to one row.
+			// Skip this when a window is already set to avoid overriding an explicit
+			// LIMIT/OFFSET that the caller established.
 			if ($ast->getWindow() === null) {
-				$ast->setWindow(0);         // Start at window 0
-				$ast->setWindowSize(1);  // Return only 1 row
+				$ast->setWindow(0);      // Offset: start from the first row
+				$ast->setWindowSize(1);  // Fetch at most one row
 			}
 		}
 		
@@ -338,23 +344,32 @@
 		 * @return void
 		 */
 		private function replaceAnyWithSubquery(string $subQueryType, array $correlatedRanges, ?AstInterface $conditions, AstAny $node): void {
-			// Replace with literal true/1 since anchor existence is guaranteed
+			// Fast path: ANY references only the anchor range and has no WHERE conditions.
+			// The anchor's existence is already guaranteed by the outer query, so the
+			// result is always 1. Skip subquery generation and inline the literal directly.
 			if ($this->isAnyOnAnchorWithNoConditions($correlatedRanges, $conditions, $node)) {
 				$subQuery = AstFactory::createNumber(1);
 				AstNodeReplacer::replaceChild($node->getParent(), $node, $subQuery);
 				return;
 			}
 			
-			// For SELECT context: CASE WHEN EXISTS(...) THEN 1 ELSE 0 END
+			// AstAny implements NonRootAstInterface, so getParent() is guaranteed non-null.
+			// Resolve once here; both remaining branches replace the same node.
+			$parent = $node->getParent();
+			
+			// SELECT context: wrap in CASE WHEN EXISTS(...) THEN 1 ELSE 0 END so that
+			// the subquery yields a scalar integer rather than a boolean predicate.
 			if ($subQueryType === AstSubquery::TYPE_CASE_WHEN) {
 				$subQuery = AstExpressionFactory::createCaseWhen($correlatedRanges, $conditions, "ANY");
-				AstNodeReplacer::replaceChild($node->getParent(), $node, $subQuery);
+				AstNodeReplacer::replaceChild($parent, $node, $subQuery);
 				return;
 			}
 			
-			// For WHERE context: EXISTS(SELECT 1 FROM ... WHERE ...)
+			// WHERE context: emit EXISTS(SELECT 1 FROM ... WHERE ...).
+			// Using SELECT 1 rather than SELECT * avoids unnecessary column projection
+			// since only row existence matters here.
 			$subQuery = AstExpressionFactory::createExists(AstFactory::createNumber(1), $correlatedRanges, $conditions, "ANY");
-			AstNodeReplacer::replaceChild($node->getParent(), $node, $subQuery);
+			AstNodeReplacer::replaceChild($parent, $node, $subQuery);
 		}
 		
 		/**

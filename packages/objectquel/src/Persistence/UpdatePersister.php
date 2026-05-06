@@ -6,9 +6,10 @@
 	use Quellabs\ObjectQuel\Annotations\Orm\Version;
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
 	use Quellabs\ObjectQuel\EntityStore;
+	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
 	use Quellabs\ObjectQuel\OrmException;
-	use Quellabs\ObjectQuel\ReflectionManagement\PropertyHandler;
 	use Quellabs\ObjectQuel\UnitOfWork;
+	use Quellabs\Support\Tools;
 	
 	/**
 	 * Specialized persister class responsible for updating existing entities in the database
@@ -57,6 +58,7 @@
 		 * @param object $entity The entity to be updated in the database
 		 * @return void
 		 * @throws OrmException If the database query fails or version mismatch is detected
+		 * @throws EntityResolutionException
 		 */
 		public function persist(object $entity): void {
 			// Retrieve basic information needed for the update
@@ -69,6 +71,15 @@
 			
 			// Get the entity's original data (snapshot) from when it was loaded or last persisted
 			$originalData = $this->unitOfWork->getOriginalEntityData($entity);
+
+			// If there's no original data, this entity was never loaded from the database.
+			// Updating an untracked entity is a programming error.
+			if ($originalData === null) {
+				throw new OrmException(
+					"Cannot update entity of type '" . get_class($entity) . "': no original data found. " .
+					"The entity must be loaded from the database before it can be updated."
+				);
+			}
 			
 			// Get the column names that make up the primary key
 			$primaryKeyColumnNames = $this->entityStore->getIdentifierColumnNames($entity);
@@ -169,7 +180,7 @@
 			foreach ($versionColumns as $property => $versionColumn) {
 				$columnName = $this->valueHandler->escapeIdentifier($versionColumn['name']);
 				
-				switch($versionColumn['column']->getType()) {
+				switch ($versionColumn['column']->getType()) {
 					case 'integer':
 						// Integer versions increment by 1
 						$setClauseParts[] = "{$columnName}={$columnName} + 1";
@@ -184,7 +195,7 @@
 						// UUID versions get a new generated GUID
 						$paramName = "version_{$versionColumn['name']}";
 						$setClauseParts[] = "{$columnName}=:{$paramName}";
-						$params[$paramName] = \Quellabs\Support\Tools::createUUIDv7();
+						$params[$paramName] = Tools::createUUIDv7();
 						break;
 					
 					default:
@@ -206,6 +217,7 @@
 			// Add the regular changed fields to the SET clause
 			// Each field gets a prefixed parameter name to avoid collisions
 			$setClauseParts = [];
+			
 			foreach ($changedFields as $columnName => $value) {
 				$paramName = "field_{$columnName}";
 				$setClauseParts[] = $this->valueHandler->escapeIdentifier($columnName) . "=:{$paramName}";
