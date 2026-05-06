@@ -33,9 +33,9 @@
 		/**
 		 * Parse and return composer.json data with caching
 		 * @param string|null $startDirectory Directory to start searching from (defaults to current directory)
-		 * @return array<string, mixed>|null Parsed composer.json data or null on failure
+		 * @return array<string, mixed> Parsed composer.json data or null on failure
 		 */
-		public function getData(?string $startDirectory = null): ?array {
+		public function getData(?string $startDirectory = null): array {
 			// Return cached result if available
 			if ($this->composerJsonCache !== null) {
 				return $this->composerJsonCache;
@@ -46,7 +46,7 @@
 			
 			if ($composerJsonPath === null) {
 				// Silent return - composer.json is optional and may not exist in valid scenarios
-				return null;
+				return [];
 			}
 			
 			// Parse and cache the result
@@ -58,9 +58,9 @@
 		/**
 		 * Parse a JSON file and return its contents as an array
 		 * @param string $filePath Path to the JSON file
-		 * @return array<string, mixed>|null Parsed JSON data or null on failure
+		 * @return array<string, mixed> Parsed JSON data or null on failure
 		 */
-		protected function parseJsonFile(string $filePath): ?array {
+		protected function parseJsonFile(string $filePath): array {
 			// Check if the file exists and is readable
 			if (!is_readable($filePath)) {
 				$this->logger->warning('composer.json not readable', [
@@ -71,7 +71,7 @@
 					'file_permissions' => file_exists($filePath) ? decoct(fileperms($filePath) & 0777) : 'N/A'
 				]);
 				
-				return null;
+				return [];
 			}
 			
 			// Read the entire file contents into a string
@@ -86,7 +86,7 @@
 					'file_size'   => file_exists($filePath) ? filesize($filePath) : 'N/A'
 				]);
 				
-				return null;
+				return [];
 			}
 			
 			// Decode the JSON string into a PHP array
@@ -103,7 +103,7 @@
 					'json_error_code' => json_last_error(),
 				]);
 				
-				return null;
+				return [];
 			}
 			
 			// Validate the existence of an 'extra' section
