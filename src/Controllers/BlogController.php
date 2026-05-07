@@ -21,6 +21,7 @@
 					retrieve(y)
 				)
 				retrieve (x.id)
+				sort by x.id desc
 			");
 			
 			//$posts = $this->em()->findBy(PostEntity::class, ['published' => true]);

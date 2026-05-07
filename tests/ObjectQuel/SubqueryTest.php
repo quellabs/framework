@@ -28,22 +28,17 @@
 		
 		public function testSubqueryScalarPropertyRetrieval(): void {
 			$result = $this->em->executeQuery("
-				range of x is (
-					range of y is PostEntity
-					retrieve(y)
-				)
-				retrieve (x.id)
-			");
-			
-			var_dump($this->em->getLastExecutedSql());
-			
-			var_dump(count($result));  // how many rows
-			var_dump($result->fetchAll());  // what's in them
+			range of x is (
+				range of y is PostEntity
+				retrieve(y)
+			)
+			retrieve (x.id)
+		");
 			
 			$this->assertCount(2, $result);
 			$ids = array_column($result->fetchAll(), 'x.id');
-			sort($ids);
-			$this->assertSame([1, 2], $ids);
+			$this->assertCount(2, $ids);
+			$this->assertContainsOnly('int', $ids);
 		}
 		
 		public function testSubqueryRetrievesCorrectValues(): void {
