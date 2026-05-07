@@ -15,6 +15,13 @@
 		 * @return Response
 		 */
 		public function index(): Response {
+			$this->em()->executeQuery("
+				range of p is PostEntity
+				range of u is UserEntity via p.user
+				retrieve (p, u)
+				where u.username = 'alice'
+			");
+			
 			$posts = $this->em()->findBy(PostEntity::class, ['published' => true]);
 			
 			return $this->render("blog/index.tpl", [

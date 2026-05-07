@@ -112,11 +112,31 @@
 		// -------------------------------------------------------------------------
 		
 		public function testJoinUserToPosts(): void {
-			$this->markTestSkipped('Known bug: JoinConditionFieldInjector creates a circular AST reference on repeated queries through a shared EntityManager.');
+			$result = $this->em->executeQuery("
+			range of p is PostEntity
+			range of u is UserEntity via p.user
+			retrieve (p.title, u.username)
+		");
+			
+			$this->assertCount(3, $result);
+			
+			foreach ($result as $row) {
+				$this->assertArrayHasKey('p.title', $row);
+				$this->assertArrayHasKey('u.username', $row);
+				$this->assertNotNull($row['u.username']);
+			}
 		}
 		
 		public function testJoinWithConditionOnJoinedEntity(): void {
-			$this->markTestSkipped('Known bug: JoinConditionFieldInjector creates a circular AST reference on repeated queries through a shared EntityManager.');
+			$result = $this->em->executeQuery("
+			range of p is PostEntity
+			range of u is UserEntity via p.user
+			retrieve (p.title)
+			where u.username = 'alice'
+		");
+			
+			// alice has 2 posts
+			$this->assertCount(2, $result);
 		}
 		
 		// -------------------------------------------------------------------------
@@ -160,6 +180,16 @@
 		// -------------------------------------------------------------------------
 		
 		public function testSameEntityIsNotDuplicated(): void {
-			$this->markTestSkipped('Known bug: JoinConditionFieldInjector creates a circular AST reference on repeated queries through a shared EntityManager.');
+			// Both posts 1 and 2 belong to user 1 (alice).
+			// The hydrator should return the same UserEntity instance for both rows.
+			$result = $this->em->executeQuery("
+			range of p is PostEntity
+			range of u is UserEntity via p.user
+			retrieve (p, u)
+			where u.username = 'alice'
+		");
+			
+			$this->assertCount(2, $result);
+			$this->assertSame($result[0]['u'], $result[1]['u']);
 		}
 	}
