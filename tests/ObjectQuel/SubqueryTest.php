@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\ObjectQuel\Tests;
 	
+	use Quellabs\ObjectQuel\Exception\QuelException;
 	use Quellabs\ObjectQuel\Exception\SemanticException;
 	
 	/**
@@ -27,12 +28,17 @@
 		
 		public function testSubqueryScalarPropertyRetrieval(): void {
 			$result = $this->em->executeQuery("
-			range of x is (
-				range of y is PostEntity
-				retrieve(y)
-			)
-			retrieve (x.id)
-		");
+				range of x is (
+					range of y is PostEntity
+					retrieve(y)
+				)
+				retrieve (x.id)
+			");
+			
+			var_dump($this->em->getLastExecutedSql());
+			
+			var_dump(count($result));  // how many rows
+			var_dump($result->fetchAll());  // what's in them
 			
 			$this->assertCount(2, $result);
 			$ids = array_column($result->fetchAll(), 'x.id');
@@ -99,15 +105,22 @@
 		// -------------------------------------------------------------------------
 		
 		public function testRetrievingEntireSubqueryRangeThrows(): void {
-			$this->expectException(SemanticException::class);
-			
-			$this->em->executeQuery("
-			range of x is (
-				range of y is PostEntity
-				retrieve(y)
-			)
-			retrieve (x)
-		");
+			try {
+				$this->em->executeQuery("
+				range of x is (
+					range of y is PostEntity
+					retrieve(y)
+				)
+				retrieve (x)
+			");
+				$this->fail('Expected QuelException to be thrown');
+			} catch (QuelException $e) {
+				$this->assertInstanceOf(
+					SemanticException::class,
+					$e->getPrevious(),
+					'Expected QuelException to wrap a SemanticException'
+				);
+			}
 		}
 		
 		public function testInnerQueryCanRetrieveEntireEntity(): void {
