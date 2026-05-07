@@ -17,7 +17,7 @@
 		public function index(): Response {
 			$posts = $this->em()->executeQuery("
 				range of x is PostEntity
-				retrieve(is_numeric(x))
+				retrieve(is_numeric(x.id))
 			");
 			
 			$posts = $this->em()->findBy(PostEntity::class, ['published' => true]);
