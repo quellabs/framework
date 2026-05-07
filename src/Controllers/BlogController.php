@@ -15,6 +15,14 @@
 		 * @return Response
 		 */
 		public function index(): Response {
+			$posts = $this->em()->executeQuery("
+				range of x is (
+					range of y is PostEntity
+					retrieve(y)
+				)
+				retrieve (x.id)
+			");
+			
 			$posts = $this->em()->findBy(PostEntity::class, ['published' => true]);
 			
 			return $this->render("blog/index.tpl", [
