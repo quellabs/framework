@@ -2,6 +2,8 @@
 	
 	namespace Quellabs\Support;
 	
+	use Quellabs\Contracts\Inspector\EventCollectorInterface;
+	
 	class Tools {
 		
 		/**
@@ -22,7 +24,9 @@
 			
 			foreach ($sections as $key) {
 				if (array_key_exists($key, $_SERVER)) {
-					$ipAddresses = array_map(function($e) { return trim($e); }, explode(',', $_SERVER[$key]));
+					$ipAddresses = array_map(function ($e) {
+						return trim($e);
+					}, explode(',', $_SERVER[$key]));
 					
 					foreach ($ipAddresses as $ip) {
 						if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4 | FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
@@ -163,7 +167,7 @@
 		public static function createGUID(): string {
 			return self::createUUIDv4();
 		}
-
+		
 		/**
 		 * Validates a UUID and optionally checks for a specific version
 		 * Automatically detects the version and delegates to the appropriate validator
@@ -317,7 +321,7 @@
 			if (!self::validateUUIDv7($uuid)) {
 				return null;
 			}
-
+			
 			// Extract elements
 			$uuid = str_replace('-', '', $uuid);
 			
@@ -405,5 +409,40 @@
 			}
 			
 			return $maxLength;
+		}
+		
+		/**
+		 * Removes common leading whitespace from a multi-line string.
+		 * @param string $text The raw text to dedent
+		 * @return string The dedented text with leading/trailing whitespace trimmed
+		 */
+		public static function dedent(string $text): string {
+			// Strip leading and trailing whitespace from the whole string first
+			$lines = explode("\n", $text);
+			
+			// Find the minimum indentation level across all non-empty lines
+			$minIndent = PHP_INT_MAX;
+			
+			foreach ($lines as $line) {
+				// Skip blank lines — they shouldn't influence the indent calculation
+				if (trim($line) === '') {
+					continue;
+				}
+				
+				// Count leading whitespace characters on this line
+				$minIndent = min($minIndent, strlen($line) - strlen(ltrim($line)));
+			}
+			
+			// Nothing to strip — either all lines were empty or already unindented
+			if ($minIndent === PHP_INT_MAX || $minIndent === 0) {
+				return $text;
+			}
+			
+			// Remove exactly $minIndent characters from the start of each line.
+			// Lines shorter than $minIndent (e.g. blank lines) are left as-is.
+			return implode("\n", array_map(
+				fn(string $line) => strlen($line) >= $minIndent ? substr($line, $minIndent) : $line,
+				$lines
+			));
 		}
 	}
