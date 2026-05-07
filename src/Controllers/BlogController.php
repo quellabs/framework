@@ -20,14 +20,14 @@
 					range of y is PostEntity
 					retrieve(y)
 				)
-				retrieve (x.id)
+				retrieve (x)
 			");
 			
-			$posts = $this->em()->findBy(PostEntity::class, ['published' => true]);
+			//$posts = $this->em()->findBy(PostEntity::class, ['published' => true]);
 			
-			return $this->render("blog/index.tpl", [
-				'posts' => $posts
-			]);
+			//return $this->render("blog/index.tpl", [
+			//	'posts' => $posts
+			//]);
 		}
 		
 		/**
