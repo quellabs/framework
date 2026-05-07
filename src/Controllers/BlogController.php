@@ -15,11 +15,6 @@
 		 * @return Response
 		 */
 		public function index(): Response {
-			$posts = $this->em()->executeQuery("
-				range of x is PostEntity
-				retrieve (avg(x))
-			");
-			
 			$posts = $this->em()->findBy(PostEntity::class, ['published' => true]);
 			
 			return $this->render("blog/index.tpl", [
