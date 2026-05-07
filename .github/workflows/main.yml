@@ -13,22 +13,28 @@ on:
         type: boolean
 
 jobs:
-  prepare:
+  build-splitsh:
     runs-on: ubuntu-22.04
     outputs:
-      packages: ${{ steps.detect.outputs.packages }}
-      splitsh_artifact: splitsh-lite-${{ github.run_id }}
+      cache-key: ${{ steps.cache-key.outputs.key }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-          token: ${{ secrets.SYNC_TOKEN }}
+      - name: Compute cache key
+        id: cache-key
+        run: echo "key=splitsh-lite-libgit2-1.5.0-${{ runner.os }}" >> $GITHUB_OUTPUT
 
-      - name: Install dependencies
+      - name: Restore splitsh-lite from cache
+        id: cache-splitsh
+        uses: actions/cache@v5
+        with:
+          path: /tmp/splitsh-lite-bin
+          key: ${{ steps.cache-key.outputs.key }}
+
+      - name: Install build dependencies
+        if: steps.cache-splitsh.outputs.cache-hit != 'true'
         run: sudo apt-get update && sudo apt-get install -y cmake pkg-config golang jq
 
       - name: Build splitsh-lite (static)
+        if: steps.cache-splitsh.outputs.cache-hit != 'true'
         run: |
           # Build libgit2 v1.5.0 from source — git2go/v34 requires exactly v1.5.x
           # Static build so the binary is self-contained across runners
@@ -49,12 +55,28 @@ jobs:
               -o /tmp/splitsh-lite-bin \
               github.com/splitsh/lite
 
-      - name: Upload splitsh-lite binary
+      - name: Upload splitsh-lite binary as artifact
         uses: actions/upload-artifact@v7
         with:
           name: splitsh-lite-${{ github.run_id }}
           path: /tmp/splitsh-lite-bin
           retention-days: 1
+
+  prepare:
+    runs-on: ubuntu-22.04
+    needs: build-splitsh
+    outputs:
+      packages: ${{ steps.detect.outputs.packages }}
+      splitsh_artifact: splitsh-lite-${{ github.run_id }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.SYNC_TOKEN }}
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
 
       - name: Detect packages to sync
         id: detect
@@ -121,7 +143,7 @@ jobs:
           echo "📋 Packages to sync: ${packages[*]}"
 
   sync-and-release:
-    needs: prepare
+    needs: [ build-splitsh, prepare ]
     if: needs.prepare.outputs.packages != '[]' && needs.prepare.outputs.packages != ''
     runs-on: ubuntu-22.04
     concurrency:
@@ -143,12 +165,12 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: ${{ needs.prepare.outputs.splitsh_artifact }}
-          path: /usr/local/bin
+          path: /tmp
 
-      - name: Prepare splitsh-lite
+      - name: Install splitsh-lite
         run: |
-          chmod +x /usr/local/bin/splitsh-lite-bin
-          sudo mv /usr/local/bin/splitsh-lite-bin /usr/local/bin/splitsh-lite
+          chmod +x /tmp/splitsh-lite-bin
+          sudo mv /tmp/splitsh-lite-bin /usr/local/bin/splitsh-lite
 
       - name: Sync package to public repo
         id: sync
