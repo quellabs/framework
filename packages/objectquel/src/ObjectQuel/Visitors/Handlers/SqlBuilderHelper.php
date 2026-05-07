@@ -7,6 +7,7 @@
 	use Quellabs\ObjectQuel\Capabilities\PlatformCapabilitiesInterface;
 	use Quellabs\ObjectQuel\Capabilities\NullPlatformCapabilities;
 	use Quellabs\ObjectQuel\EntityStore;
+	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIdentifier;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstParameter;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabase;
@@ -36,7 +37,10 @@
 		private string $partOfQuery;
 		
 		/** @var mixed Reference to the main visitor instance for delegating node processing */
-		private mixed $mainVisitor; // Reference to main visitor
+		private mixed $mainVisitor;
+		
+		/** @var string|null When set, column aliases in buildEntityColumns use this name instead of the inner range name */
+		private ?string $subqueryAliasRangeName = null;
 		
 		/**
 		 * Constructor - initializes the SQL builder helper with required dependencies
@@ -44,19 +48,25 @@
 		 * @param array<string, mixed> $parameters Reference to parameters array for prepared statements
 		 * @param string $partOfQuery Current query part being processed
 		 * @param mixed|null $mainVisitor Optional reference to main visitor instance
+		 * @param PlatformCapabilitiesInterface $platform Database engine capability descriptor
+		 * @param string|null $subqueryAliasRangeName When set, buildEntityColumns() aliases columns
+		 *        using this name instead of the inner range name, so derived table columns match
+		 *        what the outer query expects (e.g. "x.id" instead of "y.id")
 		 */
 		public function __construct(
 			EntityStore                   $entityStore,
 			array                         &$parameters,
 			string                        $partOfQuery,
 			mixed                         $mainVisitor = null,
-			PlatformCapabilitiesInterface $platform = new NullPlatformCapabilities()
+			PlatformCapabilitiesInterface $platform = new NullPlatformCapabilities(),
+			?string                       $subqueryAliasRangeName = null
 		) {
 			$this->entityStore = $entityStore;
 			$this->parameters = &$parameters; // Store reference to allow parameter modification
 			$this->partOfQuery = $partOfQuery;
 			$this->mainVisitor = $mainVisitor;
 			$this->platform = $platform;
+			$this->subqueryAliasRangeName = $subqueryAliasRangeName;
 		}
 		
 		/**
@@ -75,6 +85,7 @@
 		 * @param AstIdentifier $identifier The AST identifier to convert
 		 * @return string Fully qualified SQL column name or empty string if no range
 		 * @throws \LogicException
+		 * @throws EntityResolutionException
 		 */
 		public function buildColumnName(AstIdentifier $identifier): string {
 			// Get the range (table alias) from the identifier
@@ -110,21 +121,15 @@
 		 * @param string $rangeName The table alias
 		 * @param string $entityName The entity class name
 		 * @return string Fully qualified SQL column name
-		 * @throws \LogicException
+		 * @throws \LogicException|EntityResolutionException
 		 */
 		private function buildColumnNameForEntity(AstIdentifier $identifier, string $rangeName, string $entityName): string {
 			// Handle case where identifier refers to the entity itself (primary key)
 			if ($this->identifierIsEntity($identifier)) {
-				$identifierColumns = $this->entityStore->getIdentifierColumnNames($entityName);
-				
-				if (empty($identifierColumns)) {
-					throw new \LogicException(
-						"Entity '{$entityName}' has no identifier columns defined"
-					);
-				}
-				
-				// Return first identifier column (usually primary key)
-				return "{$rangeName}.{$identifierColumns[0]}";
+				throw new \LogicException(
+					"Identifier '{$rangeName}' refers to entity '{$entityName}' as a whole — a specific property is required here. " .
+					"This should have been caught by the semantic validator. Check that entity-level identifiers are rejected in scalar function arguments and expressions."
+				);
 			}
 			
 			// Get the property name from the next node in the identifier chain
@@ -137,8 +142,10 @@
 				);
 			}
 			
+			// Fetch the next property
 			$property = $next->getName();
 			
+			// If none is there, the AST is broken
 			if (empty($property)) {
 				// A valid AST node must return a non-empty name
 				throw new \LogicException(
@@ -149,8 +156,9 @@
 			// Look up the database column name for this property
 			$columnMap = $this->entityStore->getColumnMap($entityName);
 			
+			// Throw when the property is not present. This should already
+			// have been checked in the semantic analyzer.
 			if (!isset($columnMap[$property])) {
-				// If semantic validation ran correctly this should never happen
 				throw new \LogicException(
 					"Property '{$property}' has no column mapping in entity '{$entityName}'"
 				);
@@ -197,9 +205,9 @@
 				);
 			}
 			
-			// Return fully qualified column name using the identifier's name directly
-			// No mapping needed since temporary table columns are already in SQL format
-			return "{$rangeName}.`{$columnName}`";
+			// Column aliases in derived tables are stored as "rangeName.property" (e.g. "x.id"),
+			// so reference them with the range prefix to match the subquery's SELECT aliases.
+			return "{$rangeName}.`{$rangeName}.{$columnName}`";
 		}
 		
 		/**
@@ -248,8 +256,12 @@
 					"buildEntityColumns called with an identifier that has no range"
 				);
 			}
-			
+
+			// Fetch the range name
 			$rangeName = $range->getName();
+			
+			// Alias name for subqueries
+			$aliasRangeName = $this->subqueryAliasRangeName ?? $rangeName;
 			
 			// Get all column mappings for this entity
 			$entityName = $ast->getEntityName();
@@ -265,7 +277,7 @@
 			// Build aliased column selections for each property
 			foreach ($columnMap as $item => $value) {
 				// Format: table.column as `alias.property`
-				$result[] = "{$rangeName}.{$value} as `{$rangeName}.{$item}`";
+				$result[] = "{$rangeName}.{$value} as `{$aliasRangeName}.{$item}`";
 			}
 			
 			return implode(",", $result);
@@ -440,7 +452,7 @@
 		 *
 		 * @param AstIdentifier $ast The identifier to resolve to a SQL expression.
 		 * @return string SQL column expression, optionally wrapped in COALESCE().
-		 * @throws \LogicException
+		 * @throws \LogicException|EntityResolutionException
 		 */
 		public function buildSortableColumn(AstIdentifier $ast): string {
 			// Fetch the range
@@ -468,7 +480,7 @@
 			$entityName = $ast->getEntityName();
 			
 			if (empty($entityName)) {
-				return "{$rangeName}.{$propertyName}";
+				return "{$rangeName}.`{$rangeName}.{$propertyName}`";
 			}
 			
 			// Map the ORM property name to its physical database column name.

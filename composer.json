@@ -332,6 +332,15 @@
       "packages/support/src/bootstrap.php"
     ]
   },
+  "autoload-dev": {
+    "psr-4": {
+      "Quellabs\\ObjectQuel\\Tests\\": "tests/ObjectQuel/"
+    }
+  },
+  "scripts": {
+    "test": "vendor/bin/phpunit",
+    "test:objectquel": "vendor/bin/phpunit --testsuite ObjectQuel"
+  },
   "config": {
     "platform": {
       "php": "8.3.0"

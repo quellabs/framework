@@ -3,24 +3,16 @@
 	namespace Quellabs\ObjectQuel\ObjectQuel;
 	
 	use Quellabs\ObjectQuel\EntityStore;
-	use Quellabs\ObjectQuel\Exception\QuelException;
 	use Quellabs\ObjectQuel\Exception\SemanticException;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAvg;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAvgU;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstCount;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstCountU;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAggregate;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIdentifier;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstMax;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstMin;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabase;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabaseSubquery;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRegExp;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstSum;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstSumU;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\NodeTypeValidator;
-	use Quellabs\ObjectQuel\ObjectQuel\Visitors\EntityReferenceValidator;
-	use Quellabs\ObjectQuel\ObjectQuel\Visitors\EntityPropertyValidator;
+	use Quellabs\ObjectQuel\ObjectQuel\Visitors\EntityExistenceValidator;
+	use Quellabs\ObjectQuel\ObjectQuel\Visitors\EntityPropertyExistenceValidator;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\NoExpressionsAllowedOnEntitiesValidator;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\RangeOnlyReferencesOtherRanges;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\ViaClauseValidator;
@@ -58,28 +50,24 @@
 			// Step 1: Validate basic structural integrity
 			$this->validateNoRegExpInValueList($ast);
 			$this->validateNoDuplicateRanges($ast);
+			$this->validateNoEntireSubqueryRangesInValueList($ast);
 			$this->validateAtLeastOneRangeWithoutVia($ast);
 			$this->validateRangesOnlyReferenceOtherRanges($ast);
 			
 			// Step 2: Validate against schema - ensure entities exist
-			$this->processWithVisitor($ast, EntityReferenceValidator::class, $this->entityStore);
+			$this->processWithVisitor($ast, EntityExistenceValidator::class, $this->entityStore);
 			
 			// Step 3: Validate relationship definitions in 'via' clauses
 			$this->validateRangeViaRelations($ast);
 			
 			// Step 4: Validate property references against schema
-			$this->processWithVisitor($ast, EntityPropertyValidator::class, $this->entityStore);
+			$this->processWithVisitor($ast, EntityPropertyExistenceValidator::class, $this->entityStore);
 			
 			// Step 5: Ensure expressions are not used inappropriately on entities
 			$this->processWithVisitor($ast, NoExpressionsAllowedOnEntitiesValidator::class);
 			
 			// Step 6: Validate SQL compliance rules (aggregate placement)
 			$this->validateNoAggregatesInWhereClause($ast);
-			
-			// Step 7: Validate no entire entities in nested queries
-			if ($isSubquery) {
-				$this->validateNoEntireEntitiesInValueList($ast);
-			}
 		}
 		
 		/**
@@ -144,6 +132,42 @@
 		}
 		
 		/**
+		 * Validates that no entire subquery ranges appear in the value list.
+		 *
+		 * Subquery ranges are derived tables with no entity mapping behind them.
+		 * Retrieving one as a whole (e.g. "retrieve(x)" where x is a subquery range)
+		 * is meaningless — the derived table produces multiple named columns like
+		 * "x.id", "x.title" etc., none of which map to a single row key "x".
+		 * The result would always be null. Users must specify individual properties
+		 * (e.g. "retrieve(x.id)") so the hydrator can look up the correct column.
+		 *
+		 * This is the outer-query counterpart to validateNoEntireEntitiesInValueList(),
+		 * which guards the inner query side.
+		 *
+		 * @param AstRetrieve $ast The AST to validate
+		 * @throws SemanticException If a bare subquery range identifier is found in the value list
+		 */
+		private function validateNoEntireSubqueryRangesInValueList(AstRetrieve $ast): void {
+			foreach ($ast->getValues() as $value) {
+				// Fetch the expression
+				$expression = $value->getExpression();
+				
+				// Only interested in identifiers that refer directly to a subquery range
+				// without any property access chained on (i.e. "x" not "x.id")
+				if (
+					$expression instanceof AstIdentifier &&
+					$expression->getRange() instanceof AstRangeDatabaseSubquery &&
+					!$expression->hasNext()
+				) {
+					throw new SemanticException(
+						"Retrieving an entire subquery range is not allowed. " .
+						"Please specify individual properties (e.g. x.id instead of x)."
+					);
+				}
+			}
+		}
+		
+		/**
 		 * Validates that at least one range exists without a 'via' clause to serve as the FROM clause.
 		 * In SQL, every query must have a primary FROM table. Other tables are joined to this base.
 		 * In ObjectQuel, a range without a 'via' clause serves as this primary table.
@@ -156,7 +180,9 @@
 				// Check if this is a database range (actual table) without a join property
 				// A range without a join property means it's not dependent on another table
 				// and can serve as the primary data source (FROM clause in SQL)
-				if ($range instanceof AstRangeDatabase && $range->getJoinProperty() === null) {
+				$isDatabaseRange = $range instanceof AstRangeDatabase || $range instanceof AstRangeDatabaseSubquery;
+				
+				if ($isDatabaseRange && $range->getJoinProperty() === null) {
 					return; // Found a valid primary range - validation passes
 				}
 			}
@@ -266,23 +292,10 @@
 				return;
 			}
 			
-			// Define all aggregate function AST node types that are prohibited in WHERE clauses
-			// This covers standard SQL aggregate functions and their variations
-			$aggregateTypes = [
-				AstCount::class,    // COUNT() function
-				AstCountU::class,   // COUNT(DISTINCT) function
-				AstAvg::class,      // AVG() function
-				AstAvgU::class,     // AVG(DISTINCT) function
-				AstMin::class,      // MIN() function
-				AstMax::class,      // MAX() function
-				AstSum::class,      // SUM() function
-				AstSumU::class      // SUM(DISTINCT) function
-			];
-			
 			try {
 				// Create a visitor that searches for any of the prohibited aggregate
 				// function types in the condition tree
-				$visitor = new NodeTypeValidator($aggregateTypes);
+				$visitor = new NodeTypeValidator([AstAggregate::class]);
 				
 				// Traverse the WHERE clause conditions looking for aggregate functions
 				// If any are found, the visitor will throw an exception
@@ -297,32 +310,6 @@
 				
 				// Throw a user-friendly error explaining the SQL rule violation
 				throw new SemanticException("Aggregate function '{$nodeType}' is not allowed in WHERE clause");
-			}
-		}
-		
-		/**
-		 * Validate that temporary table field lists don't retrieve entire entities.
-		 *
-		 * Temporary tables require explicit column definitions. Retrieving entire entities
-		 * (e.g., "retrieve(x)") creates ambiguous column names in joins. Users must specify
-		 * individual properties (e.g., "retrieve(x.id, x.title)") for clear column mapping.
-		 *
-		 * @throws SemanticException if an entire entity is retrieved without property access
-		 */
-		private function validateNoEntireEntitiesInValueList(AstRetrieve $ast): void {
-			foreach ($ast->getValues() as $value) {
-				$expression = $value->getExpression();
-				
-				// Skip non-identifier expressions (literals, function calls, etc.)
-				if (!$expression instanceof AstIdentifier) {
-					continue;
-				}
-				
-				// Check if identifier lacks property access (e.g., "x" instead of "x.id")
-				// hasNext() returns false when there's no chained property access
-				if (!$expression->hasNext()) {
-					throw new SemanticException("Temporary table requires explicit column definitions.");
-				}
 			}
 		}
 	}

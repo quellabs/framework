@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit bootstrap="tests/bootstrap.php"
+         colors="true"
+         stopOnFailure="false">
+    <testsuites>
+        <testsuite name="ObjectQuel">
+            <directory>tests/ObjectQuel</directory>
+        </testsuite>
+    </testsuites>
+    <php>
+        <env name="TEST_DB_HOST" value="127.0.0.1"/>
+        <env name="TEST_DB_PORT" value="3306"/>
+        <env name="TEST_DB_NAME" value="canvas_blog"/>
+        <env name="TEST_DB_USER" value="root"/>
+        <env name="TEST_DB_PASS" value=""/>
+    </php>
+</phpunit>

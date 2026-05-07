@@ -48,29 +48,17 @@
 			$this->entityName = $entityName;
 			$this->includeAsJoin = $includeAsJoin;
 		}
-		
-		/**
-		 * Accept a visitor to process the AST.
-		 * Ensures the visitor traverses all child nodes including joinProperty and query.
-		 * @param AstVisitorInterface $visitor Visitor object for AST manipulation
-		 */
-		public function accept(AstVisitorInterface $visitor): void {
-			parent::accept($visitor);
-			$this->getJoinProperty()?->accept($visitor);
-		}
-		
+
 		/**
 		 * Create a deep copy of this range including all child nodes
 		 * @return static A new instance with cloned child nodes
 		 */
 		public function deepClone(): static {
-			$joinProperty = $this->getJoinProperty()?->deepClone();
-			
 			// @phpstan-ignore-next-line new.static
 			$clone = new static(
 				$this->getName(),
 				$this->entityName,
-				$joinProperty,
+				$this->getJoinProperty(),
 				$this->isRequired(),
 				$this->includeAsJoin
 			);

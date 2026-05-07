@@ -44,7 +44,7 @@
 		 * @throws TransformationException
 		 * @throws EntityResolutionException
 		 */
-		public function isRelationProperty(AstIdentifier $node, string $entityName = null): bool {
+		public function isRelationProperty(AstIdentifier $node, ?string $entityName = null): bool {
 			// Fetch the entity name
 			$entityName = $entityName ?? $node->getEntityName();
 			
@@ -71,26 +71,13 @@
 		 * @param AstRange|AstRangeDatabase|AstRangeJsonSource $rangeB The other range
 		 * @param string $propertyB Property name on $rangeB
 		 * @return AstInterface
-		 * @throws TransformationException
 		 */
 		public function createPropertyLookupAst(string $propertyA, AstRange|AstRangeDatabase|AstRangeJsonSource $rangeB, string $propertyB): AstInterface {
-			$entityNameA = $this->range->getEntityName();
-			
-			if ($entityNameA === null) {
-				throw new TransformationException('Range A has no entity name');
-			}
-			
-			$entityNameB = $rangeB->getEntityName();
-			
-			if ($entityNameB === null) {
-				throw new TransformationException('Range B has no entity name');
-			}
-			
-			$identifierA = new AstIdentifier($entityNameA);
+			$identifierA = new AstIdentifier($this->range->getName());  // "u"
 			$identifierA->setRange($this->range);
 			$identifierA->setNext(new AstIdentifier($propertyA));
 			
-			$identifierB = new AstIdentifier($entityNameB);
+			$identifierB = new AstIdentifier($rangeB->getName());  // "p"
 			$identifierB->setRange($rangeB);
 			$identifierB->setNext(new AstIdentifier($propertyB));
 			
@@ -128,12 +115,14 @@
 				throw new TransformationException('Expected parent identifier to belong to an entity range');
 			}
 			
+			// Fall back to the first primary key of the parent entity
 			$relationColumn = $relation->getRelationColumn();
 			
-			// Fall back to the first primary key of the parent entity
 			if ($relationColumn === null) {
-				$identifierKeys = $this->entityStore->getIdentifierKeys($entityName);
-				$relationColumn = $identifierKeys[0];
+				// Infer FK property name from the relation property name
+				// e.g. property "user" → FK property "userId"
+				$propertyName = $joinProperty->getName();  // "user"
+				$relationColumn = $propertyName . 'Id';    // "userId"
 			}
 			
 			// ManyToOne: FK is on $this->range, PK is on the parent range
@@ -144,7 +133,7 @@
 					throw new TransformationException('ManyToOne relation is missing inversedBy');
 				}
 				
-				return $this->createPropertyLookupAst($relationColumn, $range, $inversedBy);
+				return $this->createPropertyLookupAst($inversedBy, $range, $relationColumn);
 			}
 			
 			// OneToMany: FK is on $this->range (the child), PK is on the parent range

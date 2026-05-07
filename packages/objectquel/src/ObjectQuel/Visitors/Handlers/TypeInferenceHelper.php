@@ -6,9 +6,8 @@
 	use Quellabs\ObjectQuel\DatabaseAdapter\TypeMapper;
 	use Quellabs\ObjectQuel\EntityStore;
 	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstFactor;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIdentifier;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstTerm;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\NodeBinary;
 	use Quellabs\ObjectQuel\ObjectQuel\AstInterface;
 	
 	/**
@@ -43,6 +42,7 @@
 		 *
 		 * @param AstInterface $ast The AST node to analyze
 		 * @return string|null The inferred PHP type (e.g., 'float', 'string', 'int') or null if undetermined
+		 * @throws EntityResolutionException
 		 */
 		public function inferReturnType(AstInterface $ast): ?string {
 			// Process identifiers - lookup their type from entity annotations
@@ -51,7 +51,7 @@
 			}
 			
 			// Traverse down the parse tree for binary operations (terms/factors)
-			if ($ast instanceof AstTerm || $ast instanceof AstFactor) {
+			if ($ast instanceof NodeBinary) {
 				// Recursively get types of left and right operands
 				$left = $this->inferReturnType($ast->getLeft());
 				$right = $this->inferReturnType($ast->getRight());
@@ -74,7 +74,7 @@
 		}
 		
 		/**
-		 * Determines the return type of an identifier by checking its ORM annotations
+		 * Determines the return type of the identifier by checking its ORM annotations
 		 *
 		 * This method looks up the entity's column annotations to determine the PHP type
 		 * that corresponds to the database column type. It searches through all annotations

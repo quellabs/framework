@@ -3,6 +3,7 @@
 	namespace Quellabs\ObjectQuel\Planner\Helpers;
 	
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabaseMaterialized;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabaseSubquery;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabaseTempTable;
 	use Quellabs\ObjectQuel\Planner\ExecutionStage;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAlias;
@@ -50,6 +51,8 @@
 		 * @return AstRange[]
 		 */
 		public function findDatabaseSourceRanges(AstRetrieve $query): array {
+			// AstRangeDatabaseMaterialized is intentionally excluded —
+			// it is inlined as a derived table by QuelToSQL and needs no separate stage.
 			return array_filter($query->getRanges(), function ($range) {
 				return
 					$range instanceof AstRangeDatabase ||
@@ -66,10 +69,7 @@
 			$result = [];
 			
 			foreach ($query->getRanges() as $range) {
-				if (
-					$range instanceof AstRangeDatabaseTempTable ||
-					$range instanceof AstRangeDatabaseMaterialized
-				) {
+				if ($range instanceof AstRangeDatabaseTempTable) {
 					$result[] = $range;
 				}
 			}
@@ -188,7 +188,11 @@
 			$joinConditions = $this->filter->isolateJoinConditionsForRange($range, $query->getConditions());
 			
 			// Assert that range of the correct type
-			assert($range instanceof AstRangeDatabase || $range instanceof AstRangeJsonSource);
+			assert(
+				$range instanceof AstRangeDatabase ||
+				$range instanceof AstRangeDatabaseSubquery ||
+				$range instanceof AstRangeJsonSource
+			);
 			
 			// Return the optimized query that can be fully executed by the database
 			return new ExecutionStage(uniqid(), $dbQuery, $range, $staticParams, $joinConditions);
