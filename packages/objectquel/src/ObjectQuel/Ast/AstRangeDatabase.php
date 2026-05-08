@@ -54,17 +54,22 @@
 		 * @return static A new instance with cloned child nodes
 		 */
 		public function deepClone(): static {
+			// Clone the join property. AstRange will give it a new parent in its constructor
+			$joinProperty = $this->getJoinProperty()?->deepClone();
+			
 			// @phpstan-ignore-next-line new.static
 			$clone = new static(
 				$this->getName(),
 				$this->entityName,
-				$this->getJoinProperty(),
+				$joinProperty,
 				$this->isRequired(),
 				$this->includeAsJoin
 			);
 			
+			// Clone gets new parent
 			$clone->setParent($this->getParent());
 			
+			// Return clone
 			return $clone;
 		}
 		

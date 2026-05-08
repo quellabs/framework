@@ -16,10 +16,9 @@
 		 */
 		public function index(): Response {
 			$this->em()->executeQuery("
-				range of p is PostEntity
-				range of u is UserEntity via p.user
-				retrieve (p, u)
-				where u.username = 'alice'
+				range of c is Customer
+				range of a is Address via c.addresses
+				retrieve (c, a.street, a.houseNumber)
 			");
 			
 			$posts = $this->em()->findBy(PostEntity::class, ['published' => true]);
