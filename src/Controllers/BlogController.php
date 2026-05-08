@@ -15,18 +15,18 @@
 		 * @return Response
 		 */
 		public function index(): Response {
-			/*
 			$this->em()->executeQuery("
-				range of c is Customer
-				range of a is Address via c.id=a.id
-				retrieve (c, a.street, a.houseNumber)
+				range of x is (
+					range of y is PostEntity
+					retrieve(y)
+				)
+				retrieve (x.id)
 			");
-			*/
 			
-			$posts = $this->em()->findBy(PostEntity::class, ['published' => true]);
+			//$posts = $this->em()->findBy(PostEntity::class, ['published' => true]);
 			
 			return $this->render("blog/index.tpl", [
-				'posts' => $posts
+				'posts' => []
 			]);
 		}
 		
