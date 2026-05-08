@@ -17,7 +17,7 @@
 		public function index(): Response {
 			$this->em()->executeQuery("
 				range of c is Customer
-				range of a is Address via c.addresses
+				range of a is Address via c.id=a.id
 				retrieve (c, a.street, a.houseNumber)
 			");
 			
