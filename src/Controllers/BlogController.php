@@ -23,6 +23,8 @@
 				retrieve (x.id)
 			");
 			
+			$x = $this->em()->find(PostEntity::class, 1);
+			
 			$posts = $this->em()->findBy(PostEntity::class, ['published' => true]);
 			
 			return $this->render("blog/index.tpl", [
