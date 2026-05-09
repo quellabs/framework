@@ -63,6 +63,9 @@
 		/** @var bool Store original filenames in metadata */
 		private bool $preserveOriginalNames;
 		
+		/** @var bool If true, returns an error response immediately on validation failure instead of writing failure info to request attributes */
+		private bool $immediateResponse;
+		
 		/**
 		 * Constructor
 		 * @param string $uploadPath Base directory for uploads (relative to project root)
@@ -77,6 +80,7 @@
 		 * @param string $directoryStructure Directory structure pattern (Y/m/d for date-based)
 		 * @param bool $createDirectories Create directories if they don't exist
 		 * @param bool $preserveOriginalNames Store original filenames in request attributes
+		 * @param bool $immediateResponse If true, returns an error response immediately on validation failure instead of writing failure info to request attributes
 		 */
 		public function __construct(
 			string $uploadPath = 'storage/uploads',
@@ -94,7 +98,8 @@
 			bool   $randomizeFilenames = true,
 			string $directoryStructure = 'Y/m/d',
 			bool   $createDirectories = true,
-			bool   $preserveOriginalNames = true
+			bool   $preserveOriginalNames = true,
+			bool   $immediateResponse = false
 		) {
 			$this->uploadPath = rtrim($uploadPath, '/');
 			$this->allowedExtensions = array_map('strtolower', $allowedExtensions);
@@ -108,6 +113,7 @@
 			$this->directoryStructure = $directoryStructure;
 			$this->createDirectories = $createDirectories;
 			$this->preserveOriginalNames = $preserveOriginalNames;
+			$this->immediateResponse = $immediateResponse;
 		}
 		
 		/**
@@ -148,9 +154,18 @@
 				
 			} catch (RuntimeException $e) {
 				// Handle any errors that occurred during file processing
-				// This could include validation failures, storage issues, or security violations
-				// Return an error response instead of continuing to the controller
-				return $this->createErrorResponse($e->getMessage(), $request);
+				if ($this->immediateResponse) {
+					return $this->createErrorResponse($e->getMessage(), $request);
+				}
+				
+				// Default behavior: write failure info to request attributes and let the controller handle it
+				$request->attributes->set('upload_successful', false);
+				$request->attributes->set('upload_error', [
+					'type'    => 'upload_failed',
+					'message' => $e->getMessage()
+				]);
+				
+				return null;
 			}
 		}
 		
@@ -213,20 +228,12 @@
 			}
 			
 			// Perform basic security and business rule validations
-			$this->validateFileSize($file);      // Check file doesn't exceed size limits
-			$this->validateFileType($file);      // Ensure file type is in allowed list
-			$this->validateFileName($file);      // Sanitize filename for security
-			
-			// Additional validation for image files if image processing is enabled
-			if ($this->isImage($file) && $this->validateImages) {
-				$this->validateImageContent($file);      // Verify actual image content matches extension
-				$this->validateImageDimensions($file);   // Check image meets size requirements
-			}
-			
-			// Optional virus scanning for enhanced security
-			if ($this->virusScan) {
-				$this->scanForViruses($file);    // Scan file for malicious content
-			}
+			$this->validateFileSize($file);          // Check file doesn't exceed size limits
+			$this->validateFileType($file);          // Ensure file type is in allowed list
+			$this->validateFileName($file);          // Sanitize filename for security
+			$this->validateImageContent($file);      // Verify actual image content matches extension (no-op if not an image)
+			$this->validateImageDimensions($file);   // Check image meets size requirements (no-op if not an image)
+			$this->scanForViruses($file);            // Scan file for malicious content (no-op if virus scan disabled)
 			
 			// Move file from temporary upload location to secure permanent storage
 			$targetPath = $this->generateTargetPath($file);        // Generate unique secure file path
@@ -350,8 +357,7 @@
 			
 			// Check if MIME type from getimagesize matches uploaded MIME type
 			// This prevents malicious files with fake extensions or headers
-			$detectedMime = $imageInfo['mime'];
-			if ($detectedMime !== $file->getMimeType()) {
+			if ($imageInfo['mime'] !== $file->getMimeType()) {
 				throw new RuntimeException("Image file content does not match declared type");
 			}
 		}
@@ -393,15 +399,20 @@
 		 * @throws RuntimeException If virus is detected
 		 */
 		private function scanForViruses(UploadedFile $file): void {
+			// Do nothing when virusscanning is disabled
+			if (!$this->virusScan) {
+				return;
+			}
+			
 			// Check if exec() function is available - it may be disabled for security reasons
 			if (!function_exists('exec')) {
 				return; // Cannot execute virus scan - silently skip scanning
 			}
 			
 			// Locate the ClamAV scanner executable on the system
-			$clamscanPath = $this->findClamScan();
+			$clamScanPath = $this->findClamScan();
 			
-			if (!$clamscanPath) {
+			if (!$clamScanPath) {
 				return;
 			}
 			
@@ -412,7 +423,7 @@
 			// Build the command string with proper shell escaping for security
 			// escapeshellcmd() prevents command injection on the executable path
 			// escapeshellarg() safely wraps the file path to handle special characters
-			$command = escapeshellcmd($clamscanPath) . ' ' . escapeshellarg($file->getPathname());
+			$command = escapeshellcmd($clamScanPath) . ' ' . escapeshellarg($file->getPathname());
 			
 			// Execute the ClamAV scan command
 			// $output will contain all output lines from clamscan
