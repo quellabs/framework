@@ -19,16 +19,17 @@
 				range of x is (
 					range of y is PostEntity
 					retrieve(y)
+					where search(y.title, '+hallo')
 				)
 				retrieve (x.id)
 			");
 			
-			$x = $this->em()->find(PostEntity::class, 1);
+			//$x = $this->em()->find(PostEntity::class, 1);
 			
-			$posts = $this->em()->findBy(PostEntity::class, ['published' => true]);
+			//$posts = $this->em()->findBy(PostEntity::class, ['published' => true]);
 			
 			return $this->render("blog/index.tpl", [
-				'posts' => $posts
+				'posts' => []
 			]);
 		}
 		
