@@ -1,18 +1,19 @@
 <?php
 	
-	namespace Quellabs\Canvas\RateLimiting;
+	namespace Quellabs\Canvas\Security;
 	
+	use Quellabs\Canvas\AOP\Contracts\AfterAspectInterface;
 	use Quellabs\Canvas\AOP\Contracts\BeforeAspectInterface;
 	use Quellabs\Canvas\Routing\Contracts\MethodContextInterface;
+	use Quellabs\Canvas\Exceptions\RateLimitException;
 	use Quellabs\Contracts\Cache\CacheInterface;
 	use Symfony\Component\HttpFoundation\Request;
 	use Symfony\Component\HttpFoundation\Response;
-	use Symfony\Component\HttpFoundation\JsonResponse;
 	
 	/**
 	 * Rate limiting aspect using various strategies
 	 */
-	class RateLimitAspect implements BeforeAspectInterface {
+	readonly class RateLimitAspect implements BeforeAspectInterface, AfterAspectInterface {
 		
 		/** @var string[] Valid rate limiting strategies */
 		private const array VALID_STRATEGIES = ['fixed_window', 'sliding_window', 'token_bucket'];
@@ -44,6 +45,9 @@
 		/** @var string Rate limit header prefix */
 		private string $headerPrefix;
 		
+		/** @var bool If true, throws RateLimitException on failure instead of writing to request attributes */
+		private bool $throwOnFailure;
+		
 		/**
 		 * RateLimitAspect constructor
 		 * @param CacheInterface $cache
@@ -54,6 +58,7 @@
 		 * @param string $identifier
 		 * @param string[] $exemptMethods
 		 * @param string $headerPrefix
+		 * @param bool $throwOnFailure If true, throws RateLimitException on failure
 		 */
 		public function __construct(
 			CacheInterface $cache,
@@ -63,7 +68,8 @@
 			string         $scope = 'ip',
 			string         $identifier = '',
 			array          $exemptMethods = ['GET', 'HEAD', 'OPTIONS'],
-			string         $headerPrefix = 'X-RateLimit'
+			string         $headerPrefix = 'X-RateLimit',
+			bool           $throwOnFailure = false
 		) {
 			$this->cache = $cache;
 			$this->limit = $limit;
@@ -73,19 +79,21 @@
 			$this->identifier = $identifier;
 			$this->exemptMethods = $exemptMethods;
 			$this->headerPrefix = $headerPrefix;
+			$this->throwOnFailure = $throwOnFailure;
 			
+			// Validate limit and window correctness
 			if ($limit <= 0 || $window <= 0) {
 				throw new \InvalidArgumentException('Limit and window must be positive integers');
 			}
 			
 			// Validate strategy
-			if (!in_array($strategy, self::VALID_STRATEGIES)) {
+			if (!in_array($strategy, self::VALID_STRATEGIES, true)) {
 				throw new \InvalidArgumentException('Invalid strategy: ' . $strategy);
 			}
 			
 			// Validate scope
-			if (!in_array($scope, self::VALID_SCOPES)) {
-				throw new \InvalidArgumentException("Invalid scope '$scope'. Valid options: " . implode(', ', self::VALID_SCOPES));
+			if (!in_array($scope, self::VALID_SCOPES, true)) {
+				throw new \InvalidArgumentException("Invalid scope '{$scope}'. Valid options: " . implode(', ', self::VALID_SCOPES));
 			}
 			
 			// Validate custom scope has identifier
@@ -106,7 +114,7 @@
 			
 			// Skip rate limiting for exempt HTTP methods (e.g., OPTIONS, HEAD)
 			// This allows certain methods to bypass rate limiting entirely
-			if (in_array($request->getMethod(), $this->exemptMethods)) {
+			if (in_array($request->getMethod(), $this->exemptMethods, true)) {
 				return null; // No rate limiting applied, continue processing
 			}
 			
@@ -122,12 +130,14 @@
 				'fixed_window' => $this->fixedWindowStrategy($key, $currentTime),
 				'sliding_window' => $this->slidingWindowStrategy($key, $currentTime),
 				'token_bucket' => $this->tokenBucketStrategy($key, $currentTime),
-				default => $this->fixedWindowStrategy($key, $currentTime) // Fallback strategy
+				default => throw new \LogicException(
+					"Unhandled rate limit strategy: {$this->strategy}"
+				)
 			};
 			
 			// Prepare rate limit headers for the response
 			// These headers inform the client about their current rate limit status
-			$request->attributes->set('rate_limit_headers', [
+			$headers = [
 				// Maximum number of requests allowed in the time window
 				"{$this->headerPrefix}-Limit"     => $this->limit,
 				
@@ -137,19 +147,62 @@
 				
 				// Timestamp when the rate limit resets (Unix timestamp)
 				"{$this->headerPrefix}-Reset"     => $result['reset_time'],
-				
-				// Which rate limiting strategy is being used
-				"{$this->headerPrefix}-Strategy"  => $this->strategy
-			]);
+			];
 			
-			// Check if the rate limit has been exceeded
+			// Inform the user when a retry may be attempted when limit was exceeded
 			if ($result['exceeded']) {
-				// Create and return a rate limit exceeded response (typically 429 Too Many Requests)
-				return $this->createRateLimitResponse($request, $result);
+				$headers['Retry-After'] = $result['retry_after'];
 			}
 			
-			// Rate limit isn't exceeded, allow the request to continue to the next middleware/handler
+			// Set result
+			$request->attributes->set('rate_limit_headers', $headers);
+			$request->attributes->set('rate_limit_result', $result);
+			$request->attributes->set('rate_limit_strategy', $this->strategy);
+			$request->attributes->set('rate_limit_exceeded', $result['exceeded']);
+			
+			// Throw exception if exceeded
+			if ($result['exceeded'] && $this->throwOnFailure) {
+				throw new RateLimitException(
+					limit: $this->limit,
+					remaining: max(0, $this->limit - $result['count']),
+					retryAfter: $result['retry_after'],
+					resetTime: $result['reset_time'],
+					strategy: $this->strategy,
+					scope: $this->scope,
+					headers: $headers
+				);
+			}
+			
+			// Continue to controller
 			return null;
+		}
+		
+		/**
+		 * Apply rate limit headers to the outgoing HTTP response.
+		 * @param MethodContextInterface $context Current method execution context.
+		 * @param Response $response HTTP response being returned to the client.
+		 * @return void
+		 */
+		public function after(MethodContextInterface $context, Response $response): void {
+			// Retrieve rate limit headers prepared during the before() phase.
+			// These are stored on the request attributes to share state between
+			// the before and after aspect lifecycle stages.
+			$headers = $context
+				->getRequest()
+				->attributes
+				->get('rate_limit_headers');
+			
+			// If no headers are present, there is nothing to apply.
+			if ($headers === null) {
+				return;
+			}
+			
+			// Apply each prepared rate limit header to the outgoing response.
+			// Values are cast to string to ensure compatibility with the
+			// Symfony response header bag implementation.
+			foreach ($headers as $name => $value) {
+				$response->headers->set($name, (string)$value);
+			}
 		}
 		
 		/**
@@ -168,7 +221,7 @@
 		private function fixedWindowStrategy(string $key, int $currentTime): array {
 			// Calculate the start of the current window by rounding down to nearest window boundary
 			// Example: if window=60 and currentTime=1625097123, windowStart=1625097120
-			$windowStart = floor($currentTime / $this->window) * $this->window;
+			$windowStart = intdiv($currentTime, $this->window) * $this->window;
 			
 			// Create a unique cache key that includes the window start time
 			// This ensures each window has its own counter
@@ -226,7 +279,10 @@
 			
 			// Remove expired timestamps that fall outside the current sliding window
 			// This cleanup ensures we only count requests within the time window
-			$timestamps = array_filter($timestamps, fn($ts) => $ts > $cutoff);
+			$timestamps = array_values(array_filter(
+				$timestamps,
+				fn($ts) => $ts > $cutoff
+			));
 			
 			// Add the current request timestamp to the window
 			$timestamps[] = $currentTime;
@@ -239,14 +295,13 @@
 			$count = count($timestamps);
 			
 			return [
-				'count'       => $count,                                    // Current request count in sliding window
-				'exceeded'    => $count > $this->limit,                 // Whether limit is exceeded
-				'reset_time'  => $currentTime + $this->window,        // When current window fully expires
+				'count'       => $count,                         // Current request count in sliding window
+				'exceeded'    => $count > $this->limit,          // Whether limit is exceeded
+				'reset_time'  => $currentTime + $this->window,   // When current window fully expires
 				
 				// Calculate retry_after: if exceeded, wait until oldest request expires
 				// If not exceeded, no wait time needed
-				'retry_after' => $count > $this->limit ?
-					($timestamps[0] + $this->window) - $currentTime : 0
+				'retry_after' => $count > $this->limit ? ($timestamps[0] + $this->window) - $currentTime : 0
 			];
 		}
 		
@@ -366,7 +421,7 @@
 				'custom' => $this->identifier,
 				
 				// Default value (will never occur, but to keep phpstan happy)
-				default => new \Exception("Invalid scope")
+				default => throw new \LogicException("Unhandled rate limit scope: {$this->scope}")
 			};
 			
 			// Sanitize each component to prevent special character conflicts and cache key collisions
@@ -416,55 +471,5 @@
 			
 			// Fallback to IP if no user found
 			return 'anonymous_' . $request->getClientIp();
-		}
-		
-		/**
-		 * Create appropriate rate limit exceeded response
-		 * @param Request $request
-		 * @param array{count: int, exceeded: bool, reset_time: int, retry_after: int} $result
-		 * @return Response
-		 */
-		private function createRateLimitResponse(Request $request, array $result): Response {
-			$headers = [
-				"{$this->headerPrefix}-Limit"     => $this->limit,
-				"{$this->headerPrefix}-Remaining" => 0,
-				"{$this->headerPrefix}-Reset"     => $result['reset_time'],
-				'Retry-After'                     => $result['retry_after']
-			];
-			
-			// Return JSON for API requests, HTML for web requests
-			if ($this->isApiRequest($request)) {
-				return new JsonResponse([
-					'error'       => 'Rate limit exceeded',
-					'message'     => "Too many requests. Limit: {$this->limit} per {$this->window} seconds.",
-					'retry_after' => $result['retry_after']
-				], 429, $headers);
-			}
-			
-			// For web requests, return a simple HTML response
-			$html = "
-<!DOCTYPE html>
-<html lang=\"eng\">
-<head><title>Rate Limit Exceeded</title></head>
-<body>
-    <h1>Too Many Requests</h1>
-    <p>You have exceeded the rate limit of {$this->limit} requests per {$this->window} seconds.</p>
-    <p>Please try again in {$result['retry_after']} seconds.</p>
-</body>
-</html>";
-			
-			return new Response($html, 429, $headers);
-		}
-		
-		/**
-		 * Determine if this is an API request
-		 * @param Request $request
-		 * @return bool
-		 */
-		private function isApiRequest(Request $request): bool {
-			return
-				$request->headers->get('Accept') === 'application/json' ||
-				str_starts_with($request->getPathInfo(), '/api/') ||
-				$request->headers->has('X-API-Key');
 		}
 	}
