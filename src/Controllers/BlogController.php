@@ -15,11 +15,20 @@
 		 * @return Response
 		 */
 		public function index(): Response {
+			$rs = $this->em()->executeQuery("
+				range of x is json_source('f:\\test.json')
+				retrieve(x.title)
+			");
+			
+			$output = $rs->fetchCol("x.title");
+			
+			/*
 			$posts = $this->em()->findBy(PostEntity::class, ['published' => true]);
 			
 			return $this->render("blog/index.tpl", [
 				'posts' => $posts
 			]);
+			*/
 		}
 		
 		/**
