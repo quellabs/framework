@@ -93,6 +93,9 @@
 				$config->setMetadataCachePath($configData["metadata_cache_path"]);
 			}
 			
+			// Development mode
+			$config->setDevelopmentMode($configData["development_mode"] ?? false);
+			
 			// Cache and return the instance
 			self::$instance = $config;
 			return self::$instance;
