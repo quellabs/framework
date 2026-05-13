@@ -10,12 +10,13 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabaseSubquery;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRegExp;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
-	use Quellabs\ObjectQuel\ObjectQuel\Visitors\NodeTypeValidator;
-	use Quellabs\ObjectQuel\ObjectQuel\Visitors\EntityExistenceValidator;
-	use Quellabs\ObjectQuel\ObjectQuel\Visitors\EntityPropertyExistenceValidator;
-	use Quellabs\ObjectQuel\ObjectQuel\Visitors\NoExpressionsAllowedOnEntitiesValidator;
-	use Quellabs\ObjectQuel\ObjectQuel\Visitors\RangeOnlyReferencesOtherRanges;
-	use Quellabs\ObjectQuel\ObjectQuel\Visitors\ViaClauseValidator;
+	use Quellabs\ObjectQuel\ObjectQuel\Visitors\DetectRestrictedNodeType;
+	use Quellabs\ObjectQuel\ObjectQuel\Visitors\ValidateEntityPropertyExists;
+	use Quellabs\ObjectQuel\ObjectQuel\Visitors\ValidateNoEntityExpressions;
+	use Quellabs\ObjectQuel\ObjectQuel\Visitors\CollectRangeReferences;
+	use Quellabs\ObjectQuel\ObjectQuel\Visitors\ValidateUnambiguousProperty;
+	use Quellabs\ObjectQuel\ObjectQuel\Visitors\ValidateRangesDeclared;
+	use Quellabs\ObjectQuel\ObjectQuel\Visitors\ValidateRelationshipPath;
 	
 	/**
 	 * SemanticAnalyzer class responsible for validating ObjectQuel query ASTs
@@ -39,52 +40,109 @@
 		/**
 		 * Main validation entry point - performs comprehensive query validation
 		 * @param AstRetrieve $ast The parsed query AST to validate
-		 * @param bool $isSubquery True if we are validating a nested query
 		 * @throws SemanticException If any validation fails
 		 */
-		public function validate(AstRetrieve $ast, bool $isSubquery = false): void {
+		public function validate(AstRetrieve $ast): void {
 			// First, recursively validate all nested queries in temporary ranges
 			// This ensures inner queries are valid before validating the outer query
-			$this->validateNestedQueries($ast);
+			foreach ($ast->getRanges() as $range) {
+				if ($range instanceof AstRangeDatabaseSubquery) {
+					$this->validate($range->getQuery());
+				}
+			}
 			
-			// Step 1: Validate basic structural integrity
-			$this->validateNoRegExpInValueList($ast);
+			// ==============================================================================
+			// Query validation
+			// ==============================================================================
+			
+			// Step 1: Validate that the projection list is not empty
+			$this->validatePopulatedProjections($ast);
+
+			// ==============================================================================
+			// Range validation
+			// ==============================================================================
+			
+			// Step 1: Validate that all ranges have a unique name
 			$this->validateNoDuplicateRanges($ast);
-			$this->validateNoEntireSubqueryRangesInValueList($ast);
+			
+			// Step 2: Validate that every database range exists in the entity store
+			$this->validateEntityInRangeExists($ast);
+			
+			// Step 3: Validate that there is at least one range without a VIA clause.
+			//         This range will act as the FROM clause of the SELECT query.
 			$this->validateAtLeastOneRangeWithoutVia($ast);
-			$this->validateRangesOnlyReferenceOtherRanges($ast);
 			
-			// Step 2: Validate against schema - ensure entities exist
-			$this->processWithVisitor($ast, EntityExistenceValidator::class, $this->entityStore);
+			// Step 3: Validate that each root identifier links to a range that exists
+			$this->processWithVisitor($ast, ValidateRangesDeclared::class, $this->entityStore);
 			
-			// Step 3: Validate relationship definitions in 'via' clauses
-			$this->validateRangeViaRelations($ast);
+			// Step 4: Validate that via clauses do not form circular dependencies
+			$this->validateNoCircularViaDependencies($ast);
 			
-			// Step 4: Validate property references against schema
-			$this->processWithVisitor($ast, EntityPropertyExistenceValidator::class, $this->entityStore);
+			// ==============================================================================
+			// Property validation
+			// ==============================================================================
 			
-			// Step 5: Ensure expressions are not used inappropriately on entities
-			$this->processWithVisitor($ast, NoExpressionsAllowedOnEntitiesValidator::class);
+			// Step 1: Check for ambiguous properties that the prefilter could not resolve
+			$this->validateUnambiguousProperties($ast);
 			
-			// Step 6: Validate SQL compliance rules (aggregate placement)
+			// Step 2: Validate property references against schema
+			$this->processWithVisitor($ast, ValidateEntityPropertyExists::class, $this->entityStore);
+			
+			// Step 3: Validate that referenced relationships lead back to the entity
+			$this->validateRelationshipPaths($ast);
+			
+			// Step 4: Validates that the value list does not directly select entire subquery ranges.
+			$this->validateNoBareSubqueryRangesInValueList($ast);
+			
+			// Step 5: Validates that REGEXP is not used in the VALUES portion of the query
+			$this->validateNoRegExpInValueList($ast);
+			
+			// Step 6: Ensure expressions are not used inappropriately on entities
+			$this->processWithVisitor($ast, ValidateNoEntityExpressions::class);
+			
+			// Step 7: Validate SQL compliance rules (aggregates cannot be put in WHERE)
 			$this->validateNoAggregatesInWhereClause($ast);
 		}
 		
 		/**
-		 * Recursively validate all nested queries in temporary range definitions.
-		 * Ensures that inner queries are valid before the outer query is validated.
-		 * @param AstRetrieve $ast The query AST containing potential nested queries
-		 * @throws SemanticException If any nested query validation fails
+		 * Validates that all unqualified property references in the query are unambiguous.
+		 *
+		 * An unqualified property is ambiguous when more than one range in the query
+		 * exposes a property with the same name. In that case the engine cannot
+		 * determine which range the user intended and a SemanticException is thrown.
+		 *
+		 * Unknown properties are intentionally not validated here — other validators
+		 * such as EntityPropertyExistenceValidator handle that case.
+		 *
+		 * @param AstRetrieve $ast The AST to validate
 		 */
-		private function validateNestedQueries(AstRetrieve $ast): void {
+		private function validateUnambiguousProperties(AstRetrieve $ast): void {
+			$validator = new ValidateUnambiguousProperty($this->entityStore, $ast->getRanges());
+			$ast->accept($validator);
+		}
+		
+		/**
+		 * Validates that all database-backed ranges reference existing entities.
+		 * @param AstRetrieve $ast The retrieve AST containing the ranges to validate.
+		 * @return void
+		 * @throws SemanticException Thrown when a referenced entity does not exist.
+		 */
+		private function validateEntityInRangeExists(AstRetrieve $ast): void {
 			foreach ($ast->getRanges() as $range) {
-				// Only handle AstRangeDatabaseSubquery
-				if (!$range instanceof AstRangeDatabaseSubquery) {
+				// Only database ranges can reference entities.
+				if (!$range instanceof AstRangeDatabase) {
 					continue;
 				}
 				
-				// Recursively validate the inner query with full validation pipeline
-				$this->validate($range->getQuery(), true);
+				// Skip ranges that do not reference an entity.
+				$entityName = $range->getEntityName();
+				
+				// Ensure the referenced entity exists in the entity store.
+				if (!$this->entityStore->exists($entityName)) {
+					throw new SemanticException(
+						"The range {$range->getName()} references entity '{$entityName}', but that entity does not exist."
+					);
+				}
 			}
 		}
 		
@@ -132,28 +190,18 @@
 		}
 		
 		/**
-		 * Validates that no entire subquery ranges appear in the value list.
+		 * Ensures the value list does not contain bare subquery ranges.
 		 *
-		 * Subquery ranges are derived tables with no entity mapping behind them.
-		 * Retrieving one as a whole (e.g. "retrieve(x)" where x is a subquery range)
-		 * is meaningless — the derived table produces multiple named columns like
-		 * "x.id", "x.title" etc., none of which map to a single row key "x".
-		 * The result would always be null. Users must specify individual properties
-		 * (e.g. "retrieve(x.id)") so the hydrator can look up the correct column.
+		 * Subquery ranges represent derived tables and cannot be hydrated as a single value.
+		 * Expressions like `x` are invalid when `x` is a subquery range; users must select
+		 * concrete properties such as `x.id`.
 		 *
-		 * This is the outer-query counterpart to validateNoEntireEntitiesInValueList(),
-		 * which guards the inner query side.
-		 *
-		 * @param AstRetrieve $ast The AST to validate
-		 * @throws SemanticException If a bare subquery range identifier is found in the value list
+		 * @throws SemanticException If a bare subquery range identifier is selected
 		 */
-		private function validateNoEntireSubqueryRangesInValueList(AstRetrieve $ast): void {
+		private function validateNoBareSubqueryRangesInValueList(AstRetrieve $ast): void {
 			foreach ($ast->getValues() as $value) {
-				// Fetch the expression
 				$expression = $value->getExpression();
 				
-				// Only interested in identifiers that refer directly to a subquery range
-				// without any property access chained on (i.e. "x" not "x.id")
 				if (
 					$expression instanceof AstIdentifier &&
 					$expression->getRange() instanceof AstRangeDatabaseSubquery &&
@@ -196,37 +244,6 @@
 		}
 		
 		/**
-		 * Validates that ranges only reference other ranges in their join properties.
-		 * When a range uses a join property to connect to other tables, all entity references
-		 * in that join must correspond to other ranges defined in the same query.
-		 * @param AstRetrieve $ast The AST to validate
-		 * @throws SemanticException If ranges reference invalid entities
-		 */
-		private function validateRangesOnlyReferenceOtherRanges(AstRetrieve $ast): void {
-			// Create a validator that ensures join properties only reference other defined ranges
-			// This prevents situations where a join tries to reference an entity that isn't included in the query
-			$validator = new RangeOnlyReferencesOtherRanges($ast);
-			
-			// Examine each range to validate its join property references
-			foreach ($ast->getRanges() as $range) {
-				// Get the join property that defines how this range connects to other tables
-				$joinProperty = $range->getJoinProperty();
-				
-				// Only validate ranges that actually have join properties
-				// Main ranges without joins don't need this validation
-				if ($joinProperty !== null) {
-					try {
-						$joinProperty->accept($validator);
-					} catch (SemanticException $e) {
-						// Re-throw with the specific range name for better debugging context
-						// This helps identify which range has the invalid reference
-						throw new SemanticException(sprintf($e->getMessage(), $range->getName()));
-					}
-				}
-			}
-		}
-		
-		/**
 		 * Validate that the parsed expression is allowed in field lists.
 		 * @param AstRetrieve $ast
 		 * @throws SemanticException if expression type is not allowed in field lists
@@ -249,7 +266,7 @@
 		 * @param AstRetrieve $ast The AST to validate
 		 * @throws SemanticException If invalid relations are found
 		 */
-		private function validateRangeViaRelations(AstRetrieve $ast): void {
+		private function validateRelationshipPaths(AstRetrieve $ast): void {
 			// Examine each table/range in the query to validate their 'via' relationships
 			foreach ($ast->getRanges() as $range) {
 				// Get the join property that defines how this range connects to other tables
@@ -264,7 +281,7 @@
 					try {
 						// Create a validator to check that all 'via' relations in the join property are valid
 						// This verifies that intermediate entities and properties exist in the entity store
-						$validator = new ViaClauseValidator($this->entityStore, $entityName);
+						$validator = new ValidateRelationshipPath($this->entityStore, $entityName);
 						
 						// Apply the validator to the join property tree
 						// This traverses all parts of the join definition looking for invalid 'via' references
@@ -295,7 +312,7 @@
 			try {
 				// Create a visitor that searches for any of the prohibited aggregate
 				// function types in the condition tree
-				$visitor = new NodeTypeValidator([AstAggregate::class]);
+				$visitor = new DetectRestrictedNodeType([AstAggregate::class]);
 				
 				// Traverse the WHERE clause conditions looking for aggregate functions
 				// If any are found, the visitor will throw an exception
@@ -309,7 +326,150 @@
 				$nodeType = strtoupper(substr($e->getMessage(), 3));
 				
 				// Throw a user-friendly error explaining the SQL rule violation
-				throw new SemanticException("Aggregate function '{$nodeType}' is not allowed in WHERE clause");
+				throw new SemanticException("Aggregate function {$nodeType} is not allowed in WHERE clause");
 			}
+		}
+		
+		/**
+		 * Validates that the query contains at least one value in the projection list.
+		 * An empty retrieve() clause has no defined meaning and cannot be translated
+		 * to valid SQL — every query must select at least one property or expression.
+		 * @param AstRetrieve $ast The AST to validate
+		 * @throws SemanticException If the projection list is empty
+		 */
+		
+		/**
+		 * Validates that the query contains at least one value in the projection list.
+		 * An empty retrieve() clause has no defined meaning and cannot be translated
+		 * to valid SQL — every query must select at least one property or expression.
+		 * @param AstRetrieve $ast The AST to validate
+		 * @throws SemanticException If the projection list is empty
+		 */
+		private function validatePopulatedProjections(AstRetrieve $ast): void {
+			if (empty($ast->getValues())) {
+				throw new SemanticException(
+					"The retrieve() clause cannot be empty. " .
+					"Specify at least one property or expression to retrieve."
+				);
+			}
+		}
+		
+		/**
+		 * Validates that 'via' clause dependencies between ranges do not form a cycle.
+		 *
+		 * A cycle occurs when range A depends on range B via its join property, and range B
+		 * directly or transitively depends on range A. Such cycles cannot be resolved into
+		 * a valid SQL join order and indicate a query construction error.
+		 *
+		 * Algorithm: Kahn's BFS topological sort over the range dependency graph.
+		 *   1. Build a dependency map: for each range, collect all ranges referenced in its
+		 *      join property expression (by finding EntityRoot/EntityReference identifiers).
+		 *   2. Compute in-degrees and seed a queue with ranges that have no dependencies.
+		 *   3. Process the queue; if not all ranges are scheduled, a cycle exists.
+		 *
+		 * @param AstRetrieve $ast The AST to validate
+		 * @throws SemanticException If a circular via dependency is detected
+		 */
+		private function validateNoCircularViaDependencies(AstRetrieve $ast): void {
+			// Collect all range names for reference during dependency extraction
+			$allRangeNames = [];
+			
+			foreach ($ast->getRanges() as $range) {
+				$allRangeNames[$range->getName()] = true;
+			}
+			
+			// Build dependency map: rangeName → list of range names it depends on via its join property
+			$dependencies = [];
+			
+			foreach ($ast->getRanges() as $range) {
+				$rangeName = $range->getName();
+				$dependencies[$rangeName] = [];
+				
+				$joinProperty = $range->getJoinProperty();
+				
+				if ($joinProperty === null) {
+					// No join property means no via clause — this range has no dependencies
+					continue;
+				}
+				
+				// Walk the join expression and collect all EntityRoot/EntityReference identifiers
+				// that reference other declared ranges. These are the ranges this one depends on.
+				$referencedRanges = $this->extractRangeReferences($joinProperty, $allRangeNames);
+				
+				foreach ($referencedRanges as $referencedRange) {
+					// A range cannot depend on itself
+					if ($referencedRange !== $rangeName) {
+						$dependencies[$rangeName][] = $referencedRange;
+					}
+				}
+			}
+			
+			// Precompute reverse adjacency: dependents[$dep] = ranges that depend on $dep
+			$dependents = [];
+			
+			foreach ($dependencies as $rangeName => $deps) {
+				foreach ($deps as $dep) {
+					$dependents[$dep][] = $rangeName;
+				}
+			}
+			
+			// Kahn's algorithm: compute in-degree for each range
+			$inDegree = [];
+			
+			foreach ($dependencies as $rangeName => $deps) {
+				$inDegree[$rangeName] = count($deps);
+			}
+			
+			// Seed queue with all ranges that have no dependencies (in-degree 0)
+			$queue = [];
+			
+			foreach ($inDegree as $rangeName => $degree) {
+				if ($degree === 0) {
+					$queue[] = $rangeName;
+				}
+			}
+			
+			$scheduled = 0;
+			
+			while (!empty($queue)) {
+				$current = array_shift($queue);
+				$scheduled++;
+				
+				// Decrement in-degree for all ranges that depend on $current
+				foreach ($dependents[$current] ?? [] as $dependent) {
+					$inDegree[$dependent]--;
+					
+					if ($inDegree[$dependent] === 0) {
+						$queue[] = $dependent;
+					}
+				}
+			}
+			
+			// If not all ranges were scheduled, a cycle exists in the via dependency graph
+			if ($scheduled !== count($dependencies)) {
+				throw new SemanticException(
+					"Circular 'via' dependency detected between ranges. " .
+					"Range definitions must not form a cycle — each range must be reachable " .
+					"from a base range that has no 'via' clause."
+				);
+			}
+		}
+		
+		/**
+		 * Walks an expression tree and collects the names of all declared ranges
+		 * referenced by EntityRoot or EntityReference identifier nodes.
+		 *
+		 * Used by validateNoCircularViaDependencies() to extract which ranges a
+		 * join expression depends on, without assuming the expression is a simple
+		 * identifier chain — it may contain function calls, binary operators, etc.
+		 *
+		 * @param AstInterface $expression The join property expression to inspect
+		 * @param array<string, bool> $knownRangeNames Map of declared range names for fast lookup
+		 * @return string[] List of referenced range names found in the expression
+		 */
+		private function extractRangeReferences(AstInterface $expression, array $knownRangeNames): array {
+			$collector = new CollectRangeReferences($knownRangeNames);
+			$expression->accept($collector);
+			return $collector->getReferencedRanges();
 		}
 	}

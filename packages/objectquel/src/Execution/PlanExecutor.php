@@ -4,6 +4,9 @@
 	
 	use Quellabs\ObjectQuel\EntityStore;
 	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
+	use Quellabs\ObjectQuel\Execution\Executors\DatabaseQueryExecutor;
+	use Quellabs\ObjectQuel\Execution\Executors\JsonQueryExecutor;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeJsonSource;
 	use Quellabs\ObjectQuel\ObjectQuel\AstInterface;
 	use Quellabs\ObjectQuel\Exception\QuelException;
 	use Quellabs\ObjectQuel\Execution\Joins\JoinStrategyInterface;
@@ -13,7 +16,6 @@
 	use Quellabs\ObjectQuel\Execution\Executors\TempTableExecutor;
 	use Quellabs\ObjectQuel\Planner\ExecutionPlan;
 	use Quellabs\ObjectQuel\Planner\ExecutionStage;
-	use Quellabs\ObjectQuel\Planner\ExecutionStageInterface;
 	use Quellabs\ObjectQuel\Planner\TempTableStage;
 	
 	/**
@@ -36,32 +38,38 @@
 		private QueryExecutor $queryExecutor;
 		
 		/**
-		 * Condition evaluator for join strategies that need to evaluate join conditions
-		 * @var ConditionEvaluator
-		 */
-		private ConditionEvaluator $conditionEvaluator;
-		
-		/**
 		 * Cache for join strategy instances to prevent duplicate creation
 		 * @var array<string, JoinStrategyInterface>
 		 */
 		private array $joinStrategyCache = [];
 		
 		/**
-		 * Executor responsible for materialising external-source subqueries as temp tables.
+		 * Executor responsible for regular database queries
+		 * @var DatabaseQueryExecutor
+		 */
+		private DatabaseQueryExecutor $databaseExecutor;
+		
+		/**
+		 * Executor responsible for materializing external-source subqueries as temp tables.
 		 * Created lazily on first use and reused for the lifetime of this PlanExecutor.
 		 * @var TempTableExecutor|null
 		 */
 		private ?TempTableExecutor $tempTableExecutor = null;
 		
 		/**
+		 * Executor responsible for executing and materializing JSON data
+		 * @var JsonQueryExecutor
+		 */
+		private JsonQueryExecutor $jsonExecutor;
+		
+		/**
 		 * Create a new plan executor
 		 * @param QueryExecutor $queryExecutor The entity manager to use for execution
-		 * @param ConditionEvaluator $conditionEvaluator The evaluator for conditions
 		 */
-		public function __construct(QueryExecutor $queryExecutor, ConditionEvaluator $conditionEvaluator) {
+		public function __construct(QueryExecutor $queryExecutor) {
 			$this->queryExecutor = $queryExecutor;
-			$this->conditionEvaluator = $conditionEvaluator;
+			$this->databaseExecutor = $queryExecutor->getDatabaseExecutor();
+			$this->jsonExecutor = $queryExecutor->getJsonExecutor();
 		}
 		
 		/**
@@ -82,17 +90,6 @@
 			// Get stages in execution order (respecting dependencies)
 			$stagesInOrder = $plan->getStagesInOrder();
 			
-			// Check whether any TempTableStages are present. If so, we cannot use the
-			// single-stage fast path, and we must run cleanup in a finally block.
-			$hasTempTableStages = false;
-			
-			foreach ($stagesInOrder as $stage) {
-				if ($stage instanceof TempTableStage) {
-					$hasTempTableStages = true;
-					break;
-				}
-			}
-			
 			// Multi-stage execution: execute each stage in the correct order and combine the results
 			/** @var array<string, list<array<string, mixed>>> $intermediateResults */
 			$intermediateResults = [];
@@ -111,10 +108,13 @@
 						);
 					} else {
 						try {
-							$intermediateResults[$stage->getName()] = $this->queryExecutor->executeStage(
-								$stage,
-								$stage->getStaticParams()
-							);
+							if ($stage->getRange() instanceof AstRangeJsonSource) {
+								$result = $this->jsonExecutor->execute($stage, $stage->getStaticParams());
+							} else {
+								$result = $this->databaseExecutor->execute($stage, $stage->getStaticParams());
+							}
+							
+							$intermediateResults[$stage->getName()] = $result;
 						} catch (QuelException $e) {
 							// Wrap any execution errors with stage context information
 							throw new QuelException("Stage '{$stage->getName()}' failed: {$e->getMessage()}", 'stage_error', 0, $e);
@@ -124,16 +124,14 @@
 				
 				// Optimisation: skip the join machinery when only one result-producing stage ran
 				if (count($intermediateResults) === 1) {
-					return reset($intermediateResults);
+					return current($intermediateResults);
 				}
 				
 				// Combine all intermediate results into a single final result
 				return $this->combineResults($plan, $intermediateResults);
 			} finally {
 				// Always clean up temp tables, whether execution succeeded or failed.
-				if ($hasTempTableStages) {
-					$this->getTempTableExecutor()->cleanup();
-				}
+				$this->tempTableExecutor?->cleanup();
 			}
 		}
 		
@@ -167,9 +165,9 @@
 			
 			// Create and cache the strategy
 			$strategy = match ($joinType) {
-				'cross' => new CrossJoinStrategy(),                          // Cartesian product join
-				'left' => new LeftJoinStrategy($this->conditionEvaluator),   // Left outer join
-				'inner' => new InnerJoinStrategy($this->conditionEvaluator), // Inner join
+				'cross' => new CrossJoinStrategy(), // Cartesian product join
+				'left' => new LeftJoinStrategy(),   // Left outer join
+				'inner' => new InnerJoinStrategy(), // Inner join
 				default => throw new QuelException("Unsupported join type: {$joinType}")
 			};
 			
@@ -196,11 +194,15 @@
 				return [];
 			}
 			
+			// Build a name → stage index once (O(n)) to avoid O(n²) lookups in the join loop
+			$stageIndex = [];
+			
+			foreach ($plan->getStagesInOrder() as $stage) {
+				$stageIndex[$stage->getName()] = $stage;
+			}
+			
 			// Start with the main result as our base for all subsequent joins
 			$combinedResult = $intermediateResults[$mainStageName];
-			
-			// Get all stages from the plan to access their join conditions and join types
-			$allStages = $plan->getStagesInOrder();
 			
 			// Iterate through all stage results to perform joins
 			foreach ($intermediateResults as $stageName => $stageResult) {
@@ -209,13 +211,8 @@
 					continue;
 				}
 				
-				// Find the stage object to get join configuration
-				$stage = $this->findStageByName($allStages, $stageName);
-				
-				// Skip stages that can't be found (shouldn't happen in normal operation)
-				if ($stage === null) {
-					continue;
-				}
+				// Fetch the stage
+				$stage = $stageIndex[$stageName] ?? null;
 				
 				// Skip everything that's not an ExecutionStage.
 				// TempTableStages are not in $intermediateResults so this is defensive,
@@ -256,23 +253,5 @@
 				// Wrap any join errors with additional context
 				throw new QuelException("Join failed ({$joinType}): {$e->getMessage()}", 'join_error', 0, $e);
 			}
-		}
-		
-		/**
-		 * Find a stage by name from the stages array
-		 * @param array<int, ExecutionStageInterface> $stages Array of ExecutionStage objects
-		 * @param string $stageName Name of the stage to find
-		 * @return ExecutionStageInterface|null The found stage or null if not found
-		 */
-		private function findStageByName(array $stages, string $stageName): ?ExecutionStageInterface {
-			// Linear search through stages array
-			foreach ($stages as $stage) {
-				if ($stage->getName() === $stageName) {
-					return $stage;
-				}
-			}
-			
-			// Return null if stage not found
-			return null;
 		}
 	}

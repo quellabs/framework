@@ -72,20 +72,20 @@
 		}
 		
 		/**
-		 * Get the search string node
-		 * @return AstString|AstParameter The search string or parameter node
-		 */
-		public function getSearchString(): AstString|AstParameter {
-			return $this->searchString;
-		}
-		
-		/**
-		 * Sets the identifiers to use
+		 * Sets new identifiers
 		 * @param AstIdentifier[] $identifiers
 		 * @return void
 		 */
 		public function setIdentifiers(array $identifiers): void {
 			$this->identifiers = $identifiers;
+		}
+		
+		/**
+		 * Get the search string node
+		 * @return AstString|AstParameter The search string or parameter node
+		 */
+		public function getSearchString(): AstString|AstParameter {
+			return $this->searchString;
 		}
 		
 		/**
@@ -114,11 +114,9 @@
 			if ($tokens === false) {
 				$errorCode = preg_last_error();
 				
-				if (function_exists('preg_last_error_msg')) {
-					$errorMessage = preg_last_error_msg();
-				} else {
-					$errorMessage = "PCRE error code {$errorCode}";
-				}
+				$errorMessage = function_exists('preg_last_error_msg')
+					? preg_last_error_msg()
+					: "PCRE error code {$errorCode}";
 				
 				throw new QuelException(
 					sprintf(
@@ -157,6 +155,10 @@
 			return $parsed;
 		}
 		
+		/**
+		 * Clone the node
+		 * @return static
+		 */
 		public function deepClone(): static {
 			$clonedIdentifiers = $this->cloneArray($this->identifiers);
 			$clonedSearchString = $this->searchString->deepClone();

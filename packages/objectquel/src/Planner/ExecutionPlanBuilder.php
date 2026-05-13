@@ -4,11 +4,14 @@
 	
 	use Quellabs\ObjectQuel\Capabilities\PlatformCapabilities;
 	use Quellabs\ObjectQuel\EntityManager;
+	use Quellabs\ObjectQuel\EntityStore;
+	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabaseSubquery;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabaseTempTable;
 	use Quellabs\ObjectQuel\Planner\Helpers\ConditionAnalyzer;
 	use Quellabs\ObjectQuel\Planner\Helpers\ConditionFilter;
 	use Quellabs\ObjectQuel\Planner\Helpers\StageFactory;
+	use Quellabs\ObjectQuel\Planner\Visitors\SearchStrategyResolver;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabase;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeJsonSource;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
@@ -17,14 +20,14 @@
 	/**
 	 * Orchestrates the decomposition of a query into an ExecutionPlan.
 	 *
-	 * Delegates the three distinct sub-responsibilities to specialised classes:
+	 * Delegates the three distinct sub-responsibilities to specialized classes:
 	 *   - ConditionAnalyzer: answers questions about which ranges a condition references
 	 *   - ConditionFilter:   extracts and filters condition subtrees from the WHERE clause
 	 *   - StageFactory:      builds ExecutionStage objects from query ASTs
 	 *
 	 * ExecutionPlanBuilder itself is responsible for:
-	 *   - Detecting which subquery ranges require temp-table materialisation
-	 *   - Topologically sorting those ranges by their inter-dependencies
+	 *   - Detecting which subquery ranges require temp-table materialization
+	 *   - Topologically sorting those ranges by their interdependencies
 	 *   - Wiring TempTableStages and their dependency edges into the ExecutionPlan
 	 *   - Adding JSON/non-database range stages
 	 */
@@ -61,7 +64,7 @@
 		 * @param AstRetrieve $query The ObjectQuel query to decompose
 		 * @param array<string, mixed> $staticParams Optional static parameters for the query
 		 * @return ExecutionPlan The execution plan containing all stages
-		 * @throws QuelException If the query cannot be properly decomposed
+		 * @throws QuelException|EntityResolutionException If the query cannot be properly decomposed
 		 */
 		public function build(AstRetrieve $query, array $staticParams = []): ExecutionPlan {
 			$this->analyzer->clearCache();
@@ -107,7 +110,7 @@
 		 * @param AstRangeDatabaseSubquery[] $tempRanges Already dependency-sorted temp ranges
 		 * @param array<string, mixed> $staticParams
 		 * @return string[] Map of rangeName → TempTableStage name
-		 * @throws QuelException
+		 * @throws QuelException|EntityResolutionException
 		 */
 		private function buildTempTableStages(ExecutionPlan $plan, array $tempRanges, array $staticParams): array {
 			// rangeName → TempTableStage name, built up as stages are added so inter-stage

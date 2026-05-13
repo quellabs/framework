@@ -9,7 +9,7 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIdentifier;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRange;
 	use Quellabs\ObjectQuel\ObjectQuel\AstInterface;
-	use Quellabs\ObjectQuel\ObjectQuel\Visitors\IdentifierCollector;
+	use Quellabs\ObjectQuel\Planner\Visitors\CollectIdentifiers;
 	
 	/**
 	 * RangeUsageAnalyzer
@@ -216,7 +216,7 @@
 				return [];
 			}
 			
-			$visitor = new IdentifierCollector();
+			$visitor = new CollectIdentifiers();
 			$node->accept($visitor);
 			return $visitor->getCollectedNodes();
 		}
@@ -238,7 +238,7 @@
 			
 			// Pull the column definition map from metadata, e.g.:
 			//   ['id' => ['nullable' => false, ...], 'name' => ['nullable' => true, ...], ...]
-			$columnMap = $this->entityStore->extractEntityColumnDefinitions($entityName);
+			$columnMap = $this->entityStore->getEntityColumnDefinitions($entityName);
 			
 			// Retrieve the immediate member name following the identifier (the "field").
 			// This assumes the AST organizes chained identifiers as a linked structure.

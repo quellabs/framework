@@ -3,9 +3,10 @@
 	namespace Quellabs\ObjectQuel\ObjectQuel\Ast;
 	
 	use Quellabs\ObjectQuel\ObjectQuel\AstInterface;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\NodeWithConditions;
 	use Quellabs\ObjectQuel\ObjectQuel\AstVisitorInterface;
-	use Quellabs\ObjectQuel\ObjectQuel\Visitors\IdentifierCollector;
-	use Quellabs\ObjectQuel\ObjectQuel\Visitors\JsonSourceIdentifierDetector;
+	use Quellabs\ObjectQuel\ObjectQuel\Visitors\CollectIdentifiers;
+	use Quellabs\ObjectQuel\ObjectQuel\Visitors\DetectJsonSourceIdentifier;
 	
 	/**
 	 * Class AstRetrieve
@@ -21,7 +22,7 @@
 	 * - Uniqueness constraints (DISTINCT)
 	 * - Compiler directives and macros
 	 */
-	class AstRetrieve extends Ast {
+	class AstRetrieve extends Ast implements NodeWithConditions {
 		
 		/** @var array<string, mixed> Compiler directives that control query compilation behavior */
 		protected array $directives;
@@ -114,9 +115,7 @@
 			}
 			
 			// Process conditions if they exist (WHERE clause)
-			if ($this->conditions !== null) {
-				$this->conditions->accept($visitor);
-			}
+			$this->conditions?->accept($visitor);
 			
 			// Process sorting specifications (ORDER BY clause)
 			foreach($this->sort as $s) {
@@ -409,7 +408,7 @@
 			}
 			
 			// Create a visitor to detect JSON identifiers
-			$visitor = new JsonSourceIdentifierDetector();
+			$visitor = new DetectJsonSourceIdentifier();
 			
 			try {
 				// Check each sort expression for JSON identifiers

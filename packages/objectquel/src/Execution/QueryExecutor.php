@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\ObjectQuel\Execution;
 	
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabaseSubquery;
 	use Quellabs\ObjectQuel\Capabilities\PlatformCapabilities;
 	use Quellabs\ObjectQuel\EntityManager;
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
@@ -9,7 +10,6 @@
 	use Quellabs\ObjectQuel\Exception\HydrationException;
 	use Quellabs\ObjectQuel\Exception\SemanticException;
 	use Quellabs\ObjectQuel\Exception\TransformationException;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeJsonSource;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
 	use Quellabs\ObjectQuel\ObjectQuel\Lexer;
 	use Quellabs\ObjectQuel\ObjectQuel\LexerException;
@@ -19,10 +19,13 @@
 	use Quellabs\ObjectQuel\ObjectQuel\QuelResult;
 	use Quellabs\ObjectQuel\Execution\Executors\DatabaseQueryExecutor;
 	use Quellabs\ObjectQuel\Execution\Executors\JsonQueryExecutor;
+	use Quellabs\ObjectQuel\ObjectQuel\QueryNormalizer;
 	use Quellabs\ObjectQuel\ObjectQuel\SemanticAnalyzer;
+	use Quellabs\ObjectQuel\ObjectQuel\Visitors\ResolveIdentifierRange;
+	use Quellabs\ObjectQuel\ObjectQuel\Visitors\ResolvePropertyType;
+	use Quellabs\ObjectQuel\ObjectQuel\Visitors\ResolveRootIdentifierType;
 	use Quellabs\ObjectQuel\Planner\ExecutionPlanBuilder;
-	use Quellabs\ObjectQuel\Planner\ExecutionStageInterface;
-	use Quellabs\ObjectQuel\Planner\QueryTransformer;
+	use Quellabs\ObjectQuel\Planner\QueryOptimizer;
 	
 	/**
 	 * Orchestrates query execution by delegating to specialized executors.
@@ -37,8 +40,8 @@
 		private PlatformCapabilities $capabilities;
 		private DatabaseAdapter $connection;
 		private PlanExecutor $planExecutor;
-		private QueryTransformer $transformer;
-		private \Quellabs\ObjectQuel\ObjectQuel\QueryTransformer $queryTransformer;
+		private QueryOptimizer $optimizer;
+		private QueryNormalizer $queryNormalizer;
 		private SemanticAnalyzer $semanticAnalyser;
 		private DatabaseQueryExecutor $databaseExecutor;
 		private JsonQueryExecutor $jsonExecutor;
@@ -52,18 +55,22 @@
 			EntityManager          $entityManager,
 			?DatabaseQueryExecutor $databaseExecutor = null
 		) {
+			// Init the capabilities class for engine specific optimizations
 			$this->entityManager = $entityManager;
 			$this->connection = $entityManager->getConnection();
 			$this->capabilities = new PlatformCapabilities($this->connection);
-			$this->transformer = new QueryTransformer($entityManager, $this->capabilities);
-			$this->queryTransformer = new \Quellabs\ObjectQuel\ObjectQuel\QueryTransformer($entityManager->getEntityStore());
-			$this->semanticAnalyser = new SemanticAnalyzer($entityManager->getEntityStore());
-			
+
 			// Create specialized executors
-			$conditionEvaluator = new ConditionEvaluator();
-			$this->planExecutor = new PlanExecutor($this, $conditionEvaluator);
 			$this->databaseExecutor = $databaseExecutor ?? new DatabaseQueryExecutor($entityManager, $this->capabilities);
-			$this->jsonExecutor = new JsonQueryExecutor($conditionEvaluator);
+			$this->jsonExecutor = new JsonQueryExecutor();
+			
+			// Init the plan executor
+			$this->planExecutor = new PlanExecutor($this);
+			
+			// Init the transformers
+			$this->optimizer = new QueryOptimizer($entityManager, $this->capabilities);
+			$this->queryNormalizer = new QueryNormalizer($entityManager->getEntityStore());
+			$this->semanticAnalyser = new SemanticAnalyzer($entityManager->getEntityStore());
 		}
 		
 		/**
@@ -83,19 +90,19 @@
 		}
 		
 		/**
-		 * Execute a database query and return the results
-		 * @param ExecutionStageInterface $stage
-		 * @param array<int|string, mixed> $initialParams (Optional) An array of parameters to bind to the query
-		 * @return list<array<string, mixed>>
-		 * @throws QuelException|EntityResolutionException
+		 * Returns the database executor
+		 * @return DatabaseQueryExecutor
 		 */
-		public function executeStage(ExecutionStageInterface $stage, array $initialParams = []): array {
-			$queryType = $stage->getRange() instanceof AstRangeJsonSource ? 'json' : 'database';
-			
-			return match ($queryType) {
-				'json' => $this->jsonExecutor->execute($stage, $this->normalizeParams($initialParams)),
-				'database' => $this->databaseExecutor->execute($stage, $this->normalizeParams($initialParams)),
-			};
+		public function getDatabaseExecutor(): DatabaseQueryExecutor {
+			return $this->databaseExecutor;
+		}
+		
+		/**
+		 * Return the JSON executor
+		 * @return JsonQueryExecutor
+		 */
+		public function getJsonExecutor(): JsonQueryExecutor {
+			return $this->jsonExecutor;
 		}
 		
 		/**
@@ -107,24 +114,31 @@
 		 */
 		public function executeQuery(string $query, array $parameters = []): QuelResult {
 			try {
+				// Normalize parameters
+				$normalizedParameters = $this->normalizeParams($parameters);
+				
 				// Clear SQL list
 				$this->databaseExecutor->resetLastExecutedSql();
 				
 				// Parse the input query string into an Abstract Syntax Tree (AST)
 				$ast = $this->parse($query);
 				
+				// Resolve all identifier types. Note: this does no semantic checking.
+				// It just flags the type based on AST hierarchy
+				$this->resolveAndSetIdentifierTypes($ast);
+				
 				// Processing phase #1 - Transform and enhance the AST
-				$this->queryTransformer->transform($ast);
+				$this->queryNormalizer->transform($ast);
 				
 				// Validation phase - Ensure AST integrity and correctness
 				$this->semanticAnalyser->validate($ast);
 				
 				// Processing phase #2 - Transform and enhance the AST
-				$this->transformer->transform($ast);
+				$this->optimizer->transform($ast, $normalizedParameters);
 				
 				// Decompose the query
 				$planner = new ExecutionPlanBuilder();
-				$executionPlan = $planner->build($ast, $this->normalizeParams($parameters));
+				$executionPlan = $planner->build($ast, $normalizedParameters);
 				
 				// Execute the returned execution plan and return the QuelResult
 				$result = $this->planExecutor->execute($executionPlan);
@@ -180,6 +194,26 @@
 			
 			// The AST is now fully validated
 			return $ast;
+		}
+		
+		/**
+		 * Walk through all identifiers and set their type
+		 * @param AstRetrieve $retrieve
+		 * @return void
+		 */
+		private function resolveAndSetIdentifierTypes(AstRetrieve $retrieve): void {
+			// First, recursively set types all nested queries in temporary ranges
+			// This ensures inner queries are fully resolved before outer query processing
+			foreach ($retrieve->getRanges() as $range) {
+				if ($range instanceof AstRangeDatabaseSubquery) {
+					$this->resolveAndSetIdentifierTypes($range->getQuery());
+				}
+			}
+			
+			// Then set types on current query
+			$retrieve->accept(new ResolveRootIdentifierType($retrieve));
+			$retrieve->accept(new ResolvePropertyType());
+			$retrieve->accept(new ResolveIdentifierRange($retrieve));
 		}
 		
 		/**

@@ -10,9 +10,9 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabase;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
 	use Quellabs\ObjectQuel\ObjectQuel\AstInterface;
-	use Quellabs\ObjectQuel\ObjectQuel\Visitors\AggregateCollector;
-	use Quellabs\ObjectQuel\ObjectQuel\Visitors\IdentifierCollector;
-	use Quellabs\ObjectQuel\ObjectQuel\Visitors\NodeCollector;
+	use Quellabs\ObjectQuel\ObjectQuel\Visitors\CollectNodes;
+	use Quellabs\ObjectQuel\Planner\Visitors\CollectAggregates;
+	use Quellabs\ObjectQuel\Planner\Visitors\CollectIdentifiers;
 	
 	/**
 	 * AstUtilities provides common AST manipulation and inspection methods.
@@ -87,7 +87,7 @@
 				return [];
 			}
 			
-			$visitor = new IdentifierCollector();
+			$visitor = new CollectIdentifiers();
 			$ast->accept($visitor);
 			return $visitor->getCollectedNodes();
 		}
@@ -97,7 +97,7 @@
 		 * @return AstAggregate[] Aggregate nodes found in the tree
 		 */
 		public static function collectAggregateNodes(AstRetrieve $root): array {
-			$visitor = new AggregateCollector(false);
+			$visitor = new CollectAggregates(false);
 			$root->accept($visitor);
 			return $visitor->getCollectedNodes();
 		}
@@ -108,8 +108,8 @@
 		 * @return AstAny[] Array of ANY nodes found
 		 */
 		public static function findAllAnyNodes(AstRetrieve $ast): array {
-			/** @var NodeCollector<AstAny> $visitor */
-			$visitor = new NodeCollector([AstAny::class]);
+			/** @var CollectNodes<AstAny> $visitor */
+			$visitor = new CollectNodes([AstAny::class]);
 			$ast->accept($visitor);
 			return $visitor->getCollectedNodes();
 		}
