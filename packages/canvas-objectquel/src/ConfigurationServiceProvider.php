@@ -94,7 +94,7 @@
 			}
 			
 			// Development mode
-			if ($configData["debug_mode"] ?? false) {
+			if ($configData["development_mode"] ?? false) {
 				$config->setDevelopmentMode(true);
 			}
 			

@@ -48,7 +48,7 @@
       "di": {
         "provider": {
           "class": "Quellabs\\CanvasObjectQuel\\ConfigurationServiceProvider",
-          "config": ["config/database.php", "config/app.php"]
+          "config": "config/database.php"
         }
       }
     }
