@@ -19,7 +19,7 @@
 			$x = $this->em()->executeQuery("
 				range of x is json_source('f:\\test.json', '$.rows')
 				retrieve(x.title)
-				where search(x.title, '+First')
+				where not is_float(x.title)
 			");
 			
 			print_r($x->fetchAll());
