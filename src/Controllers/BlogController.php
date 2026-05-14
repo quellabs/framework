@@ -17,7 +17,7 @@
 		public function index(): Response {
 			
 			$x = $this->em()->executeQuery("
-				range of x is json_source('f:\\test.json', '$.rows')
+				range of x is json_source(file='f:\\test.json', jsonPath='$.rows')
 				retrieve(x.title)
 				where not is_float(x.title)
 			");
