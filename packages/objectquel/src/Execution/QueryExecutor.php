@@ -26,6 +26,9 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\ResolveRootIdentifierType;
 	use Quellabs\ObjectQuel\Planner\ExecutionPlanBuilder;
 	use Quellabs\ObjectQuel\Planner\QueryOptimizer;
+	use Quellabs\ObjectQuel\Execution\Executors\DryRunDatabaseQueryExecutor;
+	use Quellabs\ObjectQuel\Planner\QueryPlan\PlanLog;
+	use Quellabs\ObjectQuel\Planner\QueryPlan\QueryPlan;
 	
 	/**
 	 * Orchestrates query execution by delegating to specialized executors.
@@ -106,9 +109,10 @@
 		}
 		
 		/**
-		 * Execute a decomposed query plan
-		 * @param string $query The query to execute
-		 * @param array<int|string, mixed> $parameters
+		 * Executes a query and returns the hydrated result.
+		 * To inspect planner decisions without executing, use explain() instead.
+		 * @param string $query The ObjectQuel query string
+		 * @param array<int|string, mixed> $parameters Query parameters
 		 * @return QuelResult
 		 * @throws QuelException
 		 */
@@ -164,6 +168,71 @@
 		 */
 		public function getLastExecutedSql(): array {
 			return $this->databaseExecutor->getLastExecutedSql();
+		}
+		
+		
+		/**
+		 * Runs the planning pipeline and returns a log of every decision made.
+		 * Used internally by explainQuery(); not part of the public API.
+		 * @param string $query The ObjectQuel query string
+		 * @param array<int|string, mixed> $parameters Query parameters
+		 * @return PlanLog Planning decisions in pipeline order
+		 * @throws QuelException
+		 */
+		private function explain(string $query, array $parameters = []): PlanLog {
+			try {
+				// Normalize parameters to string keys, matching executeQuery behavior
+				$normalizedParameters = $this->normalizeParams($parameters);
+				
+				// Parse and resolve identifiers
+				$ast = $this->parse($query);
+				$this->resolveAndSetIdentifierTypes($ast);
+				
+				// Normalize and validate the AST before handing it to the optimizer
+				$this->queryNormalizer->transform($ast);
+				$this->semanticAnalyser->validate($ast);
+				
+				// Run the optimizer and planner with an active log so every decision is recorded
+				$log = new PlanLog();
+				$this->optimizer->transform($ast, $normalizedParameters, $log);
+				
+				// Build the execution plan
+				$executionPlanBuilder = new ExecutionPlanBuilder();
+				$executionPlanBuilder->build($ast, $normalizedParameters, $log);
+				
+				// Return the log — the query itself is never executed
+				return $log;
+			} catch (ParserException|LexerException $e) {
+				throw new QuelException("Syntax error: " . $e->getMessage(), 'syntax_error', 0, $e);
+			} catch (SemanticException $e) {
+				throw new QuelException($e->getMessage(), 'semantic_error', 0, $e);
+			} catch (TransformationException $e) {
+				throw new QuelException($e->getMessage(), 'transformation_error', 0, $e);
+			} catch (EntityResolutionException $e) {
+				throw new QuelException($e->getMessage(), 'resolution_error', 0, $e);
+			}
+		}
+		
+		/**
+		 * Returns planner decisions and generated SQL for a query without executing it.
+		 * Combines explain() with a SQL dry-run into one coherent result.
+		 * @param string $query The ObjectQuel query string
+		 * @param array<int|string, mixed> $parameters Query parameters
+		 * @return QueryPlan Planning decisions and generated SQL
+		 * @throws QuelException
+		 */
+		public function explainQuery(string $query, array $parameters = []): QueryPlan {
+			// Collect planner decisions by running the optimization pipeline
+			$log = $this->explain($query, $parameters);
+			
+			// Run the full pipeline again through a dry-run executor to capture
+			// generated SQL without touching the database. The dry-run is cheap
+			// since it skips all I/O.
+			$dryRun = new DryRunDatabaseQueryExecutor($this->entityManager, $this->capabilities);
+			$dryRunExecutor = new self($this->entityManager, $dryRun);
+			$dryRunExecutor->executeQuery($query, $parameters);
+			
+			return new QueryPlan($log->getNotes(), $dryRun->getCapturedSql());
 		}
 		
 		/**

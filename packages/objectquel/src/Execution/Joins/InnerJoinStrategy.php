@@ -4,7 +4,7 @@
 	
 	use Quellabs\ObjectQuel\ObjectQuel\AstInterface;
 	use Quellabs\ObjectQuel\Exception\QuelException;
-	use Quellabs\ObjectQuel\Execution\ConditionEvaluator;
+	use Quellabs\ObjectQuel\Execution\Helpers\ConditionEvaluator;
 	
 	/**
 	 * Implements inner join between two result sets based on join conditions
@@ -67,7 +67,7 @@
 					$candidateRow = array_merge($leftRow, $rightRow);
 					
 					try {
-						if (ConditionEvaluator::evaluate($conditions, $candidateRow)) {
+						if (ConditionEvaluator::evaluate($conditions, [], $candidateRow)) {
 							$combined[] = $candidateRow;
 						}
 					} catch (\Exception $e) {

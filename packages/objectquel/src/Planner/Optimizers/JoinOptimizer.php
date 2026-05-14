@@ -11,6 +11,8 @@
 	use Quellabs\ObjectQuel\Planner\Visitors\DetectNullCheckOnRange;
 	use Quellabs\ObjectQuel\Planner\Visitors\DetectNonNullableField;
 	use Quellabs\ObjectQuel\Planner\Visitors\CheckRangeReference;
+	use Quellabs\ObjectQuel\Planner\QueryPlan\PlanLogInterface;
+	use Quellabs\ObjectQuel\Planner\QueryPlan\NullPlanLog;
 	
 	/**
 	 * Optimizes JOIN types based on WHERE clause analysis.
@@ -40,8 +42,9 @@
 		/**
 		 * Main optimization entry point - analyzes all ranges in the AST.
 		 * @param AstRetrieve $ast The query AST to optimize
+		 * @param PlanLogInterface $log Collects planning decisions
 		 */
-		public function optimize(AstRetrieve $ast): void {
+		public function optimize(AstRetrieve $ast, PlanLogInterface $log = new NullPlanLog()): void {
 			// Skip optimization if no WHERE conditions exist
 			if ($ast->getConditions() === null) {
 				return;
@@ -49,19 +52,51 @@
 			
 			// Analyze each table/range reference for JOIN optimization opportunities
 			foreach ($ast->getRanges() as $range) {
+				// Skip ranges already marked as required — no point analyzing them
+				// since they are already INNER JOINs by a prior optimizer pass.
+				if ($range->isRequired()) {
+					continue;
+				}
+				
 				// Analyzes a specific range to determine the optimal JOIN type.
 				$analysis = $this->analyzeConditions($ast, $range);
 				
 				// NULL Check Priority: If range has NULL checks → force LEFT JOIN
 				if ($analysis->hasNullChecks) {
+					// Set not required
 					$range->setRequired(false);
+					
+					// Add note to the plan log
+					$log->note('optimizer', 'join', 'FORCED_LEFT',
+						"Range '{$range->getName()}' has IS NULL / IS NOT NULL in WHERE; cannot promote to INNER JOIN",
+						$range->getName()
+					);
+					
+					continue;
+				}
+				
+				// No WHERE references at all — not a candidate for promotion
+				if (!$analysis->hasFieldReferences) {
+					$log->note('optimizer', 'join', 'LEFT_UNCHANGED',
+						"Range '{$range->getName()}' has no WHERE references; kept as LEFT JOIN",
+						$range->getName()
+					);
 					continue;
 				}
 				
 				// Non-nullable Reference Promotion: LEFT JOIN → INNER JOIN when WHERE
 				// references a non-nullable field (NULL rows are already filtered out)
-				if ($analysis->hasFieldReferences && $analysis->eliminatesNulls) {
+				if ($analysis->eliminatesNulls) {
 					$range->setRequired(true);
+					$log->note('optimizer', 'join', 'LEFT_TO_INNER',
+						"Range '{$range->getName()}' references a non-nullable field in WHERE; LEFT JOIN promoted to INNER JOIN",
+						$range->getName()
+					);
+				} else {
+					$log->note('optimizer', 'join', 'LEFT_UNCHANGED',
+						"Range '{$range->getName()}' references only nullable fields in WHERE; kept as LEFT JOIN",
+						$range->getName()
+					);
 				}
 			}
 		}

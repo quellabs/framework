@@ -5,6 +5,7 @@
 	use Quellabs\Canvas\Inspector\EventCollector;
 	use Quellabs\Contracts\Inspector\EventCollectorInterface;
 	use Quellabs\Contracts\Inspector\InspectorPanelInterface;
+	use Quellabs\ObjectQuel\Planner\QueryPlan\QueryPlan;
 	use Symfony\Component\HttpFoundation\Request;
 	
 	/**
@@ -94,7 +95,8 @@
 		public function getJsTemplate(): string {
 			return <<<'JS'
 const queries = data.queries.map((query, qi) => {
-    const sqlStatements = query.sql || [];
+    const sqlStatements = query.query_plan?.sql || [];
+    const planNotes = query.query_plan?.notes || [];
     const uid = `sql-${qi}`;
 
     const stepButtons = sqlStatements.length > 1
@@ -114,6 +116,7 @@ const queries = data.queries.map((query, qi) => {
     const params = Object.entries(query.bound_parameters || {});
     const paramsHtml = params.length > 0
         ? `<div class="canvas-params-table-wrap">
+               <div class="canvas-plan-caption">Bound parameters</div>
                <table class="canvas-params-table">
                    <thead><tr><th>Parameter</th><th>Value</th></tr></thead>
                    <tbody>
@@ -121,6 +124,34 @@ const queries = data.queries.map((query, qi) => {
                            <tr>
                                <td>${escapeHtml(k)}</td>
                                <td>${escapeHtml(String(v))}</td>
+                           </tr>
+                       `).join('')}
+                   </tbody>
+               </table>
+           </div>`
+        : '';
+
+    const notesHtml = planNotes.length > 0
+        ? `<div class="canvas-plan-table-wrap">
+               <div class="canvas-plan-caption">Query plan</div>
+               <table class="canvas-plan-table">
+                   <thead>
+                       <tr>
+                           <th>Source</th>
+                           <th>Category</th>
+                           <th>Decision</th>
+                           <th>Reason</th>
+                           <th>Subject</th>
+                       </tr>
+                   </thead>
+                   <tbody>
+                       ${planNotes.map(n => `
+                           <tr>
+                               <td>${escapeHtml(n.source || '')}</td>
+                               <td>${escapeHtml(n.category || '')}</td>
+                               <td>${escapeHtml(n.decision || '')}</td>
+                               <td>${escapeHtml(n.reason || '')}</td>
+                               <td>${escapeHtml(n.subject || '')}</td>
                            </tr>
                        `).join('')}
                    </tbody>
@@ -143,6 +174,7 @@ const queries = data.queries.map((query, qi) => {
                 </div>
                 <div class="canvas-query-body-right">${sqlBlocks}</div>
             </div>
+            ${notesHtml}
             ${paramsHtml}
         </div>
     `;
@@ -260,10 +292,16 @@ JS;
     tab-size: 2;
 }
 
-#panel-queries .canvas-params-table-wrap {
+#panel-queries .canvas-params-table-wrap,
+#panel-queries .canvas-plan-table-wrap {
     border: 1px solid #e2e4e9;
     border-radius: 6px;
     overflow: hidden;
+}
+
+#panel-queries .canvas-params-table-wrap + .canvas-plan-table-wrap,
+#panel-queries .canvas-plan-table-wrap + .canvas-params-table-wrap {
+    margin-top: 8px;
 }
 
 #panel-queries .canvas-params-table {
@@ -298,6 +336,57 @@ JS;
 
 #panel-queries .canvas-params-table tr + tr td {
     border-top: 1px solid #e2e4e9;
+}
+
+#panel-queries .canvas-plan-table-wrap {
+    border: 1px solid #e2e4e9;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+#panel-queries .canvas-plan-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+#panel-queries .canvas-plan-table thead tr {
+    background: #f9fafb;
+}
+
+#panel-queries .canvas-plan-table th {
+    padding: 4px 10px;
+    font-size: 11px;
+    font-weight: 500;
+    color: #6b7280;
+    text-align: left;
+    border-bottom: 1px solid #e2e4e9;
+}
+
+#panel-queries .canvas-plan-table th:not(:last-child),
+#panel-queries .canvas-plan-table td:not(:last-child) {
+    border-right: 1px solid #e2e4e9;
+}
+
+#panel-queries .canvas-plan-table td {
+    padding: 4px 10px;
+    color: #111827;
+    vertical-align: top;
+}
+
+#panel-queries .canvas-plan-table tr + tr td {
+    border-top: 1px solid #e2e4e9;
+}
+
+#panel-queries .canvas-plan-caption {
+    padding: 6px 10px;
+    font-size: 11px;
+    font-weight: 500;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: 1px solid #e2e4e9;
+    background: #f9fafb;
 }
 CSS;
 		}

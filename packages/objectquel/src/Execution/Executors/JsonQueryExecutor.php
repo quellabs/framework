@@ -4,7 +4,7 @@
 	
 	use Flow\JSONPath\JSONPath;
 	use Flow\JSONPath\JSONPathException;
-	use Quellabs\ObjectQuel\Execution\ConditionEvaluator;
+	use Quellabs\ObjectQuel\Execution\Helpers\ConditionEvaluator;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeJsonSource;
 	use Quellabs\ObjectQuel\Exception\QuelException;
 	use Quellabs\ObjectQuel\Planner\ExecutionStageInterface;
@@ -32,14 +32,32 @@
 			// Load the JSON file and perform initial filtering
 			$contents = $this->loadAndFilterJsonFile($jsonRange);
 			
-			// Use the conditions to further filter the file
+			// Retrieve the WHERE conditions and the retrieve() field list
+			$conditions = $stage->getQuery()->getConditions();
+			$values = $stage->getQuery()->getValues();
+			
+			// Evaluate all rows
 			$result = [];
 			
 			foreach ($contents as $row) {
-				if ($stage->getQuery()->getConditions() === null ||
-					ConditionEvaluator::evaluate($stage->getQuery()->getConditions(), $row, $initialParams)) {
-					$result[] = $row;
+				// Skip rows that don't satisfy the WHERE clause
+				if ($conditions !== null && !ConditionEvaluator::evaluate($conditions, $contents, $row, $initialParams)) {
+					continue;
 				}
+				
+				// Project the retrieve() field list onto the row
+				$projectedRow = [];
+				
+				foreach ($values as $alias) {
+					$projectedRow[$alias->getName()] = ConditionEvaluator::evaluate(
+						$alias->getExpression(),
+						$contents,
+						$row,
+						$initialParams
+					);
+				}
+				
+				$result[] = $projectedRow;
 			}
 			
 			return $result;
