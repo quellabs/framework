@@ -10,9 +10,6 @@
 		'charset'          => 'utf8mb4',                // Character set for database connection
 		'collation'        => 'utf8mb4_unicode_ci',     // Collation for text comparison and sorting
 		
-		// Development mode
-		'development_mode' => false,
-		
 		// Entity namespace
 		'entity_namespace' => 'App\\Entities',
 		

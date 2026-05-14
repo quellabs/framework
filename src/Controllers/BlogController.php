@@ -17,12 +17,6 @@
 		public function index(): Response {
 			$posts = $this->em()->findBy(PostEntity::class, ['published' => true]);
 			
-			$x = $this->em()->explainQuery("
-				range of x is PostEntity
-				range of y is UserEntity via y.id=x.userId
-				retrieve(x)
-			");
-			
 			return $this->render("blog/index.tpl", [
 				'posts' => $posts
 			]);

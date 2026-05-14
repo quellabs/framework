@@ -94,7 +94,9 @@
 			}
 			
 			// Development mode
-			$config->setDevelopmentMode($configData["development_mode"] ?? false);
+			if ($configData["debug_mode"] ?? false) {
+				$config->setDevelopmentMode(true);
+			}
 			
 			// Cache and return the instance
 			self::$instance = $config;
