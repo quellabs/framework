@@ -19,6 +19,7 @@
 			
 			$x = $this->em()->explainQuery("
 				range of x is PostEntity
+				range of y is UserEntity via y.id=x.userId
 				retrieve(x)
 			");
 			
