@@ -489,6 +489,34 @@
 		}
 		
 		/**
+		 * Resolves the back-reference property name on the target entity for a ManyToOne or OneToOne relation.
+		 *
+		 * For OneToOne, inversedBy and mappedBy are direct property names on the target entity,
+		 * returned as-is. If neither is set, the target entity's primary key is used as a fallback.
+		 *
+		 * For ManyToOne, inversedBy is a direct property name on the target entity. If absent,
+		 * the target entity's primary key is used as a fallback.
+		 *
+		 * Returns null when no property can be determined.
+		 *
+		 * @param ManyToOne|OneToOne $relation The relation annotation to resolve
+		 * @return string|null The back-reference property name on the target entity, or null if unresolvable
+		 * @throws EntityResolutionException When target entity metadata cannot be loaded
+		 */
+		public function resolveTargetProperty(ManyToOne|OneToOne $relation): ?string {
+			// OneToOne: return inversedBy or mappedBy as-is, falling back to the primary key
+			if ($relation instanceof OneToOne) {
+				return $relation->getInversedBy()
+					?? $relation->getMappedBy()
+					?? $this->getPrimaryKey($relation->getTargetEntity());
+			}
+			
+			// ManyToOne: inversedBy is a direct property name on the target entity.
+			// If absent, fall back to the target entity's primary key.
+			return $relation->getInversedBy() ?? $this->getPrimaryKey($relation->getTargetEntity());
+		}
+		
+		/**
 		 * Return true if the entity is immutable (readonly), false if not.
 		 * An immutable entity is marked with the @Immutable annotation.
 		 * @param string|object $entity The entity to check

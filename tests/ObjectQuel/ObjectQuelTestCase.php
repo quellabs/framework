@@ -16,6 +16,7 @@
 		protected array $truncateTables = ['posts', 'users'];
 		
 		protected function setUp(): void {
+			// fetch the EntityManager
 			$this->em = $GLOBALS['test_em'];
 			
 			// DatabaseAdapter wraps a CakePHP Connection. Go through the inner
@@ -28,6 +29,11 @@
 				$conn->execute("ALTER TABLE `{$table}` AUTO_INCREMENT = 1");
 			}
 			
+			// Clear the identity map so stale entities from previous tests cannot
+			// bleed through when the same primary keys are reused after truncation.
+			$this->em->getUnitOfWork()->clear();
+			
+			// Seed the database
 			$this->seedFixtures();
 		}
 		
