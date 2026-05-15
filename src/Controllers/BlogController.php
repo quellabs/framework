@@ -18,16 +18,17 @@
 			
 			$x = $this->em()->executeQuery("
 				range of x is PostEntity
-				range of y is PostDescriptionEntity via y.descriptions
-				retrieve(x.title)
+				range of y is json_source('f:\\test.json', '$.rows')
+				retrieve(x.id, y.id, x.title, y.test)
+				where y.id=x.id
 			");
 			
 			print_r($x->fetchAll());
 			
-			$posts = $this->em()->findBy(PostEntity::class, ['published' => true]);
+			//$posts = $this->em()->findBy(PostEntity::class, ['published' => true]);
 			
 			return $this->render("blog/index.tpl", [
-				'posts' => $posts
+				'posts' => []
 			]);
 		}
 		

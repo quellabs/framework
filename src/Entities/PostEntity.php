@@ -8,6 +8,7 @@
 	use Quellabs\ObjectQuel\Annotations\Orm\OneToOne;
 	use Quellabs\ObjectQuel\Annotations\Orm\OneToMany;
 	use Quellabs\ObjectQuel\Annotations\Orm\ManyToOne;
+	use Quellabs\ObjectQuel\Annotations\Orm\SourceField;
 	use Quellabs\ObjectQuel\Annotations\Orm\LifecycleAware;
 	use Quellabs\ObjectQuel\Annotations\Orm\PreUpdate;
 	use Quellabs\ObjectQuel\Annotations\Orm\FullTextIndex;
@@ -47,6 +48,11 @@
 		 * @Orm\Column(name="created_at", type="datetime")
 		 */
 		protected \DateTime $createdAt;
+		
+		/**
+		 * @Orm\SourceField(field="test")
+		 */
+		protected string $test;
 		
 		/**
 		 * @Orm\Column(name="test_enum", type="enum", enumType=App\Enums\TestEnum::class)
