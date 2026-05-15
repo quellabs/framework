@@ -4,12 +4,17 @@
 	
 	/**
 	 * Signal class for Qt-inspired event handling in PHP
+	 *
+	 * @phpstan-type Slot array{
+	 *     receiver: callable,
+	 *     priority: int
+	 * }
 	 */
 	class Signal {
 		
 		/**
 		 * Connections (callables and their priorities)
-		 * @var array<int, array{receiver: callable, priority: int}>
+		 * @var array<int, Slot>
 		 */
 		private array $slots = [];
 		
