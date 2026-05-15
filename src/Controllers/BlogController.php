@@ -17,9 +17,9 @@
 		public function index(): Response {
 			
 			$x = $this->em()->executeQuery("
-				range of x is json_source(file='f:\\test.json', jsonPath='$.rows')
+				range of x is PostEntity
+				range of y is PostDescriptionEntity via y.descriptions
 				retrieve(x.title)
-				where not is_float(x.title)
 			");
 			
 			print_r($x->fetchAll());
