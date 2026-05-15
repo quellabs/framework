@@ -8,7 +8,8 @@
 	class Signal {
 		
 		/**
-		 * @var array Connections (callables and their priorities)
+		 * Connections (callables and their priorities)
+		 * @var array<int, array{receiver: callable, priority: int}>
 		 */
 		private array $slots = [];
 		

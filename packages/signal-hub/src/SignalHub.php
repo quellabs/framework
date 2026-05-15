@@ -82,7 +82,7 @@
 		/**
 		 * Discover all Signal-typed properties on an object and register them with the hub.
 		 * @param object $object Object to scan for Signal properties
-		 * @return array List of found signals
+		 * @return array<Signal> List of found signals
 		 * @throws \RuntimeException|\ReflectionException If the object was already discovered, or a Signal property is uninitialized
 		 */
 		public function discoverSignals(object $object): array {
@@ -321,7 +321,7 @@
 		/**
 		 * Use reflection to find all Signal-typed property names on a class.
 		 * Results are used to populate the signalPropertyCache.
-		 * @param string $class Fully qualified class name
+		 * @param class-string $class Fully qualified class name
 		 * @return list<string> Property names typed as Signal
 		 * @throws \ReflectionException
 		 */
