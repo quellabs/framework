@@ -19,11 +19,9 @@
 			$x = $this->em()->executeQuery("
 				range of x is PostEntity
 				range of y is json_source('f:\\test.json', '$.rows')
-				retrieve(x.id, y.id, x.title, y.test)
+				retrieve(x, y.test)
 				where y.id=x.id
 			");
-			
-			print_r($x->fetchAll());
 			
 			//$posts = $this->em()->findBy(PostEntity::class, ['published' => true]);
 			
