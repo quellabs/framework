@@ -18,8 +18,7 @@
 			
 			$x = $this->em()->executeQuery("
 				range of y is json_source('f:\\test.json', '$.rows')
-				retrieve(y.test)
-				where y.title = /^hi/
+				retrieve(count(y.id where y.id > 0))
 			");
 			
 			foreach($x as $row) {
