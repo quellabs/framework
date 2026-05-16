@@ -117,6 +117,7 @@
 			$packedBoxes   = [];
 			
 			foreach ($packed as $libPackedBox) {
+				/** @var PackableItem[] $items */
 				$items = [];
 				
 				foreach ($libPackedBox->items as $packedItem) {
@@ -132,6 +133,7 @@
 			
 			// Collect items the packer could not fit (oversize or overweight for all boxes).
 			// Only populated when throwOnUnpackableItem(false) is set.
+			/** @var PackableItem[] $unpackedItems */
 			$unpackedItems = [];
 			
 			foreach ($packer->getUnpackedItems() as $unpackedItem) {

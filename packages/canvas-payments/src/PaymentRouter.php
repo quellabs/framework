@@ -108,8 +108,17 @@
 		 * @throws \RuntimeException
 		 */
 		private function resolve(string $module): PaymentProviderInterface {
-			$class = $this->moduleMap[$module] ?? throw new \RuntimeException("No payment provider registered for module '{$module}'");
-			return $this->discover->get($class);
+			if (!isset($this->moduleMap[$module])) {
+				throw new \RuntimeException("No payment provider registered for module '{$module}'");
+			}
+			
+			$result = $this->discover->get($this->moduleMap[$module]);
+			
+			if (!$result instanceof PaymentProviderInterface) {
+				throw new \RuntimeException("Invalid payment provider for module '{$module}'");
+			}
+			
+			return $result;
 		}
 
 		/**
@@ -119,15 +128,24 @@
 		 * @throws \RuntimeException
 		 */
 		private function resolveDriver(string $driver): PaymentProviderInterface {
-			$class = $this->driverMap[$driver] ?? throw new \RuntimeException("No payment provider registered for driver '{$driver}'");
-			return $this->discover->get($class);
+			if (!isset($this->driverMap[$driver])) {
+				throw new \RuntimeException("No payment provider registered for driver '{$driver}'");
+			}
+			
+			$result = $this->discover->get($this->driverMap[$driver]);
+			
+			if (!$result instanceof PaymentProviderInterface) {
+				throw new \RuntimeException("Invalid payment provider for driver '{$driver}'");
+			}
+			
+			return $result;
 		}
 		
 		/**
 		 * Fetch the current state of a payment for reconciliation of missed webhooks.
 		 * @param string $driver Driver name as returned in PaymentState::$provider (e.g. 'rabosmartpay')
 		 * @param string $transactionId Provider-assigned transaction ID from InitiateResult
-		 * @param array $extraData Optional additional data to pass to the provider
+		 * @param array<string, mixed> $extraData Optional additional data to pass to the provider
 		 * @return PaymentState
 		 */
 		public function exchange(string $driver, string $transactionId, array $extraData = []): PaymentState {
@@ -138,7 +156,7 @@
 		 * Returns all refunds issued for the given transaction.
 		 * @param string $driver Driver name as returned in PaymentState::$provider (e.g. 'rabosmartpay')
 		 * @param string $paymentReference
-		 * @return array
+		 * @return array<int, mixed>
 		 */
 		public function getRefunds(string $driver, string $paymentReference): array {
 			return $this->resolveDriver($driver)->getRefunds($paymentReference);
