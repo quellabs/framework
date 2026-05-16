@@ -2,7 +2,9 @@
 	
 	namespace Quellabs\ObjectQuel\ObjectQuel;
 	
+	use Quellabs\ObjectQuel\Annotations\Orm\SourceField;
 	use Quellabs\ObjectQuel\EntityStore;
+	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
 	use Quellabs\ObjectQuel\Exception\SemanticException;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAggregate;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIdentifier;
@@ -20,6 +22,8 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\ValidateUnambiguousProperty;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\ValidateRangesDeclared;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\ValidateRelationshipPath;
+	use Quellabs\ObjectQuel\Planner\Helpers\AstUtilities;
+	use Quellabs\ObjectQuel\Planner\Helpers\RangeUtilities;
 	
 	/**
 	 * SemanticAnalyzer class responsible for validating ObjectQuel query ASTs
@@ -60,7 +64,7 @@
 			
 			// Step 1: Validate that the projection list is not empty
 			$this->validatePopulatedProjections($ast);
-
+			
 			// ==============================================================================
 			// Range validation
 			// ==============================================================================
@@ -108,6 +112,14 @@
 			
 			// Step 8: Validate that all identifiers in each search() call reference the same range
 			$this->validateSearchIdentifierRanges($ast);
+			
+			// Step 9: Validate that @SourceField annotations without an explicit range are not
+			//         ambiguous when multiple JSON sources are present in the same query
+			$this->validateUnambiguousSourceFieldAnnotations($ast);
+			
+			// Step 10: Validate that no aggregate references both database and non-database
+			//          ranges — such aggregates have no defined execution strategy
+			$this->validateNoMixedRangeAggregates($ast);
 		}
 		
 		/**
@@ -527,5 +539,152 @@
 			$collector = new CollectRangeReferences($knownRangeNames);
 			$expression->accept($collector);
 			return $collector->getReferencedRanges();
+		}
+		
+		/**
+		 * Validates that no @SourceField annotation without an explicit range is ambiguous.
+		 *
+		 * Ambiguity arises when all of the following are true for a single property:
+		 *   - The property carries a @SourceField annotation with no 'range' parameter.
+		 *   - The entity owning that property appears in the retrieve projection.
+		 *   - The query declares more than one json_source() range.
+		 *
+		 * In that situation the hydrator cannot determine which JSON source to read the
+		 * field value from, so the problem must be caught here rather than silently
+		 * picking the wrong source or failing at runtime.
+		 *
+		 * The check is deliberately scoped to entity ranges that appear in the projection
+		 * list (getValues()), not every entity range in the query. An entity that is only
+		 * used as a join anchor but not retrieved cannot be enriched, so its @SourceField
+		 * annotations are irrelevant here.
+		 *
+		 * @param AstRetrieve $ast The AST to validate.
+		 * @return void
+		 * @throws SemanticException When an ambiguous @SourceField annotation is found.
+		 * @throws EntityResolutionException
+		 */
+		private function validateUnambiguousSourceFieldAnnotations(AstRetrieve $ast): void {
+			// Count how many JSON source ranges this query declares.
+			// If there is at most one, no @SourceField annotation can ever be ambiguous,
+			// so we can exit immediately without touching the entity store.
+			$jsonRangeCount = 0;
+			
+			foreach ($ast->getRanges() as $range) {
+				if ($range instanceof AstRangeJsonSource) {
+					$jsonRangeCount++;
+				}
+			}
+			
+			// Zero or one JSON source — range inference is always unambiguous
+			if ($jsonRangeCount <= 1) {
+				return;
+			}
+			
+			// Collect the names of all JSON ranges for inclusion in error messages
+			$jsonRangeNames = [];
+			
+			foreach ($ast->getRanges() as $range) {
+				if ($range instanceof AstRangeJsonSource) {
+					$jsonRangeNames[] = $range->getName();
+				}
+			}
+			
+			// Inspect each value in the projection list and look for entity ranges
+			// whose class carries ambiguous @SourceField annotations
+			foreach ($ast->getValues() as $alias) {
+				// Fetch the Expression
+				$expression = $alias->getExpression();
+				
+				// Only top-level entity identifiers (no parent, no chained property)
+				// can own @SourceField annotations — scalar projections and property
+				// paths are not entity objects and cannot be enriched
+				if (!$expression instanceof AstIdentifier) {
+					continue;
+				}
+				
+				// Check if this is the base identifier
+				if ($expression->hasParentIdentifier() || $expression->hasNext()) {
+					continue;
+				}
+				
+				// JSON source ranges themselves are not entities — skip them
+				if ($expression->getRange() instanceof AstRangeJsonSource) {
+					continue;
+				}
+				
+				// Resolve the entity class name; skip if unavailable (e.g. subquery ranges)
+				$entityName = $expression->getEntityName();
+				
+				if ($entityName === null) {
+					continue;
+				}
+				
+				// Fetch all @SourceField annotations declared on this entity's properties.
+				// getAnnotationsOfType() returns array<propertyName, array<int, SourceField>>.
+				$jsonFieldAnnotations = $this->entityStore->getAnnotationsOfType($entityName, SourceField::class);
+				
+				// Check each annotated property for a missing range parameter
+				foreach ($jsonFieldAnnotations as $propertyName => $annotations) {
+					foreach ($annotations as $annotation) {
+						// An explicit range is always unambiguous — nothing to check
+						if ($annotation->getRange() !== null) {
+							continue;
+						}
+						
+						// No explicit range + multiple JSON sources = ambiguity
+						throw new SemanticException(sprintf(
+							"Property '%s::$%s' has a @SourceField annotation without a 'range' parameter, " .
+							"but the query declares multiple JSON sources (%s). " .
+							"Add range=\"alias\" to the annotation to resolve the ambiguity.",
+							$entityName,
+							$propertyName,
+							implode(', ', $jsonRangeNames)
+						));
+					}
+				}
+			}
+		}
+		
+		/**
+		 * Validates that no aggregate function references both database ranges and
+		 * non-database ranges (e.g. JSON sources) in the same expression.
+		 *
+		 * Such an aggregate has no defined execution strategy: the SQL engine cannot
+		 * see non-database data, and the in-memory evaluator cannot run correlated
+		 * SQL subqueries. The problem must be caught here rather than producing a
+		 * silent wrong result or a confusing runtime error in the optimizer.
+		 *
+		 * @param AstRetrieve $ast The AST to validate.
+		 * @return void
+		 * @throws SemanticException
+		 */
+		private function validateNoMixedRangeAggregates(AstRetrieve $ast): void {
+			foreach (AstUtilities::collectAggregateNodes($ast) as $aggregate) {
+				// Fetch all aggregate notes
+				$ranges = RangeUtilities::collectRangesFromNode($aggregate);
+				
+				// An aggregate with no range references is a constant expression — skip it
+				if (empty($ranges)) {
+					continue;
+				}
+				
+				// Partition into database and non-database ranges
+				$databaseRanges = array_filter($ranges, fn($r) => $r instanceof AstRangeDatabase);
+				$nonDatabaseRanges = array_filter($ranges, fn($r) => !$r instanceof AstRangeDatabase);
+				
+				// Mixed: both sides are non-empty — no execution strategy exists for this
+				if (!empty($databaseRanges) && !empty($nonDatabaseRanges)) {
+					$dbNames = implode(', ', array_map(fn($r) => "'{$r->getName()}'", $databaseRanges));
+					$extNames = implode(', ', array_map(fn($r) => "'{$r->getName()}'", $nonDatabaseRanges));
+					
+					throw new SemanticException(sprintf(
+						"Aggregate '%s' mixes database ranges (%s) with non-database ranges (%s). "
+						. "An aggregate must reference either database ranges or external source ranges, not both.",
+						$aggregate->getType(),
+						$dbNames,
+						$extNames
+					));
+				}
+			}
 		}
 	}

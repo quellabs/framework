@@ -6,6 +6,7 @@ parameters:
         - packages/canvas/src
         - packages/annotation-reader/src
         - packages/discover/src
+        - packages/signal-hub/src
     bootstrapFiles:
         - vendor/autoload.php
     scanDirectories:
