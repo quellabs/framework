@@ -10,6 +10,8 @@ parameters:
         - packages/sculpt/src
         - packages/dependency-injection/src
         - packages/support/src
+        - packages/canvas-payments
+        - packages/canvas-shipments
     bootstrapFiles:
         - vendor/autoload.php
     scanDirectories:

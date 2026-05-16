@@ -177,8 +177,22 @@
 		 * @throws \RuntimeException
 		 */
 		private function resolve(string $module): ShipmentProviderInterface {
-			$class = $this->moduleMap[$module] ?? throw new \RuntimeException("No shipping provider registered for module '{$module}'");
-			return $this->discover->get($class);
+			// If module does not exist, tell the user by throwing an exception
+			if (!isset($this->moduleMap[$module])) {
+				throw new \RuntimeException("No shipping provider registered for module '{$module}'");
+			}
+			
+			// Try to get the driver
+			$result = $this->discover->get($this->moduleMap[$module]);
+			
+			// If that failed, no provider implementation exists.
+			// Should never happen, because of the previous isset check
+			if (!$result instanceof ShipmentProviderInterface) {
+				throw new \RuntimeException("Invalid shipping provider '{$module}'");
+			}
+			
+			// Return the module
+			return $result;
 		}
 		
 		/**
@@ -188,8 +202,22 @@
 		 * @throws \RuntimeException
 		 */
 		private function resolveDriver(string $driver): ShipmentProviderInterface {
-			$class = $this->driverMap[$driver] ?? throw new \RuntimeException("No shipping provider registered for driver '{$driver}'");
-			return $this->discover->get($class);
+			// If driver does not exist, tell the user by throwing an exception
+			if (!isset($this->driverMap[$driver])) {
+				throw new \RuntimeException("No shipping driver registered for driver '{$driver}'");
+			}
+			
+			// Try to get the driver
+			$result = $this->discover->get($this->driverMap[$driver]);
+			
+			// If that failed, no provider implementation exists.
+			// Should never happen, because of the previous isset check
+			if (!$result instanceof ShipmentProviderInterface) {
+				throw new \RuntimeException("Invalid shipping driver '{$driver}'");
+			}
+			
+			// Return the driver
+			return $result;
 		}
 		
 		/**
