@@ -11,7 +11,23 @@ parameters:
         - packages/dependency-injection/src
         - packages/support/src
         - packages/canvas-payments
+        - packages/canvas-payments-adyen
+        - packages/canvas-payments-buckaroo
+        - packages/canvas-payments-contracts
+        - packages/canvas-payments-klarna
+        - packages/canvas-payments-mollie
+        - packages/canvas-payments-multisafepay
+        - packages/canvas-payments-paynl
+        - packages/canvas-payments-paypal
+        - packages/canvas-payments-paypal-express
+        - packages/canvas-payments-stripe
+        - packages/canvas-payments-xpay
         - packages/canvas-shipments
+        - packages/canvas-shipments-dhl
+        - packages/canvas-shipments-dpd
+        - packages/canvas-shipments-myparcel
+        - packages/canvas-shipments-postnl
+        - packages/canvas-shipments-sendcloud
     bootstrapFiles:
         - vendor/autoload.php
     scanDirectories:
