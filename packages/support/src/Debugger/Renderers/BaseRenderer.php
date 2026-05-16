@@ -115,10 +115,10 @@
 		/**
 		 * Render a single value - core of the Template Method pattern
 		 * @param mixed $value The value to render (any PHP type)
-		 * @param string|null $key Optional key name (for array elements, object properties)
+		 * @param int|string|null $key Optional key name (for array elements, object properties)
 		 * @param array<string, mixed> $context Additional context information for specialized rendering
 		 */
-		protected function renderValue(mixed $value, ?string $key = null, array $context = []): void {
+		protected function renderValue(mixed $value, int|string|null $key = null, array $context = []): void {
 			// Allow subclasses to perform setup before rendering
 			$this->beforeRenderValue($value, $key, $context);
 			
@@ -390,10 +390,10 @@
 		/**
 		 * Default array renderer
 		 * @param array<int|string, mixed> $value The array to render
-		 * @param string|null $key The key this array is stored under (if any)
+		 * @param int|string|null $key The key this array is stored under (if any)
 		 * @param array<string, mixed> $context Additional context information
 		 */
-		protected function renderArrayDefault(array $value, ?string $key = null, array $context = []): void {
+		protected function renderArrayDefault(array $value, int|string|null $key = null, array $context = []): void {
 			// Show the key (if present) and array size
 			echo ($key ? "\"{$key}\" => " : '') . "array(" . count($value) . ") [\n";
 			
@@ -417,10 +417,10 @@
 		/**
 		 * Default object renderer
 		 * @param object $value The object to render
-		 * @param string|null $key The key this object is stored under (if any)
+		 * @param int|string|null $key The key this object is stored under (if any)
 		 * @param array<string, mixed> $context Additional context information
 		 */
-		protected function renderObjectDefault(object $value, ?string $key = null, array $context = []): void {
+		protected function renderObjectDefault(object $value, int|string|null $key = null, array $context = []): void {
 			$className = get_class($value);
 			$objectId = spl_object_id($value);
 			
@@ -493,9 +493,9 @@
 		/**
 		 * Render circular reference indicator
 		 * @param object $object The object that creates the circular reference
-		 * @param string|null $key The key this object is stored under (if any)
+		 * @param int|string|null $key The key this object is stored under (if any)
 		 */
-		protected function renderCircularReference(object $object, string $key = null): void {
+		protected function renderCircularReference(object $object, int|string|null $key = null): void {
 			$className = get_class($object);
 			$objectId = spl_object_id($object);
 			echo "*CIRCULAR REFERENCE* {$className} #{$objectId}";
@@ -503,19 +503,19 @@
 		
 		/**
 		 * Render max depth indicator
-		 * @param string|null $key The key where max depth was reached (if any)
+		 * @param int|string|null $key The key where max depth was reached (if any)
 		 */
-		protected function renderMaxDepthIndicator(?string $key = null): void {
+		protected function renderMaxDepthIndicator(int|string|null $key = null): void {
 			echo "*MAX DEPTH REACHED*";
 		}
 		
 		/**
 		 * Render unknown type
 		 * @param mixed $value The value of unknown type
-		 * @param string|null $key The key this value is stored under (if any)
+		 * @param int|string|null $key The key this value is stored under (if any)
 		 * @param array<string, mixed> $context Additional context information
 		 */
-		protected function renderUnknownType(mixed $value, ?string $key = null, array $context = []): void {
+		protected function renderUnknownType(mixed $value, int|string|null $key = null, array $context = []): void {
 			echo "unknown(" . gettype($value) . ")";
 		}
 		
@@ -524,20 +524,20 @@
 		/**
 		 * Called before rendering a value
 		 * @param mixed $value The value about to be rendered
-		 * @param string|null $key The key this value is stored under (if any)
+		 * @param int|string|null $key The key this value is stored under (if any)
 		 * @param array<string, mixed> $context Additional context information
 		 */
-		protected function beforeRenderValue(mixed $value, ?string $key = null, array $context = []): void {
+		protected function beforeRenderValue(mixed $value, int|string|null $key = null, array $context = []): void {
 			// Override in concrete classes if needed
 		}
 		
 		/**
 		 * Called after rendering a value
 		 * @param mixed $value The value that was just rendered
-		 * @param string|null $key The key this value was stored under (if any)
+		 * @param int|string|null $key The key this value was stored under (if any)
 		 * @param array<string, mixed> $context Additional context information
 		 */
-		protected function afterRenderValue(mixed $value, ?string $key = null, array $context = []): void {
+		protected function afterRenderValue(mixed $value, int|string|null $key = null, array $context = []): void {
 			// Override in concrete classes if needed
 		}
 	}

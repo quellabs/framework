@@ -52,10 +52,10 @@
 		/**
 		 * Render string values with color coding, length display, and truncation handling
 		 * @param string $value The string value to render
-		 * @param string|null $key Optional key name (for array/object properties)
+		 * @param int|string|null $key Optional key name (for array/object properties)
 		 * @param array<string, mixed> $context Rendering context (inline mode, depth, etc.)
 		 */
-		protected function renderString(string $value, ?string $key = null, array $context = []): void {
+		protected function renderString(string $value, int|string|null $key = null, array $context = []): void {
 			// Display the key name if this string is part of an array or object property
 			$this->renderKeyIfPresent($key);
 			
@@ -86,10 +86,10 @@
 		/**
 		 * Render integer values with color coding for CLI output
 		 * @param int $value The integer value to render
-		 * @param string|null $key Optional key name (for array/object properties)
+		 * @param int|string|null $key Optional key name (for array/object properties)
 		 * @param array<string, mixed> $context Rendering context (inline mode, depth, etc.)
 		 */
-		protected function renderInteger(int $value, ?string $key = null, array $context = []): void {
+		protected function renderInteger(int $value, int|string|null $key = null, array $context = []): void {
 			// Display the key name if this integer is part of an array or object property
 			$this->renderKeyIfPresent($key);
 			
@@ -104,10 +104,10 @@
 		/**
 		 * Render float values with color coding for CLI output
 		 * @param float $value The float/double value to render
-		 * @param string|null $key Optional key name (for array/object properties)
+		 * @param int|string|null $key Optional key name (for array/object properties)
 		 * @param array<string, mixed> $context Rendering context (inline mode, depth, etc.)
 		 */
-		protected function renderFloat(float $value, ?string $key = null, array $context = []): void {
+		protected function renderFloat(float $value, int|string|null $key = null, array $context = []): void {
 			// Display the key name if this float is part of an array or object property
 			$this->renderKeyIfPresent($key);
 			
@@ -123,10 +123,10 @@
 		/**
 		 * Render boolean values with color coding for CLI output
 		 * @param bool $value The boolean value to render (true or false)
-		 * @param string|null $key Optional key name (for array/object properties)
+		 * @param int|string|null $key Optional key name (for array/object properties)
 		 * @param array<string, mixed> $context Rendering context (inline mode, depth, etc.)
 		 */
-		protected function renderBoolean(bool $value, ?string $key = null, array $context = []): void {
+		protected function renderBoolean(bool $value, int|string|null $key = null, array $context = []): void {
 			// Display the key name if this boolean is part of an array or object property
 			$this->renderKeyIfPresent($key);
 			
@@ -142,10 +142,10 @@
 		/**
 		 * Render null values with color coding for CLI output
 		 * @param null $value The null value to render (always null by type hint)
-		 * @param string|null $key Optional key name (for array/object properties)
+		 * @param int|string|null $key Optional key name (for array/object properties)
 		 * @param array<string, mixed> $context Rendering context (inline mode, depth, etc.)
 		 */
-		protected function renderNull(null $value, ?string $key = null, array $context = []): void {
+		protected function renderNull(null $value, int|string|null $key = null, array $context = []): void {
 			// Display the key name if this null is part of an array or object property
 			$this->renderKeyIfPresent($key);
 			
@@ -161,10 +161,10 @@
 		/**
 		 * Render resource values with type information and color coding for CLI output
 		 * @param resource $value The resource value to render (file handle, database connection, etc.)
-		 * @param string|null $key Optional key name (for array/object properties)
+		 * @param int|string|null $key Optional key name (for array/object properties)
 		 * @param array<string, mixed> $context Rendering context (inline mode, depth, etc.)
 		 */
-		protected function renderResource($value, ?string $key = null, array $context = []): void {
+		protected function renderResource($value, int|string|null $key = null, array $context = []): void {
 			// Display the key name if this resource is part of an array or object property
 			$this->renderKeyIfPresent($key);
 			
@@ -181,10 +181,10 @@
 		/**
 		 * Render arrays for CLI output with proper formatting, indentation, and truncation handling
 		 * @param array<int|string, mixed> $value The array to render
-		 * @param string|null $key Optional key name (for nested arrays/object properties)
+		 * @param int|string|null $key Optional key name (for nested arrays/object properties)
 		 * @param array<string, mixed> $context Rendering context (inline mode, depth, etc.)
 		 */
-		protected function renderArray(array $value, ?string $key = null, array $context = []): void {
+		protected function renderArray(array $value, int|string|null $key = null, array $context = []): void {
 			// Get the total number of elements in the array for display and truncation logic
 			$count = count($value);
 			
@@ -248,10 +248,10 @@
 		/**
 		 * Render objects for CLI output with class info, properties, and circular reference handling
 		 * @param object $value The object instance to render
-		 * @param string|null $key Optional key name (for nested objects/array elements)
+		 * @param int|string|null $key Optional key name (for nested objects/array elements)
 		 * @param array<string, mixed> $context Rendering context (inline mode, depth, etc.)
 		 */
-		protected function renderObject(object $value, ?string $key = null, array $context = []): void {
+		protected function renderObject(object $value, int|string|null $key = null, array $context = []): void {
 			// Get the fully qualified class name for identification
 			$className = get_class($value);
 			
@@ -325,9 +325,9 @@
 		 * Override circular reference rendering for CLI output with clear visual indicators
 		 * Prevents infinite recursion when objects reference themselves or create reference cycles
 		 * @param object $object The object that creates a circular reference
-		 * @param string|null $key Optional key name (for nested objects/array elements)
+		 * @param int|string|null $key Optional key name (for nested objects/array elements)
 		 */
-		protected function renderCircularReference(object $object, string $key = null): void {
+		protected function renderCircularReference(object $object, int|string|null $key = null): void {
 			// Display the key name if this circular reference is part of a parent structure
 			$this->renderKeyIfPresent($key);
 			
@@ -349,9 +349,9 @@
 		/**
 		 * Override max depth rendering for CLI output with clear visual indicator
 		 * Prevents excessive memory usage and output when deeply nested structures are encountered
-		 * @param string|null $key Optional key name (for nested structures)
+		 * @param int|string|null $key Optional key name (for nested structures)
 		 */
-		protected function renderMaxDepthIndicator(string $key = null): void {
+		protected function renderMaxDepthIndicator(int|string|null $key = null): void {
 			// Display the key name if this depth limit is reached within a parent structure
 			$this->renderKeyIfPresent($key);
 			
@@ -366,10 +366,10 @@
 		 * Override unknown type rendering for CLI output with fallback handling
 		 * Handles edge cases where PHP introduces new types or unexpected data structures
 		 * @param mixed $value The value of unknown/unsupported type
-		 * @param string|null $key Optional key name (for nested structures)
+		 * @param int|string|null $key Optional key name (for nested structures)
 		 * @param array<string, mixed> $context Rendering context (inline mode, depth, etc.)
 		 */
-		protected function renderUnknownType(mixed $value, string $key = null, array $context = []): void {
+		protected function renderUnknownType(mixed $value, int|string|null $key = null, array $context = []): void {
 			// Display the key name if this unknown type is part of a parent structure
 			$this->renderKeyIfPresent($key);
 			
@@ -390,10 +390,10 @@
 		 * Apply proper indentation for scalar values in block rendering mode
 		 * This ensures consistent visual hierarchy in nested structures
 		 * @param mixed $value The value about to be rendered
-		 * @param string|null $key Optional key name (for nested structures)
+		 * @param int|string|null $key Optional key name (for nested structures)
 		 * @param array<string, mixed> $context Rendering context (inline mode, depth, etc.)
 		 */
-		protected function beforeRenderValue(mixed $value, ?string $key = null, array $context = []): void {
+		protected function beforeRenderValue(mixed $value, int|string|null $key = null, array $context = []): void {
 			// Check if we're NOT in inline rendering mode (block mode needs indentation)
 			// Uses null coalescing operator to safely handle missing 'inline' context key
 			if (!($context['inline'] ?? false) && !in_array(gettype($value), ['array', 'object'])) {
@@ -413,9 +413,9 @@
 		/**
 		 * Helper: Render key if present with proper formatting and color coding
 		 * Handles the display of array keys and object property names consistently across all renderers
-		 * @param string|null $key The key/property name to display, or null if no key
+		 * @param int|string|null $key The key/property name to display, or null if no key
 		 */
-		private function renderKeyIfPresent(?string $key): void {
+		private function renderKeyIfPresent(int|string|null $key): void {
 			// Only render if a key is actually provided (not null)
 			if ($key !== null) {
 				// Format key as quoted string with arrow separator for key-value association
