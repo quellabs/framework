@@ -15,7 +15,7 @@
 		private array $items;
 		
 		/**
-		 * @param DVDoug\BoxPacker\Item[] $items
+		 * @param PackableItem[] $items
 		 */
 		public function __construct(
 			private readonly Box $box,

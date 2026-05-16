@@ -2,8 +2,6 @@
 	
 	namespace Quellabs\Shipments\Packing;
 	
-	use DVDoug\BoxPacker\Item;
-	
 	/**
 	 * The result of a packing calculation.
 	 *
@@ -23,7 +21,7 @@
 		
 		/**
 		 * @param PackedBox[]    $packedBoxes
-		 * @param DVDoug\BoxPacker\Item[]    $unpackedItems Items that could not be packed (oversize/overweight)
+		 * @param PackableItem[] $unpackedItems Items that could not be packed (oversize/overweight)
 		 */
 		public function __construct(array $packedBoxes, array $unpackedItems = []) {
 			$this->packedBoxes      = $packedBoxes;

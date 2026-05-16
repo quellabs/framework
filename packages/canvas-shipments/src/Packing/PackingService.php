@@ -35,15 +35,15 @@
 		private array $items = [];
 		
 		/**
-		 * @param PackingBox[] $boxCatalog     All box sizes available for packing.
+		 * @param PackingBox[] $boxCatalog All box sizes available for packing.
 		 *                                     Each box's own maxWeight acts as its hard ceiling.
 		 *                                     Pass an empty array to use $maxWeightPerBox only.
-		 * @param int          $maxWeightPerBox Global weight ceiling in grams applied to every box
+		 * @param int $maxWeightPerBox Global weight ceiling in grams applied to every box
 		 *                                     in the catalog, overriding any higher per-box limit.
 		 *                                     Set to 0 to rely solely on per-box limits.
 		 */
 		public function __construct(
-			array          $boxCatalog,
+			array                $boxCatalog,
 			private readonly int $maxWeightPerBox = 0,
 		) {
 			$this->boxCatalog = $this->applyGlobalWeightCeiling($boxCatalog);
@@ -114,30 +114,32 @@
 			
 			// Map library types back to our own value objects.
 			// PackedBox::$box and PackedItem::$item are readonly public properties in v4.
-			$packedBoxes   = [];
+			$packedBoxes = [];
 			
 			foreach ($packed as $libPackedBox) {
-				/** @var PackableItem[] $items */
 				$items = [];
 				
 				foreach ($libPackedBox->items as $packedItem) {
-					$items[] = $packedItem->item;
+					if ($packedItem->item instanceof PackableItem) {
+						$items[] = $packedItem->item;
+					}
 				}
 				
 				$packedBoxes[] = new PackedBox(
-					box:         $libPackedBox->box,
-					items:       $items,
+					box: $libPackedBox->box,
+					items: $items,
 					grossWeight: $libPackedBox->getWeight(),
 				);
 			}
 			
 			// Collect items the packer could not fit (oversize or overweight for all boxes).
 			// Only populated when throwOnUnpackableItem(false) is set.
-			/** @var PackableItem[] $unpackedItems */
 			$unpackedItems = [];
 			
 			foreach ($packer->getUnpackedItems() as $unpackedItem) {
-				$unpackedItems[] = $unpackedItem;
+				if ($unpackedItem instanceof PackableItem) {
+					$unpackedItems[] = $unpackedItem;
+				}
 			}
 			
 			return new PackingResult($packedBoxes, $unpackedItems);
@@ -163,15 +165,15 @@
 				
 				// Reconstruct with the global ceiling as the effective max weight
 				return new PackingBox(
-					reference:   $box->getReference(),
-					outerWidth:  $box->getOuterWidth(),
+					reference: $box->getReference(),
+					outerWidth: $box->getOuterWidth(),
 					outerLength: $box->getOuterLength(),
-					outerDepth:  $box->getOuterDepth(),
+					outerDepth: $box->getOuterDepth(),
 					emptyWeight: $box->getEmptyWeight(),
-					innerWidth:  $box->getInnerWidth(),
+					innerWidth: $box->getInnerWidth(),
 					innerLength: $box->getInnerLength(),
-					innerDepth:  $box->getInnerDepth(),
-					maxWeight:   $this->maxWeightPerBox,
+					innerDepth: $box->getInnerDepth(),
+					maxWeight: $this->maxWeightPerBox,
 				);
 			}, $catalog);
 		}
