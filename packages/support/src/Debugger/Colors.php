@@ -11,7 +11,7 @@
 		 * Color scheme for syntax highlighting different data types (HTML/hex colors)
 		 * @var array<string, string>
 		 */
-		public const HTML_COLORS = [
+		public const array HTML_COLORS = [
 			'string'   => '#d14',      // Red for strings
 			'integer'  => '#005cc5',   // Blue for integers
 			'float'    => '#005cc5',   // Blue for floats
@@ -29,7 +29,7 @@
 		 * ANSI color codes for CLI output
 		 * @var array<string, string>
 		 */
-		public const ANSI_COLORS = [
+		public const array ANSI_COLORS = [
 			'string'   => "\033[31m",  // Red
 			'integer'  => "\033[36m",  // Cyan
 			'float'    => "\033[36m",  // Cyan
