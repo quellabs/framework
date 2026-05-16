@@ -108,16 +108,20 @@
 		 * @throws \RuntimeException
 		 */
 		private function resolve(string $module): PaymentProviderInterface {
+			// If the module does not exist, throw
 			if (!isset($this->moduleMap[$module])) {
 				throw new \RuntimeException("No payment provider registered for module '{$module}'");
 			}
 			
+			// Resolve the module
 			$result = $this->discover->get($this->moduleMap[$module]);
 			
+			// If it does not implement PaymentProviderInterface, throw
 			if (!$result instanceof PaymentProviderInterface) {
 				throw new \RuntimeException("Invalid payment provider for module '{$module}'");
 			}
 			
+			// Return module
 			return $result;
 		}
 
@@ -128,16 +132,20 @@
 		 * @throws \RuntimeException
 		 */
 		private function resolveDriver(string $driver): PaymentProviderInterface {
+			// If the driver does not exist, throw
 			if (!isset($this->driverMap[$driver])) {
 				throw new \RuntimeException("No payment provider registered for driver '{$driver}'");
 			}
 			
+			// Resolve the driver
 			$result = $this->discover->get($this->driverMap[$driver]);
 			
+			// If it does not implement PaymentProviderInterface, throw
 			if (!$result instanceof PaymentProviderInterface) {
 				throw new \RuntimeException("Invalid payment provider for driver '{$driver}'");
 			}
 			
+			// Return driver
 			return $result;
 		}
 		
