@@ -5,7 +5,6 @@
 	use Quellabs\Contracts\Discovery\ProviderInterface;
 	use Quellabs\Contracts\IO\ConsoleInput;
 	use Quellabs\Contracts\IO\ConsoleOutput;
-	use Quellabs\Sculpt\ServiceProvider;
 	
 	/**
 	 * Abstract base class for all command implementations
@@ -27,7 +26,7 @@
 		protected ConsoleOutput $output;
 		
 		/**
-		 * @var ServiceProvider Service provider
+		 * @var ProviderInterface Service provider
 		 */
 		protected ProviderInterface $provider;
 		
@@ -65,10 +64,19 @@
 		}
 		
 		/**
-		 * Get the service provider instance if set
-		 * @return ServiceProvider The service provider or null if not set
+		 * Returns detailed help text for the command.
+		 * Override in concrete commands to provide usage instructions.
+		 * @return string
 		 */
-		public function getProvider(): ServiceProvider {
+		public function getHelp(): string {
+			return '';
+		}
+		
+		/**
+		 * Get the service provider instance if set
+		 * @return ProviderInterface The service provider
+		 */
+		public function getProvider(): ProviderInterface {
 			return $this->provider;
 		}
 	}

@@ -3,6 +3,7 @@
 	namespace Quellabs\Sculpt;
 	
 	use Quellabs\Discover\Provider\AbstractProvider;
+	use Quellabs\Sculpt\Contracts\CommandInterface;
 	
 	/**
 	 * Base implementation of the ServiceProviderInterface that provides
@@ -13,12 +14,16 @@
 		/**
 		 * Helper method to register multiple commands at once
 		 * @param Application $app The application instance
-		 * @param array $commands Array of command class names to register
+		 * @param list<class-string<CommandInterface>> $commands Array of command class names to register
 		 */
 		protected function registerCommands(Application $app, array $commands): void {
 			foreach ($commands as $command) {
 				// Instantiate the command class and register it with the application
-				$app->registerCommand(new $command($app->getInput(), $app->getOutput(), $this));
+				$instance = new $command($app->getInput(), $app->getOutput(), $this);
+				
+				if ($instance instanceof CommandInterface) {
+					$app->registerCommand($instance);
+				}
 			}
 		}
 		

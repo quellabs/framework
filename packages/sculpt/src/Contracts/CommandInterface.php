@@ -21,6 +21,12 @@
 		public function getDescription(): string;
 		
 		/**
+		 * Returns detailed help text for the command
+		 * @return string
+		 */
+		public function getHelp(): string;
+		
+		/**
 		 * Executes the command with the given arguments
 		 * @param ConfigurationManager $config
 		 * @return int Exit code

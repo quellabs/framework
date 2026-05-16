@@ -8,31 +8,31 @@
 	class ConfigurationManager {
 		/**
 		 * Raw array of command-line arguments
-		 * @var array
+		 * @var list<string>
 		 */
 		protected array $rawParameters = [];
 		
 		/**
 		 * Parsed named parameters (--name=value or --name value)
-		 * @var array
+		 * @var array<string, string>
 		 */
 		protected array $namedParameters = [];
 		
 		/**
 		 * Boolean flags (--flag or -f)
-		 * @var array
+		 * @var array<string, true>
 		 */
 		protected array $flags = [];
 		
 		/**
 		 * Positional arguments that don't have a name prefix
-		 * @var array
+		 * @var list<string>
 		 */
 		protected array $positionalParameters = [];
 		
 		/**
 		 * Constructor
-		 * @param array $parameters Array of command-line parameters from array_slice($args, 2)
+		 * @param list<string> $parameters Array of command-line parameters from array_slice($args, 2)
 		 */
 		public function __construct(array $parameters = []) {
 			$this->rawParameters = $parameters;
@@ -41,7 +41,7 @@
 		
 		/**
 		 * Get all parsed parameters
-		 * @return array Associative array of all parameters
+		 * @return array{named: array<string, string>, flags: array<string, true>, positional: list<string>}
 		 */
 		public function all(): array {
 			return [
@@ -91,8 +91,7 @@
 		
 		/**
 		 * Get all positional parameters
-		 *
-		 * @return array
+		 * @return list<string>
 		 */
 		public function getPositionalParameters(): array {
 			return $this->positionalParameters;
@@ -100,8 +99,7 @@
 		
 		/**
 		 * Get all named parameters
-		 *
-		 * @return array
+		 * @return array<string, string>
 		 */
 		public function getNamedParameters(): array {
 			return $this->namedParameters;
@@ -109,7 +107,7 @@
 		
 		/**
 		 * Get all flags
-		 * @return array
+		 * @return array<string, true>
 		 */
 		public function getFlags(): array {
 			return $this->flags;
@@ -117,7 +115,7 @@
 		
 		/**
 		 * Require that certain named parameters are present
-		 * @param array $requiredParams List of required parameter names
+		 * @param list<string> $requiredParams List of required parameter names
 		 * @return bool True if all required parameters are present
 		 * @throws \InvalidArgumentException If any required parameter is missing
 		 */
@@ -162,7 +160,7 @@
 		/**
 		 * Check if parameter matches one of the allowed values
 		 * @param string $name Parameter name
-		 * @param array $allowedValues Array of allowed values
+		 * @param list<string> $allowedValues Array of allowed values
 		 * @param mixed $default Default value if parameter doesn't exist
 		 * @return mixed Parameter value or default
 		 * @throws \InvalidArgumentException If parameter isn't in allowed values
@@ -181,7 +179,7 @@
 		
 		/**
 		 * Get raw parameters array
-		 * @return array
+		 * @return list<string>
 		 */
 		public function getRawParameters(): array {
 			return $this->rawParameters;
@@ -257,8 +255,9 @@
 		 * @return void
 		 */
 		private function parseNamedParameterWithValue(string $param): void {
-			preg_match('/^--([^=]+)=(.+)$/', $param, $matches);
-			$this->namedParameters[$matches[1]] = $matches[2];
+			if (preg_match('/^--([^=]+)=(.+)$/', $param, $matches) === 1) {
+				$this->namedParameters[$matches[1]] = $matches[2];
+			}
 		}
 		
 		/**

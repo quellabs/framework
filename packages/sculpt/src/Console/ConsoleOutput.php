@@ -19,6 +19,7 @@
 		
 		/**
 		 * ANSI color and style codes
+		 * @var array<string, string>
 		 */
 		protected array $styles = [
 			// Colors
@@ -64,8 +65,8 @@
 		
 		/**
 		 * Print a table
-		 * @param array $headers
-		 * @param array $rows
+		 * @param list<string> $headers
+		 * @param list<list<string>> $rows
 		 * @return void
 		 */
 		public function table(array $headers, array $rows): void {
@@ -101,8 +102,8 @@
 		
 		/**
 		 * Print table row
-		 * @param array $row
-		 * @param array $widths
+		 * @param list<string> $row
+		 * @param array<int, int> $widths
 		 * @return void
 		 */
 		public function printRow(array $row, array $widths): void {
@@ -111,7 +112,7 @@
 			foreach ($widths as $index => $width) {
 				$value = isset($row[$index]) ? (string)$row[$index] : '';
 				$valueLength = mb_strlen($value, 'UTF-8');
-				$padding = str_repeat(' ', max(0, $width - $valueLength));
+				$padding = str_repeat(' ', (int)max(0, $width - $valueLength));
 				$cells[] = $value . $padding;
 			}
 			
@@ -120,7 +121,7 @@
 		
 		/**
 		 * Print separator
-		 * @param array $widths
+		 * @param array<int, int> $widths
 		 * @return void
 		 */
 		public function printSeparator(array $widths): void {
@@ -226,7 +227,7 @@
 		protected function format(string $text): string {
 			// Skip formatting if colors are not supported
 			if (!$this->supportsColors()) {
-				return preg_replace('/<[^>]+>/', '', $text);
+				return (string)preg_replace('/<[^>]+>/', '', $text);
 			}
 			
 			// Replace opening style tags with ANSI codes
@@ -235,6 +236,6 @@
 			}
 			
 			// Replace all closing tags with reset code
-			return preg_replace('/<\/[^>]+>/', $this->styles['reset'], $text);
+			return (string)preg_replace('/<\/[^>]+>/', $this->styles['reset'], $text);
 		}
 	}
