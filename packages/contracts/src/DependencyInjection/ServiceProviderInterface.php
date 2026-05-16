@@ -19,12 +19,14 @@
 		public function supports(string $className, array $metadata): bool;
 		
 		/**
-		 * Create an instance of the class with pre-resolved dependencies
+		 * Create an instance of the class with pre-resolved dependencies.
+		 * Returns null when the resource legitimately does not exist (e.g. no database
+		 * row for the requested entity). Throw for actual errors.
 		 * @param class-string $className The class to instantiate
 		 * @param array<int|string, mixed> $dependencies Pre-resolved constructor dependencies
 		 * @param array<string, mixed> $metadata Metadata as received by supports()
 		 * @param MethodContextInterface|null $methodContext Method context of the caller
-		 * @return object
+		 * @return object|null
 		 */
-		public function createInstance(string $className, array $dependencies, array $metadata, ?MethodContextInterface $methodContext=null): object;
+		public function createInstance(string $className, array $dependencies, array $metadata, ?MethodContextInterface $methodContext = null): ?object;
 	}
