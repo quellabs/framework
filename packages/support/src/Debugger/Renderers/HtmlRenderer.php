@@ -8,6 +8,7 @@
 	
 	/**
 	 * HTML renderer for web output - Now properly utilizing BaseRenderer
+	 *
 	 * @phpstan-import-type CallLocation from RendererInterface
 	 */
 	class HtmlRenderer extends BaseRenderer {
@@ -190,7 +191,7 @@
 		
 		/**
 		 * Render arrays with collapsible HTML interface and truncation support
-		 * @param array<mixed> $value The array to display with all its elements
+		 * @param array<int|string, mixed> $value The array to display with all its elements
 		 * @param string|null $key Optional key name if this array is part of a key-value pair
 		 * @param array<string, mixed> $context Rendering context options (e.g., inline mode, depth level)
 		 */

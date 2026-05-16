@@ -180,7 +180,7 @@
 		
 		/**
 		 * Render arrays for CLI output with proper formatting, indentation, and truncation handling
-		 * @param array<mixed> $value The array to render
+		 * @param array<int|string, mixed> $value The array to render
 		 * @param string|null $key Optional key name (for nested arrays/object properties)
 		 * @param array<string, mixed> $context Rendering context (inline mode, depth, etc.)
 		 */

@@ -352,7 +352,7 @@
 		
 		/**
 		 * Check if array should be truncated
-		 * @param array<mixed> $array The array to check
+		 * @param array<int|string, mixed> $array The array to check
 		 * @return bool True if the array should be truncated
 		 */
 		protected function shouldTruncateArray(array $array): bool {
@@ -361,8 +361,8 @@
 		
 		/**
 		 * Get truncated array for display
-		 * @param array<mixed> $array The array to truncate
-		 * @return array<mixed> First N elements of the original array
+		 * @param array<int|string, mixed> $array The array to truncate
+		 * @return array<int|string, mixed> First N elements of the original array
 		 */
 		protected function getTruncatedArray(array $array): array {
 			$maxElements = $this->getConfig('maxArrayElements');
@@ -389,7 +389,7 @@
 		
 		/**
 		 * Default array renderer
-		 * @param array<mixed> $value The array to render
+		 * @param array<int|string, mixed> $value The array to render
 		 * @param string|null $key The key this array is stored under (if any)
 		 * @param array<string, mixed> $context Additional context information
 		 */
