@@ -29,6 +29,7 @@
 		
 		/**
 		 * Dependency resolution stack to detect circular dependencies
+		 * @var list<string>
 		 */
 		protected array $resolutionStack = [];
 		
@@ -44,7 +45,7 @@
 		private Discover $discovery;
 		
 		/**
-		 * @var array|string[]
+		 * @var array<string, mixed>
 		 */
 		private array $context = [];
 		
@@ -96,7 +97,7 @@
 		
 		/**
 		 * Set context for subsequent get() calls
-		 * @param string|array $context Context to apply - string is converted to ['provider' => $context]
+		 * @param string|array<string, mixed> $context Context to apply - string is converted to ['provider' => $context]
 		 * @return self Returns a cloned instance with the specified context applied
 		 */
 		public function for(string|array $context): self {
@@ -118,7 +119,7 @@
 		/**
 		 **
 		 * Find the appropriate service provider for a given class name.
-		 * @param string $className The fully qualified class name to find a provider for
+		 * @param class-string $className The fully qualified class name to find a provider for
 		 * @return ServiceProviderInterface The provider that supports the class or the default provider
 		 */
 		public function findProvider(string $className): ServiceProviderInterface {
@@ -172,12 +173,24 @@
 		 * Get a service with centralized dependency resolution
 		 * @template T of object
 		 * @param class-string<T> $className Class name to resolve
-		 * @param array $parameters Additional parameters for creation
+		 * @param array<string, mixed> $parameters Additional parameters for creation
 		 * @param MethodContextInterface|null $methodContext
 		 * @return T
 		 */
 		public function get(string $className, array $parameters = [], ?MethodContextInterface $methodContext=null): object {
-			return $this->resolveWithDependencies($className, $parameters, true, $methodContext);
+			// Resolve the class
+			$instance = $this->resolveWithDependencies($className, $parameters, true, $methodContext);
+			
+			// If the instance is not of the requested type, pass an error
+			if (!$instance instanceof $className) {
+				throw new \RuntimeException("Container returned an instance of " . get_class($instance) . ", expected {$className}");
+			}
+			
+			/**
+			 * PHPStan needs to be told instance is of type T
+			 * @var T $instance
+			 */
+			return $instance;
 		}
 		
 		/**
@@ -185,18 +198,30 @@
 		 * Bypasses service providers - only handles dependency injection
 		 * @template T of object
 		 * @param class-string<T> $className Class name to resolve
-		 * @param array $parameters Additional/override parameters
+		 * @param array<string, mixed> $parameters Additional/override parameters
 		 * @return T
 		 */
 		public function make(string $className, array $parameters = []): object {
-			return $this->resolveWithDependencies($className, $parameters, false);
+			// Resolve the class
+			$instance = $this->resolveWithDependencies($className, $parameters, false);
+			
+			// If the instance is not of the requested type, pass an error
+			if (!$instance instanceof $className) {
+				throw new \RuntimeException("Container returned an instance of " . get_class($instance) . ", expected {$className}");
+			}
+
+			/**
+			 * PHPStan needs to be told instance is of type T
+			 * @var T $instance
+			 */
+			return $instance;
 		}
 		
 		/**
 		 * Invoke a method with autowired arguments
 		 * @param object $instance
 		 * @param string $methodName
-		 * @param array $parameters
+		 * @param array<string, mixed> $parameters
 		 * @return mixed
 		 */
 		public function invoke(object $instance, string $methodName, array $parameters = []): mixed {
@@ -233,11 +258,11 @@
 		/**
 		 * Resolves a class instance with its dependencies, handling circular dependency detection
 		 * and supporting both service provider and direct instantiation methods.
-		 * @param string $className The fully qualified class name to resolve
-		 * @param array $parameters Manual parameters to override autowired dependencies
+		 * @param class-string $className The fully qualified class name to resolve
+		 * @param array<string, mixed> $parameters Manual parameters to override autowired dependencies
 		 * @param bool $useServiceProvider Whether to use service provider for instantiation
 		 * @param MethodContextInterface|null $methodContext Optional method context for advanced scenarios
-		 * @return object|null The resolved instance or null if resolution fails
+		 * @return object
 		 * @throws \RuntimeException When circular dependencies are detected
 		 */
 		protected function resolveWithDependencies(
@@ -245,7 +270,7 @@
 			array $parameters,
 			bool $useServiceProvider,
 			?MethodContextInterface $methodContext = null
-		): ?object {
+		): object {
 			// Special case: Return container instance when requesting the container itself
 			// This allows for self-injection of the container into other services
 			if (
@@ -264,8 +289,8 @@
 		
 		/**
 		 * Creates an instance of the specified class using either service provider or direct instantiation.
-		 * @param string $className The fully qualified class name to resolve
-		 * @param array $parameters Manual parameters to override autowired dependencies
+		 * @param class-string $className The fully qualified class name to resolve
+		 * @param array<string, mixed> $parameters Manual parameters to override autowired dependencies
 		 * @param bool $useServiceProvider Whether to use service provider for instantiation
 		 * @param MethodContextInterface|null $methodContext Optional method context for advanced scenarios
 		 * @return object The created instance
@@ -322,9 +347,10 @@
 		
 		/**
 		 * Safely executes a resolution callback while managing the resolution stack for circular dependency detection.
+		 * @template T of object
 		 * @param string $className The class being resolved
-		 * @param callable $resolutionCallback The callback that performs the actual resolution
-		 * @return object The resolved instance
+		 * @param callable(): T $resolutionCallback The callback that performs the actual resolution
+		 * @return T The resolved instance
 		 * @throws \RuntimeException When circular dependencies are detected or resolution fails
 		 */
 		protected function safeResolve(string $className, callable $resolutionCallback): object {

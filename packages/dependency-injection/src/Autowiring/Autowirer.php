@@ -18,7 +18,7 @@
 		/**
 		 * Built-in PHP types that cannot be resolved from container
 		 */
-		private const BUILTIN_TYPES = [
+		private const array BUILTIN_TYPES = [
 			// Basic scalar types
 			'string', 'int', 'float', 'bool',
 			
@@ -45,7 +45,7 @@
 		
 		/**
 		 * Resolves and returns arguments for a specific method.
-		 * @param object|string $class The class instance or class name
+		 * @param object|class-string $class The class instance or class name
 		 * @param string $methodName The name of the method to resolve arguments for
 		 * @param array<string, mixed> $parameters Optional array of parameters to use for resolution
 		 * @return array<int, mixed> The resolved arguments array ready for method invocation
@@ -53,6 +53,11 @@
 		public function getMethodArguments(object|string $class, string $methodName, array $parameters = []): array {
 			// Fetch the name of the class - handle both object instances and class name strings
 			$className = is_object($class) ? get_class($class) : $class;
+
+			// Throw when the class does not exist
+			if (!class_exists($className)) {
+				throw new \InvalidArgumentException("Class '{$className}' does not exist");
+			}
 			
 			// Create a context object to track method resolution state and metadata
 			$methodContext = new MethodContext($className, $methodName);
@@ -102,7 +107,7 @@
 		protected function resolveParameter(
 			array          $param,
 			array          $parameters,
-			?MethodContext $methodContext,
+			?MethodContextInterface $methodContext,
 			string         $className,
 			string         $methodName
 		): mixed {
@@ -183,7 +188,8 @@
 			
 			// Filter out built-in PHP types (int, string, bool, etc.) and null type
 			// as these cannot be resolved through dependency injection
-			$resolvableTypes = array_filter($types, fn($type) => !$this->isBuiltinType($type) && $type !== 'null');
+			/** @var list<class-string> $resolvableTypes */
+			$resolvableTypes = array_values(array_filter($types, fn($type) => !$this->isBuiltinType($type) && $type !== 'null'));
 			
 			// If all types are built-in or null, there's nothing we can resolve via DI
 			if (empty($resolvableTypes)) {
@@ -220,7 +226,7 @@
 		
 		/**
 		 * Get the parameters of a method including type hints and default values
-		 * @param string $className
+		 * @param class-string $className
 		 * @param string $methodName
 		 * @return array<int, array<string, mixed>>
 		 */
@@ -321,13 +327,12 @@
 		 * Resolves a single type from the container.
 		 * Extracted as a separate method to allow subclasses to swap the container
 		 * used for resolution without duplicating the full resolution loop.
-		 * @phpstan-param class-string $type
-		 * @param string $type The fully qualified class or interface name to resolve
+		 * @param class-string $type The fully qualified class or interface name to resolve
 		 * @param array<string, mixed> $parameters Additional parameters for resolution
-		 * @param MethodContext|null $methodContext
+		 * @param MethodContextInterface|null $methodContext
 		 * @return object|null The resolved instance or null
 		 */
-		protected function resolveType(string $type, array $parameters, ?MethodContext $methodContext): ?object {
+		protected function resolveType(string $type, array $parameters, ?MethodContextInterface $methodContext): ?object {
 			return $this->container->get($type, [], $methodContext);
 		}
 		
@@ -347,6 +352,6 @@
 			// [A-Z]  - matches any uppercase letter A through Z
 			// '_$0'  - replacement: underscore followed by the matched uppercase letter
 			// Then convert the entire result to lowercase
-			return strtolower(preg_replace('/(?<!^)[A-Z]/', '_$0', $input));
+			return strtolower(preg_replace('/(?<!^)[A-Z]/', '_$0', $input) ?? $input);
 		}
 	}

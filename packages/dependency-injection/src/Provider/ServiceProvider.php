@@ -19,8 +19,8 @@
 		 * Creates a new instance of the specified class with the provided dependencies
 		 * @template T of object
 		 * @param class-string<T> $className The fully qualified class name to instantiate
-		 * @param array $dependencies An array of resolved dependencies to pass to the constructor
-		 * @param array $metadata Metadata as passed by Discover
+		 * @param array<int|string, mixed> $dependencies An array of resolved dependencies to pass to the constructor
+		 * @param array<string, mixed> $metadata Metadata as passed by Discover
 		 * @param MethodContextInterface|null $methodContext Optional method context
 		 * @return T The newly created instance of the specified class
 		 */
@@ -33,8 +33,8 @@
 		
 		/**
 		 * Returns true if the Dependency Injection provider supports the given class
-		 * @param string $className
-		 * @param array $metadata
+		 * @param class-string $className
+		 * @param array<string, mixed> $metadata
 		 * @return bool
 		 */
 		abstract public function supports(string $className, array $metadata): bool;

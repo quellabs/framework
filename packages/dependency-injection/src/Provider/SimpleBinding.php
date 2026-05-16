@@ -33,8 +33,8 @@
 		
 		/**
 		 * Supports the bound abstract type with no context requirements.
-		 * @param string $className The class name being resolved
-		 * @param array $metadata Context information (ignored for simple bindings)
+		 * @param class-string $className The class name being resolved
+		 * @param array<string, mixed> $metadata Context information (ignored for simple bindings)
 		 * @return bool True if this binding handles the requested class
 		 */
 		public function supports(string $className, array $metadata): bool {
@@ -43,9 +43,9 @@
 		
 		/**
 		 * Creates an instance of the concrete class with autowired dependencies.
-		 * @param string $className The class name being instantiated (will be the abstract type)
-		 * @param array $dependencies Pre-resolved constructor dependencies from autowiring
-		 * @param array $metadata Additional metadata (unused in simple bindings)
+		 * @param class-string $className The class name being instantiated (will be the abstract type)
+		 * @param array<int|string, mixed> $dependencies Pre-resolved constructor dependencies from autowiring
+		 * @param array<string, mixed> $metadata Additional metadata (unused in simple bindings)
 		 * @param MethodContextInterface|null $methodContext Optional method context (unused in simple bindings)
 		 * @return object The instantiated concrete class
 		 */
