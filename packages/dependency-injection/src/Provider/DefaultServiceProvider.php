@@ -31,8 +31,8 @@
 		
 		/**
 		 * Supports all classes as a fallback
-		 * @param string $className
-		 * @param array $metadata
+		 * @param class-string $className
+		 * @param array<string, mixed> $metadata
 		 * @return bool
 		 */
 		public function supports(string $className, array $metadata): bool {
@@ -41,8 +41,9 @@
 		
 		/**
 		 * Create instance with basic instantiation using singleton pattern
-		 * @param string $className The class to instantiate
-		 * @param array $dependencies Pre-resolved constructor dependencies
+		 * @param class-string $className The class to instantiate
+		 * @param array<int|string, mixed> $dependencies Pre-resolved constructor dependencies
+		 * @param array<string, mixed> $metadata
 		 * @param MethodContextInterface|null $methodContext
 		 * @return object
 		 */
@@ -54,6 +55,7 @@
 			
 			// Check if this class implements ProviderInterface
 			if (is_subclass_of($className, ProviderInterface::class)) {
+				/** @var class-string<ProviderInterface> $className */
 				return $this->createServiceProvider($className);
 			}
 			
@@ -74,7 +76,7 @@
 		
 		/**
 		 * Create or retrieve a service provider instance using Discovery
-		 * @param string $className The fully qualified class name of the service provider
+		 * @param class-string<ProviderInterface> $className The fully qualified class name of the service provider
 		 * @return object The instantiated and configured service provider
 		 * @throws \RuntimeException If the service provider cannot be found or instantiated
 		 */
@@ -88,7 +90,15 @@
 			// Check if the desired provider class exists in discovered definitions
 			// If so, retrieve the provider instance with proper configuration and metadata
 			if ($this->discovery->exists($className)) {
-				return $this->discovery->get($className);
+				// Instantiate the provider
+				$provider = $this->discovery->get($className);
+				
+				// If it couldn't be instantiated, throw an exception
+				if ($provider === null) {
+					throw new \RuntimeException("Cannot instantiate service provider: {$className}");
+				}
+				
+				return $provider;
 			}
 			
 			// Throw exception if provider cannot be found in any discovered definitions

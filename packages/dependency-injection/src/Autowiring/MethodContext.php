@@ -27,7 +27,7 @@
 		
 		/**
 		 * Get the class instance
-		 * @return object The class instance
+		 * @return string The class name
 		 */
 		public function getClassName(): string {
 			return $this->class;

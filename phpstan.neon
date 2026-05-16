@@ -8,6 +8,7 @@ parameters:
         - packages/discover/src
         - packages/signal-hub/src
         - packages/sculpt/src
+        - packages/dependency-injection/src
     bootstrapFiles:
         - vendor/autoload.php
     scanDirectories:
