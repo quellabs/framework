@@ -232,13 +232,17 @@
 		 * not pallet-level stacking optimization.
 		 */
 		private function loadPackingConfig(ConfigProviderInterface $configProvider): void {
+			// Load the packing configuration file via the config provider
 			$config = $configProvider->loadConfigFile('shipment_packing.php');
 			
+			// Read the optional global weight ceiling; 0 means rely on per-box limits only
 			$this->maxWeightPerBox = $config->getAs('max_weight_per_box', 'int', 0);
 			
+			// Read the list of box definitions; default to empty so pack() throws a clear error
 			$boxes = $config->getAs('boxes', 'array', []);
 			
 			foreach ($boxes as $index => $box) {
+				// Verify all required keys are present before attempting to use them
 				$missing = array_diff(
 					['reference', 'width', 'length', 'depth', 'empty_weight', 'max_weight'],
 					array_keys($box)
@@ -250,19 +254,22 @@
 					);
 				}
 				
-				$width  = (int) $box['width'];
-				$length = (int) $box['length'];
-				$depth  = (int) $box['depth'];
-
+				// Cast dimensions once so we don't repeat the cast at every named argument
+				$width = (int)$box['width'];
+				$length = (int)$box['length'];
+				$depth = (int)$box['depth'];
+				
+				// Outer and inner dimensions are identical — we do box-level packing only,
+				// not pallet-level stacking, so no wall thickness needs to be subtracted
 				$this->packingBoxCatalog[] = new PackingBox(
 					reference: $box['reference'],
-					outerWidth:  $width,
+					outerWidth: $width,
 					outerLength: $length,
-					outerDepth:  $depth,
+					outerDepth: $depth,
 					emptyWeight: (int)$box['empty_weight'],
-					innerWidth:  $width,
+					innerWidth: $width,
 					innerLength: $length,
-					innerDepth:  $depth,
+					innerDepth: $depth,
 					maxWeight: (int)$box['max_weight'],
 				);
 			}
