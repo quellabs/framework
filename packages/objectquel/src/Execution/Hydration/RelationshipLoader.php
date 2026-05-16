@@ -48,18 +48,17 @@
 		 * @throws EntityResolutionException
 		 */
 		public function loadRelationships(array $entities): void {
-			// Set direct entity-to-entity relationships
-			$this->setDirectRelations($entities);
-			
-			// Set up proxies for empty relationships
-			$this->setupProxyRelations($entities);
+			// Set ToOne relations directly where data is present; create proxies for the rest
+			$this->setupToOneRelations($entities);
 			
 			// Set up collections for empty OneToMany relations
-			$this->setupOneToManyCollections($entities);
+			$this->setupToManyRelations($entities);
 			
 			// Wire hydrated related entities back into parent collections
 			// for OneToMany relations that were explicitly joined in the query
-			$this->wireJoinedCollections($entities);
+			foreach ($entities as $entity) {
+				$this->populateEntityJoinedRelations($entity, $entities);
+			}
 		}
 		
 		/**
@@ -137,100 +136,70 @@
 				return;
 			}
 			
-			// Gather information needed to create the proxy
-			$targetEntityName = $dependency->getTargetEntity();
+			// Gather information needed to create the proxy.
+			// resolveProxyClass ensures we have the fully-qualified class name.
+			$targetEntityName = $this->entityStore->resolveProxyClass($dependency->getTargetEntity());
 			
-			// resolveTargetProperty handles both ManyToOne and OneToOne transparently
+			// resolveTargetProperty handles both ManyToOne and OneToOne transparently.
+			// If it returns null, the target property is unknown and we cannot build a proxy.
 			$relationPropertyName = $this->entityStore->resolveTargetProperty($dependency);
 			
+			// Return if the property could not be resolved
+			if ($relationPropertyName === null) {
+				return;
+			}
+			
+			// Create the proxy
+			$proxy = $this->findOrCreateProxy($targetEntityName, $relationPropertyName, $relationColumnValue);
+			
+			// Set the proxy on the original entity
+			$this->propertyHandler->set($entity, $property, $proxy);
+		}
+		
+		/**
+		 * Returns an existing entity from the UnitOfWork, or instantiates and persists a new proxy.
+		 * @param class-string $targetEntityName
+		 * @param string $relationPropertyName The property on the target that holds the PK
+		 * @param mixed $relationColumnValue
+		 * @return object
+		 * @throws EntityResolutionException
+		 */
+		private function findOrCreateProxy(
+			string $targetEntityName,
+			string $relationPropertyName,
+			mixed  $relationColumnValue
+		): object {
 			// Check if the entity already exists in the UnitOfWork
-			$proxyEntity = $this->unitOfWork->findEntity($targetEntityName, [
+			$existing = $this->unitOfWork->findEntity($targetEntityName, [
 				$relationPropertyName => $relationColumnValue
 			]);
 			
+			// If the entity already is in UnitOfWork, return it
+			if ($existing !== null) {
+				return $existing;
+			}
+			
 			// Create a new proxy if no existing entity was found
-			if ($proxyEntity === null) {
-				$proxyGenerator = $this->entityStore->getProxyGenerator();
-				$proxyClassName = $proxyGenerator->getProxyClass($targetEntityName);
-				$proxyFilePath = $proxyGenerator->getProxyFilePath($targetEntityName);
-				
-				// Load the proxy class file if it doesn't exist
-				if (!class_exists($proxyClassName, false)) {
-					require_once $proxyFilePath;
-				}
-				
-				// Instantiate the proxy
-				$proxyEntity = new $proxyClassName($this->entityManager);
-				
-				// Set the primary key on the proxy using the target entity's primary key property name
-				$targetPrimaryKeys = $this->entityStore->getIdentifierKeys($targetEntityName);
-				$this->propertyHandler->set($proxyEntity, $targetPrimaryKeys[0], $relationColumnValue);
-				
-				// Put the proxy under ownership
-				$this->entityManager->persist($proxyEntity);
+			$generator = $this->entityStore->getProxyGenerator();
+			$proxyClassName = $generator->getProxyClass($targetEntityName);
+			
+			// Load the proxy class file if it doesn't exist
+			if (!class_exists($proxyClassName, false)) {
+				require_once $generator->getProxyFilePath($targetEntityName);
 			}
 			
-			// Set the proxy on the original entity
-			$this->propertyHandler->set($entity, $property, $proxyEntity);
-		}
-		
-		/**
-		 * Filters and returns an array of valid OneToOne and ManyToOne dependencies for a given entity and property.
-		 * @param object $entity The entity whose property is being checked.
-		 * @param string $property The name of the entity's property.
-		 * @param array<int, ManyToOne|OneToOne|OneToMany> $dependencies An array of dependencies to filter.
-		 * @return array<int, ManyToOne|OneToOne> An array of valid OneToOne and ManyToOne dependencies.
-		 */
-		private function filterValidDependencies(object $entity, string $property, array $dependencies): array {
-			$validDependencies = [];
+			// Instantiate the proxy
+			$proxy = new $proxyClassName($this->entityManager);
 			
-			foreach ($dependencies as $dependency) {
-				// Check if the dependency is an instance of OneToOne or ManyToOne
-				if (!($dependency instanceof OneToOne) && !($dependency instanceof ManyToOne)) {
-					// Continue to the next iteration if the dependency is not a OneToMany
-					continue;
-				}
-				
-				// Get the value of the property from the entity
-				$propertyValue = $this->propertyHandler->get($entity, $property);
-				
-				// Add the value to the list of valid dependencies
-				if ($propertyValue === null) {
-					$validDependencies[] = $dependency;
-				}
-			}
+			// Set the primary key on the proxy using the target entity's primary key property name
+			$pk = $this->entityStore->getIdentifierKeys($targetEntityName);
+			$this->propertyHandler->set($proxy, $pk[0], $relationColumnValue);
 			
-			return $validDependencies;
-		}
-		
-		/**
-		 * Filters and returns an array of valid OneToMany dependencies for a given entity and property.
-		 * @param object $entity The entity whose property is being checked.
-		 * @param string $property The name of the entity's property.
-		 * @param array<int, ManyToOne|OneToOne|OneToMany> $dependencies An array of dependencies to filter.
-		 * @return array<int, OneToMany> An array of valid OneToMany dependencies.
-		 */
-		private function filterEmptyOneToManyDependencies(object $entity, string $property, array $dependencies): array {
-			$validDependencies = [];
+			// Put the proxy under ownership
+			$this->entityManager->persist($proxy);
 			
-			foreach ($dependencies as $dependency) {
-				// Check if the dependency is an instance of OneToMany
-				if (!($dependency instanceof OneToMany)) {
-					// Continue to the next iteration if the dependency is not a OneToMany
-					continue;
-				}
-				
-				// Get the value of the property from the entity
-				$propertyValue = $this->propertyHandler->get($entity, $property);
-				
-				// Add the value to the list of valid dependencies
-				if ($propertyValue instanceof Collection && $propertyValue->isEmpty()) {
-					$validDependencies[] = $dependency;
-				}
-			}
-			
-			// Return the array of valid dependencies
-			return $validDependencies;
+			// Return the proxy
+			return $proxy;
 		}
 		
 		/**
@@ -271,26 +240,18 @@
 		}
 		
 		/**
-		 * Sets both OneToOne and ManyToOne relationships for each entity in the given row.
-		 * @param array<int, object> $filteredEntities An array of filtered entities.
-		 * @return void
+		 * Sets ToOne relationships for each entity in one pass:
+		 * resolves directly from the UnitOfWork where possible, otherwise creates a proxy.
+		 * @param array<int, object> $entities
 		 * @throws EntityResolutionException
 		 */
-		private function setDirectRelations(array $filteredEntities): void {
-			foreach ($filteredEntities as $entity) {
+		private function setupToOneRelations(array $entities): void {
+			foreach ($entities as $entity) {
 				// Normalize the entity class name
 				$entityClass = $this->entityStore->resolveProxyClass($entity);
 				
-				// Dependencies
-				$entityDependencies = $this->entityStore->getAllDependencies($entityClass);
-				
-				// Check if there are relationships for the entity class
-				if (empty($entityDependencies)) {
-					continue;
-				}
-				
 				// Iterate through each property and its dependencies in the relationship cache
-				foreach ($entityDependencies as $property => $dependencies) {
+				foreach ($this->entityStore->getAllDependencies($entityClass) as $property => $dependencies) {
 					// Iterate through each dependency of the property
 					foreach ($dependencies as $dependency) {
 						// Check if the dependency is a OneToOne or ManyToOne relationship
@@ -298,38 +259,14 @@
 							continue;
 						}
 						
+						// Try to resolve directly from already-hydrated entities
 						// Process the entity dependency
 						$this->processEntityDependency($entity, $property, $dependency);
-					}
-				}
-			}
-		}
-		
-		/**
-		 * Promotes empty relationships to proxy objects for the given filtered entities.
-		 * This method identifies entity properties that have OneToOne or ManyToOne relationships
-		 * which are currently null, and creates appropriate proxy objects for lazy loading
-		 * those relationships when they are accessed.
-		 * @param array<int, object> $filteredRows The entities that need to be processed
-		 * @return void
-		 * @throws EntityResolutionException
-		 */
-		private function setupProxyRelations(array $filteredRows): void {
-			// Loop through all filtered entities
-			foreach ($filteredRows as $value) {
-				// Get the normalized name of the entity class
-				$objectClass = $this->entityStore->resolveProxyClass($value);
-				
-				// Get all dependencies of the entity class
-				$entityDependencies = $this->entityStore->getAllDependencies($objectClass);
-				
-				// Loop through all properties and their dependencies
-				foreach ($entityDependencies as $property => $dependencies) {
-					// Filter for valid dependencies for the current entity and property.
-					// Valid dependencies are those where the property is currently null.
-					// Create and set a proxy for each valid dependency.
-					foreach ($this->filterValidDependencies($value, $property, $dependencies) as $dependency) {
-						$this->createAndSetProxy($value, $property, $dependency);
+						
+						// If still null, create a lazy-loading proxy
+						if ($this->propertyHandler->get($entity, $property) === null) {
+							$this->createAndSetProxy($entity, $property, $dependency);
+						}
 					}
 				}
 			}
@@ -342,7 +279,7 @@
 		 * @throws QuelException
 		 * @throws EntityResolutionException
 		 */
-		private function setupOneToManyCollections(array $filteredRows): void {
+		private function setupToManyRelations(array $filteredRows): void {
 			// Loop through all filtered rows
 			foreach ($filteredRows as $entity) {
 				// Get the normalized name of the entity class
@@ -353,11 +290,20 @@
 				
 				// Loop through all properties and their dependencies
 				foreach ($entityDependencies as $property => $dependencies) {
-					// Filter empty One-to-Many dependencies for the current value and property
-					$validDependencies = $this->filterEmptyOneToManyDependencies($entity, $property, $dependencies);
-					
-					// Create and set a collection of entities for each valid dependency
-					foreach ($validDependencies as $dependency) {
+					foreach ($dependencies as $dependency) {
+						// We only care about OneToMany here
+						if (!($dependency instanceof OneToMany)) {
+							continue;
+						}
+						
+						// Fetch the property
+						$propertyValue = $this->propertyHandler->get($entity, $property);
+						
+						// Only process properties that currently hold an empty collection
+						if (!($propertyValue instanceof Collection) || !$propertyValue->isEmpty()) {
+							continue;
+						}
+						
 						// Complete short entity names to their full namespace form
 						$targetEntity = $this->entityStore->resolveProxyClass($dependency->getTargetEntity());
 						
@@ -399,120 +345,134 @@
 				}
 			}
 		}
-
+		
 		/**
-		 * Wires already-hydrated related entities back into their parent entity's collection,
-		 * for OneToMany relations where the related entity was explicitly joined in the query.
-		 *
-		 * setupOneToManyCollections() deliberately skips these relations (leaving the collection
-		 * empty) because it assumes the join already produced the data. This method completes
-		 * that contract by scanning the hydrated entity set and populating the collection from it,
-		 * rather than issuing an additional query.
-		 *
+		 * Populates all joined OneToMany collections on a single entity.
+		 * @param object $entity The parent entity whose collections need populating
 		 * @param array<int, object> $entities All hydrated entities from the result set
 		 * @throws EntityResolutionException
 		 * @throws QuelException
 		 */
-		private function wireJoinedCollections(array $entities): void {
-			foreach ($entities as $entity) {
-				// Resolve the real class name in case this is a proxy object
-				$objectClass = $this->entityStore->resolveProxyClass($entity);
-				
-				// Get all annotated relation dependencies for this entity class
-				$entityDependencies = $this->entityStore->getAllDependencies($objectClass);
-				
-				foreach ($entityDependencies as $property => $dependencies) {
-					foreach ($dependencies as $dependency) {
-						// We only care about OneToMany here; OneToOne and ManyToOne
-						// are handled by setDirectRelations and setupProxyRelations
-						if (!($dependency instanceof OneToMany)) {
-							continue;
-						}
-						
-						// Fetch mappedBy
-						$mappedBy = $dependency->getMappedBy();
-						
-						// If not given, skip the dependency
-						if ($mappedBy === null || $mappedBy === '') {
-							continue;
-						}
-						
-						// Resolve the full class name of the related entity
-						$targetEntity = $this->entityStore->resolveProxyClass($dependency->getTargetEntity());
-						
-						// Only handle relations where the related entity was explicitly
-						// joined in the query. If it wasn't requested, setupOneToManyCollections
-						// already set up an EntityCollection for lazy loading instead.
-						if (!$this->wasEntityRequested($objectClass, $targetEntity, $mappedBy)) {
-							continue;
-						}
-						
-						// Determine which property on this entity holds its primary key value.
-						// The OneToMany annotation may specify a relationColumn explicitly;
-						// if not, fall back to the entity's primary key.
-						$relationColumn = $dependency->getRelationColumn() ?? $this->entityStore->getPrimaryKey($entity);
-						
-						if ($relationColumn === null) {
-							continue;
-						}
-						
-						// Read the actual primary key value from this entity instance
-						$parentKeyValue = $this->propertyHandler->get($entity, $relationColumn);
-						
-						// Scan all hydrated entities in the result for candidates that
-						// belong to this parent via the foreign key (mappedBy property)
-						foreach ($entities as $candidate) {
-							// Skip entities that are not of the expected related type
-							if (!($candidate instanceof $targetEntity)) {
-								continue;
-							}
-							
-							// Verify that the candidate's mappedBy property is actually
-							// annotated as a relation pointing back to this parent entity type.
-							// This prevents false matches in schemas where two unrelated entity
-							// types share the same FK property name and overlapping ID values.
-							$candidateClass = $this->entityStore->resolveProxyClass($candidate);
-							$candidateDependencies = $this->entityStore->getAllDependencies($candidateClass);
-							$mappedByDependencies = $candidateDependencies[$mappedBy] ?? [];
-							
-							$pointsToParent = false;
-							
-							foreach ($mappedByDependencies as $mappedByDep) {
-								// The mappedBy property must be a ManyToOne or OneToOne
-								// annotation explicitly referencing the parent entity class
-								if (($mappedByDep instanceof ManyToOne || $mappedByDep instanceof OneToOne) &&
-									$this->entityStore->resolveProxyClass($mappedByDep->getTargetEntity()) === $objectClass
-								) {
-									$pointsToParent = true;
-									break;
-								}
-							}
-							
-							// Skip candidates whose mappedBy property does not explicitly
-							// reference this parent entity type — they belong to a different relation
-							if (!$pointsToParent) {
-								continue;
-							}
-							
-							// Compare the candidate's FK value against the parent's primary key.
-							// Only candidates where these match belong in this collection.
-							$fkValue = $this->propertyHandler->get($candidate, $mappedBy);
-							
-							if ($fkValue !== $parentKeyValue) {
-								continue;
-							}
-							
-							// Add the candidate to the parent's collection, but only if
-							// it isn't already present — avoids duplicates when the same
-							// result set is processed more than once
-							$collection = $this->propertyHandler->get($entity, $property);
-							
-							if ($collection instanceof CollectionInterface && !$collection->contains($candidate)) {
-								$collection->add($candidate);
-							}
-						}
+		private function populateEntityJoinedRelations(object $entity, array $entities): void {
+			// Resolve the real class name in case this is a proxy object
+			$objectClass = $this->entityStore->resolveProxyClass($entity);
+			
+			foreach ($this->entityStore->getAllDependencies($objectClass) as $property => $dependencies) {
+				foreach ($dependencies as $dependency) {
+					// We only care about OneToMany here; OneToOne and ManyToOne
+					// are handled by setupToOneRelations
+					if (!($dependency instanceof OneToMany)) {
+						continue;
 					}
+					
+					$this->populateOneToManyRelation($entity, $objectClass, $property, $dependency, $entities);
 				}
 			}
+		}
+		
+		/**
+		 * Populates a single joined OneToMany collection on an entity from the hydrated entity set.
+		 * Skips the relation if it was not explicitly joined in the query or has no valid relation column.
+		 * @param object $entity The parent entity
+		 * @param string $objectClass The resolved class name of the parent entity
+		 * @param string $property The collection property name
+		 * @param OneToMany $dependency The relation annotation
+		 * @param array<int, object> $entities All hydrated entities from the result set
+		 * @throws EntityResolutionException
+		 * @throws QuelException
+		 */
+		private function populateOneToManyRelation(
+			object    $entity,
+			string    $objectClass,
+			string    $property,
+			OneToMany $dependency,
+			array     $entities
+		): void {
+			// Fetch mappedBy
+			$mappedBy = $dependency->getMappedBy();
+			
+			// If not given, skip the dependency
+			if ($mappedBy === null || $mappedBy === '') {
+				return;
+			}
+			
+			// Resolve the full class name of the related entity
+			$targetEntity = $this->entityStore->resolveProxyClass($dependency->getTargetEntity());
+			
+			// Only handle relations where the related entity was explicitly
+			// joined in the query. If it wasn't requested, setupToManyRelations
+			// already set up an EntityCollection for lazy loading instead.
+			if (!$this->wasEntityRequested($objectClass, $targetEntity, $mappedBy)) {
+				return;
+			}
+			
+			// Determine which property on this entity holds its primary key value.
+			// The OneToMany annotation may specify a relationColumn explicitly;
+			// if not, fall back to the entity's primary key.
+			$relationColumn = $dependency->getRelationColumn() ?? $this->entityStore->getPrimaryKey($entity);
+			
+			if ($relationColumn === null) {
+				return;
+			}
+			
+			// Read the actual primary key value from this entity instance
+			$parentKeyValue = $this->propertyHandler->get($entity, $relationColumn);
+			$collection = $this->propertyHandler->get($entity, $property);
+			
+			// Scan all hydrated entities in the result for candidates that
+			// belong to this parent via the foreign key (mappedBy property)
+			foreach ($entities as $candidate) {
+				// Skip entities that are not of the expected related type
+				if (!($candidate instanceof $targetEntity)) {
+					continue;
+				}
+				
+				// Verify that the candidate's mappedBy property is actually
+				// annotated as a relation pointing back to this parent entity type.
+				// This prevents false matches in schemas where two unrelated entity
+				// types share the same FK property name and overlapping ID values.
+				if (!$this->candidateMapsToParent($candidate, $mappedBy, $objectClass)) {
+					continue;
+				}
+				
+				// Compare the candidate's FK value against the parent's primary key.
+				// Only candidates where these match belong in this collection.
+				if ($this->propertyHandler->get($candidate, $mappedBy) !== $parentKeyValue) {
+					continue;
+				}
+				
+				// Add the candidate to the parent's collection, but only if
+				// it isn't already present — avoids duplicates when the same
+				// result set is processed more than once
+				if ($collection instanceof CollectionInterface && !$collection->contains($candidate)) {
+					$collection->add($candidate);
+				}
+			}
+		}
+		
+		/**
+		 * Returns true if the candidate's mappedBy property is annotated as a relation
+		 * explicitly pointing back to $parentClass. Prevents false matches when two
+		 * unrelated entity types share the same FK property name and overlapping ID values.
+		 * @param object $candidate
+		 * @param string $mappedBy
+		 * @param string $parentClass
+		 * @return bool
+		 * @throws EntityResolutionException
+		 */
+		private function candidateMapsToParent(object $candidate, string $mappedBy, string $parentClass): bool {
+			$candidateClass = $this->entityStore->resolveProxyClass($candidate);
+			$deps = $this->entityStore->getAllDependencies($candidateClass)[$mappedBy] ?? [];
+			
+			foreach ($deps as $dep) {
+				if (
+					($dep instanceof ManyToOne || $dep instanceof OneToOne) &&
+					$this->entityStore->resolveProxyClass($dep->getTargetEntity()) === $parentClass
+				) {
+					return true;
+				}
+			}
+			
+			return false;
 		}
 	}
