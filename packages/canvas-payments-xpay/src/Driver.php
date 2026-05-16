@@ -19,7 +19,7 @@
 		/**
 		 * Driver name
 		 */
-		const DRIVER_NAME = "xpay";
+		const string DRIVER_NAME = "xpay";
 		
 		/**
 		 * Active configuration for this provider, applied by the discovery system after instantiation.
@@ -222,7 +222,7 @@
 			// XPay does not return a separate transaction key — the orderId IS the reference.
 			return new InitiateResult(
 				provider: self::DRIVER_NAME,
-				transactionId: $request->reference,
+				transactionId: $request->reference ?? '',
 				redirectUrl: $hostedPage,
 			);
 		}

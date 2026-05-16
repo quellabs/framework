@@ -32,6 +32,7 @@
 		private const BASE_URL = 'https://xpay.nexigroup.com/api/phoenix-0.0/psp/api/v1';
 		
 		/** @var string XPay Global sandbox API base URL */
+		/** @phpstan-ignore classConstant.unused */
 		private const BASE_URL_TEST = 'https://xpay.nexigroup.com/api/phoenix-0.0/psp/api/v1';
 		
 		/** @var string API key sent in the X-API-KEY header */

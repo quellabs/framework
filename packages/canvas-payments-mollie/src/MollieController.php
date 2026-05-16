@@ -46,7 +46,7 @@
 			
 			// Fetch the current payment state from Mollie using the transaction ID
 			try {
-				$response = $this->mollie->exchange($request->request->get("id") ?? '');
+				$response = $this->mollie->exchange((string)$request->request->get("id"));
 				
 				// Notify listeners (e.g. order management) of the updated payment state
 				$this->signal->emit($response);
