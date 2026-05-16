@@ -9,7 +9,7 @@
 		
 		/**
 		 * Color scheme for syntax highlighting different data types (HTML/hex colors)
-		 * @var array
+		 * @var array<string, string>
 		 */
 		public const HTML_COLORS = [
 			'string'   => '#d14',      // Red for strings
@@ -27,7 +27,7 @@
 		
 		/**
 		 * ANSI color codes for CLI output
-		 * @var array
+		 * @var array<string, string>
 		 */
 		public const ANSI_COLORS = [
 			'string'   => "\033[31m",  // Red
