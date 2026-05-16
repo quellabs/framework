@@ -3,13 +3,13 @@
 	namespace Quellabs\Shipments\Packing;
 	
 	use DVDoug\BoxPacker\Packer;
-	use DVDoug\BoxPacker\Test\TestItem;
-	use DVDoug\BoxPacker\WeightRedistributor;
 	
 	/**
 	 * Calculates the minimum number of boxes needed to ship a set of items,
-	 * with configurable weight ceiling per box and best-effort weight balancing
-	 * across multiple boxes.
+	 * with configurable weight ceiling per box.
+	 *
+	 * BoxPacker v4 handles weight redistribution automatically inside Packer::pack(),
+	 * so no manual WeightRedistributor call is needed.
 	 *
 	 * Requires: dvdoug/boxpacker ^4.0
 	 *
@@ -79,9 +79,11 @@
 		/**
 		 * Run the bin packing algorithm and return a PackingResult.
 		 *
-		 * The packer first finds the geometrically optimal assignment, then
-		 * WeightRedistributor rebalances weight across boxes of the same type
-		 * while respecting each box's maxWeight ceiling.
+		 * BoxPacker v4 automatically redistributes weight across boxes of the same type
+		 * during Packer::pack(), so no second pass is required here.
+		 *
+		 * Items that are too large or heavy for any box in the catalog are collected
+		 * in PackingResult::getUnpackedItems() rather than throwing an exception.
 		 *
 		 * @throws \RuntimeException if no box catalog has been configured.
 		 */
@@ -96,6 +98,9 @@
 			
 			$packer = new Packer();
 			
+			// Do not throw on unpackable items — collect them instead
+			$packer->throwOnUnpackableItem(false);
+			
 			foreach ($this->boxCatalog as $box) {
 				$packer->addBox($box);
 			}
@@ -104,37 +109,33 @@
 				$packer->addItem($item);
 			}
 			
-			// First pass: geometrically optimal packing
+			// Packer::pack() now handles weight redistribution internally (v4)
 			$packed = $packer->pack();
 			
-			// Second pass: redistribute weight across same-size boxes for balance.
-			// WeightRedistributor only moves items between boxes of identical dimensions,
-			// so geometry is preserved while weight is equalised as much as possible.
-			$redistributor = new WeightRedistributor($this->boxCatalog);
-			$balanced      = $redistributor->redistributeWeight($packed);
-			
-			// Map library types back to our own value objects
+			// Map library types back to our own value objects.
+			// PackedBox::$box and PackedItem::$item are readonly public properties in v4.
 			$packedBoxes   = [];
-			$unpackedItems = [];
 			
-			foreach ($balanced as $libPackedBox) {
-				$box   = $libPackedBox->getBox();
+			foreach ($packed as $libPackedBox) {
 				$items = [];
 				
-				foreach ($libPackedBox->getItems() as $packedItem) {
-					$items[] = $packedItem->getItem();
+				foreach ($libPackedBox->items as $packedItem) {
+					$items[] = $packedItem->item;
 				}
 				
 				$packedBoxes[] = new PackedBox(
-					box:         $box,
+					box:         $libPackedBox->box,
 					items:       $items,
 					grossWeight: $libPackedBox->getWeight(),
 				);
 			}
 			
-			// Collect any items the packer could not fit (oversize or overweight for all boxes)
+			// Collect items the packer could not fit (oversize or overweight for all boxes).
+			// Only populated when throwOnUnpackableItem(false) is set.
+			$unpackedItems = [];
+			
 			foreach ($packer->getUnpackedItems() as $unpackedItem) {
-				$unpackedItems[] = $unpackedItem->getItem();
+				$unpackedItems[] = $unpackedItem;
 			}
 			
 			return new PackingResult($packedBoxes, $unpackedItems);

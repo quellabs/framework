@@ -14,8 +14,13 @@
 	
 	class PaymentRouter implements PaymentInterface {
 		
+		/** @var array<string, class-string<PaymentProviderInterface>> */
 		private array $moduleMap = [];
+		
+		/** @var array<string, class-string<PaymentProviderInterface>> */
 		private array $driverMap = [];
+		
+		/** @var Discover Service discovery */
 		private Discover $discover;
 		
 		/**
@@ -82,7 +87,7 @@
 		/**
 		 * Returns payment options for the given module
 		 * @param string $paymentModule
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getPaymentOptions(string $paymentModule): array {
 			return $this->resolve($paymentModule)->getPaymentOptions($paymentModule);
@@ -90,7 +95,7 @@
 		
 		/**
 		 * Returns all registered module names across all discovered providers
-		 * @return array
+		 * @return string[]
 		 */
 		public function getRegisteredModules(): array {
 			return array_keys($this->moduleMap);

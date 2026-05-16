@@ -21,8 +21,13 @@
 	
 	class ShipmentRouter implements ShipmentInterface {
 		
+		/** @var array<string, class-string<ShipmentProviderInterface>> */
 		private array $moduleMap = [];
+		
+		/** @var array<string, class-string<ShipmentProviderInterface>> */
 		private array $driverMap = [];
+		
+		/** @var Discover Service discovery */
 		private Discover $discover;
 		
 		/** @var PackingBox[] Built once from packing.php, reused per pack() call */
@@ -112,7 +117,7 @@
 		 * Returns available home delivery options for the given module.
 		 * @param string $shippingModule
 		 * @param ShipmentAddress|null $address
-		 * @return array
+		 * @return array<int, mixed>
 		 */
 		public function getDeliveryOptions(string $shippingModule, ?ShipmentAddress $address = null): array {
 			return $this->resolve($shippingModule)->getDeliveryOptions($shippingModule, $address);
@@ -122,7 +127,7 @@
 		 * Returns available pickup points for the given module.
 		 * @param string $shippingModule
 		 * @param ShipmentAddress|null $address
-		 * @return array|Contracts\PickupOption[]
+		 * @return array<int, mixed>
 		 */
 		public function getPickupOptions(string $shippingModule, ?ShipmentAddress $address = null): array {
 			return $this->resolve($shippingModule)->getPickupOptions($shippingModule, $address);
@@ -133,7 +138,7 @@
 		 * @param string $shippingModule
 		 * @param string $parcelId
 		 * @return string
-		 * @throws ShipmentLabelException
+		 * @throws \RuntimeException
 		 */
 		public function getLabelUrl(string $shippingModule, string $parcelId): string {
 			return $this->resolve($shippingModule)->getLabelUrl($parcelId);
@@ -141,7 +146,7 @@
 		
 		/**
 		 * Returns all registered module names across all discovered providers.
-		 * @return array
+		 * @return string[]
 		 */
 		public function getRegisteredModules(): array {
 			return array_keys($this->moduleMap);
@@ -182,7 +187,7 @@
 				throw new \RuntimeException("No shipping provider registered for module '{$module}'");
 			}
 			
-			// Try to get the driver
+			// Try to get the provider
 			$result = $this->discover->get($this->moduleMap[$module]);
 			
 			// If that failed, no provider implementation exists.
