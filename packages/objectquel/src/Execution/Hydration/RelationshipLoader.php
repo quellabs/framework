@@ -6,6 +6,7 @@
 	use Quellabs\ObjectQuel\Annotations\Orm\OneToMany;
 	use Quellabs\ObjectQuel\Annotations\Orm\OneToOne;
 	use Quellabs\ObjectQuel\Collections\Collection;
+	use Quellabs\ObjectQuel\Collections\CollectionInterface;
 	use Quellabs\ObjectQuel\Collections\EntityCollection;
 	use Quellabs\ObjectQuel\EntityStore;
 	use Quellabs\ObjectQuel\EntityManager;
@@ -55,6 +56,10 @@
 			
 			// Set up collections for empty OneToMany relations
 			$this->setupOneToManyCollections($entities);
+			
+			// Wire hydrated related entities back into parent collections
+			// for OneToMany relations that were explicitly joined in the query
+			$this->wireJoinedCollections($entities);
 		}
 		
 		/**
@@ -380,15 +385,132 @@
 							continue;
 						}
 						
-						// Create an Entity Collection
+						// Fetch relation column value
 						$primaryKeyValue = $this->propertyHandler->get($entity, $relationColumn);
 						
+						// Create an Entity Collection
 						$proxy = new EntityCollection(
 							$this->entityManager, $targetEntity, $mappedBy,
 							$primaryKeyValue, $dependency->getOrderBy()
 						);
 						
 						$this->propertyHandler->set($entity, $property, $proxy);
+					}
+				}
+			}
+		}
+
+		/**
+		 * Wires already-hydrated related entities back into their parent entity's collection,
+		 * for OneToMany relations where the related entity was explicitly joined in the query.
+		 *
+		 * setupOneToManyCollections() deliberately skips these relations (leaving the collection
+		 * empty) because it assumes the join already produced the data. This method completes
+		 * that contract by scanning the hydrated entity set and populating the collection from it,
+		 * rather than issuing an additional query.
+		 *
+		 * @param array<int, object> $entities All hydrated entities from the result set
+		 * @throws EntityResolutionException
+		 * @throws QuelException
+		 */
+		private function wireJoinedCollections(array $entities): void {
+			foreach ($entities as $entity) {
+				// Resolve the real class name in case this is a proxy object
+				$objectClass = $this->entityStore->resolveProxyClass($entity);
+				
+				// Get all annotated relation dependencies for this entity class
+				$entityDependencies = $this->entityStore->getAllDependencies($objectClass);
+				
+				foreach ($entityDependencies as $property => $dependencies) {
+					foreach ($dependencies as $dependency) {
+						// We only care about OneToMany here; OneToOne and ManyToOne
+						// are handled by setDirectRelations and setupProxyRelations
+						if (!($dependency instanceof OneToMany)) {
+							continue;
+						}
+						
+						// Fetch mappedBy
+						$mappedBy = $dependency->getMappedBy();
+						
+						// If not given, skip the dependency
+						if ($mappedBy === null || $mappedBy === '') {
+							continue;
+						}
+						
+						// Resolve the full class name of the related entity
+						$targetEntity = $this->entityStore->resolveProxyClass($dependency->getTargetEntity());
+						
+						// Only handle relations where the related entity was explicitly
+						// joined in the query. If it wasn't requested, setupOneToManyCollections
+						// already set up an EntityCollection for lazy loading instead.
+						if (!$this->wasEntityRequested($objectClass, $targetEntity, $mappedBy)) {
+							continue;
+						}
+						
+						// Determine which property on this entity holds its primary key value.
+						// The OneToMany annotation may specify a relationColumn explicitly;
+						// if not, fall back to the entity's primary key.
+						$relationColumn = $dependency->getRelationColumn() ?? $this->entityStore->getPrimaryKey($entity);
+						
+						if ($relationColumn === null) {
+							continue;
+						}
+						
+						// Read the actual primary key value from this entity instance
+						$parentKeyValue = $this->propertyHandler->get($entity, $relationColumn);
+						
+						// Scan all hydrated entities in the result for candidates that
+						// belong to this parent via the foreign key (mappedBy property)
+						foreach ($entities as $candidate) {
+							// Skip entities that are not of the expected related type
+							if (!($candidate instanceof $targetEntity)) {
+								continue;
+							}
+							
+							// Verify that the candidate's mappedBy property is actually
+							// annotated as a relation pointing back to this parent entity type.
+							// This prevents false matches in schemas where two unrelated entity
+							// types share the same FK property name and overlapping ID values.
+							$candidateClass = $this->entityStore->resolveProxyClass($candidate);
+							$candidateDependencies = $this->entityStore->getAllDependencies($candidateClass);
+							$mappedByDependencies = $candidateDependencies[$mappedBy] ?? [];
+							
+							$pointsToParent = false;
+							
+							foreach ($mappedByDependencies as $mappedByDep) {
+								// The mappedBy property must be a ManyToOne or OneToOne
+								// annotation explicitly referencing the parent entity class
+								if (($mappedByDep instanceof ManyToOne || $mappedByDep instanceof OneToOne) &&
+									$this->entityStore->resolveProxyClass($mappedByDep->getTargetEntity()) === $objectClass
+								) {
+									$pointsToParent = true;
+									break;
+								}
+							}
+							
+							// Skip candidates whose mappedBy property does not explicitly
+							// reference this parent entity type — they belong to a different relation
+							if (!$pointsToParent) {
+								continue;
+							}
+							
+							// Compare the candidate's FK value against the parent's primary key.
+							// Only candidates where these match belong in this collection.
+							$fkValue = $this->propertyHandler->get($candidate, $mappedBy);
+							
+							if ($fkValue !== $parentKeyValue) {
+								continue;
+							}
+							
+							// Add the candidate to the parent's collection, but only if
+							// it isn't already present — avoids duplicates when the same
+							// result set is processed more than once
+							$collection = $this->propertyHandler->get($entity, $property);
+							
+							if ($collection instanceof CollectionInterface && !$collection->contains($candidate)) {
+								$collection->add($candidate);
+							}
+						}
 					}
 				}
 			}
