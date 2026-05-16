@@ -6,6 +6,8 @@
 	 * This class provides intelligent resolution of PHP class names by analyzing
 	 * the calling context and applying namespace resolution rules similar to how
 	 * PHP itself resolves class names at runtime.
+	 *
+	 * @phpstan-import-type CallingContext from ContextResolver
 	 */
 	class NamespaceResolver {
 		/**
@@ -24,7 +26,7 @@
 		/**
 		 * Cache for enhanced imports to avoid reprocessing use statements
 		 * Key: fully qualified class name -> enhanced import data structure
-		 * @var array<string, array>
+		 * @var array<string, array<string, mixed>>
 		 */
 		private static array $enhancedImportsCache = [];
 		
@@ -44,7 +46,7 @@
 		/**
 		 * Resolve a class name using PHP namespace resolution rules
 		 * @param string $className The class name to resolve.
-		 * @param \ReflectionClass|null $reflection Optional reflection class providing context.
+		 * @param \ReflectionClass<object>|null $reflection Optional reflection class providing context.
 		 *                                          If null, will attempt to determine from call stack
 		 * @return string The resolved fully qualified class name (without leading backslash)
 		 * @throws \InvalidArgumentException If class name is empty string
@@ -106,8 +108,8 @@
 		 * This follows PHP's actual resolution order to ensure consistent behavior
 		 * with how PHP itself would resolve the class name at runtime.
 		 * @param string $className The class name to resolve
-		 * @param array $importsEnhanced Enhanced import data structure with direct mappings
-		 * @param \ReflectionClass $reflection Reflection of the calling class for namespace context
+		 * @param array<string, mixed> $importsEnhanced Enhanced import data structure with direct mappings
+		 * @param \ReflectionClass<object> $reflection Reflection of the calling class for namespace context
 		 * @return string The resolved class name, or original if no resolution found
 		 */
 		private static function applyResolutionStrategies(
@@ -155,7 +157,7 @@
 		 * Handles simple cases where the class name exactly matches a use statement alias.
 		 * This is the most common and highest precedence resolution case.
 		 * @param string $className The class name to resolve (should be simple name, no backslashes)
-		 * @param array $importsEnhanced Enhanced imports array with 'direct' key containing alias->FQCN mappings
+		 * @param array<string, mixed> $importsEnhanced Enhanced imports array with 'direct' key containing alias->FQCN mappings
 		 * @return string|null The resolved FQCN if found, null if no direct match
 		 */
 		private static function resolveDirectImport(string $className, array $importsEnhanced): ?string {
@@ -169,7 +171,7 @@
 		 * 1. A namespace import: use App\Models; → Models\User becomes App\Models\User
 		 * 2. A class alias used as namespace prefix (technically invalid PHP, but we check anyway)
 		 * @param string $className The qualified class name to resolve (contains backslashes)
-		 * @param array $importsEnhanced Enhanced imports array with direct and namespace mappings
+		 * @param array<string, mixed> $importsEnhanced Enhanced imports array with direct and namespace mappings
 		 * @return string|null The resolved FQCN if found, null otherwise
 		 */
 		private static function resolveQualifiedName(string $className, array $importsEnhanced): ?string {
@@ -218,7 +220,7 @@
 		 * Attempts to resolve the class name by prefixing it with the current namespace
 		 * of the calling class. This is PHP's default behavior when no imports match.
 		 * @param string $className The class name to resolve (must be unqualified)
-		 * @param \ReflectionClass $reflection Reflection of the calling class
+		 * @param \ReflectionClass<object> $reflection Reflection of the calling class
 		 * @return string|null The resolved FQCN if class exists in current namespace, null otherwise
 		 */
 		private static function resolveWithCurrentNamespace(string $className, \ReflectionClass $reflection): ?string {
@@ -243,8 +245,8 @@
 		
 		/**
 		 * Get or create reflection context for the calling class
-		 * @param \ReflectionClass|null $reflection Pre-provided reflection or null to auto-detect
-		 * @return \ReflectionClass|null Reflection of the calling class, or null if cannot be determined
+		 * @param \ReflectionClass<object>|null $reflection Pre-provided reflection or null to auto-detect
+		 * @return \ReflectionClass<object>|null Reflection of the calling class, or null if cannot be determined
 		 */
 		private static function getReflectionContext(?\ReflectionClass $reflection): ?\ReflectionClass {
 			// If reflection was provided, use it directly
@@ -257,12 +259,14 @@
 				$context = ContextResolver::getCallingContext();
 				
 				// Ensure we have valid context with a class name
-				if ($context === null || !isset($context['class'])) {
+				if ($context === null || $context['class'] === null) {
 					return null;
 				}
 				
 				// Create reflection from the calling class
-				return new \ReflectionClass($context['class']);
+				/** @var class-string $className */
+				$className = $context['class'];
+				return new \ReflectionClass($className);
 			} catch (\ReflectionException $e) {
 				// Log the error for debugging but don't expose it to caller
 				// In production, you might want to log this to your error handler
@@ -274,8 +278,8 @@
 		/**
 		 * Retrieves and processes the use statements for a given class, caching
 		 * the results to avoid expensive re-parsing on repeated calls.
-		 * @param \ReflectionClass $reflection The class to get imports for
-		 * @return array Enhanced import data structure with direct and namespace mappings
+		 * @param \ReflectionClass<object> $reflection The class to get imports for
+		 * @return array<string, mixed> Enhanced import data structure with direct and namespace mappings
 		 */
 		private static function getEnhancedImports(\ReflectionClass $reflection): array {
 			// Fetch class name from reflection class
@@ -288,11 +292,6 @@
 			
 			// Parse use statements from the source file
 			$imports = UseStatementParser::getImportsForClass($reflection);
-			
-			// Validate imports structure
-			if (!is_array($imports)) {
-				$imports = [];
-			}
 			
 			// Enhance the raw imports for faster resolution
 			$enhanced = self::enhanceImports($imports);
@@ -315,8 +314,8 @@
 		/**
 		 * Converts raw import data from UseStatementParser into optimized data structures
 		 * that enable fast lookups during resolution. Separates class imports from namespace imports.
-		 * @param array $imports Raw imports array from UseStatementParser (alias => FQCN)
-		 * @return array Enhanced structure with 'direct' and 'namespaces' keys.
+		 * @param array<string, string> $imports Raw imports array from UseStatementParser (alias => FQCN)
+		 * @return array<string, mixed> Enhanced structure with 'direct' and 'namespaces' keys.
 		 */
 		private static function enhanceImports(array $imports): array {
 			$result = [
@@ -363,7 +362,7 @@
 		 * to ensure resolution results are cached per calling context.
 		 * Uses hash to prevent collision issues with concatenation.
 		 * @param string $className The class name being resolved
-		 * @param \ReflectionClass|null $reflection The calling context or null for global context
+		 * @param \ReflectionClass<object>|null $reflection The calling context or null for global context
 		 * @return string Unique cache key as hash
 		 */
 		private static function buildCacheKey(string $className, ?\ReflectionClass $reflection): string {
