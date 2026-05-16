@@ -3,6 +3,7 @@
 	namespace Quellabs\Support;
 	
 	use Quellabs\Support\Debugger\Renderers\RendererFactory;
+	use Quellabs\Support\Debugger\Renderers\RendererInterface;
 	
 	/**
 	 * CanvasDebugger - A sophisticated debugging utility for PHP
@@ -10,6 +11,8 @@
 	 * Provides enhanced variable dumping with collapsible HTML output for web contexts
 	 * and colored terminal output for CLI environments. Offers better visualization
 	 * than standard var_dump() with syntax highlighting and interactive features.
+	 *
+	 * @phpstan-import-type CallLocation from RendererInterface
 	 */
 	class CanvasDebugger {
 		
@@ -55,7 +58,7 @@
 			// Use specialized renderers that provide enhanced formatting for each context
 			$renderer = RendererFactory::create(php_sapi_name());
 			$renderer->setCallLocation($callLocation);
-			$renderer->render($vars);
+			$renderer->render(array_values($vars));
 		}
 		
 		/**
@@ -77,7 +80,7 @@
 				
 				$renderer = RendererFactory::create(php_sapi_name());
 				$renderer->setCallLocation($callLocation);
-				$renderer->render($vars);
+				$renderer->render(array_values($vars));
 				
 				if (php_sapi_name() !== 'cli') {
 					ob_end_flush();
@@ -101,7 +104,7 @@
 		/**
 		 * Get stack trace information for where dump was called
 		 * THIS IS CALLED FROM THE ENTRY POINT, not from renderers
-		 * @return array Stack trace info with file, line, function details
+		 * @return CallLocation
 		 */
 		private static function getCallLocation(): array {
 			// Get the full stack trace without arguments to save memory
@@ -112,7 +115,7 @@
 				$frame = $trace[$i];
 				
 				// Look for the d() or dd() function call in the current frame
-				if (isset($frame['function']) && in_array($frame['function'], ['d', 'dd'])) {
+				if (in_array($frame['function'], ['d', 'dd'])) {
 					// The frame that shows d() contains the file/line where d() was called
 					if (isset($frame['file']) && isset($frame['line'])) {
 						// But we need to get the class/method context from the next frame
@@ -148,7 +151,7 @@
 				}
 				
 				// Skip the d() and dd() helper functions themselves
-				if (isset($frame['function']) && in_array($frame['function'], ['d', 'dd'])) {
+				if (in_array($frame['function'], ['d', 'dd'])) {
 					continue;
 				}
 				
@@ -156,7 +159,7 @@
 				return [
 					'file'     => $frame['file'],
 					'line'     => $frame['line'],
-					'function' => $frame['function'] ?? 'unknown',
+					'function' => $frame['function'],
 					'class'    => $frame['class'] ?? null,
 					'type'     => $frame['type'] ?? null
 				];

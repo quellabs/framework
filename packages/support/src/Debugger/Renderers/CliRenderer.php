@@ -11,7 +11,7 @@
 		
 		/**
 		 * Render multiple variables for CLI output
-		 * @param array $vars Variables to render
+		 * @param array<int, mixed> $vars Variables to render
 		 */
 		public function render(array $vars): void {
 			// Get call location
@@ -53,7 +53,7 @@
 		 * Render string values with color coding, length display, and truncation handling
 		 * @param string $value The string value to render
 		 * @param string|null $key Optional key name (for array/object properties)
-		 * @param array $context Rendering context (inline mode, depth, etc.)
+		 * @param array<string, mixed> $context Rendering context (inline mode, depth, etc.)
 		 */
 		protected function renderString(string $value, ?string $key = null, array $context = []): void {
 			// Display the key name if this string is part of an array or object property
@@ -87,7 +87,7 @@
 		 * Render integer values with color coding for CLI output
 		 * @param int $value The integer value to render
 		 * @param string|null $key Optional key name (for array/object properties)
-		 * @param array $context Rendering context (inline mode, depth, etc.)
+		 * @param array<string, mixed> $context Rendering context (inline mode, depth, etc.)
 		 */
 		protected function renderInteger(int $value, ?string $key = null, array $context = []): void {
 			// Display the key name if this integer is part of an array or object property
@@ -105,7 +105,7 @@
 		 * Render float values with color coding for CLI output
 		 * @param float $value The float/double value to render
 		 * @param string|null $key Optional key name (for array/object properties)
-		 * @param array $context Rendering context (inline mode, depth, etc.)
+		 * @param array<string, mixed> $context Rendering context (inline mode, depth, etc.)
 		 */
 		protected function renderFloat(float $value, ?string $key = null, array $context = []): void {
 			// Display the key name if this float is part of an array or object property
@@ -124,7 +124,7 @@
 		 * Render boolean values with color coding for CLI output
 		 * @param bool $value The boolean value to render (true or false)
 		 * @param string|null $key Optional key name (for array/object properties)
-		 * @param array $context Rendering context (inline mode, depth, etc.)
+		 * @param array<string, mixed> $context Rendering context (inline mode, depth, etc.)
 		 */
 		protected function renderBoolean(bool $value, ?string $key = null, array $context = []): void {
 			// Display the key name if this boolean is part of an array or object property
@@ -143,7 +143,7 @@
 		 * Render null values with color coding for CLI output
 		 * @param null $value The null value to render (always null by type hint)
 		 * @param string|null $key Optional key name (for array/object properties)
-		 * @param array $context Rendering context (inline mode, depth, etc.)
+		 * @param array<string, mixed> $context Rendering context (inline mode, depth, etc.)
 		 */
 		protected function renderNull(null $value, ?string $key = null, array $context = []): void {
 			// Display the key name if this null is part of an array or object property
@@ -162,7 +162,7 @@
 		 * Render resource values with type information and color coding for CLI output
 		 * @param resource $value The resource value to render (file handle, database connection, etc.)
 		 * @param string|null $key Optional key name (for array/object properties)
-		 * @param array $context Rendering context (inline mode, depth, etc.)
+		 * @param array<string, mixed> $context Rendering context (inline mode, depth, etc.)
 		 */
 		protected function renderResource($value, ?string $key = null, array $context = []): void {
 			// Display the key name if this resource is part of an array or object property
@@ -180,9 +180,9 @@
 		
 		/**
 		 * Render arrays for CLI output with proper formatting, indentation, and truncation handling
-		 * @param array $value The array to render
+		 * @param array<mixed> $value The array to render
 		 * @param string|null $key Optional key name (for nested arrays/object properties)
-		 * @param array $context Rendering context (inline mode, depth, etc.)
+		 * @param array<string, mixed> $context Rendering context (inline mode, depth, etc.)
 		 */
 		protected function renderArray(array $value, ?string $key = null, array $context = []): void {
 			// Get the total number of elements in the array for display and truncation logic
@@ -249,7 +249,7 @@
 		 * Render objects for CLI output with class info, properties, and circular reference handling
 		 * @param object $value The object instance to render
 		 * @param string|null $key Optional key name (for nested objects/array elements)
-		 * @param array $context Rendering context (inline mode, depth, etc.)
+		 * @param array<string, mixed> $context Rendering context (inline mode, depth, etc.)
 		 */
 		protected function renderObject(object $value, ?string $key = null, array $context = []): void {
 			// Get the fully qualified class name for identification
@@ -367,7 +367,7 @@
 		 * Handles edge cases where PHP introduces new types or unexpected data structures
 		 * @param mixed $value The value of unknown/unsupported type
 		 * @param string|null $key Optional key name (for nested structures)
-		 * @param array $context Rendering context (inline mode, depth, etc.)
+		 * @param array<string, mixed> $context Rendering context (inline mode, depth, etc.)
 		 */
 		protected function renderUnknownType(mixed $value, string $key = null, array $context = []): void {
 			// Display the key name if this unknown type is part of a parent structure
@@ -391,7 +391,7 @@
 		 * This ensures consistent visual hierarchy in nested structures
 		 * @param mixed $value The value about to be rendered
 		 * @param string|null $key Optional key name (for nested structures)
-		 * @param array $context Rendering context (inline mode, depth, etc.)
+		 * @param array<string, mixed> $context Rendering context (inline mode, depth, etc.)
 		 */
 		protected function beforeRenderValue(mixed $value, ?string $key = null, array $context = []): void {
 			// Check if we're NOT in inline rendering mode (block mode needs indentation)
@@ -428,7 +428,7 @@
 		/**
 		 * Helper: Add newline if not inline with context-aware formatting
 		 * Controls line breaks based on rendering context to support both compact and expanded display modes
-		 * @param array $context Rendering context containing formatting flags
+		 * @param array<string, mixed> $context Rendering context containing formatting flags
 		 */
 		private function newLineIfNotInline(array $context): void {
 			// Check if we're in inline rendering mode (used for compact array/object display)

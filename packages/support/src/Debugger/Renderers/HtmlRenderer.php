@@ -8,6 +8,7 @@
 	
 	/**
 	 * HTML renderer for web output - Now properly utilizing BaseRenderer
+	 * @phpstan-import-type CallLocation from RendererInterface
 	 */
 	class HtmlRenderer extends BaseRenderer {
 		
@@ -19,7 +20,7 @@
 		
 		/**
 		 * Render multiple variables for HTML output
-		 * @param array $vars Variables to render
+		 * @param array<int, mixed> $vars Variables to render
 		 */
 		public function render(array $vars): void {
 			// Initialize type renderers
@@ -63,7 +64,7 @@
 		 * Render string values with proper HTML formatting and metadata
 		 * @param string $value The string value to render
 		 * @param string|null $key Optional key name if this string is part of a key-value pair
-		 * @param array $context Rendering context options (e.g., inline mode, depth level)
+		 * @param array<string, mixed> $context Rendering context options (e.g., inline mode, depth level)
 		 */
 		protected function renderString(string $value, ?string $key = null, array $context = []): void {
 			// Render the key name if one was provided (for associative arrays/objects)
@@ -97,7 +98,7 @@
 		 * Render integer values with proper HTML formatting and syntax highlighting
 		 * @param int $value The integer value to display
 		 * @param string|null $key Optional key name if this integer is part of a key-value pair
-		 * @param array $context Rendering context options (e.g., inline mode, depth level)
+		 * @param array<string, mixed> $context Rendering context options (e.g., inline mode, depth level)
 		 */
 		protected function renderInteger(int $value, ?string $key = null, array $context = []): void {
 			// Render the key name if one was provided (for associative arrays/objects)
@@ -115,7 +116,7 @@
 		 * Render float values with proper HTML formatting and syntax highlighting
 		 * @param float $value The floating-point number to display
 		 * @param string|null $key Optional key name if this float is part of a key-value pair
-		 * @param array $context Rendering context options (e.g., inline mode, depth level)
+		 * @param array<string, mixed> $context Rendering context options (e.g., inline mode, depth level)
 		 */
 		protected function renderFloat(float $value, ?string $key = null, array $context = []): void {
 			// Render the key name if one was provided (for associative arrays/objects)
@@ -134,7 +135,7 @@
 		 * Render boolean values with proper HTML formatting and syntax highlighting
 		 * @param bool $value The boolean value to display (true or false)
 		 * @param string|null $key Optional key name if this boolean is part of a key-value pair
-		 * @param array $context Rendering context options (e.g., inline mode, depth level)
+		 * @param array<string, mixed> $context Rendering context options (e.g., inline mode, depth level)
 		 */
 		protected function renderBoolean(bool $value, ?string $key = null, array $context = []): void {
 			// Render the key name if one was provided (for associative arrays/objects)
@@ -153,7 +154,7 @@
 		 * Render null values with proper HTML formatting and syntax highlighting
 		 * @param null $value The null value (parameter is purely for consistency with other render methods)
 		 * @param string|null $key Optional key name if this null is part of a key-value pair
-		 * @param array $context Rendering context options (e.g., inline mode, depth level)
+		 * @param array<string, mixed> $context Rendering context options (e.g., inline mode, depth level)
 		 */
 		protected function renderNull($value, ?string $key = null, array $context = []): void {
 			// Render the key name if one was provided (for associative arrays/objects)
@@ -172,7 +173,7 @@
 		 * Render resource values with proper HTML formatting and type information
 		 * @param resource $value The resource handle to display (e.g., file handle, curl handle, etc.)
 		 * @param string|null $key Optional key name if this resource is part of a key-value pair
-		 * @param array $context Rendering context options (e.g., inline mode, depth level)
+		 * @param array<string, mixed> $context Rendering context options (e.g., inline mode, depth level)
 		 */
 		protected function renderResource($value, ?string $key = null, array $context = []): void {
 			// Render the key name if one was provided (for associative arrays/objects)
@@ -189,9 +190,9 @@
 		
 		/**
 		 * Render arrays with collapsible HTML interface and truncation support
-		 * @param array $value The array to display with all its elements
+		 * @param array<mixed> $value The array to display with all its elements
 		 * @param string|null $key Optional key name if this array is part of a key-value pair
-		 * @param array $context Rendering context options (e.g., inline mode, depth level)
+		 * @param array<string, mixed> $context Rendering context options (e.g., inline mode, depth level)
 		 */
 		protected function renderArray(array $value, ?string $key = null, array $context = []): void {
 			// Get array size and generate unique ID for collapsible functionality
@@ -262,7 +263,7 @@
 		 * Render objects with HTML formatting, property visibility, and collapsible interface
 		 * @param object $value The object instance to display with all its properties
 		 * @param string|null $key Optional key name if this object is part of a key-value pair
-		 * @param array $context Rendering context options (e.g., inline mode, depth level)
+		 * @param array<string, mixed> $context Rendering context options (e.g., inline mode, depth level)
 		 */
 		protected function renderObject(object $value, ?string $key = null, array $context = []): void {
 			// Get object metadata for display
@@ -393,7 +394,7 @@
 		 * This method handles edge cases where PHP introduces new types or unexpected values
 		 * @param mixed $value The value of unknown/unsupported type to display
 		 * @param string|null $key Optional key name if this unknown type is part of a key-value pair
-		 * @param array $context Rendering context options (e.g., inline mode, depth level)
+		 * @param array<string, mixed> $context Rendering context options (e.g., inline mode, depth level)
 		 */
 		protected function renderUnknownType(mixed $value, ?string $key = null, array $context = []): void {
 			// Render the key name if one was provided (for associative arrays/objects)
@@ -416,7 +417,7 @@
 		 * This method is called before any value is rendered to set up proper HTML structure
 		 * @param mixed $value The value about to be rendered (used for type checking)
 		 * @param string|null $key Optional key name if this value is part of a key-value pair
-		 * @param array $context Rendering context options (e.g., inline mode, depth level)
+		 * @param array<string, mixed> $context Rendering context options (e.g., inline mode, depth level)
 		 */
 		protected function beforeRenderValue(mixed $value, ?string $key = null, array $context = []): void {
 			// Determine if we need to create a new line container div
@@ -432,7 +433,7 @@
 		
 		/**
 		 * Render call location information in HTML
-		 * @param array $location Call location details
+		 * @param CallLocation $location Call location details
 		 */
 		private function renderCallLocation(array $location): void {
 			echo '<div class="canvas-dump-location">';
@@ -471,7 +472,7 @@
 		/**
 		 * Helper: Close line div if not in inline rendering mode
 		 * This method manages HTML structure based on the rendering context
-		 * @param array $context Rendering context containing display mode information
+		 * @param array<string, mixed> $context Rendering context containing display mode information
 		 */
 		private function closeLineIfNotInline(array $context): void {
 			// Check if we're in inline mode (used for compact display within other elements)

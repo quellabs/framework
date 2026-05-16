@@ -2,6 +2,8 @@
 	
 	namespace Quellabs\Support;
 	
+	use ReflectionClass;
+	
 	/**
 	 * Class UseStatementParser
 	 * Parses PHP use statements from a class using reflection
@@ -15,10 +17,10 @@
 		
 		/**
 		 * Get all imported class aliases from use statements in the given class
-		 * @param \ReflectionClass $class
+		 * @param ReflectionClass<object> $class
 		 * @return array<string, string> Map of aliases to fully qualified class names
 		 */
-		public static function getImportsForClass(\ReflectionClass $class): array {
+		public static function getImportsForClass(ReflectionClass $class): array {
 			// Get class name using refection
 			$className = $class->getName();
 			
@@ -37,10 +39,10 @@
 		
 		/**
 		 * Parse use statements from a class file using a direct regex approach
-		 * @param \ReflectionClass $class The reflection class to analyze
+		 * @param ReflectionClass<object> $class The reflection class to analyze
 		 * @return array<string, string> Map of aliases to fully qualified class names
 		 */
-		private static function parseUseStatements(\ReflectionClass $class): array {
+		private static function parseUseStatements(ReflectionClass $class): array {
 			// Skip for classes defined in PHP core (e.g., stdClass, Exception)
 			// Internal classes don't have source files and therefore no use statements
 			if ($class->isInternal()) {
@@ -103,7 +105,7 @@
 		/**
 		 * Parse a single use statement (non-grouped)
 		 * @param string $useStatement The use statement to parse
-		 * @param array &$imports Reference to the imports array to populate
+		 * @param array<string, string> &$imports Reference to the imports array to populate
 		 * @return void
 		 */
 		private static function parseSingleUseStatement(string $useStatement, array &$imports): void {
@@ -124,7 +126,7 @@
 		/**
 		 * Parse a grouped use statement (with curly braces)
 		 * @param string $useStatement The grouped use statement to parse
-		 * @param array &$imports Reference to the imports array to populate
+		 * @param array<string, string> &$imports Reference to the imports array to populate
 		 * @return void
 		 */
 		private static function parseGroupedUseStatement(string $useStatement, array &$imports): void {

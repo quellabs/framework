@@ -10,6 +10,8 @@
 	 * This abstract base class provides a foundation for creating custom debug output renderers.
 	 * It implements the Template Method pattern, allowing concrete renderers to override specific
 	 * behaviors while maintaining consistent core functionality.
+	 *
+	 * @phpstan-import-type CallLocation from RendererInterface
 	 */
 	class BaseRenderer implements RendererInterface {
 		
@@ -33,13 +35,13 @@
 		
 		/**
 		 * Track processed objects to detect circular references
-		 * @var array
+		 * @var array<int, int>
 		 */
 		protected array $processedObjects = [];
 		
 		/**
 		 * Call location information
-		 * @var array|null
+		 * @var CallLocation|null
 		 */
 		protected ?array $callLocation = null;
 		
@@ -55,7 +57,7 @@
 		 * - showMethods: Whether to display object methods (not implemented in base)
 		 * - showConstants: Whether to display class constants (not implemented in base)
 		 *
-		 * @var array
+		 * @var array<string, mixed>
 		 */
 		protected array $config = [
 			'maxDepth'                => 10,
@@ -69,13 +71,13 @@
 		
 		/**
 		 * Type rendering strategies - to be implemented by concrete renderers
-		 * @var array
+		 * @var array<string, callable>
 		 */
 		protected array $typeRenderers = [];
 		
 		/**
 		 * Main render method - entry point for rendering variables
-		 * @param array $vars Variables to render - can be any PHP data types
+		 * @param array<int, mixed> $vars Variables to render - can be any PHP data types
 		 */
 		public function render(array $vars): void {
 			// Initialize the type-specific renderers
@@ -90,7 +92,7 @@
 		
 		/**
 		 * Set the call location (called from CanvasDebugger)
-		 * @param array $callLocation Call location info
+		 * @param CallLocation $callLocation Call location info
 		 */
 		public function setCallLocation(array $callLocation): void {
 			$this->callLocation = $callLocation;
@@ -98,7 +100,7 @@
 		
 		/**
 		 * Get call location info
-		 * @return array Call location details
+		 * @return CallLocation
 		 */
 		protected function getCallLocation(): array {
 			return $this->callLocation ?? [
@@ -114,7 +116,7 @@
 		 * Render a single value - core of the Template Method pattern
 		 * @param mixed $value The value to render (any PHP type)
 		 * @param string|null $key Optional key name (for array elements, object properties)
-		 * @param array $context Additional context information for specialized rendering
+		 * @param array<string, mixed> $context Additional context information for specialized rendering
 		 */
 		protected function renderValue(mixed $value, ?string $key = null, array $context = []): void {
 			// Allow subclasses to perform setup before rendering
@@ -350,7 +352,7 @@
 		
 		/**
 		 * Check if array should be truncated
-		 * @param array $array The array to check
+		 * @param array<mixed> $array The array to check
 		 * @return bool True if the array should be truncated
 		 */
 		protected function shouldTruncateArray(array $array): bool {
@@ -359,8 +361,8 @@
 		
 		/**
 		 * Get truncated array for display
-		 * @param array $array The array to truncate
-		 * @return array First N elements of the original array
+		 * @param array<mixed> $array The array to truncate
+		 * @return array<mixed> First N elements of the original array
 		 */
 		protected function getTruncatedArray(array $array): array {
 			$maxElements = $this->getConfig('maxArrayElements');
@@ -387,9 +389,9 @@
 		
 		/**
 		 * Default array renderer
-		 * @param array $value The array to render
+		 * @param array<mixed> $value The array to render
 		 * @param string|null $key The key this array is stored under (if any)
-		 * @param array $context Additional context information
+		 * @param array<string, mixed> $context Additional context information
 		 */
 		protected function renderArrayDefault(array $value, ?string $key = null, array $context = []): void {
 			// Show the key (if present) and array size
@@ -416,9 +418,9 @@
 		 * Default object renderer
 		 * @param object $value The object to render
 		 * @param string|null $key The key this object is stored under (if any)
-		 * @param array $context Additional context information
+		 * @param array<string, mixed> $context Additional context information
 		 */
-		protected function renderObjectDefault(object $value, $key = null, array $context = []): void {
+		protected function renderObjectDefault(object $value, ?string $key = null, array $context = []): void {
 			$className = get_class($value);
 			$objectId = spl_object_id($value);
 			
@@ -452,7 +454,7 @@
 		
 		/**
 		 * Format the call location for display
-		 * @param array $location Call location info
+		 * @param CallLocation $location Call location info
 		 * @return string Formatted location string
 		 */
 		protected function formatCallLocation(array $location): string {
@@ -511,7 +513,7 @@
 		 * Render unknown type
 		 * @param mixed $value The value of unknown type
 		 * @param string|null $key The key this value is stored under (if any)
-		 * @param array $context Additional context information
+		 * @param array<string, mixed> $context Additional context information
 		 */
 		protected function renderUnknownType(mixed $value, ?string $key = null, array $context = []): void {
 			echo "unknown(" . gettype($value) . ")";
@@ -523,7 +525,7 @@
 		 * Called before rendering a value
 		 * @param mixed $value The value about to be rendered
 		 * @param string|null $key The key this value is stored under (if any)
-		 * @param array $context Additional context information
+		 * @param array<string, mixed> $context Additional context information
 		 */
 		protected function beforeRenderValue(mixed $value, ?string $key = null, array $context = []): void {
 			// Override in concrete classes if needed
@@ -533,7 +535,7 @@
 		 * Called after rendering a value
 		 * @param mixed $value The value that was just rendered
 		 * @param string|null $key The key this value was stored under (if any)
-		 * @param array $context Additional context information
+		 * @param array<string, mixed> $context Additional context information
 		 */
 		protected function afterRenderValue(mixed $value, ?string $key = null, array $context = []): void {
 			// Override in concrete classes if needed
