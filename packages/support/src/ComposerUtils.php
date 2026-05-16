@@ -14,7 +14,7 @@
 		
 		/**
 		 * Cache of parsed composer.json files
-		 * @var array<string, array|null>
+		 * @var array<string, array<string, mixed>|null>
 		 */
 		private static array $composerJsonCache = [];
 		
@@ -483,7 +483,9 @@
 			// Iterate through all registered PSR-4 namespace prefixes
 			foreach ($prefixesPsr4 as $prefix => $dirs) {
 				// A single namespace prefix may map to multiple directories
-				foreach ($dirs as $psr4Dir) {
+				$dirList = is_array($dirs) ? $dirs : [$dirs];
+				
+				foreach ($dirList as $psr4Dir) {
 					// Skip empty or invalid directories
 					if (empty($psr4Dir)) {
 						continue;
@@ -540,7 +542,7 @@
 		/**
 		 * Parses a composer.json file with caching
 		 * @param string $path Path to composer.json
-		 * @return array|null Parsed composer.json as array or null on failure
+		 * @return array<string, mixed>|null Parsed composer.json as array or null on failure
 		 */
 		private static function parseComposerJson(string $path): ?array {
 			// Return cached result if available
@@ -561,7 +563,7 @@
 		/**
 		 * Parses a composer.json file without caching
 		 * @param string $path Path to composer.json
-		 * @return array|null Parsed composer.json as array or null on failure
+		 * @return array<string, mixed>|null Parsed composer.json as array or null on failure
 		 */
 		private static function parseComposerJsonWithoutCache(string $path): ?array {
 			// Attempt to read the file at the given path
@@ -680,7 +682,7 @@
 			$currentDir = $resolvedDir;
 			
 			// Continue searching until we reach filesystem root or find composer.json
-			while ($currentDir !== false) {
+			while (true) {
 				// Construct the potential path to composer.json in the current directory
 				$composerPath = $currentDir . DIRECTORY_SEPARATOR . 'composer.json';
 				

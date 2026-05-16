@@ -10,6 +10,7 @@
 		
 		/**
 		 * Words that don't change between singular and plural forms
+		 * @var array<int, string>
 		 */
 		private static array $uncountable = [
 			'equipment', 'information', 'rice', 'money', 'species', 'series',
@@ -21,11 +22,13 @@
 		
 		/**
 		 * Cached reverse lookup of $irregular (plural => singular)
+		 * @var array<string, string>|null
 		 */
 		private static ?array $irregularFlipped = null;
 
 		/**
 		 * Returns the flipped $irregular array, computing it once and caching it.
+		 * @return array<string, string>
 		 */
 		private static function getIrregularFlipped(): array {
 			return self::$irregularFlipped ??= array_flip(self::$irregular);
@@ -33,6 +36,7 @@
 
 		/**
 		 * Irregular singular to plural mappings
+		 * @var array<string, string>
 		 */
 		private static array $irregular = [
 			'man'        => 'men',
@@ -124,6 +128,7 @@
 		 * Note: Latin -um -> -a is NOT applied as a general rule because it
 		 * breaks common English words (album, forum, museum). Only datum/medium
 		 * are handled, via $irregular.
+		 * @var array<string, string>
 		 */
 		private static array $pluralRules = [
 			'/([^aeiou])y$/i'            => '$1ies',    // city -> cities
@@ -149,6 +154,7 @@
 		 * Note: -ves words are handled via $irregular (reverse lookup) to avoid
 		 * the knife->knif vs wolf->wolfe ambiguity. The /ves$/ rule below is a
 		 * fallback for unlisted words and uses 'fe' as the safer default.
+		 * @var array<string, string>
 		 */
 		private static array $singularRules = [
 			'/ies$/i'                    => 'y',         // cities -> city
@@ -204,7 +210,7 @@
 				$result = preg_replace($pattern, $replacement, $word, 1, $count);
 				
 				if ($count > 0) {
-					return $result;
+					return $result ?? $word;
 				}
 			}
 			
@@ -244,7 +250,7 @@
 				$result = preg_replace($pattern, $replacement, $word, 1, $count);
 				
 				if ($count > 0) {
-					return $result;
+					return $result ?? $word;
 				}
 			}
 			
@@ -313,7 +319,8 @@
 		 * @return string Lowercase snake_case string
 		 */
 		public static function snakeCase(string $string): string {
-			return strtolower(preg_replace(['/([a-z\d])([A-Z])/', '/([^_])([A-Z][a-z])/'], '$1_$2', $string));
+			$result = preg_replace(['/([a-z\d])([A-Z])/', '/([^_])([A-Z][a-z])/'], '$1_$2', $string);
+			return strtolower($result ?? $string);
 		}
 		
 		/**

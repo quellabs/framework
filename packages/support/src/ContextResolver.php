@@ -2,12 +2,20 @@
 	
 	namespace Quellabs\Support;
 	
+	/**
+	 * @phpstan-type CallingContext array{
+	 *     file: string,
+	 *     class: string|null,
+	 *     function: string,
+	 *     line: int|null
+	 * }
+	 */
 	class ContextResolver {
 		
-		/** @var array Cache for calling context information to improve performance */
+		/** @var array<string, CallingContext> Cache for calling context information to improve performance */
 		private static array $contextCache = [];
 		
-		/** @var array Framework namespaces to exclude when finding calling context */
+		/** @var array<int, string> Framework namespaces to exclude when finding calling context */
 		private static array $excludedNamespaces = [
 			// Canvas ecosystem
 			'Quellabs\\',
@@ -81,7 +89,7 @@
 		 * Analyzes the call stack to find the first frame that's not part of any
 		 * excluded framework namespace, which represents the actual application code
 		 * that initiated the class name resolution.
-		 * @return array|null Array containing file, class, function, and line information, or null if not found
+		 * @return CallingContext|null Array containing file, class, function, and line information, or null if not found
 		 */
 		public static function getCallingContext(): ?array {
 			// Get call stack trace (limit to 50 frames for performance, ignore function arguments)
@@ -108,10 +116,10 @@
 				$fileName = self::getFileName($className, $frame['file'] ?? 'unknown');
 				
 				return self::$contextCache[$cacheKey] = [
-					'file'     => $fileName,                       // Source file path
-					'class'    => $className,                      // Fully qualified class name (can be null)
-					'function' => $frame['function'] ?? null,      // Method name that made the call
-					'line'     => $frame['line'] ?? null           // Line number of the call
+					'file'     => $fileName,                   // Source file path
+					'class'    => $className,                  // Fully qualified class name (can be null)
+					'function' => $frame['function'],          // Method name that made the call
+					'line'     => $frame['line'] ?? null       // Line number of the call
 				];
 			}
 			
@@ -144,6 +152,7 @@
 		private static function getFileName(?string $className, string $default): string {
 			try {
 				if ($className !== null) {
+					/** @var class-string $className */
 					$reflection = new \ReflectionClass($className);
 					return $reflection->getFileName() ?: $default;
 				}

@@ -329,7 +329,7 @@
 			$timestampHex = substr($uuid, 0, 12);
 			
 			// Convert hex to dec and return timestamp
-			return hexdec($timestampHex);
+			return (int) hexdec($timestampHex);
 		}
 		
 		/**
