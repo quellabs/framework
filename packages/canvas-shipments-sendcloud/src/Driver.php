@@ -23,7 +23,7 @@
 		 * Driver name — stored in ShipmentResult::$provider and ShipmentState::$provider.
 		 * Used by ShipmentRouter::exchange() to re-resolve this driver later.
 		 */
-		const DRIVER_NAME = 'sendcloud';
+		const string DRIVER_NAME = 'sendcloud';
 		
 		/**
 		 * Active configuration, applied by the discovery system after instantiation.
@@ -166,7 +166,7 @@
 					'to_service_point'     => $request->servicePointId,
 					'request_label'        => false,
 					'apply_shipping_rules' => true,
-				], fn($v) => $v !== null && $v !== '' && $v !== []),
+				], fn($v) => $v !== null && $v !== ''),
 			];
 			
 			// Merge extra data into payload

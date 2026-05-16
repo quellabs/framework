@@ -24,7 +24,7 @@
 		 * Driver name — stored in ShipmentResult::$provider and ShipmentState::$provider.
 		 * Used by ShipmentRouter::exchange() to re-resolve this driver later.
 		 */
-		const DRIVER_NAME = 'dhl';
+		const string DRIVER_NAME = 'dhl';
 		
 		/**
 		 * Active configuration, applied by the discovery system after instantiation.
@@ -591,7 +591,7 @@
 					'street'      => $sender['street'] ?? '',
 					'number'      => $sender['number'] ?? '',
 					'isBusiness'  => !empty($sender['company']),
-				], fn($v) => $v !== null && $v !== ''),
+				], fn($v) => $v !== false && $v !== ''),
 			];
 			
 			if (!empty($sender['email'])) {

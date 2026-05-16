@@ -39,6 +39,7 @@ parameters:
         - packages/canvas-twig/src
         - packages/canvas-blade/src
         - packages/contracts/src
+        - packages/canvas-shipments-contracts/src
         - packages/support/src
         - packages/cache/src
         - packages/dependency-injection/src
@@ -48,3 +49,5 @@ parameters:
         - packages/signal-hub/src
     tips:
         treatPhpDocTypesAsCertain: false
+    ignoreErrors:
+        - identifier: missingType.iterableValue

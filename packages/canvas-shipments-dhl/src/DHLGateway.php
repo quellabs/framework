@@ -237,10 +237,10 @@
 		 * A 60-second safety margin is applied so tokens are refreshed before they
 		 * actually expire, preventing races on slow networks.
 		 *
-		 * @return string
+		 * @return string|null
 		 * @throws \RuntimeException when authentication fails
 		 */
-		private function getValidToken(): string {
+		private function getValidToken(): ?string {
 			$now = time();
 			$safetyMarginSeconds = 60;
 			

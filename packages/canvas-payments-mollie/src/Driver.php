@@ -20,7 +20,7 @@
 		/**
 		 * Driver name
 		 */
-		const DRIVER_NAME = "mollie";
+		const string DRIVER_NAME = "mollie";
 		
 		/**
 		 * Active configuration for this provider, applied by the discovery system after instantiation.
@@ -387,6 +387,6 @@
 				'country'          => $address->country,
 				'email'            => $address->email,
 				'phone'            => $address->phone,
-			], [$this, 'notNull']);
+			], fn($v) => $v !== null);
 		}
 	}

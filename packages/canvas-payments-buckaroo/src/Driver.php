@@ -19,7 +19,7 @@
 		/**
 		 * Driver name
 		 */
-		const DRIVER_NAME = "buckaroo";
+		const string DRIVER_NAME = "buckaroo";
 		
 		/**
 		 * Active configuration for this provider, applied by the discovery system after instantiation.
@@ -151,7 +151,7 @@
 		 */
 		public function initiate(PaymentRequest $request): InitiateResult {
 			$config = $this->getConfig();
-			$service = self::MODULE_TYPE_MAP[$request->paymentModule] ?? strtolower($request->module);
+			$service = self::MODULE_TYPE_MAP[$request->paymentModule] ?? strtolower($request->paymentModule);
 			
 			// Buckaroo uses decimal amounts (€10.00 = 10.00), not minor units (€10.00 = 1000).
 			// PaymentRequest::$amount is in minor units, so divide by 100.

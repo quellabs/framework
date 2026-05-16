@@ -135,7 +135,7 @@
 		private function request(string $method, string $path, ?array $payload = null): array {
 			try {
 				$url        = 'https://' . $this->baseHost . $path;
-				$body       = $payload !== null ? json_encode($payload, JSON_UNESCAPED_UNICODE) : '';
+				$body       = $payload !== null ? (json_encode($payload, JSON_UNESCAPED_UNICODE) ?: '') : '';
 				$nonce      = bin2hex(random_bytes(8));
 				$timestamp  = time();
 				

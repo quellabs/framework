@@ -18,8 +18,8 @@
 	 */
 	class SendCloudGateway {
 		
-		private const BASE_URL = 'https://panel.sendcloud.sc/api/v2';
-		private const SERVICE_POINT_URL = 'https://servicepoints.sendcloud.sc/api/v2';
+		private const string BASE_URL = 'https://panel.sendcloud.sc/api/v2';
+		private const string SERVICE_POINT_URL = 'https://servicepoints.sendcloud.sc/api/v2';
 		
 		/** @var string|null Google Geocoding API key, read from config */
 		private ?string $geocodingApiKey;
@@ -177,7 +177,7 @@
 		 * @return array
 		 */
 		public function geocodeAddress(string $postalCode, string $country, ?string $city = null): array {
-			if (!empty($apiKey)) {
+			if (!empty($this->geocodingApiKey)) {
 				return $this->geocodeWithGoogle($postalCode, $country, $city);
 			} else {
 				return $this->geocodeWithNominatim($postalCode, $country, $city);

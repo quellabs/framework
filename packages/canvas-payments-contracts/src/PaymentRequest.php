@@ -11,6 +11,7 @@
 		 * @param int            $amount          The amount to charge in minor units (e.g. 999 for €9.99).
 		 * @param string         $currency        ISO 4217 currency code (EUR, USD, ...).
 		 * @param string         $description     Human-readable description shown to the customer on the payment page.
+		 * @param string|null    $reference       Merchant-assigned order reference passed to the provider (e.g. as invoice number or order ID).
 		 * @param string|null    $issuerId        Provider-specific issuer identifier (e.g. a specific bank for iDEAL).
 		 * @param string|null    $webhookUrl      URL the provider calls with asynchronous payment status updates.
 		 * @param string|null    $redirectUrl     URL the customer is sent to after a successful payment.
@@ -24,6 +25,7 @@
 			public int     $amount,
 			public string  $currency,
 			public string  $description,
+			public ?string $reference = null,
 			public ?string $issuerId = null,
 			public ?string $webhookUrl = null,
 			public ?string $redirectUrl = null,

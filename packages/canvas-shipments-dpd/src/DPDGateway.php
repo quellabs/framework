@@ -527,7 +527,7 @@ XML;
 				return ['request' => ['result' => 0, 'errorId' => 'soap_fault', 'errorMessage' => (string)$fault[0]]];
 			}
 			
-			$shops = $xml->xpath('//*[local-name()="parcelShop"]');
+			$shops = $xml->xpath('//*[local-name()="parcelShop"]') ?: [];
 			$result = [];
 			
 			foreach ($shops as $shop) {

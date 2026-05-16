@@ -19,7 +19,7 @@
 		/**
 		 * Driver name
 		 */
-		const DRIVER_NAME = "adyen";
+		const string DRIVER_NAME = "adyen";
 		
 		/**
 		 * Active configuration for this provider, applied by the discovery system after instantiation.
@@ -363,7 +363,7 @@
 			// Call the API to initiate the refund
 			$result = $this->getGateway()->refundPayment(
 				$paymentReference,
-				$request->amount,
+				$request->amount ?? 0,
 				$request->currency,
 				$request->description ?? ''
 			);

@@ -17,7 +17,7 @@
 		/**
 		 * Driver name
 		 */
-		const DRIVER_NAME = "paypal_express";
+		const string DRIVER_NAME = "paypal_express";
 		
 		/**
 		 * Active configuration for this provider, applied by the discovery system after instantiation.
@@ -93,7 +93,7 @@
 			
 			// Call gateway
 			$result = $this->getGateway()->setExpressCheckout(
-				number_format($request->amount / 100, 2),
+				round($request->amount / 100, 2),
 				$request->description,
 				$request->currency,
 				array_filter([

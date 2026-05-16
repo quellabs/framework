@@ -122,7 +122,7 @@
 			
 			try {
 				// Fetch the authoritative payment state from the MSP API.
-				$response = $this->msp->exchange($transactionId, ['action' => 'webhook']);
+				$response = $this->msp->exchange((string)$transactionId, ['action' => 'webhook']);
 				
 				// Notify listeners (e.g. order management) of the updated payment state.
 				$this->signal->emit($response);
