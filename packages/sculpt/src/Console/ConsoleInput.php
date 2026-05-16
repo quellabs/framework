@@ -77,7 +77,7 @@
 		/**
 		 * Multiple choice question
 		 * @param string $question
-		 * @param array $choices
+		 * @param list<string> $choices
 		 * @param int|null $default Default choice index (1-based, matching display)
 		 * @return string
 		 */
@@ -101,6 +101,8 @@
 				$defaultMarker = ($default === $key + 1) ? ' (default)' : '';
 				$this->output->writeLn(sprintf("  [%d] %s%s", $key + 1, $choice, $defaultMarker));
 			}
+			
+			$index = -1;
 			
 			do {
 				// Prompt user to enter their choice

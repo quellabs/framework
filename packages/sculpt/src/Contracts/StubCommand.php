@@ -83,6 +83,12 @@
 				
 				// Apply token replacement and write
 				$contents = file_get_contents($stubPath);
+				
+				if ($contents === false) {
+					$this->output->error("Could not read stub file: {$stubPath}");
+					return 1;
+				}
+				
 				$contents = str_replace(array_keys($tokens), array_values($tokens), $contents);
 				
 				file_put_contents($targetPath, $contents);
@@ -99,7 +105,13 @@
 		 */
 		protected function resolveStubPath(string $relative): string {
 			$reflection  = new \ReflectionClass($this->provider);
-			$providerDir = dirname($reflection->getFileName());
+			$fileName    = $reflection->getFileName();
+			
+			if ($fileName === false) {
+				throw new \RuntimeException('Could not determine provider file path.');
+			}
+			
+			$providerDir = dirname($fileName);
 			return $providerDir . '/../stubs/' . ltrim($relative, '/');
 		}
 	}

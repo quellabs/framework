@@ -3,7 +3,7 @@
   "support": "1.0.17",
   "discover": "1.0.39",
   "dependency-injection": "1.0.34",
-  "sculpt": "1.0.24",
+  "sculpt": "1.0.25",
   "objectquel": "1.6.0",
   "cache": "1.0.4",
   "signal-hub": "1.0.28",

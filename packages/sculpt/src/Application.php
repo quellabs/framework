@@ -16,13 +16,14 @@
 	class Application {
 		
 		/**
-		 * @var string|null
+		 * @var string
 		 */
-		private ?string $basePath;
+		private string $basePath;
 		
 		/**
 		 * Registered command instances indexed by their signature
 		 * Commands are the primary way users interact with the application
+		 * @var array<string, CommandInterface>
 		 */
 		protected array $commands = [];
 		
@@ -53,12 +54,7 @@
 			$this->output = $output;
 			
 			// Set base path (where src directory is located)
-			if ($basePath === null) {
-				// Default to 2 directories up from this file (assuming this file is in src/Application.php)
-				$this->basePath = dirname(__DIR__);
-			} else {
-				$this->basePath = $basePath;
-			}
+			$this->basePath = $basePath ?? dirname(__DIR__);
 			
 			// Initialize the provider manager
 			$this->serviceDiscoverer = new Discover();
@@ -188,7 +184,7 @@
 		 * Parses command-line arguments, finds the requested command,
 		 * and executes it. If no command is specified or the command is not found,
 		 * it displays the list of available commands.
-		 * @param array $args Command-line arguments (typically from $argv)
+		 * @param array<int, string> $args Command-line arguments (typically from $argv)
 		 * @return int Exit code (0 for success, non-zero for errors)
 		 */
 		public function run(array $args = []): int {
