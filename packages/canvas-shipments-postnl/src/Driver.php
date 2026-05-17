@@ -392,8 +392,11 @@
 				);
 			}
 			
+			// Fetch response
+			$response = $result['response'] ?? [];
+			
 			// Fetch the shipment data
-			$responseShipment = $result['response']['ResponseShipments'][0] ?? null;
+			$responseShipment = $response['ResponseShipments'][0] ?? null;
 			
 			// If that failed, throw an error
 			if ($responseShipment === null) {
@@ -424,7 +427,7 @@
 				trackingCode: $barcode,
 				trackingUrl: $this->buildTrackingUrl($barcode, $request->deliveryAddress->postalCode),
 				carrierName: 'PostNL',
-				rawResponse: $result['response'],
+				rawResponse: $response,
 			);
 		}
 		

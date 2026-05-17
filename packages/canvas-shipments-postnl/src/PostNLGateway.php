@@ -2,7 +2,12 @@
 	
 	namespace Quellabs\Shipments\PostNL;
 	
+	use Quellabs\Contracts\Gateway\GatewayInterface;
 	use Symfony\Component\HttpClient\HttpClient;
+	use Symfony\Contracts\HttpClient\Exception\ClientExceptionInterface;
+	use Symfony\Contracts\HttpClient\Exception\RedirectionExceptionInterface;
+	use Symfony\Contracts\HttpClient\Exception\ServerExceptionInterface;
+	use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 	use Symfony\Contracts\HttpClient\HttpClientInterface;
 	
 	/**
@@ -27,6 +32,8 @@
 	 *   ['request' => ['result' => 0, 'errorId' => <code>, 'errorMessage' => <msg>]]
 	 *
 	 * @see https://developer.postnl.nl/docs/
+	 *
+	 * @phpstan-import-type GatewayResponse from GatewayInterface
 	 */
 	class PostNLGateway {
 		
@@ -81,10 +88,10 @@
 		 *
 		 * @see https://developer.postnl.nl/docs/#/http/api-endpoints/send-track/shipment
 		 * @param array<string, mixed> $payload Full PostNL shipment envelope
-		 * @return array<string, mixed>
+		 * @return GatewayResponse
 		 */
 		public function createShipment(array $payload): array {
-			return $this->post('/v1/shipment', $payload, ['confirm' => 'true']);
+			return $this->request('POST', '/v1/shipment', $payload, ['confirm' => 'true']);
 		}
 		
 		/**
@@ -95,10 +102,10 @@
 		 *
 		 * @see https://developer.postnl.nl/docs/#/http/api-endpoints/send-track/shipment/delete-shipment
 		 * @param string $barcode PostNL barcode from ShipmentResult::$parcelId
-		 * @return array<string, mixed>
+		 * @return GatewayResponse
 		 */
 		public function deleteShipment(string $barcode): array {
-			return $this->delete("/v1/shipment/{$barcode}");
+			return $this->request('DELETE', "/v1/shipment/{$barcode}");
 		}
 		
 		/**
@@ -108,10 +115,10 @@
 		 *
 		 * @see https://developer.postnl.nl/docs/#/http/api-endpoints/status/status-by-barcode
 		 * @param string $barcode PostNL carrier barcode
-		 * @return array<string, mixed>
+		 * @return GatewayResponse
 		 */
 		public function getStatus(string $barcode): array {
-			return $this->get("/v2/status/barcode/{$barcode}");
+			return $this->request('GET', "/v2/status/barcode/{$barcode}");
 		}
 		
 		/**
@@ -122,10 +129,10 @@
 		 *
 		 * @see https://developer.postnl.nl/docs/#/http/api-endpoints/send-track/confirming
 		 * @param string $barcode PostNL barcode
-		 * @return array<string, mixed>
+		 * @return GatewayResponse
 		 */
 		public function getLabel(string $barcode): array {
-			return $this->get("/v1/confirming/label/{$barcode}");
+			return $this->request('GET', "/v1/confirming/label/{$barcode}");
 		}
 		
 		/**
@@ -165,7 +172,7 @@
 		 * @param string $startDate Start of the window (dd-mm-yyyy); typically tomorrow
 		 * @param string $endDate End of the window (dd-mm-yyyy); max ~2 weeks ahead
 		 * @param array<int, string> $options Delivery types to request, e.g. ['Daytime', 'Morning', 'Evening', 'Sunday']
-		 * @return array<string, mixed>
+		 * @return GatewayResponse
 		 */
 		public function getTimeframes(
 			string $postalCode,
@@ -185,7 +192,7 @@
 				'Options'            => implode(',', $options),
 			];
 			
-			return $this->get('/v2_1/calculate/timeframes', $query);
+			return $this->request('GET', '/v2_1/calculate/timeframes', [], $query);
 		}
 		
 		/**
@@ -201,7 +208,7 @@
 		 * @param string $houseNumber House number for proximity sorting
 		 * @param string $countryCode ISO 3166-1 alpha-2 country code
 		 * @param int $maxResults Maximum number of locations to return (1–20, default 10)
-		 * @return array<string, mixed>
+		 * @return GatewayResponse
 		 */
 		public function getNearestLocations(
 			string $postalCode,
@@ -217,121 +224,74 @@
 				'MaxLocations'    => min($maxResults, 20),
 			];
 			
-			return $this->get('/v2_1/locations/nearest', $query);
+			return $this->request('GET', '/v2_1/locations/nearest', [], $query);
 		}
 		
 		/**
-		 * Sends a GET request and returns a normalised response array.
-		 * @param string $endpoint Path relative to the base URL
-		 * @param array<string, mixed> $query Optional query string parameters
-		 * @return array<string, mixed>
+		 * Sends an HTTP request, normalises the response, and returns a GatewayResponse envelope.
+		 * @param string $method HTTP method ('GET', 'POST', 'DELETE', etc.)
+		 * @param string $endpoint Path relative to the base URL (e.g. '/v1/shipment')
+		 * @param array<string, mixed> $payload Request body; serialised as JSON for POST/PUT/PATCH; ignored for GET and DELETE
+		 * @param array<string, mixed> $query Optional query string parameters appended to the URL
+		 * @return GatewayResponse
 		 */
-		private function get(string $endpoint, array $query = []): array {
+		private function request(string $method, string $endpoint, array $payload = [], array $query = []): array {
 			try {
-				$response = $this->client->request('GET', $this->baseUrl . $endpoint, [
-					'query' => $query,
-				]);
+				// Build the Symfony HttpClient options array. The 'query' key is always included
+				// so the client appends any provided parameters to the URL. The 'json' key is only
+				// set when a non-empty payload is given, which also sets Content-Type automatically;
+				// omitting it for GET/DELETE avoids sending an empty body.
+				$options = ['query' => $query];
 				
-				return $this->normaliseResponse($response);
-			} catch (\Throwable $e) {
-				return ['request' => ['result' => 0, 'errorId' => $e->getCode(), 'errorMessage' => $e->getMessage()]];
-			}
-		}
-		
-		/**
-		 * Sends a POST request and returns a normalised response array.
-		 * @param string $endpoint Path relative to the base URL
-		 * @param array<string, mixed> $payload JSON request body
-		 * @param array<string, mixed> $query Optional query string parameters
-		 * @return array<string, mixed>
-		 */
-		private function post(string $endpoint, array $payload, array $query = []): array {
-			try {
-				$response = $this->client->request('POST', $this->baseUrl . $endpoint, [
-					'query' => $query,
-					'json'  => $payload,
-				]);
-				
-				return $this->normaliseResponse($response);
-			} catch (\Throwable $e) {
-				return ['request' => ['result' => 0, 'errorId' => $e->getCode(), 'errorMessage' => $e->getMessage()]];
-			}
-		}
-		
-		/**
-		 * Sends a DELETE request and returns a normalised response array.
-		 * @param string $endpoint Path relative to the base URL
-		 * @return array<string, mixed>
-		 */
-		private function delete(string $endpoint): array {
-			try {
-				$response = $this->client->request('DELETE', $this->baseUrl . $endpoint);
-				return $this->normaliseResponse($response);
-			} catch (\Throwable $e) {
-				return ['request' => ['result' => 0, 'errorId' => $e->getCode(), 'errorMessage' => $e->getMessage()]];
-			}
-		}
-		
-		/**
-		 * Normalises an HTTP response into the shared result envelope.
-		 *
-		 * PostNL error responses come in two formats depending on the endpoint version:
-		 *
-		 * Modern (v2+):
-		 *   { "fault": { "faultstring": "...", "detail": { "errorcode": "..." } } }
-		 *
-		 * Legacy (v1):
-		 *   { "Errors": [ { "Code": "...", "Description": "..." } ] }
-		 *
-		 * @param \Symfony\Contracts\HttpClient\ResponseInterface $response
-		 * @return array<string, mixed>
-		 */
-		private function normaliseResponse(\Symfony\Contracts\HttpClient\ResponseInterface $response): array {
-			$statusCode = $response->getStatusCode();
-			$body = json_decode($response->getContent(false), true);
-			
-			if ($statusCode >= 400) {
-				// Modern fault envelope
-				if (isset($body['fault'])) {
-					$errorMessage = $body['fault']['faultstring'] ?? "HTTP {$statusCode}";
-					$errorId = $body['fault']['detail']['errorcode'] ?? $statusCode;
-					
-					return [
-						'request' => [
-							'result'       => 0,
-							'errorId'      => $errorId,
-							'errorMessage' => $errorMessage,
-						],
-					];
+				if (!empty($payload)) {
+					$options['json'] = $payload;
 				}
 				
-				// Legacy Errors array
-				if (!empty($body['Errors'])) {
-					$first = $body['Errors'][0];
-					$errorMessage = $first['Description'] ?? "HTTP {$statusCode}";
-					$errorId = $first['Code'] ?? $statusCode;
+				// Call API
+				$response = $this->client->request($method, $this->baseUrl . $endpoint, $options);
+				
+				// Fetch status code
+				$statusCode = $response->getStatusCode();
+				
+				// Decode with $throw = false so HTTP 4xx/5xx responses do not raise an exception;
+				// we inspect the status code ourselves to produce a normalised error envelope.
+				$body = json_decode($response->getContent(false), true);
+				
+				// Check if decoding worked
+				if (json_last_error() !== JSON_ERROR_NONE) {
+					return ['request' => ['result' => 0, 'errorId' => (string)json_last_error(), 'errorMessage' => json_last_error_msg()]];
+				}
+
+				// StatusCode signals error
+				if ($statusCode >= 400) {
+					// Modern fault envelope
+					if (isset($body['fault'])) {
+						$errorMessage = $body['fault']['faultstring'] ?? "HTTP {$statusCode}";
+						$errorId = $body['fault']['detail']['errorcode'] ?? $statusCode;
+						return ['request' => ['result' => 0, 'errorId' => $errorId, 'errorMessage' => $errorMessage]];
+					}
 					
-					return [
-						'request' => [
-							'result'       => 0,
-							'errorId'      => $errorId,
-							'errorMessage' => $errorMessage,
-						],
-					];
+					// Legacy Errors array
+					if (!empty($body['Errors'])) {
+						$first = $body['Errors'][0];
+						$errorMessage = $first['Description'] ?? "HTTP {$statusCode}";
+						$errorId = $first['Code'] ?? $statusCode;
+						return ['request' => ['result' => 0, 'errorId' => $errorId, 'errorMessage' => $errorMessage]];
+					}
+					
+					// Unknown error format: fall back to the raw HTTP status code
+					return ['request' => ['result' => 0, 'errorId' => (string)$statusCode, 'errorMessage' => "HTTP {$statusCode}"]];
 				}
 				
-				return [
-					'request' => [
-						'result'       => 0,
-						'errorId'      => $statusCode,
-						'errorMessage' => "HTTP {$statusCode}",
-					],
-				];
+				// Successful response: wrap the decoded body in the standard envelope.
+				// $body is coalesced to an empty array in case the endpoint returns no content (e.g. 204).
+				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $body ?? []];
+			} catch (TransportExceptionInterface|ClientExceptionInterface|RedirectionExceptionInterface|ServerExceptionInterface $e) {
+				// Transport-level failures (DNS, timeout, TLS, connection refused, interrupted
+				// response stream) are caught here and mapped to the same error envelope so
+				// callers never need to handle exceptions. Programming errors (\Error, \TypeError,
+				// etc.) are intentionally not caught and will propagate normally.
+				return ['request' => ['result' => 0, 'errorId' => (string)$e->getCode(), 'errorMessage' => $e->getMessage()]];
 			}
-			
-			return [
-				'request'  => ['result' => 1, 'errorId' => '', 'errorMessage' => ''],
-				'response' => $body ?? [],
-			];
 		}
 	}
