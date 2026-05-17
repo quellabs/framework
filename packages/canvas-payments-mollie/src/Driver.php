@@ -159,6 +159,14 @@
 				throw new PaymentInitiationException(self::DRIVER_NAME, $response["request"]["errorId"], $response["request"]["errorMessage"]);
 			}
 			
+			// Response data has to be there
+			if (
+				!isset($response["response"]["id"]) ||
+				!isset($response["response"]["_links"]["checkout"]["href"])
+			) {
+				throw new PaymentInitiationException(self::DRIVER_NAME, "204", "Invalid gateway response. Missing id and/or redirect url");
+			}
+			
 			// Extract the hosted checkout URL Mollie generated for this payment
 			return new InitiateResult(
 				provider: self::DRIVER_NAME,
@@ -187,9 +195,14 @@
 				throw new PaymentRefundException(self::DRIVER_NAME, $response["request"]["errorId"], $response["request"]["errorMessage"]);
 			}
 			
+			// Response resource has to be set
+			if (!isset($response["response"]["resource"])) {
+				throw new PaymentRefundException(self::DRIVER_NAME, "204", "resource field not set in response");
+			}
+			
 			// Response resource has to be "refund"
 			if ($response["response"]["resource"] !== "refund") {
-				throw new PaymentRefundException(self::DRIVER_NAME, 204, "Invalid resource '{$response["response"]["resource"]}'");
+				throw new PaymentRefundException(self::DRIVER_NAME, "204", "Invalid resource '{$response["response"]["resource"]}'");
 			}
 			
 			// Return the data
@@ -220,9 +233,14 @@
 				throw new PaymentExchangeException(self::DRIVER_NAME, $response["request"]["errorId"], $response["request"]["errorMessage"]);
 			}
 			
+			// Response resource must be set
+			if (!isset($response["response"]["resource"])) {
+				throw new PaymentExchangeException(self::DRIVER_NAME, "204", "resource field not set in response");
+			}
+			
 			// Response resource must be "payment"
 			if ($response["response"]["resource"] != "payment") {
-				throw new PaymentExchangeException(self::DRIVER_NAME, 204, "Invalid resource '{$response["response"]["resource"]}'");
+				throw new PaymentExchangeException(self::DRIVER_NAME, "204", "Invalid resource '{$response["response"]["resource"]}'");
 			}
 			
 			// Map Mollie statuses to internal states
@@ -284,7 +302,7 @@
 			// Map each refund to a RefundResult
 			$refunds = [];
 			
-			foreach ($response["response"] as $refund) {
+			foreach ($response["response"] ?? [] as $refund) {
 				$refunds[] = new RefundResult(
 					provider: self::DRIVER_NAME,
 					paymentReference: $paymentReference,

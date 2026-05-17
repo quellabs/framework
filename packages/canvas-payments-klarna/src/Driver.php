@@ -219,7 +219,7 @@
 				);
 			}
 			
-			$order = $result['response'];
+			$order = $result['response'] ?? [];
 			$orderStatus = strtoupper($order['status'] ?? '');
 			$fraudStatus = strtoupper($order['fraud_status'] ?? '');
 			
@@ -469,7 +469,7 @@
 			}
 			
 			// Return the result data
-			return $result['response'];
+			return $result['response'] ?? [];
 		}
 		
 		/**
