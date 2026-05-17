@@ -11,6 +11,13 @@
 	 *
 	 * Implementations must have a no-argument constructor. All configuration is
 	 * supplied via setConfig() after instantiation by the discovery system.
+	 *
+	 * @phpstan-type InitiateResultArray array{
+	 *     provider: string,
+	 *     transaction_id: string,
+	 *     redirect_url: string,
+	 *     metadata: array<string, mixed>
+	 * }
 	 */
 	interface PaymentInterface {
 		
@@ -33,7 +40,7 @@
 		 * Used for modules that expose issuer or bank selection (e.g. iDEAL, KBC, gift cards).
 		 * Returns an empty array for modules with no selectable options.
 		 * @param string $paymentModule
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getPaymentOptions(string $paymentModule): array;
 		

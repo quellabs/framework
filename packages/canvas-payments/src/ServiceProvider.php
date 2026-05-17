@@ -5,26 +5,25 @@
 	use Quellabs\Contracts\Context\MethodContextInterface;
 	use Quellabs\DependencyInjection\Provider\ServiceProvider as BaseServiceProvider;
 	use Quellabs\Payments\Contracts\PaymentInterface;
-	use Quellabs\Payments\Contracts\PaymentProviderInterface;
 	
 	/**
 	 * Registers a singleton PaymentRouter instance with the dependency injection container.
-	 * Satisfies both PaymentProviderInterface and ServiceProvider injection points,
+	 * Satisfies both PaymentInterface and ServiceProvider injection points,
 	 * ensuring all consumers share the same router instance.
 	 */
 	class ServiceProvider extends BaseServiceProvider {
 		
 		/**
-		 * @var PaymentProviderInterface|null
+		 * @var PaymentInterface|null
 		 */
 		private static ?PaymentInterface $instance = null;
 		
 		/**
 		 * Returns true if this provider can satisfy the requested class.
-		 * Handles PaymentProviderInterface (consumed by application code) and
-		 * ServiceProvider itself (consumed by the DI container during bootstrap).
+		 * Handles PaymentInterface (consumed by application code) and
+		 * PaymentRouter (consumed by the DI container during bootstrap).
 		 * @param string $className The fully qualified class name to check
-		 * @param array $metadata Metadata for filtering
+		 * @param array<string, mixed> $metadata Metadata for filtering
 		 * @return bool
 		 */
 		public function supports(string $className, array $metadata): bool {
@@ -36,8 +35,8 @@
 		/**
 		 * Returns the singleton PaymentRouter instance, creating it on first call.
 		 * @param string $className The class name requested by the container
-		 * @param array $dependencies Additional autowired dependencies (currently unused)
-		 * @param array $metadata Metadata as passed by Discover
+		 * @param array<string, mixed> $dependencies Additional autowired dependencies (currently unused)
+		 * @param array<string, mixed> $metadata Metadata as passed by Discover
 		 * @param MethodContextInterface|null $methodContext Optional method context
 		 * @return object The singleton PaymentRouter instance
 		 */

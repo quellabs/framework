@@ -19,11 +19,11 @@
 		/**
 		 * Driver name
 		 */
-		const DRIVER_NAME = "buckaroo";
+		const string DRIVER_NAME = "buckaroo";
 		
 		/**
 		 * Active configuration for this provider, applied by the discovery system after instantiation.
-		 * @var array
+		 * @var array<string, mixed>
 		 */
 		private array $config = [];
 		
@@ -79,7 +79,7 @@
 		
 		/**
 		 * Returns the active configuration for this provider instance.
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getConfig(): array {
 			return array_replace_recursive($this->getDefaults(), $this->config);
@@ -88,7 +88,7 @@
 		/**
 		 * Applies configuration to this provider instance.
 		 * Called by the discovery system after instantiation, before any other methods are invoked.
-		 * @param array $config
+		 * @param array<string, mixed> $config
 		 * @return void
 		 */
 		public function setConfig(array $config): void {
@@ -98,7 +98,7 @@
 		/**
 		 * Returns default configuration values for this provider.
 		 * Merged with loaded config files during discovery — values from config files take precedence.
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getDefaults(): array {
 			return [
@@ -122,7 +122,7 @@
 		 * happens exclusively on the hosted payment page. This method always returns an empty array.
 		 *
 		 * @param string $paymentModule e.g. 'bkr_ideal'
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getPaymentOptions(string $paymentModule): array {
 			return [];
@@ -151,7 +151,7 @@
 		 */
 		public function initiate(PaymentRequest $request): InitiateResult {
 			$config = $this->getConfig();
-			$service = self::MODULE_TYPE_MAP[$request->paymentModule] ?? strtolower($request->module);
+			$service = self::MODULE_TYPE_MAP[$request->paymentModule] ?? strtolower($request->paymentModule);
 			
 			// Buckaroo uses decimal amounts (€10.00 = 10.00), not minor units (€10.00 = 1000).
 			// PaymentRequest::$amount is in minor units, so divide by 100.
@@ -221,7 +221,7 @@
 			}
 			
 			// Grab the API response
-			$response = $result['response'];
+			$response = $result['response'] ?? [];
 			
 			// Buckaroo's Key is our transactionId going forward — not the invoice number.
 			// The redirect URL lives in RequiredAction.RedirectURL.
@@ -275,7 +275,7 @@
 		 *
 		 * @see https://docs.buckaroo.io/docs/integration-status
 		 * @param string $transactionId The Buckaroo transaction Key (32-char hex)
-		 * @param array $extraData action: 'return' | 'push' (informational; does not change behaviour)
+		 * @param array<string, mixed> $extraData action: 'return' | 'push' (informational; does not change behaviour)
 		 * @return PaymentState
 		 * @throws PaymentExchangeException
 		 */
@@ -289,7 +289,7 @@
 			}
 			
 			// Grab response data
-			$data = $result['response'];
+			$data = $result['response'] ?? [];
 			$statusCode = (int)($data['Status']['Code']['Code'] ?? 0);
 			$currency = $data['Currency'] ?? '';
 			
@@ -445,7 +445,7 @@
 			}
 			
 			// Grab response
-			$data = $result['response'];
+			$data = $result['response'] ?? [];
 			$relatedTransactions = $data['RelatedTransactions'] ?? [];
 
 			// Fall back to the original transaction's currency when the refund entry omits it.
@@ -477,7 +477,7 @@
 				}
 				
 				// Add result to list
-				$refundData = $refundResult['response'];
+				$refundData = $refundResult['response'] ?? [];
 				$amountDecimal = (float)($refundData['AmountCredit'] ?? 0);
 				
 				$refunds[] = new RefundResult(
@@ -496,7 +496,7 @@
 		 * Sums the amounts of all related refund transactions.
 		 * Returns 0 if no refunds exist or if all lookups fail.
 		 * Used internally by exchange() to populate valueRefunded.
-		 * @param array $relatedTransactions From the Status response
+		 * @param array<string, mixed> $relatedTransactions From the Status response
 		 * @return int Total refunded amount in minor units
 		 */
 		private function sumRelatedRefunds(array $relatedTransactions): int {

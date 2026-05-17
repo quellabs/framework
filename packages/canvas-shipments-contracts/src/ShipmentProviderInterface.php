@@ -54,4 +54,11 @@
 		 * @throws ShipmentExchangeException
 		 */
 		public function exchange(string $parcelId): ShipmentState;
+		
+		/**
+		 * Returns the URL where the label PDF for the given parcel can be downloaded.
+		 * @param string $parcelId Provider-assigned parcel ID from ShipmentResult
+		 * @return string
+		 */
+		public function getLabelUrl(string $parcelId): string;
 	}

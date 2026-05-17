@@ -24,11 +24,11 @@
 		 * Driver name — stored in ShipmentResult::$provider and ShipmentState::$provider.
 		 * Used by ShipmentRouter::exchange() to re-resolve this driver later.
 		 */
-		const DRIVER_NAME = 'dhl';
+		const string DRIVER_NAME = 'dhl';
 		
 		/**
 		 * Active configuration, applied by the discovery system after instantiation.
-		 * @var array
+		 * @var array<string, mixed>
 		 */
 		private array $config = [];
 		
@@ -51,7 +51,7 @@
 		 *
 		 * @see https://api-gw.dhlparcel.nl/docs/#/Capabilities
 		 */
-		private const MODULE_PRODUCT_MAP = [
+		private const array MODULE_PRODUCT_MAP = [
 			'dhl_parcel'  => 'PARCEL_CONNECT',
 			'dhl_mailbox' => 'MAILBOX_PACKAGE',
 			'dhl_express' => 'EXPRESS',
@@ -66,7 +66,7 @@
 		 *
 		 * @see https://api-gw.dhlparcel.nl/docs/guide/chapters/05-track-and-trace.html
 		 */
-		private const CATEGORY_MAP = [
+		private const array CATEGORY_MAP = [
 			'DATA_RECEIVED' => ShipmentStatus::Created,
 			'LEG'           => ShipmentStatus::Created,
 			'UNDERWAY'      => ShipmentStatus::InTransit,
@@ -83,7 +83,7 @@
 		 * Fine-grained status overrides applied after category mapping.
 		 * These cover statuses whose meaning differs from their parent category.
 		 */
-		private const STATUS_OVERRIDE_MAP = [
+		private const array STATUS_OVERRIDE_MAP = [
 			'DELIVERED_AT_PS'  => ShipmentStatus::AwaitingPickup,
 			'PS_ARRIVED'       => ShipmentStatus::AwaitingPickup,
 			'RETURN_TO_SENDER' => ShipmentStatus::ReturnedToSender,
@@ -109,7 +109,7 @@
 		 *
 		 * @see https://api-gw.dhlparcel.nl/docs/#/Parcel%20types
 		 */
-		private const PARCEL_TYPE_WEIGHT_MAP = [
+		private const array PARCEL_TYPE_WEIGHT_MAP = [
 			'SMALL'  => 2_000,
 			'MEDIUM' => 10_000,
 			'LARGE'  => 20_000,
@@ -130,7 +130,7 @@
 		
 		/**
 		 * Returns the active configuration for this driver instance.
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getConfig(): array {
 			return array_replace_recursive($this->getDefaults(), $this->config);
@@ -139,7 +139,7 @@
 		/**
 		 * Applies configuration to this driver instance.
 		 * Called by the discovery system after instantiation, before any other methods.
-		 * @param array $config
+		 * @param array<string, mixed> $config
 		 * @return void
 		 */
 		public function setConfig(array $config): void {
@@ -148,7 +148,7 @@
 		
 		/**
 		 * Returns default configuration values for this driver.
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getDefaults(): array {
 			return [
@@ -268,7 +268,7 @@
 				trackingCode: $trackerCode,
 				trackingUrl: $this->buildTrackingUrl($trackerCode, $request->deliveryAddress->postalCode),
 				carrierName: 'DHL',
-				rawResponse: $result['response'],
+				rawResponse: $result['response'] ?? []
 			);
 		}
 		
@@ -364,7 +364,7 @@
 			
 			$options = [];
 			
-			foreach ($result['response'] as $shop) {
+			foreach ($result['response'] ?? [] as $shop) {
 				$addr = $shop['address'] ?? [];
 				
 				$options[] = new PickupOption(
@@ -441,7 +441,7 @@
 		 * Builds a ShipmentState from the array of track-and-trace events returned by DHL.
 		 * Used by exchange(). The last event in the array represents the current state.
 		 * @param string $parcelId The DHL tracker code
-		 * @param array $events Array from the track-trace response (chronological)
+		 * @param array<string, mixed> $events Array from the track-trace response (chronological)
 		 * @return ShipmentState
 		 */
 		public function buildStateFromEvents(string $parcelId, array $events): ShipmentState {
@@ -536,7 +536,7 @@
 		 * DHL separates name into firstName/lastName; we treat the full name as lastName
 		 * when no split is available, which is what most DHL integrations do.
 		 * @param ShipmentAddress $address
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		private function buildReceiver(ShipmentAddress $address): array {
 			$receiver = [
@@ -567,8 +567,8 @@
 		 * Builds the shipper block from the configured sender_address.
 		 * Throws ShipmentCreationException if no sender address is configured,
 		 * since DHL requires a shipper on every label.
-		 * @param array $config
-		 * @return array
+		 * @param array<string, mixed> $config
+		 * @return array<string, mixed>
 		 * @throws ShipmentCreationException
 		 */
 		private function buildShipper(array $config): array {
@@ -591,7 +591,7 @@
 					'street'      => $sender['street'] ?? '',
 					'number'      => $sender['number'] ?? '',
 					'isBusiness'  => !empty($sender['company']),
-				], fn($v) => $v !== null && $v !== ''),
+				], fn($v) => $v !== false && $v !== ''),
 			];
 			
 			if (!empty($sender['email'])) {
@@ -610,7 +610,7 @@
 		 * When only a full name is available (no split), we put it all in lastName.
 		 * @param string $fullName
 		 * @param string|null $company
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		private function buildNameBlock(string $fullName, ?string $company): array {
 			return array_filter([

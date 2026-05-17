@@ -40,21 +40,25 @@
 		
 		/**
 		 * Get a service with centralized dependency resolution.
+		 * Returns null when the provider signals the resource does not exist
+		 * (e.g. no database row for a requested entity).
 		 * @template T of object
 		 * @param class-string<T> $className Class or interface name to resolve
 		 * @param array $parameters Additional parameters for creation
 		 * @param MethodContextInterface|null $methodContext
-		 * @return T The resolved service instance or null if resolution fails
+		 * @return T|null
 		 * @throws \RuntimeException When circular dependencies are detected or resolution fails
 		 */
-		public function get(string $className, array $parameters = [], ?MethodContextInterface $methodContext=null): object;
+		public function get(string $className, array $parameters = [], ?MethodContextInterface $methodContext = null): ?object;
 		
 		/**
 		 * Create an instance with autowired constructor parameters.
+		 * Bypasses service providers - only handles dependency injection.
+		 * Direct instantiation can never produce null, so this method retains a non-nullable return.
 		 * @template T of object
 		 * @param class-string<T> $className The fully qualified class name to instantiate
 		 * @param array $parameters Additional/override parameters for constructor
-		 * @return T The created instance or null if creation fails
+		 * @return T The created instance
 		 * @throws \RuntimeException When circular dependencies are detected or creation fails
 		 */
 		public function make(string $className, array $parameters = []): object;

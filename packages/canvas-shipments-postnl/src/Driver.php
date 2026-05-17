@@ -23,11 +23,11 @@
 		 * Driver name — stored in ShipmentResult::$provider and ShipmentState::$provider.
 		 * Used by ShipmentRouter::exchange() to re-resolve this driver later.
 		 */
-		const DRIVER_NAME = 'postnl';
+		const string DRIVER_NAME = 'postnl';
 		
 		/**
 		 * Active configuration, applied by the discovery system after instantiation.
-		 * @var array
+		 * @var array<string, mixed>
 		 */
 		private array $config = [];
 		
@@ -224,7 +224,7 @@
 		 *
 		 * @see https://developer.postnl.nl/docs/#/http/api-endpoints/status/status-by-barcode
 		 */
-		private const STATUS_MAP = [
+		private const array STATUS_MAP = [
 			// Phase 1 — accepted by PostNL
 			1  => ShipmentStatus::ReadyToSend,
 			
@@ -259,7 +259,7 @@
 		
 		/**
 		 * Returns the active configuration for this driver instance.
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getConfig(): array {
 			return array_replace_recursive($this->getDefaults(), $this->config);
@@ -268,7 +268,7 @@
 		/**
 		 * Applies configuration to this driver instance.
 		 * Called by the discovery system after instantiation, before any other methods.
-		 * @param array $config
+		 * @param array<string, mixed> $config
 		 * @return void
 		 */
 		public function setConfig(array $config): void {
@@ -277,7 +277,7 @@
 		
 		/**
 		 * Returns default configuration values for this driver.
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getDefaults(): array {
 			return [
@@ -360,8 +360,7 @@
 								'ContactType' => '01',
 								'Email'       => $request->deliveryAddress->email,
 								'TelNr'       => $request->deliveryAddress->phone,
-							], fn($v) => $v !== null)
-								: null,
+							], fn($v) => $v !== null) : null,
 						]),
 						'DeliveryAddress'     => $request->servicePointId !== null ? '09' : '01',
 						'DeliveryDate'        => (new \DateTimeImmutable('+1 weekday'))->format('d-m-Y'),
@@ -392,8 +391,11 @@
 				);
 			}
 			
+			// Fetch response
+			$response = $result['response'] ?? [];
+			
 			// Fetch the shipment data
-			$responseShipment = $result['response']['ResponseShipments'][0] ?? null;
+			$responseShipment = $response['ResponseShipments'][0] ?? null;
 			
 			// If that failed, throw an error
 			if ($responseShipment === null) {
@@ -424,7 +426,7 @@
 				trackingCode: $barcode,
 				trackingUrl: $this->buildTrackingUrl($barcode, $request->deliveryAddress->postalCode),
 				carrierName: 'PostNL',
-				rawResponse: $result['response'],
+				rawResponse: $response,
 			);
 		}
 		

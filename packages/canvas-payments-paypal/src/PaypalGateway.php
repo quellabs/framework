@@ -2,28 +2,32 @@
 	
 	namespace Quellabs\Payments\Paypal;
 	
+	use Quellabs\Contracts\Gateway\GatewayInterface;
 	use Symfony\Component\HttpClient\HttpClient;
+	use Symfony\Contracts\HttpClient\HttpClientInterface;
 	
 	/**
 	 * Low-level wrapper around the PayPal Orders v2 and Payments v2 REST APIs.
 	 * Handles OAuth2 token management, raw HTTP communication, and response normalization.
 	 * @see https://developer.paypal.com/docs/api/orders/v2/
 	 * @see https://developer.paypal.com/docs/api/payments/v2/
+	 *
+	 * @phpstan-import-type GatewayResponse from GatewayInterface
 	 */
 	class PaypalGateway {
 		
-		private string  $m_base_url;
-		private string  $m_client_id;
-		private string  $m_client_secret;
-		private bool    $m_verify_ssl;
-		private bool    $m_account_optional;
-		private bool    $m_test_mode;
-		private string  $m_return_url;
-		private string  $m_cancel_url;
-		private string  $m_webhook_id;
-		private ?string $m_access_token  = null;
-		private int     $m_token_expires = 0;
-		private \Symfony\Contracts\HttpClient\HttpClientInterface $m_client;
+		private string $m_base_url;
+		private string $m_client_id;
+		private string $m_client_secret;
+		private bool $m_verify_ssl;
+		private bool $m_account_optional;
+		private bool $m_test_mode;
+		private string $m_return_url;
+		private string $m_cancel_url;
+		private string $m_webhook_id;
+		private ?string $m_access_token = null;
+		private int $m_token_expires = 0;
+		private HttpClientInterface $m_client;
 		
 		/**
 		 * PaypalGateway constructor.
@@ -32,16 +36,16 @@
 		public function __construct(Driver $driver) {
 			$config = $driver->getConfig();
 			
-			$this->m_test_mode        = $config["test_mode"];
-			$this->m_base_url         = $this->m_test_mode ? 'https://api-m.sandbox.paypal.com' : 'https://api-m.paypal.com';
-			$this->m_client_id        = $config["client_id"];
-			$this->m_client_secret    = $config["client_secret"];
-			$this->m_verify_ssl       = $config["verify_ssl"];
+			$this->m_test_mode = $config["test_mode"];
+			$this->m_base_url = $this->m_test_mode ? 'https://api-m.sandbox.paypal.com' : 'https://api-m.paypal.com';
+			$this->m_client_id = $config["client_id"];
+			$this->m_client_secret = $config["client_secret"];
+			$this->m_verify_ssl = $config["verify_ssl"];
 			$this->m_account_optional = $config["account_optional"];
-			$this->m_return_url       = $config["return_url"] ?? '';
-			$this->m_cancel_url       = $config["cancel_return_url"] ?? '';
-			$this->m_webhook_id       = $config["webhook_id"];
-			$this->m_client           = HttpClient::create();
+			$this->m_return_url = $config["return_url"] ?? '';
+			$this->m_cancel_url = $config["cancel_return_url"] ?? '';
+			$this->m_webhook_id = $config["webhook_id"];
+			$this->m_client = HttpClient::create();
 		}
 		
 		/**
@@ -56,11 +60,11 @@
 		 * Creates a new PayPal order and returns its ID, which serves as the checkout token.
 		 * Equivalent to NVP SetExpressCheckout.
 		 * @see https://developer.paypal.com/docs/api/orders/v2/#orders_create
-		 * @param float  $value        Payment amount in major units (e.g. 12.50)
-		 * @param string $description  Order description shown on the PayPal checkout page
-		 * @param string $currency     ISO 4217 currency code (default: EUR)
-		 * @param string $brandName    Optional brand name shown on the PayPal checkout page
-		 * @return array
+		 * @param float $value Payment amount in major units (e.g. 12.50)
+		 * @param string $description Order description shown on the PayPal checkout page
+		 * @param string $currency ISO 4217 currency code (default: EUR)
+		 * @param string $brandName Optional brand name shown on the PayPal checkout page
+		 * @return GatewayResponse
 		 */
 		public function createOrder(float $value, string $description, string $currency = "EUR", string $brandName = ""): array {
 			$experienceContext = array_filter([
@@ -95,7 +99,7 @@
 		 * Equivalent to NVP GetExpressCheckoutDetails.
 		 * @see https://developer.paypal.com/docs/api/orders/v2/#orders_get
 		 * @param string $orderId The order ID returned by createOrder
-		 * @return array
+		 * @return GatewayResponse
 		 */
 		public function getOrder(string $orderId): array {
 			if (empty($orderId)) {
@@ -109,9 +113,9 @@
 		 * Captures payment for an approved order.
 		 * Equivalent to NVP DoExpressCheckoutPayment.
 		 * @see https://developer.paypal.com/docs/api/orders/v2/#orders_capture
-		 * @param string $orderId         The order ID returned by createOrder
-		 * @param string $idempotencyKey  Unique key to make this request safely retryable
-		 * @return array
+		 * @param string $orderId The order ID returned by createOrder
+		 * @param string $idempotencyKey Unique key to make this request safely retryable
+		 * @return GatewayResponse
 		 */
 		public function captureOrder(string $orderId, string $idempotencyKey): array {
 			// Content-Type must be application/json but the body can be empty for a simple capture.
@@ -126,7 +130,7 @@
 		 * Equivalent to NVP GetTransactionDetails.
 		 * @see https://developer.paypal.com/docs/api/payments/v2/#captures_get
 		 * @param string $captureId The capture ID from captureOrder (purchase_units[0].payments.captures[0].id)
-		 * @return array
+		 * @return GatewayResponse
 		 */
 		public function getCapture(string $captureId): array {
 			return $this->sendRequest('GET', '/v2/payments/captures/' . urlencode($captureId));
@@ -136,12 +140,12 @@
 		 * Refunds a captured payment, either fully or partially.
 		 * Equivalent to NVP RefundTransaction.
 		 * @see https://developer.paypal.com/docs/api/payments/v2/#captures_refund
-		 * @param string      $captureId      The capture ID to refund
-		 * @param float|null  $value          Refund amount in major units, or null for a full refund
-		 * @param string|null $currencyType   ISO 4217 currency code, required when $value is set
-		 * @param string      $note           Human-readable reason for the refund, shown to the buyer
-		 * @param string      $idempotencyKey Unique key to make this request safely retryable
-		 * @return array
+		 * @param string $captureId The capture ID to refund
+		 * @param float|null $value Refund amount in major units, or null for a full refund
+		 * @param string|null $currencyType ISO 4217 currency code, required when $value is set
+		 * @param string $note Human-readable reason for the refund, shown to the buyer
+		 * @param string $idempotencyKey Unique key to make this request safely retryable
+		 * @return GatewayResponse
 		 */
 		public function refund(string $captureId, ?float $value, ?string $currencyType, string $note, string $idempotencyKey): array {
 			// Add payment note
@@ -169,7 +173,7 @@
 		 * @see https://developer.paypal.com/docs/api/orders/v2/#orders_get
 		 * @see https://developer.paypal.com/docs/api/payments/v2/#refunds_get
 		 * @param string $captureId The capture ID
-		 * @return array Normalized result; on success 'response' is an array of refund objects
+		 * @return GatewayResponse
 		 */
 		public function getRefundsForCapture(string $captureId): array {
 			// Step 1: Fetch the capture to get the order ID.
@@ -213,10 +217,12 @@
 					return $result;
 				}
 				
-				$refunds[] = $result['response'];
+				if (isset($result['response'])) {
+					$refunds[] = $result['response'];
+				}
 			}
 			
-			return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $refunds];
+			return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => ["refunds" => $refunds]];
 		}
 		
 		/**
@@ -225,8 +231,8 @@
 		 * The webhook_id from your PayPal app settings is required to prevent replay attacks
 		 * from other apps sending genuine but unrelated PayPal webhook payloads.
 		 * @see https://developer.paypal.com/docs/api/webhooks/v1/#verify-webhook-signature_post
-		 * @param array  $headers     The HTTP request headers (lowercased keys expected)
-		 * @param string $rawBody     The raw, unmodified request body string
+		 * @param array<string, mixed> $headers The HTTP request headers (lowercased keys expected)
+		 * @param string $rawBody The raw, unmodified request body string
 		 * @return bool True if the webhook is genuine, false otherwise
 		 */
 		public function verifyWebhookSignature(array $headers, string $rawBody): bool {
@@ -279,12 +285,12 @@
 		 * Returns a valid OAuth2 access token, refreshing it if expired.
 		 * PayPal access tokens expire after 32400 seconds (9 hours) but we treat
 		 * them as expired 60 seconds early to avoid clock-skew edge cases.
-		 * @return array Returns the standard result envelope; on success 'response' contains the access token string
+		 * @return GatewayResponse
 		 */
 		private function getAccessToken(): array {
 			// Return cached access token if there is one
 			if ($this->m_access_token !== null && time() < $this->m_token_expires) {
-				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $this->m_access_token];
+				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => ['accessToken' => $this->m_access_token]];
 			}
 			
 			// Fetch fresh access token and cache it
@@ -298,65 +304,77 @@
 				
 				// Fetch return data as array
 				$data = $response->toArray(false);
-
+				
 				// If no access_token in response, return failure
 				if (empty($data['access_token'])) {
 					$error = $data['error_description'] ?? $data['error'] ?? 'Unexpected response from PayPal OAuth2 endpoint';
-					return ['request' => ['result' => 0, 'errorId' => 'OAUTH2_FAILURE', 'errorMessage' => $error], 'response' => []];
+					return ['request' => ['result' => 0, 'errorId' => 'OAUTH2_FAILURE', 'errorMessage' => $error]];
 				}
-
+				
 				// Cache the token and expires date
-				$this->m_access_token  = $data['access_token'];
+				$this->m_access_token = $data['access_token'];
 				$this->m_token_expires = time() + $data['expires_in'] - 60;
 				
-				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $this->m_access_token];
+				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => ['accessToken' => $this->m_access_token]];
 			} catch (\Throwable $e) {
-				return ['request' => ['result' => 0, 'errorId' => 'OAUTH2_FAILURE', 'errorMessage' => 'PayPal authentication failed: ' . $e->getMessage()], 'response' => []];
+				return ['request' => ['result' => 0, 'errorId' => 'OAUTH2_FAILURE', 'errorMessage' => "PayPal authentication failed: {$e->getMessage()}"]];
 			}
 		}
 		
 		/**
 		 * Send an authenticated REST request and return a normalized response array.
 		 * All API methods funnel through here to keep HTTP handling in one place.
-		 * @param string $method  HTTP method: GET, POST, PATCH
-		 * @param string $path    API path, e.g. /v2/checkout/orders
-		 * @param array  $body    Request body (JSON-encoded), empty for GET
-		 * @param array  $headers Extra headers to merge in
-		 * @return array ['request' => ['result' => 1|0, 'errorId' => ..., 'errorMessage' => ...], 'response' => [...]]
+		 * @param string $method HTTP method: GET, POST, PATCH
+		 * @param string $path API path, e.g. /v2/checkout/orders
+		 * @param array<string, mixed> $body Request body (JSON-encoded), empty for GET
+		 * @param array<string, mixed> $headers Extra headers to merge in
+		 * @return GatewayResponse
 		 */
 		private function sendRequest(string $method, string $path, array $body = [], array $headers = []): array {
 			try {
+				// Fetch the access token
 				$tokenResult = $this->getAccessToken();
 				
+				// If that failed, return the api error response
 				if ($tokenResult['request']['result'] === 0) {
 					return $tokenResult;
 				}
 				
+				// Fetch the response
+				$accessTokenResponse = $tokenResult['response'] ?? [];
+				
+				// Validate that the accessToken is present. If not, show error to user
+				if (empty($accessTokenResponse['accessToken'])) {
+					return ['request' => ['result' => 0, 'errorId' => '500', 'errorMessage' => "Invalid gateway response. Missing access token"]];
+				}
+				
+				// Call the method the user desires using the access token
 				$options = [
 					'headers'     => array_merge([
-						'Authorization' => "Bearer {$tokenResult['response']}",
+						'Authorization' => "Bearer {$accessTokenResponse['accessToken']}",
 						'Content-Type'  => 'application/json',
 						'Prefer'        => 'return=representation',
 					], $headers),
 					'verify_peer' => $this->m_verify_ssl,
 				];
 				
+				// Add JSON body if desired
 				if (!empty($body)) {
 					$options['json'] = $body;
 				}
-
+				
 				// Call the gateway
 				$response = $this->m_client->request($method, $this->m_base_url . $path, $options);
-				$data     = $response->toArray(false);
-				$status   = $response->getStatusCode();
-
+				$data = $response->toArray(false);
+				$status = $response->getStatusCode();
+				
 				// 2xx = success
 				if ($status >= 200 && $status < 300) {
 					return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $data];
 				}
 				
 				// PayPal REST error body: {"name": "...", "message": "...", "details": [...]}
-				$errorName    = $data['name']    ?? 'UNKNOWN_ERROR';
+				$errorName = $data['name'] ?? 'UNKNOWN_ERROR';
 				$errorMessage = $data['message'] ?? 'Unknown error';
 				
 				// Include the first detail entry if present — it usually carries the actionable reason

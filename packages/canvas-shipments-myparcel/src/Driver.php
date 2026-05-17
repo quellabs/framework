@@ -23,11 +23,11 @@
 		 * Driver name — stored in ShipmentResult::$provider and ShipmentState::$provider.
 		 * Used by ShipmentRouter::exchange() to re-resolve this driver later.
 		 */
-		const DRIVER_NAME = 'myparcel';
+		const string DRIVER_NAME = 'myparcel';
 		
 		/**
 		 * Active configuration, applied by the discovery system after instantiation.
-		 * @var array
+		 * @var array<string, mixed>
 		 */
 		private array $config = [];
 		
@@ -112,7 +112,7 @@
 		
 		/**
 		 * Returns the active configuration for this driver instance.
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getConfig(): array {
 			return array_replace_recursive($this->getDefaults(), $this->config);
@@ -121,7 +121,7 @@
 		/**
 		 * Applies configuration to this driver instance.
 		 * Called by the discovery system after instantiation, before any other methods.
-		 * @param array $config
+		 * @param array<string, mixed> $config
 		 * @return void
 		 */
 		public function setConfig(array $config): void {
@@ -130,7 +130,7 @@
 		
 		/**
 		 * Returns default configuration values for this driver.
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getDefaults(): array {
 			return [
@@ -189,10 +189,12 @@
 				$shipmentPayload = array_merge($shipmentPayload, $request->extraData);
 			}
 			
+			// Call the API
 			$result = $this->getGateway()->createParcel([
 				'data' => ['shipments' => [$shipmentPayload]],
 			]);
 			
+			// If that failed, throw error
 			if ($result['request']['result'] === 0) {
 				throw new ShipmentCreationException(
 					self::DRIVER_NAME,
@@ -201,9 +203,13 @@
 				);
 			}
 			
-			$parcelId = (string)($result['response']['data']['ids'][0]['id'] ?? '');
+			// Fetch the response
+			$response = $result['response'] ?? [];
 			
-			if ($parcelId === '') {
+			// Validate the existence of a parcel id
+			$parcelId = $response['data']['ids'][0]['id'];
+			
+			if (empty($parcelId)) {
 				throw new ShipmentCreationException(
 					self::DRIVER_NAME,
 					'missing_id',
@@ -211,14 +217,15 @@
 				);
 			}
 			
+			// Return the ShipmentResult
 			return new ShipmentResult(
 				provider: self::DRIVER_NAME,
-				parcelId: $parcelId,
+				parcelId: (string)$parcelId,
 				reference: $request->reference,
 				trackingCode: null,
 				trackingUrl: null,
 				carrierName: $this->carrierName($carrierInfo['carrierId']),
-				rawResponse: $result['response'],
+				rawResponse: $response,
 			);
 		}
 		
@@ -399,7 +406,7 @@
 		/**
 		 * Builds a ShipmentState from a raw shipment array returned by the MyParcel API.
 		 * Used by exchange() and the webhook controller.
-		 * @param array $shipment The entry from data.shipments[] in the MyParcel response
+		 * @param array<string, mixed> $shipment The entry from data.shipments[] in the MyParcel response
 		 * @return ShipmentState
 		 */
 		public function buildStateFromShipment(array $shipment): ShipmentState {
@@ -451,7 +458,7 @@
 		 * Returns an empty array on missing address, unknown module, or API error.
 		 * @param string $shippingModule
 		 * @param ShipmentAddress|null $address
-		 * @return array Keys: 'delivery', 'pickup'
+		 * @return array<string, mixed> Keys: 'delivery', 'pickup'
 		 */
 		private function fetchDeliveryData(string $shippingModule, ?ShipmentAddress $address): array {
 			if ($address === null) {
@@ -482,7 +489,7 @@
 		/**
 		 * Builds the recipient block for the MyParcel shipment payload.
 		 * @param ShipmentAddress $address
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		private function buildRecipient(ShipmentAddress $address): array {
 			return array_filter([

@@ -61,7 +61,7 @@
 			
 			// Verify the HMAC signature before processing anything.
 			// An invalid signature may indicate a spoofed request — reject it.
-			if (!$this->sendcloud->verifyWebhookSignature($rawBody, $signature)) {
+			if (!$this->sendcloud->verifyWebhookSignature($rawBody, $signature ?? '')) {
 				// Log with enough context to diagnose key mismatches without exposing the key.
 				error_log('SendCloud webhook signature verification failed.');
 				return new Response('Signature mismatch', 401);

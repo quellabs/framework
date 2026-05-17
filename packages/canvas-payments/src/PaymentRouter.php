@@ -14,8 +14,13 @@
 	
 	class PaymentRouter implements PaymentInterface {
 		
+		/** @var array<string, class-string<PaymentProviderInterface>> */
 		private array $moduleMap = [];
+		
+		/** @var array<string, class-string<PaymentProviderInterface>> */
 		private array $driverMap = [];
+		
+		/** @var Discover Service discovery */
 		private Discover $discover;
 		
 		/**
@@ -82,7 +87,7 @@
 		/**
 		 * Returns payment options for the given module
 		 * @param string $paymentModule
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getPaymentOptions(string $paymentModule): array {
 			return $this->resolve($paymentModule)->getPaymentOptions($paymentModule);
@@ -90,7 +95,7 @@
 		
 		/**
 		 * Returns all registered module names across all discovered providers
-		 * @return array
+		 * @return string[]
 		 */
 		public function getRegisteredModules(): array {
 			return array_keys($this->moduleMap);
@@ -103,8 +108,21 @@
 		 * @throws \RuntimeException
 		 */
 		private function resolve(string $module): PaymentProviderInterface {
-			$class = $this->moduleMap[$module] ?? throw new \RuntimeException("No payment provider registered for module '{$module}'");
-			return $this->discover->get($class);
+			// If the module does not exist, throw
+			if (!isset($this->moduleMap[$module])) {
+				throw new \RuntimeException("No payment provider registered for module '{$module}'");
+			}
+			
+			// Resolve the module
+			$result = $this->discover->get($this->moduleMap[$module]);
+			
+			// If it does not implement PaymentProviderInterface, throw
+			if (!$result instanceof PaymentProviderInterface) {
+				throw new \RuntimeException("Invalid payment provider for module '{$module}'");
+			}
+			
+			// Return module
+			return $result;
 		}
 
 		/**
@@ -114,15 +132,28 @@
 		 * @throws \RuntimeException
 		 */
 		private function resolveDriver(string $driver): PaymentProviderInterface {
-			$class = $this->driverMap[$driver] ?? throw new \RuntimeException("No payment provider registered for driver '{$driver}'");
-			return $this->discover->get($class);
+			// If the driver does not exist, throw
+			if (!isset($this->driverMap[$driver])) {
+				throw new \RuntimeException("No payment provider registered for driver '{$driver}'");
+			}
+			
+			// Resolve the driver
+			$result = $this->discover->get($this->driverMap[$driver]);
+			
+			// If it does not implement PaymentProviderInterface, throw
+			if (!$result instanceof PaymentProviderInterface) {
+				throw new \RuntimeException("Invalid payment provider for driver '{$driver}'");
+			}
+			
+			// Return driver
+			return $result;
 		}
 		
 		/**
 		 * Fetch the current state of a payment for reconciliation of missed webhooks.
 		 * @param string $driver Driver name as returned in PaymentState::$provider (e.g. 'rabosmartpay')
 		 * @param string $transactionId Provider-assigned transaction ID from InitiateResult
-		 * @param array $extraData Optional additional data to pass to the provider
+		 * @param array<string, mixed> $extraData Optional additional data to pass to the provider
 		 * @return PaymentState
 		 */
 		public function exchange(string $driver, string $transactionId, array $extraData = []): PaymentState {
@@ -133,7 +164,7 @@
 		 * Returns all refunds issued for the given transaction.
 		 * @param string $driver Driver name as returned in PaymentState::$provider (e.g. 'rabosmartpay')
 		 * @param string $paymentReference
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getRefunds(string $driver, string $paymentReference): array {
 			return $this->resolveDriver($driver)->getRefunds($paymentReference);

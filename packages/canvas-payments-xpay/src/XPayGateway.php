@@ -2,6 +2,9 @@
 	
 	namespace Quellabs\Payments\XPay;
 	
+	use Quellabs\Contracts\Gateway\GatewayInterface;
+	use Quellabs\Support\Tools;
+	use Random\RandomException;
 	use Symfony\Component\HttpClient\HttpClient;
 	use Symfony\Contracts\HttpClient\HttpClientInterface;
 	
@@ -25,14 +28,17 @@
 	 * Base URL: https://xpay.nexigroup.com/api/phoenix-0.0/psp/api/v1
 	 *
 	 * @see https://developer.nexigroup.com/xpayglobal/en-EU/api/payment-api-v1/
+	 *
+	 * @phpstan-import-type GatewayResponse from GatewayInterface
 	 */
 	class XPayGateway {
 		
 		/** @var string XPay Global API base URL */
-		private const BASE_URL = 'https://xpay.nexigroup.com/api/phoenix-0.0/psp/api/v1';
+		private const string BASE_URL = 'https://xpay.nexigroup.com/api/phoenix-0.0/psp/api/v1';
 		
 		/** @var string XPay Global sandbox API base URL */
-		private const BASE_URL_TEST = 'https://xpay.nexigroup.com/api/phoenix-0.0/psp/api/v1';
+		/** @phpstan-ignore classConstant.unused */
+		private const string BASE_URL_TEST = 'https://xpay.nexigroup.com/api/phoenix-0.0/psp/api/v1';
 		
 		/** @var string API key sent in the X-API-KEY header */
 		private string $apiKey;
@@ -62,8 +68,8 @@
 		 * that should be stored and verified against the return URL and push notifications.
 		 *
 		 * @see https://developer.nexigroup.com/xpayglobal/en-EU/api/payment-api-v1/#orders-hpp-post
-		 * @param array $payload Full order payload per XPay spec
-		 * @return array Normalised response
+		 * @param array<string, mixed> $payload Full order payload per XPay spec
+		 * @return GatewayResponse
 		 */
 		public function createOrder(array $payload): array {
 			return $this->request('POST', '/orders/hpp', $payload);
@@ -77,7 +83,7 @@
 		 *
 		 * @see https://developer.nexigroup.com/xpayglobal/en-EU/api/payment-api-v1/#orders-orderid-get
 		 * @param string $orderId Your order identifier (up to 27 chars)
-		 * @return array Normalised response
+		 * @return GatewayResponse
 		 */
 		public function getOrder(string $orderId): array {
 			return $this->request('GET', '/orders/' . urlencode($orderId));
@@ -90,7 +96,7 @@
 		 *
 		 * @see https://developer.nexigroup.com/xpayglobal/en-EU/api/payment-api-v1/#operations-operationid-get
 		 * @param string $operationId XPay-assigned operation identifier
-		 * @return array Normalised response
+		 * @return GatewayResponse
 		 */
 		public function getOperation(string $operationId): array {
 			return $this->request('GET', '/operations/' . urlencode($operationId));
@@ -105,8 +111,8 @@
 		 *
 		 * @see https://developer.nexigroup.com/xpayglobal/en-EU/api/payment-api-v1/#operations-operationid-refunds-post
 		 * @param string $operationId The CAPTURE operationId to refund against
-		 * @param array $payload Refund payload; may contain 'amount' and 'currency' for partial refunds
-		 * @return array Normalised response
+		 * @param array<string, mixed> $payload Refund payload; may contain 'amount' and 'currency' for partial refunds
+		 * @return GatewayResponse
 		 */
 		public function refundOperation(string $operationId, array $payload): array {
 			return $this->request('POST', '/operations/' . urlencode($operationId) . '/refunds', $payload);
@@ -117,7 +123,7 @@
 		 * Used to populate the available payment method list dynamically.
 		 *
 		 * @see https://developer.nexigroup.com/xpayglobal/en-EU/api/payment-api-v1/#paymentmethods-get
-		 * @return array Normalised response
+		 * @return GatewayResponse
 		 */
 		public function getPaymentMethods(): array {
 			return $this->request('GET', '/paymentmethods');
@@ -135,8 +141,8 @@
 		 *
 		 * @param string $method HTTP method ('GET' or 'POST')
 		 * @param string $path Path relative to the base URL (must start with '/')
-		 * @param array|null $payload JSON request body (POST only; omit for GET)
-		 * @return array Normalised response
+		 * @param array<string, mixed>|null $payload JSON request body (POST only; omit for GET)
+		 * @return GatewayResponse
 		 */
 		private function request(string $method, string $path, ?array $payload = null): array {
 			try {
@@ -147,7 +153,7 @@
 						'Content-Type'   => 'application/json',
 						'Accept'         => 'application/json',
 						'X-API-KEY'      => $this->apiKey,
-						'Correlation-Id' => $this->generateCorrelationId(),
+						'Correlation-Id' => Tools::createUUIDv4()
 					],
 				];
 				
@@ -161,17 +167,19 @@
 				
 				// Empty body on success (e.g. 204 No Content) — treat as success with no data
 				if ($rawBody === '') {
-					if ($httpCode >= 200 && $httpCode < 300) {
-						return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => []];
+					if ($httpCode < 200 || $httpCode >= 300) {
+						return ['request' => ['result' => 0, 'errorId' => (string)$httpCode, 'errorMessage' => 'HTTP error ' . $httpCode . ' with empty body']];
 					}
 					
-					return ['request' => ['result' => 0, 'errorId' => $httpCode, 'errorMessage' => 'HTTP error ' . $httpCode . ' with empty body']];
+					return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => []];
 				}
 				
+				// Decode body
 				$data = json_decode($rawBody, true);
 				
+				// If that failed, return an error
 				if (json_last_error() !== JSON_ERROR_NONE) {
-					return ['request' => ['result' => 0, 'errorId' => 0, 'errorMessage' => 'Invalid JSON response (HTTP ' . $httpCode . '): ' . json_last_error_msg()]];
+					return ['request' => ['result' => 0, 'errorId' => '', 'errorMessage' => 'Invalid JSON response (HTTP ' . $httpCode . '): ' . json_last_error_msg()]];
 				}
 				
 				// XPay error responses carry an 'errors' array with 'code' and 'description' per entry
@@ -179,28 +187,18 @@
 					$first = reset($data['errors']);
 					$errorCode = $first['code'] ?? 0;
 					$errorMsg  = $first['description'] ?? 'Unknown XPay error';
-					return ['request' => ['result' => 0, 'errorId' => $errorCode, 'errorMessage' => $errorMsg]];
+					return ['request' => ['result' => 0, 'errorId' => (string)$errorCode, 'errorMessage' => $errorMsg]];
 				}
 				
+				// Error if the httpCode is not in the success range
 				if ($httpCode < 200 || $httpCode >= 300) {
-					return ['request' => ['result' => 0, 'errorId' => $httpCode, 'errorMessage' => 'HTTP error ' . $httpCode]];
+					return ['request' => ['result' => 0, 'errorId' => (string)$httpCode, 'errorMessage' => 'HTTP error ' . $httpCode]];
 				}
 				
+				// Return result
 				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $data];
 			} catch (\Throwable $e) {
 				return ['request' => ['result' => 0, 'errorId' => $e->getCode(), 'errorMessage' => $e->getMessage()]];
 			}
-		}
-		
-		/**
-		 * Generates a UUID v4 for use as a Correlation-Id header.
-		 * The Correlation-Id must be an RFC 4122 UUID v4.
-		 * @return string UUID v4 string
-		 */
-		private function generateCorrelationId(): string {
-			$data = random_bytes(16);
-			$data[6] = chr(ord($data[6]) & 0x0f | 0x40); // version 4
-			$data[8] = chr(ord($data[8]) & 0x3f | 0x80); // variant bits
-			return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($data), 4));
 		}
 	}

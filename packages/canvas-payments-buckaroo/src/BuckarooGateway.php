@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\Payments\Buckaroo;
 	
+	use Quellabs\Contracts\Gateway\GatewayInterface;
 	use Symfony\Component\HttpClient\HttpClient;
 	use Symfony\Contracts\HttpClient\HttpClientInterface;
 	
@@ -24,6 +25,8 @@
 	 *
 	 * @see https://docs.buckaroo.io/docs/apis
 	 * @see https://docs.buckaroo.io/docs/integration-hmac
+	 *
+	 * @phpstan-import-type GatewayResponse from GatewayInterface
 	 */
 	class BuckarooGateway {
 		
@@ -63,8 +66,8 @@
 		 * Creates a new transaction (initiates a payment).
 		 * Returns a RequiredAction.RedirectURL to send the shopper to.
 		 * @see https://docs.buckaroo.io/docs/transaction-post
-		 * @param array $payload Full transaction payload per Buckaroo spec
-		 * @return array Normalised response
+		 * @param array<string, mixed> $payload Full transaction payload per Buckaroo spec
+		 * @return GatewayResponse
 		 */
 		public function createTransaction(array $payload): array {
 			return $this->request('POST', '/json/Transaction', $payload);
@@ -81,7 +84,7 @@
 		 *
 		 * @see https://docs.buckaroo.io/docs/transaction-get
 		 * @param string $transactionKey Buckaroo's own 32-char transaction key (from the Key field)
-		 * @return array Normalised response
+		 * @return GatewayResponse
 		 */
 		public function getTransactionStatus(string $transactionKey): array {
 			return $this->request('GET', '/json/Transaction/Status/' . urlencode($transactionKey));
@@ -95,7 +98,7 @@
 		 * with parameters; for iDEAL the parameter list contains the issuer codes and names.
 		 *
 		 * @see https://docs.buckaroo.io/docs/ideal-requests
-		 * @return array Normalised response
+		 * @return GatewayResponse
 		 */
 		public function getIdealIssuers(): array {
 			return $this->request('GET', '/json/Transaction/Specification/ideal');
@@ -106,8 +109,8 @@
 		 * Uses AmountCredit + OriginalTransactionKey + Action: 'Refund'.
 		 * Omitting AmountCredit triggers a full refund.
 		 * @see https://docs.buckaroo.io/docs/refunds
-		 * @param array $payload Must include currency, OriginalTransactionKey, and optionally AmountCredit
-		 * @return array Normalised response containing the refund transaction Key
+		 * @param array<string, mixed> $payload Must include currency, OriginalTransactionKey, and optionally AmountCredit
+		 * @return GatewayResponse
 		 */
 		public function refundTransaction(array $payload): array {
 			return $this->request('POST', '/json/Transaction', $payload);
@@ -129,13 +132,13 @@
 		 * @see https://docs.buckaroo.io/docs/json-authenticator
 		 * @param string $method HTTP method ('GET' or 'POST')
 		 * @param string $path Path relative to the API host (must start with '/')
-		 * @param array|null $payload JSON request body (POST only; omit for GET)
-		 * @return array Normalised response
+		 * @param array<string, mixed>|null $payload JSON request body (POST only; omit for GET)
+		 * @return GatewayResponse
 		 */
 		private function request(string $method, string $path, ?array $payload = null): array {
 			try {
 				$url        = 'https://' . $this->baseHost . $path;
-				$body       = $payload !== null ? json_encode($payload, JSON_UNESCAPED_UNICODE) : '';
+				$body       = $payload !== null ? (json_encode($payload, JSON_UNESCAPED_UNICODE) ?: '') : '';
 				$nonce      = bin2hex(random_bytes(8));
 				$timestamp  = time();
 				
@@ -161,7 +164,7 @@
 				
 				// If that failed, return error
 				if (json_last_error() !== JSON_ERROR_NONE) {
-					return ['request' => ['result' => 0, 'errorId' => 0, 'errorMessage' => 'Invalid JSON response (HTTP ' . $httpCode . '): ' . json_last_error_msg()]];
+					return ['request' => ['result' => 0, 'errorId' => "0", 'errorMessage' => 'Invalid JSON response (HTTP ' . $httpCode . '): ' . json_last_error_msg()]];
 				}
 				
 				// RequestErrors indicates a validation/authentication failure
@@ -179,7 +182,7 @@
 				
 				// Non-2xx HTTP codes with no RequestErrors: surface the HTTP code as the error
 				if ($httpCode < 200 || $httpCode >= 300) {
-					return ['request' => ['result' => 0, 'errorId' => $httpCode, 'errorMessage' => 'HTTP error ' . $httpCode]];
+					return ['request' => ['result' => 0, 'errorId' => (string)$httpCode, 'errorMessage' => 'HTTP error ' . $httpCode]];
 				}
 				
 				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $data];
@@ -217,5 +220,4 @@
 			$hash = base64_encode(hash_hmac('sha256', $signingString, $this->secretKey, true));
 			return 'hmac ' . $this->websiteKey . ':' . $hash . ':' . $nonce . ':' . $timestamp;
 		}
-		
 	}

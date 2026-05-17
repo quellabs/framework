@@ -3,6 +3,7 @@
 	namespace Quellabs\Shipments\Packing;
 	
 	use DVDoug\BoxPacker\Item;
+	use DVDoug\BoxPacker\Rotation;
 	
 	/**
 	 * Represents an item to be packed into a shipping box.
@@ -24,5 +25,13 @@
 		public function getLength(): int         { return $this->length; }
 		public function getDepth(): int          { return $this->depth; }
 		public function getWeight(): int         { return $this->weight; }
-		public function getKeepFlat(): bool      { return $this->keepFlat; }
+		
+		/**
+		 * Controls how the packer is allowed to rotate this item.
+		 * Returns KeepFlat for items that must stay upright, BestFit otherwise.
+		 * Replaces the v3 getKeepFlat() method.
+		 */
+		public function getAllowedRotation(): Rotation {
+			return $this->keepFlat ? Rotation::KeepFlat : Rotation::BestFit;
+		}
 	}
