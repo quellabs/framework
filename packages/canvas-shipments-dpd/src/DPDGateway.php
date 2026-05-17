@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\Shipments\DPD;
 	
+	use Quellabs\Contracts\Gateway\GatewayInterface;
 	use Symfony\Component\HttpClient\HttpClient;
 	use Symfony\Contracts\HttpClient\HttpClientInterface;
 	
@@ -46,14 +47,16 @@
 	 *   ParcelLifeCycle: Live: https://wsshipper.dpd.nl/soap/WSDL/ParcelLifecycleServiceV20.wsdl
 	 *
 	 * @see https://integrations.dpd.nl/dpd-shipper/dpd-shipper-webservices/
+	 *
+	 * @phpstan-import-type GatewayResponse from GatewayInterface
 	 */
 	class DPDGateway {
 		
 		/** Live base URL for all DPD Shipper Webservice endpoints */
-		private const BASE_URL_LIVE = 'https://wsshipper.dpd.nl/soap/services';
+		private const string BASE_URL_LIVE = 'https://wsshipper.dpd.nl/soap/services';
 		
 		/** Stage base URL for all DPD Shipper Webservice endpoints */
-		private const BASE_URL_TEST = 'https://shipperadmintest.dpd.nl/PublicAPI/soap/services';
+		private const string BASE_URL_TEST = 'https://shipperadmintest.dpd.nl/PublicAPI/soap/services';
 		
 		/** @var HttpClientInterface */
 		private HttpClientInterface $client;
@@ -75,7 +78,6 @@
 		
 		/** @var LabelFileCache Persists label PDFs across requests */
 		private LabelFileCache $labelCache;
-		
 		
 		/**
 		 * DPDGateway constructor.
@@ -104,7 +106,7 @@
 		 * getLabel() can retrieve it in any subsequent request or process.
 		 *
 		 * @param array<string, mixed> $payload Structured shipment data (generalShipmentData, parcels, productAndServiceData)
-		 * @return array<string, mixed>
+		 * @return GatewayResponse
 		 */
 		public function createShipment(array $payload): array {
 			$token = $this->getValidToken();
@@ -176,7 +178,7 @@ XML;
 		/**
 		 * Fetches tracking data for a parcel via the ParcelLifeCycle Service.
 		 * @param string $parcelLabelNumber 14-digit DPD barcode
-		 * @return array<string, mixed>
+		 * @return GatewayResponse
 		 */
 		public function getTrackingData(string $parcelLabelNumber): array {
 			$token = $this->getValidToken();
@@ -225,7 +227,7 @@ XML;
 		 * @param string $postalCode
 		 * @param string $city
 		 * @param int $limit Max results (server-side cap: 100)
-		 * @return array<string, mixed>
+		 * @return GatewayResponse
 		 */
 		public function findParcelShops(string $country, string $postalCode, string $city, int $limit = 10): array {
 			$token = $this->getValidToken();
@@ -279,7 +281,7 @@ XML;
 		 * Purges stale files opportunistically on each call.
 		 *
 		 * @param string $parcelLabelNumber
-		 * @return array<string, mixed>
+		 * @return GatewayResponse
 		 */
 		public function getLabel(string $parcelLabelNumber): array {
 			$content = $this->labelCache->read($parcelLabelNumber);
@@ -408,15 +410,18 @@ XML;
 		 * Parses a SOAP storeOrders response and extracts the parcel label number and label content.
 		 * @param string $body Raw SOAP response body
 		 * @param int $statusCode HTTP status code
-		 * @return array<string, mixed>
+		 * @return GatewayResponse
 		 */
 		private function parseShipmentResponse(string $body, int $statusCode): array {
+			// validate status code
 			if ($statusCode >= 400) {
 				return $this->parseErrorResponse($body, $statusCode);
 			}
 			
+			// Parse XML
 			$xml = $this->parseXml($body);
 			
+			// If that failed, return error
 			if ($xml === null) {
 				return ['request' => ['result' => 0, 'errorId' => 'parse_error', 'errorMessage' => 'Failed to parse DPD shipment response']];
 			}
@@ -424,6 +429,7 @@ XML;
 			// Check for fault
 			$fault = $xml->xpath('//faultstring');
 			
+			// If fault was found, return it
 			if (!empty($fault)) {
 				return ['request' => ['result' => 0, 'errorId' => 'soap_fault', 'errorMessage' => (string)$fault[0]]];
 			}
@@ -432,8 +438,8 @@ XML;
 			$xml->registerXPathNamespace('ns1', 'http://dpd.com/common/service/types/ShipmentService/3.5');
 			$response = $xml->xpath('//ns1:storeOrdersResponse/return')[0] ?? null;
 			
+			// Try without namespace
 			if ($response === null) {
-				// Try without namespace
 				$response = $xml->xpath('//*[local-name()="return"]')[0] ?? null;
 			}
 			
@@ -460,6 +466,7 @@ XML;
 				$this->labelCache->write($parcelLabelNumber, $pdfContent);
 			}
 			
+			// Return successful response
 			return [
 				'request'  => ['result' => 1, 'errorId' => '', 'errorMessage' => ''],
 				'response' => [
@@ -472,7 +479,7 @@ XML;
 		 * Parses a SOAP getTrackingData response into a normalised array.
 		 * @param string $body
 		 * @param int $statusCode
-		 * @return array<string, mixed>
+		 * @return GatewayResponse
 		 */
 		private function parseTrackingResponse(string $body, int $statusCode): array {
 			if ($statusCode >= 400) {
@@ -500,7 +507,9 @@ XML;
 			
 			return [
 				'request'  => ['result' => 1, 'errorId' => '', 'errorMessage' => ''],
-				'response' => ['trackingresult' => $this->xmlToArray($trackingResult)],
+				'response' => [
+					'trackingresult' => $this->xmlToArray($trackingResult)
+				],
 			];
 		}
 		
@@ -508,7 +517,7 @@ XML;
 		 * Parses a SOAP findParcelShops response into a normalised array.
 		 * @param string $body
 		 * @param int $statusCode
-		 * @return array<string, mixed>
+		 * @return GatewayResponse
 		 */
 		private function parseParcelShopResponse(string $body, int $statusCode): array {
 			if ($statusCode >= 400) {
@@ -544,10 +553,13 @@ XML;
 		 * Parses a SOAP fault or HTTP error response.
 		 * @param string $body
 		 * @param int $statusCode
-		 * @return array<string, mixed>
+		 * @return GatewayResponse
 		 */
 		private function parseErrorResponse(string $body, int $statusCode): array {
+			// Decode XML
 			$xml = $this->parseXml($body);
+			
+			// Fetch error message from XML
 			$message = "HTTP {$statusCode}";
 			
 			if ($xml !== null) {
@@ -558,7 +570,8 @@ XML;
 				}
 			}
 			
-			return ['request' => ['result' => 0, 'errorId' => $statusCode, 'errorMessage' => $message]];
+			// Return the error message
+			return ['request' => ['result' => 0, 'errorId' => (string)$statusCode, 'errorMessage' => $message]];
 		}
 		
 		/**

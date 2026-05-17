@@ -257,8 +257,10 @@
 				$payload = array_merge_recursive($payload, $request->extraData);
 			}
 			
+			// Call the API to create a shipment
 			$result = $this->getGateway()->createShipment($payload);
 			
+			// If that failed, throw exception
 			if ($result['request']['result'] === 0) {
 				throw new ShipmentCreationException(
 					self::DRIVER_NAME,
@@ -267,10 +269,11 @@
 				);
 			}
 			
-			// DPD returns the 14-digit parcel label number as the stable identifier
-			$parcelLabelNumber = $result['response']['parcelLabelNumber'] ?? null;
+			// Fetch the response
+			$response = $result['response'] ?? [];
 			
-			if (empty($parcelLabelNumber)) {
+			// DPD returns the 14-digit parcel label number as the stable identifier
+			if (empty($response['parcelLabelNumber'])) {
 				throw new ShipmentCreationException(
 					self::DRIVER_NAME,
 					'missing_label_number',
@@ -278,21 +281,21 @@
 				);
 			}
 			
+			// Return the shipment result
 			return new ShipmentResult(
 				provider: self::DRIVER_NAME,
-				parcelId: (string)$parcelLabelNumber,
+				parcelId: (string)$response['parcelLabelNumber'],
 				reference: $request->reference,
-				trackingCode: (string)$parcelLabelNumber,
-				trackingUrl: $this->buildTrackingUrl($parcelLabelNumber),
+				trackingCode: (string)$response['parcelLabelNumber'],
+				trackingUrl: $this->buildTrackingUrl($response['parcelLabelNumber']),
 				carrierName: 'DPD',
-				rawResponse: $result['response'],
+				rawResponse: $response,
 			);
 		}
 		
 		/**
 		 * DPD does not expose a cancellation endpoint in their Shipper Webservice API.
 		 * Shipments must be cancelled via the DPD customer service before depot handover.
-		 *
 		 * @param CancelRequest $request
 		 * @return CancelResult
 		 * @throws ShipmentCancellationException always
@@ -318,8 +321,10 @@
 		 * @throws ShipmentExchangeException
 		 */
 		public function exchange(string $parcelId): ShipmentState {
+			// Call the API to fetch tracking data for the parcel
 			$result = $this->getGateway()->getTrackingData($parcelId);
 			
+			// Throw if that API call failed
 			if ($result['request']['result'] === 0) {
 				throw new ShipmentExchangeException(
 					self::DRIVER_NAME,
@@ -328,9 +333,11 @@
 				);
 			}
 			
-			$trackingResult = $result['response']['trackingresult'] ?? null;
+			// Fetch the response
+			$response = $result['response'] ?? [];
 			
-			if ($trackingResult === null) {
+			// Validate the response
+			if ($response['trackingresult'] === null) {
 				throw new ShipmentExchangeException(
 					self::DRIVER_NAME,
 					'not_found',
@@ -338,7 +345,7 @@
 				);
 			}
 			
-			return $this->buildStateFromTracking($parcelId, $trackingResult);
+			return $this->buildStateFromTracking($parcelId, $response['trackingresult']);
 		}
 		
 		/**
