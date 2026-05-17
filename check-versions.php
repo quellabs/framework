@@ -12,16 +12,21 @@
 	 *
 	 * Options:
 	 *   --base=<branch>   Branch to compare against (default: main)
+	 *
+	 * Exit codes:
+	 *   0  All changed packages have a version bump (or no packages changed)
+	 *   1  One or more changed packages are missing a version bump, or a fatal
+	 *      error occurred (error message written to stderr)
 	 */
 	
 	// ---------------------------------------------------------------------------
 	// Configuration
 	// ---------------------------------------------------------------------------
 	
-	$options      = getopt('', ['base:']);
-	$baseBranch   = $options['base'] ?? 'main';
+	$options = getopt('', ['base:']);
+	$baseBranch = $options['base'] ?? 'main';
 	$versionsFile = 'versioning/versions.json';
-	$packagesDir  = 'packages';
+	$packagesDir = 'packages';
 	
 	// ---------------------------------------------------------------------------
 	// Helpers
@@ -30,11 +35,12 @@
 	/**
 	 * Run a git command via proc_open and return stdout on success, null on failure.
 	 * Uses an array command to avoid shell quoting issues on Windows.
+	 * stderr is drained and discarded to prevent pipe-buffer deadlocks.
 	 */
 	function gitRun(array $args): ?string {
-		$cmd         = array_merge(['git'], $args);
+		$cmd = array_merge(['git'], $args);
 		$descriptors = [1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
-		$process     = proc_open($cmd, $descriptors, $pipes);
+		$process = proc_open($cmd, $descriptors, $pipes);
 		
 		if (!is_resource($process)) {
 			return null;
@@ -42,6 +48,8 @@
 		
 		$stdout = stream_get_contents($pipes[1]);
 		fclose($pipes[1]);
+		// Drain stderr so the child process never blocks on a full pipe buffer
+		stream_get_contents($pipes[2]);
 		fclose($pipes[2]);
 		$code = proc_close($process);
 		
@@ -84,6 +92,15 @@
 	}
 	
 	/**
+	 * Return true if $version matches the expected X.Y.Z[-prerelease] semver
+	 * format. Versions without a patch segment (e.g. "1.0") are rejected so
+	 * that loose PHP-style version strings do not silently pass comparison.
+	 */
+	function isValidSemver(string $version): bool {
+		return preg_match('/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/', $version) === 1;
+	}
+	
+	/**
 	 * Resolve a branch name to a git ref, trying local first then origin/.
 	 * Returns the resolved ref string, or null if neither exists.
 	 */
@@ -97,6 +114,26 @@
 		}
 		
 		return null;
+	}
+	
+	/**
+	 * Decode a JSON string and return the result as an array.
+	 * Writes a specific error to stderr and exits on failure.
+	 */
+	function decodeJson(string $json, string $label): array {
+		$data = json_decode($json, true);
+		
+		if (json_last_error() !== JSON_ERROR_NONE) {
+			fwrite(STDERR, "Invalid JSON in $label: " . json_last_error_msg() . "\n");
+			exit(1);
+		}
+		
+		if (!is_array($data)) {
+			fwrite(STDERR, "Expected a JSON object in $label, got a scalar or null.\n");
+			exit(1);
+		}
+		
+		return $data;
 	}
 	
 	// ---------------------------------------------------------------------------
@@ -155,12 +192,7 @@
 		exit(1);
 	}
 	
-	$baseVersions = json_decode($versionsOnBase, true);
-	
-	if (!is_array($baseVersions)) {
-		fwrite(STDERR, "Failed to parse '$versionsFile' from '$baseBranch'.\n");
-		exit(1);
-	}
+	$baseVersions = decodeJson($versionsOnBase, "'$versionsFile' from '$baseBranch'");
 	
 	// Read versions.json from the current working tree
 	if (!file_exists($versionsFile)) {
@@ -168,12 +200,14 @@
 		exit(1);
 	}
 	
-	$currentVersions = json_decode(file_get_contents($versionsFile), true);
+	$currentJson = file_get_contents($versionsFile);
 	
-	if (!is_array($currentVersions)) {
-		fwrite(STDERR, "Failed to parse '$versionsFile' from current branch.\n");
+	if ($currentJson === false) {
+		fwrite(STDERR, "Failed to read '$versionsFile' from working tree.\n");
 		exit(1);
 	}
+	
+	$currentVersions = decodeJson($currentJson, "'$versionsFile' from working tree");
 	
 	// ---------------------------------------------------------------------------
 	// Detect changed packages
@@ -182,7 +216,8 @@
 	// Find all files that changed between the merge base and HEAD
 	$changedFiles = gitLines(['diff', '--name-only', $mergeBase, 'HEAD']);
 	
-	// Group changed files by package name
+	// Group changed files by package name. Packages that no longer exist on
+	// disk are filtered out later during the report phase, not here.
 	$changedPackages = [];
 	
 	foreach ($changedFiles as $file) {
@@ -194,6 +229,9 @@
 			$changedPackages[$m[1]] = true;
 		}
 	}
+	
+	// Sort for deterministic output order across runs and platforms
+	ksort($changedPackages);
 	
 	// ---------------------------------------------------------------------------
 	// Report
@@ -210,12 +248,19 @@
 		exit(0);
 	}
 	
-	$ok      = [];
+	$ok = [];
 	$missing = [];
 	$unknown = [];
+	$deleted = [];
 	
 	foreach (array_keys($changedPackages) as $package) {
-		$baseVersion    = $baseVersions[$package]    ?? null;
+		// Skip packages that were deleted — their diff entries are expected
+		if (!is_dir("$packagesDir/$package")) {
+			$deleted[] = $package;
+			continue;
+		}
+		
+		$baseVersion = $baseVersions[$package] ?? null;
 		$currentVersion = $currentVersions[$package] ?? null;
 		
 		if ($currentVersion === null) {
@@ -224,8 +269,24 @@
 			continue;
 		}
 		
+		// Warn if either version string deviates from X.Y.Z semver format,
+		// because version_compare() accepts loose PHP-style strings that may
+		// produce surprising results (e.g. "1.0" < "1.0.1" but "1" > "0.9.9").
+		// Track warned values per package to avoid repeating the same warning
+		// when base and current happen to carry the same invalid string.
+		$warnedVersions = [];
+		
+		foreach ([$baseVersion, $currentVersion] as $v) {
+			if ($v !== null && !isValidSemver($v) && !in_array($v, $warnedVersions, true)) {
+				echo "⚠  Warning: '$v' for '$package' is not valid X.Y.Z semver — comparison may be unreliable.\n";
+				$warnedVersions[] = $v;
+			}
+		}
+		
 		if ($baseVersion === null) {
-			// New package — any version entry counts as a bump
+			// New package not previously tracked — any version entry counts as a bump.
+			// Note: this relies on the package key being absent from the base versions
+			// file, not on filesystem state, so a renamed package could appear here.
 			$ok[] = [$package, null, $currentVersion];
 			continue;
 		}
@@ -234,6 +295,15 @@
 			$ok[] = [$package, $baseVersion, $currentVersion];
 		} else {
 			$missing[] = [$package, $baseVersion, $currentVersion];
+		}
+	}
+	
+	// Packages that were removed from disk — informational only, not an issue
+	if (!empty($deleted)) {
+		echo "\n🗑  Deleted (skipped):\n";
+		
+		foreach ($deleted as $package) {
+			echo "   $package\n";
 		}
 	}
 	
@@ -268,7 +338,9 @@
 	
 	echo "\n" . str_repeat('-', 60) . "\n";
 	
-	$total  = count($ok) + count($missing) + count($unknown);
+	$total = count($ok) + count($missing) + count($unknown);
 	$issues = count($missing) + count($unknown);
 	
 	echo "Checked $total package(s). $issues issue(s) found.\n";
+	
+	exit($issues > 0 ? 1 : 0);
