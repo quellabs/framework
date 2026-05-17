@@ -224,7 +224,7 @@
 		 *
 		 * @see https://developer.postnl.nl/docs/#/http/api-endpoints/status/status-by-barcode
 		 */
-		private const STATUS_MAP = [
+		private const array STATUS_MAP = [
 			// Phase 1 — accepted by PostNL
 			1  => ShipmentStatus::ReadyToSend,
 			
@@ -360,8 +360,7 @@
 								'ContactType' => '01',
 								'Email'       => $request->deliveryAddress->email,
 								'TelNr'       => $request->deliveryAddress->phone,
-							], fn($v) => $v !== null)
-								: null,
+							], fn($v) => $v !== null) : null,
 						]),
 						'DeliveryAddress'     => $request->servicePointId !== null ? '09' : '01',
 						'DeliveryDate'        => (new \DateTimeImmutable('+1 weekday'))->format('d-m-Y'),
