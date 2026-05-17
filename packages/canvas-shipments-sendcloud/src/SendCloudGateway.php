@@ -4,8 +4,11 @@
 	
 	use Quellabs\Contracts\Gateway\GatewayInterface;
 	use Symfony\Component\HttpClient\HttpClient;
+	use Symfony\Contracts\HttpClient\Exception\ClientExceptionInterface;
+	use Symfony\Contracts\HttpClient\Exception\RedirectionExceptionInterface;
+	use Symfony\Contracts\HttpClient\Exception\ServerExceptionInterface;
+	use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 	use Symfony\Contracts\HttpClient\HttpClientInterface;
-	use Symfony\Contracts\HttpClient\ResponseInterface;
 	
 	/**
 	 * Low-level wrapper around the SendCloud API v2.
@@ -35,7 +38,7 @@
 		
 		/** @var HttpClientInterface HTTP client for Google Maps (no custom User-Agent) */
 		private HttpClientInterface $googleMapsClient;
-
+		
 		/**
 		 * SendCloudGateway constructor.
 		 * @param Driver $driver
@@ -73,7 +76,7 @@
 		 * @return GatewayResponse
 		 */
 		public function createParcel(array $payload): array {
-			return $this->post('/parcels', $payload);
+			return $this->request('POST', '/parcels', ['json' => $payload]);
 		}
 		
 		/**
@@ -83,7 +86,7 @@
 		 * @return GatewayResponse
 		 */
 		public function getParcel(string|int $parcelId): array {
-			return $this->get("/parcels/{$parcelId}");
+			return $this->request('GET', "/parcels/{$parcelId}");
 		}
 		
 		/**
@@ -93,7 +96,7 @@
 		 * @return GatewayResponse
 		 */
 		public function cancelParcel(string|int $parcelId): array {
-			return $this->post("/parcels/{$parcelId}/cancel", []);
+			return $this->request('POST', "/parcels/{$parcelId}/cancel", ['json' => []]);
 		}
 		
 		/**
@@ -110,7 +113,7 @@
 				'to_country'   => $toCountry,
 			]);
 			
-			return $this->get('/shipping_methods', $query);
+			return $this->request('GET', '/shipping_methods', ['query' => $query]);
 		}
 		
 		/**
@@ -135,7 +138,7 @@
 			];
 			
 			// Service points use a different base domain
-			return $this->get('/service-points/', $query, self::SERVICE_POINT_URL);
+			return $this->request('GET', '/service-points/', ['query' => $query], self::SERVICE_POINT_URL);
 		}
 		
 		/**
@@ -146,10 +149,10 @@
 		 */
 		public function getLabel(string|int|array $parcelId): array {
 			if (is_array($parcelId)) {
-				return $this->get('/labels', ['label' => ['parcels' => $parcelId]]);
+				return $this->request('GET', '/labels', ['query' => ['label' => ['parcels' => $parcelId]]]);
 			}
 			
-			return $this->get("/labels/{$parcelId}");
+			return $this->request('GET', "/labels/{$parcelId}");
 		}
 		
 		/**
@@ -215,7 +218,7 @@
 							array_keys($components),
 							$components
 						)),
-						'key' => $this->geocodingApiKey,
+						'key'        => $this->geocodingApiKey,
 					],
 				]);
 				
@@ -284,60 +287,51 @@
 		}
 		
 		/**
-		 * Sends a GET request and returns a normalised response array.
+		 * Sends an HTTP request and returns a normalised response array.
+		 *
+		 * The $options array is passed directly to the Symfony HttpClient, so the
+		 * caller is responsible for encoding: use ['query' => ...] for GET params
+		 * and ['json' => ...] for POST bodies. This keeps the method agnostic about
+		 * how the body or query string is represented.
+		 *
+		 * SendCloud returns 4xx with a JSON body containing 'error.code' and 'error.message'.
+		 *
+		 * @param string $method HTTP verb (e.g. 'GET', 'POST')
 		 * @param string $endpoint Path relative to the base URL (e.g. '/parcels/123')
-		 * @param array<string, mixed> $query Optional query string parameters
+		 * @param array<string, mixed> $options Symfony HttpClient request options
 		 * @param string|null $baseUrl Override the default base URL (used for service points)
 		 * @return GatewayResponse
 		 */
-		private function get(string $endpoint, array $query = [], ?string $baseUrl = null): array {
+		private function request(string $method, string $endpoint, array $options = [], ?string $baseUrl = null): array {
 			try {
+				// Create url
 				$url = ($baseUrl ?? self::BASE_URL) . $endpoint;
 				
-				$response = $this->client->request('GET', $url, [
-					'query' => $query,
-				]);
+				// Call API
+				$response = $this->client->request($method, $url, $options);
+
+				// Fetch status code
+				$statusCode = $response->getStatusCode();
 				
-				return $this->normaliseResponse($response);
-			} catch (\Throwable $e) {
-				return ['request' => ['result' => 0, 'errorId' => $e->getCode(), 'errorMessage' => $e->getMessage()]];
-			}
-		}
-		
-		/**
-		 * Sends a POST request and returns a normalized response array.
-		 * @param string $endpoint Path relative to the base URL
-		 * @param array<string, mixed> $payload JSON request body
-		 * @return GatewayResponse
-		 */
-		private function post(string $endpoint, array $payload): array {
-			try {
-				$response = $this->client->request('POST', self::BASE_URL . $endpoint, [
-					'json' => $payload,
-				]);
+				// Decode the response body regardless of status so error bodies are available
+				$body = json_decode($response->getContent(false), true);
 				
-				return $this->normaliseResponse($response);
-			} catch (\Throwable $e) {
-				return ['request' => ['result' => 0, 'errorId' => $e->getCode(), 'errorMessage' => $e->getMessage()]];
+				// Check if decoding worked
+				if (json_last_error() !== JSON_ERROR_NONE) {
+					return ['request' => ['result' => 0, 'errorId' => (string)json_last_error(), 'errorMessage' => json_last_error_msg()]];
+				}
+				
+				// SendCloud signals errors via 4xx status codes with a structured error body
+				if ($statusCode >= 400) {
+					$errorCode = $body['error']['code'] ?? $statusCode;
+					$errorMessage = $body['error']['message'] ?? "HTTP {$statusCode}";
+					return ['request' => ['result' => 0, 'errorId' => $errorCode, 'errorMessage' => $errorMessage]];
+				}
+				
+				// Successful response: wrap the decoded body in the standard envelope.
+				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $body];
+			} catch (TransportExceptionInterface|ClientExceptionInterface|RedirectionExceptionInterface|ServerExceptionInterface $e) {
+				return ['request' => ['result' => 0, 'errorId' => (string)$e->getCode(), 'errorMessage' => $e->getMessage()]];
 			}
-		}
-		
-		/**
-		 * Normalizes an HTTP response into the shared result envelope.
-		 * SendCloud returns 4xx with a JSON body containing 'error.code' and 'error.message'.
-		 * @param ResponseInterface $response
-		 * @return GatewayResponse
-		 */
-		private function normaliseResponse(ResponseInterface $response): array {
-			$statusCode = $response->getStatusCode();
-			$body = json_decode($response->getContent(false), true);
-			
-			if ($statusCode >= 400) {
-				$errorCode = $body['error']['code'] ?? $statusCode;
-				$errorMessage = $body['error']['message'] ?? "HTTP {$statusCode}";
-				return ['request' => ['result' => 0, 'errorId' => $errorCode, 'errorMessage' => $errorMessage]];
-			}
-			
-			return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $body];
 		}
 	}

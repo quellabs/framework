@@ -194,8 +194,11 @@
 				);
 			}
 			
+			// Fetch response
+			$response = $result["response"] ?? [];
+			
 			// Fetch parcel data
-			$parcel = $result['response']['parcel'];
+			$parcel = $response['parcel'];
 			
 			// Return result
 			return new ShipmentResult(
@@ -260,8 +263,11 @@
 				);
 			}
 			
+			// Fetch response
+			$response = $result['response'] ?? [];
+			
 			// Build and return ShipmentState
-			return $this->buildStateFromParcel($result['response']['parcel']);
+			return $this->buildStateFromParcel($response['parcel']);
 		}
 		
 		/**
@@ -477,17 +483,28 @@
 		 * @return array{lat: float, lng: float}|null
 		 */
 		private function geocodeAddress(ShipmentAddress $address): ?array {
+			// Call API to geocode the address
 			$result = $this->getGateway()->geocodeAddress(
 				$address->postalCode,
 				$address->country,
 				$address->city,
 			);
 			
+			// If that failed return error
 			if ($result['request']['result'] === 0) {
 				return null;
 			}
 			
-			return $result['response'];
+			// Fetch response
+			$response = $result['response'] ?? [];
+			
+			// Validate response
+			if (!isset($response['lat']) || !isset($response['lng'])) {
+				return null;
+			}
+			
+			// Return response data
+			return ['lat' => $response['lat'], 'lng' => $response['lng']];
 		}
 		
 		/**
