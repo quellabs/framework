@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\Shipments\SendCloud;
 	
+	use Quellabs\Contracts\Gateway\GatewayInterface;
 	use Symfony\Component\HttpClient\HttpClient;
 	use Symfony\Contracts\HttpClient\HttpClientInterface;
 	use Symfony\Contracts\HttpClient\ResponseInterface;
@@ -15,6 +16,8 @@
 	 *   ['request' => ['result' => 0, 'errorId' => <code>, 'errorMessage' => <msg>]]
 	 *
 	 * @see https://docs.sendcloud.com/api/v2/
+	 *
+	 * @phpstan-import-type GatewayResponse from GatewayInterface
 	 */
 	class SendCloudGateway {
 		
@@ -67,7 +70,7 @@
 		 * Creates a parcel.
 		 * @see https://docs.sendcloud.com/api/v2/#create-a-parcel
 		 * @param array<string, mixed> $payload
-		 * @return array<string, mixed>
+		 * @return GatewayResponse
 		 */
 		public function createParcel(array $payload): array {
 			return $this->post('/parcels', $payload);
@@ -77,7 +80,7 @@
 		 * Retrieves a single parcel by ID.
 		 * @see https://docs.sendcloud.com/api/v2/#get-a-specific-parcel
 		 * @param string|int $parcelId
-		 * @return array<string, mixed>
+		 * @return GatewayResponse
 		 */
 		public function getParcel(string|int $parcelId): array {
 			return $this->get("/parcels/{$parcelId}");
@@ -87,7 +90,7 @@
 		 * Cancels a parcel.
 		 * @see https://docs.sendcloud.com/api/v2/#cancel-delete-a-parcel
 		 * @param string|int $parcelId
-		 * @return array<string, mixed>
+		 * @return GatewayResponse
 		 */
 		public function cancelParcel(string|int $parcelId): array {
 			return $this->post("/parcels/{$parcelId}/cancel", []);
@@ -99,7 +102,7 @@
 		 * @see https://docs.sendcloud.com/api/v2/#get-shipping-methods
 		 * @param string|null $fromCountry ISO 3166-1 alpha-2 sender country
 		 * @param string|null $toCountry ISO 3166-1 alpha-2 recipient country
-		 * @return array<string, mixed>
+		 * @return GatewayResponse
 		 */
 		public function getShippingMethods(?string $fromCountry = null, ?string $toCountry = null): array {
 			$query = array_filter([
@@ -119,7 +122,7 @@
 		 * @param float $neLng North-east bounding box longitude
 		 * @param float $swLat South-west bounding box latitude
 		 * @param float $swLng South-west bounding box longitude
-		 * @return array<string, mixed>
+		 * @return GatewayResponse
 		 */
 		public function getServicePoints(array $carriers, string $country, float $neLat, float $neLng, float $swLat, float $swLng): array {
 			$query = [
@@ -139,7 +142,7 @@
 		 * Retrieves the label PDF URL for one or more parcels.
 		 * @see https://docs.sendcloud.com/api/v2/#get-a-pdf-label
 		 * @param string|int|array<int, int> $parcelId Single ID or array of IDs for a merged label
-		 * @return array<string, mixed>
+		 * @return GatewayResponse
 		 */
 		public function getLabel(string|int|array $parcelId): array {
 			if (is_array($parcelId)) {
@@ -174,7 +177,7 @@
 		 * @param string $postalCode
 		 * @param string $country ISO 3166-1 alpha-2
 		 * @param string|null $city
-		 * @return array<string, mixed>
+		 * @return GatewayResponse
 		 */
 		public function geocodeAddress(string $postalCode, string $country, ?string $city = null): array {
 			if (!empty($this->geocodingApiKey)) {
@@ -190,7 +193,7 @@
 		 * @param string $postalCode
 		 * @param string $country
 		 * @param string|null $city
-		 * @return array<string, mixed>
+		 * @return GatewayResponse
 		 */
 		private function geocodeWithGoogle(string $postalCode, string $country, ?string $city): array {
 			try {
@@ -244,7 +247,7 @@
 		 * @param string $postalCode
 		 * @param string $country
 		 * @param string|null $city
-		 * @return array<string, mixed>
+		 * @return GatewayResponse
 		 */
 		private function geocodeWithNominatim(string $postalCode, string $country, ?string $city): array {
 			try {
@@ -285,7 +288,7 @@
 		 * @param string $endpoint Path relative to the base URL (e.g. '/parcels/123')
 		 * @param array<string, mixed> $query Optional query string parameters
 		 * @param string|null $baseUrl Override the default base URL (used for service points)
-		 * @return array<string, mixed>
+		 * @return GatewayResponse
 		 */
 		private function get(string $endpoint, array $query = [], ?string $baseUrl = null): array {
 			try {
@@ -305,7 +308,7 @@
 		 * Sends a POST request and returns a normalized response array.
 		 * @param string $endpoint Path relative to the base URL
 		 * @param array<string, mixed> $payload JSON request body
-		 * @return array<string, mixed>
+		 * @return GatewayResponse
 		 */
 		private function post(string $endpoint, array $payload): array {
 			try {
@@ -323,7 +326,7 @@
 		 * Normalizes an HTTP response into the shared result envelope.
 		 * SendCloud returns 4xx with a JSON body containing 'error.code' and 'error.message'.
 		 * @param ResponseInterface $response
-		 * @return array<string, mixed>
+		 * @return GatewayResponse
 		 */
 		private function normaliseResponse(ResponseInterface $response): array {
 			$statusCode = $response->getStatusCode();
