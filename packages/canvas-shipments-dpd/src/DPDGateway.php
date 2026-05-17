@@ -4,6 +4,7 @@
 	
 	use Quellabs\Contracts\Gateway\GatewayInterface;
 	use Symfony\Component\HttpClient\HttpClient;
+	use Symfony\Contracts\HttpClient\Exception\ExceptionInterface;
 	use Symfony\Contracts\HttpClient\HttpClientInterface;
 	
 	/**
@@ -109,10 +110,12 @@
 		 * @return GatewayResponse
 		 */
 		public function createShipment(array $payload): array {
+			// Unpack payload sections
 			$general = $payload['generalShipmentData'];
 			$parcels = $payload['parcels'];
 			$psd = $payload['productAndServiceData'];
 			
+			// Build XML fragments for each section
 			$senderXml = $this->buildAddressXml($general['sender']);
 			$recipientXml = $this->buildAddressXml($general['recipient']);
 			$parcelsXml = $this->buildParcelsXml($parcels);
@@ -154,12 +157,14 @@
 </soapenv:Envelope>
 XML;
 			
+			// Send request; return immediately on auth or transport failure
 			$result = $this->request('/ShipmentService', $xml);
 			
 			if ($result['request']['result'] === 0) {
 				return $result;
 			}
 			
+			// Parse and return the shipment response
 			$response = $result['response'] ?? [];
 			return $this->parseShipmentResponse($response['body'], $response['statusCode']);
 		}
@@ -189,12 +194,14 @@ XML;
 </soapenv:Envelope>
 XML;
 			
+			// Send request; return immediately on auth or transport failure
 			$result = $this->request('/ParcelLifeCycleService', $xml);
 			
 			if ($result['request']['result'] === 0) {
 				return $result;
 			}
 			
+			// Parse and return the tracking response
 			$response = $result['response'] ?? [];
 			return $this->parseTrackingResponse($response['body'], $response['statusCode']);
 		}
@@ -230,12 +237,14 @@ XML;
 </soapenv:Envelope>
 XML;
 			
+			// Send request; return immediately on auth or transport failure
 			$result = $this->request('/ParcelShopFinderService', $xml);
 			
 			if ($result['request']['result'] === 0) {
 				return $result;
 			}
 			
+			// Parse and return the parcel shop response
 			$response = $result['response'] ?? [];
 			return $this->parseParcelShopResponse($response['body'], $response['statusCode']);
 		}
@@ -333,6 +342,7 @@ XML;
 XML;
 			
 			try {
+				// Call the DPD Login Service
 				$response = $this->client->request('POST', $this->baseUrl . '/LoginService', [
 					'headers' => [
 						'Content-Type' => 'text/xml; charset=utf-8',
@@ -341,6 +351,7 @@ XML;
 					'body'    => $xml,
 				]);
 				
+				// Parse the response body
 				$body = $response->getContent(false);
 				$xml = $this->parseXml($body);
 				
@@ -348,6 +359,7 @@ XML;
 					return null;
 				}
 				
+				// Extract the return element from the response
 				$xml->registerXPathNamespace('ns', 'http://dpd.com/common/service/types/LoginService/2.1');
 				$result = $xml->xpath('//ns:return')[0] ?? null;
 				
@@ -355,6 +367,7 @@ XML;
 					return null;
 				}
 				
+				// Extract token and expiry from the return element
 				$token = (string)($result->authToken ?? '');
 				$expires = (string)($result->authTokenExpires ?? '');
 				
@@ -362,6 +375,7 @@ XML;
 					return null;
 				}
 				
+				// Cache the token
 				$this->authToken = $token;
 				
 				// Parse expiry timestamp — DPD returns UTC datetime e.g. '2020-05-08T13:02:56.06'
@@ -373,12 +387,14 @@ XML;
 				
 				if ($parsed !== false) {
 					$this->authTokenExpires = $parsed;
+				} elseif ($fallback !== false) {
+					$this->authTokenExpires = $fallback;
 				} else {
-					$this->authTokenExpires = ($fallback !== false ? $fallback : null);
+					$this->authTokenExpires = null;
 				}
 				
 				return $this->authToken;
-			} catch (\Symfony\Contracts\HttpClient\Exception\ExceptionInterface) {
+			} catch (ExceptionInterface) {
 				return null;
 			}
 		}
@@ -388,7 +404,6 @@ XML;
 		 * normalised GatewayResponse. On success, 'response' contains 'statusCode'
 		 * and 'body' for the caller to parse. On auth or transport failure, returns
 		 * a standard error envelope.
-		 *
 		 * @param string $endpoint Service path appended to the base URL (e.g. '/ShipmentService')
 		 * @param string $xml SOAP envelope with {{token}} and {{delisId}} placeholders
 		 * @return GatewayResponse
@@ -423,8 +438,8 @@ XML;
 						'body'       => $response->getContent(false)
 					]
 				];
-			} catch (\Symfony\Contracts\HttpClient\Exception\ExceptionInterface $e) {
-				return ['request' => ['result' => 0, 'errorId' => $e->getCode(), 'errorMessage' => $e->getMessage()]];
+			} catch (ExceptionInterface $e) {
+				return ['request' => ['result' => 0, 'errorId' => (string)$e->getCode(), 'errorMessage' => $e->getMessage()]];
 			}
 		}
 		
@@ -511,16 +526,19 @@ XML;
 		 * @return GatewayResponse
 		 */
 		private function parseTrackingResponse(string $body, int $statusCode): array {
+			// Delegate HTTP-level errors to the error parser
 			if ($statusCode >= 400) {
 				return $this->parseErrorResponse($body, $statusCode);
 			}
 			
+			// Parse the response XML
 			$xml = $this->parseXml($body);
 			
 			if ($xml === null) {
 				return ['request' => ['result' => 0, 'errorId' => 'parse_error', 'errorMessage' => 'Failed to parse DPD tracking response']];
 			}
 			
+			// Check for a SOAP fault
 			if ($fault = $this->soapFaultResponse($xml)) {
 				return $fault;
 			}
@@ -547,20 +565,24 @@ XML;
 		 * @return GatewayResponse
 		 */
 		private function parseParcelShopResponse(string $body, int $statusCode): array {
+			// Delegate HTTP-level errors to the error parser
 			if ($statusCode >= 400) {
 				return $this->parseErrorResponse($body, $statusCode);
 			}
 			
+			// Parse the response XML
 			$xml = $this->parseXml($body);
 			
 			if ($xml === null) {
 				return ['request' => ['result' => 0, 'errorId' => 'parse_error', 'errorMessage' => 'Failed to parse DPD parcel shop response']];
 			}
 			
+			// Check for a SOAP fault
 			if ($fault = $this->soapFaultResponse($xml)) {
 				return $fault;
 			}
 			
+			// Extract all parcelShop elements and convert each to an array
 			$shops = $xml->xpath('//*[local-name()="parcelShop"]') ?: [];
 			$result = [];
 			
@@ -651,6 +673,7 @@ XML;
 			$inner = '';
 			
 			foreach ($address as $key => $value) {
+				// Skip internal hints not meant for the XML output
 				if ($key === '_tag') {
 					continue;
 				}
@@ -687,10 +710,12 @@ XML;
 			
 			foreach ($psd as $key => $value) {
 				if (is_array($value)) {
+					// Nested structure (e.g. parcelShopDelivery containing address fields)
 					$inner = '';
 					
 					foreach ($value as $k => $v) {
 						if (is_array($v)) {
+							// Two levels deep (e.g. parcelShopDelivery.address.street)
 							$nested = '';
 							
 							foreach ($v as $nk => $nv) {
