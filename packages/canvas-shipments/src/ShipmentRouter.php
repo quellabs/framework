@@ -21,8 +21,13 @@
 	
 	class ShipmentRouter implements ShipmentInterface {
 		
+		/** @var array<string, class-string<ShipmentProviderInterface>> */
 		private array $moduleMap = [];
+		
+		/** @var array<string, class-string<ShipmentProviderInterface>> */
 		private array $driverMap = [];
+		
+		/** @var Discover Service discovery */
 		private Discover $discover;
 		
 		/** @var PackingBox[] Built once from packing.php, reused per pack() call */
@@ -112,7 +117,7 @@
 		 * Returns available home delivery options for the given module.
 		 * @param string $shippingModule
 		 * @param ShipmentAddress|null $address
-		 * @return array
+		 * @return array<int, mixed>
 		 */
 		public function getDeliveryOptions(string $shippingModule, ?ShipmentAddress $address = null): array {
 			return $this->resolve($shippingModule)->getDeliveryOptions($shippingModule, $address);
@@ -122,7 +127,7 @@
 		 * Returns available pickup points for the given module.
 		 * @param string $shippingModule
 		 * @param ShipmentAddress|null $address
-		 * @return array|Contracts\PickupOption[]
+		 * @return array<int, mixed>
 		 */
 		public function getPickupOptions(string $shippingModule, ?ShipmentAddress $address = null): array {
 			return $this->resolve($shippingModule)->getPickupOptions($shippingModule, $address);
@@ -133,7 +138,7 @@
 		 * @param string $shippingModule
 		 * @param string $parcelId
 		 * @return string
-		 * @throws ShipmentLabelException
+		 * @throws \RuntimeException
 		 */
 		public function getLabelUrl(string $shippingModule, string $parcelId): string {
 			return $this->resolve($shippingModule)->getLabelUrl($parcelId);
@@ -141,7 +146,7 @@
 		
 		/**
 		 * Returns all registered module names across all discovered providers.
-		 * @return array
+		 * @return string[]
 		 */
 		public function getRegisteredModules(): array {
 			return array_keys($this->moduleMap);
@@ -177,8 +182,22 @@
 		 * @throws \RuntimeException
 		 */
 		private function resolve(string $module): ShipmentProviderInterface {
-			$class = $this->moduleMap[$module] ?? throw new \RuntimeException("No shipping provider registered for module '{$module}'");
-			return $this->discover->get($class);
+			// If module does not exist, tell the user by throwing an exception
+			if (!isset($this->moduleMap[$module])) {
+				throw new \RuntimeException("No shipping provider registered for module '{$module}'");
+			}
+			
+			// Try to get the provider
+			$result = $this->discover->get($this->moduleMap[$module]);
+			
+			// If that failed, no provider implementation exists.
+			// Should never happen, because of the previous isset check
+			if (!$result instanceof ShipmentProviderInterface) {
+				throw new \RuntimeException("Invalid shipping provider '{$module}'");
+			}
+			
+			// Return the module
+			return $result;
 		}
 		
 		/**
@@ -188,8 +207,22 @@
 		 * @throws \RuntimeException
 		 */
 		private function resolveDriver(string $driver): ShipmentProviderInterface {
-			$class = $this->driverMap[$driver] ?? throw new \RuntimeException("No shipping provider registered for driver '{$driver}'");
-			return $this->discover->get($class);
+			// If driver does not exist, tell the user by throwing an exception
+			if (!isset($this->driverMap[$driver])) {
+				throw new \RuntimeException("No shipping driver registered for driver '{$driver}'");
+			}
+			
+			// Try to get the driver
+			$result = $this->discover->get($this->driverMap[$driver]);
+			
+			// If that failed, no provider implementation exists.
+			// Should never happen, because of the previous isset check
+			if (!$result instanceof ShipmentProviderInterface) {
+				throw new \RuntimeException("Invalid shipping driver '{$driver}'");
+			}
+			
+			// Return the driver
+			return $result;
 		}
 		
 		/**
@@ -199,13 +232,17 @@
 		 * not pallet-level stacking optimization.
 		 */
 		private function loadPackingConfig(ConfigProviderInterface $configProvider): void {
+			// Load the packing configuration file via the config provider
 			$config = $configProvider->loadConfigFile('shipment_packing.php');
 			
+			// Read the optional global weight ceiling; 0 means rely on per-box limits only
 			$this->maxWeightPerBox = $config->getAs('max_weight_per_box', 'int', 0);
 			
+			// Read the list of box definitions; default to empty so pack() throws a clear error
 			$boxes = $config->getAs('boxes', 'array', []);
 			
 			foreach ($boxes as $index => $box) {
+				// Verify all required keys are present before attempting to use them
 				$missing = array_diff(
 					['reference', 'width', 'length', 'depth', 'empty_weight', 'max_weight'],
 					array_keys($box)
@@ -217,19 +254,22 @@
 					);
 				}
 				
-				$width  = (int) $box['width'];
-				$length = (int) $box['length'];
-				$depth  = (int) $box['depth'];
-
+				// Cast dimensions once so we don't repeat the cast at every named argument
+				$width = (int)$box['width'];
+				$length = (int)$box['length'];
+				$depth = (int)$box['depth'];
+				
+				// Outer and inner dimensions are identical — we do box-level packing only,
+				// not pallet-level stacking, so no wall thickness needs to be subtracted
 				$this->packingBoxCatalog[] = new PackingBox(
 					reference: $box['reference'],
-					outerWidth:  $width,
+					outerWidth: $width,
 					outerLength: $length,
-					outerDepth:  $depth,
+					outerDepth: $depth,
 					emptyWeight: (int)$box['empty_weight'],
-					innerWidth:  $width,
+					innerWidth: $width,
 					innerLength: $length,
-					innerDepth:  $depth,
+					innerDepth: $depth,
 					maxWeight: (int)$box['max_weight'],
 				);
 			}

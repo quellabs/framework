@@ -23,11 +23,11 @@
 		 * Driver name — stored in ShipmentResult::$provider and ShipmentState::$provider.
 		 * Used by ShipmentRouter::exchange() to re-resolve this driver later.
 		 */
-		const DRIVER_NAME = 'dpd';
+		const string DRIVER_NAME = 'dpd';
 		
 		/**
 		 * Active configuration, applied by the discovery system after instantiation.
-		 * @var array
+		 * @var array<string, mixed>
 		 */
 		private array $config = [];
 		
@@ -119,7 +119,7 @@
 		
 		/**
 		 * Returns the active configuration for this driver instance.
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getConfig(): array {
 			return array_replace_recursive($this->getDefaults(), $this->config);
@@ -128,7 +128,7 @@
 		/**
 		 * Applies configuration to this driver instance.
 		 * Called by the discovery system after instantiation, before any other methods.
-		 * @param array $config
+		 * @param array<string, mixed> $config
 		 * @return void
 		 */
 		public function setConfig(array $config): void {
@@ -137,7 +137,7 @@
 		
 		/**
 		 * Returns default configuration values for this driver.
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getDefaults(): array {
 			return [
@@ -257,8 +257,10 @@
 				$payload = array_merge_recursive($payload, $request->extraData);
 			}
 			
+			// Call the API to create a shipment
 			$result = $this->getGateway()->createShipment($payload);
 			
+			// If that failed, throw exception
 			if ($result['request']['result'] === 0) {
 				throw new ShipmentCreationException(
 					self::DRIVER_NAME,
@@ -267,10 +269,11 @@
 				);
 			}
 			
-			// DPD returns the 14-digit parcel label number as the stable identifier
-			$parcelLabelNumber = $result['response']['parcelLabelNumber'] ?? null;
+			// Fetch the response
+			$response = $result['response'] ?? [];
 			
-			if (empty($parcelLabelNumber)) {
+			// DPD returns the 14-digit parcel label number as the stable identifier
+			if (empty($response['parcelLabelNumber'])) {
 				throw new ShipmentCreationException(
 					self::DRIVER_NAME,
 					'missing_label_number',
@@ -278,21 +281,21 @@
 				);
 			}
 			
+			// Return the shipment result
 			return new ShipmentResult(
 				provider: self::DRIVER_NAME,
-				parcelId: (string)$parcelLabelNumber,
+				parcelId: (string)$response['parcelLabelNumber'],
 				reference: $request->reference,
-				trackingCode: (string)$parcelLabelNumber,
-				trackingUrl: $this->buildTrackingUrl($parcelLabelNumber),
+				trackingCode: (string)$response['parcelLabelNumber'],
+				trackingUrl: $this->buildTrackingUrl($response['parcelLabelNumber']),
 				carrierName: 'DPD',
-				rawResponse: $result['response'],
+				rawResponse: $response,
 			);
 		}
 		
 		/**
 		 * DPD does not expose a cancellation endpoint in their Shipper Webservice API.
 		 * Shipments must be cancelled via the DPD customer service before depot handover.
-		 *
 		 * @param CancelRequest $request
 		 * @return CancelResult
 		 * @throws ShipmentCancellationException always
@@ -318,8 +321,10 @@
 		 * @throws ShipmentExchangeException
 		 */
 		public function exchange(string $parcelId): ShipmentState {
+			// Call the API to fetch tracking data for the parcel
 			$result = $this->getGateway()->getTrackingData($parcelId);
 			
+			// Throw if that API call failed
 			if ($result['request']['result'] === 0) {
 				throw new ShipmentExchangeException(
 					self::DRIVER_NAME,
@@ -328,9 +333,11 @@
 				);
 			}
 			
-			$trackingResult = $result['response']['trackingresult'] ?? null;
+			// Fetch the response
+			$response = $result['response'] ?? [];
 			
-			if ($trackingResult === null) {
+			// Validate the response
+			if ($response['trackingresult'] === null) {
 				throw new ShipmentExchangeException(
 					self::DRIVER_NAME,
 					'not_found',
@@ -338,7 +345,7 @@
 				);
 			}
 			
-			return $this->buildStateFromTracking($parcelId, $trackingResult);
+			return $this->buildStateFromTracking($parcelId, $response['trackingresult']);
 		}
 		
 		/**
@@ -450,7 +457,7 @@
 		 * Used by exchange(). The current status entry is the one where isCurrentStatus = true;
 		 * we fall back to the last statusInfo entry if none is explicitly marked current.
 		 * @param string $parcelId The DPD parcel label number
-		 * @param array $trackingResult Decoded tracking response
+		 * @param array<string, mixed> $trackingResult Decoded tracking response
 		 * @return ShipmentState
 		 */
 		public function buildStateFromTracking(string $parcelId, array $trackingResult): ShipmentState {
@@ -508,8 +515,8 @@
 		
 		/**
 		 * Builds the sender block for the shipment request from the configured sender_address.
-		 * @param array $config
-		 * @return array
+		 * @param array<string, mixed> $config
+		 * @return array<string, mixed>
 		 * @throws ShipmentCreationException when sender_address is not configured
 		 */
 		private function buildSenderBlock(array $config): array {

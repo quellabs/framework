@@ -170,18 +170,25 @@
 		}
 		
 		/**
-		 * Get a service with centralized dependency resolution
+		 * Get a service with centralized dependency resolution.
+		 * Returns null when the provider signals the resource does not exist
+		 * (e.g. no database row for a requested entity).
 		 * @template T of object
 		 * @param class-string<T> $className Class name to resolve
 		 * @param array<string, mixed> $parameters Additional parameters for creation
 		 * @param MethodContextInterface|null $methodContext
-		 * @return T
+		 * @return T|null
+		 * @throws \RuntimeException When circular dependencies are detected or resolution fails
 		 */
-		public function get(string $className, array $parameters = [], ?MethodContextInterface $methodContext=null): object {
-			// Resolve the class
+		public function get(string $className, array $parameters = [], ?MethodContextInterface $methodContext = null): ?object {
+			// Resolve the class; null means the provider found no result
 			$instance = $this->resolveWithDependencies($className, $parameters, true, $methodContext);
 			
-			// If the instance is not of the requested type, pass an error
+			if ($instance === null) {
+				return null;
+			}
+			
+			// If the instance is not of the requested type, the provider has a bug
 			if (!$instance instanceof $className) {
 				throw new \RuntimeException("Container returned an instance of " . get_class($instance) . ", expected {$className}");
 			}
@@ -194,16 +201,24 @@
 		}
 		
 		/**
-		 * Create an instance with autowired constructor parameters
-		 * Bypasses service providers - only handles dependency injection
+		 * Create an instance with autowired constructor parameters.
+		 * Bypasses service providers - only handles dependency injection.
+		 * Direct instantiation can never produce null, so this method retains a non-nullable return.
 		 * @template T of object
 		 * @param class-string<T> $className Class name to resolve
 		 * @param array<string, mixed> $parameters Additional/override parameters
 		 * @return T
+		 * @throws \RuntimeException When circular dependencies are detected or creation fails
 		 */
 		public function make(string $className, array $parameters = []): object {
-			// Resolve the class
+			// Resolve the class; null is not possible here since make() bypasses providers
 			$instance = $this->resolveWithDependencies($className, $parameters, false);
+			
+			// resolveWithDependencies only returns null when a provider does so;
+			// make() never uses providers, so null here would be a container bug
+			if ($instance === null) {
+				throw new \RuntimeException("Unexpected null returned during make() for '{$className}'");
+			}
 			
 			// If the instance is not of the requested type, pass an error
 			if (!$instance instanceof $className) {
@@ -258,11 +273,12 @@
 		/**
 		 * Resolves a class instance with its dependencies, handling circular dependency detection
 		 * and supporting both service provider and direct instantiation methods.
+		 * Returns null when the provider signals that the resource does not exist.
 		 * @param class-string $className The fully qualified class name to resolve
 		 * @param array<string, mixed> $parameters Manual parameters to override autowired dependencies
 		 * @param bool $useServiceProvider Whether to use service provider for instantiation
 		 * @param MethodContextInterface|null $methodContext Optional method context for advanced scenarios
-		 * @return object
+		 * @return object|null
 		 * @throws \RuntimeException When circular dependencies are detected
 		 */
 		protected function resolveWithDependencies(
@@ -270,7 +286,7 @@
 			array $parameters,
 			bool $useServiceProvider,
 			?MethodContextInterface $methodContext = null
-		): object {
+		): ?object {
 			// Special case: Return container instance when requesting the container itself
 			// This allows for self-injection of the container into other services
 			if (
@@ -289,11 +305,12 @@
 		
 		/**
 		 * Creates an instance of the specified class using either service provider or direct instantiation.
+		 * Returns null when the provider signals that the resource does not exist.
 		 * @param class-string $className The fully qualified class name to resolve
 		 * @param array<string, mixed> $parameters Manual parameters to override autowired dependencies
 		 * @param bool $useServiceProvider Whether to use service provider for instantiation
 		 * @param MethodContextInterface|null $methodContext Optional method context for advanced scenarios
-		 * @return object The created instance
+		 * @return object|null The created instance, or null if the provider found no result
 		 * @throws \ReflectionException When instantiation fails
 		 */
 		protected function createInstance(
@@ -301,7 +318,7 @@
 			array $parameters,
 			bool $useServiceProvider,
 			?MethodContextInterface $methodContext = null
-		): object {
+		): ?object {
 			// Validate class/interface exists first
 			if (!class_exists($className) && !interface_exists($className)) {
 				throw new \RuntimeException("Class or interface '{$className}' does not exist");
@@ -349,11 +366,11 @@
 		 * Safely executes a resolution callback while managing the resolution stack for circular dependency detection.
 		 * @template T of object
 		 * @param string $className The class being resolved
-		 * @param callable(): T $resolutionCallback The callback that performs the actual resolution
-		 * @return T The resolved instance
+		 * @param callable(): (T|null) $resolutionCallback The callback that performs the actual resolution
+		 * @return T|null The resolved instance, or null if the provider found no result
 		 * @throws \RuntimeException When circular dependencies are detected or resolution fails
 		 */
-		protected function safeResolve(string $className, callable $resolutionCallback): object {
+		protected function safeResolve(string $className, callable $resolutionCallback): ?object {
 			try {
 				// Circular dependency protection: Check if we're already resolving this class
 				// This prevents infinite recursion when Class A depends on Class B which depends on Class A
@@ -369,7 +386,7 @@
 				// This maintains a breadcrumb trail of what we're currently resolving
 				$this->resolutionStack[] = $className;
 				
-				// Execute the resolution callback
+				// Execute the resolution callback; null is a valid result
 				$instance = $resolutionCallback();
 				
 				// Clean up: Remove current class from resolution stack since we're done

@@ -16,7 +16,7 @@
 		 * Fetch the current state of a payment from the provider.
 		 * Typically called from a webhook handler when the provider reports a status change.
 		 * @param string $transactionId
-		 * @param array $extraData
+		 * @param array<string, mixed> $extraData
 		 * @return PaymentState
 		 */
 		public function exchange(string $transactionId, array $extraData = []): PaymentState;
@@ -24,7 +24,7 @@
 		/**
 		 * Returns all refunds issued for the given transaction.
 		 * @param string $paymentReference
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getRefunds(string $paymentReference): array;
 

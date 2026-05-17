@@ -43,11 +43,11 @@
 		/**
 		 * Driver name
 		 */
-		const DRIVER_NAME = "klarna";
+		const string DRIVER_NAME = "klarna";
 		
 		/**
 		 * Active configuration for this provider, applied by the discovery system after instantiation.
-		 * @var array
+		 * @var array<string, mixed>
 		 */
 		private array $config = [];
 		
@@ -91,7 +91,7 @@
 		/**
 		 * Returns the active configuration for this provider instance.
 		 * Merges stored config over the defaults so only explicitly set keys override.
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getConfig(): array {
 			// Defaults are the base; any key set in $this->config takes precedence.
@@ -101,7 +101,7 @@
 		/**
 		 * Applies configuration to this provider instance.
 		 * Called by the discovery system after instantiation, before any other methods are invoked.
-		 * @param array $config
+		 * @param array<string, mixed> $config
 		 * @return void
 		 */
 		public function setConfig(array $config): void {
@@ -118,7 +118,7 @@
 		 *   PLACE_ORDER   — Klarna places the order; merchant captures after shipping.
 		 *   NONE          — Klarna authorises only; merchant places AND captures the order.
 		 *
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getDefaults(): array {
 			return [
@@ -142,7 +142,7 @@
 		 * selection always happens on the Klarna HPP.
 		 *
 		 * @param string $paymentModule e.g. 'klarna', 'klarna_paylater'
-		 * @return array Always empty — Klarna handles payment method UI on the hosted page
+		 * @return array<string, mixed> Always empty — Klarna handles payment method UI on the hosted page
 		 */
 		public function getPaymentOptions(string $paymentModule): array {
 			// Klarna has no issuer list — method selection happens on the hosted page.
@@ -202,7 +202,7 @@
 		 * consumer lands on the success page. The Order Management API confirms this.
 		 *
 		 * @param string $transactionId Klarna order_id (UUID from the success redirect)
-		 * @param array $extraData Not used for Klarna; kept for interface compatibility
+		 * @param array<string, mixed> $extraData Not used for Klarna; kept for interface compatibility
 		 * @return PaymentState
 		 * @throws PaymentExchangeException
 		 */
@@ -219,7 +219,7 @@
 				);
 			}
 			
-			$order = $result['response'];
+			$order = $result['response'] ?? [];
 			$orderStatus = strtoupper($order['status'] ?? '');
 			$fraudStatus = strtoupper($order['fraud_status'] ?? '');
 			
@@ -431,7 +431,7 @@
 		 * Creates a Hosted Payment Page (HPP) session linked to a KP session and returns
 		 * the raw HPP response array containing redirect_url and session_id.
 		 * @param string $kpSessionId The KP session_id returned by createKpSession()
-		 * @return array HPP session response
+		 * @return array<string, mixed> HPP session response
 		 * @throws PaymentInitiationException
 		 */
 		private function createHppSession(string $kpSessionId): array {
@@ -469,13 +469,13 @@
 			}
 			
 			// Return the result data
-			return $result['response'];
+			return $result['response'] ?? [];
 		}
 		
 		/**
 		 * Builds a Klarna-compatible billing address array from a PaymentAddress.
 		 * @param PaymentAddress $address
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		private function buildBillingAddress(PaymentAddress $address): array {
 			// Klarna expects a single street_address string; combine the split fields.
@@ -502,7 +502,7 @@
 		/**
 		 * Builds a valid order_lines array for the Klarna KP session payload.
 		 * @param PaymentRequest $request The payment request
-		 * @return array<int, array> Valid order_lines array
+		 * @return array<int, array<string, mixed>> Valid order_lines array
 		 */
 		private function buildOrderLines(PaymentRequest $request): array {
 			// Synthesize a single catch-all line from the total amount.

@@ -5,6 +5,8 @@
 	/**
 	 * Immutable value object returned after successfully initiating a payment session.
 	 * Contains the data the caller needs to redirect the customer to the payment page.
+	 *
+	 * @phpstan-import-type InitiateResultArray from PaymentInterface
 	 */
 	final readonly class InitiateResult {
 		
@@ -13,6 +15,7 @@
 		 * @param string $provider Identifier of the payment provider that created this session (e.g. 'mollie', 'stripe').
 		 * @param string $transactionId Provider-assigned transaction ID, used for status checks and refunds.
 		 * @param string $redirectUrl URL to redirect the customer to in order to complete the payment.
+		 * @param array<string, mixed> $metadata Optional provider-specific metadata.
 		 */
 		public function __construct(
 			public string $provider,
@@ -24,7 +27,7 @@
 		
 		/**
 		 * Convert contents to array
-		 * @return array
+		 * @return InitiateResultArray
 		 */
 		public function toArray(): array {
 			return [

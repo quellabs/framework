@@ -19,11 +19,11 @@
 		/**
 		 * Driver name
 		 */
-		const DRIVER_NAME = "rabosmartpay";
+		const string DRIVER_NAME = "rabosmartpay";
 		
 		/**
 		 * Active configuration for this provider, applied by the discovery system after instantiation.
-		 * @var array
+		 * @var array<string, mixed>
 		 */
 		private array $config = [];
 		
@@ -44,7 +44,7 @@
 		 *
 		 * @see https://github.com/rabobank-nederland/omnikassa-sdk-doc (Field description: paymentBrand)
 		 */
-		private const MODULE_TYPE_MAP = [
+		private const array MODULE_TYPE_MAP = [
 			'rabo_ideal'      => 'IDEAL',
 			'rabo_bancontact' => 'BANCONTACT',
 			'rabo_mastercard' => 'MASTERCARD',
@@ -71,7 +71,7 @@
 		/**
 		 * Returns the active configuration for this provider instance.
 		 * Merges stored config over the defaults so only explicitly set keys override.
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getConfig(): array {
 			return array_replace_recursive($this->getDefaults(), $this->config);
@@ -80,7 +80,7 @@
 		/**
 		 * Applies configuration to this provider instance.
 		 * Called by the discovery system after instantiation, before any other methods are invoked.
-		 * @param array $config
+		 * @param array<string, mixed> $config
 		 * @return void
 		 */
 		public function setConfig(array $config): void {
@@ -90,7 +90,7 @@
 		/**
 		 * Returns default configuration values for this provider.
 		 * Merged with loaded config files during discovery — values from config files take precedence.
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getDefaults(): array {
 			return [
@@ -115,7 +115,7 @@
 		 * This method always returns an empty array for all payment modules.
 		 *
 		 * @param string $paymentModule e.g. 'rabo_ideal'
-		 * @return array Always empty — Rabo Smart Pay handles payment method UI on the hosted page
+		 * @return array<string, mixed> Always empty — Rabo Smart Pay handles payment method UI on the hosted page
 		 */
 		public function getPaymentOptions(string $paymentModule): array {
 			// iDEAL 2.0 removed direct bank pre-selection (was available in OmniKassa 1.x via issuerId).
@@ -243,8 +243,8 @@
 				);
 			}
 			
-			// Fetch result data
-			$data = $result['response'];
+			// Fetch result data; 'response' is always present when result === 1.
+			$data = $result['response'] ?? [];
 			
 			// Validate redirectUrl exists in API response
 			if (empty($data['redirectUrl'])) {
@@ -271,7 +271,7 @@
 		 * Performs the Status Pull call using the token from a webhook notification.
 		 * Delegates to the gateway.
 		 * @param string $notificationToken The authentication token from the webhook notification body
-		 * @return array Normalised response containing orderResults[]
+		 * @return array<string, mixed> Normalised response containing orderResults[]
 		 */
 		public function pullOrderStatuses(string $notificationToken): array {
 			return $this->getGateway()->pullOrderStatuses($notificationToken);
@@ -280,7 +280,7 @@
 		/**
 		 * Resolves an order result into a PaymentState.
 		 * @param string $transactionId omnikassaOrderId UUID or merchantOrderId (return URL flow)
-		 * @param array $extraData Order result data; if empty, fetches status from the API
+		 * @param array<string, mixed> $extraData Order result data; if empty, fetches status from the API
 		 * @return PaymentState
 		 * @throws PaymentExchangeException
 		 */
@@ -303,8 +303,8 @@
 					);
 				}
 				
-				// Merge the API response with the passed data
-				$extraData = array_merge($extraData, $result['response']);
+				// Merge the API response with the passed data; 'response' is always present when result === 1.
+				$extraData = array_merge($extraData, $result['response'] ?? []);
 				$orderStatus = strtoupper($extraData['orderStatus'] ?? 'IN_PROGRESS');
 			}
 			
@@ -385,7 +385,8 @@
 			}
 			
 			// The refund response contains an id field identifying this specific refund operation.
-			$refundId = (string)($result['response']['id'] ?? $request->paymentReference);
+			// 'response' is always present when result === 1.
+			$refundId = (string)(($result['response'] ?? [])['id'] ?? $request->paymentReference);
 			
 			// Return the refund result
 			return new RefundResult(

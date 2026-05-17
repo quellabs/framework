@@ -18,11 +18,11 @@
 		/**
 		 * Driver name
 		 */
-		const DRIVER_NAME = "paynl";
+		const string DRIVER_NAME = "paynl";
 		
 		/**
 		 * Active configuration for this provider, applied by the discovery system after instantiation.
-		 * @var array
+		 * @var array<string, mixed>
 		 */
 		private array $config = [];
 		
@@ -75,7 +75,7 @@
 		/**
 		 * Returns the active configuration for this provider instance.
 		 * Merges stored config over the defaults so only explicitly set keys override.
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getConfig(): array {
 			return array_replace_recursive($this->getDefaults(), $this->config);
@@ -84,7 +84,7 @@
 		/**
 		 * Applies configuration to this provider instance.
 		 * Called by the discovery system after instantiation, before any other methods are invoked.
-		 * @param array $config
+		 * @param array<string, mixed> $config
 		 * @return void
 		 */
 		public function setConfig(array $config): void {
@@ -94,7 +94,7 @@
 		/**
 		 * Returns default configuration values for this provider.
 		 * Merged with loaded config files during discovery — values from config files take precedence.
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getDefaults(): array {
 			return [
@@ -121,7 +121,7 @@
 		 *
 		 * @see https://developer.pay.nl/docs/ideal
 		 * @param string $paymentModule e.g. 'paynl_ideal'
-		 * @return array Always empty — Pay.nl handles payment method UI on the hosted page
+		 * @return array<string, mixed> Always empty — Pay.nl handles payment method UI on the hosted page
 		 */
 		public function getPaymentOptions(string $paymentModule): array {
 			// Pay.nl removed direct issuer redirect in iDEAL 2.0 (deprecated 31-12-2024).
@@ -205,6 +205,14 @@
 				throw new PaymentInitiationException(self::DRIVER_NAME, $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 			
+			// Validate response data is there
+			if (
+				!isset($result['response']['id']) ||
+				!isset($result['response']['links']['redirect'])
+			) {
+				throw new PaymentInitiationException(self::DRIVER_NAME, "500", "Invalid gateway response. Missing id and/or redirect url");
+			}
+			
 			// The UUID (id) is the stable identifier used for all subsequent API calls.
 			// orderId is a legacy human-readable reference — not used for API calls.
 			return new InitiateResult(
@@ -248,7 +256,7 @@
 		 * @see https://developer.pay.nl/docs/transaction-statuses
 		 * @see https://developer.pay.nl/reference/api_get_status-1
 		 * @param string $transactionId The Pay.nl order UUID (id from order create response)
-		 * @param array $extraData action: 'return' | 'exchange' (informational only)
+		 * @param array<string, mixed> $extraData action: 'return' | 'exchange' (informational only)
 		 * @return PaymentState
 		 * @throws PaymentExchangeException
 		 */
@@ -262,7 +270,7 @@
 			}
 			
 			// Unpack the top-level fields we need for state mapping.
-			$data = $result['response'];
+			$data = $result['response'] ?? [];
 			$statusCode = (int)($data['status']['code'] ?? 20);
 			$statusAction = strtoupper($data['status']['action'] ?? '');
 			$currency = $data['amount']['currency'] ?? '';
@@ -404,7 +412,7 @@
 			
 			// The order-level currency is used as a fallback when a payment entry
 			// does not carry its own currency field.
-			$data = $result['response'];
+			$data = $result['response'] ?? [];
 			$currency = $data['amount']['currency'] ?? '';
 			$refunds = [];
 			

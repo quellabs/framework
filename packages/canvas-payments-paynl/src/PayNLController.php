@@ -157,7 +157,7 @@
 				$action = $request->request->get('action', 'exchange');
 				
 				// Fetch the authoritative payment state from the Pay.nl Order:Status API.
-				$response = $this->paynl->exchange($transactionId, ['action' => $action]);
+				$response = $this->paynl->exchange((string)$transactionId, ['action' => $action]);
 				
 				// Broadcast the resolved state to any registered listeners.
 				$this->signal->emit($response);

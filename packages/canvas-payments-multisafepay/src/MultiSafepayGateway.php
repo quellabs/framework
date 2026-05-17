@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\Payments\MultiSafepay;
 	
+	use Quellabs\Contracts\Gateway\GatewayInterface;
 	use Symfony\Component\HttpClient\HttpClient;
 	use Symfony\Contracts\HttpClient\HttpClientInterface;
 	
@@ -19,10 +20,12 @@
 	 * Test vs live: entirely separate base URLs — not a test flag on the same endpoint.
 	 *
 	 * @see https://docs.multisafepay.com/reference/introduction
+	 *
+	 * @phpstan-import-type GatewayResponse from GatewayInterface
 	 */
 	class MultiSafepayGateway {
 		
-		private const API_VERSION = 'v1';
+		private const string API_VERSION = 'v1';
 		
 		/** @var HttpClientInterface Shared HTTP client instance */
 		private HttpClientInterface $client;
@@ -58,8 +61,8 @@
 		 * Creates a new MultiSafepay order (redirect type).
 		 * Returns an order_id and a payment_url for redirecting the shopper.
 		 * @see https://docs.multisafepay.com/reference/createorder
-		 * @param array $payload Full order payload per MSP spec
-		 * @return array Normalised response
+		 * @param array<string, mixed> $payload Full order payload per MSP spec
+		 * @return GatewayResponse
 		 */
 		public function createOrder(array $payload): array {
 			return $this->request('POST', '/orders', $payload);
@@ -71,7 +74,7 @@
 		 * MSP's notification body contains only the order_id, not the status.
 		 * @see https://docs.multisafepay.com/reference/getorder
 		 * @param string $orderId The order_id used when the order was created (your reference)
-		 * @return array Normalised response
+		 * @return GatewayResponse
 		 */
 		public function getOrder(string $orderId): array {
 			return $this->request('GET', '/orders/' . urlencode($orderId));
@@ -84,8 +87,8 @@
 		 * is reflected on the order after processing.
 		 * @see https://docs.multisafepay.com/reference/refundorder
 		 * @param string $orderId The order_id of the original payment
-		 * @param array $payload Must include currency and amount (in minor units)
-		 * @return array Normalised response containing the refund transaction_id
+		 * @param array<string, mixed> $payload Must include currency and amount (in minor units)
+		 * @return GatewayResponse
 		 */
 		public function refundOrder(string $orderId, array $payload): array {
 			return $this->request('POST', '/orders/' . urlencode($orderId) . '/refunds', $payload);
@@ -97,7 +100,7 @@
 		 * Only iDEAL currently uses a dedicated issuer endpoint; other methods do not.
 		 * @see https://docs.multisafepay.com/reference/issuers
 		 * @param string $gateway Lowercase MSP gateway code (e.g. 'ideal')
-		 * @return array Normalised response with 'data' containing issuer objects
+		 * @return GatewayResponse
 		 */
 		public function getIssuers(string $gateway): array {
 			return $this->request('GET', '/issuers/' . urlencode($gateway));
@@ -113,8 +116,8 @@
 		 * @see https://docs.multisafepay.com/docs/errors
 		 * @param string $method HTTP method (e.g. 'GET', 'POST')
 		 * @param string $endpoint Path relative to the versioned base URL
-		 * @param array|null $payload JSON request body (POST only)
-		 * @return array Normalised response
+		 * @param array<string, mixed>|null $payload JSON request body (POST only)
+		 * @return GatewayResponse
 		 */
 		private function request(string $method, string $endpoint, ?array $payload = null): array {
 			try {
@@ -137,12 +140,12 @@
 				
 				// If that failed, return error
 				if (json_last_error() !== JSON_ERROR_NONE) {
-					return ['request' => ['result' => 0, 'errorId' => 0, 'errorMessage' => 'Invalid JSON response: ' . json_last_error_msg()]];
+					return ['request' => ['result' => 0, 'errorId' => "0", 'errorMessage' => 'Invalid JSON response: ' . json_last_error_msg()]];
 				}
 				
 				// If success is false or absent, return error
 				if (!($body['success'] ?? false)) {
-					return ['request' => ['result' => 0, 'errorId' => $body['error_code'] ?? 0, 'errorMessage' => $body['error_info'] ?? 'Unknown error']];
+					return ['request' => ['result' => 0, 'errorId' => $body['error_code'] ?? "0", 'errorMessage' => $body['error_info'] ?? 'Unknown error']];
 				}
 				
 				// Return data

@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\Payments\Klarna;
 	
+	use Quellabs\Contracts\Gateway\GatewayInterface;
 	use Symfony\Component\HttpClient\HttpClient;
 	use Symfony\Contracts\HttpClient\HttpClientInterface;
 	
@@ -34,14 +35,16 @@
 	 * @see https://docs.klarna.com/acquirer/klarna/api/payments/
 	 * @see https://docs.klarna.com/acquirer/klarna/api/hpp-merchant/
 	 * @see https://docs.klarna.com/acquirer/klarna/api/ordermanagement/
+	 *
+	 * @phpstan-import-type GatewayResponse from GatewayInterface
 	 */
 	class KlarnaGateway {
 		
 		/** @var string Production base URL */
-		private const BASE_URL_LIVE = 'https://api.klarna.com';
+		private const string BASE_URL_LIVE = 'https://api.klarna.com';
 		
 		/** @var string Playground (test) base URL */
-		private const BASE_URL_SANDBOX = 'https://api.playground.klarna.com';
+		private const string BASE_URL_SANDBOX = 'https://api.playground.klarna.com';
 		
 		/** @var HttpClientInterface Shared HTTP client instance */
 		private HttpClientInterface $client;
@@ -94,8 +97,8 @@
 		 *   - intent            ('buy' for one-time payments)
 		 *
 		 * @see https://docs.klarna.com/acquirer/klarna/web-payments/integrate-with-klarna-payments/integrate-via-sdk/step-1-initiate-a-payment/
-		 * @param array $payload KP session payload per Klarna spec
-		 * @return array Normalised response containing session_id and client_token
+		 * @param array<string, mixed> $payload KP session payload per Klarna spec
+		 * @return GatewayResponse
 		 */
 		public function createPaymentSession(array $payload): array {
 			return $this->request('POST', '/payments/v1/sessions', $payload);
@@ -118,8 +121,8 @@
 		 *   - place_order_mode       'NONE' | 'PLACE_ORDER' | 'CAPTURE_ORDER'
 		 *
 		 * @see https://docs.klarna.com/acquirer/klarna/web-payments/integrate-with-klarna-payments/integrate-via-hpp/api-documentation/create-session/
-		 * @param array $payload HPP session payload per Klarna spec
-		 * @return array Normalised response containing session_id, redirect_url, expires_at
+		 * @param array<string, mixed> $payload HPP session payload per Klarna spec
+		 * @return GatewayResponse
 		 */
 		public function createHppSession(array $payload): array {
 			return $this->request('POST', '/hpp/v1/sessions', $payload);
@@ -133,7 +136,7 @@
 		 *
 		 * @see https://docs.klarna.com/acquirer/klarna/web-payments/integrate-with-klarna-payments/integrate-via-hpp/api-documentation/read-session/
 		 * @param string $hppSessionId The HPP session_id returned at creation
-		 * @return array Normalised response containing status and, when COMPLETED, order_id
+		 * @return GatewayResponse
 		 */
 		public function readHppSession(string $hppSessionId): array {
 			return $this->request('GET', '/hpp/v1/sessions/' . urlencode($hppSessionId));
@@ -147,7 +150,7 @@
 		 *
 		 * @see https://docs.klarna.com/acquirer/klarna/after-payments/order-management/manage-orders-with-the-api/view-and-change-orders/
 		 * @param string $orderId The Klarna order_id (UUID)
-		 * @return array Normalised response containing order details
+		 * @return GatewayResponse
 		 */
 		public function getOrder(string $orderId): array {
 			return $this->request('GET', '/ordermanagement/v1/orders/' . urlencode($orderId));
@@ -162,7 +165,7 @@
 		 *
 		 * @see https://docs.klarna.com/acquirer/klarna/after-payments/order-management/manage-orders-with-the-api/view-and-change-orders/
 		 * @param string $orderId The Klarna order_id (UUID)
-		 * @return array Normalised response (204 No Content maps to empty 'response' array)
+		 * @return GatewayResponse
 		 */
 		public function acknowledgeOrder(string $orderId): array {
 			return $this->request('POST', '/ordermanagement/v1/orders/' . urlencode($orderId) . '/acknowledge');
@@ -178,7 +181,7 @@
 		 * @param string $orderId The Klarna order_id (UUID)
 		 * @param int $capturedAmount Amount in minor units (cents) to capture
 		 * @param string $idempotencyKey UUID v4; prevents duplicate capture on retry
-		 * @return array Normalised response containing capture_id
+		 * @return GatewayResponse
 		 */
 		public function captureOrder(string $orderId, int $capturedAmount, string $idempotencyKey): array {
 			return $this->request(
@@ -201,7 +204,7 @@
 		 * @param int $refundedAmount Amount to refund in minor units (cents)
 		 * @param string $idempotencyKey UUID v4; prevents duplicate refund on retry
 		 * @param string|null $description Optional description shown to the customer
-		 * @return array Normalised response containing refund_id
+		 * @return GatewayResponse
 		 */
 		public function refundOrder(string $orderId, int $refundedAmount, string $idempotencyKey, ?string $description = null): array {
 			// Strip null and empty description rather than sending an empty field.
@@ -229,9 +232,9 @@
 		 *
 		 * @param string $method HTTP method: GET or POST
 		 * @param string $endpoint Path relative to baseUrl
-		 * @param array|null $payload JSON body for POST; null for GET or body-less POST
-		 * @param array $extraHeaders Additional headers (e.g. Klarna-Idempotency-Key)
-		 * @return array Normalised response
+		 * @param array<string, mixed>|null $payload JSON body for POST; null for GET or body-less POST
+		 * @param array<string, mixed> $extraHeaders Additional headers (e.g. Klarna-Idempotency-Key)
+		 * @return GatewayResponse
 		 */
 		private function request(string $method, string $endpoint, ?array $payload = null, array $extraHeaders = []): array {
 			try {
@@ -264,13 +267,13 @@
 				
 				// If that failed, return an error
 				if (json_last_error() !== JSON_ERROR_NONE) {
-					return ['request' => ['result' => 0, 'errorId' => $statusCode, 'errorMessage' => 'Invalid JSON response: ' . json_last_error_msg()]];
+					return ['request' => ['result' => 0, 'errorId' => (string)$statusCode, 'errorMessage' => 'Invalid JSON response: ' . json_last_error_msg()]];
 				}
 				
 				// Non-2xx — extract the most informative message from the error body.
 				if ($statusCode < 200 || $statusCode >= 300) {
 					$errorMessage = $this->extractErrorMessage($body, $statusCode);
-					return ['request' => ['result' => 0, 'errorId' => $statusCode, 'errorMessage' => $errorMessage]];
+					return ['request' => ['result' => 0, 'errorId' => (string)$statusCode, 'errorMessage' => $errorMessage]];
 				}
 				
 				// Return response
@@ -289,7 +292,7 @@
 		 * Klarna uses: { "error_code": "...", "error_messages": ["..."], "correlation_id": "..." }
 		 * Some endpoints use: { "error_code": "...", "error_message": "..." }
 		 *
-		 * @param array|null $body Decoded JSON body, or null if the body was empty
+		 * @param array<string, mixed>|null $body Decoded JSON body, or null if the body was empty
 		 * @param int $statusCode HTTP status code, used as fallback
 		 * @return string Human-readable error message
 		 */

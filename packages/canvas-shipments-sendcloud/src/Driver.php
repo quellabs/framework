@@ -23,11 +23,11 @@
 		 * Driver name — stored in ShipmentResult::$provider and ShipmentState::$provider.
 		 * Used by ShipmentRouter::exchange() to re-resolve this driver later.
 		 */
-		const DRIVER_NAME = 'sendcloud';
+		const string DRIVER_NAME = 'sendcloud';
 		
 		/**
 		 * Active configuration, applied by the discovery system after instantiation.
-		 * @var array
+		 * @var array<string, mixed>
 		 */
 		private array $config = [];
 		
@@ -43,7 +43,7 @@
 		 *
 		 * Add entries here whenever a new module is introduced in getMetadata().
 		 */
-		private const MODULE_CARRIER_MAP = [
+		private const array MODULE_CARRIER_MAP = [
 			'sendcloud_postnl'  => ['postnl'],
 			'sendcloud_dhl'     => ['dhl'],
 			'sendcloud_dpd'     => ['dpd'],
@@ -60,7 +60,7 @@
 		 *
 		 * @see https://docs.sendcloud.com/api/v2/#parcel-statuses
 		 */
-		private const STATUS_MAP = [
+		private const array STATUS_MAP = [
 			1  => ShipmentStatus::Created,
 			2  => ShipmentStatus::ReadyToSend,
 			3  => ShipmentStatus::InTransit,
@@ -91,7 +91,7 @@
 		
 		/**
 		 * Returns the active configuration for this driver instance.
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getConfig(): array {
 			return array_replace_recursive($this->getDefaults(), $this->config);
@@ -100,7 +100,7 @@
 		/**
 		 * Applies configuration to this driver instance.
 		 * Called by the discovery system after instantiation, before any other methods.
-		 * @param array $config
+		 * @param array<string, mixed> $config
 		 * @return void
 		 */
 		public function setConfig(array $config): void {
@@ -109,7 +109,7 @@
 		
 		/**
 		 * Returns default configuration values for this driver.
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getDefaults(): array {
 			return [
@@ -166,7 +166,7 @@
 					'to_service_point'     => $request->servicePointId,
 					'request_label'        => false,
 					'apply_shipping_rules' => true,
-				], fn($v) => $v !== null && $v !== '' && $v !== []),
+				], fn($v) => $v !== null && $v !== ''),
 			];
 			
 			// Merge extra data into payload
@@ -194,8 +194,11 @@
 				);
 			}
 			
+			// Fetch response
+			$response = $result["response"] ?? [];
+			
 			// Fetch parcel data
-			$parcel = $result['response']['parcel'];
+			$parcel = $response['parcel'];
 			
 			// Return result
 			return new ShipmentResult(
@@ -260,8 +263,11 @@
 				);
 			}
 			
+			// Fetch response
+			$response = $result['response'] ?? [];
+			
 			// Build and return ShipmentState
-			return $this->buildStateFromParcel($result['response']['parcel']);
+			return $this->buildStateFromParcel($response['parcel']);
 		}
 		
 		/**
@@ -336,7 +342,24 @@
 			$points = $result['response'] ?? [];
 			
 			return array_values(array_map(
-				fn(array $point) => $this->normaliseServicePoint($point),
+				fn(array $point) => new PickupOption(
+					locationCode: (string)($point['id'] ?? ''),
+					name: $point['name'] ?? '',
+					street: $point['street'] ?? '',
+					houseNumber: (string)($point['house_number'] ?? ''),
+					postalCode: $point['postal_code'] ?? '',
+					city: $point['city'] ?? '',
+					country: $point['country'] ?? '',
+					carrierName: $point['carrier'] ?? '',
+					latitude: isset($point['latitude']) ? (float)$point['latitude'] : null,
+					longitude: isset($point['longitude']) ? (float)$point['longitude'] : null,
+					distanceMetres: isset($point['distance']) ? (int)$point['distance'] : null,
+					metadata: array_filter([
+						'openingHours' => $point['opening_hours'] ?? null,
+						'extraInfo'    => $point['extra_info'] ?? null,
+						'phone'        => $point['phone_number'] ?? null,
+					], fn($v) => $v !== null),
+				),
 				$points
 			));
 		}
@@ -386,7 +409,7 @@
 		/**
 		 * Builds a ShipmentState from a raw parcel array returned by the SendCloud API.
 		 * Used by both exchange() and the controller's webhook handler.
-		 * @param array $parcel The 'parcel' key from the SendCloud API response
+		 * @param array<string, mixed> $parcel The 'parcel' key from the SendCloud API response
 		 * @return ShipmentState
 		 */
 		public function buildStateFromParcel(array $parcel): ShipmentState {
@@ -426,7 +449,7 @@
 		 * Fetches shipping methods from the gateway and filters them by carrier module.
 		 * Shared by getDeliveryOptions() and getPickupOptions().
 		 * @param string $shippingModule
-		 * @return array Raw method arrays from the SendCloud API
+		 * @return list<array<string, mixed>> Raw method arrays from the SendCloud API
 		 */
 		private function fetchFilteredMethods(string $shippingModule): array {
 			// Fetch shipping methods from API
@@ -454,7 +477,7 @@
 		
 		/**
 		 * Normalises a raw SendCloud shipping method array into a DeliveryOption.
-		 * @param array $method
+		 * @param array<string, mixed> $method
 		 * @return DeliveryOption
 		 */
 		private function normaliseDeliveryMethod(array $method): DeliveryOption {
@@ -477,17 +500,28 @@
 		 * @return array{lat: float, lng: float}|null
 		 */
 		private function geocodeAddress(ShipmentAddress $address): ?array {
+			// Call API to geocode the address
 			$result = $this->getGateway()->geocodeAddress(
 				$address->postalCode,
 				$address->country,
 				$address->city,
 			);
 			
+			// If that failed return error
 			if ($result['request']['result'] === 0) {
 				return null;
 			}
 			
-			return $result['response'];
+			// Fetch response
+			$response = $result['response'] ?? [];
+			
+			// Validate response
+			if (!isset($response['lat']) || !isset($response['lng'])) {
+				return null;
+			}
+			
+			// Return response data
+			return ['lat' => $response['lat'], 'lng' => $response['lng']];
 		}
 		
 		/**
@@ -509,31 +543,5 @@
 				$lat + $latDelta, // neLat
 				$lng + $lngDelta, // neLng
 			];
-		}
-		
-		/**
-		 * Normalizes a raw SendCloud service point array into a PickupOption.
-		 * @param array $point
-		 * @return PickupOption
-		 */
-		private function normaliseServicePoint(array $point): PickupOption {
-			return new PickupOption(
-				locationCode: (string)($point['id'] ?? ''),
-				name: $point['name'] ?? '',
-				street: $point['street'] ?? '',
-				houseNumber: (string)($point['house_number'] ?? ''),
-				postalCode: $point['postal_code'] ?? '',
-				city: $point['city'] ?? '',
-				country: $point['country'] ?? '',
-				carrierName: $point['carrier'] ?? '',
-				latitude: isset($point['latitude']) ? (float)$point['latitude'] : null,
-				longitude: isset($point['longitude']) ? (float)$point['longitude'] : null,
-				distanceMetres: isset($point['distance']) ? (int)$point['distance'] : null,
-				metadata: array_filter([
-					'openingHours' => $point['opening_hours'] ?? null,
-					'extraInfo'    => $point['extra_info'] ?? null,
-					'phone'        => $point['phone_number'] ?? null,
-				], fn($v) => $v !== null),
-			);
 		}
 	}

@@ -145,10 +145,6 @@
 				);
 			}
 			
-			/**
-			 * Return the class
-			 * @var T $provider
-			 */
 			return $provider;
 		}
 		

@@ -19,11 +19,11 @@
 		/**
 		 * Driver name
 		 */
-		const DRIVER_NAME = "xpay";
+		const string DRIVER_NAME = "xpay";
 		
 		/**
 		 * Active configuration for this provider, applied by the discovery system after instantiation.
-		 * @var array
+		 * @var array<string, mixed>
 		 */
 		private array $config = [];
 		
@@ -99,7 +99,7 @@
 		
 		/**
 		 * Returns the active configuration for this provider instance.
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getConfig(): array {
 			return array_replace_recursive($this->getDefaults(), $this->config);
@@ -108,7 +108,7 @@
 		/**
 		 * Applies configuration to this provider instance.
 		 * Called by the discovery system after instantiation, before any other methods are invoked.
-		 * @param array $config
+		 * @param array<string, mixed> $config
 		 * @return void
 		 */
 		public function setConfig(array $config): void {
@@ -117,7 +117,7 @@
 		
 		/**
 		 * Returns default configuration values for this provider.
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getDefaults(): array {
 			return [
@@ -134,7 +134,7 @@
 		 * XPay does not expose a pre-selection issuer or bank list via API — the hosted
 		 * page handles method selection. Always returns empty.
 		 * @param string $paymentModule
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getPaymentOptions(string $paymentModule): array {
 			return [];
@@ -200,30 +200,31 @@
 				$order['customerInfo'] = $customerInfo;
 			}
 			
-			$payload = [
+			// Call the API
+			$result = $this->getGateway()->createOrder([
 				'paymentSession' => $paymentSession,
 				'order'          => $order,
-			];
+			]);
 			
-			$result = $this->getGateway()->createOrder($payload);
-			
+			// If the API call failed, throw exception
 			if ($result['request']['result'] === 0) {
 				throw new PaymentInitiationException(self::DRIVER_NAME, $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 			
-			$response = $result['response'];
-			$hostedPage = $response['hostedPage'] ?? '';
+			// Fetch response
+			$response = $result['response'] ?? [];
 			
-			if (empty($hostedPage)) {
-				throw new PaymentInitiationException(self::DRIVER_NAME, 0, 'Missing hostedPage URL in XPay response');
+			// Validate response
+			if (!isset($response['hostedPage'])) {
+				throw new PaymentInitiationException(self::DRIVER_NAME, 0, 'Invalid gateway response. Missing hostedPage URL.');
 			}
 			
 			// The orderId (our reference) is the identifier we carry forward.
 			// XPay does not return a separate transaction key — the orderId IS the reference.
 			return new InitiateResult(
 				provider: self::DRIVER_NAME,
-				transactionId: $request->reference,
-				redirectUrl: $hostedPage,
+				transactionId: $request->reference ?? '',
+				redirectUrl: $response['hostedPage'],
 			);
 		}
 		
@@ -245,20 +246,26 @@
 		 *   REVERSED          → Refunded (refund operation)
 		 *
 		 * @param string $transactionId The orderId (PaymentRequest::$reference)
-		 * @param array $extraData action: 'return' | 'push' (informational only)
+		 * @param array<string, mixed> $extraData action: 'return' | 'push' (informational only)
 		 * @return PaymentState
 		 * @throws PaymentExchangeException
 		 */
 		public function exchange(string $transactionId, array $extraData = []): PaymentState {
+			// Call the API to fetch order info
 			$result = $this->getGateway()->getOrder($transactionId);
 			
+			// If that failed, throw
 			if ($result['request']['result'] === 0) {
 				throw new PaymentExchangeException(self::DRIVER_NAME, $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 			
-			$data = $result['response'];
+			// Fetch the response data
+			$data = $result['response'] ?? [];
 			$orderData = $data['orderStatus']['order'] ?? [];
 			$operations = $data['orderStatus']['operations'] ?? [];
+			
+			// Use the order-level currency as a fallback; individual operations carry their own currency
+			// but may be missing it (e.g. for some async methods)
 			$currency = $orderData['currency'] ?? '';
 			
 			// Walk operations to find the primary payment status and refund total.
@@ -267,46 +274,60 @@
 			$refundTotal = 0;
 			
 			foreach ($operations as $op) {
+				// Normalise to uppercase so comparisons are case-insensitive — XPay's casing
+				// is consistent in practice, but the API docs don't guarantee it
 				$opType = strtoupper($op['operationType'] ?? '');
 				$opResult = strtoupper($op['operationResult'] ?? '');
 				
+				// Keep the last capture/auth operation as the primary; later entries
+				// overwrite earlier ones, so we naturally end up with the most recent state
 				if ($opType === 'CAPTURE' || $opType === 'AUTHORIZATION') {
-					// Keep the last capture/auth operation as the primary
 					$captureOp = $op;
 				}
 				
+				// Accumulate all successful refund amounts to compute the refunded total;
+				// there may be multiple partial refunds against the same order
 				if ($opType === 'REFUND' && $opResult === 'AUTHORIZED') {
 					$refundTotal += (int)($op['operationAmount'] ?? 0);
 				}
 			}
 			
-			// If no capture operation found at all, fall back to the first operation or Pending
+			// If no capture operation found at all, fall back to the first operation or Pending.
+			// This handles edge cases such as orders that only have an AUTHORIZATION_REQUESTED
+			// entry while the acquirer is still processing
 			if ($captureOp === null && !empty($operations)) {
 				$captureOp = reset($operations);
 			}
 			
+			// Read the final result from whichever operation we settled on; default to PENDING
+			// if $captureOp is still null (empty operations list — order exists but no activity yet)
 			$opResult = strtoupper($captureOp['operationResult'] ?? 'PENDING');
 			$opAmount = (int)($captureOp['operationAmount'] ?? 0);
+			
+			// Prefer the operation-level currency; fall back to the order-level currency resolved above
 			$opCurrency = $captureOp['operationCurrency'] ?? $currency;
 			$operationId = $captureOp['operationId'] ?? null;
 			
+			// Map the XPay operationResult string to our internal PaymentStatus enum;
+			// unknown values default to Pending rather than failing, which is the safer assumption
 			$state = self::RESULT_STATUS_MAP[$opResult] ?? PaymentStatus::Pending;
 			
-			// If there are refunds that fully cover the paid amount, upgrade state to Refunded
+			// If there are refunds that fully cover the paid amount, upgrade state to Refunded.
+			// XPay does not expose a dedicated "fully refunded" order state, so we derive it here.
+			// Partial refunds leave the state as Paid; $valueRefunded will reflect the partial amount.
 			if ($state === PaymentStatus::Paid && $refundTotal > 0 && $refundTotal >= $opAmount) {
 				$state = PaymentStatus::Refunded;
 			}
 			
-			$valuePaid = $state === PaymentStatus::Paid ? $opAmount : 0;
-			$valueRefunded = $refundTotal;
-			
+			// Only report a paid value when the payment is actually in Paid state; for any other
+			// state (Pending, Failed, Refunded, etc.) the value should be zero from the caller's perspective
 			return new PaymentState(
 				provider: self::DRIVER_NAME,
 				transactionId: $transactionId,
 				state: $state,
 				currency: $opCurrency ?: $currency,
-				valuePaid: $valuePaid,
-				valueRefunded: $valueRefunded,
+				valuePaid: $state === PaymentStatus::Paid ? $opAmount : 0,
+				valueRefunded: $refundTotal,
 				internalState: $opResult,
 				metadata: array_filter([
 					'operationId'    => $operationId,
@@ -358,7 +379,7 @@
 			}
 			
 			// The refund response contains the new operation object for the refund itself
-			$response = $result['response'];
+			$response = $result['response'] ?? [];
 			$refundOpId = $response['operationId'] ?? '';
 			$refundedAmt = (int)($response['operationAmount'] ?? ($request->amount ?? 0));
 			$currency = $response['operationCurrency'] ?? $request->currency;
@@ -456,7 +477,7 @@
 		 * Note: XPay uses 3-letter country codes (ITA, NLD) unlike Buckaroo which uses 2-letter (IT, NL).
 		 *
 		 * @param PaymentRequest $request
-		 * @return array customerInfo array, possibly empty if no address data is available
+		 * @return array<string, mixed> customerInfo array, possibly empty if no address data is available
 		 */
 		private function buildCustomerInfo(PaymentRequest $request): array {
 			$info = [];
@@ -520,7 +541,7 @@
 		/**
 		 * Converts a PaymentAddress into an XPay address block.
 		 * @param PaymentAddress $address
-		 * @return array XPay-formatted address fields (only non-empty values included)
+		 * @return array<string, mixed> XPay-formatted address fields (only non-empty values included)
 		 */
 		private function buildAddressBlock(PaymentAddress $address): array {
 			$streetLine = trim(($address->street ?? '') . ' ' . ($address->houseNumber ?? '') . ($address->houseNumberSuffix ? '-' . $address->houseNumberSuffix : ''));

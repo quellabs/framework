@@ -2,6 +2,8 @@
 	
 	namespace Quellabs\Shipments\Packing;
 	
+	use DVDoug\BoxPacker\Box;
+	
 	/**
 	 * Represents a single physical box in a PackingResult.
 	 * Wraps the relevant data from dvdoug/boxpacker's packed box
@@ -12,15 +14,18 @@
 		/** @var PackableItem[] */
 		private array $items;
 		
+		/**
+		 * @param PackableItem[] $items
+		 */
 		public function __construct(
-			private readonly PackingBox $box,
+			private readonly Box $box,
 			array                       $items,
 			private readonly int        $grossWeight,
 		) {
 			$this->items = $items;
 		}
 		
-		public function getBox(): PackingBox {
+		public function getBox(): Box {
 			return $this->box;
 		}
 		
