@@ -251,15 +251,21 @@
 		 * @throws PaymentExchangeException
 		 */
 		public function exchange(string $transactionId, array $extraData = []): PaymentState {
+			// Call the API to fetch order info
 			$result = $this->getGateway()->getOrder($transactionId);
 			
+			// If that failed, throw
 			if ($result['request']['result'] === 0) {
 				throw new PaymentExchangeException(self::DRIVER_NAME, $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 			
+			// Fetch the response data
 			$data = $result['response'] ?? [];
 			$orderData = $data['orderStatus']['order'] ?? [];
 			$operations = $data['orderStatus']['operations'] ?? [];
+			
+			// Use the order-level currency as a fallback; individual operations carry their own currency
+			// but may be missing it (e.g. for some async methods)
 			$currency = $orderData['currency'] ?? '';
 			
 			// Walk operations to find the primary payment status and refund total.
@@ -268,46 +274,60 @@
 			$refundTotal = 0;
 			
 			foreach ($operations as $op) {
+				// Normalise to uppercase so comparisons are case-insensitive — XPay's casing
+				// is consistent in practice, but the API docs don't guarantee it
 				$opType = strtoupper($op['operationType'] ?? '');
 				$opResult = strtoupper($op['operationResult'] ?? '');
 				
+				// Keep the last capture/auth operation as the primary; later entries
+				// overwrite earlier ones, so we naturally end up with the most recent state
 				if ($opType === 'CAPTURE' || $opType === 'AUTHORIZATION') {
-					// Keep the last capture/auth operation as the primary
 					$captureOp = $op;
 				}
 				
+				// Accumulate all successful refund amounts to compute the refunded total;
+				// there may be multiple partial refunds against the same order
 				if ($opType === 'REFUND' && $opResult === 'AUTHORIZED') {
 					$refundTotal += (int)($op['operationAmount'] ?? 0);
 				}
 			}
 			
-			// If no capture operation found at all, fall back to the first operation or Pending
+			// If no capture operation found at all, fall back to the first operation or Pending.
+			// This handles edge cases such as orders that only have an AUTHORIZATION_REQUESTED
+			// entry while the acquirer is still processing
 			if ($captureOp === null && !empty($operations)) {
 				$captureOp = reset($operations);
 			}
 			
+			// Read the final result from whichever operation we settled on; default to PENDING
+			// if $captureOp is still null (empty operations list — order exists but no activity yet)
 			$opResult = strtoupper($captureOp['operationResult'] ?? 'PENDING');
 			$opAmount = (int)($captureOp['operationAmount'] ?? 0);
+			
+			// Prefer the operation-level currency; fall back to the order-level currency resolved above
 			$opCurrency = $captureOp['operationCurrency'] ?? $currency;
 			$operationId = $captureOp['operationId'] ?? null;
 			
+			// Map the XPay operationResult string to our internal PaymentStatus enum;
+			// unknown values default to Pending rather than failing, which is the safer assumption
 			$state = self::RESULT_STATUS_MAP[$opResult] ?? PaymentStatus::Pending;
 			
-			// If there are refunds that fully cover the paid amount, upgrade state to Refunded
+			// If there are refunds that fully cover the paid amount, upgrade state to Refunded.
+			// XPay does not expose a dedicated "fully refunded" order state, so we derive it here.
+			// Partial refunds leave the state as Paid; $valueRefunded will reflect the partial amount.
 			if ($state === PaymentStatus::Paid && $refundTotal > 0 && $refundTotal >= $opAmount) {
 				$state = PaymentStatus::Refunded;
 			}
 			
-			$valuePaid = $state === PaymentStatus::Paid ? $opAmount : 0;
-			$valueRefunded = $refundTotal;
-			
+			// Only report a paid value when the payment is actually in Paid state; for any other
+			// state (Pending, Failed, Refunded, etc.) the value should be zero from the caller's perspective
 			return new PaymentState(
 				provider: self::DRIVER_NAME,
 				transactionId: $transactionId,
 				state: $state,
 				currency: $opCurrency ?: $currency,
-				valuePaid: $valuePaid,
-				valueRefunded: $valueRefunded,
+				valuePaid: $state === PaymentStatus::Paid ? $opAmount : 0,
+				valueRefunded: $refundTotal,
 				internalState: $opResult,
 				metadata: array_filter([
 					'operationId'    => $operationId,
