@@ -200,22 +200,23 @@
 				$order['customerInfo'] = $customerInfo;
 			}
 			
-			$payload = [
+			// Call the API
+			$result = $this->getGateway()->createOrder([
 				'paymentSession' => $paymentSession,
 				'order'          => $order,
-			];
+			]);
 			
-			$result = $this->getGateway()->createOrder($payload);
-			
+			// If the API call failed, throw exception
 			if ($result['request']['result'] === 0) {
 				throw new PaymentInitiationException(self::DRIVER_NAME, $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 			
-			$response = $result['response'];
-			$hostedPage = $response['hostedPage'] ?? '';
+			// Fetch response
+			$response = $result['response'] ?? [];
 			
-			if (empty($hostedPage)) {
-				throw new PaymentInitiationException(self::DRIVER_NAME, 0, 'Missing hostedPage URL in XPay response');
+			// Validate response
+			if (!isset($response['hostedPage'])) {
+				throw new PaymentInitiationException(self::DRIVER_NAME, 0, 'Invalid gateway response. Missing hostedPage URL.');
 			}
 			
 			// The orderId (our reference) is the identifier we carry forward.
@@ -223,7 +224,7 @@
 			return new InitiateResult(
 				provider: self::DRIVER_NAME,
 				transactionId: $request->reference ?? '',
-				redirectUrl: $hostedPage,
+				redirectUrl: $response['hostedPage'],
 			);
 		}
 		
@@ -256,7 +257,7 @@
 				throw new PaymentExchangeException(self::DRIVER_NAME, $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 			
-			$data = $result['response'];
+			$data = $result['response'] ?? [];
 			$orderData = $data['orderStatus']['order'] ?? [];
 			$operations = $data['orderStatus']['operations'] ?? [];
 			$currency = $orderData['currency'] ?? '';
@@ -358,7 +359,7 @@
 			}
 			
 			// The refund response contains the new operation object for the refund itself
-			$response = $result['response'];
+			$response = $result['response'] ?? [];
 			$refundOpId = $response['operationId'] ?? '';
 			$refundedAmt = (int)($response['operationAmount'] ?? ($request->amount ?? 0));
 			$currency = $response['operationCurrency'] ?? $request->currency;
