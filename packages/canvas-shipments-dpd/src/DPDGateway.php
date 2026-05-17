@@ -582,7 +582,7 @@ XML;
 		 * Recursively converts a SimpleXMLElement to a plain PHP array.
 		 * Attributes are ignored; text-only nodes are returned as strings.
 		 * @param \SimpleXMLElement $element
-		 * @return array|string
+		 * @return array<string, mixed>|string
 		 */
 		private function xmlToArray(\SimpleXMLElement $element): array|string {
 			$result = [];

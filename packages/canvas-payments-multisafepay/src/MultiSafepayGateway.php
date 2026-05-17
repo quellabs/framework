@@ -22,7 +22,7 @@
 	 */
 	class MultiSafepayGateway {
 		
-		private const API_VERSION = 'v1';
+		private const string API_VERSION = 'v1';
 		
 		/** @var HttpClientInterface Shared HTTP client instance */
 		private HttpClientInterface $client;
@@ -59,7 +59,7 @@
 		 * Returns an order_id and a payment_url for redirecting the shopper.
 		 * @see https://docs.multisafepay.com/reference/createorder
 		 * @param array<string, mixed> $payload Full order payload per MSP spec
-		 * @return array Normalised response
+		 * @return array<string, mixed> Normalised response
 		 */
 		public function createOrder(array $payload): array {
 			return $this->request('POST', '/orders', $payload);
@@ -71,7 +71,7 @@
 		 * MSP's notification body contains only the order_id, not the status.
 		 * @see https://docs.multisafepay.com/reference/getorder
 		 * @param string $orderId The order_id used when the order was created (your reference)
-		 * @return array Normalised response
+		 * @return array<string, mixed> Normalised response
 		 */
 		public function getOrder(string $orderId): array {
 			return $this->request('GET', '/orders/' . urlencode($orderId));
@@ -85,7 +85,7 @@
 		 * @see https://docs.multisafepay.com/reference/refundorder
 		 * @param string $orderId The order_id of the original payment
 		 * @param array<string, mixed> $payload Must include currency and amount (in minor units)
-		 * @return array Normalised response containing the refund transaction_id
+		 * @return array<string, mixed> Normalised response containing the refund transaction_id
 		 */
 		public function refundOrder(string $orderId, array $payload): array {
 			return $this->request('POST', '/orders/' . urlencode($orderId) . '/refunds', $payload);
@@ -97,7 +97,7 @@
 		 * Only iDEAL currently uses a dedicated issuer endpoint; other methods do not.
 		 * @see https://docs.multisafepay.com/reference/issuers
 		 * @param string $gateway Lowercase MSP gateway code (e.g. 'ideal')
-		 * @return array Normalised response with 'data' containing issuer objects
+		 * @return array<string, mixed> Normalised response with 'data' containing issuer objects
 		 */
 		public function getIssuers(string $gateway): array {
 			return $this->request('GET', '/issuers/' . urlencode($gateway));
@@ -113,8 +113,8 @@
 		 * @see https://docs.multisafepay.com/docs/errors
 		 * @param string $method HTTP method (e.g. 'GET', 'POST')
 		 * @param string $endpoint Path relative to the versioned base URL
-		 * @param array|null $payload JSON request body (POST only)
-		 * @return array Normalised response
+		 * @param array<string, mixed>|null $payload JSON request body (POST only)
+		 * @return array<string, mixed> Normalised response
 		 */
 		private function request(string $method, string $endpoint, ?array $payload = null): array {
 			try {

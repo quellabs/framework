@@ -138,7 +138,7 @@
 		/**
 		 * Retrieves the label PDF URL for one or more parcels.
 		 * @see https://docs.sendcloud.com/api/v2/#get-a-pdf-label
-		 * @param string|int|array $parcelId Single ID or array of IDs for a merged label
+		 * @param string|int|array<int, int> $parcelId Single ID or array of IDs for a merged label
 		 * @return array<string, mixed>
 		 */
 		public function getLabel(string|int|array $parcelId): array {
