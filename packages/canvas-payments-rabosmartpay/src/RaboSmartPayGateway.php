@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\Payments\RaboSmartPay;
 	
+	use Quellabs\Contracts\Gateway\GatewayInterface;
 	use Symfony\Component\HttpClient\HttpClient;
 	use Symfony\Contracts\HttpClient\HttpClientInterface;
 	
@@ -32,14 +33,16 @@
 	 *
 	 * @see https://developer.rabobank.nl/rabo-smart-pay-online-payment-api
 	 * @see https://github.com/rabobank-nederland/omnikassa-sdk-doc
+	 *
+	 * @phpstan-import-type GatewayResponse from GatewayInterface
 	 */
 	class RaboSmartPayGateway {
 		
 		/** @var string Production base URL */
-		private const BASE_URL_LIVE = 'https://api.pay.rabobank.nl/omnikassa-api';
+		private const string BASE_URL_LIVE = 'https://api.pay.rabobank.nl/omnikassa-api';
 		
 		/** @var string Sandbox base URL */
-		private const BASE_URL_SANDBOX = 'https://betalen.rabobank.nl/omnikassa-api-sandbox';
+		private const string BASE_URL_SANDBOX = 'https://betalen.rabobank.nl/omnikassa-api-sandbox';
 		
 		/** @var HttpClientInterface Shared HTTP client instance */
 		private HttpClientInterface $client;
@@ -58,7 +61,6 @@
 		
 		/**
 		 * Constructs the gateway, extracting credentials from the driver config.
-		 *
 		 * @param Driver $driver Provider instance with active configuration already applied
 		 */
 		public function __construct(Driver $driver) {
@@ -82,17 +84,10 @@
 		 * response.omnikassaOrderId is the UUID to use for status and refund calls.
 		 *
 		 * @see https://developer.rabobank.nl/rabo-smart-pay-online-payment-api
-		 * @param array $payload Full order payload per Rabo Smart Pay spec
-		 * @return array Normalised response
+		 * @param array<string, mixed> $payload Full order payload per Rabo Smart Pay spec
+		 * @return GatewayResponse
 		 */
 		public function announceOrder(array $payload): array {
-			// Ensure we have a valid access token before the announce call.
-			$tokenResult = $this->ensureAccessToken();
-			
-			if ($tokenResult['request']['result'] === 0) {
-				return $tokenResult;
-			}
-			
 			return $this->request('POST', '/order/server/api/v2/order', $payload);
 		}
 		
@@ -105,15 +100,9 @@
 		 *
 		 * @see https://github.com/rabobank-nederland/omnikassa-sdk-doc
 		 * @param string $omnikassaOrderId The UUID assigned by Rabo Smart Pay at announce time
-		 * @return array Normalised response
+		 * @return GatewayResponse
 		 */
 		public function getOrderStatus(string $omnikassaOrderId): array {
-			$tokenResult = $this->ensureAccessToken();
-			
-			if ($tokenResult['request']['result'] === 0) {
-				return $tokenResult;
-			}
-			
 			return $this->request('GET', '/order/server/api/v2/orders/' . urlencode($omnikassaOrderId));
 		}
 		
@@ -127,7 +116,7 @@
 		 *
 		 * @see https://developer.rabobank.nl/rabo-smart-pay-online-payment-api
 		 * @param string $notificationToken The authentication token from the webhook notification body
-		 * @return array Normalised response containing orderResults[]
+		 * @return GatewayResponse
 		 */
 		public function pullOrderStatuses(string $notificationToken): array {
 			return $this->request(
@@ -147,16 +136,10 @@
 		 *
 		 * @see https://docs.developer.rabobank.com/smartpay/reference/create-refund
 		 * @param string $omnikassaOrderId The UUID of the original order
-		 * @param array $payload May contain: amount.currency, amount.amount (in cents as string), description
-		 * @return array Normalised response
+		 * @param array<string, mixed> $payload May contain: amount.currency, amount.amount (in cents as string), description
+		 * @return GatewayResponse
 		 */
 		public function refundOrder(string $omnikassaOrderId, array $payload): array {
-			$tokenResult = $this->ensureAccessToken();
-			
-			if ($tokenResult['request']['result'] === 0) {
-				return $tokenResult;
-			}
-			
 			return $this->request(
 				'POST',
 				'/order/server/api/v2/order/' . urlencode($omnikassaOrderId) . '/refund',
@@ -198,91 +181,68 @@
 		 * cached one is absent or within 60 seconds of expiry (clock-skew buffer).
 		 * Callers should not obtain a new token for every individual API call.
 		 *
-		 * Refresh endpoint: GET /gatekeeper/refresh
-		 * Authorization: Bearer {refresh_token}
-		 * Response: { token: string, validUntil: ISO8601 }
-		 *
-		 * @return array Normalised success or failure response
+		 * @return string
+		 * @throws \Exception
 		 */
-		private function ensureAccessToken(): array {
+		private function ensureAccessToken(): string {
 			// If we have a cached token with >60s remaining, reuse it.
 			if ($this->accessToken !== null && time() < ($this->accessTokenExpiry - 60)) {
-				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => '']];
+				return $this->accessToken;
 			}
 			
-			try {
-				// The refresh call uses the long-lived refresh token, not the access token.
-				$response = $this->client->request('GET', $this->baseUrl . '/gatekeeper/refresh', [
-					'headers' => [
-						'Accept'        => 'application/json',
-						'Authorization' => 'Bearer ' . $this->refreshToken,
-					],
-				]);
-				
-				$statusCode = $response->getStatusCode();
-				$body = json_decode($response->getContent(false), true);
-				
-				if (json_last_error() !== JSON_ERROR_NONE) {
-					return [
-						'request' => [
-							'result'       => 0,
-							'errorId'      => $statusCode,
-							'errorMessage' => 'Invalid JSON from gatekeeper: ' . json_last_error_msg(),
-						],
-					];
-				}
-				
-				if ($statusCode !== 200 || empty($body['token'])) {
-					$msg = $body['consumerMessage'] ?? ($body['errorMessage'] ?? "HTTP {$statusCode}");
-					
-					return [
-						'request' => [
-							'result'       => 0,
-							'errorId'      => $statusCode,
-							'errorMessage' => 'Token refresh failed: ' . $msg,
-						],
-					];
-				}
-				
-				// Cache the access token and parse its expiry time.
-				$this->accessToken = $body['token'];
-				
-				// validUntil is an ISO 8601 timestamp e.g. "2025-01-01T12:00:00.000+01:00"
-				$this->accessTokenExpiry = isset($body['validUntil'])
-					? (int)strtotime($body['validUntil'])
-					: time() + 300; // 5-minute fallback when field is absent
-				
-				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => '']];
-			} catch (\Throwable $e) {
-				return [
-					'request' => [
-						'result'       => 0,
-						'errorId'      => $e->getCode(),
-						'errorMessage' => 'Token refresh exception: ' . $e->getMessage(),
-					],
-				];
+			// The refresh call uses the long-lived refresh token, not the access token.
+			$response = $this->client->request('GET', $this->baseUrl . '/gatekeeper/refresh', [
+				'headers' => [
+					'Accept'        => 'application/json',
+					'Authorization' => 'Bearer ' . $this->refreshToken,
+				],
+			]);
+			
+			// Fetch the status code
+			$statusCode = $response->getStatusCode();
+			
+			// Decode the JSON body content
+			$body = json_decode($response->getContent(false), true);
+			
+			// If that failed, return null so the caller can pick this up
+			if (json_last_error() !== JSON_ERROR_NONE || $statusCode !== 200 || empty($body['token'])) {
+				throw new \Exception("Failed to fetch access token");
 			}
+			
+			// Cache the access token and parse its expiry time.
+			$this->accessToken = $body['token'];
+			
+			// validUntil is an ISO 8601 timestamp e.g. "2025-01-01T12:00:00.000+01:00"
+			// 5-minute fallback when field is absent
+			if (isset($body['validUntil'])) {
+				$this->accessTokenExpiry = (int)strtotime($body['validUntil']);
+			} else {
+				$this->accessTokenExpiry = time() + 300;
+			}
+			
+			return $this->accessToken;
 		}
 		
 		/**
 		 * Sends an authenticated request to the Rabo Smart Pay REST API and returns a
 		 * normalised result array. All public gateway methods delegate to this.
-		 *
 		 * @param string $method HTTP method: GET or POST
 		 * @param string $endpoint Path relative to baseUrl, e.g. '/order/server/api/v2/order'
-		 * @param array|null $payload JSON body for POST; null for GET
+		 * @param array<string, mixed>|null $payload JSON body for POST; null for GET
 		 * @param string|null $bearerToken Override the cached access token (used for Status Pull)
-		 * @return array Normalised response
+		 * @return GatewayResponse
 		 */
 		private function request(string $method, string $endpoint, ?array $payload = null, ?string $bearerToken = null): array {
 			try {
-				// Use the provided bearer token (webhook notification token) or the cached access token.
-				$token = $bearerToken ?? $this->accessToken;
+				// Only fetch an access token when no override is provided.
+				// pullOrderStatuses supplies its own notification token and must bypass this.
+				$token = $bearerToken === null ? $this->ensureAccessToken() : $bearerToken;
 				
+				// Build options
 				$options = [
 					'headers' => [
 						'Accept'        => 'application/json',
-						'Authorization' => 'Bearer ' . $token,
+						'Authorization' => "Bearer {$token}",
 					],
 				];
 				
@@ -291,47 +251,31 @@
 					$options['json'] = $payload;
 				}
 				
+				// Call the API
 				$response = $this->client->request($method, $this->baseUrl . $endpoint, $options);
+				
+				// Fetch the status code
 				$statusCode = $response->getStatusCode();
 				
-				// Decode with throw-on-error disabled so we can inspect error bodies.
+				// Decode result with throw-on-error disabled so we can inspect error bodies.
 				$body = json_decode($response->getContent(false), true);
 				
+				// If decode failed, return an error
 				if (json_last_error() !== JSON_ERROR_NONE) {
-					return [
-						'request' => [
-							'result'       => 0,
-							'errorId'      => $statusCode,
-							'errorMessage' => 'Invalid JSON response: ' . json_last_error_msg(),
-						],
-					];
+					return ['request' => ['result' => 0, 'errorId' => (string)$statusCode, 'errorMessage' => 'Invalid JSON response: ' . json_last_error_msg()]];
 				}
 				
-				if ($statusCode >= 200 && $statusCode < 300) {
-					return [
-						'request'  => ['result' => 1, 'errorId' => '', 'errorMessage' => ''],
-						'response' => $body,
-					];
+				// If the statuscode is not in the success range, return an error
+				if ($statusCode < 200 || $statusCode >= 300) {
+					// Extract the most informative error message from the error body.
+					$errorMessage = $this->extractErrorMessage($body, $statusCode);
+					return ['request' => ['result' => 0, 'errorId' => (string)$statusCode, 'errorMessage' => $errorMessage]];
 				}
 				
-				// Extract the most informative error message from the error body.
-				$errorMessage = $this->extractErrorMessage($body, $statusCode);
-				
-				return [
-					'request' => [
-						'result'       => 0,
-						'errorId'      => $statusCode,
-						'errorMessage' => $errorMessage,
-					],
-				];
+				// Return success result
+				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $body];
 			} catch (\Throwable $e) {
-				return [
-					'request' => [
-						'result'       => 0,
-						'errorId'      => $e->getCode(),
-						'errorMessage' => $e->getMessage(),
-					],
-				];
+				return ['request' => ['result' => 0, 'errorId' => (string)$e->getCode(), 'errorMessage' => $e->getMessage()]];
 			}
 		}
 		
@@ -341,7 +285,7 @@
 		 * Rabo Smart Pay uses a consumerMessage / errorMessage / errorCode structure:
 		 *   { "errorCode": "AUTH_001", "consumerMessage": "...", "errorMessage": "..." }
 		 *
-		 * @param array|null $body Decoded JSON body, or null if the body was empty
+		 * @param array<string, mixed>|null $body Decoded JSON body, or null if the body was empty
 		 * @param int $statusCode HTTP status code, used as fallback error identifier
 		 * @return string Human-readable error message
 		 */

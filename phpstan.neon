@@ -20,6 +20,7 @@ parameters:
         - packages/canvas-payments-paynl
         - packages/canvas-payments-paypal
         - packages/canvas-payments-paypal-express
+        - packages/canvas-payments-rabosmartpay
         - packages/canvas-payments-stripe
         - packages/canvas-payments-xpay
         - packages/canvas-shipments
