@@ -205,6 +205,14 @@
 				throw new PaymentInitiationException(self::DRIVER_NAME, $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 			
+			// Validate response data is there
+			if (
+				!isset($result['response']['id']) ||
+				!isset($result['response']['links']['redirect'])
+			) {
+				throw new PaymentInitiationException(self::DRIVER_NAME, "500", "Invalid gateway response. Missing id and/or redirect url");
+			}
+			
 			// The UUID (id) is the stable identifier used for all subsequent API calls.
 			// orderId is a legacy human-readable reference — not used for API calls.
 			return new InitiateResult(
@@ -262,7 +270,7 @@
 			}
 			
 			// Unpack the top-level fields we need for state mapping.
-			$data = $result['response'];
+			$data = $result['response'] ?? [];
 			$statusCode = (int)($data['status']['code'] ?? 20);
 			$statusAction = strtoupper($data['status']['action'] ?? '');
 			$currency = $data['amount']['currency'] ?? '';
@@ -404,7 +412,7 @@
 			
 			// The order-level currency is used as a fallback when a payment entry
 			// does not carry its own currency field.
-			$data = $result['response'];
+			$data = $result['response'] ?? [];
 			$currency = $data['amount']['currency'] ?? '';
 			$refunds = [];
 			

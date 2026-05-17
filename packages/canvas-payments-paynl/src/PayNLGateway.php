@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\Payments\PayNL;
 	
+	use Quellabs\Contracts\Gateway\GatewayInterface;
 	use Symfony\Component\HttpClient\HttpClient;
 	use Symfony\Contracts\HttpClient\HttpClientInterface;
 	
@@ -28,6 +29,8 @@
 	 *
 	 * @see https://developer.pay.nl/docs/api-defenition
 	 * @see https://developer.pay.nl/reference/api_create_order-1
+	 *
+	 * @phpstan-import-type GatewayResponse from GatewayInterface
 	 */
 	class PayNLGateway {
 		
@@ -73,7 +76,7 @@
 		 *
 		 * @see https://developer.pay.nl/reference/api_create_order-1
 		 * @param array<string, mixed> $payload Full order payload per Pay.nl spec
-		 * @return array<string, mixed> Normalised response
+		 * @return GatewayResponse
 		 */
 		public function createOrder(array $payload): array {
 			return $this->request('POST', '/orders', $payload);
@@ -88,7 +91,7 @@
 		 *
 		 * @see https://developer.pay.nl/reference/api_get_status-1
 		 * @param string $orderId The order UUID (id field from createOrder response)
-		 * @return array<string, mixed> Normalised response
+		 * @return GatewayResponse
 		 */
 		public function getOrderStatus(string $orderId): array {
 			// The order UUID goes in the path — URL-encode to handle any special characters.
@@ -107,7 +110,7 @@
 		 * @see https://developer.pay.nl/docs/refund
 		 * @param string $orderId The order UUID of the original payment
 		 * @param array<string, mixed> $payload May contain: amount.value, amount.currency, description
-		 * @return array<string, mixed> Normalised response containing the updated order object
+		 * @return GatewayResponse
 		 */
 		public function refundOrder(string $orderId, array $payload): array {
 			// PATCH updates the existing order in place rather than creating a new resource.
@@ -126,7 +129,7 @@
 		 * @param string $method HTTP method: GET, POST, or PATCH
 		 * @param string $endpoint Path relative to BASE_URL, e.g. '/orders'
 		 * @param array<string, mixed>|null $payload JSON body for POST/PATCH; null for GET
-		 * @return array<string, mixed> Normalised response
+		 * @return GatewayResponse
 		 */
 		private function request(string $method, string $endpoint, ?array $payload = null): array {
 			try {
@@ -162,7 +165,7 @@
 					return [
 						'request' => [
 							'result'       => 0,
-							'errorId'      => $statusCode,
+							'errorId'      => (string)$statusCode,
 							'errorMessage' => 'Invalid JSON response: ' . json_last_error_msg(),
 						],
 					];
@@ -183,7 +186,7 @@
 				return [
 					'request' => [
 						'result'       => 0,
-						'errorId'      => $statusCode,
+						'errorId'      => (string)$statusCode,
 						'errorMessage' => $errorMessage,
 					],
 				];
