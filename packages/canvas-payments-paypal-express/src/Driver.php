@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\Payments\PaypalExpress;
 	
+	use Quellabs\Contracts\Gateway\GatewayInterface;
 	use Quellabs\Payments\Contracts\InitiateResult;
 	use Quellabs\Payments\Contracts\PaymentInitiationException;
 	use Quellabs\Payments\Contracts\PaymentProviderInterface;
@@ -11,7 +12,11 @@
 	use Quellabs\Payments\Contracts\PaymentStatus;
 	use Quellabs\Payments\Contracts\RefundRequest;
 	use Quellabs\Payments\Contracts\RefundResult;
+	use Symfony\Component\HttpFoundation\JsonResponse;
 	
+	/**
+	 * @phpstan-import-type GatewayResponse from GatewayInterface
+	 */
 	class Driver implements PaymentProviderInterface {
 		
 		/**
@@ -355,12 +360,30 @@
 		}
 		
 		/**
-		 * Verifies a PayPal IPN message by delegating to the gateway.
+		 * Verifies a PayPal IPN message by delegating to the gateway and returning
+		 * PayPal's verification verdict as a normalized string.
+		 *
+		 * PayPal responds to the echoed IPN data with either "VERIFIED" or "INVALID".
+		 * Any error at the HTTP or API level is treated as "INVALID" to prevent
+		 * processing of unverified notifications.
+		 *
 		 * @param array<string, mixed> $data The raw IPN POST data received from PayPal
-		 * @return array<string, mixed>
+		 * @return 'VERIFIED'|'INVALID'
 		 */
-		public function verifyIpnMessage(array $data): array {
-			return $this->getGateway()->verifyIpnMessage($data);
+		public function verifyIpnMessage(array $data): string {
+			// Fetch the IPN message from the PayPal gateway
+			$result = $this->getGateway()->verifyIpnMessage($data);
+			
+			// If the HTTP request to PayPal's IPN endpoint failed, treat as invalid
+			if ($result["request"]["result"] === 0) {
+				return "INVALID";
+			}
+			
+			// Extract the verification verdict from the response envelope
+			$response = $result['response'] ?? [];
+			
+			// PayPal must explicitly return "VERIFIED" — anything else is treated as invalid
+			return !isset($response["result"]) || $response["result"] !== "VERIFIED" ? "INVALID" : "VERIFIED";
 		}
 		
 		/**

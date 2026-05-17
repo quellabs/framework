@@ -96,21 +96,21 @@
 			// Fetch all post data
 			$data = $request->request->all();
 			
-			// Verify the IPN message is genuinely from PayPal by echoing it back for validation.
-			// PayPal responds with either "VERIFIED" or "INVALID" — never process unverified messages.
-			$verification = $this->paypal->verifyIpnMessage($data);
-			
-			// If that failed, return an error message
-			if ($verification["request"]["result"] == 0 || $verification["response"]["result"] !== "VERIFIED") {
-				return new JsonResponse("IPN verification failed", 400);
-			}
-			
 			// The checkout token is included in the IPN payload and identifies the payment session
 			$token = $data['token'] ?? null;
 			
 			// If no token, this is an invalid call
 			if (empty($token)) {
 				return new JsonResponse("Missing parameter 'token'", 400);
+			}
+			
+			// Verify the IPN message is genuinely from PayPal by echoing it back for validation.
+			// PayPal responds with either "VERIFIED" or "INVALID" — never process unverified messages.
+			$verification = $this->paypal->verifyIpnMessage($data);
+			
+			// Validate that we received a valid IPN result
+			if ($verification !== "VERIFIED") {
+				return new JsonResponse("verifyIpnMessage denied the request", 400);
 			}
 			
 			// txn_id is PayPal's payment transaction ID — required for refund state retrieval
