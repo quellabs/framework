@@ -134,6 +134,16 @@
 			"));
 		}
 		
+		public function testBareJsonSourceRangeInWhereThrows(): void {
+			// where y = 10 where y is a bare json source range must be rejected —
+			// JsonRoot identifiers are not valid operands in expressions.
+			$this->assertSemanticError(fn() => $this->em->executeQuery("
+				range of y is json_source('f:\\\\test.json', '$.rows')
+				retrieve(y.id)
+				where y = 10
+			"));
+		}
+		
 		public function testWhereReferenceToUnexportedSubqueryFieldThrows(): void {
 			// x only exports 'hello'; referencing x.id in WHERE must be rejected
 			// at semantic analysis time, before any execution.
