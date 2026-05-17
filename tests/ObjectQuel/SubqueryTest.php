@@ -99,6 +99,29 @@
 		// Semantic validation
 		// -------------------------------------------------------------------------
 		
+		public function testWhereReferenceToUnexportedSubqueryFieldThrows(): void {
+			// x only exports 'hello'; referencing x.id in WHERE must be rejected
+			// at semantic analysis time, before any execution.
+			try {
+				$this->em->executeQuery("
+					range of x is (
+						range of a is PostEntity
+						retrieve(hello=a.id)
+					)
+					retrieve(x.hello)
+					where x.id = 1
+				");
+				
+				$this->fail('Expected QuelException to be thrown');
+			} catch (QuelException $e) {
+				$this->assertInstanceOf(
+					SemanticException::class,
+					$e->getPrevious(),
+					'Expected QuelException to wrap a SemanticException'
+				);
+			}
+		}
+		
 		public function testRetrievingEntireSubqueryRangeThrows(): void {
 			try {
 				$this->em->executeQuery("
