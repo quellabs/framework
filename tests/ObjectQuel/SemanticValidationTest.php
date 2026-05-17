@@ -58,10 +58,10 @@
 		
 		public function testDuplicateRangeNameThrows(): void {
 			$this->assertSemanticError(fn() => $this->em->executeQuery("
-			range of p is PostEntity
-			range of p is UserEntity
-			retrieve (p)
-		"));
+				range of p is PostEntity
+				range of p is UserEntity
+				retrieve (p)
+			"));
 		}
 		
 		// -------------------------------------------------------------------------
@@ -70,10 +70,10 @@
 		
 		public function testAggregateInWhereClauseThrows(): void {
 			$this->assertSemanticError(fn() => $this->em->executeQuery("
-			range of p is PostEntity
-			retrieve (p.id)
-			where count(p.id) > 1
-		"));
+				range of p is PostEntity
+				retrieve (p.id)
+				where count(p.id) > 1
+			"));
 		}
 		
 		// -------------------------------------------------------------------------
@@ -82,9 +82,9 @@
 		
 		public function testRegExpInValueListThrows(): void {
 			$this->assertSemanticError(fn() => $this->em->executeQuery("
-			range of p is PostEntity
-			retrieve (/foo/)
-		"));
+				range of p is PostEntity
+				retrieve (/foo/)
+			"));
 		}
 		
 		// -------------------------------------------------------------------------
@@ -94,9 +94,9 @@
 		public function testEmptyRetrieveThrows(): void {
 			// retrieve() with no arguments is rejected at parse time, not semantic analysis
 			$this->assertParserError(fn() => $this->em->executeQuery("
-			range of p is PostEntity
-			retrieve ()
-		"));
+				range of p is PostEntity
+				retrieve ()
+			"));
 		}
 		
 		// -------------------------------------------------------------------------
@@ -105,60 +105,69 @@
 		
 		public function testEntireSubqueryRangeInValueListThrows(): void {
 			$this->assertSemanticError(fn() => $this->em->executeQuery("
-			range of x is (
-				range of y is PostEntity
-				retrieve(y.id, y.title)
-			)
-			retrieve (x)
-		"));
+				range of x is (
+					range of y is PostEntity
+					retrieve(y.id, y.title)
+				)
+				retrieve (x)
+			"));
 		}
 		
 		public function testBareEntityInSubqueryProjectionThrows(): void {
 			// retrieve(y) inside a subquery must be rejected — the subquery's
 			// projection is its column-set contract and must be explicit.
 			$this->assertSemanticError(fn() => $this->em->executeQuery("
-			range of x is (
-				range of y is PostEntity
+				range of x is (
+					range of y is PostEntity
+					retrieve(y)
+				)
+				retrieve (x.id)
+			"));
+		}
+		
+		public function testBareJsonSourceRangeInProjectionThrows(): void {
+			// retrieve(y) where y is a json source range must be rejected —
+			// it produces empty arrays at runtime because the engine has no schema to hydrate from.
+			$this->assertSemanticError(fn() => $this->em->executeQuery("
+				range of y is json_source('f:\\\\test.json', '$.rows')
 				retrieve(y)
-			)
-			retrieve (x.id)
-		"));
+			"));
 		}
 		
 		public function testWhereReferenceToUnexportedSubqueryFieldThrows(): void {
 			// x only exports 'hello'; referencing x.id in WHERE must be rejected
 			// at semantic analysis time, before any execution.
 			$this->assertSemanticError(fn() => $this->em->executeQuery("
-			range of x is (
-				range of a is PostEntity
-				retrieve(hello=a.id)
-			)
-			retrieve(x.hello)
-			where x.id = 1
-		"));
+				range of x is (
+					range of a is PostEntity
+					retrieve(hello=a.id)
+				)
+				retrieve(x.hello)
+				where x.id = 1
+			"));
 		}
-
+		
 		public function testProjectionReferenceToUnexportedSubqueryFieldThrows(): void {
 			// x only exports 'id'; referencing x.title in the outer retrieve list must be
 			// rejected at semantic analysis time, before any execution.
 			$this->assertSemanticError(fn() => $this->em->executeQuery("
-			range of x is (
-				range of y is PostEntity
-				retrieve(y.id)
-			)
-			retrieve(x.id, x.title)
-		"));
+				range of x is (
+					range of y is PostEntity
+					retrieve(y.id)
+				)
+				retrieve(x.id, x.title)
+			"));
 		}
 		
 		public function testSubqueryPropertyAccessIsAllowed(): void {
 			// Should not throw — x.id is a valid scalar reference into an explicit projection
 			$result = $this->em->executeQuery("
-			range of x is (
-				range of y is PostEntity
-				retrieve(y.id)
-			)
-			retrieve (x.id)
-		");
+				range of x is (
+					range of y is PostEntity
+					retrieve(y.id)
+				)
+				retrieve (x.id)
+			");
 			
 			$this->assertNotNull($result);
 		}
@@ -167,12 +176,12 @@
 			// Should not throw — the inner query exports 'hello' as an alias for y.id,
 			// and the outer query references x.hello, which is a valid exported name.
 			$result = $this->em->executeQuery("
-			range of x is (
-				range of a is PostEntity
-				retrieve(hello=a.id)
-			)
-			retrieve(x.hello)
-		");
+				range of x is (
+					range of a is PostEntity
+					retrieve(hello=a.id)
+				)
+				retrieve(x.hello)
+			");
 			
 			$this->assertNotNull($result);
 		}
@@ -183,9 +192,9 @@
 		
 		public function testArithmeticOnEntityThrows(): void {
 			$this->assertSemanticError(fn() => $this->em->executeQuery("
-			range of p is PostEntity
-			retrieve (p.id)
-			where p + 1 = 2
-		"));
+				range of p is PostEntity
+				retrieve (p.id)
+				where p + 1 = 2
+			"));
 		}
 	}
