@@ -72,7 +72,7 @@
 		 *   response.links.status   — URL to poll for order status
 		 *
 		 * @see https://developer.pay.nl/reference/api_create_order-1
-		 * @param array $payload Full order payload per Pay.nl spec
+		 * @param array<string, mixed> $payload Full order payload per Pay.nl spec
 		 * @return array Normalised response
 		 */
 		public function createOrder(array $payload): array {
@@ -106,7 +106,7 @@
 		 *
 		 * @see https://developer.pay.nl/docs/refund
 		 * @param string $orderId The order UUID of the original payment
-		 * @param array $payload May contain: amount.value, amount.currency, description
+		 * @param array<string, mixed> $payload May contain: amount.value, amount.currency, description
 		 * @return array Normalised response containing the updated order object
 		 */
 		public function refundOrder(string $orderId, array $payload): array {

@@ -63,7 +63,7 @@
 		 * Creates a new transaction (initiates a payment).
 		 * Returns a RequiredAction.RedirectURL to send the shopper to.
 		 * @see https://docs.buckaroo.io/docs/transaction-post
-		 * @param array $payload Full transaction payload per Buckaroo spec
+		 * @param array<string, mixed> $payload Full transaction payload per Buckaroo spec
 		 * @return array Normalised response
 		 */
 		public function createTransaction(array $payload): array {
@@ -106,7 +106,7 @@
 		 * Uses AmountCredit + OriginalTransactionKey + Action: 'Refund'.
 		 * Omitting AmountCredit triggers a full refund.
 		 * @see https://docs.buckaroo.io/docs/refunds
-		 * @param array $payload Must include currency, OriginalTransactionKey, and optionally AmountCredit
+		 * @param array<string, mixed> $payload Must include currency, OriginalTransactionKey, and optionally AmountCredit
 		 * @return array Normalised response containing the refund transaction Key
 		 */
 		public function refundTransaction(array $payload): array {

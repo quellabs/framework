@@ -102,8 +102,8 @@
 		 * Creates a shipment and returns the trackerCode (barcode) and internal shipment data.
 		 *
 		 * @see https://api-gw.dhlparcel.nl/docs/#/Shipments/post_shipments
-		 * @param array $payload Full shipment payload (shipmentId, receiver, shipper, options, pieces)
-		 * @return array
+		 * @param array<string, mixed> $payload Full shipment payload (shipmentId, receiver, shipper, options, pieces)
+		 * @return array<string, mixed>
 		 */
 		public function createShipment(array $payload): array {
 			return $this->post('/shipments', $payload);
@@ -118,7 +118,7 @@
 		 *
 		 * @see https://api-gw.dhlparcel.nl/docs/#/Labels/get_labels
 		 * @param string $trackerCode Barcode returned at shipment creation
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getLabelId(string $trackerCode): array {
 			return $this->get('/labels', ['trackerCodeFilter' => $trackerCode]);
@@ -133,7 +133,7 @@
 		 *
 		 * @see https://api-gw.dhlparcel.nl/docs/guide/chapters/05-track-and-trace.html
 		 * @param string $trackerCode Barcode, optionally with postal code appended as "+{postalCode}"
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getTrackTrace(string $trackerCode): array {
 			// Track-trace endpoint does not require authentication
@@ -158,7 +158,7 @@
 		 * @param string|null $postalCode Postal code of the search origin
 		 * @param string|null $city City of the search origin
 		 * @param int $limit Maximum number of results (default 10)
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getParcelShops(string $countryCode, ?string $postalCode = null, ?string $city = null, int $limit = 10): array {
 			$query = array_filter([
@@ -182,8 +182,8 @@
 		/**
 		 * Sends an authenticated GET request.
 		 * @param string $endpoint Path relative to the resolved base URL
-		 * @param array $query Optional query parameters
-		 * @return array
+		 * @param array<string, mixed> $query Optional query parameters
+		 * @return array<string, mixed>
 		 */
 		private function get(string $endpoint, array $query = []): array {
 			try {
@@ -205,8 +205,8 @@
 		/**
 		 * Sends an authenticated POST request.
 		 * @param string $endpoint Path relative to the resolved base URL
-		 * @param array $payload JSON request body
-		 * @return array
+		 * @param array<string, mixed> $payload JSON request body
+		 * @return array<string, mixed>
 		 */
 		private function post(string $endpoint, array $payload): array {
 			try {
@@ -330,7 +330,7 @@
 		
 		/**
 		 * Stores tokens and their expiration times from an authentication response body.
-		 * @param array $body Decoded authentication response
+		 * @param array<string, mixed> $body Decoded authentication response
 		 */
 		private function storeTokens(array $body): void {
 			$this->accessToken = $body['accessToken'];
@@ -347,7 +347,7 @@
 		 *   The "detail" field is the most descriptive; "title" is the fallback.
 		 *
 		 * @param ResponseInterface $response
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		private function normaliseResponse(ResponseInterface $response): array {
 			$statusCode = $response->getStatusCode();

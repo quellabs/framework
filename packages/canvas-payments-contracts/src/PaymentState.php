@@ -21,7 +21,7 @@
 		 * @param ?int $valuePaid Total amount paid in the smallest currency unit, or null if unknown.
 		 * @param int $valueRefunded Total amount refunded so far, in the smallest currency unit.
 		 * @param ?string $internalState Raw status string returned by the provider, before normalization.
-		 * @param array $metadata Additional provider-specific metadata attached to the payment.
+		 * @param array<string, mixed> $metadata Additional provider-specific metadata attached to the payment.
 		 */
 		public function __construct(
 			public string        $provider,

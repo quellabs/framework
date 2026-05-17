@@ -18,7 +18,7 @@
 		/**
 		 * Driver name
 		 */
-		const DRIVER_NAME = "multisafepay";
+		const string DRIVER_NAME = "multisafepay";
 		
 		/**
 		 * Active configuration for this provider, applied by the discovery system after instantiation.
@@ -37,7 +37,7 @@
 		 * These are passed as 'type' when creating an order.
 		 * @see https://docs.multisafepay.com/docs/payment-methods
 		 */
-		private const MODULE_TYPE_MAP = [
+		private const array MODULE_TYPE_MAP = [
 			'msp_ideal'        => 'IDEAL',
 			'msp_creditcard'   => 'CREDITCARD',
 			'msp_visa'         => 'VISA',
@@ -70,7 +70,7 @@
 		
 		/**
 		 * Returns the active configuration for this provider instance.
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getConfig(): array {
 			return array_replace_recursive($this->getDefaults(), $this->config);
@@ -79,7 +79,7 @@
 		/**
 		 * Applies configuration to this provider instance.
 		 * Called by the discovery system after instantiation, before any other methods are invoked.
-		 * @param array $config
+		 * @param array<string, mixed> $config
 		 * @return void
 		 */
 		public function setConfig(array $config): void {
@@ -89,7 +89,7 @@
 		/**
 		 * Returns default configuration values for this provider.
 		 * Merged with loaded config files during discovery — values from config files take precedence.
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getDefaults(): array {
 			return [
@@ -112,7 +112,7 @@
 		 * on the hosted payment page. This method always returns an empty array.
 		 *
 		 * @param string $paymentModule e.g. 'msp_ideal'
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getPaymentOptions(string $paymentModule): array {
 			return [];
@@ -202,7 +202,7 @@
 		 *
 		 * @see https://docs.multisafepay.com/reference/getorder
 		 * @param string $transactionId The MSP order_id (your reference, returned as transactionid)
-		 * @param array $extraData action: 'return' | 'webhook' (informational; does not change behavior)
+		 * @param array<string, mixed> $extraData action: 'return' | 'webhook' (informational; does not change behavior)
 		 * @return PaymentState
 		 * @throws PaymentExchangeException
 		 */

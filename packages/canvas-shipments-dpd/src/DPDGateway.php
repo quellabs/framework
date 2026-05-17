@@ -103,8 +103,8 @@
 		 * base64-encoded PDF label. The label is written to the file cache so that
 		 * getLabel() can retrieve it in any subsequent request or process.
 		 *
-		 * @param array $payload Structured shipment data (generalShipmentData, parcels, productAndServiceData)
-		 * @return array
+		 * @param array<string, mixed> $payload Structured shipment data (generalShipmentData, parcels, productAndServiceData)
+		 * @return array<string, mixed>
 		 */
 		public function createShipment(array $payload): array {
 			$token = $this->getValidToken();
@@ -176,7 +176,7 @@ XML;
 		/**
 		 * Fetches tracking data for a parcel via the ParcelLifeCycle Service.
 		 * @param string $parcelLabelNumber 14-digit DPD barcode
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getTrackingData(string $parcelLabelNumber): array {
 			$token = $this->getValidToken();
@@ -225,7 +225,7 @@ XML;
 		 * @param string $postalCode
 		 * @param string $city
 		 * @param int $limit Max results (server-side cap: 100)
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function findParcelShops(string $country, string $postalCode, string $city, int $limit = 10): array {
 			$token = $this->getValidToken();
@@ -279,7 +279,7 @@ XML;
 		 * Purges stale files opportunistically on each call.
 		 *
 		 * @param string $parcelLabelNumber
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getLabel(string $parcelLabelNumber): array {
 			$content = $this->labelCache->read($parcelLabelNumber);
@@ -408,7 +408,7 @@ XML;
 		 * Parses a SOAP storeOrders response and extracts the parcel label number and label content.
 		 * @param string $body Raw SOAP response body
 		 * @param int $statusCode HTTP status code
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		private function parseShipmentResponse(string $body, int $statusCode): array {
 			if ($statusCode >= 400) {
@@ -472,7 +472,7 @@ XML;
 		 * Parses a SOAP getTrackingData response into a normalised array.
 		 * @param string $body
 		 * @param int $statusCode
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		private function parseTrackingResponse(string $body, int $statusCode): array {
 			if ($statusCode >= 400) {
@@ -508,7 +508,7 @@ XML;
 		 * Parses a SOAP findParcelShops response into a normalised array.
 		 * @param string $body
 		 * @param int $statusCode
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		private function parseParcelShopResponse(string $body, int $statusCode): array {
 			if ($statusCode >= 400) {
@@ -527,7 +527,7 @@ XML;
 				return ['request' => ['result' => 0, 'errorId' => 'soap_fault', 'errorMessage' => (string)$fault[0]]];
 			}
 			
-			$shops = $xml->xpath('//*[local-name()="parcelShop"]') ?: [];
+			$shops = $xml->xpath('//*[local-name()="parcelShop"]');
 			$result = [];
 			
 			foreach ($shops as $shop) {
@@ -544,7 +544,7 @@ XML;
 		 * Parses a SOAP fault or HTTP error response.
 		 * @param string $body
 		 * @param int $statusCode
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		private function parseErrorResponse(string $body, int $statusCode): array {
 			$xml = $this->parseXml($body);
@@ -607,7 +607,7 @@ XML;
 		
 		/**
 		 * Builds the XML block for a sender or recipient address.
-		 * @param array $address
+		 * @param array<string, mixed> $address
 		 * @return string
 		 */
 		private function buildAddressXml(array $address): string {
@@ -629,7 +629,7 @@ XML;
 		
 		/**
 		 * Builds the XML block for the <parcels> section.
-		 * @param array $parcels
+		 * @param array<string, mixed> $parcels
 		 * @return string
 		 */
 		private function buildParcelsXml(array $parcels): string {
@@ -645,7 +645,7 @@ XML;
 		/**
 		 * Builds the XML block for the <productAndServiceData> section.
 		 * Handles nested structures (e.g. parcelShopDelivery).
-		 * @param array $psd
+		 * @param array<string, mixed> $psd
 		 * @return string
 		 */
 		private function buildProductAndServiceDataXml(array $psd): string {

@@ -23,11 +23,11 @@
 		 * Driver name — stored in ShipmentResult::$provider and ShipmentState::$provider.
 		 * Used by ShipmentRouter::exchange() to re-resolve this driver later.
 		 */
-		const DRIVER_NAME = 'dpd';
+		const string DRIVER_NAME = 'dpd';
 		
 		/**
 		 * Active configuration, applied by the discovery system after instantiation.
-		 * @var array
+		 * @var array<string, mixed>
 		 */
 		private array $config = [];
 		
@@ -119,7 +119,7 @@
 		
 		/**
 		 * Returns the active configuration for this driver instance.
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getConfig(): array {
 			return array_replace_recursive($this->getDefaults(), $this->config);
@@ -128,7 +128,7 @@
 		/**
 		 * Applies configuration to this driver instance.
 		 * Called by the discovery system after instantiation, before any other methods.
-		 * @param array $config
+		 * @param array<string, mixed> $config
 		 * @return void
 		 */
 		public function setConfig(array $config): void {
@@ -137,7 +137,7 @@
 		
 		/**
 		 * Returns default configuration values for this driver.
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getDefaults(): array {
 			return [
@@ -450,7 +450,7 @@
 		 * Used by exchange(). The current status entry is the one where isCurrentStatus = true;
 		 * we fall back to the last statusInfo entry if none is explicitly marked current.
 		 * @param string $parcelId The DPD parcel label number
-		 * @param array $trackingResult Decoded tracking response
+		 * @param array<string, mixed> $trackingResult Decoded tracking response
 		 * @return ShipmentState
 		 */
 		public function buildStateFromTracking(string $parcelId, array $trackingResult): ShipmentState {
@@ -508,8 +508,8 @@
 		
 		/**
 		 * Builds the sender block for the shipment request from the configured sender_address.
-		 * @param array $config
-		 * @return array
+		 * @param array<string, mixed> $config
+		 * @return array<string, mixed>
 		 * @throws ShipmentCreationException when sender_address is not configured
 		 */
 		private function buildSenderBlock(array $config): array {

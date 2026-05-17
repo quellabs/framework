@@ -23,7 +23,7 @@
 		
 		/**
 		 * Active configuration for this provider, applied by the discovery system after instantiation.
-		 * @var array
+		 * @var array<string, mixed>
 		 */
 		private array $config = [];
 		
@@ -92,7 +92,7 @@
 		
 		/**
 		 * Returns the active configuration for this provider instance.
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getConfig(): array {
 			return array_replace_recursive($this->getDefaults(), $this->config);
@@ -101,7 +101,7 @@
 		/**
 		 * Applies configuration to this provider instance.
 		 * Called by the discovery system after instantiation, before any other methods are invoked.
-		 * @param array $config
+		 * @param array<string, mixed> $config
 		 * @return void
 		 */
 		public function setConfig(array $config): void {
@@ -111,7 +111,7 @@
 		/**
 		 * Returns default configuration values for this provider.
 		 * Merged with loaded config files during discovery — values from config files take precedence.
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getDefaults(): array {
 			return [
@@ -140,7 +140,7 @@
 		 * This method always returns an empty array.
 		 *
 		 * @param string $paymentModule e.g. 'adyen_ideal'
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getPaymentOptions(string $paymentModule): array {
 			return [];
@@ -224,7 +224,7 @@
 		 *
 		 * @see https://docs.adyen.com/api-explorer/Checkout/71/post/payments/details
 		 * @param string $transactionId The merchantReference (return flow) or merchantReference from the notification (webhook flow)
-		 * @param array $extraData
+		 * @param array<string, mixed> $extraData
 		 *   - action: 'return' | 'webhook'
 		 *   - redirectResult: (string, required for action='return') URL-decoded redirectResult query param
 		 *   - notification: (array, required for action='webhook') decoded NotificationRequestItem
@@ -251,7 +251,7 @@
 		 * @see https://docs.adyen.com/online-payments/payment-result-codes/
 		 * @param string $transactionId The Adyen sessionId from the return URL — stored in metadata for traceability.
 		 *                              transactionId in the returned PaymentState is taken from merchantReference in the response.
-		 * @param array $extraData redirectResult: (string, required) URL-decoded redirectResult query param
+		 * @param array<string, mixed> $extraData redirectResult: (string, required) URL-decoded redirectResult query param
 		 * @return PaymentState
 		 * @throws PaymentExchangeException
 		 */
@@ -400,7 +400,7 @@
 		/**
 		 * Verifies the HMAC signature on an incoming Adyen webhook notification.
 		 * Delegates to the gateway which uses hash_equals for timing-safe comparison.
-		 * @param array $notification The decoded NotificationRequestItem from the webhook body
+		 * @param array<string, mixed> $notification The decoded NotificationRequestItem from the webhook body
 		 * @return bool
 		 */
 		public function verifyWebhookSignature(array $notification): bool {
@@ -421,7 +421,7 @@
 		 * The pspReference in AUTHORISATION is the capture ID required for future refunds.
 		 * @see https://docs.adyen.com/development-resources/webhooks/webhook-types
 		 * @param string $transactionId The sessionId or pspReference from the notification
-		 * @param array $notification The decoded NotificationRequestItem
+		 * @param array<string, mixed> $notification The decoded NotificationRequestItem
 		 * @return PaymentState
 		 */
 		private function buildStateFromWebhook(string $transactionId, array $notification): PaymentState {
@@ -478,7 +478,7 @@
 		 * Maps a PaymentAddress to Adyen's billingAddress / deliveryAddress shape.
 		 * @see https://docs.adyen.com/api-explorer/Checkout/71/post/paymentLinks#request-billingAddress
 		 * @param PaymentAddress $address
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		private function buildAddressPayload(PaymentAddress $address): array {
 			$houseNumberOrName = $address->houseNumber;

@@ -80,8 +80,8 @@
 		 * Returns: { "ResponseShipments": [ { "Barcode": "...", "Labels": [ { "Content": "<base64>" } ] } ] }
 		 *
 		 * @see https://developer.postnl.nl/docs/#/http/api-endpoints/send-track/shipment
-		 * @param array $payload Full PostNL shipment envelope
-		 * @return array
+		 * @param array<string, mixed> $payload Full PostNL shipment envelope
+		 * @return array<string, mixed>
 		 */
 		public function createShipment(array $payload): array {
 			return $this->post('/v1/shipment', $payload, ['confirm' => 'true']);
@@ -95,7 +95,7 @@
 		 *
 		 * @see https://developer.postnl.nl/docs/#/http/api-endpoints/send-track/shipment/delete-shipment
 		 * @param string $barcode PostNL barcode from ShipmentResult::$parcelId
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function deleteShipment(string $barcode): array {
 			return $this->delete("/v1/shipment/{$barcode}");
@@ -108,7 +108,7 @@
 		 *
 		 * @see https://developer.postnl.nl/docs/#/http/api-endpoints/status/status-by-barcode
 		 * @param string $barcode PostNL carrier barcode
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getStatus(string $barcode): array {
 			return $this->get("/v2/status/barcode/{$barcode}");
@@ -122,7 +122,7 @@
 		 *
 		 * @see https://developer.postnl.nl/docs/#/http/api-endpoints/send-track/confirming
 		 * @param string $barcode PostNL barcode
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getLabel(string $barcode): array {
 			return $this->get("/v1/confirming/label/{$barcode}");
@@ -164,8 +164,8 @@
 		 * @param string $countryCode ISO 3166-1 alpha-2 country code
 		 * @param string $startDate Start of the window (dd-mm-yyyy); typically tomorrow
 		 * @param string $endDate End of the window (dd-mm-yyyy); max ~2 weeks ahead
-		 * @param array $options Delivery types to request, e.g. ['Daytime', 'Morning', 'Evening', 'Sunday']
-		 * @return array
+		 * @param array<string, mixed> $options Delivery types to request, e.g. ['Daytime', 'Morning', 'Evening', 'Sunday']
+		 * @return array<string, mixed>
 		 */
 		public function getTimeframes(
 			string $postalCode,
@@ -201,7 +201,7 @@
 		 * @param string $houseNumber House number for proximity sorting
 		 * @param string $countryCode ISO 3166-1 alpha-2 country code
 		 * @param int $maxResults Maximum number of locations to return (1–20, default 10)
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getNearestLocations(
 			string $postalCode,
@@ -223,8 +223,8 @@
 		/**
 		 * Sends a GET request and returns a normalised response array.
 		 * @param string $endpoint Path relative to the base URL
-		 * @param array $query Optional query string parameters
-		 * @return array
+		 * @param array<string, mixed> $query Optional query string parameters
+		 * @return array<string, mixed>
 		 */
 		private function get(string $endpoint, array $query = []): array {
 			try {
@@ -241,9 +241,9 @@
 		/**
 		 * Sends a POST request and returns a normalised response array.
 		 * @param string $endpoint Path relative to the base URL
-		 * @param array $payload JSON request body
-		 * @param array $query Optional query string parameters
-		 * @return array
+		 * @param array<string, mixed> $payload JSON request body
+		 * @param array<string, mixed> $query Optional query string parameters
+		 * @return array<string, mixed>
 		 */
 		private function post(string $endpoint, array $payload, array $query = []): array {
 			try {
@@ -261,7 +261,7 @@
 		/**
 		 * Sends a DELETE request and returns a normalised response array.
 		 * @param string $endpoint Path relative to the base URL
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		private function delete(string $endpoint): array {
 			try {
@@ -284,7 +284,7 @@
 		 *   { "Errors": [ { "Code": "...", "Description": "..." } ] }
 		 *
 		 * @param \Symfony\Contracts\HttpClient\ResponseInterface $response
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		private function normaliseResponse(\Symfony\Contracts\HttpClient\ResponseInterface $response): array {
 			$statusCode = $response->getStatusCode();

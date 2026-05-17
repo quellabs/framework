@@ -58,7 +58,7 @@
 		 * Creates a new MultiSafepay order (redirect type).
 		 * Returns an order_id and a payment_url for redirecting the shopper.
 		 * @see https://docs.multisafepay.com/reference/createorder
-		 * @param array $payload Full order payload per MSP spec
+		 * @param array<string, mixed> $payload Full order payload per MSP spec
 		 * @return array Normalised response
 		 */
 		public function createOrder(array $payload): array {
@@ -84,7 +84,7 @@
 		 * is reflected on the order after processing.
 		 * @see https://docs.multisafepay.com/reference/refundorder
 		 * @param string $orderId The order_id of the original payment
-		 * @param array $payload Must include currency and amount (in minor units)
+		 * @param array<string, mixed> $payload Must include currency and amount (in minor units)
 		 * @return array Normalised response containing the refund transaction_id
 		 */
 		public function refundOrder(string $orderId, array $payload): array {

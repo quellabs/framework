@@ -94,7 +94,7 @@
 		 *   - intent            ('buy' for one-time payments)
 		 *
 		 * @see https://docs.klarna.com/acquirer/klarna/web-payments/integrate-with-klarna-payments/integrate-via-sdk/step-1-initiate-a-payment/
-		 * @param array $payload KP session payload per Klarna spec
+		 * @param array<string, mixed> $payload KP session payload per Klarna spec
 		 * @return array Normalised response containing session_id and client_token
 		 */
 		public function createPaymentSession(array $payload): array {
@@ -118,7 +118,7 @@
 		 *   - place_order_mode       'NONE' | 'PLACE_ORDER' | 'CAPTURE_ORDER'
 		 *
 		 * @see https://docs.klarna.com/acquirer/klarna/web-payments/integrate-with-klarna-payments/integrate-via-hpp/api-documentation/create-session/
-		 * @param array $payload HPP session payload per Klarna spec
+		 * @param array<string, mixed> $payload HPP session payload per Klarna spec
 		 * @return array Normalised response containing session_id, redirect_url, expires_at
 		 */
 		public function createHppSession(array $payload): array {
@@ -230,7 +230,7 @@
 		 * @param string $method HTTP method: GET or POST
 		 * @param string $endpoint Path relative to baseUrl
 		 * @param array|null $payload JSON body for POST; null for GET or body-less POST
-		 * @param array $extraHeaders Additional headers (e.g. Klarna-Idempotency-Key)
+		 * @param array<string, mixed> $extraHeaders Additional headers (e.g. Klarna-Idempotency-Key)
 		 * @return array Normalised response
 		 */
 		private function request(string $method, string $endpoint, ?array $payload = null, array $extraHeaders = []): array {

@@ -18,11 +18,11 @@
 		/**
 		 * Driver name
 		 */
-		const DRIVER_NAME = "paynl";
+		const string DRIVER_NAME = "paynl";
 		
 		/**
 		 * Active configuration for this provider, applied by the discovery system after instantiation.
-		 * @var array
+		 * @var array<string, mixed>
 		 */
 		private array $config = [];
 		
@@ -75,7 +75,7 @@
 		/**
 		 * Returns the active configuration for this provider instance.
 		 * Merges stored config over the defaults so only explicitly set keys override.
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getConfig(): array {
 			return array_replace_recursive($this->getDefaults(), $this->config);
@@ -84,7 +84,7 @@
 		/**
 		 * Applies configuration to this provider instance.
 		 * Called by the discovery system after instantiation, before any other methods are invoked.
-		 * @param array $config
+		 * @param array<string, mixed> $config
 		 * @return void
 		 */
 		public function setConfig(array $config): void {
@@ -94,7 +94,7 @@
 		/**
 		 * Returns default configuration values for this provider.
 		 * Merged with loaded config files during discovery — values from config files take precedence.
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getDefaults(): array {
 			return [
@@ -248,7 +248,7 @@
 		 * @see https://developer.pay.nl/docs/transaction-statuses
 		 * @see https://developer.pay.nl/reference/api_get_status-1
 		 * @param string $transactionId The Pay.nl order UUID (id from order create response)
-		 * @param array $extraData action: 'return' | 'exchange' (informational only)
+		 * @param array<string, mixed> $extraData action: 'return' | 'exchange' (informational only)
 		 * @return PaymentState
 		 * @throws PaymentExchangeException
 		 */

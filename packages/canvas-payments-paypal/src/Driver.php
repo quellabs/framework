@@ -18,11 +18,11 @@
 		/**
 		 * Driver name
 		 */
-		const DRIVER_NAME = "paypal";
+		const string DRIVER_NAME = "paypal";
 		
 		/**
 		 * Active configuration for this provider, applied by the discovery system after instantiation.
-		 * @var array
+		 * @var array<string, mixed>
 		 */
 		private array $config;
 		
@@ -46,7 +46,7 @@
 		
 		/**
 		 * Returns the active configuration for this provider instance.
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getConfig(): array {
 			return array_replace_recursive($this->getDefaults(), $this->config);
@@ -55,7 +55,7 @@
 		/**
 		 * Applies configuration to this provider instance.
 		 * Called by the discovery system after instantiation, before any other methods are invoked.
-		 * @param array $config
+		 * @param array<string, mixed> $config
 		 * @return void
 		 */
 		public function setConfig(array $config): void {
@@ -65,7 +65,7 @@
 		/**
 		 * Returns default configuration values for this provider.
 		 * Merged with loaded config files during discovery — values from config files take precedence.
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getDefaults(): array {
 			return [
@@ -146,7 +146,7 @@
 		 *
 		 * @see https://developer.paypal.com/docs/api/orders/v2/#orders_get
 		 * @param string $transactionId The order ID returned by initiate()
-		 * @param array  $extraData
+		 * @param array<string, mixed>  $extraData
 		 * @return PaymentState
 		 * @throws PaymentExchangeException|PaymentInitiationException
 		 */
@@ -328,7 +328,7 @@
 		 * Other payment modules would use this to receive a list of banks or similar.
 		 * PayPal does not use it.
 		 * @param string $paymentModule
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getPaymentOptions(string $paymentModule): array {
 			return [];
@@ -372,7 +372,7 @@
 		
 		/**
 		 * Verifies a PayPal webhook notification by delegating signature validation to the gateway.
-		 * @param array  $headers The request headers (lowercased keys)
+		 * @param array<string, mixed>  $headers The request headers (lowercased keys)
 		 * @param string $rawBody The raw, unmodified request body string
 		 * @return bool
 		 */

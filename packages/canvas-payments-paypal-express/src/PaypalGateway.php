@@ -59,8 +59,8 @@
 		/**
 		 * Send a request to the PayPal NVP API and return a normalized response array.
 		 * All API methods funnel through here to keep HTTP handling in one place.
-		 * @param array $parameters NVP key-value pairs to POST to the PayPal API
-		 * @return array
+		 * @param array<string, mixed> $parameters NVP key-value pairs to POST to the PayPal API
+		 * @return array<string, mixed>
 		 */
 		private function sendTransactionToGateway(array $parameters): array {
 			$client = HttpClient::create();
@@ -90,7 +90,7 @@
 		 * Shows information about an Express Checkout transaction.
 		 * @see https://developer.paypal.com/docs/classic/api/merchant/GetExpressCheckoutDetails_API_Operation_NVP/
 		 * @param string $token A timestamped token returned by SetExpressCheckout.
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getExpressCheckoutDetails(string $token): array {
 			if (empty($token)) {
@@ -114,7 +114,7 @@
 		 * @param float $value Payment amount in major units (e.g. 12.50)
 		 * @param string $currencyType ISO 4217 currency code
 		 * @param string $payerId The buyer's PayPal account ID
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function doExpressCheckoutPayment(string $transactionId, float $value, string $currencyType, string $payerId): array {
 			return $this->sendTransactionToGateway([
@@ -137,8 +137,8 @@
 		 * @param float $value Payment amount in major units (e.g. 12.50)
 		 * @param string $description Order description shown on the PayPal checkout page
 		 * @param string $currency ISO 4217 currency code
-		 * @param array $data Additional NVP parameters to merge into the request
-		 * @return array
+		 * @param array<string, mixed> $data Additional NVP parameters to merge into the request
+		 * @return array<string, mixed>
 		 */
 		public function setExpressCheckout(float $value, string $description, string $currency = "EUR", array $data = []): array {
 			return $this->sendTransactionToGateway(array_merge($data, [
@@ -163,7 +163,7 @@
 		 * Returns transaction details for a given payment transaction ID.
 		 * @see https://developer.paypal.com/docs/classic/api/merchant/GetTransactionDetails_API_Operation_NVP/
 		 * @param string $transactionId The payment transaction ID (PAYMENTINFO_0_TRANSACTIONID)
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getTransactionDetails(string $transactionId): array {
 			return $this->sendTransactionToGateway([
@@ -181,7 +181,7 @@
 		 * @see https://developer.paypal.com/docs/classic/express-checkout/ht_basicRefund-curl-etc/
 		 * @param string $transactionId The payment transaction ID to refund
 		 * @param string $note Human-readable reason for the refund, shown to the buyer
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function fullRefund(string $transactionId, string $note): array {
 			return $this->sendTransactionToGateway([
@@ -203,7 +203,7 @@
 		 * @param float $value Refund amount in major units (e.g. 12.50)
 		 * @param string $currencyType ISO 4217 currency code
 		 * @param string $note Human-readable reason for the refund, shown to the buyer
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function partialRefund(string $transactionId, float $value, string $currencyType, string $note): array {
 			return $this->sendTransactionToGateway([
@@ -226,7 +226,7 @@
 		 * @param string $startDate UTC date in ISO 8601 format (e.g. "2024-03-01T12:00:00Z")
 		 * @param string $transactionId Filter results to transactions related to this payment transaction ID
 		 * @param string|null $endDate UTC date in ISO 8601 format, defaults to now if omitted
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function transactionSearch(string $startDate, string $transactionId, ?string $endDate = null): array {
 			return $this->sendTransactionToGateway([
@@ -245,8 +245,8 @@
 		 * Verifies a PayPal IPN message by echoing it back to PayPal for validation.
 		 * PayPal responds with either "VERIFIED" or "INVALID".
 		 * @see https://developer.paypal.com/docs/api-basics/notifications/ipn/IPNIntro/
-		 * @param array $data The raw IPN POST data received from PayPal
-		 * @return array
+		 * @param array<string, mixed> $data The raw IPN POST data received from PayPal
+		 * @return array<string, mixed>
 		 */
 		public function verifyIpnMessage(array $data): array {
 			$client = HttpClient::create();

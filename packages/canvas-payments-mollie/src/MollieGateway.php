@@ -28,8 +28,8 @@
 		 * Call the API and return the result
 		 * @param string $method
 		 * @param string $action
-		 * @param array $data
-		 * @return array
+		 * @param array<string, mixed> $data
+		 * @return array<string, mixed>
 		 */
 		protected function callHttpClient(string $method, string $action, array $data = []): array {
 			try {
@@ -74,7 +74,7 @@
 		/**
 		 * Retrieve all payments created with the current website profile, ordered from newest to oldest.
 		 * @url https://docs.mollie.com/reference/v2/payments-api/list-payments
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function listPayments(): array {
 			return $this->callHttpClient("GET", "payments");
@@ -82,7 +82,7 @@
 		
 		/**
 		 * Returns all iDeal issuers
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function listIssuers(): array {
 			return $this->callHttpClient("GET", "issuers");
@@ -92,7 +92,7 @@
 		 * Retrieve all available payment methods. The results are not paginated.
 		 * @url https://docs.mollie.com/reference/v2/methods-api/list-methods
 		 * @param string $sequenceType
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getPaymentMethods(string $sequenceType = "oneoff"): array {
 			return $this->callHttpClient("GET", "methods?sequenceType={$sequenceType}&include=issuers");
@@ -101,7 +101,7 @@
 		/**
 		 * Retrieve all available payment methods. The results are not paginated.
 		 * @url https://docs.mollie.com/reference/v2/methods-api/list-all-methods
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getAllPaymentMethods(): array {
 			return $this->callHttpClient("GET", "methods/all");
@@ -111,7 +111,7 @@
 		 * Retrieve all available payment methods. The results are not paginated.
 		 * @url https://docs.mollie.com/reference/v2/methods-api/list-methods
 		 * @param string $method
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getPaymentMethodInfo(string $method): array {
 			return $this->callHttpClient("GET", "methods/{$method}?include=issuers");
@@ -122,7 +122,7 @@
 		 * chargebacks for that specific payment are returned.
 		 * @url https://docs.mollie.com/reference/v2/chargebacks-api/list-chargebacks
 		 * @param string $paymentId
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function listChargebacks(string $paymentId): array {
 			return $this->callHttpClient("GET", "payments/{$paymentId}/chargebacks");
@@ -132,7 +132,7 @@
 		 * Retrieve all received chargebacks. If the payment-specific endpoint is used, only
 		 * chargebacks for that specific payment are returned.
 		 * @url https://docs.mollie.com/reference/v2/chargebacks-api/list-chargebacks
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function listAllChargebacks(): array {
 			return $this->callHttpClient("GET", "chargebacks");
@@ -144,7 +144,7 @@
 		 * @url https://docs.mollie.com/reference/v2/chargebacks-api/get-chargeback
 		 * @param string $paymentId
 		 * @param string $chargebackId
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getChargebackInfo(string $paymentId, string $chargebackId): array {
 			return $this->callHttpClient("GET", "payments/{$paymentId}/chargebacks/{$chargebackId}");
@@ -156,7 +156,7 @@
 		 * @param int|null $amount
 		 * @param string $currency
 		 * @param string|null $description
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function createRefund(string $transactionId, ?int $amount, string $currency, ?string $description = null): array {
 			// Error when no transactionId passed
@@ -192,7 +192,7 @@
 		 * Returns information about a Mollie payment
 		 * @url https://docs.mollie.com/reference/v2/payments-api/get-payment
 		 * @param string $transactionId
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getPaymentInfo(string $transactionId): array {
 			return $this->callHttpClient("GET", "payments/{$transactionId}");
@@ -201,8 +201,8 @@
 		/**
 		 * Creates a new Mollie payment
 		 * @url https://docs.mollie.com/reference/create-payment
-		 * @param array $payload Raw Mollie payment payload, already serialized and in Mollie's expected shape
-		 * @return array
+		 * @param array<string, mixed> $payload Raw Mollie payment payload, already serialized and in Mollie's expected shape
+		 * @return array<string, mixed>
 		 */
 		public function createPayment(array $payload): array {
 			return $this->callHttpClient('POST', 'payments', $payload);
@@ -212,7 +212,7 @@
 		 * Retrieve all refunds for a payment
 		 * @url https://docs.mollie.com/reference/v2/refunds-api/list-payment-refunds
 		 * @param string $transactionId
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function listRefunds(string $transactionId): array {
 			return $this->callHttpClient("GET", "payments/{$transactionId}/refunds");
@@ -233,7 +233,7 @@
 		 * @param string $transactionId
 		 * @param int|null $amount
 		 * @param string $currency
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		protected function resolveRefundAmount(string $transactionId, ?int $amount, string $currency): array {
 			// Amount is set — convert from minor units (e.g. 1050) to major units (e.g. "10.50")

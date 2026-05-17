@@ -23,11 +23,11 @@
 		 * Driver name — stored in ShipmentResult::$provider and ShipmentState::$provider.
 		 * Used by ShipmentRouter::exchange() to re-resolve this driver later.
 		 */
-		const DRIVER_NAME = 'myparcel';
+		const string DRIVER_NAME = 'myparcel';
 		
 		/**
 		 * Active configuration, applied by the discovery system after instantiation.
-		 * @var array
+		 * @var array<string, mixed>
 		 */
 		private array $config = [];
 		
@@ -112,7 +112,7 @@
 		
 		/**
 		 * Returns the active configuration for this driver instance.
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getConfig(): array {
 			return array_replace_recursive($this->getDefaults(), $this->config);
@@ -121,7 +121,7 @@
 		/**
 		 * Applies configuration to this driver instance.
 		 * Called by the discovery system after instantiation, before any other methods.
-		 * @param array $config
+		 * @param array<string, mixed> $config
 		 * @return void
 		 */
 		public function setConfig(array $config): void {
@@ -130,7 +130,7 @@
 		
 		/**
 		 * Returns default configuration values for this driver.
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getDefaults(): array {
 			return [
@@ -399,7 +399,7 @@
 		/**
 		 * Builds a ShipmentState from a raw shipment array returned by the MyParcel API.
 		 * Used by exchange() and the webhook controller.
-		 * @param array $shipment The entry from data.shipments[] in the MyParcel response
+		 * @param array<string, mixed> $shipment The entry from data.shipments[] in the MyParcel response
 		 * @return ShipmentState
 		 */
 		public function buildStateFromShipment(array $shipment): ShipmentState {
@@ -482,7 +482,7 @@
 		/**
 		 * Builds the recipient block for the MyParcel shipment payload.
 		 * @param ShipmentAddress $address
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		private function buildRecipient(ShipmentAddress $address): array {
 			return array_filter([

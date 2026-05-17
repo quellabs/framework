@@ -33,7 +33,7 @@
 		 * Used for modules that expose issuer or bank selection (e.g. iDEAL, KBC, gift cards).
 		 * Returns an empty array for modules with no selectable options.
 		 * @param string $paymentModule
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getPaymentOptions(string $paymentModule): array;
 		

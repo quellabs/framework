@@ -28,7 +28,7 @@
 		
 		/**
 		 * Active configuration, applied by the discovery system after instantiation.
-		 * @var array
+		 * @var array<string, mixed>
 		 */
 		private array $config = [];
 		
@@ -130,7 +130,7 @@
 		
 		/**
 		 * Returns the active configuration for this driver instance.
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getConfig(): array {
 			return array_replace_recursive($this->getDefaults(), $this->config);
@@ -139,7 +139,7 @@
 		/**
 		 * Applies configuration to this driver instance.
 		 * Called by the discovery system after instantiation, before any other methods.
-		 * @param array $config
+		 * @param array<string, mixed> $config
 		 * @return void
 		 */
 		public function setConfig(array $config): void {
@@ -148,7 +148,7 @@
 		
 		/**
 		 * Returns default configuration values for this driver.
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getDefaults(): array {
 			return [
@@ -441,7 +441,7 @@
 		 * Builds a ShipmentState from the array of track-and-trace events returned by DHL.
 		 * Used by exchange(). The last event in the array represents the current state.
 		 * @param string $parcelId The DHL tracker code
-		 * @param array $events Array from the track-trace response (chronological)
+		 * @param array<string, mixed> $events Array from the track-trace response (chronological)
 		 * @return ShipmentState
 		 */
 		public function buildStateFromEvents(string $parcelId, array $events): ShipmentState {
@@ -536,7 +536,7 @@
 		 * DHL separates name into firstName/lastName; we treat the full name as lastName
 		 * when no split is available, which is what most DHL integrations do.
 		 * @param ShipmentAddress $address
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		private function buildReceiver(ShipmentAddress $address): array {
 			$receiver = [
@@ -567,8 +567,8 @@
 		 * Builds the shipper block from the configured sender_address.
 		 * Throws ShipmentCreationException if no sender address is configured,
 		 * since DHL requires a shipper on every label.
-		 * @param array $config
-		 * @return array
+		 * @param array<string, mixed> $config
+		 * @return array<string, mixed>
 		 * @throws ShipmentCreationException
 		 */
 		private function buildShipper(array $config): array {
@@ -610,7 +610,7 @@
 		 * When only a full name is available (no split), we put it all in lastName.
 		 * @param string $fullName
 		 * @param string|null $company
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		private function buildNameBlock(string $fullName, ?string $company): array {
 			return array_filter([

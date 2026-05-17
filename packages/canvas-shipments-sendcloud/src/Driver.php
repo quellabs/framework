@@ -27,7 +27,7 @@
 		
 		/**
 		 * Active configuration, applied by the discovery system after instantiation.
-		 * @var array
+		 * @var array<string, mixed>
 		 */
 		private array $config = [];
 		
@@ -91,7 +91,7 @@
 		
 		/**
 		 * Returns the active configuration for this driver instance.
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getConfig(): array {
 			return array_replace_recursive($this->getDefaults(), $this->config);
@@ -100,7 +100,7 @@
 		/**
 		 * Applies configuration to this driver instance.
 		 * Called by the discovery system after instantiation, before any other methods.
-		 * @param array $config
+		 * @param array<string, mixed> $config
 		 * @return void
 		 */
 		public function setConfig(array $config): void {
@@ -109,7 +109,7 @@
 		
 		/**
 		 * Returns default configuration values for this driver.
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getDefaults(): array {
 			return [
@@ -386,7 +386,7 @@
 		/**
 		 * Builds a ShipmentState from a raw parcel array returned by the SendCloud API.
 		 * Used by both exchange() and the controller's webhook handler.
-		 * @param array $parcel The 'parcel' key from the SendCloud API response
+		 * @param array<string, mixed> $parcel The 'parcel' key from the SendCloud API response
 		 * @return ShipmentState
 		 */
 		public function buildStateFromParcel(array $parcel): ShipmentState {
@@ -454,7 +454,7 @@
 		
 		/**
 		 * Normalises a raw SendCloud shipping method array into a DeliveryOption.
-		 * @param array $method
+		 * @param array<string, mixed> $method
 		 * @return DeliveryOption
 		 */
 		private function normaliseDeliveryMethod(array $method): DeliveryOption {
@@ -513,7 +513,7 @@
 		
 		/**
 		 * Normalizes a raw SendCloud service point array into a PickupOption.
-		 * @param array $point
+		 * @param array<string, mixed> $point
 		 * @return PickupOption
 		 */
 		private function normaliseServicePoint(array $point): PickupOption {

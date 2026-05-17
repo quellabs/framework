@@ -18,11 +18,11 @@
 		/**
 		 * Driver name
 		 */
-		const DRIVER_NAME = "stripe";
+		const string DRIVER_NAME = "stripe";
 		
 		/**
 		 * Active configuration for this provider, applied by the discovery system after instantiation.
-		 * @var array
+		 * @var array<string, mixed>
 		 */
 		private array $config = [];
 		
@@ -30,7 +30,7 @@
 		 * Maps our internal module names to stripe's gateway type strings.
 		 * These are passed as 'type' when creating an order.
 		 */
-		private const MODULE_TYPE_MAP = [
+		private const array MODULE_TYPE_MAP = [
 			'stripe_multi'      => 'stripe',
 			'stripe_card'       => 'card',
 			'stripe_ideal'      => 'ideal',
@@ -57,7 +57,7 @@
 		
 		/**
 		 * Returns the active configuration for this provider instance.
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getConfig(): array {
 			return array_replace_recursive($this->getDefaults(), $this->config);
@@ -66,7 +66,7 @@
 		/**
 		 * Applies configuration to this provider instance.
 		 * Called by the discovery system after instantiation, before any other methods are invoked.
-		 * @param array $config
+		 * @param array<string, mixed> $config
 		 * @return void
 		 */
 		public function setConfig(array $config): void {
@@ -76,7 +76,7 @@
 		/**
 		 * Returns default configuration values for this provider.
 		 * Merged with loaded config files during discovery — values from config files take precedence.
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getDefaults(): array {
 			return [
@@ -139,7 +139,7 @@
 		 * @see https://stripe.com/docs/api/checkout/sessions/retrieve
 		 * @see https://stripe.com/docs/api/payment_intents/retrieve
 		 * @param string $transactionId The Checkout Session ID (cs_*) returned by initiate()
-		 * @param array $extraData
+		 * @param array<string, mixed> $extraData
 		 * @return PaymentState
 		 * @throws PaymentExchangeException
 		 */
@@ -289,7 +289,7 @@
 		 * integration — method selection happens on the Stripe-hosted checkout page.
 		 * Returns an empty array for all modules.
 		 * @param string $paymentModule
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getPaymentOptions(string $paymentModule): array {
 			return [];
@@ -353,7 +353,7 @@
 		/**
 		 * Maps a Stripe PaymentIntent object to a normalized PaymentState.
 		 * @param string $sessionId Used as transactionId on the returned state
-		 * @param array $intent The PaymentIntent object from the Stripe API
+		 * @param array<string, mixed> $intent The PaymentIntent object from the Stripe API
 		 * @param string|null $paymentIntentId Stored in metadata so callers can use it for refunds
 		 * @param string $currency ISO 4217 currency code (already uppercased)
 		 * @return PaymentState

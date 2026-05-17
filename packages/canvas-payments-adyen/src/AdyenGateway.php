@@ -59,8 +59,8 @@
 		 * Returns a url the shopper is redirected to. After payment, Adyen redirects them
 		 * back to the returnUrl with ?redirectResult= appended.
 		 * @see https://docs.adyen.com/unified-commerce/pay-by-link/create-payment-links/api
-		 * @param array $payload Request body — must include merchantAccount, amount, reference, returnUrl
-		 * @return array
+		 * @param array<string, mixed> $payload Request body — must include merchantAccount, amount, reference, returnUrl
+		 * @return array<string, mixed>
 		 */
 		public function createPaymentLink(array $payload): array {
 			return $this->post('/paymentLinks', $payload);
@@ -70,8 +70,8 @@
 		 * Resolves the final payment status after the shopper returns from the hosted payment page.
 		 * Adyen appends ?redirectResult= to the returnUrl — submit it here to get the resultCode.
 		 * @see https://docs.adyen.com/api-explorer/Checkout/71/post/payments/details
-		 * @param array $payload Must contain details['redirectResult'], optionally paymentData
-		 * @return array
+		 * @param array<string, mixed> $payload Must contain details['redirectResult'], optionally paymentData
+		 * @return array<string, mixed>
 		 */
 		public function getPaymentDetails(array $payload): array {
 			return $this->post('/payments/details', $payload);
@@ -82,8 +82,8 @@
 		 * The response is filtered by Adyen based on the merchant account configuration,
 		 * amount, currency, and country — so always pass all three for accurate results.
 		 * @see https://docs.adyen.com/api-explorer/Checkout/71/post/paymentMethods
-		 * @param array $payload Must include merchantAccount; recommended: amount, currency, countryCode
-		 * @return array
+		 * @param array<string, mixed> $payload Must include merchantAccount; recommended: amount, currency, countryCode
+		 * @return array<string, mixed>
 		 */
 		public function getPaymentMethods(array $payload): array {
 			return $this->post('/paymentMethods', $payload);
@@ -97,7 +97,7 @@
 		 * @param int $amount Refund amount in minor units (e.g. 1250 = €12.50)
 		 * @param string $currency ISO 4217 currency code (e.g. 'EUR')
 		 * @param string $note Human-readable reason for the refund (shown in Customer Area)
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function refundPayment(string $pspReference, int $amount, string $currency, string $note = ''): array {
 			$payload = [
@@ -118,7 +118,7 @@
 		 * The signature is included in additionalData.hmacSignature.
 		 * Uses hash_equals for timing-safe comparison to prevent timing attacks.
 		 * @see https://docs.adyen.com/development-resources/webhooks/verify-hmac-signatures
-		 * @param array $notification The decoded NotificationRequestItem
+		 * @param array<string, mixed> $notification The decoded NotificationRequestItem
 		 * @param string $hmacKey The hex-encoded HMAC key from your Adyen Customer Area
 		 * @return bool
 		 */
@@ -173,8 +173,8 @@
 		 * Sends a POST request to the Adyen Checkout API and returns a normalised response array.
 		 * All Checkout API methods funnel through here to keep HTTP handling in one place.
 		 * @param string $endpoint Path relative to the versioned base URL (e.g. '/sessions')
-		 * @param array $payload JSON request body
-		 * @return array
+		 * @param array<string, mixed> $payload JSON request body
+		 * @return array<string, mixed>
 		 */
 		private function post(string $endpoint, array $payload): array {
 			

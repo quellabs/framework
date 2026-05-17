@@ -21,15 +21,15 @@
 	 */
 	class StripeGateway {
 		
-		private const BASE_URL      = 'https://api.stripe.com';
-		private const API_VERSION   = '2024-06-20';
+		private const string BASE_URL = 'https://api.stripe.com';
+		private const string API_VERSION = '2024-06-20';
 		
-		private string  $m_secret_key;
-		private string  $m_webhook_secret;
-		private bool    $m_verify_ssl;
-		private bool    $m_test_mode;
-		private string  $m_return_url;
-		private string  $m_cancel_url;
+		private string $m_secret_key;
+		private string $m_webhook_secret;
+		private bool $m_verify_ssl;
+		private bool $m_test_mode;
+		private string $m_return_url;
+		private string $m_cancel_url;
 		private HttpClientInterface $m_client;
 		
 		/**
@@ -39,13 +39,13 @@
 		public function __construct(Driver $driver) {
 			$config = $driver->getConfig();
 			
-			$this->m_test_mode      = $config['test_mode'];
-			$this->m_secret_key     = $config['secret_key'];
+			$this->m_test_mode = $config['test_mode'];
+			$this->m_secret_key = $config['secret_key'];
 			$this->m_webhook_secret = $config['webhook_secret'];
-			$this->m_verify_ssl     = $config['verify_ssl'];
-			$this->m_return_url     = $config['return_url'] ?? '';
-			$this->m_cancel_url     = $config['cancel_return_url'] ?? '';
-			$this->m_client         = HttpClient::create(['timeout' => 10]);
+			$this->m_verify_ssl = $config['verify_ssl'];
+			$this->m_return_url = $config['return_url'] ?? '';
+			$this->m_cancel_url = $config['cancel_return_url'] ?? '';
+			$this->m_client = HttpClient::create(['timeout' => 10]);
 		}
 		
 		/**
@@ -60,9 +60,9 @@
 		/**
 		 * Creates a Stripe Checkout Session in payment mode.
 		 * @see https://stripe.com/docs/api/checkout/sessions/create
-		 * @param int    $amount      Amount in the smallest currency unit (e.g. cents)
+		 * @param int $amount Amount in the smallest currency unit (e.g. cents)
 		 * @param string $description Line item description shown on the Stripe-hosted checkout page
-		 * @param string $currency    ISO 4217 currency code (e.g. 'eur', 'usd')
+		 * @param string $currency ISO 4217 currency code (e.g. 'eur', 'usd')
 		 * @return array Normalized result envelope
 		 */
 		public function createCheckoutSession(int $amount, string $description, string $currency, array $paymentMethodTypes = []): array {
@@ -88,7 +88,7 @@
 			foreach ($paymentMethodTypes as $index => $type) {
 				$body["payment_method_types[$index]"] = $type;
 			}
-
+			
 			// Send request to API
 			return $this->sendRequest('POST', '/v1/checkout/sessions', $body);
 		}
@@ -131,10 +131,10 @@
 		 * Issues a full or partial refund against a PaymentIntent.
 		 * Stripe resolves the correct charge to refund automatically from the PaymentIntent ID.
 		 * @see https://stripe.com/docs/api/refunds/create
-		 * @param string      $paymentIntentId The PaymentIntent ID (pi_*)
-		 * @param int|null    $amount          Amount in smallest currency unit, or null for a full refund
-		 * @param string      $reason          Stripe refund reason: 'duplicate', 'fraudulent', or 'requested_by_customer'
-		 * @param string      $idempotencyKey  Unique key to make this request safely retryable
+		 * @param string $paymentIntentId The PaymentIntent ID (pi_*)
+		 * @param int|null $amount Amount in smallest currency unit, or null for a full refund
+		 * @param string $reason Stripe refund reason: 'duplicate', 'fraudulent', or 'requested_by_customer'
+		 * @param string $idempotencyKey Unique key to make this request safely retryable
 		 * @return array Normalized result envelope
 		 */
 		public function refund(string $paymentIntentId, ?int $amount, string $reason, string $idempotencyKey): array {
@@ -177,7 +177,7 @@
 		 *
 		 * @see https://stripe.com/docs/webhooks/signatures
 		 * @param string $signatureHeader The raw value of the Stripe-Signature header
-		 * @param string $rawBody         The raw, unmodified request body
+		 * @param string $rawBody The raw, unmodified request body
 		 * @return bool True if the webhook is genuine and recent, false otherwise
 		 */
 		public function verifyWebhookSignature(string $signatureHeader, string $rawBody): bool {
@@ -225,7 +225,7 @@
 			// Using the raw body is critical: any decoding or re-encoding before this point
 			// will produce a different byte sequence and cause verification to fail.
 			$signedPayload = $timestamp . '.' . $rawBody;
-			$expected      = hash_hmac('sha256', $signedPayload, $this->m_webhook_secret);
+			$expected = hash_hmac('sha256', $signedPayload, $this->m_webhook_secret);
 			
 			// hash_equals performs a constant-time comparison to prevent timing attacks.
 			// We iterate all v1 signatures to handle secret rotation — Stripe sends signatures
@@ -263,10 +263,10 @@
 		 * Request bodies for POST requests use application/x-www-form-urlencoded (not JSON).
 		 * GET parameters are passed as query string entries.
 		 *
-		 * @param string $method  HTTP method: GET, POST
-		 * @param string $path    API path, e.g. /v1/checkout/sessions
-		 * @param array  $body    Request body for POST, or query params for GET
-		 * @param array  $headers Extra headers to merge in (e.g. Idempotency-Key)
+		 * @param string $method HTTP method: GET, POST
+		 * @param string $path API path, e.g. /v1/checkout/sessions
+		 * @param array<string, mixed> $body Request body for POST, or query params for GET
+		 * @param array<string, mixed> $headers Extra headers to merge in (e.g. Idempotency-Key)
 		 * @return array ['request' => ['result' => 1|0, 'errorId' => ..., 'errorMessage' => ...], 'response' => [...]]
 		 */
 		private function sendRequest(string $method, string $path, array $body = [], array $headers = []): array {
@@ -301,8 +301,8 @@
 				}
 				
 				// Stripe error body: {"error": {"type": "...", "code": "...", "message": "..."}}
-				$error        = $data['error'] ?? [];
-				$errorId      = $error['code'] ?? $error['type'] ?? 'UNKNOWN_ERROR';
+				$error = $data['error'] ?? [];
+				$errorId = $error['code'] ?? $error['type'] ?? 'UNKNOWN_ERROR';
 				$errorMessage = $error['message'] ?? 'Unknown Stripe error';
 				
 				return ['request' => ['result' => 0, 'errorId' => $errorId, 'errorMessage' => $errorMessage]];

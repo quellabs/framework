@@ -21,7 +21,7 @@
 		
 		/**
 		 * Active configuration for this provider, applied by the discovery system after instantiation.
-		 * @var array
+		 * @var array<string, mixed>
 		 */
 		private array $config;
 		
@@ -45,7 +45,7 @@
 		
 		/**
 		 * Returns the active configuration for this provider instance.
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getConfig(): array {
 			return array_replace_recursive($this->getDefaults(), $this->config);
@@ -54,7 +54,7 @@
 		/**
 		 * Applies configuration to this provider instance.
 		 * Called by the discovery system after instantiation, before any other methods are invoked.
-		 * @param array $config
+		 * @param array<string, mixed> $config
 		 * @return void
 		 */
 		public function setConfig(array $config): void {
@@ -64,7 +64,7 @@
 		/**
 		 * Returns default configuration values for this provider.
 		 * Merged with loaded config files during discovery — values from config files take precedence.
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getDefaults(): array {
 			return [
@@ -132,7 +132,7 @@
 		 * or maps the existing state to a PaymentState if already resolved.
 		 * @see https://developer.paypal.com/docs/classic/api/merchant/GetExpressCheckoutDetails_API_Operation_NVP/
 		 * @param string $transactionId The checkout token (EC-XXXXXXXXX) from SetExpressCheckout
-		 * @param array $extraData Optional extra data. Accepts 'paymentReference' (the NVP PAYMENTINFO_0_TRANSACTIONID)
+		 * @param array<string, mixed> $extraData Optional extra data. Accepts 'paymentReference' (the NVP PAYMENTINFO_0_TRANSACTIONID)
 		 *                         for already-completed payments to enable refund state retrieval.
 		 * @return PaymentState
 		 */
@@ -269,7 +269,7 @@
 		 * Other payment modules would use this to receive a list of banks or something.
 		 * Paypal express does not use it.
 		 * @param string $paymentModule
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getPaymentOptions(string $paymentModule): array {
 			return [];
@@ -326,8 +326,8 @@
 		
 		/**
 		 * Verifies a PayPal IPN message by delegating to the gateway.
-		 * @param array $data The raw IPN POST data received from PayPal
-		 * @return array
+		 * @param array<string, mixed> $data The raw IPN POST data received from PayPal
+		 * @return array<string, mixed>
 		 */
 		public function verifyIpnMessage(array $data): array {
 			return $this->getGateway()->verifyIpnMessage($data);

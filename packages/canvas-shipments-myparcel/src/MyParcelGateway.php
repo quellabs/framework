@@ -4,6 +4,7 @@
 	
 	use Symfony\Component\HttpClient\HttpClient;
 	use Symfony\Contracts\HttpClient\HttpClientInterface;
+	use Symfony\Contracts\HttpClient\ResponseInterface;
 	
 	/**
 	 * Low-level wrapper around the MyParcel API v1.1.
@@ -27,10 +28,10 @@
 	class MyParcelGateway {
 		
 		/** MyParcel NL base URL */
-		private const BASE_URL_NL = 'https://api.myparcel.nl';
+		private const string BASE_URL_NL = 'https://api.myparcel.nl';
 		
 		/** MyParcel BE (sendmyparcel.be) base URL */
-		private const BASE_URL_BE = 'https://api.sendmyparcel.be';
+		private const string BASE_URL_BE = 'https://api.sendmyparcel.be';
 		
 		/** @var HttpClientInterface Shared HTTP client instance */
 		private HttpClientInterface $client;
@@ -75,8 +76,8 @@
 		 * Returns: { "data": { "ids": [ { "id": 123, "reference_identifier": "..." } ] } }
 		 *
 		 * @see https://developer.myparcel.nl/api-reference/02.shipments.html#post-shipments
-		 * @param array $payload The full envelope (caller must wrap in data.shipments)
-		 * @return array
+		 * @param array<string, mixed> $payload The full envelope (caller must wrap in data.shipments)
+		 * @return array<string, mixed>
 		 */
 		public function createParcel(array $payload): array {
 			return $this->post('/shipments', $payload, 'application/vnd.shipment+json;version=1.1;charset=utf-8');
@@ -90,7 +91,7 @@
 		 *
 		 * @see https://developer.myparcel.nl/api-reference/02.shipments.html#get-shipments
 		 * @param string|int $shipmentId Internal MyParcel shipment ID
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getShipment(string|int $shipmentId): array {
 			return $this->get("/shipments/{$shipmentId}");
@@ -106,7 +107,7 @@
 		 *
 		 * @see https://developer.myparcel.nl/api-reference/08.labels.html
 		 * @param string|int|array $shipmentId Single ID, semicolon-string, or array of IDs
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getLabel(string|int|array $shipmentId): array {
 			if (is_array($shipmentId)) {
@@ -128,8 +129,8 @@
 		 * @param string $houseNumber House number
 		 * @param string $city City name
 		 * @param string $countryCode ISO 3166-1 alpha-2
-		 * @param array $extraOptions Additional query params (cutoff_time, dropoff_delay, etc.)
-		 * @return array
+		 * @param array<string, mixed> $extraOptions Additional query params (cutoff_time, dropoff_delay, etc.)
+		 * @return array<string, mixed>
 		 */
 		public function getDeliveryOptions(
 			int    $carrierId,
@@ -160,7 +161,7 @@
 		 *
 		 * @see https://developer.myparcel.nl/api-reference/06.track-trace.html
 		 * @param string|array $barcode Single barcode or array of barcodes
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getTrackTrace(string|array $barcode): array {
 			if (is_array($barcode)) {
@@ -173,8 +174,8 @@
 		/**
 		 * Sends a GET request and returns a normalised response array.
 		 * @param string $endpoint Path relative to the base URL (e.g. '/shipments/123')
-		 * @param array $query Optional query string parameters
-		 * @return array
+		 * @param array<string, mixed> $query Optional query string parameters
+		 * @return array<string, mixed>
 		 */
 		private function get(string $endpoint, array $query = []): array {
 			try {
@@ -191,9 +192,9 @@
 		/**
 		 * Sends a POST request and returns a normalised response array.
 		 * @param string $endpoint Path relative to the base URL
-		 * @param array $payload JSON request body
+		 * @param array<string, mixed> $payload JSON request body
 		 * @param string $contentType Content-Type header override (MyParcel uses versioned vnd types)
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		private function post(string $endpoint, array $payload, string $contentType = 'application/json'): array {
 			try {
@@ -215,10 +216,10 @@
 		 *   HTTP 4xx/5xx with JSON body: { "message": "...", "errors": { "field": ["msg"] } }
 		 *   The top-level "message" is the most useful single-string summary.
 		 *
-		 * @param \Symfony\Contracts\HttpClient\ResponseInterface $response
-		 * @return array
+		 * @param ResponseInterface $response
+		 * @return array<string, mixed>
 		 */
-		private function normaliseResponse(\Symfony\Contracts\HttpClient\ResponseInterface $response): array {
+		private function normaliseResponse(ResponseInterface $response): array {
 			$statusCode = $response->getStatusCode();
 			
 			// getContent(false) suppresses exceptions on 4xx/5xx so we can read the body

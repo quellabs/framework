@@ -24,7 +24,7 @@
 		
 		/**
 		 * Active configuration for this provider, applied by the discovery system after instantiation.
-		 * @var array
+		 * @var array<string, mixed>
 		 */
 		private array $config = [];
 		
@@ -84,7 +84,7 @@
 		/**
 		 * Returns default configuration values for this provider.
 		 * Merged with loaded config files during discovery — values from config files take precedence.
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getDefaults(): array {
 			return [
@@ -98,7 +98,7 @@
 		
 		/**
 		 * Returns the active configuration for this provider instance.
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getConfig(): array {
 			return array_replace_recursive($this->getDefaults(), $this->config);
@@ -107,7 +107,7 @@
 		/**
 		 * Applies configuration to this provider instance.
 		 * Called by the discovery system after instantiation, before any other methods are invoked.
-		 * @param array $config
+		 * @param array<string, mixed> $config
 		 * @return void
 		 */
 		public function setConfig(array $config): void {
@@ -207,7 +207,7 @@
 		 * @url https://docs.mollie.com/reference/v2/payments-api/get-payment
 		 * @url https://docs.mollie.com/payments/webhooks
 		 * @param string $transactionId
-		 * @param array $extraData
+		 * @param array<string, mixed> $extraData
 		 * @return PaymentState
 		 * @throws PaymentExchangeException
 		 */
@@ -304,7 +304,7 @@
 		 * All other modules return an empty array — the hosted page handles all UI.
 		 * @see https://docs.mollie.com/reference/v2/methods-api/get-method
 		 * @param string $paymentModule e.g. 'mollie_kbc'
-		 * @return array
+		 * @return array<string, mixed>
 		 * @throws PaymentException
 		 */
 		public function getPaymentOptions(string $paymentModule): array {
@@ -372,7 +372,7 @@
 		/**
 		 * Serializes a PaymentAddress into the array shape Mollie expects
 		 * @param PaymentAddress $address
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		protected function serializeAddress(PaymentAddress $address): array {
 			return array_filter([

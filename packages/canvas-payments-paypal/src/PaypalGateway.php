@@ -60,7 +60,7 @@
 		 * @param string $description  Order description shown on the PayPal checkout page
 		 * @param string $currency     ISO 4217 currency code (default: EUR)
 		 * @param string $brandName    Optional brand name shown on the PayPal checkout page
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function createOrder(float $value, string $description, string $currency = "EUR", string $brandName = ""): array {
 			$experienceContext = array_filter([
@@ -95,7 +95,7 @@
 		 * Equivalent to NVP GetExpressCheckoutDetails.
 		 * @see https://developer.paypal.com/docs/api/orders/v2/#orders_get
 		 * @param string $orderId The order ID returned by createOrder
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getOrder(string $orderId): array {
 			if (empty($orderId)) {
@@ -111,7 +111,7 @@
 		 * @see https://developer.paypal.com/docs/api/orders/v2/#orders_capture
 		 * @param string $orderId         The order ID returned by createOrder
 		 * @param string $idempotencyKey  Unique key to make this request safely retryable
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function captureOrder(string $orderId, string $idempotencyKey): array {
 			// Content-Type must be application/json but the body can be empty for a simple capture.
@@ -126,7 +126,7 @@
 		 * Equivalent to NVP GetTransactionDetails.
 		 * @see https://developer.paypal.com/docs/api/payments/v2/#captures_get
 		 * @param string $captureId The capture ID from captureOrder (purchase_units[0].payments.captures[0].id)
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getCapture(string $captureId): array {
 			return $this->sendRequest('GET', '/v2/payments/captures/' . urlencode($captureId));
@@ -141,7 +141,7 @@
 		 * @param string|null $currencyType   ISO 4217 currency code, required when $value is set
 		 * @param string      $note           Human-readable reason for the refund, shown to the buyer
 		 * @param string      $idempotencyKey Unique key to make this request safely retryable
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function refund(string $captureId, ?float $value, ?string $currencyType, string $note, string $idempotencyKey): array {
 			// Add payment note
@@ -225,7 +225,7 @@
 		 * The webhook_id from your PayPal app settings is required to prevent replay attacks
 		 * from other apps sending genuine but unrelated PayPal webhook payloads.
 		 * @see https://developer.paypal.com/docs/api/webhooks/v1/#verify-webhook-signature_post
-		 * @param array  $headers     The HTTP request headers (lowercased keys expected)
+		 * @param array<string, mixed>  $headers     The HTTP request headers (lowercased keys expected)
 		 * @param string $rawBody     The raw, unmodified request body string
 		 * @return bool True if the webhook is genuine, false otherwise
 		 */
@@ -320,8 +320,8 @@
 		 * All API methods funnel through here to keep HTTP handling in one place.
 		 * @param string $method  HTTP method: GET, POST, PATCH
 		 * @param string $path    API path, e.g. /v2/checkout/orders
-		 * @param array  $body    Request body (JSON-encoded), empty for GET
-		 * @param array  $headers Extra headers to merge in
+		 * @param array<string, mixed>  $body    Request body (JSON-encoded), empty for GET
+		 * @param array<string, mixed>  $headers Extra headers to merge in
 		 * @return array ['request' => ['result' => 1|0, 'errorId' => ..., 'errorMessage' => ...], 'response' => [...]]
 		 */
 		private function sendRequest(string $method, string $path, array $body = [], array $headers = []): array {

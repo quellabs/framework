@@ -49,5 +49,3 @@ parameters:
         - packages/signal-hub/src
     tips:
         treatPhpDocTypesAsCertain: false
-    ignoreErrors:
-        - identifier: missingType.iterableValue
