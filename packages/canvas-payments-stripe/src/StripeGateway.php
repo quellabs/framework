@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\Payments\Stripe;
 	
+	use Quellabs\Contracts\Gateway\GatewayInterface;
 	use Symfony\Component\HttpClient\HttpClient;
 	use Symfony\Contracts\HttpClient\HttpClientInterface;
 	
@@ -18,6 +19,8 @@
 	 * @see https://stripe.com/docs/api
 	 * @see https://stripe.com/docs/payments/payment-intents
 	 * @see https://stripe.com/docs/payments/checkout
+	 *
+	 * @phpstan-import-type GatewayResponse from GatewayInterface
 	 */
 	class StripeGateway {
 		
@@ -64,7 +67,7 @@
 		 * @param string $description Line item description shown on the Stripe-hosted checkout page
 		 * @param string $currency ISO 4217 currency code (e.g. 'eur', 'usd')
 		 * @param string[] $paymentMethodTypes Payment method types to enable (e.g. ['card', 'ideal'])
-		 * @return array<string, mixed> Normalized result envelope
+		 * @return GatewayResponse
 		 */
 		public function createCheckoutSession(int $amount, string $description, string $currency, array $paymentMethodTypes = []): array {
 			// Stripe appends the session ID to return_url automatically when {CHECKOUT_SESSION_ID}
@@ -99,7 +102,7 @@
 		 * Used on the return URL to determine the session outcome and resolve the PaymentIntent.
 		 * @see https://stripe.com/docs/api/checkout/sessions/retrieve
 		 * @param string $sessionId The Checkout Session ID (cs_*)
-		 * @return array<string, mixed> Normalized result envelope
+		 * @return GatewayResponse
 		 */
 		public function getCheckoutSession(string $sessionId): array {
 			if (empty($sessionId)) {
@@ -118,7 +121,7 @@
 		 * Used on webhook events that carry only the PaymentIntent ID (e.g. payment_intent.succeeded).
 		 * @see https://stripe.com/docs/api/payment_intents/retrieve
 		 * @param string $paymentIntentId The PaymentIntent ID (pi_*)
-		 * @return array<string, mixed> Normalized result envelope
+		 * @return GatewayResponse
 		 */
 		public function getPaymentIntent(string $paymentIntentId): array {
 			if (empty($paymentIntentId)) {
@@ -136,7 +139,7 @@
 		 * @param int|null $amount Amount in smallest currency unit, or null for a full refund
 		 * @param string $reason Stripe refund reason: 'duplicate', 'fraudulent', or 'requested_by_customer'
 		 * @param string $idempotencyKey Unique key to make this request safely retryable
-		 * @return array<string, mixed> Normalized result envelope
+		 * @return GatewayResponse
 		 */
 		public function refund(string $paymentIntentId, ?int $amount, string $reason, string $idempotencyKey): array {
 			$body = [
@@ -158,7 +161,7 @@
 		 * Returns all refunds issued for a given PaymentIntent.
 		 * @see https://stripe.com/docs/api/refunds/list
 		 * @param string $paymentIntentId The PaymentIntent ID (pi_*)
-		 * @return array<string, mixed> Normalized result envelope; on success 'response' is an array of refund objects
+		 * @return GatewayResponse
 		 */
 		public function getRefundsForPaymentIntent(string $paymentIntentId): array {
 			return $this->sendRequest('GET', '/v1/refunds', [
@@ -268,7 +271,7 @@
 		 * @param string $path API path, e.g. /v1/checkout/sessions
 		 * @param array<string, mixed> $body Request body for POST, or query params for GET
 		 * @param array<string, mixed> $headers Extra headers to merge in (e.g. Idempotency-Key)
-		 * @return array<string, mixed> ['request' => ['result' => 1|0, 'errorId' => ..., 'errorMessage' => ...], 'response' => [...]]
+		 * @return GatewayResponse
 		 */
 		private function sendRequest(string $method, string $path, array $body = [], array $headers = []): array {
 			try {

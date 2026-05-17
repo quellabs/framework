@@ -117,20 +117,20 @@
 			if ($result['request']['result'] === 0) {
 				throw new PaymentInitiationException(self::getMetadata()['driver'], $result['request']['errorId'], $result['request']['errorMessage']);
 			}
+
+			// Fetch response
+			$response = $result['response'] ?? [];
 			
-			// Validate the existence of checkout url
-			$sessionId = $result['response']['id'];
-			$checkoutUrl = $result['response']['url'];
-			
-			if (empty($checkoutUrl)) {
-				throw new PaymentInitiationException(self::getMetadata()['driver'], 'MISSING_CHECKOUT_URL', 'Stripe response did not include a checkout URL.');
+			// Validate response
+			if (!isset($response['id']) || !isset($response['url'])) {
+				throw new PaymentInitiationException(self::getMetadata()['driver'], 'MISSING_CHECKOUT_URL', "Invalid gateway response. Missing id and/or redirect url");
 			}
 			
 			// Return response
 			return new InitiateResult(
 				self::getMetadata()['driver'],
-				$sessionId,
-				$checkoutUrl,
+				$response['id'],
+				$response['url'],
 			);
 		}
 		
@@ -180,7 +180,7 @@
 				
 				// Use the session ID as transactionId, not the PaymentIntent ID —
 				// the session ID is what initiate() returned to the caller and what they have stored.
-				$intent = $intentResult['response'];
+				$intent = $intentResult['response'] ?? [];
 				$currency = strtoupper($intent['currency'] ?? 'EUR'); // Stripe returns lowercase (e.g. 'eur') — normalize to ISO 4217
 				return $this->mapPaymentIntentToState($transactionId, $intent, $paymentIntentId, $currency);
 			}
@@ -269,7 +269,7 @@
 			}
 			
 			// Return the result
-			$r = $result['response'];
+			$r = $result['response'] ?? [];
 			
 			return new RefundResult(
 				provider: self::getMetadata()['driver'],
