@@ -109,19 +109,27 @@
 				throw new PaymentInitiationException(self::DRIVER_NAME, $result["request"]["errorId"], $result["request"]["errorMessage"]);
 			}
 			
+			// Fetch response
+			$response = $result['response'] ?? [];
+			
+			// Validate that a token is present in the output
+			if (!isset($response["TOKEN"])) {
+				throw new PaymentInitiationException(self::DRIVER_NAME, "500", "Invalid gateway response. Missing token");
+			}
+			
 			// transform output
 			if ($this->getGateway()->testMode()) {
-				$paymentURL = "https://www.sandbox.paypal.com/cgi-bin/webscr?cmd=_express-checkout&token={$result["response"]["TOKEN"]}&useraction=commit";
+				$paymentURL = "https://www.sandbox.paypal.com/cgi-bin/webscr?cmd=_express-checkout&token={$response["TOKEN"]}&useraction=commit";
 			} else {
-				$paymentURL = "https://www.paypal.com/cgi-bin/webscr?cmd=_express-checkout&token={$result["response"]["TOKEN"]}&useraction=commit";
+				$paymentURL = "https://www.paypal.com/cgi-bin/webscr?cmd=_express-checkout&token={$response["TOKEN"]}&useraction=commit";
 			}
 			
 			return new InitiateResult(
 				self::DRIVER_NAME,
-				$result["response"]["TOKEN"],
+				$response["TOKEN"],
 				$paymentURL,
 				[
-					"correlationId" => $result["response"]["CORRELATIONID"]
+					"correlationId" => $response["CORRELATIONID"]
 				]
 			);
 		}
@@ -159,18 +167,22 @@
 				throw new PaymentInitiationException(self::DRIVER_NAME, $details["request"]["errorId"], $details["request"]["errorMessage"]);
 			}
 			
+			// Fetch the response
+			$response = $details["response"] ?? [];
+			
 			// If we already have the payment transaction ID (e.g. from IPN), the payment is complete.
 			// Skip DoExpressCheckoutPayment and go straight to building the completed state.
 			if (!empty($extraData['paymentReference'])) {
 				return $this->buildCompletedPaymentState(
 					$transactionId,
 					$extraData['paymentReference'],
-					$details["response"]["CHECKOUTSTATUS"],
+					$response["CHECKOUTSTATUS"],
 				);
 			}
 			
 			// Return the correct status
-			switch ($details["response"]["CHECKOUTSTATUS"]) {
+			/** @noinspection PhpSwitchCanBeReplacedWithMatchExpressionInspection */
+			switch ($response["CHECKOUTSTATUS"]) {
 				// DoExpressCheckoutPayment was called but a response hasn't been received yet.
 				// This should be rare in practice.
 				case "PaymentActionInProgress":
@@ -178,7 +190,7 @@
 						provider: self::DRIVER_NAME,
 						transactionId: $transactionId,
 						state: PaymentStatus::Pending,
-						currency: $details["response"]["CURRENCYCODE"] ?? "",
+						currency: $response["CURRENCYCODE"] ?? "",
 						valuePaid: 0,
 						valueRefunded: 0,
 						internalState: "PaymentActionInProgress",
@@ -190,7 +202,7 @@
 						provider: self::DRIVER_NAME,
 						transactionId: $transactionId,
 						state: PaymentStatus::Failed,
-						currency: $details["response"]["CURRENCYCODE"] ?? "",
+						currency: $response["CURRENCYCODE"] ?? "",
 						valuePaid: 0,
 						valueRefunded: 0,
 						internalState: "PaymentActionFailed",
@@ -210,9 +222,9 @@
 				default:
 					return $this->executeCheckoutPayment(
 						$transactionId,
-						(float)($details["response"]["AMT"] ?? 0),
-						$details["response"]["CURRENCYCODE"] ?? "EUR",
-						$details["response"]["PAYERID"]
+						(float)($response["AMT"] ?? 0),
+						$response["CURRENCYCODE"] ?? "EUR",
+						$response["PAYERID"]
 					);
 			}
 		}
@@ -230,14 +242,14 @@
 			// A null amount means the caller wants a full refund.
 			// PayPal handles the amount calculation internally for full refunds.
 			if ($request->amount === null) {
-				$response = $this->getGateway()->fullRefund(
+				$result = $this->getGateway()->fullRefund(
 					$request->paymentReference,
 					$request->description,
 				);
 			} else {
 				// Partial refund — convert from minor units (cents) to major units (e.g. 1050 → 10.50)
 				// as required by the PayPal NVP API.
-				$response = $this->getGateway()->partialRefund(
+				$result = $this->getGateway()->partialRefund(
 					$request->paymentReference,
 					$request->amount / 100,
 					$request->currency,
@@ -246,21 +258,24 @@
 			}
 			
 			// If that failed through an exception
-			if ($response["request"]["result"] === 0) {
-				throw new PaymentRefundException(self::DRIVER_NAME, $response["request"]["errorId"], $response["request"]["errorMessage"]);
+			if ($result["request"]["result"] === 0) {
+				throw new PaymentRefundException(self::DRIVER_NAME, $result["request"]["errorId"], $result["request"]["errorMessage"]);
 			}
+			
+			// Fetch response
+			$response = $result["response"] ?? [];
 			
 			// GROSSREFUNDAMT is returned in major units — convert back to minor units for consistency.
 			return new RefundResult(
 				provider: self::DRIVER_NAME,
 				paymentReference: $request->paymentReference,
-				refundId: $response["response"]["REFUNDTRANSACTIONID"],
-				value: (int)round((float)$response["response"]["GROSSREFUNDAMT"] * 100),
-				currency: $response["response"]["CURRENCYCODE"],
+				refundId: $response["REFUNDTRANSACTIONID"],
+				value: (int)round((float)$response["GROSSREFUNDAMT"] * 100),
+				currency: $response["CURRENCYCODE"],
 				metadata: [
-					"correlationId" => $response["response"]["CORRELATIONID"],
-					"refundStatus"  => $response["response"]["REFUNDSTATUS"],
-					"pendingReason" => $response["response"]["PENDINGREASON"],
+					"correlationId" => $response["CORRELATIONID"],
+					"refundStatus"  => $response["REFUNDSTATUS"],
+					"pendingReason" => $response["PENDINGREASON"],
 				],
 			);
 		}
@@ -284,37 +299,52 @@
 		 * @see https://developer.paypal.com/docs/classic/api/merchant/TransactionSearch_API_Operation_NVP/
 		 * @param string $paymentReference
 		 * @return array<RefundResult>
+		 * @throws PaymentRefundException
 		 */
 		public function getRefunds(string $paymentReference): array {
 			// Fetch the original payment to get its timestamp, which is required as the
 			// search start date. Refunds cannot predate the original payment.
 			$txDetails = $this->getGateway()->getTransactionDetails($paymentReference);
 			
+			// If that call failed, throw an exception
 			if ($txDetails["request"]["result"] === 0) {
 				throw new PaymentRefundException(self::DRIVER_NAME, $txDetails["request"]["errorId"], $txDetails["request"]["errorMessage"]);
 			}
 			
+			// Fetch and validate response
+			$txDetailsResponse = $txDetails["response"] ?? [];
+			
+			// ORDERTIME is not guaranteed by the API — PayPal only returns fields it has data for.
+			// A missing ORDERTIME likely means the transaction predates PayPal's records or
+			// is of a type that doesn't carry timestamp data. Return empty refund list.
+			if (!isset($txDetailsResponse["ORDERTIME"])) {
+				return [];
+			}
+			
 			// Search for all transactions from the payment date until now
-			$search = $this->getGateway()->transactionSearch($txDetails["response"]["ORDERTIME"], $paymentReference);
+			$search = $this->getGateway()->transactionSearch($txDetailsResponse["ORDERTIME"], $paymentReference);
 			
 			// If the API call failed, throw an exception
 			if ($search["request"]["result"] === 0) {
 				throw new PaymentRefundException(self::DRIVER_NAME, $search["request"]["errorId"], $search["request"]["errorMessage"]);
 			}
 			
+			// Fetch response
+			$searchResponse = $search["response"] ?? [];
+			
 			// Results are returned as flat indexed keys: L_TYPEn, L_TRANSACTIONIDn, etc.
 			// Iterate until we run out of results and collect refunds belonging to this transaction.
-			$refunds = [];
 			$i = 0;
+			$refunds = [];
 			
-			while (isset($search["response"]["L_TRANSACTIONID{$i}"])) {
+			while (isset($searchResponse["L_TRANSACTIONID{$i}"])) {
 				if ($search["response"]["L_TYPE{$i}"] === "Refund") {
 					$refunds[] = new RefundResult(
 						provider: self::DRIVER_NAME,
 						paymentReference: $paymentReference,
-						refundId: $search["response"]["L_TRANSACTIONID{$i}"],
-						value: (int)round(abs((float)$search["response"]["L_AMT{$i}"]) * 100),
-						currency: $search["response"]["L_CURRENCYCODE{$i}"],
+						refundId: $searchResponse["L_TRANSACTIONID{$i}"],
+						value: (int)round(abs((float)$searchResponse["L_AMT{$i}"]) * 100),
+						currency: $searchResponse["L_CURRENCYCODE{$i}"],
 					);
 				}
 				
@@ -383,11 +413,16 @@
 				throw new PaymentInitiationException(self::DRIVER_NAME, $result["request"]["errorId"], $result["request"]["errorMessage"]);
 			}
 			
+			// Fetch response
+			$response = $result["response"] ?? [];
+			
+			// Validate all required info is there
+			
 			// Convert Paypal status to state object
-			$paymentStatus = $result["response"]["PAYMENTINFO_0_PAYMENTSTATUS"];
-			$paymentReference = $result["response"]["PAYMENTINFO_0_TRANSACTIONID"];
-			$amountMinorUnits = (int)round((float)$result["response"]["PAYMENTINFO_0_AMT"] * 100);
-			$currency = $result["response"]["PAYMENTINFO_0_CURRENCYCODE"] ?? $currency;
+			$paymentStatus = $response["PAYMENTINFO_0_PAYMENTSTATUS"];
+			$paymentReference = $response["PAYMENTINFO_0_TRANSACTIONID"];
+			$amountMinorUnits = (int)round((float)$response["PAYMENTINFO_0_AMT"] * 100);
+			$currency = $response["PAYMENTINFO_0_CURRENCYCODE"] ?? $currency;
 			
 			switch ($paymentStatus) {
 				// Payment was accepted and funds have been added to your account balance.
@@ -405,8 +440,8 @@
 						internalState: $paymentStatus,
 						metadata: [
 							"paymentReference" => $paymentReference,
-							"correlationId"    => $result["response"]["CORRELATIONID"],
-							"paymentType"      => $result["response"]["PAYMENTINFO_0_PAYMENTTYPE"],
+							"correlationId"    => $response["CORRELATIONID"],
+							"paymentType"      => $response["PAYMENTINFO_0_PAYMENTTYPE"],
 						],
 					);
 				
@@ -471,7 +506,7 @@
 			
 			// AMT is the original captured amount. TOTALREFUNDEDAMOUNT accumulates across all refunds.
 			// Both are returned in major units — convert to minor units for consistency.
-			$r = $txDetails["response"];
+			$r = $txDetails["response"] ?? [];
 			$paymentStatus = $r["PAYMENTSTATUS"] ?? $internalState;
 			$valueRefunded = (int)round((float)($r["TOTALREFUNDEDAMOUNT"] ?? 0) * 100);
 			$valueCaptured = (int)round((float)($r["AMT"] ?? 0) * 100);

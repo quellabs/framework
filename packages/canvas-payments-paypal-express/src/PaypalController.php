@@ -101,7 +101,7 @@
 			$verification = $this->paypal->verifyIpnMessage($data);
 			
 			// If that failed, return an error message
-			if ($verification["request"]["result"] == 0 || $verification["response"] !== "VERIFIED") {
+			if ($verification["request"]["result"] == 0 || $verification["response"]["result"] !== "VERIFIED") {
 				return new JsonResponse("IPN verification failed", 400);
 			}
 			
