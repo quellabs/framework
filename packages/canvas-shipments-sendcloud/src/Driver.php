@@ -43,7 +43,7 @@
 		 *
 		 * Add entries here whenever a new module is introduced in getMetadata().
 		 */
-		private const MODULE_CARRIER_MAP = [
+		private const array MODULE_CARRIER_MAP = [
 			'sendcloud_postnl'  => ['postnl'],
 			'sendcloud_dhl'     => ['dhl'],
 			'sendcloud_dpd'     => ['dpd'],
@@ -60,7 +60,7 @@
 		 *
 		 * @see https://docs.sendcloud.com/api/v2/#parcel-statuses
 		 */
-		private const STATUS_MAP = [
+		private const array STATUS_MAP = [
 			1  => ShipmentStatus::Created,
 			2  => ShipmentStatus::ReadyToSend,
 			3  => ShipmentStatus::InTransit,
@@ -342,7 +342,24 @@
 			$points = $result['response'] ?? [];
 			
 			return array_values(array_map(
-				fn(array $point) => $this->normaliseServicePoint($point),
+				fn(array $point) => new PickupOption(
+					locationCode: (string)($point['id'] ?? ''),
+					name: $point['name'] ?? '',
+					street: $point['street'] ?? '',
+					houseNumber: (string)($point['house_number'] ?? ''),
+					postalCode: $point['postal_code'] ?? '',
+					city: $point['city'] ?? '',
+					country: $point['country'] ?? '',
+					carrierName: $point['carrier'] ?? '',
+					latitude: isset($point['latitude']) ? (float)$point['latitude'] : null,
+					longitude: isset($point['longitude']) ? (float)$point['longitude'] : null,
+					distanceMetres: isset($point['distance']) ? (int)$point['distance'] : null,
+					metadata: array_filter([
+						'openingHours' => $point['opening_hours'] ?? null,
+						'extraInfo'    => $point['extra_info'] ?? null,
+						'phone'        => $point['phone_number'] ?? null,
+					], fn($v) => $v !== null),
+				),
 				$points
 			));
 		}
@@ -526,31 +543,5 @@
 				$lat + $latDelta, // neLat
 				$lng + $lngDelta, // neLng
 			];
-		}
-		
-		/**
-		 * Normalizes a raw SendCloud service point array into a PickupOption.
-		 * @param array<string, mixed> $point
-		 * @return PickupOption
-		 */
-		private function normaliseServicePoint(array $point): PickupOption {
-			return new PickupOption(
-				locationCode: (string)($point['id'] ?? ''),
-				name: $point['name'] ?? '',
-				street: $point['street'] ?? '',
-				houseNumber: (string)($point['house_number'] ?? ''),
-				postalCode: $point['postal_code'] ?? '',
-				city: $point['city'] ?? '',
-				country: $point['country'] ?? '',
-				carrierName: $point['carrier'] ?? '',
-				latitude: isset($point['latitude']) ? (float)$point['latitude'] : null,
-				longitude: isset($point['longitude']) ? (float)$point['longitude'] : null,
-				distanceMetres: isset($point['distance']) ? (int)$point['distance'] : null,
-				metadata: array_filter([
-					'openingHours' => $point['opening_hours'] ?? null,
-					'extraInfo'    => $point['extra_info'] ?? null,
-					'phone'        => $point['phone_number'] ?? null,
-				], fn($v) => $v !== null),
-			);
 		}
 	}
