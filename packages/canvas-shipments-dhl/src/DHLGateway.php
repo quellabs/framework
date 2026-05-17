@@ -2,9 +2,13 @@
 	
 	namespace Quellabs\Shipments\DHL;
 	
+	use Quellabs\Contracts\Gateway\GatewayInterface;
 	use Symfony\Component\HttpClient\HttpClient;
+	use Symfony\Contracts\HttpClient\Exception\ClientExceptionInterface;
+	use Symfony\Contracts\HttpClient\Exception\RedirectionExceptionInterface;
+	use Symfony\Contracts\HttpClient\Exception\ServerExceptionInterface;
+	use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 	use Symfony\Contracts\HttpClient\HttpClientInterface;
-	use Symfony\Contracts\HttpClient\ResponseInterface;
 	
 	/**
 	 * Low-level wrapper around the DHL Parcel NL API (api-gw.dhlparcel.nl).
@@ -32,14 +36,16 @@
 	 *   ['request' => ['result' => 0, 'errorId' => <code>, 'errorMessage' => <msg>]]
 	 *
 	 * @see https://api-gw.dhlparcel.nl/docs/
+	 *
+	 * @phpstan-import-type GatewayResponse from GatewayInterface
 	 */
 	class DHLGateway {
 		
 		/** DHL Parcel NL production base URL */
-		public const BASE_URL_LIVE = 'https://api-gw.dhlparcel.nl';
+		public const string BASE_URL_LIVE = 'https://api-gw.dhlparcel.nl';
 		
 		/** DHL Parcel NL acceptance (test) base URL */
-		public const BASE_URL_TEST = 'https://api-gw-accept.dhlparcel.nl';
+		public const string BASE_URL_TEST = 'https://api-gw-accept.dhlparcel.nl';
 		
 		/** @var HttpClientInterface Shared HTTP client (no Authorization header — added per-request) */
 		private HttpClientInterface $client;
@@ -95,15 +101,15 @@
 			$this->authUrl = $this->baseUrl . '/authenticate/api-key';
 			$this->refreshUrl = $this->baseUrl . '/authenticate/refresh-token';
 			
+			// Create the httpclient
 			$this->client = HttpClient::create(['timeout' => 15]);
 		}
 		
 		/**
 		 * Creates a shipment and returns the trackerCode (barcode) and internal shipment data.
-		 *
 		 * @see https://api-gw.dhlparcel.nl/docs/#/Shipments/post_shipments
 		 * @param array<string, mixed> $payload Full shipment payload (shipmentId, receiver, shipper, options, pieces)
-		 * @return array<string, mixed>
+		 * @return GatewayResponse
 		 */
 		public function createShipment(array $payload): array {
 			return $this->post('/shipments', $payload);
@@ -133,20 +139,13 @@
 		 *
 		 * @see https://api-gw.dhlparcel.nl/docs/guide/chapters/05-track-and-trace.html
 		 * @param string $trackerCode Barcode, optionally with postal code appended as "+{postalCode}"
-		 * @return array<string, mixed>
+		 * @return GatewayResponse
 		 */
 		public function getTrackTrace(string $trackerCode): array {
-			// Track-trace endpoint does not require authentication
-			try {
-				$response = $this->client->request('GET', $this->baseUrl . '/track-trace', [
-					'headers' => ['Accept' => 'application/json'],
-					'query'   => ['key' => $trackerCode],
-				]);
-				
-				return $this->normaliseResponse($response);
-			} catch (\Throwable $e) {
-				return ['request' => ['result' => 0, 'errorId' => $e->getCode(), 'errorMessage' => $e->getMessage()]];
-			}
+			return $this->request('GET', $this->baseUrl . '/track-trace', [
+				'headers' => ['Accept' => 'application/json'],
+				'query'   => ['key' => $trackerCode],
+			]);
 		}
 		
 		/**
@@ -158,7 +157,7 @@
 		 * @param string|null $postalCode Postal code of the search origin
 		 * @param string|null $city City of the search origin
 		 * @param int $limit Maximum number of results (default 10)
-		 * @return array<string, mixed>
+		 * @return GatewayResponse
 		 */
 		public function getParcelShops(string $countryCode, ?string $postalCode = null, ?string $city = null, int $limit = 10): array {
 			$query = array_filter([
@@ -167,62 +166,136 @@
 				'limit'   => $limit,
 			], fn($v) => $v !== null && $v !== '');
 			
-			try {
-				$response = $this->client->request('GET', $this->baseUrl . "/parcel-shop-locations/{$countryCode}", [
-					'headers' => ['Accept' => 'application/json'],
-					'query'   => $query,
-				]);
-				
-				return $this->normaliseResponse($response);
-			} catch (\Throwable $e) {
-				return ['request' => ['result' => 0, 'errorId' => $e->getCode(), 'errorMessage' => $e->getMessage()]];
-			}
+			// Parcel-shop lookup does not require authentication
+			return $this->request('GET', $this->baseUrl . "/parcel-shop-locations/{$countryCode}", [
+				'headers' => ['Accept' => 'application/json'],
+				'query'   => $query,
+			]);
 		}
 		
 		/**
 		 * Sends an authenticated GET request.
+		 *
+		 * Obtains a valid token, injects it as a Bearer header, then delegates to
+		 * request() for the actual HTTP call, error handling, and normalisation.
+		 *
+		 * Note: getValidToken() may throw \RuntimeException if authentication fails
+		 * entirely. That exception propagates to the caller; it is not caught here,
+		 * because a token failure is not a normal gateway error envelope situation.
+		 *
 		 * @param string $endpoint Path relative to the resolved base URL
 		 * @param array<string, mixed> $query Optional query parameters
-		 * @return array<string, mixed>
+		 * @return GatewayResponse
 		 */
 		private function get(string $endpoint, array $query = []): array {
 			try {
 				$token = $this->getValidToken();
-				$response = $this->client->request('GET', $this->baseUrl . $endpoint, [
-					'headers' => [
-						'Authorization' => "Bearer {$token}",
-						'Accept'        => 'application/json',
-					],
-					'query'   => $query,
-				]);
-				
-				return $this->normaliseResponse($response);
-			} catch (\Throwable $e) {
+			} catch (\RuntimeException $e) {
 				return ['request' => ['result' => 0, 'errorId' => $e->getCode(), 'errorMessage' => $e->getMessage()]];
 			}
+			
+			return $this->request('GET', $this->baseUrl . $endpoint, [
+				'headers' => [
+					'Authorization' => "Bearer {$token}",
+					'Accept'        => 'application/json',
+				],
+				'query'   => $query,
+			]);
 		}
 		
 		/**
 		 * Sends an authenticated POST request.
+		 *
+		 * Obtains a valid token, injects it as a Bearer header, then delegates to
+		 * request() for the actual HTTP call, error handling, and normalisation.
+		 *
+		 * Note: getValidToken() may throw \RuntimeException if authentication fails
+		 * entirely. That exception propagates to the caller; it is not caught here,
+		 * because a token failure is not a normal gateway error envelope situation.
+		 *
 		 * @param string $endpoint Path relative to the resolved base URL
 		 * @param array<string, mixed> $payload JSON request body
-		 * @return array<string, mixed>
+		 * @return GatewayResponse
 		 */
 		private function post(string $endpoint, array $payload): array {
+			// Fetch auth token
 			try {
 				$token = $this->getValidToken();
-				$response = $this->client->request('POST', $this->baseUrl . $endpoint, [
-					'headers' => [
-						'Authorization' => "Bearer {$token}",
-						'Content-Type'  => 'application/json',
-						'Accept'        => 'application/json',
-					],
-					'json'    => $payload,
-				]);
-				
-				return $this->normaliseResponse($response);
-			} catch (\Throwable $e) {
+			} catch (\RuntimeException $e) {
 				return ['request' => ['result' => 0, 'errorId' => $e->getCode(), 'errorMessage' => $e->getMessage()]];
+			}
+			
+			// Call API with token attached
+			return $this->request('POST', $this->baseUrl . $endpoint, [
+				'headers' => [
+					'Authorization' => "Bearer {$token}",
+					'Content-Type'  => 'application/json',
+					'Accept'        => 'application/json',
+				],
+				'json'    => $payload,
+			]);
+		}
+		
+		/**
+		 * Executes a raw HTTP request and returns a normalised gateway response.
+		 *
+		 * This is the single chokepoint for all outbound HTTP calls. Every method that
+		 * needs to talk to the DHL API — authenticated or not — ends up here. Keeping
+		 * the try/catch and response normalisation in one place means callers only
+		 * need to describe *what* they want to send, not *how* to handle the result.
+		 *
+		 * DHL error response shape:
+		 *   HTTP 4xx/5xx with JSON: { "title": "...", "detail": "...", "status": 422 }
+		 *   The "detail" field is the most descriptive; "title" is the fallback.
+		 *
+		 * @param string $method HTTP method ('GET', 'POST', …)
+		 * @param string $url Fully-qualified URL (base URL + path already resolved by the caller)
+		 * @param array<string, mixed> $options Symfony HttpClient options (headers, query, json, …)
+		 * @return GatewayResponse
+		 */
+		private function request(string $method, string $url, array $options = []): array {
+			try {
+				// Call the client
+				$response = $this->client->request($method, $url, $options);
+				
+				// Fetch status code
+				$statusCode = $response->getStatusCode();
+				
+				// getContent(false) suppresses exceptions on 4xx/5xx so we can read the body
+				$rawBody = $response->getContent(false);
+				
+				// Decode the body
+				$body = json_decode($rawBody, true);
+				
+				// Check if that worked, If not return error
+				if (json_last_error() !== JSON_ERROR_NONE) {
+					return ['request' => ['result' => 0, 'errorId' => (string)json_last_error(), 'errorMessage' => json_last_error_msg()]];
+				}
+				
+				// If the status code is not in the success zone, return error
+				if ($statusCode >= 400) {
+					if (is_array($body)) {
+						// Read message
+						$message = $body['detail'] ?? $body['title'] ?? "HTTP {$statusCode}";
+						
+						// Append field-level validation errors when present
+						if (!empty($body['errors']) && is_array($body['errors'])) {
+							$firstError = reset($body['errors']);
+							$message .= is_string($firstError) ? " ({$firstError})" : '';
+						}
+					} else {
+						$message = $rawBody ?: "HTTP {$statusCode}";
+					}
+					
+					return ['request' => ['result' => 0, 'errorId' => (string)$statusCode, 'errorMessage' => $message]];
+				}
+				
+				// Return successful response
+				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $body];
+			} catch (TransportExceptionInterface|ClientExceptionInterface|RedirectionExceptionInterface|ServerExceptionInterface $e) {
+				// Catches both transport-level errors (network, timeout) and any exception
+				// thrown during response handling — converts them to the standard error envelope.
+				return ['request' => ['result' => 0, 'errorId' => (string)$e->getCode(), 'errorMessage' => $e->getMessage()]];
 			}
 		}
 		
@@ -267,6 +340,7 @@
 		 */
 		private function authenticate(): void {
 			try {
+				// Call API
 				$response = $this->client->request('POST', $this->authUrl, [
 					'headers' => [
 						'Content-Type' => 'application/json',
@@ -278,18 +352,26 @@
 					],
 				]);
 				
+				// Decode body
 				$body = json_decode($response->getContent(false), true);
+				
+				// Error if invalid JSON
+				if (json_last_error() !== JSON_ERROR_NONE) {
+					throw new \RuntimeException("DHL refresh authentication failed: " . json_last_error_msg(), json_last_error());
+				}
+				
+				// Fetch status code
 				$statusCode = $response->getStatusCode();
 				
+				// If invalid, throw
 				if ($statusCode >= 400 || empty($body['accessToken'])) {
 					$message = $body['detail'] ?? $body['title'] ?? "Authentication failed (HTTP {$statusCode})";
 					throw new \RuntimeException("DHL authentication failed: {$message}");
 				}
 				
+				// Store the tokens
 				$this->storeTokens($body);
-			} catch (\RuntimeException $e) {
-				throw $e;
-			} catch (\Throwable $e) {
+			} catch (TransportExceptionInterface|ClientExceptionInterface|RedirectionExceptionInterface|ServerExceptionInterface $e) {
 				throw new \RuntimeException("DHL authentication request failed: {$e->getMessage()}", 0, $e);
 			}
 		}
@@ -297,8 +379,10 @@
 		/**
 		 * Obtains a new access token using the stored refresh token.
 		 * Falls back to full re-authentication if the refresh token has expired.
+		 * @return void
 		 */
 		private function refreshAccessToken(): void {
+			// Call API
 			try {
 				$response = $this->client->request('POST', $this->refreshUrl, [
 					'headers' => [
@@ -307,22 +391,25 @@
 					],
 					'json'    => ['refreshToken' => $this->refreshToken],
 				]);
-				
+				// Decode the contents
 				$body = json_decode($response->getContent(false), true);
-				$statusCode = $response->getStatusCode();
 				
-				if ($statusCode >= 400 || empty($body['accessToken'])) {
-					// Refresh token may itself have expired — fall back to full authentication
-					$this->refreshToken = null;
-					$this->authenticate();
-					return;
+				// Error if invalid JSON
+				if (json_last_error() !== JSON_ERROR_NONE) {
+					throw new \RuntimeException("DHL refresh authentication failed: " . json_last_error_msg(), json_last_error());
 				}
 				
-				$this->storeTokens($body);
-			} catch (\RuntimeException $e) {
-				throw $e;
-			} catch (\Throwable $e) {
-				// Network failure during refresh — attempt full re-auth
+				// Fetch the status code
+				$statusCode = $response->getStatusCode();
+				
+				// Refresh token may itself have expired — fall back to full authentication
+				if ($statusCode >= 400 || empty($body['accessToken'])) {
+					$this->refreshToken = null;
+					$this->authenticate();
+				} else {
+					$this->storeTokens($body);
+				}
+			} catch (TransportExceptionInterface|ClientExceptionInterface|RedirectionExceptionInterface|ServerExceptionInterface $e) {
 				$this->refreshToken = null;
 				$this->authenticate();
 			}
@@ -337,42 +424,5 @@
 			$this->accessTokenExpiration = (int)($body['accessTokenExpiration'] ?? 0);
 			$this->refreshToken = $body['refreshToken'] ?? null;
 			$this->refreshTokenExpiration = (int)($body['refreshTokenExpiration'] ?? 0);
-		}
-		
-		/**
-		 * Normalises an HTTP response into the shared result envelope.
-		 *
-		 * DHL error response shape:
-		 *   HTTP 4xx/5xx with JSON: { "title": "...", "detail": "...", "status": 422 }
-		 *   The "detail" field is the most descriptive; "title" is the fallback.
-		 *
-		 * @param ResponseInterface $response
-		 * @return array<string, mixed>
-		 */
-		private function normaliseResponse(ResponseInterface $response): array {
-			$statusCode = $response->getStatusCode();
-			
-			// getContent(false) suppresses exceptions on 4xx/5xx so we can read the body
-			$rawBody = $response->getContent(false);
-			$body = json_decode($rawBody, true);
-			
-			if ($statusCode >= 400) {
-				if (is_array($body)) {
-					// Read message
-					$message = $body['detail'] ?? $body['title'] ?? "HTTP {$statusCode}";
-					
-					// Append field-level validation errors when present
-					if (!empty($body['errors']) && is_array($body['errors'])) {
-						$firstError = reset($body['errors']);
-						$message .= is_string($firstError) ? " ({$firstError})" : '';
-					}
-				} else {
-					$message = $rawBody ?: "HTTP {$statusCode}";
-				}
-				
-				return ['request' => ['result' => 0, 'errorId' => $statusCode, 'errorMessage' => $message]];
-			}
-			
-			return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $body];
 		}
 	}
