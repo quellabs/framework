@@ -101,6 +101,11 @@
 			// Step 4: Validates that the value list does not directly select entire subquery ranges.
 			$this->validateNoBareSubqueryRangesInValueList($ast);
 			
+			// Step 4b: Validates that WHERE conditions only reference fields that subquery ranges
+			//          actually export. A subquery's projection is its contract; reaching into
+			//          unexported fields must be a compile-time error, not a silent patch.
+			$this->validateSubqueryRangeWhereReferences($ast);
+			
 			// Step 5: Validates that REGEXP is not used in the VALUES portion of the query
 			$this->validateNoRegExpInValueList($ast);
 			
@@ -204,6 +209,97 @@
 					"Duplicate range name(s) detected: " . implode(', ', $duplicateNames) .
 					". Each range name must be unique within a query."
 				);
+			}
+		}
+		
+		/**
+		 * Validates that WHERE conditions do not reference fields that subquery ranges do not export.
+		 *
+		 * A subquery range's projection list is its contract with the outer query.
+		 * Referencing x.id in a WHERE clause when the subquery for x only exports hello
+		 * is a semantic error: the field does not exist from the outer query's perspective.
+		 *
+		 * This check must run at semantic analysis time rather than in the optimizer so that
+		 * it fires unconditionally regardless of which optimizer path the query takes.
+		 *
+		 * @param AstRetrieve $ast The AST to validate
+		 * @throws SemanticException If a WHERE clause references an unexported subquery field
+		 */
+		private function validateSubqueryRangeWhereReferences(AstRetrieve $ast): void {
+			// No WHERE clause means nothing to check
+			if ($ast->getConditions() === null) {
+				return;
+			}
+			
+			// Build a map of subquery range name → exported field names for fast lookup.
+			// A null entry means the inner query selects a whole entity (e.g. retrieve(y)),
+			// which implicitly exports all fields — any outer property reference is valid.
+			// An array entry is an explicit export list that the outer WHERE must respect.
+			$subqueryExports = [];
+			
+			foreach ($ast->getRanges() as $range) {
+				if (!$range instanceof AstRangeDatabaseSubquery) {
+					continue;
+				}
+				
+				$exportsWholeEntity = false;
+				
+				foreach ($range->getQuery()->getValues() as $alias) {
+					$expression = $alias->getExpression();
+					
+					// A bare entity identifier with no property chain means the entire
+					// entity is selected, which implicitly exports all of its fields.
+					if ($expression instanceof AstIdentifier && !$expression->hasNext()) {
+						$exportsWholeEntity = true;
+						break;
+					}
+				}
+				
+				if ($exportsWholeEntity) {
+					$subqueryExports[$range->getName()] = null;
+				} else {
+					$subqueryExports[$range->getName()] = array_map(fn($alias) => $alias->getName(), $range->getQuery()->getValues());
+				}
+			}
+			
+			// Nothing to check if there are no subquery ranges in this query
+			if (empty($subqueryExports)) {
+				return;
+			}
+			
+			// Walk the WHERE clause and check every root identifier that points at a subquery range
+			$collector = new CollectNodes(AstIdentifier::class);
+			$ast->getConditions()->accept($collector);
+			
+			foreach ($collector->getCollectedNodes() as $node) {
+				// Only root nodes — child segments of x.foo.bar are not standalone references
+				if ($node->hasParentIdentifier()) {
+					continue;
+				}
+				
+				// Skip if no range found
+				$rangeName = $node->getRange()?->getName();
+				
+				if ($rangeName === null || !array_key_exists($rangeName, $subqueryExports)) {
+					continue;
+				}
+				
+				// null means the whole entity is exported — any field reference is valid
+				if ($subqueryExports[$rangeName] === null) {
+					continue;
+				}
+				
+				// If the field is not in the projection list, throw
+				$field = $node->getPropertyName();
+				
+				if (!in_array($field, $subqueryExports[$rangeName], true)) {
+					throw new SemanticException(sprintf(
+						"Field '%s.%s' referenced in WHERE clause is not exported by subquery range '%s'.",
+						$node->getName(),
+						$field,
+						$rangeName
+					));
+				}
 			}
 		}
 		
@@ -397,14 +493,6 @@
 				}
 			}
 		}
-		
-		/**
-		 * Validates that the query contains at least one value in the projection list.
-		 * An empty retrieve() clause has no defined meaning and cannot be translated
-		 * to valid SQL — every query must select at least one property or expression.
-		 * @param AstRetrieve $ast The AST to validate
-		 * @throws SemanticException If the projection list is empty
-		 */
 		
 		/**
 		 * Validates that the query contains at least one value in the projection list.

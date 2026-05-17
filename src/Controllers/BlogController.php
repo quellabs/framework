@@ -18,11 +18,11 @@
 			$x = $this->em()->executeQuery("
 				range of x is (
 					range of a is PostEntity
-					retrieve(a.id, a.title)
+					retrieve(hello=a.id)
 				)
 				range of y is json_source('f:\\test.json', '$.rows')
-				retrieve(x.id, y.id, y.title)
-				where x.id=y.id
+				retrieve(id=x.hello, y.id, y.title)
+				where x.hello=y.id
 			");
 			
 			foreach ($x as $item) {
