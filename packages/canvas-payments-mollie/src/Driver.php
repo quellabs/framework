@@ -363,7 +363,7 @@
 		 * redirectUrl and cancelUrl are required — an exception is thrown if neither
 		 * the request nor the config provides them. webhookUrl falls back to a default.
 		 * @param PaymentRequest $request
-		 * @throws \RuntimeException if redirectUrl or cancelUrl cannot be resolved
+		 * @throws PaymentInitiationException if redirectUrl or cancelUrl cannot be resolved
 		 */
 		private function resolveUrls(PaymentRequest $request): void {
 			// Fetch the configuration data (merged with defaults)

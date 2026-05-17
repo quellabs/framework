@@ -173,8 +173,17 @@
 			}
 			
 			// Return response
-			$response = $result['response']['data'];
+			$response = $result['response']['data'] ?? [];
 			
+			// Validate response data is there
+			if (
+				!isset($response['order_id']) ||
+				!isset($response['payment_url'])
+			) {
+				throw new PaymentInitiationException (self::DRIVER_NAME,  "500", "Invalid gateway response. Missing id and/or redirect url");
+			}
+			
+			// Return the response
 			return new InitiateResult(
 				provider: self::DRIVER_NAME,
 				transactionId: $response['order_id'],
