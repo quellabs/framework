@@ -11,6 +11,13 @@
 	 *
 	 * Implementations must have a no-argument constructor. All configuration is
 	 * supplied via setConfig() after instantiation by the discovery system.
+	 *
+	 * @phpstan-type InitiateResultArray array{
+	 *     provider: string,
+	 *     transaction_id: string,
+	 *     redirect_url: string,
+	 *     metadata: array<string, mixed>
+	 * }
 	 */
 	interface PaymentInterface {
 		
