@@ -107,15 +107,27 @@
 				throw new PaymentInitiationException(self::DRIVER_NAME, $result["request"]["errorId"], $result["request"]["errorMessage"]);
 			}
 			
+			// Fetch response
+			$response = $result["response"] ?? [];
+			
+			// Validate response
+			if (
+				!isset($response["id"]) ||
+				!isset($response["links"]) ||
+				!is_array($response["links"])
+			) {
+				throw new PaymentInitiationException(self::DRIVER_NAME, "500", "Invalid gateway response. Missing id and/or redirect url");
+			}
+			
 			// Fetch orderId
-			$orderId = $result["response"]["id"];
+			$transactionId = $response["id"];
 			
 			// Extract the HATEOAS approve link — this is the URL we redirect the buyer to.
 			// Using the link from the response is more robust than constructing it manually,
 			// as PayPal controls its format.
 			$approveUrl = null;
 			
-			foreach ($result["response"]["links"] as $link) {
+			foreach ($response["links"] as $link) {
 				if ($link["rel"] === "payer-action") {
 					$approveUrl = $link["href"];
 					break;
@@ -130,7 +142,7 @@
 			// Return result
 			return new InitiateResult(
 				self::DRIVER_NAME,
-				$orderId,
+				$transactionId,
 				$approveUrl,
 			);
 		}
@@ -146,7 +158,7 @@
 		 *
 		 * @see https://developer.paypal.com/docs/api/orders/v2/#orders_get
 		 * @param string $transactionId The order ID returned by initiate()
-		 * @param array<string, mixed>  $extraData
+		 * @param array<string, mixed> $extraData
 		 * @return PaymentState
 		 * @throws PaymentExchangeException|PaymentInitiationException
 		 */
@@ -174,11 +186,11 @@
 			}
 			
 			// Map order status to PaymentState
-			$orderData    = $order["response"];
-			$orderStatus  = $orderData["status"];
+			$orderData = $order["response"] ?? [];
+			$orderStatus = $orderData["status"];
 			$purchaseUnits = $orderData["purchase_units"] ?? [];
-			$purchaseUnit  = $purchaseUnits[0] ?? [];
-			$currency     = $purchaseUnit["amount"]["currency_code"] ?? "EUR";
+			$purchaseUnit = $purchaseUnits[0] ?? [];
+			$currency = $purchaseUnit["amount"]["currency_code"] ?? "EUR";
 			
 			switch ($orderStatus) {
 				// Order was created but the buyer hasn't approved it yet (should not normally
@@ -285,7 +297,7 @@
 		 * @throws PaymentRefundException
 		 */
 		public function refund(RefundRequest $request): RefundResult {
-			$value    = $request->amount !== null ? $request->amount / 100 : null;
+			$value = $request->amount !== null ? $request->amount / 100 : null;
 			$currency = $request->amount !== null ? $request->currency : null;
 			
 			// Deterministic key derived from capture ID + amount — retrying the same refund
@@ -293,7 +305,7 @@
 			// Amount is included so a partial refund followed by a different partial refund
 			// on the same capture produces a distinct key.
 			$idempotencyKey = hash('sha256', 'refund:' . $request->paymentReference . ':' . ($request->amount ?? 'full'));
-
+			
 			// Call API to create the refund
 			$response = $this->getGateway()->refund(
 				$request->paymentReference,
@@ -309,7 +321,7 @@
 			}
 			
 			// Send response back to user
-			$r = $response["response"];
+			$r = $response["response"] ?? [];
 			
 			return new RefundResult(
 				provider: self::DRIVER_NAME,
@@ -318,8 +330,8 @@
 				value: (int)round((float)($r["amount"]["value"] ?? 0) * 100),
 				currency: $r["amount"]["currency_code"] ?? $request->currency,
 				metadata: [
-					"status"       => $r["status"]       ?? null,
-					"sellerNote"   => $r["seller_payable_breakdown"]["total_refunded_amount"]["value"] ?? null,
+					"status"     => $r["status"] ?? null,
+					"sellerNote" => $r["seller_payable_breakdown"]["total_refunded_amount"]["value"] ?? null,
 				],
 			);
 		}
@@ -354,10 +366,18 @@
 				throw new PaymentRefundException(self::DRIVER_NAME, $result["request"]["errorId"], $result["request"]["errorMessage"]);
 			}
 			
+			// Fetch the response
+			$response = $result["response"] ?? [];
+			
+			// Return empty array if there are no refunds
+			if (empty($response["refunds"])) {
+				return [];
+			}
+			
 			// Flatten the response
 			$refunds = [];
 			
-			foreach ($result["response"] as $refund) {
+			foreach ($response["refunds"] as $refund) {
 				$refunds[] = new RefundResult(
 					provider: self::DRIVER_NAME,
 					paymentReference: $paymentReference,
@@ -372,7 +392,7 @@
 		
 		/**
 		 * Verifies a PayPal webhook notification by delegating signature validation to the gateway.
-		 * @param array<string, mixed>  $headers The request headers (lowercased keys)
+		 * @param array<string, mixed> $headers The request headers (lowercased keys)
 		 * @param string $rawBody The raw, unmodified request body string
 		 * @return bool
 		 */
@@ -392,7 +412,7 @@
 		 * Capture payment for an APPROVED order and map the result to a PaymentState.
 		 * Called from exchange() when order status is APPROVED.
 		 * @see https://developer.paypal.com/docs/api/orders/v2/#orders_capture
-		 * @param string $orderId  The order ID
+		 * @param string $orderId The order ID
 		 * @param string $currency ISO 4217 currency code from the order (used as fallback)
 		 * @return PaymentState
 		 * @throws PaymentExchangeException
@@ -402,10 +422,10 @@
 			// produces the same key, so a network timeout cannot cause a double-capture.
 			$idempotencyKey = hash('sha256', 'capture:' . $orderId);
 			$result = $this->getGateway()->captureOrder($orderId, $idempotencyKey);
-
+			
 			if ($result["request"]["result"] === 0) {
 				$errorId = $result["request"]["errorId"];
-
+				
 				// INSTRUMENT_DECLINED is the REST equivalent of NVP error 10486:
 				// the buyer's funding source was declined. Redirect them back to PayPal
 				// to choose a different payment method.
@@ -473,7 +493,7 @@
 				
 				// Capture was declined or voided
 				"DECLINED",
-				"FAILED"  => new PaymentState(
+				"FAILED" => new PaymentState(
 					provider: self::DRIVER_NAME,
 					transactionId: $orderId,
 					state: PaymentStatus::Failed,
@@ -504,10 +524,10 @@
 		 * Fetches the capture to obtain current refund amounts.
 		 * Called from exchange() when order status is COMPLETED.
 		 * @see https://developer.paypal.com/docs/api/payments/v2/#captures_get
-		 * @param string      $orderId   The order ID
+		 * @param string $orderId The order ID
 		 * @param string|null $captureId The capture ID from PaymentState::$metadata['paymentReference']
-		 * @param string      $internalState
-		 * @param string      $currency  Fallback currency from the order
+		 * @param string $internalState
+		 * @param string $currency Fallback currency from the order
 		 * @return PaymentState
 		 * @throws PaymentExchangeException
 		 */
@@ -531,18 +551,18 @@
 			}
 			
 			// Grab response
-			$c               = $result["response"];
-			$captureStatus   = $c["status"] ?? $internalState;
-			$capturedAmount  = (int)round((float)($c["amount"]["value"] ?? 0) * 100);
-			$refundedAmount  = (int)round((float)($c["seller_receivable_breakdown"]["total_refunded_amount"]["value"] ?? 0) * 100);
+			$c = $result["response"] ?? [];
+			$captureStatus = $c["status"] ?? $internalState;
+			$capturedAmount = (int)round((float)($c["amount"]["value"] ?? 0) * 100);
+			$refundedAmount = (int)round((float)($c["seller_receivable_breakdown"]["total_refunded_amount"]["value"] ?? 0) * 100);
 			$captureCurrency = $c["amount"]["currency_code"] ?? $currency;
 			
 			// A PENDING capture means PayPal has not yet settled the funds (e-cheque, held funds,
 			// manual review, etc.). Do not report this as Paid — the money has not arrived.
 			$paymentStatus = match ($captureStatus) {
-				"COMPLETED"                    => PaymentStatus::Paid,
+				"COMPLETED" => PaymentStatus::Paid,
 				"DECLINED", "FAILED", "VOIDED" => PaymentStatus::Failed,
-				default                        => PaymentStatus::Pending,
+				default => PaymentStatus::Pending,
 			};
 			
 			return new PaymentState(

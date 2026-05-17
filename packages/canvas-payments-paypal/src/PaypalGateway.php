@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\Payments\Paypal;
 	
+	use Quellabs\Contracts\Gateway\GatewayInterface;
 	use Symfony\Component\HttpClient\HttpClient;
 	use Symfony\Contracts\HttpClient\HttpClientInterface;
 	
@@ -10,6 +11,8 @@
 	 * Handles OAuth2 token management, raw HTTP communication, and response normalization.
 	 * @see https://developer.paypal.com/docs/api/orders/v2/
 	 * @see https://developer.paypal.com/docs/api/payments/v2/
+	 *
+	 * @phpstan-import-type GatewayResponse from GatewayInterface
 	 */
 	class PaypalGateway {
 		
@@ -61,7 +64,7 @@
 		 * @param string $description Order description shown on the PayPal checkout page
 		 * @param string $currency ISO 4217 currency code (default: EUR)
 		 * @param string $brandName Optional brand name shown on the PayPal checkout page
-		 * @return array<string, mixed>
+		 * @return GatewayResponse
 		 */
 		public function createOrder(float $value, string $description, string $currency = "EUR", string $brandName = ""): array {
 			$experienceContext = array_filter([
@@ -96,7 +99,7 @@
 		 * Equivalent to NVP GetExpressCheckoutDetails.
 		 * @see https://developer.paypal.com/docs/api/orders/v2/#orders_get
 		 * @param string $orderId The order ID returned by createOrder
-		 * @return array<string, mixed>
+		 * @return GatewayResponse
 		 */
 		public function getOrder(string $orderId): array {
 			if (empty($orderId)) {
@@ -112,7 +115,7 @@
 		 * @see https://developer.paypal.com/docs/api/orders/v2/#orders_capture
 		 * @param string $orderId The order ID returned by createOrder
 		 * @param string $idempotencyKey Unique key to make this request safely retryable
-		 * @return array<string, mixed>
+		 * @return GatewayResponse
 		 */
 		public function captureOrder(string $orderId, string $idempotencyKey): array {
 			// Content-Type must be application/json but the body can be empty for a simple capture.
@@ -127,7 +130,7 @@
 		 * Equivalent to NVP GetTransactionDetails.
 		 * @see https://developer.paypal.com/docs/api/payments/v2/#captures_get
 		 * @param string $captureId The capture ID from captureOrder (purchase_units[0].payments.captures[0].id)
-		 * @return array<string, mixed>
+		 * @return GatewayResponse
 		 */
 		public function getCapture(string $captureId): array {
 			return $this->sendRequest('GET', '/v2/payments/captures/' . urlencode($captureId));
@@ -142,7 +145,7 @@
 		 * @param string|null $currencyType ISO 4217 currency code, required when $value is set
 		 * @param string $note Human-readable reason for the refund, shown to the buyer
 		 * @param string $idempotencyKey Unique key to make this request safely retryable
-		 * @return array<string, mixed>
+		 * @return GatewayResponse
 		 */
 		public function refund(string $captureId, ?float $value, ?string $currencyType, string $note, string $idempotencyKey): array {
 			// Add payment note
@@ -170,7 +173,7 @@
 		 * @see https://developer.paypal.com/docs/api/orders/v2/#orders_get
 		 * @see https://developer.paypal.com/docs/api/payments/v2/#refunds_get
 		 * @param string $captureId The capture ID
-		 * @return array<string, mixed> Normalized result; on success 'response' is an array of refund objects
+		 * @return GatewayResponse
 		 */
 		public function getRefundsForCapture(string $captureId): array {
 			// Step 1: Fetch the capture to get the order ID.
@@ -214,10 +217,12 @@
 					return $result;
 				}
 				
-				$refunds[] = $result['response'];
+				if (isset($result['response'])) {
+					$refunds[] = $result['response'];
+				}
 			}
 			
-			return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $refunds];
+			return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => ["refunds" => $refunds]];
 		}
 		
 		/**
@@ -280,12 +285,12 @@
 		 * Returns a valid OAuth2 access token, refreshing it if expired.
 		 * PayPal access tokens expire after 32400 seconds (9 hours) but we treat
 		 * them as expired 60 seconds early to avoid clock-skew edge cases.
-		 * @return array<string, mixed> Returns the standard result envelope; on success 'response' contains the access token string
+		 * @return GatewayResponse
 		 */
 		private function getAccessToken(): array {
 			// Return cached access token if there is one
 			if ($this->m_access_token !== null && time() < $this->m_token_expires) {
-				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $this->m_access_token];
+				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => ['accessToken' => $this->m_access_token]];
 			}
 			
 			// Fetch fresh access token and cache it
@@ -303,16 +308,16 @@
 				// If no access_token in response, return failure
 				if (empty($data['access_token'])) {
 					$error = $data['error_description'] ?? $data['error'] ?? 'Unexpected response from PayPal OAuth2 endpoint';
-					return ['request' => ['result' => 0, 'errorId' => 'OAUTH2_FAILURE', 'errorMessage' => $error], 'response' => []];
+					return ['request' => ['result' => 0, 'errorId' => 'OAUTH2_FAILURE', 'errorMessage' => $error]];
 				}
 				
 				// Cache the token and expires date
 				$this->m_access_token = $data['access_token'];
 				$this->m_token_expires = time() + $data['expires_in'] - 60;
 				
-				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $this->m_access_token];
+				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => ['accessToken' => $this->m_access_token]];
 			} catch (\Throwable $e) {
-				return ['request' => ['result' => 0, 'errorId' => 'OAUTH2_FAILURE', 'errorMessage' => 'PayPal authentication failed: ' . $e->getMessage()], 'response' => []];
+				return ['request' => ['result' => 0, 'errorId' => 'OAUTH2_FAILURE', 'errorMessage' => "PayPal authentication failed: {$e->getMessage()}"]];
 			}
 		}
 		
@@ -323,25 +328,37 @@
 		 * @param string $path API path, e.g. /v2/checkout/orders
 		 * @param array<string, mixed> $body Request body (JSON-encoded), empty for GET
 		 * @param array<string, mixed> $headers Extra headers to merge in
-		 * @return array<string, mixed> ['request' => ['result' => 1|0, 'errorId' => ..., 'errorMessage' => ...], 'response' => [...]]
+		 * @return GatewayResponse
 		 */
 		private function sendRequest(string $method, string $path, array $body = [], array $headers = []): array {
 			try {
+				// Fetch the access token
 				$tokenResult = $this->getAccessToken();
 				
+				// If that failed, return the api error response
 				if ($tokenResult['request']['result'] === 0) {
 					return $tokenResult;
 				}
 				
+				// Fetch the response
+				$accessTokenResponse = $tokenResult['response'] ?? [];
+				
+				// Validate that the accessToken is present. If not, show error to user
+				if (empty($accessTokenResponse['accessToken'])) {
+					return ['request' => ['result' => 0, 'errorId' => '500', 'errorMessage' => "Invalid gateway response. Missing access token"]];
+				}
+				
+				// Call the method the user desires using the access token
 				$options = [
 					'headers'     => array_merge([
-						'Authorization' => "Bearer {$tokenResult['response']}",
+						'Authorization' => "Bearer {$accessTokenResponse['accessToken']}",
 						'Content-Type'  => 'application/json',
 						'Prefer'        => 'return=representation',
 					], $headers),
 					'verify_peer' => $this->m_verify_ssl,
 				];
 				
+				// Add JSON body if desired
 				if (!empty($body)) {
 					$options['json'] = $body;
 				}
