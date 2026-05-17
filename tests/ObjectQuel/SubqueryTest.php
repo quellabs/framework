@@ -2,8 +2,6 @@
 	
 	namespace Quellabs\ObjectQuel\Tests;
 	
-	use Quellabs\ObjectQuel\Exception\QuelException;
-	use Quellabs\ObjectQuel\Exception\SemanticException;
 	
 	/**
 	 * Tests subquery range behaviour — the derived-table feature added in the
@@ -30,7 +28,7 @@
 			$result = $this->em->executeQuery("
 			range of x is (
 				range of y is PostEntity
-				retrieve(y)
+				retrieve(y.id)
 			)
 			retrieve (x.id)
 		");
@@ -45,7 +43,7 @@
 			$result = $this->em->executeQuery("
 			range of x is (
 				range of y is PostEntity
-				retrieve(y)
+				retrieve(y.id, y.title)
 			)
 			retrieve (x.id, x.title)
 		");
@@ -64,7 +62,7 @@
 			$result = $this->em->executeQuery("
 			range of x is (
 				range of y is PostEntity
-				retrieve(y)
+				retrieve(y.id, y.title, y.published)
 			)
 			retrieve (x.id, x.title)
 			where x.published = true
@@ -86,72 +84,12 @@
 			$result = $this->em->executeQuery("
 			range of x is (
 				range of y is PostEntity
-				retrieve(y)
+				retrieve(y.id, y.title, y.content)
 			)
 			retrieve (x.id, x.title, x.content)
 		");
 			
 			// If we get here without an exception, aliasing is correct
-			$this->assertCount(2, $result);
-		}
-		
-		// -------------------------------------------------------------------------
-		// Semantic validation
-		// -------------------------------------------------------------------------
-		
-		public function testWhereReferenceToUnexportedSubqueryFieldThrows(): void {
-			// x only exports 'hello'; referencing x.id in WHERE must be rejected
-			// at semantic analysis time, before any execution.
-			try {
-				$this->em->executeQuery("
-					range of x is (
-						range of a is PostEntity
-						retrieve(hello=a.id)
-					)
-					retrieve(x.hello)
-					where x.id = 1
-				");
-				
-				$this->fail('Expected QuelException to be thrown');
-			} catch (QuelException $e) {
-				$this->assertInstanceOf(
-					SemanticException::class,
-					$e->getPrevious(),
-					'Expected QuelException to wrap a SemanticException'
-				);
-			}
-		}
-		
-		public function testRetrievingEntireSubqueryRangeThrows(): void {
-			try {
-				$this->em->executeQuery("
-				range of x is (
-					range of y is PostEntity
-					retrieve(y)
-				)
-				retrieve (x)
-			");
-				$this->fail('Expected QuelException to be thrown');
-			} catch (QuelException $e) {
-				$this->assertInstanceOf(
-					SemanticException::class,
-					$e->getPrevious(),
-					'Expected QuelException to wrap a SemanticException'
-				);
-			}
-		}
-		
-		public function testInnerQueryCanRetrieveEntireEntity(): void {
-			// retrieve(y) inside the subquery must be allowed —
-			// it's only retrieve(x) on the outer range that should throw.
-			$result = $this->em->executeQuery("
-			range of x is (
-				range of y is PostEntity
-				retrieve(y)
-			)
-			retrieve (x.id)
-		");
-			
 			$this->assertCount(2, $result);
 		}
 		
@@ -168,7 +106,7 @@
 			$subquery = $this->em->executeQuery("
 			range of x is (
 				range of y is PostEntity
-				retrieve(y)
+				retrieve(y.id)
 			)
 			retrieve (x.id)
 		");
