@@ -365,15 +365,20 @@ XML;
 				$this->authToken = $token;
 				
 				// Parse expiry timestamp — DPD returns UTC datetime e.g. '2020-05-08T13:02:56.06'
-				try {
-					$this->authTokenExpires = new \DateTimeImmutable($expires, new \DateTimeZone('UTC'));
-				} catch (\Throwable) {
-					// If we can't parse the expiry, assume 23 hours to be safe
-					$this->authTokenExpires = (new \DateTimeImmutable('now', new \DateTimeZone('UTC')))->add(new \DateInterval('PT23H'));
+				// Both createFromFormat() calls return false on failure instead of throwing.
+				// The 'U' format accepts any integer Unix timestamp string and never fails.
+				$utc = new \DateTimeZone('UTC');
+				$parsed = \DateTimeImmutable::createFromFormat('Y-m-d\TH:i:s.u', $expires, $utc);
+				$fallback = \DateTimeImmutable::createFromFormat('U', (string)(time() + 23 * 3600));
+				
+				if ($parsed !== false) {
+					$this->authTokenExpires = $parsed;
+				} else {
+					$this->authTokenExpires = ($fallback !== false ? $fallback : null);
 				}
 				
 				return $this->authToken;
-			} catch (\Throwable) {
+			} catch (\Symfony\Contracts\HttpClient\Exception\ExceptionInterface) {
 				return null;
 			}
 		}
@@ -418,20 +423,19 @@ XML;
 						'body'       => $response->getContent(false)
 					]
 				];
-			} catch (\Throwable $e) {
+			} catch (\Symfony\Contracts\HttpClient\Exception\ExceptionInterface $e) {
 				return ['request' => ['result' => 0, 'errorId' => $e->getCode(), 'errorMessage' => $e->getMessage()]];
 			}
 		}
 		
 		/**
-		 * Extracts the SOAP fault message from a parsed XML envelope, if present.
-		 * Returns null when no fault element is found.
+		 * Returns a standard error envelope if the XML contains a SOAP fault, null otherwise.
 		 * @param \SimpleXMLElement $xml
-		 * @return string|null
+		 * @return GatewayResponse|null
 		 */
-		private function extractSoapFault(\SimpleXMLElement $xml): ?string {
+		private function soapFaultResponse(\SimpleXMLElement $xml): ?array {
 			$fault = $xml->xpath('//faultstring');
-			return !empty($fault) ? (string)$fault[0] : null;
+			return !empty($fault) ? ['request' => ['result' => 0, 'errorId' => 'soap_fault', 'errorMessage' => (string)$fault[0]]] : null;
 		}
 		
 		/**
@@ -455,10 +459,8 @@ XML;
 			}
 			
 			// Check for fault
-			$faultMessage = $this->extractSoapFault($xml);
-			
-			if ($faultMessage !== null) {
-				return ['request' => ['result' => 0, 'errorId' => 'soap_fault', 'errorMessage' => $faultMessage]];
+			if ($fault = $this->soapFaultResponse($xml)) {
+				return $fault;
 			}
 			
 			// Look for error in response
@@ -519,10 +521,8 @@ XML;
 				return ['request' => ['result' => 0, 'errorId' => 'parse_error', 'errorMessage' => 'Failed to parse DPD tracking response']];
 			}
 			
-			$faultMessage = $this->extractSoapFault($xml);
-			
-			if ($faultMessage !== null) {
-				return ['request' => ['result' => 0, 'errorId' => 'soap_fault', 'errorMessage' => $faultMessage]];
+			if ($fault = $this->soapFaultResponse($xml)) {
+				return $fault;
 			}
 			
 			// Convert the XML to an array for easier consumption in the driver
@@ -557,10 +557,8 @@ XML;
 				return ['request' => ['result' => 0, 'errorId' => 'parse_error', 'errorMessage' => 'Failed to parse DPD parcel shop response']];
 			}
 			
-			$faultMessage = $this->extractSoapFault($xml);
-			
-			if ($faultMessage !== null) {
-				return ['request' => ['result' => 0, 'errorId' => 'soap_fault', 'errorMessage' => $faultMessage]];
+			if ($fault = $this->soapFaultResponse($xml)) {
+				return $fault;
 			}
 			
 			$shops = $xml->xpath('//*[local-name()="parcelShop"]') ?: [];
@@ -590,10 +588,10 @@ XML;
 			$message = "HTTP {$statusCode}";
 			
 			if ($xml !== null) {
-				$faultMessage = $this->extractSoapFault($xml);
+				$fault = $xml->xpath('//faultstring');
 				
-				if ($faultMessage !== null) {
-					$message = $faultMessage;
+				if (!empty($fault)) {
+					$message = (string)$fault[0];
 				}
 			}
 			
@@ -608,14 +606,10 @@ XML;
 		 * @return \SimpleXMLElement|null
 		 */
 		private function parseXml(string $body): ?\SimpleXMLElement {
-			try {
-				libxml_use_internal_errors(true);
-				$xml = simplexml_load_string($body);
-				libxml_clear_errors();
-				return $xml ?: null;
-			} catch (\Throwable) {
-				return null;
-			}
+			libxml_use_internal_errors(true);
+			$xml = simplexml_load_string($body);
+			libxml_clear_errors();
+			return $xml ?: null;
 		}
 		
 		/**
