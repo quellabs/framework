@@ -4,6 +4,7 @@
 	
 	use Quellabs\ObjectQuel\Exception\QuelException;
 	use Quellabs\ObjectQuel\Exception\SemanticException;
+	use Quellabs\ObjectQuel\ObjectQuel\ParserException;
 	
 	/**
 	 * Tests the semantic analyzer's validation rules in isolation.
@@ -31,6 +32,22 @@
 					SemanticException::class,
 					$e->getPrevious(),
 					'Expected QuelException to wrap a SemanticException'
+				);
+			}
+		}
+		
+		/**
+		 * Asserts that a query throws a QuelException caused by a ParserException.
+		 */
+		private function assertParserError(callable $fn): void {
+			try {
+				$fn();
+				$this->fail('Expected QuelException to be thrown');
+			} catch (QuelException $e) {
+				$this->assertInstanceOf(
+					ParserException::class,
+					$e->getPrevious(),
+					'Expected QuelException to wrap a ParserException'
 				);
 			}
 		}
@@ -71,6 +88,18 @@
 		}
 		
 		// -------------------------------------------------------------------------
+		// Empty projection
+		// -------------------------------------------------------------------------
+		
+		public function testEmptyRetrieveThrows(): void {
+			// retrieve() with no arguments is rejected at parse time, not semantic analysis
+			$this->assertParserError(fn() => $this->em->executeQuery("
+			range of p is PostEntity
+			retrieve ()
+		"));
+		}
+		
+		// -------------------------------------------------------------------------
 		// Subquery range rules
 		// -------------------------------------------------------------------------
 		
@@ -78,18 +107,43 @@
 			$this->assertSemanticError(fn() => $this->em->executeQuery("
 			range of x is (
 				range of y is PostEntity
-				retrieve(y)
+				retrieve(y.id, y.title)
 			)
 			retrieve (x)
 		"));
 		}
 		
-		public function testSubqueryPropertyAccessIsAllowed(): void {
-			// Should not throw — x.id is a valid scalar reference
-			$result = $this->em->executeQuery("
+		public function testBareEntityInSubqueryProjectionThrows(): void {
+			// retrieve(y) inside a subquery must be rejected — the subquery's
+			// projection is its column-set contract and must be explicit.
+			$this->assertSemanticError(fn() => $this->em->executeQuery("
 			range of x is (
 				range of y is PostEntity
 				retrieve(y)
+			)
+			retrieve (x.id)
+		"));
+		}
+		
+		public function testWhereReferenceToUnexportedSubqueryFieldThrows(): void {
+			// x only exports 'hello'; referencing x.id in WHERE must be rejected
+			// at semantic analysis time, before any execution.
+			$this->assertSemanticError(fn() => $this->em->executeQuery("
+			range of x is (
+				range of a is PostEntity
+				retrieve(hello=a.id)
+			)
+			retrieve(x.hello)
+			where x.id = 1
+		"));
+		}
+		
+		public function testSubqueryPropertyAccessIsAllowed(): void {
+			// Should not throw — x.id is a valid scalar reference into an explicit projection
+			$result = $this->em->executeQuery("
+			range of x is (
+				range of y is PostEntity
+				retrieve(y.id)
 			)
 			retrieve (x.id)
 		");
