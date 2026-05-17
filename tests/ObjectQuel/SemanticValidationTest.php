@@ -137,6 +137,18 @@
 			where x.id = 1
 		"));
 		}
+
+		public function testProjectionReferenceToUnexportedSubqueryFieldThrows(): void {
+			// x only exports 'id'; referencing x.title in the outer retrieve list must be
+			// rejected at semantic analysis time, before any execution.
+			$this->assertSemanticError(fn() => $this->em->executeQuery("
+			range of x is (
+				range of y is PostEntity
+				retrieve(y.id)
+			)
+			retrieve(x.id, x.title)
+		"));
+		}
 		
 		public function testSubqueryPropertyAccessIsAllowed(): void {
 			// Should not throw — x.id is a valid scalar reference into an explicit projection
@@ -146,6 +158,20 @@
 				retrieve(y.id)
 			)
 			retrieve (x.id)
+		");
+			
+			$this->assertNotNull($result);
+		}
+		
+		public function testSubqueryAliasedExportIsAccessible(): void {
+			// Should not throw — the inner query exports 'hello' as an alias for y.id,
+			// and the outer query references x.hello, which is a valid exported name.
+			$result = $this->em->executeQuery("
+			range of x is (
+				range of a is PostEntity
+				retrieve(hello=a.id)
+			)
+			retrieve(x.hello)
 		");
 			
 			$this->assertNotNull($result);
