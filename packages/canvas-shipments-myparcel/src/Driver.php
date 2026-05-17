@@ -189,10 +189,12 @@
 				$shipmentPayload = array_merge($shipmentPayload, $request->extraData);
 			}
 			
+			// Call the API
 			$result = $this->getGateway()->createParcel([
 				'data' => ['shipments' => [$shipmentPayload]],
 			]);
 			
+			// If that failed, throw error
 			if ($result['request']['result'] === 0) {
 				throw new ShipmentCreationException(
 					self::DRIVER_NAME,
@@ -201,9 +203,13 @@
 				);
 			}
 			
-			$parcelId = (string)($result['response']['data']['ids'][0]['id'] ?? '');
+			// Fetch the response
+			$response = $result['response'] ?? [];
 			
-			if ($parcelId === '') {
+			// Validate the existence of a parcel id
+			$parcelId = $response['data']['ids'][0]['id'];
+			
+			if (empty($parcelId)) {
 				throw new ShipmentCreationException(
 					self::DRIVER_NAME,
 					'missing_id',
@@ -211,14 +217,15 @@
 				);
 			}
 			
+			// Return the ShipmentResult
 			return new ShipmentResult(
 				provider: self::DRIVER_NAME,
-				parcelId: $parcelId,
+				parcelId: (string)$parcelId,
 				reference: $request->reference,
 				trackingCode: null,
 				trackingUrl: null,
 				carrierName: $this->carrierName($carrierInfo['carrierId']),
-				rawResponse: $result['response'],
+				rawResponse: $response,
 			);
 		}
 		

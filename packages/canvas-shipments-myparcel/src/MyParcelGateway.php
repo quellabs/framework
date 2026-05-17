@@ -2,9 +2,13 @@
 	
 	namespace Quellabs\Shipments\MyParcel;
 	
+	use Quellabs\Contracts\Gateway\GatewayInterface;
 	use Symfony\Component\HttpClient\HttpClient;
+	use Symfony\Contracts\HttpClient\Exception\ClientExceptionInterface;
+	use Symfony\Contracts\HttpClient\Exception\RedirectionExceptionInterface;
+	use Symfony\Contracts\HttpClient\Exception\ServerExceptionInterface;
 	use Symfony\Contracts\HttpClient\HttpClientInterface;
-	use Symfony\Contracts\HttpClient\ResponseInterface;
+	use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 	
 	/**
 	 * Low-level wrapper around the MyParcel API v1.1.
@@ -24,6 +28,8 @@
 	 *   ['request' => ['result' => 0, 'errorId' => <code>, 'errorMessage' => <msg>]]
 	 *
 	 * @see https://developer.myparcel.nl/api-reference/
+	 *
+	 * @phpstan-import-type GatewayResponse from GatewayInterface
 	 */
 	class MyParcelGateway {
 		
@@ -77,10 +83,13 @@
 		 *
 		 * @see https://developer.myparcel.nl/api-reference/02.shipments.html#post-shipments
 		 * @param array<string, mixed> $payload The full envelope (caller must wrap in data.shipments)
-		 * @return array<string, mixed>
+		 * @return GatewayResponse
 		 */
 		public function createParcel(array $payload): array {
-			return $this->post('/shipments', $payload, 'application/vnd.shipment+json;version=1.1;charset=utf-8');
+			return $this->request('POST', '/shipments', [
+				'headers' => ['Content-Type' => 'application/vnd.shipment+json;version=1.1;charset=utf-8'],
+				'json'    => $payload,
+			]);
 		}
 		
 		/**
@@ -91,10 +100,10 @@
 		 *
 		 * @see https://developer.myparcel.nl/api-reference/02.shipments.html#get-shipments
 		 * @param string|int $shipmentId Internal MyParcel shipment ID
-		 * @return array<string, mixed>
+		 * @return GatewayResponse
 		 */
 		public function getShipment(string|int $shipmentId): array {
-			return $this->get("/shipments/{$shipmentId}");
+			return $this->request('GET', "/shipments/{$shipmentId}");
 		}
 		
 		/**
@@ -107,14 +116,14 @@
 		 *
 		 * @see https://developer.myparcel.nl/api-reference/08.labels.html
 		 * @param string|int|array<int, int> $shipmentId Single ID, semicolon-string, or array of IDs
-		 * @return array<string, mixed>
+		 * @return GatewayResponse
 		 */
 		public function getLabel(string|int|array $shipmentId): array {
 			if (is_array($shipmentId)) {
 				$shipmentId = implode(';', array_filter($shipmentId, fn($id) => (int)$id > 0));
 			}
 			
-			return $this->get("/shipment_labels/{$shipmentId}");
+			return $this->request('GET', "/shipment_labels/{$shipmentId}");
 		}
 		
 		/**
@@ -130,7 +139,7 @@
 		 * @param string $city City name
 		 * @param string $countryCode ISO 3166-1 alpha-2
 		 * @param array<string, mixed> $extraOptions Additional query params (cutoff_time, dropoff_delay, etc.)
-		 * @return array<string, mixed>
+		 * @return GatewayResponse
 		 */
 		public function getDeliveryOptions(
 			int    $carrierId,
@@ -148,7 +157,7 @@
 				'city'        => $city,
 			]);
 			
-			return $this->get('/delivery_options', $query);
+			return $this->request('GET', '/delivery_options', ['query' => $query]);
 		}
 		
 		/**
@@ -168,89 +177,66 @@
 				$barcode = implode(';', $barcode);
 			}
 			
-			return $this->get("/tracktraces/{$barcode}");
+			return $this->request('GET', "/tracktraces/{$barcode}");
 		}
 		
 		/**
-		 * Sends a GET request and returns a normalised response array.
-		 * @param string $endpoint Path relative to the base URL (e.g. '/shipments/123')
-		 * @param array<string, mixed> $query Optional query string parameters
-		 * @return array<string, mixed>
-		 */
-		private function get(string $endpoint, array $query = []): array {
-			try {
-				$response = $this->client->request('GET', $this->baseUrl . $endpoint, [
-					'query' => $query,
-				]);
-				
-				return $this->normaliseResponse($response);
-			} catch (\Throwable $e) {
-				return ['request' => ['result' => 0, 'errorId' => $e->getCode(), 'errorMessage' => $e->getMessage()]];
-			}
-		}
-		
-		/**
-		 * Sends a POST request and returns a normalised response array.
-		 * @param string $endpoint Path relative to the base URL
-		 * @param array<string, mixed> $payload JSON request body
-		 * @param string $contentType Content-Type header override (MyParcel uses versioned vnd types)
-		 * @return array<string, mixed>
-		 */
-		private function post(string $endpoint, array $payload, string $contentType = 'application/json'): array {
-			try {
-				$response = $this->client->request('POST', $this->baseUrl . $endpoint, [
-					'headers' => ['Content-Type' => $contentType],
-					'json'    => $payload,
-				]);
-				
-				return $this->normaliseResponse($response);
-			} catch (\Throwable $e) {
-				return ['request' => ['result' => 0, 'errorId' => $e->getCode(), 'errorMessage' => $e->getMessage()]];
-			}
-		}
-		
-		/**
-		 * Normalises an HTTP response into the shared result envelope.
+		 * Executes an HTTP request and returns a normalised GatewayResponse.
+		 *
+		 * This is the single transport method for all API calls. The $options array is
+		 * passed directly to the Symfony HTTP client, so callers control the shape:
+		 *   GET  → ['query' => [...]]
+		 *   POST → ['headers' => ['Content-Type' => '...'], 'json' => [...]]
+		 *
+		 * Response normalisation (previously in normaliseResponse()) is inlined here:
 		 *
 		 * MyParcel error responses:
 		 *   HTTP 4xx/5xx with JSON body: { "message": "...", "errors": { "field": ["msg"] } }
 		 *   The top-level "message" is the most useful single-string summary.
 		 *
-		 * @param ResponseInterface $response
-		 * @return array<string, mixed>
+		 * @param string $method HTTP verb ('GET', 'POST', …)
+		 * @param string $endpoint Path relative to the base URL (e.g. '/shipments/123')
+		 * @param array<string, mixed> $options Symfony HttpClient request options (query, headers, json, …)
+		 * @return GatewayResponse
 		 */
-		private function normaliseResponse(ResponseInterface $response): array {
-			$statusCode = $response->getStatusCode();
-			
-			// getContent(false) suppresses exceptions on 4xx/5xx so we can read the body
-			$body = json_decode($response->getContent(false), true);
-			
-			if ($statusCode >= 400) {
-				// MyParcel puts a human-readable summary in "message" and field-level detail in "errors"
-				$errorMessage = $body['message'] ?? "HTTP {$statusCode}";
+		private function request(string $method, string $endpoint, array $options = []): array {
+			try {
+				// Call the API
+				$response = $this->client->request($method, $this->baseUrl . $endpoint, $options);
 				
-				// Append the first field error if present for extra context
-				if (!empty($body['errors'])) {
-					$firstField = array_key_first($body['errors']);
-					$firstMessage = $body['errors'][$firstField][0] ?? null;
-					
-					if ($firstMessage !== null) {
-						$errorMessage .= " ({$firstField}: {$firstMessage})";
-					}
+				// Fetch the status code
+				$statusCode = $response->getStatusCode();
+				
+				// getContent(false) suppresses exceptions on 4xx/5xx so we can read the body
+				$body = json_decode($response->getContent(false), true);
+				
+				// Check if json_decode was successful
+				if (json_last_error() !== JSON_ERROR_NONE) {
+					return ['request' => ['result' => 0, 'errorId' => (string)json_last_error(), 'errorMessage' => json_last_error_msg()]];
 				}
 				
-				return [
-					'request' => [
-						'result'       => 0,
-						'errorId'      => $statusCode,
-						'errorMessage' => $errorMessage,
-					],
-				];
+				// Check status code
+				if ($statusCode >= 400) {
+					// MyParcel puts a human-readable summary in "message" and field-level detail in "errors"
+					$errorMessage = $body['message'] ?? "HTTP {$statusCode}";
+					
+					// Append the first field error if present for extra context
+					if (!empty($body['errors'])) {
+						$firstField = array_key_first($body['errors']);
+						$firstMessage = $body['errors'][$firstField][0] ?? null;
+						
+						if ($firstMessage !== null) {
+							$errorMessage .= " ({$firstField}: {$firstMessage})";
+						}
+					}
+					
+					return ['request' => ['result' => 0, 'errorId' => (string)$statusCode, 'errorMessage' => $errorMessage]];
+				}
+				
+				// Return success response
+				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $body];
+			} catch (TransportExceptionInterface|ClientExceptionInterface|RedirectionExceptionInterface|ServerExceptionInterface $e) {
+				return ['request' => ['result' => 0, 'errorId' => (string)$e->getCode(), 'errorMessage' => $e->getMessage()]];
 			}
-			
-			return [
-				'request'  => ['result' => 1, 'errorId' => '', 'errorMessage' => ''],
-				'response' => $body,
-			];
 		}
 	}
