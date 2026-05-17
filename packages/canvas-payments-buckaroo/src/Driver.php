@@ -221,7 +221,7 @@
 			}
 			
 			// Grab the API response
-			$response = $result['response'];
+			$response = $result['response'] ?? [];
 			
 			// Buckaroo's Key is our transactionId going forward — not the invoice number.
 			// The redirect URL lives in RequiredAction.RedirectURL.
@@ -289,7 +289,7 @@
 			}
 			
 			// Grab response data
-			$data = $result['response'];
+			$data = $result['response'] ?? [];
 			$statusCode = (int)($data['Status']['Code']['Code'] ?? 0);
 			$currency = $data['Currency'] ?? '';
 			
@@ -445,7 +445,7 @@
 			}
 			
 			// Grab response
-			$data = $result['response'];
+			$data = $result['response'] ?? [];
 			$relatedTransactions = $data['RelatedTransactions'] ?? [];
 
 			// Fall back to the original transaction's currency when the refund entry omits it.
@@ -477,7 +477,7 @@
 				}
 				
 				// Add result to list
-				$refundData = $refundResult['response'];
+				$refundData = $refundResult['response'] ?? [];
 				$amountDecimal = (float)($refundData['AmountCredit'] ?? 0);
 				
 				$refunds[] = new RefundResult(

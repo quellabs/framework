@@ -203,7 +203,7 @@
 			}
 			
 			// Grab the response
-			$response = $result['response'];
+			$response = $result['response'] ?? [];
 			
 			// Return the result
 			return new InitiateResult(
@@ -278,7 +278,7 @@
 			}
 			
 			// Extract the fields needed to build a PaymentState
-			$response = $result['response'];
+			$response = $result['response'] ?? [];
 			$resultCode = $response['resultCode'] ?? 'Unknown';
 			$pspReference = $response['pspReference'] ?? null;
 			$currency = $response['amount']['currency'] ?? '';

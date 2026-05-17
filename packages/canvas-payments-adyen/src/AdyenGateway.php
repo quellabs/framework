@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\Payments\Adyen;
 	
+	use Quellabs\Contracts\Gateway\GatewayInterface;
 	use Symfony\Component\HttpClient\HttpClient;
 	use Symfony\Contracts\HttpClient\HttpClientInterface;
 	
@@ -12,11 +13,13 @@
 	 *   ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => [...]]
 	 *   ['request' => ['result' => 0, 'errorId' => <code>, 'errorMessage' => <msg>]]
 	 * @see https://docs.adyen.com/api-explorer/Checkout/71/overview
+	 *
+	 * @phpstan-import-type GatewayResponse from GatewayInterface
 	 */
 	class AdyenGateway {
 		
 		// Adyen Checkout API version — update here when migrating to a newer version.
-		private const CHECKOUT_VERSION = 'v71';
+		private const string CHECKOUT_VERSION = 'v71';
 		
 		/** @var HttpClientInterface // Shared HTTP client instance */
 		private HttpClientInterface $client;
@@ -35,7 +38,7 @@
 		 * @param Driver $driver
 		 */
 		public function __construct(Driver $driver) {
-			// Fetch config from driveer
+			// Fetch config from driver
 			$config = $driver->getConfig();
 			
 			// Extract information
@@ -60,7 +63,7 @@
 		 * back to the returnUrl with ?redirectResult= appended.
 		 * @see https://docs.adyen.com/unified-commerce/pay-by-link/create-payment-links/api
 		 * @param array<string, mixed> $payload Request body — must include merchantAccount, amount, reference, returnUrl
-		 * @return array<string, mixed>
+		 * @return GatewayResponse
 		 */
 		public function createPaymentLink(array $payload): array {
 			return $this->post('/paymentLinks', $payload);
@@ -71,7 +74,7 @@
 		 * Adyen appends ?redirectResult= to the returnUrl — submit it here to get the resultCode.
 		 * @see https://docs.adyen.com/api-explorer/Checkout/71/post/payments/details
 		 * @param array<string, mixed> $payload Must contain details['redirectResult'], optionally paymentData
-		 * @return array<string, mixed>
+		 * @return GatewayResponse
 		 */
 		public function getPaymentDetails(array $payload): array {
 			return $this->post('/payments/details', $payload);
@@ -83,7 +86,7 @@
 		 * amount, currency, and country — so always pass all three for accurate results.
 		 * @see https://docs.adyen.com/api-explorer/Checkout/71/post/paymentMethods
 		 * @param array<string, mixed> $payload Must include merchantAccount; recommended: amount, currency, countryCode
-		 * @return array<string, mixed>
+		 * @return GatewayResponse
 		 */
 		public function getPaymentMethods(array $payload): array {
 			return $this->post('/paymentMethods', $payload);
@@ -174,7 +177,7 @@
 		 * All Checkout API methods funnel through here to keep HTTP handling in one place.
 		 * @param string $endpoint Path relative to the versioned base URL (e.g. '/sessions')
 		 * @param array<string, mixed> $payload JSON request body
-		 * @return array<string, mixed>
+		 * @return GatewayResponse
 		 */
 		private function post(string $endpoint, array $payload): array {
 			
