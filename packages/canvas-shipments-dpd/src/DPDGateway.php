@@ -87,8 +87,8 @@
 			$config = $driver->getConfig();
 			$isTest = (bool)($config['test_mode'] ?? false);
 			
-			$this->baseUrl  = $isTest ? self::BASE_URL_TEST : self::BASE_URL_LIVE;
-			$this->delisId  = $isTest ? ($config['test_delis_id'] ?? '') : ($config['delis_id'] ?? '');
+			$this->baseUrl = $isTest ? self::BASE_URL_TEST : self::BASE_URL_LIVE;
+			$this->delisId = $isTest ? ($config['test_delis_id'] ?? '') : ($config['delis_id'] ?? '');
 			$this->password = $isTest ? ($config['test_password'] ?? '') : ($config['password'] ?? '');
 			$this->labelCache = new LabelFileCache(
 				$config['cache_path'] ?? 'storage/dpd/labels',
@@ -109,12 +109,6 @@
 		 * @return GatewayResponse
 		 */
 		public function createShipment(array $payload): array {
-			$token = $this->getValidToken();
-			
-			if ($token === null) {
-				return ['request' => ['result' => 0, 'errorId' => 'auth_failed', 'errorMessage' => 'DPD authentication failed']];
-			}
-			
 			$general = $payload['generalShipmentData'];
 			$parcels = $payload['parcels'];
 			$psd = $payload['productAndServiceData'];
@@ -130,8 +124,8 @@
     xmlns:ns1="http://dpd.com/common/service/types/ShipmentService/3.5">
   <soapenv:Header>
     <ns:authentication>
-      <delisId>{$this->delisId}</delisId>
-      <authToken>{$token}</authToken>
+      <delisId>{{delisId}}</delisId>
+      <authToken>{{token}}</authToken>
       <messageLanguage>nl_NL</messageLanguage>
     </ns:authentication>
   </soapenv:Header>
@@ -160,19 +154,14 @@
 </soapenv:Envelope>
 XML;
 			
-			try {
-				$response = $this->client->request('POST', $this->baseUrl . '/ShipmentService', [
-					'headers' => [
-						'Content-Type' => 'text/xml; charset=utf-8',
-						'SOAPAction'   => '""',
-					],
-					'body'    => $xml,
-				]);
-				
-				return $this->parseShipmentResponse($response->getContent(false), $response->getStatusCode());
-			} catch (\Throwable $e) {
-				return ['request' => ['result' => 0, 'errorId' => $e->getCode(), 'errorMessage' => $e->getMessage()]];
+			$result = $this->request('/ShipmentService', $xml);
+			
+			if ($result['request']['result'] === 0) {
+				return $result;
 			}
+			
+			$response = $result['response'] ?? [];
+			return $this->parseShipmentResponse($response['body'], $response['statusCode']);
 		}
 		
 		/**
@@ -181,20 +170,14 @@ XML;
 		 * @return GatewayResponse
 		 */
 		public function getTrackingData(string $parcelLabelNumber): array {
-			$token = $this->getValidToken();
-			
-			if ($token === null) {
-				return ['request' => ['result' => 0, 'errorId' => 'auth_failed', 'errorMessage' => 'DPD authentication failed']];
-			}
-			
 			$xml = <<<XML
 <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
     xmlns:ns="http://dpd.com/common/service/types/Authentication/2.0"
     xmlns:ns1="http://dpd.com/common/service/types/ParcelLifeCycleService/2.0">
   <soapenv:Header>
     <ns:authentication>
-      <delisId>{$this->delisId}</delisId>
-      <authToken>{$token}</authToken>
+      <delisId>{{delisId}}</delisId>
+      <authToken>{{token}}</authToken>
       <messageLanguage>nl_NL</messageLanguage>
     </ns:authentication>
   </soapenv:Header>
@@ -206,19 +189,14 @@ XML;
 </soapenv:Envelope>
 XML;
 			
-			try {
-				$response = $this->client->request('POST', $this->baseUrl . '/ParcelLifeCycleService', [
-					'headers' => [
-						'Content-Type' => 'text/xml; charset=utf-8',
-						'SOAPAction'   => '""',
-					],
-					'body'    => $xml,
-				]);
-				
-				return $this->parseTrackingResponse($response->getContent(false), $response->getStatusCode());
-			} catch (\Throwable $e) {
-				return ['request' => ['result' => 0, 'errorId' => $e->getCode(), 'errorMessage' => $e->getMessage()]];
+			$result = $this->request('/ParcelLifeCycleService', $xml);
+			
+			if ($result['request']['result'] === 0) {
+				return $result;
 			}
+			
+			$response = $result['response'] ?? [];
+			return $this->parseTrackingResponse($response['body'], $response['statusCode']);
 		}
 		
 		/**
@@ -230,20 +208,14 @@ XML;
 		 * @return GatewayResponse
 		 */
 		public function findParcelShops(string $country, string $postalCode, string $city, int $limit = 10): array {
-			$token = $this->getValidToken();
-			
-			if ($token === null) {
-				return ['request' => ['result' => 0, 'errorId' => 'auth_failed', 'errorMessage' => 'DPD authentication failed']];
-			}
-			
 			$xml = <<<XML
 <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
     xmlns:ns="http://dpd.com/common/service/types/Authentication/2.0"
     xmlns:ns1="http://dpd.com/common/service/types/ParcelShopFinderService/5.0">
   <soapenv:Header>
     <ns:authentication>
-      <delisId>{$this->delisId}</delisId>
-      <authToken>{$token}</authToken>
+      <delisId>{{delisId}}</delisId>
+      <authToken>{{token}}</authToken>
       <messageLanguage>nl_NL</messageLanguage>
     </ns:authentication>
   </soapenv:Header>
@@ -258,19 +230,14 @@ XML;
 </soapenv:Envelope>
 XML;
 			
-			try {
-				$response = $this->client->request('POST', $this->baseUrl . '/ParcelShopFinderService', [
-					'headers' => [
-						'Content-Type' => 'text/xml; charset=utf-8',
-						'SOAPAction'   => '""',
-					],
-					'body'    => $xml,
-				]);
-				
-				return $this->parseParcelShopResponse($response->getContent(false), $response->getStatusCode());
-			} catch (\Throwable $e) {
-				return ['request' => ['result' => 0, 'errorId' => $e->getCode(), 'errorMessage' => $e->getMessage()]];
+			$result = $this->request('/ParcelShopFinderService', $xml);
+			
+			if ($result['request']['result'] === 0) {
+				return $result;
 			}
+			
+			$response = $result['response'] ?? [];
+			return $this->parseParcelShopResponse($response['body'], $response['statusCode']);
 		}
 		
 		/**
@@ -324,18 +291,23 @@ XML;
 		 * actually expires, avoiding races on slow networks or long-running requests.
 		 *
 		 * @return string|null
-		 * @throws \DateInvalidOperationException
 		 */
 		private function getValidToken(): ?string {
 			$now = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
 			$margin = new \DateInterval('PT5M'); // 5-minute safety margin
 			
-			if (
-				$this->authToken !== null &&
-				$this->authTokenExpires !== null &&
-				$this->authTokenExpires->sub($margin) > $now
-			) {
-				return $this->authToken;
+			try {
+				if (
+					$this->authToken !== null &&
+					$this->authTokenExpires !== null &&
+					$this->authTokenExpires->sub($margin) > $now
+				) {
+					return $this->authToken;
+				}
+			} catch (\DateInvalidOperationException) {
+				// authTokenExpires somehow holds an invalid state; fall through and re-authenticate
+				$this->authToken = null;
+				$this->authTokenExpires = null;
 			}
 			
 			return $this->authenticate();
@@ -407,6 +379,62 @@ XML;
 		}
 		
 		/**
+		 * Acquires a valid auth token, sends a raw SOAP request, and returns a
+		 * normalised GatewayResponse. On success, 'response' contains 'statusCode'
+		 * and 'body' for the caller to parse. On auth or transport failure, returns
+		 * a standard error envelope.
+		 *
+		 * @param string $endpoint Service path appended to the base URL (e.g. '/ShipmentService')
+		 * @param string $xml SOAP envelope with {{token}} and {{delisId}} placeholders
+		 * @return GatewayResponse
+		 */
+		private function request(string $endpoint, string $xml): array {
+			// Fetch the access token
+			$token = $this->getValidToken();
+			
+			// If no token, return failure response
+			if ($token === null) {
+				return ['request' => ['result' => 0, 'errorId' => 'auth_failed', 'errorMessage' => 'DPD authentication failed']];
+			}
+			
+			// Copy token into XML data
+			$xml = str_replace(['{{token}}', '{{delisId}}'], [$token, $this->delisId], $xml);
+			
+			try {
+				// Call API
+				$response = $this->client->request('POST', $this->baseUrl . $endpoint, [
+					'headers' => [
+						'Content-Type' => 'text/xml; charset=utf-8',
+						'SOAPAction'   => '""',
+					],
+					'body'    => $xml,
+				]);
+				
+				// Return response
+				return [
+					'request'  => ['result' => 1, 'errorId' => '', 'errorMessage' => ''],
+					'response' => [
+						'statusCode' => $response->getStatusCode(),
+						'body'       => $response->getContent(false)
+					]
+				];
+			} catch (\Throwable $e) {
+				return ['request' => ['result' => 0, 'errorId' => $e->getCode(), 'errorMessage' => $e->getMessage()]];
+			}
+		}
+		
+		/**
+		 * Extracts the SOAP fault message from a parsed XML envelope, if present.
+		 * Returns null when no fault element is found.
+		 * @param \SimpleXMLElement $xml
+		 * @return string|null
+		 */
+		private function extractSoapFault(\SimpleXMLElement $xml): ?string {
+			$fault = $xml->xpath('//faultstring');
+			return !empty($fault) ? (string)$fault[0] : null;
+		}
+		
+		/**
 		 * Parses a SOAP storeOrders response and extracts the parcel label number and label content.
 		 * @param string $body Raw SOAP response body
 		 * @param int $statusCode HTTP status code
@@ -427,11 +455,10 @@ XML;
 			}
 			
 			// Check for fault
-			$fault = $xml->xpath('//faultstring');
+			$faultMessage = $this->extractSoapFault($xml);
 			
-			// If fault was found, return it
-			if (!empty($fault)) {
-				return ['request' => ['result' => 0, 'errorId' => 'soap_fault', 'errorMessage' => (string)$fault[0]]];
+			if ($faultMessage !== null) {
+				return ['request' => ['result' => 0, 'errorId' => 'soap_fault', 'errorMessage' => $faultMessage]];
 			}
 			
 			// Look for error in response
@@ -492,10 +519,10 @@ XML;
 				return ['request' => ['result' => 0, 'errorId' => 'parse_error', 'errorMessage' => 'Failed to parse DPD tracking response']];
 			}
 			
-			$fault = $xml->xpath('//faultstring');
+			$faultMessage = $this->extractSoapFault($xml);
 			
-			if (!empty($fault)) {
-				return ['request' => ['result' => 0, 'errorId' => 'soap_fault', 'errorMessage' => (string)$fault[0]]];
+			if ($faultMessage !== null) {
+				return ['request' => ['result' => 0, 'errorId' => 'soap_fault', 'errorMessage' => $faultMessage]];
 			}
 			
 			// Convert the XML to an array for easier consumption in the driver
@@ -530,10 +557,10 @@ XML;
 				return ['request' => ['result' => 0, 'errorId' => 'parse_error', 'errorMessage' => 'Failed to parse DPD parcel shop response']];
 			}
 			
-			$fault = $xml->xpath('//faultstring');
+			$faultMessage = $this->extractSoapFault($xml);
 			
-			if (!empty($fault)) {
-				return ['request' => ['result' => 0, 'errorId' => 'soap_fault', 'errorMessage' => (string)$fault[0]]];
+			if ($faultMessage !== null) {
+				return ['request' => ['result' => 0, 'errorId' => 'soap_fault', 'errorMessage' => $faultMessage]];
 			}
 			
 			$shops = $xml->xpath('//*[local-name()="parcelShop"]') ?: [];
@@ -563,10 +590,10 @@ XML;
 			$message = "HTTP {$statusCode}";
 			
 			if ($xml !== null) {
-				$fault = $xml->xpath('//faultstring');
+				$faultMessage = $this->extractSoapFault($xml);
 				
-				if (!empty($fault)) {
-					$message = (string)$fault[0];
+				if ($faultMessage !== null) {
+					$message = $faultMessage;
 				}
 			}
 			
