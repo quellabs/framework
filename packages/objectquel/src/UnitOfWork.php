@@ -25,6 +25,7 @@
 	use Quellabs\ObjectQuel\Annotations\Orm\OneToOne;
 	use Quellabs\ObjectQuel\Collections\EntityCollection;
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
+	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
 	use Quellabs\ObjectQuel\Persistence\DeletePersister;
 	use Quellabs\ObjectQuel\Persistence\InsertPersister;
 	use Quellabs\ObjectQuel\Persistence\UpdatePersister;
@@ -177,7 +178,7 @@
 			}
 			
 			// Convert the primary keys to a string
-			$primaryKeyString = $this->convertPrimaryKeysToString($primaryKeys);
+			$primaryKeyString = $this->serializePrimaryKeys($primaryKeys);
 			
 			// Look up the object hash via the index, then return the entity
 			$hash = $this->indexByClass[$normalizedEntityName][$primaryKeyString] ?? null;
@@ -227,7 +228,7 @@
 			
 			// Convert the primary keys to a string representation for indexing
 			// This allows for composite keys to be used as array indexes
-			$primaryKeysString = $this->convertPrimaryKeysToString($primaryKeys);
+			$primaryKeysString = $this->serializePrimaryKeys($primaryKeys);
 			
 			// Store the hash in the index for quick lookup by primary key
 			// This mapping enables finding entities by their database identifiers
@@ -279,7 +280,7 @@
 			
 			// Convert primary keys to a string format for use as array index
 			// For new entities without generated IDs, this might be an empty string
-			$primaryKeysString = $this->convertPrimaryKeysToString($primaryKeys);
+			$primaryKeysString = $this->serializePrimaryKeys($primaryKeys);
 			
 			// Add the entity object to the identity map using its hash as the key
 			// This registers the entity for tracking in the current unit of work
@@ -308,11 +309,11 @@
 		public function commit(object|array|null $entity = null): void {
 			try {
 				// Process cascading persists first to ensure all related entities are managed
-				$this->processCascadingPersists();
+				$this->executeCascadingPersists();
 				
 				// Determine the list of entities to process
 				if ($entity === null) {
-					$sortedEntities = $this->scheduleEntities();
+					$sortedEntities = $this->scheduleEntitiesForPersistence();
 				} elseif (is_array($entity)) {
 					$sortedEntities = $entity;
 				} else {
@@ -330,7 +331,7 @@
 					foreach ($sortedEntities as $entity) {
 						// Copy the primary keys from the parent entity to this entity, if available.
 						// This only happens if the relationship is not self-referential.
-						foreach($this->fetchParentEntitiesPrimaryKeyData($entity) as $parentEntity) {
+						foreach($this->extractParentPrimaryKeyData($entity) as $parentEntity) {
 							$this->propertyHandler->set($entity, $parentEntity["property"], $parentEntity["value"]);
 						}
 						
@@ -384,7 +385,7 @@
 					$this->connection->commitTrans();
 					
 					// Update the identity map and reset change tracking
-					$this->updateIdentityMapAndResetChangeTracking($changed, $deleted);
+					$this->resetAfterCommit($changed, $deleted);
 				}
 			} catch (\Throwable $e) {
 				// Roll back the transaction if any error or exception occurs.
@@ -467,13 +468,14 @@
 			$this->entityRemovalList[$entity] = true;
 			
 			// Process dependent entities that should be cascade deleted
-			$this->processCascadingDeletions($entity);
+			$this->executeCascadingDeletions($entity);
 		}
-
+		
 		/**
 		 * Determines the state of an entity (e.g., new, modified, not managed, etc.).
 		 * @param object $entity The entity whose state needs to be determined.
 		 * @return int The state of the entity, represented as a constant from DirtyState.
+		 * @throws EntityResolutionException
 		 */
 		private function getEntityState(object $entity): int {
 			// Checks if the entity is not being managed.
@@ -492,17 +494,12 @@
 			}
 			
 			// Checks if the entity is new based on the absence of primary keys.
-			$primaryKeys = $this->entityStore->getIdentifierKeys($entity);
-			
-			if ($this->hasNullPrimaryKeys($entity, $primaryKeys)) {
+			if ($this->hasNullPrimaryKeys($entity)) {
 				return DirtyState::New;
 			}
 			
 			// Checks if the entity has been modified compared to the original data.
-			$originalData = $this->getOriginalEntityData($entity);
-			$serializedEntity = $this->getSerializer()->serialize($entity);
-			
-			if ($originalData === null || $this->isEntityDirty($serializedEntity, $originalData)) {
+			if ($this->isEntityDirty($entity)) {
 				return DirtyState::Dirty;
 			}
 			
@@ -515,7 +512,7 @@
 		 * @param array<string, mixed> $primaryKeys
 		 * @return string
 		 */
-		private function convertPrimaryKeysToString(array $primaryKeys): string {
+		private function serializePrimaryKeys(array $primaryKeys): string {
 			// Ensure consistent order
 			ksort($primaryKeys);
 			
@@ -526,10 +523,12 @@
 		/**
 		 * Returns true if the entity has no populated primary keys, false if it does.
 		 * @param object $entity
-		 * @param array<int, string> $primaryKeys
 		 * @return bool
+		 * @throws EntityResolutionException
 		 */
-		private function hasNullPrimaryKeys(object $entity, array $primaryKeys): bool {
+		private function hasNullPrimaryKeys(object $entity): bool {
+			$primaryKeys = $this->entityStore->getIdentifierKeys($entity);
+			
 			foreach ($primaryKeys as $primaryKey) {
 				if ($this->propertyHandler->get($entity, $primaryKey) === null) {
 					return true;
@@ -541,12 +540,24 @@
 		
 		/**
 		 * Returns true if any of the entity columns changed, false if not.
-		 * @param array<string, mixed> $extractedEntity
-		 * @param array<string, mixed> $originalData
+		 * @param object $entity
 		 * @return bool
 		 */
-		private function isEntityDirty(array $extractedEntity, array $originalData): bool {
-			foreach ($extractedEntity as $key => $value) {
+		private function isEntityDirty(object $entity): bool {
+			// Retrieve the snapshot taken when the entity was loaded from the database
+			$originalData = $this->getOriginalEntityData($entity);
+			
+			// No snapshot means the entity was never persisted, treat it as dirty
+			if ($originalData === null) {
+				return true;
+			}
+			
+			// Serialize the current state of the entity for comparison
+			$serializedEntity = $this->getSerializer()->serialize($entity);
+			
+			// Compare each current column value against the original snapshot
+			// A single mismatch is enough to consider the entity dirty
+			foreach ($serializedEntity as $key => $value) {
 				if ($value !== ($originalData[$key] ?? null)) {
 					return true;
 				}
@@ -562,26 +573,6 @@
 		 */
 		private function isEntityScheduledForDeletion(object $entity): bool {
 			return isset($this->entityRemovalList[$entity]);
-		}
-		
-		/**
-		 * Retrieves a property value from an entity object using getter method or property handler.
-		 * @param object $entity The object to extract the value from
-		 * @param string $property The property name to retrieve
-		 * @return mixed           The value of the requested property
-		 */
-		private function getValueFromEntity(object $entity, string $property): mixed {
-			// Generate the getter method name by capitalizing the first letter of the property
-			$getterMethod = 'get' . ucfirst($property);
-			
-			// Check if the entity has the getter method and call it if exists
-			if (method_exists($entity, $getterMethod)) {
-				return $entity->$getterMethod();
-			}
-			
-			// Fallback to using the property handler if no getter method exists
-			// This likely accesses properties through alternative means (e.g., reflection)
-			return $this->propertyHandler->get($entity, $property);
 		}
 		
 		/**
@@ -629,7 +620,7 @@
 		 * @throws OrmException When a cycle is detected in the entity relations,
 		 * indicating an unresolvable dependency between entities (e.g., A depends on B, B depends on A).
 		 */
-		private function scheduleEntities(): array {
+		private function scheduleEntitiesForPersistence(): array {
 			// Initialize the data structures for topological sorting algorithm.
 			$graph = []; // Adjacency list representation of the entity dependency graph.
 			$inDegree = []; // Tracks the number of dependencies (incoming edges) for each entity.
@@ -749,7 +740,7 @@
 		 * @param array<int, object> $deleted List of deleted entities
 		 * @return void
 		 */
-		private function updateIdentityMapAndResetChangeTracking(array $changed, array $deleted): void {
+		private function resetAfterCommit(array $changed, array $deleted): void {
 			foreach ($changed as $entity) {
 				// Get the unique object identifier
 				$hash = spl_object_hash($entity);
@@ -759,7 +750,7 @@
 				
 				// Add primary key to index cache for easy lookup
 				$primaryKeys = $this->getIdentifiers($entity);
-				$primaryKeysString = $this->convertPrimaryKeysToString($primaryKeys);
+				$primaryKeysString = $this->serializePrimaryKeys($primaryKeys);
 				$this->indexByClass[$class][$primaryKeysString] = $hash;
 				
 				// Store the original data of the entity for later comparison
@@ -781,7 +772,7 @@
 		 * @param object $entity The entity for which to retrieve the parent entity and annotation.
 		 * @return array<int, array{entity: object, property: string, value: mixed}> An associative array with 'entity' and 'annotation' as keys, or null if not found.
 		 */
-		private function fetchParentEntitiesPrimaryKeyData(object $entity): array {
+		private function extractParentPrimaryKeyData(object $entity): array {
 			// Initialize an empty array to store the results.
 			// This will hold all parent entities and their relationship data
 			$result = [];
@@ -874,7 +865,7 @@
 		 * @param object $entity The parent entity being deleted
 		 * @return void
 		 */
-		private function processCascadingDeletions(object $entity): void {
+		private function executeCascadingDeletions(object $entity): void {
 			// Normalize the entity class name to ensure consistent format
 			// Normalization handles variations in namespace notation
 			$normalizedClass = $this->entityStore->resolveProxyClass($entity);
@@ -887,7 +878,7 @@
 			// Process each dependent entity class to find and mark instances for deletion
 			foreach ($dependentEntityClasses as $dependentEntityClass) {
 				/** @var class-string $dependentEntityClass */
-				$this->processDependentEntityClass($dependentEntityClass, $normalizedClass, $entity);
+				$this->handleDependentEntityClass($dependentEntityClass, $normalizedClass, $entity);
 			}
 		}
 		
@@ -900,7 +891,7 @@
 		 * @param object $entity The parent entity object instance being deleted
 		 * @return void
 		 */
-		private function processDependentEntityClass(string $dependentEntityClass, string $normalizedClass, object $entity): void {
+		private function handleDependentEntityClass(string $dependentEntityClass, string $normalizedClass, object $entity): void {
 			// Retrieve all ManyToOne relationships defined in the dependent entity class
 			// These are relationships where the dependent entity has a foreign key to some parent
 			$manyToOneDependencies = $this->entityStore->getManyToOneDependencies($dependentEntityClass);
@@ -1047,7 +1038,7 @@
 		 * handled during the persistence operation.
 		 * @return void
 		 */
-		private function processCascadingPersists(): void {
+		private function executeCascadingPersists(): void {
 			// Get flattened identity map to process all managed entities
 			// The flattened map ensures we have a single-dimensional array of all tracked objects
 			$entitiesToProcess = $this->getFlattenedIdentityMap();
@@ -1063,7 +1054,7 @@
 				
 				// Process cascade persist operations for this entity's associations
 				// This will identify any related entities that should also be persisted
-				$this->processCascadingPersistsForEntity($entity);
+				$this->executeCascadingPersistsForEntity($entity);
 			}
 		}
 		
@@ -1074,7 +1065,7 @@
 		 * @param object $entity The entity whose relationships should be checked for cascade persist
 		 * @return void
 		 */
-		private function processCascadingPersistsForEntity(object $entity): void {
+		private function executeCascadingPersistsForEntity(object $entity): void {
 			// Process OneToMany relationships
 			$this->processCascadingOneToManyPersists($entity);
 			
@@ -1129,7 +1120,7 @@
 					$this->persistNew($relatedEntity);
 					
 					// Recursively process the related entity's own cascading relationships
-					$this->processCascadingPersistsForEntity($relatedEntity);
+					$this->executeCascadingPersistsForEntity($relatedEntity);
 				}
 			}
 		}
@@ -1182,7 +1173,7 @@
 				$this->persistNew($relatedEntity);
 				
 				// Recursively process the related entity's own cascading relationships
-				$this->processCascadingPersistsForEntity($relatedEntity);
+				$this->executeCascadingPersistsForEntity($relatedEntity);
 			}
 		}
 	}
