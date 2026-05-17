@@ -38,10 +38,10 @@
 	class KlarnaGateway {
 		
 		/** @var string Production base URL */
-		private const BASE_URL_LIVE = 'https://api.klarna.com';
+		private const string BASE_URL_LIVE = 'https://api.klarna.com';
 		
 		/** @var string Playground (test) base URL */
-		private const BASE_URL_SANDBOX = 'https://api.playground.klarna.com';
+		private const string BASE_URL_SANDBOX = 'https://api.playground.klarna.com';
 		
 		/** @var HttpClientInterface Shared HTTP client instance */
 		private HttpClientInterface $client;
@@ -95,7 +95,7 @@
 		 *
 		 * @see https://docs.klarna.com/acquirer/klarna/web-payments/integrate-with-klarna-payments/integrate-via-sdk/step-1-initiate-a-payment/
 		 * @param array<string, mixed> $payload KP session payload per Klarna spec
-		 * @return array Normalised response containing session_id and client_token
+		 * @return array<string, mixed> Normalised response containing session_id and client_token
 		 */
 		public function createPaymentSession(array $payload): array {
 			return $this->request('POST', '/payments/v1/sessions', $payload);
@@ -119,7 +119,7 @@
 		 *
 		 * @see https://docs.klarna.com/acquirer/klarna/web-payments/integrate-with-klarna-payments/integrate-via-hpp/api-documentation/create-session/
 		 * @param array<string, mixed> $payload HPP session payload per Klarna spec
-		 * @return array Normalised response containing session_id, redirect_url, expires_at
+		 * @return array<string, mixed> Normalised response containing session_id, redirect_url, expires_at
 		 */
 		public function createHppSession(array $payload): array {
 			return $this->request('POST', '/hpp/v1/sessions', $payload);
@@ -133,7 +133,7 @@
 		 *
 		 * @see https://docs.klarna.com/acquirer/klarna/web-payments/integrate-with-klarna-payments/integrate-via-hpp/api-documentation/read-session/
 		 * @param string $hppSessionId The HPP session_id returned at creation
-		 * @return array Normalised response containing status and, when COMPLETED, order_id
+		 * @return array<string, mixed> Normalised response containing status and, when COMPLETED, order_id
 		 */
 		public function readHppSession(string $hppSessionId): array {
 			return $this->request('GET', '/hpp/v1/sessions/' . urlencode($hppSessionId));
@@ -147,7 +147,7 @@
 		 *
 		 * @see https://docs.klarna.com/acquirer/klarna/after-payments/order-management/manage-orders-with-the-api/view-and-change-orders/
 		 * @param string $orderId The Klarna order_id (UUID)
-		 * @return array Normalised response containing order details
+		 * @return array<string, mixed> Normalised response containing order details
 		 */
 		public function getOrder(string $orderId): array {
 			return $this->request('GET', '/ordermanagement/v1/orders/' . urlencode($orderId));
@@ -162,7 +162,7 @@
 		 *
 		 * @see https://docs.klarna.com/acquirer/klarna/after-payments/order-management/manage-orders-with-the-api/view-and-change-orders/
 		 * @param string $orderId The Klarna order_id (UUID)
-		 * @return array Normalised response (204 No Content maps to empty 'response' array)
+		 * @return array<string, mixed> Normalised response (204 No Content maps to empty 'response' array)
 		 */
 		public function acknowledgeOrder(string $orderId): array {
 			return $this->request('POST', '/ordermanagement/v1/orders/' . urlencode($orderId) . '/acknowledge');
@@ -178,7 +178,7 @@
 		 * @param string $orderId The Klarna order_id (UUID)
 		 * @param int $capturedAmount Amount in minor units (cents) to capture
 		 * @param string $idempotencyKey UUID v4; prevents duplicate capture on retry
-		 * @return array Normalised response containing capture_id
+		 * @return array<string, mixed> Normalised response containing capture_id
 		 */
 		public function captureOrder(string $orderId, int $capturedAmount, string $idempotencyKey): array {
 			return $this->request(
@@ -201,7 +201,7 @@
 		 * @param int $refundedAmount Amount to refund in minor units (cents)
 		 * @param string $idempotencyKey UUID v4; prevents duplicate refund on retry
 		 * @param string|null $description Optional description shown to the customer
-		 * @return array Normalised response containing refund_id
+		 * @return array<string, mixed> Normalised response containing refund_id
 		 */
 		public function refundOrder(string $orderId, int $refundedAmount, string $idempotencyKey, ?string $description = null): array {
 			// Strip null and empty description rather than sending an empty field.
@@ -229,9 +229,9 @@
 		 *
 		 * @param string $method HTTP method: GET or POST
 		 * @param string $endpoint Path relative to baseUrl
-		 * @param array|null $payload JSON body for POST; null for GET or body-less POST
+		 * @param array<string, mixed>|null $payload JSON body for POST; null for GET or body-less POST
 		 * @param array<string, mixed> $extraHeaders Additional headers (e.g. Klarna-Idempotency-Key)
-		 * @return array Normalised response
+		 * @return array<string, mixed> Normalised response
 		 */
 		private function request(string $method, string $endpoint, ?array $payload = null, array $extraHeaders = []): array {
 			try {
@@ -289,7 +289,7 @@
 		 * Klarna uses: { "error_code": "...", "error_messages": ["..."], "correlation_id": "..." }
 		 * Some endpoints use: { "error_code": "...", "error_message": "..." }
 		 *
-		 * @param array|null $body Decoded JSON body, or null if the body was empty
+		 * @param array<string, mixed>|null $body Decoded JSON body, or null if the body was empty
 		 * @param int $statusCode HTTP status code, used as fallback
 		 * @return string Human-readable error message
 		 */

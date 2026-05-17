@@ -164,7 +164,7 @@
 		 * Returns all refunds issued for the given transaction.
 		 * @param string $driver Driver name as returned in PaymentState::$provider (e.g. 'rabosmartpay')
 		 * @param string $paymentReference
-		 * @return array<int, mixed>
+		 * @return array<string, mixed>
 		 */
 		public function getRefunds(string $driver, string $paymentReference): array {
 			return $this->resolveDriver($driver)->getRefunds($paymentReference);

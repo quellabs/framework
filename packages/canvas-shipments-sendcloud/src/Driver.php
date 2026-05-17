@@ -426,7 +426,7 @@
 		 * Fetches shipping methods from the gateway and filters them by carrier module.
 		 * Shared by getDeliveryOptions() and getPickupOptions().
 		 * @param string $shippingModule
-		 * @return array Raw method arrays from the SendCloud API
+		 * @return array<string, mixed> Raw method arrays from the SendCloud API
 		 */
 		private function fetchFilteredMethods(string $shippingModule): array {
 			// Fetch shipping methods from API

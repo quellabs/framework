@@ -142,7 +142,7 @@
 		 * selection always happens on the Klarna HPP.
 		 *
 		 * @param string $paymentModule e.g. 'klarna', 'klarna_paylater'
-		 * @return array Always empty — Klarna handles payment method UI on the hosted page
+		 * @return array<string, mixed> Always empty — Klarna handles payment method UI on the hosted page
 		 */
 		public function getPaymentOptions(string $paymentModule): array {
 			// Klarna has no issuer list — method selection happens on the hosted page.
@@ -431,7 +431,7 @@
 		 * Creates a Hosted Payment Page (HPP) session linked to a KP session and returns
 		 * the raw HPP response array containing redirect_url and session_id.
 		 * @param string $kpSessionId The KP session_id returned by createKpSession()
-		 * @return array HPP session response
+		 * @return array<string, mixed> HPP session response
 		 * @throws PaymentInitiationException
 		 */
 		private function createHppSession(string $kpSessionId): array {
@@ -502,7 +502,7 @@
 		/**
 		 * Builds a valid order_lines array for the Klarna KP session payload.
 		 * @param PaymentRequest $request The payment request
-		 * @return array<int, array> Valid order_lines array
+		 * @return array<int, array<string, mixed>> Valid order_lines array
 		 */
 		private function buildOrderLines(PaymentRequest $request): array {
 			// Synthesize a single catch-all line from the total amount.

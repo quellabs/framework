@@ -133,7 +133,7 @@
 		/**
 		 * Verifies the webhook signature and extracts the payment context from the raw request.
 		 * @param Request $request
-		 * @return array{payload: array, eventType: string, paymentIntentId: string|null}
+		 * @return array{payload: array<string, mixed>, eventType: string, paymentIntentId: string|null}
 		 * @throws WebhookValidationException on any validation or verification failure
 		 */
 		private function parseWebhookRequest(Request $request): array {

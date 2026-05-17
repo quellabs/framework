@@ -32,7 +32,7 @@
 	class PayNLGateway {
 		
 		/** @var string Base URL for all Pay.nl TGU v1 API calls */
-		private const BASE_URL = 'https://connect.pay.nl/v1';
+		private const string BASE_URL = 'https://connect.pay.nl/v1';
 		
 		/** @var HttpClientInterface Shared HTTP client instance */
 		private HttpClientInterface $client;
@@ -73,7 +73,7 @@
 		 *
 		 * @see https://developer.pay.nl/reference/api_create_order-1
 		 * @param array<string, mixed> $payload Full order payload per Pay.nl spec
-		 * @return array Normalised response
+		 * @return array<string, mixed> Normalised response
 		 */
 		public function createOrder(array $payload): array {
 			return $this->request('POST', '/orders', $payload);
@@ -88,7 +88,7 @@
 		 *
 		 * @see https://developer.pay.nl/reference/api_get_status-1
 		 * @param string $orderId The order UUID (id field from createOrder response)
-		 * @return array Normalised response
+		 * @return array<string, mixed> Normalised response
 		 */
 		public function getOrderStatus(string $orderId): array {
 			// The order UUID goes in the path — URL-encode to handle any special characters.
@@ -107,7 +107,7 @@
 		 * @see https://developer.pay.nl/docs/refund
 		 * @param string $orderId The order UUID of the original payment
 		 * @param array<string, mixed> $payload May contain: amount.value, amount.currency, description
-		 * @return array Normalised response containing the updated order object
+		 * @return array<string, mixed> Normalised response containing the updated order object
 		 */
 		public function refundOrder(string $orderId, array $payload): array {
 			// PATCH updates the existing order in place rather than creating a new resource.
@@ -125,8 +125,8 @@
 		 * @see https://developer.pay.nl/docs/api-defenition
 		 * @param string $method HTTP method: GET, POST, or PATCH
 		 * @param string $endpoint Path relative to BASE_URL, e.g. '/orders'
-		 * @param array|null $payload JSON body for POST/PATCH; null for GET
-		 * @return array Normalised response
+		 * @param array<string, mixed>|null $payload JSON body for POST/PATCH; null for GET
+		 * @return array<string, mixed> Normalised response
 		 */
 		private function request(string $method, string $endpoint, ?array $payload = null): array {
 			try {
@@ -213,7 +213,7 @@
 		 *   401/404 with no body:
 		 *     (empty or null)
 		 *
-		 * @param array|null $body Decoded JSON body, or null if the body was empty
+		 * @param array<string, mixed>|null $body Decoded JSON body, or null if the body was empty
 		 * @param int $statusCode HTTP status code, used as fallback error identifier
 		 * @return string Human-readable error message suitable for exception messages
 		 */

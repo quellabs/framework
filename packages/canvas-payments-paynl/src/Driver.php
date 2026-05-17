@@ -121,7 +121,7 @@
 		 *
 		 * @see https://developer.pay.nl/docs/ideal
 		 * @param string $paymentModule e.g. 'paynl_ideal'
-		 * @return array Always empty — Pay.nl handles payment method UI on the hosted page
+		 * @return array<string, mixed> Always empty — Pay.nl handles payment method UI on the hosted page
 		 */
 		public function getPaymentOptions(string $paymentModule): array {
 			// Pay.nl removed direct issuer redirect in iDEAL 2.0 (deprecated 31-12-2024).

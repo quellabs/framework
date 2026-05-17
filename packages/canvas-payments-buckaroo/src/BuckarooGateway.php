@@ -64,7 +64,7 @@
 		 * Returns a RequiredAction.RedirectURL to send the shopper to.
 		 * @see https://docs.buckaroo.io/docs/transaction-post
 		 * @param array<string, mixed> $payload Full transaction payload per Buckaroo spec
-		 * @return array Normalised response
+		 * @return array<string, mixed> Normalised response
 		 */
 		public function createTransaction(array $payload): array {
 			return $this->request('POST', '/json/Transaction', $payload);
@@ -81,7 +81,7 @@
 		 *
 		 * @see https://docs.buckaroo.io/docs/transaction-get
 		 * @param string $transactionKey Buckaroo's own 32-char transaction key (from the Key field)
-		 * @return array Normalised response
+		 * @return array<string, mixed> Normalised response
 		 */
 		public function getTransactionStatus(string $transactionKey): array {
 			return $this->request('GET', '/json/Transaction/Status/' . urlencode($transactionKey));
@@ -95,7 +95,7 @@
 		 * with parameters; for iDEAL the parameter list contains the issuer codes and names.
 		 *
 		 * @see https://docs.buckaroo.io/docs/ideal-requests
-		 * @return array Normalised response
+		 * @return array<string, mixed> Normalised response
 		 */
 		public function getIdealIssuers(): array {
 			return $this->request('GET', '/json/Transaction/Specification/ideal');
@@ -107,7 +107,7 @@
 		 * Omitting AmountCredit triggers a full refund.
 		 * @see https://docs.buckaroo.io/docs/refunds
 		 * @param array<string, mixed> $payload Must include currency, OriginalTransactionKey, and optionally AmountCredit
-		 * @return array Normalised response containing the refund transaction Key
+		 * @return array<string, mixed> Normalised response containing the refund transaction Key
 		 */
 		public function refundTransaction(array $payload): array {
 			return $this->request('POST', '/json/Transaction', $payload);
@@ -129,8 +129,8 @@
 		 * @see https://docs.buckaroo.io/docs/json-authenticator
 		 * @param string $method HTTP method ('GET' or 'POST')
 		 * @param string $path Path relative to the API host (must start with '/')
-		 * @param array|null $payload JSON request body (POST only; omit for GET)
-		 * @return array Normalised response
+		 * @param array<string, mixed>|null $payload JSON request body (POST only; omit for GET)
+		 * @return array<string, mixed> Normalised response
 		 */
 		private function request(string $method, string $path, ?array $payload = null): array {
 			try {

@@ -451,7 +451,7 @@
 		 * Returns an empty array on missing address, unknown module, or API error.
 		 * @param string $shippingModule
 		 * @param ShipmentAddress|null $address
-		 * @return array Keys: 'delivery', 'pickup'
+		 * @return array<string, mixed> Keys: 'delivery', 'pickup'
 		 */
 		private function fetchDeliveryData(string $shippingModule, ?ShipmentAddress $address): array {
 			if ($address === null) {

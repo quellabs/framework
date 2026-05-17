@@ -29,11 +29,11 @@
 	class XPayGateway {
 		
 		/** @var string XPay Global API base URL */
-		private const BASE_URL = 'https://xpay.nexigroup.com/api/phoenix-0.0/psp/api/v1';
+		private const string BASE_URL = 'https://xpay.nexigroup.com/api/phoenix-0.0/psp/api/v1';
 		
 		/** @var string XPay Global sandbox API base URL */
 		/** @phpstan-ignore classConstant.unused */
-		private const BASE_URL_TEST = 'https://xpay.nexigroup.com/api/phoenix-0.0/psp/api/v1';
+		private const string BASE_URL_TEST = 'https://xpay.nexigroup.com/api/phoenix-0.0/psp/api/v1';
 		
 		/** @var string API key sent in the X-API-KEY header */
 		private string $apiKey;
@@ -63,8 +63,8 @@
 		 * that should be stored and verified against the return URL and push notifications.
 		 *
 		 * @see https://developer.nexigroup.com/xpayglobal/en-EU/api/payment-api-v1/#orders-hpp-post
-		 * @param array $payload Full order payload per XPay spec
-		 * @return array Normalised response
+		 * @param array<string, mixed> $payload Full order payload per XPay spec
+		 * @return array<string, mixed> Normalised response
 		 */
 		public function createOrder(array $payload): array {
 			return $this->request('POST', '/orders/hpp', $payload);
@@ -78,7 +78,7 @@
 		 *
 		 * @see https://developer.nexigroup.com/xpayglobal/en-EU/api/payment-api-v1/#orders-orderid-get
 		 * @param string $orderId Your order identifier (up to 27 chars)
-		 * @return array Normalised response
+		 * @return array<string, mixed> Normalised response
 		 */
 		public function getOrder(string $orderId): array {
 			return $this->request('GET', '/orders/' . urlencode($orderId));
@@ -91,7 +91,7 @@
 		 *
 		 * @see https://developer.nexigroup.com/xpayglobal/en-EU/api/payment-api-v1/#operations-operationid-get
 		 * @param string $operationId XPay-assigned operation identifier
-		 * @return array Normalised response
+		 * @return array<string, mixed> Normalised response
 		 */
 		public function getOperation(string $operationId): array {
 			return $this->request('GET', '/operations/' . urlencode($operationId));
@@ -106,8 +106,8 @@
 		 *
 		 * @see https://developer.nexigroup.com/xpayglobal/en-EU/api/payment-api-v1/#operations-operationid-refunds-post
 		 * @param string $operationId The CAPTURE operationId to refund against
-		 * @param array $payload Refund payload; may contain 'amount' and 'currency' for partial refunds
-		 * @return array Normalised response
+		 * @param array<string, mixed> $payload Refund payload; may contain 'amount' and 'currency' for partial refunds
+		 * @return array<string, mixed> Normalised response
 		 */
 		public function refundOperation(string $operationId, array $payload): array {
 			return $this->request('POST', '/operations/' . urlencode($operationId) . '/refunds', $payload);
@@ -118,7 +118,7 @@
 		 * Used to populate the available payment method list dynamically.
 		 *
 		 * @see https://developer.nexigroup.com/xpayglobal/en-EU/api/payment-api-v1/#paymentmethods-get
-		 * @return array Normalised response
+		 * @return array<string, mixed> Normalised response
 		 */
 		public function getPaymentMethods(): array {
 			return $this->request('GET', '/paymentmethods');
@@ -136,8 +136,8 @@
 		 *
 		 * @param string $method HTTP method ('GET' or 'POST')
 		 * @param string $path Path relative to the base URL (must start with '/')
-		 * @param array|null $payload JSON request body (POST only; omit for GET)
-		 * @return array Normalised response
+		 * @param array<string, mixed>|null $payload JSON request body (POST only; omit for GET)
+		 * @return array<string, mixed> Normalised response
 		 */
 		private function request(string $method, string $path, ?array $payload = null): array {
 			try {

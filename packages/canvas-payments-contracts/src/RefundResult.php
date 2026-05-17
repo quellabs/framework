@@ -25,7 +25,9 @@
 			/** ISO 4217 currency code (e.g. 'EUR', 'USD') */
 			public string $currency,
 			
-			/** Attached provider specific metadata */
+			/** Attached provider specific metadata
+			 * @var array<string, mixed>
+			 */
 			public array $metadata = [],
 			
 		) {

@@ -13,6 +13,7 @@
 		 * @param string $provider Identifier of the payment provider that created this session (e.g. 'mollie', 'stripe').
 		 * @param string $transactionId Provider-assigned transaction ID, used for status checks and refunds.
 		 * @param string $redirectUrl URL to redirect the customer to in order to complete the payment.
+		 * @param array<string, mixed> $metadata Optional provider-specific metadata.
 		 */
 		public function __construct(
 			public string $provider,

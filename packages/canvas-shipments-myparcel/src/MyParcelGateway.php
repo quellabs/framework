@@ -106,7 +106,7 @@
 		 * Returns: { "data": { "pdfs": { "url": "https://..." } } }
 		 *
 		 * @see https://developer.myparcel.nl/api-reference/08.labels.html
-		 * @param string|int|array $shipmentId Single ID, semicolon-string, or array of IDs
+		 * @param string|int|array<int, int> $shipmentId Single ID, semicolon-string, or array of IDs
 		 * @return array<string, mixed>
 		 */
 		public function getLabel(string|int|array $shipmentId): array {
@@ -160,7 +160,7 @@
 		 * Returns: { "data": { "tracktraces": [ {...} ] } }
 		 *
 		 * @see https://developer.myparcel.nl/api-reference/06.track-trace.html
-		 * @param string|array $barcode Single barcode or array of barcodes
+		 * @param string|array<int, string> $barcode Single barcode or array of barcodes
 		 * @return array<string, mixed>
 		 */
 		public function getTrackTrace(string|array $barcode): array {

@@ -31,10 +31,10 @@
 	class PostNLGateway {
 		
 		/** PostNL live API base URL */
-		private const BASE_URL_LIVE = 'https://api.postnl.nl';
+		private const string BASE_URL_LIVE = 'https://api.postnl.nl';
 		
 		/** PostNL sandbox API base URL */
-		private const BASE_URL_SANDBOX = 'https://api-sandbox.postnl.nl';
+		private const string BASE_URL_SANDBOX = 'https://api-sandbox.postnl.nl';
 		
 		/** @var HttpClientInterface Shared HTTP client instance */
 		private HttpClientInterface $client;
@@ -164,7 +164,7 @@
 		 * @param string $countryCode ISO 3166-1 alpha-2 country code
 		 * @param string $startDate Start of the window (dd-mm-yyyy); typically tomorrow
 		 * @param string $endDate End of the window (dd-mm-yyyy); max ~2 weeks ahead
-		 * @param array<string, mixed> $options Delivery types to request, e.g. ['Daytime', 'Morning', 'Evening', 'Sunday']
+		 * @param array<int, string> $options Delivery types to request, e.g. ['Daytime', 'Morning', 'Evening', 'Sunday']
 		 * @return array<string, mixed>
 		 */
 		public function getTimeframes(

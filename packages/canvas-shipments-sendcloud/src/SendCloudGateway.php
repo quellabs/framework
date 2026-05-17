@@ -113,7 +113,7 @@
 		/**
 		 * Returns service points (pickup locations) within a geographic bounding box.
 		 * @see https://docs.sendcloud.com/api/v2/#get-service-points
-		 * @param array<string, mixed> $carriers List of carrier names to filter by (e.g. ['postnl', 'dhl'])
+		 * @param string[] $carriers List of carrier names to filter by (e.g. ['postnl', 'dhl'])
 		 * @param string $country ISO 3166-1 alpha-2
 		 * @param float $neLat North-east bounding box latitude
 		 * @param float $neLng North-east bounding box longitude

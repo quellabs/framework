@@ -132,7 +132,7 @@
 		 * Reads the raw body, validates the PayPal signature headers, decodes the JSON payload,
 		 * and resolves the order ID from the capture's HATEOAS "up" link.
 		 * @param Request $request
-		 * @return array{payload: array, eventType: string, paymentReference: string|null, orderId: string|null}
+		 * @return array{payload: array<string, mixed>, eventType: string, paymentReference: string|null, orderId: string|null}
 		 * @throws WebhookValidationException on any validation or verification failure
 		 */
 		private function parseWebhookRequest(Request $request): array {
