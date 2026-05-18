@@ -144,6 +144,21 @@
 			"));
 		}
 		
+		public function testJsonSourcePropertyInWhereIsAllowed(): void {
+			// where y.id = 10 must be accepted — y.id is a property access on a json
+			// source range, not a bare range reference. This is the non-throwing
+			// counterpart to testBareJsonSourceRangeInWhereThrows and guards against
+			// a regression where JsonRoot identifiers with a chained property were
+			// incorrectly rejected alongside truly bare ones.
+			$result = $this->em->executeQuery("
+				range of y is json_source('f:\\\\test.json', '$.rows')
+				retrieve(y.id)
+				where y.id = 10
+			");
+			
+			$this->assertNotNull($result);
+		}
+		
 		public function testWhereReferenceToUnexportedSubqueryFieldThrows(): void {
 			// x only exports 'hello'; referencing x.id in WHERE must be rejected
 			// at semantic analysis time, before any execution.
