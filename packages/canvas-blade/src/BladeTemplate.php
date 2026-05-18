@@ -33,18 +33,18 @@
 		private FileViewFinder $finder;
 		
 		/**
-		 * @var array Configuration data provided by ServiceProvider
+		 * @var array<string, mixed> Configuration data provided by ServiceProvider
 		 */
 		private array $config;
 		
 		/**
-		 * @var array Global variables available to all templates
+		 * @var array<string, mixed> Global variables available to all templates
 		 */
 		private array $globals = [];
 		
 		/**
 		 * BladeTemplate constructor
-		 * @param array $configuration
+		 * @param array<string, mixed> $configuration
 		 */
 		public function __construct(array $configuration) {
 			$this->config = $configuration;
@@ -118,7 +118,7 @@
 		/**
 		 * Renders a template using the Blade template engine
 		 * @param string $template The template name (dot-notation, e.g. 'emails.welcome')
-		 * @param array $data Associative array of variables to pass to the template
+		 * @param array<string, mixed> $data Associative array of variables to pass to the template
 		 * @return string The rendered template content as a string
 		 * @throws TemplateRenderException If template rendering fails for any reason
 		 */
@@ -138,7 +138,7 @@
 		 * temporary file that is cleaned up immediately after rendering.
 		 *
 		 * @param string $templateString The template content as a string
-		 * @param array $data Associative array of variables to pass to the template
+		 * @param array<string, mixed> $data Associative array of variables to pass to the template
 		 * @return string The rendered template content
 		 * @throws TemplateRenderException If template rendering fails for any reason
 		 */

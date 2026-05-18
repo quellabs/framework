@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\Canvas\Handlebars;
 	
+	use LightnCandy\Flags;
 	use LightnCandy\LightnCandy;
 	use Quellabs\SignalHub\Signal;
 	use Quellabs\SignalHub\SignalHubLocator;
@@ -11,12 +12,12 @@
 	class HandlebarsTemplate implements TemplateEngineInterface {
 		
 		/**
-		 * @var array Configuration data provided by ServiceProvider
+		 * @var array<string, mixed> Configuration data provided by ServiceProvider
 		 */
 		private array $config;
 		
 		/**
-		 * @var array Global variables available to all templates
+		 * @var array<string, mixed> Global variables available to all templates
 		 */
 		private array $globals = [];
 		
@@ -37,7 +38,7 @@
 		
 		/**
 		 * HandlebarsTemplate constructor
-		 * @param array $configuration
+		 * @param array<string, mixed> $configuration
 		 */
 		public function __construct(array $configuration) {
 			// Store the configuration
@@ -86,7 +87,7 @@
 		/**
 		 * Renders a template file using Handlebars via LightnCandy
 		 * @param string $template The template file name/path to render
-		 * @param array $data Associative array of variables to pass to the template
+		 * @param array<string, mixed> $data Associative array of variables to pass to the template
 		 * @return string The rendered template content as a string
 		 * @throws TemplateRenderException If template rendering fails for any reason
 		 */
@@ -97,7 +98,7 @@
 		/**
 		 * Renders a Handlebars template string with the provided data
 		 * @param string $templateString The template content as a string
-		 * @param array $data Associative array of variables to pass to the template
+		 * @param array<string, mixed> $data Associative array of variables to pass to the template
 		 * @return string The rendered template content
 		 * @throws TemplateRenderException If template rendering fails for any reason
 		 */
@@ -217,7 +218,7 @@
 		/**
 		 * Internal method to handle both file and string template rendering
 		 * @param string $template Template file name/path or template string content
-		 * @param array $data Variables to pass to the template
+		 * @param array<string, mixed> $data Variables to pass to the template
 		 * @param bool $isString Whether $template is raw content (true) or a file path (false)
 		 * @return string Rendered output
 		 * @throws TemplateRenderException
@@ -358,16 +359,17 @@
 		private function buildFlags(): int {
 			// FLAG_HANDLEBARSJS: full Handlebars.js compatibility (block helpers, partials, etc.)
 			// FLAG_ERROR_EXCEPTION: throw exceptions on compile errors rather than returning false
-			$flags = LightnCandy::FLAG_HANDLEBARSJS | LightnCandy::FLAG_ERROR_EXCEPTION;
+			$flags = Flags::FLAG_HANDLEBARSJS | Flags::FLAG_ERROR_EXCEPTION;
 			
+			// FLAG_STRICT: throw on missing variables rather than rendering empty string
 			if (!empty($this->config['strict_mode'])) {
-				// FLAG_STRICT: throw on missing variables rather than rendering empty string
-				$flags |= LightnCandy::FLAG_STRICT;
+				/** @phpstan-ignore classConstant.notFound */
+				$flags |= Flags::FLAG_STRICT; // FLAG_STRICT may not be present in all LightnCandy versions
 			}
 			
+			// FLAG_BESTPERFORMANCE: outputs a self-contained PHP closure with no runtime dependency
 			if (!empty($this->config['standalone'])) {
-				// FLAG_BESTPERFORMANCE: outputs a self-contained PHP closure with no runtime dependency
-				$flags |= LightnCandy::FLAG_BESTPERFORMANCE;
+				$flags |= Flags::FLAG_BESTPERFORMANCE;
 			}
 			
 			return $flags;

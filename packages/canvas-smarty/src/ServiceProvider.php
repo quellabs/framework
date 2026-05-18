@@ -17,7 +17,7 @@
 		
 		/**
 		 * Returns the provider's metadata for service discovery
-		 * @return array Associative array containing provider metadata
+		 * @return array<string, mixed> Associative array containing provider metadata
 		 */
 		public static function getMetadata(): array {
 			return [
@@ -31,7 +31,7 @@
 		
 		/**
 		 * Returns the default configuration settings for Smarty
-		 * @return array Default configuration array
+		 * @return array<string, mixed> Default configuration array
 		 */
 		public static function getDefaults(): array {
 			return [
@@ -58,7 +58,7 @@
 		/**
 		 * Determines if this provider can handle the requested service
 		 * @param string $className The interface/class name being requested
-		 * @param array $metadata Additional metadata from the service request
+		 * @param array<string, mixed> $metadata Additional metadata from the service request
 		 * @return bool True if this provider can handle the request
 		 */
 		public function supports(string $className, array $metadata): bool {
@@ -85,8 +85,8 @@
 		/**
 		 * Creates and configures a new Smarty template engine instance
 		 * @param string $className The requested interface (TemplateEngineInterface)
-		 * @param array $dependencies Resolved dependencies (unused in this case)
-		 * @param array $metadata Metadata as passed by Discover
+		 * @param array<string, mixed> $dependencies Resolved dependencies (unused in this case)
+		 * @param array<string, mixed> $metadata Metadata as passed by Discover
 		 * @param MethodContextInterface|null $methodContext
 		 * @return object Configured SmartyTemplate instance
 		 */

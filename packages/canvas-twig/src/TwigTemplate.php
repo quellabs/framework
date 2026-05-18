@@ -19,9 +19,9 @@
 	class TwigTemplate implements TemplateEngineInterface {
 		
 		/**
-		 * @var Environment|null Twig Environment instance
+		 * @var Environment Twig Environment instance
 		 */
-		private ?Environment $twig;
+		private Environment $twig;
 		
 		/**
 		 * @var FilesystemLoader Twig filesystem loader
@@ -29,12 +29,12 @@
 		private FilesystemLoader $loader;
 		
 		/**
-		 * @var array Configuration data provided by ServiceProvider
+		 * @var array<string, mixed> Configuration data provided by ServiceProvider
 		 */
 		private array $config;
 		
 		/**
-		 * @var array Global variables available to all templates
+		 * @var array<string, mixed> Global variables available to all templates
 		 */
 		private array $globals = [];
 		
@@ -44,13 +44,13 @@
 		private ?string $cacheDir = null;
 		
 		/**
-		 * @var array Twig environment options
+		 * @var array<string, mixed> Twig environment options
 		 */
 		private array $twigOptions;
 		
 		/**
 		 * TwigTemplate constructor
-		 * @param array $configuration
+		 * @param array<string, mixed> $configuration
 		 */
 		public function __construct(array $configuration) {
 			// Store the configuration
@@ -70,8 +70,8 @@
 			
 			// Set cache directory if caching is enabled
 			if (isset($configuration['caching']) && $configuration['caching']) {
-				$this->cacheDir = $configuration['cache_dir'];
-				$options['cache'] = new FilesystemCache($this->cacheDir);
+				$this->cacheDir = $configuration['cache_dir'] ?? null;
+				$options['cache'] = ($this->cacheDir !== null) ? new FilesystemCache($this->cacheDir) : false;
 			} else {
 				$options['cache'] = false;
 			}
@@ -91,7 +91,10 @@
 			if (isset($this->config['extensions']) && is_array($this->config['extensions'])) {
 				foreach ($this->config['extensions'] as $extension) {
 					if (class_exists($extension)) {
-						$this->twig->addExtension(new $extension());
+						$instance = new $extension();
+						if ($instance instanceof \Twig\Extension\ExtensionInterface) {
+							$this->twig->addExtension($instance);
+						}
 					}
 				}
 			}
@@ -138,7 +141,7 @@
 		/**
 		 * Renders a template using the Twig template engine
 		 * @param string $template The template file name/path to render
-		 * @param array $data Associative array of variables to pass to the template
+		 * @param array<string, mixed> $data Associative array of variables to pass to the template
 		 * @return string The rendered template content as a string
 		 * @throws \Exception If template rendering fails for any reason
 		 */
@@ -150,14 +153,14 @@
 				// Render the template
 				return $this->twig->render($template, $mergedData);
 			} catch (LoaderError | RuntimeError | SyntaxError $e) {
-				throw new TemplateRenderException("Failed to render template '{$template}': " . $e->getMessage(), 0, $e);
+				throw new TemplateRenderException("Failed to render template '{$template}'", $e->getMessage(), $e);
 			}
 		}
 		
 		/**
 		 * Renders a template string with the provided data
 		 * @param string $templateString The template content as a string
-		 * @param array $data Associative array of variables to pass to the template
+		 * @param array<string, mixed> $data Associative array of variables to pass to the template
 		 * @return string The rendered template content
 		 * @throws \Exception If template rendering fails for any reason
 		 */
@@ -190,7 +193,7 @@
 				return $stringTwig->render('__string_template__', $mergedData);
 			} catch (LoaderError | RuntimeError | SyntaxError $e) {
 				$snippet = strlen($templateString) > 50 ? substr($templateString, 0, 50) . '...' : $templateString;
-				throw new TemplateRenderException("Failed to render template string '{$snippet}': " . $e->getMessage(), 0, $e);
+				throw new TemplateRenderException("Failed to render template string '{$snippet}'", $e->getMessage(), $e);
 			}
 		}
 		

@@ -12,17 +12,17 @@
 	class SmartyTemplate implements TemplateEngineInterface {
 		
 		/**
-		 * @var Smarty|null Smarty instance
+		 * @var Smarty Smarty instance
 		 */
-		private ?Smarty $smarty;
+		private Smarty $smarty;
 		
 		/**
-		 * @var array Configuration data provided by ServiceProvider
+		 * @var array<string, mixed> Configuration data provided by ServiceProvider
 		 */
 		private array $config;
 		
 		/**
-		 * @var array Global variables available to all templates
+		 * @var array<string, mixed> Global variables available to all templates
 		 */
 		private array $globals = [];
 		
@@ -33,7 +33,7 @@
 		
 		/**
 		 * SmartyTemplate constructor
-		 * @param array $configuration
+		 * @param array<string, mixed> $configuration
 		 */
 		public function __construct(array $configuration) {
 			// Store the configuration
@@ -87,7 +87,7 @@
 		/**
 		 * Renders a template using the Smarty template engine
 		 * @param string $template The template file name/path to render
-		 * @param array $data Associative array of variables to pass to the template
+		 * @param array<string, mixed> $data Associative array of variables to pass to the template
 		 * @return string The rendered template content as a string
 		 * @throws TemplateRenderException If template rendering fails for any reason
 		 */
@@ -98,7 +98,7 @@
 		/**
 		 * Renders a template string with the provided data
 		 * @param string $templateString The template content as a string
-		 * @param array $data Associative array of variables to pass to the template
+		 * @param array<string, mixed> $data Associative array of variables to pass to the template
 		 * @return string The rendered template content
 		 * @throws TemplateRenderException If template rendering fails for any reason
 		 */
@@ -247,7 +247,7 @@
 		/**
 		 * Internal method to handle both file and string template rendering
 		 * @param string $template The template file name/path or template string content
-		 * @param array $data Associative array of variables to pass to the template
+		 * @param array<string, mixed> $data Associative array of variables to pass to the template
 		 * @param bool $isString Whether the template parameter is a string (true) or file path (false)
 		 * @return string The rendered template content
 		 * @throws TemplateRenderException

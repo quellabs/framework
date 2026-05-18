@@ -10,6 +10,12 @@ parameters:
         - packages/sculpt/src
         - packages/dependency-injection/src
         - packages/support/src
+        - packages/canvas-smarty/src
+        - packages/canvas-blade/src
+        - packages/canvas-twig/src
+        - packages/canvas-latte/src
+        - packages/canvas-plates/src
+        - packages/canvas-handlebars/src
         - packages/canvas-payments
         - packages/canvas-payments-adyen
         - packages/canvas-payments-buckaroo

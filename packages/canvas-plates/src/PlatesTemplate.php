@@ -20,22 +20,15 @@
 		private array $paths = [];
 		
 		/**
-		 * @var array Configuration data provided by ServiceProvider
-		 */
-		private array $config;
-		
-		/**
-		 * @var array Global variables available to all templates
+		 * @var array<string, mixed> Global variables available to all templates
 		 */
 		private array $globals = [];
 		
 		/**
 		 * PlatesTemplate constructor
-		 * @param array $configuration
+		 * @param array<string, mixed> $configuration
 		 */
 		public function __construct(array $configuration) {
-			$this->config = $configuration;
-			
 			$templateDir = $configuration['template_dir'] ?? ComposerUtils::getProjectRoot() . DIRECTORY_SEPARATOR . 'templates';
 			$extension   = $configuration['extension'] ?? 'php';
 			
@@ -73,7 +66,7 @@
 		/**
 		 * Renders a template file using Plates
 		 * @param string $template Template name, optionally prefixed with a namespace (e.g. 'admin::users/list')
-		 * @param array $data Associative array of variables to pass to the template
+		 * @param array<string, mixed> $data Associative array of variables to pass to the template
 		 * @return string The rendered template content as a string
 		 * @throws TemplateRenderException If template rendering fails for any reason
 		 */
@@ -91,7 +84,7 @@
 		 * Plates is a native-PHP engine and has no built-in string rendering support.
 		 * This method writes the string to a temporary file, renders it, then cleans up.
 		 * @param string $templateString The template content as a string
-		 * @param array $data Associative array of variables to pass to the template
+		 * @param array<string, mixed> $data Associative array of variables to pass to the template
 		 * @return string The rendered template content
 		 * @throws TemplateRenderException If template rendering fails for any reason
 		 */
