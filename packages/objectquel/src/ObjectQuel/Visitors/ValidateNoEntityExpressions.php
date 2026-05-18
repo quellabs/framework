@@ -29,7 +29,7 @@
 			// Entire entities in expressions are not allowed.
 			if ($node instanceof NodeBinary) {
 				if ($this->identifierIsBareRange($node->getLeft()) || $this->identifierIsBareRange($node->getRight())) {
-					throw new SemanticException("Unsupported operation on entire entities. You cannot perform arithmetic operations directly on entities. Please specify the specific fields or properties of the entities you wish to use in the calculation.");
+					throw new SemanticException("Cannot use an entire entity in an expression. Please specify a field or property instead (e.g. 'order.total' instead of 'order').");
 				}
 			}
 			
@@ -40,7 +40,7 @@
 				}
 			}
 			
-			// Entire entities in QUEL functions (is_numeric, is_float, etc) are not allowed
+			// Entire entities in aggregates (sum, avg, min, max, etc) are not allowed
 			if ($node instanceof NodeAggregate) {
 				if ($this->identifierIsBareRange($node->getIdentifier())) {
 					throw new SemanticException("Unsupported operation on entire entities. You cannot pass an entire entity to an aggregate function. Please specify the specific field or property you wish to aggregate (e.g. e.price or e.quantity instead of e).");

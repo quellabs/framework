@@ -21,18 +21,18 @@
 		private array $paths = [];
 		
 		/**
-		 * @var array Configuration data provided by ServiceProvider
+		 * @var array<string, mixed> Configuration data provided by ServiceProvider
 		 */
 		private array $config;
 		
 		/**
-		 * @var array Global variables available to all templates
+		 * @var array<string, mixed> Global variables available to all templates
 		 */
 		private array $globals = [];
 		
 		/**
 		 * LatteTemplate constructor
-		 * @param array $configuration
+		 * @param array<string, mixed> $configuration
 		 */
 		public function __construct(array $configuration) {
 			$this->config = $configuration;
@@ -98,7 +98,7 @@
 		/**
 		 * Renders a template file using Latte
 		 * @param string $template Template name, optionally prefixed with a namespace (e.g. 'admin:users/list')
-		 * @param array $data Associative array of variables to pass to the template
+		 * @param array<string, mixed> $data Associative array of variables to pass to the template
 		 * @return string The rendered template content as a string
 		 * @throws TemplateRenderException If template rendering fails for any reason
 		 */
@@ -115,7 +115,7 @@
 		/**
 		 * Render a Latte template string
 		 * @param string $templateString The template content as a string
-		 * @param array $data Associative array of variables to pass to the template
+		 * @param array<string, mixed> $data Associative array of variables to pass to the template
 		 * @return string The rendered template content
 		 * @throws TemplateRenderException If template rendering fails for any reason
 		 */
