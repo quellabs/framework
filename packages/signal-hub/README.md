@@ -31,7 +31,9 @@ class MollieController {
 }
 ```
 
-Connect using a `Slot` — a named wrapper around a callable that gives it stable identity:
+Connect using a `Slot` — a wrapper around a callable that gives it stable object identity.
+Signal owns connected Slots strongly, so inline Slots are always safe. Store a Slot as a
+property only if you need to call `disconnect()` explicitly later.
 
 ```php
 use Quellabs\SignalHub\Slot;
@@ -54,58 +56,6 @@ $signal->connect(new Slot(fn() => ...));
 $signal->emit();
 ```
 
-## Slot Lifetime and Disconnecting
-
-A `Slot` is a plain PHP object. Signals hold slots in a `WeakMap`, so when the last reference to a `Slot` is dropped, it is garbage collected and automatically removed from all connected signals — no explicit disconnect required.
-
-**Inline slots** — simplest form, disconnect happens automatically when the connecting object is destroyed:
-
-```php
-class InventoryListener {
-    public function __construct(UnitOfWork $unitOfWork) {
-        // Slots are inlined — no properties needed.
-        // When $this is destroyed, the slots are GC'd and disconnected automatically.
-        $unitOfWork->signalPrePersist->connect(new Slot([$this, 'handlePrePersist']));
-        $unitOfWork->signalPostPersist->connect(new Slot([$this, 'handlePostPersist']));
-    }
-}
-```
-
-This works correctly as long as the signal's lifetime does not exceed `$this`. If the signal outlives `$this`, store the slot as a property and disconnect explicitly.
-
-**Stored slots** — use when you need explicit mid-lifetime disconnect, or when the signal outlives the connecting object:
-
-```php
-class InventoryListener {
-    private Slot $handlePrePersist;
-    private Slot $handlePostPersist;
-
-    public function __construct(UnitOfWork $unitOfWork) {
-        $this->unitOfWork = $unitOfWork;
-        $this->handlePrePersist = new Slot([$this, 'handlePrePersist']);
-        $this->handlePostPersist = new Slot([$this, 'handlePostPersist']);
-
-        $unitOfWork->signalPrePersist->connect($this->handlePrePersist);
-        $unitOfWork->signalPostPersist->connect($this->handlePostPersist);
-    }
-
-    public function detach(): void {
-        $this->unitOfWork->signalPrePersist->disconnect($this->handlePrePersist);
-        $this->unitOfWork->signalPostPersist->disconnect($this->handlePostPersist);
-    }
-}
-```
-
-**Shared slots** — a single `Slot` instance can be connected to multiple signals simultaneously. Each signal tracks its own priority for that slot independently:
-
-```php
-$slot = new Slot([$this, 'handleChange']);
-$signalA->connect($slot, priority: 5);
-$signalB->connect($slot, priority: 10);
-
-$signalA->disconnect($slot); // still connected to $signalB
-```
-
 ## Framework Integration
 
 Call `discoverSignals()` from whatever instantiates your objects. The emitting class stays hub-unaware:
@@ -124,13 +74,9 @@ Consumers connect in their constructor — no controller reference needed:
 
 ```php
 class InventoryService {
-    private Slot $onOrderPlaced;
-
     public function __construct(SignalHub $hub) {
-        $this->onOrderPlaced = new Slot([$this, 'onOrderPlaced']);
-
         $hub->getSignal(OrderController::class, 'orderPlaced')
-            ->connect($this->onOrderPlaced);
+            ->connect(new Slot([$this, 'onOrderPlaced']));
     }
 }
 ```
@@ -148,11 +94,39 @@ $hub->findSignals('payment.*', $controller);             // wildcard + instance
 
 ## Advanced Features
 
-**Priorities** — control slot execution order per connection. Priority belongs to the connection, not the slot, so the same slot can have different priorities on different signals:
+**Priorities** — priority belongs to the connection, not the slot, so the same Slot can have different priorities on different signals:
 
 ```php
 $signal->connect($auditSlot, priority: 100);    // runs first
 $signal->connect($cleanupSlot, priority: -10);  // runs last
+```
+
+**Shared slots** — a single Slot can be connected to multiple signals simultaneously:
+
+```php
+$slot = new Slot([$this, 'handleChange']);
+$signalA->connect($slot, priority: 5);
+$signalB->connect($slot, priority: 10);
+
+$signalA->disconnect($slot); // still connected to $signalB
+```
+
+**Explicit disconnect** — store the Slot as a property and call `disconnect()` when needed:
+
+```php
+class InventoryListener {
+    private Slot $handlePrePersist;
+
+    public function __construct(UnitOfWork $unitOfWork) {
+        $this->unitOfWork = $unitOfWork;
+        $this->handlePrePersist = new Slot([$this, 'handlePrePersist']);
+        $unitOfWork->signalPrePersist->connect($this->handlePrePersist);
+    }
+
+    public function detach(): void {
+        $this->unitOfWork->signalPrePersist->disconnect($this->handlePrePersist);
+    }
+}
 ```
 
 **Meta-signals** — react to hub activity:
@@ -170,14 +144,14 @@ $hub->signalRegistered()->connect(new Slot(function(Signal $signal) {
 Four classes, no traits:
 
 - **`Signal`** — holds connections, emits to slots (`connect`, `disconnect`, `emit`, `isConnected`)
-- **`Slot`** — wraps a callable with stable object identity; the key used by Signal's WeakMap
+- **`Slot`** — wraps a callable with stable object identity; the unit of connection
 - **`SignalHub`** — registry and rendezvous point (`discoverSignals`, `unregisterSignals`, `getSignal`, `findSignals`)
 - **`SignalHubLocator`** — optional static accessor for use outside DI contexts
 
-Signals hold slots in a `WeakMap`, keyed by Slot object identity. This means:
-- Callable equality problems are avoided entirely — identity is unambiguous
-- Slots are garbage collected automatically when no longer referenced
-- The same Slot can be connected to multiple signals without any special handling
+Signal owns its Slots via a plain array keyed by `spl_object_id()`, giving connections
+an unambiguous lifetime: a Slot stays connected until `disconnect()` is called or the
+Signal is destroyed. Object-owned signals on the hub are stored in a `WeakMap` so they
+are garbage collected automatically when the owning object goes out of scope.
 
 ## License
 

@@ -53,18 +53,11 @@
 		private ?string $name;
 		
 		/**
-		 * @var object|null Object that owns this signal
-		 */
-		private ?object $owner;
-		
-		/**
 		 * Signal constructor
 		 * @param string|null $name Optional name for this signal
-		 * @param object|null $owner Optional owner object
 		 */
-		public function __construct(?string $name = null, ?object $owner = null) {
+		public function __construct(?string $name = null) {
 			$this->name = $name;
-			$this->owner = $owner;
 		}
 		
 		/**
@@ -157,33 +150,5 @@
 		 */
 		public function getName(): ?string {
 			return $this->name;
-		}
-		
-		/**
-		 * Get the owner of this signal.
-		 * @return object|null
-		 */
-		public function getOwner(): ?object {
-			return $this->owner;
-		}
-		
-		/**
-		 * Set the name of this signal.
-		 * @param string $name
-		 * @return self
-		 */
-		public function setName(string $name): self {
-			$this->name = $name;
-			return $this;
-		}
-		
-		/**
-		 * Set the owner of this signal.
-		 * @param object $owner
-		 * @return self
-		 */
-		public function setOwner(object $owner): self {
-			$this->owner = $owner;
-			return $this;
 		}
 	}
