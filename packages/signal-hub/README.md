@@ -4,7 +4,8 @@
 [![License](https://img.shields.io/badge/license-MIT-brightgreen.svg)](LICENSE)
 [![Downloads](https://img.shields.io/packagist/dt/quellabs/signal-hub.svg)](https://packagist.org/packages/quellabs/signal-hub)
 
-A Qt-inspired signal-slot implementation for PHP. Loose coupling between components through automatic signal discovery, with PHP's type system handling slot type safety.
+A Qt-inspired signal-slot implementation for PHP. Loose coupling between components through automatic signal discovery,
+with PHP's type system handling slot type safety.
 
 ## Installation
 
@@ -94,7 +95,8 @@ $hub->findSignals('payment.*', $controller);             // wildcard + instance
 
 ## Advanced Features
 
-**Priorities** — priority belongs to the connection, not the slot, so the same Slot can have different priorities on different signals:
+**Priorities** — priority belongs to the connection, not the slot, so the same Slot can have different priorities on
+different signals:
 
 ```php
 $signal->connect($auditSlot, priority: 100);    // runs first
@@ -148,10 +150,9 @@ Four classes, no traits:
 - **`SignalHub`** — registry and rendezvous point (`discoverSignals`, `unregisterSignals`, `getSignal`, `findSignals`)
 - **`SignalHubLocator`** — optional static accessor for use outside DI contexts
 
-Signal owns its Slots via a plain array keyed by `spl_object_id()`, giving connections
-an unambiguous lifetime: a Slot stays connected until `disconnect()` is called or the
-Signal is destroyed. Object-owned signals on the hub are stored in a `WeakMap` so they
-are garbage collected automatically when the owning object goes out of scope.
+Signal owns its Slots via a plain array keyed by `spl_object_id()`, giving connections an unambiguous lifetime: a Slot
+stays connected until `disconnect()` is called or the Signal is destroyed. Object-owned signals on the hub are stored in
+a `WeakMap` so they are garbage collected automatically when the owning object goes out of scope.
 
 ## License
 
