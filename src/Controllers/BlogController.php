@@ -18,7 +18,7 @@
 			$x = $this->em()->executeQuery("
 				range of y is json_source('f:\\test.json', '$.rows')
 				retrieve(y.id)
-				where y=10
+				where y.id=10
 			");
 			
 			foreach ($x as $item) {
