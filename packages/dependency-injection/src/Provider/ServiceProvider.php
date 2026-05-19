@@ -38,4 +38,50 @@
 		 * @return bool
 		 */
 		abstract public function supports(string $className, array $metadata): bool;
+		
+		/**
+		 * Normalizes a config value to bool, accepting bool or int (0/1) as valid input
+		 * @param mixed $value The raw value from user configuration
+		 * @param bool $default Fallback when the value is absent or an unrecognized type
+		 * @return bool
+		 */
+		protected function normalizeBool(mixed $value, bool $default): bool {
+			if (is_bool($value)) {
+				return $value;
+			} elseif (is_int($value)) {
+				return (bool)$value;
+			} else {
+				return $default;
+			}
+		}
+		
+		/**
+		 * Normalizes a config value to int, accepting int or bool as valid input
+		 * @param mixed $value The raw value from user configuration
+		 * @param int $default Fallback when the value is absent or an unrecognized type
+		 * @return int
+		 */
+		protected function normalizeInt(mixed $value, int $default): int {
+			if (is_int($value)) {
+				return $value;
+			} elseif (is_bool($value)) {
+				return (int)$value;
+			} else {
+				return $default;
+			}
+		}
+		
+		/**
+		 * Normalizes a config value to string
+		 * @param mixed $value The raw value from user configuration
+		 * @param string $default Fallback when the value is absent or an unrecognized type
+		 * @return string
+		 */
+		protected function normalizeString(mixed $value, string $default): string {
+			if (is_string($value)) {
+				return $value;
+			} else {
+				return $default;
+			}
+		}
 	}

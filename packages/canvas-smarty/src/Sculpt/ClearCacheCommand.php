@@ -39,23 +39,19 @@
 		 * @return int Exit code (0 for success)
 		 */
 		public function execute(ConfigurationManager $config): int {
-			// Get default configuration values directly from the provider class
-			$defaults = ServiceProvider::getDefaults();
+			// Validate that the provider is of the correct type
+			if (!$this->provider instanceof ServiceProvider) {
+				throw new \RuntimeException('Expected ' . ServiceProvider::class);
+			}
 			
-			// Get current configuration from the provider instance
-			$configuration = $this->provider->getConfig();
+			// Fetch config
+			$mergedConfig = $this->provider->mergeConfig();
 			
 			// Create Smarty instance with configured directories
 			$smarty = new Smarty();
-			
-			// Set template directory (use configured value or fall back to default)
-			$smarty->setTemplateDir($configuration['template_dir'] ?? $defaults['template_dir']);
-			
-			// Set compile directory (use configured value or fall back to default)
-			$smarty->setCompileDir($configuration['compile_dir'] ?? $defaults['compile_dir']);
-			
-			// Set cache directory (use configured value or fall back to default)
-			$smarty->setCacheDir($configuration['cache_dir'] ?? $defaults['cache_dir']);
+			$smarty->setTemplateDir($mergedConfig['template_dir']);
+			$smarty->setCompileDir($mergedConfig['compile_dir']);
+			$smarty->setCacheDir($mergedConfig['cache_dir']);
 			
 			// Clear all cached templates and compiled files
 			$smarty->clearAllCache();

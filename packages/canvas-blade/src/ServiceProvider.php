@@ -18,7 +18,7 @@
 	 *     if_directives: array<string, callable>,
 	 *     globals: array<string, mixed>
 	 *  }
-     */
+	 */
 	class ServiceProvider extends \Quellabs\DependencyInjection\Provider\ServiceProvider {
 		
 		/**
@@ -76,7 +76,7 @@
 		 * @return BladeConfig
 		 */
 		public function mergeConfig(): array {
-			$defaults      = self::getDefaults();
+			$defaults = self::getDefaults();
 			$configuration = $this->getConfig();
 			
 			/** @var array<int|string, string> $paths */
@@ -92,9 +92,9 @@
 			$globals = is_array($configuration['globals'] ?? null) ? $configuration['globals'] : $defaults['globals'];
 			
 			return [
-				'template_dir'  => is_string($configuration['template_dir']  ?? null) ? $configuration['template_dir']  : $defaults['template_dir'],
-				'cache_dir'     => is_string($configuration['cache_dir']     ?? null) ? $configuration['cache_dir']     : $defaults['cache_dir'],
-				'caching'       => is_bool($configuration['caching']         ?? null) ? $configuration['caching']       : $defaults['caching'],
+				'template_dir'  => $this->normalizeString($configuration['template_dir'] ?? null, $defaults['template_dir']),
+				'cache_dir'     => $this->normalizeString($configuration['cache_dir'] ?? null, $defaults['cache_dir']),
+				'caching'       => $this->normalizeBool($configuration['caching'] ?? null, $defaults['caching']),
 				'paths'         => $paths,
 				'directives'    => $directives,
 				'if_directives' => $ifDirectives,

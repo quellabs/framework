@@ -83,7 +83,7 @@
 		 * @return LatteConfig
 		 */
 		public function mergeConfig(): array {
-			$defaults      = self::getDefaults();
+			$defaults = self::getDefaults();
 			$configuration = $this->getConfig();
 			
 			/** @var array<string, callable> $filters */
@@ -102,9 +102,9 @@
 			$globals = is_array($configuration['globals'] ?? null) ? $configuration['globals'] : $defaults['globals'];
 			
 			return [
-				'template_dir' => is_string($configuration['template_dir'] ?? null) ? $configuration['template_dir'] : $defaults['template_dir'],
-				'cache_dir'    => is_string($configuration['cache_dir']    ?? null) ? $configuration['cache_dir']    : $defaults['cache_dir'],
-				'caching'      => is_bool($configuration['caching']        ?? null) ? $configuration['caching']      : $defaults['caching'],
+				'template_dir' => $this->normalizeString($configuration['template_dir'] ?? null, $defaults['template_dir']),
+				'cache_dir'    => $this->normalizeString($configuration['cache_dir'] ?? null, $defaults['cache_dir']),
+				'caching'      => $this->normalizeBool($configuration['caching'] ?? null, $defaults['caching']),
 				'filters'      => $filters,
 				'functions'    => $functions,
 				'extensions'   => $extensions,
