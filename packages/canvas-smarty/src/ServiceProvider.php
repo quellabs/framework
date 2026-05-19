@@ -7,6 +7,17 @@
 	
 	/**
 	 * Smarty Template Engine Service Provider for Canvas Framework
+	 *
+	 * @phpstan-type SmartyConfig array{
+	 *     template_dir: string,
+	 *     compile_dir: string,
+	 *     cache_dir: string,
+	 *     debugging: bool,
+	 *     caching: int,
+	 *     clear_compiled: bool,
+	 *     cache_lifetime: int|null,
+	 *     security: bool|null
+	 * }
 	 */
 	class ServiceProvider extends \Quellabs\DependencyInjection\Provider\ServiceProvider {
 		
@@ -31,7 +42,7 @@
 		
 		/**
 		 * Returns the default configuration settings for Smarty
-		 * @return array<string, mixed> Default configuration array
+		 * @return SmartyConfig
 		 */
 		public static function getDefaults(): array {
 			return [
@@ -47,11 +58,37 @@
 				// Enable/disable Smarty's debugging console
 				'debugging'      => false,
 				
-				// Enable/disable template caching for better performance
-				'caching'        => false,
+				// Smarty caching mode: 0 = off, 1 = CACHING_LIFETIME_CURRENT, 2 = CACHING_LIFETIME_SAVED
+				'caching'        => 0,
 				
 				// Clear the compiled directory on cache flush
 				'clear_compiled' => true,
+				
+				// Cache lifetime in seconds (null = use Smarty default)
+				'cache_lifetime' => null,
+				
+				// Enable Smarty security policy (null = disabled)
+				'security'       => null,
+			];
+		}
+		
+		/**
+		 * Merges user-provided configuration over the defaults
+		 * @return SmartyConfig
+		 */
+		public function mergeConfig(): array {
+			$defaults = self::getDefaults();
+			$configuration = $this->getConfig();
+			
+			return [
+				'template_dir'   => $this->normalizeString($configuration['template_dir'] ?? null, $defaults['template_dir']),
+				'compile_dir'    => $this->normalizeString($configuration['compile_dir'] ?? null, $defaults['compile_dir']),
+				'cache_dir'      => $this->normalizeString($configuration['cache_dir'] ?? null, $defaults['cache_dir']),
+				'debugging'      => $this->normalizeBool($configuration['debugging'] ?? null, $defaults['debugging']),
+				'caching'        => $this->normalizeInt($configuration['caching'] ?? null, $defaults['caching']),
+				'clear_compiled' => $this->normalizeBool($configuration['clear_compiled'] ?? null, $defaults['clear_compiled']),
+				'cache_lifetime' => is_int($configuration['cache_lifetime'] ?? null) ? $configuration['cache_lifetime'] : $defaults['cache_lifetime'],
+				'security'       => is_bool($configuration['security'] ?? null) ? $configuration['security'] : $defaults['security'],
 			];
 		}
 		
@@ -90,30 +127,14 @@
 		 * @param MethodContextInterface|null $methodContext
 		 * @return object Configured SmartyTemplate instance
 		 */
-		public function createInstance(string $className, array $dependencies, array $metadata, ?MethodContextInterface $methodContext=null): object {
+		public function createInstance(string $className, array $dependencies, array $metadata, ?MethodContextInterface $methodContext = null): object {
 			// Return cached instance
 			if (self::$instance !== null) {
 				return self::$instance;
 			}
 			
-			// Get default configuration values
-			$defaults = $this->getDefaults();
-			
-			// Get user-provided configuration (from config/smarty.php or similar)
-			$configuration = $this->getConfig();
-			
 			// Create and return SmartyTemplate with merged configuration
-			// User config takes precedence over defaults using null coalescing
-			$instance = new SmartyTemplate([
-				'template_dir'   => $configuration['template_dir'] ?? $defaults['template_dir'],
-				'compile_dir'    => $configuration['compile_dir'] ?? $defaults['compile_dir'],
-				'cache_dir'      => $configuration['cache_dir'] ?? $defaults['cache_dir'],
-				'debugging'      => $configuration['debugging'] ?? $defaults['debugging'],
-				'caching'        => $configuration['caching'] ?? $defaults['caching'],
-				'clear_compiled' => $configuration['clear_compiled'] ?? $defaults['clear_compiled'],
-				'cache_lifetime' => $configuration['cache_lifetime'] ?? null,
-				'security'       => $configuration['security'] ?? null,
-			]);
+			$instance = new SmartyTemplate($this->mergeConfig());
 			
 			// Add to cache and return
 			return self::$instance = $instance;

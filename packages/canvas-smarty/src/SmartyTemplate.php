@@ -9,6 +9,9 @@
 	use Quellabs\Contracts\Templates\TemplateRenderException;
 	use Quellabs\Contracts\Templates\TemplateEngineInterface;
 	
+	/**
+	 * @phpstan-import-type SmartyConfig from ServiceProvider
+	 */
 	class SmartyTemplate implements TemplateEngineInterface {
 		
 		/**
@@ -17,7 +20,7 @@
 		private Smarty $smarty;
 		
 		/**
-		 * @var array<string, mixed> Configuration data provided by ServiceProvider
+		 * @var SmartyConfig Configuration data provided by ServiceProvider
 		 */
 		private array $config;
 		
@@ -33,7 +36,7 @@
 		
 		/**
 		 * SmartyTemplate constructor
-		 * @param array<string, mixed> $configuration
+		 * @param SmartyConfig $configuration
 		 */
 		public function __construct(array $configuration) {
 			// Store the configuration

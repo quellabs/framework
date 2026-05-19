@@ -71,7 +71,7 @@
 		 * @return HandlebarsConfig
 		 */
 		public function mergeConfig(): array {
-			$defaults      = self::getDefaults();
+			$defaults = self::getDefaults();
 			$configuration = $this->getConfig();
 			
 			/** @var array<string, callable> $helpers */
@@ -84,10 +84,10 @@
 			$globals = is_array($configuration['globals'] ?? null) ? $configuration['globals'] : $defaults['globals'];
 			
 			return [
-				'template_dir' => is_string($configuration['template_dir'] ?? null) ? $configuration['template_dir'] : $defaults['template_dir'],
-				'compile_dir'  => is_string($configuration['compile_dir']  ?? null) ? $configuration['compile_dir']  : $defaults['compile_dir'],
-				'strict_mode'  => is_bool($configuration['strict_mode']    ?? null) ? $configuration['strict_mode']  : $defaults['strict_mode'],
-				'standalone'   => is_bool($configuration['standalone']     ?? null) ? $configuration['standalone']   : $defaults['standalone'],
+				'template_dir' => $this->normalizeString($configuration['template_dir'] ?? null, $defaults['template_dir']),
+				'compile_dir'  => $this->normalizeString($configuration['compile_dir'] ?? null, $defaults['compile_dir']),
+				'strict_mode'  => $this->normalizeBool($configuration['strict_mode'] ?? null, $defaults['strict_mode']),
+				'standalone'   => $this->normalizeBool($configuration['standalone'] ?? null, $defaults['standalone']),
 				'helpers'      => $helpers,
 				'partials'     => $partials,
 				'globals'      => $globals,
