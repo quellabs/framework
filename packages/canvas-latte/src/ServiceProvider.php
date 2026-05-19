@@ -8,6 +8,17 @@
 	
 	/**
 	 * Latte Template Engine Service Provider for Canvas Framework
+	 *
+	 * @phpstan-type LatteConfig array{
+	 *     template_dir: string,
+	 *     cache_dir: string,
+	 *     caching: bool,
+	 *     filters: array<string, callable>,
+	 *     functions: array<string, callable>,
+	 *     extensions: array<\Latte\Extension>,
+	 *     paths: array<int|string, string>,
+	 *     globals: array<string, mixed>
+	 * }
 	 */
 	class ServiceProvider extends \Quellabs\DependencyInjection\Provider\ServiceProvider {
 		
@@ -32,7 +43,7 @@
 		
 		/**
 		 * Returns the default configuration settings for Latte
-		 * @return array<string, mixed> Default configuration array
+		 * @return LatteConfig
 		 */
 		public static function getDefaults(): array {
 			$projectRoot = ComposerUtils::getProjectRoot();
@@ -64,6 +75,41 @@
 				
 				// Global variables available in all templates
 				'globals'      => [],
+			];
+		}
+		
+		/**
+		 * Merges user-provided configuration over the defaults
+		 * @return LatteConfig
+		 */
+		public function mergeConfig(): array {
+			$defaults      = self::getDefaults();
+			$configuration = $this->getConfig();
+			
+			/** @var array<string, callable> $filters */
+			$filters = is_array($configuration['filters'] ?? null) ? $configuration['filters'] : $defaults['filters'];
+			
+			/** @var array<string, callable> $functions */
+			$functions = is_array($configuration['functions'] ?? null) ? $configuration['functions'] : $defaults['functions'];
+			
+			/** @var array<\Latte\Extension> $extensions */
+			$extensions = is_array($configuration['extensions'] ?? null) ? $configuration['extensions'] : $defaults['extensions'];
+			
+			/** @var array<int|string, string> $paths */
+			$paths = is_array($configuration['paths'] ?? null) ? $configuration['paths'] : $defaults['paths'];
+			
+			/** @var array<string, mixed> $globals */
+			$globals = is_array($configuration['globals'] ?? null) ? $configuration['globals'] : $defaults['globals'];
+			
+			return [
+				'template_dir' => is_string($configuration['template_dir'] ?? null) ? $configuration['template_dir'] : $defaults['template_dir'],
+				'cache_dir'    => is_string($configuration['cache_dir']    ?? null) ? $configuration['cache_dir']    : $defaults['cache_dir'],
+				'caching'      => is_bool($configuration['caching']        ?? null) ? $configuration['caching']      : $defaults['caching'],
+				'filters'      => $filters,
+				'functions'    => $functions,
+				'extensions'   => $extensions,
+				'paths'        => $paths,
+				'globals'      => $globals,
 			];
 		}
 		
@@ -104,19 +150,7 @@
 				return self::$instance;
 			}
 			
-			$defaults      = $this->getDefaults();
-			$configuration = $this->getConfig();
-			
-			self::$instance = new LatteTemplate([
-				'template_dir' => $configuration['template_dir'] ?? $defaults['template_dir'],
-				'cache_dir'    => $configuration['cache_dir']    ?? $defaults['cache_dir'],
-				'caching'      => $configuration['caching']      ?? $defaults['caching'],
-				'filters'      => $configuration['filters']      ?? $defaults['filters'],
-				'functions'    => $configuration['functions']    ?? $defaults['functions'],
-				'extensions'   => $configuration['extensions']   ?? $defaults['extensions'],
-				'paths'        => $configuration['paths']        ?? $defaults['paths'],
-				'globals'      => $configuration['globals']      ?? $defaults['globals'],
-			]);
+			self::$instance = new LatteTemplate($this->mergeConfig());
 			
 			return self::$instance;
 		}
