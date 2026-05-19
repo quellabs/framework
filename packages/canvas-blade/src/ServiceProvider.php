@@ -8,7 +8,17 @@
 	
 	/**
 	 * Blade Template Engine Service Provider for Canvas Framework
-	 */
+	 *
+	 * @phpstan-type BladeConfig array{
+	 *     template_dir: string,
+	 *     cache_dir: string,
+	 *     caching: bool,
+	 *     paths: array<int|string, string>,
+	 *     directives: array<string, callable>,
+	 *     if_directives: array<string, callable>,
+	 *     globals: array<string, mixed>
+	 *  }
+     */
 	class ServiceProvider extends \Quellabs\DependencyInjection\Provider\ServiceProvider {
 		
 		/**
@@ -32,7 +42,7 @@
 		
 		/**
 		 * Returns the default configuration settings for Blade
-		 * @return array<string, mixed> Default configuration array
+		 * @return BladeConfig
 		 */
 		public static function getDefaults(): array {
 			$projectRoot = ComposerUtils::getProjectRoot();
@@ -58,6 +68,37 @@
 				
 				// Global variables available in all templates
 				'globals'       => [],
+			];
+		}
+		
+		/**
+		 * Merges user-provided configuration over the defaults
+		 * @return BladeConfig
+		 */
+		public function mergeConfig(): array {
+			$defaults      = self::getDefaults();
+			$configuration = $this->getConfig();
+			
+			/** @var array<int|string, string> $paths */
+			$paths = is_array($configuration['paths'] ?? null) ? $configuration['paths'] : $defaults['paths'];
+			
+			/** @var array<string, callable> $directives */
+			$directives = is_array($configuration['directives'] ?? null) ? $configuration['directives'] : $defaults['directives'];
+			
+			/** @var array<string, callable> $ifDirectives */
+			$ifDirectives = is_array($configuration['if_directives'] ?? null) ? $configuration['if_directives'] : $defaults['if_directives'];
+			
+			/** @var array<string, mixed> $globals */
+			$globals = is_array($configuration['globals'] ?? null) ? $configuration['globals'] : $defaults['globals'];
+			
+			return [
+				'template_dir'  => is_string($configuration['template_dir']  ?? null) ? $configuration['template_dir']  : $defaults['template_dir'],
+				'cache_dir'     => is_string($configuration['cache_dir']     ?? null) ? $configuration['cache_dir']     : $defaults['cache_dir'],
+				'caching'       => is_bool($configuration['caching']         ?? null) ? $configuration['caching']       : $defaults['caching'],
+				'paths'         => $paths,
+				'directives'    => $directives,
+				'if_directives' => $ifDirectives,
+				'globals'       => $globals,
 			];
 		}
 		
@@ -102,23 +143,8 @@
 				return self::$instance;
 			}
 			
-			// Get default configuration values
-			$defaults = $this->getDefaults();
-			
-			// Get user-provided configuration (from config/blade.php or similar)
-			$configuration = $this->getConfig();
-			
 			// Create BladeTemplate with merged configuration
-			// User config takes precedence over defaults using null coalescing
-			$instance = new BladeTemplate([
-				'template_dir'  => $configuration['template_dir']  ?? $defaults['template_dir'],
-				'cache_dir'     => $configuration['cache_dir']     ?? $defaults['cache_dir'],
-				'caching'       => $configuration['caching']       ?? $defaults['caching'],
-				'directives'    => $configuration['directives']    ?? $defaults['directives'],
-				'if_directives' => $configuration['if_directives'] ?? $defaults['if_directives'],
-				'paths'         => $configuration['paths']         ?? $defaults['paths'],
-				'globals'       => $configuration['globals']       ?? $defaults['globals'],
-			]);
+			$instance = new BladeTemplate($this->mergeConfig());
 			
 			// Cache and return instance
 			return self::$instance = $instance;
