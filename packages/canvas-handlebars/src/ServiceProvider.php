@@ -7,6 +7,16 @@
 	
 	/**
 	 * Handlebars Template Engine Service Provider for Canvas Framework
+	 *
+	 * @phpstan-type HandlebarsConfig array{
+	 *     template_dir: string,
+	 *     compile_dir: string,
+	 *     strict_mode: bool,
+	 *     standalone: bool,
+	 *     helpers: array<string, callable>,
+	 *     partials: array<string, string>,
+	 *     globals: array<string, mixed>
+	 * }
 	 */
 	class ServiceProvider extends \Quellabs\DependencyInjection\Provider\ServiceProvider {
 		
@@ -31,7 +41,7 @@
 		
 		/**
 		 * Returns the default configuration settings for Handlebars
-		 * @return array<string, mixed> Default configuration array
+		 * @return HandlebarsConfig
 		 */
 		public static function getDefaults(): array {
 			return [
@@ -48,6 +58,39 @@
 				// Enable FLAG_BESTPERFORMANCE: compiled closures have no runtime dependency
 				// Trade-off: helpers must be embedded at compile time (not passed at render)
 				'standalone'   => false,
+				
+				// No helpers, partials, or globals by default
+				'helpers'      => [],
+				'partials'     => [],
+				'globals'      => [],
+			];
+		}
+		
+		/**
+		 * Merges user-provided configuration over the defaults
+		 * @return HandlebarsConfig
+		 */
+		public function mergeConfig(): array {
+			$defaults      = self::getDefaults();
+			$configuration = $this->getConfig();
+			
+			/** @var array<string, callable> $helpers */
+			$helpers = is_array($configuration['helpers'] ?? null) ? $configuration['helpers'] : $defaults['helpers'];
+			
+			/** @var array<string, string> $partials */
+			$partials = is_array($configuration['partials'] ?? null) ? $configuration['partials'] : $defaults['partials'];
+			
+			/** @var array<string, mixed> $globals */
+			$globals = is_array($configuration['globals'] ?? null) ? $configuration['globals'] : $defaults['globals'];
+			
+			return [
+				'template_dir' => is_string($configuration['template_dir'] ?? null) ? $configuration['template_dir'] : $defaults['template_dir'],
+				'compile_dir'  => is_string($configuration['compile_dir']  ?? null) ? $configuration['compile_dir']  : $defaults['compile_dir'],
+				'strict_mode'  => is_bool($configuration['strict_mode']    ?? null) ? $configuration['strict_mode']  : $defaults['strict_mode'],
+				'standalone'   => is_bool($configuration['standalone']     ?? null) ? $configuration['standalone']   : $defaults['standalone'],
+				'helpers'      => $helpers,
+				'partials'     => $partials,
+				'globals'      => $globals,
 			];
 		}
 		
@@ -91,19 +134,10 @@
 				return self::$instance;
 			}
 			
-			$defaults      = $this->getDefaults();
-			$configuration = $this->getConfig();
+			// Instantiate template engine
+			$instance = new HandlebarsTemplate($this->mergeConfig());
 			
-			$instance = new HandlebarsTemplate([
-				'template_dir' => $configuration['template_dir'] ?? $defaults['template_dir'],
-				'compile_dir'  => $configuration['compile_dir'] ?? $defaults['compile_dir'],
-				'strict_mode'  => $configuration['strict_mode'] ?? $defaults['strict_mode'],
-				'standalone'   => $configuration['standalone']  ?? $defaults['standalone'],
-				'helpers'      => $configuration['helpers']     ?? [],
-				'partials'     => $configuration['partials']    ?? [],
-				'globals'      => $configuration['globals']     ?? [],
-			]);
-			
+			// Cache and return
 			return self::$instance = $instance;
 		}
 	}
