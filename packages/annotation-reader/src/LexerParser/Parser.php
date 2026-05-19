@@ -95,7 +95,7 @@
 					}
 					
 					// Skip ignored annotations
-					$value = $token->getValue();
+					$value = $token->getStringValue();
 					
 					if (isset($this->ignore_annotations_set[$value])) {
 						$token = $this->lexer->get();
@@ -149,7 +149,7 @@
 				$parameter = $this->lexer->match(Token::Parameter);
 				
 				// Append the parameter value to our building key
-				$key .= $parameter->getValue();
+				$key .= $parameter->getStringValue();
 			} while ($this->lexer->optionalMatch(Token::Dot)); // Continue if there's a dot, indicating more parameters
 			
 			// Match the closing curly brace that ends the configuration key
@@ -174,7 +174,7 @@
 				}
 				
 				$token = $this->lexer->match(Token::Parameter);
-				$className .= $token->getValue();
+				$className .= $token->getStringValue();
 			} while ($this->lexer->optionalMatch(Token::Backslash));
 			
 			// Match the double colon
@@ -183,8 +183,8 @@
 			// Match the 'class' keyword
 			$classToken = $this->lexer->match(Token::Parameter);
 			
-			if ($classToken->getValue() !== 'class') {
-				throw new ParserException("Expected 'class' after '::', got: " . $classToken->getValue());
+			if ($classToken->getStringValue() !== 'class') {
+				throw new ParserException("Expected 'class' after '::', got: " . $classToken->getStringValue());
 			}
 			
 			// Resolve the class name using existing resolution logic
@@ -219,8 +219,12 @@
 			$peekType = $this->lexer->peek()->getType();
 			
 			// Return the actual value of the token
-			if ($peekType === Token::String || $peekType === Token::Number) {
-				return $this->lexer->match($peekType)->getValue();
+			if ($peekType === Token::String) {
+				return $this->lexer->match($peekType)->getStringValue();
+			}
+
+			if ($peekType === Token::Number) {
+				return $this->lexer->match($peekType)->getNumericValue();
 			}
 			
 			// Handle negative numbers (e.g., -10)
@@ -232,7 +236,7 @@
 				$token = $this->lexer->match(Token::Number);
 				
 				// Return the negative value
-				return 0 - $token->getValue();
+				return 0 - $token->getNumericValue();
 			}
 			
 			// Handle boolean true value
@@ -303,7 +307,7 @@
 				
 				$isClassConstant =
 					$nextToken->getType() === Token::Parameter &&
-					$nextToken->getValue() === 'class';
+					$nextToken->getStringValue() === 'class';
 				
 				// Always restore the lexer to its original position
 				// This method only performs lookahead and shouldn't consume tokens
@@ -329,11 +333,13 @@
 			if ($this->lexer->optionalMatch(Token::CurlyBraceOpen)) {
 				$value = $this->parseAttributeList();
 				$this->lexer->match(Token::CurlyBraceClose);
-			} elseif (in_array($this->lexer->peek()->getType(), [Token::String, Token::Number], true)) {
-				$value = $this->lexer->match($this->lexer->peek()->getType())->getValue();
+			} elseif ($this->lexer->peek()->getType() === Token::String) {
+				$value = $this->lexer->match(Token::String)->getStringValue();
+			} elseif ($this->lexer->peek()->getType() === Token::Number) {
+				$value = $this->lexer->match(Token::Number)->getNumericValue();
 			} elseif ($this->lexer->optionalMatch(Token::Minus)) {
 				$token = $this->lexer->match(Token::Number);
-				$value = 0 - $token->getValue();
+				$value = 0 - $token->getNumericValue();
 			} elseif ($this->lexer->optionalMatch(Token::True)) {
 				$value = true;
 			} elseif ($this->lexer->optionalMatch(Token::False)) {
@@ -393,7 +399,12 @@
 				// Check if this is a key-value pair (has an equals sign)
 				if (!$this->lexer->optionalMatch(Token::Equals)) {
 					// No equals sign found, treat as a simple array value
-					$attributes[] = $attributeKey->getValue();
+					if ($peekType === Token::Number) {
+						$attributes[] = $attributeKey->getNumericValue();
+					} else {
+						$attributes[] = $attributeKey->getStringValue();
+					}
+					
 					continue;
 				}
 				
@@ -406,7 +417,7 @@
 				}
 				
 				// Add the key-value pair to the attributes array
-				$attributes[$attributeKey->getValue()] = $value;
+				$attributes[$attributeKey->getStringValue()] = $value;
 			} while ($this->lexer->optionalMatch(Token::Comma)); // Continue if there's a comma, indicating more attributes
 			
 			// Return the complete attributes array
@@ -527,11 +538,11 @@
 			// Validate that we successfully parsed a value
 			if ($value === null) {
 				// Throw exception if no valid value was found after the equals sign
-				throw new ParserException("Expected valid value for parameter: " . $parameterKey->getValue());
+				throw new ParserException("Expected valid value for parameter: " . $parameterKey->getStringValue());
 			}
 			
 			// Store the parsed value using the parameter name as the key
-			$parameters[(string)$parameterKey->getValue()] = $value;
+			$parameters[$parameterKey->getStringValue()] = $value;
 			
 			// Return true to indicate successful parsing of a named parameter
 			return true;
@@ -547,7 +558,7 @@
 		 */
 		private function parseAnnotation(Token $token): AnnotationInterface {
 			// Fetch the annotation class name
-			$value = $token->getValue();
+			$value = $token->getStringValue();
 			
 			// Resolve the annotation class name using imports
 			$tokenName = NamespaceResolver::resolveClassName($value, $this->reflection);

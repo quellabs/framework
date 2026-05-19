@@ -74,9 +74,9 @@
 		 * Converts a key to a value
 		 * @param string $key
 		 * @param bool $strict
-		 * @return bool|int|string
+		 * @return mixed
 		 */
-		public static function toValue(string $key, bool $strict = false): bool|int|string {
+		public static function toValue(string $key, bool $strict = false): mixed {
 			$constants = self::getConstants();
 			
 			if ($strict) {
