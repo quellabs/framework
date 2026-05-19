@@ -3,7 +3,9 @@
 	namespace Quellabs\AnnotationReader\Annotation;
 	
 	/**
-	 * Class BasicEnum
+	 * Abstract base class that provides enumeration functionality for PHP.
+	 * This class uses reflection to provide enum-like behavior by working with
+	 * class constants defined in child classes.
 	 * @url https://stackoverflow.com/questions/254514/php-and-enumerations
 	 */
 	abstract class BasicEnum {
