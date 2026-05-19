@@ -83,10 +83,12 @@
 			// Fetch all controller class names from local directory and registered packages
 			$controllers = $this->controllersDiscovery->fetch();
 			
+			// Early abort when no controllers were found
 			if (empty($controllers)) {
 				return [];
 			}
 			
+			// Build the patterns
 			$result = [];
 			
 			foreach ($controllers as $controller) {
@@ -104,7 +106,7 @@
 		
 		/**
 		 * Get route prefix from controller class annotation
-		 * @param string $controller Fully qualified controller class name
+		 * @param class-string $controller Fully qualified controller class name
 		 * @return string Route prefix (without leading slash)
 		 * @throws AnnotationReaderException
 		 */

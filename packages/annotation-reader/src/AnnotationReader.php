@@ -31,25 +31,20 @@
 		 * AnnotationReader constructor
 		 */
 		public function __construct(Configuration $configuration) {
-			// Store annotation cache information
 			$this->useCache = $configuration->useAnnotationCache();
 			$this->annotationCachePath = $configuration->getAnnotationCachePath();
-			
-			// Store the configuration array
 			$this->configuration = [];
-			
-			// read cached data
 			$this->cached_annotations = [];
 		}
 		
 		/**
 		 * Get class annotations including inherited ones
-		 * @param mixed $class The class object or class name to analyze
+		 * @param class-string|object $class The class object or class name to analyze
 		 * @param string|null $annotationClass Optional filter to return only annotations of a specific class
 		 * @return AnnotationCollection
 		 * @throws AnnotationReaderException
 		 */
-		public function getClassAnnotations(mixed $class, ?string $annotationClass = null): AnnotationCollection {
+		public function getClassAnnotations(string|object $class, ?string $annotationClass = null): AnnotationCollection {
 			// Process from parent to child (so child annotations can override)
 			$annotations = $this->getAllObjectAnnotations($class);
 			
@@ -70,11 +65,11 @@
 		
 		/**
 		 * Checks if a given entity class has a specific annotation.
-		 * @param mixed $class            The object to check
+		 * @param class-string|object $class The object to check
 		 * @param string $annotationClass The annotation class to look for
-		 * @return bool                   True if the annotation exists on the property, false otherwise
+		 * @return bool                       True if the annotation exists on the property, false otherwise
 		 */
-		public function classHasAnnotation(mixed $class, string $annotationClass): bool {
+		public function classHasAnnotation(string|object $class, string $annotationClass): bool {
 			try {
 				$annotations = $this->getClassAnnotations($class, $annotationClass);
 				return !$annotations->isEmpty();
@@ -85,13 +80,13 @@
 		
 		/**
 		 * Takes a method's docComment and parses it to extract annotations
-		 * @param mixed $class The class object or class name to analyze
+		 * @param class-string|object $class The class object or class name to analyze
 		 * @param string $methodName The name of the method whose annotations to retrieve
 		 * @param string|null $annotationClass Optional filter to return only annotations of a specific class
 		 * @return AnnotationCollection    Array of parsed annotations for the specified method
 		 * @throws AnnotationReaderException
 		 */
-		public function getMethodAnnotations(mixed $class, string $methodName, ?string $annotationClass=null): AnnotationCollection {
+		public function getMethodAnnotations(string|object $class, string $methodName, ?string $annotationClass = null): AnnotationCollection {
 			// Get all annotations for the method
 			$annotations = $this->getAllObjectAnnotations($class);
 			
@@ -114,12 +109,12 @@
 		
 		/**
 		 * Checks if a method in a given entity class has a specific annotation.
-		 * @param mixed $class            The object to check
-		 * @param string $methodName      The name of the method to inspect for annotations
+		 * @param class-string|object $class The object to check
+		 * @param string $methodName The name of the method to inspect for annotations
 		 * @param string $annotationClass The annotation class to look for
 		 * @return bool                   True if the annotation exists on the method, false otherwise
 		 */
-		public function methodHasAnnotation(mixed $class, string $methodName, string $annotationClass): bool {
+		public function methodHasAnnotation(string|object $class, string $methodName, string $annotationClass): bool {
 			try {
 				$annotations = $this->getMethodAnnotations($class, $methodName, $annotationClass);
 				return !$annotations->isEmpty();
@@ -130,13 +125,13 @@
 		
 		/**
 		 * Takes a property's docComment and parses it
-		 * @param mixed $class
+		 * @param class-string|object $class
 		 * @param string $propertyName
 		 * @param string|null $annotationClass
 		 * @return AnnotationCollection
 		 * @throws AnnotationReaderException
 		 */
-		public function getPropertyAnnotations(mixed $class, string $propertyName, ?string $annotationClass=null): AnnotationCollection {
+		public function getPropertyAnnotations(string|object $class, string $propertyName, ?string $annotationClass = null): AnnotationCollection {
 			// Get all annotations for the property
 			$annotations = $this->getAllObjectAnnotations($class);
 			
@@ -159,12 +154,12 @@
 		
 		/**
 		 * Checks if a method in a given entity class has a specific annotation.
-		 * @param mixed $class            The object to check
-		 * @param string $propertyName    The name of the property to inspect for annotations
-		 * @param string $annotationClass The annotation class to look for
-		 * @return bool                   True if the annotation exists on the property, false otherwise
+		 * @param class-string|object $class The object to check
+		 * @param string $propertyName       The name of the property to inspect for annotations
+		 * @param string $annotationClass    The annotation class to look for
+		 * @return bool                      True if the annotation exists on the property, false otherwise
 		 */
-		public function propertyHasAnnotation(mixed $class, string $propertyName, string $annotationClass): bool {
+		public function propertyHasAnnotation(string|object $class, string $propertyName, string $annotationClass): bool {
 			try {
 				$annotations = $this->getPropertyAnnotations($class, $propertyName, $annotationClass);
 				return !$annotations->isEmpty();
@@ -184,11 +179,11 @@
 				$lexer = new Lexer($string);
 				$parser = new Parser($lexer, $this->configuration);
 				return $parser->parse();
-			} catch (LexerException | ParserException $e) {
+			} catch (LexerException|ParserException $e) {
 				throw new AnnotationReaderException($e->getMessage(), $e->getCode(), $e);
 			}
 		}
-
+		
 		/**
 		 * Transforms a className to a filename
 		 * @param string $className
@@ -228,6 +223,7 @@
 			}
 			
 			// Return the successfully deserialized cache data
+			/** @var AnnotationSet $unserializedData */
 			return $unserializedData;
 		}
 		
@@ -249,7 +245,7 @@
 			
 			// Create the cache path
 			$cachePath = $this->annotationCachePath . DIRECTORY_SEPARATOR . $cacheFilename;
-
+			
 			// Write the file to the path
 			file_put_contents($cachePath, serialize($annotations));
 		}
@@ -301,7 +297,7 @@
 		 * @return void
 		 * @throws AnnotationReaderException When annotation parsing fails
 		 */
-		protected function parseClassAnnotations(\ReflectionClass $reflection, AnnotationCollection &$result) : void {
+		protected function parseClassAnnotations(\ReflectionClass $reflection, AnnotationCollection &$result): void {
 			// Early return if no docblock comment exists or if it's empty
 			if (empty($reflection->getDocComment())) {
 				return;
@@ -333,7 +329,7 @@
 		 * @return void
 		 * @throws AnnotationReaderException
 		 */
-		protected function parseAnnotations(array $items, array &$result, ?\ReflectionClass $reflection=null): void {
+		protected function parseAnnotations(array $items, array &$result, ?\ReflectionClass $reflection = null): void {
 			// Loop through each Reflection item (either property or method)
 			foreach ($items as $item) {
 				try {
@@ -357,7 +353,7 @@
 					
 					// Add the annotations to the result array
 					$result[$item->getName()] = $annotations;
-				} catch (ParserException | LexerException $e) {
+				} catch (ParserException|LexerException $e) {
 					// Determine if this is a property or method
 					$itemType = $item instanceof \ReflectionProperty ? 'property' : 'method';
 					$itemName = $item->getName();
@@ -392,14 +388,14 @@
 			$this->parseAnnotations($reflection->getMethods(), $result['methods'], $reflection);
 			return $result;
 		}
-
+		
 		/**
 		 * Retrieve all annotations for a given class, caching the results for performance.
-		 * @param mixed $class The fully qualified class name to get annotations for.
+		 * @param class-string|object $class The fully qualified class name to get annotations for.
 		 * @return AnnotationSet An array containing all annotations for the class, its properties, and its methods.
 		 * @throws AnnotationReaderException
 		 */
-		protected function getAllObjectAnnotations(mixed $class): array {
+		protected function getAllObjectAnnotations(string|object $class): array {
 			try {
 				// Create a ReflectionClass object for the given class
 				// This provides metadata about the class structure and properties
