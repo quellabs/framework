@@ -31,14 +31,9 @@
 		 * AnnotationReader constructor
 		 */
 		public function __construct(Configuration $configuration) {
-			// Store annotation cache information
 			$this->useCache = $configuration->useAnnotationCache();
 			$this->annotationCachePath = $configuration->getAnnotationCachePath();
-			
-			// Store the configuration array
 			$this->configuration = [];
-			
-			// read cached data
 			$this->cached_annotations = [];
 		}
 		
@@ -73,11 +68,14 @@
 		 * @param class-string|object $class The object to check
 		 * @param string $annotationClass The annotation class to look for
 		 * @return bool                       True if the annotation exists on the property, false otherwise
-		 * @throws AnnotationReaderException
 		 */
 		public function classHasAnnotation(string|object $class, string $annotationClass): bool {
-			$annotations = $this->getClassAnnotations($class, $annotationClass);
-			return !$annotations->isEmpty();
+			try {
+				$annotations = $this->getClassAnnotations($class, $annotationClass);
+				return !$annotations->isEmpty();
+			} catch (AnnotationReaderException $e) {
+				return false;
+			}
 		}
 		
 		/**
@@ -115,11 +113,14 @@
 		 * @param string $methodName The name of the method to inspect for annotations
 		 * @param string $annotationClass The annotation class to look for
 		 * @return bool                   True if the annotation exists on the method, false otherwise
-		 * @throws AnnotationReaderException
 		 */
 		public function methodHasAnnotation(string|object $class, string $methodName, string $annotationClass): bool {
-			$annotations = $this->getMethodAnnotations($class, $methodName, $annotationClass);
-			return !$annotations->isEmpty();
+			try {
+				$annotations = $this->getMethodAnnotations($class, $methodName, $annotationClass);
+				return !$annotations->isEmpty();
+			} catch (AnnotationReaderException $e) {
+				return false;
+			}
 		}
 		
 		/**
@@ -154,14 +155,17 @@
 		/**
 		 * Checks if a method in a given entity class has a specific annotation.
 		 * @param class-string|object $class The object to check
-		 * @param string $propertyName The name of the property to inspect for annotations
-		 * @param string $annotationClass The annotation class to look for
+		 * @param string $propertyName       The name of the property to inspect for annotations
+		 * @param string $annotationClass    The annotation class to look for
 		 * @return bool                      True if the annotation exists on the property, false otherwise
-		 * @throws AnnotationReaderException
 		 */
 		public function propertyHasAnnotation(string|object $class, string $propertyName, string $annotationClass): bool {
-			$annotations = $this->getPropertyAnnotations($class, $propertyName, $annotationClass);
-			return !$annotations->isEmpty();
+			try {
+				$annotations = $this->getPropertyAnnotations($class, $propertyName, $annotationClass);
+				return !$annotations->isEmpty();
+			} catch (AnnotationReaderException $e) {
+				return false;
+			}
 		}
 		
 		/**
