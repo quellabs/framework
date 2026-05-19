@@ -15,6 +15,10 @@
 	use Quellabs\Contracts\Templates\TemplateRenderException;
 	use Quellabs\Support\ComposerUtils;
 	
+	/**
+	 * Blade implementation for Canvas
+	 * @phpstan-import-type BladeConfig from ServiceProvider
+	 */
 	class BladeTemplate implements TemplateEngineInterface {
 		
 		/**
@@ -33,7 +37,7 @@
 		private FileViewFinder $finder;
 		
 		/**
-		 * @var array<string, mixed> Configuration data provided by ServiceProvider
+		 * @var BladeConfig Configuration data provided by ServiceProvider
 		 */
 		private array $config;
 		
@@ -44,19 +48,22 @@
 		
 		/**
 		 * BladeTemplate constructor
-		 * @param array<string, mixed> $configuration
+		 * @param BladeConfig $configuration
 		 */
 		public function __construct(array $configuration) {
 			$this->config = $configuration;
 			
-			$viewPaths = (array) ($configuration['template_dir'] ?? ComposerUtils::getProjectRoot() . DIRECTORY_SEPARATOR . 'templates');
-			$cachePath = ($configuration['caching'] ?? true) ? ($configuration['cache_dir'] ?? null) : null;
+			$templateDir = $configuration['template_dir'] ?? ComposerUtils::getProjectRoot() . DIRECTORY_SEPARATOR . 'templates';
+			$viewPaths   = (array) $templateDir;
+			$shouldCache = $configuration['caching'] ?? true;
+			$cachePath   = $configuration['cache_dir'] ?? sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'blade_cache';
 			
 			// Set up filesystem
 			$filesystem = new Filesystem();
 			
-			// Set up Blade compiler
-			$this->compiler = new BladeCompiler($filesystem, $cachePath);
+			// Set up Blade compiler; always pass a valid cache path — use $shouldCache
+			// to disable writing compiled files when caching is turned off in config.
+			$this->compiler = new BladeCompiler($filesystem, $cachePath, '', $shouldCache);
 			
 			// Set up engine resolver and register the Blade engine
 			$resolver = new EngineResolver();
@@ -80,7 +87,7 @@
 			
 			// Add additional view paths if configured
 			if (!empty($configuration['paths'])) {
-				foreach ((array) $configuration['paths'] as $namespace => $path) {
+				foreach ($configuration['paths'] as $namespace => $path) {
 					if (is_string($namespace)) {
 						$this->addPath($path, $namespace);
 					} else {
@@ -144,8 +151,9 @@
 		 */
 		public function renderString(string $templateString, array $data = []): string {
 			// Write to a temp file in the template directory — already known to Blade
+			$templateDir = $this->config['template_dir'] ?? sys_get_temp_dir();
 			$tmpName = 'blade_str_' . md5($templateString) . '_' . getmypid();
-			$tmpFile = rtrim($this->config['template_dir'], '/\\') . DIRECTORY_SEPARATOR . $tmpName . '.blade.php';
+			$tmpFile = rtrim($templateDir, '/\\') . DIRECTORY_SEPARATOR . $tmpName . '.blade.php';
 			
 			try {
 				if (file_put_contents($tmpFile, $templateString) === false) {
@@ -284,7 +292,7 @@
 		 */
 		private function resolveTemplatePath(string $template): string {
 			$relative = str_replace('.', DIRECTORY_SEPARATOR, $template) . '.blade.php';
-			return rtrim($this->config['template_dir'], '/\\') . DIRECTORY_SEPARATOR . $relative;
+			return rtrim($this->config['template_dir'] ?? '', '/\\') . DIRECTORY_SEPARATOR . $relative;
 		}
 		
 		/**

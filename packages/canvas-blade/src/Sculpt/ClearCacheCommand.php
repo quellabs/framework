@@ -2,7 +2,6 @@
 	
 	namespace Quellabs\Canvas\Blade\Sculpt;
 	
-	use Quellabs\Canvas\Blade\ServiceProvider;
 	use Quellabs\Canvas\Blade\BladeTemplate;
 	use Quellabs\Contracts\Discovery\ProviderInterface;
 	use Quellabs\Sculpt\ConfigurationManager;
@@ -39,14 +38,13 @@
 		 * @return int Exit code (0 for success)
 		 */
 		public function execute(ConfigurationManager $config): int {
-			// Get default configuration values directly from the provider class
-			$defaults = ServiceProvider::getDefaults();
-			
-			// Get current configuration from the provider instance
-			$configuration = $this->provider->getConfig();
+			// Validate that provider is of the correct type
+			if (!$this->provider instanceof \Quellabs\Canvas\Blade\ServiceProvider) {
+				throw new \RuntimeException('Expected Quellabs\Canvas\Blade\ServiceProvider');
+			}
 			
 			// Create Blade instance with configured directories
-			$blade = new BladeTemplate(array_merge($defaults, $configuration));
+			$blade = new BladeTemplate($this->provider->mergeConfig());
 			
 			// Clear all cached templates and compiled files
 			$blade->clearCache();
