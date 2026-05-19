@@ -279,44 +279,19 @@
 		}
 		
 		/**
-		 * Searches for entities based on the given entity type and primary key.
-		 * @template T
-		 * @param class-string<T> $entityType The fully qualified class name of the container
-		 * @param array<string, mixed>|int|string $primaryKey The primary key of the entity
-		 * @return T[] The found entities
-		 * @throws QuelException
-		 * @throws EntityResolutionException
-		 */
-		public function findBy(string $entityType, array|int|string $primaryKey): array {
-			// Normalize the primary key
-			$primaryKeys = $this->formatPrimaryKeyAsArray($primaryKey, $entityType);
-			
-			// Prepare a query in case the entity is not found
-			$query = $this->queryBuilder->prepareQuery($entityType, $primaryKeys);
-			
-			// Execute query and retrieve result
-			$result = $this->getAll($query, $primaryKeys);
-			
-			// Extract the main column from the result
-			$filteredResult = array_column($result, "main");
-			
-			// Return deduplicated results
-			return ResultProcessor::deDuplicateObjects($filteredResult);
-		}
-		
-		/**
 		 * Searches for a single entity based on the given entity type and primary key.
 		 * @template T of object
 		 * @param class-string<T> $entityType The fully qualified class name of the entity
-		 * @param mixed $primaryKey The primary key of the entity
+		 * @param int|string $primaryKey The primary key of the entity
 		 * @return T|null The found entity or null if not found
 		 * @throws QuelException
 		 * @throws EntityResolutionException
 		 * @psalm-return T|null
 		 */
-		public function find(string $entityType, mixed $primaryKey): ?object {
+		public function find(string $entityType, int|string $primaryKey): ?object {
 			// Normalize the primary key
-			$primaryKeys = $this->formatPrimaryKeyAsArray($primaryKey, $entityType);
+			$firstKey = $this->entityStore->getMetadata($entityType)->getPrimaryKey();
+			$primaryKeys = $firstKey ? [$firstKey => $primaryKey] : [];
 			
 			// Return early if the entity is already tracked and fully initialized
 			$existingEntity = $this->unitOfWork->findEntity($entityType, $primaryKeys);
@@ -331,7 +306,7 @@
 			}
 			
 			// Fall back to a database query
-			$result = $this->findBy($entityType, $primaryKey);
+			$result = $this->findBy($entityType, $primaryKeys);
 			
 			// If the query returns no results, return null
 			if (empty($result)) {
@@ -344,6 +319,45 @@
 			 */
 			$entity = $result[0];
 			return $entity;
+		}
+		
+		/**
+		 * Searches for entities based on the given entity type and primary key.
+		 * @template T
+		 * @param class-string<T> $entityType The fully qualified class name of the container
+		 * @param array<string, mixed> $searchData Associative array of field names and values to filter by
+		 * @param array<string, string>|null $sortBy Associative array of field names and sort directions
+		 * @return T[] The found entities
+		 * @throws QuelException
+		 * @throws EntityResolutionException
+		 */
+		public function findBy(string $entityType, array $searchData, ?array $sortBy = null): array {
+			// Prepare a query in case the entity is not found
+			$query = $this->queryBuilder->prepareQuery($entityType, $searchData, $sortBy);
+			
+			// Execute query and retrieve result
+			$result = $this->getAll($query, $searchData);
+			
+			// Extract the main column from the result
+			$filteredResult = array_column($result, "main");
+			
+			// Return deduplicated results
+			return ResultProcessor::deDuplicateObjects($filteredResult);
+		}
+		
+		/**
+		 * Searches for entities based on the given entity type and primary key.
+		 * @template T of object
+		 * @param class-string<T> $entityType The fully qualified class name of the container
+		 * @param array<string, mixed> $searchData Associative array of field names and values to filter by
+		 * @param array<string, string>|null $sortBy Associative array of field names and sort directions
+		 * @return T|null The found entity or null if not found
+		 * @throws QuelException
+		 * @throws EntityResolutionException
+		 */
+		public function findOneBy(string $entityType, array $searchData, ?array $sortBy = null): ?object {
+			$results = $this->findBy($entityType, $searchData, $sortBy);
+			return $results[0] ?? null;
 		}
 		
 		/**
@@ -363,26 +377,5 @@
 		public function getValidationRules(object $entity): array {
 			$validate = new EntityToValidation();
 			return $validate->convert($entity);
-		}
-		
-		/**
-		 * Normalizes the primary key into an array.
-		 * This function checks if the given primary key is already an array.
-		 * If not, it converts the primary key into an array with the proper key
-		 * based on the entity type.
-		 * @param array<string, mixed>|int|string $primaryKey The primary key to be normalized
-		 * @param string $entityType The type of entity for which the primary key is needed
-		 * @return array<string, mixed> A normalized representation of the primary key as an array
-		 * @throws EntityResolutionException
-		 */
-		private function formatPrimaryKeyAsArray(array|int|string $primaryKey, string $entityType): array {
-			// If the primary key is already an array, return it directly
-			if (is_array($primaryKey)) {
-				return $primaryKey;
-			}
-			
-			// Otherwise, get the first identifier key and create an array with the proper key and value
-			$firstKey = $this->getEntityStore()->getMetadata($entityType)->identifierKeys[0] ?? null;
-			return $firstKey ? [$firstKey => $primaryKey] : [];
 		}
 	}

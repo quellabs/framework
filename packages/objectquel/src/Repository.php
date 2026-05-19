@@ -20,6 +20,7 @@
 	
 	namespace Quellabs\ObjectQuel;
 	
+	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
 	use Quellabs\ObjectQuel\Exception\QuelException;
 	
 	/**
@@ -61,21 +62,35 @@
 		
 		/**
 		 * Find a single entity by its primary key/identifier
-		 * @param mixed $id The primary key value to search for
-		 * @return object|null The found entity or null if not found
+		 * @param int|string $primaryKey The primary key of the entity
+		 * @return TEntity|null The found entity or null if not found
 		 * @throws QuelException If a database error occurs during the operation
+		 * @throws EntityResolutionException
 		 */
-		public function find(mixed $id): ?object {
-			return $this->em()->find($this->entityClass, $id);
+		public function find(int|string $primaryKey): ?object {
+			return $this->em()->find($this->entityClass, $primaryKey);
 		}
 		
 		/**
 		 * Find multiple entities matching the given criteria
-		 * @param array<string, mixed> $criteria Associative array of field names and values to match
+		 * @param array<string, mixed> $searchData Associative array of field names and values to filter by
+		 * @param array<string, string>|null $sortBy Associative array of field names and sort directions
 		 * @return array<TEntity> Array of matching entities
-		 * @throws QuelException If a database error occurs during the operation
+		 * @throws QuelException|EntityResolutionException If a database error occurs during the operation
 		 */
-		public function findBy(array $criteria): array {
-			return $this->em()->findBy($this->entityClass, $criteria);
+		public function findBy(array $searchData, ?array $sortBy=null): array {
+			return $this->em()->findBy($this->entityClass, $searchData, $sortBy);
+		}
+		
+		/**
+		 * Find a single entity matching the given criteria
+		 * @param array<string, mixed> $searchData Associative array of field names and values to filter by
+		 * @param array<string, string>|null $sortBy Associative array of field names and sort directions
+		 * @return TEntity|null The found entity or null if not found
+		 * @throws QuelException
+		 * @throws EntityResolutionException
+		 */
+		public function findOneBy(array $searchData, ?array $sortBy = null): ?object {
+			return $this->em()->findOneBy($this->entityClass, $searchData, $sortBy);
 		}
 	}
