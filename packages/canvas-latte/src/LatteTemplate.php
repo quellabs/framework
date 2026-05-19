@@ -6,8 +6,10 @@
 	use Latte\Loaders\FileLoader;
 	use Quellabs\Contracts\Templates\TemplateEngineInterface;
 	use Quellabs\Contracts\Templates\TemplateRenderException;
-	use Quellabs\Support\ComposerUtils;
 	
+	/**
+	 * @phpstan-import-type LatteConfig from ServiceProvider
+	 */
 	class LatteTemplate implements TemplateEngineInterface {
 		
 		/**
@@ -21,7 +23,7 @@
 		private array $paths = [];
 		
 		/**
-		 * @var array<string, mixed> Configuration data provided by ServiceProvider
+		 * @var LatteConfig Configuration data provided by ServiceProvider
 		 */
 		private array $config;
 		
@@ -32,13 +34,13 @@
 		
 		/**
 		 * LatteTemplate constructor
-		 * @param array<string, mixed> $configuration
+		 * @param LatteConfig $configuration
 		 */
 		public function __construct(array $configuration) {
 			$this->config = $configuration;
 			
-			$templateDir = $configuration['template_dir'] ?? ComposerUtils::getProjectRoot() . DIRECTORY_SEPARATOR . 'templates';
-			$cachePath = ($configuration['caching'] ?? true) ? ($configuration['cache_dir'] ?? null) : null;
+			$templateDir = $configuration['template_dir'];
+			$cachePath   = $configuration['caching'] ? $configuration['cache_dir'] : null;
 			
 			// Store the primary path under the default (empty) namespace
 			$this->paths[''] = rtrim($templateDir, '/\\');
@@ -55,7 +57,7 @@
 			
 			// Register additional namespaced/plain paths if configured
 			if (!empty($configuration['paths'])) {
-				foreach ((array)$configuration['paths'] as $namespace => $path) {
+				foreach ($configuration['paths'] as $namespace => $path) {
 					$this->addPath($path, is_string($namespace) ? $namespace : null);
 				}
 			}
@@ -163,9 +165,9 @@
 		 * @return void
 		 */
 		public function clearCache(): void {
-			$cacheDir = $this->config['cache_dir'] ?? null;
+			$cacheDir = $this->config['cache_dir'];
 			
-			if (!$cacheDir || !is_dir($cacheDir)) {
+			if (!is_dir($cacheDir)) {
 				return;
 			}
 			
@@ -302,8 +304,7 @@
 		 * @return string Absolute path to the compiled cache file
 		 */
 		private function resolveCompiledPath(string $sourcePath): string {
-			$cacheDir = $this->config['cache_dir'] ?? '';
-			return rtrim($cacheDir, '/\\') . DIRECTORY_SEPARATOR . md5($sourcePath) . '.php';
+			return rtrim($this->config['cache_dir'], '/\\') . DIRECTORY_SEPARATOR . md5($sourcePath) . '.php';
 		}
 		
 		/**

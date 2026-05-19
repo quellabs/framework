@@ -2,8 +2,8 @@
 	
 	namespace Quellabs\Canvas\Latte\Sculpt;
 	
-	use Quellabs\Canvas\Latte\ServiceProvider;
 	use Quellabs\Canvas\Latte\LatteTemplate;
+	use Quellabs\Canvas\Latte\ServiceProvider;
 	use Quellabs\Contracts\Discovery\ProviderInterface;
 	use Quellabs\Sculpt\ConfigurationManager;
 	use Quellabs\Sculpt\Contracts\CommandBase;
@@ -39,16 +39,13 @@
 		 * @return int Exit code (0 for success)
 		 */
 		public function execute(ConfigurationManager $config): int {
-			// Get default configuration values directly from the provider class
-			$defaults = ServiceProvider::getDefaults();
+			// Validate that the provider is of the correct type
+			if (!$this->provider instanceof ServiceProvider) {
+				throw new \RuntimeException('Expected ' . ServiceProvider::class);
+			}
 			
-			// Get current configuration from the provider instance
-			$configuration = $this->provider->getConfig();
-			
-			// Create Latte instance with configured directories
-			$latte = new LatteTemplate(array_merge($defaults, $configuration));
-			
-			// Clear all cached templates and compiled files
+			// Create Latte instance with merged configuration and clear cache
+			$latte = new LatteTemplate($this->provider->mergeConfig());
 			$latte->clearCache();
 			
 			// Display a success message to the user
