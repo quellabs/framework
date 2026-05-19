@@ -20,15 +20,19 @@
 	
 	namespace Quellabs\ObjectQuel\Metadata;
 	
+	use Quellabs\AnnotationReader\AnnotationInterface;
 	use Quellabs\AnnotationReader\Collection\AnnotationCollection;
 	use Quellabs\ObjectQuel\Annotations\Orm\Column;
 	use Quellabs\ObjectQuel\Annotations\Orm\FullTextIndex;
+	use Quellabs\ObjectQuel\Annotations\Orm\Immutable;
 	use Quellabs\ObjectQuel\Annotations\Orm\Index;
 	use Quellabs\ObjectQuel\Annotations\Orm\OneToMany;
 	use Quellabs\ObjectQuel\Annotations\Orm\OneToOne;
 	use Quellabs\ObjectQuel\Annotations\Orm\ManyToOne;
 	use Quellabs\ObjectQuel\Annotations\Orm\UniqueIndex;
 	use Quellabs\ObjectQuel\Annotations\Orm\Version;
+	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
+	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
 	
 	/**
 	 * Immutable value object containing all metadata for a single entity.
@@ -40,11 +44,29 @@
 	 *
 	 * All properties are readonly to ensure immutability and prevent accidental
 	 * modification of cached metadata.
+	 *
+	 * @phpstan-import-type ColumnDefinition from DatabaseAdapter
+	 *
+	 * @phpstan-type ColumnDefinitionRecord array{
+	 *       property_name: string,
+	 *       type: string,
+	 *       php_type: \ReflectionType|null,
+	 *       limit: mixed,
+	 *       nullable: bool,
+	 *       unsigned: bool,
+	 *       default: mixed,
+	 *       primary_key: bool,
+	 *       scale: mixed,
+	 *       precision: mixed,
+	 *       identity: bool,
+	 *       values: mixed
+	 *  }
 	 */
 	readonly class EntityMetadataRecord {
 		
 		/**
 		 * Constructor for EntityMetadataRecord.
+		 *
 		 * @param string $className Fully qualified, normalized class name
 		 * @param string $tableName Database table name from @Table annotation
 		 * @param array<int, string> $properties Property names
@@ -58,20 +80,7 @@
 		 * @param array<string, OneToOne> $oneToOneRelations Property => OneToOne annotation mapping
 		 * @param array<Index|UniqueIndex|FullTextIndex> $indexes Index annotations from class level
 		 * @param string|null $autoIncrementColumn Property name of auto-increment primary key (if any)
-		 * @param array<string, array{
-		 *     property_name: string,
-		 *     type: string,
-		 *     php_type: \ReflectionType|null,
-		 *     limit: mixed,
-		 *     nullable: bool,
-		 *     unsigned: bool,
-		 *     default: mixed,
-		 *     primary_key: bool,
-		 *     scale: mixed,
-		 *     precision: mixed,
-		 *     identity: bool,
-		 *     values: mixed
-		 * }> $columnDefinitions
+		 * @param array<string, ColumnDefinitionRecord> $columnDefinitions
 		 */
 		public function __construct(
 			public string  $className,
@@ -172,5 +181,109 @@
 		 */
 		public function isVersioned(string $property): bool {
 			return isset($this->versionColumns[$property]);
+		}
+		
+		/**
+		 * Returns column definitions in the shape expected by the Sculpt subsystem (ColumnDefinition).
+		 * Converts ORM-internal metadata to the database-comparable format used by SchemaComparator.
+		 * @return array<string, ColumnDefinition>
+		 */
+		public function getColumnDefinitionsForSchema(): array {
+			$result = [];
+			
+			/** @noinspection PhpLoopCanBeConvertedToArrayMapInspection */
+			foreach ($this->columnDefinitions as $columnName => $def) {
+				$result[$columnName] = [
+					'type'        => $def['type'],
+					'php_type'    => $def['php_type'] instanceof \ReflectionNamedType ? $def['php_type']->getName() : 'mixed',
+					'limit'       => is_int($def['limit']) ? $def['limit'] : null,
+					'default'     => $def['default'],
+					'nullable'    => $def['nullable'],
+					'precision'   => is_int($def['precision']) ? $def['precision'] : null,
+					'scale'       => is_int($def['scale']) ? $def['scale'] : null,
+					'unsigned'    => $def['unsigned'],
+					'generated'   => null,
+					'identity'    => $def['identity'],
+					'primary_key' => $def['primary_key'],
+					'values'      => is_array($def['values']) ? $def['values'] : null,
+				];
+			}
+			
+			return $result;
+		}
+		
+		/**
+		 * Finds a FullTextIndex annotation that covers all the given property names.
+		 *
+		 * Used by the SQL generator to decide whether search() and search_score() can
+		 * use MATCH...AGAINST instead of LIKE chains. A full-text index matches when its
+		 * column list is identical to (or a superset of) the requested property names.
+		 *
+		 * Note: the columns defined on FullTextIndex annotations are property names,
+		 * not database column names. This method compares at the property level.
+		 *
+		 * @param array<int, string> $propertyNames The property names passed to search() or search_score()
+		 * @return FullTextIndex|null The matching index, or null if none covers all columns
+		 */
+		public function getFullTextIndexForColumns(array $propertyNames): ?FullTextIndex {
+			foreach ($this->indexes as $index) {
+				if (!$index instanceof FullTextIndex) {
+					continue;
+				}
+				
+				// All requested property names must be present in this index's column list
+				$missingColumns = array_diff($propertyNames, $index->getColumns());
+				
+				if (empty($missingColumns)) {
+					return $index;
+				}
+			}
+			
+			return null;
+		}
+		
+		
+		/**
+		 * Returns all annotations grouped by property.
+		 * @return array<string, array<int, AnnotationInterface>>
+		 */
+		public function getAnnotations(): array {
+			$result = [];
+			
+			foreach ($this->annotations as $property => $collection) {
+				foreach ($collection->ofType(AnnotationInterface::class) as $annotation) {
+					$result[$property][] = $annotation;
+				}
+			}
+			
+			return $result;
+		}
+		
+		/**
+		 * Returns annotations filtered by a specific type.
+		 * @template T of AnnotationInterface
+		 * @param class-string<T> $annotationType
+		 * @return array<string, array<int, T>>
+		 */
+		public function getAnnotationsOfType(string $annotationType): array {
+			$result = [];
+			
+			foreach ($this->annotations as $property => $annotationCollection) {
+				foreach ($annotationCollection->ofType($annotationType) as $annotation) {
+					$result[$property][] = $annotation;
+				}
+			}
+			
+			return $result;
+		}
+		
+		/**
+		 * Return true if the entity is immutable (readonly), false if not.
+		 * An immutable entity is marked with the @Immutable annotation.
+		 * @return bool True if the entity is immutable, false otherwise
+		 */
+		public function isImmutable(): bool {
+			$annotationList = $this->getAnnotationsOfType(Immutable::class);
+			return !empty($annotationList);
 		}
 	}

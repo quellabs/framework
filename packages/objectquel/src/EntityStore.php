@@ -20,27 +20,18 @@
 	
 	namespace Quellabs\ObjectQuel;
 	
-	use Quellabs\AnnotationReader\AnnotationInterface;
 	use Quellabs\AnnotationReader\AnnotationReader;
 	use Quellabs\AnnotationReader\Exception\AnnotationReaderException;
-	use Quellabs\ObjectQuel\Annotations\Orm\Column;
-	use Quellabs\ObjectQuel\Annotations\Orm\Immutable;
-	use Quellabs\ObjectQuel\Annotations\Orm\FullTextIndex;
 	use Quellabs\ObjectQuel\Annotations\Orm\ManyToOne;
-	use Quellabs\ObjectQuel\Annotations\Orm\OneToMany;
 	use Quellabs\ObjectQuel\Annotations\Orm\OneToOne;
 	use Quellabs\ObjectQuel\Annotations\Orm\Table;
-	use Quellabs\ObjectQuel\Annotations\Orm\Version;
 	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
 	use Quellabs\ObjectQuel\Metadata\EntityMetadataRecord;
 	use Quellabs\ObjectQuel\Metadata\EntityMetadataBuilder;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabase;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
 	use Quellabs\ObjectQuel\ProxyGenerator\ProxyGenerator;
 	use Quellabs\ObjectQuel\ReflectionManagement\EntityLocator;
 	use Quellabs\ObjectQuel\ReflectionManagement\ReflectionHandler;
 	use Quellabs\Support\NamespaceResolver;
-	use Quellabs\ObjectQuel\ObjectQuel\PrimaryKeyInfo;
 	
 	/**
 	 * Entity metadata registry and access point.
@@ -52,13 +43,26 @@
 	 * - Manage proxy generation
 	 */
 	class EntityStore {
+		
+		/** @var Configuration Holds paths, namespaces, etc */
 		private Configuration $configuration;
+		
+		/** @var AnnotationReader Reads the annotations in classes, methods and properties */
 		private AnnotationReader $annotationReader;
+		
+		/** @var ReflectionHandler Reads properties using reflection */
 		private ReflectionHandler $reflectionHandler;
+		
+		/** @var ProxyGenerator Reads and writes entity proxy files for lazy loading */
 		private ProxyGenerator $proxyGenerator;
+		
+		/** @var EntityMetadataBuilder Gives access to entity metadata */
 		private EntityMetadataBuilder $metadataBuilder;
 		
+		/** @var string Namespace to be used for proxies */
 		private string $proxyNamespace;
+		
+		/** @var string Namespace to be added to entities when none given */
 		private string $entityNamespace;
 		
 		// Simple registry of normalized class name => table name
@@ -218,16 +222,6 @@
 		}
 		
 		/**
-		 * Returns the table name attached to the entity.
-		 * @param string|object $entity The entity object, class name, or ReflectionClass
-		 * @return string The database table name, or null if entity is not registered
-		 * @throws EntityResolutionException
-		 */
-		public function getOwningTable(string|object $entity): string {
-			return $this->getMetadata($entity)->tableName;
-		}
-		
-		/**
 		 * Normalizes the entity name by resolving proxies and namespaces.
 		 * @param string|object $entity Fully qualified class name, short name, object, or ReflectionClass
 		 * @return class-string Normalized, fully qualified class name
@@ -235,7 +229,13 @@
 		 */
 		public function resolveProxyClass(string|object $entity): string {
 			// Determine the class name of the entity
-			$className = $this->extractClassName($entity);
+			if ($entity instanceof \ReflectionClass) {
+				$className = $entity->getName();
+			} elseif (is_object($entity)) {
+				$className = get_class($entity);
+			} else {
+				$className = ltrim($entity, "\\");
+			}
 			
 			// Return cached entity name if present
 			if (isset($this->normalizedNameCache[$className])) {
@@ -311,184 +311,6 @@
 		}
 		
 		/**
-		 * Retrieves the primary key of the main range from an AstRetrieve object.
-		 * @param AstRetrieve $astRetrieve A reference to the AstRetrieve object representing the query
-		 * @return PrimaryKeyInfo
-		 * @throws EntityResolutionException|\LogicException
-		 */
-		public function extractMainRangePrimaryKey(AstRetrieve $astRetrieve): PrimaryKeyInfo {
-			foreach ($astRetrieve->getRanges() as $range) {
-				// Only accept database ranges
-				if (!$range instanceof AstRangeDatabase) {
-					continue;
-				}
-				
-				// Continue if the range contains a join property
-				if ($range->getJoinProperty() !== null) {
-					continue;
-				}
-				
-				// Get the associated primary key if the range doesn't have a join property
-				$entityName = $range->getEntityName();
-				$metadata = $this->getMetadata($entityName);
-				$primaryKey = $metadata->getPrimaryKey();
-				
-				// Continue if there is no primary key
-				if ($primaryKey === null) {
-					continue;
-				}
-				
-				// Return the range name, entity name, and the primary key of the entity
-				return new PrimaryKeyInfo($range, $entityName, $primaryKey);
-			}
-			
-			// Return null if no range without a join property is found
-			// This should never happen in practice, as such a query cannot be created
-			throw new \LogicException("Malformed query: no primary range found in query");
-		}
-		
-		// ==================== Legacy Compatibility Methods ====================
-		//
-		// These methods maintain backward compatibility with existing code that uses
-		// the old EntityStore API. All of these methods internally delegate to getMetadata()
-		// and extract the relevant field from the EntityMetadata object.
-		//
-		// Consider refactoring callers to use getMetadata() directly for better performance
-		// when multiple metadata fields are needed, as this avoids repeated method calls.
-		//
-		// Example refactoring:
-		//   OLD: $keys = $store->getIdentifierKeys($entity);
-		//        $cols = $store->getColumnMap($entity);
-		//   NEW: $metadata = $store->getMetadata($entity);
-		//        $keys = $metadata->identifierKeys;
-		//        $cols = $metadata->columnMap;
-		
-		/**
-		 * This function retrieves the primary keys of a given entity.
-		 * @param string|object $entity The entity from which the primary keys are retrieved
-		 * @return array<int, string> An array with the names of the properties that are the primary keys
-		 * @throws EntityResolutionException
-		 */
-		public function getIdentifierKeys(string|object $entity): array {
-			return $this->getMetadata($entity)->identifierKeys;
-		}
-		
-		/**
-		 * Retrieves the column names that serve as primary keys for a specific entity.
-		 * @param string|object $entity The entity for which the primary key columns are retrieved
-		 * @return array<int, string> An array with the names of the columns that serve as primary keys
-		 * @throws EntityResolutionException
-		 */
-		public function getIdentifierColumnNames(string|object $entity): array {
-			return $this->getMetadata($entity)->identifierColumns;
-		}
-		
-		/**
-		 * Retrieves the columns that serve as version columns for a specific entity.
-		 * Version columns are used for optimistic locking.
-		 * @param string|object $entity The entity for which the version columns are retrieved
-		 * @return array<string, array{name: string, column: Column, version: Version}> An array with the names of the columns that serve as version columns
-		 * @throws EntityResolutionException
-		 */
-		public function getVersionColumns(string|object $entity): array {
-			return $this->getMetadata($entity)->versionColumns;
-		}
-		
-		/**
-		 * Obtains the map between properties and column names for a given entity.
-		 * This function generates an associative array that links the properties of an entity
-		 * to their respective column names in the database. The results are cached
-		 * to prevent repeated calculations.
-		 * @param string|object $entity The object or class name of the entity
-		 * @return array<string, string> An associative array with the property as key and the column name as value
-		 * @throws EntityResolutionException
-		 */
-		public function getColumnMap(string|object $entity): array {
-			return $this->getMetadata($entity)->columnMap;
-		}
-		
-		/**
-		 * Returns all annotations grouped by property.
-		 * @param string|object $entity
-		 * @return array<string, array<int, AnnotationInterface>>
-		 * @throws EntityResolutionException
-		 */
-		public function getAnnotations(string|object $entity): array {
-			$result = [];
-			
-			foreach ($this->getMetadata($entity)->annotations as $property => $collection) {
-				foreach ($collection->ofType(AnnotationInterface::class) as $annotation) {
-					$result[$property][] = $annotation;
-				}
-			}
-			
-			return $result;
-		}
-		
-		/**
-		 * Returns annotations filtered by a specific type.
-		 * @template T of AnnotationInterface
-		 * @param string|object $entity
-		 * @param class-string<T> $annotationType
-		 * @return array<string, array<int, T>>
-		 * @throws EntityResolutionException
-		 */
-		public function getAnnotationsOfType(string|object $entity, string $annotationType): array {
-			$result = [];
-			
-			foreach ($this->getMetadata($entity)->annotations as $property => $annotationCollection) {
-				foreach ($annotationCollection->ofType($annotationType) as $annotation) {
-					$result[$property][] = $annotation;
-				}
-			}
-			
-			return $result;
-		}
-		
-		/**
-		 * Returns all properties of an entity.
-		 * @param string|object $entity The entity object or class name string
-		 * @return array<int, string> An array of property names
-		 * @throws EntityResolutionException
-		 */
-		public function getProperties(string|object $entity): array {
-			return $this->getMetadata($entity)->properties;
-		}
-		
-		/**
-		 * Retrieve the ManyToOne dependencies for a given entity class.
-		 * This function uses annotations to determine which other entities
-		 * are related to the given entity class via a ManyToOne relationship.
-		 * The names of these related entities are returned as an array.
-		 * @param string|object $entity The name of the entity class to inspect
-		 * @return array<string, ManyToOne> An array of entity names with which the given class has a ManyToOne relationship
-		 * @throws EntityResolutionException
-		 */
-		public function getManyToOneDependencies(string|object $entity): array {
-			return $this->getMetadata($entity)->getManyToOneDependencies();
-		}
-		
-		/**
-		 * Retrieves all OneToMany dependencies for a specific entity.
-		 * @param string|object $entity The name of the entity for which you want to get the OneToMany dependencies
-		 * @return array<string, OneToMany> An associative array with the name of the target entity as key and the annotation as value
-		 * @throws EntityResolutionException
-		 */
-		public function getOneToManyDependencies(string|object $entity): array {
-			return $this->getMetadata($entity)->getOneToManyDependencies();
-		}
-		
-		/**
-		 * Retrieves all OneToOne dependencies for a specific entity.
-		 * @param string|object $entity The name of the entity for which you want to get the OneToOne dependencies
-		 * @return array<string, OneToOne> An associative array with the name of the target entity as key and the annotation as value
-		 * @throws EntityResolutionException
-		 */
-		public function getOneToOneDependencies(string|object $entity): array {
-			return $this->getMetadata($entity)->getOneToOneDependencies();
-		}
-		
-		/**
 		 * Resolves the back-reference property name on the target entity for a ManyToOne or OneToOne relation.
 		 *
 		 * For OneToOne, inversedBy and mappedBy are direct property names on the target entity,
@@ -504,145 +326,22 @@
 		 * @throws EntityResolutionException When target entity metadata cannot be loaded
 		 */
 		public function resolveTargetProperty(ManyToOne|OneToOne $relation): ?string {
+			// Fetch metadata for entity
+			$metadata = $this->getMetadata($relation->getTargetEntity());
+			
 			// OneToOne: return inversedBy or mappedBy as-is, falling back to the primary key
 			if ($relation instanceof OneToOne) {
 				return $relation->getInversedBy()
 					?? $relation->getMappedBy()
-					?? $this->getPrimaryKey($relation->getTargetEntity());
+					?? $metadata->getPrimaryKey();
 			}
 			
 			// ManyToOne: inversedBy is a direct property name on the target entity.
 			// If absent, fall back to the target entity's primary key.
-			return $relation->getInversedBy() ?? $this->getPrimaryKey($relation->getTargetEntity());
-		}
-		
-		/**
-		 * Return true if the entity is immutable (readonly), false if not.
-		 * An immutable entity is marked with the @Immutable annotation.
-		 * @param string|object $entity The entity to check
-		 * @return bool True if the entity is immutable, false otherwise
-		 * @throws EntityResolutionException
-		 */
-		public function isImmutable(string|object $entity): bool {
-			$annotationList = $this->getAnnotationsOfType($entity, Immutable::class);
-			return !empty($annotationList);
-		}
-		
-		/**
-		 * Retrieves all index annotations defined for a given entity class.
-		 * @param string|object $entity The entity class to analyze (can be string classname or object instance)
-		 * @return array<int, object> A collection of Index, UniqueIndex and FullTextIndex annotation objects
-		 * @throws EntityResolutionException
-		 */
-		public function getIndexes(string|object $entity): array {
-			return $this->getMetadata($entity)->indexes;
-		}
-		
-		/**
-		 * Finds a FullTextIndex annotation that covers all the given property names.
-		 *
-		 * Used by the SQL generator to decide whether search() and search_score() can
-		 * use MATCH...AGAINST instead of LIKE chains. A full-text index matches when its
-		 * column list is identical to (or a superset of) the requested property names.
-		 *
-		 * Note: the columns defined on FullTextIndex annotations are property names,
-		 * not database column names. This method compares at the property level.
-		 *
-		 * @param string|object $entity The entity to inspect
-		 * @param array<int, string> $propertyNames $propertyNames The property names passed to search() or search_score()
-		 * @return FullTextIndex|null The matching index, or null if none covers all columns
-		 * @throws EntityResolutionException
-		 */
-		public function getFullTextIndexForColumns(string|object $entity, array $propertyNames): ?FullTextIndex {
-			$indexes = $this->getMetadata($entity)->indexes;
-			
-			foreach ($indexes as $index) {
-				if (!$index instanceof FullTextIndex) {
-					continue;
-				}
-				
-				// All requested property names must be present in this index's column list
-				$indexColumns = $index->getColumns();
-				$missingColumns = array_diff($propertyNames, $indexColumns);
-				
-				if (empty($missingColumns)) {
-					return $index;
-				}
-			}
-			
-			return null;
-		}
-		
-		/**
-		 * Retrieves the primary key field name for a given entity.
-		 * @param string|object $entity The entity object or class to inspect
-		 * @return string|null The primary key property name, or null if none exists
-		 * @throws EntityResolutionException
-		 */
-		public function getPrimaryKey(string|object $entity): ?string {
-			return $this->getMetadata($entity)->getPrimaryKey();
-		}
-		
-		/**
-		 * This method finds primary key columns that are configured to receive
-		 * database-generated values, which are either:
-		 * 1. Primary keys with a PrimaryKeyStrategy annotation set to "identity", or
-		 * 2. Primary keys with no explicitly defined strategy (defaulting to auto-increment)
-		 * @param string|object $entity The entity to examine
-		 * @return string|null The name of the auto-incrementing primary key field, or null if none found
-		 * @throws EntityResolutionException
-		 */
-		public function findAutoIncrementPrimaryKey(string|object $entity): ?string {
-			return $this->getMetadata($entity)->autoIncrementColumn;
-		}
-		
-		/**
-		 * Extracts database column definitions from an entity class using reflection and annotations.
-		 * @param string $className The fully qualified class name of the entity
-		 * @return array<string, mixed> An associative array of column definitions indexed by column name
-		 * @throws EntityResolutionException
-		 */
-		public function getEntityColumnDefinitions(string $className): array {
-			return $this->getMetadata($className)->columnDefinitions;
-		}
-		
-		/**
-		 * Normalizes the primary key into an array.
-		 * This function checks if the given primary key is already an array.
-		 * If not, it converts the primary key into an array with the proper key
-		 * based on the entity type.
-		 * @param array<string, mixed>|int|string $primaryKey The primary key to be normalized
-		 * @param string $entityType The type of entity for which the primary key is needed
-		 * @return array<string, mixed> A normalized representation of the primary key as an array
-		 * @throws EntityResolutionException
-		 */
-		public function formatPrimaryKeyAsArray(array|int|string $primaryKey, string $entityType): array {
-			// If the primary key is already an array, return it directly
-			if (is_array($primaryKey)) {
-				return $primaryKey;
-			}
-			
-			// Otherwise, get the first identifier key and create an array with the proper key and value
-			$firstKey = $this->getMetadata($entityType)->identifierKeys[0] ?? null;
-			return $firstKey ? [$firstKey => $primaryKey] : [];
+			return $relation->getInversedBy() ?? $metadata->getPrimaryKey();
 		}
 		
 		// ==================== Private Helper Methods ====================
-		
-		/**
-		 * Extract class name from various entity representations.
-		 * @param string|object $entity The entity in any supported format
-		 * @return string The extracted class name
-		 */
-		private function extractClassName(string|object $entity): string {
-			if ($entity instanceof \ReflectionClass) {
-				return $entity->getName();
-			} elseif (is_object($entity)) {
-				return get_class($entity);
-			} else {
-				return ltrim($entity, "\\");
-			}
-		}
 		
 		/**
 		 * Initialize entity classes using the EntityLocator.
@@ -683,6 +382,7 @@
 				
 				// Loop through all registered entities
 				foreach (array_keys($this->entityRegistry) as $className) {
+					// Fetch metadata
 					$metadata = $this->getMetadata($className);
 					
 					// Add ManyToOne dependencies
@@ -708,5 +408,4 @@
 			
 			return $this->dependencyGraph;
 		}
-		
 	}

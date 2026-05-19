@@ -57,7 +57,7 @@
 		protected array $indexByClass = [];
 		
 		/** @var \WeakMap<object, array<string, mixed>> */
-		protected \WeakMap $originalEntityData;
+		protected \WeakMap $entitySnapshots;
 		
 		/** @var \WeakMap<object, bool> */
 		protected \WeakMap $entityRemovalList;
@@ -80,7 +80,7 @@
 			$this->entityStore = $entityManager->getEntityStore();
 			$this->propertyHandler = new PropertyHandler();
 			$this->serializer = new SQLSerializer($entityManager->getEntityStore());
-			$this->originalEntityData = new \WeakMap();
+			$this->entitySnapshots = new \WeakMap();
 			$this->entityRemovalList = new \WeakMap();
 			
 			// Register the signals
@@ -191,8 +191,8 @@
 		 * @param object $entity
 		 * @return array<string, mixed>|null
 		 */
-		public function getOriginalEntityData(object $entity): ?array {
-			return $this->originalEntityData[$entity] ?? null;
+		public function getEntitySnapshot(object $entity): ?array {
+			return $this->entitySnapshots[$entity] ?? null;
 		}
 		
 		/**
@@ -242,7 +242,7 @@
 			// This baseline is used later to detect changes when flush() is called
 			/** @var array<string, mixed> $serialized */
 			$serialized = $this->getSerializer()->serialize($entity);
-			$this->originalEntityData[$entity] = $serialized;
+			$this->entitySnapshots[$entity] = $serialized;
 		}
 		
 		/**
@@ -329,6 +329,9 @@
 					$deleted = [];
 					
 					foreach ($sortedEntities as $entity) {
+						// Fetch entity metadata
+						$metadata = $this->getEntityStore()->getMetadata($entity);
+						
 						// Copy the primary keys from the parent entity to this entity, if available.
 						// This only happens if the relationship is not self-referential.
 						foreach($this->extractParentPrimaryKeyData($entity) as $parentEntity) {
@@ -338,7 +341,7 @@
 						// Perform the corresponding database operation based on the state of the entity.
 						switch ($this->getEntityState($entity)) {
 							case DirtyState::New:
-								if ($this->getEntityStore()->isImmutable($entity)) {
+								if ($metadata->isImmutable()) {
 									throw new OrmException(
 										"Cannot insert immutable entity " . get_class($entity)
 									);
@@ -352,7 +355,7 @@
 								break;
 							
 							case DirtyState::Dirty:
-								if ($this->getEntityStore()->isImmutable($entity)) {
+								if ($metadata->isImmutable()) {
 									throw new OrmException(
 										"Cannot update immutable entity " . get_class($entity)
 									);
@@ -366,7 +369,7 @@
 								break;
 							
 							case DirtyState::Deleted:
-								if ($this->getEntityStore()->isImmutable($entity)) {
+								if ($metadata->isImmutable()) {
 									throw new OrmException(
 										"Cannot delete immutable entity " . get_class($entity)
 									);
@@ -407,7 +410,7 @@
 		public function clear(): void {
 			$this->entitiesByClass = [];
 			$this->indexByClass = [];
-			$this->originalEntityData = new \WeakMap();
+			$this->entitySnapshots = new \WeakMap();
 			$this->entityRemovalList = new \WeakMap();
 			
 			// Add garbage collection hint for large datasets
@@ -446,7 +449,7 @@
 			
 			// Remove the entity's original data snapshot used for change detection
 			// This effectively stops tracking any changes to the entity's properties
-			unset($this->originalEntityData[$entity]);
+			unset($this->entitySnapshots[$entity]);
 			
 			// If the entity was previously scheduled for deletion, remove it from that list
 			// This prevents it from being included in the next DELETE operation
@@ -489,7 +492,7 @@
 			}
 			
 			// Checks if the entity is new based on the absence of original data.
-			if (!isset($this->originalEntityData[$entity])) {
+			if (!isset($this->entitySnapshots[$entity])) {
 				return DirtyState::New;
 			}
 			
@@ -527,9 +530,9 @@
 		 * @throws EntityResolutionException
 		 */
 		private function hasNullPrimaryKeys(object $entity): bool {
-			$primaryKeys = $this->entityStore->getIdentifierKeys($entity);
+			$metadata = $this->entityStore->getMetadata($entity);
 			
-			foreach ($primaryKeys as $primaryKey) {
+			foreach ($metadata->identifierKeys as $primaryKey) {
 				if ($this->propertyHandler->get($entity, $primaryKey) === null) {
 					return true;
 				}
@@ -545,7 +548,7 @@
 		 */
 		private function isEntityDirty(object $entity): bool {
 			// Retrieve the snapshot taken when the entity was loaded from the database
-			$originalData = $this->getOriginalEntityData($entity);
+			$originalData = $this->getEntitySnapshot($entity);
 			
 			// No snapshot means the entity was never persisted, treat it as dirty
 			if ($originalData === null) {
@@ -618,6 +621,7 @@
 		 *
 		 * @return array<int, object> The sorted entities in the correct insertion/update order.
 		 * @throws OrmException When a cycle is detected in the entity relations,
+		 * @throws EntityResolutionException
 		 * indicating an unresolvable dependency between entities (e.g., A depends on B, B depends on A).
 		 */
 		private function scheduleEntitiesForPersistence(): array {
@@ -635,12 +639,15 @@
 			
 			// Build the dependency graph by examining each entity's relationships
 			foreach ($flattenedIdentityMap as $hash => $entity) {
+				// Fetch metadata
+				$metadata = $this->getEntityStore()->getMetadata($entity);
+				
 				// Get all ManyToOne relationships where this entity is the "many" side
 				// These are dependencies where this entity depends on a parent entity
-				$manyToOneParents = $this->getEntityStore()->getManyToOneDependencies($entity);
+				$manyToOneParents = $metadata->getManyToOneDependencies();
 				
 				// Get all OneToOne relationships where this entity is the owning side
-				$oneToOneParents = $this->getEntityStore()->getOneToOneDependencies($entity);
+				$oneToOneParents = $metadata->getOneToOneDependencies();
 				
 				// Filter OneToOne relationships to only include those that are bidirectional
 				// This is determined by checking if inversedBy is not empty
@@ -679,8 +686,8 @@
 			}
 			
 			// Begin topological sorting using Kahn's algorithm
-			$queue = []; // Queue for processing entities that have no remaining dependencies
-			$result = []; // Output array of sorted entity IDs
+			$queue = [];
+			$result = [];
 			
 			// First, find all entities that have no dependencies (inDegree = 0)
 			// These are "root" entities that can be safely processed first
@@ -725,6 +732,7 @@
 		 * Checks if a given entity is present in the identity map.
 		 * @param object $entity The entity to check.
 		 * @return bool Returns true if the entity is in the identity map, otherwise false.
+		 * @throws EntityResolutionException
 		 */
 		private function isInIdentityMap(object $entity): bool {
 			// Get the normalized class name of the entity.
@@ -757,7 +765,7 @@
 				// This helps track changes in the entity over time
 				/** @var array<string, mixed> $serialized */
 				$serialized = $this->getSerializer()->serialize($entity);
-				$this->originalEntityData[$entity] = $serialized;
+				$this->entitySnapshots[$entity] = $serialized;
 			}
 			
 			// Remove deleted entities from tracking
@@ -771,19 +779,17 @@
 		 * for the given entity. If the parent entity doesn't exist, null is returned.
 		 * @param object $entity The entity for which to retrieve the parent entity and annotation.
 		 * @return array<int, array{entity: object, property: string, value: mixed}> An associative array with 'entity' and 'annotation' as keys, or null if not found.
+		 * @throws EntityResolutionException
 		 */
 		private function extractParentPrimaryKeyData(object $entity): array {
-			// Initialize an empty array to store the results.
-			// This will hold all parent entities and their relationship data
-			$result = [];
-			
-			// Retrieve all annotations associated with the given entity.
-			// Annotations contain metadata about the entity's properties and relationships
-			$annotationList = $this->getEntityStore()->getAnnotations($entity);
+			// Retrieve metadata for entity
+			$metadata = $this->getEntityStore()->getMetadata($entity);
 			
 			// Loop through each set of annotations for each property of the entity.
 			// Each property might have multiple annotations defining its behavior
-			foreach ($annotationList as $property => $annotations) {
+			$result = [];
+
+			foreach ($metadata->getAnnotations() as $property => $annotations) {
 				// Loop through the annotations for a single property of the entity.
 				foreach ($annotations as $annotation) {
 					// Check if the current annotation is a ManyToOne annotation or a bidirectional OneToOne.
@@ -842,14 +848,13 @@
 		 *               the values are their corresponding values from the entity.
 		 */
 		private function getIdentifiers(object $entity): array {
-			// Fetch the primary key names from the entity store
-			$primaryKeys = $this->getEntityStore()->getIdentifierKeys($entity);
+			// Fetch the metadata from the entity store
+			$metadata = $this->getEntityStore()->getMetadata($entity);
 			
 			// Loop through each primary key name
 			$result = [];
 
-			foreach ($primaryKeys as $key) {
-				// Fetch the corresponding value for each primary key from the entity using the property handler
+			foreach ($metadata->identifierKeys as $key) {
 				$result[$key] = $this->propertyHandler->get($entity, $key);
 			}
 			
@@ -890,15 +895,19 @@
 		 * @param string $normalizedClass The normalized class name of the parent entity being deleted
 		 * @param object $entity The parent entity object instance being deleted
 		 * @return void
+		 * @throws EntityResolutionException
 		 */
 		private function handleDependentEntityClass(string $dependentEntityClass, string $normalizedClass, object $entity): void {
+			// Fetch metadata for this entity
+			$metadata = $this->getEntityStore()->getMetadata($dependentEntityClass);
+			
 			// Retrieve all ManyToOne relationships defined in the dependent entity class
 			// These are relationships where the dependent entity has a foreign key to some parent
-			$manyToOneDependencies = $this->entityStore->getManyToOneDependencies($dependentEntityClass);
+			$manyToOneDependencies = $metadata->getManyToOneDependencies();
 			
 			// Retrieve all OneToOne relationships defined in the dependent entity class
 			// These are one-to-one associations between entities
-			$oneToOneDependencies = $this->entityStore->getOneToOneDependencies($dependentEntityClass);
+			$oneToOneDependencies = $metadata->getOneToOneDependencies();
 			
 			// Filter OneToOne relationships to only include bidirectional ones
 			// We only want relationships where both sides reference each other
@@ -944,10 +953,12 @@
 		 * @param string $entityClass Entity class name
 		 * @param string $property Property name
 		 * @return Cascade|null The cascade annotation if found, null otherwise
+		 * @throws EntityResolutionException
 		 */
 		private function getCascadeInfo(string $entityClass, string $property): ?Cascade {
 			// Retrieve all annotations for the specified entity class from the entity store
-			$entityAnnotations = $this->entityStore->getAnnotations($entityClass);
+			$metadata = $this->entityStore->getMetadata($entityClass);
+			$entityAnnotations = $metadata->getAnnotations();
 			
 			// Check if the specified property exists in the entity annotations
 			// If not, return null immediately since no cascade can exist
@@ -1079,13 +1090,14 @@
 		 * when the parent entity is persisted.
 		 * @param object $entity The entity whose OneToMany relationships should be processed
 		 * @return void
+		 * @throws EntityResolutionException
 		 */
 		private function processCascadingOneToManyPersists(object $entity): void {
-			// Get OneToMany dependencies for this entity
-			$oneToManyDependencies = $this->getEntityStore()->getOneToManyDependencies($entity);
+			// Fetch metadata for this entity
+			$metadata = $this->getEntityStore()->getMetadata($entity);
 			
 			// Check each OneToMany relationship defined in this entity
-			foreach ($oneToManyDependencies as $property => $annotation) {
+			foreach ($metadata->getOneToManyDependencies() as $property => $annotation) {
 				// Retrieve cascade configuration from metadata for this property
 				$cascadeInfo = $this->getCascadeInfo(get_class($entity), $property);
 				
@@ -1131,13 +1143,14 @@
 		 * when the parent entity is persisted.
 		 * @param object $entity The entity whose OneToOne relationships should be processed
 		 * @return void
+		 * @throws EntityResolutionException
 		 */
 		private function processCascadingOneToOnePersists(object $entity): void {
-			// Get OneToOne dependencies for this entity
-			$oneToOneDependencies = $this->getEntityStore()->getOneToOneDependencies($entity);
+			// Fetch metadata of this entity
+			$metadata = $this->getEntityStore()->getMetadata($entity);
 			
 			// Check each OneToOne relationship defined in this entity
-			foreach ($oneToOneDependencies as $property => $annotation) {
+			foreach ($metadata->getOneToOneDependencies() as $property => $annotation) {
 				// Skip if this is the owning side of the relationship - we only want to process non-owning sides
 				if (empty($annotation->getMappedBy())) {
 					continue;

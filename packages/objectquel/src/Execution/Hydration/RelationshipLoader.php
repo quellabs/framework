@@ -192,8 +192,8 @@
 			$proxy = new $proxyClassName($this->entityManager);
 			
 			// Set the primary key on the proxy using the target entity's primary key property name
-			$pk = $this->entityStore->getIdentifierKeys($targetEntityName);
-			$this->propertyHandler->set($proxy, $pk[0], $relationColumnValue);
+			$metadata = $this->entityStore->getMetadata($targetEntityName);
+			$this->propertyHandler->set($proxy, $metadata->identifierKeys[0], $relationColumnValue);
 			
 			// Put the proxy under ownership
 			$this->entityManager->persist($proxy);
@@ -304,8 +304,11 @@
 						// Complete short entity names to their full namespace form
 						$targetEntity = $this->entityStore->resolveProxyClass($dependency->getTargetEntity());
 						
+						// Fetch metadata for this entity
+						$metadata = $this->entityStore->getMetadata($targetEntity);
+						
 						// Fetch the relation column. If absent use the primary key
-						$relationColumn = $dependency->getRelationColumn() ?? $this->entityStore->getPrimaryKey($entity);
+						$relationColumn = $dependency->getRelationColumn() ?? $metadata->getPrimaryKey();
 						
 						if ($relationColumn === null) {
 							throw new QuelException(
@@ -406,7 +409,8 @@
 			// Determine which property on this entity holds its primary key value.
 			// The OneToMany annotation may specify a relationColumn explicitly;
 			// if not, fall back to the entity's primary key.
-			$relationColumn = $dependency->getRelationColumn() ?? $this->entityStore->getPrimaryKey($entity);
+			$metadata = $this->entityStore->getMetadata($targetEntity);
+			$relationColumn = $dependency->getRelationColumn() ?? $metadata->getPrimaryKey();
 			
 			if ($relationColumn === null) {
 				return;

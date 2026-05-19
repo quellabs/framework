@@ -6,6 +6,8 @@
 	use Quellabs\ObjectQuel\Configuration;
 	use Quellabs\ObjectQuel\DatabaseAdapter\TypeMapper;
 	use Quellabs\ObjectQuel\EntityStore;
+	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
+	use Quellabs\ObjectQuel\Metadata\EntityMetadataRecord;
 	use Quellabs\Support\StringInflector;
 	
 	/**
@@ -20,14 +22,19 @@
 		/** @var EntityStore Entity store instance for metadata retrieval */
 		protected EntityStore $entityStore;
 		
+		/** @var EntityMetadataRecord Metadata for entity */
+		private EntityMetadataRecord $metadata;
+		
 		/**
-		 * Constructor
+		 * PacGenerator Constructor
 		 * @param string $entityName Fully qualified entity class name (e.g., 'App\\Entity\\User')
 		 * @param EntityStore $entityStore
+		 * @throws EntityResolutionException
 		 */
 		public function __construct(string $entityName, EntityStore $entityStore) {
 			$this->entityName = $entityName;
 			$this->entityStore = $entityStore;
+			$this->metadata = $entityStore->getMetadata($this->entityName);
 		}
 		
 		/**
@@ -51,7 +58,6 @@
 		
 		/**
 		 * Prepares all entity metadata needed for JavaScript code generation
-		 * @param EntityStore $entityStore The entity store instance for metadata retrieval
 		 * @return array{
 		 *     columns: array<string, string>,
 		 *     identifiers: array<int, string>,
@@ -59,27 +65,12 @@
 		 *     relationships: array<int, string>
 		 * }
 		 */
-		protected function prepareEntityData(EntityStore $entityStore): array {
+		protected function prepareEntityData(): array {
 			return [
-				'columns'           => $entityStore->getColumnMap($this->entityName),
-				'identifiers'       => $entityStore->getIdentifierKeys($this->entityName),
-				'columnAnnotations' => $entityStore->getAnnotationsOfType($this->entityName, Column::class),
-				'relationships'     => $this->extractManyToOneRelationShips()
+				'columns'           => $this->metadata->columnMap,
+				'identifiers'       => $this->metadata->identifierKeys,
+				'columnAnnotations' => $this->metadata->getAnnotationsOfType(Column::class),
+				'relationships'     => array_keys($this->metadata->getOneToManyDependencies())
 			];
-		}
-
-		/**
-		 * Extracts one-to-many relationship properties from the entity
-		 * @return array<int, string> Array of property names that represent one-to-many relationships
-		 */
-		protected function extractManyToOneRelationShips(): array {
-			$oneToManyDependencies = $this->entityStore->getOneToManyDependencies($this->entityName);
-			
-			$result = [];
-			foreach ($oneToManyDependencies as $property => $annotation) {
-				$result[] = $property;
-			}
-			
-			return $result;
 		}
 	}

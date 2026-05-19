@@ -5,6 +5,7 @@
 	use Quellabs\ObjectQuel\Annotations\Orm\Column;
 	use Quellabs\ObjectQuel\EntityStore;
 	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
+	use Quellabs\ObjectQuel\Metadata\EntityMetadataRecord;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIdentifier;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabaseSubquery;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
@@ -22,6 +23,8 @@
 	 *
 	 * Pass a $subquery to activate the subquery strategy; omit it (or pass null)
 	 * for the direct entity strategy.
+	 *
+	 * @phpstan-import-type ColumnDefinitionRecord from EntityMetadataRecord
 	 */
 	class DetectNonNullableField implements AstVisitorInterface {
 		
@@ -98,11 +101,13 @@
 				return;
 			}
 			
-			$columnDefinitions = $this->entityStore->getEntityColumnDefinitions($entityName);
-			$columnMap = $this->entityStore->getColumnMap($entityName);
-			$columnName = $columnMap[$fieldName] ?? $fieldName;
+			$metadata = $this->entityStore->getMetadata($entityName);
+			$columnName = $metadata->columnMap[$fieldName] ?? $fieldName;
 			
-			if (isset($columnDefinitions[$columnName]) && !$columnDefinitions[$columnName]['nullable']) {
+			if (
+				isset($metadata->columnDefinitions[$columnName]) &&
+				!$metadata->columnDefinitions[$columnName]['nullable']
+			) {
 				$this->nonNullableFound = true;
 			}
 		}
@@ -200,7 +205,8 @@
 			}
 			
 			// Property not mapped — treat as nullable to avoid false positives
-			$annotations = $this->entityStore->getAnnotations($entityName);
+			$metadata = $this->entityStore->getMetadata($entityName);
+			$annotations = $metadata->getAnnotations();
 			
 			if (!isset($annotations[$fieldName])) {
 				return false;

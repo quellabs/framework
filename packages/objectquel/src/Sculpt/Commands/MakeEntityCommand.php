@@ -4,6 +4,8 @@
 	
 	use Quellabs\ObjectQuel\Configuration;
 	use Quellabs\ObjectQuel\EntityStore;
+	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
+	use Quellabs\ObjectQuel\Metadata\EntityMetadataRecord;
 	use Quellabs\ObjectQuel\Sculpt\Helpers\EntityModifier;
 	use Quellabs\ObjectQuel\Sculpt\SculptTypes;
 	use Quellabs\ObjectQuel\Sculpt\ServiceProvider;
@@ -26,6 +28,7 @@
 	 * @phpstan-import-type OrmRelationshipType from SculptTypes
 	 * @phpstan-import-type RelationshipMappingConfig from SculptTypes
 	 * @phpstan-import-type PropertyDefinition from SculptTypes
+	 * @phpstan-import-type ColumnDefinitionRecord from EntityMetadataRecord
 	 */
 	class MakeEntityCommand extends CommandBase {
 		
@@ -466,6 +469,7 @@
 		 * @param OrmRelationshipType $relationshipType Type of relationship
 		 * @param string|null $inversedBy Property name for the inverse side (if bidirectional)
 		 * @param string $foreignColumn Database column name being referenced
+		 * @throws EntityResolutionException
 		 */
 		private function createRelationshipInTargetEntity(
 			string  $targetEntity,
@@ -673,6 +677,7 @@
 		 *     referencedField: string,
 		 *     foreignColumn: string
 		 * }
+		 * @throws EntityResolutionException
 		 */
 		private function getTargetEntityInfo(array $availableEntities): array {
 			$targetEntity = $this->selectTargetEntity($availableEntities);
@@ -691,12 +696,12 @@
 			$primaryKeyField = $primaryKeys[0] ?? 'id';
 			
 			$fullEntityName = $this->configuration->getEntityNameSpace() . '\\' . $targetEntity . 'Entity';
-			$columnMap = $this->getEntityStore()->getColumnMap($fullEntityName);
+			$metadata = $this->getEntityStore()->getMetadata($fullEntityName);
 			
 			return [
 				'targetEntity'    => $targetEntity,
 				'referencedField' => $primaryKeyField,
-				'foreignColumn'   => $columnMap[$primaryKeyField] ?? $primaryKeyField
+				'foreignColumn'   => $metadata->columnMap[$primaryKeyField] ?? $primaryKeyField
 			];
 		}
 		
@@ -732,15 +737,17 @@
 		 * Get primary key field names for an entity.
 		 * @param string $entityName Name of the entity (without 'Entity' suffix)
 		 * @return string[] Array of primary key field names
+		 * @throws EntityResolutionException
 		 */
 		public function getEntityPrimaryKeys(string $entityName): array {
 			$fullEntityName = $this->configuration->getEntityNameSpace() . '\\' . $entityName . 'Entity';
 			
-			if ($this->getEntityStore()->exists($fullEntityName)) {
-				return $this->getEntityStore()->getIdentifierKeys($fullEntityName);
-			} else {
+			if (!$this->getEntityStore()->exists($fullEntityName)) {
 				return ['id'];
 			}
+			
+			$metadata = $this->getEntityStore()->getMetadata($fullEntityName);
+			return $metadata->identifierKeys;
 		}
 		
 		/**
@@ -755,23 +762,25 @@
 			$result = ['type' => 'integer', 'unsigned' => true];
 			
 			try {
+				// Assemble the full entity name
 				$fullEntityName = $this->configuration->getEntityNameSpace() . '\\' . $targetEntity . 'Entity';
 				
+				// Validate the entity's existence
 				if (!$this->getEntityStore()->exists($fullEntityName)) {
 					return $result;
 				}
-				
-				$columnDefinitions = $this->getEntityStore()->getEntityColumnDefinitions($fullEntityName);
-				$columnMap = $this->getEntityStore()->getColumnMap($fullEntityName);
+
+				// Fetch the entity's metadata
+				$metadata = $this->getEntityStore()->getMetadata($fullEntityName);
 				
 				// Map the PHP field name to its database column name, then look up the column definition
-				$referencedDbColumn = $columnMap[$referencedField] ?? null;
+				$referencedDbColumn = $metadata->columnMap[$referencedField] ?? null;
 				
-				if ($referencedDbColumn && isset($columnDefinitions[$referencedDbColumn])) {
+				if ($referencedDbColumn && isset($metadata->columnDefinitions[$referencedDbColumn])) {
 					/** @var PhinxColumnType $colType */
-					$colType = $columnDefinitions[$referencedDbColumn]['type'];
+					$colType = $metadata->columnDefinitions[$referencedDbColumn]['type'];
 					$result['type'] = $colType;
-					$result['unsigned'] = $columnDefinitions[$referencedDbColumn]['unsigned'] ?? true;
+					$result['unsigned'] = $metadata->columnDefinitions[$referencedDbColumn]['unsigned'] ?? true;
 				}
 			} catch (\Exception $e) {
 				$this->output->writeLn("\nCouldn't determine FK type, defaulting to integer");

@@ -3,9 +3,11 @@
 	namespace Quellabs\ObjectQuel\Sculpt\Helpers;
 	
 	use Quellabs\ObjectQuel\Annotations\Orm\FullTextIndex;
+	use Quellabs\ObjectQuel\Annotations\Orm\Index;
 	use Quellabs\ObjectQuel\Annotations\Orm\UniqueIndex;
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
 	use Quellabs\ObjectQuel\EntityStore;
+	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
 	use Quellabs\ObjectQuel\Sculpt\SculptTypes;
 	
 	/**
@@ -46,13 +48,15 @@
 		 *
 		 * @param mixed $entity The entity class to analyze
 		 * @return IndexChangeSet An array containing differences between DB and entity indexes
+		 * @throws EntityResolutionException
+		 * @throws \Exception
 		 */
 		public function compareIndexes(mixed $entity): array {
-			// Fetch the owning table of this entity
-			$tableName = $this->entityStore->getOwningTable($entity);
+			// Fetch the metadata
+			$metadata = $this->entityStore->getMetadata($entity);
 			
 			// Get database indexes
-			$tableIndexes = $this->getTableIndexes($tableName);
+			$tableIndexes = $this->getTableIndexes($metadata->tableName);
 			
 			// Get entity indexes
 			$entityIndexes = $this->getEntityIndexes($entity);
@@ -111,14 +115,14 @@
 		 * @throws \Exception
 		 */
 		public function getEntityIndexes(mixed $entity): array {
-			// Fetch the column map
-			$columnMap = $this->entityStore->getColumnMap($entity);
+			// Fetch the metadata
+			$metadata = $this->entityStore->getMetadata($entity);
 			
 			// Iterate through all indexes defined for this entity
 			$result = [];
-
-			foreach ($this->entityStore->getIndexes($entity) as $annotation) {
-				/** @var FullTextIndex|UniqueIndex|\Quellabs\ObjectQuel\Annotations\Orm\Index $annotation */
+			
+			foreach ($metadata->indexes as $annotation) {
+				/** @var FullTextIndex|UniqueIndex|Index $annotation */
 				// Determine the index type from the annotation class
 				if ($annotation instanceof FullTextIndex) {
 					$indexType = 'FULLTEXT';
@@ -136,16 +140,14 @@
 				
 				foreach ($columns as $column) {
 					// If the indexed column does not exist, throw an error and abort migration creation
-					if (!isset($columnMap[$column])) {
-						$tableName = $this->entityStore->getOwningTable($entity);
-						
+					if (!isset($metadata->columnMap[$column])) {
 						throw new \Exception(
-							"Index column '{$column}' on '{$tableName}' does not match any property name. " .
+							"Index column '{$column}' on '{$metadata->tableName}' does not match any property name. " .
 							"@Index columns must use PHP property names (e.g. 'customerId'), not database column names (e.g. 'customer_id')."
 						);
 					}
 					
-					$databaseColumns[] = $columnMap[$column];
+					$databaseColumns[] = $metadata->columnMap[$column];
 				}
 				
 				// Build the index configuration array

@@ -52,18 +52,18 @@
 				$entityName = $range->getEntityName();
 				
 				// Check scalar columns first (@Column-annotated properties)
-				$columnMap = $this->entityStore->getColumnMap($entityName);
+				$metadata = $this->entityStore->getMetadata($entityName);
 				
-				if (isset($columnMap[$propertyName])) {
+				if (isset($metadata->columnMap[$propertyName])) {
 					$matches[] = $range;
 					continue;
 				}
 				
 				// Check all relation types (@OneToOne, @ManyToOne, @OneToMany)
 				$relations = array_merge(
-					$this->entityStore->getOneToOneDependencies($entityName),
-					$this->entityStore->getManyToOneDependencies($entityName),
-					$this->entityStore->getOneToManyDependencies($entityName)
+					$metadata->getOneToOneDependencies(),
+					$metadata->getManyToOneDependencies(),
+					$metadata->getOneToManyDependencies(),
 				);
 				
 				if (isset($relations[$propertyName])) {

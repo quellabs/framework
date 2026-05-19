@@ -94,19 +94,13 @@
 		 * @throws \Exception
 		 */
 		public function persist(object $entity): void {
-			// Gather the necessary information for the insert operation
-			// Get the table name where the entity should be stored
-			$tableName = $this->entityStore->getOwningTable($entity);
+			// Get metadata
+			$metadata = $this->entityStore->getMetadata($entity);
+			$tableName = $metadata->tableName;
 			$tableNameEscaped = $this->valueHandler->escapeIdentifier($tableName);
-			
-			// Fetch the column map
-			$columnMap = array_flip($this->entityStore->getColumnMap($entity));
-			
-			// Get the primary key property names and their corresponding column names
-			$primaryKeys = $this->entityStore->getIdentifierKeys($entity);
-			
-			// Get the column names that make up the primary key
-			$primaryKeyColumnNames = $this->entityStore->getIdentifierColumnNames($entity);
+			$columnMap = array_flip($metadata->columnMap);
+			$primaryKeys = $metadata->identifierKeys;
+			$primaryKeyColumnNames = $metadata->identifierColumns;
 			
 			// Iterate through each identified primary key for the entity
 			foreach ($primaryKeys as $primaryKey) {
@@ -142,7 +136,7 @@
 			}
 			
 			// Get the primary key property names and their corresponding column names
-			$versionColumns = $this->entityStore->getVersionColumns($entity);
+			$versionColumns = $metadata->versionColumns;
 			$versionColumnNames = array_flip(array_column($versionColumns, 'name'));
 			
 			// Serialize the entity into an array of column name => value pairs
@@ -198,9 +192,7 @@
 			
 			// After successful query execution, check if the entity has a primary key with identity/auto-increment strategy
 			// This identifies columns marked either with @PrimaryKeyStrategy(strategy="identity") or primary keys with no strategy
-			$autoincrementColumn = $this->entityStore->findAutoIncrementPrimaryKey($entity);
-			
-			if ($autoincrementColumn !== null) {
+			if ($metadata->autoIncrementColumn !== null) {
 				// Entity has an identity primary key column that should receive the auto-generated ID from the database
 				// Get the last inserted ID value from the database connection
 				$autoIncrementId = $this->connection->getInsertId();
@@ -210,10 +202,10 @@
 					// Non-zero ID was returned, indicating the database successfully generated a new primary key value
 					// Update the entity's property with the database-generated ID
 					// This ensures the entity's state is synchronized with its database representation
-					$this->propertyHandler->set($entity, $autoincrementColumn, (int)$autoIncrementId);
+					$this->propertyHandler->set($entity, $metadata->autoIncrementColumn, (int)$autoIncrementId);
 					
 					// Also set it in $serializedEntity
-					$serializedEntity[$autoincrementColumn] = (int)$autoIncrementId;
+					$serializedEntity[$metadata->autoIncrementColumn] = (int)$autoIncrementId;
 				}
 				
 				// If the auto-increment ID is 0, it may indicate no new ID was generated
@@ -245,20 +237,19 @@
 		 * @throws EntityResolutionException
 		 */
 		protected function getPrimaryKeyStrategy(object $entity, string $primaryKey): string {
-			// Fetch owning table
-			$table = $this->entityStore->getOwningTable($entity);
+			$metadata = $this->entityStore->getMetadata($entity);
 			
 			// Fetch key from cache if present
-			if (isset($this->strategyColumnCache[$table][$primaryKey])) {
-				return $this->strategyColumnCache[$table][$primaryKey];
+			if (isset($this->strategyColumnCache[$metadata->tableName][$primaryKey])) {
+				return $this->strategyColumnCache[$metadata->tableName][$primaryKey];
 			}
 			
 			// Get all annotations for the entity from the entity store
-			$annotations = $this->entityStore->getAnnotations($entity);
+			$annotations = $metadata->getAnnotations();
 			
 			// If no annotations exist for the specified primary key, return "identity"
 			if (empty($annotations[$primaryKey])) {
-				return $this->strategyColumnCache[$table][$primaryKey] = "identity";
+				return $this->strategyColumnCache[$metadata->tableName][$primaryKey] = "identity";
 			}
 			
 			// Iterate through all annotations for the primary key
@@ -266,16 +257,16 @@
 				// Check if the current annotation is a PrimaryKeyStrategy instance
 				if ($annotation instanceof PrimaryKeyStrategy) {
 					// Return the value of the PrimaryKeyStrategy annotation
-					return $this->strategyColumnCache[$table][$primaryKey] = $annotation->getValue();
+					return $this->strategyColumnCache[$metadata->tableName][$primaryKey] = $annotation->getValue();
 				}
 			}
 			
 			// No PrimaryKeyStrategy annotation found for this primary key
-			return $this->strategyColumnCache[$table][$primaryKey] = "identity";
+			return $this->strategyColumnCache[$metadata->tableName][$primaryKey] = "identity";
 		}
 		
 		/**
-		 * Returns the inital version column for new entities
+		 * Returns the initial version column for new entities
 		 * @param string $columnType
 		 * @return int|string
 		 * @throws \Exception
