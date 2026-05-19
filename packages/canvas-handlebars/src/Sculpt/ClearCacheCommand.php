@@ -40,19 +40,23 @@
 		 * @return int Exit code (0 for success, 1 for failure)
 		 */
 		public function execute(ConfigurationManager $config): int {
-			$defaults      = ServiceProvider::getDefaults();
-			$configuration = $this->provider->getConfig();
+			// Validate that the provider is of the correct type
+			if (!$this->provider instanceof ServiceProvider) {
+				throw new \RuntimeException('Expected ' . ServiceProvider::class);
+			}
 			
-			$compileDir = $configuration['compile_dir'] ?? $defaults['compile_dir'];
+			// Fetch compile directory
+			$compileDir = $this->provider->mergeConfig()['compile_dir'];
 			
 			if (!is_dir($compileDir)) {
 				$this->getOutput()->warning("Compile directory does not exist: {$compileDir}");
 				return 0;
 			}
 			
-			$files   = glob($compileDir . '*.php') ?: [];
-			$count   = 0;
-			$failed  = 0;
+			// Unlink php files
+			$files = glob($compileDir . '*.php') ?: [];
+			$count = 0;
+			$failed = 0;
 			
 			foreach ($files as $file) {
 				if (is_file($file)) {
@@ -65,11 +69,13 @@
 				}
 			}
 			
+			// Error message
 			if ($failed > 0) {
 				$this->getOutput()->error("Cleared {$count} compiled template(s), {$failed} could not be deleted");
 				return 1;
 			}
 			
+			// Success message
 			$this->getOutput()->success("Cleared {$count} compiled Handlebars template(s)");
 			return 0;
 		}

@@ -9,10 +9,13 @@
 	use Quellabs\Contracts\Templates\TemplateRenderException;
 	use Quellabs\Contracts\Templates\TemplateEngineInterface;
 	
+	/**
+	 * @phpstan-import-type HandlebarsConfig from ServiceProvider
+	 */
 	class HandlebarsTemplate implements TemplateEngineInterface {
 		
 		/**
-		 * @var array<string, mixed> Configuration data provided by ServiceProvider
+		 * @var HandlebarsConfig Configuration data provided by ServiceProvider
 		 */
 		private array $config;
 		
@@ -38,7 +41,7 @@
 		
 		/**
 		 * HandlebarsTemplate constructor
-		 * @param array<string, mixed> $configuration
+		 * @param HandlebarsConfig $configuration
 		 */
 		public function __construct(array $configuration) {
 			// Store the configuration
