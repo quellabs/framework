@@ -96,6 +96,26 @@
 		}
 		
 		/**
+		 * Get a named parameter value as integer or null
+		 * @param string $name Parameter name
+		 * @param ?int $default Default value if parameter is not set
+		 * @return ?int Parameter value or default
+		 */
+		public function getAsIntOrNull(string $name, ?int $default = null): ?int {
+			if (!isset($this->namedParameters[$name])) {
+				return $default;
+			}
+			
+			$value = $this->namedParameters[$name];
+			
+			if (!is_numeric($value)) {
+				return $default;
+			}
+			
+			return (int)$value;
+		}
+		
+		/**
 		 * Check if a named parameter exists
 		 * @param string $name Parameter name
 		 * @return bool True if parameter exists

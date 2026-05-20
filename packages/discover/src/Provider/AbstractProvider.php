@@ -60,4 +60,24 @@
 		public function getConfigValue(string $key, mixed $default = null): mixed {
 			return $this->config[$key] ?? $default;
 		}
+		
+		/**
+		 * Retrieves a string value from config, falling back to the provided default.
+		 * @param string $key
+		 * @param string $default
+		 * @return string
+		 */
+		protected function getConfigValueAsString(string $key, string $default): string {
+			return isset($this->config[$key]) && is_string($this->config[$key]) ? $this->config[$key] : $default;
+		}
+		
+		/**
+		 * Retrieves an int value from config, falling back to the provided default.
+		 * @param string $key
+		 * @param int $default
+		 * @return int
+		 */
+		protected function getConfigValueAsInt(string $key, int $default): int {
+			return isset($this->config[$key]) && is_int($this->config[$key]) ? $this->config[$key] : $default;
+		}
 	}
