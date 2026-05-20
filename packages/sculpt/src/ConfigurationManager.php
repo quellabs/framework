@@ -62,6 +62,40 @@
 		}
 		
 		/**
+		 * Get a named parameter value as string
+		 * @param string $name Parameter name
+		 * @param string $default Default value if parameter is not set
+		 * @return string Parameter value or default
+		 */
+		public function getAsString(string $name, string $default = ''): string {
+			if (!isset($this->namedParameters[$name]) || !is_string($this->namedParameters[$name])) {
+				return $default;
+			}
+			
+			return $this->namedParameters[$name];
+		}
+		
+		/**
+		 * Get a named parameter value as integer
+		 * @param string $name Parameter name
+		 * @param int $default Default value if parameter is not set
+		 * @return int Parameter value or default
+		 */
+		public function getAsInt(string $name, int $default = 0): int {
+			if (!isset($this->namedParameters[$name])) {
+				return $default;
+			}
+			
+			$value = $this->namedParameters[$name];
+			
+			if (!is_numeric($value)) {
+				return $default;
+			}
+			
+			return (int)$value;
+		}
+		
+		/**
 		 * Check if a named parameter exists
 		 * @param string $name Parameter name
 		 * @return bool True if parameter exists
