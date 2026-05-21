@@ -224,7 +224,7 @@
 		 * Reconstructs an AnnotationCollection from a serialized plain array.
 		 * Calls new $class($parameters) for each entry so that annotation constructors
 		 * run normally and all typed properties are initialized.
-		 * @param list<SerializedAnnotation> $data
+		 * @param array<mixed> $data
 		 * @return AnnotationCollection
 		 */
 		protected function deserializeCollection(array $data): AnnotationCollection {
@@ -232,6 +232,11 @@
 			$annotations = [];
 			
 			foreach ($data as $entry) {
+				// Guard against corrupt cache entries: each entry must be an array
+				if (!is_array($entry)) {
+					continue;
+				}
+				
 				// Fetch class
 				$class = $entry['class'];
 				
