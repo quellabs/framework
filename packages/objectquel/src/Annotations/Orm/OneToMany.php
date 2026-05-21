@@ -16,12 +16,43 @@
 		 */
 		protected array $parameters;
 		
+		private string $targetEntity;
+		private ?string $mappedBy;
+		private ?string $relationColumn;
+		private string $orderBy;
+		
 		/**
 		 * OneToMany constructor.
 		 * @param array<string, mixed> $parameters The parameters of the OneToMany annotation.
+		 * @throws \InvalidArgumentException
 		 */
 		public function __construct(array $parameters) {
+			$targetEntity = $parameters['targetEntity'] ?? null;
+			$mappedBy = $parameters['mappedBy'] ?? null;
+			$relationColumn = $parameters['relationColumn'] ?? null;
+			$orderBy = $parameters['orderBy'] ?? '';
+			
+			if (!is_string($targetEntity)) {
+				throw new \InvalidArgumentException("OneToMany: 'targetEntity' must be a string");
+			}
+			
+			if ($mappedBy !== null && !is_string($mappedBy)) {
+				throw new \InvalidArgumentException("OneToMany: 'mappedBy' must be a string or null");
+			}
+			
+			if ($relationColumn !== null && !is_string($relationColumn)) {
+				throw new \InvalidArgumentException("OneToMany: 'relationColumn' must be a string or null");
+			}
+			
+			if (!is_string($orderBy)) {
+				throw new \InvalidArgumentException("OneToMany: 'orderBy' must be a string");
+			}
+			
 			$this->parameters = $parameters;
+			$this->targetEntity = $targetEntity;
+			$this->mappedBy = $mappedBy;
+			$this->relationColumn = $relationColumn;
+			$this->orderBy = $orderBy;
 		}
 		
 		/**
@@ -34,10 +65,10 @@
 		
 		/**
 		 * Retrieve the target entity.
-		 * @return class-string The full namespace of the target entity.
+		 * @return string The full namespace of the target entity.
 		 */
 		public function getTargetEntity(): string {
-			return $this->parameters["targetEntity"];
+			return $this->targetEntity;
 		}
 		
 		/**
@@ -46,7 +77,8 @@
 		 * @return void The full namespace of the target entity.
 		 */
 		public function setTargetEntity(string $targetEntity): void {
-			$this->parameters["targetEntity"] = $targetEntity;
+			$this->targetEntity = $targetEntity;
+			$this->parameters['targetEntity'] = $targetEntity;
 		}
 		
 		/**
@@ -54,7 +86,7 @@
 		 * @return string|null The value of the 'mappedBy' parameter or an empty string if it is not set.
 		 */
 		public function getMappedBy(): ?string {
-			return $this->parameters["mappedBy"] ?? null;
+			return $this->mappedBy;
 		}
 		
 		/**
@@ -63,7 +95,7 @@
 		 * @return string|null The name of the join column or null if it is not set.
 		 */
 		public function getRelationColumn(): ?string {
-			return $this->parameters["relationColumn"] ?? null;
+			return $this->relationColumn;
 		}
 		
 		/**
@@ -71,6 +103,6 @@
 		 * @return string
 		 */
 		public function getOrderBy(): string {
-			return $this->parameters["orderBy"] ?? '';
+			return $this->orderBy;
 		}
 	}

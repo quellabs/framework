@@ -108,11 +108,11 @@
 		/**
 		 * Reads a row of a result set and advances the recordset pointer
 		 * Similar to PDO's fetch() method
-		 * @return mixed The current row (entity or array) or false if no more rows
+		 * @return array<string, mixed>|null The current row (entity or array) or false if no more rows
 		 */
-		public function fetchRow(): mixed {
+		public function fetchRow(): ?array {
 			if ($this->index >= $this->recordCount()) {
-				return false;
+				return null;
 			}
 			
 			$result = $this->result[$this->index];
@@ -199,7 +199,7 @@
 		 * @return bool True if offset exists, false otherwise
 		 */
 		public function offsetExists(mixed $offset): bool {
-			return isset($this->result[$offset]);
+			return isset($this->result[$this->validOffset($offset)]);
 		}
 		
 		/**
@@ -208,7 +208,7 @@
 		 * @return array<string, mixed>|null The value at the specified offset or null if not found
 		 */
 		public function offsetGet(mixed $offset): mixed {
-			return $this->result[$offset] ?? null;
+			return $this->result[$this->validOffset($offset)] ?? null;
 		}
 		
 		/**
@@ -221,7 +221,7 @@
 			if (is_null($offset)) {
 				$this->result[] = $value;
 			} else {
-				$this->result[$offset] = $value;
+				$this->result[$this->validOffset($offset)] = $value;
 			}
 		}
 		
@@ -231,7 +231,7 @@
 		 * @return void
 		 */
 		public function offsetUnset(mixed $offset): void {
-			unset($this->result[$offset]);
+			unset($this->result[$this->validOffset($offset)]);
 		}
 		
 		/**
@@ -248,5 +248,23 @@
 		 */
 		public function count(): int {
 			return count($this->result);
+		}
+		
+		/**
+		 * Asserts that an offset is a valid array key type (int or string).
+		 * Used by ArrayAccess methods to satisfy static analysis; mixed offsets
+		 * are rejected at runtime rather than silently coerced.
+		 * @param mixed $offset
+		 * @return int
+		 */
+		private function validOffset(mixed $offset): int {
+			if (!is_int($offset)) {
+				throw new \InvalidArgumentException(sprintf(
+					'Array offset must be int, %s given.',
+					get_debug_type($offset)
+				));
+			}
+			
+			return $offset;
 		}
 	}

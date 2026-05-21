@@ -41,17 +41,23 @@
 		public function parseSimpleValue(): AstInterface {
 			$token = $this->lexer->peek();
 			$tokenType = $token->getType();
-			$tokenValue = $token->getValue();
 			$tokenExtraData = $token->getExtraData();
 			
 			switch ($tokenType) {
 				case Token::Number :
 					$this->lexer->match($tokenType);
-					return new AstNumber($tokenValue);
+					return new AstNumber((string)$token->getNumericValue());
 				
 				case Token::String :
 					$this->lexer->match($tokenType);
-					return new AstString($tokenValue, $tokenExtraData['char'] ?? '"');
+					
+					if (isset($tokenExtraData['char']) && is_string($tokenExtraData['char'])) {
+						$enclosingChar = $tokenExtraData['char'];
+					} else {
+						$enclosingChar = '"';
+					}
+					
+					return new AstString($token->getStringValue(), $enclosingChar);
 				
 				case Token::False :
 					$this->lexer->match($tokenType);
@@ -70,24 +76,29 @@
 		/**
 		 * Parses a constant
 		 * @return AstInterface
-		 * @throws LexerException
-		 * @throws ParserException
+		 * @throws LexerException|ParserException|\ReflectionException
 		 */
 		public function parsePrimaryExpression(): AstInterface {
 			$token = $this->lexer->peek();
 			$tokenType = $token->getType();
-			$tokenValue = $token->getValue();
 			$tokenExtraData = $token->getExtraData();
 			
 			switch ($tokenType) {
 				case Token::Number :
 					$this->lexer->match($tokenType);
-					return new AstNumber($tokenValue);
+					return new AstNumber((string)$token->getNumericValue());
 				
 				case Token::String :
 					$this->lexer->match($tokenType);
-					return new AstString($tokenValue, $tokenExtraData['char'] ?? '"');
-				
+					
+					if (isset($tokenExtraData['char']) && is_string($tokenExtraData['char'])) {
+						$enclosingChar = $tokenExtraData['char'];
+					} else {
+						$enclosingChar = '"';
+					}
+					
+					return new AstString($token->getStringValue(), $enclosingChar);
+					
 				case Token::False :
 					$this->lexer->match($tokenType);
 					return new AstBool(false);
@@ -102,7 +113,7 @@
 				
 				case Token::Parameter :
 					$this->lexer->match($tokenType);
-					return new AstParameter($tokenValue);
+					return new AstParameter($token->getStringValue());
 				
 				case Token::Slash :
 					// In a primary expression context, a slash is always the start of a regex
@@ -166,7 +177,7 @@
 		 * can have multiplication (*) or division (/) operations.
 		 * @return AstInterface The resulting AST node representing the parsed factor.
 		 * @throws LexerException
-		 * @throws ParserException
+		 * @throws ParserException|\ReflectionException
 		 */
 		protected function parseFactor(): AstInterface {
 			// Parse a constant or an identifier (like a variable)
@@ -191,29 +202,26 @@
 		/**
 		 * Parse unary expressions (-, +, *, &, etc.)
 		 * @return AstInterface
-		 * @throws LexerException
-		 * @throws ParserException
+		 * @throws LexerException|ParserException|\ReflectionException
 		 */
 		protected function parseUnaryExpression(): AstInterface {
 			$token = $this->lexer->peek();
 			$tokenType = $token->getType();
-			$tokenValue = $token->getValue();
 			
 			switch ($tokenType) {
 				case Token::Plus:
 				case Token::Minus:
 					$this->lexer->match($tokenType);
 					
-					// Handle +/- followed by a number as a literal with sign
-					if (($resultToken = $this->lexer->optionalMatch(Token::Number)) !== null) {
-						$number = ($tokenValue == "-") ? 0 - $resultToken->getValue() : $resultToken->getValue();
-						return new AstNumber($number);
+					if (($resultToken = $this->lexer->optionalMatch(Token::Number)) === null) {
+						$operand = $this->parseUnaryExpression();
+						return new AstUnaryOperation($operand, $token->getStringValue());
+					} elseif ($token->getStringValue() === "-") {
+						return new AstNumber((string)(0 - $resultToken->getNumericValue()));
+					} else {
+						return new AstNumber($resultToken->getStringValue());
 					}
-					
-					// Otherwise, it's a unary operator applied to an expression
-					$operand = $this->parseUnaryExpression();
-					return new AstUnaryOperation($operand, $tokenValue);
-				
+
 				default:
 					// If not a unary operator, parse a primary expression
 					return $this->parsePrimaryExpression();

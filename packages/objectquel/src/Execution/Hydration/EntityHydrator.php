@@ -26,6 +26,11 @@
 	 * }
 	 *
 	 * @phpstan-type RelationCache array<string, RelationCacheEntry>
+	 *
+	 * @phpstan-type HydrateResult array{
+	 *     result: array<int, array<string, mixed>>,
+	 *     entities: array<string, object>
+	 * }
 	 */
 	class EntityHydrator {
 		
@@ -45,60 +50,39 @@
 			$this->propertyHandler = $entityManager->getPropertyHandler();
 		}
 		
-		
 		/**
 		 * Converts raw database query results into hydrated entity objects.
 		 * @param array<int, AstAlias> $ast Abstract Syntax Tree representing the query structure.
 		 * @param array<int, array<string, mixed>> $data Raw database rows from the query result.
-		 * @return array{
-		 *     result: array<int, array<string, mixed>>,
-		 *     entities: array<string, object>
-		 * } An associative array containing processed result rows and unique entity objects.
+		 * @return HydrateResult Processed result rows and unique hydrated entity objects.
 		 * @throws EntityResolutionException
 		 * @throws HydrationException
 		 * @throws QuelException
 		 */
 		public function hydrateEntities(array $ast, array $data): array {
-			// Flag to identify the first row (used for initializing relation cache)
-			$first = true;
-			
-			/**
-			 * Collection to track unique entity objects across all rows
-			 * @var array<string, object> $entities
-			 */
-			$entities = [];
-			
-			// Storage for processed result rows
-			$resultRows = [];
-			
-			// Cache for relationship information to optimize entity mapping
-			// This is built once from the first row and reused for subsequent rows
-			$relationCache = [];
-			
-			// Collect the names of all JSON source ranges declared in the AST.
-			// This set is built once here and passed down to processEntity() so the
-			// enrichment step can identify JSON-prefixed keys in the flat row without
-			// re-scanning the AST on every row or every entity.
+			// Collect JSON range names once up front so every row and entity can
+			// identify JSON-prefixed keys without re-scanning the AST each time.
 			$jsonRangeNames = $this->collectJsonRangeNames($ast);
 			
 			// Process each row from the database result
+			$entities = [];
+			$resultRows = [];
+			$relationCache = [];
+			
 			foreach ($data as $row) {
-				// For the first row only, build a relation cache that maps
-				// AST nodes to their corresponding database columns
-				if ($first) {
+				// The relation cache maps each entity range to its column keys and
+				// primary key identifiers. It only needs to be built once because the
+				// result set schema is the same for every row.
+				if (empty($relationCache)) {
 					$relationCache = $this->buildRelationCache($ast, $row);
-					$first = false;
 				}
 				
-				// Process the current row using the AST and relation cache
-				// Also pass the entities collection by reference to track unique entities
+				// Process row
 				$resultRows[] = $this->processRow($ast, $row, $relationCache, $entities, $jsonRangeNames);
 			}
 			
-			// Return both the processed result rows and the collection of unique entities
-			// - 'result' contains the transformed data as requested in the query
-			// - 'entities' contains all unique entity objects that were hydrated,
-			//   which may be used for relationship loading or change tracking
+			// Return both the processed result rows and the collection of unique entities.
+			// 'entities' may be used for relationship loading or change tracking.
 			return [
 				'result'   => $resultRows,
 				'entities' => $entities
@@ -106,63 +90,72 @@
 		}
 		
 		/**
-		 * Quickly checks if the array contains any non-null values
-		 * @param array<string|int, mixed> $array The array to check
-		 * @return bool True if at least one non-null value exists
+		 * Builds a per-range index of column keys and primary key identifiers from
+		 * the first result row and the query AST.
+		 *
+		 * Only mapped entity ranges are indexed — JSON source ranges and subquery
+		 * (derived-table) ranges have no entity metadata and are intentionally skipped.
+		 * The cache is keyed by range alias name and reused for every subsequent row.
+		 *
+		 * @param array<int, AstAlias> $ast
+		 * @param array<string, mixed> $row
+		 * @return RelationCache
+		 * @throws EntityResolutionException
 		 */
-		private function isArrayPopulated(array $array): bool {
-			return !empty(array_filter($array, fn($val) => $val !== null));
-		}
-		
-		/**
-		 * Remove a specified range prefix from the keys of an array.
-		 * @param string $range The range prefix to remove from the array keys.
-		 * @param array<string, mixed> $array The array to modify.
-		 * @return array<string, mixed> The modified array with the range removed from the keys.
-		 */
-		private function removeRangeFromRow(string $range, array $array): array {
-			$rangePrefix = $range . '.';
-			$rangePrefixLength = strlen($rangePrefix);
-			$modifiedArray = [];
+		private function buildRelationCache(array $ast, array $row): array {
+			$relationCache = [];
 			
-			foreach ($array as $key => $value) {
-				if (strncmp($key, $rangePrefix, $rangePrefixLength) === 0) {
-					$modifiedArray[substr($key, $rangePrefixLength)] = $value;
+			foreach ($ast as $value) {
+				$expression = $value->getExpression();
+				
+				// Only top-level identifiers carry range information.
+				if (!$expression instanceof AstIdentifier || $expression->hasParentIdentifier()) {
+					continue;
 				}
+				
+				$range = $expression->getRange();
+				$class = $expression->getEntityName();
+				
+				// Skip JSON source ranges, subquery ranges (no entity name), and
+				// ranges already in the cache (duplicate alias in the SELECT list).
+				if ($range === null || $class === null || isset($relationCache[$range->getName()])) {
+					continue;
+				}
+				
+				$rangeName = $range->getName();
+				
+				// Collect all column keys belonging to this range from the first row
+				// (e.g. "p.id", "p.name") so processEntity() can slice them out.
+				$keys = array_keys(array_filter(
+					$row,
+					static fn($_, string $rowKey) => str_starts_with($rowKey, "{$rangeName}."),
+					ARRAY_FILTER_USE_BOTH
+				));
+				
+				// Fetch metadata
+				$metadata = $this->entityStore->getMetadata($class);
+				
+				// Store both forward and flipped variants for O(1) lookup by callers.
+				$relationCache[$rangeName] = [
+					'identifiers'         => $metadata->identifierKeys,
+					'identifiers_flipped' => array_flip($metadata->identifierKeys),
+					'keys'                => $keys,
+					'keys_flipped'        => array_flip($keys),
+				];
 			}
 			
-			return $modifiedArray;
-		}
-		
-		/**
-		 * Initializes a proxy object with data
-		 * @param ProxyInterface $proxy The proxy object to initialize
-		 * @param array<string, mixed> $data The data to populate the proxy with
-		 * @return void
-		 */
-		private function initializeProxy(ProxyInterface $proxy, array $data): void {
-			// Mark the proxy as initialized so it knows it has been loaded
-			$proxy->setInitialized();
-			
-			// Deserialize the provided data into the proxy entity
-			// This populates the proxy with all the properties from the data array
-			$this->serializer->deserialize($proxy, $data);
-			
-			// Detach the entity from the Unit of Work
-			// This allows the entity to be re-attached later as an existing entity
-			// rather than being treated as a new entity to be persisted
-			$this->unitOfWork->detach($proxy);
+			return $relationCache;
 		}
 		
 		/**
 		 * Scans the AST once to collect the names of all JSON source ranges.
 		 *
-		 * The resulting set is used by enrichEntityFromJsonSources() to distinguish
-		 * JSON-originated keys from database-originated keys in the flat merged row,
-		 * and to detect ambiguity when a @SourceField annotation omits the range parameter.
+		 * The resulting set is passed down to enrichEntityFromJsonSources() so it can
+		 * identify JSON-prefixed keys in the flat merged row and detect ambiguity when
+		 * a @SourceField annotation omits the range parameter.
 		 *
-		 * @param array<int, AstAlias> $ast The full retrieve AST for the current query.
-		 * @return array<string, true> A set of range alias names, keyed for O(1) lookup.
+		 * @param array<int, AstAlias> $ast
+		 * @return array<string, true> Range alias names keyed for O(1) lookup.
 		 */
 		private function collectJsonRangeNames(array $ast): array {
 			$jsonRangeNames = [];
@@ -187,76 +180,228 @@
 		}
 		
 		/**
-		 * Resolves which JSON range to use for a given @SourceField annotation.
+		 * Processes a single database result row into a keyed result array.
 		 *
-		 * When the annotation provides an explicit range, that name is returned
-		 * directly (the caller will handle "range not present in row" as a no-op).
-		 * When no range is specified, the method infers it from the set of JSON
-		 * ranges that are actually present in the current row:
-		 *   - Exactly one JSON range present → use it automatically.
-		 *   - Multiple JSON ranges present   → throw SemanticException; the developer
-		 *     must add an explicit range to the annotation to resolve the ambiguity.
-		 *   - No JSON ranges present         → return null (no-op).
+		 * Each alias in the AST becomes one key in the output. Entity aliases are
+		 * hydrated via processEntity(); everything else (scalar properties, JSON
+		 * ranges, subquery scalars) goes to processValue().
 		 *
-		 * @param SourceField $annotation The @SourceField annotation being resolved.
-		 * @param string $propertyName The entity property name, used for error messages.
-		 * @param array<string, true> $presentJsonRanges
-		 *        JSON range names that actually appear as prefixes in the current row,
-		 *        keyed by range name for O(1) lookup.
-		 * @return string|null The resolved range name, or null when no JSON data is available.
+		 * @param array<int, AstAlias> $ast
+		 * @param array<string, mixed> $row
+		 * @param RelationCache $relationCache
+		 * @param array<string, object> $entities Accumulator for unique hydrated entities, passed by reference.
+		 * @param array<string, true> $jsonRangeNames
+		 * @return array<string, mixed>
+		 * @throws EntityResolutionException
+		 * @throws HydrationException
+		 * @throws QuelException
 		 */
-		private function resolveJsonRange(SourceField $annotation, string $propertyName, array $presentJsonRanges): ?string {
-			// Explicit range declared on the annotation — use it as-is.
-			// If that range is not present in the row the caller applies no-op logic.
-			$explicitRange = $annotation->getRange();
+		private function processRow(
+			array $ast,
+			array $row,
+			array $relationCache,
+			array &$entities,
+			array $jsonRangeNames
+		): array {
+			$resultRow = [];
 			
-			if ($explicitRange !== null) {
-				return $explicitRange;
+			foreach ($ast as $value) {
+				// Value was tagged as hidden
+				if (!$value->showInResult()) {
+					continue;
+				}
+				
+				if ($this->isEntityAlias($value)) {
+					$cacheEntry = $this->resolveEntityCacheEntry($value, $relationCache);
+					$processedValue = $this->processEntity($value, $row, $cacheEntry, $row, $jsonRangeNames);
+					
+					// Track unique entity instances so the caller can wire up relationships.
+					if (is_object($processedValue)) {
+						$entities[spl_object_hash($processedValue)] ??= $processedValue;
+					}
+				} else {
+					$processedValue = $this->processValue($value, $row, $row, $jsonRangeNames);
+				}
+				
+				$resultRow[$value->getName()] = $processedValue;
 			}
 			
-			// No explicit range: infer from the JSON ranges present in this row
-			$count = count($presentJsonRanges);
-			
-			if ($count === 0) {
-				// No JSON data in the row at all — nothing to enrich from
-				return null;
-			}
-			
-			if ($count === 1) {
-				// Exactly one JSON range: safe to infer automatically
-				return array_key_first($presentJsonRanges);
-			}
-			
-			// Ambiguous — multiple JSON ranges, no explicit range declared on the annotation.
-			// Unreachable in a validated query; the semantic analyser catches this first.
-			return null;
+			return $resultRow;
 		}
 		
 		/**
-		 * Applies @SourceField annotations to an entity by writing values from JSON source
-		 * ranges in the current row directly onto the entity's properties.
+		 * Returns true when an alias refers to a whole mapped entity rather than
+		 * a property, JSON range, or scalar expression.
 		 *
-		 * This method is called from processEntity() after the entity has been resolved
-		 * or created. It reads every property of the entity class that carries a @SourceField
-		 * annotation, resolves the correct JSON range (explicit or inferred), and sets the
-		 * property value via PropertyHandler when a matching key exists in the row.
+		 * An entity alias is a top-level AstIdentifier with no chained property
+		 * and no parent identifier, whose range is a real database range (not a
+		 * JSON source range).
 		 *
-		 * No-op conditions (the property is left untouched):
+		 * @param AstAlias $alias
+		 * @return bool
+		 */
+		private function isEntityAlias(AstAlias $alias): bool {
+			$node = $alias->getExpression();
+			
+			return
+				$node instanceof AstIdentifier &&
+				!$node->getRange() instanceof AstRangeJsonSource &&
+				!$node->hasParentIdentifier() &&
+				!$node->hasNext();
+		}
+		
+		/**
+		 * Looks up the RelationCacheEntry for an entity alias.
+		 *
+		 * buildRelationCache() creates an entry for every mapped entity range before
+		 * any row is processed, so a missing entry is a programming error.
+		 *
+		 * @param AstAlias $alias
+		 * @param RelationCache $relationCache
+		 * @return RelationCacheEntry
+		 * @throws \LogicException
+		 */
+		private function resolveEntityCacheEntry(AstAlias $alias, array $relationCache): array {
+			/**
+			 * isEntityAlias() has already confirmed the expression is an AstIdentifier.
+			 * @var AstIdentifier $node
+			 */
+			$node = $alias->getExpression();
+			$rangeName = $node->getRange()?->getName();
+			
+			if ($rangeName === null || !isset($relationCache[$rangeName])) {
+				throw new \LogicException(
+					"No relation cache entry for entity alias '{$alias->getName()}' (range '{$rangeName}'). " .
+					"buildRelationCache() must build an entry for every entity range before processRow() is called."
+				);
+			}
+			
+			return $relationCache[$rangeName];
+		}
+		
+		/**
+		 * Resolves or creates the entity object for a given row.
+		 *
+		 * Slices the entity's own columns out of the full row first, then returns
+		 * null when all of those columns are null — which happens on the right side
+		 * of a LEFT JOIN when no matching row exists.
+		 *
+		 * @param AstAlias $value
+		 * @param array<string, mixed> $row Full merged row from all joined ranges.
+		 * @param RelationCacheEntry $relationCache
+		 * @param array<string, mixed> $fullRow Complete merged row, forwarded for @SourceField enrichment.
+		 * @param array<string, true> $jsonRangeNames
+		 * @return object|null
+		 * @throws EntityResolutionException
+		 * @throws HydrationException
+		 * @throws QuelException
+		 */
+		private function processEntity(AstAlias $value, array $row, array $relationCache, array $fullRow, array $jsonRangeNames): ?object {
+			// Extract only the columns belonging to this entity range; the full row
+			// contains columns from every joined range.
+			$filteredRow = array_intersect_key($row, $relationCache['keys_flipped']);
+			
+			// All columns are null — no entity exists on this side of the join.
+			if (!$this->isArrayPopulated($filteredRow)) {
+				return null;
+			}
+			
+			/**
+			 * isEntityAlias() has already confirmed the expression is an AstIdentifier.
+			 * @var AstIdentifier $expression
+			 */
+			$expression = $value->getExpression();
+			
+			// Extract and validate entity name
+			$entityName = $expression->getEntityName();
+			
+			if ($entityName === null) {
+				throw new \LogicException("Entity alias '{$value->getName()}' has no entity name — this should have been caught by the semantic analyser.");
+			}
+			
+			// Resolve entity to fully namespaced
+			$entity = $this->entityStore->resolveProxyClass($entityName);
+			
+			// Extract and validate range
+			$rangeName = $expression->getRange()?->getName();
+			
+			if ($rangeName === null) {
+				throw new \LogicException("Entity alias '{$value->getName()}' has no range name — this should have been caught by the semantic analyser.");
+			}
+			
+			// Remove the range prefix from column names so they match the entity's property map.
+			// E.g. "p.name" becomes "name".
+			$filteredRow = $this->removeRangeFromRow($rangeName, $filteredRow);
+			
+			// Extract only the primary key values to look up an existing entity instance
+			$primaryKeyValues = array_intersect_key($filteredRow, $relationCache['identifiers_flipped']);
+			$existingEntity = $this->unitOfWork->findEntity($entity, $primaryKeyValues);
+			
+			if ($existingEntity !== null) {
+				// A lazy-loading proxy may already be registered in the UnitOfWork.
+				// Populate it now that the real data is available.
+				if ($existingEntity instanceof ProxyInterface && !$existingEntity->isInitialized()) {
+					$this->initializeProxy($existingEntity, $filteredRow);
+				}
+				
+				// Mark the entity as "existing" in the Unit of Work so it is tracked
+				// for changes but not queued for INSERT
+				$this->unitOfWork->persistExisting($existingEntity);
+				$this->enrichEntityFromJsonSources($existingEntity, $entityName, $fullRow, $jsonRangeNames);
+				return $existingEntity;
+			}
+			
+			// No existing entity found — create a new one and populate it from the row
+			$newEntity = new $entity;
+			$this->serializer->deserialize($newEntity, $filteredRow);
+			$this->unitOfWork->persistExisting($newEntity);
+			$this->enrichEntityFromJsonSources($newEntity, $entityName, $fullRow, $jsonRangeNames);
+			return $newEntity;
+		}
+		
+		/**
+		 * Populates a lazy-loading proxy with real data and detaches it from the
+		 * UnitOfWork so it can be re-registered as an existing (non-new) entity.
+		 *
+		 * @param ProxyInterface $proxy
+		 * @param array<string, mixed> $data
+		 * @return void
+		 * @throws EntityResolutionException
+		 */
+		private function initializeProxy(ProxyInterface $proxy, array $data): void {
+			// Mark the proxy as initialized so it knows it has been loaded
+			$proxy->setInitialized();
+			
+			// Deserialize the provided data into the proxy entity
+			$this->serializer->deserialize($proxy, $data);
+			
+			// Detach so the proxy can be re-attached as an existing entity rather
+			// than being treated as new and queued for INSERT.
+			$this->unitOfWork->detach($proxy);
+		}
+		
+		/**
+		 * Writes values from JSON source ranges onto an entity's @SourceField properties.
+		 *
+		 * Called after an entity is resolved or created. For each property annotated
+		 * with @SourceField, the method determines which JSON range to read from
+		 * (explicit or inferred), then sets the property value directly via
+		 * PropertyHandler — bypassing any setter so the entity stays passive.
+		 *
+		 * The method is a no-op when:
+		 *  - The entity declares no @SourceField properties.
 		 *  - The resolved range is not present in this row.
 		 *  - The field key does not exist in the JSON range's data.
 		 *
-		 * @param object $entity The fully resolved entity to enrich.
-		 * @param string $entityName Fully qualified class name of the entity.
-		 * @param array<string, mixed> $fullRow The complete merged result row, containing
-		 *                                              prefixed keys from all stages (e.g. "product.name").
-		 * @param array<string, true> $jsonRangeNames All JSON range names declared in the AST,
-		 *                                              used to build the set of ranges present in the row.
+		 * @param object $entity
+		 * @param string $entityName Fully qualified class name.
+		 * @param array<string, mixed> $fullRow Complete merged row with prefixed keys (e.g. "json.field").
+		 * @param array<string, true> $jsonRangeNames All JSON range names declared in the AST.
 		 * @return void
-		 * @throws EntityResolutionException   When the entity class cannot be resolved.
+		 * @throws EntityResolutionException
 		 */
 		private function enrichEntityFromJsonSources(object $entity, string $entityName, array $fullRow, array $jsonRangeNames): void {
-			// Collect @SourceField annotations for this entity class, keyed by property name.
-			// getAnnotationsOfType() returns array<string, array<int, T>>.
+			// Collect @SourceField annotations for this entity class, keyed by property name
 			$metadata = $this->entityStore->getMetadata($entityName);
 			$jsonFieldAnnotations = $metadata->getAnnotationsOfType(SourceField::class);
 			
@@ -265,21 +410,9 @@
 				return;
 			}
 			
-			// Determine which JSON ranges are actually present in this row by intersecting
-			// the AST-level set with keys that appear as prefixes in the flat row.
-			// This subset drives ambiguity detection when a range is not explicitly declared.
-			$presentJsonRanges = [];
-			
-			foreach ($jsonRangeNames as $rangeName => $_) {
-				// A range is "present" when at least one of its prefixed keys exists in the row
-				if (array_key_exists("{$rangeName}.", array_flip(
-					array_map(fn($k) => substr($k, 0, strpos($k, '.') + 1), array_keys($fullRow))
-				))) {
-					$presentJsonRanges[$rangeName] = true;
-				}
-			}
-			
-			// Simpler and more efficient: rebuild presentJsonRanges by scanning row keys once
+			// Determine which JSON ranges actually appear in this row by scanning
+			// row keys for known range prefixes. This drives ambiguity detection in
+			// resolveJsonRange() when no explicit range is declared on the annotation.
 			$presentJsonRanges = [];
 			
 			foreach (array_keys($fullRow) as $rowKey) {
@@ -302,14 +435,15 @@
 			foreach ($jsonFieldAnnotations as $propertyName => $annotations) {
 				foreach ($annotations as $annotation) {
 					// Resolve which range to read from (explicit or inferred)
-					$rangeName = $this->resolveJsonRange($annotation, $propertyName, $presentJsonRanges);
+					$rangeName = $this->resolveJsonRange($annotation, $presentJsonRanges);
 					
 					// No usable range — skip this property
 					if ($rangeName === null) {
 						continue;
 					}
 					
-					// The range was declared but is not present in this particular row — no-op
+					// The annotation names a range that did not appear in this row —
+					// valid for optional joins, nothing to write.
 					if (!isset($presentJsonRanges[$rangeName])) {
 						continue;
 					}
@@ -330,96 +464,97 @@
 		}
 		
 		/**
-		 * Processes a row of data into an entity object
-		 * @param AstAlias $value The alias representing the entity to process
-		 * @param array<string, mixed> $filteredRow Data row containing entity properties
-		 * @param RelationCacheEntry $relationCache Cache containing relationship information
-		 * @param array<string, mixed> $fullRow The complete unfiltered row from all stages,
-		 *                                       used for @SourceField enrichment after the entity is resolved.
-		 * @param array<string, true> $jsonRangeNames All JSON range names declared in the AST.
-		 * @return object|null The processed entity object or null if no data
-		 * @throws QuelException
-		 * @throws HydrationException|EntityResolutionException
+		 * Resolves which JSON range a @SourceField annotation should read from.
+		 *
+		 * Resolution rules:
+		 *  - Explicit range on the annotation → return it directly; the caller handles
+		 *    "not present in this row" as a no-op.
+		 *  - No explicit range, one JSON range present in the row → infer it automatically.
+		 *  - No explicit range, no JSON ranges in the row → return null (no-op).
+		 *  - No explicit range, multiple JSON ranges in the row → ambiguous; the semantic
+		 *    analyser should have caught this, so throw rather than guess.
+		 *
+		 * @param SourceField $annotation
+		 * @param array<string, true> $presentJsonRanges JSON ranges that appear as prefixes in the current row.
+		 * @return string|null Resolved range name, or null when no JSON data is available.
 		 */
-		private function processEntity(AstAlias $value, array $filteredRow, array $relationCache, array $fullRow, array $jsonRangeNames): ?object {
-			// Check if the array contains any meaningful data
-			// If the array is empty or contains only null values, return null
-			if (!$this->isArrayPopulated($filteredRow)) {
+		private function resolveJsonRange(SourceField $annotation, array $presentJsonRanges): ?string {
+			// Explicit range declared on the annotation — use it as-is.
+			// If that range is not present in the row the caller applies no-op logic.
+			$explicitRange = $annotation->getRange();
+			
+			if ($explicitRange !== null) {
+				return $explicitRange;
+			}
+			
+			// No explicit range: infer from the JSON ranges present in this row
+			$count = count($presentJsonRanges);
+			
+			// No JSON data in this row at all — nothing to enrich from
+			if ($count === 0) {
 				return null;
 			}
 			
-			// Extract metadata about the entity from the expression
-			$expression = $value->getExpression();
-			
-			// The expression has to be an AstIdentifier
-			if (!$expression instanceof AstIdentifier) {
-				throw new HydrationException("Expression should be of type AstIdentifier");
+			// Exactly one JSON range: safe to infer automatically
+			if ($count === 1) {
+				return array_key_first($presentJsonRanges);
 			}
 			
-			// The AstIdentifier has to have an entity
-			$entityName = $expression->getEntityName();
-			
-			// Validate the existence of a entity
-			if ($entityName === null) {
-				throw new HydrationException("Missing entity name in the AstIdentifier");
-			}
-			
-			// Resolve the entity
-			$entity = $this->entityStore->resolveProxyClass($entityName);
-			
-			// Fetch the range
-			$rangeName = $expression->getRange()?->getName();
-			if ($rangeName === null) {
-				throw new HydrationException("Missing range in the AstIdentifier");
-			}
-			
-			// Remove the range prefix from column names in the row data
-			// This converts prefixed column names like "range.user_id" to just "user_id"
-			$filteredRow = $this->removeRangeFromRow($rangeName, $filteredRow);
-			
-			// Extract only the primary key values from the filtered row
-			// Uses array_intersect_key for better performance than manual filtering
-			$primaryKeyValues = array_intersect_key($filteredRow, $relationCache['identifiers_flipped']);
-			
-			// Try to find an existing entity with the same primary key values
-			// This prevents duplicate entities for the same database record
-			$existingEntity = $this->unitOfWork->findEntity($entity, $primaryKeyValues);
-			
-			if ($existingEntity !== null) {
-				// If the entity exists but is a non-initialized proxy,
-				// initialize it with the current data
-				if ($existingEntity instanceof ProxyInterface && !$existingEntity->isInitialized()) {
-					$this->initializeProxy($existingEntity, $filteredRow);
-				}
-				
-				// Mark the entity as "existing" in the Unit of Work
-				// This ensures it will be tracked for changes but not inserted as new
-				$this->unitOfWork->persistExisting($existingEntity);
-				
-				// Apply @SourceField enrichment to the resolved existing entity
-				$this->enrichEntityFromJsonSources($existingEntity, $entityName, $fullRow, $jsonRangeNames);
-				
-				// Return the existing entity (possibly newly initialized)
-				return $existingEntity;
-			}
-			
-			// If no existing entity was found, create a new one and
-			// populate it with data from the filtered row
-			$newEntity = new $entity;
-			$this->serializer->deserialize($newEntity, $filteredRow);
-			
-			// Add the new entity to the Unit of Work as an existing entity
-			// (not as a new entity since it came from the database)
-			$this->unitOfWork->persistExisting($newEntity);
-			
-			// Apply @SourceField enrichment to the newly created entity
-			$this->enrichEntityFromJsonSources($newEntity, $entityName, $fullRow, $jsonRangeNames);
-			
-			return $newEntity;
+			// Multiple JSON ranges present but no explicit range on the annotation.
+			// The semantic analyser enforces that @SourceField specifies a range when
+			// more than one JSON source is in scope, so this path should be unreachable.
+			throw new \LogicException(
+				"Ambiguous @SourceField on '{$annotation->getField()}': multiple JSON ranges are present " .
+				"(" . implode(', ', array_keys($presentJsonRanges)) . ") but no explicit range was declared on the annotation."
+			);
 		}
 		
 		/**
-		 * Extract all values out of the JSON row
+		 * Processes a non-entity value from the query result.
+		 *
+		 * Handles JSON source ranges, scalar property paths, and raw scalars.
+		 * Mapped entity aliases are dispatched directly from processRow() and never
+		 * reach this method.
+		 *
+		 * @param AstAlias $value
+		 * @param array<string, mixed> $row
+		 * @param array<string, mixed> $fullRow
+		 * @param array<string, true> $jsonRangeNames
+		 * @return mixed
+		 * @throws EntityResolutionException
+		 * @throws HydrationException
+		 */
+		private function processValue(AstAlias $value, array $row, array $fullRow, array $jsonRangeNames): mixed {
+			$node = $value->getExpression();
+			
+			// Top-level identifier with no chained property — either a JSON source
+			// range or a subquery (derived-table) range. Mapped entity aliases are
+			// handled before this call, so neither reaches here.
+			if ($node instanceof AstIdentifier && !$node->hasNext() && !$node->hasParentIdentifier()) {
+				if ($node->getRange() instanceof AstRangeJsonSource) {
+					return $this->processJsonAllValue($value, $row);
+				}
+				
+				// Subquery range — no entity metadata, return the scalar directly.
+				return $row[$value->getName()] ?? null;
+			}
+			
+			// Chained property (e.g. p.name). Subquery range properties have no
+			// entity metadata and are returned as raw scalars.
+			if ($node instanceof AstIdentifier && $node->hasNext()) {
+				if ($node->getRange()?->getEntityName() === null) {
+					return $row[$value->getName()] ?? null;
+				}
+				
+				return $this->processPropertyValue($row[$value->getName()] ?? null, $node);
+			}
+			
+			// Any other expression (aggregate, function call, etc.) is a scalar.
+			return $row[$value->getName()] ?? null;
+		}
+		
+		/**
+		 * Returns all values from a JSON source range as an unprefixed key-value array.
 		 * @param AstAlias $value
 		 * @param array<string, mixed> $row
 		 * @return array<string, mixed>
@@ -429,102 +564,21 @@
 		}
 		
 		/**
-		 * Processes a single value from the query result.
-		 * @param AstAlias $value The value to process.
-		 * @param array<string, mixed> $row The current database row.
-		 * @param RelationCacheEntry|null $relationCache Cache containing relationship information.
-		 * @param array<string, mixed> $fullRow The complete unfiltered row from all stages,
-		 *                                       forwarded to processEntityValue() for @SourceField enrichment.
-		 * @param array<string, true> $jsonRangeNames All JSON range names declared in the AST.
-		 * @return mixed The processed value (entity object, primitive value, or null).
-		 * @throws EntityResolutionException
-		 * @throws HydrationException
-		 * @throws QuelException
-		 */
-		private function processValue(AstAlias $value, array $row, ?array $relationCache, array $fullRow, array $jsonRangeNames): mixed {
-			$node = $value->getExpression();
-			
-			// Case 1: Process an entity (AstIdentifier with no next/parent nodes)
-			if ($node instanceof AstIdentifier && !$node->hasNext() && !$node->hasParentIdentifier()) {
-				// Process JSON
-				if ($node->getRange() instanceof AstRangeJsonSource) {
-					return $this->processJsonAllValue($value, $row);
-				}
-				
-				// Subquery ranges have no entity name — they are derived tables, not mapped
-				// entities. Return the raw scalar value directly from the row instead of
-				// attempting entity hydration, which would fail with no relation cache entry.
-				if ($node->getRange()?->getEntityName() === null) {
-					return $row[$value->getName()] ?? null;
-				}
-				
-				return $this->processEntityValue($value, $row, $relationCache, $fullRow, $jsonRangeNames);
-			}
-			
-			// Case 2: Process a property value (AstIdentifier with next node)
-			if ($node instanceof AstIdentifier && $node->hasNext()) {
-				// Subquery range property (e.g. x.id where x is a derived table) —
-				// no entity metadata exists, so return the raw value directly.
-				if ($node->getRange()?->getEntityName() === null) {
-					return $row[$value->getName()] ?? null;
-				}
-				
-				return $this->processPropertyValue($row[$value->getName()] ?? null, $node);
-			}
-			
-			// Case 3: Process a simple value (direct lookup from row)
-			return $row[$value->getName()] ?? null;
-		}
-		
-		/**
-		 * Processes an entity value from the query result.
-		 * @param AstAlias $value The value representing the entity.
-		 * @param array<string, mixed> $row The current database row.
-		 * @param RelationCacheEntry|null $relationCache Cache containing relationship information.
-		 * @param array<string, mixed> $fullRow The complete unfiltered row from all stages,
-		 *                                       passed through to processEntity() for @SourceField enrichment.
-		 * @param array<string, true> $jsonRangeNames All JSON range names declared in the AST.
-		 * @return object|null The processed entity object or null if no data.
-		 * @throws EntityResolutionException
-		 * @throws HydrationException
-		 * @throws QuelException
-		 */
-		private function processEntityValue(AstAlias $value, array $row, ?array $relationCache, array $fullRow, array $jsonRangeNames): ?object {
-			// Early return if no relation cache is provided
-			// This suggests there's no relationship data available for processing
-			if ($relationCache === null) {
-				return null;
-			}
-			
-			// Filter the row to only include columns relevant to this entity.
-			// Uses the flipped keys from relationCache to identify relevant columns.
-			// This is used to extract only the fields belonging to this entity
-			// from a potentially larger result set that may include joined tables
-			$filteredRow = array_intersect_key($row, $relationCache["keys_flipped"]);
-			
-			// Delegate to a separate method to transform the filtered row data into an entity object
-			// Passes along the entity alias, filtered row data, and relation cache for context
-			// The processEntity method likely handles instantiation and population of the entity
-			return $this->processEntity($value, $filteredRow, $relationCache, $fullRow, $jsonRangeNames);
-		}
-		
-		/**
-		 * Processes a property value from the query result.
+		 * Casts a raw database column value to its proper PHP type using the
+		 * @Column annotation declared on the entity property.
 		 * @param mixed $rawValue
-		 * @param AstIdentifier $node The AST node with property information.
-		 * @return mixed The processed property value.
-		 * @throws HydrationException|EntityResolutionException
+		 * @param AstIdentifier $node
+		 * @return mixed
+		 * @throws HydrationException
+		 * @throws EntityResolutionException
 		 */
 		private function processPropertyValue(mixed $rawValue, AstIdentifier $node): mixed {
-			// Early return if value is NULL
 			if ($rawValue === null) {
 				return null;
 			}
 			
-			// Get the entity name from the node
 			$entityName = $node->getEntityName();
 			
-			// Error when node has no attached entity
 			if ($entityName === null) {
 				throw new HydrationException("Missing entity name in the AstIdentifier");
 			}
@@ -532,147 +586,64 @@
 			// Get the property name from the next node in the chain
 			$propertyName = $node->getNext()?->getName();
 			
-			// Error when property has no name (e.g. just the entity name was passed)
 			if ($propertyName === null) {
 				throw new HydrationException("Missing property name in the AstIdentifier");
 			}
 			
-			// Retrieve annotations for the entity from the entity store
 			$metadata = $this->entityStore->getMetadata($entityName);
 			$annotations = $metadata->getAnnotations();
 			
-			// Iterate through all annotations for this property
+			// Find the @Column annotation and use it to cast the raw database value
+			// to its proper PHP type
 			foreach ($annotations[$propertyName] ?? [] as $annotation) {
-				// Check if the annotation is a Column type
 				if (!$annotation instanceof Column) {
 					continue;
 				}
 				
-				// If it's a Column, use the serializer from the unit of work
-				// to convert the raw database value to its proper PHP type
 				return $this->unitOfWork->getSerializer()->normalizeValue($annotation, $rawValue);
 			}
 			
-			// If we didn't find a Column annotation, throw as we cannot hydrate
 			throw new HydrationException("No @Column annotation found for property '{$propertyName}' on '{$entityName}'");
 		}
 		
+		// =========================================================================
+		// Utilities
+		// =========================================================================
+		
 		/**
-		 * Processes a database result row into a structured result based on the AST.
-		 * @param array<int, AstAlias> $ast Abstract Syntax Tree representing the query structure.
-		 * @param array<string, mixed> $row Raw database row from the query result.
-		 * @param RelationCache $relationCache Cache of relationship information for entity mapping.
-		 * @param array<string, object> $entities Reference to collection of unique entity objects for tracking.
-		 * @param array<string, true> $jsonRangeNames All JSON range names declared in the AST,
-		 *                                             forwarded to processValue() for @SourceField enrichment.
-		 * @return array<string, mixed> Processed row with values mapped according to the AST.
-		 * @throws EntityResolutionException
-		 * @throws HydrationException
-		 * @throws QuelException
+		 * Returns true if the array contains at least one non-null value.
+		 * Used to detect all-null rows produced by LEFT JOIN misses.
+		 *
+		 * @param array<string|int, mixed> $array
+		 * @return bool
 		 */
-		private function processRow(array $ast, array $row, array $relationCache, array &$entities, array $jsonRangeNames): array {
-			// Initialize the result row as an empty array
-			$resultRow = [];
-			
-			// Process each value node in the abstract syntax tree
-			foreach ($ast as $value) {
-				// Skip the value if designated to do so
-				if (!$value->showInResult()) {
-					continue;
-				}
-				
-				// Get the alias name for this value in the result set
-				$name = $value->getName();
-				
-				// Determine if this value represents an entity (top-level identifier without parent or next nodes)
-				// This distinguishes between entity objects and scalar property values
-				$isEntity = $value->getExpression() instanceof AstIdentifier &&
-					!$value->getExpression()->getRange() instanceof AstRangeJsonSource &&
-					!$value->getExpression()->hasParentIdentifier() &&
-					!$value->getExpression()->hasNext();
-				
-				// If it's an entity, get the range name (typically the table/entity name in the query)
-				$rangeName = $isEntity ? $value->getExpression()->getRange()?->getName() : null;
-				
-				// Process the current value based on its type:
-				// - For entities: pass the relation cache specific to this entity
-				// - For properties: pass null for the relation cache
-				// The full row is also forwarded so processEntity() can enrich via @SourceField
-				$processedValue = $this->processValue(
-					$value,
-					$row,
-					$isEntity ? $relationCache[$rangeName] : null,
-					$row,        // full unfiltered row forwarded for @SourceField enrichment
-					$jsonRangeNames
-				);
-				
-				// Store the processed value in the result row using the alias name as key
-				$resultRow[$name] = $processedValue;
-				
-				// If the value is an entity and not null, track it in the entities collection
-				// This helps avoid duplicate processing and enables relationship loading
-				if ($isEntity && is_object($processedValue)) {
-					// Generate a unique hash for the entity object
-					$hash = spl_object_hash($processedValue);
-					
-					// Only add the entity to the tracking collection if not already present
-					// This ensures we maintain a set of unique entity instances
-					if (!isset($entities[$hash])) {
-						$entities[$hash] = $processedValue;
-					}
-				}
-			}
-			
-			// Return the fully processed row with all values mapped according to the AST
-			return $resultRow;
+		private function isArrayPopulated(array $array): bool {
+			return !empty(array_filter($array, fn($val) => $val !== null));
 		}
 		
 		/**
-		 * Build the relation cache from the first row and the AST.
-		 * @param array<int, AstAlias> $ast
-		 * @param array<string, mixed> $row
-		 * @return RelationCache
-		 * @throws EntityResolutionException
+		 * Strips a range prefix from all keys in an array, returning only the keys
+		 * that belonged to that range with the prefix removed.
+		 *
+		 * E.g. ["p.id" => 1, "p.name" => "Alice", "o.id" => 9] with range "p"
+		 * becomes ["id" => 1, "name" => "Alice"].
+		 *
+		 * @param string $range The range alias to strip (without the trailing dot).
+		 * @param array<string, mixed> $array
+		 * @return array<string, mixed>
 		 */
-		private function buildRelationCache(array $ast, array $row): array {
-			$relationCache = [];
+		private function removeRangeFromRow(string $range, array $array): array {
+			$prefix = $range . '.';
+			$prefixLength = strlen($prefix);
+			$result = [];
 			
-			foreach ($ast as $value) {
-				// Only process top-level identifier expressions (no parent = no nested path)
-				$expression = $value->getExpression();
-				
-				if (!$expression instanceof AstIdentifier || $expression->hasParentIdentifier()) {
-					continue;
+			foreach ($array as $key => $value) {
+				if (strncmp($key, $prefix, $prefixLength) === 0) {
+					$result[substr($key, $prefixLength)] = $value;
 				}
-				
-				// Skip unresolved ranges, unresolved entity classes, and already-cached ranges
-				$range = $expression->getRange();
-				$class = $expression->getEntityName();
-				
-				if ($range === null || $class === null || isset($relationCache[$range->getName()])) {
-					continue;
-				}
-				
-				// Collect all row keys belonging to this range (e.g. "alias.field")
-				$rangeName = $range->getName();
-				
-				$keys = array_keys(array_filter(
-					$row,
-					static fn($_, string $rowKey) => str_starts_with($rowKey, "{$rangeName}."),
-					ARRAY_FILTER_USE_BOTH
-				));
-				
-				// Store flipped variants for O(1) reverse lookup by callers
-				$metadata = $this->entityStore->getMetadata($class);
-				
-				$relationCache[$rangeName] = [
-					'identifiers'         => $metadata->identifierKeys,
-					'identifiers_flipped' => array_flip($metadata->identifierKeys),
-					'keys'                => $keys,
-					'keys_flipped'        => array_flip($keys),
-				];
 			}
 			
-			return $relationCache;
+			return $result;
 		}
+		
 	}

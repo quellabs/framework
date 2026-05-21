@@ -40,6 +40,13 @@
 		 * @return array<string> List of serialization groups this annotation defines
 		 */
 		public function getGroups(): array {
-			return $this->parameters["groups"];
+			if (
+				!isset($this->parameters['groups']) ||
+				!is_array($this->parameters['groups'])
+			) {
+				return [];
+			}
+			
+			return array_values(array_filter($this->parameters['groups'], 'is_string'));
 		}
 	}

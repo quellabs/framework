@@ -9,6 +9,9 @@
 		/** @var array<string, mixed> */
 		protected array $conditions;
 		
+		/** @var string|null The type constraint to enforce */
+		protected ?string $typeCondition;
+		
 		/** @var string|null Custom error message */
 		protected ?string $errorMessage;
 		
@@ -76,7 +79,14 @@
 		 * @param string|null $errorMessage Optional custom error message that overrides all generated ones
 		 */
 		public function __construct(array $conditions = [], ?string $errorMessage = null) {
+			$typeCondition = $conditions['type'] ?? null;
+			
+			if ($typeCondition !== null && !is_string($typeCondition)) {
+				throw new \InvalidArgumentException("Type: 'type' must be a string or null.");
+			}
+			
 			$this->conditions = $conditions;
+			$this->typeCondition = $typeCondition;
 			$this->errorMessage = $errorMessage;
 		}
 		
@@ -105,12 +115,12 @@
 			}
 			
 			// Nothing to validate without a type constraint
-			if (!isset($this->conditions['type'])) {
+			if ($this->typeCondition === null) {
 				return true;
 			}
 			
 			// Normalize deprecated/alias type names (e.g. 'long' -> 'int', 'boolean' -> 'bool')
-			$type = $this->typeAliases[$this->conditions['type']] ?? $this->conditions['type'];
+			$type = $this->typeAliases[$this->typeCondition] ?? $this->typeCondition;
 			
 			// Validate types that can be checked through is_*() functions
 			if (in_array($type, $this->is_a_types, strict: true)) {
@@ -187,10 +197,6 @@
 		
 		/**
 		 * Returns the error message from the last failed validation.
-		 *
-		 * If a custom message was provided at construction, it always takes precedence
-		 * over any generated message, regardless of which type check failed.
-		 *
 		 * @return string The custom error message if set, otherwise the generated one
 		 */
 		public function getError(): string {

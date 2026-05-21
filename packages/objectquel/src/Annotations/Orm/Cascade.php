@@ -16,12 +16,34 @@
 		 */
 		protected array $parameters;
 		
+		/** @var array<int, string> */
+		private array $operations;
+		
+		/** @var string Cascading strategy */
+		private string $strategy;
+		
 		/**
 		 * Cascade constructor.
 		 * @param array<string, mixed> $parameters Array of parameters from the annotation
+		 * @throws \InvalidArgumentException
 		 */
 		public function __construct(array $parameters) {
+			$strategy = $parameters['strategy'] ?? 'both';
+			$operations = $parameters['operations'] ?? [];
+			
+			if (!in_array($strategy, ['orm', 'database', 'both'], true)) {
+				throw new \InvalidArgumentException(
+					'Cascade: strategy must be one of: orm, database, both'
+				);
+			}
+			
+			if (!is_array($operations)) {
+				$operations = [];
+			}
+			
 			$this->parameters = $parameters;
+			$this->operations = array_values(array_filter($operations, 'is_string'));
+			$this->strategy = $strategy;
 		}
 		
 		/**
@@ -31,7 +53,7 @@
 		public function getParameters(): array {
 			return $this->parameters;
 		}
-
+		
 		/**
 		 * Get the operations that should cascade
 		 *
@@ -41,7 +63,7 @@
 		 * @return array<int, string> List of operations to cascade
 		 */
 		public function getOperations(): array {
-			return $this->parameters['operations'] ?? [];
+			return $this->operations;
 		}
 		
 		/**
@@ -55,6 +77,6 @@
 		 * @return string The cascading strategy
 		 */
 		public function getStrategy(): string {
-			return $this->parameters['strategy'] ?? "both";
+			return $this->strategy;
 		}
 	}

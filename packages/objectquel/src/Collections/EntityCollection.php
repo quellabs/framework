@@ -2,14 +2,9 @@
 	
 	namespace Quellabs\ObjectQuel\Collections;
 	
-	use Countable;
-	use ArrayAccess;
-	use Iterator;
 	use Quellabs\ObjectQuel\EntityManager;
-	use Quellabs\ObjectQuel\EntityStore;
 	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
 	use Quellabs\ObjectQuel\Exception\QuelException;
-	use Quellabs\ObjectQuel\ReflectionManagement\PropertyHandler;
 	
 	/**
 	 * Collection class for managing entities with lazy-loading capabilities.
@@ -20,12 +15,6 @@
 		
 		/** @var EntityManager */
 		protected EntityManager $entity_manager;
-		
-		/** @var EntityStore */
-		protected EntityStore $entity_store;
-		
-		/** @var PropertyHandler */
-		protected PropertyHandler $property_handler;
 		
 		/** @var Collection<T> */
 		protected Collection $collection;
@@ -50,10 +39,14 @@
 		 * @param mixed $id The id value of the parent entity
 		 * @param string $sortOrder Optional sort order for the collection
 		 */
-		public function __construct(EntityManager $entityManager, string $targetEntity, string $propertyName, mixed $id, string $sortOrder = '') {
+		public function __construct(
+			EntityManager $entityManager,
+			string $targetEntity,
+			string $propertyName,
+			mixed $id,
+			string $sortOrder = ''
+		) {
 			$this->entity_manager = $entityManager;
-			$this->entity_store = $entityManager->getUnitOfWork()->getEntityStore();
-			$this->property_handler = $entityManager->getUnitOfWork()->getPropertyHandler();
 			$this->collection = new Collection($sortOrder);
 			$this->target_entity = $targetEntity;
 			$this->property_name = $propertyName;
@@ -82,26 +75,24 @@
 			if ($this->initialized) {
 				return;
 			}
-			
-			// Mark as initialized to prevent repeated initialization
-			// This prevents querying the database multiple times for the same data
+
+			// Guard against re-entrant initialization: findBy() may load the parent entity and
+			// touch this collection again. Reset on failure so the collection remains retryable.
 			$this->initialized = true;
 			
-			// Retrieve entities from the database that match the specified criteria
-			// $this->target_entity is the entity class we want to retrieve
-			// $this->mapped_id is the name of the field in the entity that references $this->id
 			try {
+				// Load the entities
 				$entities = $this->entity_manager->findBy($this->target_entity, [$this->property_name => $this->id]);
 				
 				// Add each found entity to the collection
 				// But first check if the entity is already present in the collection to avoid duplicates
 				foreach ($entities as $entity) {
-					if (!$this->contains($entity)) {
-						$this->collection[] = $entity;
-					}
+					$this->collection->offsetSet(spl_object_hash($entity), $entity);
 				}
 			} catch (QuelException $e) {
-				// Log the exception or handle it appropriately
+				// Reset the flag so a subsequent access can attempt initialization again
+				$this->initialized = false;
+				
 				// Re-throw with more context to aid debugging
 				throw new QuelException("Failed to initialize entity collection: " . $e->getMessage(), 'initialization_error', 0, $e);
 			}
@@ -120,23 +111,17 @@
 		
 		/**
 		 * Returns true if the entity is in the collection, false if not.
-		 * @param object $entity The entity to check for
+		 * @param T $entity The entity to check for
 		 * @return bool True if the entity exists in the collection
 		 * @throws QuelException|EntityResolutionException
 		 */
-		public function contains(object $entity): bool {
-			// For performance, we can check if the entity exists without initializing
-			// the entire collection in some cases
-			$objectId = spl_object_hash($entity);
-			
-			// If already initialized or the entity is in the collection, return the result
-			if ($this->initialized) {
-				return $this->collection->containsKey($objectId);
+		public function contains(mixed $entity): bool {
+			if (!is_object($entity)) {
+				return false;
 			}
 			
-			// Otherwise initialize and check
 			$this->doInitialize();
-			return $this->collection->containsKey($objectId);
+			return $this->collection->containsKey(spl_object_hash($entity));
 		}
 		
 		/**
@@ -193,7 +178,7 @@
 		
 		/**
 		 * Returns the element at the specified offset, or null if the offset does not exist.
-		 * @param mixed $offset The offset to retrieve
+		 * @param string|int $offset The offset to retrieve
 		 * @return T|null
 		 * @throws QuelException|EntityResolutionException
 		 */
@@ -205,15 +190,22 @@
 		/**
 		 * Sets an element at the specified offset.
 		 * If no offset is provided, uses the entity's object hash as key.
-		 * @param mixed $offset The offset to assign the value to, or null to append
+		 * @param string|int|null $offset The offset to assign the value to, or null to append
 		 * @param T $value The entity to store
 		 * @return void
 		 * @throws QuelException|EntityResolutionException
 		 */
 		public function offsetSet(mixed $offset, mixed $value): void {
+			// Run lazy load query if not already done
 			$this->doInitialize();
 			
-			if (is_null($offset)) {
+			// Do nothing if the value is not an object
+			if (!is_object($value)) {
+				return;
+			}
+			
+			// No offset. Add value to collection
+			if ($offset === null) {
 				$this->collection->offsetSet(spl_object_hash($value), $value);
 			} else {
 				$this->collection->offsetSet($offset, $value);
@@ -288,7 +280,11 @@
 		 * @return void
 		 * @throws QuelException|EntityResolutionException
 		 */
-		public function add(object $entity): void {
+		public function add(mixed $entity): void {
+			if (!is_object($entity)) {
+				return;
+			}
+			
 			$this->doInitialize();
 			
 			if (!$this->contains($entity)) {
@@ -302,7 +298,11 @@
 		 * @return bool True if the entity was removed, false if it wasn't in the collection
 		 * @throws QuelException|EntityResolutionException
 		 */
-		public function remove(object $entity): bool {
+		public function remove(mixed $entity): bool {
+			if (!is_object($entity)) {
+				return false;
+			}
+			
 			$this->doInitialize();
 			$objectId = spl_object_hash($entity);
 			

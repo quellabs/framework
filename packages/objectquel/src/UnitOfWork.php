@@ -167,6 +167,7 @@
 		 * @param class-string<T> $entityType The type of entity being searched for.
 		 * @param array<string, mixed> $primaryKeys The serialized primary key data of the entity
 		 * @return object|null The found entity or null if it is not found.
+		 * @throws EntityResolutionException
 		 */
 		public function findEntity(string $entityType, array $primaryKeys): ?object {
 			// Normalize the entity name for dealing with proxies
@@ -200,6 +201,7 @@
 		 * This method is used for entities that already exist in the database but need to be managed.
 		 * @param object $entity The entity object to persist and track.
 		 * @return void
+		 * @throws EntityResolutionException
 		 */
 		public function persistExisting(object $entity): void {
 			// Check if the entity class is registered in the entity store
@@ -250,6 +252,7 @@
 		 * This method is specifically for entities that don't yet exist in the database but will be created.
 		 * @param object $entity The new entity object to persist.
 		 * @return bool True if the entity was successfully added to the tracking system, false otherwise.
+		 * @throws EntityResolutionException
 		 */
 		public function persistNew(object $entity): bool {
 			// Check if the entity is already being tracked in the identity map
@@ -625,10 +628,9 @@
 		 * indicating an unresolvable dependency between entities (e.g., A depends on B, B depends on A).
 		 */
 		private function scheduleEntitiesForPersistence(): array {
-			// Initialize the data structures for topological sorting algorithm.
-			$graph = []; // Adjacency list representation of the entity dependency graph.
-			$inDegree = []; // Tracks the number of dependencies (incoming edges) for each entity.
-			$flattenedIdentityMap = $this->getFlattenedIdentityMap(); // Get all managed entities as a flat array.
+			$graph = [];
+			$inDegree = [];
+			$flattenedIdentityMap = $this->getFlattenedIdentityMap();
 			
 			// Prepare the graph and inDegree counters for each entity.
 			// This initializes every entity with an empty list of dependents and zero dependencies.
@@ -660,8 +662,8 @@
 					// Get the actual parent entity object from the current entity's property
 					$parentEntity = $this->propertyHandler->get($entity, $property);
 					
-					// Skip if the relationship is null (no parent entity assigned)
-					if ($parentEntity === null) {
+					// Skip if the relationship is not an object (no parent entity assigned)
+					if (!is_object($parentEntity)) {
 						continue;
 					}
 					
@@ -670,7 +672,7 @@
 					if (($parentEntity instanceof ProxyInterface) && !$parentEntity->isInitialized()) {
 						continue;
 					}
-					
+
 					// Get a unique identifier for the parent entity
 					$parentId = spl_object_hash($parentEntity);
 					
@@ -747,6 +749,7 @@
 		 * @param array<int, object> $changed List of changed entities
 		 * @param array<int, object> $deleted List of deleted entities
 		 * @return void
+		 * @throws EntityResolutionException
 		 */
 		private function resetAfterCommit(array $changed, array $deleted): void {
 			foreach ($changed as $entity) {
@@ -806,7 +809,7 @@
 					$parentEntity = $this->propertyHandler->get($entity, $property);
 					
 					// If the parent entity exists, add it to the result with its relationship details.
-					if (!empty($parentEntity)) {
+					if (!empty($parentEntity) && is_object($parentEntity)) {
 						// Get the relation column name, or fall back to a convention
 						$relationColumn = $annotation->getRelationColumn() ?? "{$property}Id";
 						
@@ -846,6 +849,7 @@
 		 * @param object $entity The entity from which to retrieve the primary keys.
 		 * @return array<string, mixed> An associative array where the keys are the primary key names and
 		 *               the values are their corresponding values from the entity.
+		 * @throws EntityResolutionException
 		 */
 		private function getIdentifiers(object $entity): array {
 			// Fetch the metadata from the entity store
@@ -869,6 +873,7 @@
 		 * that would otherwise become orphaned.
 		 * @param object $entity The parent entity being deleted
 		 * @return void
+		 * @throws EntityResolutionException
 		 */
 		private function executeCascadingDeletions(object $entity): void {
 			// Normalize the entity class name to ensure consistent format
@@ -1012,6 +1017,7 @@
 		 * @param string $property Property name with the relationship
 		 * @param object $parentEntity The parent entity object
 		 * @return void
+		 * @throws EntityResolutionException|Exception\QuelException
 		 */
 		private function cascadeDeleteDependentObjects(string $dependentEntityClass, string $property, object $parentEntity): void {
 			// Extract the primary key identifiers from the parent entity
@@ -1075,6 +1081,7 @@
 		 * they are configured with cascade=persist in their relationship annotations.
 		 * @param object $entity The entity whose relationships should be checked for cascade persist
 		 * @return void
+		 * @throws EntityResolutionException
 		 */
 		private function executeCascadingPersistsForEntity(object $entity): void {
 			// Process OneToMany relationships
@@ -1121,8 +1128,18 @@
 					continue;
 				}
 				
+				// Skip if collection is not iterable (satisfies PHPStan)
+				if (!is_iterable($collection)) {
+					continue;
+				}
+				
 				// Iterate through each entity in the collection
 				foreach ($collection as $relatedEntity) {
+					// Skip if related entity is not an object. Here to satisfy phpstan
+					if (!is_object($relatedEntity)) {
+						continue;
+					}
+					
 					// Check if the related entity is already being tracked in the identity map
 					if ($this->isInIdentityMap($relatedEntity)) {
 						continue;
@@ -1178,7 +1195,7 @@
 				}
 				
 				// Check if the related entity is already being tracked
-				if ($this->isInIdentityMap($relatedEntity)) {
+				if (!is_object($relatedEntity) || $this->isInIdentityMap($relatedEntity)) {
 					continue;
 				}
 				

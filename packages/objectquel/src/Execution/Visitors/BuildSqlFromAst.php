@@ -9,6 +9,7 @@
 	use Quellabs\ObjectQuel\Execution\Helpers\ProcessAggregate;
 	use Quellabs\ObjectQuel\Execution\Helpers\ProcessExpression;
 	use Quellabs\ObjectQuel\Execution\Helpers\ResolveType;
+	use Quellabs\ObjectQuel\Execution\SqlGeneratorInterface;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAlias;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAny;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAvg;
@@ -58,7 +59,7 @@
 	 * @package Quellabs\ObjectQuel\ObjectQuel\Visitors
 	 * @author Quellabs
 	 */
-	class BuildSqlFromAst implements AstVisitorInterface {
+	class BuildSqlFromAst implements SqlGeneratorInterface {
 		
 		/** @var EntityStore Entity storage for metadata and schema information */
 		private EntityStore $entityStore;
@@ -119,10 +120,7 @@
 			// Initialize helper classes with proper dependencies and references
 			$this->sqlFragmentBuilder = new BuildSqlFragments(
 				$this->entityStore,
-				$this->parameters,
-				$this->partOfQuery,
 				$this,
-				$this->platform,
 				$subqueryAliasRangeName
 			);
 			
@@ -167,23 +165,32 @@
 				// A node reached the visitor that doesn't follow the naming convention.
 				// This is a programming error — flag it loudly in debug mode rather
 				// than silently producing incomplete SQL.
-				trigger_error(
+				throw new \LogicException(
 					sprintf(
-						'%s: node class "%s" does not follow the Ast* naming convention; no handler will be invoked.',
+						'%s: node class "%s" does not follow the Ast* naming convention.',
 						self::class,
 						$className
-					),
-					E_USER_WARNING
+					)
 				);
-				return;
 			}
 			
+			// Determine the method that handles the method
 			$handleMethod = 'handle' . substr($className, 3); // Remove 'Ast' prefix
 			
-			// Call the appropriate handler method if it exists
-			if (method_exists($this, $handleMethod)) {
-				$this->{$handleMethod}($node);
+			// If the handler does not exist, something is very wrong
+			if (!method_exists($this, $handleMethod)) {
+				throw new \LogicException(
+					sprintf(
+						'%s: no handler found for node class "%s" (expected method "%s").',
+						self::class,
+						$className,
+						$handleMethod
+					)
+				);
 			}
+
+			// Call the appropriate handler
+			$this->{$handleMethod}($node);
 			
 			// Mark this node as visited
 			$this->addToVisitedNodes($node);
@@ -302,15 +309,10 @@
 		 * Process an entity by generating SQL for all its columns
 		 * When an entity is referenced (typically through an alias), we need to
 		 * generate SQL that selects all columns belonging to that entity.
-		 * @param AstInterface $ast The entity identifier node
+		 * @param AstIdentifier  $ast The entity identifier node
+		 * @throws EntityResolutionException
 		 */
-		protected function handleEntity(AstInterface $ast): void {
-			// Ensure we're dealing with an identifier
-			if (!$ast instanceof AstIdentifier) {
-				return;
-			}
-			
-			// Generate SQL for all columns of this entity
+		protected function handleEntity(AstIdentifier $ast): void {
 			$this->result[] = $this->sqlFragmentBuilder->buildEntityColumns($ast);
 		}
 		

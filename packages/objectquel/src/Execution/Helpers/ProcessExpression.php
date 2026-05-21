@@ -7,6 +7,7 @@
 	use Quellabs\ObjectQuel\EntityStore;
 	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
 	use Quellabs\ObjectQuel\Exception\QuelException;
+	use Quellabs\ObjectQuel\Execution\SqlGeneratorInterface;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstBool;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIdentifier;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIsEmpty;
@@ -27,6 +28,7 @@
 	use Quellabs\ObjectQuel\Capabilities\PlatformCapabilitiesInterface;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\NodeBinary;
 	use Quellabs\ObjectQuel\ObjectQuel\AstInterface;
+	use Quellabs\ObjectQuel\ObjectQuel\AstVisitorInterface;
 	use Quellabs\ObjectQuel\ObjectQuel\IdentifierType;
 	
 	/**
@@ -84,8 +86,8 @@
 		/** @var array<string, mixed> Reference to the parameter array for prepared statements */
 		private array $parameters;
 		
-		/** @var mixed Reference to the main visitor to avoid circular dependencies */
-		private mixed $mainVisitor;
+		/** @var SqlGeneratorInterface Reference to the main visitor to avoid circular dependencies */
+		private SqlGeneratorInterface $mainVisitor;
 		
 		/** @var PlatformCapabilitiesInterface Describes what the connected database engine supports */
 		private PlatformCapabilitiesInterface $platform;
@@ -95,14 +97,14 @@
 		 * @param EntityStore $entityStore EntityStore holds entity metadata
 		 * @param ResolveType $typeInference Helper for type analysis
 		 * @param array<string, mixed> $parameters Reference to parameters array for prepared statements
-		 * @param mixed $mainVisitor Reference to the main AST visitor (avoids circular dependency)
+		 * @param SqlGeneratorInterface $mainVisitor Reference to the main AST visitor (avoids circular dependency)
 		 * @param PlatformCapabilitiesInterface $platform Database engine capability descriptor
 		 */
 		public function __construct(
 			EntityStore                   $entityStore,
 			ResolveType                   $typeInference,
 			array                         &$parameters,
-			mixed                         $mainVisitor,
+			SqlGeneratorInterface         $mainVisitor,
 			PlatformCapabilitiesInterface $platform = new NullPlatformCapabilities()
 		) {
 			$this->entityStore = $entityStore;
@@ -264,7 +266,7 @@
 			$sql = match ($this->platform->getFulltextIndexStyle()) {
 				FulltextIndexStyle::Fulltext => $this->buildFullTextCondition($search->getIdentifiers(), $search->getSearchString(), $searchKey),
 				FulltextIndexStyle::Tsvector => $this->buildTsvectorCondition($search->getIdentifiers(), $search->getSearchString(), $searchKey),
-				FulltextIndexStyle::Fts5     => $this->buildFts5Condition($search->getIdentifiers(), $search->getSearchString(), $searchKey),
+				FulltextIndexStyle::Fts5 => $this->buildFts5Condition($search->getIdentifiers(), $search->getSearchString(), $searchKey),
 			};
 			
 			return '(' . $sql . ')';

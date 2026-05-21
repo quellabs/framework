@@ -72,7 +72,8 @@
 		/**
 		 * Collect all identifier values for the given entity.
 		 * @param object $entity The entity to extract identifiers from
-		 * @return array<int, mixed> Array of identifier values in the order they're defined
+		 * @return array<int, string> Array of identifier values in the order they're defined
+		 * @throws EntityResolutionException
 		 */
 		protected function getIdentifierValues(object $entity): array {
 			// Fetch metadata
@@ -83,7 +84,15 @@
 			$result = [];
 			
 			foreach ($metadata->identifierKeys as $key) {
-				$result[] = $this->propertyHandler->get($entity, $key);
+				$value = $this->propertyHandler->get($entity, $key);
+				
+				if (!is_scalar($value) && !($value instanceof \Stringable)) {
+					throw new \UnexpectedValueException(
+						sprintf('Identifier "%s" on %s must be scalar or Stringable, got %s', $key, get_class($entity), get_debug_type($value))
+					);
+				}
+				
+				$result[] = (string)$value;
 			}
 			
 			return $result;
@@ -119,12 +128,17 @@
 			$entityName = $this->resolveProxyClass(get_class($entity));
 			
 			// Create composite ID string for URL generation
-			$entityId = implode("_", $this->getIdentifierValues($entity));
+			$entityId = implode("_", array_map('strval', $this->getIdentifierValues($entity)));
 			
 			// Process each relationship mapping
 			foreach ($relationships as $property => $relationship) {
 				// Fetch the target entity
 				$targetEntity = $relationship->getTargetEntity();
+				
+				// Validate the class exists
+				if (!class_exists($targetEntity)) {
+					throw new \RuntimeException("Relationship target '{$targetEntity}' is not a loadable class");
+				}
 				
 				// Get the target entity's resource type name
 				$relationshipEntityName = $this->resolveProxyClass($targetEntity);
@@ -147,7 +161,7 @@
 				foreach ($relationshipEntities as $relationshipEntity) {
 					$relationshipEntries[] = [
 						'type' => $relationshipEntityName,
-						'id'   => implode("_", $this->getIdentifierValues($relationshipEntity))
+						'id'   => implode("_", array_map('strval', $this->getIdentifierValues($relationshipEntity)))
 					];
 				}
 				
@@ -203,7 +217,7 @@
 			$identifierValue = $this->propertyHandler->get($entity, $metadata->identifierKeys[0]);
 			
 			// Create composite ID string for resource identification
-			$entityId = implode("_", $this->getIdentifierValues($entity));
+			$entityId = implode("_", array_map('strval', $this->getIdentifierValues($entity)));
 			
 			// Build the core resource object
 			$result = [

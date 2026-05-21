@@ -3,9 +3,9 @@
 	namespace Quellabs\ObjectQuel\Collections;
 	
 	/**
-	 * @template T of object
-	 * @extends \ArrayAccess<int, T>
-	 * @extends \Iterator<int, T>
+	 * @template T
+	 * @extends \ArrayAccess<string|int, T>
+	 * @extends \Iterator<string|int, T>
 	 */
 	interface CollectionInterface extends \ArrayAccess, \Iterator, \Countable {
 		
@@ -23,11 +23,11 @@
 		public function clear(): void;
 		
 		/**
-		 * Returns true if the collection contains the specified entity, false if not.
-		 * @param T $entity The entity to search for
+		 * Returns true if the collection contains the specified value, false if not.
+		 * @param T $value The value to search for
 		 * @return bool
 		 */
-		public function contains(object $entity): bool;
+		public function contains(mixed $value): bool;
 		
 		/**
 		 * Returns true if the collection contains no elements, false if not.
@@ -42,18 +42,18 @@
 		public function getCount(): int;
 		
 		/**
-		 * Adds an entity to the collection.
-		 * @param T $entity The entity to add
+		 * Adds a value to the collection.
+		 * @param T $value The value to add
 		 * @return void
 		 */
-		public function add(object $entity): void;
+		public function add(mixed $value): void;
 		
 		/**
-		 * Removes an entity from the collection.
-		 * @param T $entity The entity to remove
-		 * @return bool True if the entity was removed, false if it was not found
+		 * Removes a value from the collection.
+		 * @param T $value The value to remove
+		 * @return bool True if the value was removed, false if it was not found
 		 */
-		public function remove(object $entity): bool;
+		public function remove(mixed $value): bool;
 		
 		/**
 		 * Returns all elements in the collection as an array.
@@ -63,15 +63,15 @@
 		
 		/**
 		 * Returns the element at the specified offset, or null if the offset does not exist.
-		 * @param mixed $offset The offset to retrieve
+		 * @param string|int $offset The offset to retrieve
 		 * @return T|null
 		 */
 		public function offsetGet(mixed $offset): mixed;
 		
 		/**
 		 * Sets an element at the specified offset.
-		 * @param mixed $offset The offset to assign the value to, or null to append
-		 * @param T $value The entity to store
+		 * @param string|int|null $offset The offset to assign the value to, or null to append
+		 * @param T $value The value to store
 		 * @return void
 		 */
 		public function offsetSet(mixed $offset, mixed $value): void;

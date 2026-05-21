@@ -39,21 +39,19 @@
 		 *                        - Input is an empty/zero date ("0000-00-00")
 		 */
 		public function normalize(mixed $value): ?\DateTime {
-			// Return null for null values or empty/zero dates
-			if (is_null($value) || $value === "0000-00-00") {
+			// Value has to be string
+			if (!is_string($value)) {
+				return null;
+			}
+			
+			// Return null for empty/zero datetimes
+			if ($value === "0000-00-00") {
 				return null;
 			}
 			
 			// Convert string date to \DateTime object using the format "Y-m-d"
 			$date = \DateTime::createFromFormat("Y-m-d", $value);
-			
-			// Return null if that failed
-			if ($date === false) {
-				return null;
-			}
-			
-			// Return the date
-			return $date;
+			return $date !== false ? $date : null;
 		}
 		
 		/**
@@ -68,6 +66,6 @@
 			}
 			
 			// Format the DateTime object to a string using only the date part in "Y-m-d" format
-			return $value->format("Y-m-d");
+			return ($value instanceof \DateTime) ? $value->format("Y-m-d") : null;
 		}
 	}

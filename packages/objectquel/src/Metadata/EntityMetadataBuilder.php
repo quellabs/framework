@@ -25,6 +25,21 @@
 	 * Owns the full pipeline: annotation reading, normalization, and assembly.
 	 * EntityStore delegates all metadata construction here and only handles
 	 * caching and registry concerns.
+	 *
+	 * @phpstan-type ColumnDefinitionRecord array{
+	 *        property_name: string,
+	 *        type: string,
+	 *        php_type: \ReflectionType|null,
+	 *        limit: int|array<int, int>|null,
+	 *        nullable: bool,
+	 *        unsigned: bool,
+	 *        default: mixed,
+	 *        primary_key: bool,
+	 *        scale: int|null,
+	 *        precision: int|null,
+	 *        identity: bool,
+	 *        values: array<int, string>|null
+	 *  }
 	 */
 	class EntityMetadataBuilder {
 		
@@ -121,10 +136,10 @@
 		/**
 		 * Normalizes the entity name by resolving proxies and namespaces.
 		 * Exposed publicly so EntityStore can delegate its own resolveProxyClass() here.
-		 * @param mixed $entity Fully qualified class name, short name, object, or ReflectionClass
+		 * @param string|object $entity Fully qualified class name, short name, object, or ReflectionClass
 		 * @return string Normalized, fully qualified class name
 		 */
-		public function resolveProxyClass(mixed $entity): string {
+		public function resolveProxyClass(string|object $entity): string {
 			$className = $this->extractClassName($entity);
 			
 			// Return early if we've resolved this name before
@@ -174,8 +189,10 @@
 		
 		/**
 		 * Extract class name from various entity representations.
+		 * @param string|object $entity
+		 * @return string
 		 */
-		private function extractClassName(mixed $entity): string {
+		private function extractClassName(string|object $entity): string {
 			if ($entity instanceof \ReflectionClass) {
 				// ReflectionClass already knows its own name
 				return $entity->getName();
@@ -287,7 +304,7 @@
 						 * expanding to the full namespace before they can be used elsewhere.
 						 */
 						$annotation->setTargetEntity(
-							$this->resolveProxyClass($annotation->getTargetEntity()) // @phpstan-ignore-line argument.type
+							$this->resolveProxyClass($annotation->getTargetEntity())
 						);
 						
 						// One relation annotation per property — the first match wins
@@ -337,20 +354,7 @@
 		 *
 		 * @param class-string $className Fully qualified name of the entity class to inspect.
 		 * @param array<string, AnnotationCollection> $annotations Pre-extracted annotations keyed by property name.
-		 * @return array<string, array{
-		 *     property_name: string,
-		 *     type:          string,
-		 *     php_type:      \ReflectionType|null,
-		 *     limit:         mixed,
-		 *     nullable:      bool,
-		 *     unsigned:      bool,
-		 *     default:       mixed,
-		 *     primary_key:   bool,
-		 *     scale:         mixed,
-		 *     precision:     mixed,
-		 *     identity:      bool,
-		 *     values:        mixed
-		 * }> Column definitions keyed by column name.
+		 * @return array<string, ColumnDefinitionRecord> Column definitions keyed by column name.
 		 * @throws AnnotationReaderException If annotation reading fails for any property.
 		 * @throws \ReflectionException      If the class does not exist or cannot be reflected.
 		 */
@@ -388,20 +392,7 @@
 		 * @param Column $column The column annotation carrying mapping metadata.
 		 * @param \ReflectionProperty $property The reflected property this column maps to.
 		 * @param AnnotationCollection $annotations All annotations on the property, used to determine identity columns.
-		 * @return array{
-		 *     property_name: string,
-		 *     type:          string,
-		 *     php_type:      \ReflectionType|null,
-		 *     limit:         mixed,
-		 *     nullable:      bool,
-		 *     unsigned:      bool,
-		 *     default:       mixed,
-		 *     primary_key:   bool,
-		 *     scale:         mixed,
-		 *     precision:     mixed,
-		 *     identity:      bool,
-		 *     values:        mixed
-		 * }
+		 * @return ColumnDefinitionRecord
 		 */
 		private function buildColumnDefinition(Column $column, \ReflectionProperty $property, AnnotationCollection $annotations): array {
 			$columnType = $column->getType();
