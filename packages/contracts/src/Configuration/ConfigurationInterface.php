@@ -27,9 +27,10 @@
 		
 		/**
 		 * Get a specific configuration value
+		 * @template T $default
 		 * @param string $key The configuration key to retrieve
-		 * @param mixed $default Default value if key doesn't exist (default: null)
-		 * @return mixed The configuration value or default if not found
+		 * @param T $default Default value if key doesn't exist (default: null)
+		 * @return T The configuration value or default if not found
 		 */
 		public function get(string $key, mixed $default = null): mixed;
 		
@@ -39,6 +40,12 @@
 		 * @param string $type Target type for casting (string, int, float, bool, array)
 		 * @param mixed $default Default value if key doesn't exist (default: null)
 		 * @return mixed The type-cast configuration value or default
+		 *
+		 * @phpstan-overload getAs(string $key, 'string', mixed $default = null): string
+		 * @phpstan-overload getAs(string $key, 'int', mixed $default = null): int
+		 * @phpstan-overload getAs(string $key, 'float', mixed $default = null): float
+		 * @phpstan-overload getAs(string $key, 'bool', mixed $default = null): bool
+		 * @phpstan-overload getAs(string $key, 'array', mixed $default = null): array<mixed>
 		 */
 		public function getAs(string $key, string $type, mixed $default = null): mixed;
 		
