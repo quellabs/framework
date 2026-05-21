@@ -149,6 +149,10 @@
 			
 			// Call register on all found providers
 			foreach($this->getServiceDiscoverer()->getProviders() as $provider) {
+				if (!$provider instanceof \Quellabs\Sculpt\ServiceProvider) {
+					continue;
+				}
+				
 				$provider->register($this);
 			}
 		}

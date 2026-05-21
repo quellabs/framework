@@ -109,7 +109,7 @@
 		 * @param MethodContextInterface|null $methodContext Context object for dependency injection
 		 * @param string $className Class name for error reporting
 		 * @param string $methodName Method name for error reporting
-		 * @return ParameterMeta The resolved parameter value
+		 * @return mixed The resolved parameter value
 		 */
 		protected function resolveParameter(
 			array                   $param,
