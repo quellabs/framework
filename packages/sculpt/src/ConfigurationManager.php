@@ -137,26 +137,10 @@
 		 * Get a positional parameter by index
 		 * @param int $index Index of the positional parameter (0-based)
 		 * @param mixed $default Default value if parameter doesn't exist
-		 * @return mixed Parameter value or default
+		 * @return string|null Parameter value or default
 		 */
-		public function getPositional(int $index, mixed $default = null): mixed {
+		public function getPositional(int $index, mixed $default = null): ?string {
 			return $this->positionalParameters[$index] ?? $default;
-		}
-		
-		/**
-		 * Get all positional parameters
-		 * @return list<string>
-		 */
-		public function getPositionalParameters(): array {
-			return $this->positionalParameters;
-		}
-		
-		/**
-		 * Get all named parameters
-		 * @return array<string, string>
-		 */
-		public function getNamedParameters(): array {
-			return $this->namedParameters;
 		}
 		
 		/**
@@ -165,78 +149,6 @@
 		 */
 		public function getFlags(): array {
 			return $this->flags;
-		}
-		
-		/**
-		 * Require that certain named parameters are present
-		 * @param list<string> $requiredParams List of required parameter names
-		 * @return bool True if all required parameters are present
-		 * @throws \InvalidArgumentException If any required parameter is missing
-		 */
-		public function requireParameters(array $requiredParams): bool {
-			$missing = [];
-			
-			foreach ($requiredParams as $param) {
-				if (!$this->has($param)) {
-					$missing[] = $param;
-				}
-			}
-			
-			if (!empty($missing)) {
-				throw new \InvalidArgumentException(
-					'Missing required parameters: ' . implode(', ', $missing)
-				);
-			}
-			
-			return true;
-		}
-		
-		/**
-		 * Get the value of a parameter and validate that it matches a given pattern
-		 * @param string $name Parameter name
-		 * @param string $pattern Regular expression pattern
-		 * @param mixed $default Default value if parameter doesn't exist
-		 * @return mixed Parameter value or default
-		 * @throws \InvalidArgumentException If parameter doesn't match pattern
-		 */
-		public function getValidated(string $name, string $pattern, mixed $default = null): mixed {
-			$value = $this->get($name, $default);
-			
-			if ($value !== $default && !preg_match($pattern, $value)) {
-				throw new \InvalidArgumentException(
-					"Parameter '$name' with value '$value' doesn't match required pattern"
-				);
-			}
-			
-			return $value;
-		}
-		
-		/**
-		 * Check if parameter matches one of the allowed values
-		 * @param string $name Parameter name
-		 * @param list<string> $allowedValues Array of allowed values
-		 * @param mixed $default Default value if parameter doesn't exist
-		 * @return mixed Parameter value or default
-		 * @throws \InvalidArgumentException If parameter isn't in allowed values
-		 */
-		public function getEnum(string $name, array $allowedValues, mixed $default = null): mixed {
-			$value = $this->get($name, $default);
-			
-			if ($value !== $default && !in_array($value, $allowedValues)) {
-				throw new \InvalidArgumentException(
-					"Parameter '$name' must be one of: " . implode(', ', $allowedValues)
-				);
-			}
-			
-			return $value;
-		}
-		
-		/**
-		 * Get raw parameters array
-		 * @return list<string>
-		 */
-		public function getRawParameters(): array {
-			return $this->rawParameters;
 		}
 		
 		/**
