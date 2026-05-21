@@ -194,6 +194,61 @@
 		}
 		
 		/**
+		 * Serializes an AnnotationCollection to a plain array for JSON storage.
+		 * Each annotation is stored as ['class' => FQCN, 'parameters' => [...]] so it
+		 * can be reconstructed by calling new $class($parameters), which properly invokes
+		 * the constructor and initializes all typed properties.
+		 * @param AnnotationCollection $collection
+		 * @return list<array{class: class-string, parameters: array<string, mixed>}>
+		 */
+		protected function serializeCollection(AnnotationCollection $collection): array {
+			$result = [];
+			
+			/** @var AnnotationInterface $annotation */
+			foreach ($collection as $annotation) {
+				$result[] = [
+					'class'      => get_class($annotation),
+					'parameters' => $annotation->getParameters(),
+				];
+			}
+			
+			return $result;
+		}
+		
+		/**
+		 * Reconstructs an AnnotationCollection from a serialized plain array.
+		 * Calls new $class($parameters) for each entry so that annotation constructors
+		 * run normally and all typed properties are initialized.
+		 * @param list<array{class: class-string, parameters: array<string, mixed>}> $data
+		 * @return AnnotationCollection
+		 */
+		protected function deserializeCollection(array $data): AnnotationCollection {
+			/** @var array<int, AnnotationInterface> $annotations */
+			$annotations = [];
+			
+			foreach ($data as $entry) {
+				// Fetch class
+				$class = $entry['class'];
+				
+				// Guard against corrupt cache entries: the class must exist and implement
+				// AnnotationInterface so that calling new $class($parameters) is safe and
+				// the result is a valid AnnotationCollection element
+				if (
+					!is_string($class) ||
+					!class_exists($class) ||
+					!is_a($class, AnnotationInterface::class, true)
+				) {
+					continue;
+				}
+				
+				// Reconstruct the annotation by calling its constructor with the stored parameters.
+				$annotations[] = new $class($entry['parameters']);
+			}
+			
+			return new AnnotationCollection($annotations);
+		}
+		
+		/**
 		 * Reads from cache
 		 * @param string $cacheFilename
 		 * @return AnnotationSet|null
@@ -212,19 +267,35 @@
 				return null;
 			}
 			
-			// Deserialize the cached data from string format back to PHP array/object
-			// The cache is expected to contain serialized PHP data
-			$unserializedData = unserialize($fileContents);
+			// Decode the JSON cache format
+			$decoded = json_decode($fileContents, true);
 			
-			// Check if unserialization failed (corrupted data, invalid format, etc.)
-			// unserialize() returns false on failure
-			if ($unserializedData === false) {
+			// Check if decoding failed (corrupted data, invalid format, etc.)
+			if (!is_array($decoded)) {
 				return null;
 			}
 			
-			// Return the successfully deserialized cache data
-			/** @var AnnotationSet $unserializedData */
-			return $unserializedData;
+			// Reconstruct the AnnotationSet, calling each annotation's constructor
+			// so typed properties are properly initialized
+			$methodCollections = [];
+			$propertyCollections = [];
+			
+			foreach ($decoded['methods'] ?? [] as $methodName => $collectionData) {
+				$methodCollections[$methodName] = $this->deserializeCollection($collectionData);
+			}
+			
+			foreach ($decoded['properties'] ?? [] as $propertyName => $collectionData) {
+				$propertyCollections[$propertyName] = $this->deserializeCollection($collectionData);
+			}
+			
+			/** @var AnnotationSet $result */
+			$result = [
+				'class'      => $this->deserializeCollection($decoded['class'] ?? []),
+				'methods'    => $methodCollections,
+				'properties' => $propertyCollections,
+			];
+			
+			return $result;
 		}
 		
 		/**
@@ -243,11 +314,33 @@
 				mkdir($this->annotationCachePath, 0755, true);
 			}
 			
+			// Encode as JSON rather than using serialize(), so annotation objects are
+			// stored as plain data (class name + parameters) and reconstructed via their
+			// constructors on read. serialize/unserialize bypasses __construct, leaving
+			// typed properties uninitialized.
+			$methodData = [];
+			
+			foreach ($annotations['methods'] as $methodName => $collection) {
+				$methodData[$methodName] = $this->serializeCollection($collection);
+			}
+			
+			$propertyData = [];
+			
+			foreach ($annotations['properties'] as $propertyName => $collection) {
+				$propertyData[$propertyName] = $this->serializeCollection($collection);
+			}
+			
+			$payload = json_encode([
+				'class'      => $this->serializeCollection($annotations['class']),
+				'methods'    => $methodData,
+				'properties' => $propertyData,
+			]);
+			
 			// Create the cache path
 			$cachePath = $this->annotationCachePath . DIRECTORY_SEPARATOR . $cacheFilename;
 			
 			// Write the file to the path
-			file_put_contents($cachePath, serialize($annotations));
+			file_put_contents($cachePath, $payload);
 		}
 		
 		/**
