@@ -6,7 +6,14 @@
 	use Quellabs\Contracts\DependencyInjection\ContainerInterface;
 	
 	/**
-	 * Handles dependency injection through reflection
+	 * class Autowirer
+	 *
+	 * @phpstan-type ParameterMeta array{
+	 *     name: string,
+	 *     types?: array<int, string>,
+	 *     default_value?: mixed,
+	 *     context?: string
+	 * }
 	 */
 	class Autowirer {
 		
@@ -34,7 +41,7 @@
 			// Resource (rarely used as a parameter type)
 			'resource',
 		];
-
+		
 		/**
 		 * Autowirer constructor
 		 * @param ContainerInterface $container
@@ -53,7 +60,7 @@
 		public function getMethodArguments(object|string $class, string $methodName, array $parameters = []): array {
 			// Fetch the name of the class - handle both object instances and class name strings
 			$className = is_object($class) ? get_class($class) : $class;
-
+			
 			// Throw when the class does not exist
 			if (!class_exists($className)) {
 				throw new \InvalidArgumentException("Class '{$className}' does not exist");
@@ -105,11 +112,11 @@
 		 * @return mixed The resolved parameter value
 		 */
 		protected function resolveParameter(
-			array          $param,
-			array          $parameters,
+			array                   $param,
+			array                   $parameters,
 			?MethodContextInterface $methodContext,
-			string         $className,
-			string         $methodName
+			string                  $className,
+			string                  $methodName
 		): mixed {
 			$paramName = $param['name'];
 			$paramTypes = $param['types'] ?? [];
@@ -153,7 +160,7 @@
 		/**
 		 * Determines if a parameter is the magic **all parameter
 		 * This checks if the parameter name is 'all' and has a type hint of 'array'
-		 * @param array<string, mixed> $param Parameter metadata
+		 * @param ParameterMeta $param Parameter metadata
 		 * @return bool
 		 */
 		protected function isAllParameter(array $param): bool {
@@ -228,7 +235,7 @@
 		 * Get the parameters of a method including type hints and default values
 		 * @param class-string $className
 		 * @param string $methodName
-		 * @return array<int, array<string, mixed>>
+		 * @return array<int, ParameterMeta>
 		 */
 		protected function getMethodParameters(string $className, string $methodName): array {
 			try {

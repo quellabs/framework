@@ -12,12 +12,25 @@
 		 * @return bool Returns true if the value is empty or does not contain any HTML tags, false otherwise
 		 */
 		public function validate(mixed $value): bool {
+			// Empty values are allowed
 			if (($value === null) || ($value === "")) {
 				return true;
 			}
 			
+			// Value must be a string
+			if (!is_string($value)) {
+				return false;
+			}
+			
 			// Normaliseer de invoer door extra spaties te verwijderen
-			$normalizedValue = trim(preg_replace('/\s+/', ' ', $value));
+			$normalizedValue = preg_replace('/\s+/', ' ', $value);
+			
+			if ($normalizedValue === null) {
+				return false;
+			}
+			
+			// Remove whitespace
+			$normalizedValue = trim($normalizedValue);
 			
 			// Vervang enkele html entities
 			$normalizedValue = str_replace("&amp;", "&", $normalizedValue);

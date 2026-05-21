@@ -8,24 +8,29 @@
 	 * This class encapsulates all the state needed during route matching,
 	 * providing a clean interface for strategies to interact with the
 	 * matching process without exposing internal implementation details.
+	 *
+	 * @phpstan-import-type CompiledSegment from RouteTypes
 	 */
 	class MatchingContext {
 		/** @var string[] */
 		private array $requestUrl;
 		
-		/** @var array<int, array<string, mixed>> */
+		/** @var list<CompiledSegment> */
 		private array $compiledPattern;
 		
 		/** @var array<string, string|string[]> */
 		private array $variables = [];
 		
+		/** @var int Current url index */
 		private int $urlIndex = 0;
+		
+		/** @var int Current route index */
 		private int $routeIndex = 0;
 		
 		/**
 		 * MatchingContext constructor
 		 * @param string[] $requestUrl
-		 * @param list<array{type: string, original?: string, is_multi_wildcard?: bool}> $compiledPattern
+		 * @param list<CompiledSegment> $compiledPattern
 		 */
 		public function __construct(array $requestUrl, array $compiledPattern) {
 			$this->requestUrl = $requestUrl;
@@ -42,7 +47,7 @@
 		
 		/**
 		 * Get the current route segment being processed
-		 * @return array<string, mixed>
+		 * @return CompiledSegment
 		 */
 		public function getCurrentRouteSegment(): array {
 			return $this->compiledPattern[$this->routeIndex];
@@ -63,15 +68,7 @@
 		public function getRemainingUrlSegments(): array {
 			return array_slice($this->requestUrl, $this->urlIndex);
 		}
-		
-		/**
-		 * Get all remaining route segments after current position
-		 * @return array<int, array<string, mixed>>
-		 */
-		public function getRemainingRouteSegments(): array {
-			return array_slice($this->compiledPattern, $this->routeIndex + 1);
-		}
-		
+
 		/**
 		 * Advance both URL and route indices to next segment
 		 * @return void
@@ -88,14 +85,6 @@
 		 */
 		public function advanceUrl(int $count = 1): void {
 			$this->urlIndex += $count;
-		}
-		
-		/**
-		 * Advance route index to next segment
-		 * @return void
-		 */
-		public function advanceRoute(): void {
-			$this->routeIndex++;
 		}
 		
 		/**

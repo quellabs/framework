@@ -56,8 +56,15 @@
 			// Store the configuration
 			$this->config = $configuration;
 			
+			// FilesystemLoader expects array<string>|string
+			if (is_string($configuration['template_dir'] ?? null)) {
+				$templateDir = $configuration['template_dir'];
+			} else {
+				$templateDir = ComposerUtils::getProjectRoot() . DIRECTORY_SEPARATOR . 'templates';
+			}
+			
 			// Create filesystem loader
-			$this->loader = new FilesystemLoader($configuration['template_dir'] ?? ComposerUtils::getProjectRoot() . DIRECTORY_SEPARATOR . 'templates');
+			$this->loader = new FilesystemLoader($templateDir);
 			
 			// Configure Twig environment options
 			$options = [
@@ -70,7 +77,8 @@
 			
 			// Set cache directory if caching is enabled
 			if (isset($configuration['caching']) && $configuration['caching']) {
-				$this->cacheDir = $configuration['cache_dir'] ?? null;
+				$cacheDir = $configuration['cache_dir'] ?? null;
+				$this->cacheDir = is_string($cacheDir) ? $cacheDir : null;
 				$options['cache'] = ($this->cacheDir !== null) ? new FilesystemCache($this->cacheDir) : false;
 			} else {
 				$options['cache'] = false;
@@ -90,7 +98,7 @@
 			// Add any custom extensions if specified
 			if (isset($this->config['extensions']) && is_array($this->config['extensions'])) {
 				foreach ($this->config['extensions'] as $extension) {
-					if (class_exists($extension)) {
+					if (is_string($extension) && class_exists($extension)) {
 						$instance = new $extension();
 						if ($instance instanceof \Twig\Extension\ExtensionInterface) {
 							$this->twig->addExtension($instance);
@@ -102,11 +110,13 @@
 			// Add additional paths if configured
 			if (isset($this->config['paths']) && is_array($this->config['paths'])) {
 				foreach ($this->config['paths'] as $namespace => $path) {
+					if (!is_string($path)) {
+						continue;
+					}
+					
 					if (is_string($namespace)) {
-						// Namespaced path
 						$this->addPath($path, $namespace);
 					} else {
-						// Non-namespaced path
 						$this->addPath($path);
 					}
 				}

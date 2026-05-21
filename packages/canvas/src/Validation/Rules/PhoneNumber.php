@@ -33,10 +33,16 @@
 				return true;
 			}
 			
+			// Value must be a string
+			if (!is_string($value)) {
+				return false;
+			}
+			
 			// Remove all characters except allowed phone number characters
 			// Then compare with original value to see if anything was removed
 			// If they match, the original contained only valid characters
-			return strcmp(preg_replace('/[^0-9\s,.\-+]/', '', $value), $value) == 0;
+			$filtered = preg_replace('/[^0-9\s,.\-+]/', '', $value);
+			return ($filtered !== null) && ($filtered === $value);
 		}
 		
 		/**

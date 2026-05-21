@@ -22,13 +22,23 @@
 		 */
 		private array $parameters;
 		
+		/** @var string The route prefix */
+		private string $routePrefix;
+		
 		/**
 		 * Initializes the RoutePrefix annotation with the provided parameters.
 		 * The parameter array should contain at minimum a "value" key with the route path.
 		 * @param array<string, mixed> $parameters An associative array of route configuration parameters
 		 */
 		public function __construct(array $parameters) {
+			$value = $parameters['value'] ?? null;
+			
+			if (!isset($value) || !is_string($value)) {
+				throw new \InvalidArgumentException("RoutePrefix needs a prefix");
+			}
+			
 			$this->parameters = $parameters;
+			$this->routePrefix = $value;
 		}
 		
 		/**
@@ -44,6 +54,6 @@
 		 * @return string The route prefix
 		 */
 		public function getRoutePrefix(): string {
-			return trim($this->parameters["value"], '/ ');
+			return trim($this->routePrefix, '/ ');
 		}
 	}

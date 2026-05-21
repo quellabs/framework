@@ -133,38 +133,44 @@
 			]);
 			
 			// Add additional paths if configured
-			if (!empty($configuration['paths'])) {
+			if (!empty($configuration['paths']) && is_array($configuration['paths'])) {
 				foreach ($configuration['paths'] as $namespace => $path) {
+					if (!is_string($path)) {
+						continue;
+					}
+					
 					if (is_string($namespace)) {
-						$instance->addPath($path, $namespace); // Namespaced path
+						$instance->addPath($path, $namespace);
 					} else {
-						$instance->addPath($path); // Non-namespaced path
+						$instance->addPath($path);
 					}
 				}
 			}
 			
 			// Register custom functions if configured
-			if (!empty($configuration['functions'])) {
+			if (!empty($configuration['functions']) && is_array($configuration['functions'])) {
 				foreach ($configuration['functions'] as $name => $callback) {
-					if (is_callable($callback)) {
+					if (is_string($name) && is_callable($callback)) {
 						$instance->registerFunction($name, $callback);
 					}
 				}
 			}
 			
 			// Register custom filters if configured
-			if (!empty($configuration['filters'])) {
+			if (!empty($configuration['filters']) && is_array($configuration['filters'])) {
 				foreach ($configuration['filters'] as $name => $callback) {
-					if (is_callable($callback)) {
+					if (is_string($name) && is_callable($callback)) {
 						$instance->registerFilter($name, $callback);
 					}
 				}
 			}
 			
 			// Add global variables if configured
-			if (!empty($configuration['globals'])) {
+			if (!empty($configuration['globals']) && is_array($configuration['globals'])) {
 				foreach ($configuration['globals'] as $key => $value) {
-					$instance->addGlobal($key, $value);
+					if (is_string($key)) {
+						$instance->addGlobal($key, $value);
+					}
 				}
 			}
 			

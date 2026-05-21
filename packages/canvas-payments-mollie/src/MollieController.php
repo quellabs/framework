@@ -66,7 +66,7 @@
 		 */
 		public function handleReturn(Request $request): Response {
 			$config = $this->configLoader->loadConfigFile('mollie');
-			return new RedirectResponse($config->get("return_url"));
+			return new RedirectResponse($config->getAs('return_url', 'string', '/'));
 		}
 		
 		/**
@@ -76,6 +76,6 @@
 		 */
 		public function handleCancel(Request $request): Response {
 			$config = $this->configLoader->loadConfigFile('mollie');
-			return new RedirectResponse($config->get("cancel_return_url"));
+			return new RedirectResponse($config->getAs('cancel_return_url', 'string', '/'));
 		}
 	}
