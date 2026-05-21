@@ -161,7 +161,7 @@
 		 * Get all providers (instantiates lazily as you iterate)
 		 * NOTE: Providers are instantiated one-at-a-time during iteration,
 		 * not all at once. Use foreach() to maintain memory efficiency.
-		 * @return \Generator
+		 * @return \Generator<int, ProviderInterface>
 		 */
 		public function getProviders(): \Generator {
 			// Iterate through every registered provider definition
