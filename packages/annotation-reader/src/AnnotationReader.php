@@ -227,8 +227,12 @@
 			$annotations = [];
 			
 			foreach ($data as $entry) {
+				// Fetch class
 				$class = $entry['class'];
 				
+				// Guard against corrupt cache entries: the class must exist and implement
+				// AnnotationInterface so that calling new $class($parameters) is safe and
+				// the result is a valid AnnotationCollection element
 				if (
 					!is_string($class) ||
 					!class_exists($class) ||
@@ -237,6 +241,7 @@
 					continue;
 				}
 				
+				// Reconstruct the annotation by calling its constructor with the stored parameters.
 				$annotations[] = new $class($entry['parameters']);
 			}
 			
