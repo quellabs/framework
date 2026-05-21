@@ -16,7 +16,8 @@
 	 *     caching: int,
 	 *     clear_compiled: bool,
 	 *     cache_lifetime: int|null,
-	 *     security: bool|null
+	 *     security: bool|null,
+	 *     globals: array<string, mixed>
 	 * }
 	 */
 	class ServiceProvider extends \Quellabs\DependencyInjection\Provider\ServiceProvider {
@@ -69,6 +70,9 @@
 				
 				// Enable Smarty security policy (null = disabled)
 				'security'       => null,
+				
+				// Global variables available to all templates
+				'globals'        => [],
 			];
 		}
 		
@@ -89,6 +93,7 @@
 				'clear_compiled' => $this->normalizeBool($configuration['clear_compiled'] ?? null, $defaults['clear_compiled']),
 				'cache_lifetime' => is_int($configuration['cache_lifetime'] ?? null) ? $configuration['cache_lifetime'] : $defaults['cache_lifetime'],
 				'security'       => is_bool($configuration['security'] ?? null) ? $configuration['security'] : $defaults['security'],
+				'globals'        => is_array($configuration['globals'] ?? null) ? $configuration['globals'] : $defaults['globals'],
 			];
 		}
 		

@@ -1,8 +1,40 @@
 parameters:
-    level: 9
+    level: 8
     treatPhpDocTypesAsCertain: false
     paths:
         - packages/objectquel/src
+        - packages/canvas/src
+        - packages/annotation-reader/src
+        - packages/discover/src
+        - packages/signal-hub/src
+        - packages/sculpt/src
+        - packages/dependency-injection/src
+        - packages/support/src
+        - packages/canvas-smarty/src
+        - packages/canvas-blade/src
+        - packages/canvas-twig/src
+        - packages/canvas-latte/src
+        - packages/canvas-plates/src
+        - packages/canvas-handlebars/src
+        - packages/canvas-payments
+        - packages/canvas-payments-adyen
+        - packages/canvas-payments-buckaroo
+        - packages/canvas-payments-contracts
+        - packages/canvas-payments-klarna
+        - packages/canvas-payments-mollie
+        - packages/canvas-payments-multisafepay
+        - packages/canvas-payments-paynl
+        - packages/canvas-payments-paypal
+        - packages/canvas-payments-paypal-express
+        - packages/canvas-payments-rabosmartpay
+        - packages/canvas-payments-stripe
+        - packages/canvas-payments-xpay
+        - packages/canvas-shipments
+        - packages/canvas-shipments-dhl
+        - packages/canvas-shipments-dpd
+        - packages/canvas-shipments-myparcel
+        - packages/canvas-shipments-postnl
+        - packages/canvas-shipments-sendcloud
     bootstrapFiles:
         - vendor/autoload.php
     scanDirectories:
