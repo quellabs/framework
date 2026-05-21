@@ -29,8 +29,19 @@
 		 * @param array<string, mixed> $configuration
 		 */
 		public function __construct(array $configuration) {
-			$templateDir = $configuration['template_dir'] ?? ComposerUtils::getProjectRoot() . DIRECTORY_SEPARATOR . 'templates';
-			$extension   = $configuration['extension'] ?? 'php';
+			// Fetch template directory. If not passed, fall back to default directory /templates
+			if (is_string($configuration['template_dir'] ?? null)) {
+				$templateDir = $configuration['template_dir'];
+			} else {
+				$templateDir = ComposerUtils::getProjectRoot() . DIRECTORY_SEPARATOR . 'templates';
+			}
+			
+			// Fetch file extensions. Fall back to .php if not passed.
+			if (is_string($configuration['extension'] ?? null)) {
+				$extension = $configuration['extension'];
+			} else {
+				$extension = 'php';
+			}
 			
 			// Store the primary path under the default (empty) namespace
 			$this->paths[''] = rtrim($templateDir, '/\\');
@@ -42,7 +53,9 @@
 			// Plates calls these "folders"; each namespace maps to one folder.
 			if (!empty($configuration['paths'])) {
 				foreach ((array)$configuration['paths'] as $namespace => $path) {
-					$this->addPath($path, is_string($namespace) ? $namespace : null);
+					if (is_string($path)) {
+						$this->addPath($path, is_string($namespace) ? $namespace : null);
+					}
 				}
 			}
 			
