@@ -10,11 +10,16 @@
 	use Quellabs\AnnotationReader\LexerParser\Parser;
 	
 	/**
-	 * @phpstan-type AnnotationSet array{
+	 *  @phpstan-type AnnotationSet array{
 	 *    class: AnnotationCollection,
 	 *    properties: array<string, AnnotationCollection>,
 	 *    methods: array<string, AnnotationCollection>
 	 *  }
+	 *
+	 * @phpstan-type SerializedAnnotation array{
+	 *     class: class-string,
+	 *     parameters: array<string, mixed>
+	 * }
 	 */
 	class AnnotationReader {
 		
@@ -155,8 +160,8 @@
 		/**
 		 * Checks if a method in a given entity class has a specific annotation.
 		 * @param class-string|object $class The object to check
-		 * @param string $propertyName       The name of the property to inspect for annotations
-		 * @param string $annotationClass    The annotation class to look for
+		 * @param string $propertyName The name of the property to inspect for annotations
+		 * @param string $annotationClass The annotation class to look for
 		 * @return bool                      True if the annotation exists on the property, false otherwise
 		 */
 		public function propertyHasAnnotation(string|object $class, string $propertyName, string $annotationClass): bool {
@@ -199,7 +204,7 @@
 		 * can be reconstructed by calling new $class($parameters), which properly invokes
 		 * the constructor and initializes all typed properties.
 		 * @param AnnotationCollection $collection
-		 * @return list<array{class: class-string, parameters: array<string, mixed>}>
+		 * @return list<SerializedAnnotation>
 		 */
 		protected function serializeCollection(AnnotationCollection $collection): array {
 			$result = [];
@@ -219,7 +224,7 @@
 		 * Reconstructs an AnnotationCollection from a serialized plain array.
 		 * Calls new $class($parameters) for each entry so that annotation constructors
 		 * run normally and all typed properties are initialized.
-		 * @param list<array{class: class-string, parameters: array<string, mixed>}> $data
+		 * @param array<mixed> $data
 		 * @return AnnotationCollection
 		 */
 		protected function deserializeCollection(array $data): AnnotationCollection {
@@ -227,6 +232,11 @@
 			$annotations = [];
 			
 			foreach ($data as $entry) {
+				// Guard against corrupt cache entries: each entry must be an array
+				if (!is_array($entry)) {
+					continue;
+				}
+				
 				// Fetch class
 				$class = $entry['class'];
 				
@@ -275,22 +285,30 @@
 				return null;
 			}
 			
+			// Extract data from json data
+			$classData = is_array($decoded['class'] ?? null) ? $decoded['class'] : [];
+			$methods = is_array($decoded['methods'] ?? null) ? $decoded['methods'] : [];
+			$properties = is_array($decoded['properties'] ?? null) ? $decoded['properties'] : [];
+			
 			// Reconstruct the AnnotationSet, calling each annotation's constructor
 			// so typed properties are properly initialized
 			$methodCollections = [];
 			$propertyCollections = [];
 			
-			foreach ($decoded['methods'] ?? [] as $methodName => $collectionData) {
+			foreach ($methods as $methodName => $collectionData) {
+				/** @var list<SerializedAnnotation> $collectionData */
 				$methodCollections[$methodName] = $this->deserializeCollection($collectionData);
 			}
 			
-			foreach ($decoded['properties'] ?? [] as $propertyName => $collectionData) {
+			foreach ($properties as $propertyName => $collectionData) {
+				/** @var list<SerializedAnnotation> $collectionData */
 				$propertyCollections[$propertyName] = $this->deserializeCollection($collectionData);
 			}
 			
+			/** @var list<SerializedAnnotation> $classData */
 			/** @var AnnotationSet $result */
 			$result = [
-				'class'      => $this->deserializeCollection($decoded['class'] ?? []),
+				'class'      => $this->deserializeCollection($classData),
 				'methods'    => $methodCollections,
 				'properties' => $propertyCollections,
 			];
@@ -319,17 +337,17 @@
 			// constructors on read. serialize/unserialize bypasses __construct, leaving
 			// typed properties uninitialized.
 			$methodData = [];
+			$propertyData = [];
 			
 			foreach ($annotations['methods'] as $methodName => $collection) {
 				$methodData[$methodName] = $this->serializeCollection($collection);
 			}
 			
-			$propertyData = [];
-			
 			foreach ($annotations['properties'] as $propertyName => $collection) {
 				$propertyData[$propertyName] = $this->serializeCollection($collection);
 			}
 			
+			// Create the payload
 			$payload = json_encode([
 				'class'      => $this->serializeCollection($annotations['class']),
 				'methods'    => $methodData,
