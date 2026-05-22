@@ -209,7 +209,7 @@
 		/**
 		 * Retrieve all collected metadata for a family, grouped by package.
 		 * @param string $familyName The family name (e.g. 'canvas')
-		 * @return array<string, array<string, string[]>> e.g. ['vendor/pkg' => ['controllers' => [...], ...]]
+		 * @return array<string, array<string, mixed>> e.g. ['vendor/pkg' => ['controllers' => [...], ...]]
 		 */
 		public function getFamilyMetadata(string $familyName): array {
 			return $this->collectedMetadata[$familyName] ?? [];
@@ -233,6 +233,10 @@
 				}
 				
 				foreach ((array)$value as $item) {
+					if (!is_string($item)) {
+						continue;
+					}
+					
 					$result[$item] = true;
 				}
 			}

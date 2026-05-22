@@ -108,8 +108,10 @@
 				// Check if package has opted into auto-discovery via 'extra.discover' section
 				// This is the standard convention for packages that want their providers discovered
 				if (isset($extraData[$this->discoverySection])) {
+					$discoverSection = $extraData[$this->discoverySection];
+					
 					// Validate discovery section structure before processing
-					if (!is_array($extraData[$this->discoverySection])) {
+					if (!is_array($discoverSection)) {
 						$this->handleError(
 							'Invalid discovery section structure: must be an array',
 							['section' => $this->discoverySection]
@@ -120,7 +122,7 @@
 					
 					// Extract and validate providers from this specific package
 					// Uses the same validation logic as project providers
-					$packageProviders = $this->extractAndValidateProviders($extraData[$this->discoverySection]);
+					$packageProviders = $this->extractAndValidateProviders($discoverSection);
 					
 					// Merge discovered providers into the main collection
 					// Maintains order of discovery across packages
@@ -137,7 +139,7 @@
 		 * definitions from composer configuration data, then validating each provider
 		 * to ensure it's properly implemented and can be instantiated. Only valid
 		 * providers are returned to prevent runtime errors during application bootstrap.
-		 * @param array<string, mixed> $discoverSection Complete composer.json data array
+		 * @param array<array-key, mixed> $discoverSection
 		 * @return array<ProviderDefinition> Array of validated provider definitions
 		 */
 		private function extractAndValidateProviders(array $discoverSection): array {
@@ -286,7 +288,7 @@
 		 * definitions. Supports multiple configuration formats and can filter by provider
 		 * family. This method handles the complexity of different discovery formats while
 		 * maintaining backward compatibility.
-		 * @param array<string, mixed> $discoverSection The contents of the discovery section
+		 * @param array<array-key, mixed> $discoverSection
 		 * @return array<array{class: string, config: array<string>|null, family: string}> Array of provider data structures
 		 */
 		protected function extractProviderClasses(array $discoverSection): array {
@@ -305,6 +307,10 @@
 			$allProviders = [];
 			
 			foreach ($discoverSection as $familyName => $configSection) {
+				if (!is_string($familyName)) {
+					continue;
+				}
+				
 				// Skip malformed family configurations that aren't arrays
 				// Each family section should contain provider definitions
 				if (!is_array($configSection)) {
@@ -389,13 +395,13 @@
 						if (is_array($definition['config'])) {
 							/** @var array<string> $config */
 							$config = $definition['config'];
-						} else {
+						} elseif (is_string($definition['config'])) {
 							$config = [$definition['config']];
 						}
 					}
 					
 					$result[] = [
-						'class'  => $definition['class'],        // Required: provider class
+						'class'  => $class,                      // Required: provider class
 						'config' => $config,                     // Optional: config file/data
 						'family' => $familyName                  // Associate with current family
 					];
@@ -469,7 +475,7 @@
 				$finalConfig = $inlineConfig ?? $separateConfig;
 				
 				return [[
-					'class'  => $definition['class'],  // Required: provider class name
+					'class'  => $class,                // Required: provider class name
 					'config' => $finalConfig,         // Inline config overrides separate config
 					'family' => $familyName           // Associate with current family
 				]];
