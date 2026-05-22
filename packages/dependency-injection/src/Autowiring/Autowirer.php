@@ -104,7 +104,7 @@
 		/**
 		 * Resolves a single method parameter value using multiple resolution strategies.
 		 * Tries strategies in priority order until one succeeds or all fail.
-		 * @param array<string, mixed> $param Parameter metadata (name, types, default_value, etc.)
+		 * @param ParameterMeta $param Parameter metadata (name, types, default_value, etc.)
 		 * @param array<string, mixed> $parameters User-provided parameter values
 		 * @param MethodContextInterface|null $methodContext Context object for dependency injection
 		 * @param string $className Class name for error reporting
