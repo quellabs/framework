@@ -16,10 +16,12 @@
 	use Quellabs\Payments\Contracts\RefundRequest;
 	use Quellabs\Payments\Contracts\RefundResult;
 	use Quellabs\Contracts\Gateway\GatewayHelpers;
+	use Quellabs\Contracts\Gateway\GatewayInterface;
 	
 	/**
 	 * Mollie driver
 	 * @phpstan-import-type IssuerOption from PaymentInterface
+	 * @phpstan-import-type GatewayResponse from GatewayInterface
 	 * @phpstan-type RefundData array{
 	 *     id: string,
 	 *     paymentId: string,
@@ -173,7 +175,6 @@
 			}
 			
 			// Response data has to be there
-			/** @var array<string, mixed> $r */
 			$r             = $response["response"] ?? [];
 			$transactionId = $this->normalizeString($r["id"] ?? null);
 			$checkoutHref  = $this->normalizeString($this->arrayGet($r, '_links.checkout.href'));
@@ -211,7 +212,6 @@
 			}
 			
 			// Response resource has to be set
-			/** @var array<string, mixed> $r */
 			$r        = $response["response"] ?? [];
 			$resource = $this->normalizeString($r["resource"] ?? null);
 			
@@ -266,16 +266,16 @@
 				throw new PaymentExchangeException(self::DRIVER_NAME, $response["request"]["errorId"], $response["request"]["errorMessage"]);
 			}
 			
-			// Response resource must be set
-			/** @var array<string, mixed> $r */
-			$r        = $response["response"] ?? [];
+			// Fetch response
+			$r = $response["response"] ?? [];
+			
+			// Validate response
 			$resource = $this->normalizeString($r["resource"] ?? null);
 			
 			if ($resource === '') {
 				throw new PaymentExchangeException(self::DRIVER_NAME, "204", "resource field not set in response");
 			}
 			
-			// Response resource must be "payment"
 			if ($resource !== "payment") {
 				throw new PaymentExchangeException(self::DRIVER_NAME, "204", "Invalid resource '{$resource}'");
 			}
@@ -389,14 +389,13 @@
 			}
 			
 			// Flatten the issuer list into a normalized shape for the frontend
-			/** @var array<string, mixed> $methodResponse */
 			$methodResponse = $methods["response"] ?? [];
 			
 			/** @var array<int, array<string, mixed>> $issuers */
 			$issuers = is_array($methodResponse["issuers"] ?? null) ? $methodResponse["issuers"] : [];
 			
 			return array_map(
-			/** @param array<string, mixed> $issuer @return IssuerOption */
+				/** @param array<string, mixed> $issuer @return IssuerOption */
 				function (array $issuer): array {
 					/** @var array<string, mixed> $image */
 					$image = is_array($issuer["image"] ?? null) ? $issuer["image"] : [];
