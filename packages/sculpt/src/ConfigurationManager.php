@@ -136,10 +136,10 @@
 		/**
 		 * Get a positional parameter by index
 		 * @param int $index Index of the positional parameter (0-based)
-		 * @param mixed $default Default value if parameter doesn't exist
+		 * @param string|null $default Default value if parameter doesn't exist
 		 * @return string|null Parameter value or default
 		 */
-		public function getPositional(int $index, mixed $default = null): ?string {
+		public function getPositional(int $index, ?string $default = null): ?string {
 			$positionalData = $this->positionalParameters[$index] ?? null;
 			
 			if ($positionalData === null) {
