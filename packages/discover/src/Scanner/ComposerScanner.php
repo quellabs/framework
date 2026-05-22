@@ -5,6 +5,7 @@
 	use Quellabs\Discover\Utilities\ComposerInstalledLoader;
 	use Quellabs\Discover\Utilities\ComposerJsonLoader;
 	use Quellabs\Discover\Utilities\ProviderValidator;
+	use Quellabs\Support\ComposerUtils;
 	use InvalidArgumentException;
 	use Quellabs\Contracts\Discovery\ProviderDefinition;
 	use Psr\Log\LoggerInterface;
@@ -253,6 +254,9 @@
 				return [];
 			}
 			
+			// Get project root for resolving relative paths
+			$projectRoot = ComposerUtils::getProjectRoot();
+			
 			// Normalize to array
 			$configFiles = is_array($config) ? $config : [$config];
 			
@@ -265,11 +269,18 @@
 					continue;
 				}
 				
-				if (!file_exists($configFile)) {
+				// Resolve relative paths against the project root
+				if (str_starts_with($configFile, DIRECTORY_SEPARATOR)) {
+					$resolvedPath = $configFile;
+				} else {
+					$resolvedPath = $projectRoot . DIRECTORY_SEPARATOR . $configFile;
+				}
+				
+				if (!file_exists($resolvedPath)) {
 					$this->handleError(
 						'Config file does not exist: {file}',
 						[
-							'file'  => $configFile,
+							'file'  => $resolvedPath,
 							'class' => $className
 						]
 					);
@@ -277,7 +288,7 @@
 					continue;
 				}
 				
-				$validatedConfigFiles[] = $configFile;
+				$validatedConfigFiles[] = $resolvedPath;
 			}
 			
 			return $validatedConfigFiles;
