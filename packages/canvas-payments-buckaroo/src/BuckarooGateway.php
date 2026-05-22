@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\Payments\Buckaroo;
 	
+	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Quellabs\Contracts\Gateway\GatewayInterface;
 	use Symfony\Component\HttpClient\HttpClient;
 	use Symfony\Contracts\HttpClient\HttpClientInterface;
@@ -34,6 +35,8 @@
 	 */
 	class BuckarooGateway {
 		
+		use GatewayHelpers;
+		
 		/** @var string Buckaroo JSON API base host (no trailing slash, no path) */
 		private string $baseHost;
 		
@@ -62,7 +65,7 @@
 			
 			// Buckaroo uses completely separate hostnames for test and live.
 			// @see https://docs.buckaroo.io/docs/integration-testing
-			if ($config['test_mode']) {
+			if ($this->arrayGet($config, 'test_mode', false)) {
 				$this->baseHost = 'testcheckout.buckaroo.nl';
 			} else {
 				$this->baseHost = 'checkout.buckaroo.nl';
@@ -243,23 +246,5 @@
 			// HMAC-SHA256 and base64-encode
 			$hash = base64_encode(hash_hmac('sha256', $signingString, $this->secretKey, true));
 			return 'hmac ' . $this->websiteKey . ':' . $hash . ':' . $nonce . ':' . $timestamp;
-		}
-		
-		/**
-		 * Returns a string value or a default when the input is not a supported scalar.
-		 * @param mixed $value
-		 * @param string $default Value returned when $value cannot be represented as a string
-		 * @return string
-		 */
-		private function normalizeString(mixed $value, string $default = ''): string {
-			if (is_string($value)) {
-				return $value;
-			}
-			
-			if (is_int($value) || is_float($value)) {
-				return (string)$value;
-			}
-			
-			return $default;
 		}
 	}

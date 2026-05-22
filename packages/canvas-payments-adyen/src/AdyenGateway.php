@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\Payments\Adyen;
 	
+	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Quellabs\Contracts\Gateway\GatewayInterface;
 	use Symfony\Component\HttpClient\HttpClient;
 	use Symfony\Contracts\HttpClient\Exception\ClientExceptionInterface;
@@ -21,6 +22,7 @@
 	 * @phpstan-import-type GatewayResponse from GatewayInterface
 	 */
 	class AdyenGateway {
+		use GatewayHelpers;
 		
 		// Adyen Checkout API version — update here when migrating to a newer version.
 		private const string CHECKOUT_VERSION = 'v71';
@@ -231,8 +233,8 @@
 				// Adyen returns HTTP 4xx/5xx for API-level errors, with a JSON body containing
 				// 'errorCode' and 'message'. A 2xx response always indicates the request was accepted.
 				if ($statusCode >= 400) {
-					$errorCode    = (string)$this->arrayGet($decoded, 'errorCode', (string)$statusCode);
-					$errorMessage = (string)$this->arrayGet($decoded, 'message', "HTTP {$statusCode}");
+					$errorCode    = $this->normalizeString($this->arrayGet($decoded, 'errorCode'), (string)$statusCode);
+					$errorMessage = $this->normalizeString($this->arrayGet($decoded, 'message'), "HTTP {$statusCode}");
 					return ['request' => ['result' => 0, 'errorId' => $errorCode, 'errorMessage' => $errorMessage]];
 				}
 				
@@ -242,27 +244,5 @@
 				// Network-level failure — the request never reached Adyen or the connection was dropped
 				return ['request' => ['result' => 0, 'errorId' => (string)$e->getCode(), 'errorMessage' => $e->getMessage()]];
 			}
-		}
-		
-		/**
-		 * Safely retrieves a nested value from an array using dot notation.
-		 * @param array<string, mixed> $data
-		 * @param string $path
-		 * @param mixed $default
-		 * @return mixed
-		 */
-		private function arrayGet(array $data, string $path, mixed $default = null): mixed {
-			$segments = explode('.', $path);
-			$current  = $data;
-			
-			foreach ($segments as $segment) {
-				if (!is_array($current) || !array_key_exists($segment, $current)) {
-					return $default;
-				}
-				
-				$current = $current[$segment];
-			}
-			
-			return $current;
 		}
 	}

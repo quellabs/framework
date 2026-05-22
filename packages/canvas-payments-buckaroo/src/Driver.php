@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\Payments\Buckaroo;
 	
+	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Quellabs\Payments\Contracts\InitiateResult;
 	use Quellabs\Payments\Contracts\PaymentAddress;
 	use Quellabs\Payments\Contracts\PaymentExchangeException;
@@ -15,6 +16,8 @@
 	use Quellabs\Payments\Contracts\RefundResult;
 	
 	class Driver implements PaymentProviderInterface {
+		
+		use GatewayHelpers;
 		
 		/**
 		 * Driver name
@@ -308,10 +311,8 @@
 			
 			// Grab response data
 			$data        = $result['response'] ?? [];
-			$statusBlock = is_array($data['Status'] ?? null) ? $data['Status'] : [];
-			$codeBlock   = is_array($statusBlock['Code'] ?? null) ? $statusBlock['Code'] : [];
-			$codeRaw     = $codeBlock['Code'] ?? 0;
-			$statusCode  = is_int($codeRaw) ? $codeRaw : (is_numeric($codeRaw) ? (int)$codeRaw : 0);
+			$codeRaw     = $this->arrayGet($data, 'Status.Code.Code', 0);
+			$statusCode  = $this->toInt($codeRaw);
 			$currencyRaw = $data['Currency'] ?? '';
 			$currency    = is_string($currencyRaw) ? $currencyRaw : '';
 			
@@ -321,7 +322,7 @@
 			// present is the correct way to identify the transaction type.
 			$isRefund      = isset($data['AmountCredit']) && !isset($data['AmountDebit']);
 			$amountRaw     = $data['AmountDebit'] ?? $data['AmountCredit'] ?? 0;
-			$amountDecimal = is_float($amountRaw) ? $amountRaw : (is_int($amountRaw) ? (float)$amountRaw : (is_numeric($amountRaw) ? (float)$amountRaw : 0.0));
+			$amountDecimal = $this->toFloat($amountRaw);
 			$amount        = (int)round($amountDecimal * 100);
 			
 			// Map Buckaroo status codes to our internal PaymentStatus enum.
@@ -369,8 +370,6 @@
 				}
 			}
 			
-			$subCodeBlock = is_array($statusBlock['SubCode'] ?? null) ? $statusBlock['SubCode'] : [];
-			
 			return new PaymentState(
 				provider: self::DRIVER_NAME,
 				transactionId: $transactionId,
@@ -381,8 +380,8 @@
 				internalState: (string)$statusCode,
 				metadata: array_filter([
 					'paymentMethod' => $data['ServiceCode'] ?? null,
-					'subCode'       => $subCodeBlock['Code'] ?? null,
-					'subMessage'    => $subCodeBlock['Description'] ?? null,
+					'subCode'       => $this->arrayGet($data, 'Status.SubCode.Code'),
+					'subMessage'    => $this->arrayGet($data, 'Status.SubCode.Description'),
 					'invoice'       => $data['Invoice'] ?? null,
 				], fn($v) => $v !== null),
 			);
@@ -452,7 +451,7 @@
 			
 			// AmountCredit in the refund response is the decimal refunded amount
 			$amountCreditRaw = $refundResponse['AmountCredit'] ?? ($request->amount !== null ? $request->amount / 100 : 0);
-			$refundedDecimal = is_float($amountCreditRaw) ? $amountCreditRaw : (is_int($amountCreditRaw) ? (float)$amountCreditRaw : (is_numeric($amountCreditRaw) ? (float)$amountCreditRaw : 0.0));
+			$refundedDecimal = $this->toFloat($amountCreditRaw);
 			$refundedMinor   = (int)round($refundedDecimal * 100);
 			
 			// Return the result
@@ -529,7 +528,7 @@
 				// Add result to list
 				$refundData        = $refundResult['response'] ?? [];
 				$amountRaw         = $refundData['AmountCredit'] ?? 0;
-				$amountDecimal     = is_float($amountRaw) ? $amountRaw : (is_int($amountRaw) ? (float)$amountRaw : (is_numeric($amountRaw) ? (float)$amountRaw : 0.0));
+				$amountDecimal     = $this->toFloat($amountRaw);
 				$refundCurrencyRaw = $refundData['Currency'] ?? $originalCurrency;
 				$refundCurrency    = is_string($refundCurrencyRaw) ? $refundCurrencyRaw : $originalCurrency;
 				
@@ -588,7 +587,7 @@
 				// Refund transactions carry AmountCredit (decimal); convert to minor units.
 				$refundData    = $refundResult['response'] ?? [];
 				$amountRaw     = $refundData['AmountCredit'] ?? 0;
-				$amountDecimal = is_float($amountRaw) ? $amountRaw : (is_int($amountRaw) ? (float)$amountRaw : (is_numeric($amountRaw) ? (float)$amountRaw : 0.0));
+				$amountDecimal = $this->toFloat($amountRaw);
 				$total         += (int)round($amountDecimal * 100);
 			}
 			
