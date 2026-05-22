@@ -73,11 +73,11 @@
 			?LoggerInterface $logger = null,
 			bool             $strictMode = false
 		) {
-			$this->familyName = $familyName;
-			$this->discoverySection = $discoverySection;
+			$this->familyName        = $familyName;
+			$this->discoverySection  = $discoverySection;
 			$this->providerValidator = new ProviderValidator();
-			$this->logger = $logger ?? new NullLogger();
-			$this->strictMode = $strictMode;
+			$this->logger            = $logger ?? new NullLogger();
+			$this->strictMode        = $strictMode;
 		}
 		
 		/**
@@ -90,7 +90,7 @@
 			
 			// Fetch extra data sections from composer.json and composer.lock ("config/discovery-mapping.php")
 			$composerInstalledLoader = new ComposerInstalledLoader();
-			$composerJsonLoader = new ComposerJsonLoader();
+			$composerJsonLoader      = new ComposerJsonLoader();
 			
 			// Discover providers defined within the current project structure
 			$discoveryMapping = array_merge($composerInstalledLoader->getData(), $composerJsonLoader->getData());
@@ -100,11 +100,18 @@
 			$definitions = [];
 			
 			foreach ($discoveryMapping as $extraData) {
+				// Skip non-array entries
+				if (!is_array($extraData)) {
+					continue;
+				}
+				
 				// Check if package has opted into auto-discovery via 'extra.discover' section
 				// This is the standard convention for packages that want their providers discovered
 				if (isset($extraData[$this->discoverySection])) {
+					$discoverSection = $extraData[$this->discoverySection];
+					
 					// Validate discovery section structure before processing
-					if (!is_array($extraData[$this->discoverySection])) {
+					if (!is_array($discoverSection)) {
 						$this->handleError(
 							'Invalid discovery section structure: must be an array',
 							['section' => $this->discoverySection]
@@ -115,7 +122,7 @@
 					
 					// Extract and validate providers from this specific package
 					// Uses the same validation logic as project providers
-					$packageProviders = $this->extractAndValidateProviders($extraData[$this->discoverySection]);
+					$packageProviders = $this->extractAndValidateProviders($discoverSection);
 					
 					// Merge discovered providers into the main collection
 					// Maintains order of discovery across packages
@@ -132,7 +139,7 @@
 		 * definitions from composer configuration data, then validating each provider
 		 * to ensure it's properly implemented and can be instantiated. Only valid
 		 * providers are returned to prevent runtime errors during application bootstrap.
-		 * @param array<string, mixed> $discoverSection Complete composer.json data array
+		 * @param array<array-key, mixed> $discoverSection
 		 * @return array<ProviderDefinition> Array of validated provider definitions
 		 */
 		private function extractAndValidateProviders(array $discoverSection): array {
@@ -173,8 +180,8 @@
 						$this->handleError(
 							'Invalid provider definition for class: {class}',
 							[
-								'class'   => $providerData['class'],
-								'error'   => $e->getMessage()
+								'class' => $providerData['class'],
+								'error' => $e->getMessage()
 							],
 							$e
 						);
@@ -185,8 +192,8 @@
 					$this->handleError(
 						'Provider validation failed for class: {class}',
 						[
-							'class'   => $providerData['class'],
-							'family'  => $providerData['family']
+							'class'  => $providerData['class'],
+							'family' => $providerData['family']
 						]
 					);
 				}
@@ -205,6 +212,15 @@
 			// Get class name
 			$className = $providerData['class'];
 			
+			// Validate class
+			if (!is_string($className)) {
+				throw new InvalidArgumentException('Provider class name must be a string');
+			}
+			
+			if (!class_exists($className)) {
+				throw new InvalidArgumentException('Provider class does not exist');
+			}
+			
 			// Get metadata and defaults - interface guarantees these methods exist
 			$metadata = $className::getMetadata();
 			
@@ -214,9 +230,12 @@
 				$className
 			);
 			
+			/** @var string $family */
+			$family = $providerData['family'];
+			
 			return new ProviderDefinition(
 				className: $className,
-				family: $providerData['family'],
+				family: $family,
 				configFiles: $configFiles,
 				metadata: $metadata
 			);
@@ -238,7 +257,14 @@
 			$configFiles = is_array($config) ? $config : [$config];
 			
 			// Validate that each config file exists
+			$validatedConfigFiles = [];
+			
 			foreach ($configFiles as $configFile) {
+				if (!is_string($configFile)) {
+					$this->handleError('Config file path must be a string', ['class' => $className]);
+					continue;
+				}
+				
 				if (!file_exists($configFile)) {
 					$this->handleError(
 						'Config file does not exist: {file}',
@@ -247,10 +273,14 @@
 							'class' => $className
 						]
 					);
+					
+					continue;
 				}
+				
+				$validatedConfigFiles[] = $configFile;
 			}
 			
-			return $configFiles;
+			return $validatedConfigFiles;
 		}
 		
 		/**
@@ -258,7 +288,7 @@
 		 * definitions. Supports multiple configuration formats and can filter by provider
 		 * family. This method handles the complexity of different discovery formats while
 		 * maintaining backward compatibility.
-		 * @param array<string, mixed> $discoverSection The contents of the discovery section
+		 * @param array<array-key, mixed> $discoverSection
 		 * @return array<array{class: string, config: array<string>|null, family: string}> Array of provider data structures
 		 */
 		protected function extractProviderClasses(array $discoverSection): array {
@@ -277,6 +307,10 @@
 			$allProviders = [];
 			
 			foreach ($discoverSection as $familyName => $configSection) {
+				if (!is_string($familyName)) {
+					continue;
+				}
+				
 				// Skip malformed family configurations that aren't arrays
 				// Each family section should contain provider definitions
 				if (!is_array($configSection)) {
@@ -289,6 +323,7 @@
 				
 				// Handle array format: multiple providers listed in an array
 				// Format: "family": ["Provider1", "Provider2", ...]
+				/** @var array<string, mixed> $configSection */
 				$multipleProviders = $this->extractMultipleProviders($configSection, $familyName);
 				
 				// Handle object format: single provider with additional configuration
@@ -346,19 +381,27 @@
 				// Handle complex array format: provider with additional configuration
 				// Example: {"class": "App\Providers\RedisProvider", "config": "redis.php"}
 				if (is_array($definition) && isset($definition['class'])) {
+					// Extract and validate class
+					$class = $definition['class'];
+					
+					if (!is_string($class)) {
+						continue;
+					}
+					
 					// Extract and normalize config
 					$config = null;
 					
 					if (isset($definition['config'])) {
 						if (is_array($definition['config'])) {
+							/** @var array<string> $config */
 							$config = $definition['config'];
-						} else {
+						} elseif (is_string($definition['config'])) {
 							$config = [$definition['config']];
 						}
 					}
 					
 					$result[] = [
-						'class'  => $definition['class'],        // Required: provider class
+						'class'  => $class,                      // Required: provider class
 						'config' => $config,                     // Optional: config file/data
 						'family' => $familyName                  // Associate with current family
 					];
@@ -392,8 +435,10 @@
 			
 			// Normalize separate config to array if it's a string
 			if ($separateConfig !== null && !is_array($separateConfig)) {
-				$separateConfig = [$separateConfig];
+				$separateConfig = is_string($separateConfig) ? [$separateConfig] : null;
 			}
+			
+			/** @var array<string>|null $separateConfig */
 			
 			// Handle simple string format: provider defined as just the class name
 			// Example: "provider" => "App\Providers\RedisProvider"
@@ -409,20 +454,28 @@
 			// Handle complex array format: provider with inline configuration
 			// Example: "provider" => {"class": "App\Providers\RedisProvider", "config": "redis.php"}
 			if (is_array($definition) && isset($definition['class'])) {
+				// Extract and validate class
+				$class = $definition['class'];
+				
+				if (!is_string($class)) {
+					return [];
+				}
+				
 				// Extract inline configuration from provider definition
 				$inlineConfig = $definition['config'] ?? null;
 				
 				// Normalize inline config to array if it's a string
 				if ($inlineConfig !== null && !is_array($inlineConfig)) {
-					$inlineConfig = [$inlineConfig];
+					$inlineConfig = is_string($inlineConfig) ? [$inlineConfig] : null;
 				}
 				
 				// Resolve configuration precedence: inline config takes precedence over separate config
 				// This allows for more specific configuration at the provider level
+				/** @var array<string>|null $inlineConfig */
 				$finalConfig = $inlineConfig ?? $separateConfig;
 				
 				return [[
-					'class'  => $definition['class'],  // Required: provider class name
+					'class'  => $class,                // Required: provider class name
 					'config' => $finalConfig,         // Inline config overrides separate config
 					'family' => $familyName           // Associate with current family
 				]];
@@ -460,11 +513,11 @@
 		 */
 		private function formatLogMessage(string $message, array $context): string {
 			$replace = [];
-	
+			
 			foreach ($context as $key => $val) {
 				$replace['{' . $key . '}'] = is_scalar($val) ? (string)$val : json_encode($val);
 			}
-	
+			
 			return strtr($message, $replace);
 		}
 	}

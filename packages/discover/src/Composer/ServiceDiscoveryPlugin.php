@@ -39,7 +39,7 @@
 		 */
 		public function activate(Composer $composer, IOInterface $io): void {
 			$this->composer = $composer;
-			$this->io = $io;
+			$this->io       = $io;
 		}
 		
 		/**
@@ -169,9 +169,10 @@
 		 * @return string The full path where the mapping file should be written
 		 */
 		private function getOutputPath(Composer $composer): string {
-			$config = $composer->getPackage()->getExtra()['discover'] ?? [];
+			$config      = $composer->getPackage()->getExtra()['discover'] ?? [];
+			$projectRoot = dirname($composer->getConfig()->getConfigSource()->getName());
 			
-			if (!empty($config['mapping-file'])) {
+			if (is_array($config) && !empty($config['mapping-file']) && is_string($config['mapping-file'])) {
 				// Fetch the mapping file
 				$customPath = $config['mapping-file'];
 				
@@ -181,12 +182,10 @@
 				}
 				
 				// Handle relative paths
-				$projectRoot = dirname($composer->getConfig()->getConfigSource()->getName());
 				return $projectRoot . DIRECTORY_SEPARATOR . $customPath;
 			}
 			
 			// Default fallback
-			$projectRoot = dirname($composer->getConfig()->getConfigSource()->getName());
 			return $projectRoot . DIRECTORY_SEPARATOR . "config" . DIRECTORY_SEPARATOR . "discovery-mapping.php";
 		}
 		
@@ -222,14 +221,20 @@
 			}
 			
 			foreach ($packageSets as $packageSet) {
-				if (!isset($lockData[$packageSet])) {
+				if (!isset($lockData[$packageSet]) || !is_array($lockData[$packageSet])) {
 					continue;
 				}
 				
 				foreach ($lockData[$packageSet] as $package) {
+					// Skip non-array packages
+					if (!is_array($package)) {
+						continue;
+					}
+					
 					// Skip invalid packages  (shouldn't happen but safety first)
 					if (
 						empty($package['name']) ||
+						!is_string($package['name']) ||
 						empty($package['extra']) ||
 						!is_array($package['extra'])
 					) {
@@ -262,7 +267,7 @@
 		 */
 		private function writeExtraMapFile(string $outputPath, array $extraMap): void {
 			$timestamp = date('Y-m-d H:i:s');
-			$count = count($extraMap);
+			$count     = count($extraMap);
 			
 			// Generate the PHP file header with metadata
 			$content = <<<PHP
@@ -309,7 +314,7 @@ PHP;
 				
 				// Determine if this is an associative array or indexed array
 				$isAssoc = array_keys($var) !== range(0, count($var) - 1);
-				$output = "[\n";
+				$output  = "[\n";
 				
 				// Process each array element
 				foreach ($var as $key => $value) {

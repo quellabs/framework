@@ -13,7 +13,7 @@
 	class ComposerJsonLoader {
 		
 		/**
-		 * @var array<string, mixed>|null Cached composer.json data
+		 * @var array<string, array<string, mixed>>|null Cached composer.json data
 		 */
 		private ?array $composerJsonCache = null;
 		
@@ -33,7 +33,7 @@
 		/**
 		 * Parse and return composer.json data with caching
 		 * @param string|null $startDirectory Directory to start searching from (defaults to current directory)
-		 * @return array<string, mixed> Parsed composer.json data or null on failure
+		 * @return array<string, array<string, mixed>> Parsed composer.json data or null on failure
 		 */
 		public function getData(?string $startDirectory = null): array {
 			// Return cached result if available
@@ -106,12 +106,19 @@
 				return [];
 			}
 			
+			// Ensure the decoded result is an associative array (not a scalar or null)
+			if (!is_array($data)) {
+				return [];
+			}
+			
 			// Validate the existence of an 'extra' section
-			if (empty($data['extra'])) {
+			if (!isset($data['extra']) || !is_array($data['extra'])) {
 				return [];
 			}
 			
 			// Return the extra section
-			return $data['extra'];
+			/** @var array<string, mixed> $extra */
+			$extra = $data['extra'];
+			return $extra;
 		}
 	}
