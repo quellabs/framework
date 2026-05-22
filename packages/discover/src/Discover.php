@@ -401,23 +401,27 @@
 				return [];
 			}
 			
-			// Get the project's root directory
-			$rootDir = ComposerUtils::getProjectRoot();
+			// Fetch project root
+			$projectRoot = ComposerUtils::getProjectRoot();
 			
 			// Fetch and merge all given config files
 			$result = [];
 			
 			foreach ($configFiles as $configFile) {
-				// Build the absolute path to the configuration file
-				$completeDir = $rootDir . DIRECTORY_SEPARATOR . $configFile;
-				
-				// Fetch path for local addition
-				$pathInfo = pathinfo($completeDir);
+				// Make config filepath absolute
+				if (str_starts_with($configFile, DIRECTORY_SEPARATOR)) {
+					$configFileResolved = $configFile;
+				} else {
+					$configFileResolved = $projectRoot . DIRECTORY_SEPARATOR . $configFile;
+				}
 				
 				// Load base config file if it exists
-				if (file_exists($completeDir) && is_readable($completeDir)) {
-					$result = array_replace_recursive($result, require $completeDir);
+				if (file_exists($configFileResolved) && is_readable($configFileResolved)) {
+					$result = array_replace_recursive($result, require $configFileResolved);
 				}
+				
+				// Fetch path for local addition
+				$pathInfo = pathinfo($configFileResolved);
 				
 				// Check for .local.php override
 				$localPath = $pathInfo['dirname'] . DIRECTORY_SEPARATOR . $pathInfo['filename'] . '.local.php';
