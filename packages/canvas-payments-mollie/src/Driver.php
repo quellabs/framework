@@ -5,6 +5,7 @@
 	use Quellabs\Payments\Contracts\InitiateResult;
 	use Quellabs\Payments\Contracts\PaymentAddress;
 	use Quellabs\Payments\Contracts\PaymentException;
+	use Quellabs\Payments\Contracts\PaymentInterface;
 	use Quellabs\Payments\Contracts\PaymentExchangeException;
 	use Quellabs\Payments\Contracts\PaymentInitiationException;
 	use Quellabs\Payments\Contracts\PaymentState;
@@ -14,8 +15,22 @@
 	use Quellabs\Payments\Contracts\PaymentRefundException;
 	use Quellabs\Payments\Contracts\RefundRequest;
 	use Quellabs\Payments\Contracts\RefundResult;
+	use Quellabs\Contracts\Gateway\GatewayHelpers;
+	use Quellabs\Contracts\Gateway\GatewayInterface;
 	
+	/**
+	 * Mollie driver
+	 * @phpstan-import-type IssuerOption from PaymentInterface
+	 * @phpstan-import-type GatewayResponse from GatewayInterface
+	 * @phpstan-type RefundData array{
+	 *     id: string,
+	 *     paymentId: string,
+	 *     amount: array{value: string, currency: string}
+	 * }
+	 */
 	class Driver implements PaymentProviderInterface {
+		
+		use GatewayHelpers;
 		
 		/**
 		 * Driver name
@@ -34,7 +49,7 @@
 		 * An empty string means no method preference — the customer chooses on Mollie's hosted page.
 		 * @see https://docs.mollie.com/reference/v2/payments-api/create-payment
 		 */
-		private const MODULE_TYPE_MAP = [
+		private const array MODULE_TYPE_MAP = [
 			'mollie_multi'       => '',
 			'mollie_applepay'    => 'applepay',
 			'mollie_bancontact'  => 'bancontact',
@@ -61,7 +76,7 @@
 		 * KBC and gift cards need an issuer passed at payment creation — Mollie errors without it.
 		 * iDEAL excluded: issuer pre-selection was discontinued with iDEAL 2.0 (31-12-2024).
 		 */
-		const MODULES_WITH_ISSUERS = ['mollie_kbc', 'mollie_giftcard'];
+		const array MODULES_WITH_ISSUERS = ['mollie_kbc', 'mollie_giftcard'];
 		
 		/**
 		 * Gateway instance, constructed lazily on first use to ensure config is available.
@@ -84,7 +99,13 @@
 		/**
 		 * Returns default configuration values for this provider.
 		 * Merged with loaded config files during discovery — values from config files take precedence.
-		 * @return array<string, mixed>
+		 * @return array{
+		 *     api_key: string,
+		 *     test_mode: bool,
+		 *     webhook_url: string,
+		 *     redirect_url: string,
+		 *     cancel_url: string
+		 * }
 		 */
 		public function getDefaults(): array {
 			return [
@@ -160,18 +181,19 @@
 			}
 			
 			// Response data has to be there
-			if (
-				!isset($response["response"]["id"]) ||
-				!isset($response["response"]["_links"]["checkout"]["href"])
-			) {
+			$r             = $response["response"] ?? [];
+			$transactionId = $this->normalizeString($r["id"] ?? null);
+			$checkoutHref  = $this->normalizeString($this->arrayGet($r, '_links.checkout.href'));
+			
+			if ($transactionId === '' || $checkoutHref === '') {
 				throw new PaymentInitiationException(self::DRIVER_NAME, "204", "Invalid gateway response. Missing id and/or redirect url");
 			}
 			
 			// Extract the hosted checkout URL Mollie generated for this payment
 			return new InitiateResult(
 				provider: self::DRIVER_NAME,
-				transactionId: $response["response"]["id"],
-				redirectUrl: $response["response"]["_links"]["checkout"]["href"]
+				transactionId: $transactionId,
+				redirectUrl: $checkoutHref
 			);
 		}
 		
@@ -196,22 +218,39 @@
 			}
 			
 			// Response resource has to be set
-			if (!isset($response["response"]["resource"])) {
+			$r        = $response["response"] ?? [];
+			$resource = $this->normalizeString($r["resource"] ?? null);
+			
+			if ($resource === '') {
 				throw new PaymentRefundException(self::DRIVER_NAME, "204", "resource field not set in response");
 			}
 			
 			// Response resource has to be "refund"
-			if ($response["response"]["resource"] !== "refund") {
-				throw new PaymentRefundException(self::DRIVER_NAME, "204", "Invalid resource '{$response["response"]["resource"]}'");
+			if ($resource !== "refund") {
+				throw new PaymentRefundException(self::DRIVER_NAME, "204", "Invalid resource '{$resource}'");
+			}
+			
+			// Validate content of resource
+			/** @var array<string, mixed> $amount */
+			$amount           = $r["amount"] ?? [];
+			$refundId         = $this->normalizeString($r["id"] ?? null);
+			$paymentReference = $this->normalizeString($r["paymentId"] ?? null);
+			
+			if ($refundId === '') {
+				throw new PaymentRefundException(self::DRIVER_NAME, "204", "refund id missing from gateway response");
+			}
+			
+			if ($paymentReference === '') {
+				throw new PaymentRefundException(self::DRIVER_NAME, "204", "paymentId missing from gateway response");
 			}
 			
 			// Return the data
 			return new RefundResult(
 				provider: self::DRIVER_NAME,
-				paymentReference: $response["response"]["paymentId"],
-				refundId: $response["response"]["id"],
-				value: (int)round((float)$response["response"]["amount"]["value"] * 100),
-				currency: $response["response"]["amount"]["currency"]
+				paymentReference: $paymentReference,
+				refundId: $refundId,
+				value: (int)round($this->toFloat($amount["value"] ?? null) * 100),
+				currency: $this->normalizeString($amount["currency"] ?? null) ?: $request->currency
 			);
 		}
 		
@@ -233,14 +272,18 @@
 				throw new PaymentExchangeException(self::DRIVER_NAME, $response["request"]["errorId"], $response["request"]["errorMessage"]);
 			}
 			
-			// Response resource must be set
-			if (!isset($response["response"]["resource"])) {
+			// Fetch response
+			$r = $response["response"] ?? [];
+			
+			// Validate response
+			$resource = $this->normalizeString($r["resource"] ?? null);
+			
+			if ($resource === '') {
 				throw new PaymentExchangeException(self::DRIVER_NAME, "204", "resource field not set in response");
 			}
 			
-			// Response resource must be "payment"
-			if ($response["response"]["resource"] != "payment") {
-				throw new PaymentExchangeException(self::DRIVER_NAME, "204", "Invalid resource '{$response["response"]["resource"]}'");
+			if ($resource !== "payment") {
+				throw new PaymentExchangeException(self::DRIVER_NAME, "204", "Invalid resource '{$resource}'");
 			}
 			
 			// Map Mollie statuses to internal states
@@ -256,19 +299,27 @@
 			];
 			
 			// Fetch mollie payment status
-			$r = $response["response"];
-			$mollieStatus = $r["status"];
+			$mollieStatus  = $this->normalizeString($r["status"] ?? null);
 			$currentStatus = $stateMap[strtoupper($mollieStatus)] ?? PaymentStatus::Unknown;
-			$currency = $r["amount"]["currency"];
-			$amountRefunded = (int)round((float)($r["amountRefunded"]["value"] ?? 0) * 100);
-			$paidStatuses = [PaymentStatus::Paid, PaymentStatus::Refunded];
+			$currency      = $this->normalizeString($this->arrayGet($r, 'amount.currency'));
+			
+			/** @var array<string, mixed> $amountRefunded */
+			$amountRefunded      = $r["amountRefunded"] ?? [];
+			$amountRefundedValue = (int)round($this->toFloat($amountRefunded["value"] ?? null) * 100);
+			$paidStatuses        = [PaymentStatus::Paid, PaymentStatus::Refunded];
 			
 			// Determine the value the customer paid
+			/** @var array<string, mixed> $amount */
+			$amount = $r["amount"] ?? [];
+			
 			if (in_array($currentStatus, $paidStatuses)) {
-				$valuePaid = (int)round((float)($r["amount"]["value"] ?? 0) * 100);
+				$valuePaid = (int)round($this->toFloat($amount["value"] ?? null) * 100);
 			} else {
 				$valuePaid = 0;
 			}
+			
+			/** @var array<string, mixed> $metadata */
+			$metadata = isset($r["metadata"]) && is_array($r["metadata"]) ? $r["metadata"] : [];
 			
 			// Return response
 			return new PaymentState(
@@ -277,9 +328,9 @@
 				state: $currentStatus,
 				currency: $currency,
 				valuePaid: $valuePaid,
-				valueRefunded: $amountRefunded,
+				valueRefunded: $amountRefundedValue,
 				internalState: $mollieStatus,
-				metadata: $r["metadata"] ?? []
+				metadata: $metadata
 			);
 		}
 		
@@ -287,7 +338,7 @@
 		 * Returns all refunds for a given transaction
 		 * @param string $paymentReference In Mollie's payment model there is no separate capture step,
 		 *                                 so this is the payment transaction ID (e.g. tr_7UhSN1zuXS).
-		 * @return array<RefundResult>
+		 * @return array<int, RefundResult>
 		 * @throws PaymentRefundException
 		 */
 		public function getRefunds(string $paymentReference): array {
@@ -300,19 +351,22 @@
 			}
 			
 			// Map each refund to a RefundResult
-			$refunds = [];
+			/** @var array<int, RefundData> $responseData */
+			$responseData = $response["response"] ?? [];
 			
-			foreach ($response["response"] ?? [] as $refund) {
-				$refunds[] = new RefundResult(
-					provider: self::DRIVER_NAME,
-					paymentReference: $paymentReference,
-					refundId: $refund["id"],
-					value: (int)round((float)$refund["amount"]["value"] * 100),
-					currency: $refund["amount"]["currency"],
-				);
-			}
-			
-			return $refunds;
+			return array_map(
+			/** @param RefundData $refund */
+				function (array $refund) use ($paymentReference): RefundResult {
+					return new RefundResult(
+						provider: self::DRIVER_NAME,
+						paymentReference: $paymentReference,
+						refundId: $refund["id"],
+						value: (int)round((float)$refund["amount"]["value"] * 100),
+						currency: $refund["amount"]["currency"],
+					);
+				},
+				$responseData
+			);
 		}
 		
 		/**
@@ -322,7 +376,7 @@
 		 * All other modules return an empty array — the hosted page handles all UI.
 		 * @see https://docs.mollie.com/reference/v2/methods-api/get-method
 		 * @param string $paymentModule e.g. 'mollie_kbc'
-		 * @return array<string, mixed>
+		 * @return array<int, IssuerOption>
 		 * @throws PaymentException
 		 */
 		public function getPaymentOptions(string $paymentModule): array {
@@ -341,13 +395,27 @@
 			}
 			
 			// Flatten the issuer list into a normalized shape for the frontend
-			return array_map(fn($issuer) => [
-				'id'       => $issuer["id"],
-				'name'     => $issuer["name"],
-				'issuerId' => $issuer["id"],
-				'swift'    => $issuer["id"],
-				'icon'     => $issuer["image"]["size1x"],
-			], $methods["response"]["issuers"] ?? []);
+			$methodResponse = $methods["response"] ?? [];
+			
+			/** @var array<int, array<string, mixed>> $issuers */
+			$issuers = is_array($methodResponse["issuers"] ?? null) ? $methodResponse["issuers"] : [];
+			
+			return array_map(
+				/** @param array<string, mixed> $issuer @return IssuerOption */
+				function (array $issuer): array {
+					/** @var array<string, mixed> $image */
+					$image = is_array($issuer["image"] ?? null) ? $issuer["image"] : [];
+					
+					return [
+						'id'       => $this->normalizeString($issuer["id"] ?? null),
+						'name'     => $this->normalizeString($issuer["name"] ?? null),
+						'issuerId' => $this->normalizeString($issuer["id"] ?? null),
+						'swift'    => $this->normalizeString($issuer["id"] ?? null),
+						'icon'     => $this->normalizeString($image["size1x"] ?? null),
+					];
+				},
+				$issuers
+			);
 		}
 		
 		/**
@@ -370,21 +438,21 @@
 			$config = $this->getConfig();
 			
 			// Use the request URL if set, otherwise fall back to config — throw if neither is available
-			$request->redirectUrl ??= $config["redirect_url"]
-				?? throw new PaymentInitiationException(self::DRIVER_NAME, 500,
+			$request->redirectUrl ??= $this->normalizeString($config["redirect_url"] ?? null)
+				?: throw new PaymentInitiationException(self::DRIVER_NAME, 500,
 					"Mollie payment gateway is misconfigured: 'redirect_url' is missing or empty. " .
 					"Set 'redirect_url' in config/mollie.php."
 				);
 			
 			// Use the cancelUrl URL if set, otherwise fall back to config — throw if neither is available
-			$request->cancelUrl ??= $config["cancel_url"]
-				?? throw new PaymentInitiationException(self::DRIVER_NAME, 500,
+			$request->cancelUrl ??= $this->normalizeString($config["cancel_url"] ?? null)
+				?: throw new PaymentInitiationException(self::DRIVER_NAME, 500,
 					"Mollie payment gateway is misconfigured: 'cancel_url' is missing or empty. " .
 					"Set 'cancel_url' in config/mollie.php."
 				);
 			
 			// webhookUrl is optional — fall back to the default Mollie webhook route
-			$request->webhookUrl ??= $config["webhook_url"] ?? "/webhooks/mollie";
+			$request->webhookUrl ??= $this->normalizeString($config["webhook_url"] ?? null) ?: "/webhooks/mollie";
 		}
 		
 		/**

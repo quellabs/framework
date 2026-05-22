@@ -4,6 +4,7 @@
 	
 	use Quellabs\Payments\Contracts\InitiateResult;
 	use Quellabs\Payments\Contracts\PaymentAddress;
+	use Quellabs\Payments\Contracts\PaymentInterface;
 	use Quellabs\Payments\Contracts\PaymentExchangeException;
 	use Quellabs\Payments\Contracts\PaymentInitiationException;
 	use Quellabs\Payments\Contracts\PaymentProviderInterface;
@@ -14,6 +15,10 @@
 	use Quellabs\Payments\Contracts\RefundRequest;
 	use Quellabs\Payments\Contracts\RefundResult;
 	
+	/**
+	 * Adyen driver
+	 * @phpstan-import-type IssuerOption from PaymentInterface
+	 */
 	class Driver implements PaymentProviderInterface {
 		
 		/**
@@ -148,7 +153,7 @@
 		 * This method always returns an empty array.
 		 *
 		 * @param string $paymentModule e.g. 'adyen_ideal'
-		 * @return array<string, mixed>
+		 * @return array<string, IssuerOption>
 		 */
 		public function getPaymentOptions(string $paymentModule): array {
 			return [];

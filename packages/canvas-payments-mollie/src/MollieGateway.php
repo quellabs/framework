@@ -11,10 +11,14 @@
 	use Symfony\Contracts\HttpClient\Exception\ServerExceptionInterface;
 	use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 	
+	use Quellabs\Contracts\Gateway\GatewayHelpers;
+	
 	/**
 	 * @phpstan-import-type GatewayResponse from GatewayInterface
 	 */
 	class MollieGateway {
+		
+		use GatewayHelpers;
 		
 		protected string $apiKey;
 		protected bool $testMode;
@@ -23,11 +27,11 @@
 		 * Mollie constructor.
 		 */
 		public function __construct(Driver $driver) {
-			$configData = $driver->getConfig();
-			$this->apiKey = $configData["api_key"] ?? "";
-			$this->testMode = $configData["test_mode"] ?? false;
+			$configData     = $driver->getConfig();
+			$this->apiKey   = $this->normalizeString($configData["api_key"] ?? null);
+			$this->testMode = (bool)($configData["test_mode"] ?? false);
 		}
-
+		
 		/**
 		 * Retrieve all payments created with the current website profile, ordered from newest to oldest.
 		 * @url https://docs.mollie.com/reference/v2/payments-api/list-payments
@@ -135,8 +139,8 @@
 			}
 			
 			// Fetch the response
-			$response = $resolved['response'] ?? [];
-			$resolvedAmount = $response['amount'];
+			$response         = $resolved['response'] ?? [];
+			$resolvedAmount   = $response['amount'];
 			$resolvedCurrency = $response['currency'];
 			assert(is_string($resolvedAmount));
 			assert(is_string($resolvedCurrency));
@@ -214,9 +218,9 @@
 					'cafile'      => Resources::cacertPem()
 				]);
 				
-				$response = $client->request($method, $action, ['json' => $data]);
+				$response   = $client->request($method, $action, ['json' => $data]);
 				$statusCode = $response->getStatusCode();
-				$jsonData = $response->toArray();
+				$jsonData   = $response->toArray();
 			} catch (\Exception|TransportExceptionInterface|DecodingExceptionInterface|ClientExceptionInterface|RedirectionExceptionInterface|ServerExceptionInterface $e) {
 				// Network failure, timeout, or non-2xx response — return a normalized error
 				return ['request' => ['result' => 0, 'errorId' => $e->getCode(), 'errorMessage' => $e->getMessage()]];
@@ -267,11 +271,13 @@
 			
 			// amountRemaining is the portion of the payment not yet refunded.
 			// Already in major units — no conversion needed.
-			$resolvedAmount = $payment["response"]["amountRemaining"]["value"] ?? null;
-			$resolvedCurrency = $payment["response"]["amountRemaining"]["currency"] ?? $currency;
+			$paymentResponse  = $payment["response"] ?? [];
+			$amountRemaining  = is_array($paymentResponse["amountRemaining"] ?? null) ? $paymentResponse["amountRemaining"] : [];
+			$resolvedAmount   = $this->normalizeString($amountRemaining["value"] ?? null);
+			$resolvedCurrency = $this->normalizeString($amountRemaining["currency"] ?? null) ?: $currency;
 			
 			// amountRemaining may be absent or "0.00" when there is nothing left to refund
-			if ($resolvedAmount === null || $resolvedAmount === '0.00') {
+			if ($resolvedAmount === '' || $resolvedAmount === '0.00') {
 				return ['request' => ['result' => 0, 'errorId' => "500", 'errorMessage' => 'Payment has no refundable amount']];
 			}
 			

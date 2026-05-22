@@ -9,11 +9,11 @@
   "canvas-loom": "1.0.3",
   "canvas-objectquel": "1.0.28",
   "canvas-payments": "1.0.4",
-  "canvas-payments-adyen": "1.0.8",
-  "canvas-payments-buckaroo": "1.0.6",
-  "canvas-payments-contracts": "1.0.7",
-  "canvas-payments-klarna": "1.0.3",
-  "canvas-payments-mollie": "1.0.13",
+  "canvas-payments-adyen": "1.0.9",
+  "canvas-payments-buckaroo": "1.0.7",
+  "canvas-payments-contracts": "1.0.8",
+  "canvas-payments-klarna": "1.0.4",
+  "canvas-payments-mollie": "1.0.14",
   "canvas-payments-multisafepay": "1.0.5",
   "canvas-payments-paynl": "1.0.3",
   "canvas-payments-paypal": "1.0.5",
@@ -38,5 +38,5 @@
   "objectquel": "1.6.18",
   "sculpt": "1.0.28",
   "signal-hub": "1.1.0",
-  "support": "1.0.19"
+  "support": "1.0.20"
 }

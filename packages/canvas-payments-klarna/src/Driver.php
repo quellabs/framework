@@ -4,6 +4,7 @@
 	
 	use Quellabs\Payments\Contracts\InitiateResult;
 	use Quellabs\Payments\Contracts\PaymentAddress;
+	use Quellabs\Payments\Contracts\PaymentInterface;
 	use Quellabs\Payments\Contracts\PaymentExchangeException;
 	use Quellabs\Payments\Contracts\PaymentInitiationException;
 	use Quellabs\Payments\Contracts\PaymentProviderInterface;
@@ -38,6 +39,8 @@
 	 * amount. This satisfies the API requirement without breaking the integration.
 	 *
 	 * @see https://docs.klarna.com/acquirer/klarna/web-payments/integrate-with-klarna-payments/integrate-via-hpp/
+	 *
+	 * @phpstan-import-type IssuerOption from PaymentInterface
 	 */
 	class Driver implements PaymentProviderInterface {
 		
@@ -145,7 +148,7 @@
 		 * selection always happens on the Klarna HPP.
 		 *
 		 * @param string $paymentModule e.g. 'klarna', 'klarna_paylater'
-		 * @return array<string, mixed> Always empty — Klarna handles payment method UI on the hosted page
+		 * @return array<int, IssuerOption>
 		 */
 		public function getPaymentOptions(string $paymentModule): array {
 			// Klarna has no issuer list — method selection happens on the hosted page.

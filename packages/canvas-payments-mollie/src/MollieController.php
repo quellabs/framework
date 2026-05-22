@@ -4,6 +4,7 @@
 	
 	use Quellabs\Canvas\Annotations\Route;
 	use Quellabs\Canvas\Configuration\ConfigLoader;
+	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Quellabs\Payments\Contracts\PaymentExchangeException;
 	use Quellabs\SignalHub\Signal;
 	use Symfony\Component\HttpFoundation\JsonResponse;
@@ -13,7 +14,12 @@
 	
 	class MollieController {
 		
+		use GatewayHelpers;
+		
+		/** @var ConfigLoader Provides access to configuration file */
 		private ConfigLoader $configLoader;
+		
+		/** @var Driver Mollie driver implementation */
 		private Driver $mollie;
 		
 		/**
@@ -44,8 +50,8 @@
 				return new JsonResponse("Missing parameter 'id'", 204);
 			}
 			
-			// Fetch the current payment state from Mollie using the transaction ID
 			try {
+				// Fetch the current payment state from Mollie using the transaction ID
 				$response = $this->mollie->exchange((string)$request->request->get("id"));
 				
 				// Notify listeners (e.g. order management) of the updated payment state
@@ -66,7 +72,7 @@
 		 */
 		public function handleReturn(Request $request): Response {
 			$config = $this->configLoader->loadConfigFile('mollie');
-			return new RedirectResponse($config->getAs('return_url', 'string', '/'));
+			return new RedirectResponse($this->normalizeString($config->getAs('return_url', 'string', '/')) ?: '/');
 		}
 		
 		/**
@@ -76,6 +82,6 @@
 		 */
 		public function handleCancel(Request $request): Response {
 			$config = $this->configLoader->loadConfigFile('mollie');
-			return new RedirectResponse($config->getAs('cancel_return_url', 'string', '/'));
+			return new RedirectResponse($this->normalizeString($config->getAs('cancel_return_url', 'string', '/')) ?: '/');
 		}
 	}

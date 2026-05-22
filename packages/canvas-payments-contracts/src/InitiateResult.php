@@ -6,7 +6,12 @@
 	 * Immutable value object returned after successfully initiating a payment session.
 	 * Contains the data the caller needs to redirect the customer to the payment page.
 	 *
-	 * @phpstan-import-type InitiateResultArray from PaymentInterface
+	 * @phpstan-type InitiateResultArray array{
+	 *      provider: string,
+	 *      transaction_id: string,
+	 *      redirect_url: string,
+	 *      metadata: array<string, mixed>
+	 *  }
 	 */
 	final readonly class InitiateResult {
 		
