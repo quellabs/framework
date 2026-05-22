@@ -144,7 +144,7 @@
 			} else {
 				$receivedSignature = null;
 			}
-
+			
 			// Bail if none found
 			if ($receivedSignature === null) {
 				return false;
@@ -153,9 +153,10 @@
 			// Build the signing string from the fixed set of fields Adyen uses.
 			// The field order is strictly defined by Adyen — do not reorder.
 			// @see https://docs.adyen.com/development-resources/webhooks/verify-hmac-signatures#hmac-signature-calculation
-			/** @var array<string, mixed> $amountArr */
-			$amountArr = is_array($notification['amount'] ?? null) ? $notification['amount'] : [];
-			$signingData = $notification + ['amount.value' => $amountArr['value'] ?? null, 'amount.currency' => $amountArr['currency'] ?? null];
+			$signingData = $notification + [
+					'amount.value'    => is_array($notification['amount'] ?? null) ? ($notification['amount']['value'] ?? null) : null,
+					'amount.currency' => is_array($notification['amount'] ?? null) ? ($notification['amount']['currency'] ?? null) : null,
+				];
 			
 			$signingString = implode(':', array_map(
 				fn(string $key) => $this->escapeHmacValue(

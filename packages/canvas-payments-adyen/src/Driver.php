@@ -304,10 +304,8 @@
 			$response = $result['response'] ?? [];
 			$resultCode = isset($response['resultCode']) && is_string($response['resultCode']) ? $response['resultCode'] : 'Unknown';
 			$pspReference = isset($response['pspReference']) && is_string($response['pspReference']) ? $response['pspReference'] : null;
-			$amountArr = is_array($response['amount'] ?? null) ? $response['amount'] : [];
-			/** @var array<string, mixed> $amountArr */
-			$currency = is_string($amountArr['currency'] ?? null) ? $amountArr['currency'] : '';
-			$valuePaid = is_int($amountArr['value'] ?? null) ? $amountArr['value'] : 0;
+			$currency = is_array($response['amount'] ?? null) && is_string($response['amount']['currency'] ?? null) ? $response['amount']['currency'] : '';
+			$valuePaid = is_array($response['amount'] ?? null) && is_int($response['amount']['value'] ?? null) ? $response['amount']['value'] : 0;
 			
 			// Map Adyen's resultCode to our internal PaymentStatus.
 			// resultCode is the canonical status field for synchronous /payments/details responses.
@@ -459,10 +457,8 @@
 			$eventCode = isset($notification['eventCode']) && is_string($notification['eventCode']) ? $notification['eventCode'] : '';
 			$success = ($notification['success'] ?? '') === 'true';
 			$pspReference = isset($notification['pspReference']) && is_string($notification['pspReference']) ? $notification['pspReference'] : null;
-			$amountArr = is_array($notification['amount'] ?? null) ? $notification['amount'] : [];
-			/** @var array<string, mixed> $amountArr */
-			$currency = is_string($amountArr['currency'] ?? null) ? $amountArr['currency'] : '';
-			$value = is_int($amountArr['value'] ?? null) ? $amountArr['value'] : 0;
+			$currency = is_array($notification['amount'] ?? null) && is_string($notification['amount']['currency'] ?? null) ? $notification['amount']['currency'] : '';
+			$value = is_array($notification['amount'] ?? null) && is_int($notification['amount']['value'] ?? null) ? $notification['amount']['value'] : 0;
 			
 			// Convert adyen raw state to PaymentStatus
 			$state = match (true) {
