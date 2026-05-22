@@ -5,6 +5,7 @@
 	use Quellabs\Payments\Contracts\InitiateResult;
 	use Quellabs\Payments\Contracts\PaymentAddress;
 	use Quellabs\Payments\Contracts\PaymentException;
+	use Quellabs\Payments\Contracts\PaymentInterface;
 	use Quellabs\Payments\Contracts\PaymentExchangeException;
 	use Quellabs\Payments\Contracts\PaymentInitiationException;
 	use Quellabs\Payments\Contracts\PaymentState;
@@ -16,6 +17,10 @@
 	use Quellabs\Payments\Contracts\RefundResult;
 	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	
+	/**
+	 * Mollie driver
+	 * @phpstan-import-type IssuerOption from PaymentInterface
+	 */
 	class Driver implements PaymentProviderInterface {
 		
 		use GatewayHelpers;
@@ -353,7 +358,7 @@
 		 * All other modules return an empty array — the hosted page handles all UI.
 		 * @see https://docs.mollie.com/reference/v2/methods-api/get-method
 		 * @param string $paymentModule e.g. 'mollie_kbc'
-		 * @return array<int, array<string, mixed>>
+		 * @return array<int, IssuerOption>
 		 * @throws PaymentException
 		 */
 		public function getPaymentOptions(string $paymentModule): array {
@@ -378,22 +383,22 @@
 			/** @var array<int, array<string, mixed>> $issuers */
 			$issuers = is_array($methodResponse["issuers"] ?? null) ? $methodResponse["issuers"] : [];
 			
-			return array_map(function (array $issuer): array {
-				/** @var array<string, mixed> $issuer */
-				/** @var array<string, mixed> $image */
-				$image = is_array($issuer["image"] ?? null) ? $issuer["image"] : [];
-				
-				/** @var array<string, mixed> $result */
-				$result = [
-					'id'       => $this->normalizeString($issuer["id"] ?? null),
-					'name'     => $this->normalizeString($issuer["name"] ?? null),
-					'issuerId' => $this->normalizeString($issuer["id"] ?? null),
-					'swift'    => $this->normalizeString($issuer["id"] ?? null),
-					'icon'     => $this->normalizeString($image["size1x"] ?? null),
-				];
-				
-				return $result;
-			}, $issuers);
+			return array_map(
+			/** @param array<string, mixed> $issuer @return IssuerOption */
+				function (array $issuer): array {
+					/** @var array<string, mixed> $image */
+					$image = is_array($issuer["image"] ?? null) ? $issuer["image"] : [];
+					
+					return [
+						'id'       => $this->normalizeString($issuer["id"] ?? null),
+						'name'     => $this->normalizeString($issuer["name"] ?? null),
+						'issuerId' => $this->normalizeString($issuer["id"] ?? null),
+						'swift'    => $this->normalizeString($issuer["id"] ?? null),
+						'icon'     => $this->normalizeString($image["size1x"] ?? null),
+					];
+				},
+				$issuers
+			);
 		}
 		
 		/**

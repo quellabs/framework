@@ -2,8 +2,6 @@
 	
 	namespace Quellabs\Payments\Contracts;
 	
-	use Quellabs\Contracts\Discovery\ProviderInterface;
-	
 	/**
 	 * Common interface for payment provider implementations.
 	 * Each provider package (e.g. Mollie, Stripe) must implement this interface
@@ -12,11 +10,12 @@
 	 * Implementations must have a no-argument constructor. All configuration is
 	 * supplied via setConfig() after instantiation by the discovery system.
 	 *
-	 * @phpstan-type InitiateResultArray array{
-	 *     provider: string,
-	 *     transaction_id: string,
-	 *     redirect_url: string,
-	 *     metadata: array<string, mixed>
+	 * @phpstan-type IssuerOption array{
+	 *     id: string,
+	 *     name: string,
+	 *     issuerId: string,
+	 *     swift: string,
+	 *     icon: string
 	 * }
 	 */
 	interface PaymentInterface {
@@ -34,7 +33,7 @@
 		 * @return RefundResult
 		 */
 		public function refund(RefundRequest $request): RefundResult;
-
+		
 		/**
 		 * Returns available options for the given payment module.
 		 * Used for modules that expose issuer or bank selection (e.g. iDEAL, KBC, gift cards).
