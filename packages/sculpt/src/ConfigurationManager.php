@@ -140,7 +140,17 @@
 		 * @return string|null Parameter value or default
 		 */
 		public function getPositional(int $index, mixed $default = null): ?string {
-			return $this->positionalParameters[$index] ?? $default;
+			$positionalData = $this->positionalParameters[$index] ?? null;
+			
+			if ($positionalData === null) {
+				return $default;
+			}
+			
+			if (is_scalar($positionalData)) {
+				return (string)$positionalData;
+			}
+			
+			return $default;
 		}
 		
 		/**
