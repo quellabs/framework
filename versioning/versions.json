@@ -33,10 +33,10 @@
   "canvas-skeleton": "1.0.10",
   "canvas-twig": "1.0.7",
   "contracts": "1.0.35",
-  "dependency-injection": "1.0.38",
+  "dependency-injection": "1.0.39",
   "discover": "1.0.45",
   "objectquel": "1.6.18",
-  "sculpt": "1.0.28",
-  "signal-hub": "1.1.0",
+  "sculpt": "1.0.29",
+  "signal-hub": "1.1.1",
   "support": "1.0.20"
 }
