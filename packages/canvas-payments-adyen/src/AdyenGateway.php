@@ -2,8 +2,13 @@
 	
 	namespace Quellabs\Payments\Adyen;
 	
+	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Quellabs\Contracts\Gateway\GatewayInterface;
 	use Symfony\Component\HttpClient\HttpClient;
+	use Symfony\Contracts\HttpClient\Exception\ClientExceptionInterface;
+	use Symfony\Contracts\HttpClient\Exception\RedirectionExceptionInterface;
+	use Symfony\Contracts\HttpClient\Exception\ServerExceptionInterface;
+	use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 	use Symfony\Contracts\HttpClient\HttpClientInterface;
 	
 	/**
@@ -17,6 +22,7 @@
 	 * @phpstan-import-type GatewayResponse from GatewayInterface
 	 */
 	class AdyenGateway {
+		use GatewayHelpers;
 		
 		// Adyen Checkout API version — update here when migrating to a newer version.
 		private const string CHECKOUT_VERSION = 'v71';
@@ -42,17 +48,17 @@
 			$config = $driver->getConfig();
 			
 			// Extract information
-			$this->client = HttpClient::create(['timeout' => 10]);
-			$this->apiKey = $config['api_key'] ?? '';
-			$this->merchantAccount = $config['merchant_account'] ?? '';
+			$this->client          = HttpClient::create(['timeout' => 10]);
+			$this->apiKey          = is_string($config['api_key'] ?? null) ? $config['api_key'] : '';
+			$this->merchantAccount = is_string($config['merchant_account'] ?? null) ? $config['merchant_account'] : '';
 			
 			// Live endpoint prefix differs per merchant; for testing the test endpoint is fixed.
 			// In production, you must replace 'YOUR_LIVE_PREFIX' with the prefix from your Customer Area.
 			// @see https://docs.adyen.com/development-resources/live-endpoints
-			if ($config['test_mode'] ?? false) {
+			if ($this->arrayGet($config, 'test_mode', false)) {
 				$this->baseUrl = 'https://checkout-test.adyen.com/' . self::CHECKOUT_VERSION;
 			} else {
-				$livePrefix = $config['live_endpoint_prefix'] ?? '';
+				$livePrefix    = is_string($config['live_endpoint_prefix'] ?? null) ? $config['live_endpoint_prefix'] : '';
 				$this->baseUrl = "https://{$livePrefix}-checkout-live.adyenpayments.com/checkout/" . self::CHECKOUT_VERSION;
 			}
 		}
@@ -100,7 +106,7 @@
 		 * @param int $amount Refund amount in minor units (e.g. 1250 = €12.50)
 		 * @param string $currency ISO 4217 currency code (e.g. 'EUR')
 		 * @param string $note Human-readable reason for the refund (shown in Customer Area)
-		 * @return array<string, mixed>
+		 * @return GatewayResponse
 		 */
 		public function refundPayment(string $pspReference, int $amount, string $currency, string $note = ''): array {
 			$payload = [
@@ -131,35 +137,43 @@
 				return false;
 			}
 			
-			// Extract hmacSignature
-			$receivedSignature = $notification['additionalData']['hmacSignature'] ?? null;
+			// Validate hmacSignature
+			$receivedSignature = $this->arrayGet($notification, 'additionalData.hmacSignature');
 			
-			// Bail if none found
-			if (empty($receivedSignature)) {
+			if (!is_string($receivedSignature)) {
 				return false;
 			}
 			
 			// Build the signing string from the fixed set of fields Adyen uses.
 			// The field order is strictly defined by Adyen — do not reorder.
 			// @see https://docs.adyen.com/development-resources/webhooks/verify-hmac-signatures#hmac-signature-calculation
-			$signingString = implode(':', [
-				$this->escapeHmacValue((string)($notification['pspReference'] ?? '')),
-				$this->escapeHmacValue((string)($notification['originalReference'] ?? '')),
-				$this->escapeHmacValue((string)($notification['merchantAccountCode'] ?? '')),
-				$this->escapeHmacValue((string)($notification['merchantReference'] ?? '')),
-				$this->escapeHmacValue((string)($notification['amount']['value'] ?? '')),
-				$this->escapeHmacValue((string)($notification['amount']['currency'] ?? '')),
-				$this->escapeHmacValue((string)($notification['eventCode'] ?? '')),
-				$this->escapeHmacValue((string)($notification['success'] ?? '')),
-			]);
+			$signingString = implode(':', array_map(
+				fn(string $key) => $this->escapeHmacValue(
+					match (true) {
+						is_int($value = $this->arrayGet($notification, $key)) => (string)$value,
+						is_string($value) => $value,
+						default => '',
+					}
+				),
+				[
+					'pspReference',
+					'originalReference',
+					'merchantAccountCode',
+					'merchantReference',
+					'amount.value',
+					'amount.currency',
+					'eventCode',
+					'success'
+				],
+			));
 			
 			// Build the hashes to compare
-			$binaryKey = pack('H*', $hmacKey);
-			$expectedRaw = hash_hmac('sha256', $signingString, $binaryKey, true);
+			$binaryKey       = pack('H*', $hmacKey);
+			$expectedRaw     = hash_hmac('sha256', $signingString, $binaryKey, true);
 			$expectedEncoded = base64_encode($expectedRaw);
 			
 			// Do the comparison
-			return hash_equals($expectedEncoded, $receivedSignature);
+			return hash_equals($expectedEncoded, (string)$receivedSignature);
 		}
 		
 		/**
@@ -180,7 +194,7 @@
 		 * @return GatewayResponse
 		 */
 		private function post(string $endpoint, array $payload): array {
-			
+			// Headers
 			$headers = [
 				'Content-Type' => 'application/json',
 				'X-API-Key'    => $this->apiKey,
@@ -194,26 +208,41 @@
 			}
 			
 			try {
+				// Send request
 				$response = $this->client->request('POST', $this->baseUrl . $endpoint, [
 					'headers' => $headers,
 					'json'    => $payload,
 				]);
 				
+				// Fetch response
 				$statusCode = $response->getStatusCode();
-				$body = json_decode($response->getContent(false), true);
+				$decoded    = json_decode($response->getContent(false), true);
+				
+				// Validate json decoding succeeded
+				if (json_last_error() !== JSON_ERROR_NONE) {
+					return ['request' => ['result' => 0, 'errorId' => (string)json_last_error(), 'errorMessage' => json_last_error_msg()]];
+				}
+				
+				if (!is_array($decoded)) {
+					return ['request' => ['result' => 0, 'errorId' => '400', 'errorMessage' => "Empty JSON response"]];
+				}
+				
+				// Adyen always returns a JSON object (not an array), so keys are always strings.
+				/** @var array<string, mixed> $decoded */
 				
 				// Adyen returns HTTP 4xx/5xx for API-level errors, with a JSON body containing
 				// 'errorCode' and 'message'. A 2xx response always indicates the request was accepted.
 				if ($statusCode >= 400) {
-					$errorCode = $body['errorCode'] ?? $statusCode;
-					$errorMessage = $body['message'] ?? "HTTP {$statusCode}";
+					$errorCode    = $this->normalizeString($this->arrayGet($decoded, 'errorCode'), (string)$statusCode);
+					$errorMessage = $this->normalizeString($this->arrayGet($decoded, 'message'), "HTTP {$statusCode}");
 					return ['request' => ['result' => 0, 'errorId' => $errorCode, 'errorMessage' => $errorMessage]];
 				}
 				
-				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $body];
-			} catch (\Throwable $e) {
-				// Network or HTTP-level failure — the request never reached Adyen or couldn't be read
-				return ['request' => ['result' => 0, 'errorId' => $e->getCode(), 'errorMessage' => $e->getMessage()]];
+				// Success result
+				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $decoded];
+			} catch (TransportExceptionInterface|ClientExceptionInterface|RedirectionExceptionInterface|ServerExceptionInterface $e) {
+				// Network-level failure — the request never reached Adyen or the connection was dropped
+				return ['request' => ['result' => 0, 'errorId' => (string)$e->getCode(), 'errorMessage' => $e->getMessage()]];
 			}
 		}
 	}

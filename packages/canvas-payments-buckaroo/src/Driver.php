@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\Payments\Buckaroo;
 	
+	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Quellabs\Payments\Contracts\InitiateResult;
 	use Quellabs\Payments\Contracts\PaymentAddress;
 	use Quellabs\Payments\Contracts\PaymentExchangeException;
@@ -15,6 +16,8 @@
 	use Quellabs\Payments\Contracts\RefundResult;
 	
 	class Driver implements PaymentProviderInterface {
+		
+		use GatewayHelpers;
 		
 		/**
 		 * Driver name
@@ -42,7 +45,7 @@
 		 *
 		 * @see https://docs.buckaroo.io/docs/payment-methods
 		 */
-		private const MODULE_TYPE_MAP = [
+		private const array MODULE_TYPE_MAP = [
 			'bkr_ideal'           => 'ideal',
 			'bkr_creditcard'      => 'creditcard',
 			'bkr_visa'            => 'visa',
@@ -63,7 +66,12 @@
 		];
 		
 		// Methods that require or meaningfully use address/shopper data
-		private const METHODS_REQUIRING_SHOPPER_DATA = ['bkr_klarna', 'bkr_in3', 'bkr_afterpay', 'bkr_billink'];
+		private const array METHODS_REQUIRING_SHOPPER_DATA = [
+			'bkr_klarna',
+			'bkr_in3',
+			'bkr_afterpay',
+			'bkr_billink'
+		];
 		
 		/**
 		 * Returns discovery metadata for this provider, including all supported payment modules.
@@ -98,7 +106,17 @@
 		/**
 		 * Returns default configuration values for this provider.
 		 * Merged with loaded config files during discovery — values from config files take precedence.
-		 * @return array<string, mixed>
+		 * @return array{
+		 *     test_mode: bool,
+		 *     website_key: string,
+		 *     secret_key: string,
+		 *     return_url: string,
+		 *     return_url_cancel: string,
+		 *     return_url_error: string,
+		 *     return_url_reject: string,
+		 *     webhook_url: string,
+		 *     default_culture: string
+		 * }
 		 */
 		public function getDefaults(): array {
 			return [
@@ -150,7 +168,7 @@
 		 * @throws PaymentInitiationException
 		 */
 		public function initiate(PaymentRequest $request): InitiateResult {
-			$config = $this->getConfig();
+			$config  = $this->getConfig();
 			$service = self::MODULE_TYPE_MAP[$request->paymentModule] ?? strtolower($request->paymentModule);
 			
 			// Buckaroo uses decimal amounts (€10.00 = 10.00), not minor units (€10.00 = 1000).
@@ -159,7 +177,7 @@
 			
 			// Build the service parameter list.
 			$serviceParams = [];
-	
+			
 			// Inject billing and shipping addresses
 			if (in_array($request->paymentModule, self::METHODS_REQUIRING_SHOPPER_DATA)) {
 				// BNPL: inject billing address as BillingCustomer parameters.
@@ -201,7 +219,7 @@
 			// Attach top-level customer fields — valid for all payment methods.
 			// CustomerEmail and CustomerCountry feed into fraud scoring and hosted page pre-fill.
 			$billingOrShipping = $request->billingAddress ?? $request->shippingAddress;
-
+			
 			if ($billingOrShipping !== null) {
 				if (!empty($billingOrShipping->email)) {
 					$payload['CustomerEmail'] = $billingOrShipping->email;
@@ -225,8 +243,11 @@
 			
 			// Buckaroo's Key is our transactionId going forward — not the invoice number.
 			// The redirect URL lives in RequiredAction.RedirectURL.
-			$transactionKey = $response['Key'] ?? '';
-			$redirectUrl = $response['RequiredAction']['RedirectURL'] ?? '';
+			$transactionKeyRaw = $response['Key'] ?? '';
+			$transactionKey    = is_string($transactionKeyRaw) ? $transactionKeyRaw : '';
+			$requiredAction    = is_array($response['RequiredAction'] ?? null) ? $response['RequiredAction'] : [];
+			$redirectUrlRaw    = $requiredAction['RedirectURL'] ?? '';
+			$redirectUrl       = is_string($redirectUrlRaw) ? $redirectUrlRaw : '';
 			
 			// If no transaction id was passed back, throw error
 			if (empty($transactionKey)) {
@@ -283,46 +304,63 @@
 			// Fetch the transaction status from Buckaroo
 			$result = $this->getGateway()->getTransactionStatus($transactionId);
 			
-			// If that faild, throw an exception
+			// If that failed, throw an exception
 			if ($result['request']['result'] === 0) {
 				throw new PaymentExchangeException(self::DRIVER_NAME, $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 			
 			// Grab response data
-			$data = $result['response'] ?? [];
-			$statusCode = (int)($data['Status']['Code']['Code'] ?? 0);
-			$currency = $data['Currency'] ?? '';
+			$data        = $result['response'] ?? [];
+			$codeRaw     = $this->arrayGet($data, 'Status.Code.Code', 0);
+			$statusCode  = $this->toInt($codeRaw);
+			$currencyRaw = $data['Currency'] ?? '';
+			$currency    = is_string($currencyRaw) ? $currencyRaw : '';
 			
 			// Buckaroo distinguishes payment transactions (AmountDebit) from refund transactions
 			// (AmountCredit). A refund is a separate transaction with its own Key and its own
 			// status 190 — the original transaction is never updated. Checking which field is
 			// present is the correct way to identify the transaction type.
-			$isRefund = isset($data['AmountCredit']) && !isset($data['AmountDebit']);
-			$amountDecimal = (float)($data['AmountDebit'] ?? $data['AmountCredit'] ?? 0);
-			$amount = (int)round($amountDecimal * 100);
+			$isRefund      = isset($data['AmountCredit']) && !isset($data['AmountDebit']);
+			$amountRaw     = $data['AmountDebit'] ?? $data['AmountCredit'] ?? 0;
+			$amountDecimal = $this->toFloat($amountRaw);
+			$amount        = (int)round($amountDecimal * 100);
 			
 			// Map Buckaroo status codes to our internal PaymentStatus enum.
 			// For refund transactions a successful 190 maps to Refunded, not Paid.
 			// @see https://docs.buckaroo.io/docs/integration-status
-			$state = match (true) {
-				$statusCode === 190 && $isRefund => PaymentStatus::Refunded,
-				$statusCode === 190 => PaymentStatus::Paid,
-				in_array($statusCode, [790, 791, 792, 793]) => PaymentStatus::Pending,
-				$statusCode === 890 => PaymentStatus::Canceled,
-				in_array($statusCode, [490, 491, 492]) => PaymentStatus::Failed,
-				$statusCode === 690 => PaymentStatus::Failed,
-				default => PaymentStatus::Pending,
-			};
+			/** @noinspection PhpSwitchCanBeReplacedWithMatchExpressionInspection */
+			switch (true) {
+				case $statusCode === 190 && $isRefund:
+					$state = PaymentStatus::Refunded;
+					break;
+				
+				case $statusCode === 190:
+					$state = PaymentStatus::Paid;
+					break;
+				
+				case $statusCode === 890:
+					$state = PaymentStatus::Canceled;
+					break;
+				
+				case in_array($statusCode, [690, 490, 491, 492]):
+					$state = PaymentStatus::Failed;
+					break;
+				
+				default:
+					$state = PaymentStatus::Pending;
+					break;
+			}
 			
 			// valuePaid is only set when the transaction is actually paid
-			$valuePaid = $state === PaymentStatus::Paid ? $amount : 0;
+			$valuePaid     = $state === PaymentStatus::Paid ? $amount : 0;
 			$valueRefunded = $state === PaymentStatus::Refunded ? $amount : 0;
 			
 			// For payment transactions, sum any related refunds.
 			// Refund transactions themselves never have further related refunds.
 			if (!$isRefund) {
 				// Determine the refund value
-				$valueRefunded = $this->sumRelatedRefunds($data['RelatedTransactions'] ?? []);
+				$relatedRaw    = $data['RelatedTransactions'] ?? [];
+				$valueRefunded = $this->sumRelatedRefunds(is_array($relatedRaw) ? $relatedRaw : []);
 				
 				// If the total refunded equals or exceeds the paid amount, the payment is fully
 				// refunded. Upgrade the state — Buckaroo never changes the original transaction's
@@ -342,8 +380,8 @@
 				internalState: (string)$statusCode,
 				metadata: array_filter([
 					'paymentMethod' => $data['ServiceCode'] ?? null,
-					'subCode'       => $data['Status']['SubCode']['Code'] ?? null,
-					'subMessage'    => $data['Status']['SubCode']['Description'] ?? null,
+					'subCode'       => $this->arrayGet($data, 'Status.SubCode.Code'),
+					'subMessage'    => $this->arrayGet($data, 'Status.SubCode.Description'),
 					'invoice'       => $data['Invoice'] ?? null,
 				], fn($v) => $v !== null),
 			);
@@ -371,7 +409,7 @@
 			if (!isset(self::MODULE_TYPE_MAP[$request->paymentModule])) {
 				throw new PaymentRefundException(self::DRIVER_NAME, 0, 'Unknown payment module: ' . $request->paymentModule);
 			}
-
+			
 			// Build payload
 			$payload = [
 				'Currency'               => $request->currency,
@@ -407,11 +445,14 @@
 			}
 			
 			// The refund transaction gets its own Key
-			$refundKey = $result['response']['Key'] ?? '';
+			$refundResponse = $result['response'] ?? [];
+			$refundKeyRaw   = $refundResponse['Key'] ?? '';
+			$refundKey      = is_string($refundKeyRaw) ? $refundKeyRaw : '';
 			
 			// AmountCredit in the refund response is the decimal refunded amount
-			$refundedDecimal = (float)($result['response']['AmountCredit'] ?? ($request->amount !== null ? $request->amount / 100 : 0));
-			$refundedMinor = (int)round($refundedDecimal * 100);
+			$amountCreditRaw = $refundResponse['AmountCredit'] ?? ($request->amount !== null ? $request->amount / 100 : 0);
+			$refundedDecimal = $this->toFloat($amountCreditRaw);
+			$refundedMinor   = (int)round($refundedDecimal * 100);
 			
 			// Return the result
 			return new RefundResult(
@@ -445,21 +486,29 @@
 			}
 			
 			// Grab response
-			$data = $result['response'] ?? [];
-			$relatedTransactions = $data['RelatedTransactions'] ?? [];
-
+			$data                = $result['response'] ?? [];
+			$relatedRaw          = $data['RelatedTransactions'] ?? [];
+			$relatedTransactions = is_array($relatedRaw) ? $relatedRaw : [];
+			
 			// Fall back to the original transaction's currency when the refund entry omits it.
-			$originalCurrency = $data['Currency'] ?? '';
-			$refunds = [];
+			$originalCurrencyRaw = $data['Currency'] ?? '';
+			$originalCurrency    = is_string($originalCurrencyRaw) ? $originalCurrencyRaw : '';
+			$refunds             = [];
 			
 			foreach ($relatedTransactions as $related) {
+				if (!is_array($related)) {
+					continue;
+				}
+				
 				// RelatedTransactions also contains chargebacks, payouts, etc. — only process refunds.
-				if (strtolower($related['RelationType'] ?? '') !== 'refund') {
+				$relationTypeRaw = $related['RelationType'] ?? '';
+				if (strtolower(is_string($relationTypeRaw) ? $relationTypeRaw : '') !== 'refund') {
 					continue;
 				}
 				
 				// Grab related transaction key
-				$refundKey = $related['RelatedTransactionKey'] ?? '';
+				$refundKeyRaw = $related['RelatedTransactionKey'] ?? '';
+				$refundKey    = is_string($refundKeyRaw) ? $refundKeyRaw : '';
 				
 				// Malformed entry — skip
 				if (empty($refundKey)) {
@@ -477,15 +526,18 @@
 				}
 				
 				// Add result to list
-				$refundData = $refundResult['response'] ?? [];
-				$amountDecimal = (float)($refundData['AmountCredit'] ?? 0);
+				$refundData        = $refundResult['response'] ?? [];
+				$amountRaw         = $refundData['AmountCredit'] ?? 0;
+				$amountDecimal     = $this->toFloat($amountRaw);
+				$refundCurrencyRaw = $refundData['Currency'] ?? $originalCurrency;
+				$refundCurrency    = is_string($refundCurrencyRaw) ? $refundCurrencyRaw : $originalCurrency;
 				
 				$refunds[] = new RefundResult(
 					provider: self::DRIVER_NAME,
 					paymentReference: $paymentReference,
 					refundId: $refundKey,
 					value: (int)round($amountDecimal * 100),
-					currency: $refundData['Currency'] ?? $originalCurrency,
+					currency: $refundCurrency,
 				);
 			}
 			
@@ -503,13 +555,19 @@
 			$total = 0;
 			
 			foreach ($relatedTransactions as $related) {
+				if (!is_array($related)) {
+					continue;
+				}
+				
 				// RelatedTransactions also contains chargebacks, payouts, etc. — only sum refunds.
-				if (strtolower($related['RelationType'] ?? '') !== 'refund') {
+				$relationTypeRaw = $related['RelationType'] ?? '';
+				if (strtolower(is_string($relationTypeRaw) ? $relationTypeRaw : '') !== 'refund') {
 					continue;
 				}
 				
 				// Grab the related transaction key
-				$refundKey = $related['RelatedTransactionKey'] ?? '';
+				$refundKeyRaw = $related['RelatedTransactionKey'] ?? '';
+				$refundKey    = is_string($refundKeyRaw) ? $refundKeyRaw : '';
 				
 				// Malformed entry — skip
 				if (empty($refundKey)) {
@@ -527,19 +585,26 @@
 				}
 				
 				// Refund transactions carry AmountCredit (decimal); convert to minor units.
-				$amountDecimal = (float)($refundResult['response']['AmountCredit'] ?? 0);
-				$total += (int)round($amountDecimal * 100);
+				$refundData    = $refundResult['response'] ?? [];
+				$amountRaw     = $refundData['AmountCredit'] ?? 0;
+				$amountDecimal = $this->toFloat($amountRaw);
+				$total         += (int)round($amountDecimal * 100);
 			}
 			
 			return $total;
 		}
-
+		
 		/**
 		 * Maps a PaymentAddress onto Buckaroo service Parameters entries for the
 		 * given group type ('BillingCustomer' or 'ShippingCustomer').
 		 * @param PaymentAddress $address
 		 * @param string $groupType 'BillingCustomer' or 'ShippingCustomer'
-		 * @return array<int, array{Name: string, GroupType: string, GroupID: string, Value: string}>
+		 * @return array<int, array{
+		 *     Name: string,
+		 *     GroupType: string,
+		 *     GroupID: string,
+		 *     Value: string
+		 * }>
 		 */
 		private function buildAddressParams(PaymentAddress $address, string $groupType): array {
 			$fields = [
@@ -567,7 +632,7 @@
 			
 			return $params;
 		}
-
+		
 		/**
 		 * Lazily instantiates the BuckarooGateway.
 		 * @return BuckarooGateway

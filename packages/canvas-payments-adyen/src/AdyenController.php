@@ -81,9 +81,9 @@
 				
 				// Determine redirect target based on whether the payment was canceled
 				if ($response->state === PaymentStatus::Canceled) {
-					$redirectUrl = $config['cancel_return_url'];
+					$redirectUrl = is_string($config['cancel_return_url'] ?? null) ? $config['cancel_return_url'] : '';
 				} else {
-					$redirectUrl = $config['return_url'];
+					$redirectUrl = is_string($config['return_url'] ?? null) ? $config['return_url'] : '';
 				}
 				
 				// Return response
@@ -114,45 +114,66 @@
 		 */
 		public function handleWebhook(Request $request): Response {
 			// Decode the body
-			$body = json_decode($request->getContent(), true);
+			$decoded = json_decode($request->getContent(), true);
 			
 			// Return error when that failed
 			if (json_last_error() !== JSON_ERROR_NONE) {
 				return new JsonResponse("Invalid JSON (" . json_last_error_msg() . ")", 400);
 			}
 			
+			if (!is_array($decoded)) {
+				return new JsonResponse("Empty JSON body", 400);
+			}
+			
 			// Adyen wraps all notifications in a notificationItems array.
 			// JSON and HTTP POST webhooks contain exactly one item; SOAP may contain up to six.
-			$notificationItems = $body['notificationItems'] ?? [];
+			$notificationItems = is_array($decoded['notificationItems'] ?? null) ? $decoded['notificationItems'] : [];
 			
 			if (empty($notificationItems)) {
 				return new JsonResponse('Missing notificationItems', 400);
 			}
 			
 			// Unwrap notification items
-			foreach ($notificationItems as $item) {
-				// Grab NotificationRequestItem
-				$notification = $item['NotificationRequestItem'] ?? null;
-				
-				// Ignore if it's empty or missing
-				if (empty($notification)) {
+			foreach ($notificationItems as $rawItem) {
+				// Unwrap item — each entry must be an array
+				if (!is_array($rawItem)) {
 					continue;
 				}
 				
+				// Grab NotificationRequestItem
+				$notification = $rawItem['NotificationRequestItem'] ?? null;
+				
+				// Ignore if it's empty or missing
+				if (empty($notification) || !is_array($notification)) {
+					continue;
+				}
+				
+				// Adyen webhook keys are always strings — assert for PHPStan
+				/** @var array<string, mixed> $notification */
+				
 				// Verify the HMAC signature before processing.
 				if (!$this->adyen->verifyWebhookSignature($notification)) {
-					error_log('Adyen webhook HMAC validation failed for pspReference: ' . ($notification['pspReference'] ?? 'unknown'));
+					if (is_string($notification['pspReference'] ?? null)) {
+						error_log("Adyen webhook HMAC validation failed for pspReference: {$notification['pspReference']}");
+					} else {
+						error_log("Adyen webhook HMAC validation failed for pspReference: unknown");
+					}
+					
 					continue;
 				}
 				
 				// merchantReference is your own order/payment reference — the same value passed as
 				// 'reference' during initiate(). Use it as the transactionId so webhook PaymentState
 				// objects are consistent with those produced by the return flow and initiate().
-				$merchantReference = $notification['merchantReference'] ?? null;
+				if (isset($notification['merchantReference']) && is_string($notification['merchantReference'])) {
+					$merchantReference = $notification['merchantReference'];
+				} else {
+					$merchantReference = null;
+				}
 				
 				// Ignore if merchantReference is empty or missing
 				if (empty($merchantReference)) {
-					error_log('Adyen webhook missing merchantReference for pspReference: ' . ($notification['pspReference'] ?? 'unknown'));
+					error_log('Adyen webhook missing merchantReference for pspReference: ' . (is_string($notification['pspReference'] ?? null) ? $notification['pspReference'] : 'unknown'));
 					continue;
 				}
 				

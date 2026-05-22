@@ -2,9 +2,14 @@
 	
 	namespace Quellabs\Payments\Buckaroo;
 	
+	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Quellabs\Contracts\Gateway\GatewayInterface;
 	use Symfony\Component\HttpClient\HttpClient;
 	use Symfony\Contracts\HttpClient\HttpClientInterface;
+	use Symfony\Contracts\HttpClient\Exception\ClientExceptionInterface;
+	use Symfony\Contracts\HttpClient\Exception\ServerExceptionInterface;
+	use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
+	use Symfony\Contracts\HttpClient\Exception\RedirectionExceptionInterface;
 	
 	/**
 	 * Low-level wrapper around the Buckaroo JSON API (BPE 3.0).
@@ -30,6 +35,8 @@
 	 */
 	class BuckarooGateway {
 		
+		use GatewayHelpers;
+		
 		/** @var string Buckaroo JSON API base host (no trailing slash, no path) */
 		private string $baseHost;
 		
@@ -49,13 +56,16 @@
 		public function __construct(Driver $driver) {
 			$config = $driver->getConfig();
 			
+			$websiteKey = $config['website_key'] ?? '';
+			$secretKey  = $config['secret_key'] ?? '';
+			
 			$this->client     = HttpClient::create();
-			$this->websiteKey = $config['website_key'] ?? '';
-			$this->secretKey  = $config['secret_key']  ?? '';
+			$this->websiteKey = is_string($websiteKey) ? $websiteKey : '';
+			$this->secretKey  = is_string($secretKey) ? $secretKey : '';
 			
 			// Buckaroo uses completely separate hostnames for test and live.
 			// @see https://docs.buckaroo.io/docs/integration-testing
-			if ($config['test_mode']) {
+			if ($this->arrayGet($config, 'test_mode', false)) {
 				$this->baseHost = 'testcheckout.buckaroo.nl';
 			} else {
 				$this->baseHost = 'checkout.buckaroo.nl';
@@ -137,10 +147,10 @@
 		 */
 		private function request(string $method, string $path, ?array $payload = null): array {
 			try {
-				$url        = 'https://' . $this->baseHost . $path;
-				$body       = $payload !== null ? (json_encode($payload, JSON_UNESCAPED_UNICODE) ?: '') : '';
-				$nonce      = bin2hex(random_bytes(8));
-				$timestamp  = time();
+				$url       = 'https://' . $this->baseHost . $path;
+				$body      = $payload !== null ? (json_encode($payload, JSON_UNESCAPED_UNICODE) ?: '') : '';
+				$nonce     = bin2hex(random_bytes(8));
+				$timestamp = time();
 				
 				$options = [
 					'headers' => [
@@ -155,28 +165,45 @@
 					$options['body'] = $body;
 				}
 				
+				// Execute request
 				$response = $this->client->request($method, $url, $options);
+				
+				// Fetch response
 				$httpCode = $response->getStatusCode();
 				$rawBody  = $response->getContent(false);
 				
 				// Decode JSON body
-				$data = json_decode($rawBody, true);
+				$decoded = json_decode($rawBody, true);
 				
 				// If that failed, return error
 				if (json_last_error() !== JSON_ERROR_NONE) {
-					return ['request' => ['result' => 0, 'errorId' => "0", 'errorMessage' => 'Invalid JSON response (HTTP ' . $httpCode . '): ' . json_last_error_msg()]];
+					return ['request' => ['result' => 0, 'errorId' => (string)json_last_error(), 'errorMessage' => json_last_error_msg()]];
+				}
+				
+				if (!is_array($decoded)) {
+					return ['request' => ['result' => 0, 'errorId' => "500", 'errorMessage' => "Invalid API response"]];
 				}
 				
 				// RequestErrors indicates a validation/authentication failure
-				if (!empty($data['RequestErrors'])) {
-					$firstError = reset($data['RequestErrors']);
+				$requestErrors = $decoded['RequestErrors'] ?? null;
+				
+				if (!empty($requestErrors) && is_array($requestErrors)) {
+					$firstError = reset($requestErrors);
 					
 					if (is_array($firstError)) {
 						$firstError = reset($firstError);
 					}
 					
-					$errorCode = $firstError['ErrorCode'] ?? $firstError['Code'] ?? 0;
-					$errorMsg  = $firstError['ErrorMessage'] ?? $firstError['Description'] ?? 'Request error';
+					if (is_array($firstError)) {
+						$errorCodeRaw = $firstError['ErrorCode'] ?? $firstError['Code'] ?? 0;
+						$errorMsgRaw  = $firstError['ErrorMessage'] ?? $firstError['Description'] ?? 'Request error';
+						$errorCode    = $this->normalizeString($errorCodeRaw, '0');
+						$errorMsg     = $this->normalizeString($errorMsgRaw, 'Request error');
+					} else {
+						$errorCode = '0';
+						$errorMsg  = 'Request error';
+					}
+					
 					return ['request' => ['result' => 0, 'errorId' => $errorCode, 'errorMessage' => $errorMsg]];
 				}
 				
@@ -185,9 +212,9 @@
 					return ['request' => ['result' => 0, 'errorId' => (string)$httpCode, 'errorMessage' => 'HTTP error ' . $httpCode]];
 				}
 				
-				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $data];
-			} catch (\Throwable $e) {
-				return ['request' => ['result' => 0, 'errorId' => $e->getCode(), 'errorMessage' => $e->getMessage()]];
+				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $decoded];
+			} catch (TransportExceptionInterface|ClientExceptionInterface|RedirectionExceptionInterface|ServerExceptionInterface $e) {
+				return ['request' => ['result' => 0, 'errorId' => (string)$e->getCode(), 'errorMessage' => $e->getMessage()]];
 			}
 		}
 		
@@ -195,11 +222,11 @@
 		 * Builds the HMAC Authorization header value.
 		 * For GET requests (no body), the content hash component is an empty string.
 		 * The URI component is the lowercase URL-encoded form of host+path (no scheme, no query).
-		 * @param string $method   HTTP method (uppercase)
-		 * @param string $path     Path component only (e.g. '/json/Transaction')
-		 * @param string $body     Raw JSON body string (empty string for GET)
-		 * @param string $nonce    Random nonce string
-		 * @param int    $timestamp Unix timestamp
+		 * @param string $method HTTP method (uppercase)
+		 * @param string $path Path component only (e.g. '/json/Transaction')
+		 * @param string $body Raw JSON body string (empty string for GET)
+		 * @param string $nonce Random nonce string
+		 * @param int $timestamp Unix timestamp
 		 * @return string          Full Authorization header value (including 'hmac ' prefix)
 		 */
 		private function buildAuthorizationHeader(string $method, string $path, string $body, string $nonce, int $timestamp): string {

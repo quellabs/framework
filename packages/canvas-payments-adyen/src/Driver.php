@@ -38,7 +38,7 @@
 		 * strings as used in /paymentMethods and /payments requests.
 		 * @see https://docs.adyen.com/payment-methods/
 		 */
-		private const MODULE_TYPE_MAP = [
+		private const array MODULE_TYPE_MAP = [
 			'adyen_ideal'      => 'ideal',
 			'adyen_creditcard' => 'scheme',
 			'adyen_bancontact' => 'bcmc',
@@ -57,7 +57,7 @@
 		 * hurt acceptance rates.
 		 * @see https://docs.adyen.com/payment-methods/
 		 */
-		private const MODULES_REQUIRING_ADDRESS_DATA = [
+		private const array MODULES_REQUIRING_ADDRESS_DATA = [
 			'adyen_creditcard',  // AVS check
 			'adyen_klarna',      // Required: address, name, email, phone
 			'adyen_in3',         // Required: address, name, email, phone
@@ -111,7 +111,18 @@
 		/**
 		 * Returns default configuration values for this provider.
 		 * Merged with loaded config files during discovery — values from config files take precedence.
-		 * @return array<string, mixed>
+		 * @return array{
+		 *     test_mode: bool,
+		 *     api_key: string,
+		 *     merchant_account: string,
+		 *     hmac_key: string,
+		 *     return_url: string,
+		 *     cancel_return_url: string,
+		 *     webhook_url: string,
+		 *     live_endpoint_prefix: string,
+		 *     default_country: string,
+		 *     default_currency: string
+		 * }
 		 */
 		public function getDefaults(): array {
 			return [
@@ -123,9 +134,6 @@
 				'cancel_return_url'    => '',
 				'webhook_url'          => '',
 				'live_endpoint_prefix' => '',
-				
-				// Used by getPaymentOptions() to filter the /paymentMethods response.
-				// Adyen returns a country-specific method list (e.g. iDEAL only for NL).
 				'default_country'      => 'NL',
 				'default_currency'     => 'EUR',
 			];
@@ -157,10 +165,10 @@
 		 * @throws PaymentInitiationException
 		 */
 		public function initiate(PaymentRequest $request): InitiateResult {
-			$config = $this->getConfig();
-			$billing = $request->billingAddress;
-			$module = $request->paymentModule;
-			$useAddressData = in_array($module, self::MODULES_REQUIRING_ADDRESS_DATA, true);
+			$config          = $this->getConfig();
+			$billing         = $request->billingAddress;
+			$module          = $request->paymentModule;
+			$useAddressData  = in_array($module, self::MODULES_REQUIRING_ADDRESS_DATA, true);
 			$useShopperEmail = $useAddressData || in_array($module, self::MODULES_REQUIRING_SHOPPER_EMAIL, true);
 			
 			// Build shopperName — only when address data is relevant.
@@ -205,6 +213,15 @@
 			// Grab the response
 			$response = $result['response'] ?? [];
 			
+			// Validate response
+			if (!is_string($response['id'] ?? null)) {
+				throw new PaymentInitiationException(self::DRIVER_NAME, 500, "Missing transactionId in response");
+			}
+			
+			if (!is_string($response['url'] ?? null)) {
+				throw new PaymentInitiationException(self::DRIVER_NAME, 500, "Missing url in response");
+			}
+			
 			// Return the result
 			return new InitiateResult(
 				provider: self::DRIVER_NAME,
@@ -235,10 +252,16 @@
 			$action = $extraData['action'] ?? 'return';
 			
 			if ($action === 'webhook') {
-				return $this->buildStateFromWebhook($transactionId, $extraData['notification'] ?? []);
-			} else {
-				return $this->buildStateFromReturn($transactionId, $extraData);
+				$notification = $extraData['notification'] ?? [];
+				
+				if (!is_array($notification)) {
+					$notification = [];
+				}
+				
+				return $this->buildStateFromWebhook($transactionId, $notification);
 			}
+			
+			return $this->buildStateFromReturn($transactionId, $extraData);
 		}
 		
 		/**
@@ -266,7 +289,7 @@
 			
 			// Build the /payments/details payload.
 			$payload = [
-				'details'     => ['redirectResult' => $redirectResult],
+				'details' => ['redirectResult' => $redirectResult],
 			];
 			
 			// Submit to Adyen — this resolves the pending redirect into a final resultCode
@@ -278,11 +301,11 @@
 			}
 			
 			// Extract the fields needed to build a PaymentState
-			$response = $result['response'] ?? [];
-			$resultCode = $response['resultCode'] ?? 'Unknown';
-			$pspReference = $response['pspReference'] ?? null;
-			$currency = $response['amount']['currency'] ?? '';
-			$valuePaid = $response['amount']['value'] ?? 0;
+			$response     = $result['response'] ?? [];
+			$resultCode   = isset($response['resultCode']) && is_string($response['resultCode']) ? $response['resultCode'] : 'Unknown';
+			$pspReference = isset($response['pspReference']) && is_string($response['pspReference']) ? $response['pspReference'] : null;
+			$currency     = is_array($response['amount'] ?? null) && is_string($response['amount']['currency'] ?? null) ? $response['amount']['currency'] : '';
+			$valuePaid    = is_array($response['amount'] ?? null) && is_int($response['amount']['value'] ?? null) ? $response['amount']['value'] : 0;
 			
 			// Map Adyen's resultCode to our internal PaymentStatus.
 			// resultCode is the canonical status field for synchronous /payments/details responses.
@@ -306,11 +329,15 @@
 			
 			// merchantReference is the stable identifier across all payment flows — it matches
 			// the reference passed during initiate() and is echoed back by Adyen in all responses.
-			$merchantReference = $response['merchantReference'] ?? null;
+			$merchantReference = isset($response['merchantReference']) && is_string($response['merchantReference'])
+				? $response['merchantReference']
+				: null;
 			
 			if (empty($merchantReference)) {
 				throw new PaymentExchangeException(self::DRIVER_NAME, 0, "Adyen /payments/details response missing merchantReference.");
 			}
+			
+			$paymentMethodArr = is_array($response['paymentMethod'] ?? null) ? $response['paymentMethod'] : [];
 			
 			return new PaymentState(
 				provider: self::DRIVER_NAME,
@@ -318,14 +345,14 @@
 				state: $state,
 				currency: $currency,
 				// Only record a paid amount when the payment is actually authorized
-				valuePaid: $state === PaymentStatus::Paid ? (int)$valuePaid : 0,
+				valuePaid: $state === PaymentStatus::Paid ? $valuePaid : 0,
 				valueRefunded: 0,
 				internalState: $resultCode,
 				metadata: array_filter([
 					'paymentReference' => $pspReference,
 					'sessionId'        => $transactionId,
-					'paymentMethod'    => $response['paymentMethod']['type'] ?? null,
-					'refusalReason'    => $response['refusalReason'] ?? null,
+					'paymentMethod'    => isset($paymentMethodArr['type']) && is_string($paymentMethodArr['type']) ? $paymentMethodArr['type'] : null,
+					'refusalReason'    => isset($response['refusalReason']) && is_string($response['refusalReason']) ? $response['refusalReason'] : null,
 				], fn($v) => $v !== null),
 			);
 		}
@@ -376,10 +403,12 @@
 			// Adyen returns status='received' immediately; the actual outcome arrives via REFUND webhook.
 			// Adyen assigns the refund its own pspReference, distinct from the original payment's.
 			// We store it as refundId so callers can correlate the incoming REFUND webhook.
+			$refundResponse = $result['response'] ?? [];
+			
 			return new RefundResult(
 				provider: self::DRIVER_NAME,
 				paymentReference: $paymentReference,
-				refundId: $result['response']['pspReference'],
+				refundId: is_string($refundResponse['pspReference'] ?? null) ? $refundResponse['pspReference'] : '',
 				value: $request->amount,
 				currency: $request->currency,
 			);
@@ -404,7 +433,7 @@
 		 * @return bool
 		 */
 		public function verifyWebhookSignature(array $notification): bool {
-			return $this->getGateway()->verifyHmacSignature($notification, $this->getConfig()['hmac_key']);
+			return $this->getGateway()->verifyHmacSignature($notification, is_string($this->getConfig()['hmac_key'] ?? null) ? $this->getConfig()['hmac_key'] : '');
 		}
 		
 		/**
@@ -425,11 +454,11 @@
 		 * @return PaymentState
 		 */
 		private function buildStateFromWebhook(string $transactionId, array $notification): PaymentState {
-			$eventCode = $notification['eventCode'] ?? '';
-			$success = ($notification['success'] ?? '') === 'true';
-			$pspReference = $notification['pspReference'] ?? null;
-			$currency = $notification['amount']['currency'] ?? '';
-			$value = (int)($notification['amount']['value'] ?? 0);
+			$eventCode    = isset($notification['eventCode']) && is_string($notification['eventCode']) ? $notification['eventCode'] : '';
+			$success      = ($notification['success'] ?? '') === 'true';
+			$pspReference = isset($notification['pspReference']) && is_string($notification['pspReference']) ? $notification['pspReference'] : null;
+			$currency     = is_array($notification['amount'] ?? null) && is_string($notification['amount']['currency'] ?? null) ? $notification['amount']['currency'] : '';
+			$value        = is_array($notification['amount'] ?? null) && is_int($notification['amount']['value'] ?? null) ? $notification['amount']['value'] : 0;
 			
 			// Convert adyen raw state to PaymentStatus
 			$state = match (true) {
