@@ -61,7 +61,7 @@
 			
 			foreach ($autoloaderPaths as $path) {
 				if (file_exists($path)) {
-					$autoloader = require $path;
+					$autoloader            = require $path;
 					self::$autoloaderCache = $autoloader;
 					return $autoloader;
 				}
@@ -120,13 +120,9 @@
 			}
 			
 			$composer = self::parseComposerJson($composerJsonPath);
-			$psr4 = $composer['autoload']['psr-4'] ?? [];
-			
-			if (empty($psr4)) {
-				return $default;
-			}
-			
-			return rtrim(array_key_first($psr4), '\\');
+			$psr4     = self::getComposerPsr4($composer);
+			$key      = array_key_first($psr4);
+			return is_string($key) ? rtrim($key, '\\') : $default;
 		}
 		
 		/**
@@ -169,17 +165,20 @@
 				$composerJson = self::parseComposerJson($composerJsonPath);
 				
 				// Validate composer.json structure before accessing nested keys
-				if (is_array($composerJson) &&
+				if (
+					is_array($composerJson) &&
+					is_array($composerJson['extra'] ?? null) &&
+					is_array($composerJson['extra']['discover'] ?? null) &&
 					isset($composerJson['extra']['discover']['mapping-file']) &&
-					is_string($composerJson['extra']['discover']['mapping-file'])) {
-					
+					is_string($composerJson['extra']['discover']['mapping-file'])
+				) {
 					$customPath = $composerJson['extra']['discover']['mapping-file'];
 					
 					// Security: Prevent path traversal attacks
 					// Only allow absolute paths or paths relative to project root
 					if (self::isAbsolutePath($customPath)) {
 						// For absolute paths, verify they're within project root
-						$realCustomPath = realpath($customPath);
+						$realCustomPath  = realpath($customPath);
 						$realProjectRoot = realpath($projectRoot);
 						
 						if ($realCustomPath !== false &&
@@ -195,9 +194,9 @@
 					}
 					
 					// Relative path - resolve against project root
-					$absolutePath = $projectRoot . DIRECTORY_SEPARATOR . $customPath;
+					$absolutePath     = $projectRoot . DIRECTORY_SEPARATOR . $customPath;
 					$realAbsolutePath = realpath($absolutePath);
-					$realProjectRoot = realpath($projectRoot);
+					$realProjectRoot  = realpath($projectRoot);
 					
 					// Verify the resolved path exists and is within project root
 					if ($realAbsolutePath !== false &&
@@ -292,7 +291,7 @@
 			
 			// Get directory entries or return an empty array if scandir fails
 			$classNames = [];
-			$entries = scandir($absoluteDir) ?: [];
+			$entries    = scandir($absoluteDir) ?: [];
 			
 			foreach ($entries as $entry) {
 				// Skip current directory, parent directory, and hidden files
@@ -306,7 +305,7 @@
 				// Recursively scan subdirectories and merge results
 				if (is_dir($fullPath)) {
 					$subDirClasses = self::findClassesInDirectory($fullPath, $filter);
-					$classNames = array_merge($classNames, $subDirClasses);
+					$classNames    = array_merge($classNames, $subDirClasses);
 					continue; // Early continue to next iteration
 				}
 				
@@ -382,9 +381,9 @@
 		 */
 		public static function clearCache(): void {
 			self::$projectRootPathCache = null;
-			self::$composerJsonCache = [];
-			self::$normalizedPaths = [];
-			self::$autoloaderCache = null;
+			self::$composerJsonCache    = [];
+			self::$normalizedPaths      = [];
+			self::$autoloaderCache      = null;
 		}
 		
 		/**
@@ -418,7 +417,6 @@
 			// First, locate the project's composer.json file by traversing upwards from the current directory
 			$composerJsonPath = self::getComposerJsonFilePath();
 			
-			// If we can't find composer.json, we can't determine the namespace
 			if ($composerJsonPath === null) {
 				return null;
 			}
@@ -426,21 +424,24 @@
 			// Parse the composer.json file with caching to avoid repeated parsing
 			$composerJson = self::parseComposerJson($composerJsonPath);
 			
-			// Verify the composer.json contains PSR-4 autoloading configuration
-			// This is necessary because not all projects use PSR-4 autoloading
-			if (!is_array($composerJson) || !isset($composerJson['autoload']['psr-4'])) {
+			if ($composerJson === null) {
 				return null;
 			}
 			
-			// Convert the composer.json PSR-4 configuration to the same format used by the autoloader
-			// Format needed: ['Namespace\\' => ['/absolute/path1', '/absolute/path2']]
-			$prefixesPsr4 = [];
+			// Extract psr-4 data
+			$psr4Config = self::getComposerPsr4($composerJson);
+			
+			if ($psr4Config === []) {
+				return null;
+			}
 			
 			// Get the project root directory (the directory containing composer.json)
 			$projectDir = dirname($composerJsonPath);
 			
 			// Process each PSR-4 namespace defined in composer.json
-			foreach ($composerJson['autoload']['psr-4'] as $namespace => $paths) {
+			$result = [];
+			
+			foreach ($psr4Config as $namespace => $paths) {
 				// Normalize paths to an array (composer.json allows both string and array formats)
 				// Example: "src/" or ["src/", "lib/"]
 				$paths = is_array($paths) ? $paths : [$paths];
@@ -458,13 +459,13 @@
 				
 				// Only add this namespace if at least one valid directory exists for it
 				if (!empty($absolutePaths)) {
-					$prefixesPsr4[$namespace] = $absolutePaths;
+					$result[$namespace] = $absolutePaths;
 				}
 			}
 			
 			// Use the same logic as the autoloader-based approach to find the best namespace match
 			// This ensures consistent namespace resolution regardless of which method finds it
-			return self::findMostSpecificNamespace($directory, $prefixesPsr4);
+			return self::findMostSpecificNamespace($directory, $result);
 		}
 		
 		/**
@@ -478,7 +479,7 @@
 		private static function findMostSpecificNamespace(string $directory, array $prefixesPsr4): ?string {
 			// Track best match found so far
 			$matchedNamespace = null;
-			$longestMatch = 0;
+			$longestMatch     = 0;
 			
 			// Iterate through all registered PSR-4 namespace prefixes
 			foreach ($prefixesPsr4 as $prefix => $dirs) {
@@ -585,7 +586,13 @@
 				return null;
 			}
 			
+			// Bail if array contains non-string keys
+			if (array_filter(array_keys($data), fn($key) => !is_string($key)) !== []) {
+				return null;
+			}
+			
 			// Return the parsed composer.json as an associative array
+			/** @var array<string,mixed> $data */
 			return $data;
 		}
 		
@@ -800,20 +807,20 @@
 			
 			// Step 2: Determine if the path is absolute and extract prefix
 			$isAbsolute = false;
-			$prefix = '';
+			$prefix     = '';
 			
 			// Check string length BEFORE accessing indices
 			$pathLength = strlen($normalizedPath);
 			
 			if ($pathLength >= 3 && ctype_alpha($normalizedPath[0]) && $normalizedPath[1] === ':') {
 				// Windows drive letter format (C:, D:, etc.)
-				$isAbsolute = true;
-				$prefix = substr($normalizedPath, 0, 2) . DIRECTORY_SEPARATOR;
+				$isAbsolute        = true;
+				$prefix            = substr($normalizedPath, 0, 2) . DIRECTORY_SEPARATOR;
 				$pathWithoutPrefix = ltrim(substr($normalizedPath, 2), '/');
 			} elseif ($pathLength >= 1 && $normalizedPath[0] === '/') {
 				// Unix root path format
-				$isAbsolute = true;
-				$prefix = DIRECTORY_SEPARATOR;
+				$isAbsolute        = true;
+				$prefix            = DIRECTORY_SEPARATOR;
 				$pathWithoutPrefix = substr($normalizedPath, 1);
 			} else {
 				// Relative path - no prefix
@@ -860,5 +867,58 @@
 			
 			// Return '.' for empty relative paths to maintain their relative nature
 			return $result === '' && !$isAbsolute ? '.' : $result;
+		}
+		
+		/**
+		 * Returns validated PSR-4 namespace mappings from composer.json.
+		 *
+		 * Supports both Composer PSR-4 formats:
+		 *
+		 * - "Namespace\\": "src/"
+		 * - "Namespace\\": ["src/", "lib/"]
+		 *
+		 * Invalid namespace keys and invalid path values are ignored.
+		 *
+		 * @param array<string,mixed>|null $composer Parsed composer.json contents
+		 * @return array<string,string|list<string>> Namespace => path mapping
+		 */
+		private static function getComposerPsr4(?array $composer): array {
+			// Extract autoload section
+			$autoload = $composer['autoload'] ?? null;
+			
+			if (!is_array($autoload)) {
+				return [];
+			}
+			
+			// Extract psr-4 section
+			$psr4 = $autoload['psr-4'] ?? null;
+			
+			if (!is_array($psr4)) {
+				return [];
+			}
+			
+			// Extract namespace mappings
+			$result = [];
+			
+			foreach ($psr4 as $namespace => $paths) {
+				if (!is_string($namespace)) {
+					continue;
+				}
+				
+				if (is_string($paths)) {
+					$result[$namespace] = $paths;
+					continue;
+				}
+				
+				if (is_array($paths)) {
+					$stringPaths = array_values(array_filter($paths, 'is_string'));
+					
+					if ($stringPaths !== []) {
+						$result[$namespace] = $stringPaths;
+					}
+				}
+			}
+			
+			return $result;
 		}
 	}
