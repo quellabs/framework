@@ -133,9 +133,12 @@
 			
 			// Extract hmacSignature — additionalData is mixed, assert array before indexing
 			$additionalData = is_array($notification['additionalData'] ?? null) ? $notification['additionalData'] : [];
-			$receivedSignature = isset($additionalData['hmacSignature']) && is_string($additionalData['hmacSignature'])
-				? $additionalData['hmacSignature']
-				: null;
+			
+			if (isset($additionalData['hmacSignature']) && is_string($additionalData['hmacSignature'])) {
+				$receivedSignature = $additionalData['hmacSignature'];
+			} else {
+				$receivedSignature = null;
+			}
 			
 			// Bail if none found
 			if (empty($receivedSignature)) {
@@ -146,16 +149,24 @@
 			// The field order is strictly defined by Adyen — do not reorder.
 			// @see https://docs.adyen.com/development-resources/webhooks/verify-hmac-signatures#hmac-signature-calculation
 			$amountArr = is_array($notification['amount'] ?? null) ? $notification['amount'] : [];
-			$signingString = implode(':', [
-				$this->escapeHmacValue(is_string($notification['pspReference'] ?? null) ? $notification['pspReference'] : ''),
-				$this->escapeHmacValue(is_string($notification['originalReference'] ?? null) ? $notification['originalReference'] : ''),
-				$this->escapeHmacValue(is_string($notification['merchantAccountCode'] ?? null) ? $notification['merchantAccountCode'] : ''),
-				$this->escapeHmacValue(is_string($notification['merchantReference'] ?? null) ? $notification['merchantReference'] : ''),
-				$this->escapeHmacValue(is_int($amountArr['value'] ?? null) ? (string)$amountArr['value'] : ''),
-				$this->escapeHmacValue(is_string($amountArr['currency'] ?? null) ? $amountArr['currency'] : ''),
-				$this->escapeHmacValue(is_string($notification['eventCode'] ?? null) ? $notification['eventCode'] : ''),
-				$this->escapeHmacValue(is_string($notification['success'] ?? null) ? $notification['success'] : ''),
-			]);
+			/** @var array<string, mixed> $amountArr */
+			$signingData = $notification + ['amount.value' => $amountArr['value'] ?? null, 'amount.currency' => $amountArr['currency'] ?? null];
+			$signingKeys  = ['pspReference', 'originalReference', 'merchantAccountCode', 'merchantReference', 'amount.value', 'amount.currency', 'eventCode', 'success'];
+			
+			$signingParts = [];
+			foreach ($signingKeys as $key) {
+				$v = $signingData[$key] ?? null;
+				
+				if (is_int($v)) {
+					$signingParts[] = $this->escapeHmacValue((string)$v);
+				} elseif (is_string($v)) {
+					$signingParts[] = $this->escapeHmacValue(($v));
+				} else {
+					$signingParts[] = $this->escapeHmacValue((''));
+				}
+			}
+			
+			$signingString = implode(':', $signingParts);
 			
 			// Build the hashes to compare
 			$binaryKey = pack('H*', $hmacKey);

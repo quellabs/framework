@@ -42,7 +42,7 @@
 		 *
 		 * @see https://docs.buckaroo.io/docs/payment-methods
 		 */
-		private const MODULE_TYPE_MAP = [
+		private const array MODULE_TYPE_MAP = [
 			'bkr_ideal'           => 'ideal',
 			'bkr_creditcard'      => 'creditcard',
 			'bkr_visa'            => 'visa',
@@ -63,7 +63,12 @@
 		];
 		
 		// Methods that require or meaningfully use address/shopper data
-		private const METHODS_REQUIRING_SHOPPER_DATA = ['bkr_klarna', 'bkr_in3', 'bkr_afterpay', 'bkr_billink'];
+		private const array METHODS_REQUIRING_SHOPPER_DATA = [
+			'bkr_klarna',
+			'bkr_in3',
+			'bkr_afterpay',
+			'bkr_billink'
+		];
 		
 		/**
 		 * Returns discovery metadata for this provider, including all supported payment modules.
