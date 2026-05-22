@@ -165,10 +165,10 @@
 		 * @throws PaymentInitiationException
 		 */
 		public function initiate(PaymentRequest $request): InitiateResult {
-			$config = $this->getConfig();
-			$billing = $request->billingAddress;
-			$module = $request->paymentModule;
-			$useAddressData = in_array($module, self::MODULES_REQUIRING_ADDRESS_DATA, true);
+			$config          = $this->getConfig();
+			$billing         = $request->billingAddress;
+			$module          = $request->paymentModule;
+			$useAddressData  = in_array($module, self::MODULES_REQUIRING_ADDRESS_DATA, true);
 			$useShopperEmail = $useAddressData || in_array($module, self::MODULES_REQUIRING_SHOPPER_EMAIL, true);
 			
 			// Build shopperName — only when address data is relevant.
@@ -301,11 +301,11 @@
 			}
 			
 			// Extract the fields needed to build a PaymentState
-			$response = $result['response'] ?? [];
-			$resultCode = isset($response['resultCode']) && is_string($response['resultCode']) ? $response['resultCode'] : 'Unknown';
+			$response     = $result['response'] ?? [];
+			$resultCode   = isset($response['resultCode']) && is_string($response['resultCode']) ? $response['resultCode'] : 'Unknown';
 			$pspReference = isset($response['pspReference']) && is_string($response['pspReference']) ? $response['pspReference'] : null;
-			$currency = is_array($response['amount'] ?? null) && is_string($response['amount']['currency'] ?? null) ? $response['amount']['currency'] : '';
-			$valuePaid = is_array($response['amount'] ?? null) && is_int($response['amount']['value'] ?? null) ? $response['amount']['value'] : 0;
+			$currency     = is_array($response['amount'] ?? null) && is_string($response['amount']['currency'] ?? null) ? $response['amount']['currency'] : '';
+			$valuePaid    = is_array($response['amount'] ?? null) && is_int($response['amount']['value'] ?? null) ? $response['amount']['value'] : 0;
 			
 			// Map Adyen's resultCode to our internal PaymentStatus.
 			// resultCode is the canonical status field for synchronous /payments/details responses.
@@ -454,11 +454,11 @@
 		 * @return PaymentState
 		 */
 		private function buildStateFromWebhook(string $transactionId, array $notification): PaymentState {
-			$eventCode = isset($notification['eventCode']) && is_string($notification['eventCode']) ? $notification['eventCode'] : '';
-			$success = ($notification['success'] ?? '') === 'true';
+			$eventCode    = isset($notification['eventCode']) && is_string($notification['eventCode']) ? $notification['eventCode'] : '';
+			$success      = ($notification['success'] ?? '') === 'true';
 			$pspReference = isset($notification['pspReference']) && is_string($notification['pspReference']) ? $notification['pspReference'] : null;
-			$currency = is_array($notification['amount'] ?? null) && is_string($notification['amount']['currency'] ?? null) ? $notification['amount']['currency'] : '';
-			$value = is_array($notification['amount'] ?? null) && is_int($notification['amount']['value'] ?? null) ? $notification['amount']['value'] : 0;
+			$currency     = is_array($notification['amount'] ?? null) && is_string($notification['amount']['currency'] ?? null) ? $notification['amount']['currency'] : '';
+			$value        = is_array($notification['amount'] ?? null) && is_int($notification['amount']['value'] ?? null) ? $notification['amount']['value'] : 0;
 			
 			// Convert adyen raw state to PaymentStatus
 			$state = match (true) {

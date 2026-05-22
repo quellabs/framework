@@ -165,9 +165,11 @@
 				// merchantReference is your own order/payment reference — the same value passed as
 				// 'reference' during initiate(). Use it as the transactionId so webhook PaymentState
 				// objects are consistent with those produced by the return flow and initiate().
-				$merchantReference = isset($notification['merchantReference']) && is_string($notification['merchantReference'])
-					? $notification['merchantReference']
-					: null;
+				if (isset($notification['merchantReference']) && is_string($notification['merchantReference'])) {
+					$merchantReference = $notification['merchantReference'];
+				} else {
+					$merchantReference = null;
+				}
 				
 				// Ignore if merchantReference is empty or missing
 				if (empty($merchantReference)) {

@@ -138,7 +138,7 @@
 			}
 			
 			// The key is nested: body.Transaction.Key
-			$transaction      = is_array($decoded['Transaction'] ?? null) ? $decoded['Transaction'] : [];
+			$transaction   = is_array($decoded['Transaction'] ?? null) ? $decoded['Transaction'] : [];
 			$transactionId = $transaction['Key'] ?? null;
 			
 			// Some older configurations may also send as form-encoded with brq_transactions
