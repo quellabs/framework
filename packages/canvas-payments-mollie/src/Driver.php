@@ -224,16 +224,27 @@
 				throw new PaymentRefundException(self::DRIVER_NAME, "204", "Invalid resource '{$resource}'");
 			}
 			
+			// Validate content of resource
 			/** @var array<string, mixed> $amount */
-			$amount = $r["amount"] ?? [];
+			$amount           = $r["amount"] ?? [];
+			$refundId         = $this->normalizeString($r["id"] ?? null);
+			$paymentReference = $this->normalizeString($r["paymentId"] ?? null);
+			
+			if ($refundId === '') {
+				throw new PaymentRefundException(self::DRIVER_NAME, "204", "refund id missing from gateway response");
+			}
+			
+			if ($paymentReference === '') {
+				throw new PaymentRefundException(self::DRIVER_NAME, "204", "paymentId missing from gateway response");
+			}
 			
 			// Return the data
 			return new RefundResult(
 				provider: self::DRIVER_NAME,
-				paymentReference: $this->normalizeString($r["paymentId"] ?? null),
-				refundId: $this->normalizeString($r["id"] ?? null),
+				paymentReference: $paymentReference,
+				refundId: $refundId,
 				value: (int)round($this->toFloat($amount["value"] ?? null) * 100),
-				currency: $this->normalizeString($amount["currency"] ?? null)
+				currency: $this->normalizeString($amount["currency"] ?? null) ?: $request->currency
 			);
 		}
 		
