@@ -134,9 +134,6 @@
 				'cancel_return_url'    => '',
 				'webhook_url'          => '',
 				'live_endpoint_prefix' => '',
-				
-				// Used by getPaymentOptions() to filter the /paymentMethods response.
-				// Adyen returns a country-specific method list (e.g. iDEAL only for NL).
 				'default_country'      => 'NL',
 				'default_currency'     => 'EUR',
 			];
@@ -216,11 +213,20 @@
 			// Grab the response
 			$response = $result['response'] ?? [];
 			
+			// Validate response
+			if (!is_string($response['id'] ?? null)) {
+				throw new PaymentInitiationException(self::DRIVER_NAME, 500, "Missing transactionId in response");
+			}
+			
+			if (!is_string($response['url'] ?? null)) {
+				throw new PaymentInitiationException(self::DRIVER_NAME, 500, "Missing url in response");
+			}
+			
 			// Return the result
 			return new InitiateResult(
 				provider: self::DRIVER_NAME,
-				transactionId: is_string($response['id'] ?? null) ? $response['id'] : '',
-				redirectUrl: is_string($response['url'] ?? null) ? $response['url'] : '',
+				transactionId: $response['id'],
+				redirectUrl: $response['url'],
 			);
 		}
 		
@@ -253,9 +259,9 @@
 				}
 				
 				return $this->buildStateFromWebhook($transactionId, $notification);
-			} else {
-				return $this->buildStateFromReturn($transactionId, $extraData);
 			}
+			
+			return $this->buildStateFromReturn($transactionId, $extraData);
 		}
 		
 		/**
@@ -283,7 +289,7 @@
 			
 			// Build the /payments/details payload.
 			$payload = [
-				'details'     => ['redirectResult' => $redirectResult],
+				'details' => ['redirectResult' => $redirectResult],
 			];
 			
 			// Submit to Adyen — this resolves the pending redirect into a final resultCode

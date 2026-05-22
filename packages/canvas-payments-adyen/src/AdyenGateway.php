@@ -4,6 +4,10 @@
 	
 	use Quellabs\Contracts\Gateway\GatewayInterface;
 	use Symfony\Component\HttpClient\HttpClient;
+	use Symfony\Contracts\HttpClient\Exception\ClientExceptionInterface;
+	use Symfony\Contracts\HttpClient\Exception\RedirectionExceptionInterface;
+	use Symfony\Contracts\HttpClient\Exception\ServerExceptionInterface;
+	use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 	use Symfony\Contracts\HttpClient\HttpClientInterface;
 	
 	/**
@@ -131,42 +135,41 @@
 				return false;
 			}
 			
-			// Extract hmacSignature — additionalData is mixed, assert array before indexing
+			// Extract data blow where hmacSignature resides in
 			$additionalData = is_array($notification['additionalData'] ?? null) ? $notification['additionalData'] : [];
 			
-			if (isset($additionalData['hmacSignature']) && is_string($additionalData['hmacSignature'])) {
+			// Validate hmacSignature
+			if (is_string($additionalData['hmacSignature'] ?? null)) {
 				$receivedSignature = $additionalData['hmacSignature'];
 			} else {
 				$receivedSignature = null;
 			}
-			
+
 			// Bail if none found
-			if (empty($receivedSignature)) {
+			if ($receivedSignature === null) {
 				return false;
 			}
 			
 			// Build the signing string from the fixed set of fields Adyen uses.
 			// The field order is strictly defined by Adyen — do not reorder.
 			// @see https://docs.adyen.com/development-resources/webhooks/verify-hmac-signatures#hmac-signature-calculation
-			$amountArr = is_array($notification['amount'] ?? null) ? $notification['amount'] : [];
 			/** @var array<string, mixed> $amountArr */
+			$amountArr = is_array($notification['amount'] ?? null) ? $notification['amount'] : [];
 			$signingData = $notification + ['amount.value' => $amountArr['value'] ?? null, 'amount.currency' => $amountArr['currency'] ?? null];
-			$signingKeys  = ['pspReference', 'originalReference', 'merchantAccountCode', 'merchantReference', 'amount.value', 'amount.currency', 'eventCode', 'success'];
 			
-			$signingParts = [];
-			foreach ($signingKeys as $key) {
-				$v = $signingData[$key] ?? null;
-				
-				if (is_int($v)) {
-					$signingParts[] = $this->escapeHmacValue((string)$v);
-				} elseif (is_string($v)) {
-					$signingParts[] = $this->escapeHmacValue(($v));
-				} else {
-					$signingParts[] = $this->escapeHmacValue((''));
-				}
-			}
-			
-			$signingString = implode(':', $signingParts);
+			$signingString = implode(':', array_map(
+				fn(string $key) => $this->escapeHmacValue(
+					match (true) {
+						is_int($signingData[$key] ?? null) => (string)$signingData[$key],
+						is_string($signingData[$key] ?? null) => $signingData[$key],
+						default => '',
+					}
+				),
+				[
+					'pspReference', 'originalReference', 'merchantAccountCode', 'merchantReference',
+					'amount.value', 'amount.currency', 'eventCode', 'success'
+				],
+			));
 			
 			// Build the hashes to compare
 			$binaryKey = pack('H*', $hmacKey);
@@ -209,15 +212,17 @@
 			}
 			
 			try {
+				// Send request
 				$response = $this->client->request('POST', $this->baseUrl . $endpoint, [
 					'headers' => $headers,
 					'json'    => $payload,
 				]);
 				
+				// Fetch response
 				$statusCode = $response->getStatusCode();
 				$decoded = json_decode($response->getContent(false), true);
 				
-				// Validate json decode succeeded
+				// Validate json decoding succeeded
 				if (json_last_error() !== JSON_ERROR_NONE) {
 					return ['request' => ['result' => 0, 'errorId' => (string)json_last_error(), 'errorMessage' => json_last_error_msg()]];
 				}
@@ -237,9 +242,10 @@
 					return ['request' => ['result' => 0, 'errorId' => $errorCode, 'errorMessage' => $errorMessage]];
 				}
 				
+				// Success result
 				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $decoded];
-			} catch (\Throwable $e) {
-				// Network or HTTP-level failure — the request never reached Adyen or couldn't be read
+			} catch (TransportExceptionInterface|ClientExceptionInterface|RedirectionExceptionInterface|ServerExceptionInterface $e) {
+				// Network-level failure — the request never reached Adyen or the connection was dropped
 				return ['request' => ['result' => 0, 'errorId' => (string)$e->getCode(), 'errorMessage' => $e->getMessage()]];
 			}
 		}
