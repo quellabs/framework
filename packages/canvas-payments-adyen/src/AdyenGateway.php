@@ -46,17 +46,17 @@
 			$config = $driver->getConfig();
 			
 			// Extract information
-			$this->client = HttpClient::create(['timeout' => 10]);
-			$this->apiKey = is_string($config['api_key'] ?? null) ? $config['api_key'] : '';
+			$this->client          = HttpClient::create(['timeout' => 10]);
+			$this->apiKey          = is_string($config['api_key'] ?? null) ? $config['api_key'] : '';
 			$this->merchantAccount = is_string($config['merchant_account'] ?? null) ? $config['merchant_account'] : '';
 			
 			// Live endpoint prefix differs per merchant; for testing the test endpoint is fixed.
 			// In production, you must replace 'YOUR_LIVE_PREFIX' with the prefix from your Customer Area.
 			// @see https://docs.adyen.com/development-resources/live-endpoints
-			if ($config['test_mode'] ?? false) {
+			if ($this->arrayGet($config, 'test_mode', false)) {
 				$this->baseUrl = 'https://checkout-test.adyen.com/' . self::CHECKOUT_VERSION;
 			} else {
-				$livePrefix = is_string($config['live_endpoint_prefix'] ?? null) ? $config['live_endpoint_prefix'] : '';
+				$livePrefix    = is_string($config['live_endpoint_prefix'] ?? null) ? $config['live_endpoint_prefix'] : '';
 				$this->baseUrl = "https://{$livePrefix}-checkout-live.adyenpayments.com/checkout/" . self::CHECKOUT_VERSION;
 			}
 		}
@@ -135,46 +135,39 @@
 				return false;
 			}
 			
-			// Extract data blow where hmacSignature resides in
-			$additionalData = is_array($notification['additionalData'] ?? null) ? $notification['additionalData'] : [];
-			
 			// Validate hmacSignature
-			if (is_string($additionalData['hmacSignature'] ?? null)) {
-				$receivedSignature = $additionalData['hmacSignature'];
-			} else {
-				$receivedSignature = null;
-			}
+			$receivedSignature = $this->arrayGet($notification, 'additionalData.hmacSignature');
 			
-			// Bail if none found
-			if ($receivedSignature === null) {
+			if (!is_string($receivedSignature)) {
 				return false;
 			}
 			
 			// Build the signing string from the fixed set of fields Adyen uses.
 			// The field order is strictly defined by Adyen — do not reorder.
 			// @see https://docs.adyen.com/development-resources/webhooks/verify-hmac-signatures#hmac-signature-calculation
-			$signingData = $notification + [
-					'amount.value'    => is_array($notification['amount'] ?? null) ? ($notification['amount']['value'] ?? null) : null,
-					'amount.currency' => is_array($notification['amount'] ?? null) ? ($notification['amount']['currency'] ?? null) : null,
-				];
-			
 			$signingString = implode(':', array_map(
 				fn(string $key) => $this->escapeHmacValue(
 					match (true) {
-						is_int($signingData[$key] ?? null) => (string)$signingData[$key],
-						is_string($signingData[$key] ?? null) => $signingData[$key],
+						is_int($value = $this->arrayGet($notification, $key)) => (string)$value,
+						is_string($value) => $value,
 						default => '',
 					}
 				),
 				[
-					'pspReference', 'originalReference', 'merchantAccountCode', 'merchantReference',
-					'amount.value', 'amount.currency', 'eventCode', 'success'
+					'pspReference',
+					'originalReference',
+					'merchantAccountCode',
+					'merchantReference',
+					'amount.value',
+					'amount.currency',
+					'eventCode',
+					'success'
 				],
 			));
 			
 			// Build the hashes to compare
-			$binaryKey = pack('H*', $hmacKey);
-			$expectedRaw = hash_hmac('sha256', $signingString, $binaryKey, true);
+			$binaryKey       = pack('H*', $hmacKey);
+			$expectedRaw     = hash_hmac('sha256', $signingString, $binaryKey, true);
 			$expectedEncoded = base64_encode($expectedRaw);
 			
 			// Do the comparison
@@ -221,7 +214,7 @@
 				
 				// Fetch response
 				$statusCode = $response->getStatusCode();
-				$decoded = json_decode($response->getContent(false), true);
+				$decoded    = json_decode($response->getContent(false), true);
 				
 				// Validate json decoding succeeded
 				if (json_last_error() !== JSON_ERROR_NONE) {
@@ -238,8 +231,8 @@
 				// Adyen returns HTTP 4xx/5xx for API-level errors, with a JSON body containing
 				// 'errorCode' and 'message'. A 2xx response always indicates the request was accepted.
 				if ($statusCode >= 400) {
-					$errorCode = is_string($decoded['errorCode'] ?? null) ? $decoded['errorCode'] : (string)$statusCode;
-					$errorMessage = is_string($decoded['message'] ?? null) ? $decoded['message'] : "HTTP {$statusCode}";
+					$errorCode    = (string)$this->arrayGet($decoded, 'errorCode', (string)$statusCode);
+					$errorMessage = (string)$this->arrayGet($decoded, 'message', "HTTP {$statusCode}");
 					return ['request' => ['result' => 0, 'errorId' => $errorCode, 'errorMessage' => $errorMessage]];
 				}
 				
@@ -249,5 +242,27 @@
 				// Network-level failure — the request never reached Adyen or the connection was dropped
 				return ['request' => ['result' => 0, 'errorId' => (string)$e->getCode(), 'errorMessage' => $e->getMessage()]];
 			}
+		}
+		
+		/**
+		 * Safely retrieves a nested value from an array using dot notation.
+		 * @param array<string, mixed> $data
+		 * @param string $path
+		 * @param mixed $default
+		 * @return mixed
+		 */
+		private function arrayGet(array $data, string $path, mixed $default = null): mixed {
+			$segments = explode('.', $path);
+			$current  = $data;
+			
+			foreach ($segments as $segment) {
+				if (!is_array($current) || !array_key_exists($segment, $current)) {
+					return $default;
+				}
+				
+				$current = $current[$segment];
+			}
+			
+			return $current;
 		}
 	}

@@ -5,6 +5,10 @@
 	use Quellabs\Contracts\Gateway\GatewayInterface;
 	use Symfony\Component\HttpClient\HttpClient;
 	use Symfony\Contracts\HttpClient\HttpClientInterface;
+	use Symfony\Contracts\HttpClient\Exception\ClientExceptionInterface;
+	use Symfony\Contracts\HttpClient\Exception\ServerExceptionInterface;
+	use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
+	use Symfony\Contracts\HttpClient\Exception\RedirectionExceptionInterface;
 	
 	/**
 	 * Low-level wrapper around the Buckaroo JSON API (BPE 3.0).
@@ -158,7 +162,10 @@
 					$options['body'] = $body;
 				}
 				
+				// Execute request
 				$response = $this->client->request($method, $url, $options);
+				
+				// Fetch response
 				$httpCode = $response->getStatusCode();
 				$rawBody  = $response->getContent(false);
 				
@@ -167,15 +174,15 @@
 				
 				// If that failed, return error
 				if (json_last_error() !== JSON_ERROR_NONE) {
-					return ['request' => ['result' => 0, 'errorId' => "0", 'errorMessage' => 'Invalid JSON response (HTTP ' . $httpCode . '): ' . json_last_error_msg()]];
+					return ['request' => ['result' => 0, 'errorId' => (string)json_last_error(), 'errorMessage' => json_last_error_msg()]];
 				}
 				
-				// json_decode with assoc=true returns array|null; guard against null (e.g. JSON scalar)
-				/** @var array<string, mixed> $data */
-				$data = is_array($decoded) ? $decoded : [];
+				if (!is_array($decoded)) {
+					return ['request' => ['result' => 0, 'errorId' => "500", 'errorMessage' => "Invalid API response"]];
+				}
 				
 				// RequestErrors indicates a validation/authentication failure
-				$requestErrors = $data['RequestErrors'] ?? null;
+				$requestErrors = $decoded['RequestErrors'] ?? null;
 				
 				if (!empty($requestErrors) && is_array($requestErrors)) {
 					$firstError = reset($requestErrors);
@@ -187,8 +194,8 @@
 					if (is_array($firstError)) {
 						$errorCodeRaw = $firstError['ErrorCode'] ?? $firstError['Code'] ?? 0;
 						$errorMsgRaw  = $firstError['ErrorMessage'] ?? $firstError['Description'] ?? 'Request error';
-						$errorCode    = is_string($errorCodeRaw) ? $errorCodeRaw : (is_int($errorCodeRaw) ? (string)$errorCodeRaw : '0');
-						$errorMsg     = is_string($errorMsgRaw) ? $errorMsgRaw : 'Request error';
+						$errorCode    = $this->normalizeString($errorCodeRaw, '0');
+						$errorMsg     = $this->normalizeString($errorMsgRaw, 'Request error');
 					} else {
 						$errorCode = '0';
 						$errorMsg  = 'Request error';
@@ -202,8 +209,8 @@
 					return ['request' => ['result' => 0, 'errorId' => (string)$httpCode, 'errorMessage' => 'HTTP error ' . $httpCode]];
 				}
 				
-				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $data];
-			} catch (\Throwable $e) {
+				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $decoded];
+			} catch (TransportExceptionInterface|ClientExceptionInterface|RedirectionExceptionInterface|ServerExceptionInterface $e) {
 				return ['request' => ['result' => 0, 'errorId' => (string)$e->getCode(), 'errorMessage' => $e->getMessage()]];
 			}
 		}
@@ -236,5 +243,23 @@
 			// HMAC-SHA256 and base64-encode
 			$hash = base64_encode(hash_hmac('sha256', $signingString, $this->secretKey, true));
 			return 'hmac ' . $this->websiteKey . ':' . $hash . ':' . $nonce . ':' . $timestamp;
+		}
+		
+		/**
+		 * Returns a string value or a default when the input is not a supported scalar.
+		 * @param mixed $value
+		 * @param string $default Value returned when $value cannot be represented as a string
+		 * @return string
+		 */
+		private function normalizeString(mixed $value, string $default = ''): string {
+			if (is_string($value)) {
+				return $value;
+			}
+			
+			if (is_int($value) || is_float($value)) {
+				return (string)$value;
+			}
+			
+			return $default;
 		}
 	}
