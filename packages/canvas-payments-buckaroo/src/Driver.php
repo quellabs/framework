@@ -98,7 +98,17 @@
 		/**
 		 * Returns default configuration values for this provider.
 		 * Merged with loaded config files during discovery — values from config files take precedence.
-		 * @return array<string, mixed>
+		 * @return array{
+		 *     test_mode: bool,
+		 *     website_key: string,
+		 *     secret_key: string,
+		 *     return_url: string,
+		 *     return_url_cancel: string,
+		 *     return_url_error: string,
+		 *     return_url_reject: string,
+		 *     webhook_url: string,
+		 *     default_culture: string
+		 * }
 		 */
 		public function getDefaults(): array {
 			return [
@@ -283,7 +293,7 @@
 			// Fetch the transaction status from Buckaroo
 			$result = $this->getGateway()->getTransactionStatus($transactionId);
 			
-			// If that faild, throw an exception
+			// If that failed, throw an exception
 			if ($result['request']['result'] === 0) {
 				throw new PaymentExchangeException(self::DRIVER_NAME, $result['request']['errorId'], $result['request']['errorMessage']);
 			}
@@ -304,15 +314,28 @@
 			// Map Buckaroo status codes to our internal PaymentStatus enum.
 			// For refund transactions a successful 190 maps to Refunded, not Paid.
 			// @see https://docs.buckaroo.io/docs/integration-status
-			$state = match (true) {
-				$statusCode === 190 && $isRefund => PaymentStatus::Refunded,
-				$statusCode === 190 => PaymentStatus::Paid,
-				in_array($statusCode, [790, 791, 792, 793]) => PaymentStatus::Pending,
-				$statusCode === 890 => PaymentStatus::Canceled,
-				in_array($statusCode, [490, 491, 492]) => PaymentStatus::Failed,
-				$statusCode === 690 => PaymentStatus::Failed,
-				default => PaymentStatus::Pending,
-			};
+			/** @noinspection PhpSwitchCanBeReplacedWithMatchExpressionInspection */
+			switch (true) {
+				case $statusCode === 190 && $isRefund:
+					$state = PaymentStatus::Refunded;
+					break;
+					
+				case $statusCode === 190:
+					$state = PaymentStatus::Paid;
+					break;
+				
+				case $statusCode === 890:
+					$state = PaymentStatus::Canceled;
+					break;
+				
+				case in_array($statusCode, [690, 490, 491, 492]):
+					$state = PaymentStatus::Failed;
+					break;
+				
+				default:
+					$state = PaymentStatus::Pending;
+					break;
+			}
 			
 			// valuePaid is only set when the transaction is actually paid
 			$valuePaid = $state === PaymentStatus::Paid ? $amount : 0;

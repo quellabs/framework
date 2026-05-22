@@ -23,8 +23,11 @@
 	 */
 	class AnnotationReader {
 		
-		protected string $annotationCachePath;
+		/** @var bool Write cache files yes/no */
 		protected bool $useCache;
+		
+		/** @var string Directory to store cache files in */
+		protected string $annotationCachePath;
 		
 		/** @var array<string, mixed> */
 		protected array $configuration;
@@ -34,6 +37,7 @@
 		
 		/**
 		 * AnnotationReader constructor
+		 * @param Configuration $configuration
 		 */
 		public function __construct(Configuration $configuration) {
 			$this->useCache = $configuration->useAnnotationCache();
@@ -281,7 +285,7 @@
 			$decoded = json_decode($fileContents, true);
 			
 			// Check if decoding failed (corrupted data, invalid format, etc.)
-			if (!is_array($decoded)) {
+			if (json_last_error() !== JSON_ERROR_NONE || !is_array($decoded)) {
 				return null;
 			}
 			
