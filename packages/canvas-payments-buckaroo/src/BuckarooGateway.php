@@ -49,9 +49,12 @@
 		public function __construct(Driver $driver) {
 			$config = $driver->getConfig();
 			
+			$websiteKey = $config['website_key'] ?? '';
+			$secretKey  = $config['secret_key'] ?? '';
+			
 			$this->client     = HttpClient::create();
-			$this->websiteKey = $config['website_key'] ?? '';
-			$this->secretKey  = $config['secret_key']  ?? '';
+			$this->websiteKey = is_string($websiteKey) ? $websiteKey : '';
+			$this->secretKey  = is_string($secretKey) ? $secretKey : '';
 			
 			// Buckaroo uses completely separate hostnames for test and live.
 			// @see https://docs.buckaroo.io/docs/integration-testing
@@ -137,10 +140,10 @@
 		 */
 		private function request(string $method, string $path, ?array $payload = null): array {
 			try {
-				$url        = 'https://' . $this->baseHost . $path;
-				$body       = $payload !== null ? (json_encode($payload, JSON_UNESCAPED_UNICODE) ?: '') : '';
-				$nonce      = bin2hex(random_bytes(8));
-				$timestamp  = time();
+				$url       = 'https://' . $this->baseHost . $path;
+				$body      = $payload !== null ? (json_encode($payload, JSON_UNESCAPED_UNICODE) ?: '') : '';
+				$nonce     = bin2hex(random_bytes(8));
+				$timestamp = time();
 				
 				$options = [
 					'headers' => [
@@ -160,23 +163,37 @@
 				$rawBody  = $response->getContent(false);
 				
 				// Decode JSON body
-				$data = json_decode($rawBody, true);
+				$decoded = json_decode($rawBody, true);
 				
 				// If that failed, return error
 				if (json_last_error() !== JSON_ERROR_NONE) {
 					return ['request' => ['result' => 0, 'errorId' => "0", 'errorMessage' => 'Invalid JSON response (HTTP ' . $httpCode . '): ' . json_last_error_msg()]];
 				}
 				
+				// json_decode with assoc=true returns array|null; guard against null (e.g. JSON scalar)
+				/** @var array<string, mixed> $data */
+				$data = is_array($decoded) ? $decoded : [];
+				
 				// RequestErrors indicates a validation/authentication failure
-				if (!empty($data['RequestErrors'])) {
-					$firstError = reset($data['RequestErrors']);
+				$requestErrors = $data['RequestErrors'] ?? null;
+				
+				if (!empty($requestErrors) && is_array($requestErrors)) {
+					$firstError = reset($requestErrors);
 					
 					if (is_array($firstError)) {
 						$firstError = reset($firstError);
 					}
 					
-					$errorCode = $firstError['ErrorCode'] ?? $firstError['Code'] ?? 0;
-					$errorMsg  = $firstError['ErrorMessage'] ?? $firstError['Description'] ?? 'Request error';
+					if (is_array($firstError)) {
+						$errorCodeRaw = $firstError['ErrorCode'] ?? $firstError['Code'] ?? 0;
+						$errorMsgRaw  = $firstError['ErrorMessage'] ?? $firstError['Description'] ?? 'Request error';
+						$errorCode    = is_string($errorCodeRaw) ? $errorCodeRaw : (is_int($errorCodeRaw) ? (string)$errorCodeRaw : '0');
+						$errorMsg     = is_string($errorMsgRaw) ? $errorMsgRaw : 'Request error';
+					} else {
+						$errorCode = '0';
+						$errorMsg  = 'Request error';
+					}
+					
 					return ['request' => ['result' => 0, 'errorId' => $errorCode, 'errorMessage' => $errorMsg]];
 				}
 				
@@ -187,7 +204,7 @@
 				
 				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $data];
 			} catch (\Throwable $e) {
-				return ['request' => ['result' => 0, 'errorId' => $e->getCode(), 'errorMessage' => $e->getMessage()]];
+				return ['request' => ['result' => 0, 'errorId' => (string)$e->getCode(), 'errorMessage' => $e->getMessage()]];
 			}
 		}
 		
@@ -195,11 +212,11 @@
 		 * Builds the HMAC Authorization header value.
 		 * For GET requests (no body), the content hash component is an empty string.
 		 * The URI component is the lowercase URL-encoded form of host+path (no scheme, no query).
-		 * @param string $method   HTTP method (uppercase)
-		 * @param string $path     Path component only (e.g. '/json/Transaction')
-		 * @param string $body     Raw JSON body string (empty string for GET)
-		 * @param string $nonce    Random nonce string
-		 * @param int    $timestamp Unix timestamp
+		 * @param string $method HTTP method (uppercase)
+		 * @param string $path Path component only (e.g. '/json/Transaction')
+		 * @param string $body Raw JSON body string (empty string for GET)
+		 * @param string $nonce Random nonce string
+		 * @param int $timestamp Unix timestamp
 		 * @return string          Full Authorization header value (including 'hmac ' prefix)
 		 */
 		private function buildAuthorizationHeader(string $method, string $path, string $body, string $nonce, int $timestamp): string {

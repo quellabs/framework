@@ -78,14 +78,17 @@
 				// Pending or paid: redirect to the success/thankyou page — the application
 				// layer should show a "payment pending" message for pending states.
 				$config = $this->buckaroo->getConfig();
+				$cancelUrl = is_string($config['return_url_cancel']) ? $config['return_url_cancel'] : '';
+				$errorUrl  = is_string($config['return_url_error'])  ? $config['return_url_error']  : '';
+				$successUrl = is_string($config['return_url'])       ? $config['return_url']        : '';
 				
 				if ($state->state === PaymentStatus::Canceled) {
-					$redirectUrl = $config['return_url_cancel'];
+					$redirectUrl = $cancelUrl;
 				} elseif ($state->state === PaymentStatus::Failed) {
 					// Failed: redirect to the error URL (or fall back to cancel URL)
-					$redirectUrl = $config['return_url_error'] ?: $config['return_url_cancel'];
+					$redirectUrl = $errorUrl ?: $cancelUrl;
 				} else {
-					$redirectUrl = $config['return_url'];
+					$redirectUrl = $successUrl;
 				}
 				
 				return new RedirectResponse($redirectUrl);
@@ -121,7 +124,7 @@
 		 */
 		public function handlePush(Request $request): Response {
 			// Buckaroo pushes JSON; decode the body to extract the transaction key.
-			$body = json_decode($request->getContent(), true);
+			$decoded = json_decode($request->getContent(), true);
 			
 			// Validate json
 			if (json_last_error() !== JSON_ERROR_NONE) {
@@ -129,20 +132,27 @@
 				return new Response('OK', 200, ['Content-Type' => 'text/plain']);
 			}
 			
+			// json_decode with assoc=true returns array|null; guard before nested access
+			/** @var array<string, mixed> $body */
+			$body = is_array($decoded) ? $decoded : [];
+			
 			// The key is nested: body.Transaction.Key
-			$transactionId = $body['Transaction']['Key'] ?? null;
+			$transaction = is_array($body['Transaction'] ?? null) ? $body['Transaction'] : [];
+			$transactionIdRaw = $transaction['Key'] ?? null;
 			
 			// Some older configurations may also send as form-encoded with brq_transactions
-			if (empty($transactionId)) {
-				$transactionId = $request->request->get('brq_transactions') ?? $request->query->get('brq_transactions');
+			if (empty($transactionIdRaw)) {
+				$transactionIdRaw = $request->request->get('brq_transactions') ?? $request->query->get('brq_transactions');
 			}
 			
 			// Return 200 to prevent Buckaroo from retrying a malformed push indefinitely.
 			// Log the issue so it can be investigated.
-			if (empty($transactionId)) {
+			if (empty($transactionIdRaw) || !is_string($transactionIdRaw)) {
 				error_log('Buckaroo push: missing transaction key in payload: ' . $request->getContent());
 				return new Response('OK', 200, ['Content-Type' => 'text/plain']);
 			}
+			
+			$transactionId = $transactionIdRaw;
 			
 			try {
 				// Fetch the authoritative payment state from the Buckaroo API.
