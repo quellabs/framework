@@ -106,12 +106,19 @@
 				return [];
 			}
 			
+			// Ensure the decoded result is an associative array (not a scalar or null)
+			if (!is_array($data)) {
+				return [];
+			}
+			
 			// Validate the existence of an 'extra' section
-			if (empty($data['extra'])) {
+			if (!isset($data['extra']) || !is_array($data['extra'])) {
 				return [];
 			}
 			
 			// Return the extra section
-			return $data['extra'];
+			/** @var array<string, mixed> $extra */
+			$extra = $data['extra'];
+			return $extra;
 		}
 	}

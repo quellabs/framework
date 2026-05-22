@@ -141,10 +141,15 @@
 				return [];
 			}
 			
+			// Narrow from mixed to array before any offset access
+			if (!is_array($data)) {
+				return [];
+			}
+			
 			// Extract the packages array
-			if (isset($data['packages'])) {
+			if (isset($data['packages']) && is_array($data['packages'])) {
 				$packages = $data['packages'];
-			} elseif (is_array($data) && $this->isPackageArray($data)) {
+			} elseif ($this->isPackageArray($data)) {
 				$packages = $data;
 			} else {
 				return [];
@@ -155,10 +160,23 @@
 			$packagesWithoutName = 0;
 			
 			foreach ($packages as $package) {
+				if (!is_array($package)) {
+					continue;
+				}
+				
 				if (!isset($package['name'])) {
 					$packagesWithoutName++;
-				} elseif (!empty($package['extra'])) {
-					$extraMap[$package['name']] = $package['extra'];
+					continue;
+				}
+				
+				if (is_array($package['extra']) && !empty($package['extra'])) {
+					$name = $package['name'];
+					
+					if (is_string($name)) {
+						/** @var array<string, mixed> $extra */
+						$extra = $package['extra'];
+						$extraMap[$name] = $extra;
+					}
 				}
 			}
 			

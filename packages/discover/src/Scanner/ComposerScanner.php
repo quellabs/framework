@@ -73,11 +73,11 @@
 			?LoggerInterface $logger = null,
 			bool             $strictMode = false
 		) {
-			$this->familyName = $familyName;
-			$this->discoverySection = $discoverySection;
+			$this->familyName        = $familyName;
+			$this->discoverySection  = $discoverySection;
 			$this->providerValidator = new ProviderValidator();
-			$this->logger = $logger ?? new NullLogger();
-			$this->strictMode = $strictMode;
+			$this->logger            = $logger ?? new NullLogger();
+			$this->strictMode        = $strictMode;
 		}
 		
 		/**
@@ -90,7 +90,7 @@
 			
 			// Fetch extra data sections from composer.json and composer.lock ("config/discovery-mapping.php")
 			$composerInstalledLoader = new ComposerInstalledLoader();
-			$composerJsonLoader = new ComposerJsonLoader();
+			$composerJsonLoader      = new ComposerJsonLoader();
 			
 			// Discover providers defined within the current project structure
 			$discoveryMapping = array_merge($composerInstalledLoader->getData(), $composerJsonLoader->getData());
@@ -100,6 +100,11 @@
 			$definitions = [];
 			
 			foreach ($discoveryMapping as $extraData) {
+				// Skip non-array entries
+				if (!is_array($extraData)) {
+					continue;
+				}
+				
 				// Check if package has opted into auto-discovery via 'extra.discover' section
 				// This is the standard convention for packages that want their providers discovered
 				if (isset($extraData[$this->discoverySection])) {
@@ -173,8 +178,8 @@
 						$this->handleError(
 							'Invalid provider definition for class: {class}',
 							[
-								'class'   => $providerData['class'],
-								'error'   => $e->getMessage()
+								'class' => $providerData['class'],
+								'error' => $e->getMessage()
 							],
 							$e
 						);
@@ -185,8 +190,8 @@
 					$this->handleError(
 						'Provider validation failed for class: {class}',
 						[
-							'class'   => $providerData['class'],
-							'family'  => $providerData['family']
+							'class'  => $providerData['class'],
+							'family' => $providerData['family']
 						]
 					);
 				}
@@ -205,6 +210,15 @@
 			// Get class name
 			$className = $providerData['class'];
 			
+			// Validate class
+			if (!is_string($className)) {
+				throw new InvalidArgumentException('Provider class name must be a string');
+			}
+			
+			if (!class_exists($className)) {
+				throw new InvalidArgumentException('Provider class does not exist');
+			}
+			
 			// Get metadata and defaults - interface guarantees these methods exist
 			$metadata = $className::getMetadata();
 			
@@ -214,9 +228,12 @@
 				$className
 			);
 			
+			/** @var string $family */
+			$family = $providerData['family'];
+			
 			return new ProviderDefinition(
 				className: $className,
-				family: $providerData['family'],
+				family: $family,
 				configFiles: $configFiles,
 				metadata: $metadata
 			);
@@ -238,7 +255,14 @@
 			$configFiles = is_array($config) ? $config : [$config];
 			
 			// Validate that each config file exists
+			$validatedConfigFiles = [];
+			
 			foreach ($configFiles as $configFile) {
+				if (!is_string($configFile)) {
+					$this->handleError('Config file path must be a string', ['class' => $className]);
+					continue;
+				}
+				
 				if (!file_exists($configFile)) {
 					$this->handleError(
 						'Config file does not exist: {file}',
@@ -247,10 +271,14 @@
 							'class' => $className
 						]
 					);
+					
+					continue;
 				}
+				
+				$validatedConfigFiles[] = $configFile;
 			}
 			
-			return $configFiles;
+			return $validatedConfigFiles;
 		}
 		
 		/**
@@ -289,6 +317,7 @@
 				
 				// Handle array format: multiple providers listed in an array
 				// Format: "family": ["Provider1", "Provider2", ...]
+				/** @var array<string, mixed> $configSection */
 				$multipleProviders = $this->extractMultipleProviders($configSection, $familyName);
 				
 				// Handle object format: single provider with additional configuration
@@ -346,11 +375,19 @@
 				// Handle complex array format: provider with additional configuration
 				// Example: {"class": "App\Providers\RedisProvider", "config": "redis.php"}
 				if (is_array($definition) && isset($definition['class'])) {
+					// Extract and validate class
+					$class = $definition['class'];
+					
+					if (!is_string($class)) {
+						continue;
+					}
+					
 					// Extract and normalize config
 					$config = null;
 					
 					if (isset($definition['config'])) {
 						if (is_array($definition['config'])) {
+							/** @var array<string> $config */
 							$config = $definition['config'];
 						} else {
 							$config = [$definition['config']];
@@ -392,8 +429,10 @@
 			
 			// Normalize separate config to array if it's a string
 			if ($separateConfig !== null && !is_array($separateConfig)) {
-				$separateConfig = [$separateConfig];
+				$separateConfig = is_string($separateConfig) ? [$separateConfig] : null;
 			}
+			
+			/** @var array<string>|null $separateConfig */
 			
 			// Handle simple string format: provider defined as just the class name
 			// Example: "provider" => "App\Providers\RedisProvider"
@@ -409,16 +448,24 @@
 			// Handle complex array format: provider with inline configuration
 			// Example: "provider" => {"class": "App\Providers\RedisProvider", "config": "redis.php"}
 			if (is_array($definition) && isset($definition['class'])) {
+				// Extract and validate class
+				$class = $definition['class'];
+				
+				if (!is_string($class)) {
+					return [];
+				}
+				
 				// Extract inline configuration from provider definition
 				$inlineConfig = $definition['config'] ?? null;
 				
 				// Normalize inline config to array if it's a string
 				if ($inlineConfig !== null && !is_array($inlineConfig)) {
-					$inlineConfig = [$inlineConfig];
+					$inlineConfig = is_string($inlineConfig) ? [$inlineConfig] : null;
 				}
 				
 				// Resolve configuration precedence: inline config takes precedence over separate config
 				// This allows for more specific configuration at the provider level
+				/** @var array<string>|null $inlineConfig */
 				$finalConfig = $inlineConfig ?? $separateConfig;
 				
 				return [[
@@ -460,11 +507,11 @@
 		 */
 		private function formatLogMessage(string $message, array $context): string {
 			$replace = [];
-	
+			
 			foreach ($context as $key => $val) {
 				$replace['{' . $key . '}'] = is_scalar($val) ? (string)$val : json_encode($val);
 			}
-	
+			
 			return strtr($message, $replace);
 		}
 	}
