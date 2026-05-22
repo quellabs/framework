@@ -342,12 +342,16 @@
 		 */
 		protected function truncateString(string $string): string {
 			$maxLength = $this->getConfig('maxStringLength');
+
+			if (!is_int($maxLength) || $maxLength <= 0) {
+				return $string;
+			}
 			
 			if (strlen($string) <= $maxLength) {
 				return $string;
-			} else {
-				return substr($string, 0, $maxLength) . '... [truncated]';
 			}
+			
+			return substr($string, 0, $maxLength) . '... [truncated]';
 		}
 		
 		/**
@@ -356,7 +360,13 @@
 		 * @return bool True if the array should be truncated
 		 */
 		protected function shouldTruncateArray(array $array): bool {
-			return count($array) > $this->getConfig('maxArrayElements');
+			$maxElements = $this->getConfig('maxArrayElements');
+			
+			if (!is_int($maxElements) || $maxElements <= 0) {
+				return false;
+			}
+			
+			return count($array) > $maxElements;
 		}
 		
 		/**
@@ -366,6 +376,11 @@
 		 */
 		protected function getTruncatedArray(array $array): array {
 			$maxElements = $this->getConfig('maxArrayElements');
+			
+			if (!is_int($maxElements) || $maxElements <= 0) {
+				return $array;
+			}
+			
 			return array_slice($array, 0, $maxElements, true);
 		}
 		

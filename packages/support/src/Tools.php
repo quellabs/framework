@@ -24,9 +24,8 @@
 			
 			foreach ($sections as $key) {
 				if (array_key_exists($key, $_SERVER)) {
-					$ipAddresses = array_map(function ($e) {
-						return trim($e);
-					}, explode(',', $_SERVER[$key]));
+					$bucket = isset($_SERVER[$key]) && is_string($_SERVER[$key]) ? $_SERVER[$key] : "";
+					$ipAddresses = array_map(function ($e) { return trim($e); }, explode(',', $bucket));
 					
 					foreach ($ipAddresses as $ip) {
 						if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4 | FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
