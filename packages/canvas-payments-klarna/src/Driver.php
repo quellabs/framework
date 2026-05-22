@@ -13,6 +13,7 @@
 	use Quellabs\Payments\Contracts\PaymentStatus;
 	use Quellabs\Payments\Contracts\RefundRequest;
 	use Quellabs\Payments\Contracts\RefundResult;
+	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Quellabs\Support\Tools;
 	
 	/**
@@ -39,6 +40,8 @@
 	 * @see https://docs.klarna.com/acquirer/klarna/web-payments/integrate-with-klarna-payments/integrate-via-hpp/
 	 */
 	class Driver implements PaymentProviderInterface {
+		
+		use GatewayHelpers;
 		
 		/**
 		 * Driver name
@@ -169,8 +172,8 @@
 			$hppData = $this->createHppSession($kpSessionId);
 			
 			// Extract info from result
-			$redirectUrl = $hppData['redirect_url'] ?? '';
-			$hppSessionId = $hppData['session_id'] ?? '';
+			$redirectUrl = $this->normalizeString($hppData['redirect_url'] ?? '');
+			$hppSessionId = $this->normalizeString($hppData['session_id'] ?? '');
 			
 			// If redirect url is missing, throw
 			if (empty($redirectUrl)) {
@@ -220,8 +223,8 @@
 			}
 			
 			$order = $result['response'] ?? [];
-			$orderStatus = strtoupper($order['status'] ?? '');
-			$fraudStatus = strtoupper($order['fraud_status'] ?? '');
+			$orderStatus = strtoupper($this->normalizeString($order['status'] ?? ''));
+			$fraudStatus = strtoupper($this->normalizeString($order['fraud_status'] ?? ''));
 			
 			// Map Klarna order status to our internal PaymentStatus.
 			// AUTHORIZED means approved but not yet captured (PLACE_ORDER mode).
@@ -249,9 +252,9 @@
 			}
 			
 			// Return the state
-			$capturedAmount = (int)($order['captured_amount'] ?? 0);
-			$refundedAmount = (int)($order['refunded_amount'] ?? 0);
-			$currency = $order['purchase_currency'] ?? '';
+			$capturedAmount = $this->toInt($order['captured_amount'] ?? 0);
+			$refundedAmount = $this->toInt($order['refunded_amount'] ?? 0);
+			$currency = $this->normalizeString($order['purchase_currency'] ?? '');
 			$valuePaid = ($state === PaymentStatus::Paid) ? $capturedAmount : 0;
 			
 			return new PaymentState(
@@ -303,8 +306,8 @@
 				}
 				
 				// Fetch the captured_amount and refunded_amount to calculate the refundable amount
-				$captured = (int)($orderResult['response']['captured_amount'] ?? 0);
-				$alreadyRefunded = (int)($orderResult['response']['refunded_amount'] ?? 0);
+				$captured = $this->toInt($orderResult['response']['captured_amount'] ?? 0);
+				$alreadyRefunded = $this->toInt($orderResult['response']['refunded_amount'] ?? 0);
 				$refundAmount = $captured - $alreadyRefunded;
 				
 				// If no refundable amount remains, throw
@@ -343,7 +346,7 @@
 			// Klarna's refund response body is empty (201 Created with no body).
 			// The refund_id may be available in the Location header, but Symfony HttpClient
 			// normalises the response body only. We fall back to the idempotency key.
-			$refundId = (string)($result['response']['refund_id'] ?? $idempotencyKey);
+			$refundId = $this->normalizeString($result['response']['refund_id'] ?? $idempotencyKey);
 			
 			return new RefundResult(
 				provider: self::DRIVER_NAME,
@@ -416,7 +419,7 @@
 			}
 			
 			// Fetch the session_id from the result
-			$sessionId = $result['response']['session_id'] ?? '';
+			$sessionId = $this->normalizeString($result['response']['session_id'] ?? '');
 			
 			// If it's not there, throw exception
 			if (empty($sessionId)) {
@@ -440,8 +443,8 @@
 			
 			// Build payload
 			$baseUrl = $this->getGateway()->getBaseUrl();
-			$successUrl = $config['return_url'];
-			$cancelUrl = $config['cancel_return_url'];
+			$successUrl = $this->normalizeString($config['return_url'] ?? '');
+			$cancelUrl = $this->normalizeString($config['cancel_return_url'] ?? '');
 			
 			$payload = [
 				// Link this HPP session to the KP session we just created.

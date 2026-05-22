@@ -3,6 +3,7 @@
 	namespace Quellabs\Payments\Klarna;
 	
 	use Quellabs\Canvas\Annotations\Route;
+	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Quellabs\Payments\Contracts\PaymentExchangeException;
 	use Quellabs\SignalHub\Signal;
 	use Symfony\Component\HttpFoundation\RedirectResponse;
@@ -34,6 +35,8 @@
 	 *   the authoritative state always comes from the Order Management API.
 	 */
 	class KlarnaController {
+		
+		use GatewayHelpers;
 		
 		/**
 		 * Klarna driver instance used to resolve payment state.
@@ -88,7 +91,7 @@
 			// authoritative order to look up yet (Klarna creates the order only on
 			// successful authorization).
 			if (empty($orderId)) {
-				return new RedirectResponse($config['cancel_return_url']);
+				return new RedirectResponse($this->normalizeString($config['cancel_return_url']));
 			}
 			
 			// Fetch authoritative payment state from the Order Management API.
@@ -107,7 +110,7 @@
 			// Route based on the presence of an order_id. If we got this far, the
 			// consumer completed the Klarna flow — direct them to the success page.
 			// The signal listener will handle any order state updates asynchronously.
-			return new RedirectResponse($config['return_url']);
+			return new RedirectResponse($this->normalizeString($config['return_url']));
 		}
 		
 		/**
@@ -146,8 +149,8 @@
 			
 			// Only COMPLETED sessions carry an order_id and are worth acting on.
 			// DISABLED, EXPIRED, and ERROR are terminal without an order to exchange.
-			$status = strtoupper($body['status'] ?? '');
-			$orderId = $body['order_id'] ?? '';
+			$status = strtoupper($this->normalizeString($body['status'] ?? ''));
+			$orderId = $this->normalizeString($body['order_id'] ?? '');
 			
 			if ($status !== 'COMPLETED' || empty($orderId)) {
 				// Acknowledge the notification so Klarna doesn't retry.

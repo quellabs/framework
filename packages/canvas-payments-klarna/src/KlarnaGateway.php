@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\Payments\Klarna;
 	
+	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Quellabs\Contracts\Gateway\GatewayInterface;
 	use Symfony\Component\HttpClient\HttpClient;
 	use Symfony\Contracts\HttpClient\HttpClientInterface;
@@ -40,6 +41,8 @@
 	 */
 	class KlarnaGateway {
 		
+		use GatewayHelpers;
+		
 		/** @var string Production base URL */
 		private const string BASE_URL_LIVE = 'https://api.klarna.com';
 		
@@ -67,7 +70,7 @@
 			$this->baseUrl = !empty($config['test_mode']) ? self::BASE_URL_SANDBOX : self::BASE_URL_LIVE;
 			
 			// Pre-encode the Basic Auth credential to avoid re-encoding on every request.
-			$this->basicAuth = base64_encode($config['api_username'] . ':' . $config['api_password']);
+			$this->basicAuth = base64_encode($this->normalizeString($config['api_username']) . ':' . $this->normalizeString($config['api_password']));
 			
 			// Instantiate a shared Symfony HTTP client for all requests.
 			$this->client = HttpClient::create();
@@ -264,6 +267,7 @@
 				
 				// Decode the JSON result
 				$body = json_decode($rawBody, true);
+				$body = is_array($body) ? $body : null;
 				
 				// If that failed, return an error
 				if (json_last_error() !== JSON_ERROR_NONE) {
@@ -277,7 +281,7 @@
 				}
 				
 				// Return response
-				return ['request'  => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $body ?? []];
+				return ['request'  => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => is_array($body) ? $body : []];
 			} catch (\Throwable $e) {
 				// Network errors, timeouts, and DNS failures land here.
 				return [
@@ -292,7 +296,7 @@
 		 * Klarna uses: { "error_code": "...", "error_messages": ["..."], "correlation_id": "..." }
 		 * Some endpoints use: { "error_code": "...", "error_message": "..." }
 		 *
-		 * @param array<string, mixed>|null $body Decoded JSON body, or null if the body was empty
+		 * @param array<mixed, mixed>|null $body Decoded JSON body, or null if the body was empty
 		 * @param int $statusCode HTTP status code, used as fallback
 		 * @return string Human-readable error message
 		 */
@@ -304,10 +308,16 @@
 			
 			// Prefer the array of error messages (Order Management API style).
 			if (!empty($body['error_messages']) && is_array($body['error_messages'])) {
-				$msg = implode('; ', $body['error_messages']);
+				$parts = [];
+				
+				foreach ($body['error_messages'] as $entry) {
+					$parts[] = $this->normalizeString($entry);
+				}
+				
+				$msg = implode('; ', $parts);
 				
 				if (!empty($body['error_code'])) {
-					$msg = $body['error_code'] . ': ' . $msg;
+					$msg = $this->normalizeString($body['error_code']) . ': ' . $msg;
 				}
 				
 				return $msg;
@@ -315,10 +325,10 @@
 			
 			// Fall back to singular error_message field (some endpoints use this).
 			if (!empty($body['error_message'])) {
-				$msg = $body['error_message'];
+				$msg = $this->normalizeString($body['error_message']);
 				
 				if (!empty($body['error_code'])) {
-					$msg = $body['error_code'] . ': ' . $msg;
+					$msg = $this->normalizeString($body['error_code']) . ': ' . $msg;
 				}
 				
 				return $msg;
