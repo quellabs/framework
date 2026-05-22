@@ -3,7 +3,6 @@
 	namespace Quellabs\Payments\Contracts;
 	
 	use Quellabs\Contracts\Discovery\ProviderInterface;
-	use Symfony\Component\HttpFoundation\Response;
 	
 	/**
 	 * Common interface for payment provider implementations.
@@ -24,7 +23,7 @@
 		/**
 		 * Returns all refunds issued for the given transaction.
 		 * @param string $paymentReference
-		 * @return array<string, mixed>
+		 * @return array<int, RefundResult>
 		 */
 		public function getRefunds(string $paymentReference): array;
 

@@ -20,6 +20,11 @@
 	/**
 	 * Mollie driver
 	 * @phpstan-import-type IssuerOption from PaymentInterface
+	 * @phpstan-type RefundData array{
+	 *     id: string,
+	 *     paymentId: string,
+	 *     amount: array{value: string, currency: string}
+	 * }
 	 */
 	class Driver implements PaymentProviderInterface {
 		
@@ -316,7 +321,7 @@
 		 * Returns all refunds for a given transaction
 		 * @param string $paymentReference In Mollie's payment model there is no separate capture step,
 		 *                                 so this is the payment transaction ID (e.g. tr_7UhSN1zuXS).
-		 * @return array<RefundResult>
+		 * @return array<int, RefundResult>
 		 * @throws PaymentRefundException
 		 */
 		public function getRefunds(string $paymentReference): array {
@@ -329,26 +334,22 @@
 			}
 			
 			// Map each refund to a RefundResult
-			$refunds = [];
-			
-			/** @var array<string, mixed> $responseData */
+			/** @var array<int, RefundData> $responseData */
 			$responseData = $response["response"] ?? [];
 			
-			foreach ($responseData as $refund) {
-				/** @var array<string, mixed> $refund */
-				/** @var array<string, mixed> $refundAmount */
-				$refundAmount = is_array($refund["amount"] ?? null) ? $refund["amount"] : [];
-				
-				$refunds[] = new RefundResult(
-					provider: self::DRIVER_NAME,
-					paymentReference: $paymentReference,
-					refundId: $this->normalizeString($refund["id"] ?? null),
-					value: (int)round($this->toFloat($refundAmount["value"] ?? null) * 100),
-					currency: $this->normalizeString($refundAmount["currency"] ?? null),
-				);
-			}
-			
-			return $refunds;
+			return array_map(
+			/** @param RefundData $refund */
+				function (array $refund) use ($paymentReference): RefundResult {
+					return new RefundResult(
+						provider: self::DRIVER_NAME,
+						paymentReference: $paymentReference,
+						refundId: $refund["id"],
+						value: (int)round((float)$refund["amount"]["value"] * 100),
+						currency: $refund["amount"]["currency"],
+					);
+				},
+				$responseData
+			);
 		}
 		
 		/**
