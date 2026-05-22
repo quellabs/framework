@@ -123,8 +123,18 @@
 					);
 				}
 
-				// Get the signal
-				$signal = $property->getValue($object);
+				// Get the signal — getValue() returns mixed, so narrow the type explicitly.
+				// The property cache only includes Signal-typed properties, so this instanceof
+				// check should never fail in practice; it exists to satisfy static analysis.
+				$value = $property->getValue($object);
+
+				if (!$value instanceof Signal) {
+					throw new \RuntimeException(
+						sprintf('Signal property "%s::$%s" does not contain a Signal instance', $class, $propertyName)
+					);
+				}
+
+				$signal = $value;
 
 				// Use the signal's own name if set, otherwise fall back to the property name
 				$key = $signal->getName() ?? $propertyName;
