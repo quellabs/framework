@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\Payments\Klarna;
 	
+	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Quellabs\Contracts\Gateway\GatewayInterface;
 	use Symfony\Component\HttpClient\HttpClient;
 	use Symfony\Contracts\HttpClient\HttpClientInterface;
@@ -40,6 +41,8 @@
 	 */
 	class KlarnaGateway {
 		
+		use GatewayHelpers;
+		
 		/** @var string Production base URL */
 		private const string BASE_URL_LIVE = 'https://api.klarna.com';
 		
@@ -67,7 +70,7 @@
 			$this->baseUrl = !empty($config['test_mode']) ? self::BASE_URL_SANDBOX : self::BASE_URL_LIVE;
 			
 			// Pre-encode the Basic Auth credential to avoid re-encoding on every request.
-			$this->basicAuth = base64_encode($config['api_username'] . ':' . $config['api_password']);
+			$this->basicAuth = base64_encode($this->normalizeString($config['api_username']) . ':' . $this->normalizeString($config['api_password']));
 			
 			// Instantiate a shared Symfony HTTP client for all requests.
 			$this->client = HttpClient::create();
@@ -264,6 +267,7 @@
 				
 				// Decode the JSON result
 				$body = json_decode($rawBody, true);
+				$body = is_array($body) ? $body : null;
 				
 				// If that failed, return an error
 				if (json_last_error() !== JSON_ERROR_NONE) {
@@ -277,7 +281,7 @@
 				}
 				
 				// Return response
-				return ['request'  => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $body ?? []];
+				return ['request'  => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => is_array($body) ? $body : []];
 			} catch (\Throwable $e) {
 				// Network errors, timeouts, and DNS failures land here.
 				return [
@@ -289,41 +293,47 @@
 		/**
 		 * Extracts the most useful error message from a Klarna API error body.
 		 *
-		 * Klarna uses: { "error_code": "...", "error_messages": ["..."], "correlation_id": "..." }
-		 * Some endpoints use: { "error_code": "...", "error_message": "..." }
+		 * Klarna uses:
+		 *   { "error_code": "...", "error_messages": ["..."] }
 		 *
-		 * @param array<string, mixed>|null $body Decoded JSON body, or null if the body was empty
-		 * @param int $statusCode HTTP status code, used as fallback
-		 * @return string Human-readable error message
+		 * Some endpoints use:
+		 *   { "error_code": "...", "error_message": "..." }
+		 *
+		 * @param array<mixed, mixed>|null $body Decoded JSON body, or null if empty
+		 * @param int $statusCode
+		 * @return string
 		 */
 		private function extractErrorMessage(?array $body, int $statusCode): string {
-			// No body passed. Return statuscode.
+			// No response body available. Fall back to the HTTP status code.
 			if ($body === null) {
 				return "HTTP {$statusCode}";
 			}
 			
-			// Prefer the array of error messages (Order Management API style).
+			// Prefer the array of error messages used by most Klarna APIs.
+			$message = null;
+			
 			if (!empty($body['error_messages']) && is_array($body['error_messages'])) {
-				$msg = implode('; ', $body['error_messages']);
-				
-				if (!empty($body['error_code'])) {
-					$msg = $body['error_code'] . ': ' . $msg;
-				}
-				
-				return $msg;
+				$message = implode(
+					'; ',
+					array_map([$this, 'normalizeString'], $body['error_messages'])
+				);
 			}
 			
-			// Fall back to singular error_message field (some endpoints use this).
-			if (!empty($body['error_message'])) {
-				$msg = $body['error_message'];
-				
-				if (!empty($body['error_code'])) {
-					$msg = $body['error_code'] . ': ' . $msg;
-				}
-				
-				return $msg;
+			// Fall back to a single error_message field used by some endpoints.
+			elseif (!empty($body['error_message'])) {
+				$message = $this->normalizeString($body['error_message']);
 			}
 			
-			return "HTTP {$statusCode}";
+			// No usable message found. Fall back to the HTTP status code.
+			if ($message === null || $message === '') {
+				return "HTTP {$statusCode}";
+			}
+			
+			// Prefix the message with the Klarna error code when available.
+			if (!empty($body['error_code'])) {
+				return $this->normalizeString($body['error_code']) . ': ' . $message;
+			}
+			
+			return $message;
 		}
 	}
