@@ -19,6 +19,16 @@
 	use Quellabs\Shipments\Packing\PackingResult;
 	use Quellabs\Shipments\Packing\PackingService;
 	
+	/**
+	 * @phpstan-type BoxConfig array{
+	 *     reference: string,
+	 *     width: int,
+	 *     length: int,
+	 *     depth: int,
+	 *     empty_weight: int,
+	 *     max_weight: int
+	 * }
+	 */
 	class ShipmentRouter implements ShipmentInterface {
 		
 		/** @var array<string, class-string<ShipmentProviderInterface>> */
@@ -58,13 +68,17 @@
 				$metadata = $class::getMetadata();
 				
 				// Skip providers that declare no modules — nothing to route to
-				if (empty($metadata['modules'])) {
+				if (empty($metadata['modules']) || !is_array($metadata['modules'])) {
 					continue;
 				}
 				
 				// Register each module name, guarding against duplicate registrations
 				// across different provider packages
 				foreach ($metadata['modules'] as $module) {
+					if (!is_string($module)) {
+						continue;
+					}
+					
 					if (isset($this->moduleMap[$module])) {
 						throw new \RuntimeException("Duplicate shipping module '{$module}' registered by {$class} and {$this->moduleMap[$module]}");
 					}
@@ -74,7 +88,7 @@
 				
 				// Register the driver name if provided, allowing exchange() to be called
 				// with a stable driver name instead of a module name.
-				if (!empty($metadata['driver'])) {
+				if (!empty($metadata['driver']) && is_string($metadata['driver'])) {
 					$this->driverMap[$metadata['driver']] = $class;
 				}
 			}
@@ -235,43 +249,84 @@
 			// Load the packing configuration file via the config provider
 			$config = $configProvider->loadConfigFile('shipment_packing.php');
 			
-			// Read the optional global weight ceiling; 0 means rely on per-box limits only
-			$this->maxWeightPerBox = $config->getAs('max_weight_per_box', 'int', 0);
+			// Read the optional global weight ceiling; 0 means rely on per-box limits only.
+			// get() is used instead of getAs() because getAs() returns mixed at the PHP level
+			// regardless of its @phpstan-overload annotations, which PHPStan does not recognise.
+			// Passing a typed default lets PHPStan infer the return type via the @template T on get().
+			$maxWeight             = $config->get('max_weight_per_box', 0);
+			$this->maxWeightPerBox = is_int($maxWeight) ? $maxWeight : 0;
 			
 			// Read the list of box definitions; default to empty so pack() throws a clear error
-			$boxes = $config->getAs('boxes', 'array', []);
+			/** @var array<mixed> $defaultBoxes */
+			$defaultBoxes = [];
+			$boxes        = $config->get('boxes', $defaultBoxes);
+			
+			if (!is_array($boxes)) {
+				return;
+			}
 			
 			foreach ($boxes as $index => $box) {
-				// Verify all required keys are present before attempting to use them
-				$missing = array_diff(
-					['reference', 'width', 'length', 'depth', 'empty_weight', 'max_weight'],
-					array_keys($box)
-				);
-				
-				if (!empty($missing)) {
-					throw new \RuntimeException(
-						"shipment_packing.php: box at index {$index} is missing required keys: " . implode(', ', $missing)
-					);
+				if (!is_array($box)) {
+					continue;
 				}
 				
-				// Cast dimensions once so we don't repeat the cast at every named argument
-				$width = (int)$box['width'];
-				$length = (int)$box['length'];
-				$depth = (int)$box['depth'];
+				$b = $this->validateBoxConfig($box, $index);
 				
 				// Outer and inner dimensions are identical — we do box-level packing only,
 				// not pallet-level stacking, so no wall thickness needs to be subtracted
 				$this->packingBoxCatalog[] = new PackingBox(
-					reference: $box['reference'],
-					outerWidth: $width,
-					outerLength: $length,
-					outerDepth: $depth,
-					emptyWeight: (int)$box['empty_weight'],
-					innerWidth: $width,
-					innerLength: $length,
-					innerDepth: $depth,
-					maxWeight: (int)$box['max_weight'],
+					reference: $b['reference'],
+					outerWidth: $b['width'],
+					outerLength: $b['length'],
+					outerDepth: $b['depth'],
+					emptyWeight: $b['empty_weight'],
+					innerWidth: $b['width'],
+					innerLength: $b['length'],
+					innerDepth: $b['depth'],
+					maxWeight: $b['max_weight'],
 				);
 			}
+		}
+		
+		/**
+		 * Validates and extracts typed fields from a raw box config entry.
+		 * Throws if any field is missing or has the wrong type.
+		 * @param array<mixed> $box
+		 * @param int|string $index
+		 * @return BoxConfig
+		 */
+		private function validateBoxConfig(array $box, int|string $index): array {
+			/** @var array<string, 'string'|'int'> $fields */
+			$fields = [
+				'reference'    => 'string',
+				'width'        => 'int',
+				'length'       => 'int',
+				'depth'        => 'int',
+				'empty_weight' => 'int',
+				'max_weight'   => 'int',
+			];
+			
+			$result = [];
+			
+			foreach ($fields as $key => $type) {
+				if (!array_key_exists($key, $box)) {
+					throw new \RuntimeException("shipment_packing.php: box at index {$index} is missing required key '{$key}'");
+				}
+				
+				$value = $box[$key];
+				
+				if ($type === 'int' && !is_int($value)) {
+					throw new \RuntimeException("shipment_packing.php: box at index {$index}: '{$key}' must be an integer");
+				}
+				
+				if ($type === 'string' && !is_string($value)) {
+					throw new \RuntimeException("shipment_packing.php: box at index {$index}: '{$key}' must be a string");
+				}
+				
+				$result[$key] = $value;
+			}
+			
+			/** @var BoxConfig $result */
+			return $result;
 		}
 	}
