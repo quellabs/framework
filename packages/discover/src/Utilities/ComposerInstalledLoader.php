@@ -164,20 +164,16 @@
 					continue;
 				}
 				
-				if (!isset($package['name'])) {
+				if (!is_string($package['name'] ?? null)) {
 					$packagesWithoutName++;
 					continue;
 				}
 				
-				if (is_array($package['extra']) && !empty($package['extra'])) {
-					$name = $package['name'];
-					
-					if (is_string($name)) {
-						/** @var array<string, mixed> $extra */
-						$extra = $package['extra'];
-						$extraMap[$name] = $extra;
-					}
+				if (!is_array($package['extra']) || empty($package['extra'])) {
+					continue;
 				}
+				
+				$extraMap[$package['name']] = $package['extra'];
 			}
 			
 			if ($packagesWithoutName > 0) {
