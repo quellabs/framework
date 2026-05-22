@@ -7,6 +7,11 @@
 	 * the calling context and applying namespace resolution rules similar to how
 	 * PHP itself resolves class names at runtime.
 	 *
+	 * @phpstan-type EnhancedImports array{
+	 *     direct: array<string, string>,
+	 *     namespaces: array<string, string>
+	 * }
+	 *
 	 * @phpstan-import-type CallingContext from ContextResolver
 	 */
 	class NamespaceResolver {
@@ -26,7 +31,7 @@
 		/**
 		 * Cache for enhanced imports to avoid reprocessing use statements
 		 * Key: fully qualified class name -> enhanced import data structure
-		 * @var array<string, array<string, mixed>>
+		 * @var array<string, EnhancedImports>
 		 */
 		private static array $enhancedImportsCache = [];
 		
@@ -98,9 +103,9 @@
 		 * @return void
 		 */
 		public static function clearCache(): void {
-			self::$resolutionCache = [];
+			self::$resolutionCache       = [];
 			self::$resolutionCacheAccess = [];
-			self::$enhancedImportsCache = [];
+			self::$enhancedImportsCache  = [];
 		}
 		
 		/**
@@ -108,7 +113,7 @@
 		 * This follows PHP's actual resolution order to ensure consistent behavior
 		 * with how PHP itself would resolve the class name at runtime.
 		 * @param string $className The class name to resolve
-		 * @param array<string, mixed> $importsEnhanced Enhanced import data structure with direct mappings
+		 * @param EnhancedImports $importsEnhanced Enhanced import data structure with direct mappings
 		 * @param \ReflectionClass<object> $reflection Reflection of the calling class for namespace context
 		 * @return string The resolved class name, or original if no resolution found
 		 */
@@ -141,7 +146,7 @@
 			// Example: 'Helper' in namespace 'App\Utils' → 'App\Utils\Helper'
 			if (!$isQualified) {
 				$namespaceMatch = self::resolveWithCurrentNamespace($className, $reflection);
-
+				
 				if ($namespaceMatch !== null) {
 					return $namespaceMatch;
 				}
@@ -157,7 +162,7 @@
 		 * Handles simple cases where the class name exactly matches a use statement alias.
 		 * This is the most common and highest precedence resolution case.
 		 * @param string $className The class name to resolve (should be simple name, no backslashes)
-		 * @param array<string, mixed> $importsEnhanced Enhanced imports array with 'direct' key containing alias->FQCN mappings
+		 * @param EnhancedImports $importsEnhanced Enhanced imports array with 'direct' key containing alias->FQCN mappings
 		 * @return string|null The resolved FQCN if found, null if no direct match
 		 */
 		private static function resolveDirectImport(string $className, array $importsEnhanced): ?string {
@@ -171,7 +176,7 @@
 		 * 1. A namespace import: use App\Models; → Models\User becomes App\Models\User
 		 * 2. A class alias used as namespace prefix (technically invalid PHP, but we check anyway)
 		 * @param string $className The qualified class name to resolve (contains backslashes)
-		 * @param array<string, mixed> $importsEnhanced Enhanced imports array with direct and namespace mappings
+		 * @param EnhancedImports $importsEnhanced Enhanced imports array with direct and namespace mappings
 		 * @return string|null The resolved FQCN if found, null otherwise
 		 */
 		private static function resolveQualifiedName(string $className, array $importsEnhanced): ?string {
@@ -182,7 +187,7 @@
 			}
 			
 			$firstSegment = substr($className, 0, $separatorPos);
-			$remainder = substr($className, $separatorPos + 1);
+			$remainder    = substr($className, $separatorPos + 1);
 			
 			// Strategy 1: Check if first segment matches a namespace import
 			if (isset($importsEnhanced['namespaces'][$firstSegment])) {
@@ -259,13 +264,18 @@
 				$context = ContextResolver::getCallingContext();
 				
 				// Ensure we have valid context with a class name
-				if ($context === null || $context['class'] === null) {
+				if ($context === null || !isset($context['class']) || !is_string($context['class'])) {
+					return null;
+				}
+				
+				// Extract and validate class
+				$className = $context['class'];
+				
+				if (!class_exists($className)) {
 					return null;
 				}
 				
 				// Create reflection from the calling class
-				/** @var class-string $className */
-				$className = $context['class'];
 				return new \ReflectionClass($className);
 			} catch (\ReflectionException $e) {
 				// Log the error for debugging but don't expose it to caller
@@ -277,9 +287,9 @@
 		
 		/**
 		 * Retrieves and processes the use statements for a given class, caching
-		 * the results to avoid expensive re-parsing on repeated calls.
+		 * the results to avoid expensive reparsing on repeated calls.
 		 * @param \ReflectionClass<object> $reflection The class to get imports for
-		 * @return array<string, mixed> Enhanced import data structure with direct and namespace mappings
+		 * @return EnhancedImports Enhanced import data structure with direct and namespace mappings
 		 */
 		private static function getEnhancedImports(\ReflectionClass $reflection): array {
 			// Fetch class name from reflection class
@@ -287,7 +297,9 @@
 			
 			// Check if we've already processed imports for this class
 			if (isset(self::$enhancedImportsCache[$className])) {
-				return self::$enhancedImportsCache[$className];
+				/** @var EnhancedImports $cached */
+				$cached = self::$enhancedImportsCache[$className];
+				return $cached;
 			}
 			
 			// Parse use statements from the source file
@@ -315,7 +327,7 @@
 		 * Converts raw import data from UseStatementParser into optimized data structures
 		 * that enable fast lookups during resolution. Separates class imports from namespace imports.
 		 * @param array<string, string> $imports Raw imports array from UseStatementParser (alias => FQCN)
-		 * @return array<string, mixed> Enhanced structure with 'direct' and 'namespaces' keys.
+		 * @return EnhancedImports Enhanced structure with 'direct' and 'namespaces' keys.
 		 */
 		private static function enhanceImports(array $imports): array {
 			$result = [
@@ -332,7 +344,7 @@
 				// Store direct mapping for alias resolution
 				$result['direct'][$alias] = $fqcn;
 				
-				// Detect namespace imports by checking if the alias matches the last segment
+				// Detect namespace imports by checking if the alias matches the last segmentc
 				// Example: 'use App\Models;' creates alias 'Models' -> 'App\Models'
 				// Example: 'use App\Models as M;' creates alias 'M' -> 'App\Models'
 				$lastSegment = self::getLastSegment($fqcn);
@@ -396,7 +408,7 @@
 			}
 			
 			// Store the result with access tracking
-			self::$resolutionCache[$cacheKey] = $result;
+			self::$resolutionCache[$cacheKey]       = $result;
 			self::$resolutionCacheAccess[$cacheKey] = microtime(true);
 			
 			return $result;
