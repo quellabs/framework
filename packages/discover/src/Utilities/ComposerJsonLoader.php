@@ -13,7 +13,7 @@
 	class ComposerJsonLoader {
 		
 		/**
-		 * @var array<string, mixed>|null Cached composer.json data
+		 * @var array<string, array<string, mixed>>|null Cached composer.json data
 		 */
 		private ?array $composerJsonCache = null;
 		
@@ -33,7 +33,7 @@
 		/**
 		 * Parse and return composer.json data with caching
 		 * @param string|null $startDirectory Directory to start searching from (defaults to current directory)
-		 * @return array<string, mixed> Parsed composer.json data or null on failure
+		 * @return array<string, array<string, mixed>> Parsed composer.json data or null on failure
 		 */
 		public function getData(?string $startDirectory = null): array {
 			// Return cached result if available
