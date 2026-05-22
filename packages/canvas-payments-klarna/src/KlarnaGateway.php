@@ -293,47 +293,47 @@
 		/**
 		 * Extracts the most useful error message from a Klarna API error body.
 		 *
-		 * Klarna uses: { "error_code": "...", "error_messages": ["..."], "correlation_id": "..." }
-		 * Some endpoints use: { "error_code": "...", "error_message": "..." }
+		 * Klarna uses:
+		 *   { "error_code": "...", "error_messages": ["..."] }
 		 *
-		 * @param array<mixed, mixed>|null $body Decoded JSON body, or null if the body was empty
-		 * @param int $statusCode HTTP status code, used as fallback
-		 * @return string Human-readable error message
+		 * Some endpoints use:
+		 *   { "error_code": "...", "error_message": "..." }
+		 *
+		 * @param array<mixed, mixed>|null $body Decoded JSON body, or null if empty
+		 * @param int $statusCode
+		 * @return string
 		 */
 		private function extractErrorMessage(?array $body, int $statusCode): string {
-			// No body passed. Return statuscode.
+			// No response body available. Fall back to the HTTP status code.
 			if ($body === null) {
 				return "HTTP {$statusCode}";
 			}
 			
-			// Prefer the array of error messages (Order Management API style).
+			// Prefer the array of error messages used by most Klarna APIs.
+			$message = null;
+			
 			if (!empty($body['error_messages']) && is_array($body['error_messages'])) {
-				$parts = [];
-				
-				foreach ($body['error_messages'] as $entry) {
-					$parts[] = $this->normalizeString($entry);
-				}
-				
-				$msg = implode('; ', $parts);
-				
-				if (!empty($body['error_code'])) {
-					$msg = $this->normalizeString($body['error_code']) . ': ' . $msg;
-				}
-				
-				return $msg;
+				$message = implode(
+					'; ',
+					array_map([$this, 'normalizeString'], $body['error_messages'])
+				);
 			}
 			
-			// Fall back to singular error_message field (some endpoints use this).
-			if (!empty($body['error_message'])) {
-				$msg = $this->normalizeString($body['error_message']);
-				
-				if (!empty($body['error_code'])) {
-					$msg = $this->normalizeString($body['error_code']) . ': ' . $msg;
-				}
-				
-				return $msg;
+			// Fall back to a single error_message field used by some endpoints.
+			elseif (!empty($body['error_message'])) {
+				$message = $this->normalizeString($body['error_message']);
 			}
 			
-			return "HTTP {$statusCode}";
+			// No usable message found. Fall back to the HTTP status code.
+			if ($message === null || $message === '') {
+				return "HTTP {$statusCode}";
+			}
+			
+			// Prefix the message with the Klarna error code when available.
+			if (!empty($body['error_code'])) {
+				return $this->normalizeString($body['error_code']) . ': ' . $message;
+			}
+			
+			return $message;
 		}
 	}
