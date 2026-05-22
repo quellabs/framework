@@ -99,7 +99,13 @@
 		/**
 		 * Returns default configuration values for this provider.
 		 * Merged with loaded config files during discovery — values from config files take precedence.
-		 * @return array<string, mixed>
+		 * @return array{
+		 *     api_key: string,
+		 *     test_mode: bool,
+		 *     webhook_url: string,
+		 *     redirect_url: string,
+		 *     cancel_url: string
+		 * }
 		 */
 		public function getDefaults(): array {
 			return [

@@ -16,7 +16,10 @@
 		
 		use GatewayHelpers;
 		
+		/** @var ConfigLoader Provides access to configuration file */
 		private ConfigLoader $configLoader;
+		
+		/** @var Driver Mollie driver implementation */
 		private Driver $mollie;
 		
 		/**
@@ -47,8 +50,8 @@
 				return new JsonResponse("Missing parameter 'id'", 204);
 			}
 			
-			// Fetch the current payment state from Mollie using the transaction ID
 			try {
+				// Fetch the current payment state from Mollie using the transaction ID
 				$response = $this->mollie->exchange((string)$request->request->get("id"));
 				
 				// Notify listeners (e.g. order management) of the updated payment state
