@@ -226,7 +226,7 @@
 			$metadata = $className::getMetadata();
 			
 			// Normalize and validate config files
-			$configFiles = $this->normalizeAndValidateConfigFiles(
+			$configFiles = $this->resolveConfigFiles(
 				$providerData['config'] ?? null,
 				$className
 			);
@@ -248,14 +248,11 @@
 		 * @param string $className Provider class name for error context
 		 * @return array<string> Normalized array of config file paths
 		 */
-		private function normalizeAndValidateConfigFiles(mixed $config, string $className): array {
+		private function resolveConfigFiles(mixed $config, string $className): array {
 			// Handle null case
 			if ($config === null) {
 				return [];
 			}
-			
-			// Get project root for resolving relative paths
-			$projectRoot = ComposerUtils::getProjectRoot();
 			
 			// Normalize to array
 			$configFiles = is_array($config) ? $config : [$config];
@@ -264,31 +261,13 @@
 			$validatedConfigFiles = [];
 			
 			foreach ($configFiles as $configFile) {
+				// Only allow strings
 				if (!is_string($configFile)) {
-					$this->handleError('Config file path must be a string', ['class' => $className]);
 					continue;
 				}
 				
-				// Resolve relative paths against the project root
-				if (str_starts_with($configFile, DIRECTORY_SEPARATOR)) {
-					$resolvedPath = $configFile;
-				} else {
-					$resolvedPath = $projectRoot . DIRECTORY_SEPARATOR . $configFile;
-				}
-				
-				if (!file_exists($resolvedPath)) {
-					$this->handleError(
-						'Config file does not exist: {file}',
-						[
-							'file'  => $resolvedPath,
-							'class' => $className
-						]
-					);
-					
-					continue;
-				}
-				
-				$validatedConfigFiles[] = $resolvedPath;
+				// Add resolved path the list
+				$validatedConfigFiles[] = $configFile;
 			}
 			
 			return $validatedConfigFiles;
