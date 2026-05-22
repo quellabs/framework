@@ -11,10 +11,14 @@
 	use Symfony\Contracts\HttpClient\Exception\ServerExceptionInterface;
 	use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 	
+	use Quellabs\Contracts\Gateway\GatewayHelpers;
+	
 	/**
 	 * @phpstan-import-type GatewayResponse from GatewayInterface
 	 */
 	class MollieGateway {
+		
+		use GatewayHelpers;
 		
 		protected string $apiKey;
 		protected bool $testMode;
@@ -24,8 +28,8 @@
 		 */
 		public function __construct(Driver $driver) {
 			$configData = $driver->getConfig();
-			$this->apiKey = $configData["api_key"] ?? "";
-			$this->testMode = $configData["test_mode"] ?? false;
+			$this->apiKey = $this->normalizeString($configData["api_key"] ?? null);
+			$this->testMode = (bool)($configData["test_mode"] ?? false);
 		}
 
 		/**
@@ -267,11 +271,16 @@
 			
 			// amountRemaining is the portion of the payment not yet refunded.
 			// Already in major units — no conversion needed.
-			$resolvedAmount = $payment["response"]["amountRemaining"]["value"] ?? null;
-			$resolvedCurrency = $payment["response"]["amountRemaining"]["currency"] ?? $currency;
+			/** @var array<string, mixed> $paymentResponse */
+			$paymentResponse = $payment["response"] ?? [];
+			
+			/** @var array<string, mixed> $amountRemaining */
+			$amountRemaining = is_array($paymentResponse["amountRemaining"] ?? null) ? $paymentResponse["amountRemaining"] : [];
+			$resolvedAmount   = $this->normalizeString($amountRemaining["value"] ?? null);
+			$resolvedCurrency = $this->normalizeString($amountRemaining["currency"] ?? null) ?: $currency;
 			
 			// amountRemaining may be absent or "0.00" when there is nothing left to refund
-			if ($resolvedAmount === null || $resolvedAmount === '0.00') {
+			if ($resolvedAmount === '' || $resolvedAmount === '0.00') {
 				return ['request' => ['result' => 0, 'errorId' => "500", 'errorMessage' => 'Payment has no refundable amount']];
 			}
 			

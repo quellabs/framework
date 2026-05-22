@@ -4,6 +4,7 @@
 	
 	use Quellabs\Canvas\Annotations\Route;
 	use Quellabs\Canvas\Configuration\ConfigLoader;
+	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Quellabs\Payments\Contracts\PaymentExchangeException;
 	use Quellabs\SignalHub\Signal;
 	use Symfony\Component\HttpFoundation\JsonResponse;
@@ -12,6 +13,8 @@
 	use Symfony\Component\HttpFoundation\Response;
 	
 	class MollieController {
+		
+		use GatewayHelpers;
 		
 		private ConfigLoader $configLoader;
 		private Driver $mollie;
@@ -66,7 +69,7 @@
 		 */
 		public function handleReturn(Request $request): Response {
 			$config = $this->configLoader->loadConfigFile('mollie');
-			return new RedirectResponse($config->getAs('return_url', 'string', '/'));
+			return new RedirectResponse($this->normalizeString($config->getAs('return_url', 'string', '/')) ?: '/');
 		}
 		
 		/**
@@ -76,6 +79,6 @@
 		 */
 		public function handleCancel(Request $request): Response {
 			$config = $this->configLoader->loadConfigFile('mollie');
-			return new RedirectResponse($config->getAs('cancel_return_url', 'string', '/'));
+			return new RedirectResponse($this->normalizeString($config->getAs('cancel_return_url', 'string', '/')) ?: '/');
 		}
 	}
