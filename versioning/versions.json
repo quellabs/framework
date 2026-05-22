@@ -22,7 +22,6 @@
   "canvas-payments-stripe": "1.0.6",
   "canvas-payments-xpay": "1.0.2",
   "canvas-plates": "1.0.3",
-  "canvas-sculpt": "1.0.10",
   "canvas-shipments": "1.0.2",
   "canvas-shipments-contracts": "1.0.1",
   "canvas-shipments-dhl": "1.0.1",
@@ -37,7 +36,7 @@
   "dependency-injection": "1.0.38",
   "discover": "1.0.42",
   "objectquel": "1.6.18",
-  "sculpt": "1.0.27",
+  "sculpt": "1.0.28",
   "signal-hub": "1.1.0",
-  "support": "1.0.18"
+  "support": "1.0.19"
 }
