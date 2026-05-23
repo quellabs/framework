@@ -297,7 +297,7 @@
 					}
 					
 					// Extract type
-					$type = strtolower($this->normalizeString($tx['type']));
+					$type = strtolower($tx['type']);
 					
 					// Only allow
 					if (in_array($type, ['refund', 'partial_refund'], true)) {
