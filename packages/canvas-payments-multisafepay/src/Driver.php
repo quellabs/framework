@@ -292,7 +292,7 @@
 					}
 
 					// Ignore results without a type (should never occur)
-					if (!isset($tx['type']) || is_string($tx['type'])) {
+					if (!isset($tx['type']) || !is_string($tx['type'])) {
 						continue;
 					}
 					
