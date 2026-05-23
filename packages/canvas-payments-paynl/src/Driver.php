@@ -228,13 +228,10 @@
 			$response = $result['response'] ?? [];
 			
 			// Validate response data is there.
-			// $response['links'] must be extracted to a local variable first — PHPStan cannot
-			// narrow $response['links']['redirect'] through a double offset on mixed.
-			$links = $response['links'] ?? null;
-			
 			if (
 				!isset($response['id']) || !is_string($response['id']) ||
-				!is_array($links) || !isset($links['redirect']) || !is_string($links['redirect'])
+				!isset($response['links']) || !is_array($response['links']) ||
+				!isset($response['links']['redirect']) || !is_string($response['links']['redirect'])
 			) {
 				throw new PaymentInitiationException(self::DRIVER_NAME, "500", "Invalid gateway response. Missing id and/or redirect url");
 			}
@@ -244,7 +241,7 @@
 			return new InitiateResult(
 				provider: self::DRIVER_NAME,
 				transactionId: $response['id'],
-				redirectUrl: $links['redirect'],
+				redirectUrl: $response['links']['redirect']
 			);
 		}
 		
