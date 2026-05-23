@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\Payments\PayNL;
 	
+	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Quellabs\Contracts\Gateway\GatewayInterface;
 	use Symfony\Component\HttpClient\HttpClient;
 	use Symfony\Contracts\HttpClient\HttpClientInterface;
@@ -34,6 +35,8 @@
 	 */
 	class PayNLGateway {
 		
+		use GatewayHelpers;
+		
 		/** @var string Base URL for all Pay.nl TGU v1 API calls */
 		private const string BASE_URL = 'https://connect.pay.nl/v1';
 		
@@ -61,7 +64,7 @@
 			// Precompute the Basic Auth header: base64("AT-xxxx-xxxx:40chartoken").
 			// token_code is the username; api_token is the password.
 			$this->authHeader = 'Basic ' . base64_encode(
-					($config['token_code'] ?? '') . ':' . ($config['api_token'] ?? '')
+					$this->normalizeString($config['token_code'] ?? '') . ':' . $this->normalizeString($config['api_token'] ?? '')
 				);
 		}
 		
@@ -145,7 +148,7 @@
 				// GET requests send no body.
 				if ($payload !== null) {
 					$options['headers']['Content-Type'] = 'application/json';
-					$options['json'] = $payload;
+					$options['json']                    = $payload;
 				}
 				
 				// Execute the HTTP request against the full endpoint URL.
@@ -157,7 +160,7 @@
 				
 				// Decode the body with throw-on-error disabled so we can inspect the
 				// content of error responses rather than having the client throw for 4xx/5xx.
-				$body = json_decode($response->getContent(false), true);
+				$rawBody = json_decode($response->getContent(false), true);
 				
 				// If the body could not be decoded as valid JSON, return a normalised error.
 				// This happens on gateway timeouts or when a proxy returns an HTML error page.
@@ -171,11 +174,15 @@
 					];
 				}
 				
+				// json_decode with assoc=true returns array|null on valid JSON.
+				// Narrow to array<string, mixed>|null for extractErrorMessage and the success path.
+				$body = is_array($rawBody) ? $rawBody : null;
+				
 				// HTTP 2xx indicates the operation succeeded — return the decoded body.
 				if ($statusCode >= 200 && $statusCode < 300) {
 					return [
 						'request'  => ['result' => 1, 'errorId' => '', 'errorMessage' => ''],
-						'response' => $body,
+						'response' => $body ?? [],
 					];
 				}
 				
@@ -230,7 +237,7 @@
 			// Concatenate all violation messages into a single semicolon-delimited string.
 			if (isset($body['violations']) && is_array($body['violations'])) {
 				$messages = array_map(
-					fn($v) => ($v['field'] ?? '') . ': ' . ($v['message'] ?? ''),
+					fn($v) => $this->normalizeString(is_array($v) ? ($v['field'] ?? '') : '') . ': ' . $this->normalizeString(is_array($v) ? ($v['message'] ?? '') : ''),
 					$body['violations']
 				);
 				
@@ -240,12 +247,12 @@
 			// Other error responses use a top-level message key, optionally supplemented
 			// by a details key that provides more specific context.
 			if (isset($body['message'])) {
-				$msg = $body['message'];
+				$msg = $this->normalizeString($body['message']);
 				
 				// Append the details field when present — it often names the specific
 				// field or value that caused the rejection.
 				if (isset($body['details'])) {
-					$msg .= ' — ' . $body['details'];
+					$msg .= ' — ' . $this->normalizeString($body['details']);
 				}
 				
 				return $msg;

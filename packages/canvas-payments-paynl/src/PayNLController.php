@@ -3,6 +3,7 @@
 	namespace Quellabs\Payments\PayNL;
 	
 	use Quellabs\Canvas\Annotations\Route;
+	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Quellabs\Payments\Contracts\PaymentExchangeException;
 	use Quellabs\Payments\Contracts\PaymentStatus;
 	use Quellabs\SignalHub\Signal;
@@ -12,6 +13,8 @@
 	use Symfony\Component\HttpFoundation\Response;
 	
 	class PayNLController {
+		
+		use GatewayHelpers;
 		
 		/**
 		 * Pay.nl driver instance used to resolve payment state.
@@ -92,9 +95,9 @@
 				// All other states — including Pending — land on the success/thank-you
 				// page so the shopper sees a meaningful confirmation rather than an error.
 				if ($response->state === PaymentStatus::Canceled) {
-					$redirectUrl = $config['cancel_return_url'];
+					$redirectUrl = $this->normalizeString($config['cancel_return_url']);
 				} else {
-					$redirectUrl = $config['return_url'];
+					$redirectUrl = $this->normalizeString($config['return_url']);
 				}
 				
 				return new RedirectResponse($redirectUrl);
