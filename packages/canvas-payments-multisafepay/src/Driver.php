@@ -296,11 +296,8 @@
 						continue;
 					}
 					
-					// Extract type
-					$type = strtolower($tx['type']);
-					
-					// Only allow
-					if (in_array($type, ['refund', 'partial_refund'], true)) {
+					// Only allow refund type
+					if (in_array(strtolower($tx['type']), ['refund', 'partial_refund'], true)) {
 						$valueRefunded += $this->toInt($tx['amount'] ?? null);
 					}
 				}
