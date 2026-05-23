@@ -3,6 +3,7 @@
 	namespace Quellabs\Payments\PaypalExpress;
 	
 	use Quellabs\Contracts\Gateway\GatewayInterface;
+	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Symfony\Component\HttpClient\HttpClient;
 	use Symfony\Contracts\HttpClient\Exception\ClientExceptionInterface;
 	use Symfony\Contracts\HttpClient\Exception\RedirectionExceptionInterface;
@@ -17,6 +18,8 @@
 	 * @phpstan-import-type GatewayResponse from GatewayInterface
 	 */
 	class PaypalGateway {
+		
+		use GatewayHelpers;
 		
 		private string $m_transaction_url;
 		private string $m_ipn_url;
@@ -37,17 +40,17 @@
 		public function __construct(Driver $driver) {
 			$config = $driver->getConfig();
 			
-			$this->m_test_mode = $config["test_mode"];
+			$this->m_test_mode = $this->toBool($config["test_mode"]);
 			$this->m_transaction_url = $this->m_test_mode ? 'https://api-3t.sandbox.paypal.com/nvp' : 'https://api-3t.paypal.com/nvp';
 			$this->m_ipn_url = $this->m_test_mode ? 'https://ipnpb.sandbox.paypal.com/cgi-bin/webscr' : 'https://ipnpb.paypal.com/cgi-bin/webscr';
-			$this->m_api_username = $config["api_username"] ?? "";
-			$this->m_api_password = $config["api_password"] ?? "";
-			$this->m_api_signature = $config["api_signature"] ?? "";
-			$this->m_verify_ssl = $config["verify_ssl"] ?? true;
-			$this->m_account_optional = $config["account_optional"] ?? true;
-			$this->m_return_url = $config["return_url"] ?? "";
-			$this->m_cancel_url = $config["cancel_return_url"] ?? "";
-			$this->m_notify_url = $config["ipn_url"] ?? "";
+			$this->m_api_username = $this->normalizeString($config["api_username"] ?? "");
+			$this->m_api_password = $this->normalizeString($config["api_password"] ?? "");
+			$this->m_api_signature = $this->normalizeString($config["api_signature"] ?? "");
+			$this->m_verify_ssl = $this->toBool($config["verify_ssl"] ?? true, true);
+			$this->m_account_optional = $this->toBool($config["account_optional"] ?? true, true);
+			$this->m_return_url = $this->normalizeString($config["return_url"] ?? "");
+			$this->m_cancel_url = $this->normalizeString($config["cancel_return_url"] ?? "");
+			$this->m_notify_url = $this->normalizeString($config["ipn_url"] ?? "");
 		}
 		
 		/**
@@ -252,7 +255,7 @@
 			
 			try {
 				$response = $client->request('POST', $this->m_transaction_url, [
-					'body'        => array_map('trim', $parameters),
+					'body'        => array_map(static fn(mixed $v): string => is_string($v) ? trim($v) : (string)$v, $parameters),
 					'verify_peer' => $this->m_verify_ssl,
 				]);
 				
@@ -262,11 +265,12 @@
 				// json_encode/decode round-trip is needed to produce array<string, mixed> that PHPStan accepts.
 				// parse_str() types its output as array<int|string, array<mixed>|string> which is incompatible
 				// with GatewayResponse even though the actual values are always strings at this API level.
+				/** @var array<string, mixed> $resultArray */
 				$resultArray = json_decode(json_encode($parsed) ?: '[]', true) ?? [];
 				
 				// ACK=Failure means the API call was received but rejected — return the first error
-				if ($resultArray['ACK'] === 'Failure') {
-					return ['request' => ['result' => 0, 'errorId' => $resultArray['L_ERRORCODE0'], 'errorMessage' => $resultArray['L_LONGMESSAGE0']]];
+				if ($this->normalizeString($resultArray['ACK'] ?? '') === 'Failure') {
+					return ['request' => ['result' => 0, 'errorId' => $this->normalizeString($resultArray['L_ERRORCODE0'] ?? ''), 'errorMessage' => $this->normalizeString($resultArray['L_LONGMESSAGE0'] ?? '')]];
 				}
 				
 				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $resultArray];

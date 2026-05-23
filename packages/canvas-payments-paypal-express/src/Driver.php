@@ -3,6 +3,7 @@
 	namespace Quellabs\Payments\PaypalExpress;
 	
 	use Quellabs\Contracts\Gateway\GatewayInterface;
+	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Quellabs\Payments\Contracts\InitiateResult;
 	use Quellabs\Payments\Contracts\PaymentInterface;
 	use Quellabs\Payments\Contracts\PaymentInitiationException;
@@ -20,6 +21,8 @@
 	 * @phpstan-import-type IssuerOption from PaymentInterface
 	 */
 	class Driver implements PaymentProviderInterface {
+		
+		use GatewayHelpers;
 		
 		/**
 		 * Driver name
@@ -125,15 +128,17 @@
 			}
 			
 			// transform output
+			$token = $this->normalizeString($response["TOKEN"]);
+			
 			if ($this->getGateway()->testMode()) {
-				$paymentURL = "https://www.sandbox.paypal.com/cgi-bin/webscr?cmd=_express-checkout&token={$response["TOKEN"]}&useraction=commit";
+				$paymentURL = "https://www.sandbox.paypal.com/cgi-bin/webscr?cmd=_express-checkout&token={$token}&useraction=commit";
 			} else {
-				$paymentURL = "https://www.paypal.com/cgi-bin/webscr?cmd=_express-checkout&token={$response["TOKEN"]}&useraction=commit";
+				$paymentURL = "https://www.paypal.com/cgi-bin/webscr?cmd=_express-checkout&token={$token}&useraction=commit";
 			}
 			
 			return new InitiateResult(
 				self::DRIVER_NAME,
-				$response["TOKEN"],
+				$token,
 				$paymentURL,
 				[
 					"correlationId" => $response["CORRELATIONID"]
@@ -182,8 +187,8 @@
 			if (!empty($extraData['paymentReference'])) {
 				return $this->buildCompletedPaymentState(
 					$transactionId,
-					$extraData['paymentReference'],
-					$response["CHECKOUTSTATUS"],
+					$this->normalizeString($extraData['paymentReference']),
+					$this->normalizeString($response["CHECKOUTSTATUS"]),
 				);
 			}
 			
@@ -197,7 +202,7 @@
 						provider: self::DRIVER_NAME,
 						transactionId: $transactionId,
 						state: PaymentStatus::Pending,
-						currency: $response["CURRENCYCODE"] ?? "",
+						currency: $this->normalizeString($response["CURRENCYCODE"] ?? ""),
 						valuePaid: 0,
 						valueRefunded: 0,
 						internalState: "PaymentActionInProgress",
@@ -209,7 +214,7 @@
 						provider: self::DRIVER_NAME,
 						transactionId: $transactionId,
 						state: PaymentStatus::Failed,
-						currency: $response["CURRENCYCODE"] ?? "",
+						currency: $this->normalizeString($response["CURRENCYCODE"] ?? ""),
 						valuePaid: 0,
 						valueRefunded: 0,
 						internalState: "PaymentActionFailed",
@@ -218,9 +223,13 @@
 				// Payment was already captured in a previous exchange() call.
 				// Use GetTransactionDetails to retrieve the current monetary state including any refunds.
 				case "PaymentActionCompleted":
+					$captureId = isset($extraData['paymentReference'])
+						? $this->normalizeString($extraData['paymentReference'])
+						: null;
+					
 					return $this->buildCompletedPaymentState(
 						$transactionId,
-						$extraData['paymentReference'] ?? null,
+						$captureId,
 						"PaymentActionCompleted"
 					);
 				
@@ -229,9 +238,9 @@
 				default:
 					return $this->executeCheckoutPayment(
 						$transactionId,
-						(float)($response["AMT"] ?? 0),
-						$response["CURRENCYCODE"] ?? "EUR",
-						$response["PAYERID"]
+						$this->toFloat($response["AMT"] ?? 0),
+						$this->normalizeString($response["CURRENCYCODE"] ?? "EUR", "EUR"),
+						$this->normalizeString($response["PAYERID"])
 					);
 			}
 		}
@@ -276,9 +285,9 @@
 			return new RefundResult(
 				provider: self::DRIVER_NAME,
 				paymentReference: $request->paymentReference,
-				refundId: $response["REFUNDTRANSACTIONID"],
-				value: (int)round((float)$response["GROSSREFUNDAMT"] * 100),
-				currency: $response["CURRENCYCODE"],
+				refundId: $this->normalizeString($response["REFUNDTRANSACTIONID"]),
+				value: (int)round($this->toFloat($response["GROSSREFUNDAMT"]) * 100),
+				currency: $this->normalizeString($response["CURRENCYCODE"]),
 				metadata: [
 					"correlationId" => $response["CORRELATIONID"],
 					"refundStatus"  => $response["REFUNDSTATUS"],
@@ -329,7 +338,7 @@
 			}
 			
 			// Search for all transactions from the payment date until now
-			$search = $this->getGateway()->transactionSearch($txDetailsResponse["ORDERTIME"], $paymentReference);
+			$search = $this->getGateway()->transactionSearch($this->normalizeString($txDetailsResponse["ORDERTIME"]), $paymentReference);
 			
 			// If the API call failed, throw an exception
 			if ($search["request"]["result"] === 0) {
@@ -349,9 +358,9 @@
 					$refunds[] = new RefundResult(
 						provider: self::DRIVER_NAME,
 						paymentReference: $paymentReference,
-						refundId: $searchResponse["L_TRANSACTIONID{$i}"],
-						value: (int)round(abs((float)$searchResponse["L_AMT{$i}"]) * 100),
-						currency: $searchResponse["L_CURRENCYCODE{$i}"],
+						refundId: $this->normalizeString($searchResponse["L_TRANSACTIONID{$i}"]),
+						value: (int)round(abs($this->toFloat($searchResponse["L_AMT{$i}"])) * 100),
+						currency: $this->normalizeString($searchResponse["L_CURRENCYCODE{$i}"]),
 					);
 				}
 				
@@ -444,10 +453,10 @@
 			// Validate all required info is there
 			
 			// Convert Paypal status to state object
-			$paymentStatus = $response["PAYMENTINFO_0_PAYMENTSTATUS"];
-			$paymentReference = $response["PAYMENTINFO_0_TRANSACTIONID"];
-			$amountMinorUnits = (int)round((float)$response["PAYMENTINFO_0_AMT"] * 100);
-			$currency = $response["PAYMENTINFO_0_CURRENCYCODE"] ?? $currency;
+			$paymentStatus = $this->normalizeString($response["PAYMENTINFO_0_PAYMENTSTATUS"]);
+			$paymentReference = $this->normalizeString($response["PAYMENTINFO_0_TRANSACTIONID"]);
+			$amountMinorUnits = (int)round($this->toFloat($response["PAYMENTINFO_0_AMT"]) * 100);
+			$currency = $this->normalizeString($response["PAYMENTINFO_0_CURRENCYCODE"] ?? $currency, $currency);
 			
 			switch ($paymentStatus) {
 				// Payment was accepted and funds have been added to your account balance.
@@ -532,9 +541,9 @@
 			// AMT is the original captured amount. TOTALREFUNDEDAMOUNT accumulates across all refunds.
 			// Both are returned in major units — convert to minor units for consistency.
 			$r = $txDetails["response"] ?? [];
-			$paymentStatus = $r["PAYMENTSTATUS"] ?? $internalState;
-			$valueRefunded = (int)round((float)($r["TOTALREFUNDEDAMOUNT"] ?? 0) * 100);
-			$valueCaptured = (int)round((float)($r["AMT"] ?? 0) * 100);
+			$paymentStatus = $this->normalizeString($r["PAYMENTSTATUS"] ?? $internalState, $internalState);
+			$valueRefunded = (int)round($this->toFloat($r["TOTALREFUNDEDAMOUNT"] ?? 0) * 100);
+			$valueCaptured = (int)round($this->toFloat($r["AMT"] ?? 0) * 100);
 			
 			// Map NVP PAYMENTSTATUS to PaymentStatus. GetTransactionDetails can return statuses
 			// beyond Completed — do not assume Paid without checking.
@@ -553,7 +562,7 @@
 				provider: self::DRIVER_NAME,
 				transactionId: $token,
 				state: $state,
-				currency: $r["CURRENCYCODE"] ?? "",
+				currency: $this->normalizeString($r["CURRENCYCODE"] ?? ""),
 				valuePaid: $state === PaymentStatus::Paid ? $valueCaptured : 0,
 				valueRefunded: $valueRefunded,
 				internalState: $paymentStatus,

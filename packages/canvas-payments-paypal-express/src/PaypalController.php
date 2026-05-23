@@ -3,6 +3,7 @@
 	namespace Quellabs\Payments\PaypalExpress;
 	
 	use Quellabs\Canvas\Annotations\Route;
+	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Quellabs\Payments\Contracts\PaymentExchangeException;
 	use Quellabs\Payments\Contracts\PaymentStatus;
 	use Quellabs\SignalHub\Signal;
@@ -12,6 +13,8 @@
 	use Symfony\Component\HttpFoundation\Response;
 	
 	class PaypalController {
+		
+		use GatewayHelpers;
 		
 		/**
 		 * @var Driver Paypal Express driver
@@ -45,7 +48,7 @@
 		 */
 		public function handleReturn(Request $request): Response {
 			// PayPal appends the token to the return URL as ?token=EC-XXXXXXXXX
-			$token = $request->query->get('token');
+			$token = $this->normalizeString($request->query->get('token'));
 			
 			if (empty($token)) {
 				return new JsonResponse("Missing parameter 'token'", 400);
@@ -61,7 +64,7 @@
 				// Error 10486: buyer's funding source was insufficient — redirect them back to PayPal
 				// to choose a different payment method. No signal emitted — this is not a payment outcome.
 				if ($response->state === PaymentStatus::Redirect) {
-					return new RedirectResponse($response->metadata['redirectUrl']);
+					return new RedirectResponse($this->normalizeString($response->metadata['redirectUrl']));
 				}
 
 				// Notify listeners (e.g. order management) of the updated payment state
@@ -71,9 +74,9 @@
 				$config = $this->paypal->getConfig();
 				
 				if ($response->state === PaymentStatus::Canceled) {
-					$redirectUrl = $config["cancel_return_url"];
+					$redirectUrl = $this->normalizeString($config["cancel_return_url"]);
 				} else {
-					$redirectUrl = $config["return_url"];
+					$redirectUrl = $this->normalizeString($config["return_url"]);
 				}
 				
 				return new RedirectResponse($redirectUrl);
@@ -114,11 +117,11 @@
 			}
 			
 			// txn_id is PayPal's payment transaction ID — required for refund state retrieval
-			$paymentTransactionId = $data['txn_id'] ?? null;
+			$paymentTransactionId = $this->normalizeString($data['txn_id'] ?? null);
 			
 			try {
 				// Call Driver's exchange method to convert raw data to PaymentState
-				$response = $this->paypal->exchange($token, [
+				$response = $this->paypal->exchange($this->normalizeString($token), [
 					'action'               => 'ipn',
 					'paymentTransactionId' => $paymentTransactionId,
 				]);
