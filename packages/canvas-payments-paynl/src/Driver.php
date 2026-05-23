@@ -234,11 +234,10 @@
 				throw new PaymentInitiationException(self::DRIVER_NAME, "500", "Invalid gateway response. Missing id and/or redirect url");
 			}
 			
-			// The response array is confirmed present by the guard above.
-			// Extract the two required fields through the trait helpers so PHPStan
-			// sees typed strings rather than mixed offset accesses.
-			$transactionId = $this->arrayGet($response, 'id');
-			$redirectUrl   = $this->arrayGet($response, 'links.redirect');
+			// The isset + is_string guards above have already validated and narrowed these.
+			// Read directly from the validated offsets — PHPStan sees string here.
+			$transactionId = $response['id'];
+			$redirectUrl   = $response['links']['redirect'];
 			
 			// The UUID (id) is the stable identifier used for all subsequent API calls.
 			// orderId is a legacy human-readable reference — not used for API calls.
