@@ -223,28 +223,28 @@
 				throw new PaymentInitiationException(self::DRIVER_NAME, $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 			
-			// Fetch response
-			$response = $result['response'];
+			// Fetch response — the key is optional in GatewayResponse; default to empty array
+			// so the isset + is_string guards below handle the missing-field case uniformly.
+			$response = $result['response'] ?? [];
 			
-			// Validate response data is there
+			// Validate response data is there.
+			// $response['links'] must be extracted to a local variable first — PHPStan cannot
+			// narrow $response['links']['redirect'] through a double offset on mixed.
+			$links = $response['links'] ?? null;
+			
 			if (
 				!isset($response['id']) || !is_string($response['id']) ||
-				!isset($response['links']['redirect']) || !is_string($response['links']['redirect'])
+				!is_array($links) || !isset($links['redirect']) || !is_string($links['redirect'])
 			) {
 				throw new PaymentInitiationException(self::DRIVER_NAME, "500", "Invalid gateway response. Missing id and/or redirect url");
 			}
-			
-			// The isset + is_string guards above have already validated and narrowed these.
-			// Read directly from the validated offsets — PHPStan sees string here.
-			$transactionId = $response['id'];
-			$redirectUrl   = $response['links']['redirect'];
 			
 			// The UUID (id) is the stable identifier used for all subsequent API calls.
 			// orderId is a legacy human-readable reference — not used for API calls.
 			return new InitiateResult(
 				provider: self::DRIVER_NAME,
-				transactionId: $transactionId,
-				redirectUrl: $redirectUrl,
+				transactionId: $response['id'],
+				redirectUrl: $links['redirect'],
 			);
 		}
 		
@@ -485,14 +485,18 @@
 					continue;
 				}
 				
-				// Validate status code is present
-				if (!isset($payment['status']['code']) || !is_int($payment['status']['code'])) {
+				// Validate status code is present.
+				// $payment['status'] must be extracted first — PHPStan cannot narrow
+				// $payment['status']['code'] through a double offset on mixed.
+				$status = $payment['status'] ?? null;
+				
+				if (!is_array($status) || !isset($status['code']) || !is_int($status['code'])) {
 					continue;
 				}
 				
 				// Skip any payment entry that is not a refund transaction.
 				// Regular payment attempts, authorizations, and chargebacks are excluded.
-				if ($payment['status']['code'] !== -81 && $payment['status']['code'] !== -82) {
+				if ($status['code'] !== -81 && $status['code'] !== -82) {
 					continue;
 				}
 				

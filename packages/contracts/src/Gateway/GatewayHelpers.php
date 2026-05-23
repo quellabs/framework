@@ -6,7 +6,7 @@
 		
 		/**
 		 * Safely retrieves a nested value from an array using dot notation.
-		 * @param array<string, mixed> $data
+		 * @param array<array-key, mixed> $data
 		 * @param string $path
 		 * @param mixed $default
 		 * @return mixed

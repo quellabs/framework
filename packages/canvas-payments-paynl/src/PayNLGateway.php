@@ -175,7 +175,7 @@
 				}
 				
 				// json_decode with assoc=true returns array|null on valid JSON.
-				// Narrow to array<string, mixed>|null for extractErrorMessage and the success path.
+				// Narrow to array<array-key, mixed>|null for extractErrorMessage and the success path.
 				$body = is_array($rawBody) ? $rawBody : null;
 				
 				// HTTP 2xx indicates the operation succeeded — return the decoded body.
@@ -223,7 +223,7 @@
 		 *   401/404 with no body:
 		 *     (empty or null)
 		 *
-		 * @param array<string, mixed>|null $body Decoded JSON body, or null if the body was empty
+		 * @param array<array-key, mixed>|null $body Decoded JSON body, or null if the body was empty
 		 * @param int $statusCode HTTP status code, used as fallback error identifier
 		 * @return string Human-readable error message suitable for exception messages
 		 */
