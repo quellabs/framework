@@ -3,6 +3,7 @@
 	namespace Quellabs\Payments\MultiSafepay;
 	
 	use Quellabs\Payments\Contracts\InitiateResult;
+	use Quellabs\Payments\Contracts\PaymentInterface;
 	use Quellabs\Payments\Contracts\PaymentExchangeException;
 	use Quellabs\Payments\Contracts\PaymentInitiationException;
 	use Quellabs\Payments\Contracts\PaymentProviderInterface;
@@ -13,6 +14,10 @@
 	use Quellabs\Payments\Contracts\RefundRequest;
 	use Quellabs\Payments\Contracts\RefundResult;
 	
+	/**
+	 * Multisafepay driver
+	 * @phpstan-import-type IssuerOption from PaymentInterface
+	 */
 	class Driver implements PaymentProviderInterface {
 		
 		/**
@@ -112,7 +117,7 @@
 		 * on the hosted payment page. This method always returns an empty array.
 		 *
 		 * @param string $paymentModule e.g. 'msp_ideal'
-		 * @return array<string, mixed>
+		 * @return array<int, IssuerOption>
 		 */
 		public function getPaymentOptions(string $paymentModule): array {
 			return [];

@@ -3,6 +3,7 @@
 	namespace Quellabs\Payments\Stripe;
 	
 	use Quellabs\Payments\Contracts\InitiateResult;
+	use Quellabs\Payments\Contracts\PaymentInterface;
 	use Quellabs\Payments\Contracts\PaymentExchangeException;
 	use Quellabs\Payments\Contracts\PaymentInitiationException;
 	use Quellabs\Payments\Contracts\PaymentProviderInterface;
@@ -13,6 +14,10 @@
 	use Quellabs\Payments\Contracts\RefundRequest;
 	use Quellabs\Payments\Contracts\RefundResult;
 	
+	/**
+	 * Stripe Driver
+	 * @phpstan-import-type IssuerOption from PaymentInterface
+	 */
 	class Driver implements PaymentProviderInterface {
 		
 		/**
@@ -289,7 +294,7 @@
 		 * integration — method selection happens on the Stripe-hosted checkout page.
 		 * Returns an empty array for all modules.
 		 * @param string $paymentModule
-		 * @return array<string, mixed>
+		 * @return array<int, IssuerOption>
 		 */
 		public function getPaymentOptions(string $paymentModule): array {
 			return [];

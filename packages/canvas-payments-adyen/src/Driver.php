@@ -153,7 +153,7 @@
 		 * This method always returns an empty array.
 		 *
 		 * @param string $paymentModule e.g. 'adyen_ideal'
-		 * @return array<string, IssuerOption>
+		 * @return array<int, IssuerOption>
 		 */
 		public function getPaymentOptions(string $paymentModule): array {
 			return [];

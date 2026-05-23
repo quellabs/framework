@@ -4,6 +4,7 @@
 	
 	use Quellabs\Contracts\Gateway\GatewayInterface;
 	use Quellabs\Payments\Contracts\InitiateResult;
+	use Quellabs\Payments\Contracts\PaymentInterface;
 	use Quellabs\Payments\Contracts\PaymentInitiationException;
 	use Quellabs\Payments\Contracts\PaymentProviderInterface;
 	use Quellabs\Payments\Contracts\PaymentRefundException;
@@ -12,10 +13,11 @@
 	use Quellabs\Payments\Contracts\PaymentStatus;
 	use Quellabs\Payments\Contracts\RefundRequest;
 	use Quellabs\Payments\Contracts\RefundResult;
-	use Symfony\Component\HttpFoundation\JsonResponse;
 	
 	/**
+	 * Paypal Express driver
 	 * @phpstan-import-type GatewayResponse from GatewayInterface
+	 * @phpstan-import-type IssuerOption from PaymentInterface
 	 */
 	class Driver implements PaymentProviderInterface {
 		
@@ -289,7 +291,7 @@
 		 * Other payment modules would use this to receive a list of banks or something.
 		 * Paypal express does not use it.
 		 * @param string $paymentModule
-		 * @return array<string, mixed>
+		 * @return array<int, IssuerOption>
 		 */
 		public function getPaymentOptions(string $paymentModule): array {
 			return [];

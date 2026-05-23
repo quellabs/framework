@@ -3,6 +3,7 @@
 	namespace Quellabs\Payments\Paypal;
 	
 	use Quellabs\Payments\Contracts\InitiateResult;
+	use Quellabs\Payments\Contracts\PaymentInterface;
 	use Quellabs\Payments\Contracts\PaymentExchangeException;
 	use Quellabs\Payments\Contracts\PaymentInitiationException;
 	use Quellabs\Payments\Contracts\PaymentProviderInterface;
@@ -13,6 +14,10 @@
 	use Quellabs\Payments\Contracts\RefundRequest;
 	use Quellabs\Payments\Contracts\RefundResult;
 	
+	/**
+	 * PayPal Driver
+	 * @phpstan-import-type IssuerOption from PaymentInterface
+	 */
 	class Driver implements PaymentProviderInterface {
 		
 		/**
@@ -340,7 +345,7 @@
 		 * Other payment modules would use this to receive a list of banks or similar.
 		 * PayPal does not use it.
 		 * @param string $paymentModule
-		 * @return array<string, mixed>
+		 * @return array<int, IssuerOption>
 		 */
 		public function getPaymentOptions(string $paymentModule): array {
 			return [];

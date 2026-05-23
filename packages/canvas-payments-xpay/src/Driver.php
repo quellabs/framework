@@ -4,6 +4,7 @@
 	
 	use Quellabs\Payments\Contracts\InitiateResult;
 	use Quellabs\Payments\Contracts\PaymentAddress;
+	use Quellabs\Payments\Contracts\PaymentInterface;
 	use Quellabs\Payments\Contracts\PaymentExchangeException;
 	use Quellabs\Payments\Contracts\PaymentInitiationException;
 	use Quellabs\Payments\Contracts\PaymentProviderInterface;
@@ -13,6 +14,11 @@
 	use Quellabs\Payments\Contracts\PaymentStatus;
 	use Quellabs\Payments\Contracts\RefundRequest;
 	use Quellabs\Payments\Contracts\RefundResult;
+	
+	/**
+	 * XPay Driver
+	 * @phpstan-import-type IssuerOption from PaymentInterface
+	 */
 	
 	class Driver implements PaymentProviderInterface {
 		
@@ -134,7 +140,7 @@
 		 * XPay does not expose a pre-selection issuer or bank list via API — the hosted
 		 * page handles method selection. Always returns empty.
 		 * @param string $paymentModule
-		 * @return array<string, mixed>
+		 * @return array<int, IssuerOption>
 		 */
 		public function getPaymentOptions(string $paymentModule): array {
 			return [];

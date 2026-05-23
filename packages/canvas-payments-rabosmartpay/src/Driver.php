@@ -3,6 +3,7 @@
 	namespace Quellabs\Payments\RaboSmartPay;
 	
 	use Quellabs\Payments\Contracts\InitiateResult;
+	use Quellabs\Payments\Contracts\PaymentInterface;
 	use Quellabs\Payments\Contracts\PaymentExchangeException;
 	use Quellabs\Payments\Contracts\PaymentInitiationException;
 	use Quellabs\Payments\Contracts\PaymentProviderInterface;
@@ -14,6 +15,10 @@
 	use Quellabs\Payments\Contracts\RefundResult;
 	use Quellabs\Support\Tools;
 	
+	/**
+	 * Rabo SmartPay Driver
+	 * @phpstan-import-type IssuerOption from PaymentInterface
+	 */
 	class Driver implements PaymentProviderInterface {
 		
 		/**
@@ -115,7 +120,7 @@
 		 * This method always returns an empty array for all payment modules.
 		 *
 		 * @param string $paymentModule e.g. 'rabo_ideal'
-		 * @return array<string, mixed> Always empty — Rabo Smart Pay handles payment method UI on the hosted page
+		 * @return array<int, IssuerOption>
 		 */
 		public function getPaymentOptions(string $paymentModule): array {
 			// iDEAL 2.0 removed direct bank pre-selection (was available in OmniKassa 1.x via issuerId).

@@ -3,6 +3,7 @@
 	namespace Quellabs\Payments\PayNL;
 	
 	use Quellabs\Payments\Contracts\InitiateResult;
+	use Quellabs\Payments\Contracts\PaymentInterface;
 	use Quellabs\Payments\Contracts\PaymentExchangeException;
 	use Quellabs\Payments\Contracts\PaymentInitiationException;
 	use Quellabs\Payments\Contracts\PaymentProviderInterface;
@@ -13,6 +14,10 @@
 	use Quellabs\Payments\Contracts\RefundRequest;
 	use Quellabs\Payments\Contracts\RefundResult;
 	
+	/**
+	 * PayNL Driver
+	 * @phpstan-import-type IssuerOption from PaymentInterface
+	 */
 	class Driver implements PaymentProviderInterface {
 		
 		/**
@@ -121,7 +126,7 @@
 		 *
 		 * @see https://developer.pay.nl/docs/ideal
 		 * @param string $paymentModule e.g. 'paynl_ideal'
-		 * @return array<string, mixed> Always empty — Pay.nl handles payment method UI on the hosted page
+		 * @return array<int, IssuerOption> Always empty — Pay.nl handles payment method UI on the hosted page
 		 */
 		public function getPaymentOptions(string $paymentModule): array {
 			// Pay.nl removed direct issuer redirect in iDEAL 2.0 (deprecated 31-12-2024).
