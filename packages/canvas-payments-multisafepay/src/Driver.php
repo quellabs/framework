@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\Payments\MultiSafepay;
 	
+	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Quellabs\Payments\Contracts\InitiateResult;
 	use Quellabs\Payments\Contracts\PaymentInterface;
 	use Quellabs\Payments\Contracts\PaymentExchangeException;
@@ -19,6 +20,8 @@
 	 * @phpstan-import-type IssuerOption from PaymentInterface
 	 */
 	class Driver implements PaymentProviderInterface {
+		
+		use GatewayHelpers;
 		
 		/**
 		 * Driver name
@@ -94,7 +97,17 @@
 		/**
 		 * Returns default configuration values for this provider.
 		 * Merged with loaded config files during discovery — values from config files take precedence.
-		 * @return array<string, mixed>
+		 *
+		 * @return array{
+		 *     test_mode: bool,
+		 *     api_key: string,
+		 *     return_url: string,
+		 *     cancel_return_url: string,
+		 *     notification_url: string,
+		 *     default_country: string,
+		 *     default_currency: string,
+		 *     default_locale: string
+		 * }
 		 */
 		public function getDefaults(): array {
 			return [
@@ -142,8 +155,7 @@
 			// Convert payment module to internal Multisafepay type
 			$type = self::MODULE_TYPE_MAP[$request->paymentModule];
 			
-			// Build order payload.
-			// amount is in minor units (e.g. 1250 = €12.50) — same convention as Adyen.
+			// Build order payload. Amount is in minor units (e.g. 1250 = €12.50)
 			$payload = [
 				'type'            => 'redirect',
 				'order_id'        => $request->reference,
@@ -177,22 +189,23 @@
 				throw new PaymentInitiationException(self::DRIVER_NAME, $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 			
-			// Return response
-			$response = $result['response']['data'] ?? [];
+			// response['data'] is mixed per array<string, mixed>; narrow to array before use
+			$data = $result['response']['data'] ?? null;
+			
+			if (!is_array($data)) {
+				throw new PaymentInitiationException(self::DRIVER_NAME, "500", "Invalid gateway response. Missing data envelope");
+			}
 			
 			// Validate response data is there
-			if (
-				!isset($response['order_id']) ||
-				!isset($response['payment_url'])
-			) {
-				throw new PaymentInitiationException (self::DRIVER_NAME,  "500", "Invalid gateway response. Missing id and/or redirect url");
+			if (!isset($data['order_id']) || !isset($data['payment_url'])) {
+				throw new PaymentInitiationException (self::DRIVER_NAME, "500", "Invalid gateway response. Missing id and/or redirect url");
 			}
 			
 			// Return the response
 			return new InitiateResult(
 				provider: self::DRIVER_NAME,
-				transactionId: $response['order_id'],
-				redirectUrl: $response['payment_url'],
+				transactionId: $this->normalizeString($data['order_id']),
+				redirectUrl: $this->normalizeString($data['payment_url']),
 			);
 		}
 		
@@ -229,12 +242,19 @@
 				throw new PaymentExchangeException(self::DRIVER_NAME, $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 			
-			// Determine payment status
-			$order = $result['response']['data'] ?? [];
-			$status = strtolower($order['status'] ?? '');
-			$currency = $order['currency'] ?? '';
-			$amount = (int)($order['amount'] ?? 0);
+			// response['data'] is mixed per array<string, mixed>; narrow to array before use
+			$data = $result['response']['data'] ?? null;
 			
+			if (!is_array($data)) {
+				throw new PaymentExchangeException(self::DRIVER_NAME, "500", "Invalid gateway response. Missing data envelope");
+			}
+			
+			// $data is now array<mixed, mixed>; use helpers to extract typed values safely
+			$status   = strtolower($this->normalizeString($data['status'] ?? null));
+			$currency = $this->normalizeString($data['currency'] ?? null);
+			$amount   = $this->toInt($data['amount'] ?? null);
+			
+			/** @noinspection PhpDuplicateMatchArmBodyInspection */
 			$state = match ($status) {
 				'completed' => PaymentStatus::Paid,
 				'uncleared' => PaymentStatus::Pending,
@@ -260,15 +280,36 @@
 			
 			// Sum refund-type related_transactions for an accurate valueRefunded.
 			// This covers both 'refunded' (full) and 'partial_refunded' (partial) statuses.
-			$valueRefunded = array_reduce($order['related_transactions'] ?? [], function($carry, $tx) {
-				$type = strtolower($tx['type'] ?? '');
-				
-				if (in_array($type, ['refund', 'partial_refund'], true)) {
-					return $carry + ((int)($tx['amount'] ?? 0));
-				} else {
-					return $carry;
+			// related_transactions is mixed; narrow to array before iterating.
+			$valueRefunded       = 0;
+			$relatedTransactions = $data['related_transactions'] ?? null;
+			
+			if (is_array($relatedTransactions)) {
+				foreach ($relatedTransactions as $tx) {
+					// Only use array results
+					if (!is_array($tx)) {
+						continue;
+					}
+
+					// Ignore results without a type (should never occur)
+					if (!isset($tx['type']) || is_string($tx['type'])) {
+						continue;
+					}
+					
+					// Extract type
+					$type = strtolower($this->normalizeString($tx['type']));
+					
+					// Only allow
+					if (in_array($type, ['refund', 'partial_refund'], true)) {
+						$valueRefunded += $this->toInt($tx['amount'] ?? null);
+					}
 				}
-			}, 0);
+			}
+			
+			// payment_details is mixed; narrow to array before accessing nested keys
+			$paymentDetails = $data['payment_details'] ?? null;
+			$paymentMethod  = is_array($paymentDetails) ? $this->normalizeString($paymentDetails['type'] ?? null) : null;
+			$reason         = $this->normalizeString($data['reason'] ?? null);
 			
 			// Return result
 			return new PaymentState(
@@ -280,8 +321,8 @@
 				valueRefunded: $valueRefunded,
 				internalState: $status,
 				metadata: array_filter([
-					'paymentMethod' => $order['payment_details']['type'] ?? null,
-					'reason'        => $order['reason'] ?? null,
+					'paymentMethod' => $paymentMethod !== '' ? $paymentMethod : null,
+					'reason'        => $reason !== '' ? $reason : null,
 				], fn($v) => $v !== null),
 			);
 		}
@@ -310,14 +351,18 @@
 				throw new PaymentRefundException(self::DRIVER_NAME, $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 			
-			// MSP returns 'transaction_id' for the refund identifier.
-			$refundId = (string)($result['response']['data']['transaction_id'] ?? '');
+			// Extract and validate response
+			$data = $result['response']['data'] ?? null;
+			
+			if (!is_array($data) || !isset($data['transaction_id']) || !is_string($data['transaction_id'])) {
+				throw new PaymentRefundException(self::DRIVER_NAME, "400", "Missing or malformed transaction_id in response");
+			}
 			
 			// Return the refund result
 			return new RefundResult(
 				provider: self::DRIVER_NAME,
 				paymentReference: $request->paymentReference,
-				refundId: $refundId,
+				refundId: $data['transaction_id'],
 				value: $request->amount,
 				currency: $request->currency,
 			);
@@ -338,30 +383,50 @@
 			if ($result['request']['result'] === 0) {
 				throw new PaymentExchangeException(self::DRIVER_NAME, $result['request']['errorId'], $result['request']['errorMessage']);
 			}
-
-			// Grab order data
-			$order = $result['response']['data'] ?? [];
 			
-			// Related transactions are embedded in the order response.
-			// Filter to only refund-type transactions; ignore captures, chargebacks, etc.
+			// response['data'] is mixed per array<string, mixed>; narrow to array before use
+			$data = $result['response']['data'] ?? null;
+			
+			// Validate response data is present
+			if (!is_array($data)) {
+				throw new PaymentExchangeException(self::DRIVER_NAME, "500", "Invalid gateway response. Missing data envelope");
+			}
+			
+			// Validate response data has relation transactions
+			if (!isset($data['related_transactions']) || !is_array($data['related_transactions'])) {
+				return [];
+			}
+			
+			// Fallback currency from the parent order, for related transactions that omit it
 			$refunds = [];
-
-			foreach ($order['related_transactions'] ?? [] as $related) {
+			$orderCurrency = $this->normalizeString($data['currency'] ?? null);
+			
+			foreach ($data['related_transactions'] as $related) {
+				// Skip non-arrays
+				if (!is_array($related)) {
+					continue;
+				}
+				
+				// Skip malformed entries without a type
+				if (!isset($related['type']) || !is_string($related['type'])) {
+					continue;
+				}
+				
 				// Convert type to lowercase
-				$relatedType = strtolower($related['type'] ?? '');
+				$relatedType = strtolower($related['type']);
 				
 				// Check if type is a refund
 				if (!in_array($relatedType, ['refund', 'partial_refund'], true)) {
 					continue;
 				}
 				
-				// If so, add it to the list
+				// If all pass, add refund to the list
 				$refunds[] = new RefundResult(
 					provider: self::DRIVER_NAME,
 					paymentReference: $paymentReference,
-					refundId: (string)($related['id'] ?? ''),
-					value: (int)($related['amount'] ?? 0),
-					currency: $related['currency'] ?? $order['currency'] ?? '',
+					refundId: $this->normalizeString($related['id'] ?? null),
+					value: $this->toInt($related['amount'] ?? null),
+					currency: $this->normalizeString($related['currency'] ?? $orderCurrency),
 				);
 			}
 			

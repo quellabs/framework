@@ -3,6 +3,7 @@
 	namespace Quellabs\Payments\MultiSafepay;
 	
 	use Quellabs\Canvas\Annotations\Route;
+	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Quellabs\Payments\Contracts\PaymentExchangeException;
 	use Quellabs\Payments\Contracts\PaymentStatus;
 	use Quellabs\SignalHub\Signal;
@@ -12,6 +13,8 @@
 	use Symfony\Component\HttpFoundation\Response;
 	
 	class MultiSafepayController {
+		
+		use GatewayHelpers;
 		
 		/**
 		 * @var Driver MultiSafepay driver
@@ -76,9 +79,9 @@
 				// intentionally — the order exists and the shopper should be shown a
 				// "payment pending" confirmation, not an error.
 				if ($response->state === PaymentStatus::Canceled) {
-					$redirectUrl = $config['cancel_return_url'];
+					$redirectUrl = $this->normalizeString($config['cancel_return_url'] ?? '');
 				} else {
-					$redirectUrl = $config['return_url'];
+					$redirectUrl = $this->normalizeString($config['return_url'] ?? '');
 				}
 				
 				return new RedirectResponse($redirectUrl);
