@@ -289,19 +289,42 @@
 			if ($result['request']['result'] === 0) {
 				throw new PaymentRefundException(self::DRIVER_NAME, $result['request']['errorId'], $result['request']['errorMessage']);
 			}
-			
-			// Return the result
+
+			// Fetch response
 			$response = $result['response'] ?? [];
 			
+			// Validate the refund response — id, amount, currency, and status are always
+			// present and non-null per the Stripe Refund object spec. reason is nullable.
+			if (!is_array($response)) {
+				throw new PaymentRefundException(self::DRIVER_NAME, 'INVALID_REFUND_RESPONSE', 'Stripe refund response is not an array.');
+			}
+			
+			if (!isset($response['id']) || !is_string($response['id'])) {
+				throw new PaymentRefundException(self::DRIVER_NAME, 'INVALID_REFUND_RESPONSE', 'Stripe refund response is missing required field: id.');
+			}
+			
+			if (!isset($response['amount']) || !is_int($response['amount'])) {
+				throw new PaymentRefundException(self::DRIVER_NAME, 'INVALID_REFUND_RESPONSE', 'Stripe refund response is missing required field: amount.');
+			}
+			
+			if (!isset($response['currency']) || !is_string($response['currency'])) {
+				throw new PaymentRefundException(self::DRIVER_NAME, 'INVALID_REFUND_RESPONSE', 'Stripe refund response is missing required field: currency.');
+			}
+			
+			if (!isset($response['status']) || !is_string($response['status'])) {
+				throw new PaymentRefundException(self::DRIVER_NAME, 'INVALID_REFUND_RESPONSE', 'Stripe refund response is missing required field: status.');
+			}
+			
+			// Return result
 			return new RefundResult(
 				provider: self::DRIVER_NAME,
 				paymentReference: $request->paymentReference,
-				refundId: $this->normalizeString($this->arrayGet($response, 'id')),
-				value: $this->toInt($this->arrayGet($response, 'amount')),
-				currency: strtoupper($this->normalizeString($this->arrayGet($response, 'currency'), $request->currency)),
+				refundId: $response['id'],
+				value: $response['amount'],
+				currency: strtoupper($response['currency']),
 				metadata: [
-					'status' => $this->normalizeString($this->arrayGet($response, 'status')) ?: null,
-					'reason' => $this->normalizeString($this->arrayGet($response, 'reason')) ?: null,
+					'status' => $response['status'],
+					'reason' => isset($response['reason']) && is_string($response['reason']) ? $response['reason'] : null,
 				],
 			);
 		}
@@ -329,18 +352,28 @@
 		 * @throws PaymentRefundException
 		 */
 		public function getRefunds(string $paymentReference): array {
+			// Fetch refund data from API
 			$result = $this->getGateway()->getRefundsForPaymentIntent($paymentReference);
 			
+			// If that failed, throw
 			if ($result['request']['result'] === 0) {
 				throw new PaymentRefundException(self::DRIVER_NAME, $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 			
-			$refunds     = [];
-			$responseRaw = $result['response'] ?? null;
-			$responseArr = is_array($responseRaw) ? $responseRaw : [];
-			$data        = isset($responseArr['data']) && is_array($responseArr['data']) ? $responseArr['data'] : [];
+			// Response is guaranteed to be an array here, but phpstan can't prove it
+			if (!is_array($result['response'] ?? null)) {
+				return [];
+			}
 			
-			foreach ($data as $refundRaw) {
+			// If no data in response, return nothing
+			if (!isset($result['response']['data']) || !is_array($result['response']['data'])) {
+				return [];
+			}
+			
+			// Normalize refunds
+			$refunds = [];
+			
+			foreach ($result['response']['data'] as $refundRaw) {
 				if (!is_array($refundRaw)) {
 					continue;
 				}
