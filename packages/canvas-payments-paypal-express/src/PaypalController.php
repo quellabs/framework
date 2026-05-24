@@ -116,14 +116,16 @@
 				return new JsonResponse("verifyIpnMessage denied the request", 400);
 			}
 			
-			// txn_id is PayPal's payment transaction ID — required for refund state retrieval
-			$paymentTransactionId = $this->normalizeString($data['txn_id'] ?? null);
+			// txn_id is PayPal's transaction ID — it is the same value as PAYMENTINFO_0_TRANSACTIONID
+			// from DoExpressCheckoutPayment, which exchange() expects as 'paymentReference' to skip
+			// a redundant DoExpressCheckoutPayment call and go straight to GetTransactionDetails.
+			$paymentReference = $this->normalizeString($data['txn_id'] ?? null);
 			
 			try {
 				// Call Driver's exchange method to convert raw data to PaymentState
 				$response = $this->paypal->exchange($this->normalizeString($token), [
 					'action'               => 'ipn',
-					'paymentTransactionId' => $paymentTransactionId,
+					'paymentReference' => $paymentReference,
 				]);
 				
 				// Notify listeners (e.g. order management) of the updated payment state
