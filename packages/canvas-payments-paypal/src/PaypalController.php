@@ -3,6 +3,7 @@
 	namespace Quellabs\Payments\Paypal;
 	
 	use Quellabs\Canvas\Annotations\Route;
+	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Quellabs\Payments\Contracts\PaymentExchangeException;
 	use Quellabs\Payments\Contracts\WebhookValidationException;
 	use Quellabs\Payments\Contracts\PaymentStatus;
@@ -13,6 +14,8 @@
 	use Symfony\Component\HttpFoundation\Response;
 	
 	class PaypalController {
+		
+		use GatewayHelpers;
 		
 		private Driver $paypal;
 		
@@ -59,13 +62,13 @@
 				// to choose a different payment method or complete additional authentication.
 				// No signal emitted — this is not a payment outcome.
 				if ($response->state === PaymentStatus::Redirect) {
-					$redirectUrl = $response->metadata['redirectUrl'] ?? null;
+					$metaRedirectUrl = $response->metadata['redirectUrl'] ?? null;
 					
-					if (!$redirectUrl) {
+					if (!is_string($metaRedirectUrl) || $metaRedirectUrl === '') {
 						return new JsonResponse("Missing redirect URL", 500);
 					}
 					
-					return new RedirectResponse($redirectUrl);
+					return new RedirectResponse($metaRedirectUrl);
 				}
 				
 				// Notify listeners (e.g. order management) of the updated payment state
@@ -75,16 +78,16 @@
 				$config = $this->paypal->getConfig();
 				
 				if ($response->state === PaymentStatus::Canceled) {
-					$redirectUrl = $config["cancel_return_url"];
+					$configRedirectUrl = $config["cancel_return_url"];
 				} else {
-					$redirectUrl = $config["return_url"];
+					$configRedirectUrl = $config["return_url"];
 				}
 				
-				if (empty($redirectUrl)) {
+				if (!is_string($configRedirectUrl) || $configRedirectUrl === '') {
 					return new JsonResponse("Missing return URL configuration", 500);
 				}
 				
-				return new RedirectResponse($redirectUrl);
+				return new RedirectResponse($configRedirectUrl);
 			} catch (PaymentExchangeException $exception) {
 				return new JsonResponse($exception->getMessage() . " (" . $exception->getErrorId() . ")", 502);
 			}
@@ -161,38 +164,56 @@
 				throw new WebhookValidationException("Webhook signature verification failed");
 			}
 			
-			// Validate the body is JSON
-			$payload   = json_decode($rawBody, true);
+			// Decode and validate the body is a JSON object (array in PHP)
+			$decoded = json_decode($rawBody, true);
 			
 			// Validate the body is JSON
 			if (json_last_error() !== JSON_ERROR_NONE) {
 				throw new WebhookValidationException("Invalid JSON");
 			}
 			
+			if (!is_array($decoded)) {
+				throw new WebhookValidationException("Unexpected JSON structure: expected object");
+			}
+			
+			/** @var array<string, mixed> $payload */
+			$payload = $decoded;
+			
 			// Extract the capture resource and its ID
-			$captureResource = $payload['resource'] ?? [];
-			$captureId       = $captureResource['id'] ?? null;
+			$captureResource = isset($payload['resource']) && is_array($payload['resource']) ? $payload['resource'] : [];
+			$captureId       = isset($captureResource['id']) && is_string($captureResource['id']) ? $captureResource['id'] : null;
 			
 			// Retrieve the order ID from the capture's supplementary_data links.
 			// PayPal embeds it as a HATEOAS link relation "up" pointing to the order.
-			$orderId = null;
+			$orderId      = null;
+			$captureLinks = isset($captureResource['links']) && is_array($captureResource['links']) ? $captureResource['links'] : [];
 			
-			foreach ($captureResource['links'] ?? [] as $link) {
-				if ($link['rel'] === 'up') {
+			foreach ($captureLinks as $link) {
+				if (!is_array($link)) {
+					continue;
+				}
+				
+				if (isset($link['rel']) && $link['rel'] === 'up') {
 					// href is e.g. https://api.paypal.com/v2/checkout/orders/{orderId}
-					$path = parse_url($link['href'], PHP_URL_PATH);
-
-					if ($path !== false) {
-						$orderId = basename((string)$path);
+					$href = isset($link['href']) && is_string($link['href']) ? $link['href'] : null;
+					
+					if ($href !== null) {
+						$path = parse_url($href, PHP_URL_PATH);
+						
+						if (is_string($path)) {
+							$orderId = basename($path);
+						}
 					}
-
+					
 					break;
 				}
 			}
 			
+			$eventType = isset($payload['event_type']) && is_string($payload['event_type']) ? $payload['event_type'] : '';
+			
 			return [
 				'payload'          => $payload,
-				'eventType'        => $payload['event_type'] ?? '',
+				'eventType'        => $eventType,
 				'paymentReference' => $captureId,
 				'orderId'          => $orderId,
 			];
@@ -205,7 +226,7 @@
 		 * emits the resulting PaymentState to subscribers, and returns a 200 OK.
 		 * Returns 500 on exchange failure so PayPal retries with exponential back-off.
 		 *
-		 * @param string|null $orderId   The order ID resolved from the capture's HATEOAS "up" link
+		 * @param string|null $orderId The order ID resolved from the capture's HATEOAS "up" link
 		 * @param string|null $captureId The capture ID from the webhook resource payload
 		 * @return Response
 		 */
