@@ -13,13 +13,18 @@
 	use Quellabs\Payments\Contracts\PaymentStatus;
 	use Quellabs\Payments\Contracts\RefundRequest;
 	use Quellabs\Payments\Contracts\RefundResult;
+	use Quellabs\Contracts\Gateway\GatewayHelpers;
+	use Quellabs\Contracts\Gateway\GatewayInterface;
 	use Quellabs\Support\Tools;
 	
 	/**
 	 * Rabo SmartPay Driver
 	 * @phpstan-import-type IssuerOption from PaymentInterface
+	 * @phpstan-import-type GatewayResponse from GatewayInterface
 	 */
 	class Driver implements PaymentProviderInterface {
+		
+		use GatewayHelpers;
 		
 		/**
 		 * Driver name
@@ -95,7 +100,16 @@
 		/**
 		 * Returns default configuration values for this provider.
 		 * Merged with loaded config files during discovery — values from config files take precedence.
-		 * @return array<string, mixed>
+		 * @return array{
+		 *     test_mode: bool,
+		 *     refresh_token: string,
+		 *     signing_key: string,
+		 *     return_url: string,
+		 *     cancel_return_url: string,
+		 *     default_currency: string,
+		 *     language: string,
+		 *     skip_result_page: bool
+		 * }
 		 */
 		public function getDefaults(): array {
 			return [
@@ -252,12 +266,12 @@
 			$data = $result['response'] ?? [];
 			
 			// Validate redirectUrl exists in API response
-			if (empty($data['redirectUrl'])) {
+			if (!is_string($data['redirectUrl'] ?? null) || $data['redirectUrl'] === '') {
 				throw new PaymentInitiationException(self::DRIVER_NAME, 0, 'Order announce returned no redirectUrl');
 			}
 			
 			// Validate omnikassaOrderId exists in API response
-			if (empty($data['omnikassaOrderId'])) {
+			if (!is_string($data['omnikassaOrderId'] ?? null) || $data['omnikassaOrderId'] === '') {
 				throw new PaymentInitiationException(self::DRIVER_NAME, 0, 'Order announce returned no omnikassaOrderId');
 			}
 			
@@ -276,7 +290,7 @@
 		 * Performs the Status Pull call using the token from a webhook notification.
 		 * Delegates to the gateway.
 		 * @param string $notificationToken The authentication token from the webhook notification body
-		 * @return array<string, mixed> Normalised response containing orderResults[]
+		 * @return GatewayResponse
 		 */
 		public function pullOrderStatuses(string $notificationToken): array {
 			return $this->getGateway()->pullOrderStatuses($notificationToken);
@@ -291,7 +305,7 @@
 		 */
 		public function exchange(string $transactionId, array $extraData = []): PaymentState {
 			// Grab the order status
-			$orderStatus = strtoupper($extraData['orderStatus'] ?? '');
+			$orderStatus = strtoupper($this->normalizeString($extraData['orderStatus'] ?? ''));
 			
 			// If status is absent, fall back to a direct API call.
 			// This should only happen if the return URL is visited without parameters.
@@ -309,8 +323,8 @@
 				}
 				
 				// Merge the API response with the passed data; 'response' is always present when result === 1.
-				$extraData = array_merge($extraData, $result['response'] ?? []);
-				$orderStatus = strtoupper($extraData['orderStatus'] ?? 'IN_PROGRESS');
+				$extraData   = array_merge($extraData, $result['response'] ?? []);
+				$orderStatus = strtoupper($this->normalizeString($extraData['orderStatus'] ?? 'IN_PROGRESS'));
 			}
 			
 			// Match Rabobank state with our own
@@ -324,17 +338,32 @@
 			};
 			
 			// Extract data from url or api response
-			$paidAmount = (int)($extraData['paidAmount']['amount'] ?? 0);
-			$currency = $extraData['paidAmount']['currency'] ?? ($extraData['totalAmount']['currency'] ?? '');
-			$valuePaid = ($state === PaymentStatus::Paid) ? $paidAmount : 0;
+			$paidAmountRaw = $extraData['paidAmount'] ?? null;
+			
+			if (!is_array($paidAmountRaw)) {
+				throw new PaymentExchangeException(self::DRIVER_NAME, 'MISSING_PAID_AMOUNT', 'paidAmount is missing or not an array: ' . get_debug_type($paidAmountRaw));
+			}
+			
+			if (!is_int($paidAmountRaw['amount'] ?? null) && !is_numeric($paidAmountRaw['amount'] ?? null)) {
+				throw new PaymentExchangeException(self::DRIVER_NAME, 'INVALID_AMOUNT', 'paidAmount.amount is not numeric: ' . get_debug_type($paidAmountRaw['amount'] ?? null));
+			}
+			
+			if (!is_string($paidAmountRaw['currency'] ?? null)) {
+				throw new PaymentExchangeException(self::DRIVER_NAME, 'INVALID_CURRENCY', 'paidAmount.currency is not a string: ' . get_debug_type($paidAmountRaw['currency'] ?? null));
+			}
 			
 			// Find the brand type
 			$paymentBrand = null;
+			$transactions = is_array($extraData['transactions'] ?? null) ? $extraData['transactions'] : [];
 			
-			foreach ($extraData['transactions'] ?? [] as $transaction) {
-				if (strtoupper($transaction['type'] ?? '') === 'PAYMENT' &&
-					strtoupper($transaction['status'] ?? '') === 'SUCCESS') {
-					$paymentBrand = $transaction['paymentBrand'] ?? null;
+			foreach ($transactions as $transaction) {
+				if (!is_array($transaction)) {
+					continue;
+				}
+				
+				if (strtoupper($this->normalizeString($transaction['type'] ?? '')) === 'PAYMENT' &&
+					strtoupper($this->normalizeString($transaction['status'] ?? '')) === 'SUCCESS') {
+					$paymentBrand = isset($transaction['paymentBrand']) ? $this->normalizeString($transaction['paymentBrand']) : null;
 					break;
 				}
 			}
@@ -344,8 +373,8 @@
 				provider: self::DRIVER_NAME,
 				transactionId: $transactionId,
 				state: $state,
-				currency: $currency,
-				valuePaid: $valuePaid,
+				currency: (string)$paidAmountRaw['currency'],
+				valuePaid: ($state === PaymentStatus::Paid) ? (int)$paidAmountRaw['amount'] : 0,
 				valueRefunded: 0,
 				internalState: $orderStatus,
 				metadata: array_filter([
@@ -391,7 +420,11 @@
 			
 			// The refund response contains an id field identifying this specific refund operation.
 			// 'response' is always present when result === 1.
-			$refundId = (string)(($result['response'] ?? [])['id'] ?? $request->paymentReference);
+			if (is_array($result['response'] ?? null)) {
+				$refundId = $this->normalizeString(($result['response'])['id'] ?? $request->paymentReference);
+			} else {
+				$refundId = $this->normalizeString($request->paymentReference);
+			}
 			
 			// Return the refund result
 			return new RefundResult(
@@ -428,7 +461,7 @@
 		 */
 		public function verifySignature(string $payload, string $providedSignature): bool {
 			$config = $this->getConfig();
-			return $this->getGateway()->verifySignature($payload, $providedSignature, $config['signing_key']);
+			return $this->getGateway()->verifySignature($payload, $providedSignature, $this->normalizeString($config['signing_key']));
 		}
 		
 		/**

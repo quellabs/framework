@@ -3,6 +3,7 @@
 	namespace Quellabs\Payments\RaboSmartPay;
 	
 	use Quellabs\Canvas\Annotations\Route;
+	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Quellabs\Payments\Contracts\PaymentExchangeException;
 	use Quellabs\SignalHub\Signal;
 	use Symfony\Component\HttpFoundation\JsonResponse;
@@ -11,6 +12,8 @@
 	use Symfony\Component\HttpFoundation\Response;
 	
 	class RaboSmartPayController {
+		
+		use GatewayHelpers;
 		
 		/**
 		 * Rabo Smart Pay driver instance used to resolve payment state.
@@ -31,7 +34,7 @@
 		 * @param Driver $rabo Rabo Smart Pay driver with active configuration already applied
 		 */
 		public function __construct(Driver $rabo) {
-			$this->rabo = $rabo;
+			$this->rabo   = $rabo;
 			$this->signal = new Signal('payment_exchange');
 		}
 		
@@ -45,8 +48,8 @@
 		 */
 		public function handleReturn(Request $request): Response {
 			// Extract request data
-			$orderStatus = $request->query->get('status', '');
-			$signature = $request->query->get('signature', '');
+			$orderStatus     = $request->query->get('status', '');
+			$signature       = $request->query->get('signature', '');
 			$merchantOrderId = $request->query->get('order_id', '');
 			
 			// Rabo Smart Pay always signs the return URL. Reject unsigned requests.
@@ -69,9 +72,9 @@
 			// is purely a UX cue. IN_PROGRESS lands on the success page so the shopper
 			// sees a confirmation rather than an error while the webhook is still pending.
 			if (in_array(strtoupper($orderStatus), ['CANCELLED', 'EXPIRED', 'FAILURE'], true)) {
-				return new RedirectResponse($config['cancel_return_url']);
+				return new RedirectResponse($this->normalizeString($config['cancel_return_url']));
 			} else {
-				return new RedirectResponse($config['return_url']);
+				return new RedirectResponse($this->normalizeString($config['return_url']));
 			}
 		}
 		
@@ -117,7 +120,7 @@
 			}
 			
 			// The notification token is required to perform the Status Pull call.
-			$notificationToken = $body['authentication'] ?? '';
+			$notificationToken = $this->normalizeString($body['authentication'] ?? '');
 			
 			// Validate the presence of an authentication token
 			if (empty($notificationToken)) {
@@ -128,19 +131,18 @@
 			// Payload: "{authentication},{expiry},{eventName},{poiId}"
 			// Reject requests without a signature — Rabo Smart Pay always signs notifications.
 			if (empty($body['signature'])) {
-				error_log('Rabo Smart Pay: rejected webhook notification with no signature');
 				return new Response('Missing signature', 400, ['Content-Type' => 'text/plain']);
 			}
 			
 			// Verify the signature
 			$signaturePayload = implode(',', [
-				$body['authentication'] ?? '',
-				$body['expiry'] ?? '',
-				$body['eventName'] ?? '',
-				$body['poiId'] ?? '',
+				$this->normalizeString($body['authentication'] ?? ''),
+				$this->normalizeString($body['expiry'] ?? ''),
+				$this->normalizeString($body['eventName'] ?? ''),
+				$this->normalizeString($body['poiId'] ?? ''),
 			]);
 			
-			if (!$this->rabo->verifySignature($signaturePayload, $body['signature'])) {
+			if (!$this->rabo->verifySignature($signaturePayload, $this->normalizeString($body['signature']))) {
 				error_log('Rabo Smart Pay: rejected webhook notification with invalid signature');
 				return new Response('Invalid signature', 400, ['Content-Type' => 'text/plain']);
 			}
@@ -165,9 +167,9 @@
 		 */
 		private function handleStatusPull(string $notificationToken): void {
 			// Rabo Smart Pay may paginate results across multiple pulls using the same token.
-			$moreResultsAvailable = true;
+			$moreResults = true;
 			
-			while ($moreResultsAvailable) {
+			while ($moreResults) {
 				// Call the API to fetch the order statuses
 				$result = $this->rabo->pullOrderStatuses($notificationToken);
 				
@@ -180,18 +182,22 @@
 					);
 				}
 				
-				// Grab the response
-				$pullData = $result['response'];
-				
 				// If true, loop and pull again with the same token to get the remaining results.
-				$moreResultsAvailable = (bool)($pullData['moreOrderResultsAvailable'] ?? false);
+				$pullData     = $result['response'] ?? [];
+				$moreResults  = $this->toBool($pullData['moreOrderResultsAvailable'] ?? false);
+				$orderResults = is_array($pullData['orderResults'] ?? null) ? $pullData['orderResults'] : [];
 				
-				foreach ($pullData['orderResults'] ?? [] as $orderResult) {
-					// omnikassaOrderId is Rabo Smart Pay's UUID — the transactionId for exchange() and refunds.
-					$omnikassaOrderId = $orderResult['omnikassaOrderId'] ?? '';
+				foreach ($orderResults as $orderResult) {
+					// Skip results that are not array
+					if (!is_array($orderResult)) {
+						continue;
+					}
 					
 					// Skip malformed results that are missing the order identifier.
-					if (empty($omnikassaOrderId)) {
+					// omnikassaOrderId is Rabo Smart Pay's UUID — the transactionId for exchange() and refunds.
+					$omnikassaOrderId = $orderResult['omnikassaOrderId'] ?? null;
+
+					if (!is_string($omnikassaOrderId) || $omnikassaOrderId === '') {
 						continue;
 					}
 					
