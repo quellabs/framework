@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\Payments\XPay;
 	
+	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Quellabs\Payments\Contracts\InitiateResult;
 	use Quellabs\Payments\Contracts\PaymentAddress;
 	use Quellabs\Payments\Contracts\PaymentInterface;
@@ -19,8 +20,9 @@
 	 * XPay Driver
 	 * @phpstan-import-type IssuerOption from PaymentInterface
 	 */
-	
 	class Driver implements PaymentProviderInterface {
+		
+		use GatewayHelpers;
 		
 		/**
 		 * Driver name
@@ -221,7 +223,7 @@
 			$response = $result['response'] ?? [];
 			
 			// Validate response
-			if (!isset($response['hostedPage'])) {
+			if (!isset($response['hostedPage']) || !is_string($response['hostedPage'])) {
 				throw new PaymentInitiationException(self::DRIVER_NAME, 0, 'Invalid gateway response. Missing hostedPage URL.');
 			}
 			
@@ -230,7 +232,7 @@
 			return new InitiateResult(
 				provider: self::DRIVER_NAME,
 				transactionId: $request->reference ?? '',
-				redirectUrl: $response['hostedPage'],
+				redirectUrl: $this->normalizeString($response['hostedPage']),
 			);
 		}
 		
@@ -266,24 +268,30 @@
 			}
 			
 			// Fetch the response data
-			$data = $result['response'] ?? [];
-			$orderData = $data['orderStatus']['order'] ?? [];
-			$operations = $data['orderStatus']['operations'] ?? [];
+			$data        = $result['response'] ?? [];
+			$orderStatus = isset($data['orderStatus']) && is_array($data['orderStatus']) ? $data['orderStatus'] : [];
+			$orderData   = isset($orderStatus['order']) && is_array($orderStatus['order']) ? $orderStatus['order'] : [];
+			$operations  = isset($orderStatus['operations']) && is_array($orderStatus['operations']) ? $orderStatus['operations'] : [];
 			
 			// Use the order-level currency as a fallback; individual operations carry their own currency
 			// but may be missing it (e.g. for some async methods)
-			$currency = $orderData['currency'] ?? '';
+			$currency = $this->normalizeString($orderData['currency'] ?? '');
 			
 			// Walk operations to find the primary payment status and refund total.
 			// Operations are ordered chronologically; we want the most recent CAPTURE result.
-			$captureOp = null;
+			$captureOp   = null;
 			$refundTotal = 0;
 			
 			foreach ($operations as $op) {
+				// Skip malformed operations
+				if (!is_array($op)) {
+					continue;
+				}
+				
 				// Normalise to uppercase so comparisons are case-insensitive — XPay's casing
 				// is consistent in practice, but the API docs don't guarantee it
-				$opType = strtoupper($op['operationType'] ?? '');
-				$opResult = strtoupper($op['operationResult'] ?? '');
+				$opType   = strtoupper($this->normalizeString($op['operationType'] ?? ''));
+				$opResult = strtoupper($this->normalizeString($op['operationResult'] ?? ''));
 				
 				// Keep the last capture/auth operation as the primary; later entries
 				// overwrite earlier ones, so we naturally end up with the most recent state
@@ -294,7 +302,7 @@
 				// Accumulate all successful refund amounts to compute the refunded total;
 				// there may be multiple partial refunds against the same order
 				if ($opType === 'REFUND' && $opResult === 'AUTHORIZED') {
-					$refundTotal += (int)($op['operationAmount'] ?? 0);
+					$refundTotal += $this->toInt($op['operationAmount'] ?? 0);
 				}
 			}
 			
@@ -302,17 +310,18 @@
 			// This handles edge cases such as orders that only have an AUTHORIZATION_REQUESTED
 			// entry while the acquirer is still processing
 			if ($captureOp === null && !empty($operations)) {
-				$captureOp = reset($operations);
+				$first     = reset($operations);
+				$captureOp = is_array($first) ? $first : null;
 			}
 			
 			// Read the final result from whichever operation we settled on; default to PENDING
 			// if $captureOp is still null (empty operations list — order exists but no activity yet)
-			$opResult = strtoupper($captureOp['operationResult'] ?? 'PENDING');
-			$opAmount = (int)($captureOp['operationAmount'] ?? 0);
+			$opResult = strtoupper($this->normalizeString($captureOp['operationResult'] ?? 'PENDING', 'PENDING'));
+			$opAmount = $this->toInt($captureOp['operationAmount'] ?? 0);
 			
 			// Prefer the operation-level currency; fall back to the order-level currency resolved above
-			$opCurrency = $captureOp['operationCurrency'] ?? $currency;
-			$operationId = $captureOp['operationId'] ?? null;
+			$opCurrency  = $this->normalizeString($captureOp['operationCurrency'] ?? $currency);
+			$operationId = isset($captureOp['operationId']) ? $this->normalizeString($captureOp['operationId']) : null;
 			
 			// Map the XPay operationResult string to our internal PaymentStatus enum;
 			// unknown values default to Pending rather than failing, which is the safer assumption
@@ -331,15 +340,15 @@
 				provider: self::DRIVER_NAME,
 				transactionId: $transactionId,
 				state: $state,
-				currency: $opCurrency ?: $currency,
+				currency: $opCurrency !== '' ? $opCurrency : $currency,
 				valuePaid: $state === PaymentStatus::Paid ? $opAmount : 0,
 				valueRefunded: $refundTotal,
 				internalState: $opResult,
 				metadata: array_filter([
 					'operationId'    => $operationId,
-					'paymentMethod'  => $captureOp['paymentMethod'] ?? null,
-					'paymentCircuit' => $captureOp['paymentCircuit'] ?? null,
-					'operationType'  => $captureOp['operationType'] ?? null,
+					'paymentMethod'  => isset($captureOp['paymentMethod']) ? $this->normalizeString($captureOp['paymentMethod']) : null,
+					'paymentCircuit' => isset($captureOp['paymentCircuit']) ? $this->normalizeString($captureOp['paymentCircuit']) : null,
+					'operationType'  => isset($captureOp['operationType']) ? $this->normalizeString($captureOp['operationType']) : null,
 				], fn($v) => $v !== null),
 			);
 		}
@@ -369,7 +378,7 @@
 			
 			// Partial refund: include amount and currency
 			if ($request->amount !== null) {
-				$payload['amount'] = (string)$request->amount;
+				$payload['amount']   = (string)$request->amount;
 				$payload['currency'] = $request->currency;
 			}
 			
@@ -385,10 +394,10 @@
 			}
 			
 			// The refund response contains the new operation object for the refund itself
-			$response = $result['response'] ?? [];
-			$refundOpId = $response['operationId'] ?? '';
-			$refundedAmt = (int)($response['operationAmount'] ?? ($request->amount ?? 0));
-			$currency = $response['operationCurrency'] ?? $request->currency;
+			$response    = $result['response'] ?? [];
+			$refundOpId  = $this->normalizeString($response['operationId'] ?? '');
+			$refundedAmt = $this->toInt($response['operationAmount'] ?? ($request->amount ?? 0));
+			$currency    = $this->normalizeString($response['operationCurrency'] ?? $request->currency);
 			
 			return new RefundResult(
 				provider: self::DRIVER_NAME,
@@ -416,13 +425,20 @@
 				throw new PaymentExchangeException(self::DRIVER_NAME, $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 			
-			$operations = $result['response']['orderStatus']['operations'] ?? [];
-			$currency = $result['response']['orderStatus']['order']['currency'] ?? '';
-			$refunds = [];
+			$response    = $result['response'] ?? [];
+			$orderStatus = isset($response['orderStatus']) && is_array($response['orderStatus']) ? $response['orderStatus'] : [];
+			$orderData   = isset($orderStatus['order']) && is_array($orderStatus['order']) ? $orderStatus['order'] : [];
+			$operations  = isset($orderStatus['operations']) && is_array($orderStatus['operations']) ? $orderStatus['operations'] : [];
+			$currency    = $this->normalizeString($orderData['currency'] ?? '');
+			$refunds     = [];
 			
 			foreach ($operations as $op) {
-				$opType = strtoupper($op['operationType'] ?? '');
-				$opResult = strtoupper($op['operationResult'] ?? '');
+				if (!is_array($op)) {
+					continue;
+				}
+				
+				$opType   = strtoupper($this->normalizeString($op['operationType'] ?? ''));
+				$opResult = strtoupper($this->normalizeString($op['operationResult'] ?? ''));
 				
 				if ($opType !== 'REFUND' || $opResult !== 'AUTHORIZED') {
 					continue;
@@ -431,9 +447,9 @@
 				$refunds[] = new RefundResult(
 					provider: self::DRIVER_NAME,
 					paymentReference: $paymentReference,
-					refundId: $op['operationId'] ?? '',
-					value: (int)($op['operationAmount'] ?? 0),
-					currency: $op['operationCurrency'] ?? $currency,
+					refundId: $this->normalizeString($op['operationId'] ?? ''),
+					value: $this->toInt($op['operationAmount'] ?? 0),
+					currency: $this->normalizeString($op['operationCurrency'] ?? $currency),
 				);
 			}
 			
@@ -456,15 +472,21 @@
 				throw new PaymentRefundException(self::DRIVER_NAME, $result['request']['errorId'], 'Could not fetch order to resolve capture operationId: ' . $result['request']['errorMessage']);
 			}
 			
-			$operations = $result['response']['orderStatus']['operations'] ?? [];
+			$response    = $result['response'] ?? [];
+			$orderStatus = isset($response['orderStatus']) && is_array($response['orderStatus']) ? $response['orderStatus'] : [];
+			$operations  = isset($orderStatus['operations']) && is_array($orderStatus['operations']) ? $orderStatus['operations'] : [];
 			$captureOpId = null;
 			
 			foreach ($operations as $op) {
-				$opType = strtoupper($op['operationType'] ?? '');
-				$opResult = strtoupper($op['operationResult'] ?? '');
+				if (!is_array($op)) {
+					continue;
+				}
+				
+				$opType   = strtoupper($this->normalizeString($op['operationType'] ?? ''));
+				$opResult = strtoupper($this->normalizeString($op['operationResult'] ?? ''));
 				
 				if (($opType === 'CAPTURE' || $opType === 'AUTHORIZATION') && $opResult === 'AUTHORIZED') {
-					$captureOpId = $op['operationId'] ?? null;
+					$captureOpId = $this->normalizeString($op['operationId'] ?? '');
 				}
 			}
 			
@@ -488,9 +510,9 @@
 		private function buildCustomerInfo(PaymentRequest $request): array {
 			$info = [];
 			
-			$billing = $request->billingAddress;
+			$billing  = $request->billingAddress;
 			$shipping = $request->shippingAddress;
-			$primary = $billing ?? $shipping;
+			$primary  = $billing ?? $shipping;
 			
 			if ($primary === null) {
 				return [];
@@ -511,7 +533,7 @@
 					// Naive extraction: first 1-3 digits after '+' are the country code
 					if (preg_match('/^\+(\d{1,3})(\d+)$/', $primary->phone, $m)) {
 						$info['mobilePhoneCountryCode'] = $m[1];
-						$info['mobilePhone'] = $m[2];
+						$info['mobilePhone']            = $m[2];
 					}
 				} else {
 					$info['mobilePhone'] = $primary->phone;
