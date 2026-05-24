@@ -6,7 +6,7 @@
 		
 		/**
 		 * Safely retrieves a nested value from an array using dot notation.
-		 * @param array<string, mixed> $data
+		 * @param array<array-key, mixed> $data
 		 * @param string $path
 		 * @param mixed $default
 		 * @return mixed
@@ -63,6 +63,29 @@
 			
 			if (is_numeric($value)) {
 				return (float)$value;
+			}
+			
+			return $default;
+		}
+		
+		/**
+		 * Coerces a mixed value to bool, accepting booleans and the canonical string/int forms.
+		 * Returns $default when the value cannot be meaningfully converted.
+		 * @param mixed $value
+		 * @param bool $default
+		 * @return bool
+		 */
+		private function toBool(mixed $value, bool $default = false): bool {
+			if (is_bool($value)) {
+				return $value;
+			}
+			
+			if (is_int($value)) {
+				return $value !== 0;
+			}
+			
+			if (is_string($value)) {
+				return in_array(strtolower($value), ['1', 'true', 'yes', 'on'], true);
 			}
 			
 			return $default;

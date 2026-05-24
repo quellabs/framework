@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\Payments\Paypal;
 	
+	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Quellabs\Contracts\Gateway\GatewayInterface;
 	use Symfony\Component\HttpClient\HttpClient;
 	use Symfony\Contracts\HttpClient\HttpClientInterface;
@@ -15,6 +16,8 @@
 	 * @phpstan-import-type GatewayResponse from GatewayInterface
 	 */
 	class PaypalGateway {
+		
+		use GatewayHelpers;
 		
 		private string $m_base_url;
 		private string $m_client_id;
@@ -36,16 +39,20 @@
 		public function __construct(Driver $driver) {
 			$config = $driver->getConfig();
 			
-			$this->m_test_mode = $config["test_mode"];
-			$this->m_base_url = $this->m_test_mode ? 'https://api-m.sandbox.paypal.com' : 'https://api-m.paypal.com';
-			$this->m_client_id = $config["client_id"];
-			$this->m_client_secret = $config["client_secret"];
-			$this->m_verify_ssl = $config["verify_ssl"];
-			$this->m_account_optional = $config["account_optional"];
-			$this->m_return_url = $config["return_url"] ?? '';
-			$this->m_cancel_url = $config["cancel_return_url"] ?? '';
-			$this->m_webhook_id = $config["webhook_id"];
-			$this->m_client = HttpClient::create();
+			// The Driver::getDefaults() return type guarantees these keys exist with the correct
+			// types, but getConfig() merges via array_replace_recursive() which widens to
+			// array<string, mixed>. We validate each value explicitly so PHPStan is satisfied
+			// and we surface bad config early rather than at call time.
+			$this->m_test_mode        = $this->toBool($config["test_mode"] ?? false);
+			$this->m_base_url         = $this->m_test_mode ? 'https://api-m.sandbox.paypal.com' : 'https://api-m.paypal.com';
+			$this->m_client_id        = $this->normalizeString($config["client_id"] ?? '');
+			$this->m_client_secret    = $this->normalizeString($config["client_secret"] ?? '');
+			$this->m_verify_ssl       = $this->toBool($config["verify_ssl"] ?? true);
+			$this->m_account_optional = $this->toBool($config["account_optional"] ?? true);
+			$this->m_return_url       = $this->normalizeString($config["return_url"] ?? '');
+			$this->m_cancel_url       = $this->normalizeString($config["cancel_return_url"] ?? '');
+			$this->m_webhook_id       = $this->normalizeString($config["webhook_id"] ?? '');
+			$this->m_client           = HttpClient::create();
 		}
 		
 		/**
@@ -186,7 +193,10 @@
 			}
 			
 			// Step 2: Resolve the order ID from the capture's supplementary_data.
-			$orderId = $capture['response']['supplementary_data']['related_ids']['order_id'] ?? null;
+			$captureResponse = isset($capture['response']) && is_array($capture['response']) ? $capture['response'] : [];
+			$suppData        = isset($captureResponse['supplementary_data']) && is_array($captureResponse['supplementary_data']) ? $captureResponse['supplementary_data'] : [];
+			$relatedIds      = isset($suppData['related_ids']) && is_array($suppData['related_ids']) ? $suppData['related_ids'] : [];
+			$orderId         = isset($relatedIds['order_id']) && is_string($relatedIds['order_id']) ? $relatedIds['order_id'] : null;
 			
 			if ($orderId === null) {
 				return ['request' => ['result' => 0, 'errorId' => 'MISSING_ORDER_ID', 'errorMessage' => 'Could not resolve order ID from capture supplementary_data'], 'response' => []];
@@ -200,7 +210,11 @@
 			}
 			
 			// Step 4: Extract the list of refund stubs from the order response
-			$refundLinks = $order['response']['purchase_units'][0]['payments']['refunds'] ?? [];
+			$orderResponse = isset($order['response']) && is_array($order['response']) ? $order['response'] : [];
+			$purchaseUnits = isset($orderResponse['purchase_units']) && is_array($orderResponse['purchase_units']) ? $orderResponse['purchase_units'] : [];
+			$firstUnit     = isset($purchaseUnits[0]) && is_array($purchaseUnits[0]) ? $purchaseUnits[0] : [];
+			$unitPayments  = isset($firstUnit['payments']) && is_array($firstUnit['payments']) ? $firstUnit['payments'] : [];
+			$refundLinks   = isset($unitPayments['refunds']) && is_array($unitPayments['refunds']) ? $unitPayments['refunds'] : [];
 			
 			if (empty($refundLinks)) {
 				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => []];
@@ -211,6 +225,14 @@
 			$refunds = [];
 			
 			foreach ($refundLinks as $refundStub) {
+				if (!is_array($refundStub)) {
+					continue;
+				}
+				
+				if (!isset($refundStub['id']) || !is_string($refundStub['id'])) {
+					continue;
+				}
+				
 				$result = $this->sendRequest('GET', '/v2/payments/refunds/' . urlencode($refundStub['id']));
 				
 				if ($result['request']['result'] === 0) {
@@ -312,7 +334,7 @@
 				}
 				
 				// Cache the token and expires date
-				$this->m_access_token = $data['access_token'];
+				$this->m_access_token  = $data['access_token'];
 				$this->m_token_expires = time() + $data['expires_in'] - 60;
 				
 				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => ['accessToken' => $this->m_access_token]];
@@ -341,17 +363,19 @@
 				}
 				
 				// Fetch the response
-				$accessTokenResponse = $tokenResult['response'] ?? [];
+				$accessTokenResponse = isset($tokenResult['response']) && is_array($tokenResult['response']) ? $tokenResult['response'] : [];
 				
-				// Validate that the accessToken is present. If not, show error to user
-				if (empty($accessTokenResponse['accessToken'])) {
+				// Validate that the accessToken is a non-empty string. If not, show error to user
+				$accessToken = isset($accessTokenResponse['accessToken']) && is_string($accessTokenResponse['accessToken']) ? $accessTokenResponse['accessToken'] : '';
+				
+				if (empty($accessToken)) {
 					return ['request' => ['result' => 0, 'errorId' => '500', 'errorMessage' => "Invalid gateway response. Missing access token"]];
 				}
 				
 				// Call the method the user desires using the access token
 				$options = [
 					'headers'     => array_merge([
-						'Authorization' => "Bearer {$accessTokenResponse['accessToken']}",
+						'Authorization' => "Bearer {$accessToken}",
 						'Content-Type'  => 'application/json',
 						'Prefer'        => 'return=representation',
 					], $headers),
@@ -365,8 +389,8 @@
 				
 				// Call the gateway
 				$response = $this->m_client->request($method, $this->m_base_url . $path, $options);
-				$data = $response->toArray(false);
-				$status = $response->getStatusCode();
+				$data     = $response->toArray(false);
+				$status   = $response->getStatusCode();
 				
 				// 2xx = success
 				if ($status >= 200 && $status < 300) {
@@ -374,7 +398,7 @@
 				}
 				
 				// PayPal REST error body: {"name": "...", "message": "...", "details": [...]}
-				$errorName = $data['name'] ?? 'UNKNOWN_ERROR';
+				$errorName    = $data['name'] ?? 'UNKNOWN_ERROR';
 				$errorMessage = $data['message'] ?? 'Unknown error';
 				
 				// Include the first detail entry if present — it usually carries the actionable reason

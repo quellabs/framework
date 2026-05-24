@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\Payments\MultiSafepay;
 	
+	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Quellabs\Contracts\Gateway\GatewayInterface;
 	use Symfony\Component\HttpClient\HttpClient;
 	use Symfony\Contracts\HttpClient\HttpClientInterface;
@@ -25,6 +26,9 @@
 	 */
 	class MultiSafepayGateway {
 		
+		use GatewayHelpers;
+		
+		/** @var string API version can change later */
 		private const string API_VERSION = 'v1';
 		
 		/** @var HttpClientInterface Shared HTTP client instance */
@@ -46,7 +50,7 @@
 			
 			// Extract config info
 			$this->client = HttpClient::create();
-			$this->apiKey = $config['api_key'] ?? '';
+			$this->apiKey = $this->normalizeString($config['api_key'] ?? '');
 			
 			// MSP uses completely separate hostnames for test and live, not a flag on one endpoint.
 			// @see https://docs.multisafepay.com/docs/test-your-integration
@@ -143,15 +147,20 @@
 					return ['request' => ['result' => 0, 'errorId' => "0", 'errorMessage' => 'Invalid JSON response: ' . json_last_error_msg()]];
 				}
 				
-				// If success is false or absent, return error
-				if (!($body['success'] ?? false)) {
-					return ['request' => ['result' => 0, 'errorId' => $body['error_code'] ?? "0", 'errorMessage' => $body['error_info'] ?? 'Unknown error']];
+				// json_decode with assoc=true returns array|null on valid JSON; we need an array
+				if (!is_array($body)) {
+					return ['request' => ['result' => 0, 'errorId' => '0', 'errorMessage' => 'Unexpected non-object JSON response']];
 				}
 				
-				// Return data
+				// If success is false or absent, return error
+				if (!($body['success'] ?? false)) {
+					return ['request' => ['result' => 0, 'errorId' => $this->normalizeString($body['error_code'], '0'), 'errorMessage' => $this->normalizeString($body['error_info'], 'Unknown error')]];
+				}
+				
+				// Return data. $body is array<string, mixed> at this point, satisfying GatewayResponse.
 				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $body];
 			} catch (\Throwable $e) {
-				return ['request' => ['result' => 0, 'errorId' => $e->getCode(), 'errorMessage' => $e->getMessage()]];
+				return ['request' => ['result' => 0, 'errorId' => (string)$e->getCode(), 'errorMessage' => $e->getMessage()]];
 			}
 		}
 	}

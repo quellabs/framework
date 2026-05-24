@@ -38,6 +38,8 @@
 	 */
 	class RaboSmartPayGateway {
 		
+		use \Quellabs\Contracts\Gateway\GatewayHelpers;
+		
 		/** @var string Production base URL */
 		private const string BASE_URL_LIVE = 'https://api.pay.rabobank.nl/omnikassa-api';
 		
@@ -70,7 +72,7 @@
 			$this->baseUrl = !empty($config['test_mode']) ? self::BASE_URL_SANDBOX : self::BASE_URL_LIVE;
 			
 			// Store the long-lived refresh token used to obtain access tokens.
-			$this->refreshToken = $config['refresh_token'] ?? '';
+			$this->refreshToken = $this->normalizeString($config['refresh_token'] ?? '');
 			
 			// Instantiate a shared Symfony HTTP client for all requests.
 			$this->client = HttpClient::create();
@@ -202,20 +204,21 @@
 			$statusCode = $response->getStatusCode();
 			
 			// Decode the JSON body content
-			$body = json_decode($response->getContent(false), true);
+			$rawBody = json_decode($response->getContent(false), true);
 			
 			// If that failed, return null so the caller can pick this up
-			if (json_last_error() !== JSON_ERROR_NONE || $statusCode !== 200 || empty($body['token'])) {
+			if (json_last_error() !== JSON_ERROR_NONE || $statusCode !== 200 || !is_array($rawBody) || empty($rawBody['token'])) {
 				throw new \Exception("Failed to fetch access token");
 			}
 			
 			// Cache the access token and parse its expiry time.
-			$this->accessToken = $body['token'];
+			$this->accessToken = $this->normalizeString($rawBody['token'] ?? '');
 			
 			// validUntil is an ISO 8601 timestamp e.g. "2025-01-01T12:00:00.000+01:00"
 			// 5-minute fallback when field is absent
-			if (isset($body['validUntil'])) {
-				$this->accessTokenExpiry = (int)strtotime($body['validUntil']);
+			if (isset($rawBody['validUntil'])) {
+				$validUntil = $this->normalizeString($rawBody['validUntil']);
+				$this->accessTokenExpiry = (int)strtotime($validUntil);
 			} else {
 				$this->accessTokenExpiry = time() + 300;
 			}
@@ -258,7 +261,7 @@
 				$statusCode = $response->getStatusCode();
 				
 				// Decode result with throw-on-error disabled so we can inspect error bodies.
-				$body = json_decode($response->getContent(false), true);
+				$rawBody = json_decode($response->getContent(false), true);
 				
 				// If decode failed, return an error
 				if (json_last_error() !== JSON_ERROR_NONE) {
@@ -267,13 +270,16 @@
 				
 				// If the statuscode is not in the success range, return an error
 				if ($statusCode < 200 || $statusCode >= 300) {
-					// Extract the most informative error message from the error body.
-					$errorMessage = $this->extractErrorMessage($body, $statusCode);
+					if (is_array($rawBody)) {
+						$errorMessage = $this->extractErrorMessage($rawBody, $statusCode);
+					} else {
+						$errorMessage = "HTTP {$statusCode}";
+					}
+					
 					return ['request' => ['result' => 0, 'errorId' => (string)$statusCode, 'errorMessage' => $errorMessage]];
 				}
 				
-				// Return success result
-				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $body];
+				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => is_array($rawBody) ? $rawBody : []];
 			} catch (\Throwable $e) {
 				return ['request' => ['result' => 0, 'errorId' => (string)$e->getCode(), 'errorMessage' => $e->getMessage()]];
 			}
@@ -285,31 +291,28 @@
 		 * Rabo Smart Pay uses a consumerMessage / errorMessage / errorCode structure:
 		 *   { "errorCode": "AUTH_001", "consumerMessage": "...", "errorMessage": "..." }
 		 *
-		 * @param array<string, mixed>|null $body Decoded JSON body, or null if the body was empty
+		 * @param array<mixed, mixed> $body Decoded JSON body, or null if the body was empty
 		 * @param int $statusCode HTTP status code, used as fallback error identifier
 		 * @return string Human-readable error message
 		 */
-		private function extractErrorMessage(?array $body, int $statusCode): string {
-			if ($body === null) {
-				return "HTTP {$statusCode}";
-			}
-			
+		private function extractErrorMessage(array $body, int $statusCode): string {
 			// Prefer the consumer-facing message when available.
-			if (!empty($body['consumerMessage'])) {
+			if (!empty($body['consumerMessage']) && is_string($body['consumerMessage'])) {
 				return $body['consumerMessage'];
 			}
 			
 			// Fall back to the technical error message with the error code prefix.
-			if (!empty($body['errorMessage'])) {
-				$msg = $body['errorMessage'];
+			if (!empty($body['errorMessage']) && is_string($body['errorMessage'])) {
+				$msg = $this->normalizeString($body['errorMessage']);
 				
-				if (!empty($body['errorCode'])) {
-					$msg = $body['errorCode'] . ': ' . $msg;
+				if (!empty($body['errorCode']) && is_string($body['errorCode'])) {
+					$msg = $this->normalizeString($body['errorCode']) . ': ' . $msg;
 				}
 				
 				return $msg;
 			}
 			
+			// If that is also not present, return raw status code
 			return "HTTP {$statusCode}";
 		}
 	}

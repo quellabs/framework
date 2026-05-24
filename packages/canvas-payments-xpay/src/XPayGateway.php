@@ -4,9 +4,12 @@
 	
 	use Quellabs\Contracts\Gateway\GatewayInterface;
 	use Quellabs\Support\Tools;
-	use Random\RandomException;
 	use Symfony\Component\HttpClient\HttpClient;
 	use Symfony\Contracts\HttpClient\HttpClientInterface;
+	use Symfony\Contracts\HttpClient\Exception\ClientExceptionInterface;
+	use Symfony\Contracts\HttpClient\Exception\ServerExceptionInterface;
+	use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
+	use Symfony\Contracts\HttpClient\Exception\RedirectionExceptionInterface;
 	
 	/**
 	 * Low-level wrapper around the Nexi XPay Global JSON API (phoenix-0.0).
@@ -57,7 +60,7 @@
 			$config = $driver->getConfig();
 			
 			$this->client  = HttpClient::create();
-			$this->apiKey  = $config['api_key'] ?? '';
+			$this->apiKey  = is_string($config['api_key'] ?? '') ? ($config['api_key'] ?? '') : '';
 			$this->baseUrl = self::BASE_URL;
 		}
 		
@@ -146,6 +149,7 @@
 		 */
 		private function request(string $method, string $path, ?array $payload = null): array {
 			try {
+				// Build payload
 				$url = $this->baseUrl . $path;
 				
 				$options = [
@@ -161,7 +165,10 @@
 					$options['body'] = json_encode($payload, JSON_UNESCAPED_UNICODE);
 				}
 				
+				// Call API
 				$response = $this->client->request($method, $url, $options);
+				
+				// Fetch response
 				$httpCode = $response->getStatusCode();
 				$rawBody  = $response->getContent(false);
 				
@@ -169,25 +176,29 @@
 				if ($rawBody === '') {
 					if ($httpCode < 200 || $httpCode >= 300) {
 						return ['request' => ['result' => 0, 'errorId' => (string)$httpCode, 'errorMessage' => 'HTTP error ' . $httpCode . ' with empty body']];
+					} else {
+						return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => []];
 					}
-					
-					return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => []];
 				}
 				
 				// Decode body
 				$data = json_decode($rawBody, true);
 				
 				// If that failed, return an error
-				if (json_last_error() !== JSON_ERROR_NONE) {
-					return ['request' => ['result' => 0, 'errorId' => '', 'errorMessage' => 'Invalid JSON response (HTTP ' . $httpCode . '): ' . json_last_error_msg()]];
+				if ((json_last_error() !== JSON_ERROR_NONE) || !is_array($data)) {
+					return ['request' => ['result' => 0, 'errorId' => (string)json_last_error(), 'errorMessage' => 'Invalid JSON response: ' . json_last_error_msg()]];
 				}
 				
 				// XPay error responses carry an 'errors' array with 'code' and 'description' per entry
-				if (!empty($data['errors'])) {
-					$first = reset($data['errors']);
-					$errorCode = $first['code'] ?? 0;
-					$errorMsg  = $first['description'] ?? 'Unknown XPay error';
-					return ['request' => ['result' => 0, 'errorId' => (string)$errorCode, 'errorMessage' => $errorMsg]];
+				$errors = isset($data['errors']) && is_array($data['errors']) ? $data['errors'] : [];
+				
+				if (!empty($errors)) {
+					$first       = is_array($errors[0] ?? null) ? $errors[0] : [];
+					$code        = $first['code'] ?? '';
+					$description = $first['description'] ?? '';
+					$errorCode   = is_string($code) ? $code : '';
+					$errorMsg    = is_string($description) && $description !== '' ? $description : 'Unknown XPay error';
+					return ['request' => ['result' => 0, 'errorId' => $errorCode, 'errorMessage' => $errorMsg]];
 				}
 				
 				// Error if the httpCode is not in the success range
@@ -197,8 +208,8 @@
 				
 				// Return result
 				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $data];
-			} catch (\Throwable $e) {
-				return ['request' => ['result' => 0, 'errorId' => $e->getCode(), 'errorMessage' => $e->getMessage()]];
+			} catch (\Exception|ClientExceptionInterface|RedirectionExceptionInterface|ServerExceptionInterface|TransportExceptionInterface $e) {
+				return ['request' => ['result' => 0, 'errorId' => (string)$e->getCode(), 'errorMessage' => $e->getMessage()]];
 			}
 		}
 	}

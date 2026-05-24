@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\Payments\XPay;
 	
+	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Quellabs\Canvas\Annotations\Route;
 	use Quellabs\Payments\Contracts\PaymentExchangeException;
 	use Quellabs\Payments\Contracts\PaymentStatus;
@@ -12,6 +13,8 @@
 	use Symfony\Component\HttpFoundation\Response;
 	
 	class XPayController {
+		
+		use GatewayHelpers;
 		
 		/**
 		 * @var Driver XPay driver instance
@@ -76,12 +79,16 @@
 				// Cancelled: redirect to cancel URL.
 				// Pending or paid: redirect to the success/thank-you page — the application
 				// layer should show a "payment pending" message for pending states.
+				$cancelUrl  = $this->normalizeString($config['return_url_cancel'] ?? '');
+				$errorUrl   = $this->normalizeString($config['return_url_error'] ?? '');
+				$successUrl = $this->normalizeString($config['return_url'] ?? '');
+				
 				if ($state->state === PaymentStatus::Canceled) {
-					$redirectUrl = $config['return_url_cancel'];
+					$redirectUrl = $cancelUrl;
 				} elseif ($state->state === PaymentStatus::Failed) {
-					$redirectUrl = $config['return_url_error'] ?: $config['return_url_cancel'];
+					$redirectUrl = $errorUrl !== '' ? $errorUrl : $cancelUrl;
 				} else {
-					$redirectUrl = $config['return_url'];
+					$redirectUrl = $successUrl;
 				}
 				
 				return new RedirectResponse($redirectUrl);
@@ -134,18 +141,25 @@
 			}
 			
 			// orderId lives inside the nested operation object
-			$orderId = $body['operation']['orderId'] ?? null;
+			if (!is_array($body)) {
+				error_log('XPay push: payload is not a JSON object');
+				return new Response('OK', 200, ['Content-Type' => 'text/plain']);
+			}
 			
-			if (empty($orderId)) {
+			$operation = isset($body['operation']) && is_array($body['operation']) ? $body['operation'] : [];
+			$orderId   = $this->normalizeString($operation['orderId'] ?? '');
+			
+			if ($orderId === '') {
 				error_log('XPay push: missing orderId in payload: ' . $request->getContent());
 				return new Response('OK', 200, ['Content-Type' => 'text/plain']);
 			}
 			
 			try {
 				// Fetch the authoritative payment state from the XPay API
-				$state = $this->xpay->exchange($orderId, [
+				$operationId = isset($operation['operationId']) ? $this->normalizeString($operation['operationId']) : null;
+				$state       = $this->xpay->exchange($orderId, [
 					'action'      => 'push',
-					'operationId' => $body['operation']['operationId'] ?? null,
+					'operationId' => $operationId,
 				]);
 				
 				// Notify listeners of the updated payment state

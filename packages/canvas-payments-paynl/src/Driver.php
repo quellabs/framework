@@ -2,7 +2,9 @@
 	
 	namespace Quellabs\Payments\PayNL;
 	
+	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Quellabs\Payments\Contracts\InitiateResult;
+	use Quellabs\Payments\Contracts\PaymentInterface;
 	use Quellabs\Payments\Contracts\PaymentExchangeException;
 	use Quellabs\Payments\Contracts\PaymentInitiationException;
 	use Quellabs\Payments\Contracts\PaymentProviderInterface;
@@ -13,7 +15,13 @@
 	use Quellabs\Payments\Contracts\RefundRequest;
 	use Quellabs\Payments\Contracts\RefundResult;
 	
+	/**
+	 * PayNL Driver
+	 * @phpstan-import-type IssuerOption from PaymentInterface
+	 */
 	class Driver implements PaymentProviderInterface {
+		
+		use GatewayHelpers;
 		
 		/**
 		 * Driver name
@@ -43,27 +51,30 @@
 		 * as an e-commerce method. Giropay (694) is marked deprecated by Pay.nl as of 2024.
 		 * SOFORT is not available as a standalone method; use Trustly (2718) for bank transfers.
 		 */
-		private const MODULE_TYPE_MAP = [
-			'paynl_ideal'        => 10,
-			'paynl_bancontact'   => 436,
-			'paynl_creditcard'   => 706,   // Visa + Mastercard combined
-			'paynl_visa'         => 3141,
-			'paynl_mastercard'   => 3138,
-			'paynl_amex'         => 1705,
-			'paynl_applepay'     => 2277,
-			'paynl_googlepay'    => 2558,
-			'paynl_klarna'       => 1717,
-			'paynl_in3'          => 1813,
-			'paynl_riverty'      => 2561,  // Riverty (formerly AfterPay NL)
-			'paynl_eps'          => 2062,
-			'paynl_trustly'      => 2718,
-			'paynl_paybybank'    => 2970,
+		private const array MODULE_TYPE_MAP = [
+			'paynl_ideal'      => 10,
+			'paynl_bancontact' => 436,
+			'paynl_creditcard' => 706,   // Visa + Mastercard combined
+			'paynl_visa'       => 3141,
+			'paynl_mastercard' => 3138,
+			'paynl_amex'       => 1705,
+			'paynl_applepay'   => 2277,
+			'paynl_googlepay'  => 2558,
+			'paynl_klarna'     => 1717,
+			'paynl_in3'        => 1813,
+			'paynl_riverty'    => 2561,  // Riverty (formerly AfterPay NL)
+			'paynl_eps'        => 2062,
+			'paynl_trustly'    => 2718,
+			'paynl_paybybank'  => 2970,
 		];
 		
 		/**
 		 * Returns discovery metadata for this provider, including all supported payment modules.
 		 * Called statically during discovery — no instantiation required.
-		 * @return array<string, mixed>
+		 * @return array{
+		 *     driver: string,
+		 *     modules: list<string>
+		 * }
 		 */
 		public static function getMetadata(): array {
 			return [
@@ -94,7 +105,17 @@
 		/**
 		 * Returns default configuration values for this provider.
 		 * Merged with loaded config files during discovery — values from config files take precedence.
-		 * @return array<string, mixed>
+		 *
+		 * @return array{
+		 *     test_mode: bool,
+		 *     token_code: string,
+		 *     api_token: string,
+		 *     service_id: string,
+		 *     return_url: string,
+		 *     cancel_return_url: string,
+		 *     exchange_url: string,
+		 *     default_currency: string
+		 * }
 		 */
 		public function getDefaults(): array {
 			return [
@@ -121,7 +142,7 @@
 		 *
 		 * @see https://developer.pay.nl/docs/ideal
 		 * @param string $paymentModule e.g. 'paynl_ideal'
-		 * @return array<string, mixed> Always empty — Pay.nl handles payment method UI on the hosted page
+		 * @return array<int, IssuerOption> Always empty — Pay.nl handles payment method UI on the hosted page
 		 */
 		public function getPaymentOptions(string $paymentModule): array {
 			// Pay.nl removed direct issuer redirect in iDEAL 2.0 (deprecated 31-12-2024).
@@ -205,10 +226,15 @@
 				throw new PaymentInitiationException(self::DRIVER_NAME, $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 			
-			// Validate response data is there
+			// Fetch response — the key is optional in GatewayResponse; default to empty array
+			// so the isset + is_string guards below handle the missing-field case uniformly.
+			$response = $result['response'] ?? [];
+			
+			// Validate response data is there.
 			if (
-				!isset($result['response']['id']) ||
-				!isset($result['response']['links']['redirect'])
+				!isset($response['id']) || !is_string($response['id']) ||
+				!isset($response['links']) || !is_array($response['links']) ||
+				!isset($response['links']['redirect']) || !is_string($response['links']['redirect'])
 			) {
 				throw new PaymentInitiationException(self::DRIVER_NAME, "500", "Invalid gateway response. Missing id and/or redirect url");
 			}
@@ -217,8 +243,8 @@
 			// orderId is a legacy human-readable reference — not used for API calls.
 			return new InitiateResult(
 				provider: self::DRIVER_NAME,
-				transactionId: $result['response']['id'],
-				redirectUrl: $result['response']['links']['redirect'],
+				transactionId: $response['id'],
+				redirectUrl: $response['links']['redirect']
 			);
 		}
 		
@@ -270,15 +296,17 @@
 			}
 			
 			// Unpack the top-level fields we need for state mapping.
-			$data = $result['response'] ?? [];
-			$statusCode = (int)($data['status']['code'] ?? 20);
-			$statusAction = strtoupper($data['status']['action'] ?? '');
-			$currency = $data['amount']['currency'] ?? '';
-			$amount = (int)($data['amount']['value'] ?? 0);
+			$data         = $result['response'] ?? [];
+			$statusCode   = $this->toInt($this->arrayGet($data, 'status.code'), 20);
+			$statusAction = strtoupper($this->normalizeString($this->arrayGet($data, 'status.action')));
+			$currency     = $this->normalizeString($this->arrayGet($data, 'amount.currency'));
+			$amount       = $this->toInt($this->arrayGet($data, 'amount.value'));
 			
 			// Map the numeric Pay.nl status code to our internal PaymentStatus enum.
 			// Positive codes >= 100 are successful outcomes; negative codes are terminal
 			// failures or post-payment events. Codes 20–99 are all in-progress states.
+			
+			/** @noinspection PhpDuplicateMatchArmBodyInspection */
 			$state = match (true) {
 				$statusCode === 100 => PaymentStatus::Paid,
 				$statusCode === -81 => PaymentStatus::Refunded,      // Full refund completed
@@ -300,24 +328,51 @@
 			// Sum the amounts of all refund-type payment entries embedded in the order.
 			// Refunds appear alongside regular payment attempts in the payments[] array,
 			// identified by their own negative status codes (-81 for full, -82 for partial).
-			$valueRefunded = array_reduce($data['payments'] ?? [], function (int $carry, array $payment): int {
-				$paymentStatusCode = (int)($payment['status']['code'] ?? 0);
-				
-				// Only accumulate payments that represent refund transactions.
-				if ($paymentStatusCode === -81 || $paymentStatusCode === -82) {
-					return $carry + (int)($payment['amount']['value'] ?? 0);
+			$payments = is_array($data['payments']) ? $data['payments'] : [];
+			
+			$valueRefunded = array_reduce($payments, function (int $carry, mixed $payment): int {
+				// Skip non-array entries
+				if (!is_array($payment)) {
+					return $carry;
 				}
 				
-				return $carry;
+				// Validate entry
+				$paymentStatusCode = $this->arrayGet($payment, 'status.code');
+				
+				if (!is_int($paymentStatusCode)) {
+					return $carry;
+				}
+				
+				// Only accumulate payments that represent refund transactions.
+				if ($paymentStatusCode !== -81 && $paymentStatusCode !== -82) {
+					return $carry;
+				}
+				
+				// Add value to carry
+				return $carry + $this->toInt($this->arrayGet($payment, 'amount.value', 0));
 			}, 0);
 			
 			// Extract the payment method ID from the first payment entry that reached PAID (100).
 			// There may be multiple entries if the shopper retried with a different method.
 			$paymentMethodId = null;
 			
-			foreach ($data['payments'] ?? [] as $payment) {
-				if ((int)($payment['status']['code'] ?? 0) === 100) {
-					$paymentMethodId = $payment['paymentMethod']['id'] ?? null;
+			foreach ($payments as $payment) {
+				// Skip non array entries
+				if (!is_array($payment)) {
+					continue;
+				}
+				
+				// Validate entry
+				$statusCode         = $this->arrayGet($payment, 'status.code');
+				$rawPaymentMethodId = $this->arrayGet($payment, 'paymentMethod.id');
+				
+				if (!is_int($statusCode) || !is_int($rawPaymentMethodId)) {
+					continue;
+				}
+				
+				// Store $paymentMethodId
+				if ($statusCode === 100) {
+					$paymentMethodId = $rawPaymentMethodId;
 					break;
 				}
 			}
@@ -330,10 +385,10 @@
 				currency: $currency,
 				valuePaid: $valuePaid,
 				valueRefunded: $valueRefunded,
-				internalState: $statusAction ?: (string)$statusCode,
+				internalState: $statusAction ?: $this->normalizeString($statusCode),
 				metadata: array_filter([
 					'paymentMethodId' => $paymentMethodId,
-					'orderId'         => $data['orderId'] ?? null,  // Legacy human-readable ID
+					'orderId'         => $this->arrayGet($data, 'orderId'),  // Legacy human-readable ID
 				], fn($v) => $v !== null),
 			);
 		}
@@ -377,7 +432,8 @@
 			// Pay.nl returns the updated order object, not a discrete refund record.
 			// We use the order UUID as the refundId since no separate refund transaction
 			// ID is returned from the PATCH endpoint.
-			$refundId = (string)($result['response']['id'] ?? $request->paymentReference);
+			$response = $result['response'] ?? [];
+			$refundId = $this->normalizeString($this->arrayGet($response, 'id'), $request->paymentReference);
 			
 			return new RefundResult(
 				provider: self::DRIVER_NAME,
@@ -412,16 +468,35 @@
 			
 			// The order-level currency is used as a fallback when a payment entry
 			// does not carry its own currency field.
-			$data = $result['response'] ?? [];
-			$currency = $data['amount']['currency'] ?? '';
+			$data     = $result['response'] ?? [];
+			$currency = $this->normalizeString($this->arrayGet($data, 'amount.currency'));
+			$payments = is_array($data['payments']) ? $data['payments'] : [];
+			
+			// Fetch refunds
 			$refunds = [];
 			
-			foreach ($data['payments'] ?? [] as $payment) {
-				$paymentStatusCode = (int)($payment['status']['code'] ?? 0);
+			foreach ($payments as $payment) {
+				if (!is_array($payment)) {
+					continue;
+				}
+				
+				// Validate refundId is present
+				if (!isset($payment['id']) || !is_string($payment['id'])) {
+					continue;
+				}
+				
+				// Validate status code is present.
+				// $payment['status'] must be extracted first — PHPStan cannot narrow
+				// $payment['status']['code'] through a double offset on mixed.
+				$status = $payment['status'] ?? null;
+				
+				if (!is_array($status) || !isset($status['code']) || !is_int($status['code'])) {
+					continue;
+				}
 				
 				// Skip any payment entry that is not a refund transaction.
 				// Regular payment attempts, authorizations, and chargebacks are excluded.
-				if ($paymentStatusCode !== -81 && $paymentStatusCode !== -82) {
+				if ($status['code'] !== -81 && $status['code'] !== -82) {
 					continue;
 				}
 				
@@ -429,9 +504,9 @@
 				$refunds[] = new RefundResult(
 					provider: self::DRIVER_NAME,
 					paymentReference: $paymentReference,
-					refundId: (string)($payment['id'] ?? ''),
-					value: (int)($payment['amount']['value'] ?? 0),
-					currency: $payment['amount']['currency'] ?? $currency,
+					refundId: $payment['id'],
+					value: $this->toInt($this->arrayGet($payment, 'amount.value')),
+					currency: $this->normalizeString($this->arrayGet($payment, 'amount.currency'), $currency),
 				);
 			}
 			

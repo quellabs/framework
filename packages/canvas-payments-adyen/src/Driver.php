@@ -86,7 +86,10 @@
 		/**
 		 * Returns discovery metadata for this provider, including all supported payment modules.
 		 * Called statically during discovery — no instantiation required.
-		 * @return array<string, mixed>
+		 * @return array{
+		 *     driver: string,
+		 *     modules: list<string>
+		 * }
 		 */
 		public static function getMetadata(): array {
 			return [
@@ -153,7 +156,7 @@
 		 * This method always returns an empty array.
 		 *
 		 * @param string $paymentModule e.g. 'adyen_ideal'
-		 * @return array<string, IssuerOption>
+		 * @return array<int, IssuerOption>
 		 */
 		public function getPaymentOptions(string $paymentModule): array {
 			return [];

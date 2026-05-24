@@ -3,7 +3,9 @@
 	namespace Quellabs\Payments\PaypalExpress;
 	
 	use Quellabs\Contracts\Gateway\GatewayInterface;
+	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Quellabs\Payments\Contracts\InitiateResult;
+	use Quellabs\Payments\Contracts\PaymentInterface;
 	use Quellabs\Payments\Contracts\PaymentInitiationException;
 	use Quellabs\Payments\Contracts\PaymentProviderInterface;
 	use Quellabs\Payments\Contracts\PaymentRefundException;
@@ -12,12 +14,15 @@
 	use Quellabs\Payments\Contracts\PaymentStatus;
 	use Quellabs\Payments\Contracts\RefundRequest;
 	use Quellabs\Payments\Contracts\RefundResult;
-	use Symfony\Component\HttpFoundation\JsonResponse;
 	
 	/**
+	 * Paypal Express driver
 	 * @phpstan-import-type GatewayResponse from GatewayInterface
+	 * @phpstan-import-type IssuerOption from PaymentInterface
 	 */
 	class Driver implements PaymentProviderInterface {
+		
+		use GatewayHelpers;
 		
 		/**
 		 * Driver name
@@ -39,7 +44,10 @@
 		/**
 		 * Returns discovery metadata for this provider, including all supported payment modules.
 		 * Called statically during discovery — no instantiation required.
-		 * @return array<string, mixed>
+		 * @return array{
+		 *     driver: string,
+		 *     modules: list<string>
+		 * }
 		 */
 		public static function getMetadata(): array {
 			return [
@@ -93,20 +101,28 @@
 		 * @return InitiateResult
 		 */
 		public function initiate(PaymentRequest $request): InitiateResult {
-			$brandName = $this->getConfig()['brand_name'] ?: null;
-			$emailAddress = $request->billingAddress?->email ?: null;
+			// normalizeString returns '' for missing/non-string values, so a non-empty result
+			// is a guaranteed string — giving $optionalParams a concrete array<string, string> type.
+			$brandName = $this->normalizeString($this->getConfig()['brand_name'] ?? null);
+			$emailAddress = $this->normalizeString($request->billingAddress?->email);
+			
+			// Build optional parameters — only include fields that have values.
+			$optionalParams = [];
+			
+			if ($emailAddress !== '') {
+				$optionalParams["EMAIL"] = $emailAddress;
+			}
+			
+			if ($brandName !== '') {
+				$optionalParams["BRANDNAME"] = $brandName;
+			}
 			
 			// Call gateway
 			$result = $this->getGateway()->setExpressCheckout(
 				round($request->amount / 100, 2),
 				$request->description,
 				$request->currency,
-				array_filter([
-					"EMAIL"      => $emailAddress,
-					"NOSHIPPING" => 2,
-					"ALLOWNOTE"  => 0,
-					"BRANDNAME"  => $brandName,
-				], fn($v) => $v !== null)
+				["NOSHIPPING" => 2, "ALLOWNOTE" => 0, ...$optionalParams]
 			);
 			
 			// return error if failed
@@ -117,21 +133,23 @@
 			// Fetch response
 			$response = $result['response'] ?? [];
 			
-			// Validate that a token is present in the output
-			if (!isset($response["TOKEN"])) {
-				throw new PaymentInitiationException(self::DRIVER_NAME, "500", "Invalid gateway response. Missing token");
+			// TOKEN is required — without it we cannot build the payment URL or track this session.
+			// An empty or wrong-typed value is a protocol violation, not a safe default.
+			$token = $response["TOKEN"] ?? null;
+			
+			if (!is_string($token) || $token === '') {
+				throw new PaymentInitiationException(self::DRIVER_NAME, "500", "Invalid gateway response: TOKEN is missing or not a string");
 			}
 			
-			// transform output
 			if ($this->getGateway()->testMode()) {
-				$paymentURL = "https://www.sandbox.paypal.com/cgi-bin/webscr?cmd=_express-checkout&token={$response["TOKEN"]}&useraction=commit";
+				$paymentURL = "https://www.sandbox.paypal.com/cgi-bin/webscr?cmd=_express-checkout&token={$token}&useraction=commit";
 			} else {
-				$paymentURL = "https://www.paypal.com/cgi-bin/webscr?cmd=_express-checkout&token={$response["TOKEN"]}&useraction=commit";
+				$paymentURL = "https://www.paypal.com/cgi-bin/webscr?cmd=_express-checkout&token={$token}&useraction=commit";
 			}
 			
 			return new InitiateResult(
 				self::DRIVER_NAME,
-				$response["TOKEN"],
+				$token,
 				$paymentURL,
 				[
 					"correlationId" => $response["CORRELATIONID"]
@@ -175,19 +193,17 @@
 			// Fetch the response
 			$response = $details["response"] ?? [];
 			
-			// If we already have the payment transaction ID (e.g. from IPN), the payment is complete.
-			// Skip DoExpressCheckoutPayment and go straight to building the completed state.
-			if (!empty($extraData['paymentReference'])) {
-				return $this->buildCompletedPaymentState(
-					$transactionId,
-					$extraData['paymentReference'],
-					$response["CHECKOUTSTATUS"],
-				);
+			// CHECKOUTSTATUS drives all branching below — a missing or wrong-typed value would
+			// silently fall through to the default case and attempt a capture incorrectly.
+			$checkoutStatus = $response["CHECKOUTSTATUS"] ?? null;
+			
+			// Validate a status being present
+			if (!is_string($checkoutStatus) || $checkoutStatus === '') {
+				throw new PaymentInitiationException(self::DRIVER_NAME, "500", "Invalid gateway response: CHECKOUTSTATUS is missing or not a string");
 			}
 			
-			// Return the correct status
-			/** @noinspection PhpSwitchCanBeReplacedWithMatchExpressionInspection */
-			switch ($response["CHECKOUTSTATUS"]) {
+			// Handle the status
+			switch ($checkoutStatus) {
 				// DoExpressCheckoutPayment was called but a response hasn't been received yet.
 				// This should be rare in practice.
 				case "PaymentActionInProgress":
@@ -195,7 +211,7 @@
 						provider: self::DRIVER_NAME,
 						transactionId: $transactionId,
 						state: PaymentStatus::Pending,
-						currency: $response["CURRENCYCODE"] ?? "",
+						currency: $this->normalizeString($response["CURRENCYCODE"] ?? ""),
 						valuePaid: 0,
 						valueRefunded: 0,
 						internalState: "PaymentActionInProgress",
@@ -207,30 +223,57 @@
 						provider: self::DRIVER_NAME,
 						transactionId: $transactionId,
 						state: PaymentStatus::Failed,
-						currency: $response["CURRENCYCODE"] ?? "",
+						currency: $this->normalizeString($response["CURRENCYCODE"] ?? ""),
 						valuePaid: 0,
 						valueRefunded: 0,
 						internalState: "PaymentActionFailed",
 					);
 				
-				// Payment was already captured in a previous exchange() call.
-				// Use GetTransactionDetails to retrieve the current monetary state including any refunds.
+				// Payment is complete. If paymentReference was supplied, retrieve the current state
+				// via GetTransactionDetails. Without it we cannot look up the state and must not
+				// fall through to capture — that would be a double-charge.
 				case "PaymentActionCompleted":
-					return $this->buildCompletedPaymentState(
-						$transactionId,
-						$extraData['paymentReference'] ?? null,
-						"PaymentActionCompleted"
-					);
+				case "PaymentCompleted":
+					$paymentReference = $extraData['paymentReference'] ?? null;
+					
+					if (!is_string($paymentReference) || $paymentReference === '') {
+						throw new PaymentInitiationException(
+							self::DRIVER_NAME,
+							500,
+							"Cannot retrieve payment state: paymentReference is missing from extraData. " .
+							"Ensure your payment_exchange listener persists PaymentState::\$metadata['paymentReference'] " .
+							"after the first successful payment. See the refund section in the README."
+						);
+					}
+					
+					return $this->buildCompletedPaymentState($transactionId, $paymentReference, $checkoutStatus);
 				
-				// PaymentActionNotInitiated — buyer has authorized at PayPal but payment hasn't been captured yet.
-				// Capture it now via DoExpressCheckoutPayment.
-				default:
+				// Buyer has authorized at PayPal but payment hasn't been captured yet.
+				// AMT and PAYERID are required to call DoExpressCheckoutPayment.
+				// A missing or wrong-typed value would capture €0 or produce a rejected API call.
+				case "PaymentActionNotInitiated":
+					$amt     = $response["AMT"] ?? null;
+					$payerId = $response["PAYERID"] ?? null;
+					
+					if (!is_numeric($amt)) {
+						throw new PaymentInitiationException(self::DRIVER_NAME, "500", "Invalid gateway response: AMT is missing or non-numeric");
+					}
+					
+					if (!is_string($payerId) || $payerId === '') {
+						throw new PaymentInitiationException(self::DRIVER_NAME, "500", "Invalid gateway response: PAYERID is missing or not a string");
+					}
+					
 					return $this->executeCheckoutPayment(
 						$transactionId,
-						(float)($response["AMT"] ?? 0),
-						$response["CURRENCYCODE"] ?? "EUR",
-						$response["PAYERID"]
+						(float)$amt,
+						$this->normalizeString($response["CURRENCYCODE"] ?? "EUR", "EUR"),
+						$payerId
 					);
+				
+				// Any unrecognised CHECKOUTSTATUS must not silently trigger a capture —
+				// that would be a real money movement on an unknown state.
+				default:
+					throw new PaymentInitiationException(self::DRIVER_NAME, "500", "Unexpected CHECKOUTSTATUS: {$checkoutStatus}");
 			}
 		}
 		
@@ -270,13 +313,31 @@
 			// Fetch response
 			$response = $result["response"] ?? [];
 			
+			// These three fields are required to construct a meaningful RefundResult.
+			// A missing or wrong-typed value is a protocol violation — there is no safe default.
+			$refundId       = $response["REFUNDTRANSACTIONID"] ?? null;
+			$grossRefundAmt = $response["GROSSREFUNDAMT"] ?? null;
+			$currencyCode   = $response["CURRENCYCODE"] ?? null;
+			
+			if (!is_string($refundId) || $refundId === '') {
+				throw new PaymentRefundException(self::DRIVER_NAME, "500", "Invalid gateway response: REFUNDTRANSACTIONID is missing or not a string");
+			}
+			
+			if (!is_numeric($grossRefundAmt)) {
+				throw new PaymentRefundException(self::DRIVER_NAME, "500", "Invalid gateway response: GROSSREFUNDAMT is missing or non-numeric");
+			}
+			
+			if (!is_string($currencyCode) || $currencyCode === '') {
+				throw new PaymentRefundException(self::DRIVER_NAME, "500", "Invalid gateway response: CURRENCYCODE is missing or not a string");
+			}
+			
 			// GROSSREFUNDAMT is returned in major units — convert back to minor units for consistency.
 			return new RefundResult(
 				provider: self::DRIVER_NAME,
 				paymentReference: $request->paymentReference,
-				refundId: $response["REFUNDTRANSACTIONID"],
-				value: (int)round((float)$response["GROSSREFUNDAMT"] * 100),
-				currency: $response["CURRENCYCODE"],
+				refundId: $refundId,
+				value: (int)round((float)$grossRefundAmt * 100),
+				currency: $currencyCode,
 				metadata: [
 					"correlationId" => $response["CORRELATIONID"],
 					"refundStatus"  => $response["REFUNDSTATUS"],
@@ -289,7 +350,7 @@
 		 * Other payment modules would use this to receive a list of banks or something.
 		 * Paypal express does not use it.
 		 * @param string $paymentModule
-		 * @return array<string, mixed>
+		 * @return array<int, IssuerOption>
 		 */
 		public function getPaymentOptions(string $paymentModule): array {
 			return [];
@@ -326,8 +387,16 @@
 				return [];
 			}
 			
+			// ORDERTIME passed the isset() guard so it exists, but we still need to confirm it's a string
+			// before passing it to transactionSearch().
+			$orderTime = $txDetailsResponse["ORDERTIME"];
+			
+			if (!is_string($orderTime) || $orderTime === '') {
+				throw new PaymentRefundException(self::DRIVER_NAME, "500", "Invalid gateway response: ORDERTIME is not a string");
+			}
+			
 			// Search for all transactions from the payment date until now
-			$search = $this->getGateway()->transactionSearch($txDetailsResponse["ORDERTIME"], $paymentReference);
+			$search = $this->getGateway()->transactionSearch($orderTime, $paymentReference);
 			
 			// If the API call failed, throw an exception
 			if ($search["request"]["result"] === 0) {
@@ -339,17 +408,28 @@
 			
 			// Results are returned as flat indexed keys: L_TYPEn, L_TRANSACTIONIDn, etc.
 			// Iterate until we run out of results and collect refunds belonging to this transaction.
-			$i = 0;
+			$i       = 0;
 			$refunds = [];
 			
 			while (isset($searchResponse["L_TRANSACTIONID{$i}"])) {
-				if ($search["response"]["L_TYPE{$i}"] === "Refund") {
+				if ($searchResponse["L_TYPE{$i}"] === "Refund") {
+					// All three fields are required to construct a meaningful RefundResult entry.
+					// Malformed rows are skipped with a warning rather than aborting the entire list.
+					$refundId = $searchResponse["L_TRANSACTIONID{$i}"];
+					$amt      = $searchResponse["L_AMT{$i}"];
+					$currency = $searchResponse["L_CURRENCYCODE{$i}"];
+					
+					if (!is_string($refundId) || $refundId === '' || !is_numeric($amt) || !is_string($currency) || $currency === '') {
+						++$i;
+						continue;
+					}
+					
 					$refunds[] = new RefundResult(
 						provider: self::DRIVER_NAME,
 						paymentReference: $paymentReference,
-						refundId: $searchResponse["L_TRANSACTIONID{$i}"],
-						value: (int)round(abs((float)$searchResponse["L_AMT{$i}"]) * 100),
-						currency: $searchResponse["L_CURRENCYCODE{$i}"],
+						refundId: $refundId,
+						value: (int)round(abs((float)$amt) * 100),
+						currency: $currency,
 					);
 				}
 				
@@ -439,13 +519,28 @@
 			// Fetch response
 			$response = $result["response"] ?? [];
 			
-			// Validate all required info is there
+			// PAYMENTSTATUS drives the switch below — a missing or wrong-typed value would silently
+			// fall to the default/Pending case, losing a completed payment or masking a failure.
+			// TRANSACTIONID is the capture ID required for all future refunds — empty string breaks them silently.
+			// AMT missing would record a zero-value payment in our system.
+			$paymentStatus    = $response["PAYMENTINFO_0_PAYMENTSTATUS"] ?? null;
+			$paymentReference = $response["PAYMENTINFO_0_TRANSACTIONID"] ?? null;
+			$rawAmt           = $response["PAYMENTINFO_0_AMT"] ?? null;
 			
-			// Convert Paypal status to state object
-			$paymentStatus = $response["PAYMENTINFO_0_PAYMENTSTATUS"];
-			$paymentReference = $response["PAYMENTINFO_0_TRANSACTIONID"];
-			$amountMinorUnits = (int)round((float)$response["PAYMENTINFO_0_AMT"] * 100);
-			$currency = $response["PAYMENTINFO_0_CURRENCYCODE"] ?? $currency;
+			if (!is_string($paymentStatus) || $paymentStatus === '') {
+				throw new PaymentInitiationException(self::DRIVER_NAME, "500", "Invalid gateway response: PAYMENTINFO_0_PAYMENTSTATUS is missing or not a string");
+			}
+			
+			if (!is_string($paymentReference) || $paymentReference === '') {
+				throw new PaymentInitiationException(self::DRIVER_NAME, "500", "Invalid gateway response: PAYMENTINFO_0_TRANSACTIONID is missing or not a string");
+			}
+			
+			if (!is_numeric($rawAmt)) {
+				throw new PaymentInitiationException(self::DRIVER_NAME, "500", "Invalid gateway response: PAYMENTINFO_0_AMT is missing or non-numeric");
+			}
+			
+			$amountMinorUnits = (int)round((float)$rawAmt * 100);
+			$currency         = $this->normalizeString($response["PAYMENTINFO_0_CURRENCYCODE"] ?? $currency, $currency);
 			
 			switch ($paymentStatus) {
 				// Payment was accepted and funds have been added to your account balance.
@@ -502,37 +597,33 @@
 		 * from GetExpressCheckoutDetails.
 		 * @see https://developer.paypal.com/docs/classic/api/merchant/GetTransactionDetails_API_Operation_NVP/
 		 * @param string $token The checkout token (EC-XXXXXXXXX)
-		 * @param string|null $captureId The capture ID (NVP PAYMENTINFO_0_TRANSACTIONID) from PaymentState::$metadata['paymentReference'].
-		 *                                          Required — throws PaymentInitiationException if null.
+		 * @param string $captureId The capture ID (NVP PAYMENTINFO_0_TRANSACTIONID) from PaymentState::$metadata['paymentReference'].
 		 * @param string $internalState
 		 * @return PaymentState
 		 */
-		private function buildCompletedPaymentState(string $token, ?string $captureId, string $internalState): PaymentState {
-			// Throw error when $captureId not passed
-			if ($captureId === null) {
-				throw new PaymentInitiationException(
-					self::DRIVER_NAME,
-					500,
-					"Cannot retrieve payment state: captureId is missing from extraData. " .
-					"Ensure your payment_exchange listener persists PaymentState::\$metadata['paymentReference'] " .
-					"after the first successful payment. See the refund section in the README."
-				);
-			}
-			
+		private function buildCompletedPaymentState(string $token, string $captureId, string $internalState): PaymentState {
 			// Fetch the current transaction state from PayPal.
 			// GetTransactionDetails is the only NVP call that returns refund amounts.
 			$txDetails = $this->getGateway()->getTransactionDetails($captureId);
 			
-			if ($txDetails["request"]["result"] == 0) {
+			if ($txDetails["request"]["result"] === 0) {
 				throw new PaymentInitiationException(self::DRIVER_NAME, $txDetails["request"]["errorId"], $txDetails["request"]["errorMessage"]);
 			}
 			
 			// AMT is the original captured amount. TOTALREFUNDEDAMOUNT accumulates across all refunds.
 			// Both are returned in major units — convert to minor units for consistency.
 			$r = $txDetails["response"] ?? [];
-			$paymentStatus = $r["PAYMENTSTATUS"] ?? $internalState;
-			$valueRefunded = (int)round((float)($r["TOTALREFUNDEDAMOUNT"] ?? 0) * 100);
-			$valueCaptured = (int)round((float)($r["AMT"] ?? 0) * 100);
+			
+			// PAYMENTSTATUS falls back to $internalState when absent — acceptable because the caller
+			// already knows the payment completed; this just refines the status label.
+			$paymentStatus = $r["PAYMENTSTATUS"] ?? null;
+			$paymentStatus = (is_string($paymentStatus) && $paymentStatus !== '') ? $paymentStatus : $internalState;
+			
+			// TOTALREFUNDEDAMOUNT and AMT are optional — absent means zero, which is the correct default.
+			$rawRefunded   = $r["TOTALREFUNDEDAMOUNT"] ?? null;
+			$rawAmt        = $r["AMT"] ?? null;
+			$valueRefunded = is_numeric($rawRefunded) ? (int)round((float)$rawRefunded * 100) : 0;
+			$valueCaptured = is_numeric($rawAmt) ? (int)round((float)$rawAmt * 100) : 0;
 			
 			// Map NVP PAYMENTSTATUS to PaymentStatus. GetTransactionDetails can return statuses
 			// beyond Completed — do not assume Paid without checking.
@@ -547,11 +638,13 @@
 				default => PaymentStatus::Pending,
 			};
 			
+			// CURRENCYCODE is optional per the NVP spec — PayPal omits fields it has no data for.
+			// An empty string is an acceptable sentinel here since no monetary value is being recorded wrong.
 			return new PaymentState(
 				provider: self::DRIVER_NAME,
 				transactionId: $token,
 				state: $state,
-				currency: $r["CURRENCYCODE"] ?? "",
+				currency: $this->normalizeString($r["CURRENCYCODE"] ?? ""),
 				valuePaid: $state === PaymentStatus::Paid ? $valueCaptured : 0,
 				valueRefunded: $valueRefunded,
 				internalState: $paymentStatus,

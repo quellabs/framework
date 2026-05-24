@@ -2,8 +2,10 @@
 	
 	namespace Quellabs\Payments\XPay;
 	
+	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Quellabs\Payments\Contracts\InitiateResult;
 	use Quellabs\Payments\Contracts\PaymentAddress;
+	use Quellabs\Payments\Contracts\PaymentInterface;
 	use Quellabs\Payments\Contracts\PaymentExchangeException;
 	use Quellabs\Payments\Contracts\PaymentInitiationException;
 	use Quellabs\Payments\Contracts\PaymentProviderInterface;
@@ -14,7 +16,27 @@
 	use Quellabs\Payments\Contracts\RefundRequest;
 	use Quellabs\Payments\Contracts\RefundResult;
 	
+	/**
+	 * XPay Driver
+	 *
+	 * @phpstan-type OrderOperation array{
+	 *     operationType: string,
+	 *     operationResult: string,
+	 * }
+	 *
+	 * @phpstan-type OrderData array{
+	 *     request: array{result: int, errorId: string, errorMessage: string},
+	 *     data: array{
+	 *         operations: list<array<string, mixed>&OrderOperation>,
+	 *         order: array<string, mixed>
+	 *     }|null
+	 * }
+	 *
+	 * @phpstan-import-type IssuerOption from PaymentInterface
+	 */
 	class Driver implements PaymentProviderInterface {
+		
+		use GatewayHelpers;
 		
 		/**
 		 * Driver name
@@ -42,7 +64,7 @@
 		 *
 		 * @see https://developer.nexigroup.com/xpayglobal/en-EU/docs/hosted-payment-page/
 		 */
-		private const MODULE_TYPE_MAP = [
+		private const array MODULE_TYPE_MAP = [
 			'xpay_multi'       => null,           // All enabled methods on the terminal
 			'xpay_cards'       => 'CARDS',
 			'xpay_applepay'    => 'APPLEPAY',
@@ -53,8 +75,6 @@
 			'xpay_klarna'      => 'KLARNA',
 			'xpay_alipay'      => 'ALIPAY',
 			'xpay_wechatpay'   => 'WECHATPAY',
-		
-		
 		];
 		
 		/**
@@ -73,7 +93,7 @@
 		 *
 		 * @see https://developer.nexigroup.com/xpayglobal/en-EU/api/payment-api-v1/
 		 */
-		private const RESULT_STATUS_MAP = [
+		private const array RESULT_STATUS_MAP = [
 			'AUTHORIZED'        => PaymentStatus::Paid,
 			'PENDING'           => PaymentStatus::Pending,
 			'VOIDED'            => PaymentStatus::Canceled,
@@ -88,7 +108,10 @@
 		/**
 		 * Returns discovery metadata for this provider, including all supported payment modules.
 		 * Called statically during discovery — no instantiation required.
-		 * @return array<string, mixed>
+		 * @return array{
+		 *     driver: string,
+		 *     modules: list<string>
+		 * }
 		 */
 		public static function getMetadata(): array {
 			return [
@@ -117,7 +140,13 @@
 		
 		/**
 		 * Returns default configuration values for this provider.
-		 * @return array<string, mixed>
+		 * @return array{
+		 *     api_key: string,
+		 *     return_url: string,
+		 *     return_url_cancel: string,
+		 *     webhook_url: string,
+		 *     default_language: string
+		 * }
 		 */
 		public function getDefaults(): array {
 			return [
@@ -134,7 +163,7 @@
 		 * XPay does not expose a pre-selection issuer or bank list via API — the hosted
 		 * page handles method selection. Always returns empty.
 		 * @param string $paymentModule
-		 * @return array<string, mixed>
+		 * @return array<int, IssuerOption>
 		 */
 		public function getPaymentOptions(string $paymentModule): array {
 			return [];
@@ -215,7 +244,7 @@
 			$response = $result['response'] ?? [];
 			
 			// Validate response
-			if (!isset($response['hostedPage'])) {
+			if (!isset($response['hostedPage']) || !is_string($response['hostedPage'])) {
 				throw new PaymentInitiationException(self::DRIVER_NAME, 0, 'Invalid gateway response. Missing hostedPage URL.');
 			}
 			
@@ -224,7 +253,7 @@
 			return new InitiateResult(
 				provider: self::DRIVER_NAME,
 				transactionId: $request->reference ?? '',
-				redirectUrl: $response['hostedPage'],
+				redirectUrl: $response['hostedPage']
 			);
 		}
 		
@@ -252,32 +281,29 @@
 		 */
 		public function exchange(string $transactionId, array $extraData = []): PaymentState {
 			// Call the API to fetch order info
-			$result = $this->getGateway()->getOrder($transactionId);
+			$fetched = $this->fetchOrderData($transactionId);
 			
 			// If that failed, throw
-			if ($result['request']['result'] === 0) {
-				throw new PaymentExchangeException(self::DRIVER_NAME, $result['request']['errorId'], $result['request']['errorMessage']);
+			if ($fetched['data'] === null) {
+				throw new PaymentExchangeException(self::DRIVER_NAME, $fetched['request']['errorId'], $fetched['request']['errorMessage']);
 			}
 			
 			// Fetch the response data
-			$data = $result['response'] ?? [];
-			$orderData = $data['orderStatus']['order'] ?? [];
-			$operations = $data['orderStatus']['operations'] ?? [];
+			$operations = $fetched['data']['operations'];
+			$orderData  = $fetched['data']['order'];
 			
 			// Use the order-level currency as a fallback; individual operations carry their own currency
 			// but may be missing it (e.g. for some async methods)
-			$currency = $orderData['currency'] ?? '';
+			$currency = $this->normalizeString($orderData['currency'] ?? '');
 			
 			// Walk operations to find the primary payment status and refund total.
 			// Operations are ordered chronologically; we want the most recent CAPTURE result.
-			$captureOp = null;
+			$captureOp   = null;
 			$refundTotal = 0;
 			
 			foreach ($operations as $op) {
-				// Normalise to uppercase so comparisons are case-insensitive — XPay's casing
-				// is consistent in practice, but the API docs don't guarantee it
-				$opType = strtoupper($op['operationType'] ?? '');
-				$opResult = strtoupper($op['operationResult'] ?? '');
+				$opType   = $op['operationType'];
+				$opResult = $op['operationResult'];
 				
 				// Keep the last capture/auth operation as the primary; later entries
 				// overwrite earlier ones, so we naturally end up with the most recent state
@@ -288,7 +314,7 @@
 				// Accumulate all successful refund amounts to compute the refunded total;
 				// there may be multiple partial refunds against the same order
 				if ($opType === 'REFUND' && $opResult === 'AUTHORIZED') {
-					$refundTotal += (int)($op['operationAmount'] ?? 0);
+					$refundTotal += $this->toInt($op['operationAmount'] ?? 0);
 				}
 			}
 			
@@ -301,12 +327,12 @@
 			
 			// Read the final result from whichever operation we settled on; default to PENDING
 			// if $captureOp is still null (empty operations list — order exists but no activity yet)
-			$opResult = strtoupper($captureOp['operationResult'] ?? 'PENDING');
-			$opAmount = (int)($captureOp['operationAmount'] ?? 0);
+			$opResult = strtoupper($this->normalizeString($captureOp['operationResult'] ?? 'PENDING', 'PENDING'));
+			$opAmount = $this->toInt($captureOp['operationAmount'] ?? 0);
 			
 			// Prefer the operation-level currency; fall back to the order-level currency resolved above
-			$opCurrency = $captureOp['operationCurrency'] ?? $currency;
-			$operationId = $captureOp['operationId'] ?? null;
+			$opCurrency  = $this->normalizeString($captureOp['operationCurrency'] ?? $currency);
+			$operationId = isset($captureOp['operationId']) ? $this->normalizeString($captureOp['operationId']) : null;
 			
 			// Map the XPay operationResult string to our internal PaymentStatus enum;
 			// unknown values default to Pending rather than failing, which is the safer assumption
@@ -325,15 +351,15 @@
 				provider: self::DRIVER_NAME,
 				transactionId: $transactionId,
 				state: $state,
-				currency: $opCurrency ?: $currency,
+				currency: $opCurrency !== '' ? $opCurrency : $currency,
 				valuePaid: $state === PaymentStatus::Paid ? $opAmount : 0,
 				valueRefunded: $refundTotal,
 				internalState: $opResult,
 				metadata: array_filter([
 					'operationId'    => $operationId,
-					'paymentMethod'  => $captureOp['paymentMethod'] ?? null,
-					'paymentCircuit' => $captureOp['paymentCircuit'] ?? null,
-					'operationType'  => $captureOp['operationType'] ?? null,
+					'paymentMethod'  => isset($captureOp['paymentMethod']) ? $this->normalizeString($captureOp['paymentMethod']) : null,
+					'paymentCircuit' => isset($captureOp['paymentCircuit']) ? $this->normalizeString($captureOp['paymentCircuit']) : null,
+					'operationType'  => isset($captureOp['operationType']) ? $this->normalizeString($captureOp['operationType']) : null,
 				], fn($v) => $v !== null),
 			);
 		}
@@ -363,7 +389,7 @@
 			
 			// Partial refund: include amount and currency
 			if ($request->amount !== null) {
-				$payload['amount'] = (string)$request->amount;
+				$payload['amount']   = (string)$request->amount;
 				$payload['currency'] = $request->currency;
 			}
 			
@@ -372,23 +398,46 @@
 				$payload['description'] = $request->description;
 			}
 			
+			// Issue refund through the API
 			$result = $this->getGateway()->refundOperation($captureOperationId, $payload);
 			
+			// Throw if that failed
 			if ($result['request']['result'] === 0) {
 				throw new PaymentRefundException(self::DRIVER_NAME, $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 			
-			// The refund response contains the new operation object for the refund itself
+			// The refund response contains the new operation object for the refund itself.
+			// All three fields are required: a RefundResult without an id, amount, or currency
+			// would misrepresent what XPay actually processed.
 			$response = $result['response'] ?? [];
-			$refundOpId = $response['operationId'] ?? '';
-			$refundedAmt = (int)($response['operationAmount'] ?? ($request->amount ?? 0));
-			$currency = $response['operationCurrency'] ?? $request->currency;
 			
+			// Validate refund operation id is present
+			$refundOpId = $this->normalizeString($response['operationId'] ?? '');
+			
+			if ($refundOpId === '') {
+				throw new PaymentRefundException(self::DRIVER_NAME, 0, 'Refund API response is missing operationId for order: ' . $request->paymentReference);
+			}
+			
+			// Validate operationAmount is present
+			$refundedAmtRaw = $response['operationAmount'] ?? null;
+			
+			if ($refundedAmtRaw === null) {
+				throw new PaymentRefundException(self::DRIVER_NAME, 0, 'Refund API response is missing operationAmount for operation: ' . $refundOpId);
+			}
+			
+			// Validate currency type is present
+			$currency = $this->normalizeString($response['operationCurrency'] ?? '');
+			
+			if ($currency === '') {
+				throw new PaymentRefundException(self::DRIVER_NAME, 0, 'Refund API response is missing operationCurrency for operation: ' . $refundOpId);
+			}
+			
+			// Return the result
 			return new RefundResult(
 				provider: self::DRIVER_NAME,
 				paymentReference: $request->paymentReference,
 				refundId: $refundOpId,
-				value: $refundedAmt,
+				value: $this->toInt($refundedAmtRaw),
 				currency: $currency,
 			);
 		}
@@ -404,34 +453,102 @@
 		 * @throws PaymentExchangeException
 		 */
 		public function getRefunds(string $paymentReference): array {
-			$result = $this->getGateway()->getOrder($paymentReference);
+			// Fetch order info from API
+			$fetched = $this->fetchOrderData($paymentReference);
 			
-			if ($result['request']['result'] === 0) {
-				throw new PaymentExchangeException(self::DRIVER_NAME, $result['request']['errorId'], $result['request']['errorMessage']);
+			// If that failed, throw
+			if ($fetched['data'] === null) {
+				throw new PaymentExchangeException(self::DRIVER_NAME, $fetched['request']['errorId'], $fetched['request']['errorMessage']);
 			}
 			
-			$operations = $result['response']['orderStatus']['operations'] ?? [];
-			$currency = $result['response']['orderStatus']['order']['currency'] ?? '';
-			$refunds = [];
+			// Extract data
+			$operations = $fetched['data']['operations'];
+			$currency   = $this->normalizeString($fetched['data']['order']['currency'] ?? '');
+			$refunds    = [];
 			
 			foreach ($operations as $op) {
-				$opType = strtoupper($op['operationType'] ?? '');
-				$opResult = strtoupper($op['operationResult'] ?? '');
+				// Fetch operation type and result
+				$opType   = $op['operationType'];
+				$opResult = $op['operationResult'];
 				
+				// Skip if not of the right kind
 				if ($opType !== 'REFUND' || $opResult !== 'AUTHORIZED') {
+					continue;
+				}
+				
+				// Required fields: skip and log corrupt operations rather than emitting
+				// a RefundResult with a blank id, zero amount, or missing currency.
+				$refundId   = $this->normalizeString($op['operationId'] ?? '');
+				$amountRaw  = $op['operationAmount'] ?? null;
+				$opCurrency = $this->normalizeString($op['operationCurrency'] ?? $currency);
+				
+				if ($refundId === '' || $amountRaw === null || $opCurrency === '') {
+					error_log('XPay getRefunds: skipping corrupt REFUND operation for order ' . $paymentReference . ': ' . json_encode($op));
 					continue;
 				}
 				
 				$refunds[] = new RefundResult(
 					provider: self::DRIVER_NAME,
 					paymentReference: $paymentReference,
-					refundId: $op['operationId'] ?? '',
-					value: (int)($op['operationAmount'] ?? 0),
-					currency: $op['operationCurrency'] ?? $currency,
+					refundId: $refundId,
+					value: $this->toInt($amountRaw),
+					currency: $opCurrency,
 				);
 			}
 			
 			return $refunds;
+		}
+		
+		/**
+		 * Fetches an order from the XPay API and unpacks the orderStatus envelope into
+		 * typed, validated fields that callers can use directly without further is_array checks.
+		 *
+		 * All three callers (exchange, getRefunds, resolveCaptureOperationId) share the same
+		 * steps: call the gateway, unpack orderStatus, unpack the nested order and operations
+		 * arrays. This helper centralises that boilerplate.
+		 *
+		 * Returns the raw request envelope alongside the unpacked data so callers can check
+		 * for failure and throw their own concrete exception type (PaymentExchangeException vs
+		 * PaymentRefundException), keeping PHPStorm and PHPStan happy without dynamic dispatch.
+		 *
+		 * Non-array entries in the operations list are discarded. operationType and operationResult
+		 * are normalised to uppercase strings on every operation so callers can compare directly.
+		 *
+		 * @param string $orderId
+		 * @return OrderData
+		 */
+		private function fetchOrderData(string $orderId): array {
+			// Call the API
+			$result = $this->getGateway()->getOrder($orderId);
+			
+			// Return early with the request envelope on failure so the caller can throw
+			// the appropriate concrete exception type with full error detail
+			if ($result['request']['result'] === 0) {
+				return ['request' => $result['request'], 'data' => null];
+			}
+			
+			// Unpack the nested orderStatus structure, defaulting to empty arrays at each level
+			$response    = $result['response'] ?? [];
+			$orderStatus = isset($response['orderStatus']) && is_array($response['orderStatus']) ? $response['orderStatus'] : [];
+			$orderData   = isset($orderStatus['order']) && is_array($orderStatus['order']) ? $orderStatus['order'] : [];
+			$operations  = isset($orderStatus['operations']) && is_array($orderStatus['operations']) ? $orderStatus['operations'] : [];
+			
+			// Discard non-array entries and normalise the two guaranteed operation keys so
+			// callers can compare operationType and operationResult directly without further processing
+			$filtered = [];
+			foreach ($operations as $op) {
+				if (!is_array($op)) {
+					continue;
+				}
+				
+				$op['operationType']   = strtoupper($this->normalizeString($op['operationType'] ?? ''));
+				$op['operationResult'] = strtoupper($this->normalizeString($op['operationResult'] ?? ''));
+				$filtered[]            = $op;
+			}
+			return [
+				'request' => $result['request'],
+				'data'    => ['operations' => $filtered, 'order' => $orderData]
+			];
 		}
 		
 		/**
@@ -444,28 +561,35 @@
 		 * @throws PaymentRefundException When the order cannot be fetched or no capture found
 		 */
 		private function resolveCaptureOperationId(string $orderId): string {
-			$result = $this->getGateway()->getOrder($orderId);
+			// Fetch order info from API
+			$fetched = $this->fetchOrderData($orderId);
 			
-			if ($result['request']['result'] === 0) {
-				throw new PaymentRefundException(self::DRIVER_NAME, $result['request']['errorId'], 'Could not fetch order to resolve capture operationId: ' . $result['request']['errorMessage']);
+			// If that failed, throw
+			if ($fetched['data'] === null) {
+				throw new PaymentRefundException(self::DRIVER_NAME, $fetched['request']['errorId'], 'Could not fetch order to resolve capture operationId: ' . $fetched['request']['errorMessage']);
 			}
 			
-			$operations = $result['response']['orderStatus']['operations'] ?? [];
+			// Extract data to find the capture id
+			$operations  = $fetched['data']['operations'];
 			$captureOpId = null;
 			
 			foreach ($operations as $op) {
-				$opType = strtoupper($op['operationType'] ?? '');
-				$opResult = strtoupper($op['operationResult'] ?? '');
+				// Fetch op type
+				$opType   = $op['operationType'];
+				$opResult = $op['operationResult'];
 				
+				// Has to be any of the known capture types
 				if (($opType === 'CAPTURE' || $opType === 'AUTHORIZATION') && $opResult === 'AUTHORIZED') {
-					$captureOpId = $op['operationId'] ?? null;
+					$captureOpId = $this->normalizeString($op['operationId'] ?? '');
 				}
 			}
 			
+			// No capture id found. Throw
 			if (empty($captureOpId)) {
 				throw new PaymentRefundException(self::DRIVER_NAME, 0, 'No authorised CAPTURE operation found for order: ' . $orderId);
 			}
 			
+			// Return capture id
 			return $captureOpId;
 		}
 		
@@ -482,9 +606,9 @@
 		private function buildCustomerInfo(PaymentRequest $request): array {
 			$info = [];
 			
-			$billing = $request->billingAddress;
+			$billing  = $request->billingAddress;
 			$shipping = $request->shippingAddress;
-			$primary = $billing ?? $shipping;
+			$primary  = $billing ?? $shipping;
 			
 			if ($primary === null) {
 				return [];
@@ -505,7 +629,7 @@
 					// Naive extraction: first 1-3 digits after '+' are the country code
 					if (preg_match('/^\+(\d{1,3})(\d+)$/', $primary->phone, $m)) {
 						$info['mobilePhoneCountryCode'] = $m[1];
-						$info['mobilePhone'] = $m[2];
+						$info['mobilePhone']            = $m[2];
 					}
 				} else {
 					$info['mobilePhone'] = $primary->phone;
