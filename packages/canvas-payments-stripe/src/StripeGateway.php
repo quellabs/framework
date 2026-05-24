@@ -6,6 +6,11 @@
 	use Quellabs\Contracts\Gateway\GatewayInterface;
 	use Symfony\Component\HttpClient\HttpClient;
 	use Symfony\Contracts\HttpClient\HttpClientInterface;
+	use Symfony\Contracts\HttpClient\Exception\ClientExceptionInterface;
+	use Symfony\Contracts\HttpClient\Exception\ServerExceptionInterface;
+	use Symfony\Contracts\HttpClient\Exception\DecodingExceptionInterface;
+	use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
+	use Symfony\Contracts\HttpClient\Exception\RedirectionExceptionInterface;
 	
 	/**
 	 * Low-level wrapper around the Stripe Payment Intents and Checkout Sessions APIs.
@@ -145,6 +150,7 @@
 		 * @return GatewayResponse
 		 */
 		public function refund(string $paymentIntentId, ?int $amount, string $reason, string $idempotencyKey): array {
+			// Build payload
 			$body = [
 				'payment_intent' => $paymentIntentId,
 				'reason'         => $reason,
@@ -155,6 +161,7 @@
 				$body['amount'] = $amount;
 			}
 			
+			// Call API
 			return $this->sendRequest('POST', '/v1/refunds', $body, [
 				'Idempotency-Key' => $idempotencyKey,
 			]);
@@ -278,6 +285,7 @@
 		 */
 		private function sendRequest(string $method, string $path, array $body = [], array $headers = []): array {
 			try {
+				// Build payload
 				$options = [
 					'auth_basic'  => [$this->m_secret_key, ''],
 					'headers'     => array_merge([
@@ -286,21 +294,21 @@
 					'verify_peer' => $this->m_verify_ssl,
 				];
 				
-				if ($method === 'GET') {
-					// Stripe accepts GET parameters as query string entries
-					if (!empty($body)) {
-						$options['query'] = $body;
-					}
-				} else {
+				if ($method !== 'GET') {
 					// Stripe's REST API uses form-encoded bodies, not JSON
 					$options['body']                    = !empty($body) ? http_build_query($body) : '';
 					$options['headers']['Content-Type'] = 'application/x-www-form-urlencoded';
+				} elseif (!empty($body)) {
+					// Stripe accepts GET parameters as query string entries
+					$options['query'] = $body;
 				}
 				
 				// Call API
 				$response = $this->m_client->request($method, self::BASE_URL . $path, $options);
-				$data     = $response->toArray(false);
-				$status   = $response->getStatusCode();
+				
+				// Fetch return data
+				$data   = $response->toArray(false);
+				$status = $response->getStatusCode();
 				
 				// 2xx = success
 				if ($status >= 200 && $status < 300) {
@@ -313,7 +321,7 @@
 				$errorMessage = $error['message'] ?? 'Unknown Stripe error';
 				
 				return ['request' => ['result' => 0, 'errorId' => $errorId, 'errorMessage' => $errorMessage]];
-			} catch (\Throwable $e) {
+			} catch (TransportExceptionInterface|ClientExceptionInterface|DecodingExceptionInterface|RedirectionExceptionInterface|ServerExceptionInterface $e) {
 				return ['request' => ['result' => 0, 'errorId' => (string)$e->getCode(), 'errorMessage' => $e->getMessage()]];
 			}
 		}
