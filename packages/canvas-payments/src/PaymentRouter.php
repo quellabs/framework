@@ -12,6 +12,10 @@
 	use Quellabs\Discover\Discover;
 	use Quellabs\Payments\Contracts\RefundResult;
 	
+	/**
+	 * Payment Router
+	 * @phpstan-import-type IssuerOption from PaymentInterface
+	 */
 	class PaymentRouter implements PaymentInterface {
 		
 		/** @var array<string, class-string<PaymentProviderInterface>> */
@@ -35,22 +39,26 @@
 			
 			// Iterate all discovered provider classes and build the module map
 			foreach ($this->discover->getProviderClasses() as $class) {
-				// Skip classes that don't implement PaymentProviderInterface
+				// Only allow PaymentProviderInterface classes
 				if (!is_subclass_of($class, PaymentProviderInterface::class)) {
 					continue;
 				}
 				
 				// The metadata should include a list of modules
-				$metadata = $class::getMetadata();
+				$metadata = $this->getMetadata($class);
 				
 				// Skip providers that declare no modules — nothing to route to
-				if (empty($metadata['modules'])) {
+				if (!is_array($metadata['modules'] ?? null)) {
 					continue;
 				}
 				
 				// Register each module name, guarding against duplicate registrations
 				// across different provider packages
 				foreach ($metadata['modules'] as $module) {
+					if (!is_string($module)) {
+						continue;
+					}
+					
 					if (isset($this->moduleMap[$module])) {
 						throw new \RuntimeException("Duplicate payment module '{$module}' registered by {$class} and {$this->moduleMap[$module]}");
 					}
@@ -60,7 +68,7 @@
 
 				// Register the driver name if provided, allowing exchange() and getRefunds()
 				// to be called with a stable driver name instead of a module name.
-				if (!empty($metadata['driver'])) {
+				if (!empty($metadata['driver']) && is_string($metadata['driver'])) {
 					$this->driverMap[$metadata['driver']] = $class;
 				}
 			}
@@ -87,7 +95,7 @@
 		/**
 		 * Returns payment options for the given module
 		 * @param string $paymentModule
-		 * @return array<string, mixed>
+		 * @return array<int, IssuerOption>
 		 */
 		public function getPaymentOptions(string $paymentModule): array {
 			return $this->resolve($paymentModule)->getPaymentOptions($paymentModule);
@@ -99,6 +107,15 @@
 		 */
 		public function getRegisteredModules(): array {
 			return array_keys($this->moduleMap);
+		}
+		
+		/**
+		 * Returns the metadata for the given payment provider class.
+		 * @param class-string<PaymentProviderInterface> $class
+		 * @return array<string, mixed>
+		 */
+		private function getMetadata(string $class): array {
+			return $class::getMetadata();
 		}
 		
 		/**
@@ -164,7 +181,7 @@
 		 * Returns all refunds issued for the given transaction.
 		 * @param string $driver Driver name as returned in PaymentState::$provider (e.g. 'rabosmartpay')
 		 * @param string $paymentReference
-		 * @return array<string, mixed>
+		 * @return array<int, RefundResult>
 		 */
 		public function getRefunds(string $driver, string $paymentReference): array {
 			return $this->resolveDriver($driver)->getRefunds($paymentReference);
