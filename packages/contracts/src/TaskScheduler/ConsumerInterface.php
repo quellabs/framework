@@ -21,8 +21,8 @@
 		
 		/**
 		 * Start the consumer and begin processing jobs.
-		 * @param array<string, mixed> $config
+		 * Each consumer is responsible for loading its own configuration.
 		 * @return void
 		 */
-		public function run(array $config): void;
+		public function run(): void;
 	}
