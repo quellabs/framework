@@ -12,6 +12,7 @@
 	use Quellabs\Payments\Contracts\PaymentState;
 	use Quellabs\Payments\Contracts\PaymentStatus;
 	use Quellabs\Payments\Contracts\RefundRequest;
+	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Quellabs\Payments\Contracts\RefundResult;
 	
 	/**
@@ -19,6 +20,8 @@
 	 * @phpstan-import-type IssuerOption from PaymentInterface
 	 */
 	class Driver implements PaymentProviderInterface {
+		
+		use GatewayHelpers;
 		
 		/**
 		 * Driver name
@@ -51,7 +54,10 @@
 		/**
 		 * Returns discovery metadata for this provider, including all supported payment modules.
 		 * Called statically during discovery — no instantiation required.
-		 * @return array<string, mixed>
+		 * @return array{
+		 *     driver: string,
+		 *     modules: list<string>
+		 * }
 		 */
 		public static function getMetadata(): array {
 			return [
@@ -81,7 +87,16 @@
 		/**
 		 * Returns default configuration values for this provider.
 		 * Merged with loaded config files during discovery — values from config files take precedence.
-		 * @return array<string, mixed>
+		 * @return array{
+		 *     test_mode: bool,
+		 *     secret_key: string,
+		 *     publishable_key: string,
+		 *     webhook_secret: string,
+		 *     brand_name: string,
+		 *     verify_ssl: bool,
+		 *     return_url: string,
+		 *     cancel_return_url: string
+		 * }
 		 */
 		public function getDefaults(): array {
 			return [
@@ -105,10 +120,10 @@
 		 */
 		public function initiate(PaymentRequest $request): InitiateResult {
 			// Resolve the module name to the Stripe payment method type.
-			// self::getMetadata()['driver'] (generic) passes no types — lets Stripe use Dashboard defaults.
+			// self::DRIVER_NAME (generic) passes no types — lets Stripe use Dashboard defaults.
 			// 'stripe_ideal', 'stripe_card', etc. pin the session to that specific method.
-			$moduleType = self::MODULE_TYPE_MAP[$request->paymentModule] ?? null;
-			$paymentMethodTypes = ($moduleType !== null && $moduleType !== self::getMetadata()['driver']) ? [$moduleType] : [];
+			$moduleType         = self::MODULE_TYPE_MAP[$request->paymentModule] ?? null;
+			$paymentMethodTypes = ($moduleType !== null && $moduleType !== self::DRIVER_NAME) ? [$moduleType] : [];
 			
 			// Call the API for a new checkout session
 			$result = $this->getGateway()->createCheckoutSession(
@@ -120,22 +135,22 @@
 			
 			// If tha failed, throw
 			if ($result['request']['result'] === 0) {
-				throw new PaymentInitiationException(self::getMetadata()['driver'], $result['request']['errorId'], $result['request']['errorMessage']);
+				throw new PaymentInitiationException(self::DRIVER_NAME, $result['request']['errorId'], $result['request']['errorMessage']);
 			}
-
+			
 			// Fetch response
-			$response = $result['response'] ?? [];
+			$responseRaw = $result['response'] ?? null;
 			
 			// Validate response
-			if (!isset($response['id']) || !isset($response['url'])) {
-				throw new PaymentInitiationException(self::getMetadata()['driver'], 'MISSING_CHECKOUT_URL', "Invalid gateway response. Missing id and/or redirect url");
+			if (!is_array($responseRaw) || !isset($responseRaw['id']) || !isset($responseRaw['url'])) {
+				throw new PaymentInitiationException(self::DRIVER_NAME, 'MISSING_CHECKOUT_URL', "Invalid gateway response. Missing id and/or redirect url");
 			}
 			
 			// Return response
 			return new InitiateResult(
-				self::getMetadata()['driver'],
-				$response['id'],
-				$response['url'],
+				self::DRIVER_NAME,
+				$this->normalizeString($responseRaw['id']),
+				$this->normalizeString($responseRaw['url']),
 			);
 		}
 		
@@ -149,14 +164,14 @@
 		 * @throws PaymentExchangeException
 		 */
 		public function exchange(string $transactionId, array $extraData = []): PaymentState {
-			$action = $extraData['action'] ?? null;
-			$paymentIntentId = $extraData['paymentIntentId'] ?? null;
+			$action          = $extraData['action'] ?? null;
+			$paymentIntentId = isset($extraData['paymentIntentId']) ? ($this->normalizeString($extraData['paymentIntentId']) ?: null) : null;
 			
 			// Branch 1: Buyer explicitly canceled on the Stripe-hosted checkout page.
 			// No API call needed — the absence of any payment attempt is definitive.
 			if ($action === 'cancel') {
 				return new PaymentState(
-					provider: self::getMetadata()['driver'],
+					provider: self::DRIVER_NAME,
 					transactionId: $transactionId,
 					state: PaymentStatus::Canceled,
 					currency: '',
@@ -172,7 +187,7 @@
 				// The webhook payload must supply a PaymentIntent ID via extraData; without it
 				// there is no way to identify which payment this event refers to.
 				if (empty($paymentIntentId)) {
-					throw new PaymentExchangeException(self::getMetadata()['driver'], 'MISSING_PAYMENT_INTENT_ID', 'Webhook exchange requires a paymentIntentId in extraData.');
+					throw new PaymentExchangeException(self::DRIVER_NAME, 'MISSING_PAYMENT_INTENT_ID', 'Webhook exchange requires a paymentIntentId in extraData.');
 				}
 				
 				// Call the gateway to fetch the payment intent
@@ -180,13 +195,14 @@
 				
 				// Gateway failure — surface Stripe's error directly rather than swallowing it.
 				if ($intentResult['request']['result'] === 0) {
-					throw new PaymentExchangeException(self::getMetadata()['driver'], $intentResult['request']['errorId'], $intentResult['request']['errorMessage']);
+					throw new PaymentExchangeException(self::DRIVER_NAME, $intentResult['request']['errorId'], $intentResult['request']['errorMessage']);
 				}
 				
 				// Use the session ID as transactionId, not the PaymentIntent ID —
 				// the session ID is what initiate() returned to the caller and what they have stored.
-				$intent = $intentResult['response'] ?? [];
-				$currency = strtoupper($intent['currency'] ?? 'EUR'); // Stripe returns lowercase (e.g. 'eur') — normalize to ISO 4217
+				$intentRaw = $intentResult['response'] ?? null;
+				$intent    = is_array($intentRaw) ? $intentRaw : [];
+				$currency  = strtoupper($this->normalizeString($intent['currency'] ?? null, 'EUR')); // Stripe returns lowercase (e.g. 'eur') — normalize to ISO 4217
 				return $this->mapPaymentIntentToState($transactionId, $intent, $paymentIntentId, $currency);
 			}
 			
@@ -196,17 +212,18 @@
 			
 			// Throw when api call failed
 			if ($sessionResult['request']['result'] === 0) {
-				throw new PaymentExchangeException(self::getMetadata()['driver'], $sessionResult['request']['errorId'], $sessionResult['request']['errorMessage']);
+				throw new PaymentExchangeException(self::DRIVER_NAME, $sessionResult['request']['errorId'], $sessionResult['request']['errorMessage']);
 			}
 			
 			// Branch 3a: Session expired before the buyer completed checkout.
-			$session = $sessionResult['response'] ?? [];
-			$currency = strtoupper($session['currency'] ?? 'EUR');
-			$sessionStatus = $session['status'] ?? 'open';
+			$sessionRaw    = $sessionResult['response'] ?? null;
+			$session       = is_array($sessionRaw) ? $sessionRaw : [];
+			$currency      = strtoupper($this->normalizeString($session['currency'] ?? null, 'EUR'));
+			$sessionStatus = $this->normalizeString($session['status'] ?? null, 'open');
 			
 			if ($sessionStatus === 'expired') {
 				return new PaymentState(
-					provider: self::getMetadata()['driver'],
+					provider: self::DRIVER_NAME,
 					transactionId: $transactionId,
 					state: PaymentStatus::Expired,
 					currency: $currency,
@@ -218,12 +235,12 @@
 			
 			// Branch 3b: Session is open but has no attached PaymentIntent yet —
 			// buyer has not completed checkout.
-			$intent = is_array($session['payment_intent']) ? $session['payment_intent'] : [];
-			$paymentIntentId = $intent['id'] ?? null;
+			$intent          = is_array($session['payment_intent']) ? $session['payment_intent'] : [];
+			$paymentIntentId = $this->normalizeString($intent['id'] ?? null) ?: null;
 			
 			if (empty($intent)) {
 				return new PaymentState(
-					provider: self::getMetadata()['driver'],
+					provider: self::DRIVER_NAME,
 					transactionId: $transactionId,
 					state: PaymentStatus::Pending,
 					currency: $currency,
@@ -270,21 +287,21 @@
 			
 			// If that failed, throw an exception
 			if ($result['request']['result'] === 0) {
-				throw new PaymentRefundException(self::getMetadata()['driver'], $result['request']['errorId'], $result['request']['errorMessage']);
+				throw new PaymentRefundException(self::DRIVER_NAME, $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 			
 			// Return the result
-			$r = $result['response'] ?? [];
+			$response = $result['response'] ?? [];
 			
 			return new RefundResult(
-				provider: self::getMetadata()['driver'],
+				provider: self::DRIVER_NAME,
 				paymentReference: $request->paymentReference,
-				refundId: $r['id'],
-				value: (int)($r['amount'] ?? 0),
-				currency: strtoupper($r['currency'] ?? $request->currency),
+				refundId: $this->normalizeString($this->arrayGet($response, 'id')),
+				value: $this->toInt($this->arrayGet($response, 'amount')),
+				currency: strtoupper($this->normalizeString($this->arrayGet($response, 'currency'), $request->currency)),
 				metadata: [
-					'status' => $r['status'] ?? null,
-					'reason' => $r['reason'] ?? null,
+					'status' => $this->normalizeString($this->arrayGet($response, 'status')) ?: null,
+					'reason' => $this->normalizeString($this->arrayGet($response, 'reason')) ?: null,
 				],
 			);
 		}
@@ -315,21 +332,28 @@
 			$result = $this->getGateway()->getRefundsForPaymentIntent($paymentReference);
 			
 			if ($result['request']['result'] === 0) {
-				throw new PaymentRefundException(self::getMetadata()['driver'], $result['request']['errorId'], $result['request']['errorMessage']);
+				throw new PaymentRefundException(self::DRIVER_NAME, $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 			
-			$refunds = [];
+			$refunds     = [];
+			$responseRaw = $result['response'] ?? null;
+			$responseArr = is_array($responseRaw) ? $responseRaw : [];
+			$data        = isset($responseArr['data']) && is_array($responseArr['data']) ? $responseArr['data'] : [];
 			
-			foreach ($result['response']['data'] ?? [] as $refund) {
+			foreach ($data as $refundRaw) {
+				if (!is_array($refundRaw)) {
+					continue;
+				}
+				
 				$refunds[] = new RefundResult(
-					provider: self::getMetadata()['driver'],
+					provider: self::DRIVER_NAME,
 					paymentReference: $paymentReference,
-					refundId: $refund['id'],
-					value: (int)($refund['amount'] ?? 0),
-					currency: strtoupper($refund['currency'] ?? ''),
+					refundId: $this->normalizeString($refundRaw['id'] ?? null),
+					value: $this->toInt($refundRaw['amount'] ?? null),
+					currency: strtoupper($this->normalizeString($refundRaw['currency'] ?? null)),
 					metadata: [
-						'status' => $refund['status'] ?? null,
-						'reason' => $refund['reason'] ?? null,
+						'status' => isset($refundRaw['status']) ? $this->normalizeString($refundRaw['status']) : null,
+						'reason' => isset($refundRaw['reason']) ? $this->normalizeString($refundRaw['reason']) : null,
 					],
 				);
 			}
@@ -364,14 +388,15 @@
 		 * @return PaymentState
 		 */
 		private function mapPaymentIntentToState(string $sessionId, array $intent, ?string $paymentIntentId, string $currency): PaymentState {
-			$intentStatus = $intent['status'] ?? 'unknown';
-			$amountReceived = (int)($intent['amount_received'] ?? 0);
-			$amountRefunded = (int)($intent['amount_refunded'] ?? 0);
+			$intentStatus   = $this->normalizeString($intent['status'] ?? null, 'unknown');
+			$amountReceived = $this->toInt($intent['amount_received'] ?? null);
+			$amountRefunded = $this->toInt($intent['amount_refunded'] ?? null);
 			
+			/** @noinspection PhpSwitchCanBeReplacedWithMatchExpressionInspection */
 			switch ($intentStatus) {
 				case 'succeeded':
 					return new PaymentState(
-						provider: self::getMetadata()['driver'],
+						provider: self::DRIVER_NAME,
 						transactionId: $sessionId,
 						state: PaymentStatus::Paid,
 						currency: $currency,
@@ -385,8 +410,10 @@
 				
 				// 3DS or other customer action required — redirect back to Stripe's next_action URL
 				case 'requires_action':
+					$nextAction  = is_array($intent['next_action'] ?? null) ? $intent['next_action'] : [];
+					$redirectUrl = $this->normalizeString($this->arrayGet($nextAction, 'redirect_to_url.url')) ?: null;
 					return new PaymentState(
-						provider: self::getMetadata()['driver'],
+						provider: self::DRIVER_NAME,
 						transactionId: $sessionId,
 						state: PaymentStatus::Redirect,
 						currency: $currency,
@@ -395,13 +422,13 @@
 						internalState: 'requires_action',
 						metadata: [
 							'paymentReference' => $paymentIntentId,
-							'redirectUrl'      => $intent['next_action']['redirect_to_url']['url'] ?? null,
+							'redirectUrl'      => $redirectUrl,
 						],
 					);
 				
 				case 'canceled':
 					return new PaymentState(
-						provider: self::getMetadata()['driver'],
+						provider: self::DRIVER_NAME,
 						transactionId: $sessionId,
 						state: PaymentStatus::Canceled,
 						currency: $currency,
@@ -410,14 +437,14 @@
 						internalState: 'canceled',
 						metadata: [
 							'paymentReference'   => $paymentIntentId,
-							'cancellationReason' => $intent['cancellation_reason'] ?? null,
+							'cancellationReason' => isset($intent['cancellation_reason']) ? $this->normalizeString($intent['cancellation_reason']) : null,
 						],
 					);
 				
 				// requires_payment_method, requires_confirmation, processing, or unknown
 				default:
 					return new PaymentState(
-						provider: self::getMetadata()['driver'],
+						provider: self::DRIVER_NAME,
 						transactionId: $sessionId,
 						state: PaymentStatus::Pending,
 						currency: $currency,

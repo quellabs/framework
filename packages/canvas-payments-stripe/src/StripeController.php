@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\Payments\Stripe;
 	
+	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Quellabs\Canvas\Annotations\Route;
 	use Quellabs\Payments\Contracts\PaymentExchangeException;
 	use Quellabs\Payments\Contracts\WebhookValidationException;
@@ -13,6 +14,8 @@
 	use Symfony\Component\HttpFoundation\Response;
 	
 	class StripeController {
+		
+		use GatewayHelpers;
 		
 		private Driver $stripe;
 		
@@ -65,7 +68,7 @@
 				// Redirect them back to Stripe's next_action URL.
 				// No signal emitted — this is not a payment outcome.
 				if ($response->state === PaymentStatus::Redirect) {
-					$redirectUrl = $response->metadata['redirectUrl'] ?? null;
+					$redirectUrl = $this->normalizeString($response->metadata['redirectUrl'] ?? null);
 					
 					if (!$redirectUrl) {
 						return new JsonResponse("Missing redirect URL", 500);
@@ -81,9 +84,9 @@
 				$config = $this->stripe->getConfig();
 				
 				if ($response->state === PaymentStatus::Canceled) {
-					$redirectUrl = $config['cancel_return_url'];
+					$redirectUrl = $this->normalizeString($config['cancel_return_url'] ?? null);
 				} else {
-					$redirectUrl = $config['return_url'];
+					$redirectUrl = $this->normalizeString($config['return_url'] ?? null);
 				}
 				
 				if (empty($redirectUrl)) {
@@ -156,19 +159,23 @@
 				throw new WebhookValidationException("Webhook signature verification failed");
 			}
 			
-			$payload = json_decode($rawBody, true);
+			$decoded = json_decode($rawBody, true);
 			
-			if (json_last_error() !== JSON_ERROR_NONE) {
+			if (json_last_error() !== JSON_ERROR_NONE || !is_array($decoded)) {
 				throw new WebhookValidationException("Invalid JSON");
 			}
 			
+			/** @var array<string, mixed> $payload */
+			$payload = $decoded;
+			
 			// For payment_intent.* events, data.object is the PaymentIntent
-			$intentObject    = $payload['data']['object'] ?? [];
-			$paymentIntentId = $intentObject['id'] ?? null;
+			$dataRaw      = isset($payload['data']) && is_array($payload['data']) ? $payload['data'] : [];
+			$intentObject = isset($dataRaw['object']) && is_array($dataRaw['object']) ? $dataRaw['object'] : [];
+			$paymentIntentId = $this->normalizeString($intentObject['id'] ?? null) ?: null;
 			
 			return [
 				'payload'         => $payload,
-				'eventType'       => $payload['type'] ?? '',
+				'eventType'       => $this->normalizeString($payload['type'] ?? null),
 				'paymentIntentId' => $paymentIntentId,
 			];
 		}

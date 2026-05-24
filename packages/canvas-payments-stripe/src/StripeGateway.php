@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\Payments\Stripe;
 	
+	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Quellabs\Contracts\Gateway\GatewayInterface;
 	use Symfony\Component\HttpClient\HttpClient;
 	use Symfony\Contracts\HttpClient\HttpClientInterface;
@@ -24,6 +25,8 @@
 	 */
 	class StripeGateway {
 		
+		use GatewayHelpers;
+		
 		private const string BASE_URL = 'https://api.stripe.com';
 		private const string API_VERSION = '2024-06-20';
 		
@@ -42,12 +45,12 @@
 		public function __construct(Driver $driver) {
 			$config = $driver->getConfig();
 			
-			$this->m_test_mode = $config['test_mode'];
-			$this->m_secret_key = $config['secret_key'];
-			$this->m_webhook_secret = $config['webhook_secret'];
-			$this->m_verify_ssl = $config['verify_ssl'];
-			$this->m_return_url = $config['return_url'] ?? '';
-			$this->m_cancel_url = $config['cancel_return_url'] ?? '';
+			$this->m_test_mode = $this->toBool($config['test_mode']);
+			$this->m_secret_key = $this->normalizeString($config['secret_key']);
+			$this->m_webhook_secret = $this->normalizeString($config['webhook_secret']);
+			$this->m_verify_ssl = $this->toBool($config['verify_ssl']);
+			$this->m_return_url = $this->normalizeString($config['return_url'] ?? null);
+			$this->m_cancel_url = $this->normalizeString($config['cancel_return_url'] ?? null);
 			$this->m_client = HttpClient::create(['timeout' => 10]);
 		}
 		
