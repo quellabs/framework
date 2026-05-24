@@ -112,7 +112,7 @@
 		 * @param float $value Payment amount in major units (e.g. 12.50)
 		 * @param string $description Order description shown on the PayPal checkout page
 		 * @param string $currency ISO 4217 currency code
-		 * @param array<string, mixed> $data Additional NVP parameters to merge into the request
+		 * @param array<string, string|int|float> $data Additional NVP parameters to merge into the request
 		 * @return GatewayResponse
 		 */
 		public function setExpressCheckout(float $value, string $description, string $currency = "EUR", array $data = []): array {
@@ -247,7 +247,7 @@
 		/**
 		 * Send a request to the PayPal NVP API and return a normalized response array.
 		 * All API methods funnel through here to keep HTTP handling in one place.
-		 * @param array<string, mixed> $parameters NVP key-value pairs to POST to the PayPal API
+		 * @param array<string, string|int|float> $parameters NVP key-value pairs to POST to the PayPal API
 		 * @return GatewayResponse
 		 */
 		private function sendTransactionToGateway(array $parameters): array {
@@ -255,7 +255,7 @@
 			
 			try {
 				$response = $client->request('POST', $this->m_transaction_url, [
-					'body'        => array_map(fn(mixed $v): string => trim($this->normalizeString($v)), $parameters),
+					'body'        => $parameters,
 					'verify_peer' => $this->m_verify_ssl,
 				]);
 				

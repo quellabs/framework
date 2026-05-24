@@ -98,20 +98,28 @@
 		 * @return InitiateResult
 		 */
 		public function initiate(PaymentRequest $request): InitiateResult {
-			$brandName    = $this->getConfig()['brand_name'] ?: null;
-			$emailAddress = $request->billingAddress?->email ?: null;
+			// normalizeString returns '' for missing/non-string values, so a non-empty result
+			// is a guaranteed string — giving $optionalParams a concrete array<string, string> type.
+			$brandName = $this->normalizeString($this->getConfig()['brand_name'] ?? null);
+			$emailAddress = $this->normalizeString($request->billingAddress?->email);
+			
+			// Build optional parameters — only include fields that have values.
+			$optionalParams = [];
+			
+			if ($emailAddress !== '') {
+				$optionalParams["EMAIL"] = $emailAddress;
+			}
+			
+			if ($brandName !== '') {
+				$optionalParams["BRANDNAME"] = $brandName;
+			}
 			
 			// Call gateway
 			$result = $this->getGateway()->setExpressCheckout(
 				round($request->amount / 100, 2),
 				$request->description,
 				$request->currency,
-				array_filter([
-					"EMAIL"      => $emailAddress,
-					"NOSHIPPING" => 2,
-					"ALLOWNOTE"  => 0,
-					"BRANDNAME"  => $brandName,
-				], fn($v) => $v !== null)
+				["NOSHIPPING" => 2, "ALLOWNOTE" => 0, ...$optionalParams]
 			);
 			
 			// return error if failed
