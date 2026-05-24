@@ -50,7 +50,7 @@
 		 *
 		 * @see https://developer.nexigroup.com/xpayglobal/en-EU/docs/hosted-payment-page/
 		 */
-		private const MODULE_TYPE_MAP = [
+		private const array MODULE_TYPE_MAP = [
 			'xpay_multi'       => null,           // All enabled methods on the terminal
 			'xpay_cards'       => 'CARDS',
 			'xpay_applepay'    => 'APPLEPAY',
@@ -81,7 +81,7 @@
 		 *
 		 * @see https://developer.nexigroup.com/xpayglobal/en-EU/api/payment-api-v1/
 		 */
-		private const RESULT_STATUS_MAP = [
+		private const array RESULT_STATUS_MAP = [
 			'AUTHORIZED'        => PaymentStatus::Paid,
 			'PENDING'           => PaymentStatus::Pending,
 			'VOIDED'            => PaymentStatus::Canceled,
@@ -96,7 +96,10 @@
 		/**
 		 * Returns discovery metadata for this provider, including all supported payment modules.
 		 * Called statically during discovery — no instantiation required.
-		 * @return array<string, mixed>
+		 * @return array{
+		 *     driver: string,
+		 *     modules: list<string>
+		 * }
 		 */
 		public static function getMetadata(): array {
 			return [
@@ -125,7 +128,13 @@
 		
 		/**
 		 * Returns default configuration values for this provider.
-		 * @return array<string, mixed>
+		 * @return array{
+		 *     api_key: string,
+		 *     return_url: string,
+		 *     return_url_cancel: string,
+		 *     webhook_url: string,
+		 *     default_language: string
+		 * }
 		 */
 		public function getDefaults(): array {
 			return [
@@ -232,7 +241,7 @@
 			return new InitiateResult(
 				provider: self::DRIVER_NAME,
 				transactionId: $request->reference ?? '',
-				redirectUrl: $this->normalizeString($response['hostedPage']),
+				redirectUrl: $response['hostedPage']
 			);
 		}
 		
@@ -387,23 +396,46 @@
 				$payload['description'] = $request->description;
 			}
 			
+			// Issue refund through the API
 			$result = $this->getGateway()->refundOperation($captureOperationId, $payload);
 			
+			// Throw if that failed
 			if ($result['request']['result'] === 0) {
 				throw new PaymentRefundException(self::DRIVER_NAME, $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 			
-			// The refund response contains the new operation object for the refund itself
-			$response    = $result['response'] ?? [];
-			$refundOpId  = $this->normalizeString($response['operationId'] ?? '');
-			$refundedAmt = $this->toInt($response['operationAmount'] ?? ($request->amount ?? 0));
-			$currency    = $this->normalizeString($response['operationCurrency'] ?? $request->currency);
+			// The refund response contains the new operation object for the refund itself.
+			// All three fields are required: a RefundResult without an id, amount, or currency
+			// would misrepresent what XPay actually processed.
+			$response = $result['response'] ?? [];
 			
+			// Validate refund operation id is present
+			$refundOpId = $this->normalizeString($response['operationId'] ?? '');
+			
+			if ($refundOpId === '') {
+				throw new PaymentRefundException(self::DRIVER_NAME, 0, 'Refund API response is missing operationId for order: ' . $request->paymentReference);
+			}
+			
+			// Validate operationAmount is present
+			$refundedAmtRaw = $response['operationAmount'] ?? null;
+			
+			if ($refundedAmtRaw === null) {
+				throw new PaymentRefundException(self::DRIVER_NAME, 0, 'Refund API response is missing operationAmount for operation: ' . $refundOpId);
+			}
+			
+			// Validate currency type is present
+			$currency = $this->normalizeString($response['operationCurrency'] ?? '');
+			
+			if ($currency === '') {
+				throw new PaymentRefundException(self::DRIVER_NAME, 0, 'Refund API response is missing operationCurrency for operation: ' . $refundOpId);
+			}
+			
+			// Return the result
 			return new RefundResult(
 				provider: self::DRIVER_NAME,
 				paymentReference: $request->paymentReference,
 				refundId: $refundOpId,
-				value: $refundedAmt,
+				value: $this->toInt($refundedAmtRaw),
 				currency: $currency,
 			);
 		}
@@ -419,12 +451,15 @@
 		 * @throws PaymentExchangeException
 		 */
 		public function getRefunds(string $paymentReference): array {
+			// Fetch order info from API
 			$result = $this->getGateway()->getOrder($paymentReference);
 			
+			// Throw if the API call failed
 			if ($result['request']['result'] === 0) {
 				throw new PaymentExchangeException(self::DRIVER_NAME, $result['request']['errorId'], $result['request']['errorMessage']);
 			}
 			
+			// Extract data
 			$response    = $result['response'] ?? [];
 			$orderStatus = isset($response['orderStatus']) && is_array($response['orderStatus']) ? $response['orderStatus'] : [];
 			$orderData   = isset($orderStatus['order']) && is_array($orderStatus['order']) ? $orderStatus['order'] : [];
@@ -433,23 +468,37 @@
 			$refunds     = [];
 			
 			foreach ($operations as $op) {
+				// Skip malformed entries
 				if (!is_array($op)) {
 					continue;
 				}
 				
+				// Fetch operation type and result
 				$opType   = strtoupper($this->normalizeString($op['operationType'] ?? ''));
 				$opResult = strtoupper($this->normalizeString($op['operationResult'] ?? ''));
 				
+				// Skip if not of the right kind
 				if ($opType !== 'REFUND' || $opResult !== 'AUTHORIZED') {
+					continue;
+				}
+				
+				// Required fields: skip and log corrupt operations rather than emitting
+				// a RefundResult with a blank id, zero amount, or missing currency.
+				$refundId   = $this->normalizeString($op['operationId'] ?? '');
+				$amountRaw  = $op['operationAmount'] ?? null;
+				$opCurrency = $this->normalizeString($op['operationCurrency'] ?? $currency);
+				
+				if ($refundId === '' || $amountRaw === null || $opCurrency === '') {
+					error_log('XPay getRefunds: skipping corrupt REFUND operation for order ' . $paymentReference . ': ' . json_encode($op));
 					continue;
 				}
 				
 				$refunds[] = new RefundResult(
 					provider: self::DRIVER_NAME,
 					paymentReference: $paymentReference,
-					refundId: $this->normalizeString($op['operationId'] ?? ''),
-					value: $this->toInt($op['operationAmount'] ?? 0),
-					currency: $this->normalizeString($op['operationCurrency'] ?? $currency),
+					refundId: $refundId,
+					value: $this->toInt($amountRaw),
+					currency: $opCurrency,
 				);
 			}
 			
@@ -466,34 +515,42 @@
 		 * @throws PaymentRefundException When the order cannot be fetched or no capture found
 		 */
 		private function resolveCaptureOperationId(string $orderId): string {
+			// Fetch order info from API
 			$result = $this->getGateway()->getOrder($orderId);
 			
+			// Throw if the API call failed
 			if ($result['request']['result'] === 0) {
 				throw new PaymentRefundException(self::DRIVER_NAME, $result['request']['errorId'], 'Could not fetch order to resolve capture operationId: ' . $result['request']['errorMessage']);
 			}
 			
+			// Extract data to find the capture id
 			$response    = $result['response'] ?? [];
 			$orderStatus = isset($response['orderStatus']) && is_array($response['orderStatus']) ? $response['orderStatus'] : [];
 			$operations  = isset($orderStatus['operations']) && is_array($orderStatus['operations']) ? $orderStatus['operations'] : [];
 			$captureOpId = null;
 			
 			foreach ($operations as $op) {
+				// Skip malformed operations
 				if (!is_array($op)) {
 					continue;
 				}
 				
+				// Fetch op type
 				$opType   = strtoupper($this->normalizeString($op['operationType'] ?? ''));
 				$opResult = strtoupper($this->normalizeString($op['operationResult'] ?? ''));
 				
+				// Has to be any of the known capture types
 				if (($opType === 'CAPTURE' || $opType === 'AUTHORIZATION') && $opResult === 'AUTHORIZED') {
 					$captureOpId = $this->normalizeString($op['operationId'] ?? '');
 				}
 			}
 			
+			// No capture id found. Throw
 			if (empty($captureOpId)) {
 				throw new PaymentRefundException(self::DRIVER_NAME, 0, 'No authorised CAPTURE operation found for order: ' . $orderId);
 			}
 			
+			// Return capture id
 			return $captureOpId;
 		}
 		
