@@ -82,7 +82,8 @@
 		 *     verify_ssl: bool,
 		 *     webhook_id: string,
 		 *     return_url: string,
-		 *     cancel_return_url: string
+		 *     cancel_return_url: string,
+		 *     default_currency: string
 		 * }
 		 */
 		public function getDefaults(): array {
@@ -96,6 +97,7 @@
 				'webhook_id'        => '',
 				'return_url'        => '',
 				'cancel_return_url' => '',
+				'default_currency'  => 'EUR'
 			];
 		}
 		
@@ -146,8 +148,6 @@
 				throw new PaymentInitiationException(self::DRIVER_NAME, "500", "Invalid gateway response. Order id is not a string");
 			}
 			
-			$transactionId = $response["id"];
-			
 			// Extract the HATEOAS approve link — this is the URL we redirect the buyer to.
 			// Using the link from the response is more robust than constructing it manually,
 			// as PayPal controls its format.
@@ -174,7 +174,7 @@
 			// Return result
 			return new InitiateResult(
 				self::DRIVER_NAME,
-				$transactionId,
+				$response["id"],
 				$approveUrl,
 			);
 		}
@@ -648,24 +648,38 @@
 				throw new PaymentExchangeException(self::DRIVER_NAME, $result["request"]["errorId"], $result["request"]["errorMessage"]);
 			}
 			
-			// Grab response — validate it is an array before indexing
-			$response           = $result["response"] ?? [];
-			$captureStatus      = $this->normalizeString($response["status"] ?? null, $internalState);
-			$captureAmountBlock = isset($response["amount"]) && is_array($response["amount"]) ? $response["amount"] : [];
-			$capturedAmount     = (int)round($this->toFloat($captureAmountBlock["value"] ?? null) * 100);
-			$captureCurrency    = $this->normalizeString($captureAmountBlock["currency_code"] ?? null, $currency);
-			$breakdown          = isset($response["seller_receivable_breakdown"]) && is_array($response["seller_receivable_breakdown"]) ? $response["seller_receivable_breakdown"] : [];
-			$totalRefunded      = isset($breakdown["total_refunded_amount"]) && is_array($breakdown["total_refunded_amount"]) ? $breakdown["total_refunded_amount"] : [];
-			$refundedAmount     = (int)round($this->toFloat($totalRefunded["value"] ?? null) * 100);
+			// Extract response
+			$response = $result["response"] ?? [];
+			
+			// amount is a required field on every PayPal capture — treat its absence as a data error
+			// rather than silently reporting valuePaid = 0 for what may be a completed payment.
+			if (!isset($response["amount"]) || !is_array($response["amount"])) {
+				throw new PaymentExchangeException(self::DRIVER_NAME, "INVALID_RESPONSE", "Capture response is missing required amount field");
+			}
+			
+			// value is required — a missing or non-numeric value would silently report a completed
+			// payment as valuePaid = 0, which could trigger incorrect order fulfillment downstream.
+			if (!isset($response["amount"]["value"]) || !is_numeric($response["amount"]["value"])) {
+				throw new PaymentExchangeException(self::DRIVER_NAME, "INVALID_RESPONSE", "Capture response is missing required amount.value field");
+			}
 			
 			// A PENDING capture means PayPal has not yet settled the funds (e-cheque, held funds,
 			// manual review, etc.). Do not report this as Paid — the money has not arrived.
+			$capturedAmount  = (int)round($this->toFloat($response["amount"]["value"]) * 100);
+			$captureCurrency = $this->normalizeString($response["amount"]["currency_code"] ?? null, $currency);
+			$breakdown       = isset($response["seller_receivable_breakdown"]) && is_array($response["seller_receivable_breakdown"]) ? $response["seller_receivable_breakdown"] : [];
+			$totalRefunded   = isset($breakdown["total_refunded_amount"]) && is_array($breakdown["total_refunded_amount"]) ? $breakdown["total_refunded_amount"] : [];
+			$refundedAmount  = (int)round($this->toFloat($totalRefunded["value"] ?? null) * 100);
+			
+			// Turn Paypal status into our own status
+			$captureStatus = $this->normalizeString($response["status"] ?? null, $internalState);
 			$paymentStatus = match ($captureStatus) {
 				"COMPLETED" => PaymentStatus::Paid,
 				"DECLINED", "FAILED", "VOIDED" => PaymentStatus::Failed,
 				default => PaymentStatus::Pending,
 			};
 			
+			// Return the payment state
 			return new PaymentState(
 				provider: self::DRIVER_NAME,
 				transactionId: $orderId,
