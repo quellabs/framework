@@ -255,7 +255,7 @@
 			
 			try {
 				$response = $client->request('POST', $this->m_transaction_url, [
-					'body'        => array_map(static fn(mixed $v): string => is_string($v) ? trim($v) : (string)$v, $parameters),
+					'body'        => array_map(fn(mixed $v): string => trim($this->normalizeString($v)), $parameters),
 					'verify_peer' => $this->m_verify_ssl,
 				]);
 				
@@ -268,8 +268,17 @@
 				/** @var array<string, mixed> $resultArray */
 				$resultArray = json_decode(json_encode($parsed) ?: '[]', true) ?? [];
 				
-				// ACK=Failure means the API call was received but rejected — return the first error
-				if ($this->normalizeString($resultArray['ACK'] ?? '') === 'Failure') {
+				// A missing ACK field means the response is structurally invalid — not a PayPal error,
+				// but a protocol violation. Treat it as a hard failure rather than silently passing through.
+				$ack = $this->normalizeString($resultArray['ACK'] ?? null);
+				
+				if ($ack === '') {
+					return ['request' => ['result' => 0, 'errorId' => '0', 'errorMessage' => 'Malformed gateway response: ACK field missing']];
+				}
+				
+				// ACK=Failure means the API call was received but rejected — return the first error.
+				// ACK=Warning indicates a non-fatal issue alongside a valid response; fall through to success.
+				if ($ack === 'Failure') {
 					return ['request' => ['result' => 0, 'errorId' => $this->normalizeString($resultArray['L_ERRORCODE0'] ?? ''), 'errorMessage' => $this->normalizeString($resultArray['L_LONGMESSAGE0'] ?? '')]];
 				}
 				
