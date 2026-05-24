@@ -18,6 +18,20 @@
 	
 	/**
 	 * XPay Driver
+	 *
+	 * @phpstan-type OrderOperation array{
+	 *     operationType: string,
+	 *     operationResult: string,
+	 * }
+	 *
+	 * @phpstan-type OrderData array{
+	 *     request: array{result: int, errorId: string, errorMessage: string},
+	 *     data: array{
+	 *         operations: list<array<string, mixed>&OrderOperation>,
+	 *         order: array<string, mixed>
+	 *     }|null
+	 * }
+	 *
 	 * @phpstan-import-type IssuerOption from PaymentInterface
 	 */
 	class Driver implements PaymentProviderInterface {
@@ -61,8 +75,6 @@
 			'xpay_klarna'      => 'KLARNA',
 			'xpay_alipay'      => 'ALIPAY',
 			'xpay_wechatpay'   => 'WECHATPAY',
-		
-		
 		];
 		
 		/**
@@ -269,18 +281,16 @@
 		 */
 		public function exchange(string $transactionId, array $extraData = []): PaymentState {
 			// Call the API to fetch order info
-			$result = $this->getGateway()->getOrder($transactionId);
+			$fetched = $this->fetchOrderData($transactionId);
 			
 			// If that failed, throw
-			if ($result['request']['result'] === 0) {
-				throw new PaymentExchangeException(self::DRIVER_NAME, $result['request']['errorId'], $result['request']['errorMessage']);
+			if ($fetched['data'] === null) {
+				throw new PaymentExchangeException(self::DRIVER_NAME, $fetched['request']['errorId'], $fetched['request']['errorMessage']);
 			}
 			
 			// Fetch the response data
-			$data        = $result['response'] ?? [];
-			$orderStatus = isset($data['orderStatus']) && is_array($data['orderStatus']) ? $data['orderStatus'] : [];
-			$orderData   = isset($orderStatus['order']) && is_array($orderStatus['order']) ? $orderStatus['order'] : [];
-			$operations  = isset($orderStatus['operations']) && is_array($orderStatus['operations']) ? $orderStatus['operations'] : [];
+			$operations = $fetched['data']['operations'];
+			$orderData  = $fetched['data']['order'];
 			
 			// Use the order-level currency as a fallback; individual operations carry their own currency
 			// but may be missing it (e.g. for some async methods)
@@ -292,15 +302,8 @@
 			$refundTotal = 0;
 			
 			foreach ($operations as $op) {
-				// Skip malformed operations
-				if (!is_array($op)) {
-					continue;
-				}
-				
-				// Normalise to uppercase so comparisons are case-insensitive — XPay's casing
-				// is consistent in practice, but the API docs don't guarantee it
-				$opType   = strtoupper($this->normalizeString($op['operationType'] ?? ''));
-				$opResult = strtoupper($this->normalizeString($op['operationResult'] ?? ''));
+				$opType   = $op['operationType'];
+				$opResult = $op['operationResult'];
 				
 				// Keep the last capture/auth operation as the primary; later entries
 				// overwrite earlier ones, so we naturally end up with the most recent state
@@ -319,8 +322,7 @@
 			// This handles edge cases such as orders that only have an AUTHORIZATION_REQUESTED
 			// entry while the acquirer is still processing
 			if ($captureOp === null && !empty($operations)) {
-				$first     = reset($operations);
-				$captureOp = is_array($first) ? $first : null;
+				$captureOp = reset($operations);
 			}
 			
 			// Read the final result from whichever operation we settled on; default to PENDING
@@ -452,30 +454,22 @@
 		 */
 		public function getRefunds(string $paymentReference): array {
 			// Fetch order info from API
-			$result = $this->getGateway()->getOrder($paymentReference);
+			$fetched = $this->fetchOrderData($paymentReference);
 			
-			// Throw if the API call failed
-			if ($result['request']['result'] === 0) {
-				throw new PaymentExchangeException(self::DRIVER_NAME, $result['request']['errorId'], $result['request']['errorMessage']);
+			// If that failed, throw
+			if ($fetched['data'] === null) {
+				throw new PaymentExchangeException(self::DRIVER_NAME, $fetched['request']['errorId'], $fetched['request']['errorMessage']);
 			}
 			
 			// Extract data
-			$response    = $result['response'] ?? [];
-			$orderStatus = isset($response['orderStatus']) && is_array($response['orderStatus']) ? $response['orderStatus'] : [];
-			$orderData   = isset($orderStatus['order']) && is_array($orderStatus['order']) ? $orderStatus['order'] : [];
-			$operations  = isset($orderStatus['operations']) && is_array($orderStatus['operations']) ? $orderStatus['operations'] : [];
-			$currency    = $this->normalizeString($orderData['currency'] ?? '');
-			$refunds     = [];
+			$operations = $fetched['data']['operations'];
+			$currency   = $this->normalizeString($fetched['data']['order']['currency'] ?? '');
+			$refunds    = [];
 			
 			foreach ($operations as $op) {
-				// Skip malformed entries
-				if (!is_array($op)) {
-					continue;
-				}
-				
 				// Fetch operation type and result
-				$opType   = strtoupper($this->normalizeString($op['operationType'] ?? ''));
-				$opResult = strtoupper($this->normalizeString($op['operationResult'] ?? ''));
+				$opType   = $op['operationType'];
+				$opResult = $op['operationResult'];
 				
 				// Skip if not of the right kind
 				if ($opType !== 'REFUND' || $opResult !== 'AUTHORIZED') {
@@ -506,6 +500,58 @@
 		}
 		
 		/**
+		 * Fetches an order from the XPay API and unpacks the orderStatus envelope into
+		 * typed, validated fields that callers can use directly without further is_array checks.
+		 *
+		 * All three callers (exchange, getRefunds, resolveCaptureOperationId) share the same
+		 * steps: call the gateway, unpack orderStatus, unpack the nested order and operations
+		 * arrays. This helper centralises that boilerplate.
+		 *
+		 * Returns the raw request envelope alongside the unpacked data so callers can check
+		 * for failure and throw their own concrete exception type (PaymentExchangeException vs
+		 * PaymentRefundException), keeping PHPStorm and PHPStan happy without dynamic dispatch.
+		 *
+		 * Non-array entries in the operations list are discarded. operationType and operationResult
+		 * are normalised to uppercase strings on every operation so callers can compare directly.
+		 *
+		 * @param string $orderId
+		 * @return OrderData
+		 */
+		private function fetchOrderData(string $orderId): array {
+			// Call the API
+			$result = $this->getGateway()->getOrder($orderId);
+			
+			// Return early with the request envelope on failure so the caller can throw
+			// the appropriate concrete exception type with full error detail
+			if ($result['request']['result'] === 0) {
+				return ['request' => $result['request'], 'data' => null];
+			}
+			
+			// Unpack the nested orderStatus structure, defaulting to empty arrays at each level
+			$response    = $result['response'] ?? [];
+			$orderStatus = isset($response['orderStatus']) && is_array($response['orderStatus']) ? $response['orderStatus'] : [];
+			$orderData   = isset($orderStatus['order']) && is_array($orderStatus['order']) ? $orderStatus['order'] : [];
+			$operations  = isset($orderStatus['operations']) && is_array($orderStatus['operations']) ? $orderStatus['operations'] : [];
+			
+			// Discard non-array entries and normalise the two guaranteed operation keys so
+			// callers can compare operationType and operationResult directly without further processing
+			$filtered = [];
+			foreach ($operations as $op) {
+				if (!is_array($op)) {
+					continue;
+				}
+				
+				$op['operationType']   = strtoupper($this->normalizeString($op['operationType'] ?? ''));
+				$op['operationResult'] = strtoupper($this->normalizeString($op['operationResult'] ?? ''));
+				$filtered[]            = $op;
+			}
+			return [
+				'request' => $result['request'],
+				'data'    => ['operations' => $filtered, 'order' => $orderData]
+			];
+		}
+		
+		/**
 		 * Finds and returns the operationId of the most recent successful CAPTURE operation
 		 * for the given orderId. Required by refund() because XPay's refund endpoint takes
 		 * an operationId, not an orderId.
@@ -516,28 +562,21 @@
 		 */
 		private function resolveCaptureOperationId(string $orderId): string {
 			// Fetch order info from API
-			$result = $this->getGateway()->getOrder($orderId);
+			$fetched = $this->fetchOrderData($orderId);
 			
-			// Throw if the API call failed
-			if ($result['request']['result'] === 0) {
-				throw new PaymentRefundException(self::DRIVER_NAME, $result['request']['errorId'], 'Could not fetch order to resolve capture operationId: ' . $result['request']['errorMessage']);
+			// If that failed, throw
+			if ($fetched['data'] === null) {
+				throw new PaymentRefundException(self::DRIVER_NAME, $fetched['request']['errorId'], 'Could not fetch order to resolve capture operationId: ' . $fetched['request']['errorMessage']);
 			}
 			
 			// Extract data to find the capture id
-			$response    = $result['response'] ?? [];
-			$orderStatus = isset($response['orderStatus']) && is_array($response['orderStatus']) ? $response['orderStatus'] : [];
-			$operations  = isset($orderStatus['operations']) && is_array($orderStatus['operations']) ? $orderStatus['operations'] : [];
+			$operations  = $fetched['data']['operations'];
 			$captureOpId = null;
 			
 			foreach ($operations as $op) {
-				// Skip malformed operations
-				if (!is_array($op)) {
-					continue;
-				}
-				
 				// Fetch op type
-				$opType   = strtoupper($this->normalizeString($op['operationType'] ?? ''));
-				$opResult = strtoupper($this->normalizeString($op['operationResult'] ?? ''));
+				$opType   = $op['operationType'];
+				$opResult = $op['operationResult'];
 				
 				// Has to be any of the known capture types
 				if (($opType === 'CAPTURE' || $opType === 'AUTHORIZATION') && $opResult === 'AUTHORIZED') {

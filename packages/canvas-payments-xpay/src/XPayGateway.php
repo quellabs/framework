@@ -57,7 +57,7 @@
 			$config = $driver->getConfig();
 			
 			$this->client  = HttpClient::create();
-			$this->apiKey  = $config['api_key'] ?? '';
+			$this->apiKey  = is_string($config['api_key'] ?? '') ? ($config['api_key'] ?? '') : '';
 			$this->baseUrl = self::BASE_URL;
 		}
 		
@@ -182,12 +182,21 @@
 					return ['request' => ['result' => 0, 'errorId' => '', 'errorMessage' => 'Invalid JSON response (HTTP ' . $httpCode . '): ' . json_last_error_msg()]];
 				}
 				
+				// Narrow from mixed to array<string, mixed> — json_decode with assoc=true returns array or null
+				/** @var array<string, mixed> $data */
+				$data = is_array($data) ? $data : [];
+				
 				// XPay error responses carry an 'errors' array with 'code' and 'description' per entry
-				if (!empty($data['errors'])) {
-					$first = reset($data['errors']);
-					$errorCode = $first['code'] ?? 0;
-					$errorMsg  = $first['description'] ?? 'Unknown XPay error';
-					return ['request' => ['result' => 0, 'errorId' => (string)$errorCode, 'errorMessage' => $errorMsg]];
+				$errors = isset($data['errors']) && is_array($data['errors']) ? $data['errors'] : [];
+				
+				if (!empty($errors)) {
+					$first     = reset($errors);
+					$first     = is_array($first) ? $first : [];
+					$code        = $first['code'] ?? '';
+					$description = $first['description'] ?? '';
+					$errorCode   = is_string($code) ? $code : '';
+					$errorMsg    = is_string($description) && $description !== '' ? $description : 'Unknown XPay error';
+					return ['request' => ['result' => 0, 'errorId' => $errorCode, 'errorMessage' => $errorMsg]];
 				}
 				
 				// Error if the httpCode is not in the success range
