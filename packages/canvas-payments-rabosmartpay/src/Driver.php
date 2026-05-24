@@ -328,6 +328,7 @@
 			}
 			
 			// Match Rabobank state with our own
+			/** @noinspection PhpDuplicateMatchArmBodyInspection */
 			$state = match ($orderStatus) {
 				'COMPLETED' => PaymentStatus::Paid,
 				'CANCELLED' => PaymentStatus::Canceled,
@@ -340,11 +341,12 @@
 			// Extract data from url or api response
 			$paidAmountRaw = $extraData['paidAmount'] ?? null;
 			
+			// Validate response
 			if (!is_array($paidAmountRaw)) {
 				throw new PaymentExchangeException(self::DRIVER_NAME, 'MISSING_PAID_AMOUNT', 'paidAmount is missing or not an array: ' . get_debug_type($paidAmountRaw));
 			}
 			
-			if (!is_int($paidAmountRaw['amount'] ?? null) && !is_numeric($paidAmountRaw['amount'] ?? null)) {
+			if (!is_numeric($paidAmountRaw['amount'] ?? null)) {
 				throw new PaymentExchangeException(self::DRIVER_NAME, 'INVALID_AMOUNT', 'paidAmount.amount is not numeric: ' . get_debug_type($paidAmountRaw['amount'] ?? null));
 			}
 			
@@ -357,10 +359,12 @@
 			$transactions = is_array($extraData['transactions'] ?? null) ? $extraData['transactions'] : [];
 			
 			foreach ($transactions as $transaction) {
+				// Skip malformed transactions
 				if (!is_array($transaction)) {
 					continue;
 				}
 				
+				// Grab brand if available
 				if (strtoupper($this->normalizeString($transaction['type'] ?? '')) === 'PAYMENT' &&
 					strtoupper($this->normalizeString($transaction['status'] ?? '')) === 'SUCCESS') {
 					$paymentBrand = isset($transaction['paymentBrand']) ? $this->normalizeString($transaction['paymentBrand']) : null;
