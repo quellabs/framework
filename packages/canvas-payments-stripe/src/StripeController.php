@@ -169,8 +169,8 @@
 			$payload = $decoded;
 			
 			// For payment_intent.* events, data.object is the PaymentIntent
-			$dataRaw      = isset($payload['data']) && is_array($payload['data']) ? $payload['data'] : [];
-			$intentObject = isset($dataRaw['object']) && is_array($dataRaw['object']) ? $dataRaw['object'] : [];
+			$dataRaw         = isset($payload['data']) && is_array($payload['data']) ? $payload['data'] : [];
+			$intentObject    = isset($dataRaw['object']) && is_array($dataRaw['object']) ? $dataRaw['object'] : [];
 			$paymentIntentId = $this->normalizeString($intentObject['id'] ?? null) ?: null;
 			
 			return [
@@ -188,7 +188,7 @@
 		 * failure so Stripe retries with exponential back-off.
 		 *
 		 * @param string|null $paymentIntentId The PaymentIntent ID from the webhook payload
-		 * @param string      $eventType       The Stripe event type (e.g. payment_intent.succeeded)
+		 * @param string $eventType The Stripe event type (e.g. payment_intent.succeeded)
 		 * @return Response
 		 */
 		private function processWebhookPaymentIntent(?string $paymentIntentId, string $eventType): Response {

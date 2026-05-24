@@ -235,8 +235,7 @@
 			
 			// Branch 3b: Session is open but has no attached PaymentIntent yet —
 			// buyer has not completed checkout.
-			$intent          = is_array($session['payment_intent']) ? $session['payment_intent'] : [];
-			$paymentIntentId = $this->normalizeString($intent['id'] ?? null) ?: null;
+			$intent = is_array($session['payment_intent']) ? $session['payment_intent'] : [];
 			
 			if (empty($intent)) {
 				return new PaymentState(
@@ -251,6 +250,7 @@
 			}
 			
 			// Branch 3c: Session complete, PaymentIntent present — map intent status to state.
+			$paymentIntentId = $this->normalizeString($intent['id'] ?? null) ?: null;
 			return $this->mapPaymentIntentToState($transactionId, $intent, $paymentIntentId, $currency);
 		}
 		

@@ -45,13 +45,13 @@
 		public function __construct(Driver $driver) {
 			$config = $driver->getConfig();
 			
-			$this->m_test_mode = $this->toBool($config['test_mode']);
-			$this->m_secret_key = $this->normalizeString($config['secret_key']);
+			$this->m_test_mode      = $this->toBool($config['test_mode']);
+			$this->m_secret_key     = $this->normalizeString($config['secret_key']);
 			$this->m_webhook_secret = $this->normalizeString($config['webhook_secret']);
-			$this->m_verify_ssl = $this->toBool($config['verify_ssl']);
-			$this->m_return_url = $this->normalizeString($config['return_url'] ?? null);
-			$this->m_cancel_url = $this->normalizeString($config['cancel_return_url'] ?? null);
-			$this->m_client = HttpClient::create(['timeout' => 10]);
+			$this->m_verify_ssl     = $this->toBool($config['verify_ssl']);
+			$this->m_return_url     = $this->normalizeString($config['return_url'] ?? null);
+			$this->m_cancel_url     = $this->normalizeString($config['cancel_return_url'] ?? null);
+			$this->m_client         = HttpClient::create(['timeout' => 10]);
 		}
 		
 		/**
@@ -232,7 +232,7 @@
 			// Using the raw body is critical: any decoding or re-encoding before this point
 			// will produce a different byte sequence and cause verification to fail.
 			$signedPayload = $timestamp . '.' . $rawBody;
-			$expected = hash_hmac('sha256', $signedPayload, $this->m_webhook_secret);
+			$expected      = hash_hmac('sha256', $signedPayload, $this->m_webhook_secret);
 			
 			// hash_equals performs a constant-time comparison to prevent timing attacks.
 			// We iterate all v1 signatures to handle secret rotation — Stripe sends signatures
@@ -293,14 +293,14 @@
 					}
 				} else {
 					// Stripe's REST API uses form-encoded bodies, not JSON
-					$options['body'] = !empty($body) ? http_build_query($body) : '';
+					$options['body']                    = !empty($body) ? http_build_query($body) : '';
 					$options['headers']['Content-Type'] = 'application/x-www-form-urlencoded';
 				}
 				
 				// Call API
 				$response = $this->m_client->request($method, self::BASE_URL . $path, $options);
-				$data = $response->toArray(false);
-				$status = $response->getStatusCode();
+				$data     = $response->toArray(false);
+				$status   = $response->getStatusCode();
 				
 				// 2xx = success
 				if ($status >= 200 && $status < 300) {
@@ -308,8 +308,8 @@
 				}
 				
 				// Stripe error body: {"error": {"type": "...", "code": "...", "message": "..."}}
-				$error = $data['error'] ?? [];
-				$errorId = $error['code'] ?? $error['type'] ?? 'UNKNOWN_ERROR';
+				$error        = $data['error'] ?? [];
+				$errorId      = $error['code'] ?? $error['type'] ?? 'UNKNOWN_ERROR';
 				$errorMessage = $error['message'] ?? 'Unknown Stripe error';
 				
 				return ['request' => ['result' => 0, 'errorId' => $errorId, 'errorMessage' => $errorMessage]];
