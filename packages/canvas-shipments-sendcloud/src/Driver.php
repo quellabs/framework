@@ -8,7 +8,7 @@
 	use Quellabs\Shipments\Contracts\PickupOption;
 	use Quellabs\Shipments\Contracts\ShipmentAddress;
 	use Quellabs\Shipments\Contracts\ShipmentCancellationException;
-	use Quellabs\Shipments\Contracts\ShipmentCreationException;
+	use Quellabs\Shipments\Contracts\ShipmentInitiationException;
 	use Quellabs\Shipments\Contracts\ShipmentExchangeException;
 	use Quellabs\Shipments\Contracts\ShipmentLabelException;
 	use Quellabs\Shipments\Contracts\ShipmentProviderInterface;
@@ -133,12 +133,12 @@
 		 *
 		 * @param ShipmentRequest $request
 		 * @return ShipmentResult
-		 * @throws ShipmentCreationException
+		 * @throws ShipmentInitiationException
 		 */
 		public function create(ShipmentRequest $request): ShipmentResult {
 			// Validate presence of methodId
 			if ($request->methodId === null) {
-				throw new ShipmentCreationException(
+				throw new ShipmentInitiationException(
 					self::DRIVER_NAME,
 					'missing_method_id',
 					'SendCloud requires a methodId. Fetch one from getDeliveryOptions() first.'
@@ -187,7 +187,7 @@
 			
 			// If failed, throw an error
 			if ($result['request']['result'] === 0) {
-				throw new ShipmentCreationException(
+				throw new ShipmentInitiationException(
 					self::DRIVER_NAME,
 					$result['request']['errorId'],
 					$result['request']['errorMessage']

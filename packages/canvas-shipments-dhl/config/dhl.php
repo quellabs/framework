@@ -30,7 +30,7 @@
 		
 		// Sender address — required on every DHL shipment.
 		// DHL prints the shipper address on the label and uses it for returns.
-		// If left empty, shipment creation will throw a ShipmentCreationException.
+		// If left empty, shipment creation will throw a ShipmentInitiationException.
 		'sender_address' => [
 			'company'     => 'My Webshop B.V.',
 			'person'      => 'Logistics Dept',

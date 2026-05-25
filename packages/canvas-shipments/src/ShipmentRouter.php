@@ -152,7 +152,6 @@
 		 * @param string $shippingModule
 		 * @param string $parcelId
 		 * @return string
-		 * @throws \RuntimeException
 		 */
 		public function getLabelUrl(string $shippingModule, string $parcelId): string {
 			return $this->resolve($shippingModule)->getLabelUrl($parcelId);

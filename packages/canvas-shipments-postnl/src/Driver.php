@@ -8,7 +8,7 @@
 	use Quellabs\Shipments\Contracts\PickupOption;
 	use Quellabs\Shipments\Contracts\ShipmentAddress;
 	use Quellabs\Shipments\Contracts\ShipmentCancellationException;
-	use Quellabs\Shipments\Contracts\ShipmentCreationException;
+	use Quellabs\Shipments\Contracts\ShipmentInitiationException;
 	use Quellabs\Shipments\Contracts\ShipmentExchangeException;
 	use Quellabs\Shipments\Contracts\ShipmentLabelException;
 	use Quellabs\Shipments\Contracts\ShipmentProviderInterface;
@@ -301,7 +301,7 @@
 		 *
 		 * @param ShipmentRequest $request
 		 * @return ShipmentResult
-		 * @throws ShipmentCreationException
+		 * @throws ShipmentInitiationException
 		 */
 		public function create(ShipmentRequest $request): ShipmentResult {
 			// Fetch shipment code from module map
@@ -309,7 +309,7 @@
 			
 			// If not found, throw error
 			if ($productInfo === null) {
-				throw new ShipmentCreationException(
+				throw new ShipmentInitiationException(
 					self::DRIVER_NAME,
 					'unknown_module',
 					"Unknown shipping module '{$request->shippingModule}'"
@@ -384,7 +384,7 @@
 			
 			// If that failed, throw an error
 			if ($result['request']['result'] === 0) {
-				throw new ShipmentCreationException(
+				throw new ShipmentInitiationException(
 					self::DRIVER_NAME,
 					$result['request']['errorId'],
 					$result['request']['errorMessage']
@@ -399,7 +399,7 @@
 			
 			// If that failed, throw an error
 			if ($responseShipment === null) {
-				throw new ShipmentCreationException(
+				throw new ShipmentInitiationException(
 					self::DRIVER_NAME,
 					'missing_shipment',
 					'PostNL did not return a shipment in the creation response'
@@ -411,7 +411,7 @@
 			
 			// If that failed, throw an error
 			if (empty($barcode)) {
-				throw new ShipmentCreationException(
+				throw new ShipmentInitiationException(
 					self::DRIVER_NAME,
 					'missing_barcode',
 					'PostNL did not return a barcode in the creation response'

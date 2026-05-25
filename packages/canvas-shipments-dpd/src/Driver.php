@@ -8,8 +8,9 @@
 	use Quellabs\Shipments\Contracts\DeliveryOption;
 	use Quellabs\Shipments\Contracts\PickupOption;
 	use Quellabs\Shipments\Contracts\ShipmentAddress;
+	use Quellabs\Shipments\Contracts\ShipmentOptionException;
 	use Quellabs\Shipments\Contracts\ShipmentCancellationException;
-	use Quellabs\Shipments\Contracts\ShipmentCreationException;
+	use Quellabs\Shipments\Contracts\ShipmentInitiationException;
 	use Quellabs\Shipments\Contracts\ShipmentExchangeException;
 	use Quellabs\Shipments\Contracts\ShipmentLabelException;
 	use Quellabs\Shipments\Contracts\ShipmentProviderInterface;
@@ -178,13 +179,13 @@
 		 *
 		 * @param ShipmentRequest $request
 		 * @return ShipmentResult
-		 * @throws ShipmentCreationException
+		 * @throws ShipmentInitiationException
 		 */
 		public function create(ShipmentRequest $request): ShipmentResult {
 			$productInfo = self::MODULE_PRODUCT_MAP[$request->shippingModule] ?? null;
 			
 			if ($productInfo === null) {
-				throw new ShipmentCreationException(
+				throw new ShipmentInitiationException(
 					self::DRIVER_NAME,
 					'unknown_module',
 					"Unknown shipping module '{$request->shippingModule}'"
@@ -217,7 +218,7 @@
 			// DPD Shop requires a parcelShopId; fail early if missing
 			if (!empty($productInfo['shop'])) {
 				if ($request->servicePointId === null) {
-					throw new ShipmentCreationException(
+					throw new ShipmentInitiationException(
 						self::DRIVER_NAME,
 						'missing_service_point',
 						"Module '{$request->shippingModule}' requires a servicePointId (DPD Shop)"
@@ -278,7 +279,7 @@
 			
 			// If that failed, throw exception
 			if ($result['request']['result'] === 0) {
-				throw new ShipmentCreationException(
+				throw new ShipmentInitiationException(
 					self::DRIVER_NAME,
 					$result['request']['errorId'],
 					$result['request']['errorMessage']
@@ -290,14 +291,14 @@
 			
 			// DPD returns the 14-digit parcel label number as the stable identifier
 			if (empty($response['parcelLabelNumber'])) {
-				throw new ShipmentCreationException(
+				throw new ShipmentInitiationException(
 					self::DRIVER_NAME,
 					'missing_label_number',
 					'DPD did not return a parcel label number in the creation response'
 				);
 			}
 			
-			$parcelLabelNumber = $this->normalizeString($response['parcelLabelNumber'] ?? null);
+			$parcelLabelNumber = $this->normalizeString($response['parcelLabelNumber']);
 			
 			// Return the shipment result
 			return new ShipmentResult(
@@ -386,6 +387,7 @@
 		 * @param string $shippingModule
 		 * @param ShipmentAddress|null $address
 		 * @return PickupOption[]
+		 * @throws ShipmentOptionException
 		 */
 		public function getPickupOptions(string $shippingModule, ?ShipmentAddress $address = null): array {
 			if ($address === null) {
@@ -397,13 +399,21 @@
 				$address->postalCode,
 				$address->city,
 			);
-			
+
+			// If failed, throw error
 			if ($result['request']['result'] === 0) {
-				return [];
+				throw new ShipmentOptionException(
+					self::DRIVER_NAME,
+					$result['request']['errorId'],
+					$result['request']['errorMessage']
+				);
 			}
 			
-			$shops = $result['response']['parcelShop'] ?? [];
+			// Fetch response
+			$response = $result['response'] ?? [];
+			$shops = $response['parcelShop'] ?? null;
 			
+			// We didn't receive parcelShop. Nothing to do
 			if (!is_array($shops)) {
 				return [];
 			}
@@ -413,6 +423,7 @@
 				$shops = [$shops];
 			}
 			
+			// Decode data
 			$options = [];
 			
 			foreach ($shops as $shop) {
@@ -560,24 +571,16 @@
 		}
 		
 		/**
-		 * Lazily instantiates and returns the DPD gateway.
-		 * @return DPDGateway
-		 */
-		private function getGateway(): DPDGateway {
-			return $this->gateway ??= new DPDGateway($this);
-		}
-		
-		/**
 		 * Builds the sender block for the shipment request from the configured sender_address.
 		 * @param array<string, mixed> $config
 		 * @return array<string, mixed>
-		 * @throws ShipmentCreationException when sender_address is not configured
+		 * @throws ShipmentInitiationException when sender_address is not configured
 		 */
 		private function buildSenderBlock(array $config): array {
 			$sender = $config['sender_address'];
 			
 			if (empty($sender)) {
-				throw new ShipmentCreationException(
+				throw new ShipmentInitiationException(
 					self::DRIVER_NAME,
 					'missing_sender_address',
 					'DPD requires a sender address. Configure sender_address in the dpd.php config file.'
@@ -585,7 +588,7 @@
 			}
 			
 			if (!is_array($sender)) {
-				throw new ShipmentCreationException(
+				throw new ShipmentInitiationException(
 					self::DRIVER_NAME,
 					'invalid_sender_address',
 					'DPD sender_address must be an array.'
@@ -652,5 +655,13 @@
 		 */
 		private function buildTrackingUrl(string $parcelLabelNumber): string {
 			return 'https://tracking.dpd.de/status/nl_NL/parcel/' . rawurlencode($parcelLabelNumber);
+		}
+		
+		/**
+		 * Lazily instantiates and returns the DPD gateway.
+		 * @return DPDGateway
+		 */
+		private function getGateway(): DPDGateway {
+			return $this->gateway ??= new DPDGateway($this);
 		}
 	}

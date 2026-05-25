@@ -78,7 +78,7 @@ Inject `ShipmentInterface` via Canvas DI and call `create()`:
 use Quellabs\Shipments\Contracts\ShipmentInterface;
 use Quellabs\Shipments\Contracts\ShipmentAddress;
 use Quellabs\Shipments\Contracts\ShipmentRequest;
-use Quellabs\Shipments\Contracts\ShipmentCreationException;
+use Quellabs\Shipments\Contracts\ShipmentInitiationException;
 use Quellabs\Canvas\Controllers\BaseController;
 
 class OrderController extends BaseController {
@@ -112,7 +112,7 @@ class OrderController extends BaseController {
             $result = $this->router->create($request);
             // Persist $result->parcelId and $result->provider — needed for exchange() and cancel()
             // $result->trackingUrl is ready to embed in your confirmation email
-        } catch (ShipmentCreationException $e) {
+        } catch (ShipmentInitiationException $e) {
             // handle error
         }
     }
