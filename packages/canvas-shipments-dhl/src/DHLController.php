@@ -69,8 +69,14 @@
 				return new JsonResponse('Invalid JSON (' . json_last_error_msg() . ')', 400);
 			}
 			
+			// json_decode with assoc=true returns array|null; null means the top-level value
+			// was not a JSON object/array (e.g. a bare string or number), which is invalid here.
+			if (!is_array($body)) {
+				return new JsonResponse('Invalid JSON (expected object)', 400);
+			}
+			
 			// Fetch barcode
-			$barcode = $body['barcode'] ?? null;
+			$barcode = isset($body['barcode']) && is_string($body['barcode']) ? $body['barcode'] : null;
 			
 			// Error if no barcode present
 			if (empty($barcode)) {
