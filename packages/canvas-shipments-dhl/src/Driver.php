@@ -16,9 +16,12 @@
 	use Quellabs\Shipments\Contracts\ShipmentResult;
 	use Quellabs\Shipments\Contracts\ShipmentState;
 	use Quellabs\Shipments\Contracts\ShipmentStatus;
+	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Quellabs\Support\Tools;
 	
 	class Driver implements ShipmentProviderInterface {
+		
+		use GatewayHelpers;
 		
 		/**
 		 * Driver name — stored in ShipmentResult::$provider and ShipmentState::$provider.
@@ -148,7 +151,15 @@
 		
 		/**
 		 * Returns default configuration values for this driver.
-		 * @return array<string, mixed>
+		 * @return array{
+		 *     user_id: string,
+		 *     api_key: string,
+		 *     user_id_test: string,
+		 *     api_key_test: string,
+		 *     account_id: string,
+		 *     test_mode: bool,
+		 *     sender_address: array<string, mixed>
+	     * }
 		 */
 		public function getDefaults(): array {
 			return [
@@ -252,7 +263,7 @@
 			// This is the stable identifier — use it as parcelId throughout the system.
 			$trackerCode = $result['response']['trackerCode'] ?? null;
 			
-			if ($trackerCode === null || $trackerCode === '') {
+			if (!is_string($trackerCode) || $trackerCode === '') {
 				throw new ShipmentCreationException(
 					self::DRIVER_NAME,
 					'missing_tracker_code',
@@ -365,23 +376,41 @@
 			$options = [];
 			
 			foreach ($result['response'] ?? [] as $shop) {
-				$addr = $shop['address'] ?? [];
+				// Skip invalid entries
+				if (!is_array($shop)) {
+					continue;
+				}
+				
+				// Extract address
+				$addr = isset($shop['address']) && is_array($shop['address']) ? $shop['address'] : [];
+				
+				// Extract and coerce all fields before construction to keep the call site readable
+				$locationCode = $this->normalizeString($shop['id'] ?? null);
+				$name         = $this->normalizeString($shop['name'] ?? null);
+				$street       = $this->normalizeString($addr['street'] ?? null);
+				$houseNumber  = $this->normalizeString($addr['number'] ?? null);
+				$postalCode   = $this->normalizeString($addr['postalCode'] ?? $addr['zipCode'] ?? null);
+				$city         = $this->normalizeString($addr['city'] ?? null);
+				$country      = $this->normalizeString($addr['countryCode'] ?? null) ?: $address->country;
+				$geoLocation  = isset($shop['geoLocation']) && is_array($shop['geoLocation']) ? $shop['geoLocation'] : [];
+				$shopType     = $this->normalizeString($shop['shopType'] ?? null) ?: null;
+				$openingTimes = isset($shop['openingTimes']) && is_array($shop['openingTimes']) ? $shop['openingTimes'] : null;
 				
 				$options[] = new PickupOption(
-					locationCode: $shop['id'] ?? '',
-					name: $shop['name'] ?? '',
-					street: $addr['street'] ?? '',
-					houseNumber: (string)($addr['number'] ?? ''),
-					postalCode: $addr['postalCode'] ?? $addr['zipCode'] ?? '',
-					city: $addr['city'] ?? '',
-					country: $addr['countryCode'] ?? $address->country,
+					locationCode:   $locationCode,
+					name:           $name,
+					street:         $street,
+					houseNumber:    $houseNumber,
+					postalCode:     $postalCode,
+					city:           $city,
+					country:        $country,
 					carrierName: 'DHL',
-					latitude: isset($shop['geoLocation']['latitude']) ? (float)$shop['geoLocation']['latitude'] : null,
-					longitude: isset($shop['geoLocation']['longitude']) ? (float)$shop['geoLocation']['longitude'] : null,
-					distanceMetres: isset($shop['distance']) ? (int)$shop['distance'] : null,
+					latitude:       is_numeric($geoLocation['latitude'] ?? null) ? (float)$geoLocation['latitude'] : null,
+					longitude:      is_numeric($geoLocation['longitude'] ?? null) ? (float)$geoLocation['longitude'] : null,
+					distanceMetres: is_numeric($shop['distance'] ?? null) ? (int)$shop['distance'] : null,
 					metadata: array_filter([
-						'shopType'     => $shop['shopType'] ?? null,
-						'openingTimes' => $shop['openingTimes'] ?? null,
+						'shopType'     => $shopType,
+						'openingTimes' => $openingTimes,
 					], fn($v) => $v !== null),
 				);
 			}
@@ -416,8 +445,18 @@
 				);
 			}
 			
-			// The labels endpoint returns an array; we expect exactly one label per tracker code
-			$labelId = $result['response'][0]['labelId'] ?? null;
+			// The labels endpoint returns an array; we expect exactly one label per tracker code.
+			// $result['response'] is array<string,mixed>, so $result['response'][0] is mixed.
+			$firstLabel = $result['response'][0] ?? null;
+			
+			/** @var array<string, mixed>|null $firstLabel */
+			$firstLabel = is_array($firstLabel) ? $firstLabel : null;
+			
+			if (($firstLabel !== null && is_string($firstLabel['labelId'] ?? null))) {
+				$labelId = $firstLabel['labelId'];
+			} else {
+				$labelId = null;
+			}
 			
 			if ($labelId === null) {
 				throw new ShipmentLabelException(
@@ -447,28 +486,50 @@
 		public function buildStateFromEvents(string $parcelId, array $events): ShipmentState {
 			// Events are ordered chronologically; the last entry is the current state
 			$latest = end($events);
-			$category = strtoupper($latest['category'] ?? 'UNKNOWN');
-			$statusCode = strtoupper($latest['status'] ?? 'UNKNOWN');
+			
+			// end() returns false on an empty array, and mixed otherwise.
+			// We enforce array shape here; callers (exchange()) already guard against empty $events,
+			// but we need the type narrowed for PHPStan and safe offset access below.
+			if (!is_array($latest)) {
+				$latest = [];
+			}
+			
+			$category = strtoupper(isset($latest['category']) && is_string($latest['category']) ? $latest['category'] : 'UNKNOWN');
+			$statusCode = strtoupper(isset($latest['status']) && is_string($latest['status']) ? $latest['status'] : 'UNKNOWN');
 			
 			// Fine-grained overrides take precedence over category-level mapping
-			$status = self::STATUS_OVERRIDE_MAP[$statusCode]
-				?? self::CATEGORY_MAP[$category]
-				?? ShipmentStatus::Unknown;
+			$status = self::STATUS_OVERRIDE_MAP[$statusCode] ?? self::CATEGORY_MAP[$category] ?? ShipmentStatus::Unknown;
+			
+			// The first element holds top-level shipment fields (deliveredAt, barcode).
+			// Guard with is_array: $events is array<string,mixed>, so $events[0] is mixed.
+			$first = isset($events[0]) && is_array($events[0]) ? $events[0] : [];
 			
 			// deliveredAt is set at the top level of the response when the parcel is delivered
-			$deliveredAt = $events[0]['deliveredAt'] ?? null;
-			$barcode = $events[0]['barcode'] ?? $parcelId;
+			$deliveredAt = isset($first['deliveredAt']) && is_string($first['deliveredAt']) ? $first['deliveredAt'] : null;
+			$barcode = isset($first['barcode']) && is_string($first['barcode']) ? $first['barcode'] : $parcelId;
 			
 			// Extract postal code from the most recent event if provided (needed for tracking URL)
-			$postalCode = $latest['postalCode'] ?? $events[0]['postalCode'] ?? '';
+			$postalCodeLatest = isset($latest['postalCode']) && is_string($latest['postalCode']) ? $latest['postalCode'] : null;
+			$postalCodeFirst  = isset($first['postalCode']) && is_string($first['postalCode']) ? $first['postalCode'] : null;
+			$postalCode       = $postalCodeLatest ?? $postalCodeFirst ?? '';
 			
 			// Planned delivery window, present in UNDERWAY events after hub sorting
-			$plannedWindow = $latest['plannedDeliveryTimeframe'] ?? null;
+			if (isset($latest['plannedDeliveryTimeframe']) && is_string($latest['plannedDeliveryTimeframe'])) {
+				$plannedWindow = $latest['plannedDeliveryTimeframe'];
+			} else {
+				$plannedWindow = null;
+			}
+			
+			// reference from latest event
+			$reference = isset($latest['reference']) && is_string($latest['reference']) ? $latest['reference'] : '';
+			
+			// facility from latest event
+			$facility = isset($latest['facility']) && is_string($latest['facility']) ? $latest['facility'] : null;
 			
 			return new ShipmentState(
 				provider: self::DRIVER_NAME,
 				parcelId: $barcode,
-				reference: $latest['reference'] ?? '',
+				reference: $reference,
 				state: $status,
 				trackingCode: $barcode,
 				trackingUrl: $this->buildTrackingUrl($barcode, $postalCode),
@@ -478,7 +539,7 @@
 					'category'              => $category,
 					'deliveredAt'           => $deliveredAt,
 					'plannedDeliveryWindow' => $plannedWindow,
-					'facility'              => $latest['facility'] ?? null,
+					'facility'              => $facility,
 				], fn($v) => $v !== null),
 			);
 		}
@@ -574,7 +635,7 @@
 		private function buildShipper(array $config): array {
 			$sender = $config['sender_address'];
 			
-			if (empty($sender)) {
+			if (empty($sender) || !is_array($sender)) {
 				throw new ShipmentCreationException(
 					self::DRIVER_NAME,
 					'missing_sender_address',
@@ -582,23 +643,26 @@
 				);
 			}
 			
+			$person  = isset($sender['person']) && is_string($sender['person']) ? $sender['person'] : '';
+			$company = isset($sender['company']) && is_string($sender['company']) ? $sender['company'] : null;
+			
 			$shipper = [
-				'name'    => $this->buildNameBlock($sender['person'] ?? '', $sender['company'] ?? null),
+				'name'    => $this->buildNameBlock($person, $company),
 				'address' => array_filter([
-					'countryCode' => $sender['cc'] ?? 'NL',
-					'postalCode'  => $sender['postal_code'] ?? '',
-					'city'        => $sender['city'] ?? '',
-					'street'      => $sender['street'] ?? '',
-					'number'      => $sender['number'] ?? '',
+					'countryCode' => isset($sender['cc']) && is_string($sender['cc']) ? $sender['cc'] : 'NL',
+					'postalCode'  => isset($sender['postal_code']) && is_string($sender['postal_code']) ? $sender['postal_code'] : '',
+					'city'        => isset($sender['city']) && is_string($sender['city']) ? $sender['city'] : '',
+					'street'      => isset($sender['street']) && is_string($sender['street']) ? $sender['street'] : '',
+					'number'      => isset($sender['number']) && is_string($sender['number']) ? $sender['number'] : '',
 					'isBusiness'  => !empty($sender['company']),
 				], fn($v) => $v !== false && $v !== ''),
 			];
 			
-			if (!empty($sender['email'])) {
+			if (!empty($sender['email']) && is_string($sender['email'])) {
 				$shipper['email'] = $sender['email'];
 			}
 			
-			if (!empty($sender['phone'])) {
+			if (!empty($sender['phone']) && is_string($sender['phone'])) {
 				$shipper['phoneNumber'] = $sender['phone'];
 			}
 			

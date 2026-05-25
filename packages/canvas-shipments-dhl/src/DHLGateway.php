@@ -3,6 +3,7 @@
 	namespace Quellabs\Shipments\DHL;
 	
 	use Quellabs\Contracts\Gateway\GatewayInterface;
+	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Symfony\Component\HttpClient\HttpClient;
 	use Symfony\Contracts\HttpClient\Exception\ClientExceptionInterface;
 	use Symfony\Contracts\HttpClient\Exception\RedirectionExceptionInterface;
@@ -40,6 +41,8 @@
 	 * @phpstan-import-type GatewayResponse from GatewayInterface
 	 */
 	class DHLGateway {
+		
+		use GatewayHelpers;
 		
 		/** DHL Parcel NL production base URL */
 		public const string BASE_URL_LIVE = 'https://api-gw.dhlparcel.nl';
@@ -89,12 +92,14 @@
 			// Falls back to live credentials when test credentials are not configured.
 			if ($isTest) {
 				$this->baseUrl = self::BASE_URL_TEST;
-				$this->userId = $config['user_id_test'] ?: $config['user_id'];
-				$this->apiKey = $config['api_key_test'] ?: $config['api_key'];
+				$userIdTest = $this->normalizeString($config['user_id_test'] ?? '');
+				$apiKeyTest = $this->normalizeString($config['api_key_test'] ?? '');
+				$this->userId = $userIdTest ?: $this->normalizeString($config['user_id'] ?? '');
+				$this->apiKey = $apiKeyTest ?: $this->normalizeString($config['api_key'] ?? '');
 			} else {
 				$this->baseUrl = self::BASE_URL_LIVE;
-				$this->userId = $config['user_id'];
-				$this->apiKey = $config['api_key'];
+				$this->userId = $this->normalizeString($config['user_id'] ?? '');
+				$this->apiKey = $this->normalizeString($config['api_key'] ?? '');
 			}
 			
 			// Auth endpoints are always relative to the resolved base URL
@@ -124,7 +129,7 @@
 		 *
 		 * @see https://api-gw.dhlparcel.nl/docs/#/Labels/get_labels
 		 * @param string $trackerCode Barcode returned at shipment creation
-		 * @return array<string, mixed>
+		 * @return GatewayResponse
 		 */
 		public function getLabelId(string $trackerCode): array {
 			return $this->get('/labels', ['trackerCodeFilter' => $trackerCode]);
@@ -179,9 +184,7 @@
 		 * Obtains a valid token, injects it as a Bearer header, then delegates to
 		 * request() for the actual HTTP call, error handling, and normalisation.
 		 *
-		 * Note: getValidToken() may throw \RuntimeException if authentication fails
-		 * entirely. That exception propagates to the caller; it is not caught here,
-		 * because a token failure is not a normal gateway error envelope situation.
+		 * Authentication failures from getValidToken() are caught and returned as error envelopes.
 		 *
 		 * @param string $endpoint Path relative to the resolved base URL
 		 * @param array<string, mixed> $query Optional query parameters
@@ -191,7 +194,7 @@
 			try {
 				$token = $this->getValidToken();
 			} catch (\RuntimeException $e) {
-				return ['request' => ['result' => 0, 'errorId' => $e->getCode(), 'errorMessage' => $e->getMessage()]];
+				return ['request' => ['result' => 0, 'errorId' => (string)$e->getCode(), 'errorMessage' => $e->getMessage()]];
 			}
 			
 			return $this->request('GET', $this->baseUrl . $endpoint, [
@@ -209,9 +212,7 @@
 		 * Obtains a valid token, injects it as a Bearer header, then delegates to
 		 * request() for the actual HTTP call, error handling, and normalisation.
 		 *
-		 * Note: getValidToken() may throw \RuntimeException if authentication fails
-		 * entirely. That exception propagates to the caller; it is not caught here,
-		 * because a token failure is not a normal gateway error envelope situation.
+		 * Authentication failures from getValidToken() are caught and returned as error envelopes.
 		 *
 		 * @param string $endpoint Path relative to the resolved base URL
 		 * @param array<string, mixed> $payload JSON request body
@@ -222,7 +223,7 @@
 			try {
 				$token = $this->getValidToken();
 			} catch (\RuntimeException $e) {
-				return ['request' => ['result' => 0, 'errorId' => $e->getCode(), 'errorMessage' => $e->getMessage()]];
+				return ['request' => ['result' => 0, 'errorId' => (string)$e->getCode(), 'errorMessage' => $e->getMessage()]];
 			}
 			
 			// Call API with token attached
@@ -264,7 +265,9 @@
 				// getContent(false) suppresses exceptions on 4xx/5xx so we can read the body
 				$rawBody = $response->getContent(false);
 				
-				// Decode the body
+				// Decode the body — json_decode with true returns array<int|string,mixed> per PHPStan;
+				// DHL responses are always JSON objects so keys are always strings.
+				/** @var array<string, mixed>|null $body */
 				$body = json_decode($rawBody, true);
 				
 				// Check if that worked, If not return error
@@ -275,8 +278,10 @@
 				// If the status code is not in the success zone, return error
 				if ($statusCode >= 400) {
 					if (is_array($body)) {
-						// Read message
-						$message = $body['detail'] ?? $body['title'] ?? "HTTP {$statusCode}";
+						// Read message — both 'detail' and 'title' are potentially mixed
+						$detail = isset($body['detail']) && is_string($body['detail']) ? $body['detail'] : null;
+						$title  = isset($body['title']) && is_string($body['title']) ? $body['title'] : null;
+						$message = $detail ?? $title ?? "HTTP {$statusCode}";
 						
 						// Append field-level validation errors when present
 						if (!empty($body['errors']) && is_array($body['errors'])) {
@@ -288,6 +293,12 @@
 					}
 					
 					return ['request' => ['result' => 0, 'errorId' => (string)$statusCode, 'errorMessage' => $message]];
+				}
+				
+				// response must be array<string, mixed>; json_decode returns mixed.
+				// A non-array body on a successful response is treated as an error.
+				if (!is_array($body)) {
+					return ['request' => ['result' => 0, 'errorId' => 'invalid_response', 'errorMessage' => 'DHL returned a non-array response body']];
 				}
 				
 				// Return successful response
@@ -310,8 +321,10 @@
 		 * A 60-second safety margin is applied so tokens are refreshed before they
 		 * actually expire, preventing races on slow networks.
 		 *
+		 * Throws \RuntimeException on authentication failure; callers (get, post) catch
+		 * this and convert it to an error envelope — it never escapes the gateway.
+		 *
 		 * @return string|null
-		 * @throws \RuntimeException when authentication fails
 		 */
 		private function getValidToken(): ?string {
 			$now = time();
@@ -352,7 +365,8 @@
 					],
 				]);
 				
-				// Decode body
+				// Decode body — see request() for why @var is needed here
+				/** @var array<string, mixed>|null $body */
 				$body = json_decode($response->getContent(false), true);
 				
 				// Error if invalid JSON
@@ -363,9 +377,16 @@
 				// Fetch status code
 				$statusCode = $response->getStatusCode();
 				
+				// body must be an array for token extraction; a non-array response is an auth failure
+				if (!is_array($body)) {
+					throw new \RuntimeException("DHL authentication failed: unexpected response format (HTTP {$statusCode})");
+				}
+				
 				// If invalid, throw
 				if ($statusCode >= 400 || empty($body['accessToken'])) {
-					$message = $body['detail'] ?? $body['title'] ?? "Authentication failed (HTTP {$statusCode})";
+					$detail = isset($body['detail']) && is_string($body['detail']) ? $body['detail'] : null;
+					$title  = isset($body['title']) && is_string($body['title']) ? $body['title'] : null;
+					$message = $detail ?? $title ?? "Authentication failed (HTTP {$statusCode})";
 					throw new \RuntimeException("DHL authentication failed: {$message}");
 				}
 				
@@ -391,7 +412,9 @@
 					],
 					'json'    => ['refreshToken' => $this->refreshToken],
 				]);
-				// Decode the contents
+				
+				// Decode the contents — see request() for why @var is needed here
+				/** @var array<string, mixed>|null $body */
 				$body = json_decode($response->getContent(false), true);
 				
 				// Error if invalid JSON
@@ -402,8 +425,9 @@
 				// Fetch the status code
 				$statusCode = $response->getStatusCode();
 				
-				// Refresh token may itself have expired — fall back to full authentication
-				if ($statusCode >= 400 || empty($body['accessToken'])) {
+				// Refresh token may itself have expired — fall back to full authentication.
+				// Also fall back if the body is not an array (unexpected response format).
+				if (!is_array($body) || $statusCode >= 400 || empty($body['accessToken'])) {
 					$this->refreshToken = null;
 					$this->authenticate();
 				} else {
@@ -420,9 +444,9 @@
 		 * @param array<string, mixed> $body Decoded authentication response
 		 */
 		private function storeTokens(array $body): void {
-			$this->accessToken = $body['accessToken'];
-			$this->accessTokenExpiration = (int)($body['accessTokenExpiration'] ?? 0);
-			$this->refreshToken = $body['refreshToken'] ?? null;
-			$this->refreshTokenExpiration = (int)($body['refreshTokenExpiration'] ?? 0);
+			$this->accessToken = $this->normalizeString($body['accessToken'] ?? null);
+			$this->accessTokenExpiration = $this->toInt($body['accessTokenExpiration'] ?? null);
+			$this->refreshToken = isset($body['refreshToken']) ? $this->normalizeString($body['refreshToken']) : null;
+			$this->refreshTokenExpiration = $this->toInt($body['refreshTokenExpiration'] ?? null);
 		}
 	}
