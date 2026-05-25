@@ -89,17 +89,17 @@
 		 */
 		public function __construct(Driver $driver) {
 			$config = $driver->getConfig();
-
+			
 			// getConfig() merges getDefaults() first, so these keys are guaranteed to
 			// exist with the correct types. We still guard here to satisfy PHPStan level 9.
-			$isTest = $this->toBool($config['test_mode']    ?? null);
+			$isTest = $this->toBool($config['test_mode'] ?? null);
 			
-			$this->baseUrl = $isTest ? self::BASE_URL_TEST : self::BASE_URL_LIVE;
-			$this->delisId  = $this->normalizeString($isTest ? ($config['test_delis_id'] ?? null) : ($config['delis_id']      ?? null));
-			$this->password = $this->normalizeString($isTest ? ($config['test_password']  ?? null) : ($config['password']     ?? null));
+			$this->baseUrl    = $isTest ? self::BASE_URL_TEST : self::BASE_URL_LIVE;
+			$this->delisId    = $this->normalizeString($isTest ? ($config['test_delis_id'] ?? null) : ($config['delis_id'] ?? null));
+			$this->password   = $this->normalizeString($isTest ? ($config['test_password'] ?? null) : ($config['password'] ?? null));
 			$this->labelCache = new LabelFileCache(
-				$this->normalizeString($config['cache_path']           ?? null, 'storage/dpd/labels'),
-				$this->toInt($config['label_cache_ttl_days']           ?? null, 30),
+				$this->normalizeString($config['cache_path'] ?? null, 'storage/dpd/labels'),
+				$this->toInt($config['label_cache_ttl_days'] ?? null, 30),
 			);
 			
 			$this->client = HttpClient::create(['timeout' => 30]);
@@ -119,22 +119,22 @@
 			// Unpack payload sections — each must be an array; guard before typed method calls
 			$general = $payload['generalShipmentData'];
 			$parcels = $payload['parcels'];
-			$psd = $payload['productAndServiceData'];
+			$psd     = $payload['productAndServiceData'];
 			
 			if (!is_array($general) || !is_array($parcels) || !is_array($psd)) {
 				return ['request' => ['result' => 0, 'errorId' => 'invalid_payload', 'errorMessage' => 'Payload sections must be arrays']];
 			}
-
+			
 			$sendingDepot = is_string($general['sendingDepot'] ?? null) ? $general['sendingDepot'] : '';
-			$product      = is_string($general['product']      ?? null) ? $general['product']      : '';
-			$sender       = is_array($general['sender']        ?? null) ? $general['sender']       : [];
-			$recipient    = is_array($general['recipient']     ?? null) ? $general['recipient']    : [];
-
+			$product      = is_string($general['product'] ?? null) ? $general['product'] : '';
+			$sender       = is_array($general['sender'] ?? null) ? $general['sender'] : [];
+			$recipient    = is_array($general['recipient'] ?? null) ? $general['recipient'] : [];
+			
 			// Build XML fragments for each section
-			$senderXml    = $this->buildAddressXml($sender);
-			$recipientXml = $this->buildAddressXml($recipient);
-			$parcelsXml = $this->buildParcelsXml($parcels);
-			$psdXml = $this->buildProductAndServiceDataXml($psd);
+			$senderXml    = $this->buildAddressXml('sender', $sender);
+			$recipientXml = $this->buildAddressXml('recipient', $recipient);
+			$parcelsXml   = $this->buildParcelsXml($parcels);
+			$psdXml       = $this->buildProductAndServiceDataXml($psd);
 			
 			$xml = <<<XML
 <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
@@ -181,11 +181,11 @@ XML;
 			
 			// Parse and return the shipment response
 			$response = $result['response'] ?? [];
-
+			
 			if (!is_array($response) || !is_string($response['body'] ?? null) || !is_int($response['statusCode'] ?? null)) {
 				return ['request' => ['result' => 0, 'errorId' => 'invalid_response', 'errorMessage' => 'DPD returned an unexpected response structure']];
 			}
-
+			
 			return $this->parseShipmentResponse($response['body'], $response['statusCode']);
 		}
 		
@@ -223,11 +223,11 @@ XML;
 			
 			// Parse and return the tracking response
 			$response = $result['response'] ?? [];
-
+			
 			if (!is_array($response) || !is_string($response['body'] ?? null) || !is_int($response['statusCode'] ?? null)) {
 				return ['request' => ['result' => 0, 'errorId' => 'invalid_response', 'errorMessage' => 'DPD returned an unexpected response structure']];
 			}
-
+			
 			return $this->parseTrackingResponse($response['body'], $response['statusCode']);
 		}
 		
@@ -271,11 +271,11 @@ XML;
 			
 			// Parse and return the parcel shop response
 			$response = $result['response'] ?? [];
-
+			
 			if (!is_array($response) || !is_string($response['body'] ?? null) || !is_int($response['statusCode'] ?? null)) {
 				return ['request' => ['result' => 0, 'errorId' => 'invalid_response', 'errorMessage' => 'DPD returned an unexpected response structure']];
 			}
-
+			
 			return $this->parseParcelShopResponse($response['body'], $response['statusCode']);
 		}
 		
@@ -332,7 +332,7 @@ XML;
 		 * @return string|null
 		 */
 		private function getValidToken(): ?string {
-			$now = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
+			$now    = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
 			$margin = new \DateInterval('PT5M'); // 5-minute safety margin
 			
 			try {
@@ -345,7 +345,7 @@ XML;
 				}
 			} catch (\DateInvalidOperationException) {
 				// authTokenExpires somehow holds an invalid state; fall through and re-authenticate
-				$this->authToken = null;
+				$this->authToken        = null;
 				$this->authTokenExpires = null;
 			}
 			
@@ -383,7 +383,7 @@ XML;
 				
 				// Parse the response body
 				$body = $response->getContent(false);
-				$xml = $this->parseXml($body);
+				$xml  = $this->parseXml($body);
 				
 				if ($xml === null) {
 					return null;
@@ -398,7 +398,7 @@ XML;
 				}
 				
 				// Extract token and expiry from the return element
-				$token = (string)($result->authToken ?? '');
+				$token   = (string)($result->authToken ?? '');
 				$expires = (string)($result->authTokenExpires ?? '');
 				
 				if (empty($token)) {
@@ -411,8 +411,8 @@ XML;
 				// Parse expiry timestamp — DPD returns UTC datetime e.g. '2020-05-08T13:02:56.06'
 				// Both createFromFormat() calls return false on failure instead of throwing.
 				// The 'U' format accepts any integer Unix timestamp string and never fails.
-				$utc = new \DateTimeZone('UTC');
-				$parsed = \DateTimeImmutable::createFromFormat('Y-m-d\TH:i:s.u', $expires, $utc);
+				$utc      = new \DateTimeZone('UTC');
+				$parsed   = \DateTimeImmutable::createFromFormat('Y-m-d\TH:i:s.u', $expires, $utc);
 				$fallback = \DateTimeImmutable::createFromFormat('U', (string)(time() + 23 * 3600));
 				
 				if ($parsed !== false) {
@@ -522,7 +522,7 @@ XML;
 			}
 			
 			// Check for fault in the response body
-			$faultCode = (string)($response->shipmentFaultCode ?? '');
+			$faultCode    = (string)($response->shipmentFaultCode ?? '');
 			$faultMessage = (string)($response->shipmentFaultDescription ?? '');
 			
 			if (!empty($faultCode)) {
@@ -532,7 +532,7 @@ XML;
 			$parcelLabelNumber = (string)($response->parcelLabelNumber ?? '');
 			
 			// Label PDF is in the parcels/label/content node (field: parcellabelsPDF)
-			$labelNode = $xml->xpath('//*[local-name()="parcels"]/*[local-name()="label"]/*[local-name()="content"]');
+			$labelNode  = $xml->xpath('//*[local-name()="parcels"]/*[local-name()="label"]/*[local-name()="content"]');
 			$pdfContent = !empty($labelNode) ? (string)$labelNode[0] : null;
 			
 			// Persist label to file cache so getLabelUrl() can retrieve it across requests
@@ -613,7 +613,7 @@ XML;
 			}
 			
 			// Extract all parcelShop elements and convert each to an array
-			$shops = $xml->xpath('//*[local-name()="parcelShop"]') ?: [];
+			$shops  = $xml->xpath('//*[local-name()="parcelShop"]') ?: [];
 			$result = [];
 			
 			foreach ($shops as $shop) {
@@ -658,10 +658,15 @@ XML;
 		 * @return \SimpleXMLElement|null
 		 */
 		private function parseXml(string $body): ?\SimpleXMLElement {
-			libxml_use_internal_errors(true);
-			$xml = simplexml_load_string($body);
-			libxml_clear_errors();
-			return $xml ?: null;
+			$previous = libxml_use_internal_errors(true);
+			
+			try {
+				$xml = simplexml_load_string($body);
+				libxml_clear_errors();
+				return $xml ?: null;
+			} finally {
+				libxml_use_internal_errors($previous);
+			}
 		}
 		
 		/**
@@ -693,25 +698,18 @@ XML;
 		
 		/**
 		 * Builds the XML block for a sender or recipient address.
+		 * @param string $tag XML element name (e.g. 'sender' or 'recipient')
 		 * @param array<string, mixed> $address
 		 * @return string
 		 */
-		private function buildAddressXml(array $address): string {
-			// Determine if this is a sender or recipient based on presence of specific keys
-			// Actually we pass the tag name from the caller — simplify by inferring from the array
-			// We use a helper that wraps all provided keys as XML
+		private function buildAddressXml(string $tag, array $address): string {
 			$inner = '';
 			
 			foreach ($address as $key => $value) {
-				// Skip internal hints not meant for the XML output
-				if ($key === '_tag') {
-					continue;
-				}
-				
 				$inner .= "<{$key}>{$this->xmlEscape($this->normalizeString($value))}</{$key}>";
 			}
 			
-			return "<recipient>{$inner}</recipient>";
+			return "<{$tag}>{$inner}</{$tag}>";
 		}
 		
 		/**
