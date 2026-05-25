@@ -159,7 +159,7 @@
 		 *     account_id: string,
 		 *     test_mode: bool,
 		 *     sender_address: array<string, mixed>
-	     * }
+		 * }
 		 */
 		public function getDefaults(): array {
 			return [
@@ -244,7 +244,7 @@
 			// to prevent it appearing as a stray field in the DHL payload.
 			if (!empty($request->extraData)) {
 				$extraWithoutOptions = array_diff_key($request->extraData, ['options' => true]);
-				$payload = array_merge($payload, $extraWithoutOptions);
+				$payload             = array_merge($payload, $extraWithoutOptions);
 			}
 			
 			// Call API
@@ -314,8 +314,10 @@
 		 * @throws ShipmentExchangeException
 		 */
 		public function exchange(string $parcelId): ShipmentState {
+			// Fetch track&trace info from API
 			$result = $this->getGateway()->getTrackTrace($parcelId);
 			
+			// If that failed, throw the error
 			if ($result['request']['result'] === 0) {
 				throw new ShipmentExchangeException(
 					self::DRIVER_NAME,
@@ -324,9 +326,10 @@
 				);
 			}
 			
-			$events = $result['response'] ?? [];
+			// Extract response
+			$response = $result['response'] ?? [];
 			
-			if (empty($events)) {
+			if (empty($response)) {
 				throw new ShipmentExchangeException(
 					self::DRIVER_NAME,
 					'not_found',
@@ -334,7 +337,76 @@
 				);
 			}
 			
-			return $this->buildStateFromEvents($parcelId, $events);
+			// Events are ordered chronologically; the last entry is the current state
+			$latest = is_array(end($response)) ? end($response) : null;
+			
+			// category and status are guaranteed on every DHL event object.
+			// A missing or non-string value means the response is malformed.
+			if (!isset($latest['category']) || !is_string($latest['category'])) {
+				throw new ShipmentExchangeException(
+					self::DRIVER_NAME,
+					'malformed_response',
+					"DHL track-and-trace event is missing required 'category' field for tracker code {$parcelId}"
+				);
+			}
+			
+			if (!isset($latest['status']) || !is_string($latest['status'])) {
+				throw new ShipmentExchangeException(
+					self::DRIVER_NAME,
+					'malformed_response',
+					"DHL track-and-trace event is missing required 'status' field for tracker code {$parcelId}"
+				);
+			}
+			
+			// Extract data
+			$category   = strtoupper($latest['category']);
+			$statusCode = strtoupper($latest['status']);
+			
+			// Fine-grained overrides take precedence over category-level mapping
+			$status = self::STATUS_OVERRIDE_MAP[$statusCode] ?? self::CATEGORY_MAP[$category] ?? ShipmentStatus::Unknown;
+			
+			// The first element holds top-level shipment fields (deliveredAt, barcode).
+			// Guard with is_array: $events is array<string,mixed>, so $events[0] is mixed.
+			$first = isset($response[0]) && is_array($response[0]) ? $response[0] : [];
+			
+			// deliveredAt is set at the top level of the response when the parcel is delivered
+			$deliveredAt = isset($first['deliveredAt']) && is_string($first['deliveredAt']) ? $first['deliveredAt'] : null;
+			$barcode     = isset($first['barcode']) && is_string($first['barcode']) ? $first['barcode'] : $parcelId;
+			
+			// Extract postal code from the most recent event if provided (needed for tracking URL)
+			$postalCodeLatest = isset($latest['postalCode']) && is_string($latest['postalCode']) ? $latest['postalCode'] : null;
+			$postalCodeFirst  = isset($first['postalCode']) && is_string($first['postalCode']) ? $first['postalCode'] : null;
+			$postalCode       = $postalCodeLatest ?? $postalCodeFirst ?? '';
+			
+			// Planned delivery window, present in UNDERWAY events after hub sorting
+			if (isset($latest['plannedDeliveryTimeframe']) && is_string($latest['plannedDeliveryTimeframe'])) {
+				$plannedWindow = $latest['plannedDeliveryTimeframe'];
+			} else {
+				$plannedWindow = null;
+			}
+			
+			// reference from latest event
+			$reference = isset($latest['reference']) && is_string($latest['reference']) ? $latest['reference'] : '';
+			
+			// facility from latest event
+			$facility = isset($latest['facility']) && is_string($latest['facility']) ? $latest['facility'] : null;
+			
+			return new ShipmentState(
+				provider: self::DRIVER_NAME,
+				parcelId: $barcode,
+				reference: $reference,
+				state: $status,
+				trackingCode: $barcode,
+				trackingUrl: $this->buildTrackingUrl($barcode, $postalCode),
+				statusMessage: $this->buildStatusMessage($category, $statusCode, $plannedWindow),
+				internalState: $statusCode,
+				metadata: array_filter([
+					'category'              => $category,
+					'deliveredAt'           => $deliveredAt,
+					'plannedDeliveryWindow' => $plannedWindow,
+					'facility'              => $facility,
+				], fn($v) => $v !== null),
+			);
 		}
 		
 		/**
@@ -359,20 +431,24 @@
 		 * @return PickupOption[]
 		 */
 		public function getPickupOptions(string $shippingModule, ?ShipmentAddress $address = null): array {
+			// If no address passed, do not call API
 			if ($address === null) {
 				return [];
 			}
 			
+			// Call API
 			$result = $this->getGateway()->getParcelShops(
 				$address->country,
 				$address->postalCode,
 				$address->city
 			);
 			
+			// If failed, return empty array
 			if ($result['request']['result'] === 0) {
 				return [];
 			}
 			
+			// Decode the response
 			$options = [];
 			
 			foreach ($result['response'] ?? [] as $shop) {
@@ -396,17 +472,18 @@
 				$shopType     = $this->normalizeString($shop['shopType'] ?? null) ?: null;
 				$openingTimes = isset($shop['openingTimes']) && is_array($shop['openingTimes']) ? $shop['openingTimes'] : null;
 				
+				// Add address to response
 				$options[] = new PickupOption(
-					locationCode:   $locationCode,
-					name:           $name,
-					street:         $street,
-					houseNumber:    $houseNumber,
-					postalCode:     $postalCode,
-					city:           $city,
-					country:        $country,
+					locationCode: $locationCode,
+					name: $name,
+					street: $street,
+					houseNumber: $houseNumber,
+					postalCode: $postalCode,
+					city: $city,
+					country: $country,
 					carrierName: 'DHL',
-					latitude:       is_numeric($geoLocation['latitude'] ?? null) ? (float)$geoLocation['latitude'] : null,
-					longitude:      is_numeric($geoLocation['longitude'] ?? null) ? (float)$geoLocation['longitude'] : null,
+					latitude: is_numeric($geoLocation['latitude'] ?? null) ? (float)$geoLocation['latitude'] : null,
+					longitude: is_numeric($geoLocation['longitude'] ?? null) ? (float)$geoLocation['longitude'] : null,
 					distanceMetres: is_numeric($shop['distance'] ?? null) ? (int)$shop['distance'] : null,
 					metadata: array_filter([
 						'shopType'     => $shopType,
@@ -471,77 +548,9 @@
 			// must fetch it server-side with a valid Bearer token.
 			// Build the label URL against the correct environment base URL.
 			// Callers must fetch this server-side with a valid Bearer token.
-			$config = $this->getConfig();
+			$config  = $this->getConfig();
 			$baseUrl = $config['test_mode'] ? DHLGateway::BASE_URL_TEST : DHLGateway::BASE_URL_LIVE;
 			return $baseUrl . "/labels/{$labelId}";
-		}
-		
-		/**
-		 * Builds a ShipmentState from the array of track-and-trace events returned by DHL.
-		 * Used by exchange(). The last event in the array represents the current state.
-		 * @param string $parcelId The DHL tracker code
-		 * @param array<string, mixed> $events Array from the track-trace response (chronological)
-		 * @return ShipmentState
-		 */
-		public function buildStateFromEvents(string $parcelId, array $events): ShipmentState {
-			// Events are ordered chronologically; the last entry is the current state
-			$latest = end($events);
-			
-			// end() returns false on an empty array, and mixed otherwise.
-			// We enforce array shape here; callers (exchange()) already guard against empty $events,
-			// but we need the type narrowed for PHPStan and safe offset access below.
-			if (!is_array($latest)) {
-				$latest = [];
-			}
-			
-			$category = strtoupper(isset($latest['category']) && is_string($latest['category']) ? $latest['category'] : 'UNKNOWN');
-			$statusCode = strtoupper(isset($latest['status']) && is_string($latest['status']) ? $latest['status'] : 'UNKNOWN');
-			
-			// Fine-grained overrides take precedence over category-level mapping
-			$status = self::STATUS_OVERRIDE_MAP[$statusCode] ?? self::CATEGORY_MAP[$category] ?? ShipmentStatus::Unknown;
-			
-			// The first element holds top-level shipment fields (deliveredAt, barcode).
-			// Guard with is_array: $events is array<string,mixed>, so $events[0] is mixed.
-			$first = isset($events[0]) && is_array($events[0]) ? $events[0] : [];
-			
-			// deliveredAt is set at the top level of the response when the parcel is delivered
-			$deliveredAt = isset($first['deliveredAt']) && is_string($first['deliveredAt']) ? $first['deliveredAt'] : null;
-			$barcode = isset($first['barcode']) && is_string($first['barcode']) ? $first['barcode'] : $parcelId;
-			
-			// Extract postal code from the most recent event if provided (needed for tracking URL)
-			$postalCodeLatest = isset($latest['postalCode']) && is_string($latest['postalCode']) ? $latest['postalCode'] : null;
-			$postalCodeFirst  = isset($first['postalCode']) && is_string($first['postalCode']) ? $first['postalCode'] : null;
-			$postalCode       = $postalCodeLatest ?? $postalCodeFirst ?? '';
-			
-			// Planned delivery window, present in UNDERWAY events after hub sorting
-			if (isset($latest['plannedDeliveryTimeframe']) && is_string($latest['plannedDeliveryTimeframe'])) {
-				$plannedWindow = $latest['plannedDeliveryTimeframe'];
-			} else {
-				$plannedWindow = null;
-			}
-			
-			// reference from latest event
-			$reference = isset($latest['reference']) && is_string($latest['reference']) ? $latest['reference'] : '';
-			
-			// facility from latest event
-			$facility = isset($latest['facility']) && is_string($latest['facility']) ? $latest['facility'] : null;
-			
-			return new ShipmentState(
-				provider: self::DRIVER_NAME,
-				parcelId: $barcode,
-				reference: $reference,
-				state: $status,
-				trackingCode: $barcode,
-				trackingUrl: $this->buildTrackingUrl($barcode, $postalCode),
-				statusMessage: $this->buildStatusMessage($category, $statusCode, $plannedWindow),
-				internalState: $statusCode,
-				metadata: array_filter([
-					'category'              => $category,
-					'deliveredAt'           => $deliveredAt,
-					'plannedDeliveryWindow' => $plannedWindow,
-					'facility'              => $facility,
-				], fn($v) => $v !== null),
-			);
 		}
 		
 		/**
@@ -691,6 +700,7 @@
 		 * @return string|null
 		 */
 		private function buildStatusMessage(string $category, string $status, ?string $plannedWindow): ?string {
+			/** @noinspection PhpDuplicateMatchArmBodyInspection */
 			$message = match ($category) {
 				'DATA_RECEIVED' => 'Shipment registered',
 				'LEG' => 'Shipment registered',
@@ -709,8 +719,8 @@
 				
 				if (count($parts) === 2) {
 					try {
-						$from = new \DateTimeImmutable($parts[0]);
-						$to = new \DateTimeImmutable($parts[1]);
+						$from    = new \DateTimeImmutable($parts[0]);
+						$to      = new \DateTimeImmutable($parts[1]);
 						$message .= ' — expected ' . $from->format('d-m-Y H:i') . '–' . $to->format('H:i');
 					} catch (\Throwable) {
 						// If parsing fails, omit the window rather than crashing
