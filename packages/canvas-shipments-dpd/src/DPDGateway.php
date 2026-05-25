@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\Shipments\DPD;
 	
+	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Quellabs\Contracts\Gateway\GatewayInterface;
 	use Symfony\Component\HttpClient\HttpClient;
 	use Symfony\Contracts\HttpClient\Exception\ExceptionInterface;
@@ -53,6 +54,8 @@
 	 */
 	class DPDGateway {
 		
+		use GatewayHelpers;
+		
 		/** Live base URL for all DPD Shipper Webservice endpoints */
 		private const string BASE_URL_LIVE = 'https://wsshipper.dpd.nl/soap/services';
 		
@@ -86,14 +89,17 @@
 		 */
 		public function __construct(Driver $driver) {
 			$config = $driver->getConfig();
-			$isTest = (bool)($config['test_mode'] ?? false);
+
+			// getConfig() merges getDefaults() first, so these keys are guaranteed to
+			// exist with the correct types. We still guard here to satisfy PHPStan level 9.
+			$isTest = $this->toBool($config['test_mode']    ?? null);
 			
 			$this->baseUrl = $isTest ? self::BASE_URL_TEST : self::BASE_URL_LIVE;
-			$this->delisId = $isTest ? ($config['test_delis_id'] ?? '') : ($config['delis_id'] ?? '');
-			$this->password = $isTest ? ($config['test_password'] ?? '') : ($config['password'] ?? '');
+			$this->delisId  = $this->normalizeString($isTest ? ($config['test_delis_id'] ?? null) : ($config['delis_id']      ?? null));
+			$this->password = $this->normalizeString($isTest ? ($config['test_password']  ?? null) : ($config['password']     ?? null));
 			$this->labelCache = new LabelFileCache(
-				$config['cache_path'] ?? 'storage/dpd/labels',
-				(int)($config['label_cache_ttl_days'] ?? 30),
+				$this->normalizeString($config['cache_path']           ?? null, 'storage/dpd/labels'),
+				$this->toInt($config['label_cache_ttl_days']           ?? null, 30),
 			);
 			
 			$this->client = HttpClient::create(['timeout' => 30]);
@@ -110,14 +116,27 @@
 		 * @return GatewayResponse
 		 */
 		public function createShipment(array $payload): array {
-			// Unpack payload sections
+			// Unpack payload sections — each must be an array; guard before typed method calls
 			$general = $payload['generalShipmentData'];
 			$parcels = $payload['parcels'];
 			$psd = $payload['productAndServiceData'];
 			
+			if (!is_array($general) || !is_array($parcels) || !is_array($psd)) {
+				return ['request' => ['result' => 0, 'errorId' => 'invalid_payload', 'errorMessage' => 'Payload sections must be arrays']];
+			}
+
+			/** @var array<string, mixed> $general */
+			/** @var array<string, mixed> $parcels */
+			/** @var array<string, mixed> $psd */
+
+			$sendingDepot = is_string($general['sendingDepot'] ?? null) ? $general['sendingDepot'] : '';
+			$product      = is_string($general['product']      ?? null) ? $general['product']      : '';
+			$sender       = is_array($general['sender']        ?? null) ? $general['sender']       : [];
+			$recipient    = is_array($general['recipient']     ?? null) ? $general['recipient']    : [];
+
 			// Build XML fragments for each section
-			$senderXml = $this->buildAddressXml($general['sender']);
-			$recipientXml = $this->buildAddressXml($general['recipient']);
+			$senderXml    = $this->buildAddressXml($sender);
+			$recipientXml = $this->buildAddressXml($recipient);
 			$parcelsXml = $this->buildParcelsXml($parcels);
 			$psdXml = $this->buildProductAndServiceDataXml($psd);
 			
@@ -140,8 +159,8 @@
       </printOptions>
       <order>
         <generalShipmentData>
-          <sendingDepot>{$this->xmlEscape($general['sendingDepot'])}</sendingDepot>
-          <product>{$this->xmlEscape($general['product'])}</product>
+          <sendingDepot>{$this->xmlEscape($sendingDepot)}</sendingDepot>
+          <product>{$this->xmlEscape($product)}</product>
           {$senderXml}
           {$recipientXml}
         </generalShipmentData>
@@ -166,6 +185,11 @@ XML;
 			
 			// Parse and return the shipment response
 			$response = $result['response'] ?? [];
+
+			if (!is_array($response) || !is_string($response['body'] ?? null) || !is_int($response['statusCode'] ?? null)) {
+				return ['request' => ['result' => 0, 'errorId' => 'invalid_response', 'errorMessage' => 'DPD returned an unexpected response structure']];
+			}
+
 			return $this->parseShipmentResponse($response['body'], $response['statusCode']);
 		}
 		
@@ -203,6 +227,11 @@ XML;
 			
 			// Parse and return the tracking response
 			$response = $result['response'] ?? [];
+
+			if (!is_array($response) || !is_string($response['body'] ?? null) || !is_int($response['statusCode'] ?? null)) {
+				return ['request' => ['result' => 0, 'errorId' => 'invalid_response', 'errorMessage' => 'DPD returned an unexpected response structure']];
+			}
+
 			return $this->parseTrackingResponse($response['body'], $response['statusCode']);
 		}
 		
@@ -246,6 +275,11 @@ XML;
 			
 			// Parse and return the parcel shop response
 			$response = $result['response'] ?? [];
+
+			if (!is_array($response) || !is_string($response['body'] ?? null) || !is_int($response['statusCode'] ?? null)) {
+				return ['request' => ['result' => 0, 'errorId' => 'invalid_response', 'errorMessage' => 'DPD returned an unexpected response structure']];
+			}
+
 			return $this->parseParcelShopResponse($response['body'], $response['statusCode']);
 		}
 		
@@ -678,7 +712,7 @@ XML;
 					continue;
 				}
 				
-				$inner .= "<{$key}>{$this->xmlEscape((string)$value)}</{$key}>";
+				$inner .= "<{$key}>{$this->xmlEscape($this->normalizeString($value))}</{$key}>";
 			}
 			
 			return "<recipient>{$inner}</recipient>";
@@ -693,7 +727,7 @@ XML;
 			$xml = '';
 			
 			foreach ($parcels as $key => $value) {
-				$xml .= "<{$key}>{$this->xmlEscape((string)$value)}</{$key}>";
+				$xml .= "<{$key}>{$this->xmlEscape($this->normalizeString($value))}</{$key}>";
 			}
 			
 			return $xml;
@@ -719,18 +753,18 @@ XML;
 							$nested = '';
 							
 							foreach ($v as $nk => $nv) {
-								$nested .= "<{$nk}>{$this->xmlEscape((string)$nv)}</{$nk}>";
+								$nested .= "<{$nk}>{$this->xmlEscape($this->normalizeString($nv))}</{$nk}>";
 							}
 							
 							$inner .= "<{$k}>{$nested}</{$k}>";
 						} else {
-							$inner .= "<{$k}>{$this->xmlEscape((string)$v)}</{$k}>";
+							$inner .= "<{$k}>{$this->xmlEscape($this->normalizeString($v))}</{$k}>";
 						}
 					}
 					
 					$xml .= "<{$key}>{$inner}</{$key}>";
 				} else {
-					$xml .= "<{$key}>{$this->xmlEscape((string)$value)}</{$key}>";
+					$xml .= "<{$key}>{$this->xmlEscape($this->normalizeString($value))}</{$key}>";
 				}
 			}
 			

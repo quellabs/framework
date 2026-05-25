@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\Shipments\DPD;
 	
+	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Quellabs\Shipments\Contracts\CancelRequest;
 	use Quellabs\Shipments\Contracts\CancelResult;
 	use Quellabs\Shipments\Contracts\DeliveryOption;
@@ -18,6 +19,8 @@
 	use Quellabs\Shipments\Contracts\ShipmentStatus;
 	
 	class Driver implements ShipmentProviderInterface {
+		
+		use GatewayHelpers;
 		
 		/**
 		 * Driver name — stored in ShipmentResult::$provider and ShipmentState::$provider.
@@ -57,7 +60,7 @@
 		 *
 		 * @see https://integrations.dpd.nl/dpd-shipper/dpd-shipper-webservices/shipment-service-api/
 		 */
-		private const MODULE_PRODUCT_MAP = [
+		private const array MODULE_PRODUCT_MAP = [
 			// Standard home and business delivery
 			'dpd_b2b'           => ['product' => 'B2B'],
 			'dpd_b2c'           => ['product' => 'B2C'],
@@ -91,7 +94,7 @@
 		 *
 		 * @see https://integrations.dpd.nl/dpd-shipper/dpd-shipper-webservices/parcellifecycle-service/
 		 */
-		private const STATUS_MAP = [
+		private const array STATUS_MAP = [
 			'SHIPMENT'        => ShipmentStatus::Created,
 			'PickupRequest'   => ShipmentStatus::Created,
 			'BetweenDepots'   => ShipmentStatus::InTransit,
@@ -137,7 +140,18 @@
 		
 		/**
 		 * Returns default configuration values for this driver.
-		 * @return array<string, mixed>
+		 * @return array{
+		 *     delis_id: string,
+		 *     password: string,
+		 *     sending_depot: string,
+		 *     test_mode: bool,
+		 *     test_delis_id: string,
+		 *     test_password: string,
+		 *     test_sending_depot: string,
+		 *     cache_path: string,
+		 *     label_cache_ttl_days: int,
+		 *     sender_address: array<string, mixed>
+		 * }
 		 */
 		public function getDefaults(): array {
 			return [
@@ -177,14 +191,16 @@
 				);
 			}
 			
-			$config = $this->getConfig();
-			$address = $request->deliveryAddress;
-			$isTest = (bool)($config['test_mode'] ?? false);
+			$config              = $this->getConfig();
+			$address             = $request->deliveryAddress;
+			$isTest              = is_bool($config['test_mode'] ?? null) && $config['test_mode'];
+			$testSendingDepot    = is_string($config['test_sending_depot'] ?? null) ? $config['test_sending_depot'] : '';
+			$sendingDepotDefault = is_string($config['sending_depot'] ?? null) ? $config['sending_depot'] : '';
 			
 			if ($isTest) {
-				$sendingDepot = $config['test_sending_depot'] ?: $config['sending_depot'];
+				$sendingDepot = $testSendingDepot ?: $sendingDepotDefault;
 			} else {
-				$sendingDepot = $config['sending_depot'];
+				$sendingDepot = $sendingDepotDefault;
 			}
 			
 			// Build the productAndServiceData block
@@ -281,13 +297,15 @@
 				);
 			}
 			
+			$parcelLabelNumber = $this->normalizeString($response['parcelLabelNumber'] ?? null);
+			
 			// Return the shipment result
 			return new ShipmentResult(
 				provider: self::DRIVER_NAME,
-				parcelId: (string)$response['parcelLabelNumber'],
+				parcelId: $parcelLabelNumber,
 				reference: $request->reference,
-				trackingCode: (string)$response['parcelLabelNumber'],
-				trackingUrl: $this->buildTrackingUrl($response['parcelLabelNumber']),
+				trackingCode: $parcelLabelNumber,
+				trackingUrl: $this->buildTrackingUrl($parcelLabelNumber),
 				carrierName: 'DPD',
 				rawResponse: $response,
 			);
@@ -337,7 +355,7 @@
 			$response = $result['response'] ?? [];
 			
 			// Validate the response
-			if ($response['trackingresult'] === null) {
+			if (!is_array($response) || !isset($response['trackingresult']) || !is_array($response['trackingresult'])) {
 				throw new ShipmentExchangeException(
 					self::DRIVER_NAME,
 					'not_found',
@@ -345,7 +363,9 @@
 				);
 			}
 			
-			return $this->buildStateFromTracking($parcelId, $response['trackingresult']);
+			/** @var array<string, mixed> $trackingResult */
+			$trackingResult = $response['trackingresult'];
+			return $this->buildStateFromTracking($parcelId, $trackingResult);
 		}
 		
 		/**
@@ -386,6 +406,10 @@
 			
 			$shops = $result['response']['parcelShop'] ?? [];
 			
+			if (!is_array($shops)) {
+				return [];
+			}
+			
 			// findParcelShops returns a single shop as an object, not an array of objects
 			if (isset($shops['parcelShopId'])) {
 				$shops = [$shops];
@@ -394,23 +418,41 @@
 			$options = [];
 			
 			foreach ($shops as $shop) {
+				// Skip malformed entries
+				if (!is_array($shop)) {
+					continue;
+				}
+				
+				// Extract data
+				$locationCode   = $this->normalizeString($shop['parcelShopId'] ?? null);
+				$name           = is_string($shop['company'] ?? null) ? $shop['company'] : '';
+				$street         = is_string($shop['street'] ?? null) ? $shop['street'] : '';
+				$houseNumber    = $this->normalizeString($shop['houseNo'] ?? null);
+				$postalCode     = is_string($shop['zipCode'] ?? null) ? $shop['zipCode'] : '';
+				$city           = is_string($shop['city'] ?? null) ? $shop['city'] : '';
+				$country        = is_string($shop['country'] ?? null) ? $shop['country'] : $address->country;
+				$latitude       = isset($shop['latitude']) && is_numeric($shop['latitude']) ? (float)$shop['latitude'] : null;
+				$longitude      = isset($shop['longitude']) && is_numeric($shop['longitude']) ? (float)$shop['longitude'] : null;
+				$distanceMetres = isset($shop['distance']) && is_numeric($shop['distance']) ? (int)round((float)$shop['distance'] * 1000) : null;
+				
+				// Add pickup option to list
 				$options[] = new PickupOption(
-					locationCode: (string)($shop['parcelShopId'] ?? ''),
-					name: $shop['company'] ?? '',
-					street: $shop['street'] ?? '',
-					houseNumber: (string)($shop['houseNo'] ?? ''),
-					postalCode: $shop['zipCode'] ?? '',
-					city: $shop['city'] ?? '',
-					country: $shop['country'] ?? $address->country,
+					locationCode: $locationCode,
+					name: $name,
+					street: $street,
+					houseNumber: $houseNumber,
+					postalCode: $postalCode,
+					city: $city,
+					country: $country,
 					carrierName: 'DPD',
-					latitude: isset($shop['latitude']) ? (float)$shop['latitude'] : null,
-					longitude: isset($shop['longitude']) ? (float)$shop['longitude'] : null,
-					distanceMetres: isset($shop['distance']) ? (int)round((float)$shop['distance'] * 1000) : null,
+					latitude: $latitude,
+					longitude: $longitude,
+					distanceMetres: $distanceMetres,
 					metadata: array_filter([
 						'openingHours' => $shop['openingHours'] ?? null,
 						'phone'        => $shop['phone'] ?? null,
 						'email'        => $shop['email'] ?? null,
-					], fn($v) => $v !== null && $v !== ''),
+					], fn($v) => $v !== null && $v !== '')
 				);
 			}
 			
@@ -429,8 +471,10 @@
 		 * @throws ShipmentLabelException
 		 */
 		public function getLabelUrl(string $parcelId): string {
+			// Call api to get label
 			$result = $this->getGateway()->getLabel($parcelId);
 			
+			// If that failed, bail
 			if ($result['request']['result'] === 0) {
 				throw new ShipmentLabelException(
 					self::DRIVER_NAME,
@@ -439,9 +483,11 @@
 				);
 			}
 			
-			$labelContent = $result['response']['labelContent'] ?? null;
+			// Fetch response
+			$response     = $result['response'] ?? [];
+			$labelContent = $response['labelContent'] ?? null;
 			
-			if (empty($labelContent)) {
+			if (!is_string($labelContent) || $labelContent === '') {
 				throw new ShipmentLabelException(
 					self::DRIVER_NAME,
 					'missing_label',
@@ -449,6 +495,7 @@
 				);
 			}
 			
+			// Return label content
 			return 'data:application/pdf;base64,' . $labelContent;
 		}
 		
@@ -463,6 +510,10 @@
 		public function buildStateFromTracking(string $parcelId, array $trackingResult): ShipmentState {
 			$statusInfos = $trackingResult['statusInfo'] ?? [];
 			
+			if (!is_array($statusInfos)) {
+				$statusInfos = [];
+			}
+			
 			// Normalise single-entry response (XML-to-array may not wrap in array)
 			if (isset($statusInfos['status'])) {
 				$statusInfos = [$statusInfos];
@@ -472,22 +523,48 @@
 			$current = null;
 			
 			foreach ($statusInfos as $info) {
+				if (!is_array($info)) {
+					continue;
+				}
+				
 				if (($info['isCurrentStatus'] ?? 'false') === 'true') {
 					$current = $info;
 				}
 			}
 			
-			$current ??= end($statusInfos) ?: [];
+			if ($current === null) {
+				$last    = end($statusInfos);
+				$current = is_array($last) ? $last : [];
+			}
 			
-			$statusCode = $current['status'] ?? 'unknown';
-			$status = self::STATUS_MAP[$statusCode] ?? ShipmentStatus::Unknown;
+			$statusCode = is_string($current['status'] ?? null) ? $current['status'] : 'unknown';
+			$status     = self::STATUS_MAP[$statusCode] ?? ShipmentStatus::Unknown;
 			
 			// Extract human-readable label text from the nested label/content structure
-			$statusMessage = $current['label']['content'] ?? null;
+			$labelNode = $current['label'] ?? null;
+			
+			if (is_array($labelNode) && is_string($labelNode['content'] ?? null)) {
+				$statusMessage = $labelNode['content'];
+			} else {
+				$statusMessage = null;
+			}
 			
 			// Location and timestamp from the current status entry
-			$location = $current['location']['content'] ?? null;
-			$timestamp = $current['date']['content'] ?? null;
+			$locationNode = $current['location'] ?? null;
+			
+			if (is_array($locationNode) && is_string($locationNode['content'] ?? null)) {
+				$location = $locationNode['content'];
+			} else {
+				$location = null;
+			}
+			
+			$dateNode = $current['date'] ?? null;
+			
+			if (is_array($dateNode) && is_string($dateNode['content'] ?? null)) {
+				$timestamp = $dateNode['content'];
+			} else {
+				$timestamp = null;
+			}
 			
 			return new ShipmentState(
 				provider: self::DRIVER_NAME,
@@ -530,16 +607,36 @@
 				);
 			}
 			
+			if (!is_array($sender)) {
+				throw new ShipmentCreationException(
+					self::DRIVER_NAME,
+					'invalid_sender_address',
+					'DPD sender_address must be an array.'
+				);
+			}
+
+			/** @var array<string, mixed> $sender */
+			// All values come from array<string, mixed>; extract as strings with fallbacks
+			$company    = is_string($sender['company'] ?? null) ? $sender['company'] : null;
+			$name       = is_string($sender['name'] ?? null) ? $sender['name'] : null;
+			$street     = $this->normalizeString($sender['street'] ?? null);
+			$number     = $this->normalizeString($sender['number'] ?? null);
+			$cc         = $this->normalizeString($sender['cc'] ?? null, 'NL');
+			$postalCode = $this->normalizeString($sender['postal_code'] ?? null);
+			$city       = $this->normalizeString($sender['city'] ?? null);
+			$phone      = is_string($sender['phone'] ?? null) ? $sender['phone'] : null;
+			$email      = is_string($sender['email'] ?? null) ? $sender['email'] : null;
+			
 			return array_filter([
-				'name1'   => $sender['company'] ?? $sender['name'] ?? '',
-				'name2'   => $sender['name'] ?? null,
-				'street'  => $sender['street'] ?? '',
-				'houseNo' => $sender['number'] ?? '',
-				'country' => $sender['cc'] ?? 'NL',
-				'zipCode' => $sender['postal_code'] ?? '',
-				'city'    => $sender['city'] ?? '',
-				'phone'   => $sender['phone'] ?? null,
-				'email'   => $sender['email'] ?? null,
+				'name1'   => $company ?? $name ?? '',
+				'name2'   => $name,
+				'street'  => $street,
+				'houseNo' => $number,
+				'country' => $cc,
+				'zipCode' => $postalCode,
+				'city'    => $city,
+				'phone'   => $phone,
+				'email'   => $email,
 			], fn($v) => $v !== null && $v !== '');
 		}
 		
