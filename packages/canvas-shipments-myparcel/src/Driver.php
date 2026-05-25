@@ -15,9 +15,12 @@
 	use Quellabs\Shipments\Contracts\ShipmentRequest;
 	use Quellabs\Shipments\Contracts\ShipmentResult;
 	use Quellabs\Shipments\Contracts\ShipmentState;
+	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Quellabs\Shipments\Contracts\ShipmentStatus;
 	
 	class Driver implements ShipmentProviderInterface {
+		
+		use GatewayHelpers;
 		
 		/**
 		 * Driver name — stored in ShipmentResult::$provider and ShipmentState::$provider.
@@ -207,20 +210,20 @@
 			$response = $result['response'] ?? [];
 			
 			// Validate the existence of a parcel id
-			$parcelId = $response['data']['ids'][0]['id'];
+			$parcelId = $this->arrayGetString($response, 'data.ids.0.id');
 			
 			if (empty($parcelId)) {
 				throw new ShipmentCreationException(
 					self::DRIVER_NAME,
 					'missing_id',
-					'MyParcel did not return a shipment ID in the creation response'
+					'MyParcel did not return a valid shipment ID in the creation response'
 				);
 			}
 			
 			// Return the ShipmentResult
 			return new ShipmentResult(
 				provider: self::DRIVER_NAME,
-				parcelId: (string)$parcelId,
+				parcelId: $parcelId,
 				reference: $request->reference,
 				trackingCode: null,
 				trackingUrl: null,
@@ -267,7 +270,9 @@
 				);
 			}
 			
-			$shipment = $result['response']['data']['shipments'][0] ?? null;
+			$responseData = is_array($result['response']['data'] ?? null) ? $result['response']['data'] : [];
+			$shipments    = is_array($responseData['shipments'] ?? null) ? $responseData['shipments'] : [];
+			$shipment     = is_array($shipments[0] ?? null) ? $shipments[0] : null;
 			
 			if ($shipment === null) {
 				throw new ShipmentExchangeException(
@@ -301,16 +306,27 @@
 			$carrierName = $this->carrierName(self::MODULE_CARRIER_MAP[$shippingModule]['carrierId'] ?? null) ?? '';
 			$options = [];
 			
-			foreach ($data['delivery'] ?? [] as $timeframe) {
-				$date = \DateTimeImmutable::createFromFormat('Y-m-d', $timeframe['date']) ?: null;
+			$deliveryRows = is_array($data['delivery'] ?? null) ? $data['delivery'] : [];
+			foreach ($deliveryRows as $timeframe) {
+				if (!is_array($timeframe)) {
+					continue;
+				}
 				
-				foreach ($timeframe['time'] ?? [] as $slot) {
-					$start = substr($slot['start'] ?? '', 0, 5); // '09:00:00' → '09:00'
-					$end = substr($slot['end'] ?? '', 0, 5);
-					$type = $slot['price_comment'] ?? 'standard';
+				$rawDate = is_string($timeframe['date'] ?? null) ? $timeframe['date'] : '';
+				$date = $rawDate !== '' ? (\DateTimeImmutable::createFromFormat('Y-m-d', $rawDate) ?: null) : null;
+				
+				$timeSlots = is_array($timeframe['time'] ?? null) ? $timeframe['time'] : [];
+				foreach ($timeSlots as $slot) {
+					if (!is_array($slot)) {
+						continue;
+					}
+					
+					$start = substr(is_string($slot['start'] ?? null) ? $slot['start'] : '', 0, 5); // '09:00:00' → '09:00'
+					$end   = substr(is_string($slot['end'] ?? null) ? $slot['end'] : '', 0, 5);
+					$type  = is_string($slot['price_comment'] ?? null) ? $slot['price_comment'] : 'standard';
 					
 					$options[] = new DeliveryOption(
-						methodId: $timeframe['date'] . ':' . $start . ':' . $end,
+						methodId: $rawDate . ':' . $start . ':' . $end,
 						label: $this->buildDeliveryLabel($date, $start, $end, $type),
 						carrierName: $carrierName,
 						deliveryDate: $date,
@@ -348,19 +364,28 @@
 			$carrierName = $this->carrierName(self::MODULE_CARRIER_MAP[$shippingModule]['carrierId'] ?? null) ?? '';
 			$options = [];
 			
-			foreach ($data['pickup'] ?? [] as $location) {
+			$pickupRows = is_array($data['pickup'] ?? null) ? $data['pickup'] : [];
+			foreach ($pickupRows as $location) {
+				if (!is_array($location)) {
+					continue;
+				}
+				
+				$lat  = is_numeric($location['latitude'] ?? null) ? (float)$location['latitude'] : null;
+				$lng  = is_numeric($location['longitude'] ?? null) ? (float)$location['longitude'] : null;
+				$dist = is_numeric($location['distance'] ?? null) ? (int)$location['distance'] : null;
+				
 				$options[] = new PickupOption(
-					locationCode: $location['location_code'],
-					name: $location['location'] ?? '',
-					street: $location['street'] ?? '',
-					houseNumber: $location['number'] ?? '',
-					postalCode: $location['postal_code'] ?? '',
-					city: $location['city'] ?? '',
-					country: $location['cc'] ?? '',
+					locationCode: is_string($location['location_code'] ?? null) ? $location['location_code'] : '',
+					name: is_string($location['location'] ?? null) ? $location['location'] : '',
+					street: is_string($location['street'] ?? null) ? $location['street'] : '',
+					houseNumber: is_string($location['number'] ?? null) ? $location['number'] : '',
+					postalCode: is_string($location['postal_code'] ?? null) ? $location['postal_code'] : '',
+					city: is_string($location['city'] ?? null) ? $location['city'] : '',
+					country: is_string($location['cc'] ?? null) ? $location['cc'] : '',
 					carrierName: $carrierName,
-					latitude: isset($location['latitude']) ? (float)$location['latitude'] : null,
-					longitude: isset($location['longitude']) ? (float)$location['longitude'] : null,
-					distanceMetres: isset($location['distance']) ? (int)$location['distance'] : null,
+					latitude: $lat,
+					longitude: $lng,
+					distanceMetres: $dist,
 					metadata: array_filter([
 						'phone'           => $location['phone_number'] ?? null,
 						'comment'         => $location['comment'] ?? null,
@@ -390,7 +415,9 @@
 				);
 			}
 			
-			$url = $result['response']['data']['pdfs']['url'] ?? null;
+			$responseData = is_array($result['response']['data'] ?? null) ? $result['response']['data'] : [];
+			$pdfs = is_array($responseData['pdfs'] ?? null) ? $responseData['pdfs'] : [];
+			$url  = is_string($pdfs['url'] ?? null) ? $pdfs['url'] : null;
 			
 			if ($url === null) {
 				throw new ShipmentLabelException(
@@ -410,26 +437,31 @@
 		 * @return ShipmentState
 		 */
 		public function buildStateFromShipment(array $shipment): ShipmentState {
-			$statusCode = $shipment['status'] ?? 'unknown';
-			$internalState = (string)$statusCode;
-			$status = self::STATUS_MAP[strtolower((string)$statusCode)] ?? ShipmentStatus::Unknown;
-			$barcode = $shipment['barcode'] ?? null;
-			$carrierId = $shipment['carrier_id'] ?? null;
+			$rawStatus     = $shipment['status'] ?? 'unknown';
+			$internalState = is_string($rawStatus) ? $rawStatus : $this->normalizeString($rawStatus);
+			$status        = self::STATUS_MAP[strtolower($internalState)] ?? ShipmentStatus::Unknown;
+			
+			$rawBarcode = $shipment['barcode'] ?? null;
+			$barcode    = is_string($rawBarcode) ? $rawBarcode : null;
+			
+			$rawCarrierId = $shipment['carrier_id'] ?? null;
+			$carrierId    = is_int($rawCarrierId) ? $rawCarrierId : (is_numeric($rawCarrierId) ? (int)$rawCarrierId : null);
+			
+			$recipient   = is_array($shipment['recipient'] ?? null) ? $shipment['recipient'] : [];
+			$postalCode  = is_string($recipient['postal_code'] ?? null) ? $recipient['postal_code'] : '';
 			
 			$trackingUrl = null;
 			
 			if ($barcode !== null) {
-				$trackingUrl = $this->buildTrackingUrl(
-					$barcode,
-					$shipment['recipient']['postal_code'] ?? '',
-					$carrierId
-				);
+				$trackingUrl = $this->buildTrackingUrl($barcode, $postalCode, $carrierId);
 			}
+			
+			$physProps   = is_array($shipment['physical_properties'] ?? null) ? $shipment['physical_properties'] : [];
 			
 			return new ShipmentState(
 				provider: self::DRIVER_NAME,
-				parcelId: (string)($shipment['id'] ?? ''),
-				reference: $shipment['reference_identifier'] ?? '',
+				parcelId: $this->normalizeString($shipment['id'] ?? ''),
+				reference: is_string($shipment['reference_identifier'] ?? null) ? $shipment['reference_identifier'] : '',
 				state: $status,
 				trackingCode: $barcode,
 				trackingUrl: $trackingUrl,
@@ -438,8 +470,8 @@
 				metadata: array_filter([
 					'carrierId'   => $carrierId,
 					'carrierName' => $this->carrierName($carrierId),
-					'postalCode'  => $shipment['recipient']['postal_code'] ?? null,
-					'weightGrams' => $shipment['physical_properties']['weight'] ?? null,
+					'postalCode'  => $postalCode !== '' ? $postalCode : null,
+					'weightGrams' => $physProps['weight'] ?? null,
 				], fn($v) => $v !== null),
 			);
 		}
@@ -483,7 +515,8 @@
 				return [];
 			}
 			
-			return $result['response']['data'] ?? [];
+			$data = $result['response']['data'] ?? [];
+			return is_array($data) ? $data : [];
 		}
 		
 		/**

@@ -56,10 +56,13 @@
 			$this->baseUrl = ($config['region'] === 'be') ? self::BASE_URL_BE : self::BASE_URL_NL;
 			
 			// Resolve which API key to use
+			$apiKeyLive = is_string($config['api_key']) ? $config['api_key'] : '';
+			$apiKeyTest = is_string($config['api_key_test']) ? $config['api_key_test'] : '';
+			
 			if ($config['test_mode']) {
-				$apiKey = $config['api_key_test'] ?: $config['api_key'];
+				$apiKey = ($apiKeyTest !== '') ? $apiKeyTest : $apiKeyLive;
 			} else {
-				$apiKey = $config['api_key'];
+				$apiKey = $apiKeyLive;
 			}
 			
 			// MyParcel authentication: single key, base64-encoded, sent as a custom header.
@@ -215,17 +218,26 @@
 					return ['request' => ['result' => 0, 'errorId' => (string)json_last_error(), 'errorMessage' => json_last_error_msg()]];
 				}
 				
+				// json_decode with assoc=true returns array|null; null means the root was not an object/array.
+				// Treat a non-array body as a generic error rather than trying to access offsets on mixed.
+				if (!is_array($body)) {
+					return ['request' => ['result' => 0, 'errorId' => (string)$statusCode, 'errorMessage' => "HTTP {$statusCode}: unexpected response body"]];
+				}
+				
 				// Check status code
 				if ($statusCode >= 400) {
 					// MyParcel puts a human-readable summary in "message" and field-level detail in "errors"
-					$errorMessage = $body['message'] ?? "HTTP {$statusCode}";
+					$rawMessage = $body['message'] ?? null;
+					$errorMessage = is_string($rawMessage) ? $rawMessage : "HTTP {$statusCode}";
 					
 					// Append the first field error if present for extra context
-					if (!empty($body['errors'])) {
-						$firstField = array_key_first($body['errors']);
-						$firstMessage = $body['errors'][$firstField][0] ?? null;
+					$errors = $body['errors'] ?? null;
+					if (is_array($errors) && !empty($errors)) {
+						$firstField = array_key_first($errors);
+						$firstFieldErrors = $errors[$firstField] ?? null;
+						$firstMessage = is_array($firstFieldErrors) ? ($firstFieldErrors[0] ?? null) : null;
 						
-						if ($firstMessage !== null) {
+						if (is_string($firstMessage) && is_string($firstField)) {
 							$errorMessage .= " ({$firstField}: {$firstMessage})";
 						}
 					}
@@ -233,7 +245,7 @@
 					return ['request' => ['result' => 0, 'errorId' => (string)$statusCode, 'errorMessage' => $errorMessage]];
 				}
 				
-				// Return success response
+				// Return success response; $body is a confirmed array<string, mixed> at this point
 				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $body];
 			} catch (TransportExceptionInterface|ClientExceptionInterface|RedirectionExceptionInterface|ServerExceptionInterface $e) {
 				return ['request' => ['result' => 0, 'errorId' => (string)$e->getCode(), 'errorMessage' => $e->getMessage()]];

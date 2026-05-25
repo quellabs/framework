@@ -58,6 +58,10 @@
 				return new JsonResponse('Invalid JSON (' . json_last_error_msg() . ')', 400);
 			}
 			
+			if (!is_array($body)) {
+				return new JsonResponse('Invalid JSON: expected an object', 400);
+			}
+			
 			// MyParcel sends only the shipment ID, not the full parcel state
 			$shipmentId = $body['shipment_id'] ?? null;
 			
