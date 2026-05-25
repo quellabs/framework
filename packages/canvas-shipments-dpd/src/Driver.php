@@ -538,31 +538,10 @@
 			$statusCode = is_string($current['status'] ?? null) ? $current['status'] : 'unknown';
 			$status     = self::STATUS_MAP[$statusCode] ?? ShipmentStatus::Unknown;
 			
-			// Extract human-readable label text from the nested label/content structure
-			$labelNode = $current['label'] ?? null;
-			
-			if (is_array($labelNode) && is_string($labelNode['content'] ?? null)) {
-				$statusMessage = $labelNode['content'];
-			} else {
-				$statusMessage = null;
-			}
-			
-			// Location and timestamp from the current status entry
-			$locationNode = $current['location'] ?? null;
-			
-			if (is_array($locationNode) && is_string($locationNode['content'] ?? null)) {
-				$location = $locationNode['content'];
-			} else {
-				$location = null;
-			}
-			
-			$dateNode = $current['date'] ?? null;
-			
-			if (is_array($dateNode) && is_string($dateNode['content'] ?? null)) {
-				$timestamp = $dateNode['content'];
-			} else {
-				$timestamp = null;
-			}
+			// Extract human-readable label, location, and timestamp from the current status entry
+			$statusMessage = $this->xmlNodeValue($current['label']    ?? null);
+			$location      = $this->xmlNodeValue($current['location'] ?? null);
+			$timestamp     = $this->xmlNodeValue($current['date']     ?? null);
 			
 			return new ShipmentState(
 				provider: self::DRIVER_NAME,
@@ -636,6 +615,34 @@
 				'phone'   => $phone,
 				'email'   => $email,
 			], fn($v) => $v !== null && $v !== '');
+		}
+		
+		/**
+		 * Extracts a string value from an xmlToArray() node.
+		 *
+		 * xmlToArray() represents XML nodes as arrays. A node with a single text child
+		 * produces ['content' => 'text'] (DPD's common pattern), while a text-only node
+		 * passed directly to xmlToArray() produces ['_value' => 'text']. This helper
+		 * handles both forms so callers are not coupled to either representation.
+		 *
+		 * Returns null when $node is not an array or contains neither key.
+		 * @param mixed $node
+		 * @return string|null
+		 */
+		private function xmlNodeValue(mixed $node): ?string {
+			if (!is_array($node)) {
+				return null;
+			}
+			
+			if (is_string($node['content'] ?? null)) {
+				return $node['content'];
+			}
+			
+			if (is_string($node['_value'] ?? null)) {
+				return $node['_value'];
+			}
+			
+			return null;
 		}
 		
 		/**

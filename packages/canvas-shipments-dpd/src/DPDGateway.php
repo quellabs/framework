@@ -640,15 +640,19 @@ XML;
 		}
 		
 		/**
-		 * Recursively converts a SimpleXMLElement to a plain PHP array.
-		 * Attributes are ignored; text-only nodes are returned as strings.
+		 * Converts a SimpleXMLElement to a plain PHP array.
+		 * Always returns an array; text-only elements produce ['_value' => '...']
+		 * but this method is only called on known complex elements (trackingresult,
+		 * parcelShop) so the _value fallback is a safety net, not a common path.
+		 * Attributes are ignored.
 		 * @param \SimpleXMLElement $element
-		 * @return array<string, mixed>|string
+		 * @return array<string, mixed>
 		 */
-		private function xmlToArray(\SimpleXMLElement $element): array|string {
+		private function xmlToArray(\SimpleXMLElement $element): array {
 			$result = [];
 			
 			foreach ($element->children() as $key => $child) {
+				// Leaf nodes are converted to strings; complex nodes recurse
 				$value = $child->count() > 0 ? $this->xmlToArray($child) : (string)$child;
 				
 				if (isset($result[$key])) {
@@ -663,7 +667,12 @@ XML;
 				}
 			}
 			
-			return $result ?: (string)$element;
+			// Text-only element with no children: capture the text content
+			if ($result === []) {
+				return ['_value' => (string)$element];
+			}
+			
+			return $result;
 		}
 		
 		/**
@@ -696,72 +705,53 @@ XML;
 		}
 
 		/**
-		 * Builds the XML block for a sender or recipient address.
-		 * @param string $tag XML element name (e.g. 'sender' or 'recipient')
-		 * @param array<string, mixed> $address
+		 * Recursively serialises an associative array to XML child elements.
+		 * Array values recurse; scalar values are escaped and emitted as text content.
+		 * No outer wrapper element is added — the caller supplies that via a tag or
+		 * by embedding the result directly in a heredoc.
+		 * @param array<array-key, mixed> $data
 		 * @return string
 		 */
-		private function buildAddressXml(string $tag, array $address): string {
-			$inner = '';
-			
-			foreach ($address as $key => $value) {
-				$inner .= "<{$key}>{$this->xmlEscape($this->normalizeString($value))}</{$key}>";
-			}
-			
-			return "<{$tag}>{$inner}</{$tag}>";
-		}
-		
-		/**
-		 * Builds the XML block for the <parcels> section.
-		 * @param array<array-key, mixed> $parcels
-		 * @return string
-		 */
-		private function buildParcelsXml(array $parcels): string {
+		private function buildXmlFragment(array $data): string {
 			$xml = '';
 			
-			foreach ($parcels as $key => $value) {
-				$xml .= "<{$key}>{$this->xmlEscape($this->normalizeString($value))}</{$key}>";
-			}
-			
-			return $xml;
-		}
-		
-		/**
-		 * Builds the XML block for the <productAndServiceData> section.
-		 * Handles nested structures (e.g. parcelShopDelivery).
-		 * @param array<array-key, mixed> $psd
-		 * @return string
-		 */
-		private function buildProductAndServiceDataXml(array $psd): string {
-			$xml = '';
-			
-			foreach ($psd as $key => $value) {
+			foreach ($data as $key => $value) {
 				if (is_array($value)) {
-					// Nested structure (e.g. parcelShopDelivery containing address fields)
-					$inner = '';
-					
-					foreach ($value as $k => $v) {
-						if (is_array($v)) {
-							// Two levels deep (e.g. parcelShopDelivery.address.street)
-							$nested = '';
-							
-							foreach ($v as $nk => $nv) {
-								$nested .= "<{$nk}>{$this->xmlEscape($this->normalizeString($nv))}</{$nk}>";
-							}
-							
-							$inner .= "<{$k}>{$nested}</{$k}>";
-						} else {
-							$inner .= "<{$k}>{$this->xmlEscape($this->normalizeString($v))}</{$k}>";
-						}
-					}
-					
-					$xml .= "<{$key}>{$inner}</{$key}>";
+					$xml .= "<{$key}>{$this->buildXmlFragment($value)}</{$key}>";
 				} else {
 					$xml .= "<{$key}>{$this->xmlEscape($this->normalizeString($value))}</{$key}>";
 				}
 			}
 			
 			return $xml;
+		}
+		
+		/**
+		 * Builds the XML block for a sender or recipient address.
+		 * @param string $tag XML element name (e.g. 'sender' or 'recipient')
+		 * @param array<string, mixed> $address
+		 * @return string
+		 */
+		private function buildAddressXml(string $tag, array $address): string {
+			return "<{$tag}>{$this->buildXmlFragment($address)}</{$tag}>";
+		}
+		
+		/**
+		 * Builds the XML child elements for the <parcels> section.
+		 * @param array<array-key, mixed> $parcels
+		 * @return string
+		 */
+		private function buildParcelsXml(array $parcels): string {
+			return $this->buildXmlFragment($parcels);
+		}
+		
+		/**
+		 * Builds the XML child elements for the <productAndServiceData> section.
+		 * @param array<array-key, mixed> $psd
+		 * @return string
+		 */
+		private function buildProductAndServiceDataXml(array $psd): string {
+			return $this->buildXmlFragment($psd);
 		}
 		
 		/**
