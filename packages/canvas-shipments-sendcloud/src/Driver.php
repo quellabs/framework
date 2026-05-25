@@ -15,8 +15,9 @@
 	use Quellabs\Shipments\Contracts\ShipmentRequest;
 	use Quellabs\Shipments\Contracts\ShipmentResult;
 	use Quellabs\Shipments\Contracts\ShipmentState;
-	use Quellabs\Shipments\Contracts\ShipmentStatus;
 	use Quellabs\Contracts\Gateway\GatewayHelpers;
+	use Quellabs\Shipments\SendCloud\Transformer\ParcelTransformer;
+	use Quellabs\Shipments\SendCloud\Transformer\ShippingMethodTransformer;
 	
 	class Driver implements ShipmentProviderInterface {
 		
@@ -54,30 +55,6 @@
 			'sendcloud_bpost'   => ['bpost'],
 			'sendcloud_mondial' => ['mondial_relay'],
 			'sendcloud_multi'   => ['postnl', 'dhl', 'dpd', 'ups', 'bpost', 'mondial_relay'],
-		];
-		
-		/**
-		 * Maps SendCloud parcel status IDs to our normalised ShipmentStatus values.
-		 * SendCloud status IDs are integers; partial mapping is intentional — unmapped
-		 * IDs fall through to ShipmentStatus::Unknown.
-		 *
-		 * @see https://docs.sendcloud.com/api/v2/#parcel-statuses
-		 */
-		private const array STATUS_MAP = [
-			1  => ShipmentStatus::Created,
-			2  => ShipmentStatus::ReadyToSend,
-			3  => ShipmentStatus::InTransit,
-			4  => ShipmentStatus::Delivered,
-			5  => ShipmentStatus::DeliveryFailed,
-			6  => ShipmentStatus::AwaitingPickup,
-			7  => ShipmentStatus::ReturnedToSender,
-			11 => ShipmentStatus::InTransit,
-			12 => ShipmentStatus::InTransit,
-			13 => ShipmentStatus::OutForDelivery,
-			91 => ShipmentStatus::Cancelled,
-			92 => ShipmentStatus::Unknown,
-			93 => ShipmentStatus::Lost,           // Lost in transit
-			99 => ShipmentStatus::Unknown,
 		];
 		
 		/**
@@ -148,45 +125,11 @@
 				);
 			}
 			
-			// Build payload
-			$address = $request->deliveryAddress;
-			
-			$payload = [
-				'parcel' => array_filter([
-					'name'                 => $address->name,
-					'company_name'         => $address->company,
-					'address'              => $address->street,
-					'house_number'         => $address->houseNumber . (!empty($address->houseNumberSuffix) ? ' ' . $address->houseNumberSuffix : ''),
-					'city'                 => $address->city,
-					'postal_code'          => $address->postalCode,
-					'country'              => ['iso_2' => $address->country],
-					'email'                => $address->email,
-					'telephone'            => $address->phone,
-					'order_number'         => $request->reference,
-					'weight'               => round($request->weightGrams / 1000, 3),
-					'shipment'             => ['id' => $request->methodId],
-					'insured_value'        => $request->declaredValueCents > 0 ? $request->declaredValueCents : null,
-					'to_service_point'     => $request->servicePointId,
-					'request_label'        => false,
-					'apply_shipping_rules' => true,
-				], fn($v) => $v !== null && $v !== ''),
-			];
-			
-			// Merge extra data into payload
-			if (!empty($request->extraData)) {
-				$senderKeys = ['name', 'company_name', 'address', 'house_number', 'city', 'postal_code', 'country', 'email', 'telephone'];
-				$payload['parcel'] = array_merge($payload['parcel'], array_diff_key($request->extraData, array_flip($senderKeys)));
-			}
-			
-			// Sender address is always applied last so it cannot be overridden.
+			// Build payload and call API
+			$transformer = new ParcelTransformer(self::DRIVER_NAME);
 			$rawSenderAddress = $this->getConfig()['sender_address'] ?? [];
 			$senderAddress = array_filter(is_array($rawSenderAddress) ? $rawSenderAddress : []);
-			
-			if (!empty($senderAddress)) {
-				$payload['parcel'] = array_merge($payload['parcel'], $senderAddress);
-			}
-			
-			// Call API
+			$payload = $transformer->fromRequest($request, $senderAddress);
 			$result = $this->getGateway()->createParcel($payload);
 			
 			// If failed, throw an error
@@ -198,22 +141,11 @@
 				);
 			}
 			
-			// Fetch response
-			$response = $result["response"] ?? [];
-			
 			// Fetch parcel data — the API always returns a 'parcel' object on success
+			$response = $result['response'] ?? [];
 			$parcel = $this->arrayGetArray($response, 'parcel') ?? [];
 			
-			// Return result
-			return new ShipmentResult(
-				provider: self::DRIVER_NAME,
-				parcelId: $this->normalizeString($parcel['id'] ?? ''),
-				reference: $request->reference,
-				trackingCode: $this->arrayGetString($parcel, 'tracking_number'),
-				trackingUrl: $this->arrayGetString($parcel, 'tracking_url'),
-				carrierName: $this->arrayGetString($parcel, 'carrier.name'),
-				rawResponse: $parcel,
-			);
+			return $transformer->toShipmentResult($parcel, $request);
 		}
 		
 		/**
@@ -267,12 +199,10 @@
 				);
 			}
 			
-			// Fetch response
-			$response = $result['response'] ?? [];
-			
 			// Build and return ShipmentState
+			$response = $result['response'] ?? [];
 			$parcel = $this->arrayGetArray($response, 'parcel') ?? [];
-			return $this->buildStateFromParcel($parcel);
+			return (new ParcelTransformer(self::DRIVER_NAME))->toShipmentState($parcel);
 		}
 		
 		/**
@@ -287,8 +217,10 @@
 		 * @return DeliveryOption[]
 		 */
 		public function getDeliveryOptions(string $shippingModule, ?ShipmentAddress $address = null): array {
+			$transformer = new ShippingMethodTransformer();
+			
 			return array_values(array_map(
-				fn(array $method) => $this->normaliseDeliveryMethod($method),
+				fn(array $method) => $transformer->toDeliveryOption($method),
 				array_filter(
 					$this->fetchFilteredMethods($shippingModule),
 					fn(array $method) => ($method['service_point_input'] ?? 'none') === 'none'
@@ -346,37 +278,10 @@
 			
 			$rawPoints = $result['response'] ?? [];
 			$points = is_array($rawPoints) ? $rawPoints : [];
+			$transformer = new ShippingMethodTransformer();
 			
 			return array_values(array_map(
-				function (mixed $point): PickupOption {
-					// Service point entries are always arrays; skip malformed ones defensively
-					if (!is_array($point)) {
-						return new PickupOption(
-							locationCode: '', name: '', street: '', houseNumber: '',
-							postalCode: '', city: '', country: '', carrierName: '',
-							latitude: null, longitude: null, distanceMetres: null, metadata: [],
-						);
-					}
-					
-					return new PickupOption(
-						locationCode: $this->normalizeString($point['id'] ?? ''),
-						name: $this->normalizeString($point['name'] ?? ''),
-						street: $this->normalizeString($point['street'] ?? ''),
-						houseNumber: $this->normalizeString($point['house_number'] ?? ''),
-						postalCode: $this->normalizeString($point['postal_code'] ?? ''),
-						city: $this->normalizeString($point['city'] ?? ''),
-						country: $this->normalizeString($point['country'] ?? ''),
-						carrierName: $this->normalizeString($point['carrier'] ?? ''),
-						latitude: isset($point['latitude']) ? $this->toFloat($point['latitude']) : null,
-						longitude: isset($point['longitude']) ? $this->toFloat($point['longitude']) : null,
-						distanceMetres: isset($point['distance']) ? $this->toInt($point['distance']) : null,
-					metadata: array_filter([
-						'openingHours' => $point['opening_hours'] ?? null,
-						'extraInfo'    => $point['extra_info'] ?? null,
-						'phone'        => $point['phone_number'] ?? null,
-					], fn($v) => $v !== null),
-					);
-				},
+				fn(mixed $point) => $transformer->toPickupOption($point),
 				$points
 			));
 		}
@@ -438,31 +343,7 @@
 		 * @return ShipmentState
 		 */
 		public function buildStateFromParcel(array $parcel): ShipmentState {
-			$status      = is_array($parcel['status'] ?? null) ? $parcel['status'] : [];
-			$statusId    = $this->toInt($status['id'] ?? null, 92);
-			$statusLabel = isset($status['message']) && is_string($status['message']) ? $status['message'] : null;
-			$internalId  = $this->normalizeString($status['id'] ?? 92);
-			$internalMsg = $statusLabel ?? 'unknown';
-			$internalState = $internalId . ':' . $internalMsg;
-			$mappedStatus = self::STATUS_MAP[$statusId] ?? ShipmentStatus::Unknown;
-			
-			return new ShipmentState(
-				provider: self::DRIVER_NAME,
-				parcelId: $this->normalizeString($parcel['id'] ?? ''),
-				reference: $this->normalizeString($parcel['order_number'] ?? ''),
-				state: $mappedStatus,
-				trackingCode: $this->arrayGetString($parcel, 'tracking_number'),
-				trackingUrl: $this->arrayGetString($parcel, 'tracking_url'),
-				statusMessage: $statusLabel,
-				internalState: $internalState,
-				metadata: array_filter([
-					'carrierId'      => $this->arrayGet($parcel, 'carrier.id'),
-					'carrierName'    => $this->arrayGetString($parcel, 'carrier.name'),
-					'cachedLabelUrl' => $this->arrayGetString($parcel, 'label.label_printer'),
-					'servicePointId' => $parcel['to_service_point'] ?? null,
-					'weightKg'       => $parcel['weight'] ?? null,
-				], fn($v) => $v !== null),
-			);
+			return (new ParcelTransformer(self::DRIVER_NAME))->toShipmentState($parcel);
 		}
 		
 		/**
@@ -506,24 +387,6 @@
 			return array_values(array_filter($methods, function (array $method) use ($carriers): bool {
 				return in_array(strtolower($this->normalizeString($method['carrier'] ?? '')), $carriers, true);
 			}));
-		}
-		
-		/**
-		 * Normalises a raw SendCloud shipping method array into a DeliveryOption.
-		 * @param array<string, mixed> $method
-		 * @return DeliveryOption
-		 */
-		private function normaliseDeliveryMethod(array $method): DeliveryOption {
-			return new DeliveryOption(
-				methodId: $this->normalizeString($method['id'] ?? ''),
-				label: $this->normalizeString($method['name'] ?? ''),
-				carrierName: $this->normalizeString($method['carrier'] ?? ''),
-				metadata: array_filter([
-					'minWeightGrams' => isset($method['min_weight']) ? (int)round($this->toFloat($method['min_weight']) * 1000) : null,
-					'maxWeightGrams' => isset($method['max_weight']) ? (int)round($this->toFloat($method['max_weight']) * 1000) : null,
-					'price'          => $method['price'] ?? null,
-				], fn($v) => $v !== null),
-			);
 		}
 		
 		/**

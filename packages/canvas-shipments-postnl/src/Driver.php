@@ -2,21 +2,26 @@
 	
 	namespace Quellabs\Shipments\PostNL;
 	
+	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Quellabs\Shipments\Contracts\CancelRequest;
 	use Quellabs\Shipments\Contracts\CancelResult;
 	use Quellabs\Shipments\Contracts\DeliveryOption;
 	use Quellabs\Shipments\Contracts\PickupOption;
 	use Quellabs\Shipments\Contracts\ShipmentAddress;
+	use Quellabs\Shipments\Contracts\ShipmentOptionException;
 	use Quellabs\Shipments\Contracts\ShipmentCancellationException;
-	use Quellabs\Shipments\Contracts\ShipmentInitiationException;
 	use Quellabs\Shipments\Contracts\ShipmentExchangeException;
+	use Quellabs\Shipments\Contracts\ShipmentInitiationException;
 	use Quellabs\Shipments\Contracts\ShipmentLabelException;
-	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Quellabs\Shipments\Contracts\ShipmentProviderInterface;
 	use Quellabs\Shipments\Contracts\ShipmentRequest;
 	use Quellabs\Shipments\Contracts\ShipmentResult;
 	use Quellabs\Shipments\Contracts\ShipmentState;
-	use Quellabs\Shipments\Contracts\ShipmentStatus;
+	use Quellabs\Shipments\PostNL\Transformers\DeliveryOptionTransformer;
+	use Quellabs\Shipments\PostNL\Transformers\LabelTransformer;
+	use Quellabs\Shipments\PostNL\Transformers\PickupOptionTransformer;
+	use Quellabs\Shipments\PostNL\Transformers\ShipmentResultTransformer;
+	use Quellabs\Shipments\PostNL\Transformers\ShipmentStateTransformer;
 	
 	class Driver implements ShipmentProviderInterface {
 		
@@ -130,7 +135,7 @@
 		 *
 		 * @see https://developer.postnl.nl/browse-apis/send-and-track/products/
 		 */
-		private const MODULE_PRODUCT_MAP = [
+		private const array MODULE_PRODUCT_MAP = [
 			// Domestic NL — standard home delivery
 			'postnl_standard'                          => ['productCode' => '3085'],
 			'postnl_signature'                         => ['productCode' => '3087'],
@@ -210,42 +215,6 @@
 			
 			// Miscellaneous
 			'postnl_locker'                            => ['productCode' => '6350'],
-		];
-		
-		/**
-		 * Maps PostNL status codes to normalised ShipmentStatus values.
-		 *
-		 * PostNL returns a numeric status code and a description via the Status API.
-		 * Phase codes indicate the broad lifecycle stage; status codes refine it.
-		 *
-		 * Phase codes:
-		 *   1 = Collected
-		 *   2 = Sorting
-		 *   3 = Distribution
-		 *   4 = Delivered
-		 *   99 = Return to sender
-		 *
-		 * @see https://developer.postnl.nl/docs/#/http/api-endpoints/status/status-by-barcode
-		 */
-		private const array STATUS_MAP = [
-			// Phase 1 — accepted by PostNL
-			1  => ShipmentStatus::ReadyToSend,
-			
-			// Phase 2 — processing at sorting centre
-			2  => ShipmentStatus::InTransit,
-			
-			// Phase 3 — in distribution network
-			3  => ShipmentStatus::InTransit,
-			
-			// Phase 4 — final delivery outcomes
-			4  => ShipmentStatus::Delivered,
-			11 => ShipmentStatus::DeliveryFailed,
-			12 => ShipmentStatus::AwaitingPickup,
-			13 => ShipmentStatus::Delivered,       // Delivered at neighbour
-			14 => ShipmentStatus::Delivered,       // Delivered in mailbox
-			
-			// Phase 99 — return
-			99 => ShipmentStatus::ReturnedToSender,
 		];
 		
 		/**
@@ -397,40 +366,11 @@
 			// Fetch response
 			$response = $result['response'] ?? [];
 			
-			// Fetch the shipment data
-			$responseShipments = $this->arrayGetArray($response, 'ResponseShipments');
-			$responseShipment = (is_array($responseShipments[0] ?? null)) ? $responseShipments[0] : null;
-			
-			// If that failed, throw an error
-			if ($responseShipment === null) {
-				throw new ShipmentInitiationException(
-					self::DRIVER_NAME,
-					'missing_shipment',
-					'PostNL did not return a shipment in the creation response'
-				);
-			}
-			
-			// Fetch the barcode
-			$barcode = $this->arrayGetString($responseShipment, 'Barcode');
-			
-			// If that failed, throw an error
-			if (empty($barcode)) {
-				throw new ShipmentInitiationException(
-					self::DRIVER_NAME,
-					'missing_barcode',
-					'PostNL did not return a barcode in the creation response'
-				);
-			}
-			
-			// Return result — call getLabelUrl() explicitly to fetch the label
-			return new ShipmentResult(
-				provider: self::DRIVER_NAME,
-				parcelId: $barcode,
-				reference: $request->reference,
-				trackingCode: $barcode,
-				trackingUrl: $this->buildTrackingUrl($barcode, $request->deliveryAddress->postalCode),
-				carrierName: 'PostNL',
-				rawResponse: $response,
+			// Map the API response to a ShipmentResult
+			return (new ShipmentResultTransformer())->transform(
+				$response,
+				$request->reference,
+				$request->deliveryAddress->postalCode,
 			);
 		}
 		
@@ -505,49 +445,9 @@
 			
 			// Fetch the shipment data
 			$exchangeResponse = $result['response'] ?? [];
-			$shipmentData = $this->arrayGetArray($exchangeResponse, 'Shipment');
 			
-			// If that failed, throw an error
-			if ($shipmentData === null) {
-				throw new ShipmentExchangeException(
-					self::DRIVER_NAME,
-					'not_found',
-					"No shipment data returned for barcode {$parcelId}"
-				);
-			}
-			
-			// PostNL returns status events ordered newest-first; the first entry is current state
-			$events = $this->arrayGetArray($shipmentData, 'Events');
-			$currentEvent = (is_array($events[0] ?? null)) ? $events[0] : [];
-			$phaseCode = $this->toInt($currentEvent['PhaseCode'] ?? null);
-			$statusCode = $this->toInt($currentEvent['StatusCode'] ?? null);
-			$statusDescription = $this->arrayGetString($currentEvent, 'Description');
-			
-			// StatusCode takes precedence for fine-grained mapping; fall back to PhaseCode
-			$status = self::STATUS_MAP[$statusCode] ?? self::STATUS_MAP[$phaseCode] ?? ShipmentStatus::Unknown;
-			$internalState = $phaseCode . '.' . $statusCode;
-			$barcode = $this->arrayGetString($shipmentData, 'Barcode') ?? '';
-			$addresses = $this->arrayGetArray($shipmentData, 'Addresses');
-			$firstAddress = (is_array($addresses[0] ?? null)) ? $addresses[0] : [];
-			$postalCode = $this->arrayGetString($firstAddress, 'Zipcode') ?? '';
-			$reference = $this->arrayGetString($shipmentData, 'Reference') ?? '';
-			
-			return new ShipmentState(
-				provider: self::DRIVER_NAME,
-				parcelId: $barcode,
-				reference: $reference,
-				state: $status,
-				trackingCode: $barcode,
-				trackingUrl: $this->buildTrackingUrl($barcode, $postalCode),
-				statusMessage: $statusDescription,
-				internalState: $internalState,
-				metadata: array_filter([
-					'phaseCode'   => $phaseCode ?: null,
-					'statusCode'  => $statusCode ?: null,
-					'postalCode'  => $postalCode ?: null,
-					'productCode' => $this->arrayGetString($shipmentData, 'ProductCode'),
-				], fn($v) => $v !== null),
-			);
+			// Map the API response to a ShipmentState
+			return (new ShipmentStateTransformer())->transform($exchangeResponse, $parcelId);
 		}
 		
 		/**
@@ -607,87 +507,22 @@
 			
 			// If that failed, return empty array
 			if ($result['request']['result'] === 0) {
-				return [];
+				throw new ShipmentOptionException(
+					self::DRIVER_NAME,
+					$result['request']['errorId'],
+					$result['request']['errorMessage']
+				);
 			}
 			
-			// The Timeframe API wraps its result in Timeframes.Timeframe[]
-			$timeframeResponse = $result['response'] ?? [];
-			$days = $this->arrayGetArray($timeframeResponse, 'Timeframes.Timeframe') ?? [];
-			
-			// When the API returns a single day it may not wrap it in an array
-			if (isset($days['Date'])) {
-				$days = [$days];
-			}
-			
-			// Transform timeframes
-			$options = [];
-			
-			foreach ($days as $day) {
-				if (!is_array($day)) {
-					continue;
-				}
-				
-				$dateStr = $this->arrayGetString($day, 'Date');
-				
-				if ($dateStr === null) {
-					continue;
-				}
-				
-				$date = \DateTimeImmutable::createFromFormat('d-m-Y', $dateStr) ?: null;
-				
-				// Slots are in TimeframeTimeFrame[], same single-item wrapping caveat applies
-				$slots = $this->arrayGetArray($day, 'Timeframes.TimeframeTimeFrame') ?? [];
-				
-				if (isset($slots['From'])) {
-					$slots = [$slots];
-				}
-				
-				foreach ($slots as $slot) {
-					if (!is_array($slot)) {
-						continue;
-					}
-					
-					$from = $this->arrayGetString($slot, 'From') ?? '';   // e.g. '08:00:00'
-					$to = $this->arrayGetString($slot, 'To') ?? '';     // e.g. '12:00:00'
-					
-					// Options is either a string or { "string": "Morning" }
-					$optionsField = $slot['Options'] ?? 'Daytime';
-					
-					if (is_array($optionsField)) {
-						$optionType = ($this->arrayGetString($optionsField, 'string') ?? 'Daytime');
-					} else {
-						$optionType = (is_string($optionsField) ? $optionsField : 'Daytime');
-					}
-					
-					// Build window
-					$windowStart = substr($from, 0, 5); // '08:00:00' → '08:00'
-					$windowEnd = substr($to, 0, 5);
-					
-					// Add DeliveryOption
-					$options[] = new DeliveryOption(
-						methodId: "{$dateStr}|{$from}|{$to}|{$optionType}",
-						label: $this->buildDeliveryLabel($date, $windowStart, $windowEnd, $optionType),
-						carrierName: 'PostNL',
-						deliveryDate: $date,
-						windowStart: $windowStart ?: null,
-						windowEnd: $windowEnd ?: null,
-						metadata: [
-							'optionType'  => $optionType,
-							'productCode' => $productInfo['productCode'],
-						],
-					);
-				}
-			}
-			
-			return $options;
+			// Map the API response to DeliveryOption[]
+			return (new DeliveryOptionTransformer())->transform(
+				$result['response'] ?? [],
+				$productInfo['productCode'],
+			);
 		}
 		
 		/**
-		 * Returns normalized pickup point options near the given address.
-		 *
 		 * Calls the PostNL Location API to find the nearest service points.
-		 * Returns an empty array if no address is provided.
-		 *
 		 * @param string $shippingModule
 		 * @param ShipmentAddress|null $address
 		 * @return PickupOption[]
@@ -710,51 +545,12 @@
 				return [];
 			}
 			
-			// Fetch location data
-			$locationsResponse = $result['response'] ?? [];
-			$locations = $this->arrayGetArray($locationsResponse, 'GetLocationsResult.ResponseLocation') ?? [];
-			
-			// Transform data to PickupOption objects
-			$options = [];
-			
-			foreach ($locations as $location) {
-				if (!is_array($location)) {
-					continue;
-				}
-				
-				$address_ = $this->arrayGetArray($location, 'Address') ?? [];
-				
-				$options[] = new PickupOption(
-					locationCode: $this->arrayGetString($location, 'LocationCode') ?? '',
-					name: $this->arrayGetString($location, 'Name') ?? '',
-					street: $this->arrayGetString($address_, 'Street') ?? '',
-					houseNumber: $this->arrayGetString($address_, 'HouseNr') ?? '',
-					postalCode: $this->arrayGetString($address_, 'Zipcode') ?? '',
-					city: $this->arrayGetString($address_, 'City') ?? '',
-					country: $this->arrayGetString($address_, 'Countrycode') ?? '',
-					carrierName: 'PostNL',
-					latitude: $this->toFloat($location['Latitude'] ?? null) ?: null,
-					longitude: $this->toFloat($location['Longitude'] ?? null) ?: null,
-					distanceMetres: isset($location['Distance']) ? $this->toInt($location['Distance']) : null,
-					metadata: array_filter([
-						'retailNetworkId' => $location['RetailNetworkID'] ?? null,
-						'partnerName'     => $location['PartnerName'] ?? null,
-						'openingHours'    => $location['OpeningHours'] ?? null,
-						'phoneNumber'     => $location['PhoneNumber'] ?? null,
-						'deliveryOptions' => $location['DeliveryOptions'] ?? null,
-					], fn($v) => $v !== null),
-				);
-			}
-			
-			return $options;
+			// Map the API response to PickupOption[]
+			return (new PickupOptionTransformer())->transform($result['response'] ?? []);
 		}
 		
 		/**
 		 * Returns the label for a given parcel barcode as a base64 data URI.
-		 *
-		 * Calls the PostNL Confirming/Label endpoint using the barcode and returns
-		 * a data URI (data:application/pdf;base64,...) ready for decoding or storage.
-		 *
 		 * @param string $parcelId The PostNL barcode from ShipmentResult::$parcelId
 		 * @return string
 		 * @throws ShipmentLabelException
@@ -772,25 +568,8 @@
 				);
 			}
 			
-			// Fetch the label content
-			$labelResponse = $result['response'] ?? [];
-			$responseShipments = $this->arrayGetArray($labelResponse, 'ResponseShipments');
-			$firstShipment = (is_array($responseShipments[0] ?? null)) ? $responseShipments[0] : [];
-			$labels = $this->arrayGetArray($firstShipment, 'Labels');
-			$firstLabel = (is_array($labels[0] ?? null)) ? $labels[0] : [];
-			$labelContent = $this->arrayGetString($firstLabel, 'Content');
-			
-			// If there's none, throw error
-			if ($labelContent === null) {
-				throw new ShipmentLabelException(
-					self::DRIVER_NAME,
-					'missing_label',
-					"No label content returned for barcode {$parcelId}"
-				);
-			}
-			
-			// Return label content as base64 encoded data
-			return 'data:application/pdf;base64,' . $labelContent;
+			// Map the API response to a base64 data URI
+			return (new LabelTransformer())->transform($result['response'] ?? [], $parcelId);
 		}
 		
 		/**
@@ -799,26 +578,6 @@
 		 */
 		private function getGateway(): PostNLGateway {
 			return $this->gateway ??= new PostNLGateway($this);
-		}
-		
-		/**
-		 * Builds a human-readable label for a delivery timeframe slot.
-		 * @param \DateTimeImmutable|null $date
-		 * @param string $windowStart e.g. '08:00'
-		 * @param string $windowEnd e.g. '12:00'
-		 * @param string $optionType e.g. 'Morning', 'Evening', 'Daytime', 'Sunday'
-		 * @return string
-		 */
-		private function buildDeliveryLabel(?\DateTimeImmutable $date, string $windowStart, string $windowEnd, string $optionType): string {
-			$dateStr = $date ? $date->format('d-m-Y') : '';
-			$window = ($windowStart !== '' && $windowEnd !== '') ? " {$windowStart}–{$windowEnd}" : '';
-			
-			return match ($optionType) {
-				'Morning' => trim("{$dateStr} Morning{$window}"),
-				'Evening' => trim("{$dateStr} Evening{$window}"),
-				'Sunday' => trim("{$dateStr} Sunday{$window}"),
-				default => trim("{$dateStr}{$window}"),
-			};
 		}
 		
 		/**
@@ -842,17 +601,5 @@
 				|| $code === 4878
 				|| $code === 4880
 				|| $code === 6350;
-		}
-		
-		/**
-		 * Constructs the public PostNL track-and-trace URL for a barcode.
-		 * @param string $barcode
-		 * @param string $postalCode
-		 * @return string
-		 */
-		private function buildTrackingUrl(string $barcode, string $postalCode): string {
-			return 'https://postnl.nl/tracktrace/?B=' . rawurlencode($barcode)
-				. '&P=' . rawurlencode($postalCode)
-				. '&D=NL&T=C';
 		}
 	}

@@ -18,10 +18,15 @@
 	use Quellabs\Shipments\Contracts\ShipmentState;
 	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Quellabs\Shipments\Contracts\ShipmentStatus;
+	use Quellabs\Shipments\MyParcel\Transformers\DeliveryOptionTransformer;
+	use Quellabs\Shipments\MyParcel\Transformers\PickupOptionTransformer;
+	use Quellabs\Shipments\MyParcel\Transformers\ShipmentResultTransformer;
+	use Quellabs\Shipments\MyParcel\Transformers\ShipmentStateTransformer;
 	
 	class Driver implements ShipmentProviderInterface {
 		
 		use GatewayHelpers;
+		use MyParcelHelpers;
 		
 		/**
 		 * Driver name — stored in ShipmentResult::$provider and ShipmentState::$provider.
@@ -72,34 +77,6 @@
 			'mailbox'       => 2,
 			'letter'        => 3,
 			'digital_stamp' => 4,
-		];
-		
-		/**
-		 * Maps MyParcel track-trace status codes to our normalised ShipmentStatus values.
-		 * Status codes are lowercase strings per the MyParcel API docs (v1.1).
-		 * @see https://developer.myparcel.nl/api-reference/06.track-trace.html
-		 */
-		private const STATUS_MAP = [
-			'registered'                        => ShipmentStatus::Created,
-			'handed_to_carrier'                 => ShipmentStatus::ReadyToSend,
-			'sorting'                           => ShipmentStatus::InTransit,
-			'in_transit'                        => ShipmentStatus::InTransit,
-			'transit'                           => ShipmentStatus::InTransit,
-			'customs'                           => ShipmentStatus::InTransit,
-			'out_for_delivery'                  => ShipmentStatus::OutForDelivery,
-			'delivered'                         => ShipmentStatus::Delivered,
-			'delivered_at_neighbor'             => ShipmentStatus::Delivered,
-			'delivered_at_mailbox'              => ShipmentStatus::Delivered,
-			'available_for_pickup'              => ShipmentStatus::AwaitingPickup,
-			'available_for_pickup_postnl'       => ShipmentStatus::AwaitingPickup,
-			'delivery_failed'                   => ShipmentStatus::DeliveryFailed,
-			'not_delivered'                     => ShipmentStatus::DeliveryFailed,
-			'refused_by_recipient'              => ShipmentStatus::DeliveryFailed,
-			'return_to_sender'                  => ShipmentStatus::ReturnedToSender,
-			'return_shipment_handed_to_carrier' => ShipmentStatus::ReturnedToSender,
-			'destroyed'                         => ShipmentStatus::Destroyed,
-			'lost'                              => ShipmentStatus::Lost,
-			'unknown'                           => ShipmentStatus::Unknown,
 		];
 		
 		/**
@@ -207,10 +184,8 @@
 				);
 			}
 			
-			// Fetch the response
+			// Validate the existence of a parcel id before transforming
 			$response = $result['response'] ?? [];
-			
-			// Validate the existence of a parcel id
 			$parcelId = $this->arrayGetString($response, 'data.ids.0.id');
 			
 			if (empty($parcelId)) {
@@ -221,16 +196,9 @@
 				);
 			}
 			
-			// Return the ShipmentResult
-			return new ShipmentResult(
-				provider: self::DRIVER_NAME,
-				parcelId: $parcelId,
-				reference: $request->reference,
-				trackingCode: null,
-				trackingUrl: null,
-				carrierName: $this->carrierName($carrierInfo['carrierId']),
-				rawResponse: $response,
-			);
+			// Transform response to ShipmentResult
+			return (new ShipmentResultTransformer(self::DRIVER_NAME, $carrierInfo['carrierId'], $request->reference))
+				->transform($response);
 		}
 		
 		/**
@@ -282,32 +250,9 @@
 				);
 			}
 			
-			$rawCarrierId  = $shipment['carrier_id'] ?? null;
-			$carrierId     = is_numeric($rawCarrierId) ? (int)$rawCarrierId : null;
-			$parcelId      = $this->normalizeString($shipment['id'] ?? '');
-			$reference     = $this->arrayGetString($shipment, 'reference_identifier') ?? '';
-			$internalState = $this->arrayGetString($shipment, 'status') ?? 'unknown';
-			$status        = self::STATUS_MAP[strtolower($internalState)] ?? ShipmentStatus::Unknown;
-			$barcode       = $this->arrayGetString($shipment, 'barcode');
-			$postalCode    = $this->arrayGetString($shipment, 'recipient.postal_code') ?? '';
-			$trackingUrl   = $barcode !== null ? $this->buildTrackingUrl($barcode, $postalCode, $carrierId) : null;
-			
-			return new ShipmentState(
-				provider: self::DRIVER_NAME,
-				parcelId: $parcelId,
-				reference: $reference,
-				state: $status,
-				trackingCode: $barcode,
-				trackingUrl: $trackingUrl,
-				statusMessage: null,
-				internalState: $internalState,
-				metadata: array_filter([
-					'carrierId'   => $carrierId,
-					'carrierName' => $this->carrierName($carrierId),
-					'postalCode'  => $postalCode !== '' ? $postalCode : null,
-					'weightGrams' => $this->arrayGet($shipment, 'physical_properties.weight'),
-				], fn($v) => $v !== null),
-			);
+			// Transform raw shipment record to ShipmentState
+			return (new ShipmentStateTransformer(self::DRIVER_NAME))
+				->transform($shipment);
 		}
 		
 		/**
@@ -330,50 +275,12 @@
 				return [];
 			}
 			
-			// Fetch carrier
+			// Resolve carrier name once and pass it to the transformer
 			$carrierName = $this->carrierName(self::MODULE_CARRIER_MAP[$shippingModule]['carrierId'] ?? null) ?? '';
 			
-			// Decode options
-			$options = [];
-			
-			foreach ($this->arrayGetArray($data, 'delivery') ?? [] as $timeframe) {
-				// Invalid timeframe
-				if (!is_array($timeframe)) {
-					continue;
-				}
-				
-				// Format timeframe date
-				$rawDate = $this->arrayGetString($timeframe, 'date') ?? '';
-				$date    = $rawDate !== '' ? (\DateTimeImmutable::createFromFormat('Y-m-d', $rawDate) ?: null) : null;
-				
-				foreach ($this->arrayGetArray($timeframe, 'time') ?? [] as $slot) {
-					// Skip invalid slots
-					if (!is_array($slot)) {
-						continue;
-					}
-					
-					// Add delivery option to list
-					$start = substr($this->arrayGetString($slot, 'start') ?? '', 0, 5); // '09:00:00' → '09:00'
-					$end   = substr($this->arrayGetString($slot, 'end') ?? '', 0, 5);
-					$type  = $this->arrayGetString($slot, 'price_comment') ?? 'standard';
-					$label = $this->buildDeliveryLabel($date, $start, $end, $type);
-					
-					$options[] = new DeliveryOption(
-						methodId: $rawDate . ':' . $start . ':' . $end,
-						label: $label,
-						carrierName: $carrierName,
-						deliveryDate: $date,
-						windowStart: $start ?: null,
-						windowEnd: $end ?: null,
-						metadata: array_filter([
-							'type'  => $type,
-							'price' => $slot['price'] ?? null,
-						], fn($v) => $v !== null),
-					);
-				}
-			}
-			
-			return $options;
+			// Transform raw timeframes to DeliveryOption list
+			return (new DeliveryOptionTransformer($carrierName))
+				->transformAll($this->arrayGetArray($data, 'delivery') ?? []);
 		}
 		
 		/**
@@ -394,54 +301,12 @@
 				return [];
 			}
 			
+			// Resolve carrier name once and pass it to the transformer
 			$carrierName = $this->carrierName(self::MODULE_CARRIER_MAP[$shippingModule]['carrierId'] ?? null) ?? '';
-			$options     = [];
-			
-			foreach ($this->arrayGetArray($data, 'pickup') ?? [] as $location) {
-				// Skip invalid locations
-				if (!is_array($location)) {
-					continue;
-				}
 				
-				// Add location as PickupOption to list
-				$locationCode    = $this->arrayGetString($location, 'location_code') ?? '';
-				$name            = $this->arrayGetString($location, 'location') ?? '';
-				$street          = $this->arrayGetString($location, 'street') ?? '';
-				$houseNumber     = $this->arrayGetString($location, 'number') ?? '';
-				$postalCode      = $this->arrayGetString($location, 'postal_code') ?? '';
-				$city            = $this->arrayGetString($location, 'city') ?? '';
-				$country         = $this->arrayGetString($location, 'cc') ?? '';
-				$phone           = $this->arrayGetString($location, 'phone_number');
-				$comment         = $this->arrayGetString($location, 'comment');
-				$openingHours    = $this->arrayGetArray($location, 'opening_hours');
-				$retailNetworkId = $this->arrayGetString($location, 'retail_network_id');
-				$latitude        = $this->toFloat($this->arrayGet($location, 'latitude'), 0.0) ?: null;
-				$longitude       = $this->toFloat($this->arrayGet($location, 'longitude'), 0.0) ?: null;
-				$rawDistance     = $this->arrayGet($location, 'distance');
-				$distanceMetres  = $rawDistance !== null ? $this->toInt($rawDistance) : null;
-				
-				$options[] = new PickupOption(
-					locationCode: $locationCode,
-					name: $name,
-					street: $street,
-					houseNumber: $houseNumber,
-					postalCode: $postalCode,
-					city: $city,
-					country: $country,
-					carrierName: $carrierName,
-					latitude: $latitude,
-					longitude: $longitude,
-					distanceMetres: $distanceMetres,
-					metadata: array_filter([
-						'phone'           => $phone,
-						'comment'         => $comment,
-						'openingHours'    => $openingHours,
-						'retailNetworkId' => $retailNetworkId,
-					], fn($value) => $value !== null),
-				);
-			}
-			
-			return $options;
+			// Transform raw pickup locations to PickupOption list
+			return (new PickupOptionTransformer($carrierName))
+				->transformAll($this->arrayGetArray($data, 'pickup') ?? []);
 		}
 		
 		/**
@@ -551,55 +416,5 @@
 				'email'         => $address->email,
 				'phone'         => $address->phone,
 			], fn($v) => $v !== null && $v !== '');
-		}
-		
-		/**
-		 * Builds a human-readable label for a delivery timeslot.
-		 * @param \DateTimeImmutable|null $date
-		 * @param string $start e.g. '09:00'
-		 * @param string $end e.g. '12:00'
-		 * @param string $type e.g. 'standard', 'morning', 'avond'
-		 * @return string
-		 */
-		private function buildDeliveryLabel(?\DateTimeImmutable $date, string $start, string $end, string $type): string {
-			$dateStr = $date ? $date->format('d-m-Y') : '';
-			
-			return match ($type) {
-				'morning' => trim("{$dateStr} Morning {$start}–{$end}"),
-				'avond' => trim("{$dateStr} Evening {$start}–{$end}"),
-				default => trim("{$dateStr} {$start}–{$end}"),
-			};
-		}
-		
-		/**
-		 * Constructs a public track-and-trace URL from a barcode.
-		 * @param string $barcode
-		 * @param string $postalCode
-		 * @param int|null $carrierId
-		 * @return string|null
-		 */
-		private function buildTrackingUrl(string $barcode, string $postalCode, ?int $carrierId): ?string {
-			return match ($carrierId) {
-				1 => "https://postnl.nl/tracktrace/?B={$barcode}&P=" . rawurlencode($postalCode) . "&D=NL&T=C",
-				2 => "https://track.bpost.be/bpb/sites/track/index.html#/tracking?barcode={$barcode}",
-				default => null,
-			};
-		}
-		
-		/**
-		 * Returns a human-readable carrier name from a MyParcel carrier ID.
-		 * @param int|null $carrierId
-		 * @return string|null
-		 */
-		private function carrierName(?int $carrierId): ?string {
-			return match ($carrierId) {
-				1 => 'PostNL',
-				2 => 'bpost',
-				3 => 'CheapCargo',
-				4 => 'DHL',
-				5 => 'DHL For You',
-				8 => 'DPD',
-				default => null,
-			};
 		}
 	}

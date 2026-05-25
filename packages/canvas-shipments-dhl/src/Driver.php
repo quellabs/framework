@@ -19,6 +19,7 @@
 	use Quellabs\Shipments\Contracts\ShipmentStatus;
 	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Quellabs\Support\Tools;
+	use Quellabs\Shipments\DHL\Transformers\PickupOptionTransformer;
 	
 	class Driver implements ShipmentProviderInterface {
 		
@@ -462,48 +463,18 @@
 				);
 			}
 			
+			// Transformer
+			$transformer = new PickupOptionTransformer();
+			
 			// Decode the response
 			$options = [];
 			
 			foreach ($result['response'] ?? [] as $shop) {
-				// Skip invalid entries
 				if (!is_array($shop)) {
 					continue;
 				}
 				
-				// Extract address
-				$addr = isset($shop['address']) && is_array($shop['address']) ? $shop['address'] : [];
-				
-				// Extract and coerce all fields before construction to keep the call site readable
-				$locationCode = $this->normalizeString($shop['id'] ?? null);
-				$name         = $this->normalizeString($shop['name'] ?? null);
-				$street       = $this->normalizeString($addr['street'] ?? null);
-				$houseNumber  = $this->normalizeString($addr['number'] ?? null);
-				$postalCode   = $this->normalizeString($addr['postalCode'] ?? $addr['zipCode'] ?? null);
-				$city         = $this->normalizeString($addr['city'] ?? null);
-				$country      = $this->normalizeString($addr['countryCode'] ?? null) ?: $address->country;
-				$geoLocation  = isset($shop['geoLocation']) && is_array($shop['geoLocation']) ? $shop['geoLocation'] : [];
-				$shopType     = $this->normalizeString($shop['shopType'] ?? null) ?: null;
-				$openingTimes = isset($shop['openingTimes']) && is_array($shop['openingTimes']) ? $shop['openingTimes'] : null;
-				
-				// Add address to response
-				$options[] = new PickupOption(
-					locationCode: $locationCode,
-					name: $name,
-					street: $street,
-					houseNumber: $houseNumber,
-					postalCode: $postalCode,
-					city: $city,
-					country: $country,
-					carrierName: 'DHL',
-					latitude: is_numeric($geoLocation['latitude'] ?? null) ? (float)$geoLocation['latitude'] : null,
-					longitude: is_numeric($geoLocation['longitude'] ?? null) ? (float)$geoLocation['longitude'] : null,
-					distanceMetres: is_numeric($shop['distance'] ?? null) ? (int)$shop['distance'] : null,
-					metadata: array_filter([
-						'shopType'     => $shopType,
-						'openingTimes' => $openingTimes,
-					], fn($v) => $v !== null),
-				);
+				$options[] = $transformer->transform($shop, $address);
 			}
 			
 			return $options;
