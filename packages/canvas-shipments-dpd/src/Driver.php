@@ -2,13 +2,15 @@
 	
 	namespace Quellabs\Shipments\DPD;
 	
+	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Quellabs\Shipments\Contracts\CancelRequest;
 	use Quellabs\Shipments\Contracts\CancelResult;
 	use Quellabs\Shipments\Contracts\DeliveryOption;
 	use Quellabs\Shipments\Contracts\PickupOption;
 	use Quellabs\Shipments\Contracts\ShipmentAddress;
+	use Quellabs\Shipments\Contracts\ShipmentOptionException;
 	use Quellabs\Shipments\Contracts\ShipmentCancellationException;
-	use Quellabs\Shipments\Contracts\ShipmentCreationException;
+	use Quellabs\Shipments\Contracts\ShipmentInitiationException;
 	use Quellabs\Shipments\Contracts\ShipmentExchangeException;
 	use Quellabs\Shipments\Contracts\ShipmentLabelException;
 	use Quellabs\Shipments\Contracts\ShipmentProviderInterface;
@@ -16,8 +18,11 @@
 	use Quellabs\Shipments\Contracts\ShipmentResult;
 	use Quellabs\Shipments\Contracts\ShipmentState;
 	use Quellabs\Shipments\Contracts\ShipmentStatus;
+	use Quellabs\Shipments\DPD\Transformers\DeliveryOptionTransformer;
 	
 	class Driver implements ShipmentProviderInterface {
+		
+		use GatewayHelpers;
 		
 		/**
 		 * Driver name — stored in ShipmentResult::$provider and ShipmentState::$provider.
@@ -57,7 +62,7 @@
 		 *
 		 * @see https://integrations.dpd.nl/dpd-shipper/dpd-shipper-webservices/shipment-service-api/
 		 */
-		private const MODULE_PRODUCT_MAP = [
+		private const array MODULE_PRODUCT_MAP = [
 			// Standard home and business delivery
 			'dpd_b2b'           => ['product' => 'B2B'],
 			'dpd_b2c'           => ['product' => 'B2C'],
@@ -91,7 +96,7 @@
 		 *
 		 * @see https://integrations.dpd.nl/dpd-shipper/dpd-shipper-webservices/parcellifecycle-service/
 		 */
-		private const STATUS_MAP = [
+		private const array STATUS_MAP = [
 			'SHIPMENT'        => ShipmentStatus::Created,
 			'PickupRequest'   => ShipmentStatus::Created,
 			'BetweenDepots'   => ShipmentStatus::InTransit,
@@ -137,7 +142,18 @@
 		
 		/**
 		 * Returns default configuration values for this driver.
-		 * @return array<string, mixed>
+		 * @return array{
+		 *     delis_id: string,
+		 *     password: string,
+		 *     sending_depot: string,
+		 *     test_mode: bool,
+		 *     test_delis_id: string,
+		 *     test_password: string,
+		 *     test_sending_depot: string,
+		 *     cache_path: string,
+		 *     label_cache_ttl_days: int,
+		 *     sender_address: array<string, mixed>
+		 * }
 		 */
 		public function getDefaults(): array {
 			return [
@@ -164,13 +180,13 @@
 		 *
 		 * @param ShipmentRequest $request
 		 * @return ShipmentResult
-		 * @throws ShipmentCreationException
+		 * @throws ShipmentInitiationException
 		 */
 		public function create(ShipmentRequest $request): ShipmentResult {
 			$productInfo = self::MODULE_PRODUCT_MAP[$request->shippingModule] ?? null;
 			
 			if ($productInfo === null) {
-				throw new ShipmentCreationException(
+				throw new ShipmentInitiationException(
 					self::DRIVER_NAME,
 					'unknown_module',
 					"Unknown shipping module '{$request->shippingModule}'"
@@ -179,12 +195,14 @@
 			
 			$config = $this->getConfig();
 			$address = $request->deliveryAddress;
-			$isTest = (bool)($config['test_mode'] ?? false);
+			$isTest = is_bool($config['test_mode'] ?? null) && $config['test_mode'];
+			$testSendingDepot = is_string($config['test_sending_depot'] ?? null) ? $config['test_sending_depot'] : '';
+			$sendingDepotDefault = is_string($config['sending_depot'] ?? null) ? $config['sending_depot'] : '';
 			
 			if ($isTest) {
-				$sendingDepot = $config['test_sending_depot'] ?: $config['sending_depot'];
+				$sendingDepot = $testSendingDepot ?: $sendingDepotDefault;
 			} else {
-				$sendingDepot = $config['sending_depot'];
+				$sendingDepot = $sendingDepotDefault;
 			}
 			
 			// Build the productAndServiceData block
@@ -201,7 +219,7 @@
 			// DPD Shop requires a parcelShopId; fail early if missing
 			if (!empty($productInfo['shop'])) {
 				if ($request->servicePointId === null) {
-					throw new ShipmentCreationException(
+					throw new ShipmentInitiationException(
 						self::DRIVER_NAME,
 						'missing_service_point',
 						"Module '{$request->shippingModule}' requires a servicePointId (DPD Shop)"
@@ -262,7 +280,7 @@
 			
 			// If that failed, throw exception
 			if ($result['request']['result'] === 0) {
-				throw new ShipmentCreationException(
+				throw new ShipmentInitiationException(
 					self::DRIVER_NAME,
 					$result['request']['errorId'],
 					$result['request']['errorMessage']
@@ -274,7 +292,7 @@
 			
 			// DPD returns the 14-digit parcel label number as the stable identifier
 			if (empty($response['parcelLabelNumber'])) {
-				throw new ShipmentCreationException(
+				throw new ShipmentInitiationException(
 					self::DRIVER_NAME,
 					'missing_label_number',
 					'DPD did not return a parcel label number in the creation response'
@@ -282,12 +300,14 @@
 			}
 			
 			// Return the shipment result
+			$parcelLabelNumber = $this->normalizeString($response['parcelLabelNumber']);
+			
 			return new ShipmentResult(
 				provider: self::DRIVER_NAME,
-				parcelId: (string)$response['parcelLabelNumber'],
+				parcelId: $parcelLabelNumber,
 				reference: $request->reference,
-				trackingCode: (string)$response['parcelLabelNumber'],
-				trackingUrl: $this->buildTrackingUrl($response['parcelLabelNumber']),
+				trackingCode: $parcelLabelNumber,
+				trackingUrl: $this->buildTrackingUrl($parcelLabelNumber),
 				carrierName: 'DPD',
 				rawResponse: $response,
 			);
@@ -337,7 +357,7 @@
 			$response = $result['response'] ?? [];
 			
 			// Validate the response
-			if ($response['trackingresult'] === null) {
+			if (!is_array($response) || !isset($response['trackingresult']) || !is_array($response['trackingresult'])) {
 				throw new ShipmentExchangeException(
 					self::DRIVER_NAME,
 					'not_found',
@@ -368,53 +388,47 @@
 		 * @param string $shippingModule
 		 * @param ShipmentAddress|null $address
 		 * @return PickupOption[]
+		 * @throws ShipmentOptionException
 		 */
 		public function getPickupOptions(string $shippingModule, ?ShipmentAddress $address = null): array {
+			// No address, no result
 			if ($address === null) {
 				return [];
 			}
 			
+			// Call the API to find pickup points which dpd calls 'parcel shops'
 			$result = $this->getGateway()->findParcelShops(
 				$address->country,
 				$address->postalCode,
 				$address->city,
 			);
 			
+			// If failed, throw error
 			if ($result['request']['result'] === 0) {
-				return [];
-			}
-			
-			$shops = $result['response']['parcelShop'] ?? [];
-			
-			// findParcelShops returns a single shop as an object, not an array of objects
-			if (isset($shops['parcelShopId'])) {
-				$shops = [$shops];
-			}
-			
-			$options = [];
-			
-			foreach ($shops as $shop) {
-				$options[] = new PickupOption(
-					locationCode: (string)($shop['parcelShopId'] ?? ''),
-					name: $shop['company'] ?? '',
-					street: $shop['street'] ?? '',
-					houseNumber: (string)($shop['houseNo'] ?? ''),
-					postalCode: $shop['zipCode'] ?? '',
-					city: $shop['city'] ?? '',
-					country: $shop['country'] ?? $address->country,
-					carrierName: 'DPD',
-					latitude: isset($shop['latitude']) ? (float)$shop['latitude'] : null,
-					longitude: isset($shop['longitude']) ? (float)$shop['longitude'] : null,
-					distanceMetres: isset($shop['distance']) ? (int)round((float)$shop['distance'] * 1000) : null,
-					metadata: array_filter([
-						'openingHours' => $shop['openingHours'] ?? null,
-						'phone'        => $shop['phone'] ?? null,
-						'email'        => $shop['email'] ?? null,
-					], fn($v) => $v !== null && $v !== ''),
+				throw new ShipmentOptionException(
+					self::DRIVER_NAME,
+					$result['request']['errorId'],
+					$result['request']['errorMessage']
 				);
 			}
 			
-			return $options;
+			// Fetch and normalize response
+			$response = $result['response'] ?? [];
+			$shops = $this->normalizeParcelShops($response['parcelShop']);
+			
+			if ($shops === []) {
+				return [];
+			}
+			
+			// Decode and transform data
+			$transformer = new DeliveryOptionTransformer();
+			
+			return array_values(array_filter(
+				array_map(
+					fn(array $shop) => $transformer->transform($shop, $address),
+					$shops
+				)
+			));
 		}
 		
 		/**
@@ -429,8 +443,10 @@
 		 * @throws ShipmentLabelException
 		 */
 		public function getLabelUrl(string $parcelId): string {
+			// Call api to get label
 			$result = $this->getGateway()->getLabel($parcelId);
 			
+			// If that failed, bail
 			if ($result['request']['result'] === 0) {
 				throw new ShipmentLabelException(
 					self::DRIVER_NAME,
@@ -439,9 +455,11 @@
 				);
 			}
 			
-			$labelContent = $result['response']['labelContent'] ?? null;
+			// Fetch response
+			$response = $result['response'] ?? [];
+			$labelContent = $response['labelContent'] ?? null;
 			
-			if (empty($labelContent)) {
+			if (!is_string($labelContent) || $labelContent === '') {
 				throw new ShipmentLabelException(
 					self::DRIVER_NAME,
 					'missing_label',
@@ -449,6 +467,7 @@
 				);
 			}
 			
+			// Return label content
 			return 'data:application/pdf;base64,' . $labelContent;
 		}
 		
@@ -457,38 +476,20 @@
 		 * Used by exchange(). The current status entry is the one where isCurrentStatus = true;
 		 * we fall back to the last statusInfo entry if none is explicitly marked current.
 		 * @param string $parcelId The DPD parcel label number
-		 * @param array<string, mixed> $trackingResult Decoded tracking response
+		 * @param array<array-key, mixed> $trackingResult Decoded tracking response
 		 * @return ShipmentState
 		 */
 		public function buildStateFromTracking(string $parcelId, array $trackingResult): ShipmentState {
-			$statusInfos = $trackingResult['statusInfo'] ?? [];
+			// Resolve the status
+			$current = $this->resolveCurrentStatusInfo(
+				$trackingResult['statusInfo'] ?? null
+			);
 			
-			// Normalise single-entry response (XML-to-array may not wrap in array)
-			if (isset($statusInfos['status'])) {
-				$statusInfos = [$statusInfos];
-			}
-			
-			// Find the entry marked as current; fall back to last entry
-			$current = null;
-			
-			foreach ($statusInfos as $info) {
-				if (($info['isCurrentStatus'] ?? 'false') === 'true') {
-					$current = $info;
-				}
-			}
-			
-			$current ??= end($statusInfos) ?: [];
-			
-			$statusCode = $current['status'] ?? 'unknown';
+			// Extract status code
+			$statusCode = is_string($current['status'] ?? null) ? $current['status'] : 'unknown';
 			$status = self::STATUS_MAP[$statusCode] ?? ShipmentStatus::Unknown;
 			
-			// Extract human-readable label text from the nested label/content structure
-			$statusMessage = $current['label']['content'] ?? null;
-			
-			// Location and timestamp from the current status entry
-			$location = $current['location']['content'] ?? null;
-			$timestamp = $current['date']['content'] ?? null;
-			
+			// Return the normalized state
 			return new ShipmentState(
 				provider: self::DRIVER_NAME,
 				parcelId: $parcelId,
@@ -496,51 +497,154 @@
 				state: $status,
 				trackingCode: $parcelId,
 				trackingUrl: $this->buildTrackingUrl($parcelId),
-				statusMessage: $statusMessage,
+				statusMessage: $this->xmlNodeValue($current['label'] ?? null),
 				internalState: $statusCode,
 				metadata: array_filter([
-					'location'  => $location,
-					'timestamp' => $timestamp,
+					'location'  => $this->xmlNodeValue($current['location'] ?? null),
+					'timestamp' => $this->xmlNodeValue($current['date'] ?? null),
 				], fn($v) => $v !== null),
 			);
 		}
 		
 		/**
-		 * Lazily instantiates and returns the DPD gateway.
-		 * @return DPDGateway
+		 * Normalize the DPD parcelShop response into a list of parcel shop arrays.
+		 * @param mixed $response
+		 * @return list<array<string, mixed>>
 		 */
-		private function getGateway(): DPDGateway {
-			return $this->gateway ??= new DPDGateway($this);
+		private function normalizeParcelShops(mixed $response): array {
+			// No response
+			if (!is_array($response)) {
+				return [];
+			}
+			
+			// Single shop returned as associative array
+			if (isset($response['parcelShopId'])) {
+				/** @var array<string, mixed> $response */
+				return [$response];
+			}
+			
+			/** @var list<array<string, mixed>> $shops */
+			$shops = array_values(array_filter($response, 'is_array'));
+			return $shops;
+		}
+		
+		/**
+		 * Resolve the current DPD tracking status entry.
+		 * @param mixed $statusInfos
+		 * @return array<string, mixed>
+		 */
+		private function resolveCurrentStatusInfo(mixed $statusInfos): array {
+			// No status info present
+			if (!is_array($statusInfos)) {
+				return [];
+			}
+			
+			// Single-entry response
+			if (isset($statusInfos['status'])) {
+				/** @var array<string, mixed> $statusInfos */
+				return $statusInfos;
+			}
+			
+			// Multi-entry response
+			foreach ($statusInfos as $info) {
+				if (!is_array($info)) {
+					continue;
+				}
+				
+				if (($info['isCurrentStatus'] ?? 'false') === 'true') {
+					/** @var array<string, mixed> $info */
+					return $info;
+				}
+			}
+			
+			// Fetch last item
+			$last = end($statusInfos);
+			
+			// If invalid, return
+			if (!is_array($last)) {
+				return [];
+			}
+			
+			/** @var array<string, mixed> $last */
+			return $last;
 		}
 		
 		/**
 		 * Builds the sender block for the shipment request from the configured sender_address.
 		 * @param array<string, mixed> $config
 		 * @return array<string, mixed>
-		 * @throws ShipmentCreationException when sender_address is not configured
+		 * @throws ShipmentInitiationException when sender_address is not configured
 		 */
 		private function buildSenderBlock(array $config): array {
 			$sender = $config['sender_address'];
 			
 			if (empty($sender)) {
-				throw new ShipmentCreationException(
+				throw new ShipmentInitiationException(
 					self::DRIVER_NAME,
 					'missing_sender_address',
 					'DPD requires a sender address. Configure sender_address in the dpd.php config file.'
 				);
 			}
 			
+			if (!is_array($sender)) {
+				throw new ShipmentInitiationException(
+					self::DRIVER_NAME,
+					'invalid_sender_address',
+					'DPD sender_address must be an array.'
+				);
+			}
+			
+			/** @var array<string, mixed> $sender */
+			// All values come from array<string, mixed>; extract as strings with fallbacks
+			$company = is_string($sender['company'] ?? null) ? $sender['company'] : null;
+			$name = is_string($sender['name'] ?? null) ? $sender['name'] : null;
+			$street = $this->normalizeString($sender['street'] ?? null);
+			$number = $this->normalizeString($sender['number'] ?? null);
+			$cc = $this->normalizeString($sender['cc'] ?? null, 'NL');
+			$postalCode = $this->normalizeString($sender['postal_code'] ?? null);
+			$city = $this->normalizeString($sender['city'] ?? null);
+			$phone = is_string($sender['phone'] ?? null) ? $sender['phone'] : null;
+			$email = is_string($sender['email'] ?? null) ? $sender['email'] : null;
+			
 			return array_filter([
-				'name1'   => $sender['company'] ?? $sender['name'] ?? '',
-				'name2'   => $sender['name'] ?? null,
-				'street'  => $sender['street'] ?? '',
-				'houseNo' => $sender['number'] ?? '',
-				'country' => $sender['cc'] ?? 'NL',
-				'zipCode' => $sender['postal_code'] ?? '',
-				'city'    => $sender['city'] ?? '',
-				'phone'   => $sender['phone'] ?? null,
-				'email'   => $sender['email'] ?? null,
+				'name1'   => $company ?? $name ?? '',
+				'name2'   => $name,
+				'street'  => $street,
+				'houseNo' => $number,
+				'country' => $cc,
+				'zipCode' => $postalCode,
+				'city'    => $city,
+				'phone'   => $phone,
+				'email'   => $email,
 			], fn($v) => $v !== null && $v !== '');
+		}
+		
+		/**
+		 * Extracts a string value from an xmlToArray() node.
+		 *
+		 * xmlToArray() represents XML nodes as arrays. A node with a single text child
+		 * produces ['content' => 'text'] (DPD's common pattern), while a text-only node
+		 * passed directly to xmlToArray() produces ['_value' => 'text']. This helper
+		 * handles both forms so callers are not coupled to either representation.
+		 *
+		 * Returns null when $node is not an array or contains neither key.
+		 * @param mixed $node
+		 * @return string|null
+		 */
+		private function xmlNodeValue(mixed $node): ?string {
+			if (!is_array($node)) {
+				return null;
+			}
+			
+			if (is_string($node['content'] ?? null)) {
+				return $node['content'];
+			}
+			
+			if (is_string($node['_value'] ?? null)) {
+				return $node['_value'];
+			}
+			
+			return null;
 		}
 		
 		/**
@@ -550,5 +654,13 @@
 		 */
 		private function buildTrackingUrl(string $parcelLabelNumber): string {
 			return 'https://tracking.dpd.de/status/nl_NL/parcel/' . rawurlencode($parcelLabelNumber);
+		}
+		
+		/**
+		 * Lazily instantiates and returns the DPD gateway.
+		 * @return DPDGateway
+		 */
+		private function getGateway(): DPDGateway {
+			return $this->gateway ??= new DPDGateway($this);
 		}
 	}

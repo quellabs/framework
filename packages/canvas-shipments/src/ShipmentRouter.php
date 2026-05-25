@@ -75,14 +75,17 @@
 				// Register each module name, guarding against duplicate registrations
 				// across different provider packages
 				foreach ($metadata['modules'] as $module) {
+					// Skip malformed modules. Never happens, but there to satisfy phpstan
 					if (!is_string($module)) {
 						continue;
 					}
 					
+					// If the module already exists in the map, something went very wrong
 					if (isset($this->moduleMap[$module])) {
 						throw new \RuntimeException("Duplicate shipping module '{$module}' registered by {$class} and {$this->moduleMap[$module]}");
 					}
 					
+					// Add class to map
 					$this->moduleMap[$module] = $class;
 				}
 				
@@ -152,18 +155,9 @@
 		 * @param string $shippingModule
 		 * @param string $parcelId
 		 * @return string
-		 * @throws \RuntimeException
 		 */
 		public function getLabelUrl(string $shippingModule, string $parcelId): string {
 			return $this->resolve($shippingModule)->getLabelUrl($parcelId);
-		}
-		
-		/**
-		 * Returns all registered module names across all discovered providers.
-		 * @return string[]
-		 */
-		public function getRegisteredModules(): array {
-			return array_keys($this->moduleMap);
 		}
 		
 		/**
@@ -196,22 +190,7 @@
 		 * @throws \RuntimeException
 		 */
 		private function resolve(string $module): ShipmentProviderInterface {
-			// If module does not exist, tell the user by throwing an exception
-			if (!isset($this->moduleMap[$module])) {
-				throw new \RuntimeException("No shipping provider registered for module '{$module}'");
-			}
-			
-			// Try to get the provider
-			$result = $this->discover->get($this->moduleMap[$module]);
-			
-			// If that failed, no provider implementation exists.
-			// Should never happen, because of the previous isset check
-			if (!$result instanceof ShipmentProviderInterface) {
-				throw new \RuntimeException("Invalid shipping provider '{$module}'");
-			}
-			
-			// Return the module
-			return $result;
+			return $this->resolveFromMap($this->moduleMap, $module, 'module');
 		}
 		
 		/**
@@ -221,21 +200,42 @@
 		 * @throws \RuntimeException
 		 */
 		private function resolveDriver(string $driver): ShipmentProviderInterface {
-			// If driver does not exist, tell the user by throwing an exception
-			if (!isset($this->driverMap[$driver])) {
-				throw new \RuntimeException("No shipping driver registered for driver '{$driver}'");
+			return $this->resolveFromMap($this->driverMap, $driver, 'driver');
+		}
+		
+		/**
+		 * Resolves a shipment provider from the given lookup map.
+		 * Shared resolver used by both module- and driver-based routing.
+		 *
+		 * @param array<string, class-string<ShipmentProviderInterface>> $map
+		 *        Lookup table mapping module/driver names to provider classes
+		 * @param string $key Module or driver identifier supplied by the caller
+		 * @param string $type Human-readable identifier used in exception messages (e.g. 'module' or 'driver')
+		 * @return ShipmentProviderInterface
+		 * @throws \RuntimeException
+		 *         When no provider is registered for the key or the resolved
+		 *         implementation does not implement ShipmentProviderInterface
+		 */
+		private function resolveFromMap(array $map, string $key, string $type): ShipmentProviderInterface {
+			// Ensure the requested key exists before attempting resolution
+			if (!isset($map[$key])) {
+				throw new \RuntimeException(
+					"No shipping {$type} registered for {$type} '{$key}'"
+				);
 			}
 			
-			// Try to get the driver
-			$result = $this->discover->get($this->driverMap[$driver]);
+			// Resolve the provider instance through Discover
+			$result = $this->discover->get($map[$key]);
 			
-			// If that failed, no provider implementation exists.
-			// Should never happen, because of the previous isset check
+			// Guard against invalid or malformed provider registrations
+			// Should never happen if discovery metadata is correct
 			if (!$result instanceof ShipmentProviderInterface) {
-				throw new \RuntimeException("Invalid shipping driver '{$driver}'");
+				throw new \RuntimeException(
+					"Invalid shipping {$type} '{$key}'"
+				);
 			}
 			
-			// Return the driver
+			// Return the resolved shipment provider
 			return $result;
 		}
 		

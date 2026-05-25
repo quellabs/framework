@@ -43,7 +43,7 @@
 		
 		// Sender address — required on every DPD shipment.
 		// DPD prints the sender address on the label and uses it for returns.
-		// If left empty, shipment creation will throw a ShipmentCreationException.
+		// If left empty, shipment creation will throw a ShipmentInitiationException.
 		'sender_address' => [
 			'company'     => 'My Webshop B.V.',
 			'name'        => 'Logistics Dept',

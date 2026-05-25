@@ -7,8 +7,9 @@
 	use Quellabs\Shipments\Contracts\DeliveryOption;
 	use Quellabs\Shipments\Contracts\PickupOption;
 	use Quellabs\Shipments\Contracts\ShipmentAddress;
+	use Quellabs\Shipments\Contracts\ShipmentOptionException;
+	use Quellabs\Shipments\Contracts\ShipmentInitiationException;
 	use Quellabs\Shipments\Contracts\ShipmentCancellationException;
-	use Quellabs\Shipments\Contracts\ShipmentCreationException;
 	use Quellabs\Shipments\Contracts\ShipmentExchangeException;
 	use Quellabs\Shipments\Contracts\ShipmentLabelException;
 	use Quellabs\Shipments\Contracts\ShipmentProviderInterface;
@@ -16,9 +17,13 @@
 	use Quellabs\Shipments\Contracts\ShipmentResult;
 	use Quellabs\Shipments\Contracts\ShipmentState;
 	use Quellabs\Shipments\Contracts\ShipmentStatus;
+	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Quellabs\Support\Tools;
+	use Quellabs\Shipments\DHL\Transformers\PickupOptionTransformer;
 	
 	class Driver implements ShipmentProviderInterface {
+		
+		use GatewayHelpers;
 		
 		/**
 		 * Driver name — stored in ShipmentResult::$provider and ShipmentState::$provider.
@@ -148,7 +153,15 @@
 		
 		/**
 		 * Returns default configuration values for this driver.
-		 * @return array<string, mixed>
+		 * @return array{
+		 *     user_id: string,
+		 *     api_key: string,
+		 *     user_id_test: string,
+		 *     api_key_test: string,
+		 *     account_id: string,
+		 *     test_mode: bool,
+		 *     sender_address: array<string, mixed>
+		 * }
 		 */
 		public function getDefaults(): array {
 			return [
@@ -175,14 +188,13 @@
 		 *
 		 * @param ShipmentRequest $request
 		 * @return ShipmentResult
-		 * @throws ShipmentCreationException
-		 * @throws \Exception
+		 * @throws ShipmentInitiationException
 		 */
 		public function create(ShipmentRequest $request): ShipmentResult {
 			$productKey = self::MODULE_PRODUCT_MAP[$request->shippingModule] ?? null;
 			
 			if ($productKey === null) {
-				throw new ShipmentCreationException(
+				throw new ShipmentInitiationException(
 					self::DRIVER_NAME,
 					'unknown_module',
 					"Unknown shipping module '{$request->shippingModule}'"
@@ -194,16 +206,26 @@
 			
 			// DHL uses a caller-generated UUID as the idempotency key for the shipment.
 			// This is NOT the parcel identifier; the trackerCode returned by DHL serves that role.
-			$shipmentUuid = Tools::createUUIDv4();
+			try {
+				$shipmentUuid = Tools::createUUIDv4();
+			} catch (\Exception $e) {
+				throw new ShipmentInitiationException(
+					self::DRIVER_NAME,
+					'unknown_module',
+					"Could not create UUID4 shipment id for shipping module '{$request->shippingModule}'",
+					$e
+				);
+			}
 			
 			// Build options
 			$options = [['key' => 'DOOR']];
 			
+			// When delivering to a DHL ServicePoint, replace DOOR with PS and provide the location ID
 			if ($request->servicePointId !== null) {
-				// When delivering to a DHL ServicePoint, replace DOOR with PS and provide the location ID
 				$options = [['key' => 'PS', 'input' => $request->servicePointId]];
 			}
 			
+			// Add reference string (user supplied text)
 			if ($request->description !== null) {
 				$options[] = ['key' => 'REFERENCE', 'input' => substr($request->description, 0, 15)];
 			}
@@ -233,7 +255,7 @@
 			// to prevent it appearing as a stray field in the DHL payload.
 			if (!empty($request->extraData)) {
 				$extraWithoutOptions = array_diff_key($request->extraData, ['options' => true]);
-				$payload = array_merge($payload, $extraWithoutOptions);
+				$payload             = array_merge($payload, $extraWithoutOptions);
 			}
 			
 			// Call API
@@ -241,7 +263,7 @@
 			
 			// If that failed, throw error
 			if ($result['request']['result'] === 0) {
-				throw new ShipmentCreationException(
+				throw new ShipmentInitiationException(
 					self::DRIVER_NAME,
 					$result['request']['errorId'],
 					$result['request']['errorMessage']
@@ -252,8 +274,8 @@
 			// This is the stable identifier — use it as parcelId throughout the system.
 			$trackerCode = $result['response']['trackerCode'] ?? null;
 			
-			if ($trackerCode === null || $trackerCode === '') {
-				throw new ShipmentCreationException(
+			if (!is_string($trackerCode) || $trackerCode === '') {
+				throw new ShipmentInitiationException(
 					self::DRIVER_NAME,
 					'missing_tracker_code',
 					'DHL did not return a tracker code in the shipment creation response'
@@ -276,7 +298,6 @@
 		 * DHL Parcel NL does not expose a cancellation endpoint in its public API.
 		 * Shipments must be cancelled via the My DHL Parcel portal or the Interventions endpoint,
 		 * which requires a separate agreement with DHL.
-		 *
 		 * @param CancelRequest $request
 		 * @return CancelResult
 		 * @throws ShipmentCancellationException always
@@ -303,8 +324,10 @@
 		 * @throws ShipmentExchangeException
 		 */
 		public function exchange(string $parcelId): ShipmentState {
+			// Fetch track&trace info from API
 			$result = $this->getGateway()->getTrackTrace($parcelId);
 			
+			// If that failed, throw the error
 			if ($result['request']['result'] === 0) {
 				throw new ShipmentExchangeException(
 					self::DRIVER_NAME,
@@ -313,9 +336,10 @@
 				);
 			}
 			
-			$events = $result['response'] ?? [];
+			// Extract response
+			$response = $result['response'] ?? [];
 			
-			if (empty($events)) {
+			if (empty($response)) {
 				throw new ShipmentExchangeException(
 					self::DRIVER_NAME,
 					'not_found',
@@ -323,7 +347,76 @@
 				);
 			}
 			
-			return $this->buildStateFromEvents($parcelId, $events);
+			// Events are ordered chronologically; the last entry is the current state
+			$latest = is_array(end($response)) ? end($response) : null;
+			
+			// category and status are guaranteed on every DHL event object.
+			// A missing or non-string value means the response is malformed.
+			if (!isset($latest['category']) || !is_string($latest['category'])) {
+				throw new ShipmentExchangeException(
+					self::DRIVER_NAME,
+					'malformed_response',
+					"DHL track-and-trace event is missing required 'category' field for tracker code {$parcelId}"
+				);
+			}
+			
+			if (!isset($latest['status']) || !is_string($latest['status'])) {
+				throw new ShipmentExchangeException(
+					self::DRIVER_NAME,
+					'malformed_response',
+					"DHL track-and-trace event is missing required 'status' field for tracker code {$parcelId}"
+				);
+			}
+			
+			// Extract data
+			$category   = strtoupper($latest['category']);
+			$statusCode = strtoupper($latest['status']);
+			
+			// Fine-grained overrides take precedence over category-level mapping
+			$status = self::STATUS_OVERRIDE_MAP[$statusCode] ?? self::CATEGORY_MAP[$category] ?? ShipmentStatus::Unknown;
+			
+			// The first element holds top-level shipment fields (deliveredAt, barcode).
+			// Guard with is_array: $events is array<string,mixed>, so $events[0] is mixed.
+			$first = isset($response[0]) && is_array($response[0]) ? $response[0] : [];
+			
+			// deliveredAt is set at the top level of the response when the parcel is delivered
+			$deliveredAt = isset($first['deliveredAt']) && is_string($first['deliveredAt']) ? $first['deliveredAt'] : null;
+			$barcode     = isset($first['barcode']) && is_string($first['barcode']) ? $first['barcode'] : $parcelId;
+			
+			// Extract postal code from the most recent event if provided (needed for tracking URL)
+			$postalCodeLatest = isset($latest['postalCode']) && is_string($latest['postalCode']) ? $latest['postalCode'] : null;
+			$postalCodeFirst  = isset($first['postalCode']) && is_string($first['postalCode']) ? $first['postalCode'] : null;
+			$postalCode       = $postalCodeLatest ?? $postalCodeFirst ?? '';
+			
+			// Planned delivery window, present in UNDERWAY events after hub sorting
+			if (isset($latest['plannedDeliveryTimeframe']) && is_string($latest['plannedDeliveryTimeframe'])) {
+				$plannedWindow = $latest['plannedDeliveryTimeframe'];
+			} else {
+				$plannedWindow = null;
+			}
+			
+			// reference from latest event
+			$reference = isset($latest['reference']) && is_string($latest['reference']) ? $latest['reference'] : '';
+			
+			// facility from latest event
+			$facility = isset($latest['facility']) && is_string($latest['facility']) ? $latest['facility'] : null;
+			
+			return new ShipmentState(
+				provider: self::DRIVER_NAME,
+				parcelId: $barcode,
+				reference: $reference,
+				state: $status,
+				trackingCode: $barcode,
+				trackingUrl: $this->buildTrackingUrl($barcode, $postalCode),
+				statusMessage: $this->buildStatusMessage($category, $statusCode, $plannedWindow),
+				internalState: $statusCode,
+				metadata: array_filter([
+					'category'              => $category,
+					'deliveredAt'           => $deliveredAt,
+					'plannedDeliveryWindow' => $plannedWindow,
+					'facility'              => $facility,
+				], fn($v) => $v !== null),
+			);
 		}
 		
 		/**
@@ -346,44 +439,42 @@
 		 * @param string $shippingModule
 		 * @param ShipmentAddress|null $address
 		 * @return PickupOption[]
+		 * @throws ShipmentOptionException
 		 */
 		public function getPickupOptions(string $shippingModule, ?ShipmentAddress $address = null): array {
+			// If no address passed, do not call API
 			if ($address === null) {
 				return [];
 			}
 			
+			// Call API
 			$result = $this->getGateway()->getParcelShops(
 				$address->country,
 				$address->postalCode,
 				$address->city
 			);
 			
+			// If failed, throw error
 			if ($result['request']['result'] === 0) {
-				return [];
+				throw new ShipmentOptionException(
+					self::DRIVER_NAME,
+					$result['request']['errorId'],
+					$result['request']['errorMessage']
+				);
 			}
 			
+			// Transformer
+			$transformer = new PickupOptionTransformer();
+			
+			// Decode the response
 			$options = [];
 			
 			foreach ($result['response'] ?? [] as $shop) {
-				$addr = $shop['address'] ?? [];
+				if (!is_array($shop)) {
+					continue;
+				}
 				
-				$options[] = new PickupOption(
-					locationCode: $shop['id'] ?? '',
-					name: $shop['name'] ?? '',
-					street: $addr['street'] ?? '',
-					houseNumber: (string)($addr['number'] ?? ''),
-					postalCode: $addr['postalCode'] ?? $addr['zipCode'] ?? '',
-					city: $addr['city'] ?? '',
-					country: $addr['countryCode'] ?? $address->country,
-					carrierName: 'DHL',
-					latitude: isset($shop['geoLocation']['latitude']) ? (float)$shop['geoLocation']['latitude'] : null,
-					longitude: isset($shop['geoLocation']['longitude']) ? (float)$shop['geoLocation']['longitude'] : null,
-					distanceMetres: isset($shop['distance']) ? (int)$shop['distance'] : null,
-					metadata: array_filter([
-						'shopType'     => $shop['shopType'] ?? null,
-						'openingTimes' => $shop['openingTimes'] ?? null,
-					], fn($v) => $v !== null),
-				);
+				$options[] = $transformer->transform($shop, $address);
 			}
 			
 			return $options;
@@ -416,8 +507,18 @@
 				);
 			}
 			
-			// The labels endpoint returns an array; we expect exactly one label per tracker code
-			$labelId = $result['response'][0]['labelId'] ?? null;
+			// The labels endpoint returns an array; we expect exactly one label per tracker code.
+			// $result['response'] is array<string,mixed>, so $result['response'][0] is mixed.
+			$firstLabel = $result['response'][0] ?? null;
+			
+			/** @var array<string, mixed>|null $firstLabel */
+			$firstLabel = is_array($firstLabel) ? $firstLabel : null;
+			
+			if (($firstLabel !== null && is_string($firstLabel['labelId'] ?? null))) {
+				$labelId = $firstLabel['labelId'];
+			} else {
+				$labelId = null;
+			}
 			
 			if ($labelId === null) {
 				throw new ShipmentLabelException(
@@ -432,55 +533,9 @@
 			// must fetch it server-side with a valid Bearer token.
 			// Build the label URL against the correct environment base URL.
 			// Callers must fetch this server-side with a valid Bearer token.
-			$config = $this->getConfig();
+			$config  = $this->getConfig();
 			$baseUrl = $config['test_mode'] ? DHLGateway::BASE_URL_TEST : DHLGateway::BASE_URL_LIVE;
 			return $baseUrl . "/labels/{$labelId}";
-		}
-		
-		/**
-		 * Builds a ShipmentState from the array of track-and-trace events returned by DHL.
-		 * Used by exchange(). The last event in the array represents the current state.
-		 * @param string $parcelId The DHL tracker code
-		 * @param array<string, mixed> $events Array from the track-trace response (chronological)
-		 * @return ShipmentState
-		 */
-		public function buildStateFromEvents(string $parcelId, array $events): ShipmentState {
-			// Events are ordered chronologically; the last entry is the current state
-			$latest = end($events);
-			$category = strtoupper($latest['category'] ?? 'UNKNOWN');
-			$statusCode = strtoupper($latest['status'] ?? 'UNKNOWN');
-			
-			// Fine-grained overrides take precedence over category-level mapping
-			$status = self::STATUS_OVERRIDE_MAP[$statusCode]
-				?? self::CATEGORY_MAP[$category]
-				?? ShipmentStatus::Unknown;
-			
-			// deliveredAt is set at the top level of the response when the parcel is delivered
-			$deliveredAt = $events[0]['deliveredAt'] ?? null;
-			$barcode = $events[0]['barcode'] ?? $parcelId;
-			
-			// Extract postal code from the most recent event if provided (needed for tracking URL)
-			$postalCode = $latest['postalCode'] ?? $events[0]['postalCode'] ?? '';
-			
-			// Planned delivery window, present in UNDERWAY events after hub sorting
-			$plannedWindow = $latest['plannedDeliveryTimeframe'] ?? null;
-			
-			return new ShipmentState(
-				provider: self::DRIVER_NAME,
-				parcelId: $barcode,
-				reference: $latest['reference'] ?? '',
-				state: $status,
-				trackingCode: $barcode,
-				trackingUrl: $this->buildTrackingUrl($barcode, $postalCode),
-				statusMessage: $this->buildStatusMessage($category, $statusCode, $plannedWindow),
-				internalState: $statusCode,
-				metadata: array_filter([
-					'category'              => $category,
-					'deliveredAt'           => $deliveredAt,
-					'plannedDeliveryWindow' => $plannedWindow,
-					'facility'              => $latest['facility'] ?? null,
-				], fn($v) => $v !== null),
-			);
 		}
 		
 		/**
@@ -493,12 +548,12 @@
 		 * the smallest DHL type whose maximum weight accommodates the shipment, ensuring the
 		 * cheapest appropriate product is selected automatically.
 		 *
-		 * Throws ShipmentCreationException when auto-selection is used and the weight exceeds
+		 * Throws ShipmentInitiationException when auto-selection is used and the weight exceeds
 		 * XL (31 500 g / 31.5 kg), since DHL has no standard product above that limit.
 		 *
 		 * @param ShipmentRequest $request
 		 * @return string DHL parcel type key (e.g. 'SMALL', 'MEDIUM', 'LARGE', 'XL')
-		 * @throws ShipmentCreationException when weight exceeds the XL limit
+		 * @throws ShipmentInitiationException when weight exceeds the XL limit
 		 */
 		private function resolveParcelType(ShipmentRequest $request): string {
 			// Typed property takes priority over weight-based auto-selection
@@ -513,9 +568,10 @@
 				}
 			}
 			
+			// Limit the weight to 1000kg
 			$maxKg = max(self::PARCEL_TYPE_WEIGHT_MAP) / 1000;
 			
-			throw new ShipmentCreationException(
+			throw new ShipmentInitiationException(
 				self::DRIVER_NAME,
 				'weight_exceeds_limit',
 				"Shipment weight of {$request->weightGrams} g exceeds the maximum DHL parcel weight of {$maxKg} kg (XL). " .
@@ -565,40 +621,43 @@
 		
 		/**
 		 * Builds the shipper block from the configured sender_address.
-		 * Throws ShipmentCreationException if no sender address is configured,
+		 * Throws ShipmentInitiationException if no sender address is configured,
 		 * since DHL requires a shipper on every label.
 		 * @param array<string, mixed> $config
 		 * @return array<string, mixed>
-		 * @throws ShipmentCreationException
+		 * @throws ShipmentInitiationException
 		 */
 		private function buildShipper(array $config): array {
 			$sender = $config['sender_address'];
 			
-			if (empty($sender)) {
-				throw new ShipmentCreationException(
+			if (empty($sender) || !is_array($sender)) {
+				throw new ShipmentInitiationException(
 					self::DRIVER_NAME,
 					'missing_sender_address',
 					'DHL requires a sender address. Configure sender_address in the dhl.php config file.'
 				);
 			}
 			
+			$person  = isset($sender['person']) && is_string($sender['person']) ? $sender['person'] : '';
+			$company = isset($sender['company']) && is_string($sender['company']) ? $sender['company'] : null;
+			
 			$shipper = [
-				'name'    => $this->buildNameBlock($sender['person'] ?? '', $sender['company'] ?? null),
+				'name'    => $this->buildNameBlock($person, $company),
 				'address' => array_filter([
-					'countryCode' => $sender['cc'] ?? 'NL',
-					'postalCode'  => $sender['postal_code'] ?? '',
-					'city'        => $sender['city'] ?? '',
-					'street'      => $sender['street'] ?? '',
-					'number'      => $sender['number'] ?? '',
+					'countryCode' => isset($sender['cc']) && is_string($sender['cc']) ? $sender['cc'] : 'NL',
+					'postalCode'  => isset($sender['postal_code']) && is_string($sender['postal_code']) ? $sender['postal_code'] : '',
+					'city'        => isset($sender['city']) && is_string($sender['city']) ? $sender['city'] : '',
+					'street'      => isset($sender['street']) && is_string($sender['street']) ? $sender['street'] : '',
+					'number'      => isset($sender['number']) && is_string($sender['number']) ? $sender['number'] : '',
 					'isBusiness'  => !empty($sender['company']),
 				], fn($v) => $v !== false && $v !== ''),
 			];
 			
-			if (!empty($sender['email'])) {
+			if (!empty($sender['email']) && is_string($sender['email'])) {
 				$shipper['email'] = $sender['email'];
 			}
 			
-			if (!empty($sender['phone'])) {
+			if (!empty($sender['phone']) && is_string($sender['phone'])) {
 				$shipper['phoneNumber'] = $sender['phone'];
 			}
 			
@@ -627,6 +686,7 @@
 		 * @return string|null
 		 */
 		private function buildStatusMessage(string $category, string $status, ?string $plannedWindow): ?string {
+			/** @noinspection PhpDuplicateMatchArmBodyInspection */
 			$message = match ($category) {
 				'DATA_RECEIVED' => 'Shipment registered',
 				'LEG' => 'Shipment registered',
@@ -645,8 +705,8 @@
 				
 				if (count($parts) === 2) {
 					try {
-						$from = new \DateTimeImmutable($parts[0]);
-						$to = new \DateTimeImmutable($parts[1]);
+						$from    = new \DateTimeImmutable($parts[0]);
+						$to      = new \DateTimeImmutable($parts[1]);
 						$message .= ' — expected ' . $from->format('d-m-Y H:i') . '–' . $to->format('H:i');
 					} catch (\Throwable) {
 						// If parsing fails, omit the window rather than crashing

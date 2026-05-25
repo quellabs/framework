@@ -68,18 +68,24 @@
 			}
 			
 			// Decode the body
-			$body = json_decode($rawBody, true);
+			$decoded = json_decode($rawBody, true);
 			
 			if (json_last_error() !== JSON_ERROR_NONE) {
 				return new JsonResponse('Invalid JSON (' . json_last_error_msg() . ')', 400);
 			}
 			
-			// SendCloud wraps the parcel data in a 'parcel' key
-			$parcel = $body['parcel'] ?? null;
+			if (!is_array($decoded)) {
+				return new JsonResponse('Invalid JSON (expected object)', 400);
+			}
 			
-			if (empty($parcel)) {
+			// SendCloud wraps the parcel data in a 'parcel' key
+			$parcel = $decoded['parcel'] ?? null;
+			
+			if (!is_array($parcel) || empty($parcel)) {
 				return new JsonResponse('Missing parcel data', 400);
 			}
+			
+			/** @var array<string, mixed> $parcel */
 			
 			try {
 				// Build a normalised ShipmentState from the raw webhook payload.

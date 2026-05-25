@@ -3,6 +3,7 @@
 	namespace Quellabs\Shipments\PostNL;
 	
 	use Quellabs\Canvas\Annotations\Route;
+	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Quellabs\Shipments\Contracts\ShipmentExchangeException;
 	use Quellabs\SignalHub\Signal;
 	use Symfony\Component\HttpFoundation\JsonResponse;
@@ -10,6 +11,8 @@
 	use Symfony\Component\HttpFoundation\Response;
 	
 	class PostNLController {
+		
+		use GatewayHelpers;
 		
 		/**
 		 * @var Driver PostNL driver
@@ -37,7 +40,8 @@
 		public function __construct(Driver $postnl) {
 			$this->postnl = $postnl;
 			$this->signal = new Signal('shipment_exchange');
-			$this->webhookSecret = $postnl->getConfig()['webhook_secret'] ?? '';
+			$webhookSecret = $postnl->getConfig()['webhook_secret'] ?? null;
+			$this->webhookSecret = is_string($webhookSecret) ? $webhookSecret : '';
 		}
 		
 		/**
@@ -76,13 +80,18 @@
 				}
 			}
 			
-			$body = json_decode($rawBody, true);
+			$decoded = json_decode($rawBody, true);
 			
 			if (json_last_error() !== JSON_ERROR_NONE) {
 				return new JsonResponse('Invalid JSON (' . json_last_error_msg() . ')', 400);
 			}
 			
-			$barcode = $body['Barcode'] ?? null;
+			if (!is_array($decoded)) {
+				return new JsonResponse('Invalid payload: expected JSON object', 400);
+			}
+			
+			$body = $decoded;
+			$barcode = $this->arrayGetString($body, 'Barcode');
 			
 			if (empty($barcode)) {
 				return new JsonResponse('Missing or invalid Barcode', 400);
@@ -96,7 +105,7 @@
 				
 				// Notify listeners (e.g. order management) of the updated shipment state
 				$this->signal->emit($state);
-			} catch (\Throwable $exception) {
+			} catch (ShipmentExchangeException $exception) {
 				// Log but return 200 to prevent PostNL from retrying indefinitely.
 				// Missed events can be recovered by calling exchange() explicitly.
 				error_log('PostNL webhook processing failed: ' . $exception->getMessage());

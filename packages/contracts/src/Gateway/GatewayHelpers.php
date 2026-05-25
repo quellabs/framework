@@ -12,18 +12,51 @@
 		 * @return mixed
 		 */
 		private function arrayGet(array $data, string $path, mixed $default = null): mixed {
-			$segments = explode('.', $path);
-			$current  = $data;
+			$current = $data;
 			
-			foreach ($segments as $segment) {
-				if (!is_array($current) || !array_key_exists($segment, $current)) {
+			foreach (explode('.', $path) as $segment) {
+				if (!is_array($current)) {
 					return $default;
 				}
 				
-				$current = $current[$segment];
+				if (ctype_digit($segment)) {
+					$key = (int)$segment;
+				} else {
+					$key = $segment;
+				}
+				
+				if (!array_key_exists($key, $current)) {
+					return $default;
+				}
+				
+				$current = $current[$key];
 			}
 			
 			return $current;
+		}
+		
+		/**
+		 * Safely retrieves a string value from a nested array using dot notation.
+		 * Returns null when the path does not exist or the value is not a string.
+		 * @param array<array-key, mixed> $data
+		 * @param string $path
+		 * @return string|null
+		 */
+		private function arrayGetString(array $data, string $path): ?string {
+			$value = $this->arrayGet($data, $path);
+			return is_string($value) ? $value : null;
+		}
+		
+		/**
+		 * Safely retrieves an array value from a nested array using dot notation.
+		 * Returns null when the path does not exist or the value is not an array.
+		 * @param array<array-key, mixed> $data
+		 * @param string $path
+		 * @return array<array-key, mixed>|null
+		 */
+		private function arrayGetArray(array $data, string $path): ?array {
+			$value = $this->arrayGet($data, $path);
+			return is_array($value) ? $value : null;
 		}
 		
 		/**
