@@ -177,7 +177,7 @@
 		 * barcode) and the label PDF as a base64-encoded string in the same response.
 		 * The label PDF from the response is written to the file cache so that
 		 * getLabelUrl() can retrieve it in any subsequent request or process.
-		 * 
+		 *
 		 * @param ShipmentRequest $request
 		 * @return ShipmentResult
 		 * @throws ShipmentInitiationException
