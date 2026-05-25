@@ -11,6 +11,7 @@
 	use Quellabs\Shipments\Contracts\ShipmentInitiationException;
 	use Quellabs\Shipments\Contracts\ShipmentExchangeException;
 	use Quellabs\Shipments\Contracts\ShipmentLabelException;
+	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Quellabs\Shipments\Contracts\ShipmentProviderInterface;
 	use Quellabs\Shipments\Contracts\ShipmentRequest;
 	use Quellabs\Shipments\Contracts\ShipmentResult;
@@ -18,6 +19,8 @@
 	use Quellabs\Shipments\Contracts\ShipmentStatus;
 	
 	class Driver implements ShipmentProviderInterface {
+		
+		use GatewayHelpers;
 		
 		/**
 		 * Driver name — stored in ShipmentResult::$provider and ShipmentState::$provider.
@@ -323,12 +326,12 @@
 				'Customer'  => [
 					'Address'            => array_filter([
 						'AddressType' => '02',
-						'City'        => $config['sender_address']['city'] ?? '',
-						'CompanyName' => $config['sender_address']['company'] ?? '',
-						'Countrycode' => $config['sender_address']['country'] ?? 'NL',
-						'HouseNr'     => $config['sender_address']['houseNumber'] ?? '',
-						'Street'      => $config['sender_address']['street'] ?? '',
-						'Zipcode'     => $config['sender_address']['postalCode'] ?? '',
+						'City'        => $this->arrayGetString($config, 'sender_address.city') ?? '',
+						'CompanyName' => $this->arrayGetString($config, 'sender_address.company') ?? '',
+						'Countrycode' => $this->arrayGetString($config, 'sender_address.country') ?? 'NL',
+						'HouseNr'     => $this->arrayGetString($config, 'sender_address.houseNumber') ?? '',
+						'Street'      => $this->arrayGetString($config, 'sender_address.street') ?? '',
+						'Zipcode'     => $this->arrayGetString($config, 'sender_address.postalCode') ?? '',
 					], fn($v) => $v !== ''),
 					'CollectionLocation' => $config['collection_location'],
 					'CustomerCode'       => $config['customer_code'],
@@ -395,7 +398,8 @@
 			$response = $result['response'] ?? [];
 			
 			// Fetch the shipment data
-			$responseShipment = $response['ResponseShipments'][0] ?? null;
+			$responseShipments = $this->arrayGetArray($response, 'ResponseShipments');
+			$responseShipment = (is_array($responseShipments[0] ?? null)) ? $responseShipments[0] : null;
 			
 			// If that failed, throw an error
 			if ($responseShipment === null) {
@@ -407,7 +411,7 @@
 			}
 			
 			// Fetch the barcode
-			$barcode = $responseShipment['Barcode'] ?? null;
+			$barcode = $this->arrayGetString($responseShipment, 'Barcode');
 			
 			// If that failed, throw an error
 			if (empty($barcode)) {
@@ -500,7 +504,8 @@
 			}
 			
 			// Fetch the shipment data
-			$shipmentData = $result['response']['Shipment'] ?? null;
+			$exchangeResponse = $result['response'] ?? [];
+			$shipmentData = $this->arrayGetArray($exchangeResponse, 'Shipment');
 			
 			// If that failed, throw an error
 			if ($shipmentData === null) {
@@ -512,17 +517,20 @@
 			}
 			
 			// PostNL returns status events ordered newest-first; the first entry is current state
-			$currentEvent = $shipmentData['Events'][0] ?? [];
-			$phaseCode = (int)($currentEvent['PhaseCode'] ?? 0);
-			$statusCode = (int)($currentEvent['StatusCode'] ?? 0);
-			$statusDescription = $currentEvent['Description'] ?? null;
+			$events = $this->arrayGetArray($shipmentData, 'Events');
+			$currentEvent = (is_array($events[0] ?? null)) ? $events[0] : [];
+			$phaseCode = $this->toInt($currentEvent['PhaseCode'] ?? null);
+			$statusCode = $this->toInt($currentEvent['StatusCode'] ?? null);
+			$statusDescription = $this->arrayGetString($currentEvent, 'Description');
 			
 			// StatusCode takes precedence for fine-grained mapping; fall back to PhaseCode
 			$status = self::STATUS_MAP[$statusCode] ?? self::STATUS_MAP[$phaseCode] ?? ShipmentStatus::Unknown;
 			$internalState = $phaseCode . '.' . $statusCode;
-			$barcode = $shipmentData['Barcode'] ?? '';
-			$postalCode = $shipmentData['Addresses'][0]['Zipcode'] ?? '';
-			$reference = $shipmentData['Reference'] ?? '';
+			$barcode = $this->arrayGetString($shipmentData, 'Barcode') ?? '';
+			$addresses = $this->arrayGetArray($shipmentData, 'Addresses');
+			$firstAddress = (is_array($addresses[0] ?? null)) ? $addresses[0] : [];
+			$postalCode = $this->arrayGetString($firstAddress, 'Zipcode') ?? '';
+			$reference = $this->arrayGetString($shipmentData, 'Reference') ?? '';
 			
 			return new ShipmentState(
 				provider: self::DRIVER_NAME,
@@ -537,7 +545,7 @@
 					'phaseCode'   => $phaseCode ?: null,
 					'statusCode'  => $statusCode ?: null,
 					'postalCode'  => $postalCode ?: null,
-					'productCode' => $shipmentData['ProductCode'] ?? null,
+					'productCode' => $this->arrayGetString($shipmentData, 'ProductCode'),
 				], fn($v) => $v !== null),
 			);
 		}
@@ -580,7 +588,13 @@
 			// Call the API to fetch timeframes
 			$startDate = (new \DateTimeImmutable('+1 day'))->format('d-m-Y');
 			$endDate = (new \DateTimeImmutable('+6 days'))->format('d-m-Y');
-			$options = $this->getConfig()['delivery_options'];
+			$configOptions = $this->getConfig()['delivery_options'];
+			
+			if (is_array($configOptions)) {
+				$options = array_values(array_filter($configOptions, 'is_string'));
+			} else {
+				$options = ['Daytime'];
+			}
 			
 			$result = $this->getGateway()->getTimeframes(
 				$address->postalCode,
@@ -597,7 +611,8 @@
 			}
 			
 			// The Timeframe API wraps its result in Timeframes.Timeframe[]
-			$days = $result['response']['Timeframes']['Timeframe'] ?? [];
+			$timeframeResponse = $result['response'] ?? [];
+			$days = $this->arrayGetArray($timeframeResponse, 'Timeframes.Timeframe') ?? [];
 			
 			// When the API returns a single day it may not wrap it in an array
 			if (isset($days['Date'])) {
@@ -608,7 +623,11 @@
 			$options = [];
 			
 			foreach ($days as $day) {
-				$dateStr = $day['Date'] ?? null;
+				if (!is_array($day)) {
+					continue;
+				}
+				
+				$dateStr = $this->arrayGetString($day, 'Date');
 				
 				if ($dateStr === null) {
 					continue;
@@ -617,18 +636,28 @@
 				$date = \DateTimeImmutable::createFromFormat('d-m-Y', $dateStr) ?: null;
 				
 				// Slots are in TimeframeTimeFrame[], same single-item wrapping caveat applies
-				$slots = $day['Timeframes']['TimeframeTimeFrame'] ?? [];
+				$slots = $this->arrayGetArray($day, 'Timeframes.TimeframeTimeFrame') ?? [];
 				
 				if (isset($slots['From'])) {
 					$slots = [$slots];
 				}
 				
 				foreach ($slots as $slot) {
-					$from = $slot['From'] ?? '';   // e.g. '08:00:00'
-					$to = $slot['To'] ?? '';     // e.g. '12:00:00'
+					if (!is_array($slot)) {
+						continue;
+					}
+					
+					$from = $this->arrayGetString($slot, 'From') ?? '';   // e.g. '08:00:00'
+					$to = $this->arrayGetString($slot, 'To') ?? '';     // e.g. '12:00:00'
 					
 					// Options is either a string or { "string": "Morning" }
-					$optionType = $slot['Options']['string'] ?? $slot['Options'] ?? 'Daytime';
+					$optionsField = $slot['Options'] ?? 'Daytime';
+					
+					if (is_array($optionsField)) {
+						$optionType = ($this->arrayGetString($optionsField, 'string') ?? 'Daytime');
+					} else {
+						$optionType = (is_string($optionsField) ? $optionsField : 'Daytime');
+					}
 					
 					// Build window
 					$windowStart = substr($from, 0, 5); // '08:00:00' → '08:00'
@@ -682,26 +711,31 @@
 			}
 			
 			// Fetch location data
-			$locations = $result['response']['GetLocationsResult']['ResponseLocation'] ?? [];
+			$locationsResponse = $result['response'] ?? [];
+			$locations = $this->arrayGetArray($locationsResponse, 'GetLocationsResult.ResponseLocation') ?? [];
 			
 			// Transform data to PickupOption objects
 			$options = [];
 			
 			foreach ($locations as $location) {
-				$address_ = $location['Address'] ?? [];
+				if (!is_array($location)) {
+					continue;
+				}
+				
+				$address_ = $this->arrayGetArray($location, 'Address') ?? [];
 				
 				$options[] = new PickupOption(
-					locationCode: (string)($location['LocationCode'] ?? ''),
-					name: $location['Name'] ?? '',
-					street: $address_['Street'] ?? '',
-					houseNumber: (string)($address_['HouseNr'] ?? ''),
-					postalCode: $address_['Zipcode'] ?? '',
-					city: $address_['City'] ?? '',
-					country: $address_['Countrycode'] ?? '',
+					locationCode: $this->arrayGetString($location, 'LocationCode') ?? '',
+					name: $this->arrayGetString($location, 'Name') ?? '',
+					street: $this->arrayGetString($address_, 'Street') ?? '',
+					houseNumber: $this->arrayGetString($address_, 'HouseNr') ?? '',
+					postalCode: $this->arrayGetString($address_, 'Zipcode') ?? '',
+					city: $this->arrayGetString($address_, 'City') ?? '',
+					country: $this->arrayGetString($address_, 'Countrycode') ?? '',
 					carrierName: 'PostNL',
-					latitude: isset($location['Latitude']) ? (float)$location['Latitude'] : null,
-					longitude: isset($location['Longitude']) ? (float)$location['Longitude'] : null,
-					distanceMetres: isset($location['Distance']) ? (int)$location['Distance'] : null,
+					latitude: $this->toFloat($location['Latitude'] ?? null) ?: null,
+					longitude: $this->toFloat($location['Longitude'] ?? null) ?: null,
+					distanceMetres: isset($location['Distance']) ? $this->toInt($location['Distance']) : null,
 					metadata: array_filter([
 						'retailNetworkId' => $location['RetailNetworkID'] ?? null,
 						'partnerName'     => $location['PartnerName'] ?? null,
@@ -739,7 +773,12 @@
 			}
 			
 			// Fetch the label content
-			$labelContent = $result['response']['ResponseShipments'][0]['Labels'][0]['Content'] ?? null;
+			$labelResponse = $result['response'] ?? [];
+			$responseShipments = $this->arrayGetArray($labelResponse, 'ResponseShipments');
+			$firstShipment = (is_array($responseShipments[0] ?? null)) ? $responseShipments[0] : [];
+			$labels = $this->arrayGetArray($firstShipment, 'Labels');
+			$firstLabel = (is_array($labels[0] ?? null)) ? $labels[0] : [];
+			$labelContent = $this->arrayGetString($firstLabel, 'Content');
 			
 			// If there's none, throw error
 			if ($labelContent === null) {
