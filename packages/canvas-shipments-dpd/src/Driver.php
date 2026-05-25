@@ -363,9 +363,7 @@
 				);
 			}
 			
-			/** @var array<string, mixed> $trackingResult */
-			$trackingResult = $response['trackingresult'];
-			return $this->buildStateFromTracking($parcelId, $trackingResult);
+			return $this->buildStateFromTracking($parcelId, $response['trackingresult']);
 		}
 		
 		/**
@@ -504,7 +502,7 @@
 		 * Used by exchange(). The current status entry is the one where isCurrentStatus = true;
 		 * we fall back to the last statusInfo entry if none is explicitly marked current.
 		 * @param string $parcelId The DPD parcel label number
-		 * @param array<string, mixed> $trackingResult Decoded tracking response
+		 * @param array<array-key, mixed> $trackingResult Decoded tracking response
 		 * @return ShipmentState
 		 */
 		public function buildStateFromTracking(string $parcelId, array $trackingResult): ShipmentState {

@@ -125,10 +125,6 @@
 				return ['request' => ['result' => 0, 'errorId' => 'invalid_payload', 'errorMessage' => 'Payload sections must be arrays']];
 			}
 
-			/** @var array<string, mixed> $general */
-			/** @var array<string, mixed> $parcels */
-			/** @var array<string, mixed> $psd */
-
 			$sendingDepot = is_string($general['sendingDepot'] ?? null) ? $general['sendingDepot'] : '';
 			$product      = is_string($general['product']      ?? null) ? $general['product']      : '';
 			$sender       = is_array($general['sender']        ?? null) ? $general['sender']       : [];
@@ -720,7 +716,7 @@ XML;
 		
 		/**
 		 * Builds the XML block for the <parcels> section.
-		 * @param array<string, mixed> $parcels
+		 * @param array<array-key, mixed> $parcels
 		 * @return string
 		 */
 		private function buildParcelsXml(array $parcels): string {
@@ -736,7 +732,7 @@ XML;
 		/**
 		 * Builds the XML block for the <productAndServiceData> section.
 		 * Handles nested structures (e.g. parcelShopDelivery).
-		 * @param array<string, mixed> $psd
+		 * @param array<array-key, mixed> $psd
 		 * @return string
 		 */
 		private function buildProductAndServiceDataXml(array $psd): string {
