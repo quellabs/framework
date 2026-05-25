@@ -246,6 +246,7 @@
 				}
 				
 				// Return success response; $body is a confirmed array<string, mixed> at this point
+				/** @var array<string, mixed> $body */
 				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $body];
 			} catch (TransportExceptionInterface|ClientExceptionInterface|RedirectionExceptionInterface|ServerExceptionInterface $e) {
 				return ['request' => ['result' => 0, 'errorId' => (string)$e->getCode(), 'errorMessage' => $e->getMessage()]];

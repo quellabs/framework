@@ -14,7 +14,7 @@
 		/**
 		 * @var Driver MyParcel driver
 		 */
-		private Driver $myparcel;
+		private Driver $driver;
 		
 		/**
 		 * Emitted after every parcel status change, carrying the updated ShipmentState.
@@ -25,10 +25,10 @@
 		
 		/**
 		 * Constructor
-		 * @param Driver $myparcel
+		 * @param Driver $driver
 		 */
-		public function __construct(Driver $myparcel) {
-			$this->myparcel = $myparcel;
+		public function __construct(Driver $driver) {
+			$this->driver = $driver;
 			$this->signal = new Signal('shipment_exchange');
 		}
 		
@@ -51,32 +51,41 @@
 		 * @return Response
 		 */
 		public function handleWebhook(Request $request): Response {
-			$rawBody = $request->getContent();
-			$body = json_decode($rawBody, true);
-			
-			if (json_last_error() !== JSON_ERROR_NONE) {
-				return new JsonResponse('Invalid JSON (' . json_last_error_msg() . ')', 400);
-			}
-			
-			if (!is_array($body)) {
-				return new JsonResponse('Invalid JSON: expected an object', 400);
-			}
-			
-			// MyParcel sends only the shipment ID, not the full parcel state
-			$shipmentId = $body['shipment_id'] ?? null;
-			
-			if (empty($shipmentId) || !is_numeric($shipmentId)) {
-				return new JsonResponse('Missing or invalid shipment_id', 400);
-			}
-			
 			try {
+				// Fetch body
+				$rawBody = $request->getContent();
+				
+				// Missing body error
+				if (empty($rawBody) || !is_string($rawBody)) {
+					return new JsonResponse('Empty response', 400);
+				}
+				
+				// Decode body
+				$body = json_decode($rawBody, true);
+				
+				// JSON decode error checking
+				if (json_last_error() !== JSON_ERROR_NONE) {
+					return new JsonResponse('Invalid JSON (' . json_last_error_msg() . ')', 400);
+				}
+				
+				if (!is_array($body)) {
+					return new JsonResponse('Invalid JSON: expected an object', 400);
+				}
+				
+				// MyParcel sends only the shipment ID, not the full parcel state
+				$shipmentId = $body['shipment_id'] ?? null;
+				
+				if (empty($shipmentId) || !is_numeric($shipmentId)) {
+					return new JsonResponse('Missing or invalid shipment_id', 400);
+				}
+				
 				// Fetch the current state from MyParcel — unavoidable because the webhook
 				// body contains only the ID, not the full shipment data
-				$state = $this->myparcel->exchange((string)$shipmentId);
+				$state = $this->driver->exchange((string)$shipmentId);
 				
 				// Notify listeners (e.g. order management) of the updated shipment state
 				$this->signal->emit($state);
-			} catch (\Throwable $exception) {
+			} catch (ShipmentExchangeException $exception) {
 				// Log but return 200 to prevent MyParcel from retrying indefinitely.
 				// Missed events can be recovered by calling ShipmentRouter::exchange() explicitly.
 				error_log('MyParcel webhook processing failed: ' . $exception->getMessage());
@@ -101,7 +110,7 @@
 			try {
 				// Re-fetch the current state from MyParcel and emit the signal,
 				// giving subscribers the same flow as a real webhook event
-				$state = $this->myparcel->exchange($shipmentId);
+				$state = $this->driver->exchange($shipmentId);
 				
 				// Notify listeners of the refreshed state
 				$this->signal->emit($state);

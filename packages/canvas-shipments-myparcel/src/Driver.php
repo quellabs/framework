@@ -281,7 +281,32 @@
 				);
 			}
 			
-			return $this->buildStateFromShipment($shipment);
+			$rawCarrierId  = $shipment['carrier_id'] ?? null;
+			$carrierId     = is_numeric($rawCarrierId) ? (int)$rawCarrierId : null;
+			$parcelId      = $this->normalizeString($shipment['id'] ?? '');
+			$reference     = $this->arrayGetString($shipment, 'reference_identifier') ?? '';
+			$internalState = $this->arrayGetString($shipment, 'status') ?? 'unknown';
+			$status        = self::STATUS_MAP[strtolower($internalState)] ?? ShipmentStatus::Unknown;
+			$barcode       = $this->arrayGetString($shipment, 'barcode');
+			$postalCode    = $this->arrayGetString($shipment, 'recipient.postal_code') ?? '';
+			$trackingUrl   = $barcode !== null ? $this->buildTrackingUrl($barcode, $postalCode, $carrierId) : null;
+			
+			return new ShipmentState(
+				provider: self::DRIVER_NAME,
+				parcelId: $parcelId,
+				reference: $reference,
+				state: $status,
+				trackingCode: $barcode,
+				trackingUrl: $trackingUrl,
+				statusMessage: null,
+				internalState: $internalState,
+				metadata: array_filter([
+					'carrierId'   => $carrierId,
+					'carrierName' => $this->carrierName($carrierId),
+					'postalCode'  => $postalCode !== '' ? $postalCode : null,
+					'weightGrams' => $this->arrayGet($shipment, 'physical_properties.weight'),
+				], fn($v) => $v !== null),
+			);
 		}
 		
 		/**
@@ -296,35 +321,45 @@
 		 * @return DeliveryOption[]
 		 */
 		public function getDeliveryOptions(string $shippingModule, ?ShipmentAddress $address = null): array {
+			// Fetch delivery data from API
 			$data = $this->fetchDeliveryData($shippingModule, $address);
 			
+			// Failed or none found. Bail.
 			if (empty($data)) {
 				return [];
 			}
 			
+			// Fetch carrier
 			$carrierName = $this->carrierName(self::MODULE_CARRIER_MAP[$shippingModule]['carrierId'] ?? null) ?? '';
+			
+			// Decode options
 			$options = [];
 			
 			foreach ($this->arrayGetArray($data, 'delivery') ?? [] as $timeframe) {
+				// Invalid timeframe
 				if (!is_array($timeframe)) {
 					continue;
 				}
 				
+				// Format timeframe date
 				$rawDate = $this->arrayGetString($timeframe, 'date') ?? '';
-				$date = $rawDate !== '' ? (\DateTimeImmutable::createFromFormat('Y-m-d', $rawDate) ?: null) : null;
+				$date    = $rawDate !== '' ? (\DateTimeImmutable::createFromFormat('Y-m-d', $rawDate) ?: null) : null;
 				
 				foreach ($this->arrayGetArray($timeframe, 'time') ?? [] as $slot) {
+					// Skip invalid slots
 					if (!is_array($slot)) {
 						continue;
 					}
 					
+					// Add delivery option to list
 					$start = substr($this->arrayGetString($slot, 'start') ?? '', 0, 5); // '09:00:00' → '09:00'
 					$end   = substr($this->arrayGetString($slot, 'end') ?? '', 0, 5);
 					$type  = $this->arrayGetString($slot, 'price_comment') ?? 'standard';
+					$label = $this->buildDeliveryLabel($date, $start, $end, $type);
 					
 					$options[] = new DeliveryOption(
 						methodId: $rawDate . ':' . $start . ':' . $end,
-						label: $this->buildDeliveryLabel($date, $start, $end, $type),
+						label: $label,
 						carrierName: $carrierName,
 						deliveryDate: $date,
 						windowStart: $start ?: null,
@@ -359,35 +394,49 @@
 			}
 			
 			$carrierName = $this->carrierName(self::MODULE_CARRIER_MAP[$shippingModule]['carrierId'] ?? null) ?? '';
-			$options = [];
+			$options     = [];
 			
 			foreach ($this->arrayGetArray($data, 'pickup') ?? [] as $location) {
+				// Skip invalid locations
 				if (!is_array($location)) {
 					continue;
 				}
 				
-				$lat  = $this->toFloat($this->arrayGet($location, 'latitude'), 0.0) ?: null;
-				$lng  = $this->toFloat($this->arrayGet($location, 'longitude'), 0.0) ?: null;
-				$dist = ($raw = $this->arrayGet($location, 'distance')) !== null ? $this->toInt($raw) : null;
+				// Add location as PickupOption to list
+				$locationCode    = $this->arrayGetString($location, 'location_code') ?? '';
+				$name            = $this->arrayGetString($location, 'location') ?? '';
+				$street          = $this->arrayGetString($location, 'street') ?? '';
+				$houseNumber     = $this->arrayGetString($location, 'number') ?? '';
+				$postalCode      = $this->arrayGetString($location, 'postal_code') ?? '';
+				$city            = $this->arrayGetString($location, 'city') ?? '';
+				$country         = $this->arrayGetString($location, 'cc') ?? '';
+				$phone           = $this->arrayGetString($location, 'phone_number');
+				$comment         = $this->arrayGetString($location, 'comment');
+				$openingHours    = $this->arrayGetArray($location, 'opening_hours');
+				$retailNetworkId = $this->arrayGetString($location, 'retail_network_id');
+				$latitude        = $this->toFloat($this->arrayGet($location, 'latitude'), 0.0) ?: null;
+				$longitude       = $this->toFloat($this->arrayGet($location, 'longitude'), 0.0) ?: null;
+				$rawDistance     = $this->arrayGet($location, 'distance');
+				$distanceMetres  = $rawDistance !== null ? $this->toInt($rawDistance) : null;
 				
 				$options[] = new PickupOption(
-					locationCode: $this->arrayGetString($location, 'location_code') ?? '',
-					name: $this->arrayGetString($location, 'location') ?? '',
-					street: $this->arrayGetString($location, 'street') ?? '',
-					houseNumber: $this->arrayGetString($location, 'number') ?? '',
-					postalCode: $this->arrayGetString($location, 'postal_code') ?? '',
-					city: $this->arrayGetString($location, 'city') ?? '',
-					country: $this->arrayGetString($location, 'cc') ?? '',
+					locationCode: $locationCode,
+					name: $name,
+					street: $street,
+					houseNumber: $houseNumber,
+					postalCode: $postalCode,
+					city: $city,
+					country: $country,
 					carrierName: $carrierName,
-					latitude: $lat,
-					longitude: $lng,
-					distanceMetres: $dist,
+					latitude: $latitude,
+					longitude: $longitude,
+					distanceMetres: $distanceMetres,
 					metadata: array_filter([
-						'phone'           => $this->arrayGetString($location, 'phone_number'),
-						'comment'         => $this->arrayGetString($location, 'comment'),
-						'openingHours'    => $this->arrayGetArray($location, 'opening_hours'),
-						'retailNetworkId' => $this->arrayGetString($location, 'retail_network_id'),
-					], fn($v) => $v !== null),
+						'phone'           => $phone,
+						'comment'         => $comment,
+						'openingHours'    => $openingHours,
+						'retailNetworkId' => $retailNetworkId,
+					], fn($value) => $value !== null),
 				);
 			}
 			
@@ -401,8 +450,10 @@
 		 * @throws ShipmentLabelException
 		 */
 		public function getLabelUrl(string $parcelId): string {
+			// Use API to fetch label
 			$result = $this->getGateway()->getLabel($parcelId);
 			
+			// If that failed, throw
 			if ($result['request']['result'] === 0) {
 				throw new ShipmentLabelException(
 					self::DRIVER_NAME,
@@ -411,8 +462,10 @@
 				);
 			}
 			
+			// Fetch url
 			$url = $this->arrayGetString($result['response'] ?? [], 'data.pdfs.url');
 			
+			// If none found, throw
 			if ($url === null) {
 				throw new ShipmentLabelException(
 					self::DRIVER_NAME,
@@ -421,42 +474,8 @@
 				);
 			}
 			
+			// Return url
 			return $url;
-		}
-		
-		/**
-		 * Builds a ShipmentState from a raw shipment array returned by the MyParcel API.
-		 * Used by exchange() and the webhook controller.
-		 * @param array<string, mixed> $shipment The entry from data.shipments[] in the MyParcel response
-		 * @return ShipmentState
-		 */
-		public function buildStateFromShipment(array $shipment): ShipmentState {
-			$internalState = $this->arrayGetString($shipment, 'status') ?? 'unknown';
-			$status        = self::STATUS_MAP[strtolower($internalState)] ?? ShipmentStatus::Unknown;
-			$barcode       = $this->arrayGetString($shipment, 'barcode');
-			
-			$rawCarrierId = $shipment['carrier_id'] ?? null;
-			$carrierId    = is_int($rawCarrierId) ? $rawCarrierId : (is_numeric($rawCarrierId) ? (int)$rawCarrierId : null);
-			
-			$postalCode  = $this->arrayGetString($shipment, 'recipient.postal_code') ?? '';
-			$trackingUrl = $barcode !== null ? $this->buildTrackingUrl($barcode, $postalCode, $carrierId) : null;
-			
-			return new ShipmentState(
-				provider: self::DRIVER_NAME,
-				parcelId: $this->normalizeString($shipment['id'] ?? ''),
-				reference: $this->arrayGetString($shipment, 'reference_identifier') ?? '',
-				state: $status,
-				trackingCode: $barcode,
-				trackingUrl: $trackingUrl,
-				statusMessage: null,
-				internalState: $internalState,
-				metadata: array_filter([
-					'carrierId'   => $carrierId,
-					'carrierName' => $this->carrierName($carrierId),
-					'postalCode'  => $postalCode !== '' ? $postalCode : null,
-					'weightGrams' => $this->arrayGet($shipment, 'physical_properties.weight'),
-				], fn($v) => $v !== null),
-			);
 		}
 		
 		/**
@@ -476,16 +495,20 @@
 		 * @return array<string, mixed> Keys: 'delivery', 'pickup'
 		 */
 		private function fetchDeliveryData(string $shippingModule, ?ShipmentAddress $address): array {
+			// If no address passed there is no point in calling the API
 			if ($address === null) {
 				return [];
 			}
 			
+			// Fetch the carrier
 			$carrierInfo = self::MODULE_CARRIER_MAP[$shippingModule] ?? null;
 			
+			// If none found, we can't continue
 			if ($carrierInfo === null) {
 				return [];
 			}
 			
+			// Fetch the options from the API
 			$result = $this->getGateway()->getDeliveryOptions(
 				$carrierInfo['carrierId'],
 				$address->postalCode,
@@ -494,10 +517,12 @@
 				$address->country
 			);
 			
+			// If that failed, bail
 			if ($result['request']['result'] === 0) {
 				return [];
 			}
 			
+			// Return response
 			return $this->arrayGetArray($result['response'] ?? [], 'data') ?? [];
 		}
 		
