@@ -75,14 +75,17 @@
 				// Register each module name, guarding against duplicate registrations
 				// across different provider packages
 				foreach ($metadata['modules'] as $module) {
+					// Skip malformed modules. Never happens, but there to satisfy phpstan
 					if (!is_string($module)) {
 						continue;
 					}
 					
+					// If the module already exists in the map, something went very wrong
 					if (isset($this->moduleMap[$module])) {
 						throw new \RuntimeException("Duplicate shipping module '{$module}' registered by {$class} and {$this->moduleMap[$module]}");
 					}
 					
+					// Add class to map
 					$this->moduleMap[$module] = $class;
 				}
 				
@@ -155,14 +158,6 @@
 		 */
 		public function getLabelUrl(string $shippingModule, string $parcelId): string {
 			return $this->resolve($shippingModule)->getLabelUrl($parcelId);
-		}
-		
-		/**
-		 * Returns all registered module names across all discovered providers.
-		 * @return string[]
-		 */
-		public function getRegisteredModules(): array {
-			return array_keys($this->moduleMap);
 		}
 		
 		/**
