@@ -7,8 +7,9 @@
 	use Quellabs\Shipments\Contracts\DeliveryOption;
 	use Quellabs\Shipments\Contracts\PickupOption;
 	use Quellabs\Shipments\Contracts\ShipmentAddress;
+	use Quellabs\Shipments\Contracts\ShipmentOptionException;
 	use Quellabs\Shipments\Contracts\ShipmentCancellationException;
-	use Quellabs\Shipments\Contracts\ShipmentCreationException;
+	use Quellabs\Shipments\Contracts\ShipmentInitiationException;
 	use Quellabs\Shipments\Contracts\ShipmentExchangeException;
 	use Quellabs\Shipments\Contracts\ShipmentLabelException;
 	use Quellabs\Shipments\Contracts\ShipmentProviderInterface;
@@ -154,13 +155,13 @@
 		 *
 		 * @param ShipmentRequest $request
 		 * @return ShipmentResult
-		 * @throws ShipmentCreationException
+		 * @throws ShipmentInitiationException
 		 */
 		public function create(ShipmentRequest $request): ShipmentResult {
 			$carrierInfo = self::MODULE_CARRIER_MAP[$request->shippingModule] ?? null;
 			
 			if ($carrierInfo === null) {
-				throw new ShipmentCreationException(
+				throw new ShipmentInitiationException(
 					self::DRIVER_NAME,
 					'unknown_module',
 					"Unknown shipping module '{$request->shippingModule}'"
@@ -199,7 +200,7 @@
 			
 			// If that failed, throw error
 			if ($result['request']['result'] === 0) {
-				throw new ShipmentCreationException(
+				throw new ShipmentInitiationException(
 					self::DRIVER_NAME,
 					$result['request']['errorId'],
 					$result['request']['errorMessage']
@@ -213,7 +214,7 @@
 			$parcelId = $this->arrayGetString($response, 'data.ids.0.id');
 			
 			if (empty($parcelId)) {
-				throw new ShipmentCreationException(
+				throw new ShipmentInitiationException(
 					self::DRIVER_NAME,
 					'missing_id',
 					'MyParcel did not return a valid shipment ID in the creation response'
@@ -324,7 +325,7 @@
 			// Fetch delivery data from API
 			$data = $this->fetchDeliveryData($shippingModule, $address);
 			
-			// Failed or none found. Bail.
+			// None found. Bail.
 			if (empty($data)) {
 				return [];
 			}
@@ -493,6 +494,7 @@
 		 * @param string $shippingModule
 		 * @param ShipmentAddress|null $address
 		 * @return array<string, mixed> Keys: 'delivery', 'pickup'
+		 * @throws ShipmentOptionException
 		 */
 		private function fetchDeliveryData(string $shippingModule, ?ShipmentAddress $address): array {
 			// If no address passed there is no point in calling the API
@@ -517,9 +519,13 @@
 				$address->country
 			);
 			
-			// If that failed, bail
+			// If failed, throw error
 			if ($result['request']['result'] === 0) {
-				return [];
+				throw new ShipmentOptionException(
+					self::DRIVER_NAME,
+					$result['request']['errorId'],
+					$result['request']['errorMessage']
+				);
 			}
 			
 			// Return response

@@ -7,8 +7,9 @@
 	use Quellabs\Shipments\Contracts\DeliveryOption;
 	use Quellabs\Shipments\Contracts\PickupOption;
 	use Quellabs\Shipments\Contracts\ShipmentAddress;
+	use Quellabs\Shipments\Contracts\ShipmentOptionException;
+	use Quellabs\Shipments\Contracts\ShipmentInitiationException;
 	use Quellabs\Shipments\Contracts\ShipmentCancellationException;
-	use Quellabs\Shipments\Contracts\ShipmentCreationException;
 	use Quellabs\Shipments\Contracts\ShipmentExchangeException;
 	use Quellabs\Shipments\Contracts\ShipmentLabelException;
 	use Quellabs\Shipments\Contracts\ShipmentProviderInterface;
@@ -186,14 +187,13 @@
 		 *
 		 * @param ShipmentRequest $request
 		 * @return ShipmentResult
-		 * @throws ShipmentCreationException
-		 * @throws \Exception
+		 * @throws ShipmentInitiationException
 		 */
 		public function create(ShipmentRequest $request): ShipmentResult {
 			$productKey = self::MODULE_PRODUCT_MAP[$request->shippingModule] ?? null;
 			
 			if ($productKey === null) {
-				throw new ShipmentCreationException(
+				throw new ShipmentInitiationException(
 					self::DRIVER_NAME,
 					'unknown_module',
 					"Unknown shipping module '{$request->shippingModule}'"
@@ -205,16 +205,26 @@
 			
 			// DHL uses a caller-generated UUID as the idempotency key for the shipment.
 			// This is NOT the parcel identifier; the trackerCode returned by DHL serves that role.
-			$shipmentUuid = Tools::createUUIDv4();
+			try {
+				$shipmentUuid = Tools::createUUIDv4();
+			} catch (\Exception $e) {
+				throw new ShipmentInitiationException(
+					self::DRIVER_NAME,
+					'unknown_module',
+					"Could not create UUID4 shipment id for shipping module '{$request->shippingModule}'",
+					$e
+				);
+			}
 			
 			// Build options
 			$options = [['key' => 'DOOR']];
 			
+			// When delivering to a DHL ServicePoint, replace DOOR with PS and provide the location ID
 			if ($request->servicePointId !== null) {
-				// When delivering to a DHL ServicePoint, replace DOOR with PS and provide the location ID
 				$options = [['key' => 'PS', 'input' => $request->servicePointId]];
 			}
 			
+			// Add reference string (user supplied text)
 			if ($request->description !== null) {
 				$options[] = ['key' => 'REFERENCE', 'input' => substr($request->description, 0, 15)];
 			}
@@ -252,7 +262,7 @@
 			
 			// If that failed, throw error
 			if ($result['request']['result'] === 0) {
-				throw new ShipmentCreationException(
+				throw new ShipmentInitiationException(
 					self::DRIVER_NAME,
 					$result['request']['errorId'],
 					$result['request']['errorMessage']
@@ -264,7 +274,7 @@
 			$trackerCode = $result['response']['trackerCode'] ?? null;
 			
 			if (!is_string($trackerCode) || $trackerCode === '') {
-				throw new ShipmentCreationException(
+				throw new ShipmentInitiationException(
 					self::DRIVER_NAME,
 					'missing_tracker_code',
 					'DHL did not return a tracker code in the shipment creation response'
@@ -287,7 +297,6 @@
 		 * DHL Parcel NL does not expose a cancellation endpoint in its public API.
 		 * Shipments must be cancelled via the My DHL Parcel portal or the Interventions endpoint,
 		 * which requires a separate agreement with DHL.
-		 *
 		 * @param CancelRequest $request
 		 * @return CancelResult
 		 * @throws ShipmentCancellationException always
@@ -429,6 +438,7 @@
 		 * @param string $shippingModule
 		 * @param ShipmentAddress|null $address
 		 * @return PickupOption[]
+		 * @throws ShipmentOptionException
 		 */
 		public function getPickupOptions(string $shippingModule, ?ShipmentAddress $address = null): array {
 			// If no address passed, do not call API
@@ -443,9 +453,13 @@
 				$address->city
 			);
 			
-			// If failed, return empty array
+			// If failed, throw error
 			if ($result['request']['result'] === 0) {
-				return [];
+				throw new ShipmentOptionException(
+					self::DRIVER_NAME,
+					$result['request']['errorId'],
+					$result['request']['errorMessage']
+				);
 			}
 			
 			// Decode the response
@@ -563,12 +577,12 @@
 		 * the smallest DHL type whose maximum weight accommodates the shipment, ensuring the
 		 * cheapest appropriate product is selected automatically.
 		 *
-		 * Throws ShipmentCreationException when auto-selection is used and the weight exceeds
+		 * Throws ShipmentInitiationException when auto-selection is used and the weight exceeds
 		 * XL (31 500 g / 31.5 kg), since DHL has no standard product above that limit.
 		 *
 		 * @param ShipmentRequest $request
 		 * @return string DHL parcel type key (e.g. 'SMALL', 'MEDIUM', 'LARGE', 'XL')
-		 * @throws ShipmentCreationException when weight exceeds the XL limit
+		 * @throws ShipmentInitiationException when weight exceeds the XL limit
 		 */
 		private function resolveParcelType(ShipmentRequest $request): string {
 			// Typed property takes priority over weight-based auto-selection
@@ -583,9 +597,10 @@
 				}
 			}
 			
+			// Limit the weight to 1000kg
 			$maxKg = max(self::PARCEL_TYPE_WEIGHT_MAP) / 1000;
 			
-			throw new ShipmentCreationException(
+			throw new ShipmentInitiationException(
 				self::DRIVER_NAME,
 				'weight_exceeds_limit',
 				"Shipment weight of {$request->weightGrams} g exceeds the maximum DHL parcel weight of {$maxKg} kg (XL). " .
@@ -635,17 +650,17 @@
 		
 		/**
 		 * Builds the shipper block from the configured sender_address.
-		 * Throws ShipmentCreationException if no sender address is configured,
+		 * Throws ShipmentInitiationException if no sender address is configured,
 		 * since DHL requires a shipper on every label.
 		 * @param array<string, mixed> $config
 		 * @return array<string, mixed>
-		 * @throws ShipmentCreationException
+		 * @throws ShipmentInitiationException
 		 */
 		private function buildShipper(array $config): array {
 			$sender = $config['sender_address'];
 			
 			if (empty($sender) || !is_array($sender)) {
-				throw new ShipmentCreationException(
+				throw new ShipmentInitiationException(
 					self::DRIVER_NAME,
 					'missing_sender_address',
 					'DHL requires a sender address. Configure sender_address in the dhl.php config file.'

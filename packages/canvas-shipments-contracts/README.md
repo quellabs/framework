@@ -23,7 +23,7 @@ composer require quellabs/canvas-shipments-contracts
 | `CancelRequest`                 | Input for cancelling a shipment                                                                                   |
 | `CancelResult`                  | Result of a cancellation attempt                                                                                  |
 | `ShipmentException`             | Base exception for all shipment failures                                                                          |
-| `ShipmentCreationException`     | Thrown when `create()` fails                                                                                      |
+| `ShipmentInitiationException`     | Thrown when `create()` fails                                                                                      |
 | `ShipmentCancellationException` | Thrown when `cancel()` fails                                                                                      |
 | `ShipmentExchangeException`     | Thrown when `exchange()` fails                                                                                    |
 
@@ -35,7 +35,7 @@ All classes are in the `Quellabs\Shipments\Contracts` namespace.
 use Quellabs\Shipments\Contracts\ShipmentInterface;
 use Quellabs\Shipments\Contracts\ShipmentRequest;
 use Quellabs\Shipments\Contracts\ShipmentAddress;
-use Quellabs\Shipments\Contracts\ShipmentCreationException;
+use Quellabs\Shipments\Contracts\ShipmentInitiationException;
 
 class FulfillmentService {
     public function __construct(private ShipmentInterface $shipments) {}
@@ -61,7 +61,7 @@ class FulfillmentService {
 
             // Persist $result->parcelId and $result->provider — needed for exchange() and cancel()
             // $result->trackingUrl is ready to embed in your confirmation email
-        } catch (ShipmentCreationException $e) {
+        } catch (ShipmentInitiationException $e) {
             // handle error
         }
     }
@@ -95,7 +95,7 @@ Catch the base class to handle any shipment failure, or catch a specific subclas
 
 ```php
 use Quellabs\Shipments\Contracts\ShipmentException;
-use Quellabs\Shipments\Contracts\ShipmentCreationException;
+use Quellabs\Shipments\Contracts\ShipmentInitiationException;
 use Quellabs\Shipments\Contracts\ShipmentCancellationException;
 use Quellabs\Shipments\Contracts\ShipmentExchangeException;
 
@@ -107,7 +107,7 @@ use Quellabs\Shipments\Contracts\ShipmentExchangeException;
 }
 
 // Or catch specific failures
-} catch (ShipmentCreationException $e) { ... }     // create() failed
+} catch (ShipmentInitiationException $e) { ... }     // create() failed
 } catch (ShipmentCancellationException $e) { ... } // cancel() failed
 } catch (ShipmentExchangeException $e) { ... }     // exchange() failed
 ```

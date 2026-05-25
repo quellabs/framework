@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\Shipments\PostNL;
 	
+	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Quellabs\Contracts\Gateway\GatewayInterface;
 	use Symfony\Component\HttpClient\HttpClient;
 	use Symfony\Contracts\HttpClient\Exception\ClientExceptionInterface;
@@ -36,6 +37,8 @@
 	 * @phpstan-import-type GatewayResponse from GatewayInterface
 	 */
 	class PostNLGateway {
+		
+		use GatewayHelpers;
 		
 		/** PostNL live API base URL */
 		private const string BASE_URL_LIVE = 'https://api.postnl.nl';
@@ -255,27 +258,33 @@
 				
 				// Decode with $throw = false so HTTP 4xx/5xx responses do not raise an exception;
 				// we inspect the status code ourselves to produce a normalised error envelope.
-				$body = json_decode($response->getContent(false), true);
+				$decoded = json_decode($response->getContent(false), true);
 				
 				// Check if decoding worked
 				if (json_last_error() !== JSON_ERROR_NONE) {
 					return ['request' => ['result' => 0, 'errorId' => (string)json_last_error(), 'errorMessage' => json_last_error_msg()]];
 				}
 
+				// json_decode with assoc=true returns array|null; null means the body was literally "null".
+				// We normalise that to an empty array so all subsequent access is on a known array type.
+				$body = is_array($decoded) ? $decoded : [];
+				
 				// StatusCode signals error
 				if ($statusCode >= 400) {
-					// Modern fault envelope
+					// Modern fault envelope: { "fault": { "faultstring": "...", "detail": { "errorcode": "..." } } }
 					if (isset($body['fault'])) {
-						$errorMessage = $body['fault']['faultstring'] ?? "HTTP {$statusCode}";
-						$errorId = $body['fault']['detail']['errorcode'] ?? $statusCode;
+						$errorMessage = $this->arrayGetString($body, 'fault.faultstring') ?? "HTTP {$statusCode}";
+						$errorId = $this->arrayGetString($body, 'fault.detail.errorcode') ?? (string)$statusCode;
 						return ['request' => ['result' => 0, 'errorId' => $errorId, 'errorMessage' => $errorMessage]];
 					}
 					
-					// Legacy Errors array
-					if (!empty($body['Errors'])) {
-						$first = $body['Errors'][0];
-						$errorMessage = $first['Description'] ?? "HTTP {$statusCode}";
-						$errorId = $first['Code'] ?? $statusCode;
+					// Legacy Errors array: { "Errors": [ { "Code": "...", "Description": "..." } ] }
+					$errors = $this->arrayGetArray($body, 'Errors');
+					
+					if (!empty($errors)) {
+						$first = is_array($errors[0]) ? $errors[0] : [];
+						$errorMessage = $this->arrayGetString($first, 'Description') ?? "HTTP {$statusCode}";
+						$errorId = $this->arrayGetString($first, 'Code') ?? (string)$statusCode;
 						return ['request' => ['result' => 0, 'errorId' => $errorId, 'errorMessage' => $errorMessage]];
 					}
 					
@@ -285,7 +294,7 @@
 				
 				// Successful response: wrap the decoded body in the standard envelope.
 				// $body is coalesced to an empty array in case the endpoint returns no content (e.g. 204).
-				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $body ?? []];
+				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $body];
 			} catch (TransportExceptionInterface|ClientExceptionInterface|RedirectionExceptionInterface|ServerExceptionInterface $e) {
 				// Transport-level failures (DNS, timeout, TLS, connection refused, interrupted
 				// response stream) are caught here and mapped to the same error envelope so

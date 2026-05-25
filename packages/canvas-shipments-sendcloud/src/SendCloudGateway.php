@@ -47,7 +47,8 @@
 			$config = $driver->getConfig();
 			
 			// Store geocoding key
-			$this->geocodingApiKey = !empty($config['geocoding_api_key']) ? $config['geocoding_api_key'] : null;
+			$rawKey = $config['geocoding_api_key'] ?? null;
+			$this->geocodingApiKey = (is_string($rawKey) && $rawKey !== '') ? $rawKey : null;
 			
 			// Client for SendCloud calls
 			$this->client = HttpClient::create([
@@ -314,21 +315,31 @@
 				$statusCode = $response->getStatusCode();
 				
 				// Decode the response body regardless of status so error bodies are available
-				$body = json_decode($response->getContent(false), true);
+				$decoded = json_decode($response->getContent(false), true);
 				
 				// Check if decoding worked
 				if (json_last_error() !== JSON_ERROR_NONE) {
 					return ['request' => ['result' => 0, 'errorId' => (string)json_last_error(), 'errorMessage' => json_last_error_msg()]];
 				}
 				
+				// Treat a non-array body as an empty response (e.g. unexpected plain-text 2xx)
+				$body = is_array($decoded) ? $decoded : [];
+				
 				// SendCloud signals errors via 4xx status codes with a structured error body
 				if ($statusCode >= 400) {
-					$errorCode = $body['error']['code'] ?? $statusCode;
-					$errorMessage = $body['error']['message'] ?? "HTTP {$statusCode}";
+					$error        = is_array($body['error'] ?? null) ? $body['error'] : [];
+					$rawCode      = $error['code'] ?? null;
+					$errorCode    = (is_string($rawCode) || is_int($rawCode)) ? (string)$rawCode : (string)$statusCode;
+					$rawMessage   = $error['message'] ?? null;
+					$errorMessage = is_string($rawMessage) ? $rawMessage : "HTTP {$statusCode}";
 					return ['request' => ['result' => 0, 'errorId' => $errorCode, 'errorMessage' => $errorMessage]];
 				}
 				
 				// Successful response: wrap the decoded body in the standard envelope.
+				// body is array<mixed, mixed> from json_decode; cast to array<string, mixed> via
+				// array_filter with no callback, which is safe here — SendCloud always returns
+				// string keys at the top level. PHPStan needs the explicit annotation below.
+				/** @var array<string, mixed> $body */
 				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $body];
 			} catch (TransportExceptionInterface|ClientExceptionInterface|RedirectionExceptionInterface|ServerExceptionInterface $e) {
 				return ['request' => ['result' => 0, 'errorId' => (string)$e->getCode(), 'errorMessage' => $e->getMessage()]];

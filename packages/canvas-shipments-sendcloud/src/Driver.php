@@ -8,7 +8,7 @@
 	use Quellabs\Shipments\Contracts\PickupOption;
 	use Quellabs\Shipments\Contracts\ShipmentAddress;
 	use Quellabs\Shipments\Contracts\ShipmentCancellationException;
-	use Quellabs\Shipments\Contracts\ShipmentCreationException;
+	use Quellabs\Shipments\Contracts\ShipmentInitiationException;
 	use Quellabs\Shipments\Contracts\ShipmentExchangeException;
 	use Quellabs\Shipments\Contracts\ShipmentLabelException;
 	use Quellabs\Shipments\Contracts\ShipmentProviderInterface;
@@ -16,8 +16,11 @@
 	use Quellabs\Shipments\Contracts\ShipmentResult;
 	use Quellabs\Shipments\Contracts\ShipmentState;
 	use Quellabs\Shipments\Contracts\ShipmentStatus;
+	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	
 	class Driver implements ShipmentProviderInterface {
+		
+		use GatewayHelpers;
 		
 		/**
 		 * Driver name — stored in ShipmentResult::$provider and ShipmentState::$provider.
@@ -133,12 +136,12 @@
 		 *
 		 * @param ShipmentRequest $request
 		 * @return ShipmentResult
-		 * @throws ShipmentCreationException
+		 * @throws ShipmentInitiationException
 		 */
 		public function create(ShipmentRequest $request): ShipmentResult {
 			// Validate presence of methodId
 			if ($request->methodId === null) {
-				throw new ShipmentCreationException(
+				throw new ShipmentInitiationException(
 					self::DRIVER_NAME,
 					'missing_method_id',
 					'SendCloud requires a methodId. Fetch one from getDeliveryOptions() first.'
@@ -176,7 +179,8 @@
 			}
 			
 			// Sender address is always applied last so it cannot be overridden.
-			$senderAddress = array_filter($this->getConfig()['sender_address'] ?? []);
+			$rawSenderAddress = $this->getConfig()['sender_address'] ?? [];
+			$senderAddress = array_filter(is_array($rawSenderAddress) ? $rawSenderAddress : []);
 			
 			if (!empty($senderAddress)) {
 				$payload['parcel'] = array_merge($payload['parcel'], $senderAddress);
@@ -187,7 +191,7 @@
 			
 			// If failed, throw an error
 			if ($result['request']['result'] === 0) {
-				throw new ShipmentCreationException(
+				throw new ShipmentInitiationException(
 					self::DRIVER_NAME,
 					$result['request']['errorId'],
 					$result['request']['errorMessage']
@@ -197,17 +201,17 @@
 			// Fetch response
 			$response = $result["response"] ?? [];
 			
-			// Fetch parcel data
-			$parcel = $response['parcel'];
+			// Fetch parcel data — the API always returns a 'parcel' object on success
+			$parcel = $this->arrayGetArray($response, 'parcel') ?? [];
 			
 			// Return result
 			return new ShipmentResult(
 				provider: self::DRIVER_NAME,
-				parcelId: (string)$parcel['id'],
+				parcelId: $this->normalizeString($parcel['id'] ?? ''),
 				reference: $request->reference,
-				trackingCode: $parcel['tracking_number'] ?? null,
-				trackingUrl: $parcel['tracking_url'] ?? null,
-				carrierName: $parcel['carrier']['name'] ?? null,
+				trackingCode: $this->arrayGetString($parcel, 'tracking_number'),
+				trackingUrl: $this->arrayGetString($parcel, 'tracking_url'),
+				carrierName: $this->arrayGetString($parcel, 'carrier.name'),
 				rawResponse: $parcel,
 			);
 		}
@@ -240,7 +244,7 @@
 				parcelId: $request->parcelId,
 				reference: $request->reference,
 				accepted: $isAccepted,
-				message: $isAccepted ? null : ($result['response']['message'] ?? null),
+				message: $isAccepted ? null : $this->arrayGetString($result['response'] ?? [], 'message'),
 			);
 		}
 		
@@ -267,7 +271,8 @@
 			$response = $result['response'] ?? [];
 			
 			// Build and return ShipmentState
-			return $this->buildStateFromParcel($response['parcel']);
+			$parcel = $this->arrayGetArray($response, 'parcel') ?? [];
+			return $this->buildStateFromParcel($parcel);
 		}
 		
 		/**
@@ -323,7 +328,7 @@
 				return [];
 			}
 			
-			$radiusKm = $this->getConfig()['pickup_radius_km'] ?? 5.0;
+			$radiusKm = $this->toFloat($this->getConfig()['pickup_radius_km'] ?? null, 5.0);
 			[$swLat, $swLng, $neLat, $neLng] = $this->boundingBox($center['lat'], $center['lng'], $radiusKm);
 			
 			$result = $this->getGateway()->getServicePoints(
@@ -339,27 +344,39 @@
 				return [];
 			}
 			
-			$points = $result['response'] ?? [];
+			$rawPoints = $result['response'] ?? [];
+			$points = is_array($rawPoints) ? $rawPoints : [];
 			
 			return array_values(array_map(
-				fn(array $point) => new PickupOption(
-					locationCode: (string)($point['id'] ?? ''),
-					name: $point['name'] ?? '',
-					street: $point['street'] ?? '',
-					houseNumber: (string)($point['house_number'] ?? ''),
-					postalCode: $point['postal_code'] ?? '',
-					city: $point['city'] ?? '',
-					country: $point['country'] ?? '',
-					carrierName: $point['carrier'] ?? '',
-					latitude: isset($point['latitude']) ? (float)$point['latitude'] : null,
-					longitude: isset($point['longitude']) ? (float)$point['longitude'] : null,
-					distanceMetres: isset($point['distance']) ? (int)$point['distance'] : null,
+				function (mixed $point): PickupOption {
+					// Service point entries are always arrays; skip malformed ones defensively
+					if (!is_array($point)) {
+						return new PickupOption(
+							locationCode: '', name: '', street: '', houseNumber: '',
+							postalCode: '', city: '', country: '', carrierName: '',
+							latitude: null, longitude: null, distanceMetres: null, metadata: [],
+						);
+					}
+					
+					return new PickupOption(
+						locationCode: $this->normalizeString($point['id'] ?? ''),
+						name: $this->normalizeString($point['name'] ?? ''),
+						street: $this->normalizeString($point['street'] ?? ''),
+						houseNumber: $this->normalizeString($point['house_number'] ?? ''),
+						postalCode: $this->normalizeString($point['postal_code'] ?? ''),
+						city: $this->normalizeString($point['city'] ?? ''),
+						country: $this->normalizeString($point['country'] ?? ''),
+						carrierName: $this->normalizeString($point['carrier'] ?? ''),
+						latitude: isset($point['latitude']) ? $this->toFloat($point['latitude']) : null,
+						longitude: isset($point['longitude']) ? $this->toFloat($point['longitude']) : null,
+						distanceMetres: isset($point['distance']) ? $this->toInt($point['distance']) : null,
 					metadata: array_filter([
 						'openingHours' => $point['opening_hours'] ?? null,
 						'extraInfo'    => $point['extra_info'] ?? null,
 						'phone'        => $point['phone_number'] ?? null,
 					], fn($v) => $v !== null),
-				),
+					);
+				},
 				$points
 			));
 		}
@@ -371,7 +388,8 @@
 		 * @return bool
 		 */
 		public function verifyWebhookSignature(string $rawBody, string $signature): bool {
-			return $this->getGateway()->verifyWebhookSignature($rawBody, $signature, $this->getConfig()['webhook_secret']);
+			$webhookSecret = $this->normalizeString($this->getConfig()['webhook_secret'] ?? '');
+			return $this->getGateway()->verifyWebhookSignature($rawBody, $signature, $webhookSecret);
 		}
 		
 		/**
@@ -391,9 +409,16 @@
 				);
 			}
 			
-			$url = $result['response']['label']['label_printer']
-				?? $result['response']['label']['normal_printer'][0]
-				?? null;
+			$response = $result['response'] ?? [];
+			
+			// Prefer the label-printer URL; fall back to the first normal-printer URL
+			$url = $this->arrayGetString($response, 'label.label_printer');
+			
+			if ($url === null) {
+				$normalPrinter = $this->arrayGetArray($response, 'label.normal_printer') ?? [];
+				$first = $normalPrinter[0] ?? null;
+				$url = is_string($first) ? $first : null;
+			}
 			
 			if ($url === null) {
 				throw new ShipmentLabelException(
@@ -413,24 +438,27 @@
 		 * @return ShipmentState
 		 */
 		public function buildStateFromParcel(array $parcel): ShipmentState {
-			$statusId = (int)($parcel['status']['id'] ?? 92);
-			$statusLabel = $parcel['status']['message'] ?? null;
-			$internalState = $parcel['status']['id'] . ':' . ($parcel['status']['message'] ?? 'unknown');
-			$status = self::STATUS_MAP[$statusId] ?? ShipmentStatus::Unknown;
+			$status      = is_array($parcel['status'] ?? null) ? $parcel['status'] : [];
+			$statusId    = $this->toInt($status['id'] ?? null, 92);
+			$statusLabel = isset($status['message']) && is_string($status['message']) ? $status['message'] : null;
+			$internalId  = $this->normalizeString($status['id'] ?? 92);
+			$internalMsg = $statusLabel ?? 'unknown';
+			$internalState = $internalId . ':' . $internalMsg;
+			$mappedStatus = self::STATUS_MAP[$statusId] ?? ShipmentStatus::Unknown;
 			
 			return new ShipmentState(
 				provider: self::DRIVER_NAME,
-				parcelId: (string)$parcel['id'],
-				reference: $parcel['order_number'] ?? '',
-				state: $status,
-				trackingCode: $parcel['tracking_number'] ?? null,
-				trackingUrl: $parcel['tracking_url'] ?? null,
+				parcelId: $this->normalizeString($parcel['id'] ?? ''),
+				reference: $this->normalizeString($parcel['order_number'] ?? ''),
+				state: $mappedStatus,
+				trackingCode: $this->arrayGetString($parcel, 'tracking_number'),
+				trackingUrl: $this->arrayGetString($parcel, 'tracking_url'),
 				statusMessage: $statusLabel,
 				internalState: $internalState,
 				metadata: array_filter([
-					'carrierId'      => $parcel['carrier']['id'] ?? null,
-					'carrierName'    => $parcel['carrier']['name'] ?? null,
-					'cachedLabelUrl' => $parcel['label']['label_printer'] ?? null,
+					'carrierId'      => $this->arrayGet($parcel, 'carrier.id'),
+					'carrierName'    => $this->arrayGetString($parcel, 'carrier.name'),
+					'cachedLabelUrl' => $this->arrayGetString($parcel, 'label.label_printer'),
 					'servicePointId' => $parcel['to_service_point'] ?? null,
 					'weightKg'       => $parcel['weight'] ?? null,
 				], fn($v) => $v !== null),
@@ -453,16 +481,21 @@
 		 */
 		private function fetchFilteredMethods(string $shippingModule): array {
 			// Fetch shipping methods from API
-			$result = $this->getGateway()->getShippingMethods($this->getConfig()['from_country'] ?? null);
+			$fromCountry = $this->arrayGetString($this->getConfig(), 'from_country');
+			$result = $this->getGateway()->getShippingMethods($fromCountry);
 			
 			// If that failed, return an empty array
 			if ($result['request']['result'] === 0) {
 				return [];
 			}
 			
-			// Fetch shipping methods from result
+			// Fetch shipping methods from result — guard as list<array<string, mixed>>
 			$carriers = self::MODULE_CARRIER_MAP[$shippingModule] ?? [];
-			$methods = $result['response']['shipping_methods'] ?? [];
+			$rawMethods = $this->arrayGetArray($result['response'] ?? [], 'shipping_methods') ?? [];
+			
+			// Keep only entries that are arrays (malformed entries are skipped)
+			/** @var list<array<string, mixed>> $methods */
+			$methods = array_values(array_filter($rawMethods, fn(mixed $m): bool => is_array($m)));
 			
 			// If none, return empty array
 			if (empty($carriers)) {
@@ -471,7 +504,7 @@
 			
 			// Filter methods by carrier
 			return array_values(array_filter($methods, function (array $method) use ($carriers): bool {
-				return in_array(strtolower($method['carrier'] ?? ''), $carriers, true);
+				return in_array(strtolower($this->normalizeString($method['carrier'] ?? '')), $carriers, true);
 			}));
 		}
 		
@@ -482,12 +515,12 @@
 		 */
 		private function normaliseDeliveryMethod(array $method): DeliveryOption {
 			return new DeliveryOption(
-				methodId: (string)$method['id'],
-				label: $method['name'] ?? '',
-				carrierName: $method['carrier'] ?? '',
+				methodId: $this->normalizeString($method['id'] ?? ''),
+				label: $this->normalizeString($method['name'] ?? ''),
+				carrierName: $this->normalizeString($method['carrier'] ?? ''),
 				metadata: array_filter([
-					'minWeightGrams' => isset($method['min_weight']) ? (int)round($method['min_weight'] * 1000) : null,
-					'maxWeightGrams' => isset($method['max_weight']) ? (int)round($method['max_weight'] * 1000) : null,
+					'minWeightGrams' => isset($method['min_weight']) ? (int)round($this->toFloat($method['min_weight']) * 1000) : null,
+					'maxWeightGrams' => isset($method['max_weight']) ? (int)round($this->toFloat($method['max_weight']) * 1000) : null,
 					'price'          => $method['price'] ?? null,
 				], fn($v) => $v !== null),
 			);
@@ -521,7 +554,7 @@
 			}
 			
 			// Return response data
-			return ['lat' => $response['lat'], 'lng' => $response['lng']];
+			return ['lat' => $this->toFloat($response['lat']), 'lng' => $this->toFloat($response['lng'])];
 		}
 		
 		/**
