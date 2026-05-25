@@ -136,18 +136,9 @@
 			$parcelsXml   = $this->buildParcelsXml($parcels);
 			$psdXml       = $this->buildProductAndServiceDataXml($psd);
 			
-			$xml = <<<XML
-<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
-    xmlns:ns="http://dpd.com/common/service/types/Authentication/2.0"
-    xmlns:ns1="http://dpd.com/common/service/types/ShipmentService/3.5">
-  <soapenv:Header>
-    <ns:authentication>
-      <delisId>{{delisId}}</delisId>
-      <authToken>{{token}}</authToken>
-      <messageLanguage>nl_NL</messageLanguage>
-    </ns:authentication>
-  </soapenv:Header>
-  <soapenv:Body>
+			$xml = $this->buildEnvelope(
+				'http://dpd.com/common/service/types/ShipmentService/3.5',
+				<<<XML
     <ns1:storeOrders>
       <printOptions>
         <printerLanguage>PDF</printerLanguage>
@@ -168,9 +159,8 @@
         </productAndServiceData>
       </order>
     </ns1:storeOrders>
-  </soapenv:Body>
-</soapenv:Envelope>
-XML;
+XML
+			);
 			
 			// Send request; return immediately on auth or transport failure
 			$result = $this->request('/ShipmentService', $xml);
@@ -195,24 +185,14 @@ XML;
 		 * @return GatewayResponse
 		 */
 		public function getTrackingData(string $parcelLabelNumber): array {
-			$xml = <<<XML
-<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
-    xmlns:ns="http://dpd.com/common/service/types/Authentication/2.0"
-    xmlns:ns1="http://dpd.com/common/service/types/ParcelLifeCycleService/2.0">
-  <soapenv:Header>
-    <ns:authentication>
-      <delisId>{{delisId}}</delisId>
-      <authToken>{{token}}</authToken>
-      <messageLanguage>nl_NL</messageLanguage>
-    </ns:authentication>
-  </soapenv:Header>
-  <soapenv:Body>
+			$xml = $this->buildEnvelope(
+				'http://dpd.com/common/service/types/ParcelLifeCycleService/2.0',
+				<<<XML
     <ns1:getTrackingData>
       <parcelLabelNumber>{$this->xmlEscape($parcelLabelNumber)}</parcelLabelNumber>
     </ns1:getTrackingData>
-  </soapenv:Body>
-</soapenv:Envelope>
-XML;
+XML
+			);
 			
 			// Send request; return immediately on auth or transport failure
 			$result = $this->request('/ParcelLifeCycleService', $xml);
@@ -240,27 +220,17 @@ XML;
 		 * @return GatewayResponse
 		 */
 		public function findParcelShops(string $country, string $postalCode, string $city, int $limit = 10): array {
-			$xml = <<<XML
-<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
-    xmlns:ns="http://dpd.com/common/service/types/Authentication/2.0"
-    xmlns:ns1="http://dpd.com/common/service/types/ParcelShopFinderService/5.0">
-  <soapenv:Header>
-    <ns:authentication>
-      <delisId>{{delisId}}</delisId>
-      <authToken>{{token}}</authToken>
-      <messageLanguage>nl_NL</messageLanguage>
-    </ns:authentication>
-  </soapenv:Header>
-  <soapenv:Body>
+			$xml = $this->buildEnvelope(
+				'http://dpd.com/common/service/types/ParcelShopFinderService/5.0',
+				<<<XML
     <ns1:findParcelShops>
       <country>{$this->xmlEscape($country)}</country>
       <zipCode>{$this->xmlEscape($postalCode)}</zipCode>
       <city>{$this->xmlEscape($city)}</city>
       <limit>{$limit}</limit>
     </ns1:findParcelShops>
-  </soapenv:Body>
-</soapenv:Envelope>
-XML;
+XML
+			);
 			
 			// Send request; return immediately on auth or transport failure
 			$result = $this->request('/ParcelShopFinderService', $xml);
@@ -696,6 +666,35 @@ XML;
 			return $result ?: (string)$element;
 		}
 		
+		/**
+		 * Builds a SOAP 1.1 envelope with the standard DPD authentication header.
+		 *
+		 * The {{delisId}} and {{token}} placeholders are substituted by request()
+		 * immediately before the HTTP call, after a valid token has been obtained.
+		 *
+		 * @param string $serviceNamespace The xmlns:ns1 namespace URI for the service body
+		 * @param string $body             The inner XML content for <soapenv:Body>
+		 * @return string Complete SOAP envelope
+		 */
+		private function buildEnvelope(string $serviceNamespace, string $body): string {
+			return <<<XML
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
+    xmlns:ns="http://dpd.com/common/service/types/Authentication/2.0"
+    xmlns:ns1="{$serviceNamespace}">
+  <soapenv:Header>
+    <ns:authentication>
+      <delisId>{{delisId}}</delisId>
+      <authToken>{{token}}</authToken>
+      <messageLanguage>nl_NL</messageLanguage>
+    </ns:authentication>
+  </soapenv:Header>
+  <soapenv:Body>
+    {$body}
+  </soapenv:Body>
+</soapenv:Envelope>
+XML;
+		}
+
 		/**
 		 * Builds the XML block for a sender or recipient address.
 		 * @param string $tag XML element name (e.g. 'sender' or 'recipient')
