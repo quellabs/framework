@@ -56,5 +56,10 @@
         "provider": "Quellabs\\Canvas\\Scheduler\\Redis\\RedisConsumer"
       }
     }
+  },
+  "scripts": {
+    "post-install-cmd": [
+      "php -r \"copy('vendor/quellabs/canvas-scheduler-redis/config/scheduler-redis.php', '/config/scheduler-redis.php');\""
+    ]
   }
 }
