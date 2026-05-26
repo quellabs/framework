@@ -22,7 +22,7 @@
 			");
 			
 			foreach($rs as $y) {
-				var_dump($y["x.testJSON.test"]);
+				var_dump($y);
 			}
 			
 			$posts = $this->em()->findBy(PostEntity::class, ['published' => true]);
