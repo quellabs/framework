@@ -17,7 +17,7 @@
 		 */
 		public function index(QueueInterface $queue): Response {
 			
-			$queue->push(new App\Jobs\TestJob());
+			$queue->push(new \App\Jobs\TestJob());
 			
 			echo "Job dispatched\n";
 			

@@ -17,7 +17,7 @@
 		 */
 		public function handle(): void {
 			file_put_contents(
-				ComposerUtils::getProjectRoot() . '/storage/test-job.log',
+				ComposerUtils::getProjectRoot() . '/storage/test-job-redis.log',
 				date('Y-m-d H:i:s') . " TestJob executed\n",
 				FILE_APPEND
 			);
