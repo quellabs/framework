@@ -1,0 +1,65 @@
+{
+  "name": "quellabs/canvas-scheduler-rabbitmq",
+  "description": "RabbitMQ queue consumer and job dispatcher for the Canvas PHP framework",
+  "keywords": [
+    "canvas-framework",
+    "rabbitmq-queue",
+    "job-queue",
+    "async"
+  ],
+  "type": "library",
+  "license": "MIT",
+  "homepage": "https://github.com/quellabs/canvas-rabbitmq",
+  "support": {
+    "issues": "https://github.com/quellabs/canvas-rabbitmq/issues",
+    "source": "https://github.com/quellabs/canvas-rabbitmq"
+  },
+  "authors": [
+    {
+      "name": "Quellabs",
+      "email": "info@quellabs.com",
+      "homepage": "https://quellabs.com"
+    }
+  ],
+  "minimum-stability": "stable",
+  "prefer-stable": true,
+  "config": {
+    "platform": {
+      "php": "8.2"
+    },
+    "sort-packages": true,
+    "optimize-autoloader": true,
+    "classmap-authoritative": true
+  },
+  "require": {
+    "php-amqplib/php-amqplib": "^3.0",
+    "quellabs/canvas": "^1.",
+    "quellabs/contracts": "^1.",
+    "quellabs/dependency-injection": "^1.",
+    "quellabs/support": "^1."
+  },
+  "autoload": {
+    "psr-4": {
+      "Quellabs\\Canvas\\Scheduler\\RabbitMQ\\": "src/"
+    }
+  },
+  "extra": {
+    "discover": {
+      "di": {
+        "provider": "Quellabs\\Canvas\\Scheduler\\RabbitMQ\\ServiceProvider",
+        "config": [
+          "config/scheduler-rabbitmq.php",
+          "config/app.php"
+        ]
+      },
+      "scheduler": {
+        "provider": "Quellabs\\Canvas\\Scheduler\\RabbitMQ\\RabbitMQConsumer"
+      }
+    }
+  },
+  "scripts": {
+    "post-install-cmd": [
+      "php -r \"copy('vendor/quellabs/canvas-scheduler-rabbitmq/config/scheduler-rabbitmq.php', '/config/scheduler-rabbitmq.php');\""
+    ]
+  }
+}
