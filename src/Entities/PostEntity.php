@@ -180,4 +180,13 @@
 			$this->TestEnum = $TestEnum;
 			return $this;
 		}
+		
+		public function getTestJSON(): ?array {
+			return $this->testJSON;
+		}
+		
+		public function setTestJSON(?array $testJSON): PostEntity {
+			$this->testJSON = $testJSON;
+			return $this;
+		}
 	}
