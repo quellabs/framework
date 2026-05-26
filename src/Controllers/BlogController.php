@@ -15,11 +15,15 @@
 		 * @Route("/posts/")
 		 * @return Response
 		 */
-		public function index(QueueInterface $queue): Response {
+		public function index(): Response {
+			$rs = $this->em()->executeQuery("
+				range of x is PostEntity
+				retrieve(x.testJSON.test)
+			");
 			
-			$queue->push(new \App\Jobs\TestJob());
-			
-			echo "Job dispatched\n";
+			foreach($rs as $y) {
+				var_dump($y["x.testJSON.test"]);
+			}
 			
 			$posts = $this->em()->findBy(PostEntity::class, ['published' => true]);
 			

@@ -60,6 +60,11 @@
 		protected \App\Enums\TestEnum $TestEnum;
 		
 		/**
+		 * @Orm\Column(name="test_json", type="json")
+		 */
+		protected ?array $testJSON;
+		
+		/**
 		 * @Orm\ManyToOne(targetEntity=UserEntity::class, inversedBy="id", fetch="EAGER")
 		 */
 		public ?UserEntity $user;
@@ -173,6 +178,15 @@
 		 */
 		public function setTestEnum(\App\Enums\TestEnum $TestEnum): self {
 			$this->TestEnum = $TestEnum;
+			return $this;
+		}
+		
+		public function getTestJSON(): ?array {
+			return $this->testJSON;
+		}
+		
+		public function setTestJSON(?array $testJSON): PostEntity {
+			$this->testJSON = $testJSON;
 			return $this;
 		}
 	}
