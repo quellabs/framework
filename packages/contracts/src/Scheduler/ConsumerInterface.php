@@ -6,7 +6,7 @@
 	
 	/**
 	 * Interface for TaskScheduler consumers.
-	 * Implementations are discovered via the "task-scheduler" Composer family
+	 * Implementations are discovered via the "scheduler" Composer family
 	 * and represent a source of work (Redis queue, cron, etc.) that can be
 	 * started by Sculpt via the --consumer CLI parameter.
 	 */

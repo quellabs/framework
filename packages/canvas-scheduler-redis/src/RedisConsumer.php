@@ -9,7 +9,7 @@
 	
 	/**
 	 * Redis queue consumer.
-	 * Discovered via the "task-scheduler" Composer family and selected
+	 * Discovered via the "scheduler" Composer family and selected
 	 * by Sculpt when --consumer=redis is specified.
 	 */
 	class RedisConsumer implements ConsumerInterface {
