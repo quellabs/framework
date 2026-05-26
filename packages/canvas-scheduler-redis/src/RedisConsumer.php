@@ -1,6 +1,6 @@
 <?php
 	
-	namespace Quellabs\Canvas\Scheduler\Consumers\Redis;
+	namespace Quellabs\Canvas\Scheduler\Redis;
 	
 	use Predis\Client;
 	use Quellabs\Canvas\Kernel;
@@ -15,6 +15,7 @@
 	class RedisConsumer implements ConsumerInterface {
 		
 		/**
+		 * RedisConsumer constructor
 		 * @var array<string, mixed>
 		 */
 		private array $config = [];

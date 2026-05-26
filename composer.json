@@ -228,6 +228,13 @@
       "options": {
         "symlink": true
       }
+    },
+    {
+      "type": "path",
+      "url": "./packages/canvas-scheduler-redis",
+      "options": {
+        "symlink": true
+      }
     }
   ],
   "require": {
@@ -284,7 +291,8 @@
     "quellabs/canvas-payments-rabosmartpay": "dev-main as 1.999.999",
     "quellabs/canvas-payments-klarna": "dev-main as 1.999.999",
     "quellabs/canvas-payments-xpay": "dev-main as 1.999.999",
-    "quellabs/canvas-loom": "dev-main as 1.999.999"
+    "quellabs/canvas-loom": "dev-main as 1.999.999",
+    "quellabs/canvas-scheduler-redis": "dev-main as 1.999.999"
   },
   "autoload": {
     "psr-4": {
@@ -326,7 +334,8 @@
       "Quellabs\\Shipments\\MyParcel\\": "packages/canvas-shipments-myparcel/src/",
       "Quellabs\\Shipments\\PostNL\\": "packages/canvas-shipments-postnl/src/",
       "Quellabs\\Shipments\\SendCloud\\": "packages/canvas-shipments-sendcloud/src/",
-      "Quellabs\\Canvas\\Loom\\": "packages/canvas-loom/src/"
+      "Quellabs\\Canvas\\Loom\\": "packages/canvas-loom/src/",
+      "Quellabs\\Canvas\\Scheduler\\Redis\\": "packages/canvas-scheduler-redis/src/"
     },
     "files": [
       "packages/support/src/bootstrap.php"

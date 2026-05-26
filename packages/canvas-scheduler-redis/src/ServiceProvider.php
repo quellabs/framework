@@ -1,6 +1,6 @@
 <?php
 	
-	namespace Quellabs\Canvas\Scheduler\Consumers\Redis;
+	namespace Quellabs\Canvas\Scheduler\Redis;
 	
 	use Predis\Client;
 	use Quellabs\Contracts\Context\MethodContextInterface;

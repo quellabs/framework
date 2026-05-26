@@ -1,6 +1,6 @@
 <?php
 	
-	namespace Quellabs\Canvas\Scheduler\Consumers\Redis;
+	namespace Quellabs\Canvas\Scheduler\Redis;
 	
 	use Quellabs\Contracts\Scheduler\JobInterface;
 	use Quellabs\Contracts\Scheduler\QueueableInterface;

@@ -40,20 +40,20 @@
   },
   "autoload": {
     "psr-4": {
-      "Quellabs\\Canvas\\Scheduler\\Consumers\\Redis\\": "src/"
+      "Quellabs\\Canvas\\Scheduler\\Redis\\": "src/"
     }
   },
   "extra": {
     "discover": {
       "di": {
-        "provider": "Quellabs\\Canvas\\Scheduler\\Consumers\\Redis\\ServiceProvider",
+        "provider": "Quellabs\\Canvas\\Scheduler\\Redis\\ServiceProvider",
         "config": [
           "config/scheduler-redis.php",
           "config/app.php"
         ]
       },
       "scheduler": {
-        "provider": "Quellabs\\Canvas\\Scheduler\\Consumers\\Redis\\RedisConsumer"
+        "provider": "Quellabs\\Canvas\\Scheduler\\Redis\\RedisConsumer"
       }
     }
   }
