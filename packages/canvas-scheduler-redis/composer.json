@@ -1,5 +1,5 @@
 {
-  "name": "quellabs/canvas-redis",
+  "name": "quellabs/canvas-scheduler-redis",
   "description": "Redis queue consumer and job dispatcher for the Canvas PHP framework",
   "keywords": [
     "canvas-framework",
