@@ -19,8 +19,8 @@
 		// Path to aspect-oriented programming files
 		'aspect_directory'         => dirname(__FILE__) . '/../src/Aspects',
 		
-		// Path to tasks (TaskScheduler)
-		'task_scheduler_directory' => dirname(__FILE__) . '/../src/Tasks',
+		// Path to tasks (Scheduler)
+		'scheduler_directory' => dirname(__FILE__) . '/../src/Tasks',
 		
 		// Whether to match routes with trailing slashes
 		'match_trailing_slashes'   => false

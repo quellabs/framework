@@ -35,6 +35,7 @@ parameters:
         - packages/canvas-shipments-myparcel
         - packages/canvas-shipments-postnl
         - packages/canvas-shipments-sendcloud
+        - packages/canvas-scheduler-redis
     bootstrapFiles:
         - vendor/autoload.php
     scanDirectories:

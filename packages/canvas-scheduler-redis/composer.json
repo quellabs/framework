@@ -1,0 +1,60 @@
+{
+  "name": "quellabs/canvas-redis",
+  "description": "Redis queue consumer and job dispatcher for the Canvas PHP framework",
+  "keywords": [
+    "canvas-framework",
+    "redis-queue",
+    "job-queue",
+    "async"
+  ],
+  "type": "library",
+  "license": "MIT",
+  "homepage": "https://github.com/quellabs/canvas-redis",
+  "support": {
+    "issues": "https://github.com/quellabs/canvas-redis/issues",
+    "source": "https://github.com/quellabs/canvas-redis"
+  },
+  "authors": [
+    {
+      "name": "Quellabs",
+      "email": "info@quellabs.com",
+      "homepage": "https://quellabs.com"
+    }
+  ],
+  "minimum-stability": "stable",
+  "prefer-stable": true,
+  "config": {
+    "platform": {
+      "php": "8.2"
+    },
+    "sort-packages": true,
+    "optimize-autoloader": true,
+    "classmap-authoritative": true
+  },
+  "require": {
+    "predis/predis": "^2.0",
+    "quellabs/canvas": "^1.",
+    "quellabs/contracts": "^1.",
+    "quellabs/dependency-injection": "^1.",
+    "quellabs/support": "^1."
+  },
+  "autoload": {
+    "psr-4": {
+      "Quellabs\\Canvas\\Scheduler\\Consumers\\Redis\\": "src/"
+    }
+  },
+  "extra": {
+    "discover": {
+      "di": {
+        "provider": "Quellabs\\Canvas\\Scheduler\\Consumers\\Redis\\ServiceProvider",
+        "config": [
+          "config/scheduler-redis.php",
+          "config/app.php"
+        ]
+      },
+      "scheduler": {
+        "provider": "Quellabs\\Canvas\\Scheduler\\Consumers\\Redis\\RedisConsumer"
+      }
+    }
+  }
+}
