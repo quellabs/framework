@@ -15,12 +15,7 @@
 		 * @Route("/posts/")
 		 * @return Response
 		 */
-		public function index(QueueInterface $queue): Response {
-			
-			$queue->push(new \App\Jobs\TestJob());
-			
-			echo "Job dispatched\n";
-			
+		public function index(): Response {
 			$posts = $this->em()->findBy(PostEntity::class, ['published' => true]);
 			
 			return $this->render("blog/index.tpl", [
