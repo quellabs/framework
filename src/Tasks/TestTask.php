@@ -3,7 +3,7 @@
 	namespace App\Tasks;
 	
 	use Quellabs\Support\ComposerUtils;
-	use Quellabs\Canvas\TaskScheduler\Consumers\Cron\AbstractTask;
+	use Quellabs\Canvas\Scheduler\Cron\AbstractTask;
 	
 	/**
 	 * Example cron task that runs every minute.
