@@ -1,20 +1,24 @@
 <?php
 	
-	namespace Quellabs\Canvas\TaskScheduler;
+	namespace Quellabs\Canvas\Scheduler;
 	
 	use Cron\CronExpression;
 	use Psr\Log\LoggerInterface;
 	use Psr\Log\NullLogger;
-	use Quellabs\Canvas\TaskScheduler\Runner\TaskRunnerFactory;
-	use Quellabs\Canvas\TaskScheduler\Storage\TaskStorageInterface;
-	use Quellabs\Contracts\TaskScheduler\TaskInterface;
-	use Quellabs\Contracts\TaskScheduler\TaskTimeoutException;
 	use Quellabs\Discover\Discover;
+	use Quellabs\DependencyInjection\Container;
+	use Quellabs\Discover\Scanner\DirectoryScanner;
+	use Quellabs\Canvas\Scheduler\Cron\TaskInterface;
+	use Quellabs\Contracts\Scheduler\TaskTimeoutException;
 	use Quellabs\Discover\Scanner\ComposerScanner;
+	use Quellabs\Canvas\Scheduler\Storage\JobStorageInterface;
+	use Quellabs\Canvas\Scheduler\Runner\TaskRunnerFactory;
 	
-	class TaskScheduler {
+	class Scheduler {
 		
-		private TaskStorageInterface $storage;
+		private JobStorageInterface $storage;
+		private Container $container;
+		private string $tasksPath;
 		private LoggerInterface $logger;
 		
 		/**
@@ -24,15 +28,21 @@
 		
 		/**
 		 * TaskScheduler constructor
-		 * @param TaskStorageInterface $storage
+		 * @param JobStorageInterface $storage
+		 * @param Container $container
+		 * @param string $tasksPath
 		 * @param LoggerInterface|null $logger
 		 */
 		public function __construct(
-			TaskStorageInterface $storage,
-			?LoggerInterface     $logger = null
+			JobStorageInterface $storage,
+			Container           $container,
+			string              $tasksPath,
+			?LoggerInterface    $logger = null
 		) {
-			$this->storage = $storage;
-			$this->logger = $logger ?? new NullLogger();
+			$this->storage   = $storage;
+			$this->container = $container;
+			$this->tasksPath = $tasksPath;
+			$this->logger    = $logger ?? new NullLogger();
 			
 			// Scan for tasks
 			$this->scanForTasks();
@@ -109,7 +119,6 @@
 				
 			} catch (TaskTimeoutException $e) {
 				// Handle timeout-specific exceptions from the task runner
-				// TaskException indicates the task exceeded its allowed execution time
 				$duration = round((microtime(true) - $startTime) * 1000);
 				$this->logger->warning("{$taskName} timeout: {$e->getMessage()}");
 				
@@ -122,11 +131,10 @@
 				
 				// Call general failure handler and return result
 				return $this->handleTaskFailure($task, $e, (int)$duration, 'onFailure', 'failure handler');
-
+				
 			} finally {
 				// Ensure the task is always marked as done, regardless of success or failure.
 				// This is critical for releasing distributed locks and preventing deadlocks
-				// The finally block guarantees execution even if exceptions occur above
 				$this->storage->markAsDone($taskName, new \DateTime());
 			}
 		}
@@ -142,10 +150,10 @@
 		 */
 		private function handleTaskFailure(
 			TaskInterface $task,
-			\Exception $exception,
-			int $duration,
-			string $handlerMethod,
-			string $handlerType
+			\Exception    $exception,
+			int           $duration,
+			string        $handlerMethod,
+			string        $handlerType
 		): TaskResult {
 			// Attempt to call the task's custom handler if it exists
 			// This allows tasks to perform cleanup, send notifications, or other recovery actions
@@ -154,38 +162,45 @@
 			} catch (\Exception $handlerException) {
 				// If the handler itself fails, log the secondary error
 				// This prevents handler failures from masking the original error
-				// We continue execution to ensure the original failure is still properly reported
 				$this->logger->error("Task {$handlerType} also failed: " . $handlerException->getMessage());
 			}
 			
 			// Return failed result with the original exception for debugging
-			// The TaskResult preserves exception details for calling code analysis
 			return new TaskResult($task, false, $duration, $exception);
 		}
 		
 		/**
-		 * Make a list of tasks to perform
+		 * Discover tasks registered under the "scheduler" Composer family
+		 * @return Discover
+		 */
+		private function scanForProviders(): Discover {
+			$discover = new Discover();
+			$discover->addScanner(new ComposerScanner("scheduler", "discover", $this->logger));
+			
+			if (is_dir($this->tasksPath)) {
+				$discover->addScanner(new DirectoryScanner([$this->tasksPath]));
+			}
+			
+			return $discover->discover();
+		}
+		
+		/**
+		 * Scan for available tasks via Composer metadata and local directory
 		 * @return void
 		 */
 		private function scanForTasks(): void {
-			// Add a Composer-based scanner to look for task implementations
-			// This scans for classes in the "task_scheduler" section of composer.json
-			$discover = new Discover();
-			$discover->addScanner(new ComposerScanner("task-scheduler", "discover", $this->logger));
-			$discover->discover();
+			// Discover tasks registered under the "scheduler" Composer family
+			$discover = $this->scanForProviders();
 			
 			// Build a list of tasks; filter out everything that does not implement TaskInterface
-			foreach ($discover->getProviders() as $provider) {
+			foreach ($discover->getDefinitions() as $definition) {
 				// Check if the discovered class implements the TaskInterface
-				// Only include classes that properly implement the task contract
-				if (!$provider instanceof TaskInterface) {
-					$providerClass = get_class($provider);
-					$this->logger->warning("Skipping task provider '{$providerClass}' - does not implement TaskInterface");
+				if (!is_a($definition->className, TaskInterface::class, true)) {
 					continue;
 				}
 				
 				// Add valid task class to our result array
-				$this->tasks[] = $provider;
+				$this->tasks[] = $this->container->make($definition->className);
 			}
 		}
 		
@@ -199,7 +214,6 @@
 			// Iterate through all discovered tasks to check their execution eligibility
 			foreach ($this->tasks as $task) {
 				// Skip disabled tasks to respect configuration-based task control
-				// This allows tasks to be temporarily disabled without removing them
 				if (!$task->enabled()) {
 					continue;
 				}
@@ -215,7 +229,6 @@
 				// 1. isDue() - Current time matches the cron schedule
 				// 2. !isBusy() - Task is not already running (prevents duplicate execution)
 				if ($cron->isDue() && !$this->storage->isBusy($taskName)) {
-					// Task is ready for execution - add to result set
 					$result[] = $task;
 				}
 				

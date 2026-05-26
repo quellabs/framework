@@ -1,6 +1,6 @@
 <?php
 	
-	namespace Quellabs\Contracts\TaskScheduler;
+	namespace Quellabs\Contracts\Scheduler;
 	
 	/**
 	 * Task-related exceptions

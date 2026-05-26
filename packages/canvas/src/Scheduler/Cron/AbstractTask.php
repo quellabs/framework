@@ -1,9 +1,8 @@
 <?php
 	
-	namespace Quellabs\Contracts\TaskScheduler;
+	namespace Quellabs\Canvas\Scheduler\Cron;
 	
-	use http\Exception\RuntimeException;
-	use Quellabs\Contracts\Discovery\ProviderInterface;
+	use Quellabs\Contracts\Scheduler\TaskTimeoutException;
 	
 	/**
 	 * Abstract base class for scheduled tasks
@@ -17,9 +16,8 @@
 	 * - Default timeout and enablement settings
 	 * - Extensible error and timeout handling
 	 * - Configuration management through ProviderInterface
-	 *
 	 */
-	abstract class AbstractTask implements TaskInterface, ProviderInterface {
+	abstract class AbstractTask implements TaskInterface {
 		
 		// ****************************************
 		// TaskInterface methods
@@ -34,7 +32,7 @@
 			// This ensures we only get the actual class name, not the full qualified name
 			$className = (new \ReflectionClass($this))->getShortName();
 			
-			// Replace
+			// Pattern matches a lowercase letter followed by an uppercase letter and inserts hyphen
 			$replacedClassName = preg_replace('/([a-z0-9])([A-Z])/', '$1-$2', $className);
 			
 			// Pattern matches a lowercase letter followed by an uppercase letter and inserts hyphen
@@ -85,6 +83,15 @@
 		}
 		
 		/**
+		 * Returns the maximum number of retries on failure.
+		 * Cron tasks default to 0 — the scheduler handles retry timing via the cron schedule itself.
+		 * @return int
+		 */
+		public function getMaxRetries(): int {
+			return 0;
+		}
+		
+		/**
 		 * This method is called when the task execution throws an exception.
 		 * The default implementation does nothing, allowing the scheduler to handle
 		 * the failure using its standard error handling mechanisms.
@@ -125,11 +132,11 @@
 			// Override for custom timeout handling
 			// Default implementation intentionally empty - scheduler handles basic timeout logging
 		}
-	
+		
 		// ****************************************
 		// ProviderInterface methods
 		// ****************************************
-
+		
 		/**
 		 * Get metadata about this task provider
 		 * @return array<string, mixed> Associative array of metadata key-value pairs
@@ -154,7 +161,6 @@
 		public function setConfig(array $config): void {
 			// Override to handle configuration storage and validation
 		}
-		
 		
 		// ****************************************
 		// Abstract methods. Fill these in
@@ -193,9 +199,8 @@
 		 * - '0 8 * * *' (daily at 8 AM)
 		 * - '0 0 1 * *' (first day of each month)
 		 * - '0 9-17 * * 1-5' (hourly during business hours, weekdays only)
-		 * - 'daily', 'weekly', 'monthly' (shortcut expressions)
 		 *
-		 * @return string Cron expression or shortcut defining the schedule
+		 * @return string Cron expression defining the schedule
 		 */
 		abstract public function getSchedule(): string;
 	}

@@ -7,6 +7,7 @@
 	use Quellabs\Canvas\Controllers\BaseController;
 	use Quellabs\Contracts\Cache\CacheInterface;
 	use Symfony\Component\HttpFoundation\Response;
+	use Quellabs\Contracts\Scheduler\QueueInterface;
 	
 	class BlogController extends BaseController {
 		
@@ -14,16 +15,11 @@
 		 * @Route("/posts/")
 		 * @return Response
 		 */
-		public function index(): Response {
-			$x = $this->em()->executeQuery("
-				range of y is json_source('f:\\test.json', '$.rows')
-				retrieve(y.id)
-				where y.id=10
-			");
+		public function index(QueueInterface $queue): Response {
 			
-			foreach ($x as $item) {
-				print_r($item);
-			}
+			$queue->push(new \App\Jobs\TestJob());
+			
+			echo "Job dispatched\n";
 			
 			$posts = $this->em()->findBy(PostEntity::class, ['published' => true]);
 			

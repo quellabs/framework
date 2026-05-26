@@ -14,7 +14,7 @@
 				ListRoutesCommand::class,
 				MatchRoutesCommand::class,
 				RoutesCacheClearCommand::class,
-				SchedulerRunCommand::class,
+				ScheduleRunCommand::class,
 				SchedulerListCommand::class,
 				CacheInitCommand::class,
 			]);

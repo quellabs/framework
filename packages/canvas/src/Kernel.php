@@ -163,7 +163,7 @@
 		public function getInspectorConfiguration(): ConfigurationInterface {
 			return $this->inspector_configuration;
 		}
-		
+
 		/**
 		 * Returns the Container object
 		 * @return Container

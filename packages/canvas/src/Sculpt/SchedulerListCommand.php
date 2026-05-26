@@ -2,10 +2,10 @@
 	
 	namespace Quellabs\Canvas\Sculpt;
 	
-	use Quellabs\Discover\Discover;
+	use Quellabs\Canvas\Kernel;
+	use Quellabs\Canvas\Scheduler\Scheduler;
 	use Quellabs\Sculpt\ConfigurationManager;
-	use Quellabs\Canvas\TaskScheduler\TaskScheduler;
-	use Quellabs\Canvas\TaskScheduler\Storage\FileTaskStorage;
+	use Quellabs\Canvas\Scheduler\Storage\FileJobStorage;
 	use Quellabs\Support\ComposerUtils;
 	
 	/**
@@ -36,7 +36,7 @@
 		 * Executes the scheduled task lister
 		 *
 		 * This method performs the main functionality of the command:
-		 * 1. Initializes the project discovery service
+		 * 1. Loads application configuration to resolve the tasks directory
 		 * 2. Creates a task scheduler with file-based storage
 		 * 3. Retrieves and displays all scheduled tasks in a sorted table
 		 *
@@ -45,10 +45,11 @@
 		 */
 		public function execute(ConfigurationManager $config): int {
 			// Create a task scheduler instance with file-based storage
-			// The storage directory is set to {project_root}/storage/task-scheduler
-			$scheduler = new TaskScheduler(
-				new FileTaskStorage(ComposerUtils::getProjectRoot() . "/storage/task-scheduler")
-			);
+			$kernel = new Kernel();
+			$container = $kernel->getDependencyInjector();
+			$tasksPath = $kernel->getConfiguration()->get('scheduler_directory', ComposerUtils::getProjectRoot() . '/src/Tasks');
+			$fileJobStorage = new FileJobStorage(ComposerUtils::getProjectRoot() . '/storage/scheduler');
+			$scheduler = new Scheduler($fileJobStorage, $container, $tasksPath);
 			
 			// Build the task list with sorting data
 			$tasks = [];
