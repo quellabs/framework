@@ -178,7 +178,7 @@
 		/**
 		 * (decimal) cast is mapped to PHP float.
 		 */
-		public function testDecimalCastReturnsNumeric(): void {
+		public function testDecimalCastReturnsPhpFloat(): void {
 			$result = $this->em->executeQuery("
 				range of p is PostEntity
 				retrieve (d = (decimal)p.id)
@@ -186,10 +186,7 @@
 			");
 			
 			$this->assertCount(1, $result);
-			
-			// MySQL returns CAST(x AS DECIMAL) as a numeric string via PDO;
-			// assertIsNumeric is the correct contract for this type.
-			$this->assertIsNumeric($result[0]['d']);
+			$this->assertIsFloat($result[0]['d']);
 		}
 		
 		// -------------------------------------------------------------------------
