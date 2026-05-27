@@ -18,11 +18,11 @@
 		public function index(): Response {
 			$rs = $this->em()->executeQuery("
 				range of x is PostEntity
-				retrieve((string)x)
+				retrieve((int)x.id)
 			");
 			
 			foreach($rs as $y) {
-				var_dump($y["x.testJSON.id"]);
+				var_dump($y["x.id"]);
 			}
 			
 			$posts = $this->em()->findBy(PostEntity::class, ['published' => true]);
