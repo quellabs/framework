@@ -359,4 +359,63 @@
 			$this->assertCount(1, $result);
 			$this->assertSame(11, $result[0]['v']);
 		}
+		
+		
+		// -------------------------------------------------------------------------
+		// Auto-generated alias correctness
+		// -------------------------------------------------------------------------
+		
+		/**
+		 * Without an explicit alias, the result key must be the property path
+		 * only - the cast prefix must be stripped.
+		 * (int)x.id -> key is "x.id", not "(int)x.id"
+		 */
+		public function testAutoAliasStripsCastPrefix(): void {
+			$result = $this->em->executeQuery("
+				range of p is PostEntity
+				retrieve ((int)p.id)
+				where p.id = 1
+			");
+			
+			$this->assertCount(1, $result);
+			// Key must be the property path, not "(int)p.id"
+			$this->assertArrayHasKey('p.id', $result[0]);
+			$this->assertArrayNotHasKey('(int)p.id', $result[0]);
+			$this->assertSame(1, $result[0]['p.id']);
+		}
+		
+		/**
+		 * Reproduces the exact case from the bug report: a cast on a JSON path
+		 * property. The auto-generated alias must be "x.testJSON.id", not
+		 * "(int)x.testJSON.id".
+		 */
+		public function testAutoAliasStripsCastPrefixOnJsonProperty(): void {
+			$result = $this->em->executeQuery("
+				range of x is PostEntity
+				retrieve ((int)x.testJSON.id)
+				where x.id = 1
+			");
+			
+			$this->assertCount(1, $result);
+			$this->assertArrayHasKey('x.testJSON.id', $result[0]);
+			$this->assertArrayNotHasKey('(int)x.testJSON.id', $result[0]);
+			$this->assertIsInt($result[0]['x.testJSON.id']);
+		}
+		
+		/**
+		 * An explicit alias must always take precedence and is never modified,
+		 * even when a cast is present.
+		 */
+		public function testExplicitAliasOverridesAutoAlias(): void {
+			$result = $this->em->executeQuery("
+				range of p is PostEntity
+				retrieve (my_id = (int)p.id)
+				where p.id = 1
+			");
+			
+			$this->assertCount(1, $result);
+			$this->assertArrayHasKey('my_id', $result[0]);
+			$this->assertArrayNotHasKey('p.id', $result[0]);
+			$this->assertArrayNotHasKey('(int)p.id', $result[0]);
+		}
 	}
