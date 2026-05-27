@@ -37,7 +37,7 @@
   "contracts": "1.1.0",
   "dependency-injection": "1.0.39",
   "discover": "1.0.45",
-  "objectquel": "1.8.1",
+  "objectquel": "1.9.0",
   "sculpt": "1.0.29",
   "signal-hub": "1.1.1",
   "support": "1.0.20"

@@ -52,6 +52,7 @@
 	use Quellabs\ObjectQuel\ObjectQuel\AstInterface;
 	use Quellabs\ObjectQuel\Capabilities\PlatformCapabilitiesInterface;
 	use Quellabs\ObjectQuel\Capabilities\NullPlatformCapabilities;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstCast;
 	use Quellabs\ObjectQuel\ObjectQuel\AstVisitorInterface;
 	
 	/**
@@ -346,6 +347,33 @@
 			$this->result[] = $this->expressionHandler->handleGenericExpression($ast, $ast->getOperator());
 		}
 		
+		/**
+		 * Process a cast expression node.
+		 *
+		 * Emits either:
+		 *   CAST(col AS TYPE)   for MySQL, MariaDB, SQLite, SQL Server
+		 *   col::TYPE           for PostgreSQL (CastStyle::DoubleColon)
+		 *
+		 * The SQL type token (e.g. SIGNED, DOUBLE, TEXT) is resolved from
+		 * PlatformCapabilitiesInterface::getSupportedCastTypes() using the
+		 * canonical QUEL cast type stored on the node (e.g. int, float, string).
+		 *
+		 * @param AstCast $ast The cast node to process
+		 */
+		protected function handleCast(AstCast $ast): void {
+			// Resolve the SQL type token for the target engine.
+			// The semantic analyser has already verified that this cast type is
+			// supported, so the key is guaranteed to exist here.
+			$supportedTypes = $this->platform->getSupportedCastTypes();
+			$sqlType = $supportedTypes[$ast->getCastType()] ?? strtoupper($ast->getCastType());
+
+			// Generate the SQL fragment for the inner expression
+			$innerSql = $this->visitNodeAndReturnSQL($ast->getExpression());
+
+			// Emit standard SQL CAST(), supported by all engines
+			$this->result[] = "CAST({$innerSql} AS {$sqlType})";
+		}
+
 		/**
 		 * Process a binary operator node
 		 * Binary operators work on two operands (e.g., +, -, *, /, =, <, >).
@@ -654,6 +682,11 @@
 			// AstSearch, AstSearchFullText, AstSearchLike, and AstSearchScore share the same child shape
 			if ($ast instanceof AstSearch || $ast instanceof AstSearchFullText || $ast instanceof AstSearchLike || $ast instanceof AstSearchScore) {
 				return [...$ast->getIdentifiers(), $ast->getSearchString()];
+			}
+			
+			// AstCast wraps a single inner expression
+			if ($ast instanceof AstCast) {
+				return [$ast->getExpression()];
 			}
 			
 			return [];

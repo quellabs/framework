@@ -11,6 +11,7 @@
 	use Quellabs\ObjectQuel\Exception\QuelException;
 	use Quellabs\ObjectQuel\UnitOfWork;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAlias;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstCast;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIdentifier;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeJsonSource;
 	use Quellabs\ObjectQuel\ProxyGenerator\ProxyInterface;
@@ -527,6 +528,28 @@
 		private function processValue(AstAlias $value, array $row, array $fullRow, array $jsonRangeNames): mixed {
 			$node = $value->getExpression();
 			
+			// Cast expression: coerce the raw PDO value to the PHP type the user
+			// requested. PDO type mapping is driver-dependent and does not reliably
+			// match the cast keyword (e.g. DECIMAL returns a string). The cast
+			// keyword is the explicit type intent; honour it unconditionally.
+			if ($node instanceof AstCast) {
+				$rawValue = $row[$value->getName()] ?? null;
+
+				if (!is_scalar($rawValue)) {
+					return $rawValue;
+				}
+				
+				/** @noinspection PhpDuplicateMatchArmBodyInspection */
+				return match ($node->getCastType()) {
+					'int'     => intval($rawValue),
+					'float'   => floatval($rawValue),
+					'string'  => strval($rawValue),
+					'bool'    => (bool) $rawValue,
+					'decimal' => floatval($rawValue),
+					default   => $rawValue,
+				};
+			}
+
 			// Top-level identifier with no chained property — either a JSON source
 			// range or a subquery (derived-table) range. Mapped entity aliases are
 			// handled before this call, so neither reaches here.
@@ -573,12 +596,15 @@
 		 * @throws EntityResolutionException
 		 */
 		private function processPropertyValue(mixed $rawValue, AstIdentifier $node): mixed {
+			// No value. Return null and be done with it
 			if ($rawValue === null) {
 				return null;
 			}
 			
+			// Fetch the entity from the node
 			$entityName = $node->getEntityName();
 			
+			// No entity. This is bad. Throw exception.
 			if ($entityName === null) {
 				throw new HydrationException("Missing entity name in the AstIdentifier");
 			}
@@ -590,11 +616,18 @@
 				throw new HydrationException("Missing property name in the AstIdentifier");
 			}
 			
-			$metadata = $this->entityStore->getMetadata($entityName);
-			$annotations = $metadata->getAnnotations();
+			// If the chain extends beyond the column node (e.g. x.testJSON.test),
+			// the SQL has already extracted the scalar via JSON path — return it as-is.
+			// Running normalizeValue on it would attempt json_decode() and produce null.
+			if ($node->getNext()->getNext() !== null) {
+				return $rawValue;
+			}
 			
 			// Find the @Column annotation and use it to cast the raw database value
 			// to its proper PHP type
+			$metadata = $this->entityStore->getMetadata($entityName);
+			$annotations = $metadata->getAnnotations();
+			
 			foreach ($annotations[$propertyName] ?? [] as $annotation) {
 				if (!$annotation instanceof Column) {
 					continue;
@@ -603,6 +636,7 @@
 				return $this->unitOfWork->getSerializer()->normalizeValue($annotation, $rawValue);
 			}
 			
+			// No column annotation. Should never happen. Semantic analyzer already detected it.
 			throw new HydrationException("No @Column annotation found for property '{$propertyName}' on '{$entityName}'");
 		}
 		
