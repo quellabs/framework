@@ -18,7 +18,7 @@
 		public function index(): Response {
 			$rs = $this->em()->executeQuery("
 				range of x is PostEntity
-				retrieve ((int)x.testJSON.id)
+				retrieve ((float)x.testJSON.id)
 				where x.id = 1
 			");
 			
