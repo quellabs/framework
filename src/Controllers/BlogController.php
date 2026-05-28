@@ -18,6 +18,14 @@
 		 * @return Response
 		 */
 		public function index(TemplateEngineInterface $engine): Response {
+			$rs = $this->em()->executeQuery("
+				range of x is PostEntity
+				retrieve(date(x.createdAt) + 10)
+			");
+			
+			foreach($rs as $r) {
+				var_dump($r);
+			}
 			
 			$posts = $this->em()->findBy(PostEntity::class, ['published' => true]);
 			
