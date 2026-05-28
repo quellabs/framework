@@ -11,7 +11,7 @@
 		
 		/**
 		 * Get the class name
-		 * @return string The class name
+		 * @return class-string The class name
 		 */
 		public function getClassName(): string;
 		

@@ -25,7 +25,7 @@
 		/**
 		 * Determines if this provider can create instances of the given class
 		 * @param string $className The fully qualified class name to check
-		 * @param array $metadata Metadata for filtering
+		 * @param array<string, mixed> $metadata Metadata for filtering
 		 * @return bool True if this provider supports the Configuration class
 		 */
 		public function supports(string $className, array $metadata): bool {
@@ -55,12 +55,17 @@
 		 * with defaults.
 		 *
 		 * @param string $className The class name to instantiate (Configuration)
-		 * @param array $dependencies Additional autowired dependencies (currently unused)
-		 * @param array $metadata Metadata as passed by Discover
+		 * @param array<string, mixed> $dependencies Additional autowired dependencies (currently unused)
+		 * @param array<string, mixed> $metadata Metadata as passed by Discover
 		 * @param MethodContextInterface|null $methodContext Optional method context
 		 * @return object A configured Configuration instance
 		 */
-		public function createInstance(string $className, array $dependencies, array $metadata, ?MethodContextInterface $methodContext = null): object {
+		public function createInstance(
+			string $className,
+			array $dependencies,
+			array $metadata,
+			?MethodContextInterface $methodContext = null
+		): object {
 			// Return existing instance if already created (singleton behavior)
 			if (self::$instance !== null) {
 				return self::$instance;
@@ -68,29 +73,30 @@
 			
 			// Get default configuration values
 			$defaults = self::getDefaults();
-			
-			// Load user configuration from config file
 			$configData = $this->getConfig();
-			
-			// Create new configuration instance
 			$config = new Configuration();
 			
 			// Configure entity class directory
 			$defaultEntityPath = ComposerUtils::getProjectRoot() . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . 'Entities';
-			$config->setEntityPath($configData["entity_path"] ?? $defaults["entity_path"] ?? $defaultEntityPath);
+			$entityPath = $configData["entity_path"] ?? $defaults["entity_path"] ?? $defaultEntityPath;
+			$config->setEntityPath(is_string($entityPath) ? $entityPath : $defaultEntityPath);
 			
 			// Configure proxy class generation directory
 			$defaultProxyPath = ComposerUtils::getProjectRoot() . DIRECTORY_SEPARATOR . 'storage' . DIRECTORY_SEPARATOR . 'objectquel' . DIRECTORY_SEPARATOR . 'proxies';
-			$config->setProxyDir($configData["proxy_path"] ?? $defaults["proxy_path"] ?? $defaultProxyPath);
+			$proxyPath = $configData["proxy_path"] ?? $defaults["proxy_path"] ?? $defaultProxyPath;
+			$config->setProxyDir(is_string($proxyPath) ? $proxyPath : $defaultProxyPath);
 			
 			// Configure entity class namespace
-			$defaultEntityNameSpace = 'App\\Entities';
-			$config->setEntityNameSpace($configData["entity_namespace"] ?? $defaults["entity_namespace"] ?? $defaultEntityNameSpace);
+			$defaultEntityNamespace = 'App\\Entities';
+			$entityNamespace = $configData["entity_namespace"] ?? $defaults["entity_namespace"] ?? $defaultEntityNamespace;
+			$config->setEntityNameSpace(is_string($entityNamespace) ? $entityNamespace : $defaultEntityNamespace);
 			
 			// Enable metadata caching if path is provided
-			if (!empty($configData["metadata_cache_path"])) {
+			$metadataCachePath = $configData["metadata_cache_path"] ?? null;
+			
+			if (is_string($metadataCachePath) && $metadataCachePath !== '') {
 				$config->setUseMetadataCache(true);
-				$config->setMetadataCachePath($configData["metadata_cache_path"]);
+				$config->setMetadataCachePath($metadataCachePath);
 			}
 			
 			// Development mode

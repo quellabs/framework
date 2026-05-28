@@ -30,6 +30,8 @@
 		private ContainerInterface $container;
 		private ?Kernel $kernel;
 		private ?EntityManager $entityManager;
+		
+		/** @var array<string, mixed> */
 		private array $config;
 		
 		/**
@@ -73,13 +75,22 @@
 		}
 		
 		/**
-		 * Returns true if the given class is a known ObjectQuel entity.
+		 * Returns true if the given class lives under the configured entity namespace.
+		 * Intentionally does not touch the EntityManager or container — supports() is
+		 * called for every parameter on every request, including during boot before
+		 * EntityManager is registered, so it must be safe to call at any time.
 		 * @param string $className Fully qualified class name of the parameter type
 		 * @param array<string, mixed> $metadata
 		 * @return bool
 		 */
 		public function supports(string $className, array $metadata): bool {
 			$entityNamespace = $this->config['entity_namespace'] ?? 'App\\Entities';
+			
+			// Config values are mixed; fall back to the default if misconfigured
+			if (!is_string($entityNamespace)) {
+				$entityNamespace = 'App\\Entities';
+			}
+			
 			return str_starts_with($className, $entityNamespace . '\\');
 		}
 		
@@ -104,6 +115,11 @@
 		 * @throws \ReflectionException If the controller method cannot be reflected
 		 */
 		public function createInstance(string $className, array $dependencies, array $metadata, ?MethodContextInterface $methodContext = null): ?object {
+			// No method context means we're not in a request cycle — nothing to resolve
+			if ($methodContext === null) {
+				return null;
+			}
+			
 			$annotationReader = $this->getKernel()->getAnnotationsReader();
 			$arguments = $methodContext->getArguments();
 			
@@ -123,21 +139,46 @@
 			);
 			
 			foreach ($annotations as $annotation) {
-				if ($annotation->getTarget() === $parameterName) {
-					// Use the route parameter specified in the annotation
-					$value = $arguments[$annotation->getRouteParam()] ?? null;
-					return $this->getEntityManager()->find($className, $value);
+				// AnnotationReader returns object[]; narrow to ResolveEntity before use
+				if (!$annotation instanceof ResolveEntity) {
+					continue;
 				}
+				
+				if ($annotation->getTarget() !== $parameterName) {
+					continue;
+				}
+				
+				// Use the route parameter specified in the annotation
+				$value = $arguments[$annotation->getRouteParam()] ?? null;
+				
+				// A null primary key would cause EntityManager::find() to throw — return
+				// null instead so the controller receives null and can handle it gracefully
+				if (!is_string($value) && !is_int($value)) {
+					return null;
+				}
+				
+				/** @var class-string<object> $className */
+				return $this->getEntityManager()->find($className, $value);
 			}
 			
 			// Convention fallback: no annotation matched, assume the primary key
 			// is carried by the {id} route parameter
 			$value = $arguments['id'] ?? null;
+			
+			if (!is_string($value) && !is_int($value)) {
+				return null;
+			}
+			
+			/** @var class-string<object> $className */
 			return $this->getEntityManager()->find($className, $value);
 		}
 		
 		/**
 		 * Finds the name of the method parameter typed as $className, using reflection.
+		 *
+		 * Results are cached per class+method+entityClass combination to avoid
+		 * repeated reflection on the same controller method within a request.
+		 *
 		 * @param string $className Fully qualified entity class name to look for
 		 * @param string $contextClass Fully qualified controller class name
 		 * @param string $contextMethod Controller method name
@@ -157,7 +198,8 @@
 			foreach ($reflection->getParameters() as $parameter) {
 				$type = $parameter->getType();
 				
-				// Skip untyped parameters and union/intersection types
+				// Skip untyped parameters and union/intersection types — only named
+				// types can match an entity class name
 				if (!$type instanceof \ReflectionNamedType) {
 					continue;
 				}
@@ -179,7 +221,15 @@
 		 */
 		private function getEntityManager(): EntityManager {
 			if ($this->entityManager === null) {
-				$this->entityManager = $this->container->get(EntityManager::class);
+				$entityManager = $this->container->get(EntityManager::class);
+				
+				// container->get() returns T|null; assert presence so PHPStan
+				// narrows the type and we fail fast if wiring is broken
+				if (!$entityManager instanceof EntityManager) {
+					throw new \RuntimeException('EntityManager could not be resolved from the container');
+				}
+				
+				$this->entityManager = $entityManager;
 			}
 			
 			return $this->entityManager;
@@ -193,7 +243,15 @@
 		 */
 		private function getKernel(): Kernel {
 			if ($this->kernel === null) {
-				$this->kernel = $this->container->get(Kernel::class);
+				$kernel = $this->container->get(Kernel::class);
+				
+				// container->get() returns T|null; assert presence so PHPStan
+				// narrows the type and we fail fast if wiring is broken
+				if (!$kernel instanceof Kernel) {
+					throw new \RuntimeException('Kernel could not be resolved from the container');
+				}
+				
+				$this->kernel = $kernel;
 			}
 			
 			return $this->kernel;

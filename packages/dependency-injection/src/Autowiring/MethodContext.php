@@ -54,7 +54,7 @@
 		
 		/**
 		 * Get the arguments passed on the Route annotation
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getArguments(): array {
 			return $this->arguments;

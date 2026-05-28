@@ -3,8 +3,6 @@
 	namespace Quellabs\CanvasObjectQuel\Annotations;
 	
 	use Quellabs\AnnotationReader\AnnotationInterface;
-	use Quellabs\ObjectQuel\DatabaseAdapter\TypeMapper;
-	use Quellabs\Support\Tools;
 	
 	/**
 	 * ResolveEntity annotation class for ORM <--> Canvas glue
@@ -24,13 +22,13 @@
 		 */
 		public function __construct(array $parameters) {
 			$target = $parameters['target'] ?? null;
-			$routeParam = $parameters['routeParam'] ?? null;
+			$routeParam = $parameters['routeParam'] ?? 'id';
 			
 			if (!is_string($target)) {
 				throw new \InvalidArgumentException('ResolveEntity annotation requires a "target" parameter');
 			}
 			
-			if (isset($routeParam) && !is_string($routeParam)) {
+			if (!is_string($routeParam)) {
 				throw new \InvalidArgumentException('ResolveEntity annotation requires "routeParam" to be string');
 			}
 			
