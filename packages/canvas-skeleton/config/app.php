@@ -2,26 +2,29 @@
 	
 	return [
 		// True to put the framework in debug mode; this mainly affects caching
-		'debug_mode'               => true,
+		'debug_mode'              => true,
 		
 		// Public directory (where CSS, etc. is stored)
-		'public_directory'         => 'public',
+		'public_directory'        => 'public',
 		
 		// Template engine
-		'template_engine'          => 'smarty',
+		'template_engine'         => 'smarty',
 		
 		// Path to controller classes
-		'controller_directory'     => dirname(__FILE__) . '/../src/Controllers',
+		'controller_directory'    => dirname(__FILE__) . '/../src/Controllers',
 		
 		// Path to error handlers
-		'error_handler_directory'  => dirname(__FILE__) . '/../src/Errors',
+		'error_handler_directory' => dirname(__FILE__) . '/../src/Errors',
 		
 		// Path to aspect-oriented programming files
-		'aspect_directory'         => dirname(__FILE__) . '/../src/Aspects',
+		'aspect_directory'        => dirname(__FILE__) . '/../src/Aspects',
 		
 		// Path to tasks (Scheduler)
-		'scheduler_directory' => dirname(__FILE__) . '/../src/Tasks',
+		'scheduler_directory'     => dirname(__FILE__) . '/../src/Tasks',
+		
+		// Default file for Monolog logging
+		'monolog_file'            => dirname(__FILE__) . '/storage/logs/canvas.log',
 		
 		// Whether to match routes with trailing slashes
-		'match_trailing_slashes'   => false
+		'match_trailing_slashes'  => false
 	];
