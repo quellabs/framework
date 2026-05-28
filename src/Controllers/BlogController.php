@@ -20,7 +20,9 @@
 		public function index(TemplateEngineInterface $engine): Response {
 			$rs = $this->em()->executeQuery("
 				range of x is PostEntity
-				retrieve(date(x.createdAt) + 10)
+				retrieve(
+					date('2 day') - date('1 day')
+				)
 			");
 			
 			foreach($rs as $r) {
