@@ -138,7 +138,6 @@
 			
 			$this->assertCount(1, $result);
 			// 40 days - 20 days = 20 days = 1728000 seconds
-			
 			$this->assertSame(1728000, (int) $result[0]['diff']);
 		}
 		
@@ -382,26 +381,18 @@
 		// =========================================================================
 		
 		/**
-		 * An interval string with an unknown unit ("fortnights") is passed through
-		 * to the SQL engine as-is inside UNIX_TIMESTAMP(). MySQL silently returns 0
-		 * for unrecognisable arguments rather than raising an error. This test
-		 * documents that behaviour: the query executes, and because UNIX_TIMESTAMP(0)
-		 * is a timestamp in 1970, no posts are "older than epoch" in our fixture.
-		 *
-		 * Note: a semantic validation pass that rejects unknown units at parse time
-		 * would be a better user experience, but that is a separate feature.
+		 * An interval string with an unknown unit must throw at parse time.
+		 * IntervalParser rejects unrecognised units with a ParserException, which
+		 * QueryExecutor wraps as a QuelException.
 		 */
-		public function testUnknownIntervalUnitProducesNoResults(): void {
-			$result = $this->em->executeQuery("
+		public function testUnknownIntervalUnitThrows(): void {
+			$this->expectException(\Quellabs\ObjectQuel\Exception\QuelException::class);
+			
+			$this->em->executeQuery("
 				range of p is PostEntity
 				retrieve (p.id)
 				where date(p.createdAt) < date(\"now\") - date(\"6 fortnights\")
 			");
-
-			// UNIX_TIMESTAMP("6 fortnights") == 0, so the condition becomes
-			// timestamp < NOW() - 0, which is timestamp < NOW() — true for all posts.
-			// OR it may return 0 rows depending on platform. Either way, no exception.
-			$this->assertIsArray($result->fetchAll());
 		}
 		
 		/**
