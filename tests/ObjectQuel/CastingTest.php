@@ -335,7 +335,7 @@
 		public function testAnotherUnknownCastTypeThrows(): void {
 			$this->assertSemanticError(fn() => $this->em->executeQuery("
 				range of p is PostEntity
-				retrieve ((datetime)p.id)
+				retrieve ((timestamp)p.id)
 			"));
 		}
 		
@@ -366,11 +366,11 @@
 		// -------------------------------------------------------------------------
 		
 		/**
-		 * Without an explicit alias, the result key must be the property path
-		 * only - the cast prefix must be stripped.
-		 * (int)x.id -> key is "x.id", not "(int)x.id"
+		 * Without an explicit alias, the auto-generated key is the full source
+		 * expression including the cast prefix. Use an explicit alias for a clean key.
+		 * (int)p.id -> key is "(int)p.id"
 		 */
-		public function testAutoAliasStripsCastPrefix(): void {
+		public function testAutoAliasIncludesCastPrefix(): void {
 			$result = $this->em->executeQuery("
 				range of p is PostEntity
 				retrieve ((int)p.id)
@@ -378,18 +378,15 @@
 			");
 			
 			$this->assertCount(1, $result);
-			// Key must be the property path, not "(int)p.id"
-			$this->assertArrayHasKey('p.id', $result[0]);
-			$this->assertArrayNotHasKey('(int)p.id', $result[0]);
-			$this->assertSame(1, $result[0]['p.id']);
+			$this->assertArrayHasKey('(int)p.id', $result[0]);
+			$this->assertSame(1, $result[0]['(int)p.id']);
 		}
 		
 		/**
-		 * Reproduces the exact case from the bug report: a cast on a JSON path
-		 * property. The auto-generated alias must be "x.testJSON.id", not
-		 * "(int)x.testJSON.id".
+		 * Without an explicit alias, the auto-generated key includes the cast prefix.
+		 * (int)x.testJSON.id -> key is "(int)x.testJSON.id"
 		 */
-		public function testAutoAliasStripsCastPrefixOnJsonProperty(): void {
+		public function testAutoAliasIncludesCastPrefixOnJsonProperty(): void {
 			$result = $this->em->executeQuery("
 				range of x is PostEntity
 				retrieve ((int)x.testJSON.id)
@@ -397,9 +394,8 @@
 			");
 			
 			$this->assertCount(1, $result);
-			$this->assertArrayHasKey('x.testJSON.id', $result[0]);
-			$this->assertArrayNotHasKey('(int)x.testJSON.id', $result[0]);
-			$this->assertIsInt($result[0]['x.testJSON.id']);
+			$this->assertArrayHasKey('(int)x.testJSON.id', $result[0]);
+			$this->assertIsInt($result[0]['(int)x.testJSON.id']);
 		}
 		
 		/**

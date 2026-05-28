@@ -142,10 +142,10 @@
 		}
 		
 		/**
-		 * (datetime) cast applied to a date() interval expression before arithmetic.
-		 * (datetime)date('2 days') produces a datetime, minus date('1 day') which
-		 * is an interval — datetime - interval → datetime. Must not throw and must
-		 * return a \DateTime without requiring parentheses around the cast operand.
+		 * (datetime) cast applied to a date() expression before arithmetic must not
+		 * throw. (datetime)date('2 days') produces a datetime; subtracting date('1 day')
+		 * (an interval) gives datetime - interval → datetime. Verifies the validator
+		 * correctly resolves the cast node's return type without needing parentheses.
 		 */
 		public function testDatetimeCastBeforeArithmeticDoesNotThrow(): void {
 			$result = $this->em->executeQuery("
