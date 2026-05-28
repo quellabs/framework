@@ -138,6 +138,7 @@
 			
 			$this->assertCount(1, $result);
 			// 40 days - 20 days = 20 days = 1728000 seconds
+			
 			$this->assertSame(1728000, (int) $result[0]['diff']);
 		}
 		
