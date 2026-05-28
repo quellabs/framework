@@ -12,7 +12,7 @@
 	 *     name: string,
 	 *     types?: array<int, string>,
 	 *     default_value?: mixed,
-	 *     context?: string
+	 *     context?: array<string, mixed>
 	 * }
 	 */
 	class Autowirer {

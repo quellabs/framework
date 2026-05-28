@@ -3,20 +3,22 @@
 	namespace App\Controllers;
 	
 	use App\Entities\PostEntity;
+	use Psr\Log\LoggerInterface;
 	use Quellabs\Canvas\Annotations\Route;
-	use Quellabs\CanvasObjectQuel\Annotations\ResolveEntity;
+	use Quellabs\Canvas\Annotations\WithContext;
 	use Quellabs\Canvas\Controllers\BaseController;
-	use Quellabs\Contracts\Cache\CacheInterface;
 	use Symfony\Component\HttpFoundation\Response;
-	use Quellabs\Contracts\Scheduler\QueueInterface;
+	use Quellabs\Contracts\Templates\TemplateEngineInterface;
 	
 	class BlogController extends BaseController {
 		
 		/**
 		 * @Route("/posts/")
+		 * @WithContext(parameter="engine", context="blade")
 		 * @return Response
 		 */
-		public function index(): Response {
+		public function index(TemplateEngineInterface $engine): Response {
+			
 			$posts = $this->em()->findBy(PostEntity::class, ['published' => true]);
 			
 			return $this->render("blog/index.tpl", [
