@@ -9,7 +9,8 @@
 	 */
 	class ResolveEntity implements AnnotationInterface {
 		
-		private string $target;
+		/** @var class-string */
+		private string $entityClass;
 		private string $routeParam;
 		
 		/** @var array<string, mixed> */
@@ -21,18 +22,18 @@
 		 * @throws \InvalidArgumentException
 		 */
 		public function __construct(array $parameters) {
-			$target = $parameters['target'] ?? null;
+			$entityClass = $parameters['value'] ?? null;
 			$routeParam = $parameters['routeParam'] ?? 'id';
 			
-			if (!is_string($target)) {
-				throw new \InvalidArgumentException('ResolveEntity annotation requires a "target" parameter');
+			if (!is_string($entityClass) || !class_exists($entityClass)) {
+				throw new \InvalidArgumentException('ResolveEntity requires a valid entity class as first argument');
 			}
 			
 			if (!is_string($routeParam)) {
 				throw new \InvalidArgumentException('ResolveEntity annotation requires "routeParam" to be string');
 			}
 			
-			$this->target = $target;
+			$this->entityClass = $entityClass;
 			$this->routeParam = $routeParam;
 			$this->parameters = $parameters;
 		}
@@ -47,10 +48,10 @@
 		
 		/**
 		 * Gets the target name
-		 * @return string
+		 * @return class-string
 		 */
-		public function getTarget(): string {
-			return $this->target;
+		public function getEntityClass(): string {
+			return $this->entityClass;
 		}
 		
 		/**
