@@ -42,7 +42,7 @@
 		 * Service discovery
 		 * @var Discover
 		 */
-		private Discover $discovery;
+		protected Discover $discovery;
 		
 		/**
 		 * @var array<string, mixed>
@@ -67,6 +67,14 @@
 			
 			// Automatically discover and register service providers
 			$this->registerProviders();
+		}
+		
+		/**
+		 * Returns the discover class
+		 * @return Discover
+		 */
+		public function getDiscovery(): Discover {
+			return $this->discovery;
 		}
 		
 		/**
@@ -236,15 +244,37 @@
 		 * Invoke a method with autowired arguments
 		 * @param object $instance
 		 * @param string $methodName
+		 * @param MethodContextInterface|null $methodContext
 		 * @param array<string, mixed> $parameters
 		 * @return mixed
 		 */
-		public function invoke(object $instance, string $methodName, array $parameters = []): mixed {
+		public function invoke(
+			object $instance,
+			string $methodName,
+			array $parameters = [],
+			?MethodContextInterface $methodContext = null
+		): mixed {
 			// Get method arguments with all dependencies resolved
-			$args = $this->autowire->getMethodArguments($instance, $methodName, $parameters);
+			$args = $this->autowire->getMethodArguments($instance, $methodName, $parameters, $methodContext);
 			
 			// Call the method with the resolved arguments
 			return $instance->$methodName(...$args);
+		}
+		
+		/**
+		 * Instantiate a class with autowired constructor dependencies without
+		 * pushing it onto the resolution stack. Used exclusively for provider
+		 * instantiation during boot, where tracking the provider class itself
+		 * on the stack would cause false circular dependency detection.
+		 * @template T of object
+		 * @param class-string<T> $className
+		 * @return T
+		 * @throws \ReflectionException
+		 */
+		public function instantiate(string $className): object {
+			$arguments = $this->autowire->getMethodArguments($className, '__construct');
+			$reflection = new \ReflectionClass($className);
+			return $reflection->newInstanceArgs($arguments);
 		}
 		
 		/**

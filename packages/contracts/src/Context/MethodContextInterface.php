@@ -2,6 +2,8 @@
 
 	namespace Quellabs\Contracts\Context;
 	
+	use Symfony\Component\HttpFoundation\Request;
+	
 	/**
 	 * Base interface for method execution context
 	 */
@@ -18,4 +20,11 @@
 		 * @return string The method name
 		 */
 		public function getMethodName(): string;
+		
+		/**
+		 * Get all arguments passed to the method.
+		 * @return array<string, mixed> Array of method arguments in order
+		 */
+		public function getArguments(): array;
+
 	}

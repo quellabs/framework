@@ -4,6 +4,7 @@
 	
 	use App\Entities\PostEntity;
 	use Quellabs\Canvas\Annotations\Route;
+	use Quellabs\CanvasObjectQuel\Annotations\ResolveEntity;
 	use Quellabs\Canvas\Controllers\BaseController;
 	use Quellabs\Contracts\Cache\CacheInterface;
 	use Symfony\Component\HttpFoundation\Response;
@@ -35,18 +36,19 @@
 		
 		/**
 		 * @Route("/posts/{id:int}")
-		 * @param int $id
+		 * @param PostEntity|null $entity
 		 * @return Response
+		 * @throws \Quellabs\Contracts\Templates\TemplateRenderException
+		 * @throws \Quellabs\ObjectQuel\Exception\EntityResolutionException
+		 * @throws \Quellabs\ObjectQuel\Exception\QuelException
 		 */
-		public function show(int $id): Response {
-			$post = $this->em()->find(PostEntity::class, $id);
-			
-			if (!$post) {
+		public function show(?PostEntity $entity): Response {
+			if (!$entity) {
 				return $this->notFound('Post does not exist.');
 			}
 			
 			return $this->render("blog/show.tpl", [
-				'post' => $post
+				'post' => $entity
 			]);
 		}
 	}
