@@ -55,9 +55,15 @@
 		 * @param object|class-string $class The class instance or class name
 		 * @param string $methodName The name of the method to resolve arguments for
 		 * @param array<string, mixed> $parameters Optional array of parameters to use for resolution
+		 * @param MethodContextInterface|null $methodContext
 		 * @return array<int, mixed> The resolved arguments array ready for method invocation
 		 */
-		public function getMethodArguments(object|string $class, string $methodName, array $parameters = []): array {
+		public function getMethodArguments(
+			object|string $class,
+			string $methodName,
+			array $parameters = [],
+			?MethodContextInterface $methodContext = null
+		): array {
 			// Fetch the name of the class - handle both object instances and class name strings
 			$className = is_object($class) ? get_class($class) : $class;
 			
@@ -66,8 +72,8 @@
 				throw new \InvalidArgumentException("Class '{$className}' does not exist");
 			}
 			
-			// Create a context object to track method resolution state and metadata
-			$methodContext = new MethodContext($className, $methodName);
+			// Use the provided context if available, otherwise create a fresh one
+			$methodContext = $methodContext ?? new MethodContext($className, $methodName);
 			
 			// Get method parameter metadata (name, types, defaults, etc.)
 			// This likely uses reflection to analyze the method signature

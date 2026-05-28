@@ -48,9 +48,10 @@
 		
 		/**
 		 * Get class annotations including inherited ones
+		 * @template T of AnnotationInterface
 		 * @param class-string|object $class The class object or class name to analyze
-		 * @param string|null $annotationClass Optional filter to return only annotations of a specific class
-		 * @return AnnotationCollection
+		 * @param class-string<T>|null $annotationClass Optional filter to return only annotations of a specific class
+		 * @return ($annotationClass is null ? AnnotationCollection : AnnotationCollection<T>)
 		 * @throws AnnotationReaderException
 		 */
 		public function getClassAnnotations(string|object $class, ?string $annotationClass = null): AnnotationCollection {
@@ -74,9 +75,10 @@
 		
 		/**
 		 * Checks if a given entity class has a specific annotation.
+		 * @template T of AnnotationInterface
 		 * @param class-string|object $class The object to check
-		 * @param string $annotationClass The annotation class to look for
-		 * @return bool                       True if the annotation exists on the property, false otherwise
+		 * @param class-string<T> $annotationClass The annotation class to look for
+		 * @return bool True if the annotation exists on the property, false otherwise
 		 */
 		public function classHasAnnotation(string|object $class, string $annotationClass): bool {
 			try {
@@ -89,10 +91,11 @@
 		
 		/**
 		 * Takes a method's docComment and parses it to extract annotations
+		 * @template T of AnnotationInterface
 		 * @param class-string|object $class The class object or class name to analyze
 		 * @param string $methodName The name of the method whose annotations to retrieve
-		 * @param string|null $annotationClass Optional filter to return only annotations of a specific class
-		 * @return AnnotationCollection    Array of parsed annotations for the specified method
+		 * @param class-string<T>|null $annotationClass Optional filter to return only annotations of a specific class
+		 * @return ($annotationClass is null ? AnnotationCollection : AnnotationCollection<T>)
 		 * @throws AnnotationReaderException
 		 */
 		public function getMethodAnnotations(string|object $class, string $methodName, ?string $annotationClass = null): AnnotationCollection {
@@ -118,9 +121,10 @@
 		
 		/**
 		 * Checks if a method in a given entity class has a specific annotation.
+		 * @template T of AnnotationInterface
 		 * @param class-string|object $class The object to check
 		 * @param string $methodName The name of the method to inspect for annotations
-		 * @param string $annotationClass The annotation class to look for
+		 * @param class-string<T> $annotationClass $annotationClass The annotation class to look for
 		 * @return bool                   True if the annotation exists on the method, false otherwise
 		 */
 		public function methodHasAnnotation(string|object $class, string $methodName, string $annotationClass): bool {
@@ -134,10 +138,11 @@
 		
 		/**
 		 * Takes a property's docComment and parses it
+		 * @template T of AnnotationInterface
 		 * @param class-string|object $class
 		 * @param string $propertyName
-		 * @param string|null $annotationClass
-		 * @return AnnotationCollection
+		 * @param class-string<T>|null $annotationClass
+		 * @return ($annotationClass is null ? AnnotationCollection : AnnotationCollection<T>)
 		 * @throws AnnotationReaderException
 		 */
 		public function getPropertyAnnotations(string|object $class, string $propertyName, ?string $annotationClass = null): AnnotationCollection {
@@ -163,9 +168,10 @@
 		
 		/**
 		 * Checks if a method in a given entity class has a specific annotation.
+		 * @template T of AnnotationInterface
 		 * @param class-string|object $class The object to check
 		 * @param string $propertyName The name of the property to inspect for annotations
-		 * @param string $annotationClass The annotation class to look for
+		 * @param class-string<T> $annotationClass The annotation class to look for
 		 * @return bool                      True if the annotation exists on the property, false otherwise
 		 */
 		public function propertyHasAnnotation(string|object $class, string $propertyName, string $annotationClass): bool {

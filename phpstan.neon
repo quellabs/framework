@@ -3,6 +3,7 @@ parameters:
     treatPhpDocTypesAsCertain: false
     paths:
         - packages/objectquel/src
+        - packages/canvas-objectquel
         - packages/canvas/src
         - packages/annotation-reader/src
         - packages/discover/src

@@ -46,10 +46,16 @@
   "extra": {
     "discover": {
       "di": {
-        "provider": {
-          "class": "Quellabs\\CanvasObjectQuel\\ConfigurationServiceProvider",
-          "config": "config/database.php"
-        }
+        "providers": [
+          {
+            "class": "Quellabs\\CanvasObjectQuel\\ConfigurationServiceProvider",
+            "config": "config/database.php"
+          },
+          {
+            "class": "Quellabs\\CanvasObjectQuel\\ServiceProvider",
+            "config": "config/database.php"
+          }
+        ]
       }
     }
   }
