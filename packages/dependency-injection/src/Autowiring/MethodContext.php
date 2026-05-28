@@ -2,12 +2,14 @@
 	
 	namespace Quellabs\DependencyInjection\Autowiring;
 	
+	use Quellabs\Contracts\Context\MethodContextInterface;
+	
 	/**
 	 * This class implements the MethodContext contract and holds information about
 	 * a specific method within a class instance, typically used during autowiring
 	 * processes to provide context about which method is being processed.
 	 */
-	class MethodContext implements \Quellabs\Contracts\Context\MethodContextInterface {
+	class MethodContext implements MethodContextInterface {
 		
 		/** @var string The class instance that contains the method */
 		private string $class;
@@ -15,14 +17,23 @@
 		/** @var string The name of the method being processed */
 		private string $methodName;
 		
+		/** @var array<string, mixed> */
+		private array $arguments;
+		
 		/**
 		 * MethodContext constructor
 		 * @param string $class The class instance that contains the method
 		 * @param string $methodName The name of the method being processed
+		 * @param array<string, mixed> $arguments Array of arguments passed to the method
 		 */
-		public function __construct(string $class, string $methodName) {
+		public function __construct(
+			string $class,
+			string $methodName,
+			array $arguments = []
+		) {
 			$this->class = $class;
 			$this->methodName = $methodName;
+			$this->arguments = $arguments;
 		}
 		
 		/**
@@ -39,5 +50,13 @@
 		 */
 		public function getMethodName(): string {
 			return $this->methodName;
+		}
+		
+		/**
+		 * Get the arguments passed on the Route annotation
+		 * @return array<string, mixed>
+		 */
+		public function getArguments(): array {
+			return $this->arguments;
 		}
 	}
