@@ -8,16 +8,16 @@
 	use Quellabs\Canvas\Annotations\WithContext;
 	use Quellabs\Canvas\Controllers\BaseController;
 	use Symfony\Component\HttpFoundation\Response;
+	use Quellabs\Contracts\Templates\TemplateEngineInterface;
 	
 	class BlogController extends BaseController {
 		
 		/**
 		 * @Route("/posts/")
-		 * @WithContext(parameter="logger", context="stream", logfile="custom.log")
+		 * @WithContext(parameter="engine", context="blade")
 		 * @return Response
 		 */
-		public function index(LoggerInterface $logger): Response {
-			$logger->info("test");
+		public function index(TemplateEngineInterface $engine): Response {
 			
 			$posts = $this->em()->findBy(PostEntity::class, ['published' => true]);
 			
