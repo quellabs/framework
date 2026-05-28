@@ -141,6 +141,23 @@
 			$this->assertSame(1728000, (int) $result[0]['diff']);
 		}
 		
+		/**
+		 * (datetime) cast applied to a date() interval expression before arithmetic.
+		 * (datetime)date('2 days') produces a datetime, minus date('1 day') which
+		 * is an interval — datetime - interval → datetime. Must not throw and must
+		 * return a \DateTime without requiring parentheses around the cast operand.
+		 */
+		public function testDatetimeCastBeforeArithmeticDoesNotThrow(): void {
+			$result = $this->em->executeQuery("
+				range of p is PostEntity
+				retrieve (ts = (datetime)date(\"2 days\") - date(\"1 day\"))
+				where p.id = 1
+			");
+
+			$this->assertCount(1, $result);
+			$this->assertInstanceOf(\DateTime::class, $result[0]['ts']);
+		}
+
 		// =========================================================================
 		// date("now")
 		// =========================================================================
