@@ -21,7 +21,7 @@
 			$rs = $this->em()->executeQuery("
 				range of x is PostEntity
 				retrieve(
-					(datetime)date('2 day') - date('1 day')
+					(datetime)date('2 day') - (datetime)date('1 day')
 				)
 			");
 			
