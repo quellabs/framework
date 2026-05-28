@@ -144,7 +144,8 @@
 					continue;
 				}
 				
-				if ($annotation->getTarget() !== $parameterName) {
+				// Wrong class type
+				if ($annotation->getEntityClass() !== $className) {
 					continue;
 				}
 				
