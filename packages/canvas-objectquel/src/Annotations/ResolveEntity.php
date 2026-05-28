@@ -5,6 +5,8 @@
 	use Quellabs\AnnotationReader\AnnotationInterface;
 	
 	/**
+	 * @Annotation
+	 * @Target("METHOD")
 	 * ResolveEntity annotation class for ORM <--> Canvas glue
 	 */
 	class ResolveEntity implements AnnotationInterface {
