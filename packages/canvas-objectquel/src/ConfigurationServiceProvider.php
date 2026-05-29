@@ -91,14 +91,6 @@
 			$entityNamespace = $configData["entity_namespace"] ?? $defaults["entity_namespace"] ?? $defaultEntityNamespace;
 			$config->setEntityNameSpace(is_string($entityNamespace) ? $entityNamespace : $defaultEntityNamespace);
 			
-			// Enable metadata caching if path is provided
-			$metadataCachePath = $configData["metadata_cache_path"] ?? null;
-			
-			if (is_string($metadataCachePath) && $metadataCachePath !== '') {
-				$config->setUseMetadataCache(true);
-				$config->setMetadataCachePath($metadataCachePath);
-			}
-			
 			// Development mode
 			if ($configData["development_mode"] ?? false) {
 				$config->setDevelopmentMode(true);
