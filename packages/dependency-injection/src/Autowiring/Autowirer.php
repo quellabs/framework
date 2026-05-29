@@ -87,9 +87,9 @@
 				// Check if this parameter is a special "all parameter" type
 				// This might be a parameter that receives all other resolved parameters
 				if ($this->isAllParameter($param)) {
-					$allParameterIndex = $index; // Remember where the all parameter is located
-					$arguments[] = null; // Placeholder - will be filled later with all parameter data
-					continue; // Skip normal parameter resolution for this parameter
+					$allParameterIndex = $index;
+					$arguments[] = null;
+					continue;
 				}
 				
 				// Resolve the current parameter using the provided parameters and context

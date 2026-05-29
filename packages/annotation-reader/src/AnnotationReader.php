@@ -29,6 +29,9 @@
 		/** @var string Directory to store cache files in */
 		protected string $annotationCachePath;
 		
+		/** @var bool When true, cache files are re-validated against source mtime on every read */
+		protected bool $debugMode;
+		
 		/** @var array<string, mixed> */
 		protected array $configuration;
 		
@@ -42,6 +45,7 @@
 		public function __construct(Configuration $configuration) {
 			$this->useCache = $configuration->useAnnotationCache();
 			$this->annotationCachePath = $configuration->getAnnotationCachePath();
+			$this->debugMode = $configuration->isDebugMode();
 			$this->configuration = [];
 			$this->cached_annotations = [];
 		}
@@ -373,42 +377,42 @@
 		
 		/**
 		 * Validates whether the annotation cache for a class is still valid.
+		 *
+		 * In debug mode the cache file's mtime is compared against the source class file
+		 * so that annotation changes are picked up immediately during development.
+		 *
+		 * In production mode the mtime check is skipped entirely: if the cache file
+		 * exists and is readable the cache is considered valid. This eliminates two
+		 * filemtime() calls per class per request. Cache freshness in production is
+		 * the responsibility of the deployment process (run cache:clear on deploy).
+		 *
 		 * @param string $cacheFilename The name of the cache file to check
 		 * @param \ReflectionClass<object> $reflection Reflection object for the class being cached
 		 * @return bool Returns true if the cache is valid, false if it needs to be regenerated
 		 */
 		protected function cacheValid(string $cacheFilename, \ReflectionClass $reflection): bool {
-			// Check if the cache file exists at all
-			// If it doesn't exist, we need to generate the cache so return false
-			if (!file_exists("{$this->annotationCachePath}/{$cacheFilename}")) {
+			$cachePath = "{$this->annotationCachePath}/{$cacheFilename}";
+			
+			// Check if the cache file exists and is readable
+			if (!file_exists($cachePath) || !is_readable($cachePath)) {
 				return false;
 			}
 			
-			// Check if the cache file is readable
-			if (!is_readable("{$this->annotationCachePath}/{$cacheFilename}")) {
-				return false;
+			// In production mode, existence of the cache file is sufficient.
+			// Skipping filemtime() saves two stat calls per class per request.
+			if (!$this->debugMode) {
+				return true;
 			}
 			
-			// Fetch filename
+			// In debug mode, compare mtime of the cache file against the source class
+			// file so annotation changes are reflected without a manual cache clear.
 			$fileName = $reflection->getFileName();
 			
-			// If there is no filename, the cache is invalid
 			if ($fileName === false) {
 				return false;
 			}
 			
-			// Get the last modification time of the class file
-			// This helps us determine if the class has been changed since cache creation
-			$classCreateDate = filemtime($fileName);
-			
-			// Get the last modification time of the cache file
-			// This tells us when the cache was last generated
-			$cacheCreateDate = filemtime("{$this->annotationCachePath}/{$cacheFilename}");
-			
-			// Compare timestamps to determine cache validity
-			// Return true if the cache was created after the class was last modified
-			// Return false if the class has been modified since the cache was created
-			return $classCreateDate <= $cacheCreateDate;
+			return filemtime($fileName) <= filemtime($cachePath);
 		}
 		
 		/**

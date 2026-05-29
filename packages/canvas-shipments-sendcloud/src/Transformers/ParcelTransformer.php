@@ -1,6 +1,6 @@
 <?php
 	
-	namespace Quellabs\Shipments\SendCloud\Transformer;
+	namespace Quellabs\Shipments\SendCloud\Transformers;
 	
 	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Quellabs\Shipments\Contracts\ShipmentRequest;

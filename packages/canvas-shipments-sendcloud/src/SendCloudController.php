@@ -4,7 +4,6 @@
 	
 	use Quellabs\Canvas\Annotations\Route;
 	use Quellabs\Shipments\Contracts\ShipmentExchangeException;
-	use Quellabs\Shipments\Contracts\ShipmentStatus;
 	use Quellabs\SignalHub\Signal;
 	use Symfony\Component\HttpFoundation\JsonResponse;
 	use Symfony\Component\HttpFoundation\Request;

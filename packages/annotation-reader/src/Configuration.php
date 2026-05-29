@@ -18,6 +18,12 @@
 		private string $annotationCachePath = '';
 		
 		/**
+		 * @var bool When true, cache validity is checked against source file mtime on every
+		 * read. When false, the cache is trusted unconditionally once it exists.
+		 */
+		private bool $debugMode = false;
+		
+		/**
 		 * Returns true if the annotationreader should use cache, false if not
 		 * @return bool
 		 */
@@ -49,5 +55,23 @@
 		 */
 		public function setAnnotationCachePath(string $annotationCacheDir): void {
 			$this->annotationCachePath = $annotationCacheDir;
+		}
+		
+		/**
+		 * Returns true if debug mode is enabled
+		 * @return bool
+		 */
+		public function isDebugMode(): bool {
+			return $this->debugMode;
+		}
+		
+		/**
+		 * Sets debug mode. When true, cache files are validated against source file mtime
+		 * on every read. When false, existing cache files are trusted unconditionally.
+		 * @param bool $debugMode
+		 * @return void
+		 */
+		public function setDebugMode(bool $debugMode): void {
+			$this->debugMode = $debugMode;
 		}
 	}

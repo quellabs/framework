@@ -175,6 +175,13 @@
     },
     {
       "type": "path",
+      "url": "./packages/canvas-payments-mollie",
+      "options": {
+        "symlink": true
+      }
+    },
+    {
+      "type": "path",
       "url": "./packages/canvas-payments-adyen",
       "options": {
         "symlink": true
@@ -314,7 +321,7 @@
       "Quellabs\\Canvas\\Handlebars\\": "packages/canvas-handlebars/src/",
       "Quellabs\\Canvas\\Latte\\": "packages/canvas-latte/src/",
       "Quellabs\\Canvas\\Plates\\": "packages/canvas-plates/src/",
-      "Quellabs\\Canvas\\Cache\\": "packages/cache/src/",
+      "Quellabs\\Cache\\": "packages/cache/src/",
       "Quellabs\\Payments\\": "packages/canvas-payments/src/",
       "Quellabs\\Payments\\Contracts\\": "packages/canvas-payments-contracts/src/",
       "Quellabs\\Payments\\Mollie\\": "packages/canvas-payments-mollie/src/",
@@ -322,7 +329,7 @@
       "Quellabs\\Payments\\PaypalExpress\\": "packages/canvas-payments-paypal-express/src/",
       "Quellabs\\Payments\\Adyen\\": "packages/canvas-payments-adyen/src/",
       "Quellabs\\Payments\\MultiSafepay\\": "packages/canvas-payments-multisafepay/src/",
-      "Quellabs\\Payments\\Buckaroo\\": "packages/canvas-payments-multisafepay/src/",
+      "Quellabs\\Payments\\Buckaroo\\": "packages/canvas-payments-buckaroo/src/",
       "Quellabs\\Payments\\PayNL\\": "packages/canvas-payments-paynl/src/",
       "Quellabs\\Payments\\RaboSmartPay\\": "packages/canvas-payments-rabosmartpay/src/",
       "Quellabs\\Payments\\Klarna\\": "packages/canvas-payments-klarna/src/",
@@ -337,6 +344,9 @@
       "Quellabs\\Canvas\\Loom\\": "packages/canvas-loom/src/",
       "Quellabs\\Canvas\\Scheduler\\Redis\\": "packages/canvas-scheduler-redis/src/"
     },
+    "classmap": [
+      "packages/canvas/src/Legacy/Helpers/LegacyHelper.php"
+    ],
     "files": [
       "packages/support/src/bootstrap.php"
     ]
