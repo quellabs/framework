@@ -12,10 +12,16 @@
 	use Quellabs\ObjectQuel\UnitOfWork;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAlias;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstCast;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstDate;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIdentifier;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeJsonSource;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\NodeBinary;
+	use Quellabs\ObjectQuel\ObjectQuel\AstInterface;
+	use Quellabs\ObjectQuel\Execution\Helpers\ResolveType;
 	use Quellabs\ObjectQuel\ProxyGenerator\ProxyInterface;
 	use Quellabs\ObjectQuel\ReflectionManagement\PropertyHandler;
+	use Quellabs\ObjectQuel\Serialization\Normalizer\DatetimeNormalizer;
+	use Quellabs\ObjectQuel\Serialization\Normalizer\IntervalNormalizer;
 	use Quellabs\ObjectQuel\Serialization\Serializers\Serializer;
 	
 	/**
@@ -39,6 +45,9 @@
 		private EntityStore $entityStore;
 		private Serializer $serializer;
 		private PropertyHandler $propertyHandler;
+		private ResolveType $resolveType;
+		private DatetimeNormalizer $datetimeNormalizer;
+		private IntervalNormalizer $intervalNormalizer;
 		
 		/**
 		 * EntityHydrator constructor
@@ -49,6 +58,9 @@
 			$this->entityStore = $entityManager->getEntityStore();
 			$this->serializer = new Serializer($this->entityStore);
 			$this->propertyHandler = $entityManager->getPropertyHandler();
+			$this->resolveType = new ResolveType($this->entityStore);
+			$this->datetimeNormalizer = new DatetimeNormalizer([]);
+			$this->intervalNormalizer = new IntervalNormalizer([]);
 		}
 		
 		/**
@@ -260,7 +272,7 @@
 		 * @param AstAlias $alias
 		 * @param RelationCache $relationCache
 		 * @return RelationCacheEntry
-		 * @throws \LogicException
+		 * @throws \RuntimeException
 		 */
 		private function resolveEntityCacheEntry(AstAlias $alias, array $relationCache): array {
 			/**
@@ -271,7 +283,7 @@
 			$rangeName = $node->getRange()?->getName();
 			
 			if ($rangeName === null || !isset($relationCache[$rangeName])) {
-				throw new \LogicException(
+				throw new \RuntimeException(
 					"No relation cache entry for entity alias '{$alias->getName()}' (range '{$rangeName}'). " .
 					"buildRelationCache() must build an entry for every entity range before processRow() is called."
 				);
@@ -317,7 +329,7 @@
 			$entityName = $expression->getEntityName();
 			
 			if ($entityName === null) {
-				throw new \LogicException("Entity alias '{$value->getName()}' has no entity name — this should have been caught by the semantic analyser.");
+				throw new \RuntimeException("Entity alias '{$value->getName()}' has no entity name — this should have been caught by the semantic analyser.");
 			}
 			
 			// Resolve entity to fully namespaced
@@ -327,7 +339,7 @@
 			$rangeName = $expression->getRange()?->getName();
 			
 			if ($rangeName === null) {
-				throw new \LogicException("Entity alias '{$value->getName()}' has no range name — this should have been caught by the semantic analyser.");
+				throw new \RuntimeException("Entity alias '{$value->getName()}' has no range name — this should have been caught by the semantic analyser.");
 			}
 			
 			// Remove the range prefix from column names so they match the entity's property map.
@@ -504,7 +516,7 @@
 			// Multiple JSON ranges present but no explicit range on the annotation.
 			// The semantic analyser enforces that @SourceField specifies a range when
 			// more than one JSON source is in scope, so this path should be unreachable.
-			throw new \LogicException(
+			throw new \RuntimeException(
 				"Ambiguous @SourceField on '{$annotation->getField()}': multiple JSON ranges are present " .
 				"(" . implode(', ', array_keys($presentJsonRanges)) . ") but no explicit range was declared on the annotation."
 			);
@@ -524,6 +536,8 @@
 		 * @return mixed
 		 * @throws EntityResolutionException
 		 * @throws HydrationException
+		 * @throws \DateInvalidTimeZoneException
+		 * @throws \DateMalformedStringException
 		 */
 		private function processValue(AstAlias $value, array $row, array $fullRow, array $jsonRangeNames): mixed {
 			$node = $value->getExpression();
@@ -534,22 +548,57 @@
 			// keyword is the explicit type intent; honour it unconditionally.
 			if ($node instanceof AstCast) {
 				$rawValue = $row[$value->getName()] ?? null;
-
+				
 				if (!is_scalar($rawValue)) {
 					return $rawValue;
 				}
 				
 				/** @noinspection PhpDuplicateMatchArmBodyInspection */
 				return match ($node->getCastType()) {
-					'int'     => intval($rawValue),
-					'float'   => floatval($rawValue),
-					'string'  => strval($rawValue),
-					'bool'    => (bool) $rawValue,
+					'int' => intval($rawValue),
+					'float' => floatval($rawValue),
+					'string'   => $this->castToString($node, $rawValue),
+					'bool' => (bool)$rawValue,
 					'decimal' => floatval($rawValue),
-					default   => $rawValue,
+					'datetime' => $this->datetimeNormalizer->normalize($rawValue),
+					default => $rawValue,
 				};
 			}
-
+			
+			// date() expression or date arithmetic in the SELECT list. Infer the
+			// result type from the AST to decide whether to hydrate as \DateTime
+			// (datetime result) or return a raw integer (interval result).
+			//
+			// Type rules (from ResolveType::TEMPORAL_TYPE_TABLE):
+			//   datetime ± interval → datetime   → DatetimeNormalizer
+			//   interval ± interval → interval   → raw int
+			//   datetime - datetime → interval   → raw int
+			//   bare date("now") or date(col)    → datetime → DatetimeNormalizer
+			//
+			// Fast-path: only run type inference when the expression tree contains
+			// at least one AstDate node, since those are the only nodes that produce
+			// 'datetime' or 'interval' return types.
+			if ($this->expressionContainsDate($node)) {
+				$resolvedType = $this->resolveType->inferReturnType($node);
+				
+				switch($resolvedType) {
+					case 'datetime' :
+						return $this->datetimeNormalizer->normalize($row[$value->getName()] ?? null);
+					
+					case 'interval' :
+						$rawValue = $row[$value->getName()] ?? null;
+						return is_scalar($rawValue) ? (int)$rawValue : null;
+						
+					default :
+						throw new \RuntimeException(
+							"Unexpected return type '{$resolvedType}' inferred from a date expression — " .
+							"only 'datetime' and 'interval' are valid. " .
+							"This indicates a bug in ValidateNoTemporalScalarMix, which should have " .
+							"rejected this expression at semantic analysis time."
+						);
+				}
+			}
+			
 			// Top-level identifier with no chained property — either a JSON source
 			// range or a subquery (derived-table) range. Mapped entity aliases are
 			// handled before this call, so neither reaches here.
@@ -645,9 +694,68 @@
 		// =========================================================================
 		
 		/**
+		 * Converts a raw value to string for a (string) cast.
+		 *
+		 * When the inner expression of the cast resolves to an interval (a duration
+		 * in seconds), the integer is formatted as a human-readable string via
+		 * IntervalNormalizer — e.g. 158400 → "1 day 20 hours". All other expressions
+		 * are converted with strval() as usual.
+		 *
+		 * @param AstCast $cast
+		 * @param mixed $rawValue
+		 * @return string|null
+		 * @throws EntityResolutionException
+		 * @throws \DateInvalidTimeZoneException
+		 * @throws \DateMalformedStringException
+		 */
+		private function castToString(AstCast $cast, mixed $rawValue): ?string {
+			// No value
+			if ($rawValue === null) {
+				return null;
+			}
+
+			// If the inner expression is a duration, format it as a human-readable
+			// interval string rather than returning the raw integer as a string.
+			$innerType = $this->resolveType->inferReturnType($cast->getExpression());
+
+			// Duration — format seconds as a human-readable interval string.
+			if ($innerType === 'interval' && is_numeric($rawValue)) {
+				return $this->intervalNormalizer->normalize($rawValue);
+			}
+
+			// Point in time — convert to \DateTime then format as "Y-m-d H:i:s".
+			if ($innerType === 'datetime') {
+				$dt = $this->datetimeNormalizer->normalize($rawValue);
+				return $dt?->format('Y-m-d H:i:s');
+			}
+
+			return is_scalar($rawValue) ? strval($rawValue) : null;
+		}
+
+		/**
+		 * Returns true if the AST subtree contains at least one AstDate node.
+		 * Used as a fast-path guard before running full type inference in processValue,
+		 * avoiding the allocation cost for the common case of non-temporal expressions.
+		 * @param AstInterface $node
+		 * @return bool
+		 */
+		private function expressionContainsDate(AstInterface $node): bool {
+			if ($node instanceof AstDate) {
+				return true;
+			}
+			
+			if ($node instanceof NodeBinary) {
+				return
+					$this->expressionContainsDate($node->getLeft()) ||
+					$this->expressionContainsDate($node->getRight());
+			}
+			
+			return false;
+		}
+		
+		/**
 		 * Returns true if the array contains at least one non-null value.
 		 * Used to detect all-null rows produced by LEFT JOIN misses.
-		 *
 		 * @param array<string|int, mixed> $array
 		 * @return bool
 		 */

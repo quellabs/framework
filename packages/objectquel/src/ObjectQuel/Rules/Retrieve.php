@@ -140,19 +140,6 @@
 				return $aliasToken->getStringValue();
 			}
 			
-			// For a cast expression, derive the alias from the inner property chain
-			// rather than the raw source text. The source slice would include the
-			// "(int)" prefix, producing an alias like "(int)x.testJSON.id" which is
-			// not a valid identifier and is not what the caller expects.
-			// Example: (int)x.testJSON.id -> "x.testJSON.id"
-			if ($expression instanceof AstCast) {
-				$inner = $expression->getExpression();
-				
-				if ($inner instanceof AstIdentifier) {
-					return $inner->getCompleteName();
-				}
-			}
-			
 			// Auto-generated aliases for all other expressions are derived from source text
 			$sourceSlice = $this->lexer->getSourceSlice($startPos, $this->lexer->getPos() - $startPos);
 			

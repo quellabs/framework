@@ -18,7 +18,6 @@
 		 * @return Response
 		 */
 		public function index(TemplateEngineInterface $engine): Response {
-			
 			$posts = $this->em()->findBy(PostEntity::class, ['published' => true]);
 			
 			return $this->render("blog/index.tpl", [
