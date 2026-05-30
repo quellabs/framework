@@ -236,6 +236,19 @@
 			$this->assertEqualsWithDelta(3.14, $result[0]['3.14'], 0.0001);
 		}
 		
+		/**
+		 * 1.0 has no fractional digits after the dot, so (string)(float)1.0 in PHP
+		 * produces "1", losing the dot entirely. The parser must preserve the source
+		 * representation so AstNumber::getReturnType() still returns "float" and
+		 * ConditionEvaluator casts it correctly.
+		 */
+		public function testAutoAliasForWholeNumberFloat(): void {
+			$result = $this->em->executeQuery("retrieve(1.0)");
+			$this->assertArrayHasKey('1.0', $result[0]);
+			$this->assertIsFloat($result[0]['1.0']);
+			$this->assertEqualsWithDelta(1.0, $result[0]['1.0'], 0.0001);
+		}
+		
 		public function testAutoAliasForArithmeticExpression(): void {
 			$result = $this->em->executeQuery("retrieve(3 + 4)");
 			$this->assertArrayHasKey('3 + 4', $result[0]);
