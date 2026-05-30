@@ -71,7 +71,7 @@
 				return null;
 			}
 			
-			// Convert string datetime to \DateTime object using the format "Y-m-d H:i:s"
+			// Accept "Y-m-d H:i:s" — the standard database datetime column format.
 			$date = DateTime::createFromFormat("Y-m-d H:i:s", $value, $timezone);
 			return $date !== false ? $date : null;
 		}
