@@ -2,6 +2,8 @@
 	
 	namespace Quellabs\ObjectQuel\Tests;
 	
+	use Quellabs\ObjectQuel\Exception\QuelException;
+	
 	/**
 	 * Tests for rangeless retrieve() queries — queries that declare no ranges and
 	 * contain only constant expressions in the projection list.
@@ -21,6 +23,7 @@
 	 *   - Auto-generated aliases (source text slice, trimmed)
 	 *   - Multiple projections in one query
 	 *   - concat() and ifnull() functions
+	 *   - date() function (intervals, "now", datetime strings)
 	 *   - fetchRow() API compatibility
 	 */
 	class ConstantQueryTest extends ObjectQuelTestCase {
@@ -190,6 +193,84 @@
 		public function testIfNullReturnsFirstValueWhenNotNull(): void {
 			$result = $this->em->executeQuery("retrieve(v = ifnull(1, 99))");
 			$this->assertSame(1, $result[0]['v']);
+		}
+		
+		// -------------------------------------------------------------------------
+		// date() function
+		//
+		// date() converts its argument to a Unix timestamp. In a constant query
+		// there are no columns, so only string literals and "now" are meaningful.
+		// All four argument forms handled by ConditionEvaluator are covered:
+		//   1. Interval string  — pre-folded to int at parse time
+		//   2. "now"            — time() at evaluation time
+		//   3. Date string      — strtotime("YYYY-MM-DD")
+		//   4. Datetime string  — strtotime("YYYY-MM-DD HH:MM:SS")
+		// -------------------------------------------------------------------------
+		
+		/**
+		 * A plain interval string is folded to integer seconds at parse time.
+		 * "1 day" = 86400 seconds.
+		 */
+		public function testDateIntervalDayIsConvertedToSeconds(): void {
+			$result = $this->em->executeQuery("retrieve(v = date('1 day'))");
+			$this->assertSame(86400, $result[0]['v']);
+		}
+		
+		/**
+		 * Composite interval: "1 hour 30 minutes" = 3600 + 1800 = 5400 seconds.
+		 */
+		public function testDateCompositeIntervalIsConvertedToSeconds(): void {
+			$result = $this->em->executeQuery("retrieve(v = date('1 hour 30 minutes'))");
+			$this->assertSame(5400, $result[0]['v']);
+		}
+		
+		/**
+		 * date("now") returns the current Unix timestamp. We sandwich the query
+		 * between two time() calls to avoid asserting a fixed value.
+		 */
+		public function testDateNowReturnsCurrentTimestamp(): void {
+			$before = time();
+			$result = $this->em->executeQuery("retrieve(v = date('now'))");
+			$after = time();
+			$this->assertGreaterThanOrEqual($before, $result[0]['v']);
+			$this->assertLessThanOrEqual($after, $result[0]['v']);
+		}
+		
+		/**
+		 * A date-only string ("YYYY-MM-DD") is converted via strtotime().
+		 * The expected value is computed with the same strtotime() call so the
+		 * test is correct regardless of the server's timezone.
+		 */
+		public function testDateStringDateOnlyIsConvertedToTimestamp(): void {
+			$result = $this->em->executeQuery("retrieve(v = date('2024-01-15'))");
+			$this->assertSame(strtotime('2024-01-15'), $result[0]['v']);
+		}
+		
+		/**
+		 * A full datetime string ("YYYY-MM-DD HH:MM:SS") is converted via strtotime().
+		 */
+		public function testDateStringDatetimeIsConvertedToTimestamp(): void {
+			$result = $this->em->executeQuery("retrieve(v = date('2024-01-15 10:30:00'))");
+			$this->assertSame(strtotime('2024-01-15 10:30:00'), $result[0]['v']);
+		}
+		
+		/**
+		 * date() used in arithmetic: two intervals added together.
+		 * "1 day" + "1 hour" = 86400 + 3600 = 90000 seconds.
+		 * Exercises AstDate inside AstTerm through ConditionEvaluator.
+		 */
+		public function testDateIntervalArithmetic(): void {
+			$result = $this->em->executeQuery("retrieve(v = date('1 day') + date('1 hour'))");
+			$this->assertSame(90000, $result[0]['v']);
+		}
+		
+		/**
+		 * An unrecognised string that is neither a datetime nor a valid interval
+		 * must throw at parse time, not silently produce zero.
+		 */
+		public function testDateInvalidStringThrows(): void {
+			$this->expectException(QuelException::class);
+			$this->em->executeQuery("retrieve(v = date('yesterday'))");
 		}
 		
 		// -------------------------------------------------------------------------
