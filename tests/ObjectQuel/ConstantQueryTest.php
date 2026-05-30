@@ -225,39 +225,40 @@
 		}
 		
 		/**
-		 * date("now") returns the current Unix timestamp. We sandwich the query
-		 * between two time() calls to avoid asserting a fixed value.
+		 * date("now") returns a \DateTime for the current moment, consistent with
+		 * what the hydrator produces for database date() results.
 		 */
-		public function testDateNowReturnsCurrentTimestamp(): void {
-			$before = time();
+		public function testDateNowReturnsDateTime(): void {
+			$before = new \DateTime();
 			$result = $this->em->executeQuery("retrieve(v = date('now'))");
-			$after = time();
-			$this->assertGreaterThanOrEqual($before, $result[0]['v']);
-			$this->assertLessThanOrEqual($after, $result[0]['v']);
+			$after = new \DateTime();
+			$this->assertInstanceOf(\DateTime::class, $result[0]['v']);
+			$this->assertGreaterThanOrEqual($before->getTimestamp(), $result[0]['v']->getTimestamp());
+			$this->assertLessThanOrEqual($after->getTimestamp(), $result[0]['v']->getTimestamp());
 		}
 		
 		/**
-		 * A date-only string ("YYYY-MM-DD") is converted via strtotime().
-		 * The expected value is computed with the same strtotime() call so the
-		 * test is correct regardless of the server's timezone.
+		 * A date-only string ("YYYY-MM-DD") is converted to a \DateTime, consistent
+		 * with what the hydrator produces for database date() results.
 		 */
-		public function testDateStringDateOnlyIsConvertedToTimestamp(): void {
+		public function testDateStringDateOnlyReturnsDateTime(): void {
 			$result = $this->em->executeQuery("retrieve(v = date('2024-01-15'))");
-			$this->assertSame(strtotime('2024-01-15'), $result[0]['v']);
+			$this->assertInstanceOf(\DateTime::class, $result[0]['v']);
+			$this->assertSame('2024-01-15', $result[0]['v']->format('Y-m-d'));
 		}
 		
 		/**
-		 * A full datetime string ("YYYY-MM-DD HH:MM:SS") is converted via strtotime().
+		 * A full datetime string ("YYYY-MM-DD HH:MM:SS") is converted to a \DateTime.
 		 */
-		public function testDateStringDatetimeIsConvertedToTimestamp(): void {
+		public function testDateStringDatetimeReturnsDateTime(): void {
 			$result = $this->em->executeQuery("retrieve(v = date('2024-01-15 10:30:00'))");
-			$this->assertSame(strtotime('2024-01-15 10:30:00'), $result[0]['v']);
+			$this->assertInstanceOf(\DateTime::class, $result[0]['v']);
+			$this->assertSame('2024-01-15 10:30:00', $result[0]['v']->format('Y-m-d H:i:s'));
 		}
 		
 		/**
-		 * date() used in arithmetic: two intervals added together.
+		 * date() used in arithmetic: two intervals added together produce an int.
 		 * "1 day" + "1 hour" = 86400 + 3600 = 90000 seconds.
-		 * Exercises AstDate inside AstTerm through ConditionEvaluator.
 		 */
 		public function testDateIntervalArithmetic(): void {
 			$result = $this->em->executeQuery("retrieve(v = date('1 day') + date('1 hour'))");
