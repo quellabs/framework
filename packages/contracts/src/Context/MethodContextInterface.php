@@ -1,5 +1,5 @@
 <?php
-
+	
 	namespace Quellabs\Contracts\Context;
 	
 	use Symfony\Component\HttpFoundation\Request;
@@ -26,5 +26,18 @@
 		 * @return array<string, mixed> Array of method arguments in order
 		 */
 		public function getArguments(): array;
-
+		
+		/**
+		 * Sets the parameter that is currently being autowired
+		 * @param string|null $name
+		 * @return void
+		 */
+		public function setCurrentParameterName(?string $name): void;
+		
+		/**
+		 * Gets the parameter that is currently being autowired
+		 * @return string|null
+		 */
+		public function getCurrentParameterName(): ?string;
+		
 	}
