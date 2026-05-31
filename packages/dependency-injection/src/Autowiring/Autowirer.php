@@ -42,6 +42,14 @@
 		protected ContainerInterface $container;
 		
 		/**
+		 * Cache of reflected parameter metadata keyed by "ClassName::methodName".
+		 * Reflection results are immutable at runtime, so this is safe to cache
+		 * for the lifetime of the autowirer instance.
+		 * @var array<string, array<int, ParameterMeta>>
+		 */
+		private array $parameterCache = [];
+		
+		/**
 		 * Built-in PHP types that cannot be resolved from container
 		 */
 		private const array BUILTIN_TYPES = [
@@ -265,12 +273,20 @@
 		}
 		
 		/**
-		 * Get the parameters of a method including type hints and default values
+		 * Get the parameters of a method including type hints and default values.
+		 * Results are cached by class+method so reflection only runs once per
+		 * unique method signature for the lifetime of the autowirer instance.
 		 * @param class-string $className
 		 * @param string $methodName
 		 * @return array<int, ParameterMeta>
 		 */
 		protected function getMethodParameters(string $className, string $methodName): array {
+			$cacheKey = $className . '::' . $methodName;
+			
+			if (isset($this->parameterCache[$cacheKey])) {
+				return $this->parameterCache[$cacheKey];
+			}
+			
 			try {
 				// New reflection class to get information about the class name
 				$reflectionClass = new \ReflectionClass($className);
@@ -284,7 +300,7 @@
 				
 				// Return an empty array when the method does not exist
 				if (!$methodReflector) {
-					return [];
+					return $this->parameterCache[$cacheKey] = [];
 				}
 				
 				// Process each parameter
@@ -310,9 +326,9 @@
 					$result[] = $param;
 				}
 				
-				return $result;
+				return $this->parameterCache[$cacheKey] = $result;
 			} catch (\ReflectionException $e) {
-				return [];
+				return $this->parameterCache[$cacheKey] = [];
 			}
 		}
 		
