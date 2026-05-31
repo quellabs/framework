@@ -1,0 +1,26 @@
+name: Check package versions
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  check-versions:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          # Fetch full history so merge-base resolution works correctly.
+          # A shallow clone (depth: 1) would cause `git merge-base` to fail.
+          fetch-depth: 0
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+
+      - name: Run version check
+        run: php check-versions.php --base=main
