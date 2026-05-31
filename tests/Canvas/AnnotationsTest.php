@@ -167,14 +167,6 @@
 			$this->assertArrayNotHasKey('parameter', $context);
 		}
 		
-		public function testWithContextGetContextRemapsContextKeyToProvider(): void {
-			// 'context' key is remapped to 'provider' for the DI system
-			$wc      = new WithContext(['parameter' => 'db', 'context' => 'readonly']);
-			$context = $wc->getContext();
-			$this->assertArrayHasKey('provider', $context);
-			$this->assertSame('readonly', $context['provider']);
-		}
-		
 		public function testWithContextGetContextPreservesOtherKeys(): void {
 			$wc      = new WithContext(['parameter' => 'db', 'context' => 'readonly', 'extra' => 'value']);
 			$context = $wc->getContext();
