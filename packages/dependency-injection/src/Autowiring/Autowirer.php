@@ -256,6 +256,7 @@
 		 * @return array<int, ParameterMeta>
 		 */
 		protected function getMethodParameters(string $className, string $methodName): array {
+			// Fetch method parameters from cache if possible
 			$cacheKey = $className . '::' . $methodName;
 			
 			if (isset($this->parameterCache[$cacheKey])) {
