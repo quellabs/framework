@@ -80,7 +80,7 @@
 		}
 		
 		public function testResolveTypeToRegexForSingleWildcard(): void {
-			$this->assertSame('[^/]*', $this->compiler->resolveTypeToRegex('*'));
+		$this->assertSame('[^\/]*', $this->compiler->resolveTypeToRegex('*'));
 		}
 		
 		public function testResolveTypeToRegexForMultiWildcard(): void {
@@ -89,7 +89,7 @@
 		
 		public function testResolveTypeToRegexFallsBackToDefaultForUnknownType(): void {
 			// Unknown types fall back to [^/]+ (match any single segment)
-			$this->assertSame('[^/]+', $this->compiler->resolveTypeToRegex('unknowntype'));
+		$this->assertSame('[^\/]+', $this->compiler->resolveTypeToRegex('unknowntype'));
 		}
 		
 		// -------------------------------------------------------------------------
