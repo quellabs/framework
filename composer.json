@@ -263,7 +263,7 @@
   },
   "require-dev": {
     "phpstan/phpstan": "*",
-    "phpunit/phpunit": "^9",
+    "phpunit/phpunit": "^10",
     "rector/rector": "*",
     "composer/composer": "^2.0",
     "quellabs/sculpt": "dev-main as 1.999.999",
