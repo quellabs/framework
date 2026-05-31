@@ -18,6 +18,25 @@
 	class Autowirer {
 		
 		/**
+		 * Sentinel object returned by resolveType() to signal that the container
+		 * has no provider for the requested type and resolution should move on to
+		 * the next candidate. This is distinct from null, which is a legitimate
+		 * result that a service provider may return intentionally (e.g. entity not
+		 * found). Without this sentinel, a provider returning null would be
+		 * indistinguishable from "nobody could resolve this", causing the autowirer
+		 * to discard the null and eventually throw instead of propagating it.
+		 */
+		private static ?object $unresolvedSentinel = null;
+		
+		/**
+		 * Returns the shared sentinel instance, creating it on first call.
+		 * @return object
+		 */
+		private static function unresolved(): object {
+			return self::$unresolvedSentinel ??= new class {};
+		}
+		
+		/**
 		 * @var ContainerInterface
 		 */
 		protected ContainerInterface $container;
@@ -146,10 +165,14 @@
 			}
 			
 			// Strategy 3: Dependency injection resolution
-			// Attempt to autowire parameter using type hints and container
+			// Attempt to autowire parameter using type hints and container.
+			// Returns the sentinel when no type could be resolved, or null when a
+			// provider resolved the type and intentionally returned null (e.g. entity
+			// not found). Only the sentinel means "move on"; null is a valid result
+			// that must be returned as-is to the caller.
 			$resolved = $this->resolveParameterFromTypes($paramName, $paramTypes, $methodContext);
 			
-			if ($resolved !== null) {
+			if ($resolved !== self::unresolved()) {
 				return $resolved;
 			}
 			
@@ -189,21 +212,28 @@
 		}
 		
 		/**
-		 * Attempts to resolve a parameter value by trying each type hint in order
+		 * Attempts to resolve a parameter value by trying each type hint in order.
+		 *
+		 * Returns the unresolved sentinel when no type could be resolved, signalling
+		 * to resolveParameter() that it should continue to the next strategy (default
+		 * value, empty array, etc.).
+		 *
+		 * Note: resolveType() returns null both when no provider exists for the type
+		 * and when a provider intentionally resolves to null (e.g. entity not found).
+		 * Both cases fall through here to the next strategy. For nullable parameters
+		 * this is correct: Strategy 4 will return null from default_value. For
+		 * non-nullable parameters the final throw in resolveParameter() will fire.
+		 *
 		 * @param string $paramName Parameter name for better error messages
 		 * @param array<int, string> $types Array of type hints/class names to attempt resolution
 		 * @param MethodContextInterface|null $methodContext
-		 * @return mixed The resolved instance
-		 * @throws \RuntimeException If no types could be resolved
+		 * @return mixed The resolved value, or the unresolved sentinel
 		 */
 		protected function resolveParameterFromTypes(string $paramName, array $types, ?MethodContextInterface $methodContext = null): mixed {
-			// Early return if no types provided - nothing to resolve
+			// Early return sentinel if no types provided - nothing to resolve
 			if (empty($types)) {
-				return null;
+				return self::unresolved();
 			}
-			
-			// Track resolution failures for detailed error reporting
-			$failures = [];
 			
 			// Filter out built-in PHP types (int, string, bool, etc.) and null type
 			// as these cannot be resolved through dependency injection
@@ -212,7 +242,7 @@
 			
 			// If all types are built-in or null, there's nothing we can resolve via DI
 			if (empty($resolvableTypes)) {
-				return null;
+				return self::unresolved();
 			}
 			
 			// Attempt to resolve each resolvable type in order
@@ -221,26 +251,17 @@
 					// Try to get an instance of this type from the container
 					$instance = $this->resolveType($type, [], $methodContext);
 					
-					// If we successfully got a non-null instance, return it immediately
-					// This implements a "first successful resolution wins" strategy
+					// Non-null instance: resolved successfully
 					if ($instance !== null) {
 						return $instance;
 					}
-				} catch (\Throwable $e) {
-					// Store the failure reason for this type to include in final error message
-					// This helps with debugging by showing why each type failed to resolve
-					$failures[$type] = $e->getMessage();
+				} catch (\Throwable) {
+					// Resolution threw — this type is not resolvable, try the next one
 				}
 			}
 			
-			// If we reach here, none of the types could be resolved successfully.
-			// Throw a comprehensive error with details about all failed attempts
-			$contextInfo = $methodContext ? "{$methodContext->getClassName()}::{$methodContext->getMethodName()}" : "unknown context";
-			
-			throw new \RuntimeException(
-				"Cannot resolve parameter '{$paramName}' in {$contextInfo}:\n" .
-				implode("\n", $failures)
-			);
+			// No type could be resolved; signal to resolveParameter() to try further strategies
+			return self::unresolved();
 		}
 		
 		/**
@@ -346,10 +367,15 @@
 		 * Resolves a single type from the container.
 		 * Extracted as a separate method to allow subclasses to swap the container
 		 * used for resolution without duplicating the full resolution loop.
+		 *
+		 * Returns whatever container->get() returns, including null. The caller
+		 * (resolveParameterFromTypes) treats null as "not resolved" and falls through
+		 * to the next strategy.
+		 *
 		 * @param class-string $type The fully qualified class or interface name to resolve
 		 * @param array<string, mixed> $parameters Additional parameters for resolution
 		 * @param MethodContextInterface|null $methodContext
-		 * @return object|null The resolved instance or null
+		 * @return object|null The resolved instance, or null
 		 */
 		protected function resolveType(string $type, array $parameters, ?MethodContextInterface $methodContext): ?object {
 			return $this->container->get($type, [], $methodContext);
