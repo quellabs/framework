@@ -18,13 +18,8 @@
 	class Autowirer {
 		
 		/**
-		 * Sentinel object returned by resolveType() to signal that the container
-		 * has no provider for the requested type and resolution should move on to
-		 * the next candidate. This is distinct from null, which is a legitimate
-		 * result that a service provider may return intentionally (e.g. entity not
-		 * found). Without this sentinel, a provider returning null would be
-		 * indistinguishable from "nobody could resolve this", causing the autowirer
-		 * to discard the null and eventually throw instead of propagating it.
+		 * Sentinel returned by resolveType() to signal "no provider handled this type",
+		 * distinct from null which a provider may return intentionally (e.g. entity not found).
 		 */
 		private static ?object $unresolvedSentinel = null;
 		
@@ -161,48 +156,38 @@
 			$paramTypes = $param['types'] ?? [];
 			
 			// Strategy 1: Direct parameter name match
-			// Check if user provided exact parameter name
 			if (isset($parameters[$paramName])) {
 				return $parameters[$paramName];
 			}
 			
-			// Strategy 2: Snake case conversion attempt
-			// Handle camelCase method params with snake_case user input
+			// Strategy 2: Snake case conversion
 			if (isset($parameters[$this->camelToSnake($paramName)])) {
 				return $parameters[$this->camelToSnake($paramName)];
 			}
 			
-			// Strategy 3: Dependency injection resolution
-			// Attempt to autowire parameter using type hints and container.
-			// Returns the sentinel when no type could be resolved, or null when a
-			// provider resolved the type and intentionally returned null (e.g. entity
-			// not found). Only the sentinel means "move on"; null is a valid result
-			// that must be returned as-is to the caller.
+			// Strategy 3: Dependency injection — sentinel means unresolved, null means resolved-to-null
 			$resolved = $this->resolveParameterFromTypes($paramName, $paramTypes, $methodContext);
 			
 			if ($resolved !== self::unresolved()) {
 				return $resolved;
 			}
 			
-			// Strategy 4: Use parameter's default value
-			// Fall back to method signature default if available
+			// Strategy 4: Default value from method signature
 			if (array_key_exists('default_value', $param)) {
 				return $param['default_value'];
 			}
 			
-			// Strategy 5: If the type is an array, pass an empty array
-			// This will prevent a crash in CakePHP Database connection when autowiring the config
+			// Strategy 5: Empty array for array-typed parameters
+			// Prevents a crash in CakePHP Database connection when autowiring the config
 			if (in_array("array", $paramTypes, true)) {
 				return [];
 			}
 			
-			// All strategies failed - parameter is required but unresolvable
 			throw new \RuntimeException("Cannot autowire parameter '$paramName' for $className::$methodName");
 		}
 		
 		/**
-		 * Determines if a parameter is the magic **all parameter
-		 * This checks if the parameter name is 'all' and has a type hint of 'array'
+		 * Determines if a parameter is the magic __all__ parameter.
 		 * @param ParameterMeta $param Parameter metadata
 		 * @return bool
 		 */
@@ -220,20 +205,12 @@
 		}
 		
 		/**
-		 * Attempts to resolve a parameter value by trying each type hint in order.
-		 *
-		 * Returns the unresolved sentinel when no type could be resolved, signalling
-		 * to resolveParameter() that it should continue to the next strategy (default
-		 * value, empty array, etc.).
-		 *
-		 * Note: resolveType() returns null both when no provider exists for the type
-		 * and when a provider intentionally resolves to null (e.g. entity not found).
-		 * Both cases fall through here to the next strategy. For nullable parameters
-		 * this is correct: Strategy 4 will return null from default_value. For
-		 * non-nullable parameters the final throw in resolveParameter() will fire.
-		 *
-		 * @param string $paramName Parameter name for better error messages
-		 * @param array<int, string> $types Array of type hints/class names to attempt resolution
+		 * Tries to resolve a parameter against each of its type hints in order.
+		 * Returns the unresolved sentinel when no type could be resolved.
+		 * Returns null when a provider resolved the type to null (e.g. entity not found),
+		 * which the caller propagates without falling through to further strategies.
+		 * @param string $paramName Parameter name for error messages
+		 * @param array<int, string> $types Array of type hints to attempt resolution for
 		 * @param MethodContextInterface|null $methodContext
 		 * @return mixed The resolved value, or the unresolved sentinel
 		 */
@@ -273,9 +250,7 @@
 		}
 		
 		/**
-		 * Get the parameters of a method including type hints and default values.
-		 * Results are cached by class+method so reflection only runs once per
-		 * unique method signature for the lifetime of the autowirer instance.
+		 * Returns reflected parameter metadata for a method, cached by class+method.
 		 * @param class-string $className
 		 * @param string $methodName
 		 * @return array<int, ParameterMeta>
@@ -380,14 +355,8 @@
 		}
 		
 		/**
-		 * Resolves a single type from the container.
-		 * Extracted as a separate method to allow subclasses to swap the container
-		 * used for resolution without duplicating the full resolution loop.
-		 *
-		 * Returns whatever container->get() returns, including null. The caller
-		 * (resolveParameterFromTypes) treats null as "not resolved" and falls through
-		 * to the next strategy.
-		 *
+		 * Resolves a type from the container. Extracted so subclasses can swap the
+		 * container without duplicating the resolution loop.
 		 * @param class-string $type The fully qualified class or interface name to resolve
 		 * @param array<string, mixed> $parameters Additional parameters for resolution
 		 * @param MethodContextInterface|null $methodContext
@@ -398,9 +367,9 @@
 		}
 		
 		/**
-		 * Convert camelCase string to snake_case
-		 * @param string $input The camelCase string to convert
-		 * @return string The converted snake_case string
+		 * Converts camelCase to snake_case.
+		 * @param string $input
+		 * @return string
 		 */
 		protected function camelToSnake(string $input): string {
 			// Handle empty strings - return as-is to avoid errors
