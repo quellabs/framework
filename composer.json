@@ -353,7 +353,8 @@
   },
   "autoload-dev": {
     "psr-4": {
-      "Quellabs\\ObjectQuel\\Tests\\": "tests/ObjectQuel/"
+      "Quellabs\\ObjectQuel\\Tests\\": "tests/ObjectQuel/",
+      "Quellabs\\Canvas\\Tests\\": "tests/Canvas/"
     }
   },
   "scripts": {
