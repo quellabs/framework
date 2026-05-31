@@ -213,7 +213,7 @@
 					
 					// If date is "now" return the current date
 					if ($ast->isNow()) {
-						return (new \DateTime())->format('Y-m-d H:i:s');
+						return time();
 					}
 					
 					// Evaluate the date expression
@@ -230,7 +230,8 @@
 						$dateValue .= ' 00:00:00';
 					}
 					
-					return $dateValue;
+					$dt = \DateTime::createFromFormat('Y-m-d H:i:s', $dateValue);
+					return $dt !== false ? $dt->getTimestamp() : null;
 				
 				// Handle min() / max() - scan all rows and return the smallest or largest non-null value.
 				// Mirrors SQL MIN()/MAX() semantics: NULLs excluded, empty/all-NULL set returns NULL.

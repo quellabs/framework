@@ -266,6 +266,63 @@
 		}
 		
 		/**
+		 * date("now") added to an interval must produce a \\DateTime roughly one
+		 * hour in the future. Before the fix, date("now") returned a "Y-m-d H:i:s"
+		 * string that toNumber() coerced to 0, giving "1970-01-01 01:00:00".
+		 */
+		public function testDateNowPlusIntervalReturnsDateTime(): void {
+			$before = new \DateTime('+1 hour -5 seconds');
+			$result = $this->em->executeQuery("retrieve(v = date('now') + date('1 hours'))");
+			$after = new \DateTime('+1 hour +5 seconds');
+			$this->assertInstanceOf(\DateTime::class, $result[0]['v']);
+			$this->assertGreaterThanOrEqual($before->getTimestamp(), $result[0]['v']->getTimestamp());
+			$this->assertLessThanOrEqual($after->getTimestamp(), $result[0]['v']->getTimestamp());
+		}
+		
+		/**
+		 * date("now") minus an interval must produce a \\DateTime roughly one
+		 * hour in the past.
+		 */
+		public function testDateNowMinusIntervalReturnsDateTime(): void {
+			$before = new \DateTime('-1 hour -5 seconds');
+			$result = $this->em->executeQuery("retrieve(v = date('now') - date('1 hours'))");
+			$after = new \DateTime('-1 hour +5 seconds');
+			$this->assertInstanceOf(\DateTime::class, $result[0]['v']);
+			$this->assertGreaterThanOrEqual($before->getTimestamp(), $result[0]['v']->getTimestamp());
+			$this->assertLessThanOrEqual($after->getTimestamp(), $result[0]['v']->getTimestamp());
+		}
+		
+		/**
+		 * A full datetime string added to an interval must produce a \\DateTime
+		 * at the expected moment. Before the fix, the datetime string was passed
+		 * through toNumber() as-is, which returned 0.
+		 */
+		public function testDateDatetimeStringPlusIntervalReturnsDateTime(): void {
+			$result = $this->em->executeQuery("retrieve(v = date('2024-01-15 10:30:00') + date('1 hours'))");
+			$this->assertInstanceOf(\DateTime::class, $result[0]['v']);
+			$this->assertSame('2024-01-15 11:30:00', $result[0]['v']->format('Y-m-d H:i:s'));
+		}
+		
+		/**
+		 * A date-only string (padded to midnight) added to an interval must
+		 * produce a \\DateTime at midnight + the interval.
+		 */
+		public function testDateDateOnlyStringPlusIntervalReturnsDateTime(): void {
+			$result = $this->em->executeQuery("retrieve(v = date('2024-01-15') + date('2 hours'))");
+			$this->assertInstanceOf(\DateTime::class, $result[0]['v']);
+			$this->assertSame('2024-01-15 02:00:00', $result[0]['v']->format('Y-m-d H:i:s'));
+		}
+		
+		/**
+		 * Subtracting two datetime strings must produce an integer number of
+		 * seconds (an interval), not a \\DateTime.
+		 */
+		public function testDateDatetimeStringMinusDatetimeStringReturnsSeconds(): void {
+			$result = $this->em->executeQuery("retrieve(v = date('2024-01-15 11:30:00') - date('2024-01-15 10:30:00'))");
+			$this->assertSame(3600, $result[0]['v']);
+		}
+		
+		/**
 		 * An unrecognised string that is neither a datetime nor a valid interval
 		 * must throw at parse time, not silently produce zero.
 		 */
