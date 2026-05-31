@@ -107,8 +107,8 @@
 			}
 			
 			// Priority 1: Explicit provider request via context/metadata
-			if (!empty($metadata['provider'])) {
-				return $metadata['provider'] === 'handlebars';
+			if (!empty($metadata['context'])) {
+				return $metadata['context'] === 'handlebars';
 			}
 			
 			// Priority 2: Check app.php configuration

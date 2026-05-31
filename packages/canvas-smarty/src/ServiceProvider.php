@@ -110,8 +110,8 @@
 			}
 			
 			// Priority 1: Explicit provider request via context/metadata
-			if (!empty($metadata['provider'])) {
-				return $metadata['provider'] === 'smarty';
+			if (!empty($metadata['context'])) {
+				return $metadata['context'] === 'smarty';
 			}
 			
 			// Priority 2: Check app.php configuration
