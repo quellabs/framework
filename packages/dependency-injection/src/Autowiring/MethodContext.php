@@ -20,6 +20,9 @@
 		/** @var array<string, mixed> */
 		private array $arguments;
 		
+		/** @var string|null Name of the parameter currently being autowirted */
+		private ?string $currentParameterName = null;
+		
 		/**
 		 * MethodContext constructor
 		 * @param string $class The class instance that contains the method
@@ -58,5 +61,22 @@
 		 */
 		public function getArguments(): array {
 			return $this->arguments;
+		}
+		
+		/**
+		 * Sets the parameter that is currently being autowired
+		 * @param string|null $name
+		 * @return void
+		 */
+		public function setCurrentParameterName(?string $name): void {
+			$this->currentParameterName = $name;
+		}
+		
+		/**
+		 * Gets the parameter that is currently being autowired
+		 * @return string|null
+		 */
+		public function getCurrentParameterName(): ?string {
+			return $this->currentParameterName;
 		}
 	}
