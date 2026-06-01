@@ -115,7 +115,7 @@
 				}
 				
 				// Set the parameter that we're currently resolving
-				$methodContext->setCurrentParameterName($param['name']);
+				$methodContext->setParameterName($param['name']);
 				
 				// Resolve the current parameter using the provided parameters and context
 				// This handles type conversion, default values, dependency injection, etc.
@@ -123,7 +123,7 @@
 			}
 			
 			// Reset the parameter that we're currently resolving
-			$methodContext->setCurrentParameterName(null);
+			$methodContext->setParameterName(null);
 			
 			// If we found an "all parameter", give it the entire original parameters array
 			// This allows access to all input parameters, including those not defined in the method signature
