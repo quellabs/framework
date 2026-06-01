@@ -115,8 +115,8 @@
 			}
 			
 			// Priority 1: Explicit provider request via context/metadata
-			if (!empty($metadata['provider'])) {
-				return $metadata['provider'] === 'blade';
+			if (!empty($metadata['context'])) {
+				return $metadata['context'] === 'blade';
 			}
 			
 			// Priority 2: Check app.php configuration

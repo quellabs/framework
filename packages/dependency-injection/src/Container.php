@@ -105,7 +105,7 @@
 		
 		/**
 		 * Set context for subsequent get() calls
-		 * @param string|array<string, mixed> $context Context to apply - string is converted to ['provider' => $context]
+		 * @param string|array<string, mixed> $context Context to apply - string is converted to ['context' => $context]
 		 * @return self Returns a cloned instance with the specified context applied
 		 */
 		public function for(string|array $context): self {
@@ -115,7 +115,7 @@
 			// Handle string context by converting it to a provider-specific array format
 			// Otherwise, use the provided array context directly
 			if (is_string($context)) {
-				$clone->context = ['provider' => $context];
+				$clone->context = ['context' => $context];
 			} else {
 				$clone->context = $context;
 			}

@@ -6,6 +6,7 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAny;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAvg;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAvgU;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstDate;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIfNull;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstMax;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstMin;
@@ -60,6 +61,7 @@
 		 * - Aggregate: count, countu, avg, avgu
 		 * - String: concat, search
 		 * - Type checking: is_empty, is_numeric, is_integer, is_float
+		 * - Temporal: date
 		 * - Utility: exists
 		 *
 		 * @param string $command The function name to parse (case-insensitive)
@@ -86,6 +88,7 @@
 				'is_float' => $this->parseIsFloat(),
 				'ifnull' => $this->parseIfNull(),
 				'exists' => $this->parseExists(),
+				'date' => $this->parseDate(),
 				default => throw new ParserException("Command {$command} is not valid."),
 			};
 		}
@@ -354,6 +357,47 @@
 		}
 		
 		/**
+		 * Parse date() function — converts a datetime expression to a Unix timestamp
+		 * so that temporal arithmetic is expressed as plain integer math.
+		 *
+		 * Accepted argument forms:
+		 *   date("now")        — current time as Unix timestamp
+		 *   date("6 days")     — interval folded to integer literal at parse time
+		 *   date(o.orderDate)  — datetime column converted to Unix timestamp in SQL
+		 *   date(:param)       — runtime parameter treated as datetime column
+		 *
+		 * Pure interval strings are pre-computed here so the SQL generator can
+		 * emit a bare integer without any function call.
+		 *
+		 * @return AstDate The date AST node
+		 * @throws LexerException When token matching fails
+		 * @throws ParserException When the argument type is not supported
+		 */
+		protected function parseDate(): AstDate {
+			$this->lexer->match(Token::ParenthesesOpen);
+			$expression = $this->expressionRule->parse();
+			$this->lexer->match(Token::ParenthesesClose);
+
+			// Pre-compute seconds for plain interval string literals ("6 days", "2 hours", …).
+			// "now" returns null and is left for the SQL generator to emit NOW().
+			// Datetime strings ("2024-01-15", "2024-01-15 10:30:00") are passed through
+			// unchanged so the SQL generator can wrap them in UNIX_TIMESTAMP().
+			// Anything else that is not a recognised interval is a parse error.
+			$foldedSeconds = null;
+
+			if ($expression instanceof AstString) {
+				$value = trim($expression->getValue());
+				
+				if (!$this->isDatetimeString($value) && strtolower($value) !== 'now') {
+					$intervalParser = new IntervalParser();
+					$foldedSeconds = $intervalParser->parse($value);
+				}
+			}
+
+			return new AstDate($expression, $foldedSeconds);
+		}
+		
+		/**
 		 * Parse SEARCH_SCORE() function - returns the full-text relevance score for a set of fields.
 		 * Uses the same syntax as SEARCH() but emits a MATCH...AGAINST value expression instead
 		 * of a boolean condition. Intended for use in SELECT and ORDER BY clauses.
@@ -393,7 +437,6 @@
 			return new AstSearchScore($identifiers, $searchString);
 		}
 		
-		
 		/**
 		 * Helper method that parses a sequence of identifiers separated by commas,
 		 * stopping before the final search string argument.
@@ -426,5 +469,21 @@
 			} while ($this->lexer->optionalMatch(Token::Comma));
 			
 			return $identifiers;
+		}
+		
+		/**
+		 * Returns true when the string is a date or datetime literal that can be
+		 * passed directly to UNIX_TIMESTAMP(). Accepted formats:
+		 *   YYYY-MM-DD
+		 *   YYYY-MM-DD HH:MM:SS
+		 *   YYYY-MM-DD HH:MM:SS.ffffff   (fractional seconds)
+		 * @param string $value
+		 * @return bool
+		 */
+		private function isDatetimeString(string $value): bool {
+			return (bool) preg_match(
+				'/^\d{4}-\d{2}-\d{2}(?:\s\d{2}:\d{2}:\d{2}(?:\.\d+)?)?$/',
+				$value
+			);
 		}
 	}

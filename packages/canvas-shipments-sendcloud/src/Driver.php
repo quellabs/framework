@@ -16,8 +16,8 @@
 	use Quellabs\Shipments\Contracts\ShipmentResult;
 	use Quellabs\Shipments\Contracts\ShipmentState;
 	use Quellabs\Contracts\Gateway\GatewayHelpers;
-	use Quellabs\Shipments\SendCloud\Transformer\ParcelTransformer;
-	use Quellabs\Shipments\SendCloud\Transformer\ShippingMethodTransformer;
+	use Quellabs\Shipments\SendCloud\Transformers\ParcelTransformer;
+	use Quellabs\Shipments\SendCloud\Transformers\ShippingMethodTransformer;
 	
 	class Driver implements ShipmentProviderInterface {
 		

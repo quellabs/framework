@@ -22,6 +22,7 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstConcat;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstCount;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstCountU;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstDate;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstExpression;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstFactor;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIdentifier;
@@ -119,30 +120,10 @@
 			$this->platform = $platform;
 			
 			// Initialize helper classes with proper dependencies and references
-			$this->sqlFragmentBuilder = new BuildSqlFragments(
-				$this->entityStore,
-				$this,
-				$subqueryAliasRangeName
-			);
-			
-			$this->typeInference = new ResolveType(
-				$this->entityStore
-			);
-			
-			$this->aggregateHandler = new ProcessAggregate(
-				$this->entityStore,
-				$this->partOfQuery,
-				$this->sqlFragmentBuilder,
-				$this
-			);
-			
-			$this->expressionHandler = new ProcessExpression(
-				$this->entityStore,
-				$this->typeInference,
-				$this->parameters,
-				$this,
-				$this->platform
-			);
+			$this->sqlFragmentBuilder = new BuildSqlFragments($this->entityStore, $this, $subqueryAliasRangeName);
+			$this->typeInference = new ResolveType($this->entityStore);
+			$this->aggregateHandler = new ProcessAggregate($this->entityStore, $this->partOfQuery, $this->sqlFragmentBuilder, $this);
+			$this->expressionHandler = new ProcessExpression($this->entityStore, $this->typeInference, $this->parameters, $this, $this->platform);
 		}
 		
 		/**
@@ -361,6 +342,13 @@
 		 * @param AstCast $ast The cast node to process
 		 */
 		protected function handleCast(AstCast $ast): void {
+			// PHP-only casts (e.g. datetime) instruct the hydrator to convert the
+			// raw value — no SQL CAST() is emitted; the inner expression passes through.
+			if ($ast->isPhpOnlyCast()) {
+				$this->result[] = $this->visitNodeAndReturnSQL($ast->getExpression());
+				return;
+			}
+
 			// Resolve the SQL type token for the target engine.
 			// The semantic analyser has already verified that this cast type is
 			// supported, so the key is guaranteed to exist here.
@@ -372,6 +360,42 @@
 
 			// Emit standard SQL CAST(), supported by all engines
 			$this->result[] = "CAST({$innerSql} AS {$sqlType})";
+		}
+
+		/**
+		 * Process a date() function call — emits a Unix timestamp SQL expression.
+		 *
+		 * Three cases:
+		 *   - Pure interval folded at parse time (getFoldedSeconds() !== null):
+		 *     emit the integer literal directly — no function call in SQL.
+		 *   - "now": emit the platform's current-timestamp function.
+		 *   - Column / parameter argument: wrap the inner SQL with the platform's
+		 *     Unix timestamp conversion function.
+		 *
+		 * The inner expression node is marked visited so the generic visitor loop
+		 * does not attempt to re-emit it on its own.
+		 *
+		 * @param AstDate $ast The date() function node to process
+		 */
+		protected function handleDate(AstDate $ast): void {
+			// Pure interval — pre-computed to integer seconds at parse time.
+			// Emit as a bare integer literal; no SQL function needed.
+			if ($ast->getFoldedSeconds() !== null) {
+				$this->result[] = (string) $ast->getFoldedSeconds();
+				$this->addToVisitedNodes($ast->getExpression());
+				return;
+			}
+
+			// date("now") — emit the platform's current-timestamp expression.
+			if ($ast->isNow()) {
+				$this->result[] = $this->platform->getCurrentUnixTimestamp();
+				$this->addToVisitedNodes($ast->getExpression());
+				return;
+			}
+
+			// Column reference or parameter — wrap with the platform's timestamp function.
+			$innerSql = $this->visitNodeAndReturnSQL($ast->getExpression());
+			$this->result[] = sprintf($this->platform->getUnixTimestampFunction(), $innerSql);
 		}
 
 		/**
@@ -686,6 +710,11 @@
 			
 			// AstCast wraps a single inner expression
 			if ($ast instanceof AstCast) {
+				return [$ast->getExpression()];
+			}
+
+			// AstDate wraps a single inner expression (string literal, identifier, or parameter)
+			if ($ast instanceof AstDate) {
 				return [$ast->getExpression()];
 			}
 			

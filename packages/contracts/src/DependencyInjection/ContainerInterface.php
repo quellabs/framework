@@ -26,7 +26,7 @@
 		
 		/**
 		 * Set context for subsequent get() calls.
-		 * @param string|array $context Context to apply - string is converted to ['provider' => $context]
+		 * @param string|array $context Context to apply - string is converted to ['context' => $context]
 		 * @return self Returns a cloned instance with the specified context applied
 		 */
 		public function for(string|array $context): self;

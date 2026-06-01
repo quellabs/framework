@@ -197,8 +197,8 @@ class MyServiceProvider extends ServiceProvider {
         $supportsClass = $className === MyService::class || is_subclass_of($className, MyInterface::class);
         
         // Check context if provider name is specified
-        if (isset($context['provider'])) {
-            return $supportsClass && $context['provider'] === 'myservice';
+        if (isset($context['context'])) {
+            return $supportsClass && $context['context'] === 'myservice';
         }
         
         return $supportsClass;
@@ -241,7 +241,7 @@ When you have multiple service providers that support the same interface, you ca
 class ObjectQuelServiceProvider extends ServiceProvider {
     public function supports(string $className, array $context = []): bool {
         return $className === EntityManagerInterface::class 
-            && ($context['provider'] ?? null) === 'objectquel';
+            && ($context['context'] ?? null) === 'objectquel';
     }
     
     public function createInstance(string $className, array $dependencies, array $metadata, ?MethodContext $methodContext=null): object
@@ -253,7 +253,7 @@ class ObjectQuelServiceProvider extends ServiceProvider {
 class DoctrineServiceProvider extends ServiceProvider {
     public function supports(string $className, array $context = []): bool {
         return $className === EntityManagerInterface::class 
-            && ($context['provider'] ?? null) === 'doctrine';
+            && ($context['context'] ?? null) === 'doctrine';
     }
     
     public function createInstance(string $className, array $dependencies, array $metadata, ?MethodContext $methodContext=null): object

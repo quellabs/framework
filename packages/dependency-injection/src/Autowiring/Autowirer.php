@@ -18,9 +18,31 @@
 	class Autowirer {
 		
 		/**
+		 * Sentinel returned by resolveType() to signal "no provider handled this type",
+		 * distinct from null which a provider may return intentionally (e.g. entity not found).
+		 */
+		private static ?object $unresolvedSentinel = null;
+		
+		/**
+		 * Returns the shared sentinel instance, creating it on first call.
+		 * @return object
+		 */
+		private static function unresolved(): object {
+			return self::$unresolvedSentinel ??= new class {};
+		}
+		
+		/**
 		 * @var ContainerInterface
 		 */
 		protected ContainerInterface $container;
+		
+		/**
+		 * Cache of reflected parameter metadata keyed by "ClassName::methodName".
+		 * Reflection results are immutable at runtime, so this is safe to cache
+		 * for the lifetime of the autowirer instance.
+		 * @var array<string, array<int, ParameterMeta>>
+		 */
+		private array $parameterCache = [];
 		
 		/**
 		 * Built-in PHP types that cannot be resolved from container
@@ -87,15 +109,21 @@
 				// Check if this parameter is a special "all parameter" type
 				// This might be a parameter that receives all other resolved parameters
 				if ($this->isAllParameter($param)) {
-					$allParameterIndex = $index; // Remember where the all parameter is located
-					$arguments[] = null; // Placeholder - will be filled later with all parameter data
-					continue; // Skip normal parameter resolution for this parameter
+					$allParameterIndex = $index;
+					$arguments[] = null;
+					continue;
 				}
+				
+				// Set the parameter that we're currently resolving
+				$methodContext->setParameterName($param['name']);
 				
 				// Resolve the current parameter using the provided parameters and context
 				// This handles type conversion, default values, dependency injection, etc.
 				$arguments[] = $this->resolveParameter($param, $parameters, $methodContext, $className, $methodName);
 			}
+			
+			// Reset the parameter that we're currently resolving
+			$methodContext->setParameterName(null);
 			
 			// If we found an "all parameter", give it the entire original parameters array
 			// This allows access to all input parameters, including those not defined in the method signature
@@ -128,44 +156,38 @@
 			$paramTypes = $param['types'] ?? [];
 			
 			// Strategy 1: Direct parameter name match
-			// Check if user provided exact parameter name
 			if (isset($parameters[$paramName])) {
 				return $parameters[$paramName];
 			}
 			
-			// Strategy 2: Snake case conversion attempt
-			// Handle camelCase method params with snake_case user input
+			// Strategy 2: Snake case conversion
 			if (isset($parameters[$this->camelToSnake($paramName)])) {
 				return $parameters[$this->camelToSnake($paramName)];
 			}
 			
-			// Strategy 3: Dependency injection resolution
-			// Attempt to autowire parameter using type hints and container
+			// Strategy 3: Dependency injection — sentinel means unresolved, null means resolved-to-null
 			$resolved = $this->resolveParameterFromTypes($paramName, $paramTypes, $methodContext);
 			
-			if ($resolved !== null) {
+			if ($resolved !== self::unresolved()) {
 				return $resolved;
 			}
 			
-			// Strategy 4: Use parameter's default value
-			// Fall back to method signature default if available
+			// Strategy 4: Default value from method signature
 			if (array_key_exists('default_value', $param)) {
 				return $param['default_value'];
 			}
 			
-			// Strategy 5: If the type is an array, pass an empty array
-			// This will prevent a crash in CakePHP Database connection when autowiring the config
+			// Strategy 5: Empty array for array-typed parameters
+			// Prevents a crash in CakePHP Database connection when autowiring the config
 			if (in_array("array", $paramTypes, true)) {
 				return [];
 			}
 			
-			// All strategies failed - parameter is required but unresolvable
 			throw new \RuntimeException("Cannot autowire parameter '$paramName' for $className::$methodName");
 		}
 		
 		/**
-		 * Determines if a parameter is the magic **all parameter
-		 * This checks if the parameter name is 'all' and has a type hint of 'array'
+		 * Determines if a parameter is the magic __all__ parameter.
 		 * @param ParameterMeta $param Parameter metadata
 		 * @return bool
 		 */
@@ -183,21 +205,20 @@
 		}
 		
 		/**
-		 * Attempts to resolve a parameter value by trying each type hint in order
-		 * @param string $paramName Parameter name for better error messages
-		 * @param array<int, string> $types Array of type hints/class names to attempt resolution
+		 * Tries to resolve a parameter against each of its type hints in order.
+		 * Returns the unresolved sentinel when no type could be resolved.
+		 * Returns null when a provider resolved the type to null (e.g. entity not found),
+		 * which the caller propagates without falling through to further strategies.
+		 * @param string $paramName Parameter name for error messages
+		 * @param array<int, string> $types Array of type hints to attempt resolution for
 		 * @param MethodContextInterface|null $methodContext
-		 * @return mixed The resolved instance
-		 * @throws \RuntimeException If no types could be resolved
+		 * @return mixed The resolved value, or the unresolved sentinel
 		 */
 		protected function resolveParameterFromTypes(string $paramName, array $types, ?MethodContextInterface $methodContext = null): mixed {
-			// Early return if no types provided - nothing to resolve
+			// Early return sentinel if no types provided - nothing to resolve
 			if (empty($types)) {
-				return null;
+				return self::unresolved();
 			}
-			
-			// Track resolution failures for detailed error reporting
-			$failures = [];
 			
 			// Filter out built-in PHP types (int, string, bool, etc.) and null type
 			// as these cannot be resolved through dependency injection
@@ -206,7 +227,7 @@
 			
 			// If all types are built-in or null, there's nothing we can resolve via DI
 			if (empty($resolvableTypes)) {
-				return null;
+				return self::unresolved();
 			}
 			
 			// Attempt to resolve each resolvable type in order
@@ -215,35 +236,33 @@
 					// Try to get an instance of this type from the container
 					$instance = $this->resolveType($type, [], $methodContext);
 					
-					// If we successfully got a non-null instance, return it immediately
-					// This implements a "first successful resolution wins" strategy
+					// Non-null instance: resolved successfully
 					if ($instance !== null) {
 						return $instance;
 					}
-				} catch (\Throwable $e) {
-					// Store the failure reason for this type to include in final error message
-					// This helps with debugging by showing why each type failed to resolve
-					$failures[$type] = $e->getMessage();
+				} catch (\Throwable) {
+					// Resolution threw — this type is not resolvable, try the next one
 				}
 			}
 			
-			// If we reach here, none of the types could be resolved successfully.
-			// Throw a comprehensive error with details about all failed attempts
-			$contextInfo = $methodContext ? "{$methodContext->getClassName()}::{$methodContext->getMethodName()}" : "unknown context";
-			
-			throw new \RuntimeException(
-				"Cannot resolve parameter '{$paramName}' in {$contextInfo}:\n" .
-				implode("\n", $failures)
-			);
+			// No type could be resolved; signal to resolveParameter() to try further strategies
+			return self::unresolved();
 		}
 		
 		/**
-		 * Get the parameters of a method including type hints and default values
+		 * Returns reflected parameter metadata for a method, cached by class+method.
 		 * @param class-string $className
 		 * @param string $methodName
 		 * @return array<int, ParameterMeta>
 		 */
 		protected function getMethodParameters(string $className, string $methodName): array {
+			// Fetch method parameters from cache if possible
+			$cacheKey = $className . '::' . $methodName;
+			
+			if (isset($this->parameterCache[$cacheKey])) {
+				return $this->parameterCache[$cacheKey];
+			}
+			
 			try {
 				// New reflection class to get information about the class name
 				$reflectionClass = new \ReflectionClass($className);
@@ -257,7 +276,7 @@
 				
 				// Return an empty array when the method does not exist
 				if (!$methodReflector) {
-					return [];
+					return $this->parameterCache[$cacheKey] = [];
 				}
 				
 				// Process each parameter
@@ -283,9 +302,9 @@
 					$result[] = $param;
 				}
 				
-				return $result;
+				return $this->parameterCache[$cacheKey] = $result;
 			} catch (\ReflectionException $e) {
-				return [];
+				return $this->parameterCache[$cacheKey] = [];
 			}
 		}
 		
@@ -337,22 +356,21 @@
 		}
 		
 		/**
-		 * Resolves a single type from the container.
-		 * Extracted as a separate method to allow subclasses to swap the container
-		 * used for resolution without duplicating the full resolution loop.
+		 * Resolves a type from the container. Extracted so subclasses can swap the
+		 * container without duplicating the resolution loop.
 		 * @param class-string $type The fully qualified class or interface name to resolve
 		 * @param array<string, mixed> $parameters Additional parameters for resolution
 		 * @param MethodContextInterface|null $methodContext
-		 * @return object|null The resolved instance or null
+		 * @return object|null The resolved instance, or null
 		 */
 		protected function resolveType(string $type, array $parameters, ?MethodContextInterface $methodContext): ?object {
 			return $this->container->get($type, [], $methodContext);
 		}
 		
 		/**
-		 * Convert camelCase string to snake_case
-		 * @param string $input The camelCase string to convert
-		 * @return string The converted snake_case string
+		 * Converts camelCase to snake_case.
+		 * @param string $input
+		 * @return string
 		 */
 		protected function camelToSnake(string $input): string {
 			// Handle empty strings - return as-is to avoid errors

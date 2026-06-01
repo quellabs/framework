@@ -19,6 +19,7 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstSearch;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\CollectNodes;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\DetectRestrictedNodeType;
+	use Quellabs\ObjectQuel\ObjectQuel\Visitors\ValidateNoTemporalScalarMix;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\ValidateEntityPropertyExists;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\ValidateJsonPropertyChain;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\ValidateNoEntityExpressions;
@@ -160,6 +161,11 @@
 			//          connected engine. Enforced here rather than in the parser so
 			//          that the error message can name the supported alternatives.
 			$this->validateCastTypes($ast);
+			
+			// Step 12: Validate that temporal values (datetime, interval) are never
+			//          combined with plain scalars in arithmetic expressions.
+			//          date("6 days") + 1 has no defined meaning and is a type error.
+			$this->processWithVisitor($ast, ValidateNoTemporalScalarMix::class, $this->entityStore);
 		}
 		
 		/**
@@ -473,6 +479,12 @@
 		 * @throws SemanticException If no range without 'via' clause exists
 		 */
 		private function validateAtLeastOneRangeWithoutVia(AstRetrieve $ast): void {
+			// A rangeless query is valid — it contains only constant expressions in its
+			// projection and needs no FROM clause. Nothing to validate here.
+			if (empty($ast->getRanges())) {
+				return;
+			}
+			
 			// Search through all ranges to find at least one that can serve as the main FROM table
 			foreach ($ast->getRanges() as $range) {
 				// Check if this is a database range (actual table) without a join property
@@ -936,6 +948,12 @@
 			
 			foreach ($collector->getCollectedNodes() as $castNode) {
 				$castType = $castNode->getCastType();
+				
+				// PHP-only casts have no SQL equivalent and are always valid regardless
+				// of the connected engine — skip them here.
+				if ($castNode->isPhpOnlyCast()) {
+					continue;
+				}
 				
 				if (!array_key_exists($castType, $supportedTypes)) {
 					$valid = implode(', ', array_keys($supportedTypes));

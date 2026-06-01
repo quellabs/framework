@@ -125,8 +125,8 @@
 			}
 			
 			// Priority 1: Explicit provider request via context/metadata
-			if (!empty($metadata['provider'])) {
-				return $metadata['provider'] === 'latte';
+			if (!empty($metadata['context'])) {
+				return $metadata['context'] === 'latte';
 			}
 			
 			// Priority 2: Check app.php configuration

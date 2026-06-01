@@ -28,7 +28,7 @@
 			// Key = parent directory, Value = array of subdirectories
 			$directories = [
 				'storage'   => ['cache', 'sessions'],           // Storage for cache and session files
-				'templates' => [],                              // Template files directory
+				'templates' => ['home'],                        // Template files directory
 				'src'       => ['Controllers', 'Aspects'],      // Source code with MVC structure
 				'config'    => [],                              // Configuration files
 				'tests'     => ['Unit', 'Feature']              // Test directories for different test types

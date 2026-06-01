@@ -5,6 +5,7 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstBinaryOperator;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstBool;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstConcat;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstDate;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstExists;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstExpression;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIdentifier;
@@ -33,7 +34,8 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIsEmpty;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAny;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstCast;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstTernary;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstFactor;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstTerm;
 	use Quellabs\ObjectQuel\ObjectQuel\AstInterface;
 	use Quellabs\ObjectQuel\Exception\QuelException;
 	
@@ -65,10 +67,39 @@
 			// Determine the type of AST node and process accordingly
 			switch (get_class($ast)) {
 				// Handle literal value nodes - simply return their stored value
-				case AstNumber::class:  // Numeric literal (e.g., 42, 3.14)
+				case AstNumber::class:
+					// AstNumber stores its value as a string; coerce to int or float
+					// based on the node's own return-type declaration so that callers
+					// receive a properly typed PHP value rather than a raw string.
+					return $ast->getReturnType() === 'float'
+						? (float) $ast->getValue()
+						: (int) $ast->getValue();
+				
 				case AstString::class:  // String literal (e.g., "hello")
 				case AstBool::class:    // Boolean literal (true/false)
 					return $ast->getValue();
+				
+				// Handle arithmetic +/- nodes
+				case AstTerm::class:
+					$left  = self::toNumber(self::evaluate($ast->getLeft(),  $contents, $row, $initialParams));
+					$right = self::toNumber(self::evaluate($ast->getRight(), $contents, $row, $initialParams));
+					
+					return match ($ast->getOperator()) {
+						'+' => $left + $right,
+						'-' => $left - $right,
+						default => throw new QuelException("Unknown operator {$ast->getOperator()}"),
+					};
+				
+				// Handle arithmetic */÷ nodes
+				case AstFactor::class:
+					$left  = self::toNumber(self::evaluate($ast->getLeft(),  $contents, $row, $initialParams));
+					$right = self::toNumber(self::evaluate($ast->getRight(), $contents, $row, $initialParams));
+					
+					return match ($ast->getOperator()) {
+						'*' => $left * $right,
+						'/' => $left / $right,
+						default => throw new QuelException("Unknown operator {$ast->getOperator()}"),
+					};
 				
 				// Handle identifier node - fetch corresponding value from data row
 				// (Identifiers represent column/field names in the data)
@@ -91,6 +122,10 @@
 						'string'  => strval($castValue),
 						'bool'    => (bool) $castValue,
 						'decimal' => floatval($castValue),
+						
+						// 'datetime' is intentionally absent — it is a PHP-only cast handled
+						// exclusively by the hydrator for database results. It cannot appear in
+						// a purely in-memory context, so the default passthrough covers it.
 						default   => $castValue,
 					};
 				
@@ -166,6 +201,37 @@
 					$left = self::evaluate($ast->getExpression(), $contents, $row, $initialParams);
 					$right = self::evaluate($ast->getAltValue(), $contents, $row, $initialParams);
 					return $left ?? $right;
+				
+				// Handle date() — puts a "Y-m-d H:i:s" string (or int for intervals) into
+				// the row so DatetimeNormalizer can promote it to \DateTime, exactly as it
+				// would for a database result. Date-only strings are padded to midnight.
+				case AstDate::class:
+					// Return interval date as seconds
+					if ($ast->getFoldedSeconds() !== null) {
+						return $ast->getFoldedSeconds();
+					}
+					
+					// If date is "now" return the current date
+					if ($ast->isNow()) {
+						return time();
+					}
+					
+					// Evaluate the date expression
+					$dateValue = self::evaluate($ast->getExpression(), $contents, $row, $initialParams);
+					
+					// Validate the date expression
+					if (!is_string($dateValue)) {
+						return null;
+					}
+					
+					// Pad a bare date string to a full datetime so DatetimeNormalizer
+					// can parse it with createFromFormat("Y-m-d H:i:s", ...).
+					if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateValue)) {
+						$dateValue .= ' 00:00:00';
+					}
+					
+					$dt = \DateTime::createFromFormat('Y-m-d H:i:s', $dateValue);
+					return $dt !== false ? $dt->getTimestamp() : null;
 				
 				// Handle min() / max() - scan all rows and return the smallest or largest non-null value.
 				// Mirrors SQL MIN()/MAX() semantics: NULLs excluded, empty/all-NULL set returns NULL.
@@ -263,13 +329,6 @@
 				case AstIsEmpty::class:
 					$value = self::evaluate($ast->getValue(), $contents, $row, $initialParams);
 					return $value === null || $value === '' || $value === 0 || $value === 0.0 || $value === false;
-				
-				// Ternary — condition ? trueValue : falseValue
-				case AstTernary::class:
-					$condition = self::evaluate($ast->getCondition(), $contents, $row, $initialParams);
-					return $condition
-						? self::evaluate($ast->getTrue(), $contents, $row, $initialParams)
-						: self::evaluate($ast->getFalse(), $contents, $row, $initialParams);
 				
 				// ANY(identifier where conditions) — returns 1 if at least one row
 				// satisfies the conditions and has a non-null identifier value, 0 otherwise.
@@ -475,6 +534,26 @@
 			}
 			
 			return $values;
+		}
+		
+		/**
+		 * Coerces a mixed evaluation result to int|float for arithmetic operations.
+		 * Integers are returned as-is to preserve PHP's native int arithmetic.
+		 * Numeric strings and floats are cast to float.
+		 * Non-numeric values (null, bool, object) are treated as zero.
+		 * @param mixed $value
+		 * @return int|float
+		 */
+		private static function toNumber(mixed $value): int|float {
+			if (is_int($value)) {
+				return $value;
+			}
+			
+			if (is_numeric($value)) {
+				return (float)$value;
+			}
+			
+			return 0;
 		}
 		
 		/**

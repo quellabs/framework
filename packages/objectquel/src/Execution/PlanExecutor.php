@@ -3,7 +3,9 @@
 	namespace Quellabs\ObjectQuel\Execution;
 	
 	use Quellabs\ObjectQuel\EntityStore;
+	use Quellabs\ObjectQuel\Planner\ExecutionStageInterface;
 	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
+	use Quellabs\ObjectQuel\Execution\Executors\ConstantQueryExecutor;
 	use Quellabs\ObjectQuel\Execution\Executors\DatabaseQueryExecutor;
 	use Quellabs\ObjectQuel\Execution\Executors\JsonQueryExecutor;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeJsonSource;
@@ -14,6 +16,7 @@
 	use Quellabs\ObjectQuel\Execution\Joins\LeftJoinStrategy;
 	use Quellabs\ObjectQuel\Execution\Joins\InnerJoinStrategy;
 	use Quellabs\ObjectQuel\Execution\Executors\TempTableExecutor;
+	use Quellabs\ObjectQuel\Planner\ConstantStage;
 	use Quellabs\ObjectQuel\Planner\ExecutionPlan;
 	use Quellabs\ObjectQuel\Planner\ExecutionStage;
 	use Quellabs\ObjectQuel\Planner\TempTableStage;
@@ -51,16 +54,21 @@
 		
 		/**
 		 * Executor responsible for materializing external-source subqueries as temp tables.
-		 * Created lazily on first use and reused for the lifetime of this PlanExecutor.
-		 * @var TempTableExecutor|null
+		 * @var TempTableExecutor
 		 */
-		private ?TempTableExecutor $tempTableExecutor = null;
+		private TempTableExecutor $tempTableExecutor;
 		
 		/**
 		 * Executor responsible for executing and materializing JSON data
 		 * @var JsonQueryExecutor
 		 */
 		private JsonQueryExecutor $jsonExecutor;
+		
+		/**
+		 * Executor responsible for evaluating constant-only (rangeless) queries
+		 * @var ConstantQueryExecutor
+		 */
+		private ConstantQueryExecutor $constantExecutor;
 		
 		/**
 		 * Create a new plan executor
@@ -70,6 +78,8 @@
 			$this->queryExecutor = $queryExecutor;
 			$this->databaseExecutor = $queryExecutor->getDatabaseExecutor();
 			$this->jsonExecutor = $queryExecutor->getJsonExecutor();
+			$this->constantExecutor = new ConstantQueryExecutor();
+			$this->tempTableExecutor = new TempTableExecutor($queryExecutor->getConnection());
 		}
 		
 		/**
@@ -102,23 +112,14 @@
 						// database stage runs. This mutates the stage's AstRangeDatabase
 						// so QuelToSQL emits a plain table reference in subsequent stages.
 						// TempTableStages contribute no rows to intermediate results.
-						$this->getTempTableExecutor()->execute(
+						$this->tempTableExecutor->execute(
 							$stage,
 							fn(ExecutionPlan $innerPlan) => $this->execute($innerPlan)
 						);
+					} elseif ($stage instanceof ConstantStage) {
+						$intermediateResults[$stage->getName()] = $this->constantExecutor->execute($stage);
 					} else {
-						try {
-							if ($stage->getRange() instanceof AstRangeJsonSource) {
-								$result = $this->jsonExecutor->execute($stage, $stage->getStaticParams());
-							} else {
-								$result = $this->databaseExecutor->execute($stage, $stage->getStaticParams());
-							}
-							
-							$intermediateResults[$stage->getName()] = $result;
-						} catch (QuelException $e) {
-							// Wrap any execution errors with stage context information
-							throw new QuelException("Stage '{$stage->getName()}' failed: {$e->getMessage()}", 'stage_error', 0, $e);
-						}
+						$intermediateResults[$stage->getName()] = $this->executeStage($stage);
 					}
 				}
 				
@@ -131,22 +132,27 @@
 				return $this->combineResults($plan, $intermediateResults);
 			} finally {
 				// Always clean up temp tables, whether execution succeeded or failed.
-				$this->tempTableExecutor?->cleanup();
+				$this->tempTableExecutor->cleanup();
 			}
 		}
 		
 		/**
-		 * Returns the TempTableExecutor instance, creating it lazily on first use.
-		 * @return TempTableExecutor
+		 * Dispatches a single result-producing stage to the appropriate executor.
+		 * JSON source ranges are handled in-memory; everything else goes to the database.
+		 * @param ExecutionStageInterface $stage
+		 * @return list<array<string, mixed>>
+		 * @throws QuelException|EntityResolutionException
 		 */
-		private function getTempTableExecutor(): TempTableExecutor {
-			if ($this->tempTableExecutor === null) {
-				$this->tempTableExecutor = new TempTableExecutor(
-					$this->queryExecutor->getConnection()
-				);
+		private function executeStage(ExecutionStageInterface $stage): array {
+			try {
+				if ($stage->getRange() instanceof AstRangeJsonSource) {
+					return $this->jsonExecutor->execute($stage, $stage->getStaticParams());
+				} else {
+					return $this->databaseExecutor->execute($stage, $stage->getStaticParams());
+				}
+			} catch (QuelException $e) {
+				throw new QuelException("Stage '{$stage->getName()}' failed: {$e->getMessage()}", 'stage_error', 0, $e);
 			}
-			
-			return $this->tempTableExecutor;
 		}
 		
 		/**
