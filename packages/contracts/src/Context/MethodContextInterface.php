@@ -32,12 +32,12 @@
 		 * @param string|null $name
 		 * @return void
 		 */
-		public function setCurrentParameterName(?string $name): void;
+		public function setParameterName(?string $name): void;
 		
 		/**
 		 * Gets the parameter that is currently being autowired
 		 * @return string|null
 		 */
-		public function getCurrentParameterName(): ?string;
+		public function getParameterName(): ?string;
 		
 	}
