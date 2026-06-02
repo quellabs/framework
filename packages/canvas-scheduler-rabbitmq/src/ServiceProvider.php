@@ -1,32 +1,34 @@
 <?php
 	
-	namespace Quellabs\Canvas\Scheduler\Redis;
+	namespace Quellabs\Canvas\Scheduler\RabbitMQ;
 	
-	use Predis\Client;
+	use PhpAmqpLib\Connection\AMQPStreamConnection;
 	use Quellabs\Contracts\Context\MethodContextInterface;
 	use Quellabs\Contracts\Scheduler\QueueInterface;
 	
 	/**
-	 * Service provider for the Redis queue.
-	 * Binds QueueInterface to RedisQueue using connection settings
-	 * from config/scheduler-redis.php.
+	 * Service provider for the RabbitMQ queue.
+	 * Binds QueueInterface to RabbitMQQueue using connection settings
+	 * from config/scheduler-rabbitmq.php.
 	 *
-	 * @phpstan-type RedisConfig array{
-	 *     scheme: string,
+	 * @phpstan-type RabbitMQConfig array{
 	 *     host: string,
 	 *     port: int,
+	 *     user: string,
+	 *     password: string,
+	 *     vhost: string,
 	 *     queue_name: string,
-	 *     queue_prefix: string,
-	 *     queue_max_jobs: int,
-	 *     queue_timeout: int
+	 *     exchange_name: string,
+	 *     prefetch_count: int,
+	 *     queue_max_jobs: int
 	 * }
 	 */
 	class ServiceProvider extends \Quellabs\DependencyInjection\Provider\ServiceProvider {
 		
 		/**
-		 * @var RedisQueue|null Singleton instance
+		 * @var RabbitMQQueue|null Singleton instance
 		 */
-		private static ?RedisQueue $instance = null;
+		private static ?RabbitMQQueue $instance = null;
 		
 		/**
 		 * Returns the provider's metadata for service discovery
@@ -34,24 +36,26 @@
 		 */
 		public static function getMetadata(): array {
 			return [
-				'provider' => 'redis',
+				'provider' => 'rabbitmq',
 				'type'     => 'queue',
 			];
 		}
 		
 		/**
-		 * Returns default Redis settings
-		 * @return RedisConfig
+		 * Returns default RabbitMQ settings
+		 * @return RabbitMQConfig
 		 */
 		public static function getDefaults(): array {
 			return [
-				'scheme'         => 'tcp',
 				'host'           => '127.0.0.1',
-				'port'           => 6379,
+				'port'           => 5672,
+				'user'           => 'guest',
+				'password'       => 'guest',
+				'vhost'          => '/',
 				'queue_name'     => 'default',
-				'queue_prefix'   => 'canvas',
+				'exchange_name'  => '',
+				'prefetch_count' => 1,
 				'queue_max_jobs' => 500,
-				'queue_timeout'  => 5,
 			];
 		}
 		
@@ -60,25 +64,27 @@
 		 * Used by both the service provider and the consumer so type coercion
 		 * lives in one place.
 		 * @param array<string, mixed> $raw
-		 * @return RedisConfig
+		 * @return RabbitMQConfig
 		 */
 		public static function resolveConfig(array $raw): array {
 			$defaults = self::getDefaults();
 			
 			return [
-				'scheme'         => is_string($raw['scheme'] ?? null) ? $raw['scheme'] : $defaults['scheme'],
 				'host'           => is_string($raw['host'] ?? null) ? $raw['host'] : $defaults['host'],
 				'port'           => is_int($raw['port'] ?? null) ? $raw['port'] : $defaults['port'],
+				'user'           => is_string($raw['user'] ?? null) ? $raw['user'] : $defaults['user'],
+				'password'       => is_string($raw['password'] ?? null) ? $raw['password'] : $defaults['password'],
+				'vhost'          => is_string($raw['vhost'] ?? null) ? $raw['vhost'] : $defaults['vhost'],
 				'queue_name'     => is_string($raw['queue_name'] ?? null) ? $raw['queue_name'] : $defaults['queue_name'],
-				'queue_prefix'   => is_string($raw['queue_prefix'] ?? null) ? $raw['queue_prefix'] : $defaults['queue_prefix'],
+				'exchange_name'  => is_string($raw['exchange_name'] ?? null) ? $raw['exchange_name'] : $defaults['exchange_name'],
+				'prefetch_count' => is_int($raw['prefetch_count'] ?? null) ? $raw['prefetch_count'] : $defaults['prefetch_count'],
 				'queue_max_jobs' => is_int($raw['queue_max_jobs'] ?? null) ? $raw['queue_max_jobs'] : $defaults['queue_max_jobs'],
-				'queue_timeout'  => is_int($raw['queue_timeout'] ?? null) ? $raw['queue_timeout'] : $defaults['queue_timeout'],
 			];
 		}
 		
 		/**
 		 * Merge injected config over defaults
-		 * @return RedisConfig
+		 * @return RabbitMQConfig
 		 */
 		private function mergeConfig(): array {
 			return self::resolveConfig($this->getConfig());
@@ -98,19 +104,19 @@
 			
 			// Priority 1: Explicit provider request via container context
 			if (!empty($metadata['context'])) {
-				return $metadata['context'] === 'redis';
+				return $metadata['context'] === 'rabbitmq';
 			}
 			
 			// Priority 2: Check config for preferred queue driver
 			if ($this->hasConfigValue('queue_driver')) {
-				return $this->getConfigValue('queue_driver') === 'redis';
+				return $this->getConfigValue('queue_driver') === 'rabbitmq';
 			}
 			
 			return true;
 		}
 		
 		/**
-		 * Creates and returns a configured RedisQueue instance
+		 * Creates and returns a configured RabbitMQQueue instance
 		 * @param string $className
 		 * @param array<string, mixed> $dependencies
 		 * @param array<string, mixed> $metadata
@@ -124,12 +130,19 @@
 			
 			$config = $this->mergeConfig();
 			
-			$redis = new Client([
-				'scheme' => $config['scheme'],
-				'host'   => $config['host'],
-				'port'   => $config['port'],
-			]);
+			$connection = new AMQPStreamConnection(
+				$config['host'],
+				$config['port'],
+				$config['user'],
+				$config['password'],
+				$config['vhost']
+			);
 			
-			return self::$instance = new RedisQueue($redis, $config['queue_name'], $config['queue_prefix']);
+			return self::$instance = new RabbitMQQueue(
+				$connection,
+				$config['queue_name'],
+				$config['exchange_name'],
+				$config['prefetch_count']
+			);
 		}
 	}

@@ -37,6 +37,7 @@ parameters:
         - packages/canvas-shipments-postnl
         - packages/canvas-shipments-sendcloud
         - packages/canvas-scheduler-redis
+        - packages/canvas-scheduler-rabbitmq
     bootstrapFiles:
         - vendor/autoload.php
     scanDirectories:

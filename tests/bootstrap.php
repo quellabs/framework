@@ -15,9 +15,9 @@
 		'password' => getenv('TEST_DB_PASS') ?: '',
 		'database' => getenv('TEST_DB_NAME') ?: 'canvas_blog',
 	]);
-
-// Proxy directory — runtime-generated proxies are written here and reused
-// across tests, avoiding repeated eval() calls and the uniqid() collision risk.
+	
+	// Proxy directory — runtime-generated proxies are written here and reused
+	// across tests, avoiding repeated eval() calls and the uniqid() collision risk.
 	$proxyDir = sys_get_temp_dir() . '/objectquel_test_proxies';
 	
 	if (!is_dir($proxyDir)) {
@@ -28,7 +28,7 @@
 	$config->setEntityNamespace('App\\Entities');
 	$config->setEntityPath(__DIR__ . '/../src/Entities');
 	$config->setProxyDir($proxyDir);
-
-// Single EntityManager for the entire test suite. Creating one per test class
-// causes SignalHub to throw on duplicate signal registration.
+	
+	// Single EntityManager for the entire test suite. Creating one per test class
+	// causes SignalHub to throw on duplicate signal registration.
 	$GLOBALS['test_em'] = new EntityManager($config, $connection);

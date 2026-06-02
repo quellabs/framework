@@ -1,24 +1,23 @@
 <?php
 	
-	namespace Quellabs\Canvas\Scheduler\Redis;
+	namespace Quellabs\Canvas\Scheduler\RabbitMQ;
 	
-	use Predis\Client;
+	use PhpAmqpLib\Connection\AMQPStreamConnection;
 	use Quellabs\Canvas\Kernel;
 	use Quellabs\Contracts\Scheduler\ConsumerInterface;
 	
 	/**
-	 * Redis queue consumer.
+	 * RabbitMQ queue consumer.
 	 * Discovered via the "scheduler" Composer family and selected
-	 * by Sculpt when --consumer=redis is specified.
+	 * by Sculpt when --consumer=rabbitmq is specified.
 	 *
 	 * Configuration is injected via setConfig() by the discovery mechanism
 	 * before run() is called. ServiceProvider::resolveConfig() normalizes
 	 * injected values and falls back to defaults for any missing keys.
 	 */
-	class RedisConsumer implements ConsumerInterface {
+	class RabbitMQConsumer implements ConsumerInterface {
 		
 		/**
-		 * RedisConsumer constructor
 		 * @var array<string, mixed>
 		 */
 		private array $config = [];
@@ -28,7 +27,7 @@
 		 * @return string
 		 */
 		public static function getName(): string {
-			return 'redis';
+			return 'rabbitmq';
 		}
 		
 		/**
@@ -38,7 +37,7 @@
 		public static function getMetadata(): array {
 			return [
 				'name'        => self::getName(),
-				'description' => 'Redis-backed job queue consumer',
+				'description' => 'RabbitMQ-backed job queue consumer',
 			];
 		}
 		
@@ -60,23 +59,25 @@
 		}
 		
 		/**
-		 * Start the Redis consumer and begin processing jobs.
+		 * Start the RabbitMQ consumer and begin processing jobs.
 		 * @return void
 		 */
 		public function run(): void {
 			$config = ServiceProvider::resolveConfig($this->config);
 			
-			$redis = new Client([
-				'scheme' => $config['scheme'],
-				'host'   => $config['host'],
-				'port'   => $config['port'],
-			]);
+			$connection = new AMQPStreamConnection(
+				$config['host'],
+				$config['port'],
+				$config['user'],
+				$config['password'],
+				$config['vhost']
+			);
 			
 			$kernel = new Kernel();
 			$container = $kernel->getDependencyInjector();
-			$queue = new RedisQueue($redis, $config['queue_name'], $config['queue_prefix']);
-			$worker = new RedisWorker($queue, $container);
+			$queue     = new RabbitMQQueue($connection, $config['queue_name'], $config['exchange_name'], $config['prefetch_count']);
+			$worker = new RabbitMQWorker($queue, $container);
 			
-			$worker->work($config['queue_max_jobs'], $config['queue_timeout']);
+			$worker->work($config['queue_max_jobs']);
 		}
 	}

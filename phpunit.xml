@@ -9,6 +9,9 @@
         <testsuite name="Canvas">
             <directory>tests/Canvas</directory>
         </testsuite>
+        <testsuite name="CanvasSchedulerRabbitMQ">
+            <directory>tests/SchedulerRabbitMQ</directory>
+        </testsuite>
     </testsuites>
     <php>
         <env name="TEST_DB_HOST" value="127.0.0.1"/>

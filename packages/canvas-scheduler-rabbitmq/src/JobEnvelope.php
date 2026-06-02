@@ -1,0 +1,233 @@
+<?php
+	
+	namespace Quellabs\Canvas\Scheduler\RabbitMQ;
+	
+	use Quellabs\Contracts\Scheduler\JobInterface;
+	use Quellabs\Contracts\Scheduler\QueueableInterface;
+	
+	/**
+	 * Represents a job as it travels through the RabbitMQ queue.
+	 * Wraps the job class name, payload, and execution metadata
+	 * in a structure that can be serialized to and from JSON.
+	 *
+	 * @phpstan-type EnvelopeData array{
+	 *     id: string,
+	 *     class: class-string<JobInterface>,
+	 *     payload: array<string, mixed>,
+	 *     attempts: int,
+	 *     max_retries: int,
+	 *     timeout: int,
+	 *     queued_at: int
+	 * }
+	 */
+	readonly class JobEnvelope {
+		
+		/**
+		 * @var string Unique identifier for this job instance
+		 */
+		public string $id;
+		
+		/**
+		 * @var class-string<JobInterface> Fully qualified job class name
+		 */
+		public string $class;
+		
+		/**
+		 * @var array<string, mixed> Constructor parameters to reconstruct the job
+		 */
+		public array $payload;
+		
+		/**
+		 * @var int Number of times this job has been attempted
+		 */
+		public int $attempts;
+		
+		/**
+		 * @var int Maximum number of retry attempts before moving to the failed queue
+		 */
+		public int $maxRetries;
+		
+		/**
+		 * @var int Maximum execution time in seconds (0 = no timeout).
+		 *
+		 * This value is stored in the envelope for observability and passed through
+		 * the queue intact, but it is not enforced by the worker. Job timeout
+		 * enforcement is the responsibility of the process supervisor: configure
+		 * Supervisord (or equivalent) to kill the worker process if it runs longer
+		 * than the expected maximum job duration.
+		 */
+		public int $timeout;
+		
+		/**
+		 * @var int Unix timestamp when the job was queued
+		 */
+		public int $queuedAt;
+		
+		/**
+		 * JobEnvelope constructor
+		 * @param class-string<JobInterface> $class
+		 * @param array<string, mixed> $payload
+		 * @param int $attempts
+		 * @param int $maxRetries
+		 * @param int $timeout
+		 * @param string|null $id
+		 * @param int|null $queuedAt
+		 */
+		public function __construct(
+			string $class,
+			array $payload,
+			int $attempts = 0,
+			int $maxRetries = 3,
+			int $timeout = 60,
+			?string $id = null,
+			?int $queuedAt = null
+		) {
+			$this->class = $class;
+			$this->payload = $payload;
+			$this->attempts = $attempts;
+			$this->maxRetries = $maxRetries;
+			$this->timeout = $timeout;
+			$this->id = $id ?? $this->generateId();
+			$this->queuedAt = $queuedAt ?? time();
+		}
+		
+		/**
+		 * Create an envelope from a QueueableInterface instance
+		 * @param QueueableInterface $job
+		 * @return self
+		 */
+		public static function fromJob(QueueableInterface $job): self {
+			return new self(
+				class: get_class($job),
+				payload: $job->getPayload(),
+				maxRetries: $job->getMaxRetries(),
+				timeout: $job->getTimeout()
+			);
+		}
+		
+		/**
+		 * Reconstruct an envelope from a JSON string delivered by RabbitMQ
+		 * @param string $json
+		 * @return self
+		 * @throws \InvalidArgumentException If the JSON is malformed, missing required fields, or contains invalid types
+		 */
+		public static function fromJson(string $json): self {
+			$data = json_decode($json, true);
+			
+			if (!is_array($data)) {
+				throw new \InvalidArgumentException("Invalid job envelope JSON: failed to decode");
+			}
+			
+			// Validate required fields exist
+			foreach (['id', 'class', 'payload', 'attempts', 'max_retries', 'timeout', 'queued_at'] as $field) {
+				if (!array_key_exists($field, $data)) {
+					throw new \InvalidArgumentException("Invalid job envelope JSON: missing field '{$field}'");
+				}
+			}
+			
+			// Validate field types before use to catch corrupted messages early
+			if (!is_string($data['id']) || $data['id'] === '') {
+				throw new \InvalidArgumentException("Invalid job envelope JSON: 'id' must be a non-empty string");
+			}
+			
+			if (!is_string($data['class']) || $data['class'] === '') {
+				throw new \InvalidArgumentException("Invalid job envelope JSON: 'class' must be a non-empty string");
+			}
+			
+			if (!is_array($data['payload'])) {
+				throw new \InvalidArgumentException("Invalid job envelope JSON: 'payload' must be an array");
+			}
+			
+			if (!is_int($data['attempts'])) {
+				throw new \InvalidArgumentException("Invalid job envelope JSON: 'attempts' must be an integer");
+			}
+			
+			if (!is_int($data['max_retries'])) {
+				throw new \InvalidArgumentException("Invalid job envelope JSON: 'max_retries' must be an integer");
+			}
+			
+			if (!is_int($data['timeout'])) {
+				throw new \InvalidArgumentException("Invalid job envelope JSON: 'timeout' must be an integer");
+			}
+			
+			if (!is_int($data['queued_at'])) {
+				throw new \InvalidArgumentException("Invalid job envelope JSON: 'queued_at' must be an integer");
+			}
+			
+			if (!class_exists($data['class'])) {
+				throw new \InvalidArgumentException("Job class '{$data['class']}' does not exist");
+			}
+			
+			if (!is_a($data['class'], JobInterface::class, true)) {
+				throw new \InvalidArgumentException("Class '{$data['class']}' does not implement JobInterface");
+			}
+			
+			/** @var class-string<JobInterface> $class */
+			$class = $data['class'];
+			
+			/** @var array<string, mixed> $payload */
+			$payload = $data['payload'];
+			
+			return new self(
+				class: $class,
+				payload: $payload,
+				attempts: $data['attempts'],
+				maxRetries: $data['max_retries'],
+				timeout: $data['timeout'],
+				id: $data['id'],
+				queuedAt: $data['queued_at']
+			);
+		}
+		
+		/**
+		 * Serialize the envelope to a JSON string for storage in RabbitMQ
+		 * @return string
+		 */
+		public function toJson(): string {
+			return json_encode([
+				'id'          => $this->id,
+				'class'       => $this->class,
+				'payload'     => $this->payload,
+				'attempts'    => $this->attempts,
+				'max_retries' => $this->maxRetries,
+				'timeout'     => $this->timeout,
+				'queued_at'   => $this->queuedAt,
+			], JSON_THROW_ON_ERROR);
+		}
+		
+		/**
+		 * Return a copy of this envelope with the attempt count incremented
+		 * @return self
+		 */
+		public function withIncrementedAttempts(): self {
+			return new self(
+				class: $this->class,
+				payload: $this->payload,
+				attempts: $this->attempts + 1,
+				maxRetries: $this->maxRetries,
+				timeout: $this->timeout,
+				id: $this->id,
+				queuedAt: $this->queuedAt
+			);
+		}
+		
+		/**
+		 * Returns true if the job has exhausted its retry allowance
+		 * @return bool
+		 */
+		public function hasExceededMaxRetries(): bool {
+			return $this->attempts >= $this->maxRetries;
+		}
+		
+		/**
+		 * Generate a unique job ID
+		 * @return string
+		 */
+		private function generateId(): string {
+			return sprintf(
+				'%s-%s',
+				bin2hex(random_bytes(8)),
+				time()
+			);
+		}
+	}
