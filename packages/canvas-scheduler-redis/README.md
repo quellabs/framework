@@ -15,7 +15,7 @@ dependency injection and processed by a long-running worker process.
 ## Installation
 
 ```bash
-composer require quellabs/canvas-redis
+composer require quellabs/canvas-scheduler-redis
 ```
 
 No further configuration is required. The package registers itself automatically via Canvas's service discovery.
