@@ -269,6 +269,53 @@
 			$this->assertSame(2, $decoded['attempts']);
 		}
 		
+	// -------------------------------------------------------------------------
+	// fail — retry boundary (attempts = maxRetries - 1)
+	// -------------------------------------------------------------------------
+
+	public function testFailStillRepublishesToMainQueueOnLastAllowedAttempt(): void {
+		// attempts=1, maxRetries=3 → withIncrementedAttempts → attempts=2 < 3 → still retries
+		$envelope = new JobEnvelope(QueueableStub::class, [], 1, 3, 60, 'boundary-id', 0);
+		$amqpMessage = new AMQPMessage($envelope->toJson());
+		$amqpMessage->setDeliveryInfo(30, false, 'jobs', 'jobs');
+
+		$this->channel->method('basic_get')->willReturn($amqpMessage);
+		$this->queue->pop();
+
+		$this->channel
+			->expects($this->once())
+			->method('basic_publish')
+			->with(
+				$this->isInstanceOf(AMQPMessage::class),
+				'',
+				'jobs'  // still main queue — attempt 2 has not exceeded maxRetries(3)
+			);
+
+		$this->queue->fail($envelope);
+	}
+
+	public function testFailMovesToFailedQueueWhenAttemptReachesMaxRetries(): void {
+		// attempts=2, maxRetries=3 → withIncrementedAttempts → attempts=3 → exactly at limit
+		// hasExceededMaxRetries: attempts(3) >= maxRetries(3) → true
+		$envelope = new JobEnvelope(QueueableStub::class, [], 2, 3, 60, 'boundary-id', 0);
+		$amqpMessage = new AMQPMessage($envelope->toJson());
+		$amqpMessage->setDeliveryInfo(31, false, 'jobs', 'jobs');
+
+		$this->channel->method('basic_get')->willReturn($amqpMessage);
+		$this->queue->pop();
+
+		$this->channel
+			->expects($this->once())
+			->method('basic_publish')
+			->with(
+				$this->isInstanceOf(AMQPMessage::class),
+				'',
+				'jobs.failed'  // at limit → dead-letter
+			);
+
+		$this->queue->fail($envelope);
+	}
+
 		// -------------------------------------------------------------------------
 		// fail — dead-letter path
 		// -------------------------------------------------------------------------
