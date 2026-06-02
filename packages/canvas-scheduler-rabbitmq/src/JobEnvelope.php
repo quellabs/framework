@@ -48,7 +48,13 @@
 		public int $maxRetries;
 		
 		/**
-		 * @var int Maximum execution time in seconds (0 = no timeout)
+		 * @var int Maximum execution time in seconds (0 = no timeout).
+		 *
+		 * This value is stored in the envelope for observability and passed through
+		 * the queue intact, but it is not enforced by the worker. Job timeout
+		 * enforcement is the responsibility of the process supervisor: configure
+		 * Supervisord (or equivalent) to kill the worker process if it runs longer
+		 * than the expected maximum job duration.
 		 */
 		public int $timeout;
 		

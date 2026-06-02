@@ -36,8 +36,21 @@
 		
 		/**
 		 * Maps job ID → AMQP delivery tag for the currently reserved message.
-		 * Only one message per job ID is in-flight at a time, so this map stays
-		 * small (bounded by prefetch_count).
+		 *
+		 * This assumes at most one in-flight message per job ID at any time, which
+		 * holds as long as:
+		 *   - Job IDs are unique per dispatch (guaranteed by JobEnvelope::generateId())
+		 *   - Each retry publishes a fresh message with the same ID (intentional —
+		 *     allows correlating retries back to the original job)
+		 *   - prefetch_count is set per worker process (default: 1), so a single
+		 *     worker never holds two messages for the same job simultaneously
+		 *
+		 * If a producer bug or manual replay causes duplicate messages with the same
+		 * job ID to arrive on the same channel, the second delivery tag will silently
+		 * overwrite the first, leaving the first message permanently unacknowledged
+		 * until the channel closes. This is considered an abnormal condition and is
+		 * not defended against here.
+		 *
 		 * @var array<string, int>
 		 */
 		private array $deliveryTags = [];

@@ -25,6 +25,18 @@
 	 *   busy-poll overhead when the queue is empty. The $idleSleepUs parameter controls
 	 *   how long the worker sleeps between empty polls (default: 200 ms).
 	 *
+	 *   At low to moderate queue volumes this overhead is negligible. For large
+	 *   deployments with mostly idle queues, consider switching to basic_consume or
+	 *   implementing adaptive backoff (e.g. doubling idle sleep up to a cap on
+	 *   consecutive empty polls, resetting immediately when a job arrives).
+	 *
+	 * Job timeouts:
+	 *   JobEnvelope carries a timeout field sourced from JobInterface::getTimeout().
+	 *   This value is stored and passed through the queue for observability, but it
+	 *   is not enforced by the worker. Enforcement is the responsibility of the process
+	 *   supervisor: configure Supervisord (or equivalent) to kill and restart the
+	 *   worker process if it exceeds the expected maximum job duration.
+	 *
 	 * Signal handling:
 	 * - SIGTERM / SIGINT set a flag that is checked between jobs
 	 * - The current job always runs to completion before the worker exits
