@@ -67,16 +67,16 @@
 			$config = array_merge(ServiceProvider::getDefaults(), $this->config);
 			
 			$redis = new Client([
-				'scheme' => $config['scheme'],
-				'host'   => $config['host'],
-				'port'   => $config['port'],
+				'scheme' => (string)$config['scheme'],
+				'host'   => (string)$config['host'],
+				'port'   => (int)$config['port'],
 			]);
 			
 			$kernel = new Kernel();
 			$container = $kernel->getDependencyInjector();
-			$queue = new RedisQueue($redis, $config['queue_name'], $config['queue_prefix']);
+			$queue     = new RedisQueue($redis, (string)$config['queue_name'], (string)$config['queue_prefix']);
 			$worker = new RedisWorker($queue, $container);
 			
-			$worker->work($config['queue_max_jobs'], $config['queue_timeout']);
+			$worker->work((int)$config['queue_max_jobs'], (int)$config['queue_timeout']);
 		}
 	}

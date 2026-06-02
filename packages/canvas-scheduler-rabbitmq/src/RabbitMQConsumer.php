@@ -66,18 +66,18 @@
 			$config = array_merge(ServiceProvider::getDefaults(), $this->config);
 			
 			$connection = new AMQPStreamConnection(
-				$config['host'],
-				$config['port'],
-				$config['user'],
-				$config['password'],
-				$config['vhost']
+				(string)$config['host'],
+				(int)$config['port'],
+				(string)$config['user'],
+				(string)$config['password'],
+				(string)$config['vhost']
 			);
 			
 			$kernel = new Kernel();
 			$container = $kernel->getDependencyInjector();
-			$queue = new RabbitMQQueue($connection, $config['queue_name'], $config['exchange_name'], $config['prefetch_count']);
+			$queue     = new RabbitMQQueue($connection, (string)$config['queue_name'], (string)$config['exchange_name'], (int)$config['prefetch_count']);
 			$worker = new RabbitMQWorker($queue, $container);
 			
-			$worker->work($config['queue_max_jobs']);
+			$worker->work((int)$config['queue_max_jobs']);
 		}
 	}

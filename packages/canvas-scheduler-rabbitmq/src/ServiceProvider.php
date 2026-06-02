@@ -19,7 +19,8 @@
 	 *     vhost: string,
 	 *     queue_name: string,
 	 *     exchange_name: string,
-	 *     prefetch_count: int
+	 *     prefetch_count: int,
+	 *     queue_max_jobs: int
 	 * }
 	 */
 	class ServiceProvider extends \Quellabs\DependencyInjection\Provider\ServiceProvider {

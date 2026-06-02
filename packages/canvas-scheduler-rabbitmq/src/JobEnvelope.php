@@ -159,9 +159,12 @@
 			/** @var class-string<JobInterface> $class */
 			$class = $data['class'];
 			
+			/** @var array<string, mixed> $payload */
+			$payload = $data['payload'];
+			
 			return new self(
 				class: $class,
-				payload: $data['payload'],
+				payload: $payload,
 				attempts: $data['attempts'],
 				maxRetries: $data['max_retries'],
 				timeout: $data['timeout'],
