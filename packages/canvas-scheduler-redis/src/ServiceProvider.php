@@ -45,10 +45,10 @@
 		 */
 		public static function getDefaults(): array {
 			return [
-				'scheme'     => 'tcp',
-				'host'       => '127.0.0.1',
-				'port'       => 6379,
-				'queue_name' => 'default',
+				'scheme'         => 'tcp',
+				'host'           => '127.0.0.1',
+				'port'           => 6379,
+				'queue_name'     => 'default',
 				'queue_prefix'   => 'canvas',
 				'queue_max_jobs' => 500,
 				'queue_timeout'  => 5,
@@ -56,22 +56,32 @@
 		}
 		
 		/**
-		 * Merge user config over defaults
+		 * Resolve and type-normalize a raw config array against defaults.
+		 * Used by both the service provider and the consumer so type coercion
+		 * lives in one place.
+		 * @param array<string, mixed> $raw
+		 * @return RedisConfig
+		 */
+		public static function resolveConfig(array $raw): array {
+			$defaults = self::getDefaults();
+			
+			return [
+				'scheme'         => is_string($raw['scheme'] ?? null) ? $raw['scheme'] : $defaults['scheme'],
+				'host'           => is_string($raw['host'] ?? null) ? $raw['host'] : $defaults['host'],
+				'port'           => is_int($raw['port'] ?? null) ? $raw['port'] : $defaults['port'],
+				'queue_name'     => is_string($raw['queue_name'] ?? null) ? $raw['queue_name'] : $defaults['queue_name'],
+				'queue_prefix'   => is_string($raw['queue_prefix'] ?? null) ? $raw['queue_prefix'] : $defaults['queue_prefix'],
+				'queue_max_jobs' => is_int($raw['queue_max_jobs'] ?? null) ? $raw['queue_max_jobs'] : $defaults['queue_max_jobs'],
+				'queue_timeout'  => is_int($raw['queue_timeout'] ?? null) ? $raw['queue_timeout'] : $defaults['queue_timeout'],
+			];
+		}
+		
+		/**
+		 * Merge injected config over defaults
 		 * @return RedisConfig
 		 */
 		private function mergeConfig(): array {
-			$defaults = self::getDefaults();
-			$config = $this->getConfig();
-			
-			return [
-				'scheme'     => $this->normalizeString($config['scheme'] ?? null, $defaults['scheme']),
-				'host'       => $this->normalizeString($config['host'] ?? null, $defaults['host']),
-				'port'       => $this->normalizeInt($config['port'] ?? null, $defaults['port']),
-				'queue_name' => $this->normalizeString($config['queue_name'] ?? null, $defaults['queue_name']),
-				'queue_prefix'   => $this->normalizeString($config['queue_prefix'] ?? null, $defaults['queue_prefix']),
-				'queue_max_jobs' => $this->normalizeInt($config['queue_max_jobs'] ?? null, $defaults['queue_max_jobs']),
-				'queue_timeout'  => $this->normalizeInt($config['queue_timeout'] ?? null, $defaults['queue_timeout']),
-			];
+			return self::resolveConfig($this->getConfig());
 		}
 		
 		/**

@@ -12,8 +12,8 @@
 	 * by Sculpt when --consumer=redis is specified.
 	 *
 	 * Configuration is injected via setConfig() by the discovery mechanism
-	 * before run() is called. ServiceProvider::getDefaults() provides fallback
-	 * values for any keys not present in the injected config.
+	 * before run() is called. ServiceProvider::resolveConfig() normalizes
+	 * injected values and falls back to defaults for any missing keys.
 	 */
 	class RedisConsumer implements ConsumerInterface {
 		
@@ -64,19 +64,19 @@
 		 * @return void
 		 */
 		public function run(): void {
-			$config = array_merge(ServiceProvider::getDefaults(), $this->config);
+			$config = ServiceProvider::resolveConfig($this->config);
 			
 			$redis = new Client([
-				'scheme' => (string)$config['scheme'],
-				'host'   => (string)$config['host'],
-				'port'   => (int)$config['port'],
+				'scheme' => $config['scheme'],
+				'host'   => $config['host'],
+				'port'   => $config['port'],
 			]);
 			
 			$kernel = new Kernel();
 			$container = $kernel->getDependencyInjector();
-			$queue     = new RedisQueue($redis, (string)$config['queue_name'], (string)$config['queue_prefix']);
+			$queue = new RedisQueue($redis, $config['queue_name'], $config['queue_prefix']);
 			$worker = new RedisWorker($queue, $container);
 			
-			$worker->work((int)$config['queue_max_jobs'], (int)$config['queue_timeout']);
+			$worker->work($config['queue_max_jobs'], $config['queue_timeout']);
 		}
 	}

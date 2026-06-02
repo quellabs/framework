@@ -12,8 +12,8 @@
 	 * by Sculpt when --consumer=rabbitmq is specified.
 	 *
 	 * Configuration is injected via setConfig() by the discovery mechanism
-	 * before run() is called. ServiceProvider::getDefaults() provides fallback
-	 * values for any keys not present in the injected config.
+	 * before run() is called. ServiceProvider::resolveConfig() normalizes
+	 * injected values and falls back to defaults for any missing keys.
 	 */
 	class RabbitMQConsumer implements ConsumerInterface {
 		
@@ -63,21 +63,21 @@
 		 * @return void
 		 */
 		public function run(): void {
-			$config = array_merge(ServiceProvider::getDefaults(), $this->config);
+			$config = ServiceProvider::resolveConfig($this->config);
 			
 			$connection = new AMQPStreamConnection(
-				(string)$config['host'],
-				(int)$config['port'],
-				(string)$config['user'],
-				(string)$config['password'],
-				(string)$config['vhost']
+				$config['host'],
+				$config['port'],
+				$config['user'],
+				$config['password'],
+				$config['vhost']
 			);
 			
 			$kernel = new Kernel();
 			$container = $kernel->getDependencyInjector();
-			$queue     = new RabbitMQQueue($connection, (string)$config['queue_name'], (string)$config['exchange_name'], (int)$config['prefetch_count']);
+			$queue     = new RabbitMQQueue($connection, $config['queue_name'], $config['exchange_name'], $config['prefetch_count']);
 			$worker = new RabbitMQWorker($queue, $container);
 			
-			$worker->work((int)$config['queue_max_jobs']);
+			$worker->work($config['queue_max_jobs']);
 		}
 	}

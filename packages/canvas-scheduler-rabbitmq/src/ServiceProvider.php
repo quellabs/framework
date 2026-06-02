@@ -55,34 +55,44 @@
 				'queue_name'     => 'default',
 				'exchange_name'  => '',
 				'prefetch_count' => 1,
-				'queue_max_jobs'  => 500,
+				'queue_max_jobs' => 500,
 			];
 		}
 		
 		/**
-		 * Merge user config over defaults
+		 * Resolve and type-normalize a raw config array against defaults.
+		 * Used by both the service provider and the consumer so type coercion
+		 * lives in one place.
+		 * @param array<string, mixed> $raw
+		 * @return RabbitMQConfig
+		 */
+		public static function resolveConfig(array $raw): array {
+			$defaults = self::getDefaults();
+			
+			return [
+				'host'           => is_string($raw['host'] ?? null) ? $raw['host'] : $defaults['host'],
+				'port'           => is_int($raw['port'] ?? null) ? $raw['port'] : $defaults['port'],
+				'user'           => is_string($raw['user'] ?? null) ? $raw['user'] : $defaults['user'],
+				'password'       => is_string($raw['password'] ?? null) ? $raw['password'] : $defaults['password'],
+				'vhost'          => is_string($raw['vhost'] ?? null) ? $raw['vhost'] : $defaults['vhost'],
+				'queue_name'     => is_string($raw['queue_name'] ?? null) ? $raw['queue_name'] : $defaults['queue_name'],
+				'exchange_name'  => is_string($raw['exchange_name'] ?? null) ? $raw['exchange_name'] : $defaults['exchange_name'],
+				'prefetch_count' => is_int($raw['prefetch_count'] ?? null) ? $raw['prefetch_count'] : $defaults['prefetch_count'],
+				'queue_max_jobs' => is_int($raw['queue_max_jobs'] ?? null) ? $raw['queue_max_jobs'] : $defaults['queue_max_jobs'],
+			];
+		}
+		
+		/**
+		 * Merge injected config over defaults
 		 * @return RabbitMQConfig
 		 */
 		private function mergeConfig(): array {
-			$defaults = self::getDefaults();
-			$config = $this->getConfig();
-			
-			return [
-				'host'           => $this->normalizeString($config['host'] ?? null, $defaults['host']),
-				'port'           => $this->normalizeInt($config['port'] ?? null, $defaults['port']),
-				'user'           => $this->normalizeString($config['user'] ?? null, $defaults['user']),
-				'password'       => $this->normalizeString($config['password'] ?? null, $defaults['password']),
-				'vhost'          => $this->normalizeString($config['vhost'] ?? null, $defaults['vhost']),
-				'queue_name'     => $this->normalizeString($config['queue_name'] ?? null, $defaults['queue_name']),
-				'exchange_name'  => $this->normalizeString($config['exchange_name'] ?? null, $defaults['exchange_name']),
-				'prefetch_count' => $this->normalizeInt($config['prefetch_count'] ?? null, $defaults['prefetch_count']),
-				'queue_max_jobs'  => $this->normalizeInt($config['queue_max_jobs'] ?? null, $defaults['queue_max_jobs']),
-			];
+			return self::resolveConfig($this->getConfig());
 		}
 		
 		/**
 		 * Returns true if this provider handles QueueInterface.
-		 * Supports explicit selection via context metadata or config/app.php queue_driver key.
+		 * Supports explicit selection via context metadata or config queue_driver key.
 		 * @param string $className
 		 * @param array<string, mixed> $metadata
 		 * @return bool
