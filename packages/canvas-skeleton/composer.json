@@ -13,6 +13,11 @@
       "App\\": "src/"
     }
   },
+  "config": {
+    "allow-plugins": {
+      "quellabs/discover": true
+    }
+  },
   "scripts": {
     "post-create-project-cmd": [
       "App\\Installer::setup"
