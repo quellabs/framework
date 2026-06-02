@@ -43,6 +43,8 @@
 					// Create directory with read/write/execute for owner, read/execute for group/others
 					mkdir($parent, 0755, true);
 					echo "✓ Created {$parent}/\n";
+				} else {
+					echo "✓ Already exists {$parent}/\n";
 				}
 				
 				// Create each subdirectory within the parent
@@ -53,6 +55,8 @@
 					if (!is_dir($path)) {
 						mkdir($path, 0755, true);
 						echo "✓ Created {$path}/\n";
+					} else {
+						echo "✓ Already exists {$parent}/\n";
 					}
 				}
 			}
@@ -72,11 +76,14 @@
 			}
 			
 			// Display completion message and next steps
-			echo "\n🎨 Canvas project setup complete!\n";
-			echo "📝 Next steps:\n";
-			echo "   1. Configure your .env file\n";
-			echo "   2. Run: composer install\n";
-			echo "   3. Start server: php -S localhost:8000 -t public\n\n";
+			echo "\n";
+			echo "Canvas project setup complete!\n";
+			echo "\n";
+			echo "Next steps:\n";
+			echo "   1. Configure config/app.php\n";
+			echo "   2. Edit src/Controllers/HomeController.php for your home route\n";
+			echo "   3. Start server: php -S localhost:8000 -t public\n";
+			echo "\n";
 		}
 		
 		/**
