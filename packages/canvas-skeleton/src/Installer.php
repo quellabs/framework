@@ -34,17 +34,15 @@
 				'tests'     => ['Unit', 'Feature']              // Test directories for different test types
 			];
 			
-			echo "Setting up Canvas project structure...\n";
-			
 			// Iterate through each parent directory
+			$directoryCount = 0;
+			
 			foreach ($directories as $parent => $subdirectories) {
 				// Create parent directory if it doesn't exist
 				if (!is_dir($parent)) {
 					// Create directory with read/write/execute for owner, read/execute for group/others
 					mkdir($parent, 0755, true);
-					echo "✓ Created {$parent}/\n";
-				} else {
-					echo "✓ Already exists {$parent}/\n";
+					++$directoryCount;
 				}
 				
 				// Create each subdirectory within the parent
@@ -54,11 +52,14 @@
 					// Only create subdirectory if it doesn't already exist
 					if (!is_dir($path)) {
 						mkdir($path, 0755, true);
-						echo "✓ Created {$path}/\n";
-					} else {
-						echo "✓ Already exists {$path}/\n";
+						++$directoryCount;
 					}
 				}
+			}
+			
+			// Show number of directories created
+			if ($directoryCount > 0) {
+				echo "✓ Created {$directoryCount} directories\n";
 			}
 			
 			// Set special permissions for storage directory and its contents
@@ -75,6 +76,9 @@
 				echo "✓ Set storage permissions\n";
 			}
 			
+			// Show project name in completion message
+			$projectName = basename(getcwd());
+			
 			// Display completion message and next steps
 			echo "\n";
 			echo " ██████╗ █████╗ ███╗   ██╗██╗   ██╗ █████╗ ███████╗\n";
@@ -84,12 +88,19 @@
 			echo "╚██████╗██║  ██║██║ ╚████║ ╚████╔╝ ██║  ██║███████║\n";
 			echo "╚═════╝╚═╝  ╚═╝╚═╝  ╚═══╝  ╚═══╝  ╚═╝  ╚═╝╚══════╝\n";
 			echo "\n";
-			echo "Canvas project setup complete!\n";
+			echo "✓ Application created successfully\n";
 			echo "\n";
-			echo "Next steps:\n";
-			echo "   1. Configure config/app.php\n";
-			echo "   2. Edit src/Controllers/HomeController.php for your home route\n";
-			echo "   3. Start server: php -S localhost:8000 -t public\n";
+			echo "Quick start:\n";
+			echo "   - cd {$projectName}\n";
+			echo "   - php -S localhost:8000 -t public\n";
+			echo "\n";
+			echo "Your first route is already wired up:\n";
+			echo "   src/Controllers/HomeController.php\n";
+			echo "\n";
+			echo "Useful commands:\n";
+			echo "   - php vendor/bin/sculpt make:controller BlogController\n";
+			echo "   - php vendor/bin/sculpt make:aspect LogRequests\n";
+			echo "   - php vendor/bin/sculpt route:list\n";
 			echo "\n";
 			echo "Documentation: https://canvasphp.com/docs\n";
 			echo "\n";
