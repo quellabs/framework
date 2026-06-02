@@ -53,7 +53,8 @@
         ]
       },
       "scheduler": {
-        "provider": "Quellabs\\Canvas\\Scheduler\\RabbitMQ\\RabbitMQConsumer"
+        "provider": "Quellabs\\Canvas\\Scheduler\\RabbitMQ\\RabbitMQConsumer",
+        "config": "config/scheduler-rabbitmq.php"
       }
     }
   },

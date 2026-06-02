@@ -17,7 +17,7 @@
 	 * is required and no additional topology needs to be managed.
 	 *
 	 * Failed jobs that have exhausted their retry allowance are published to
-	 * a separate dead-letter queue (<queue_name>.failed) for inspection.
+	 * a separate failed-job queue (<queue_name>.failed) for inspection.
 	 *
 	 * Delivery tags are tracked internally so acknowledge() and fail() can
 	 * issue the correct basic.ack / basic.nack without the caller needing to
@@ -47,16 +47,23 @@
 		 * @param AMQPStreamConnection $connection
 		 * @param string $queueName Name of the primary pending queue
 		 * @param string $exchangeName Exchange to publish to ('': default exchange)
+		 * @param int $prefetchCount Maximum unacknowledged messages per worker (QoS)
 		 */
 		public function __construct(
 			AMQPStreamConnection $connection,
 			string $queueName = 'default',
-			string $exchangeName = ''
+			string $exchangeName = '',
+			int $prefetchCount = 1
 		) {
 			$this->connection = $connection;
 			$this->queueName = $queueName;
 			$this->exchangeName = $exchangeName;
 			$this->channel = $connection->channel();
+			
+			// Apply QoS on this channel so prefetch limits unacknowledged messages
+			// in flight. QoS is channel-scoped in RabbitMQ, so this must be called
+			// on the same channel used for basic_get/basic_ack.
+			$this->channel->basic_qos(0, $prefetchCount, false);
 			
 			$this->declareQueues();
 		}

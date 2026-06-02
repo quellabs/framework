@@ -53,7 +53,8 @@
         ]
       },
       "scheduler": {
-        "provider": "Quellabs\\Canvas\\Scheduler\\Redis\\RedisConsumer"
+        "provider": "Quellabs\\Canvas\\Scheduler\\Redis\\RedisConsumer",
+        "config": "config/scheduler-redis.php"
       }
     }
   },

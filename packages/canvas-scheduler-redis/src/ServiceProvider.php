@@ -16,7 +16,9 @@
 	 *     host: string,
 	 *     port: int,
 	 *     queue_name: string,
-	 *     prefix: string
+	 *     queue_prefix: string,
+	 *     queue_max_jobs: int,
+	 *     queue_timeout: int
 	 * }
 	 */
 	class ServiceProvider extends \Quellabs\DependencyInjection\Provider\ServiceProvider {
@@ -38,7 +40,7 @@
 		}
 		
 		/**
-		 * Returns default Redis connection settings
+		 * Returns default Redis settings
 		 * @return RedisConfig
 		 */
 		public static function getDefaults(): array {
@@ -47,7 +49,9 @@
 				'host'       => '127.0.0.1',
 				'port'       => 6379,
 				'queue_name' => 'default',
-				'prefix'     => 'canvas',
+				'queue_prefix'   => 'canvas',
+				'queue_max_jobs' => 500,
+				'queue_timeout'  => 5,
 			];
 		}
 		
@@ -64,13 +68,15 @@
 				'host'       => $this->normalizeString($config['host'] ?? null, $defaults['host']),
 				'port'       => $this->normalizeInt($config['port'] ?? null, $defaults['port']),
 				'queue_name' => $this->normalizeString($config['queue_name'] ?? null, $defaults['queue_name']),
-				'prefix'     => $this->normalizeString($config['prefix'] ?? null, $defaults['prefix']),
+				'queue_prefix'   => $this->normalizeString($config['queue_prefix'] ?? null, $defaults['queue_prefix']),
+				'queue_max_jobs' => $this->normalizeInt($config['queue_max_jobs'] ?? null, $defaults['queue_max_jobs']),
+				'queue_timeout'  => $this->normalizeInt($config['queue_timeout'] ?? null, $defaults['queue_timeout']),
 			];
 		}
 		
 		/**
 		 * Returns true if this provider handles QueueInterface.
-		 * Supports explicit selection via context metadata or config/app.php queue_driver key.
+		 * Supports explicit selection via context metadata or config queue_driver key.
 		 * @param string $className
 		 * @param array<string, mixed> $metadata
 		 * @return bool
@@ -114,6 +120,6 @@
 				'port'   => $config['port'],
 			]);
 			
-			return self::$instance = new RedisQueue($redis, $config['queue_name'], $config['prefix']);
+			return self::$instance = new RedisQueue($redis, $config['queue_name'], $config['queue_prefix']);
 		}
 	}

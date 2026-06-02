@@ -5,12 +5,15 @@
 	use PhpAmqpLib\Connection\AMQPStreamConnection;
 	use Quellabs\Canvas\Kernel;
 	use Quellabs\Contracts\Scheduler\ConsumerInterface;
-	use Quellabs\Support\ComposerUtils;
 	
 	/**
 	 * RabbitMQ queue consumer.
 	 * Discovered via the "scheduler" Composer family and selected
 	 * by Sculpt when --consumer=rabbitmq is specified.
+	 *
+	 * Configuration is injected via setConfig() by the discovery mechanism
+	 * before run() is called. ServiceProvider::getDefaults() provides fallback
+	 * values for any keys not present in the injected config.
 	 */
 	class RabbitMQConsumer implements ConsumerInterface {
 		
@@ -57,43 +60,24 @@
 		
 		/**
 		 * Start the RabbitMQ consumer and begin processing jobs.
-		 * Loads its own configuration from app.php.
 		 * @return void
 		 */
 		public function run(): void {
-			$projectRoot = ComposerUtils::getProjectRoot();
-			
-			if (file_exists($projectRoot . '/config/app.php')) {
-				$appConfig = require $projectRoot . '/config/app.php';
-			} else {
-				$appConfig = [];
-			}
-			
-			$queueName = $appConfig['queue_name'] ?? 'default';
-			$maxJobs = $appConfig['queue_max_jobs'] ?? 500;
-			$exchangeName = $appConfig['exchange_name'] ?? '';
-			$prefetch = $appConfig['prefetch_count'] ?? 1;
-			$rabbitConfig = $appConfig['rabbitmq'] ?? [];
+			$config = array_merge(ServiceProvider::getDefaults(), $this->config);
 			
 			$connection = new AMQPStreamConnection(
-				$rabbitConfig['host'] ?? '127.0.0.1',
-				$rabbitConfig['port'] ?? 5672,
-				$rabbitConfig['user'] ?? 'guest',
-				$rabbitConfig['password'] ?? 'guest',
-				$rabbitConfig['vhost'] ?? '/'
+				$config['host'],
+				$config['port'],
+				$config['user'],
+				$config['password'],
+				$config['vhost']
 			);
 			
-			// Limit unacknowledged messages in flight; 1 gives fairest work distribution
-			// across multiple worker processes
-			$channel = $connection->channel();
-			$channel->basic_qos(0, $prefetch, false);
-			$channel->close();
-			
-			$kernel = new Kernel($appConfig);
+			$kernel = new Kernel();
 			$container = $kernel->getDependencyInjector();
-			$queue = new RabbitMQQueue($connection, $queueName, $exchangeName);
+			$queue = new RabbitMQQueue($connection, $config['queue_name'], $config['exchange_name'], $config['prefetch_count']);
 			$worker = new RabbitMQWorker($queue, $container);
 			
-			$worker->work($maxJobs);
+			$worker->work($config['queue_max_jobs']);
 		}
 	}

@@ -43,7 +43,7 @@
 		public int $attempts;
 		
 		/**
-		 * @var int Maximum number of retry attempts before moving to the dead-letter queue
+		 * @var int Maximum number of retry attempts before moving to the failed queue
 		 */
 		public int $maxRetries;
 		
@@ -103,7 +103,7 @@
 		 * Reconstruct an envelope from a JSON string delivered by RabbitMQ
 		 * @param string $json
 		 * @return self
-		 * @throws \InvalidArgumentException If the JSON is malformed or missing required fields
+		 * @throws \InvalidArgumentException If the JSON is malformed, missing required fields, or contains invalid types
 		 */
 		public static function fromJson(string $json): self {
 			$data = json_decode($json, true);
@@ -112,11 +112,40 @@
 				throw new \InvalidArgumentException("Invalid job envelope JSON: failed to decode");
 			}
 			
-			// Validate required fields
+			// Validate required fields exist
 			foreach (['id', 'class', 'payload', 'attempts', 'max_retries', 'timeout', 'queued_at'] as $field) {
 				if (!array_key_exists($field, $data)) {
 					throw new \InvalidArgumentException("Invalid job envelope JSON: missing field '{$field}'");
 				}
+			}
+			
+			// Validate field types before use to catch corrupted messages early
+			if (!is_string($data['id']) || $data['id'] === '') {
+				throw new \InvalidArgumentException("Invalid job envelope JSON: 'id' must be a non-empty string");
+			}
+			
+			if (!is_string($data['class']) || $data['class'] === '') {
+				throw new \InvalidArgumentException("Invalid job envelope JSON: 'class' must be a non-empty string");
+			}
+			
+			if (!is_array($data['payload'])) {
+				throw new \InvalidArgumentException("Invalid job envelope JSON: 'payload' must be an array");
+			}
+			
+			if (!is_int($data['attempts'])) {
+				throw new \InvalidArgumentException("Invalid job envelope JSON: 'attempts' must be an integer");
+			}
+			
+			if (!is_int($data['max_retries'])) {
+				throw new \InvalidArgumentException("Invalid job envelope JSON: 'max_retries' must be an integer");
+			}
+			
+			if (!is_int($data['timeout'])) {
+				throw new \InvalidArgumentException("Invalid job envelope JSON: 'timeout' must be an integer");
+			}
+			
+			if (!is_int($data['queued_at'])) {
+				throw new \InvalidArgumentException("Invalid job envelope JSON: 'queued_at' must be an integer");
 			}
 			
 			if (!class_exists($data['class'])) {
@@ -133,11 +162,11 @@
 			return new self(
 				class: $class,
 				payload: $data['payload'],
-				attempts: (int)$data['attempts'],
-				maxRetries: (int)$data['max_retries'],
-				timeout: (int)$data['timeout'],
+				attempts: $data['attempts'],
+				maxRetries: $data['max_retries'],
+				timeout: $data['timeout'],
 				id: $data['id'],
-				queuedAt: (int)$data['queued_at']
+				queuedAt: $data['queued_at']
 			);
 		}
 		

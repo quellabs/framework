@@ -41,7 +41,7 @@
 		}
 		
 		/**
-		 * Returns default RabbitMQ connection settings
+		 * Returns default RabbitMQ settings
 		 * @return RabbitMQConfig
 		 */
 		public static function getDefaults(): array {
@@ -54,6 +54,7 @@
 				'queue_name'     => 'default',
 				'exchange_name'  => '',
 				'prefetch_count' => 1,
+				'queue_max_jobs'  => 500,
 			];
 		}
 		
@@ -74,6 +75,7 @@
 				'queue_name'     => $this->normalizeString($config['queue_name'] ?? null, $defaults['queue_name']),
 				'exchange_name'  => $this->normalizeString($config['exchange_name'] ?? null, $defaults['exchange_name']),
 				'prefetch_count' => $this->normalizeInt($config['prefetch_count'] ?? null, $defaults['prefetch_count']),
+				'queue_max_jobs'  => $this->normalizeInt($config['queue_max_jobs'] ?? null, $defaults['queue_max_jobs']),
 			];
 		}
 		
@@ -125,16 +127,11 @@
 				$config['vhost']
 			);
 			
-			// Set prefetch so each worker only holds one unacknowledged message at a time,
-			// giving fair work distribution when multiple workers share the same queue
-			$channel = $connection->channel();
-			$channel->basic_qos(0, $config['prefetch_count'], false);
-			$channel->close();
-			
 			return self::$instance = new RabbitMQQueue(
 				$connection,
 				$config['queue_name'],
-				$config['exchange_name']
+				$config['exchange_name'],
+				$config['prefetch_count']
 			);
 		}
 	}

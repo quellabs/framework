@@ -5,12 +5,15 @@
 	use Predis\Client;
 	use Quellabs\Canvas\Kernel;
 	use Quellabs\Contracts\Scheduler\ConsumerInterface;
-	use Quellabs\Support\ComposerUtils;
 	
 	/**
 	 * Redis queue consumer.
 	 * Discovered via the "scheduler" Composer family and selected
 	 * by Sculpt when --consumer=redis is specified.
+	 *
+	 * Configuration is injected via setConfig() by the discovery mechanism
+	 * before run() is called. ServiceProvider::getDefaults() provides fallback
+	 * values for any keys not present in the injected config.
 	 */
 	class RedisConsumer implements ConsumerInterface {
 		
@@ -58,35 +61,22 @@
 		
 		/**
 		 * Start the Redis consumer and begin processing jobs.
-		 * Loads its own configuration from app.php.
 		 * @return void
 		 */
 		public function run(): void {
-			$projectRoot = ComposerUtils::getProjectRoot();
-			
-			if (file_exists($projectRoot . '/config/app.php')) {
-				$appConfig = require $projectRoot . '/config/app.php';
-			} else {
-				$appConfig = [];
-			}
-			
-			$queueName   = $appConfig['queue_name'] ?? 'default';
-			$maxJobs     = $appConfig['queue_max_jobs'] ?? 500;
-			$timeout     = $appConfig['queue_timeout'] ?? 5;
-			$prefix      = $appConfig['queue_prefix'] ?? 'canvas';
-			$redisConfig = $appConfig['redis'] ?? [];
+			$config = array_merge(ServiceProvider::getDefaults(), $this->config);
 			
 			$redis = new Client([
-				'scheme' => $redisConfig['scheme'] ?? 'tcp',
-				'host'   => $redisConfig['host'] ?? '127.0.0.1',
-				'port'   => $redisConfig['port'] ?? 6379,
+				'scheme' => $config['scheme'],
+				'host'   => $config['host'],
+				'port'   => $config['port'],
 			]);
 			
-			$kernel    = new Kernel($appConfig);
+			$kernel = new Kernel();
 			$container = $kernel->getDependencyInjector();
-			$queue     = new RedisQueue($redis, $queueName, $prefix);
-			$worker    = new RedisWorker($queue, $container);
+			$queue = new RedisQueue($redis, $config['queue_name'], $config['queue_prefix']);
+			$worker = new RedisWorker($queue, $container);
 			
-			$worker->work($maxJobs, $timeout);
+			$worker->work($config['queue_max_jobs'], $config['queue_timeout']);
 		}
 	}
