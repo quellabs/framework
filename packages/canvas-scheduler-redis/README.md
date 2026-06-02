@@ -91,6 +91,10 @@ class SendEmailJob implements QueueableInterface {
 Payload keys must match constructor parameter names exactly — the worker reconstructs the job via Canvas's DI container
 using `make($class, $payload)`.
 
+`getTimeout()` returns the maximum number of seconds the job is expected to run. This value is stored in the job
+envelope for observability but is not enforced by the worker itself. To enforce it, set `stopwaitsecs` in your
+Supervisord configuration to the longest expected job duration across all job types (see below).
+
 ## Dispatching Jobs
 
 Inject `QueueInterface` into any controller or service:
@@ -138,8 +142,11 @@ numprocs = 2
 user = www-data
 stdout_logfile = /var/log/canvas-worker.log
 stderr_logfile = /var/log/canvas-worker-error.log
-stopwaitsecs = 30
+stopwaitsecs = 60
 ```
+
+`stopwaitsecs` should be set to the longest expected job duration across all job types. Supervisord will send `SIGKILL`
+to any worker that has not stopped within this window after receiving `SIGTERM`.
 
 Restart workers after deployment so they pick up new code:
 
@@ -150,7 +157,7 @@ supervisorctl restart canvas-worker:*
 ## Retry and Failure Handling
 
 Failed jobs are retried up to `getMaxRetries()` times. Each retry increments the attempt counter and requeues the job.
-Jobs that exhaust all retries are moved to a failed list in Redis at:
+Jobs that exhaust all retries are moved to a failed list in Redis at `{prefix}:failed:{name}`, for example:
 
 ```
 canvas:failed:default
