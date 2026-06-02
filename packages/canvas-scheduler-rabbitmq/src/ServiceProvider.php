@@ -90,8 +90,8 @@
 			}
 			
 			// Priority 1: Explicit provider request via container context
-			if (!empty($metadata['provider'])) {
-				return $metadata['provider'] === 'rabbitmq';
+			if (!empty($metadata['context'])) {
+				return $metadata['context'] === 'rabbitmq';
 			}
 			
 			// Priority 2: Check config for preferred queue driver
