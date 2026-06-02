@@ -17,24 +17,14 @@
     "docs": "https://annotation-reader.quellabs.com/docs",
     "source": "https://github.com/quellabs/annotation-reader"
   },
-  "require": {
-    "ext-ctype": "*"
-  },
   "autoload": {
     "psr-4": {
       "Quellabs\\AnnotationReader\\": "src/"
     }
   },
-  "require-dev": {
-    "pestphp/pest": "^3.8",
-    "phpstan/phpstan": "^2.1"
-  },
   "config": {
     "platform": {
       "php": "8.2"
-    },
-    "allow-plugins": {
-      "pestphp/pest-plugin": true
     }
   }
 }

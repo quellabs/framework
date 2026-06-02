@@ -10,7 +10,7 @@
 	use Quellabs\AnnotationReader\LexerParser\Parser;
 	
 	/**
-	 *  @phpstan-type AnnotationSet array{
+	 * @phpstan-type AnnotationSet array{
 	 *    class: AnnotationCollection,
 	 *    properties: array<string, AnnotationCollection>,
 	 *    methods: array<string, AnnotationCollection>
@@ -203,6 +203,76 @@
 			}
 		}
 		
+		
+		/**
+		 * Deletes all cache files listed in the manifest for the given annotation
+		 * class, then removes the manifest itself. Used by CLI cache-clear commands
+		 * to invalidate only the cache entries relevant to a specific subsystem
+		 * (e.g. routes:clear_cache passes Route::class).
+		 *
+		 * If the manifest does not exist this is a no-op, so it is safe to call
+		 * even when the cache has never been written.
+		 *
+		 * Side effect: because cache files contain all annotations for a class,
+		 * deleting a cache file also removes cached annotations for any other
+		 * annotation types on that class. Those other manifests may then contain
+		 * stale references to the deleted file, but this is harmless — they are
+		 * skipped via file_exists() and the cache is rebuilt on the next request.
+		 * @param string $annotationClass Fully qualified annotation class name, e.g. Route::class
+		 * @return void
+		 */
+		public function clearCacheByAnnotationClass(string $annotationClass): void {
+			$manifestFilename = $this->generateManifestFilename($annotationClass);
+			$manifestPath = $this->annotationCachePath . DIRECTORY_SEPARATOR . $manifestFilename;
+			
+			// Nothing to do if no manifest exists for this annotation type
+			if (!file_exists($manifestPath)) {
+				return;
+			}
+			
+			// Read the list of cache filenames from the manifest
+			$lines = file($manifestPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+			
+			// If failed, return
+			if ($lines === false) {
+				return;
+			}
+			
+			// Delete each cache file listed in the manifest
+			foreach ($lines as $cacheFilename) {
+				@unlink($this->annotationCachePath . DIRECTORY_SEPARATOR . $cacheFilename);
+			}
+			
+			// Remove the manifest itself so it does not accumulate stale entries
+			@unlink($manifestPath);
+		}
+		
+		/**
+		 * Deletes all cache and manifest files in the annotation cache directory.
+		 * Used by the catch-all cache clear CLI command when a full reset is needed.
+		 *
+		 * Only files with .cache and .manifest extensions are removed, leaving the
+		 * directory itself and any unrelated files intact.
+		 * @return void
+		 */
+		public function clearAllCaches(): void {
+			if (!is_dir($this->annotationCachePath)) {
+				return;
+			}
+			
+			$files = glob($this->annotationCachePath . DIRECTORY_SEPARATOR . '*.{cache,manifest}', GLOB_BRACE);
+			
+			if ($files === false) {
+				return;
+			}
+			
+			foreach ($files as $file) {
+				if (is_file($file)) {
+					unlink($file);
+				}
+			}
+		}
+		
 		/**
 		 * Transforms a className to a filename
 		 * @param string $className
@@ -391,6 +461,7 @@
 		 * @return bool Returns true if the cache is valid, false if it needs to be regenerated
 		 */
 		protected function cacheValid(string $cacheFilename, \ReflectionClass $reflection): bool {
+			// Fetch the cache filename
 			$cachePath = "{$this->annotationCachePath}/{$cacheFilename}";
 			
 			// Check if the cache file exists and is readable
@@ -562,6 +633,9 @@
 				// This will speed up future requests for this class's annotations
 				$this->writeCacheToFile($cacheFilename, $annotations);
 				
+				// Update manifests for all annotation types present in this cache entry
+				$this->updateManifests($cacheFilename, $annotations);
+				
 				// Also store the annotations in memory cache for this request lifecycle
 				$this->cached_annotations[$cacheFilename] = $annotations;
 				
@@ -575,6 +649,72 @@
 					$e->getCode(),
 					$e
 				);
+			}
+		}
+		
+		/**
+		 * Transforms an annotation class name to a manifest filename using an MD5 hash.
+		 * Hashing keeps filenames short and filesystem-safe while remaining deterministic:
+		 * the CLI can reconstruct the filename from the annotation class name without
+		 * needing a lookup table.
+		 * @param string $annotationClass Fully qualified annotation class name
+		 * @return string
+		 */
+		protected function generateManifestFilename(string $annotationClass): string {
+			return md5($annotationClass) . '.manifest';
+		}
+		
+		/**
+		 * Appends a cache filename to the manifest file for each annotation class
+		 * present in the given AnnotationSet. Called every time a cache file is
+		 * written so that manifests stay in sync with the cache directory.
+		 *
+		 * Each annotation type gets its own manifest file (keyed by MD5 of the
+		 * annotation class name), so CLI commands can clear cache files for a
+		 * specific annotation type without touching unrelated entries.
+		 *
+		 * Note: if a cache file is deleted by clearByAnnotationClass(), other
+		 * manifests that reference the same cache file become stale. This is
+		 * harmless — clearByAnnotationClass() checks file_exists() before
+		 * unlinking, and the cache file will be rebuilt on the next request.
+		 * @param string $cacheFilename The cache filename to append to each manifest
+		 * @param AnnotationSet $annotations The full annotation set for the class
+		 * @return void
+		 */
+		protected function updateManifests(string $cacheFilename, array $annotations): void {
+			// Collect all unique annotation class names present in this cache entry.
+			// Using a map keyed by class name avoids writing duplicate entries to the
+			// manifest when the same annotation type appears on multiple methods or properties.
+			$annotationClasses = [];
+			
+			// Collect annotation classes from class-level annotations
+			foreach ($annotations['class'] as $annotation) {
+				$annotationClasses[get_class($annotation)] = true;
+			}
+			
+			// Collect annotation classes from method-level annotations
+			foreach ($annotations['methods'] as $collection) {
+				foreach ($collection as $annotation) {
+					$annotationClasses[get_class($annotation)] = true;
+				}
+			}
+			
+			// Collect annotation classes from property-level annotations
+			foreach ($annotations['properties'] as $collection) {
+				foreach ($collection as $annotation) {
+					$annotationClasses[get_class($annotation)] = true;
+				}
+			}
+			
+			// Append the cache filename to each annotation type's manifest file.
+			// FILE_APPEND ensures existing entries are preserved across multiple
+			// cache writes. LOCK_EX prevents corruption if two processes write
+			// to the same manifest concurrently.
+			foreach (array_keys($annotationClasses) as $annotationClass) {
+				$manifestFilename = $this->generateManifestFilename($annotationClass);
+				$manifestPath = $this->annotationCachePath . DIRECTORY_SEPARATOR . $manifestFilename;
+				
+				file_put_contents($manifestPath, $cacheFilename . "\n", FILE_APPEND | LOCK_EX);
 			}
 		}
 	}
