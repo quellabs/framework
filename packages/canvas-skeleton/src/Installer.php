@@ -56,7 +56,7 @@
 						mkdir($path, 0755, true);
 						echo "✓ Created {$path}/\n";
 					} else {
-						echo "✓ Already exists {$parent}/\n";
+						echo "✓ Already exists {$path}/\n";
 					}
 				}
 			}
@@ -103,7 +103,6 @@
 			// Remove the installer file itself using the magic constant __FILE__
 			if (file_exists(__FILE__)) {
 				unlink(__FILE__);
-				echo "Installer cleanup completed\n";
 			}
 		}
 	}
