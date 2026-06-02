@@ -34,6 +34,10 @@
 				'tests'     => ['Unit', 'Feature']              // Test directories for different test types
 			];
 			
+			// First message
+			echo "\n";
+			echo "Setting up Canvas project structure...\n";
+			
 			// Iterate through each parent directory
 			$directoryCount = 0;
 			
@@ -75,6 +79,8 @@
 				
 				echo "✓ Set storage permissions\n";
 			}
+			
+			echo "✓ Done\n";
 			
 			// Show project name in completion message
 			$projectName = basename(getcwd());
