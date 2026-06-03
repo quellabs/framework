@@ -232,10 +232,8 @@
 				return;
 			}
 			
-			// Acquire exclusive lock on the triggering manifest before reading it.
-			// This blocks any concurrent updateManifests() append for this manifest,
-			// so the snapshot we read is complete and no entries can be added between
-			// our read and our unlink.
+			// Acquire exclusive lock before reading so no concurrent updateManifests()
+			// append can arrive between our read and our unlink
 			$lockHandle = $this->acquireManifestLock($manifestPath);
 			
 			// If no lock could be acquired, do nothing
@@ -256,10 +254,12 @@
 				return;
 			}
 			
-			// Remove the triggering manifest now that its contents are safely in $lines.
-			// The .lock file is intentionally left in place: deleting it creates a race
-			// where a process waiting on flock() and a new process creating the file can
-			// end up locking different inodes, invalidating the synchronization guarantee.
+			// Remove the manifest now that its contents are safely in $lines.
+			// The lock is released before unlinking, so a concurrent updateManifests()
+			// could append a new entry between the two — but this is harmless: the
+			// manifest is being destroyed and its associated caches deleted anyway.
+			// The .lock file is intentionally kept: deleting it would let a waiting
+			// process and a new process lock different inodes, breaking synchronization.
 			@unlink($manifestPath);
 			
 			// Build a hash-keyed set for O(1) membership checks when scanning other manifests
@@ -287,8 +287,8 @@
 					continue;
 				}
 				
-				// Hold the lock for the entire read-filter-write cycle so a concurrent
-				// updateManifests() append cannot land between our read and our rewrite
+				// Lock spans the full read-filter-write cycle to prevent a concurrent
+				// updateManifests() append from being overwritten by our rewrite
 				$otherLock = $this->acquireManifestLock($otherManifestPath);
 				
 				// If no lock could be acquired, continue to the next entry
@@ -317,9 +317,8 @@
 				}
 				
 				if (count($remaining) !== count($entries)) {
-					// Rewrite atomically while the lock is still held: the lock prevents
-					// concurrent appenders from writing to the old inode that rename()
-					// will displace, so no entries can be lost between write and rename
+					// Atomic rewrite under the lock: prevents a concurrent append to the
+					// old inode from being lost when rename() displaces it
 					$this->writeManifestAtomic($otherManifestPath, array_values($remaining));
 				}
 				
@@ -399,17 +398,14 @@
 			$annotations = [];
 			
 			foreach ($data as $entry) {
-				// Guard against corrupt cache entries: each entry must be an array
+				// Skip corrupt entries
 				if (!is_array($entry)) {
 					continue;
 				}
 				
-				// Fetch class
 				$class = $entry['class'];
 				
-				// Guard against corrupt cache entries: the class must exist and implement
-				// AnnotationInterface so that calling new $class($parameters) is safe and
-				// the result is a valid AnnotationCollection element
+				// Skip entries with a missing or non-AnnotationInterface class
 				if (
 					!is_string($class) ||
 					!class_exists($class) ||
@@ -418,7 +414,6 @@
 					continue;
 				}
 				
-				// Reconstruct the annotation by calling its constructor with the stored parameters.
 				$annotations[] = new $class($entry['parameters']);
 			}
 			
@@ -431,33 +426,26 @@
 		 * @return AnnotationSet|null
 		 */
 		protected function readCacheFromFile(string $cacheFilename): ?array {
-			// Build the full path to the cache file by combining the base cache directory
-			// with the provided filename
 			$cachePath = "{$this->annotationCachePath}/{$cacheFilename}";
-			
-			// Attempt to read the entire file contents into a string
-			// This will return false if the file doesn't exist or can't be read
 			$fileContents = file_get_contents($cachePath);
 			
-			// Check if file reading failed (file doesn't exist, permissions issue, etc.)
 			if ($fileContents === false) {
 				return null;
 			}
 			
-			// Decode the JSON cache format
 			$decoded = json_decode($fileContents, true);
 			
-			// Check if decoding failed (corrupted data, invalid format, etc.)
+			// Return null on corrupted or invalid JSON
 			if (json_last_error() !== JSON_ERROR_NONE || !is_array($decoded)) {
 				return null;
 			}
 			
-			// Extract data from json data
+			// Extract sections, defaulting to empty arrays on missing/corrupt keys
 			$classData = is_array($decoded['class'] ?? null) ? $decoded['class'] : [];
 			$methods = is_array($decoded['methods'] ?? null) ? $decoded['methods'] : [];
 			$properties = is_array($decoded['properties'] ?? null) ? $decoded['properties'] : [];
 			
-			// Reconstruct the AnnotationSet, calling each annotation's constructor
+			// Reconstruct collections, invoking each annotation's constructor
 			// so typed properties are properly initialized
 			$methodCollections = [];
 			$propertyCollections = [];
@@ -490,19 +478,16 @@
 		 * @return int|false
 		 */
 		protected function writeCacheToFile(string $cacheFilename, array $annotations): int|false {
-			// Ensure the cache directory exists before attempting to create files.
-			// The is_dir() + mkdir() + is_dir() pattern handles the TOCTOU race where
-			// two processes both see the directory as missing and both call mkdir():
-			// the second mkdir() fails, but the final is_dir() confirms it was created
-			// by the first process, so we treat that as success.
+			// The triple is_dir/mkdir/is_dir pattern handles the TOCTOU race: if two
+			// processes both see the directory missing and both call mkdir(), the second
+			// fails but the final is_dir() confirms success via the first.
 			if (!is_dir($this->annotationCachePath) && !mkdir($this->annotationCachePath, 0755, true) && !is_dir($this->annotationCachePath)) {
 				return false;
 			}
 			
-			// Encode as JSON rather than using serialize(), so annotation objects are
-			// stored as plain data (class name + parameters) and reconstructed via their
-			// constructors on read. serialize/unserialize bypasses __construct, leaving
-			// typed properties uninitialized.
+			// JSON rather than serialize(): annotations are stored as plain data
+			// (class name + parameters) and reconstructed via their constructors on read.
+			// serialize/unserialize bypasses __construct, leaving typed properties uninitialized.
 			$methodData = [];
 			$propertyData = [];
 			
@@ -523,9 +508,8 @@
 			
 			$cachePath = $this->annotationCachePath . DIRECTORY_SEPARATOR . $cacheFilename;
 			
-			// Write to a PID-scoped temp file first, then rename() atomically into place.
-			// This prevents a concurrent reader from observing a partially-written JSON payload,
-			// which would cause json_decode() to fail and trigger an unnecessary cache regeneration.
+			// Write to a PID-scoped temp file and rename() atomically into place,
+			// so a concurrent reader never observes a partially-written JSON payload.
 			$tmpPath = $cachePath . '.' . getmypid() . '.tmp';
 			$written = file_put_contents($tmpPath, $payload, LOCK_EX);
 			
@@ -558,22 +542,21 @@
 		 * @return bool Returns true if the cache is valid, false if it needs to be regenerated
 		 */
 		protected function cacheValid(string $cacheFilename, \ReflectionClass $reflection): bool {
-			// Fetch the cache filename
+			// Fetch the cache path
 			$cachePath = "{$this->annotationCachePath}/{$cacheFilename}";
 			
-			// Check if the cache file exists and is readable
 			if (!file_exists($cachePath) || !is_readable($cachePath)) {
 				return false;
 			}
 			
-			// In production mode, existence of the cache file is sufficient.
-			// Skipping filemtime() saves two stat calls per class per request.
+			// In production mode, existence is sufficient — skipping filemtime() saves
+			// two stat calls per class per request.
 			if (!$this->debugMode) {
 				return true;
 			}
 			
-			// In debug mode, compare mtime of the cache file against the source class
-			// file so annotation changes are reflected without a manual cache clear.
+			// In debug mode, check mtime so annotation changes are picked up without
+			// a manual cache clear.
 			$fileName = $reflection->getFileName();
 			
 			if ($fileName === false) {
@@ -597,14 +580,11 @@
 			}
 			
 			try {
-				// Create a lexer and parser and parse the class
 				$lexer = new Lexer($reflection->getDocComment());
 				$parser = new Parser($lexer, $this->configuration, $reflection);
-				
-				// Parse the class and store the result
 				$result = $parser->parse();
 			} catch (LexerException|ParserException $e) {
-				// Wrap parsing exceptions in a more specific exception type
+				// Wrap in AnnotationReaderException for a consistent exception surface
 				throw new AnnotationReaderException(
 					"Failed to parse class annotations for '{$reflection->getName()}': {$e->getMessage()}",
 					$e->getCode(),
@@ -625,28 +605,22 @@
 			// Loop through each Reflection item (either property or method)
 			foreach ($items as $item) {
 				try {
-					// Get the doc comment for the current item
 					$docComment = $item->getDocComment();
 					
-					// Skip if there is no doc comment
 					if (empty($docComment)) {
 						continue;
 					}
 					
-					// Retrieve annotations from the doc comment with imports
 					$lexer = new Lexer($docComment);
 					$parser = new Parser($lexer, $this->configuration, $reflection);
 					$annotations = $parser->parse();
 					
-					// Skip if there are no annotations
 					if ($annotations->isEmpty()) {
 						continue;
 					}
 					
-					// Add the annotations to the result array
 					$result[$item->getName()] = $annotations;
 				} catch (ParserException|LexerException $e) {
-					// Determine if this is a property or method
 					$itemType = $item instanceof \ReflectionProperty ? 'property' : 'method';
 					$itemName = $item->getName();
 					$className = $item->getDeclaringClass()->getName();
@@ -667,14 +641,12 @@
 		 * @throws AnnotationReaderException
 		 */
 		protected function readAllObjectAnnotations(\ReflectionClass $reflection): array {
-			// Setup array which will receive the parse results
 			$result = [
 				'class'      => new AnnotationCollection(),
 				'properties' => [],
 				'methods'    => []
 			];
 			
-			// Parse the annotations and return result
 			$this->parseClassAnnotations($reflection, $result['class']);
 			$this->parseAnnotations($reflection->getProperties(), $result['properties'], $reflection);
 			$this->parseAnnotations($reflection->getMethods(), $result['methods'], $reflection);
@@ -689,30 +661,22 @@
 		 */
 		protected function getAllObjectAnnotations(string|object $class): array {
 			try {
-				// Create a ReflectionClass object for the given class
-				// This provides metadata about the class structure and properties
 				$reflection = new \ReflectionClass($class);
 				$className = $reflection->getName();
-				
-				// Generate a cache filename based on the class name
-				// This provides a unique identifier for storing and retrieving cached annotations
 				$cacheFilename = $this->generateCacheFilename($className);
 				
-				// Check if annotations for this class are already cached in memory
-				// If so, return them immediately to avoid redundant processing
+				// Return immediately if already in the memory cache
 				if (isset($this->cached_annotations[$cacheFilename])) {
 					return $this->cached_annotations[$cacheFilename];
 				}
 				
-				// If caching is disabled or no cache path is set, process annotations directly
-				// We still store in memory cache to avoid redundant processing within the same request
+				// Caching disabled — parse directly but still populate memory cache
 				if (!$this->useCache || empty($this->annotationCachePath)) {
 					$this->cached_annotations[$cacheFilename] = $this->readAllObjectAnnotations($reflection);
 					return $this->cached_annotations[$cacheFilename];
 				}
 				
-				// Check if a valid cache file exists and is up to date
-				// This compares file modification times to determine if cache is stale
+				// Check if a valid on-disk cache file exists
 				if ($this->cacheValid($cacheFilename, $reflection)) {
 					$cachedData = $this->readCacheFromFile($cacheFilename);
 					
@@ -722,20 +686,17 @@
 					}
 				}
 				
-				// If no valid cache exists, parse the annotations directly from the class
+				// No valid cache — parse from source
 				$annotations = $this->readAllObjectAnnotations($reflection);
 				
-				// Write the newly parsed annotations to the cache file
-				// This will speed up future requests for this class's annotations
+				// Write to disk; only update manifests if the write succeeded
 				if ($this->writeCacheToFile($cacheFilename, $annotations)) {
-					// Update manifests for all annotation types present in this cache entry
 					$this->updateManifests($cacheFilename, $annotations);
 				}
 				
-				// Also store the annotations in memory cache for this request lifecycle
+				// Populate memory cache for this request lifecycle
 				$this->cached_annotations[$cacheFilename] = $annotations;
 				
-				// Return the annotations to the caller
 				return $annotations;
 			} catch (\ReflectionException $e) {
 				$classIdentifier = is_string($class) ? $class : get_class($class);
@@ -788,7 +749,6 @@
 			// 'w' would truncate on open, which is unnecessary churn.
 			$handle = fopen($lockPath, 'c');
 			
-			// If we couldn't open the file, return with failure
 			if ($handle === false) {
 				return false;
 			}
@@ -799,7 +759,6 @@
 				return false;
 			}
 			
-			// Return the handle
 			return $handle;
 		}
 		
@@ -899,10 +858,8 @@
 				$manifestFilename = $this->generateManifestFilename($annotationClass);
 				$manifestPath = $this->annotationCachePath . DIRECTORY_SEPARATOR . $manifestFilename;
 				
-				// Acquire an exclusive lock before reading the manifest so that the
-				// duplicate check and the write are a single atomic operation.
-				// Without this, two processes regenerating the same class simultaneously
-				// could both read an empty manifest and both append, producing duplicates.
+				// Lock before reading so the duplicate check and append are atomic;
+				// without this two processes could both append the same entry
 				$lockHandle = $this->acquireManifestLock($manifestPath);
 				
 				if ($lockHandle === false) {
@@ -913,10 +870,7 @@
 				$existing = $this->readManifestLocked($manifestPath) ?? [];
 				
 				if (!in_array($cacheFilename, $existing, true)) {
-					// Entry is not yet present — append it under the lock we already hold.
-					// FILE_APPEND + the existing LOCK_EX (held via the .lock file) is safe;
-					// we write directly rather than going through writeManifestAtomic because
-					// an append to the existing inode is sufficient here and avoids the rename.
+					// Append directly — no need for atomic rename since we hold the lock
 					file_put_contents($manifestPath, $cacheFilename . "\n", FILE_APPEND);
 				}
 				
