@@ -329,12 +329,17 @@
 		}
 		
 		/**
-		 * Deletes all cache and manifest files in the annotation cache directory.
+		 * Deletes all cache, manifest, and lock files in the annotation cache directory.
 		 * Used by the catch-all cache clear CLI command when a full reset is needed.
 		 *
-		 * Only files with .cache and .manifest extensions are removed. Lock files
-		 * (.lock) are intentionally preserved: they are permanent synchronization
-		 * objects whose inode identity must remain stable across processes.
+		 * Lock files are removed here because a full reset is a deployment/maintenance
+		 * operation with no concurrent workers. They will be recreated automatically by
+		 * acquireManifestLock() on the next request that writes to a manifest.
+		 *
+		 * Do not call this while application processes are actively serving requests:
+		 * deleting lock files while workers hold or wait on them introduces an inode
+		 * race that breaks the synchronization guarantee. Use clearCacheByAnnotationClass()
+		 * for targeted invalidation during live traffic instead.
 		 * @return void
 		 */
 		public function clearAllCaches(): void {
@@ -342,7 +347,7 @@
 				return;
 			}
 			
-			$files = glob($this->annotationCachePath . DIRECTORY_SEPARATOR . '*.{cache,manifest}', GLOB_BRACE);
+			$files = glob($this->annotationCachePath . DIRECTORY_SEPARATOR . '*.{cache,manifest,lock}', GLOB_BRACE);
 			
 			if ($files === false) {
 				return;
@@ -776,12 +781,7 @@
 		 */
 		protected function readManifestLocked(string $manifestPath): ?array {
 			$lines = file($manifestPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-			
-			if ($lines === false) {
-				return null;
-			}
-			
-			return array_values($lines);
+			return $lines !== false ? $lines : null;
 		}
 		
 		/**
