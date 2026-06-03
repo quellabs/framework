@@ -121,14 +121,10 @@
 				)
 			");
 			
-			// SUM is a correlated scalar subquery (one per row), ANY is also per-row —
-			// three posts means three result rows. The SUM covers all posts (6) in each.
-			$this->assertCount(3, $result);
-			
-			foreach ($result as $row) {
-				$this->assertSame(6, (int) $row['total']);
-				$this->assertSame(1, (int) $row['hasCompleted']);
-			}
+			// aggregate-only query (SUM + ANY-derived subquery) — collapses to one summary row.
+			$this->assertCount(1, $result);
+			$this->assertSame(6, (int) $result[0]['total']);
+			$this->assertSame(1, (int) $result[0]['hasCompleted']);
 		}
 		
 		/**
@@ -144,12 +140,9 @@
 				)
 			");
 			
-			$this->assertCount(3, $result);
-			
-			foreach ($result as $row) {
-				$this->assertSame(6, (int) $row['total']);
-				$this->assertSame(0, (int) $row['hasMissing']);
-			}
+			$this->assertCount(1, $result);
+			$this->assertSame(6, (int) $result[0]['total']);
+			$this->assertSame(0, (int) $result[0]['hasMissing']);
 		}
 		
 		/**
@@ -166,13 +159,10 @@
 				)
 			");
 			
-			$this->assertCount(3, $result);
-			
-			foreach ($result as $row) {
-				$this->assertSame(6, (int) $row['total']);
-				$this->assertSame(1, (int) $row['hasCompleted']);
-				$this->assertSame(1, (int) $row['hasDraft']);
-			}
+			$this->assertCount(1, $result);
+			$this->assertSame(6, (int) $result[0]['total']);
+			$this->assertSame(1, (int) $result[0]['hasCompleted']);
+			$this->assertSame(1, (int) $result[0]['hasDraft']);
 		}
 		
 		/**
@@ -187,12 +177,9 @@
 				)
 			");
 			
-			$this->assertCount(3, $result);
-			
-			foreach ($result as $row) {
-				$this->assertSame(1, (int) $row['hasCompleted']);
-				$this->assertSame(6, (int) $row['total']);
-			}
+			$this->assertCount(1, $result);
+			$this->assertSame(1, (int) $result[0]['hasCompleted']);
+			$this->assertSame(6, (int) $result[0]['total']);
 		}
 		
 		/**
