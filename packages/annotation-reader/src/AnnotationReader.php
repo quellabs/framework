@@ -238,6 +238,7 @@
 			// our read and our unlink.
 			$lockHandle = $this->acquireManifestLock($manifestPath);
 			
+			// If no lock could be acquired, do nothing
 			if ($lockHandle === false) {
 				return;
 			}
@@ -290,6 +291,7 @@
 				// updateManifests() append cannot land between our read and our rewrite
 				$otherLock = $this->acquireManifestLock($otherManifestPath);
 				
+				// If no lock could be acquired, continue to the next entry
 				if ($otherLock === false) {
 					continue;
 				}
@@ -321,6 +323,7 @@
 					$this->writeManifestAtomic($otherManifestPath, array_values($remaining));
 				}
 				
+				// Release lock
 				flock($otherLock, LOCK_UN);
 				fclose($otherLock);
 			}
@@ -776,6 +779,7 @@
 		 * Returns false if the lock file cannot be opened or locked.
 		 * @param string $manifestPath Full path to the manifest file (not the lock file)
 		 * @return resource|false An open file handle with LOCK_EX held, or false on failure
+		 * @noinspection PhpMixedReturnTypeCanBeReducedInspection
 		 */
 		protected function acquireManifestLock(string $manifestPath): mixed {
 			$lockPath = $manifestPath . '.lock';
@@ -795,6 +799,7 @@
 				return false;
 			}
 			
+			// Return the handle
 			return $handle;
 		}
 		
@@ -811,15 +816,13 @@
 		 * @return list<string>|null Lines in the manifest, or null on failure
 		 */
 		protected function readManifestLocked(string $manifestPath): ?array {
-			$contents = @file_get_contents($manifestPath);
+			$lines = file($manifestPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
 			
-			if ($contents === false) {
+			if ($lines === false) {
 				return null;
 			}
 			
-			// Split on newlines and drop empty lines produced by the trailing newline
-			// that each entry write appends
-			return array_values(array_filter(explode("\n", $contents), static fn(string $l) => $l !== ''));
+			return array_values($lines);
 		}
 		
 		/**
@@ -840,8 +843,8 @@
 		protected function writeManifestAtomic(string $manifestPath, array $entries): void {
 			$tmpPath = $manifestPath . '.' . getmypid() . '.tmp';
 			
+			// Temp write failed; leave the original manifest untouched
 			if (file_put_contents($tmpPath, implode("\n", $entries) . "\n") === false) {
-				// Temp write failed; leave the original manifest untouched
 				return;
 			}
 			
