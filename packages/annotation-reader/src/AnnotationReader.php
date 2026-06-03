@@ -774,12 +774,19 @@
 		 * obtained from acquireManifestLock(). The lock guarantees no concurrent writer
 		 * is modifying the file, so no additional locking is needed here.
 		 *
-		 * Returns null when the file cannot be read (e.g. it does not yet exist, which
-		 * is a valid state for a manifest that has never been written).
+		 * Returns an empty array when the file does not yet exist — this is a valid
+		 * state for a manifest that has never been written. Returns null only when
+		 * the file exists but cannot be read.
 		 * @param string $manifestPath Full path to the manifest file
-		 * @return list<string>|null Lines in the manifest, or null on failure
+		 * @return list<string>|null Lines in the manifest, empty array if not yet created, null on read failure
 		 */
 		protected function readManifestLocked(string $manifestPath): ?array {
+			// A missing manifest is a valid empty state — not an error.
+			// Returning null is reserved for actual read failures on existing files.
+			if (!file_exists($manifestPath)) {
+				return [];
+			}
+			
 			$lines = file($manifestPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
 			return $lines !== false ? $lines : null;
 		}
