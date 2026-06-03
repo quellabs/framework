@@ -22,10 +22,18 @@
 		 * @throws TemplateRenderException
 		 */
 		public function index(TemplateEngineInterface $engine): Response {
-			$posts = $this->em()->findBy(PostEntity::class, ['published' => true]);
+			$this->em()->executeQuery("
+				range of o is PostEntity
+				retrieve (
+					total = sum(o.id),
+					hasCompleted = any(o.id where o.title = 'completed')
+				)
+			");
+			
+			//$posts = $this->em()->findBy(PostEntity::class, ['published' => true]);
 			
 			return $this->render("blog/index.tpl", [
-				'posts' => $posts
+				'posts' => []
 			]);
 		}
 		
