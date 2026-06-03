@@ -7,11 +7,12 @@
 	class TestListener {
 		
 		/**
-		 * @ListenTo("test")
-		 * @return int
+		 * @ListenTo("tracking_params_received")
+		 * @param mixed $v
+		 * @return void
 		 */
-		public function test(): int {
-			return 10;
+		public function test(mixed $v): void {
+			var_dump($v);
 		}
 	}
 	
