@@ -203,7 +203,6 @@
 			}
 		}
 		
-		
 		/**
 		 * Deletes all cache files listed in the manifest for the given annotation
 		 * class, then removes the manifest itself. Used by CLI cache-clear commands
@@ -213,11 +212,10 @@
 		 * If the manifest does not exist this is a no-op, so it is safe to call
 		 * even when the cache has never been written.
 		 *
-		 * Side effect: because cache files contain all annotations for a class,
-		 * deleting a cache file also removes cached annotations for any other
-		 * annotation types on that class. Those other manifests may then contain
-		 * stale references to the deleted file, but this is harmless — they are
-		 * skipped via file_exists() and the cache is rebuilt on the next request.
+		 * After deleting the cache files, every other manifest in the cache directory
+		 * is updated: any reference to a deleted cache filename is removed. Manifests
+		 * that become empty as a result are deleted as well, so the manifest directory
+		 * never accumulates stale entries.
 		 * @param string $annotationClass Fully qualified annotation class name, e.g. Route::class
 		 * @return void
 		 */
@@ -238,13 +236,56 @@
 				return;
 			}
 			
+			// Build a hash-keyed set for O(1) membership checks when scanning other manifests
+			$toDelete = array_flip($lines);
+			
 			// Delete each cache file listed in the manifest
 			foreach ($lines as $cacheFilename) {
 				@unlink($this->annotationCachePath . DIRECTORY_SEPARATOR . $cacheFilename);
 			}
 			
-			// Remove the manifest itself so it does not accumulate stale entries
+			// Remove the triggering manifest itself so it does not accumulate stale entries
 			@unlink($manifestPath);
+			
+			// Find other manifest files. glob() is one syscall; we then filter and rewrite only affected manifests.
+			$otherManifests = glob($this->annotationCachePath . DIRECTORY_SEPARATOR . '*.manifest');
+			
+			// If no other manifest files exist, we're done
+			if ($otherManifests === false) {
+				return;
+			}
+			
+			// Update every other manifest: strip references to the deleted cache files.
+			// glob() is one syscall; we then filter and rewrite only affected manifests.
+			foreach ($otherManifests as $otherManifestPath) {
+				// Guard against the deleted manifest appearing in glob() results due to
+				// filesystem buffering; also makes the exclusion intent explicit.
+				if (basename($otherManifestPath) === $manifestFilename) {
+					continue;
+				}
+				
+				// Read the manifest file
+				$entries = file($otherManifestPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+				
+				// If that failed, continue to the next entry
+				if ($entries === false) {
+					continue;
+				}
+				
+				// Filter out any cache filenames that were deleted
+				$remaining = array_filter($entries, static fn(string $e) => !isset($toDelete[$e]));
+				
+				// Manifest is now empty — remove it entirely
+				if (empty($remaining)) {
+					@unlink($otherManifestPath);
+					continue;
+				}
+				
+				// Only rewrite if something actually changed
+				if (count($remaining) !== count($entries)) {
+					file_put_contents($otherManifestPath, implode("\n", $remaining) . "\n", LOCK_EX);
+				}
+			}
 		}
 		
 		/**
@@ -404,9 +445,9 @@
 		 * Updates the cache
 		 * @param string $cacheFilename
 		 * @param AnnotationSet $annotations
-		 * @return void
+		 * @return int|false
 		 */
-		protected function writeCacheToFile(string $cacheFilename, array $annotations): void {
+		protected function writeCacheToFile(string $cacheFilename, array $annotations): int|false {
 			// Ensure the cache directory exists before attempting to create files
 			// This is important for first-time setup or when deploying to new environments
 			if (!is_dir($this->annotationCachePath)) {
@@ -442,7 +483,7 @@
 			$cachePath = $this->annotationCachePath . DIRECTORY_SEPARATOR . $cacheFilename;
 			
 			// Write the file to the path
-			file_put_contents($cachePath, $payload);
+			return file_put_contents($cachePath, $payload);
 		}
 		
 		/**
@@ -508,7 +549,6 @@
 				$result = $parser->parse();
 			} catch (LexerException|ParserException $e) {
 				// Wrap parsing exceptions in a more specific exception type
-				// Note: $reflection variable appears to be missing from the original code
 				throw new AnnotationReaderException(
 					"Failed to parse class annotations for '{$reflection->getName()}': {$e->getMessage()}",
 					$e->getCode(),
@@ -631,10 +671,10 @@
 				
 				// Write the newly parsed annotations to the cache file
 				// This will speed up future requests for this class's annotations
-				$this->writeCacheToFile($cacheFilename, $annotations);
-				
-				// Update manifests for all annotation types present in this cache entry
-				$this->updateManifests($cacheFilename, $annotations);
+				if ($this->writeCacheToFile($cacheFilename, $annotations)) {
+					// Update manifests for all annotation types present in this cache entry
+					$this->updateManifests($cacheFilename, $annotations);
+				}
 				
 				// Also store the annotations in memory cache for this request lifecycle
 				$this->cached_annotations[$cacheFilename] = $annotations;
@@ -673,10 +713,6 @@
 		 * annotation class name), so CLI commands can clear cache files for a
 		 * specific annotation type without touching unrelated entries.
 		 *
-		 * Note: if a cache file is deleted by clearByAnnotationClass(), other
-		 * manifests that reference the same cache file become stale. This is
-		 * harmless — clearByAnnotationClass() checks file_exists() before
-		 * unlinking, and the cache file will be rebuilt on the next request.
 		 * @param string $cacheFilename The cache filename to append to each manifest
 		 * @param AnnotationSet $annotations The full annotation set for the class
 		 * @return void
