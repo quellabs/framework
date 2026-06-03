@@ -80,9 +80,10 @@
 		 */
 		private function parseValues(AstRetrieve $retrieve): array {
 			$values = [];
+			$seenAliases = [];
 			
 			do {
-				$values[] = $this->parseFieldExpression($retrieve);
+				$values[] = $this->parseFieldExpression($retrieve, $seenAliases);
 			} while ($this->lexer->optionalMatch(Token::Comma));
 			
 			return $values;
@@ -91,10 +92,11 @@
 		/**
 		 * Parse a single field expression with its optional alias definition.
 		 * @param AstRetrieve $retrieve The AST node for macro management
+		 * @param array<string, true> $seenAliases Alias names seen so far in this field list; passed by reference for duplicate detection
 		 * @return AstAlias The parsed field alias containing name and expression
 		 * @throws LexerException|ParserException
 		 */
-		private function parseFieldExpression(AstRetrieve $retrieve): AstAlias {
+		private function parseFieldExpression(AstRetrieve $retrieve, array &$seenAliases = []): AstAlias {
 			// Store the current lexer position for potential alias name generation
 			$startPos = $this->lexer->getPos();
 			
@@ -114,7 +116,7 @@
 			$aliasName = $this->determineAliasName($aliasToken, $startPos, $expression);
 			
 			// Handle any macro processing related to this alias definition
-			$this->processAliasMacro($retrieve, $aliasToken, $expression);
+			$this->processAliasMacro($aliasToken, $seenAliases);
 			
 			// Create and return the AST node representing this field alias
 			// Trim whitespace from alias name to ensure clean identifiers
@@ -155,25 +157,27 @@
 		
 		/**
 		 * Process alias macros and validate for duplicates within the retrieve statement.
-		 * @param AstRetrieve $retrieve The retrieve AST node managing macros
-		 * @param Token|null $aliasToken The alias token if an explicit alias was provided
-		 * @param AstInterface $expression The expression associated with this alias
+		 * @param Token|null $aliasToken The alias token if an explicit alias was provided; no-op when null
+		 * @param array<string, true> $seenAliases Alias names seen so far; updated in place when a new alias is registered
 		 * @throws ParserException if duplicate alias name is detected
 		 */
-		private function processAliasMacro(AstRetrieve $retrieve, ?Token $aliasToken, AstInterface $expression): void {
+		private function processAliasMacro(?Token $aliasToken, array &$seenAliases): void {
 			if (!$aliasToken) {
 				return;
 			}
 			
-			$aliasName = $aliasToken->getStringValue();;
+			$aliasName = $aliasToken->getStringValue();
 			
-			if ($retrieve->macroExists($aliasName)) {
+			// Duplicate alias detection using a local set accumulated during this
+			// parseValues pass. We cannot check AstRetrieve::$values directly because
+			// addValue() is only called after all fields are parsed.
+			if (isset($seenAliases[$aliasName])) {
 				throw new ParserException(
 					"Duplicate variable name detected: '{$aliasName}'. Please use unique names."
 				);
 			}
 			
-			$retrieve->addMacro($aliasName, $expression);
+			$seenAliases[$aliasName] = true;
 		}
 		
 		/**
