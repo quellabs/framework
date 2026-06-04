@@ -42,7 +42,7 @@
 				identifierColumns:  [],
 				versionColumns:     [],
 				manyToOneRelations: [],
-				oneToManyRelations: [],
+				inverseOfRelations: [],
 				oneToOneRelations:  [],
 				indexes:            [],
 				autoIncrementColumn: null,

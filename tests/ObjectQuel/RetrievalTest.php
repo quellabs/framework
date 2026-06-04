@@ -4,6 +4,7 @@
 	
 	use App\Entities\PostEntity;
 	use App\Entities\UserEntity;
+	use Quellabs\ObjectQuel\Collections\Collection;
 	
 	/**
 	 * Tests basic entity retrieval — the most fundamental ObjectQuel operations.
@@ -191,5 +192,49 @@
 			
 			$this->assertCount(2, $result);
 			$this->assertSame($result[0]['u'], $result[1]['u']);
+		}
+	
+		// -------------------------------------------------------------------------
+		// Eager loading and InverseOf hydration
+		// -------------------------------------------------------------------------
+
+		public function testManyToOneEagerRelationIsHydrated(): void {
+			// PostEntity has ManyToOne(fetch=EAGER) to UserEntity.
+			// Loading posts should automatically hydrate the user property.
+			$posts = $this->em->findBy(PostEntity::class, ['published' => true]);
+			$this->assertNotEmpty($posts);
+			
+			foreach ($posts as $post) {
+				$this->assertInstanceOf(UserEntity::class, $post->user);
+			}
+		}
+		
+		public function testInverseOfCollectionIsHydrated(): void {
+			// UserEntity has InverseOf(targetEntity=PostEntity, via="user").
+			// Loading a UserEntity should hydrate the posts collection.
+			$user = $this->em->find(UserEntity::class, 1);
+			$this->assertNotNull($user);
+			$this->assertInstanceOf(Collection::class, $user->posts);
+			
+			// alice has 2 posts in the fixtures
+			$this->assertCount(2, $user->posts);
+		}
+		
+		public function testInverseOfCollectionContainsCorrectEntities(): void {
+			// Posts in the collection should be PostEntity instances belonging to this user.
+			$user = $this->em->find(UserEntity::class, 1);
+			$this->assertNotNull($user);
+			
+			foreach ($user->posts as $post) {
+				$this->assertInstanceOf(PostEntity::class, $post);
+			}
+		}
+		
+		public function testInverseOfCollectionIsEmptyForUserWithNoPosts(): void {
+			// bob (user 2) has only one post in the fixtures
+			$user = $this->em->find(UserEntity::class, 2);
+			$this->assertNotNull($user);
+			$this->assertInstanceOf(Collection::class, $user->posts);
+			$this->assertCount(1, $user->posts);
 		}
 	}
