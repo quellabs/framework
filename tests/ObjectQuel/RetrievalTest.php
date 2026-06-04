@@ -4,7 +4,7 @@
 	
 	use App\Entities\PostEntity;
 	use App\Entities\UserEntity;
-	use Quellabs\ObjectQuel\Collections\Collection;
+	use Quellabs\ObjectQuel\Collections\CollectionInterface;
 	
 	/**
 	 * Tests basic entity retrieval — the most fundamental ObjectQuel operations.
@@ -214,7 +214,7 @@
 			// Loading a UserEntity should hydrate the posts collection.
 			$user = $this->em->find(UserEntity::class, 1);
 			$this->assertNotNull($user);
-			$this->assertInstanceOf(Collection::class, $user->posts);
+			$this->assertInstanceOf(CollectionInterface::class, $user->posts);
 			
 			// alice has 2 posts in the fixtures
 			$this->assertCount(2, $user->posts);
@@ -234,7 +234,7 @@
 			// bob (user 2) has only one post in the fixtures
 			$user = $this->em->find(UserEntity::class, 2);
 			$this->assertNotNull($user);
-			$this->assertInstanceOf(Collection::class, $user->posts);
+			$this->assertInstanceOf(CollectionInterface::class, $user->posts);
 			$this->assertCount(1, $user->posts);
 		}
 	}
