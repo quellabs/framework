@@ -17,7 +17,6 @@
 	 * @Orm\LifecycleAware
 	 */
 	class PostEntity {
-		
 		/**
 		 * @Orm\Column(name="id", type="integer", unsigned=true, primary_key=true)
 		 * @Orm\PrimaryKeyStrategy(strategy="identity")
@@ -65,9 +64,24 @@
 		public ?UserEntity $user;
 		
 		/**
+		 * @Orm\ManyToOne(targetEntity=TestEntity::class, referencedColumn="id", fetch="EAGER")
+		 */
+		public ?TestEntity $testEntity;
+		
+		/**
+		 * @Orm\Column(name="test_entity_id", type="integer")
+		 */
+		protected ?int $testEntityId = null;
+		
+		/**
 		 * @Orm\Column(name="user_id", type="integer")
 		 */
 		protected ?int $userId = null;
+		
+		/**
+		 * @Orm\Column(name="test_id", type="integer", unsigned=true, nullable=true)
+		 */
+		protected ?int $testId;
 		
 		/**
 		 * Get id
@@ -183,5 +197,38 @@
 		public function setTestJSON(?array $testJSON): PostEntity {
 			$this->testJSON = $testJSON;
 			return $this;
+		}
+		
+		/**
+		 * Gets the test relationship
+		 * @return ?TestEntity
+		 */
+		public function getTest(): ?TestEntity {
+			return $this->test;
+		}
+		
+		/**
+		 * Sets the test relationship
+		 * @param ?TestEntity $test The related entity
+		 * @return $this
+		 */
+		public function setTest(?TestEntity $test): self {
+			// Prevent redundant updates
+			if ($this->test === $test) {
+				return $this;
+			}
+			
+			// Set new property
+			$this->test = $test;
+			
+			return $this;
+		}
+		
+		/**
+		 * Gets the testId value
+		 * @return ?int
+		 */
+		public function getTestId(): ?int {
+			return $this->testId;
 		}
 	}

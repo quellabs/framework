@@ -5,6 +5,7 @@
 	use App\Entities\PostEntity;
 	use Psr\Log\LoggerInterface;
 	use Quellabs\SignalHub\Slot;
+	use App\Entities\TestEntity;
 	use Quellabs\SignalHub\SignalHub;
 	use Quellabs\Canvas\Annotations\Route;
 	use Quellabs\Canvas\Annotations\WithContext;
@@ -30,10 +31,10 @@
 		 * @throws TemplateRenderException
 		 */
 		public function index(SignalHub $hub, TemplateEngineInterface $engine): Response {
-			$posts = $this->em()->findBy(PostEntity::class, ['published' => true]);
+			$posts = $this->em()->find(TestEntity::class, 1);
 			
 			return $this->render("blog/index.tpl", [
-				'posts' => $posts
+				'posts' => []
 			]);
 		}
 		
