@@ -82,12 +82,12 @@
 			// as the column alias inside the derived table. If aliasing is wrong,
 			// MySQL will throw "Unknown column" and the query will fail entirely.
 			$result = $this->em->executeQuery("
-			range of x is (
-				range of y is PostEntity
-				retrieve(y.id, y.title, y.content)
-			)
-			retrieve (x.id, x.title, x.content)
-		");
+				range of x is (
+					range of y is PostEntity
+					retrieve(y.id, y.title, y.content)
+				)
+				retrieve (x.id, x.title, x.content)
+			");
 			
 			// If we get here without an exception, aliasing is correct
 			$this->assertCount(2, $result);
@@ -99,17 +99,17 @@
 		
 		public function testSubqueryRowCountMatchesInnerQuery(): void {
 			$direct = $this->em->executeQuery("
-			range of p is PostEntity
-			retrieve (p.id)
-		");
+				range of p is PostEntity
+				retrieve (p.id)
+			");
 			
 			$subquery = $this->em->executeQuery("
-			range of x is (
-				range of y is PostEntity
-				retrieve(y.id)
-			)
-			retrieve (x.id)
-		");
+				range of x is (
+					range of y is PostEntity
+					retrieve(y.id)
+				)
+				retrieve (x.id)
+			");
 			
 			$this->assertCount(count($direct), $subquery);
 		}
