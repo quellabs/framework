@@ -30,14 +30,15 @@
 		 * @throws TemplateRenderException
 		 */
 		public function index(SignalHub $hub, TemplateEngineInterface $engine): Response {
+
+
 			$this->em()->executeQuery("
 				range of o is PostEntity
-				retrieve (
-					total = sum(o.id),
-					hasCompleted = any(o.id where o.title = 'completed')
-				)
+				range of u is UserEntity via u.id=o.userId
+				retrieve ( ... )
 			");
 			
+
 			$posts = $this->em()->findBy(PostEntity::class, ['published' => true]);
 			
 			return $this->render("blog/index.tpl", [

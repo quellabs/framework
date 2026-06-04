@@ -4,6 +4,7 @@
 	
 	use App\Entities\PostEntity;
 	use App\Entities\UserEntity;
+	use Quellabs\ObjectQuel\Exception\QuelException;
 	
 	/**
 	 * Tests basic entity retrieval — the most fundamental ObjectQuel operations.
@@ -191,5 +192,44 @@
 			
 			$this->assertCount(2, $result);
 			$this->assertSame($result[0]['u'], $result[1]['u']);
+		}
+		
+		public function testViaWithColumnInsteadOfRelationThrows(): void {
+			$this->expectException(QuelException::class);
+			
+			$this->em->executeQuery("
+		        range of p is PostEntity
+		        range of u is UserEntity via p.userId
+		        retrieve (p.title, u.username)
+		    ");
+		}
+		
+		public function testViaWithNonExistentPropertyThrows(): void {
+			$this->expectException(QuelException::class);
+			
+			$this->em->executeQuery("
+		        range of p is PostEntity
+		        range of u is UserEntity via p.nonexistent
+		        retrieve (p.title, u.username)
+		    ");
+		}
+		
+		public function testRelationUsedInWhereClauseThrows(): void {
+			$this->expectException(QuelException::class);
+			
+			$this->em->executeQuery("
+		        range of p is PostEntity
+		        retrieve (p.title)
+		        where p.user = 1
+		    ");
+		}
+		
+		public function testRelationUsedInProjectionThrows(): void {
+			$this->expectException(QuelException::class);
+			
+			$this->em->executeQuery("
+		        range of p is PostEntity
+		        retrieve (p.user)
+		    ");
 		}
 	}
