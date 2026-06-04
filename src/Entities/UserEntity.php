@@ -38,7 +38,7 @@
 		protected bool $banned = false;
 		
 		/**
-		 * @Orm\InverseOf(targetEntity=PostEntity::class, via="user")
+		 * @Orm\InverseOf(targetEntity=PostEntity::class, relation="user")
 		 */
 		public CollectionInterface $posts;
 		

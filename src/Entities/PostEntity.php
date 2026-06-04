@@ -60,7 +60,7 @@
 		protected ?array $testJSON;
 		
 		/**
-		 * @Orm\ManyToOne(targetEntity=UserEntity::class, inversedBy="id", fetch="EAGER")
+		 * @Orm\ManyToOne(targetEntity=UserEntity::class, referencedColumn="id", fetch="EAGER")
 		 */
 		public ?UserEntity $user;
 		
