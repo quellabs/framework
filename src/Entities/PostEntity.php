@@ -5,16 +5,11 @@
 	use Quellabs\ObjectQuel\Annotations\Orm\Table;
 	use Quellabs\ObjectQuel\Annotations\Orm\Column;
 	use Quellabs\ObjectQuel\Annotations\Orm\PrimaryKeyStrategy;
-	use Quellabs\ObjectQuel\Annotations\Orm\OneToOne;
-	use Quellabs\ObjectQuel\Annotations\Orm\OneToMany;
 	use Quellabs\ObjectQuel\Annotations\Orm\ManyToOne;
 	use Quellabs\ObjectQuel\Annotations\Orm\SourceField;
 	use Quellabs\ObjectQuel\Annotations\Orm\LifecycleAware;
 	use Quellabs\ObjectQuel\Annotations\Orm\PreUpdate;
 	use Quellabs\ObjectQuel\Annotations\Orm\FullTextIndex;
-	use Quellabs\ObjectQuel\Collections\Collection;
-	use Quellabs\ObjectQuel\Collections\CollectionInterface;
-	use Quellabs\ObjectQuel\Collections\EntityCollection;
 	
 	/**
 	 * @Orm\Table(name="posts")
