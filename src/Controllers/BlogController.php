@@ -13,6 +13,7 @@
 	use Quellabs\Canvas\Controllers\BaseController;
 	use Symfony\Component\HttpFoundation\Response;
 	use Quellabs\ObjectQuel\Exception\QuelException;
+	use Quellabs\ObjectQuel\Sculpt\Helpers\PhpClassParser;
 	use Quellabs\Contracts\Templates\TemplateEngineInterface;
 	use Quellabs\Contracts\Templates\TemplateRenderException;
 	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
@@ -31,6 +32,9 @@
 		 * @throws TemplateRenderException
 		 */
 		public function index(SignalHub $hub, TemplateEngineInterface $engine): Response {
+			
+			PhpClassParser::parseClassContent(file_get_contents(__FILE__));
+			
 			$posts = $this->em()->find(TestEntity::class, 1);
 			
 			return $this->render("blog/index.tpl", [
