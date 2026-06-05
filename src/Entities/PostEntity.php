@@ -72,20 +72,6 @@
 		protected ?int $userId = null;
 
 		/**
-		 * @Orm\InverseOf(targetEntity="TestEntity", relation="rel", fetch="LAZY")
-		 * @var CollectionInterface<TestEntity>
-		 */
-		public CollectionInterface $tests;
-
-		/**
-		 * Constructor to initialize collections
-		 */
-		public function __construct() {
-			$this->tests = new Collection();
-		}
-
-		
-		/**
 		 * Get id
 		 * @return int
 		 */
@@ -200,34 +186,4 @@
 			$this->testJSON = $testJSON;
 			return $this;
 		}
-        /**
-         * Adds an entity to the tests collection
-         * @param TestEntity $test Entity to add
-         * @return $this
-         */
-        public function addTest(TestEntity $test): self {
-            if (!$this->tests->contains($test)) {
-                $this->tests[] = $test;
-                // Assign this entity on the owning side so the FK is set correctly
-                $test->setRel($this);
-            }
-            return $this;
-        }
-
-        /**
-         * Removes an entity from the tests collection
-         * @param TestEntity $test Entity to remove
-         * @return $this
-         */
-        public function removeTest(TestEntity $test): self {
-            if ($this->tests->remove($test)) {
-                                // Unset inverse side if it still references this entity
-                if ($test->getRel() === $this) {
-                    $test->setRel(null);
-                }
-            }
-            
-            return $this;
-        }
-
-}
+	}
