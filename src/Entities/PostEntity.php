@@ -72,6 +72,11 @@
 		protected ?int $userId = null;
 
 		/**
+		* @Orm\InverseOf(targetEntity="BananaEntity", relation="rel", fetch="LAZY")
+		*/
+		protected ?BananaEntity $banana;
+
+		/**
 		 * Get id
 		 * @return int
 		 */
@@ -186,4 +191,31 @@
 			$this->testJSON = $testJSON;
 			return $this;
 		}
-	}
+	
+		/**
+		 * Gets the banana relationship
+		 * @return ?BananaEntity
+		 */
+		public function getBanana(): ?BananaEntity {
+				return $this->banana;
+		}
+
+
+		/**
+		 * Sets the banana relationship
+		 * @param ?BananaEntity $banana The related entity
+		 * @return $this
+		 */
+		public function setBanana(?BananaEntity $banana): self {
+				// Prevent redundant updates
+				if ($this->banana === $banana) {
+						return $this;
+				}
+
+				// Set new property
+				$this->banana = $banana;
+
+				return $this;
+		}
+
+}
