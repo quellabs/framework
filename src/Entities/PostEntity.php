@@ -10,6 +10,9 @@
 	use Quellabs\ObjectQuel\Annotations\Orm\LifecycleAware;
 	use Quellabs\ObjectQuel\Annotations\Orm\PreUpdate;
 	use Quellabs\ObjectQuel\Annotations\Orm\FullTextIndex;
+	use Quellabs\ObjectQuel\Annotations\Orm\InverseOf;
+	use Quellabs\ObjectQuel\Collections\Collection;
+	use Quellabs\ObjectQuel\Collections\CollectionInterface;
 	
 	/**
 	 * @Orm\Table(name="posts")
@@ -17,7 +20,7 @@
 	 * @Orm\LifecycleAware
 	 */
 	class PostEntity {
-		/**
+/**
 		 * @Orm\Column(name="id", type="integer", unsigned=true, primary_key=true)
 		 * @Orm\PrimaryKeyStrategy(strategy="identity")
 		 */
@@ -67,6 +70,20 @@
 		 * @Orm\Column(name="user_id", type="integer")
 		 */
 		protected ?int $userId = null;
+
+		/**
+		 * @Orm\InverseOf(targetEntity="TestEntity", relation="rel", fetch="LAZY")
+		 * @var CollectionInterface<TestEntity>
+		 */
+		public CollectionInterface $tests;
+
+		/**
+		 * Constructor to initialize collections
+		 */
+		public function __construct() {
+			$this->tests = new Collection();
+		}
+
 		
 		/**
 		 * Get id
@@ -183,4 +200,34 @@
 			$this->testJSON = $testJSON;
 			return $this;
 		}
-	}
+        /**
+         * Adds an entity to the tests collection
+         * @param TestEntity $test Entity to add
+         * @return $this
+         */
+        public function addTest(TestEntity $test): self {
+            if (!$this->tests->contains($test)) {
+                $this->tests[] = $test;
+                // Assign this entity on the owning side so the FK is set correctly
+                $test->setRel($this);
+            }
+            return $this;
+        }
+
+        /**
+         * Removes an entity from the tests collection
+         * @param TestEntity $test Entity to remove
+         * @return $this
+         */
+        public function removeTest(TestEntity $test): self {
+            if ($this->tests->remove($test)) {
+                                // Unset inverse side if it still references this entity
+                if ($test->getRel() === $this) {
+                    $test->setRel(null);
+                }
+            }
+            
+            return $this;
+        }
+
+}
