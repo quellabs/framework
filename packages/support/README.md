@@ -74,6 +74,9 @@ use Quellabs\Support\ComposerUtils;
 // Find project root directory
 $projectRoot = ComposerUtils::getProjectRoot();
 
+// Find vendor (composer) directory
+$projectRoot = ComposerUtils::getVendorDirectory();
+
 // Get composer.json file path
 $composerJson = ComposerUtils::getComposerJsonFilePath();
 
@@ -210,15 +213,30 @@ $ip = Tools::getIPAddress();
 // Returns: "192.168.1.100" or null if no valid IP found
 
 // Generate a new GUID/UUID
-$guid = Tools::createGUID();
+$guid = Tools::createUUIDv4();
+$guid = Tools::createUUIDv7();
 // Returns: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 
+// Returns the GUID/UUID version (1-8)
+$guid = Tools::getUUIDVersion("a1b2c3d4-e5f6-7890-abcd-ef1234567890");
+
 // Validate GUID format
-$isValid = Tools::validateGUID('a1b2c3d4-e5f6-7890-abcd-ef1234567890');
+$isValid = Tools::validateUUID('a1b2c3d4-e5f6-7890-abcd-ef1234567890');
 // Returns: true
 
-$isValid = Tools::validateGUID('invalid-guid');
+$isValid = Tools::validateUUID('invalid-guid');
 // Returns: false
+
+// Returns timestamp component of UUID7
+$timestamp = Tools::getUUIDv7Timestamp("a1b2c3d4-e5f6-7890-abcd-ef1234567890");
+
+// Converts the timestamp produced by getUUIDv7Timestamp to DateTimeImmutable
+$datetime = Tools::uuidV7TimestampToDateTime(...);
+
+// Gets the length of the longest value in an enum.
+// For backed enums, measures the value length.
+// For pure enums, measures the name length.
+$length = Tools::getMaxEnumValueLength(enumClass);
 ```
 
 **IP Address Detection:**
@@ -229,7 +247,7 @@ $isValid = Tools::validateGUID('invalid-guid');
 
 **GUID Generation:**
 - Cross-platform support (uses COM on Windows, OpenSSL elsewhere)
-- RFC 4122 compliant UUID v4 format
+- RFC 4122 compliant UUID v4 and v7 formats
 - Cryptographically secure when OpenSSL available
 - Fallback to pseudo-random generation
 

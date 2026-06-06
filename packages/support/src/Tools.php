@@ -158,16 +158,6 @@
 		}
 		
 		/**
-		 * Alias for createUUIDv4() for backward compatibility
-		 * @return string
-		 * @throws \Exception
-		 * @deprecated Use createUUIDv4() or createUUIDv7() instead
-		 */
-		public static function createGUID(): string {
-			return self::createUUIDv4();
-		}
-		
-		/**
 		 * Validates a UUID and optionally checks for a specific version
 		 * Automatically detects the version and delegates to the appropriate validator
 		 * Only supports UUID v4 and v7 - other versions will throw an exception
@@ -192,16 +182,6 @@
 					"UUID version {$detectedVersion} is not supported. Only v4 and v7 are supported."
 				),
 			};
-		}
-		
-		/**
-		 * Alias for validateUUID() for backward compatibility
-		 * @param string $uuid The UUID to validate
-		 * @return bool True if valid UUID
-		 * @deprecated Use validateUUID($uuid) instead of validateGUID($uuid)
-		 */
-		public static function validateGUID(string $uuid): bool {
-			return self::validateUUID($uuid);
 		}
 		
 		/**
@@ -328,31 +308,20 @@
 			$timestampHex = substr($uuid, 0, 12);
 			
 			// Convert hex to dec and return timestamp
-			return (int) hexdec($timestampHex);
+			return (int)hexdec($timestampHex);
 		}
 		
 		/**
-		 * Converts a UUID v7 timestamp to a DateTime object
-		 * @param string $uuid The UUID v7
-		 * @return \DateTime|null DateTime object, or null if invalid
+		 * Converts a UUID v7 millisecond timestamp to a DateTimeImmutable object
+		 * @param int $timestampMs Unix timestamp in milliseconds
+		 * @return \DateTimeImmutable
 		 */
-		public static function getUUIDv7DateTime(string $uuid): ?\DateTime {
-			// Fetch and validate timestamp
-			$timestamp = self::getUUIDv7Timestamp($uuid);
+		public static function uuidV7TimestampToDateTime(int $timestampMs): \DateTimeImmutable {
+			$seconds = intdiv($timestampMs, 1000);
+			$milliseconds = $timestampMs % 1000;
 			
-			if ($timestamp === null) {
-				return null;
-			}
-			
-			// Convert milliseconds to seconds with microseconds
-			$seconds = (int)($timestamp / 1000);
-			$microseconds = ($timestamp % 1000) * 1000;
-			
-			// Convert seconds to datetime
-			$dateTime = new \DateTime();
-			$dateTime->setTimestamp($seconds);
-			$dateTime->modify("+{$microseconds} microseconds");
-			return $dateTime;
+			$dt = new \DateTimeImmutable('@' . $seconds);
+			return $dt->modify('+' . $milliseconds . ' milliseconds');
 		}
 		
 		/**
