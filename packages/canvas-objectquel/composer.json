@@ -29,8 +29,8 @@
     }
   },
   "require": {
-    "quellabs/canvas-database": "*",
-    "quellabs/objectquel": "*",
+    "quellabs/canvas-database": "1.*",
+    "quellabs/objectquel": "1.*",
     "quellabs/support": "*"
   },
   "autoload": {
