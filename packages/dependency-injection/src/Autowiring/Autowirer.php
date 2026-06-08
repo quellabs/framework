@@ -4,6 +4,7 @@
 	
 	use Quellabs\Contracts\Context\MethodContextInterface;
 	use Quellabs\Contracts\DependencyInjection\ContainerInterface;
+	use Quellabs\AnnotationReader\Exception\AnnotationReaderException;
 	
 	/**
 	 * class Autowirer
@@ -213,6 +214,7 @@
 		 * @param array<int, string> $types Array of type hints to attempt resolution for
 		 * @param MethodContextInterface|null $methodContext
 		 * @return mixed The resolved value, or the unresolved sentinel
+		 * @throws AnnotationReaderException
 		 */
 		protected function resolveParameterFromTypes(string $paramName, array $types, ?MethodContextInterface $methodContext = null): mixed {
 			// Early return sentinel if no types provided - nothing to resolve
@@ -240,6 +242,8 @@
 					if ($instance !== null) {
 						return $instance;
 					}
+				} catch (AnnotationReaderException $e) {
+					throw $e;
 				} catch (\Throwable) {
 					// Resolution threw — this type is not resolvable, try the next one
 				}
