@@ -2,7 +2,9 @@
 	
 	namespace Quellabs\ObjectQuel\Metadata;
 	
+	use Quellabs\ObjectQuel\EntityStore;
 	use Quellabs\AnnotationReader\AnnotationReader;
+	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
 	use Quellabs\AnnotationReader\Collection\AnnotationCollection;
 	use Quellabs\AnnotationReader\Exception\AnnotationReaderException;
 	use Quellabs\AnnotationReader\Exception\ParserException;
@@ -10,12 +12,13 @@
 	use Quellabs\ObjectQuel\Annotations\Orm\FullTextIndex;
 	use Quellabs\ObjectQuel\Annotations\Orm\Index;
 	use Quellabs\ObjectQuel\Annotations\Orm\ManyToOne;
-	use Quellabs\ObjectQuel\Annotations\Orm\OneToMany;
+	use Quellabs\ObjectQuel\Annotations\Orm\InverseOf;
 	use Quellabs\ObjectQuel\Annotations\Orm\OneToOne;
 	use Quellabs\ObjectQuel\Annotations\Orm\PrimaryKeyStrategy;
 	use Quellabs\ObjectQuel\Annotations\Orm\UniqueIndex;
 	use Quellabs\ObjectQuel\Annotations\Orm\Version;
 	use Quellabs\ObjectQuel\DatabaseAdapter\TypeMapper;
+	use Quellabs\ObjectQuel\Metadata\ColumnData;
 	use Quellabs\ObjectQuel\ReflectionManagement\ReflectionHandler;
 	use Quellabs\Support\NamespaceResolver;
 	
@@ -45,27 +48,19 @@
 		
 		private readonly AnnotationReader $annotationReader;
 		private readonly ReflectionHandler $reflectionHandler;
-		private readonly string $proxyNamespace;
-		private readonly string $entityNamespace;
-		
-		/** @var array<string, string> */
-		private array $normalizedNameCache = [];
+		private EntityStore $entityStore;
 		
 		/**
 		 * EntityMetadataBuilder constructor
 		 * @param AnnotationReader $annotationReader
 		 * @param ReflectionHandler $reflectionHandler
-		 * @param string $proxyNamespace
-		 * @param string $entityNamespace
 		 */
 		public function __construct(
-			AnnotationReader  $annotationReader,
-			ReflectionHandler $reflectionHandler,
-			string            $proxyNamespace,
-			string            $entityNamespace,
+			EntityStore $entityStore,
+			AnnotationReader $annotationReader,
+			ReflectionHandler $reflectionHandler
 		) {
-			$this->entityNamespace = $entityNamespace;
-			$this->proxyNamespace = $proxyNamespace;
+			$this->entityStore = $entityStore;
 			$this->reflectionHandler = $reflectionHandler;
 			$this->annotationReader = $annotationReader;
 		}
@@ -104,125 +99,50 @@
 				// Derive all column-related metadata in a single pass over $annotations.
 				// Splitting this into five separate loops would re-iterate the same data
 				// for each concern; one pass is both faster and easier to follow.
-				[
-					$columnMap,
-					$identifierKeys,
-					$identifierColumns,
-					$versionColumns,
-					$autoIncrementColumn,
-				] = $this->extractColumnData($annotations);
+				$columnData = $this->extractColumnData($annotations);
 				
+				// Extract the relations and indexes
+				$indexes = $this->extractIndexes($className);
+				$columnDefinitions = $this->extractColumnDefinitions($className, $annotations);
+				$manyToOneRelations = $this->extractRelations($annotations, ManyToOne::class);
+				$oneToOneRelations = $this->extractRelations($annotations, OneToOne::class);
+				$inverseOfRelations = $this->extractRelations($annotations, InverseOf::class);
+				
+				// Validate that every localColumn declared on a ManyToOne or OneToOne
+				// has a corresponding @Orm\Column property on this entity. Catching this
+				// at metadata build time gives a clear error instead of a silent hydration failure.
+				$this->validateRelationColumns($className, $annotations, $manyToOneRelations, $oneToOneRelations);
+				
+				// Return  a new EntityMetadataRecord containing all relation data
 				return new EntityMetadataRecord(
 					className: $className,
 					tableName: $tableName,
 					properties: $properties,
 					annotations: $annotations,
-					columnMap: $columnMap,
-					identifierKeys: $identifierKeys,
-					identifierColumns: $identifierColumns,
-					versionColumns: $versionColumns,
-					manyToOneRelations: $this->extractRelations($annotations, ManyToOne::class),
-					oneToManyRelations: $this->extractRelations($annotations, OneToMany::class),
-					oneToOneRelations: $this->extractRelations($annotations, OneToOne::class),
-					indexes: $this->extractIndexes($className),
-					autoIncrementColumn: $autoIncrementColumn,
-					columnDefinitions: $this->extractColumnDefinitions($className, $annotations),
+					columnMap: $columnData->columnMap,
+					identifierKeys: $columnData->identifierKeys,
+					identifierColumns: $columnData->identifierColumns,
+					versionColumns: $columnData->versionColumns,
+					manyToOneRelations: $manyToOneRelations,
+					inverseOfRelations: $inverseOfRelations,
+					oneToOneRelations: $oneToOneRelations,
+					indexes: $indexes,
+					autoIncrementColumn: $columnData->autoIncrementColumn,
+					columnDefinitions: $columnDefinitions,
 				);
+			} catch (\RuntimeException $e) {
+				throw $e;
 			} catch (\Exception $e) {
 				throw new \RuntimeException("Failed to build metadata for {$className}: " . $e->getMessage(), 0, $e);
 			}
 		}
 		
 		/**
-		 * Normalizes the entity name by resolving proxies and namespaces.
-		 * Exposed publicly so EntityStore can delegate its own resolveProxyClass() here.
-		 * @param string|object $entity Fully qualified class name, short name, object, or ReflectionClass
-		 * @return string Normalized, fully qualified class name
-		 */
-		public function resolveProxyClass(string|object $entity): string {
-			$className = $this->extractClassName($entity);
-			
-			// Return early if we've resolved this name before
-			if (isset($this->normalizedNameCache[$className])) {
-				return $this->normalizedNameCache[$className];
-			}
-			
-			// Proxy classes are anonymous subclasses generated at runtime.
-			// Their real identity is the parent class, so unwrap one level.
-			if (str_contains($className, $this->proxyNamespace)) {
-				// Fail if the proxy does not exist
-				if (!class_exists($className)) {
-					throw new \RuntimeException("Invalid entity class: {$className}");
-				}
-				
-				// Get the proxy's parent. This is the actual class.
-				$parent = $this->reflectionHandler->getParent($className);
-				
-				// If no parent exists, the proxy is badly configured.
-				if ($parent === null) {
-					throw new \RuntimeException("Proxy class {$className} has no parent class.");
-				}
-				
-				// Add the actual class to the cache
-				return $this->normalizedNameCache[$className] = $parent;
-			}
-			
-			// A backslash means the caller already passed a fully qualified name
-			if (str_contains($className, "\\")) {
-				return $this->normalizedNameCache[$className] = $className;
-			}
-			
-			// Short name (e.g. "User") — try the namespace resolver first,
-			// then fall back to prepending the configured entity namespace
-			$resolved = NamespaceResolver::resolveClassName($className);
-			
-			if (($resolved === $className)) {
-				$fullyQualifiedClassName = "{$this->entityNamespace}\\{$className}";
-			} else {
-				$fullyQualifiedClassName = $resolved;
-			}
-			
-			return $this->normalizedNameCache[$className] = $fullyQualifiedClassName;
-		}
-		
-		// ==================== Private Helpers ====================
-		
-		/**
-		 * Extract class name from various entity representations.
-		 * @param string|object $entity
-		 * @return string
-		 */
-		private function extractClassName(string|object $entity): string {
-			if ($entity instanceof \ReflectionClass) {
-				// ReflectionClass already knows its own name
-				return $entity->getName();
-			} elseif (is_object($entity)) {
-				// Entity instance — get the class name at runtime
-				return get_class($entity);
-			} else {
-				// String class name — strip any leading backslash so all paths
-				// produce a consistent format before hitting the cache
-				return ltrim($entity, "\\");
-			}
-		}
-		
-		/**
 		 * Single pass over property annotations to extract all column-related metadata.
-		 * Returns [columnMap, identifierKeys, identifierColumns, versionColumns, autoIncrementColumn].
 		 * @param array<string, AnnotationCollection> $annotations
-		 * @return array{
-		 *     0: array<string, string>,
-		 *     1: list<string>,
-		 *     2: list<string>,
-		 *     3: array<string, array{
-		 *         name: string,
-		 *         column: Column,
-		 *         version: Version
-		 *     }>,
-		 *     4: string|null
-		 *  }
+		 * @return ColumnData
 		 */
-		private function extractColumnData(array $annotations): array {
+		private function extractColumnData(array $annotations): ColumnData {
 			$columnMap = [];
 			$identifierKeys = [];
 			$identifierColumns = [];
@@ -282,15 +202,22 @@
 				}
 			}
 			
-			return [$columnMap, $identifierKeys, $identifierColumns, $versionColumns, $autoIncrementColumn];
+			return new ColumnData(
+				columnMap: $columnMap,
+				identifierKeys: $identifierKeys,
+				identifierColumns: $identifierColumns,
+				versionColumns: $versionColumns,
+				autoIncrementColumn: $autoIncrementColumn,
+			);
 		}
 		
 		/**
 		 * Extract relationship annotations of a specific type from property annotations.
-		 * @template T of ManyToOne|OneToMany|OneToOne
+		 * @template T of ManyToOne|InverseOf|OneToOne
 		 * @param array<string, AnnotationCollection> $annotations
 		 * @param class-string<T> $annotationType
 		 * @return array<string, T>
+		 * @throws EntityResolutionException
 		 */
 		private function extractRelations(array $annotations, string $annotationType): array {
 			$relations = [];
@@ -304,7 +231,7 @@
 						 * expanding to the full namespace before they can be used elsewhere.
 						 */
 						$annotation->setTargetEntity(
-							$this->resolveProxyClass($annotation->getTargetEntity())
+							$this->entityStore->normalizeEntityClass($annotation->getTargetEntity())
 						);
 						
 						// One relation annotation per property — the first match wins
@@ -442,5 +369,66 @@
 			// Must be a primary key, and either explicitly marked as identity
 			// or left without any strategy (which defaults to auto-increment)
 			return $isPrimaryKey && ($isIdentityStrategy || !$hasStrategy);
+		}
+		
+		/**
+		 * Validates that every localColumn declared on a ManyToOne or OneToOne relation
+		 * has a corresponding property with an @Orm\Column annotation on the entity.
+		 * A missing backing property would cause a silent hydration failure at runtime;
+		 * catching it here gives a clear error at the first point of use instead.
+		 * @param class-string $className
+		 * @param array<string, AnnotationCollection> $annotations
+		 * @param array<string, ManyToOne> $manyToOneRelations
+		 * @param array<string, OneToOne> $oneToOneRelations
+		 * @throws \RuntimeException When a declared localColumn has no backing @Orm\Column property
+		 */
+		private function validateRelationColumns(
+			string $className,
+			array $annotations,
+			array $manyToOneRelations,
+			array $oneToOneRelations
+		): void {
+			$relations = array_merge($manyToOneRelations, $oneToOneRelations);
+			
+			foreach ($relations as $property => $relation) {
+				// Use the explicit localColumn if declared, otherwise fall back to the
+				// convention used at runtime in RelationshipLoader ($property . 'Id')
+				$localColumn = $relation->getLocalColumn() ?? $property . 'Id';
+				
+				if (!$this->hasColumnProperty($annotations, $localColumn)) {
+					if ($relation->getLocalColumn() !== null) {
+						$source = "declares localColumn='{$localColumn}'";
+					} else {
+						$source = "uses the default localColumn convention '{$localColumn}'";
+					}
+					
+					throw new \RuntimeException(
+						"Relation '{$property}' on '{$className}' {$source} " .
+						"but no property with '@Orm\\Column' named '{$localColumn}' exists on the entity. " .
+						"Add an '@Orm\\Column' property for the foreign key."
+					);
+				}
+			}
+		}
+		
+		/**
+		 * Returns true if a property named $propertyName exists in the annotation map
+		 * and carries an @Orm\Column annotation.
+		 * @param array<string, AnnotationCollection> $annotations
+		 * @param string $propertyName
+		 * @return bool
+		 */
+		private function hasColumnProperty(array $annotations, string $propertyName): bool {
+			if (!isset($annotations[$propertyName])) {
+				return false;
+			}
+			
+			foreach ($annotations[$propertyName] as $annotation) {
+				if ($annotation instanceof Column) {
+					return true;
+				}
+			}
+			
+			return false;
 		}
 	}

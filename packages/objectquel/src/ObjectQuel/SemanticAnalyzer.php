@@ -86,17 +86,20 @@
 			// Step 1: Validate that all ranges have a unique name
 			$this->validateNoDuplicateRanges($ast);
 			
-			// Step 2: Validate that every database range exists in the entity store
+			// Step 2: Validate that all range 'via' clauses have been transformed to expressions
+			$this->validateViaClauseNormalisationPassed($ast);
+			
+			// Step 3: Validate that every database range exists in the entity store
 			$this->validateEntityInRangeExists($ast);
 			
-			// Step 3: Validate that there is at least one range without a VIA clause.
+			// Step 4: Validate that there is at least one range without a VIA clause.
 			//         This range will act as the FROM clause of the SELECT query.
 			$this->validateAtLeastOneRangeWithoutVia($ast);
 			
-			// Step 3: Validate that each root identifier links to a range that exists
+			// Step 5: Validate that each root identifier links to a range that exists
 			$this->processWithVisitor($ast, ValidateRangesDeclared::class, $this->entityStore);
 			
-			// Step 4: Validate that via clauses do not form circular dependencies
+			// Step 6: Validate that via clauses do not form circular dependencies
 			$this->validateNoCircularViaDependencies($ast);
 			
 			// ==============================================================================
@@ -119,18 +122,17 @@
 			$this->validateNoSubqueryRangeInOuterProjection($ast);
 			
 			// Step 4b: Validates that a subquery's own projection does not select a bare entity.
-			//           A subquery defines a column-set contract; retrieve(y) erases that contract
-			//           and makes the derived table's schema implicit and unverifiable.
+			//          A subquery defines a column-set contract; retrieve(y) erases that contract
+			//          and makes the derived table's schema implicit and unverifiable.
 			$this->validateNoEntityInSubqueryProjection($ast);
 			
-			// Step 4b2: Validates that the outer projection does not select a bare json source range.
-			//            retrieve(y) where y is a json source produces empty arrays at runtime
-			//            because the engine has no schema to hydrate fields from.
+			// Step 4b2: Validates that the outer projection does not select a bare JSON source range.
+			//           retrieve(y) where y in a JSON source produces empty arrays at runtime
+			//           because the engine has no schema to hydrate fields from.
 			$this->validateNoBareJsonSourceInProjection($ast);
 			
 			// Step 4c: Validates that WHERE conditions only reference fields that subquery ranges
-			//          actually export. A subquery's projection is its contract; reaching into
-			//          unexported fields must be a compile-time error, not a silent patch.
+			//          actually export. A subquery's projection is its contract.
 			$this->validateSubqueryRangeWhereReferences($ast);
 			
 			// Step 4d: Validates that the outer retrieve list only references fields that subquery
@@ -250,6 +252,33 @@
 					"Duplicate range name(s) detected: " . implode(', ', $duplicateNames) .
 					". Each range name must be unique within a query."
 				);
+			}
+		}
+		
+		/**
+		 * Validates that all 'via' clauses were successfully resolved during normalisation.
+		 *
+		 * After normalisation, a valid 'via' clause referencing a relation is transformed
+		 * into an AstExpression containing the resolved join condition. If a 'via' clause
+		 * still holds a raw AstIdentifier at this point, normalisation could not resolve it,
+		 * meaning the property is a column rather than a relation.
+		 *
+		 * @param AstRetrieve $ast The AST to validate
+		 * @throws SemanticException When a 'via' clause references a column instead of a relation
+		 */
+		private function validateViaClauseNormalisationPassed(AstRetrieve $ast): void {
+			foreach ($ast->getRanges() as $range) {
+				// Ranges without a via clause are always valid
+				if ($range->getJoinProperty() === null) {
+					continue;
+				}
+				
+				// A successful normalisation transforms the via AstIdentifier into an AstExpression.
+				// If the join property is still an AstIdentifier, normalisation could not resolve
+				// it as a relation — meaning the property is a plain column, which is not allowed.
+				if ($range->getJoinProperty() instanceof AstIdentifier) {
+					throw new SemanticException("The 'via' property in range '{$range->getName()}' must be a relation, not a column.");
+				}
 			}
 		}
 		

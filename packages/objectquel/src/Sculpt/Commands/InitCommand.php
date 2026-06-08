@@ -38,19 +38,47 @@
 		}
 		
 		/**
+		 * Returns a help text
+		 * @return string
+		 */
+		public function getHelp(): string {
+			return <<<HELP
+DESCRIPTION:
+    Initialize ObjectQuel configuration files in your project.
+
+    Creates the config/ directory if it does not exist, then writes a
+    database.php template that you can edit to match your environment.
+    If database.php already exists it is left untouched.
+
+USAGE:
+    php sculpt quel:init
+
+ARGUMENTS:
+    None
+HELP;
+		}
+		
+		/**
 		 * Execute the configuration initialization process
 		 *
 		 * This method:
 		 * 1. Determines the appropriate project root directory
 		 * 2. Creates the config directory if it doesn't exist
-		 * 3. Copies template configuration files to the project
+		 * 3. Writes template configuration files to the project
 		 * 4. Provides clear next-step instructions to the user
 		 *
 		 * @param ConfigurationManager $config Configuration manager instance
 		 * @return int Exit code (0 for success, 1 for failure)
 		 */
 		public function execute(ConfigurationManager $config): int {
-			// Show an introuctory message
+			// Show an introductory message
+			$this->output->writeLn("");
+			$this->output->writeLn(" ██████╗ ██╗   ██╗███████╗██╗");
+			$this->output->writeLn("██╔═══██╗██║   ██║██╔════╝██║");
+			$this->output->writeLn("██║   ██║██║   ██║█████╗  ██║");
+			$this->output->writeLn("██║▄▄ ██║██║   ██║██╔══╝  ██║");
+			$this->output->writeLn("╚██████╔╝╚██████╔╝███████╗███████╗");
+			$this->output->writeLn(" ╚══▀▀═╝  ╚═════╝ ╚══════╝╚══════╝");
 			$this->output->writeLn("");
 			$this->output->writeLn("Initializing ObjectQuel configuration...");
 			
@@ -68,53 +96,63 @@
 				$this->output->writeLn("Created config directory");
 			}
 			
-			// Copy database configuration templates
-			$success = true;
-			$templateDir = dirname(__FILE__) . "/../../../config";
+			// Write database configuration template
+			$targetPath = $configDir . "/database.php";
 			
-			$filesToCopy = [
-				'database.php' => 'Main database configuration',
-			];
-			
-			foreach ($filesToCopy as $filename => $description) {
-				$targetPath = $configDir . "/" . $filename;
-				$sourcePath = $templateDir . "/" . $filename;
-				
-				if (file_exists($targetPath)) {
-					$this->output->warning("File already exists: {$filename} (skipped)");
-					continue;
-				}
-				
-				if (!file_exists($sourcePath)) {
-					$this->output->error("Template file not found: {$sourcePath}");
-					$success = false;
-					continue;
-				}
-				
-				if (@copy($sourcePath, $targetPath)) {
-					$this->output->success("Created {$filename} - {$description}");
-				} else {
-					$this->output->error("Failed to copy {$filename}");
-					$success = false;
-				}
+			if (file_exists($targetPath)) {
+				$this->output->warning("File already exists: database.php (skipped)");
+				return 0;
 			}
 			
-			if (!$success) {
+			if (file_put_contents($targetPath, $this->getDatabaseTemplate()) === false) {
+				$this->output->error("Failed to write database.php");
 				$this->output->writeLn("");
 				$this->output->error("Configuration initialization completed with errors.");
 				$this->output->writeLn("Please check file permissions and template availability.");
 				return 1;
 			}
 			
-			// Provide clear success feedback and next steps
+			$this->output->success("Created database.php - Main database configuration");
 			$this->output->success("ObjectQuel configuration initialized successfully!");
 			$this->output->writeLn("");
-			$this->output->writeLn("📁 Configuration files created in: {$configDir}");
+			$this->output->writeLn("Configuration files created in: {$configDir}");
 			$this->output->writeLn("");
 			$this->output->writeLn("Next steps:");
 			$this->output->writeLn("1. Edit config/database.php to configure your database connection");
 			$this->output->writeLn("2. Run 'php sculpt make:entity' to create your first entity");
-			
-			return 0; // Success
+			return 0;
+		}
+		
+		/**
+		 * Returns the database configuration template content
+		 * @return string The database.php template content
+		 */
+		private function getDatabaseTemplate(): string {
+			return <<<'PHP'
+<?php
+
+	return [
+		'driver'           => 'mysql',                  // Database driver (mysql, postgresql, sqlite, etc.)
+		'host'             => 'localhost',              // Database server hostname or IP address
+		'database'         => '',                       // Name of the database to connect to
+		'username'         => '',                       // Database username for authentication
+		'password'         => '',                       // Database password for authentication
+		'port'             => 3306,                     // Database server port (3306 is MySQL default)
+		'charset'          => 'utf8mb4',                // Character set for database connection
+		'collation'        => 'utf8mb4_unicode_ci',     // Collation for text comparison and sorting
+		
+		// Entity namespace
+		'entity_namespace' => 'App\\Entities',
+		
+		// Path to the entities folder
+		'entity_path'      => dirname(__FILE__) . '/../src/Entities/',
+		
+		// Path to the proxy folder
+		'proxy_path'       => dirname(__FILE__) . '/../storage/objectquel/proxies/',
+		
+		// Path to the migrations folder
+		'migrations_path'  => dirname(__FILE__) . '/../migrations',
+	];
+PHP;
 		}
 	}

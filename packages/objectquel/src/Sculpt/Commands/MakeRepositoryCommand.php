@@ -1,23 +1,19 @@
 <?php
-	
+
 	namespace Quellabs\ObjectQuel\Sculpt\Commands;
-	
-	use Quellabs\ObjectQuel\Configuration;
-	use Quellabs\ObjectQuel\EntityStore;
-	use Quellabs\ObjectQuel\Sculpt\ServiceProvider;
+
 	use Quellabs\Sculpt\ConfigurationManager;
-	use Quellabs\Sculpt\Console\ConsoleInput;
-	use Quellabs\Sculpt\Console\ConsoleOutput;
-	use Quellabs\Sculpt\Contracts\CommandBase;
 	use Quellabs\Support\ComposerUtils;
 	use RuntimeException;
-	
+
 	/**
-	 * This command creates repository classes that extend the base Repository class
-	 * and are associated with existing entity classes. It includes validation,
-	 * interactive prompts, and proper error handling.
+	 * MakeRepositoryCommand - Create a new repository class for an existing entity
+	 *
+	 * Generates a typed repository class in App\Repositories that extends the base
+	 * Repository class and is bound to an existing entity. The target entity must
+	 * exist before running this command.
 	 */
-	class MakeRepositoryCommand extends CommandBase {
+	class MakeRepositoryCommand extends MakeCommandBase {
 		
 		/** Namespace for generated repository classes */
 		private const string REPOSITORY_NAMESPACE = 'App\\Repositories';
@@ -27,23 +23,6 @@
 		
 		/** Suffix for repository class names */
 		private const string REPOSITORY_SUFFIX = 'Repository';
-		
-		/** Entity store for validating entities */
-		private ?EntityStore $entityStore = null;
-		
-		/** ObjectQuel configuration */
-		private Configuration $configuration;
-		
-		/**
-		 * Initialize the command with required dependencies.
-		 * @param ConsoleInput $input Console input handler
-		 * @param ConsoleOutput $output Console output handler
-		 * @param ServiceProvider $provider Service provider for configuration
-		 */
-		public function __construct(ConsoleInput $input, ConsoleOutput $output, ServiceProvider $provider) {
-			parent::__construct($input, $output, $provider);
-			$this->configuration = $provider->getConfiguration();
-		}
 		
 		/**
 		 * Get the command name for CLI usage.
@@ -67,25 +46,27 @@
 		 */
 		public function getHelp(): string {
 			return <<<HELP
-Usage: make:repository [entity-name] [options]
+DESCRIPTION:
+    Creates a new repository class in the App\Repositories namespace that extends
+    the base Repository class and is bound to an existing entity. The entity must
+    exist before the repository can be generated.
 
-Creates a new repository class in the App\Repository namespace that extends
-the base Repository class and is associated with an existing entity.
+USAGE:
+    php sculpt make:repository [entity] [--force]
 
-Arguments:
-  entity-name    Name of the entity class (e.g., 'User', 'UserEntity', 'Product')
-                 Should match the exact class name as it exists in your codebase
+ARGUMENTS:
+    entity     Optional entity class name. If omitted, you will be prompted.
 
-Options:
-  --force        Overwrite the repository file if it already exists
+OPTIONS:
+    --force    Overwrite the repository file if it already exists
 
-Examples:
-  make:repository User         # Creates repository for User entity
-  make:repository UserEntity   # Creates repository for UserEntity entity
-  make:repository Product --force
+EXAMPLES:
+    php sculpt make:repository User
 
-If no entity name is provided, you will be prompted to enter one.
-The command will verify that the entity class exists before creating the repository.
+NOTES:
+    - The entity class must already exist in the configured entity path
+    - "Entity" and "Repository" suffixes in the input are stripped automatically
+    - Generated file is placed in src/Repositories/
 HELP;
 		}
 		
@@ -96,36 +77,56 @@ HELP;
 		 */
 		public function execute(ConfigurationManager $config): int {
 			try {
-				// Extract the entity name from the configuration
-				$entityName = $this->getEntityName($config);
+				// Ask for entity name
+				$entityName = $config->getPositional(0);
 				
-				// Validate that an entity name was provided
-				if (empty($entityName)) {
-					$this->output->writeLn('Entity name is required.');
+				if ($entityName === null) {
+					$entityName = $this->collectIdentifier("Entity name");
+				} elseif (!$this->isValidPhpIdentifier($entityName)) {
+					$this->output->error("Invalid entity name '{$entityName}'.");
 					return 1;
 				}
 				
-				// Store the original entity name for later use in file generation
-				$originalEntityName = $entityName;
+				// Resolve the actual entity class name as registered in the store.
+				// The user may have typed "User", "UserEntity", or "UserRepository" —
+				// derive the base name first, then probe the store for known conventions.
+				$entityClassName = $this->resolveEntityClassName($entityName);
+				
+				if ($entityClassName === null) {
+					$this->output->writeLn("Entity '{$entityName}' does not exist. Please ensure the entity class exists before creating a repository.");
+					$this->output->writeLn("Available entities can be listed with: php sculpt list:entities");
+					return 1;
+				}
 				
 				// Clean and format the entity name for use in repository class naming
-				$repositoryBaseName = $this->sanitizeEntityName($entityName);
+				$repositoryBaseName = $this->deriveBaseName($entityClassName);
 				
-				// Check if the specified entity actually exists in the system
-				if (!$this->validateEntityExists($originalEntityName)) {
-					return 1;
-				}
+				// Determine the class name
+				$repositoryClass = $repositoryBaseName . self::REPOSITORY_SUFFIX;
 				
 				// Construct the full file path where the repository will be created
-				$repositoryPath = $this->buildRepositoryPath($repositoryBaseName);
+				$repositoryPath = $this->resolveRepositoryPath($repositoryClass);
 				
 				// Check if we should proceed with creation (handles existing files and force flag)
 				if (!$this->shouldCreateRepository($repositoryPath, $config->hasFlag('force'))) {
+					$basename = basename($repositoryPath);
+					
+					$this->output->writeLn("Repository '{$basename}' already exists at: {$repositoryPath}");
+					$this->output->writeLn("Use --force flag to overwrite the existing file.");
+					
 					return 0;
 				}
 				
-				// Generate and write the repository file to disk
-				$this->createRepositoryFile($originalEntityName, $repositoryBaseName, $repositoryPath);
+				// Generate content
+				$repositoryContent = $this->generateRepositoryContent($entityClassName, $repositoryClass);
+				
+				// Make target directory if it does not already exist
+				$this->ensureDirectoryExists(dirname($repositoryPath));
+				
+				// Write the data. If that failed, throw an error
+				if (file_put_contents($repositoryPath, $repositoryContent) === false) {
+					throw new RuntimeException("Failed to create repository file: {$repositoryPath}");
+				}
 				
 				// Display success message with the created repository name and location
 				$this->output->writeLn("Repository '{$repositoryBaseName}" . self::REPOSITORY_SUFFIX . "' created successfully at: {$repositoryPath}");
@@ -135,77 +136,22 @@ HELP;
 				
 			} catch (RuntimeException $e) {
 				// Handle expected runtime errors (e.g., file system issues, validation failures)
-				$this->output->writeLn("Error: {$e->getMessage()}");
+				$this->output->error("Error: {$e->getMessage()}");
 				return 1;
 			} catch (\Throwable $e) {
 				// Catch any other unexpected exceptions to prevent crashes
-				$this->output->writeLn("Unexpected error: {$e->getMessage()}");
+				$this->output->error("Unexpected error: {$e->getMessage()}");
 				return 1;
 			}
 		}
 		
 		/**
-		 * Get entity name from arguments or prompt user.
-		 * @param ConfigurationManager $config Command configuration
-		 * @return string Entity name
-		 */
-		private function getEntityName(ConfigurationManager $config): string {
-			// Fetch entity name from cli
-			$entityName = $config->getPositional(0);
-			
-			// If not given, ask user for the entity name explicitly
-			if (!is_string($entityName) || $entityName === "") {
-				$entityName = $this->input->ask('Enter the entity name (without Entity suffix)') ?? '';
-			}
-			
-			return trim($entityName);
-		}
-		
-		/**
-		 * Clean and format the entity name for repository naming.
-		 * Removes both 'Repository' and 'Entity' suffixes.
-		 * @param string $entityName Raw entity name input
-		 * @return string Cleaned entity name for repository base name
-		 */
-		private function sanitizeEntityName(string $entityName): string {
-			// Remove 'Repository' suffix if provided
-			if (str_ends_with($entityName, self::REPOSITORY_SUFFIX)) {
-				$entityName = substr($entityName, 0, -strlen(self::REPOSITORY_SUFFIX));
-			}
-			
-			// Remove 'Entity' suffix if provided
-			if (str_ends_with($entityName, 'Entity')) {
-				$entityName = substr($entityName, 0, -strlen('Entity'));
-			}
-			
-			// Capitalize first letter
-			return ucfirst($entityName);
-		}
-		
-		/**
-		 * Check if the entity class exists.
-		 * @param string $entityName Entity class name to validate
-		 * @return bool True if exists, false otherwise
-		 */
-		private function validateEntityExists(string $entityName): bool {
-			$entityStore = $this->getEntityStore();
-			
-			if (!$entityStore->exists($entityName)) {
-				$this->output->writeLn("Entity '{$entityName}' does not exist. Please ensure the entity class exists before creating a repository.");
-				$this->output->writeLn("Available entities can be listed with: php sculpt list:entities");
-				return false;
-			}
-			
-			return true;
-		}
-		
-		/**
-		 * Build the complete file path for the repository.
+		 * Resolves the complete file path for the repository.
 		 * @param string $repositoryBaseName Base name for repository (without suffix)
 		 * @return string Complete file path
 		 */
-		private function buildRepositoryPath(string $repositoryBaseName): string {
-			$fileName = $repositoryBaseName . self::REPOSITORY_SUFFIX . '.php';
+		private function resolveRepositoryPath(string $repositoryBaseName): string {
+			$fileName = $repositoryBaseName . '.php';
 			return ComposerUtils::getProjectRoot() . self::REPOSITORY_DIRECTORY . $fileName;
 		}
 		
@@ -216,59 +162,28 @@ HELP;
 		 * @return bool True if should create, false to skip
 		 */
 		private function shouldCreateRepository(string $repositoryPath, bool $force): bool {
+			// Always create when file exists
 			if (!file_exists($repositoryPath)) {
 				return true;
 			}
 			
+			// Only overwrite when instructed to do so
 			if ($force) {
 				$this->output->writeLn("Overwriting existing repository file: {$repositoryPath}");
 				return true;
 			}
 			
-			$basename = basename($repositoryPath);
-			$this->output->writeLn("Repository '{$basename}' already exists at: {$repositoryPath}");
-			$this->output->writeLn("Use --force flag to overwrite the existing file.");
-			
 			return false;
-		}
-		
-		/**
-		 * Create the repository file with generated content.
-		 * @param string $originalEntityName Original entity name for template
-		 * @param string $repositoryBaseName Base name for repository class
-		 * @param string $repositoryPath File path to create
-		 */
-		private function createRepositoryFile(string $originalEntityName, string $repositoryBaseName, string $repositoryPath): void {
-			$this->ensureDirectoryExists(dirname($repositoryPath));
-			
-			$repositoryContent = $this->generateRepositoryContent($originalEntityName, $repositoryBaseName);
-			
-			if (file_put_contents($repositoryPath, $repositoryContent) === false) {
-				throw new RuntimeException("Failed to create repository file: {$repositoryPath}");
-			}
-		}
-		
-		/**
-		 * Get or create the EntityStore instance.
-		 * @return EntityStore Entity store for validation
-		 */
-		private function getEntityStore(): EntityStore {
-			if ($this->entityStore === null) {
-				$this->entityStore = new EntityStore($this->configuration);
-			}
-			
-			return $this->entityStore;
 		}
 		
 		/**
 		 * Generate repository class content from template.
 		 * @param string $originalEntityName Original entity name for import
-		 * @param string $repositoryBaseName Base name for repository class
+		 * @param string $repositoryClass Class name
 		 * @return string Complete PHP class content
 		 */
-		private function generateRepositoryContent(string $originalEntityName, string $repositoryBaseName): string {
+		private function generateRepositoryContent(string $originalEntityName, string $repositoryClass): string {
 			$namespace = self::REPOSITORY_NAMESPACE;
-			$repositoryClass = $repositoryBaseName . self::REPOSITORY_SUFFIX;
 			
 			return <<<PHP
 <?php
@@ -291,19 +206,5 @@ HELP;
         }
     }
 PHP;
-		}
-		
-		/**
-		 * Ensure directory exists for file creation.
-		 * @param string $directory Directory path to create
-		 */
-		private function ensureDirectoryExists(string $directory): void {
-			if (is_dir($directory)) {
-				return;
-			}
-			
-			if (!mkdir($directory, 0755, true) && !is_dir($directory)) {
-				throw new RuntimeException("Failed to create directory: {$directory}");
-			}
 		}
 	}

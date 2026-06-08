@@ -2,7 +2,9 @@
 	
 	namespace Quellabs\ObjectQuel\Serialization\Serializers;
 	
+	use Quellabs\ObjectQuel\EntityStore;
 	use Quellabs\ObjectQuel\EntityManager;
+	use Quellabs\ObjectQuel\Annotations\Orm\InverseOf;
 	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
 	use Quellabs\ObjectQuel\Exception\QuelException;
 	use Quellabs\ObjectQuel\Serialization\UrlBuilders\UrlBuilderInterface;
@@ -14,7 +16,7 @@
 	 */
 	class JsonApiSerializer extends Serializer {
 		
-		/** @var EntityManager Entity manager for database operations and entity metadata */
+		/** @var EntityManager Entity manager for database operations */
 		private EntityManager $entityManager;
 		
 		/** @var UrlBuilderInterface URL builder for generating JSON:API compliant URLs */
@@ -42,31 +44,6 @@
 			
 			// Convert namespace separators to forward slashes, then get basename
 			return basename(str_replace('\\', '/', $class));
-		}
-		
-		/**
-		 * Convert entity class name to JSON:API resource type format.
-		 *
-		 * Transforms a fully-qualified entity class name to camelCase and removes
-		 * the "Entity" suffix if present. This creates consistent resource type
-		 * names for the JSON:API specification.
-		 *
-		 * Examples:
-		 * - App\Entity\UserEntity -> user
-		 * - App\Model\BlogPost -> blogPost
-		 *
-		 * @param string $entityName Fully qualified entity class name
-		 * @return string Normalized resource type name in camelCase
-		 */
-		protected function resolveProxyClass(string $entityName): string {
-			// Remove namespace from class name
-			$removedNamespace = $this->class_basename($entityName);
-			
-			// Remove "Entity" suffix if present (common naming convention)
-			$withoutEntitySuffix = preg_replace('/Entity$/', '', $removedNamespace) ?? $removedNamespace;
-			
-			// Convert to camelCase (first letter lowercase)
-			return lcfirst($withoutEntitySuffix);
 		}
 		
 		/**
@@ -118,14 +95,14 @@
 			$metadata = $this->entityStore->getMetadata($entity);
 			
 			// Get all relationship mappings from entity metadata
-			// Merge one-to-many and one-to-one dependencies
+			// Merge InverseOf and owning-side OneToOne dependencies
 			$relationships = array_merge(
-				$metadata->getOneToManyDependencies(),
+				$metadata->getInverseOfRelations(),
 				$metadata->getOneToOneDependencies()
 			);
 			
 			$result = [];
-			$entityName = $this->resolveProxyClass(get_class($entity));
+			$entityName = $this->entityStore->normalizeEntityClass(get_class($entity));
 			
 			// Create composite ID string for URL generation
 			$entityId = implode("_", array_map('strval', $this->getIdentifierValues($entity)));
@@ -141,13 +118,19 @@
 				}
 				
 				// Get the target entity's resource type name
-				$relationshipEntityName = $this->resolveProxyClass($targetEntity);
+				$relationshipEntityName = $this->entityStore->normalizeEntityClass($targetEntity);
 				
-				// Query for all related entities using the mapped relationship
-				// Uses the inverse side property (mappedBy) to find related records
+				// Resolve the FK property name: InverseOf uses via(), OneToOne uses inversedBy()
+				if ($relationship instanceof InverseOf) {
+					$fkProperty = $relationship->getRelation();
+				} else {
+					$fkProperty = $relationship->getReferencedColumn();
+				}
+				
+				// Query for all related entities using the FK property
 				$relationshipEntities = $this->entityManager->findBy(
 					$targetEntity,
-					[$relationship->getMappedBy() => $identifierValue]
+					[$fkProperty => $identifierValue]
 				);
 				
 				// Skip empty relationships to keep response clean
@@ -205,7 +188,7 @@
 		 * @throws QuelException
 		 */
 		public function serialize(object $entity): array {
-			$entityName = $this->resolveProxyClass(get_class($entity));
+			$entityName = $this->entityStore->normalizeEntityClass(get_class($entity));
 			$metadata = $this->entityStore->getMetadata($entityName);
 			
 			// Validate that entity has proper identification

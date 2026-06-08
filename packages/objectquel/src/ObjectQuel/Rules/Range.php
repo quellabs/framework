@@ -2,14 +2,14 @@
 	
 	namespace Quellabs\ObjectQuel\ObjectQuel\Rules;
 	
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRange;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabase;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabaseSubquery;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeJsonSource;
 	use Quellabs\ObjectQuel\ObjectQuel\Lexer;
+	use Quellabs\ObjectQuel\ObjectQuel\Token;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRange;
 	use Quellabs\ObjectQuel\ObjectQuel\LexerException;
 	use Quellabs\ObjectQuel\ObjectQuel\ParserException;
-	use Quellabs\ObjectQuel\ObjectQuel\Token;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabase;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeJsonSource;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabaseSubquery;
 	
 	/**
 	 * Class Range
@@ -32,7 +32,6 @@
 		public function __construct(Lexer $lexer) {
 			$this->lexer = $lexer;
 		}
-		
 		
 		/**
 		 * Parse a complete 'RANGE' clause in the ObjectQuel query.
@@ -58,23 +57,22 @@
 			
 			// Check if the next token is an opening parenthesis; if so it's a subquery specification
 			if ($this->lexer->lookahead() == Token::ParenthesesOpen) {
-				return $this->parseQuery($alias->getStringValue());
+				return $this->parseSubqueryRange($alias->getStringValue());
 			}
 			
 			// Check if the next token is 'JSON' to determine the type of data source
 			if ($this->lexer->optionalMatch(Token::JsonSource)) {
-				return $this->parseJson($alias->getStringValue());
+				return $this->parseJsonRange($alias->getStringValue());
 			}
 			
 			// Otherwise, treat it as a database entity source
-			return $this->parseEntity($alias);
+			return $this->parseEntityRange($alias);
 		}
 		
 		/**
 		 * Parse ranges
 		 * @return AstRange[]
-		 * @throws LexerException
-		 * @throws ParserException
+		 * @throws LexerException|ParserException
 		 */
 		protected function parseRanges(): array {
 			$ranges = [];
@@ -95,7 +93,7 @@
 		 * @throws LexerException If lexer encounters invalid tokens
 		 * @throws ParserException If syntax structure is invalid
 		 */
-		private function parseQuery(string $alias): AstRangeDatabaseSubquery {
+		private function parseSubqueryRange(string $alias): AstRangeDatabaseSubquery {
 			// Match opening parenthesis - start of query expression
 			$this->lexer->match(Token::ParenthesesOpen);
 			
@@ -118,9 +116,9 @@
 		 * Format: RANGE OF alias IS Entity[\SubEntity] [VIA condition]
 		 * @param Token $alias The token containing the alias identifier
 		 * @return AstRangeDatabase AST node representing a database entity source
-		 * @throws LexerException|ParserException If parsing fails
+		 * @throws LexerException
 		 */
-		private function parseEntity(Token $alias): AstRangeDatabase {
+		private function parseEntityRange(Token $alias): AstRangeDatabase {
 			// Match and consume an 'Identifier' token for the entity name
 			$entityName = $this->lexer->match(Token::Identifier)->getStringValue();
 			
@@ -134,10 +132,9 @@
 			
 			if ($this->lexer->lookahead() == Token::Via) {
 				$this->lexer->match(Token::Via);
-				
-				// Use the LogicalExpression rule to parse the condition after VIA
-				$logicalExpressionRule = new LogicalExpression($this->lexer);
-				$viaIdentifier = $logicalExpressionRule->parse();
+
+				$logicalExpressionRule = new ArithmeticExpression($this->lexer);
+				$viaIdentifier = $logicalExpressionRule->parsePropertyChain();
 			}
 			
 			// Match an optional semicolon at the end of the statement
@@ -167,10 +164,9 @@
 		 *
 		 * @param string $alias The alias
 		 * @return AstRangeJsonSource AST node representing a JSON data source
-		 * @throws LexerException If token matching fails
-		 * @throws ParserException If a named argument is unrecognised or duplicated
+		 * @throws LexerException|ParserException
 		 */
-		private function parseJson(string $alias): AstRangeJsonSource {
+		private function parseJsonRange(string $alias): AstRangeJsonSource {
 			// Consume the opening parenthesis
 			$this->lexer->match(Token::ParenthesesOpen);
 			
@@ -207,8 +203,7 @@
 		 *
 		 * @param string $alias The range alias
 		 * @return AstRangeJsonSource
-		 * @throws LexerException
-		 * @throws ParserException
+		 * @throws LexerException|ParserException
 		 */
 		private function parseJsonNamedArguments(string $alias): AstRangeJsonSource {
 			$file = null;

@@ -10,10 +10,10 @@
 	use Quellabs\Support\ComposerUtils;
 	
 	/**
-	 * Command class for listing scheduled tasks
+	 * SchedulerListCommand - List all scheduled tasks
 	 *
-	 * This command discovers and displays all scheduled tasks in the system.
-	 * It uses a file-based storage system to retrieve task scheduling information.
+	 * Discovers and displays all scheduled tasks registered in the application,
+	 * sorted by schedule frequency (most frequent first) and then by name.
 	 */
 	class SchedulerListCommand extends CommandBase {
 		
@@ -22,7 +22,7 @@
 		 * @return string The command signature "schedule:list"
 		 */
 		public function getSignature(): string {
-			return "schedule:list";
+			return "scheduler:list";
 		}
 		
 		/**
@@ -31,6 +31,33 @@
 		 */
 		public function getDescription(): string {
 			return "Lists all scheduled tasks with their schedules";
+		}
+		
+		/**
+		 * Returns extended help text displayed when --help is passed.
+		 * @return string
+		 */
+		public function getHelp(): string {
+			return <<<HELP
+DESCRIPTION:
+    Discovers and displays all scheduled tasks registered in the application.
+    Tasks are sorted by schedule frequency (most frequent first), then
+    alphabetically by name within the same frequency group.
+
+USAGE:
+    php sculpt scheduler:list
+
+EXAMPLES:
+    php sculpt scheduler:list
+        Prints a table of all tasks with their name, description, and schedule
+
+NOTES:
+    - Tasks are loaded from the directory configured under 'scheduler_directory',
+      defaulting to src/Tasks/
+    - Schedule expressions can be standard cron syntax or shorthand such as
+      @hourly, @daily, @weekly, @monthly, and @yearly
+    - State files are read from storage/scheduler/
+HELP;
 		}
 		
 		/**

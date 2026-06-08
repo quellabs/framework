@@ -8,6 +8,13 @@
 	use Symfony\Component\HttpFoundation\Request;
 	use Quellabs\AnnotationReader\Exception\AnnotationReaderException;
 	
+	/**
+	 * MatchRoutesCommand - Test which routes match a given URL and HTTP method
+	 *
+	 * Resolves a path against the application's registered routes and displays
+	 * all matches in a table, including the controller action and any attached
+	 * aspects. Defaults to GET when no HTTP method is specified.
+	 */
 	class MatchRoutesCommand extends RoutesBase {
 		
 		/**
@@ -15,7 +22,7 @@
 		 * @return string
 		 */
 		public function getSignature(): string {
-			return "route:match";
+			return "routes:match";
 		}
 		
 		/**
@@ -24,6 +31,38 @@
 		 */
 		public function getDescription(): string {
 			return "Test which route matches a given URL/path";
+		}
+		
+		/**
+		 * Returns extended help text displayed when --help is passed.
+		 * @return string
+		 */
+		public function getHelp(): string {
+			return <<<HELP
+DESCRIPTION:
+    Resolves a path against the application's registered routes and displays all
+    matches in a table with their HTTP methods, controller action, and aspects.
+    When no HTTP method is given, GET is assumed.
+
+USAGE:
+    php sculpt routes:match <path> [method]
+
+ARGUMENTS:
+    method    HTTP method to match against (GET, POST, PUT, PATCH, DELETE)
+              Defaults to GET when omitted
+    path      The URL path to match (e.g. /users/42)
+
+EXAMPLES:
+    php sculpt routes:match /users/42
+        Matches /users/42 using GET
+
+    php sculpt routes:match /users POST
+        Matches /users using POST
+
+NOTES:
+    - Aspects are shown as a comma-separated list in brackets
+    - An empty result table means no route matched the given path and method
+HELP;
 		}
 		
 		/**
@@ -69,29 +108,15 @@
 		 * @return Request|null Returns null if validation fails
 		 */
 		private function createRequestFromConfig(ConfigurationManager $config): ?Request {
-			$firstParam = $config->getPositional(0);
+			$path = $config->getPositional(0);
 			
-			if (empty($firstParam)) {
-				$this->output->error("Path parameter is required");
+			if (empty($path)) {
+				$this->output->error("Path parameter is required.");
 				return null;
 			}
 			
-			// List of all http methods
-			$httpMethods = ['GET', 'POST', 'DELETE', 'PUT', 'PATCH'];
+			$method = strtoupper($config->getPositional(1) ?? 'GET');
 			
-			// First parameter is HTTP method, second is the path
-			if (in_array(strtoupper($firstParam), $httpMethods, true)) {
-				$path = $config->getPositional(1);
-				
-				if (empty($path)) {
-					$this->output->error("Path parameter is required when HTTP method is specified");
-					return null;
-				}
-				
-				return Request::create($path, strtoupper($firstParam));
-			}
-			
-			// First parameter is the path, default to GET
-			return Request::create($firstParam);
+			return Request::create($path, $method);
 		}
 	}

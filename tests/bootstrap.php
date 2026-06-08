@@ -18,7 +18,7 @@
 	
 	// Proxy directory — runtime-generated proxies are written here and reused
 	// across tests, avoiding repeated eval() calls and the uniqid() collision risk.
-	$proxyDir = sys_get_temp_dir() . '/objectquel_test_proxies';
+	$proxyDir = __DIR__ . '/../storage/unit_test_proxies';
 	
 	if (!is_dir($proxyDir)) {
 		mkdir($proxyDir, 0755, true);

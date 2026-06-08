@@ -13,6 +13,11 @@
 		private static ?string $projectRootPathCache = null;
 		
 		/**
+		 * @var string|null Cached vendor directory
+		 */
+		private static ?string $projectVendorPathCache = null;
+		
+		/**
 		 * Cache of parsed composer.json files
 		 * @var array<string, array<string, mixed>|null>
 		 */
@@ -68,6 +73,32 @@
 			}
 			
 			throw new RuntimeException('Could not find Composer autoloader');
+		}
+		
+		/**
+		 * Get Composer vendor directory
+		 * @return string|null
+		 */
+		public static function getVendorDirectory(): ?string {
+			// Return the cached result if available to avoid repeated filesystem operations
+			if (self::$projectVendorPathCache !== null) {
+				return self::$projectVendorPathCache;
+			}
+			
+			try {
+				$autoloader = self::getComposerAutoloader();
+				
+				$reflection = new \ReflectionObject($autoloader);
+				$fileName   = $reflection->getFileName();
+				
+				if ($fileName === false) {
+					return null;
+				}
+				
+				return self::$projectVendorPathCache = dirname($fileName);
+			} catch (\Throwable) {
+				return null;
+			}
 		}
 		
 		/**
@@ -219,16 +250,16 @@
 		 * @return string|null Path to installed.json if found, null otherwise
 		 */
 		public static function getComposerInstalledJsonPath(?string $startDirectory = null): ?string {
-			// Find the project root to navigate to vendor/composer from there
-			$projectRoot = self::getProjectRoot($startDirectory);
+			// Find the location of the vendor directory
+			$vendorDirectory = self::getVendorDirectory();
 			
 			// If we couldn't find the project root, we can't locate the file
-			if ($projectRoot === null) {
+			if ($vendorDirectory === null) {
 				return null;
 			}
 			
 			// Construct the path to the legacy JSON format file
-			$jsonPath = $projectRoot . DIRECTORY_SEPARATOR . 'vendor' . DIRECTORY_SEPARATOR . 'composer' . DIRECTORY_SEPARATOR . 'installed.json';
+			$jsonPath = $vendorDirectory . DIRECTORY_SEPARATOR . 'composer' . DIRECTORY_SEPARATOR . 'installed.json';
 			
 			// Return the path if the file exists
 			return file_exists($jsonPath) ? $jsonPath : null;

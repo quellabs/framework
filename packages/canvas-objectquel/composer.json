@@ -30,7 +30,7 @@
   },
   "require": {
     "quellabs/canvas-database": "1.*",
-    "quellabs/objectquel": "1.*",
+    "quellabs/objectquel": "2.*",
     "quellabs/support": "*"
   },
   "autoload": {

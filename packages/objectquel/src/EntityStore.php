@@ -120,10 +120,9 @@
 			
 			// Fetch builder
 			$this->metadataBuilder = new EntityMetadataBuilder(
+				$this,
 				$this->annotationReader,
 				$this->reflectionHandler,
-				$this->proxyNamespace,
-				$this->entityNamespace
 			);
 			
 			// Discover and register all entities
@@ -186,21 +185,21 @@
 		 */
 		public function getMetadata(string|object $entity): EntityMetadataRecord {
 			// Resolve entity name to a
-			$className = $this->resolveProxyClass($entity);
+			$className = $this->normalizeEntityClass($entity);
 			
 			// Return cached metadata if available
-			// Otherwise build and cache the metadata
-			if (!isset($this->metadataCache[$className])) {
-				// Check that the given class actually exists
-				if (!class_exists($className)) {
-					throw new EntityResolutionException("Invalid entity class: {$className}");
-				}
-				
-				// Add metadata to cache
-				$this->metadataCache[$className] = $this->metadataBuilder->build($className);
+			if (isset($this->metadataCache[$className])) {
+				return $this->metadataCache[$className];
 			}
 			
-			return $this->metadataCache[$className];
+			// Otherwise build and cache the metadata
+			// Check that the given class actually exists
+			if (!class_exists($className)) {
+				throw new EntityResolutionException("Invalid entity class: {$className}");
+			}
+				
+			// Add metadata to cache and return
+			return $this->metadataCache[$className] = $this->metadataBuilder->build($className);
 		}
 		
 		/**
@@ -211,7 +210,7 @@
 		public function exists(string|object $entity): bool {
 			try {
 				// Determine the class name of the entity
-				$normalizedClass = $this->resolveProxyClass($entity);
+				$normalizedClass = $this->normalizeEntityClass($entity);
 				
 				// Check that the class exists
 				if (!class_exists($normalizedClass)) {
@@ -240,7 +239,7 @@
 		 * @return class-string Normalized, fully qualified class name
 		 * @throws EntityResolutionException
 		 */
-		public function resolveProxyClass(string|object $entity): string {
+		public function normalizeEntityClass(string|object $entity): string {
 			// Determine the class name of the entity
 			if ($entity instanceof \ReflectionClass) {
 				$className = $entity->getName();
@@ -313,7 +312,7 @@
 		 */
 		public function getDependentEntities(string|object $entity): array {
 			// Resolve proxy classes to their parent entity class
-			$normalizedClass = $this->resolveProxyClass($entity);
+			$normalizedClass = $this->normalizeEntityClass($entity);
 			
 			// Filter the dependency graph to entities that list $normalizedClass as a dependency,
 			// then return their class names. array_keys on array<class-string, ...> yields array<int, class-string>.
@@ -326,8 +325,8 @@
 		/**
 		 * Resolves the back-reference property name on the target entity for a ManyToOne or OneToOne relation.
 		 *
-		 * For OneToOne, inversedBy and mappedBy are direct property names on the target entity,
-		 * returned as-is. If neither is set, the target entity's primary key is used as a fallback.
+		 * For OneToOne, inversedBy is the primary key property on the target entity that the
+		 * foreign key column points to. If not set, the target entity's primary key is used as a fallback.
 		 *
 		 * For ManyToOne, inversedBy is a direct property name on the target entity. If absent,
 		 * the target entity's primary key is used as a fallback.
@@ -342,16 +341,10 @@
 			// Fetch metadata for entity
 			$metadata = $this->getMetadata($relation->getTargetEntity());
 			
-			// OneToOne: return inversedBy or mappedBy as-is, falling back to the primary key
-			if ($relation instanceof OneToOne) {
-				return $relation->getInversedBy()
-					?? $relation->getMappedBy()
-					?? $metadata->getPrimaryKey();
-			}
-			
+			// OneToOne: return inversedBy, falling back to the primary key
 			// ManyToOne: inversedBy is a direct property name on the target entity.
 			// If absent, fall back to the target entity's primary key.
-			return $relation->getInversedBy() ?? $metadata->getPrimaryKey();
+			return $relation->getReferencedColumn() ?? $metadata->getPrimaryKey();
 		}
 		
 		// ==================== Private Helper Methods ====================
@@ -407,16 +400,14 @@
 					// These represent foreign key relationships where this entity depends on another
 					$dependencies = [];
 					foreach ($metadata->manyToOneRelations as $relation) {
-						$dependencies[] = $this->resolveProxyClass($relation->getTargetEntity());
+						$dependencies[] = $this->normalizeEntityClass($relation->getTargetEntity());
 					}
 					
 					// Add OneToOne dependencies (owning side only)
-					// Only include OneToOne relations where this entity owns the relationship
-					// (indicated by the inversedBy property being set)
+					// All stored OneToOne relations are owning-side by definition — the non-owning
+					// side is declared with @InverseOf and not stored in oneToOneRelations.
 					foreach ($metadata->oneToOneRelations as $relation) {
-						if (!empty($relation->getInversedBy())) {
-							$dependencies[] = $this->resolveProxyClass($relation->getTargetEntity());
-						}
+						$dependencies[] = $this->normalizeEntityClass($relation->getTargetEntity());
 					}
 					
 					// Remove duplicates and store in the dependency graph

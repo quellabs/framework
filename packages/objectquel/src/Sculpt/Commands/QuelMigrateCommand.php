@@ -5,7 +5,6 @@
 	use Phinx\Config\Config;
 	use Phinx\Migration\Manager;
 	use Phinx\Migration\MigrationInterface;
-	use Quellabs\Contracts\Discovery\ProviderInterface;
 	use Quellabs\ObjectQuel\Sculpt\ServiceProvider;
 	use Quellabs\Sculpt\Contracts\CommandBase;
 	use Quellabs\Sculpt\ConfigurationManager;
@@ -15,7 +14,10 @@
 	use Symfony\Component\Console\Output\BufferedOutput;
 	
 	/**
-	 * ExecuteMigrationsCommand - CLI command for managing database migrations
+	 * QuelMigrateCommand - Run, roll back, or check the status of database migrations
+	 *
+	 * Wraps Phinx's migration manager to provide a unified migrate command with
+	 * interactive confirmation, dry-run support, and rollback control.
 	 */
 	class QuelMigrateCommand extends CommandBase {
 		
@@ -30,6 +32,68 @@
 		public function __construct(ConsoleInput $input, ConsoleOutput $output, ServiceProvider $provider) {
 			parent::__construct($input, $output, $provider);
 			$this->environment = 'development';
+		}
+		
+		/**
+		 * Get the command signature/name for registration in the CLI
+		 * @return string Command signature
+		 */
+		public function getSignature(): string {
+			return "quel:migrate";
+		}
+		
+		/**
+		 * Get a short description of what the command does
+		 * @return string Command description
+		 */
+		public function getDescription(): string {
+			return "Manage database migrations: run, rollback, or check status.";
+		}
+		
+		/**
+		 * Get detailed help information for the command
+		 * @return string Command help text
+		 */
+		public function getHelp(): string {
+			return <<<HELP
+DESCRIPTION:
+    Manages database migrations using Phinx under the hood. Supports running
+    pending migrations, rolling back applied ones, and inspecting current status.
+    Prompts for confirmation before making any changes unless --force is passed.
+
+USAGE:
+    php sculpt quel:migrate [options]
+
+OPTIONS:
+    --rollback            Roll back migrations instead of running them
+    --status              Show migration status without making any changes
+    --target=<version>    Target a specific migration version (run or rollback)
+    --steps=<number>      Number of migrations to roll back (default: 1)
+    --dry-run, -d         Preview what would happen without applying any changes
+    --force, -f           Skip confirmation prompts (useful for CI/CD pipelines)
+
+EXAMPLES:
+    php sculpt quel:migrate
+        Run all pending migrations with confirmation prompt
+
+    php sculpt quel:migrate --force
+        Run all pending migrations without confirmation
+
+    php sculpt quel:migrate --rollback
+        Roll back the most recent migration with confirmation
+
+    php sculpt quel:migrate --rollback --steps=3
+        Roll back the last 3 migrations with confirmation
+
+    php sculpt quel:migrate --target=20230415000000
+        Migrate up or down to a specific version with confirmation
+
+    php sculpt quel:migrate --status
+        Show which migrations have been applied and which are pending
+
+    php sculpt quel:migrate --dry-run
+        Preview pending migrations without applying them
+HELP;
 		}
 		
 		/**
@@ -83,52 +147,6 @@
 		}
 		
 		/**
-		 * Get the command signature/name for registration in the CLI
-		 * @return string Command signature
-		 */
-		public function getSignature(): string {
-			return "quel:migrate";
-		}
-		
-		/**
-		 * Get a short description of what the command does
-		 * @return string Command description
-		 */
-		public function getDescription(): string {
-			return "Manage database migrations: run, rollback, or check status.";
-		}
-		
-		/**
-		 * Get detailed help information for the command
-		 * @return string Command help text
-		 */
-		public function getHelp(): string {
-			return <<<HELP
-Manages database migrations for your application. Makes use of Phinx under the hood.
-
-Usage:
-  quel:migrate [options]
-
-Options:
-  --rollback           Roll back migrations instead of running them
-  --status             Show migration status instead of running migrations
-  --target=<version>   Target a specific migration version
-  --steps=<number>     Number of migrations to roll back (default: 1)
-  --dry-run, -d        Run in dry-run mode without making actual database changes
-  --force, -f          Skip confirmation prompts (useful for CI/CD pipelines)
-
-Examples:
-  vendor/bin/sculpt quel:migrate                          # Run all pending migrations (with confirmation)
-  vendor/bin/sculpt quel:migrate --force                  # Run all pending migrations without confirmation
-  vendor/bin/sculpt quel:migrate --rollback               # Roll back the most recent migration (with confirmation)
-  vendor/bin/sculpt quel:migrate --rollback --steps=3     # Roll back the last 3 migrations (with confirmation)
-  vendor/bin/sculpt quel:migrate --status                 # Show migration status
-  vendor/bin/sculpt quel:migrate --target=20230415000000  # Migrate to a specific version (with confirmation)
-  vendor/bin/sculpt quel:migrate --dry-run                # Preview migrations without applying them
-HELP;
-		}
-		
-		/**
 		 * Prepare input arguments for Phinx commands
 		 * @param ConfigurationManager $config
 		 * @return array<string, bool>
@@ -137,7 +155,7 @@ HELP;
 			$args = [];
 			
 			// Add dry-run flag if specified
-			if ($config->hasFlag('dry-run') || $config->hasFlag('d')) {
+			if ($this->isDryRun($config)) {
 				$args['--dry-run'] = true;
 			}
 			
@@ -157,7 +175,9 @@ HELP;
 			$adapter = $manager->getEnvironment($this->environment)->getAdapter();
 			$versions = $adapter->getVersions();
 			
-			// Filter to get only pending migrations
+			// Filter to get only pending migrations.
+			// ARRAY_FILTER_USE_KEY means $version is the array key (the version timestamp integer),
+			// not the MigrationInterface value.
 			return array_filter($migrations, function ($version) use ($versions) {
 				return !in_array($version, $versions);
 			}, ARRAY_FILTER_USE_KEY);
@@ -188,7 +208,7 @@ HELP;
 			
 			// If in dry-run mode, we can proceed without confirmation
 			// Dry-run will only display what would happen without making actual changes
-			if ($config->hasFlag('dry-run') || $config->hasFlag('d')) {
+			if ($this->isDryRun($config)) {
 				return true;
 			}
 			
@@ -231,7 +251,7 @@ HELP;
 			
 			// Check if this is a dry run (simulation only)
 			// This is useful for previewing what changes will be made without actually applying them
-			if ($config->hasFlag('dry-run') || $config->hasFlag('d')) {
+			if ($this->isDryRun($config)) {
 				$this->output->writeLn("Dry run mode - no database changes will be made.");
 			}
 			
@@ -255,15 +275,15 @@ HELP;
 		
 		/**
 		 * Roll back migrations
-		 * @param Manager $manager
-		 * @param ConfigurationManager $config
-		 * @return int
+		 * @param Manager $manager Migration Manager responsible for executing rollbacks
+		 * @param ConfigurationManager $config Configuration with runtime options and flags
+		 * @return int Exit code (0 for success)
 		 */
 		private function performRollback(Manager $manager, ConfigurationManager $config): int {
 			$steps = $config->getAsInt('steps', 1);
 			$target = $config->getAsString('target');
 			$force = $config->hasFlag('force') || $config->hasFlag('f');
-			$isDryRun = $config->hasFlag('dry-run') || $config->hasFlag('d');
+			$isDryRun = $this->isDryRun($config);
 			
 			// If steps > 1 and no explicit target, resolve the target version ourselves.
 			// Phinx's Manager::rollback() has no steps parameter — it only accepts a target version.
@@ -319,8 +339,8 @@ HELP;
 		
 		/**
 		 * Show migration status
-		 * @param Manager $manager
-		 * @return int
+		 * @param Manager $manager Migration Manager used to retrieve and print status
+		 * @return int Exit code (0 for success)
 		 */
 		private function showStatus(Manager $manager): int {
 			// Show status
@@ -329,5 +349,14 @@ HELP;
 			// Instead of printing directly, capture the output from Phinx
 			$manager->printStatus($this->environment);
 			return 0;
+		}
+		
+		/**
+		 * Determine whether the command is running in dry-run mode
+		 * @param ConfigurationManager $config Configuration with runtime options and flags
+		 * @return bool True if --dry-run or -d flag is set
+		 */
+		private function isDryRun(ConfigurationManager $config): bool {
+			return $config->hasFlag('dry-run') || $config->hasFlag('d');
 		}
 	}

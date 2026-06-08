@@ -41,16 +41,16 @@
 	 *
 	 * The ORM relationship types supported by ObjectQuel.
 	 *
-	 * @phpstan-type OrmRelationshipType 'OneToOne'|'OneToMany'|'ManyToOne'
+	 * @phpstan-type OrmRelationshipType 'OneToOne'|'InverseOf'|'ManyToOne'
 	 *
 	 * Return type for relationship mapping configuration methods.
 	 * The extended shape is returned when a reciprocal property should also be
 	 * created in the target entity (createInTarget: true).
 	 *
-	 * @phpstan-type RelationshipMappingConfig array{mappedBy: string|null, inversedBy: string|null}
+	 * @phpstan-type RelationshipMappingConfig array{relation: string|null, referencedColumn: string|null}
 	 *                                        |array{
-	 *                                            mappedBy: string|null,
-	 *                                            inversedBy: string|null,
+	 *                                            relation: string|null,
+	 *                                            referencedColumn: string|null,
 	 *                                            createInTarget: true,
 	 *                                            targetPropertyName: string,
 	 *                                            targetRelationType: OrmRelationshipType,
@@ -64,10 +64,10 @@
 	 *     readonly?: bool,
 	 *     relationshipType: OrmRelationshipType,
 	 *     targetEntity: string,
-	 *     mappedBy?: string|null,
-	 *     inversedBy?: string|null,
-	 *     relationColumn?: string|null,
-	 *     foreignColumn?: string
+	 *     relation?: string|null,
+	 *     referencedColumn?: string|null,
+	 *     localColumn?: string|null,
+	 *     collection?: bool
 	 * }
 	 *
 	 * @phpstan-type PropertyDefinition BaseProperty|EnumProperty|RelationProperty

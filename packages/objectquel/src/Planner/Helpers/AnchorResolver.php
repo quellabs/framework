@@ -92,7 +92,9 @@
 			}
 			
 			// Select highest priority candidate (best optimization potential)
-			usort($candidates, fn($a, $b) => $b->getPriorityScore() <=> $a->getPriorityScore());
+			usort($candidates, function(AnchorCandidate $a, AnchorCandidate $b): int {
+				return $b->getPriorityScore() <=> $a->getPriorityScore();
+			});
 			
 			// Return the best match
 			return $candidates[0];
@@ -195,13 +197,13 @@
 			bool $isExpressionReferenced,
 			bool $canOptimizeJoins
 		): string {
-			// Expression-referenced tables get priority treatment
 			if ($isExpressionReferenced) {
+				// Expression-referenced tables get priority treatment
 				return $canOptimizeJoins ? 'expression_with_optimization' : 'expression_preserve';
+			} else {
+				// Non-expression tables: attempt optimization if safe
+				return $canOptimizeJoins ? 'inner_with_optimization' : 'inner_preserve';
 			}
-			
-			// Non-expression tables: attempt optimization if safe
-			return $canOptimizeJoins ? 'inner_with_optimization' : 'inner_preserve';
 		}
 		
 		/**

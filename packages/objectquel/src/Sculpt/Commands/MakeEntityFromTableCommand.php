@@ -12,11 +12,11 @@
 	use Quellabs\Sculpt\Console\ConsoleOutput;
 	
 	/**
-	 * MakeEntityFromTableCommand - CLI command for creating or updating entity classes
+	 * MakeEntityFromTableCommand - Generate an entity class from an existing database table
 	 *
-	 * This command allows users to interactively create or update entity classes
-	 * through a command-line interface, collecting properties with their types
-	 * and constraints, including relationship definitions with primary key selection.
+	 * Introspects the live database schema for a selected table and generates a
+	 * fully annotated entity class with typed properties, ORM annotations, index
+	 * mappings, and getter/setter methods.
 	 *
 	 * @phpstan-import-type ColumnDefinition from DatabaseAdapter
 	 * @phpstan-import-type IndexDefinition from DatabaseAdapter
@@ -37,6 +37,49 @@
 		public function __construct(ConsoleInput $input, ConsoleOutput $output, ServiceProvider $provider) {
 			parent::__construct($input, $output, $provider);
 			$this->configuration = $provider->getConfiguration();
+		}
+		
+		/**
+		 * Get the command signature/name for registration in the CLI
+		 * @return string Command signature
+		 */
+		public function getSignature(): string {
+			return "make:entity-from-table";
+		}
+		
+		/**
+		 * Get a short description of what the command does
+		 * @return string Command description
+		 */
+		public function getDescription(): string {
+			return "Generate entity classes from existing database table structures";
+		}
+		
+		/**
+		 * Get detailed help information for the command
+		 * @return string Command help text
+		 */
+		public function getHelp(): string {
+			return <<<HELP
+DESCRIPTION:
+    Introspects an existing database table and generates a fully annotated entity
+    class from its schema. The generated class includes typed properties, ORM
+    column annotations, index mappings, a constructor for default values, and
+    getter/setter methods for all columns.
+
+USAGE:
+    php sculpt make:entity-from-table
+
+ARGUMENTS:
+    None — all input is collected via interactive prompts
+
+NOTES:
+    - Requires an active database connection
+    - Auto-increment primary key columns receive a nullable PHP type and no setter
+    - Complex types (date, datetime, json, text, blob) without a default are made
+      nullable in PHP even when the database column is NOT NULL
+    - The generated file is written to the configured entity path
+HELP;
 		}
 		
 		/**
@@ -84,31 +127,7 @@
 			$this->output->writeLn("Entity class {$tableCamelCase}Entity successfully created.");
 			return 0;
 		}
-		
-		/**
-		 * Get the command signature/name for registration in the CLI
-		 * @return string Command signature
-		 */
-		public function getSignature(): string {
-			return "make:entity-from-table";
-		}
-		
-		/**
-		 * Get a short description of what the command does
-		 * @return string Command description
-		 */
-		public function getDescription(): string {
-			return "Generate entity classes from existing database table structures";
-		}
-		
-		/**
-		 * Get detailed help information for the command
-		 * @return string Command help text
-		 */
-		public function getHelp(): string {
-			return "Generates entity classes by mapping database tables to object-oriented entities.";
-		}
-		
+
 		/**
 		 * Convert a string to camelcase
 		 * @param string $input
@@ -139,7 +158,7 @@
 			$output .= "    use Quellabs\\ObjectQuel\\Annotations\Orm\Column;\n";
 			$output .= "    use Quellabs\\ObjectQuel\\Annotations\Orm\PrimaryKeyStrategy;\n";
 			$output .= "    use Quellabs\\ObjectQuel\\Annotations\Orm\OneToOne;\n";
-			$output .= "    use Quellabs\\ObjectQuel\\Annotations\Orm\OneToMany;\n";
+			$output .= "    use Quellabs\\ObjectQuel\\Annotations\Orm\InverseOf;\n";
 			$output .= "    use Quellabs\\ObjectQuel\\Annotations\Orm\ManyToOne;\n";
 			$output .= "    use Quellabs\\ObjectQuel\\Annotations\Orm\Index;\n";
 			$output .= "    use Quellabs\\ObjectQuel\\Annotations\Orm\UniqueIndex;\n";
@@ -447,13 +466,13 @@
 			// For datetime properties with a default string value
 			// Convert the string to a DateTime object initialization
 			if ($columnType === 'datetime' && is_string($defaultValue)) {
-				return "new \DateTime('{$defaultValue}');";
+				return "new \DateTime('{$defaultValue}')";
 			}
 			
 			// For date properties with a default string value
 			// Convert the string to a DateTime object initialization
 			if ($columnType === 'date' && is_string($defaultValue)) {
-				return "new \DateTime('{$defaultValue} 00:00:00');";
+				return "new \DateTime('{$defaultValue} 00:00:00')";
 			}
 			
 			// For numeric values (integers, floats), return as-is without quotes
@@ -499,12 +518,7 @@
 		private function generateGetter(string $fieldCamelCase, string $variableCamelCase, string $acceptType): string {
 			$output = "\n";
 			
-			if ($acceptType !== '') {
-				$output .= "        public function get{$fieldCamelCase}() : {$acceptType} {\n";
-			} else {
-				$output .= "        public function get{$fieldCamelCase}() {\n";
-			}
-			
+			$output .= "        public function get{$fieldCamelCase}() : {$acceptType} {\n";
 			$output .= "            return \$this->{$variableCamelCase};\n";
 			$output .= "        }\n";
 			
@@ -523,7 +537,7 @@
 		private function generateSetter(array $column, string $fieldCamelCase, string $variableCamelCase, string $acceptType): string {
 			$output = "\n";
 			
-			// Only generate setters for non-autoincrement primary keys
+			// Only suppress setters for auto-increment primary keys (primary_key=true AND identity=true)
 			if (!$column["primary_key"] || !$column["identity"]) {
 				$output .= "        public function set{$fieldCamelCase}({$acceptType} \$value): self {\n";
 				$output .= "            \$this->{$variableCamelCase} = \$value;\n";

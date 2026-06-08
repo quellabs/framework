@@ -172,7 +172,7 @@
 		 */
 		public function findEntity(string $entityType, array $primaryKeys): ?object {
 			// Normalize the entity name for dealing with proxies
-			$normalizedEntityName = $this->getEntityStore()->resolveProxyClass($entityType);
+			$normalizedEntityName = $this->getEntityStore()->normalizeEntityClass($entityType);
 			
 			// Check if the class exists in the entity store and return null if it doesn't
 			if (empty($this->entitiesByClass[$normalizedEntityName])) {
@@ -219,7 +219,7 @@
 			
 			// Get the normalized class name of the entity to use as a key in the identity map
 			// Normalization ensures consistent formatting regardless of namespace notation
-			$class = $this->getEntityStore()->resolveProxyClass($entity);
+			$class = $this->getEntityStore()->normalizeEntityClass($entity);
 			
 			// Generate a unique object identifier using PHP's built-in function
 			// This hash serves as a consistent reference to this specific object instance
@@ -272,7 +272,7 @@
 			
 			// Get the normalized class name to use as an index in the identity map
 			// Normalization ensures consistent formatting regardless of how the class was referenced
-			$class = $this->getEntityStore()->resolveProxyClass($entity);
+			$class = $this->getEntityStore()->normalizeEntityClass($entity);
 			
 			// Generate a unique object identifier for this entity instance
 			// This provides a consistent way to reference this specific object in memory
@@ -416,9 +416,6 @@
 			$this->indexByClass = [];
 			$this->entitySnapshots = new \WeakMap();
 			$this->entityRemovalList = new \WeakMap();
-			
-			// Add garbage collection hint for large datasets
-			gc_collect_cycles();
 		}
 		
 		/**
@@ -436,7 +433,7 @@
 			
 			// Get the normalized class name of the entity for consistent identity map access
 			// This handles potential differences in namespace notation
-			$class = $this->getEntityStore()->resolveProxyClass($entity);
+			$class = $this->getEntityStore()->normalizeEntityClass($entity);
 			
 			// Remove the entity from the entity store using its hash
 			// This stops the entity from being included in any future persistence operations
@@ -551,6 +548,7 @@
 		 * Returns true if any of the entity columns changed, false if not.
 		 * @param object $entity
 		 * @return bool
+		 * @throws EntityResolutionException
 		 */
 		private function isEntityDirty(object $entity): bool {
 			// Retrieve the snapshot taken when the entity was loaded from the database
@@ -659,7 +657,7 @@
 				// Filter OneToOne relationships to only include those that are bidirectional
 				// This is determined by checking if inversedBy is not empty
 				$oneToOneParents = array_filter($oneToOneParents, function ($e) {
-					return !empty($e->getInversedBy());
+					return !empty($e->getReferencedColumn());
 				});
 				
 				// Process all parent dependencies (both ManyToOne and qualifying OneToOne)
@@ -743,7 +741,7 @@
 		 */
 		private function isInIdentityMap(object $entity): bool {
 			// Get the normalized class name of the entity.
-			$normalizedEntityName = $this->getEntityStore()->resolveProxyClass($entity);
+			$normalizedEntityName = $this->getEntityStore()->normalizeEntityClass($entity);
 			
 			// Check if the object exists in the entity store using its unique hash.
 			return isset($this->entitiesByClass[$normalizedEntityName][spl_object_hash($entity)]);
@@ -762,7 +760,7 @@
 				$hash = spl_object_hash($entity);
 				
 				// Get the normalized class name of the entity
-				$class = $this->getEntityStore()->resolveProxyClass($entity);
+				$class = $this->getEntityStore()->normalizeEntityClass($entity);
 				
 				// Add primary key to index cache for easy lookup
 				$primaryKeys = $this->getIdentifiers($entity);
@@ -804,7 +802,7 @@
 					// These types indicate a dependency on a parent entity
 					if (
 						!($annotation instanceof ManyToOne) &&
-						(!($annotation instanceof OneToOne) || is_null($annotation->getInversedBy()))
+						(!($annotation instanceof OneToOne) || is_null($annotation->getReferencedColumn()))
 					) {
 						continue; // Skip this annotation if it's not a relationship to a parent
 					}
@@ -816,7 +814,7 @@
 					// If the parent entity exists, add it to the result with its relationship details.
 					if (!empty($parentEntity) && is_object($parentEntity)) {
 						// Get the relation column name, or fall back to a convention
-						$relationColumn = $annotation->getRelationColumn() ?? "{$property}Id";
+						$relationColumn = $annotation->getLocalColumn() ?? "{$property}Id";
 						
 						// Get the parent entity's primary key value(s)
 						$parentPrimaryKeys = $this->getIdentifiers($parentEntity);
@@ -878,12 +876,12 @@
 		 * that would otherwise become orphaned.
 		 * @param object $entity The parent entity being deleted
 		 * @return void
-		 * @throws EntityResolutionException
+		 * @throws EntityResolutionException|QuelException
 		 */
 		private function executeCascadingDeletions(object $entity): void {
 			// Normalize the entity class name to ensure consistent format
 			// Normalization handles variations in namespace notation
-			$normalizedClass = $this->entityStore->resolveProxyClass($entity);
+			$normalizedClass = $this->entityStore->normalizeEntityClass($entity);
 			
 			// Retrieve all entity classes that depend on this entity
 			// These are entities that have relationships annotated with cascade="remove"
@@ -892,7 +890,6 @@
 			
 			// Process each dependent entity class to find and mark instances for deletion
 			foreach ($dependentEntityClasses as $dependentEntityClass) {
-				/** @var class-string $dependentEntityClass */
 				$this->handleDependentEntityClass($dependentEntityClass, $normalizedClass, $entity);
 			}
 		}
@@ -924,19 +921,19 @@
 			// We only want relationships where both sides reference each other
 			// This is determined by checking if the inversedBy property is set
 			$oneToOneDependencies = array_filter($oneToOneDependencies, function ($e) {
-				return !empty($e->getInversedBy());
+				return !empty($e->getReferencedColumn());
 			});
 			
 			// Process both ManyToOne and filtered OneToOne relationships together
 			foreach (array_merge($manyToOneDependencies, $oneToOneDependencies) as $property => $annotation) {
 				// Skip if this relationship doesn't point to our parent entity class
 				// This ensures we only process relationships relevant to the deleted entity
-				if ($this->entityStore->resolveProxyClass($annotation->getTargetEntity()) !== $normalizedClass) {
+				if ($this->entityStore->normalizeEntityClass($annotation->getTargetEntity()) !== $normalizedClass) {
 					continue;
 				}
 				
 				// Fetch relation column
-				$relationColumn = $annotation->getRelationColumn() ?? "{$property}Id";
+				$relationColumn = $annotation->getLocalColumn() ?? "{$property}Id";
 				
 				// Get cascade configuration information for this relationship
 				// This tells us how changes to the parent should propagate to dependents
@@ -1091,27 +1088,27 @@
 		 * @throws EntityResolutionException
 		 */
 		private function executeCascadingPersistsForEntity(object $entity): void {
-			// Process OneToMany relationships
-			$this->processCascadingOneToManyPersists($entity);
+			// Process InverseOf relationships
+			$this->processCascadingInverseOfPersists($entity);
 			
 			// Process OneToOne relationships
 			$this->processCascadingOneToOnePersists($entity);
 		}
 		
 		/**
-		 * Process cascading persists for OneToMany relationships of an entity.
+		 * Process cascading persists for InverseOf relationships of an entity.
 		 * This handles collections of related entities that should be persisted
 		 * when the parent entity is persisted.
-		 * @param object $entity The entity whose OneToMany relationships should be processed
+		 * @param object $entity The entity whose InverseOf relationships should be processed
 		 * @return void
 		 * @throws EntityResolutionException
 		 */
-		private function processCascadingOneToManyPersists(object $entity): void {
+		private function processCascadingInverseOfPersists(object $entity): void {
 			// Fetch metadata for this entity
 			$metadata = $this->getEntityStore()->getMetadata($entity);
 			
-			// Check each OneToMany relationship defined in this entity
-			foreach ($metadata->getOneToManyDependencies() as $property => $annotation) {
+			// Check each InverseOf relationship defined in this entity
+			foreach ($metadata->getInverseOfRelations() as $property => $annotation) {
 				// Retrieve cascade configuration from metadata for this property
 				$cascadeInfo = $this->getCascadeInfo(get_class($entity), $property);
 				
@@ -1173,13 +1170,9 @@
 			// Fetch metadata of this entity
 			$metadata = $this->getEntityStore()->getMetadata($entity);
 			
-			// Check each OneToOne relationship defined in this entity
+			// Check each OneToOne relationship defined in this entity.
+			// All entries are owning-side by definition — non-owning sides are declared with @InverseOf.
 			foreach ($metadata->getOneToOneDependencies() as $property => $annotation) {
-				// Skip if this is the owning side of the relationship - we only want to process non-owning sides
-				if (empty($annotation->getMappedBy())) {
-					continue;
-				}
-				
 				// Retrieve cascade configuration from metadata for this property
 				$cascadeInfo = $this->getCascadeInfo(get_class($entity), $property);
 				
