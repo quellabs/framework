@@ -210,4 +210,84 @@
 			$this->assertInstanceOf(UserEntity::class, $result[0]['c']);
 			$this->assertNull($result[0]['a']);
 		}
+		
+		public function testUnfilteredQueryIncludesNullPostRowForUserWithNoPosts(): void {
+			// With no WHERE clause the LEFT JOIN must surface a null-post row for charlie
+			// alongside the real rows for alice and bob.
+			// Fixtures: alice=2 posts, bob=1 post, charlie=0 posts -> 4 rows total.
+			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (3, 'charlie', 'hash3', 0)");
+			
+			$result = $this->em->executeQuery("
+			range of c is UserEntity
+			range of a is PostEntity via c.posts
+			retrieve (c, a)
+			");
+			
+			$this->assertCount(4, $result);
+			
+			$nullPostRows = array_filter(
+				$result->fetchAll(),
+				fn(array $row) => $row['a'] === null
+			);
+			
+			$this->assertCount(1, $nullPostRows, 'Exactly one null-post row expected (charlie)');
+			
+			$nullRow = array_values($nullPostRows)[0];
+			$this->assertInstanceOf(UserEntity::class, $nullRow['c']);
+			$this->assertSame('charlie', $nullRow['c']->getUsername());
+		}
+		
+		// -------------------------------------------------------------------------
+		// Explicit localColumn — exercises the getLocalColumn() !== null branch
+		// -------------------------------------------------------------------------
+		
+		public function testInverseOfViaWithExplicitLocalColumnJoinsCorrectly(): void {
+			// PostEntity::$user declares localColumn="userId" explicitly rather than
+			// relying on the default convention (relation name + "Id").
+			// The result must be identical to the default-convention case: 3 matched rows,
+			// each post paired with its owning user, no cross-contamination.
+			$result = $this->em->executeQuery("
+			range of c is UserEntity
+			range of a is PostEntity via c.posts
+			retrieve (c.id, a.id)
+			");
+			
+			$this->assertCount(3, $result);
+			
+			$ownership = [1 => 1, 2 => 1, 3 => 2];
+			
+			foreach ($result as $row) {
+				$expectedOwner = $ownership[$row['a.id']];
+				$this->assertSame(
+					$expectedOwner,
+					$row['c.id'],
+					"Post {$row['a.id']} should belong to user $expectedOwner, got {$row['c.id']}"
+				);
+			}
+		}
+		
+		public function testDirectViaWithExplicitLocalColumnJoinsCorrectly(): void {
+			// Forward direction: range of u via p.user, where $user now carries an explicit
+			// localColumn="userId". Verifies the direct-ManyToOne code path reads
+			// getLocalColumn() correctly instead of falling back to the default.
+			$result = $this->em->executeQuery("
+			range of p is PostEntity
+			range of u is UserEntity via p.user
+			retrieve (p.id, u.id)
+			sort by p.id asc
+			");
+			
+			$this->assertCount(3, $result);
+			
+			$ownership = [1 => 1, 2 => 1, 3 => 2];
+			
+			foreach ($result as $row) {
+				$expectedOwner = $ownership[$row['p.id']];
+				$this->assertSame(
+					$expectedOwner,
+					$row['u.id'],
+					"Post {$row['p.id']} should belong to user $expectedOwner, got {$row['u.id']}"
+				);
+			}
+		}
 	}
