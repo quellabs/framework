@@ -10,6 +10,7 @@
 	use Quellabs\ObjectQuel\Annotations\Orm\LifecycleAware;
 	use Quellabs\ObjectQuel\Annotations\Orm\PreUpdate;
 	use Quellabs\ObjectQuel\Annotations\Orm\FullTextIndex;
+	use Quellabs\ObjectQuel\Annotations\Orm\SoftDelete;
 	use Quellabs\ObjectQuel\Annotations\Orm\InverseOf;
 	use Quellabs\ObjectQuel\Collections\Collection;
 	use Quellabs\ObjectQuel\Collections\CollectionInterface;
@@ -70,6 +71,30 @@
 		 * @Orm\Column(name="user_id", type="integer")
 		 */
 		protected ?int $userId = null;
+
+		/**
+		 * @Orm\Column(name="deleted_at", type="datetime", nullable=true)
+		 * @Orm\SoftDelete
+		 */
+		protected ?\DateTime $deletedAt = null;
+
+		/**
+		 * Get deletedAt
+		 * @return \DateTime|null
+		 */
+		public function getDeletedAt(): ?\DateTime {
+			return $this->deletedAt;
+		}
+
+		/**
+		 * Set deletedAt
+		 * @param \DateTime|null $deletedAt
+		 * @return $this
+		 */
+		public function setDeletedAt(?\DateTime $deletedAt): self {
+			$this->deletedAt = $deletedAt;
+			return $this;
+		}
 
 		/**
 		 * Get id
