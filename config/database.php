@@ -26,6 +26,6 @@
 		'migrations_path'      => dirname(__FILE__) . '/../migrations',
 		
 		// Slow query log
-		'slow_query_log'       => 'f:\\Work\\framework\\objectquel-slow.log', // null to disable
+		'slow_query_log'       => null, // null to disable
 		'slow_query_threshold' => 0.0,  // seconds; 0.0 = log everything
 	];
