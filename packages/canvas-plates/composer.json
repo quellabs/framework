@@ -50,10 +50,11 @@
     "discover": {
       "di": {
         "provider": "Quellabs\\Canvas\\Plates\\ServiceProvider",
-        "config": [
-          "config/plates.php",
-          "config/app.php"
-        ]
+        "config": ["config/plates.php", "config/app.php"]
+      },
+      "sculpt": {
+        "provider": "Quellabs\\Canvas\\Latte\\Sculpt\\ServiceProvider",
+        "config": "config/latte.php"
       }
     }
   },

@@ -20,6 +20,7 @@
 			// Register all Smarty-related commands with the application
 			// This makes the commands available through the CLI interface
 			$this->registerCommands($application, [
+				InitCommand::class,        // Publish the config file
 				ClearCacheCommand::class,  // Register the smarty:clear_cache command
 			]);
 		}

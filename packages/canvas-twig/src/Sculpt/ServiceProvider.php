@@ -20,6 +20,7 @@
 			// Register all Twig-related commands with the application
 			// This makes the commands available through the CLI interface
 			$this->registerCommands($application, [
+				InitCommand::class,        // Publish twig config
 				ClearCacheCommand::class,  // Register the twig:clear_cache command
 			]);
 		}
