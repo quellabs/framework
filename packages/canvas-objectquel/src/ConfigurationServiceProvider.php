@@ -38,12 +38,14 @@
 		 */
 		public static function getDefaults(): array {
 			return [
-				'migrations_path'     => '',                                      // Path to database migration files
-				'entity_namespace'    => '',                                      // Root namespace for entity classes
-				'entity_path'         => '',                                      // Directory containing entity classes
-				'proxy_namespace'     => 'Quellabs\\ObjectQuel\\Proxy\\Runtime', // Namespace for generated proxy classes
-				'proxy_path'          => null,                                    // Directory for generated proxy classes
-				'metadata_cache_path' => ''                                       // Path for cached entity metadata
+				'migrations_path'      => '',                                      // Path to database migration files
+				'entity_namespace'     => '',                                      // Root namespace for entity classes
+				'entity_path'          => '',                                      // Directory containing entity classes
+				'proxy_namespace'      => 'Quellabs\\ObjectQuel\\Proxy\\Runtime', // Namespace for generated proxy classes
+				'proxy_path'           => null,                                    // Directory for generated proxy classes
+				'metadata_cache_path'  => '',                                      // Path for cached entity metadata
+				'slow_query_log'       => null,                                    // Absolute path to slow query log file; null to disable
+				'slow_query_threshold' => 0.0                                     // Minimum query time in seconds to log; 0.0 logs all queries
 			];
 		}
 		
@@ -95,6 +97,12 @@
 			if ($configData["development_mode"] ?? false) {
 				$config->setDevelopmentMode(true);
 			}
+			
+			// Slow query log
+			$slowQueryLog = $configData["slow_query_log"] ?? $defaults["slow_query_log"];
+			$slowQueryThreshold = $configData["slow_query_threshold"] ?? $defaults["slow_query_threshold"];
+			$config->setSlowQueryLog(is_string($slowQueryLog) ? $slowQueryLog : null);
+			$config->setSlowQueryThreshold(is_float($slowQueryThreshold) || is_int($slowQueryThreshold) ? (float)$slowQueryThreshold : 0.0);
 			
 			// Cache and return the instance
 			self::$instance = $config;
