@@ -234,6 +234,11 @@
 					$absolutePath = $projectRoot . DIRECTORY_SEPARATOR . $customPath;
 					$realProjectRoot = realpath($projectRoot);
 					
+					// realpath() returns false when the project root doesn't exist; nothing to validate against
+					if ($realProjectRoot === false) {
+						return null;
+					}
+					
 					// Validate using logical normalization so the check works even when the file
 					// does not exist yet (realpath() returns false for non-existent paths).
 					$normalizedAbsolutePath = self::normalizePath($absolutePath);
@@ -242,10 +247,10 @@
 					// a path like /var/www/project-evil from matching root /var/www/project.
 					$normalizedRoot = rtrim(strtr($realProjectRoot, '\\', '/'), '/');
 					$normalizedPath = rtrim(strtr($normalizedAbsolutePath, '\\', '/'), '/');
-					$insideProject = $normalizedPath === $normalizedRoot || str_starts_with($normalizedPath, $normalizedRoot . '/');
+					$insideProject  = $normalizedPath === $normalizedRoot || str_starts_with($normalizedPath, $normalizedRoot . '/');
 					
 					// Return the real path when the file exists, otherwise return the normalized path
-					if ($realProjectRoot !== false && $insideProject) {
+					if ($insideProject) {
 						$realAbsolutePath = realpath($absolutePath);
 						return $realAbsolutePath !== false ? $realAbsolutePath : $normalizedAbsolutePath;
 					}
