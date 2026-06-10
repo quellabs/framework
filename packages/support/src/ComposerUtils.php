@@ -318,9 +318,10 @@
 		 * @return array<string> Array of fully qualified class names
 		 */
 		public static function findClassesInDirectory(string $directory, ?callable $filter = null): array {
-			// Early return if directory doesn't exist or is not readable
+			// Fetch directory
 			$absoluteDir = realpath($directory);
 			
+			// Early return if directory doesn't exist or is not readable
 			if ($absoluteDir === false) {
 				return [];
 			}
@@ -548,7 +549,7 @@
 					if (str_starts_with($normalizedDirectory, $normalizedPsr4Dir)) {
 						// Ensure match is at a directory boundary, not mid-segment
 						$afterMatch = substr($normalizedDirectory, strlen($normalizedPsr4Dir));
-						if ($afterMatch !== '' && $afterMatch[0] !== DIRECTORY_SEPARATOR) {
+						if ($afterMatch !== '' && $afterMatch[0] !== '/') {
 							continue;
 						}
 						
