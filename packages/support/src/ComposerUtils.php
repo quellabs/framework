@@ -66,7 +66,7 @@
 			
 			foreach ($autoloaderPaths as $path) {
 				if (file_exists($path)) {
-					$autoloader            = require $path;
+					$autoloader = require $path;
 					self::$autoloaderCache = $autoloader;
 					return $autoloader;
 				}
@@ -89,7 +89,7 @@
 				$autoloader = self::getComposerAutoloader();
 				
 				$reflection = new \ReflectionObject($autoloader);
-				$fileName   = $reflection->getFileName();
+				$fileName = $reflection->getFileName();
 				
 				if ($fileName === false) {
 					return null;
@@ -109,7 +109,9 @@
 		 */
 		public static function getProjectRoot(?string $directory = null): ?string {
 			// Return the cached result if available to avoid repeated filesystem operations
-			if (self::$projectRootPathCache !== null) {
+			// Only cache when no directory override is given; per-directory results are not cached
+			// to avoid stale results when the utility is used across multiple projects or in tests.
+			if ($directory === null && self::$projectRootPathCache !== null) {
 				return self::$projectRootPathCache;
 			}
 			
@@ -128,7 +130,11 @@
 				$projectRoot = $strategy();
 				
 				if ($projectRoot !== null) {
-					return self::$projectRootPathCache = $projectRoot;
+					if ($directory === null) {
+						self::$projectRootPathCache = $projectRoot;
+					}
+					
+					return $projectRoot;
 				}
 			}
 			
@@ -151,8 +157,8 @@
 			}
 			
 			$composer = self::parseComposerJson($composerJsonPath);
-			$psr4     = self::getComposerPsr4($composer);
-			$key      = array_key_first($psr4);
+			$psr4 = self::getComposerPsr4($composer);
+			$key = array_key_first($psr4);
 			return is_string($key) ? rtrim($key, '\\') : $default;
 		}
 		
@@ -209,7 +215,7 @@
 					// Only allow absolute paths or paths relative to project root
 					if (self::isAbsolutePath($customPath)) {
 						// For absolute paths, verify they're within project root
-						$realCustomPath  = realpath($customPath);
+						$realCustomPath = realpath($customPath);
 						$realProjectRoot = realpath($projectRoot);
 						
 						if ($realCustomPath !== false &&
@@ -225,15 +231,23 @@
 					}
 					
 					// Relative path - resolve against project root
-					$absolutePath     = $projectRoot . DIRECTORY_SEPARATOR . $customPath;
-					$realAbsolutePath = realpath($absolutePath);
-					$realProjectRoot  = realpath($projectRoot);
+					$absolutePath = $projectRoot . DIRECTORY_SEPARATOR . $customPath;
+					$realProjectRoot = realpath($projectRoot);
 					
-					// Verify the resolved path exists and is within project root
-					if ($realAbsolutePath !== false &&
-						$realProjectRoot !== false &&
-						str_starts_with($realAbsolutePath, $realProjectRoot)) {
-						return $realAbsolutePath;
+					// Validate using logical normalization so the check works even when the file
+					// does not exist yet (realpath() returns false for non-existent paths).
+					$normalizedAbsolutePath = self::normalizePath($absolutePath);
+					
+					// Use a directory-boundary check rather than a plain prefix check to prevent
+					// a path like /var/www/project-evil from matching root /var/www/project.
+					$normalizedRoot = rtrim(strtr($realProjectRoot, '\\', '/'), '/');
+					$normalizedPath = rtrim(strtr($normalizedAbsolutePath, '\\', '/'), '/');
+					$insideProject = $normalizedPath === $normalizedRoot || str_starts_with($normalizedPath, $normalizedRoot . '/');
+					
+					// Return the real path when the file exists, otherwise return the normalized path
+					if ($realProjectRoot !== false && $insideProject) {
+						$realAbsolutePath = realpath($absolutePath);
+						return $realAbsolutePath !== false ? $realAbsolutePath : $normalizedAbsolutePath;
 					}
 				}
 			}
@@ -322,10 +336,10 @@
 			
 			// Get directory entries or return an empty array if scandir fails
 			$classNames = [];
-			$entries    = scandir($absoluteDir) ?: [];
+			$entries = scandir($absoluteDir) ?: [];
 			
 			foreach ($entries as $entry) {
-				// Skip current directory, parent directory, and hidden files
+				// Skip current directory, parent directory, and .htaccess
 				if (self::shouldSkipEntry($entry)) {
 					continue;
 				}
@@ -336,7 +350,7 @@
 				// Recursively scan subdirectories and merge results
 				if (is_dir($fullPath)) {
 					$subDirClasses = self::findClassesInDirectory($fullPath, $filter);
-					$classNames    = array_merge($classNames, $subDirClasses);
+					$classNames = array_merge($classNames, $subDirClasses);
 					continue; // Early continue to next iteration
 				}
 				
@@ -412,9 +426,10 @@
 		 */
 		public static function clearCache(): void {
 			self::$projectRootPathCache = null;
-			self::$composerJsonCache    = [];
-			self::$normalizedPaths      = [];
-			self::$autoloaderCache      = null;
+			self::$projectVendorPathCache = null;
+			self::$composerJsonCache = [];
+			self::$normalizedPaths = [];
+			self::$autoloaderCache = null;
 		}
 		
 		/**
@@ -432,7 +447,7 @@
 				
 				// Find the longest matching namespace prefix
 				return self::findMostSpecificNamespace($directory, $prefixesPsr4);
-			} catch (\Exception $e) {
+			} catch (\Exception) {
 				return null;
 			}
 		}
@@ -510,7 +525,11 @@
 		private static function findMostSpecificNamespace(string $directory, array $prefixesPsr4): ?string {
 			// Track best match found so far
 			$matchedNamespace = null;
-			$longestMatch     = 0;
+			$longestMatch = 0;
+			
+			// Normalize directory separators once before iterating to avoid repeated work and
+			// to prevent mutation of the method parameter inside the loop.
+			$normalizedDirectory = strtr($directory, '\\', '/');
 			
 			// Iterate through all registered PSR-4 namespace prefixes
 			foreach ($prefixesPsr4 as $prefix => $dirs) {
@@ -523,17 +542,18 @@
 						continue;
 					}
 					
-					// Check if our target directory starts with this PSR-4 path
-					// If it does, it means our directory is either the same as or within this PSR-4 root
-					if (str_starts_with($directory, $psr4Dir)) {
+					// Normalize separators on both sides to avoid mismatches on Windows where the
+					// autoloader may use forward slashes while realpath() returns backslashes.
+					$normalizedPsr4Dir = rtrim(strtr($psr4Dir, '\\', '/'), '/');
+					if (str_starts_with($normalizedDirectory, $normalizedPsr4Dir)) {
 						// Ensure match is at a directory boundary, not mid-segment
-						$afterMatch = substr($directory, strlen($psr4Dir));
+						$afterMatch = substr($normalizedDirectory, strlen($normalizedPsr4Dir));
 						if ($afterMatch !== '' && $afterMatch[0] !== DIRECTORY_SEPARATOR) {
 							continue;
 						}
 						
 						// Calculate how much of the path matches to determine specificity
-						$matchLength = strlen($psr4Dir);
+						$matchLength = strlen($normalizedPsr4Dir);
 						
 						// If this match is more specific (longer) than previous matches, use it
 						if ($matchLength > $longestMatch) {
@@ -541,20 +561,19 @@
 							
 							// Calculate the relative path from the PSR-4 root to our directory
 							// This will be converted to the namespace suffix
-							if (strlen($directory) > strlen($psr4Dir)) {
+							if (strlen($normalizedDirectory) > strlen($normalizedPsr4Dir)) {
 								// Add 1 to skip the directory separator
-								$relativePath = substr($directory, strlen($psr4Dir) + 1);
+								$relativePath = substr($normalizedDirectory, strlen($normalizedPsr4Dir) + 1);
 							} else {
 								$relativePath = '';
 							}
 							
 							// Convert the filesystem path format to namespace format
+							// $relativePath always contains forward slashes after normalization,
+							// so replace '/' directly rather than DIRECTORY_SEPARATOR (which would
+							// be '\' on Windows and miss the replacement entirely).
 							// Example: "Controller/User" becomes "Controller\User"
-							$namespaceSuffix = str_replace(
-								DIRECTORY_SEPARATOR,
-								'\\',
-								$relativePath
-							);
+							$namespaceSuffix = str_replace('/', '\\', $relativePath);
 							
 							// Build the complete namespace by combining:
 							// 1. The PSR-4 namespace prefix (e.g., "App\")
@@ -614,11 +633,6 @@
 			
 			// Verify JSON decoding was successful and result is an array
 			if (json_last_error() !== JSON_ERROR_NONE || !is_array($data)) {
-				return null;
-			}
-			
-			// Bail if array contains non-string keys
-			if (array_filter(array_keys($data), fn($key) => !is_string($key)) !== []) {
 				return null;
 			}
 			
@@ -838,20 +852,20 @@
 			
 			// Step 2: Determine if the path is absolute and extract prefix
 			$isAbsolute = false;
-			$prefix     = '';
+			$prefix = '';
 			
 			// Check string length BEFORE accessing indices
 			$pathLength = strlen($normalizedPath);
 			
 			if ($pathLength >= 3 && ctype_alpha($normalizedPath[0]) && $normalizedPath[1] === ':') {
 				// Windows drive letter format (C:, D:, etc.)
-				$isAbsolute        = true;
-				$prefix            = substr($normalizedPath, 0, 2) . DIRECTORY_SEPARATOR;
+				$isAbsolute = true;
+				$prefix = substr($normalizedPath, 0, 2) . DIRECTORY_SEPARATOR;
 				$pathWithoutPrefix = ltrim(substr($normalizedPath, 2), '/');
 			} elseif ($pathLength >= 1 && $normalizedPath[0] === '/') {
 				// Unix root path format
-				$isAbsolute        = true;
-				$prefix            = DIRECTORY_SEPARATOR;
+				$isAbsolute = true;
+				$prefix = DIRECTORY_SEPARATOR;
 				$pathWithoutPrefix = substr($normalizedPath, 1);
 			} else {
 				// Relative path - no prefix
