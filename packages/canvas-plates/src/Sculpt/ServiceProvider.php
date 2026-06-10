@@ -1,14 +1,14 @@
 <?php
 	
-	namespace Quellabs\Canvas\Handlebars\Sculpt;
+	namespace Quellabs\Canvas\Plates\Sculpt;
 	
 	use Quellabs\Sculpt\Application;
 	use Quellabs\Canvas\Latte\Sculpt\InitCommand;
 	use Quellabs\Canvas\Latte\Sculpt\ClearCacheCommand;
 	
 	/**
-	 * Service Provider for Handlebars template engine integration
-	 * Registers Handlebars-related commands with the Sculpt application
+	 * Service Provider for Plates template engine integration
+	 * Registers Plates-related commands with the Sculpt application
 	 */
 	class ServiceProvider extends \Quellabs\Sculpt\ServiceProvider {
 		
@@ -19,8 +19,7 @@
 		 */
 		public function register(Application $application): void {
 			$this->registerCommands($application, [
-				InitCommand::class,        // Publish the config file
-				ClearCacheCommand::class,  // Register the handlebars:clear-cache command
+				InitCommand::class
 			]);
 		}
 	}
