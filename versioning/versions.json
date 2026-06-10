@@ -7,7 +7,7 @@
   "canvas-handlebars": "1.0.6",
   "canvas-latte": "1.0.8",
   "canvas-loom": "1.0.3",
-  "canvas-objectquel": "2.0.0",
+  "canvas-objectquel": "2.1.0",
   "canvas-payments": "1.0.5",
   "canvas-payments-adyen": "1.0.10",
   "canvas-payments-buckaroo": "1.0.8",
@@ -37,7 +37,7 @@
   "contracts": "1.2.3",
   "dependency-injection": "1.2.5",
   "discover": "1.0.45",
-  "objectquel": "2.2.0",
+  "objectquel": "2.3.0",
   "sculpt": "1.0.29",
   "signal-hub": "1.1.1",
   "support": "1.1.0"
