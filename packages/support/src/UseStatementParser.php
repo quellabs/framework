@@ -6,22 +6,26 @@
 	
 	/**
 	 * Class UseStatementParser
-	 * Parses PHP use statements from a class using reflection
+	 * Parses PHP use statements from a class using PHP's tokenizer
 	 */
 	class UseStatementParser {
 		
 		/**
 		 * @var array<string, array<string, string>> Cache of imports by class
+		 * Note: this cache is never invalidated within a process lifetime. For normal
+		 * PHP-FPM/CLI usage this is fine. Under long-lived workers (Swoole, RoadRunner,
+		 * ReactPHP) a source file change will not be reflected until the worker restarts.
 		 */
 		private static array $importsCache = [];
 		
 		/**
-		 * Get all imported class aliases from use statements in the given class
+		 * Get all imported class aliases from use statements in the given class.
+		 * Returns only class imports; function/const imports are excluded.
 		 * @param ReflectionClass<object> $class
 		 * @return array<string, string> Map of aliases to fully qualified class names
 		 */
 		public static function getImportsForClass(ReflectionClass $class): array {
-			// Get class name using refection
+			// Get class name using reflection
 			$className = $class->getName();
 			
 			// Return cached result if available
@@ -38,7 +42,9 @@
 		}
 		
 		/**
-		 * Parse use statements from a class file using a direct regex approach
+		 * Parse use statements from a class file using token_get_all().
+		 * Stops scanning once the class/interface/trait/enum declaration is reached,
+		 * so trait use statements inside the body are never included.
 		 * @param ReflectionClass<object> $class The reflection class to analyze
 		 * @return array<string, string> Map of aliases to fully qualified class names
 		 */
@@ -70,30 +76,95 @@
 			// Key = alias/short name, Value = fully qualified class name
 			$imports = [];
 			
-			// Regular expression to match use statements at the beginning of lines
-			// Breakdown of the pattern:
-			// ^\s* - Start of line followed by optional whitespace
-			// use\s+ - The word "use" followed by required whitespace
-			// ([^;]+) - Capture group: everything except semicolon (the use statement content)
-			// ; - Literal semicolon that ends the use statement
-			// /m - Multiline flag so ^ matches line beginnings, not just string start
-			$pattern = '/^\s*use\s+([^;]+);/m';
+			$tokens = token_get_all($content);
+			$i = 0;
+			$count = count($tokens);
 			
-			// Execute the regex and capture all matches
-			// $matches[0] contains full matches, $matches[1] contains captured groups
-			if (preg_match_all($pattern, $content, $matches)) {
-				// Process each captured use statement
-				foreach ($matches[1] as $useStatement) {
-					// Remove leading/trailing whitespace from the use statement content
-					$useStatement = trim($useStatement);
+			while ($i < $count) {
+				$token = $tokens[$i];
+				
+				// Stop at class/interface/trait/enum body — everything after this
+				// is either the class declaration or its body, not file-level imports.
+				// Trait use statements inside a class body are intentionally excluded.
+				if (is_array($token) && in_array($token[0], [T_CLASS, T_INTERFACE, T_TRAIT, T_ENUM], true)) {
+					break;
+				}
+				
+				// Only process T_USE tokens
+				if (!is_array($token) || $token[0] !== T_USE) {
+					$i++;
+					continue;
+				}
+				
+				$i++;
+				
+				// Skip whitespace after 'use'
+				$i = self::skipWhitespace($tokens, $i, $count);
+				
+				// Detect use function / use const — these are not class imports.
+				// T_FUNCTION and T_CONST are the relevant token types here.
+				$importKind = 'class';
+				
+				if (isset($tokens[$i]) && is_array($tokens[$i])) {
+					if ($tokens[$i][0] === T_FUNCTION) {
+						$importKind = 'function';
+						$i++;
+						$i = self::skipWhitespace($tokens, $i, $count);
+					} elseif ($tokens[$i][0] === T_CONST) {
+						$importKind = 'const';
+						$i++;
+						$i = self::skipWhitespace($tokens, $i, $count);
+					}
+				}
+				
+				// Collect all tokens up to the terminating semicolon
+				$statementTokens = [];
+				
+				while ($i < $count) {
+					$t = $tokens[$i];
 					
-					// Check if this is a grouped use statement (PSR-4 style grouping)
-					// Example: use Some\Namespace\{ClassA, ClassB, ClassC};
-					// Look for both opening and closing curly braces
-					if (str_contains($useStatement, '{') && str_contains($useStatement, '}')) {
-						self::parseGroupedUseStatement($useStatement, $imports);
+					if ($t === ';') {
+						$i++;
+						break;
+					}
+					
+					$statementTokens[] = $t;
+					$i++;
+				}
+				
+				// Reconstruct the raw use statement string from tokens.
+				// Whitespace tokens are normalized to a single space to make
+				// subsequent parsing reliable regardless of source formatting.
+				$statement = '';
+				
+				foreach ($statementTokens as $t) {
+					if (is_array($t)) {
+						$statement .= ($t[0] === T_WHITESPACE) ? ' ' : $t[1];
 					} else {
-						self::parseSingleUseStatement($useStatement, $imports);
+						$statement .= $t;
+					}
+				}
+				
+				$statement = trim($statement);
+				
+				if ($statement === '') {
+					continue;
+				}
+				
+				// Check if this is a grouped use statement (PSR-4 style grouping)
+				// Example: use Some\Namespace\{ClassA, ClassB, ClassC};
+				// Look for both opening and closing curly braces
+				if (str_contains($statement, '{')) {
+					self::parseGroupedUseStatement($statement, $importKind, $imports);
+				} else {
+					// PHP allows multiple imports in a single statement separated by commas:
+					//   use Foo\Bar, Foo\Baz;
+					//   use Foo\Bar as B, Foo\Baz as Z;
+					// Split on comma and process each entry independently.
+					$entries = explode(',', $statement);
+					
+					foreach ($entries as $entry) {
+						self::parseSingleUseStatement(trim($entry), $importKind, $imports);
 					}
 				}
 			}
@@ -103,66 +174,91 @@
 		}
 		
 		/**
-		 * Parse a single use statement (non-grouped)
-		 * @param string $useStatement The use statement to parse
+		 * Parse a single (non-grouped) use statement.
+		 * Only class imports are added to $imports; function/const imports are ignored.
+		 * @param string $statement         The use statement body (without leading 'use' or trailing ';')
+		 * @param string $importKind        'class', 'function', or 'const'
 		 * @param array<string, string> &$imports Reference to the imports array to populate
 		 * @return void
 		 */
-		private static function parseSingleUseStatement(string $useStatement, array &$imports): void {
+		private static function parseSingleUseStatement(string $statement, string $importKind, array &$imports): void {
+			if ($importKind !== 'class') {
+				return;
+			}
+			
 			// Handle aliased use statements: "ClassName as Alias"
-			if (str_contains($useStatement, ' as ')) {
-				list($className, $alias) = explode(' as ', $useStatement, 2);
-				$className = trim($className);
-				$alias = trim($alias);
+			// PHP's 'as' keyword is case-insensitive; use a regex match rather than
+			// a plain str_contains check to handle AS / As / aS variants correctly.
+			if (preg_match('/^(.+?)\s+as\s+(\S+)$/i', $statement, $matches)) {
+				$className = trim($matches[1]);
+				$alias = trim($matches[2]);
 				$imports[$alias] = $className;
 			} else {
 				// Regular use statement: extract short name from full namespace
-				$className = trim($useStatement);
+				$className = trim($statement);
 				$shortName = self::getShortClassName($className);
 				$imports[$shortName] = $className;
 			}
 		}
 		
 		/**
-		 * Parse a grouped use statement (with curly braces)
-		 * @param string $useStatement The grouped use statement to parse
+		 * Parse a grouped use statement (with curly braces).
+		 * Handles aliased entries and respects importKind so that
+		 * `use function Ns\{helperA, helperB}` entries are excluded.
+		 * @param string $statement         The use statement body (without leading 'use' or trailing ';')
+		 * @param string $importKind        'class', 'function', or 'const'
 		 * @param array<string, string> &$imports Reference to the imports array to populate
 		 * @return void
 		 */
-		private static function parseGroupedUseStatement(string $useStatement, array &$imports): void {
+		private static function parseGroupedUseStatement(string $statement, string $importKind, array &$imports): void {
 			// Extract base namespace and class list from: "Namespace\{Class1, Class2}"
-			if (preg_match('/^(.+?)\s*\{\s*([^}]+)\s*}$/', $useStatement, $matches)) {
-				$baseNamespace = trim($matches[1]);
-				$classListString = trim($matches[2]);
+			if (!preg_match('/^(.+?)\s*\{\s*([^}]+)\s*}$/', $statement, $matches)) {
+				return;
+			}
+			
+			// Normalize base namespace - remove trailing backslashes
+			$baseNamespace = rtrim(trim($matches[1]), '\\');
+			$classListString = trim($matches[2]);
+			
+			// Split individual classes by comma
+			$entries = explode(',', $classListString);
+			
+			foreach ($entries as $entry) {
+				$entry = trim($entry);
 				
-				// Normalize base namespace - remove trailing backslashes
-				$baseNamespace = rtrim($baseNamespace, '\\');
+				// Skip empty entries (trailing commas, extra spaces)
+				if ($entry === '') {
+					continue;
+				}
 				
-				// Split individual classes by comma
-				$classes = explode(',', $classListString);
+				// Each entry may be prefixed with 'function' or 'const':
+				//   use Ns\{ function helperA, ClassName }
+				// Detect and strip that prefix to determine per-entry kind.
+				$entryKind = $importKind;
 				
-				foreach ($classes as $classItem) {
-					$classItem = trim($classItem);
-					
-					// Skip empty entries (trailing commas, extra spaces)
-					if (empty($classItem)) {
-						continue;
-					}
-					
-					// Handle aliased classes: "ClassName as Alias"
-					if (str_contains($classItem, ' as ')) {
-						list($className, $alias) = explode(' as ', $classItem, 2);
-						$className = trim($className);
-						$alias = trim($alias);
-						$fullClassName = $baseNamespace . '\\' . $className;
-						$imports[$alias] = $fullClassName;
-					} else {
-						// Regular class: combine base namespace with class name
-						$className = trim($classItem);
-						$fullClassName = $baseNamespace . '\\' . $className;
-						$shortName = self::getShortClassName($className);
-						$imports[$shortName] = $fullClassName;
-					}
+				if (preg_match('/^function\s+(.+)$/i', $entry, $km)) {
+					$entryKind = 'function';
+					$entry = trim($km[1]);
+				} elseif (preg_match('/^const\s+(.+)$/i', $entry, $km)) {
+					$entryKind = 'const';
+					$entry = trim($km[1]);
+				}
+				
+				if ($entryKind !== 'class') {
+					continue;
+				}
+				
+				// Handle aliased classes: "ClassName as Alias"
+				if (preg_match('/^(.+?)\s+as\s+(\S+)$/i', $entry, $am)) {
+					$className = trim($am[1]);
+					$alias = trim($am[2]);
+					$imports[$alias] = $baseNamespace . '\\' . $className;
+				} else {
+					// Regular class: combine base namespace with class name
+					$className = trim($entry);
+					$fullClassName = $baseNamespace . '\\' . $className;
+					$shortName = self::getShortClassName($className);
+					$imports[$shortName] = $fullClassName;
 				}
 			}
 		}
@@ -183,5 +279,20 @@
 			
 			$parts = explode('\\', $className);
 			return end($parts);
+		}
+		
+		/**
+		 * Advance the token index past any whitespace tokens.
+		 * @param array<int, mixed> $tokens
+		 * @param int $i     Current index
+		 * @param int $count Total token count
+		 * @return int Updated index pointing at the first non-whitespace token
+		 */
+		private static function skipWhitespace(array $tokens, int $i, int $count): int {
+			while ($i < $count && is_array($tokens[$i]) && $tokens[$i][0] === T_WHITESPACE) {
+				$i++;
+			}
+			
+			return $i;
 		}
 	}
