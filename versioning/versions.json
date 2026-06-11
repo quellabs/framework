@@ -1,5 +1,5 @@
 {
-  "annotation-reader": "1.3.0",
+  "annotation-reader": "1.3.1",
   "cache": "1.0.4",
   "canvas": "1.10.2",
   "canvas-blade": "1.1.1",
@@ -40,5 +40,5 @@
   "objectquel": "2.3.0",
   "sculpt": "1.0.29",
   "signal-hub": "1.1.1",
-  "support": "1.2.0"
+  "support": "1.2.1"
 }
