@@ -161,19 +161,57 @@
 		}
 		
 		/**
-		 * Find the next annotation in the string
+		 * Find the next annotation in the string.
+		 * Only treats @ as an annotation marker when it is the first non-whitespace,
+		 * non-asterisk character on its docblock line. This means @ symbols that appear
+		 * mid-sentence in prose comments (e.g. "Add @Loom\Field to expose it") are
+		 * correctly ignored rather than parsed as annotation tokens.
 		 * @return bool True if an annotation was found, false otherwise
 		 */
 		protected function findNextAnnotation(): bool {
 			// Reset annotation mode
 			$this->annotation_mode = false;
 			
-			// Find the next @ symbol
+			// Find the next @ symbol that starts a line (only whitespace and * before it)
 			while ($this->pos < $this->length) {
 				if ($this->string[$this->pos] == '@') {
-					// Found an annotation, set the mode and return true
-					$this->annotation_mode = true;
-					return true;
+					// Walk backwards from the current position to the preceding newline
+					// (or the start of the string) and check that only whitespace and a
+					// single * appear between them. Anything else means this @ is embedded
+					// in prose and must be skipped.
+					$scan = $this->pos - 1;
+					$starSeen = false;
+					$valid = true;
+					
+					while ($scan >= 0) {
+						$c = $this->string[$scan];
+						
+						if ($c === "\n") {
+							// Reached the start of the line — stop
+							break;
+						}
+						
+						if ($c === '*') {
+							if ($starSeen) {
+								// Two stars before the @ — not an annotation line (e.g. /** opening)
+								$valid = false;
+								break;
+							}
+							
+							$starSeen = true;
+						} elseif ($c !== ' ' && $c !== "\t" && $c !== "\r") {
+							// Non-whitespace, non-star character before the @ — embedded in prose
+							$valid = false;
+							break;
+						}
+						
+						$scan--;
+					}
+					
+					if ($valid) {
+						$this->annotation_mode = true;
+						return true;
+					}
 				}
 				
 				++$this->pos;
@@ -201,10 +239,10 @@
 				
 				// Skip whitespace and * at the start of the next line
 				while ($nextLinePos < $this->length && (
-					$this->string[$nextLinePos] == ' ' ||
-					$this->string[$nextLinePos] == "\t" ||
-					$this->string[$nextLinePos] == '*'
-				)) {
+						$this->string[$nextLinePos] == ' ' ||
+						$this->string[$nextLinePos] == "\t" ||
+						$this->string[$nextLinePos] == '*'
+					)) {
 					$nextLinePos++;
 				}
 				
@@ -540,14 +578,15 @@
 						++$this->pos;
 						
 						// Handle special escape sequences
-						switch ($this->string[$this->pos]) {
-							case 'n': $string .= "\n"; break;
-							case 'r': $string .= "\r"; break;
-							case 't': $string .= "\t"; break;
-							case '"': $string .= '"'; break;
-							case "'": $string .= "'"; break;
-							default: $string .= $this->string[$this->pos]; break;
-						}
+						$string .= match ($this->string[$this->pos]) {
+							'n' => "\n",
+							'r' => "\r",
+							't' => "\t",
+							'"' => '"',
+							"'" => "'",
+							default => $this->string[$this->pos],
+						};
+						
 						++$this->pos;
 						continue;
 					}
