@@ -74,7 +74,7 @@
 		 * Read @Loom annotations from an entity and return a configured Resource builder.
 		 * The returned Resource has fields added in property declaration order.
 		 * Column group metadata is stored on the Resource for later use by wrapInColumns().
-		 * @param object|string $entity Entity instance or class name
+		 * @param class-string|object $entity Entity instance or class name
 		 * @return Resource
 		 * @throws \InvalidArgumentException When @Loom\Resource annotation is missing
 		 * @throws \ReflectionException
@@ -97,11 +97,18 @@
 			$resource->setColumnMap($columnAnnotations);
 			
 			// Walk properties in declaration order, build Field builders, group them
-			$groupedFields = $this->readFields($reflection);
+			$groupedFields = $this->readFields($reflection, $entity);
 			
 			// Store fields grouped by their group name on the Resource.
 			// wrapInColumns() will distribute them; a flat render just adds them all.
 			$resource->setGroupedFields($groupedFields);
+			
+			// Extract entity field values via getters in the same pass, so render()
+			// can populate field values from the entity without a second traversal.
+			// Only done when an instance is provided — class-name-only calls have no values.
+			if (is_object($entity)) {
+				$resource->setEntityData($this->extractEntityData($entity, $groupedFields));
+			}
 			
 			// Add all fields to the resource in order: ungrouped first (preserving
 			// declaration order), then grouped fields in column declaration order.
@@ -121,7 +128,7 @@
 		
 		/**
 		 * Read and return the @Loom\Resource annotation from the class.
-		 * @param string $className
+		 * @param class-string $className
 		 * @return ResourceAnnotation
 		 * @throws \InvalidArgumentException When the annotation is missing
 		 */
@@ -144,7 +151,7 @@
 		/**
 		 * Read all @Loom\Column annotations from the class, keyed by column name
 		 * in the order they were declared.
-		 * @param string $className
+		 * @param class-string $className
 		 * @return array<string, ColumnAnnotation>
 		 */
 		private function readColumnAnnotations(string $className): array {
@@ -166,9 +173,10 @@
 		 * for each property that carries a @Loom\Field annotation and is not auto-skipped.
 		 * Returns fields grouped by their group name, with null as the key for ungrouped fields.
 		 * @param \ReflectionClass<object> $reflection
+		 * @param object|string $entity
 		 * @return array<string|null, Field[]>
 		 */
-		private function readFields(\ReflectionClass $reflection): array {
+		private function readFields(\ReflectionClass $reflection, object|string $entity): array {
 			$grouped = [];
 			$className = $reflection->getName();
 			
@@ -248,13 +256,13 @@
 			// Derive from the ORM @Orm\Column type
 			$ormColumn = $propertyAnnotations->getFirst('Quellabs\\ObjectQuel\\Annotations\\Orm\\Column');
 			
-			if ($ormColumn === null) {
+			if (!($ormColumn instanceof \Quellabs\AnnotationReader\AnnotationInterface)) {
 				// No ORM column annotation (e.g. a relation property) — cannot derive type
 				return null;
 			}
 			
 			$ormParams = $ormColumn->getParameters();
-			$ormType = $ormParams['type'] ?? null;
+			$ormType = is_string($ormParams['type'] ?? null) ? $ormParams['type'] : null;
 			
 			return $this->typeMap[$ormType] ?? null;
 		}
@@ -309,9 +317,23 @@
 				$field->rows($fieldAnnotation->getRows());
 			}
 			
-			// Apply maxlength from the ORM column limit when no input= override is set
-			// (only meaningful for text/email/tel/url fields)
-			if ($fieldAnnotation->getInput() === null) {
+			// Apply explicit choices from @Loom\Field — always takes precedence over
+			// enum auto-population. Choices are stored as value => label pairs.
+			$choices = $fieldAnnotation->getChoices();
+
+			if ($choices !== null) {
+				$options = [];
+
+				foreach ($choices as $value => $label) {
+					$options[] = ['value' => (string)$value, 'label' => (string)$label];
+				}
+
+				$field->options($options);
+			}
+
+			// Apply ORM-derived constraints (maxlength, enum options) only when no
+			// input= override is set and no explicit choices were provided.
+			if ($fieldAnnotation->getInput() === null && $choices === null) {
 				$this->applyOrmConstraints($field, $inputType, $propertyAnnotations);
 			}
 			
@@ -334,15 +356,87 @@
 		): void {
 			$ormColumn = $propertyAnnotations->getFirst('Quellabs\\ObjectQuel\\Annotations\\Orm\\Column');
 			
-			if ($ormColumn === null) {
+			if (!($ormColumn instanceof \Quellabs\AnnotationReader\AnnotationInterface)) {
 				return;
 			}
 			
 			$ormParams = $ormColumn->getParameters();
 			
 			// Apply maxlength from ORM limit for string-based inputs
-			if (in_array($inputType, ['text', 'email', 'tel', 'url'], true) && isset($ormParams['limit'])) {
+			if (in_array($inputType, ['text', 'email', 'tel', 'url'], true) && isset($ormParams['limit']) && is_numeric($ormParams['limit'])) {
 				$field->maxlength((int)$ormParams['limit']);
 			}
+
+			// Auto-populate select options from the enum class for enum-typed columns.
+			// The ORM annotation carries enumType= which is the fully qualified enum class name.
+			// Options are derived from ::cases() using the backing value and raw case name.
+			if ($inputType === 'select' && isset($ormParams['enumType'])) {
+				$enumClass = $ormParams['enumType'];
+
+				if (is_a($enumClass, \BackedEnum::class, true)) {
+					$options = array_map(
+						fn(\BackedEnum $case) => ['value' => $case->value, 'label' => $case->name],
+						$enumClass::cases()
+					);
+
+					$field->options($options);
+				}
+			}
+		}
+		
+		/**
+		 * Extract field values from an entity instance by calling getters.
+		 * Only extracts values for fields that were included in the form —
+		 * properties that were skipped or unmapped are not read.
+		 * Getter name is derived as get{PropertyName} e.g. $title -> getTitle().
+		 * Properties with no matching getter are silently skipped.
+		 * DateTime values are formatted to match the field's input type so the
+		 * HTML input element receives the correct string format.
+		 * @param object $entity
+		 * @param array<string|null, Field[]> $groupedFields
+		 * @return array<string, mixed>
+		 */
+		private function extractEntityData(object $entity, array $groupedFields): array {
+			$data = [];
+			
+			foreach ($groupedFields as $fields) {
+				foreach ($fields as $field) {
+					$name = $field->get('name');
+					
+					if (!is_string($name)) {
+						continue;
+					}
+					
+					$getter = 'get' . ucfirst($name);
+					
+					if (!method_exists($entity, $getter)) {
+						continue;
+					}
+					
+					$value = $entity->$getter();
+					
+					// DateTime objects must be formatted to match the HTML input type.
+					// The format is determined by the field's resolved input type so the
+					// browser receives the exact string the input element expects.
+					if ($value instanceof \DateTimeInterface) {
+						$value = match ($field->get('input')) {
+							'date' => $value->format('Y-m-d'),
+							'time' => $value->format('H:i'),
+							'datetime-local' => $value->format('Y-m-d\\TH:i'),
+							'week' => $value->format('Y-\\WW'),
+							'month' => $value->format('Y-m'),
+							default => $value->format('Y-m-d\\TH:i'),
+						};
+					} elseif ($value instanceof \BackedEnum) {
+						// Backed enums expose their backing value (string or int) which is
+						// what the select option value and form submission both use.
+						$value = $value->value;
+					}
+					
+					$data[(string)$name] = $value;
+				}
+			}
+			
+			return $data;
 		}
 	}

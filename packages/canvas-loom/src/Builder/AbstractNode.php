@@ -9,10 +9,10 @@
 	 */
 	abstract class AbstractNode {
 		
-		/** @var array Node properties */
+		/** @var array<string, mixed> Node properties */
 		protected array $properties = [];
 		
-		/** @var array Child nodes */
+		/** @var AbstractNode[] Child nodes */
 		protected array $children = [];
 		
 		/**
@@ -31,6 +31,9 @@
 			return $this;
 		}
 		
+		/**
+		 * @return array<string, mixed>
+		 */
 		public function getProperties(): array {
 			return $this->properties;
 		}
@@ -59,7 +62,7 @@
 		/**
 		 * Convert this node and all its children to an array
 		 * suitable for Loom::render()
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function toArray(): array {
 			return [
@@ -99,7 +102,7 @@
 		 * Useful for exposing named message constants and other scalar
 		 * values that need to be accessible in bind expressions.
 		 * Values must be JSON-serialisable (scalars and arrays only).
-		 * @param array $properties Key-value pairs merged into the abstraction object
+		 * @param array<string, mixed> $properties Key-value pairs merged into the abstraction object
 		 * @return static
 		 */
 		public function abstraction(array $properties): static {

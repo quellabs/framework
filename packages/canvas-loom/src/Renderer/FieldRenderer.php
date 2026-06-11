@@ -303,14 +303,18 @@
 		}
 		
 		/**
-		 * Resolve the field value from the data array or fall back to the node definition.
-		 * @param string $name Field name, used as path into the data array
+		 * Resolve the field value using a two-level priority chain:
+		 * 1. Explicit data array passed to Loom::render() — always wins.
+		 * 2. Entity data extracted by EntityReader via getters — fallback for
+		 *    entity-driven forms when no explicit value is provided for a field.
+		 * @param string $name Field name, used as key into both data sources
 		 * @param array $properties Node properties
 		 * @return string
 		 */
 		private function resolveValue(string $name, array $properties): string {
 			$data = $this->loom->getData();
 			
+			// Priority 1: explicit value from the render() data array
 			if (!empty($data) && $name) {
 				$value = $this->getNestedValue($data, $name);
 				
@@ -319,7 +323,14 @@
 				}
 			}
 			
-			return (string)($properties['value'] ?? '');
+			// Priority 2: entity data extracted from getters by EntityReader
+			$entityData = $data['_entity_data'] ?? [];
+			
+			if (!empty($entityData) && isset($entityData[$name])) {
+				return (string)$entityData[$name];
+			}
+			
+			return '';
 		}
 		
 		/**

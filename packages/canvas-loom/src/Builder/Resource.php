@@ -52,7 +52,7 @@
 		 * @param object|string $entity Entity instance or class name
 		 * @param AnnotationReader $reader
 		 * @return static
-		 * @throws \InvalidArgumentException|\ReflectionException When @Loom\Resource annotation is missing
+		 * @throws \InvalidArgumentException When @Loom\Resource annotation is missing
 		 */
 		public static function makeFromEntity(object|string $entity, AnnotationReader $reader): static {
 			return (new EntityReader($reader))->read($entity);
@@ -132,6 +132,19 @@
 			return $this;
 		}
 		
+		/**
+		 * Store entity field values extracted by EntityReader.
+		 * These are used by FieldRenderer as a fallback when no explicit value
+		 * is present in the data array passed to Loom::render().
+		 * Called internally by EntityReader — not part of the public API.
+		 * @param array<string, mixed> $data
+		 * @return static
+		 * @internal
+		 */
+		public function setEntityData(array $data): static {
+			return $this->set('entity_data', $data);
+		}
+
 		/**
 		 * Resolve column widths for the given group names.
 		 * Uses @Loom\Column width values where available; distributes

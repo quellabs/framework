@@ -7,12 +7,12 @@
 	 * Carries the per-field error map and exposes convenience methods
 	 * for use in controllers.
 	 */
-	class ValidationResult {
+	readonly class ValidationResult {
 		
 		/**
 		 * @param array<string, string> $errors Associative array of fieldName => error message
 		 */
-		public function __construct(private readonly array $errors) {}
+		public function __construct(private array $errors) {}
 		
 		/**
 		 * Returns true when all fields passed validation.

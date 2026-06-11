@@ -24,6 +24,10 @@
 		 * @return string
 		 */
 		protected function e(mixed $value): string {
+			if (!is_scalar($value) && $value !== null) {
+				return '';
+			}
+			
 			return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
 		}
 	}

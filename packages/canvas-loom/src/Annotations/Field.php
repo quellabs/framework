@@ -10,9 +10,9 @@
 	 * Properties without this annotation are excluded from the rendered form.
 	 *
 	 * Usage:
-	 *   @Loom\Field(label="Title")
-	 *   @Loom\Field(label="Content", input="richtext", editor="jodit", group="main")
-	 *   @Loom\Field(label="Published", group="sidebar", required=true)
+	 * @Loom\Field(label="Title")
+	 * @Loom\Field(label="Content", input="richtext", editor="jodit", group="main")
+	 * @Loom\Field(label="Published", group="sidebar", required=true)
 	 */
 	class Field implements AnnotationInterface {
 		
@@ -62,19 +62,27 @@
 		private ?string $editor;
 		
 		/**
+		 * @var array<string|int, string>|null Explicit select options as value => label pairs.
+		 * When set, always takes precedence over enum auto-population.
+		 * Syntax: choices={"draft"="Draft", "published"="Published"}
+		 */
+		private ?array $choices;
+
+		/**
 		 * @param array<string, mixed> $parameters
 		 */
 		public function __construct(array $parameters) {
-			$this->label       = $parameters['label']       ?? '';
-			$this->input       = $parameters['input']       ?? null;
-			$this->group       = $parameters['group']       ?? null;
-			$this->required    = (bool)($parameters['required']    ?? false);
-			$this->readonly    = (bool)($parameters['readonly']    ?? false);
-			$this->disabled    = (bool)($parameters['disabled']    ?? false);
-			$this->hint        = $parameters['hint']        ?? null;
+			$this->label = $parameters['label'] ?? '';
+			$this->input = $parameters['input'] ?? null;
+			$this->group = $parameters['group'] ?? null;
+			$this->required = (bool)($parameters['required'] ?? false);
+			$this->readonly = (bool)($parameters['readonly'] ?? false);
+			$this->disabled = (bool)($parameters['disabled'] ?? false);
+			$this->hint = $parameters['hint'] ?? null;
 			$this->placeholder = $parameters['placeholder'] ?? null;
-			$this->rows        = isset($parameters['rows']) ? (int)$parameters['rows'] : null;
-			$this->editor      = $parameters['editor']      ?? null;
+			$this->rows = isset($parameters['rows']) ? (int)$parameters['rows'] : null;
+			$this->editor = $parameters['editor'] ?? null;
+			$this->choices = isset($parameters['choices']) && is_array($parameters['choices']) ? $parameters['choices'] : null;
 		}
 		
 		/**
@@ -92,6 +100,7 @@
 				'placeholder' => $this->placeholder,
 				'rows'        => $this->rows,
 				'editor'      => $this->editor,
+				'choices'     => $this->choices,
 			];
 		}
 		
@@ -163,5 +172,12 @@
 		 */
 		public function getEditor(): ?string {
 			return $this->editor;
+		}
+		
+		/**
+		 * @return array<string|int, string>|null
+		 */
+		public function getChoices(): ?array {
+			return $this->choices;
 		}
 	}

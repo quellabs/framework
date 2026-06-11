@@ -15,10 +15,10 @@
 		/** @var array<string, RendererInterface> Renderer instance cache, keyed by class name */
 		private array $rendererCache = [];
 		
-		/** @var array Current data context for the active render pass, populated by render() and accessed by renderers via getData() */
+		/** @var array<string, mixed> Current data context for the active render pass, populated by render() and accessed by renderers via getData() */
 		private array $currentData = [];
 		
-		/** @var array Notifications to display in the rendered form */
+		/** @var array<int, array<string, string>> Notifications to display in the rendered form */
 		private array $notifications = [];
 		
 		/**
@@ -42,9 +42,9 @@
 		/**
 		 * Render a node tree to an HTML string with an optional inline script block.
 		 * This is the main entry point for rendering a Loom page definition.
-		 * @param array $node Root node of the JSON page definition
-		 * @param array $data Entity data to populate field values, keyed by field name
-		 * @param array $options Supported options: 'part' => 'full' | 'header' | 'body'
+		 * @param array<string, mixed> $node Root node of the JSON page definition
+		 * @param array<string, mixed> $data Entity data to populate field values, keyed by field name
+		 * @param array<string, mixed> $options Supported options: 'part' => 'full' | 'header' | 'body'
 		 * @return string        Rendered HTML with an inline script block if scripts were generated
 		 */
 		public function render(array $node, array $data = [], array $options = []): string {
@@ -67,6 +67,13 @@
 			// (e.g. PostEntity[title]) without affecting WakaPAC bindings or value resolution.
 			if (!empty($node['properties']['entity_prefix'])) {
 				$this->currentData['_entity_prefix'] = $node['properties']['entity_prefix'];
+			}
+			
+			// If the root node carries entity_data (field values extracted from the entity
+			// by EntityReader), inject it into the data context so FieldRenderer can use
+			// it as a fallback when no explicit value is present in the caller's data array.
+			if (!empty($node['properties']['entity_data'])) {
+				$this->currentData['_entity_data'] = $node['properties']['entity_data'];
 			}
 			
 			// Inject render part into root node properties so ResourceRenderer
@@ -94,7 +101,7 @@
 		/**
 		 * Returns the current data context for the active render pass.
 		 * Called by renderers to resolve field values against entity data.
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function getData(): array {
 			return $this->currentData;
@@ -104,8 +111,8 @@
 		 * Recursively render a node and all its children, collecting HTML and scripts.
 		 * Children are always rendered before their parent — the engine works depth-first,
 		 * so each renderer receives its children as a fully rendered HTML string.
-		 * @param array $node Current node to render
-		 * @param array|null $parent Parent node, passed to renderers so they can read parent properties
+		 * @param array<string, mixed> $node Current node to render
+		 * @param array<string, mixed>|null $parent Parent node, passed to renderers so they can read parent properties
 		 * @return RenderResult      Combined HTML and scripts for this node and all its descendants
 		 * @internal Do not call directly — use render() instead
 		 */
@@ -146,17 +153,27 @@
 		 * Walks the node tree, finds all field nodes with rules, runs each rule against
 		 * the corresponding value in $data, and returns the first failing error per field.
 		 *
-		 * Usage in a controller:
-		 *   $result = $loom->validate($resource->build(), $request->post());
-		 *   if ($result->fails()) {
-		 *       return $loom->render($resource->build(), array_merge($request->post(), ['_errors' => $result->errors()]));
-		 *   }
+		 * When the resource was built via makeFromEntity(), submitted field names are scoped
+		 * to the entity prefix (e.g. PostEntity[title]). validate() detects the entity_prefix
+		 * on the root node and unwraps the prefixed subset automatically, so the controller
+		 * can pass the raw request data without any manual extraction:
 		 *
-		 * @param array $node Root node of the page definition (from Resource::build())
-		 * @param array $data Submitted form data, keyed by field name
+		 *   $result = $loom->validate($resource->build(), $request->request->all());
+		 *
+		 * @param array<string, mixed> $node Root node of the page definition (from Resource::build())
+		 * @param array<string, mixed> $data Submitted form data — either flat or prefixed by entity name
 		 * @return ValidationResult
 		 */
 		public function validate(array $node, array $data): ValidationResult {
+			// When the form was built from an entity, submitted data arrives prefixed
+			// (e.g. ['PostEntity' => ['title' => '...']]) — unwrap it automatically
+			// so validation always works against bare field names.
+			$prefix = $node['properties']['entity_prefix'] ?? null;
+			
+			if ($prefix !== null && isset($data[$prefix]) && is_array($data[$prefix])) {
+				$data = $data[$prefix];
+			}
+			
 			$errors = [];
 			$this->validateNode($node, $data, $errors);
 			return new ValidationResult($errors);
@@ -164,9 +181,10 @@
 		
 		/**
 		 * Recursively walk the node tree and validate all field nodes that have rules.
-		 * @param array $node
-		 * @param array $data
-		 * @param array $errors Collected errors, passed by reference
+		 * @param array<string, mixed> $node
+		 * @param array<string, mixed> $data
+		 * @param array<string, string> $errors Collected errors, passed by reference
+		 * @return void
 		 */
 		private function validateNode(array $node, array $data, array &$errors): void {
 			if (($node['type'] ?? '') === 'field') {
@@ -205,7 +223,7 @@
 		
 		/**
 		 * Returns all queued notifications.
-		 * @return array
+		 * @return array<int, array<string, string>>
 		 */
 		public function getNotifications(): array {
 			return $this->notifications;
@@ -222,7 +240,10 @@
 			// Check registry first (custom or overridden renderers)
 			if (isset($this->registry[$type])) {
 				$class = $this->registry[$type];
-				return $this->rendererCache[$class] ??= new $class($this);
+				
+				/** @var RendererInterface $renderer */
+				$renderer = new $class($this);
+				return $this->rendererCache[$class] ??= $renderer;
 			}
 			
 			// Fall back to naming convention: "button" -> ButtonRenderer
@@ -236,6 +257,8 @@
 				);
 			}
 			
-			return $this->rendererCache[$class] ??= new $class($this);
+			/** @var RendererInterface $renderer */
+			$renderer = new $class($this);
+			return $this->rendererCache[$class] ??= $renderer;
 		}
 	}

@@ -31,8 +31,8 @@
 		 * @return string
 		 */
 		protected function interpolate(string $template, array $vars): string {
-			return preg_replace_callback('/\{\{\s*([a-zA-Z_]\w*)\s*}}/', function ($m) use ($vars) {
-				return array_key_exists($m[1], $vars) ? $vars[$m[1]] : $m[0];
+			return (string)preg_replace_callback('/\{\{\s*([a-zA-Z_]\w*)\s*}}/', function (array $m) use ($vars): string {
+				return array_key_exists($m[1], $vars) ? (string)$vars[$m[1]] : $m[0];
 			}, $template);
 		}
 
