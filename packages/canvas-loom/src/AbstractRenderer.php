@@ -11,11 +11,16 @@
 	 */
 	abstract class AbstractRenderer implements RendererInterface {
 		
+		/** @var Loom instance */
+		protected readonly Loom $loom;
+		
 		/**
 		 * Constructor
 		 * @param Loom $loom The active Loom engine instance
 		 */
-		public function __construct(protected readonly Loom $loom) {}
+		public function __construct(Loom $loom) {
+			$this->loom = $loom;
+		}
 		
 		/**
 		 * Escape a value for safe HTML output.
@@ -28,6 +33,6 @@
 				return '';
 			}
 			
-			return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
+			return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
 		}
 	}

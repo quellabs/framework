@@ -31,11 +31,11 @@
 			if (!class_exists($class)) {
 				throw new \InvalidArgumentException("Renderer class \"{$class}\" does not exist.");
 			}
-
+			
 			if (!is_subclass_of($class, RendererInterface::class)) {
 				throw new \InvalidArgumentException("Renderer class \"{$class}\" must implement " . RendererInterface::class . ".");
 			}
-
+			
 			$this->registry[$type] = $class;
 		}
 		
@@ -146,68 +146,6 @@
 			// Return a new result with accumulated scripts collapsed back to a single
 			// string so the parent can continue accumulating
 			return new RenderResult($result->html, !empty($scripts) ? implode("\n", $scripts) : null);
-		}
-		
-		/**
-		 * Validate submitted data against the rules defined on field nodes in the tree.
-		 * Walks the node tree, finds all field nodes with rules, runs each rule against
-		 * the corresponding value in $data, and returns the first failing error per field.
-		 *
-		 * When the resource was built via makeFromEntity(), submitted field names are scoped
-		 * to the entity prefix (e.g. PostEntity[title]). validate() detects the entity_prefix
-		 * on the root node and unwraps the prefixed subset automatically, so the controller
-		 * can pass the raw request data without any manual extraction:
-		 *
-		 *   $result = $loom->validate($resource->build(), $request->request->all());
-		 *
-		 * @param array<string, mixed> $node Root node of the page definition (from Resource::build())
-		 * @param array<string, mixed> $data Submitted form data — either flat or prefixed by entity name
-		 * @return ValidationResult
-		 */
-		public function validate(array $node, array $data): ValidationResult {
-			// When the form was built from an entity, submitted data arrives prefixed
-			// (e.g. ['PostEntity' => ['title' => '...']]) — unwrap it automatically
-			// so validation always works against bare field names.
-			$prefix = $node['properties']['entity_prefix'] ?? null;
-			
-			if ($prefix !== null && isset($data[$prefix]) && is_array($data[$prefix])) {
-				$data = $data[$prefix];
-			}
-			
-			$errors = [];
-			$this->validateNode($node, $data, $errors);
-			return new ValidationResult($errors);
-		}
-		
-		/**
-		 * Recursively walk the node tree and validate all field nodes that have rules.
-		 * @param array<string, mixed> $node
-		 * @param array<string, mixed> $data
-		 * @param array<string, string> $errors Collected errors, passed by reference
-		 * @return void
-		 */
-		private function validateNode(array $node, array $data, array &$errors): void {
-			if (($node['type'] ?? '') === 'field') {
-				$rules = $node['properties']['rules'] ?? [];
-				$name = $node['properties']['name'] ?? '';
-				
-				if ($name && !empty($rules)) {
-					$value = $data[$name] ?? null;
-					$errorOverride = $node['properties']['error_message'] ?? null;
-					
-					foreach ($rules as $rule) {
-						if (!$rule->validate($value)) {
-							$errors[$name] = $errorOverride ?? $rule->getError();
-							// First failing rule wins — consistent with WakaForm behaviour
-							break;
-						}
-					}
-				}
-			}
-			
-			foreach ($node['children'] ?? [] as $child) {
-				$this->validateNode($child, $data, $errors);
-			}
 		}
 		
 		/**

@@ -4,25 +4,14 @@
 	
 	use App\Entities\PostEntity;
 	use Quellabs\Canvas\Annotations\Route;
-	use Quellabs\ObjectQuel\EntityManager;
+	use Quellabs\Canvas\Loom\Builder\Column;
+	use Quellabs\Canvas\Loom\Builder\Resource;
 	use Quellabs\DependencyInjection\Container;
 	use Quellabs\Canvas\Annotations\InterceptWith;
 	use Quellabs\Canvas\Annotations\WithContext;
 	use Quellabs\Canvas\Controllers\BaseController;
-	use Quellabs\Canvas\Loom\Builder\Button;
-	use Quellabs\Canvas\Loom\Builder\Column;
-	use Quellabs\Canvas\Loom\Builder\Columns;
-	use Quellabs\Canvas\Loom\Builder\Field;
-	use Quellabs\Canvas\Loom\Builder\Resource;
-	use Quellabs\Canvas\Loom\Builder\Section;
-	use Quellabs\Canvas\Loom\Builder\Tab;
-	use Quellabs\Canvas\Loom\Builder\Tabs;
 	use Quellabs\Canvas\Loom\Loom;
 	use Quellabs\AnnotationReader\AnnotationReader;
-	use Quellabs\Canvas\Loom\Validation\Rules\Email;
-	use Quellabs\Canvas\Loom\Validation\Rules\MaxLength;
-	use Quellabs\Canvas\Loom\Validation\Rules\MinLength;
-	use Quellabs\Canvas\Loom\Validation\Rules\NotBlank;
 	use Quellabs\Canvas\Translation\TranslationAspect;
 	use Quellabs\Contracts\Templates\TemplateEngineInterface;
 	use Symfony\Component\HttpFoundation\Request;
@@ -64,11 +53,13 @@
 		 * @Route("/")
 		 * @param TemplateEngineInterface $engine
 		 * @return Response
+		 * @throws \ReflectionException
 		 */
 		public function index(TemplateEngineInterface $engine): Response {
-			$definition = $this->buildDefinition();
-			$loom       = new Loom();
+			$loom = new Loom();
 			
+			$definition = $this->buildDefinition();
+
 			$renderedDefinition = $loom->render($definition, [
 				'title'   => 'My First Post',
 				'slug'    => 'my-first-post',
@@ -105,22 +96,7 @@
 		 * @return Response
 		 */
 		public function save(Request $request): Response {
-			$data       = $request->request->all();
-			$definition = $this->buildDefinition();
-			$loom       = new Loom();
-			$result     = $loom->validate($definition, $data);
-			
-			if ($result->fails()) {
-				// Re-render the form with submitted values and field errors
-				$renderedDefinition = $loom->render($definition, array_merge($data, [
-					'_errors' => $result->errors(),
-				]));
-				
-				return $this->buildResponse($renderedDefinition);
-			}
-			
-			// Validation passed — handle the save and redirect
-			return new Response('', 302, ['Location' => '/']);
+			return new Response();
 		}
 		
 		/**

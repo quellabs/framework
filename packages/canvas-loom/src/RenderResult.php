@@ -17,11 +17,11 @@
 		
 		/**
 		 * Constructor
-		 * @param string      $html   Rendered HTML
+		 * @param string $html Rendered HTML
 		 * @param string|null $script WakaPAC initialisation script, if any
 		 */
 		public function __construct(string $html, ?string $script = null) {
-			$this->html   = $html;
+			$this->html = $html;
 			$this->script = $script;
 		}
 	}
