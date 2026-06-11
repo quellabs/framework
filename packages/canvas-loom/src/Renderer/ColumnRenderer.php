@@ -8,9 +8,8 @@
 	/**
 	 * Renders a single column within a columns layout.
 	 * Width is injected by the parent ColumnsRenderer as a percentage.
-	 * A column can optionally be marked as a sidebar, rendering a title
-	 * and hint text instead of form fields, separated from the content
-	 * by a vertical line.
+	 * A column renders all its children in order — Text nodes for descriptive
+	 * content, Field nodes for form inputs, or any combination.
 	 *
 	 * CSS classes are defined as protected properties so theme packages
 	 * can extend this renderer and override only the class names.
@@ -19,15 +18,6 @@
 		
 		/** @var string Wrapper div class */
 		protected string $wrapperClass = 'loom-column';
-		
-		/** @var string Sidebar wrapper class */
-		protected string $sidebarClass = 'loom-column-sidebar';
-		
-		/** @var string Sidebar title class */
-		protected string $sidebarTitleClass = 'loom-column-sidebar-title';
-		
-		/** @var string Sidebar hint class */
-		protected string $sidebarHintClass = 'loom-column-sidebar-hint';
 		
 		/**
 		 * Render the column
@@ -39,45 +29,21 @@
 		 */
 		public function render(array $properties, string $children, ?array $parent = null, int $index = 0): RenderResult {
 			$width = $properties['width'] ?? null;
-			$sidebar = !empty($properties['sidebar']);
+			$class = $properties['class'] ?? $this->wrapperClass;
 			
-			// Apply width as inline flex style if provided
-			$styleAttr = $width !== null
-				? " style=\"flex: 0 0 {$width}%; min-width: 0;\""
-				: " style=\"flex: 1; min-width: 0;\"";
-			
-			if ($sidebar) {
-				$title = $this->e($properties['sidebar_title'] ?? '');
-				$hint = $this->e($properties['sidebar_hint'] ?? '');
-				$class = $this->e($properties['class'] ?? $this->sidebarClass);
-				
-				if ($title) {
-					$titleHtml = "<p class=\"{$this->sidebarTitleClass}\">{$title}</p>";
-				} else {
-					$titleHtml = '';
-				}
-				
-				if ($hint) {
-					$hintHtml = "<p class=\"{$this->sidebarHintClass}\">{$hint}</p>";
-				} else {
-					$hintHtml = '';
-				}
-				
-				$html = <<<HTML
-            <div class="{$class}"{$styleAttr}>
-                {$titleHtml}
-                {$hintHtml}
-            </div>
-            HTML;
+			// Apply width as inline flex style if provided by the parent ColumnsRenderer,
+			// otherwise let the column grow to fill available space
+			if ($width !== null) {
+				$styleAttr = " style=\"flex: 0 0 {$width}%; min-width: 0;\"";
 			} else {
-				$class = $properties['class'] ?? $this->wrapperClass;
-				
-				$html = <<<HTML
+				$styleAttr = " style=\"flex: 1; min-width: 0;\"";
+			}
+			
+			$html = <<<HTML
             <div class="{$class}"{$styleAttr}>
                 {$children}
             </div>
             HTML;
-			}
 			
 			return new RenderResult($html);
 		}

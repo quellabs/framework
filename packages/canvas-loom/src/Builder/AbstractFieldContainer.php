@@ -12,6 +12,24 @@
 	abstract class AbstractFieldContainer extends AbstractNode {
 		
 		/**
+		 * Add multiple field nodes from an array in one call.
+		 * Shorthand for chaining ->add() for flat field lists:
+		 *   Section::make()->fields([
+		 *       Field::text('name', 'Name'),
+		 *       Field::email('email', 'Email'),
+		 *   ])
+		 * @param AbstractNode[] $fields
+		 * @return static
+		 */
+		public function fields(array $fields): static {
+			foreach ($fields as $field) {
+				$this->children[] = $field;
+			}
+
+			return $this;
+		}
+
+		/**
 		 * Resolve dependency chains for dependent select fields.
 		 * Walks the dependency chain for each field with a depends_on
 		 * property and injects a foreach_expression that WakaPAC uses

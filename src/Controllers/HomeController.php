@@ -2,7 +2,10 @@
 	
 	namespace App\Controllers;
 	
+	use App\Entities\PostEntity;
 	use Quellabs\Canvas\Annotations\Route;
+	use Quellabs\ObjectQuel\EntityManager;
+	use Quellabs\DependencyInjection\Container;
 	use Quellabs\Canvas\Annotations\InterceptWith;
 	use Quellabs\Canvas\Annotations\WithContext;
 	use Quellabs\Canvas\Controllers\BaseController;
@@ -15,6 +18,7 @@
 	use Quellabs\Canvas\Loom\Builder\Tab;
 	use Quellabs\Canvas\Loom\Builder\Tabs;
 	use Quellabs\Canvas\Loom\Loom;
+	use Quellabs\AnnotationReader\AnnotationReader;
 	use Quellabs\Canvas\Loom\Validation\Rules\Email;
 	use Quellabs\Canvas\Loom\Validation\Rules\MaxLength;
 	use Quellabs\Canvas\Loom\Validation\Rules\MinLength;
@@ -29,117 +33,29 @@
 		const int MSG_SHOW_DELETE = 10000;
 		const int MSG_HIDE_DELETE = 10001;
 		
+		private AnnotationReader $annotationReader;
+		
+		public function __construct(Container $container, AnnotationReader $annotationReader) {
+			parent::__construct($container);
+			$this->annotationReader = $annotationReader;
+		}
+		
 		/**
 		 * Builds the resource definition, shared between GET and POST.
 		 * Rules are defined here once so both rendering and validation use
 		 * the same source.
+		 * @throws \ReflectionException
 		 */
 		private function buildDefinition(): array {
-			return Resource::make('post-form', '/save')
-				->title('Edit Post')
-				->useWakaForm()
-				->addHeaderButton(
-					Button::make('Delete')
-						->danger()
-						->name('delete')
-						->showMessage(self::MSG_SHOW_DELETE)
-						->hideMessage(self::MSG_HIDE_DELETE)
-						->action("Stdlib.sendMessage('post-form', MSG_DELETE, 0, 0)")
-				)
-				->add(Tabs::make('post-tabs', 'general')
-					->add(Tab::make('general', 'General')
-						->add(Section::make('post-details')
-							->add(Columns::make([70, 30])
-								->add(Column::make()
-									->add(Field::text('title', 'Title')
-										->maxlength(200)
-										->rules([new NotBlank(), new MaxLength(200)])
-									)
-									->add(Field::richtext('body', 'Content')
-										->rows(10)
-										->hint('{{ body.length }} characters typed')
-									)
-									->add(Field::file('attachments', 'Attachments', '/upload', multiple: true))
-								)
-								->add(Column::make()
-									->add(Field::select('status', 'Status')
-										->options([
-											['value' => 'draft',     'label' => 'Draft'],
-											['value' => 'published', 'label' => 'Published'],
-										])
-									)
-									->add(Field::text('slug', 'Slug')
-										->rules([new NotBlank(), new MinLength(3), new MaxLength(200)])
-										->errorMessage('test error')
-									)
-									->add(Field::text('email', 'Email')
-										->rules([new NotBlank(), new Email()])
-									)
-									->add(Field::toggle('featured', 'Featured post'))
-									->add(Field::time('date', 'Date'))
-									->add(Field::select('country', 'Country')
-										->options([
-											['value' => 'nl', 'label' => 'Netherlands'],
-											['value' => 'de', 'label' => 'Germany'],
-										])
-									)
-									->add(Field::select('region', 'Region')
-										->dependsOn('country')
-										->options([
-											'nl' => [
-												['value' => 'nh', 'label' => 'Noord-Holland'],
-												['value' => 'zh', 'label' => 'Zuid-Holland'],
-											],
-											'de' => [
-												['value' => 'by', 'label' => 'Bayern'],
-												['value' => 'nw', 'label' => 'Nordrhein-Westfalen'],
-											],
-										])
-									)
-									->add(Field::select('city', 'City')
-										->dependsOn('region')
-										->options([
-											'nl' => [
-												'nh' => [
-													['value' => 'ams', 'label' => 'Amsterdam'],
-													['value' => 'hrl', 'label' => 'Haarlem'],
-												],
-												'zh' => [
-													['value' => 'rot', 'label' => 'Rotterdam'],
-													['value' => 'dhg', 'label' => 'Den Haag'],
-												],
-											],
-											'de' => [
-												'by' => [
-													['value' => 'muc', 'label' => 'München'],
-													['value' => 'nue', 'label' => 'Nürnberg'],
-												],
-												'nw' => [
-													['value' => 'col', 'label' => 'Köln'],
-													['value' => 'dus', 'label' => 'Düsseldorf'],
-												],
-											],
-										])
-									)
-								)
-							)
-						)
-					)
-					->add(Tab::make('seo', 'SEO')
-						->add(Section::make('post-seo')
-							->add(Field::text('meta_title', 'Meta title')
-								->maxlength(60)
-								->rules([new MaxLength(60)])
-							)
-							->add(Field::textarea('meta_description', 'Meta description')
-								->rows(3)
-								->maxlength(160)
-								->rules([new MaxLength(160)])
-							)
-						)
-					)
-				)
-				->build();
+			$post = $this->em()->find(PostEntity::class, 1);
+			
+			$resource = Resource::makeFromEntity($post, $this->annotationReader)
+				->wrapInColumns([
+					'main'    => Column::make(),
+					'sidebar' => Column::make(),
+				]);
+			
+			return $resource->build();
 		}
 		
 		/**

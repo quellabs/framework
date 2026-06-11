@@ -16,12 +16,18 @@
 		protected array $children = [];
 		
 		/**
-		 * Add a child node
-		 * @param AbstractNode $node
+		 * Add one or more child nodes.
+		 * Accepts a single node or multiple nodes in one call:
+		 *   ->add($fieldA)
+		 *   ->add($fieldA, $fieldB, $fieldC)
+		 * @param AbstractNode ...$nodes
 		 * @return static
 		 */
-		public function add(AbstractNode $node): static {
-			$this->children[] = $node;
+		public function add(AbstractNode ...$nodes): static {
+			foreach ($nodes as $node) {
+				$this->children[] = $node;
+			}
+			
 			return $this;
 		}
 		

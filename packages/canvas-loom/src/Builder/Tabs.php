@@ -10,11 +10,11 @@
 	class Tabs extends AbstractNode {
 		
 		/**
-		 * @param string $id     Tabs container id
+		 * @param string $id Tabs container id
 		 * @param string $active Id of the initially active tab
 		 */
 		private function __construct(string $id, string $active = '') {
-			$this->properties['id']   = $id;
+			$this->properties['id'] = $id;
 			$this->properties['tabs'] = [];
 			
 			if ($active) {
@@ -23,7 +23,7 @@
 		}
 		
 		/**
-		 * @param string $id     Tabs container id
+		 * @param string $id Tabs container id
 		 * @param string $active Id of the initially active tab
 		 */
 		public static function make(string $id, string $active = ''): static {
@@ -31,20 +31,26 @@
 		}
 		
 		/**
-		 * Add a tab — registers it in the tabs index for the tab bar
-		 * and as a child node for the content panel
-		 * @param Tab $node
+		 * Add one or more Tab nodes.
+		 * Each Tab is registered in the tabs index for the tab bar
+		 * and as a child node for the content panel.
+		 * Accepts a single Tab or multiple Tabs in one call:
+		 *   ->add($tabA)
+		 *   ->add($tabA, $tabB, $tabC)
+		 * @param AbstractNode ...$nodes
 		 * @return static
 		 */
-		public function add(AbstractNode $node): static {
-			if ($node instanceof Tab) {
-				$this->properties['tabs'][] = [
-					'id'    => $node->getId(),
-					'label' => $node->getLabel(),
-				];
+		public function add(AbstractNode ...$nodes): static {
+			foreach ($nodes as $node) {
+				if ($node instanceof Tab) {
+					$this->properties['tabs'][] = [
+						'id'    => $node->getId(),
+						'label' => $node->getLabel(),
+					];
+				}
 			}
 			
-			return parent::add($node);
+			return parent::add(...$nodes);
 		}
 		
 		/**

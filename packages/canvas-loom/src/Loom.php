@@ -62,6 +62,13 @@
 				$this->currentData['_use_wakaform'] = true;
 			}
 			
+			// If the root node carries an entity_prefix (set by EntityReader), inject
+			// it into the data context so FieldRenderer can scope the HTML name attribute
+			// (e.g. PostEntity[title]) without affecting WakaPAC bindings or value resolution.
+			if (!empty($node['properties']['entity_prefix'])) {
+				$this->currentData['_entity_prefix'] = $node['properties']['entity_prefix'];
+			}
+			
 			// Inject render part into root node properties so ResourceRenderer
 			// knows which part to render
 			if (isset($options['part'])) {

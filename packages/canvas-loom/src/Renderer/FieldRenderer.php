@@ -121,6 +121,13 @@
 			$class = $this->e($properties['class'] ?? $this->wrapperClass);
 			$id = $this->e($properties['id'] ?? $name);
 			
+			// Scope the HTML name attribute to the entity when a prefix is set
+			// (e.g. PostEntity[title]) so submitted data is traceable back to its entity.
+			// WakaPAC bindings, the id attribute, and value resolution all use the bare
+			// field name so reactive behaviour is unaffected.
+			$prefix = $this->loom->getData()['_entity_prefix'] ?? null;
+			$htmlName = $prefix ? "{$prefix}[{$name}]" : $name;
+			
 			// Data array passed to Loom::render() takes precedence over any value
 			// set on the builder — this is how server-side data populates the form
 			$value = $this->resolveValue($name, $properties);
@@ -187,9 +194,9 @@
 			}
 			
 			// Delegate the actual input element to the type-specific renderer.
-			// pac attributes are passed pre-rendered so each renderer doesn't
-			// need to re-implement the same attribute construction logic.
-			$inputHtml = $this->getInputRenderer($type)->renderInput($id, $name, $value, $properties, $pacFieldAttr, $pacBindAttr);
+			// $htmlName (not $name) is passed so the HTML name attribute is scoped
+			// to the entity prefix when one is set. All other references use $name.
+			$inputHtml = $this->getInputRenderer($type)->renderInput($id, $htmlName, $value, $properties, $pacFieldAttr, $pacBindAttr);
 			
 			// Build html
 			$html = <<<HTML
