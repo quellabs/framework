@@ -13,7 +13,7 @@
 		/**
 		 * @param string $label Button label text
 		 */
-		private function __construct(string $label) {
+		protected function __construct(string $label) {
 			$this->properties['label'] = $label;
 		}
 		

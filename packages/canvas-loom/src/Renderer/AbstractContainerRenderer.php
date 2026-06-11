@@ -17,7 +17,7 @@
 		 * Returns a map of fieldName => JS rules array string for use in createForm().
 		 * Fields without rules are omitted — createForm() only needs entries where
 		 * rules are defined.
-		 * @param array $nodes
+		 * @param array<int, array<string, mixed>> $nodes
 		 * @return array<string, string[]> fieldName => array of toJs() strings
 		 */
 		protected function collectFieldRules(array $nodes): array {
@@ -60,8 +60,8 @@
 		 * Recursively collect options arrays from all field nodes in the tree.
 		 * Used to inject dependent dropdown options into the WakaPAC state
 		 * before the component is initialized.
-		 * @param array $nodes
-		 * @return array
+		 * @param array<int, array<string, mixed>> $nodes
+		 * @return array<string, mixed>
 		 */
 		protected function collectFieldProperties(array $nodes): array {
 			$state = [];
@@ -93,7 +93,7 @@
 		 * both for server-side error detection at render time and for emitting
 		 * the data-loom-tab-fields attribute that drives client-side JS updates.
 		 * Hidden fields are excluded — they carry no validation state.
-		 * @param array $nodes
+		 * @param array<int, array<string, mixed>> $nodes
 		 * @return string[] Flat list of field name strings
 		 */
 		protected function collectFieldNames(array $nodes): array {
@@ -130,7 +130,7 @@
 		 * - Is a text node with {{ }} interpolation in its value
 		 * - Has validation rules (field.valid bindings)
 		 * - Has use_wakaform enabled on the resource
-		 * @param array $nodes
+		 * @param array<int, array<string, mixed>> $nodes
 		 * @return bool
 		 */
 		protected function requiresWakaPAC(array $nodes): bool {
@@ -195,17 +195,17 @@
 		 * self-contained IIFE with the standard submit/post/dismiss methods.
 		 *
 		 * @param string $id WakaPAC component id
-		 * @param array $extra Additional abstraction method snippets as raw JS strings
-		 * @param array $abstraction Key-value pairs from the node's abstraction property
+		 * @param array<int, string> $extra Additional abstraction method snippets as raw JS strings
+		 * @param array<string, mixed> $abstraction Key-value pairs from the node's abstraction property
 		 *                                 (scalars and arrays only — anything else throws)
-		 * @param array $scripts Script snippets from the builder's script() calls,
+		 * @param array<int, string> $scripts Script snippets from the builder's script() calls,
 		 *                                 appended after $extra in the abstraction body
-		 * @param array $fieldRules Map of fieldName => JS rule constructor strings from
+		 * @param array<string, string[]> $fieldRules Map of fieldName => JS rule constructor strings from
 		 *                                 collectFieldRules(). When non-empty and $clientValidation
 		 *                                 is true, a wakaForm.createForm() block is emitted and the
 		 *                                 form proxy is injected as the 'form' property.
 		 * @param bool $clientValidation Whether WakaForm client-side validation is active
-		 * @param array $serverErrors Map of fieldName => error(s) from the last server round-trip,
+		 * @param array<string, string> $serverErrors Map of fieldName => error(s) from the last server round-trip,
 		 *                                 used to pre-mark fields invalid after a failed submission
 		 * @return string Ready-to-emit JavaScript wrapped in an IIFE
 		 */
@@ -221,11 +221,11 @@
 			// Both are empty strings when client validation is off so the IIFE template is always
 			// interpolated unconditionally regardless of whether validation is active.
 			if ($clientValidation && !empty($fieldRules)) {
-				$wakaForm     = $this->buildWakaFormBlock($id, $fieldRules, $serverErrors);
-				$formInit     = $wakaForm['formInit'];
+				$wakaForm = $this->buildWakaFormBlock($id, $fieldRules, $serverErrors);
+				$formInit = $wakaForm['formInit'];
 				$formProperty = $wakaForm['formProperty'];
 			} else {
-				$formInit     = '';
+				$formInit = '';
 				$formProperty = '';
 			}
 			
@@ -284,7 +284,7 @@ JS;
 		 * arrays are accepted — closures or objects would not survive
 		 * json_encode and are rejected early with a clear message.
 		 *
-		 * @param array $abstraction Key-value pairs from the node's abstraction property
+		 * @param array<string, mixed> $abstraction Key-value pairs from the node's abstraction property
 		 * @return string Zero or more `key: value,\n` lines, or an empty string when $abstraction is empty
 		 * @throws \InvalidArgumentException When a value is neither scalar nor array
 		 */
@@ -310,8 +310,8 @@ JS;
 		 * snippets are stripped first so the separator is never doubled. When there are
 		 * no snippets the returned string is empty, producing no output in the template.
 		 *
-		 * @param array $extra Raw JS method/property snippets supplied by the renderer
-		 * @param array $scripts Raw JS snippets from the node builder's script() calls
+		 * @param array<int, string> $extra Raw JS method/property snippets supplied by the renderer
+		 * @param array<int, string> $scripts Raw JS snippets from the node builder's script() calls
 		 * @return string Comma-joined snippet block with a trailing comma, or an empty string
 		 */
 		protected function serializeExtraSnippets(array $extra, array $scripts): string {
@@ -348,8 +348,8 @@ JS;
 		 * without requiring the user to interact with the field first.
 		 *
 		 * @param string $id WakaPAC component id, used in the message hook comparison
-		 * @param array $fieldRules Map of fieldName => JS rule constructor strings
-		 * @param array $serverErrors Map of fieldName => error(s) from the last server submission
+		 * @param array<string, string[]> $fieldRules Map of fieldName => JS rule constructor strings
+		 * @param array<string, string> $serverErrors Map of fieldName => error(s) from the last server submission
 		 * @return array{formInit: string, formProperty: string}
 		 */
 		protected function buildWakaFormBlock(string $id, array $fieldRules, array $serverErrors): array {

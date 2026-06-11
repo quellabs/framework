@@ -30,7 +30,7 @@
 		 * @param string $id Form id, also used as WakaPAC component id
 		 * @param string $action Form action URL
 		 */
-		private function __construct(string $id, string $action) {
+		protected function __construct(string $id, string $action) {
 			$this->properties['id'] = $id;
 			$this->properties['action'] = $action;
 		}
@@ -42,20 +42,22 @@
 		public static function make(string $id, string $action): static {
 			return new static($id, $action);
 		}
-		
+
 		/**
 		 * Build a Resource from an entity's @Loom annotations.
 		 * Fields are added in property declaration order.
-		 * If the entity declares @Loom\Column groups, call wrapInColumns()
+		 * If the entity declares @Loom\\Column groups, call wrapInColumns()
 		 * on the returned Resource to activate column layout; without that
 		 * call the form renders flat.
 		 * @param object|string $entity Entity instance or class name
 		 * @param AnnotationReader $reader
-		 * @return static
+		 * @return self
 		 * @throws \InvalidArgumentException When @Loom\Resource annotation is missing
 		 */
-		public static function makeFromEntity(object|string $entity, AnnotationReader $reader): static {
-			return (new EntityReader($reader))->read($entity);
+		public static function makeFromEntity(object|string $entity, AnnotationReader $reader): self {
+			/** @var class-string|object $classOrObject */
+			$classOrObject = is_string($entity) ? (class_exists($entity) ? $entity : throw new \InvalidArgumentException("Class '{$entity}' does not exist.")) : $entity;
+			return (new EntityReader($reader))->read($classOrObject);
 		}
 		
 		/**
@@ -153,6 +155,7 @@
 		 * @return int[]
 		 */
 		private function resolveWidths(array $names): array {
+			/** @var array<int, int|null> $widths */
 			$widths = [];
 			$missing = [];
 			$used = 0;
@@ -177,7 +180,10 @@
 				}
 			}
 			
-			return $widths;
+			// All null slots have been filled by $share; map to guarantee int[]
+			/** @var int[] $result */
+			$result = array_map(fn($w) => $w ?? 0, $widths);
+			return $result;
 		}
 		
 		/**
@@ -235,7 +241,8 @@
 		 * @return static
 		 */
 		public function addHeaderButton(Button $button): static {
-			$buttons = $this->get('header_buttons') ?? [];
+			$existing = $this->get('header_buttons');
+			$buttons = is_array($existing) ? $existing : [];
 			$buttons[] = $button;
 			return $this->set('header_buttons', $buttons);
 		}
@@ -254,7 +261,7 @@
 		
 		/**
 		 * Build the node array for Loom::render()
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function build(): array {
 			return $this->toArray();

@@ -27,9 +27,9 @@
 		
 		/**
 		 * Render the text field
-		 * @param array $properties Node properties from the JSON definition
+		 * @param array<string, mixed> $properties Node properties from the JSON definition
 		 * @param string $children Already-rendered HTML of all child nodes
-		 * @param array|null $parent Parent node
+		 * @param array<string, mixed>|null $parent Parent node
 		 * @param int $index Index of this node within its parent
 		 * @return RenderResult
 		 */
@@ -40,7 +40,8 @@
 			// Values containing WakaPAC {{ }} interpolations must not be escaped —
 			// htmlspecialchars would turn {{ into {{ which WakaPAC cannot match.
 			// Values without interpolations are escaped normally.
-			$rawValue = $properties['value'] ?? '';
+			$rawValueMixed = $properties['value'] ?? '';
+			$rawValue = is_string($rawValueMixed) ? $rawValueMixed : '';
 			$value = str_contains($rawValue, '{{') ? $rawValue : $this->e($rawValue);
 			
 			// Only render a label element when a label is provided

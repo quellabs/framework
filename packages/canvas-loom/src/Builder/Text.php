@@ -12,7 +12,7 @@
 		 * @param string $label Label shown above the value
 		 * @param string $value Text value, supports WakaPAC interpolation e.g. '{{title}}'
 		 */
-		private function __construct(string $label, string $value) {
+		protected function __construct(string $label, string $value) {
 			$this->properties['label'] = $label;
 			$this->properties['value'] = $value;
 		}

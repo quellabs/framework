@@ -11,7 +11,7 @@
 		 * @param string $id    Tab id, used for active state matching
 		 * @param string $label Tab button label
 		 */
-		private function __construct(string $id, string $label) {
+		protected function __construct(string $id, string $label) {
 			$this->properties['id']    = $id;
 			$this->properties['label'] = $label;
 		}
@@ -29,7 +29,8 @@
 		 * @return string
 		 */
 		public function getId(): string {
-			return $this->properties['id'];
+			$id = $this->properties['id'];
+			return is_string($id) ? $id : '';
 		}
 		
 		/**
@@ -37,7 +38,8 @@
 		 * @return string
 		 */
 		public function getLabel(): string {
-			return $this->properties['label'];
+			$label = $this->properties['label'];
+			return is_string($label) ? $label : '';
 		}
 		
 		/**

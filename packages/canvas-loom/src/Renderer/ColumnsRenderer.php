@@ -17,9 +17,9 @@
 		
 		/**
 		 * Render the columns container
-		 * @param array $properties
+		 * @param array<string, mixed> $properties
 		 * @param string $children
-		 * @param array|null $parent
+		 * @param array<string, mixed>|null $parent
 		 * @param int $index
 		 * @return RenderResult
 		 */
@@ -28,7 +28,8 @@
 			
 			// Sanitize gap: allow only digits, dots, spaces, and valid CSS units.
 			// Prevents CSS injection via inline style attribute.
-			$rawGap = $properties['gap'] ?? '1rem';
+			$rawGapValue = $properties['gap'] ?? '1rem';
+			$rawGap = is_string($rawGapValue) ? $rawGapValue : '1rem';
 			
 			if (preg_match('/^[\d.\s]+(px|rem|em|%|vw|vh|ch|ex|cm|mm|in|pt|pc)(\s[\d.\s]+(px|rem|em|%|vw|vh|ch|ex|cm|mm|in|pt|pc))*$/', $rawGap)) {
 				$gap = $rawGap;

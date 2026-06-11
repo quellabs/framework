@@ -9,10 +9,10 @@
 		
 		/**
 		 * Constructor
-		 * @param array  $widths Column widths as percentages e.g. [70, 30]
-		 * @param string $gap    CSS gap value between columns
+		 * @param int[] $widths Column widths as percentages e.g. [70, 30]
+		 * @param string $gap CSS gap value between columns
 		 */
-		private function __construct(array $widths = [], string $gap = '1rem') {
+		protected function __construct(array $widths = [], string $gap = '1rem') {
 			if (!empty($widths)) {
 				$this->properties['widths'] = $widths;
 			}
@@ -21,8 +21,8 @@
 		}
 		
 		/**
-		 * @param array  $widths Column widths as percentages e.g. [70, 30]
-		 * @param string $gap    CSS gap value between columns
+		 * @param int[] $widths Column widths as percentages e.g. [70, 30]
+		 * @param string $gap CSS gap value between columns
 		 */
 		public static function make(array $widths = [], string $gap = '1rem'): static {
 			return new static($widths, $gap);

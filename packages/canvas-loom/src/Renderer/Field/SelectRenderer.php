@@ -23,12 +23,13 @@
 		 * @inheritDoc
 		 */
 		public function renderInput(string $id, string $name, string $value, array $properties, string $pacField, string $pacBind): string {
-			$attrs    = $this->buildValidationAttrs($properties);
+			$attrs = $this->buildValidationAttrs($properties);
 			$selected = $this->resolveValue($name, $properties);
 			
 			// Dependent dropdown — options driven by WakaPAC foreach binding on the select
 			if (isset($properties['foreach_expression'])) {
-				$expression   = $properties['foreach_expression'];
+				$rawExpression = $properties['foreach_expression'];
+				$expression = is_string($rawExpression) ? $rawExpression : '';
 				$combinedBind = " data-pac-bind=\"foreach: {$expression}, value: {$name}\"";
 				
 				return <<<HTML
@@ -39,18 +40,17 @@
 			}
 			
 			// Resolve options from properties or fall back to data array via pluralized field name
-			$optionsData = $properties['options']
-				?? $this->loom->getData()[StringInflector::pluralize($name)]
-				?? [];
+			$rawOptions = $properties['options'] ?? $this->loom->getData()[StringInflector::pluralize($name)] ?? [];
+			$optionsData = is_array($rawOptions) ? $rawOptions : [];
 			
 			$options = '';
 			
 			foreach ($optionsData as $option) {
 				// Support both flat strings and value/label pairs
-				$optValue     = is_array($option) ? $option['value'] : $option;
-				$optLabel     = is_array($option) ? $option['label'] : $option;
+				$optValue = is_array($option) ? $option['value'] : $option;
+				$optLabel = is_array($option) ? $option['label'] : $option;
 				$selectedAttr = $optValue == $selected ? ' selected' : '';
-				$options     .= "<option value=\"{$this->e($optValue)}\"{$selectedAttr}>{$this->e($optLabel)}</option>\n";
+				$options .= "<option value=\"{$this->e($optValue)}\"{$selectedAttr}>{$this->e($optLabel)}</option>\n";
 			}
 			
 			return <<<HTML

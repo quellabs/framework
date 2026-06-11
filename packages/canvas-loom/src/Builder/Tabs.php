@@ -13,7 +13,7 @@
 		 * @param string $id Tabs container id
 		 * @param string $active Id of the initially active tab
 		 */
-		private function __construct(string $id, string $active = '') {
+		protected function __construct(string $id, string $active = '') {
 			$this->properties['id'] = $id;
 			$this->properties['tabs'] = [];
 			
@@ -43,10 +43,13 @@
 		public function add(AbstractNode ...$nodes): static {
 			foreach ($nodes as $node) {
 				if ($node instanceof Tab) {
-					$this->properties['tabs'][] = [
+					$existing = $this->properties['tabs'];
+					$tabs = is_array($existing) ? $existing : [];
+					$tabs[] = [
 						'id'    => $node->getId(),
 						'label' => $node->getLabel(),
 					];
+					$this->properties['tabs'] = $tabs;
 				}
 			}
 			

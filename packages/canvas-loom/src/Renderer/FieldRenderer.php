@@ -111,7 +111,7 @@
 		
 		/**
 		 * Render a standard visible field with label, input, and optional hint.
-		 * @param array $properties
+		 * @param array<string, mixed> $properties
 		 * @return RenderResult
 		 */
 		protected function renderDefault(array $properties): RenderResult {
@@ -125,8 +125,9 @@
 			// (e.g. PostEntity[title]) so submitted data is traceable back to its entity.
 			// WakaPAC bindings, the id attribute, and value resolution all use the bare
 			// field name so reactive behaviour is unaffected.
-			$prefix = $this->loom->getData()['_entity_prefix'] ?? null;
-			$htmlName = $prefix ? "{$prefix}[{$name}]" : $name;
+			$rawPrefix = $this->loom->getData()['_entity_prefix'] ?? null;
+			$prefix = is_string($rawPrefix) ? $rawPrefix : null;
+			$htmlName = $prefix !== null ? "{$prefix}[{$name}]" : $name;
 			
 			// Data array passed to Loom::render() takes precedence over any value
 			// set on the builder — this is how server-side data populates the form
@@ -165,8 +166,10 @@
 			// fields with neither don't need the element at all.
 			// When rendered, it starts hidden unless there is an active server-side error,
 			// and is toggled by WakaForm via data-pac-bind="visible: !form.{name}.valid".
-			$errors = $this->loom->getData()['_errors'] ?? [];
-			$errorMessage = isset($errors[$name]) ? $this->e($errors[$name]) : '';
+			$rawErrors = $this->loom->getData()['_errors'] ?? [];
+			/** @var array<string, string> $errors */
+			$errors = is_array($rawErrors) ? $rawErrors : [];
+			$errorMessage = isset($errors[$name]) && is_string($errors[$name]) ? $this->e($errors[$name]) : '';
 			$hasRules = !empty($properties['rules']);
 			$errorClass = $this->e($properties['error_class'] ?? $this->errorClass);
 			
@@ -177,7 +180,8 @@
 				} elseif (($properties['error_message'] ?? null)) {
 					$displayMessage = $properties['error_message'];
 				} else {
-					$displayMessage = $hasRules ? $this->e($properties['rules'][0]->getError()) : '';
+					$firstRule = $properties['rules'][0] ?? null;
+					$displayMessage = ($hasRules && is_object($firstRule) && method_exists($firstRule, 'getError')) ? $this->e($firstRule->getError()) : '';
 				}
 				
 				if ($useWakaForm) {
@@ -220,7 +224,7 @@
 		 * standard wrapper (label, hint, error) still applies; only the input
 		 * element and its script are handled differently.
 		 *
-		 * @param array $properties
+		 * @param array<string, mixed> $properties
 		 * @return RenderResult
 		 */
 		protected function renderRichtext(array $properties): RenderResult {
@@ -255,18 +259,18 @@
 		
 		/**
 		 * Render a file upload field using the <waka-file> custom element.
-		 * @param array $properties
+		 * @param array<string, mixed> $properties
 		 * @return RenderResult
 		 */
 		protected function renderFile(array $properties): RenderResult {
-			$name  = $properties['name'] ?? '';
+			$name = $properties['name'] ?? '';
 			$label = $this->e($properties['label'] ?? '');
 			$class = $this->e($properties['class'] ?? $this->wrapperClass);
-			$id    = $this->e($properties['id'] ?? $name);
+			$id = $this->e($properties['id'] ?? $name);
 			
 			/** @var FileRenderer $renderer */
 			$renderer = $this->getInputRenderer('file');
-			$parts    = $renderer->renderWithScript($id, $name, $properties);
+			$parts = $renderer->renderWithScript($id, $name, $properties);
 			
 			$labelHtml = $label
 				? "<label class=\"{$this->labelClass}\">{$label}</label>"
@@ -308,7 +312,7 @@
 		 * 2. Entity data extracted by EntityReader via getters — fallback for
 		 *    entity-driven forms when no explicit value is provided for a field.
 		 * @param string $name Field name, used as key into both data sources
-		 * @param array $properties Node properties
+		 * @param array<string, mixed> $properties Node properties
 		 * @return string
 		 */
 		private function resolveValue(string $name, array $properties): string {
@@ -335,12 +339,12 @@
 		
 		/**
 		 * Get a nested value from an array using dot and bracket notation.
-		 * @param array $data
+		 * @param array<string, mixed> $data
 		 * @param string $path
 		 * @return mixed
 		 */
 		private function getNestedValue(array $data, string $path): mixed {
-			$parts = preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY);
+			$parts = preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [];
 			$current = $data;
 			
 			foreach ($parts as $part) {

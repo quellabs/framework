@@ -25,10 +25,10 @@
 			foreach ($fields as $field) {
 				$this->children[] = $field;
 			}
-
+			
 			return $this;
 		}
-
+		
 		/**
 		 * Resolve dependency chains for dependent select fields.
 		 * Walks the dependency chain for each field with a depends_on
@@ -40,8 +40,13 @@
 			$dependsOnMap = [];
 			
 			foreach ($this->children as $child) {
-				if ($child instanceof Field && $child->get('depends_on')) {
-					$dependsOnMap[$child->get('name')] = $child->get('depends_on');
+				if ($child instanceof Field) {
+					$childName = $child->get('name');
+					$childDependsOn = $child->get('depends_on');
+					
+					if (is_string($childName) && is_string($childDependsOn) && $childDependsOn !== '') {
+						$dependsOnMap[$childName] = $childDependsOn;
+					}
 				}
 			}
 			
@@ -50,12 +55,19 @@
 			}
 			
 			foreach ($this->children as $child) {
-				if (!$child instanceof Field || !$child->get('depends_on')) {
+				if (!$child instanceof Field) {
 					continue;
 				}
 				
-				$chain   = [];
-				$current = $child->get('name');
+				$childName = $child->get('name');
+				$childDependsOn = $child->get('depends_on');
+				
+				if (!is_string($childName) || !is_string($childDependsOn) || $childDependsOn === '') {
+					continue;
+				}
+				
+				$chain = [];
+				$current = $childName;
 				
 				while (isset($dependsOnMap[$current])) {
 					$current = $dependsOnMap[$current];
@@ -63,7 +75,7 @@
 				}
 				
 				// Build foreach expression using pluralized field name as data key
-				$dataKey    = StringInflector::pluralize($child->get('name'));
+				$dataKey = StringInflector::pluralize($childName);
 				$expression = $dataKey . implode('', array_map(fn($k) => "[{$k}]", array_reverse($chain)));
 				
 				$child->set('foreach_expression', $expression);
@@ -72,7 +84,7 @@
 		
 		/**
 		 * Resolve dependencies before serialising to array
-		 * @return array
+		 * @return array<string, mixed>
 		 */
 		public function toArray(): array {
 			$this->resolveDependencies();

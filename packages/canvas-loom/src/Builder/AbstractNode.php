@@ -92,8 +92,10 @@
 		 * @return static
 		 */
 		public function script(string $code): static {
-			$scripts = $this->properties['scripts'] ?? [];
+			$existing = $this->properties['scripts'] ?? [];
+			$scripts = is_array($existing) ? $existing : [];
 			$scripts[] = $code;
+
 			return $this->set('scripts', $scripts);
 		}
 		

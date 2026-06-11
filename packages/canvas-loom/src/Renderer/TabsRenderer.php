@@ -48,30 +48,38 @@
 		 * ResourceRenderer can update indicators after a failed client-side
 		 * validation attempt without any additional PHP involvement.
 		 *
-		 * @param array $properties
+		 * @param array<string, mixed> $properties
 		 * @param string $children
-		 * @param array|null $parent
+		 * @param array<string, mixed>|null $parent
 		 * @param int $index
 		 * @return RenderResult
 		 */
 		public function render(array $properties, string $children, ?array $parent = null, int $index = 0): RenderResult {
-			$active = $properties['active'] ?? '';
-			$class  = $this->e($properties['class'] ?? $this->wrapperClass);
-			$tabs   = $properties['tabs'] ?? [];
-			$childNodes = $properties['_children'] ?? [];
+			$rawActive = $properties['active'] ?? '';
+			$active = is_string($rawActive) ? $rawActive : '';
+			$class = $this->e($properties['class'] ?? $this->wrapperClass);
+			$rawTabs = $properties['tabs'] ?? [];
+			/** @var array<int, array<string, string>> $tabs */
+			$tabs = is_array($rawTabs) ? $rawTabs : [];
+			$rawChildNodes = $properties['_children'] ?? [];
+			/** @var array<int, array<string, mixed>> $childNodes */
+			$childNodes = is_array($rawChildNodes) ? $rawChildNodes : [];
 			
 			// id flows into getElementById() and buildTabScript() — must be a safe JS identifier
-			$id = $properties['id'] ?? 'loom-tabs';
+			$rawId = $properties['id'] ?? 'loom-tabs';
+			$id = is_string($rawId) ? $rawId : 'loom-tabs';
 			$this->validateIdentifier($id, 'id');
 			
 			// active flows into a JS string literal comparison — apply the same restriction
-			if ($active) {
+			if ($active !== '') {
 				$this->validateIdentifier($active, 'active');
 			}
 			
 			// Collect active server-side errors once so buildButtons() can check them
 			// without calling getData() repeatedly inside the loop.
-			$errors = $this->loom->getData()['_errors'] ?? [];
+			$rawErrors = $this->loom->getData()['_errors'] ?? [];
+			/** @var array<string, string> $errors */
+			$errors = is_array($rawErrors) ? $rawErrors : [];
 			
 			// Build buttons first so the active class and any error indicators are
 			// stamped at render time, avoiding a flash of unstyled tabs before JS runs.
@@ -109,10 +117,10 @@
 		 *   reads this to update error indicators after a failed WakaForm
 		 *   client-side validation attempt.
 		 *
-		 * @param array $tabs     Tab index from the Tabs builder (id + label pairs)
-		 * @param string $active  Id of the initially active tab
-		 * @param array $childNodes Raw child node tree of the Tabs container
-		 * @param array $errors   Active server-side validation errors, keyed by field name
+		 * @param array<int, array<string, string>> $tabs Tab index from the Tabs builder (id + label pairs)
+		 * @param string $active Id of the initially active tab
+		 * @param array<int, array<string, mixed>> $childNodes Raw child node tree of the Tabs container
+		 * @param array<string, string> $errors Active server-side validation errors, keyed by field name
 		 * @return string
 		 */
 		protected function buildButtons(array $tabs, string $active, array $childNodes = [], array $errors = []): string {
@@ -139,7 +147,7 @@
 				
 				// Collect the field names that belong to this tab so we can check
 				// server errors and emit the data-loom-tab-fields attribute.
-				$tabChildren  = isset($tabNodeIndex[$tabId]) ? [$tabNodeIndex[$tabId]] : [];
+				$tabChildren = isset($tabNodeIndex[$tabId]) ? [$tabNodeIndex[$tabId]] : [];
 				$tabFieldNames = $this->collectFieldNames($tabChildren);
 				
 				// Server-side error check: does any field in this tab have an error
@@ -148,7 +156,7 @@
 				
 				// Build class list
 				$activeClass = $tabId === $active ? ' active' : '';
-				$errorClass  = $hasError ? " {$this->tabButtonErrorClass}" : '';
+				$errorClass = $hasError ? " {$this->tabButtonErrorClass}" : '';
 				
 				// data-loom-tab-fields is consumed by validateAndSubmit() to drive client-side
 				// indicator updates after a failed WakaForm submission attempt.

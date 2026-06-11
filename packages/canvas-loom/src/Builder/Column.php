@@ -11,7 +11,7 @@
 	 */
 	class Column extends AbstractFieldContainer {
 		
-		private function __construct() {
+		protected function __construct() {
 		}
 		
 		public static function make(): static {

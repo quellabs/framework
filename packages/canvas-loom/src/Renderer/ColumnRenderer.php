@@ -21,15 +21,17 @@
 		
 		/**
 		 * Render the column
-		 * @param array $properties Node properties from the JSON definition
+		 * @param array<string, mixed> $properties Node properties from the JSON definition
 		 * @param string $children Already-rendered HTML of all child nodes
-		 * @param array|null $parent Parent node
+		 * @param array<string, mixed>|null $parent Parent node
 		 * @param int $index Index of this node within its parent
 		 * @return RenderResult
 		 */
 		public function render(array $properties, string $children, ?array $parent = null, int $index = 0): RenderResult {
-			$width = $properties['width'] ?? null;
-			$class = $properties['class'] ?? $this->wrapperClass;
+			$rawWidth = $properties['width'] ?? null;
+			$rawClass = $properties['class'] ?? $this->wrapperClass;
+			$width = is_int($rawWidth) ? $rawWidth : (is_numeric($rawWidth) ? (int) $rawWidth : null);
+			$class = is_string($rawClass) ? $rawClass : $this->wrapperClass;
 			
 			// Apply width as inline flex style if provided by the parent ColumnsRenderer,
 			// otherwise let the column grow to fill available space

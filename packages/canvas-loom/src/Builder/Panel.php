@@ -12,7 +12,7 @@
 		 * Constructor
 		 * @param string $id Panel id
 		 */
-		private function __construct(string $id) {
+		protected function __construct(string $id) {
 			$this->properties['id'] = $id;
 		}
 		

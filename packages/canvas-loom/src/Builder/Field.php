@@ -15,7 +15,7 @@
 		 * @param string $label Field label
 		 * @param string $input Input type
 		 */
-		private function __construct(string $name, string $label, string $input) {
+		protected function __construct(string $name, string $label, string $input) {
 			$this->properties['name']  = $name;
 			$this->properties['label'] = $label;
 			$this->properties['input'] = $input;
@@ -263,7 +263,7 @@
 		
 		/**
 		 * Set select options.
-		 * @param array $options
+		 * @param array<int|string, mixed> $options
 		 * @return static
 		 */
 		public function options(array $options): static {

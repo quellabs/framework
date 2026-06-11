@@ -15,9 +15,9 @@
 		
 		/**
 		 * Render a single node
-		 * @param array $properties Node properties from the JSON definition
+		 * @param array<string, mixed> $properties Node properties from the JSON definition
 		 * @param string $children Already-rendered HTML of all child nodes
-		 * @param array|null $parent Parent node, available for renderers that need parent context
+		 * @param array<string, mixed>|null $parent Parent node, available for renderers that need parent context
 		 * @param int $index Index of this node within its parent's children array
 		 * @return RenderResult
 		 */

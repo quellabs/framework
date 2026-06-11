@@ -373,7 +373,7 @@
 			if ($inputType === 'select' && isset($ormParams['enumType'])) {
 				$enumClass = $ormParams['enumType'];
 
-				if (is_a($enumClass, \BackedEnum::class, true)) {
+				if (is_string($enumClass) && is_a($enumClass, \BackedEnum::class, true)) {
 					$options = array_map(
 						fn(\BackedEnum $case) => ['value' => $case->value, 'label' => $case->name],
 						$enumClass::cases()

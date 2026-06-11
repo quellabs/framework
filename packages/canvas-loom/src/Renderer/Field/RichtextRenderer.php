@@ -35,7 +35,7 @@
 			string $id,
 			string $name,
 			string $value,
-			array  $properties,
+			array $properties,
 			string $pacField,
 			string $pacBind
 		): string {
@@ -48,7 +48,7 @@
 		 * @param string $id
 		 * @param string $name
 		 * @param string $value
-		 * @param array $properties
+		 * @param array<string, mixed> $properties
 		 * @return array{html: string, script: string}
 		 */
 		public function renderWithScript(string $id, string $name, string $value, array $properties): array {
@@ -61,11 +61,12 @@
 		/**
 		 * Resolve the custom element tag for the requested editor.
 		 * Falls back to waka-jodit for unrecognised values.
-		 * @param array $properties
+		 * @param array<string, mixed> $properties
 		 * @return string
 		 */
 		protected function resolveTag(array $properties): string {
-			$editor = strtolower($properties['editor'] ?? 'jodit');
+			$rawEditor = $properties['editor'] ?? 'jodit';
+			$editor = strtolower(is_string($rawEditor) ? $rawEditor : 'jodit');
 			return $this->editorTags[$editor] ?? 'waka-jodit';
 		}
 		
@@ -76,7 +77,7 @@
 		 * @param string $id
 		 * @param string $name
 		 * @param string $value
-		 * @param array $properties
+		 * @param array<string, mixed> $properties
 		 * @return string
 		 */
 		protected function buildElement(string $id, string $name, string $value, array $properties): string {
