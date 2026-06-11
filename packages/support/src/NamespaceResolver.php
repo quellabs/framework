@@ -344,14 +344,13 @@
 				// Store direct mapping for alias resolution
 				$result['direct'][$alias] = $fqcn;
 				
-				// Detect namespace imports by checking if the alias matches the last segmentc
-				// Example: 'use App\Models;' creates alias 'Models' -> 'App\Models'
-				// Example: 'use App\Models as M;' creates alias 'M' -> 'App\Models'
+				// Classify as a namespace import when the alias matches the last segment
+				// (e.g. use App\Models) or the FQCN is not a real class — which covers
+				// aliased namespace imports like 'use App\Models as M' where the alias
+				// and last segment differ but the target is still a namespace, not a class.
 				$lastSegment = self::getLastSegment($fqcn);
 				
-				// If FQCN ends with backslash or alias matches last segment without a class name,
-				// this is likely a namespace import
-				if ($lastSegment === $alias || str_ends_with($fqcn, '\\')) {
+				if ($lastSegment === $alias || str_ends_with($fqcn, '\\') || !self::classExistsCached($fqcn)) {
 					$result['namespaces'][$alias] = rtrim($fqcn, '\\');
 				}
 			}
