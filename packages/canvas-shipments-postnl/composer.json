@@ -36,15 +36,13 @@
       "Quellabs\\Shipments\\PostNL\\": "src/"
     }
   },
-  "scripts": {
-    "post-autoload-dump": [
-      "php -r \"if (!file_exists('config/postnl.php') && !copy('vendor/quellabs/canvas-shipments-postnl/config/postnl.php', 'config/postnl.php')) { echo 'Warning: Could not publish PostNL config file.' . PHP_EOL; }\""
-    ]
-  },
   "extra": {
     "discover": {
       "canvas": {
         "controller": "Quellabs\\Shipments\\PostNL\\PostNLController"
+      },
+      "sculpt": {
+        "provider": "Quellabs\\Shipments\\PostNL\\Sculpt\\ServiceProvider"
       },
       "shipments": {
         "provider": "Quellabs\\Shipments\\PostNL\\Driver",

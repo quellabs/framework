@@ -42,7 +42,7 @@
         "controller": "Quellabs\\Shipments\\DHL\\DHLController"
       },
       "sculpt": {
-        "provider": "Quellabs\\Payments\\DHL\\Sculpt\\ServiceProvider"
+        "provider": "Quellabs\\Shipments\\DHL\\Sculpt\\ServiceProvider"
       },
       "shipments": {
         "provider": "Quellabs\\Shipments\\DHL\\Driver",

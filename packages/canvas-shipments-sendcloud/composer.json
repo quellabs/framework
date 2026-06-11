@@ -36,15 +36,13 @@
       "Quellabs\\Shipments\\SendCloud\\": "src/"
     }
   },
-  "scripts": {
-    "post-autoload-dump": [
-      "php -r \"if (!file_exists('config/sendcloud.php') && !copy('vendor/quellabs/canvas-shipments-sendcloud/config/sendcloud.php', 'config/sendcloud.php')) { echo 'Warning: Could not publish SendCloud config file.' . PHP_EOL; }\""
-    ]
-  },
   "extra": {
     "discover": {
       "canvas": {
         "controller": "Quellabs\\Shipments\\SendCloud\\SendCloudController"
+      },
+      "sculpt": {
+        "provider": "Quellabs\\Shipments\\SendCloud\\Sculpt\\ServiceProvider"
       },
       "shipments": {
         "provider": "Quellabs\\Shipments\\SendCloud\\Driver",
