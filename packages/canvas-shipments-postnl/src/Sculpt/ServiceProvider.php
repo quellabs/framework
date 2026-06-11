@@ -5,7 +5,7 @@
 	use Quellabs\Sculpt\Application;
 	
 	/**
-	 * Service Provider for PostNL payment engine integration
+	 * Service Provider for PostNL shipment engine integration
 	 * Registers PostNL-related commands with the Sculpt application
 	 */
 	class ServiceProvider extends \Quellabs\Sculpt\ServiceProvider {

@@ -5,7 +5,7 @@
 	use Quellabs\Sculpt\Application;
 	
 	/**
-	 * Service Provider for DHL payment engine integration
+	 * Service Provider for DHL shipment engine integration
 	 * Registers DHL-related commands with the Sculpt application
 	 */
 	class ServiceProvider extends \Quellabs\Sculpt\ServiceProvider {

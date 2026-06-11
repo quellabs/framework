@@ -5,7 +5,7 @@
 	use Quellabs\Sculpt\Application;
 	
 	/**
-	 * Service Provider for SendCloud payment engine integration
+	 * Service Provider for SendCloud shipment engine integration
 	 * Registers SendCloud-related commands with the Sculpt application
 	 */
 	class ServiceProvider extends \Quellabs\Sculpt\ServiceProvider {

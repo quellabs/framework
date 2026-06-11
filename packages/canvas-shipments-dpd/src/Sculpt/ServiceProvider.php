@@ -5,7 +5,7 @@
 	use Quellabs\Sculpt\Application;
 	
 	/**
-	 * Service Provider for DPD payment engine integration
+	 * Service Provider for DPD shipment engine integration
 	 * Registers DPD-related commands with the Sculpt application
 	 */
 	class ServiceProvider extends \Quellabs\Sculpt\ServiceProvider {

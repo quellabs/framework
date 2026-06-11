@@ -5,7 +5,7 @@
 	use Quellabs\Sculpt\Application;
 	
 	/**
-	 * Service Provider for MyParcel payment engine integration
+	 * Service Provider for MyParcel shipment engine integration
 	 * Registers MyParcel-related commands with the Sculpt application
 	 */
 	class ServiceProvider extends \Quellabs\Sculpt\ServiceProvider {
