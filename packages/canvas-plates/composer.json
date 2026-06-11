@@ -57,10 +57,5 @@
         "config": "config/latte.php"
       }
     }
-  },
-  "scripts": {
-    "post-install-cmd": [
-      "php -r \"copy('vendor/quellabs/canvas-plates/config/plates.php', 'config/plates.php');\""
-    ]
   }
 }

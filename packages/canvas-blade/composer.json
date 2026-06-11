@@ -60,10 +60,5 @@
         "config": "config/blade.php"
       }
     }
-  },
-  "scripts": {
-    "post-install-cmd": [
-      "php -r \"copy('vendor/quellabs/canvas-blade/config/blade.php', 'public/config/blade.php');\""
-    ]
   }
 }
