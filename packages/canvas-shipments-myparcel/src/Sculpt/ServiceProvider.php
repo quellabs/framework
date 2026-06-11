@@ -1,6 +1,6 @@
 <?php
 	
-	namespace Quellabs\Payments\MyParcel\Sculpt;
+	namespace Quellabs\Shipments\MyParcel\Sculpt;
 	
 	use Quellabs\Sculpt\Application;
 	

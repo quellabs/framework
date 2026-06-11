@@ -1,12 +1,12 @@
 <?php
 	
-	namespace Quellabs\Shipments\DPD\Sculpt;
+	namespace Quellabs\Shipments\Sculpt;
 	
 	use Quellabs\Sculpt\Application;
 	
 	/**
-	 * Service Provider for DPD payment engine integration
-	 * Registers DPD-related commands with the Sculpt application
+	 * Service Provider for Shipments shipment engine integration
+	 * Registers Shipments-related commands with the Sculpt application
 	 */
 	class ServiceProvider extends \Quellabs\Sculpt\ServiceProvider {
 		
@@ -17,7 +17,7 @@
 		 * @return void
 		 */
 		public function register(Application $application): void {
-			// Register all DPD-related commands with the application
+			// Register all Shipments-related commands with the application
 			// This makes the commands available through the CLI interface
 			$this->registerCommands($application, [
 				InitCommand::class

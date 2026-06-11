@@ -1,6 +1,6 @@
 <?php
 	
-	namespace Quellabs\Payments\DPD\Sculpt;
+	namespace Quellabs\Shipments\DPD\Sculpt;
 	
 	use Quellabs\Support\ComposerUtils;
 	use Quellabs\Sculpt\ConfigurationManager;

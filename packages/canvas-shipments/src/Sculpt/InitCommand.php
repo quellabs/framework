@@ -1,13 +1,13 @@
 <?php
 	
-	namespace Quellabs\Shipments\SendCloud\Sculpt;
+	namespace Quellabs\Shipments\Sculpt;
 	
 	use Quellabs\Support\ComposerUtils;
 	use Quellabs\Sculpt\ConfigurationManager;
 	use Quellabs\Sculpt\Contracts\CommandBase;
 	
 	/**
-	 * Publishes the SendCloud configuration file to the project's config directory.
+	 * Publishes the Shipments configuration file to the project's config directory.
 	 * Skips the operation if the file already exists.
 	 */
 	class InitCommand extends CommandBase {
@@ -17,7 +17,7 @@
 		 * @return string The command signature
 		 */
 		public function getSignature(): string {
-			return "sendcloud:init";
+			return "shipments:init";
 		}
 		
 		/**
@@ -25,17 +25,17 @@
 		 * @return string The command description
 		 */
 		public function getDescription(): string {
-			return "Publishes the SendCloud config file to config/sendcloud.php";
+			return "Publishes the Shipments config file to config/shipment_packing.php";
 		}
 		
 		/**
-		 * Copy the default SendCloud config file to the project's config directory.
+		 * Copy the default Shipments config file to the project's config directory.
 		 * @param ConfigurationManager $config Configuration manager instance
 		 * @return int Exit code (0 for success, 1 for failure)
 		 */
 		public function execute(ConfigurationManager $config): int {
-			$source = dirname(__FILE__) . "/../../config/sendcloud.php";
-			$target = ComposerUtils::getProjectRoot() . "/config/sendcloud.php";
+			$source = dirname(__FILE__) . "/../../config/shipment_packing.php";
+			$target = ComposerUtils::getProjectRoot() . "/config/shipment_packing.php";
 			
 			// Skip if the config file was already published
 			if (file_exists($target)) {
@@ -47,7 +47,7 @@
 			$result = copy($source, $target);
 			
 			if ($result) {
-				$this->getOutput()->success("Published config/sendcloud.php");
+				$this->getOutput()->success("Published config/shipment_packing.php");
 			} else {
 				$this->getOutput()->error("Failed to copy config file to {$target}");
 			}

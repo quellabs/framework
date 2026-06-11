@@ -1,6 +1,6 @@
 <?php
 	
-	namespace Quellabs\Payments\PostNL\Sculpt;
+	namespace Quellabs\Shipments\PostNL\Sculpt;
 	
 	use Quellabs\Sculpt\Application;
 	

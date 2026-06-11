@@ -1,6 +1,6 @@
 <?php
 	
-	namespace Quellabs\Payments\DHL\Sculpt;
+	namespace Quellabs\Shipments\DHL\Sculpt;
 	
 	use Quellabs\Sculpt\Application;
 	
