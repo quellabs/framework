@@ -38,15 +38,13 @@
       "Quellabs\\Payments\\Paypal\\": "src/"
     }
   },
-  "scripts": {
-    "post-autoload-dump": [
-      "php -r \"if (!file_exists('config/paypal.php') && !copy('vendor/quellabs/canvas-payments-paypal/config/paypal.php', 'config/paypal.php')) { echo 'Warning: Could not publish PayPal config file.' . PHP_EOL; }\""
-    ]
-  },
   "extra": {
     "discover": {
       "canvas": {
         "controller": "Quellabs\\Payments\\Paypal\\PaypalController"
+      },
+      "sculpt": {
+        "provider": "Quellabs\\Payments\\Paypal\\Sculpt\\ServiceProvider"
       },
       "payments": {
         "provider": "Quellabs\\Payments\\Paypal\\Driver",

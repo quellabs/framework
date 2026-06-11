@@ -36,15 +36,13 @@
       "Quellabs\\Payments\\Adyen\\": "src/"
     }
   },
-  "scripts": {
-    "post-autoload-dump": [
-      "php -r \"if (!file_exists('config/adyen.php') && !copy('vendor/quellabs/canvas-payments-adyen/config/adyen.php', 'config/adyen.php')) { echo 'Warning: Could not publish Adyen config file.' . PHP_EOL; }\""
-    ]
-  },
   "extra": {
     "discover": {
       "canvas": {
         "controller": "Quellabs\\Payments\\Adyen\\AdyenController"
+      },
+      "sculpt": {
+        "provider": "Quellabs\\Payments\\Adyen\\Sculpt\\ServiceProvider"
       },
       "payments": {
         "provider": "Quellabs\\Payments\\Adyen\\Driver",

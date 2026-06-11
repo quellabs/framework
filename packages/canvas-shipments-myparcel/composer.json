@@ -37,15 +37,13 @@
       "Quellabs\\Shipments\\MyParcel\\": "src/"
     }
   },
-  "scripts": {
-    "post-autoload-dump": [
-      "php -r \"if (!file_exists('config/myparcel.php') && !copy('vendor/quellabs/canvas-shipments-myparcel/config/myparcel.php', 'config/myparcel.php')) { echo 'Warning: Could not publish MyParcel config file.' . PHP_EOL; }\""
-    ]
-  },
   "extra": {
     "discover": {
       "canvas": {
         "controller": "Quellabs\\Shipments\\MyParcel\\MyParcelController"
+      },
+      "sculpt": {
+        "provider": "Quellabs\\Shipments\\MyParcel\\Sculpt\\ServiceProvider"
       },
       "shipments": {
         "provider": "Quellabs\\Shipments\\MyParcel\\Driver",

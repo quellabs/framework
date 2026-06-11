@@ -40,15 +40,13 @@
       "Quellabs\\Payments\\PayNL\\": "src/"
     }
   },
-  "scripts": {
-    "post-autoload-dump": [
-      "php -r \"if (!file_exists('config/paynl.php') && !copy('vendor/quellabs/canvas-payments-paynl/config/paynl.php', 'config/paynl.php')) { echo 'Warning: Could not publish Pay.nl config file.' . PHP_EOL; }\""
-    ]
-  },
   "extra": {
     "discover": {
       "canvas": {
         "controller": "Quellabs\\Payments\\PayNL\\PayNLController"
+      },
+      "sculpt": {
+        "provider": "Quellabs\\Payments\\PayNL\\Sculpt\\ServiceProvider"
       },
       "payments": {
         "provider": "Quellabs\\Payments\\PayNL\\Driver",

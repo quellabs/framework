@@ -37,15 +37,13 @@
       "Quellabs\\Payments\\PaypalExpress\\": "src/"
     }
   },
-  "scripts": {
-    "post-autoload-dump": [
-      "php -r \"if (!file_exists('config/paypal_express.php') && !copy('vendor/quellabs/canvas-payments-paypal-express/config/paypal_express.php', 'config/paypal_express.php')) { echo 'Warning: Could not publish PayPal Express config file.' . PHP_EOL; }\""
-    ]
-  },
   "extra": {
     "discover": {
       "canvas": {
         "controller": "Quellabs\\Payments\\PaypalExpress\\PaypalController"
+      },
+      "sculpt": {
+        "provider": "Quellabs\\Payments\\PaypalExpress\\Sculpt\\ServiceProvider"
       },
       "payments": {
         "provider": "Quellabs\\Payments\\PaypalExpress\\Driver",

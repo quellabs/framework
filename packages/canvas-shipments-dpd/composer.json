@@ -38,15 +38,13 @@
       "Quellabs\\Shipments\\DPD\\": "src/"
     }
   },
-  "scripts": {
-    "post-autoload-dump": [
-      "php -r \"if (!file_exists('config/dpd.php') && !copy('vendor/quellabs/canvas-shipments-dpd/config/dpd.php', 'config/dpd.php')) { echo 'Warning: Could not publish DPD config file.' . PHP_EOL; }\""
-    ]
-  },
   "extra": {
     "discover": {
       "canvas": {
         "controller": "Quellabs\\Shipments\\DPD\\DPDController"
+      },
+      "sculpt": {
+        "provider": "Quellabs\\Shipments\\DPD\\Sculpt\\ServiceProvider"
       },
       "shipments": {
         "provider": "Quellabs\\Shipments\\DPD\\Driver",

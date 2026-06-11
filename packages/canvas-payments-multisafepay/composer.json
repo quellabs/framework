@@ -37,15 +37,13 @@
       "Quellabs\\Payments\\MultiSafepay\\": "src/"
     }
   },
-  "scripts": {
-    "post-autoload-dump": [
-      "php -r \"if (!file_exists('config/multisafepay.php') && !copy('vendor/quellabs/canvas-payments-multisafepay/config/multisafepay.php', 'config/multisafepay.php')) { echo 'Warning: Could not publish MultiSafepay config file.' . PHP_EOL; }\""
-    ]
-  },
   "extra": {
     "discover": {
       "canvas": {
         "controller": "Quellabs\\Payments\\MultiSafepay\\MultiSafepayController"
+      },
+      "sculpt": {
+        "provider": "Quellabs\\Payments\\MultiSafepay\\Sculpt\\ServiceProvider"
       },
       "payments": {
         "provider": "Quellabs\\Payments\\MultiSafepay\\Driver",
