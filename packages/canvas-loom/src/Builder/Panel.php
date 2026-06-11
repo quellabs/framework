@@ -6,7 +6,7 @@
 	 * Builds a panel node — a layout container without its own WakaPAC instance.
 	 * Fields inside a Panel are bound to the parent Resource component.
 	 */
-	class Panel extends AbstractNode {
+	final class Panel extends AbstractNode {
 		
 		/**
 		 * Constructor

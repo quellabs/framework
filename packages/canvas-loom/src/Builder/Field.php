@@ -6,7 +6,7 @@
 	 * Builds a field node — a form field with label and input element.
 	 * Use the static factory methods for each input type rather than make() directly.
 	 */
-	class Field extends AbstractNode {
+	final class Field extends AbstractNode {
 		
 		/**
 		 * @param string $name  Field name, used for form submission and WakaPAC binding

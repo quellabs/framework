@@ -8,7 +8,7 @@
 	 * call (e.g. Stdlib.sendMessage(...)) or a method on the container
 	 * abstraction (e.g. submit(), post('/endpoint')).
 	 */
-	class Button extends AbstractNode {
+	final class Button extends AbstractNode {
 		
 		/**
 		 * @param string $label Button label text

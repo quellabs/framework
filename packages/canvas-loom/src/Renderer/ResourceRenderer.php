@@ -163,13 +163,16 @@
 			$html = '';
 			
 			foreach ($headerButtons as $button) {
-				$name = $button->get('name');
+				$rawName = $button->get('name');
+				$name = is_string($rawName) ? $rawName : null;
 				$label = $this->e($button->get('label') ?? '');
-				$variant = $button->get('variant') ?? 'primary';
-				$action = $button->get('action') ?? '';
+				$rawVariant = $button->get('variant') ?? 'primary';
+				$variant = is_string($rawVariant) ? $rawVariant : 'primary';
+				$rawAction = $button->get('action') ?? '';
+				$action = is_string($rawAction) ? $rawAction : '';
 				
 				// name flows into JS property names and data-pac-bind expressions — restrict to identifier characters
-				if ($name && !preg_match('/^[a-zA-Z0-9_]+$/', $name)) {
+				if ($name !== null && !preg_match('/^[a-zA-Z0-9_]+$/', $name)) {
 					throw new \InvalidArgumentException("Header button name \"{$name}\" must contain only alphanumerics and underscores.");
 				}
 				
@@ -181,7 +184,7 @@
 				
 				// Compose the data-pac-bind value: visibility first, then click action.
 				// Either part is omitted when not applicable.
-				$binding = $name ? "visible: show_{$name}" : '';
+				$binding = ($name !== null) ? "visible: show_{$name}" : '';
 				$binding = ($binding && $action) ? "{$binding}, click: {$action}" : ($action ? "click: {$action}" : $binding);
 				$bindAttr = $binding ? " data-pac-bind=\"{$binding}\"" : '';
 				
@@ -219,19 +222,23 @@
 			$msgProcCases = '';
 			
 			foreach ($headerButtons as $button) {
-				$name = $button->get('name');
-				$showMessage = $button->get('show_message');
-				$hideMessage = $button->get('hide_message');
+				$rawName = $button->get('name');
+				$name = is_string($rawName) ? $rawName : null;
+				$rawShowMessage = $button->get('show_message');
+				$showMessage = is_int($rawShowMessage) ? $rawShowMessage : null;
+				$rawHideMessage = $button->get('hide_message');
+				$hideMessage = is_int($rawHideMessage) ? $rawHideMessage : null;
 				
-				if (!$name) {
+				if ($name === null) {
 					continue;
 				}
 				
 				// Each named button gets a reactive show_x property, defaulting to hidden.
-				$visibilityProps .= "show_{$name}: false,\n        ";
+				$buttonName = $name;
+				$visibilityProps .= "show_{$buttonName}: false,\n        ";
 				
 				if ($showMessage !== null) {
-					$constName = 'MSG_SHOW_' . strtoupper($name);
+					$constName = 'MSG_SHOW_' . strtoupper($buttonName);
 					$constants .= "const {$constName} = {$showMessage};\n";
 					$msgProcCases .= <<<JS
                 case {$constName}:

@@ -5,7 +5,7 @@
 	/**
 	 * Builds a tab node — a single tab panel within a tabs container.
 	 */
-	class Tab extends AbstractNode {
+	final class Tab extends AbstractNode {
 		
 		/**
 		 * @param string $id    Tab id, used for active state matching

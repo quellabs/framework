@@ -9,7 +9,7 @@
 	 * Fields routed in by Resource::wrapInColumns() are appended after any
 	 * nodes already added manually, so decorative content always appears first.
 	 */
-	class Column extends AbstractFieldContainer {
+	final class Column extends AbstractFieldContainer {
 		
 		protected function __construct() {
 		}

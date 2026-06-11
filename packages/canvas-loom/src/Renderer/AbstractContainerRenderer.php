@@ -40,7 +40,6 @@
 								continue;
 							}
 							
-							/** @var object{toJs(): string} $rule */
 							$jsRules[] = $rule->toJs();
 						}
 						

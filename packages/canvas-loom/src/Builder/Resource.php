@@ -9,7 +9,7 @@
 	/**
 	 * Builds a resource node — the top-level form container.
 	 */
-	class Resource extends AbstractNode {
+	final class Resource extends AbstractNode {
 		
 		/**
 		 * Fields grouped by @Loom\Field group name, populated by EntityReader.

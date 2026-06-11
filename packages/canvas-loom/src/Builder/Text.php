@@ -6,7 +6,7 @@
 	 * Builds a text node — a read-only label/value pair.
 	 * Supports WakaPAC interpolation for reactive values.
 	 */
-	class Text extends AbstractNode {
+	final class Text extends AbstractNode {
 		
 		/**
 		 * @param string $label Label shown above the value

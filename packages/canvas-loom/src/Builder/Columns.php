@@ -5,7 +5,7 @@
 	/**
 	 * Builds a columns node — a flex layout container.
 	 */
-	class Columns extends AbstractFieldContainer {
+	final class Columns extends AbstractFieldContainer {
 		
 		/**
 		 * Constructor

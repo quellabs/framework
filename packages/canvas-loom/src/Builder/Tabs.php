@@ -7,7 +7,7 @@
 	 * Tab switching is handled by a vanilla JS inline script.
 	 * Tabs has no WakaPAC instance — fields inside are bound to the parent Resource.
 	 */
-	class Tabs extends AbstractNode {
+	final class Tabs extends AbstractNode {
 		
 		/**
 		 * @param string $id Tabs container id
