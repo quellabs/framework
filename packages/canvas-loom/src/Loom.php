@@ -45,7 +45,7 @@
 		 * @param array<string, mixed> $node Root node of the JSON page definition
 		 * @param array<string, mixed> $data Entity data to populate field values, keyed by field name
 		 * @param array<string, mixed> $options Supported options: 'part' => 'full' | 'header' | 'body'
-		 * @return string        Rendered HTML with an inline script block if scripts were generated
+		 * @return string Rendered HTML with an inline script block if scripts were generated
 		 */
 		public function render(array $node, array $data = [], array $options = []): string {
 			// Save and restore surrounding context so nested render() calls
@@ -58,28 +58,32 @@
 			
 			// If the root node has use_wakaform, inject _use_wakaform into the
 			// data context so FieldRenderer can read it during child rendering.
-			if (!empty($node['properties']['use_wakaform'])) {
+			/** @var array<string, mixed> $rootProps */
+			$rootProps = is_array($node['properties'] ?? null) ? $node['properties'] : [];
+			
+			if (!empty($rootProps['use_wakaform'])) {
 				$this->currentData['_use_wakaform'] = true;
 			}
 			
 			// If the root node carries an entity_prefix (set by EntityReader), inject
 			// it into the data context so FieldRenderer can scope the HTML name attribute
 			// (e.g. PostEntity[title]) without affecting WakaPAC bindings or value resolution.
-			if (!empty($node['properties']['entity_prefix'])) {
-				$this->currentData['_entity_prefix'] = $node['properties']['entity_prefix'];
+			if (!empty($rootProps['entity_prefix'])) {
+				$this->currentData['_entity_prefix'] = $rootProps['entity_prefix'];
 			}
 			
 			// If the root node carries entity_data (field values extracted from the entity
 			// by EntityReader), inject it into the data context so FieldRenderer can use
 			// it as a fallback when no explicit value is present in the caller's data array.
-			if (!empty($node['properties']['entity_data'])) {
-				$this->currentData['_entity_data'] = $node['properties']['entity_data'];
+			if (!empty($rootProps['entity_data'])) {
+				$this->currentData['_entity_data'] = $rootProps['entity_data'];
 			}
 			
 			// Inject render part into root node properties so ResourceRenderer
 			// knows which part to render
 			if (isset($options['part'])) {
-				$node['properties']['_render_part'] = $options['part'];
+				$rootProps['_render_part'] = $options['part'];
+				$node['properties'] = $rootProps;
 			}
 			
 			$result = $this->renderNode($node);
@@ -121,7 +125,10 @@
 			$scripts = [];
 			$childCount = 0;
 			
-			foreach ($node['children'] ?? [] as $i => $child) {
+			/** @var array<int, array<string, mixed>> $nodeChildren */
+			$nodeChildren = is_array($node['children'] ?? null) ? $node['children'] : [];
+			
+			foreach ($nodeChildren as $i => $child) {
 				$result = $this->renderNode($child, $node);
 				$childHtml .= $result->html;
 				$childCount++;
@@ -133,11 +140,16 @@
 			
 			// Pass raw child nodes to renderer so container renderers can
 			// inspect the node tree without relying on already-rendered HTML
-			$properties = $node['properties'] ?? [];
-			$properties['_children'] = $node['children'] ?? [];
+			/** @var array<string, mixed> $properties */
+			$properties = is_array($node['properties'] ?? null) ? $node['properties'] : [];
+			/** @var array<int, array<string, mixed>> $rawChildren */
+			$rawChildren = is_array($node['children'] ?? null) ? $node['children'] : [];
+			$properties['_children'] = $rawChildren;
 			
-			$renderer = $this->getRenderer($node['type']);
-			$result = $renderer->render($properties, $childHtml, $parent, $childCount > 0 ? $i : 0);
+			$nodeType = is_string($node['type'] ?? null) ? $node['type'] : '';
+			$renderer = $this->getRenderer($nodeType);
+			$lastIndex = ($childCount > 0 && isset($i) && is_int($i)) ? $i : 0;
+			$result = $renderer->render($properties, $childHtml, $parent, $lastIndex);
 			
 			if ($result->script !== null) {
 				$scripts[] = $result->script;

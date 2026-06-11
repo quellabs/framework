@@ -24,15 +24,18 @@
 			$result = [];
 			
 			foreach ($nodes as $node) {
+				/** @var array<string, mixed> $nodeProps */
+				$nodeProps = is_array($node['properties'] ?? null) ? $node['properties'] : [];
+				
 				if (($node['type'] ?? '') === 'field') {
-					$name = $node['properties']['name'] ?? '';
-					$rules = $node['properties']['rules'] ?? [];
+					$name = $nodeProps['name'] ?? '';
+					$rules = $nodeProps['rules'] ?? [];
 					
-					if ($name && !empty($rules)) {
+					if (is_string($name) && $name !== '' && is_array($rules) && !empty($rules)) {
 						$jsRules = [];
 						
 						foreach ($rules as $rule) {
-							if (!$rule->wakaFormSupported()) {
+							if (!is_object($rule) || !method_exists($rule, 'wakaFormSupported') || !$rule->wakaFormSupported()) {
 								// Rule has no JS equivalent — skip silently
 								continue;
 							}
@@ -46,8 +49,11 @@
 					}
 				}
 				
-				if (!empty($node['children'])) {
-					foreach ($this->collectFieldRules($node['children']) as $name => $jsRules) {
+				/** @var array<int, array<string, mixed>> $nodeChildren */
+				$nodeChildren = is_array($node['children'] ?? null) ? $node['children'] : [];
+				
+				if (!empty($nodeChildren)) {
+					foreach ($this->collectFieldRules($nodeChildren) as $name => $jsRules) {
 						$result[$name] = $jsRules;
 					}
 				}
@@ -67,18 +73,24 @@
 			$state = [];
 			
 			foreach ($nodes as $node) {
+				/** @var array<string, mixed> $nodeProps */
+				$nodeProps = is_array($node['properties'] ?? null) ? $node['properties'] : [];
+				
 				if (($node['type'] ?? '') === 'field') {
-					$name = $node['properties']['name'] ?? '';
-					$options = $node['properties']['options'] ?? null;
+					$name = $nodeProps['name'] ?? '';
+					$options = $nodeProps['options'] ?? null;
 					
-					if ($name && is_array($options)) {
+					if (is_string($name) && $name !== '' && is_array($options)) {
 						$state[StringInflector::pluralize($name)] = $options;
 					}
 				}
 				
+				/** @var array<int, array<string, mixed>> $nodeChildren */
+				$nodeChildren = is_array($node['children'] ?? null) ? $node['children'] : [];
+				
 				// Recurse into children
-				if (!empty($node['children'])) {
-					foreach ($this->collectFieldProperties($node['children']) as $k => $v) {
+				if (!empty($nodeChildren)) {
+					foreach ($this->collectFieldProperties($nodeChildren) as $k => $v) {
 						$state[$k] = $v;
 					}
 				}
@@ -100,18 +112,24 @@
 			$names = [];
 			
 			foreach ($nodes as $node) {
+				/** @var array<string, mixed> $nodeProps */
+				$nodeProps = is_array($node['properties'] ?? null) ? $node['properties'] : [];
+				
 				if (($node['type'] ?? '') === 'field') {
-					$name = $node['properties']['name'] ?? '';
-					$input = $node['properties']['input'] ?? '';
+					$name = $nodeProps['name'] ?? '';
+					$input = $nodeProps['input'] ?? '';
 					
 					// Hidden fields have no visible validation state — exclude them
-					if ($name && $input !== 'hidden') {
+					if (is_string($name) && $name !== '' && $input !== 'hidden') {
 						$names[] = $name;
 					}
 				}
 				
-				if (!empty($node['children'])) {
-					foreach ($this->collectFieldNames($node['children']) as $name) {
+				/** @var array<int, array<string, mixed>> $nodeChildren */
+				$nodeChildren = is_array($node['children'] ?? null) ? $node['children'] : [];
+				
+				if (!empty($nodeChildren)) {
+					foreach ($this->collectFieldNames($nodeChildren) as $name) {
 						$names[] = $name;
 					}
 				}
@@ -135,8 +153,9 @@
 		 */
 		protected function requiresWakaPAC(array $nodes): bool {
 			foreach ($nodes as $node) {
-				$type = $node['type'] ?? '';
-				$properties = $node['properties'] ?? [];
+				$type = is_string($node['type'] ?? null) ? $node['type'] : '';
+				/** @var array<string, mixed> $properties */
+				$properties = is_array($node['properties'] ?? null) ? $node['properties'] : [];
 				
 				// Field with validation rules needs WakaForm bindings (visible: !form.x.valid)
 				if ($type === 'field' && !empty($properties['rules'])) {
@@ -164,12 +183,12 @@
 				}
 				
 				// Text node with WakaPAC interpolation
-				if ($type === 'text' && isset($properties['value']) && str_contains($properties['value'], '{{')) {
+				if ($type === 'text' && isset($properties['value']) && is_string($properties['value']) && str_contains($properties['value'], '{{')) {
 					return true;
 				}
 				
 				// Field hint with WakaPAC interpolation
-				if ($type === 'field' && isset($properties['hint']) && str_contains($properties['hint'], '{{')) {
+				if ($type === 'field' && isset($properties['hint']) && is_string($properties['hint']) && str_contains($properties['hint'], '{{')) {
 					return true;
 				}
 				
@@ -179,7 +198,10 @@
 				}
 				
 				// Recurse into children
-				if (!empty($node['children']) && $this->requiresWakaPAC($node['children'])) {
+				/** @var array<int, array<string, mixed>> $recurseChildren */
+				$recurseChildren = is_array($node['children'] ?? null) ? $node['children'] : [];
+				
+				if (!empty($recurseChildren) && $this->requiresWakaPAC($recurseChildren)) {
 					return true;
 				}
 			}

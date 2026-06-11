@@ -78,12 +78,12 @@
 		 * @inheritDoc
 		 */
 		public function render(array $properties, string $children, ?array $parent = null, int $index = 0): RenderResult {
-			$type = $properties['input'] ?? 'text';
+			$type = is_string($properties['input'] ?? null) ? $properties['input'] : 'text';
 			
 			// Hidden fields bypass the wrapper, label, hint, and WakaPAC binding entirely —
 			// they are invisible and have no interactive state to track
 			if ($type === 'hidden') {
-				$name = $properties['name'] ?? '';
+				$name = is_string($properties['name'] ?? null) ? $properties['name'] : '';
 				$id = $this->e($properties['id'] ?? $name);
 				$value = $this->resolveValue($name, $properties);
 				
@@ -115,8 +115,8 @@
 		 * @return RenderResult
 		 */
 		protected function renderDefault(array $properties): RenderResult {
-			$name = $properties['name'] ?? '';
-			$type = $properties['input'] ?? 'text';
+			$name = is_string($properties['name'] ?? null) ? $properties['name'] : '';
+			$type = is_string($properties['input'] ?? null) ? $properties['input'] : 'text';
 			$label = $this->e($properties['label'] ?? '');
 			$class = $this->e($properties['class'] ?? $this->wrapperClass);
 			$id = $this->e($properties['id'] ?? $name);
@@ -140,7 +140,8 @@
 			// form.{name}.value so WakaForm validates the actual typed value.
 			$hasRules = !empty($properties['rules']);
 			$useWakaForm = !empty($this->loom->getData()['_use_wakaform']);
-			$pacBind = $properties['pac_bind'] ?? ($type === 'toggle' ? "checked: {$name}" : "value: {$name}");
+			$rawPacBind = $properties['pac_bind'] ?? null;
+			$pacBind = is_string($rawPacBind) ? $rawPacBind : ($type === 'toggle' ? "checked: {$name}" : "value: {$name}");
 			$sameAsAttr = ($hasRules && $useWakaForm) ? " data-pac-same-as=\"form.{$name}.value\"" : '';
 			$pacFieldAttr = ' data-pac-field' . $sameAsAttr;
 			$pacBindAttr = $pacBind ? " data-pac-bind=\"{$pacBind}\"" : '';
@@ -169,7 +170,7 @@
 			$rawErrors = $this->loom->getData()['_errors'] ?? [];
 			/** @var array<string, string> $errors */
 			$errors = is_array($rawErrors) ? $rawErrors : [];
-			$errorMessage = isset($errors[$name]) && is_string($errors[$name]) ? $this->e($errors[$name]) : '';
+			$errorMessage = (isset($errors[$name]) && is_string($errors[$name])) ? $this->e($errors[$name]) : '';
 			$hasRules = !empty($properties['rules']);
 			$errorClass = $this->e($properties['error_class'] ?? $this->errorClass);
 			
@@ -177,10 +178,10 @@
 				// Priority: server error > custom error_message > first rule's getError()
 				if ($errorMessage) {
 					$displayMessage = $errorMessage;
-				} elseif (($properties['error_message'] ?? null)) {
+				} elseif (!empty($properties['error_message']) && is_string($properties['error_message'])) {
 					$displayMessage = $properties['error_message'];
 				} else {
-					$firstRule = $properties['rules'][0] ?? null;
+					$firstRule = is_array($properties['rules'] ?? null) ? ($properties['rules'][0] ?? null) : null;
 					$displayMessage = ($hasRules && is_object($firstRule) && method_exists($firstRule, 'getError')) ? $this->e($firstRule->getError()) : '';
 				}
 				
@@ -228,7 +229,7 @@
 		 * @return RenderResult
 		 */
 		protected function renderRichtext(array $properties): RenderResult {
-			$name = $properties['name'] ?? '';
+			$name = is_string($properties['name'] ?? null) ? $properties['name'] : '';
 			$label = $this->e($properties['label'] ?? '');
 			$class = $this->e($properties['class'] ?? $this->wrapperClass);
 			$id = $this->e($properties['id'] ?? $name);
@@ -263,7 +264,7 @@
 		 * @return RenderResult
 		 */
 		protected function renderFile(array $properties): RenderResult {
-			$name = $properties['name'] ?? '';
+			$name = is_string($properties['name'] ?? null) ? $properties['name'] : '';
 			$label = $this->e($properties['label'] ?? '');
 			$class = $this->e($properties['class'] ?? $this->wrapperClass);
 			$id = $this->e($properties['id'] ?? $name);
@@ -323,7 +324,7 @@
 				$value = $this->getNestedValue($data, $name);
 				
 				if ($value !== null) {
-					return (string)$value;
+					return is_scalar($value) ? (string)$value : '';
 				}
 			}
 			
@@ -331,7 +332,8 @@
 			$entityData = $data['_entity_data'] ?? [];
 			
 			if (!empty($entityData) && isset($entityData[$name])) {
-				return (string)$entityData[$name];
+				$ev = $entityData[$name];
+				return is_scalar($ev) ? (string)$ev : '';
 			}
 			
 			return '';
@@ -348,7 +350,7 @@
 			$current = $data;
 			
 			foreach ($parts as $part) {
-				if (!isset($current[$part])) {
+				if (!is_array($current) || !isset($current[$part])) {
 					return null;
 				}
 				

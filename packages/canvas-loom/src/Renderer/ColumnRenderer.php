@@ -30,7 +30,15 @@
 		public function render(array $properties, string $children, ?array $parent = null, int $index = 0): RenderResult {
 			$rawWidth = $properties['width'] ?? null;
 			$rawClass = $properties['class'] ?? $this->wrapperClass;
-			$width = is_int($rawWidth) ? $rawWidth : (is_numeric($rawWidth) ? (int) $rawWidth : null);
+			
+			if (is_int($rawWidth)) {
+				$width = $rawWidth;
+			} elseif (is_numeric($rawWidth)) {
+				$width = ((int)$rawWidth);
+			} else {
+				$width = (null);
+			}
+
 			$class = is_string($rawClass) ? $rawClass : $this->wrapperClass;
 			
 			// Apply width as inline flex style if provided by the parent ColumnsRenderer,

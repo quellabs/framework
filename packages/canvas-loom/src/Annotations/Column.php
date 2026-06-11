@@ -13,8 +13,8 @@
 	 * Resource::wrapInColumns() — without that call the form renders flat.
 	 *
 	 * Usage:
-	 *   @Loom\Column(name="main", width=70)
-	 *   @Loom\Column(name="sidebar", width=30)
+	 * @Loom\Column(name="main", width=70)
+	 * @Loom\Column(name="sidebar", width=30)
 	 */
 	class Column implements AnnotationInterface {
 		
@@ -31,8 +31,15 @@
 			$name = $parameters['name'] ?? '';
 			$width = $parameters['width'] ?? 50;
 			
-			$this->name  = is_string($name) ? $name : '';
-			$this->width = is_int($width) ? $width : (int)(is_numeric($width) ? $width : 50);
+			$this->name = is_string($name) ? $name : '';
+			
+			if (is_int($width)) {
+				$this->width = $width;
+			} elseif (is_numeric($width)) {
+				$this->width = (int)($width);
+			} else {
+				$this->width = (int)(50);
+			}
 		}
 		
 		/**

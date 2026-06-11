@@ -29,7 +29,7 @@
 			string $id,
 			string $name,
 			string $value,
-			array  $properties,
+			array $properties,
 			string $pacField,
 			string $pacBind
 		): string {
@@ -42,7 +42,7 @@
 		 *
 		 * @param string $id
 		 * @param string $name
-		 * @param array  $properties
+		 * @param array<string, mixed> $properties
 		 * @return array{html: string, script: string}
 		 */
 		public function renderWithScript(string $id, string $name, array $properties): array {
@@ -62,12 +62,12 @@
 		 *
 		 * @param string $id
 		 * @param string $name
-		 * @param array  $properties
+		 * @param array<string, mixed> $properties
 		 * @return string
 		 */
 		protected function buildElement(string $id, string $name, array $properties): string {
-			$nameAttr     = $this->e($name);
-			$uploadUrl    = $this->e($properties['upload_url'] ?? '');
+			$nameAttr = $this->e($name);
+			$uploadUrl = $this->e($properties['upload_url'] ?? '');
 			$multipleAttr = !empty($properties['multiple']) ? ' multiple' : '';
 			$disabledAttr = !empty($properties['disabled']) ? ' disabled' : '';
 			$triggerLabel = !empty($properties['multiple']) ? 'Add files' : 'Add file';
@@ -114,7 +114,7 @@ HTML;
 		 *
 		 * @param string $id
 		 * @param string $name
-		 * @param array  $properties
+		 * @param array<string, mixed> $properties
 		 * @return string
 		 */
 		protected function buildScript(string $id, string $name, array $properties): string {

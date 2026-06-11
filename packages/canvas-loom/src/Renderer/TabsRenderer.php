@@ -132,7 +132,10 @@
 			
 			foreach ($childNodes as $child) {
 				if (($child['type'] ?? '') === 'tab') {
-					$tabNodeIndex[$child['properties']['id'] ?? ''] = $child;
+					/** @var array<string, mixed> $childProps */
+					$childProps = is_array($child['properties'] ?? null) ? $child['properties'] : [];
+					$childId = is_string($childProps['id'] ?? null) ? $childProps['id'] : '';
+					$tabNodeIndex[$childId] = $child;
 				}
 			}
 			

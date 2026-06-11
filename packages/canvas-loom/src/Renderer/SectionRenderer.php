@@ -20,9 +20,9 @@
 		
 		/**
 		 * Render the section container
-		 * @param array $properties
+		 * @param array<string, mixed> $properties
 		 * @param string $children
-		 * @param array|null $parent
+		 * @param array<string, mixed>|null $parent
 		 * @param int $index
 		 * @return RenderResult
 		 */

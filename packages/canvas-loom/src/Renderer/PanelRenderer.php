@@ -19,9 +19,9 @@
 		
 		/**
 		 * Render the panel container
-		 * @param array $properties Node properties from the JSON definition
+		 * @param array<string, mixed> $properties Node properties from the JSON definition
 		 * @param string $children Already-rendered HTML of all child nodes
-		 * @param array|null $parent Parent node
+		 * @param array<string, mixed>|null $parent Parent node
 		 * @param int $index Index of this node within its parent
 		 * @return RenderResult
 		 */

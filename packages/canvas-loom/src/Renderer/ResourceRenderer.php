@@ -34,17 +34,20 @@
 		
 		/**
 		 * Render the resource — header outside the form, body as the form itself
-		 * @param array $properties
+		 * @param array<string, mixed> $properties
 		 * @param string $children
-		 * @param array|null $parent
+		 * @param array<string, mixed>|null $parent
 		 * @param int $index
 		 * @return RenderResult
 		 */
 		public function render(array $properties, string $children, ?array $parent = null, int $index = 0): RenderResult {
-			$id = $properties['id'] ?? '';
-			$method = strtoupper($properties['method'] ?? 'POST');
+			$rawId = $properties['id'] ?? '';
+			$id = is_string($rawId) ? $rawId : '';
+			$rawMethod = $properties['method'] ?? 'POST';
+			$method = strtoupper(is_string($rawMethod) ? $rawMethod : 'POST');
 			$saveDisabled = !empty($properties['save_disabled']);
-			$part = $properties['_render_part'] ?? 'full';
+			$rawPart = $properties['_render_part'] ?? 'full';
+			$part = is_string($rawPart) ? $rawPart : 'full';
 			
 			// id is required — without it WakaPAC cannot be initialised
 			if (!$id) {
@@ -104,7 +107,7 @@
 		
 		/**
 		 * Render the page header with title, cancel and save button.
-		 * @param array $properties Node properties
+		 * @param array<string, mixed> $properties Node properties
 		 * @param string $id Form id, used to couple the submit button via the form attribute
 		 * @param string $saveDisabledAttr Rendered disabled attribute or empty string
 		 * @return RenderResult
@@ -113,14 +116,15 @@
 			$title = $this->e($properties['title'] ?? '');
 			$saveLabel = $this->e($properties['save_label'] ?? 'Save');
 			$headerId = "{$id}-header";
-			$headerButtons = $properties['header_buttons'] ?? [];
+			$rawHeaderButtons = $properties['header_buttons'] ?? [];
+			$headerButtons = is_array($rawHeaderButtons) ? $rawHeaderButtons : [];
 			
 			// Build the extra <button> elements from the header_buttons property list
 			$saveButtonHtml = "<button type=\"submit\" form=\"{$id}\" class=\"{$this->saveClass}\"{$saveDisabledAttr}>{$saveLabel}</button>";
 			
 			// Build the HTML
 			$extraButtons = $this->renderHeaderButtons($headerButtons);
-
+			
 			$html = <<<HTML
     <div class="{$this->headerClass}" data-pac-id="{$headerId}">
         <h1 class="{$this->titleClass}">{$title}</h1>
@@ -150,7 +154,7 @@
 		 * Button names flow into JS property names and data-pac-bind expressions,
 		 * so they are restricted to alphanumerics and underscores.
 		 *
-		 * @param array $headerButtons List of button node objects exposing a get() method
+		 * @param array<int, mixed> $headerButtons List of button node objects exposing a get() method
 		 * @return string Concatenated <button> HTML, or an empty string when the list is empty
 		 * @throws \InvalidArgumentException When a button name contains disallowed characters
 		 */
@@ -205,7 +209,7 @@
 		 * direction — they can still be shown/hidden by other means.
 		 *
 		 * @param string $headerId WakaPAC component id for the header div
-		 * @param array $headerButtons List of button node objects exposing a get() method
+		 * @param array<int, mixed> $headerButtons List of button node objects exposing a get() method
 		 * @return string Ready-to-emit JavaScript IIFE
 		 */
 		protected function buildHeaderScript(string $headerId, array $headerButtons): string {
@@ -271,7 +275,7 @@ JS;
 		 * thin orchestrator. Override the helpers in a subclass to customise
 		 * any individual concern without touching the others.
 		 *
-		 * @param array $properties Node properties
+		 * @param array<string, mixed> $properties Node properties
 		 * @param string $children Already-rendered HTML of all child nodes
 		 * @param string $id Form id, also used as WakaPAC component id
 		 * @param string $methodAttr HTML method attribute value (GET or POST)
@@ -282,7 +286,9 @@ JS;
 			$class = $this->e($properties['class'] ?? $this->formClass);
 			$action = $this->e($properties['action'] ?? '');
 			$notifications = $this->loom->getNotifications();
-			$childNodes = $properties['_children'] ?? [];
+			$rawChildNodes = $properties['_children'] ?? [];
+			/** @var array<int, array<string, mixed>> $childNodes */
+			$childNodes = is_array($rawChildNodes) ? $rawChildNodes : [];
 			
 			// True if wakaPAC will be used
 			$needsWakaPAC = $this->requiresWakaPAC($childNodes);
@@ -321,7 +327,7 @@ JS;
 		 * Notification types are whitelisted to prevent CSS class injection;
 		 * anything outside the known set falls back to 'info'.
 		 *
-		 * @param array $notifications Flat list of ['type' => string, 'message' => string] entries
+		 * @param array<int, array<string, string>> $notifications Flat list of ['type' => string, 'message' => string] entries
 		 * @param string $id Form id, used to give the notification container a scoped id
 		 * @return string Rendered HTML, or an empty string when $notifications is empty
 		 */
@@ -375,10 +381,13 @@ HTML;
 			// Collect field-level state from the child tree (e.g. option lists for dependent dropdowns),
 			// then merge with caller-supplied data so runtime values win over build-time defaults.
 			$fieldOptions = $this->collectFieldProperties($childNodes);
-			$baseState = $data['_pac_state'] ?? array_filter($data, fn($value) => is_array($value));
+			$rawBase = $data['_pac_state'] ?? array_filter($data, fn($value) => is_array($value));
+			/** @var array<string, mixed> $baseState */
+			$baseState = is_array($rawBase) ? $rawBase : [];
 			$stateData = array_merge($fieldOptions, $baseState);
 			
-			$stateJson = !empty($stateData) ? htmlspecialchars(json_encode($stateData), ENT_QUOTES) : '';
+			$encoded = !empty($stateData) ? json_encode($stateData) : '';
+			$stateJson = is_string($encoded) ? htmlspecialchars($encoded, ENT_QUOTES) : '';
 			$stateAttr = $stateJson ? " data-pac-state=\"{$stateJson}\"" : '';
 			
 			return ['pacIdAttr' => $pacIdAttr, 'stateAttr' => $stateAttr];
@@ -394,13 +403,15 @@ HTML;
 		 * submission.
 		 *
 		 * @param string $id WakaPAC component id (matches the form's data-pac-id)
-		 * @param array $properties Full node properties array
-		 * @param array $childNodes Raw child node tree, scanned for validation rules
+		 * @param array<string, mixed> $properties Full node properties array
+		 * @param array<int, array<string, mixed>> $childNodes Raw child node tree, scanned for validation rules
 		 * @return string            Ready-to-emit JavaScript, already wrapped in an IIFE by buildScript()
 		 */
 		protected function buildBodyScript(string $id, array $properties, array $childNodes): string {
 			$clientValidation = !empty($properties['use_wakaform']);
-			$serverErrors = $this->loom->getData()['_errors'] ?? [];
+			$rawErrors = $this->loom->getData()['_errors'] ?? [];
+			/** @var array<string, string> $serverErrors */
+			$serverErrors = is_array($rawErrors) ? $rawErrors : [];
 			$fieldRules = $clientValidation ? $this->collectFieldRules($childNodes) : [];
 			$extra = [];
 			
@@ -437,6 +448,12 @@ HTML;
 JS;
 			}
 			
-			return $this->buildScript($id, $extra, $properties['abstraction'] ?? [], $properties['scripts'] ?? [], $fieldRules, $clientValidation, $serverErrors);
+			$rawAbstraction = $properties['abstraction'] ?? [];
+			/** @var array<string, mixed> $abstraction */
+			$abstraction = is_array($rawAbstraction) ? $rawAbstraction : [];
+			$rawScripts = $properties['scripts'] ?? [];
+			/** @var array<int, string> $scripts */
+			$scripts = is_array($rawScripts) ? $rawScripts : [];
+			return $this->buildScript($id, $extra, $abstraction, $scripts, $fieldRules, $clientValidation, $serverErrors);
 		}
 	}

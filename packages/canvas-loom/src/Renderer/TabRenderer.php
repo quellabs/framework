@@ -34,7 +34,8 @@
 			
 			// Non-active panels start hidden — the tabs inline script removes hidden on click.
 			// The active tab id is read from the parent Tabs node properties.
-			$rawActive = isset($parent['properties']) && is_array($parent['properties']) ? ($parent['properties']['active'] ?? '') : '';
+			$parentProps = isset($parent['properties']) && is_array($parent['properties']) ? $parent['properties'] : [];
+			$rawActive = $parentProps['active'] ?? '';
 			$activeTab = is_string($rawActive) ? $rawActive : '';
 			$hidden = ($id !== $activeTab) ? ' hidden' : '';
 			
