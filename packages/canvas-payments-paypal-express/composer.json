@@ -43,7 +43,7 @@
         "controller": "Quellabs\\Payments\\PaypalExpress\\PaypalController"
       },
       "sculpt": {
-        "provider": "Quellabs\\Payments\\PaypalExpress\\ServiceProvider"
+        "provider": "Quellabs\\Payments\\PaypalExpress\\Sculpt\\ServiceProvider"
       },
       "payments": {
         "provider": "Quellabs\\Payments\\PaypalExpress\\Driver",

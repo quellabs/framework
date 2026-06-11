@@ -36,15 +36,13 @@
       "Quellabs\\Shipments\\DHL\\": "src/"
     }
   },
-  "scripts": {
-    "post-autoload-dump": [
-      "php -r \"if (!file_exists('config/dhl.php') && !copy('vendor/quellabs/canvas-shipments-dhl/config/dhl.php', 'config/dhl.php')) { echo 'Warning: Could not publish DHL config file.' . PHP_EOL; }\""
-    ]
-  },
   "extra": {
     "discover": {
       "canvas": {
         "controller": "Quellabs\\Shipments\\DHL\\DHLController"
+      },
+      "sculpt": {
+        "provider": "Quellabs\\Payments\\DHL\\Sculpt\\ServiceProvider"
       },
       "shipments": {
         "provider": "Quellabs\\Shipments\\DHL\\Driver",

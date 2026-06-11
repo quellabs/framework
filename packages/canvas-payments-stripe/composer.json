@@ -44,7 +44,7 @@
         "controller": "Quellabs\\Payments\\Stripe\\StripeController"
       },
       "sculpt": {
-        "provider": "Quellabs\\Payments\\Stripe\\ServiceProvider"
+        "provider": "Quellabs\\Payments\\Stripe\\Sculpt\\ServiceProvider"
       },
       "payments": {
         "provider": "Quellabs\\Payments\\Stripe\\Driver",

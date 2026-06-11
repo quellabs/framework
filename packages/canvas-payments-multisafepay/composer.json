@@ -43,7 +43,7 @@
         "controller": "Quellabs\\Payments\\MultiSafepay\\MultiSafepayController"
       },
       "sculpt": {
-        "provider": "Quellabs\\Payments\\MultiSafepay\\ServiceProvider"
+        "provider": "Quellabs\\Payments\\MultiSafepay\\Sculpt\\ServiceProvider"
       },
       "payments": {
         "provider": "Quellabs\\Payments\\MultiSafepay\\Driver",

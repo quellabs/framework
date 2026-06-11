@@ -47,7 +47,7 @@
         "controller": "Quellabs\\Payments\\RaboSmartPay\\RaboSmartPayController"
       },
       "sculpt": {
-        "provider": "Quellabs\\Payments\\RaboSmartPay\\ServiceProvider"
+        "provider": "Quellabs\\Payments\\RaboSmartPay\\Sculpt\\ServiceProvider"
       },
       "payments": {
         "provider": "Quellabs\\Payments\\RaboSmartPay\\Driver",

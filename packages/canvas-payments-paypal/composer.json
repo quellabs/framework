@@ -44,7 +44,7 @@
         "controller": "Quellabs\\Payments\\Paypal\\PaypalController"
       },
       "sculpt": {
-        "provider": "Quellabs\\Payments\\Paypal\\ServiceProvider"
+        "provider": "Quellabs\\Payments\\Paypal\\Sculpt\\ServiceProvider"
       },
       "payments": {
         "provider": "Quellabs\\Payments\\Paypal\\Driver",

@@ -44,7 +44,7 @@
         "controller": "Quellabs\\Payments\\XPay\\XPayController"
       },
       "sculpt": {
-        "provider": "Quellabs\\Payments\\XPay\\ServiceProvider"
+        "provider": "Quellabs\\Payments\\XPay\\Sculpt\\ServiceProvider"
       },
       "payments": {
         "provider": "Quellabs\\Payments\\XPay\\Driver",

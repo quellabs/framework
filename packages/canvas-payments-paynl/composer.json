@@ -46,7 +46,7 @@
         "controller": "Quellabs\\Payments\\PayNL\\PayNLController"
       },
       "sculpt": {
-        "provider": "Quellabs\\Payments\\PayNL\\ServiceProvider"
+        "provider": "Quellabs\\Payments\\PayNL\\Sculpt\\ServiceProvider"
       },
       "payments": {
         "provider": "Quellabs\\Payments\\PayNL\\Driver",
