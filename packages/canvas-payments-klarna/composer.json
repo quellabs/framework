@@ -40,15 +40,13 @@
       "Quellabs\\Payments\\Klarna\\": "src/"
     }
   },
-  "scripts": {
-    "post-autoload-dump": [
-      "php -r \"if (!file_exists('config/klarna.php') && !copy('vendor/quellabs/canvas-payments-klarna/config/klarna.php', 'config/klarna.php')) { echo 'Warning: Could not publish Klarna config file.' . PHP_EOL; }\""
-    ]
-  },
   "extra": {
     "discover": {
       "canvas": {
         "controller": "Quellabs\\Payments\\Klarna\\KlarnaController"
+      },
+      "sculpt": {
+        "provider": "Quellabs\\Payments\\Klarna\\Sculpt\\ServiceProvider"
       },
       "payments": {
         "provider": "Quellabs\\Payments\\Klarna\\Driver",

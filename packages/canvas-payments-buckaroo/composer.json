@@ -39,15 +39,13 @@
       "Quellabs\\Payments\\Buckaroo\\": "src/"
     }
   },
-  "scripts": {
-    "post-autoload-dump": [
-      "php -r \"if (!file_exists('config/buckaroo.php') && !copy('vendor/quellabs/canvas-payments-buckaroo/config/buckaroo.php', 'config/buckaroo.php')) { echo 'Warning: Could not publish Buckaroo config file.' . PHP_EOL; }\""
-    ]
-  },
   "extra": {
     "discover": {
       "canvas": {
         "controller": "Quellabs\\Payments\\Buckaroo\\BuckarooController"
+      },
+      "sculpt": {
+        "provider": "Quellabs\\Payments\\Buckaroo\\Sculpt\\ServiceProvider"
       },
       "payments": {
         "provider": "Quellabs\\Payments\\Buckaroo\\Driver",
