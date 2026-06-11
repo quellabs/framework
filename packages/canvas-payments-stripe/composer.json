@@ -38,15 +38,13 @@
       "Quellabs\\Payments\\Stripe\\": "src/"
     }
   },
-  "scripts": {
-    "post-autoload-dump": [
-      "php -r \"if (!file_exists('config/stripe.php') && !copy('vendor/quellabs/canvas-payments-stripe/config/stripe.php', 'config/stripe.php')) { echo 'Warning: Could not publish Stripe config file.' . PHP_EOL; }\""
-    ]
-  },
   "extra": {
     "discover": {
       "canvas": {
         "controller": "Quellabs\\Payments\\Stripe\\StripeController"
+      },
+      "sculpt": {
+        "provider": "Quellabs\\Payments\\Stripe\\ServiceProvider"
       },
       "payments": {
         "provider": "Quellabs\\Payments\\Stripe\\Driver",

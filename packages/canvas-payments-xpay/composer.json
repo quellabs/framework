@@ -38,15 +38,13 @@
       "Quellabs\\Payments\\XPay\\": "src/"
     }
   },
-  "scripts": {
-    "post-autoload-dump": [
-      "php -r \"if (!file_exists('config/xpay.php') && !copy('vendor/quellabs/canvas-payments-xpay/config/xpay.php', 'config/xpay.php')) { echo 'Warning: Could not publish XPay config file.' . PHP_EOL; }\""
-    ]
-  },
   "extra": {
     "discover": {
       "canvas": {
         "controller": "Quellabs\\Payments\\XPay\\XPayController"
+      },
+      "sculpt": {
+        "provider": "Quellabs\\Payments\\XPay\\ServiceProvider"
       },
       "payments": {
         "provider": "Quellabs\\Payments\\XPay\\Driver",

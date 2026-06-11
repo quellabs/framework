@@ -41,15 +41,13 @@
       "Quellabs\\Payments\\RaboSmartPay\\": "src/"
     }
   },
-  "scripts": {
-    "post-autoload-dump": [
-      "php -r \"if (!file_exists('config/rabosmartpay.php') && !copy('vendor/quellabs/canvas-payments-rabosmartpay/config/rabosmartpay.php', 'config/rabosmartpay.php')) { echo 'Warning: Could not publish Rabo Smart Pay config file.' . PHP_EOL; }\""
-    ]
-  },
   "extra": {
     "discover": {
       "canvas": {
         "controller": "Quellabs\\Payments\\RaboSmartPay\\RaboSmartPayController"
+      },
+      "sculpt": {
+        "provider": "Quellabs\\Payments\\RaboSmartPay\\ServiceProvider"
       },
       "payments": {
         "provider": "Quellabs\\Payments\\RaboSmartPay\\Driver",
