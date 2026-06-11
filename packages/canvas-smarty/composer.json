@@ -55,10 +55,5 @@
         "config": "config/smarty.php"
       }
     }
-  },
-  "scripts": {
-    "post-install-cmd": [
-      "php -r \"copy('vendor/quellabs/canvas-smarty/config/smarty.php', 'config/smarty.php');\""
-    ]
   }
 }

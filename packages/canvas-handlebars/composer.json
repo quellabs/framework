@@ -56,10 +56,5 @@
         "config": "config/handlebars.php"
       }
     }
-  },
-  "scripts": {
-    "post-install-cmd": [
-      "php -r \"copy('vendor/quellabs/canvas-handlebars/config/handlebars.php', 'public/config/handlebars.php');\""
-    ]
   }
 }
