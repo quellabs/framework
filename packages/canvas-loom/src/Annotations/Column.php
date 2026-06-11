@@ -28,8 +28,11 @@
 		 * @param array<string, mixed> $parameters
 		 */
 		public function __construct(array $parameters) {
-			$this->name  = $parameters['name']  ?? '';
-			$this->width = (int)($parameters['width'] ?? 50);
+			$name = $parameters['name'] ?? '';
+			$width = $parameters['width'] ?? 50;
+			
+			$this->name  = is_string($name) ? $name : '';
+			$this->width = is_int($width) ? $width : (int)(is_numeric($width) ? $width : 50);
 		}
 		
 		/**

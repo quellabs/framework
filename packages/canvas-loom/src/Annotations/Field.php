@@ -72,17 +72,45 @@
 		 * @param array<string, mixed> $parameters
 		 */
 		public function __construct(array $parameters) {
-			$this->label = $parameters['label'] ?? '';
-			$this->input = $parameters['input'] ?? null;
-			$this->group = $parameters['group'] ?? null;
+			$label = $parameters['label'] ?? '';
+			$input = $parameters['input'] ?? null;
+			$group = $parameters['group'] ?? null;
+			$hint = $parameters['hint'] ?? null;
+			$placeholder = $parameters['placeholder'] ?? null;
+			$rows = $parameters['rows'] ?? null;
+			$editor = $parameters['editor'] ?? null;
+			$choices = $parameters['choices'] ?? null;
+
+			/** @var array<int|string, string>|null $typedChoices */
+			$typedChoices = (is_array($choices) && $this->isStringMap($choices)) ? $choices : null;
+
+			$this->choices = $typedChoices;
+			$this->rows = isset($rows) && is_numeric($rows) ? (int)$rows : null;
+			$this->editor = is_string($editor) ? $editor : null;
+			$this->placeholder = is_string($placeholder) ? $placeholder : null;
+			$this->hint = is_string($hint) ? $hint : null;
+			$this->label = is_string($label) ? $label : '';
+			$this->input = is_string($input) ? $input : null;
+			$this->group = is_string($group) ? $group : null;
 			$this->required = (bool)($parameters['required'] ?? false);
 			$this->readonly = (bool)($parameters['readonly'] ?? false);
 			$this->disabled = (bool)($parameters['disabled'] ?? false);
-			$this->hint = $parameters['hint'] ?? null;
-			$this->placeholder = $parameters['placeholder'] ?? null;
-			$this->rows = isset($parameters['rows']) ? (int)$parameters['rows'] : null;
-			$this->editor = $parameters['editor'] ?? null;
-			$this->choices = isset($parameters['choices']) && is_array($parameters['choices']) ? $parameters['choices'] : null;
+			
+		}
+
+		/**
+		 * Check that all values in the array are strings (for choices validation).
+		 * @param array<mixed, mixed> $array
+		 * @return bool
+		 */
+		private function isStringMap(array $array): bool {
+			foreach ($array as $v) {
+				if (!is_string($v)) {
+					return false;
+				}
+			}
+
+			return true;
 		}
 		
 		/**

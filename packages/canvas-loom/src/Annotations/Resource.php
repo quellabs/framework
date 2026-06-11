@@ -30,10 +30,15 @@
 		 * @param array<string, mixed> $parameters
 		 */
 		public function __construct(array $parameters) {
-			$this->id     = $parameters['id']     ?? '';
-			$this->action = $parameters['action'] ?? '';
-			$this->title  = $parameters['title']  ?? '';
-			$this->method = $parameters['method'] ?? 'POST';
+			$id = $parameters['id'] ?? '';
+			$action = $parameters['action'] ?? '';
+			$title = $parameters['title'] ?? '';
+			$method = $parameters['method'] ?? 'POST';
+
+			$this->id = is_string($id) ? $id : '';
+			$this->action = is_string($action) ? $action : '';
+			$this->title = is_string($title) ? $title : '';
+			$this->method = is_string($method) ? $method : 'POST';
 		}
 		
 		/**
