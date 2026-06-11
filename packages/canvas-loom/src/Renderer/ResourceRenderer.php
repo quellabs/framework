@@ -117,6 +117,7 @@
 			$saveLabel = $this->e($properties['save_label'] ?? 'Save');
 			$headerId = "{$id}-header";
 			$rawHeaderButtons = $properties['header_buttons'] ?? [];
+			/** @var array<int, \Quellabs\Canvas\Loom\Builder\Button> $headerButtons */
 			$headerButtons = is_array($rawHeaderButtons) ? $rawHeaderButtons : [];
 			
 			// Build the extra <button> elements from the header_buttons property list
@@ -154,7 +155,7 @@
 		 * Button names flow into JS property names and data-pac-bind expressions,
 		 * so they are restricted to alphanumerics and underscores.
 		 *
-		 * @param array<int, mixed> $headerButtons List of button node objects exposing a get() method
+		 * @param array<int, \Quellabs\Canvas\Loom\Builder\Button> $headerButtons List of button node objects exposing a get() method
 		 * @return string Concatenated <button> HTML, or an empty string when the list is empty
 		 * @throws \InvalidArgumentException When a button name contains disallowed characters
 		 */
@@ -209,7 +210,7 @@
 		 * direction — they can still be shown/hidden by other means.
 		 *
 		 * @param string $headerId WakaPAC component id for the header div
-		 * @param array<int, mixed> $headerButtons List of button node objects exposing a get() method
+		 * @param array<int, \Quellabs\Canvas\Loom\Builder\Button> $headerButtons List of button node objects exposing a get() method
 		 * @return string Ready-to-emit JavaScript IIFE
 		 */
 		protected function buildHeaderScript(string $headerId, array $headerButtons): string {
@@ -367,7 +368,7 @@ HTML;
 		 *
 		 * @param bool $needsWakaPAC Whether the form requires a WakaPAC component
 		 * @param string $id Component id, becomes the data-pac-id value
-		 * @param array $childNodes Raw child node tree, scanned for field-level state
+		 * @param array<int, array<string, mixed>> $childNodes Raw child node tree, scanned for field-level state
 		 * @return array{pacIdAttr: string, stateAttr: string}
 		 */
 		protected function resolveWakaPACAttributes(bool $needsWakaPAC, string $id, array $childNodes): array {

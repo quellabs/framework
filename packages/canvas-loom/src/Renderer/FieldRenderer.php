@@ -329,7 +329,9 @@
 			}
 			
 			// Priority 2: entity data extracted from getters by EntityReader
-			$entityData = $data['_entity_data'] ?? [];
+			$rawEntityData = $data['_entity_data'] ?? [];
+			/** @var array<string, mixed> $entityData */
+			$entityData = is_array($rawEntityData) ? $rawEntityData : [];
 			
 			if (!empty($entityData) && isset($entityData[$name])) {
 				$ev = $entityData[$name];

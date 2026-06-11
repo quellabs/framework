@@ -35,11 +35,12 @@
 						$jsRules = [];
 						
 						foreach ($rules as $rule) {
-							if (!is_object($rule) || !method_exists($rule, 'wakaFormSupported') || !$rule->wakaFormSupported()) {
+							if (!is_object($rule) || !method_exists($rule, 'wakaFormSupported') || !method_exists($rule, 'toJs') || !$rule->wakaFormSupported()) {
 								// Rule has no JS equivalent — skip silently
 								continue;
 							}
 							
+							/** @var object{toJs(): string} $rule */
 							$jsRules[] = $rule->toJs();
 						}
 						
@@ -384,7 +385,8 @@ JS;
 				// Pre-mark the field invalid when the server returned an error for it
 				// so the user sees inline feedback immediately on page load.
 				$initialValid = array_key_exists($fieldName, $serverErrors) ? 'false' : 'true';
-				$initialValue = json_encode((string)($data[$fieldName] ?? ''));
+				$rawFV = $data[$fieldName] ?? '';
+				$initialValue = json_encode(is_scalar($rawFV) ? (string)$rawFV : '');
 				$schemaEntries .= "        {$fieldName}: { value: {$initialValue}, valid: {$initialValid}, rules: [{$rulesJs}] },\n";
 			}
 			

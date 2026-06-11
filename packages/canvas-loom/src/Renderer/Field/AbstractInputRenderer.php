@@ -129,7 +129,7 @@
 				$value = $this->getNestedValue($data, $name);
 				
 				if ($value !== null) {
-					return is_scalar($value) ? (string) $value : '';
+					return is_scalar($value) ? (string)$value : '';
 				}
 			}
 			
