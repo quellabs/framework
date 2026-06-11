@@ -17,7 +17,7 @@
 		 * @return string The command signature
 		 */
 		public function getSignature(): string {
-			return "paypal_express:init";
+			return "paypal-express:init";
 		}
 		
 		/**
