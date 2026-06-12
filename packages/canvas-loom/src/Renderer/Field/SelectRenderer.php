@@ -87,9 +87,6 @@
 		 * @return string The rendered <select> HTML with resolved <option> elements.
 		 */
 		protected function renderStaticSelect(string $id, string $name, string $value, string $attrs, string $pacField, string $pacBind, array $properties): string {
-			// $value is already resolved by FieldRenderer::resolveValue() — use it directly
-			$selected = $value;
-			
 			// Resolve options from properties or fall back to data array via pluralized field name
 			$rawOptions = $properties['options'] ?? $this->loom->getData()[StringInflector::pluralize($name)] ?? [];
 			$optionsData = is_array($rawOptions) ? $rawOptions : [];
@@ -101,7 +98,7 @@
 				// Support both flat strings and value/label pairs
 				$optValue = is_array($option) ? $option['value'] : $option;
 				$optLabel = is_array($option) ? $option['label'] : $option;
-				$selectedAttr = $optValue == $selected ? ' selected' : '';
+				$selectedAttr = $optValue == $value ? ' selected' : '';
 				$options .= "<option value=\"{$this->e($optValue)}\"{$selectedAttr}>{$this->e($optLabel)}</option>\n";
 			}
 			
