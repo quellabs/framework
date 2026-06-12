@@ -14,7 +14,7 @@
 		/** Rendered HTML for this node */
 		public string $html;
 		
-		/** WakaPAC initialisation s cript for this node, if any */
+		/** WakaPAC initialisation script for this node, if any */
 		public ?string $script;
 		
 		/**
