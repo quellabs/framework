@@ -1,5 +1,7 @@
 <?php
 	
+	declare(strict_types=1);
+	
 	namespace Quellabs\Canvas\Loom\Entity;
 	
 	use Quellabs\AnnotationReader\AnnotationReader;

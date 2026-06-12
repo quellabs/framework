@@ -1,4 +1,5 @@
 <?php
+	declare(strict_types=1);
 	
 	namespace Quellabs\Canvas\Loom\Renderer\Field;
 	
@@ -56,10 +57,12 @@
 		protected function renderDependentSelect(string $id, string $name, string $attrs, string $pacField, array $properties): string {
 			$rawExpression = $properties['foreach_expression'];
 			$expression = is_string($rawExpression) ? $rawExpression : '';
-			$combinedBind = " data-pac-bind=\"foreach: {$expression}, value: {$name}\"";
+			$escapedName = $this->e($name);
+			$escapedExpression = $this->e($expression);
+			$combinedBind = " data-pac-bind=\"foreach: {$escapedExpression}, value: {$escapedName}\"";
 			
 			return <<<HTML
-        <select id="{$id}" name="{$name}" class="{$this->selectClass}"{$attrs}{$pacField}{$combinedBind}>
+        <select id="{$id}" name="{$escapedName}" class="{$this->selectClass}"{$attrs}{$pacField}{$combinedBind}>
             <option data-pac-bind="value: item.value">{{item.label}}</option>
         </select>
         HTML;

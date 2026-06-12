@@ -1,5 +1,7 @@
 <?php
 	
+	declare(strict_types=1);
+	
 	namespace Quellabs\Canvas\Loom\Builder;
 	
 	use Quellabs\Support\StringInflector;

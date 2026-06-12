@@ -1,5 +1,7 @@
 <?php
 	
+	declare(strict_types=1);
+	
 	namespace Quellabs\Canvas\Loom\Renderer;
 	
 	use Quellabs\Canvas\Loom\NodeUtil;

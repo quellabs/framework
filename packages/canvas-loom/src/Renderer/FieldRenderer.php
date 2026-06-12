@@ -1,5 +1,7 @@
 <?php
 	
+	declare(strict_types=1);
+	
 	namespace Quellabs\Canvas\Loom\Renderer;
 	
 	use Quellabs\Canvas\Loom\AbstractRenderer;
@@ -141,10 +143,11 @@
 			$hasRules = !empty($properties['rules']);
 			$useWakaForm = !empty($this->loom->getData()['_use_wakaform']);
 			$rawPacBind = $properties['pac_bind'] ?? null;
-			$pacBind = is_string($rawPacBind) ? $rawPacBind : ($type === 'toggle' ? "checked: {$name}" : "value: {$name}");
-			$sameAsAttr = ($hasRules && $useWakaForm) ? " data-pac-same-as=\"form.{$name}.value\"" : '';
+			$escapedName = $this->e($name);
+			$pacBind = is_string($rawPacBind) ? $rawPacBind : ($type === 'toggle' ? "checked: {$escapedName}" : "value: {$escapedName}");
+			$sameAsAttr = ($hasRules && $useWakaForm) ? " data-pac-same-as=\"form.{$escapedName}.value\"" : '';
 			$pacFieldAttr = ' data-pac-field' . $sameAsAttr;
-			$pacBindAttr = $pacBind ? " data-pac-bind=\"{$pacBind}\"" : '';
+			$pacBindAttr = $pacBind ? " data-pac-bind=\"{$this->e($pacBind)}\"" : '';
 			
 			// Label is omitted entirely when not provided rather than rendering
 			// an empty element, so CSS :empty rules and screen readers aren't affected
@@ -185,7 +188,7 @@
 				
 				if ($useWakaForm) {
 					// WakaForm manages visibility via the submitted flag and form.valid state
-					$errorHtml = "<p class=\"{$errorClass}\" data-pac-bind=\"visible: submitted && !form.{$name}.valid\">{$displayMessage}</p>";
+					$errorHtml = "<p class=\"{$errorClass}\" data-pac-bind=\"visible: submitted && !form.{$escapedName}.valid\">{$displayMessage}</p>";
 				} elseif ($errorMessage) {
 					// No WakaForm — just render the server error message as a plain visible element
 					$errorHtml = "<p class=\"{$errorClass}\">{$displayMessage}</p>";

@@ -1,5 +1,7 @@
 <?php
 	
+	declare(strict_types=1);
+	
 	namespace Quellabs\Canvas\Loom;
 	
 	/**
@@ -10,10 +12,10 @@
 	class RenderResult {
 		
 		/** Rendered HTML for this node */
-		public string $html;
+		public readonly string $html;
 		
 		/** WakaPAC initialisation script for this node, if any */
-		public ?string $script;
+		public readonly ?string $script;
 		
 		/**
 		 * Constructor
