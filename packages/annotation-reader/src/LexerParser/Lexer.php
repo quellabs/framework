@@ -1,4 +1,5 @@
 <?php
+	/** @noinspection PhpUnused */
 	
 	namespace Quellabs\AnnotationReader\LexerParser;
 	
@@ -12,17 +13,15 @@
 		protected string $string;
 		protected int $pos;
 		protected int $length;
-		
-		/** @var array<int, Token> */
-		protected array $tokens;
+		protected Token $lookahead;
+		protected bool $annotation_mode = false;
+		protected int $parenthesis_depth = 0;
 		
 		/** @var array<int, string> */
 		protected array $single_tokens;
 		
 		/** @var array<int, string> */
 		protected array $two_char_tokens;
-		protected Token $lookahead;
-		protected bool $annotation_mode = false;
 		
 		/**
 		 * Lexer constructor.
@@ -103,31 +102,23 @@
 		/**
 		 * Match the next token
 		 * @param int $token
-		 * @param Token|null $result
-		 * @return bool
+		 * @return Token|null
 		 * @throws LexerException
 		 */
-		public function optionalMatch(int $token, ?Token &$result = null): bool {
+		public function optionalMatch(int $token): ?Token {
 			// Check if the current lookahead token matches the expected token type
-			if ($this->lookahead->getType() == $token) {
-				// Store the current token before advancing
-				$currentToken = $this->lookahead;
-				
-				// Advance to the next token in the stream
-				$this->lookahead = $this->nextToken();
-				
-				// Only assign the matched token to result if a reference parameter was provided
-				// This handles the edge case where passing null by reference doesn't work as expected
-				if (func_num_args() > 1) {
-					$result = $currentToken;
-				}
-				
-				// Return true to indicate successful match
-				return true;
+			if ($this->lookahead->getType() !== $token) {
+				return null;
 			}
 			
-			// Token didn't match, return false without consuming any tokens
-			return false;
+			// Store the current token before advancing
+			$currentToken = $this->lookahead;
+			
+			// Advance to the next token in the stream
+			$this->lookahead = $this->nextToken();
+			
+			// Return the token to indicate successful match
+			return $currentToken;
 		}
 		
 		/**
@@ -158,6 +149,35 @@
 		 */
 		public function setAnnotationMode(bool $mode): void {
 			$this->annotation_mode = $mode;
+			
+			if (!$mode) {
+				$this->parenthesis_depth = 0;
+			}
+		}
+		
+		/**
+		 * Save the state of the lexer
+		 * @return LexerState
+		 */
+		public function saveState(): LexerState {
+			return new LexerState(
+				$this->pos,
+				$this->lookahead,
+				$this->annotation_mode,
+				$this->parenthesis_depth,
+			);
+		}
+		
+		/**
+		 * Restore the state of the lexer
+		 * @param LexerState $state
+		 * @return void
+		 */
+		public function restoreState(LexerState $state): void {
+			$this->pos = $state->getPos();
+			$this->lookahead = $state->getLookahead();
+			$this->annotation_mode = $state->getAnnotationMode();
+			$this->parenthesis_depth = $state->getParenthesisDepth();
 		}
 		
 		/**
@@ -169,55 +189,18 @@
 		 * @return bool True if an annotation was found, false otherwise
 		 */
 		protected function findNextAnnotation(): bool {
-			// Reset annotation mode
 			$this->annotation_mode = false;
 			
-			// Find the next @ symbol that starts a line (only whitespace and * before it)
 			while ($this->pos < $this->length) {
-				if ($this->string[$this->pos] == '@') {
-					// Walk backwards from the current position to the preceding newline
-					// (or the start of the string) and check that only whitespace and a
-					// single * appear between them. Anything else means this @ is embedded
-					// in prose and must be skipped.
-					$scan = $this->pos - 1;
-					$starSeen = false;
-					$valid = true;
-					
-					while ($scan >= 0) {
-						$c = $this->string[$scan];
-						
-						if ($c === "\n") {
-							// Reached the start of the line — stop
-							break;
-						}
-						
-						if ($c === '*') {
-							if ($starSeen) {
-								// Two stars before the @ — not an annotation line (e.g. /** opening)
-								$valid = false;
-								break;
-							}
-							
-							$starSeen = true;
-						} elseif ($c !== ' ' && $c !== "\t" && $c !== "\r") {
-							// Non-whitespace, non-star character before the @ — embedded in prose
-							$valid = false;
-							break;
-						}
-						
-						$scan--;
-					}
-					
-					if ($valid) {
-						$this->annotation_mode = true;
-						return true;
-					}
+				if ($this->string[$this->pos] === '@' && $this->isAnnotationStart()) {
+					$this->annotation_mode = true;
+					$this->parenthesis_depth = 0;
+					return true;
 				}
 				
 				++$this->pos;
 			}
 			
-			// No more annotations found
 			return false;
 		}
 		
@@ -234,15 +217,20 @@
 			
 			// Check if the current character is a newline
 			if ($this->pos < $this->length && $this->string[$this->pos] == "\n") {
+				// If we're inside open parentheses, the annotation continues on the next line
+				if ($this->parenthesis_depth > 0) {
+					return false;
+				}
+				
 				// Get the rest of the line
 				$nextLinePos = $this->pos + 1;
 				
 				// Skip whitespace and * at the start of the next line
 				while ($nextLinePos < $this->length && (
-						$this->string[$nextLinePos] == ' ' ||
-						$this->string[$nextLinePos] == "\t" ||
-						$this->string[$nextLinePos] == '*'
-					)) {
+					$this->string[$nextLinePos] == ' ' ||
+					$this->string[$nextLinePos] == "\t" ||
+					$this->string[$nextLinePos] == '*'
+				)) {
 					$nextLinePos++;
 				}
 				
@@ -263,7 +251,7 @@
 		protected function advance(): void {
 			// Handle annotation mode first
 			if (!$this->handleAnnotationMode()) {
-				return; // We've reached the end of the string
+				return;
 			}
 			
 			// Process whitespace, comments, and find the next token
@@ -272,7 +260,6 @@
 		
 		/**
 		 * Handles annotation mode logic and positioning
-		 *
 		 * @return bool False if we've reached the end of string, true otherwise
 		 */
 		protected function handleAnnotationMode(): bool {
@@ -300,6 +287,7 @@
 		
 		/**
 		 * Skips over whitespace, newlines, and comment markers
+		 * @return void
 		 */
 		protected function skipWhitespaceAndComments(): void {
 			// Flag to track if we've just seen a newline and should check for a star
@@ -387,29 +375,23 @@
 		protected function skipDocBlockCommentMarkers(): bool {
 			// Check if the current character is a forward slash
 			// This could be the start of a doc block comment "/*"
-			if ($this->string[$this->pos] == '/') {
-				// We found a slash, now look for the asterisk(s) that would make this a doc block
-				// This loop checks for up to 2 consecutive asterisks following the slash
-				// This handles both normal docblocks "/*" and JavaDoc-style "/**" comments
-				for ($j = 0; $j < 2; ++$j) {
-					// Check if there's another character after current position
-					// and if that character is an asterisk
-					if (($this->pos + 1 < $this->length) && $this->string[$this->pos + 1] == '*') {
-						// Move past the asterisk
-						++$this->pos;
-					}
-				}
-				
-				// Move past the last processed character (either the slash or last asterisk)
-				// This ensures we're positioned at the start of the actual comment content
-				++$this->pos;
-				
-				// Return true to indicate we found and processed a comment marker
+			if ($this->string[$this->pos] !== '/') {
+				return false;
+			}
+			
+			// JavaDoc-style "/**" — skip all three characters
+			if (substr($this->string, $this->pos, 3) === '/**') {
+				$this->pos += 3;
 				return true;
 			}
 			
-			// Return false if the current character is not a forward slash
-			// This means no comment marker was found at the current position
+			// Normal docblock "/*" — skip both characters
+			if (($this->pos + 1 < $this->length) && $this->string[$this->pos + 1] === '*') {
+				$this->pos += 2;
+				return true;
+			}
+			
+			// Lone "/" that is not a comment marker — leave it for the token checkers
 			return false;
 		}
 		
@@ -431,15 +413,17 @@
 				$string .= $this->string[$this->pos++];
 			}
 			
+			// Determine dot count
+			$dotCount = substr_count($string, '.');
+			
 			// Determine if the number is an integer or float based on decimal points
-			// Count the number of decimal points in the string
-			if (substr_count($string, ".") == 0) {
-				// No decimal points means it's an integer
+			// No decimal points means it's an integer
+			if ($dotCount == 0) {
 				return intval($string);
 			}
 			
 			// One decimal point means it's a floating point number
-			if (substr_count($string, ".") == 1) {
+			if ($dotCount == 1) {
 				return floatval($string);
 			}
 			
@@ -474,6 +458,16 @@
 			
 			foreach ($tokenCheckers as $checker) {
 				if ($token = $this->$checker()) {
+					// Track parenthesis depth so isEndOfAnnotation() knows whether a newline
+					// terminates the annotation or is just whitespace inside an argument list
+					if ($this->annotation_mode) {
+						if ($token->getType() === Token::ParenthesesOpen) {
+							++$this->parenthesis_depth;
+						} elseif ($token->getType() === Token::ParenthesesClose) {
+							$this->parenthesis_depth = max(0, $this->parenthesis_depth - 1);
+						}
+					}
+					
 					return $token;
 				}
 			}
@@ -534,7 +528,9 @@
 		protected function checkSingleCharToken(): ?Token {
 			// Check if the current character matches any of the defined single character tokens
 			// array_search returns the key (token type) if found, or false if not found
-			if (($index = array_search($this->string[$this->pos], $this->single_tokens))) {
+			$index = array_search($this->string[$this->pos], $this->single_tokens, true);
+			
+			if ($index !== false) {
 				// Increment position to move past the single character token
 				++$this->pos;
 				
@@ -645,7 +641,7 @@
 		 */
 		protected function checkIdentifierToken(): ?Token {
 			// Check if the current character is alphabetic (a-z, A-Z)
-			if (ctype_alpha($this->string[$this->pos])) {
+			if (ctype_alpha($this->string[$this->pos]) || $this->string[$this->pos] === '_') {
 				// Initialize an empty string to build the identifier
 				$string = "";
 				
@@ -672,23 +668,39 @@
 		}
 		
 		/**
-		 * Save the state of the lexer
-		 * @return LexerState
+		 * Returns true if the @ at the current position starts a docblock annotation line.
+		 * Only whitespace and a single * are permitted between the preceding newline (or the
+		 * start of the string) and the @. Anything else means the @ is embedded in prose
+		 * (e.g. "see @Loom\Field") and should be ignored.
 		 */
-		public function saveState(): LexerState {
-			return new LexerState(
-				$this->pos,
-				$this->lookahead,
-			);
-		}
-		
-		/**
-		 * Restore the state of the lexer
-		 * @param LexerState $state
-		 * @return void
-		 */
-		public function restoreState(LexerState $state): void {
-			$this->pos = $state->getPos();
-			$this->lookahead = $state->getLookahead();
+		private function isAnnotationStart(): bool {
+			$scan = $this->pos - 1;
+			$starSeen = false;
+			
+			while ($scan >= 0) {
+				$c = $this->string[$scan];
+				
+				// Reached the start of the line — everything before was acceptable
+				if ($c === "\n") {
+					return true;
+				}
+				
+				// A second star before the @ means we're on the opening /** line, not an annotation line
+				if ($c === '*') {
+					if ($starSeen) {
+						return false;
+					}
+					
+					$starSeen = true;
+				} elseif ($c !== ' ' && $c !== "\t" && $c !== "\r") {
+					// Any other non-whitespace character means the @ is mid-prose
+					return false;
+				}
+				
+				$scan--;
+			}
+			
+			// Reached the start of the string without hitting a newline — still a valid annotation line
+			return true;
 		}
 	}
