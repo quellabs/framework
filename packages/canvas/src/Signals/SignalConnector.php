@@ -57,9 +57,10 @@
 		 * The filesystem scan and reflection happen here, once, at a known point during
 		 * bootstrap — not on the first connect() call.
 		 * @param Kernel $kernel
+		 * @param class-string|null $controllerClass
 		 * @throws AnnotationReaderException
 		 */
-		public function __construct(Kernel $kernel) {
+		public function __construct(Kernel $kernel, ?string $controllerClass=null) {
 			$this->annotationReader = $kernel->getAnnotationsReader();
 			$this->di = $kernel->getDependencyInjector();
 			
@@ -74,6 +75,11 @@
 				$slotClasses = ComposerUtils::findClassesInDirectory($signalProviderPath);
 			} else {
 				$slotClasses = [];
+			}
+			
+			// Add controller class to classes list
+			if ($controllerClass) {
+				$slotClasses[] = $controllerClass;
 			}
 			
 			// Scan the filesystem and reflect all provider classes once at construction

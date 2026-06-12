@@ -1,7 +1,7 @@
 {
   "annotation-reader": "1.4.0",
   "cache": "1.0.4",
-  "canvas": "1.10.3",
+  "canvas": "1.10.4",
   "canvas-blade": "1.1.1",
   "canvas-database": "1.0.2",
   "canvas-handlebars": "1.1.1",
