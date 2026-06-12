@@ -23,6 +23,7 @@
 		protected array $two_char_tokens;
 		protected Token $lookahead;
 		protected bool $annotation_mode = false;
+		protected int $parenthesis_depth = 0;
 		
 		/**
 		 * Lexer constructor.
@@ -158,6 +159,10 @@
 		 */
 		public function setAnnotationMode(bool $mode): void {
 			$this->annotation_mode = $mode;
+			
+			if (!$mode) {
+				$this->parenthesis_depth = 0;
+			}
 		}
 		
 		/**
@@ -210,6 +215,7 @@
 					
 					if ($valid) {
 						$this->annotation_mode = true;
+						$this->parenthesis_depth = 0;
 						return true;
 					}
 				}
@@ -234,6 +240,11 @@
 			
 			// Check if the current character is a newline
 			if ($this->pos < $this->length && $this->string[$this->pos] == "\n") {
+				// If we're inside open parentheses, the annotation continues on the next line
+				if ($this->parenthesis_depth > 0) {
+					return false;
+				}
+				
 				// Get the rest of the line
 				$nextLinePos = $this->pos + 1;
 				
@@ -474,6 +485,16 @@
 			
 			foreach ($tokenCheckers as $checker) {
 				if ($token = $this->$checker()) {
+					// Track parenthesis depth so isEndOfAnnotation() knows whether a newline
+					// terminates the annotation or is just whitespace inside an argument list
+					if ($this->annotation_mode) {
+						if ($token->getType() === Token::ParenthesesOpen) {
+							++$this->parenthesis_depth;
+						} elseif ($token->getType() === Token::ParenthesesClose) {
+							$this->parenthesis_depth = max(0, $this->parenthesis_depth - 1);
+						}
+					}
+					
 					return $token;
 				}
 			}
