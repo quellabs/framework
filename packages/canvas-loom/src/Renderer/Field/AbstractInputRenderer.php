@@ -27,19 +27,6 @@
 		}
 		
 		/**
-		 * Escape a value for safe HTML output.
-		 * @param mixed $value
-		 * @return string
-		 */
-		protected function e(mixed $value): string {
-			if (!is_scalar($value) && $value !== null) {
-				return '';
-			}
-			
-			return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
-		}
-		
-		/**
 		 * Render the input element.
 		 * Receives pre-resolved values from FieldRenderer so input renderers
 		 * do not need to repeat resolution logic.
@@ -59,6 +46,19 @@
 			string $pacField,
 			string $pacBind
 		): string;
+		
+		/**
+		 * Escape a value for safe HTML output.
+		 * @param mixed $value
+		 * @return string
+		 */
+		protected function e(mixed $value): string {
+			if (!is_scalar($value) && $value !== null) {
+				return '';
+			}
+			
+			return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
+		}
 		
 		/**
 		 * Build a string of HTML validation attributes from node properties.
@@ -102,7 +102,14 @@
 			if (isset($properties['step'])) {
 				// step can be "any" or a number
 				$step = $properties['step'];
-				$attrs .= ' step="' . ($step === 'any' ? 'any' : (is_numeric($step) ? (float)$step : '1')) . '"';
+
+				if ($step === 'any') {
+					$attrs .= ' step="any"';
+				} elseif (is_numeric($step)) {
+					$attrs .= ' step="' . (float)$step . '"';
+				} else {
+					$attrs .= ' step="1"';
+				}
 			}
 			
 			if (isset($properties['pattern'])) {

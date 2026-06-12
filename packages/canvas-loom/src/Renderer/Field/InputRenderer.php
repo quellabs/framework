@@ -20,9 +20,9 @@
 		 * @inheritDoc
 		 */
 		public function renderInput(string $id, string $name, string $value, array $properties, string $pacField, string $pacBind): string {
-			$type            = $properties['input'] ?? 'text';
-			$attrs           = $this->buildValidationAttrs($properties);
-			$placeholder     = $properties['placeholder'] ?? '';
+			$type = $properties['input'] ?? 'text';
+			$attrs = $this->buildValidationAttrs($properties);
+			$placeholder = $properties['placeholder'] ?? '';
 			$placeholderAttr = $placeholder ? " placeholder=\"{$this->e($placeholder)}\"" : '';
 			
 			return "<input type=\"{$this->e($type)}\" id=\"{$id}\" name=\"{$this->e($name)}\" value=\"{$this->e($value)}\" class=\"{$this->inputClass}\"{$placeholderAttr}{$attrs}{$pacField}{$pacBind}>";

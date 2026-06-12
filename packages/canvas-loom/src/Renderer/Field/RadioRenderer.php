@@ -18,7 +18,7 @@
 		 */
 		public function renderInput(string $id, string $name, string $value, array $properties, string $pacField, string $pacBind): string {
 			$checked = !empty($properties['checked']) ? ' checked' : '';
-			$attrs   = $this->buildValidationAttrs($properties);
+			$attrs = $this->buildValidationAttrs($properties);
 			
 			return "<input type=\"radio\" id=\"{$id}\" name=\"{$this->e($name)}\" value=\"{$this->e($value)}\" class=\"{$this->radioClass}\"{$checked}{$attrs}{$pacField}{$pacBind}>";
 		}

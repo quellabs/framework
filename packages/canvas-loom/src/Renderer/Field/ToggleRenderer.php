@@ -14,21 +14,59 @@
 	 */
 	class ToggleRenderer extends AbstractInputRenderer {
 		
+		
 		/**
-		 * @inheritDoc
+		 * Render the input element.
+		 * Receives pre-resolved values from FieldRenderer so input renderers
+		 * do not need to repeat resolution logic.
+		 * @param string $id Element id attribute
+		 * @param string $name Field name
+		 * @param string $value Resolved field value
+		 * @param array<string, mixed> $properties Full node properties
+		 * @param string $pacField Rendered data-pac-field attribute string
+		 * @param string $pacBind Rendered data-pac-bind attribute string
+		 * @return string
 		 */
 		public function renderInput(string $id, string $name, string $value, array $properties, string $pacField, string $pacBind): string {
-			// Resolve checked state from data array first, fall back to properties['checked']
-			$data          = $this->loom->getData();
-			$resolvedValue = (!empty($data) && $name && array_key_exists($name, $data)) ? $data[$name] : ($properties['checked'] ?? false);
-			$checked       = $resolvedValue ? ' checked' : '';
-			$disabled      = !empty($properties['disabled']);
-			$readonly      = !empty($properties['readonly']);
-			$pacBind       = $properties['pac_bind'] ?? "checked: {$name}";
+			$data = $this->loom->getData();
 			
-			// disabled takes priority — a disabled toggle is fully inert, no submission needed
-			if ($disabled) {
-				return <<<HTML
+			if (!empty($data) && $name && array_key_exists($name, $data)) {
+				$resolvedValue = (bool)$data[$name];
+			} else {
+				$resolvedValue = (bool)($properties['checked'] ?? false);
+			}
+			
+			if (isset($properties['pac_bind']) && is_string($properties['pac_bind'])) {
+				$pacBind = $properties['pac_bind'];
+			} else {
+				$pacBind = "checked: {$name}";
+			}
+			
+			$checked = $resolvedValue ? ' checked' : '';
+			
+			if (!empty($properties['disabled'])) {
+				// disabled takes priority — a disabled toggle is fully inert, no submission needed
+				return $this->renderDisabled($id, $pacField, $pacBind, $checked);
+			} elseif (!empty($properties['readonly'])) {
+				// readonly: visually disabled but value still submits via a hidden input
+				// (browser ignores readonly on checkboxes; disabled checkboxes don't submit)
+				return $this->renderReadonly($id, $name, $pacField, $pacBind, $checked, $resolvedValue);
+			} else {
+				// Normal render
+				return $this->renderNormal($id, $name, $pacField, $pacBind, $checked);
+			}
+		}
+		
+		/**
+		 * Render a disabled toggle — fully inert, no form submission.
+		 * @param string $id Element id attribute
+		 * @param string $pacField Rendered data-pac-field attribute string
+		 * @param string $pacBind Resolved pac_bind expression
+		 * @param string $checked HTML checked attribute string, or empty
+		 * @return string
+		 */
+		private function renderDisabled(string $id, string $pacField, string $pacBind, string $checked): string {
+			return <<<HTML
 <label class="loom-toggle" for="{$id}">
     <input type="checkbox" id="{$id}" class="loom-toggle-input"{$checked} {$pacField} data-pac-bind="{$this->e($pacBind)}" disabled>
     <span class="loom-toggle-track" aria-hidden="true">
@@ -36,14 +74,23 @@
     </span>
 </label>
 HTML;
-			}
+		}
+		
+		/**
+		 * Render a readonly toggle — visually disabled but value submits via hidden input.
+		 * (Browsers ignore readonly on checkboxes; disabled checkboxes do not submit.)
+		 * @param string $id Element id attribute
+		 * @param string $name Field name
+		 * @param string $pacField Rendered data-pac-field attribute string
+		 * @param string $pacBind Resolved pac_bind expression
+		 * @param string $checked HTML checked attribute string, or empty
+		 * @param bool $resolvedValue Resolved boolean checked state
+		 * @return string
+		 */
+		private function renderReadonly(string $id, string $name, string $pacField, string $pacBind, string $checked, bool $resolvedValue): string {
+			$hiddenValue = $resolvedValue ? '1' : '0';
 			
-			// readonly: visually disabled but value still submits via a hidden input
-			// (browser ignores readonly on checkboxes; disabled checkboxes don't submit)
-			if ($readonly) {
-				$hiddenValue = $resolvedValue ? '1' : '0';
-				
-				return <<<HTML
+			return <<<HTML
 <label class="loom-toggle" for="{$id}">
     <input type="checkbox" id="{$id}" class="loom-toggle-input"{$checked} {$pacField} data-pac-bind="{$this->e($pacBind)}" disabled>
     <span class="loom-toggle-track" aria-hidden="true">
@@ -52,9 +99,18 @@ HTML;
 </label>
 <input type="hidden" name="{$this->e($name)}" value="{$hiddenValue}">
 HTML;
-			}
-			
-			// Normal toggle
+		}
+		
+		/**
+		 * Render a normal (interactive) toggle.
+		 * @param string $id Element id attribute
+		 * @param string $name Field name
+		 * @param string $pacField Rendered data-pac-field attribute string
+		 * @param string $pacBind Resolved pac_bind expression
+		 * @param string $checked HTML checked attribute string, or empty
+		 * @return string
+		 */
+		private function renderNormal(string $id, string $name, string $pacField, string $pacBind, string $checked): string {
 			return <<<HTML
 <label class="loom-toggle" for="{$id}">
     <input type="checkbox" id="{$id}" name="{$this->e($name)}" class="loom-toggle-input"{$checked}{$pacField} data-pac-bind="{$this->e($pacBind)}">
