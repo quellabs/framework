@@ -1,11 +1,19 @@
 <?php
-
+	
 	namespace Quellabs\Canvas\Error;
 	
 	use Symfony\Component\HttpFoundation\Request;
 	use Symfony\Component\HttpFoundation\Response;
+	use Quellabs\Canvas\Exceptions\RouteNotFoundException;
 	
 	class DefaultErrorHandler {
+		
+		/** @var array<int, array{string, string}> Default error messages */
+		const array ERRORS = [
+			403 => ['Access Denied', 'You do not have permission to access this page.'],
+			404 => ['Page Not Found', 'The page you requested could not be found.'],
+			500 => ['Server Error', 'Something went wrong. Please try again later.'],
+		];
 		
 		/**
 		 * Default error reporting
@@ -15,16 +23,29 @@
 		 * @return Response The error response
 		 */
 		public function handle(\Throwable $e, Request $request, bool $isDevelopment): Response {
-			$status = $e->getCode();
-			$status = $status >= 400 && $status <= 599 ? $status : Response::HTTP_INTERNAL_SERVER_ERROR;
-
+			$status = $this->resolveStatus($e);
+			
 			if ($isDevelopment) {
 				$content = $this->renderDebugErrorPageContent($e);
 			} else {
-				$content = $this->renderProductionErrorPageContent();
+				$content = $this->renderProductionErrorPageContent($status);
 			}
 			
 			return new Response($content, $status, ['Content-Type' => 'text/html']);
+		}
+		
+		/**
+		 * Resolve the HTTP status code from the exception
+		 * @param \Throwable $e
+		 * @return int
+		 */
+		private function resolveStatus(\Throwable $e): int {
+			if ($e instanceof RouteNotFoundException) {
+				return Response::HTTP_NOT_FOUND;
+			}
+			
+			$code = $e->getCode();
+			return $code >= 400 && $code <= 599 ? $code : Response::HTTP_INTERNAL_SERVER_ERROR;
 		}
 		
 		/**
@@ -70,13 +91,16 @@
 		
 		/**
 		 * Render generic error page content for production
+		 * @param int $status HTTP status code
 		 * @return string
 		 */
-		private function renderProductionErrorPageContent(): string {
+		private function renderProductionErrorPageContent(int $status): string {
+			$error = self::ERRORS[$status] ?? self::ERRORS[500];
+			
 			return "<!DOCTYPE html>
 <html lang='eng'>
 <head>
-    <title>Server Error</title>
+    <title>{$error[0]}</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; text-align: center; }
         .error-box { background: white; padding: 40px; border-radius: 8px; display: inline-block; }
@@ -85,8 +109,8 @@
 </head>
 <body>
     <div class='error-box'>
-        <h1 class='error-title'>Server Error</h1>
-        <p>Something went wrong. Please try again later.</p>
+        <h1 class='error-title'>{$error[0]}</h1>
+        <p>{$error[1]}</p>
         <p>If the problem persists, please contact support.</p>
     </div>
 </body>
