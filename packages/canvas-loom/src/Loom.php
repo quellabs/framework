@@ -171,23 +171,23 @@
 		public function getValidationData(array $node): array {
 			$prefix = null;
 			$rootProps = NodeUtil::properties($node);
-
+			
 			if (!empty($rootProps['entity_prefix']) && is_string($rootProps['entity_prefix'])) {
 				$prefix = $rootProps['entity_prefix'];
 			}
-
+			
 			$flat = $this->collectFieldRules($node);
-
+			
 			// No entity prefix — return flat rules directly
 			if ($prefix === null) {
 				return $flat;
 			}
-
+			
 			// Entity prefix is present — nest the rules so that Validator can recurse
 			// into the submitted array shape: ['PostEntity' => ['field' => value]]
 			return [$prefix => $flat];
 		}
-
+		
 		/**
 		 * Recursively walk the node tree and collect 'rules' from every 'field' node.
 		 * Returns a flat map of field name => rules array.
@@ -196,23 +196,23 @@
 		 */
 		private function collectFieldRules(array $node): array {
 			$rules = [];
-
+			
 			if (($node['type'] ?? null) === 'field') {
 				$props = NodeUtil::properties($node);
 				$name = isset($props['name']) && is_string($props['name']) ? $props['name'] : null;
-
+				
 				if ($name !== null && !empty($props['rules']) && is_array($props['rules'])) {
 					$rules[$name] = $props['rules'];
 				}
 			}
-
+			
 			foreach (NodeUtil::children($node) as $child) {
 				$rules += $this->collectFieldRules($child);
 			}
-
+			
 			return $rules;
 		}
-
+		
 		/**
 		 * Recursively render a node and all its children, collecting HTML and scripts.
 		 * Children are always rendered before their parent — the engine works depth-first,
@@ -225,7 +225,6 @@
 		private function renderNode(array $node, ?array $parent = null): RenderResult {
 			$childHtml = '';
 			$scripts = [];
-			$childCount = 0;
 			
 			$nodeChildren = NodeUtil::children($node);
 			$lastIndex = 0;
@@ -233,7 +232,6 @@
 			foreach ($nodeChildren as $i => $child) {
 				$result = $this->renderNode($child, $node);
 				$childHtml .= $result->html;
-				$childCount++;
 				$lastIndex = $i;
 				
 				if ($result->script !== null) {

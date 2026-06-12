@@ -65,8 +65,14 @@
 			$active = is_string($rawActive) ? $rawActive : '';
 			$class = $this->e($properties['class'] ?? $this->wrapperClass);
 			$rawTabs = $properties['tabs'] ?? [];
-			/** @var array<int, array<string, string>> $tabs */
-			$tabs = is_array($rawTabs) ? $rawTabs : [];
+			$tabs = [];
+
+			foreach (is_array($rawTabs) ? $rawTabs : [] as $tab) {
+				if (is_array($tab) && is_string($tab['id'] ?? null) && is_string($tab['label'] ?? null)) {
+					$tabs[] = $tab;
+				}
+			}
+
 			$rawChildNodes = $properties['_children'] ?? [];
 			/** @phpstan-var LoomNodeList $childNodes */
 			$childNodes = is_array($rawChildNodes) ? $rawChildNodes : [];
@@ -121,7 +127,7 @@
 		 *   reads this to update error indicators after a failed WakaForm
 		 *   client-side validation attempt.
 		 *
-		 * @param array<int, array<string, string>> $tabs Tab index from the Tabs builder (id + label pairs)
+		 * @param array<int, array{id: string, label: string}&array<string, mixed>> $tabs Tab index from the Tabs builder (id + label pairs)
 		 * @param string $active Id of the initially active tab
 		 * @phpstan-param LoomNodeList $childNodes Raw child node tree of the Tabs container
 		 * @param array<string, string> $errors Active server-side validation errors, keyed by field name

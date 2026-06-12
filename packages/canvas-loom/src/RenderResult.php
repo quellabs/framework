@@ -9,13 +9,13 @@
 	 * Each renderer produces at most one script — accumulation across
 	 * the tree is handled by Loom::renderNode(), not by this class.
 	 */
-	class RenderResult {
+	readonly class RenderResult {
 		
 		/** Rendered HTML for this node */
-		public readonly string $html;
+		public string $html;
 		
 		/** WakaPAC initialisation script for this node, if any */
-		public readonly ?string $script;
+		public ?string $script;
 		
 		/**
 		 * Constructor
