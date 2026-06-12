@@ -18,13 +18,22 @@
 		/**
 		 * @inheritDoc
 		 */
-		public function renderInput(string $id, string $name, string $value, array $properties, string $pacField, string $pacBind): string {
+		public function renderInput(
+			string $id,
+			string $name,
+			string $value,
+			array $properties,
+			string $pacField,
+			string $pacBind
+		): string {
 			$attrs = $this->buildValidationAttrs($properties);
 			$placeholder = $properties['placeholder'] ?? '';
 			$placeholderAttr = $placeholder ? " placeholder=\"{$this->e($placeholder)}\"" : '';
 			$rawRows = $properties['rows'] ?? 4;
 			$rows = is_numeric($rawRows) ? (int)$rawRows : 4;
+			$escapedName = $this->e($name);
+			$escapedValue = $this->e($value);
 			
-			return "<textarea id=\"{$id}\" name=\"{$this->e($name)}\" rows=\"{$rows}\" class=\"{$this->textareaClass}\"{$placeholderAttr}{$attrs}{$pacField}{$pacBind}>{$this->e($value)}</textarea>";
+			return "<textarea id=\"{$id}\" name=\"{$escapedName}\" rows=\"{$rows}\" class=\"{$this->textareaClass}\"{$placeholderAttr}{$attrs}{$pacField}{$pacBind}>{$escapedValue}</textarea>";
 		}
 	}
