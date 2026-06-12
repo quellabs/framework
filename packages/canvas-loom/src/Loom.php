@@ -2,8 +2,6 @@
 	
 	namespace Quellabs\Canvas\Loom;
 	
-	use Quellabs\Canvas\Loom\Validation\ValidationResult;
-	
 	/**
 	 * The Loom render engine
 	 */
@@ -58,8 +56,7 @@
 			
 			// If the root node has use_wakaform, inject _use_wakaform into the
 			// data context so FieldRenderer can read it during child rendering.
-			/** @var array<string, mixed> $rootProps */
-			$rootProps = is_array($node['properties'] ?? null) ? $node['properties'] : [];
+			$rootProps = NodeUtil::properties($node);
 			
 			if (!empty($rootProps['use_wakaform'])) {
 				$this->currentData['_use_wakaform'] = true;
@@ -112,6 +109,32 @@
 		}
 		
 		/**
+		 * Returns the server-side validation errors from the current render pass.
+		 * Keys are field names; values are error message strings.
+		 * Returns an empty array when no errors are present.
+		 * @return array<string, string>
+		 */
+		public function getErrors(): array {
+			$raw = $this->currentData['_errors'] ?? [];
+			/** @var array<string, string> $errors */
+			$errors = is_array($raw) ? $raw : [];
+			return $errors;
+		}
+		
+		/**
+		 * Returns the entity field values extracted by EntityReader for the current render pass.
+		 * Keys are field names; values are the raw scalar values from the entity getters.
+		 * Returns an empty array when no entity data is present.
+		 * @return array<string, mixed>
+		 */
+		public function getEntityData(): array {
+			$raw = $this->currentData['_entity_data'] ?? [];
+			/** @var array<string, mixed> $entityData */
+			$entityData = is_array($raw) ? $raw : [];
+			return $entityData;
+		}
+		
+		/**
 		 * Recursively render a node and all its children, collecting HTML and scripts.
 		 * Children are always rendered before their parent — the engine works depth-first,
 		 * so each renderer receives its children as a fully rendered HTML string.
@@ -125,8 +148,7 @@
 			$scripts = [];
 			$childCount = 0;
 			
-			/** @var array<int, array<string, mixed>> $nodeChildren */
-			$nodeChildren = is_array($node['children'] ?? null) ? $node['children'] : [];
+			$nodeChildren = NodeUtil::children($node);
 			
 			foreach ($nodeChildren as $i => $child) {
 				$result = $this->renderNode($child, $node);
@@ -140,15 +162,13 @@
 			
 			// Pass raw child nodes to renderer so container renderers can
 			// inspect the node tree without relying on already-rendered HTML
-			/** @var array<string, mixed> $properties */
-			$properties = is_array($node['properties'] ?? null) ? $node['properties'] : [];
-			/** @var array<int, array<string, mixed>> $rawChildren */
-			$rawChildren = is_array($node['children'] ?? null) ? $node['children'] : [];
+			$properties = NodeUtil::properties($node);
+			$rawChildren = NodeUtil::children($node);
 			$properties['_children'] = $rawChildren;
 			
 			$nodeType = is_string($node['type'] ?? null) ? $node['type'] : '';
 			$renderer = $this->getRenderer($nodeType);
-			$lastIndex = ($childCount > 0 && isset($i) && is_int($i)) ? $i : 0;
+			$lastIndex = $childCount > 0 ? $i : 0;
 			$result = $renderer->render($properties, $childHtml, $parent, $lastIndex);
 			
 			if ($result->script !== null) {
@@ -190,16 +210,13 @@
 			// Check registry first (custom or overridden renderers)
 			if (isset($this->registry[$type])) {
 				$class = $this->registry[$type];
-				
-				/** @var RendererInterface $renderer */
-				$renderer = new $class($this);
-				return $this->rendererCache[$class] ??= $renderer;
+				return $this->rendererCache[$class] ??= $this->instantiateRenderer($class);
 			}
 			
 			// Fall back to naming convention: "button" -> ButtonRenderer
-			$class = 'Quellabs\\Canvas\\Loom\\Renderer\\' . ucfirst($type) . 'Renderer';
+			$className = 'Quellabs\\Canvas\\Loom\\Renderer\\' . ucfirst($type) . 'Renderer';
 			
-			if (!class_exists($class)) {
+			if (!class_exists($className)) {
 				throw new \RuntimeException(
 					"No renderer found for type \"{$type}\". " .
 					"Create Quellabs\\Canvas\\Loom\\Renderer\\" . ucfirst($type) . "Renderer " .
@@ -207,8 +224,25 @@
 				);
 			}
 			
-			/** @var RendererInterface $renderer */
-			$renderer = new $class($this);
-			return $this->rendererCache[$class] ??= $renderer;
+			if (!is_subclass_of($className, RendererInterface::class)) {
+				throw new \RuntimeException(
+					"Renderer class \"{$className}\" must implement " . RendererInterface::class . "."
+				);
+			}
+			
+			/** @var class-string<RendererInterface> $rendererClass */
+			$rendererClass = $className;
+			return $this->rendererCache[$rendererClass] ??= $this->instantiateRenderer($rendererClass);
+		}
+		
+		/**
+		 * Instantiate a renderer class and return it typed as RendererInterface.
+		 * The caller has already verified class existence and RendererInterface compliance,
+		 * so the assertion is guaranteed to hold.
+		 * @param class-string<RendererInterface> $class
+		 * @return RendererInterface
+		 */
+		private function instantiateRenderer(string $class): RendererInterface {
+			return new $class($this);
 		}
 	}

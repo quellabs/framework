@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\Canvas\Loom\Renderer;
 	
+	use Quellabs\Canvas\Loom\NodeUtil;
 	use Quellabs\Canvas\Loom\RenderResult;
 	
 	/**
@@ -23,19 +24,19 @@
 	 */
 	class TabsRenderer extends AbstractContainerRenderer {
 		
-		/** @var string Wrapper div class */
+		/** Wrapper div class */
 		protected string $wrapperClass = 'loom-tabs';
 		
-		/** @var string Tab bar class */
+		/** Tab bar class */
 		protected string $tabBarClass = 'loom-tabs-bar';
 		
-		/** @var string Tab button class */
+		/** Tab button class */
 		protected string $tabButtonClass = 'loom-tabs-button';
 		
-		/** @var string Tab panels wrapper class */
+		/** Tab panels wrapper class */
 		protected string $tabPanelsClass = 'loom-tabs-panels';
 		
-		/** @var string Error indicator class applied to tab buttons that contain at least one invalid field */
+		/** Error indicator class applied to tab buttons that contain at least one invalid field */
 		protected string $tabButtonErrorClass = 'loom-tabs-button--has-error';
 		
 		/**
@@ -62,8 +63,7 @@
 			/** @var array<int, array<string, string>> $tabs */
 			$tabs = is_array($rawTabs) ? $rawTabs : [];
 			$rawChildNodes = $properties['_children'] ?? [];
-			/** @var array<int, array<string, mixed>> $childNodes */
-			$childNodes = is_array($rawChildNodes) ? $rawChildNodes : [];
+			$childNodes = NodeUtil::children(['children' => is_array($rawChildNodes) ? $rawChildNodes : []]);
 			
 			// id flows into getElementById() and buildTabScript() — must be a safe JS identifier
 			$rawId = $properties['id'] ?? 'loom-tabs';
@@ -77,9 +77,7 @@
 			
 			// Collect active server-side errors once so buildButtons() can check them
 			// without calling getData() repeatedly inside the loop.
-			$rawErrors = $this->loom->getData()['_errors'] ?? [];
-			/** @var array<string, string> $errors */
-			$errors = is_array($rawErrors) ? $rawErrors : [];
+			$errors = $this->loom->getErrors();
 			
 			// Build buttons first so the active class and any error indicators are
 			// stamped at render time, avoiding a flash of unstyled tabs before JS runs.
@@ -132,8 +130,7 @@
 			
 			foreach ($childNodes as $child) {
 				if (($child['type'] ?? '') === 'tab') {
-					/** @var array<string, mixed> $childProps */
-					$childProps = is_array($child['properties'] ?? null) ? $child['properties'] : [];
+					$childProps = NodeUtil::properties($child);
 					$childId = is_string($childProps['id'] ?? null) ? $childProps['id'] : '';
 					$tabNodeIndex[$childId] = $child;
 				}

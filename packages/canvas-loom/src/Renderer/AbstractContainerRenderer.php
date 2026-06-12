@@ -3,6 +3,7 @@
 	namespace Quellabs\Canvas\Loom\Renderer;
 	
 	use Quellabs\Canvas\Loom\AbstractRenderer;
+	use Quellabs\Canvas\Loom\NodeUtil;
 	use Quellabs\Support\StringInflector;
 	
 	/**
@@ -24,8 +25,7 @@
 			$result = [];
 			
 			foreach ($nodes as $node) {
-				/** @var array<string, mixed> $nodeProps */
-				$nodeProps = is_array($node['properties'] ?? null) ? $node['properties'] : [];
+				$nodeProps = NodeUtil::properties($node);
 				
 				if (($node['type'] ?? '') === 'field') {
 					$name = $nodeProps['name'] ?? '';
@@ -49,8 +49,7 @@
 					}
 				}
 				
-				/** @var array<int, array<string, mixed>> $nodeChildren */
-				$nodeChildren = is_array($node['children'] ?? null) ? $node['children'] : [];
+				$nodeChildren = NodeUtil::children($node);
 				
 				if (!empty($nodeChildren)) {
 					foreach ($this->collectFieldRules($nodeChildren) as $name => $jsRules) {
@@ -73,8 +72,7 @@
 			$state = [];
 			
 			foreach ($nodes as $node) {
-				/** @var array<string, mixed> $nodeProps */
-				$nodeProps = is_array($node['properties'] ?? null) ? $node['properties'] : [];
+				$nodeProps = NodeUtil::properties($node);
 				
 				if (($node['type'] ?? '') === 'field') {
 					$name = $nodeProps['name'] ?? '';
@@ -85,8 +83,7 @@
 					}
 				}
 				
-				/** @var array<int, array<string, mixed>> $nodeChildren */
-				$nodeChildren = is_array($node['children'] ?? null) ? $node['children'] : [];
+				$nodeChildren = NodeUtil::children($node);
 				
 				// Recurse into children
 				if (!empty($nodeChildren)) {
@@ -112,8 +109,7 @@
 			$names = [];
 			
 			foreach ($nodes as $node) {
-				/** @var array<string, mixed> $nodeProps */
-				$nodeProps = is_array($node['properties'] ?? null) ? $node['properties'] : [];
+				$nodeProps = NodeUtil::properties($node);
 				
 				if (($node['type'] ?? '') === 'field') {
 					$name = $nodeProps['name'] ?? '';
@@ -125,8 +121,7 @@
 					}
 				}
 				
-				/** @var array<int, array<string, mixed>> $nodeChildren */
-				$nodeChildren = is_array($node['children'] ?? null) ? $node['children'] : [];
+				$nodeChildren = NodeUtil::children($node);
 				
 				if (!empty($nodeChildren)) {
 					foreach ($this->collectFieldNames($nodeChildren) as $name) {
@@ -154,8 +149,7 @@
 		protected function requiresWakaPAC(array $nodes): bool {
 			foreach ($nodes as $node) {
 				$type = is_string($node['type'] ?? null) ? $node['type'] : '';
-				/** @var array<string, mixed> $properties */
-				$properties = is_array($node['properties'] ?? null) ? $node['properties'] : [];
+				$properties = NodeUtil::properties($node);
 				
 				// Field with validation rules needs WakaForm bindings (visible: !form.x.valid)
 				if ($type === 'field' && !empty($properties['rules'])) {
@@ -198,8 +192,7 @@
 				}
 				
 				// Recurse into children
-				/** @var array<int, array<string, mixed>> $recurseChildren */
-				$recurseChildren = is_array($node['children'] ?? null) ? $node['children'] : [];
+				$recurseChildren = NodeUtil::children($node);
 				
 				if (!empty($recurseChildren) && $this->requiresWakaPAC($recurseChildren)) {
 					return true;

@@ -27,16 +27,16 @@
 	 */
 	class FieldRenderer extends AbstractRenderer {
 		
-		/** @var string Wrapper div class */
+		/** Wrapper div class */
 		protected string $wrapperClass = 'loom-field';
 		
-		/** @var string Label element class */
+		/** Label element class */
 		protected string $labelClass = 'loom-field-label';
 		
-		/** @var string Hint class */
+		/** Hint class */
 		protected string $hintClass = 'loom-field-hint';
 		
-		/** @var string Validation error message class */
+		/** Validation error message class */
 		protected string $errorClass = 'loom-field-error';
 		
 		/**
@@ -167,9 +167,7 @@
 			// fields with neither don't need the element at all.
 			// When rendered, it starts hidden unless there is an active server-side error,
 			// and is toggled by WakaForm via data-pac-bind="visible: !form.{name}.valid".
-			$rawErrors = $this->loom->getData()['_errors'] ?? [];
-			/** @var array<string, string> $errors */
-			$errors = is_array($rawErrors) ? $rawErrors : [];
+			$errors = $this->loom->getErrors();
 			$errorMessage = (isset($errors[$name]) && is_string($errors[$name])) ? $this->e($errors[$name]) : '';
 			$hasRules = !empty($properties['rules']);
 			$errorClass = $this->e($properties['error_class'] ?? $this->errorClass);
@@ -235,8 +233,7 @@
 			$id = $this->e($properties['id'] ?? $name);
 			$value = $this->resolveValue($name, $properties);
 			
-			/** @var RichtextRenderer $renderer */
-			$renderer = $this->getInputRenderer('richtext');
+			$renderer = $this->getRichtextRenderer();
 			$parts = $renderer->renderWithScript($id, $name, $value, $properties);
 			
 			$labelHtml = $label
@@ -269,8 +266,7 @@
 			$class = $this->e($properties['class'] ?? $this->wrapperClass);
 			$id = $this->e($properties['id'] ?? $name);
 			
-			/** @var FileRenderer $renderer */
-			$renderer = $this->getInputRenderer('file');
+			$renderer = $this->getFileRenderer();
 			$parts = $renderer->renderWithScript($id, $name, $properties);
 			
 			$labelHtml = $label
@@ -308,6 +304,32 @@
 		}
 		
 		/**
+		 * Return the richtext renderer, instantiating it on first call.
+		 */
+		private function getRichtextRenderer(): RichtextRenderer {
+			if (!isset($this->inputRenderers['richtext'])) {
+				$this->inputRenderers['richtext'] = new RichtextRenderer($this->loom);
+			}
+			
+			$renderer = $this->inputRenderers['richtext'];
+			assert($renderer instanceof RichtextRenderer);
+			return $renderer;
+		}
+		
+		/**
+		 * Return the file renderer, instantiating it on first call.
+		 */
+		private function getFileRenderer(): FileRenderer {
+			if (!isset($this->inputRenderers['file'])) {
+				$this->inputRenderers['file'] = new FileRenderer($this->loom);
+			}
+			
+			$renderer = $this->inputRenderers['file'];
+			assert($renderer instanceof FileRenderer);
+			return $renderer;
+		}
+		
+		/**
 		 * Resolve the field value using a two-level priority chain:
 		 * 1. Explicit data array passed to Loom::render() — always wins.
 		 * 2. Entity data extracted by EntityReader via getters — fallback for
@@ -329,9 +351,7 @@
 			}
 			
 			// Priority 2: entity data extracted from getters by EntityReader
-			$rawEntityData = $data['_entity_data'] ?? [];
-			/** @var array<string, mixed> $entityData */
-			$entityData = is_array($rawEntityData) ? $rawEntityData : [];
+			$entityData = $this->loom->getEntityData();
 			
 			if (!empty($entityData) && isset($entityData[$name])) {
 				$ev = $entityData[$name];

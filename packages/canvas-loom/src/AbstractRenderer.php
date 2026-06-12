@@ -11,7 +11,7 @@
 	 */
 	abstract class AbstractRenderer implements RendererInterface {
 		
-		/** @var Loom instance */
+		/** The active Loom engine instance */
 		protected readonly Loom $loom;
 		
 		/**

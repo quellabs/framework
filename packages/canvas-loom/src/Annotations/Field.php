@@ -16,11 +16,11 @@
 	 */
 	class Field implements AnnotationInterface {
 		
-		/** @var string Field label shown above the input */
+		/** Field label shown above the input */
 		private string $label;
 		
 		/**
-		 * @var string|null Input type override.
+		 * Input type override.
 		 * When null, EntityReader derives the type from the ORM column type.
 		 * Valid values mirror the Field builder factory methods:
 		 * text, textarea, select, checkbox, radio, date, datetime-local,
@@ -30,33 +30,33 @@
 		private ?string $input;
 		
 		/**
-		 * @var string|null Column group name.
+		 * Column group name.
 		 * Must match the name= of a @Loom\Column annotation on the class.
 		 * When null the field is ungrouped and renders flat regardless of
 		 * whether wrapInColumns() is called.
 		 */
 		private ?string $group;
 		
-		/** @var bool Whether the field is required */
+		/** Whether the field is required */
 		private bool $required;
 		
-		/** @var bool Whether the field is readonly */
+		/** Whether the field is readonly */
 		private bool $readonly;
 		
-		/** @var bool Whether the field is disabled */
+		/** Whether the field is disabled */
 		private bool $disabled;
 		
-		/** @var string|null Hint text shown below the input */
+		/** Hint text shown below the input */
 		private ?string $hint;
 		
-		/** @var string|null Placeholder text */
+		/** Placeholder text */
 		private ?string $placeholder;
 		
-		/** @var int|null Number of rows for textarea fields */
+		/** Number of rows for textarea fields */
 		private ?int $rows;
 		
 		/**
-		 * @var string|null Richtext editor name.
+		 * Richtext editor name.
 		 * Only used when input="richtext". Valid values: jodit, tinymce, ckeditor4, ckeditor5.
 		 */
 		private ?string $editor;
@@ -67,7 +67,7 @@
 		 * Syntax: choices={"draft"="Draft", "published"="Published"}
 		 */
 		private ?array $choices;
-
+		
 		/**
 		 * @param array<string, mixed> $parameters
 		 */
@@ -80,10 +80,10 @@
 			$rows = $parameters['rows'] ?? null;
 			$editor = $parameters['editor'] ?? null;
 			$choices = $parameters['choices'] ?? null;
-
+			
 			/** @var array<int|string, string>|null $typedChoices */
 			$typedChoices = (is_array($choices) && $this->isStringMap($choices)) ? $choices : null;
-
+			
 			$this->choices = $typedChoices;
 			$this->rows = isset($rows) && is_numeric($rows) ? (int)$rows : null;
 			$this->editor = is_string($editor) ? $editor : null;
@@ -97,7 +97,7 @@
 			$this->disabled = (bool)($parameters['disabled'] ?? false);
 			
 		}
-
+		
 		/**
 		 * Check that all values in the array are strings (for choices validation).
 		 * @param array<mixed, mixed> $array
@@ -109,7 +109,7 @@
 					return false;
 				}
 			}
-
+			
 			return true;
 		}
 		

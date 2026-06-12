@@ -18,10 +18,10 @@
 	 */
 	class Column implements AnnotationInterface {
 		
-		/** @var string Column group name, matched against Field::$group */
+		/** Column group name, matched against Field::$group */
 		private string $name;
 		
-		/** @var int Column width as a percentage */
+		/** Column width as a percentage */
 		private int $width;
 		
 		/**

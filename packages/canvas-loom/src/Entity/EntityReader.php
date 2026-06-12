@@ -34,7 +34,6 @@
 	 */
 	class EntityReader {
 		
-		/** @var AnnotationReader */
 		private AnnotationReader $annotationReader;
 		
 		/**
@@ -134,11 +133,9 @@
 		 */
 		private function readResourceAnnotation(string $className): ResourceAnnotation {
 			$classAnnotations = $this->annotationReader->getClassAnnotations($className, ResourceAnnotation::class);
-			
-			/** @var ResourceAnnotation|null $resourceAnnotation */
 			$resourceAnnotation = $classAnnotations->first();
 			
-			if ($resourceAnnotation === null) {
+			if (!($resourceAnnotation instanceof ResourceAnnotation)) {
 				throw new \InvalidArgumentException(
 					"Class '{$className}' has no @Loom\\Resource annotation. " .
 					"Add @Loom\\Resource(id=\"...\", action=\"...\") to the class docblock."
@@ -159,7 +156,10 @@
 			$columns = [];
 			
 			foreach ($columnAnnotations->all(ColumnAnnotation::class) as $column) {
-				/** @var ColumnAnnotation $column */
+				if (!($column instanceof ColumnAnnotation)) {
+					continue;
+				}
+				
 				if ($column->getName() !== '') {
 					$columns[$column->getName()] = $column;
 				}
@@ -186,10 +186,9 @@
 				$propertyAnnotations = $this->annotationReader->getPropertyAnnotations($className, $propertyName);
 				
 				// Skip properties with no @Loom\Field annotation
-				/** @var FieldAnnotation|null $fieldAnnotation */
 				$fieldAnnotation = $propertyAnnotations->getFirst(FieldAnnotation::class);
 				
-				if ($fieldAnnotation === null) {
+				if (!($fieldAnnotation instanceof FieldAnnotation)) {
 					continue;
 				}
 				
@@ -320,17 +319,17 @@
 			// Apply explicit choices from @Loom\Field — always takes precedence over
 			// enum auto-population. Choices are stored as value => label pairs.
 			$choices = $fieldAnnotation->getChoices();
-
+			
 			if ($choices !== null) {
 				$options = [];
-
+				
 				foreach ($choices as $value => $label) {
 					$options[] = ['value' => (string)$value, 'label' => (string)$label];
 				}
-
+				
 				$field->options($options);
 			}
-
+			
 			// Apply ORM-derived constraints (maxlength, enum options) only when no
 			// input= override is set and no explicit choices were provided.
 			if ($fieldAnnotation->getInput() === null && $choices === null) {
@@ -366,19 +365,19 @@
 			if (in_array($inputType, ['text', 'email', 'tel', 'url'], true) && isset($ormParams['limit']) && is_numeric($ormParams['limit'])) {
 				$field->maxlength((int)$ormParams['limit']);
 			}
-
+			
 			// Auto-populate select options from the enum class for enum-typed columns.
 			// The ORM annotation carries enumType= which is the fully qualified enum class name.
 			// Options are derived from ::cases() using the backing value and raw case name.
 			if ($inputType === 'select' && isset($ormParams['enumType'])) {
 				$enumClass = $ormParams['enumType'];
-
+				
 				if (is_string($enumClass) && is_a($enumClass, \BackedEnum::class, true)) {
 					$options = array_map(
 						fn(\BackedEnum $case) => ['value' => $case->value, 'label' => $case->name],
 						$enumClass::cases()
 					);
-
+					
 					$field->options($options);
 				}
 			}

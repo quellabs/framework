@@ -9,10 +9,10 @@
 	 */
 	class RenderResult {
 		
-		/** @var string Rendered HTML for this node */
+		/** Rendered HTML for this node */
 		public string $html;
 		
-		/** @var string|null WakaPAC initialisation script for this node, if any */
+		/** WakaPAC initialisation script for this node, if any */
 		public ?string $script;
 		
 		/**

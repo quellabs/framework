@@ -42,7 +42,7 @@
 		public static function make(string $id, string $action): static {
 			return new static($id, $action);
 		}
-
+		
 		/**
 		 * Build a Resource from an entity's @Loom annotations.
 		 * Fields are added in property declaration order.
@@ -55,7 +55,6 @@
 		 * @throws \InvalidArgumentException When @Loom\Resource annotation is missing
 		 */
 		public static function makeFromEntity(object|string $entity, AnnotationReader $reader): self {
-			/** @var class-string|object $classOrObject */
 			$classOrObject = is_string($entity) ? (class_exists($entity) ? $entity : throw new \InvalidArgumentException("Class '{$entity}' does not exist.")) : $entity;
 			return (new EntityReader($reader))->read($classOrObject);
 		}
@@ -146,7 +145,7 @@
 		public function setEntityData(array $data): static {
 			return $this->set('entity_data', $data);
 		}
-
+		
 		/**
 		 * Resolve column widths for the given group names.
 		 * Uses @Loom\Column width values where available; distributes
@@ -155,7 +154,6 @@
 		 * @return int[]
 		 */
 		private function resolveWidths(array $names): array {
-			/** @var array<int, int|null> $widths */
 			$widths = [];
 			$missing = [];
 			$used = 0;
@@ -166,7 +164,7 @@
 					$widths[] = $w;
 					$used += $w;
 				} else {
-					$widths[] = null;
+					$widths[] = 0;
 					$missing[] = count($widths) - 1;
 				}
 			}
@@ -180,10 +178,7 @@
 				}
 			}
 			
-			// All null slots have been filled by $share; map to guarantee int[]
-			/** @var int[] $result */
-			$result = array_map(fn($w) => $w ?? 0, $widths);
-			return $result;
+			return $widths;
 		}
 		
 		/**
@@ -198,7 +193,7 @@
 		public function entityPrefix(string $prefix): static {
 			return $this->set('entity_prefix', $prefix);
 		}
-
+		
 		/**
 		 * Set the page title shown in the header
 		 * @param string $title

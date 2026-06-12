@@ -15,7 +15,7 @@
 	 */
 	abstract class AbstractInputRenderer {
 		
-		/** @var Loom Loom instance */
+		/** The active Loom engine instance */
 		protected readonly Loom $loom;
 		
 		/**

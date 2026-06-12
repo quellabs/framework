@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\Canvas\Loom\Renderer;
 	
+	use Quellabs\Canvas\Loom\NodeUtil;
 	use Quellabs\Canvas\Loom\RenderResult;
 	
 	/**
@@ -14,22 +15,22 @@
 	 */
 	class ResourceRenderer extends AbstractContainerRenderer {
 		
-		/** @var string Form element class */
+		/** Form element class */
 		protected string $formClass = 'loom-resource';
 		
-		/** @var string Header element class */
+		/** Header element class */
 		protected string $headerClass = 'loom-resource-header';
 		
-		/** @var string Title element class */
+		/** Title element class */
 		protected string $titleClass = 'loom-resource-title';
 		
-		/** @var string Header actions wrapper class */
+		/** Header actions wrapper class */
 		protected string $headerActionsClass = 'loom-resource-header-actions';
 		
-		/** @var string Save button class */
+		/** Save button class */
 		protected string $saveClass = 'loom-resource-save';
 		
-		/** @var string Cancel button class */
+		/** Cancel button class */
 		protected string $cancelClass = 'loom-resource-cancel';
 		
 		/**
@@ -295,8 +296,7 @@ JS;
 			$action = $this->e($properties['action'] ?? '');
 			$notifications = $this->loom->getNotifications();
 			$rawChildNodes = $properties['_children'] ?? [];
-			/** @var array<int, array<string, mixed>> $childNodes */
-			$childNodes = is_array($rawChildNodes) ? $rawChildNodes : [];
+			$childNodes = NodeUtil::children(['children' => is_array($rawChildNodes) ? $rawChildNodes : []]);
 			
 			// True if wakaPAC will be used
 			$needsWakaPAC = $this->requiresWakaPAC($childNodes);
@@ -390,7 +390,6 @@ HTML;
 			// then merge with caller-supplied data so runtime values win over build-time defaults.
 			$fieldOptions = $this->collectFieldProperties($childNodes);
 			$rawBase = $data['_pac_state'] ?? array_filter($data, fn($value) => is_array($value));
-			/** @var array<string, mixed> $baseState */
 			$baseState = is_array($rawBase) ? $rawBase : [];
 			$stateData = array_merge($fieldOptions, $baseState);
 			
@@ -417,9 +416,7 @@ HTML;
 		 */
 		protected function buildBodyScript(string $id, array $properties, array $childNodes): string {
 			$clientValidation = !empty($properties['use_wakaform']);
-			$rawErrors = $this->loom->getData()['_errors'] ?? [];
-			/** @var array<string, string> $serverErrors */
-			$serverErrors = is_array($rawErrors) ? $rawErrors : [];
+			$serverErrors = $this->loom->getErrors();
 			$fieldRules = $clientValidation ? $this->collectFieldRules($childNodes) : [];
 			$extra = [];
 			

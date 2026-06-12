@@ -14,16 +14,16 @@
 	 */
 	class Resource implements AnnotationInterface {
 		
-		/** @var string Form id, also used as the WakaPAC component id */
+		/** Form id, also used as the WakaPAC component id */
 		private string $id;
 		
-		/** @var string Form action URL */
+		/** Form action URL */
 		private string $action;
 		
-		/** @var string Page title shown in the resource header */
+		/** Page title shown in the resource header */
 		private string $title;
 		
-		/** @var string Form method: GET, POST, PUT, PATCH, or DELETE */
+		/** Form method: GET, POST, PUT, PATCH, or DELETE */
 		private string $method;
 		
 		/**
