@@ -52,13 +52,20 @@
 		 * on the returned Resource to activate column layout; without that
 		 * call the form renders flat.
 		 * @param object|string $entity Entity instance or class name
-		 * @param AnnotationReader $reader
 		 * @return self
 		 * @throws \InvalidArgumentException When @Loom\Resource annotation is missing
+		 * @throws \ReflectionException
 		 */
-		public static function makeFromEntity(object|string $entity, AnnotationReader $reader): self {
-			$classOrObject = is_string($entity) ? (class_exists($entity) ? $entity : throw new \InvalidArgumentException("Class '{$entity}' does not exist.")) : $entity;
-			return (new EntityReader($reader))->read($classOrObject);
+		public static function makeFromEntity(object|string $entity): self {
+			if (!is_string($entity)) {
+				$classOrObject = $entity;
+			} elseif (class_exists($entity)) {
+				$classOrObject = $entity;
+			} else {
+				$classOrObject = throw new \InvalidArgumentException("Class '{$entity}' does not exist.");
+			}
+			
+			return (new EntityReader())->read($classOrObject);
 		}
 		
 		/**

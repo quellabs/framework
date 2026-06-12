@@ -12,10 +12,12 @@
 	use Quellabs\Canvas\Controllers\BaseController;
 	use Quellabs\Canvas\Loom\Loom;
 	use Quellabs\AnnotationReader\AnnotationReader;
+	use Quellabs\ObjectQuel\Exception\QuelException;
 	use Quellabs\Canvas\Translation\TranslationAspect;
 	use Quellabs\Contracts\Templates\TemplateEngineInterface;
 	use Symfony\Component\HttpFoundation\Request;
 	use Symfony\Component\HttpFoundation\Response;
+	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
 	
 	class HomeController extends BaseController {
 		
@@ -33,7 +35,9 @@
 		 * Builds the resource definition, shared between GET and POST.
 		 * Rules are defined here once so both rendering and validation use
 		 * the same source.
-		 * @throws \ReflectionException
+		 * @return array
+		 * @throws EntityResolutionException
+		 * @throws QuelException
 		 */
 		private function buildDefinition(): array {
 			$post = $this->em()->find(PostEntity::class, 1);
