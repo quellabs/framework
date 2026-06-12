@@ -144,6 +144,71 @@
 		}
 		
 		/**
+		 * Extract validation rules from the node tree for use with Canvas\Validation.
+		 *
+		 * Walks the node tree and collects all 'field' nodes that carry a 'rules'
+		 * property. Returns the rules keyed by field name, ready to be returned from
+		 * ValidationInterface::getRules() and consumed by Validator::validate().
+		 *
+		 * Entity-generated forms scope their HTML name attributes to an entity prefix
+		 * (e.g. PostEntity[title]), which PHP parses into a nested array on submission:
+		 *   $_POST = ['PostEntity' => ['title' => 'Hello']]
+		 * Validator::validateFields() recurses into nested arrays using the same key
+		 * structure, so the rules must mirror that shape:
+		 *   ['PostEntity' => ['title' => [new NotBlank()]]]
+		 *
+		 * When no entity prefix is present the rules are returned flat:
+		 *   ['title' => [new NotBlank()]]
+		 *
+		 * @phpstan-param LoomNode $node Root node of the JSON page definition
+		 * @return array<string, mixed> Validation rules keyed by field name, optionally nested under the entity prefix
+		 */
+		public function getValidationData(array $node): array {
+			$prefix = null;
+			$rootProps = NodeUtil::properties($node);
+
+			if (!empty($rootProps['entity_prefix']) && is_string($rootProps['entity_prefix'])) {
+				$prefix = $rootProps['entity_prefix'];
+			}
+
+			$flat = $this->collectFieldRules($node);
+
+			// No entity prefix — return flat rules directly
+			if ($prefix === null) {
+				return $flat;
+			}
+
+			// Entity prefix is present — nest the rules so that Validator can recurse
+			// into the submitted array shape: ['PostEntity' => ['field' => value]]
+			return [$prefix => $flat];
+		}
+
+		/**
+		 * Recursively walk the node tree and collect 'rules' from every 'field' node.
+		 * Returns a flat map of field name => rules array.
+		 * @phpstan-param LoomNode $node
+		 * @return array<string, mixed>
+		 */
+		private function collectFieldRules(array $node): array {
+			$rules = [];
+
+			if (($node['type'] ?? null) === 'field') {
+				$props = NodeUtil::properties($node);
+				$name = isset($props['name']) && is_string($props['name']) ? $props['name'] : null;
+
+				if ($name !== null && !empty($props['rules']) && is_array($props['rules'])) {
+					$rules[$name] = $props['rules'];
+				}
+			}
+
+			foreach (NodeUtil::children($node) as $child) {
+				$rules += $this->collectFieldRules($child);
+			}
+
+			return $rules;
+		}
+
+		/**
 		 * Recursively render a node and all its children, collecting HTML and scripts.
 		 * Children are always rendered before their parent — the engine works depth-first,
 		 * so each renderer receives its children as a fully rendered HTML string.
