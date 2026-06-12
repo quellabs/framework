@@ -4,29 +4,21 @@
 	
 	namespace Quellabs\Canvas\Loom\Renderer\Field;
 	
-	use Quellabs\Canvas\Loom\Loom;
+	use Quellabs\Canvas\Loom\EscapesTrait;
 	
 	/**
 	 * Base class for all field input renderers.
 	 * Provides shared value resolution and validation attribute building
 	 * used across all input types.
 	 *
-	 * Does not implement RendererInterface — input renderers are not node
-	 * renderers and are never called directly by the Loom engine. They are
-	 * instantiated and called by FieldRenderer only.
+	 * Input renderers are not node renderers and are never called directly
+	 * by the Loom engine. They are instantiated and called by FieldRenderer only.
+	 * This class intentionally does not extend AbstractRenderer or implement
+	 * RendererInterface — that interface contract must not apply here.
 	 */
 	abstract class AbstractInputRenderer {
 		
-		/** The active Loom engine instance */
-		protected readonly Loom $loom;
-		
-		/**
-		 * Constructor
-		 * @param Loom $loom The active Loom engine instance
-		 */
-		public function __construct(Loom $loom) {
-			$this->loom = $loom;
-		}
+		use EscapesTrait;
 		
 		/**
 		 * Render the input element.
@@ -48,34 +40,6 @@
 			string $pacField,
 			string $pacBind
 		): string;
-		
-		/**
-		 * Escape a value for safe HTML output.
-		 * @param mixed $value
-		 * @return string
-		 */
-		protected function e(mixed $value): string {
-			if (!is_scalar($value) && $value !== null) {
-				return '';
-			}
-			
-			return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
-		}
-		
-		/**
-		 * Escape a value for safe embedding inside a JavaScript string literal.
-		 * Use when interpolating PHP values into inline <script> JS string context,
-		 * e.g. wakaPAC('{$this->eJs($id)}', ...).
-		 * @param mixed $value
-		 * @return string
-		 */
-		protected function eJs(mixed $value): string {
-			if (!is_scalar($value) && $value !== null) {
-				return '';
-			}
-			
-			return addcslashes((string)$value, "\\\'\"\r\n\t/");
-		}
 		
 		/**
 		 * Build a string of HTML validation attributes from node properties.
