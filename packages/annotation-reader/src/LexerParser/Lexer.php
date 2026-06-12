@@ -1,4 +1,5 @@
 <?php
+	/** @noinspection PhpUnused */
 	
 	namespace Quellabs\AnnotationReader\LexerParser;
 	
@@ -166,6 +167,27 @@
 		}
 		
 		/**
+		 * Save the state of the lexer
+		 * @return LexerState
+		 */
+		public function saveState(): LexerState {
+			return new LexerState(
+				$this->pos,
+				$this->lookahead,
+			);
+		}
+		
+		/**
+		 * Restore the state of the lexer
+		 * @param LexerState $state
+		 * @return void
+		 */
+		public function restoreState(LexerState $state): void {
+			$this->pos = $state->getPos();
+			$this->lookahead = $state->getLookahead();
+		}
+		
+		/**
 		 * Find the next annotation in the string.
 		 * Only treats @ as an annotation marker when it is the first non-whitespace,
 		 * non-asterisk character on its docblock line. This means @ symbols that appear
@@ -174,56 +196,18 @@
 		 * @return bool True if an annotation was found, false otherwise
 		 */
 		protected function findNextAnnotation(): bool {
-			// Reset annotation mode
 			$this->annotation_mode = false;
 			
-			// Find the next @ symbol that starts a line (only whitespace and * before it)
 			while ($this->pos < $this->length) {
-				if ($this->string[$this->pos] == '@') {
-					// Walk backwards from the current position to the preceding newline
-					// (or the start of the string) and check that only whitespace and a
-					// single * appear between them. Anything else means this @ is embedded
-					// in prose and must be skipped.
-					$scan = $this->pos - 1;
-					$starSeen = false;
-					$valid = true;
-					
-					while ($scan >= 0) {
-						$c = $this->string[$scan];
-						
-						if ($c === "\n") {
-							// Reached the start of the line — stop
-							break;
-						}
-						
-						if ($c === '*') {
-							if ($starSeen) {
-								// Two stars before the @ — not an annotation line (e.g. /** opening)
-								$valid = false;
-								break;
-							}
-							
-							$starSeen = true;
-						} elseif ($c !== ' ' && $c !== "\t" && $c !== "\r") {
-							// Non-whitespace, non-star character before the @ — embedded in prose
-							$valid = false;
-							break;
-						}
-						
-						$scan--;
-					}
-					
-					if ($valid) {
-						$this->annotation_mode = true;
-						$this->parenthesis_depth = 0;
-						return true;
-					}
+				if ($this->string[$this->pos] === '@' && $this->isAnnotationStart()) {
+					$this->annotation_mode = true;
+					$this->parenthesis_depth = 0;
+					return true;
 				}
 				
 				++$this->pos;
 			}
 			
-			// No more annotations found
 			return false;
 		}
 		
@@ -250,10 +234,10 @@
 				
 				// Skip whitespace and * at the start of the next line
 				while ($nextLinePos < $this->length && (
-						$this->string[$nextLinePos] == ' ' ||
-						$this->string[$nextLinePos] == "\t" ||
-						$this->string[$nextLinePos] == '*'
-					)) {
+					$this->string[$nextLinePos] == ' ' ||
+					$this->string[$nextLinePos] == "\t" ||
+					$this->string[$nextLinePos] == '*'
+				)) {
 					$nextLinePos++;
 				}
 				
@@ -274,7 +258,7 @@
 		protected function advance(): void {
 			// Handle annotation mode first
 			if (!$this->handleAnnotationMode()) {
-				return; // We've reached the end of the string
+				return;
 			}
 			
 			// Process whitespace, comments, and find the next token
@@ -283,7 +267,6 @@
 		
 		/**
 		 * Handles annotation mode logic and positioning
-		 *
 		 * @return bool False if we've reached the end of string, true otherwise
 		 */
 		protected function handleAnnotationMode(): bool {
@@ -311,6 +294,7 @@
 		
 		/**
 		 * Skips over whitespace, newlines, and comment markers
+		 * @return void
 		 */
 		protected function skipWhitespaceAndComments(): void {
 			// Flag to track if we've just seen a newline and should check for a star
@@ -693,23 +677,39 @@
 		}
 		
 		/**
-		 * Save the state of the lexer
-		 * @return LexerState
+		 * Returns true if the @ at the current position starts a docblock annotation line.
+		 * Only whitespace and a single * are permitted between the preceding newline (or the
+		 * start of the string) and the @. Anything else means the @ is embedded in prose
+		 * (e.g. "see @Loom\Field") and should be ignored.
 		 */
-		public function saveState(): LexerState {
-			return new LexerState(
-				$this->pos,
-				$this->lookahead,
-			);
-		}
-		
-		/**
-		 * Restore the state of the lexer
-		 * @param LexerState $state
-		 * @return void
-		 */
-		public function restoreState(LexerState $state): void {
-			$this->pos = $state->getPos();
-			$this->lookahead = $state->getLookahead();
+		private function isAnnotationStart(): bool {
+			$scan = $this->pos - 1;
+			$starSeen = false;
+			
+			while ($scan >= 0) {
+				$c = $this->string[$scan];
+				
+				// Reached the start of the line — everything before was acceptable
+				if ($c === "\n") {
+					return true;
+				}
+				
+				// A second star before the @ means we're on the opening /** line, not an annotation line
+				if ($c === '*') {
+					if ($starSeen) {
+						return false;
+					}
+					
+					$starSeen = true;
+				} elseif ($c !== ' ' && $c !== "\t" && $c !== "\r") {
+					// Any other non-whitespace character means the @ is mid-prose
+					return false;
+				}
+				
+				$scan--;
+			}
+			
+			// Reached the start of the string without hitting a newline — still a valid annotation line
+			return true;
 		}
 	}
