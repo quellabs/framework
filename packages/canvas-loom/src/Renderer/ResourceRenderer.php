@@ -46,13 +46,10 @@
 		 * @return RenderResult
 		 */
 		public function render(array $properties, string $children, ?array $parent = null, int $index = 0): RenderResult {
-			$rawId = $properties['id'] ?? '';
-			$id = is_string($rawId) ? $rawId : '';
-			$rawMethod = $properties['method'] ?? 'POST';
-			$method = strtoupper(is_string($rawMethod) ? $rawMethod : 'POST');
+			$id = $this->str($properties['id'] ?? '');
+			$method = strtoupper($this->str($properties['method'] ?? null, 'POST'));
 			$saveDisabled = !empty($properties['save_disabled']);
-			$rawPart = $properties['_render_part'] ?? 'full';
-			$part = is_string($rawPart) ? $rawPart : 'full';
+			$part = $this->str($properties['_render_part'] ?? null, 'full');
 			
 			// id is required — without it WakaPAC cannot be initialised
 			if (!$id) {
@@ -77,37 +74,28 @@
 			// Disabled attribute
 			$saveDisabledAttr = $saveDisabled ? ' disabled' : '';
 			
+			/** @noinspection PhpSwitchCanBeReplacedWithMatchExpressionInspection */
 			switch ($part) {
 				case 'header':
-					$headerResult = $this->renderHeader($properties, $id, $saveDisabledAttr);
-					$html = $headerResult->html;
-					$scripts = $headerResult->script !== null ? [$headerResult->script] : [];
+					$results = [$this->renderHeader($properties, $id, $saveDisabledAttr)];
 					break;
 				
 				case 'body':
-					$bodyResult = $this->renderBody($properties, $children, $id, $methodAttr, $methodSpoofHtml);
-					$html = $bodyResult->html;
-					$scripts = $bodyResult->script !== null ? [$bodyResult->script] : [];
+					$results = [$this->renderBody($properties, $children, $id, $methodAttr, $methodSpoofHtml)];
 					break;
 				
 				default:
-					$headerResult = $this->renderHeader($properties, $id, $saveDisabledAttr);
-					$bodyResult = $this->renderBody($properties, $children, $id, $methodAttr, $methodSpoofHtml);
-					$html = $headerResult->html . "\n" . $bodyResult->html;
-					$scripts = [];
-					
-					if ($headerResult->script !== null) {
-						$scripts[] = $headerResult->script;
-					}
-					
-					if ($bodyResult->script !== null) {
-						$scripts[] = $bodyResult->script;
-					}
-					
-					break;
+					$results = [
+						$this->renderHeader($properties, $id, $saveDisabledAttr),
+						$this->renderBody($properties, $children, $id, $methodAttr, $methodSpoofHtml),
+					];
 			}
 			
-			return new RenderResult($html, !empty($scripts) ? implode("\n", $scripts) : null);
+			$html = implode("\n", array_map(fn($r) => $r->html, $results));
+			
+			$scripts = array_filter(array_map(fn($r) => $r->script, $results));
+			
+			return new RenderResult($html, $scripts ? implode("\n", $scripts) : null);
 		}
 		
 		/**
@@ -171,10 +159,8 @@
 				$rawName = $button->get('name');
 				$name = is_string($rawName) ? $rawName : null;
 				$label = $this->e($button->get('label') ?? '');
-				$rawVariant = $button->get('variant') ?? 'primary';
-				$variant = is_string($rawVariant) ? $rawVariant : 'primary';
-				$rawAction = $button->get('action') ?? '';
-				$action = is_string($rawAction) ? $rawAction : '';
+				$variant = $this->str($button->get('variant') ?? null, 'primary');
+				$action = $this->str($button->get('action') ?? null);
 				
 				// name flows into JS property names and data-pac-bind expressions — restrict to identifier characters
 				if ($name !== null && !preg_match('/^[a-zA-Z0-9_]+$/', $name)) {
@@ -189,9 +175,11 @@
 				
 				// Compose the data-pac-bind value: visibility first, then click action.
 				// Either part is omitted when not applicable.
-				$binding = ($name !== null) ? "visible: show_{$name}" : '';
-				$binding = ($binding && $action) ? "{$binding}, click: {$action}" : ($action ? "click: {$action}" : $binding);
-				$bindAttr = $binding ? " data-pac-bind=\"{$binding}\"" : '';
+				$parts = array_filter([
+					$name !== null ? "visible: show_{$name}" : '',
+					$action ? "click: {$action}" : '',
+				]);
+				$bindAttr = $parts ? ' data-pac-bind="' . implode(', ', $parts) . '"' : '';
 				
 				$html .= "<button type=\"button\" class=\"{$variantClass}\"{$bindAttr}>{$label}</button>\n";
 			}
@@ -239,11 +227,10 @@
 				}
 				
 				// Each named button gets a reactive show_x property, defaulting to hidden.
-				$buttonName = $name;
-				$visibilityProps .= "show_{$buttonName}: false,\n        ";
+				$visibilityProps .= "show_{$name}: false,\n        ";
 				
 				if ($showMessage !== null) {
-					$constName = 'MSG_SHOW_' . strtoupper($buttonName);
+					$constName = 'MSG_SHOW_' . strtoupper($name);
 					$constants .= "const {$constName} = {$showMessage};\n";
 					$msgProcCases .= <<<JS
                 case {$constName}:
@@ -465,5 +452,13 @@ JS;
 			/** @var array<int, string> $scripts */
 			$scripts = is_array($rawScripts) ? $rawScripts : [];
 			return $this->buildScript($id, $extra, $abstraction, $scripts, $fieldRules, $clientValidation, $serverErrors);
+		}
+		
+		/**
+		 * Coerce a mixed value to string, returning $default when the value is not a string.
+		 * Eliminates the repeated $rawX / is_string($rawX) ? $rawX : $default pattern.
+		 */
+		private function str(mixed $value, string $default = ''): string {
+			return is_string($value) ? $value : $default;
 		}
 	}
