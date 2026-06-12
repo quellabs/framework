@@ -8,29 +8,30 @@
 	 * The node tree is represented as array<string, mixed> throughout the engine.
 	 * These helpers centralise the is_array() narrowing that would otherwise
 	 * require inline @var annotations at every call site.
+	 *
+	 * @phpstan-type LoomNode array<string, mixed>
+	 * @phpstan-type LoomNodeList array<int, array<string, mixed>>
 	 */
 	final class NodeUtil {
 		
 		/**
 		 * Extract the properties map from a node, returning an empty array when absent or
 		 * when the value is not an array.
-		 * @param array<string, mixed> $node
-		 * @return array<string, mixed>
+		 * @phpstan-param LoomNode $node
+		 * @phpstan-return LoomNode
 		 */
 		public static function properties(array $node): array {
-			/** @var array<string, mixed> $properties */
-			$properties = is_array($node['properties'] ?? null) ? $node['properties'] : [];
-			return $properties;
+			return is_array($node['properties'] ?? null) ? $node['properties'] : [];
 		}
 		
 		/**
 		 * Extract the children list from a node, returning an empty array when absent or
 		 * when the value is not an array.
-		 * @param array<string, mixed> $node
-		 * @return array<int, array<string, mixed>>
+		 * @phpstan-param LoomNode $node
+		 * @phpstan-return LoomNodeList
 		 */
 		public static function children(array $node): array {
-			/** @var array<int, array<string, mixed>> $children */
+			/** @var LoomNodeList $children */
 			$children = is_array($node['children'] ?? null) ? $node['children'] : [];
 			return $children;
 		}
