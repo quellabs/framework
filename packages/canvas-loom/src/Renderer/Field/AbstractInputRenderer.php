@@ -63,6 +63,21 @@
 		}
 		
 		/**
+		 * Escape a value for safe embedding inside a JavaScript string literal.
+		 * Use when interpolating PHP values into inline <script> JS string context,
+		 * e.g. wakaPAC('{$this->eJs($id)}', ...).
+		 * @param mixed $value
+		 * @return string
+		 */
+		protected function eJs(mixed $value): string {
+			if (!is_scalar($value) && $value !== null) {
+				return '';
+			}
+			
+			return addcslashes((string)$value, "\\\'\"\r\n\t/");
+		}
+		
+		/**
 		 * Build a string of HTML validation attributes from node properties.
 		 * Only attributes that are present in the properties array are rendered.
 		 * @param array<string, mixed> $properties Node properties

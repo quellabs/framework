@@ -120,11 +120,13 @@ HTML;
 		 * @return string
 		 */
 		protected function buildScript(string $id, string $name, array $properties): string {
+			$jsId = $this->eJs($id);
+			
 			return <<<JS
 (function() {
     let nextUid = 0;
     
-    wakaPAC('{$id}', {
+    wakaPAC('{$jsId}', {
         files: [],
         
         computed: {
@@ -173,7 +175,7 @@ HTML;
                 error:  null
             }]);
             
-            wakaPAC.sendMessageToParent('{$id}', wakaPAC.MSG_USER, 0, 0, {
+            wakaPAC.sendMessageToParent('{$jsId}', wakaPAC.MSG_USER, 0, 0, {
                 event: 'upload_start',
                 name:  file.name,
                 size:  file.size
@@ -193,7 +195,7 @@ HTML;
                                 : f;
                         });
                         
-                        wakaPAC.sendMessageToParent('{$id}', wakaPAC.MSG_USER, 0, 0, {
+                        wakaPAC.sendMessageToParent('{$jsId}', wakaPAC.MSG_USER, 0, 0, {
                             event: 'upload_success',
                             id:    data.id,
                             name:  file.name,
@@ -214,7 +216,7 @@ HTML;
                             : f;
                     });
                     
-                    wakaPAC.sendMessageToParent('{$id}', wakaPAC.MSG_USER, 0, 0, {
+                    wakaPAC.sendMessageToParent('{$jsId}', wakaPAC.MSG_USER, 0, 0, {
                         event: 'upload_error',
                         name:  file.name,
                         size:  file.size,
@@ -228,7 +230,7 @@ HTML;
                         : f;
                 });
                 
-                wakaPAC.sendMessageToParent('{$id}', wakaPAC.MSG_USER, 0, 0, {
+                wakaPAC.sendMessageToParent('{$jsId}', wakaPAC.MSG_USER, 0, 0, {
                     event: 'upload_error',
                     name:  file.name,
                     size:  file.size,

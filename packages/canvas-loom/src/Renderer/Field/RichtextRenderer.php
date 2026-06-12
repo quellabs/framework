@@ -99,7 +99,7 @@
 		protected function buildScript(string $id): string {
 			return <<<JS
 (function() {
-    wakaPAC('{$id}', {}, { hydrate: false });
+    wakaPAC('{$this->eJs($id)}', {}, { hydrate: false });
 })();
 JS;
 		}

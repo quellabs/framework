@@ -180,7 +180,7 @@
 				if ($errorMessage) {
 					$displayMessage = $errorMessage;
 				} elseif (!empty($properties['error_message']) && is_string($properties['error_message'])) {
-					$displayMessage = $properties['error_message'];
+					$displayMessage = $this->e($properties['error_message']);
 				} else {
 					$firstRule = is_array($properties['rules'] ?? null) ? ($properties['rules'][0] ?? null) : null;
 					$displayMessage = ($hasRules && is_object($firstRule) && method_exists($firstRule, 'getError')) ? $this->e($firstRule->getError()) : '';
