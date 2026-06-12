@@ -369,11 +369,10 @@
 				$attributeKey = null;
 				
 				// Handle annotation syntax (@AnnotationName)
-				if ($this->lexer->optionalMatch(Token::Annotation, $annotationToken)) {
-					/**
-					 * Parse the annotation
-					 * @var Token $annotationToken
-					 */
+				$annotationToken = $this->lexer->optionalMatch(Token::Annotation);
+				
+				if ($annotationToken !== null) {
+					// Parse the annotation
 					$annotation = $this->parseAnnotation($annotationToken);
 					
 					// Store it using its class name as the key
