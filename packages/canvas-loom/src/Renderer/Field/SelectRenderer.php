@@ -24,7 +24,7 @@
 		 * Renders a select dropdown.
 		 * @param string $id The HTML id attribute for the select element.
 		 * @param string $name The field name and HTML name attribute.
-		 * @param string $value Unused; current value is resolved via resolveValue().
+		 * @param string $value Resolved field value, used to mark the selected option.
 		 * @param array<string, mixed> $properties Field configuration
 		 * @param string $pacField Rendered data-pac-field attribute string, or empty.
 		 * @param string $pacBind Rendered data-pac-bind attribute string, or empty.
@@ -36,7 +36,7 @@
 			if (isset($properties['foreach_expression'])) {
 				return $this->renderDependentSelect($id, $name, $attrs, $pacField, $properties);
 			} else {
-				return $this->renderStaticSelect($id, $name, $attrs, $pacField, $pacBind, $properties);
+				return $this->renderStaticSelect($id, $name, $value, $attrs, $pacField, $pacBind, $properties);
 			}
 		}
 		
@@ -79,15 +79,16 @@
 		 *
 		 * @param string $id The HTML id attribute for the select element.
 		 * @param string $name The field name and HTML name attribute.
+		 * @param string $value Pre-resolved field value, used to mark the selected option.
 		 * @param string $attrs Pre-rendered validation attribute string (required, min, max, etc.).
 		 * @param string $pacField Rendered data-pac-field attribute string, or empty.
 		 * @param string $pacBind Rendered data-pac-bind attribute string, or empty.
 		 * @param array<string, mixed> $properties Field configuration
 		 * @return string The rendered <select> HTML with resolved <option> elements.
 		 */
-		protected function renderStaticSelect(string $id, string $name, string $attrs, string $pacField, string $pacBind, array $properties): string {
-			// The current field value used to mark the matching option as selected
-			$selected = $this->resolveValue($name, $properties);
+		protected function renderStaticSelect(string $id, string $name, string $value, string $attrs, string $pacField, string $pacBind, array $properties): string {
+			// $value is already resolved by FieldRenderer::resolveValue() — use it directly
+			$selected = $value;
 			
 			// Resolve options from properties or fall back to data array via pluralized field name
 			$rawOptions = $properties['options'] ?? $this->loom->getData()[StringInflector::pluralize($name)] ?? [];

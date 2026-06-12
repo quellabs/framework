@@ -103,46 +103,4 @@
 			
 			return $attrs;
 		}
-		
-		/**
-		 * Resolve the field value from the data array or fall back to the node definition.
-		 * @param string $name Field name, used as path into the data array
-		 * @param array<string, mixed> $properties Node properties
-		 * @return string
-		 */
-		protected function resolveValue(string $name, array $properties): string {
-			$data = $this->loom->getData();
-			
-			if (!empty($data) && $name) {
-				$value = $this->getNestedValue($data, $name);
-				
-				if ($value !== null) {
-					return is_scalar($value) ? (string)$value : '';
-				}
-			}
-			
-			$val = $properties['value'] ?? '';
-			return is_scalar($val) ? (string)$val : '';
-		}
-		
-		/**
-		 * Get a nested value from an array using dot and bracket notation.
-		 * @param array<string, mixed> $data
-		 * @param string $path
-		 * @return mixed
-		 */
-		protected function getNestedValue(array $data, string $path): mixed {
-			$parts = preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [];
-			$current = $data;
-			
-			foreach ($parts as $part) {
-				if (!is_array($current) || !isset($current[$part])) {
-					return null;
-				}
-				
-				$current = $current[$part];
-			}
-			
-			return $current;
-		}
 	}
