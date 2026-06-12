@@ -30,10 +30,12 @@
 		 * @return string
 		 */
 		public function renderInput(string $id, string $name, string $value, array $properties, string $pacField, string $pacBind): string {
-			$data = $this->loom->getData();
-			
-			if (!empty($data) && $name && array_key_exists($name, $data)) {
-				$resolvedValue = (bool)$data[$name];
+			// $value is already resolved by FieldRenderer::resolveValue() (data array takes
+			// priority over properties). Cast to bool here rather than re-resolving from
+			// loom data, which would miss the resolved value when data is absent or the key
+			// does not exist in the raw data array.
+			if ($value !== '') {
+				$resolvedValue = (bool)$value;
 			} else {
 				$resolvedValue = (bool)($properties['checked'] ?? false);
 			}
