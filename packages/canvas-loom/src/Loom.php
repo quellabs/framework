@@ -121,13 +121,14 @@
 		 */
 		public function getErrors(): array {
 			$raw = $this->currentData['_errors'] ?? [];
-
+			
 			if (!is_array($raw)) {
 				return [];
 			}
-
-			/** @var array<string, string> $raw */
-			return $raw;
+			
+			return array_filter($raw, function ($value, $key) {
+				return is_string($key) && is_string($value);
+			}, ARRAY_FILTER_USE_BOTH);
 		}
 		
 		/**
@@ -138,9 +139,13 @@
 		 */
 		public function getEntityData(): array {
 			$raw = $this->currentData['_entity_data'] ?? [];
-			/** @var array<string, mixed> $entityData */
-			$entityData = is_array($raw) ? $raw : [];
-			return $entityData;
+			
+			if (!is_array($raw)) {
+				return [];
+			}
+			
+			// Re-index to guarantee string keys, matching array<string, mixed>
+			return array_map(fn($v) => $v, $raw);
 		}
 		
 		/**
