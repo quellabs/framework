@@ -2,7 +2,6 @@
 	
 	namespace Quellabs\Canvas\Loom\Renderer;
 	
-	use Quellabs\Canvas\Loom\NodeUtil;
 	use Quellabs\Canvas\Loom\RenderResult;
 	
 	/**
@@ -12,6 +11,9 @@
 	 *
 	 * Override renderHeader() or renderBody() in a subclass to
 	 * customise either part independently.
+	 *
+	 * @phpstan-import-type LoomNode from \Quellabs\Canvas\Loom\NodeUtil
+	 * @phpstan-import-type LoomNodeList from \Quellabs\Canvas\Loom\NodeUtil
 	 */
 	class ResourceRenderer extends AbstractContainerRenderer {
 		
@@ -296,7 +298,8 @@ JS;
 			$action = $this->e($properties['action'] ?? '');
 			$notifications = $this->loom->getNotifications();
 			$rawChildNodes = $properties['_children'] ?? [];
-			$childNodes = NodeUtil::children(['children' => is_array($rawChildNodes) ? $rawChildNodes : []]);
+			/** @phpstan-var LoomNodeList $childNodes */
+			$childNodes = is_array($rawChildNodes) ? $rawChildNodes : [];
 			
 			// True if wakaPAC will be used
 			$needsWakaPAC = $this->requiresWakaPAC($childNodes);
@@ -375,7 +378,7 @@ HTML;
 		 *
 		 * @param bool $needsWakaPAC Whether the form requires a WakaPAC component
 		 * @param string $id Component id, becomes the data-pac-id value
-		 * @param array<int, array<string, mixed>> $childNodes Raw child node tree, scanned for field-level state
+		 * @phpstan-param LoomNodeList $childNodes Raw child node tree, scanned for field-level state
 		 * @return array{pacIdAttr: string, stateAttr: string}
 		 */
 		protected function resolveWakaPACAttributes(bool $needsWakaPAC, string $id, array $childNodes): array {
@@ -411,7 +414,7 @@ HTML;
 		 *
 		 * @param string $id WakaPAC component id (matches the form's data-pac-id)
 		 * @param array<string, mixed> $properties Full node properties array
-		 * @param array<int, array<string, mixed>> $childNodes Raw child node tree, scanned for validation rules
+		 * @phpstan-param LoomNodeList $childNodes Raw child node tree, scanned for validation rules
 		 * @return string            Ready-to-emit JavaScript, already wrapped in an IIFE by buildScript()
 		 */
 		protected function buildBodyScript(string $id, array $properties, array $childNodes): string {

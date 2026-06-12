@@ -21,6 +21,9 @@
 	 *    ResourceRenderer, which runs after form.validate() and has direct access
 	 *    to the form proxy. It reads data-loom-tab-fields on each button and calls
 	 *    form[fieldName].valid to determine which tabs have errors.
+	 *
+	 * @phpstan-import-type LoomNode from \Quellabs\Canvas\Loom\NodeUtil
+	 * @phpstan-import-type LoomNodeList from \Quellabs\Canvas\Loom\NodeUtil
 	 */
 	class TabsRenderer extends AbstractContainerRenderer {
 		
@@ -63,7 +66,8 @@
 			/** @var array<int, array<string, string>> $tabs */
 			$tabs = is_array($rawTabs) ? $rawTabs : [];
 			$rawChildNodes = $properties['_children'] ?? [];
-			$childNodes = NodeUtil::children(['children' => is_array($rawChildNodes) ? $rawChildNodes : []]);
+			/** @phpstan-var LoomNodeList $childNodes */
+			$childNodes = is_array($rawChildNodes) ? $rawChildNodes : [];
 			
 			// id flows into getElementById() and buildTabScript() — must be a safe JS identifier
 			$rawId = $properties['id'] ?? 'loom-tabs';
@@ -117,7 +121,7 @@
 		 *
 		 * @param array<int, array<string, string>> $tabs Tab index from the Tabs builder (id + label pairs)
 		 * @param string $active Id of the initially active tab
-		 * @param array<int, array<string, mixed>> $childNodes Raw child node tree of the Tabs container
+		 * @phpstan-param LoomNodeList $childNodes Raw child node tree of the Tabs container
 		 * @param array<string, string> $errors Active server-side validation errors, keyed by field name
 		 * @return string
 		 */
@@ -126,6 +130,7 @@
 			
 			// Index the raw child nodes by tab id so we can look up each tab's
 			// subtree in O(1) rather than searching the array on every iteration.
+			/** @phpstan-var array<string, LoomNode> $tabNodeIndex */
 			$tabNodeIndex = [];
 			
 			foreach ($childNodes as $child) {

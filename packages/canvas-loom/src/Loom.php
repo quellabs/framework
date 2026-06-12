@@ -4,6 +4,9 @@
 	
 	/**
 	 * The Loom render engine
+	 *
+	 * @phpstan-import-type LoomNode from NodeUtil
+	 * @phpstan-import-type LoomNodeList from NodeUtil
 	 */
 	class Loom {
 		
@@ -40,7 +43,7 @@
 		/**
 		 * Render a node tree to an HTML string with an optional inline script block.
 		 * This is the main entry point for rendering a Loom page definition.
-		 * @param array<string, mixed> $node Root node of the JSON page definition
+		 * @phpstan-param LoomNode $node Root node of the JSON page definition
 		 * @param array<string, mixed> $data Entity data to populate field values, keyed by field name
 		 * @param array<string, mixed> $options Supported options: 'part' => 'full' | 'header' | 'body'
 		 * @return string Rendered HTML with an inline script block if scripts were generated
@@ -116,9 +119,13 @@
 		 */
 		public function getErrors(): array {
 			$raw = $this->currentData['_errors'] ?? [];
-			/** @var array<string, string> $errors */
-			$errors = is_array($raw) ? $raw : [];
-			return $errors;
+
+			if (!is_array($raw)) {
+				return [];
+			}
+
+			/** @var array<string, string> $raw */
+			return $raw;
 		}
 		
 		/**
@@ -138,8 +145,8 @@
 		 * Recursively render a node and all its children, collecting HTML and scripts.
 		 * Children are always rendered before their parent — the engine works depth-first,
 		 * so each renderer receives its children as a fully rendered HTML string.
-		 * @param array<string, mixed> $node Current node to render
-		 * @param array<string, mixed>|null $parent Parent node, passed to renderers so they can read parent properties
+		 * @phpstan-param LoomNode $node Current node to render
+		 * @phpstan-param LoomNode|null $parent Parent node, passed to renderers so they can read parent properties
 		 * @return RenderResult      Combined HTML and scripts for this node and all its descendants
 		 * @internal Do not call directly — use render() instead
 		 */
@@ -149,11 +156,13 @@
 			$childCount = 0;
 			
 			$nodeChildren = NodeUtil::children($node);
+			$lastIndex = 0;
 			
 			foreach ($nodeChildren as $i => $child) {
 				$result = $this->renderNode($child, $node);
 				$childHtml .= $result->html;
 				$childCount++;
+				$lastIndex = $i;
 				
 				if ($result->script !== null) {
 					$scripts[] = $result->script;
@@ -168,7 +177,6 @@
 			
 			$nodeType = is_string($node['type'] ?? null) ? $node['type'] : '';
 			$renderer = $this->getRenderer($nodeType);
-			$lastIndex = $childCount > 0 ? $i : 0;
 			$result = $renderer->render($properties, $childHtml, $parent, $lastIndex);
 			
 			if ($result->script !== null) {
@@ -230,9 +238,10 @@
 				);
 			}
 			
-			/** @var class-string<RendererInterface> $rendererClass */
-			$rendererClass = $className;
-			return $this->rendererCache[$rendererClass] ??= $this->instantiateRenderer($rendererClass);
+			// At this point class_exists() and is_subclass_of() have both passed,
+			// so $className is a valid class-string<RendererInterface>.
+			/** @var class-string<RendererInterface> $className */
+			return $this->rendererCache[$className] ??= $this->instantiateRenderer($className);
 		}
 		
 		/**

@@ -10,6 +10,9 @@
 	 * Base class for renderers that act as WakaPAC component containers.
 	 * Provides shared functionality for collecting field state from the
 	 * node tree and injecting it into data-pac-state.
+	 *
+	 * @phpstan-import-type LoomNode from \Quellabs\Canvas\Loom\NodeUtil
+	 * @phpstan-import-type LoomNodeList from \Quellabs\Canvas\Loom\NodeUtil
 	 */
 	abstract class AbstractContainerRenderer extends AbstractRenderer {
 		
@@ -18,7 +21,7 @@
 		 * Returns a map of fieldName => JS rules array string for use in createForm().
 		 * Fields without rules are omitted — createForm() only needs entries where
 		 * rules are defined.
-		 * @param array<int, array<string, mixed>> $nodes
+		 * @phpstan-param LoomNodeList $nodes
 		 * @return array<string, string[]> fieldName => array of toJs() strings
 		 */
 		protected function collectFieldRules(array $nodes): array {
@@ -65,7 +68,7 @@
 		 * Recursively collect options arrays from all field nodes in the tree.
 		 * Used to inject dependent dropdown options into the WakaPAC state
 		 * before the component is initialized.
-		 * @param array<int, array<string, mixed>> $nodes
+		 * @phpstan-param LoomNodeList $nodes
 		 * @return array<string, mixed>
 		 */
 		protected function collectFieldProperties(array $nodes): array {
@@ -102,7 +105,7 @@
 		 * both for server-side error detection at render time and for emitting
 		 * the data-loom-tab-fields attribute that drives client-side JS updates.
 		 * Hidden fields are excluded — they carry no validation state.
-		 * @param array<int, array<string, mixed>> $nodes
+		 * @phpstan-param LoomNodeList $nodes
 		 * @return string[] Flat list of field name strings
 		 */
 		protected function collectFieldNames(array $nodes): array {
@@ -143,7 +146,7 @@
 		 * - Is a text node with {{ }} interpolation in its value
 		 * - Has validation rules (field.valid bindings)
 		 * - Has use_wakaform enabled on the resource
-		 * @param array<int, array<string, mixed>> $nodes
+		 * @phpstan-param LoomNodeList $nodes
 		 * @return bool
 		 */
 		protected function requiresWakaPAC(array $nodes): bool {
