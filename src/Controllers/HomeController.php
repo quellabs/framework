@@ -38,7 +38,7 @@
 		private function buildDefinition(): array {
 			$post = $this->em()->find(PostEntity::class, 1);
 			
-			$resource = Resource::makeFromEntity($post, $this->annotationReader)
+			$resource = Resource::makeFromEntity($post)
 				->wrapInColumns([
 					'main'    => Column::make(),
 					'sidebar' => Column::make(),

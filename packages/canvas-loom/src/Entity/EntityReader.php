@@ -5,6 +5,7 @@
 	namespace Quellabs\Canvas\Loom\Entity;
 	
 	use Quellabs\AnnotationReader\AnnotationReader;
+	use Quellabs\AnnotationReader\AnnotationReaderLocator;
 	use Quellabs\Canvas\Loom\Annotations\Column as ColumnAnnotation;
 	use Quellabs\Canvas\Loom\Annotations\Field as FieldAnnotation;
 	use Quellabs\Canvas\Loom\Annotations\Resource as ResourceAnnotation;
@@ -58,17 +59,17 @@
 		 * Properties carrying any of these are excluded from the form
 		 * even when @Loom\Field is present.
 		 */
-		private const SKIP_ANNOTATIONS = [
+		private const array SKIP_ANNOTATIONS = [
 			'Quellabs\\ObjectQuel\\Annotations\\Orm\\PrimaryKeyStrategy',
 			'Quellabs\\ObjectQuel\\Annotations\\Orm\\SoftDelete',
 			'Quellabs\\ObjectQuel\\Annotations\\Orm\\SourceField',
 		];
 		
 		/**
-		 * @param AnnotationReader $annotationReader
+		 * Constructor
 		 */
-		public function __construct(AnnotationReader $annotationReader) {
-			$this->annotationReader = $annotationReader;
+		public function __construct() {
+			$this->annotationReader = AnnotationReaderLocator::getInstance();
 		}
 		
 		/**
