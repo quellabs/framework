@@ -19,7 +19,7 @@
 		
 		/**
 		 * Constructor
-		 * @param string $html Rendered HTML
+		 * @param string $html Ren dered HTML
 		 * @param string|null $script WakaPAC initialisation script, if any
 		 */
 		public function __construct(string $html, ?string $script = null) {
