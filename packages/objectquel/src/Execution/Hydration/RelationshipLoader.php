@@ -238,22 +238,24 @@
 				return false;
 			}
 			
-			// Check whether $targetEntity appears in the projection AND was joined
-			// via the specific $joinProperty on $currentEntity. Checking only the
-			// entity name would accept a join via a different property (e.g. "editor"
-			// when we are looking for "author") as a false positive.
+			// The via-rewrite tags the FK-holding (dependent) range with its owning-side relation
+			// property name. That range's entity is exactly $targetEntity and $joinProperty is a
+			// relation declared on it, so matching (entity, viaRelation) is unambiguous: a relation
+			// of the same name on a different entity (e.g. "editor" vs "author") cannot collide.
 			foreach ($this->retrieve->getRanges() as $range) {
 				if (!($range instanceof AstRangeDatabase)) {
 					continue;
 				}
 				
-				// Range must resolve to the target entity
-				if ($this->entityStore->normalizeEntityClass($range->getEntityName()) !== $targetEntity) {
+				// Range must have been joined via this exact relation. Require the join to still be
+				// present: optimizer passes can fold a join into WHERE and null it, in which case the
+				// relation was not materialised as a join and we fall back to lazy loading.
+				if ($range->getJoinProperty() === null || $range->getViaRelation() !== $joinProperty) {
 					continue;
 				}
 				
-				// The join condition must reference $joinProperty on $currentEntity
-				if ($range->hasJoinProperty($currentEntity, $joinProperty)) {
+				// ...and resolve to the target entity
+				if ($this->entityStore->normalizeEntityClass($range->getEntityName()) === $targetEntity) {
 					return true;
 				}
 			}

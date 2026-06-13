@@ -152,6 +152,7 @@
 		 * @param ManyToOne|OneToOne $relation The relation annotation
 		 * @return AstInterface
 		 * @throws TransformationException
+		 * @throws EntityResolutionException
 		 */
 		private function createPropertyLookupAstUsingRelation(AstIdentifier $joinProperty, ManyToOne|OneToOne $relation, ?string $joinPropertyName = null): AstInterface {
 			// The parent of the property node is the range identifier (e.g. 'c')
@@ -177,6 +178,14 @@
 			if ($entityName === null) {
 				throw new TransformationException('Expected parent identifier to belong to an entity range');
 			}
+			
+			// The owning-side relation property is declared on the FK-holding (dependent) entity:
+			// $this->range on the InverseOf path, $range on the direct path. That range's entity is
+			// exactly the InverseOf target, so tagging it with the relation name lets the hydrator
+			// match by (entity, relation) instead of re-inspecting the rewritten JOIN columns.
+			$isInverseOfPath = ($joinPropertyName !== null && $joinPropertyName !== '');
+			$dependentRange = $isInverseOfPath ? $this->range : $range;
+			$dependentRange->setViaRelation($isInverseOfPath ? $joinPropertyName : $joinProperty->getName());
 			
 			// Dispatch to a dedicated handler based on the relation type
 			/** @noinspection PhpSwitchCanBeReplacedWithMatchExpressionInspection */
@@ -285,12 +294,12 @@
 			$effectiveName = $joinPropertyName !== null ? $joinPropertyName : $joinProperty->getName();
 			$relationColumn = $relation->getLocalColumn() ?? $effectiveName . 'Id';
 			
-			// When arriving via an InverseOf ($joinPropertyName is set), $this->range is the owning/child
-			// entity (e.g. 'a' in "range of a via c.posts"), so the FK ($relationColumn) is on $this->range
-			// and the PK ($referencedColumn) is on $range.
-			// When arriving via a direct ManyToOne ($joinPropertyName is empty), $range is the owning/child
-			// entity (e.g. 'p' in "range of u via p.user"), so the FK is on $range and the PK is on
-			// $this->range. The sides are therefore swapped relative to the InverseOf case.
+			// InverseOf ($joinPropertyName set): $this->range is the owning/child entity
+			// (e.g. 'a' in "range of a via c.posts"), so FK ($relationColumn) is on
+			// $this->range and PK ($referencedColumn) is on $range.
+			// Direct ManyToOne ($joinPropertyName empty): $range is the owning/child entity
+			// (e.g. 'p' in "range of u via p.user"), so FK is on $range and PK is on
+			// $this->range (sides swapped from the InverseOf case).
 			if ($joinPropertyName !== null) {
 				// InverseOf path: FK ($relationColumn) is on $this->range (the range being joined, e.g. a.userId = c.id)
 				return $this->createPropertyLookupAst($relationColumn, $range, $referencedColumn);
