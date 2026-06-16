@@ -22,7 +22,7 @@
 	 * This is the mirror image of the forward direction (range of u via p.user), which
 	 * traverses a ManyToOne directly. Here the traversal starts on the inverse side.
 	 */
-	class InverseOfViaTraversalTest extends ObjectQuelTestCase {
+	class ManyToOneInverseOfViaTraversalTest extends ObjectQuelTestCase {
 		
 		protected function seedFixtures(): void {
 			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (1, 'alice', 'hash1', 0)");
