@@ -19,6 +19,9 @@
 	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
 	use Quellabs\ObjectQuel\ReflectionManagement\PropertyHandler;
 	
+	/**
+	 * @phpstan-type InverseFkIndex array<string, array<string, array<int, object>>>
+	 */
 	class RelationshipLoader {
 		
 		private AstRetrieve $retrieve;
@@ -41,23 +44,63 @@
 		}
 		
 		/**
-		 * Loads all relationships for a set of entities
+		 * Loads all relationships for a set of entities.
+		 *
+		 * Each relation is classified along three axes and dispatched through the matrix below.
+		 * Owning relations (ManyToOne / OneToOne) are handled first; the remaining InverseOf
+		 * relations are selected by (collection?, joined?):
+		 *
+		 *   relation type        | collection? | joined? | strategy
+		 *   ---------------------|-------------|---------|------------------------------------------
+		 *   ManyToOne / OneToOne | n/a         | n/a     | resolve from UnitOfWork, else lazy proxy
+		 *   InverseOf            | collection  | yes     | populate from the hydrated result set
+		 *   InverseOf            | collection  | no      | install a lazy EntityCollection
+		 *   InverseOf            | scalar      | yes     | set from result set, else lazy proxy
+		 *   InverseOf            | scalar      | no      | install a lazy proxy
+		 *
+		 * A single pass is correct because every strategy reads only data that is already settled
+		 * before this method runs — the entity's own hydrated scalar columns (FK/PK), the UnitOfWork
+		 * (fully populated during hydration) and entity metadata. No strategy reads another entity's
+		 * resolved relation object, so processing order does not affect the result.
 		 * @param array<int, object> $entities The entities to load relationships for
 		 * @throws QuelException
 		 * @throws EntityResolutionException
 		 * @throws HydrationException
 		 */
 		public function loadRelationships(array $entities): void {
-			// Set ToOne relations directly where data is present; create proxies for the rest
-			$this->setupToOneRelations($entities);
+			// Per-call FK index for eager InverseOf population. Built lazily by findInverseMatches()
+			// and threaded into the eager loaders by reference; discarded when this method returns.
+			/** @var InverseFkIndex $index */
+			$index = [];
 			
-			// Set up collections for empty InverseOf relations
-			$this->setupToManyRelations($entities);
-			
-			// Wire hydrated related entities back into parent collections
-			// for InverseOf relations that were explicitly joined in the query
 			foreach ($entities as $entity) {
-				$this->populateEntityJoinedRelations($entity, $entities);
+				$entityClass = $this->entityStore->normalizeEntityClass($entity);
+				
+				foreach ($this->getRelationAnnotations($entityClass) as $property => $dependencies) {
+					foreach ($dependencies as $dependency) {
+						switch (true) {
+							case $dependency instanceof ManyToOne:
+							case $dependency instanceof OneToOne:
+								$this->loadOwningRelation($entity, $property, $dependency);
+								break;
+							
+							default: // InverseOf — the only remaining annotation type
+								$relation = $dependency->getRelation();
+								$targetEntity = $this->entityStore->normalizeEntityClass($dependency->getTargetEntity());
+								$isJoined = $this->wasEntityRequested($entityClass, $targetEntity, $relation);
+								$isCollection = $this->isCollectionProperty($entityClass, $property);
+								
+								match (true) {
+									$isCollection && $isJoined => $this->loadInverseCollectionEager($entity, $entityClass, $property, $dependency, $entities, $index),
+									$isCollection => $this->loadInverseCollectionLazy($entity, $entityClass, $property, $dependency),
+									$isJoined => $this->loadInverseScalarEager($entity, $entityClass, $property, $dependency, $entities, $index),
+									default => $this->loadInverseScalarLazy($entity, $entityClass, $property, $dependency),
+								};
+								
+								break;
+						}
+					}
+				}
 			}
 		}
 		
@@ -92,7 +135,7 @@
 			
 			// Determine the name and property of the target entity based on the dependency.
 			$targetEntityName = $dependency->getTargetEntity();
-			$inversedPropertyName = $this->entityStore->resolveTargetProperty($dependency);
+			$inversedPropertyName = $this->resolveTargetProperty($dependency);
 			
 			if ($inversedPropertyName === null) {
 				throw new \LogicException(
@@ -155,7 +198,7 @@
 			
 			// resolveTargetProperty returns null only when the target entity has no
 			// primary key — a configuration error that should have been caught earlier.
-			$relationPropertyName = $this->entityStore->resolveTargetProperty($dependency);
+			$relationPropertyName = $this->resolveTargetProperty($dependency);
 			
 			// Error when entity has no primary key
 			if ($relationPropertyName === null) {
@@ -264,38 +307,6 @@
 		}
 		
 		/**
-		 * Sets ToOne relationships for each entity in one pass:
-		 * resolves directly from the UnitOfWork where possible, otherwise creates a proxy.
-		 * @param array<int, object> $entities
-		 * @throws EntityResolutionException
-		 * @throws HydrationException
-		 */
-		private function setupToOneRelations(array $entities): void {
-			foreach ($entities as $entity) {
-				$entityClass = $this->entityStore->normalizeEntityClass($entity);
-				
-				foreach ($this->getRelationAnnotations($entityClass) as $property => $dependencies) {
-					foreach ($dependencies as $dependency) {
-						// InverseOf needs a scalar inverse proxy to load the entity
-						if ($dependency instanceof InverseOf && !$this->isCollectionProperty($entityClass, $property)) {
-							$this->createAndSetScalarInverseOfProxy($entity, $entityClass, $property, $dependency);
-							continue;
-						}
-						
-						// Other dependencies load by primary key
-						if ($dependency instanceof OneToOne || $dependency instanceof ManyToOne) {
-							$this->processEntityDependency($entity, $property, $dependency);
-							
-							if ($this->propertyHandler->get($entity, $property) === null) {
-								$this->createAndSetProxy($entity, $property, $dependency);
-							}
-						}
-					}
-				}
-			}
-		}
-		
-		/**
 		 * Creates a lazy-loading proxy for a scalar InverseOf property and sets it on the entity.
 		 * The FK lives on the dependent entity so the proxy uses a custom initializer that
 		 * resolves via findOneBy rather than a direct PK-based find.
@@ -305,7 +316,7 @@
 		 * @param InverseOf $dependency The InverseOf annotation
 		 * @throws EntityResolutionException
 		 */
-		private function createAndSetScalarInverseOfProxy(object $entity, string $entityClass, string $property, InverseOf $dependency): void {
+		private function loadInverseScalarLazy(object $entity, string $entityClass, string $property, InverseOf $dependency): void {
 			// The via property name on the dependent entity — the FK that points back to this entity
 			$relation = $dependency->getRelation();
 			$targetEntity = $this->entityStore->normalizeEntityClass($dependency->getTargetEntity());
@@ -319,7 +330,7 @@
 			// Resolve the referenced property on this entity; fall back to primary key when
 			// inversedBy is absent or the relation annotation cannot be found
 			$ownerPrimaryKey = $this->entityStore->getMetadata($entityClass)->getPrimaryKey();
-			$resolvedTarget = $viaRelation !== null ? $this->entityStore->resolveTargetProperty($viaRelation) : null;
+			$resolvedTarget = $viaRelation !== null ? $this->resolveTargetProperty($viaRelation) : null;
 			$parentProperty = $resolvedTarget ?? $ownerPrimaryKey;
 			
 			if ($parentProperty === null) {
@@ -359,217 +370,268 @@
 		}
 		
 		/**
-		 * Promotes empty InverseOf relationships to lazy-loaded collections for the given filtered rows.
-		 * @param array<int, object> $filteredRows The rows that need to be processed
-		 * @return void
-		 * @throws QuelException
-		 * @throws EntityResolutionException
-		 */
-		private function setupToManyRelations(array $filteredRows): void {
-			// Loop through all filtered rows
-			foreach ($filteredRows as $entity) {
-				// Get the normalized name of the entity class
-				$objectClass = $this->entityStore->normalizeEntityClass($entity);
-				
-				// Get all dependencies of the entity class
-				$entityDependencies = $this->getRelationAnnotations($objectClass);
-				
-				// Loop through all properties and their dependencies
-				foreach ($entityDependencies as $property => $dependencies) {
-					foreach ($dependencies as $dependency) {
-						// We only care about InverseOf here
-						if (!($dependency instanceof InverseOf)) {
-							continue;
-						}
-						
-						// Fetch the property
-						$propertyValue = $this->propertyHandler->get($entity, $property);
-						
-						// Only process properties that currently hold an empty collection
-						if (!($propertyValue instanceof CollectionInterface) || !$propertyValue->isEmpty()) {
-							continue;
-						}
-						
-						// Complete short entity names to their full namespace form
-						$targetEntity = $this->entityStore->normalizeEntityClass($dependency->getTargetEntity());
-						
-						// Check if InverseOf has via. If not error out
-						$relation = $dependency->getRelation();
-						
-						// Do nothing if the data for this query was requested. There is simply no data,
-						// so there's no point in lazy loading this data. We keep the empty collection.
-						if ($this->wasEntityRequested($objectClass, $targetEntity, $relation)) {
-							continue;
-						}
-						
-						// Resolve which property on the current entity the candidate's via FK points to
-						$parentProperty = $this->resolveInverseOfParentProperty($targetEntity, $relation, $objectClass);
-						$primaryKeyValue = $this->propertyHandler->get($entity, $parentProperty);
-						
-						// Resolve the FK column name on the dependent entity — EntityCollection queries
-						// by column property (e.g. userId), not by the relation property (e.g. user),
-						// since relation properties are rejected by the semantic analyser.
-						$dependentMetadata = $this->entityStore->getMetadata($targetEntity);
-						$viaAnnotation = $this->getRelationAnnotation($dependentMetadata, $relation);
-						$fkColumn = $viaAnnotation?->getLocalColumn() ?? $relation . 'Id';
-						
-						// Create an Entity Collection
-						$proxy = new EntityCollection($this->entityManager, $targetEntity, $fkColumn, $primaryKeyValue);
-						
-						// Assign it to entity
-						$this->propertyHandler->set($entity, $property, $proxy);
-					}
-				}
-			}
-		}
-		
-		/**
-		 * Populates all joined InverseOf collections on a single entity.
-		 * @param object $entity The parent entity whose collections need populating
-		 * @param array<int, object> $entities All hydrated entities from the result set
-		 * @throws EntityResolutionException
-		 * @throws QuelException
-		 */
-		private function populateEntityJoinedRelations(object $entity, array $entities): void {
-			// Resolve the real class name in case this is a proxy object
-			$objectClass = $this->entityStore->normalizeEntityClass($entity);
-			
-			foreach ($this->getRelationAnnotations($objectClass) as $property => $dependencies) {
-				foreach ($dependencies as $dependency) {
-					// We only care about InverseOf here; OneToOne and ManyToOne
-					// are handled by setupToOneRelations
-					if (!($dependency instanceof InverseOf)) {
-						continue;
-					}
-					
-					if ($this->isCollectionProperty($objectClass, $property)) {
-						$this->populateInverseOfRelation($entity, $objectClass, $property, $dependency, $entities);
-					} else {
-						$this->populateScalarInverseOfRelation($entity, $objectClass, $property, $dependency, $entities);
-					}
-				}
-			}
-		}
-		
-		/**
-		 * Populates a single joined InverseOf collection on an entity from the hydrated entity set.
-		 * Skips the relation if it was not explicitly joined in the query or has no valid relation column.
+		 * Scalar InverseOf joined cell: sets the related entity from the hydrated result set, or
+		 * installs a lazy proxy when no row in the result matched.
 		 * @param object $entity The parent entity
-		 * @param string $objectClass The resolved class name of the parent entity
+		 * @param string $entityClass The resolved class name of the parent entity
+		 * @param string $property The scalar property name
+		 * @param InverseOf $dependency The relation annotation
+		 * @param array<int, object> $entities All hydrated entities from the result set
+		 * @param InverseFkIndex $index Per-call FK bucket index, threaded by reference (see findInverseMatches())
+		 * @throws EntityResolutionException
+		 * @throws QuelException
+		 */
+		private function loadInverseScalarEager(
+			object $entity,
+			string $entityClass,
+			string $property,
+			InverseOf $dependency,
+			array $entities,
+			array &$index
+		): void {
+			if (!$this->tryAssignInverseScalarFromResultSet($entity, $entityClass, $property, $dependency, $entities, $index)) {
+				$this->loadInverseScalarLazy($entity, $entityClass, $property, $dependency);
+			}
+		}
+		
+		/**
+		 * Loads an owning-side ManyToOne or OneToOne relation: resolves the related entity directly
+		 * from the UnitOfWork when present, otherwise installs a lazy proxy keyed on the FK column.
+		 * @param object $entity
+		 * @param string $property
+		 * @param ManyToOne|OneToOne $dependency
+		 * @throws EntityResolutionException
+		 * @throws HydrationException
+		 */
+		private function loadOwningRelation(object $entity, string $property, ManyToOne|OneToOne $dependency): void {
+			// Resolve directly from the UnitOfWork where the related entity is already loaded
+			$this->processEntityDependency($entity, $property, $dependency);
+			
+			// Nothing resolved — fall back to a lazy proxy loaded by primary key
+			if ($this->propertyHandler->get($entity, $property) === null) {
+				$this->createAndSetProxy($entity, $property, $dependency);
+			}
+		}
+		
+		/**
+		 * Populates a joined InverseOf collection from the hydrated entity set: every entity in the
+		 * result that points back to $entity through the via FK is added to the collection.
+		 * @param object $entity The parent entity
+		 * @param string $entityClass The resolved class name of the parent entity
 		 * @param string $property The collection property name
 		 * @param InverseOf $dependency The relation annotation
 		 * @param array<int, object> $entities All hydrated entities from the result set
+		 * @param InverseFkIndex $index Per-call FK bucket index, threaded by reference (see findInverseMatches())
 		 * @throws EntityResolutionException
 		 * @throws QuelException
 		 */
-		private function populateInverseOfRelation(
+		private function loadInverseCollectionEager(
 			object $entity,
-			string $objectClass,
+			string $entityClass,
 			string $property,
 			InverseOf $dependency,
-			array $entities
+			array $entities,
+			array &$index
 		): void {
-			// Fetch via
-			$relation = $dependency->getRelation();
+			// The collection is created by the entity itself; if the property does not hold one
+			// (e.g. it is declared as a plain array), there is nothing to populate.
+			$collection = $this->propertyHandler->get($entity, $property);
 			
-			// Resolve the full class name of the related entity
-			$targetEntity = $this->entityStore->normalizeEntityClass($dependency->getTargetEntity());
-			
-			// Only handle relations where the related entity was explicitly
-			// joined in the query. If it wasn't requested, setupToManyRelations
-			// already set up an EntityCollection for lazy loading instead.
-			if (!$this->wasEntityRequested($objectClass, $targetEntity, $relation)) {
+			if (!($collection instanceof CollectionInterface)) {
 				return;
 			}
 			
-			// Resolve which property on the current entity the candidate's via FK points to
-			$parentProperty = $this->resolveInverseOfParentProperty($targetEntity, $relation, $objectClass);
-			$parentKeyValue = $this->propertyHandler->get($entity, $parentProperty);
-			$collection = $this->propertyHandler->get($entity, $property);
-			
-			// Scan all hydrated entities in the result for candidates that
-			// belong to this parent via the foreign key (via property)
-			foreach ($entities as $candidate) {
-				// Skip entities that are not of the expected related type
-				if (!($candidate instanceof $targetEntity)) {
-					continue;
-				}
-				
-				// Verify that the candidate's via property is actually
-				// annotated as a relation pointing back to this parent entity type.
-				// This prevents false matches in schemas where two unrelated entity
-				// types share the same FK property name and overlapping ID values.
-				if (!$this->candidateMapsToParent($candidate, $relation, $objectClass)) {
-					continue;
-				}
-				
-				// Compare the candidate's FK column value against the parent's referenced property value.
-				// $relation is the relation property (e.g. "user"), but we need the underlying FK column
-				// value (e.g. "userId") since the relation property holds an object, not a scalar.
-				if ($this->getCandidateFkValue($candidate, $relation) !== $parentKeyValue) {
-					continue;
-				}
-				
+			// Resolve the candidates belonging to this parent via the shared FK index (one indexed
+			// pass over the result set, not a per-parent linear scan).
+			foreach ($this->findInverseMatches($entity, $entityClass, $dependency, $entities, $index) as $candidate) {
 				// Add the candidate to the parent's collection, but only if
 				// it isn't already present — avoids duplicates when the same
 				// result set is processed more than once
-				if ($collection instanceof CollectionInterface && !$collection->contains($candidate)) {
+				if (!$collection->contains($candidate)) {
 					$collection->add($candidate);
 				}
 			}
 		}
 		
 		/**
-		 * Populates a scalar (single entity) InverseOf property from the hydrated entity set.
-		 * Used for non-owning OneToOne style relations where the property holds a single entity
-		 * rather than a collection.
+		 * Populates a joined scalar InverseOf property from the hydrated entity set.
 		 * @param object $entity The parent entity
-		 * @param string $objectClass The resolved class name of the parent entity
+		 * @param string $entityClass The resolved class name of the parent entity
 		 * @param string $property The scalar property name
 		 * @param InverseOf $dependency The relation annotation
 		 * @param array<int, object> $entities All hydrated entities from the result set
+		 * @param InverseFkIndex $index Per-call FK bucket index, threaded by reference (see findInverseMatches())
+		 * @return bool True when a matching entity was found and set, false otherwise
 		 * @throws EntityResolutionException
 		 * @throws QuelException
 		 */
-		private function populateScalarInverseOfRelation(
+		private function tryAssignInverseScalarFromResultSet(
 			object $entity,
-			string $objectClass,
+			string $entityClass,
 			string $property,
 			InverseOf $dependency,
-			array $entities
-		): void {
-			// Fetch the relation
-			$relation = $dependency->getRelation();
+			array $entities,
+			array &$index
+		): bool {
+			// Find the first matching candidate via the shared FK index and set it on the property
+			foreach ($this->findInverseMatches($entity, $entityClass, $dependency, $entities, $index) as $candidate) {
+				$this->propertyHandler->set($entity, $property, $candidate);
+				return true;
+			}
 			
-			// Fetch the target entity and resolve to normal entity if it's a proxy
+			return false;
+		}
+		
+		/**
+		 * Installs a lazy-loaded EntityCollection for an InverseOf collection that was not joined.
+		 * The collection fetches its members on first access using the dependent entity's FK column.
+		 * @param object $entity The parent entity
+		 * @param string $entityClass The resolved class name of the parent entity
+		 * @param string $property The collection property name
+		 * @param InverseOf $dependency The relation annotation
+		 * @throws EntityResolutionException
+		 * @throws QuelException
+		 */
+		private function loadInverseCollectionLazy(
+			object $entity,
+			string $entityClass,
+			string $property,
+			InverseOf $dependency
+		): void {
+			// Fetch the property
+			$propertyValue = $this->propertyHandler->get($entity, $property);
+			
+			// Only process properties that currently hold an empty collection
+			if (!($propertyValue instanceof CollectionInterface) || !$propertyValue->isEmpty()) {
+				return;
+			}
+			
+			// Complete short entity names to their full namespace form
 			$targetEntity = $this->entityStore->normalizeEntityClass($dependency->getTargetEntity());
 			
-			// Only handle if the related entity was explicitly joined in the query
-			if (!$this->wasEntityRequested($objectClass, $targetEntity, $relation)) {
-				return;
-			}
+			// Check if InverseOf has via. If not error out
+			$relation = $dependency->getRelation();
 			
 			// Resolve which property on the current entity the candidate's via FK points to
-			$parentProperty = $this->resolveInverseOfParentProperty($targetEntity, $relation, $objectClass);
-			$parentKeyValue = $this->propertyHandler->get($entity, $parentProperty);
+			$parentProperty = $this->resolveInverseOfParentProperty($targetEntity, $relation, $entityClass);
+			$primaryKeyValue = $this->propertyHandler->get($entity, $parentProperty);
 			
-			// Find the first matching candidate and set it directly on the property
-			foreach ($entities as $candidate) {
-				if (!($candidate instanceof $targetEntity)) {
-					continue;
+			// Resolve the FK column name on the dependent entity — EntityCollection queries
+			// by column property (e.g. userId), not by the relation property (e.g. user),
+			// since relation properties are rejected by the semantic analyser.
+			$dependentMetadata = $this->entityStore->getMetadata($targetEntity);
+			$viaAnnotation = $this->getRelationAnnotation($dependentMetadata, $relation);
+			$fkColumn = $viaAnnotation?->getLocalColumn() ?? $relation . 'Id';
+			
+			// Create an Entity Collection
+			$proxy = new EntityCollection($this->entityManager, $targetEntity, $fkColumn, $primaryKeyValue);
+			
+			// Assign it to entity
+			$this->propertyHandler->set($entity, $property, $proxy);
+		}
+		
+		/**
+		 * Resolves the parent key value that an InverseOf candidate's FK must match: looks up which
+		 * property on the parent the via FK references, then reads that property from the parent.
+		 * @param object $entity The parent entity
+		 * @param string $entityClass The resolved class name of the parent entity
+		 * @param string $relation The via relation property name on the dependent entity
+		 * @param string $targetEntity The resolved dependent entity class name
+		 * @return mixed The scalar value the candidate's FK is compared against
+		 * @throws EntityResolutionException
+		 */
+		private function resolveParentKeyValue(object $entity, string $entityClass, string $relation, string $targetEntity): mixed {
+			$parentProperty = $this->resolveInverseOfParentProperty($targetEntity, $relation, $entityClass);
+			return $this->propertyHandler->get($entity, $parentProperty);
+		}
+		
+		/**
+		 * Returns the hydrated candidates whose via FK points back to $entity for an InverseOf
+		 * relation. Replaces the previous per-parent linear scan over the full result set: the first
+		 * parent needing a given (target entity, relation, declaring class) triple pays one O(n) pass
+		 * to bucket every candidate by FK value; later parents reuse those buckets via an O(1) lookup.
+		 * The $index is owned by loadRelationships() and threaded in by reference, so it lives only
+		 * for the current call.
+		 *
+		 * Membership uses the same predicate the linear scan did — instanceof the target,
+		 * candidateMapsToParent(), and a strict comparison of the candidate's FK value against the
+		 * parent key — so behaviour and result-set ordering are preserved.
+		 * @param object $entity The parent entity
+		 * @param string $entityClass The resolved class name of the parent entity
+		 * @param InverseOf $dependency The relation annotation
+		 * @param array<int, object> $entities All hydrated entities from the result set
+		 * @param InverseFkIndex $index Per-call FK bucket index (indexKey => bucketKey => candidates), built lazily and reused across parents
+		 * @return array<int, object> Matching candidates, in result-set order
+		 * @throws EntityResolutionException
+		 * @throws QuelException
+		 */
+		private function findInverseMatches(object $entity, string $entityClass, InverseOf $dependency, array $entities, array &$index): array {
+			$relation = $dependency->getRelation();
+			$targetEntity = $this->entityStore->normalizeEntityClass($dependency->getTargetEntity());
+			$parentKeyValue = $this->resolveParentKeyValue($entity, $entityClass, $relation, $targetEntity);
+			
+			// One index per (target entity, via relation, declaring class). parentClass is part of the
+			// key because candidateMapsToParent() is evaluated against it, so buckets cannot be shared
+			// across parents of different classes. A NUL separator cannot occur in a class or property
+			// name, so the composite key is unambiguous.
+			$indexKey = $targetEntity . "\0" . $relation . "\0" . $entityClass;
+			
+			if (!isset($index[$indexKey])) {
+				$buckets = [];
+				
+				foreach ($entities as $candidate) {
+					// Skip entities that are not of the expected related type. Checked first so unrelated
+					// candidates never trigger a metadata lookup.
+					if (!($candidate instanceof $targetEntity)) {
+						continue;
+					}
+					
+					// Verify that the candidate's via property is actually
+					// annotated as a relation pointing back to this parent entity type.
+					// This prevents false matches in schemas where two unrelated entity
+					// types share the same FK property name and overlapping ID values.
+					if (!$this->candidateMapsToParent($candidate, $relation, $entityClass)) {
+						continue;
+					}
+					
+					// Bucket by the candidate's FK column value. $relation is the relation property
+					// (e.g. "user"), but we need the underlying FK column value (e.g. "userId") since
+					// the relation property holds an object, not a scalar.
+					$buckets[$this->inverseBucketKey($this->getCandidateFkValue($candidate, $relation))][] = $candidate;
 				}
 				
-				if (!$this->candidateMapsToParent($candidate, $relation, $objectClass)) {
-					continue;
-				}
-				
-				if ($this->getCandidateFkValue($candidate, $relation) !== $parentKeyValue) {
-					continue;
-				}
-				
-				$this->propertyHandler->set($entity, $property, $candidate);
-				return;
+				$index[$indexKey] = $buckets;
 			}
+			
+			return $index[$indexKey][$this->inverseBucketKey($parentKeyValue)] ?? [];
+		}
+		
+		/**
+		 * Encodes a scalar FK value into a bucket key that preserves strict (===) semantics: the
+		 * type-prefixed encoding keeps int 1, string "1", null and false in separate buckets,
+		 * matching the comparison the previous linear scan performed. FK values are int|string in
+		 * practice (the proxy path constrains lookup keys to those types).
+		 * @param mixed $value
+		 * @return string
+		 */
+		private function inverseBucketKey(mixed $value): string {
+			if (is_int($value)) {
+				return 'i:' . $value;
+			}
+			
+			if (is_string($value)) {
+				return 's:' . $value;
+			}
+			
+			if ($value === null) {
+				return 'n:';
+			}
+			
+			if (is_bool($value)) {
+				return 'b:' . ($value ? '1' : '0');
+			}
+			
+			return 'x:' . var_export($value, true);
 		}
 		
 		/**
@@ -646,7 +708,7 @@
 			// Resolve the referenced property on the owner; fall back to its primary key.
 			// Both being null means the target entity has no primary key — a configuration error.
 			$ownerPrimaryKey = $this->entityStore->getMetadata($ownerClass)->getPrimaryKey();
-			$resolvedTarget = $this->entityStore->resolveTargetProperty($viaRelation);
+			$resolvedTarget = $this->resolveTargetProperty($viaRelation);
 			$parentProperty = $resolvedTarget ?? $ownerPrimaryKey;
 			
 			if ($parentProperty === null) {
@@ -731,5 +793,28 @@
 			}
 			
 			return $result;
+		}
+		
+		/**
+		 * Resolves the back-reference property name on the target entity for a ManyToOne or OneToOne relation.
+		 *
+		 * For OneToOne, inversedBy is the primary key property on the target entity that the
+		 * foreign key column points to. If not set, the target entity's primary key is used as a fallback.
+		 *
+		 * For ManyToOne, inversedBy is a direct property name on the target entity. If absent,
+		 * the target entity's primary key is used as a fallback.
+		 *
+		 * Returns null when no property can be determined.
+		 *
+		 * @param ManyToOne|OneToOne $relation The relation annotation to resolve
+		 * @return string|null The back-reference property name on the target entity, or null if unresolvable
+		 * @throws EntityResolutionException When target entity metadata cannot be loaded
+		 */
+		private function resolveTargetProperty(ManyToOne|OneToOne $relation): ?string {
+			// Fetch metadata for entity
+			$metadata = $this->entityStore->getMetadata($relation->getTargetEntity());
+			
+			// Return referencedColumn, falling back to the primary key
+			return $relation->getReferencedColumn() ?? $metadata->getPrimaryKey();
 		}
 	}
