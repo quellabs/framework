@@ -128,8 +128,8 @@
 			$relationColumn = $dependency->getLocalColumn() ?? "{$property}Id";
 			$relationColumnValue = $this->propertyHandler->get($entity, $relationColumn);
 			
-			// If the value of the relation column is 0 or null, the operation does not continue.
-			if (empty($relationColumnValue)) {
+			// A null relation column value means there is no relation to resolve.
+			if ($relationColumnValue === null) {
 				return;
 			}
 			
@@ -353,14 +353,30 @@
 			// Capture references for the initializer closure
 			$entityManager = $this->entityManager;
 			$propertyHandler = $this->propertyHandler;
+			$unitOfWork = $this->unitOfWork;
 			
 			$proxy = new $proxyClassName(
 				$this->entityManager,
-				function () use ($entityManager, $propertyHandler, $entity, $property, $targetEntity, $relation, $parentKeyValue): void {
+				function (ProxyInterface $proxy) use ($entityManager, $unitOfWork, $propertyHandler, $entity, $property, $targetEntity, $relation, $parentKeyValue): void {
+					// doInitialize() invokes this on every accessor call, so bail out once the
+					// proxy has already been resolved to avoid re-running the findOneBy query.
+					if ($proxy->isInitialized()) {
+						return;
+					}
+					
 					// findOneBy returns a fully hydrated entity registered in the UnitOfWork.
 					$result = $entityManager->findOneBy($targetEntity, [$relation => $parentKeyValue]);
 					
-					// Set it directly on the parent property — no proxy seeding needed.
+					// Copy the resolved entity's scalar columns into the proxy itself. Generated
+					// accessors read the proxy's own fields via parent::, so the access that triggered
+					// initialization must see real data rather than an empty proxy.
+					if ($result !== null) {
+						$serializer = $unitOfWork->getSerializer();
+						$serializer->deserialize($proxy, $serializer->serialize($result));
+					}
+					
+					// Point the parent at the fully hydrated managed entity so subsequent reads
+					// (including its own relations) resolve through it rather than the proxy.
 					$propertyHandler->set($entity, $property, $result);
 				}
 			);
@@ -424,6 +440,7 @@
 		 * @param InverseFkIndex $index Per-call FK bucket index, threaded by reference (see findInverseMatches())
 		 * @throws EntityResolutionException
 		 * @throws QuelException
+		 * @throws \LogicException When the property is not a CollectionInterface
 		 */
 		private function loadInverseCollectionEager(
 			object $entity,
@@ -433,12 +450,18 @@
 			array $entities,
 			array &$index
 		): void {
-			// The collection is created by the entity itself; if the property does not hold one
-			// (e.g. it is declared as a plain array), there is nothing to populate.
+			// The collection is created by the entity itself and must be a CollectionInterface.
+			// A plain array (or any non-collection) cannot hold managed relations, so fail loudly
+			// rather than silently dropping the inverse population.
 			$collection = $this->propertyHandler->get($entity, $property);
 			
 			if (!($collection instanceof CollectionInterface)) {
-				return;
+				throw new \LogicException(
+					"InverseOf collection '{$entityClass}::{$property}' must be typed as " .
+					CollectionInterface::class . " and initialized to a collection instance; got " .
+					get_debug_type($collection) . ". Declare it as 'public CollectionInterface \${$property};' " .
+					"and initialize it in the entity constructor."
+				);
 			}
 			
 			// Resolve the candidates belonging to this parent via the shared FK index (one indexed
@@ -491,6 +514,7 @@
 		 * @param InverseOf $dependency The relation annotation
 		 * @throws EntityResolutionException
 		 * @throws QuelException
+		 * @throws \LogicException When the property is not a CollectionInterface
 		 */
 		private function loadInverseCollectionLazy(
 			object $entity,
@@ -501,8 +525,20 @@
 			// Fetch the property
 			$propertyValue = $this->propertyHandler->get($entity, $property);
 			
-			// Only process properties that currently hold an empty collection
-			if (!($propertyValue instanceof CollectionInterface) || !$propertyValue->isEmpty()) {
+			// InverseOf collections must be typed as a CollectionInterface — the scaffolder emits this
+			// and initializes them in the constructor. A plain array cannot be lazily managed, so fail
+			// loudly instead of silently skipping.
+			if (!($propertyValue instanceof CollectionInterface)) {
+				throw new \LogicException(
+					"InverseOf collection '{$entityClass}::{$property}' must be typed as " .
+					CollectionInterface::class . " and initialized to a collection instance; got " .
+					get_debug_type($propertyValue) . ". Declare it as 'public CollectionInterface \${$property};' " .
+					"and initialize it in the entity constructor."
+				);
+			}
+			
+			// Skip collections that are already populated to avoid clobbering existing members
+			if (!$propertyValue->isEmpty()) {
 				return;
 			}
 			
@@ -763,8 +799,10 @@
 			// Fetch the type name
 			$typeName = $type->getName();
 			
-			// Treat array and any CollectionInterface implementation as a collection
-			return $typeName === 'array' || is_a($typeName, CollectionInterface::class, true);
+			// An inverse property is a collection only when typed as a CollectionInterface
+			// implementation. A plain 'array' is rejected at metadata build time, so it is not
+			// treated as a collection here (doing so would misroute it to the scalar loaders).
+			return is_a($typeName, CollectionInterface::class, true);
 		}
 		
 		/**
