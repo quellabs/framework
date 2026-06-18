@@ -339,6 +339,22 @@
 			"));
 		}
 		
+		/**
+		 * (UnknownType)-p.id, where the parenthesised name is followed by a
+		 * unary sign, is genuinely ambiguous between a cast and a grouped
+		 * expression continuing into subtraction -- the same shape as
+		 * (int)-x. Since "blob" isn't a recognised cast type, this resolves
+		 * to the grouped-expression reading: (blob) - p.id. As "blob" is
+		 * also not a declared range, that throws a SemanticException for an
+		 * undefined range reference, not for an unknown cast type.
+		 */
+		public function testUnresolvableNameFollowedBySignThrowsUndefinedRange(): void {
+			$this->assertSemanticError(fn() => $this->em->executeQuery("
+				range of p is PostEntity
+				retrieve ((blob)-p.id)
+			"));
+		}
+		
 		// -------------------------------------------------------------------------
 		// Parser disambiguation — casts must not interfere with grouped expressions
 		// -------------------------------------------------------------------------
@@ -358,6 +374,40 @@
 			
 			$this->assertCount(1, $result);
 			$this->assertSame(11, $result[0]['v']);
+		}
+		
+		/**
+		 * A single bare (unqualified) property name in parens, followed by a
+		 * sign, has the same token shape as a cast: "(Identifier)" then +/-.
+		 * Since "id" is not a recognised cast type, this must resolve to the
+		 * grouped-expression reading -- (id) treated as the property p.id --
+		 * continuing into addition, not be misparsed as an unknown cast.
+		 */
+		public function testBarePropertyInParensFollowedBySignIsAddition(): void {
+			$result = $this->em->executeQuery("
+				range of p is PostEntity
+				retrieve (v = (id) + 10)
+				where p.id = 1
+			");
+			
+			$this->assertCount(1, $result);
+			$this->assertSame(11, $result[0]['v']);
+		}
+		
+		/**
+		 * A cast applied to a unary-signed operand must be recognised as a
+		 * cast, not misparsed as a grouped expression followed by arithmetic.
+		 * (int)-p.id casts the negated value, not (int)p.id minus something.
+		 */
+		public function testCastWithUnaryMinusOperand(): void {
+			$result = $this->em->executeQuery("
+				range of p is PostEntity
+				retrieve (v = (int)-p.id)
+				where p.id = 1
+			");
+			
+			$this->assertCount(1, $result);
+			$this->assertSame(-1, $result[0]['v']);
 		}
 		
 		// -------------------------------------------------------------------------
