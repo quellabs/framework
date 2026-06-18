@@ -24,12 +24,14 @@
 	use Quellabs\ObjectQuel\Exception\QuelException;
 	use Quellabs\ObjectQuel\Annotations\Orm\ManyToOne;
 	use Quellabs\ObjectQuel\Annotations\Orm\OneToOne;
+	use Quellabs\ObjectQuel\Capabilities\PlatformCapabilities;
 	use Quellabs\ObjectQuel\Collections\EntityCollection;
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
 	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
 	use Quellabs\ObjectQuel\Persistence\DeletePersister;
 	use Quellabs\ObjectQuel\Persistence\InsertPersister;
 	use Quellabs\ObjectQuel\Persistence\UpdatePersister;
+	use Quellabs\ObjectQuel\Persistence\VersionValueHandler;
 	use Quellabs\ObjectQuel\PrimaryKeys\PrimaryKeyFactory;
 	use Quellabs\ObjectQuel\ProxyGenerator\ProxyInterface;
 	use Quellabs\ObjectQuel\ReflectionManagement\PropertyHandler;
@@ -46,10 +48,12 @@
 		protected PropertyHandler $propertyHandler;
 		protected SQLSerializer $serializer;
 		protected DatabaseAdapter $connection;
+		protected PlatformCapabilities $platformCapabilities;
 		protected EntityLifecycleManager $lifecycleManager;
 		protected InsertPersister $insertPersister;
 		protected UpdatePersister $updatePersister;
 		protected DeletePersister $deletePersister;
+		protected VersionValueHandler $versionValueHandler;
 		
 		/** @var array<string, array<string, object>> */
 		protected array $entitiesByClass = [];
@@ -77,6 +81,7 @@
 		public function __construct(EntityManager $entityManager) {
 			$this->signalHub = SignalHubLocator::getInstance();
 			$this->connection = $entityManager->getConnection();
+			$this->platformCapabilities = new PlatformCapabilities($this->connection);
 			$this->entityManager = $entityManager;
 			$this->entityStore = $entityManager->getEntityStore();
 			$this->propertyHandler = new PropertyHandler();
@@ -105,6 +110,7 @@
 			
 			// Instantiate persisters once for reuse across commits
 			$primaryKeyFactory = new PrimaryKeyFactory();
+			$this->versionValueHandler = new VersionValueHandler($this->connection, $this->entityStore, $this, $this->propertyHandler);
 			$this->insertPersister = new InsertPersister($this, $primaryKeyFactory);
 			$this->updatePersister = new UpdatePersister($this);
 			$this->deletePersister = new DeletePersister($this);
@@ -160,6 +166,26 @@
 		 */
 		public function getConnection(): DatabaseAdapter {
 			return $this->connection;
+		}
+		
+		/**
+		 * Returns the platform capabilities instance, used to generate engine-
+		 * appropriate SQL (e.g. the correct "current datetime" expression) instead
+		 * of hardcoding MySQL-specific syntax in the persistence layer.
+		 * @return PlatformCapabilities
+		 */
+		public function getPlatformCapabilities(): PlatformCapabilities {
+			return $this->platformCapabilities;
+		}
+		
+		/**
+		 * Returns the shared VersionValueHandler instance
+		 * Centralized here so InsertPersister and UpdatePersister don't each
+		 * construct their own copy with duplicated dependency wiring
+		 * @return VersionValueHandler
+		 */
+		public function getVersionValueHandler(): VersionValueHandler {
+			return $this->versionValueHandler;
 		}
 		
 		/**

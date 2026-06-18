@@ -15,12 +15,21 @@
 	 *   $platform = new PlatformCapabilities($adapter);
 	 *   $quelToSQL = new QuelToSQL($entityStore, $parameters, $platform);
 	 */
-	readonly class PlatformCapabilities implements PlatformCapabilitiesInterface {
+	class PlatformCapabilities implements PlatformCapabilitiesInterface {
 		
 		/**
 		 * @var DatabaseAdapter
 		 */
-		private DatabaseAdapter $adapter;
+		private readonly DatabaseAdapter $adapter;
+		
+		/**
+		 * Lazily-populated cache for supportsWindowFunctions()'s probe query result.
+		 * Per-instance (unlike a `static` local, which would be shared across every
+		 * PlatformCapabilities instance regardless of which connection it wraps).
+		 * Null means "not yet probed".
+		 * @var bool|null
+		 */
+		private ?bool $windowFunctionsCache = null;
 		
 		/**
 		 * Constructor
@@ -41,29 +50,60 @@
 		/**
 		 * @inheritDoc
 		 *
-		 * REGEXP_LIKE(col, pattern, flags) is available in MySQL 8.0.0 and later.
-		 * MariaDB exposes REGEXP_LIKE() but does not accept the flags argument,
-		 * so this returns false for MariaDB and all non-MySQL databases.
+		 * REGEXP_LIKE(col, pattern, flags) is supported by MySQL 8.0+ and SQL Server
+		 * 2025+ when the database compatibility level is 170 or higher. Because SQL
+		 * Server support depends on compatibility level rather than engine version,
+		 * this checks DatabaseAdapter::getSqlServerCompatibilityLevel().
+		 *
+		 * MariaDB provides REGEXP_LIKE() but rejects the flags argument by design
+		 * (MDEV-4425), relying on PCRE inline flags instead, so this returns false
+		 * for MariaDB and all other engines.
 		 */
 		public function supportsRegexpLike(): bool {
-			if ($this->adapter->getDatabaseType() !== 'mysql') {
-				return false;
-			}
-			
-			return version_compare($this->adapter->getServerVersion(), '8.0.0', '>=');
+			return match ($this->adapter->getDatabaseType()) {
+				'mysql' => $this->supportsMysqlRegexpLike(),
+				'sqlsrv' => $this->supportsSqlServerRegexpLike(),
+				default => false,
+			};
 		}
 		
 		/**
 		 * @inheritDoc
 		 *
-		 * Performs feature detection by executing a probe query the first time it is
-		 * called. Result is cached for the lifetime of this instance.
+		 * Only reached when supportsRegexpLike() is false. For 'sqlsrv' that
+		 * covers two cases: an engine older than SQL Server 2025, or a SQL Server
+		 * 2025+ engine hosting a database whose compatibility level hasn't been
+		 * raised to 170+. Either way there is no regex operator available, so
+		 * this throws rather than returning a syntactically-valid-looking
+		 * operator that isn't.
+		 */
+		public function getRegexpFallbackOperators(): array {
+			return match ($this->adapter->getDatabaseType()) {
+				'pgsql' => ['match' => '~', 'notMatch' => '!~'],
+				'sqlsrv' => throw new \RuntimeException(
+					'No regular expression support is available on this SQL Server ' .
+					'connection. REGEXP_LIKE() requires SQL Server 2025 (compatibility ' .
+					'level 170+); no fallback operator exists on earlier versions.'
+				),
+				
+				// MySQL, MariaDB, SQLite all parse the REGEXP keyword the same way.
+				// SQLite specifically requires a regexp() user function to be
+				// registered on the connection or this will fail at query time with
+				// "no such function: regexp" — that registration is outside what
+				// this interface can control.
+				default => ['match' => 'REGEXP', 'notMatch' => 'NOT REGEXP'],
+			};
+		}
+		
+		/**
+		 * @inheritDoc
+		 *
+		 * Performs feature detection by executing a probe query the first time it
+		 * is called. Result is cached per-instance for the lifetime of this object.
 		 */
 		public function supportsWindowFunctions(): bool {
-			static $cache = null;
-			
-			if ($cache !== null) {
-				return $cache;
+			if ($this->windowFunctionsCache !== null) {
+				return $this->windowFunctionsCache;
 			}
 			
 			// Portable probe: COUNT(...) OVER () over a single-row derived table.
@@ -72,11 +112,11 @@
 			$stmt = $this->adapter->execute($probeSql);
 			
 			if ($stmt === null) {
-				return $cache = false;
+				return $this->windowFunctionsCache = false;
 			}
 			
 			$stmt->closeCursor();
-			return $cache = true;
+			return $this->windowFunctionsCache = true;
 		}
 		
 		/**
@@ -120,7 +160,7 @@
 		 */
 		public function getFulltextIndexStyle(): FulltextIndexStyle {
 			return match ($this->adapter->getDatabaseType()) {
-				'postgres', 'postgresql' => FulltextIndexStyle::Tsvector,
+				'pgsql' => FulltextIndexStyle::Tsvector,
 				'sqlite' => FulltextIndexStyle::Fts5,
 				default => FulltextIndexStyle::Fulltext,
 			};
@@ -135,7 +175,7 @@
 		 */
 		public function getNativeJsonType(): string {
 			return match ($this->adapter->getDatabaseType()) {
-				'postgres', 'postgresql' => 'jsonb',
+				'pgsql' => 'jsonb',
 				default => 'json',
 			};
 		}
@@ -144,23 +184,31 @@
 		 * @inheritDoc
 		 *
 		 * JSON path extraction style depends on the engine and version:
-		 * - PostgreSQL:        col #>> '{a,b}'          (all versions)
+		 * - PostgreSQL:       col #>> '{a,b}'          (all versions)
 		 * - MariaDB >= 10.9:  JSON_VALUE(col, '$.a.b')
-		 * - SQLite >= 3.38:   JSON_VALUE(col, '$.a.b')
+		 * - SQLite >= 3.38:   col ->> '$.a.b'          (SQLite has no JSON_VALUE())
 		 * - All others:       JSON_UNQUOTE(JSON_EXTRACT(col, '$.a.b'))
 		 */
 		public function getJsonExtractionStyle(): JsonExtractionStyle {
-			return match ($this->adapter->getDatabaseType()) {
-				'postgres', 'postgresql' => JsonExtractionStyle::HashDoubleArrow,
-				'mariadb' => version_compare($this->adapter->getServerVersion(), '10.9.0', '>=')
-					? JsonExtractionStyle::JsonValue
-					: JsonExtractionStyle::JsonUnquote,
-				'sqlite' => version_compare($this->adapter->getServerVersion(), '3.38.0', '>=')
-					? JsonExtractionStyle::JsonValue
-					: JsonExtractionStyle::JsonUnquote,
-				default => JsonExtractionStyle::JsonUnquote,
-			};
+			switch ($this->adapter->getDatabaseType()) {
+				case 'pgsql':
+					return JsonExtractionStyle::HashDoubleArrow;
+				
+				case 'mariadb':
+					return $this->supportsMariaDbJsonValue()
+						? JsonExtractionStyle::JsonValue
+						: JsonExtractionStyle::JsonUnquote;
+				
+				case 'sqlite':
+					return $this->supportsSqliteArrowOperator()
+						? JsonExtractionStyle::ArrowOperator
+						: JsonExtractionStyle::JsonUnquote;
+				
+				default:
+					return JsonExtractionStyle::JsonUnquote;
+			}
 		}
+		
 		/**
 		 * @inheritDoc
 		 *
@@ -181,7 +229,7 @@
 		 */
 		public function getSupportedCastTypes(): array {
 			return match ($this->adapter->getDatabaseType()) {
-				'postgres', 'postgresql' => [
+				'pgsql' => [
 					'int'     => 'INTEGER',
 					'float'   => 'FLOAT',
 					'string'  => 'TEXT',
@@ -202,7 +250,7 @@
 				],
 			};
 		}
-
+		
 		/**
 		 * @inheritDoc
 		 *
@@ -213,12 +261,12 @@
 		 */
 		public function getUnixTimestampFunction(): string {
 			return match ($this->adapter->getDatabaseType()) {
-				'postgres', 'postgresql' => 'EXTRACT(EPOCH FROM %s)::BIGINT',
-				'sqlite'                 => "strftime('%%s', %s)",
-				default                  => 'UNIX_TIMESTAMP(%s)',
+				'pgsql' => 'EXTRACT(EPOCH FROM %s)::BIGINT',
+				'sqlite' => "strftime('%%s', %s)",
+				default => 'UNIX_TIMESTAMP(%s)',
 			};
 		}
-
+		
 		/**
 		 * @inheritDoc
 		 *
@@ -229,9 +277,68 @@
 		 */
 		public function getCurrentUnixTimestamp(): string {
 			return match ($this->adapter->getDatabaseType()) {
-				'postgres', 'postgresql' => 'EXTRACT(EPOCH FROM NOW())::BIGINT',
-				'sqlite'                 => "strftime('%s','now')",
-				default                  => 'UNIX_TIMESTAMP()',
+				'pgsql' => 'EXTRACT(EPOCH FROM NOW())::BIGINT',
+				'sqlite' => "strftime('%s','now')",
+				default => 'UNIX_TIMESTAMP()',
 			};
+		}
+		
+		/**
+		 * @inheritDoc
+		 *
+		 * Current date/time as a native datetime value per engine:
+		 * - MySQL / MariaDB: NOW()
+		 * - PostgreSQL:      NOW()
+		 * - SQLite:          CURRENT_TIMESTAMP
+		 * - SQL Server:      SYSDATETIME() — higher precision than GETDATE(),
+		 *                    which reduces the chance of two concurrent writes
+		 *                    producing an identical version timestamp.
+		 */
+		public function getCurrentDatetimeFunction(): string {
+			return match ($this->adapter->getDatabaseType()) {
+				'sqlite' => 'CURRENT_TIMESTAMP',
+				'sqlsrv' => 'SYSDATETIME()',
+				default => 'NOW()',
+			};
+		}
+		
+		/**
+		 * REGEXP_LIKE(col, pattern, flags) was added in MySQL 8.0.0.
+		 * @return bool
+		 */
+		private function supportsMysqlRegexpLike(): bool {
+			return version_compare($this->adapter->getServerVersion(), '8.0.0', '>=');
+		}
+		
+		/**
+		 * REGEXP_LIKE(col, pattern, flags) is available in SQL Server 2025 and later,
+		 * provided the database compatibility level is 170 or higher.
+		 * @return bool
+		 */
+		private function supportsSqlServerRegexpLike(): bool {
+			if (!version_compare($this->adapter->getServerVersion(), '17.0', '>=')) {
+				return false;
+			}
+			
+			return ($this->adapter->getSqlServerCompatibilityLevel() ?? 0) >= 170;
+		}
+		
+		/**
+		 * JSON_VALUE() was added in MariaDB 10.9.0.
+		 * @return bool
+		 */
+		private function supportsMariaDbJsonValue(): bool {
+			return version_compare($this->adapter->getServerVersion(), '10.9.0', '>=');
+		}
+		
+		/**
+		 * SQLite added the -> and ->> JSON operators in 3.38.0. SQLite has no
+		 * JSON_VALUE() function at any version; ->> is the closest equivalent —
+		 * it unwraps the result to a plain SQL scalar the same way JSON_VALUE()
+		 * does on MariaDB/SQL Server, just with different syntax.
+		 * @return bool
+		 */
+		private function supportsSqliteArrowOperator(): bool {
+			return version_compare($this->adapter->getServerVersion(), '3.38.0', '>=');
 		}
 	}
