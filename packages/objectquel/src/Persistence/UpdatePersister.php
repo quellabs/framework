@@ -4,6 +4,7 @@
 	
 	use Quellabs\ObjectQuel\Annotations\Orm\Column;
 	use Quellabs\ObjectQuel\Annotations\Orm\Version;
+	use Quellabs\ObjectQuel\Capabilities\PlatformCapabilities;
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
 	use Quellabs\ObjectQuel\EntityStore;
 	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
@@ -20,7 +21,6 @@
 		
 		/**
 		 * Reference to the UnitOfWork that manages persistence operations
-		 * This is a duplicate of the parent's unitOfWork property with a different naming convention
 		 */
 		private UnitOfWork $unitOfWork;
 		
@@ -37,6 +37,13 @@
 		private DatabaseAdapter $connection;
 		
 		/**
+		 * Used to generate engine-appropriate SQL fragments (e.g. the correct
+		 * "current datetime" expression) instead of hardcoding MySQL syntax.
+		 * @var PlatformCapabilities
+		 */
+		private PlatformCapabilities $platformCapabilities;
+		
+		/**
 		 * Handles values with @Orm\Version annotations
 		 * @var VersionValueHandler
 		 */
@@ -50,7 +57,8 @@
 			$this->unitOfWork = $unitOfWork;
 			$this->entityStore = $unitOfWork->getEntityStore();
 			$this->connection = $unitOfWork->getConnection();
-			$this->valueHandler = new VersionValueHandler($unitOfWork->getConnection(), $unitOfWork->getEntityStore(), $unitOfWork, $unitOfWork->getPropertyHandler());
+			$this->platformCapabilities = $unitOfWork->getPlatformCapabilities();
+			$this->valueHandler = $unitOfWork->getVersionValueHandler();
 		}
 		
 		/**
@@ -159,8 +167,21 @@
 					return false;
 				}
 				
-				// Use primary keys and changed data. Skip the rest.
-				return !in_array($key, $primaryKeyColumnNames) && ($value != $originalData[$key]);
+				// Skip primary key columns; they identify the row, not data to update
+				if (in_array($key, $primaryKeyColumnNames)) {
+					return false;
+				}
+				
+				// If the snapshot doesn't have this key at all, treat it as changed rather
+				// than risk silently dropping a real change due to an undefined-index warning
+				// or accidental null-coercion equality.
+				if (!array_key_exists($key, $originalData)) {
+					return true;
+				}
+				
+				// Strict comparison avoids PHP's loose-equality pitfalls, e.g. "1" == 1,
+				// 0 == false, and null == "" all evaluating true and masking real changes.
+				return $value !== $originalData[$key];
 			}, ARRAY_FILTER_USE_BOTH);
 		}
 		
@@ -182,13 +203,16 @@
 				
 				switch ($versionColumn['column']->getType()) {
 					case 'integer':
-						// Integer versions increment by 1
+					case 'bigint':
+						// Integer/bigint versions increment by 1
 						$setClauseParts[] = "{$columnName}={$columnName} + 1";
 						break;
 					
 					case 'datetime':
-						// Datetime versions use the database's current timestamp
-						$setClauseParts[] = "{$columnName}=NOW()";
+						// Use the engine-appropriate "current datetime" expression rather
+						// than hardcoding MySQL's NOW() — SQLite and SQL Server use
+						// different syntax for this.
+						$setClauseParts[] = "{$columnName}=" . $this->platformCapabilities->getCurrentDatetimeFunction();
 						break;
 					
 					case 'uuid':
