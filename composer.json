@@ -373,7 +373,8 @@
     "psr-4": {
       "Quellabs\\ObjectQuel\\Tests\\": "tests/ObjectQuel/",
       "Quellabs\\Canvas\\Tests\\": "tests/Canvas/",
-      "Quellabs\\Support\\Tests\\": "tests/Support/"
+      "Quellabs\\Support\\Tests\\": "tests/Support/",
+      "Quellabs\\Recommender\\Tests\\": "tests/Recommender/"
     }
   },
   "scripts": {
