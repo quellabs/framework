@@ -38,6 +38,7 @@ parameters:
         - packages/canvas-shipments-sendcloud
         - packages/canvas-scheduler-redis
         - packages/canvas-scheduler-rabbitmq
+        - packages/recommender
     bootstrapFiles:
         - vendor/autoload.php
     scanDirectories:
@@ -57,5 +58,6 @@ parameters:
         - packages/objectquel/src
         - packages/sculpt/src
         - packages/signal-hub/src
+        - packages/recommender
     tips:
         treatPhpDocTypesAsCertain: false

@@ -15,6 +15,9 @@
         <testsuite name="Support">
             <directory>tests/Support</directory>
         </testsuite>
+        <testsuite name="Recommender">
+            <directory>tests/Recommender</directory>
+        </testsuite>
     </testsuites>
     <php>
         <env name="TEST_DB_HOST" value="127.0.0.1"/>
