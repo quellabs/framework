@@ -5,6 +5,7 @@
 	use Smarty\Smarty;
 	use Smarty\Exception;
 	use Quellabs\SignalHub\Signal;
+	use Quellabs\Support\ComposerUtils;
 	use Quellabs\SignalHub\SignalHubLocator;
 	use Quellabs\Contracts\Templates\TemplateRenderException;
 	use Quellabs\Contracts\Templates\TemplateEngineInterface;
@@ -47,13 +48,16 @@
 			$this->templateSignal = new Signal('debug.template.query');
 			$signalHub->registerSignal($this->templateSignal);
 			
+			// Fetch root directory
+			$rootDir = ComposerUtils::getProjectRoot();
+			
 			// Create Smarty instance
 			$this->smarty = new Smarty();
-			$this->smarty->setTemplateDir($configuration['template_dir']);
-			$this->smarty->setCompileDir($configuration['compile_dir']);
-			$this->smarty->setCacheDir($configuration['cache_dir']);
-			$this->smarty->setDebugging($configuration['debugging']);
-			$this->smarty->setCaching($configuration['caching']);
+			$this->smarty->setTemplateDir($configuration['template_dir'] ?? $rootDir . '/templates');
+			$this->smarty->setCompileDir($configuration['compile_dir'] ?? $rootDir . '/storage/smarty/compile/');
+			$this->smarty->setCacheDir($configuration['cache_dir'] ?? $rootDir . '/storage/smarty/cache/');
+			$this->smarty->setDebugging($configuration['debugging'] ?? false);
+			$this->smarty->setCaching($configuration['caching'] ?? true);
 			
 			// Set cache lifetime if specified
 			// Only configure cache lifetime if explicitly provided in config
