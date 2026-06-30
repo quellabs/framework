@@ -48,13 +48,13 @@
 		public static function getDefaults(): array {
 			return [
 				// Directory where Smarty template files (.tpl) are stored
-				'template_dir'   => dirname(__FILE__) . '/../Templates/',
+				'template_dir'   => dirname(__FILE__) . '/../templates/',
 				
 				// Directory where Smarty stores compiled templates for performance
-				'compile_dir'    => dirname(__FILE__) . '/../Cache/Compile/',
+				'compile_dir'    => dirname(__FILE__) . '/../storage/smarty/compile/',
 				
 				// Directory where Smarty stores cached template output
-				'cache_dir'      => dirname(__FILE__) . '/../Cache/Cache/',
+				'cache_dir'      => dirname(__FILE__) . '/../storage/smarty/cache/',
 				
 				// Enable/disable Smarty's debugging console
 				'debugging'      => false,
