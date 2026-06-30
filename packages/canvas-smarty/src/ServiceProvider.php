@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\Canvas\Smarty;
 	
+	use Quellabs\Support\ComposerUtils;
 	use Quellabs\Contracts\Context\MethodContextInterface;
 	use Quellabs\Contracts\Templates\TemplateEngineInterface;
 	
@@ -46,15 +47,17 @@
 		 * @return SmartyConfig
 		 */
 		public static function getDefaults(): array {
+			$rootDir = ComposerUtils::getProjectRoot();
+			
 			return [
 				// Directory where Smarty template files (.tpl) are stored
-				'template_dir'   => dirname(__FILE__) . '/../templates/',
+				'template_dir'   => $rootDir . '/templates/',
 				
 				// Directory where Smarty stores compiled templates for performance
-				'compile_dir'    => dirname(__FILE__) . '/../storage/smarty/compile/',
+				'compile_dir'    => $rootDir . '/storage/smarty/compile/',
 				
 				// Directory where Smarty stores cached template output
-				'cache_dir'      => dirname(__FILE__) . '/../storage/smarty/cache/',
+				'cache_dir'      => $rootDir . '/storage/smarty/cache/',
 				
 				// Enable/disable Smarty's debugging console
 				'debugging'      => false,
