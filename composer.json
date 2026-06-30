@@ -249,6 +249,13 @@
       "options": {
         "symlink": true
       }
+    },
+    {
+      "type": "path",
+      "url": "./packages/recommender",
+      "options": {
+        "symlink": true
+      }
     }
   ],
   "require": {
@@ -307,7 +314,8 @@
     "quellabs/canvas-payments-xpay": "dev-main as 1.999.999",
     "quellabs/canvas-loom": "dev-main as 1.999.999",
     "quellabs/canvas-scheduler-redis": "dev-main as 1.999.999",
-    "quellabs/canvas-scheduler-rabbitmq": "dev-main as 1.999.999"
+    "quellabs/canvas-scheduler-rabbitmq": "dev-main as 1.999.999",
+    "quellabs/recommender": "dev-main as 1.999.999"
   },
   "autoload": {
     "psr-4": {
@@ -351,7 +359,8 @@
       "Quellabs\\Shipments\\SendCloud\\": "packages/canvas-shipments-sendcloud/src/",
       "Quellabs\\Canvas\\Loom\\": "packages/canvas-loom/src/",
       "Quellabs\\Canvas\\Scheduler\\Redis\\": "packages/canvas-scheduler-redis/src/",
-      "Quellabs\\Canvas\\Scheduler\\RabbitMQ\\": "packages/canvas-scheduler-rabbitmq/src/"
+      "Quellabs\\Canvas\\Scheduler\\RabbitMQ\\": "packages/canvas-scheduler-rabbitmq/src/",
+      "Quellabs\\Recommender\\": "packages/recommender/src/"
     },
     "classmap": [
       "packages/canvas/src/Legacy/Helpers/LegacyHelper.php"
@@ -364,7 +373,8 @@
     "psr-4": {
       "Quellabs\\ObjectQuel\\Tests\\": "tests/ObjectQuel/",
       "Quellabs\\Canvas\\Tests\\": "tests/Canvas/",
-      "Quellabs\\Support\\Tests\\": "tests/Support/"
+      "Quellabs\\Support\\Tests\\": "tests/Support/",
+      "Quellabs\\Recommender\\Tests\\": "tests/Recommender/"
     }
   },
   "scripts": {
