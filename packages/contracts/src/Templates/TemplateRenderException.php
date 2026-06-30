@@ -20,7 +20,7 @@
 		 * @param string $message The error message describing what went wrong
 		 * @param \Throwable|null $previous Optional previous exception for chaining
 		 */
-		public function __construct(string $templateName, string $message, \Throwable $previous = null) {
+		public function __construct(string $templateName, string $message, ?\Throwable $previous = null) {
 			// Store the template name
 			$this->templateName = $templateName;
 			
