@@ -61,7 +61,7 @@
 			
 			// Set cache lifetime if specified
 			// Only configure cache lifetime if explicitly provided in config
-			if (isset($this->config['cache_lifetime'])) {
+			if (isset($this->config['cache_lifetime']) && is_numeric($this->config['cache_lifetime'])) {
 				$this->smarty->cache_lifetime = $this->config['cache_lifetime'];
 			}
 			
