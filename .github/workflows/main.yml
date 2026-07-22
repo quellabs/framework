@@ -22,12 +22,54 @@ jobs:
         id: cache-key
         run: echo "key=splitsh-lite-libgit2-1.5.0-${{ runner.os }}" >> $GITHUB_OUTPUT
 
-      - name: Restore splitsh-lite from cache
-        id: cache-splitsh
-        uses: actions/cache@v5
+      # The cache backend occasionally fails a restore lookup outright
+      # (e.g. "404 workflow run not found" on GetCacheEntryDownloadURL)
+      # rather than cleanly reporting a cache miss. actions/cache treats
+      # that as a non-fatal warning and moves on without a hit, which just
+      # means every occurrence forces a full rebuild even when a valid
+      # cache entry exists. Retry the restore a few times before accepting
+      # a miss, using the split restore/save actions so each attempt is a
+      # normal step we can gate on.
+      - name: Restore splitsh-lite from cache (attempt 1)
+        id: cache-restore-1
+        uses: actions/cache/restore@v6
+        continue-on-error: true
         with:
           path: /tmp/splitsh-lite-bin
           key: ${{ steps.cache-key.outputs.key }}
+
+      - name: Restore splitsh-lite from cache (attempt 2)
+        id: cache-restore-2
+        if: steps.cache-restore-1.outputs.cache-hit != 'true'
+        uses: actions/cache/restore@v6
+        continue-on-error: true
+        with:
+          path: /tmp/splitsh-lite-bin
+          key: ${{ steps.cache-key.outputs.key }}
+
+      - name: Restore splitsh-lite from cache (attempt 3)
+        id: cache-restore-3
+        if: |
+          steps.cache-restore-1.outputs.cache-hit != 'true' &&
+          steps.cache-restore-2.outputs.cache-hit != 'true'
+        uses: actions/cache/restore@v6
+        continue-on-error: true
+        with:
+          path: /tmp/splitsh-lite-bin
+          key: ${{ steps.cache-key.outputs.key }}
+
+      - name: Determine cache result
+        id: cache-splitsh
+        run: |
+          if [ "${{ steps.cache-restore-1.outputs.cache-hit }}" = "true" ] || \
+             [ "${{ steps.cache-restore-2.outputs.cache-hit }}" = "true" ] || \
+             [ "${{ steps.cache-restore-3.outputs.cache-hit }}" = "true" ]; then
+            echo "cache-hit=true" >> $GITHUB_OUTPUT
+            echo "✅ Cache restored"
+          else
+            echo "cache-hit=false" >> $GITHUB_OUTPUT
+            echo "⚠️  Cache restore failed on all 3 attempts — rebuilding"
+          fi
 
       - name: Install build dependencies
         if: steps.cache-splitsh.outputs.cache-hit != 'true'
@@ -55,6 +97,13 @@ jobs:
               -o /tmp/splitsh-lite-bin \
               github.com/splitsh/lite
 
+      - name: Save splitsh-lite to cache
+        if: steps.cache-splitsh.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: /tmp/splitsh-lite-bin
+          key: ${{ steps.cache-key.outputs.key }}
+
       - name: Upload splitsh-lite binary as artifact
         uses: actions/upload-artifact@v7
         with:
@@ -70,7 +119,7 @@ jobs:
       splitsh_artifact: splitsh-lite-${{ github.run_id }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           token: ${{ secrets.SYNC_TOKEN }}
@@ -156,7 +205,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           token: ${{ secrets.SYNC_TOKEN }}
