@@ -46,7 +46,7 @@
 		private function entityJsonColumn(): array {
 			return [
 				'type'    => 'json',
-				'null'    => true,
+				'nullable' => true,
 				'default' => null,
 			];
 		}
@@ -66,7 +66,7 @@
 			$comparator = new SchemaComparator($adapter, $platform);
 			
 			$entityColumns = ['data' => $this->entityJsonColumn()];
-			$tableColumns = ['data' => ['type' => 'json', 'null' => true, 'default' => null]];
+			$tableColumns = ['data' => ['type' => 'json', 'nullable' => true, 'default' => null]];
 			
 			$result = $comparator->analyzeSchemaChanges($entityColumns, $tableColumns);
 			
@@ -91,7 +91,7 @@
 			$comparator = new SchemaComparator($adapter, $platform);
 			
 			$entityColumns = ['data' => $this->entityJsonColumn()];
-			$tableColumns = ['data' => ['type' => 'jsonb', 'null' => true, 'default' => null]];
+			$tableColumns = ['data' => ['type' => 'jsonb', 'nullable' => true, 'default' => null]];
 			
 			$result = $comparator->analyzeSchemaChanges($entityColumns, $tableColumns);
 			
@@ -112,13 +112,13 @@
 			$comparator = new SchemaComparator($adapter, $platform);
 			
 			// Entity: nullable = true. Database: nullable = false (someone changed it manually).
-			$entityColumns = ['data' => ['type' => 'json', 'null' => true, 'default' => null]];
-			$tableColumns = ['data' => ['type' => 'jsonb', 'null' => false, 'default' => null]];
+			$entityColumns = ['data' => ['type' => 'json', 'nullable' => true, 'default' => null]];
+			$tableColumns = ['data' => ['type' => 'jsonb', 'nullable' => false, 'default' => null]];
 			
 			$result = $comparator->analyzeSchemaChanges($entityColumns, $tableColumns);
 			
 			$this->assertArrayHasKey('data', $result['modified'], 'A nullable change must still be detected');
-			$this->assertArrayHasKey('null', $result['modified']['data']['changes']);
+			$this->assertArrayHasKey('nullable', $result['modified']['data']['changes']);
 		}
 		
 		// -------------------------------------------------------------------------
@@ -137,7 +137,7 @@
 			$comparator = new SchemaComparator($adapter);
 			
 			$entityColumns = ['data' => $this->entityJsonColumn()];
-			$tableColumns = ['data' => ['type' => 'json', 'null' => true, 'default' => null]];
+			$tableColumns = ['data' => ['type' => 'json', 'nullable' => true, 'default' => null]];
 			
 			$result = $comparator->analyzeSchemaChanges($entityColumns, $tableColumns);
 			
@@ -179,7 +179,7 @@
 			$comparator = new SchemaComparator($adapter, $platform);
 			
 			$entityColumns = [];
-			$tableColumns = ['data' => ['type' => 'jsonb', 'null' => true, 'default' => null]];
+			$tableColumns = ['data' => ['type' => 'jsonb', 'nullable' => true, 'default' => null]];
 			
 			$result = $comparator->analyzeSchemaChanges($entityColumns, $tableColumns);
 			
