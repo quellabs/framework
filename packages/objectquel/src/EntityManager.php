@@ -385,9 +385,13 @@
 		public function findBy(string $entityType, array $searchData, ?array $sortBy = null): array {
 			// Prepare a query in case the entity is not found
 			$query = $this->queryBuilder->prepareQuery($entityType, $searchData, $sortBy);
+
+			// Null-valued keys become "is_null(main.{key})" in $query, with
+			// no ":{key}" placeholder, so they must be excluded from binding.
+			$boundParameters = array_filter($searchData, static fn(mixed $value): bool => $value !== null);
 			
 			// Execute query and retrieve result
-			$result = $this->getAll($query, $searchData);
+			$result = $this->getAll($query, $boundParameters);
 			
 			// Extract the main column from the result
 			$filteredResult = array_column($result, "main");

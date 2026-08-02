@@ -228,11 +228,12 @@
 		private function parametersToString(array $parameters): string {
 			$parts = [];
 			
-			foreach ($parameters as $key => $_) {
-				// Produces a condition like "main.id=:id".
-				// The ":key" syntax is the named-placeholder convention understood by the
-				// ObjectQuel query executor — binding happens downstream, not here.
-				$parts[] = "main.{$key}=:{$key}";
+			foreach ($parameters as $key => $value) {
+				if ($value === null) {
+					$parts[] = "is_null(main.{$key})";
+				} else {
+					$parts[] = "main.{$key}=:{$key}";
+				}
 			}
 			
 			// Multiple primary-key columns (composite keys) are ANDed together.
