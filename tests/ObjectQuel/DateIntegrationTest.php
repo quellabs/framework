@@ -250,6 +250,86 @@
 		}
 		
 		// =========================================================================
+		// Implicit column comparisons — main.createdAt >= :since (no date() call)
+		//
+		// NormalizeDateTime wraps a bare \DateTime column that's a direct operand
+		// of a comparison in AstDate, converting it to a Unix timestamp in SQL.
+		// CoerceDateTimeParameters must mirror that on the parameter side so the
+		// caller can bind a DateTimeInterface, a formatted string, or a raw
+		// timestamp int — all three must produce identical results.
+		// =========================================================================
+
+		/**
+		 * A DateTimeImmutable bound against a bare (non-date()-wrapped) \DateTime
+		 * column comparison must be coerced to a Unix timestamp automatically,
+		 * instead of throwing "Cannot convert value ... to string" during binding.
+		 */
+		public function testImplicitColumnComparisonAcceptsDateTimeImmutable(): void {
+			$since = new \DateTimeImmutable('-20 days');
+
+			$result = $this->em->executeQuery("
+				range of p is PostEntity
+				retrieve (p.id)
+				where p.createdAt >= :since
+			", ['since' => $since]);
+
+			// Only post 1 (10 days old) is at or after 20 days ago.
+			$this->assertCount(1, $result);
+			$this->assertSame(1, $result[0]['p.id']);
+		}
+
+		/**
+		 * A formatted "Y-m-d H:i:s" string bound against a bare \DateTime column
+		 * comparison must be coerced the same way as a DateTimeImmutable, not
+		 * silently compared as a string against the column's integer timestamp.
+		 */
+		public function testImplicitColumnComparisonAcceptsFormattedString(): void {
+			$since = (new \DateTime('-20 days'))->format('Y-m-d H:i:s');
+
+			$result = $this->em->executeQuery("
+				range of p is PostEntity
+				retrieve (p.id)
+				where p.createdAt >= :since
+			", ['since' => $since]);
+
+			$this->assertCount(1, $result);
+			$this->assertSame(1, $result[0]['p.id']);
+		}
+
+		/**
+		 * A raw Unix timestamp int bound against a bare \DateTime column
+		 * comparison must keep working exactly as it did before this fix.
+		 */
+		public function testImplicitColumnComparisonAcceptsRawTimestamp(): void {
+			$since = (new \DateTime('-20 days'))->getTimestamp();
+
+			$result = $this->em->executeQuery("
+				range of p is PostEntity
+				retrieve (p.id)
+				where p.createdAt >= :since
+			", ['since' => $since]);
+
+			$this->assertCount(1, $result);
+			$this->assertSame(1, $result[0]['p.id']);
+		}
+
+		/**
+		 * A value that cannot be interpreted as a date (an unparseable string)
+		 * must raise a clear QuelException naming the actual problem, instead of
+		 * silently returning zero rows or throwing an unrelated binding error.
+		 */
+		public function testImplicitColumnComparisonRejectsUnparseableValue(): void {
+			$this->expectException(QuelException::class);
+			$this->expectExceptionMessageMatches('/since.*DateTime column/i');
+
+			$this->em->executeQuery("
+				range of p is PostEntity
+				retrieve (p.id)
+				where p.createdAt >= :since
+			", ['since' => 'not-a-date']);
+		}
+
+		// =========================================================================
 		// Composite interval strings (QUEL-style "N unit M unit")
 		// =========================================================================
 		
