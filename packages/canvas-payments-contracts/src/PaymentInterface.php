@@ -33,6 +33,14 @@
 		 * @return RefundResult
 		 */
 		public function refund(RefundRequest $request): RefundResult;
+
+		/**
+		 * Charge an existing mandate for a recurring, off-session payment. No customer interaction
+		 * or redirect is involved — this is typically called from a scheduled job.
+		 * @param RecurringChargeRequest $request
+		 * @return InitiateResult
+		 */
+		public function chargeRecurring(RecurringChargeRequest $request): InitiateResult;
 		
 		/**
 		 * Returns available options for the given payment module.
