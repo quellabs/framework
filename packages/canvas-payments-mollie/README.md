@@ -132,6 +132,79 @@ try {
 }
 ```
 
+### Recurring payments
+
+Mollie's recurring model has three steps: a **First** payment establishes a customer and a mandate
+(SEPA direct debit, tokenized card, ...), then any number of **recurring** charges can be made against
+that mandate later, off-session, with no customer interaction.
+
+**1. First payment** — same `initiate()` call as above, but pass `sequenceType: SequenceType::First`.
+If you don't already have a Mollie customer id, leave `customerReference` unset and the package creates
+one automatically from `billingAddress`. Persist the `customerReference` from the result — you'll need
+it to charge the customer again later.
+
+```php
+use Quellabs\Payments\Contracts\PaymentRequest;
+use Quellabs\Payments\Contracts\SequenceType;
+
+$request = new PaymentRequest(
+    paymentModule: 'mollie_ideal',
+    amount:        999,
+    currency:      'EUR',
+    description:   'Subscription setup',
+    billingAddress: $address, // used to create the Mollie customer
+    sequenceType:   SequenceType::First,
+);
+
+$result = $this->router->initiate($request);
+$this->persistCustomerReference($userId, $result->customerReference);
+return $this->redirect($result->redirectUrl);
+```
+
+Once the customer completes the payment, Mollie attaches a mandate to the customer. You can inspect it
+with `getMandates()`:
+
+```php
+$mandates = $this->router->getMandates('mollie', $customerReference);
+```
+
+**2. Recurring charge** — called later (e.g. from a scheduled job), with no redirect involved:
+
+```php
+use Quellabs\Payments\Contracts\RecurringChargeRequest;
+use Quellabs\Payments\Contracts\PaymentInitiationException;
+
+$request = new RecurringChargeRequest(
+    paymentModule:     'mollie_ideal',
+    customerReference: $customerReference,
+    amount:            999,
+    currency:          'EUR',
+    description:       'Subscription renewal',
+);
+
+try {
+    $result = $this->router->chargeRecurring($request);
+    // $result->redirectUrl is always null here — status arrives via the payment_exchange signal
+} catch (PaymentInitiationException $e) {
+    // handle error
+}
+```
+
+**3. Revoking a mandate** — prevents any further recurring charges against it:
+
+```php
+use Quellabs\Payments\Contracts\PaymentMandateException;
+
+try {
+    $this->router->revokeMandate('mollie', $customerReference, $mandateId);
+} catch (PaymentMandateException $e) {
+    // handle error
+}
+```
+
+Scheduling when to charge, and persisting `customerReference`/mandate ids per user, is your
+application's responsibility — this package only wraps the Mollie API calls.
+
 ### Listening for payment state changes
 
 ```php

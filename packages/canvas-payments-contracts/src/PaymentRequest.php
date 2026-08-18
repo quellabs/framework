@@ -19,6 +19,9 @@
 		 * @param array<string, mixed> $metadata Arbitrary key/value pairs passed through to the provider unchanged.
 		 * @param PaymentAddress|null $billingAddress Billing address associated with this payment.
 		 * @param PaymentAddress|null $shippingAddress Physical delivery address for this order, if applicable.
+		 * @param SequenceType|null $sequenceType Marks this as a one-off, first (mandate-creating), or recurring payment. Null behaves as OneOff.
+		 * @param string|null $customerReference Existing provider customer id to attach this payment to. When
+		 *                                       $sequenceType is First and this is null, the provider creates a new customer.
 		 */
 		public function __construct(
 			public string          $paymentModule,
@@ -33,6 +36,8 @@
 			public array           $metadata = [],
 			public ?PaymentAddress $billingAddress = null,
 			public ?PaymentAddress $shippingAddress = null,
+			public ?SequenceType   $sequenceType = null,
+			public ?string         $customerReference = null,
 		) {
 		}
 	}

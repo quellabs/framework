@@ -187,21 +187,75 @@
 		}
 		
 		/**
+		 * Creates a new Mollie customer
+		 * @url https://docs.mollie.com/reference/v2/customers-api/create-customer
+		 * @param array<string, mixed> $payload
+		 * @return GatewayResponse
+		 */
+		public function createCustomer(array $payload): array {
+			return $this->callHttpClient('POST', 'customers', $payload);
+		}
+
+		/**
+		 * Returns information about a Mollie customer
+		 * @url https://docs.mollie.com/reference/v2/customers-api/get-customer
+		 * @param string $customerId
+		 * @return GatewayResponse
+		 */
+		public function getCustomer(string $customerId): array {
+			return $this->callHttpClient('GET', "customers/{$customerId}");
+		}
+
+		/**
+		 * Retrieve all mandates for a customer
+		 * @url https://docs.mollie.com/reference/v2/mandates-api/list-mandates
+		 * @param string $customerId
+		 * @return GatewayResponse
+		 */
+		public function listMandates(string $customerId): array {
+			return $this->callHttpClient('GET', "customers/{$customerId}/mandates");
+		}
+
+		/**
+		 * Returns information about a single mandate
+		 * @url https://docs.mollie.com/reference/v2/mandates-api/get-mandate
+		 * @param string $customerId
+		 * @param string $mandateId
+		 * @return GatewayResponse
+		 */
+		public function getMandate(string $customerId, string $mandateId): array {
+			return $this->callHttpClient('GET', "customers/{$customerId}/mandates/{$mandateId}");
+		}
+
+		/**
+		 * Revokes a mandate, preventing any further recurring charges against it.
+		 * Mollie returns 204 No Content on success — no JSON body to decode.
+		 * @url https://docs.mollie.com/reference/v2/mandates-api/revoke-mandate
+		 * @param string $customerId
+		 * @param string $mandateId
+		 * @return GatewayResponse
+		 */
+		public function revokeMandate(string $customerId, string $mandateId): array {
+			return $this->callHttpClient('DELETE', "customers/{$customerId}/mandates/{$mandateId}", [], true);
+		}
+
+		/**
 		 * Returns true if Mollie is in test mode, false if not
 		 * @return bool
 		 */
 		public function testMode(): bool {
 			return $this->testMode;
 		}
-		
+
 		/**
 		 * Call the API and return the result
 		 * @param string $method
 		 * @param string $action
 		 * @param array<string, mixed> $data
+		 * @param bool $expectNoContent Set for endpoints that respond with 204 No Content on success (e.g. mandate revocation)
 		 * @return GatewayResponse
 		 */
-		protected function callHttpClient(string $method, string $action, array $data = []): array {
+		protected function callHttpClient(string $method, string $action, array $data = [], bool $expectNoContent = false): array {
 			try {
 				$client = HttpClient::create([
 					'base_uri'    => 'https://api.mollie.nl/v2/',
@@ -211,23 +265,29 @@
 						'Authorization' => "Bearer {$this->apiKey}",
 						'Content-Type'  => 'application/json',
 					],
-					
+
 					// Enforce strict SSL verification using the bundled CA certificate
 					'verify_peer' => true,
 					'verify_host' => true,
 					'cafile'      => Resources::cacertPem()
 				]);
-				
+
 				$response   = $client->request($method, $action, ['json' => $data]);
 				$statusCode = $response->getStatusCode();
-				$jsonData   = $response->toArray();
+
+				// A 204 No Content response has no JSON body to decode — treat it as success directly
+				if ($expectNoContent && $statusCode === 204) {
+					return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => []];
+				}
+
+				$jsonData = $response->toArray();
 			} catch (\Exception|TransportExceptionInterface|DecodingExceptionInterface|ClientExceptionInterface|RedirectionExceptionInterface|ServerExceptionInterface $e) {
 				// Network failure, timeout, or non-2xx response — return a normalized error
 				return ['request' => ['result' => 0, 'errorId' => $e->getCode(), 'errorMessage' => $e->getMessage()]];
 			}
-			
-			// Single-resource responses (payment, method, refund) are returned as-is
-			if (isset($jsonData['resource']) && in_array($jsonData['resource'], ['payment', 'method', 'refund'])) {
+
+			// Single-resource responses (payment, method, refund, customer, mandate) are returned as-is
+			if (isset($jsonData['resource']) && in_array($jsonData['resource'], ['payment', 'method', 'refund', 'customer', 'mandate'])) {
 				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $jsonData];
 			}
 			

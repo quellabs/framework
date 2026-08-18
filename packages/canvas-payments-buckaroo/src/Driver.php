@@ -4,15 +4,18 @@
 	
 	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Quellabs\Payments\Contracts\InitiateResult;
+	use Quellabs\Payments\Contracts\MandateInfo;
 	use Quellabs\Payments\Contracts\PaymentAddress;
 	use Quellabs\Payments\Contracts\PaymentInterface;
 	use Quellabs\Payments\Contracts\PaymentExchangeException;
 	use Quellabs\Payments\Contracts\PaymentInitiationException;
+	use Quellabs\Payments\Contracts\PaymentMandateException;
 	use Quellabs\Payments\Contracts\PaymentProviderInterface;
 	use Quellabs\Payments\Contracts\PaymentRefundException;
 	use Quellabs\Payments\Contracts\PaymentRequest;
 	use Quellabs\Payments\Contracts\PaymentState;
 	use Quellabs\Payments\Contracts\PaymentStatus;
+	use Quellabs\Payments\Contracts\RecurringChargeRequest;
 	use Quellabs\Payments\Contracts\RefundRequest;
 	use Quellabs\Payments\Contracts\RefundResult;
 	
@@ -551,7 +554,38 @@
 			
 			return $refunds;
 		}
-		
+
+		/**
+		 * Recurring payments are not yet supported by this provider.
+		 * @param RecurringChargeRequest $request
+		 * @return InitiateResult
+		 * @throws PaymentInitiationException
+		 */
+		public function chargeRecurring(RecurringChargeRequest $request): InitiateResult {
+			throw new PaymentInitiationException(self::DRIVER_NAME, 'not_supported', 'Recurring payments are not supported by the ' . self::DRIVER_NAME . ' provider.');
+		}
+
+		/**
+		 * Mandates are not yet supported by this provider.
+		 * @param string $customerReference
+		 * @return array<int, MandateInfo>
+		 * @throws PaymentMandateException
+		 */
+		public function getMandates(string $customerReference): array {
+			throw new PaymentMandateException(self::DRIVER_NAME, 'not_supported', 'Mandates are not supported by the ' . self::DRIVER_NAME . ' provider.');
+		}
+
+		/**
+		 * Mandates are not yet supported by this provider.
+		 * @param string $customerReference
+		 * @param string $mandateId
+		 * @return void
+		 * @throws PaymentMandateException
+		 */
+		public function revokeMandate(string $customerReference, string $mandateId): void {
+			throw new PaymentMandateException(self::DRIVER_NAME, 'not_supported', 'Mandates are not supported by the ' . self::DRIVER_NAME . ' provider.');
+		}
+
 		/**
 		 * Sums the amounts of all related refund transactions.
 		 * Returns 0 if no refunds exist or if all lookups fail.

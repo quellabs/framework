@@ -27,4 +27,19 @@
 		 */
 		public function getRefunds(string $paymentReference): array;
 
+		/**
+		 * Returns all mandates registered for the given customer.
+		 * @param string $customerReference
+		 * @return array<int, MandateInfo>
+		 */
+		public function getMandates(string $customerReference): array;
+
+		/**
+		 * Revokes a mandate, preventing any further recurring charges against it.
+		 * @param string $customerReference
+		 * @param string $mandateId
+		 * @return void
+		 */
+		public function revokeMandate(string $customerReference, string $mandateId): void;
+
 	}
