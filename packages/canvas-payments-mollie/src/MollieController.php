@@ -65,7 +65,7 @@
 		}
 		
 		/**
-		 * @Route("mollie::return_url", fallback="/payment/return/mollie", methods={"GET"})
+		 * @Route("mollie::redirect_url", fallback="/payment/return/mollie", methods={"GET"})
 		 * @url https://docs.mollie.com/payments/webhooks
 		 * @param Request $request
 		 * @return Response
