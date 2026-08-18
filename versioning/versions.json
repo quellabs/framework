@@ -1,7 +1,7 @@
 {
   "annotation-reader": "1.4.0",
   "cache": "1.0.4",
-  "canvas": "1.10.6",
+  "canvas": "1.10.7",
   "canvas-blade": "1.1.1",
   "canvas-database": "1.0.2",
   "canvas-handlebars": "1.1.1",
@@ -13,7 +13,7 @@
   "canvas-payments-buckaroo": "1.2.0",
   "canvas-payments-contracts": "1.2.1",
   "canvas-payments-klarna": "1.2.0",
-  "canvas-payments-mollie": "1.2.0",
+  "canvas-payments-mollie": "1.2.1",
   "canvas-payments-multisafepay": "1.2.0",
   "canvas-payments-paynl": "1.2.0",
   "canvas-payments-paypal": "1.2.0",
