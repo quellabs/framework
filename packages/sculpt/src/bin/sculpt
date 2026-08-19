@@ -34,7 +34,7 @@
 	$app->discoverProviders();
 	
 	// Run the application with command line arguments
-	$app->run($argv);
+	exit($app->run($argv));
 	
 	/**
 	 * Find the Composer autoloader by traversing up the directory tree
