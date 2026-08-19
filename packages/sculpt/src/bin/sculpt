@@ -39,13 +39,13 @@
 	/**
 	 * Find the Composer autoloader by traversing up the directory tree
 	 * @param string $startDir The directory to start searching from
-	 * @return array|null Returns [autoloadPath, packageBasePath] if found, null otherwise
+	 * @return array{0: string, 1: string}|null Returns [autoloadPath, packageBasePath] if found, null otherwise
 	 */
 	function findAutoloader(string $startDir): ?array {
 		$dir = $startDir;
-		
+
 		// Continue until we reach the filesystem root
-		while ($dir !== '/' && $dir !== '' && $dir !== false && $dir !== '\\') {
+		while ($dir !== '/' && $dir !== '' && $dir !== '\\') {
 			// Case 1: Check if we're installed as a dependency (inside vendor directory)
 			if (basename(dirname($dir, 2)) === 'vendor') {
 				$autoloadPath = dirname($dir, 3) . '/autoload.php';
