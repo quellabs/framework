@@ -80,4 +80,14 @@
 		protected function getConfigValueAsInt(string $key, int $default): int {
 			return isset($this->config[$key]) && is_int($this->config[$key]) ? $this->config[$key] : $default;
 		}
+
+		/**
+		 * Retrieves a bool value from config, falling back to the provided default.
+		 * @param string $key
+		 * @param bool $default
+		 * @return bool
+		 */
+		protected function getConfigValueAsBool(string $key, bool $default): bool {
+			return isset($this->config[$key]) && is_bool($this->config[$key]) ? $this->config[$key] : $default;
+		}
 	}
