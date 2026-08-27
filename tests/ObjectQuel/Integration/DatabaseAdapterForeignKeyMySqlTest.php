@@ -8,8 +8,8 @@
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
 
 	/**
-	 * Part 2.1 / plan Testing section — DatabaseAdapter::getForeignKeys() against a
-	 * real MySQL server, mirroring DatabaseAdapterForeignKeyTest's SQLite coverage.
+	 * DatabaseAdapter::getForeignKeys() against a real MySQL server, mirroring
+	 * DatabaseAdapterForeignKeyTest's SQLite coverage.
 	 *
 	 * Uses the same TEST_DB_* environment variables as the framework root's
 	 * existing MySQL-backed suite (tests/ObjectQuel), pointed at whatever database
@@ -110,10 +110,9 @@
 		}
 
 		public function testDeletingAReferencedParentIsRejectedWhenNoCascadeRuleExists(): void {
-			// The rejection half of 1.5's distinct-guarantees test (default
-			// RESTRICT-equivalent behavior). See the CASCADE test below for the
-			// complementary case — a raw DELETE that goes around the ORM entirely
-			// still cascades when the constraint says so.
+			// Default RESTRICT-equivalent behavior. See the CASCADE test below for
+			// the complementary case — a raw DELETE that goes around the ORM
+			// entirely still cascades when the constraint says so.
 			$this->adapter->execute('CREATE TABLE oq_fk_test_customers (id INT PRIMARY KEY) ENGINE=InnoDB');
 			$this->adapter->execute(
 				'CREATE TABLE oq_fk_test_orders (' .
@@ -135,8 +134,7 @@
 		/**
 		 * The complementary case: ON DELETE CASCADE doesn't just get declared, it
 		 * actually performs the child deletion — proven with a raw DELETE that
-		 * goes around the ORM entirely, exactly the scenario Cascade(strategy=
-		 * "database")'s promise (see the plan's problem statement) depends on.
+		 * goes around the ORM entirely.
 		 */
 		public function testOnDeleteCascadeActuallyDeletesChildRowsNotJustDeclaresIt(): void {
 			$this->adapter->execute('CREATE TABLE oq_fk_test_customers (id INT PRIMARY KEY) ENGINE=InnoDB');

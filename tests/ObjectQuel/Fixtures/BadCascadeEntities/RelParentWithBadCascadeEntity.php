@@ -18,10 +18,9 @@
 	 * EntityMetadataBuilder::validateCascadeRequiresRelation() rejects this at
 	 * metadata-build time with a RuntimeException.
 	 *
-	 * (UnitOfWork::processCascadingInverseOfPersists() does contain code that
-	 * reads a Cascade off an InverseOf property, but since that annotation
-	 * combination can never pass validation, the branch is unreachable in
-	 * practice — dead code, not a working feature this fixture is missing out on.)
+	 * (UnitOfWork::processCascadingInverseOfPersists() still reads a Cascade off
+	 * InverseOf, but since that combination never passes validation, the branch
+	 * is unreachable — dead code, not a working feature.)
 	 *
 	 * Kept in its own isolated fixture directory
 	 * (tests/ObjectQuel/Fixtures/BadCascadeEntities, not the shared

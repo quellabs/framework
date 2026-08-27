@@ -51,16 +51,14 @@
 
 			$query = $queryBuilder->prepareQuery(RelPostEntity::class, ['id' => 1]);
 
-			// Hop 1: the bridge itself, reached from main via the ordinary InverseOf
-			// collection — unchanged, pre-existing behavior.
+			// Hop 1: the bridge itself, reached from main via the ordinary InverseOf collection.
 			$hop1Pattern = '/range of (\w+) is ' . preg_quote(RelPostTagEntity::class, '/') . ' via main\.postTags/';
 			self::assertMatchesRegularExpression($hop1Pattern, $query, $query);
 
 			preg_match($hop1Pattern, $query, $matches);
 			$bridgeAlias = $matches[1];
 
-			// Hop 2: the far side, chained off the bridge's own alias rather than
-			// 'main' — this is the new behavior under test.
+			// Hop 2: the far side, chained off the bridge's own alias rather than 'main'.
 			$hop2Pattern = '/range of \w+ is ' . preg_quote(RelTagEntity::class, '/') . ' via ' . preg_quote($bridgeAlias, '/') . '\.tag/';
 			self::assertMatchesRegularExpression($hop2Pattern, $query, $query);
 		}
@@ -164,8 +162,8 @@
 		/**
 		 * Control: a dependent entity that is NOT marked @Orm\EntityBridge (the
 		 * ordinary RelOrderCascadeEntity/RelCustomerEntity one-to-many pair used
-		 * elsewhere in this suite) must be completely unaffected by this feature —
-		 * addBridgeExpansionRanges() should no-op for it.
+		 * elsewhere in this suite) gets no extra hop — addBridgeExpansionRanges()
+		 * is a no-op for it.
 		 */
 		public function testNonBridgeDependentsAreUnaffected(): void {
 			$entityStore = $GLOBALS['test_em']->getEntityStore();

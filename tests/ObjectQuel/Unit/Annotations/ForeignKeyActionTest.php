@@ -6,10 +6,9 @@
 	use Quellabs\ObjectQuel\Annotations\Orm\ForeignKeyAction;
 
 	/**
-	 * @Orm\ForeignKeyAction annotation: the ON DELETE/ON UPDATE vocabulary that
-	 * used to live on @Orm\ForeignKey itself, now split into its own annotation so
-	 * a real database action can be declared independently of both ForeignKey's
-	 * structural role and @Orm\Cascade's PHP-side behavior.
+	 * @Orm\ForeignKeyAction annotation: the ON DELETE/ON UPDATE vocabulary,
+	 * declared independently of both ForeignKey's structural role and
+	 * @Orm\Cascade's PHP-side behavior.
 	 */
 	class ForeignKeyActionTest extends TestCase {
 

@@ -11,11 +11,9 @@
 	/**
 	 * Same owning OneToOne + Cascade(remove) combo as RelProfileEntity, but with
 	 * no 'referencedColumn' — i.e. unidirectional. Proves cascade-remove works
-	 * here too: UnitOfWork::handleDependentEntityClass() used to filter OneToOne
-	 * dependents down to only those with a non-empty referencedColumn before
-	 * checking Cascade at all, silently skipping this exact case — fixed, since
-	 * referencedColumn only affects bidirectional setter sync codegen and has
-	 * nothing to do with cascade-remove eligibility.
+	 * for a unidirectional OneToOne too: referencedColumn only affects
+	 * bidirectional setter-sync codegen in UnitOfWork::handleDependentEntityClass()
+	 * and has no bearing on cascade-remove eligibility.
 	 * @Orm\Table(name="rel_profiles_unidirectional")
 	 */
 	class RelProfileUnidirectionalEntity {

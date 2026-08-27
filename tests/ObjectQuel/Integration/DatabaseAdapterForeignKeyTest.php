@@ -6,11 +6,10 @@
 	use Quellabs\ObjectQuel\Tests\Support\FkTestSupport;
 
 	/**
-	 * Part 1.4 — SQLite: PRAGMA foreign_keys=ON is issued on every new connection.
-	 * Part 2.1 — DatabaseAdapter::getForeignKeys() (SQLite branch), needed by 1.3's
-	 * migration diff. Covered here rather than skipped, since 1.3 depends on it
-	 * directly and this is the only engine available in this environment without
-	 * a live external database server.
+	 * SQLite: PRAGMA foreign_keys=ON is issued on every new connection, and
+	 * DatabaseAdapter::getForeignKeys() reads real constraints back. Covered
+	 * here since SQLite is the only engine available in this environment
+	 * without a live external database server.
 	 */
 	class DatabaseAdapterForeignKeyTest extends TestCase {
 		use FkTestSupport;
@@ -82,9 +81,7 @@
 		 * CASCADE actually performs the child deletion, not merely that an
 		 * invalid state is rejected. A raw DELETE that goes around the ORM
 		 * entirely (as here) still removes the child row — the constraint is
-		 * real enforcement, not decorative, and this is what makes
-		 * Cascade(strategy="database")'s promise (see the plan's problem
-		 * statement) actually true now that a real constraint exists to back it.
+		 * real enforcement, not decorative.
 		 */
 		public function testOnDeleteCascadeActuallyDeletesChildRowsNotJustDeclaresIt(): void {
 			$adapter = $this->makeSqliteAdapter();

@@ -16,7 +16,7 @@
 	 * relationship flow (ManyToOne/OneToOne), mirroring the structure/behavior
 	 * split MakeEntityFromTableCommand already applies on the schema→entity side.
 	 *
-	 * Gated by the same generate_foreign_keys config key (2.2): when off, the new
+	 * Gated by the generate_foreign_keys config key: when off, the
 	 * prompt in MakeEntityCommand::attachForeignKeyConstraint() is never reached
 	 * (buildOwningSideProperties() only calls it when the flag is on) — covered
 	 * indirectly by never invoking it in the "off" tests below.
@@ -141,7 +141,7 @@
 		}
 
 		// -------------------------------------------------------------------------
-		// PhpClassGenerator — annotation emission (2.5's presence-means-declared
+		// PhpClassGenerator — annotation emission (presence-means-declared
 		// convention, reused verbatim from MakeEntityFromTableCommand)
 		// -------------------------------------------------------------------------
 
@@ -233,15 +233,15 @@
 		}
 
 		// -------------------------------------------------------------------------
-		// EntityModifier — updating a pre-existing file that predates this feature
+		// EntityModifier — updating a pre-existing file with no FK imports yet
 		// -------------------------------------------------------------------------
 
 		public function testUpdatingAnEntityWithoutExistingForeignKeyImportsInjectsThemOnce(): void {
 			$configuration = $this->makeConfiguration();
 			$modifier = new EntityModifier($configuration);
 
-			// Simulate an entity file written before this feature existed: no
-			// ForeignKey/ForeignKeyAction imports at all.
+			// Simulate a hand-written entity file with no ForeignKey/ForeignKeyAction
+			// imports at all.
 			$legacyContent = "<?php\n\n\tnamespace App\\Entities;\n\n" .
 				"\tuse Quellabs\\ObjectQuel\\Annotations\\Orm\\Table;\n" .
 				"\tuse Quellabs\\ObjectQuel\\Annotations\\Orm\\Column;\n\n" .

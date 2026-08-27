@@ -17,19 +17,17 @@
 	use Quellabs\ObjectQuel\Tests\Fixtures\RelationshipEntities\RelUserEntity;
 
 	/**
-	 * End-to-end validation of Cascade and ForeignKey/ForeignKeyAction for the
-	 * two relationship shapes the earlier FK test suites never actually exercised:
+	 * End-to-end validation of Cascade and ForeignKey/ForeignKeyAction for two
+	 * relationship shapes:
 	 *
 	 *  - OneToOne (bidirectional owning side)
 	 *  - "one-to-many" as this ORM expresses it: ManyToOne (owning, "many" side)
 	 *    + InverseOf (collection, "one" side) — there is no standalone OneToMany
 	 *    annotation here.
 	 *
-	 * Prior coverage (CascadeStrategyTest) only ever checked the private
-	 * shouldCascadeRemove() decision via reflection, never a real remove()+flush()
-	 * through UnitOfWork; and every FK fixture (FkOrderEntity etc.) only ever used
-	 * a bare ManyToOne with no InverseOf mirror and no OneToOne at all. This class
-	 * closes both gaps with real persist/remove/flush cycles against MySQL.
+	 * Exercises real persist/remove/flush cycles through UnitOfWork against
+	 * MySQL, not just the private shouldCascadeRemove() decision (see
+	 * CascadeStrategyTest for that narrower check).
 	 *
 	 * Uses its own isolated fixture directory (tests/ObjectQuel/Fixtures/RelationshipEntities)
 	 * rather than the shared tests/ObjectQuel/Fixtures/Entities used by the
@@ -37,8 +35,7 @@
 	 * EntityStore::getOrderedDependentEntities(), which eagerly builds metadata
 	 * for every entity in the configured entity_path — including fixtures like
 	 * FkOrderActionNoFkEntity that are deliberately invalid for other tests'
-	 * purposes. Confirmed by trying the shared directory first: it broke on
-	 * contact with that fixture.
+	 * purposes.
 	 *
 	 * The EntityManager itself comes from the suite's shared $GLOBALS['test_em']
 	 * — a genuine process-wide singleton, not just per-class — because
@@ -142,14 +139,11 @@
 		}
 
 		/**
-		 * Regression check for a real bug this validation pass found and fixed:
-		 * UnitOfWork::handleDependentEntityClass() used to filter OneToOne
-		 * dependents down to only those with a non-empty 'referencedColumn'
-		 * before even checking their Cascade annotation — silently skipping
-		 * cascade-remove for a unidirectional OneToOne that explicitly declares
-		 * Cascade(remove). 'referencedColumn' only affects bidirectional setter
-		 * sync codegen; it has nothing to do with whether cascade-remove should
-		 * run, exactly as ManyToOne (which has no such filter) already proves.
+		 * A unidirectional OneToOne (no 'referencedColumn') must cascade-remove
+		 * just like a bidirectional one: 'referencedColumn' only affects
+		 * bidirectional setter sync codegen, it has nothing to do with whether
+		 * cascade-remove runs — exactly as ManyToOne (which has no such
+		 * distinction) already proves.
 		 */
 		public function testCascadeRemoveWorksForUnidirectionalOneToOneToo(): void {
 			$em = self::em();

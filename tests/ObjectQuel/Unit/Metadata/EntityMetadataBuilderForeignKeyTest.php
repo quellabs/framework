@@ -8,26 +8,27 @@
 	use Quellabs\ObjectQuel\Tests\Fixtures\Entities\FkOrderEntity;
 	use Quellabs\ObjectQuel\Tests\Fixtures\Entities\FkOrderNoFkEntity;
 	use Quellabs\ObjectQuel\Tests\Fixtures\Entities\FkOrderOrmEntity;
+	use Quellabs\ObjectQuel\Tests\Fixtures\Entities\FkOrderRelationFkEntity;
 	use Quellabs\ObjectQuel\Tests\Fixtures\Entities\FkOrderScalarActionEntity;
 	use Quellabs\ObjectQuel\Tests\Fixtures\Entities\FkOrderScalarEntity;
 	use Quellabs\ObjectQuel\Tests\Fixtures\Entities\FkCustomerEntity;
 	use Quellabs\ObjectQuel\Tests\Support\FkTestSupport;
 
 	/**
-	 * Part 1.2, revised — EntityMetadataBuilder: ForeignKey (pure structure),
-	 * ForeignKeyAction (the ON DELETE/ON UPDATE behavior) and Cascade (PHP-side
-	 * object-graph behavior only) are three fully independent annotations. Pure
-	 * metadata/annotation work; no database is touched anywhere in this test class.
+	 * EntityMetadataBuilder: ForeignKey (pure structure), ForeignKeyAction (the
+	 * ON DELETE/ON UPDATE behavior) and Cascade (PHP-side object-graph behavior
+	 * only) are three fully independent annotations. Pure metadata/annotation
+	 * work; no database is touched anywhere in this test class.
 	 */
 	class EntityMetadataBuilderForeignKeyTest extends TestCase {
 		use FkTestSupport;
 
-		public function testForeignKeyDeclaredOnRelationPropertyIsKeyedByDatabaseColumnName(): void {
+		public function testForeignKeyDeclaredOnScalarColumnBackingARelationIsKeyedByDatabaseColumnName(): void {
 			$metadata = $this->makeFkEntityStore()->getMetadata(FkOrderEntity::class);
 
 			// Keyed by the real DB column ('customer_id'), not the PHP property
 			// name ('customer' or 'customerId') and not the ManyToOne localColumn
-			// convention (which is itself a property name, see resolveLocalColumnName()).
+			// convention (which is itself a property name).
 			self::assertArrayHasKey('customer_id', $metadata->foreignKeys);
 			self::assertArrayNotHasKey('customer', $metadata->foreignKeys);
 			self::assertArrayNotHasKey('customerId', $metadata->foreignKeys);
@@ -36,6 +37,13 @@
 			self::assertNotNull($fk);
 			self::assertSame(FkCustomerEntity::class, $fk->getTarget());
 			self::assertSame('id', $fk->getReferencedColumn());
+		}
+
+		public function testForeignKeyDeclaredOnTheRelationPropertyItselfThrowsAtBuildTime(): void {
+			$this->expectException(\RuntimeException::class);
+			$this->expectExceptionMessage('customer');
+
+			$this->makeFkEntityStore()->getMetadata(FkOrderRelationFkEntity::class);
 		}
 
 		public function testForeignKeyDeclaredOnScalarColumnPropertyIsKeyedByDatabaseColumnName(): void {
@@ -83,8 +91,8 @@
 		}
 
 		public function testCascadeAndForeignKeyOnARelationRequireNoForeignKeyAction(): void {
-			// Cascade no longer has any opinion about ForeignKey at all — this
-			// builds successfully with the constraint left at its safe defaults.
+			// Cascade has no opinion about ForeignKey at all — this builds
+			// successfully with the constraint left at its safe defaults.
 			$metadata = $this->makeFkEntityStore()->getMetadata(FkOrderNoFkEntity::class);
 
 			self::assertArrayHasKey('customer_id', $metadata->foreignKeys);

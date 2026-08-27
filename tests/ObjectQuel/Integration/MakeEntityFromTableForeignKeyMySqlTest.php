@@ -9,13 +9,11 @@
 	use Quellabs\Sculpt\Console\ConsoleOutput;
 
 	/**
-	 * Part 2.3-2.5 against a real MySQL server, mirroring
-	 * MakeEntityFromTableForeignKeyTest's SQLite coverage. The command's
-	 * detection/emission logic itself is engine-agnostic (it only consumes the
-	 * ColumnDefinition/ForeignKeyDefinition array shapes DatabaseAdapter already
-	 * normalizes per engine), but had only ever been exercised against SQLite —
-	 * this closes that gap the same way DatabaseAdapterForeignKeyMySqlTest closed
-	 * it for DatabaseAdapter::getForeignKeys() itself.
+	 * MakeEntityFromTableCommand's FK detection/emission against a real MySQL
+	 * server, mirroring MakeEntityFromTableForeignKeyTest's SQLite coverage. The
+	 * command's detection/emission logic itself is engine-agnostic — it only
+	 * consumes the ColumnDefinition/ForeignKeyDefinition array shapes
+	 * DatabaseAdapter already normalizes per engine.
 	 *
 	 * Uses the same TEST_DB_* environment variables as the framework root's
 	 * existing MySQL-backed suite. Only creates/drops its own uniquely prefixed

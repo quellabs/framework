@@ -11,11 +11,11 @@
 	use Quellabs\ObjectQuel\Annotations\Orm\ForeignKeyAction;
 
 	/**
-	 * Full combo: ManyToOne + Cascade (PHP-side removal) + ForeignKey +
-	 * ForeignKeyAction (a real ON DELETE CASCADE constraint), all stacked on the
-	 * relation property. Cascade and ForeignKey/ForeignKeyAction are independent
-	 * annotations here — this entity just happens to declare both. Exercises the
-	 * "ForeignKey declared on the relation property itself" column-resolution path.
+	 * Full combo: ManyToOne + Cascade (PHP-side removal), plus ForeignKey +
+	 * ForeignKeyAction (a real ON DELETE CASCADE constraint) on the scalar
+	 * column property backing the relation's local column. Cascade and
+	 * ForeignKey/ForeignKeyAction are independent annotations here — this
+	 * entity just happens to declare both.
 	 * @Orm\Table(name="fk_orders")
 	 */
 	class FkOrderEntity {
@@ -28,13 +28,13 @@
 		/**
 		 * @Orm\ManyToOne(targetEntity=FkCustomerEntity::class, referencedColumn="id", localColumn="customerId", fetch="EAGER")
 		 * @Orm\Cascade(operations={"remove"})
-		 * @Orm\ForeignKey(target=FkCustomerEntity::class, referencedColumn="id")
-		 * @Orm\ForeignKeyAction(onDelete="CASCADE")
 		 */
 		public ?FkCustomerEntity $customer;
 
 		/**
 		 * @Orm\Column(name="customer_id", type="integer")
+		 * @Orm\ForeignKey(target=FkCustomerEntity::class, referencedColumn="id")
+		 * @Orm\ForeignKeyAction(onDelete="CASCADE")
 		 */
 		protected ?int $customerId = null;
 

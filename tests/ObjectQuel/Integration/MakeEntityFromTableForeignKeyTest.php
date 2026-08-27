@@ -9,11 +9,11 @@
 	use Quellabs\Sculpt\Console\ConsoleOutput;
 
 	/**
-	 * Part 2.3-2.5, revised — MakeEntityFromTableCommand: detecting a real database
-	 * foreign key constraint and annotating the generated entity with a matching
+	 * MakeEntityFromTableCommand: detecting a real database foreign key
+	 * constraint and annotating the generated entity with a matching
 	 * @Orm\ForeignKey (structure) plus, when the detected rule isn't the safe
 	 * default, a separate @Orm\ForeignKeyAction (behavior) — gated by the
-	 * generate_foreign_keys config key (2.2).
+	 * generate_foreign_keys config key.
 	 *
 	 * Exercises the command's private code-generation helpers directly via
 	 * reflection (mirroring ForeignKeyMigrationTest's approach) rather than
@@ -191,10 +191,9 @@
 				$code
 			);
 
-			// No ON DELETE was declared, so SQLite's real default (NO ACTION, not
-			// RESTRICT — see 2.5's round-trip test below) differs from the
-			// ForeignKeyAction default (RESTRICT), so it's emitted explicitly to
-			// round-trip the real rule rather than silently defaulting.
+			// No ON DELETE was declared, so SQLite's real default (NO ACTION) differs
+			// from the ForeignKeyAction default (RESTRICT), so it's emitted
+			// explicitly to round-trip the real rule rather than silently defaulting.
 			self::assertStringContainsString(
 				'@Orm\ForeignKeyAction(onDelete="NO ACTION", onUpdate="NO ACTION")',
 				$code
