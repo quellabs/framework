@@ -119,7 +119,6 @@
 		 * returns 'json', so a json/json comparison produces no spurious change.
 		 */
 		public function noChangeWithDefaultPlatformWhenBothSidesAreJson(): void {
-			
 			// No platform argument → NullPlatformCapabilities default.
 			$comparator = new SchemaComparator();
 			

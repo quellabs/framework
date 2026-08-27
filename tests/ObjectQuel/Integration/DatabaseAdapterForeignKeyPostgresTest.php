@@ -11,11 +11,10 @@
 	use Quellabs\ObjectQuel\Tests\Support\FkTestSupport;
 
 	/**
-	 * DatabaseAdapter::getForeignKeys()'s PostgreSQL branch (getPostgresForeignKeys()),
-	 * exercised without a live server — this environment has no pdo_pgsql driver, so
-	 * DatabaseAdapter is partial-mocked with execute()/getDatabaseType() stubbed to
-	 * return canned rows shaped exactly like the real information_schema join would
-	 * produce, letting the real (unmocked) row-parsing logic run against them.
+	 * DatabaseAdapter::getForeignKeys()'s PostgreSQL branch (getPostgresForeignKeys()).
+	 * No pdo_pgsql driver is available here, so DatabaseAdapter is partial-mocked
+	 * with execute()/getDatabaseType() stubbed to return canned rows shaped like
+	 * the real information_schema join, letting the real row-parsing logic run.
 	 */
 	class DatabaseAdapterForeignKeyPostgresTest extends TestCase {
 		use FkTestSupport;
@@ -61,13 +60,10 @@
 		}
 
 		/**
-		 * A composite foreign key's local/referenced columns join into a cross
-		 * product here (2 local x 2 referenced = 4 rows) since information_schema
-		 * has no ordinal linking the two sides for composite constraints. Since
-		 * @Orm\ForeignKey only ever declares single-column constraints, this
-		 * ambiguous constraint is simply omitted rather than reported with a
-		 * possibly-wrong column pairing — while an unrelated single-column
-		 * constraint in the same result set is still read back correctly.
+		 * A composite FK's columns join into a cross product here (2 local x 2
+		 * referenced = 4 rows), so it's omitted as ambiguous rather than risk a
+		 * wrong pairing; an unrelated single-column constraint in the same
+		 * result set still reads back correctly.
 		 */
 		public function testCompositeConstraintIsOmittedButSingleColumnSiblingSurvives(): void {
 			$adapter = $this->makeAdapter([
@@ -102,13 +98,10 @@
 		}
 
 		/**
-		 * Proves the capability actually changes behavior end to end, not just
-		 * in isolation: with a real PlatformCapabilities reporting Postgres
-		 * support, ForeignKeyComparator must perform a REAL diff against the
-		 * (faked) live schema — not silently fall back to an empty result the
-		 * way it would for a genuinely unsupported engine. The live table has no
-		 * constraint yet, so the entity's declared foreign key must show up as
-		 * "added".
+		 * With a real PlatformCapabilities reporting Postgres support,
+		 * ForeignKeyComparator must perform a real diff, not fall back to the
+		 * empty result an unsupported engine gets — the live table has no
+		 * constraint yet, so the entity's FK must show up as "added".
 		 */
 		public function testForeignKeyComparatorPerformsARealDiffOnPostgresNotJustASkip(): void {
 			$adapter = $this->makeAdapter([]);

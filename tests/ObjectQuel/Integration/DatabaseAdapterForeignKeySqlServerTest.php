@@ -8,11 +8,10 @@
 	use Quellabs\ObjectQuel\Tests\Support\FakeForeignKeyStatement;
 
 	/**
-	 * DatabaseAdapter::getForeignKeys()'s SQL Server branch (getSqlServerForeignKeys()),
-	 * exercised without a live server — this environment has no sqlsrv driver, so
-	 * DatabaseAdapter is partial-mocked with execute()/getDatabaseType() stubbed to
-	 * return canned rows shaped exactly like sys.foreign_keys/sys.foreign_key_columns
-	 * would produce, letting the real (unmocked) row-parsing logic run against them.
+	 * DatabaseAdapter::getForeignKeys()'s SQL Server branch (getSqlServerForeignKeys()).
+	 * No sqlsrv driver is available here, so DatabaseAdapter is partial-mocked
+	 * with execute()/getDatabaseType() stubbed to return canned rows shaped like
+	 * sys.foreign_keys/sys.foreign_key_columns, letting the real parsing logic run.
 	 */
 	class DatabaseAdapterForeignKeySqlServerTest extends TestCase {
 
@@ -59,10 +58,9 @@
 		}
 
 		/**
-		 * Unlike PostgreSQL's information_schema, sys.foreign_key_columns stores
-		 * one row per local/referenced column pair natively — constraint_column_id
-		 * gives the correct per-pair ordinal — so a composite constraint round-trips
-		 * correctly here with no ambiguity to guard against.
+		 * sys.foreign_key_columns stores one row per column pair natively
+		 * (constraint_column_id gives the correct ordinal), so a composite
+		 * constraint round-trips correctly here with no ambiguity to guard against.
 		 */
 		public function testCompositeConstraintColumnsRoundTripInTheCorrectOrder(): void {
 			$adapter = $this->makeAdapter([

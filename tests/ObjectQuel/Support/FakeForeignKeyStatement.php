@@ -8,11 +8,8 @@
 	use PDO;
 
 	/**
-	 * Minimal StatementInterface stub that only implements fetchAll() with
-	 * canned rows, for testing DatabaseAdapter's row-parsing logic against
-	 * engines (PostgreSQL, SQL Server) whose PDO drivers aren't installed in
-	 * this environment — DatabaseAdapter::execute() is mocked to return one of
-	 * these instead of ever opening a real connection.
+	 * Minimal StatementInterface stub returning canned fetchAll() rows, for
+	 * testing DatabaseAdapter's row-parsing logic without a real connection.
 	 */
 	class FakeForeignKeyStatement implements StatementInterface {
 
