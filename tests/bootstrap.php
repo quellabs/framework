@@ -28,6 +28,16 @@
 	$config->setEntityNamespace('App\\Entities');
 	$config->setEntityPath(__DIR__ . '/../src/Entities');
 	$config->setProxyDir($proxyDir);
+
+	// ObjectQuel's FK/relationship integration suite needs a real EntityManager
+	// of its own, but UnitOfWork registers standalone signals (orm.prePersist
+	// etc.) on the process-wide SignalHub with no duplicate guard — a second
+	// EntityManager anywhere else in the same PHPUnit process throws. So it
+	// shares this one instance instead, via this additional entity path. Its
+	// fixtures live under their own namespace/directory (not App\Entities),
+	// which EntityLocator resolves from each file's own declared namespace, so
+	// this is safe to mix in without needing a matching entityNamespace here.
+	$config->addAdditionalEntityPath(__DIR__ . '/ObjectQuel/Fixtures/RelationshipEntities');
 	
 	// Single EntityManager for the entire test suite. Creating one per test class
 	// causes SignalHub to throw on duplicate signal registration.
