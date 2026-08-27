@@ -3,6 +3,7 @@
 	namespace Quellabs\ObjectQuel\Tests\Integration;
 
 	use PHPUnit\Framework\TestCase;
+	use Quellabs\ObjectQuel\Capabilities\PlatformCapabilities;
 	use Quellabs\ObjectQuel\Configuration;
 	use Quellabs\ObjectQuel\EntityManager;
 	use Quellabs\ObjectQuel\EntityStore;
@@ -198,7 +199,7 @@
 
 		public function testForeignKeyAndForeignKeyActionResolveForAOneToOneOwningSide(): void {
 			$em = self::em();
-			$comparator = new ForeignKeyComparator($em->getConnection(), $em->getEntityStore());
+			$comparator = new ForeignKeyComparator($em->getConnection(), $em->getEntityStore(), new PlatformCapabilities($em->getConnection()));
 
 			$result = $comparator->getEntityForeignKeys(RelProfileEntity::class);
 

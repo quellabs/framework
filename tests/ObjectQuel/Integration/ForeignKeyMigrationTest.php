@@ -38,7 +38,7 @@
 		protected function setUp(): void {
 			$this->adapter = $this->makeSqliteAdapter();
 			$this->entityStore = $this->makeFkEntityStore();
-			$this->comparator = new ForeignKeyComparator($this->adapter, $this->entityStore);
+			$this->comparator = new ForeignKeyComparator($this->adapter, $this->entityStore, new PlatformCapabilities($this->adapter));
 			$this->builder = new PhinxMigrationBuilder($this->adapter, sys_get_temp_dir(), new PlatformCapabilities($this->adapter));
 		}
 
