@@ -10,11 +10,11 @@
 	use Quellabs\ObjectQuel\Annotations\Orm\ForeignKey;
 
 	/**
-	 * Relation + Cascade + ForeignKey, but no ForeignKeyAction. Valid: Cascade no
-	 * longer has any opinion about ForeignKey at all (the two are fully
-	 * independent, like Doctrine's cascade vs. @JoinColumn(onDelete=...)), so this
-	 * builds successfully with the constraint left at its safe defaults
-	 * (RESTRICT / NO ACTION).
+	 * Relation + Cascade, plus ForeignKey on the scalar backing column, but no
+	 * ForeignKeyAction. Valid: Cascade no longer has any opinion about
+	 * ForeignKey at all (the two are fully independent, like Doctrine's cascade
+	 * vs. @JoinColumn(onDelete=...)), so this builds successfully with the
+	 * constraint left at its safe defaults (RESTRICT / NO ACTION).
 	 * @Orm\Table(name="fk_orders_no_fk")
 	 */
 	class FkOrderNoFkEntity {
@@ -27,12 +27,12 @@
 		/**
 		 * @Orm\ManyToOne(targetEntity=FkCustomerEntity::class, referencedColumn="id", localColumn="customerId", fetch="EAGER")
 		 * @Orm\Cascade(operations={"remove"})
-		 * @Orm\ForeignKey(target=FkCustomerEntity::class)
 		 */
 		public ?FkCustomerEntity $customer;
 
 		/**
 		 * @Orm\Column(name="customer_id", type="integer")
+		 * @Orm\ForeignKey(target=FkCustomerEntity::class)
 		 */
 		protected ?int $customerId = null;
 	}

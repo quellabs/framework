@@ -30,13 +30,13 @@
 		/**
 		 * @Orm\ManyToOne(targetEntity=RelCustomerEntity::class, localColumn="customerId", fetch="EAGER")
 		 * @Orm\Cascade(operations={"remove"})
-		 * @Orm\ForeignKey(target=RelCustomerEntity::class, referencedColumn="id")
-		 * @Orm\ForeignKeyAction(onDelete="CASCADE")
 		 */
 		public ?RelCustomerEntity $customer = null;
 
 		/**
 		 * @Orm\Column(name="customer_id", type="integer")
+		 * @Orm\ForeignKey(target=RelCustomerEntity::class, referencedColumn="id")
+		 * @Orm\ForeignKeyAction(onDelete="CASCADE")
 		 */
 		protected ?int $customerId = null;
 

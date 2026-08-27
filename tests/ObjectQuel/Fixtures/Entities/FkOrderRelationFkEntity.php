@@ -6,19 +6,16 @@
 	use Quellabs\ObjectQuel\Annotations\Orm\Column;
 	use Quellabs\ObjectQuel\Annotations\Orm\PrimaryKeyStrategy;
 	use Quellabs\ObjectQuel\Annotations\Orm\ManyToOne;
-	use Quellabs\ObjectQuel\Annotations\Orm\Cascade;
 	use Quellabs\ObjectQuel\Annotations\Orm\ForeignKey;
-	use Quellabs\ObjectQuel\Annotations\Orm\ForeignKeyAction;
 
 	/**
-	 * Full combo: ManyToOne + Cascade (PHP-side removal), plus ForeignKey +
-	 * ForeignKeyAction (a real ON DELETE CASCADE constraint) on the scalar
-	 * column property backing the relation's local column. Cascade and
-	 * ForeignKey/ForeignKeyAction are independent annotations here — this
-	 * entity just happens to declare both.
-	 * @Orm\Table(name="fk_orders")
+	 * Invalid case: @Orm\ForeignKey declared on the ManyToOne relation property
+	 * itself rather than on the scalar @Orm\Column property backing its local
+	 * column. ForeignKey is only legal on the scalar column. Metadata build
+	 * must throw.
+	 * @Orm\Table(name="fk_orders_relation_fk")
 	 */
-	class FkOrderEntity {
+	class FkOrderRelationFkEntity {
 		/**
 		 * @Orm\Column(name="id", type="integer", unsigned=true, primary_key=true)
 		 * @Orm\PrimaryKeyStrategy(strategy="identity")
@@ -27,18 +24,12 @@
 
 		/**
 		 * @Orm\ManyToOne(targetEntity=FkCustomerEntity::class, referencedColumn="id", localColumn="customerId", fetch="EAGER")
-		 * @Orm\Cascade(operations={"remove"})
+		 * @Orm\ForeignKey(target=FkCustomerEntity::class, referencedColumn="id")
 		 */
 		public ?FkCustomerEntity $customer;
 
 		/**
 		 * @Orm\Column(name="customer_id", type="integer")
-		 * @Orm\ForeignKey(target=FkCustomerEntity::class, referencedColumn="id")
-		 * @Orm\ForeignKeyAction(onDelete="CASCADE")
 		 */
 		protected ?int $customerId = null;
-
-		public function getId(): ?int {
-			return $this->id;
-		}
 	}

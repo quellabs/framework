@@ -8,6 +8,7 @@
 	use Quellabs\ObjectQuel\Tests\Fixtures\Entities\FkOrderEntity;
 	use Quellabs\ObjectQuel\Tests\Fixtures\Entities\FkOrderNoFkEntity;
 	use Quellabs\ObjectQuel\Tests\Fixtures\Entities\FkOrderOrmEntity;
+	use Quellabs\ObjectQuel\Tests\Fixtures\Entities\FkOrderRelationFkEntity;
 	use Quellabs\ObjectQuel\Tests\Fixtures\Entities\FkOrderScalarActionEntity;
 	use Quellabs\ObjectQuel\Tests\Fixtures\Entities\FkOrderScalarEntity;
 	use Quellabs\ObjectQuel\Tests\Fixtures\Entities\FkCustomerEntity;
@@ -22,12 +23,12 @@
 	class EntityMetadataBuilderForeignKeyTest extends TestCase {
 		use FkTestSupport;
 
-		public function testForeignKeyDeclaredOnRelationPropertyIsKeyedByDatabaseColumnName(): void {
+		public function testForeignKeyDeclaredOnScalarColumnBackingARelationIsKeyedByDatabaseColumnName(): void {
 			$metadata = $this->makeFkEntityStore()->getMetadata(FkOrderEntity::class);
 
 			// Keyed by the real DB column ('customer_id'), not the PHP property
 			// name ('customer' or 'customerId') and not the ManyToOne localColumn
-			// convention (which is itself a property name, see resolveLocalColumnName()).
+			// convention (which is itself a property name).
 			self::assertArrayHasKey('customer_id', $metadata->foreignKeys);
 			self::assertArrayNotHasKey('customer', $metadata->foreignKeys);
 			self::assertArrayNotHasKey('customerId', $metadata->foreignKeys);
@@ -36,6 +37,13 @@
 			self::assertNotNull($fk);
 			self::assertSame(FkCustomerEntity::class, $fk->getTarget());
 			self::assertSame('id', $fk->getReferencedColumn());
+		}
+
+		public function testForeignKeyDeclaredOnTheRelationPropertyItselfThrowsAtBuildTime(): void {
+			$this->expectException(\RuntimeException::class);
+			$this->expectExceptionMessage('customer');
+
+			$this->makeFkEntityStore()->getMetadata(FkOrderRelationFkEntity::class);
 		}
 
 		public function testForeignKeyDeclaredOnScalarColumnPropertyIsKeyedByDatabaseColumnName(): void {

@@ -30,13 +30,13 @@
 		/**
 		 * @Orm\OneToOne(targetEntity=RelUserEntity::class, referencedColumn="profile", localColumn="userId", fetch="EAGER")
 		 * @Orm\Cascade(operations={"remove", "persist"})
-		 * @Orm\ForeignKey(target=RelUserEntity::class, referencedColumn="id")
-		 * @Orm\ForeignKeyAction(onDelete="CASCADE")
 		 */
 		public ?RelUserEntity $user = null;
 
 		/**
 		 * @Orm\Column(name="user_id", type="integer")
+		 * @Orm\ForeignKey(target=RelUserEntity::class, referencedColumn="id")
+		 * @Orm\ForeignKeyAction(onDelete="CASCADE")
 		 */
 		protected ?int $userId = null;
 
