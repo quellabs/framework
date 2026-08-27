@@ -121,7 +121,7 @@
 			$code = $this->generateEntityCode('oq_mk_orders');
 
 			self::assertStringContainsString(
-				'@Orm\ForeignKey(target="App\\Entities\\OqMkCustomersEntity", referencedColumn="id")',
+				'@Orm\ForeignKey(target=App\\Entities\\OqMkCustomersEntity::class, referencedColumn="id")',
 				$code
 			);
 			self::assertStringContainsString(

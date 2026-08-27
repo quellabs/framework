@@ -159,7 +159,7 @@
 				],
 			]);
 
-			self::assertStringContainsString('@Orm\\ForeignKey(target="App\\Entities\\CustomerEntity")', $docComment);
+			self::assertStringContainsString('@Orm\\ForeignKey(target=App\\Entities\\CustomerEntity::class)', $docComment);
 			self::assertStringNotContainsString('@Orm\\ForeignKeyAction', $docComment);
 		}
 
@@ -177,7 +177,7 @@
 				],
 			]);
 
-			self::assertStringContainsString('@Orm\\ForeignKey(target="App\\Entities\\CustomerEntity")', $docComment);
+			self::assertStringContainsString('@Orm\\ForeignKey(target=App\\Entities\\CustomerEntity::class)', $docComment);
 			self::assertStringContainsString('@Orm\\ForeignKeyAction(onDelete="CASCADE", onUpdate="RESTRICT")', $docComment);
 		}
 
@@ -228,7 +228,7 @@
 
 			$content = file_get_contents($this->entityPath . '/OrderEntity.php');
 
-			self::assertStringContainsString('@Orm\\ForeignKey(target="App\\Entities\\CustomerEntity")', $content);
+			self::assertStringContainsString('@Orm\\ForeignKey(target=App\\Entities\\CustomerEntity::class)', $content);
 			self::assertStringContainsString('@Orm\\ForeignKeyAction(onDelete="CASCADE", onUpdate="NO ACTION")', $content);
 		}
 
@@ -272,7 +272,7 @@
 			// ForeignKeyAction should NOT be imported: onDelete/onUpdate here are the
 			// safe defaults, so generatePropertyDocComment() never emits that annotation.
 			self::assertStringNotContainsString('Orm\\ForeignKeyAction;', $content);
-			self::assertStringContainsString('@Orm\\ForeignKey(target="App\\Entities\\OwnerEntity")', $content);
+			self::assertStringContainsString('@Orm\\ForeignKey(target=App\\Entities\\OwnerEntity::class)', $content);
 
 			// Re-running against the now-updated file must not duplicate the import.
 			$modifier->createOrUpdateEntity('Legacy', [

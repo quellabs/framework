@@ -150,7 +150,7 @@
 			self::assertStringContainsString('use Quellabs\\ObjectQuel\\Annotations\Orm\ForeignKey;', $code);
 			self::assertStringContainsString('use Quellabs\\ObjectQuel\\Annotations\Orm\ForeignKeyAction;', $code);
 			self::assertStringContainsString(
-				'@Orm\ForeignKey(target="App\\Entities\\CustomersEntity", referencedColumn="id")',
+				'@Orm\ForeignKey(target=App\\Entities\\CustomersEntity::class, referencedColumn="id")',
 				$code
 			);
 			self::assertStringContainsString(
@@ -187,7 +187,7 @@
 			$code = $this->generateEntityCode($command, $provider, 'employees', true);
 
 			self::assertStringContainsString(
-				'@Orm\ForeignKey(target="App\\Entities\\EmployeesEntity", referencedColumn="id")',
+				'@Orm\ForeignKey(target=App\\Entities\\EmployeesEntity::class, referencedColumn="id")',
 				$code
 			);
 
@@ -226,7 +226,7 @@
 			$code = $this->generateEntityCode($command, $provider, 'products', true);
 
 			self::assertStringContainsString(
-				'@Orm\ForeignKey(target="App\\Entities\\SuppliersEntity", referencedColumn="id")',
+				'@Orm\ForeignKey(target=App\\Entities\\SuppliersEntity::class, referencedColumn="id")',
 				$code
 			);
 			self::assertStringContainsString(
@@ -310,7 +310,7 @@
 			$code = $this->generateEntityCode($command, $provider, 'orders', true);
 
 			self::assertStringContainsString(
-				'@Orm\ForeignKey(target="App\\Entities\\CustomersEntity", referencedColumn="id")',
+				'@Orm\ForeignKey(target=App\\Entities\\CustomersEntity::class, referencedColumn="id")',
 				$code
 			);
 			self::assertStringNotContainsString('@Orm\ForeignKeyAction', $code);
@@ -364,11 +364,11 @@
 			$code = $this->generateEntityCode($command, $provider, 'orders', true);
 
 			self::assertStringContainsString(
-				'@Orm\ForeignKey(target="App\\Entities\\CustomersEntity", referencedColumn="id")',
+				'@Orm\ForeignKey(target=App\\Entities\\CustomersEntity::class, referencedColumn="id")',
 				$code
 			);
 			self::assertStringContainsString(
-				'@Orm\ForeignKey(target="App\\Entities\\WarehousesEntity", referencedColumn="id")',
+				'@Orm\ForeignKey(target=App\\Entities\\WarehousesEntity::class, referencedColumn="id")',
 				$code
 			);
 			self::assertStringContainsString('@Orm\ForeignKeyAction(onDelete="CASCADE", onUpdate="NO ACTION")', $code);
@@ -414,7 +414,7 @@
 			$code = $this->generateEntityCode($command, $provider, 'orders', true);
 
 			self::assertStringContainsString(
-				'@Orm\ForeignKey(target="App\\Entities\\CustomersEntity", referencedColumn="email")',
+				'@Orm\ForeignKey(target=App\\Entities\\CustomersEntity::class, referencedColumn="email")',
 				$code
 			);
 		}
@@ -439,7 +439,7 @@
 			$code = $this->generateEntityCode($command, $provider, 'order_items', true);
 
 			self::assertStringContainsString(
-				'@Orm\ForeignKey(target="App\\Entities\\ProductCategoriesEntity", referencedColumn="id")',
+				'@Orm\ForeignKey(target=App\\Entities\\ProductCategoriesEntity::class, referencedColumn="id")',
 				$code
 			);
 			self::assertStringContainsString('protected int $productCategoryId;', $code);

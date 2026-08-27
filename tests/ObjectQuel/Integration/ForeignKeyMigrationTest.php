@@ -7,6 +7,7 @@
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
 	use Quellabs\ObjectQuel\Sculpt\Helpers\ForeignKeyComparator;
 	use Quellabs\ObjectQuel\Sculpt\Helpers\PhinxMigrationBuilder;
+	use Quellabs\ObjectQuel\Capabilities\PlatformCapabilities;
 	use Quellabs\ObjectQuel\Tests\Fixtures\Entities\FkCustomerEntity;
 	use Quellabs\ObjectQuel\Tests\Fixtures\Entities\FkOrderEntity;
 	use Quellabs\ObjectQuel\Tests\Fixtures\Entities\FkOrderRemovedEntity;
@@ -38,7 +39,7 @@
 			$this->adapter = $this->makeSqliteAdapter();
 			$this->entityStore = $this->makeFkEntityStore();
 			$this->comparator = new ForeignKeyComparator($this->adapter, $this->entityStore);
-			$this->builder = new PhinxMigrationBuilder($this->adapter, sys_get_temp_dir());
+			$this->builder = new PhinxMigrationBuilder($this->adapter, sys_get_temp_dir(), new PlatformCapabilities($this->adapter));
 		}
 
 		/**
@@ -84,14 +85,17 @@
 
 			$content = $this->buildMigrationContent(['fk_orders_scalar' => $changes]);
 
+			// SQLite has no real named constraints (see
+			// PlatformCapabilitiesInterface::supportsNamedForeignKeys()), so neither
+			// the add nor the eventual drop carries a 'constraint' name.
 			self::assertStringContainsString(
 				"->addForeignKey(['customer_id'], 'fk_customers', ['id'], " .
-				"['delete' => 'RESTRICT', 'update' => 'NO ACTION', 'constraint' => 'fk_fk_orders_scalar_customer_id'])",
+				"['delete' => 'RESTRICT', 'update' => 'NO ACTION'])",
 				$content
 			);
-			// down() must undo it with the same constraint name.
+			// down() must undo it, dropping by column list rather than by name.
 			self::assertStringContainsString(
-				"->dropForeignKey(['customer_id'], 'fk_fk_orders_scalar_customer_id')",
+				"->dropForeignKey(['customer_id'])",
 				$content
 			);
 		}
@@ -123,14 +127,17 @@
 
 			$content = $this->buildMigrationContent(['fk_orders_removed' => $changes]);
 
+			// SQLite has no real named constraints (see
+			// PlatformCapabilitiesInterface::supportsNamedForeignKeys()), so the
+			// drop targets the column list instead of a constraint name.
 			self::assertStringContainsString(
-				"->dropForeignKey(['customer_id'], 'fk_fk_orders_removed_customer_id')",
+				"->dropForeignKey(['customer_id'])",
 				$content
 			);
-			// down() must restore it.
+			// down() must restore it, also without a constraint name.
 			self::assertStringContainsString(
 				"->addForeignKey(['customer_id'], 'fk_customers', ['id'], " .
-				"['delete' => 'RESTRICT', 'update' => 'NO ACTION', 'constraint' => 'fk_fk_orders_removed_customer_id'])",
+				"['delete' => 'RESTRICT', 'update' => 'NO ACTION'])",
 				$content
 			);
 		}
@@ -170,15 +177,18 @@
 
 			$content = $this->buildMigrationContent(['fk_orders_scalar_action' => $changes]);
 
-			// up() drops the old constraint (by name) and adds the new one with
-			// the entity's rule.
+			// up() drops the old constraint and adds the new one with the entity's
+			// rule. SQLite has no named constraints, so the drop targets the column
+			// list rather than the constraint name.
 			self::assertStringContainsString(
-				"->dropForeignKey(['customer_id'], 'fk_fk_orders_scalar_action_customer_id')",
+				"->dropForeignKey(['customer_id'])",
 				$content
 			);
+			// SQLite has no real named constraints, so the recreated FK carries no
+			// 'constraint' option either.
 			self::assertStringContainsString(
 				"->addForeignKey(['customer_id'], 'fk_customers', ['id'], " .
-				"['delete' => 'CASCADE', 'update' => 'RESTRICT', 'constraint' => 'fk_fk_orders_scalar_action_customer_id'])",
+				"['delete' => 'CASCADE', 'update' => 'RESTRICT'])",
 				$content
 			);
 
@@ -194,7 +204,7 @@
 			$downBody = substr($content, $downPos);
 			self::assertStringContainsString(
 				"->addForeignKey(['customer_id'], 'fk_customers', ['id'], " .
-				"['delete' => 'RESTRICT', 'update' => 'NO ACTION', 'constraint' => 'fk_fk_orders_scalar_action_customer_id'])",
+				"['delete' => 'RESTRICT', 'update' => 'NO ACTION'])",
 				$downBody
 			);
 		}
