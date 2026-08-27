@@ -46,6 +46,16 @@
 		public function supportsIndexHiding(): bool {
 			return false;
 		}
+
+		/**
+		 * @inheritDoc
+		 *
+		 * Defaults to MySQL/MariaDB syntax; unreachable in practice since
+		 * supportsIndexHiding() is false here, so callers should never get this far.
+		 */
+		public function getIndexVisibilityKeywords(): array {
+			return ['hidden' => 'INVISIBLE', 'visible' => 'VISIBLE'];
+		}
 		
 		/**
 		 * @inheritDoc
@@ -139,5 +149,26 @@
 		 */
 		public function getRegexpFallbackOperators(): array {
 			return ['match' => 'REGEXP', 'notMatch' => 'NOT REGEXP'];
+		}
+
+		/**
+		 * @inheritDoc
+		 *
+		 * Conservative default: false, so callers neither write nor rely on a
+		 * constraint name, and drop by column list instead of by name.
+		 */
+		public function supportsNamedForeignKeys(): bool {
+			return false;
+		}
+
+		/**
+		 * @inheritDoc
+		 *
+		 * Conservative default: false, so callers never treat an empty
+		 * DatabaseAdapter::getForeignKeys() result as "no foreign keys exist"
+		 * without knowing whether this engine can even report them.
+		 */
+		public function supportsForeignKeyIntrospection(): bool {
+			return false;
 		}
 	}

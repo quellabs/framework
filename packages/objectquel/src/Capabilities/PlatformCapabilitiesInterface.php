@@ -56,6 +56,19 @@
 		 * @return bool
 		 */
 		public function supportsIndexHiding(): bool;
+
+		/**
+		 * Returns the ALTER INDEX keyword pair used to hide an index from the
+		 * query optimizer and restore it to visibility. Only meaningful when
+		 * supportsIndexHiding() is true.
+		 *
+		 * Examples by engine:
+		 *   MySQL   → ['hidden' => 'INVISIBLE',  'visible' => 'VISIBLE']
+		 *   MariaDB → ['hidden' => 'IGNORED',    'visible' => 'NOT IGNORED']
+		 *
+		 * @return array{hidden: string, visible: string}
+		 */
+		public function getIndexVisibilityKeywords(): array;
 		
 		/**
 		 * Returns true if the database engine supports ORDER BY FIELD(col, v1, v2, ...).
@@ -200,4 +213,33 @@
 		 * @return array{match: string, notMatch: string}
 		 */
 		public function getRegexpFallbackOperators(): array;
+
+		/**
+		 * Returns true if the database engine has real, independently addressable
+		 * named foreign key constraints, not just inert text embedded at creation
+		 * time. True for MySQL, MariaDB, PostgreSQL, and SQL Server; false for
+		 * SQLite, which parses a `CONSTRAINT name` clause but never reports or
+		 * lets you drop by that name.
+		 *
+		 * Callers must omit the constraint name from both addForeignKey() and
+		 * dropForeignKey() when this returns false.
+		 *
+		 * @return bool
+		 */
+		public function supportsNamedForeignKeys(): bool;
+
+		/**
+		 * Returns true if DatabaseAdapter::getForeignKeys() can actually
+		 * introspect real foreign key constraints for this engine. True for
+		 * every engine getDatabaseType() can identify today.
+		 *
+		 * Exists so callers that diff against a live schema
+		 * (ForeignKeyComparator, IndexComparator) can tell "no foreign keys
+		 * exist" apart from "this engine isn't introspectable" — both return an
+		 * empty array, but treating the latter as the former would make every
+		 * entity-declared foreign key look newly added on every run.
+		 *
+		 * @return bool
+		 */
+		public function supportsForeignKeyIntrospection(): bool;
 	}

@@ -5,37 +5,44 @@
 	use Quellabs\ObjectQuel\Annotations\Orm\FullTextIndex;
 	use Quellabs\ObjectQuel\Annotations\Orm\Index;
 	use Quellabs\ObjectQuel\Annotations\Orm\UniqueIndex;
+	use Quellabs\ObjectQuel\Capabilities\NullPlatformCapabilities;
+	use Quellabs\ObjectQuel\Capabilities\PlatformCapabilitiesInterface;
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
 	use Quellabs\ObjectQuel\EntityStore;
 	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
 	use Quellabs\ObjectQuel\Sculpt\SculptTypes;
-	
+
 	/**
 	 * @phpstan-import-type IndexDefinition from SculptTypes
 	 * @phpstan-import-type IndexChangeSet from SculptTypes
 	 */
 	class IndexComparator {
-		
+
 		/**
 		 * Database connection / interface with cakephp/database and Phinx
 		 * @var DatabaseAdapter
 		 */
 		private DatabaseAdapter $connection;
-		
+
 		/**
 		 * EntityStore manages entity metadata and relations
 		 * @var EntityStore
 		 */
 		private EntityStore $entityStore;
-		
+
+		/** @var PlatformCapabilitiesInterface Describes what the connected database engine supports */
+		private PlatformCapabilitiesInterface $platform;
+
 		/**
 		 * IndexComparator constructor
 		 * @param DatabaseAdapter $connection
 		 * @param EntityStore $entityStore
+		 * @param PlatformCapabilitiesInterface $platform Database engine capability descriptor
 		 */
-		public function __construct(DatabaseAdapter $connection, EntityStore $entityStore) {
+		public function __construct(DatabaseAdapter $connection, EntityStore $entityStore, PlatformCapabilitiesInterface $platform = new NullPlatformCapabilities()) {
 			$this->connection = $connection;
 			$this->entityStore = $entityStore;
+			$this->platform = $platform;
 		}
 		
 		/**
@@ -54,24 +61,24 @@
 		public function compareIndexes(mixed $entity): array {
 			// Fetch the metadata
 			$metadata = $this->entityStore->getMetadata($entity);
-			
+
 			// Get database indexes
 			$tableIndexes = $this->getTableIndexes($metadata->tableName);
-			
+
 			// Get entity indexes
 			$entityIndexes = $this->getEntityIndexes($entity);
-			
+
 			// Early return if both are empty
 			if (empty($tableIndexes) && empty($entityIndexes)) {
 				return ['added' => [], 'modified' => [], 'deleted' => []];
 			}
-			
+
 			// Initialize results arrays
 			$result = [
 				'added'    => [],
 				'modified' => []
 			];
-			
+
 			// Find missing and modified indexes in one pass through entity indexes
 			foreach ($entityIndexes as $name => $config) {
 				if (!isset($tableIndexes[$name])) {
@@ -82,14 +89,46 @@
 						'entity'   => $config
 					];
 				}
-				
+
 				// Mark as processed
 				unset($tableIndexes[$name]);
 			}
-			
-			// Any remaining DB indexes must be deleted
-			$result['deleted'] = $tableIndexes;
+
+			// Remaining DB indexes are candidates for deletion, except ones a live FK
+			// relies on: MySQL auto-creates a supporting index per FK that @Orm\Index
+			// never declares, and dropping it while the constraint still needs it fails
+			// outright. Whether the FK itself is kept, modified, or dropped is
+			// ForeignKeyComparator's concern, not this one's.
+			$fkBackedColumnSets = $this->getForeignKeyBackedColumnSets($metadata->tableName);
+			$result['deleted'] = [];
+
+			foreach ($tableIndexes as $name => $config) {
+				if (!in_array($config['columns'], $fkBackedColumnSets, true)) {
+					$result['deleted'][$name] = $config;
+				}
+			}
+
 			return $result;
+		}
+
+		/**
+		 * Returns the column lists of every live foreign key constraint on a table,
+		 * so compareIndexes() can recognize an index that only exists to support one.
+		 * Returns an empty list when the engine isn't introspectable (see
+		 * PlatformCapabilitiesInterface::supportsForeignKeyIntrospection()), since an
+		 * empty getForeignKeys() there means "unknown", not "there are none".
+		 * @param string $tableName
+		 * @return array<string, string[]>
+		 */
+		private function getForeignKeyBackedColumnSets(string $tableName): array {
+			if (!$this->platform->supportsForeignKeyIntrospection()) {
+				return [];
+			}
+
+			return array_map(
+				static fn(array $foreignKey): array => $foreignKey['columns'],
+				$this->connection->getForeignKeys($tableName)
+			);
 		}
 		
 		

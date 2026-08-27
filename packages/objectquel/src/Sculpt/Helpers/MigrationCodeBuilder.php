@@ -101,6 +101,44 @@
 			$this->appendToChain("            ->removeIndexByName('{$name}')");
 			return $this;
 		}
+
+		/**
+		 * Append an addForeignKey() call to the chain.
+		 *
+		 * @param string[] $columns Local column(s) that carry the foreign key
+		 * @param string   $referencedTable Table the foreign key points to
+		 * @param string[] $referencedColumns Column(s) on the referenced table
+		 * @param string[] $options Pre-formatted option strings, e.g. ["'delete' => 'CASCADE'", "'constraint' => 'fk_orders_customer_id'"]
+		 */
+		public function addForeignKey(array $columns, string $referencedTable, array $referencedColumns, array $options): static {
+			$columnsList = "'" . implode("', '", $columns) . "'";
+			$referencedColumnsList = "'" . implode("', '", $referencedColumns) . "'";
+			$optionsStr = implode(', ', $options);
+			$this->appendToChain("            ->addForeignKey([{$columnsList}], '{$referencedTable}', [{$referencedColumnsList}], [{$optionsStr}])");
+			return $this;
+		}
+
+		/**
+		 * Append a dropForeignKey() call to the chain.
+		 *
+		 * Pass $constraintName only on engines with real named constraints (see
+		 * PlatformCapabilitiesInterface::supportsNamedForeignKeys()); omit it
+		 * (null) elsewhere so Phinx falls back to dropping by column list.
+		 *
+		 * @param string[] $columns Local column(s) the constraint is on
+		 * @param string|null $constraintName Name of the constraint to drop, or null to drop by column list
+		 */
+		public function dropForeignKey(array $columns, ?string $constraintName = null): static {
+			$columnsList = "'" . implode("', '", $columns) . "'";
+
+			if ($constraintName !== null) {
+				$this->appendToChain("            ->dropForeignKey([{$columnsList}], '{$constraintName}')");
+			} else {
+				$this->appendToChain("            ->dropForeignKey([{$columnsList}])");
+			}
+
+			return $this;
+		}
 		
 		/**
 		 * Append a raw $this->execute() statement.

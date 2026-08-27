@@ -7,7 +7,6 @@
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\ObjectQuel\Capabilities\NullPlatformCapabilities;
 	use Quellabs\ObjectQuel\Capabilities\PlatformCapabilitiesInterface;
-	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
 	use Quellabs\ObjectQuel\Sculpt\Helpers\SchemaComparator;
 	
 	/**
@@ -21,17 +20,9 @@
 	class SchemaComparatorJsonTest extends TestCase {
 		
 		/**
-		 * Build a DatabaseAdapter mock that reports it does not support native enums
-		 * (irrelevant to JSON tests but required by normalizeColumnDefinition).
-		 */
-		private function makeAdapter(): DatabaseAdapter {
-			$adapter = $this->createMock(DatabaseAdapter::class);
-			$adapter->method('supportsNativeEnums')->willReturn(false);
-			return $adapter;
-		}
-		
-		/**
 		 * Build a platform mock that returns the given native JSON type.
+		 * supportsNativeEnums() is left unstubbed (defaults to false), which is
+		 * irrelevant to JSON tests but required by normalizeColumnDefinition.
 		 */
 		private function makePlatform(string $nativeJsonType): PlatformCapabilitiesInterface {
 			$platform = $this->createMock(PlatformCapabilitiesInterface::class);
@@ -60,10 +51,9 @@
 		 * On MySQL both entity and database use 'json'; no change should be detected.
 		 */
 		public function noChangeDetectedWhenBothSidesAreJsonOnMysql(): void {
-			$adapter = $this->makeAdapter();
 			$platform = $this->makePlatform('json');   // MySQL/MariaDB
 			
-			$comparator = new SchemaComparator($adapter, $platform);
+			$comparator = new SchemaComparator($platform);
 			
 			$entityColumns = ['data' => $this->entityJsonColumn()];
 			$tableColumns = ['data' => ['type' => 'json', 'nullable' => true, 'default' => null]];
@@ -85,10 +75,9 @@
 		 * After normalization both sides must be equal — no modification generated.
 		 */
 		public function noChangeDetectedWhenEntityIsJsonAndDatabaseIsJsonbOnPostgres(): void {
-			$adapter = $this->makeAdapter();
 			$platform = $this->makePlatform('jsonb');   // PostgreSQL
 			
-			$comparator = new SchemaComparator($adapter, $platform);
+			$comparator = new SchemaComparator($platform);
 			
 			$entityColumns = ['data' => $this->entityJsonColumn()];
 			$tableColumns = ['data' => ['type' => 'jsonb', 'nullable' => true, 'default' => null]];
@@ -106,10 +95,9 @@
 		 * even when the type names differ between entity and database.
 		 */
 		public function realChangeOnJsonColumnIsStillDetectedOnPostgres(): void {
-			$adapter = $this->makeAdapter();
 			$platform = $this->makePlatform('jsonb');
 			
-			$comparator = new SchemaComparator($adapter, $platform);
+			$comparator = new SchemaComparator($platform);
 			
 			// Entity: nullable = true. Database: nullable = false (someone changed it manually).
 			$entityColumns = ['data' => ['type' => 'json', 'nullable' => true, 'default' => null]];
@@ -131,10 +119,8 @@
 		 * returns 'json', so a json/json comparison produces no spurious change.
 		 */
 		public function noChangeWithDefaultPlatformWhenBothSidesAreJson(): void {
-			$adapter = $this->makeAdapter();
-			
 			// No platform argument → NullPlatformCapabilities default.
-			$comparator = new SchemaComparator($adapter);
+			$comparator = new SchemaComparator();
 			
 			$entityColumns = ['data' => $this->entityJsonColumn()];
 			$tableColumns = ['data' => ['type' => 'json', 'nullable' => true, 'default' => null]];
@@ -153,10 +139,9 @@
 		 * A JSON column present in the entity but absent from the database is reported as added.
 		 */
 		public function jsonColumnMissingFromDatabaseIsReportedAsAdded(): void {
-			$adapter = $this->makeAdapter();
 			$platform = $this->makePlatform('json');
 			
-			$comparator = new SchemaComparator($adapter, $platform);
+			$comparator = new SchemaComparator($platform);
 			
 			$entityColumns = ['data' => $this->entityJsonColumn()];
 			$tableColumns = [];
@@ -173,10 +158,9 @@
 		 * A JSON column present in the database but absent from the entity is reported as deleted.
 		 */
 		public function jsonColumnMissingFromEntityIsReportedAsDeleted(): void {
-			$adapter = $this->makeAdapter();
 			$platform = $this->makePlatform('jsonb');
 			
-			$comparator = new SchemaComparator($adapter, $platform);
+			$comparator = new SchemaComparator($platform);
 			
 			$entityColumns = [];
 			$tableColumns = ['data' => ['type' => 'jsonb', 'nullable' => true, 'default' => null]];

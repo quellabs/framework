@@ -156,7 +156,20 @@
 			// is safe to use directly for both engines.
 			return version_compare($this->adapter->getServerVersion(), $minimumVersions[$dbType], '>=');
 		}
-		
+
+		/**
+		 * @inheritDoc
+		 *
+		 * Only reached when supportsIndexHiding() is true, so this only needs to
+		 * distinguish MySQL from MariaDB.
+		 */
+		public function getIndexVisibilityKeywords(): array {
+			return match ($this->adapter->getDatabaseType()) {
+				'mysql' => ['hidden' => 'INVISIBLE', 'visible' => 'VISIBLE'],
+				default => ['hidden' => 'IGNORED', 'visible' => 'NOT IGNORED'],
+			};
+		}
+
 		/**
 		 * @inheritDoc
 		 */
@@ -316,7 +329,27 @@
 				default => 'NOW()',
 			};
 		}
-		
+
+		/**
+		 * @inheritDoc
+		 *
+		 * SQLite is the only engine here without real, independently addressable
+		 * named constraints — every other supported engine tracks one for real.
+		 */
+		public function supportsNamedForeignKeys(): bool {
+			return $this->adapter->getDatabaseType() !== 'sqlite';
+		}
+
+		/**
+		 * @inheritDoc
+		 *
+		 * DatabaseAdapter::getForeignKeys() has a real implementation for every
+		 * engine getDatabaseType() can identify.
+		 */
+		public function supportsForeignKeyIntrospection(): bool {
+			return in_array($this->adapter->getDatabaseType(), ['mysql', 'mariadb', 'sqlite', 'pgsql', 'sqlsrv']);
+		}
+
 		/**
 		 * REGEXP_LIKE(col, pattern, flags) was added in MySQL 8.0.0.
 		 * @return bool

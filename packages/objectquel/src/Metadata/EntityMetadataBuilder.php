@@ -8,7 +8,11 @@
 	use Quellabs\AnnotationReader\Collection\AnnotationCollection;
 	use Quellabs\AnnotationReader\Exception\AnnotationReaderException;
 	use Quellabs\AnnotationReader\Exception\ParserException;
+	use Quellabs\ObjectQuel\Annotations\Orm\Cascade;
 	use Quellabs\ObjectQuel\Annotations\Orm\Column;
+	use Quellabs\ObjectQuel\Annotations\Orm\EntityBridge;
+	use Quellabs\ObjectQuel\Annotations\Orm\ForeignKey;
+	use Quellabs\ObjectQuel\Annotations\Orm\ForeignKeyAction;
 	use Quellabs\ObjectQuel\Annotations\Orm\FullTextIndex;
 	use Quellabs\ObjectQuel\Annotations\Orm\Index;
 	use Quellabs\ObjectQuel\Annotations\Orm\ManyToOne;
@@ -85,7 +89,11 @@
 				}
 				
 				$tableName = $tableAnnotation->getName();
-				
+
+				// Marks a pure linking/junction entity; QueryBuilder reads this to decide
+				// whether to eager-join one hop further through its own relations.
+				$isEntityBridge = $classAnnotations->getFirst(EntityBridge::class) !== null;
+
 				// Get the list of declared properties via reflection
 				$properties = $this->reflectionHandler->getProperties($className);
 				
@@ -108,14 +116,17 @@
 				$manyToOneRelations = $this->extractRelations($annotations, ManyToOne::class);
 				$oneToOneRelations = $this->extractRelations($annotations, OneToOne::class);
 				$inverseOfRelations = $this->extractRelations($annotations, InverseOf::class);
-				
+				$foreignKeys = $this->extractForeignKeys($className, $annotations, $columnData->columnMap, $manyToOneRelations, $oneToOneRelations);
+				$foreignKeyActions = $this->extractForeignKeyActions($className, $annotations, $columnData->columnMap, $manyToOneRelations, $oneToOneRelations, $foreignKeys);
+
 				// Validate that every localColumn declared on a ManyToOne or OneToOne
 				// has a corresponding @Orm\Column property on this entity. Catching this
 				// at metadata build time gives a clear error instead of a silent hydration failure.
 				$this->validateRelationColumns($className, $annotations, $manyToOneRelations, $oneToOneRelations);
 				$this->validateSingleRelationPerProperty($className, $manyToOneRelations, $oneToOneRelations, $inverseOfRelations);
 				$this->validateInverseOfPropertyTypes($className, $inverseOfRelations);
-				
+				$this->validateCascadeRequiresRelation($className, $annotations, $manyToOneRelations, $oneToOneRelations);
+
 				// Return  a new EntityMetadataRecord containing all relation data
 				return new EntityMetadataRecord(
 					className: $className,
@@ -135,6 +146,9 @@
 					softDeleteProperty: $columnData->softDeleteProperty,
 					softDeleteColumn: $columnData->softDeleteColumn,
 					softDeleteColumnType: $columnData->softDeleteColumnType,
+					foreignKeys: $foreignKeys,
+					foreignKeyActions: $foreignKeyActions,
+					isEntityBridge: $isEntityBridge,
 				);
 			} catch (\RuntimeException $e) {
 				throw $e;
@@ -268,6 +282,144 @@
 			return $relations;
 		}
 		
+		/**
+		 * Extract ForeignKey annotations, keyed by database column name rather than
+		 * property name — MakeMigrationsCommand looks these up by column without
+		 * caring whether that column belongs to a scalar property or the local side
+		 * of a ManyToOne/OneToOne relation.
+		 *
+		 * A ForeignKey may be declared either on the scalar @Orm\Column property that
+		 * backs the FK column directly, or on a ManyToOne/OneToOne property, in which
+		 * case the column name is derived the same way validateRelationColumns() does
+		 * (relation's localColumn, or "{property}Id" by convention).
+		 * @param class-string $className
+		 * @param array<string, AnnotationCollection> $annotations
+		 * @param array<string, string> $columnMap Property name => column name
+		 * @param array<string, ManyToOne> $manyToOneRelations
+		 * @param array<string, OneToOne> $oneToOneRelations
+		 * @return array<string, ForeignKey> Column name => ForeignKey annotation
+		 * @throws \RuntimeException When a ForeignKey annotation's column can't be determined
+		 */
+		private function extractForeignKeys(
+			string $className,
+			array $annotations,
+			array $columnMap,
+			array $manyToOneRelations,
+			array $oneToOneRelations
+		): array {
+			$relations = $manyToOneRelations + $oneToOneRelations;
+			$foreignKeys = [];
+
+			foreach ($annotations as $property => $annotationCollection) {
+				foreach ($annotationCollection as $annotation) {
+					if (!$annotation instanceof ForeignKey) {
+						continue;
+					}
+
+					$columnName = $this->resolveLocalColumnName($property, $columnMap, $relations);
+
+					if ($columnName === null) {
+						throw new \RuntimeException(
+							"Property '{$property}' on '{$className}' carries an '@Orm\\ForeignKey' annotation " .
+							"but its database column name can't be determined: it has neither an '@Orm\\Column' " .
+							"of its own, nor a ManyToOne/OneToOne relation whose localColumn resolves to a " .
+							"property that has one."
+						);
+					}
+
+					// Normalize the target entity name the same way ManyToOne::targetEntity is,
+					// so callers always receive a fully qualified class name.
+					$annotation->setTarget($this->entityStore->normalizeEntityClass($annotation->getTarget()));
+					$foreignKeys[$columnName] = $annotation;
+					break;
+				}
+			}
+
+			return $foreignKeys;
+		}
+
+		/**
+		 * Collects @Orm\ForeignKeyAction annotations, keyed by the same database
+		 * column name extractForeignKeys() uses, so the two can be looked up
+		 * together by column. ForeignKeyAction only configures an existing
+		 * ForeignKey's ON DELETE/ON UPDATE behavior — it's meaningless without one,
+		 * so a ForeignKeyAction with no matching ForeignKey on the same column is a
+		 * build-time error rather than a silently-ignored annotation.
+		 * @param class-string $className
+		 * @param array<string, AnnotationCollection> $annotations
+		 * @param array<string, string> $columnMap Property name => column name
+		 * @param array<string, ManyToOne> $manyToOneRelations
+		 * @param array<string, OneToOne> $oneToOneRelations
+		 * @param array<string, ForeignKey> $foreignKeys Column name => ForeignKey annotation
+		 * @return array<string, ForeignKeyAction> Column name => ForeignKeyAction annotation
+		 * @throws \RuntimeException When a ForeignKeyAction has no matching ForeignKey
+		 */
+		private function extractForeignKeyActions(
+			string $className,
+			array $annotations,
+			array $columnMap,
+			array $manyToOneRelations,
+			array $oneToOneRelations,
+			array $foreignKeys
+		): array {
+			$relations = $manyToOneRelations + $oneToOneRelations;
+			$foreignKeyActions = [];
+
+			foreach ($annotations as $property => $annotationCollection) {
+				foreach ($annotationCollection as $annotation) {
+					if (!$annotation instanceof ForeignKeyAction) {
+						continue;
+					}
+
+					$columnName = $this->resolveLocalColumnName($property, $columnMap, $relations);
+
+					if ($columnName === null || !isset($foreignKeys[$columnName])) {
+						$columnDescription = $columnName ?? $property;
+
+						throw new \RuntimeException(
+							"Property '{$property}' on '{$className}' carries an '@Orm\\ForeignKeyAction' " .
+							"annotation but no matching '@Orm\\ForeignKey' exists for column " .
+							"'{$columnDescription}'. ForeignKeyAction only configures an existing foreign " .
+							"key's ON DELETE/ON UPDATE behavior — declare '@Orm\\ForeignKey' for that " .
+							"column first."
+						);
+					}
+
+					$foreignKeyActions[$columnName] = $annotation;
+					break;
+				}
+			}
+
+			return $foreignKeyActions;
+		}
+
+		/**
+		 * Resolves the database column name backing a property.
+		 *
+		 * A property either carries its own @Orm\Column (the column name is read
+		 * directly from $columnMap), or is a ManyToOne/OneToOne relation property,
+		 * in which case its localColumn is — by this codebase's own convention, see
+		 * validateRelationColumns() — a PHP property name (defaulting to
+		 * "{property}Id"), not a database column name, and must be resolved through
+		 * $columnMap a second time to reach the actual column.
+		 * @param string $property
+		 * @param array<string, string> $columnMap Property name => database column name
+		 * @param array<string, ManyToOne|OneToOne> $relations Property => relation annotation
+		 * @return string|null Database column name, or null if it can't be determined
+		 */
+		private function resolveLocalColumnName(string $property, array $columnMap, array $relations): ?string {
+			if (isset($columnMap[$property])) {
+				return $columnMap[$property];
+			}
+
+			if (isset($relations[$property])) {
+				$localProperty = $relations[$property]->getLocalColumn() ?? $property . 'Id';
+				return $columnMap[$localProperty] ?? null;
+			}
+
+			return null;
+		}
+
 		/**
 		 * Extract index annotations from class-level annotations.
 		 * @param class-string $className The fully qualified class name
@@ -456,6 +608,67 @@
 			return false;
 		}
 		
+		/**
+		 * Validates that every @Orm\Cascade annotation sits on a property that also
+		 * carries a ManyToOne/OneToOne relation.
+		 *
+		 * Cascade is purely about ORM-side (PHP) behavior: whether UnitOfWork also
+		 * walks and persists/removes the related entity. That requires an actual
+		 * object relation to walk — a plain scalar column has nothing for it to do.
+		 * Deliberately independent of @Orm\ForeignKey/@Orm\ForeignKeyAction: a
+		 * relation can have Cascade with no real database constraint at all, or a
+		 * database constraint with no Cascade, or both — the two are unrelated.
+		 * @param class-string $className
+		 * @param array<string, AnnotationCollection> $annotations
+		 * @param array<string, ManyToOne> $manyToOneRelations
+		 * @param array<string, OneToOne> $oneToOneRelations
+		 * @throws \RuntimeException When a Cascade annotation has no relation to cascade
+		 */
+		private function validateCascadeRequiresRelation(
+			string $className,
+			array $annotations,
+			array $manyToOneRelations,
+			array $oneToOneRelations
+		): void {
+			$relations = $manyToOneRelations + $oneToOneRelations;
+
+			foreach ($annotations as $property => $annotationCollection) {
+				$cascade = $this->findCascadeAnnotation($annotationCollection);
+
+				if ($cascade === null) {
+					continue;
+				}
+
+				if (!isset($relations[$property])) {
+					throw new \RuntimeException(
+						"Property '{$property}' on '{$className}' carries an '@Orm\\Cascade' annotation " .
+						"but no '@Orm\\ManyToOne' or '@Orm\\OneToOne' annotation. Cascade only governs " .
+						"whether the ORM also walks and persists/removes a related object in PHP — it " .
+						"has nothing to do on a plain column."
+					);
+				}
+			}
+		}
+
+		/**
+		 * Returns the first Cascade annotation in a property's annotation collection, if any.
+		 * @param AnnotationCollection|null $collection
+		 * @return Cascade|null
+		 */
+		private function findCascadeAnnotation(?AnnotationCollection $collection): ?Cascade {
+			if ($collection === null) {
+				return null;
+			}
+
+			foreach ($collection as $annotation) {
+				if ($annotation instanceof Cascade) {
+					return $annotation;
+				}
+			}
+
+			return null;
+		}
+
 		/**
 		 * Validates that no property carries more than one relationship annotation.
 		 *
