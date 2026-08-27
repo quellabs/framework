@@ -15,10 +15,10 @@
 	use Quellabs\ObjectQuel\Tests\Support\FkTestSupport;
 
 	/**
-	 * Part 1.2, revised — EntityMetadataBuilder: ForeignKey (pure structure),
-	 * ForeignKeyAction (the ON DELETE/ON UPDATE behavior) and Cascade (PHP-side
-	 * object-graph behavior only) are three fully independent annotations. Pure
-	 * metadata/annotation work; no database is touched anywhere in this test class.
+	 * EntityMetadataBuilder: ForeignKey (pure structure), ForeignKeyAction (the
+	 * ON DELETE/ON UPDATE behavior) and Cascade (PHP-side object-graph behavior
+	 * only) are three fully independent annotations. Pure metadata/annotation
+	 * work; no database is touched anywhere in this test class.
 	 */
 	class EntityMetadataBuilderForeignKeyTest extends TestCase {
 		use FkTestSupport;
@@ -91,8 +91,8 @@
 		}
 
 		public function testCascadeAndForeignKeyOnARelationRequireNoForeignKeyAction(): void {
-			// Cascade no longer has any opinion about ForeignKey at all — this
-			// builds successfully with the constraint left at its safe defaults.
+			// Cascade has no opinion about ForeignKey at all — this builds
+			// successfully with the constraint left at its safe defaults.
 			$metadata = $this->makeFkEntityStore()->getMetadata(FkOrderNoFkEntity::class);
 
 			self::assertArrayHasKey('customer_id', $metadata->foreignKeys);

@@ -9,7 +9,7 @@
 	use Quellabs\ObjectQuel\EntityStore;
 
 	/**
-	 * Shared setup for the Part 1 (foreign key) test suite.
+	 * Shared setup for the foreign key test suite.
 	 *
 	 * Every test in this suite runs against a fresh in-memory SQLite database and
 	 * an EntityStore scoped to the fixture entities in
@@ -58,7 +58,7 @@
 
 		/**
 		 * Builds a DatabaseAdapter wrapping a fresh in-memory SQLite connection.
-		 * Constructing it also exercises 1.4's PRAGMA foreign_keys=ON.
+		 * Constructing it also exercises the PRAGMA foreign_keys=ON setup.
 		 */
 		protected function makeSqliteAdapter(): DatabaseAdapter {
 			$connection = new Connection([

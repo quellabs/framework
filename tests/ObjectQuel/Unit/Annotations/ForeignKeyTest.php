@@ -6,9 +6,9 @@
 	use Quellabs\ObjectQuel\Annotations\Orm\ForeignKey;
 
 	/**
-	 * Part 1.1, revised — @Orm\ForeignKey annotation: parameter validation and
-	 * defaults. Pure structure only (target, referencedColumn) — the ON DELETE/ON
-	 * UPDATE behavior lives on the separate @Orm\ForeignKeyAction annotation, see
+	 * @Orm\ForeignKey annotation: parameter validation and defaults. Pure
+	 * structure only (target, referencedColumn) — the ON DELETE/ON UPDATE
+	 * behavior lives on the separate @Orm\ForeignKeyAction annotation, see
 	 * ForeignKeyActionTest.
 	 */
 	class ForeignKeyTest extends TestCase {

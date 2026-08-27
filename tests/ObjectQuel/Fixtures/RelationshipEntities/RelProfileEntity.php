@@ -16,8 +16,8 @@
 	 * "bidirectional" and requires before a OneToOne dependent is even
 	 * considered for cascade-remove — see RelProfileUnidirectionalEntity for
 	 * the negative control that omits it. Carries the same Cascade(remove,
-	 * persist) + ForeignKey/ForeignKeyAction combo FkOrderEntity proves for
-	 * ManyToOne, but for OneToOne, which no existing fixture ever exercised.
+	 * persist) + ForeignKey/ForeignKeyAction combo as FkOrderEntity, but for
+	 * OneToOne rather than ManyToOne.
 	 * @Orm\Table(name="rel_profiles")
 	 */
 	class RelProfileEntity {

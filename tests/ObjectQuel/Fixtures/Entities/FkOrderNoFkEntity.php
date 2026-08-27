@@ -11,10 +11,10 @@
 
 	/**
 	 * Relation + Cascade, plus ForeignKey on the scalar backing column, but no
-	 * ForeignKeyAction. Valid: Cascade no longer has any opinion about
-	 * ForeignKey at all (the two are fully independent, like Doctrine's cascade
-	 * vs. @JoinColumn(onDelete=...)), so this builds successfully with the
-	 * constraint left at its safe defaults (RESTRICT / NO ACTION).
+	 * ForeignKeyAction. Valid: Cascade and ForeignKey are fully independent
+	 * (like Doctrine's cascade vs. @JoinColumn(onDelete=...)), so this builds
+	 * successfully with the constraint left at its safe defaults
+	 * (RESTRICT / NO ACTION).
 	 * @Orm\Table(name="fk_orders_no_fk")
 	 */
 	class FkOrderNoFkEntity {

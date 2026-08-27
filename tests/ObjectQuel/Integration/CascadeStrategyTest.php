@@ -7,12 +7,11 @@
 	use Quellabs\ObjectQuel\UnitOfWork;
 
 	/**
-	 * Cascade no longer carries a "strategy" (orm/database/both) — it's purely
-	 * PHP-side behavior now, fully independent of any database foreign key
-	 * constraint (see @Orm\ForeignKey/@Orm\ForeignKeyAction for that). This is a
-	 * regression check that UnitOfWork::shouldCascadeRemove()'s decision is
-	 * exactly what Cascade::getOperations() says and nothing more: true when
-	 * "remove" is present, false otherwise.
+	 * Cascade is purely PHP-side behavior, fully independent of any database
+	 * foreign key constraint (see @Orm\ForeignKey/@Orm\ForeignKeyAction for
+	 * that). Verifies UnitOfWork::shouldCascadeRemove()'s decision is exactly
+	 * what Cascade::getOperations() says and nothing more: true when "remove"
+	 * is present, false otherwise.
 	 *
 	 * shouldCascadeRemove() is private, so it's exercised via reflection rather
 	 * than through a full cascade-delete integration test — see

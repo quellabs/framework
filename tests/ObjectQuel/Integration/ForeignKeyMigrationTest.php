@@ -16,16 +16,16 @@
 	use Quellabs\ObjectQuel\Tests\Support\FkTestSupport;
 
 	/**
-	 * Part 1.3 — MakeMigrationsCommand's underlying machinery: ForeignKeyComparator
-	 * (the FK-vs-schema diff) and PhinxMigrationBuilder (code generation + the
+	 * MakeMigrationsCommand's underlying machinery: ForeignKeyComparator (the
+	 * FK-vs-schema diff) and PhinxMigrationBuilder (code generation + the
 	 * create-everything-then-addForeignKey ordering).
 	 *
 	 * Deliberately scoped to just the foreign-key-specific diff/emission logic —
-	 * column-level diffing (SchemaComparator) predates this plan and isn't part of
-	 * it. Each scenario below hand-assembles the EntityChangeSet PhinxMigrationBuilder
+	 * column-level diffing is SchemaComparator's job and isn't covered here. Each
+	 * scenario below hand-assembles the EntityChangeSet PhinxMigrationBuilder
 	 * expects, using real metadata (EntityStore) and a real foreign-key diff
 	 * (ForeignKeyComparator against a live in-memory SQLite table) rather than
-	 * mocks, so this exercises the actual Part 1 code paths end to end.
+	 * mocks, so this exercises the actual code paths end to end.
 	 */
 	class ForeignKeyMigrationTest extends TestCase {
 		use FkTestSupport;
@@ -143,7 +143,7 @@
 		}
 
 		// -------------------------------------------------------------------------
-		// Modified — the one bucket no prior test ever populated
+		// Modified
 		// -------------------------------------------------------------------------
 
 		public function testModifiedForeignKeyActionEmitsADropAndRecreateWithTheNewRule(): void {
@@ -214,13 +214,13 @@
 		// -------------------------------------------------------------------------
 
 		public function testCascadePresentAlongsideForeignKeyDoesNotAffectTheGeneratedConstraint(): void {
-			// FkOrderEntity stacks ManyToOne + Cascade + ForeignKey + ForeignKeyAction
-			// on the same relation property. This is pure metadata resolution — no
-			// live table needs to exist — and proves the generated constraint comes
-			// entirely from ForeignKey/ForeignKeyAction, exactly as it would if
-			// Cascade weren't declared at all (compare FkOrderScalarActionEntity's
-			// ForeignKeyAction(onDelete="CASCADE") above, which has no Cascade,
-			// ManyToOne, or object relation anywhere).
+			// FkOrderEntity has ManyToOne + Cascade on the relation property and
+			// ForeignKey/ForeignKeyAction on its scalar backing column. This is pure
+			// metadata resolution — no live table needs to exist — and proves the
+			// generated constraint comes entirely from ForeignKey/ForeignKeyAction,
+			// exactly as it would if Cascade weren't declared at all (compare
+			// FkOrderScalarActionEntity's ForeignKeyAction(onDelete="CASCADE") above,
+			// which has no Cascade, ManyToOne, or object relation anywhere).
 			$definitions = $this->comparator->getEntityForeignKeys(FkOrderEntity::class);
 
 			self::assertArrayHasKey('fk_fk_orders_customer_id', $definitions);

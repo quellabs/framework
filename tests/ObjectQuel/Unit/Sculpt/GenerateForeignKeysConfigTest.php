@@ -6,12 +6,10 @@
 	use Quellabs\ObjectQuel\Sculpt\ServiceProvider;
 
 	/**
-	 * Part 2.2 — the generate_foreign_keys config gate: absent-from-config and
-	 * explicit false must both resolve to Configuration::getGenerateForeignKeys()
-	 * === false (an existing config/database.php from before this feature shipped
-	 * needs zero changes to keep behaving exactly as it does today); explicit
-	 * true must round-trip; and getConfigValueAsBool() must not coerce a string
-	 * value, matching the strict is_string()/is_int() behavior
+	 * The generate_foreign_keys config gate: absent-from-config and explicit
+	 * false must both resolve to Configuration::getGenerateForeignKeys() ===
+	 * false; explicit true must round-trip; and getConfigValueAsBool() must not
+	 * coerce a string value, matching the strict is_string()/is_int() behavior
 	 * getConfigValueAsString()/getConfigValueAsInt() already apply.
 	 */
 	class GenerateForeignKeysConfigTest extends TestCase {
