@@ -10,7 +10,6 @@
 	use Quellabs\ObjectQuel\Tests\Fixtures\RelationshipEntities\RelPostEntity;
 	use Quellabs\ObjectQuel\Tests\Fixtures\RelationshipEntities\RelPostTagEntity;
 	use Quellabs\ObjectQuel\Tests\Fixtures\RelationshipEntities\RelTagEntity;
-	use Quellabs\ObjectQuel\Tests\Support\SharedTestEntityManager;
 
 	/**
 	 * Validates that @Orm\EntityBridge lets QueryBuilder eager-join one hop further
@@ -19,25 +18,26 @@
 	 * ManyToOne relations — @Orm\EntityBridge only decides whether QueryBuilder
 	 * chains eager-loading one hop further; it doesn't collapse or hide the bridge.
 	 *
-	 * Uses SharedTestEntityManager (SignalHub allows only one EntityManager per
-	 * process) and its own tables, created idempotently in setUp() since another
-	 * test class may have claimed the shared instance first.
+	 * Uses the suite's shared $GLOBALS['test_em'] (SignalHub allows only one
+	 * EntityManager per process) and its own tables, created idempotently in
+	 * setUp() since another test class may have claimed the connection first.
 	 */
 	class EntityBridgeEagerLoadTest extends TestCase {
 
 		protected function setUp(): void {
-			$adapter = SharedTestEntityManager::get()->getConnection();
+			$em = $GLOBALS['test_em'];
+			$adapter = $em->getConnection();
 
-			$adapter->execute('CREATE TABLE IF NOT EXISTS rel_posts (id INTEGER PRIMARY KEY)');
-			$adapter->execute('CREATE TABLE IF NOT EXISTS rel_tags (id INTEGER PRIMARY KEY)');
-			$adapter->execute('CREATE TABLE IF NOT EXISTS rel_categories (id INTEGER PRIMARY KEY)');
-			$adapter->execute('CREATE TABLE IF NOT EXISTS rel_post_tags (id INTEGER PRIMARY KEY, post_id INTEGER, tag_id INTEGER, category_id INTEGER)');
+			$adapter->execute('CREATE TABLE IF NOT EXISTS rel_posts (id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY) ENGINE=InnoDB');
+			$adapter->execute('CREATE TABLE IF NOT EXISTS rel_tags (id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY) ENGINE=InnoDB');
+			$adapter->execute('CREATE TABLE IF NOT EXISTS rel_categories (id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY) ENGINE=InnoDB');
+			$adapter->execute('CREATE TABLE IF NOT EXISTS rel_post_tags (id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, post_id INT, tag_id INT, category_id INT) ENGINE=InnoDB');
 
 			foreach (['rel_post_tags', 'rel_posts', 'rel_tags', 'rel_categories'] as $table) {
 				$adapter->execute("DELETE FROM {$table}");
 			}
 
-			SharedTestEntityManager::get()->getUnitOfWork()->clear();
+			$em->getUnitOfWork()->clear();
 		}
 
 		/**
@@ -46,7 +46,7 @@
 		 * because RelPostTagEntity carries @Orm\EntityBridge.
 		 */
 		public function testQueryBuilderAddsASecondHopThroughAnEntityBridgeMarkedDependent(): void {
-			$entityStore = SharedTestEntityManager::get()->getEntityStore();
+			$entityStore = $GLOBALS['test_em']->getEntityStore();
 			$queryBuilder = new QueryBuilder($entityStore);
 
 			$query = $queryBuilder->prepareQuery(RelPostEntity::class, ['id' => 1]);
@@ -71,7 +71,7 @@
 		 * query. This is the behavioral proof the extra hop actually fired.
 		 */
 		public function testFindEagerlyHydratesTheFarSideOfAnEntityBridgeRelation(): void {
-			$em = SharedTestEntityManager::get();
+			$em = $GLOBALS['test_em'];
 
 			$post = new RelPostEntity();
 			$em->persist($post);
@@ -111,7 +111,7 @@
 		 * that would otherwise qualify like $tag does.
 		 */
 		public function testLazyBridgeRelationGetsNoExtraHop(): void {
-			$entityStore = SharedTestEntityManager::get()->getEntityStore();
+			$entityStore = $GLOBALS['test_em']->getEntityStore();
 			$queryBuilder = new QueryBuilder($entityStore);
 
 			$query = $queryBuilder->prepareQuery(RelPostEntity::class, ['id' => 1]);
@@ -125,7 +125,7 @@
 		 * eager-join timing, not correctness.
 		 */
 		public function testLazyBridgeRelationResolvesViaProxy(): void {
-			$em = SharedTestEntityManager::get();
+			$em = $GLOBALS['test_em'];
 
 			$post = new RelPostEntity();
 			$em->persist($post);
@@ -168,7 +168,7 @@
 		 * addBridgeExpansionRanges() should no-op for it.
 		 */
 		public function testNonBridgeDependentsAreUnaffected(): void {
-			$entityStore = SharedTestEntityManager::get()->getEntityStore();
+			$entityStore = $GLOBALS['test_em']->getEntityStore();
 			$queryBuilder = new QueryBuilder($entityStore);
 
 			$query = $queryBuilder->prepareQuery(

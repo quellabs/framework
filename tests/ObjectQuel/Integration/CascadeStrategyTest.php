@@ -4,7 +4,6 @@
 
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\ObjectQuel\Annotations\Orm\Cascade;
-	use Quellabs\ObjectQuel\Tests\Support\SharedTestEntityManager;
 	use Quellabs\ObjectQuel\UnitOfWork;
 
 	/**
@@ -19,16 +18,16 @@
 	 * than through a full cascade-delete integration test — see
 	 * RelationshipCascadeForeignKeyTest for that end-to-end coverage.
 	 *
-	 * The UnitOfWork comes from SharedTestEntityManager rather than a private
-	 * EntityManager of this class's own: SignalHub is a process-wide singleton
-	 * that throws on a duplicate 'orm.prePersist' registration, so only one
-	 * EntityManager can ever exist per PHPUnit process — see that class's
-	 * docblock for the full explanation.
+	 * The UnitOfWork comes from the suite's shared $GLOBALS['test_em'] rather
+	 * than a private EntityManager of this class's own: SignalHub is a
+	 * process-wide singleton that throws on a duplicate 'orm.prePersist'
+	 * registration, so only one EntityManager can ever exist per PHPUnit
+	 * process.
 	 */
 	class CascadeStrategyTest extends TestCase {
 
 		private static function unitOfWork(): UnitOfWork {
-			return SharedTestEntityManager::get()->getUnitOfWork();
+			return $GLOBALS['test_em']->getUnitOfWork();
 		}
 
 		private function invokeShouldCascadeRemove(Cascade $cascade): bool {

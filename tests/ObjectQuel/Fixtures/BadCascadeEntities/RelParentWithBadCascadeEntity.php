@@ -23,8 +23,9 @@
 	 * combination can never pass validation, the branch is unreachable in
 	 * practice — dead code, not a working feature this fixture is missing out on.)
 	 *
-	 * Kept in its own isolated fixture directory (tests/Fixtures/BadCascadeEntities,
-	 * not the shared tests/Fixtures/Entities used by every other FK/cascade test)
+	 * Kept in its own isolated fixture directory
+	 * (tests/ObjectQuel/Fixtures/BadCascadeEntities, not the shared
+	 * tests/ObjectQuel/Fixtures/Entities used by every other FK/cascade test)
 	 * because any cascade-remove test that shares an EntityStore with this class
 	 * would trip over it too: EntityStore::getOrderedDependentEntities() eagerly
 	 * builds metadata for every entity in the registry the first time any

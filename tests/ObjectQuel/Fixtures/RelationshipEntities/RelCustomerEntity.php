@@ -15,8 +15,9 @@
 	 * the inverse/collection side is declared. See RelOrderCascadeEntity for the
 	 * owning ManyToOne side that actually carries Cascade/ForeignKey.
 	 *
-	 * Kept in its own isolated fixture directory (tests/Fixtures/RelationshipEntities,
-	 * not the shared tests/Fixtures/Entities used by the metadata-only FK test
+	 * Kept in its own isolated fixture directory
+	 * (tests/ObjectQuel/Fixtures/RelationshipEntities, not the shared
+	 * tests/ObjectQuel/Fixtures/Entities used by the metadata-only FK test
 	 * suites) because end-to-end cascade-remove tests call remove()+flush(),
 	 * which triggers EntityStore::getOrderedDependentEntities() — this eagerly
 	 * builds metadata for every entity in the configured entity_path, including

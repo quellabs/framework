@@ -14,7 +14,6 @@
 	use Quellabs\ObjectQuel\Tests\Fixtures\RelationshipEntities\RelProfileEntity;
 	use Quellabs\ObjectQuel\Tests\Fixtures\RelationshipEntities\RelProfileUnidirectionalEntity;
 	use Quellabs\ObjectQuel\Tests\Fixtures\RelationshipEntities\RelUserEntity;
-	use Quellabs\ObjectQuel\Tests\Support\SharedTestEntityManager;
 
 	/**
 	 * End-to-end validation of Cascade and ForeignKey/ForeignKeyAction for the
@@ -29,41 +28,41 @@
 	 * shouldCascadeRemove() decision via reflection, never a real remove()+flush()
 	 * through UnitOfWork; and every FK fixture (FkOrderEntity etc.) only ever used
 	 * a bare ManyToOne with no InverseOf mirror and no OneToOne at all. This class
-	 * closes both gaps with real persist/remove/flush cycles against SQLite.
+	 * closes both gaps with real persist/remove/flush cycles against MySQL.
 	 *
-	 * Uses its own isolated fixture directory (tests/Fixtures/RelationshipEntities)
-	 * rather than the shared tests/Fixtures/Entities used by the metadata-only FK
-	 * suites, because remove()+flush() triggers
+	 * Uses its own isolated fixture directory (tests/ObjectQuel/Fixtures/RelationshipEntities)
+	 * rather than the shared tests/ObjectQuel/Fixtures/Entities used by the
+	 * metadata-only FK suites, because remove()+flush() triggers
 	 * EntityStore::getOrderedDependentEntities(), which eagerly builds metadata
 	 * for every entity in the configured entity_path — including fixtures like
 	 * FkOrderActionNoFkEntity that are deliberately invalid for other tests'
 	 * purposes. Confirmed by trying the shared directory first: it broke on
 	 * contact with that fixture.
 	 *
-	 * The EntityManager itself comes from SharedTestEntityManager — a genuine
-	 * process-wide singleton, not just per-class — because UnitOfWork registers
-	 * a standalone 'orm.prePersist' signal on the process-wide SignalHub with no
-	 * "already registered" guard, so a second EntityManager anywhere else in the
-	 * same PHPUnit process throws. This class's own tables are created
-	 * idempotently in setUp() (CREATE TABLE IF NOT EXISTS) since another test
-	 * class may have claimed the shared instance first, and table state between
-	 * tests is reset via DELETE FROM.
+	 * The EntityManager itself comes from the suite's shared $GLOBALS['test_em']
+	 * — a genuine process-wide singleton, not just per-class — because
+	 * UnitOfWork registers a standalone 'orm.prePersist' signal on the
+	 * process-wide SignalHub with no "already registered" guard, so a second
+	 * EntityManager anywhere else in the same PHPUnit process throws. This
+	 * class's own tables are created idempotently in setUp() (CREATE TABLE IF
+	 * NOT EXISTS) since another test class may have claimed the connection
+	 * first, and table state between tests is reset via DELETE FROM.
 	 */
 	class RelationshipCascadeForeignKeyTest extends TestCase {
 
 		private static function em(): EntityManager {
-			return SharedTestEntityManager::get();
+			return $GLOBALS['test_em'];
 		}
 
 		protected function setUp(): void {
 			$adapter = self::em()->getConnection();
 
-			$adapter->execute('CREATE TABLE IF NOT EXISTS rel_customers (id INTEGER PRIMARY KEY)');
-			$adapter->execute('CREATE TABLE IF NOT EXISTS rel_orders_cascade (id INTEGER PRIMARY KEY, customer_id INTEGER)');
-			$adapter->execute('CREATE TABLE IF NOT EXISTS rel_orders_no_cascade (id INTEGER PRIMARY KEY, customer_id INTEGER)');
-			$adapter->execute('CREATE TABLE IF NOT EXISTS rel_users (id INTEGER PRIMARY KEY)');
-			$adapter->execute('CREATE TABLE IF NOT EXISTS rel_profiles (id INTEGER PRIMARY KEY, user_id INTEGER)');
-			$adapter->execute('CREATE TABLE IF NOT EXISTS rel_profiles_unidirectional (id INTEGER PRIMARY KEY, user_id INTEGER)');
+			$adapter->execute('CREATE TABLE IF NOT EXISTS rel_customers (id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY) ENGINE=InnoDB');
+			$adapter->execute('CREATE TABLE IF NOT EXISTS rel_orders_cascade (id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, customer_id INT) ENGINE=InnoDB');
+			$adapter->execute('CREATE TABLE IF NOT EXISTS rel_orders_no_cascade (id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, customer_id INT) ENGINE=InnoDB');
+			$adapter->execute('CREATE TABLE IF NOT EXISTS rel_users (id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY) ENGINE=InnoDB');
+			$adapter->execute('CREATE TABLE IF NOT EXISTS rel_profiles (id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, user_id INT) ENGINE=InnoDB');
+			$adapter->execute('CREATE TABLE IF NOT EXISTS rel_profiles_unidirectional (id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, user_id INT) ENGINE=InnoDB');
 
 			foreach ([
 				'rel_orders_cascade', 'rel_orders_no_cascade',

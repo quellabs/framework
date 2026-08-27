@@ -12,17 +12,20 @@
 	 * Shared setup for the Part 1 (foreign key) test suite.
 	 *
 	 * Every test in this suite runs against a fresh in-memory SQLite database and
-	 * an EntityStore scoped to the fixture entities in tests/Fixtures/Entities —
-	 * fully isolated from the rest of the framework's MySQL-backed test suite
-	 * (tests/ObjectQuel), and fast enough to run per-test with no shared state.
+	 * an EntityStore scoped to the fixture entities in
+	 * tests/ObjectQuel/Fixtures/Entities — isolated from the rest of the ORM's
+	 * MySQL-backed EntityManager ($GLOBALS['test_em']), and fast enough to run
+	 * per-test with no shared state.
 	 */
 	trait FkTestSupport {
 
 		/**
-		 * require_once every fixture entity file once per process. Fixture classes
-		 * live outside Composer's autoload map (they're test-only), and
+		 * require_once every fixture entity file once per process. Composer's
+		 * PSR-4 autoload map does cover this directory, but
 		 * EntityLocator::discoverEntities() requires the class to already be
-		 * declared before it will register it (see class_exists() check there).
+		 * declared before it will register it (see class_exists() check there),
+		 * and these fixtures are never referenced by name from test code, so
+		 * nothing would trigger autoloading otherwise.
 		 */
 		protected static function loadFkFixtureEntities(): void {
 			static $loaded = false;
