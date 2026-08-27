@@ -9,6 +9,7 @@
 	use Quellabs\ObjectQuel\Tests\Fixtures\Entities\FkOrderNoFkEntity;
 	use Quellabs\ObjectQuel\Tests\Fixtures\Entities\FkOrderOrmEntity;
 	use Quellabs\ObjectQuel\Tests\Fixtures\Entities\FkOrderRelationFkEntity;
+	use Quellabs\ObjectQuel\Tests\Fixtures\Entities\FkOrderRelationFkActionEntity;
 	use Quellabs\ObjectQuel\Tests\Fixtures\Entities\FkOrderScalarActionEntity;
 	use Quellabs\ObjectQuel\Tests\Fixtures\Entities\FkOrderScalarEntity;
 	use Quellabs\ObjectQuel\Tests\Fixtures\Entities\FkCustomerEntity;
@@ -39,11 +40,24 @@
 			self::assertSame('id', $fk->getReferencedColumn());
 		}
 
-		public function testForeignKeyDeclaredOnTheRelationPropertyItselfThrowsAtBuildTime(): void {
-			$this->expectException(\RuntimeException::class);
-			$this->expectExceptionMessage('customer');
+		public function testForeignKeyDeclaredOnTheRelationPropertyItselfIsIgnored(): void {
+			// The relation property's ForeignKey is simply ignored: no build-time
+			// error, and no entry ends up in the metadata for it either.
+			$metadata = $this->makeFkEntityStore()->getMetadata(FkOrderRelationFkEntity::class);
 
-			$this->makeFkEntityStore()->getMetadata(FkOrderRelationFkEntity::class);
+			self::assertSame([], $metadata->foreignKeys);
+			self::assertNull($metadata->getForeignKeyForColumn('customer_id'));
+		}
+
+		public function testForeignKeyAndForeignKeyActionDeclaredOnTheRelationPropertyAreBothIgnored(): void {
+			// Same as above, but with ForeignKeyAction also on the relation
+			// property — it's ignored right alongside ForeignKey, not left
+			// dangling as an action with no matching key.
+			$metadata = $this->makeFkEntityStore()->getMetadata(FkOrderRelationFkActionEntity::class);
+
+			self::assertSame([], $metadata->foreignKeys);
+			self::assertNull($metadata->getForeignKeyForColumn('customer_id'));
+			self::assertNull($metadata->getForeignKeyActionForColumn('customer_id'));
 		}
 
 		public function testForeignKeyDeclaredOnScalarColumnPropertyIsKeyedByDatabaseColumnName(): void {
