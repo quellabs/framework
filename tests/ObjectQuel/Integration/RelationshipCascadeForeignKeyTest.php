@@ -15,6 +15,7 @@
 	use Quellabs\ObjectQuel\Tests\Fixtures\RelationshipEntities\RelOrderCascadeEntity;
 	use Quellabs\ObjectQuel\Tests\Fixtures\RelationshipEntities\RelOrderNoCascadeEntity;
 	use Quellabs\ObjectQuel\Tests\Fixtures\RelationshipEntities\RelProfileEntity;
+	use Quellabs\ObjectQuel\Tests\Fixtures\RelationshipEntities\RelProfileNoCascadeEntity;
 	use Quellabs\ObjectQuel\Tests\Fixtures\RelationshipEntities\RelProfileUnidirectionalEntity;
 	use Quellabs\ObjectQuel\Tests\Fixtures\RelationshipEntities\RelUserEntity;
 
@@ -62,12 +63,13 @@
 			$adapter->execute('CREATE TABLE IF NOT EXISTS rel_users (id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY) ENGINE=InnoDB');
 			$adapter->execute('CREATE TABLE IF NOT EXISTS rel_profiles (id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, user_id INT) ENGINE=InnoDB');
 			$adapter->execute('CREATE TABLE IF NOT EXISTS rel_profiles_unidirectional (id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, user_id INT) ENGINE=InnoDB');
+			$adapter->execute('CREATE TABLE IF NOT EXISTS rel_profiles_no_cascade (id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, user_id INT) ENGINE=InnoDB');
 			$adapter->execute('CREATE TABLE IF NOT EXISTS rel_departments (id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY) ENGINE=InnoDB');
 			$adapter->execute('CREATE TABLE IF NOT EXISTS rel_employees (id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, department_id INT) ENGINE=InnoDB');
 
 			foreach ([
 				'rel_orders_cascade', 'rel_orders_no_cascade',
-				'rel_profiles', 'rel_profiles_unidirectional',
+				'rel_profiles', 'rel_profiles_unidirectional', 'rel_profiles_no_cascade',
 				'rel_customers', 'rel_users',
 				'rel_employees', 'rel_departments',
 			] as $table) {
@@ -204,6 +206,25 @@
 
 			$remaining = $em->getConnection()->execute('SELECT id FROM rel_profiles_unidirectional')->fetchAll('assoc');
 			self::assertSame([], $remaining);
+		}
+
+		public function testCascadeRemoveAbsentLeavesProfileInPlaceWhenUserIsRemoved(): void {
+			$em = self::em();
+
+			$user = new RelUserEntity();
+			$em->persist($user);
+			$em->flush();
+
+			$profile = new RelProfileNoCascadeEntity();
+			$profile->user = $user;
+			$em->persist($profile);
+			$em->flush();
+
+			$em->remove($user);
+			$em->flush();
+
+			$remaining = $em->getConnection()->execute('SELECT id FROM rel_profiles_no_cascade')->fetchAll('assoc');
+			self::assertCount(1, $remaining);
 		}
 
 		// -------------------------------------------------------------------------
