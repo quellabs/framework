@@ -11,30 +11,20 @@
 	use Quellabs\ObjectQuel\Collections\CollectionInterface;
 
 	/**
-	 * Deliberately invalid, by design: Cascade(remove) placed directly on an
-	 * InverseOf collection property. Cascade(persist) is legitimate here — see
-	 * RelDepartmentEntity/RelEmployeeEntity — because a new, not-yet-saved child
-	 * only exists in this in-memory collection, so
-	 * UnitOfWork::processCascadingInverseOfPersists() has to walk it. But
-	 * cascade-*remove* is discovered by UnitOfWork::handleDependentEntityClass()
-	 * querying the dependent entity's foreign key column directly — it never
-	 * reads Cascade off InverseOf and never will, since it doesn't need a loaded
-	 * collection to work. Declaring "remove" here would silently do nothing, so
-	 * EntityMetadataBuilder::validateCascadeRequiresRelation() rejects it at
-	 * metadata-build time with a RuntimeException instead.
+	 * Deliberately invalid: Cascade(remove) on an InverseOf collection.
+	 * Cascade-remove is discovered via a DB query on the dependent's FK
+	 * column, never by reading Cascade off InverseOf, so this is rejected
+	 * at metadata-build time. Cascade(persist) on InverseOf is legitimate —
+	 * see RelDepartmentEntity.
 	 *
-	 * Kept in its own isolated fixture directory
-	 * (tests/ObjectQuel/Fixtures/BadCascadeEntities, not the shared
-	 * tests/ObjectQuel/Fixtures/Entities used by every other FK/cascade test)
-	 * because any cascade-remove test that shares an EntityStore with this class
-	 * would trip over it too: EntityStore::getOrderedDependentEntities() eagerly
-	 * builds metadata for every entity in the registry the first time any
-	 * cascade-remove path runs, not just the one entity being removed.
+	 * Kept in its own isolated fixture directory (not the shared
+	 * tests/ObjectQuel/Fixtures/Entities) because
+	 * EntityStore::getOrderedDependentEntities() eagerly builds metadata for
+	 * every entity in the registry the first time any cascade-remove path
+	 * runs, and this class is meant to fail to build.
 	 *
-	 * Declares both "remove" and "persist" together (not just "remove" alone)
-	 * to prove rejection isn't merely a side effect of "persist" being absent —
-	 * "remove" is what's actually invalid here, regardless of what else rides
-	 * along with it in the same annotation.
+	 * Declares "persist" alongside "remove" to prove it's "remove" itself
+	 * that's rejected, not merely persist's absence.
 	 * @Orm\Table(name="rel_parents_bad_cascade")
 	 */
 	class RelParentWithBadCascadeEntity {

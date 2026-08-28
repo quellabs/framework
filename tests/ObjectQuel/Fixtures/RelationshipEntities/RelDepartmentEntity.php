@@ -11,15 +11,11 @@
 	use Quellabs\ObjectQuel\Collections\CollectionInterface;
 
 	/**
-	 * The "one" side of a ManyToOne+InverseOf one-to-many pair — paired with
-	 * RelEmployeeEntity's owning ManyToOne side. Carries Cascade(persist) on the
-	 * InverseOf collection itself: a newly-created, not-yet-saved RelEmployeeEntity
-	 * only exists in $employees in memory, so that's the only property
-	 * UnitOfWork::processCascadingInverseOfPersists() can walk to find it.
-	 * Deliberately separate from RelCustomerEntity/RelOrderCascadeEntity, which
-	 * exercise Cascade(remove) on the owning ManyToOne side instead — the two
-	 * cascade operations are discovered through different mechanisms and this
-	 * keeps each fixture pair focused on one of them.
+	 * The "one" side of a ManyToOne+InverseOf one-to-many pair, paired with
+	 * RelEmployeeEntity's owning ManyToOne side. Cascade(persist) sits on the
+	 * InverseOf collection itself: a new, unsaved RelEmployeeEntity only
+	 * exists in $employees in memory, so that's the only property that can
+	 * be walked to find it.
 	 * @Orm\Table(name="rel_departments")
 	 */
 	class RelDepartmentEntity {

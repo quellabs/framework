@@ -11,14 +11,10 @@
 	use Quellabs\ObjectQuel\Annotations\Orm\ForeignKeyAction;
 
 	/**
-	 * The owning ("many") side of a ManyToOne+InverseOf one-to-many pair, paired
-	 * with RelCustomerEntity's InverseOf collection. Carries the full stack:
-	 * ManyToOne + Cascade(remove, persist) (PHP-side cascade when the customer
-	 * is removed, and when this order is persisted with a brand new, unmanaged
-	 * customer attached) + ForeignKey/ForeignKeyAction (a real ON DELETE CASCADE
-	 * constraint) — proves both cascade systems work for the genuine one-to-many
-	 * shape a real user would declare via make:entity's bidirectional flow, not
-	 * just a bare ManyToOne with no InverseOf mirror on the other side.
+	 * The owning ("many") side of a ManyToOne+InverseOf one-to-many pair,
+	 * paired with RelCustomerEntity's InverseOf collection. Carries
+	 * ManyToOne + Cascade(remove, persist) + ForeignKey/ForeignKeyAction
+	 * (a real ON DELETE CASCADE constraint) together.
 	 * @Orm\Table(name="rel_orders_cascade")
 	 */
 	class RelOrderCascadeEntity {

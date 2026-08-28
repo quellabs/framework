@@ -9,9 +9,7 @@
 
 	/**
 	 * The owning ("many") side paired with RelDepartmentEntity's InverseOf
-	 * collection — see that class for what this pair exercises. Carries no
-	 * Cascade of its own; the persist-cascade under test lives entirely on the
-	 * InverseOf side.
+	 * collection. Carries no Cascade of its own.
 	 * @Orm\Table(name="rel_employees")
 	 */
 	class RelEmployeeEntity {
