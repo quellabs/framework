@@ -17,6 +17,7 @@
 	use Quellabs\ObjectQuel\Tests\Fixtures\RelationshipEntities\RelProfileEntity;
 	use Quellabs\ObjectQuel\Tests\Fixtures\RelationshipEntities\RelProfileNoCascadeEntity;
 	use Quellabs\ObjectQuel\Tests\Fixtures\RelationshipEntities\RelProfileUnidirectionalEntity;
+	use Quellabs\ObjectQuel\Tests\Fixtures\RelationshipEntities\RelProfileUnidirectionalPersistEntity;
 	use Quellabs\ObjectQuel\Tests\Fixtures\RelationshipEntities\RelUserEntity;
 
 	/**
@@ -63,13 +64,14 @@
 			$adapter->execute('CREATE TABLE IF NOT EXISTS rel_users (id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY) ENGINE=InnoDB');
 			$adapter->execute('CREATE TABLE IF NOT EXISTS rel_profiles (id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, user_id INT) ENGINE=InnoDB');
 			$adapter->execute('CREATE TABLE IF NOT EXISTS rel_profiles_unidirectional (id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, user_id INT) ENGINE=InnoDB');
+			$adapter->execute('CREATE TABLE IF NOT EXISTS rel_profiles_unidirectional_persist (id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, user_id INT) ENGINE=InnoDB');
 			$adapter->execute('CREATE TABLE IF NOT EXISTS rel_profiles_no_cascade (id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, user_id INT) ENGINE=InnoDB');
 			$adapter->execute('CREATE TABLE IF NOT EXISTS rel_departments (id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY) ENGINE=InnoDB');
 			$adapter->execute('CREATE TABLE IF NOT EXISTS rel_employees (id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, department_id INT) ENGINE=InnoDB');
 
 			foreach ([
 				'rel_orders_cascade', 'rel_orders_no_cascade',
-				'rel_profiles', 'rel_profiles_unidirectional', 'rel_profiles_no_cascade',
+				'rel_profiles', 'rel_profiles_unidirectional', 'rel_profiles_unidirectional_persist', 'rel_profiles_no_cascade',
 				'rel_customers', 'rel_users',
 				'rel_employees', 'rel_departments',
 			] as $table) {
@@ -97,6 +99,34 @@
 
 			$em->remove($customer);
 			$em->flush();
+
+			$remaining = $em->getConnection()->execute('SELECT id FROM rel_orders_cascade')->fetchAll('assoc');
+			self::assertSame([], $remaining);
+		}
+
+		/**
+		 * A New (persist()ed but never flushed) order referencing the customer
+		 * has no row in the database yet, so the DB-driven lookup in
+		 * cascadeDeleteDependentObjects() can never find it. Without
+		 * cascadeDeleteUnpersistedDependents() catching it in memory, it would
+		 * still get inserted after the customer's DELETE, pointing at a
+		 * customer row that no longer exists.
+		 */
+		public function testCascadeRemoveCatchesAnUnflushedNewOrderInTheSameUnitOfWork(): void {
+			$em = self::em();
+
+			$customer = new RelCustomerEntity();
+			$em->persist($customer);
+			$em->flush();
+
+			$order = new RelOrderCascadeEntity();
+			$order->customer = $customer;
+			$em->persist($order);
+
+			$em->remove($customer);
+			$em->flush();
+
+			self::assertNull($order->getId());
 
 			$remaining = $em->getConnection()->execute('SELECT id FROM rel_orders_cascade')->fetchAll('assoc');
 			self::assertSame([], $remaining);
@@ -268,6 +298,37 @@
 
 			$rows = $em->getConnection()->execute('SELECT id FROM rel_users')->fetchAll('assoc');
 			self::assertSame([], $rows);
+		}
+
+		/**
+		 * Regression test for scheduleEntitiesForPersistence()'s dependency
+		 * graph: it used to skip a unidirectional owning-side OneToOne
+		 * relation (no 'referencedColumn') when building insert order, so a
+		 * cascaded, brand-new parent reached only through such a relation
+		 * could be scheduled after its child — inserting the child with a
+		 * NULL FK instead of the parent's generated id. 'referencedColumn'
+		 * only affects bidirectional setter-sync codegen; it has no bearing
+		 * on insert ordering, exactly as it has none on cascade-remove
+		 * eligibility (see testCascadeRemoveWorksForUnidirectionalOneToOneToo).
+		 */
+		public function testCascadePersistOrdersANewParentBeforeAUnidirectionalOneToOneChild(): void {
+			$em = self::em();
+
+			$user = new RelUserEntity();
+			$profile = new RelProfileUnidirectionalPersistEntity();
+			$profile->user = $user;
+
+			// Cascade(persist) on $user should pick up and insert the unsaved
+			// user too — and, crucially, before $profile, since $profile's FK
+			// column needs the user's generated id.
+			$em->persist($profile);
+			$em->flush();
+
+			self::assertNotNull($user->getId());
+
+			$rows = $em->getConnection()->execute('SELECT user_id FROM rel_profiles_unidirectional_persist')->fetchAll('assoc');
+			self::assertCount(1, $rows);
+			self::assertSame($user->getId(), (int) $rows[0]['user_id']);
 		}
 
 		// -------------------------------------------------------------------------

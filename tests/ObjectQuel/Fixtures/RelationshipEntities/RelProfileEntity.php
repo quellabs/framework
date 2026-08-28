@@ -12,10 +12,10 @@
 
 	/**
 	 * The owning side of a bidirectional OneToOne. 'referencedColumn' being
-	 * non-empty is what UnitOfWork::handleDependentEntityClass() treats as
-	 * "bidirectional" and requires before a OneToOne dependent is even
-	 * considered for cascade-remove — see RelProfileUnidirectionalEntity for
-	 * the negative control that omits it. Carries the same Cascade(remove,
+	 * set here only drives setter-sync codegen for the InverseOf side — it
+	 * has no bearing on cascade-remove eligibility or insert ordering, both
+	 * of which apply the same way to a unidirectional OneToOne (see
+	 * RelProfileUnidirectionalEntity). Carries the same Cascade(remove,
 	 * persist) + ForeignKey/ForeignKeyAction combo as FkOrderEntity, but for
 	 * OneToOne rather than ManyToOne.
 	 * @Orm\Table(name="rel_profiles")

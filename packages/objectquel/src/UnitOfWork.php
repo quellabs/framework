@@ -667,44 +667,43 @@
 			// Fetch the identity map as one linear list
 			$flattenedIdentityMap = $this->getFlattenedIdentityMap();
 			
-			// Prepare the graph and inDegree counters for each entity.
-			// This initializes every entity with an empty list of dependents and zero dependencies.
+			// Build the dependency graph by examining each entity's relationships.
+			// $graph[hash] lists the entities that depend on it (children); $inDegree[hash]
+			// counts how many parents it still needs processed first. Both default lazily
+			// via ??= so every entity gets an entry even if it has no relationships at all.
 			$graph = [];
 			$inDegree = [];
-			
+
 			foreach ($flattenedIdentityMap as $hash => $entity) {
-				$graph[$hash] = []; // Initialize an empty array of dependent entities (children)
-				$inDegree[$hash] = 0; // Initially, assume entity has no dependencies on other entities
-			}
-			
-			// Build the dependency graph by examining each entity's relationships
-			foreach ($flattenedIdentityMap as $hash => $entity) {
+				$graph[$hash] ??= [];
+				$inDegree[$hash] ??= 0;
+
 				// Fetch metadata
 				$metadata = $this->getEntityStore()->getMetadata($entity);
-				
+
 				// Get all ManyToOne relationships where this entity is the "many" side
 				// These are dependencies where this entity depends on a parent entity
 				$manyToOneParents = $metadata->getManyToOneDependencies();
-				
-				// Get all OneToOne relationships where this entity is the owning side
+
+				// Get all OneToOne relationships where this entity is the owning side.
+				// All of them hold a real FK column needing a value — 'referencedColumn'
+				// only affects bidirectional setter-sync codegen and has nothing to do
+				// with whether this entity owns the FK, so a unidirectional OneToOne
+				// (no referencedColumn) still needs parent-before-child ordering here
+				// exactly like ManyToOne does. See extractParentPrimaryKeyData() and
+				// handleDependentEntityClass() for the same reasoning.
 				$oneToOneParents = $metadata->getOneToOneDependencies();
-				
-				// Filter OneToOne relationships to only include those that are bidirectional
-				// This is determined by checking if inversedBy is not empty
-				$oneToOneParents = array_filter($oneToOneParents, function ($e) {
-					return !empty($e->getReferencedColumn());
-				});
-				
-				// Process all parent dependencies (both ManyToOne and qualifying OneToOne)
+
+				// Process all parent dependencies (both ManyToOne and OneToOne)
 				foreach (array_merge($manyToOneParents, $oneToOneParents) as $property => $annotation) {
 					// Get the actual parent entity object from the current entity's property
 					$parentEntity = $this->propertyHandler->get($entity, $property);
-					
+
 					// Skip if the relationship is not an object (no parent entity assigned)
 					if (!is_object($parentEntity)) {
 						continue;
 					}
-					
+
 					// Skip if the parent is a proxy (lazy-loaded) that hasn't been initialized
 					// Including uninitialized proxies could trigger unwanted database queries
 					if (($parentEntity instanceof ProxyInterface) && !$parentEntity->isInitialized()) {
@@ -714,12 +713,12 @@
 					// Get a unique identifier for the parent entity
 					$parentId = spl_object_hash($parentEntity);
 
-					// Skip parents outside this commit (already persisted and
-					// untouched, or unmanaged and not cascaded) — $inDegree only
-					// covers $flattenedIdentityMap, so an edge to an absent parent
-					// could never resolve and the child would be misreported as a
-					// cycle below.
-					if (!isset($inDegree[$parentId])) {
+					// Skip parents outside this commit (already persisted and untouched, or
+					// unmanaged and not cascaded) — checked against $flattenedIdentityMap
+					// rather than $inDegree since, with the single-pass build above, a
+					// parent visited later in iteration order wouldn't have an $inDegree
+					// entry yet even though it is part of this commit.
+					if (!isset($flattenedIdentityMap[$parentId])) {
 						continue;
 					}
 
@@ -992,7 +991,8 @@
 				// The relationship column is used to identify which dependent objects reference this parent
 				$this->cascadeDeleteDependentObjects(
 					$dependentEntityClass,             // The class of dependent objects to search for
-					$relationColumn,                   // The property that references the parent
+					$property,                         // The object-reference property, e.g. "customer"
+					$relationColumn,                   // The scalar FK column that references the parent
 					$entity                            // The parent entity being deleted
 				);
 			}
@@ -1053,37 +1053,81 @@
 		/**
 		 * Find and schedule deletion of dependent objects
 		 * @param class-string $dependentEntityClass Class name of dependent entity
-		 * @param string $property Property name with the relationship
+		 * @param string $relationProperty Object-reference property holding the parent, e.g. "customer"
+		 * @param string $relationColumn Scalar FK column property, e.g. "customerId"
 		 * @param object $parentEntity The parent entity object
 		 * @return void
 		 * @throws EntityResolutionException|Exception\QuelException
 		 */
-		private function cascadeDeleteDependentObjects(string $dependentEntityClass, string $property, object $parentEntity): void {
+		private function cascadeDeleteDependentObjects(string $dependentEntityClass, string $relationProperty, string $relationColumn, object $parentEntity): void {
+			// Schedule any managed, not-yet-persisted dependents first. These
+			// can never be found by the DB-driven lookup below — they don't
+			// exist in the database yet — but without this they'd still get
+			// inserted afterward, pointing at a parent row that's about to
+			// be removed.
+			$this->cascadeDeleteUnpersistedDependents($dependentEntityClass, $relationProperty, $parentEntity);
+
 			// Extract the primary key identifiers from the parent entity
 			// This returns an array of primary key field names and their values
 			$parentPrimaryKeys = $this->getIdentifiers($parentEntity);
-			
+
 			// Composite primary keys are not supported for cascade delete lookup;
 			// the dependent objects query expects a single scalar foreign key value.
 			if (count($parentPrimaryKeys) !== 1) {
 				return;
 			}
-			
+
 			// Get the first (and only) primary key value
 			$parentId = $parentPrimaryKeys[array_key_first($parentPrimaryKeys)];
-			
+
+			// A parent that was never persisted has no id and therefore no rows
+			// in the database to cascade to. Querying with a null id would risk
+			// matching unrelated rows whose FK column happens to be genuinely
+			// NULL rather than rows that actually reference this parent.
+			if ($parentId === null) {
+				return;
+			}
+
 			// Query the entity manager to find all dependent objects
 			// that have a foreign key relationship to the parent entity
-			// Uses the specified property name to match against the parent's ID
+			// Uses the specified column name to match against the parent's ID
 			$dependentObjects = $this->entityManager->findBy($dependentEntityClass, [
-				$property => $parentId
+				$relationColumn => $parentId
 			]);
-			
+
 			// Iterate through each found dependent object and mark it for deletion
 			// This doesn't immediately delete the objects, but schedules them for deletion
 			// when the entity manager flushes changes to the database
 			foreach ($dependentObjects as $dependentObject) {
 				$this->scheduleForDelete($dependentObject);
+			}
+		}
+
+		/**
+		 * Schedules for deletion any managed, not-yet-persisted (New) instances
+		 * of $dependentEntityClass whose $relationProperty still holds a direct
+		 * reference to $parentEntity. Covers the gap the DB-driven lookup in
+		 * cascadeDeleteDependentObjects() can't: an entity that was persist()ed
+		 * in this same unit of work but never flushed has no row in the
+		 * database yet, so it would otherwise slip through cascade-remove and
+		 * get inserted afterward pointing at a parent that no longer exists.
+		 * @param class-string $dependentEntityClass Class name of dependent entity
+		 * @param string $relationProperty Object-reference property holding the parent, e.g. "customer"
+		 * @param object $parentEntity The parent entity object
+		 * @return void
+		 * @throws EntityResolutionException
+		 */
+		private function cascadeDeleteUnpersistedDependents(string $dependentEntityClass, string $relationProperty, object $parentEntity): void {
+			$normalizedClass = $this->entityStore->normalizeEntityClass($dependentEntityClass);
+
+			foreach ($this->entitiesByClass[$normalizedClass] ?? [] as $candidate) {
+				if ($this->getEntityState($candidate) !== DirtyState::New) {
+					continue;
+				}
+
+				if ($this->propertyHandler->get($candidate, $relationProperty) === $parentEntity) {
+					$this->scheduleForDelete($candidate);
+				}
 			}
 		}
 		
