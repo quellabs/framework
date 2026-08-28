@@ -125,7 +125,7 @@
 				$this->validateRelationColumns($className, $annotations, $manyToOneRelations, $oneToOneRelations);
 				$this->validateSingleRelationPerProperty($className, $manyToOneRelations, $oneToOneRelations, $inverseOfRelations);
 				$this->validateInverseOfPropertyTypes($className, $inverseOfRelations);
-				$this->validateCascadeRequiresRelation($className, $annotations, $manyToOneRelations, $oneToOneRelations);
+				$this->validateCascadeRequiresRelation($className, $annotations, $manyToOneRelations, $oneToOneRelations, $inverseOfRelations);
 
 				// Return  a new EntityMetadataRecord containing all relation data
 				return new EntityMetadataRecord(
@@ -598,28 +598,29 @@
 		}
 		
 		/**
-		 * Validates that every @Orm\Cascade annotation sits on a property that also
-		 * carries a ManyToOne/OneToOne relation.
-		 *
-		 * Cascade is purely about ORM-side (PHP) behavior: whether UnitOfWork also
-		 * walks and persists/removes the related entity. That requires an actual
-		 * object relation to walk — a plain scalar column has nothing for it to do.
-		 * Deliberately independent of @Orm\ForeignKey/@Orm\ForeignKeyAction: a
-		 * relation can have Cascade with no real database constraint at all, or a
-		 * database constraint with no Cascade, or both — the two are unrelated.
+		 * Validates that every @Orm\Cascade sits on a property that carries a
+		 * ManyToOne/OneToOne/InverseOf relation — a plain scalar column has
+		 * nothing for it to walk — and that InverseOf only declares "persist",
+		 * since cascade-remove never reads Cascade off InverseOf (see
+		 * Cascade.php for why). Independent of @Orm\ForeignKey/@Orm\ForeignKeyAction:
+		 * a relation can have Cascade with no database constraint, a database
+		 * constraint with no Cascade, or both.
 		 * @param class-string $className
 		 * @param array<string, AnnotationCollection> $annotations
 		 * @param array<string, ManyToOne> $manyToOneRelations
 		 * @param array<string, OneToOne> $oneToOneRelations
-		 * @throws \RuntimeException When a Cascade annotation has no relation to cascade
+		 * @param array<string, InverseOf> $inverseOfRelations
+		 * @throws \RuntimeException When a Cascade annotation has no relation to cascade,
+		 *         or declares "remove" on an InverseOf property where it can't do anything
 		 */
 		private function validateCascadeRequiresRelation(
 			string $className,
 			array $annotations,
 			array $manyToOneRelations,
-			array $oneToOneRelations
+			array $oneToOneRelations,
+			array $inverseOfRelations
 		): void {
-			$relations = $manyToOneRelations + $oneToOneRelations;
+			$owningRelations = $manyToOneRelations + $oneToOneRelations;
 
 			foreach ($annotations as $property => $annotationCollection) {
 				$cascade = $this->findCascadeAnnotation($annotationCollection);
@@ -628,12 +629,26 @@
 					continue;
 				}
 
-				if (!isset($relations[$property])) {
+				if (isset($inverseOfRelations[$property])) {
+					if (in_array('remove', $cascade->getOperations(), true)) {
+						throw new \RuntimeException(
+							"Property '{$property}' on '{$className}' carries an '@Orm\\Cascade' annotation " .
+							"with a 'remove' operation on an '@Orm\\InverseOf' property. Cascade-remove is " .
+							"discovered by querying the dependent entity's foreign key column directly, so " .
+							"it never reads Cascade off the InverseOf side — only 'persist' is meaningful " .
+							"here, for cascading new, not-yet-saved entities in this collection."
+						);
+					}
+
+					continue;
+				}
+
+				if (!isset($owningRelations[$property])) {
 					throw new \RuntimeException(
 						"Property '{$property}' on '{$className}' carries an '@Orm\\Cascade' annotation " .
-						"but no '@Orm\\ManyToOne' or '@Orm\\OneToOne' annotation. Cascade only governs " .
-						"whether the ORM also walks and persists/removes a related object in PHP — it " .
-						"has nothing to do on a plain column."
+						"but no '@Orm\\ManyToOne', '@Orm\\OneToOne', or '@Orm\\InverseOf' annotation. Cascade " .
+						"only governs whether the ORM also walks and persists/removes a related object in " .
+						"PHP — it has nothing to do on a plain column."
 					);
 				}
 			}

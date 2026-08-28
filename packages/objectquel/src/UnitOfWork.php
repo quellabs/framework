@@ -337,10 +337,15 @@
 		 * @throws OrmException if an error occurs during the database process.
 		 */
 		public function commit(object|array|null $entity = null): void {
+			// Whether beginTrans() below actually ran. rollbackTrans() throws if
+			// called without a matching beginTrans(), so the catch block must
+			// only call it when a transaction was really started.
+			$transactionStarted = false;
+
 			try {
 				// Process cascading persists first to ensure all related entities are managed
 				$this->executeCascadingPersists();
-				
+
 				// Determine the list of entities to process
 				if ($entity === null) {
 					$sortedEntities = $this->scheduleEntitiesForPersistence();
@@ -349,11 +354,12 @@
 				} else {
 					$sortedEntities = [$entity];
 				}
-				
+
 				if (!empty($sortedEntities)) {
 					// Start a database transaction.
 					$this->connection->beginTrans();
-					
+					$transactionStarted = true;
+
 					// Determine the state of each entity and perform the corresponding action.
 					$changed = [];
 					$deleted = [];
@@ -421,14 +427,17 @@
 					$this->resetAfterCommit($changed, $deleted);
 				}
 			} catch (\Throwable $e) {
-				// Roll back the transaction if any error or exception occurs.
-				$this->connection->rollbackTrans();
-				
+				// Roll back the transaction if any error or exception occurs —
+				// but only if one was actually started; see $transactionStarted above.
+				if ($transactionStarted) {
+					$this->connection->rollbackTrans();
+				}
+
 				// Wrap non-ORM exceptions for a consistent exception contract
 				if (!$e instanceof OrmException) {
 					throw new OrmException($e->getMessage(), (int) $e->getCode(), $e);
 				}
-				
+
 				throw $e;
 			}
 		}
@@ -704,12 +713,21 @@
 
 					// Get a unique identifier for the parent entity
 					$parentId = spl_object_hash($parentEntity);
-					
+
+					// Skip parents outside this commit (already persisted and
+					// untouched, or unmanaged and not cascaded) — $inDegree only
+					// covers $flattenedIdentityMap, so an edge to an absent parent
+					// could never resolve and the child would be misreported as a
+					// cycle below.
+					if (!isset($inDegree[$parentId])) {
+						continue;
+					}
+
 					// Register the dependency in our graph:
 					// 1. Add current entity as a dependent (child) of the parent
 					// This means: "When processing parentId, we'll need to process hash afterwards"
 					$graph[$parentId][] = $hash;
-					
+
 					// 2. Increment the dependency counter for the current entity
 					// This means: "This entity depends on one more entity that must be processed first"
 					$inDegree[$hash]++;
@@ -1108,9 +1126,61 @@
 		private function executeCascadingPersistsForEntity(object $entity): void {
 			// Process InverseOf relationships
 			$this->processCascadingInverseOfPersists($entity);
-			
+
+			// Process ManyToOne relationships
+			$this->processCascadingManyToOnePersists($entity);
+
 			// Process OneToOne relationships
 			$this->processCascadingOneToOnePersists($entity);
+		}
+
+		/**
+		 * Cascades persist to the parent held by a ManyToOne relation — e.g.
+		 * persisting a new Order whose ->customer is itself new and unmanaged.
+		 * Mirrors processCascadingOneToOnePersists(): both hold a direct
+		 * object reference, so both walk the same way.
+		 * @param object $entity The entity whose ManyToOne relationships should be processed
+		 * @return void
+		 * @throws EntityResolutionException
+		 */
+		private function processCascadingManyToOnePersists(object $entity): void {
+			// Fetch metadata of this entity
+			$metadata = $this->getEntityStore()->getMetadata($entity);
+
+			// Check each ManyToOne relationship defined in this entity
+			foreach ($metadata->getManyToOneDependencies() as $property => $annotation) {
+				// Retrieve cascade configuration from metadata for this property
+				$cascadeInfo = $this->getCascadeInfo(get_class($entity), $property);
+
+				// Skip this relationship if cascade persist is not enabled
+				if (!$cascadeInfo || !$this->shouldCascadePersist($cascadeInfo)) {
+					continue;
+				}
+
+				// Get the single related entity from the entity's property
+				$relatedEntity = $this->propertyHandler->get($entity, $property);
+
+				// Skip if no related entity exists (the property is null)
+				if ($relatedEntity === null) {
+					continue;
+				}
+
+				// Skip uninitialized proxies to prevent lazy loading
+				if ($relatedEntity instanceof ProxyInterface && !$relatedEntity->isInitialized()) {
+					continue;
+				}
+
+				// Check if the related entity is already being tracked
+				if (!is_object($relatedEntity) || $this->isInIdentityMap($relatedEntity)) {
+					continue;
+				}
+
+				// Add the related entity to the identity map for tracking
+				$this->persistNew($relatedEntity);
+
+				// Recursively process the related entity's own cascading relationships
+				$this->executeCascadingPersistsForEntity($relatedEntity);
+			}
 		}
 		
 		/**

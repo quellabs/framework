@@ -11,24 +11,20 @@
 	use Quellabs\ObjectQuel\Collections\CollectionInterface;
 
 	/**
-	 * Deliberately invalid, by design: Cascade(persist) placed directly on an
-	 * InverseOf collection property. InverseOf is a hydration instruction, not a
-	 * relation — it never owns the FK (the ManyToOne/OneToOne on the dependent
-	 * entity does), so Cascade has nothing to walk or persist/remove there.
-	 * EntityMetadataBuilder::validateCascadeRequiresRelation() rejects this at
-	 * metadata-build time with a RuntimeException.
+	 * Deliberately invalid: Cascade(remove) on an InverseOf collection.
+	 * Cascade-remove is discovered via a DB query on the dependent's FK
+	 * column, never by reading Cascade off InverseOf, so this is rejected
+	 * at metadata-build time. Cascade(persist) on InverseOf is legitimate —
+	 * see RelDepartmentEntity.
 	 *
-	 * (UnitOfWork::processCascadingInverseOfPersists() still reads a Cascade off
-	 * InverseOf, but since that combination never passes validation, the branch
-	 * is unreachable — dead code, not a working feature.)
+	 * Kept in its own isolated fixture directory (not the shared
+	 * tests/ObjectQuel/Fixtures/Entities) because
+	 * EntityStore::getOrderedDependentEntities() eagerly builds metadata for
+	 * every entity in the registry the first time any cascade-remove path
+	 * runs, and this class is meant to fail to build.
 	 *
-	 * Kept in its own isolated fixture directory
-	 * (tests/ObjectQuel/Fixtures/BadCascadeEntities, not the shared
-	 * tests/ObjectQuel/Fixtures/Entities used by every other FK/cascade test)
-	 * because any cascade-remove test that shares an EntityStore with this class
-	 * would trip over it too: EntityStore::getOrderedDependentEntities() eagerly
-	 * builds metadata for every entity in the registry the first time any
-	 * cascade-remove path runs, not just the one entity being removed.
+	 * Declares "persist" alongside "remove" to prove it's "remove" itself
+	 * that's rejected, not merely persist's absence.
 	 * @Orm\Table(name="rel_parents_bad_cascade")
 	 */
 	class RelParentWithBadCascadeEntity {
@@ -40,7 +36,7 @@
 
 		/**
 		 * @Orm\InverseOf(targetEntity=RelChildOfBadCascadeEntity::class, relation="parent")
-		 * @Orm\Cascade(operations={"persist"})
+		 * @Orm\Cascade(operations={"remove", "persist"})
 		 */
 		public CollectionInterface $children;
 

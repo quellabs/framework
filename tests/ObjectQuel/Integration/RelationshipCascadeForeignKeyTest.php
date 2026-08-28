@@ -10,20 +10,22 @@
 	use Quellabs\ObjectQuel\Sculpt\Helpers\ForeignKeyComparator;
 	use Quellabs\ObjectQuel\Tests\Fixtures\BadCascadeEntities\RelParentWithBadCascadeEntity;
 	use Quellabs\ObjectQuel\Tests\Fixtures\RelationshipEntities\RelCustomerEntity;
+	use Quellabs\ObjectQuel\Tests\Fixtures\RelationshipEntities\RelDepartmentEntity;
+	use Quellabs\ObjectQuel\Tests\Fixtures\RelationshipEntities\RelEmployeeEntity;
 	use Quellabs\ObjectQuel\Tests\Fixtures\RelationshipEntities\RelOrderCascadeEntity;
 	use Quellabs\ObjectQuel\Tests\Fixtures\RelationshipEntities\RelOrderNoCascadeEntity;
 	use Quellabs\ObjectQuel\Tests\Fixtures\RelationshipEntities\RelProfileEntity;
+	use Quellabs\ObjectQuel\Tests\Fixtures\RelationshipEntities\RelProfileNoCascadeEntity;
 	use Quellabs\ObjectQuel\Tests\Fixtures\RelationshipEntities\RelProfileUnidirectionalEntity;
 	use Quellabs\ObjectQuel\Tests\Fixtures\RelationshipEntities\RelUserEntity;
 
 	/**
 	 * End-to-end validation of Cascade and ForeignKey/ForeignKeyAction for two
-	 * relationship shapes:
-	 *
-	 *  - OneToOne (bidirectional owning side)
-	 *  - "one-to-many" as this ORM expresses it: ManyToOne (owning, "many" side)
-	 *    + InverseOf (collection, "one" side) — there is no standalone OneToMany
-	 *    annotation here.
+	 * relationship shapes: OneToOne (bidirectional owning side), and the
+	 * "one-to-many" shape this ORM expresses as ManyToOne (owning, "many"
+	 * side) + InverseOf (collection, "one" side) — there is no standalone
+	 * OneToMany annotation. See Cascade.php for why remove lives on the
+	 * ManyToOne side and persist on the InverseOf side for that shape.
 	 *
 	 * Exercises real persist/remove/flush cycles through UnitOfWork against
 	 * MySQL, not just the private shouldCascadeRemove() decision (see
@@ -61,11 +63,15 @@
 			$adapter->execute('CREATE TABLE IF NOT EXISTS rel_users (id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY) ENGINE=InnoDB');
 			$adapter->execute('CREATE TABLE IF NOT EXISTS rel_profiles (id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, user_id INT) ENGINE=InnoDB');
 			$adapter->execute('CREATE TABLE IF NOT EXISTS rel_profiles_unidirectional (id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, user_id INT) ENGINE=InnoDB');
+			$adapter->execute('CREATE TABLE IF NOT EXISTS rel_profiles_no_cascade (id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, user_id INT) ENGINE=InnoDB');
+			$adapter->execute('CREATE TABLE IF NOT EXISTS rel_departments (id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY) ENGINE=InnoDB');
+			$adapter->execute('CREATE TABLE IF NOT EXISTS rel_employees (id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, department_id INT) ENGINE=InnoDB');
 
 			foreach ([
 				'rel_orders_cascade', 'rel_orders_no_cascade',
-				'rel_profiles', 'rel_profiles_unidirectional',
+				'rel_profiles', 'rel_profiles_unidirectional', 'rel_profiles_no_cascade',
 				'rel_customers', 'rel_users',
+				'rel_employees', 'rel_departments',
 			] as $table) {
 				$adapter->execute("DELETE FROM {$table}");
 			}
@@ -113,6 +119,44 @@
 
 			$remaining = $em->getConnection()->execute('SELECT id FROM rel_orders_no_cascade')->fetchAll('assoc');
 			self::assertCount(1, $remaining);
+		}
+
+		// -------------------------------------------------------------------------
+		// ManyToOne + InverseOf ("one-to-many") — Cascade(persist), end to end
+		// -------------------------------------------------------------------------
+
+		public function testCascadePersistAutoSavesTheRelatedEntityOnAManyToOneOwningSide(): void {
+			$em = self::em();
+
+			$customer = new RelCustomerEntity();
+			$order = new RelOrderCascadeEntity();
+			$order->customer = $customer;
+
+			// Cascade(persist) on $customer should pick up and insert the
+			// unsaved customer too.
+			$em->persist($order);
+			$em->flush();
+
+			self::assertNotNull($customer->getId());
+
+			$rows = $em->getConnection()->execute('SELECT id FROM rel_customers')->fetchAll('assoc');
+			self::assertCount(1, $rows);
+		}
+
+		public function testCascadePersistAbsentLeavesTheRelatedCustomerUnsavedOnAManyToOneOwningSide(): void {
+			$em = self::em();
+
+			$customer = new RelCustomerEntity();
+			$order = new RelOrderNoCascadeEntity();
+			$order->customer = $customer;
+
+			$em->persist($order);
+			$em->flush();
+
+			self::assertNull($customer->getId());
+
+			$rows = $em->getConnection()->execute('SELECT id FROM rel_customers')->fetchAll('assoc');
+			self::assertSame([], $rows);
 		}
 
 		// -------------------------------------------------------------------------
@@ -164,6 +208,25 @@
 			self::assertSame([], $remaining);
 		}
 
+		public function testCascadeRemoveAbsentLeavesProfileInPlaceWhenUserIsRemoved(): void {
+			$em = self::em();
+
+			$user = new RelUserEntity();
+			$em->persist($user);
+			$em->flush();
+
+			$profile = new RelProfileNoCascadeEntity();
+			$profile->user = $user;
+			$em->persist($profile);
+			$em->flush();
+
+			$em->remove($user);
+			$em->flush();
+
+			$remaining = $em->getConnection()->execute('SELECT id FROM rel_profiles_no_cascade')->fetchAll('assoc');
+			self::assertCount(1, $remaining);
+		}
+
 		// -------------------------------------------------------------------------
 		// OneToOne — Cascade(persist), end to end
 		// -------------------------------------------------------------------------
@@ -175,9 +238,8 @@
 			$profile = new RelProfileEntity();
 			$profile->user = $user;
 
-			// Only the owning side is persisted directly — Cascade(persist) on
-			// RelProfileEntity::$user is what's expected to pick up the unsaved
-			// RelUserEntity and insert it too.
+			// Cascade(persist) on $user should pick up and insert the unsaved
+			// user too.
 			$em->persist($profile);
 			$em->flush();
 
@@ -185,6 +247,27 @@
 
 			$rows = $em->getConnection()->execute('SELECT id FROM rel_users')->fetchAll('assoc');
 			self::assertCount(1, $rows);
+		}
+
+		/**
+		 * RelProfileUnidirectionalEntity declares Cascade(remove) only, no
+		 * "persist" — reused here as the negative control instead of a new
+		 * fixture, since it already has exactly the annotation shape needed.
+		 */
+		public function testCascadePersistAbsentLeavesTheRelatedUserUnsavedOnAOneToOneOwningSide(): void {
+			$em = self::em();
+
+			$user = new RelUserEntity();
+			$profile = new RelProfileUnidirectionalEntity();
+			$profile->user = $user;
+
+			$em->persist($profile);
+			$em->flush();
+
+			self::assertNull($user->getId());
+
+			$rows = $em->getConnection()->execute('SELECT id FROM rel_users')->fetchAll('assoc');
+			self::assertSame([], $rows);
 		}
 
 		// -------------------------------------------------------------------------
@@ -205,16 +288,58 @@
 		}
 
 		// -------------------------------------------------------------------------
-		// By design, not a bug: InverseOf is a hydration instruction, not a
-		// relation — it never owns the FK, so Cascade (which governs walking and
-		// persisting/removing a related object the ORM owns) has nothing to do
-		// on it. Declaring Cascade there is rejected at build time. This uses a
-		// THIRD isolated EntityStore (not EntityManager, so it never touches
-		// SignalHub) pointed at yet another directory, since loading this pair
-		// is expected to throw.
+		// ManyToOne + InverseOf ("one-to-many") — Cascade(persist), end to end
 		// -------------------------------------------------------------------------
 
-		public function testCascadeOnAnInverseOfCollectionIsRejectedByDesign(): void {
+		public function testCascadePersistAutoSavesNewChildrenOnAnInverseOfCollection(): void {
+			$em = self::em();
+
+			$department = new RelDepartmentEntity();
+			$employee = new RelEmployeeEntity();
+			$employee->department = $department;
+			$department->employees->add($employee);
+
+			// Cascade(persist) on $employees should walk the collection and
+			// insert the unsaved employee too.
+			$em->persist($department);
+			$em->flush();
+
+			self::assertNotNull($employee->getId());
+
+			$rows = $em->getConnection()->execute('SELECT id FROM rel_employees')->fetchAll('assoc');
+			self::assertCount(1, $rows);
+		}
+
+		/**
+		 * RelCustomerEntity::$orders (InverseOf) declares no Cascade — reused
+		 * here as the negative control instead of a new fixture.
+		 */
+		public function testCascadePersistAbsentLeavesNewChildrenUnsavedOnAnInverseOfCollection(): void {
+			$em = self::em();
+
+			$customer = new RelCustomerEntity();
+			$order = new RelOrderCascadeEntity();
+			$order->customer = $customer;
+			$customer->orders->add($order);
+
+			$em->persist($customer);
+			$em->flush();
+
+			self::assertNotNull($customer->getId());
+			self::assertNull($order->getId());
+
+			$rows = $em->getConnection()->execute('SELECT id FROM rel_orders_cascade')->fetchAll('assoc');
+			self::assertSame([], $rows);
+		}
+
+		// -------------------------------------------------------------------------
+		// By design, not a bug: Cascade(remove) on InverseOf is rejected at
+		// build time — see Cascade.php. Uses its own EntityStore (not
+		// EntityManager) pointed at the bad-fixtures directory, since loading
+		// this pair is expected to throw.
+		// -------------------------------------------------------------------------
+
+		public function testCascadeRemoveOnAnInverseOfCollectionIsRejectedByDesign(): void {
 			$badFixturesDir = __DIR__ . '/../Fixtures/BadCascadeEntities';
 
 			foreach (glob($badFixturesDir . '/*.php') ?: [] as $file) {
@@ -229,7 +354,7 @@
 			$entityStore = new EntityStore($configuration);
 
 			$this->expectException(\RuntimeException::class);
-			$this->expectExceptionMessageMatches('/carries an .@Orm\\\\Cascade. annotation but no .@Orm\\\\ManyToOne. or .@Orm\\\\OneToOne./');
+			$this->expectExceptionMessageMatches('/carries an .@Orm\\\\Cascade. annotation with a .remove. operation on an .@Orm\\\\InverseOf. property/');
 
 			$entityStore->getMetadata(RelParentWithBadCascadeEntity::class);
 		}
