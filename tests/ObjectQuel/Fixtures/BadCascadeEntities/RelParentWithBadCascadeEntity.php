@@ -11,16 +11,17 @@
 	use Quellabs\ObjectQuel\Collections\CollectionInterface;
 
 	/**
-	 * Deliberately invalid, by design: Cascade(persist) placed directly on an
-	 * InverseOf collection property. InverseOf is a hydration instruction, not a
-	 * relation — it never owns the FK (the ManyToOne/OneToOne on the dependent
-	 * entity does), so Cascade has nothing to walk or persist/remove there.
-	 * EntityMetadataBuilder::validateCascadeRequiresRelation() rejects this at
-	 * metadata-build time with a RuntimeException.
-	 *
-	 * (UnitOfWork::processCascadingInverseOfPersists() still reads a Cascade off
-	 * InverseOf, but since that combination never passes validation, the branch
-	 * is unreachable — dead code, not a working feature.)
+	 * Deliberately invalid, by design: Cascade(remove) placed directly on an
+	 * InverseOf collection property. Cascade(persist) is legitimate here — see
+	 * RelDepartmentEntity/RelEmployeeEntity — because a new, not-yet-saved child
+	 * only exists in this in-memory collection, so
+	 * UnitOfWork::processCascadingInverseOfPersists() has to walk it. But
+	 * cascade-*remove* is discovered by UnitOfWork::handleDependentEntityClass()
+	 * querying the dependent entity's foreign key column directly — it never
+	 * reads Cascade off InverseOf and never will, since it doesn't need a loaded
+	 * collection to work. Declaring "remove" here would silently do nothing, so
+	 * EntityMetadataBuilder::validateCascadeRequiresRelation() rejects it at
+	 * metadata-build time with a RuntimeException instead.
 	 *
 	 * Kept in its own isolated fixture directory
 	 * (tests/ObjectQuel/Fixtures/BadCascadeEntities, not the shared
@@ -29,6 +30,11 @@
 	 * would trip over it too: EntityStore::getOrderedDependentEntities() eagerly
 	 * builds metadata for every entity in the registry the first time any
 	 * cascade-remove path runs, not just the one entity being removed.
+	 *
+	 * Declares both "remove" and "persist" together (not just "remove" alone)
+	 * to prove rejection isn't merely a side effect of "persist" being absent —
+	 * "remove" is what's actually invalid here, regardless of what else rides
+	 * along with it in the same annotation.
 	 * @Orm\Table(name="rel_parents_bad_cascade")
 	 */
 	class RelParentWithBadCascadeEntity {
@@ -40,7 +46,7 @@
 
 		/**
 		 * @Orm\InverseOf(targetEntity=RelChildOfBadCascadeEntity::class, relation="parent")
-		 * @Orm\Cascade(operations={"persist"})
+		 * @Orm\Cascade(operations={"remove", "persist"})
 		 */
 		public CollectionInterface $children;
 

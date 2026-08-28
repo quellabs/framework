@@ -13,11 +13,12 @@
 	/**
 	 * The owning ("many") side of a ManyToOne+InverseOf one-to-many pair, paired
 	 * with RelCustomerEntity's InverseOf collection. Carries the full stack:
-	 * ManyToOne + Cascade(remove) (PHP-side cascade when the customer is removed)
-	 * + ForeignKey/ForeignKeyAction (a real ON DELETE CASCADE constraint) — proves
-	 * both cascade systems work for the genuine one-to-many shape a real user
-	 * would declare via make:entity's bidirectional flow, not just a bare
-	 * ManyToOne with no InverseOf mirror on the other side.
+	 * ManyToOne + Cascade(remove, persist) (PHP-side cascade when the customer
+	 * is removed, and when this order is persisted with a brand new, unmanaged
+	 * customer attached) + ForeignKey/ForeignKeyAction (a real ON DELETE CASCADE
+	 * constraint) — proves both cascade systems work for the genuine one-to-many
+	 * shape a real user would declare via make:entity's bidirectional flow, not
+	 * just a bare ManyToOne with no InverseOf mirror on the other side.
 	 * @Orm\Table(name="rel_orders_cascade")
 	 */
 	class RelOrderCascadeEntity {
@@ -29,7 +30,7 @@
 
 		/**
 		 * @Orm\ManyToOne(targetEntity=RelCustomerEntity::class, localColumn="customerId", fetch="EAGER")
-		 * @Orm\Cascade(operations={"remove"})
+		 * @Orm\Cascade(operations={"remove", "persist"})
 		 */
 		public ?RelCustomerEntity $customer = null;
 
