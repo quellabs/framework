@@ -104,6 +104,34 @@
 			self::assertSame([], $remaining);
 		}
 
+		/**
+		 * A New (persist()ed but never flushed) order referencing the customer
+		 * has no row in the database yet, so the DB-driven lookup in
+		 * cascadeDeleteDependentObjects() can never find it. Without
+		 * cascadeDeleteUnpersistedDependents() catching it in memory, it would
+		 * still get inserted after the customer's DELETE, pointing at a
+		 * customer row that no longer exists.
+		 */
+		public function testCascadeRemoveCatchesAnUnflushedNewOrderInTheSameUnitOfWork(): void {
+			$em = self::em();
+
+			$customer = new RelCustomerEntity();
+			$em->persist($customer);
+			$em->flush();
+
+			$order = new RelOrderCascadeEntity();
+			$order->customer = $customer;
+			$em->persist($order);
+
+			$em->remove($customer);
+			$em->flush();
+
+			self::assertNull($order->getId());
+
+			$remaining = $em->getConnection()->execute('SELECT id FROM rel_orders_cascade')->fetchAll('assoc');
+			self::assertSame([], $remaining);
+		}
+
 		public function testCascadeRemoveAbsentLeavesOrdersInPlaceWhenCustomerIsRemoved(): void {
 			$em = self::em();
 
