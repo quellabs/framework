@@ -11,6 +11,12 @@
 	 * available at runtime. Construct this once (typically alongside your
 	 * EntityManager) and pass it into QuelToSQL.
 	 *
+	 * This class only reports facts about the connected engine (booleans,
+	 * tokens, and getDatabaseType() itself) — it never builds SQL text.
+	 * Collaborators that render whole DDL/SQL fragments from those facts (e.g.
+	 * DDLTypeMapper) take a PlatformCapabilitiesInterface and query it, rather
+	 * than this class delegating out to them.
+	 *
 	 * Example:
 	 *   $platform = new PlatformCapabilities($adapter);
 	 *   $quelToSQL = new QuelToSQL($entityStore, $parameters, $platform);
@@ -214,6 +220,8 @@
 		 * JSON path extraction style depends on the engine and version:
 		 * - PostgreSQL:       col #>> '{a,b}'          (all versions)
 		 * - MariaDB >= 10.9:  JSON_VALUE(col, '$.a.b')
+		 * - SQL Server:       JSON_VALUE(col, '$.a.b') (available since SQL Server
+		 *                     2016; same function/path syntax as MariaDB's)
 		 * - SQLite >= 3.38:   col ->> '$.a.b'          (SQLite has no JSON_VALUE())
 		 * - All others:       JSON_UNQUOTE(JSON_EXTRACT(col, '$.a.b'))
 		 */
@@ -221,62 +229,23 @@
 			switch ($this->adapter->getDatabaseType()) {
 				case 'pgsql':
 					return JsonExtractionStyle::HashDoubleArrow;
-				
+
 				case 'mariadb':
 					return $this->supportsMariaDbJsonValue()
 						? JsonExtractionStyle::JsonValue
 						: JsonExtractionStyle::JsonUnquote;
-				
+
+				case 'sqlsrv':
+					return JsonExtractionStyle::JsonValue;
+
 				case 'sqlite':
 					return $this->supportsSqliteArrowOperator()
 						? JsonExtractionStyle::ArrowOperator
 						: JsonExtractionStyle::JsonUnquote;
-				
+
 				default:
 					return JsonExtractionStyle::JsonUnquote;
 			}
-		}
-		
-		/**
-		 * @inheritDoc
-		 *
-		 * Cast type maps per engine:
-		 *
-		 * MySQL / MariaDB
-		 *   Integer arithmetic uses SIGNED (signed 64-bit) rather than INT because
-		 *   CAST(x AS INT) is not valid in MySQL; SIGNED / UNSIGNED are the correct
-		 *   integer target types for CAST().
-		 *
-		 * PostgreSQL
-		 *   Uses standard ANSI type names. INTEGER and FLOAT are the idiomatic choices;
-		 *   TEXT is preferred over VARCHAR (no length constraint) for string casts.
-		 *
-		 * SQLite
-		 *   SQLite CAST() accepts a limited set of type affinities: INTEGER, REAL,
-		 *   TEXT, NUMERIC, BLOB. There is no separate FLOAT or DOUBLE type.
-		 */
-		public function getSupportedCastTypes(): array {
-			return match ($this->adapter->getDatabaseType()) {
-				'pgsql' => [
-					'int'     => 'INTEGER',
-					'float'   => 'FLOAT',
-					'string'  => 'TEXT',
-					'decimal' => 'DECIMAL',
-					'bool'    => 'BOOLEAN',
-				],
-				'sqlite' => [
-					'int'     => 'INTEGER',
-					'float'   => 'REAL',
-					'string'  => 'TEXT',
-					'decimal' => 'NUMERIC',
-				],
-				default => [
-					'int'     => 'SIGNED',
-					'float'   => 'DOUBLE',
-					'string'  => 'CHAR',
-					'decimal' => 'DECIMAL',
-				],
-			};
 		}
 		
 		/**
@@ -348,6 +317,13 @@
 		 */
 		public function supportsForeignKeyIntrospection(): bool {
 			return in_array($this->adapter->getDatabaseType(), ['mysql', 'mariadb', 'sqlite', 'pgsql', 'sqlsrv']);
+		}
+
+		/**
+		 * @inheritDoc
+		 */
+		public function getDatabaseType(): string {
+			return $this->adapter->getDatabaseType();
 		}
 
 		/**

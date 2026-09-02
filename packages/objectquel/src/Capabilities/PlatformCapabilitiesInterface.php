@@ -118,21 +118,6 @@
 		 * @return JsonExtractionStyle
 		 */
 		public function getJsonExtractionStyle(): JsonExtractionStyle;
-		/**
-		 * Returns the set of QUEL cast type names supported by the connected engine,
-		 * mapped to the SQL type token that should appear inside the CAST expression.
-		 *
-		 * The keys are the identifiers users write in QUEL (e.g. 'int', 'float',
-		 * 'string', 'decimal'). The values are the exact SQL type tokens emitted
-		 * into the generated SQL (e.g. 'SIGNED', 'DOUBLE', 'CHAR', 'DECIMAL').
-		 *
-		 * ObjectQuel validates cast types against this map at semantic-analysis time
-		 * and rejects any cast whose key is absent, so only engine-supported casts
-		 * can reach the SQL generator.
-		 *
-		 * @return array<string, string>  e.g. ['int' => 'SIGNED', 'float' => 'DOUBLE', ...]
-		 */
-		public function getSupportedCastTypes(): array;
 
 		/**
 		 * Returns a SQL expression that converts a datetime column or value to a
@@ -242,4 +227,18 @@
 		 * @return bool
 		 */
 		public function supportsForeignKeyIntrospection(): bool;
+
+		/**
+		 * Returns the connected database engine's type identifier.
+		 *
+		 * This is the most basic fact PlatformCapabilities reports — every other
+		 * method here is, internally, a decision made from this same value. It's
+		 * exposed directly so collaborators that build engine-specific SQL text
+		 * from scratch (e.g. DDLTypeMapper's temporary-table DDL) can branch on
+		 * the engine without PlatformCapabilities having to grow a bespoke
+		 * reporting method for every syntax difference between engines.
+		 *
+		 * @return string One of 'mysql', 'mariadb', 'pgsql', 'sqlite', 'sqlsrv'
+		 */
+		public function getDatabaseType(): string;
 	}

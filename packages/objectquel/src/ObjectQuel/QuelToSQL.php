@@ -16,15 +16,22 @@
 	use Quellabs\ObjectQuel\Execution\Visitors\DetectPrimaryKeyInClauseException;
 	use Quellabs\ObjectQuel\Capabilities\PlatformCapabilitiesInterface;
 	use Quellabs\ObjectQuel\Capabilities\NullPlatformCapabilities;
-	
+	use Quellabs\ObjectQuel\DatabaseAdapter\SqlIdentifierQuoter;
+
 	class QuelToSQL {
-		
+
 		private EntityStore $entityStore;
 		private PlatformCapabilitiesInterface $platform;
-		
+
+		/**
+		 * Quotes identifiers/aliases for whichever engine $platform describes.
+		 * @var SqlIdentifierQuoter
+		 */
+		private SqlIdentifierQuoter $identifierQuoter;
+
 		/** @var array<string, mixed> */
 		private array $parameters;
-		
+
 		/**
 		 * QuelToSQL constructor
 		 * @param EntityStore $entityStore
@@ -39,6 +46,7 @@
 			$this->entityStore = $entityStore;
 			$this->parameters = &$parameters;
 			$this->platform = $platform;
+			$this->identifierQuoter = new SqlIdentifierQuoter($platform);
 		}
 		
 		/**
@@ -74,6 +82,34 @@
 		 */
 		protected function getUnique(AstRetrieve $retrieve): string {
 			return $retrieve->isUnique() ? "DISTINCT " : "";
+		}
+
+		/**
+		 * Appends " as <quoted-alias>" to a SQL expression. The expression may be
+		 * a quoted table identifier, a "(subquery)" fragment, or a column
+		 * expression — this is the "X AS alias" shape reused throughout
+		 * FROM/JOIN/column-list generation, differing only in what X is.
+		 * @param string $expression Already-quoted/complete SQL to alias
+		 * @param string $alias Unquoted alias name
+		 * @return string
+		 */
+		private function quoteAsAlias(string $expression, string $alias): string {
+			return "{$expression} as " . $this->identifierQuoter->quoteIdentifier($alias);
+		}
+
+		/**
+		 * Builds a single "<JOIN_TYPE> JOIN <table> as <alias> ON <condition>"
+		 * clause. $tableExpression is already-quoted SQL (a quoted table
+		 * identifier or a "(subquery)" fragment) — this only assembles the
+		 * shared JOIN/alias/ON structure around it.
+		 * @param string $joinType "INNER" or "LEFT"
+		 * @param string $tableExpression Already-quoted/complete SQL for the joined table
+		 * @param string $rangeName Unquoted alias name for the joined table
+		 * @param string $joinCondition SQL for the ON condition
+		 * @return string
+		 */
+		private function buildJoinClause(string $joinType, string $tableExpression, string $rangeName, string $joinCondition): string {
+			return "{$joinType} JOIN " . $this->quoteAsAlias($tableExpression, $rangeName) . " ON {$joinCondition}";
 		}
 		
 		/**
@@ -117,8 +153,10 @@
 							$aliasName = $outerRangeName . '.' . $aliasName;
 						}
 						
-						// Add the alias to the SQL result
-						$sqlResult .= " as `{$aliasName}`";
+						// Add the alias to the SQL result. $aliasName may itself contain a
+						// literal '.' (see outerRangeName handling above); quoteIdentifier()
+						// never splits on '.', so it survives quoting as a single token.
+						$sqlResult = $this->quoteAsAlias($sqlResult, $aliasName);
 					}
 					
 					// Add the SQL result to the result array
@@ -174,13 +212,13 @@
 				// Regular ranges reference a physical table looked up from the entity store.
 				if ($range instanceof AstRangeDatabaseSubquery) {
 					$subSQL = $this->convertToSQL($range->getQuery(), $rangeName);
-					$tableNames[] = "({$subSQL}) as `{$rangeName}`";
+					$tableNames[] = $this->quoteAsAlias("({$subSQL})", $rangeName);
 				} else {
 					// Get the metadata for the entity.
 					$metadata = $this->entityStore->getMetadata($range->getEntityName());
-					
+
 					// Add the table name and alias to the list for the FROM clause.
-					$tableNames[] = "`{$metadata->tableName}` as `{$rangeName}`";
+					$tableNames[] = $this->quoteAsAlias($this->identifierQuoter->quoteIdentifier($metadata->tableName), $rangeName);
 				}
 			}
 			
@@ -431,12 +469,12 @@
 				// Regular ranges reference a physical table looked up from the entity store.
 				if ($range instanceof AstRangeDatabaseMaterialized) {
 					$subSQL = $this->convertToSQL($range->getQuery(), $rangeName);
-					$result[] = "{$joinType} JOIN ({$subSQL}) as `{$rangeName}` ON {$joinColumn}";
+					$result[] = $this->buildJoinClause($joinType, "({$subSQL})", $rangeName, $joinColumn);
 				} elseif ($range instanceof AstRangeDatabaseTempTable) {
-					$result[] = "{$joinType} JOIN `{$range->getTableName()}` as `{$rangeName}` ON {$joinColumn}";
+					$result[] = $this->buildJoinClause($joinType, $this->identifierQuoter->quoteIdentifier($range->getTableName()), $rangeName, $joinColumn);
 				} elseif ($range instanceof AstRangeDatabase) {
 					$metadata = $this->entityStore->getMetadata($range->getEntityName());
-					$result[] = "{$joinType} JOIN `{$metadata->tableName}` as `{$rangeName}` ON {$joinColumn}";
+					$result[] = $this->buildJoinClause($joinType, $this->identifierQuoter->quoteIdentifier($metadata->tableName), $rangeName, $joinColumn);
 				} else {
 					throw new \LogicException(
 						"Unresolved AstRangeDatabaseSubquery '{$rangeName}' reached QuelToSQL — planner did not complete substitution"
