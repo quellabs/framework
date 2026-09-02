@@ -57,7 +57,8 @@
 		protected function setUp(): void {
 			$this->executor = new TempTableExecutor(
 				self::em()->getConnection(),
-				self::em()->getEntityStore()
+				self::em()->getEntityStore(),
+				self::em()->getUnitOfWork()->getPlatformCapabilities()
 			);
 		}
 
