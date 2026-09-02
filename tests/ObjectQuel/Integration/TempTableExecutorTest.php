@@ -45,7 +45,13 @@
 		private TempTableExecutor $executor;
 
 		private static function em(): EntityManager {
-			return $GLOBALS['test_em'];
+			$em = $GLOBALS['test_em'];
+
+			if (!$em instanceof EntityManager) {
+				throw new \RuntimeException("Test bootstrap did not initialize \$GLOBALS['test_em']");
+			}
+
+			return $em;
 		}
 
 		protected function setUp(): void {
@@ -86,17 +92,44 @@
 		}
 
 		/**
+		 * Runs a query expected to succeed and returns its rows. DatabaseAdapter::execute()
+		 * swallows the underlying exception and returns null on failure instead of
+		 * throwing, so a null result here means the query itself is broken — fail
+		 * loudly rather than pass a null into fetchAll().
+		 * @return array<int, array<string, mixed>>
+		 */
+		private function fetchAllAssoc(string $sql): array {
+			$statement = self::em()->getConnection()->execute($sql);
+
+			if ($statement === null) {
+				throw new \RuntimeException("Query failed: {$sql}");
+			}
+
+			return $statement->fetchAll('assoc');
+		}
+
+		/**
+		 * Narrows a single database result-set value (always scalar or null for
+		 * the columns these tests read) to a string for comparison.
+		 */
+		private function scalarToString(mixed $value): string {
+			return match (true) {
+				is_string($value) => $value,
+				is_int($value), is_float($value) => (string)$value,
+				is_bool($value) => $value ? '1' : '0',
+				$value === null => '',
+				default => throw new \RuntimeException('Unexpected non-scalar value from query result: ' . get_debug_type($value)),
+			};
+		}
+
+		/**
 		 * @return array<string, string> Column name => lowercased SHOW COLUMNS type
 		 */
 		private function describeColumns(string $tableName): array {
-			$rows = self::em()->getConnection()
-				->execute("SHOW COLUMNS FROM `{$tableName}`")
-				->fetchAll('assoc');
-
 			$columns = [];
 
-			foreach ($rows as $row) {
-				$columns[$row['Field']] = strtolower($row['Type']);
+			foreach ($this->fetchAllAssoc("SHOW COLUMNS FROM `{$tableName}`") as $row) {
+				$columns[$this->scalarToString($row['Field'])] = strtolower($this->scalarToString($row['Type']));
 			}
 
 			return $columns;
@@ -135,12 +168,10 @@
 
 			// The typed columns must still be usable for their declared purpose,
 			// not just correctly labelled.
-			$inserted = self::em()->getConnection()
-				->execute("SELECT * FROM `{$tableName}`")
-				->fetchAll('assoc');
+			$inserted = $this->fetchAllAssoc("SELECT * FROM `{$tableName}`");
 
-			self::assertSame('1', (string)$inserted[0]['id']);
-			self::assertSame('Hello', $inserted[0]['title']);
+			self::assertSame('1', $this->scalarToString($inserted[0]['id']));
+			self::assertSame('Hello', $this->scalarToString($inserted[0]['title']));
 		}
 
 		public function testFallsBackToVarcharForExpressionsThatArentEntityProperties(): void {
