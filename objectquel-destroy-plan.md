@@ -53,7 +53,11 @@ destroy ArchiveLog
 destroy StagingTotals
 destroy archive_log_email_idx
 destroy ArchiveLog, StagingTotals
+destroy ArchiveLog if exists
 ```
+
+`if exists` (added after initial implementation, see Semantic analysis
+below) makes a missing name a no-op instead of an error.
 
 Same statement for a permanent table, a temporary table, or an index —
 the compiler resolves which kind a given name is via metadata (see
@@ -100,19 +104,24 @@ temporary), consistent with `create` also being table-only so far.
 Index destroy is real follow-up work once `create index` exists, not
 solved here by inventing a shadow registry.
 
-**Existence checking: none — no `IF EXISTS`, real engine errors surface
-as-is.** The "reject a name that doesn't resolve to anything, no silent
-no-op" requirement from the original draft is satisfied by *not* using
-`DROP TABLE IF EXISTS` at all: a bare `DROP TABLE <name>` fails loudly
-with a real "unknown table" error from the engine when the name doesn't
-exist, which DestroyExecutor surfaces as a QuelException — no need for
-ObjectQuel to track existence itself. This also sidesteps a real
-correctness trap: session-scoped temporary tables (from `create
-temporary`) are invisible to schema introspection
+**Existence checking: fail loudly by default, opt into leniency via a
+trailing `if exists` qualifier.** The "reject a name that doesn't resolve
+to anything, no silent no-op" requirement from the original draft is
+satisfied by default without ObjectQuel tracking existence itself: a bare
+`DROP TABLE <name>` fails loudly with a real "unknown table" error from
+the engine when the name doesn't exist, surfaced as a QuelException. This
+also sidesteps a real correctness trap: session-scoped temporary tables
+(from `create temporary`) are invisible to schema introspection
 (`DatabaseAdapter::getTables()`) on at least MySQL, so a self-built
 existence pre-check would wrongly reject destroying a temp table that
-does in fact exist. Letting the engine resolve the name at DROP time
+does in fact exist — letting the engine resolve the name at DROP time
 handles permanent and temporary tables identically and correctly.
+
+`destroy Name {, Name} if exists` is the opt-in escape hatch, added after
+initial implementation: a trailing qualifier (not SQL's prefix-position
+`IF EXISTS`) to match QUEL's English-sentence grammar, compiling to
+`DROP TABLE IF EXISTS <name>` — valid, dialect-independent syntax on all
+four target engines, so still no per-dialect branching needed.
 
 **Temp vs. permanent: no dialect branching needed.** Unlike
 `TempTableExecutor`'s internal cleanup (which deliberately uses `DROP

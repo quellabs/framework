@@ -7,10 +7,10 @@
 	use Quellabs\ObjectQuel\Exception\QuelException;
 
 	/**
-	 * Integration coverage for QUEL's `destroy Name {, Name}` statement,
-	 * exercised end-to-end via EntityManager::executeQuery() against the
-	 * suite's shared MySQL connection. Table-only — index destroy isn't
-	 * implemented yet, see objectquel-destroy-plan.md.
+	 * Integration coverage for QUEL's `destroy Name {, Name} [if exists]`
+	 * statement, exercised end-to-end via EntityManager::executeQuery()
+	 * against the suite's shared MySQL connection. Table-only — index
+	 * destroy isn't implemented yet, see objectquel-destroy-plan.md.
 	 */
 	class DestroyTest extends TestCase {
 
@@ -110,5 +110,25 @@
 			$this->expectException(QuelException::class);
 
 			self::em()->executeQuery("destroy {$tableName}, {$tableName}");
+		}
+
+		public function testIfExistsSilentlyIgnoresAMissingTable(): void {
+			$tableName = $this->nextTableName();
+
+			// No table by this name was ever created.
+			$result = self::em()->executeQuery("destroy {$tableName} if exists");
+
+			$this->assertNull($result);
+		}
+
+		public function testIfExistsStillDropsATableThatDoesExist(): void {
+			$tableName = $this->nextTableName();
+
+			self::em()->executeQuery("create {$tableName} (id = integer)");
+
+			$result = self::em()->executeQuery("destroy {$tableName} if exists");
+
+			$this->assertNull($result);
+			$this->assertNotContains($tableName, self::em()->getConnection()->getTables());
 		}
 	}
