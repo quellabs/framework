@@ -162,6 +162,23 @@
 			$this->assertArrayHasKey('id', self::em()->getConnection()->getColumns($tableName));
 		}
 
+		public function testRejectsCreatingATableThatAlreadyExists(): void {
+			$tableName = $this->nextTableName();
+			$this->createdTables[] = $tableName;
+
+			self::em()->executeQuery("create {$tableName} (id = integer)");
+
+			// DatabaseAdapter::execute() swallows the underlying DB exception and
+			// returns null on failure rather than throwing — CreateTableExecutor
+			// must detect that null return itself rather than relying on a
+			// try/catch that would never fire. A duplicate CREATE TABLE is a real
+			// DB-level failure (unlike the parse-time rejections above), so this
+			// is the one test that actually exercises that path.
+			$this->expectException(QuelException::class);
+
+			self::em()->executeQuery("create {$tableName} (id = integer)");
+		}
+
 		public function testRejectsUnknownColumnType(): void {
 			$tableName = $this->nextTableName();
 
