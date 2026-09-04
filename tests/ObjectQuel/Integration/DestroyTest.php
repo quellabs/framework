@@ -7,10 +7,18 @@
 	use Quellabs\ObjectQuel\Exception\QuelException;
 
 	/**
-	 * Integration coverage for QUEL's `destroy Name {, Name} [if exists]`
-	 * statement, exercised end-to-end via EntityManager::executeQuery()
-	 * against the suite's shared MySQL connection. Table-only — index
-	 * destroy isn't implemented yet, see objectquel-destroy-plan.md.
+	 * Integration coverage for QUEL's `destroy [temporary] Name {, Name} [if
+	 * exists]` statement, exercised end-to-end via
+	 * EntityManager::executeQuery() against the suite's shared MySQL
+	 * connection. Table-only — index destroy isn't implemented yet, see
+	 * objectquel-destroy-plan.md.
+	 *
+	 * MySQL alone can't distinguish "unqualified" from "temporary" here — a
+	 * session temp table already shadows a same-named permanent one for
+	 * unqualified DROP TABLE, so testDestroysATemporaryTableCreatedInTheSameSession
+	 * and testDestroysUsingTheTemporaryQualifier both pass on this suite's
+	 * connection even though only SQL Server actually needs the `temporary`
+	 * qualifier to resolve correctly (see QuelToSQLDestroy).
 	 */
 	class DestroyTest extends TestCase {
 
@@ -130,5 +138,24 @@
 
 			$this->assertNull($result);
 			$this->assertNotContains($tableName, self::em()->getConnection()->getTables());
+		}
+
+		public function testDestroysUsingTheTemporaryQualifier(): void {
+			$tableName = $this->nextTableName();
+
+			self::em()->executeQuery("create temporary {$tableName} (id = integer)");
+
+			$result = self::em()->executeQuery("destroy temporary {$tableName}");
+
+			$this->assertNull($result);
+		}
+
+		public function testTemporaryQualifierCombinesWithIfExists(): void {
+			$tableName = $this->nextTableName();
+
+			// No temp table by this name was ever created.
+			$result = self::em()->executeQuery("destroy temporary {$tableName} if exists");
+
+			$this->assertNull($result);
 		}
 	}

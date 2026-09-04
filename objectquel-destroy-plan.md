@@ -54,16 +54,27 @@ destroy StagingTotals
 destroy archive_log_email_idx
 destroy ArchiveLog, StagingTotals
 destroy ArchiveLog if exists
+destroy temporary StagingTotals
 ```
 
 `if exists` (added after initial implementation, see Semantic analysis
 below) makes a missing name a no-op instead of an error.
 
-Same statement for a permanent table, a temporary table, or an index —
-the compiler resolves which kind a given name is via metadata (see
-Semantic analysis) rather than the author saying so in the syntax, exactly
-matching real QUEL's own model (an index name and a table name are drawn
-from the same namespace as far as `destroy` is concerned).
+`temporary` (also added after initial implementation, mirroring `create
+temporary`) tells the compiler every named target is a session-temp
+table. This isn't just a style option: on every engine except SQL Server,
+`destroy Name` already resolves correctly to a session-temp table without
+it (see Compile / execution, below, for why), but SQL Server has no such
+shadowing — a local temp table's real name is `#Name`, a different
+physical object — so `destroy temporary Name` is the only way to address
+one there unambiguously and directly.
+
+One statement for a permanent table or a temporary one (`temporary`
+disambiguates when it matters); indexes aren't handled by this statement
+at all — the compiler resolves the table/index distinction via metadata
+(see Semantic analysis) rather than the author saying so in the syntax,
+exactly matching real QUEL's own model (an index name and a table name
+are drawn from the same namespace as far as `destroy` is concerned).
 
 ## New AST
 
@@ -123,32 +134,49 @@ initial implementation: a trailing qualifier (not SQL's prefix-position
 `DROP TABLE IF EXISTS <name>` — valid, dialect-independent syntax on all
 four target engines, so still no per-dialect branching needed.
 
-**Temp vs. permanent: no dialect branching needed.** Unlike
-`TempTableExecutor`'s internal cleanup (which deliberately uses `DROP
-TEMPORARY TABLE` on MySQL/MariaDB for a narrower safety reason — see
-that class's docblock: guaranteeing it only ever drops the specific
-synthetic temp table it created, never an unrelated permanent table that
-happens to share the name), a user-authored `destroy Name` names its
-target deliberately. Plain `DROP TABLE <name>` is correct on every
-dialect for both permanent and session-temporary tables (MySQL included
-— temp tables shadow same-named permanent ones and plain `DROP TABLE`
-resolves to whichever exists), and QUEL's `destroy` grammar has no
-`temporary` keyword to even distinguish the two. No `DDLTypeMapper`
-involvement needed for this statement at all.
+**Temp vs. permanent: mostly no dialect branching, with one real
+exception — SQL Server.** Unlike `TempTableExecutor`'s internal cleanup
+(which deliberately uses `DROP TEMPORARY TABLE` on MySQL/MariaDB for a
+narrower safety reason — see that class's docblock: guaranteeing it only
+ever drops the specific synthetic temp table it created, never an
+unrelated permanent table that happens to share the name), a
+user-authored `destroy Name` names its target deliberately. Plain `DROP
+TABLE <name>` is correct on mysql/mariadb/pgsql/sqlite for both permanent
+and session-temporary tables (MySQL included — temp tables shadow
+same-named permanent ones and plain `DROP TABLE` resolves to whichever
+exists). SQL Server is the exception: a local temp table's real name is
+`#name`, a completely different physical object from the logical name, so
+there's no native shadowing to rely on. This is why `destroy` grew an
+optional `temporary` keyword after initial implementation (see Syntax,
+above) — it lets the compiler resolve the SQL-Server case unambiguously
+instead of guessing. Without it, `QuelToSQLDestroy` emulates the same
+shadowing SQL Server lacks (see Compile / execution, below).
 
 ## Compile / execution
 
-No `BuildSqlFromAst`/`QuelToSQL` involvement — same precedent as `create`
-(see that plan's "New AST"/"Compile" sections): a top-level DDL-shaped
-statement bypasses the retrieve pipeline's expression-level visitor
-entirely. A new `Execution\Executors\DestroyExecutor`, mirroring
-`CreateTableExecutor`, compiles each name in `AstDestroy::$names` to
-`DROP TABLE <quoted name>` (no dialect branching — see Semantic analysis
-above) and runs each directly via `DatabaseAdapter::execute()`, checking
-for its `null` return (it swallows the underlying DB exception itself
-rather than throwing — see the fix made to `CreateTableExecutor` for the
-same reason) and raising `QuelException` with
+No `BuildSqlFromAst` involvement — same precedent as `create` (see that
+plan's "New AST"/"Compile" sections): a top-level DDL-shaped statement
+bypasses the retrieve pipeline's expression-level visitor entirely.
+`QuelToSQLDestroy` compiles each name in `AstDestroy::$names` to a `DROP
+TABLE` statement, and `Execution\Executors\DestroyExecutor`, mirroring
+`CreateTableExecutor`, runs each directly via `DatabaseAdapter::execute()`,
+checking for its `null` return (it swallows the underlying DB exception
+itself rather than throwing — see the fix made to `CreateTableExecutor`
+for the same reason) and raising `QuelException` with
 `DatabaseAdapter::getLastErrorMessage()` on failure.
+
+Dialect branching, found after initial implementation: plain `DROP TABLE
+<name>` is correct everywhere for a permanent table, and for a temp table
+on every engine except SQL Server (see `temporary`, above) — but an
+*unqualified* `destroy Name` on SQL Server, where it isn't known whether
+the target is permanent or temp, needs to emulate the "temp shadows
+permanent" priority the other three engines already give unqualified
+names natively: `IF OBJECT_ID('tempdb..#Name') IS NOT NULL DROP TABLE
+[#Name] ELSE DROP TABLE [Name]`. Without this, an unqualified `destroy` of
+a table created via `create temporary` on SQL Server would either fail
+with "invalid object name", or — if a permanent table happened to share
+the name — silently drop that unrelated permanent table instead. See
+`QuelToSQLDestroy` for the full reasoning.
 
 A multi-name `destroy` runs one `DROP TABLE` per name, in order, stopping
 at the first failure (not wrapped in a transaction — DDL isn't
