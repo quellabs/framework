@@ -42,7 +42,10 @@
 		}
 
 		public function testOnConflictIsNullWhenAbsent(): void {
-			$ast = $this->parse('append to UserEntity (name = "Alice")');
+			$ast = $this->parse('
+				range of u is UserEntity
+				append to u (name = "Alice")
+			');
 			self::assertNull($ast->getOnConflict());
 		}
 
@@ -71,7 +74,11 @@
 			self::assertNotNull($ast->getOnConflict());
 		}
 
-		public function testRejectsOnConflictWithABareEntityNameTarget(): void {
+		public function testRejectsOnConflictWhenTheTargetIsNotADeclaredRange(): void {
+			// append's own "target must be a declared range" restriction
+			// (see AppendParserTest::testRejectsATargetThatIsNotADeclaredRange())
+			// applies here too — it isn't specific to the onConflict clause,
+			// but this locks in that the combination still fails correctly.
 			$this->expectException(ParserException::class);
 
 			$this->parse('append to UserEntity (email = :e, name = :n) or replace (name = :n) where email = :e');

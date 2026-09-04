@@ -23,7 +23,8 @@
 
 		private function seedUser(string $username, string $password, bool $banned = false): int {
 			$result = $this->em->executeStatement(
-				'append to App\Entities\UserEntity (username = :username, password = :password, banned = :banned)',
+				'range of u is App\Entities\UserEntity
+				append to u (username = :username, password = :password, banned = :banned)',
 				['username' => $username, 'password' => $password, 'banned' => $banned]
 			);
 

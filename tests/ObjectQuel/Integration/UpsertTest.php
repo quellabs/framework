@@ -122,7 +122,7 @@
 			', ['e' => 'x@example.com', 'n' => 'X']);
 		}
 
-		public function testRejectsOnConflictWithABareEntityNameTarget(): void {
+		public function testRejectsATargetThatIsNotADeclaredRange(): void {
 			$this->expectException(QuelException::class);
 
 			self::em()->executeStatement(

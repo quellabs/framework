@@ -18,6 +18,9 @@
 	 * resulting AstAppend, not entity-metadata-dependent semantics (unknown
 	 * property, missing required column, etc. — covered by
 	 * tests/Integration/AppendTest.php against a real entity).
+	 *
+	 * The target must always be a declared range — there's no bare-entity-
+	 * name form (see testRejectsATargetThatIsNotADeclaredRange()).
 	 */
 	class AppendParserTest extends TestCase {
 
@@ -27,8 +30,11 @@
 			return $ast;
 		}
 
-		public function testParsesASingleLiteralRowAgainstABareEntityName(): void {
-			$ast = $this->parse('append to UserEntity (name = "Alice", active = true)');
+		public function testParsesASingleLiteralRow(): void {
+			$ast = $this->parse('
+				range of u is UserEntity
+				append to u (name = "Alice", active = true)
+			');
 
 			self::assertSame('UserEntity', $ast->getEntityName());
 			self::assertFalse($ast->isInsertFromSelect());
@@ -42,17 +48,17 @@
 			self::assertSame('active', $row[1]->getProperty());
 		}
 
-		public function testResolvesTheTargetThroughADeclaredRangeAlias(): void {
-			$ast = $this->parse('
-				range of u is UserEntity
-				append to u (name = "Alice")
-			');
+		public function testRejectsATargetThatIsNotADeclaredRange(): void {
+			$this->expectException(ParserException::class);
 
-			self::assertSame('UserEntity', $ast->getEntityName());
+			$this->parse('append to UserEntity (name = "Alice")');
 		}
 
 		public function testParsesAParameterAndArithmeticExpressionAsAValue(): void {
-			$ast = $this->parse('append to UserEntity (region_id = :regionId + 1)');
+			$ast = $this->parse('
+				range of u is UserEntity
+				append to u (region_id = :regionId + 1)
+			');
 
 			$value = $ast->getRows()[0][0]->getValue();
 			self::assertNotInstanceOf(AstParameter::class, $value); // it's the AstTerm wrapping :regionId + 1
@@ -60,7 +66,8 @@
 
 		public function testParsesAMultiRowAppend(): void {
 			$ast = $this->parse('
-				append to UserEntity
+				range of u is UserEntity
+				append to u
 					(name = "Alice", age = 30),
 					(name = "Bob", age = 40)
 			');
@@ -76,7 +83,8 @@
 			$this->expectException(ParserException::class);
 
 			$this->parse('
-				append to UserEntity
+				range of u is UserEntity
+				append to u
 					(name = "Alice", age = 30),
 					(name = "Bob")
 			');
@@ -85,7 +93,10 @@
 		public function testRejectsADuplicatePropertyInTheSameRow(): void {
 			$this->expectException(ParserException::class);
 
-			$this->parse('append to UserEntity (name = "Alice", name = "Bob")');
+			$this->parse('
+				range of u is UserEntity
+				append to u (name = "Alice", name = "Bob")
+			');
 		}
 
 		public function testParsesInsertFromSelect(): void {
