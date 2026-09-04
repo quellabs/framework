@@ -7,15 +7,11 @@
 	use Quellabs\ObjectQuel\Exception\QuelException;
 
 	/**
-	 * Integration coverage for QUEL's `create [temporary] Name (...)` statement,
-	 * exercised end-to-end through EntityManager::executeQuery() against a live
-	 * MySQL connection (the suite's shared connection — see bootstrap.php).
-	 *
-	 * Verifies the table this statement produces via
-	 * DatabaseAdapter::getColumns()/getPrimaryKey(), not just that no exception
-	 * was thrown — the risk is in the generated DDL fragments themselves
-	 * (constraint order, AUTO_INCREMENT placement), same rationale as
-	 * TempTableExecutorTest.
+	 * Integration coverage for QUEL's `create [temporary] Name (...)`
+	 * statement, exercised end-to-end via EntityManager::executeQuery()
+	 * against the suite's shared MySQL connection. Verifies the resulting
+	 * table via DatabaseAdapter::getColumns()/getPrimaryKey(), not just that
+	 * no exception was thrown — the risk is in the generated DDL itself.
 	 */
 	class CreateTableTest extends TestCase {
 
@@ -148,11 +144,8 @@
 			$tableName = $this->nextTableName();
 			$this->createdTables[] = $tableName;
 
-			// Parser::parse() parses 'range of ...' declarations once up front,
-			// shared across every statement in the do-while loop — a user could
-			// declare ranges and then run several `retrieve` statements against
-			// them. `create` simply doesn't reference ranges, so one declared
-			// ahead of it is unused, not an error.
+			// Ranges are parsed once up front and shared across statements —
+			// `create` just doesn't reference them, so this isn't an error.
 			$result = self::em()->executeQuery("
 				range of x is PostEntity
 				create {$tableName} (id = integer)
@@ -168,12 +161,8 @@
 
 			self::em()->executeQuery("create {$tableName} (id = integer)");
 
-			// DatabaseAdapter::execute() swallows the underlying DB exception and
-			// returns null on failure rather than throwing — CreateTableExecutor
-			// must detect that null return itself rather than relying on a
-			// try/catch that would never fire. A duplicate CREATE TABLE is a real
-			// DB-level failure (unlike the parse-time rejections above), so this
-			// is the one test that actually exercises that path.
+			// Unlike the parse-time rejections above, this is a real DB-level
+			// failure — exercises CreateTableExecutor's null-return handling.
 			$this->expectException(QuelException::class);
 
 			self::em()->executeQuery("create {$tableName} (id = integer)");

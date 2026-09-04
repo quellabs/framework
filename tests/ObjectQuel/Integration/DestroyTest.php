@@ -8,10 +8,9 @@
 
 	/**
 	 * Integration coverage for QUEL's `destroy Name {, Name}` statement,
-	 * exercised end-to-end through EntityManager::executeQuery() against a
-	 * live MySQL connection (the suite's shared connection — see
-	 * bootstrap.php). Table-only — index destroy is not implemented yet, see
-	 * objectquel-destroy-plan.md.
+	 * exercised end-to-end via EntityManager::executeQuery() against the
+	 * suite's shared MySQL connection. Table-only — index destroy isn't
+	 * implemented yet, see objectquel-destroy-plan.md.
 	 */
 	class DestroyTest extends TestCase {
 
@@ -60,10 +59,8 @@
 
 			self::em()->executeQuery("create temporary {$tableName} (id = integer)");
 
-			// Session-scoped temp tables are invisible to getTables() on MySQL —
-			// this is exactly the reason DestroyExecutor doesn't pre-check
-			// existence itself. A plain DROP TABLE must still resolve and drop
-			// it correctly.
+			// Session-scoped temp tables are invisible to getTables() on MySQL,
+			// so a plain DROP TABLE must still resolve and drop it correctly.
 			$result = self::em()->executeQuery("destroy {$tableName}");
 
 			$this->assertNull($result);
@@ -86,13 +83,8 @@
 		}
 
 		public function testDestroysAnEntityMappedTableWithoutRestriction(): void {
-			// `destroy` applies no Phinx-governance restriction (see
-			// objectquel-create-table-plan.md's already-decided answer, which
-			// this plan explicitly inherits) — it's just as capable of dropping
-			// a real, Entity-mapped, already-populated table as any other name.
-			// Prove it without touching the suite's shared `posts`/`users`
-			// fixture tables: create a throwaway table, then destroy it — no
-			// EntityStore lookup should occur or block this.
+			// `destroy` applies no Phinx-governance restriction — no EntityStore
+			// lookup should occur or block this.
 			$tableName = $this->nextTableName();
 
 			self::em()->executeQuery("create {$tableName} (id = integer)");
