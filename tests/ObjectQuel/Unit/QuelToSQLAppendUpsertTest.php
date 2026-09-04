@@ -9,6 +9,7 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Parser;
 	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQLAppend;
 	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQLReplace;
+	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQLUpsert;
 	use Quellabs\ObjectQuel\Tests\Support\FakePlatformCapabilities;
 
 	/**
@@ -41,7 +42,8 @@
 			$em = $this->em();
 			$platform = new FakePlatformCapabilities($dialect);
 			$replaceCompiler = new QuelToSQLReplace($em->getEntityStore(), $platform, $em->getUnitOfWork()->getVersionValueHandler());
-			$compiler = new QuelToSQLAppend($em->getEntityStore(), $em, $platform, $replaceCompiler);
+			$upsertCompiler = new QuelToSQLUpsert($em->getEntityStore(), $platform, $replaceCompiler);
+			$compiler = new QuelToSQLAppend($em->getEntityStore(), $em, $platform, $upsertCompiler);
 			return $compiler->convertToSQL($ast, $parameters);
 		}
 
