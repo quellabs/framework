@@ -10,14 +10,18 @@
 	use Quellabs\ObjectQuel\ObjectQuel\ParserException;
 
 	/**
-	 * Parser-level coverage for upsert's `append ... or replace (...) where
-	 * ...` extension — no EntityStore involved, so this only exercises the
-	 * grammar (see Rules\Append's parseOptionalOnConflict()) and the shape
-	 * of the resulting AstAppend::getOnConflict(), not entity-metadata-
-	 * dependent semantics (conflict-target-matches-a-real-unique-constraint,
-	 * dialect-specific SQL — covered by
+	 * Parser-level coverage for upsert's `append ... or replace [(...)]
+	 * where ...` extension — no EntityStore involved, so this only
+	 * exercises the grammar (see Rules\Append's parseOptionalOnConflict())
+	 * and the shape of the resulting AstAppend::getOnConflict(), not
+	 * entity-metadata-dependent semantics (conflict-target-matches-a-real-
+	 * unique-constraint, dialect-specific SQL — covered by
 	 * tests/Unit/QuelToSQLAppendUpsertTest.php and
 	 * tests/Integration/UpsertTest.php against a real entity).
+	 *
+	 * `or replace`'s assignment list is itself optional — an empty list
+	 * means "overwrite with the row that would have been inserted" (see
+	 * QuelToSQLUpsert); an explicit list overrides that default.
 	 */
 	class UpsertParserTest extends TestCase {
 
@@ -39,6 +43,28 @@
 			self::assertCount(1, $onConflict->getAssignments());
 			self::assertSame('name', $onConflict->getAssignments()[0]->getProperty());
 			self::assertNotNull($onConflict->getConditions());
+		}
+
+		public function testParsesOnConflictWithNoExplicitAssignmentList(): void {
+			$ast = $this->parse('
+				range of u is UserEntity
+				append to u (email = :e, name = :n) or replace where u.email = :e
+			');
+
+			$onConflict = $ast->getOnConflict();
+			self::assertInstanceOf(AstReplace::class, $onConflict);
+			self::assertSame('u', $onConflict->getRange()->getName());
+			self::assertSame([], $onConflict->getAssignments());
+			self::assertNotNull($onConflict->getConditions());
+		}
+
+		public function testRejectsAMissingWhereClauseWhenTheAssignmentListIsAlsoOmitted(): void {
+			$this->expectException(ParserException::class);
+
+			$this->parse('
+				range of u is UserEntity
+				append to u (email = :e, name = :n) or replace
+			');
 		}
 
 		public function testOnConflictIsNullWhenAbsent(): void {

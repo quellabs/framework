@@ -113,6 +113,44 @@
 			$this->assertSame('Carol', $rows[1]['u.name']);
 		}
 
+		public function testNoExplicitListOverwritesWithTheInsertedValuesOnConflict(): void {
+			$noListQuery = '
+				range of u is App\Entities\UpsertConflictEntity
+				append to u (email = :e, name = :n) or replace where u.email = :e
+			';
+
+			self::em()->executeStatement($noListQuery, ['e' => 'alice@example.com', 'n' => 'Alice']);
+			self::em()->executeStatement($noListQuery, ['e' => 'alice@example.com', 'n' => 'Alice V2']);
+
+			$rows = self::em()->getAll('range of u is App\Entities\UpsertConflictEntity retrieve (u.name) where u.email = "alice@example.com"');
+			$this->assertSame('Alice V2', $rows[0]['u.name']);
+		}
+
+		public function testNoExplicitListUpdatesEachConflictingRowWithItsOwnValuesInAMultiRowAppend(): void {
+			// Seed two rows first, so the multi-row upsert below conflicts on both.
+			self::em()->executeStatement(self::UPSERT_QUERY, ['e' => 'alice@example.com', 'n' => 'Alice']);
+			self::em()->executeStatement(self::UPSERT_QUERY, ['e' => 'bob@example.com', 'n' => 'Bob']);
+
+			// Guards against a real correctness bug: if the default "no explicit
+			// list" SET clause were built from one row's literal compiled values
+			// instead of each dialect's "row that would have been inserted"
+			// reference (EXCLUDED/VALUES()/source.col), every conflicting row
+			// would be overwritten with the *first* row's values instead of its
+			// own.
+			self::em()->executeStatement('
+				range of u is App\Entities\UpsertConflictEntity
+				append to u
+					(email = :e1, name = :n1),
+					(email = :e2, name = :n2)
+				or replace where u.email = :e1
+			', ['e1' => 'alice@example.com', 'n1' => 'Alice V2', 'e2' => 'bob@example.com', 'n2' => 'Bob V2']);
+
+			$rows = self::em()->getAll('range of u is App\Entities\UpsertConflictEntity retrieve (u.email, u.name) sort by u.email asc');
+			$this->assertCount(2, $rows);
+			$this->assertSame('Alice V2', $rows[0]['u.name']);
+			$this->assertSame('Bob V2', $rows[1]['u.name']);
+		}
+
 		public function testRejectsAConflictTargetNotBackedByAUniqueConstraint(): void {
 			$this->expectException(QuelException::class);
 

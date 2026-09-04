@@ -28,12 +28,17 @@
 			append to u (email = :e, name = :n) or replace (name = :n) where u.email = :e
 			QUEL;
 
+		private const string DEFAULT_LIST_QUERY = <<<'QUEL'
+			range of u is App\Entities\UpsertConflictEntity
+			append to u (email = :e, name = :n) or replace where u.email = :e
+			QUEL;
+
 		private function em(): EntityManager {
 			return $GLOBALS['test_em'];
 		}
 
-		private function parse(): AstAppend {
-			$ast = (new Parser(new Lexer(self::QUERY)))->parse();
+		private function parse(string $query = self::QUERY): AstAppend {
+			$ast = (new Parser(new Lexer($query)))->parse();
 			self::assertInstanceOf(AstAppend::class, $ast);
 			return $ast;
 		}
@@ -105,6 +110,40 @@
 				'WHEN MATCHED THEN UPDATE SET [name] = :n1 ' .
 				'WHEN NOT MATCHED THEN INSERT ([email], [name]) VALUES ([__upsert_source].[email], [__upsert_source].[name]);',
 				$this->compile($ast, 'sqlsrv', ['e1' => 'a', 'n1' => 'A', 'e2' => 'b', 'n2' => 'B'])
+			);
+		}
+
+		public function testPostgresWithNoExplicitListDefaultsToExcluded(): void {
+			self::assertSame(
+				'INSERT INTO "upsert_conflict_test" ("email", "name") VALUES (:e, :n) ' .
+				'ON CONFLICT ("email") DO UPDATE SET "email" = EXCLUDED."email", "name" = EXCLUDED."name"',
+				$this->compile($this->parse(self::DEFAULT_LIST_QUERY), 'pgsql')
+			);
+		}
+
+		public function testSqliteWithNoExplicitListDefaultsToExcluded(): void {
+			self::assertSame(
+				'INSERT INTO `upsert_conflict_test` (`email`, `name`) VALUES (:e, :n) ' .
+				'ON CONFLICT (`email`) DO UPDATE SET `email` = EXCLUDED.`email`, `name` = EXCLUDED.`name`',
+				$this->compile($this->parse(self::DEFAULT_LIST_QUERY), 'sqlite')
+			);
+		}
+
+		public function testMysqlWithNoExplicitListDefaultsToValuesFunction(): void {
+			self::assertSame(
+				'INSERT INTO `upsert_conflict_test` (`email`, `name`) VALUES (:e, :n) ' .
+				'ON DUPLICATE KEY UPDATE `email` = VALUES(`email`), `name` = VALUES(`name`)',
+				$this->compile($this->parse(self::DEFAULT_LIST_QUERY), 'mysql')
+			);
+		}
+
+		public function testSqlServerWithNoExplicitListDefaultsToSourceColumns(): void {
+			self::assertSame(
+				'MERGE INTO [upsert_conflict_test] AS [__upsert_target] USING (VALUES (:e, :n)) AS [__upsert_source] ([email], [name]) ' .
+				'ON [__upsert_target].[email] = [__upsert_source].[email] ' .
+				'WHEN MATCHED THEN UPDATE SET [email] = [__upsert_source].[email], [name] = [__upsert_source].[name] ' .
+				'WHEN NOT MATCHED THEN INSERT ([email], [name]) VALUES ([__upsert_source].[email], [__upsert_source].[name]);',
+				$this->compile($this->parse(self::DEFAULT_LIST_QUERY), 'sqlsrv')
 			);
 		}
 
