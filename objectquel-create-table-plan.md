@@ -82,6 +82,20 @@ create temporary StagingTotals (
 )
 ```
 
+`if not exists` (added after initial implementation, trailing qualifier —
+the `create` counterpart to `destroy`'s `if exists`) makes an
+already-existing table a no-op instead of an error:
+
+```
+create ArchiveLog (id = integer) if not exists
+```
+
+Compiles to inline `CREATE TABLE IF NOT EXISTS` on mysql/mariadb/pgsql/
+sqlite; SQL Server has no such inline clause on `CREATE TABLE` at all
+(unlike `DROP TABLE IF EXISTS`, which it does support), so on sqlsrv the
+whole statement is wrapped in the standard T-SQL existence-check
+workaround instead: `IF OBJECT_ID(...) IS NULL CREATE TABLE ...`.
+
 A table created this way is addressed via a new range form, `table`
 instead of an Entity class name:
 

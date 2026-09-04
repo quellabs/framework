@@ -7,11 +7,12 @@
 	use Quellabs\ObjectQuel\Exception\QuelException;
 
 	/**
-	 * Integration coverage for QUEL's `create [temporary] Name (...)`
-	 * statement, exercised end-to-end via EntityManager::executeQuery()
-	 * against the suite's shared MySQL connection. Verifies the resulting
-	 * table via DatabaseAdapter::getColumns()/getPrimaryKey(), not just that
-	 * no exception was thrown — the risk is in the generated DDL itself.
+	 * Integration coverage for QUEL's `create [temporary] Name (...) [if not
+	 * exists]` statement, exercised end-to-end via
+	 * EntityManager::executeQuery() against the suite's shared MySQL
+	 * connection. Verifies the resulting table via
+	 * DatabaseAdapter::getColumns()/getPrimaryKey(), not just that no
+	 * exception was thrown — the risk is in the generated DDL itself.
 	 */
 	class CreateTableTest extends TestCase {
 
@@ -166,6 +167,29 @@
 			$this->expectException(QuelException::class);
 
 			self::em()->executeQuery("create {$tableName} (id = integer)");
+		}
+
+		public function testIfNotExistsCreatesTheTableWhenMissing(): void {
+			$tableName = $this->nextTableName();
+			$this->createdTables[] = $tableName;
+
+			$result = self::em()->executeQuery("create {$tableName} (id = integer) if not exists");
+
+			$this->assertNull($result);
+			$this->assertArrayHasKey('id', self::em()->getConnection()->getColumns($tableName));
+		}
+
+		public function testIfNotExistsIsANoOpWhenTheTableAlreadyExists(): void {
+			$tableName = $this->nextTableName();
+			$this->createdTables[] = $tableName;
+
+			self::em()->executeQuery("create {$tableName} (id = integer)");
+
+			// Unlike testRejectsCreatingATableThatAlreadyExists, this must
+			// succeed silently instead of throwing.
+			$result = self::em()->executeQuery("create {$tableName} (id = integer) if not exists");
+
+			$this->assertNull($result);
 		}
 
 		public function testRejectsUnknownColumnType(): void {
