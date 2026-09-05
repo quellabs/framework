@@ -5,6 +5,9 @@
 	use Quellabs\ObjectQuel\Exception\QuelException;
 	use Quellabs\ObjectQuel\ObjectQuel\QuelResult;
 	use Quellabs\ObjectQuel\Tests\ObjectQuelTestCase;
+	use Quellabs\SignalHub\Signal;
+	use Quellabs\SignalHub\SignalHubLocator;
+	use Quellabs\SignalHub\Slot;
 
 	/**
 	 * Integration coverage for QUEL's `append to <range> (...)` statement,
@@ -77,6 +80,52 @@
 
 			$usernames = $this->em->getCol('range of u is App\Entities\UserEntity retrieve (u.username) where u.username = "source-user"');
 			$this->assertCount(2, $usernames);
+		}
+
+		/**
+		 * Regression test: EntityManager::executeQuery() unconditionally calls
+		 * explainQuery() in development mode to build the debug signal's query
+		 * plan. explainQuery() used to reject write-verb statements outright
+		 * (replaying them via the retrieve pipeline's dry-run would re-execute
+		 * the write for real), so a naive call used to bubble that
+		 * QuelException up and fail the append outright. explainQuery() now
+		 * compiles append/replace/delete/DDL statements to SQL directly
+		 * (AppendExecutor::compileSql() and friends) instead of replaying
+		 * them, so the debug signal carries the real compiled SQL.
+		 */
+		public function testAppendSucceedsWithDevelopmentModeDebugSignalEnabled(): void {
+			$configProperty = new \ReflectionProperty($this->em, 'configuration');
+			$configProperty->setAccessible(true);
+			$configuration = $configProperty->getValue($this->em);
+			$configuration->setDevelopmentMode(true);
+
+			$signal = SignalHubLocator::getInstance()->getSignal('debug.database.query');
+			$captured = null;
+			$slot = new Slot(function (array $payload) use (&$captured): void {
+				$captured = $payload;
+			});
+			$signal->connect($slot);
+
+			try {
+				$result = $this->em->executeQuery(
+					'range of u is App\Entities\UserEntity
+					append to u (username = :username, password = :password, banned = false)',
+					['username' => 'heidi', 'password' => 'secret']
+				);
+
+				$this->assertInstanceOf(QuelResult::class, $result);
+				$this->assertSame(1, $result->getAffectedRows());
+				$this->assertNotNull($captured);
+				// Write-verb statements bypass the optimizer/planner pipeline
+				// entirely, so there are no planning notes — only the compiled SQL.
+				$this->assertSame([], $captured['query_plan']->getNotes());
+				$this->assertCount(1, $captured['query_plan']->getSql());
+				$this->assertStringContainsString('INSERT INTO', $captured['query_plan']->getSql()[0]);
+				$this->assertStringContainsString('`users`', $captured['query_plan']->getSql()[0]);
+			} finally {
+				$signal->disconnect($slot);
+				$configuration->setDevelopmentMode(false);
+			}
 		}
 
 		public function testRejectsAnUnknownProperty(): void {
