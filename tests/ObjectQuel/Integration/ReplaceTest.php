@@ -8,7 +8,7 @@
 
 	/**
 	 * Integration coverage for QUEL's `replace <range> (...) where ...`
-	 * statement, exercised end-to-end via EntityManager::executeStatement()
+	 * statement, exercised end-to-end via EntityManager::executeQuery()
 	 * against the suite's shared MySQL connection — basic replace, multiple
 	 * assignments, a condition matching no rows, and the compile-time checks
 	 * (unknown property, type mismatch, missing where) documented in
@@ -22,7 +22,7 @@
 	class ReplaceTest extends ObjectQuelTestCase {
 
 		private function seedUser(string $username, string $password, bool $banned = false): int {
-			$result = $this->em->executeStatement(
+			$result = $this->em->executeQuery(
 				'range of u is App\Entities\UserEntity
 				append to u (username = :username, password = :password, banned = :banned)',
 				['username' => $username, 'password' => $password, 'banned' => $banned]
@@ -34,7 +34,7 @@
 		public function testReplacesAMatchingRow(): void {
 			$id = $this->seedUser('alice', 'secret');
 
-			$result = $this->em->executeStatement('
+			$result = $this->em->executeQuery('
 				range of u is App\Entities\UserEntity
 				replace u (password = :password) where u.id = :id
 			', ['password' => 'newpass', 'id' => $id]);
@@ -53,7 +53,7 @@
 		public function testReplacesMultipleAssignmentsInOneStatement(): void {
 			$id = $this->seedUser('bob', 'pw', false);
 
-			$result = $this->em->executeStatement('
+			$result = $this->em->executeQuery('
 				range of u is App\Entities\UserEntity
 				replace u (password = :password, banned = true) where u.id = :id
 			', ['password' => 'pw2', 'id' => $id]);
@@ -71,7 +71,7 @@
 		public function testAssignmentValueCanReferenceAnotherColumnOfTheSameRow(): void {
 			$id = $this->seedUser('carol', 'pw');
 
-			$result = $this->em->executeStatement('
+			$result = $this->em->executeQuery('
 				range of u is App\Entities\UserEntity
 				replace u (username = concat(u.username, "!")) where u.id = :id
 			', ['id' => $id]);
@@ -88,7 +88,7 @@
 		public function testConditionMatchingNoRowsAffectsZeroRows(): void {
 			$this->seedUser('dave', 'pw');
 
-			$result = $this->em->executeStatement('
+			$result = $this->em->executeQuery('
 				range of u is App\Entities\UserEntity
 				replace u (password = "x") where u.id = :id
 			', ['id' => 999999]);
@@ -101,7 +101,7 @@
 
 			$this->expectException(QuelException::class);
 
-			$this->em->executeStatement('
+			$this->em->executeQuery('
 				range of u is App\Entities\UserEntity
 				replace u (doesNotExist = "x") where u.id = :id
 			', ['id' => $id]);
@@ -112,7 +112,7 @@
 
 			$this->expectException(QuelException::class);
 
-			$this->em->executeStatement('
+			$this->em->executeQuery('
 				range of u is App\Entities\UserEntity
 				replace u (password = null) where u.id = :id
 			', ['id' => $id]);
@@ -124,18 +124,10 @@
 			$this->expectException(QuelException::class);
 
 			// banned is a boolean column; a string literal is a static mismatch.
-			$this->em->executeStatement('
+			$this->em->executeQuery('
 				range of u is App\Entities\UserEntity
 				replace u (banned = "yes") where u.id = :id
 			', ['id' => $id]);
 		}
 
-		public function testExecuteQueryRejectsAReplaceStatement(): void {
-			$this->expectException(QuelException::class);
-
-			$this->em->executeQuery('
-				range of u is App\Entities\UserEntity
-				replace u (password = "x") where u.id = 1
-			');
-		}
 	}

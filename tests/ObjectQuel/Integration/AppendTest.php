@@ -8,7 +8,7 @@
 
 	/**
 	 * Integration coverage for QUEL's `append to <range> (...)` statement,
-	 * exercised end-to-end via EntityManager::executeStatement() against the
+	 * exercised end-to-end via EntityManager::executeQuery() against the
 	 * suite's shared MySQL connection — literal single-row and multi-row
 	 * append, insert-from-select, and the compile-time checks (unknown
 	 * property, missing required column, null into a non-nullable column)
@@ -22,7 +22,7 @@
 	class AppendTest extends ObjectQuelTestCase {
 
 		public function testAppendsASingleRowAndReturnsTheGeneratedIdentity(): void {
-			$result = $this->em->executeStatement(
+			$result = $this->em->executeQuery(
 				'range of u is App\Entities\UserEntity
 				append to u (username = :username, password = :password, banned = false)',
 				['username' => 'alice', 'password' => 'secret']
@@ -44,7 +44,7 @@
 		}
 
 		public function testAppendsMultipleRowsInOneStatement(): void {
-			$result = $this->em->executeStatement('
+			$result = $this->em->executeQuery('
 				range of u is App\Entities\UserEntity
 				append to u
 					(username = "carol", password = "pw1", banned = false),
@@ -61,13 +61,13 @@
 		}
 
 		public function testInsertFromSelectCopiesRowsFromAnotherRange(): void {
-			$seeded = $this->em->executeStatement(
+			$seeded = $this->em->executeQuery(
 				'range of u is App\Entities\UserEntity
 				append to u (username = :username, password = :password, banned = false)',
 				['username' => 'source-user', 'password' => 'pw']
 			);
 
-			$result = $this->em->executeStatement('
+			$result = $this->em->executeQuery('
 				range of dst is App\Entities\UserEntity
 				range of src is App\Entities\UserEntity
 				append to dst (username, password, banned) retrieve (src.username, src.password, src.banned) where src.id = :sourceId
@@ -82,7 +82,7 @@
 		public function testRejectsAnUnknownProperty(): void {
 			$this->expectException(QuelException::class);
 
-			$this->em->executeStatement('
+			$this->em->executeQuery('
 				range of u is App\Entities\UserEntity
 				append to u (doesNotExist = "x", password = "pw", banned = false)
 			');
@@ -92,7 +92,7 @@
 			$this->expectException(QuelException::class);
 
 			// 'password' is not-null with no default and is omitted here.
-			$this->em->executeStatement('
+			$this->em->executeQuery('
 				range of u is App\Entities\UserEntity
 				append to u (username = "eve", banned = false)
 			');
@@ -101,7 +101,7 @@
 		public function testRejectsNullForANonNullableColumn(): void {
 			$this->expectException(QuelException::class);
 
-			$this->em->executeStatement('
+			$this->em->executeQuery('
 				range of u is App\Entities\UserEntity
 				append to u (username = null, password = "pw", banned = false)
 			');
@@ -110,7 +110,7 @@
 		public function testRejectsMismatchedColumnsAcrossMultipleRows(): void {
 			$this->expectException(QuelException::class);
 
-			$this->em->executeStatement('
+			$this->em->executeQuery('
 				range of u is App\Entities\UserEntity
 				append to u
 					(username = "frank", password = "pw1", banned = false),
@@ -121,21 +121,7 @@
 		public function testRejectsATargetThatIsNotADeclaredRange(): void {
 			$this->expectException(QuelException::class);
 
-			$this->em->executeStatement('append to App\Entities\UserEntity (username = "x", password = "pw", banned = false)');
+			$this->em->executeQuery('append to App\Entities\UserEntity (username = "x", password = "pw", banned = false)');
 		}
 
-		public function testExecuteQueryRejectsAnAppendStatement(): void {
-			$this->expectException(QuelException::class);
-
-			$this->em->executeQuery('
-				range of u is App\Entities\UserEntity
-				append to u (username = "x", password = "pw", banned = false)
-			');
-		}
-
-		public function testExecuteStatementRejectsARetrieveStatement(): void {
-			$this->expectException(QuelException::class);
-
-			$this->em->executeStatement('range of u is App\Entities\UserEntity retrieve (u.username)');
-		}
 	}

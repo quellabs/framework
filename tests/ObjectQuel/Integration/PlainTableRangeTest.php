@@ -10,7 +10,7 @@
 	 * Integration coverage for QUEL's `range of x is table Name` plain-table
 	 * range — a range that targets a physical table directly, with no backing
 	 * entity class (see objectquel-plain-table-range-plan.md). Exercised
-	 * end-to-end via EntityManager::executeQuery()/executeStatement() against
+	 * end-to-end via EntityManager::executeQuery()/executeQuery() against
 	 * the suite's shared MySQL connection, on both an ad hoc `create`-d table
 	 * and a table that was never touched by ObjectQuel DDL at all — the
 	 * plan's core claim is that neither case needs an entity class to be
@@ -94,7 +94,7 @@
 				)
 			");
 
-			self::em()->executeStatement("
+			self::em()->executeQuery("
 				range of a is table {$tableName}
 				append to a (message = :message)
 			", ['message' => 'created-by-quel']);
@@ -107,7 +107,7 @@
 			$tableName = $this->nextTableName();
 			$this->createRawTable($tableName);
 
-			$result = self::em()->executeStatement("
+			$result = self::em()->executeQuery("
 				range of a is table {$tableName}
 				append to a (message = :message, amount = :amount)
 			", ['message' => 'inserted', 'amount' => 7]);
@@ -133,7 +133,7 @@
 				['old', 1]
 			);
 
-			$result = self::em()->executeStatement("
+			$result = self::em()->executeQuery("
 				range of a is table {$tableName}
 				replace a (message = :message) where a.amount = :amount
 			", ['message' => 'new', 'amount' => 1]);
@@ -153,7 +153,7 @@
 				['gone', 1]
 			);
 
-			$result = self::em()->executeStatement("
+			$result = self::em()->executeQuery("
 				range of a is table {$tableName}
 				delete a where a.amount = :amount
 			", ['amount' => 1]);
@@ -217,14 +217,14 @@
 				)
 			");
 
-			$insert = self::em()->executeStatement("
+			$insert = self::em()->executeQuery("
 				range of a is table {$tableName}
 				append to a (email = :e, name = :n) or replace (name = :n) where a.email = :e
 			", ['e' => 'alice@example.com', 'n' => 'Alice']);
 
 			$this->assertSame(1, $insert->getAffectedRows());
 
-			self::em()->executeStatement("
+			self::em()->executeQuery("
 				range of a is table {$tableName}
 				append to a (email = :e, name = :n) or replace (name = :n) where a.email = :e
 			", ['e' => 'alice@example.com', 'n' => 'Alice V2']);
@@ -245,7 +245,7 @@
 				)
 			");
 
-			$appendResult = self::em()->executeStatement(
+			$appendResult = self::em()->executeQuery(
 				'range of u is App\Entities\UserEntity
 				append to u (username = :username, password = :password, banned = false)',
 				['username' => 'joinee', 'password' => 'secret']
@@ -283,12 +283,12 @@
 				)
 			");
 
-			$withNote = self::em()->executeStatement(
+			$withNote = self::em()->executeQuery(
 				'range of u is App\Entities\UserEntity
 				append to u (username = :username, password = :password, banned = false)',
 				['username' => 'has-note', 'password' => 'secret']
 			);
-			$withoutNote = self::em()->executeStatement(
+			$withoutNote = self::em()->executeQuery(
 				'range of u is App\Entities\UserEntity
 				append to u (username = :username, password = :password, banned = false)',
 				['username' => 'no-note', 'password' => 'secret']
@@ -338,12 +338,12 @@
 				)
 			");
 
-			$withNote = self::em()->executeStatement(
+			$withNote = self::em()->executeQuery(
 				'range of u is App\Entities\UserEntity
 				append to u (username = :username, password = :password, banned = false)',
 				['username' => 'via-owner', 'password' => 'secret']
 			);
-			$withoutNote = self::em()->executeStatement(
+			$withoutNote = self::em()->executeQuery(
 				'range of u is App\Entities\UserEntity
 				append to u (username = :username, password = :password, banned = false)',
 				['username' => 'via-no-owner', 'password' => 'secret']

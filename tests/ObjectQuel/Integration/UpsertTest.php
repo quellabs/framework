@@ -9,7 +9,7 @@
 	/**
 	 * Integration coverage for QUEL's upsert extension — `append to u (...)
 	 * or replace (...) where <cond>` — exercised end-to-end via
-	 * EntityManager::executeStatement() against the suite's shared MySQL
+	 * EntityManager::executeQuery() against the suite's shared MySQL
 	 * connection (see objectquel-upsert-plan.md).
 	 *
 	 * MySQL's `INSERT ... ON DUPLICATE KEY UPDATE` is the only dialect this
@@ -62,7 +62,7 @@
 			QUEL;
 
 		public function testInsertsWhenNoConflictingRowExists(): void {
-			$result = self::em()->executeStatement(self::UPSERT_QUERY, ['e' => 'alice@example.com', 'n' => 'Alice']);
+			$result = self::em()->executeQuery(self::UPSERT_QUERY, ['e' => 'alice@example.com', 'n' => 'Alice']);
 
 			$this->assertSame(1, $result->getAffectedRows());
 			$this->assertIsInt($result->getGeneratedId());
@@ -73,12 +73,12 @@
 		}
 
 		public function testUpdatesTheMatchingRowOnConflictInsteadOfInsertingADuplicate(): void {
-			self::em()->executeStatement(self::UPSERT_QUERY, ['e' => 'alice@example.com', 'n' => 'Alice']);
+			self::em()->executeQuery(self::UPSERT_QUERY, ['e' => 'alice@example.com', 'n' => 'Alice']);
 
 			// MySQL's ON DUPLICATE KEY UPDATE reports 2 (not 1) for a row
 			// that was updated via the duplicate-key path — a well-known,
 			// documented MySQL quirk, not a bug in the generated SQL.
-			$result = self::em()->executeStatement(self::UPSERT_QUERY, ['e' => 'alice@example.com', 'n' => 'Alice V2']);
+			$result = self::em()->executeQuery(self::UPSERT_QUERY, ['e' => 'alice@example.com', 'n' => 'Alice V2']);
 			$this->assertSame(2, $result->getAffectedRows());
 
 			$rows = self::em()->getAll('range of u is App\Entities\UpsertConflictEntity retrieve (u.email, u.name)');
@@ -87,17 +87,17 @@
 		}
 
 		public function testHandlesMultipleDistinctRowsWithoutConflict(): void {
-			self::em()->executeStatement(self::UPSERT_QUERY, ['e' => 'alice@example.com', 'n' => 'Alice']);
-			self::em()->executeStatement(self::UPSERT_QUERY, ['e' => 'bob@example.com', 'n' => 'Bob']);
+			self::em()->executeQuery(self::UPSERT_QUERY, ['e' => 'alice@example.com', 'n' => 'Alice']);
+			self::em()->executeQuery(self::UPSERT_QUERY, ['e' => 'bob@example.com', 'n' => 'Bob']);
 
 			$names = self::em()->getCol('range of u is App\Entities\UpsertConflictEntity retrieve (u.name) sort by u.name asc');
 			$this->assertSame(['Alice', 'Bob'], $names);
 		}
 
 		public function testMultiRowAppendUpsertsEachRowIndependently(): void {
-			self::em()->executeStatement(self::UPSERT_QUERY, ['e' => 'alice@example.com', 'n' => 'Alice']);
+			self::em()->executeQuery(self::UPSERT_QUERY, ['e' => 'alice@example.com', 'n' => 'Alice']);
 
-			$result = self::em()->executeStatement('
+			$result = self::em()->executeQuery('
 				range of u is App\Entities\UpsertConflictEntity
 				append to u
 					(email = :e1, name = :n1),
@@ -119,8 +119,8 @@
 				append to u (email = :e, name = :n) or replace where u.email = :e
 			';
 
-			self::em()->executeStatement($noListQuery, ['e' => 'alice@example.com', 'n' => 'Alice']);
-			self::em()->executeStatement($noListQuery, ['e' => 'alice@example.com', 'n' => 'Alice V2']);
+			self::em()->executeQuery($noListQuery, ['e' => 'alice@example.com', 'n' => 'Alice']);
+			self::em()->executeQuery($noListQuery, ['e' => 'alice@example.com', 'n' => 'Alice V2']);
 
 			$rows = self::em()->getAll('range of u is App\Entities\UpsertConflictEntity retrieve (u.name) where u.email = "alice@example.com"');
 			$this->assertSame('Alice V2', $rows[0]['u.name']);
@@ -128,8 +128,8 @@
 
 		public function testNoExplicitListUpdatesEachConflictingRowWithItsOwnValuesInAMultiRowAppend(): void {
 			// Seed two rows first, so the multi-row upsert below conflicts on both.
-			self::em()->executeStatement(self::UPSERT_QUERY, ['e' => 'alice@example.com', 'n' => 'Alice']);
-			self::em()->executeStatement(self::UPSERT_QUERY, ['e' => 'bob@example.com', 'n' => 'Bob']);
+			self::em()->executeQuery(self::UPSERT_QUERY, ['e' => 'alice@example.com', 'n' => 'Alice']);
+			self::em()->executeQuery(self::UPSERT_QUERY, ['e' => 'bob@example.com', 'n' => 'Bob']);
 
 			// Guards against a real correctness bug: if the default "no explicit
 			// list" SET clause were built from one row's literal compiled values
@@ -137,7 +137,7 @@
 			// reference (EXCLUDED/VALUES()/source.col), every conflicting row
 			// would be overwritten with the *first* row's values instead of its
 			// own.
-			self::em()->executeStatement('
+			self::em()->executeQuery('
 				range of u is App\Entities\UpsertConflictEntity
 				append to u
 					(email = :e1, name = :n1),
@@ -154,7 +154,7 @@
 		public function testRejectsAConflictTargetNotBackedByAUniqueConstraint(): void {
 			$this->expectException(QuelException::class);
 
-			self::em()->executeStatement('
+			self::em()->executeQuery('
 				range of u is App\Entities\UpsertConflictEntity
 				append to u (email = :e, name = :n) or replace (name = :n) where u.name = :n
 			', ['e' => 'x@example.com', 'n' => 'X']);
@@ -163,7 +163,7 @@
 		public function testRejectsATargetThatIsNotADeclaredRange(): void {
 			$this->expectException(QuelException::class);
 
-			self::em()->executeStatement(
+			self::em()->executeQuery(
 				'append to App\Entities\UpsertConflictEntity (email = :e, name = :n) or replace (name = :n) where email = :e',
 				['e' => 'x@example.com', 'n' => 'X']
 			);

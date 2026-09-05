@@ -2,13 +2,12 @@
 
 	namespace Quellabs\ObjectQuel\Tests\Integration;
 
-	use Quellabs\ObjectQuel\Exception\QuelException;
 	use Quellabs\ObjectQuel\ObjectQuel\QuelResult;
 	use Quellabs\ObjectQuel\Tests\ObjectQuelTestCase;
 
 	/**
 	 * Integration coverage for QUEL's `delete <range> where ...` statement,
-	 * exercised end-to-end via EntityManager::executeStatement() against the
+	 * exercised end-to-end via EntityManager::executeQuery() against the
 	 * suite's shared MySQL connection — basic delete, a condition matching
 	 * no rows, and the compile-time checks (missing where — parser-level,
 	 * see DeleteParserTest — and wrong-entry-point rejection) documented in
@@ -20,7 +19,7 @@
 	class DeleteTest extends ObjectQuelTestCase {
 
 		private function seedUser(string $username, string $password): int {
-			$result = $this->em->executeStatement(
+			$result = $this->em->executeQuery(
 				'range of u is App\Entities\UserEntity
 				append to u (username = :username, password = :password, banned = false)',
 				['username' => $username, 'password' => $password]
@@ -32,7 +31,7 @@
 		public function testDeletesAMatchingRow(): void {
 			$id = $this->seedUser('alice', 'secret');
 
-			$result = $this->em->executeStatement('
+			$result = $this->em->executeQuery('
 				range of u is App\Entities\UserEntity
 				delete u where u.id = :id
 			', ['id' => $id]);
@@ -52,7 +51,7 @@
 			$keepId = $this->seedUser('bob', 'pw1');
 			$removeId = $this->seedUser('carol', 'pw2');
 
-			$result = $this->em->executeStatement('
+			$result = $this->em->executeQuery('
 				range of u is App\Entities\UserEntity
 				delete u where u.id = :id
 			', ['id' => $removeId]);
@@ -67,7 +66,7 @@
 		public function testConditionMatchingNoRowsAffectsZeroRows(): void {
 			$this->seedUser('dave', 'pw');
 
-			$result = $this->em->executeStatement('
+			$result = $this->em->executeQuery('
 				range of u is App\Entities\UserEntity
 				delete u where u.id = :id
 			', ['id' => 999999]);
@@ -78,18 +77,4 @@
 			$this->assertSame(['dave'], $usernames);
 		}
 
-		public function testExecuteQueryRejectsADeleteStatement(): void {
-			$this->expectException(QuelException::class);
-
-			$this->em->executeQuery('
-				range of u is App\Entities\UserEntity
-				delete u where u.id = 1
-			');
-		}
-
-		public function testExecuteStatementRejectsARetrieveStatement(): void {
-			$this->expectException(QuelException::class);
-
-			$this->em->executeStatement('range of u is App\Entities\UserEntity retrieve (u.username)');
-		}
 	}

@@ -68,7 +68,7 @@
 			$path = $this->nextJsonFile();
 			$this->writeFixture($path, [['name' => 'Alice', 'email' => 'alice@example.com']]);
 
-			$result = self::em()->executeStatement(
+			$result = self::em()->executeQuery(
 				"range of j is json_source('" . addslashes($path) . "')
 				append to j (name = :name, email = :email)",
 				['name' => 'Bob', 'email' => 'bob@example.com']
@@ -88,7 +88,7 @@
 			$path = $this->nextJsonFile();
 			$this->writeFixture($path, []);
 
-			$result = self::em()->executeStatement(
+			$result = self::em()->executeQuery(
 				"range of j is json_source('" . addslashes($path) . "')
 				append to j (name = \"Alice\"), (name = \"Bob\")"
 			);
@@ -104,7 +104,7 @@
 			$path = $this->nextJsonFile();
 			$this->writeFixture($path, []);
 
-			self::em()->executeStatement(
+			self::em()->executeQuery(
 				"range of j is json_source('" . addslashes($path) . "')
 				append to j (name = concat(\"Hello, \", :who), score = 1 + 2)",
 				['who' => 'World']
@@ -122,7 +122,7 @@
 
 			$this->expectException(QuelException::class);
 
-			self::em()->executeStatement(
+			self::em()->executeQuery(
 				'range of u is App\Entities\UserEntity
 				range of j is json_source(\'' . addslashes($path) . '\')
 				append to j (name) retrieve (u.username) where u.id = :id',
@@ -136,7 +136,7 @@
 
 			$this->expectException(QuelException::class);
 
-			self::em()->executeStatement(
+			self::em()->executeQuery(
 				"range of j is json_source('" . addslashes($path) . "')
 				append to j (name = :name) or replace where j.name = :name",
 				['name' => 'Alice']
@@ -149,7 +149,7 @@
 			// that doesn't exist is fine here.
 			$this->expectException(QuelException::class);
 
-			self::em()->executeStatement(
+			self::em()->executeQuery(
 				"range of j is json_source('does-not-exist.json', '\$.rows')
 				append to j (name = :name)",
 				['name' => 'Alice']
@@ -161,7 +161,7 @@
 
 			$this->expectException(QuelException::class);
 
-			self::em()->executeStatement(
+			self::em()->executeQuery(
 				"range of j is json_source('" . addslashes($path) . "')
 				append to j (name = :name)",
 				['name' => 'Alice']
@@ -179,7 +179,7 @@
 			$path = $this->nextJsonFile();
 			$this->writeFixture($path, [['name' => 'Original']]);
 
-			self::em()->executeStatement(
+			self::em()->executeQuery(
 				"range of j is json_source('" . addslashes($path) . "')
 				append to j (name = :name)",
 				['name' => 'Replacement']
