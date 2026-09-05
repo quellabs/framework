@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\ObjectQuel\ObjectQuel\Visitors;
 	
+	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
 	use Quellabs\ObjectQuel\EntityStore;
 	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
 	use Quellabs\ObjectQuel\Exception\SemanticException;
@@ -17,10 +18,12 @@
 	 * to a single range property.
 	 *
 	 * Runs during semantic checking, after UnqualifiedDatabasePropertyResolver has
-	 * already rewritten all identifiers it could resolve. Any bare identifier that
-	 * is still Unresolved at this point is either unknown (no range owns it) or
-	 * ambiguous (multiple ranges own it). This validator detects both cases and
-	 * throws a SemanticException with a precise error message.
+	 * already rewritten all identifiers it could resolve, and before
+	 * ValidateRangesDeclared so this validator's specific message wins for a bare
+	 * property name. A bare identifier still Unresolved at this point is either
+	 * unknown (no range owns it) or ambiguous (multiple ranges own it). Only the
+	 * ambiguous case is reported here — an unknown property is intentionally left
+	 * alone so ValidateRangesDeclared reports it as an undefined reference.
 	 */
 	class ValidateUnambiguousProperty extends FindPropertyRange implements AstVisitorInterface {
 		
@@ -30,9 +33,11 @@
 		/**
 		 * @param EntityStore $entityStore Store containing entity/property metadata
 		 * @param AstRange[] $ranges All ranges from the AstRetrieve node
+		 * @param DatabaseAdapter|null $databaseAdapter Used to check a plain table's
+		 *        real columns instead of blindly matching every table range
 		 */
-		public function __construct(EntityStore $entityStore, array $ranges) {
-			parent::__construct($entityStore);
+		public function __construct(EntityStore $entityStore, array $ranges, ?DatabaseAdapter $databaseAdapter = null) {
+			parent::__construct($entityStore, $databaseAdapter);
 			$this->ranges = $ranges;
 		}
 		
@@ -69,10 +74,16 @@
 			
 			// Collect matches
 			$matches = $this->findRanges($propertyName, $this->ranges);
-			
+
+			// No range owns this property at all — not this validator's concern.
+			// ValidateRangesDeclared reports it as an undefined reference instead.
+			if (empty($matches)) {
+				return;
+			}
+
 			// More than one candidate for replacing. Throw ambiguous error
 			$rangeNames = implode(', ', array_map(fn($r) => $r->getName(), $matches));
-			
+
 			throw new SemanticException(
 				"Unqualified property '{$propertyName}' is ambiguous: " .
 				"it exists in multiple ranges ({$rangeNames}). " .

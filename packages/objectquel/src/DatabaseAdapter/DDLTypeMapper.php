@@ -12,7 +12,7 @@
 	 *
 	 * Used only by TempTableExecutor. Identifier/alias quoting lives in
 	 * SqlIdentifierQuoter instead, since it's needed by every SQL statement,
-	 * not just DDL — QuelToSQL depends on that class, not this one.
+	 * not just DDL — QuelToSQLRetrieve depends on that class, not this one.
 	 */
 	class DDLTypeMapper {
 
@@ -44,9 +44,22 @@
 		}
 
 		/**
-		 * Returns the CREATE-statement keyword sequence, up to but not including
-		 * the table name. SQL Server gets plain 'CREATE TABLE' — its temp-ness
-		 * comes from the '#' prefix in getTempTableName(), not a keyword.
+		 * Returns the physical table name for a permanent table — the base
+		 * name unchanged. Trivial, but exists so a caller building either kind
+		 * (e.g. QuelToSQLCreate) can pick between this and getTempTableName()
+		 * without special-casing the permanent branch itself.
+		 * @param string $baseName Logical table name
+		 * @return string
+		 */
+		public function getTableName(string $baseName): string {
+			return $baseName;
+		}
+
+		/**
+		 * Returns the CREATE-statement keyword sequence for a temporary table,
+		 * up to but not including the table name. SQL Server gets plain
+		 * 'CREATE TABLE' — its temp-ness comes from the '#' prefix in
+		 * getTempTableName(), not a keyword.
 		 *
 		 * NOTE: this method's "every engine except sqlsrv" default and
 		 * getDropTempTableKeyword()'s "only mysql/mariadb" default point in
@@ -59,22 +72,191 @@
 		 * there is no unrecognised value for the two to disagree on in practice.
 		 * @return string
 		 */
-		public function getCreateTempTableKeyword(): string {
+		public function getTemporaryCreateTableKeyword(): string {
 			return $this->platform->getDatabaseType() === 'sqlsrv' ? 'CREATE TABLE' : 'CREATE TEMPORARY TABLE';
+		}
+
+		/**
+		 * Returns the CREATE-statement keyword sequence for a permanent table —
+		 * always plain 'CREATE TABLE', but exists so a caller building either
+		 * kind can pick between this and getTemporaryCreateTableKeyword()
+		 * without hardcoding the literal itself.
+		 * @return string
+		 */
+		public function getCreateTableKeyword(): string {
+			return 'CREATE TABLE';
 		}
 
 		/**
 		 * Returns the DROP-statement keyword sequence, up to but not including
 		 * the table name. Only MySQL/MariaDB accept TEMPORARY in DROP TABLE;
 		 * every other engine rejects it there even though CREATE requires (or,
-		 * for SQL Server, ignores) it. See the note on getCreateTempTableKeyword()
-		 * about why this method's default direction differs from that one.
+		 * for SQL Server, ignores) it. See the note on
+		 * getTemporaryCreateTableKeyword() about why this method's default
+		 * direction differs from that one.
 		 * @return string
 		 */
 		public function getDropTempTableKeyword(): string {
 			return in_array($this->platform->getDatabaseType(), ['mysql', 'mariadb'])
 				? 'DROP TEMPORARY TABLE IF EXISTS'
 				: 'DROP TABLE IF EXISTS';
+		}
+
+		/**
+		 * Renders a complete column definition — type plus the minimal
+		 * constraint set QUEL's `create` supports (NOT NULL, PRIMARY KEY,
+		 * identity) — for the connected engine. Unlike getTempTableColumnType()
+		 * (type only, used by TempTableExecutor which never needs constraints),
+		 * this is for `create`, where the author writes constraints explicitly.
+		 *
+		 * $identity is only ever true alongside $primaryKey — Rules\CreateTable
+		 * rejects the combination at parse time, since e.g. SQLite's
+		 * AUTOINCREMENT only exists on `INTEGER PRIMARY KEY`.
+		 *
+		 * @param string $quotedColumnName Already-quoted column identifier
+		 * @param array{type: string, limit: int|array<int,int>|null, unsigned: bool, precision: int|null, scale: int|null} $columnDefinition
+		 * @param bool $notNull
+		 * @param bool $primaryKey
+		 * @param bool $identity
+		 * @return string
+		 */
+		public function renderColumnDefinition(
+			string $quotedColumnName,
+			array $columnDefinition,
+			bool $notNull,
+			bool $primaryKey,
+			bool $identity
+		): string {
+			return match ($this->platform->getDatabaseType()) {
+				'pgsql' => $this->renderPostgresColumnDefinition($quotedColumnName, $columnDefinition, $notNull, $primaryKey, $identity),
+				'sqlite' => $this->renderSqliteColumnDefinition($quotedColumnName, $columnDefinition, $notNull, $primaryKey, $identity),
+				'sqlsrv' => $this->renderSqlServerColumnDefinition($quotedColumnName, $columnDefinition, $notNull, $primaryKey, $identity),
+				default => $this->renderMysqlColumnDefinition($quotedColumnName, $columnDefinition, $notNull, $primaryKey, $identity),
+			};
+		}
+
+		/**
+		 * MySQL/MariaDB column definition. AUTO_INCREMENT columns must be NOT
+		 * NULL and require a key — since $identity implies $primaryKey (see
+		 * renderColumnDefinition() docblock), PRIMARY KEY always follows.
+		 * @param array{type: string, limit: int|array<int,int>|null, unsigned: bool, precision: int|null, scale: int|null} $columnDefinition
+		 */
+		private function renderMysqlColumnDefinition(
+			string $quotedColumnName,
+			array $columnDefinition,
+			bool $notNull,
+			bool $primaryKey,
+			bool $identity
+		): string {
+			$type = $this->getMysqlTempTableColumnType($columnDefinition);
+			$fragment = "{$quotedColumnName} {$type}";
+
+			if ($notNull || $identity) {
+				$fragment .= ' NOT NULL';
+			}
+
+			if ($identity) {
+				$fragment .= ' AUTO_INCREMENT';
+			}
+
+			if ($primaryKey) {
+				$fragment .= ' PRIMARY KEY';
+			}
+
+			return $fragment;
+		}
+
+		/**
+		 * PostgreSQL column definition. Identity uses the standard SQL identity
+		 * clause (`GENERATED BY DEFAULT AS IDENTITY`, not `GENERATED ALWAYS`) so
+		 * an explicit value can still be inserted, matching MySQL AUTO_INCREMENT
+		 * semantics — a value is implicitly NOT NULL already.
+		 * @param array{type: string, limit: int|array<int,int>|null, unsigned: bool, precision: int|null, scale: int|null} $columnDefinition
+		 */
+		private function renderPostgresColumnDefinition(
+			string $quotedColumnName,
+			array $columnDefinition,
+			bool $notNull,
+			bool $primaryKey,
+			bool $identity
+		): string {
+			$type = $this->getPostgresTempTableColumnType($columnDefinition);
+			$fragment = "{$quotedColumnName} {$type}";
+
+			if ($identity) {
+				$fragment .= ' GENERATED BY DEFAULT AS IDENTITY';
+			} elseif ($notNull) {
+				$fragment .= ' NOT NULL';
+			}
+
+			if ($primaryKey) {
+				$fragment .= ' PRIMARY KEY';
+			}
+
+			return $fragment;
+		}
+
+		/**
+		 * SQLite column definition. Identity columns are rendered as the SQLite
+		 * idiom `INTEGER PRIMARY KEY AUTOINCREMENT`, overriding the mapped type —
+		 * this is the only column shape SQLite recognises as a rowid alias with
+		 * autoincrementing behaviour, regardless of the abstract integer subtype
+		 * declared (SQLite's INTEGER affinity covers all of them anyway).
+		 * @param array{type: string, limit: int|array<int,int>|null, unsigned: bool, precision: int|null, scale: int|null} $columnDefinition
+		 */
+		private function renderSqliteColumnDefinition(
+			string $quotedColumnName,
+			array $columnDefinition,
+			bool $notNull,
+			bool $primaryKey,
+			bool $identity
+		): string {
+			if ($identity) {
+				return "{$quotedColumnName} INTEGER PRIMARY KEY AUTOINCREMENT";
+			}
+
+			$type = $this->getSqliteTempTableColumnType($columnDefinition);
+			$fragment = "{$quotedColumnName} {$type}";
+
+			if ($notNull) {
+				$fragment .= ' NOT NULL';
+			}
+
+			if ($primaryKey) {
+				$fragment .= ' PRIMARY KEY';
+			}
+
+			return $fragment;
+		}
+
+		/**
+		 * SQL Server column definition. IDENTITY(1,1) columns are implicitly NOT
+		 * NULL.
+		 * @param array{type: string, limit: int|array<int,int>|null, unsigned: bool, precision: int|null, scale: int|null} $columnDefinition
+		 */
+		private function renderSqlServerColumnDefinition(
+			string $quotedColumnName,
+			array $columnDefinition,
+			bool $notNull,
+			bool $primaryKey,
+			bool $identity
+		): string {
+			$type = $this->getSqlServerTempTableColumnType($columnDefinition);
+			$fragment = "{$quotedColumnName} {$type}";
+
+			if ($identity) {
+				$fragment .= ' IDENTITY(1,1)';
+			}
+
+			if ($notNull || $identity) {
+				$fragment .= ' NOT NULL';
+			}
+
+			if ($primaryKey) {
+				$fragment .= ' PRIMARY KEY';
+			}
+
+			return $fragment;
 		}
 
 		/**

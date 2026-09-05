@@ -9,12 +9,14 @@
 	use Quellabs\ObjectQuel\Capabilities\NullPlatformCapabilities;
 	use Quellabs\ObjectQuel\Capabilities\PlatformCapabilitiesInterface;
 	use Quellabs\ObjectQuel\DatabaseAdapter\CastTypeMapper;
+	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstCast;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAggregate;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIdentifier;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabase;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabaseSubquery;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeJsonSource;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeTable;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRegExp;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstSearch;
@@ -24,6 +26,7 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\ValidateEntityPropertyExists;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\ValidateJsonPropertyChain;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\ValidateNoEntityExpressions;
+	use Quellabs\ObjectQuel\ObjectQuel\Visitors\ValidateTablePropertyExists;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\CollectRangeReferences;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\ValidateUnambiguousProperty;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\ValidateRangesDeclared;
@@ -49,13 +52,28 @@
 		private CastTypeMapper $castTypeMapper;
 
 		/**
+		 * Used to check a plain table's real columns instead of blindly
+		 * matching every table range when validating unqualified properties.
+		 * Null when the caller has no live connection to offer, in which case
+		 * that check falls back to its pre-introspection permissive behavior.
+		 * @var DatabaseAdapter|null
+		 */
+		private ?DatabaseAdapter $databaseAdapter;
+
+		/**
 		 * Constructor - initializes the validator with entity schema information
 		 * @param EntityStore $entityStore The entity store containing schema definitions
 		 * @param PlatformCapabilitiesInterface $platform Platform capabilities for engine-specific cast validation
+		 * @param DatabaseAdapter|null $databaseAdapter Live connection for plain-table column introspection
 		 */
-		public function __construct(EntityStore $entityStore, PlatformCapabilitiesInterface $platform = new NullPlatformCapabilities()) {
+		public function __construct(
+			EntityStore $entityStore,
+			PlatformCapabilitiesInterface $platform = new NullPlatformCapabilities(),
+			?DatabaseAdapter $databaseAdapter = null
+		) {
 			$this->entityStore = $entityStore;
 			$this->castTypeMapper = new CastTypeMapper($platform);
+			$this->databaseAdapter = $databaseAdapter;
 		}
 		
 		/**
@@ -96,23 +114,32 @@
 			//         This range will act as the FROM clause of the SELECT query.
 			$this->validateAtLeastOneRangeWithoutVia($ast);
 			
-			// Step 5: Validate that each root identifier links to a range that exists
+			// Step 5: Check for ambiguous unqualified properties that the prefilter
+			// could not resolve. Must run before Step 6 so a bare property name
+			// that matches multiple ranges gets this validator's specific
+			// "ambiguous" message instead of Step 6's generic "undefined range
+			// reference" — both see the same Unresolved node otherwise.
+			$this->validateUnambiguousProperties($ast);
+
+			// Step 6: Validate that each root identifier links to a range that exists
 			$this->processWithVisitor($ast, ValidateRangesDeclared::class, $this->entityStore);
-			
-			// Step 6: Validate that via clauses do not form circular dependencies
+
+			// Step 7: Validate that via clauses do not form circular dependencies
 			$this->validateNoCircularViaDependencies($ast);
-			
+
 			// ==============================================================================
 			// Property validation
 			// ==============================================================================
-			
-			// Step 1: Check for ambiguous properties that the prefilter could not resolve
-			$this->validateUnambiguousProperties($ast);
-			
-			// Step 2: Validate property references against schema
+
+			// Step 1: Validate property references against schema
 			$this->processWithVisitor($ast, ValidateEntityPropertyExists::class, $this->entityStore);
-			
-			// Step 2b: Validate that JSON path segments only appear after a JSON-typed column
+
+			// Step 1a: Validate column references on plain-table ranges against the
+			// live schema — the one check that needs a real connection instead of
+			// static EntityStore metadata, since a table range has no annotations.
+			$this->processWithVisitor($ast, ValidateTablePropertyExists::class, $this->databaseAdapter);
+
+			// Step 1b: Validate that JSON path segments only appear after a JSON-typed column
 			$this->processWithVisitor($ast, ValidateJsonPropertyChain::class, $this->entityStore);
 			
 			// Step 3: Validate that referenced relationships lead back to the entity
@@ -130,7 +157,12 @@
 			//           retrieve(y) where y in a JSON source produces empty arrays at runtime
 			//           because the engine has no schema to hydrate fields from.
 			$this->validateNoBareJsonSourceInProjection($ast);
-			
+
+			// Step 4b3: Validates that the outer projection does not select a bare
+			//           plain-table range — see validateNoBareTableRangeInProjection's
+			//           docblock.
+			$this->validateNoBareTableRangeInProjection($ast);
+
 			// Step 4c: Validates that WHERE conditions only reference fields that subquery ranges
 			//          actually export. A subquery's projection is its contract.
 			$this->validateSubqueryRangeWhereReferences($ast);
@@ -183,7 +215,7 @@
 		 * @param AstRetrieve $ast The AST to validate
 		 */
 		private function validateUnambiguousProperties(AstRetrieve $ast): void {
-			$validator = new ValidateUnambiguousProperty($this->entityStore, $ast->getRanges());
+			$validator = new ValidateUnambiguousProperty($this->entityStore, $ast->getRanges(), $this->databaseAdapter);
 			$ast->accept($validator);
 		}
 		
@@ -473,7 +505,35 @@
 				}
 			}
 		}
-		
+
+		/**
+		 * Validates that the outer projection does not select a bare plain-table range.
+		 *
+		 * A plain-table range (`range of a is table Name`) has no entity metadata, so
+		 * there's no known column list to expand `retrieve(a)` into — unlike an entity
+		 * range's `retrieve(a)`, this compiler never introspects the live schema to find
+		 * out (see objectquel-plain-table-range-plan.md). Explicit column selection
+		 * (e.g. retrieve(a.id)) is required instead.
+		 *
+		 * @throws SemanticException If a bare plain-table range identifier is selected
+		 */
+		private function validateNoBareTableRangeInProjection(AstRetrieve $ast): void {
+			foreach ($ast->getValues() as $alias) {
+				$expression = $alias->getExpression();
+
+				if (
+					$expression instanceof AstIdentifier &&
+					$expression->getRange() instanceof AstRangeTable &&
+					!$expression->hasNext()
+				) {
+					throw new SemanticException(
+						"A plain-table range must project explicit columns, not the entire range. " .
+						"Use retrieve(a.column) instead of retrieve(a)."
+					);
+				}
+			}
+		}
+
 		/**
 		 * Validates that the outer projection does not select an entire subquery range.
 		 *
@@ -522,7 +582,8 @@
 				$isDatabaseRange =
 					$range instanceof AstRangeDatabase ||
 					$range instanceof AstRangeDatabaseSubquery ||
-					$range instanceof AstRangeJsonSource;
+					$range instanceof AstRangeJsonSource ||
+					$range instanceof AstRangeTable;
 				
 				if ($isDatabaseRange && $range->getJoinProperty() === null) {
 					return; // Found a valid primary range - validation passes
@@ -934,9 +995,12 @@
 					continue;
 				}
 				
-				// Partition into database and non-database ranges
-				$databaseRanges = array_filter($ranges, fn($r) => $r instanceof AstRangeDatabase);
-				$nonDatabaseRanges = array_filter($ranges, fn($r) => !$r instanceof AstRangeDatabase);
+				// Partition into database and non-database ranges. A plain-table range
+				// is SQL-backed exactly like an entity range (see
+				// objectquel-plain-table-range-plan.md) — it belongs on the database
+				// side of this split, not lumped in with external/JSON ranges.
+				$databaseRanges = array_filter($ranges, fn($r) => $r instanceof AstRangeDatabase || $r instanceof AstRangeTable);
+				$nonDatabaseRanges = array_filter($ranges, fn($r) => !$r instanceof AstRangeDatabase && !$r instanceof AstRangeTable);
 				
 				// Mixed: both sides are non-empty — no execution strategy exists for this
 				if (!empty($databaseRanges) && !empty($nonDatabaseRanges)) {

@@ -7,21 +7,22 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabase;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabaseSubquery;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeJsonSource;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeTable;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\NodeWithRanges;
 	use Quellabs\ObjectQuel\ObjectQuel\AstInterface;
 	use Quellabs\ObjectQuel\ObjectQuel\AstVisitorInterface;
 	use Quellabs\ObjectQuel\ObjectQuel\IdentifierType;
-	
+
 	class ResolveRootIdentifierType implements AstVisitorInterface {
-		
-		/** @var AstRetrieve Query root node */
-		private AstRetrieve $retrieve;
-		
+
+		/** @var NodeWithRanges Query root node (AstRetrieve, or AstReplace's single-range statement) */
+		private NodeWithRanges $retrieve;
+
 		/**
 		 * ResolveEntityRootType
-		 * @param AstRetrieve $retrieve
+		 * @param NodeWithRanges $retrieve
 		 */
-		public function __construct(AstRetrieve $retrieve) {
+		public function __construct(NodeWithRanges $retrieve) {
 			$this->retrieve = $retrieve;
 		}
 		
@@ -55,6 +56,8 @@
 					$node->setType(IdentifierType::SubqueryRoot);
 				} elseif ($range instanceof AstRangeJsonSource) {
 					$node->setType(IdentifierType::JsonRoot);
+				} elseif ($range instanceof AstRangeTable) {
+					$node->setType(IdentifierType::TableRoot);
 				}
 			}
 		}

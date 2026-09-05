@@ -175,10 +175,15 @@
 		}
 		
 		/**
-		 * Execute a decomposed query plan
+		 * Execute an ObjectQuel statement — `retrieve`, DDL, or a write verb
+		 * (`append`/`replace`/`delete`) alike; all go through this one entry
+		 * point. A write verb bypasses the identity map and change tracking
+		 * entirely, so its QuelResult carries no fetchable rows, just how many
+		 * rows were affected and, when applicable, a generated primary key
+		 * (see QuelResult::fromWriteStatement() and objectquel-append-plan.md).
 		 * @param string $query The query to execute
 		 * @param array<string, mixed> $parameters Initial parameters for the plan
-		 * @return QuelResult|null The results of the execution plan
+		 * @return QuelResult|null Null for statements with no rows to return (e.g. `create`)
 		 * @throws QuelException
 		 */
 		public function executeQuery(string $query, array $parameters = []): ?QuelResult {
@@ -196,7 +201,7 @@
 				$query,
 				$this->queryExecutor->getLastExecutedSql(),
 				$end - $start,
-				$result->recordCount(),
+				$result?->recordCount() ?? 0,
 			);
 			
 			// In development mode, emit a debug signal with the full query plan
@@ -207,9 +212,20 @@
 				$memoryUsage = memory_get_usage(true) / 1024;
 				$memoryPeakUsage = memory_get_peak_usage(true) / 1024;
 				
-				// Explain the query
-				$plan = $this->queryExecutor->explainQuery($query, $parameters);
-				
+				// Explain the query. DDL and write-verb statements (append/replace/
+				// delete) can't go through explain() — replaying them via a dry
+				// run would re-execute the write for real — so fall back to a
+				// plan with no planning notes, just the SQL that was actually run.
+				try {
+					$plan = $this->queryExecutor->explainQuery($query, $parameters);
+				} catch (QuelException $e) {
+					if ($e->type !== 'not_plannable') {
+						throw $e;
+					}
+
+					$plan = new QueryPlan([], $this->queryExecutor->getLastExecutedSql());
+				}
+
 				// Emit the query plan + additional query info
 				$this->debugQuerySignal?->emit([
 					'driver'            => 'objectquel',
@@ -225,7 +241,7 @@
 			
 			return $result;
 		}
-		
+
 		/**
 		 * Returns planner decisions and generated SQL for a query without executing it.
 		 * Combines explain() with a SQL dry-run into one coherent result.

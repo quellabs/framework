@@ -22,7 +22,7 @@
 	 * - Uniqueness constraints (DISTINCT)
 	 * - Compiler directives
 	 */
-	class AstRetrieve extends Ast implements NodeWithConditions {
+	class AstRetrieve extends Ast implements AstStatement, NodeWithConditions, NodeWithRanges {
 		
 		/** @var array<string, mixed> Compiler directives that control query compilation behavior */
 		protected array $directives;
@@ -203,7 +203,8 @@
 			return array_filter($this->ranges, function ($range) {
 				return
 					!$range instanceof AstRangeDatabase &&
-					!$range instanceof AstRangeDatabaseSubquery;
+					!$range instanceof AstRangeDatabaseSubquery &&
+					!$range instanceof AstRangeTable;
 			});
 		}
 		

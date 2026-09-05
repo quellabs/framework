@@ -79,6 +79,22 @@
 		        'window_size' => Token::WindowSize,
 		        'json_source' => Token::JsonSource,
 		        'filter'      => Token::Filter,
+		        'create'      => Token::Create,
+		        'temporary'   => Token::Temporary,
+		        'identity'    => Token::Identity,
+		        'primary'     => Token::Primary,
+		        'key'         => Token::Key,
+		        'destroy'     => Token::Destroy,
+		        'if'          => Token::If,
+		        'exists'      => Token::Exists,
+		        'append'      => Token::Append,
+		        'to'          => Token::To,
+		        'replace'     => Token::Replace,
+		        'delete'      => Token::Delete,
+		        'index'       => Token::Index,
+		        'on'          => Token::On,
+		        'fulltext'    => Token::Fulltext,
+		        'table'       => Token::Table,
 	        ];
 			
 			$this->single_tokens = [

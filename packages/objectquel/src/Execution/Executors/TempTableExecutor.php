@@ -24,7 +24,7 @@
 	 *      appropriate to the connected engine (see DDLTypeMapper).
 	 *   4. Inserting all result rows in batches.
 	 *   5. Mutating the AstRangeDatabase via setTableName() with the resolved
-	 *      physical table name, so QuelToSQL will reference the temp table as a
+	 *      physical table name, so QuelToSQLRetrieve will reference the temp table as a
 	 *      plain table.
 	 *   6. Registering the temp table name for cleanup after the outer query completes.
 	 *
@@ -126,7 +126,7 @@
 			// Resolve the physical table name for the connected engine (SQL Server
 			// prefixes with '#'; every other engine uses the logical name as-is)
 			// and store it back on the range so downstream SQL generation
-			// (QuelToSQL) references the same physical table this method creates.
+			// (QuelToSQLRetrieve) references the same physical table this method creates.
 			$tableName = $this->ddlTypeMapper->getTempTableName($range->getTableName());
 			$range->setTableName($tableName);
 			
@@ -228,30 +228,37 @@
 		 * @return string
 		 */
 		private function resolveColumnType(AstInterface $expression): string {
-			if (!$expression instanceof AstIdentifier) {
-				return 'VARCHAR(255)';
-			}
-
-			$entityName = $expression->getEntityName();
-
-			if ($entityName === null) {
-				return 'VARCHAR(255)';
-			}
-
 			try {
+				// Function calls, computed expressions, and literals have no
+				// entity property behind them to look up a declared type for.
+				if (!$expression instanceof AstIdentifier) {
+					throw new \UnexpectedValueException();
+				}
+
+				// No entity range behind this identifier (e.g. a subquery column).
+				$entityName = $expression->getEntityName();
+				
+				if ($entityName === null) {
+					throw new \UnexpectedValueException();
+				}
+
+				// getMetadata() throws EntityResolutionException if $entityName
+				// isn't a real, mapped entity.
 				$metadata = $this->entityStore->getMetadata($entityName);
-			} catch (EntityResolutionException) {
+				$columnName = $metadata->getColumnName($expression->getPropertyName());
+				$columnDefinition = $columnName !== null ? ($metadata->columnDefinitions[$columnName] ?? null) : null;
+
+				// Property has no backing column (e.g. a virtual/computed property).
+				if ($columnDefinition === null) {
+					throw new \UnexpectedValueException();
+				}
+
+				return $this->ddlTypeMapper->getTempTableColumnType($columnDefinition);
+			} catch (EntityResolutionException | \UnexpectedValueException) {
+				// Any of the above "can't resolve a real declared type" cases
+				// fall back to the same untyped default.
 				return 'VARCHAR(255)';
 			}
-
-			$columnName = $metadata->getColumnName($expression->getPropertyName());
-			$columnDefinition = $columnName !== null ? ($metadata->columnDefinitions[$columnName] ?? null) : null;
-
-			if ($columnDefinition === null) {
-				return 'VARCHAR(255)';
-			}
-
-			return $this->ddlTypeMapper->getTempTableColumnType($columnDefinition);
 		}
 
 		/**
@@ -272,7 +279,7 @@
 
 			$sql = sprintf(
 				"%s %s (%s)",
-				$this->ddlTypeMapper->getCreateTempTableKeyword(),
+				$this->ddlTypeMapper->getTemporaryCreateTableKeyword(),
 				$this->identifierQuoter->quoteIdentifier($tableName),
 				implode(', ', $columnDefs)
 			);

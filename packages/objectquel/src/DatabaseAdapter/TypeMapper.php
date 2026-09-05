@@ -114,6 +114,17 @@
 		public static function getDefaultLimit(string $type): int|null {
 			return self::$defaultLimits[$type] ?? null;
 		}
+
+		/**
+		 * Whether $type is a recognised abstract column type (the vocabulary
+		 * @Orm\Column uses). Used by `create` to reject unknown types at parse
+		 * time instead of silently falling through to VARCHAR.
+		 * @param string $type Column type name (already lowercased)
+		 * @return bool
+		 */
+		public static function isValidColumnType(string $type): bool {
+			return array_key_exists($type, self::TYPE_MAP);
+		}
 		
 		/**
 		 * Convert a Phinx column type to a corresponding PHP type

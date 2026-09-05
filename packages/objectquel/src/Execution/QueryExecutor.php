@@ -2,7 +2,15 @@
 	
 	namespace Quellabs\ObjectQuel\Execution;
 	
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAppend;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstCreateIndex;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstCreateTable;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstDelete;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstDestroy;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstDestroyIndex;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabaseSubquery;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstReplace;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstStatement;
 	use Quellabs\ObjectQuel\Capabilities\PlatformCapabilities;
 	use Quellabs\ObjectQuel\EntityManager;
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
@@ -17,8 +25,15 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Parser;
 	use Quellabs\ObjectQuel\ObjectQuel\ParserException;
 	use Quellabs\ObjectQuel\ObjectQuel\QuelResult;
+	use Quellabs\ObjectQuel\Execution\Executors\AppendExecutor;
+	use Quellabs\ObjectQuel\Execution\Executors\CreateIndexExecutor;
+	use Quellabs\ObjectQuel\Execution\Executors\CreateTableExecutor;
 	use Quellabs\ObjectQuel\Execution\Executors\DatabaseQueryExecutor;
+	use Quellabs\ObjectQuel\Execution\Executors\DeleteExecutor;
+	use Quellabs\ObjectQuel\Execution\Executors\DestroyExecutor;
+	use Quellabs\ObjectQuel\Execution\Executors\DestroyIndexExecutor;
 	use Quellabs\ObjectQuel\Execution\Executors\JsonQueryExecutor;
+	use Quellabs\ObjectQuel\Execution\Executors\ReplaceExecutor;
 	use Quellabs\ObjectQuel\ObjectQuel\QueryNormalizer;
 	use Quellabs\ObjectQuel\ObjectQuel\SemanticAnalyzer;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\CoerceDateTimeParameters;
@@ -49,6 +64,13 @@
 		private SemanticAnalyzer $semanticAnalyser;
 		private DatabaseQueryExecutor $databaseExecutor;
 		private JsonQueryExecutor $jsonExecutor;
+		private CreateTableExecutor $createTableExecutor;
+		private CreateIndexExecutor $createIndexExecutor;
+		private DestroyExecutor $destroyExecutor;
+		private DestroyIndexExecutor $destroyIndexExecutor;
+		private AppendExecutor $appendExecutor;
+		private ReplaceExecutor $replaceExecutor;
+		private DeleteExecutor $deleteExecutor;
 		
 		/**
 		 * Constructor
@@ -67,14 +89,21 @@
 			// Create specialized executors
 			$this->databaseExecutor = $databaseExecutor ?? new DatabaseQueryExecutor($entityManager, $this->capabilities);
 			$this->jsonExecutor = new JsonQueryExecutor();
+			$this->createTableExecutor = new CreateTableExecutor($this->connection, $this->capabilities);
+			$this->createIndexExecutor = new CreateIndexExecutor($this->connection, $this->capabilities);
+			$this->destroyExecutor = new DestroyExecutor($this->connection, $this->capabilities);
+			$this->destroyIndexExecutor = new DestroyIndexExecutor($this->connection, $this->capabilities);
+			$this->appendExecutor = new AppendExecutor($this->connection, $entityManager->getEntityStore(), $entityManager, $this->capabilities);
+			$this->replaceExecutor = new ReplaceExecutor($this->connection, $entityManager, $this->capabilities);
+			$this->deleteExecutor = new DeleteExecutor($this->connection, $entityManager->getEntityStore(), $this->capabilities);
 			
 			// Init the plan executor
 			$this->planExecutor = new PlanExecutor($this);
 			
 			// Init the transformers
 			$this->optimizer = new QueryOptimizer($entityManager, $this->capabilities);
-			$this->queryNormalizer = new QueryNormalizer($entityManager->getEntityStore());
-			$this->semanticAnalyser = new SemanticAnalyzer($entityManager->getEntityStore(), $this->capabilities);
+			$this->queryNormalizer = new QueryNormalizer($entityManager->getEntityStore(), $this->connection);
+			$this->semanticAnalyser = new SemanticAnalyzer($entityManager->getEntityStore(), $this->capabilities, $this->connection);
 		}
 		
 		/**
@@ -110,14 +139,19 @@
 		}
 		
 		/**
-		 * Executes a query and returns the hydrated result.
-		 * To inspect planner decisions without executing, use explain() instead.
+		 * Executes a query and returns the hydrated result. Every ObjectQuel
+		 * statement goes through this single entry point — `retrieve`, DDL
+		 * (`create`/`destroy`/index), and the write verbs (`append`/`replace`/
+		 * `delete`) alike — so slow-query logging and the development-mode
+		 * debug signal in EntityManager::executeQuery() see all of them, not
+		 * just `retrieve`.
+		 * To inspect planner decisions without executing, use explainQuery() instead.
 		 * @param string $query The ObjectQuel query string
 		 * @param array<int|string, mixed> $parameters Query parameters
-		 * @return QuelResult
+		 * @return QuelResult|null Null for statements with no rows to return (e.g. `create`)
 		 * @throws QuelException
 		 */
-		public function executeQuery(string $query, array $parameters = []): QuelResult {
+		public function executeQuery(string $query, array $parameters = []): ?QuelResult {
 			try {
 				// Normalize parameters
 				$normalizedParameters = $this->normalizeParams($parameters);
@@ -128,18 +162,56 @@
 				// Parse the input query string into an Abstract Syntax Tree (AST)
 				$ast = $this->parse($query);
 				
+				// DDL statements bypass the retrieve pipeline entirely — none
+				// of it applies to a statement with no rows to return.
+				if (
+					$ast instanceof AstCreateTable ||
+					$ast instanceof AstDestroy ||
+					$ast instanceof AstDestroyIndex ||
+					$ast instanceof AstCreateIndex
+				) {
+					match (true) {
+						$ast instanceof AstCreateTable => $this->createTableExecutor->execute($ast),
+						$ast instanceof AstDestroy => $this->destroyExecutor->execute($ast),
+						$ast instanceof AstDestroyIndex => $this->destroyIndexExecutor->execute($ast),
+						default => $this->createIndexExecutor->execute($ast),
+					};
+					
+					return null;
+				}
+				
+				// Write-verb statements bypass the retrieve pipeline entirely too
+				// (no semantic analysis, no identifier resolution — see each
+				// executor's own docblock) but, unlike DDL, do return a QuelResult
+				// (affected-row count and, for append, a generated primary key).
+				if ($ast instanceof AstAppend || $ast instanceof AstReplace || $ast instanceof AstDelete) {
+					return match (true) {
+						$ast instanceof AstAppend => $this->appendExecutor->execute($ast, $normalizedParameters),
+						$ast instanceof AstReplace => $this->replaceExecutor->execute($ast, $normalizedParameters),
+						default => $this->deleteExecutor->execute($ast, $normalizedParameters),
+					};
+				}
+				
+				// Every other AstStatement variant was handled by one of the
+				// two blocks above, so this is always AstRetrieve — parse()'s
+				// return type just can't say so, since AstStatement doesn't
+				// enumerate its implementors.
+				if (!$ast instanceof AstRetrieve) {
+					throw new \LogicException('Unreachable: AstStatement is neither a DDL, write-verb, nor AstRetrieve node — ' . get_class($ast));
+				}
+				
 				// Resolve all identifier types. Note: this does no semantic checking.
 				// It just flags the type based on AST hierarchy
 				$this->resolveAndSetIdentifierTypes($ast);
 				
 				// Processing phase #1 - Transform and enhance the AST
 				$this->queryNormalizer->transform($ast);
-
+				
 				// Coerce parameters bound against \DateTime columns (DateTimeInterface,
 				// formatted strings) into Unix timestamps, mirroring the column-side
 				// conversion NormalizeDateTime just applied.
 				$this->coerceDateTimeParameters($ast, $normalizedParameters);
-
+				
 				// Validation phase - Ensure AST integrity and correctness
 				$this->semanticAnalyser->validate($ast);
 				
@@ -154,16 +226,16 @@
 				$result = $this->planExecutor->execute($executionPlan);
 				
 				// Hydrate and return the query result.
-				return new QuelResult($this->entityManager, $ast, $result);
+				return QuelResult::fromRetrieve($this->entityManager, $ast, $result);
 			} catch (ParserException|LexerException $e) {
 				throw new QuelException("Syntax error: " . $e->getMessage(), 'syntax_error', 0, $e);
 			} catch (SemanticException $e) {
 				throw new QuelException($e->getMessage(), 'semantic_error', 0, $e);
 			} catch (TransformationException $e) {
 				throw new QuelException($e->getMessage(), 'transformation_error', 0, $e);
-			} catch (HydrationException $e) {
+			} catch (HydrationException|\DateInvalidTimeZoneException|\DateMalformedStringException $e) {
 				throw new QuelException($e->getMessage(), 'hydration_error', 0, $e);
-			} catch (EntityResolutionException $e) {
+			} catch (EntityResolutionException|\ReflectionException $e) {
 				throw new QuelException($e->getMessage(), 'resolution_error', 0, $e);
 			}
 		}
@@ -175,7 +247,6 @@
 		public function getLastExecutedSql(): array {
 			return $this->databaseExecutor->getLastExecutedSql();
 		}
-		
 		
 		/**
 		 * Runs the planning pipeline and returns a log of every decision made.
@@ -192,6 +263,16 @@
 				
 				// Parse and resolve identifiers
 				$ast = $this->parse($query);
+				
+				// explainQuery() only calls explain() for a retrieve statement —
+				// DDL and write-verb statements have no optimizer/planner pipeline
+				// to log decisions from, so they're explained via
+				// explainNonRetrieveQuery() instead. This check is a defensive
+				// backstop, not a reachable path.
+				if (!$ast instanceof AstRetrieve) {
+					throw new QuelException("explain() only supports retrieve statements", 'not_plannable');
+				}
+				
 				$this->resolveAndSetIdentifierTypes($ast);
 				
 				// Normalize and validate the AST before handing it to the optimizer
@@ -229,6 +310,63 @@
 		 * @throws QuelException
 		 */
 		public function explainQuery(string $query, array $parameters = []): QueryPlan {
+			try {
+				$normalizedParameters = $this->normalizeParams($parameters);
+				$ast = $this->parse($query);
+			} catch (ParserException|LexerException $e) {
+				throw new QuelException("Syntax error: " . $e->getMessage(), 'syntax_error', 0, $e);
+			}
+			
+			// DDL and write-verb statements compile straight to SQL — there's no
+			// optimizer/planner pipeline, and replaying them via the retrieve
+			// pipeline's dry-run executor would re-run the write for real (see
+			// explainNonRetrieveQuery()).
+			if ($ast instanceof AstRetrieve) {
+				return $this->explainRetrieveQuery($query, $parameters);
+			} else {
+				return $this->explainNonRetrieveQuery($ast, $normalizedParameters);
+			}
+		}
+		
+		/**
+		 * Parses a Quel query and returns its AST representation.
+		 * @param string $query The Quel query string to parse
+		 * @return AstStatement The parsed AST — retrieve, DDL, or write-verb
+		 * @throws LexerException
+		 * @throws ParserException
+		 * @throws QuelException|\ReflectionException If parsing, validation, or processing fails
+		 */
+		private function parse(string $query): AstStatement {
+			// Convert the raw query string into an Abstract Syntax Tree
+			// Create a lexer to break the query string into tokens (keywords, identifiers, operators, etc.)
+			$lexer = new Lexer($query);
+			
+			// Create a parser that takes the tokenized input and builds an Abstract Syntax Tree
+			$parser = new Parser($lexer);
+			
+			// Execute the parsing process to generate the AST representation of the query
+			// This transforms the linear token sequence into a hierarchical tree structure
+			$ast = $parser->parse();
+			
+			// Ensure the parsed AST represents a statement type this executor knows how to run
+			if (!$ast instanceof AstStatement) {
+				throw new QuelException("Invalid query type: expected retrieve, create, destroy, index, or write-verb (append/replace/delete) operation");
+			}
+			
+			// The AST is now fully validated
+			return $ast;
+		}
+		
+		/**
+		 * Returns planner decisions and generated SQL for a retrieve query
+		 * without executing it. Combines explain() with a SQL dry-run into
+		 * one coherent result.
+		 * @param string $query The ObjectQuel query string
+		 * @param array<int|string, mixed> $parameters Query parameters
+		 * @return QueryPlan Planning decisions and generated SQL
+		 * @throws QuelException
+		 */
+		private function explainRetrieveQuery(string $query, array $parameters): QueryPlan {
 			// Collect planner decisions by running the optimization pipeline
 			$log = $this->explain($query, $parameters);
 			
@@ -243,33 +381,42 @@
 		}
 		
 		/**
-		 * Parses a Quel query and returns its validated AST representation.
-		 * @param string $query The Quel query string to parse
-		 * @return AstRetrieve The validated AST or null if parsing fails
-		 * @throws LexerException
-		 * @throws ParserException
-		 * @throws QuelException If parsing, validation, or processing fails
+		 * Compiles a DDL or write-verb (append/replace/delete) statement to
+		 * SQL without running it. Each of these bypasses the retrieve
+		 * pipeline's optimizer/planner entirely (see executeQuery()), so
+		 * there are no planning notes to report — only the SQL the statement
+		 * would run.
+		 *
+		 * Unlike the retrieve path, this never touches
+		 * DryRunDatabaseQueryExecutor: these statements always run through
+		 * their own connection (see each Executor's docblock), so the only
+		 * way to avoid a real write is to compile the SQL directly instead of
+		 * calling execute().
+		 * @param AstStatement $ast Parsed statement — anything but AstRetrieve
+		 * @param array<string, mixed> $parameters Normalized query parameters
+		 * @return QueryPlan Empty planning notes, plus the compiled SQL
+		 * @throws QuelException On compile failure, or if the statement (a
+		 *         JSON-source-range append) produces no SQL at all
 		 */
-		private function parse(string $query): AstRetrieve {
-			// Convert the raw query string into an Abstract Syntax Tree
-			// Create a lexer to break the query string into tokens (keywords, identifiers, operators, etc.)
-			$lexer = new Lexer($query);
-			
-			// Create a parser that takes the tokenized input and builds an Abstract Syntax Tree
-			$parser = new Parser($lexer);
-			
-			// Execute the parsing process to generate the AST representation of the query
-			// This transforms the linear token sequence into a hierarchical tree structure
-			$ast = $parser->parse();
-			
-			// Ensure the parsed AST represents a RETRIEVE operation
-			// This method specifically handles RETRIEVE queries
-			if (!$ast instanceof AstRetrieve) {
-				throw new QuelException("Invalid query type: expected retrieve operation");
+		private function explainNonRetrieveQuery(AstStatement $ast, array $parameters): QueryPlan {
+			try {
+				$sql = match (true) {
+					$ast instanceof AstCreateTable => [$this->createTableExecutor->compileSql($ast)],
+					$ast instanceof AstDestroy => $this->destroyExecutor->compileSql($ast),
+					$ast instanceof AstDestroyIndex => $this->destroyIndexExecutor->compileSql($ast),
+					$ast instanceof AstCreateIndex => $this->createIndexExecutor->compileSql($ast),
+					$ast instanceof AstAppend => [$this->appendExecutor->compileSql($ast, $parameters)],
+					$ast instanceof AstReplace => [$this->replaceExecutor->compileSql($ast, $parameters)],
+					$ast instanceof AstDelete => [$this->deleteExecutor->compileSql($ast, $parameters)],
+					default => throw new QuelException("Invalid query type: expected retrieve, create, destroy, index, or write-verb (append/replace/delete) operation"),
+				};
+				
+				return new QueryPlan([], $sql);
+			} catch (SemanticException $e) {
+				throw new QuelException($e->getMessage(), 'semantic_error', 0, $e);
+			} catch (\ReflectionException $e) {
+				throw new QuelException($e->getMessage(), 'resolution_error', 0, $e);
 			}
-			
-			// The AST is now fully validated
-			return $ast;
 		}
 		
 		/**
@@ -307,10 +454,10 @@
 					$this->coerceDateTimeParameters($range->getQuery(), $parameters);
 				}
 			}
-
+			
 			$ast->accept(new CoerceDateTimeParameters($parameters));
 		}
-
+		
 		/**
 		 * Normalizes an array of parameters by casting all keys to strings.
 		 * @param array<int|string, mixed> $params The parameters to normalize.

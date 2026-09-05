@@ -3,15 +3,27 @@
     namespace Quellabs\ObjectQuel\ObjectQuel;
 
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRange;
+	use Quellabs\ObjectQuel\ObjectQuel\Rules\Append;
+	use Quellabs\ObjectQuel\ObjectQuel\Rules\CreateIndex;
+	use Quellabs\ObjectQuel\ObjectQuel\Rules\CreateTable;
+	use Quellabs\ObjectQuel\ObjectQuel\Rules\Delete;
+	use Quellabs\ObjectQuel\ObjectQuel\Rules\Destroy;
 	use Quellabs\ObjectQuel\ObjectQuel\Rules\Range;
+	use Quellabs\ObjectQuel\ObjectQuel\Rules\Replace;
 	use Quellabs\ObjectQuel\ObjectQuel\Rules\Retrieve;
-    
+
     class Parser {
-        
+
         protected Lexer $lexer;
         private Range $rangeRule;
 		private Retrieve $retrieveRule;
-		
+		private CreateTable $createTableRule;
+		private CreateIndex $createIndexRule;
+		private Destroy $destroyRule;
+		private Append $appendRule;
+		private Replace $replaceRule;
+		private Delete $deleteRule;
+
 		/**
          * Parser constructor.
          * @param Lexer $lexer
@@ -20,6 +32,12 @@
             $this->lexer = $lexer;
             $this->rangeRule = new Range($lexer);
             $this->retrieveRule = new Retrieve($lexer);
+            $this->createTableRule = new CreateTable($lexer);
+            $this->createIndexRule = new CreateIndex($lexer);
+            $this->destroyRule = new Destroy($lexer);
+            $this->appendRule = new Append($lexer);
+            $this->replaceRule = new Replace($lexer);
+            $this->deleteRule = new Delete($lexer);
         }
 		
 	    /**
@@ -46,7 +64,39 @@
 				    case Token::Retrieve :
 					    $queries[] = $this->retrieveRule->parse($directives, $ranges);
 					    break;
-				    
+
+				    case Token::Create :
+					    // Ranges ahead of `create` (if any) are simply unused —
+					    // still available to any `retrieve` elsewhere in this loop.
+					    $queries[] = $this->createTableRule->parse();
+					    break;
+
+				    case Token::Destroy :
+					    $queries[] = $this->destroyRule->parse();
+					    break;
+
+				    case Token::Index :
+					    // Ranges ahead of `index` (if any) are simply unused,
+					    // same as `create` above.
+					    $queries[] = $this->createIndexRule->parse();
+					    break;
+
+				    case Token::Append :
+					    $queries[] = $this->appendRule->parse($ranges);
+					    break;
+
+				    case Token::Replace :
+					    $queries[] = $this->replaceRule->parse($ranges);
+					    break;
+
+				    case Token::Delete :
+					    // No lookahead/dispatch needed — unlike a `delete table Name`
+					    // spelling some designs assume, authentic QUEL's drop verb is
+					    // `destroy`, a completely separate keyword and token, so
+					    // Token::Delete always means this DML verb.
+					    $queries[] = $this->deleteRule->parse($ranges);
+					    break;
+
 				    default :
 					    $tokenName = Token::toString($token->getType()) ?: 'unknown';
 					    throw new ParserException("Unexpected token '{$tokenName}' on line {$this->lexer->getLineNumber()}");

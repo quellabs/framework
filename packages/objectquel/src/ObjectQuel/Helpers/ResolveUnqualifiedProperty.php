@@ -2,10 +2,12 @@
 	
 	namespace Quellabs\ObjectQuel\ObjectQuel\Helpers;
 	
+	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
 	use Quellabs\ObjectQuel\EntityStore;
 	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIdentifier;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRange;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeTable;
 	use Quellabs\ObjectQuel\ObjectQuel\AstInterface;
 	use Quellabs\ObjectQuel\ObjectQuel\AstVisitorInterface;
 	use Quellabs\ObjectQuel\ObjectQuel\IdentifierType;
@@ -40,9 +42,11 @@
 		/**
 		 * @param EntityStore $entityStore Store containing entity/property metadata
 		 * @param AstRange[] $ranges All ranges from the AstRetrieve node
+		 * @param DatabaseAdapter|null $databaseAdapter Used to check a plain table's
+		 *        real columns instead of blindly matching every table range
 		 */
-		public function __construct(EntityStore $entityStore, array $ranges) {
-			parent::__construct($entityStore);
+		public function __construct(EntityStore $entityStore, array $ranges, ?DatabaseAdapter $databaseAdapter = null) {
+			parent::__construct($entityStore, $databaseAdapter);
 			$this->ranges = $ranges;
 		}
 		
@@ -97,9 +101,14 @@
 			// Mutate the existing node in-place so that any parent pointers already
 			// established in the AST remain valid. The node becomes the range root
 			// and a new child node carries the property name.
+			$isTableRange = $matchingRange instanceof AstRangeTable;
+
 			$node->setName($matchingRange->getName());
 			$node->setRange($matchingRange);
-			$node->setType(IdentifierType::EntityRoot);
-			$node->setNext(new AstIdentifier($propertyName, IdentifierType::EntityProperty));
+			$node->setType($isTableRange ? IdentifierType::TableRoot : IdentifierType::EntityRoot);
+			$node->setNext(new AstIdentifier(
+				$propertyName,
+				$isTableRange ? IdentifierType::TableProperty : IdentifierType::EntityProperty
+			));
 		}
 	}
