@@ -7,11 +7,11 @@
 	use Quellabs\ObjectQuel\Exception\QuelException;
 
 	/**
-	 * Integration coverage for QUEL's `destroy [temporary] Name {, Name} [if
-	 * exists]` statement, exercised end-to-end via
+	 * Integration coverage for QUEL's `destroy [temporary] Name [if
+	 * exists]` statement (the table form), exercised end-to-end via
 	 * EntityManager::executeQuery() against the suite's shared MySQL
-	 * connection. Table-only — index destroy isn't implemented yet, see
-	 * objectquel-destroy-plan.md.
+	 * connection. See tests/Integration/DestroyIndexTest for the `destroy
+	 * Name on Table` index form (objectquel-destroy-index-plan.md).
 	 *
 	 * MySQL alone can't distinguish "unqualified" from "temporary" here — a
 	 * session temp table already shadows a same-named permanent one for
@@ -74,20 +74,17 @@
 			$this->assertNull($result);
 		}
 
-		public function testDestroysMultipleTablesInOneStatement(): void {
+		public function testRejectsACommaSeparatedNameList(): void {
+			// `destroy`'s comma-separated multi-name list was removed — every
+			// `destroy` form targets exactly one object per statement now
+			// (see objectquel-destroy-index-plan.md). A trailing `, Name` is
+			// simply unparseable.
 			$tableA = $this->nextTableName();
 			$tableB = $this->nextTableName();
 
-			self::em()->executeQuery("create {$tableA} (id = integer)");
-			self::em()->executeQuery("create {$tableB} (id = integer)");
+			$this->expectException(QuelException::class);
 
-			$result = self::em()->executeQuery("destroy {$tableA}, {$tableB}");
-
-			$this->assertNull($result);
-
-			$tables = self::em()->getConnection()->getTables();
-			$this->assertNotContains($tableA, $tables);
-			$this->assertNotContains($tableB, $tables);
+			self::em()->executeQuery("destroy {$tableA}, {$tableB}");
 		}
 
 		public function testDestroysAnEntityMappedTableWithoutRestriction(): void {
@@ -110,14 +107,6 @@
 			$this->expectException(QuelException::class);
 
 			self::em()->executeQuery("destroy {$tableName}");
-		}
-
-		public function testRejectsDuplicateNameInSameStatement(): void {
-			$tableName = $this->nextTableName();
-
-			$this->expectException(QuelException::class);
-
-			self::em()->executeQuery("destroy {$tableName}, {$tableName}");
 		}
 
 		public function testIfExistsSilentlyIgnoresAMissingTable(): void {

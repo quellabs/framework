@@ -84,18 +84,4 @@
 			self::assertSame(['DROP TABLE IF EXISTS [#Foo]'], $this->compile($ast, 'sqlsrv'));
 		}
 
-		public function testMultiNameDestroyProducesOneStatementPerName(): void {
-			$ast = $this->parse('destroy Foo, Bar');
-
-			self::assertSame(['DROP TABLE `Foo`', 'DROP TABLE `Bar`'], $this->compile($ast, 'mysql'));
-			self::assertSame(['DROP TABLE "Foo"', 'DROP TABLE "Bar"'], $this->compile($ast, 'pgsql'));
-			self::assertSame(['DROP TABLE `Foo`', 'DROP TABLE `Bar`'], $this->compile($ast, 'sqlite'));
-			self::assertSame(
-				[
-					"IF OBJECT_ID('tempdb..#Foo') IS NOT NULL DROP TABLE [#Foo] ELSE DROP TABLE [Foo]",
-					"IF OBJECT_ID('tempdb..#Bar') IS NOT NULL DROP TABLE [#Bar] ELSE DROP TABLE [Bar]",
-				],
-				$this->compile($ast, 'sqlsrv')
-			);
-		}
 	}

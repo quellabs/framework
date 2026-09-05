@@ -137,9 +137,30 @@
 					"IF NOT EXISTS (SELECT 1 FROM sys.fulltext_catalogs WHERE name = 'quel_fulltext_catalog') " .
 					"CREATE FULLTEXT CATALOG [quel_fulltext_catalog] AS DEFAULT",
 					'CREATE FULLTEXT INDEX ON [ArticleEntity] ([title], [body]) KEY INDEX [PK_ArticleEntity] ON [quel_fulltext_catalog]',
+					"IF EXISTS (SELECT 1 FROM sys.extended_properties WHERE major_id = OBJECT_ID('ArticleEntity') AND minor_id = 0 AND name = 'quel_fulltext_index_name') " .
+					"EXEC sp_updateextendedproperty @name = 'quel_fulltext_index_name', @value = 'article_fulltext_idx', @level0type = N'SCHEMA', @level0name = N'dbo', @level1type = N'TABLE', @level1name = 'ArticleEntity' " .
+					"ELSE EXEC sp_addextendedproperty @name = 'quel_fulltext_index_name', @value = 'article_fulltext_idx', @level0type = N'SCHEMA', @level0name = N'dbo', @level1type = N'TABLE', @level1name = 'ArticleEntity'",
 				],
 				$statements
 			);
+		}
+
+		public function testSqlServerFulltextTagsTheIndexNameAsAnExtendedProperty(): void {
+			// The QUEL index name has no equivalent in `CREATE FULLTEXT
+			// INDEX` itself (T-SQL fulltext indexes are unnamed, one per
+			// table) — it's tagged as a table-level extended property
+			// instead, so QuelToSQLDestroyIndex can later correlate a
+			// `destroy Name on Table` against the real object (see
+			// objectquel-destroy-index-plan.md).
+			$ast = $this->parse('index fulltext on ArticleEntity is article_fulltext_idx (title, body)');
+
+			$statements = (new QuelToSQLCreateIndex(new FakePlatformCapabilities('sqlsrv')))
+				->convertToSQL($ast, null, 'PK_ArticleEntity');
+
+			self::assertCount(3, $statements);
+			self::assertStringContainsString('sp_addextendedproperty', $statements[2]);
+			self::assertStringContainsString("'quel_fulltext_index_name'", $statements[2]);
+			self::assertStringContainsString("'article_fulltext_idx'", $statements[2]);
 		}
 
 		public function testSqliteFulltextCreatesAnFts5VirtualTableWithSyncTriggers(): void {

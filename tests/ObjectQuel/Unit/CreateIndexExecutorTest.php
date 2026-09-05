@@ -73,7 +73,7 @@
 
 			(new CreateIndexExecutor($connection, new FakePlatformCapabilities('sqlsrv')))->execute($this->statementIndex());
 
-			self::assertCount(2, $capturedSql);
+			self::assertCount(3, $capturedSql);
 			self::assertStringContainsString('KEY INDEX [PK_ArticleEntity]', $capturedSql[1]);
 		}
 
