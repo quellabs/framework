@@ -212,6 +212,38 @@
 		}
 		
 		// -------------------------------------------------------------------------
+		// Unqualified property resolution
+		// -------------------------------------------------------------------------
+
+		public function testAmbiguousUnqualifiedPropertyThrowsWithAmbiguousMessage(): void {
+			// 'id' exists on both ranges, so ValidateUnambiguousProperty must report
+			// it as ambiguous — not as ValidateRangesDeclared's generic "undefined
+			// range reference", which used to win because it ran first (see
+			// SemanticAnalyzer::validate()'s Step 5/6 ordering).
+			try {
+				$this->em->executeQuery("
+					range of p is PostEntity
+					range of u is UserEntity
+					retrieve (id)
+				");
+				$this->fail('Expected QuelException to be thrown');
+			} catch (QuelException $e) {
+				$this->assertInstanceOf(SemanticException::class, $e->getPrevious());
+				$this->assertStringContainsString('is ambiguous', $e->getPrevious()->getMessage());
+			}
+		}
+
+		public function testUnknownUnqualifiedPropertyStillThrows(): void {
+			// No range owns this property at all — ValidateUnambiguousProperty
+			// intentionally leaves it alone (see its docblock), so
+			// ValidateRangesDeclared must still catch it as an undefined reference.
+			$this->assertSemanticError(fn() => $this->em->executeQuery("
+				range of p is PostEntity
+				retrieve (thisPropertyDoesNotExistAnywhere)
+			"));
+		}
+
+		// -------------------------------------------------------------------------
 		// Expressions on entire entities
 		// -------------------------------------------------------------------------
 		
