@@ -484,4 +484,49 @@
 			$this->assertSame('order-1', $rows[0]['o.label']);
 			$this->assertSame('sku-1', $rows[0]['i.sku']);
 		}
+
+		public function testResolvesBareColumnAgainstOneOfTwoJoinedTableRanges(): void {
+			$customersTable = $this->nextTableName();
+			$addressesTable = $this->nextTableName();
+			$this->createdTables[] = $customersTable;
+			$this->createdTables[] = $addressesTable;
+
+			self::em()->getConnection()->execute("
+				CREATE TABLE `{$customersTable}` (
+					id INT AUTO_INCREMENT PRIMARY KEY,
+					name VARCHAR(255) NOT NULL
+				)
+			");
+			self::em()->getConnection()->execute("
+				CREATE TABLE `{$addressesTable}` (
+					id INT AUTO_INCREMENT PRIMARY KEY,
+					customer_id INT NOT NULL,
+					street VARCHAR(255) NOT NULL,
+					house_number VARCHAR(255) NOT NULL
+				)
+			");
+
+			self::em()->getConnection()->execute("INSERT INTO `{$customersTable}` (name) VALUES ('Jane')");
+			$customerId = (int)self::em()->getConnection()->getInsertId();
+			self::em()->getConnection()->execute(
+				"INSERT INTO `{$addressesTable}` (customer_id, street, house_number) VALUES (?, ?, ?)",
+				[$customerId, 'Main St', '12']
+			);
+
+			// `street`/`house_number` only exist on the addresses table, not
+			// customers, so referencing them unqualified must resolve against
+			// the addresses range rather than being rejected as ambiguous —
+			// findRanges() now checks each plain table's real columns instead
+			// of blindly matching every table range in the query.
+			$rows = self::em()->getAll("
+				range of c is table {$customersTable}
+				range of a is table {$addressesTable} via a.customer_id = c.id
+				retrieve unique (street, house_number)
+				where not is_null(customer_id)
+			");
+
+			$this->assertCount(1, $rows);
+			$this->assertSame('Main St', $rows[0]['street']);
+			$this->assertSame('12', $rows[0]['house_number']);
+		}
 	}
