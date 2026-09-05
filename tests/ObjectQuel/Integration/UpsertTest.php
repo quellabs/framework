@@ -72,6 +72,24 @@
 			$this->assertSame('Alice', $rows[0]['u.name']);
 		}
 
+		public function testOnConflictWhereAcceptsABareUnqualifiedColumn(): void {
+			// `email` instead of `u.email` in the on-conflict WHERE — must
+			// resolve against the target range the same way a standalone
+			// `replace`'s WHERE clause does (see WriteVerbIdentifierResolver,
+			// which the on-conflict clause is resolved through too).
+			$bareQuery = '
+				range of u is App\Entities\UpsertConflictEntity
+				append to u (email = :e, name = :n) or replace (name = :n) where email = :e
+			';
+
+			self::em()->executeQuery($bareQuery, ['e' => 'dave@example.com', 'n' => 'Dave']);
+			$result = self::em()->executeQuery($bareQuery, ['e' => 'dave@example.com', 'n' => 'Dave V2']);
+			$this->assertSame(2, $result->getAffectedRows());
+
+			$rows = self::em()->getAll('range of u is App\Entities\UpsertConflictEntity retrieve (u.name) where u.email = "dave@example.com"');
+			$this->assertSame('Dave V2', $rows[0]['u.name']);
+		}
+
 		public function testUpdatesTheMatchingRowOnConflictInsteadOfInsertingADuplicate(): void {
 			self::em()->executeQuery(self::UPSERT_QUERY, ['e' => 'alice@example.com', 'n' => 'Alice']);
 

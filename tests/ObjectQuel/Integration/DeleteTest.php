@@ -63,6 +63,20 @@
 			$this->assertNotSame(0, $keepId);
 		}
 
+		public function testDeletesUsingABareUnqualifiedColumnInWhere(): void {
+			// `id` instead of `u.id` — must resolve against the statement's
+			// single range the same way a retrieve's WHERE clause does (see
+			// WriteVerbIdentifierResolver, which now runs ResolveUnqualifiedProperty).
+			$id = $this->seedUser('erin', 'pw');
+
+			$result = $this->em->executeQuery('
+				range of u is App\Entities\UserEntity
+				delete u where id = :id
+			', ['id' => $id]);
+
+			$this->assertSame(1, $result->getAffectedRows());
+		}
+
 		public function testConditionMatchingNoRowsAffectsZeroRows(): void {
 			$this->seedUser('dave', 'pw');
 

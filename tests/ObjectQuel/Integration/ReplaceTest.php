@@ -50,6 +50,20 @@
 			$this->assertSame('newpass', $rows[0]['u.password']);
 		}
 
+		public function testReplacesUsingABareUnqualifiedColumnInWhere(): void {
+			// `id` instead of `u.id` — must resolve against the statement's
+			// single range the same way a retrieve's WHERE clause does (see
+			// WriteVerbIdentifierResolver, which now runs ResolveUnqualifiedProperty).
+			$id = $this->seedUser('frank', 'pw');
+
+			$result = $this->em->executeQuery('
+				range of u is App\Entities\UserEntity
+				replace u (password = :password) where id = :id
+			', ['password' => 'newpass', 'id' => $id]);
+
+			$this->assertSame(1, $result->getAffectedRows());
+		}
+
 		public function testReplacesMultipleAssignmentsInOneStatement(): void {
 			$id = $this->seedUser('bob', 'pw', false);
 

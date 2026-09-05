@@ -164,6 +164,50 @@
 			$this->assertCount(0, $rows);
 		}
 
+		public function testReplaceOnAPlainTableAcceptsABareUnqualifiedColumn(): void {
+			$tableName = $this->nextTableName();
+			$this->createRawTable($tableName);
+
+			self::em()->getConnection()->execute(
+				"INSERT INTO `{$tableName}` (message, amount) VALUES (?, ?)",
+				['old', 1]
+			);
+
+			// `amount` instead of `a.amount` in the WHERE clause — must resolve
+			// against the table range the same way a retrieve's WHERE clause does.
+			$result = self::em()->executeQuery("
+				range of a is table {$tableName}
+				replace a (message = :message) where amount = :amount
+			", ['message' => 'new', 'amount' => 1]);
+
+			$this->assertSame(1, $result->getAffectedRows());
+
+			$messages = self::em()->getCol("range of a is table {$tableName} retrieve (a.message)");
+			$this->assertSame(['new'], $messages);
+		}
+
+		public function testDeleteOnAPlainTableAcceptsABareUnqualifiedColumn(): void {
+			$tableName = $this->nextTableName();
+			$this->createRawTable($tableName);
+
+			self::em()->getConnection()->execute(
+				"INSERT INTO `{$tableName}` (message, amount) VALUES (?, ?)",
+				['gone', 1]
+			);
+
+			// `amount` instead of `a.amount` in the WHERE clause — must resolve
+			// against the table range the same way a retrieve's WHERE clause does.
+			$result = self::em()->executeQuery("
+				range of a is table {$tableName}
+				delete a where amount = :amount
+			", ['amount' => 1]);
+
+			$this->assertSame(1, $result->getAffectedRows());
+
+			$rows = self::em()->getAll("range of a is table {$tableName} retrieve (a.message)");
+			$this->assertCount(0, $rows);
+		}
+
 		public function testResolvesBareColumnAgainstASingleTableRange(): void {
 			$tableName = $this->nextTableName();
 			$this->createRawTable($tableName);
