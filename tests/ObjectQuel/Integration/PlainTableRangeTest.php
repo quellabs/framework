@@ -240,14 +240,17 @@
 			self::em()->getAll("range of a is table {$tableName} retrieve (a)");
 		}
 
-		public function testUnknownColumnSurfacesAsANativeDatabaseError(): void {
+		public function testUnknownColumnIsRejectedBySemanticAnalysis(): void {
 			$tableName = $this->nextTableName();
 			$this->createRawTable($tableName);
 
-			// No live-schema validation for a plain-table range (see
-			// objectquel-plain-table-range-plan.md) — an unknown column is
-			// rejected by the database itself, not by the compiler.
+			// ValidateTablePropertyExists checks a plain-table range's columns
+			// against the live schema (see objectquel-plain-table-range-plan.md's
+			// "Semantic analysis" section) — an unknown column is now rejected
+			// during semantic analysis, before any SQL reaches the database, the
+			// same way an unknown entity property already is.
 			$this->expectException(QuelException::class);
+			$this->expectExceptionMessage("does_not_exist");
 
 			self::em()->getAll("range of a is table {$tableName} retrieve (a.does_not_exist)");
 		}
@@ -528,5 +531,39 @@
 			$this->assertCount(1, $rows);
 			$this->assertSame('Main St', $rows[0]['street']);
 			$this->assertSame('12', $rows[0]['house_number']);
+		}
+
+		public function testQualifiedReferenceToAColumnOnTheWrongTableRangeIsRejected(): void {
+			$customersTable = $this->nextTableName();
+			$addressesTable = $this->nextTableName();
+			$this->createdTables[] = $customersTable;
+			$this->createdTables[] = $addressesTable;
+
+			self::em()->getConnection()->execute("
+				CREATE TABLE `{$customersTable}` (
+					id INT AUTO_INCREMENT PRIMARY KEY,
+					name VARCHAR(255) NOT NULL
+				)
+			");
+			self::em()->getConnection()->execute("
+				CREATE TABLE `{$addressesTable}` (
+					id INT AUTO_INCREMENT PRIMARY KEY,
+					customer_id INT NOT NULL,
+					street VARCHAR(255) NOT NULL
+				)
+			");
+
+			// `street` exists on the addresses table, not customers — qualifying
+			// it with the wrong range's alias must be caught at semantic-analysis
+			// time (ValidateTablePropertyExists), not surface as the database
+			// engine's own "Unknown column" error.
+			$this->expectException(QuelException::class);
+			$this->expectExceptionMessage("street");
+
+			self::em()->getAll("
+				range of c is table {$customersTable}
+				range of a is table {$addressesTable} via a.customer_id = c.id
+				retrieve unique (c.street, a.id)
+			");
 		}
 	}
