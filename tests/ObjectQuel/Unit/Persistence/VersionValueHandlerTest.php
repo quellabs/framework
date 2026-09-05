@@ -140,4 +140,104 @@
 
 			self::assertSame([], $this->handler()->buildVersionSetClause([], $params));
 		}
+
+		// -------------------------------------------------------------------------
+		// $qualifyWithAlias — mirrors QuelToSQLReplace::quoteSetTargetColumn()'s
+		// dialect split (see its docblock): a standalone `replace` passes its
+		// own range alias here; UpdatePersister's unaliased UPDATE never does,
+		// which is exactly the default-null behavior every test above covers.
+		// -------------------------------------------------------------------------
+
+		public function testIntegerVersionColumnQualifiesBothSidesOnMysql(): void {
+			$params = [];
+
+			$parts = $this->handler('mysql')->buildVersionSetClause(
+				['version' => $this->versionColumn('version', ['type' => 'integer'])],
+				$params,
+				'u'
+			);
+
+			self::assertSame(['`u`.`version`=`u`.`version` + 1'], $parts);
+		}
+
+		public function testIntegerVersionColumnQualifiesOnlyTheRhsOnPostgres(): void {
+			// The LHS target stays bare on Postgres (a qualified column there
+			// is a syntax error on the LEFT side of SET), but the RHS
+			// self-reference is qualified same as anywhere else — matching
+			// how a manually-written `count = count + 1` would compile
+			// through BuildSqlFromAst.
+			$params = [];
+
+			$parts = $this->handler('pgsql')->buildVersionSetClause(
+				['version' => $this->versionColumn('version', ['type' => 'integer'])],
+				$params,
+				'u'
+			);
+
+			self::assertSame(['"version"="u"."version" + 1'], $parts);
+		}
+
+		public function testIntegerVersionColumnQualifiesOnlyTheRhsOnSqlite(): void {
+			$params = [];
+
+			$parts = $this->handler('sqlite')->buildVersionSetClause(
+				['version' => $this->versionColumn('version', ['type' => 'integer'])],
+				$params,
+				'u'
+			);
+
+			self::assertSame(['`version`=`u`.`version` + 1'], $parts);
+		}
+
+		public function testDatetimeVersionColumnQualifiesTheTargetOnMysqlOnly(): void {
+			$params = [];
+
+			$mysqlParts = $this->handler('mysql')->buildVersionSetClause(
+				['updatedAt' => $this->versionColumn('updated_at', ['type' => 'datetime'])],
+				$params,
+				'u'
+			);
+
+			$pgsqlParts = $this->handler('pgsql')->buildVersionSetClause(
+				['updatedAt' => $this->versionColumn('updated_at', ['type' => 'datetime'])],
+				$params,
+				'u'
+			);
+
+			self::assertStringStartsWith('`u`.`updated_at`=', $mysqlParts[0]);
+			self::assertStringStartsWith('"updated_at"=', $pgsqlParts[0]);
+		}
+
+		public function testUuidVersionColumnQualifiesTheTargetOnMysqlOnly(): void {
+			$params = [];
+
+			$mysqlParts = $this->handler('mysql')->buildVersionSetClause(
+				['token' => $this->versionColumn('token', ['type' => 'uuid'])],
+				$params,
+				'u'
+			);
+
+			$pgsqlParts = $this->handler('pgsql')->buildVersionSetClause(
+				['token' => $this->versionColumn('token', ['type' => 'uuid'])],
+				$params,
+				'u'
+			);
+
+			self::assertSame('`u`.`token`=:version_token', $mysqlParts[0]);
+			self::assertSame('"token"=:version_token', $pgsqlParts[0]);
+		}
+
+		public function testNoAliasProducesTheFullyBareFormRegardlessOfDialect(): void {
+			// UpdatePersister's call site — its UPDATE has no alias in scope
+			// at all, so omitting $qualifyWithAlias must behave exactly as it
+			// did before this parameter existed, on every dialect.
+			$params = [];
+
+			$parts = $this->handler('mysql')->buildVersionSetClause(
+				['version' => $this->versionColumn('version', ['type' => 'integer'])],
+				$params
+			);
+
+			self::assertSame(['`version`=`version` + 1'], $parts);
+		}
 	}
