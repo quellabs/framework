@@ -164,6 +164,29 @@
 			$this->assertCount(0, $rows);
 		}
 
+		public function testResolvesBareColumnAgainstASingleTableRange(): void {
+			$tableName = $this->nextTableName();
+			$this->createRawTable($tableName);
+
+			self::em()->getConnection()->execute(
+				"INSERT INTO `{$tableName}` (message, amount) VALUES (?, ?)",
+				['bare-column', 42]
+			);
+
+			// Bare `message`/`amount` (no `a.` prefix) must resolve against the
+			// single table range the same way it already does for a single
+			// entity range — this mirrors ResolveUnqualifiedProperty's shorthand
+			// support, which previously only checked AstRangeDatabase ranges.
+			$rows = self::em()->getAll("
+				range of a is table {$tableName}
+				retrieve (message, amount) where amount = :amount
+			", ['amount' => 42]);
+
+			$this->assertCount(1, $rows);
+			$this->assertSame('bare-column', $rows[0]['message']);
+			$this->assertSame(42, (int)$rows[0]['amount']);
+		}
+
 		public function testRejectsBareRangeProjection(): void {
 			$tableName = $this->nextTableName();
 			$this->createRawTable($tableName);
