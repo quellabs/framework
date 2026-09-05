@@ -322,6 +322,64 @@
 			);
 		}
 
+		public function testViaJoinsAPlainTableRangeToAnEntityRangeOnANonKeyProperty(): void {
+			$tableName = $this->nextTableName();
+			$this->createdTables[] = $tableName;
+
+			// Collation must match `users`.`username` (utf8mb4_unicode_ci) — the
+			// server/schema default here is utf8mb4_general_ci, and joining
+			// mismatched collations without an explicit CAST is a MySQL error
+			// (1267), not something this feature papers over.
+			self::em()->getConnection()->execute("
+				CREATE TABLE `{$tableName}` (
+					id INT AUTO_INCREMENT PRIMARY KEY,
+					owner_username VARCHAR(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+					note VARCHAR(255) NOT NULL
+				)
+			");
+
+			$withNote = self::em()->executeStatement(
+				'range of u is App\Entities\UserEntity
+				append to u (username = :username, password = :password, banned = false)',
+				['username' => 'via-owner', 'password' => 'secret']
+			);
+			$withoutNote = self::em()->executeStatement(
+				'range of u is App\Entities\UserEntity
+				append to u (username = :username, password = :password, banned = false)',
+				['username' => 'via-no-owner', 'password' => 'secret']
+			);
+
+			self::em()->getConnection()->execute(
+				"INSERT INTO `{$tableName}` (owner_username, note) VALUES (?, ?)",
+				['via-owner', 'owned note']
+			);
+
+			// The table range's `via` condition mixes an entity-rooted identifier
+			// (u.username, resolved through UserEntity's property-to-column
+			// metadata) with a table-rooted one (n.owner_username, passed through
+			// as a literal column name) — confirms the two sides of a mixed
+			// table/entity join are resolved independently, on a non-key entity
+			// property rather than the join-column id used elsewhere.
+			$rows = self::em()->getAll("
+				range of u is App\\Entities\\UserEntity
+				range of n is table {$tableName} via u.username = n.owner_username
+				retrieve (u.username, n.note)
+				where u.id = :withNoteId or u.id = :withoutNoteId
+				sort by u.username asc
+			", ['withNoteId' => $withNote->getGeneratedId(), 'withoutNoteId' => $withoutNote->getGeneratedId()]);
+
+			$this->assertCount(2, $rows);
+			$this->assertSame('via-no-owner', $rows[0]['u.username']);
+			$this->assertNull($rows[0]['n.note']);
+			$this->assertSame('via-owner', $rows[1]['u.username']);
+			$this->assertSame('owned note', $rows[1]['n.note']);
+
+			self::em()->getConnection()->execute(
+				"DELETE FROM `users` WHERE id IN (?, ?)",
+				[$withNote->getGeneratedId(), $withoutNote->getGeneratedId()]
+			);
+		}
+
 		public function testViaJoiningTwoPlainTableRanges(): void {
 			$ordersTable = $this->nextTableName();
 			$itemsTable = $this->nextTableName();
