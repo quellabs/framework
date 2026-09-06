@@ -16,17 +16,20 @@
 	 * Table is index_name (...)` (see objectquel-create-index-plan.md).
 	 * `unique` and `fulltext` occupy the same grammar slot right after
 	 * `index`, so at most one is ever present — no "unique fulltext" case to
-	 * guard against. No EntityStore involved — $tableName is a literal name,
-	 * same as create/destroy — so, unlike upsert's parser tests, this covers
-	 * both grammar and generated SQL in one file, mirroring
-	 * QuelToSQLCreateTest/QuelToSQLDestroyTest's pattern. The suite's only
-	 * live connection (see tests/Integration/CreateIndexTest) is MySQL, so
-	 * this is the only place pgsql/sqlite/sqlsrv generated SQL is compared.
+	 * guard against. $tableName is a literal name, same as create/destroy —
+	 * so, unlike upsert's parser tests, this covers both grammar and
+	 * generated SQL in one file, mirroring QuelToSQLCreateTest/
+	 * QuelToSQLDestroyTest's pattern. A real EntityStore is still needed to
+	 * parse (there's no `table` keyword — see Rules\Range), even though the
+	 * only `range of` declaration exercised here is ignored (see
+	 * testIgnoresRangeDeclarationBeforeIndex()). The suite's only live
+	 * connection (see tests/Integration/CreateIndexTest) is MySQL, so this
+	 * is the only place pgsql/sqlite/sqlsrv generated SQL is compared.
 	 */
 	class QuelToSQLCreateIndexTest extends TestCase {
 
 		private function parse(string $query): AstCreateIndex {
-			$ast = (new Parser(new Lexer($query)))->parse();
+			$ast = (new Parser(new Lexer($query), $GLOBALS['test_em']->getEntityStore()))->parse();
 			self::assertInstanceOf(AstCreateIndex::class, $ast);
 			return $ast;
 		}

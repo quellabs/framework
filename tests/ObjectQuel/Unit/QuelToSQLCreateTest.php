@@ -19,7 +19,7 @@
 	class QuelToSQLCreateTest extends TestCase {
 
 		private function parse(string $query): AstCreateTable {
-			$ast = (new Parser(new Lexer($query)))->parse();
+			$ast = (new Parser(new Lexer($query), $GLOBALS['test_em']->getEntityStore()))->parse();
 			self::assertInstanceOf(AstCreateTable::class, $ast);
 			return $ast;
 		}

@@ -20,7 +20,7 @@
 	class QuelToSQLDestroyIndexTest extends TestCase {
 
 		private function parse(string $query): AstDestroyIndex {
-			$ast = (new Parser(new Lexer($query)))->parse();
+			$ast = (new Parser(new Lexer($query), $GLOBALS['test_em']->getEntityStore()))->parse();
 			self::assertInstanceOf(AstDestroyIndex::class, $ast);
 			return $ast;
 		}
@@ -95,7 +95,7 @@
 		public function testUnqualifiedDestroyStillParsesAsTheTableForm(): void {
 			// A bare `destroy Name`, with nothing trailing, is always the
 			// table form — shape, not a keyword, is the discriminator.
-			$ast = (new Parser(new Lexer('destroy ArchiveLog')))->parse();
+			$ast = (new Parser(new Lexer('destroy ArchiveLog'), $GLOBALS['test_em']->getEntityStore()))->parse();
 
 			self::assertNotInstanceOf(AstDestroyIndex::class, $ast);
 		}

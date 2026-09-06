@@ -10,16 +10,19 @@
 	use Quellabs\ObjectQuel\ObjectQuel\ParserException;
 
 	/**
-	 * Parser-level coverage for `replace` — no EntityStore involved, so this
-	 * only exercises the grammar (see Rules\Replace) and the shape of the
-	 * resulting AstReplace, not entity-metadata-dependent semantics (unknown
-	 * property, type mismatch, etc. — covered by
-	 * tests/Integration/ReplaceTest.php against a real entity).
+	 * Parser-level coverage for `replace` — exercises the grammar (see
+	 * Rules\Replace) and the shape of the resulting AstReplace, not
+	 * entity-metadata-dependent semantics (unknown property, type mismatch,
+	 * etc. — covered by tests/Integration/ReplaceTest.php against a real
+	 * entity). A real EntityStore is still needed to parse: there's no
+	 * `table` keyword, so `range of u is UserEntity` is only recognized as
+	 * an entity range because UserEntity resolves against it (see
+	 * Rules\Range).
 	 */
 	class ReplaceParserTest extends TestCase {
 
 		private function parse(string $query): AstReplace {
-			$ast = (new Parser(new Lexer($query)))->parse();
+			$ast = (new Parser(new Lexer($query), $GLOBALS['test_em']->getEntityStore()))->parse();
 			self::assertInstanceOf(AstReplace::class, $ast);
 			return $ast;
 		}

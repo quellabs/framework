@@ -28,7 +28,7 @@
 		}
 
 		private function parse(string $query): AstReplace {
-			$ast = (new Parser(new Lexer($query)))->parse();
+			$ast = (new Parser(new Lexer($query), $this->em()->getEntityStore()))->parse();
 			self::assertInstanceOf(AstReplace::class, $ast);
 			return $ast;
 		}
@@ -81,7 +81,7 @@
 
 		private function tableQuery(): AstReplace {
 			return $this->parse('
-				range of a is table customers
+				range of a is customers
 				replace a (name = :name) where id = :id
 			');
 		}

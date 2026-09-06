@@ -38,7 +38,7 @@
 		}
 
 		private function parse(string $query = self::QUERY): AstAppend {
-			$ast = (new Parser(new Lexer($query)))->parse();
+			$ast = (new Parser(new Lexer($query), $this->em()->getEntityStore()))->parse();
 			self::assertInstanceOf(AstAppend::class, $ast);
 			return $ast;
 		}
@@ -102,7 +102,7 @@
 					(email = :e1, name = :n1),
 					(email = :e2, name = :n2)
 				or replace (name = :n1) where u.email = :e1
-			')))->parse();
+			'), $this->em()->getEntityStore()))->parse();
 
 			self::assertSame(
 				'MERGE INTO [upsert_conflict_test] AS [__upsert_target] USING (VALUES (:e1, :n1), (:e2, :n2)) AS [__upsert_source] ([email], [name]) ' .
@@ -151,7 +151,7 @@
 			$ast = (new Parser(new Lexer('
 				range of u is App\Entities\UpsertConflictEntity
 				append to u (email = :e, name = :n) or replace (name = :n) where u.name = :n
-			')))->parse();
+			'), $this->em()->getEntityStore()))->parse();
 
 			$this->expectException(\Quellabs\ObjectQuel\Exception\SemanticException::class);
 			$this->compile($ast, 'mysql');

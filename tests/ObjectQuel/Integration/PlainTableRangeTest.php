@@ -7,9 +7,12 @@
 	use Quellabs\ObjectQuel\Exception\QuelException;
 
 	/**
-	 * Integration coverage for QUEL's `range of x is table Name` plain-table
-	 * range — a range that targets a physical table directly, with no backing
-	 * entity class (see objectquel-plain-table-range-plan.md). Exercised
+	 * Integration coverage for QUEL's plain-table range — `range of x is
+	 * Name` where `Name` doesn't resolve against the EntityStore, so it's
+	 * looked up against the live schema instead. There's no `table` keyword:
+	 * the same `range of x is Name` syntax an entity range uses becomes a
+	 * plain-table range purely because no entity of that name exists (see
+	 * Rules\Range and objectquel-plain-table-range-plan.md). Exercised
 	 * end-to-end via EntityManager::executeQuery()/executeQuery() against
 	 * the suite's shared MySQL connection, on both an ad hoc `create`-d table
 	 * and a table that was never touched by ObjectQuel DDL at all — the
@@ -74,7 +77,7 @@
 			);
 
 			$rows = self::em()->getAll("
-				range of a is table {$tableName}
+				range of a is {$tableName}
 				retrieve (a.message, a.amount) where a.amount = :amount
 			", ['amount' => 42]);
 
@@ -95,11 +98,11 @@
 			");
 
 			self::em()->executeQuery("
-				range of a is table {$tableName}
+				range of a is {$tableName}
 				append to a (message = :message)
 			", ['message' => 'created-by-quel']);
 
-			$messages = self::em()->getCol("range of a is table {$tableName} retrieve (a.message)");
+			$messages = self::em()->getCol("range of a is {$tableName} retrieve (a.message)");
 			$this->assertSame(['created-by-quel'], $messages);
 		}
 
@@ -108,7 +111,7 @@
 			$this->createRawTable($tableName);
 
 			$result = self::em()->executeQuery("
-				range of a is table {$tableName}
+				range of a is {$tableName}
 				append to a (message = :message, amount = :amount)
 			", ['message' => 'inserted', 'amount' => 7]);
 
@@ -118,7 +121,7 @@
 			// objectquel-plain-table-range-plan.md's "Open decisions").
 			$this->assertIsInt($result->getGeneratedId());
 
-			$rows = self::em()->getAll("range of a is table {$tableName} retrieve (a.message, a.amount)");
+			$rows = self::em()->getAll("range of a is {$tableName} retrieve (a.message, a.amount)");
 			$this->assertCount(1, $rows);
 			$this->assertSame('inserted', $rows[0]['a.message']);
 			$this->assertSame(7, (int)$rows[0]['a.amount']);
@@ -134,13 +137,13 @@
 			);
 
 			$result = self::em()->executeQuery("
-				range of a is table {$tableName}
+				range of a is {$tableName}
 				replace a (message = :message) where a.amount = :amount
 			", ['message' => 'new', 'amount' => 1]);
 
 			$this->assertSame(1, $result->getAffectedRows());
 
-			$messages = self::em()->getCol("range of a is table {$tableName} retrieve (a.message)");
+			$messages = self::em()->getCol("range of a is {$tableName} retrieve (a.message)");
 			$this->assertSame(['new'], $messages);
 		}
 
@@ -154,13 +157,13 @@
 			);
 
 			$result = self::em()->executeQuery("
-				range of a is table {$tableName}
+				range of a is {$tableName}
 				delete a where a.amount = :amount
 			", ['amount' => 1]);
 
 			$this->assertSame(1, $result->getAffectedRows());
 
-			$rows = self::em()->getAll("range of a is table {$tableName} retrieve (a.message)");
+			$rows = self::em()->getAll("range of a is {$tableName} retrieve (a.message)");
 			$this->assertCount(0, $rows);
 		}
 
@@ -176,13 +179,13 @@
 			// `amount` instead of `a.amount` in the WHERE clause — must resolve
 			// against the table range the same way a retrieve's WHERE clause does.
 			$result = self::em()->executeQuery("
-				range of a is table {$tableName}
+				range of a is {$tableName}
 				replace a (message = :message) where amount = :amount
 			", ['message' => 'new', 'amount' => 1]);
 
 			$this->assertSame(1, $result->getAffectedRows());
 
-			$messages = self::em()->getCol("range of a is table {$tableName} retrieve (a.message)");
+			$messages = self::em()->getCol("range of a is {$tableName} retrieve (a.message)");
 			$this->assertSame(['new'], $messages);
 		}
 
@@ -198,13 +201,13 @@
 			// `amount` instead of `a.amount` in the WHERE clause — must resolve
 			// against the table range the same way a retrieve's WHERE clause does.
 			$result = self::em()->executeQuery("
-				range of a is table {$tableName}
+				range of a is {$tableName}
 				delete a where amount = :amount
 			", ['amount' => 1]);
 
 			$this->assertSame(1, $result->getAffectedRows());
 
-			$rows = self::em()->getAll("range of a is table {$tableName} retrieve (a.message)");
+			$rows = self::em()->getAll("range of a is {$tableName} retrieve (a.message)");
 			$this->assertCount(0, $rows);
 		}
 
@@ -222,7 +225,7 @@
 			// entity range — this mirrors ResolveUnqualifiedProperty's shorthand
 			// support, which previously only checked AstRangeDatabase ranges.
 			$rows = self::em()->getAll("
-				range of a is table {$tableName}
+				range of a is {$tableName}
 				retrieve (message, amount) where amount = :amount
 			", ['amount' => 42]);
 
@@ -237,7 +240,7 @@
 
 			$this->expectException(QuelException::class);
 
-			self::em()->getAll("range of a is table {$tableName} retrieve (a)");
+			self::em()->getAll("range of a is {$tableName} retrieve (a)");
 		}
 
 		public function testUnknownColumnIsRejectedBySemanticAnalysis(): void {
@@ -252,7 +255,7 @@
 			$this->expectException(QuelException::class);
 			$this->expectExceptionMessage("does_not_exist");
 
-			self::em()->getAll("range of a is table {$tableName} retrieve (a.does_not_exist)");
+			self::em()->getAll("range of a is {$tableName} retrieve (a.does_not_exist)");
 		}
 
 		public function testAggregatesOverAPlainTable(): void {
@@ -264,7 +267,7 @@
 				['a', 3, 'b', 4]
 			);
 
-			$total = self::em()->getCol("range of a is table {$tableName} retrieve (total = sum(a.amount))");
+			$total = self::em()->getCol("range of a is {$tableName} retrieve (total = sum(a.amount))");
 
 			$this->assertSame([7], array_map('intval', $total));
 		}
@@ -288,18 +291,18 @@
 			");
 
 			$insert = self::em()->executeQuery("
-				range of a is table {$tableName}
+				range of a is {$tableName}
 				append to a (email = :e, name = :n) or replace (name = :n) where a.email = :e
 			", ['e' => 'alice@example.com', 'n' => 'Alice']);
 
 			$this->assertSame(1, $insert->getAffectedRows());
 
 			self::em()->executeQuery("
-				range of a is table {$tableName}
+				range of a is {$tableName}
 				append to a (email = :e, name = :n) or replace (name = :n) where a.email = :e
 			", ['e' => 'alice@example.com', 'n' => 'Alice V2']);
 
-			$names = self::em()->getCol("range of a is table {$tableName} retrieve (a.name)");
+			$names = self::em()->getCol("range of a is {$tableName} retrieve (a.name)");
 			$this->assertSame(['Alice V2'], $names);
 		}
 
@@ -330,7 +333,7 @@
 
 			$rows = self::em()->getAll("
 				range of u is App\\Entities\\UserEntity
-				range of n is table {$tableName}
+				range of n is {$tableName}
 				retrieve (u.username, n.note) where u.id = n.user_id and u.id = :id
 			", ['id' => $userId]);
 
@@ -374,7 +377,7 @@
 			// no-note's row still appears with a null n.note.
 			$rows = self::em()->getAll("
 				range of u is App\\Entities\\UserEntity
-				range of n is table {$tableName} via u.id = n.user_id
+				range of n is {$tableName} via u.id = n.user_id
 				retrieve (u.username, n.note)
 				where u.id = :withNoteId or u.id = :withoutNoteId
 				sort by u.username asc
@@ -432,7 +435,7 @@
 			// property rather than the join-column id used elsewhere.
 			$rows = self::em()->getAll("
 				range of u is App\\Entities\\UserEntity
-				range of n is table {$tableName} via u.username = n.owner_username
+				range of n is {$tableName} via u.username = n.owner_username
 				retrieve (u.username, n.note)
 				where u.id = :withNoteId or u.id = :withoutNoteId
 				sort by u.username asc
@@ -478,8 +481,8 @@
 			);
 
 			$rows = self::em()->getAll("
-				range of o is table {$ordersTable}
-				range of i is table {$itemsTable} via o.id = i.order_id
+				range of o is {$ordersTable}
+				range of i is {$itemsTable} via o.id = i.order_id
 				retrieve (o.label, i.sku)
 			");
 
@@ -522,8 +525,8 @@
 			// findRanges() now checks each plain table's real columns instead
 			// of blindly matching every table range in the query.
 			$rows = self::em()->getAll("
-				range of c is table {$customersTable}
-				range of a is table {$addressesTable} via a.customer_id = c.id
+				range of c is {$customersTable}
+				range of a is {$addressesTable} via a.customer_id = c.id
 				retrieve unique (street, house_number)
 				where not is_null(customer_id)
 			");
@@ -561,8 +564,8 @@
 			$this->expectExceptionMessage("street");
 
 			self::em()->getAll("
-				range of c is table {$customersTable}
-				range of a is table {$addressesTable} via a.customer_id = c.id
+				range of c is {$customersTable}
+				range of a is {$addressesTable} via a.customer_id = c.id
 				retrieve unique (c.street, a.id)
 			");
 		}

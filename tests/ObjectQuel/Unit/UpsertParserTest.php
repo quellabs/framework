@@ -11,13 +11,15 @@
 
 	/**
 	 * Parser-level coverage for upsert's `append ... or replace [(...)]
-	 * where ...` extension — no EntityStore involved, so this only
-	 * exercises the grammar (see Rules\Append's parseOptionalOnConflict())
-	 * and the shape of the resulting AstAppend::getOnConflict(), not
-	 * entity-metadata-dependent semantics (conflict-target-matches-a-real-
-	 * unique-constraint, dialect-specific SQL — covered by
-	 * tests/Unit/QuelToSQLAppendUpsertTest.php and
-	 * tests/Integration/UpsertTest.php against a real entity).
+	 * where ...` extension — exercises the grammar (see Rules\Append's
+	 * parseOptionalOnConflict()) and the shape of the resulting
+	 * AstAppend::getOnConflict(), not entity-metadata-dependent semantics
+	 * (conflict-target-matches-a-real-unique-constraint, dialect-specific
+	 * SQL — covered by tests/Unit/QuelToSQLAppendUpsertTest.php and
+	 * tests/Integration/UpsertTest.php against a real entity). A real
+	 * EntityStore is still needed to parse: there's no `table` keyword, so
+	 * `range of u is UserEntity` is only recognized as an entity range
+	 * because UserEntity resolves against it (see Rules\Range).
 	 *
 	 * `or replace`'s assignment list is itself optional — an empty list
 	 * means "overwrite with the row that would have been inserted" (see
@@ -26,7 +28,7 @@
 	class UpsertParserTest extends TestCase {
 
 		private function parse(string $query): AstAppend {
-			$ast = (new Parser(new Lexer($query)))->parse();
+			$ast = (new Parser(new Lexer($query), $GLOBALS['test_em']->getEntityStore()))->parse();
 			self::assertInstanceOf(AstAppend::class, $ast);
 			return $ast;
 		}

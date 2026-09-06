@@ -13,11 +13,14 @@
 	use Quellabs\ObjectQuel\ObjectQuel\ParserException;
 
 	/**
-	 * Parser-level coverage for `append` — no EntityStore involved, so this
-	 * only exercises the grammar (see Rules\Append) and the shape of the
-	 * resulting AstAppend, not entity-metadata-dependent semantics (unknown
-	 * property, missing required column, etc. — covered by
-	 * tests/Integration/AppendTest.php against a real entity).
+	 * Parser-level coverage for `append` — exercises the grammar (see
+	 * Rules\Append) and the shape of the resulting AstAppend, not
+	 * entity-metadata-dependent semantics (unknown property, missing
+	 * required column, etc. — covered by tests/Integration/AppendTest.php
+	 * against a real entity). A real EntityStore is still needed to parse:
+	 * there's no `table` keyword, so `range of u is UserEntity` is only
+	 * recognized as an entity range because UserEntity resolves against it
+	 * (see Rules\Range).
 	 *
 	 * The target must always be a declared range — there's no bare-entity-
 	 * name form (see testRejectsATargetThatIsNotADeclaredRange()).
@@ -25,7 +28,7 @@
 	class AppendParserTest extends TestCase {
 
 		private function parse(string $query): AstAppend {
-			$ast = (new Parser(new Lexer($query)))->parse();
+			$ast = (new Parser(new Lexer($query), $GLOBALS['test_em']->getEntityStore()))->parse();
 			self::assertInstanceOf(AstAppend::class, $ast);
 			return $ast;
 		}
@@ -101,12 +104,12 @@
 
 		public function testParsesInsertFromSelect(): void {
 			$ast = $this->parse('
-				range of o is ArchivedOrderEntity
-				range of a is ActiveOrderEntity
+				range of o is UserEntity
+				range of a is PostEntity
 				append to o (name, total) retrieve (a.name, a.total) where a.closed = true
 			');
 
-			self::assertSame('ArchivedOrderEntity', $ast->getEntityName());
+			self::assertSame('UserEntity', $ast->getEntityName());
 			self::assertTrue($ast->isInsertFromSelect());
 			self::assertNull($ast->getRows());
 			self::assertSame(['name', 'total'], $ast->getColumns());
@@ -117,8 +120,8 @@
 			$this->expectException(ParserException::class);
 
 			$this->parse('
-				range of o is ArchivedOrderEntity
-				range of a is ActiveOrderEntity
+				range of o is UserEntity
+				range of a is PostEntity
 				append to o (name, name) retrieve (a.name, a.total)
 			');
 		}

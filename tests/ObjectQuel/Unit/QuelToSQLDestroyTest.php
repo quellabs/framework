@@ -21,7 +21,7 @@
 	class QuelToSQLDestroyTest extends TestCase {
 
 		private function parse(string $query): AstDestroy {
-			$ast = (new Parser(new Lexer($query)))->parse();
+			$ast = (new Parser(new Lexer($query), $GLOBALS['test_em']->getEntityStore()))->parse();
 			self::assertInstanceOf(AstDestroy::class, $ast);
 			return $ast;
 		}

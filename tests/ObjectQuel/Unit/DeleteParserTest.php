@@ -9,10 +9,13 @@
 	use Quellabs\ObjectQuel\ObjectQuel\ParserException;
 
 	/**
-	 * Parser-level coverage for `delete` — no EntityStore involved, so this
-	 * only exercises the grammar (see Rules\Delete) and the shape of the
-	 * resulting AstDelete, not entity-metadata-dependent semantics (covered
-	 * by tests/Integration/DeleteTest.php against a real entity).
+	 * Parser-level coverage for `delete` — exercises the grammar (see
+	 * Rules\Delete) and the shape of the resulting AstDelete, not
+	 * entity-metadata-dependent semantics (covered by
+	 * tests/Integration/DeleteTest.php against a real entity). A real
+	 * EntityStore is still needed to parse: there's no `table` keyword, so
+	 * `range of u is UserEntity` is only recognized as an entity range
+	 * because UserEntity resolves against it (see Rules\Range).
 	 *
 	 * `delete` is a distinct keyword/token from `destroy` (table/index
 	 * dropping — see objectquel-destroy-plan.md), so a `delete` statement
@@ -21,7 +24,7 @@
 	class DeleteParserTest extends TestCase {
 
 		private function parse(string $query): AstDelete {
-			$ast = (new Parser(new Lexer($query)))->parse();
+			$ast = (new Parser(new Lexer($query), $GLOBALS['test_em']->getEntityStore()))->parse();
 			self::assertInstanceOf(AstDelete::class, $ast);
 			return $ast;
 		}
@@ -72,7 +75,7 @@
 		}
 
 		public function testIsNotConfusedWithDestroy(): void {
-			$ast = (new Parser(new Lexer('destroy Foo')))->parse();
+			$ast = (new Parser(new Lexer('destroy Foo'), $GLOBALS['test_em']->getEntityStore()))->parse();
 			self::assertNotInstanceOf(AstDelete::class, $ast);
 		}
 	}
