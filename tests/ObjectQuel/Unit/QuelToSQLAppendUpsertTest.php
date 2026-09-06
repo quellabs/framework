@@ -48,7 +48,7 @@
 			$platform = new FakePlatformCapabilities($dialect);
 			$replaceCompiler = new QuelToSQLReplace($em->getEntityStore(), $platform, $em->getUnitOfWork()->getVersionValueHandler());
 			$upsertCompiler = new QuelToSQLUpsert($em->getEntityStore(), $platform, $replaceCompiler);
-			$compiler = new QuelToSQLAppend($em->getEntityStore(), $em, $platform, $upsertCompiler);
+			$compiler = new QuelToSQLAppend($em, $platform, $upsertCompiler);
 			return $compiler->convertToSQL($ast, $parameters);
 		}
 
