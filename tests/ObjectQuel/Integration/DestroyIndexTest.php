@@ -56,8 +56,9 @@
 
 			self::em()->executeQuery("
 				create {$tableName} (
-					id = integer identity primary key,
-					email = string(100) not null
+					id = integer identity,
+					email = string(100) not null,
+					primary key (id)
 				)
 			");
 
@@ -82,8 +83,9 @@
 
 			self::em()->executeQuery("
 				create {$tableName} (
-					id = integer identity primary key,
-					bio = string(500) not null
+					id = integer identity,
+					bio = string(500) not null,
+					primary key (id)
 				)
 			");
 			self::em()->executeQuery("index fulltext on {$tableName} is {$indexName} (bio)");

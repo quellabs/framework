@@ -92,8 +92,9 @@
 
 			self::em()->executeQuery("
 				create {$tableName} (
-					id = integer identity primary key,
-					message = string(255) not null
+					id = integer identity,
+					message = string(255) not null,
+					primary key (id)
 				)
 			");
 

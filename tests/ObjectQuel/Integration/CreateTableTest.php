@@ -55,10 +55,11 @@
 
 			$result = self::em()->executeQuery("
 				create {$tableName} (
-					id = integer identity primary key,
+					id = integer identity,
 					message = string(500) not null,
 					amount = decimal(10,2),
-					created_at = datetime not null
+					created_at = datetime not null,
+					primary key (id)
 				)
 			");
 
@@ -116,15 +117,17 @@
 			}
 		}
 
-		public function testRejectsMoreThanOnePrimaryKeyColumn(): void {
+		public function testRejectsMoreThanOnePrimaryKeyClause(): void {
 			$tableName = $this->nextTableName();
 
 			$this->expectException(QuelException::class);
 
 			self::em()->executeQuery("
 				create {$tableName} (
-					a = integer primary key,
-					b = integer primary key
+					a = integer,
+					b = integer,
+					primary key (a),
+					primary key (b)
 				)
 			");
 		}
@@ -139,6 +142,52 @@
 					a = integer identity
 				)
 			");
+		}
+
+		public function testRejectsIdentityColumnNotSolePrimaryKeyEntry(): void {
+			$tableName = $this->nextTableName();
+
+			$this->expectException(QuelException::class);
+
+			self::em()->executeQuery("
+				create {$tableName} (
+					a = integer identity,
+					b = integer,
+					primary key (a, b)
+				)
+			");
+		}
+
+		public function testRejectsPrimaryKeyClauseOnUnknownColumn(): void {
+			$tableName = $this->nextTableName();
+
+			$this->expectException(QuelException::class);
+
+			self::em()->executeQuery("
+				create {$tableName} (
+					a = integer,
+					primary key (nope)
+				)
+			");
+		}
+
+		public function testCreatesTableWithCompositePrimaryKey(): void {
+			$tableName = $this->nextTableName();
+			$this->createdTables[] = $tableName;
+
+			$result = self::em()->executeQuery("
+				create {$tableName} (
+					post_id = integer,
+					tag_id = integer,
+					primary key (post_id, tag_id)
+				)
+			");
+
+			$this->assertNull($result);
+
+			$columns = self::em()->getConnection()->getColumns($tableName);
+			$this->assertFalse($columns['post_id']['nullable']);
+			$this->assertFalse($columns['tag_id']['nullable']);
 		}
 
 		public function testIgnoresRangeDeclarationBeforeCreate(): void {

@@ -56,7 +56,7 @@
 		public function testExplainCreateTableReturnsSqlWithoutCreatingIt(): void {
 			$tableName = $this->nextName('explain_ct');
 
-			$plan = self::em()->explainQuery("create {$tableName} (id = integer identity primary key)");
+			$plan = self::em()->explainQuery("create {$tableName} (id = integer identity, primary key (id))");
 
 			$this->assertSame([], $plan->getNotes());
 			$this->assertCount(1, $plan->getSql());
@@ -84,7 +84,7 @@
 			$tableName = $this->nextName('explain_ci');
 			$indexName = "{$tableName}_email_idx";
 			$this->createdTables[] = $tableName;
-			self::em()->executeQuery("create {$tableName} (id = integer identity primary key, email = string(100) not null)");
+			self::em()->executeQuery("create {$tableName} (id = integer identity, email = string(100) not null, primary key (id))");
 
 			$plan = self::em()->explainQuery("index on {$tableName} is {$indexName} (email)");
 
@@ -99,7 +99,7 @@
 			$tableName = $this->nextName('explain_di');
 			$indexName = "{$tableName}_email_idx";
 			$this->createdTables[] = $tableName;
-			self::em()->executeQuery("create {$tableName} (id = integer identity primary key, email = string(100) not null)");
+			self::em()->executeQuery("create {$tableName} (id = integer identity, email = string(100) not null, primary key (id))");
 			self::em()->executeQuery("index on {$tableName} is {$indexName} (email)");
 
 			$plan = self::em()->explainQuery("destroy {$indexName} on {$tableName}");
