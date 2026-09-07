@@ -6,6 +6,7 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstCreateTable;
 	use Quellabs\ObjectQuel\ObjectQuel\Lexer;
 	use Quellabs\ObjectQuel\ObjectQuel\Parser;
+	use Quellabs\ObjectQuel\ObjectQuel\ParserException;
 	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQLCreate;
 	use Quellabs\ObjectQuel\Tests\Support\FakePlatformCapabilities;
 
@@ -102,6 +103,48 @@
 				'CREATE TABLE [Foo] ([id] INT IDENTITY(1,1) NOT NULL, [name] VARCHAR(50) NOT NULL, PRIMARY KEY ([id]))',
 				$this->compile($ast, 'sqlsrv')
 			);
+		}
+
+		/**
+		 * `unsigned` precedes the type name, matching C's `unsigned int` order
+		 * rather than MySQL's inline `INT UNSIGNED` suffix. It's a
+		 * MySQL/MariaDB-only DDL concept — the other three dialects have no
+		 * UNSIGNED syntax, so PlatformCapabilitiesInterface::
+		 * supportsUnsignedIntegers() being false there means the modifier is
+		 * silently dropped rather than appearing in their rendered SQL (see
+		 * DDLTypeMapper::getMysqlTempTableColumnType()).
+		 */
+		public function testUnsignedIsRenderedOnlyOnMysql(): void {
+			$ast = $this->parse('create Foo (count = unsigned integer not null)');
+
+			self::assertSame('CREATE TABLE `Foo` (`count` INT UNSIGNED NOT NULL)', $this->compile($ast, 'mysql'));
+			self::assertSame('CREATE TABLE "Foo" ("count" INTEGER NOT NULL)', $this->compile($ast, 'pgsql'));
+			self::assertSame('CREATE TABLE `Foo` (`count` INTEGER NOT NULL)', $this->compile($ast, 'sqlite'));
+			self::assertSame('CREATE TABLE [Foo] ([count] INT NOT NULL)', $this->compile($ast, 'sqlsrv'));
+		}
+
+		/**
+		 * Bare `unsigned` with no type name defaults to `integer`, mirroring
+		 * C's `unsigned` being shorthand for `unsigned int`.
+		 */
+		public function testBareUnsignedDefaultsToInteger(): void {
+			$ast = $this->parse('create Foo (count = unsigned not null)');
+
+			self::assertSame('CREATE TABLE `Foo` (`count` INT UNSIGNED NOT NULL)', $this->compile($ast, 'mysql'));
+		}
+
+		/**
+		 * `unsigned` on a type that can never be signed/unsigned in the first
+		 * place (e.g. `string`) is a genuine authoring mistake, rejected at
+		 * parse time regardless of target engine — unlike an engine simply
+		 * lacking UNSIGNED support (see testUnsignedIsRenderedOnlyOnMysql()),
+		 * which is not an error.
+		 */
+		public function testUnsignedOnANonNumericTypeIsRejectedAtParseTime(): void {
+			$this->expectException(ParserException::class);
+			$this->expectExceptionMessage("Column 'name' declares 'unsigned' but type 'string' does not support it");
+
+			$this->parse('create Foo (name = unsigned string(50))');
 		}
 
 		/**

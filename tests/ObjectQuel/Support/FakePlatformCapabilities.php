@@ -17,4 +17,8 @@
 		public function getDatabaseType(): string {
 			return $this->databaseType;
 		}
+
+		public function supportsUnsignedIntegers(): bool {
+			return in_array($this->databaseType, ['mysql', 'mariadb'], true);
+		}
 	}
