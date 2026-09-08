@@ -7,15 +7,10 @@
 
 	/**
 	 * Integration coverage for `append to <range> (cols) retrieve (...)` whose
-	 * source retrieve needs JSON-source or temp-table materialization.
-	 *
-	 * Previously this was silently wrong: QuelToSQLRetrieve silently drops any
-	 * range it doesn't understand (JSON-source ranges, temp-table-promoted
-	 * subquery ranges), so the source retrieve's SQL was compiled as if those
-	 * ranges weren't there at all. Now the source runs through
-	 * ExecutionPlanBuilder/PlanExecutor — the same pipeline a top-level
-	 * `retrieve` uses — and the fetched rows are re-inserted as a literal-values
-	 * append (see AppendExecutor::executeInsertFromSelectViaPlanner()).
+	 * source needs JSON-source or temp-table materialization — previously
+	 * silently wrong (QuelToSQLRetrieve drops ranges it doesn't understand),
+	 * now routed through ExecutionPlanBuilder/PlanExecutor and re-inserted as
+	 * a literal-values append (see AppendExecutor::executeInsertFromSelectViaPlanner()).
 	 *
 	 * Fixture: App\Entities\UserEntity ("users": id identity PK, username,
 	 * password, banned not-null-no-default), same as AppendTest. JSON fixture
@@ -123,15 +118,11 @@
 		}
 
 		/**
-		 * Regression test mirroring AppendTest::testAppendSucceedsWithDevelopmentModeDebugSignalEnabled():
-		 * EntityManager::executeQuery() unconditionally calls explainQuery() in
-		 * development mode to build the debug signal's query plan, and already
-		 * catches a 'not_plannable' QuelException there by falling back to a
-		 * plan with no notes (see EntityManager::executeQuery()). A
-		 * planner-needing insert-from-select now throws that same error code
-		 * from AppendExecutor::compileSql() — this confirms the real write
-		 * still succeeds under development mode instead of that debug-signal
-		 * fallback bubbling the exception up and failing the append outright.
+		 * Mirrors AppendTest::testAppendSucceedsWithDevelopmentModeDebugSignalEnabled():
+		 * development mode calls explainQuery() for the debug signal and
+		 * already catches 'not_plannable' there (see EntityManager::executeQuery()).
+		 * Confirms the real write still succeeds rather than that fallback
+		 * bubbling the exception up.
 		 */
 		public function testSucceedsWithDevelopmentModeDebugSignalEnabled(): void {
 			$path = $this->nextJsonFile();

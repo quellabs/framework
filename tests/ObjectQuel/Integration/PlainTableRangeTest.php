@@ -129,11 +129,10 @@
 		}
 
 		/**
-		 * Insert-from-select into a plain-table target, both source and
-		 * destination being plain tables — the compileTableInsertFromSelect()
-		 * path (QuelToSQLAppend.php), previously untested: only the
-		 * literal-values plain-table form (testAppendsToAPlainTable) and the
-		 * entity-target insert-from-select form (AppendTest) had coverage.
+		 * Insert-from-select with a plain-table source and target
+		 * (QuelToSQLAppend::compileFromSelect()'s plain-table path) —
+		 * previously untested, only literal-values plain-table and
+		 * entity-target insert-from-select had coverage.
 		 */
 		public function testInsertFromSelectIntoAPlainTable(): void {
 			$srcTable = $this->nextTableName();
