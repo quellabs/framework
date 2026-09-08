@@ -290,6 +290,51 @@
 			self::em()->getAll("range of a is {$tableName} retrieve (a.does_not_exist)");
 		}
 
+		public function testReplaceRejectsAnUnknownQualifiedColumnInTheWhereClause(): void {
+			$tableName = $this->nextTableName();
+			$this->createRawTable($tableName);
+
+			// Mirrors testUnknownColumnIsRejectedBySemanticAnalysis, but for
+			// `replace`'s WHERE clause — WriteVerbIdentifierResolver must run
+			// the same ValidateTablePropertyExists check the retrieve
+			// pipeline's SemanticAnalyzer does. Asserting on ->type (rather
+			// than just message/class) is what actually distinguishes this
+			// from a raw driver error: both a semantic rejection and an
+			// unresolved column reaching MySQL produce a QuelException whose
+			// message mentions "does_not_exist" — only ->type tells them
+			// apart ('semantic_error' vs 'replace_error'; see QueryExecutor's
+			// SemanticException-to-QuelException wrapping and
+			// ReplaceExecutor::execute()'s own driver-failure QuelException).
+			try {
+				self::em()->executeQuery("
+					range of a is {$tableName}
+					replace a (message = :message) where a.does_not_exist = :value
+				", ['message' => 'x', 'value' => 1]);
+
+				$this->fail('Expected a QuelException');
+			} catch (QuelException $e) {
+				$this->assertSame('semantic_error', $e->type);
+				$this->assertStringContainsString('does_not_exist', $e->getMessage());
+			}
+		}
+
+		public function testDeleteRejectsAnUnknownQualifiedColumnInTheWhereClause(): void {
+			$tableName = $this->nextTableName();
+			$this->createRawTable($tableName);
+
+			try {
+				self::em()->executeQuery("
+					range of a is {$tableName}
+					delete a where a.does_not_exist = :value
+				", ['value' => 1]);
+
+				$this->fail('Expected a QuelException');
+			} catch (QuelException $e) {
+				$this->assertSame('semantic_error', $e->type);
+				$this->assertStringContainsString('does_not_exist', $e->getMessage());
+			}
+		}
+
 		public function testAggregatesOverAPlainTable(): void {
 			$tableName = $this->nextTableName();
 			$this->createRawTable($tableName);
