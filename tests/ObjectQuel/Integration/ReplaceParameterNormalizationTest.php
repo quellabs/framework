@@ -7,9 +7,9 @@
 
 	/**
 	 * Regression coverage for QuelToSQLReplace's use of the shared
-	 * AssignmentNormalizer (see AppendParameterNormalizationTest, its
-	 * `append` counterpart, and AssignmentNormalizer's own docblock): a
-	 * `replace <range> (...) where ...` statement's SET-clause
+	 * WriteVerbParameterNormalizer (see AppendParameterNormalizationTest,
+	 * its `append` counterpart, and WriteVerbParameterNormalizer's own
+	 * docblock): a `replace <range> (...) where ...` statement's SET-clause
 	 * bound-parameter values must be normalized through the same
 	 * Serializer::denormalizeValue() logic InsertPersister/UpdatePersister
 	 * use, exactly like `append`'s literal-values form.
