@@ -46,9 +46,10 @@
 		private function compile(AstAppend $ast, string $dialect, array $parameters = ['e' => 'a@example.com', 'n' => 'Alice']): string {
 			$em = $this->em();
 			$platform = new FakePlatformCapabilities($dialect);
-			$replaceCompiler = new QuelToSQLReplace($em->getEntityStore(), $platform, $em->getUnitOfWork()->getVersionValueHandler());
+			$versionValueHandler = $em->getUnitOfWork()->getVersionValueHandler();
+			$replaceCompiler = new QuelToSQLReplace($em->getEntityStore(), $platform, $versionValueHandler);
 			$upsertCompiler = new QuelToSQLUpsert($em->getEntityStore(), $platform, $replaceCompiler);
-			$compiler = new QuelToSQLAppend($em, $platform, $upsertCompiler);
+			$compiler = new QuelToSQLAppend($em, $platform, $upsertCompiler, $versionValueHandler);
 			return $compiler->convertToSQL($ast, $parameters);
 		}
 
