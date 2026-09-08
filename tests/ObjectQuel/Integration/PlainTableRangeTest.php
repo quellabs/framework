@@ -128,6 +128,38 @@
 			$this->assertSame(7, (int)$rows[0]['a.amount']);
 		}
 
+		/**
+		 * Insert-from-select into a plain-table target, both source and
+		 * destination being plain tables — the compileTableInsertFromSelect()
+		 * path (QuelToSQLAppend.php), previously untested: only the
+		 * literal-values plain-table form (testAppendsToAPlainTable) and the
+		 * entity-target insert-from-select form (AppendTest) had coverage.
+		 */
+		public function testInsertFromSelectIntoAPlainTable(): void {
+			$srcTable = $this->nextTableName();
+			$dstTable = $this->nextTableName();
+			$this->createRawTable($srcTable);
+			$this->createRawTable($dstTable);
+
+			self::em()->getConnection()->execute(
+				"INSERT INTO `{$srcTable}` (message, amount) VALUES (?, ?)",
+				['from-src', 9]
+			);
+
+			$result = self::em()->executeQuery("
+				range of dst is {$dstTable}
+				range of src is {$srcTable}
+				append to dst (message, amount) retrieve (src.message, src.amount) where src.amount = :amount
+			", ['amount' => 9]);
+
+			$this->assertSame(1, $result->getAffectedRows());
+
+			$rows = self::em()->getAll("range of a is {$dstTable} retrieve (a.message, a.amount)");
+			$this->assertCount(1, $rows);
+			$this->assertSame('from-src', $rows[0]['a.message']);
+			$this->assertSame(9, (int)$rows[0]['a.amount']);
+		}
+
 		public function testReplaceUpdatesAPlainTable(): void {
 			$tableName = $this->nextTableName();
 			$this->createRawTable($tableName);
