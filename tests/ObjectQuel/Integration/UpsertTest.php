@@ -169,13 +169,68 @@
 			$this->assertSame('Bob V2', $rows[1]['u.name']);
 		}
 
-		public function testRejectsAConflictTargetNotBackedByAUniqueConstraint(): void {
+		/**
+		 * `name` has no declared unique/primary-key constraint on
+		 * UpsertConflictEntity — this no longer raises an exception. Instead
+		 * it falls back to a plain `UPDATE ... WHERE u.name = :n`, and since
+		 * the table is empty, that affects 0 rows, so the plain INSERT runs.
+		 */
+		public function testFallbackInsertsWhenNoRowMatchesANonUniqueWhereClause(): void {
+			$result = self::em()->executeQuery('
+				range of u is App\Entities\UpsertConflictEntity
+				append to u (email = :e, name = :n) or replace (name = :n) where u.name = :n
+			', ['e' => 'x@example.com', 'n' => 'nobody-yet']);
+
+			$this->assertSame(1, $result->getAffectedRows());
+			$this->assertIsInt($result->getGeneratedId());
+
+			$rows = self::em()->getAll('range of u is App\Entities\UpsertConflictEntity retrieve (u.email, u.name)');
+			$this->assertCount(1, $rows);
+			$this->assertSame('nobody-yet', $rows[0]['u.name']);
+		}
+
+		/**
+		 * `name` isn't unique, so a WHERE on it can legitimately match more
+		 * than one row — the fallback UPDATE is bulk/set-based, same as a
+		 * standalone `replace`: every matching row is updated, not just one,
+		 * and no row is inserted since at least one row matched.
+		 */
+		public function testFallbackUpdatesAllMatchingRowsWhenTheWhereClauseIsNotUniqueBacked(): void {
+			self::em()->executeQuery(self::UPSERT_QUERY, ['e' => 'alice@example.com', 'n' => 'dup']);
+			self::em()->executeQuery(self::UPSERT_QUERY, ['e' => 'bob@example.com', 'n' => 'dup']);
+			self::em()->executeQuery(self::UPSERT_QUERY, ['e' => 'carol@example.com', 'n' => 'dup']);
+
+			$result = self::em()->executeQuery('
+				range of u is App\Entities\UpsertConflictEntity
+				append to u (email = :newEmail, name = :newName) or replace (name = :newName) where u.name = :matchName
+			', ['newEmail' => 'unused@example.com', 'newName' => 'renamed', 'matchName' => 'dup']);
+
+			$this->assertSame(3, $result->getAffectedRows());
+
+			$rows = self::em()->getAll('range of u is App\Entities\UpsertConflictEntity retrieve (u.email, u.name) sort by u.email asc');
+			$this->assertCount(3, $rows);
+
+			foreach ($rows as $row) {
+				$this->assertSame('renamed', $row['u.name']);
+				$this->assertNotSame('unused@example.com', $row['u.email']);
+			}
+		}
+
+		/**
+		 * A single shared WHERE can't identify each literal row's own match
+		 * independently the way a real unique constraint lets the database
+		 * do per row — rejected at compile time.
+		 */
+		public function testFallbackRejectsMultiRowAppendWithANonUniqueWhereClause(): void {
 			$this->expectException(QuelException::class);
 
 			self::em()->executeQuery('
 				range of u is App\Entities\UpsertConflictEntity
-				append to u (email = :e, name = :n) or replace (name = :n) where u.name = :n
-			', ['e' => 'x@example.com', 'n' => 'X']);
+				append to u
+					(email = :e1, name = :n1),
+					(email = :e2, name = :n2)
+				or replace where u.name = :n1
+			', ['e1' => 'a@example.com', 'n1' => 'A', 'e2' => 'b@example.com', 'n2' => 'B']);
 		}
 
 		public function testRejectsATargetThatIsNotADeclaredRange(): void {

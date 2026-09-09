@@ -4,7 +4,9 @@
 
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\ObjectQuel\EntityManager;
+	use Quellabs\ObjectQuel\Exception\SemanticException;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAppend;
+	use Quellabs\ObjectQuel\ObjectQuel\CompiledAppendSql;
 	use Quellabs\ObjectQuel\ObjectQuel\Lexer;
 	use Quellabs\ObjectQuel\ObjectQuel\Parser;
 	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQLAppend;
@@ -18,8 +20,11 @@
 	 * the suite's only live connection is MySQL (exercised end-to-end in
 	 * tests/Integration/UpsertTest.php), so this is where pgsql/sqlite/sqlsrv
 	 * generated SQL is actually compared. Needs a real EntityStore (unlike
-	 * QuelToSQLCreateTest) since an upsert's conflict target is validated
-	 * against App\Entities\UpsertConflictEntity's declared @Orm\UniqueIndex.
+	 * QuelToSQLCreateTest) since an upsert's conflict target is checked
+	 * against App\Entities\UpsertConflictEntity's declared @Orm\UniqueIndex —
+	 * a WHERE clause backed by it compiles to the dialect-native atomic form;
+	 * one that isn't compiles to the two-statement fallback instead (see
+	 * QuelToSQLUpsert::compileNonAtomicFallback()) — not rejected.
 	 */
 	class QuelToSQLAppendUpsertTest extends TestCase {
 
@@ -43,7 +48,7 @@
 			return $ast;
 		}
 
-		private function compile(AstAppend $ast, string $dialect, array $parameters = ['e' => 'a@example.com', 'n' => 'Alice']): string {
+		private function compileFull(AstAppend $ast, string $dialect, array $parameters = ['e' => 'a@example.com', 'n' => 'Alice']): CompiledAppendSql {
 			$em = $this->em();
 			$platform = new FakePlatformCapabilities($dialect);
 			$versionValueHandler = $em->getUnitOfWork()->getVersionValueHandler();
@@ -51,6 +56,10 @@
 			$upsertCompiler = new QuelToSQLUpsert($em->getEntityStore(), $platform, $replaceCompiler);
 			$compiler = new QuelToSQLAppend($em, $platform, $upsertCompiler, $versionValueHandler);
 			return $compiler->convertToSQL($ast, $parameters);
+		}
+
+		private function compile(AstAppend $ast, string $dialect, array $parameters = ['e' => 'a@example.com', 'n' => 'Alice']): string {
+			return $this->compileFull($ast, $dialect, $parameters)->primarySql;
 		}
 
 		public function testPostgresCompilesToOnConflictDoUpdate(): void {
@@ -199,13 +208,101 @@
 			);
 		}
 
-		public function testRejectsAConflictTargetNotBackedByAUniqueConstraint(): void {
+		/**
+		 * `name` has no declared unique/primary-key constraint on
+		 * UpsertConflictEntity — this no longer compiles to the dialect-native
+		 * atomic form (there's no real constraint for the database to enforce
+		 * atomicity against), and no longer raises a SemanticException either.
+		 * Instead it compiles to the two-statement fallback: an ordinary
+		 * `UPDATE ... WHERE u.name = :n` runs first, and the plain INSERT
+		 * (identical to a plain, non-upsert append) runs only if that affects
+		 * 0 rows. No ON CONFLICT/ON DUPLICATE KEY/MERGE branching applies to
+		 * either statement — but the SET clause's target-column qualification
+		 * still follows QuelToSQLReplace's own per-dialect rule (see
+		 * QuelToSQLReplaceTest), since buildSetClause() is reused unchanged
+		 * for an explicit `or replace (...)` list.
+		 */
+		public function testWhereNotBackedByAUniqueConstraintCompilesToTheNonAtomicFallbackOnMysql(): void {
 			$ast = (new Parser(new Lexer('
 				range of u is App\Entities\UpsertConflictEntity
 				append to u (email = :e, name = :n) or replace (name = :n) where u.name = :n
 			'), $this->em()->getEntityStore()))->parse();
 
-			$this->expectException(\Quellabs\ObjectQuel\Exception\SemanticException::class);
-			$this->compile($ast, 'mysql');
+			$compiled = $this->compileFull($ast, 'mysql');
+
+			self::assertTrue($compiled->hasFallbackUpdate());
+			self::assertSame(
+				'INSERT INTO `upsert_conflict_test` (`email`, `name`) VALUES (:e, :n)',
+				$compiled->primarySql
+			);
+			self::assertSame(
+				'UPDATE `upsert_conflict_test` as `u` SET `u`.`name` = :n WHERE `u`.`name` = :n',
+				$compiled->getFallbackUpdateSqlOrFail()
+			);
+		}
+
+		public function testWhereNotBackedByAUniqueConstraintCompilesToTheNonAtomicFallbackOnPostgres(): void {
+			$ast = (new Parser(new Lexer('
+				range of u is App\Entities\UpsertConflictEntity
+				append to u (email = :e, name = :n) or replace (name = :n) where u.name = :n
+			'), $this->em()->getEntityStore()))->parse();
+
+			$compiled = $this->compileFull($ast, 'pgsql');
+
+			self::assertTrue($compiled->hasFallbackUpdate());
+			self::assertSame(
+				'INSERT INTO "upsert_conflict_test" ("email", "name") VALUES (:e, :n)',
+				$compiled->primarySql
+			);
+			// Postgres rejects a qualified column on the LEFT side of SET —
+			// same rule QuelToSQLReplaceTest::testPostgresRendersTheSetTargetColumnBare()
+			// documents for a standalone `replace`.
+			self::assertSame(
+				'UPDATE "upsert_conflict_test" as "u" SET "name" = :n WHERE "u"."name" = :n',
+				$compiled->getFallbackUpdateSqlOrFail()
+			);
+		}
+
+		/**
+		 * Same non-unique-backed WHERE, but no explicit `or replace (...)`
+		 * list: the fallback UPDATE's default SET clause covers every
+		 * appended column except the primary key (`id`), using the exact
+		 * value compiled for the INSERT — a bare column reference to the
+		 * literal parameter, since a plain UPDATE has no EXCLUDED/VALUES()/
+		 * source.* concept the way an INSERT...ON CONFLICT does (see
+		 * QuelToSQLUpsert::buildDefaultFallbackSetClause()'s docblock).
+		 */
+		public function testDefaultListFallbackSetsEveryAppendedColumnExceptThePrimaryKey(): void {
+			$ast = (new Parser(new Lexer('
+				range of u is App\Entities\UpsertConflictEntity
+				append to u (id = :id, email = :e, name = :n) or replace where u.name = :n
+			'), $this->em()->getEntityStore()))->parse();
+
+			$compiled = $this->compileFull($ast, 'mysql', ['id' => 1, 'e' => 'a@example.com', 'n' => 'Alice']);
+
+			self::assertTrue($compiled->hasFallbackUpdate());
+			self::assertSame(
+				'UPDATE `upsert_conflict_test` as `u` SET `email` = :e, `name` = :n WHERE `u`.`name` = :n',
+				$compiled->getFallbackUpdateSqlOrFail()
+			);
+		}
+
+		/**
+		 * A multi-row append can't fall back to a plain update-or-insert: a
+		 * single shared WHERE can't identify each literal row's own match the
+		 * way a real unique constraint lets the database do per row. Rejected
+		 * at compile time rather than silently misapplied to every row.
+		 */
+		public function testMultiRowAppendWithANonUniqueBackedWhereIsRejectedAtCompileTime(): void {
+			$ast = (new Parser(new Lexer('
+				range of u is App\Entities\UpsertConflictEntity
+				append to u
+					(email = :e1, name = :n1),
+					(email = :e2, name = :n2)
+				or replace where u.name = :n1
+			'), $this->em()->getEntityStore()))->parse();
+
+			$this->expectException(SemanticException::class);
+			$this->compile($ast, 'mysql', ['e1' => 'a', 'n1' => 'A', 'e2' => 'b', 'n2' => 'B']);
 		}
 	}
