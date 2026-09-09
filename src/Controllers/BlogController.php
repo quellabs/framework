@@ -25,15 +25,12 @@
 		 * @Route("/posts/")
 		 * @WithContext(parameter="engine", context="blade")
 		 * @InterceptWith(TrackingParamsAspect ::class)
-		 * @param TemplateEngineInterface $engine
 		 * @return Response
 		 * @throws EntityResolutionException
 		 * @throws QuelException
 		 * @throws TemplateRenderException
 		 */
-		public function index(SignalHub $hub, TemplateEngineInterface $engine): Response {
-			$this->em()->find(UserEntity::class, 1);
-
+		public function index(): Response {
 			$posts = $this->em()->findBy(PostEntity::class, ['published' => true]);
 
 			return $this->render("blog/index.tpl", [
