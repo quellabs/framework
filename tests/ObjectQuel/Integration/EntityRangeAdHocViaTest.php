@@ -8,10 +8,8 @@
 	 * Integration coverage for an entity range's `via` accepting a literal
 	 * join condition, not just a declared-relation name — e.g.
 	 * `via u.id = p.userId` instead of `via p.user`. Both forms share one
-	 * grammar slot (Rules\Range::parseEntityRangeTail() now parses the full
-	 * expression grammar instead of only a property chain, mirroring what a
-	 * plain-table range's `via <condition>` already does — see
-	 * AstRangeTable's docblock).
+	 * grammar slot: Rules\Range::parseEntityRangeTail() parses the full
+	 * expression grammar instead of only a property chain.
 	 *
 	 * The relation-name form is already covered by InverseOfValidationTest;
 	 * this suite is specifically about the ad hoc literal-condition form and

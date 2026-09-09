@@ -18,8 +18,8 @@
 	 * reject it as a syntax error, so those two always get the bare column
 	 * regardless of dialect. Mirrors QuelToSQLAppendUpsertTest's pattern: the
 	 * suite's only live connection is MySQL (exercised end-to-end in
-	 * tests/Integration/ReplaceTest.php/PlainTableRangeTest.php), so this is
-	 * where the other dialects' generated SQL is actually compared.
+	 * tests/Integration/ReplaceTest.php), so this is where the other
+	 * dialects' generated SQL is actually compared.
 	 */
 	class QuelToSQLReplaceTest extends TestCase {
 
@@ -99,26 +99,5 @@
 
 			self::assertStringContainsString('WHERE EXISTS (', $sql);
 			self::assertStringNotContainsString('CASE WHEN EXISTS', $sql);
-		}
-
-		private function tableQuery(): AstReplace {
-			return $this->parse('
-				range of a is customers
-				replace a (name = :name) where id = :id
-			');
-		}
-
-		public function testMysqlQualifiesThePlainTableSetTargetColumnWithTheRangeAlias(): void {
-			self::assertSame(
-				'UPDATE `customers` as `a` SET `a`.`name` = :name WHERE `a`.`id` = :id',
-				$this->compile($this->tableQuery(), 'mysql', ['name' => 'Barry', 'id' => 4])
-			);
-		}
-
-		public function testPostgresRendersThePlainTableSetTargetColumnBare(): void {
-			self::assertSame(
-				'UPDATE "customers" as "a" SET "name" = :name WHERE "a"."id" = :id',
-				$this->compile($this->tableQuery(), 'pgsql', ['name' => 'Barry', 'id' => 4])
-			);
 		}
 	}
