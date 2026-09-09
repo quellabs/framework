@@ -129,6 +129,42 @@
 		}
 
 		/**
+		 * `append`'s assigned column names are plain strings (AstAppend::
+		 * getColumns()), never visited by ValidateTablePropertyExists (which
+		 * only checks `a.column`-style identifier references, e.g. in
+		 * WHERE/retrieve) — so a plain-table range has no metadata to catch
+		 * an unassignable column at compile time. This mirrors the "required
+		 * column omitted" case the same way: both are schema-shape mistakes
+		 * this feature deliberately doesn't introspect for writes, so both
+		 * surface at execution as the database's own error via
+		 * AppendExecutor::assertInsertSucceeded() ('append_error'), not as a
+		 * QuelException raised during parsing/semantic analysis (see
+		 * objectquel-plain-table-range-plan.md's "Write verbs" section).
+		 * The test's MySQL connection runs with an empty sql_mode (no
+		 * STRICT_TRANS_TABLES), so a literal missing-NOT-NULL-column insert
+		 * would silently succeed here — an unknown column fails
+		 * unconditionally regardless of sql_mode, so it's the reliable way
+		 * to exercise this same "native DB error, not compile-time
+		 * rejection" path.
+		 */
+		public function testAppendWithAnUnassignableColumnFailsAtExecutionNotCompileTime(): void {
+			$tableName = $this->nextTableName();
+			$this->createRawTable($tableName);
+
+			try {
+				self::em()->executeQuery("
+					range of a is {$tableName}
+					append to a (message = :message, does_not_exist = :value)
+				", ['message' => 'x', 'value' => 1]);
+
+				$this->fail('Expected a QuelException');
+			} catch (QuelException $e) {
+				$this->assertSame('append_error', $e->type);
+				$this->assertStringContainsString('does_not_exist', $e->getMessage());
+			}
+		}
+
+		/**
 		 * Insert-from-select with a plain-table source and target
 		 * (QuelToSQLAppend::compileFromSelect()'s plain-table path) —
 		 * previously untested, only literal-values plain-table and
