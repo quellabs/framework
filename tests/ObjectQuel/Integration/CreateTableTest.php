@@ -252,4 +252,119 @@
 				)
 			");
 		}
+
+		public function testCreatesTableWithAnEmbeddedIndex(): void {
+			$tableName = $this->nextTableName();
+			$this->createdTables[] = $tableName;
+
+			$result = self::em()->executeQuery("
+				create {$tableName} (
+					id = integer identity,
+					tenant_id = integer not null,
+					primary key (id),
+					index idx_tenant (tenant_id)
+				)
+			");
+
+			$this->assertNull($result);
+
+			$indexes = self::em()->getConnection()->getIndexes($tableName);
+			$this->assertArrayHasKey('idx_tenant', $indexes);
+			$this->assertSame(['tenant_id'], $indexes['idx_tenant']['columns']);
+		}
+
+		public function testCreatesTableWithAnEmbeddedUniqueIndex(): void {
+			$tableName = $this->nextTableName();
+			$this->createdTables[] = $tableName;
+
+			$result = self::em()->executeQuery("
+				create {$tableName} (
+					id = integer identity,
+					email = string(100) not null,
+					primary key (id),
+					unique index idx_email (email)
+				)
+			");
+
+			$this->assertNull($result);
+
+			$indexes = self::em()->getConnection()->getIndexes($tableName);
+			$this->assertArrayHasKey('idx_email', $indexes);
+			$this->assertSame('unique', $indexes['idx_email']['type']);
+		}
+
+		public function testCreatesTableWithAnEmbeddedFulltextIndex(): void {
+			$tableName = $this->nextTableName();
+			$this->createdTables[] = $tableName;
+
+			$result = self::em()->executeQuery("
+				create {$tableName} (
+					id = integer identity,
+					bio = string(500) not null,
+					primary key (id),
+					fulltext index idx_bio (bio)
+				)
+			");
+
+			$this->assertNull($result);
+
+			$indexes = self::em()->getConnection()->getIndexes($tableName);
+			$this->assertArrayHasKey('idx_bio', $indexes);
+			$this->assertSame('fulltext', $indexes['idx_bio']['type']);
+		}
+
+		public function testCreatesTableWithACompositePrimaryKeyAndMultipleEmbeddedIndexes(): void {
+			$tableName = $this->nextTableName();
+			$this->createdTables[] = $tableName;
+
+			// Mirrors the Bridge example in objectquel-index-clause-design.md.
+			$result = self::em()->executeQuery("
+				create {$tableName} (
+					post_id = integer,
+					tag_id = integer,
+					created_at = datetime not null,
+					primary key (post_id, tag_id),
+					index idx_bridge_tag (tag_id),
+					unique index idx_bridge_post_created (post_id, created_at)
+				)
+			");
+
+			$this->assertNull($result);
+
+			$indexes = self::em()->getConnection()->getIndexes($tableName);
+			$this->assertArrayHasKey('idx_bridge_tag', $indexes);
+			$this->assertSame(['tag_id'], $indexes['idx_bridge_tag']['columns']);
+
+			$this->assertArrayHasKey('idx_bridge_post_created', $indexes);
+			$this->assertSame('unique', $indexes['idx_bridge_post_created']['type']);
+			$this->assertSame(['post_id', 'created_at'], $indexes['idx_bridge_post_created']['columns']);
+		}
+
+		public function testRejectsAnEmbeddedIndexOnAnUnknownColumn(): void {
+			$tableName = $this->nextTableName();
+
+			$this->expectException(QuelException::class);
+
+			self::em()->executeQuery("
+				create {$tableName} (
+					id = integer,
+					index idx_bad (nonexistent_column)
+				)
+			");
+		}
+
+		public function testRejectsTwoEmbeddedIndexesWithTheSameName(): void {
+			$tableName = $this->nextTableName();
+
+			$this->expectException(QuelException::class);
+
+			self::em()->executeQuery("
+				create {$tableName} (
+					a = integer,
+					b = integer,
+					index idx_dup (a),
+					index idx_dup (b)
+				)
+			");
+		}
 	}
