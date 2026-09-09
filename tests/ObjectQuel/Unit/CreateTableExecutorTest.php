@@ -83,6 +83,27 @@
 				->execute($this->parse('create Posts (id = integer, author_id = integer not null, foreign key (author_id) references Users)'));
 		}
 
+		/**
+		 * A self-referencing embedded foreign key (`references` its own
+		 * not-yet-created table) resolves the column-less reference before
+		 * CREATE TABLE has run, so schema introspection fails — with the
+		 * driver's own exception, not a QuelException. ForeignKeyReferenceResolver
+		 * must catch and rewrap it so every failure on this path honors the
+		 * documented `@throws QuelException` contract.
+		 */
+		public function testEmbeddedForeignKeyWithNoColumnListWrapsASchemaIntrospectionFailureInAQuelException(): void {
+			$capturedSql = [];
+			$connection = $this->mockConnection($capturedSql);
+			$connection->method('getPrimaryKeyColumns')->with('Employees')
+				->willThrowException(new \RuntimeException("Unknown table 'Employees'"));
+
+			$this->expectException(QuelException::class);
+			$this->expectExceptionMessage("Unknown table 'Employees'");
+
+			(new CreateTableExecutor($connection, new FakePlatformCapabilities('mysql')))
+				->execute($this->parse('create Employees (id = integer, manager_id = integer, foreign key (manager_id) references Employees)'));
+		}
+
 		public function testDoesNotWrapInATransactionOnMysqlSinceDdlAutoCommitsThere(): void {
 			$capturedSql = [];
 			$connection = $this->mockConnection($capturedSql);

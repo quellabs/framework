@@ -98,5 +98,17 @@
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
 	');
 
+	// Backs App\Entities\VehicleEntity/CarEntity — single-table-inheritance
+	// coverage for append's discriminator-column injection (literal-values
+	// and insert-from-select forms both), exercised by AppendDiscriminatorTest.
+	$connection->execute(
+		'CREATE TABLE IF NOT EXISTS `sti_vehicles` (
+		    `id`           INT UNSIGNED NOT NULL AUTO_INCREMENT,
+		    `name`         VARCHAR(100) NOT NULL,
+		    `vehicle_type` VARCHAR(50)  NOT NULL,
+		    PRIMARY KEY (`id`)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+	');
+
 	// Test connection
 	$GLOBALS['test_connection'] = $connection;

@@ -203,7 +203,10 @@
 				$this->compile($ast, 'pgsql')
 			);
 			self::assertSame(
-				['ALTER TABLE [Posts] ADD CONSTRAINT [fk_Posts_author_id] FOREIGN KEY ([author_id]) REFERENCES [Users] ([id]) ON DELETE RESTRICT ON UPDATE NO ACTION'],
+				// SQL Server's FOREIGN KEY clause has no RESTRICT keyword —
+				// NO ACTION is the behavioral equivalent (see
+				// ForeignKeyActionNormalizer).
+				['ALTER TABLE [Posts] ADD CONSTRAINT [fk_Posts_author_id] FOREIGN KEY ([author_id]) REFERENCES [Users] ([id]) ON DELETE NO ACTION ON UPDATE NO ACTION'],
 				$this->compile($ast, 'sqlsrv')
 			);
 		}
@@ -215,6 +218,39 @@
 				['ALTER TABLE `Posts` ADD CONSTRAINT `fk_Posts_author_id` FOREIGN KEY (`author_id`) REFERENCES `Users` (`id`) ON DELETE CASCADE ON UPDATE SET NULL'],
 				$this->compile($ast, 'mysql')
 			);
+		}
+
+		/**
+		 * RESTRICT is valid MySQL/PostgreSQL/SQLite syntax but not T-SQL's
+		 * FOREIGN KEY clause — an explicit RESTRICT normalizes to NO ACTION
+		 * on sqlsrv, same as the implicit default (see
+		 * testAddForeignKeyWithDefaultActionsAcrossDialects).
+		 */
+		public function testAddForeignKeyWithExplicitRestrictNormalizesToNoActionOnSqlServer(): void {
+			$ast = $this->parse('alter Posts (add foreign key (author_id) references Users (id) on delete restrict on update cascade)');
+
+			self::assertSame(
+				['ALTER TABLE [Posts] ADD CONSTRAINT [fk_Posts_author_id] FOREIGN KEY ([author_id]) REFERENCES [Users] ([id]) ON DELETE NO ACTION ON UPDATE CASCADE'],
+				$this->compile($ast, 'sqlsrv')
+			);
+		}
+
+		/**
+		 * A table+column pair long enough that the derived
+		 * `fk_{table}_{column}` name exceeds every supported dialect's
+		 * identifier length limit is rejected at compile time (see
+		 * ForeignKeyConstraintNamer::nameOrThrow()) instead of failing with
+		 * a confusing "identifier name is too long" error from the database.
+		 */
+		public function testAddForeignKeyWithADerivedConstraintNameThatIsTooLongIsRejected(): void {
+			$longTableName = str_repeat('a', 40);
+			$longColumnName = str_repeat('b', 40);
+			$ast = $this->parse("alter {$longTableName} (add foreign key ({$longColumnName}) references Users (id))");
+
+			$this->expectException(QuelException::class);
+			$this->expectExceptionMessage('exceeding the 63-character identifier limit');
+
+			$this->compile($ast, 'mysql');
 		}
 
 		public function testAddForeignKeyOnSqliteIsRejected(): void {
@@ -251,5 +287,42 @@
 
 			$this->expectException(QuelException::class);
 			$this->compile($ast, 'sqlite');
+		}
+
+		/**
+		 * `add foreign key` always compiles after column/PK sub-operations,
+		 * regardless of declared order, so it can reference a column added
+		 * earlier in the same statement without the ADD CONSTRAINT
+		 * statement running before that column exists.
+		 */
+		public function testAddForeignKeyCompilesAfterAddColumnRegardlessOfDeclarationOrder(): void {
+			$ast = $this->parse('alter Posts (add foreign key (author_id) references Users (id), add author_id = integer not null)');
+
+			self::assertSame(
+				[
+					'ALTER TABLE `Posts` ADD COLUMN `author_id` INT NOT NULL',
+					'ALTER TABLE `Posts` ADD CONSTRAINT `fk_Posts_author_id` FOREIGN KEY (`author_id`) REFERENCES `Users` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION',
+				],
+				$this->compile($ast, 'mysql')
+			);
+		}
+
+		/**
+		 * `drop foreign key` always compiles before column/PK
+		 * sub-operations, regardless of declared order, so a column it
+		 * constrains can be dropped afterward in the same statement without
+		 * the database rejecting the drop while the constraint still
+		 * references it.
+		 */
+		public function testDropForeignKeyCompilesBeforeDropColumnRegardlessOfDeclarationOrder(): void {
+			$ast = $this->parse('alter Posts (drop author_id, drop foreign key (author_id))');
+
+			self::assertSame(
+				[
+					'ALTER TABLE `Posts` DROP FOREIGN KEY `fk_Posts_author_id`',
+					'ALTER TABLE `Posts` DROP COLUMN `author_id`',
+				],
+				$this->compile($ast, 'mysql')
+			);
 		}
 	}

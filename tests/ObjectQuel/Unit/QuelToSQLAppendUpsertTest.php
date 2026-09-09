@@ -148,6 +148,57 @@
 			);
 		}
 
+		/**
+		 * The target entity's own primary key is always excluded from the
+		 * default (no explicit `or replace (...)` list) on-conflict update —
+		 * even when it's explicitly part of the appended row, same as it
+		 * would be if AppendExecutor::fillGeneratedPrimaryKeys() had added it
+		 * for a generated (non-identity) primary-key strategy. Overwriting an
+		 * existing row's identity with the row that *would have been
+		 * inserted* is never correct — see QuelToSQLUpsert::
+		 * buildReferencedSetClause()'s docblock.
+		 */
+		public function testDefaultListExcludesThePrimaryKeyFromTheOnConflictUpdateOnPostgres(): void {
+			$ast = (new Parser(new Lexer('
+				range of u is App\Entities\UpsertConflictEntity
+				append to u (id = :id, email = :e, name = :n) or replace where u.email = :e
+			'), $this->em()->getEntityStore()))->parse();
+
+			self::assertSame(
+				'INSERT INTO "upsert_conflict_test" ("id", "email", "name") VALUES (:id, :e, :n) ' .
+				'ON CONFLICT ("email") DO UPDATE SET "email" = EXCLUDED."email", "name" = EXCLUDED."name"',
+				$this->compile($ast, 'pgsql', ['id' => 1, 'e' => 'a@example.com', 'n' => 'Alice'])
+			);
+		}
+
+		public function testDefaultListExcludesThePrimaryKeyFromTheOnConflictUpdateOnMysql(): void {
+			$ast = (new Parser(new Lexer('
+				range of u is App\Entities\UpsertConflictEntity
+				append to u (id = :id, email = :e, name = :n) or replace where u.email = :e
+			'), $this->em()->getEntityStore()))->parse();
+
+			self::assertSame(
+				'INSERT INTO `upsert_conflict_test` (`id`, `email`, `name`) VALUES (:id, :e, :n) ' .
+				'ON DUPLICATE KEY UPDATE `email` = VALUES(`email`), `name` = VALUES(`name`)',
+				$this->compile($ast, 'mysql', ['id' => 1, 'e' => 'a@example.com', 'n' => 'Alice'])
+			);
+		}
+
+		public function testDefaultListExcludesThePrimaryKeyFromTheOnConflictUpdateOnSqlServer(): void {
+			$ast = (new Parser(new Lexer('
+				range of u is App\Entities\UpsertConflictEntity
+				append to u (id = :id, email = :e, name = :n) or replace where u.email = :e
+			'), $this->em()->getEntityStore()))->parse();
+
+			self::assertSame(
+				'MERGE INTO [upsert_conflict_test] AS [__upsert_target] USING (VALUES (:id, :e, :n)) AS [__upsert_source] ([id], [email], [name]) ' .
+				'ON [__upsert_target].[email] = [__upsert_source].[email] ' .
+				'WHEN MATCHED THEN UPDATE SET [email] = [__upsert_source].[email], [name] = [__upsert_source].[name] ' .
+				'WHEN NOT MATCHED THEN INSERT ([id], [email], [name]) VALUES ([__upsert_source].[id], [__upsert_source].[email], [__upsert_source].[name]);',
+				$this->compile($ast, 'sqlsrv', ['id' => 1, 'e' => 'a@example.com', 'n' => 'Alice'])
+			);
+		}
+
 		public function testRejectsAConflictTargetNotBackedByAUniqueConstraint(): void {
 			$ast = (new Parser(new Lexer('
 				range of u is App\Entities\UpsertConflictEntity

@@ -79,6 +79,28 @@
 			);
 		}
 
+		/**
+		 * `any(...)` in the WHERE clause must compile to a bare EXISTS(...),
+		 * not `CASE WHEN EXISTS(...) THEN 1 ELSE 0 END` — the latter is what
+		 * BuildSqlFromAst's 'VALUES' mode produces (see
+		 * ProcessAggregate::handleAny()), and PostgreSQL rejects an integer
+		 * CASE result in a WHERE clause since it isn't implicitly boolean
+		 * there. The WHERE clause must be compiled in 'WHERE' mode — the SET
+		 * clause's own assignment values stay in 'VALUES' mode, since those
+		 * are plain scalar expressions, never a boolean predicate.
+		 */
+		public function testAnyInWhereClauseCompilesToABareExistsNotACaseExpression(): void {
+			$ast = $this->parse("
+				range of o is App\\Entities\\PostEntity
+				replace o (title = :title) where any(o.id where o.title = 'completed')
+			");
+
+			$sql = $this->compile($ast, 'pgsql', ['title' => 'archived']);
+
+			self::assertStringContainsString('WHERE EXISTS (', $sql);
+			self::assertStringNotContainsString('CASE WHEN EXISTS', $sql);
+		}
+
 		private function tableQuery(): AstReplace {
 			return $this->parse('
 				range of a is customers

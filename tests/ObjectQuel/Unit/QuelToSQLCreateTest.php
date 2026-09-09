@@ -3,6 +3,7 @@
 	namespace Quellabs\ObjectQuel\Tests\Unit;
 
 	use PHPUnit\Framework\TestCase;
+	use Quellabs\ObjectQuel\Exception\QuelException;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstCreateTable;
 	use Quellabs\ObjectQuel\ObjectQuel\Lexer;
 	use Quellabs\ObjectQuel\ObjectQuel\Parser;
@@ -199,7 +200,10 @@
 				$this->compile($ast, 'sqlite')
 			);
 			self::assertSame(
-				'CREATE TABLE [Posts] ([id] INT IDENTITY(1,1) NOT NULL, [author_id] INT NOT NULL, PRIMARY KEY ([id]), CONSTRAINT [fk_Posts_author_id] FOREIGN KEY ([author_id]) REFERENCES [Users] ([id]) ON DELETE RESTRICT ON UPDATE NO ACTION)',
+				// SQL Server's FOREIGN KEY clause has no RESTRICT keyword —
+				// NO ACTION is the behavioral equivalent (see
+				// ForeignKeyActionNormalizer).
+				'CREATE TABLE [Posts] ([id] INT IDENTITY(1,1) NOT NULL, [author_id] INT NOT NULL, PRIMARY KEY ([id]), CONSTRAINT [fk_Posts_author_id] FOREIGN KEY ([author_id]) REFERENCES [Users] ([id]) ON DELETE NO ACTION ON UPDATE NO ACTION)',
 				$this->compile($ast, 'sqlsrv')
 			);
 		}
@@ -238,6 +242,20 @@
 		}
 
 		/**
+		 * Two foreign key entries on the same local column would always
+		 * collide at DDL time — ForeignKeyConstraintNamer derives the
+		 * constraint name purely from table+column, so both entries would
+		 * emit the identical `CONSTRAINT fk_Posts_author_id` clause. Rejected
+		 * here at parse time instead, same as validateIndexEntries() rejects
+		 * a repeated index name.
+		 */
+		public function testRejectsTwoEmbeddedForeignKeysOnTheSameColumn(): void {
+			$this->expectException(ParserException::class);
+
+			$this->parse('create Posts (id = integer, author_id = integer, foreign key (author_id) references Users (id), foreign key (author_id) references Archive (id))');
+		}
+
+		/**
 		 * Single column each side, never a list — see
 		 * objectquel-foreign-key-design.md, decision 3. A comma inside the
 		 * local column list fails the same way any other malformed clause
@@ -254,5 +272,23 @@
 			$this->expectException(ParserException::class);
 
 			$this->parse('create Posts (id = integer, author_id = integer, foreign key (author_id) references Users (id) on delete nonsense)');
+		}
+
+		/**
+		 * A table+column pair long enough that the derived
+		 * `fk_{table}_{column}` name exceeds every supported dialect's
+		 * identifier length limit is rejected at compile time (see
+		 * ForeignKeyConstraintNamer::nameOrThrow()) instead of failing with
+		 * a confusing "identifier name is too long" error from the database.
+		 */
+		public function testRejectsAnEmbeddedForeignKeyWhoseDerivedConstraintNameIsTooLong(): void {
+			$longTableName = str_repeat('a', 40);
+			$longColumnName = str_repeat('b', 40);
+			$ast = $this->parse("create {$longTableName} (id = integer, {$longColumnName} = integer, foreign key ({$longColumnName}) references Users (id))");
+
+			$this->expectException(QuelException::class);
+			$this->expectExceptionMessage('exceeding the 63-character identifier limit');
+
+			$this->compile($ast, 'mysql');
 		}
 	}

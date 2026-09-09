@@ -25,4 +25,8 @@
 		public function supportsTransactionalDDL(): bool {
 			return !in_array($this->databaseType, ['mysql', 'mariadb'], true);
 		}
+
+		public function supportsNamedForeignKeys(): bool {
+			return $this->databaseType !== 'sqlite';
+		}
 	}

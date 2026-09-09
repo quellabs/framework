@@ -171,6 +171,26 @@
 				->execute($this->parse('alter Posts (add foreign key (author_id) references Users)'));
 		}
 
+		/**
+		 * SQLite rejects `add foreign key` outright (see
+		 * QuelToSQLAlterTest::testAddForeignKeyOnSqliteIsRejected) regardless
+		 * of the referenced column, so a column-less `references Table`
+		 * must not trigger the schema-introspection round trip that resolves
+		 * it — doing so would be wasted work, and could surface the wrong
+		 * error (a resolution failure) instead of the real "SQLite has no
+		 * ALTER TABLE support for foreign keys" one.
+		 */
+		public function testAddForeignKeyWithNoColumnListOnSqliteSkipsResolutionAndReportsTheRealError(): void {
+			$connection = $this->createMock(DatabaseAdapter::class);
+			$connection->expects(self::never())->method('getPrimaryKeyColumns');
+
+			$this->expectException(QuelException::class);
+			$this->expectExceptionMessage('SQLite has no ALTER TABLE support for adding or dropping foreign keys');
+
+			(new AlterTableExecutor($connection, new FakePlatformCapabilities('sqlite')))
+				->execute($this->parse('alter Posts (add foreign key (author_id) references Users)'));
+		}
+
 		public function testColumnAndPrimaryKeyOperationsRunBeforeIndexOperationsRegardlessOfDeclarationOrder(): void {
 			$capturedSql = [];
 			$connection = $this->mockConnection($capturedSql);
