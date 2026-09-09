@@ -141,4 +141,50 @@
 			(new CreateTableExecutor($connection, new FakePlatformCapabilities('pgsql')))
 				->execute($this->parse('create Posts (id = integer)'));
 		}
+
+		public function testCompensatesByDroppingTheTableOnMysqlWhenAnEmbeddedIndexFailsAfterTheTableIsCreated(): void {
+			$capturedSql = [];
+			$connection = $this->createMock(DatabaseAdapter::class);
+			$connection->method('getTables')->willReturn([]);
+			$connection->method('getLastErrorMessage')->willReturn('index creation failed');
+			$connection->method('execute')->willReturnCallback(function (string $sql) use (&$capturedSql) {
+				$capturedSql[] = $sql;
+				return str_starts_with($sql, 'CREATE INDEX') ? null : $this->createMock(StatementInterface::class);
+			});
+
+			$this->expectException(QuelException::class);
+
+			try {
+				(new CreateTableExecutor($connection, new FakePlatformCapabilities('mysql')))
+					->execute($this->parse('create Posts (id = integer, index idx_id (id))'));
+			} finally {
+				self::assertSame(
+					['CREATE TABLE `Posts` (`id` INT)', 'CREATE INDEX `idx_id` ON `Posts` (`id`)', 'DROP TABLE IF EXISTS `Posts`'],
+					$capturedSql
+				);
+			}
+		}
+
+		public function testDoesNotCompensateWhenTheTableAlreadyExistedViaIfNotExists(): void {
+			$capturedSql = [];
+			$connection = $this->createMock(DatabaseAdapter::class);
+			$connection->method('getTables')->willReturn(['Posts']);
+			$connection->method('getLastErrorMessage')->willReturn('index creation failed');
+			$connection->method('execute')->willReturnCallback(function (string $sql) use (&$capturedSql) {
+				$capturedSql[] = $sql;
+				return str_starts_with($sql, 'CREATE INDEX') ? null : $this->createMock(StatementInterface::class);
+			});
+
+			$this->expectException(QuelException::class);
+
+			try {
+				(new CreateTableExecutor($connection, new FakePlatformCapabilities('mysql')))
+					->execute($this->parse('create Posts (id = integer, index idx_id (id)) if not exists'));
+			} finally {
+				self::assertSame(
+					['CREATE TABLE IF NOT EXISTS `Posts` (`id` INT)', 'CREATE INDEX `idx_id` ON `Posts` (`id`)'],
+					$capturedSql
+				);
+			}
+		}
 	}
