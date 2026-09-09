@@ -33,9 +33,9 @@
 		 */
 		public function index(SignalHub $hub, TemplateEngineInterface $engine): Response {
 			$this->em()->find(UserEntity::class, 1);
-			
+
 			$posts = $this->em()->findBy(PostEntity::class, ['published' => true]);
-			
+
 			return $this->render("blog/index.tpl", [
 				'posts' => $posts
 			]);
