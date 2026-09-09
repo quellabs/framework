@@ -57,6 +57,32 @@
 			);
 		}
 
+		public function testEmbeddedForeignKeyWithNoColumnListResolvesTheReferencedTablesPrimaryKey(): void {
+			$capturedSql = [];
+			$connection = $this->mockConnection($capturedSql);
+			$connection->method('getPrimaryKeyColumns')->with('Users')->willReturn(['id']);
+
+			(new CreateTableExecutor($connection, new FakePlatformCapabilities('mysql')))
+				->execute($this->parse('create Posts (id = integer, author_id = integer not null, foreign key (author_id) references Users)'));
+
+			self::assertSame(
+				['CREATE TABLE `Posts` (`id` INT, `author_id` INT NOT NULL, CONSTRAINT `fk_Posts_author_id` FOREIGN KEY (`author_id`) REFERENCES `Users` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION)'],
+				$capturedSql
+			);
+		}
+
+		public function testEmbeddedForeignKeyWithNoColumnListRejectsATargetWithNoPrimaryKey(): void {
+			$capturedSql = [];
+			$connection = $this->mockConnection($capturedSql);
+			$connection->method('getPrimaryKeyColumns')->with('Users')->willReturn([]);
+
+			$this->expectException(QuelException::class);
+			$this->expectExceptionMessage("the table has no primary key");
+
+			(new CreateTableExecutor($connection, new FakePlatformCapabilities('mysql')))
+				->execute($this->parse('create Posts (id = integer, author_id = integer not null, foreign key (author_id) references Users)'));
+		}
+
 		public function testDoesNotWrapInATransactionOnMysqlSinceDdlAutoCommitsThere(): void {
 			$capturedSql = [];
 			$connection = $this->mockConnection($capturedSql);

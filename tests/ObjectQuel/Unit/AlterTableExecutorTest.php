@@ -133,6 +133,44 @@
 			);
 		}
 
+		public function testAddForeignKeyWithNoColumnListResolvesTheReferencedTablesPrimaryKey(): void {
+			$capturedSql = [];
+			$connection = $this->mockConnection($capturedSql);
+			$connection->method('getPrimaryKeyColumns')->with('Users')->willReturn(['id']);
+
+			(new AlterTableExecutor($connection, new FakePlatformCapabilities('mysql')))
+				->execute($this->parse('alter Posts (add foreign key (author_id) references Users)'));
+
+			self::assertSame(
+				['ALTER TABLE `Posts` ADD CONSTRAINT `fk_Posts_author_id` FOREIGN KEY (`author_id`) REFERENCES `Users` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION'],
+				$capturedSql
+			);
+		}
+
+		public function testAddForeignKeyWithNoColumnListRejectsATargetWithNoPrimaryKey(): void {
+			$capturedSql = [];
+			$connection = $this->mockConnection($capturedSql);
+			$connection->method('getPrimaryKeyColumns')->with('Users')->willReturn([]);
+
+			$this->expectException(QuelException::class);
+			$this->expectExceptionMessage("the table has no primary key");
+
+			(new AlterTableExecutor($connection, new FakePlatformCapabilities('mysql')))
+				->execute($this->parse('alter Posts (add foreign key (author_id) references Users)'));
+		}
+
+		public function testAddForeignKeyWithNoColumnListRejectsATargetWithACompositePrimaryKey(): void {
+			$capturedSql = [];
+			$connection = $this->mockConnection($capturedSql);
+			$connection->method('getPrimaryKeyColumns')->with('Users')->willReturn(['tenant_id', 'id']);
+
+			$this->expectException(QuelException::class);
+			$this->expectExceptionMessage("the table has a composite primary key");
+
+			(new AlterTableExecutor($connection, new FakePlatformCapabilities('mysql')))
+				->execute($this->parse('alter Posts (add foreign key (author_id) references Users)'));
+		}
+
 		public function testColumnAndPrimaryKeyOperationsRunBeforeIndexOperationsRegardlessOfDeclarationOrder(): void {
 			$capturedSql = [];
 			$connection = $this->mockConnection($capturedSql);
