@@ -175,4 +175,42 @@
 			(new AlterTableExecutor($connection, new FakePlatformCapabilities('mysql')))
 				->execute($this->parse('alter Posts (drop legacy_flag)'));
 		}
+
+		public function testDoesNotWrapInATransactionOnMysqlSinceDdlAutoCommitsThere(): void {
+			$capturedSql = [];
+			$connection = $this->mockConnection($capturedSql);
+			$connection->expects(self::never())->method('beginTrans');
+			$connection->expects(self::never())->method('commitTrans');
+			$connection->expects(self::never())->method('rollbackTrans');
+
+			(new AlterTableExecutor($connection, new FakePlatformCapabilities('mysql')))
+				->execute($this->parse('alter Posts (add view_count = integer)'));
+		}
+
+		public function testWrapsTheStatementSequenceInATransactionOnAPlatformThatSupportsTransactionalDdl(): void {
+			$capturedSql = [];
+			$connection = $this->mockConnection($capturedSql);
+			$connection->expects(self::once())->method('beginTrans');
+			$connection->expects(self::once())->method('commitTrans');
+			$connection->expects(self::never())->method('rollbackTrans');
+
+			(new AlterTableExecutor($connection, new FakePlatformCapabilities('pgsql')))
+				->execute($this->parse('alter Posts (add view_count = integer, add index idx_view_count (view_count))'));
+
+			self::assertCount(2, $capturedSql);
+		}
+
+		public function testRollsBackTheTransactionWhenAStatementFailsOnAPlatformThatSupportsTransactionalDdl(): void {
+			$connection = $this->createMock(DatabaseAdapter::class);
+			$connection->method('execute')->willReturn(null);
+			$connection->method('getLastErrorMessage')->willReturn('unknown column');
+			$connection->expects(self::once())->method('beginTrans');
+			$connection->expects(self::never())->method('commitTrans');
+			$connection->expects(self::once())->method('rollbackTrans');
+
+			$this->expectException(QuelException::class);
+
+			(new AlterTableExecutor($connection, new FakePlatformCapabilities('pgsql')))
+				->execute($this->parse('alter Posts (drop legacy_flag)'));
+		}
 	}
