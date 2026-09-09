@@ -7,20 +7,16 @@
 	use Quellabs\ObjectQuel\Exception\QuelException;
 
 	/**
-	 * Integration coverage for EntityManager::explainQuery() across every
-	 * statement type it supports. The retrieve path already goes through
-	 * QueryOptimizer/ExecutionPlanBuilder with an active PlanLog (see
-	 * QueryExecutor::explain()); this suite is about the seven statement
-	 * types that bypass that pipeline entirely — DDL
+	 * Integration coverage for EntityManager::explainQuery(): a retrieve
+	 * statement returns real planning notes and SQL without executing it (see
+	 * QueryExecutor::explain()); every other statement type — DDL
 	 * (create/destroy/index/destroy-index) and the write verbs
-	 * (append/replace/delete) — which explainQuery() now compiles to SQL
-	 * directly via each Executor's compileSql() instead of running them.
-	 *
-	 * The property under test throughout: explainQuery() must never touch
-	 * the database for these statement types. Each test asserts that
-	 * directly (the target table/index/row is unaffected), not just that no
-	 * exception was thrown — a dry run that quietly performs the real write
-	 * would otherwise pass a naive "it returned a QueryPlan" test.
+	 * (append/replace/delete) — is rejected outright rather than explained,
+	 * since there is no optimizer/planner pipeline to report on for them and
+	 * compiling their SQL would either misrepresent a generated value (an
+	 * append's non-identity primary key, a replace's uuid/guid @Orm\Version
+	 * bump) or require running the write to know it (an insert-from-select's
+	 * row count).
 	 */
 	class ExplainQueryTest extends TestCase {
 
@@ -53,83 +49,66 @@
 			return $prefix . '_' . getmypid() . '_' . (++self::$counter);
 		}
 
-		public function testExplainCreateTableReturnsSqlWithoutCreatingIt(): void {
+		private function assertExplainRejectsAsNotPlannable(string $query, array $parameters = []): void {
+			try {
+				self::em()->explainQuery($query, $parameters);
+				$this->fail('Expected a QuelException');
+			} catch (QuelException $e) {
+				$this->assertSame('not_plannable', $e->type);
+			}
+		}
+
+		public function testExplainRejectsCreateTable(): void {
 			$tableName = $this->nextName('explain_ct');
-
-			$plan = self::em()->explainQuery("create {$tableName} (id = integer identity, primary key (id))");
-
-			$this->assertSame([], $plan->getNotes());
-			$this->assertCount(1, $plan->getSql());
-			$this->assertStringContainsStringIgnoringCase('create table', $plan->getSql()[0]);
-			$this->assertStringContainsString($tableName, $plan->getSql()[0]);
-
+			$this->assertExplainRejectsAsNotPlannable("create {$tableName} (id = integer identity, primary key (id))");
 			$this->assertNotContains($tableName, self::em()->getConnection()->getTables());
 		}
 
-		public function testExplainDestroyReturnsSqlWithoutDroppingTheTable(): void {
+		public function testExplainRejectsDestroy(): void {
 			$tableName = $this->nextName('explain_dt');
 			$this->createdTables[] = $tableName;
 			self::em()->executeQuery("create {$tableName} (id = integer)");
 
-			$plan = self::em()->explainQuery("destroy {$tableName}");
-
-			$this->assertSame([], $plan->getNotes());
-			$this->assertNotEmpty($plan->getSql());
-			$this->assertStringContainsStringIgnoringCase('drop table', $plan->getSql()[0]);
-
+			$this->assertExplainRejectsAsNotPlannable("destroy {$tableName}");
 			$this->assertContains($tableName, self::em()->getConnection()->getTables());
 		}
 
-		public function testExplainCreateIndexReturnsSqlWithoutCreatingIt(): void {
+		public function testExplainRejectsCreateIndex(): void {
 			$tableName = $this->nextName('explain_ci');
 			$indexName = "{$tableName}_email_idx";
 			$this->createdTables[] = $tableName;
 			self::em()->executeQuery("create {$tableName} (id = integer identity, email = string(100) not null, primary key (id))");
 
-			$plan = self::em()->explainQuery("index on {$tableName} is {$indexName} (email)");
-
-			$this->assertSame([], $plan->getNotes());
-			$this->assertNotEmpty($plan->getSql());
-			$this->assertStringContainsStringIgnoringCase('create index', $plan->getSql()[0]);
-
+			$this->assertExplainRejectsAsNotPlannable("index on {$tableName} is {$indexName} (email)");
 			$this->assertArrayNotHasKey($indexName, self::em()->getConnection()->getIndexes($tableName));
 		}
 
-		public function testExplainDestroyIndexReturnsSqlWithoutDroppingIt(): void {
+		public function testExplainRejectsDestroyIndex(): void {
 			$tableName = $this->nextName('explain_di');
 			$indexName = "{$tableName}_email_idx";
 			$this->createdTables[] = $tableName;
 			self::em()->executeQuery("create {$tableName} (id = integer identity, email = string(100) not null, primary key (id))");
 			self::em()->executeQuery("index on {$tableName} is {$indexName} (email)");
 
-			$plan = self::em()->explainQuery("destroy {$indexName} on {$tableName}");
-
-			$this->assertSame([], $plan->getNotes());
-			$this->assertNotEmpty($plan->getSql());
-			$this->assertStringContainsStringIgnoringCase('drop index', $plan->getSql()[0]);
-
+			$this->assertExplainRejectsAsNotPlannable("destroy {$indexName} on {$tableName}");
 			$this->assertArrayHasKey($indexName, self::em()->getConnection()->getIndexes($tableName));
 		}
 
-		public function testExplainAppendReturnsSqlWithoutInsertingARow(): void {
+		public function testExplainRejectsAppend(): void {
 			$connection = self::em()->getConnection();
 			$connection->execute('DELETE FROM `users`');
 
-			$plan = self::em()->explainQuery(
+			$this->assertExplainRejectsAsNotPlannable(
 				'range of u is App\Entities\UserEntity
 				append to u (username = :username, password = :password, banned = false)',
 				['username' => 'explain-user', 'password' => 'secret']
 			);
 
-			$this->assertSame([], $plan->getNotes());
-			$this->assertCount(1, $plan->getSql());
-			$this->assertStringContainsStringIgnoringCase('insert into', $plan->getSql()[0]);
-
 			$count = $connection->execute('SELECT COUNT(*) AS c FROM `users`')->fetchAssoc()['c'];
 			$this->assertSame(0, (int)$count);
 		}
 
-		public function testExplainReplaceReturnsSqlWithoutModifyingTheRow(): void {
+		public function testExplainRejectsReplace(): void {
 			$em = self::em();
 			$connection = $em->getConnection();
 			$connection->execute('DELETE FROM `users`');
@@ -140,15 +119,11 @@
 				['username' => 'alice', 'password' => 'original']
 			);
 
-			$plan = $em->explainQuery(
+			$this->assertExplainRejectsAsNotPlannable(
 				'range of u is App\Entities\UserEntity
 				replace u (password = :password) where u.id = :id',
 				['password' => 'changed', 'id' => $seeded->getGeneratedId()]
 			);
-
-			$this->assertSame([], $plan->getNotes());
-			$this->assertCount(1, $plan->getSql());
-			$this->assertStringContainsStringIgnoringCase('update', $plan->getSql()[0]);
 
 			$row = $connection->execute(
 				'SELECT password FROM `users` WHERE id = :id',
@@ -158,7 +133,7 @@
 			$this->assertSame('original', $row['password']);
 		}
 
-		public function testExplainDeleteReturnsSqlWithoutRemovingTheRow(): void {
+		public function testExplainRejectsDelete(): void {
 			$em = self::em();
 			$connection = $em->getConnection();
 			$connection->execute('DELETE FROM `users`');
@@ -169,15 +144,11 @@
 				['username' => 'bob', 'password' => 'secret']
 			);
 
-			$plan = $em->explainQuery(
+			$this->assertExplainRejectsAsNotPlannable(
 				'range of u is App\Entities\UserEntity
 				delete u where u.id = :id',
 				['id' => $seeded->getGeneratedId()]
 			);
-
-			$this->assertSame([], $plan->getNotes());
-			$this->assertCount(1, $plan->getSql());
-			$this->assertStringContainsStringIgnoringCase('delete', $plan->getSql()[0]);
 
 			$count = $connection->execute(
 				'SELECT COUNT(*) AS c FROM `users` WHERE id = :id',
@@ -185,30 +156,6 @@
 			)->fetchAssoc()['c'];
 
 			$this->assertSame(1, (int)$count);
-		}
-
-		/**
-		 * A JSON-source-range append never produces SQL at all — it writes
-		 * straight to the source file (see JsonAppendExecutor) — so there is
-		 * nothing for explainQuery() to show. This is the one case where
-		 * explainQuery() still rejects the statement outright, rather than
-		 * returning an (empty) QueryPlan.
-		 */
-		public function testExplainRejectsAppendToAJsonSourceRange(): void {
-			$path = sys_get_temp_dir() . DIRECTORY_SEPARATOR . $this->nextName('explain_json') . '.json';
-			file_put_contents($path, '[]');
-
-			try {
-				$this->expectException(QuelException::class);
-
-				self::em()->explainQuery(
-					"range of j is json_source('" . addslashes($path) . "')
-					append to j (name = :name)",
-					['name' => 'Alice']
-				);
-			} finally {
-				@unlink($path);
-			}
 		}
 
 		public function testExplainRetrieveStillReportsPlanningNotesAndSql(): void {

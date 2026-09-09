@@ -119,10 +119,10 @@
 
 		/**
 		 * Mirrors AppendTest::testAppendSucceedsWithDevelopmentModeDebugSignalEnabled():
-		 * development mode calls explainQuery() for the debug signal and
-		 * already catches 'not_plannable' there (see EntityManager::executeQuery()).
-		 * Confirms the real write still succeeds rather than that fallback
-		 * bubbling the exception up.
+		 * development mode's debug signal never recompiles a write-verb
+		 * statement (see EntityManager::executeQuery()/QueryExecutor::explainQuery()),
+		 * so a planner-routed insert-from-select can't cause it to throw
+		 * 'not_plannable' either. Confirms the real write still succeeds.
 		 */
 		public function testSucceedsWithDevelopmentModeDebugSignalEnabled(): void {
 			$path = $this->nextJsonFile();

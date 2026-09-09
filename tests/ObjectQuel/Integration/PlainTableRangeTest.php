@@ -294,17 +294,12 @@
 			$tableName = $this->nextTableName();
 			$this->createRawTable($tableName);
 
-			// Mirrors testUnknownColumnIsRejectedBySemanticAnalysis, but for
-			// `replace`'s WHERE clause — WriteVerbIdentifierResolver must run
-			// the same ValidateTablePropertyExists check the retrieve
-			// pipeline's SemanticAnalyzer does. Asserting on ->type (rather
-			// than just message/class) is what actually distinguishes this
-			// from a raw driver error: both a semantic rejection and an
-			// unresolved column reaching MySQL produce a QuelException whose
-			// message mentions "does_not_exist" — only ->type tells them
-			// apart ('semantic_error' vs 'replace_error'; see QueryExecutor's
-			// SemanticException-to-QuelException wrapping and
-			// ReplaceExecutor::execute()'s own driver-failure QuelException).
+			// Mirrors testUnknownColumnIsRejectedBySemanticAnalysis for `replace`'s
+			// WHERE clause. Asserting on ->type (not just message) proves this
+			// was caught by ValidateTablePropertyExists rather than surfacing as
+			// a raw driver error — both produce a QuelException mentioning
+			// "does_not_exist", but only ->type distinguishes 'semantic_error'
+			// from 'replace_error'.
 			try {
 				self::em()->executeQuery("
 					range of a is {$tableName}

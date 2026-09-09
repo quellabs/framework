@@ -88,10 +88,15 @@
 		 * plan. explainQuery() used to reject write-verb statements outright
 		 * (replaying them via the retrieve pipeline's dry-run would re-execute
 		 * the write for real), so a naive call used to bubble that
-		 * QuelException up and fail the append outright. explainQuery() now
-		 * compiles append/replace/delete/DDL statements to SQL directly
-		 * (AppendExecutor::compileSql() and friends) instead of replaying
-		 * them, so the debug signal carries the real compiled SQL.
+		 * QuelException up and fail the append outright.
+		 *
+		 * The debug signal must not show SQL for append at all: recompiling it
+		 * after the real execution above could misrepresent a generated value
+		 * (a non-identity primary key, a uuid/guid @Orm\Version bump) or
+		 * re-embed a large multi-row append's entire payload just to display
+		 * it — see QueryExecutor::explainQuery()'s docblock. Only the
+		 * standalone EntityManager::explainQuery() API (nothing has executed
+		 * yet there) still returns real SQL for append — see ExplainQueryTest.
 		 */
 		public function testAppendSucceedsWithDevelopmentModeDebugSignalEnabled(): void {
 			$configProperty = new \ReflectionProperty($this->em, 'configuration');
@@ -116,12 +121,8 @@
 				$this->assertInstanceOf(QuelResult::class, $result);
 				$this->assertSame(1, $result->getAffectedRows());
 				$this->assertNotNull($captured);
-				// Write-verb statements bypass the optimizer/planner pipeline
-				// entirely, so there are no planning notes — only the compiled SQL.
 				$this->assertSame([], $captured['query_plan']->getNotes());
-				$this->assertCount(1, $captured['query_plan']->getSql());
-				$this->assertStringContainsString('INSERT INTO', $captured['query_plan']->getSql()[0]);
-				$this->assertStringContainsString('`users`', $captured['query_plan']->getSql()[0]);
+				$this->assertSame([], $captured['query_plan']->getSql());
 			} finally {
 				$signal->disconnect($slot);
 				$configuration->setDevelopmentMode(false);

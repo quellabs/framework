@@ -3,6 +3,8 @@
 	namespace Quellabs\ObjectQuel\Tests\Integration;
 
 	use Quellabs\ObjectQuel\Tests\ObjectQuelTestCase;
+	use Quellabs\SignalHub\SignalHubLocator;
+	use Quellabs\SignalHub\Slot;
 
 	/**
 	 * Integration coverage for @Orm\Version handling on `append` and
@@ -137,5 +139,66 @@
 
 			$this->assertNotSame('', $after[0]);
 			$this->assertNotSame($before[0], $after[0]);
+		}
+
+		/**
+		 * Regression test: `replace`'s debug signal used to recompile the
+		 * statement to show its SQL, which for a uuid/guid @Orm\Version column
+		 * not explicitly assigned bumps the column to a second, different
+		 * value than what real execution already persisted (see
+		 * VersionValueHandler::buildVersionSetClause()). The debug signal now
+		 * shows no SQL for any write-verb statement at all — see
+		 * QueryExecutor::explainQuery()'s docblock — which sidesteps this case
+		 * (and the equivalent one for an integer version bump, which was safe
+		 * to recompile but is no longer shown either) by construction, rather
+		 * than by detecting it. The standalone EntityManager::explainQuery()
+		 * API (nothing has executed yet there) still shows real SQL for
+		 * `replace`, uuid version bump included — see ExplainQueryTest.
+		 */
+		public function testReplaceDebugSignalShowsNoSqlWhenItWouldBumpAUuidVersionColumnAgain(): void {
+			$seeded = $this->em->executeQuery('
+				range of u is App\Entities\UuidVersionedEntity
+				append to u (label = :label)
+			', ['label' => 'to-update']);
+
+			$id = $seeded->getGeneratedId();
+			$captured = $this->captureDebugSignalFor(function () use ($id) {
+				return $this->em->executeQuery('
+					range of u is App\Entities\UuidVersionedEntity
+					replace u (label = :label) where u.id = :id
+				', ['label' => 'updated', 'id' => $id]);
+			});
+
+			$this->assertSame([], $captured['query_plan']->getSql());
+		}
+
+		/**
+		 * Enables development mode, runs $callback, and returns the payload
+		 * captured off the 'debug.database.query' signal — shared boilerplate
+		 * for the two debug-signal regression tests above.
+		 * @param callable(): mixed $callback
+		 * @return array<string, mixed>
+		 */
+		private function captureDebugSignalFor(callable $callback): array {
+			$configProperty = new \ReflectionProperty($this->em, 'configuration');
+			$configProperty->setAccessible(true);
+			$configuration = $configProperty->getValue($this->em);
+			$configuration->setDevelopmentMode(true);
+
+			$signal = SignalHubLocator::getInstance()->getSignal('debug.database.query');
+			$captured = null;
+			$slot = new Slot(function (array $payload) use (&$captured): void {
+				$captured = $payload;
+			});
+			$signal->connect($slot);
+
+			try {
+				$callback();
+				$this->assertNotNull($captured);
+				return $captured;
+			} finally {
+				$signal->disconnect($slot);
+				$configuration->setDevelopmentMode(false);
+			}
 		}
 	}
