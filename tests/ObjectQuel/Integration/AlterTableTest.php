@@ -207,4 +207,61 @@
 
 			self::em()->executeQuery("alter {$tableName} (add message = string(100))");
 		}
+
+		/**
+		 * ObjectQuel's `create` has no ENGINE clause, so a table it creates
+		 * gets whatever MySQL's default_storage_engine is — MyISAM in this
+		 * suite's test server, which silently accepts (and ignores) a FK
+		 * constraint instead of erroring, the same reason
+		 * DatabaseAdapterForeignKeyMySqlTest builds its fixture tables with
+		 * raw `... ENGINE=InnoDB` SQL rather than through the DSL. Both
+		 * tables here are built the same way so `alter`'s add/drop foreign
+		 * key sub-operations under test — themselves ordinary ObjectQuel
+		 * DDL — actually register against a real constraint-enforcing
+		 * engine.
+		 */
+		private function createInnoDbTable(string $tableName, string $columnsSql): void {
+			$this->createdTables[] = $tableName;
+			self::em()->getConnection()->execute("CREATE TABLE `{$tableName}` ({$columnsSql}) ENGINE=InnoDB");
+		}
+
+		public function testAddsAForeignKey(): void {
+			$referencedTable = $this->nextTableName();
+			$tableName = $this->nextTableName();
+
+			$this->createInnoDbTable($referencedTable, 'id INT PRIMARY KEY');
+			$this->createInnoDbTable($tableName, 'id INT PRIMARY KEY, author_id INT NOT NULL');
+
+			// Drop order matters: the referencing table must go before the
+			// referenced one, or the FK constraint blocks the DROP TABLE.
+			$this->createdTables = [$tableName, $referencedTable];
+
+			$result = self::em()->executeQuery("alter {$tableName} (add foreign key (author_id) references {$referencedTable} (id) on delete cascade)");
+
+			$this->assertNull($result);
+
+			$foreignKeys = self::em()->getConnection()->getForeignKeys($tableName);
+			$name = "fk_{$tableName}_author_id";
+			$this->assertArrayHasKey($name, $foreignKeys);
+			$this->assertSame(['author_id'], $foreignKeys[$name]['columns']);
+			$this->assertSame($referencedTable, $foreignKeys[$name]['referencedTable']);
+			$this->assertSame(['id'], $foreignKeys[$name]['referencedColumns']);
+			$this->assertSame('CASCADE', $foreignKeys[$name]['onDelete']);
+		}
+
+		public function testDropsAForeignKey(): void {
+			$referencedTable = $this->nextTableName();
+			$tableName = $this->nextTableName();
+
+			$this->createInnoDbTable($referencedTable, 'id INT PRIMARY KEY');
+			$this->createInnoDbTable($tableName, 'id INT PRIMARY KEY, author_id INT NOT NULL');
+			$this->createdTables = [$tableName, $referencedTable];
+
+			self::em()->executeQuery("alter {$tableName} (add foreign key (author_id) references {$referencedTable} (id))");
+
+			$result = self::em()->executeQuery("alter {$tableName} (drop foreign key (author_id))");
+
+			$this->assertNull($result);
+			$this->assertArrayNotHasKey("fk_{$tableName}_author_id", self::em()->getConnection()->getForeignKeys($tableName));
+		}
 	}

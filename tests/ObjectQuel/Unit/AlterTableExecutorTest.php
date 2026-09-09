@@ -118,6 +118,21 @@
 			self::assertSame(['DROP INDEX `idx_a` ON `Posts`'], $capturedSql);
 		}
 
+		public function testAddForeignKeyNeedsNoIntrospectionEither(): void {
+			$capturedSql = [];
+			$connection = $this->mockConnection($capturedSql);
+			$connection->expects(self::never())->method('getPrimaryKeyColumns');
+			$connection->expects(self::never())->method('getIndexes');
+
+			(new AlterTableExecutor($connection, new FakePlatformCapabilities('mysql')))
+				->execute($this->parse('alter Posts (add foreign key (author_id) references Users (id))'));
+
+			self::assertSame(
+				['ALTER TABLE `Posts` ADD CONSTRAINT `fk_Posts_author_id` FOREIGN KEY (`author_id`) REFERENCES `Users` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION'],
+				$capturedSql
+			);
+		}
+
 		public function testColumnAndPrimaryKeyOperationsRunBeforeIndexOperationsRegardlessOfDeclarationOrder(): void {
 			$capturedSql = [];
 			$connection = $this->mockConnection($capturedSql);

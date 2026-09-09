@@ -190,4 +190,66 @@
 
 			self::assertSame([], $this->compile($ast, 'mysql'));
 		}
+
+		public function testAddForeignKeyWithDefaultActionsAcrossDialects(): void {
+			$ast = $this->parse('alter Posts (add foreign key (author_id) references Users (id))');
+
+			self::assertSame(
+				['ALTER TABLE `Posts` ADD CONSTRAINT `fk_Posts_author_id` FOREIGN KEY (`author_id`) REFERENCES `Users` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION'],
+				$this->compile($ast, 'mysql')
+			);
+			self::assertSame(
+				['ALTER TABLE "Posts" ADD CONSTRAINT "fk_Posts_author_id" FOREIGN KEY ("author_id") REFERENCES "Users" ("id") ON DELETE RESTRICT ON UPDATE NO ACTION'],
+				$this->compile($ast, 'pgsql')
+			);
+			self::assertSame(
+				['ALTER TABLE [Posts] ADD CONSTRAINT [fk_Posts_author_id] FOREIGN KEY ([author_id]) REFERENCES [Users] ([id]) ON DELETE RESTRICT ON UPDATE NO ACTION'],
+				$this->compile($ast, 'sqlsrv')
+			);
+		}
+
+		public function testAddForeignKeyWithExplicitActions(): void {
+			$ast = $this->parse('alter Posts (add foreign key (author_id) references Users (id) on delete cascade on update set null)');
+
+			self::assertSame(
+				['ALTER TABLE `Posts` ADD CONSTRAINT `fk_Posts_author_id` FOREIGN KEY (`author_id`) REFERENCES `Users` (`id`) ON DELETE CASCADE ON UPDATE SET NULL'],
+				$this->compile($ast, 'mysql')
+			);
+		}
+
+		public function testAddForeignKeyOnSqliteIsRejected(): void {
+			$ast = $this->parse('alter Posts (add foreign key (author_id) references Users (id))');
+
+			$this->expectException(QuelException::class);
+			$this->compile($ast, 'sqlite');
+		}
+
+		public function testDropForeignKeyUsesDropForeignKeyOnMysql(): void {
+			$ast = $this->parse('alter Posts (drop foreign key (author_id))');
+
+			self::assertSame(
+				['ALTER TABLE `Posts` DROP FOREIGN KEY `fk_Posts_author_id`'],
+				$this->compile($ast, 'mysql')
+			);
+		}
+
+		public function testDropForeignKeyUsesDropConstraintOnPostgresAndSqlServer(): void {
+			$ast = $this->parse('alter Posts (drop foreign key (author_id))');
+
+			self::assertSame(
+				['ALTER TABLE "Posts" DROP CONSTRAINT "fk_Posts_author_id"'],
+				$this->compile($ast, 'pgsql')
+			);
+			self::assertSame(
+				['ALTER TABLE [Posts] DROP CONSTRAINT [fk_Posts_author_id]'],
+				$this->compile($ast, 'sqlsrv')
+			);
+		}
+
+		public function testDropForeignKeyOnSqliteIsRejected(): void {
+			$ast = $this->parse('alter Posts (drop foreign key (author_id))');
+
+			$this->expectException(QuelException::class);
+			$this->compile($ast, 'sqlite');
+		}
 	}

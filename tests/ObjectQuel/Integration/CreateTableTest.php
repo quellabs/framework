@@ -367,4 +367,54 @@
 				)
 			");
 		}
+
+		/**
+		 * ObjectQuel's `create` has no ENGINE clause, so the table this
+		 * produces gets whatever MySQL's default_storage_engine is —
+		 * MyISAM in this suite's test server, which silently accepts (and
+		 * ignores) a FK constraint instead of erroring or storing it, the
+		 * same reason DatabaseAdapterForeignKeyMySqlTest builds its own FK
+		 * fixture tables with raw `... ENGINE=InnoDB` SQL rather than
+		 * through any DSL. There's no such workaround available for
+		 * `create`'s embedded entry itself (unlike AlterTableTest's
+		 * add/drop foreign key coverage, which can pre-create its tables
+		 * as InnoDB via raw SQL and still exercise real ObjectQuel `alter`
+		 * DDL) — so this only verifies the generated SQL is accepted by a
+		 * real server; exact rendering (including on delete/on update, and
+		 * across all four dialects) is covered at the SQL-generation level
+		 * by QuelToSQLCreateTest instead.
+		 */
+		public function testCreatesTableWithAnEmbeddedForeignKey(): void {
+			$referencedTable = $this->nextTableName();
+			$tableName = $this->nextTableName();
+
+			self::em()->executeQuery("create {$referencedTable} (id = integer identity, primary key (id))");
+			$this->createdTables[] = $tableName;
+			$this->createdTables[] = $referencedTable;
+
+			$result = self::em()->executeQuery("
+				create {$tableName} (
+					id = integer identity,
+					author_id = integer not null,
+					primary key (id),
+					foreign key (author_id) references {$referencedTable} (id) on delete cascade
+				)
+			");
+
+			$this->assertNull($result);
+			$this->assertArrayHasKey('author_id', self::em()->getConnection()->getColumns($tableName));
+		}
+
+		public function testRejectsAnEmbeddedForeignKeyOnAnUnknownColumn(): void {
+			$tableName = $this->nextTableName();
+
+			$this->expectException(QuelException::class);
+
+			self::em()->executeQuery("
+				create {$tableName} (
+					id = integer,
+					foreign key (nonexistent_column) references OtherTable (id)
+				)
+			");
+		}
 	}
