@@ -5,6 +5,7 @@
 	use Cake\Database\StatementInterface;
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
+	use Quellabs\ObjectQuel\Execution\ExecutionContext;
 	use Quellabs\ObjectQuel\Execution\Executors\CreateTableExecutor;
 	use Quellabs\ObjectQuel\Exception\QuelException;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstCreateTable;
@@ -49,7 +50,7 @@
 			$connection = $this->mockConnection($capturedSql);
 
 			(new CreateTableExecutor($connection, new FakePlatformCapabilities('mysql')))
-				->execute($this->parse('create Posts (id = integer nullable, index idx_id (id))'));
+				->execute($this->parse('create Posts (id = integer nullable, index idx_id (id))'), new ExecutionContext([]));
 
 			self::assertSame(
 				['CREATE TABLE `Posts` (`id` INT)', 'CREATE INDEX `idx_id` ON `Posts` (`id`)'],
@@ -63,7 +64,7 @@
 			$connection->method('getPrimaryKeyColumns')->with('Users')->willReturn(['id']);
 
 			(new CreateTableExecutor($connection, new FakePlatformCapabilities('mysql')))
-				->execute($this->parse('create Posts (id = integer nullable, author_id = integer, foreign key (author_id) references Users)'));
+				->execute($this->parse('create Posts (id = integer nullable, author_id = integer, foreign key (author_id) references Users)'), new ExecutionContext([]));
 
 			self::assertSame(
 				['CREATE TABLE `Posts` (`id` INT, `author_id` INT NOT NULL, CONSTRAINT `fk_Posts_author_id` FOREIGN KEY (`author_id`) REFERENCES `Users` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION)'],
@@ -80,7 +81,7 @@
 			$this->expectExceptionMessage("the table has no primary key");
 
 			(new CreateTableExecutor($connection, new FakePlatformCapabilities('mysql')))
-				->execute($this->parse('create Posts (id = integer, author_id = integer, foreign key (author_id) references Users)'));
+				->execute($this->parse('create Posts (id = integer, author_id = integer, foreign key (author_id) references Users)'), new ExecutionContext([]));
 		}
 
 		/**
@@ -101,7 +102,7 @@
 			$this->expectExceptionMessage("Unknown table 'Employees'");
 
 			(new CreateTableExecutor($connection, new FakePlatformCapabilities('mysql')))
-				->execute($this->parse('create Employees (id = integer, manager_id = integer, foreign key (manager_id) references Employees)'));
+				->execute($this->parse('create Employees (id = integer, manager_id = integer, foreign key (manager_id) references Employees)'), new ExecutionContext([]));
 		}
 
 		public function testDoesNotWrapInATransactionOnMysqlSinceDdlAutoCommitsThere(): void {
@@ -112,7 +113,7 @@
 			$connection->expects(self::never())->method('rollbackTrans');
 
 			(new CreateTableExecutor($connection, new FakePlatformCapabilities('mysql')))
-				->execute($this->parse('create Posts (id = integer)'));
+				->execute($this->parse('create Posts (id = integer)'), new ExecutionContext([]));
 		}
 
 		public function testWrapsTheStatementSequenceInATransactionOnAPlatformThatSupportsTransactionalDdl(): void {
@@ -123,7 +124,7 @@
 			$connection->expects(self::never())->method('rollbackTrans');
 
 			(new CreateTableExecutor($connection, new FakePlatformCapabilities('pgsql')))
-				->execute($this->parse('create Posts (id = integer, index idx_id (id))'));
+				->execute($this->parse('create Posts (id = integer, index idx_id (id))'), new ExecutionContext([]));
 
 			self::assertCount(2, $capturedSql);
 		}
@@ -139,7 +140,7 @@
 			$this->expectException(QuelException::class);
 
 			(new CreateTableExecutor($connection, new FakePlatformCapabilities('pgsql')))
-				->execute($this->parse('create Posts (id = integer)'));
+				->execute($this->parse('create Posts (id = integer)'), new ExecutionContext([]));
 		}
 
 		public function testCompensatesByDroppingTheTableOnMysqlWhenAnEmbeddedIndexFailsAfterTheTableIsCreated(): void {
@@ -156,7 +157,7 @@
 
 			try {
 				(new CreateTableExecutor($connection, new FakePlatformCapabilities('mysql')))
-					->execute($this->parse('create Posts (id = integer nullable, index idx_id (id))'));
+					->execute($this->parse('create Posts (id = integer nullable, index idx_id (id))'), new ExecutionContext([]));
 			} finally {
 				self::assertSame(
 					['CREATE TABLE `Posts` (`id` INT)', 'CREATE INDEX `idx_id` ON `Posts` (`id`)', 'DROP TABLE IF EXISTS `Posts`'],
@@ -179,7 +180,7 @@
 
 			try {
 				(new CreateTableExecutor($connection, new FakePlatformCapabilities('mysql')))
-					->execute($this->parse('create Posts (id = integer nullable, index idx_id (id)) if not exists'));
+					->execute($this->parse('create Posts (id = integer nullable, index idx_id (id)) if not exists'), new ExecutionContext([]));
 			} finally {
 				self::assertSame(
 					['CREATE TABLE IF NOT EXISTS `Posts` (`id` INT)', 'CREATE INDEX `idx_id` ON `Posts` (`id`)'],

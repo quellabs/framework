@@ -5,6 +5,7 @@
 	use App\Entities\PostEntity;
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\ObjectQuel\EntityManager;
+	use Quellabs\ObjectQuel\Execution\ExecutionContext;
 	use Quellabs\ObjectQuel\Execution\Executors\TempTableExecutor;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAlias;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIdentifier;
@@ -157,7 +158,7 @@
 				'created_at' => '2024-01-01 12:00:00',
 			]];
 
-			$this->executor->execute($stage, fn() => $rows);
+			$this->executor->execute($stage, new ExecutionContext([], fn() => $rows));
 
 			$columns = $this->describeColumns($tableName);
 
@@ -190,7 +191,7 @@
 				'literal_col' => '42',
 			]];
 
-			$this->executor->execute($stage, fn() => $rows);
+			$this->executor->execute($stage, new ExecutionContext([], fn() => $rows));
 
 			$columns = $this->describeColumns($tableName);
 
@@ -220,7 +221,7 @@
 			$tempTableRange = new AstRangeDatabaseTempTable('p_tmp', $innerQuery, $tableName, null, false);
 			$stage = new TempTableStage('stage', $tempTableRange, new ExecutionPlan());
 
-			$this->executor->execute($stage, fn() => []);
+			$this->executor->execute($stage, new ExecutionContext([], fn() => []));
 
 			$columns = $this->describeColumns($tableName);
 
@@ -240,7 +241,7 @@
 			$tempTableRange = new AstRangeDatabaseTempTable('p_tmp', $innerQuery, $tableName, null, true);
 			$stage = new TempTableStage('stage', $tempTableRange, new ExecutionPlan());
 
-			$this->executor->execute($stage, fn() => []);
+			$this->executor->execute($stage, new ExecutionContext([], fn() => []));
 
 			// SHOW TABLES never lists TEMPORARY tables regardless of whether one
 			// was created, so it can't tell us anything here. DatabaseAdapter::execute()

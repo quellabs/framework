@@ -5,20 +5,20 @@
 	use Cake\Database\StatementInterface;
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
-	use Quellabs\ObjectQuel\Execution\Executors\IndexVisibilityExecutor;
+	use Quellabs\ObjectQuel\Execution\ExecutionContext;
+	use Quellabs\ObjectQuel\Execution\Executors\ShowIndexExecutor;
 	use Quellabs\ObjectQuel\Exception\QuelException;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstHideIndex;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstShowIndex;
 	use Quellabs\ObjectQuel\Tests\Support\FakePlatformCapabilities;
 
 	/**
-	 * Coverage for IndexVisibilityExecutor: that it runs
+	 * Coverage for ShowIndexExecutor: that it runs
 	 * QuelToSQLIndexVisibility's compiled statement and surfaces a
 	 * QuelException on failure or unsupported-dialect rejection. No live
 	 * connection of any of the four dialects exists in this suite (see
 	 * DestroyIndexExecutorTest for the equivalent precedent).
 	 */
-	class IndexVisibilityExecutorTest extends TestCase {
+	class ShowIndexExecutorTest extends TestCase {
 
 		/**
 		 * @param string[] $capturedSql Populated, in call order, as execute() is invoked
@@ -34,22 +34,12 @@
 			return $connection;
 		}
 
-		public function testExecuteHideRunsASingleStatement(): void {
+		public function testExecuteRunsASingleStatement(): void {
 			$capturedSql = [];
 			$connection = $this->mockConnection($capturedSql);
 
-			(new IndexVisibilityExecutor($connection, new FakePlatformCapabilities('mysql')))
-				->executeHide(new AstHideIndex('archive_log_email_idx', 'ArchiveLog'));
-
-			self::assertSame(['ALTER TABLE `ArchiveLog` ALTER INDEX `archive_log_email_idx` INVISIBLE'], $capturedSql);
-		}
-
-		public function testExecuteShowRunsASingleStatement(): void {
-			$capturedSql = [];
-			$connection = $this->mockConnection($capturedSql);
-
-			(new IndexVisibilityExecutor($connection, new FakePlatformCapabilities('mysql')))
-				->executeShow(new AstShowIndex('archive_log_email_idx', 'ArchiveLog'));
+			(new ShowIndexExecutor($connection, new FakePlatformCapabilities('mysql')))
+				->execute(new AstShowIndex('archive_log_email_idx', 'ArchiveLog'), new ExecutionContext([]));
 
 			self::assertSame(['ALTER TABLE `ArchiveLog` ALTER INDEX `archive_log_email_idx` VISIBLE'], $capturedSql);
 		}
@@ -62,8 +52,8 @@
 			$this->expectException(QuelException::class);
 			$this->expectExceptionMessage('unknown index');
 
-			(new IndexVisibilityExecutor($connection, new FakePlatformCapabilities('mysql')))
-				->executeHide(new AstHideIndex('archive_log_email_idx', 'ArchiveLog'));
+			(new ShowIndexExecutor($connection, new FakePlatformCapabilities('mysql')))
+				->execute(new AstShowIndex('archive_log_email_idx', 'ArchiveLog'), new ExecutionContext([]));
 		}
 
 		public function testThrowsOnAnUnsupportedDialectWithoutTouchingTheConnection(): void {
@@ -73,7 +63,7 @@
 			$this->expectException(QuelException::class);
 			$this->expectExceptionMessage('only MySQL 8.0+ and MariaDB 10.6+ support hiding an index');
 
-			(new IndexVisibilityExecutor($connection, new FakePlatformCapabilities('pgsql')))
-				->executeHide(new AstHideIndex('archive_log_email_idx', 'ArchiveLog'));
+			(new ShowIndexExecutor($connection, new FakePlatformCapabilities('pgsql')))
+				->execute(new AstShowIndex('archive_log_email_idx', 'ArchiveLog'), new ExecutionContext([]));
 		}
 	}

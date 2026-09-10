@@ -5,6 +5,7 @@
 	use Cake\Database\StatementInterface;
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
+	use Quellabs\ObjectQuel\Execution\ExecutionContext;
 	use Quellabs\ObjectQuel\Execution\Executors\CreateIndexExecutor;
 	use Quellabs\ObjectQuel\Exception\QuelException;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstCreateIndex;
@@ -46,7 +47,7 @@
 			$connection->expects(self::never())->method('getIndexes');
 			$connection->expects(self::never())->method('getPrimaryKey');
 
-			(new CreateIndexExecutor($connection, new FakePlatformCapabilities('mysql')))->execute($this->statementIndex());
+			(new CreateIndexExecutor($connection, new FakePlatformCapabilities('mysql')))->execute($this->statementIndex(), new ExecutionContext([]));
 
 			self::assertSame(['CREATE FULLTEXT INDEX `article_fulltext_idx` ON `ArticleEntity` (`title`, `body`)'], $capturedSql);
 		}
@@ -57,7 +58,7 @@
 			$connection->expects(self::never())->method('getIndexes');
 			$connection->expects(self::never())->method('getPrimaryKey');
 
-			(new CreateIndexExecutor($connection, new FakePlatformCapabilities('pgsql')))->execute($this->statementIndex());
+			(new CreateIndexExecutor($connection, new FakePlatformCapabilities('pgsql')))->execute($this->statementIndex(), new ExecutionContext([]));
 
 			self::assertCount(1, $capturedSql);
 			self::assertStringContainsString('USING GIN', $capturedSql[0]);
@@ -71,7 +72,7 @@
 				'PK_ArticleEntity' => ['type' => 'primary', 'columns' => ['id'], 'length' => null],
 			]);
 
-			(new CreateIndexExecutor($connection, new FakePlatformCapabilities('sqlsrv')))->execute($this->statementIndex());
+			(new CreateIndexExecutor($connection, new FakePlatformCapabilities('sqlsrv')))->execute($this->statementIndex(), new ExecutionContext([]));
 
 			self::assertCount(3, $capturedSql);
 			self::assertStringContainsString('KEY INDEX [PK_ArticleEntity]', $capturedSql[1]);
@@ -84,7 +85,7 @@
 				'uniq_email' => ['type' => 'unique', 'columns' => ['email'], 'length' => null],
 			]);
 
-			(new CreateIndexExecutor($connection, new FakePlatformCapabilities('sqlsrv')))->execute($this->statementIndex());
+			(new CreateIndexExecutor($connection, new FakePlatformCapabilities('sqlsrv')))->execute($this->statementIndex(), new ExecutionContext([]));
 
 			self::assertStringContainsString('KEY INDEX [uniq_email]', $capturedSql[1]);
 		}
@@ -98,7 +99,7 @@
 
 			$this->expectException(QuelException::class);
 
-			(new CreateIndexExecutor($connection, new FakePlatformCapabilities('sqlsrv')))->execute($this->statementIndex());
+			(new CreateIndexExecutor($connection, new FakePlatformCapabilities('sqlsrv')))->execute($this->statementIndex(), new ExecutionContext([]));
 		}
 
 		public function testSqliteFulltextResolvesThePrimaryKeyColumn(): void {
@@ -106,7 +107,7 @@
 			$connection = $this->mockConnection($capturedSql);
 			$connection->method('getPrimaryKey')->willReturn('id');
 
-			(new CreateIndexExecutor($connection, new FakePlatformCapabilities('sqlite')))->execute($this->statementIndex());
+			(new CreateIndexExecutor($connection, new FakePlatformCapabilities('sqlite')))->execute($this->statementIndex(), new ExecutionContext([]));
 
 			self::assertCount(4, $capturedSql);
 			self::assertStringContainsString("content_rowid='id'", $capturedSql[0]);
@@ -119,7 +120,7 @@
 
 			$this->expectException(QuelException::class);
 
-			(new CreateIndexExecutor($connection, new FakePlatformCapabilities('sqlite')))->execute($this->statementIndex());
+			(new CreateIndexExecutor($connection, new FakePlatformCapabilities('sqlite')))->execute($this->statementIndex(), new ExecutionContext([]));
 		}
 
 		public function testThrowsWhenTheDdlStatementFails(): void {
@@ -131,6 +132,6 @@
 			$this->expectExceptionMessage('duplicate key name');
 
 			(new CreateIndexExecutor($connection, new FakePlatformCapabilities('mysql')))
-				->execute(new AstCreateIndex('ArchiveLog', 'archive_log_email_idx', ['email'], false));
+				->execute(new AstCreateIndex('ArchiveLog', 'archive_log_email_idx', ['email'], false), new ExecutionContext([]));
 		}
 	}

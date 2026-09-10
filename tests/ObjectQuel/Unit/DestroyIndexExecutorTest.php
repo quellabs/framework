@@ -5,6 +5,7 @@
 	use Cake\Database\StatementInterface;
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
+	use Quellabs\ObjectQuel\Execution\ExecutionContext;
 	use Quellabs\ObjectQuel\Execution\Executors\DestroyIndexExecutor;
 	use Quellabs\ObjectQuel\Exception\QuelException;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstDestroyIndex;
@@ -42,7 +43,7 @@
 			$capturedSql = [];
 			$connection = $this->mockConnection($capturedSql);
 
-			(new DestroyIndexExecutor($connection, new FakePlatformCapabilities('mysql')))->execute($this->statement());
+			(new DestroyIndexExecutor($connection, new FakePlatformCapabilities('mysql')))->execute($this->statement(), new ExecutionContext([]));
 
 			self::assertSame(['DROP INDEX `archive_log_email_idx` ON `ArchiveLog`'], $capturedSql);
 		}
@@ -52,7 +53,7 @@
 			$connection = $this->mockConnection($capturedSql);
 
 			(new DestroyIndexExecutor($connection, new FakePlatformCapabilities('mysql')))
-				->execute($this->statement(ifExists: true));
+				->execute($this->statement(ifExists: true), new ExecutionContext([]));
 
 			self::assertCount(5, $capturedSql);
 			self::assertStringStartsWith('SET @idx_exists', $capturedSql[0]);
@@ -77,7 +78,7 @@
 
 			try {
 				(new DestroyIndexExecutor($connection, new FakePlatformCapabilities('mysql')))
-					->execute($this->statement(ifExists: true));
+					->execute($this->statement(ifExists: true), new ExecutionContext([]));
 			} finally {
 				self::assertSame(1, $callCount);
 			}
@@ -91,7 +92,7 @@
 			$this->expectException(QuelException::class);
 			$this->expectExceptionMessage('unknown index');
 
-			(new DestroyIndexExecutor($connection, new FakePlatformCapabilities('mysql')))->execute($this->statement());
+			(new DestroyIndexExecutor($connection, new FakePlatformCapabilities('mysql')))->execute($this->statement(), new ExecutionContext([]));
 		}
 
 		public function testSqlServerOrdinaryIndexNeverConsultsTheFulltextTag(): void {
@@ -103,7 +104,7 @@
 			$connection->expects(self::never())->method('hasSqlServerFulltextIndex');
 			$connection->expects(self::never())->method('getSqlServerExtendedProperty');
 
-			(new DestroyIndexExecutor($connection, new FakePlatformCapabilities('sqlsrv')))->execute($this->statement());
+			(new DestroyIndexExecutor($connection, new FakePlatformCapabilities('sqlsrv')))->execute($this->statement(), new ExecutionContext([]));
 
 			self::assertSame(['DROP INDEX [archive_log_email_idx] ON [ArchiveLog]'], $capturedSql);
 		}
@@ -115,7 +116,7 @@
 			$connection->method('hasSqlServerFulltextIndex')->willReturn(true);
 			$connection->method('getSqlServerExtendedProperty')->willReturn('archive_log_email_idx');
 
-			(new DestroyIndexExecutor($connection, new FakePlatformCapabilities('sqlsrv')))->execute($this->statement());
+			(new DestroyIndexExecutor($connection, new FakePlatformCapabilities('sqlsrv')))->execute($this->statement(), new ExecutionContext([]));
 
 			self::assertCount(2, $capturedSql);
 			self::assertStringContainsString('sp_dropextendedproperty', $capturedSql[0]);
@@ -133,7 +134,7 @@
 			$connection->method('hasSqlServerFulltextIndex')->willReturn(true);
 			$connection->method('getSqlServerExtendedProperty')->willReturn('some_other_idx');
 
-			(new DestroyIndexExecutor($connection, new FakePlatformCapabilities('sqlsrv')))->execute($this->statement());
+			(new DestroyIndexExecutor($connection, new FakePlatformCapabilities('sqlsrv')))->execute($this->statement(), new ExecutionContext([]));
 
 			self::assertSame(['DROP INDEX [archive_log_email_idx] ON [ArchiveLog]'], $capturedSql);
 		}
@@ -145,7 +146,7 @@
 			$connection->method('hasSqlServerFulltextIndex')->willReturn(false);
 			$connection->expects(self::never())->method('getSqlServerExtendedProperty');
 
-			(new DestroyIndexExecutor($connection, new FakePlatformCapabilities('sqlsrv')))->execute($this->statement());
+			(new DestroyIndexExecutor($connection, new FakePlatformCapabilities('sqlsrv')))->execute($this->statement(), new ExecutionContext([]));
 
 			self::assertSame(['DROP INDEX [archive_log_email_idx] ON [ArchiveLog]'], $capturedSql);
 		}
@@ -156,7 +157,7 @@
 			$connection->method('getIndexes')->willReturn(['archive_log_email_idx' => ['type' => 'index', 'columns' => ['email'], 'length' => null]]);
 			$connection->expects(self::never())->method('getSqliteFts5BaseTable');
 
-			(new DestroyIndexExecutor($connection, new FakePlatformCapabilities('sqlite')))->execute($this->statement());
+			(new DestroyIndexExecutor($connection, new FakePlatformCapabilities('sqlite')))->execute($this->statement(), new ExecutionContext([]));
 
 			self::assertSame(['DROP INDEX `archive_log_email_idx`'], $capturedSql);
 		}
@@ -167,7 +168,7 @@
 			$connection->method('getIndexes')->willReturn([]);
 			$connection->method('getSqliteFts5BaseTable')->willReturn('ArchiveLog');
 
-			(new DestroyIndexExecutor($connection, new FakePlatformCapabilities('sqlite')))->execute($this->statement());
+			(new DestroyIndexExecutor($connection, new FakePlatformCapabilities('sqlite')))->execute($this->statement(), new ExecutionContext([]));
 
 			self::assertSame(
 				[
@@ -186,7 +187,7 @@
 			$connection->method('getIndexes')->willReturn([]);
 			$connection->method('getSqliteFts5BaseTable')->willReturn(null);
 
-			(new DestroyIndexExecutor($connection, new FakePlatformCapabilities('sqlite')))->execute($this->statement());
+			(new DestroyIndexExecutor($connection, new FakePlatformCapabilities('sqlite')))->execute($this->statement(), new ExecutionContext([]));
 
 			self::assertSame(['DROP INDEX `archive_log_email_idx`'], $capturedSql);
 		}
@@ -199,7 +200,7 @@
 			$connection->method('getIndexes')->willReturn([]);
 			$connection->method('getSqliteFts5BaseTable')->willReturn('SomeOtherTable');
 
-			(new DestroyIndexExecutor($connection, new FakePlatformCapabilities('sqlite')))->execute($this->statement());
+			(new DestroyIndexExecutor($connection, new FakePlatformCapabilities('sqlite')))->execute($this->statement(), new ExecutionContext([]));
 
 			self::assertSame(['DROP INDEX `archive_log_email_idx`'], $capturedSql);
 		}

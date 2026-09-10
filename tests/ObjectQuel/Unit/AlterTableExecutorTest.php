@@ -5,6 +5,7 @@
 	use Cake\Database\StatementInterface;
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
+	use Quellabs\ObjectQuel\Execution\ExecutionContext;
 	use Quellabs\ObjectQuel\Execution\Executors\AlterTableExecutor;
 	use Quellabs\ObjectQuel\Exception\QuelException;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAlterTable;
@@ -51,7 +52,7 @@
 			$connection->expects(self::never())->method('getIndexes');
 
 			(new AlterTableExecutor($connection, new FakePlatformCapabilities('mysql')))
-				->execute($this->parse('alter Posts (add view_count = integer nullable)'));
+				->execute($this->parse('alter Posts (add view_count = integer nullable)'), new ExecutionContext([]));
 
 			self::assertSame(['ALTER TABLE `Posts` ADD COLUMN `view_count` INT'], $capturedSql);
 		}
@@ -62,7 +63,7 @@
 			$connection->method('getPrimaryKeyColumns')->willReturn(['old_id']);
 
 			(new AlterTableExecutor($connection, new FakePlatformCapabilities('mysql')))
-				->execute($this->parse('alter Posts (primary key (id))'));
+				->execute($this->parse('alter Posts (primary key (id))'), new ExecutionContext([]));
 
 			self::assertSame(
 				['ALTER TABLE `Posts` DROP PRIMARY KEY', 'ALTER TABLE `Posts` ADD PRIMARY KEY (`id`)'],
@@ -80,7 +81,7 @@
 			]);
 
 			(new AlterTableExecutor($connection, new FakePlatformCapabilities('pgsql')))
-				->execute($this->parse('alter Posts (primary key (id))'));
+				->execute($this->parse('alter Posts (primary key (id))'), new ExecutionContext([]));
 
 			self::assertSame(
 				['ALTER TABLE "Posts" DROP CONSTRAINT "posts_pkey"', 'ALTER TABLE "Posts" ADD PRIMARY KEY ("id")'],
@@ -93,7 +94,7 @@
 			$connection = $this->mockConnection($capturedSql);
 
 			(new AlterTableExecutor($connection, new FakePlatformCapabilities('mysql')))
-				->execute($this->parse('alter Posts (add index idx_a (a, b))'));
+				->execute($this->parse('alter Posts (add index idx_a (a, b))'), new ExecutionContext([]));
 
 			self::assertSame(['CREATE INDEX `idx_a` ON `Posts` (`a`, `b`)'], $capturedSql);
 		}
@@ -103,7 +104,7 @@
 			$connection = $this->mockConnection($capturedSql);
 
 			(new AlterTableExecutor($connection, new FakePlatformCapabilities('mysql')))
-				->execute($this->parse('alter Posts (add unique index idx_a (a))'));
+				->execute($this->parse('alter Posts (add unique index idx_a (a))'), new ExecutionContext([]));
 
 			self::assertSame(['CREATE UNIQUE INDEX `idx_a` ON `Posts` (`a`)'], $capturedSql);
 		}
@@ -113,7 +114,7 @@
 			$connection = $this->mockConnection($capturedSql);
 
 			(new AlterTableExecutor($connection, new FakePlatformCapabilities('mysql')))
-				->execute($this->parse('alter Posts (drop index idx_a)'));
+				->execute($this->parse('alter Posts (drop index idx_a)'), new ExecutionContext([]));
 
 			self::assertSame(['DROP INDEX `idx_a` ON `Posts`'], $capturedSql);
 		}
@@ -125,7 +126,7 @@
 			$connection->expects(self::never())->method('getIndexes');
 
 			(new AlterTableExecutor($connection, new FakePlatformCapabilities('mysql')))
-				->execute($this->parse('alter Posts (add foreign key (author_id) references Users (id))'));
+				->execute($this->parse('alter Posts (add foreign key (author_id) references Users (id))'), new ExecutionContext([]));
 
 			self::assertSame(
 				['ALTER TABLE `Posts` ADD CONSTRAINT `fk_Posts_author_id` FOREIGN KEY (`author_id`) REFERENCES `Users` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION'],
@@ -139,7 +140,7 @@
 			$connection->method('getPrimaryKeyColumns')->with('Users')->willReturn(['id']);
 
 			(new AlterTableExecutor($connection, new FakePlatformCapabilities('mysql')))
-				->execute($this->parse('alter Posts (add foreign key (author_id) references Users)'));
+				->execute($this->parse('alter Posts (add foreign key (author_id) references Users)'), new ExecutionContext([]));
 
 			self::assertSame(
 				['ALTER TABLE `Posts` ADD CONSTRAINT `fk_Posts_author_id` FOREIGN KEY (`author_id`) REFERENCES `Users` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION'],
@@ -156,7 +157,7 @@
 			$this->expectExceptionMessage("the table has no primary key");
 
 			(new AlterTableExecutor($connection, new FakePlatformCapabilities('mysql')))
-				->execute($this->parse('alter Posts (add foreign key (author_id) references Users)'));
+				->execute($this->parse('alter Posts (add foreign key (author_id) references Users)'), new ExecutionContext([]));
 		}
 
 		public function testAddForeignKeyWithNoColumnListRejectsATargetWithACompositePrimaryKey(): void {
@@ -168,7 +169,7 @@
 			$this->expectExceptionMessage("the table has a composite primary key");
 
 			(new AlterTableExecutor($connection, new FakePlatformCapabilities('mysql')))
-				->execute($this->parse('alter Posts (add foreign key (author_id) references Users)'));
+				->execute($this->parse('alter Posts (add foreign key (author_id) references Users)'), new ExecutionContext([]));
 		}
 
 		/**
@@ -188,7 +189,7 @@
 			$this->expectExceptionMessage('SQLite has no ALTER TABLE support for adding or dropping foreign keys');
 
 			(new AlterTableExecutor($connection, new FakePlatformCapabilities('sqlite')))
-				->execute($this->parse('alter Posts (add foreign key (author_id) references Users)'));
+				->execute($this->parse('alter Posts (add foreign key (author_id) references Users)'), new ExecutionContext([]));
 		}
 
 		public function testColumnAndPrimaryKeyOperationsRunBeforeIndexOperationsRegardlessOfDeclarationOrder(): void {
@@ -203,7 +204,7 @@
 					add index idx_view_count (view_count),
 					add view_count = integer
 				)
-			'));
+			'), new ExecutionContext([]));
 
 			self::assertSame(
 				[
@@ -231,7 +232,7 @@
 			try {
 				(new AlterTableExecutor($connection, new FakePlatformCapabilities('mysql')))->execute($this->parse('
 					alter Posts (add a = integer, add b = integer)
-				'));
+				'), new ExecutionContext([]));
 			} finally {
 				self::assertSame(1, $callCount);
 			}
@@ -246,7 +247,7 @@
 			$this->expectExceptionMessage('unknown column');
 
 			(new AlterTableExecutor($connection, new FakePlatformCapabilities('mysql')))
-				->execute($this->parse('alter Posts (drop legacy_flag)'));
+				->execute($this->parse('alter Posts (drop legacy_flag)'), new ExecutionContext([]));
 		}
 
 		public function testDoesNotWrapInATransactionOnMysqlSinceDdlAutoCommitsThere(): void {
@@ -257,7 +258,7 @@
 			$connection->expects(self::never())->method('rollbackTrans');
 
 			(new AlterTableExecutor($connection, new FakePlatformCapabilities('mysql')))
-				->execute($this->parse('alter Posts (add view_count = integer)'));
+				->execute($this->parse('alter Posts (add view_count = integer)'), new ExecutionContext([]));
 		}
 
 		public function testWrapsTheStatementSequenceInATransactionOnAPlatformThatSupportsTransactionalDdl(): void {
@@ -268,7 +269,7 @@
 			$connection->expects(self::never())->method('rollbackTrans');
 
 			(new AlterTableExecutor($connection, new FakePlatformCapabilities('pgsql')))
-				->execute($this->parse('alter Posts (add view_count = integer, add index idx_view_count (view_count))'));
+				->execute($this->parse('alter Posts (add view_count = integer, add index idx_view_count (view_count))'), new ExecutionContext([]));
 
 			self::assertCount(2, $capturedSql);
 		}
@@ -284,6 +285,6 @@
 			$this->expectException(QuelException::class);
 
 			(new AlterTableExecutor($connection, new FakePlatformCapabilities('pgsql')))
-				->execute($this->parse('alter Posts (drop legacy_flag)'));
+				->execute($this->parse('alter Posts (drop legacy_flag)'), new ExecutionContext([]));
 		}
 	}
