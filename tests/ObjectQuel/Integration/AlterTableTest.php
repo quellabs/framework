@@ -44,7 +44,7 @@
 			return 'alt_test_' . getmypid() . '_' . (++self::$tableCounter);
 		}
 
-		private function createTargetTable(string $tableName, string $columns = 'id = integer identity, message = string(100) not null, primary key (id)'): void {
+		private function createTargetTable(string $tableName, string $columns = 'id = integer identity, message = string(100), primary key (id)'): void {
 			$this->createdTables[] = $tableName;
 
 			self::em()->executeQuery("create {$tableName} ({$columns})");
@@ -54,7 +54,7 @@
 			$tableName = $this->nextTableName();
 			$this->createTargetTable($tableName);
 
-			$result = self::em()->executeQuery("alter {$tableName} (add view_count = integer not null)");
+			$result = self::em()->executeQuery("alter {$tableName} (add view_count = integer)");
 
 			$this->assertNull($result);
 
@@ -92,7 +92,7 @@
 			$tableName = $this->nextTableName();
 			$this->createTargetTable($tableName, 'id = integer identity, price = integer, primary key (id)');
 
-			$result = self::em()->executeQuery("alter {$tableName} (retype price = decimal(10,2) not null)");
+			$result = self::em()->executeQuery("alter {$tableName} (retype price = decimal(10,2))");
 
 			$this->assertNull($result);
 
@@ -109,7 +109,7 @@
 
 			$result = self::em()->executeQuery("
 				alter {$tableName} (
-					add view_count = integer not null,
+					add view_count = integer,
 					drop legacy_flag,
 					rename old_name to new_name
 				)
@@ -156,7 +156,7 @@
 
 		public function testAddsAnIndex(): void {
 			$tableName = $this->nextTableName();
-			$this->createTargetTable($tableName, 'id = integer identity, tenant_id = integer not null, primary key (id)');
+			$this->createTargetTable($tableName, 'id = integer identity, tenant_id = integer, primary key (id)');
 
 			$result = self::em()->executeQuery("alter {$tableName} (add index idx_tenant (tenant_id))");
 
@@ -169,7 +169,7 @@
 
 		public function testDropsAnIndex(): void {
 			$tableName = $this->nextTableName();
-			$this->createTargetTable($tableName, 'id = integer identity, tenant_id = integer not null, primary key (id)');
+			$this->createTargetTable($tableName, 'id = integer identity, tenant_id = integer, primary key (id)');
 			self::em()->executeQuery("alter {$tableName} (add index idx_tenant (tenant_id))");
 
 			$result = self::em()->executeQuery("alter {$tableName} (drop index idx_tenant)");
@@ -185,7 +185,7 @@
 
 			$result = self::em()->executeQuery("
 				alter {$tableName} (
-					add view_count = integer not null,
+					add view_count = integer,
 					add index idx_view_count (view_count)
 				)
 			");

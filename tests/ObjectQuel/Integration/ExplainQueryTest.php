@@ -77,7 +77,7 @@
 			$tableName = $this->nextName('explain_ci');
 			$indexName = "{$tableName}_email_idx";
 			$this->createdTables[] = $tableName;
-			self::em()->executeQuery("create {$tableName} (id = integer identity, email = string(100) not null, primary key (id))");
+			self::em()->executeQuery("create {$tableName} (id = integer identity, email = string(100), primary key (id))");
 
 			$this->assertExplainRejectsAsNotPlannable("index on {$tableName} is {$indexName} (email)");
 			$this->assertArrayNotHasKey($indexName, self::em()->getConnection()->getIndexes($tableName));
@@ -87,7 +87,7 @@
 			$tableName = $this->nextName('explain_di');
 			$indexName = "{$tableName}_email_idx";
 			$this->createdTables[] = $tableName;
-			self::em()->executeQuery("create {$tableName} (id = integer identity, email = string(100) not null, primary key (id))");
+			self::em()->executeQuery("create {$tableName} (id = integer identity, email = string(100), primary key (id))");
 			self::em()->executeQuery("index on {$tableName} is {$indexName} (email)");
 
 			$this->assertExplainRejectsAsNotPlannable("destroy {$indexName} on {$tableName}");

@@ -31,7 +31,7 @@
 		}
 
 		public function testAddColumnAcrossDialects(): void {
-			$ast = $this->parse('alter Posts (add view_count = integer not null)');
+			$ast = $this->parse('alter Posts (add view_count = integer)');
 
 			self::assertSame(['ALTER TABLE `Posts` ADD COLUMN `view_count` INT NOT NULL'], $this->compile($ast, 'mysql'));
 			self::assertSame(['ALTER TABLE "Posts" ADD COLUMN "view_count" INTEGER NOT NULL'], $this->compile($ast, 'pgsql'));
@@ -65,7 +65,7 @@
 		}
 
 		public function testRetypeColumnOnMysql(): void {
-			$ast = $this->parse('alter Posts (retype price = decimal(10,2) not null)');
+			$ast = $this->parse('alter Posts (retype price = decimal(10,2))');
 
 			self::assertSame(
 				['ALTER TABLE `Posts` MODIFY COLUMN `price` DECIMAL(10,2) NOT NULL'],
@@ -74,7 +74,7 @@
 		}
 
 		public function testRetypeColumnOnPostgres(): void {
-			$ast = $this->parse('alter Posts (retype price = decimal(10,2) not null)');
+			$ast = $this->parse('alter Posts (retype price = decimal(10,2))');
 
 			self::assertSame(
 				[
@@ -87,14 +87,14 @@
 		}
 
 		public function testRetypeColumnToNullableOnPostgresDropsNotNull(): void {
-			$ast = $this->parse('alter Posts (retype price = decimal(10,2))');
+			$ast = $this->parse('alter Posts (retype price = decimal(10,2) nullable)');
 
 			$statements = $this->compile($ast, 'pgsql');
 			self::assertSame('ALTER TABLE "Posts" ALTER COLUMN "price" DROP NOT NULL', $statements[1]);
 		}
 
 		public function testRetypeColumnOnSqlServer(): void {
-			$ast = $this->parse('alter Posts (retype price = decimal(10,2) not null)');
+			$ast = $this->parse('alter Posts (retype price = decimal(10,2))');
 
 			self::assertSame(
 				['ALTER TABLE [Posts] ALTER COLUMN [price] DECIMAL(10,2) NOT NULL'],
@@ -170,7 +170,7 @@
 		}
 
 		public function testMultipleColumnSubOperationsCompileInDeclarationOrder(): void {
-			$ast = $this->parse('alter Posts (add a = integer, drop b, rename c to d, retype e = integer)');
+			$ast = $this->parse('alter Posts (add a = integer nullable, drop b, rename c to d, retype e = integer nullable)');
 
 			self::assertSame(
 				[
@@ -296,7 +296,7 @@
 		 * statement running before that column exists.
 		 */
 		public function testAddForeignKeyCompilesAfterAddColumnRegardlessOfDeclarationOrder(): void {
-			$ast = $this->parse('alter Posts (add foreign key (author_id) references Users (id), add author_id = integer not null)');
+			$ast = $this->parse('alter Posts (add foreign key (author_id) references Users (id), add author_id = integer)');
 
 			self::assertSame(
 				[

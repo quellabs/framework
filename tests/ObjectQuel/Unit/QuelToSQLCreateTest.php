@@ -33,45 +33,45 @@
 		public function testPermanentTableAcrossDialects(): void {
 			$ast = $this->parse('create Foo (id = integer)');
 
-			self::assertSame('CREATE TABLE `Foo` (`id` INT)', $this->compile($ast, 'mysql'));
-			self::assertSame('CREATE TABLE "Foo" ("id" INTEGER)', $this->compile($ast, 'pgsql'));
-			self::assertSame('CREATE TABLE `Foo` (`id` INTEGER)', $this->compile($ast, 'sqlite'));
-			self::assertSame('CREATE TABLE [Foo] ([id] INT)', $this->compile($ast, 'sqlsrv'));
+			self::assertSame('CREATE TABLE `Foo` (`id` INT NOT NULL)', $this->compile($ast, 'mysql'));
+			self::assertSame('CREATE TABLE "Foo" ("id" INTEGER NOT NULL)', $this->compile($ast, 'pgsql'));
+			self::assertSame('CREATE TABLE `Foo` (`id` INTEGER NOT NULL)', $this->compile($ast, 'sqlite'));
+			self::assertSame('CREATE TABLE [Foo] ([id] INT NOT NULL)', $this->compile($ast, 'sqlsrv'));
 		}
 
 		public function testTemporaryTableAcrossDialects(): void {
 			$ast = $this->parse('create temporary Foo (id = integer)');
 
-			self::assertSame('CREATE TEMPORARY TABLE `Foo` (`id` INT)', $this->compile($ast, 'mysql'));
-			self::assertSame('CREATE TEMPORARY TABLE "Foo" ("id" INTEGER)', $this->compile($ast, 'pgsql'));
-			self::assertSame('CREATE TEMPORARY TABLE `Foo` (`id` INTEGER)', $this->compile($ast, 'sqlite'));
+			self::assertSame('CREATE TEMPORARY TABLE `Foo` (`id` INT NOT NULL)', $this->compile($ast, 'mysql'));
+			self::assertSame('CREATE TEMPORARY TABLE "Foo" ("id" INTEGER NOT NULL)', $this->compile($ast, 'pgsql'));
+			self::assertSame('CREATE TEMPORARY TABLE `Foo` (`id` INTEGER NOT NULL)', $this->compile($ast, 'sqlite'));
 
 			// SQL Server has no CREATE TEMPORARY TABLE keyword — temp-ness
 			// comes from the '#' prefix in the physical name instead.
-			self::assertSame('CREATE TABLE [#Foo] ([id] INT)', $this->compile($ast, 'sqlsrv'));
+			self::assertSame('CREATE TABLE [#Foo] ([id] INT NOT NULL)', $this->compile($ast, 'sqlsrv'));
 		}
 
 		public function testIfNotExistsIsInlineOnEveryDialectExceptSqlServer(): void {
 			$ast = $this->parse('create Foo (id = integer) if not exists');
 
-			self::assertSame('CREATE TABLE IF NOT EXISTS `Foo` (`id` INT)', $this->compile($ast, 'mysql'));
-			self::assertSame('CREATE TABLE IF NOT EXISTS "Foo" ("id" INTEGER)', $this->compile($ast, 'pgsql'));
-			self::assertSame('CREATE TABLE IF NOT EXISTS `Foo` (`id` INTEGER)', $this->compile($ast, 'sqlite'));
+			self::assertSame('CREATE TABLE IF NOT EXISTS `Foo` (`id` INT NOT NULL)', $this->compile($ast, 'mysql'));
+			self::assertSame('CREATE TABLE IF NOT EXISTS "Foo" ("id" INTEGER NOT NULL)', $this->compile($ast, 'pgsql'));
+			self::assertSame('CREATE TABLE IF NOT EXISTS `Foo` (`id` INTEGER NOT NULL)', $this->compile($ast, 'sqlite'));
 		}
 
 		public function testIfNotExistsWithTemporaryIsInlineOnEveryDialectExceptSqlServer(): void {
 			$ast = $this->parse('create temporary Foo (id = integer) if not exists');
 
-			self::assertSame('CREATE TEMPORARY TABLE IF NOT EXISTS `Foo` (`id` INT)', $this->compile($ast, 'mysql'));
-			self::assertSame('CREATE TEMPORARY TABLE IF NOT EXISTS "Foo" ("id" INTEGER)', $this->compile($ast, 'pgsql'));
-			self::assertSame('CREATE TEMPORARY TABLE IF NOT EXISTS `Foo` (`id` INTEGER)', $this->compile($ast, 'sqlite'));
+			self::assertSame('CREATE TEMPORARY TABLE IF NOT EXISTS `Foo` (`id` INT NOT NULL)', $this->compile($ast, 'mysql'));
+			self::assertSame('CREATE TEMPORARY TABLE IF NOT EXISTS "Foo" ("id" INTEGER NOT NULL)', $this->compile($ast, 'pgsql'));
+			self::assertSame('CREATE TEMPORARY TABLE IF NOT EXISTS `Foo` (`id` INTEGER NOT NULL)', $this->compile($ast, 'sqlite'));
 		}
 
 		public function testIfNotExistsWrapsInAnExistenceCheckOnSqlServer(): void {
 			$ast = $this->parse('create Foo (id = integer) if not exists');
 
 			self::assertSame(
-				"IF OBJECT_ID(N'Foo', N'U') IS NULL CREATE TABLE [Foo] ([id] INT)",
+				"IF OBJECT_ID(N'Foo', N'U') IS NULL CREATE TABLE [Foo] ([id] INT NOT NULL)",
 				$this->compile($ast, 'sqlsrv')
 			);
 		}
@@ -80,13 +80,13 @@
 			$ast = $this->parse('create temporary Foo (id = integer) if not exists');
 
 			self::assertSame(
-				"IF OBJECT_ID('tempdb..#Foo') IS NULL CREATE TABLE [#Foo] ([id] INT)",
+				"IF OBJECT_ID('tempdb..#Foo') IS NULL CREATE TABLE [#Foo] ([id] INT NOT NULL)",
 				$this->compile($ast, 'sqlsrv')
 			);
 		}
 
 		public function testColumnConstraintsAcrossDialects(): void {
-			$ast = $this->parse('create Foo (id = integer identity, name = string(50) not null, primary key (id))');
+			$ast = $this->parse('create Foo (id = integer identity, name = string(50), primary key (id))');
 
 			self::assertSame(
 				'CREATE TABLE `Foo` (`id` INT NOT NULL AUTO_INCREMENT, `name` VARCHAR(50) NOT NULL, PRIMARY KEY (`id`))',
@@ -116,7 +116,7 @@
 		 * DDLTypeMapper::getMysqlTempTableColumnType()).
 		 */
 		public function testUnsignedIsRenderedOnlyOnMysql(): void {
-			$ast = $this->parse('create Foo (count = unsigned integer not null)');
+			$ast = $this->parse('create Foo (count = unsigned integer)');
 
 			self::assertSame('CREATE TABLE `Foo` (`count` INT UNSIGNED NOT NULL)', $this->compile($ast, 'mysql'));
 			self::assertSame('CREATE TABLE "Foo" ("count" INTEGER NOT NULL)', $this->compile($ast, 'pgsql'));
@@ -129,7 +129,7 @@
 		 * C's `unsigned` being shorthand for `unsigned int`.
 		 */
 		public function testBareUnsignedDefaultsToInteger(): void {
-			$ast = $this->parse('create Foo (count = unsigned not null)');
+			$ast = $this->parse('create Foo (count = unsigned)');
 
 			self::assertSame('CREATE TABLE `Foo` (`count` INT UNSIGNED NOT NULL)', $this->compile($ast, 'mysql'));
 		}
@@ -185,7 +185,7 @@
 		 * "Dialect reality").
 		 */
 		public function testEmbeddedForeignKeyWithDefaultActionsAcrossDialects(): void {
-			$ast = $this->parse('create Posts (id = integer identity, author_id = integer not null, primary key (id), foreign key (author_id) references Users (id))');
+			$ast = $this->parse('create Posts (id = integer identity, author_id = integer, primary key (id), foreign key (author_id) references Users (id))');
 
 			self::assertSame(
 				'CREATE TABLE `Posts` (`id` INT NOT NULL AUTO_INCREMENT, `author_id` INT NOT NULL, PRIMARY KEY (`id`), CONSTRAINT `fk_Posts_author_id` FOREIGN KEY (`author_id`) REFERENCES `Users` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION)',
@@ -209,25 +209,25 @@
 		}
 
 		public function testEmbeddedForeignKeyWithExplicitActions(): void {
-			$ast = $this->parse('create Posts (id = integer, author_id = integer not null, foreign key (author_id) references Users (id) on delete cascade on update restrict)');
+			$ast = $this->parse('create Posts (id = integer, author_id = integer, foreign key (author_id) references Users (id) on delete cascade on update restrict)');
 
 			self::assertSame(
-				'CREATE TABLE `Posts` (`id` INT, `author_id` INT NOT NULL, CONSTRAINT `fk_Posts_author_id` FOREIGN KEY (`author_id`) REFERENCES `Users` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT)',
+				'CREATE TABLE `Posts` (`id` INT NOT NULL, `author_id` INT NOT NULL, CONSTRAINT `fk_Posts_author_id` FOREIGN KEY (`author_id`) REFERENCES `Users` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT)',
 				$this->compile($ast, 'mysql')
 			);
 		}
 
 		public function testEmbeddedForeignKeyActionOrderDoesNotMatter(): void {
-			$ast = $this->parse('create Posts (id = integer, author_id = integer not null, foreign key (author_id) references Users (id) on update restrict on delete cascade)');
+			$ast = $this->parse('create Posts (id = integer, author_id = integer, foreign key (author_id) references Users (id) on update restrict on delete cascade)');
 
 			self::assertSame(
-				'CREATE TABLE `Posts` (`id` INT, `author_id` INT NOT NULL, CONSTRAINT `fk_Posts_author_id` FOREIGN KEY (`author_id`) REFERENCES `Users` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT)',
+				'CREATE TABLE `Posts` (`id` INT NOT NULL, `author_id` INT NOT NULL, CONSTRAINT `fk_Posts_author_id` FOREIGN KEY (`author_id`) REFERENCES `Users` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT)',
 				$this->compile($ast, 'mysql')
 			);
 		}
 
 		public function testEmbeddedForeignKeySetNullAndNoActionAreParsedAsTwoWordActions(): void {
-			$ast = $this->parse('create Posts (id = integer, author_id = integer, foreign key (author_id) references Users (id) on delete set null on update no action)');
+			$ast = $this->parse('create Posts (id = integer nullable, author_id = integer nullable, foreign key (author_id) references Users (id) on delete set null on update no action)');
 
 			self::assertSame(
 				'CREATE TABLE `Posts` (`id` INT, `author_id` INT, CONSTRAINT `fk_Posts_author_id` FOREIGN KEY (`author_id`) REFERENCES `Users` (`id`) ON DELETE SET NULL ON UPDATE NO ACTION)',

@@ -49,7 +49,7 @@
 			$connection = $this->mockConnection($capturedSql);
 
 			(new CreateTableExecutor($connection, new FakePlatformCapabilities('mysql')))
-				->execute($this->parse('create Posts (id = integer, index idx_id (id))'));
+				->execute($this->parse('create Posts (id = integer nullable, index idx_id (id))'));
 
 			self::assertSame(
 				['CREATE TABLE `Posts` (`id` INT)', 'CREATE INDEX `idx_id` ON `Posts` (`id`)'],
@@ -63,7 +63,7 @@
 			$connection->method('getPrimaryKeyColumns')->with('Users')->willReturn(['id']);
 
 			(new CreateTableExecutor($connection, new FakePlatformCapabilities('mysql')))
-				->execute($this->parse('create Posts (id = integer, author_id = integer not null, foreign key (author_id) references Users)'));
+				->execute($this->parse('create Posts (id = integer nullable, author_id = integer, foreign key (author_id) references Users)'));
 
 			self::assertSame(
 				['CREATE TABLE `Posts` (`id` INT, `author_id` INT NOT NULL, CONSTRAINT `fk_Posts_author_id` FOREIGN KEY (`author_id`) REFERENCES `Users` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION)'],
@@ -80,7 +80,7 @@
 			$this->expectExceptionMessage("the table has no primary key");
 
 			(new CreateTableExecutor($connection, new FakePlatformCapabilities('mysql')))
-				->execute($this->parse('create Posts (id = integer, author_id = integer not null, foreign key (author_id) references Users)'));
+				->execute($this->parse('create Posts (id = integer, author_id = integer, foreign key (author_id) references Users)'));
 		}
 
 		/**
@@ -156,7 +156,7 @@
 
 			try {
 				(new CreateTableExecutor($connection, new FakePlatformCapabilities('mysql')))
-					->execute($this->parse('create Posts (id = integer, index idx_id (id))'));
+					->execute($this->parse('create Posts (id = integer nullable, index idx_id (id))'));
 			} finally {
 				self::assertSame(
 					['CREATE TABLE `Posts` (`id` INT)', 'CREATE INDEX `idx_id` ON `Posts` (`id`)', 'DROP TABLE IF EXISTS `Posts`'],
@@ -179,7 +179,7 @@
 
 			try {
 				(new CreateTableExecutor($connection, new FakePlatformCapabilities('mysql')))
-					->execute($this->parse('create Posts (id = integer, index idx_id (id)) if not exists'));
+					->execute($this->parse('create Posts (id = integer nullable, index idx_id (id)) if not exists'));
 			} finally {
 				self::assertSame(
 					['CREATE TABLE IF NOT EXISTS `Posts` (`id` INT)', 'CREATE INDEX `idx_id` ON `Posts` (`id`)'],

@@ -51,7 +51,7 @@
 			$connection->expects(self::never())->method('getIndexes');
 
 			(new AlterTableExecutor($connection, new FakePlatformCapabilities('mysql')))
-				->execute($this->parse('alter Posts (add view_count = integer)'));
+				->execute($this->parse('alter Posts (add view_count = integer nullable)'));
 
 			self::assertSame(['ALTER TABLE `Posts` ADD COLUMN `view_count` INT'], $capturedSql);
 		}
@@ -201,7 +201,7 @@
 			(new AlterTableExecutor($connection, new FakePlatformCapabilities('mysql')))->execute($this->parse('
 				alter Posts (
 					add index idx_view_count (view_count),
-					add view_count = integer not null
+					add view_count = integer
 				)
 			'));
 

@@ -56,9 +56,9 @@
 			$result = self::em()->executeQuery("
 				create {$tableName} (
 					id = integer identity,
-					message = string(500) not null,
-					amount = decimal(10,2),
-					created_at = datetime not null,
+					message = string(500),
+					amount = decimal(10,2) nullable,
+					created_at = datetime,
 					primary key (id)
 				)
 			");
@@ -260,7 +260,7 @@
 			$result = self::em()->executeQuery("
 				create {$tableName} (
 					id = integer identity,
-					tenant_id = integer not null,
+					tenant_id = integer,
 					primary key (id),
 					index idx_tenant (tenant_id)
 				)
@@ -280,7 +280,7 @@
 			$result = self::em()->executeQuery("
 				create {$tableName} (
 					id = integer identity,
-					email = string(100) not null,
+					email = string(100),
 					primary key (id),
 					unique index idx_email (email)
 				)
@@ -300,7 +300,7 @@
 			$result = self::em()->executeQuery("
 				create {$tableName} (
 					id = integer identity,
-					bio = string(500) not null,
+					bio = string(500),
 					primary key (id),
 					fulltext index idx_bio (bio)
 				)
@@ -322,7 +322,7 @@
 				create {$tableName} (
 					post_id = integer,
 					tag_id = integer,
-					created_at = datetime not null,
+					created_at = datetime,
 					primary key (post_id, tag_id),
 					index idx_bridge_tag (tag_id),
 					unique index idx_bridge_post_created (post_id, created_at)
@@ -395,7 +395,7 @@
 			$result = self::em()->executeQuery("
 				create {$tableName} (
 					id = integer identity,
-					author_id = integer not null,
+					author_id = integer,
 					primary key (id),
 					foreign key (author_id) references {$referencedTable} (id) on delete cascade
 				)
