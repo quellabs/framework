@@ -2,6 +2,7 @@
 
 	namespace Quellabs\ObjectQuel\Tests\Support;
 
+	use Quellabs\ObjectQuel\Capabilities\FulltextIndexStyle;
 	use Quellabs\ObjectQuel\Capabilities\NullPlatformCapabilities;
 
 	/**
@@ -39,5 +40,17 @@
 				'mysql' => ['hidden' => 'INVISIBLE', 'visible' => 'VISIBLE'],
 				default => ['hidden' => 'IGNORED', 'visible' => 'NOT IGNORED'],
 			};
+		}
+
+		public function getFulltextIndexStyle(): FulltextIndexStyle {
+			return match ($this->databaseType) {
+				'sqlite' => FulltextIndexStyle::Fts5,
+				'pgsql' => FulltextIndexStyle::Tsvector,
+				default => FulltextIndexStyle::Fulltext,
+			};
+		}
+
+		public function supportsQualifiedSetTarget(): bool {
+			return !in_array($this->databaseType, ['pgsql', 'sqlite'], true);
 		}
 	}

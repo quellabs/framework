@@ -67,7 +67,7 @@
 			$params = [];
 
 			$parts = $this->handler()->buildVersionSetClause(
-				['version' => $this->versionColumn('version', ['type' => 'bigint'])],
+				['version' => $this->versionColumn('version', ['type' => 'biginteger'])],
 				$params
 			);
 
