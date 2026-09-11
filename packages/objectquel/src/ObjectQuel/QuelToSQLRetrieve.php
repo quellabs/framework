@@ -11,6 +11,7 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabaseSubquery;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabaseTempTable;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
+	use Quellabs\ObjectQuel\ObjectQuel\Helpers\RangeTableName;
 	use Quellabs\ObjectQuel\Execution\Visitors\BuildSqlFromAst;
 	use Quellabs\ObjectQuel\Execution\Visitors\DetectPrimaryKeyInClause;
 	use Quellabs\ObjectQuel\Execution\Visitors\DetectPrimaryKeyInClauseException;
@@ -18,7 +19,20 @@
 	use Quellabs\ObjectQuel\Capabilities\NullPlatformCapabilities;
 	use Quellabs\ObjectQuel\DatabaseAdapter\SqlIdentifierQuoter;
 
-	class QuelToSQL {
+	/**
+	 * Compiles an AstRetrieve statement to dialect-correct SELECT SQL.
+	 * Sibling to QuelToSQLAppend/QuelToSQLReplace/QuelToSQLDelete/
+	 * QuelToSQLCreate, but the oldest and most involved of them: retrieve's
+	 * JOIN/subquery/aggregate/sort machinery is why QueryNormalizer/
+	 * SemanticAnalyzer/QueryOptimizer exist at all.
+	 *
+	 * Recursive by design: subquery/materialized ranges are compiled by
+	 * calling convertToSQL() again on their nested AstRetrieve and inlining
+	 * the result as a derived table, which is why $parameters is bound once
+	 * in the constructor and reused across the recursive call tree, rather
+	 * than threaded per-call like the write-verb compilers do.
+	 */
+	class QuelToSQLRetrieve {
 
 		private EntityStore $entityStore;
 		private PlatformCapabilitiesInterface $platform;
@@ -33,7 +47,7 @@
 		private array $parameters;
 
 		/**
-		 * QuelToSQL constructor
+		 * QuelToSQLRetrieve constructor
 		 * @param EntityStore $entityStore
 		 * @param array<string, mixed> $parameters
 		 * @param PlatformCapabilitiesInterface $platform Database engine capability descriptor
@@ -80,7 +94,7 @@
 		 * @param AstRetrieve $retrieve
 		 * @return string
 		 */
-		protected function getUnique(AstRetrieve $retrieve): string {
+		private function getUnique(AstRetrieve $retrieve): string {
 			return $retrieve->isUnique() ? "DISTINCT " : "";
 		}
 
@@ -117,7 +131,7 @@
 		 * @param AstInterface $ast
 		 * @return bool
 		 */
-		protected function identifierIsEntity(AstInterface $ast): bool {
+		private function identifierIsEntity(AstInterface $ast): bool {
 			return (
 				$ast instanceof AstIdentifier &&
 				$ast->getRange() instanceof AstRangeDatabase &&
@@ -128,9 +142,11 @@
 		/**
 		 * Retrieves the field names from an AstRetrieve object and converts them to a SQL-compatible string.
 		 * @param AstRetrieve $retrieve The AstRetrieve object to process.
+		 * @param string|null $outerRangeName When emitting as a subquery, the
+		 *        outer range name entity column aliases are rewritten to use.
 		 * @return string The formatted field names as a single string.
 		 */
-		protected function getFieldNames(AstRetrieve $retrieve, ?string $outerRangeName = null): string {
+		private function getFieldNames(AstRetrieve $retrieve, ?string $outerRangeName = null): string {
 			// Initialize an empty array to store the result
 			$result = [];
 			
@@ -181,7 +197,7 @@
 		 * @throws EntityResolutionException
 		 * @throws QuelException
 		 */
-		protected function getFrom(AstRetrieve $retrieve): string {
+		private function getFrom(AstRetrieve $retrieve): string {
 			// Obtain all entities used in the retrieve query.
 			// This includes identifying the tables and their aliases for use in the query.
 			$ranges = $retrieve->getRanges();
@@ -199,26 +215,33 @@
 				) {
 					continue;
 				}
-				
+
 				// Skip ranges with JOIN properties. These go in the JOIN.
 				if ($range->getJoinProperty() !== null) {
 					continue;
 				}
-				
+
 				// Get the name of the range
 				$rangeName = $range->getName();
-				
-				// Subquery ranges are emitted as derived tables inline in the FROM clause.
-				// Regular ranges reference a physical table looked up from the entity store.
-				if ($range instanceof AstRangeDatabaseSubquery) {
+
+				// A temp-table-promoted range is already materialized as a real
+				// table by the time this runs, so reference it by name like any
+				// other table (mirrors getJoin()'s same special-case) — checked
+				// before the generic subquery branch since it's a subtype of it.
+				// Non-promoted subquery/materialized ranges are inlined as
+				// derived tables; regular ranges resolve via the entity store.
+				if ($range instanceof AstRangeDatabaseTempTable) {
+					$tableName = $range->getTableName();
+					$tableNames[] = $this->quoteAsAlias($this->identifierQuoter->quoteIdentifier($tableName), $rangeName);
+				} elseif ($range instanceof AstRangeDatabaseSubquery) {
 					$subSQL = $this->convertToSQL($range->getQuery(), $rangeName);
 					$tableNames[] = $this->quoteAsAlias("({$subSQL})", $rangeName);
 				} else {
-					// Get the metadata for the entity.
-					$metadata = $this->entityStore->getMetadata($range->getEntityName());
+					// Entity ranges resolve their table name via metadata (see RangeTableName).
+					$tableName = RangeTableName::resolve($range, $this->entityStore);
 
 					// Add the table name and alias to the list for the FROM clause.
-					$tableNames[] = $this->quoteAsAlias($this->identifierQuoter->quoteIdentifier($metadata->tableName), $rangeName);
+					$tableNames[] = $this->quoteAsAlias($this->identifierQuoter->quoteIdentifier($tableName), $rangeName);
 				}
 			}
 			
@@ -237,7 +260,7 @@
 		 * @param AstRetrieve $retrieve The retrieve object from which conditions are extracted.
 		 * @return string The WHERE part of the SQL query. Returns an empty string if there are no conditions.
 		 */
-		protected function getWhere(AstRetrieve $retrieve): string {
+		private function getWhere(AstRetrieve $retrieve): string {
 			// Get the conditions of the retrieve operation.
 			$conditions = $retrieve->getConditions();
 			
@@ -339,7 +362,7 @@
 		 * @param AstRetrieve $retrieve
 		 * @return string
 		 */
-		protected function getSortDefault(AstRetrieve $retrieve): string {
+		private function getSortDefault(AstRetrieve $retrieve): string {
 			// Get the conditions of the retrieve operation.
 			$sort = $retrieve->getSort();
 			
@@ -381,7 +404,7 @@
 		 * @throws EntityResolutionException
 		 * @throws QuelException
 		 */
-		protected function getSort(AstRetrieve $retrieve): string {
+		private function getSort(AstRetrieve $retrieve): string {
 			// If the compiler directive @InValuesAreFinal is provided, then we need to sort based on
 			// the order within the IN() list
 			$compilerDirectives = $retrieve->getDirectives();
@@ -399,7 +422,7 @@
 		 * @param AstRetrieve $retrieve
 		 * @return string
 		 */
-		protected function getGroupBy(AstRetrieve $retrieve): string {
+		private function getGroupBy(AstRetrieve $retrieve): string {
 			$groupBy = $retrieve->getGroupBy();
 			
 			if (empty($groupBy)) {
@@ -426,7 +449,7 @@
 		 * @throws EntityResolutionException
 		 * @throws QuelException
 		 */
-		protected function getJoins(AstRetrieve $retrieve): string {
+		private function getJoins(AstRetrieve $retrieve): string {
 			$result = [];
 			
 			// Get the list of entities involved in the retrieve operation.
@@ -434,7 +457,11 @@
 			
 			// Loop through all entities (ranges) and process those with join properties.
 			foreach ($ranges as $range) {
-				// Only use database ranges
+				// Only use database ranges. Bare AstRangeDatabaseSubquery is
+				// excluded because DatabaseRangePromotor has already resolved
+				// every subquery range with a join property to a temp-table or
+				// materialized subtype before compilation. A bare Subquery here
+				// would otherwise be silently omitted from the JOIN clause.
 				if (
 					!$range instanceof AstRangeDatabase &&
 					!$range instanceof AstRangeDatabaseTempTable &&
@@ -442,7 +469,7 @@
 				) {
 					continue;
 				}
-				
+
 				// If the entity has no join property, skip it.
 				if ($range->getJoinProperty() === null) {
 					continue;
@@ -472,13 +499,11 @@
 					$result[] = $this->buildJoinClause($joinType, "({$subSQL})", $rangeName, $joinColumn);
 				} elseif ($range instanceof AstRangeDatabaseTempTable) {
 					$result[] = $this->buildJoinClause($joinType, $this->identifierQuoter->quoteIdentifier($range->getTableName()), $rangeName, $joinColumn);
-				} elseif ($range instanceof AstRangeDatabase) {
-					$metadata = $this->entityStore->getMetadata($range->getEntityName());
-					$result[] = $this->buildJoinClause($joinType, $this->identifierQuoter->quoteIdentifier($metadata->tableName), $rangeName, $joinColumn);
 				} else {
-					throw new \LogicException(
-						"Unresolved AstRangeDatabaseSubquery '{$rangeName}' reached QuelToSQL — planner did not complete substitution"
-					);
+					// $range is AstRangeDatabase here — the earlier guard already
+					// excluded every other AstRange subtype.
+					$tableName = RangeTableName::resolve($range, $this->entityStore);
+					$result[] = $this->buildJoinClause($joinType, $this->identifierQuoter->quoteIdentifier($tableName), $rangeName, $joinColumn);
 				}
 			}
 			
@@ -489,7 +514,6 @@
 		
 		/**
 		 * Checks if a SQL field name is already present in the list of fields.
-		 *
 		 * @param array<string> $existingFields
 		 *   Array of existing field names or field groups.
 		 *   Some entries may be comma-separated strings produced by buildEntityColumns()
@@ -505,7 +529,7 @@
 		 *   strings in $result rather than joining them in buildEntityColumns(), making
 		 *   a plain in_array() check sufficient and eliminating the split entirely.
 		 */
-		protected function isDuplicateField(array $existingFields, string $fieldToCheck): bool {
+		private function isDuplicateField(array $existingFields, string $fieldToCheck): bool {
 			// Normalize the field to check (trim whitespace)
 			$fieldToCheck = trim($fieldToCheck);
 			

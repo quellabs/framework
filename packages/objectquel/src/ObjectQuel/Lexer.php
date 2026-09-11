@@ -14,7 +14,7 @@
 
 	    /** @var array<string, int> */
         protected array $keywords;
-	    
+
 	    /** @var array<string, int> */
         protected array $single_tokens;
 	    
@@ -79,6 +79,12 @@
 		        'window_size' => Token::WindowSize,
 		        'json_source' => Token::JsonSource,
 		        'filter'      => Token::Filter,
+		        'append'      => Token::Append,
+		        // create, temporary, identity, primary, key, destroy, if,
+		        // exists, to, replace, delete, index, on, fulltext, and
+		        // unsigned are deliberately absent — each is a keyword only
+		        // at its own grammar position (see peekKeyword()), unlike
+		        // `where`/`retrieve`/`append` above.
 	        ];
 			
 			$this->single_tokens = [
@@ -338,10 +344,10 @@
                 $this->lookahead = $this->nextToken();
                 return $currentToken;
             }
-            
+
             throw new LexerException("Unexpected token");
         }
-	    
+
 	    /**
 	     * Match the next token
 	     * @param int $token
@@ -352,10 +358,59 @@
 		    if ($this->next_token->getType() === $token) {
 			    return $this->match($token);
 		    }
-		    
+
 		    return null;
 	    }
-		
+
+		/**
+		 * Whether the upcoming token is an identifier whose text matches
+		 * $keyword, case-insensitively.
+		 *
+		 * This is how the parser recognizes a *contextual* keyword — create,
+		 * temporary, identity, primary, key, destroy, if, exists, to, replace,
+		 * delete, index, on, fulltext, unsigned, alter, add, drop, rename,
+		 * retype — none of which get a distinct token type the way
+		 * `where`/`retrieve`/`append` do. Each
+		 * only means something special at its own grammar position;
+		 * everywhere else (a property, column, table, or alias literally
+		 * named `key` or `on`) it must still parse as a plain identifier, so
+		 * the lexer always emits Token::Identifier for these words and the
+		 * parser checks the text only where the literal word actually matters.
+		 * @param string $keyword
+		 * @return bool
+		 */
+		public function peekKeyword(string $keyword): bool {
+			return $this->next_token->getType() === Token::Identifier
+				&& strcasecmp($this->next_token->getStringValue(), $keyword) === 0;
+		}
+
+		/**
+		 * Consumes the upcoming token if it's an identifier matching $keyword
+		 * (see peekKeyword()) and returns it, or throws otherwise.
+		 * @param string $keyword
+		 * @return Token
+		 * @throws LexerException
+		 */
+		public function matchKeyword(string $keyword): Token {
+			if (!$this->peekKeyword($keyword)) {
+				throw new LexerException("Expected '{$keyword}'");
+			}
+
+			return $this->match(Token::Identifier);
+		}
+
+		/**
+		 * Consumes and returns the upcoming token if it's an identifier
+		 * matching $keyword (see peekKeyword()); returns null without
+		 * consuming anything otherwise.
+		 * @param string $keyword
+		 * @return Token|null
+		 * @throws LexerException
+		 */
+		public function optionalMatchKeyword(string $keyword): ?Token {
+			return $this->peekKeyword($keyword) ? $this->matchKeyword($keyword) : null;
+		}
+
 		/**
 		 * Returns the position of the next token in the source text
 		 * @return int

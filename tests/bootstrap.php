@@ -73,5 +73,42 @@
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
 	');
 	
+	// Backs App\Entities\VersionedEntity — the only fixture entity with an
+	// @Orm\Version column, used to exercise append's version-column
+	// auto-initialization and replace's version bump against a real table.
+	$connection->execute(
+		'CREATE TABLE IF NOT EXISTS `versioned_entities` (
+		    `id`      INT UNSIGNED NOT NULL AUTO_INCREMENT,
+		    `label`   VARCHAR(255) NOT NULL,
+		    `version` INT          NOT NULL,
+		    PRIMARY KEY (`id`)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+	');
+
+	// Backs App\Entities\UuidVersionedEntity — a uuid-typed @Orm\Version
+	// column, whose bump on `replace` adds a brand-new bound parameter
+	// (unlike an integer version's `col = col + 1`), exercised by
+	// WriteVerbVersionColumnTest.
+	$connection->execute(
+		'CREATE TABLE IF NOT EXISTS `uuid_versioned_entities` (
+		    `id`    INT UNSIGNED NOT NULL AUTO_INCREMENT,
+		    `label` VARCHAR(255) NOT NULL,
+		    `token` VARCHAR(36)  NOT NULL,
+		    PRIMARY KEY (`id`)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+	');
+
+	// Backs App\Entities\VehicleEntity/CarEntity — single-table-inheritance
+	// coverage for append's discriminator-column injection (literal-values
+	// and insert-from-select forms both), exercised by AppendDiscriminatorTest.
+	$connection->execute(
+		'CREATE TABLE IF NOT EXISTS `sti_vehicles` (
+		    `id`           INT UNSIGNED NOT NULL AUTO_INCREMENT,
+		    `name`         VARCHAR(100) NOT NULL,
+		    `vehicle_type` VARCHAR(50)  NOT NULL,
+		    PRIMARY KEY (`id`)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+	');
+
 	// Test connection
 	$GLOBALS['test_connection'] = $connection;

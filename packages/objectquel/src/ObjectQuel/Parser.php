@@ -2,24 +2,50 @@
     
     namespace Quellabs\ObjectQuel\ObjectQuel;
 
+	use Quellabs\ObjectQuel\EntityStore;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRange;
+	use Quellabs\ObjectQuel\ObjectQuel\Rules\AlterTable;
+	use Quellabs\ObjectQuel\ObjectQuel\Rules\Append;
+	use Quellabs\ObjectQuel\ObjectQuel\Rules\CreateIndex;
+	use Quellabs\ObjectQuel\ObjectQuel\Rules\CreateTable;
+	use Quellabs\ObjectQuel\ObjectQuel\Rules\Delete;
+	use Quellabs\ObjectQuel\ObjectQuel\Rules\Destroy;
+	use Quellabs\ObjectQuel\ObjectQuel\Rules\IndexVisibility;
 	use Quellabs\ObjectQuel\ObjectQuel\Rules\Range;
+	use Quellabs\ObjectQuel\ObjectQuel\Rules\Replace;
 	use Quellabs\ObjectQuel\ObjectQuel\Rules\Retrieve;
-    
+
     class Parser {
-        
+
         protected Lexer $lexer;
         private Range $rangeRule;
 		private Retrieve $retrieveRule;
-		
+		private CreateTable $createTableRule;
+		private CreateIndex $createIndexRule;
+		private AlterTable $alterTableRule;
+		private Destroy $destroyRule;
+		private IndexVisibility $indexVisibilityRule;
+		private Append $appendRule;
+		private Replace $replaceRule;
+		private Delete $deleteRule;
+
 		/**
          * Parser constructor.
          * @param Lexer $lexer
+         * @param EntityStore $entityStore Used by the Range rule to resolve `range of x is Name` against declared entities
          */
-        public function __construct(Lexer $lexer) {
+        public function __construct(Lexer $lexer, EntityStore $entityStore) {
             $this->lexer = $lexer;
-            $this->rangeRule = new Range($lexer);
+            $this->rangeRule = new Range($lexer, $entityStore);
             $this->retrieveRule = new Retrieve($lexer);
+            $this->createTableRule = new CreateTable($lexer);
+            $this->createIndexRule = new CreateIndex($lexer);
+            $this->alterTableRule = new AlterTable($lexer);
+            $this->destroyRule = new Destroy($lexer);
+            $this->indexVisibilityRule = new IndexVisibility($lexer);
+            $this->appendRule = new Append($lexer);
+            $this->replaceRule = new Replace($lexer);
+            $this->deleteRule = new Delete($lexer);
         }
 		
 	    /**
@@ -40,16 +66,42 @@
 		    do {
 		    // Get the next token without changing the position in the lexer.
 			    $token = $this->lexer->peek();
-			    
-			    // Check if the token is a 'Retrieve' type.
-			    switch($token->getType()) {
-				    case Token::Retrieve :
-					    $queries[] = $this->retrieveRule->parse($directives, $ranges);
-					    break;
-				    
-				    default :
-					    $tokenName = Token::toString($token->getType()) ?: 'unknown';
-					    throw new ParserException("Unexpected token '{$tokenName}' on line {$this->lexer->getLineNumber()}");
+
+			    // create/destroy/hide/show/index/replace/delete have no token
+			    // type (see Lexer::peekKeyword()) so — unlike Retrieve/Append —
+			    // they're recognized by text.
+			    if ($token->getType() === Token::Retrieve) {
+				    $queries[] = $this->retrieveRule->parse($directives, $ranges);
+			    } elseif ($token->getType() === Token::Append) {
+				    $queries[] = $this->appendRule->parse($ranges);
+			    } elseif ($this->lexer->peekKeyword('create')) {
+				    // Ranges ahead of `create` (if any) are simply unused —
+				    // still available to any `retrieve` elsewhere in this loop.
+				    $queries[] = $this->createTableRule->parse();
+			    } elseif ($this->lexer->peekKeyword('alter')) {
+				    // Ranges ahead of `alter` (if any) are simply unused,
+				    // same as `create` above.
+				    $queries[] = $this->alterTableRule->parse();
+			    } elseif ($this->lexer->peekKeyword('destroy')) {
+				    $queries[] = $this->destroyRule->parse();
+			    } elseif ($this->lexer->peekKeyword('hide')) {
+				    $queries[] = $this->indexVisibilityRule->parseHide();
+			    } elseif ($this->lexer->peekKeyword('show')) {
+				    $queries[] = $this->indexVisibilityRule->parseShow();
+			    } elseif ($this->lexer->peekKeyword('index')) {
+				    // Ranges ahead of `index` (if any) are simply unused,
+				    // same as `create` above.
+				    $queries[] = $this->createIndexRule->parse();
+			    } elseif ($this->lexer->peekKeyword('replace')) {
+				    $queries[] = $this->replaceRule->parse($ranges);
+			    } elseif ($this->lexer->peekKeyword('delete')) {
+				    // No lookahead needed — QUEL's drop verb is `destroy`, a
+				    // separate keyword; the literal word `delete` always
+				    // means this DML verb.
+				    $queries[] = $this->deleteRule->parse($ranges);
+			    } else {
+				    $tokenName = Token::toString($token->getType()) ?: 'unknown';
+				    throw new ParserException("Unexpected token '{$tokenName}' on line {$this->lexer->getLineNumber()}");
 			    }
 		    } while ($this->lexer->peek()->getType() !== Token::Eof);
 		    

@@ -9,7 +9,7 @@
 	 *
 	 * Wraps a DatabaseAdapter and uses it to determine which SQL features are
 	 * available at runtime. Construct this once (typically alongside your
-	 * EntityManager) and pass it into QuelToSQL.
+	 * EntityManager) and pass it into QuelToSQLRetrieve.
 	 *
 	 * This class only reports facts about the connected engine (booleans,
 	 * tokens, and getDatabaseType() itself) — it never builds SQL text.
@@ -19,7 +19,7 @@
 	 *
 	 * Example:
 	 *   $platform = new PlatformCapabilities($adapter);
-	 *   $quelToSQL = new QuelToSQL($entityStore, $parameters, $platform);
+	 *   $quelToSQL = new QuelToSQLRetrieve($entityStore, $parameters, $platform);
 	 */
 	class PlatformCapabilities implements PlatformCapabilitiesInterface {
 		
@@ -317,6 +317,27 @@
 		 */
 		public function supportsForeignKeyIntrospection(): bool {
 			return in_array($this->adapter->getDatabaseType(), ['mysql', 'mariadb', 'sqlite', 'pgsql', 'sqlsrv']);
+		}
+
+		/**
+		 * @inheritDoc
+		 *
+		 * MySQL/MariaDB are the only supported engines whose DDL auto-commits
+		 * per statement; PostgreSQL, SQLite, and SQL Server all support
+		 * transactional DDL.
+		 */
+		public function supportsTransactionalDDL(): bool {
+			return !in_array($this->adapter->getDatabaseType(), ['mysql', 'mariadb'], true);
+		}
+
+		/**
+		 * @inheritDoc
+		 *
+		 * PostgreSQL and SQLite reject a qualified column on the left side of
+		 * SET; MySQL/MariaDB and SQL Server accept it.
+		 */
+		public function supportsQualifiedSetTarget(): bool {
+			return !in_array($this->adapter->getDatabaseType(), ['pgsql', 'sqlite'], true);
 		}
 
 		/**

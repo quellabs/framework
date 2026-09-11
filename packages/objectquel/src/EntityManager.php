@@ -143,12 +143,8 @@
 		
 		/**
 		 * Persists (inserts) an entity into the database
-		 *
-		 * For entities with composite primary keys where multiple keys use the identity strategy,
-		 * only the first identity key will receive the database-generated value. Other identity
-		 * keys must be set manually before calling flush().
-		 *
 		 * @param object $entity The entity to be inserted into the database
+		 * @throws EntityResolutionException
 		 */
 		public function persist(object $entity): bool {
 			return $this->unitOfWork->persistNew($entity);
@@ -169,16 +165,22 @@
 		 * Detach an entity from the EntityManager.
 		 * This will remove the entity from the identity map and stop tracking its changes.
 		 * @param object $entity The entity to detach.
+		 * @throws EntityResolutionException
 		 */
 		public function detach(object $entity): void {
 			$this->unitOfWork->detach($entity);
 		}
 		
 		/**
-		 * Execute a decomposed query plan
+		 * Execute an ObjectQuel statement — `retrieve`, DDL, or a write verb
+		 * (`append`/`replace`/`delete`) alike; all go through this one entry
+		 * point. A write verb bypasses the identity map and change tracking
+		 * entirely, so its QuelResult carries no fetchable rows, just how many
+		 * rows were affected and, when applicable, a generated primary key
+		 * (see QuelResult::fromWriteStatement() and objectquel-append-plan.md).
 		 * @param string $query The query to execute
 		 * @param array<string, mixed> $parameters Initial parameters for the plan
-		 * @return QuelResult|null The results of the execution plan
+		 * @return QuelResult|null Null for statements with no rows to return (e.g. `create`)
 		 * @throws QuelException
 		 */
 		public function executeQuery(string $query, array $parameters = []): ?QuelResult {
@@ -196,7 +198,7 @@
 				$query,
 				$this->queryExecutor->getLastExecutedSql(),
 				$end - $start,
-				$result->recordCount(),
+				$result?->recordCount() ?? 0,
 			);
 			
 			// In development mode, emit a debug signal with the full query plan
@@ -207,8 +209,21 @@
 				$memoryUsage = memory_get_usage(true) / 1024;
 				$memoryPeakUsage = memory_get_peak_usage(true) / 1024;
 				
-				// Explain the query
-				$plan = $this->queryExecutor->explainQuery($query, $parameters);
+				// Explain the query. QueryExecutor::explainQuery() only supports
+				// retrieve statements. DDL/write-verb statements have already been
+				// executed above, so explaining them would either require rerunning
+				// the write or fabricating a plan. For those statements, fall back
+				// to an empty plan rather than letting the unsupported-operation
+				// error fail an otherwise successful call.
+				try {
+					$plan = $this->queryExecutor->explainQuery($query, $parameters);
+				} catch (QuelException $e) {
+					if ($e->type !== 'not_plannable') {
+						throw $e;
+					}
+					
+					$plan = new QueryPlan([], []);
+				}
 				
 				// Emit the query plan + additional query info
 				$this->debugQuerySignal?->emit([
@@ -385,7 +400,7 @@
 		public function findBy(string $entityType, array $searchData, ?array $sortBy = null): array {
 			// Prepare a query in case the entity is not found
 			$query = $this->queryBuilder->prepareQuery($entityType, $searchData, $sortBy);
-
+			
 			// Null-valued keys become "is_null(main.{key})" in $query, with
 			// no ":{key}" placeholder, so they must be excluded from binding.
 			$boundParameters = array_filter($searchData, static fn(mixed $value): bool => $value !== null);

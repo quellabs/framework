@@ -4,8 +4,10 @@
 	
 	use App\Entities\PostEntity;
 	use App\Entities\UserEntity;
+	use App\Entities\VersionedEntity;
 	use App\Enums\TestEnum;
-	
+	use Quellabs\ObjectQuel\OrmException;
+
 	/**
 	 * Tests entity persistence — insert, update and delete operations
 	 * flushed through the EntityManager's UnitOfWork.
@@ -15,7 +17,9 @@
 	 * every update. Update tests account for this and do not assert on that field.
 	 */
 	class PersistenceTest extends ObjectQuelTestCase {
-		
+
+		protected array $truncateTables = ['posts', 'users', 'versioned_entities'];
+
 		protected function seedFixtures(): void {
 			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (1, 'alice', 'hash1', 0)");
 			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (2, 'bob', 'hash2', 0)");
@@ -93,17 +97,23 @@
 			$post->setTestEnum(TestEnum::PENDING);
 			$post->setTestJson(['id' => 0, 'test' => '']);
 			$post->user = $user;
-			
+
 			$this->em->persist($post);
 			$this->em->flush();
-			
+
 			$this->assertNotNull($post->getId());
-			
+
 			$found = $this->findPostById($post->getId());
 			$this->assertNotNull($found);
 			$this->assertSame('New Post', $found->getTitle());
 			$this->assertSame('Brand new content', $found->getContent());
 			$this->assertFalse($found->getPublished());
+
+			// Round-trips a \DateTime, enum, and JSON array — catches a
+			// double-denormalization regression.
+			$this->assertSame('2024-06-01 00:00:00', $found->getCreatedAt()->format('Y-m-d H:i:s'));
+			$this->assertSame(TestEnum::PENDING, $found->getTestEnum());
+			$this->assertSame(['id' => 0, 'test' => ''], $found->getTestJSON());
 		}
 		
 		public function testInsertIncreasesEntityCount(): void {
@@ -180,15 +190,56 @@
 			$post = $this->findPostById(2);
 			$this->assertNotNull($post);
 			$this->assertFalse($post->getPublished());
-			
+
 			$post->setPublished(true);
 			$this->em->flush();
-			
+
 			$updated = $this->findPostById(2);
 			$this->assertNotNull($updated);
 			$this->assertTrue($updated->getPublished());
 		}
-		
+
+		public function testUpdatePostDeletedAtRoundTripsDateTime(): void {
+			// deletedAt carries @SoftDelete, so a normal retrieve would filter
+			// the row out once it's set — read the raw column via SQL. Catches
+			// a double-denormalization regression in the SET clause.
+			$post = $this->findPostById(2);
+			$this->assertNotNull($post);
+			$this->assertNull($post->getDeletedAt());
+
+			$post->setDeletedAt(new \DateTime('2024-07-04 12:30:00'));
+			$this->em->flush();
+
+			$row = $this->em->getConnection()
+				->execute('SELECT deleted_at FROM posts WHERE id = :id', ['id' => 2])
+				->fetchAll('assoc')[0];
+
+			$this->assertSame('2024-07-04 12:30:00', $row['deleted_at']);
+		}
+
+		public function testUpdateDetectsOptimisticLockConflict(): void {
+			$entity = new VersionedEntity();
+			$entity->setLabel('original');
+
+			$this->em->persist($entity);
+			$this->em->flush();
+
+			$id = $entity->getId();
+			$this->assertSame(1, $entity->getVersion());
+
+			// Simulates a concurrent write, bypassing the identity map — the
+			// generated WHERE checks version against the loaded value (1),
+			// which the row no longer has.
+			$this->exec('UPDATE versioned_entities SET version = version + 1 WHERE id = :id', ['id' => $id]);
+
+			$entity->setLabel('changed-by-us');
+
+			$this->expectException(OrmException::class);
+			$this->expectExceptionMessageMatches('/Optimistic lock conflict/');
+
+			$this->em->flush();
+		}
+
 		// -------------------------------------------------------------------------
 		// Delete
 		// -------------------------------------------------------------------------

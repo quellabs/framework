@@ -10,7 +10,7 @@
 	 *
 	 * These queries bypass the database and JSON execution paths entirely: the
 	 * planner emits a ConstantStage, and PlanExecutor delegates to
-	 * ConstantQueryExecutor, which evaluates every projection via ConditionEvaluator
+	 * ConstantRetrieveExecutor, which evaluates every projection via ConditionEvaluator
 	 * against an empty row and returns exactly one synthetic result row.
 	 *
 	 * Coverage:

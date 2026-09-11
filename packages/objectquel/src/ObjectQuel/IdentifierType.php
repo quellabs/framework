@@ -37,5 +37,5 @@
 		
 		/** Path expression into a JSON root. */
 		case JsonProperty;
-		
+
 	}

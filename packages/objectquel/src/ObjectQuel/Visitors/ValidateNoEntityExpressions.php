@@ -75,7 +75,7 @@
 			if ($ast->getType() === IdentifierType::JsonRoot && $ast->getNext() === null) {
 				return true;
 			}
-			
+
 			return false;
 		}
 	}

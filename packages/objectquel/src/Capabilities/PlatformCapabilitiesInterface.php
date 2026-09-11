@@ -13,7 +13,7 @@
 	 * on any particular database library.
 	 *
 	 * Implement this interface once per integration point (e.g. a CakePHP adapter)
-	 * and inject it into QuelToSQL. When no implementation is provided, ObjectQuel
+	 * and inject it into QuelToSQLRetrieve. When no implementation is provided, ObjectQuel
 	 * falls back to NullPlatformCapabilities, which assumes the most conservative
 	 * (widest-compatible) behavior.
 	 */
@@ -227,6 +227,40 @@
 		 * @return bool
 		 */
 		public function supportsForeignKeyIntrospection(): bool;
+
+		/**
+		 * Returns true if the database engine treats DDL as transactional —
+		 * a CREATE/ALTER/DROP statement issued inside a BEGIN/COMMIT can be
+		 * rolled back like any other write. MySQL/MariaDB DDL auto-commits
+		 * per statement regardless of an open transaction, so this is false
+		 * there; PostgreSQL, SQLite, and SQL Server all honor DDL rollback,
+		 * so it's true for them.
+		 *
+		 * Exists so callers issuing more than one DDL statement for a single
+		 * ObjectQuel statement (CreateTableExecutor, AlterTableExecutor) can
+		 * wrap the whole sequence in a transaction where that's meaningful,
+		 * rather than leaving a partial result behind on a mid-sequence
+		 * failure (see objectquel-index-clause-design.md, decision 4).
+		 *
+		 * @return bool
+		 */
+		public function supportsTransactionalDDL(): bool;
+
+		/**
+		 * Returns true if the database engine allows a qualified column
+		 * (`alias.col`) on the LEFT side of an UPDATE's SET assignment.
+		 *
+		 * PostgreSQL and SQLite both reject `SET alias.col = ...` as a syntax
+		 * error — the SET target must always be a bare column name on those
+		 * engines. MySQL/MariaDB and SQL Server accept either form.
+		 *
+		 * Shared by QuelToSQLReplace and VersionValueHandler so `replace` SQL
+		 * and @Orm\Version bump SQL agree on when a SET target may be
+		 * qualified, rather than each hardcoding its own engine list.
+		 *
+		 * @return bool
+		 */
+		public function supportsQualifiedSetTarget(): bool;
 
 		/**
 		 * Returns the connected database engine's type identifier.

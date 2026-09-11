@@ -4,6 +4,7 @@
 	
 	use Flow\JSONPath\JSONPath;
 	use Flow\JSONPath\JSONPathException;
+	use Quellabs\ObjectQuel\Execution\ExecutionContext;
 	use Quellabs\ObjectQuel\Execution\Helpers\ConditionEvaluator;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeJsonSource;
 	use Quellabs\ObjectQuel\Exception\QuelException;
@@ -12,16 +13,18 @@
 	/**
 	 * Handles JSON file query execution
 	 */
-	class JsonQueryExecutor {
+	class JsonRetrieveExecutor implements StageExecutorInterface {
 		
 		/**
 		 * Execute a JSON query and returns the result
 		 * @param ExecutionStageInterface $stage
-		 * @param array<string, mixed> $initialParams
+		 * @param ExecutionContext $context
 		 * @return list<array<string, mixed>>
 		 * @throws QuelException
 		 */
-		public function execute(ExecutionStageInterface $stage, array $initialParams = []): array {
+		public function execute(ExecutionStageInterface $stage, ExecutionContext $context): array {
+			$initialParams = $context->getParameters();
+
 			// Fetch the range
 			$jsonRange = $stage->getRange();
 			
@@ -110,11 +113,13 @@
 			// to iterate — return empty rather than letting foreach blow up on a string
 			// or associative object.
 			if (!is_array($decoded) || !array_is_list($decoded)) {
-				throw new QuelException(
-					$source->getExpression() !== null
-						? "JSONPath expression '{$source->getExpression()}' did not resolve to an array of rows."
-						: "JSON source '{$source->getPath()}' did not resolve to an array of rows. Use a JSONPath expression (e.g. '$.rows') to select the correct array."
-				);
+				if ($source->getExpression() !== null) {
+					$message = "JSONPath expression '{$source->getExpression()}' did not resolve to an array of rows.";
+				} else {
+					$message = "JSON source '{$source->getPath()}' did not resolve to an array of rows. Use a JSONPath expression (e.g. '$.rows') to select the correct array.";
+				}
+
+				throw new QuelException($message);
 			}
 			
 			// Prefix all items with the range alias

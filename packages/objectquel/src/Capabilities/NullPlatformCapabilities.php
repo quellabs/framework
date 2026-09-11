@@ -7,7 +7,7 @@
 	 *
 	 * All capability flags return false, causing ObjectQuel to emit the most
 	 * broadly-compatible SQL — plain REGEXP instead of REGEXP_LIKE(), etc.
-	 * This is the default injected by QuelToSQL when the caller does not supply
+	 * This is the default injected by QuelToSQLRetrieve when the caller does not supply
 	 * a platform instance.
 	 */
 	class NullPlatformCapabilities implements PlatformCapabilitiesInterface {
@@ -152,6 +152,28 @@
 		 * without knowing whether this engine can even report them.
 		 */
 		public function supportsForeignKeyIntrospection(): bool {
+			return false;
+		}
+
+		/**
+		 * @inheritDoc
+		 *
+		 * Conservative default: false, so callers never wrap a DDL sequence
+		 * in a transaction without knowing whether this engine actually
+		 * honors DDL rollback.
+		 */
+		public function supportsTransactionalDDL(): bool {
+			return false;
+		}
+
+		/**
+		 * @inheritDoc
+		 *
+		 * Conservative default: false, so callers always qualify SET targets
+		 * with a bare column name rather than risk a qualified one on an
+		 * engine that would reject it.
+		 */
+		public function supportsQualifiedSetTarget(): bool {
 			return false;
 		}
 

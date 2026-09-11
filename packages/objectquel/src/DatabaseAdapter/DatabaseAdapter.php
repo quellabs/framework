@@ -3,10 +3,12 @@
 	namespace Quellabs\ObjectQuel\DatabaseAdapter;
 	
 	use Cake\Database\Schema\CollectionInterface;
+	use Cake\Database\Schema\Collection as SchemaCollection;
 	use Cake\Database\StatementInterface;
 	use Cake\Database\Connection;
 	use Phinx\Db\Adapter\AdapterInterface;
 	use Phinx\Db\Adapter\AdapterFactory;
+	use Quellabs\ObjectQuel\ObjectQuel\ForeignKeyConstraintNamer;
 	
 	/**
 	 * Database adapter that ties ObjectQuel and CakePHP Database together
@@ -68,7 +70,10 @@
 		
 		/** @var int Current nesting level of active transactions (0 = no active transaction) */
 		protected int $transaction_depth;
-		
+
+		/** @var bool Set when a nested rollbackTrans() marks the transaction rollback-only — see beginTrans()/commitTrans() */
+		protected bool $transaction_rollback_only;
+
 		/** @var string|null Cached database type identifier (null = not yet determined) */
 		private ?string $databaseTypeCache;
 		
@@ -93,6 +98,7 @@
 			$this->last_error = 0;
 			$this->last_error_message = '';
 			$this->transaction_depth = 0;
+			$this->transaction_rollback_only = false;
 			$this->databaseTypeCache = null;
 			$this->phinxAdapterCache = null;
 			$this->sqlServerCompatibilityLevelCache = null;
@@ -165,11 +171,20 @@
 		}
 		
 		/**
-		 * Returns the schema collection for database introspection
+		 * Returns the schema collection for database introspection.
+		 *
+		 * Deliberately builds a plain, uncached SchemaCollection directly
+		 * rather than calling Connection::getSchemaCollection() — that method
+		 * wraps it in a CachedCollection whenever the connection's
+		 * `cacheMetadata` config is truthy, which requires a configured Cache
+		 * pool (the cakephp/cache package). ObjectQuel doesn't depend on
+		 * cakephp/cache, and schema introspection here isn't hot-path enough
+		 * to need cross-request caching, so this sidesteps a hard dependency
+		 * the connection's own config might otherwise silently require.
 		 * @return CollectionInterface Schema collection providing access to table metadata
 		 */
 		public function getSchemaCollection(): CollectionInterface {
-			return $this->connection->getSchemaCollection();
+			return new SchemaCollection($this->connection);
 		}
 		
 		/**
@@ -365,7 +380,7 @@
 		 */
 		public function getPrimaryKeyColumns(string $tableName): array {
 			// Get the schema descriptor for the specified table
-			$schema = $this->connection->getSchemaCollection()->describe($tableName);
+			$schema = $this->getSchemaCollection()->describe($tableName);
 			
 			// Iterate through all constraints defined on the table
 			foreach ($schema->constraints() as $constraint) {
@@ -451,6 +466,105 @@
 			}
 			
 			return $result;
+		}
+
+		/**
+		 * Whether a SQL Server table currently has a fulltext index. T-SQL
+		 * fulltext indexes live in sys.fulltext_indexes, not in the ordinary
+		 * schema-collection index/constraint lists getIndexes() reads from,
+		 * so they're otherwise invisible to it — see
+		 * objectquel-destroy-index-plan.md's "Fulltext index destroy on
+		 * sqlsrv/sqlite" section.
+		 * @param string $tableName
+		 * @return bool
+		 */
+		public function hasSqlServerFulltextIndex(string $tableName): bool {
+			$statement = $this->execute("
+				SELECT 1 AS found
+				FROM sys.fulltext_indexes fi
+				JOIN sys.tables t ON t.object_id = fi.object_id
+				WHERE t.name = :tableName
+			", ['tableName' => $tableName]);
+
+			if ($statement === null) {
+				return false;
+			}
+
+			$row = $statement->fetchAssoc();
+			$statement->closeCursor();
+
+			return (bool)$row;
+		}
+
+		/**
+		 * Reads a table-level extended property — SQL Server's standard,
+		 * inspectable (via sys.extended_properties, same as any DB tool)
+		 * object-annotation mechanism, not a hidden framework-side registry.
+		 * Used by QuelToSQLCreateIndex/QuelToSQLDestroyIndex to correlate a
+		 * QUEL index name against a table's fulltext index, which is itself
+		 * unnamed at the T-SQL level (see hasSqlServerFulltextIndex() and
+		 * objectquel-destroy-index-plan.md). Assumes the default 'dbo'
+		 * schema, matching every other sqlsrv code path in this codebase —
+		 * no schema-qualification exists for QUEL-created objects.
+		 * @param string $tableName
+		 * @param string $propertyName
+		 * @return string|null The property's value, or null if unset
+		 */
+		public function getSqlServerExtendedProperty(string $tableName, string $propertyName): ?string {
+			$statement = $this->execute("
+				SELECT CAST(value AS NVARCHAR(4000)) AS property_value
+				FROM sys.extended_properties
+				WHERE major_id = OBJECT_ID(:tableName)
+				  AND minor_id = 0
+				  AND class = 1
+				  AND name = :propertyName
+			", ['tableName' => $tableName, 'propertyName' => $propertyName]);
+
+			if ($statement === null) {
+				return null;
+			}
+
+			$row = $statement->fetchAssoc();
+			$statement->closeCursor();
+
+			return $row['property_value'] ?? null;
+		}
+
+		/**
+		 * Returns the base table name a SQLite FTS5 external-content
+		 * virtual table named $indexName was built against, or null if no
+		 * such virtual table exists. The FTS5 table is an ordinary
+		 * sqlite_master row (type='table') indistinguishable from any other
+		 * table except by its own `CREATE VIRTUAL TABLE ... USING
+		 * fts5(...)` text — parsed here for the `content=` option
+		 * QuelToSQLCreateIndex::compileSqliteFulltext() always sets to the
+		 * base table name. See objectquel-destroy-index-plan.md's
+		 * "Fulltext index destroy on sqlsrv/sqlite" section.
+		 * @param string $indexName
+		 * @return string|null
+		 */
+		public function getSqliteFts5BaseTable(string $indexName): ?string {
+			$statement = $this->execute(
+				"SELECT sql FROM sqlite_master WHERE type = 'table' AND name = :name",
+				['name' => $indexName]
+			);
+
+			if ($statement === null) {
+				return null;
+			}
+
+			$row = $statement->fetchAssoc();
+			$statement->closeCursor();
+
+			if (!$row || !isset($row['sql']) || !preg_match('/using\s+fts5/i', $row['sql'])) {
+				return null;
+			}
+
+			if (!preg_match("/content\s*=\s*'([^']*)'/i", $row['sql'], $matches)) {
+				return null;
+			}
+
+			return $matches[1];
 		}
 
 		/**
@@ -551,9 +665,10 @@
 		/**
 		 * Begins a new database transaction.
 		 *
-		 * Nesting is depth-counted, not savepoint-based: an inner
-		 * rollbackTrans() does not roll back immediately, it only rolls
-		 * back once the outermost call unwinds.
+		 * Nesting is depth-counted, not savepoint-based: a nested
+		 * rollbackTrans() marks the whole transaction rollback-only rather
+		 * than rolling back immediately, so an outer commitTrans() still
+		 * rolls back instead of silently committing.
 		 *
 		 * @return void
 		 */
@@ -561,28 +676,35 @@
 			if ($this->transaction_depth == 0) {
 				$this->connection->begin();
 			}
-			
+
 			$this->transaction_depth++;
 		}
-		
+
 		/**
 		 * Commits the current transaction.
 		 * See beginTrans() for notes on logical (depth-counted) nesting.
 		 * @return void
 		 * @throws \LogicException If called without a matching beginTrans()
+		 * @throws \LogicException If a nested rollbackTrans() had already marked the transaction rollback-only — rolled back, not committed, before this throws
 		 */
 		public function commitTrans(): void {
 			if ($this->transaction_depth <= 0) {
 				throw new \LogicException('commitTrans() called without an active transaction');
 			}
-			
+
 			$this->transaction_depth--;
-			
+
 			if ($this->transaction_depth == 0) {
+				if ($this->transaction_rollback_only) {
+					$this->transaction_rollback_only = false;
+					$this->connection->rollback();
+					throw new \LogicException('commitTrans() called on a transaction a nested rollbackTrans() had already marked rollback-only — the transaction was rolled back, not committed');
+				}
+
 				$this->connection->commit();
 			}
 		}
-		
+
 		/**
 		 * Rolls back the current transaction.
 		 * See beginTrans() for notes on logical (depth-counted) nesting.
@@ -593,11 +715,14 @@
 			if ($this->transaction_depth <= 0) {
 				throw new \LogicException('rollbackTrans() called without an active transaction');
 			}
-			
+
 			$this->transaction_depth--;
-			
+
 			if ($this->transaction_depth == 0) {
+				$this->transaction_rollback_only = false;
 				$this->connection->rollback();
+			} else {
+				$this->transaction_rollback_only = true;
 			}
 		}
 		
@@ -837,7 +962,7 @@
 				$definition['columns'] = array_values($definition['columns']);
 				$definition['referencedColumns'] = array_values($definition['referencedColumns']);
 				
-				$name = 'fk_' . $tableName . '_' . implode('_', $definition['columns']);
+				$name = ForeignKeyConstraintNamer::nameForColumns($tableName, $definition['columns']);
 				$result[$name] = $definition;
 			}
 			

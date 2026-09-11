@@ -53,7 +53,10 @@
 		 * @param EntityStore $entityStore The entity store containing schema definitions
 		 * @param PlatformCapabilitiesInterface $platform Platform capabilities for engine-specific cast validation
 		 */
-		public function __construct(EntityStore $entityStore, PlatformCapabilitiesInterface $platform = new NullPlatformCapabilities()) {
+		public function __construct(
+			EntityStore $entityStore,
+			PlatformCapabilitiesInterface $platform = new NullPlatformCapabilities()
+		) {
 			$this->entityStore = $entityStore;
 			$this->castTypeMapper = new CastTypeMapper($platform);
 		}
@@ -96,23 +99,27 @@
 			//         This range will act as the FROM clause of the SELECT query.
 			$this->validateAtLeastOneRangeWithoutVia($ast);
 			
-			// Step 5: Validate that each root identifier links to a range that exists
+			// Step 5: Check for ambiguous unqualified properties that the prefilter
+			// could not resolve. Must run before Step 6 so a bare property name
+			// that matches multiple ranges gets this validator's specific
+			// "ambiguous" message instead of Step 6's generic "undefined range
+			// reference" — both see the same Unresolved node otherwise.
+			$this->validateUnambiguousProperties($ast);
+
+			// Step 6: Validate that each root identifier links to a range that exists
 			$this->processWithVisitor($ast, ValidateRangesDeclared::class, $this->entityStore);
-			
-			// Step 6: Validate that via clauses do not form circular dependencies
+
+			// Step 7: Validate that via clauses do not form circular dependencies
 			$this->validateNoCircularViaDependencies($ast);
-			
+
 			// ==============================================================================
 			// Property validation
 			// ==============================================================================
-			
-			// Step 1: Check for ambiguous properties that the prefilter could not resolve
-			$this->validateUnambiguousProperties($ast);
-			
-			// Step 2: Validate property references against schema
+
+			// Step 1: Validate property references against schema
 			$this->processWithVisitor($ast, ValidateEntityPropertyExists::class, $this->entityStore);
-			
-			// Step 2b: Validate that JSON path segments only appear after a JSON-typed column
+
+			// Step 1b: Validate that JSON path segments only appear after a JSON-typed column
 			$this->processWithVisitor($ast, ValidateJsonPropertyChain::class, $this->entityStore);
 			
 			// Step 3: Validate that referenced relationships lead back to the entity
@@ -130,7 +137,7 @@
 			//           retrieve(y) where y in a JSON source produces empty arrays at runtime
 			//           because the engine has no schema to hydrate fields from.
 			$this->validateNoBareJsonSourceInProjection($ast);
-			
+
 			// Step 4c: Validates that WHERE conditions only reference fields that subquery ranges
 			//          actually export. A subquery's projection is its contract.
 			$this->validateSubqueryRangeWhereReferences($ast);
@@ -263,8 +270,15 @@
 		 * still holds a raw AstIdentifier at this point, normalisation could not resolve it,
 		 * meaning the property is a column rather than a relation.
 		 *
+		 * An entity range's 'via' can also be a literal join condition instead of a relation
+		 * name (e.g. `via o.customer_id = c.id` — see Rules\Range::parseEntityRangeTail()).
+		 * That form is never a bare AstIdentifier once parsed (it's already an AstExpression),
+		 * so it passes this check unchanged without needing a separate branch here.
+		 *
 		 * @param AstRetrieve $ast The AST to validate
-		 * @throws SemanticException When a 'via' clause references a column instead of a relation
+		 * @throws SemanticException When a 'via' clause names an undeclared relation — a bare
+		 *         property reference normalisation couldn't resolve. Does not fire for the
+		 *         literal-condition form, which was never a bare identifier to begin with.
 		 */
 		private function validateViaClauseNormalisationPassed(AstRetrieve $ast): void {
 			foreach ($ast->getRanges() as $range) {
@@ -272,10 +286,12 @@
 				if ($range->getJoinProperty() === null) {
 					continue;
 				}
-				
+
 				// A successful normalisation transforms the via AstIdentifier into an AstExpression.
 				// If the join property is still an AstIdentifier, normalisation could not resolve
 				// it as a relation — meaning the property is a plain column, which is not allowed.
+				// (A literal-condition via, e.g. `via o.customer_id = c.id`, was already an
+				// AstExpression at parse time and never reaches this branch.)
 				if ($range->getJoinProperty() instanceof AstIdentifier) {
 					throw new SemanticException("The 'via' property in range '{$range->getName()}' must be a relation, not a column.");
 				}
@@ -473,7 +489,7 @@
 				}
 			}
 		}
-		
+
 		/**
 		 * Validates that the outer projection does not select an entire subquery range.
 		 *
@@ -934,7 +950,7 @@
 					continue;
 				}
 				
-				// Partition into database and non-database ranges
+				// Partition into database and non-database ranges.
 				$databaseRanges = array_filter($ranges, fn($r) => $r instanceof AstRangeDatabase);
 				$nonDatabaseRanges = array_filter($ranges, fn($r) => !$r instanceof AstRangeDatabase);
 				

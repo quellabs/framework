@@ -18,6 +18,8 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstNull;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstNumber;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstParameter;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRange;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabaseTempTable;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRegExp;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstSearch;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstSearchFullText;
@@ -608,7 +610,7 @@
 			if ($identifier->getType() === IdentifierType::SubqueryRoot) {
 				return $this->buildColumnNameForTemporaryTable($identifier, $rangeName);
 			}
-			
+
 			// When the first property in the chain is a JSON column, further segments
 			// are JSON path keys and must be emitted as JSON_UNQUOTE(JSON_EXTRACT(...)).
 			if ($this->chainContainsJsonProperty($identifier)) {
@@ -654,9 +656,9 @@
 			$rangeName = $range->getName();
 			$entityName = $ast->getEntityName();
 			$propertyName = $nextNode->getName();
-			
+
 			if (empty($entityName)) {
-				return "{$rangeName}." . $this->identifierQuoter->quoteIdentifier("{$rangeName}.{$propertyName}");
+				return $this->buildSubqueryFamilyColumnReference($range, $rangeName, $propertyName);
 			}
 			
 			// When the chain contains a JSON property, defer to the dedicated JSON
@@ -750,8 +752,31 @@
 				);
 			}
 			
-			// Column aliases in derived tables are stored as "rangeName.property" (e.g. "x.id"),
-			// so reference them with the range prefix to match the subquery's SELECT aliases.
+			return $this->buildSubqueryFamilyColumnReference($identifier->getRange(), $rangeName, $columnName);
+		}
+
+		/**
+		 * Resolves a subquery-family range's column reference. Shared by
+		 * buildColumnNameForTemporaryTable() and buildSortableColumn().
+		 *
+		 * A temp-table-promoted range is materialized into a real physical
+		 * table whose columns are named from the inner query's own
+		 * (already range-prefix-stripped, e.g. bare "username") aliases,
+		 * since that query is compiled independently, never through
+		 * QuelToSQLRetrieve::getFieldNames()'s $outerRangeName rewrite. A
+		 * plain (non-promoted) subquery/materialized range IS compiled
+		 * through that rewrite (getFrom()/getJoin() inline it) — only there
+		 * are column aliases actually dotted ("rangeName.property").
+		 * @param AstRange|null $range
+		 * @param string $rangeName
+		 * @param string $columnName
+		 * @return string Fully qualified SQL column reference
+		 */
+		private function buildSubqueryFamilyColumnReference(?AstRange $range, string $rangeName, string $columnName): string {
+			if ($range instanceof AstRangeDatabaseTempTable) {
+				return $this->identifierQuoter->quoteIdentifier($rangeName) . '.' . $this->identifierQuoter->quoteIdentifier($columnName);
+			}
+
 			return $this->identifierQuoter->quoteIdentifier($rangeName) . '.' . $this->identifierQuoter->quoteIdentifier("{$rangeName}.{$columnName}");
 		}
 		

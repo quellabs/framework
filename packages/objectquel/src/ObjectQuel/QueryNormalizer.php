@@ -31,7 +31,7 @@
 		 * @var EntityStore
 		 */
 		private EntityStore $entityStore;
-		
+
 		/**
 		 * Initialize the query transformer with an entity store.
 		 * @param EntityStore $entityStore Store containing entity definitions and metadata

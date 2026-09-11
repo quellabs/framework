@@ -4,51 +4,194 @@
 	
 	use Quellabs\ObjectQuel\Annotations\Orm\Column;
 	use Quellabs\ObjectQuel\Annotations\Orm\Version;
+	use Quellabs\ObjectQuel\Capabilities\PlatformCapabilitiesInterface;
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
+	use Quellabs\ObjectQuel\DatabaseAdapter\SqlIdentifierQuoter;
 	use Quellabs\ObjectQuel\EntityStore;
 	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
+	use Quellabs\ObjectQuel\Metadata\EntityMetadataRecord;
+	use Quellabs\ObjectQuel\OrmException;
 	use Quellabs\ObjectQuel\ReflectionManagement\PropertyHandler;
 	use Quellabs\ObjectQuel\UnitOfWork;
-	
+	use Quellabs\Support\Tools;
+
 	class VersionValueHandler {
-		
+
 		/**
 		 * The EntityStore that maintains metadata about entities and their mappings
 		 * Used to retrieve information about entity tables, columns and identifiers
 		 */
 		private EntityStore $entityStore;
-		
+
 		/**
 		 * Reference to the UnitOfWork that manages persistence operations
 		 */
 		private UnitOfWork $unitOfWork;
-		
+
 		/**
 		 * Utility for handling entity property access and manipulation
 		 * Provides methods to get and set entity properties regardless of their visibility
 		 */
 		private PropertyHandler $propertyHandler;
-		
+
 		/**
 		 * Database connection adapter used for executing SQL queries
 		 * Abstracts the underlying database system and provides a unified interface
 		 */
 		private DatabaseAdapter $connection;
-		
+
+		/**
+		 * Used to generate engine-appropriate SQL fragments (e.g. the correct
+		 * "current datetime" expression) instead of hardcoding MySQL syntax.
+		 * @var PlatformCapabilitiesInterface
+		 */
+		private PlatformCapabilitiesInterface $platformCapabilities;
+
+		/**
+		 * Quotes identifiers for buildVersionSetClause(). Deliberately
+		 * SqlIdentifierQuoter rather than DatabaseAdapter::escapeIdentifier() —
+		 * this method is also called from the QUEL `replace` compile path
+		 * (QuelToSQLReplace), which has no live connection to escape through.
+		 * For the plain, real column names version columns always are, the
+		 * two quoting mechanisms produce identical output on every engine.
+		 * @var SqlIdentifierQuoter
+		 */
+		private SqlIdentifierQuoter $identifierQuoter;
+
 		/**
 		 * Constructor
 		 * @param DatabaseAdapter $connection
 		 * @param EntityStore $entityStore
 		 * @param UnitOfWork $unitOfWork
 		 * @param PropertyHandler $propertyHandler
+		 * @param PlatformCapabilitiesInterface $platformCapabilities
 		 */
-		public function __construct(DatabaseAdapter $connection, EntityStore $entityStore, UnitOfWork $unitOfWork, PropertyHandler $propertyHandler) {
+		public function __construct(
+			DatabaseAdapter $connection,
+			EntityStore $entityStore,
+			UnitOfWork $unitOfWork,
+			PropertyHandler $propertyHandler,
+			PlatformCapabilitiesInterface $platformCapabilities
+		) {
 			$this->connection = $connection;
 			$this->entityStore = $entityStore;
 			$this->unitOfWork = $unitOfWork;
 			$this->propertyHandler = $propertyHandler;
+			$this->platformCapabilities = $platformCapabilities;
+			$this->identifierQuoter = new SqlIdentifierQuoter($platformCapabilities);
 		}
 		
+		/**
+		 * Builds SET fragments that bump @Orm\Version columns by type
+		 * (integer, datetime, uuid). Shared by UpdatePersister and
+		 * QuelToSQLReplace so both paths bump versions identically.
+		 *
+		 * $qualifyWithAlias controls column qualification. UpdatePersister
+		 * passes null because its UPDATE has no alias. A standalone replace
+		 * qualifies SET targets when an alias exists, except on PostgreSQL/
+		 * SQLite, which reject qualified columns on the left side of SET.
+		 * Integer/bigint self-references on the right are always qualified
+		 * when an alias is given.
+		 * @param array<string, array{name: string, column: Column, version: Version}> $versionColumns
+		 * @param array<string, mixed> $params Reference to parameters array to add version parameters to
+		 * @param string|null $qualifyWithAlias The UPDATE's own range alias or null when the target isn't aliased.
+		 * @return array<int, string> Array of SQL SET clause parts
+		 * @throws OrmException
+		 * @throws \Exception
+		 */
+		public function buildVersionSetClause(array $versionColumns, array &$params, ?string $qualifyWithAlias = null): array {
+			$setClauseParts = [];
+
+			$targetAllowsQualification = $qualifyWithAlias !== null
+				&& $this->platformCapabilities->supportsQualifiedSetTarget();
+
+			// Process each version column according to its type
+			foreach ($versionColumns as $property => $versionColumn) {
+				$bareColumnName = $this->identifierQuoter->quoteIdentifier($versionColumn['name']);
+				
+				if ($targetAllowsQualification) {
+					$targetColumnName = $this->identifierQuoter->quoteIdentifier($qualifyWithAlias) . '.' . $bareColumnName;
+				} else {
+					$targetColumnName = $bareColumnName;
+				}
+
+				switch ($versionColumn['column']->getType()) {
+					case 'integer':
+					case 'biginteger':
+						// Integer/bigint versions increment by 1. The RHS
+						// self-reference is always safe to qualify (see this
+						// method's docblock), independent of whether the LHS
+						// target could be.
+						if ($qualifyWithAlias !== null) {
+							$referenceColumnName = $this->identifierQuoter->quoteIdentifier($qualifyWithAlias) . '.' . $bareColumnName;
+						} else {
+							$referenceColumnName = $bareColumnName;
+						}
+
+						$setClauseParts[] = "{$targetColumnName}={$referenceColumnName} + 1";
+						break;
+
+					case 'datetime':
+						// Use the engine-appropriate "current datetime" expression rather
+						// than hardcoding MySQL's NOW() — SQLite and SQL Server use
+						// different syntax for this.
+						$setClauseParts[] = "{$targetColumnName}=" . $this->platformCapabilities->getCurrentDatetimeFunction();
+						break;
+
+					case 'uuid':
+						// UUID versions get a new generated GUID
+						$paramName = "version_{$versionColumn['name']}";
+						$setClauseParts[] = "{$targetColumnName}=:{$paramName}";
+						$params[$paramName] = Tools::createUUIDv7();
+						break;
+
+					default:
+						throw new OrmException("Invalid column type '{$versionColumn['column']->getType()}' for Version annotation on property '{$property}'");
+				}
+			}
+
+			return $setClauseParts;
+		}
+		
+		/**
+		 * Builds INSERT-time initial values for @Orm\Version columns
+		 * (integer, datetime, uuid). Mirrors buildVersionSetClause()'s
+		 * per-type bump logic for fresh rows. Shared by InsertPersister
+		 * and QuelToSQLAppend so both paths initialize versions identically.
+		 * @param array<string, array{name: string, column: Column, version: Version}> $versionColumns
+		 * @return array<string, int|string> property => raw SQL value expression
+		 *         (literal, quoted literal, or SQL function; never a parameter)
+		 * @throws \RuntimeException|\Exception
+		 */
+		public function buildVersionInsertValues(array $versionColumns): array {
+			$values = [];
+			
+			/** @noinspection PhpLoopCanBeConvertedToArrayMapInspection */
+			foreach ($versionColumns as $property => $versionColumn) {
+				$values[$property] = $this->getInitialVersionValue($versionColumn['column']->getType());
+			}
+
+			return $values;
+		}
+		
+		/**
+		 * Returns the initial value for a single @Orm\Version column on
+		 * INSERT. Moved here from InsertPersister's former private method of
+		 * the same name so persist() and `append` compute identical initial
+		 * values instead of each maintaining its own copy.
+		 * @param string $columnType
+		 * @return int|string
+		 * @throws \RuntimeException|\Exception
+		 */
+		public function getInitialVersionValue(string $columnType): int|string {
+			return match ($columnType) {
+				'int', 'integer', 'biginteger' => 1,
+				'datetime', 'timestamp' => $this->platformCapabilities->getCurrentDatetimeFunction(),
+				'uuid', 'guid' => "'" . Tools::createUUIDv7() . "'",
+				default => throw new \RuntimeException("Invalid column type {$columnType} for Version annotation"),
+			};
+		}
+
 		/**
 		 * Fetches version values back from the database after update
 		 * Required to ensure in-memory entity matches database state exactly
@@ -101,6 +244,33 @@
 		}
 		
 		/**
+		 * Re-fetches and applies any database-generated version values (e.g.
+		 * created_at/updated_at) onto the live entity after a successful
+		 * insert or update. Shared by InsertPersister and UpdatePersister so
+		 * both read back version columns identically.
+		 * @param object $entity
+		 * @param EntityMetadataRecord $metadata
+		 * @return void
+		 * @throws EntityResolutionException
+		 */
+		public function readBackVersionValues(object $entity, EntityMetadataRecord $metadata): void {
+			$primaryKeyValues = [];
+
+			foreach ($metadata->identifierKeys as $index => $primaryKey) {
+				$primaryKeyValues[$metadata->identifierColumns[$index]] = $this->propertyHandler->get($entity, $primaryKey);
+			}
+
+			$fetchedDatetimeValues = $this->fetchUpdatedVersionValues(
+				$metadata->tableName,
+				$metadata->versionColumns,
+				$metadata->identifierColumns,
+				$primaryKeyValues,
+			);
+
+			$this->updateEntityVersionValues($entity, $fetchedDatetimeValues);
+		}
+
+		/**
 		 * Updates the entity with new version values from the database
 		 * @param object $entity The entity to update
 		 * @param array<string, mixed> $fetchedValues Fetched version values as property_name => value pairs
@@ -113,16 +283,16 @@
 				return;
 			}
 			
-			// Fetch Column annotations so the serializer can normalize each raw database value
-			// to the correct PHP type (e.g. datetime string → DateTimeImmutable)
+			// Fetch metadata
 			$metadata = $this->entityStore->getMetadata($entity);
-			$annotations = $metadata->getAnnotationsOfType(Column::class);
-			
+
 			foreach ($fetchedValues as $property => $newValue) {
-				// Fetch first column annotation
-				$columnAnnotation = $annotations[$property][0] ?? null;
-				
-				// If none found, continue to the next
+				// Fetch the property's Column annotation so the serializer can
+				// normalize the raw database value to the correct PHP type
+				// (e.g. datetime string → DateTimeImmutable). If none found,
+				// continue to the next.
+				$columnAnnotation = $metadata->getColumnAnnotation($property);
+
 				if ($columnAnnotation === null) {
 					continue;
 				}

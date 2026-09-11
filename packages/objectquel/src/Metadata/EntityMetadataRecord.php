@@ -54,11 +54,14 @@
 		
 		/**
 		 * Constructor for EntityMetadataRecord.
-		 * @param string $className Fully qualified, normalized class name
+		 * @param class-string $className Fully qualified, normalized class name
 		 * @param string $tableName Database table name from @Table annotation
 		 * @param array<int, string> $properties Property names
 		 * @param array<string, AnnotationCollection> $annotations Property name => annotation collection mapping
 		 * @param array<string, string> $columnMap Property name => column name mapping
+		 * @param array<string, Column> $columnAnnotations Property name => its @Orm\Column
+		 *        annotation, for every property that carries one — see
+		 *        getColumnAnnotation(), the accessor this backs.
 		 * @param array<string> $identifierKeys Property names that serve as primary keys
 		 * @param array<string> $identifierColumns Column names that serve as primary keys
 		 * @param array<string, array{name: string, column: Column, version: Version}> $versionColumns Properties with version tracking
@@ -81,6 +84,7 @@
 			public array $properties,
 			public array $annotations,
 			public array $columnMap,
+			public array $columnAnnotations,
 			public array $identifierKeys,
 			public array $identifierColumns,
 			public array $versionColumns,
@@ -156,7 +160,26 @@
 		public function getColumnName(string $property): ?string {
 			return $this->columnMap[$property] ?? null;
 		}
-		
+
+		/**
+		 * Same as getColumnName(), for call sites that already validated
+		 * (typically via AssignmentValidator::assertPropertiesExist() or
+		 * ConflictTargetResolver) that $property exists on this entity, where
+		 * a null result would mean that validation was skipped — a genuine
+		 * bug, not a case to handle.
+		 * @param string $property The entity property name
+		 * @return string The corresponding column name
+		 */
+		public function getColumnNameOrFail(string $property): string {
+			$columnName = $this->getColumnName($property);
+
+			if ($columnName === null) {
+				throw new \LogicException("Property '{$property}' does not exist in entity '{$this->className}'");
+			}
+
+			return $columnName;
+		}
+
 		/**
 		 * Obtains the entity property name for a given database column.
 		 * @param string $columnName The database column name
@@ -166,7 +189,28 @@
 			$flipped = array_flip($this->columnMap);
 			return $flipped[$columnName] ?? null;
 		}
-		
+
+		/**
+		 * Returns the @Orm\Column annotation for a property, or null when the
+		 * property carries none (a non-persisted property, or a
+		 * relation-only property like @ManyToOne). Plain array lookup against
+		 * $columnAnnotations, computed once by EntityMetadataBuilder's single
+		 * annotation pass — this record is a value object, not a place to
+		 * re-scan AnnotationCollection at call time.
+		 *
+		 * Serializer::normalizeValue()/denormalizeValue() both take a Column
+		 * annotation directly, so every caller resolving a value for a
+		 * specific property (EntityHydrator, VersionValueHandler,
+		 * WriteVerbParameterNormalizer) needs to get one from somewhere —
+		 * this is the single place they all get it from, instead of each
+		 * re-deriving it.
+		 * @param string $property The entity property name
+		 * @return Column|null
+		 */
+		public function getColumnAnnotation(string $property): ?Column {
+			return $this->columnAnnotations[$property] ?? null;
+		}
+
 		/**
 		 * Checks if a property is part of the entity's primary key.
 		 * @param string $property The property name to check

@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\ObjectQuel\ObjectQuel\Rules;
 	
+	use Quellabs\ObjectQuel\EntityStore;
 	use Quellabs\ObjectQuel\ObjectQuel\Lexer;
 	use Quellabs\ObjectQuel\ObjectQuel\Token;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRange;
@@ -10,27 +11,38 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabase;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeJsonSource;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabaseSubquery;
-	
+
 	/**
 	 * Class Range
 	 *
 	 * This class is responsible for parsing the RANGE clause in ObjectQuel queries.
 	 * A RANGE clause defines the data sources and their aliases used in a query.
 	 * Example: RANGE OF x IS Entity or RANGE OF y IS JSON_SOURCE("path/to/file.json")
+	 *
+	 * `RANGE OF x IS Name` is always an entity range: `Name` must resolve
+	 * against the EntityStore, or parsing fails.
 	 */
 	class Range {
-		
+
 		/**
 		 * The lexer instance used for tokenizing and processing the input
 		 */
 		private Lexer $lexer;
-		
+
+		/**
+		 * Used to resolve `RANGE OF x IS Name` against declared entities —
+		 * see this class's docblock.
+		 */
+		private EntityStore $entityStore;
+
 		/**
 		 * Range parser constructor
 		 * @param Lexer $lexer The lexer instance to use for tokenization
+		 * @param EntityStore $entityStore Used to resolve entity ranges
 		 */
-		public function __construct(Lexer $lexer) {
+		public function __construct(Lexer $lexer, EntityStore $entityStore) {
 			$this->lexer = $lexer;
+			$this->entityStore = $entityStore;
 		}
 		
 		/**
@@ -64,11 +76,11 @@
 			if ($this->lexer->optionalMatch(Token::JsonSource)) {
 				return $this->parseJsonRange($alias->getStringValue());
 			}
-			
-			// Otherwise, treat it as a database entity source
+
+			// Otherwise, it's a bare entity name.
 			return $this->parseEntityRange($alias);
 		}
-		
+
 		/**
 		 * Parse ranges
 		 * @return AstRange[]
@@ -76,13 +88,13 @@
 		 */
 		protected function parseRanges(): array {
 			$ranges = [];
-			
-			$rangeRule = new Range($this->lexer);
-			
+
+			$rangeRule = new Range($this->lexer, $this->entityStore);
+
 			while ($this->lexer->peek()->getType() == Token::Range) {
 				$ranges[] = $rangeRule->parse();
 			}
-			
+
 			return $ranges;
 		}
 		
@@ -96,10 +108,10 @@
 		private function parseSubqueryRange(string $alias): AstRangeDatabaseSubquery {
 			// Match opening parenthesis - start of query expression
 			$this->lexer->match(Token::ParenthesesOpen);
-			
+
 			// Parse range definitions that will be available to the query
 			$ranges = $this->parseRanges();
-			
+
 			// Parse the actual retrieve query using the defined ranges
 			$query = new Retrieve($this->lexer, true);
 			$retrieve = $query->parse([], $ranges);
@@ -112,40 +124,72 @@
 		}
 		
 		/**
-		 * Parse an entity (database) definition in a RANGE clause
-		 * Format: RANGE OF alias IS Entity[\SubEntity] [VIA condition]
+		 * Parse `RANGE OF alias IS Name[\SubName] [VIA ...]`. `Name` must
+		 * resolve against the EntityStore — see this class's docblock.
 		 * @param Token $alias The token containing the alias identifier
-		 * @return AstRangeDatabase AST node representing a database entity source
-		 * @throws LexerException
+		 * @return AstRangeDatabase
+		 * @throws LexerException|ParserException
 		 */
 		private function parseEntityRange(Token $alias): AstRangeDatabase {
 			// Match and consume an 'Identifier' token for the entity name
-			$entityName = $this->lexer->match(Token::Identifier)->getStringValue();
-			
-			// Handle namespaced entity names (Entity\SubEntity\SubSubEntity)
+			$name = $this->lexer->match(Token::Identifier)->getStringValue();
+
+			// Handle namespaced names (Entity\SubEntity\SubSubEntity)
 			while ($this->lexer->optionalMatch(Token::Backslash)) {
-				$entityName .= "\\" . $this->lexer->match(Token::Identifier)->getStringValue();
+				$name .= "\\" . $this->lexer->match(Token::Identifier)->getStringValue();
 			}
-			
+
+			if (!$this->entityStore->exists($name)) {
+				throw new ParserException(
+					"Unknown entity '{$name}' in range declaration. " .
+					"'range of {$alias->getStringValue()} is {$name}' requires a mapped entity class."
+				);
+			}
+
+			return $this->parseEntityRangeTail($alias->getStringValue(), $name);
+		}
+
+		/**
+		 * Parse the remainder of an entity range once `Name` has already been
+		 * resolved as an entity: an optional `via <relation>` naming a declared
+		 * relation (`@OneToOne`/`@ManyToOne`/`@InverseOf`), resolved into a join
+		 * condition later by RewriteViaRelationToJoinCondition — or, when what
+		 * follows doesn't stop at a bare property chain, `via <condition>`
+		 * naming a literal join condition directly. Both share one grammar
+		 * slot: parsing the full expression grammar (not just a property
+		 * chain) and then inspecting the result's shape distinguishes them —
+		 * a bare identifier chain with nothing else parsed is indistinguishable
+		 * from what parsePropertyChain() alone used to produce, so the relation
+		 * form is unaffected; anything beyond that (an operator followed) is
+		 * only ever meaningful as a literal condition. RewriteViaRelationToJoinCondition
+		 * only ever rewrites a bare identifier chain (see its processNodeSide()
+		 * guard) and leaves anything else untouched, so a literal condition
+		 * passes through unchanged, unrewritten.
+		 * @param string $alias The range alias
+		 * @param string $entityName The resolved entity name
+		 * @return AstRangeDatabase
+		 * @throws LexerException|ParserException
+		 */
+		private function parseEntityRangeTail(string $alias, string $entityName): AstRangeDatabase {
 			// Parse an optional 'VIA' statement (for filtering)
 			$viaIdentifier = null;
-			
+
 			if ($this->lexer->lookahead() == Token::Via) {
 				$this->lexer->match(Token::Via);
 
-				$logicalExpressionRule = new ArithmeticExpression($this->lexer);
-				$viaIdentifier = $logicalExpressionRule->parsePropertyChain();
+				$logicalExpressionRule = new LogicalExpression($this->lexer);
+				$viaIdentifier = $logicalExpressionRule->parse();
 			}
-			
+
 			// Match an optional semicolon at the end of the statement
 			if ($this->lexer->lookahead() == Token::Semicolon) {
 				$this->lexer->match(Token::Semicolon);
 			}
-			
+
 			// Create and return the AST node for a database entity with alias, entity name, and optional VIA condition
-			return new AstRangeDatabase($alias->getStringValue(), $entityName, $viaIdentifier);
+			return new AstRangeDatabase($alias, $entityName, $viaIdentifier);
 		}
-		
+
 		/**
 		 * Parse a JSON source definition in a RANGE clause.
 		 *

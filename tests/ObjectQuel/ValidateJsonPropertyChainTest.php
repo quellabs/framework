@@ -36,6 +36,7 @@
 				properties:         [],
 				annotations:        [],
 				columnMap:          $columnMap,
+				columnAnnotations: [],
 				identifierKeys:     [],
 				identifierColumns:  [],
 				versionColumns:     [],

@@ -1,0 +1,89 @@
+<?php
+
+	namespace Quellabs\ObjectQuel\Execution\Executors;
+
+	use Quellabs\ObjectQuel\Exception\SemanticException;
+	use Quellabs\ObjectQuel\Capabilities\PlatformCapabilitiesInterface;
+	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
+	use Quellabs\ObjectQuel\EntityManager;
+	use Quellabs\ObjectQuel\Exception\QuelException;
+	use Quellabs\ObjectQuel\Execution\ExecutionContext;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstReplace;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstStatement;
+	use Quellabs\ObjectQuel\ObjectQuel\QuelResult;
+	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQLReplace;
+
+	/**
+	 * Executes an AstReplace statement: compiles it via QuelToSQLReplace and
+	 * runs the resulting UPDATE directly against the connection.
+	 *
+	 * Bypasses the `retrieve` pipeline entirely — this is a bulk, set-based,
+	 * direct-SQL statement that never goes through UnitOfWork or the identity
+	 * map (see objectquel-write-verbs-design.md). No generated PK to report
+	 * (unlike `append`) — an UPDATE never creates one.
+	 */
+	class ReplaceExecutor implements WriteVerbExecutorInterface {
+
+		private DatabaseAdapter $connection;
+		private QuelToSQLReplace $compiler;
+
+		/**
+		 * ReplaceExecutor constructor
+		 * @param DatabaseAdapter $connection
+		 * @param EntityManager $entityManager
+		 * @param PlatformCapabilitiesInterface $platform
+		 */
+		public function __construct(DatabaseAdapter $connection, EntityManager $entityManager, PlatformCapabilitiesInterface $platform) {
+			$this->connection = $connection;
+			$this->compiler = new QuelToSQLReplace(
+				$entityManager->getEntityStore(),
+				$platform,
+				$entityManager->getUnitOfWork()->getVersionValueHandler()
+			);
+		}
+
+		/**
+		 * Compile and execute a `replace <range> (...) where ...` statement.
+		 * @param AstStatement $statement
+		 * @param ExecutionContext $context
+		 * @return QuelResult
+		 * @throws QuelException|SemanticException On compile or execution failure
+		 */
+		public function execute(AstStatement $statement, ExecutionContext $context): QuelResult {
+			assert($statement instanceof AstReplace);
+			$parameters = $context->getParameters();
+
+			// compileSql() takes $parameters by reference, so this local
+			// variable picks up every mutation convertToSQL() makes
+			// (WriteVerbParameterNormalizer's denormalized values, an added
+			// uuid @Orm\Version bump parameter) before it's bound below —
+			// without that, execute() would silently run the SQL against the
+			// original, unmutated parameters.
+			$sql = $this->compileSql($statement, $parameters);
+
+			// execute() swallows the exception and returns null on failure
+			// rather than throwing — a try/catch here would never fire.
+			$rs = $this->connection->execute($sql, $parameters);
+
+			if ($rs === null) {
+				throw new QuelException(
+					"Failed to replace via range '{$statement->getRange()->getName()}': {$this->connection->getLastErrorMessage()}",
+					'replace_error'
+				);
+			}
+
+			return QuelResult::fromWriteStatement($rs->rowCount());
+		}
+
+		/**
+		 * Compiles a `replace <range> (...) where ...` statement to SQL, used
+		 * by execute() before running it.
+		 * @param AstReplace $statement
+		 * @param array<string, mixed> $parameters Bound parameters, by reference
+		 * @return string
+		 * @throws QuelException|SemanticException On compile failure
+		 */
+		public function compileSql(AstReplace $statement, array &$parameters): string {
+			return $this->compiler->convertToSQL($statement, $parameters);
+		}
+	}
