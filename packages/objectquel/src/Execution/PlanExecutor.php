@@ -3,11 +3,12 @@
 	namespace Quellabs\ObjectQuel\Execution;
 	
 	use Quellabs\ObjectQuel\EntityStore;
+	use Quellabs\ObjectQuel\Execution\ExecutionContext;
 	use Quellabs\ObjectQuel\Planner\ExecutionStageInterface;
 	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
-	use Quellabs\ObjectQuel\Execution\Executors\ConstantQueryExecutor;
-	use Quellabs\ObjectQuel\Execution\Executors\DatabaseQueryExecutor;
-	use Quellabs\ObjectQuel\Execution\Executors\JsonQueryExecutor;
+	use Quellabs\ObjectQuel\Execution\Executors\ConstantRetrieveExecutor;
+	use Quellabs\ObjectQuel\Execution\Executors\RetrieveExecutor;
+	use Quellabs\ObjectQuel\Execution\Executors\JsonRetrieveExecutor;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeJsonSource;
 	use Quellabs\ObjectQuel\ObjectQuel\AstInterface;
 	use Quellabs\ObjectQuel\Exception\QuelException;
@@ -48,9 +49,9 @@
 		
 		/**
 		 * Executor responsible for regular database queries
-		 * @var DatabaseQueryExecutor
+		 * @var RetrieveExecutor
 		 */
-		private DatabaseQueryExecutor $databaseExecutor;
+		private RetrieveExecutor $databaseExecutor;
 		
 		/**
 		 * Executor responsible for materializing external-source subqueries as temp tables.
@@ -60,15 +61,15 @@
 		
 		/**
 		 * Executor responsible for executing and materializing JSON data
-		 * @var JsonQueryExecutor
+		 * @var JsonRetrieveExecutor
 		 */
-		private JsonQueryExecutor $jsonExecutor;
+		private JsonRetrieveExecutor $jsonExecutor;
 		
 		/**
 		 * Executor responsible for evaluating constant-only (rangeless) queries
-		 * @var ConstantQueryExecutor
+		 * @var ConstantRetrieveExecutor
 		 */
-		private ConstantQueryExecutor $constantExecutor;
+		private ConstantRetrieveExecutor $constantExecutor;
 		
 		/**
 		 * Create a new plan executor
@@ -78,7 +79,7 @@
 			$this->queryExecutor = $queryExecutor;
 			$this->databaseExecutor = $queryExecutor->getDatabaseExecutor();
 			$this->jsonExecutor = $queryExecutor->getJsonExecutor();
-			$this->constantExecutor = new ConstantQueryExecutor();
+			$this->constantExecutor = new ConstantRetrieveExecutor();
 			$this->tempTableExecutor = new TempTableExecutor(
 				$queryExecutor->getConnection(),
 				$queryExecutor->getEntityManager()->getEntityStore(),
@@ -114,14 +115,14 @@
 					if ($stage instanceof TempTableStage) {
 						// Materialize the inner query into a temp table before the outer
 						// database stage runs. This mutates the stage's AstRangeDatabase
-						// so QuelToSQL emits a plain table reference in subsequent stages.
+						// so QuelToSQLRetrieve emits a plain table reference in subsequent stages.
 						// TempTableStages contribute no rows to intermediate results.
 						$this->tempTableExecutor->execute(
 							$stage,
-							fn(ExecutionPlan $innerPlan) => $this->execute($innerPlan)
+							new ExecutionContext($stage->getStaticParams(), fn(ExecutionPlan $innerPlan) => $this->execute($innerPlan))
 						);
 					} elseif ($stage instanceof ConstantStage) {
-						$intermediateResults[$stage->getName()] = $this->constantExecutor->execute($stage);
+						$intermediateResults[$stage->getName()] = $this->constantExecutor->execute($stage, new ExecutionContext($stage->getStaticParams()));
 					} else {
 						$intermediateResults[$stage->getName()] = $this->executeStage($stage);
 					}
@@ -149,10 +150,12 @@
 		 */
 		private function executeStage(ExecutionStageInterface $stage): array {
 			try {
+				$context = new ExecutionContext($stage->getStaticParams());
+
 				if ($stage->getRange() instanceof AstRangeJsonSource) {
-					return $this->jsonExecutor->execute($stage, $stage->getStaticParams());
+					return $this->jsonExecutor->execute($stage, $context);
 				} else {
-					return $this->databaseExecutor->execute($stage, $stage->getStaticParams());
+					return $this->databaseExecutor->execute($stage, $context);
 				}
 			} catch (QuelException $e) {
 				throw new QuelException("Stage '{$stage->getName()}' failed: {$e->getMessage()}", 'stage_error', 0, $e);

@@ -2,12 +2,14 @@
 	
 	namespace Quellabs\ObjectQuel\Planner\Optimizers;
 	
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRange;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabase;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabaseMaterialized;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabaseSubquery;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabaseTempTable;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeJsonSource;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
+	use Quellabs\ObjectQuel\Planner\Helpers\AstUtilities;
 	use Quellabs\ObjectQuel\Planner\QueryPlan\PlanLogInterface;
 	use Quellabs\ObjectQuel\Planner\QueryPlan\NullPlanLog;
 	
@@ -62,12 +64,33 @@
 					);
 				}
 				
+				// getRange() returns a stored reference (set by ResolveIdentifierRange
+				// earlier), not a live lookup — left unrelinked, every reference to
+				// this range would keep pointing at the discarded $range object.
+				$this->relinkIdentifiers($retrieve, $range, $replacement);
 				$ranges[] = $replacement;
 			}
-			
+
 			$retrieve->setRanges($ranges);
 		}
-		
+
+		/**
+		 * Re-points every identifier referencing $oldRange (by stored object
+		 * identity) to $newRange instead, so a range swap stays transparent to
+		 * the rest of the query — see optimize()'s call site.
+		 * @param AstRetrieve $retrieve
+		 * @param AstRange $oldRange
+		 * @param AstRange $newRange
+		 * @return void
+		 */
+		private function relinkIdentifiers(AstRetrieve $retrieve, AstRange $oldRange, AstRange $newRange): void {
+			foreach (AstUtilities::collectIdentifiersFromAst($retrieve) as $identifier) {
+				if ($identifier->getRange() === $oldRange) {
+					$identifier->setRange($newRange);
+				}
+			}
+		}
+
 		/**
 		 * Recursively determines whether a retrieve node contains external sources
 		 * @param AstRetrieve $retrieve

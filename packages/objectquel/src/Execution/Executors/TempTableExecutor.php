@@ -7,6 +7,8 @@
 	use Quellabs\ObjectQuel\DatabaseAdapter\DDLTypeMapper;
 	use Quellabs\ObjectQuel\DatabaseAdapter\SqlIdentifierQuoter;
 	use Quellabs\ObjectQuel\EntityStore;
+	use Quellabs\ObjectQuel\Execution\ExecutionContext;
+	use Quellabs\ObjectQuel\Planner\ExecutionStageInterface;
 	use Quellabs\ObjectQuel\Planner\TempTableStage;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIdentifier;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
@@ -24,7 +26,7 @@
 	 *      appropriate to the connected engine (see DDLTypeMapper).
 	 *   4. Inserting all result rows in batches.
 	 *   5. Mutating the AstRangeDatabase via setTableName() with the resolved
-	 *      physical table name, so QuelToSQL will reference the temp table as a
+	 *      physical table name, so QuelToSQLRetrieve will reference the temp table as a
 	 *      plain table.
 	 *   6. Registering the temp table name for cleanup after the outer query completes.
 	 *
@@ -52,7 +54,7 @@
 	 *   per-statement/packet size limits (e.g. MySQL's max_allowed_packet) on
 	 *   very large result sets.
 	 */
-	class TempTableExecutor {
+	class TempTableExecutor implements StageExecutorInterface {
 		
 		/**
 		 * Number of rows to insert per batch
@@ -107,26 +109,27 @@
 		}
 		
 		/**
-		 * Execute a TempTableStage.
-		 *
-		 * Runs the inner query through the provided callable (which wraps the full
-		 * decomposition pipeline so JSON stages are handled), materialises the results
-		 * into a temp table, then mutates the stage's AstRangeDatabase so downstream
-		 * SQL generation treats it as an ordinary table reference.
-		 *
-		 * @param TempTableStage $stage The stage to materialise
-		 * @param callable $runner
-		 * @return void
+		 * Execute a TempTableStage: run the inner query through the context's
+		 * stage runner, materialise the results into a temp table, then mutate
+		 * the stage's AstRangeDatabase so downstream SQL generation treats it
+		 * as an ordinary table reference. $stage is narrowed to TempTableStage
+		 * via assert() — PlanExecutor only ever dispatches one here.
+		 * @param ExecutionStageInterface $stage The stage to materialise
+		 * @param ExecutionContext $context Bound query parameters and the stage runner
+		 * @return list<array<string, mixed>> Always empty — see class docblock
 		 * @throws QuelException On execution or DDL failure
 		 */
-		public function execute(TempTableStage $stage, callable $runner): void {
+		public function execute(ExecutionStageInterface $stage, ExecutionContext $context): array {
+			assert($stage instanceof TempTableStage);
+
+			$runner = $context->getStageRunnerOrFail();
 			$range = $stage->getRange();
 			$innerQuery = $stage->getQuery();
 
 			// Resolve the physical table name for the connected engine (SQL Server
 			// prefixes with '#'; every other engine uses the logical name as-is)
 			// and store it back on the range so downstream SQL generation
-			// (QuelToSQL) references the same physical table this method creates.
+			// (QuelToSQLRetrieve) references the same physical table this method creates.
 			$tableName = $this->ddlTypeMapper->getTempTableName($range->getTableName());
 			$range->setTableName($tableName);
 			
@@ -137,7 +140,7 @@
 			// INNER JOIN: an empty source means the outer query can produce no rows.
 			// Skip table creation entirely — PlanExecutor will produce an empty result set.
 			if (empty($rows) && $range->isRequired()) {
-				return;
+				return [];
 			}
 			
 			// Infer column schema from result rows when available, or fall back to the
@@ -162,6 +165,8 @@
 			
 			// Register the table name so cleanup() can DROP it later
 			$this->createdTables[] = $tableName;
+
+			return [];
 		}
 		
 		/**
@@ -228,30 +233,37 @@
 		 * @return string
 		 */
 		private function resolveColumnType(AstInterface $expression): string {
-			if (!$expression instanceof AstIdentifier) {
-				return 'VARCHAR(255)';
-			}
-
-			$entityName = $expression->getEntityName();
-
-			if ($entityName === null) {
-				return 'VARCHAR(255)';
-			}
-
 			try {
+				// Function calls, computed expressions, and literals have no
+				// entity property behind them to look up a declared type for.
+				if (!$expression instanceof AstIdentifier) {
+					throw new \UnexpectedValueException();
+				}
+
+				// No entity range behind this identifier (e.g. a subquery column).
+				$entityName = $expression->getEntityName();
+				
+				if ($entityName === null) {
+					throw new \UnexpectedValueException();
+				}
+
+				// getMetadata() throws EntityResolutionException if $entityName
+				// isn't a real, mapped entity.
 				$metadata = $this->entityStore->getMetadata($entityName);
-			} catch (EntityResolutionException) {
+				$columnName = $metadata->getColumnName($expression->getPropertyName());
+				$columnDefinition = $columnName !== null ? ($metadata->columnDefinitions[$columnName] ?? null) : null;
+
+				// Property has no backing column (e.g. a virtual/computed property).
+				if ($columnDefinition === null) {
+					throw new \UnexpectedValueException();
+				}
+
+				return $this->ddlTypeMapper->getTempTableColumnType($columnDefinition);
+			} catch (EntityResolutionException | \UnexpectedValueException) {
+				// Any of the above "can't resolve a real declared type" cases
+				// fall back to the same untyped default.
 				return 'VARCHAR(255)';
 			}
-
-			$columnName = $metadata->getColumnName($expression->getPropertyName());
-			$columnDefinition = $columnName !== null ? ($metadata->columnDefinitions[$columnName] ?? null) : null;
-
-			if ($columnDefinition === null) {
-				return 'VARCHAR(255)';
-			}
-
-			return $this->ddlTypeMapper->getTempTableColumnType($columnDefinition);
 		}
 
 		/**
@@ -272,7 +284,7 @@
 
 			$sql = sprintf(
 				"%s %s (%s)",
-				$this->ddlTypeMapper->getCreateTempTableKeyword(),
+				$this->ddlTypeMapper->getTemporaryCreateTableKeyword(),
 				$this->identifierQuoter->quoteIdentifier($tableName),
 				implode(', ', $columnDefs)
 			);
@@ -295,7 +307,7 @@
 		 * max_allowed_packet) on large result sets.
 		 * @param string $tableName
 		 * @param string[] $columns
-		 * @param list<array<string, bool|float|int|string|null>> $rows
+		 * @param list<array<string, mixed>> $rows
 		 * @throws QuelException
 		 */
 		private function insertRows(string $tableName, array $columns, array $rows): void {

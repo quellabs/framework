@@ -78,6 +78,11 @@
 		const int WindowSize = 119;
 		const int JsonSource = 120;
 		const int Filter = 121;
+		const int Append = 131;
+		// create, temporary, identity, primary, key, destroy, if, exists, to,
+		// replace, delete, index, on, fulltext, unsigned, alter, add, drop,
+		// rename, retype have no token type of their own — see
+		// Lexer::peekKeyword().
 		
 		protected int $type;
 		protected mixed $value;

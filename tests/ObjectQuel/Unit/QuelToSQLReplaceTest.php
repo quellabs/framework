@@ -1,0 +1,103 @@
+<?php
+
+	namespace Quellabs\ObjectQuel\Tests\Unit;
+
+	use PHPUnit\Framework\TestCase;
+	use Quellabs\ObjectQuel\EntityManager;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstReplace;
+	use Quellabs\ObjectQuel\ObjectQuel\Lexer;
+	use Quellabs\ObjectQuel\ObjectQuel\Parser;
+	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQLReplace;
+	use Quellabs\ObjectQuel\Tests\Support\FakePlatformCapabilities;
+
+	/**
+	 * Dialect-level coverage for a standalone `replace`'s generated UPDATE SQL
+	 * — specifically, whether the SET clause's target column is qualified
+	 * with the statement's own range alias (see QuelToSQLReplace's docblock).
+	 * MySQL/MariaDB/SQL Server accept `SET alias.col = ...`; PostgreSQL/SQLite
+	 * reject it as a syntax error, so those two always get the bare column
+	 * regardless of dialect. Mirrors QuelToSQLAppendUpsertTest's pattern: the
+	 * suite's only live connection is MySQL (exercised end-to-end in
+	 * tests/Integration/ReplaceTest.php), so this is where the other
+	 * dialects' generated SQL is actually compared.
+	 */
+	class QuelToSQLReplaceTest extends TestCase {
+
+		private function em(): EntityManager {
+			return $GLOBALS['test_em'];
+		}
+
+		private function parse(string $query): AstReplace {
+			$ast = (new Parser(new Lexer($query), $this->em()->getEntityStore()))->parse();
+			self::assertInstanceOf(AstReplace::class, $ast);
+			return $ast;
+		}
+
+		private function compile(AstReplace $ast, string $dialect, array $parameters = []): string {
+			$em = $this->em();
+			$platform = new FakePlatformCapabilities($dialect);
+			$compiler = new QuelToSQLReplace($em->getEntityStore(), $platform, $em->getUnitOfWork()->getVersionValueHandler());
+			return $compiler->convertToSQL($ast, $parameters);
+		}
+
+		private function entityQuery(): AstReplace {
+			return $this->parse('
+				range of u is App\Entities\UserEntity
+				replace u (username = :username) where u.id = :id
+			');
+		}
+
+		public function testMysqlQualifiesTheSetTargetColumnWithTheRangeAlias(): void {
+			self::assertSame(
+				'UPDATE `users` as `u` SET `u`.`username` = :username WHERE `u`.`id` = :id',
+				$this->compile($this->entityQuery(), 'mysql', ['username' => 'alice', 'id' => 1])
+			);
+		}
+
+		public function testSqlServerQualifiesTheSetTargetColumnWithTheRangeAlias(): void {
+			self::assertSame(
+				'UPDATE [users] as [u] SET [u].[username] = :username WHERE [u].[id] = :id',
+				$this->compile($this->entityQuery(), 'sqlsrv', ['username' => 'alice', 'id' => 1])
+			);
+		}
+
+		public function testPostgresRendersTheSetTargetColumnBare(): void {
+			// A qualified column on the LEFT side of SET is a syntax error on
+			// PostgreSQL — must stay unqualified even though the range is
+			// aliased in the UPDATE clause and WHERE is qualified.
+			self::assertSame(
+				'UPDATE "users" as "u" SET "username" = :username WHERE "u"."id" = :id',
+				$this->compile($this->entityQuery(), 'pgsql', ['username' => 'alice', 'id' => 1])
+			);
+		}
+
+		public function testSqliteRendersTheSetTargetColumnBare(): void {
+			// Same restriction as PostgreSQL — see testPostgresRendersTheSetTargetColumnBare().
+			self::assertSame(
+				'UPDATE `users` as `u` SET `username` = :username WHERE `u`.`id` = :id',
+				$this->compile($this->entityQuery(), 'sqlite', ['username' => 'alice', 'id' => 1])
+			);
+		}
+
+		/**
+		 * `any(...)` in the WHERE clause must compile to a bare EXISTS(...),
+		 * not `CASE WHEN EXISTS(...) THEN 1 ELSE 0 END` — the latter is what
+		 * BuildSqlFromAst's 'VALUES' mode produces (see
+		 * ProcessAggregate::handleAny()), and PostgreSQL rejects an integer
+		 * CASE result in a WHERE clause since it isn't implicitly boolean
+		 * there. The WHERE clause must be compiled in 'WHERE' mode — the SET
+		 * clause's own assignment values stay in 'VALUES' mode, since those
+		 * are plain scalar expressions, never a boolean predicate.
+		 */
+		public function testAnyInWhereClauseCompilesToABareExistsNotACaseExpression(): void {
+			$ast = $this->parse("
+				range of o is App\\Entities\\PostEntity
+				replace o (title = :title) where any(o.id where o.title = 'completed')
+			");
+
+			$sql = $this->compile($ast, 'pgsql', ['title' => 'archived']);
+
+			self::assertStringContainsString('WHERE EXISTS (', $sql);
+			self::assertStringNotContainsString('CASE WHEN EXISTS', $sql);
+		}
+	}

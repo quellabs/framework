@@ -50,7 +50,7 @@
 			}
 			
 			$type = $node->getType();
-			
+
 			if (
 				($type === IdentifierType::EntityRoot || $type === IdentifierType::EntityReference) &&
 				isset($this->knownRangeNames[$node->getName()])
