@@ -7,12 +7,14 @@
 	use Quellabs\ObjectQuel\Annotations\Orm\Table;
 
 	/**
-	 * Compile-only fixture for QuelToSQLAppendDefaultColumnTest — declares a
-	 * column with a declared annotation default so `append to` omitting it
-	 * can be asserted to inject that default value rather than silently
-	 * leaving the column out and relying on whatever DEFAULT (if any) the
-	 * table's own DDL happens to declare. No test executes SQL against this
-	 * entity, so it has no backing table.
+	 * Fixture for QuelToSQLAppendDefaultColumnTest (compile-only, asserts on
+	 * generated SQL) and AppendDefaultColumnTest (integration, backed by the
+	 * real `default_column_test` table created in tests/bootstrap.php) —
+	 * declares a column with a declared annotation default so `append to`
+	 * omitting it can be asserted to inject that default value transparently
+	 * rather than leaving the column out and falling through to the table's
+	 * own DDL default (which the integration test deliberately sets to a
+	 * different value, to prove the annotation — not the DDL — wins).
 	 * @Orm\Table(name="default_column_test")
 	 */
 	class DefaultColumnEntity {
@@ -37,5 +39,13 @@
 
 		public function getId(): ?int {
 			return $this->id;
+		}
+
+		public function getName(): string {
+			return $this->name;
+		}
+
+		public function getPriority(): int {
+			return $this->priority;
 		}
 	}

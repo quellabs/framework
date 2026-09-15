@@ -110,5 +110,19 @@
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
 	');
 
+	// Backs App\Entities\DefaultColumnEntity — append's @Orm\Column(default=...)
+	// injection, exercised by AppendDefaultColumnTest. `priority`'s DDL default
+	// (99) is deliberately different from the annotation's (0), so a persisted
+	// row of 0 can only come from the annotation, never from the column falling
+	// through to the table's own DEFAULT.
+	$connection->execute(
+		'CREATE TABLE IF NOT EXISTS `default_column_test` (
+		    `id`       INT UNSIGNED NOT NULL AUTO_INCREMENT,
+		    `name`     VARCHAR(100) NOT NULL,
+		    `priority` INT          NOT NULL DEFAULT 99,
+		    PRIMARY KEY (`id`)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+	');
+
 	// Test connection
 	$GLOBALS['test_connection'] = $connection;
