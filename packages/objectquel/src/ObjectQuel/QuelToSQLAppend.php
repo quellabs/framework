@@ -2,6 +2,8 @@
 
 	namespace Quellabs\ObjectQuel\ObjectQuel;
 
+	use Quellabs\ObjectQuel\OrmException;
+	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
 	use Quellabs\AnnotationReader\Exception\AnnotationReaderException;
 	use Quellabs\ObjectQuel\Capabilities\PlatformCapabilitiesInterface;
 	use Quellabs\ObjectQuel\DatabaseAdapter\SqlIdentifierQuoter;
@@ -30,17 +32,15 @@
 	 * Compiles an AstAppend statement to dialect-correct INSERT SQL. Sibling
 	 * to QuelToSQLRetrieve/QuelToSQLCreate/QuelToSQLDestroy.
 	 *
-	 * Unlike QuelToSQLCreate/QuelToSQLDestroy, this needs EntityStore: an
-	 * append's assignments are entity property names, and this is where the
-	 * scope-cut checks live — an unknown property, a missing non-nullable/
-	 * non-defaulted/non-generated column, or a statically-incompatible
-	 * literal all raise a SemanticException here at compile time. Value
-	 * expressions are rendered via BuildSqlFromAst, same as `retrieve`.
+	 * Needs EntityStore (unlike QuelToSQLCreate/QuelToSQLDestroy): assignments
+	 * are entity property names, and compile-time scope-cut checks (unknown
+	 * property, missing required column, incompatible literal) raise
+	 * SemanticException here. Values are rendered via BuildSqlFromAst.
 	 *
-	 * An upsert's `or replace (...) where ...` on-conflict clause is
-	 * delegated to QuelToSQLUpsert once the base INSERT and row values are
-	 * ready — there's no separate `AstUpsert` node. JSON-source targets
-	 * never reach this class (diverted to JsonAppendExecutor first).
+	 * An upsert's `or replace (...) where ...` clause is delegated to
+	 * QuelToSQLUpsert once the base INSERT is ready — there's no separate
+	 * `AstUpsert` node. JSON-source targets are diverted to JsonAppendExecutor
+	 * before reaching this class.
 	 */
 	class QuelToSQLAppend {
 
@@ -54,17 +54,13 @@
 		/**
 		 * QuelToSQLAppend constructor
 		 * @param EntityManager $entityManager Needed only for insert-from-select's
-		 *        nested retrieve, which is prepared through the same
-		 *        normalize/validate/optimize pipeline a top-level retrieve goes
-		 *        through — QueryOptimizer specifically requires an EntityManager.
+		 *        nested retrieve, prepared through the same pipeline a top-level
+		 *        retrieve uses — QueryOptimizer requires an EntityManager.
 		 * @param PlatformCapabilitiesInterface $platform
-		 * @param QuelToSQLUpsert $upsertCompiler Handles the on-conflict
-		 *        extension when an AstAppend carries one — see this class's
-		 *        docblock and QuelToSQLUpsert's own.
-		 * @param VersionValueHandler $versionValueHandler Reused as-is (not
-		 *        reconstructed) so the literal-values form initializes
-		 *        @Orm\Version columns using the exact same logic
-		 *        InsertPersister's INSERT path does — see compileValues().
+		 * @param QuelToSQLUpsert $upsertCompiler Handles an AstAppend's on-conflict extension
+		 * @param VersionValueHandler $versionValueHandler Reused as-is so the
+		 *        literal-values form initializes @Orm\Version columns using the
+		 *        same logic InsertPersister's INSERT path does — see compileValues().
 		 */
 		public function __construct(EntityManager $entityManager, PlatformCapabilitiesInterface $platform, QuelToSQLUpsert $upsertCompiler, VersionValueHandler $versionValueHandler) {
 			$this->entityManager = $entityManager;
@@ -81,7 +77,7 @@
 		 * @param array<string, mixed> $parameters Bound parameters, by reference
 		 *        (mutated only for insert-from-select's nested retrieve)
 		 * @return CompiledAppendSql
-		 * @throws SemanticException
+		 * @throws SemanticException|EntityResolutionException
 		 */
 		public function convertToSQL(AstAppend $statement, array &$parameters): CompiledAppendSql {
 			$entityName = $statement->getEntityName();
@@ -110,31 +106,28 @@
 		 * @param string $tableName
 		 * @param array<string, mixed> $parameters
 		 * @return CompiledAppendSql
-		 * @throws SemanticException
+		 * @throws SemanticException|AnnotationReaderException
 		 */
 		private function compileValues(AstAppend $statement, EntityMetadataRecord $metadata, string $tableName, array &$parameters): CompiledAppendSql {
 			$rows = $statement->getRowsOrFail();
 			$properties = array_map(fn(AstAssignment $assignment) => $assignment->getProperty(), $rows[0]);
 
+			// Assert the entity has columns
 			AssignmentValidator::assertPropertiesExist($properties, $metadata);
-			// The literal-values form auto-initializes any @Orm\Version
-			// column the caller didn't explicitly assign (below), so it's
-			// never "missing" here even though it's typically non-nullable
-			// with no column-level default.
+			
+			// Version columns are auto-initialized below, so they're never "missing" here.
 			$this->assertRequiredColumnsSupplied($properties, $metadata, skipVersionColumns: true);
 
-			// Any @Orm\Version column not explicitly assigned gets its INSERT
-			// initial value (mirrors InsertPersister::persist() — see
-			// VersionValueHandler::buildVersionInsertValues()) appended as if
-			// the caller had written it themselves, so `append` and persist()
-			// initialize version columns identically instead of the QUEL path
-			// silently requiring the caller to supply them by hand.
+			// Un-assigned @Orm\Version columns get their INSERT initial value
+			// (mirrors InsertPersister — see VersionValueHandler::buildVersionInsertValues()).
 			$versionColumnsToInit = array_diff_key($metadata->versionColumns, array_flip($properties));
+			$properties = array_merge($properties, array_keys($versionColumnsToInit));
 
-			if (!empty($versionColumnsToInit)) {
-				$properties = array_merge($properties, array_keys($versionColumnsToInit));
-			}
-
+			// Un-assigned @Orm\Column(default=...) columns get their declared
+			// default value added, rather than relying on the table's own DDL
+			// DEFAULT (which may not exist or may have drifted from the annotation).
+			$defaultColumnsToInit = $this->collectDefaultColumnsToInit($properties, $metadata);
+			$properties = array_merge($properties, array_keys($defaultColumnsToInit));
 			$columnNames = array_map(fn(string $property) => $metadata->getColumnNameOrFail($property), $properties);
 
 			// STI subclass: inject the discriminator column value so `append`
@@ -155,10 +148,11 @@
 			// source can both be built from the same compiled expressions
 			// without recompiling them.
 			$compiledRows = array_map(
-				fn(array $row) => $this->compileRow($row, $metadata, $parameters, $versionColumnsToInit, $discriminatorInfo),
+				fn(array $row) => $this->compileRow($row, $metadata, $parameters, $versionColumnsToInit, $discriminatorInfo, $defaultColumnsToInit),
 				$rows
 			);
 
+			// Compile append query
 			$insertSql = $this->compileInsertGeneric($tableName, $columnNames, $properties, $compiledRows);
 			$onConflict = $statement->getOnConflict();
 
@@ -166,26 +160,27 @@
 				return CompiledAppendSql::single($insertSql);
 			}
 
+			// Convert query to SQL
 			return $this->upsertCompiler->convertToSQL($insertSql, $tableName, $metadata, $properties, $columnNames, $compiledRows, $onConflict, $parameters);
 		}
-
+		
 		/**
-		 * Compiles a single row's assignments to SQL, keyed by property. Each
-		 * value is checked against its target column's declared type first.
-		 * Every column in $versionColumnsToInit also gets its INSERT initial
-		 * value added, keyed by the same property name — see compileValues().
+		 * Compiles a single row's assignments to SQL, keyed by property, after
+		 * checking each value against its target column's declared type. Also
+		 * adds $versionColumnsToInit and $defaultColumnsToInit — see compileValues().
 		 * @param AstAssignment[] $row
 		 * @param EntityMetadataRecord $metadata
 		 * @param array<string, mixed> $parameters
 		 * @param array<string, array{name: string, column: \Quellabs\ObjectQuel\Annotations\Orm\Column, version: \Quellabs\ObjectQuel\Annotations\Orm\Version}> $versionColumnsToInit
-		 * @param array{column: non-empty-string, value: non-empty-string}|null $discriminatorInfo
-		 *        STI discriminator column/value to add — see compileValues()
+		 * @param array{column: non-empty-string, value: non-empty-string}|null $discriminatorInfo STI discriminator column/value to add
+		 * @param array<string, mixed> $defaultColumnsToInit property => declared @Orm\Column default value to add
 		 * @return array<string, string> property (or discriminator column name) => compiled SQL value
-		 * @throws SemanticException
+		 * @throws SemanticException|OrmException
 		 */
-		private function compileRow(array $row, EntityMetadataRecord $metadata, array &$parameters, array $versionColumnsToInit = [], ?array $discriminatorInfo = null): array {
+		private function compileRow(array $row, EntityMetadataRecord $metadata, array &$parameters, array $versionColumnsToInit = [], ?array $discriminatorInfo = null, array $defaultColumnsToInit = []): array {
 			$compiled = [];
 
+			// Caller-supplied assignments: type-check then render each value to SQL.
 			foreach ($row as $assignment) {
 				$this->assertAssignmentValueTypeCompatible($assignment, $metadata);
 
@@ -193,10 +188,17 @@
 				$compiled[$assignment->getProperty()] = $builder->visitNodeAndReturnSQL($assignment->getValue());
 			}
 
+			// @Orm\Version columns the caller didn't assign: initial value for this row.
 			foreach ($this->versionValueHandler->buildVersionInsertValues($versionColumnsToInit) as $property => $value) {
 				$compiled[$property] = (string)$value;
 			}
 
+			// @Orm\Column(default=...) columns the caller didn't assign: declared default, as a literal.
+			foreach ($defaultColumnsToInit as $property => $defaultValue) {
+				$compiled[$property] = $this->formatDefaultLiteral($defaultValue);
+			}
+
+			// STI subclass and not already supplied: the type-discriminator literal.
 			if ($discriminatorInfo !== null) {
 				$compiled[$discriminatorInfo['column']] = $this->identifierQuoter->quoteStringLiteral($discriminatorInfo['value']);
 			}
@@ -205,11 +207,63 @@
 		}
 
 		/**
+		 * Finds every mapped column with a declared @Orm\Column default not
+		 * already in $properties (supplied, or queued as a version column).
+		 * @param string[] $properties Already-resolved property names for this statement
+		 * @param EntityMetadataRecord $metadata
+		 * @return array<string, mixed> property => declared default value
+		 */
+		private function collectDefaultColumnsToInit(array $properties, EntityMetadataRecord $metadata): array {
+			$supplied = array_flip($properties);
+			$defaults = [];
+
+			foreach ($metadata->columnDefinitions as $columnName => $columnDef) {
+				if ($columnDef['primary_key'] || $columnDef['default'] === null) {
+					continue;
+				}
+
+				$property = $metadata->getPropertyName($columnName);
+
+				if ($property === null || isset($supplied[$property])) {
+					continue;
+				}
+
+				$defaults[$property] = $columnDef['default'];
+			}
+
+			return $defaults;
+		}
+
+		/**
+		 * Renders a declared @Orm\Column default (a plain scalar, never an
+		 * expression) as a SQL literal.
+		 * @param mixed $value
+		 * @return string
+		 * @throws \LogicException If the declared default isn't a plain scalar
+		 */
+		private function formatDefaultLiteral(mixed $value): string {
+			if (is_bool($value)) {
+				return $value ? '1' : '0';
+			}
+
+			if (is_int($value) || is_float($value)) {
+				return (string)$value;
+			}
+
+			if (is_string($value)) {
+				return $this->identifierQuoter->quoteStringLiteral($value);
+			}
+
+			throw new \LogicException(sprintf(
+				'@Orm\Column default value must be a string, int, float, or bool, got %s',
+				get_debug_type($value)
+			));
+		}
+
+		/**
 		 * Resolves the STI discriminator column/value via DiscriminatorInfoResolver,
 		 * shared with InsertPersister and Planner\Helpers\InjectDiscriminatorCondition
 		 * so `append` and persist() agree. Null when the class isn't an STI subclass.
-		 * A QuelException from the resolver is rethrown as SemanticException, this
-		 * compiler's own exception contract.
 		 * @param EntityMetadataRecord $metadata
 		 * @return array{column: non-empty-string, value: non-empty-string}|null
 		 * @throws AnnotationReaderException If annotation metadata cannot be read
@@ -264,19 +318,17 @@
 				implode(', ', $valueTuples)
 			);
 		}
-
+		
 		/**
 		 * Compiles the insert-from-select form to
 		 * `INSERT INTO table (cols) SELECT ...`.
 		 *
-		 * The nested retrieve's optimizer pass may append hidden projections
-		 * of its own (e.g. JoinConditionFieldInjector adding a field a WHERE
-		 * condition needs but the user didn't request — see
-		 * Planner\Optimizers\JoinConditionFieldInjector) — those would break a
-		 * direct `INSERT INTO (cols) SELECT ...` column-count match, so the
-		 * compiled inner SELECT is wrapped as a derived table and only its
-		 * originally-requested (showInResult() === true) columns are
-		 * re-projected in the outer SELECT.
+		 * The nested retrieve's optimizer pass may append hidden projections of
+		 * its own (e.g. JoinConditionFieldInjector adding a field a WHERE
+		 * condition needs but the user didn't request), which would break a
+		 * direct column-count match — so the inner SELECT is wrapped as a
+		 * derived table and only its originally-requested
+		 * (showInResult() === true) columns are re-projected outward.
 		 * @param AstAppend $statement
 		 * @param EntityMetadataRecord $metadata
 		 * @param string $tableName
@@ -284,6 +336,7 @@
 		 * @param array<string, mixed> $parameters
 		 * @return string
 		 * @throws SemanticException
+		 * @throws AnnotationReaderException
 		 */
 		private function compileFromSelect(AstAppend $statement, EntityMetadataRecord $metadata, string $tableName, string $targetLabel, array &$parameters): string {
 			$properties = $statement->getColumnsOrFail();
@@ -329,11 +382,10 @@
 		/**
 		 * Resolves identifiers, normalizes, validates, and optimizes the
 		 * insert-from-select source — the same pipeline a top-level retrieve
-		 * goes through. Mutates $source in place (identifier types, range
-		 * rewrites, temp-table promotion). Must run exactly once per
-		 * statement (the caller, AppendExecutor::prepareInsertFromSelectSource(),
-		 * owns that) — after that, needsPlanner()/finalizeSourceRetrieveSql()/
-		 * resolveVisibleAliases() can all be called freely.
+		 * goes through. Mutates $source in place. Must run exactly once per
+		 * statement (owned by the caller, AppendExecutor::prepareInsertFromSelectSource())
+		 * — after that, needsPlanner()/finalizeSourceRetrieveSql()/resolveVisibleAliases()
+		 * can all be called freely.
 		 * @param AstRetrieve $source
 		 * @param array<string, mixed> $parameters
 		 * @return void
@@ -357,10 +409,9 @@
 		 * Compiles an already-prepared (see prepareSource()) source retrieve to
 		 * a plain SQL SELECT string, for embedding in `INSERT INTO ... SELECT ...`.
 		 * Only valid when needsPlanner($source) is false — QuelToSQLRetrieve
-		 * silently drops any range it doesn't understand (JSON-source ranges,
-		 * temp-table-promoted subquery ranges), so this must never be called on
-		 * a source that needs the planner instead (see
-		 * AppendExecutor::executeInsertFromSelectViaPlanner()).
+		 * silently drops ranges it doesn't understand (JSON-source, temp-table-
+		 * promoted subquery), so a source needing the planner must go through
+		 * AppendExecutor::executeInsertFromSelectViaPlanner() instead.
 		 * @param AstRetrieve $source
 		 * @param array<string, mixed> $parameters
 		 * @return string
@@ -375,10 +426,9 @@
 		 * inline SQL SELECT — true for a JSON-source range or a subquery
 		 * range promoted to AstRangeDatabaseTempTable.
 		 *
-		 * No recursion: DatabaseRangePromotor has already resolved every
+		 * No recursion needed: DatabaseRangePromotor has already resolved every
 		 * AstRangeDatabaseSubquery at this level to either TempTable (caught
-		 * below) or Materialized (provably external-source-free, safe to
-		 * inline) — same non-recursive assumption
+		 * below) or Materialized (safe to inline) — same assumption
 		 * ExecutionPlanBuilder::extractTemporaryRanges() makes.
 		 * @param AstRetrieve $source
 		 * @return bool
