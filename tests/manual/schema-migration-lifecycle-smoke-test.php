@@ -929,12 +929,30 @@
 		check('idempotent after phase 18', $exitCode === 0 && str_contains($out, 'No changes detected'));
 
 		// -------------------------------------------------------------
-		// Phase 19 (V19): "renaming" a column is really drop+add —
-		// SchemaComparator has no rename detection at all (it only ever
-		// sees two disjoint column-name sets). Demonstrated on a nullable
-		// column so it isn't entangled with the NOT-NULL/backfill concern
-		// phase 20 covers separately, and with a real value seeded first
-		// so the resulting data loss is concrete, not just theoretical.
+		// Phase 19 (V19): "renaming" a column is really drop+add. This is
+		// not a fixable gap — it's inherent to how every declarative-diff
+		// migration tool works, ObjectQuel included: make:migrations only
+		// ever compares the entity's CURRENT annotations against the
+		// database's CURRENT live schema. Neither side carries a PHP
+		// property name the other could match against (the database has
+		// no notion of it at all), and no history of the entity's PAST
+		// annotations is kept anywhere to diff against instead. Without
+		// that earlier snapshot, a same-property/different-column-name
+		// change is genuinely indistinguishable from an unrelated
+		// drop-this-add-that. Doctrine's schema-diff tooling (both
+		// orm:schema-tool:update and `doctrine-migrations diff`) has the
+		// identical limitation for the identical reason, and the
+		// documented workaround there is the same one available here:
+		// treat the generated migration as a draft and hand-edit it
+		// (`alter table (rename oldAttr to newAttr)` — the DDL compiler
+		// already supports this, see AstAlterRenameColumn/
+		// compileRenameColumn — make:migrations just never reaches for
+		// it automatically, and structurally can't).
+		//
+		// Demonstrated on a nullable column so it isn't entangled with
+		// the NOT-NULL/backfill concern phase 20 covers separately, and
+		// with a real value seeded first so the resulting data loss is
+		// concrete, not just theoretical.
 		// -------------------------------------------------------------
 		section('Phase 19: "renaming" a column (extra_notes -> extra_remarks) is really drop+add, and loses data');
 
