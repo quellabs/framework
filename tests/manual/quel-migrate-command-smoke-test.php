@@ -26,8 +26,10 @@
 
 	require __DIR__ . '/../../vendor/autoload.php';
 
+	use Quellabs\ObjectQuel\Sculpt\Commands\MakeMigrationCommand;
 	use Quellabs\ObjectQuel\Sculpt\Commands\QuelMigrateCommand;
 	use Quellabs\ObjectQuel\Sculpt\ServiceProvider;
+	use Quellabs\Sculpt\Contracts\CommandBase;
 	use Quellabs\Sculpt\ConfigurationManager;
 	use Quellabs\Sculpt\Console\ConsoleInput;
 	use Quellabs\Sculpt\Console\ConsoleOutput;
@@ -112,10 +114,19 @@
 	 * @return array{0: int, 1: string}
 	 */
 	function runCommand(ServiceProvider $provider, array $args): array {
+		return runAnyCommand(QuelMigrateCommand::class, $provider, $args);
+	}
+
+	/**
+	 * @param class-string<CommandBase> $commandClass
+	 * @param string[] $args
+	 * @return array{0: int, 1: string}
+	 */
+	function runAnyCommand(string $commandClass, ServiceProvider $provider, array $args): array {
 		$stream = fopen('php://memory', 'w+');
 		$output = new ConsoleOutput($stream);
 		$input = new ConsoleInput($output, fopen('php://memory', 'r+'));
-		$command = new QuelMigrateCommand($input, $output, $provider);
+		$command = new $commandClass($input, $output, $provider);
 
 		$exitCode = $command->execute(new ConfigurationManager($args));
 
@@ -227,6 +238,52 @@
 		// Clean up the migration that migrate --target left pending.
 		[$exitCode] = runCommand($provider, ['--force']);
 		check('remaining pending migration applies cleanly', $exitCode === 0);
+
+		// ---------------------------------------------------------------
+		// Scenario 8: full CLI chain — make:migration -> hand-edit ->
+		// quel:migrate -> --rollback, mirroring ForeignKeyMigrationTest's
+		// "prove it end to end, not just each piece in isolation" style.
+		// This is the one Phase 7 scenario (objectquel-migrations-
+		// implementation-plan.md) that can only run here, not as a
+		// PHPUnit test — make:migration needs no EntityManager and could
+		// be tested there (see MakeMigrationCommandTest), but chaining it
+		// into quel:migrate hits the same EntityManager collision this
+		// whole script exists to route around.
+		// ---------------------------------------------------------------
+		section('make:migration -> hand-edit -> quel:migrate -> --rollback');
+
+		[$exitCode, $out] = runAnyCommand(MakeMigrationCommand::class, $provider, ['ChainSmokeMigration']);
+		check('make:migration exit code is 0', $exitCode === 0);
+		check('make:migration reports success', str_contains($out, 'Success!'));
+
+		$generatedFiles = glob($migrationsDir . '/*_ChainSmokeMigration.php') ?: [];
+		check('exactly one file was generated', count($generatedFiles) === 1);
+
+		$tableD = nextTableName();
+		$generatedFile = $generatedFiles[0];
+		$content = file_get_contents($generatedFile);
+		$content = str_replace(
+			"public function up(): void {\n        }",
+			"public function up(): void {\n            \$this->query('create {$tableD} (id = integer identity, primary key (id))');\n        }",
+			$content
+		);
+		$content = str_replace(
+			"public function down(): void {\n        }",
+			"public function down(): void {\n            \$this->query('destroy {$tableD}');\n        }",
+			$content
+		);
+		check('hand-edit actually changed the file', $content !== file_get_contents($generatedFile));
+		file_put_contents($generatedFile, $content);
+
+		[$exitCode, $out] = runCommand($provider, ['--force']);
+		check('quel:migrate exit code is 0', $exitCode === 0);
+		check('quel:migrate reports success', str_contains($out, 'Migration completed successfully'));
+		check('hand-written up() actually ran', in_array($tableD, $provider->getDatabaseAdapter()->getTables(), true));
+
+		[$exitCode, $out] = runCommand($provider, ['--rollback', '--force']);
+		check('quel:migrate --rollback exit code is 0', $exitCode === 0);
+		check('quel:migrate --rollback reports success', str_contains($out, 'Rollback completed successfully'));
+		check('hand-written down() actually ran', !in_array($tableD, $provider->getDatabaseAdapter()->getTables(), true));
 	} finally {
 		// -----------------------------------------------------------------
 		// Teardown — runs even if a check above threw.

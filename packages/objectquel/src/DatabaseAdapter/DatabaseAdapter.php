@@ -224,8 +224,8 @@
 				'adapter' => $adapter,
 				'host'    => $config['host'] ?? 'localhost',
 				'name'    => $config['database'],
-				'user'    => $config['username'],
-				'pass'    => $config['password'],
+				'user'    => $config['username'] ?? '',
+				'pass'    => $config['password'] ?? '',
 				'port'    => $config['port'] ?? 3306,
 				'charset' => $config['encoding'] ?? 'utf8mb4',
 				'suffix'  => ''

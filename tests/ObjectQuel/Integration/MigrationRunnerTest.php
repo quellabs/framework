@@ -155,6 +155,23 @@
 			$this->assertSame([], $runner->getPending());
 		}
 
+		/**
+		 * Running migrate() again with nothing pending is a safe no-op —
+		 * doesn't error, doesn't re-apply anything, doesn't touch the
+		 * already-applied tables.
+		 */
+		public function testMigratingAgainWithNothingPendingIsANoOp(): void {
+			$tableA = $this->nextTableName();
+			$this->writeCreateTableMigration(20260101000001, $tableA);
+
+			$runner = $this->makeRunner();
+			$runner->migrate();
+			$runner->migrate();
+
+			$this->assertSame([], $runner->getPending());
+			$this->assertContains($tableA, self::em()->getConnection()->getTables());
+		}
+
 		public function testMigrateWithTargetStopsAfterTheGivenVersionInclusive(): void {
 			$tableA = $this->nextTableName();
 			$tableB = $this->nextTableName();
