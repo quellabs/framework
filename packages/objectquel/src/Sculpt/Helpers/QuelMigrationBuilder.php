@@ -17,18 +17,14 @@
 	 * name, each value a change descriptor (see the TableChanges/AllChanges
 	 * phpstan types below).
 	 *
-	 * Per table: a new table becomes one `create tableName (...)`
-	 * statement, with any new indexes embedded directly in its column list
-	 * (`create t (..., [unique|fulltext] index name (cols))`); column/
-	 * primary-key/index changes on an existing table become one combined
-	 * `alter tableName (add ..., drop ..., retype ..., primary key (...),
-	 * add index name (cols), drop index name)` statement — Quel's `alter`
-	 * takes multiple comma-separated ops in one statement, and both index
-	 * sub-ops are real grammar (not sugar layered on here) that the
-	 * executor already knows how to interleave with the column/primary-key
-	 * ops correctly. Foreign keys are a deliberate second pass over every
-	 * table, after every table/column/index change, so a table a new FK
-	 * references is guaranteed to already exist.
+	 * Per table: a new table becomes one `create tableName (...)` statement
+	 * with any new indexes embedded in its column list; column/primary-key/
+	 * index changes on an existing table become one combined `alter
+	 * tableName (add ..., drop ..., retype ..., primary key (...), add
+	 * index ..., drop index ...)` statement — all real grammar the
+	 * executor already knows how to compile. Foreign keys are a deliberate
+	 * second pass over every table, after every table/column/index change,
+	 * so a table a new FK references is guaranteed to already exist.
 	 *
 	 * `enum(...)` is always emitted verbatim — QuelToSQLCreate/QuelToSQLAlter
 	 * pick native ENUM vs. VARCHAR at DDL-compile time — and 'json' is
@@ -298,10 +294,8 @@ PHP;
 
 		/**
 		 * Build a `create tableName (...)` statement for a brand-new table,
-		 * with any new indexes embedded directly in its column list —
-		 * `create`'s grammar accepts `[unique|fulltext] index name (cols)`
-		 * entries alongside columns (see Rules\CreateTable), the same sugar
-		 * `alter`'s `add index` uses.
+		 * with any new indexes embedded in its column list (`create`'s
+		 * grammar accepts index entries alongside columns).
 		 * @param string $tableName
 		 * @param array<string, ColumnDefinition> $columns
 		 * @param array<string, IndexConfig> $indexes
@@ -330,15 +324,10 @@ PHP;
 		/**
 		 * Build the comma-separated list of `alter`'s column/primary-key/
 		 * index sub-operations for one table, in one direction. `add` ops
-		 * always precede `primary key (...)` so a newly-added primary-key
-		 * column exists by the time the primary key change runs (these
-		 * compile to separate, sequentially-run SQL statements — see
-		 * QuelToSQLAlter). Index sub-ops are appended last; the executor
-		 * already runs every column/primary-key sub-op before any index
-		 * sub-op regardless of their order in this list (see
-		 * AlterTableExecutor::compileSql()), so their position here only
-		 * affects the generated Quel source's readability, not execution
-		 * order.
+		 * precede `primary key (...)` so a newly-added key column exists
+		 * first; index ops are appended last, but position doesn't affect
+		 * execution order — AlterTableExecutor always runs column/PK ops
+		 * before index ops regardless of declared order.
 		 * @param string $tableName
 		 * @param array{added: array<string, ColumnDefinition>, modified: array<string, ColumnModification>, deleted: array<string, ColumnDefinition>, indexes?: IndexChanges, primaryKey?: PrimaryKeyChangeSet} $changes
 		 * @param 'up'|'down' $direction
@@ -504,11 +493,8 @@ PHP;
 		// -------------------------------------------------------------------------
 
 		/**
-		 * Render a `[unique|fulltext] index name (cols)` clause — the
-		 * shared name+column-list grammar `create`'s embedded index
-		 * entries and `alter`'s `add index` sub-op both use, minus
-		 * whichever leading keyword the caller's context already supplies
-		 * (nothing for `create`, `add ` for `alter` — see buildAddIndexOp()).
+		 * Render a `[unique|fulltext] index name (cols)` clause, shared by
+		 * `create`'s embedded index entries and `alter`'s `add index` op.
 		 * @param string $indexName
 		 * @param IndexConfig $indexConfig
 		 * @return string
