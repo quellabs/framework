@@ -2,7 +2,7 @@
 
 	namespace Quellabs\ObjectQuel\ObjectQuel\Rules;
 
-	use Quellabs\ObjectQuel\DatabaseAdapter\TypeMapper;
+	use Quellabs\ObjectQuel\DatabaseAdapter\Mapper\TypeMapper;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstColumnDefinition;
 	use Quellabs\ObjectQuel\ObjectQuel\Lexer;
 	use Quellabs\ObjectQuel\ObjectQuel\LexerException;

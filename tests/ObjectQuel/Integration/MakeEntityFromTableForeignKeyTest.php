@@ -19,15 +19,10 @@
 	 * reflection (mirroring ForeignKeyMigrationTest's approach) rather than
 	 * driving execute(), since execute() prompts interactively for a table name.
 	 *
-	 * Uses a file-backed SQLite database rather than ':memory:'. DatabaseAdapter
-	 * reads column definitions through a separate Phinx-adapter PDO connection
-	 * (getPhinxAdapter(), a second connection built straight from the CakePHP
-	 * connection's config — see DatabaseAdapter::getPhinxAdapter()) rather than
-	 * the primary CakePHP connection used for execute(). Two independent
-	 * ':memory:' connections are two independent empty databases, so a table
-	 * created via execute() would be invisible to getColumns(). A shared temp
-	 * file sidesteps that without depending on SQLite's less portable
-	 * shared-cache URI syntax.
+	 * Uses a file-backed SQLite database rather than ':memory:', matching the
+	 * rest of this suite's file-based SQLite fixtures — a shared temp file
+	 * avoids depending on SQLite's less portable shared-cache URI syntax if
+	 * this test ever needs two separate connections onto the same database.
 	 */
 	class MakeEntityFromTableForeignKeyTest extends TestCase {
 

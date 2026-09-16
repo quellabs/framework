@@ -3,7 +3,7 @@
 	namespace Quellabs\ObjectQuel\Annotations\Orm;
 	
 	use Quellabs\AnnotationReader\AnnotationInterface;
-	use Quellabs\ObjectQuel\DatabaseAdapter\TypeMapper;
+	use Quellabs\ObjectQuel\DatabaseAdapter\Mapper\TypeMapper;
 	use Quellabs\Support\Tools;
 	
 	/**

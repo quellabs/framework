@@ -1,8 +1,9 @@
 <?php
 
-	namespace Quellabs\ObjectQuel\DatabaseAdapter;
+	namespace Quellabs\ObjectQuel\DatabaseAdapter\Mapper;
 
 	use Quellabs\ObjectQuel\Capabilities\PlatformCapabilitiesInterface;
+	use Quellabs\ObjectQuel\DatabaseAdapter\SqlIdentifierQuoter;
 
 	/**
 	 * Renders engine-specific SQL DDL for session-scoped temporary tables,

@@ -6,10 +6,13 @@
 	use Cake\Database\Schema\Collection as SchemaCollection;
 	use Cake\Database\StatementInterface;
 	use Cake\Database\Connection;
-	use Phinx\Db\Adapter\AdapterInterface;
-	use Phinx\Db\Adapter\AdapterFactory;
-	use Quellabs\ObjectQuel\ObjectQuel\ForeignKeyConstraintNamer;
-	
+	use Quellabs\ObjectQuel\DatabaseAdapter\Inspector\MysqlSchemaIntrospector;
+	use Quellabs\ObjectQuel\DatabaseAdapter\Inspector\NullSchemaIntrospector;
+	use Quellabs\ObjectQuel\DatabaseAdapter\Inspector\PostgresSchemaIntrospector;
+	use Quellabs\ObjectQuel\DatabaseAdapter\Inspector\SchemaIntrospectorInterface;
+	use Quellabs\ObjectQuel\DatabaseAdapter\Inspector\SqlServerSchemaIntrospector;
+	use Quellabs\ObjectQuel\DatabaseAdapter\Inspector\SqliteSchemaIntrospector;
+
 	/**
 	 * Database adapter that ties ObjectQuel and CakePHP Database together
 	 * Wraps CakePHP's database connection to provide ObjectQuel-specific functionality
@@ -51,14 +54,7 @@
 		
 		/** @var array|string[] The index types ObjectQuel supports */
 		const array INDEX_TYPES = ['primary', 'unique', 'index', 'fulltext'];
-		
-		/**
-		 * Keep a list of decimal types for precision/scale inclusion
-		 * Phinx seems to sometimes return precision for integer fields which is incorrect
-		 * @var array|string[] Decimal types in database
-		 */
-		const array DECIMAL_TYPES = ['decimal', 'numeric', 'float', 'double'];
-		
+
 		/** @var Connection CakePHP database connection instance */
 		protected Connection $connection;
 		
@@ -76,10 +72,22 @@
 
 		/** @var string|null Cached database type identifier (null = not yet determined) */
 		private ?string $databaseTypeCache;
-		
-		/** @var AdapterInterface|null Cached Phinx adapter instance (null = not yet created) */
-		private ?AdapterInterface $phinxAdapterCache;
-		
+
+		/**
+		 * Cached per-engine schema introspector (columns/foreign keys/index
+		 * usage stats — see SchemaIntrospectorInterface), lazily created by
+		 * getSchemaIntrospector() and cached for the lifetime of this adapter,
+		 * since getDatabaseType() cannot change after construction. Defaulted
+		 * inline (unlike the other cache fields below) rather than only in
+		 * the constructor: getSchemaIntrospector() is private, so a partial
+		 * mock built with disableOriginalConstructor() (see
+		 * DatabaseAdapterForeignKeyPostgresTest and friends) can't stub it
+		 * the way it stubs getDatabaseType(), and would otherwise hit this
+		 * property uninitialized.
+		 * @var SchemaIntrospectorInterface|null
+		 */
+		private ?SchemaIntrospectorInterface $schemaIntrospectorCache = null;
+
 		/**
 		 * Cached SQL Server database compatibility level (e.g. 170 for SQL
 		 * Server 2025), fetched via DATABASEPROPERTYEX(). Null means "not yet
@@ -100,7 +108,6 @@
 			$this->transaction_depth = 0;
 			$this->transaction_rollback_only = false;
 			$this->databaseTypeCache = null;
-			$this->phinxAdapterCache = null;
 			$this->sqlServerCompatibilityLevelCache = null;
 
 			// SQLite disables foreign-key enforcement per-connection by default, even when
@@ -186,58 +193,32 @@
 		public function getSchemaCollection(): CollectionInterface {
 			return new SchemaCollection($this->connection);
 		}
-		
-		/**
-		 * Creates a Phinx adapter instance from the current CakePHP connection
-		 * Maps CakePHP driver configuration to Phinx adapter format for schema migration support.
-		 * The instance is cached for the lifetime of this DatabaseAdapter, since the
-		 * underlying CakePHP connection config is immutable after construction.
-		 * @return AdapterInterface Phinx adapter instance configured for the current database
-		 */
-		public function getPhinxAdapter(): AdapterInterface {
-			if ($this->phinxAdapterCache !== null) {
-				return $this->phinxAdapterCache;
-			}
-			
-			// Use the existing connection instead of fetching 'default'
-			$connection = $this->connection;
-			
-			/**
-			 * Get the CakePHP connection config
-			 * @var array<string, string> $config
-			 */
-			$config = $connection->config();
-			
-			// Map CakePHP driver to Phinx adapter name
-			$driverMap = [
-				'Cake\Database\Driver\Mysql'     => 'mysql',
-				'Cake\Database\Driver\Postgres'  => 'pgsql',
-				'Cake\Database\Driver\Sqlite'    => 'sqlite',
-				'Cake\Database\Driver\Sqlserver' => 'sqlsrv'
-			];
-			
-			// Get the appropriate adapter name
-			$adapter = $driverMap[$config['driver']] ?? 'mysql';
-			
-			// Convert CakePHP connection config to Phinx format
-			$phinxConfig = [
-				'adapter' => $adapter,
-				'host'    => $config['host'] ?? 'localhost',
-				'name'    => $config['database'],
-				'user'    => $config['username'] ?? '',
-				'pass'    => $config['password'] ?? '',
-				'port'    => $config['port'] ?? 3306,
-				'charset' => $config['encoding'] ?? 'utf8mb4',
-				'suffix'  => ''
-			];
 
-			// Create and cache the adapter
-			$this->phinxAdapterCache = AdapterFactory::instance()->getAdapter($phinxConfig['adapter'], $phinxConfig);
-			return $this->phinxAdapterCache;
+		/**
+		 * Returns the per-engine schema introspector for the connected
+		 * database (columns/foreign keys/index usage stats — see
+		 * SchemaIntrospectorInterface), matching the same closed enumeration
+		 * getDatabaseType() and every other engine-dispatch match() in this
+		 * class already use. 'default' falls back to NullSchemaIntrospector
+		 * for a future unmapped engine value, not a branch reachable today.
+		 * @return SchemaIntrospectorInterface
+		 */
+		private function getSchemaIntrospector(): SchemaIntrospectorInterface {
+			if ($this->schemaIntrospectorCache !== null) {
+				return $this->schemaIntrospectorCache;
+			}
+
+			return $this->schemaIntrospectorCache = match ($this->getDatabaseType()) {
+				'sqlite'           => new SqliteSchemaIntrospector($this),
+				'mysql', 'mariadb' => new MysqlSchemaIntrospector($this),
+				'pgsql'            => new PostgresSchemaIntrospector($this),
+				'sqlsrv'           => new SqlServerSchemaIntrospector($this),
+				default            => new NullSchemaIntrospector(),
+			};
 		}
-		
+
 		// ==================== Schema Introspection ====================
-		
+
 		/**
 		 * Retrieves a list of all tables in the database (excluding views)
 		 * @return string[] List of table names
@@ -246,75 +227,17 @@
 			$schemaCollection = $this->getSchemaCollection();
 			return $schemaCollection->listTablesWithoutViews();
 		}
-		
+
 		/**
-		 * Retrieves detailed column definitions for a database table
+		 * Retrieves detailed column definitions for a database table, via
+		 * native per-engine SQL introspection (see
+		 * objectquel-phinx-removal-plan.md — this replaced Phinx's
+		 * AdapterInterface::getColumns()).
 		 * @param string $tableName Name of the table to analyze
 		 * @return array<string, ColumnDefinition>
 		 */
 		public function getColumns(string $tableName): array {
-			// Fetch the Phinx adapter
-			$phinxAdapter = $this->getPhinxAdapter();
-			
-			// Get primary key columns first so we can mark them in column definitions
-			$primaryKey = $this->getPrimaryKeyColumns($tableName);
-			
-			// Fetch and process each column in the table
-			$result = [];
-			
-			foreach ($phinxAdapter->getColumns($tableName) as $column) {
-				$columnType = $column->getType();
-				$isOfDecimalType = in_array(strtolower($columnType), self::DECIMAL_TYPES);
-				
-				$columnData = [
-					// Basic column type (integer, string, decimal, etc.)
-					'type'        => $columnType,
-					
-					// PHP type of this column
-					'php_type'    => TypeMapper::phinxTypeToPhpType($columnType),
-					
-					// Maximum length for string types or display width for numeric types
-					// Only apply if the column type supports limits
-					'limit'       => $column->getLimit() ?? TypeMapper::getDefaultLimit($columnType),
-					
-					// Default value for the column if not specified during insert
-					'default'     => $column->getDefault(),
-					
-					// Whether NULL values are allowed in this column
-					'nullable'    => $column->getNull(),
-					
-					// For numeric types: total number of digits (precision)
-					'precision'   => $isOfDecimalType ? $column->getPrecision() : null,
-					
-					// For decimal types: number of digits after decimal point
-					'scale'       => $isOfDecimalType ? $column->getScale() : null,
-					
-					// Whether column allows negative values (converted from signed to unsigned)
-					'unsigned'    => !$column->getSigned(),
-					
-					// For generated columns (computed values based on expressions)
-					'generated'   => $column->getGenerated(),
-					
-					// Whether column auto-increments (typically for primary keys)
-					'identity'    => $column->getIdentity(),
-					
-					// Whether this column is part of the primary key
-					'primary_key' => in_array($column->getName(), $primaryKey, true),
-					
-					// Values for enums
-					'values'      => $column->getValues()
-				];
-				
-				// For enums put the max length in the column data.
-				// This is needed to be able to compare entity data with database data
-				if ($columnType === 'enum') {
-					$columnData['limit'] = $this->resolveEnumLimit($column->getValues());
-				}
-				
-				$result[$column->getName()] = $columnData;
-			}
-			
-			return $result;
+			return $this->getSchemaIntrospector()->getColumns($tableName);
 		}
 		
 		/**
@@ -580,13 +503,7 @@
 		 * @return array<string, ForeignKeyDefinition> Constraint name => definition
 		 */
 		public function getForeignKeys(string $tableName): array {
-			return match ($this->getDatabaseType()) {
-				'sqlite'           => $this->getSqliteForeignKeys($tableName),
-				'mysql', 'mariadb' => $this->getMysqlForeignKeys($tableName),
-				'pgsql'            => $this->getPostgresForeignKeys($tableName),
-				'sqlsrv'           => $this->getSqlServerForeignKeys($tableName),
-				default            => [],
-			};
+			return $this->getSchemaIntrospector()->getForeignKeys($tableName);
 		}
 
 		// ==================== Index Usage Statistics ====================
@@ -599,11 +516,7 @@
 		 * @return array<string, array<string, IndexUsageStats>>|null Table name => index name => stats
 		 */
 		public function getIndexUsageStatistics(array $tables): ?array {
-			return match ($this->getDatabaseType()) {
-				'mysql', 'mariadb' => $this->getMysqlIndexUsageStatistics($tables),
-				'pgsql'            => $this->getPostgresIndexUsageStatistics($tables),
-				default            => null,
-			};
+			return $this->getSchemaIntrospector()->getIndexUsageStatistics($tables);
 		}
 
 		// ==================== Query Execution ====================
@@ -767,331 +680,5 @@
 				},
 				$sql
 			) ?? $sql;
-		}
-		
-		/**
-		 * Computes the storage limit for an enum column based on its longest case.
-		 * Falls back to a minimum of 32 to leave headroom for entity-side comparisons
-		 * against database data, even when the enum has no defined values.
-		 * @param array<int, string>|null $values Enum case values
-		 * @return int Limit to use for the column definition
-		 */
-		private function resolveEnumLimit(?array $values): int {
-			if (empty($values)) {
-				return 32;
-			}
-			
-			$maxLength = max(array_map('strlen', $values));
-			return max($maxLength, 32);
-		}
-		
-		/**
-		 * Reads index usage stats from MySQL/MariaDB's
-		 * performance_schema.table_io_waits_summary_by_index_usage (0/0 means
-		 * unused since the last restart, not "no data"). Returns null when the
-		 * query fails, e.g. performance_schema disabled.
-		 * @param string[] $tables
-		 * @return array<string, array<string, IndexUsageStats>>|null
-		 */
-		private function getMysqlIndexUsageStatistics(array $tables): ?array {
-			// Interpolated, not bound: performance_schema rejects prepared-statement
-			// binding on some MySQL/MariaDB versions. Safe here — names come from
-			// getTables(), not user input, and are addslashes()-escaped.
-			$inList = implode(', ', array_map(
-				fn(string $t) => "'" . addslashes($t) . "'",
-				$tables
-			));
-			
-			$statement = $this->execute("
-				SELECT
-					OBJECT_NAME AS table_name,
-					INDEX_NAME AS index_name,
-					COUNT_READ AS `reads`,
-					COUNT_WRITE AS `writes`
-				FROM performance_schema.table_io_waits_summary_by_index_usage
-				WHERE OBJECT_SCHEMA = DATABASE() AND
-				      OBJECT_NAME IN ({$inList}) AND
-				      INDEX_NAME IS NOT NULL
-			");
-			
-			if ($statement === null) {
-				return null;
-			}
-			
-			$result = [];
-			
-			/** @var array{table_name: string, index_name: string, reads: int, writes: int} $row */
-			foreach ($statement->fetchAll('assoc') as $row) {
-				$result[$row['table_name']][$row['index_name']] = [
-					'reads'  => (int)$row['reads'],
-					'writes' => (int)$row['writes'],
-				];
-			}
-			
-			return $result;
-		}
-		
-		/**
-		 * Reads index usage stats from PostgreSQL's pg_stat_user_indexes.
-		 * Postgres tracks writes only at the table level, so writes is reported
-		 * as -1 (callers render it as n/a).
-		 * @param string[] $tables
-		 * @return array<string, array<string, IndexUsageStats>>|null
-		 */
-		private function getPostgresIndexUsageStatistics(array $tables): ?array {
-			$inList = implode(', ', array_map(
-				fn(string $t) => "'" . addslashes($t) . "'",
-				$tables
-			));
-			
-			$statement = $this->execute("
-				SELECT
-					relname AS table_name,
-					indexrelname AS index_name,
-					idx_scan AS reads
-				FROM pg_stat_user_indexes
-				WHERE relname IN ({$inList})
-			");
-			
-			if ($statement === null) {
-				return null;
-			}
-			
-			$result = [];
-			
-			/** @var array{table_name: string, index_name: string, reads: int} $row */
-			foreach ($statement->fetchAll('assoc') as $row) {
-				$result[$row['table_name']][$row['index_name']] = [
-					'reads'  => (int)$row['reads'],
-					'writes' => -1, // PostgreSQL does not track per-index writes
-				];
-			}
-			
-			return $result;
-		}
-		
-		/**
-		 * Reads foreign keys for a table on MySQL/MariaDB.
-		 *
-		 * KEY_COLUMN_USAGE alone maps columns to the referenced table/column but doesn't
-		 * carry the ON DELETE/UPDATE action, so it's joined against REFERENTIAL_CONSTRAINTS
-		 * (matched on CONSTRAINT_NAME + CONSTRAINT_SCHEMA) to get the actual delete/update rule.
-		 * @param string $tableName
-		 * @return array<string, ForeignKeyDefinition> Constraint name => definition
-		 */
-		private function getMysqlForeignKeys(string $tableName): array {
-			$statement = $this->execute("
-				SELECT
-					kcu.CONSTRAINT_NAME AS constraint_name,
-					kcu.COLUMN_NAME AS column_name,
-					kcu.ORDINAL_POSITION AS ordinal_position,
-					kcu.REFERENCED_TABLE_NAME AS referenced_table,
-					kcu.REFERENCED_COLUMN_NAME AS referenced_column,
-					rc.DELETE_RULE AS delete_rule,
-					rc.UPDATE_RULE AS update_rule
-				FROM information_schema.KEY_COLUMN_USAGE kcu
-				JOIN information_schema.REFERENTIAL_CONSTRAINTS rc ON rc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME AND rc.CONSTRAINT_SCHEMA = kcu.CONSTRAINT_SCHEMA
-				WHERE kcu.TABLE_SCHEMA = DATABASE() AND kcu.TABLE_NAME = :tableName AND kcu.REFERENCED_TABLE_NAME IS NOT NULL
-				ORDER BY kcu.CONSTRAINT_NAME, kcu.ORDINAL_POSITION
-			", [
-				'tableName' => $tableName
-			]);
-			
-			if ($statement === null) {
-				return [];
-			}
-			
-			$result = [];
-			
-			/** @var array{constraint_name: string, column_name: string, referenced_table: string, referenced_column: string, delete_rule: string, update_rule: string} $row */
-			foreach ($statement->fetchAll('assoc') as $row) {
-				$name = $row['constraint_name'];
-				
-				if (!isset($result[$name])) {
-					$result[$name] = [
-						'columns'           => [],
-						'referencedTable'   => $row['referenced_table'],
-						'referencedColumns' => [],
-						'onDelete'          => $row['delete_rule'],
-						'onUpdate'          => $row['update_rule'],
-					];
-				}
-				
-				$result[$name]['columns'][] = $row['column_name'];
-				$result[$name]['referencedColumns'][] = $row['referenced_column'];
-			}
-			
-			return $result;
-		}
-		
-		/**
-		 * Reads foreign keys for a table on SQLite via PRAGMA foreign_key_list().
-		 *
-		 * Rows sharing the same 'id' belong to the same (possibly composite) constraint,
-		 * ordered by 'seq'. SQLite assigns no constraint name, so a deterministic one is
-		 * synthesized from the table and local columns — matching the naming convention
-		 * MakeMigrationsCommand uses when generating constraints, so round-tripping a
-		 * generated constraint back through this method compares equal.
-		 * @param string $tableName
-		 * @return array<string, ForeignKeyDefinition> Constraint name => definition
-		 */
-		private function getSqliteForeignKeys(string $tableName): array {
-			$quotedTable = $this->escapeIdentifier($tableName);
-			$statement = $this->execute("PRAGMA foreign_key_list({$quotedTable})");
-			
-			if ($statement === null) {
-				return [];
-			}
-			
-			$byId = [];
-			
-			/** @var array{id: int, seq: int, table: string, from: string, to: string, on_update: string, on_delete: string} $row */
-			foreach ($statement->fetchAll('assoc') as $row) {
-				$byId[$row['id']]['referencedTable'] ??= $row['table'];
-				$byId[$row['id']]['onDelete'] ??= strtoupper($row['on_delete']);
-				$byId[$row['id']]['onUpdate'] ??= strtoupper($row['on_update']);
-				$byId[$row['id']]['columns'][(int)$row['seq']] = $row['from'];
-				$byId[$row['id']]['referencedColumns'][(int)$row['seq']] = $row['to'];
-			}
-			
-			$result = [];
-			
-			foreach ($byId as $definition) {
-				ksort($definition['columns']);
-				ksort($definition['referencedColumns']);
-				$definition['columns'] = array_values($definition['columns']);
-				$definition['referencedColumns'] = array_values($definition['referencedColumns']);
-				
-				$name = ForeignKeyConstraintNamer::nameForColumns($tableName, $definition['columns']);
-				$result[$name] = $definition;
-			}
-			
-			return $result;
-		}
-		
-		/**
-		 * Reads foreign keys for a table on PostgreSQL via information_schema.
-		 *
-		 * information_schema has no ordinal linking a composite constraint's local
-		 * columns to its referenced columns, so joining produces every possible
-		 * pairing, not just the real ones. Since @Orm\ForeignKey only ever declares
-		 * single-column constraints, a constraint resolving to more than one local
-		 * column is a real composite FK and is simply not reported, rather than
-		 * risk a wrongly-paired column set.
-		 * @param string $tableName
-		 * @return array<string, ForeignKeyDefinition> Constraint name => definition
-		 */
-		private function getPostgresForeignKeys(string $tableName): array {
-			$statement = $this->execute("
-				SELECT
-					tc.constraint_name AS constraint_name,
-					kcu.column_name AS column_name,
-					ccu.table_name AS referenced_table,
-					ccu.column_name AS referenced_column,
-					rc.delete_rule AS delete_rule,
-					rc.update_rule AS update_rule
-				FROM information_schema.table_constraints tc
-				JOIN information_schema.key_column_usage kcu ON kcu.constraint_name = tc.constraint_name AND kcu.constraint_schema = tc.constraint_schema
-				JOIN information_schema.referential_constraints rc ON rc.constraint_name = tc.constraint_name AND rc.constraint_schema = tc.constraint_schema
-				JOIN information_schema.constraint_column_usage ccu ON ccu.constraint_name = rc.unique_constraint_name AND ccu.constraint_schema = rc.unique_constraint_schema
-				WHERE tc.constraint_type = 'FOREIGN KEY' AND
-				      tc.table_schema = current_schema() AND
-				      tc.table_name = :tableName
-				ORDER BY tc.constraint_name, kcu.ordinal_position
-			", [
-				'tableName' => $tableName
-			]);
-			
-			if ($statement === null) {
-				return [];
-			}
-			
-			$byName = [];
-			
-			/** @var array{constraint_name: string, column_name: string, referenced_table: string, referenced_column: string, delete_rule: string, update_rule: string} $row */
-			foreach ($statement->fetchAll('assoc') as $row) {
-				$byName[$row['constraint_name']][] = $row;
-			}
-			
-			$result = [];
-			
-			foreach ($byName as $name => $rows) {
-				$localColumns = array_values(array_unique(array_column($rows, 'column_name')));
-				
-				if (count($localColumns) !== 1) {
-					continue;
-				}
-				
-				$result[$name] = [
-					'columns'           => $localColumns,
-					'referencedTable'   => $rows[0]['referenced_table'],
-					'referencedColumns' => [$rows[0]['referenced_column']],
-					'onDelete'          => $rows[0]['delete_rule'],
-					'onUpdate'          => $rows[0]['update_rule'],
-				];
-			}
-			
-			return $result;
-		}
-		
-		/**
-		 * Reads foreign keys for a table on SQL Server via sys.foreign_keys /
-		 * sys.foreign_key_columns, which stores one row per column pair natively
-		 * (constraint_column_id gives the correct ordinal), so composite
-		 * constraints round-trip correctly with no pairing ambiguity.
-		 * @param string $tableName
-		 * @return array<string, ForeignKeyDefinition> Constraint name => definition
-		 */
-		private function getSqlServerForeignKeys(string $tableName): array {
-			$statement = $this->execute("
-				SELECT
-					fk.name AS constraint_name,
-					pc.name AS column_name,
-					fkc.constraint_column_id AS ordinal_position,
-					rt.name AS referenced_table,
-					rc.name AS referenced_column,
-					fk.delete_referential_action_desc AS delete_rule,
-					fk.update_referential_action_desc AS update_rule
-				FROM sys.foreign_keys fk
-				JOIN sys.foreign_key_columns fkc ON fkc.constraint_object_id = fk.object_id
-				JOIN sys.columns pc ON pc.object_id = fkc.parent_object_id AND pc.column_id = fkc.parent_column_id
-				JOIN sys.columns rc ON rc.object_id = fkc.referenced_object_id AND rc.column_id = fkc.referenced_column_id
-				JOIN sys.tables t ON t.object_id = fk.parent_object_id
-				JOIN sys.tables rt ON rt.object_id = fk.referenced_object_id
-				WHERE t.name = :tableName
-				ORDER BY fk.name, fkc.constraint_column_id
-			", [
-				'tableName' => $tableName
-			]);
-			
-			if ($statement === null) {
-				return [];
-			}
-			
-			$byName = [];
-			
-			/** @var array{constraint_name: string, column_name: string, ordinal_position: int|string, referenced_table: string, referenced_column: string, delete_rule: string, update_rule: string} $row */
-			foreach ($statement->fetchAll('assoc') as $row) {
-				$byName[$row['constraint_name']][(int)$row['ordinal_position']] = $row;
-			}
-			
-			$result = [];
-			
-			foreach ($byName as $name => $rows) {
-				ksort($rows);
-				$first = reset($rows);
-				
-				$result[$name] = [
-					'columns'           => array_column($rows, 'column_name'),
-					'referencedTable'   => $first['referenced_table'],
-					'referencedColumns' => array_column($rows, 'referenced_column'),
-					// SQL Server uses underscores (NO_ACTION, SET_NULL) where every
-					// other engine uses spaces; normalize for a consistent string diff.
-					'onDelete'          => str_replace('_', ' ', $first['delete_rule']),
-					'onUpdate'          => str_replace('_', ' ', $first['update_rule']),
-				];
-			}
-			
-			return $result;
 		}
 	}

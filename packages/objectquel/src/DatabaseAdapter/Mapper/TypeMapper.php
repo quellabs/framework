@@ -1,6 +1,6 @@
 <?php
 	
-	namespace Quellabs\ObjectQuel\DatabaseAdapter;
+	namespace Quellabs\ObjectQuel\DatabaseAdapter\Mapper;
 	
 	/**
 	 * TypeMapper static utility class
@@ -25,7 +25,7 @@
 		];
 		
 		/**
-		 * Phinx column type to corresponding PHP type
+		 * Abstract column type to corresponding PHP type
 		 * @var array<string, string>
 		 */
 		private const array TYPE_MAP = [
@@ -155,8 +155,12 @@
 		}
 		
 		/**
-		 * Convert a Phinx column type to a corresponding PHP type
-		 * @param string $phinxType The Phinx column type
+		 * Convert an abstract ORM column type to a corresponding PHP type.
+		 * Named after this vocabulary's origin (it's literally Phinx's own
+		 * AdapterInterface::PHINX_TYPE_* constant values, passed through
+		 * unchanged — see objectquel-phinx-removal-plan.md), not because this
+		 * method itself depends on Phinx.
+		 * @param string $phinxType The abstract column type
 		 * @return string The corresponding PHP type
 		 */
 		public static function phinxTypeToPhpType(string $phinxType): string {

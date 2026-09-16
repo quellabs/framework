@@ -19,7 +19,7 @@
 	class IndexComparator {
 
 		/**
-		 * Database connection / interface with cakephp/database and Phinx
+		 * Database connection / interface with cakephp/database
 		 * @var DatabaseAdapter
 		 */
 		private DatabaseAdapter $connection;

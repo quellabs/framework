@@ -16,7 +16,7 @@
 	 */
 	class ForeignKeyComparator {
 
-		/** @var DatabaseAdapter Database connection / interface with cakephp/database and Phinx */
+		/** @var DatabaseAdapter Database connection / interface with cakephp/database */
 		private DatabaseAdapter $connection;
 
 		/** @var EntityStore EntityStore manages entity metadata and relations */

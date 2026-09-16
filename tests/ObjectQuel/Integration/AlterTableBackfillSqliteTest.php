@@ -22,12 +22,10 @@
 	 * survives, rather than leaving the carve-out to rot untested.
 	 *
 	 * Assertions read the schema back via `PRAGMA table_info` executed
-	 * through the same DatabaseAdapter connection, rather than
-	 * DatabaseAdapter::getColumns() — that method's SQLite branch goes
-	 * through the Phinx adapter, which opens its own separate PDO connection
-	 * from the CakePHP connection config; for a `:memory:` database that's a
-	 * distinct, empty database, so it can never see tables created through
-	 * this adapter's own execute().
+	 * directly, rather than DatabaseAdapter::getColumns() — reads a plain
+	 * boolean `notnull`/raw `dflt_value` off the pragma row directly instead
+	 * of via getColumns()'s own type mapping, which is simpler for a test
+	 * that only cares about these two columns' raw values.
 	 */
 	class AlterTableBackfillSqliteTest extends TestCase {
 		use FkTestSupport;

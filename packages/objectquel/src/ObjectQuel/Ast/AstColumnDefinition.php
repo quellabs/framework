@@ -7,7 +7,7 @@
 	/**
 	 * A single column definition inside `create [temporary] Name (...)`: a
 	 * name, an abstract type (the @Orm\Column vocabulary — see
-	 * DatabaseAdapter\TypeMapper), optional limit/precision/scale, and the
+	 * DatabaseAdapter\Mapper\TypeMapper), optional limit/precision/scale, and the
 	 * minimal constraint set supported (`nullable`, `identity`). Columns are
 	 * NOT NULL by default, matching @Orm\Column's `nullable` parameter — the
 	 * `nullable` keyword opts a column out of that default, rather than
