@@ -138,13 +138,17 @@
 			$method->setAccessible(true);
 			$content = $method->invoke($builder, 'RegressionTestMigration', $allChanges);
 
-			// New table with PK+FK.
+			// New table with PK+FK. On SQLite (this test's fixture — see
+			// makeFileBasedSqliteAdapter()), a new table's own foreign key
+			// is embedded directly in its `create` statement instead of a
+			// separate `alter ... add foreign key` — SQLite's ALTER TABLE
+			// rejects adding a foreign key outright, even to a table this
+			// same migration just created (see QuelMigrationBuilder's
+			// splitIndexesForNewTable()-adjacent foreign-key handling in
+			// buildMigrationContent()).
 			$this->assertStringContainsString(
-				"create mig_reg_line_items (id = unsigned integer identity, order_id = integer, primary key (id))",
-				$content
-			);
-			$this->assertStringContainsString(
-				'alter mig_reg_line_items (add foreign key (order_id) references mig_reg_orders (id) on delete restrict on update no action)',
+				'create mig_reg_line_items (id = unsigned integer identity, order_id = integer, primary key (id), ' .
+				'foreign key (order_id) references mig_reg_orders (id) on delete restrict on update no action)',
 				$content
 			);
 

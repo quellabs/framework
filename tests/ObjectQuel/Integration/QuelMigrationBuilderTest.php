@@ -8,6 +8,7 @@
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
 	use Quellabs\ObjectQuel\DatabaseAdapter\ForeignKeyDefinition;
 	use Quellabs\ObjectQuel\Sculpt\Helpers\QuelMigrationBuilder;
+	use Quellabs\ObjectQuel\Tests\Support\FakePlatformCapabilities;
 	use Quellabs\ObjectQuel\Tests\Support\FkTestSupport;
 
 	/**
@@ -348,9 +349,18 @@
 		/**
 		 * Foreign keys always compile after every table/column/index
 		 * change, regardless of table iteration order, so a table a new FK
-		 * references is guaranteed to already exist.
+		 * references is guaranteed to already exist. Uses a platform that
+		 * supports named foreign keys (unlike this file's shared sqlite-
+		 * backed $this->builder) — on sqlite, a new table's own foreign key
+		 * is embedded directly in its `create` statement instead, a
+		 * different scenario covered separately by
+		 * testNewTableWithForeignKeyIsEmbeddedInlineOnAPlatformWithNoAlterTableForeignKeySupport().
 		 */
 		public function testForeignKeysCompileAfterTableCreationRegardlessOfDeclarationOrder(): void {
+			$builder = new QuelMigrationBuilder($this->adapter, sys_get_temp_dir(), new FakePlatformCapabilities('mysql'));
+			$method = new \ReflectionMethod(QuelMigrationBuilder::class, 'buildMigrationContent');
+			$method->setAccessible(true);
+
 			$ordersChanges = $this->emptyChangeSet();
 			$ordersChanges['table_not_exists'] = true;
 			$ordersChanges['added'] = ['id' => $this->baseColumn(['type' => 'integer', 'limit' => null, 'identity' => true, 'primary_key' => true])];
@@ -358,7 +368,7 @@
 				'fk_orders_customer_id' => $this->baseForeignKey(),
 			];
 
-			$content = $this->buildMigrationContent(['orders' => $ordersChanges]);
+			$content = $method->invoke($builder, 'TestMigration', ['orders' => $ordersChanges]);
 
 			$createPos = strpos($content, "create orders");
 			$fkPos = strpos($content, "add foreign key");
@@ -366,6 +376,33 @@
 			$this->assertNotFalse($createPos);
 			$this->assertNotFalse($fkPos);
 			$this->assertLessThan($fkPos, $createPos);
+		}
+
+		/**
+		 * The sqlite counterpart to the test above: SQLite's ALTER TABLE
+		 * rejects adding a foreign key outright, even to a table this same
+		 * migration just created, so a new table's own foreign key is
+		 * embedded directly in its `create` statement instead — no
+		 * separate `alter`/`add foreign key` statement at all.
+		 */
+		public function testNewTableWithForeignKeyIsEmbeddedInlineOnAPlatformWithNoAlterTableForeignKeySupport(): void {
+			$ordersChanges = $this->emptyChangeSet();
+			$ordersChanges['table_not_exists'] = true;
+			$ordersChanges['added'] = ['id' => $this->baseColumn(['type' => 'integer', 'limit' => null, 'identity' => true, 'primary_key' => true])];
+			$ordersChanges['foreignKeys']['added'] = [
+				'fk_orders_customer_id' => $this->baseForeignKey(),
+			];
+
+			// $this->builder is constructed (in setUp()) with a real sqlite
+			// adapter, where supportsNamedForeignKeys() is false.
+			$content = $this->buildMigrationContent(['orders' => $ordersChanges]);
+
+			$this->assertStringContainsString(
+				"\$this->query('create orders (id = integer identity, primary key (id), " .
+				"foreign key (customer_id) references customers (id) on delete restrict on update no action)');",
+				$content
+			);
+			$this->assertStringNotContainsString('add foreign key', $content);
 		}
 
 		public function testEmptyChangesReturnsAFailureResultWithoutWritingAFile(): void {

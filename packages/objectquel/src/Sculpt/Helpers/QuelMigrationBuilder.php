@@ -120,9 +120,19 @@
 			// the overwritten file would never actually run, with no error
 			// anywhere. Bumping past any version that already has a file on disk
 			// guarantees a fresh, always-increasing version every call.
+			//
+			// A file-only check isn't enough within one long-lived PHP process,
+			// though: MigrationLocator's require_once() de-duplicates by resolved
+			// file path, not content, so if a version's file was ever require_once'd
+			// before -- even a failed migration since deleted, its class name stays
+			// declared forever, PHP classes can't be undefined -- reusing that same
+			// version number would silently make require_once() skip the new file
+			// entirely and run the STALE, already-declared class body instead. So
+			// the class name (not just the file) must also be free before this
+			// version can be reused.
 			$date = (int)date('YmdHis');
 
-			while (glob($this->migrationsPath . '/' . $date . '_*.php') !== []) {
+			while (glob($this->migrationsPath . '/' . $date . '_*.php') !== [] || class_exists("QuelSchemaMigration{$date}", false)) {
 				$date++;
 			}
 
@@ -163,19 +173,46 @@
 			foreach ($normalized as $tableName => $changes) {
 				if ($changes['table_not_exists']) {
 					[$embeddedIndexes, $deferredIndexes] = $this->splitIndexesForNewTable($changes['indexes']['added']);
-					$up[] = $this->queryStatement($this->buildCreateTableStatement($tableName, $changes['added'], $embeddedIndexes));
+
+					// Engines with no ALTER TABLE FK support (SQLite) reject
+					// pass 2's `add foreign key` categorically, even for a
+					// table this same migration just created — so on those
+					// engines, a new table's foreign keys must be declared
+					// inline at create time instead, using the same
+					// `foreign key (...) references ...` grammar `create`
+					// already accepts alongside columns.
+					$embedForeignKeysInCreate = !$this->platform->supportsNamedForeignKeys();
+					$createForeignKeys = $embedForeignKeysInCreate ? $changes['foreignKeys']['added'] : [];
+
+					$up[] = $this->queryStatement($this->buildCreateTableStatement($tableName, $changes['added'], $embeddedIndexes, $createForeignKeys));
 
 					// A deferred index needs its own statement, run once the
 					// table genuinely exists — see splitIndexesForNewTable().
+					// Unlike an embedded index, dropping the table does NOT
+					// clean this one up: a deferred index is always fulltext,
+					// which on SQLite/SQL Server is a separate object (an FTS5
+					// virtual table; an unnamed catalog entry) with no lifecycle
+					// tie to the base table's own DROP TABLE — left alone, it
+					// would survive as an orphan once the table is gone. Run
+					// before the table drop below, while it still exists to
+					// resolve the drop against.
 					foreach ($deferredIndexes as $indexName => $indexConfig) {
 						$up[] = $this->queryStatement("alter {$tableName} (" . $this->buildAddIndexOp($indexName, $indexConfig) . ")");
+						$downColumnsAndIndexes[] = $this->queryStatement("alter {$tableName} (" . $this->buildDropIndexOp($indexName) . ")");
 					}
 
 					// Table drop is deferred to the very end of down() — see below — so
 					// it runs after any foreign key pointing at (or added to) it has
-					// already been undone. Dropping the table takes its indexes with
-					// it, so down() needs no separate index-drop statements here.
+					// already been undone. Dropping the table takes its embedded
+					// indexes with it; any deferred index was already cleaned up
+					// above.
 					$downDropTables[] = $this->queryStatement("destroy {$tableName}");
+
+					if ($embedForeignKeysInCreate) {
+						// Already declared inline above — pass 2 must not
+						// also add these via `alter`.
+						$normalized[$tableName]['foreignKeys']['added'] = [];
+					}
 
 					continue;
 				}
@@ -224,8 +261,14 @@
 			// down() must undo in the exact reverse of up(): foreign keys first — a
 			// column or table this migration constrains can't be altered or dropped
 			// while that constraint still exists — then column/index changes, then
-			// finally the tables this migration created.
-			$down = [...$downForeignKeys, ...$downColumnsAndIndexes, ...$downDropTables];
+			// finally the tables this migration created. Table drops are also
+			// reversed relative to their creation order: an engine with no ALTER
+			// TABLE FK support (SQLite) declares a new table's foreign keys inline,
+			// in its own `create` statement, with no separate drop-foreign-key step
+			// to run first — the constraint only goes away when the table itself
+			// is dropped. Dropping tables in creation order would then drop a
+			// referenced parent while a child table still constrains it.
+			$down = [...$downForeignKeys, ...$downColumnsAndIndexes, ...array_reverse($downDropTables)];
 
 			$upBody = implode("\n", $up);
 			$downBody = implode("\n", $down);
@@ -342,13 +385,17 @@ PHP;
 		/**
 		 * Build a `create tableName (...)` statement for a brand-new table,
 		 * with any new indexes embedded in its column list (`create`'s
-		 * grammar accepts index entries alongside columns).
+		 * grammar accepts index entries alongside columns), and — only
+		 * when the caller passes any, see the "embed foreign keys" comment
+		 * in buildMigrationContent() — any foreign keys embedded the same
+		 * way.
 		 * @param string $tableName
 		 * @param array<string, ColumnDefinition> $columns
 		 * @param array<string, IndexConfig> $indexes
+		 * @param array<string, ForeignKeyConfig> $foreignKeys
 		 * @return string
 		 */
-		private function buildCreateTableStatement(string $tableName, array $columns, array $indexes = []): string {
+		private function buildCreateTableStatement(string $tableName, array $columns, array $indexes = [], array $foreignKeys = []): string {
 			$primaryKeys = $this->analyzeColumns($columns)['primaryKeys'];
 
 			$columnDefs = [];
@@ -363,6 +410,10 @@ PHP;
 
 			foreach ($indexes as $indexName => $indexConfig) {
 				$columnDefs[] = $this->renderIndexClause($indexName, $indexConfig);
+			}
+
+			foreach ($foreignKeys as $config) {
+				$columnDefs[] = $this->renderForeignKeyClause($config);
 			}
 
 			return "create {$tableName} (" . implode(', ', $columnDefs) . ')';
@@ -593,22 +644,30 @@ PHP;
 		}
 
 		/**
+		 * Render a `foreign key (col) references Table (col) on delete X
+		 * on update Y` clause — the shared grammar `create`'s embedded
+		 * foreign-key entries and `alter`'s `add foreign key` sub-op both
+		 * use, minus whichever leading keyword the caller's context
+		 * already supplies (nothing for `create`, `add ` for `alter` —
+		 * see buildAddForeignKeyOps()).
+		 * @param ForeignKeyDefinition $config
+		 * @return string
+		 */
+		private function renderForeignKeyClause(ForeignKeyDefinition $config): string {
+			$column = $config->columns[0];
+			$referencedColumn = $config->referencedColumns[0];
+			$onDelete = strtolower($config->onDelete);
+			$onUpdate = strtolower($config->onUpdate);
+
+			return "foreign key ({$column}) references {$config->referencedTable} ({$referencedColumn}) on delete {$onDelete} on update {$onUpdate}";
+		}
+
+		/**
 		 * @param array<string, ForeignKeyConfig> $foreignKeys
 		 * @return list<string>
 		 */
 		private function buildAddForeignKeyOps(array $foreignKeys): array {
-			$ops = [];
-
-			foreach ($foreignKeys as $config) {
-				$column = $config->columns[0];
-				$referencedColumn = $config->referencedColumns[0];
-				$onDelete = strtolower($config->onDelete);
-				$onUpdate = strtolower($config->onUpdate);
-
-				$ops[] = "add foreign key ({$column}) references {$config->referencedTable} ({$referencedColumn}) on delete {$onDelete} on update {$onUpdate}";
-			}
-
-			return $ops;
+			return array_map(fn($config) => 'add ' . $this->renderForeignKeyClause($config), array_values($foreignKeys));
 		}
 
 		/**

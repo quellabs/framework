@@ -13,6 +13,7 @@
 	use Quellabs\ObjectQuel\Tests\Fixtures\Entities\FkOrderRemovedEntity;
 	use Quellabs\ObjectQuel\Tests\Fixtures\Entities\FkOrderScalarActionEntity;
 	use Quellabs\ObjectQuel\Tests\Fixtures\Entities\FkOrderScalarEntity;
+	use Quellabs\ObjectQuel\Tests\Support\FakePlatformCapabilities;
 	use Quellabs\ObjectQuel\Tests\Support\FkTestSupport;
 
 	/**
@@ -251,6 +252,15 @@
 		// Ordering
 		// -------------------------------------------------------------------------
 
+		/**
+		 * Uses a platform that supports named foreign keys (unlike this
+		 * file's shared sqlite-backed $this->builder) — on sqlite, a new
+		 * table's own foreign key is embedded directly in its `create`
+		 * statement instead (see
+		 * testTwoNewCrossReferencingTablesEachEmbedTheirOwnForeignKeyInline()
+		 * below), so there's no separate add-foreign-key statement to order
+		 * against the two creates in the first place.
+		 */
 		public function testTwoNewCrossReferencingTablesEmitBothCreatesBeforeEitherAddForeignKey(): void {
 			// Neither table exists yet in this fresh in-memory database.
 			$customerMetadata = $this->entityStore->getMetadata(FkCustomerEntity::class);
@@ -269,7 +279,10 @@
 				]),
 			];
 
-			$content = $this->buildMigrationContent($allChanges);
+			$builder = new QuelMigrationBuilder($this->adapter, sys_get_temp_dir(), new FakePlatformCapabilities('mysql'));
+			$method = new \ReflectionMethod(QuelMigrationBuilder::class, 'buildMigrationContent');
+			$method->setAccessible(true);
+			$content = $method->invoke($builder, 'TestMigration', $allChanges);
 
 			$customersCreatePos = strpos($content, 'create fk_customers (');
 			$ordersCreatePos = strpos($content, 'create fk_orders_scalar (');
@@ -284,5 +297,39 @@
 			// themselves, since neither create() carries an inline FK.
 			self::assertLessThan($addForeignKeyPos, $customersCreatePos);
 			self::assertLessThan($addForeignKeyPos, $ordersCreatePos);
+		}
+
+		/**
+		 * The sqlite counterpart to the test above: SQLite's ALTER TABLE
+		 * rejects adding a foreign key outright, even to a table this same
+		 * migration just created, so each new table's own foreign key is
+		 * embedded directly in its own `create` statement instead — no
+		 * add-foreign-key statement, and no cross-table ordering concern,
+		 * at all.
+		 */
+		public function testTwoNewCrossReferencingTablesEachEmbedTheirOwnForeignKeyInline(): void {
+			$customerMetadata = $this->entityStore->getMetadata(FkCustomerEntity::class);
+			$orderMetadata = $this->entityStore->getMetadata(FkOrderScalarEntity::class);
+
+			$allChanges = [
+				'fk_customers'     => array_merge($this->emptyEntityChangeSet(), [
+					'table_not_exists' => true,
+					'added'             => $customerMetadata->getColumnDefinitionsForSchema(),
+					'foreignKeys'       => ['added' => [], 'modified' => [], 'deleted' => []],
+				]),
+				'fk_orders_scalar' => array_merge($this->emptyEntityChangeSet(), [
+					'table_not_exists' => true,
+					'added'             => $orderMetadata->getColumnDefinitionsForSchema(),
+					'foreignKeys'       => ['added' => $this->comparator->getEntityForeignKeys(FkOrderScalarEntity::class), 'modified' => [], 'deleted' => []],
+				]),
+			];
+
+			// $this->builder is constructed (in setUp()) with a real sqlite
+			// adapter, where supportsNamedForeignKeys() is false.
+			$content = $this->buildMigrationContent($allChanges);
+
+			$this->assertStringContainsString('create fk_orders_scalar (', $content);
+			$this->assertStringContainsString('foreign key (customer_id) references fk_customers (id)', $content);
+			$this->assertStringNotContainsString('add foreign key', $content);
 		}
 	}
