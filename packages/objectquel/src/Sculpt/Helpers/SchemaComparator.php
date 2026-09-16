@@ -309,12 +309,6 @@
 				return (bool)$value;
 			}
 			
-			// Special case: handle default values for boolean columns
-			// Boolean column defaults need special normalization (e.g., "0"/"1" strings to booleans)
-			if ($property === 'default' && $columnType === 'boolean') {
-				return $this->normalizeBooleanDefault($value);
-			}
-			
 			// Clean up string values by removing leading/trailing whitespace
 			// This ensures consistent formatting for string properties
 			if (is_string($value)) {
@@ -324,38 +318,6 @@
 			// Return the value unchanged if no specific normalization rules apply
 			// This preserves the original value for unsupported types or edge cases
 			return $value;
-		}
-		
-		/**
-		 * Normalize boolean default values to handle database tinyint(1) vs PHP boolean differences
-		 * @param mixed $value The default value to normalize (can be bool, int, string, or other types)
-		 * @return int|null Normalized boolean value as integer for consistency (0 or 1)
-		 */
-		private function normalizeBooleanDefault(mixed $value): ?int {
-			// Check for null values
-			if ($value === null) {
-				return null;
-			}
-			
-			// Handle all truthy boolean representations
-			// Covers: PHP true, integer 1, string '1', string 'true' (case-sensitive)
-			if ($value === true || $value === 1 || $value === '1' || $value === 'true') {
-				return 1;
-			}
-			
-			// Handle all falsy boolean representations
-			// Covers: PHP false, integer 0, string '0', string 'false' (case-sensitive)
-			if ($value === false || $value === 0 || $value === '0' || $value === 'false') {
-				return 0;
-			}
-			
-			// Fallback for unexpected values
-			if (is_numeric($value)) {
-				return (int)$value;
-			}
-			
-			// Fallback for unexpected values - treat as falsy
-			return 0;
 		}
 		
 		/**

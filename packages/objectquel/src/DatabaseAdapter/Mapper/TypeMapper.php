@@ -173,9 +173,15 @@
 		 * @return string[]
 		 */
 		public static function getRelevantProperties(string $type): array {
-			// Base properties all columns have
-			$baseProperties = ['type', 'nullable', 'default'];
-			
+			// Base properties all columns have. 'default' is deliberately excluded:
+			// no DDL path (QuelToSQLCreate, QuelToSQLAlter's retype) ever writes a
+			// column-level DEFAULT to the database — @Orm\Column(default=...) is
+			// applied purely at the ORM layer (QuelToSQLAppend), so a live table's
+			// introspected default can never be made to match it. Comparing it here
+			// would flag every declared default as a permanent, unfixable
+			// "modified column" on every make:migrations run.
+			$baseProperties = ['type', 'nullable'];
+
 			// Unknown types get no extra properties beyond the base set
 			return array_merge($baseProperties, self::RELEVANT_PROPERTIES[$type] ?? []);
 		}
