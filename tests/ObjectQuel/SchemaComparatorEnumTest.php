@@ -6,6 +6,7 @@
 
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\ObjectQuel\Capabilities\PlatformCapabilitiesInterface;
+	use Quellabs\ObjectQuel\DatabaseAdapter\ColumnDefinition;
 	use Quellabs\ObjectQuel\Sculpt\Helpers\SchemaComparator;
 
 	/**
@@ -31,6 +32,28 @@
 		}
 
 		/**
+		 * @param array<string, mixed> $overrides
+		 */
+		private function makeColumn(array $overrides = []): ColumnDefinition {
+			$merged = array_merge([
+				'type'        => 'string',
+				'php_type'    => 'string',
+				'limit'       => null,
+				'default'     => null,
+				'nullable'    => false,
+				'precision'   => null,
+				'scale'       => null,
+				'unsigned'    => false,
+				'generated'   => null,
+				'identity'    => false,
+				'primary_key' => false,
+				'values'      => null,
+			], $overrides);
+
+			return new ColumnDefinition(...$merged);
+		}
+
+		/**
 		 * @test
 		 * A values-list change on a non-native-enum connection is only
 		 * detectable when it moves the derived VARCHAR limit (see
@@ -51,19 +74,19 @@
 
 			$longValue = str_repeat('a', 300);
 			$entityColumns = [
-				'status' => ['type' => 'enum', 'values' => ['active', $longValue], 'nullable' => false, 'default' => null],
+				'status' => $this->makeColumn(['type' => 'enum', 'values' => ['active', $longValue]]),
 			];
 			// Realistic live introspection of the existing VARCHAR(255) fallback column.
 			$tableColumns = [
-				'status' => ['type' => 'string', 'limit' => 255, 'nullable' => false, 'default' => null],
+				'status' => $this->makeColumn(['type' => 'string', 'limit' => 255]),
 			];
 
 			$result = $comparator->analyzeSchemaChanges($entityColumns, $tableColumns);
 
 			$this->assertArrayHasKey('status', $result['modified']);
-			$this->assertSame('enum', $result['modified']['status']['to']['type']);
-			$this->assertSame(['active', $longValue], $result['modified']['status']['to']['values']);
-			$this->assertSame('string', $result['modified']['status']['from']['type']);
+			$this->assertSame('enum', $result['modified']['status']['to']->type);
+			$this->assertSame(['active', $longValue], $result['modified']['status']['to']->values);
+			$this->assertSame('string', $result['modified']['status']['from']->type);
 		}
 
 		/**
@@ -80,10 +103,10 @@
 			$comparator = new SchemaComparator($platform);
 
 			$entityColumns = [
-				'status' => ['type' => 'enum', 'values' => ['active', 'inactive', 'banned'], 'nullable' => false, 'default' => null],
+				'status' => $this->makeColumn(['type' => 'enum', 'values' => ['active', 'inactive', 'banned']]),
 			];
 			$tableColumns = [
-				'status' => ['type' => 'string', 'limit' => 255, 'nullable' => false, 'default' => null],
+				'status' => $this->makeColumn(['type' => 'string', 'limit' => 255]),
 			];
 
 			$result = $comparator->analyzeSchemaChanges($entityColumns, $tableColumns);
@@ -103,7 +126,7 @@
 
 			$comparator = new SchemaComparator($platform);
 
-			$column = ['type' => 'enum', 'values' => ['active', 'inactive', 'banned'], 'nullable' => false, 'default' => null];
+			$column = $this->makeColumn(['type' => 'enum', 'values' => ['active', 'inactive', 'banned']]);
 
 			$result = $comparator->analyzeSchemaChanges(['status' => $column], ['status' => $column]);
 
@@ -123,16 +146,16 @@
 			$comparator = new SchemaComparator($platform);
 
 			$entityColumns = [
-				'status' => ['type' => 'enum', 'values' => ['active', 'inactive', 'banned'], 'nullable' => false, 'default' => null],
+				'status' => $this->makeColumn(['type' => 'enum', 'values' => ['active', 'inactive', 'banned']]),
 			];
 			$tableColumns = [
-				'status' => ['type' => 'enum', 'values' => ['active', 'inactive'], 'nullable' => false, 'default' => null],
+				'status' => $this->makeColumn(['type' => 'enum', 'values' => ['active', 'inactive']]),
 			];
 
 			$result = $comparator->analyzeSchemaChanges($entityColumns, $tableColumns);
 
 			$this->assertArrayHasKey('status', $result['modified']);
-			$this->assertSame(['active', 'inactive', 'banned'], $result['modified']['status']['to']['values']);
-			$this->assertSame(['active', 'inactive'], $result['modified']['status']['from']['values']);
+			$this->assertSame(['active', 'inactive', 'banned'], $result['modified']['status']['to']->values);
+			$this->assertSame(['active', 'inactive'], $result['modified']['status']['from']->values);
 		}
 	}

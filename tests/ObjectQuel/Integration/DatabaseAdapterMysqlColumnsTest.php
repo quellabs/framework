@@ -69,15 +69,15 @@
 
 			$columns = $this->adapter->getColumns('oq_col_test');
 
-			self::assertSame('tinyinteger', $columns['a']['type']);
-			self::assertFalse($columns['a']['unsigned']);
-			self::assertTrue($columns['b']['unsigned']);
-			self::assertSame('smallinteger', $columns['c']['type']);
-			self::assertSame('integer', $columns['d']['type']);
-			self::assertSame('biginteger', $columns['e']['type']);
-			self::assertTrue($columns['f']['identity']);
-			self::assertTrue($columns['f']['primary_key']);
-			self::assertTrue($columns['f']['unsigned']);
+			self::assertSame('tinyinteger', $columns['a']->type);
+			self::assertFalse($columns['a']->unsigned);
+			self::assertTrue($columns['b']->unsigned);
+			self::assertSame('smallinteger', $columns['c']->type);
+			self::assertSame('integer', $columns['d']->type);
+			self::assertSame('biginteger', $columns['e']->type);
+			self::assertTrue($columns['f']->identity);
+			self::assertTrue($columns['f']->primary_key);
+			self::assertTrue($columns['f']->unsigned);
 		}
 
 		public function testTinyint1MapsToBooleanButWiderTinyintDoesNot(): void {
@@ -90,8 +90,8 @@
 
 			$columns = $this->adapter->getColumns('oq_col_test');
 
-			self::assertSame('boolean', $columns['flag']['type']);
-			self::assertSame('tinyinteger', $columns['small_num']['type']);
+			self::assertSame('boolean', $columns['flag']->type);
+			self::assertSame('tinyinteger', $columns['small_num']->type);
 		}
 
 		public function testChar36MapsToUuidButOtherCharWidthsDoNot(): void {
@@ -104,9 +104,9 @@
 
 			$columns = $this->adapter->getColumns('oq_col_test');
 
-			self::assertSame('uuid', $columns['id']['type']);
-			self::assertSame('char', $columns['code']['type']);
-			self::assertSame(10, $columns['code']['limit']);
+			self::assertSame('uuid', $columns['id']->type);
+			self::assertSame('char', $columns['code']->type);
+			self::assertSame(10, $columns['code']->limit);
 		}
 
 		public function testVarcharLimitIsReportedVerbatim(): void {
@@ -114,8 +114,8 @@
 
 			$columns = $this->adapter->getColumns('oq_col_test');
 
-			self::assertSame('string', $columns['name']['type']);
-			self::assertSame(120, $columns['name']['limit']);
+			self::assertSame('string', $columns['name']->type);
+			self::assertSame(120, $columns['name']->limit);
 		}
 
 		public function testDecimalPrecisionAndScaleAreReadBackButPlainFloatHasNone(): void {
@@ -128,16 +128,16 @@
 
 			$columns = $this->adapter->getColumns('oq_col_test');
 
-			self::assertSame('decimal', $columns['price']['type']);
-			self::assertSame(10, $columns['price']['precision']);
-			self::assertSame(2, $columns['price']['scale']);
+			self::assertSame('decimal', $columns['price']->type);
+			self::assertSame(10, $columns['price']->precision);
+			self::assertSame(2, $columns['price']->scale);
 
 			// A plain FLOAT with no declared width must not report MySQL's
 			// internal storage precision (12) — DDLTypeMapper never renders
 			// one, and the entity side never declares one either, so
 			// reporting it here would be a spurious diff forever.
-			self::assertSame('float', $columns['ratio']['type']);
-			self::assertNull($columns['ratio']['precision']);
+			self::assertSame('float', $columns['ratio']->type);
+			self::assertNull($columns['ratio']->precision);
 		}
 
 		public function testEnumTypeAndValuesAreParsedFromColumnType(): void {
@@ -145,8 +145,8 @@
 
 			$columns = $this->adapter->getColumns('oq_col_test');
 
-			self::assertSame('enum', $columns['status']['type']);
-			self::assertSame(['active', 'inactive', "it's complicated"], $columns['status']['values']);
+			self::assertSame('enum', $columns['status']->type);
+			self::assertSame(['active', 'inactive', "it's complicated"], $columns['status']->values);
 		}
 
 		public function testJsonAndBlobVariantsMapCorrectly(): void {
@@ -161,11 +161,11 @@
 
 			$columns = $this->adapter->getColumns('oq_col_test');
 
-			self::assertSame('json', $columns['payload']['type']);
-			self::assertSame('blob', $columns['data']['type']);
-			self::assertSame('blob', $columns['big_data']['type']);
-			self::assertSame('binary', $columns['raw']['type']);
-			self::assertSame(50, $columns['raw']['limit']);
+			self::assertSame('json', $columns['payload']->type);
+			self::assertSame('blob', $columns['data']->type);
+			self::assertSame('blob', $columns['big_data']->type);
+			self::assertSame('binary', $columns['raw']->type);
+			self::assertSame(50, $columns['raw']->limit);
 		}
 
 		public function testDefaultValueChasetQuirkIsStrippedForTextColumn(): void {
@@ -173,7 +173,7 @@
 
 			$columns = $this->adapter->getColumns('oq_col_test');
 
-			self::assertSame('hello world', $columns['note']['default']);
+			self::assertSame('hello world', $columns['note']->default);
 		}
 
 		public function testNullableFlagIsReadBackCorrectly(): void {
@@ -186,7 +186,7 @@
 
 			$columns = $this->adapter->getColumns('oq_col_test');
 
-			self::assertFalse($columns['required_field']['nullable']);
-			self::assertTrue($columns['optional_field']['nullable']);
+			self::assertFalse($columns['required_field']->nullable);
+			self::assertTrue($columns['optional_field']->nullable);
 		}
 	}

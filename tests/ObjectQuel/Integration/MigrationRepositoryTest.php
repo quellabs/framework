@@ -64,11 +64,11 @@
 			$this->assertContains($tableName, self::em()->getConnection()->getTables());
 
 			$columns = self::em()->getConnection()->getColumns($tableName);
-			$this->assertSame('biginteger', $columns['version']['type']);
-			$this->assertTrue($columns['version']['primary_key']);
-			$this->assertSame('string', $columns['migration_name']['type']);
-			$this->assertSame(255, $columns['migration_name']['limit']);
-			$this->assertSame('datetime', $columns['executed_at']['type']);
+			$this->assertSame('biginteger', $columns['version']->type);
+			$this->assertTrue($columns['version']->primary_key);
+			$this->assertSame('string', $columns['migration_name']->type);
+			$this->assertSame(255, $columns['migration_name']->limit);
+			$this->assertSame('datetime', $columns['executed_at']->type);
 		}
 
 		public function testEnsureTableExistsIsIdempotent(): void {

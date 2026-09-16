@@ -44,7 +44,9 @@
 				FROM sys.fulltext_indexes fi
 				JOIN sys.tables t ON t.object_id = fi.object_id
 				WHERE t.name = :tableName
-			", ['tableName' => $tableName]);
+			", [
+				'tableName' => $tableName
+			]);
 
 			if ($statement === null) {
 				return false;
@@ -77,7 +79,10 @@
 				  AND minor_id = 0
 				  AND class = 1
 				  AND name = :propertyName
-			", ['tableName' => $tableName, 'propertyName' => $propertyName]);
+			", [
+				'tableName' => $tableName,
+				'propertyName' => $propertyName
+			]);
 
 			if ($statement === null) {
 				return null;

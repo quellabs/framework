@@ -38,11 +38,11 @@
 			self::assertArrayHasKey('fk_orders_customer_id', $foreignKeys);
 
 			$fk = $foreignKeys['fk_orders_customer_id'];
-			self::assertSame(['customer_id'], $fk['columns']);
-			self::assertSame('customers', $fk['referencedTable']);
-			self::assertSame(['id'], $fk['referencedColumns']);
-			self::assertSame('CASCADE', $fk['onDelete']);
-			self::assertSame('RESTRICT', $fk['onUpdate']);
+			self::assertSame(['customer_id'], $fk->columns);
+			self::assertSame('customers', $fk->referencedTable);
+			self::assertSame(['id'], $fk->referencedColumns);
+			self::assertSame('CASCADE', $fk->onDelete);
+			self::assertSame('RESTRICT', $fk->onUpdate);
 		}
 
 		public function testGetForeignKeysReturnsEmptyArrayForATableWithNoConstraints(): void {

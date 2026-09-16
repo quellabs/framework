@@ -20,34 +20,17 @@
 	 * Wraps CakePHP's database connection to provide ObjectQuel-specific functionality
 	 * including schema introspection, transaction management, and cross-database compatibility.
 	 *
-	 * @phpstan-type ColumnDefinition array{
-	 *     type: string,
-	 *     php_type: string,
-	 *     limit: int|array<int, int>|null,
-	 *     default: mixed,
-	 *     nullable: bool,
-	 *     precision: int|null,
-	 *     scale: int|null,
-	 *     unsigned: bool,
-	 *     generated: mixed,
-	 *     identity: bool,
-	 *     primary_key: bool,
-	 *     values: array<int, string>|null
-	 * }
+	 * getColumns()'s per-column value type is the real ColumnDefinition class
+	 * (see ColumnDefinition.php, same namespace — no import needed here), and
+	 * getForeignKeys()'s per-constraint value type is likewise the real
+	 * ForeignKeyDefinition class (see ForeignKeyDefinition.php) — neither is
+	 * a phpstan-type array-shape like IndexDefinition/IndexUsageStats below.
 	 *
 	 * @phpstan-type IndexDefinition array{
 	 *     type: 'primary'|'unique'|'index'|'fulltext',
 	 *     columns: string[],
 	 *     length: array<int, int>|null,
 	 *     name?: string
-	 * }
-	 *
-	 * @phpstan-type ForeignKeyDefinition array{
-	 *     columns: string[],
-	 *     referencedTable: string,
-	 *     referencedColumns: string[],
-	 *     onDelete: string,
-	 *     onUpdate: string
 	 * }
 	 *
 	 * @phpstan-type IndexUsageStats array{reads: int, writes: int}

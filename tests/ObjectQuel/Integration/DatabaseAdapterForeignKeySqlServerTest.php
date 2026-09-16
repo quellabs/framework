@@ -46,11 +46,11 @@
 			self::assertArrayHasKey('fk_orders_customer_id', $foreignKeys);
 
 			$fk = $foreignKeys['fk_orders_customer_id'];
-			self::assertSame(['customer_id'], $fk['columns']);
-			self::assertSame('customers', $fk['referencedTable']);
-			self::assertSame(['id'], $fk['referencedColumns']);
-			self::assertSame('CASCADE', $fk['onDelete']);
-			self::assertSame('NO ACTION', $fk['onUpdate']);
+			self::assertSame(['customer_id'], $fk->columns);
+			self::assertSame('customers', $fk->referencedTable);
+			self::assertSame(['id'], $fk->referencedColumns);
+			self::assertSame('CASCADE', $fk->onDelete);
+			self::assertSame('NO ACTION', $fk->onUpdate);
 		}
 
 		public function testReturnsEmptyArrayForATableWithNoConstraints(): void {
@@ -73,9 +73,9 @@
 			self::assertArrayHasKey('fk_orders_shipment', $foreignKeys);
 
 			$fk = $foreignKeys['fk_orders_shipment'];
-			self::assertSame(['shipment_id', 'shipment_line'], $fk['columns']);
-			self::assertSame('shipments', $fk['referencedTable']);
-			self::assertSame(['id', 'line'], $fk['referencedColumns']);
+			self::assertSame(['shipment_id', 'shipment_line'], $fk->columns);
+			self::assertSame('shipments', $fk->referencedTable);
+			self::assertSame(['id', 'line'], $fk->referencedColumns);
 		}
 
 		public function testSupportsForeignKeyIntrospectionIsTrueForSqlServer(): void {

@@ -114,7 +114,7 @@
 			$this->assertArrayHasKey('priority', $orderChanges['added']);
 			$this->assertArrayHasKey('legacy_note', $orderChanges['deleted']);
 			$this->assertArrayHasKey('price', $orderChanges['modified']);
-			$this->assertSame('decimal', $orderChanges['modified']['price']['to']['type']);
+			$this->assertSame('decimal', $orderChanges['modified']['price']['to']->type);
 
 			// --- mig_reg_orders: index facets -------------------------------------------
 

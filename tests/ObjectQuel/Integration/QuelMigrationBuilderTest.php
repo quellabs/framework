@@ -4,7 +4,9 @@
 
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\ObjectQuel\Capabilities\PlatformCapabilities;
+	use Quellabs\ObjectQuel\DatabaseAdapter\ColumnDefinition;
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
+	use Quellabs\ObjectQuel\DatabaseAdapter\ForeignKeyDefinition;
 	use Quellabs\ObjectQuel\Sculpt\Helpers\QuelMigrationBuilder;
 	use Quellabs\ObjectQuel\Tests\Support\FkTestSupport;
 
@@ -54,8 +56,8 @@
 			];
 		}
 
-		private function baseColumn(array $overrides = []): array {
-			return array_merge([
+		private function baseColumn(array $overrides = []): ColumnDefinition {
+			$merged = array_merge([
 				'type'        => 'string',
 				'php_type'    => 'string',
 				'limit'       => 100,
@@ -69,6 +71,20 @@
 				'primary_key' => false,
 				'values'      => null,
 			], $overrides);
+
+			return new ColumnDefinition(...$merged);
+		}
+
+		private function baseForeignKey(array $overrides = []): ForeignKeyDefinition {
+			$merged = array_merge([
+				'columns'           => ['customer_id'],
+				'referencedTable'   => 'customers',
+				'referencedColumns' => ['id'],
+				'onDelete'          => 'RESTRICT',
+				'onUpdate'          => 'NO ACTION',
+			], $overrides);
+
+			return new ForeignKeyDefinition(...$merged);
 		}
 
 		// -------------------------------------------------------------------------
@@ -270,13 +286,7 @@
 		public function testAddedForeignKeyEmitsAlterWithAddForeignKeyAndItsInverseOnDown(): void {
 			$changes = $this->emptyChangeSet();
 			$changes['foreignKeys']['added'] = [
-				'fk_orders_customer_id' => [
-					'columns'           => ['customer_id'],
-					'referencedTable'   => 'customers',
-					'referencedColumns' => ['id'],
-					'onDelete'          => 'CASCADE',
-					'onUpdate'          => 'RESTRICT',
-				],
+				'fk_orders_customer_id' => $this->baseForeignKey(['onDelete' => 'CASCADE', 'onUpdate' => 'RESTRICT']),
 			];
 
 			$content = $this->buildMigrationContent(['orders' => $changes]);
@@ -291,13 +301,7 @@
 		public function testDeletedForeignKeyEmitsDropOnUpAndAddOnDown(): void {
 			$changes = $this->emptyChangeSet();
 			$changes['foreignKeys']['deleted'] = [
-				'fk_orders_customer_id' => [
-					'columns'           => ['customer_id'],
-					'referencedTable'   => 'customers',
-					'referencedColumns' => ['id'],
-					'onDelete'          => 'NO ACTION',
-					'onUpdate'          => 'NO ACTION',
-				],
+				'fk_orders_customer_id' => $this->baseForeignKey(['onDelete' => 'NO ACTION', 'onUpdate' => 'NO ACTION']),
 			];
 
 			$content = $this->buildMigrationContent(['orders' => $changes]);
@@ -323,13 +327,7 @@
 			$ordersChanges['table_not_exists'] = true;
 			$ordersChanges['added'] = ['id' => $this->baseColumn(['type' => 'integer', 'limit' => null, 'identity' => true, 'primary_key' => true])];
 			$ordersChanges['foreignKeys']['added'] = [
-				'fk_orders_customer_id' => [
-					'columns'           => ['customer_id'],
-					'referencedTable'   => 'customers',
-					'referencedColumns' => ['id'],
-					'onDelete'          => 'RESTRICT',
-					'onUpdate'          => 'NO ACTION',
-				],
+				'fk_orders_customer_id' => $this->baseForeignKey(),
 			];
 
 			$content = $this->buildMigrationContent(['orders' => $ordersChanges]);

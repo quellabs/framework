@@ -59,8 +59,8 @@
 			$this->assertNull($result);
 
 			$columns = self::em()->getConnection()->getColumns($tableName);
-			$this->assertSame('integer', $columns['view_count']['type']);
-			$this->assertFalse($columns['view_count']['nullable']);
+			$this->assertSame('integer', $columns['view_count']->type);
+			$this->assertFalse($columns['view_count']->nullable);
 		}
 
 		public function testDropsAColumn(): void {
@@ -97,10 +97,10 @@
 			$this->assertNull($result);
 
 			$columns = self::em()->getConnection()->getColumns($tableName);
-			$this->assertSame('decimal', $columns['price']['type']);
-			$this->assertSame(10, $columns['price']['precision']);
-			$this->assertSame(2, $columns['price']['scale']);
-			$this->assertFalse($columns['price']['nullable']);
+			$this->assertSame('decimal', $columns['price']->type);
+			$this->assertSame(10, $columns['price']->precision);
+			$this->assertSame(2, $columns['price']->scale);
+			$this->assertFalse($columns['price']->nullable);
 		}
 
 		public function testCombinesMultipleColumnOperationsInOneStatement(): void {
@@ -223,8 +223,8 @@
 			$this->assertNull($result);
 
 			$columns = self::em()->getConnection()->getColumns($tableName);
-			$this->assertSame('enum', $columns['status']['type']);
-			$this->assertSame(['active', 'inactive', 'banned'], $columns['status']['values']);
+			$this->assertSame('enum', $columns['status']->type);
+			$this->assertSame(['active', 'inactive', 'banned'], $columns['status']->values);
 		}
 
 		/**
@@ -239,8 +239,8 @@
 			$this->assertNull($result);
 
 			$columns = self::em()->getConnection()->getColumns($tableName);
-			$this->assertSame('enum', $columns['status']['type']);
-			$this->assertSame(['active', 'inactive'], $columns['status']['values']);
+			$this->assertSame('enum', $columns['status']->type);
+			$this->assertSame(['active', 'inactive'], $columns['status']->values);
 		}
 
 		/**
@@ -261,10 +261,10 @@
 			$this->assertNull($result);
 
 			$columns = self::em()->getConnection()->getColumns($tableName);
-			$this->assertSame('string', $columns['status']['type']);
-			$this->assertFalse($columns['status']['nullable']);
+			$this->assertSame('string', $columns['status']->type);
+			$this->assertFalse($columns['status']->nullable);
 			// The transient DEFAULT was dropped again after the backfill ran.
-			$this->assertNull($columns['status']['default']);
+			$this->assertNull($columns['status']->default);
 
 			$rows = self::em()->getConnection()->execute("SELECT id, status FROM `{$tableName}` ORDER BY id")->fetchAll('assoc');
 			$this->assertSame('pending', $rows[0]['status']);
@@ -311,10 +311,10 @@
 			$foreignKeys = self::em()->getConnection()->getForeignKeys($tableName);
 			$name = "fk_{$tableName}_author_id";
 			$this->assertArrayHasKey($name, $foreignKeys);
-			$this->assertSame(['author_id'], $foreignKeys[$name]['columns']);
-			$this->assertSame($referencedTable, $foreignKeys[$name]['referencedTable']);
-			$this->assertSame(['id'], $foreignKeys[$name]['referencedColumns']);
-			$this->assertSame('CASCADE', $foreignKeys[$name]['onDelete']);
+			$this->assertSame(['author_id'], $foreignKeys[$name]->columns);
+			$this->assertSame($referencedTable, $foreignKeys[$name]->referencedTable);
+			$this->assertSame(['id'], $foreignKeys[$name]->referencedColumns);
+			$this->assertSame('CASCADE', $foreignKeys[$name]->onDelete);
 		}
 
 		public function testDropsAForeignKey(): void {

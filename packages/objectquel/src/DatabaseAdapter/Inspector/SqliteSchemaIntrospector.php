@@ -2,7 +2,9 @@
 
 	namespace Quellabs\ObjectQuel\DatabaseAdapter\Inspector;
 
+	use Quellabs\ObjectQuel\DatabaseAdapter\ColumnDefinition;
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
+	use Quellabs\ObjectQuel\DatabaseAdapter\ForeignKeyDefinition;
 	use Quellabs\ObjectQuel\DatabaseAdapter\Mapper\NativeColumnTypeMapper;
 	use Quellabs\ObjectQuel\DatabaseAdapter\Mapper\NumericPrecisionScale;
 	use Quellabs\ObjectQuel\DatabaseAdapter\Mapper\TypeMapper;
@@ -15,8 +17,6 @@
 	 * objectquel-phinx-removal-plan.md for the getColumns() design and
 	 * per-type mapping rationale — the identity-detection algorithm in
 	 * particular is the highest-risk part of that plan.
-	 * @phpstan-import-type ColumnDefinition from DatabaseAdapter
-	 * @phpstan-import-type ForeignKeyDefinition from DatabaseAdapter
 	 * @phpstan-import-type IndexUsageStats from DatabaseAdapter
 	 */
 	readonly class SqliteSchemaIntrospector implements SchemaIntrospectorInterface {
@@ -61,20 +61,20 @@
 					default => TypeMapper::getDefaultLimit($type),
 				};
 
-				$result[$row['name']] = [
-					'type'        => $type,
-					'php_type'    => TypeMapper::phinxTypeToPhpType($type),
-					'limit'       => $limit,
-					'default'     => $this->normalizeSqliteDefault($row['dflt_value']),
-					'nullable'    => (int)$row['notnull'] === 0,
-					'precision'   => $precisionScale->precision,
-					'scale'       => $precisionScale->scale,
-					'unsigned'    => false,
-					'generated'   => null,
-					'identity'    => $identityByColumn[$row['name']] ?? false,
-					'primary_key' => in_array($row['name'], $primaryKey, true),
-					'values'      => null,
-				];
+				$result[$row['name']] = new ColumnDefinition(
+					type: $type,
+					php_type: TypeMapper::phinxTypeToPhpType($type),
+					limit: $limit,
+					default: $this->normalizeSqliteDefault($row['dflt_value']),
+					nullable: (int)$row['notnull'] === 0,
+					precision: $precisionScale->precision,
+					scale: $precisionScale->scale,
+					unsigned: false,
+					generated: null,
+					identity: $identityByColumn[$row['name']] ?? false,
+					primary_key: in_array($row['name'], $primaryKey, true),
+					values: null,
+				);
 			}
 
 			return $result;
@@ -220,7 +220,7 @@
 				$definition['referencedColumns'] = array_values($definition['referencedColumns']);
 
 				$name = ForeignKeyConstraintNamer::nameForColumns($tableName, $definition['columns']);
-				$result[$name] = $definition;
+				$result[$name] = new ForeignKeyDefinition(...$definition);
 			}
 
 			return $result;

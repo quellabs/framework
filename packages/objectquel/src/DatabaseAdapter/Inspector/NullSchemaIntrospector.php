@@ -2,7 +2,9 @@
 
 	namespace Quellabs\ObjectQuel\DatabaseAdapter\Inspector;
 
+	use Quellabs\ObjectQuel\DatabaseAdapter\ColumnDefinition;
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
+	use Quellabs\ObjectQuel\DatabaseAdapter\ForeignKeyDefinition;
 
 	/**
 	 * Fallback for an engine getDatabaseType() cannot map to a concrete
@@ -10,8 +12,6 @@
 	 * DatabaseAdapter::getDatabaseType()), so this exists purely as a
 	 * defensive fallback for a future unmapped engine value — not a branch
 	 * reachable today — matching the old dispatch match()'s 'default' arms.
-	 * @phpstan-import-type ColumnDefinition from DatabaseAdapter
-	 * @phpstan-import-type ForeignKeyDefinition from DatabaseAdapter
 	 * @phpstan-import-type IndexUsageStats from DatabaseAdapter
 	 */
 	class NullSchemaIntrospector implements SchemaIntrospectorInterface {

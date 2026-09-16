@@ -8,6 +8,7 @@
 	use Quellabs\ObjectQuel\Capabilities\NullPlatformCapabilities;
 	use Quellabs\ObjectQuel\Capabilities\PlatformCapabilitiesInterface;
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
+	use Quellabs\ObjectQuel\DatabaseAdapter\ForeignKeyDefinition;
 	use Quellabs\ObjectQuel\EntityStore;
 	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
 	use Quellabs\ObjectQuel\Sculpt\SculptTypes;
@@ -126,7 +127,7 @@
 			}
 
 			return array_map(
-				static fn(array $foreignKey): array => $foreignKey['columns'],
+				static fn(ForeignKeyDefinition $foreignKey): array => $foreignKey->columns,
 				$this->connection->getForeignKeys($tableName)
 			);
 		}

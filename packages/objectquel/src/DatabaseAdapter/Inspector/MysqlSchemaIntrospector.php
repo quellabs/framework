@@ -2,7 +2,9 @@
 
 	namespace Quellabs\ObjectQuel\DatabaseAdapter\Inspector;
 
+	use Quellabs\ObjectQuel\DatabaseAdapter\ColumnDefinition;
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
+	use Quellabs\ObjectQuel\DatabaseAdapter\ForeignKeyDefinition;
 	use Quellabs\ObjectQuel\DatabaseAdapter\Mapper\NativeColumnTypeMapper;
 	use Quellabs\ObjectQuel\DatabaseAdapter\Mapper\NumericPrecisionScale;
 	use Quellabs\ObjectQuel\DatabaseAdapter\Mapper\TypeMapper;
@@ -13,8 +15,6 @@
 	 * AdapterInterface::getColumns()), foreign keys via
 	 * information_schema.KEY_COLUMN_USAGE/REFERENTIAL_CONSTRAINTS, index
 	 * usage stats via performance_schema.
-	 * @phpstan-import-type ColumnDefinition from DatabaseAdapter
-	 * @phpstan-import-type ForeignKeyDefinition from DatabaseAdapter
 	 * @phpstan-import-type IndexUsageStats from DatabaseAdapter
 	 */
 	readonly class MysqlSchemaIntrospector implements SchemaIntrospectorInterface {
@@ -78,20 +78,20 @@
 					default => TypeMapper::getDefaultLimit($type),
 				};
 
-				$result[$row['column_name']] = [
-					'type'        => $type,
-					'php_type'    => TypeMapper::phinxTypeToPhpType($type),
-					'limit'       => $limit,
-					'default'     => $this->normalizeMysqlDefault($row['column_default']),
-					'nullable'    => $row['is_nullable'] === 'YES',
-					'precision'   => $precisionScale->precision,
-					'scale'       => $precisionScale->scale,
-					'unsigned'    => str_contains(strtolower($row['column_type']), 'unsigned'),
-					'generated'   => null,
-					'identity'    => strtolower($row['extra']) === 'auto_increment',
-					'primary_key' => in_array($row['column_name'], $primaryKey, true),
-					'values'      => $values,
-				];
+				$result[$row['column_name']] = new ColumnDefinition(
+					type: $type,
+					php_type: TypeMapper::phinxTypeToPhpType($type),
+					limit: $limit,
+					default: $this->normalizeMysqlDefault($row['column_default']),
+					nullable: $row['is_nullable'] === 'YES',
+					precision: $precisionScale->precision,
+					scale: $precisionScale->scale,
+					unsigned: str_contains(strtolower($row['column_type']), 'unsigned'),
+					generated: null,
+					identity: strtolower($row['extra']) === 'auto_increment',
+					primary_key: in_array($row['column_name'], $primaryKey, true),
+					values: $values,
+				);
 			}
 
 			return $result;
@@ -208,14 +208,18 @@
 				return [];
 			}
 
-			$result = [];
+			// Accumulated as plain arrays first, not ForeignKeyDefinition directly —
+			// a composite constraint spans multiple rows (one per column), and
+			// 'columns'/'referencedColumns' are appended to across iterations,
+			// which a readonly value object can't support in place.
+			$raw = [];
 
 			/** @var array{constraint_name: string, column_name: string, referenced_table: string, referenced_column: string, delete_rule: string, update_rule: string} $row */
 			foreach ($statement->fetchAll('assoc') as $row) {
 				$name = $row['constraint_name'];
 
-				if (!isset($result[$name])) {
-					$result[$name] = [
+				if (!isset($raw[$name])) {
+					$raw[$name] = [
 						'columns'           => [],
 						'referencedTable'   => $row['referenced_table'],
 						'referencedColumns' => [],
@@ -224,8 +228,14 @@
 					];
 				}
 
-				$result[$name]['columns'][] = $row['column_name'];
-				$result[$name]['referencedColumns'][] = $row['referenced_column'];
+				$raw[$name]['columns'][] = $row['column_name'];
+				$raw[$name]['referencedColumns'][] = $row['referenced_column'];
+			}
+
+			$result = [];
+
+			foreach ($raw as $name => $definition) {
+				$result[$name] = new ForeignKeyDefinition(...$definition);
 			}
 
 			return $result;

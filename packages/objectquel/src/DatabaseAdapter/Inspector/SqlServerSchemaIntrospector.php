@@ -2,7 +2,9 @@
 
 	namespace Quellabs\ObjectQuel\DatabaseAdapter\Inspector;
 
+	use Quellabs\ObjectQuel\DatabaseAdapter\ColumnDefinition;
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
+	use Quellabs\ObjectQuel\DatabaseAdapter\ForeignKeyDefinition;
 	use Quellabs\ObjectQuel\DatabaseAdapter\Mapper\NativeColumnTypeMapper;
 	use Quellabs\ObjectQuel\DatabaseAdapter\Mapper\TypeMapper;
 
@@ -15,8 +17,6 @@
 	 * getColumns() design and per-type mapping rationale, including the
 	 * deliberate datetime2/NVARCHAR(MAX) behavior change over Phinx's own
 	 * SQL Server adapter.
-	 * @phpstan-import-type ColumnDefinition from DatabaseAdapter
-	 * @phpstan-import-type ForeignKeyDefinition from DatabaseAdapter
 	 * @phpstan-import-type IndexUsageStats from DatabaseAdapter
 	 */
 	readonly class SqlServerSchemaIntrospector implements SchemaIntrospectorInterface {
@@ -83,20 +83,20 @@
 					default => TypeMapper::getDefaultLimit($type),
 				};
 
-				$result[$row['column_name']] = [
-					'type'        => $type,
-					'php_type'    => TypeMapper::phinxTypeToPhpType($type),
-					'limit'       => $limit,
-					'default'     => $this->normalizeSqlServerDefault($row['column_default']),
-					'nullable'    => $row['is_nullable'] === 'YES',
-					'precision'   => $precision,
-					'scale'       => $scale,
-					'unsigned'    => false,
-					'generated'   => null,
-					'identity'    => (int)$row['is_identity'] === 1,
-					'primary_key' => in_array($row['column_name'], $primaryKey, true),
-					'values'      => null,
-				];
+				$result[$row['column_name']] = new ColumnDefinition(
+					type: $type,
+					php_type: TypeMapper::phinxTypeToPhpType($type),
+					limit: $limit,
+					default: $this->normalizeSqlServerDefault($row['column_default']),
+					nullable: $row['is_nullable'] === 'YES',
+					precision: $precision,
+					scale: $scale,
+					unsigned: false,
+					generated: null,
+					identity: (int)$row['is_identity'] === 1,
+					primary_key: in_array($row['column_name'], $primaryKey, true),
+					values: null,
+				);
 			}
 
 			return $result;
@@ -183,15 +183,15 @@
 				ksort($rows);
 				$first = reset($rows);
 
-				$result[$name] = [
-					'columns'           => array_column($rows, 'column_name'),
-					'referencedTable'   => $first['referenced_table'],
-					'referencedColumns' => array_column($rows, 'referenced_column'),
+				$result[$name] = new ForeignKeyDefinition(
+					columns: array_column($rows, 'column_name'),
+					referencedTable: $first['referenced_table'],
+					referencedColumns: array_column($rows, 'referenced_column'),
 					// SQL Server uses underscores (NO_ACTION, SET_NULL) where every
 					// other engine uses spaces; normalize for a consistent string diff.
-					'onDelete'          => str_replace('_', ' ', $first['delete_rule']),
-					'onUpdate'          => str_replace('_', ' ', $first['update_rule']),
-				];
+					onDelete: str_replace('_', ' ', $first['delete_rule']),
+					onUpdate: str_replace('_', ' ', $first['update_rule']),
+				);
 			}
 
 			return $result;

@@ -52,8 +52,8 @@
 
 			$columns = $this->adapter->getColumns('t');
 
-			self::assertTrue($columns['id']['identity']);
-			self::assertTrue($columns['id']['primary_key']);
+			self::assertTrue($columns['id']->identity);
+			self::assertTrue($columns['id']->primary_key);
 		}
 
 		public function testExplicitAutoincrementIsDetectedAsIdentity(): void {
@@ -61,7 +61,7 @@
 
 			$columns = $this->adapter->getColumns('t');
 
-			self::assertTrue($columns['id']['identity']);
+			self::assertTrue($columns['id']->identity);
 		}
 
 		public function testCompositePrimaryKeyHasNoIdentityColumn(): void {
@@ -69,10 +69,10 @@
 
 			$columns = $this->adapter->getColumns('t');
 
-			self::assertFalse($columns['a']['identity']);
-			self::assertFalse($columns['b']['identity']);
-			self::assertTrue($columns['a']['primary_key']);
-			self::assertTrue($columns['b']['primary_key']);
+			self::assertFalse($columns['a']->identity);
+			self::assertFalse($columns['b']->identity);
+			self::assertTrue($columns['a']->primary_key);
+			self::assertTrue($columns['b']->primary_key);
 		}
 
 		public function testSingleColumnPrimaryKeyOfNonIntegerTypeIsNotIdentity(): void {
@@ -80,8 +80,8 @@
 
 			$columns = $this->adapter->getColumns('t');
 
-			self::assertFalse($columns['id']['identity']);
-			self::assertTrue($columns['id']['primary_key']);
+			self::assertFalse($columns['id']->identity);
+			self::assertTrue($columns['id']->primary_key);
 		}
 
 		public function testWithoutRowidTableHasNoIdentityColumnEvenWithIntegerPk(): void {
@@ -89,8 +89,8 @@
 
 			$columns = $this->adapter->getColumns('t');
 
-			self::assertFalse($columns['id']['identity']);
-			self::assertTrue($columns['id']['primary_key']);
+			self::assertFalse($columns['id']->identity);
+			self::assertTrue($columns['id']->primary_key);
 		}
 
 		public function testTableWithNoPrimaryKeyHasNoIdentityColumn(): void {
@@ -98,9 +98,9 @@
 
 			$columns = $this->adapter->getColumns('t');
 
-			self::assertFalse($columns['name']['identity']);
-			self::assertFalse($columns['amount']['identity']);
-			self::assertFalse($columns['name']['primary_key']);
+			self::assertFalse($columns['name']->identity);
+			self::assertFalse($columns['amount']->identity);
+			self::assertFalse($columns['name']->primary_key);
 		}
 
 		public function testTypeMappingForFixedDdlSet(): void {
@@ -123,22 +123,22 @@
 
 			$columns = $this->adapter->getColumns('t');
 
-			self::assertSame('integer', $columns['a']['type']);
-			self::assertSame('float', $columns['b']['type']);
-			self::assertSame('decimal', $columns['c']['type']);
-			self::assertSame(10, $columns['c']['precision']);
-			self::assertSame(2, $columns['c']['scale']);
-			self::assertSame('boolean', $columns['d']['type']);
-			self::assertSame('date', $columns['e']['type']);
-			self::assertSame('datetime', $columns['f']['type']);
-			self::assertSame('time', $columns['g']['type']);
-			self::assertSame('timestamp', $columns['h']['type']);
-			self::assertSame('text', $columns['i']['type']);
-			self::assertSame('blob', $columns['j']['type']);
-			self::assertSame('string', $columns['k']['type']);
-			self::assertSame(50, $columns['k']['limit']);
-			self::assertSame('char', $columns['l']['type']);
-			self::assertSame(5, $columns['l']['limit']);
+			self::assertSame('integer', $columns['a']->type);
+			self::assertSame('float', $columns['b']->type);
+			self::assertSame('decimal', $columns['c']->type);
+			self::assertSame(10, $columns['c']->precision);
+			self::assertSame(2, $columns['c']->scale);
+			self::assertSame('boolean', $columns['d']->type);
+			self::assertSame('date', $columns['e']->type);
+			self::assertSame('datetime', $columns['f']->type);
+			self::assertSame('time', $columns['g']->type);
+			self::assertSame('timestamp', $columns['h']->type);
+			self::assertSame('text', $columns['i']->type);
+			self::assertSame('blob', $columns['j']->type);
+			self::assertSame('string', $columns['k']->type);
+			self::assertSame(50, $columns['k']->limit);
+			self::assertSame('char', $columns['l']->type);
+			self::assertSame(5, $columns['l']->limit);
 		}
 
 		public function testDefaultValueQuotedStringIsUnwrappedAndUndoubled(): void {
@@ -146,7 +146,7 @@
 
 			$columns = $this->adapter->getColumns('t');
 
-			self::assertSame("it's pending", $columns['name']['default']);
+			self::assertSame("it's pending", $columns['name']->default);
 		}
 
 		public function testNullableFlagIsReadBackCorrectly(): void {
@@ -154,7 +154,7 @@
 
 			$columns = $this->adapter->getColumns('t');
 
-			self::assertFalse($columns['required_field']['nullable']);
-			self::assertTrue($columns['optional_field']['nullable']);
+			self::assertFalse($columns['required_field']->nullable);
+			self::assertTrue($columns['optional_field']->nullable);
 		}
 	}

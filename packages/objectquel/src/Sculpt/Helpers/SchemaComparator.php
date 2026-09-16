@@ -4,7 +4,7 @@
 	
 	use Quellabs\ObjectQuel\Capabilities\NullPlatformCapabilities;
 	use Quellabs\ObjectQuel\Capabilities\PlatformCapabilitiesInterface;
-	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
+	use Quellabs\ObjectQuel\DatabaseAdapter\ColumnDefinition;
 	use Quellabs\ObjectQuel\DatabaseAdapter\Mapper\TypeMapper;
 	use Quellabs\ObjectQuel\Sculpt\SculptTypes;
 	
@@ -12,7 +12,42 @@
 	 * Class SchemaComparator
 	 * Compares entity schema (object properties) with database schema (table columns)
 	 * to identify changes such as added, modified, or deleted columns.
-	 * @phpstan-import-type ColumnDefinition from DatabaseAdapter
+	 *
+	 * The two array shapes below both mirror ColumnDefinition::toArray().
+	 * ColumnDefinitionArray (every key required) is ColumnDefinition::
+	 * toArray()'s own shape, used only as the pre-filter representation.
+	 * NormalizedColumnDefinition (every key optional) is what
+	 * filterRelevantProperties() below produces — it deliberately drops
+	 * keys that don't matter for the column's type, so it's a genuine
+	 * subset, not a full ColumnDefinition.
+	 * @phpstan-type ColumnDefinitionArray array{
+	 *     type: string,
+	 *     php_type: string,
+	 *     limit: int|array<int, int>|null,
+	 *     default: mixed,
+	 *     nullable: bool,
+	 *     precision: int|null,
+	 *     scale: int|null,
+	 *     unsigned: bool,
+	 *     generated: mixed,
+	 *     identity: bool,
+	 *     primary_key: bool,
+	 *     values: array<int, string>|null
+	 * }
+	 * @phpstan-type NormalizedColumnDefinition array{
+	 *     type: string,
+	 *     php_type?: string,
+	 *     limit?: int|array<int, int>|null,
+	 *     default?: mixed,
+	 *     nullable?: bool,
+	 *     precision?: int|null,
+	 *     scale?: int|null,
+	 *     unsigned?: bool,
+	 *     generated?: mixed,
+	 *     identity?: bool,
+	 *     primary_key?: bool,
+	 *     values?: array<int, string>|null
+	 * }
 	 * @phpstan-import-type ColumnModification from SculptTypes
 	 */
 	class SchemaComparator {
@@ -104,8 +139,8 @@
 		
 		/**
 		 * Identify specific properties that changed between two column definitions
-		 * @param array<string, mixed> $from Original column definition (normalized)
-		 * @param array<string, mixed> $to New column definition (normalized)
+		 * @param NormalizedColumnDefinition $from Original column definition (normalized)
+		 * @param NormalizedColumnDefinition $to New column definition (normalized)
 		 * @return array<string, array{from: mixed, to: mixed}> Map of property names to their before/after values
 		 */
 		private function identifySpecificChanges(array $from, array $to): array {
@@ -128,13 +163,17 @@
 		}
 		
 		/**
-		 * Normalize column definition for consistent comparison
+		 * Normalize column definition for consistent comparison. Returns a
+		 * plain associative array, not another ColumnDefinition — Step 3
+		 * below deliberately drops properties irrelevant to the column's
+		 * type, so the result is a filtered comparison fingerprint, not a
+		 * valid reconstruction of the input.
 		 * @param ColumnDefinition $columnDefinition The column definition to normalize
-		 * @return ColumnDefinition Normalized column definition
+		 * @return NormalizedColumnDefinition Normalized, filtered column definition
 		 */
-		private function normalizeColumnDefinition(array $columnDefinition): array {
+		private function normalizeColumnDefinition(ColumnDefinition $columnDefinition): array {
 			// Step 1: Add any missing default values to ensure all required properties are present
-			$normalized = $this->addDefaultValues($columnDefinition);
+			$normalized = $this->addDefaultValues($columnDefinition->toArray());
 			
 			// Step 2: If database does not support ENUM, normalize enum to string
 			if ($normalized['type'] === 'enum' && !$this->platform->supportsNativeEnums()) {
@@ -163,9 +202,11 @@
 		}
 		
 		/**
-		 * Add default values where missing
-		 * @param ColumnDefinition $columnDefinition Raw column definition
-		 * @return ColumnDefinition Column definition with default values added
+		 * Add default values where missing. Operates on the array
+		 * representation (see normalizeColumnDefinition()), not the
+		 * ColumnDefinition object itself.
+		 * @param ColumnDefinitionArray $columnDefinition Raw column definition
+		 * @return ColumnDefinitionArray Column definition with default values added
 		 */
 		private function addDefaultValues(array $columnDefinition): array {
 			$result = $columnDefinition;
@@ -188,14 +229,16 @@
 		}
 		
 		/**
-		 * Filter to only include properties relevant to the column type
-		 * @param ColumnDefinition $columnDefinition Column definition with all properties
-		 * @return ColumnDefinition Column definition with only type-relevant properties
+		 * Filter to only include properties relevant to the column type.
+		 * Operates on the array representation (see normalizeColumnDefinition()),
+		 * not the ColumnDefinition object itself.
+		 * @param ColumnDefinitionArray $columnDefinition Column definition with all properties
+		 * @return NormalizedColumnDefinition Column definition with only type-relevant properties
 		 */
 		private function filterRelevantProperties(array $columnDefinition): array {
 			$columnType = $columnDefinition['type'];
 			$relevantProperties = TypeMapper::getRelevantProperties($columnType);
-			
+
 			// The connected engine has no UNSIGNED integer modifier at all (SQLite,
 			// PostgreSQL, SQL Server). Schema introspection on these engines cannot
 			// report 'unsigned' back from a real column, so comparing it here would
@@ -204,31 +247,37 @@
 			if (!$this->platform->supportsUnsignedIntegers()) {
 				$relevantProperties = array_diff($relevantProperties, ['unsigned']);
 			}
-			
+
 			// array_intersect_key always preserves 'type' because it is in every relevantProperties
 			// list, but PHPStan models the result as having all keys optional.
-			/** @var ColumnDefinition $filtered */
+			/** @var NormalizedColumnDefinition $filtered */
 			$filtered = array_intersect_key($columnDefinition, array_flip($relevantProperties));
 			return $filtered;
 		}
-		
+
 		/**
-		 * Normalize property values for consistent comparison
-		 * @param ColumnDefinition $columnDefinition Column definition to normalize
-		 * @return ColumnDefinition Column definition with normalized property values
+		 * Normalize property values for consistent comparison. Operates on
+		 * the array representation (see normalizeColumnDefinition()), not
+		 * the ColumnDefinition object itself.
+		 * @param NormalizedColumnDefinition $columnDefinition Column definition to normalize
+		 * @return NormalizedColumnDefinition Column definition with normalized property values
 		 */
 		private function normalizePropertyValues(array $columnDefinition): array {
 			// Extract column type
 			$columnType = $columnDefinition['type'];
-			
+
 			// Normalize each property value based on its property name and the column type
 			$result = [];
-			
+
 			foreach ($columnDefinition as $property => $value) {
 				$result[$property] = $this->normalizePropertyValue($property, $value, $columnType);
 			}
-			
-			/** @var ColumnDefinition $result */
+
+			// PHPStan can't follow the shape through a dynamic key-by-key rebuild;
+			// it genuinely still matches NormalizedColumnDefinition — same keys in,
+			// same keys out, only values changed — matching this method's own
+			// pre-existing convention for this exact situation.
+			/** @var NormalizedColumnDefinition $result */
 			return $result;
 		}
 		
@@ -310,9 +359,10 @@
 		 */
 		private function validateInput(array $columns, string $parameterName): void {
 			foreach ($columns as $columnName => $columnDefinition) {
-				if (!is_array($columnDefinition)) {
+				if (!$columnDefinition instanceof ColumnDefinition) {
 					throw new \InvalidArgumentException(
-						"Invalid column definition for '{$columnName}' in {$parameterName}: expected array, got " . gettype($columnDefinition)
+						"Invalid column definition for '{$columnName}' in {$parameterName}: expected " .
+						ColumnDefinition::class . ", got " . get_debug_type($columnDefinition)
 					);
 				}
 			}

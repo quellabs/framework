@@ -163,10 +163,10 @@
 			self::assertArrayHasKey('fk_fk_orders_scalar_action_customer_id', $fkDiff['modified']);
 
 			$modified = $fkDiff['modified']['fk_fk_orders_scalar_action_customer_id'];
-			self::assertSame('RESTRICT', $modified['database']['onDelete']);
-			self::assertSame('NO ACTION', $modified['database']['onUpdate']);
-			self::assertSame('CASCADE', $modified['entity']['onDelete']);
-			self::assertSame('RESTRICT', $modified['entity']['onUpdate']);
+			self::assertSame('RESTRICT', $modified['database']->onDelete);
+			self::assertSame('NO ACTION', $modified['database']->onUpdate);
+			self::assertSame('CASCADE', $modified['entity']->onDelete);
+			self::assertSame('RESTRICT', $modified['entity']->onUpdate);
 
 			$changes = $this->emptyEntityChangeSet();
 			$changes['foreignKeys'] = $fkDiff;
@@ -215,13 +215,13 @@
 			self::assertArrayHasKey('fk_fk_orders_customer_id', $definitions);
 
 			$definition = $definitions['fk_fk_orders_customer_id'];
-			self::assertSame(['customer_id'], $definition['columns']);
-			self::assertSame('fk_customers', $definition['referencedTable']);
-			self::assertSame(['id'], $definition['referencedColumns']);
-			self::assertSame('CASCADE', $definition['onDelete']);
+			self::assertSame(['customer_id'], $definition->columns);
+			self::assertSame('fk_customers', $definition->referencedTable);
+			self::assertSame(['id'], $definition->referencedColumns);
+			self::assertSame('CASCADE', $definition->onDelete);
 			// onUpdate was never declared on FkOrderEntity's ForeignKeyAction —
 			// the plain annotation default, unaffected by Cascade being present.
-			self::assertSame('NO ACTION', $definition['onUpdate']);
+			self::assertSame('NO ACTION', $definition->onUpdate);
 		}
 
 		// -------------------------------------------------------------------------

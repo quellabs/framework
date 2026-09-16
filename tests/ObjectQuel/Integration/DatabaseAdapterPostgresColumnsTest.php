@@ -51,9 +51,9 @@
 
 			$columns = $adapter->getColumns('orders');
 
-			self::assertSame('string', $columns['name']['type']);
-			self::assertSame(120, $columns['name']['limit']);
-			self::assertTrue($columns['name']['nullable']);
+			self::assertSame('string', $columns['name']->type);
+			self::assertSame(120, $columns['name']->limit);
+			self::assertTrue($columns['name']->nullable);
 		}
 
 		public function testJsonbNormalizesToJson(): void {
@@ -63,7 +63,7 @@
 
 			$columns = $adapter->getColumns('orders');
 
-			self::assertSame('json', $columns['payload']['type']);
+			self::assertSame('json', $columns['payload']->type);
 		}
 
 		public function testDecimalPrecisionAndScaleAreReadBackButFloatHasNone(): void {
@@ -74,12 +74,12 @@
 
 			$columns = $adapter->getColumns('orders');
 
-			self::assertSame('decimal', $columns['price']['type']);
-			self::assertSame(10, $columns['price']['precision']);
-			self::assertSame(2, $columns['price']['scale']);
+			self::assertSame('decimal', $columns['price']->type);
+			self::assertSame(10, $columns['price']->precision);
+			self::assertSame(2, $columns['price']->scale);
 
-			self::assertSame('float', $columns['ratio']['type']);
-			self::assertNull($columns['ratio']['precision']);
+			self::assertSame('float', $columns['ratio']->type);
+			self::assertNull($columns['ratio']->precision);
 		}
 
 		public function testIdentityColumnDefaultIsAlwaysNullRegardlessOfColumnDefault(): void {
@@ -89,8 +89,8 @@
 
 			$columns = $adapter->getColumns('orders');
 
-			self::assertTrue($columns['id']['identity']);
-			self::assertNull($columns['id']['default']);
+			self::assertTrue($columns['id']->identity);
+			self::assertNull($columns['id']->default);
 		}
 
 		public function testStringDefaultHasCastAndQuotesStripped(): void {
@@ -100,7 +100,7 @@
 
 			$columns = $adapter->getColumns('orders');
 
-			self::assertSame('pending', $columns['status']['default']);
+			self::assertSame('pending', $columns['status']->default);
 		}
 
 		public function testTimestampAndTimeVariantsMapCorrectly(): void {
@@ -111,8 +111,8 @@
 
 			$columns = $adapter->getColumns('orders');
 
-			self::assertSame('datetime', $columns['created_at']['type']);
-			self::assertSame('time', $columns['opens_at']['type']);
+			self::assertSame('datetime', $columns['created_at']->type);
+			self::assertSame('time', $columns['opens_at']->type);
 		}
 
 		public function testUuidAndBooleanMapCorrectly(): void {
@@ -123,7 +123,7 @@
 
 			$columns = $adapter->getColumns('orders');
 
-			self::assertSame('uuid', $columns['id']['type']);
-			self::assertSame('boolean', $columns['active']['type']);
+			self::assertSame('uuid', $columns['id']->type);
+			self::assertSame('boolean', $columns['active']->type);
 		}
 	}

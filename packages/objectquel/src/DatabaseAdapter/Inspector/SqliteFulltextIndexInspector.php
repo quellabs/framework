@@ -10,12 +10,12 @@
 	 * objectquel-destroy-index-plan.md's "Fulltext index destroy on
 	 * sqlsrv/sqlite" section.
 	 */
-	class SqliteFulltextIndexInspector {
+	readonly class SqliteFulltextIndexInspector {
 
 		/**
 		 * @var DatabaseAdapter
 		 */
-		private readonly DatabaseAdapter $adapter;
+		private DatabaseAdapter $adapter;
 
 		/**
 		 * @param DatabaseAdapter $adapter
@@ -37,10 +37,14 @@
 		 * @return string|null
 		 */
 		public function getFts5BaseTable(string $indexName): ?string {
-			$statement = $this->adapter->execute(
-				"SELECT sql FROM sqlite_master WHERE type = 'table' AND name = :name",
-				['name' => $indexName]
-			);
+			$statement = $this->adapter->execute("
+				SELECT
+					sql
+				FROM sqlite_master
+				WHERE type = 'table' AND name = :name
+			", [
+				'name' => $indexName
+			]);
 
 			if ($statement === null) {
 				return null;

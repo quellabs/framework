@@ -50,7 +50,7 @@
 
 			$columns = $adapter->getColumns('orders');
 
-			self::assertSame('datetime', $columns['created_at']['type']);
+			self::assertSame('datetime', $columns['created_at']->type);
 		}
 
 		public function testMaxLengthNvarcharMapsToTextButOrdinaryNvarcharMapsToString(): void {
@@ -61,9 +61,9 @@
 
 			$columns = $adapter->getColumns('orders');
 
-			self::assertSame('text', $columns['payload']['type']);
-			self::assertSame('string', $columns['name']['type']);
-			self::assertSame(255, $columns['name']['limit']);
+			self::assertSame('text', $columns['payload']->type);
+			self::assertSame('string', $columns['name']->type);
+			self::assertSame(255, $columns['name']->limit);
 		}
 
 		public function testIdentityColumnIsDetectedViaColumnProperty(): void {
@@ -73,7 +73,7 @@
 
 			$columns = $adapter->getColumns('orders');
 
-			self::assertTrue($columns['id']['identity']);
+			self::assertTrue($columns['id']->identity);
 		}
 
 		public function testDecimalPrecisionAndScaleAreReadBackButRealHasNone(): void {
@@ -84,12 +84,12 @@
 
 			$columns = $adapter->getColumns('orders');
 
-			self::assertSame('decimal', $columns['price']['type']);
-			self::assertSame(10, $columns['price']['precision']);
-			self::assertSame(2, $columns['price']['scale']);
+			self::assertSame('decimal', $columns['price']->type);
+			self::assertSame(10, $columns['price']->precision);
+			self::assertSame(2, $columns['price']->scale);
 
-			self::assertSame('float', $columns['ratio']['type']);
-			self::assertNull($columns['ratio']['precision']);
+			self::assertSame('float', $columns['ratio']->type);
+			self::assertNull($columns['ratio']->precision);
 		}
 
 		public function testDefaultValueParenAndQuoteWrappingIsStripped(): void {
@@ -100,8 +100,8 @@
 
 			$columns = $adapter->getColumns('orders');
 
-			self::assertSame('pending', $columns['status']['default']);
-			self::assertSame(0, $columns['count']['default']);
+			self::assertSame('pending', $columns['status']->default);
+			self::assertSame(0, $columns['count']->default);
 		}
 
 		public function testUuidAndBitMapCorrectly(): void {
@@ -112,7 +112,7 @@
 
 			$columns = $adapter->getColumns('orders');
 
-			self::assertSame('uuid', $columns['id']['type']);
-			self::assertSame('boolean', $columns['active']['type']);
+			self::assertSame('uuid', $columns['id']->type);
+			self::assertSame('boolean', $columns['active']->type);
 		}
 	}

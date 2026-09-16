@@ -22,7 +22,6 @@
 	 * Detects differences between entity definitions and the current database schema,
 	 * then produces an ObjectQuel migration file to synchronize the two.
 	 *
-	 * @phpstan-import-type ColumnDefinition from DatabaseAdapter
 	 * @phpstan-import-type ColumnModification from SculptTypes
 	 * @phpstan-import-type EntityChangeSet from SculptTypes
 	 */
@@ -209,18 +208,18 @@ HELP;
 			$from = $diff['from'];
 			$to = $diff['to'];
 			$parts = [];
-			
-			if ($from['type'] !== $to['type']) {
-				$parts[] = "type changed to " . $to['type'];
+
+			if ($from->type !== $to->type) {
+				$parts[] = "type changed to " . $to->type;
 			}
-			
-			if (($from['limit'] ?? null) !== ($to['limit'] ?? null)) {
-				$toLimit = $to['limit'] ?? null;
+
+			if ($from->limit !== $to->limit) {
+				$toLimit = $to->limit;
 				$parts[] = "length changed to " . (is_array($toLimit) ? json_encode($toLimit) : (string)($toLimit ?? 'default'));
 			}
-			
-			if (($from['nullable'] ?? null) !== ($to['nullable'] ?? null)) {
-				$parts[] = ($to['nullable'] ?? false) ? "now nullable" : "now not nullable";
+
+			if ($from->nullable !== $to->nullable) {
+				$parts[] = $to->nullable ? "now nullable" : "now not nullable";
 			}
 			
 			return empty($parts) ? "" : " (" . implode(", ", $parts) . ")";

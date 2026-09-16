@@ -4,7 +4,9 @@
 
 	use Quellabs\ObjectQuel\Capabilities\NullPlatformCapabilities;
 	use Quellabs\ObjectQuel\Capabilities\PlatformCapabilitiesInterface;
+	use Quellabs\ObjectQuel\DatabaseAdapter\ColumnDefinition;
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
+	use Quellabs\ObjectQuel\DatabaseAdapter\ForeignKeyDefinition;
 	use Quellabs\ObjectQuel\DatabaseAdapter\SqlIdentifierQuoter;
 	use Quellabs\ObjectQuel\Sculpt\SculptTypes;
 
@@ -34,8 +36,6 @@
 	 * un-normalized definitions there), so resolveType() recognizes that
 	 * back to 'json' before rendering.
 	 *
-	 * @phpstan-import-type ColumnDefinition from DatabaseAdapter
-	 * @phpstan-import-type ForeignKeyDefinition from DatabaseAdapter
 	 * @phpstan-import-type ColumnModification from SculptTypes
 	 * @phpstan-import-type IndexDefinition from SculptTypes
 	 * @phpstan-import-type IndexChangeSet from SculptTypes
@@ -388,10 +388,10 @@ PHP;
 		 * @return string
 		 * @throws \RuntimeException If the column is non-nullable, the table has rows, and the entity declares no default
 		 */
-		private function buildAddColumnOp(string $tableName, string $columnName, array $definition): string {
+		private function buildAddColumnOp(string $tableName, string $columnName, ColumnDefinition $definition): string {
 			$op = 'add ' . $this->renderColumnDefinition($columnName, $definition);
 
-			if (!empty($definition['nullable'])) {
+			if ($definition->nullable) {
 				return $op;
 			}
 
@@ -399,7 +399,7 @@ PHP;
 				return $op;
 			}
 
-			if ($definition['default'] === null) {
+			if ($definition->default === null) {
 				throw new \RuntimeException(
 					"Cannot add non-nullable column '{$tableName}.{$columnName}': the table has existing rows and " .
 					"the entity declares no default to backfill them with. Add @Orm\\Column(default=...) to the " .
@@ -407,7 +407,7 @@ PHP;
 				);
 			}
 
-			$default = $definition['default'];
+			$default = $definition->default;
 
 			if (!is_scalar($default) && !$default instanceof \Stringable) {
 				throw new \RuntimeException(
@@ -494,12 +494,12 @@ PHP;
 			$ops = [];
 
 			foreach ($foreignKeys as $config) {
-				$column = $config['columns'][0];
-				$referencedColumn = $config['referencedColumns'][0];
-				$onDelete = strtolower($config['onDelete']);
-				$onUpdate = strtolower($config['onUpdate']);
+				$column = $config->columns[0];
+				$referencedColumn = $config->referencedColumns[0];
+				$onDelete = strtolower($config->onDelete);
+				$onUpdate = strtolower($config->onUpdate);
 
-				$ops[] = "add foreign key ({$column}) references {$config['referencedTable']} ({$referencedColumn}) on delete {$onDelete} on update {$onUpdate}";
+				$ops[] = "add foreign key ({$column}) references {$config->referencedTable} ({$referencedColumn}) on delete {$onDelete} on update {$onUpdate}";
 			}
 
 			return $ops;
@@ -513,7 +513,7 @@ PHP;
 			$ops = [];
 
 			foreach ($foreignKeys as $config) {
-				$ops[] = "drop foreign key ({$config['columns'][0]})";
+				$ops[] = "drop foreign key ({$config->columns[0]})";
 			}
 
 			return $ops;
@@ -531,23 +531,23 @@ PHP;
 		 * @param ColumnDefinition $definition
 		 * @return string
 		 */
-		private function renderColumnDefinition(string $columnName, array $definition): string {
+		private function renderColumnDefinition(string $columnName, ColumnDefinition $definition): string {
 			$type = $this->resolveType($definition);
 
 			if ($type === 'enum') {
-				$typeExpr = 'enum(' . $this->renderEnumValues($definition['values'] ?? []) . ')';
+				$typeExpr = 'enum(' . $this->renderEnumValues($definition->values ?? []) . ')';
 			} else {
-				$unsigned = !empty($definition['unsigned']) ? 'unsigned ' : '';
+				$unsigned = $definition->unsigned ? 'unsigned ' : '';
 				$typeExpr = $unsigned . $type . $this->renderTypeArguments($type, $definition);
 			}
 
 			$constraints = [];
 
-			if (!empty($definition['nullable'])) {
+			if ($definition->nullable) {
 				$constraints[] = 'nullable';
 			}
 
-			if (!empty($definition['identity'])) {
+			if ($definition->identity) {
 				$constraints[] = 'identity';
 			}
 
@@ -600,18 +600,18 @@ PHP;
 		 * @param ColumnDefinition $definition
 		 * @return string
 		 */
-		private function renderTypeArguments(string $type, array $definition): string {
-			if (!empty($definition['precision'])) {
-				$scale = $definition['scale'] ?? 0;
-				return "({$definition['precision']},{$scale})";
+		private function renderTypeArguments(string $type, ColumnDefinition $definition): string {
+			if (!empty($definition->precision)) {
+				$scale = $definition->scale ?? 0;
+				return "({$definition->precision},{$scale})";
 			}
 
 			if (
-				!empty($definition['limit']) &&
-				is_int($definition['limit']) &&
+				!empty($definition->limit) &&
+				is_int($definition->limit) &&
 				!in_array($type, self::TYPES_WITHOUT_DDL_LIMIT, true)
 			) {
-				return "({$definition['limit']})";
+				return "({$definition->limit})";
 			}
 
 			return '';
@@ -623,8 +623,8 @@ PHP;
 		 * @param ColumnDefinition $definition
 		 * @return string
 		 */
-		private function resolveType(array $definition): string {
-			$type = $definition['type'];
+		private function resolveType(ColumnDefinition $definition): string {
+			$type = $definition->type;
 
 			if ($type === $this->platform->getNativeJsonType() && $type !== 'json') {
 				return 'json';
@@ -643,7 +643,7 @@ PHP;
 			$primaryKeys = [];
 
 			foreach ($columns as $columnName => $definition) {
-				if (!empty($definition['primary_key'])) {
+				if ($definition->primary_key) {
 					$primaryKeys[] = $columnName;
 				}
 			}

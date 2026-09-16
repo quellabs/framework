@@ -2,7 +2,9 @@
 
 	namespace Quellabs\ObjectQuel\DatabaseAdapter\Inspector;
 
+	use Quellabs\ObjectQuel\DatabaseAdapter\ColumnDefinition;
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
+	use Quellabs\ObjectQuel\DatabaseAdapter\ForeignKeyDefinition;
 	use Quellabs\ObjectQuel\DatabaseAdapter\Mapper\NativeColumnTypeMapper;
 	use Quellabs\ObjectQuel\DatabaseAdapter\Mapper\TypeMapper;
 
@@ -11,8 +13,6 @@
 	 * information_schema, index usage stats via pg_stat_user_indexes. See
 	 * objectquel-phinx-removal-plan.md for the getColumns() design and
 	 * per-type mapping rationale.
-	 * @phpstan-import-type ColumnDefinition from DatabaseAdapter
-	 * @phpstan-import-type ForeignKeyDefinition from DatabaseAdapter
 	 * @phpstan-import-type IndexUsageStats from DatabaseAdapter
 	 */
 	readonly class PostgresSchemaIntrospector implements SchemaIntrospectorInterface {
@@ -80,20 +80,20 @@
 					default => TypeMapper::getDefaultLimit($type),
 				};
 
-				$result[$row['column_name']] = [
-					'type'        => $type,
-					'php_type'    => TypeMapper::phinxTypeToPhpType($type),
-					'limit'       => $limit,
-					'default'     => $this->normalizePostgresDefault($row['column_default'], $identity),
-					'nullable'    => $row['is_nullable'] === 'YES',
-					'precision'   => $precision,
-					'scale'       => $scale,
-					'unsigned'    => false,
-					'generated'   => null,
-					'identity'    => $identity,
-					'primary_key' => in_array($row['column_name'], $primaryKey, true),
-					'values'      => null,
-				];
+				$result[$row['column_name']] = new ColumnDefinition(
+					type: $type,
+					php_type: TypeMapper::phinxTypeToPhpType($type),
+					limit: $limit,
+					default: $this->normalizePostgresDefault($row['column_default'], $identity),
+					nullable: $row['is_nullable'] === 'YES',
+					precision: $precision,
+					scale: $scale,
+					unsigned: false,
+					generated: null,
+					identity: $identity,
+					primary_key: in_array($row['column_name'], $primaryKey, true),
+					values: null,
+				);
 			}
 
 			return $result;
@@ -188,13 +188,13 @@
 					continue;
 				}
 
-				$result[$name] = [
-					'columns'           => $localColumns,
-					'referencedTable'   => $rows[0]['referenced_table'],
-					'referencedColumns' => [$rows[0]['referenced_column']],
-					'onDelete'          => $rows[0]['delete_rule'],
-					'onUpdate'          => $rows[0]['update_rule'],
-				];
+				$result[$name] = new ForeignKeyDefinition(
+					columns: $localColumns,
+					referencedTable: $rows[0]['referenced_table'],
+					referencedColumns: [$rows[0]['referenced_column']],
+					onDelete: $rows[0]['delete_rule'],
+					onUpdate: $rows[0]['update_rule'],
+				);
 			}
 
 			return $result;

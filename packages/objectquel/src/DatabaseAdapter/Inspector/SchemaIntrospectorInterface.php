@@ -2,7 +2,9 @@
 
 	namespace Quellabs\ObjectQuel\DatabaseAdapter\Inspector;
 
+	use Quellabs\ObjectQuel\DatabaseAdapter\ColumnDefinition;
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
+	use Quellabs\ObjectQuel\DatabaseAdapter\ForeignKeyDefinition;
 
 	/**
 	 * Per-engine schema introspection: columns, foreign keys, and index usage
@@ -12,8 +14,6 @@
 	 * instead of dispatching on engine type in a single large class — one
 	 * class per engine, each holding only the SQL/parsing logic that engine
 	 * actually needs.
-	 * @phpstan-import-type ColumnDefinition from DatabaseAdapter
-	 * @phpstan-import-type ForeignKeyDefinition from DatabaseAdapter
 	 * @phpstan-import-type IndexUsageStats from DatabaseAdapter
 	 */
 	interface SchemaIntrospectorInterface {
