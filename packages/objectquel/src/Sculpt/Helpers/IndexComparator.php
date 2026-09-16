@@ -134,12 +134,10 @@
 		
 		
 		/**
-		 * Retrieves all database indexes defined for a specific table.
-		 * On SQLite, a fulltext index is a separate FTS5 virtual table, not
-		 * a schema-level index — getIndexes() can never see it — so it's
-		 * merged in here from a dedicated lookup instead. Without this, an
-		 * already-created fulltext index would report as missing (and be
-		 * re-"added") on every single make:migrations run, forever.
+		 * Retrieves all database indexes defined for a specific table. On
+		 * SQLite, a fulltext index is a separate FTS5 virtual table that
+		 * getIndexes() can never see, so it's merged in from a dedicated
+		 * lookup instead — otherwise it would report as missing forever.
 		 * @param string $tableName The name of the database table to get indexes for
 		 * @return array<string, IndexDefinition> Formatted array of database indexes with their configurations
 		 */

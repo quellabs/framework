@@ -67,14 +67,9 @@
 		/**
 		 * Returns every FTS5 external-content virtual table built against
 		 * $baseTable, keyed by its own name, with the columns it indexes —
-		 * the reverse direction of getFts5BaseTable() (name -> base table
-		 * becomes base table -> names+columns). Needed so IndexComparator
-		 * can recognize an already-created fulltext index as present:
-		 * DatabaseAdapter::getIndexes() can never see it (it's a virtual
-		 * table, not a schema-level index — see DestroyIndexExecutor's
-		 * docblock), so without this, a fulltext index would report as
-		 * missing and be re-"added" on every single make:migrations run,
-		 * forever, even immediately after it was created.
+		 * the reverse of getFts5BaseTable(). Needed so IndexComparator can
+		 * recognize an already-created fulltext index as present, since
+		 * getIndexes() can never see a virtual table.
 		 * @param string $baseTable
 		 * @return array<string, array{columns: list<string>}>
 		 */

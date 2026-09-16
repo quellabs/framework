@@ -121,15 +121,11 @@
 			// anywhere. Bumping past any version that already has a file on disk
 			// guarantees a fresh, always-increasing version every call.
 			//
-			// A file-only check isn't enough within one long-lived PHP process,
-			// though: MigrationLocator's require_once() de-duplicates by resolved
-			// file path, not content, so if a version's file was ever require_once'd
-			// before -- even a failed migration since deleted, its class name stays
-			// declared forever, PHP classes can't be undefined -- reusing that same
-			// version number would silently make require_once() skip the new file
-			// entirely and run the STALE, already-declared class body instead. So
-			// the class name (not just the file) must also be free before this
-			// version can be reused.
+			// A file-only check isn't enough within one long-lived process: a
+			// version whose file was ever require_once'd (even a failed
+			// migration since deleted) keeps its class name declared for good,
+			// so reusing that version would make require_once() silently skip
+			// the new file and run the stale class body instead.
 			$date = (int)date('YmdHis');
 
 			while (glob($this->migrationsPath . '/' . $date . '_*.php') !== [] || class_exists("QuelSchemaMigration{$date}", false)) {
@@ -175,37 +171,28 @@
 					[$embeddedIndexes, $deferredIndexes] = $this->splitIndexesForNewTable($changes['indexes']['added']);
 
 					// Engines with no ALTER TABLE FK support (SQLite) reject
-					// pass 2's `add foreign key` categorically, even for a
-					// table this same migration just created — so on those
-					// engines, a new table's foreign keys must be declared
-					// inline at create time instead, using the same
-					// `foreign key (...) references ...` grammar `create`
-					// already accepts alongside columns.
+					// pass 2's `add foreign key` even for a table this same
+					// migration just created, so there the FK must be
+					// declared inline at create time instead.
 					$embedForeignKeysInCreate = !$this->platform->supportsNamedForeignKeys();
 					$createForeignKeys = $embedForeignKeysInCreate ? $changes['foreignKeys']['added'] : [];
 
 					$up[] = $this->queryStatement($this->buildCreateTableStatement($tableName, $changes['added'], $embeddedIndexes, $createForeignKeys));
 
-					// A deferred index needs its own statement, run once the
-					// table genuinely exists — see splitIndexesForNewTable().
-					// Unlike an embedded index, dropping the table does NOT
-					// clean this one up: a deferred index is always fulltext,
-					// which on SQLite/SQL Server is a separate object (an FTS5
-					// virtual table; an unnamed catalog entry) with no lifecycle
-					// tie to the base table's own DROP TABLE — left alone, it
-					// would survive as an orphan once the table is gone. Run
-					// before the table drop below, while it still exists to
-					// resolve the drop against.
+					// A deferred index (always fulltext — see
+					// splitIndexesForNewTable()) is a separate object (e.g. an
+					// FTS5 virtual table) with no lifecycle tie to the base
+					// table's own DROP TABLE, so — unlike an embedded index —
+					// it needs its own explicit down() cleanup, run before the
+					// table drop below while it still resolves.
 					foreach ($deferredIndexes as $indexName => $indexConfig) {
 						$up[] = $this->queryStatement("alter {$tableName} (" . $this->buildAddIndexOp($indexName, $indexConfig) . ")");
 						$downColumnsAndIndexes[] = $this->queryStatement("alter {$tableName} (" . $this->buildDropIndexOp($indexName) . ")");
 					}
 
-					// Table drop is deferred to the very end of down() — see below — so
-					// it runs after any foreign key pointing at (or added to) it has
-					// already been undone. Dropping the table takes its embedded
-					// indexes with it; any deferred index was already cleaned up
-					// above.
+					// Table drop is deferred to the very end of down() — see below —
+					// so it runs after any foreign key pointing at it has already
+					// been undone.
 					$downDropTables[] = $this->queryStatement("destroy {$tableName}");
 
 					if ($embedForeignKeysInCreate) {
@@ -261,13 +248,9 @@
 			// down() must undo in the exact reverse of up(): foreign keys first — a
 			// column or table this migration constrains can't be altered or dropped
 			// while that constraint still exists — then column/index changes, then
-			// finally the tables this migration created. Table drops are also
-			// reversed relative to their creation order: an engine with no ALTER
-			// TABLE FK support (SQLite) declares a new table's foreign keys inline,
-			// in its own `create` statement, with no separate drop-foreign-key step
-			// to run first — the constraint only goes away when the table itself
-			// is dropped. Dropping tables in creation order would then drop a
-			// referenced parent while a child table still constrains it.
+			// finally the tables this migration created, in reverse of creation
+			// order (a table with an inline FK, e.g. on SQLite, has no separate
+			// drop-foreign-key step, so a referenced parent can't drop first).
 			$down = [...$downForeignKeys, ...$downColumnsAndIndexes, ...array_reverse($downDropTables)];
 
 			$upBody = implode("\n", $up);
@@ -353,16 +336,12 @@ PHP;
 		 * become a separate, follow-up `alter` statement.
 		 *
 		 * A fulltext index on SQLite (FTS5) or SQL Server (KEY INDEX) needs
-		 * to look up the table's own schema (SQLite: its primary key
-		 * column, for content_rowid; SQL Server: an existing unique/primary
-		 * index name) to compile — a lookup that runs against the live
-		 * database at compile time, before any statement in this migration
-		 * has actually executed. Embedded in the same `create`, that lookup
-		 * would run against a table that doesn't exist yet. Deferred to its
-		 * own statement afterward, the `create` has already run by the time
-		 * it compiles, so the lookup succeeds. Every other index (plain,
-		 * unique, and fulltext on mysql/mariadb/pgsql) needs no such lookup
-		 * and is always safe to embed.
+		 * to look up the table's own schema to compile (SQLite: its primary
+		 * key; SQL Server: an existing unique/primary index) — a lookup
+		 * that runs at compile time, before `create` has actually executed,
+		 * so it would target a table that doesn't exist yet if embedded.
+		 * Deferred to its own statement afterward, the lookup succeeds.
+		 * Every other index needs no such lookup and is always safe to embed.
 		 * @param array<string, IndexConfig> $indexes
 		 * @return array{0: array<string, IndexConfig>, 1: array<string, IndexConfig>} [embedded, deferred]
 		 */
@@ -645,11 +624,8 @@ PHP;
 
 		/**
 		 * Render a `foreign key (col) references Table (col) on delete X
-		 * on update Y` clause — the shared grammar `create`'s embedded
-		 * foreign-key entries and `alter`'s `add foreign key` sub-op both
-		 * use, minus whichever leading keyword the caller's context
-		 * already supplies (nothing for `create`, `add ` for `alter` —
-		 * see buildAddForeignKeyOps()).
+		 * on update Y` clause, shared by `create`'s embedded entries and
+		 * `alter`'s `add foreign key` op (see buildAddForeignKeyOps()).
 		 * @param ForeignKeyDefinition $config
 		 * @return string
 		 */

@@ -350,11 +350,9 @@
 		 * Foreign keys always compile after every table/column/index
 		 * change, regardless of table iteration order, so a table a new FK
 		 * references is guaranteed to already exist. Uses a platform that
-		 * supports named foreign keys (unlike this file's shared sqlite-
-		 * backed $this->builder) — on sqlite, a new table's own foreign key
-		 * is embedded directly in its `create` statement instead, a
-		 * different scenario covered separately by
-		 * testNewTableWithForeignKeyIsEmbeddedInlineOnAPlatformWithNoAlterTableForeignKeySupport().
+		 * supports named foreign keys, unlike this file's shared sqlite-
+		 * backed $this->builder — sqlite embeds a new table's FK inline
+		 * instead, covered by the sibling test below.
 		 */
 		public function testForeignKeysCompileAfterTableCreationRegardlessOfDeclarationOrder(): void {
 			$builder = new QuelMigrationBuilder($this->adapter, sys_get_temp_dir(), new FakePlatformCapabilities('mysql'));
@@ -379,11 +377,10 @@
 		}
 
 		/**
-		 * The sqlite counterpart to the test above: SQLite's ALTER TABLE
-		 * rejects adding a foreign key outright, even to a table this same
-		 * migration just created, so a new table's own foreign key is
-		 * embedded directly in its `create` statement instead — no
-		 * separate `alter`/`add foreign key` statement at all.
+		 * The sqlite counterpart: ALTER TABLE rejects adding a foreign key
+		 * outright, even to a table this migration just created, so the
+		 * new table embeds its own FK inline instead — no separate
+		 * `alter`/`add foreign key` statement at all.
 		 */
 		public function testNewTableWithForeignKeyIsEmbeddedInlineOnAPlatformWithNoAlterTableForeignKeySupport(): void {
 			$ordersChanges = $this->emptyChangeSet();

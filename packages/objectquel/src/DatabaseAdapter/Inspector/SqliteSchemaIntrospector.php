@@ -67,13 +67,10 @@
 					php_type: TypeMapper::phinxTypeToPhpType($type),
 					limit: $limit,
 					default: $this->normalizeSqliteDefault($row['dflt_value']),
-					// A rowid-alias identity column (`INTEGER PRIMARY KEY
-					// AUTOINCREMENT`) always reports notnull=0 here, even
-					// though it can never actually hold NULL -- inserting
-					// NULL there triggers autoincrement rather than storing
-					// a null value. Taking that literally would make this
-					// column diff as "nullable" against every entity's
-					// (correctly) non-nullable identity declaration, forever.
+					// A rowid-alias identity column always reports notnull=0
+					// here even though it can never hold NULL (inserting one
+					// triggers autoincrement instead) -- taken literally,
+					// this would diff as "nullable" forever.
 					nullable: $isIdentity ? false : (int)$row['notnull'] === 0,
 					precision: $precisionScale->precision,
 					scale: $precisionScale->scale,

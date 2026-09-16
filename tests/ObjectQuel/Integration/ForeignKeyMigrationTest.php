@@ -253,13 +253,10 @@
 		// -------------------------------------------------------------------------
 
 		/**
-		 * Uses a platform that supports named foreign keys (unlike this
-		 * file's shared sqlite-backed $this->builder) — on sqlite, a new
-		 * table's own foreign key is embedded directly in its `create`
-		 * statement instead (see
-		 * testTwoNewCrossReferencingTablesEachEmbedTheirOwnForeignKeyInline()
-		 * below), so there's no separate add-foreign-key statement to order
-		 * against the two creates in the first place.
+		 * Uses a platform that supports named foreign keys, unlike this
+		 * file's shared sqlite-backed $this->builder — sqlite embeds a new
+		 * table's FK inline instead (see the sibling test below), leaving
+		 * no separate add-foreign-key statement to order here.
 		 */
 		public function testTwoNewCrossReferencingTablesEmitBothCreatesBeforeEitherAddForeignKey(): void {
 			// Neither table exists yet in this fresh in-memory database.
@@ -300,12 +297,10 @@
 		}
 
 		/**
-		 * The sqlite counterpart to the test above: SQLite's ALTER TABLE
-		 * rejects adding a foreign key outright, even to a table this same
-		 * migration just created, so each new table's own foreign key is
-		 * embedded directly in its own `create` statement instead — no
-		 * add-foreign-key statement, and no cross-table ordering concern,
-		 * at all.
+		 * The sqlite counterpart: ALTER TABLE rejects adding a foreign key
+		 * outright, even to a table this migration just created, so each
+		 * new table embeds its own FK inline instead — no add-foreign-key
+		 * statement, and no cross-table ordering concern, at all.
 		 */
 		public function testTwoNewCrossReferencingTablesEachEmbedTheirOwnForeignKeyInline(): void {
 			$customerMetadata = $this->entityStore->getMetadata(FkCustomerEntity::class);

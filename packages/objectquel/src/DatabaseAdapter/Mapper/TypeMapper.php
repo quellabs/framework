@@ -129,6 +129,33 @@
 		}
 
 		/**
+		 * Per-engine map of a declared type to the type its DDL layer
+		 * renders identically to another type, with nothing left for
+		 * introspection to tell them apart afterward. SQLite renders
+		 * 'json'/'uuid' as bare TEXT, same as 'text' itself (see
+		 * DDLTypeMapper::getSqliteTempTableColumnType()). Shared by
+		 * DDLTypeMapper and SchemaComparator so the two can't drift apart.
+		 * SQL Server has the identical 'text'/'json' ambiguity (see
+		 * NativeColumnTypeMapper's own docblock) but isn't listed here: no
+		 * live SQL Server available to verify a fix against.
+		 */
+		private const array INTROSPECTION_COLLAPSE = [
+			'sqlite' => ['json' => 'text', 'uuid' => 'text'],
+		];
+
+		/**
+		 * Collapses $type to whatever $databaseType's schema introspection
+		 * can actually distinguish it as — see INTROSPECTION_COLLAPSE.
+		 * Returns $type unchanged when the platform has no such ambiguity.
+		 * @param string $type Declared column type
+		 * @param string $databaseType getDatabaseType()'s return value
+		 * @return string
+		 */
+		public static function collapseForIntrospection(string $type, string $databaseType): string {
+			return self::INTROSPECTION_COLLAPSE[$databaseType][$type] ?? $type;
+		}
+
+		/**
 		 * Whether $type is a recognised abstract column type (the vocabulary
 		 * @Orm\Column uses). Used by `create` to reject unknown types at parse
 		 * time instead of silently falling through to VARCHAR.

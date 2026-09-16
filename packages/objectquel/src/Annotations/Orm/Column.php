@@ -109,13 +109,9 @@
 		 * @return int|null The length/size of the column or null if not specified or invalid
 		 */
 		public function getLimit(): ?int {
-			// Calculate the length if the type is 'enum'. Must match
-			// TypeMapper::enumFallbackLimit() exactly — that's the same
-			// formula DDLTypeMapper uses to size the VARCHAR column it
-			// actually creates on every engine without a native ENUM type
-			// (see that method's docblock). A different formula here would
-			// mean this declared limit could never match what schema
-			// introspection reads back, diffing as "modified" forever.
+			// Must match TypeMapper::enumFallbackLimit() exactly, or this
+			// declared limit could never match what introspection reads
+			// back on a non-native-enum engine — see that method's docblock.
 			if ($this->getType() === 'enum') {
 				$enumType = $this->getEnumType() ?? throw new \LogicException('Enum column must specify enumType');
 				return TypeMapper::enumFallbackLimit(TypeMapper::getEnumCases($enumType));

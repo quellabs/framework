@@ -271,14 +271,10 @@
 		
 		/**
 		 * Computes the storage limit for a native enum column. Must match
-		 * TypeMapper::enumFallbackLimit() exactly — that's the same formula
-		 * @Orm\Column's own getLimit() uses to compute the entity's
-		 * declared limit, universally, regardless of platform (native ENUM
-		 * or not). A different formula here would mean this column could
-		 * never match its own entity's declaration, diffing as "modified"
-		 * forever. MySQL/MariaDB-only: no other engine ever populates
-		 * 'values' (see getColumns() above), since native ENUM only exists
-		 * here.
+		 * TypeMapper::enumFallbackLimit() exactly — the same formula
+		 * @Orm\Column's own getLimit() uses — or this could never match its
+		 * own entity's declaration. MySQL/MariaDB-only: no other engine
+		 * ever populates 'values' (see getColumns() above).
 		 * @param array<int, string>|null $values Enum case values
 		 * @return int Limit to use for the column definition
 		 */

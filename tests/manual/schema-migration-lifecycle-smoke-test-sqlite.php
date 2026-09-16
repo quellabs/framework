@@ -4,49 +4,29 @@
 	 * Standalone end-to-end lifecycle smoke test for the schema-migration
 	 * system (`make:migrations` + `quel:migrate`) against a real SQLite
 	 * file — the SQLite counterpart to schema-migration-lifecycle-smoke-
-	 * test.php, which covers MySQL. Run as its own PHP process for the
-	 * same reasons that one is: a real EntityStore built from real entity
-	 * files on disk, outside the shared PHPUnit suite's process-wide
-	 * SignalHub/EntityManager.
+	 * test.php, which covers MySQL. Run as its own process for the same
+	 * reason that one is: a real EntityStore from real entity files on
+	 * disk, outside the shared PHPUnit suite's process-wide EntityManager.
 	 *
-	 * This is deliberately NOT a re-run of the MySQL script's full type
-	 * matrix — DDLTypeMapper's per-type SQLite mapping is already unit
-	 * tested. What this covers instead is what's genuinely different on
-	 * SQLite and was never exercised through the real make:migrations +
-	 * quel:migrate pipeline against a live database before now:
+	 * Not a re-run of the MySQL script's type matrix (already unit
+	 * tested) — this covers what's genuinely different on SQLite and was
+	 * never exercised live before: a fulltext index (an FTS5 virtual
+	 * table + sync triggers, not a real index) created inline, modified,
+	 * and dropped; the backfill divergence in QuelToSQLAlter (no ALTER
+	 * COLUMN, so a backfilled column's DEFAULT is deliberately left in
+	 * place, unlike MySQL/PostgreSQL); and the three operations SQLite's
+	 * ALTER TABLE structurally can't do — retype, primary-key change,
+	 * adding a foreign key to an existing table — each proven to fail
+	 * loudly, leave the schema untouched, and recover cleanly.
 	 *
-	 *   - a fulltext index (SQLite has no FULLTEXT index — it's an FTS5
-	 *     external-content virtual table plus three sync triggers),
-	 *     created inline on a brand-new table, modified, and dropped,
-	 *     each verified to actually keep the FTS5 table in sync and to
-	 *     converge to "No changes detected" afterward;
-	 *   - the backfill divergence documented in QuelToSQLAlter
-	 *     (compileAddColumnWithBackfill): SQLite has no ALTER COLUMN, so
-	 *     a backfilled column's DEFAULT is deliberately left in place
-	 *     afterward, unlike MySQL/PostgreSQL, where it's dropped;
-	 *   - the three operations SQLite's ALTER TABLE structurally cannot
-	 *     do at all — retype, primary-key change, and adding a foreign
-	 *     key to an existing table — each proven to fail loudly through
-	 *     the real quel:migrate pipeline, leave the live schema
-	 *     genuinely untouched, and be cleanly recoverable from.
-	 *
-	 * Building this test found and fixed three real bugs (see the git
-	 * history around this file's introduction): embedding a new table's
-	 * fulltext index directly in its `create` statement broke on SQLite
-	 * because compiling FTS5 needs to look up the table's primary key
-	 * before the table exists; every identity-PK column diffed as
-	 * "modified" forever, because SQLite's rowid-alias idiom always
-	 * reports notnull=0 via PRAGMA table_info even though it can never
-	 * hold NULL; and a fulltext index diffed as "added" forever, because
-	 * DatabaseAdapter::getIndexes() can never see an FTS5 virtual table.
+	 * Building this test found and fixed seven pre-existing bugs — see
+	 * this branch's git history for each one.
 	 *
 	 * Usage:
 	 *   php tests/manual/schema-migration-lifecycle-smoke-test-sqlite.php
 	 *
-	 * Needs no live server — the SQLite file lives in the OS temp
-	 * directory for the duration of the run. Exits 0 if every check
-	 * passes, 1 otherwise. Cleans up everything it creates even on
-	 * failure.
+	 * Needs no live server. Exits 0 if every check passes, 1 otherwise.
+	 * Cleans up everything it creates even on failure.
 	 */
 
 	require __DIR__ . '/../../vendor/autoload.php';
