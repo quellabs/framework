@@ -6,7 +6,7 @@
 	use Quellabs\ObjectQuel\EntityStore;
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
 	use Quellabs\ObjectQuel\Sculpt\Helpers\ForeignKeyComparator;
-	use Quellabs\ObjectQuel\Sculpt\Helpers\PhinxMigrationBuilder;
+	use Quellabs\ObjectQuel\Sculpt\Helpers\QuelMigrationBuilder;
 	use Quellabs\ObjectQuel\Capabilities\PlatformCapabilities;
 	use Quellabs\ObjectQuel\Tests\Fixtures\Entities\FkCustomerEntity;
 	use Quellabs\ObjectQuel\Tests\Fixtures\Entities\FkOrderEntity;
@@ -17,12 +17,12 @@
 
 	/**
 	 * MakeMigrationsCommand's underlying machinery: ForeignKeyComparator (the
-	 * FK-vs-schema diff) and PhinxMigrationBuilder (code generation + the
+	 * FK-vs-schema diff) and QuelMigrationBuilder (code generation + the
 	 * create-everything-then-addForeignKey ordering).
 	 *
 	 * Deliberately scoped to just the foreign-key-specific diff/emission logic —
 	 * column-level diffing is SchemaComparator's job and isn't covered here. Each
-	 * scenario below hand-assembles the EntityChangeSet PhinxMigrationBuilder
+	 * scenario below hand-assembles the EntityChangeSet QuelMigrationBuilder
 	 * expects, using real metadata (EntityStore) and a real foreign-key diff
 	 * (ForeignKeyComparator against a live in-memory SQLite table) rather than
 	 * mocks, so this exercises the actual code paths end to end.
@@ -33,23 +33,23 @@
 		private DatabaseAdapter $adapter;
 		private EntityStore $entityStore;
 		private ForeignKeyComparator $comparator;
-		private PhinxMigrationBuilder $builder;
+		private QuelMigrationBuilder $builder;
 
 		protected function setUp(): void {
 			$this->adapter = $this->makeSqliteAdapter();
 			$this->entityStore = $this->makeFkEntityStore();
 			$this->comparator = new ForeignKeyComparator($this->adapter, $this->entityStore, new PlatformCapabilities($this->adapter));
-			$this->builder = new PhinxMigrationBuilder($this->adapter, sys_get_temp_dir(), new PlatformCapabilities($this->adapter));
+			$this->builder = new QuelMigrationBuilder($this->adapter, sys_get_temp_dir(), new PlatformCapabilities($this->adapter));
 		}
 
 		/**
-		 * Invokes PhinxMigrationBuilder's private buildMigrationContent() so the
+		 * Invokes QuelMigrationBuilder's private buildMigrationContent() so the
 		 * generated migration source can be asserted on directly, without writing
 		 * a file to disk.
 		 * @param array<string, array<string, mixed>> $allChanges
 		 */
 		private function buildMigrationContent(array $allChanges): string {
-			$method = new \ReflectionMethod(PhinxMigrationBuilder::class, 'buildMigrationContent');
+			$method = new \ReflectionMethod(QuelMigrationBuilder::class, 'buildMigrationContent');
 			$method->setAccessible(true);
 			return $method->invoke($this->builder, 'TestMigration', $allChanges);
 		}
@@ -85,17 +85,17 @@
 
 			$content = $this->buildMigrationContent(['fk_orders_scalar' => $changes]);
 
-			// SQLite has no real named constraints (see
-			// PlatformCapabilitiesInterface::supportsNamedForeignKeys()), so neither
-			// the add nor the eventual drop carries a 'constraint' name.
+			// Quel's `foreign key` clause never carries a constraint name —
+			// naming is always derived by the DDL compiler, never author-supplied
+			// (see objectquel-foreign-key-design.md, decision 1) — so this looks
+			// identical regardless of platform, unlike Phinx's named-constraint option.
 			self::assertStringContainsString(
-				"->addForeignKey(['customer_id'], 'fk_customers', ['id'], " .
-				"['delete' => 'RESTRICT', 'update' => 'NO ACTION'])",
+				'alter fk_orders_scalar (add foreign key (customer_id) references fk_customers (id) on delete restrict on update no action)',
 				$content
 			);
-			// down() must undo it, dropping by column list rather than by name.
+			// down() must undo it.
 			self::assertStringContainsString(
-				"->dropForeignKey(['customer_id'])",
+				'alter fk_orders_scalar (drop foreign key (customer_id))',
 				$content
 			);
 		}
@@ -127,17 +127,13 @@
 
 			$content = $this->buildMigrationContent(['fk_orders_removed' => $changes]);
 
-			// SQLite has no real named constraints (see
-			// PlatformCapabilitiesInterface::supportsNamedForeignKeys()), so the
-			// drop targets the column list instead of a constraint name.
 			self::assertStringContainsString(
-				"->dropForeignKey(['customer_id'])",
+				'alter fk_orders_removed (drop foreign key (customer_id))',
 				$content
 			);
-			// down() must restore it, also without a constraint name.
+			// down() must restore it.
 			self::assertStringContainsString(
-				"->addForeignKey(['customer_id'], 'fk_customers', ['id'], " .
-				"['delete' => 'RESTRICT', 'update' => 'NO ACTION'])",
+				'alter fk_orders_removed (add foreign key (customer_id) references fk_customers (id) on delete restrict on update no action)',
 				$content
 			);
 		}
@@ -178,17 +174,10 @@
 			$content = $this->buildMigrationContent(['fk_orders_scalar_action' => $changes]);
 
 			// up() drops the old constraint and adds the new one with the entity's
-			// rule. SQLite has no named constraints, so the drop targets the column
-			// list rather than the constraint name.
+			// rule, folded into one combined alter statement.
 			self::assertStringContainsString(
-				"->dropForeignKey(['customer_id'])",
-				$content
-			);
-			// SQLite has no real named constraints, so the recreated FK carries no
-			// 'constraint' option either.
-			self::assertStringContainsString(
-				"->addForeignKey(['customer_id'], 'fk_customers', ['id'], " .
-				"['delete' => 'CASCADE', 'update' => 'RESTRICT'])",
+				'alter fk_orders_scalar_action (drop foreign key (customer_id), ' .
+				'add foreign key (customer_id) references fk_customers (id) on delete cascade on update restrict)',
 				$content
 			);
 
@@ -203,8 +192,8 @@
 
 			$downBody = substr($content, $downPos);
 			self::assertStringContainsString(
-				"->addForeignKey(['customer_id'], 'fk_customers', ['id'], " .
-				"['delete' => 'RESTRICT', 'update' => 'NO ACTION'])",
+				'alter fk_orders_scalar_action (drop foreign key (customer_id), ' .
+				'add foreign key (customer_id) references fk_customers (id) on delete restrict on update no action)',
 				$downBody
 			);
 		}
@@ -282,16 +271,16 @@
 
 			$content = $this->buildMigrationContent($allChanges);
 
-			$customersCreatePos = strpos($content, "\$this->table('fk_customers'");
-			$ordersCreatePos = strpos($content, "\$this->table('fk_orders_scalar', ['id' => false");
-			$addForeignKeyPos = strpos($content, '->addForeignKey(');
+			$customersCreatePos = strpos($content, 'create fk_customers (');
+			$ordersCreatePos = strpos($content, 'create fk_orders_scalar (');
+			$addForeignKeyPos = strpos($content, 'add foreign key (');
 
 			self::assertNotFalse($customersCreatePos);
 			self::assertNotFalse($ordersCreatePos);
 			self::assertNotFalse($addForeignKeyPos);
 
-			// Both create() calls appear before the addForeignKey() call — no
-			// dependency-ordering algorithm needed between the two tables
+			// Both create statements appear before the add-foreign-key statement —
+			// no dependency-ordering algorithm needed between the two tables
 			// themselves, since neither create() carries an inline FK.
 			self::assertLessThan($addForeignKeyPos, $customersCreatePos);
 			self::assertLessThan($addForeignKeyPos, $ordersCreatePos);
