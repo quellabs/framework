@@ -140,7 +140,7 @@
 
 			// New table with PK+FK.
 			$this->assertStringContainsString(
-				"create mig_reg_line_items (id = unsigned integer(11) identity, order_id = integer(11), primary key (id))",
+				"create mig_reg_line_items (id = unsigned integer identity, order_id = integer, primary key (id))",
 				$content
 			);
 			$this->assertStringContainsString(

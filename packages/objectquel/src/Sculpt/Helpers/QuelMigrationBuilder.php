@@ -566,7 +566,7 @@ PHP;
 				$typeExpr = 'enum(' . $this->renderEnumValues($definition['values'] ?? []) . ')';
 			} else {
 				$unsigned = !empty($definition['unsigned']) ? 'unsigned ' : '';
-				$typeExpr = $unsigned . $type . $this->renderTypeArguments($definition);
+				$typeExpr = $unsigned . $type . $this->renderTypeArguments($type, $definition);
 			}
 
 			$constraints = [];
@@ -596,20 +596,49 @@ PHP;
 		}
 
 		/**
+		 * Column types DDLTypeMapper never renders a limit for, on any
+		 * supported engine — each has its own fixed/native SQL type
+		 * (INT, UUID, TEXT, etc.) that ignores the limit argument
+		 * entirely (see DDLTypeMapper's per-dialect match arms). Emitting
+		 * `(n)` for these is dead syntax that round-trips through the
+		 * migration but affects no generated DDL, e.g. a uuid column's
+		 * fixed 36-char length or an integer column's legacy MySQL
+		 * display width. 'char' and the VARCHAR/VARBINARY fallback used
+		 * for 'string'/unrecognized types are deliberately not listed
+		 * here — those do consume the limit on at least one platform.
+		 */
+		private const array TYPES_WITHOUT_DDL_LIMIT = [
+			'tinyinteger', 'smallinteger', 'integer', 'biginteger',
+			'float', 'decimal',
+			'boolean',
+			'date', 'datetime', 'time', 'timestamp',
+			'text', 'blob',
+			'json',
+			'uuid', 'year',
+		];
+
+		/**
 		 * The `(precision,scale)` or `(limit)` type-arguments suffix —
 		 * mutually exclusive in Quel's grammar, unlike Phinx's option
 		 * array. Precision takes priority: a decimal-like column has
-		 * precision set and no meaningful limit.
+		 * precision set and no meaningful limit. The limit itself is
+		 * only emitted for types DDLTypeMapper actually consults it for
+		 * — see TYPES_WITHOUT_DDL_LIMIT.
+		 * @param string $type Resolved column type (see resolveType())
 		 * @param ColumnDefinition $definition
 		 * @return string
 		 */
-		private function renderTypeArguments(array $definition): string {
+		private function renderTypeArguments(string $type, array $definition): string {
 			if (!empty($definition['precision'])) {
 				$scale = $definition['scale'] ?? 0;
 				return "({$definition['precision']},{$scale})";
 			}
 
-			if (!empty($definition['limit']) && is_int($definition['limit'])) {
+			if (
+				!empty($definition['limit']) &&
+				is_int($definition['limit']) &&
+				!in_array($type, self::TYPES_WITHOUT_DDL_LIMIT, true)
+			) {
 				return "({$definition['limit']})";
 			}
 
