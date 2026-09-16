@@ -39,6 +39,77 @@
 			self::assertSame(['ALTER TABLE [Posts] ADD [view_count] INT NOT NULL'], $this->compile($ast, 'sqlsrv'));
 		}
 
+		/**
+		 * MySQL/MariaDB and PostgreSQL share identical
+		 * ADD COLUMN...DEFAULT / ALTER COLUMN...DROP DEFAULT syntax.
+		 */
+		public function testAddColumnWithBackfillOnMysqlAndPostgres(): void {
+			$ast = $this->parse("alter Posts (add status = string(20) backfill 'pending')");
+
+			self::assertSame(
+				[
+					"ALTER TABLE `Posts` ADD COLUMN `status` VARCHAR(20) NOT NULL DEFAULT 'pending'",
+					'ALTER TABLE `Posts` ALTER COLUMN `status` DROP DEFAULT',
+				],
+				$this->compile($ast, 'mysql')
+			);
+			self::assertSame(
+				[
+					"ALTER TABLE \"Posts\" ADD COLUMN \"status\" VARCHAR(20) NOT NULL DEFAULT 'pending'",
+					'ALTER TABLE "Posts" ALTER COLUMN "status" DROP DEFAULT',
+				],
+				$this->compile($ast, 'pgsql')
+			);
+		}
+
+		/**
+		 * SQL Server's `ADD ... DEFAULT` creates a named default-constraint
+		 * object, so the cleanup step drops it by its derived name instead
+		 * of targeting the column directly.
+		 */
+		public function testAddColumnWithBackfillOnSqlServer(): void {
+			$ast = $this->parse("alter Posts (add status = string(20) backfill 'pending')");
+
+			self::assertSame(
+				[
+					"ALTER TABLE [Posts] ADD [status] VARCHAR(20) NOT NULL CONSTRAINT [df_Posts_status] DEFAULT 'pending'",
+					'ALTER TABLE [Posts] DROP CONSTRAINT [df_Posts_status]',
+				],
+				$this->compile($ast, 'sqlsrv')
+			);
+		}
+
+		/**
+		 * SQLite carve-out: one statement, full stop — no ALTER COLUMN of
+		 * any kind exists to drop the default afterward, so it's left in
+		 * place (see objectquel-migrations-implementation-plan.md, 0.2).
+		 */
+		public function testAddColumnWithBackfillOnSqliteLeavesTheDefaultInPlace(): void {
+			$ast = $this->parse("alter Posts (add status = string(20) backfill 'pending')");
+
+			self::assertSame(
+				["ALTER TABLE `Posts` ADD COLUMN `status` VARCHAR(20) NOT NULL DEFAULT 'pending'"],
+				$this->compile($ast, 'sqlite')
+			);
+		}
+
+		/**
+		 * A single-quote inside the backfill literal round-trips through
+		 * Quel's own string-literal escaping (parse) and back out through
+		 * SQL string-literal escaping (render) intact.
+		 */
+		public function testBackfillValueContainingASingleQuoteIsEscapedOnRender(): void {
+			$ast = $this->parse("alter Posts (add name = string(50) backfill 'O\\'Brien')");
+
+			self::assertSame(
+				[
+					"ALTER TABLE `Posts` ADD COLUMN `name` VARCHAR(50) NOT NULL DEFAULT 'O''Brien'",
+					'ALTER TABLE `Posts` ALTER COLUMN `name` DROP DEFAULT',
+				],
+				$this->compile($ast, 'mysql')
+			);
+		}
+
 		public function testAddIdentityColumnOnSqliteIsRejected(): void {
 			$ast = $this->parse('alter Posts (add id = integer identity)');
 

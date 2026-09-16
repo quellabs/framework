@@ -244,6 +244,39 @@
 		}
 
 		/**
+		 * `backfill` lets a required column be added to an already-populated
+		 * table: existing rows get the literal value, the column ends up
+		 * NOT NULL, and (on MySQL) the transient DEFAULT used to write that
+		 * value is dropped again afterward — not a second, persisted source
+		 * of truth alongside the entity's own declared default.
+		 */
+		public function testAddsARequiredColumnWithBackfillOnAPopulatedTable(): void {
+			$tableName = $this->nextTableName();
+			$this->createTargetTable($tableName);
+
+			self::em()->getConnection()->execute("INSERT INTO `{$tableName}` (id, message) VALUES (1, 'first'), (2, 'second')");
+
+			$result = self::em()->executeQuery("alter {$tableName} (add status = string(20) backfill 'pending')");
+
+			$this->assertNull($result);
+
+			$columns = self::em()->getConnection()->getColumns($tableName);
+			$this->assertSame('string', $columns['status']['type']);
+			$this->assertFalse($columns['status']['nullable']);
+			// The transient DEFAULT was dropped again after the backfill ran.
+			$this->assertNull($columns['status']['default']);
+
+			$rows = self::em()->getConnection()->execute("SELECT id, status FROM `{$tableName}` ORDER BY id")->fetchAll('assoc');
+			$this->assertSame('pending', $rows[0]['status']);
+			$this->assertSame('pending', $rows[1]['status']);
+
+			// A row inserted afterward, with an explicit value, is unaffected.
+			self::em()->getConnection()->execute("INSERT INTO `{$tableName}` (id, message, status) VALUES (3, 'third', 'active')");
+			$newRow = self::em()->getConnection()->execute("SELECT status FROM `{$tableName}` WHERE id = 3")->fetchAssoc();
+			$this->assertSame('active', $newRow['status']);
+		}
+
+		/**
 		 * ObjectQuel's `create` has no ENGINE clause, so a table it creates
 		 * gets whatever MySQL's default_storage_engine is — MyISAM in this
 		 * suite's test server, which silently accepts (and ignores) a FK
