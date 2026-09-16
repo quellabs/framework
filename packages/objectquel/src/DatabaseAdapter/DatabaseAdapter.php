@@ -10,7 +10,9 @@
 	use Quellabs\ObjectQuel\DatabaseAdapter\Inspector\NullSchemaIntrospector;
 	use Quellabs\ObjectQuel\DatabaseAdapter\Inspector\PostgresSchemaIntrospector;
 	use Quellabs\ObjectQuel\DatabaseAdapter\Inspector\SchemaIntrospectorInterface;
+	use Quellabs\ObjectQuel\DatabaseAdapter\Inspector\SqlServerFulltextIndexInspector;
 	use Quellabs\ObjectQuel\DatabaseAdapter\Inspector\SqlServerSchemaIntrospector;
+	use Quellabs\ObjectQuel\DatabaseAdapter\Inspector\SqliteFulltextIndexInspector;
 	use Quellabs\ObjectQuel\DatabaseAdapter\Inspector\SqliteSchemaIntrospector;
 
 	/**
@@ -87,6 +89,24 @@
 		 * @var SchemaIntrospectorInterface|null
 		 */
 		private ?SchemaIntrospectorInterface $schemaIntrospectorCache = null;
+
+		/**
+		 * Cached SqlServerFulltextIndexInspector instance, lazily created by
+		 * hasSqlServerFulltextIndex()/getSqlServerExtendedProperty(). Defaulted
+		 * inline for the same disableOriginalConstructor()-mock reason as
+		 * $schemaIntrospectorCache above.
+		 * @var SqlServerFulltextIndexInspector|null
+		 */
+		private ?SqlServerFulltextIndexInspector $sqlServerFulltextIndexInspectorCache = null;
+
+		/**
+		 * Cached SqliteFulltextIndexInspector instance, lazily created by
+		 * getSqliteFts5BaseTable(). Defaulted inline for the same
+		 * disableOriginalConstructor()-mock reason as $schemaIntrospectorCache
+		 * above.
+		 * @var SqliteFulltextIndexInspector|null
+		 */
+		private ?SqliteFulltextIndexInspector $sqliteFulltextIndexInspectorCache = null;
 
 		/**
 		 * Cached SQL Server database compatibility level (e.g. 170 for SQL
@@ -215,6 +235,29 @@
 				'sqlsrv'           => new SqlServerSchemaIntrospector($this),
 				default            => new NullSchemaIntrospector(),
 			};
+		}
+
+		/**
+		 * Returns the SQL Server fulltext-index inspector, lazily created and
+		 * cached for the lifetime of this adapter. Unlike getSchemaIntrospector(),
+		 * this isn't engine-dispatched — there's exactly one implementation,
+		 * since fulltext-index support has no MySQL/PostgreSQL/SQLite
+		 * equivalent (see SqlServerFulltextIndexInspector).
+		 * @return SqlServerFulltextIndexInspector
+		 */
+		private function getSqlServerFulltextIndexInspector(): SqlServerFulltextIndexInspector {
+			return $this->sqlServerFulltextIndexInspectorCache ??= new SqlServerFulltextIndexInspector($this);
+		}
+
+		/**
+		 * Returns the SQLite fulltext-index inspector, lazily created and
+		 * cached for the lifetime of this adapter. See
+		 * getSqlServerFulltextIndexInspector() for why this isn't
+		 * engine-dispatched the way getSchemaIntrospector() is.
+		 * @return SqliteFulltextIndexInspector
+		 */
+		private function getSqliteFulltextIndexInspector(): SqliteFulltextIndexInspector {
+			return $this->sqliteFulltextIndexInspectorCache ??= new SqliteFulltextIndexInspector($this);
 		}
 
 		// ==================== Schema Introspection ====================
@@ -392,102 +435,39 @@
 		}
 
 		/**
-		 * Whether a SQL Server table currently has a fulltext index. T-SQL
-		 * fulltext indexes live in sys.fulltext_indexes, not in the ordinary
-		 * schema-collection index/constraint lists getIndexes() reads from,
-		 * so they're otherwise invisible to it — see
-		 * objectquel-destroy-index-plan.md's "Fulltext index destroy on
-		 * sqlsrv/sqlite" section.
+		 * Whether a SQL Server table currently has a fulltext index. See
+		 * SqlServerFulltextIndexInspector::hasFulltextIndex() for the
+		 * underlying query and why this can't reuse getIndexes().
 		 * @param string $tableName
 		 * @return bool
 		 */
 		public function hasSqlServerFulltextIndex(string $tableName): bool {
-			$statement = $this->execute("
-				SELECT 1 AS found
-				FROM sys.fulltext_indexes fi
-				JOIN sys.tables t ON t.object_id = fi.object_id
-				WHERE t.name = :tableName
-			", ['tableName' => $tableName]);
-
-			if ($statement === null) {
-				return false;
-			}
-
-			$row = $statement->fetchAssoc();
-			$statement->closeCursor();
-
-			return (bool)$row;
+			return $this->getSqlServerFulltextIndexInspector()->hasFulltextIndex($tableName);
 		}
 
 		/**
-		 * Reads a table-level extended property — SQL Server's standard,
-		 * inspectable (via sys.extended_properties, same as any DB tool)
-		 * object-annotation mechanism, not a hidden framework-side registry.
-		 * Used by QuelToSQLCreateIndex/QuelToSQLDestroyIndex to correlate a
-		 * QUEL index name against a table's fulltext index, which is itself
-		 * unnamed at the T-SQL level (see hasSqlServerFulltextIndex() and
-		 * objectquel-destroy-index-plan.md). Assumes the default 'dbo'
-		 * schema, matching every other sqlsrv code path in this codebase —
-		 * no schema-qualification exists for QUEL-created objects.
+		 * Reads a SQL Server table-level extended property. See
+		 * SqlServerFulltextIndexInspector::getExtendedProperty() for the
+		 * underlying query and how callers use it.
 		 * @param string $tableName
 		 * @param string $propertyName
 		 * @return string|null The property's value, or null if unset
 		 */
 		public function getSqlServerExtendedProperty(string $tableName, string $propertyName): ?string {
-			$statement = $this->execute("
-				SELECT CAST(value AS NVARCHAR(4000)) AS property_value
-				FROM sys.extended_properties
-				WHERE major_id = OBJECT_ID(:tableName)
-				  AND minor_id = 0
-				  AND class = 1
-				  AND name = :propertyName
-			", ['tableName' => $tableName, 'propertyName' => $propertyName]);
-
-			if ($statement === null) {
-				return null;
-			}
-
-			$row = $statement->fetchAssoc();
-			$statement->closeCursor();
-
-			return $row['property_value'] ?? null;
+			return $this->getSqlServerFulltextIndexInspector()->getExtendedProperty($tableName, $propertyName);
 		}
 
 		/**
-		 * Returns the base table name a SQLite FTS5 external-content
-		 * virtual table named $indexName was built against, or null if no
-		 * such virtual table exists. The FTS5 table is an ordinary
-		 * sqlite_master row (type='table') indistinguishable from any other
-		 * table except by its own `CREATE VIRTUAL TABLE ... USING
-		 * fts5(...)` text — parsed here for the `content=` option
-		 * QuelToSQLCreateIndex::compileSqliteFulltext() always sets to the
-		 * base table name. See objectquel-destroy-index-plan.md's
-		 * "Fulltext index destroy on sqlsrv/sqlite" section.
+		 * Returns the base table name a SQLite FTS5 external-content virtual
+		 * table named $indexName was built against, or null if no such
+		 * virtual table exists. See
+		 * SqliteFulltextIndexInspector::getFts5BaseTable() for the underlying
+		 * parsing.
 		 * @param string $indexName
 		 * @return string|null
 		 */
 		public function getSqliteFts5BaseTable(string $indexName): ?string {
-			$statement = $this->execute(
-				"SELECT sql FROM sqlite_master WHERE type = 'table' AND name = :name",
-				['name' => $indexName]
-			);
-
-			if ($statement === null) {
-				return null;
-			}
-
-			$row = $statement->fetchAssoc();
-			$statement->closeCursor();
-
-			if (!$row || !isset($row['sql']) || !preg_match('/using\s+fts5/i', $row['sql'])) {
-				return null;
-			}
-
-			if (!preg_match("/content\s*=\s*'([^']*)'/i", $row['sql'], $matches)) {
-				return null;
-			}
-
-			return $matches[1];
+			return $this->getSqliteFulltextIndexInspector()->getFts5BaseTable($indexName);
 		}
 
 		/**
