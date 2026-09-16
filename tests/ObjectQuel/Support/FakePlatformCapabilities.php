@@ -39,13 +39,6 @@
 			return in_array($this->databaseType, ['mysql', 'mariadb'], true);
 		}
 
-		public function getIndexVisibilityKeywords(): array {
-			return match ($this->databaseType) {
-				'mysql' => ['hidden' => 'INVISIBLE', 'visible' => 'VISIBLE'],
-				default => ['hidden' => 'IGNORED', 'visible' => 'NOT IGNORED'],
-			};
-		}
-
 		public function getFulltextIndexStyle(): FulltextIndexStyle {
 			return match ($this->databaseType) {
 				'sqlite' => FulltextIndexStyle::Fts5,
