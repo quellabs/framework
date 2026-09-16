@@ -162,7 +162,15 @@
 			// left for pass 2 below — see class docblock.
 			foreach ($normalized as $tableName => $changes) {
 				if ($changes['table_not_exists']) {
-					$up[] = $this->queryStatement($this->buildCreateTableStatement($tableName, $changes['added'], $changes['indexes']['added']));
+					[$embeddedIndexes, $deferredIndexes] = $this->splitIndexesForNewTable($changes['indexes']['added']);
+					$up[] = $this->queryStatement($this->buildCreateTableStatement($tableName, $changes['added'], $embeddedIndexes));
+
+					// A deferred index needs its own statement, run once the
+					// table genuinely exists — see splitIndexesForNewTable().
+					foreach ($deferredIndexes as $indexName => $indexConfig) {
+						$up[] = $this->queryStatement("alter {$tableName} (" . $this->buildAddIndexOp($indexName, $indexConfig) . ")");
+					}
+
 					// Table drop is deferred to the very end of down() — see below — so
 					// it runs after any foreign key pointing at (or added to) it has
 					// already been undone. Dropping the table takes its indexes with
@@ -295,6 +303,41 @@ PHP;
 		// -------------------------------------------------------------------------
 		// Table-level statement builders
 		// -------------------------------------------------------------------------
+
+		/**
+		 * Splits a new table's added indexes into those safe to embed
+		 * directly in its `create` statement and those that must instead
+		 * become a separate, follow-up `alter` statement.
+		 *
+		 * A fulltext index on SQLite (FTS5) or SQL Server (KEY INDEX) needs
+		 * to look up the table's own schema (SQLite: its primary key
+		 * column, for content_rowid; SQL Server: an existing unique/primary
+		 * index name) to compile — a lookup that runs against the live
+		 * database at compile time, before any statement in this migration
+		 * has actually executed. Embedded in the same `create`, that lookup
+		 * would run against a table that doesn't exist yet. Deferred to its
+		 * own statement afterward, the `create` has already run by the time
+		 * it compiles, so the lookup succeeds. Every other index (plain,
+		 * unique, and fulltext on mysql/mariadb/pgsql) needs no such lookup
+		 * and is always safe to embed.
+		 * @param array<string, IndexConfig> $indexes
+		 * @return array{0: array<string, IndexConfig>, 1: array<string, IndexConfig>} [embedded, deferred]
+		 */
+		private function splitIndexesForNewTable(array $indexes): array {
+			$embedded = [];
+			$deferred = [];
+			$needsDeferral = in_array($this->platform->getDatabaseType(), ['sqlite', 'sqlsrv'], true);
+
+			foreach ($indexes as $indexName => $indexConfig) {
+				if ($needsDeferral && strtoupper($indexConfig['type']) === 'FULLTEXT') {
+					$deferred[$indexName] = $indexConfig;
+				} else {
+					$embedded[$indexName] = $indexConfig;
+				}
+			}
+
+			return [$embedded, $deferred];
+		}
 
 		/**
 		 * Build a `create tableName (...)` statement for a brand-new table,
