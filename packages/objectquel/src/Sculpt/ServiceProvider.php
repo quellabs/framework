@@ -68,6 +68,7 @@
 		 *      encoding: string,
 		 *      collation: string,
 		 *      migrations_path: string,
+		 *      migration_table: string,
 		 *      entity_namespace: string,
 		 *      entity_path: string,
 		 *      proxy_namespace: string,
@@ -87,6 +88,7 @@
 				'encoding'              => 'utf8mb4',
 				'collation'             => 'utf8mb4_unicode_ci',
 				'migrations_path'       => '',
+				'migration_table'       => 'quel_migrations',
 				'entity_namespace'      => '',
 				'entity_path'           => '',
 				'proxy_namespace'       => 'Quellabs\\ObjectQuel\\Proxy\\Runtime',
@@ -107,6 +109,7 @@
 			$configuration->setEntityPath($this->getConfigValueAsString('entity_path', $defaults['entity_path']));
 			$configuration->setEntityNameSpace($this->getConfigValueAsString('entity_namespace', $defaults['entity_namespace']));
 			$configuration->setMigrationsPath($this->getConfigValueAsString('migrations_path', $defaults['migrations_path']));
+			$configuration->setMigrationTable($this->getConfigValueAsString('migration_table', $defaults['migration_table']));
 			$configuration->setMetadataCachePath($this->getConfigValueAsString('metadata_cache_path', $defaults['metadata_cache_path']));
 			$configuration->setUseMetadataCache(!empty($this->getConfigValueAsString('metadata_cache_path', $defaults['metadata_cache_path'])));
 			$configuration->setGenerateForeignKeys($this->getConfigValueAsBool('generate_foreign_keys', $defaults['generate_foreign_keys']));
