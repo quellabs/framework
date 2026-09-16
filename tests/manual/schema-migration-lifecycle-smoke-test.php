@@ -926,8 +926,330 @@
 		check('parent_two_id column is gone', !isset($dbColumns['parent_two_id']));
 
 		[$exitCode, $out] = runMakeMigrations($provider);
-		check('final idempotency check: exit code is 0', $exitCode === 0);
-		check('final idempotency check: no changes detected', str_contains($out, 'No changes detected'));
+		check('idempotent after phase 18', $exitCode === 0 && str_contains($out, 'No changes detected'));
+
+		// -------------------------------------------------------------
+		// Phase 19 (V19): "renaming" a column is really drop+add —
+		// SchemaComparator has no rename detection at all (it only ever
+		// sees two disjoint column-name sets). Demonstrated on a nullable
+		// column so it isn't entangled with the NOT-NULL/backfill concern
+		// phase 20 covers separately, and with a real value seeded first
+		// so the resulting data loss is concrete, not just theoretical.
+		// -------------------------------------------------------------
+		section('Phase 19: "renaming" a column (extra_notes -> extra_remarks) is really drop+add, and loses data');
+
+		$adapter->execute("UPDATE `kitchen_sink` SET `extra_notes` = 'irreplaceable note' WHERE `code` = 'row-001'");
+		$before = $adapter->execute("SELECT extra_notes FROM `kitchen_sink` WHERE `code` = 'row-001'")?->fetchAssoc();
+		check('extra_notes has a real value before the "rename"', $before !== null && $before['extra_notes'] === 'irreplaceable note');
+
+		$columns['extraNotes']['col'] = 'extra_remarks';
+		writeKitchenSinkVersion(19, $columns, array_values($indexes));
+
+		[, $out] = runMakeMigrations($provider);
+		check('reports the old name as a dropped column', str_contains($out, 'Dropped column: kitchen_sink.extra_notes'));
+		check('reports the new name as an added column', str_contains($out, 'New column: kitchen_sink.extra_remarks'));
+		runQuelMigrate($provider);
+
+		$dbColumns = $adapter->getColumns('kitchen_sink');
+		check('old column name is gone', !isset($dbColumns['extra_notes']));
+		check('new column name exists', isset($dbColumns['extra_remarks']));
+
+		$after = $adapter->execute("SELECT extra_remarks FROM `kitchen_sink` WHERE `code` = 'row-001'")?->fetchAssoc();
+		check('the "renamed" column lost its data — drop+add is not a real rename', $after !== null && $after['extra_remarks'] === null);
+
+		[, $out] = runMakeMigrations($provider);
+		check('idempotent after the rename composition', str_contains($out, 'No changes detected'));
+
+		// -------------------------------------------------------------
+		// Phase 20 (V20): add a NOT NULL column with a declared default
+		// to a table that already has rows — exercises
+		// compileAddColumnWithBackfill()'s three-statement dance (ADD
+		// with a transient DEFAULT, backfill, DROP DEFAULT), never
+		// reached by any earlier phase since every column added so far
+		// was nullable.
+		// -------------------------------------------------------------
+		section('Phase 20: add a NOT NULL column with a default to a populated table (backfill)');
+
+		$columns['region'] = ksCol('region', 'region', 'string', ['limit' => 50, 'default' => '"unknown"']);
+		writeKitchenSinkVersion(20, $columns, array_values($indexes));
+
+		[, $out] = runMakeMigrations($provider);
+		check('reports new column region', str_contains($out, 'New column: kitchen_sink.region'));
+		runQuelMigrate($provider);
+
+		$dbColumns = $adapter->getColumns('kitchen_sink');
+		check('region column exists and is not nullable', isset($dbColumns['region']) && $dbColumns['region']->nullable === false);
+
+		$backfilled = $adapter->execute("SELECT region FROM `kitchen_sink` WHERE `code` = 'row-001'")?->fetchAssoc();
+		check('the pre-existing row was backfilled with the declared default', $backfilled !== null && $backfilled['region'] === 'unknown');
+
+		// The backfill DEFAULT is transient, dropped immediately after
+		// backfilling (see QuelToSQLAlter::compileAddColumnWithBackfill()
+		// docblock — deliberately not "a second, persisted source of
+		// truth alongside @Orm\Column(default=...)"). A fresh insert that
+		// omits region must therefore fail with no DB-level default to
+		// fall back on.
+		$omittedRegionInsert = $adapter->execute(
+			'INSERT INTO `kitchen_sink` (`parent_id`, `level_tiny`, `level_small`, `level_big`, `name`, `code`, ' .
+			'`description`, `price`, `ratio_pct`, `is_active`, `birth_date`, `start_time`, `created_at`, `updated_at`, ' .
+			'`avatar`, `payload`, `metadata`, `external_id`, `release_year`, `status`) ' .
+			'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+			[1, 5, 3, 123, 'NoRegion', 'row-noregion', 'x', 1.0, 0.1, 1, '2020-01-01', '08:00:00', '2024-01-01 00:00:00', '2024-01-01 00:00:00', 'x', 'x', '{}', '11111111-1111-1111-1111-111111111111', 2024, 'active']
+		);
+		check('a fresh insert omitting region fails — no lingering DB-level default', $omittedRegionInsert === null);
+
+		[, $out] = runMakeMigrations($provider);
+		check('idempotent after the backfill', str_contains($out, 'No changes detected'));
+
+		// -------------------------------------------------------------
+		// Phase 21 (V21): add a case to the backing enum. A real project
+		// edits the enum class in place; this test can't (PHP forbids
+		// redefining a class within one process), so it switches to a
+		// second, otherwise-identical enum with one more case — the
+		// annotation-level effect is the same either way.
+		// -------------------------------------------------------------
+		section('Phase 21: add a case to the backing enum (status: +pending)');
+
+		writeSupportEntity('KitchenSinkStatusV2', <<<PHP
+		<?php
+
+			namespace {$namespace};
+
+			enum KitchenSinkStatusV2: string {
+				case Active = 'active';
+				case Inactive = 'inactive';
+				case Archived = 'archived';
+				case Pending = 'pending';
+			}
+
+		PHP);
+
+		$columns['status']['enumType'] = 'KitchenSinkStatusV2';
+		writeKitchenSinkVersion(21, $columns, array_values($indexes));
+
+		[, $out] = runMakeMigrations($provider);
+		check('reports modified column for the enum case addition', str_contains($out, 'Modified column: kitchen_sink.status'));
+		runQuelMigrate($provider);
+
+		$dbColumns = $adapter->getColumns('kitchen_sink');
+		$statusValues = $dbColumns['status']->values ?? [];
+		check('status enum gained the new case', in_array('pending', $statusValues, true));
+		check('status enum kept its original cases', count(array_intersect(['active', 'inactive', 'archived'], $statusValues)) === 3);
+
+		[, $out] = runMakeMigrations($provider);
+		check('idempotent after the enum case addition', str_contains($out, 'No changes detected'));
+
+		// -------------------------------------------------------------
+		// Phase 22: a NOT NULL column with NO declared default, added to
+		// a table that already has rows, has no safe value to backfill
+		// existing rows with. QuelMigrationBuilder documents this as a
+		// thrown RuntimeException (see buildAddColumnOp()) rather than
+		// silently generating a migration that would fail — or worse,
+		// silently truncate/zero-fill — at apply time. Verified here
+		// rather than assumed, and confirmed to leave no partial file or
+		// partial schema change behind.
+		// -------------------------------------------------------------
+		section('Phase 22: a NOT NULL column with no default on a populated table must fail loudly');
+
+		$filesBeforeFailedAttempt = glob($migrationsDir . '/*.php') ?: [];
+
+		$columnsWithUnsafeAdd = $columns;
+		$columnsWithUnsafeAdd['noDefaultRequired'] = ksCol('noDefaultRequired', 'no_default_required', 'integer');
+		writeKitchenSinkVersion(22, $columnsWithUnsafeAdd, array_values($indexes));
+
+		$threw = false;
+		$thrownMessage = '';
+
+		try {
+			runMakeMigrations($provider);
+		} catch (\Throwable $e) {
+			$threw = true;
+			$thrownMessage = $e->getMessage();
+		}
+
+		check('make:migrations throws rather than generating an unsafe migration', $threw);
+		check('the exception explains the missing default', $threw && str_contains(strtolower($thrownMessage), 'default'));
+
+		$filesAfterFailedAttempt = glob($migrationsDir . '/*.php') ?: [];
+		check('no migration file was written for the failed attempt', $filesBeforeFailedAttempt === $filesAfterFailedAttempt);
+
+		// Recovery: going back to the last valid entity state (without the
+		// unsafe column) must show zero diff — proving the failed attempt
+		// left no trace in the database.
+		writeKitchenSinkVersion(23, $columns, array_values($indexes));
+
+		[, $out] = runMakeMigrations($provider);
+		check('reverting to the last valid entity shows no diff — the failed attempt left no trace', str_contains($out, 'No changes detected'));
+
+		// -------------------------------------------------------------
+		// Rollback: undo every applied migration in this entire history
+		// (23 generated migrations, covering every column/index/foreign-
+		// key facet exercised above), most-recent-first, down to nothing
+		// — the first time down() correctness is checked at all, since
+		// every phase above only ever ran up(). Then reapply forward from
+		// scratch and confirm the reconstructed schema still matches.
+		// -------------------------------------------------------------
+		section('Rollback: undoing the entire generated migration history, then reapplying it');
+
+		// Phase 12 deliberately inserted a second 'row-001' (differing only
+		// by level_tiny) to prove the composite unique index allows it —
+		// data only the composite index accepts. Rolling all the way back
+		// replays every down() in reverse, including phase 12's, which
+		// narrows uniq_ks_code back to a single-column index on `code`
+		// alone; that CREATE UNIQUE INDEX would legitimately fail against
+		// the now-duplicate `code` values still sitting in the table. Real
+		// migration history has this same shape in practice — data written
+		// under a later, looser schema can make an earlier, stricter one
+		// impossible to restore — so the rows are cleared first rather than
+		// masking it.
+		$adapter->execute('DELETE FROM `kitchen_sink`');
+
+		[$exitCode, $out] = runAnyCommand(QuelMigrateCommand::class, $provider, ['--rollback', '--force', '--target=0']);
+		check('full rollback exit code is 0', $exitCode === 0);
+		check('full rollback reports success', str_contains($out, 'Rollback completed successfully'));
+
+		check('kitchen_sink no longer exists after full rollback', !in_array('kitchen_sink', $adapter->getTables(), true));
+		check('kitchen_sink_parents no longer exists after full rollback', !in_array('kitchen_sink_parents', $adapter->getTables(), true));
+		check('kitchen_sink_parents_two no longer exists after full rollback', !in_array('kitchen_sink_parents_two', $adapter->getTables(), true));
+
+		$appliedCount = $adapter->execute("SELECT COUNT(*) AS c FROM `{$trackingTable}`")?->fetchAssoc()['c'] ?? null;
+		check('tracking table shows zero applied migrations after full rollback', $appliedCount !== null && (int)$appliedCount === 0);
+
+		[$exitCode, $out] = runQuelMigrate($provider);
+		check('reapplying after full rollback exit code is 0', $exitCode === 0);
+		check('reapplying after full rollback succeeds', str_contains($out, 'Migration completed successfully'));
+		check('kitchen_sink exists again after reapplying', in_array('kitchen_sink', $adapter->getTables(), true));
+
+		$dbColumns = $adapter->getColumns('kitchen_sink');
+		check('reapplied schema has the region column added during backfill testing', isset($dbColumns['region']));
+		check('reapplied schema has the renamed extra_remarks column', isset($dbColumns['extra_remarks']));
+		check('reapplied schema no longer has the pre-rename extra_notes column', !isset($dbColumns['extra_notes']));
+		check('reapplied schema does not have the never-applied unsafe column', !isset($dbColumns['no_default_required']));
+
+		[$exitCode, $out] = runMakeMigrations($provider);
+		check('idempotent after the full rollback + reapply round trip', $exitCode === 0 && str_contains($out, 'No changes detected'));
+
+		// -------------------------------------------------------------
+		// Primary key changes: EntitySchemaAnalyzer/SchemaComparator have
+		// no primary-key comparator at all — TypeMapper::
+		// getRelevantProperties() never includes 'primary_key', and no
+		// PrimaryKeyComparator class exists alongside IndexComparator/
+		// ForeignKeyComparator. QuelToSQLAlter fully supports compiling a
+		// hand-written `alter table (primary key (...))` / `drop primary
+		// key` (see AlterTableTest/AlterTableExecutorTest) — but
+		// make:migrations' auto-diff can never generate one, on any
+		// entity, ever. Verified here on its own isolated table rather
+		// than assumed.
+		// -------------------------------------------------------------
+		section('Primary key changes: make:migrations cannot detect them at all (verified gap)');
+
+		$pkEntityPath = "{$entityPath}/PkLifecycleV1Entity.php";
+		file_put_contents($pkEntityPath, <<<PHP
+		<?php
+
+			namespace {$namespace};
+
+			use Quellabs\\ObjectQuel\\Annotations\\Orm\\Column;
+			use Quellabs\\ObjectQuel\\Annotations\\Orm\\PrimaryKeyStrategy;
+			use Quellabs\\ObjectQuel\\Annotations\\Orm\\Table;
+
+			/**
+			 * @Orm\\Table(name="pk_lifecycle_test")
+			 */
+			class PkLifecycleV1Entity {
+				/**
+				 * @Orm\\Column(name="a", type="integer", primary_key=true)
+				 * @Orm\\PrimaryKeyStrategy(strategy="none")
+				 */
+				protected int \$a;
+
+				/**
+				 * @Orm\\Column(name="b", type="integer")
+				 */
+				protected int \$b;
+			}
+
+		PHP);
+		require $pkEntityPath;
+		$currentPkEntityFile = $pkEntityPath;
+
+		[, $out] = runMakeMigrations($provider);
+		check('reports the new pk_lifecycle_test table', str_contains($out, 'New table: pk_lifecycle_test'));
+		runQuelMigrate($provider);
+
+		check('pk_lifecycle_test starts with a single-column primary key', $adapter->getPrimaryKeyColumns('pk_lifecycle_test') === ['a']);
+
+		$adapter->execute('INSERT INTO `pk_lifecycle_test` (`a`, `b`) VALUES (1, 10)');
+
+		unlink($currentPkEntityFile);
+		$pkEntityPath = "{$entityPath}/PkLifecycleV2Entity.php";
+		file_put_contents($pkEntityPath, <<<PHP
+		<?php
+
+			namespace {$namespace};
+
+			use Quellabs\\ObjectQuel\\Annotations\\Orm\\Column;
+			use Quellabs\\ObjectQuel\\Annotations\\Orm\\PrimaryKeyStrategy;
+			use Quellabs\\ObjectQuel\\Annotations\\Orm\\Table;
+
+			/**
+			 * @Orm\\Table(name="pk_lifecycle_test")
+			 */
+			class PkLifecycleV2Entity {
+				/**
+				 * @Orm\\Column(name="a", type="integer", primary_key=true)
+				 * @Orm\\PrimaryKeyStrategy(strategy="none")
+				 */
+				protected int \$a;
+
+				/**
+				 * @Orm\\Column(name="b", type="integer", primary_key=true)
+				 * @Orm\\PrimaryKeyStrategy(strategy="none")
+				 */
+				protected int \$b;
+			}
+
+		PHP);
+		require $pkEntityPath;
+		$currentPkEntityFile = $pkEntityPath;
+
+		[, $out] = runMakeMigrations($provider);
+		check('a composite-PK entity change produces no diff at all (the gap)', str_contains($out, 'No changes detected'));
+		check('the live primary key is still unchanged — nothing was ever applied', $adapter->getPrimaryKeyColumns('pk_lifecycle_test') === ['a']);
+
+		// The DDL layer itself still supports this — just not via
+		// make:migrations. A hand-written migration (make:migration +
+		// edit, exactly like the "chain smoke test" scenario in
+		// quel-migrate-command-smoke-test.php) is required instead.
+		// One past the highest version already on disk — never colliding
+		// with an existing file, and (unlike appending extra digits) still
+		// a valid 14-digit version MigrationLocator's FILENAME_PATTERN
+		// accepts.
+		$existingVersions = array_map(
+			static fn(string $path) => (int)basename($path),
+			glob($migrationsDir . '/*.php') ?: []
+		);
+		$manualPkMigrationVersion = ($existingVersions === [] ? (int)date('YmdHis') : max($existingVersions)) + 1;
+
+		$manualPkMigrationClass = 'PkManualMigration' . uniqueSuffix();
+		$manualPkMigrationPath = "{$migrationsDir}/{$manualPkMigrationVersion}_{$manualPkMigrationClass}.php";
+		file_put_contents($manualPkMigrationPath, <<<PHP
+		<?php
+		class {$manualPkMigrationClass} extends \\Quellabs\\ObjectQuel\\Migration\\AbstractMigration {
+			public function up(): void {
+				\$this->query('alter pk_lifecycle_test (primary key (a, b))');
+			}
+			public function down(): void {
+				\$this->query('alter pk_lifecycle_test (primary key (a))');
+			}
+		}
+		PHP);
+
+		runQuelMigrate($provider);
+		check('a hand-written migration can still set a composite primary key', $adapter->getPrimaryKeyColumns('pk_lifecycle_test') === ['a', 'b']);
+
+		[, $out] = runAnyCommand(QuelMigrateCommand::class, $provider, ['--rollback', '--force']);
+		check('rolling back the hand-written PK migration restores the single-column key', $adapter->getPrimaryKeyColumns('pk_lifecycle_test') === ['a']);
 	} finally {
 		// -----------------------------------------------------------------
 		// Teardown — runs even if a check above threw. Foreign-key
@@ -938,6 +1260,7 @@
 		$adapter->execute('DROP TABLE IF EXISTS `kitchen_sink`');
 		$adapter->execute('DROP TABLE IF EXISTS `kitchen_sink_parents_two`');
 		$adapter->execute('DROP TABLE IF EXISTS `kitchen_sink_parents`');
+		$adapter->execute('DROP TABLE IF EXISTS `pk_lifecycle_test`');
 		$adapter->execute("DROP TABLE IF EXISTS `{$trackingTable}`");
 
 		foreach (glob($migrationsDir . '/*.php') ?: [] as $file) {
