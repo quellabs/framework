@@ -171,9 +171,9 @@
 					[$embeddedIndexes, $deferredIndexes] = $this->splitIndexesForNewTable($changes['indexes']['added']);
 
 					// Engines with no ALTER TABLE FK support (SQLite) reject
-					// pass 2's `add foreign key` even for a table this same
-					// migration just created, so there the FK must be
-					// declared inline at create time instead.
+					// pass 2's `alter (add foreign key ...)` even for a table
+					// this same migration just created, so there the FK must
+					// be declared inline at create time instead.
 					$embedForeignKeysInCreate = !$this->platform->supportsNamedForeignKeys();
 					$createForeignKeys = $embedForeignKeysInCreate ? $changes['foreignKeys']['added'] : [];
 

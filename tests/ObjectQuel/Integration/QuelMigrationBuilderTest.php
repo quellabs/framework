@@ -380,7 +380,7 @@
 		 * The sqlite counterpart: ALTER TABLE rejects adding a foreign key
 		 * outright, even to a table this migration just created, so the
 		 * new table embeds its own FK inline instead — no separate
-		 * `alter`/`add foreign key` statement at all.
+		 * `alter (add foreign key ...)` statement at all.
 		 */
 		public function testNewTableWithForeignKeyIsEmbeddedInlineOnAPlatformWithNoAlterTableForeignKeySupport(): void {
 			$ordersChanges = $this->emptyChangeSet();
