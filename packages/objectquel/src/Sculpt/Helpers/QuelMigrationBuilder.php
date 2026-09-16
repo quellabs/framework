@@ -271,7 +271,11 @@ PHP;
 			$merged = array_merge($defaults, $changes);
 			$merged['indexes'] = array_merge($defaults['indexes'], $changes['indexes'] ?? []);
 			$merged['foreignKeys'] = array_merge($defaults['foreignKeys'], $changes['foreignKeys'] ?? []);
-			$merged['primaryKey'] = array_merge($defaults['primaryKey'], $changes['primaryKey'] ?? []);
+			// PrimaryKeyChangeSet is a discriminated union, not a partial shape
+			// with optional keys — there's nothing to merge key-by-key the way
+			// indexes/foreignKeys need, so the incoming value (already a
+			// complete, valid shape) is taken as-is.
+			$merged['primaryKey'] = $changes['primaryKey'] ?? ['action' => null];
 			return $merged;
 		}
 

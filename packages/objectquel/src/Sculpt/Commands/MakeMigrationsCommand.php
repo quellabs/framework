@@ -193,13 +193,16 @@ HELP;
 				}
 
 				// Primary-key change — at most one per table, unlike every
-				// other facet above.
-				$primaryKeyAction = $changes['primaryKey']['action'] ?? null;
+				// other facet above. Narrowed via a single local variable
+				// (rather than re-reading $changes['primaryKey'] after
+				// extracting just its 'action') so checking 'action' here
+				// also narrows which of 'columns'/'from' are available.
+				$primaryKeyChange = $changes['primaryKey'] ?? ['action' => null];
 
-				if ($primaryKeyAction === 'set') {
-					$columns = implode(', ', $changes['primaryKey']['columns']);
+				if ($primaryKeyChange['action'] === 'set') {
+					$columns = implode(', ', $primaryKeyChange['columns']);
 					$this->output->writeLn(" ✓ Primary key changed: {$tableName} ({$columns})");
-				} elseif ($primaryKeyAction === 'drop') {
+				} elseif ($primaryKeyChange['action'] === 'drop') {
 					$this->output->writeLn(" ✓ Primary key dropped: {$tableName}");
 				}
 			}
