@@ -530,7 +530,7 @@ PHP;
 				throw new \RuntimeException(
 					"Cannot add non-nullable column '{$tableName}.{$columnName}': the table has existing rows and " .
 					"the entity declares no default to backfill them with. Add @Orm\\Column(default=...) to the " .
-					"entity, or write this migration by hand with make:migration."
+					"entity, or write this migration by hand with make:blank-migration."
 				);
 			}
 
@@ -539,7 +539,7 @@ PHP;
 			if (!is_scalar($default) && !$default instanceof \Stringable) {
 				throw new \RuntimeException(
 					"Cannot add non-nullable column '{$tableName}.{$columnName}': its declared default is not a " .
-					"value 'backfill' can express as a string literal. Write this migration by hand with make:migration."
+					"value 'backfill' can express as a string literal. Write this migration by hand with make:blank-migration."
 				);
 			}
 

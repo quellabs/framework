@@ -162,7 +162,7 @@ php bin/sculpt help quel:migrate
 For data backfills or schema changes `make:migrations` can't infer from an entity diff:
 
 ```bash
-php bin/sculpt make:migration <Name>
+php bin/sculpt make:blank-migration <Name>
 ```
 
 ## Quick Start

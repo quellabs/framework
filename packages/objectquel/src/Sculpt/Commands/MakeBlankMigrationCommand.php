@@ -5,7 +5,7 @@
 	use Quellabs\Sculpt\ConfigurationManager;
 
 	/**
-	 * MakeMigrationCommand - Create a blank migration skeleton for hand-written migrations
+	 * MakeBlankMigrationCommand - Create a blank migration skeleton for hand-written migrations
 	 *
 	 * Writes a `<YmdHis>_<Name>.php` file with empty up()/down() bodies — for
 	 * migrations that aren't derived from an entity diff (data backfills,
@@ -13,10 +13,10 @@
 	 * both bodies with query(...) calls, same as a generated migration
 	 * (see AbstractMigration).
 	 */
-	class MakeMigrationCommand extends MakeCommandBase {
+	class MakeBlankMigrationCommand extends MakeCommandBase {
 
 		public function getSignature(): string {
-			return 'make:migration';
+			return 'make:blank-migration';
 		}
 
 		public function getDescription(): string {
@@ -32,13 +32,13 @@ DESCRIPTION:
     or DDL make:migrations can't infer on its own.
 
 USAGE:
-    php sculpt make:migration <Name>
+    php sculpt make:blank-migration <Name>
 
 ARGUMENTS:
     Name    The migration's class name (PascalCase, e.g. BackfillUserStatus)
 
 EXAMPLES:
-    php sculpt make:migration BackfillUserStatus
+    php sculpt make:blank-migration BackfillUserStatus
 
 NOTES:
     - The generated class extends AbstractMigration; fill in up()/down() with
@@ -58,7 +58,7 @@ HELP;
 				$name = $config->getPositional(0);
 
 				if ($name === null) {
-					$this->output->error("Missing required argument: Name. Usage: php sculpt make:migration <Name>");
+					$this->output->error("Missing required argument: Name. Usage: php sculpt make:blank-migration <Name>");
 					return 1;
 				}
 

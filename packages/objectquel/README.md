@@ -218,7 +218,7 @@ php bin/sculpt make:entity-from-table
 php bin/sculpt make:migrations
 
 # Create a blank migration for hand-written schema/data changes
-php bin/sculpt make:migration <Name>
+php bin/sculpt make:blank-migration <Name>
 
 # Run pending migrations
 php bin/sculpt quel:migrate

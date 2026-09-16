@@ -5,21 +5,21 @@
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\ObjectQuel\EntityManager;
 	use Quellabs\ObjectQuel\Migration\MigrationLocator;
-	use Quellabs\ObjectQuel\Sculpt\Commands\MakeMigrationCommand;
+	use Quellabs\ObjectQuel\Sculpt\Commands\MakeBlankMigrationCommand;
 	use Quellabs\ObjectQuel\Sculpt\ServiceProvider;
 	use Quellabs\Sculpt\ConfigurationManager;
 	use Quellabs\Sculpt\Console\ConsoleInput;
 	use Quellabs\Sculpt\Console\ConsoleOutput;
 
 	/**
-	 * MakeMigrationCommand (`make:migration <Name>`) — see Phase 4 of
-	 * objectquel-migrations-implementation-plan.md. Needs no live database
+	 * MakeBlankMigrationCommand (`make:blank-migration <Name>`) — see Phase 4
+	 * of objectquel-migrations-implementation-plan.md. Needs no live database
 	 * connection at all (it only writes a file), so — unlike
 	 * QuelMigrateCommand — this can be tested end-to-end without touching
 	 * the "only one EntityManager per process" constraint the rest of this
 	 * suite works around (see tests/bootstrap.php).
 	 */
-	class MakeMigrationCommandTest extends TestCase {
+	class MakeBlankMigrationCommandTest extends TestCase {
 
 		private string $migrationsDir;
 
@@ -65,7 +65,7 @@
 			$stream = fopen('php://memory', 'w+');
 			$output = new ConsoleOutput($stream);
 			$input = new ConsoleInput($output, fopen('php://memory', 'r+'));
-			$command = new MakeMigrationCommand($input, $output, $this->makeProvider());
+			$command = new MakeBlankMigrationCommand($input, $output, $this->makeProvider());
 
 			$exitCode = $command->execute(new ConfigurationManager($args));
 

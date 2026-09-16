@@ -44,7 +44,7 @@
 					\Quellabs\ObjectQuel\Sculpt\Commands\MakeEntityFromTableCommand::class,
 					\Quellabs\ObjectQuel\Sculpt\Commands\MakeRepositoryCommand::class,
 					\Quellabs\ObjectQuel\Sculpt\Commands\MakeMigrationsCommand::class,
-					\Quellabs\ObjectQuel\Sculpt\Commands\MakeMigrationCommand::class,
+					\Quellabs\ObjectQuel\Sculpt\Commands\MakeBlankMigrationCommand::class,
 					\Quellabs\ObjectQuel\Sculpt\Commands\QuelMigrateCommand::class,
 					\Quellabs\ObjectQuel\Sculpt\Commands\PacGenerateEntityCommand::class,
 					\Quellabs\ObjectQuel\Sculpt\Commands\QuelIndexHideCommand::class,

@@ -26,7 +26,7 @@
 
 	require __DIR__ . '/../../vendor/autoload.php';
 
-	use Quellabs\ObjectQuel\Sculpt\Commands\MakeMigrationCommand;
+	use Quellabs\ObjectQuel\Sculpt\Commands\MakeBlankMigrationCommand;
 	use Quellabs\ObjectQuel\Sculpt\Commands\QuelMigrateCommand;
 	use Quellabs\ObjectQuel\Sculpt\ServiceProvider;
 	use Quellabs\Sculpt\Contracts\CommandBase;
@@ -240,21 +240,21 @@
 		check('remaining pending migration applies cleanly', $exitCode === 0);
 
 		// ---------------------------------------------------------------
-		// Scenario 8: full CLI chain — make:migration -> hand-edit ->
+		// Scenario 8: full CLI chain — make:blank-migration -> hand-edit ->
 		// quel:migrate -> --rollback, mirroring ForeignKeyMigrationTest's
 		// "prove it end to end, not just each piece in isolation" style.
 		// This is the one Phase 7 scenario (objectquel-migrations-
 		// implementation-plan.md) that can only run here, not as a
-		// PHPUnit test — make:migration needs no EntityManager and could
-		// be tested there (see MakeMigrationCommandTest), but chaining it
+		// PHPUnit test — make:blank-migration needs no EntityManager and could
+		// be tested there (see MakeBlankMigrationCommandTest), but chaining it
 		// into quel:migrate hits the same EntityManager collision this
 		// whole script exists to route around.
 		// ---------------------------------------------------------------
-		section('make:migration -> hand-edit -> quel:migrate -> --rollback');
+		section('make:blank-migration -> hand-edit -> quel:migrate -> --rollback');
 
-		[$exitCode, $out] = runAnyCommand(MakeMigrationCommand::class, $provider, ['ChainSmokeMigration']);
-		check('make:migration exit code is 0', $exitCode === 0);
-		check('make:migration reports success', str_contains($out, 'Success!'));
+		[$exitCode, $out] = runAnyCommand(MakeBlankMigrationCommand::class, $provider, ['ChainSmokeMigration']);
+		check('make:blank-migration exit code is 0', $exitCode === 0);
+		check('make:blank-migration reports success', str_contains($out, 'Success!'));
 
 		$generatedFiles = glob($migrationsDir . '/*_ChainSmokeMigration.php') ?: [];
 		check('exactly one file was generated', count($generatedFiles) === 1);
