@@ -98,86 +98,6 @@
 		}
 
 		/**
-		 * Extracts enum case values out of a MySQL COLUMN_TYPE string, e.g.
-		 * "enum('a','b')" -> ['a', 'b']. Handles doubled single quotes, MySQL's
-		 * own escaping convention for a literal quote inside an enum value.
-		 * @param string $columnType
-		 * @return array<int, string>
-		 */
-		private function parseMysqlEnumValues(string $columnType): array {
-			if (preg_match('/^enum\((.*)\)$/i', $columnType, $outer) !== 1) {
-				return [];
-			}
-
-			preg_match_all("/'((?:[^']|'')*)'/", $outer[1], $matches);
-
-			return array_map(
-				static fn(string $value): string => str_replace("''", "'", $value),
-				$matches[1]
-			);
-		}
-
-		/**
-		 * Parses an explicit (precision,scale) or (precision) suffix out of a
-		 * MySQL COLUMN_TYPE string, e.g. "decimal(10,2)" -> precision 10, scale 2. Deliberately
-		 * not using information_schema.NUMERIC_PRECISION/NUMERIC_SCALE directly —
-		 * MySQL populates those for FLOAT/DOUBLE too (e.g. 12/null for a plain
-		 * FLOAT with no declared width), which DDLTypeMapper never renders and
-		 * the entity side never declares, so trusting them would produce a
-		 * spurious diff on every FLOAT column forever. Only DECIMAL/NUMERIC ever
-		 * reach this method (see getColumns()), and DDLTypeMapper always
-		 * renders those with an explicit (p,s), so parsing COLUMN_TYPE directly
-		 * is both sufficient and exact.
-		 * @param string $columnType
-		 * @return NumericPrecisionScale
-		 */
-		private function parseMysqlPrecisionScale(string $columnType): NumericPrecisionScale {
-			if (preg_match('/\((\d+)(?:,(\d+))?\)/', $columnType, $matches) !== 1) {
-				return new NumericPrecisionScale(null, null);
-			}
-
-			return new NumericPrecisionScale((int)$matches[1], isset($matches[2]) ? (int)$matches[2] : 0);
-		}
-
-		/**
-		 * Strips MySQL's charset-introducer-plus-escaped-quotes wrapping that
-		 * COLUMN_DEFAULT sometimes carries for a TEXT/BLOB/JSON column's default
-		 * expression, e.g. "_utf8mb4\'abc\'" -> "abc".
-		 * @param string|null $default
-		 * @return string|null
-		 */
-		private function normalizeMysqlDefault(?string $default): ?string {
-			if ($default === null) {
-				return null;
-			}
-
-			if (preg_match('/^_[A-Za-z0-9]+\\\\\'(.*)\\\\\'$/s', $default, $matches) === 1) {
-				return $matches[1];
-			}
-
-			return $default;
-		}
-
-		/**
-		 * Computes the storage limit for a native enum column based on its
-		 * longest case. Falls back to a minimum of 32 to leave headroom for
-		 * entity-side comparisons against database data, even when the enum
-		 * has no defined values. MySQL/MariaDB-only: no other engine ever
-		 * populates 'values' (see getColumns() above), since native ENUM
-		 * only exists here.
-		 * @param array<int, string>|null $values Enum case values
-		 * @return int Limit to use for the column definition
-		 */
-		private function resolveEnumLimit(?array $values): int {
-			if (empty($values)) {
-				return 32;
-			}
-
-			$maxLength = max(array_map('strlen', $values));
-			return max($maxLength, 32);
-		}
-
-		/**
 		 * Reads foreign keys for a table.
 		 *
 		 * KEY_COLUMN_USAGE alone maps columns to the referenced table/column but doesn't
@@ -285,5 +205,86 @@
 			}
 
 			return $result;
+		}
+		
+		
+		/**
+		 * Extracts enum case values out of a MySQL COLUMN_TYPE string, e.g.
+		 * "enum('a','b')" -> ['a', 'b']. Handles doubled single quotes, MySQL's
+		 * own escaping convention for a literal quote inside an enum value.
+		 * @param string $columnType
+		 * @return array<int, string>
+		 */
+		private function parseMysqlEnumValues(string $columnType): array {
+			if (preg_match('/^enum\((.*)\)$/i', $columnType, $outer) !== 1) {
+				return [];
+			}
+			
+			preg_match_all("/'((?:[^']|'')*)'/", $outer[1], $matches);
+			
+			return array_map(
+				static fn(string $value): string => str_replace("''", "'", $value),
+				$matches[1]
+			);
+		}
+		
+		/**
+		 * Parses an explicit (precision,scale) or (precision) suffix out of a
+		 * MySQL COLUMN_TYPE string, e.g. "decimal(10,2)" -> precision 10, scale 2. Deliberately
+		 * not using information_schema.NUMERIC_PRECISION/NUMERIC_SCALE directly —
+		 * MySQL populates those for FLOAT/DOUBLE too (e.g. 12/null for a plain
+		 * FLOAT with no declared width), which DDLTypeMapper never renders and
+		 * the entity side never declares, so trusting them would produce a
+		 * spurious diff on every FLOAT column forever. Only DECIMAL/NUMERIC ever
+		 * reach this method (see getColumns()), and DDLTypeMapper always
+		 * renders those with an explicit (p,s), so parsing COLUMN_TYPE directly
+		 * is both sufficient and exact.
+		 * @param string $columnType
+		 * @return NumericPrecisionScale
+		 */
+		private function parseMysqlPrecisionScale(string $columnType): NumericPrecisionScale {
+			if (preg_match('/\((\d+)(?:,(\d+))?\)/', $columnType, $matches) !== 1) {
+				return new NumericPrecisionScale(null, null);
+			}
+			
+			return new NumericPrecisionScale((int)$matches[1], isset($matches[2]) ? (int)$matches[2] : 0);
+		}
+		
+		/**
+		 * Strips MySQL's charset-introducer-plus-escaped-quotes wrapping that
+		 * COLUMN_DEFAULT sometimes carries for a TEXT/BLOB/JSON column's default
+		 * expression, e.g. "_utf8mb4\'abc\'" -> "abc".
+		 * @param string|null $default
+		 * @return string|null
+		 */
+		private function normalizeMysqlDefault(?string $default): ?string {
+			if ($default === null) {
+				return null;
+			}
+			
+			if (preg_match('/^_[A-Za-z0-9]+\\\\\'(.*)\\\\\'$/s', $default, $matches) === 1) {
+				return $matches[1];
+			}
+			
+			return $default;
+		}
+		
+		/**
+		 * Computes the storage limit for a native enum column based on its
+		 * longest case. Falls back to a minimum of 32 to leave headroom for
+		 * entity-side comparisons against database data, even when the enum
+		 * has no defined values. MySQL/MariaDB-only: no other engine ever
+		 * populates 'values' (see getColumns() above), since native ENUM
+		 * only exists here.
+		 * @param array<int, string>|null $values Enum case values
+		 * @return int Limit to use for the column definition
+		 */
+		private function resolveEnumLimit(?array $values): int {
+			if (empty($values)) {
+				return 32;
+			}
+			
+			$maxLength = max(array_map('strlen', $values));
+			return max($maxLength, 32);
 		}
 	}

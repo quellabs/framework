@@ -73,7 +73,8 @@
 		 */
 		public function getExtendedProperty(string $tableName, string $propertyName): ?string {
 			$statement = $this->adapter->execute("
-				SELECT CAST(value AS NVARCHAR(4000)) AS property_value
+				SELECT
+					CAST(value AS NVARCHAR(4000)) AS property_value
 				FROM sys.extended_properties
 				WHERE major_id = OBJECT_ID(:tableName)
 				  AND minor_id = 0

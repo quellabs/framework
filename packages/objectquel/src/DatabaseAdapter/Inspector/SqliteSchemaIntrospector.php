@@ -81,107 +81,6 @@
 		}
 
 		/**
-		 * Determines which column (if any) on a SQLite table is a rowid-alias
-		 * identity column, reproducing Phinx's own resolveIdentity() algorithm —
-		 * deliberately *not* a literal `AUTOINCREMENT` keyword search. A column
-		 * counts as identity when it is the table's *only* primary-key column,
-		 * its declared type is exactly `integer` (case-insensitive), and the
-		 * table has no autoindex with `origin = 'pk'` (which would indicate
-		 * `WITHOUT ROWID` or a descending-order PK, neither eligible for
-		 * rowid-alias behaviour) — a bare `id INTEGER PRIMARY KEY` is a rowid
-		 * alias too, with no `AUTOINCREMENT` keyword required. See
-		 * objectquel-phinx-removal-plan.md's SQLite section for why this must
-		 * reproduce the general rule, not a simpler substring check:
-		 * `renderSqliteColumnDefinition()` generates literal `INTEGER PRIMARY
-		 * KEY AUTOINCREMENT`, and round-tripping that back through
-		 * introspection to confirm identity=true is what makes re-diffing an
-		 * already-created table a no-op.
-		 * @param string $tableName
-		 * @param array<int, array{name: string, type: string, pk: int|string}> $tableInfoRows
-		 * @return array<string, bool> Column name => identity
-		 */
-		private function resolveSqliteIdentity(string $tableName, array $tableInfoRows): array {
-			$columnNames = array_column($tableInfoRows, 'name');
-			$pkRows = array_values(array_filter($tableInfoRows, static fn(array $row): bool => (int)$row['pk'] !== 0));
-
-			if (count($pkRows) !== 1) {
-				return array_fill_keys($columnNames, false);
-			}
-
-			$quotedTable = $this->adapter->escapeIdentifier($tableName);
-			$indexListStatement = $this->adapter->execute("PRAGMA index_list({$quotedTable})");
-			$hasPkAutoindex = false;
-
-			if ($indexListStatement !== null) {
-				foreach ($indexListStatement->fetchAll('assoc') as $index) {
-					if (($index['origin'] ?? null) === 'pk') {
-						$hasPkAutoindex = true;
-						break;
-					}
-				}
-			}
-
-			$singlePkColumn = $pkRows[0]['name'];
-			$result = [];
-
-			foreach ($tableInfoRows as $row) {
-				$result[$row['name']] =
-					!$hasPkAutoindex &&
-					$row['name'] === $singlePkColumn &&
-					strtolower($row['type']) === 'integer';
-			}
-
-			return $result;
-		}
-
-		/**
-		 * Parses an explicit (n) length suffix out of a SQLite declared type
-		 * string, e.g. "VARCHAR(255)" -> 255. DDLTypeMapper always renders an
-		 * explicit length for 'string'/'char' (defaulting to 255 when unset),
-		 * so this is always present for those two types.
-		 * @param string $declaredType
-		 * @return int|null
-		 */
-		private function parseSqliteLimit(string $declaredType): ?int {
-			return preg_match('/\((\d+)\)/', $declaredType, $matches) === 1 ? (int)$matches[1] : null;
-		}
-
-		/**
-		 * Parses an explicit (precision,scale) suffix out of a SQLite declared
-		 * type string, e.g. "NUMERIC(10,2)" -> precision 10, scale 2.
-		 * @param string $declaredType
-		 * @return NumericPrecisionScale
-		 */
-		private function parseSqliteNumericPrecisionScale(string $declaredType): NumericPrecisionScale {
-			if (preg_match('/\((\d+)(?:,(\d+))?\)/', $declaredType, $matches) !== 1) {
-				return new NumericPrecisionScale(null, null);
-			}
-
-			return new NumericPrecisionScale((int)$matches[1], isset($matches[2]) ? (int)$matches[2] : 0);
-		}
-
-		/**
-		 * Normalizes a SQLite `dflt_value` to a plain scalar. This codebase's
-		 * own DDL only ever writes a plain quoted string literal default (see
-		 * the `backfill` clause), never a function-call or expression default,
-		 * so unlike Phinx's own general-purpose SQL-token-scanning default
-		 * parser, only a surrounding quoted-string strip is needed.
-		 * @param string|null $default
-		 * @return string|null
-		 */
-		private function normalizeSqliteDefault(?string $default): ?string {
-			if ($default === null) {
-				return null;
-			}
-
-			if (preg_match("/^'(.*)'$/s", $default, $matches) === 1) {
-				return str_replace("''", "'", $matches[1]);
-			}
-
-			return $default;
-		}
-
-		/**
 		 * Reads foreign keys for a table via PRAGMA foreign_key_list().
 		 *
 		 * Rows sharing the same 'id' belong to the same (possibly composite) constraint,
@@ -233,5 +132,106 @@
 		 */
 		public function getIndexUsageStatistics(array $tables): ?array {
 			return null;
+		}
+		
+		/**
+		 * Determines which column (if any) on a SQLite table is a rowid-alias
+		 * identity column, reproducing Phinx's own resolveIdentity() algorithm —
+		 * deliberately *not* a literal `AUTOINCREMENT` keyword search. A column
+		 * counts as identity when it is the table's *only* primary-key column,
+		 * its declared type is exactly `integer` (case-insensitive), and the
+		 * table has no autoindex with `origin = 'pk'` (which would indicate
+		 * `WITHOUT ROWID` or a descending-order PK, neither eligible for
+		 * rowid-alias behaviour) — a bare `id INTEGER PRIMARY KEY` is a rowid
+		 * alias too, with no `AUTOINCREMENT` keyword required. See
+		 * objectquel-phinx-removal-plan.md's SQLite section for why this must
+		 * reproduce the general rule, not a simpler substring check:
+		 * `renderSqliteColumnDefinition()` generates literal `INTEGER PRIMARY
+		 * KEY AUTOINCREMENT`, and round-tripping that back through
+		 * introspection to confirm identity=true is what makes re-diffing an
+		 * already-created table a no-op.
+		 * @param string $tableName
+		 * @param array<int, array{name: string, type: string, pk: int|string}> $tableInfoRows
+		 * @return array<string, bool> Column name => identity
+		 */
+		private function resolveSqliteIdentity(string $tableName, array $tableInfoRows): array {
+			$columnNames = array_column($tableInfoRows, 'name');
+			$pkRows = array_values(array_filter($tableInfoRows, static fn(array $row): bool => (int)$row['pk'] !== 0));
+			
+			if (count($pkRows) !== 1) {
+				return array_fill_keys($columnNames, false);
+			}
+			
+			$quotedTable = $this->adapter->escapeIdentifier($tableName);
+			$indexListStatement = $this->adapter->execute("PRAGMA index_list({$quotedTable})");
+			$hasPkAutoIndex = false;
+			
+			if ($indexListStatement !== null) {
+				foreach ($indexListStatement->fetchAll('assoc') as $index) {
+					if (($index['origin'] ?? null) === 'pk') {
+						$hasPkAutoIndex = true;
+						break;
+					}
+				}
+			}
+			
+			$singlePkColumn = $pkRows[0]['name'];
+			$result = [];
+			
+			foreach ($tableInfoRows as $row) {
+				$result[$row['name']] =
+					!$hasPkAutoIndex &&
+					$row['name'] === $singlePkColumn &&
+					strtolower($row['type']) === 'integer';
+			}
+			
+			return $result;
+		}
+		
+		/**
+		 * Parses an explicit (n) length suffix out of a SQLite declared type
+		 * string, e.g. "VARCHAR(255)" -> 255. DDLTypeMapper always renders an
+		 * explicit length for 'string'/'char' (defaulting to 255 when unset),
+		 * so this is always present for those two types.
+		 * @param string $declaredType
+		 * @return int|null
+		 */
+		private function parseSqliteLimit(string $declaredType): ?int {
+			return preg_match('/\((\d+)\)/', $declaredType, $matches) === 1 ? (int)$matches[1] : null;
+		}
+		
+		/**
+		 * Parses an explicit (precision,scale) suffix out of a SQLite declared
+		 * type string, e.g. "NUMERIC(10,2)" -> precision 10, scale 2.
+		 * @param string $declaredType
+		 * @return NumericPrecisionScale
+		 */
+		private function parseSqliteNumericPrecisionScale(string $declaredType): NumericPrecisionScale {
+			if (preg_match('/\((\d+)(?:,(\d+))?\)/', $declaredType, $matches) !== 1) {
+				return new NumericPrecisionScale(null, null);
+			}
+			
+			return new NumericPrecisionScale((int)$matches[1], isset($matches[2]) ? (int)$matches[2] : 0);
+		}
+		
+		/**
+		 * Normalizes a SQLite `dflt_value` to a plain scalar. This codebase's
+		 * own DDL only ever writes a plain quoted string literal default (see
+		 * the `backfill` clause), never a function-call or expression default,
+		 * so unlike Phinx's own general-purpose SQL-token-scanning default
+		 * parser, only a surrounding quoted-string strip is needed.
+		 * @param string|null $default
+		 * @return string|null
+		 */
+		private function normalizeSqliteDefault(?string $default): ?string {
+			if ($default === null) {
+				return null;
+			}
+			
+			if (preg_match("/^'(.*)'$/s", $default, $matches) === 1) {
+				return str_replace("''", "'", $matches[1]);
+			}
+			
+			return $default;
 		}
 	}

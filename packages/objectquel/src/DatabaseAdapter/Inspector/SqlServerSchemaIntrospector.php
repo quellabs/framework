@@ -103,40 +103,6 @@
 		}
 
 		/**
-		 * Normalizes a SQL Server COLUMN_DEFAULT value to a plain scalar. SQL
-		 * Server wraps a default in one or more layers of parentheses
-		 * (`('abc')`, `((0))`), reports the literal `NULL` text for an
-		 * explicit NULL default, and leaves numeric literals unquoted.
-		 * @param string|null $default
-		 * @return int|string|null
-		 */
-		private function normalizeSqlServerDefault(?string $default): int|string|null {
-			if ($default === null) {
-				return null;
-			}
-
-			$value = trim($default);
-
-			while (strlen($value) >= 2 && str_starts_with($value, '(') && str_ends_with($value, ')')) {
-				$value = substr($value, 1, -1);
-			}
-
-			if (preg_match("/^'(.*)'$/s", $value, $matches) === 1) {
-				return str_replace("''", "'", $matches[1]);
-			}
-
-			if (strcasecmp($value, 'NULL') === 0) {
-				return null;
-			}
-
-			if (is_numeric($value)) {
-				return (int)$value;
-			}
-
-			return $value;
-		}
-
-		/**
 		 * Reads foreign keys for a table via sys.foreign_keys /
 		 * sys.foreign_key_columns, which stores one row per column pair natively
 		 * (constraint_column_id gives the correct ordinal), so composite
@@ -205,5 +171,39 @@
 		 */
 		public function getIndexUsageStatistics(array $tables): ?array {
 			return null;
+		}
+		
+		/**
+		 * Normalizes a SQL Server COLUMN_DEFAULT value to a plain scalar. SQL
+		 * Server wraps a default in one or more layers of parentheses
+		 * (`('abc')`, `((0))`), reports the literal `NULL` text for an
+		 * explicit NULL default, and leaves numeric literals unquoted.
+		 * @param string|null $default
+		 * @return int|string|null
+		 */
+		private function normalizeSqlServerDefault(?string $default): int|string|null {
+			if ($default === null) {
+				return null;
+			}
+			
+			$value = trim($default);
+			
+			while (strlen($value) >= 2 && str_starts_with($value, '(') && str_ends_with($value, ')')) {
+				$value = substr($value, 1, -1);
+			}
+			
+			if (preg_match("/^'(.*)'$/s", $value, $matches) === 1) {
+				return str_replace("''", "'", $matches[1]);
+			}
+			
+			if (strcasecmp($value, 'NULL') === 0) {
+				return null;
+			}
+			
+			if (is_numeric($value)) {
+				return (int)$value;
+			}
+			
+			return $value;
 		}
 	}
