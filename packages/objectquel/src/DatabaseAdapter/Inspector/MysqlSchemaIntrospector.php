@@ -17,12 +17,12 @@
 	 * @phpstan-import-type ForeignKeyDefinition from DatabaseAdapter
 	 * @phpstan-import-type IndexUsageStats from DatabaseAdapter
 	 */
-	class MysqlSchemaIntrospector implements SchemaIntrospectorInterface {
+	readonly class MysqlSchemaIntrospector implements SchemaIntrospectorInterface {
 
 		/**
 		 * @var DatabaseAdapter
 		 */
-		private readonly DatabaseAdapter $adapter;
+		private DatabaseAdapter $adapter;
 
 		/**
 		 * @param DatabaseAdapter $adapter

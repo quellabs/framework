@@ -9,17 +9,17 @@
 	 * the per-engine schema introspectors' own precision/scale parsers in
 	 * place of a `[$precision, $scale] = ...` tuple destructure.
 	 */
-	final class NumericPrecisionScale {
+	final readonly class NumericPrecisionScale {
 
 		/**
 		 * @var int|null
 		 */
-		public readonly ?int $precision;
+		public ?int $precision;
 
 		/**
 		 * @var int|null
 		 */
-		public readonly ?int $scale;
+		public ?int $scale;
 
 		/**
 		 * @param int|null $precision
