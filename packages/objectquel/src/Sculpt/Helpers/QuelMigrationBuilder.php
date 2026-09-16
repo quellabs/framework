@@ -40,6 +40,7 @@
 	 * @phpstan-import-type IndexDefinition from SculptTypes
 	 * @phpstan-import-type IndexChangeSet from SculptTypes
 	 * @phpstan-import-type ForeignKeyChangeSet from SculptTypes
+	 * @phpstan-import-type PrimaryKeyChangeSet from SculptTypes
 	 *
 	 * @phpstan-type IndexConfig IndexDefinition
 	 * @phpstan-type IndexChanges IndexChangeSet
@@ -52,7 +53,8 @@
 	 *     modified?: array<string, ColumnModification>,
 	 *     deleted?: array<string, ColumnDefinition>,
 	 *     indexes?: IndexChanges,
-	 *     foreignKeys?: ForeignKeyChanges
+	 *     foreignKeys?: ForeignKeyChanges,
+	 *     primaryKey?: PrimaryKeyChangeSet
 	 * }
 	 *
 	 * @phpstan-type AllChanges array<string, TableChanges>
@@ -273,6 +275,7 @@ PHP;
 		 *     deleted: array<string, ColumnDefinition>,
 		 *     indexes: IndexChanges,
 		 *     foreignKeys: ForeignKeyChanges,
+		 *     primaryKey: PrimaryKeyChangeSet,
 		 *     table_not_exists: bool
 		 * }
 		 */
@@ -283,12 +286,14 @@ PHP;
 				'deleted'          => [],
 				'indexes'          => ['added' => [], 'modified' => [], 'deleted' => []],
 				'foreignKeys'      => ['added' => [], 'modified' => [], 'deleted' => []],
+				'primaryKey'       => ['action' => null],
 				'table_not_exists' => false,
 			];
 
 			$merged = array_merge($defaults, $changes);
 			$merged['indexes'] = array_merge($defaults['indexes'], $changes['indexes'] ?? []);
 			$merged['foreignKeys'] = array_merge($defaults['foreignKeys'], $changes['foreignKeys'] ?? []);
+			$merged['primaryKey'] = array_merge($defaults['primaryKey'], $changes['primaryKey'] ?? []);
 			return $merged;
 		}
 
@@ -338,13 +343,14 @@ PHP;
 		 * exists by the time the primary key change runs (these compile to
 		 * separate, sequentially-run SQL statements — see QuelToSQLAlter).
 		 * @param string $tableName
-		 * @param array{added: array<string, ColumnDefinition>, modified: array<string, ColumnModification>, deleted: array<string, ColumnDefinition>} $changes
+		 * @param array{added: array<string, ColumnDefinition>, modified: array<string, ColumnModification>, deleted: array<string, ColumnDefinition>, primaryKey?: PrimaryKeyChangeSet} $changes
 		 * @param 'up'|'down' $direction
 		 * @return list<string>
 		 * @throws \RuntimeException If a non-nullable added column has no safe backfill value (up() only — see buildAddColumnOp())
 		 */
 		private function buildAlterColumnsOps(string $tableName, array $changes, string $direction): array {
 			$ops = [];
+			$primaryKeyChange = $changes['primaryKey'] ?? ['action' => null];
 
 			if ($direction === 'up') {
 				foreach ($changes['added'] as $columnName => $definition) {
@@ -359,23 +365,35 @@ PHP;
 					$ops[] = "drop {$columnName}";
 				}
 
-				$newPrimaryKeys = $this->analyzeColumns($changes['added'])['primaryKeys'];
-
-				if ($newPrimaryKeys !== []) {
-					$existing = $this->connection->getPrimaryKeyColumns($tableName);
-					$merged = array_values(array_unique([...$existing, ...$newPrimaryKeys]));
-
-					if ($merged !== $existing) {
-						$ops[] = 'primary key (' . implode(', ', $merged) . ')';
-					}
+				// Placed after `add`/`retype`/`drop` so a newly-added or
+				// renamed-in-place primary-key column already exists by the
+				// time this runs (see PrimaryKeyComparator — the desired key
+				// is the entity's full current declaration, not just columns
+				// this particular migration happens to be adding).
+				if ($primaryKeyChange['action'] === 'set') {
+					$ops[] = 'primary key (' . implode(', ', $primaryKeyChange['columns']) . ')';
+				} elseif ($primaryKeyChange['action'] === 'drop') {
+					$ops[] = 'drop primary key';
 				}
 			} else {
 				// down(): mirror image of up() — added columns get dropped,
 				// deleted columns get added back, modifications revert to
-				// their pre-migration definition. No primary-key restoration
-				// here, mirroring PhinxMigrationBuilder's own down() (which
-				// never restores a pre-migration primary key either) — see
-				// class docblock.
+				// their pre-migration definition, and the primary key (if it
+				// changed) reverts to whatever PrimaryKeyComparator captured
+				// as 'from'. Restoring a key that referenced a column this
+				// migration's up() dropped needs that column back first, so
+				// in that one case the restore runs last instead of first —
+				// every other case restores it before any column is touched,
+				// so a column this migration's up() added (and might still
+				// be a member of the CURRENT key) is freed from the key
+				// before being dropped.
+				$previousPrimaryKey = $primaryKeyChange['from'] ?? [];
+				$restoreNeedsReaddedColumn = array_intersect($previousPrimaryKey, array_keys($changes['deleted'])) !== [];
+
+				if ($primaryKeyChange['action'] !== null && !$restoreNeedsReaddedColumn) {
+					$ops[] = $previousPrimaryKey === [] ? 'drop primary key' : 'primary key (' . implode(', ', $previousPrimaryKey) . ')';
+				}
+
 				foreach (array_keys($changes['added']) as $columnName) {
 					$ops[] = "drop {$columnName}";
 				}
@@ -386,6 +404,10 @@ PHP;
 
 				foreach ($changes['deleted'] as $columnName => $definition) {
 					$ops[] = 'add ' . $this->renderColumnDefinition($columnName, $definition);
+				}
+
+				if ($primaryKeyChange['action'] !== null && $restoreNeedsReaddedColumn) {
+					$ops[] = $previousPrimaryKey === [] ? 'drop primary key' : 'primary key (' . implode(', ', $previousPrimaryKey) . ')';
 				}
 			}
 

@@ -1148,18 +1148,17 @@
 		check('idempotent after the full rollback + reapply round trip', $exitCode === 0 && str_contains($out, 'No changes detected'));
 
 		// -------------------------------------------------------------
-		// Primary key changes: EntitySchemaAnalyzer/SchemaComparator have
-		// no primary-key comparator at all — TypeMapper::
-		// getRelevantProperties() never includes 'primary_key', and no
-		// PrimaryKeyComparator class exists alongside IndexComparator/
-		// ForeignKeyComparator. QuelToSQLAlter fully supports compiling a
-		// hand-written `alter table (primary key (...))` / `drop primary
-		// key` (see AlterTableTest/AlterTableExecutorTest) — but
-		// make:migrations' auto-diff can never generate one, on any
-		// entity, ever. Verified here on its own isolated table rather
-		// than assumed.
+		// Primary key changes: PrimaryKeyComparator (sibling to
+		// IndexComparator/ForeignKeyComparator) diffs the entity's declared
+		// key — the union of every @Orm\Column(primary_key=true) property —
+		// against the live table's actual one, and QuelMigrationBuilder
+		// folds the result into the same `alter table (...)` statement as
+		// any other column change (already-existing DDL support:
+		// AstAlterSetPrimaryKey/AstAlterDropPrimaryKey, see AlterTableTest/
+		// AlterTableExecutorTest — only the auto-diff detection was
+		// missing). Exercised on its own isolated table.
 		// -------------------------------------------------------------
-		section('Primary key changes: make:migrations cannot detect them at all (verified gap)');
+		section('Primary key changes: single-column -> composite -> dropped entirely');
 
 		$pkEntityPath = "{$entityPath}/PkLifecycleV1Entity.php";
 		file_put_contents($pkEntityPath, <<<PHP
@@ -1232,42 +1231,64 @@
 		$currentPkEntityFile = $pkEntityPath;
 
 		[, $out] = runMakeMigrations($provider);
-		check('a composite-PK entity change produces no diff at all (the gap)', str_contains($out, 'No changes detected'));
-		check('the live primary key is still unchanged — nothing was ever applied', $adapter->getPrimaryKeyColumns('pk_lifecycle_test') === ['a']);
-
-		// The DDL layer itself still supports this — just not via
-		// make:migrations. A hand-written migration (make:migration +
-		// edit, exactly like the "chain smoke test" scenario in
-		// quel-migrate-command-smoke-test.php) is required instead.
-		// One past the highest version already on disk — never colliding
-		// with an existing file, and (unlike appending extra digits) still
-		// a valid 14-digit version MigrationLocator's FILENAME_PATTERN
-		// accepts.
-		$existingVersions = array_map(
-			static fn(string $path) => (int)basename($path),
-			glob($migrationsDir . '/*.php') ?: []
-		);
-		$manualPkMigrationVersion = ($existingVersions === [] ? (int)date('YmdHis') : max($existingVersions)) + 1;
-
-		$manualPkMigrationClass = 'PkManualMigration' . uniqueSuffix();
-		$manualPkMigrationPath = "{$migrationsDir}/{$manualPkMigrationVersion}_{$manualPkMigrationClass}.php";
-		file_put_contents($manualPkMigrationPath, <<<PHP
-		<?php
-		class {$manualPkMigrationClass} extends \\Quellabs\\ObjectQuel\\Migration\\AbstractMigration {
-			public function up(): void {
-				\$this->query('alter pk_lifecycle_test (primary key (a, b))');
-			}
-			public function down(): void {
-				\$this->query('alter pk_lifecycle_test (primary key (a))');
-			}
-		}
-		PHP);
-
+		check('reports the composite primary key change', str_contains($out, 'Primary key changed: pk_lifecycle_test (a, b)'));
 		runQuelMigrate($provider);
-		check('a hand-written migration can still set a composite primary key', $adapter->getPrimaryKeyColumns('pk_lifecycle_test') === ['a', 'b']);
 
+		check('the live primary key is now composite', $adapter->getPrimaryKeyColumns('pk_lifecycle_test') === ['a', 'b']);
+		check('the pre-existing row survived the key change', $adapter->execute("SELECT b FROM `pk_lifecycle_test` WHERE `a` = 1")?->fetchAssoc()['b'] == 10);
+
+		[, $out] = runMakeMigrations($provider);
+		check('idempotent after the composite key change', str_contains($out, 'No changes detected'));
+
+		// Roll back this one migration and confirm down() actually restores
+		// the single-column key — not just unit-tested string output, the
+		// real DDL running against the real table.
 		[, $out] = runAnyCommand(QuelMigrateCommand::class, $provider, ['--rollback', '--force']);
-		check('rolling back the hand-written PK migration restores the single-column key', $adapter->getPrimaryKeyColumns('pk_lifecycle_test') === ['a']);
+		check('rollback exit reports success', str_contains($out, 'Rollback completed successfully'));
+		check('rolling back restores the single-column key', $adapter->getPrimaryKeyColumns('pk_lifecycle_test') === ['a']);
+
+		[$exitCode, $out] = runQuelMigrate($provider);
+		check('reapplying restores the composite key', $exitCode === 0 && $adapter->getPrimaryKeyColumns('pk_lifecycle_test') === ['a', 'b']);
+
+		// Now drop the primary key entirely — no property declares
+		// primary_key=true anymore.
+		unlink($currentPkEntityFile);
+		$pkEntityPath = "{$entityPath}/PkLifecycleV3Entity.php";
+		file_put_contents($pkEntityPath, <<<PHP
+		<?php
+
+			namespace {$namespace};
+
+			use Quellabs\\ObjectQuel\\Annotations\\Orm\\Column;
+			use Quellabs\\ObjectQuel\\Annotations\\Orm\\Table;
+
+			/**
+			 * @Orm\\Table(name="pk_lifecycle_test")
+			 */
+			class PkLifecycleV3Entity {
+				/**
+				 * @Orm\\Column(name="a", type="integer")
+				 */
+				protected int \$a;
+
+				/**
+				 * @Orm\\Column(name="b", type="integer")
+				 */
+				protected int \$b;
+			}
+
+		PHP);
+		require $pkEntityPath;
+		$currentPkEntityFile = $pkEntityPath;
+
+		[, $out] = runMakeMigrations($provider);
+		check('reports the primary key being dropped', str_contains($out, 'Primary key dropped: pk_lifecycle_test'));
+		runQuelMigrate($provider);
+
+		check('the live table now has no primary key at all', $adapter->getPrimaryKeyColumns('pk_lifecycle_test') === []);
+
+		[, $out] = runMakeMigrations($provider);
+		check('idempotent after dropping the primary key', str_contains($out, 'No changes detected'));
 	} finally {
 		// -----------------------------------------------------------------
 		// Teardown — runs even if a check above threw. Foreign-key

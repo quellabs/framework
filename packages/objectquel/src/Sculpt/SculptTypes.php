@@ -120,6 +120,23 @@
 	 * }
 	 *
 	 * -------------------------------------------------------------------------
+	 * Primary key types
+	 * -------------------------------------------------------------------------
+	 *
+	 * A table has at most one primary key, so — unlike IndexChangeSet/
+	 * ForeignKeyChangeSet — this is a single optional change, not a keyed
+	 * map of many. 'columns' is present only for action 'set' (the desired
+	 * key, in entity-declared order); 'from' is present whenever the table
+	 * currently has a primary key at all, regardless of action, so down()
+	 * can restore it.
+	 *
+	 * @phpstan-type PrimaryKeyChangeSet array{
+	 *     action: 'set'|'drop'|null,
+	 *     columns?: array<int, string>,
+	 *     from?: array<int, string>
+	 * }
+	 *
+	 * -------------------------------------------------------------------------
 	 * Composite types (depend on ColumnDefinition, IndexChangeSet and ForeignKeyChangeSet)
 	 * -------------------------------------------------------------------------
 	 *
@@ -138,7 +155,8 @@
 	 *     modified: array<string, ColumnModification>,
 	 *     deleted: array<string, ColumnDefinition>,
 	 *     indexes: IndexChangeSet,
-	 *     foreignKeys: ForeignKeyChangeSet
+	 *     foreignKeys: ForeignKeyChangeSet,
+	 *     primaryKey?: PrimaryKeyChangeSet
 	 * }
 	 */
 	final class SculptTypes {}

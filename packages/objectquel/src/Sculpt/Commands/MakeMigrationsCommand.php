@@ -191,6 +191,17 @@ HELP;
 				foreach ($changes['foreignKeys']['deleted'] as $fk => $cfg) {
 					$this->output->writeLn(" ✓ Dropped foreign key: {$tableName}.{$fk}");
 				}
+
+				// Primary-key change — at most one per table, unlike every
+				// other facet above.
+				$primaryKeyAction = $changes['primaryKey']['action'] ?? null;
+
+				if ($primaryKeyAction === 'set') {
+					$columns = implode(', ', $changes['primaryKey']['columns']);
+					$this->output->writeLn(" ✓ Primary key changed: {$tableName} ({$columns})");
+				} elseif ($primaryKeyAction === 'drop') {
+					$this->output->writeLn(" ✓ Primary key dropped: {$tableName}");
+				}
 			}
 			
 			$this->output->writeLn("");

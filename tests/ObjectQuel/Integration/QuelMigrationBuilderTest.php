@@ -53,6 +53,7 @@
 				'deleted'     => [],
 				'indexes'     => ['added' => [], 'modified' => [], 'deleted' => []],
 				'foreignKeys' => ['added' => [], 'modified' => [], 'deleted' => []],
+				'primaryKey'  => ['action' => null],
 			];
 		}
 
@@ -190,16 +191,31 @@
 			$this->assertStringContainsString("backfill \\'O\\\\\\'Brien\\'", $content);
 		}
 
-		public function testAddedPrimaryKeyColumnIsMergedWithTheExistingPrimaryKey(): void {
-			$this->adapter->execute('CREATE TABLE bridge (post_id INTEGER PRIMARY KEY)');
-
+		/**
+		 * PrimaryKeyComparator (not QuelMigrationBuilder) is responsible for
+		 * diffing the entity's declared key against the live table's actual
+		 * one — this test supplies that diff result directly, the same way
+		 * every other scenario in this file supplies its 'indexes'/
+		 * 'foreignKeys' diff directly, rather than exercising a live
+		 * database.
+		 */
+		public function testAddedPrimaryKeyColumnIsCombinedWithTheAddedColumnInOneAlterStatement(): void {
 			$changes = $this->emptyChangeSet();
 			$changes['added'] = ['tag_id' => $this->baseColumn(['type' => 'integer', 'limit' => null, 'primary_key' => true])];
+			$changes['primaryKey'] = ['action' => 'set', 'columns' => ['post_id', 'tag_id'], 'from' => ['post_id']];
 
 			$content = $this->buildMigrationContent(['bridge' => $changes]);
 
 			$this->assertStringContainsString(
 				"\$this->query('alter bridge (add tag_id = integer, primary key (post_id, tag_id))');",
+				$content
+			);
+			// down() restores the original, single-column key before
+			// dropping the added column — freeing tag_id from the key
+			// before removing it outright, rather than relying on the
+			// database to adjust the key implicitly.
+			$this->assertStringContainsString(
+				"\$this->query('alter bridge (primary key (post_id), drop tag_id)');",
 				$content
 			);
 		}
