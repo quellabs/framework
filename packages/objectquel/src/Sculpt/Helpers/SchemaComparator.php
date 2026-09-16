@@ -57,6 +57,15 @@
 		
 		private const array NUMERIC_PROPERTIES = ['limit', 'precision', 'scale'];
 		private const array BOOLEAN_PROPERTIES = ['nullable', 'unsigned', 'identity'];
+
+		/**
+		 * Per-platform map of declared type -> the type its schema
+		 * introspection collapses it to. See normalizeColumnDefinition()'s
+		 * Step 2c.
+		 */
+		private const array COLLAPSED_TYPES_BY_PLATFORM = [
+			'sqlite' => ['json' => 'text', 'uuid' => 'text'],
+		];
 		
 		/** @var PlatformCapabilitiesInterface Describes what the connected database engine supports */
 		private PlatformCapabilitiesInterface $platform;
@@ -190,7 +199,24 @@
 			if ($normalized['type'] === $this->platform->getNativeJsonType() && $normalized['type'] !== 'json') {
 				$normalized['type'] = 'json';
 			}
-			
+
+			// Step 2c: Collapse a declared type to whatever the platform's schema
+			// introspection can actually distinguish it as. SQLite renders
+			// 'json'/'uuid' as bare TEXT, identical to 'text' itself (see
+			// DDLTypeMapper::getSqliteTempTableColumnType()), with no surviving
+			// metadata to tell them apart afterward — introspection can only ever
+			// report 'text' back, never 'json' or 'uuid'. Without this, an entity
+			// declaring either would diff as "modified" against its own
+			// just-created column, forever. (SQL Server has the identical
+			// ambiguity for 'text'/'json' — see NativeColumnTypeMapper's own
+			// docblock for that — but isn't handled here: no live SQL Server
+			// available this session to verify a fix against.)
+			$collapsedType = self::COLLAPSED_TYPES_BY_PLATFORM[$this->platform->getDatabaseType()][$normalized['type']] ?? null;
+
+			if ($collapsedType !== null) {
+				$normalized['type'] = $collapsedType;
+			}
+
 			// Step 3: Remove irrelevant or comparison-specific properties that shouldn't affect equality
 			$normalized = $this->filterRelevantProperties($normalized);
 			
