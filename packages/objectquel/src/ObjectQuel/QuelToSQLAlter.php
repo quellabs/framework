@@ -170,7 +170,7 @@
 			$columnDef = $this->renderColumnDefinition($column);
 			$quotedDefault = $this->identifierQuoter->quoteStringLiteral($backfillValue);
 
-			if ($dialect === 'sqlsrv') {
+			if ($this->usesNamedDefaultConstraint()) {
 				$constraintName = $this->identifierQuoter->quoteIdentifier(
 					DefaultConstraintNamer::nameOrThrow($tableName, $column->getName())
 				);
@@ -513,6 +513,20 @@
 		 */
 		private function usesNativeDropClause(): bool {
 			return in_array($this->platform->getDatabaseType(), ['mysql', 'mariadb'], true);
+		}
+
+		/**
+		 * Whether adding a column with a DEFAULT creates a separate named
+		 * constraint object that must be addressed by name to drop again
+		 * (see compileAddColumnWithBackfill()) — true only for SQL Server.
+		 * MySQL/PostgreSQL target the column directly (`ALTER COLUMN ...
+		 * DROP DEFAULT`); nothing is infeasible either way, so this is a
+		 * syntax-form choice, not a PlatformCapabilitiesInterface capability
+		 * gate — same category as usesNativeDropClause() just above.
+		 * @return bool
+		 */
+		private function usesNamedDefaultConstraint(): bool {
+			return $this->platform->getDatabaseType() === 'sqlsrv';
 		}
 
 		/**
