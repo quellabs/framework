@@ -66,6 +66,28 @@
 		}
 
 		/**
+		 * Returns every applied migration's version mapped to the timestamp
+		 * it was applied at (`Y-m-d H:i:s`), for MigrationRunner::status() —
+		 * getAppliedVersions() alone doesn't carry that timestamp.
+		 * @return array<int, string>
+		 */
+		public function getAppliedRecords(): array {
+			$rows = $this->entityManager->getConnection()->getConnection()
+				->selectQuery(['version', 'executed_at'], $this->migrationTable)
+				->orderBy('version')
+				->execute()
+				->fetchAll('assoc');
+
+			$records = [];
+
+			foreach ($rows as $row) {
+				$records[(int)$row['version']] = $row['executed_at'];
+			}
+
+			return $records;
+		}
+
+		/**
 		 * Records a migration as applied.
 		 * @param int $version The migration's own <YmdHis> filename timestamp
 		 * @param string $name The migration's class name

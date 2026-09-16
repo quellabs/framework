@@ -103,6 +103,18 @@
 			);
 		}
 
+		public function testGetAppliedRecordsMapsVersionToItsAppliedTimestamp(): void {
+			$repository = $this->makeRepository();
+			$repository->ensureTableExists();
+
+			$repository->recordApplied(20260101120000, 'CreateFoo');
+
+			$records = $repository->getAppliedRecords();
+
+			$this->assertArrayHasKey(20260101120000, $records);
+			$this->assertNotNull($records[20260101120000]);
+		}
+
 		public function testRecordRevertedRemovesTheAppliedRecord(): void {
 			$repository = $this->makeRepository();
 			$repository->ensureTableExists();
