@@ -8,7 +8,7 @@
 	use Quellabs\ObjectQuel\Capabilities\PlatformCapabilities;
 	use Quellabs\ObjectQuel\Sculpt\Helpers\EntitySchemaAnalyzer;
 	use Quellabs\ObjectQuel\Sculpt\SculptTypes;
-	use Quellabs\ObjectQuel\Sculpt\Helpers\PhinxMigrationBuilder;
+	use Quellabs\ObjectQuel\Sculpt\Helpers\QuelMigrationBuilder;
 	use Quellabs\ObjectQuel\Sculpt\ServiceProvider;
 	use Quellabs\Sculpt\Contracts\CommandBase;
 	use Quellabs\Sculpt\ConfigurationManager;
@@ -20,7 +20,7 @@
 	 * MakeMigrationsCommand - CLI command for generating database migrations
 	 *
 	 * Detects differences between entity definitions and the current database schema,
-	 * then produces a Phinx migration file to synchronize the two.
+	 * then produces an ObjectQuel migration file to synchronize the two.
 	 *
 	 * @phpstan-import-type ColumnDefinition from DatabaseAdapter
 	 * @phpstan-import-type ColumnModification from SculptTypes
@@ -85,7 +85,7 @@
 			$this->printChangeSummary($allChanges);
 			
 			// Generate the migration file and report the result
-			$migrationBuilder = new PhinxMigrationBuilder($databaseAdapter, $this->migrationsPath, $platform);
+			$migrationBuilder = new QuelMigrationBuilder($databaseAdapter, $this->migrationsPath, $platform);
 			$result = $migrationBuilder->generateMigrationFile($allChanges);
 			
 			if (!$result['success']) {
@@ -121,7 +121,7 @@
 			return <<<HELP
 DESCRIPTION:
     Generate a database migration file by comparing entity definitions with the
-    current database schema and producing a Phinx migration to synchronize them.
+    current database schema and producing an ObjectQuel migration to synchronize them.
 
 USAGE:
     php sculpt make:migrations
