@@ -17,7 +17,16 @@
 	 */
 	class PostgresSchemaIntrospector implements SchemaIntrospectorInterface {
 
-		public function __construct(private readonly DatabaseAdapter $adapter) {
+		/**
+		 * @var DatabaseAdapter
+		 */
+		private readonly DatabaseAdapter $adapter;
+
+		/**
+		 * @param DatabaseAdapter $adapter
+		 */
+		public function __construct(DatabaseAdapter $adapter) {
+			$this->adapter = $adapter;
 		}
 
 		/**

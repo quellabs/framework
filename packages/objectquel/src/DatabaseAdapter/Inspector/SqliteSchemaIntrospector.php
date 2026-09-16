@@ -4,6 +4,7 @@
 
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
 	use Quellabs\ObjectQuel\DatabaseAdapter\Mapper\NativeColumnTypeMapper;
+	use Quellabs\ObjectQuel\DatabaseAdapter\Mapper\NumericPrecisionScale;
 	use Quellabs\ObjectQuel\DatabaseAdapter\Mapper\TypeMapper;
 	use Quellabs\ObjectQuel\ObjectQuel\ForeignKeyConstraintNamer;
 
@@ -20,7 +21,16 @@
 	 */
 	class SqliteSchemaIntrospector implements SchemaIntrospectorInterface {
 
-		public function __construct(private readonly DatabaseAdapter $adapter) {
+		/**
+		 * @var DatabaseAdapter
+		 */
+		private readonly DatabaseAdapter $adapter;
+
+		/**
+		 * @param DatabaseAdapter $adapter
+		 */
+		public function __construct(DatabaseAdapter $adapter) {
+			$this->adapter = $adapter;
 		}
 
 		/**
@@ -44,7 +54,7 @@
 
 			foreach ($rows as $row) {
 				$type = NativeColumnTypeMapper::sqliteType($row['type']);
-				[$precision, $scale] = $type === 'decimal' ? $this->parseSqliteNumericPrecisionScale($row['type']) : [null, null];
+				$precisionScale = $type === 'decimal' ? $this->parseSqliteNumericPrecisionScale($row['type']) : new NumericPrecisionScale(null, null);
 
 				$limit = match ($type) {
 					'string', 'char' => $this->parseSqliteLimit($row['type']),
@@ -57,8 +67,8 @@
 					'limit'       => $limit,
 					'default'     => $this->normalizeSqliteDefault($row['dflt_value']),
 					'nullable'    => (int)$row['notnull'] === 0,
-					'precision'   => $precision,
-					'scale'       => $scale,
+					'precision'   => $precisionScale->precision,
+					'scale'       => $precisionScale->scale,
 					'unsigned'    => false,
 					'generated'   => null,
 					'identity'    => $identityByColumn[$row['name']] ?? false,
@@ -138,16 +148,16 @@
 
 		/**
 		 * Parses an explicit (precision,scale) suffix out of a SQLite declared
-		 * type string, e.g. "NUMERIC(10,2)" -> [10, 2].
+		 * type string, e.g. "NUMERIC(10,2)" -> precision 10, scale 2.
 		 * @param string $declaredType
-		 * @return array{0: int|null, 1: int|null}
+		 * @return NumericPrecisionScale
 		 */
-		private function parseSqliteNumericPrecisionScale(string $declaredType): array {
+		private function parseSqliteNumericPrecisionScale(string $declaredType): NumericPrecisionScale {
 			if (preg_match('/\((\d+)(?:,(\d+))?\)/', $declaredType, $matches) !== 1) {
-				return [null, null];
+				return new NumericPrecisionScale(null, null);
 			}
 
-			return [(int)$matches[1], isset($matches[2]) ? (int)$matches[2] : 0];
+			return new NumericPrecisionScale((int)$matches[1], isset($matches[2]) ? (int)$matches[2] : 0);
 		}
 
 		/**

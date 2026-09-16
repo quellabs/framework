@@ -4,6 +4,7 @@
 
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
 	use Quellabs\ObjectQuel\DatabaseAdapter\Mapper\NativeColumnTypeMapper;
+	use Quellabs\ObjectQuel\DatabaseAdapter\Mapper\NumericPrecisionScale;
 	use Quellabs\ObjectQuel\DatabaseAdapter\Mapper\TypeMapper;
 
 	/**
@@ -18,7 +19,16 @@
 	 */
 	class MysqlSchemaIntrospector implements SchemaIntrospectorInterface {
 
-		public function __construct(private readonly DatabaseAdapter $adapter) {
+		/**
+		 * @var DatabaseAdapter
+		 */
+		private readonly DatabaseAdapter $adapter;
+
+		/**
+		 * @param DatabaseAdapter $adapter
+		 */
+		public function __construct(DatabaseAdapter $adapter) {
+			$this->adapter = $adapter;
 		}
 
 		/**
@@ -59,7 +69,7 @@
 				$charLimit = $row['character_maximum_length'] !== null ? (int)$row['character_maximum_length'] : null;
 				$type = NativeColumnTypeMapper::mysqlType($row['data_type'], $row['column_type'], $charLimit);
 				$values = $type === 'enum' ? $this->parseMysqlEnumValues($row['column_type']) : null;
-				[$precision, $scale] = $type === 'decimal' ? $this->parseMysqlPrecisionScale($row['column_type']) : [null, null];
+				$precisionScale = $type === 'decimal' ? $this->parseMysqlPrecisionScale($row['column_type']) : new NumericPrecisionScale(null, null);
 
 				$limit = match (true) {
 					$type === 'enum' => $this->resolveEnumLimit($values),
@@ -74,8 +84,8 @@
 					'limit'       => $limit,
 					'default'     => $this->normalizeMysqlDefault($row['column_default']),
 					'nullable'    => $row['is_nullable'] === 'YES',
-					'precision'   => $precision,
-					'scale'       => $scale,
+					'precision'   => $precisionScale->precision,
+					'scale'       => $precisionScale->scale,
 					'unsigned'    => str_contains(strtolower($row['column_type']), 'unsigned'),
 					'generated'   => null,
 					'identity'    => strtolower($row['extra']) === 'auto_increment',
@@ -109,7 +119,7 @@
 
 		/**
 		 * Parses an explicit (precision,scale) or (precision) suffix out of a
-		 * MySQL COLUMN_TYPE string, e.g. "decimal(10,2)" -> [10, 2]. Deliberately
+		 * MySQL COLUMN_TYPE string, e.g. "decimal(10,2)" -> precision 10, scale 2. Deliberately
 		 * not using information_schema.NUMERIC_PRECISION/NUMERIC_SCALE directly —
 		 * MySQL populates those for FLOAT/DOUBLE too (e.g. 12/null for a plain
 		 * FLOAT with no declared width), which DDLTypeMapper never renders and
@@ -119,14 +129,14 @@
 		 * renders those with an explicit (p,s), so parsing COLUMN_TYPE directly
 		 * is both sufficient and exact.
 		 * @param string $columnType
-		 * @return array{0: int|null, 1: int|null}
+		 * @return NumericPrecisionScale
 		 */
-		private function parseMysqlPrecisionScale(string $columnType): array {
+		private function parseMysqlPrecisionScale(string $columnType): NumericPrecisionScale {
 			if (preg_match('/\((\d+)(?:,(\d+))?\)/', $columnType, $matches) !== 1) {
-				return [null, null];
+				return new NumericPrecisionScale(null, null);
 			}
 
-			return [(int)$matches[1], isset($matches[2]) ? (int)$matches[2] : 0];
+			return new NumericPrecisionScale((int)$matches[1], isset($matches[2]) ? (int)$matches[2] : 0);
 		}
 
 		/**
