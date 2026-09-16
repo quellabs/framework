@@ -78,6 +78,22 @@
 		 * @throws \Throwable Propagated from a failing migration's down(), after rollback where the platform supports it
 		 */
 		public function rollback(?int $target = null, int $steps = 1): void {
+			foreach ($this->getRollbackCandidates($target, $steps) as $migration) {
+				$this->runTransactionally(static fn() => $migration->migration->down());
+				$this->repository->recordReverted($migration->version);
+			}
+		}
+
+		/**
+		 * The applied migrations rollback($target, $steps) would revert,
+		 * without reverting them — used both by rollback() itself and by a
+		 * caller previewing what a rollback would do (e.g. --dry-run) without
+		 * invoking any migration's down().
+		 * @param int|null $target
+		 * @param int $steps Only consulted when $target is null
+		 * @return list<LocatedMigration> Most-recently-applied first
+		 */
+		public function getRollbackCandidates(?int $target = null, int $steps = 1): array {
 			$this->repository->ensureTableExists();
 
 			$appliedVersions = array_flip($this->repository->getAppliedVersions());
@@ -89,14 +105,9 @@
 
 			usort($applied, static fn(LocatedMigration $a, LocatedMigration $b) => $b->version <=> $a->version);
 
-			$toRevert = $target !== null
-				? array_filter($applied, static fn(LocatedMigration $migration) => $migration->version > $target)
+			return $target !== null
+				? array_values(array_filter($applied, static fn(LocatedMigration $migration) => $migration->version > $target))
 				: array_slice($applied, 0, $steps);
-
-			foreach ($toRevert as $migration) {
-				$this->runTransactionally(static fn() => $migration->migration->down());
-				$this->repository->recordReverted($migration->version);
-			}
 		}
 
 		/**
