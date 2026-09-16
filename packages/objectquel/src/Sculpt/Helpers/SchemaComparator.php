@@ -83,11 +83,18 @@
 			foreach (array_intersect_key($entityColumns, $tableColumns) as $columnName => $entityColumn) {
 				$normalizedEntity = $this->normalizeColumnDefinition($entityColumn);
 				$normalizedTable = $this->normalizeColumnDefinition($tableColumns[$columnName]);
-				
+
 				if ($normalizedEntity !== $normalizedTable) {
+					// 'from'/'to' carry the original, un-normalized definitions —
+					// not the normalized copies used only for the equality check
+					// above. Normalizing collapses 'enum' to 'string' on engines
+					// without native ENUM (Step 2 of normalizeColumnDefinition()),
+					// which is correct for comparison but would otherwise leak
+					// into the generated migration, permanently losing the
+					// column's real type and values list.
 					$result[$columnName] = [
-						'from'    => $normalizedTable,
-						'to'      => $normalizedEntity,
+						'from'    => $tableColumns[$columnName],
+						'to'      => $entityColumn,
 						'changes' => $this->identifySpecificChanges($normalizedTable, $normalizedEntity)
 					];
 				}
@@ -168,8 +175,11 @@
 			// Add default limit if missing
 			if (!isset($result['limit'])) {
 				if ($result['type'] === 'enum' && !empty($result['values'])) {
-					// Derive max length from the actual enum values stored in the column definition
-					$result['limit'] = max(max(array_map('strlen', $result['values'])), 32);
+					// Must match DDLTypeMapper's fallback-VARCHAR sizing exactly
+					// (TypeMapper::enumFallbackLimit()) — a mismatch here means
+					// this diff predicts a different limit than the DDL compiler
+					// actually renders, producing a spurious diff forever.
+					$result['limit'] = TypeMapper::enumFallbackLimit($result['values']);
 				} else {
 					$result['limit'] = TypeMapper::getDefaultLimit($columnType);
 				}

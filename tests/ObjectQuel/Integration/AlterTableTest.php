@@ -209,6 +209,41 @@
 		}
 
 		/**
+		 * `enum(...)` uses the same shared column-definition grammar as
+		 * `create` (see ColumnDefinitionClause), so `alter ... add` must
+		 * accept it identically — real native ENUM on this suite's MySQL
+		 * connection.
+		 */
+		public function testAddsAnEnumColumn(): void {
+			$tableName = $this->nextTableName();
+			$this->createTargetTable($tableName);
+
+			$result = self::em()->executeQuery("alter {$tableName} (add status = enum('active', 'inactive', 'banned'))");
+
+			$this->assertNull($result);
+
+			$columns = self::em()->getConnection()->getColumns($tableName);
+			$this->assertSame('enum', $columns['status']['type']);
+			$this->assertSame(['active', 'inactive', 'banned'], $columns['status']['values']);
+		}
+
+		/**
+		 * `retype` carries a column definition through the same grammar too.
+		 */
+		public function testRetypesAColumnToEnum(): void {
+			$tableName = $this->nextTableName();
+			$this->createTargetTable($tableName, "id = integer identity, status = string(20), primary key (id)");
+
+			$result = self::em()->executeQuery("alter {$tableName} (retype status = enum('active', 'inactive'))");
+
+			$this->assertNull($result);
+
+			$columns = self::em()->getConnection()->getColumns($tableName);
+			$this->assertSame('enum', $columns['status']['type']);
+			$this->assertSame(['active', 'inactive'], $columns['status']['values']);
+		}
+
+		/**
 		 * ObjectQuel's `create` has no ENGINE clause, so a table it creates
 		 * gets whatever MySQL's default_storage_engine is — MyISAM in this
 		 * suite's test server, which silently accepts (and ignores) a FK

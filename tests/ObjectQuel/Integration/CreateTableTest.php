@@ -417,4 +417,36 @@
 				)
 			");
 		}
+
+		/**
+		 * MySQL has native ENUM support (PlatformCapabilities::supportsNativeEnums()),
+		 * so the column renders as a real ENUM(...) — verified via getColumns(),
+		 * which round-trips the actual declared values back, not a VARCHAR
+		 * fallback.
+		 */
+		public function testCreatesAnEnumColumn(): void {
+			$tableName = $this->nextTableName();
+			$this->createdTables[] = $tableName;
+
+			$result = self::em()->executeQuery("
+				create {$tableName} (
+					id = integer identity,
+					status = enum('active', 'inactive', 'banned'),
+					primary key (id)
+				)
+			");
+
+			$this->assertNull($result);
+
+			$columns = self::em()->getConnection()->getColumns($tableName);
+
+			$this->assertSame('enum', $columns['status']['type']);
+			$this->assertSame(['active', 'inactive', 'banned'], $columns['status']['values']);
+			$this->assertFalse($columns['status']['nullable']);
+
+			// A row can actually be written with one of the declared values.
+			self::em()->getConnection()->execute("INSERT INTO `{$tableName}` (id, status) VALUES (1, 'active')");
+			$row = self::em()->getConnection()->execute("SELECT status FROM `{$tableName}` WHERE id = 1")->fetchAssoc();
+			$this->assertSame('active', $row['status']);
+		}
 	}

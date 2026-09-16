@@ -291,4 +291,72 @@
 
 			$this->compile($ast, 'mysql');
 		}
+
+		/**
+		 * MySQL/MariaDB have native ENUM — supportsNativeEnums() is true, so
+		 * the column renders as an inline ENUM(...) literal list. Every other
+		 * dialect has no native enum type and falls back to a VARCHAR sized
+		 * to the 255-character floor (see TypeMapper::enumFallbackLimit()),
+		 * since the declared values here are all shorter than that.
+		 */
+		public function testEnumRendersNativelyOnMysqlAndAsVarcharFallbackElsewhere(): void {
+			$ast = $this->parse("create Foo (status = enum('active', 'inactive', 'banned'))");
+
+			self::assertSame(
+				"CREATE TABLE `Foo` (`status` ENUM('active', 'inactive', 'banned') NOT NULL)",
+				$this->compile($ast, 'mysql')
+			);
+			self::assertSame(
+				'CREATE TABLE "Foo" ("status" VARCHAR(255) NOT NULL)',
+				$this->compile($ast, 'pgsql')
+			);
+			self::assertSame(
+				'CREATE TABLE `Foo` (`status` VARCHAR(255) NOT NULL)',
+				$this->compile($ast, 'sqlite')
+			);
+			self::assertSame(
+				'CREATE TABLE [Foo] ([status] VARCHAR(255) NOT NULL)',
+				$this->compile($ast, 'sqlsrv')
+			);
+		}
+
+		/**
+		 * The 255-character floor is a floor, not a cap — a declared value
+		 * longer than 255 characters still sizes the fallback column to fit
+		 * it, on every non-native-enum dialect.
+		 */
+		public function testEnumFallbackVarcharGrowsPastTheFloorForALongValue(): void {
+			$longValue = str_repeat('a', 300);
+			$ast = $this->parse("create Foo (status = enum('active', '{$longValue}'))");
+
+			self::assertSame(
+				'CREATE TABLE "Foo" ("status" VARCHAR(300) NOT NULL)',
+				$this->compile($ast, 'pgsql')
+			);
+		}
+
+		/**
+		 * A single-quote inside a declared enum value round-trips through
+		 * Quel's own string-literal escaping (parse) and back out through
+		 * SQL string-literal escaping (render) intact.
+		 */
+		public function testEnumValueContainingASingleQuoteIsEscapedOnRender(): void {
+			$ast = $this->parse("create Foo (status = enum('O\\'Brien'))");
+
+			self::assertSame(
+				"CREATE TABLE `Foo` (`status` ENUM('O''Brien') NOT NULL)",
+				$this->compile($ast, 'mysql')
+			);
+		}
+
+		/**
+		 * A bare `enum` with no parenthesized values is a parse error, same
+		 * as any other malformed clause — not a silently empty values list.
+		 */
+		public function testEnumWithNoValuesIsRejectedAtParseTime(): void {
+			$this->expectException(ParserException::class);
+			$this->expectExceptionMessage("Column 'status' declares type 'enum' without any values");
+
+			$this->parse('create Foo (status = enum)');
+		}
 	}

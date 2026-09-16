@@ -116,6 +116,26 @@
 		}
 
 		/**
+		 * The VARCHAR length an `enum(...)` column falls back to on engines
+		 * without a native ENUM type (see PlatformCapabilitiesInterface::
+		 * supportsNativeEnums()). A 255-character floor, not an exact fit: sizing
+		 * to exactly the current values would require widening the column
+		 * (`retype`) the moment a longer value is added later, which is a dead
+		 * end on SQLite (no ALTER COLUMN of any kind). Applied uniformly on every
+		 * non-native-enum engine rather than special-casing SQLite alone.
+		 *
+		 * Used by both DDLTypeMapper (rendering the actual column) and
+		 * SchemaComparator (predicting, for diffing purposes, what limit the
+		 * entity should produce) — a single shared helper so the two can't drift
+		 * apart and reintroduce a spurious-diff-forever bug.
+		 * @param string[] $values Declared enum values
+		 * @return int
+		 */
+		public static function enumFallbackLimit(array $values): int {
+			return max(255, ...array_map('strlen', $values));
+		}
+
+		/**
 		 * Whether $type is a recognised abstract column type (the vocabulary
 		 * @Orm\Column uses). Used by `create` to reject unknown types at parse
 		 * time instead of silently falling through to VARCHAR.

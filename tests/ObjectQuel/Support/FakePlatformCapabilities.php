@@ -23,6 +23,10 @@
 			return in_array($this->databaseType, ['mysql', 'mariadb'], true);
 		}
 
+		public function supportsNativeEnums(): bool {
+			return in_array($this->databaseType, ['mysql', 'mariadb'], true);
+		}
+
 		public function supportsTransactionalDDL(): bool {
 			return !in_array($this->databaseType, ['mysql', 'mariadb'], true);
 		}
