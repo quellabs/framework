@@ -13,13 +13,16 @@
 	 * Compares entity schema (object properties) with database schema (table columns)
 	 * to identify changes such as added, modified, or deleted columns.
 	 *
-	 * The two array shapes below both mirror ColumnDefinition::toArray().
+	 * The two array shapes below both mirror ColumnDefinition::toArray(),
+	 * entered only once addDefaultValues() has finished with the real
+	 * object — everything from filterRelevantProperties() onward is a
+	 * comparison-only representation, not the value object itself.
 	 * ColumnDefinitionArray (every key required) is ColumnDefinition::
-	 * toArray()'s own shape, used only as the pre-filter representation.
-	 * NormalizedColumnDefinition (every key optional) is what
-	 * filterRelevantProperties() below produces — it deliberately drops
-	 * keys that don't matter for the column's type, so it's a genuine
-	 * subset, not a full ColumnDefinition.
+	 * toArray()'s own shape, used only as filterRelevantProperties()'s
+	 * pre-filter input. NormalizedColumnDefinition (every key optional) is
+	 * what filterRelevantProperties() produces — it deliberately drops keys
+	 * that don't matter for the column's type, so it's a genuine subset,
+	 * not a full ColumnDefinition.
 	 * @phpstan-type ColumnDefinitionArray array{
 	 *     type: string,
 	 *     php_type: string,
@@ -173,8 +176,8 @@
 		 */
 		private function normalizeColumnDefinition(ColumnDefinition $columnDefinition): array {
 			// Step 1: Add any missing default values to ensure all required properties are present
-			$normalized = $this->addDefaultValues($columnDefinition->toArray());
-			
+			$normalized = $this->addDefaultValues($columnDefinition)->toArray();
+
 			// Step 2: If database does not support ENUM, normalize enum to string
 			if ($normalized['type'] === 'enum' && !$this->platform->supportsNativeEnums()) {
 				$normalized['type'] = 'string';
@@ -202,30 +205,35 @@
 		}
 		
 		/**
-		 * Add default values where missing. Operates on the array
-		 * representation (see normalizeColumnDefinition()), not the
-		 * ColumnDefinition object itself.
-		 * @param ColumnDefinitionArray $columnDefinition Raw column definition
-		 * @return ColumnDefinitionArray Column definition with default values added
+		 * Add default values where missing. Takes and returns the real
+		 * ColumnDefinition object — unlike every step after it, "fill in a
+		 * missing default" doesn't drop or reduce any property, so the
+		 * result is still a genuine, reconstructable ColumnDefinition, not
+		 * yet the comparison-only array representation the later steps need.
+		 * @param ColumnDefinition $columnDefinition Raw column definition
+		 * @return ColumnDefinition Column definition with default values added
 		 */
-		private function addDefaultValues(array $columnDefinition): array {
-			$result = $columnDefinition;
-			$columnType = $result['type'];
-			
-			// Add default limit if missing
-			if (!isset($result['limit'])) {
-				if ($result['type'] === 'enum' && !empty($result['values'])) {
-					// Must match DDLTypeMapper's fallback-VARCHAR sizing exactly
-					// (TypeMapper::enumFallbackLimit()) — a mismatch here means
-					// this diff predicts a different limit than the DDL compiler
-					// actually renders, producing a spurious diff forever.
-					$result['limit'] = TypeMapper::enumFallbackLimit($result['values']);
-				} else {
-					$result['limit'] = TypeMapper::getDefaultLimit($columnType);
-				}
+		private function addDefaultValues(ColumnDefinition $columnDefinition): ColumnDefinition {
+			// Limit already set — nothing to fill in
+			if ($columnDefinition->limit !== null) {
+				return $columnDefinition;
 			}
-			
-			return $result;
+
+			if ($columnDefinition->type === 'enum' && !empty($columnDefinition->values)) {
+				// Must match DDLTypeMapper's fallback-VARCHAR sizing exactly
+				// (TypeMapper::enumFallbackLimit()) — a mismatch here means
+				// this diff predicts a different limit than the DDL compiler
+				// actually renders, producing a spurious diff forever.
+				$limit = TypeMapper::enumFallbackLimit($columnDefinition->values);
+			} else {
+				$limit = TypeMapper::getDefaultLimit($columnDefinition->type);
+			}
+
+			// ColumnDefinition is readonly — "filling in" the limit means
+			// building a new instance with every other field carried over unchanged.
+			$fields = $columnDefinition->toArray();
+			$fields['limit'] = $limit;
+			return new ColumnDefinition(...$fields);
 		}
 		
 		/**
