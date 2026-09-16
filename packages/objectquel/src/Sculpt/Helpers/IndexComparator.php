@@ -134,18 +134,35 @@
 		
 		
 		/**
-		 * Retrieves all database indexes defined for a specific table
+		 * Retrieves all database indexes defined for a specific table.
+		 * On SQLite, a fulltext index is a separate FTS5 virtual table, not
+		 * a schema-level index — getIndexes() can never see it — so it's
+		 * merged in here from a dedicated lookup instead. Without this, an
+		 * already-created fulltext index would report as missing (and be
+		 * re-"added") on every single make:migrations run, forever.
 		 * @param string $tableName The name of the database table to get indexes for
 		 * @return array<string, IndexDefinition> Formatted array of database indexes with their configurations
 		 */
 		public function getTableIndexes(string $tableName): array {
-			return array_map(function ($index) {
+			$result = array_map(function ($index) {
 				return [
 					'columns' => $index['columns'],   // Array of column names included in this index
 					'type'    => $index['type'],      // Original index type from database
 					'unique'  => strtoupper($index['type']) === 'UNIQUE'  // Convert type to boolean flag for uniqueness
 				];
 			}, $this->connection->getIndexes($tableName));
+
+			if ($this->platform->getDatabaseType() === 'sqlite') {
+				foreach ($this->connection->getSqliteFts5IndexesForTable($tableName) as $indexName => $fts5Index) {
+					$result[$indexName] = [
+						'columns' => $fts5Index['columns'],
+						'type'    => 'FULLTEXT',
+						'unique'  => false,
+					];
+				}
+			}
+
+			return $result;
 		}
 		
 		/**

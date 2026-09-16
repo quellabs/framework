@@ -454,6 +454,18 @@
 		}
 
 		/**
+		 * Returns every SQLite FTS5 external-content virtual table built
+		 * against $tableName, keyed by its own name, with the columns it
+		 * indexes. See SqliteFulltextIndexInspector::getFts5IndexesForTable()
+		 * for why this exists — getIndexes() can never report these itself.
+		 * @param string $tableName
+		 * @return array<string, array{columns: list<string>}>
+		 */
+		public function getSqliteFts5IndexesForTable(string $tableName): array {
+			return $this->getSqliteFulltextIndexInspector()->getFts5IndexesForTable($tableName);
+		}
+
+		/**
 		 * Retrieves foreign key constraint definitions for a database table.
 		 *
 		 * Implemented for every engine getDatabaseType() can identify; the

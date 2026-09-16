@@ -55,6 +55,7 @@
 			foreach ($rows as $row) {
 				$type = NativeColumnTypeMapper::sqliteType($row['type']);
 				$precisionScale = $type === 'decimal' ? $this->parseSqliteNumericPrecisionScale($row['type']) : new NumericPrecisionScale(null, null);
+				$isIdentity = $identityByColumn[$row['name']] ?? false;
 
 				$limit = match ($type) {
 					'string', 'char' => $this->parseSqliteLimit($row['type']),
@@ -66,12 +67,19 @@
 					php_type: TypeMapper::phinxTypeToPhpType($type),
 					limit: $limit,
 					default: $this->normalizeSqliteDefault($row['dflt_value']),
-					nullable: (int)$row['notnull'] === 0,
+					// A rowid-alias identity column (`INTEGER PRIMARY KEY
+					// AUTOINCREMENT`) always reports notnull=0 here, even
+					// though it can never actually hold NULL -- inserting
+					// NULL there triggers autoincrement rather than storing
+					// a null value. Taking that literally would make this
+					// column diff as "nullable" against every entity's
+					// (correctly) non-nullable identity declaration, forever.
+					nullable: $isIdentity ? false : (int)$row['notnull'] === 0,
 					precision: $precisionScale->precision,
 					scale: $precisionScale->scale,
 					unsigned: false,
 					generated: null,
-					identity: $identityByColumn[$row['name']] ?? false,
+					identity: $isIdentity,
 					primary_key: in_array($row['name'], $primaryKey, true),
 					values: null,
 				);

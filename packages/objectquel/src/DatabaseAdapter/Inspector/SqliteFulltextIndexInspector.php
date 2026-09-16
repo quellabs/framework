@@ -63,4 +63,66 @@
 
 			return $matches[1];
 		}
+
+		/**
+		 * Returns every FTS5 external-content virtual table built against
+		 * $baseTable, keyed by its own name, with the columns it indexes —
+		 * the reverse direction of getFts5BaseTable() (name -> base table
+		 * becomes base table -> names+columns). Needed so IndexComparator
+		 * can recognize an already-created fulltext index as present:
+		 * DatabaseAdapter::getIndexes() can never see it (it's a virtual
+		 * table, not a schema-level index — see DestroyIndexExecutor's
+		 * docblock), so without this, a fulltext index would report as
+		 * missing and be re-"added" on every single make:migrations run,
+		 * forever, even immediately after it was created.
+		 * @param string $baseTable
+		 * @return array<string, array{columns: list<string>}>
+		 */
+		public function getFts5IndexesForTable(string $baseTable): array {
+			$statement = $this->adapter->execute("SELECT name, sql FROM sqlite_master WHERE type = 'table'");
+
+			if ($statement === null) {
+				return [];
+			}
+
+			$result = [];
+
+			foreach ($statement->fetchAll('assoc') as $row) {
+				if (!preg_match('/using\s+fts5/i', $row['sql'])) {
+					continue;
+				}
+
+				if (!preg_match("/content\s*=\s*'([^']*)'/i", $row['sql'], $contentMatch) || $contentMatch[1] !== $baseTable) {
+					continue;
+				}
+
+				$columns = $this->parseFts5Columns($row['sql']);
+
+				if ($columns !== []) {
+					$result[$row['name']] = ['columns' => $columns];
+				}
+			}
+
+			return $result;
+		}
+
+		/**
+		 * Parses the quoted column list out of a `CREATE VIRTUAL TABLE ...
+		 * USING fts5(col1, col2, content=..., content_rowid=...)`
+		 * statement — everything before the first `content=` option,
+		 * matching the exact form
+		 * QuelToSQLCreateIndex::compileSqliteFulltext() always generates
+		 * (backtick-quoted columns, since SQLite identifiers are quoted
+		 * with backticks — see SqlIdentifierQuoter).
+		 * @param string $createTableSql
+		 * @return list<string>
+		 */
+		private function parseFts5Columns(string $createTableSql): array {
+			if (!preg_match('/using\s+fts5\s*\((.*?)\s*,\s*content\s*=/is', $createTableSql, $matches)) {
+				return [];
+			}
+
+			preg_match_all('/`([^`]+)`/', $matches[1], $columnMatches);
+			return $columnMatches[1];
+		}
 	}
