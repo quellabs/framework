@@ -24,22 +24,11 @@
 			};
 		}
 
-		/**
-		 * The constructor-disabled mock never initializes EntityManager's
-		 * $debugQuerySignal property, but __destruct() reads it when the
-		 * mock is garbage collected at the end of the test — fatal
-		 * ("must not be accessed before initialization") unless it's
-		 * explicitly initialized to null first via reflection.
-		 */
 		private function makeEntityManagerMock(): EntityManager {
-			$mock = $this->getMockBuilder(EntityManager::class)
+			return $this->getMockBuilder(EntityManager::class)
 				->disableOriginalConstructor()
 				->onlyMethods(['executeQuery'])
 				->getMock();
-
-			(new \ReflectionProperty(EntityManager::class, 'debugQuerySignal'))->setValue($mock, null);
-
-			return $mock;
 		}
 
 		public function testUpDelegatesToEntityManagerExecuteQuery(): void {
