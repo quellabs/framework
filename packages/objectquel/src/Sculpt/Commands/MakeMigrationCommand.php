@@ -15,26 +15,14 @@
 	 */
 	class MakeMigrationCommand extends MakeCommandBase {
 
-		/**
-		 * Get the command name for CLI usage.
-		 * @return string Command signature
-		 */
 		public function getSignature(): string {
 			return 'make:migration';
 		}
 
-		/**
-		 * Get a brief description of the command.
-		 * @return string Brief description
-		 */
 		public function getDescription(): string {
 			return 'Create a blank migration file for hand-written schema or data changes';
 		}
 
-		/**
-		 * Get detailed help information for the command.
-		 * @return string Help text with usage examples
-		 */
 		public function getHelp(): string {
 			return <<<HELP
 DESCRIPTION:

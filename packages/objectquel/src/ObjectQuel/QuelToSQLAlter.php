@@ -147,17 +147,14 @@
 		 * `add attr = type constraints backfill 'literal'` — adds the column
 		 * with a transient DEFAULT so existing rows get backfilled, then
 		 * drops the default again so it isn't a second, persisted source of
-		 * truth alongside @Orm\Column(default=...) (see
-		 * objectquel-migrations-implementation-plan.md, Phase 0.2).
+		 * truth alongside @Orm\Column(default=...).
 		 *
-		 * MySQL/MariaDB and PostgreSQL share identical syntax for both the
-		 * add and the cleanup step. SQL Server's `ADD ... DEFAULT` creates a
-		 * named default-constraint object that must be dropped by name
-		 * (DefaultConstraintNamer). SQLite is a deliberate one-statement
-		 * carve-out: it has no ALTER COLUMN of any kind, so the default is
-		 * left in place after the row backfill — harmless, since append()
-		 * never reads a column's DB-level default (see the plan doc's
-		 * "Current state" note).
+		 * MySQL/MariaDB and PostgreSQL share identical add/cleanup syntax.
+		 * SQL Server's `ADD ... DEFAULT` creates a named default-constraint
+		 * object that must be dropped by name (DefaultConstraintNamer).
+		 * SQLite is a deliberate one-statement carve-out: no ALTER COLUMN at
+		 * all, so the default is left in place after backfill — harmless,
+		 * since append() never reads a column's DB-level default.
 		 * @param string $tableName
 		 * @param AstColumnDefinition $column
 		 * @param string $backfillValue
@@ -517,12 +514,11 @@
 
 		/**
 		 * Whether adding a column with a DEFAULT creates a separate named
-		 * constraint object that must be addressed by name to drop again
-		 * (see compileAddColumnWithBackfill()) — true only for SQL Server.
-		 * MySQL/PostgreSQL target the column directly (`ALTER COLUMN ...
-		 * DROP DEFAULT`); nothing is infeasible either way, so this is a
-		 * syntax-form choice, not a PlatformCapabilitiesInterface capability
-		 * gate — same category as usesNativeDropClause() just above.
+		 * constraint object that must be dropped by name (SQL Server only —
+		 * MySQL/PostgreSQL drop it by targeting the column directly). A
+		 * dialect syntax-form choice, not a capability gate — nothing is
+		 * infeasible either way — so it stays a private helper rather than
+		 * a PlatformCapabilitiesInterface method.
 		 * @return bool
 		 */
 		private function usesNamedDefaultConstraint(): bool {

@@ -10,50 +10,29 @@
 
 	/**
 	 * Generates migration files from schema change descriptors, as real
-	 * ObjectQuel DDL statements run through AbstractMigration::query() —
-	 * replaces PhinxMigrationBuilder (see Phase 5 of
-	 * objectquel-migrations-implementation-plan.md).
-	 *
-	 * Same input contract as PhinxMigrationBuilder: the $allChanges array
-	 * passed to generateMigrationFile() is keyed by table name, each value
-	 * a change descriptor — see that class's docblock for the exact shape,
-	 * which doesn't change here.
+	 * ObjectQuel DDL statements run through AbstractMigration::query(). The
+	 * $allChanges array passed to generateMigrationFile() is keyed by table
+	 * name, each value a change descriptor (see the TableChanges/AllChanges
+	 * phpstan types below).
 	 *
 	 * Per table: a new table becomes one `create tableName (...)`
-	 * statement; column/primary-key changes on an existing table become
-	 * one combined `alter tableName (add ..., drop ..., retype ...,
-	 * primary key (...))` statement (simpler than Phinx's separate fluent
-	 * call per operation type — Quel's `alter` already takes multiple
-	 * comma-separated ops in one statement); index changes are standalone
-	 * `index .../destroy ... on ...` statements, never nested inside
-	 * `alter`. Foreign keys are a deliberate second pass over every table,
-	 * after every table/column/index change, so a table a new FK
-	 * references is guaranteed to already exist — same ordering rule
-	 * PhinxMigrationBuilder already used, carried over unchanged.
+	 * statement; column/primary-key changes on an existing table become one
+	 * combined `alter tableName (add ..., drop ..., retype ..., primary key
+	 * (...))` statement — Quel's `alter` takes multiple comma-separated ops
+	 * in one statement; index changes are standalone `index .../destroy
+	 * ... on ...` statements, never nested inside `alter`. Foreign keys are
+	 * a deliberate second pass over every table, after every table/column/
+	 * index change, so a table a new FK references is guaranteed to already
+	 * exist.
 	 *
-	 * Enum and JSON columns need no platform-specific resolution here the
-	 * way PhinxMigrationBuilder needed: `enum(...)` is always emitted
-	 * verbatim (QuelToSQLCreate/QuelToSQLAlter already pick native ENUM vs.
-	 * VARCHAR at DDL-compile time — see Phase 0.1), and 'json' is always
-	 * the canonical type name emitted (DDLTypeMapper already renders
-	 * 'jsonb' for PostgreSQL — see Phase 0's "Current state" note). The one
-	 * remaining platform-aware step is the reverse of that for JSON: a
-	 * modified or deleted column's raw introspected type can legitimately
-	 * be the platform's native JSON type name (e.g. 'jsonb' on PostgreSQL,
-	 * since SchemaComparator::getModifiedColumns()/getDeletedColumns()
-	 * return the original un-normalized definitions — see Phase 0.1's
-	 * companion fix), so that needs recognizing back to 'json' before
-	 * rendering, mirroring SchemaComparator::normalizeColumnDefinition()'s
-	 * own JSON step.
-	 *
-	 * Not reproduced here: PhinxMigrationBuilder's PostgreSQL-fulltext raw-
-	 * execute() workaround (Postgres fulltext is native Quel DDL now — see
-	 * Phase 0's "Current state" note) and its MySQL auto-increment-needs-
-	 * an-index workaround for an identity column that isn't part of the
-	 * primary key (an edge case the plan doesn't call out for this phase,
-	 * and one the entity/DDL layer elsewhere doesn't treat as a first-class
-	 * scenario either — identity columns are the primary key in every
-	 * schema this generator has to handle in practice).
+	 * `enum(...)` is always emitted verbatim — QuelToSQLCreate/QuelToSQLAlter
+	 * pick native ENUM vs. VARCHAR at DDL-compile time — and 'json' is
+	 * always the canonical type name emitted. The one platform-aware step
+	 * is the reverse of that for JSON: a modified/deleted column's raw
+	 * introspected type can legitimately be the platform's native JSON type
+	 * name (e.g. 'jsonb' on PostgreSQL, since SchemaComparator returns
+	 * un-normalized definitions there), so resolveType() recognizes that
+	 * back to 'json' before rendering.
 	 *
 	 * @phpstan-import-type ColumnDefinition from DatabaseAdapter
 	 * @phpstan-import-type ForeignKeyDefinition from DatabaseAdapter
@@ -271,9 +250,7 @@ PHP;
 		}
 
 		/**
-		 * Ensure all expected keys exist in a change descriptor. See
-		 * PhinxMigrationBuilder::normalizeChanges() — identical logic,
-		 * unrelated to Phinx.
+		 * Fills in default values for keys a change descriptor may omit.
 		 * @param TableChanges $changes Raw change descriptor, possibly missing optional keys
 		 * @return array{
 		 *     added: array<string, ColumnDefinition>,
@@ -302,12 +279,10 @@ PHP;
 
 		/**
 		 * Wraps a Quel statement as a PHP source line calling
-		 * AbstractMigration::query(). addslashes() is the second of the two
-		 * escaping layers the plan calls for — the first (QuelLiteralEscaper)
-		 * already ran on any literal spliced into $quel; this layer escapes
-		 * the *whole* resulting Quel text for its own PHP single-quoted
-		 * string literal, the same job MigrationCodeBuilder::execute()'s
-		 * addslashes($segment['sql']) call already does for raw SQL.
+		 * AbstractMigration::query(). addslashes() here is the second of two
+		 * escaping layers — the first (QuelLiteralEscaper) already ran on
+		 * any literal spliced into $quel; this escapes the *whole* resulting
+		 * Quel text for its own PHP single-quoted string literal.
 		 * @param string $quel
 		 * @return string
 		 */
@@ -405,9 +380,8 @@ PHP;
 		/**
 		 * Build one `add` op for a newly-added column, appending a
 		 * `backfill` clause when the column is non-nullable and the table
-		 * already has rows — see Phase 0.2/Phase 5's backfill design.
-		 * Never needed for a brand-new table (buildCreateTableStatement()
-		 * never calls this) — a table with no rows yet needs no backfill.
+		 * already has rows. Never needed for a brand-new table
+		 * (buildCreateTableStatement() never calls this).
 		 * @param string $tableName
 		 * @param string $columnName
 		 * @param ColumnDefinition $definition
@@ -447,10 +421,8 @@ PHP;
 		}
 
 		/**
-		 * Whether $tableName currently has at least one row — checked live
-		 * against the connected database, the same way the rest of the
-		 * diffing this generator consumes is live (see
-		 * EntitySchemaAnalyzer).
+		 * Whether $tableName currently has at least one row, checked live
+		 * against the connected database.
 		 * @param string $tableName
 		 * @return bool
 		 */
@@ -647,11 +619,7 @@ PHP;
 
 		/**
 		 * Recognizes the platform's native JSON type name back to the
-		 * canonical 'json' — needed because a modified/deleted column's
-		 * definition can carry the raw introspected type (e.g. 'jsonb' on
-		 * PostgreSQL) rather than the canonical name; see class docblock.
-		 * No enum resolution needed here — enum is always emitted verbatim
-		 * regardless of platform (see class docblock).
+		 * canonical 'json' — see class docblock.
 		 * @param ColumnDefinition $definition
 		 * @return string
 		 */

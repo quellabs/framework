@@ -10,16 +10,11 @@
 	 * (and, for hand-written migrations, DML) statements run through
 	 * `query()`.
 	 *
-	 * Deliberately has no `execute(string $rawSql)` escape hatch — if Quel
-	 * DDL can't express something yet, that's a gap to close in the DDL
-	 * layer (`create`/`alter`/`destroy`/`index`), not a reason to fall back
-	 * to raw SQL from inside a migration (see
-	 * objectquel-migrations-implementation-plan.md, Phase 1).
+	 * Deliberately has no `execute(string $rawSql)` escape hatch — a gap in
+	 * Quel DDL should be closed in the DDL layer, not bypassed with raw SQL.
 	 *
-	 * File/class naming: `<YmdHis>_<ClassName>.php`, version = the
-	 * timestamp — the same scheme Phinx-style migration tools already use,
-	 * kept for sortable, diffable filenames rather than inventing a new
-	 * ordering scheme.
+	 * File/class naming: `<YmdHis>_<ClassName>.php`, version = the timestamp
+	 * — the Phinx-style convention, kept for sortable, diffable filenames.
 	 */
 	abstract class AbstractMigration {
 

@@ -8,23 +8,16 @@
 	 * Derives the canonical name for a column's DEFAULT constraint —
 	 * `df_{table}_{column}` — needed only on SQL Server, where `ADD COLUMN
 	 * ... DEFAULT ...` creates a named constraint object that must be
-	 * addressed by name to drop afterward (unlike MySQL/PostgreSQL, where
-	 * `DROP DEFAULT` targets the column directly). See QuelToSQLAlter's
-	 * `backfill` compilation and PlatformCapabilitiesInterface::
-	 * supportsNamedForeignKeys() for the same platform-conditional-naming
-	 * pattern applied to foreign keys.
-	 *
-	 * Never author-supplied — always derived, same decision
-	 * ForeignKeyConstraintNamer makes for foreign key constraint names.
+	 * addressed by name to drop (unlike MySQL/PostgreSQL, where `DROP
+	 * DEFAULT` targets the column directly). See QuelToSQLAlter's
+	 * `backfill` compilation. Never author-supplied — always derived, same
+	 * as ForeignKeyConstraintNamer.
 	 */
 	class DefaultConstraintNamer {
 
 		/**
-		 * Tightest identifier-length limit shared by every supported
-		 * dialect (see ForeignKeyConstraintNamer::MAX_LENGTH) — applied here
-		 * too even though this namer is only ever invoked on SQL Server
-		 * (128-character limit), for the same "one rule, not a per-dialect
-		 * split" reasoning as the foreign key namer.
+		 * Shared cross-dialect limit (see ForeignKeyConstraintNamer::MAX_LENGTH)
+		 * rather than SQL Server's actual 128 — one rule, not a per-dialect split.
 		 */
 		private const int MAX_LENGTH = 63;
 

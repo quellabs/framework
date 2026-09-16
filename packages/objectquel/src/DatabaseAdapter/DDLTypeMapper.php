@@ -252,14 +252,9 @@
 		}
 
 		/**
-		 * Declared enum values, defaulting to an empty list. Only ever read
-		 * from the four `'enum' =>` match arms below, which only run when
-		 * $columnDefinition['type'] === 'enum' — a state both callers
-		 * (AstColumnDefinition::toColumnDefinitionArray() and entity
-		 * metadata's columnDefinitions, see TempTableExecutor) always pair
-		 * with a real, non-empty values list. The static type stays
-		 * nullable because the broader ColumnDefinition shape covers every
-		 * column type, most of which never set 'values' at all.
+		 * Declared enum values, defaulting to an empty list — nullable
+		 * because the broader ColumnDefinition shape covers every column
+		 * type, most of which never set 'values' at all.
 		 * @param array{values: string[]|null} $columnDefinition
 		 * @return string[]
 		 */

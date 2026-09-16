@@ -177,10 +177,8 @@ HELP;
 		}
 
 		/**
-		 * The pending migrations migrate($target) would actually apply —
-		 * every pending migration up to and including $target, or all of
-		 * them when $target is null. Mirrors MigrationRunner::migrate()'s
-		 * own target-inclusive loop condition, without invoking any up().
+		 * The pending migrations migrate($target) would actually apply,
+		 * without invoking any up() — mirrors its target-inclusive condition.
 		 * @param MigrationRunner $runner
 		 * @param int|null $target
 		 * @return list<LocatedMigration>

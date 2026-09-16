@@ -6,23 +6,16 @@
 
 	/**
 	 * Tracks which migrations have been applied, in a dedicated table
-	 * (default name `quel_migrations`, see Configuration::getMigrationTable()).
+	 * (default `quel_migrations`, see Configuration::getMigrationTable()).
 	 *
-	 * The table itself is created via ObjectQuel DDL (`create ...`), through
-	 * EntityManager::executeQuery() — `create`/`alter`/`destroy` are schema
-	 * statements that name a table directly and need no declared range.
-	 * Reading/writing its rows is different: every ObjectQuel DML verb
-	 * (`append`/`retrieve`/`delete`) requires a declared `range of x is
-	 * <Entity>`, which in turn requires a real, annotated entity class the
-	 * application's EntityStore can resolve — not something this internal
-	 * bookkeeping table has or needs. Row access therefore goes through the
-	 * underlying CakePHP connection's parameterized query builder
-	 * (insertQuery()/selectQuery()/deleteQuery()) instead — structured,
-	 * bound-parameter queries, not hand-written SQL text.
+	 * The table is created via ObjectQuel DDL (`create ...`), but rows are
+	 * read/written through the underlying CakePHP query builder instead of
+	 * ObjectQuel DML — DML verbs need a declared `range of x is <Entity>`
+	 * backed by a real annotated entity, which this internal bookkeeping
+	 * table has no need for.
 	 *
-	 * `version` is never DB-generated (no identity/auto-increment): it's
-	 * always the calling migration's own `<YmdHis>` filename timestamp,
-	 * supplied explicitly by the caller of recordApplied().
+	 * `version` is never DB-generated: it's always the migration's own
+	 * `<YmdHis>` filename timestamp, passed in by recordApplied()'s caller.
 	 */
 	class MigrationRepository {
 

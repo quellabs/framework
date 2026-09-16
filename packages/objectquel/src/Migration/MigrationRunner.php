@@ -7,19 +7,13 @@
 
 	/**
 	 * Drives migration discovery and execution — the replacement for
-	 * Phinx's Manager inside QuelMigrateCommand (see Phase 3 of
-	 * objectquel-migrations-implementation-plan.md).
+	 * Phinx's Manager inside QuelMigrateCommand.
 	 *
-	 * Each migration's up()/down() runs wrapped in its own transaction when
-	 * PlatformCapabilitiesInterface::supportsTransactionalDDL() is true
-	 * (PostgreSQL, SQLite, SQL Server); otherwise best-effort (MySQL/
-	 * MariaDB, whose DDL auto-commits per statement regardless). Either
-	 * way, a failing migration stops the run — later pending/applied
-	 * migrations in the same migrate()/rollback() call are never touched,
-	 * mirroring DdlRunner::runTransactionally()'s semantics elsewhere in
-	 * this codebase, though mirrored rather than reused directly: DdlRunner
-	 * wraps a flat list of SQL statements, not an arbitrary migration
-	 * callable.
+	 * Each migration's up()/down() runs in its own transaction when
+	 * PlatformCapabilitiesInterface::supportsTransactionalDDL() is true;
+	 * otherwise best-effort, since MySQL/MariaDB DDL auto-commits per
+	 * statement regardless. Either way, a failing migration stops the run —
+	 * later pending/applied migrations in the same call are never touched.
 	 */
 	class MigrationRunner {
 
