@@ -109,7 +109,7 @@
 			$this->assertStringContainsString("\$this->query('destroy posts');", $content);
 		}
 
-		public function testNewTableWithAnAddedIndexEmitsAStandaloneIndexStatement(): void {
+		public function testNewTableWithAnAddedIndexEmbedsItInTheCreateStatement(): void {
 			$changes = $this->emptyChangeSet();
 			$changes['table_not_exists'] = true;
 			$changes['added'] = ['email' => $this->baseColumn(['limit' => 255])];
@@ -117,8 +117,14 @@
 
 			$content = $this->buildMigrationContent(['users' => $changes]);
 
-			$this->assertStringContainsString("\$this->query('index on users is idx_email (email)');", $content);
-			$this->assertStringContainsString("\$this->query('destroy idx_email on users');", $content);
+			$this->assertStringContainsString(
+				"\$this->query('create users (email = string(255), index idx_email (email))');",
+				$content
+			);
+			// Dropping the table on down() takes its indexes with it — no
+			// separate index-drop statement is needed.
+			$this->assertStringContainsString("\$this->query('destroy users');", $content);
+			$this->assertStringNotContainsString('idx_email on', $content);
 		}
 
 		// -------------------------------------------------------------------------
@@ -270,16 +276,17 @@
 		// Indexes on an existing table
 		// -------------------------------------------------------------------------
 
-		public function testAddedUniqueIndexEmitsUniqueKeyword(): void {
+		public function testAddedUniqueIndexIsFoldedIntoTheAlterStatement(): void {
 			$changes = $this->emptyChangeSet();
 			$changes['indexes']['added'] = ['idx_email' => ['columns' => ['email'], 'type' => 'UNIQUE', 'unique' => true]];
 
 			$content = $this->buildMigrationContent(['users' => $changes]);
 
-			$this->assertStringContainsString("\$this->query('index unique on users is idx_email (email)');", $content);
+			$this->assertStringContainsString("\$this->query('alter users (add unique index idx_email (email))');", $content);
+			$this->assertStringContainsString("\$this->query('alter users (drop index idx_email)');", $content);
 		}
 
-		public function testModifiedIndexEmitsDropThenAddOnUpAndTheInverseOnDown(): void {
+		public function testModifiedIndexEmitsDropThenAddOnUpAndTheInverseOnDownWithinOneAlterStatement(): void {
 			$changes = $this->emptyChangeSet();
 			$changes['indexes']['modified'] = [
 				'idx_name' => [
@@ -290,9 +297,14 @@
 
 			$content = $this->buildMigrationContent(['users' => $changes]);
 
-			$this->assertStringContainsString("\$this->query('destroy idx_name on users');", $content);
-			$this->assertStringContainsString("\$this->query('index on users is idx_name (first_name, last_name)');", $content);
-			$this->assertStringContainsString("\$this->query('index on users is idx_name (first_name)');", $content);
+			$this->assertStringContainsString(
+				"\$this->query('alter users (drop index idx_name, add index idx_name (first_name, last_name))');",
+				$content
+			);
+			$this->assertStringContainsString(
+				"\$this->query('alter users (drop index idx_name, add index idx_name (first_name))');",
+				$content
+			);
 		}
 
 		// -------------------------------------------------------------------------

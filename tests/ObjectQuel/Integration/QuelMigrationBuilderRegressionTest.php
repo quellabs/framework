@@ -161,9 +161,10 @@
 			// Added nullable enum column.
 			$this->assertStringContainsString("add priority = enum(\\'low\\', \\'high\\') nullable", $content);
 
-			// Index add/drop, standalone statements.
-			$this->assertStringContainsString('index on mig_reg_orders is idx_mig_reg_orders_quantity (quantity)', $content);
-			$this->assertStringContainsString('destroy idx_mig_reg_orders_price_old on mig_reg_orders', $content);
+			// Index add/drop, folded into the same combined alter statement
+			// as the column changes above.
+			$this->assertStringContainsString('add index idx_mig_reg_orders_quantity (quantity)', $content);
+			$this->assertStringContainsString('drop index idx_mig_reg_orders_price_old', $content);
 
 			// Added foreign key.
 			$this->assertStringContainsString(

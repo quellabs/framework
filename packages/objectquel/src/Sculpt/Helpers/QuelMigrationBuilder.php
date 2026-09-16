@@ -18,14 +18,17 @@
 	 * phpstan types below).
 	 *
 	 * Per table: a new table becomes one `create tableName (...)`
-	 * statement; column/primary-key changes on an existing table become one
-	 * combined `alter tableName (add ..., drop ..., retype ..., primary key
-	 * (...))` statement — Quel's `alter` takes multiple comma-separated ops
-	 * in one statement; index changes are standalone `index .../destroy
-	 * ... on ...` statements, never nested inside `alter`. Foreign keys are
-	 * a deliberate second pass over every table, after every table/column/
-	 * index change, so a table a new FK references is guaranteed to already
-	 * exist.
+	 * statement, with any new indexes embedded directly in its column list
+	 * (`create t (..., [unique|fulltext] index name (cols))`); column/
+	 * primary-key/index changes on an existing table become one combined
+	 * `alter tableName (add ..., drop ..., retype ..., primary key (...),
+	 * add index name (cols), drop index name)` statement — Quel's `alter`
+	 * takes multiple comma-separated ops in one statement, and both index
+	 * sub-ops are real grammar (not sugar layered on here) that the
+	 * executor already knows how to interleave with the column/primary-key
+	 * ops correctly. Foreign keys are a deliberate second pass over every
+	 * table, after every table/column/index change, so a table a new FK
+	 * references is guaranteed to already exist.
 	 *
 	 * `enum(...)` is always emitted verbatim — QuelToSQLCreate/QuelToSQLAlter
 	 * pick native ENUM vs. VARCHAR at DDL-compile time — and 'json' is
@@ -163,16 +166,12 @@
 			// left for pass 2 below — see class docblock.
 			foreach ($normalized as $tableName => $changes) {
 				if ($changes['table_not_exists']) {
-					$up[] = $this->queryStatement($this->buildCreateTableStatement($tableName, $changes['added']));
+					$up[] = $this->queryStatement($this->buildCreateTableStatement($tableName, $changes['added'], $changes['indexes']['added']));
 					// Table drop is deferred to the very end of down() — see below — so
 					// it runs after any foreign key pointing at (or added to) it has
-					// already been undone.
+					// already been undone. Dropping the table takes its indexes with
+					// it, so down() needs no separate index-drop statements here.
 					$downDropTables[] = $this->queryStatement("destroy {$tableName}");
-
-					foreach ($changes['indexes']['added'] as $indexName => $indexConfig) {
-						$up[] = $this->queryStatement($this->buildAddIndexStatement($tableName, $indexName, $indexConfig));
-						$downColumnsAndIndexes[] = $this->queryStatement($this->buildDropIndexStatement($tableName, $indexName));
-					}
 
 					continue;
 				}
@@ -186,23 +185,6 @@
 
 				if ($alterDown !== []) {
 					$downColumnsAndIndexes[] = $this->queryStatement("alter {$tableName} (" . implode(', ', $alterDown) . ")");
-				}
-
-				foreach ($changes['indexes']['added'] as $indexName => $indexConfig) {
-					$up[] = $this->queryStatement($this->buildAddIndexStatement($tableName, $indexName, $indexConfig));
-					$downColumnsAndIndexes[] = $this->queryStatement($this->buildDropIndexStatement($tableName, $indexName));
-				}
-
-				foreach ($changes['indexes']['modified'] as $indexName => $configs) {
-					$up[] = $this->queryStatement($this->buildDropIndexStatement($tableName, $indexName));
-					$up[] = $this->queryStatement($this->buildAddIndexStatement($tableName, $indexName, $configs['entity']));
-					$downColumnsAndIndexes[] = $this->queryStatement($this->buildDropIndexStatement($tableName, $indexName));
-					$downColumnsAndIndexes[] = $this->queryStatement($this->buildAddIndexStatement($tableName, $indexName, $configs['database']));
-				}
-
-				foreach ($changes['indexes']['deleted'] as $indexName => $indexConfig) {
-					$up[] = $this->queryStatement($this->buildDropIndexStatement($tableName, $indexName));
-					$downColumnsAndIndexes[] = $this->queryStatement($this->buildAddIndexStatement($tableName, $indexName, $indexConfig));
 				}
 			}
 
@@ -315,12 +297,17 @@ PHP;
 		// -------------------------------------------------------------------------
 
 		/**
-		 * Build a `create tableName (...)` statement for a brand-new table.
+		 * Build a `create tableName (...)` statement for a brand-new table,
+		 * with any new indexes embedded directly in its column list —
+		 * `create`'s grammar accepts `[unique|fulltext] index name (cols)`
+		 * entries alongside columns (see Rules\CreateTable), the same sugar
+		 * `alter`'s `add index` uses.
 		 * @param string $tableName
 		 * @param array<string, ColumnDefinition> $columns
+		 * @param array<string, IndexConfig> $indexes
 		 * @return string
 		 */
-		private function buildCreateTableStatement(string $tableName, array $columns): string {
+		private function buildCreateTableStatement(string $tableName, array $columns, array $indexes = []): string {
 			$primaryKeys = $this->analyzeColumns($columns)['primaryKeys'];
 
 			$columnDefs = [];
@@ -333,17 +320,27 @@ PHP;
 				$columnDefs[] = 'primary key (' . implode(', ', $primaryKeys) . ')';
 			}
 
+			foreach ($indexes as $indexName => $indexConfig) {
+				$columnDefs[] = $this->renderIndexClause($indexName, $indexConfig);
+			}
+
 			return "create {$tableName} (" . implode(', ', $columnDefs) . ')';
 		}
 
 		/**
-		 * Build the comma-separated list of `alter`'s column/primary-key
-		 * sub-operations for one table, in one direction. `add` ops always
-		 * precede `primary key (...)` so a newly-added primary-key column
-		 * exists by the time the primary key change runs (these compile to
-		 * separate, sequentially-run SQL statements — see QuelToSQLAlter).
+		 * Build the comma-separated list of `alter`'s column/primary-key/
+		 * index sub-operations for one table, in one direction. `add` ops
+		 * always precede `primary key (...)` so a newly-added primary-key
+		 * column exists by the time the primary key change runs (these
+		 * compile to separate, sequentially-run SQL statements — see
+		 * QuelToSQLAlter). Index sub-ops are appended last; the executor
+		 * already runs every column/primary-key sub-op before any index
+		 * sub-op regardless of their order in this list (see
+		 * AlterTableExecutor::compileSql()), so their position here only
+		 * affects the generated Quel source's readability, not execution
+		 * order.
 		 * @param string $tableName
-		 * @param array{added: array<string, ColumnDefinition>, modified: array<string, ColumnModification>, deleted: array<string, ColumnDefinition>, primaryKey?: PrimaryKeyChangeSet} $changes
+		 * @param array{added: array<string, ColumnDefinition>, modified: array<string, ColumnModification>, deleted: array<string, ColumnDefinition>, indexes?: IndexChanges, primaryKey?: PrimaryKeyChangeSet} $changes
 		 * @param 'up'|'down' $direction
 		 * @return list<string>
 		 * @throws \RuntimeException If a non-nullable added column has no safe backfill value (up() only — see buildAddColumnOp())
@@ -351,6 +348,7 @@ PHP;
 		private function buildAlterColumnsOps(string $tableName, array $changes, string $direction): array {
 			$ops = [];
 			$primaryKeyChange = $changes['primaryKey'] ?? ['action' => null];
+			$indexChanges = $changes['indexes'] ?? ['added' => [], 'modified' => [], 'deleted' => []];
 
 			if ($direction === 'up') {
 				foreach ($changes['added'] as $columnName => $definition) {
@@ -374,6 +372,19 @@ PHP;
 					$ops[] = 'primary key (' . implode(', ', $primaryKeyChange['columns']) . ')';
 				} elseif ($primaryKeyChange['action'] === 'drop') {
 					$ops[] = 'drop primary key';
+				}
+
+				foreach ($indexChanges['added'] as $indexName => $indexConfig) {
+					$ops[] = $this->buildAddIndexOp($indexName, $indexConfig);
+				}
+
+				foreach ($indexChanges['modified'] as $indexName => $configs) {
+					$ops[] = $this->buildDropIndexOp($indexName);
+					$ops[] = $this->buildAddIndexOp($indexName, $configs['entity']);
+				}
+
+				foreach (array_keys($indexChanges['deleted']) as $indexName) {
+					$ops[] = $this->buildDropIndexOp($indexName);
 				}
 			} else {
 				// down(): mirror image of up() — added columns get dropped,
@@ -408,6 +419,19 @@ PHP;
 
 				if ($primaryKeyChange['action'] !== null && $restoreNeedsReaddedColumn) {
 					$ops[] = $previousPrimaryKey === [] ? 'drop primary key' : 'primary key (' . implode(', ', $previousPrimaryKey) . ')';
+				}
+
+				foreach (array_keys($indexChanges['added']) as $indexName) {
+					$ops[] = $this->buildDropIndexOp($indexName);
+				}
+
+				foreach ($indexChanges['modified'] as $indexName => $configs) {
+					$ops[] = $this->buildDropIndexOp($indexName);
+					$ops[] = $this->buildAddIndexOp($indexName, $configs['database']);
+				}
+
+				foreach ($indexChanges['deleted'] as $indexName => $indexConfig) {
+					$ops[] = $this->buildAddIndexOp($indexName, $indexConfig);
 				}
 			}
 
@@ -476,18 +500,20 @@ PHP;
 		}
 
 		// -------------------------------------------------------------------------
-		// Index statement builders
+		// Index sub-op builders — embedded in `create`/`alter`, never standalone
 		// -------------------------------------------------------------------------
 
 		/**
-		 * Build a standalone `index [unique|fulltext] on table is name
-		 * (cols)` statement.
-		 * @param string $tableName
+		 * Render a `[unique|fulltext] index name (cols)` clause — the
+		 * shared name+column-list grammar `create`'s embedded index
+		 * entries and `alter`'s `add index` sub-op both use, minus
+		 * whichever leading keyword the caller's context already supplies
+		 * (nothing for `create`, `add ` for `alter` — see buildAddIndexOp()).
 		 * @param string $indexName
 		 * @param IndexConfig $indexConfig
 		 * @return string
 		 */
-		private function buildAddIndexStatement(string $tableName, string $indexName, array $indexConfig): string {
+		private function renderIndexClause(string $indexName, array $indexConfig): string {
 			$type = strtoupper($indexConfig['type']);
 
 			$modifier = match ($type) {
@@ -497,17 +523,27 @@ PHP;
 			};
 
 			$columns = implode(', ', $indexConfig['columns']);
-			return "index {$modifier}on {$tableName} is {$indexName} ({$columns})";
+			return "{$modifier}index {$indexName} ({$columns})";
 		}
 
 		/**
-		 * Build a standalone `destroy name on table` statement.
-		 * @param string $tableName
+		 * Build an `add [unique|fulltext] index name (cols)` sub-op for
+		 * `alter`'s op list.
+		 * @param string $indexName
+		 * @param IndexConfig $indexConfig
+		 * @return string
+		 */
+		private function buildAddIndexOp(string $indexName, array $indexConfig): string {
+			return 'add ' . $this->renderIndexClause($indexName, $indexConfig);
+		}
+
+		/**
+		 * Build a `drop index name` sub-op for `alter`'s op list.
 		 * @param string $indexName
 		 * @return string
 		 */
-		private function buildDropIndexStatement(string $tableName, string $indexName): string {
-			return "destroy {$indexName} on {$tableName}";
+		private function buildDropIndexOp(string $indexName): string {
+			return "drop index {$indexName}";
 		}
 
 		// -------------------------------------------------------------------------
