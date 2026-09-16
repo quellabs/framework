@@ -102,16 +102,31 @@
 				return ['success' => false, 'message' => 'No changes detected. Migration file not created.'];
 			}
 
-			$date = date('YmdHis');
-			$className = "QuelSchemaMigration{$date}";
-			$filename = $this->migrationsPath . '/' . $date . '_' . $className . '.php';
-
 			// Create the migrations directory if it doesn't exist yet.
 			// The double is_dir() check guards against a race condition where another
 			// process creates the directory between our check and our mkdir() call.
 			if (!is_dir($this->migrationsPath) && !mkdir($this->migrationsPath, 0755, true) && !is_dir($this->migrationsPath)) {
 				return ['success' => false, 'message' => 'Failed to create migrations directory.'];
 			}
+
+			// date('YmdHis') only has one-second resolution — two calls within the
+			// same second (a fast script, or just two quick manual runs) would
+			// otherwise collide on both the filename and the version number.
+			// file_put_contents() would then silently overwrite the earlier
+			// migration file with the new one's content, but MigrationLocator/
+			// QuelMigrateCommand would still see that version as already applied
+			// (from the first run) and skip it forever — the schema change in
+			// the overwritten file would never actually run, with no error
+			// anywhere. Bumping past any version that already has a file on disk
+			// guarantees a fresh, always-increasing version every call.
+			$date = (int)date('YmdHis');
+
+			while (glob($this->migrationsPath . '/' . $date . '_*.php') !== []) {
+				$date++;
+			}
+
+			$className = "QuelSchemaMigration{$date}";
+			$filename = $this->migrationsPath . '/' . $date . '_' . $className . '.php';
 
 			if (file_put_contents($filename, $this->buildMigrationContent($className, $allChanges)) === false) {
 				return ['success' => false, 'message' => 'Failed to create migration file.'];

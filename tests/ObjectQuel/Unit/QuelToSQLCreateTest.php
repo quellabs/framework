@@ -33,7 +33,7 @@
 		public function testPermanentTableAcrossDialects(): void {
 			$ast = $this->parse('create Foo (id = integer)');
 
-			self::assertSame('CREATE TABLE `Foo` (`id` INT NOT NULL)', $this->compile($ast, 'mysql'));
+			self::assertSame('CREATE TABLE `Foo` (`id` INT NOT NULL) ENGINE=InnoDB', $this->compile($ast, 'mysql'));
 			self::assertSame('CREATE TABLE "Foo" ("id" INTEGER NOT NULL)', $this->compile($ast, 'pgsql'));
 			self::assertSame('CREATE TABLE `Foo` (`id` INTEGER NOT NULL)', $this->compile($ast, 'sqlite'));
 			self::assertSame('CREATE TABLE [Foo] ([id] INT NOT NULL)', $this->compile($ast, 'sqlsrv'));
@@ -42,7 +42,7 @@
 		public function testTemporaryTableAcrossDialects(): void {
 			$ast = $this->parse('create temporary Foo (id = integer)');
 
-			self::assertSame('CREATE TEMPORARY TABLE `Foo` (`id` INT NOT NULL)', $this->compile($ast, 'mysql'));
+			self::assertSame('CREATE TEMPORARY TABLE `Foo` (`id` INT NOT NULL) ENGINE=InnoDB', $this->compile($ast, 'mysql'));
 			self::assertSame('CREATE TEMPORARY TABLE "Foo" ("id" INTEGER NOT NULL)', $this->compile($ast, 'pgsql'));
 			self::assertSame('CREATE TEMPORARY TABLE `Foo` (`id` INTEGER NOT NULL)', $this->compile($ast, 'sqlite'));
 
@@ -54,7 +54,7 @@
 		public function testIfNotExistsIsInlineOnEveryDialectExceptSqlServer(): void {
 			$ast = $this->parse('create Foo (id = integer) if not exists');
 
-			self::assertSame('CREATE TABLE IF NOT EXISTS `Foo` (`id` INT NOT NULL)', $this->compile($ast, 'mysql'));
+			self::assertSame('CREATE TABLE IF NOT EXISTS `Foo` (`id` INT NOT NULL) ENGINE=InnoDB', $this->compile($ast, 'mysql'));
 			self::assertSame('CREATE TABLE IF NOT EXISTS "Foo" ("id" INTEGER NOT NULL)', $this->compile($ast, 'pgsql'));
 			self::assertSame('CREATE TABLE IF NOT EXISTS `Foo` (`id` INTEGER NOT NULL)', $this->compile($ast, 'sqlite'));
 		}
@@ -62,7 +62,7 @@
 		public function testIfNotExistsWithTemporaryIsInlineOnEveryDialectExceptSqlServer(): void {
 			$ast = $this->parse('create temporary Foo (id = integer) if not exists');
 
-			self::assertSame('CREATE TEMPORARY TABLE IF NOT EXISTS `Foo` (`id` INT NOT NULL)', $this->compile($ast, 'mysql'));
+			self::assertSame('CREATE TEMPORARY TABLE IF NOT EXISTS `Foo` (`id` INT NOT NULL) ENGINE=InnoDB', $this->compile($ast, 'mysql'));
 			self::assertSame('CREATE TEMPORARY TABLE IF NOT EXISTS "Foo" ("id" INTEGER NOT NULL)', $this->compile($ast, 'pgsql'));
 			self::assertSame('CREATE TEMPORARY TABLE IF NOT EXISTS `Foo` (`id` INTEGER NOT NULL)', $this->compile($ast, 'sqlite'));
 		}
@@ -89,7 +89,7 @@
 			$ast = $this->parse('create Foo (id = integer identity, name = string(50), primary key (id))');
 
 			self::assertSame(
-				'CREATE TABLE `Foo` (`id` INT NOT NULL AUTO_INCREMENT, `name` VARCHAR(50) NOT NULL, PRIMARY KEY (`id`))',
+				'CREATE TABLE `Foo` (`id` INT NOT NULL AUTO_INCREMENT, `name` VARCHAR(50) NOT NULL, PRIMARY KEY (`id`)) ENGINE=InnoDB',
 				$this->compile($ast, 'mysql')
 			);
 			self::assertSame(
@@ -118,7 +118,7 @@
 		public function testUnsignedIsRenderedOnlyOnMysql(): void {
 			$ast = $this->parse('create Foo (count = unsigned integer)');
 
-			self::assertSame('CREATE TABLE `Foo` (`count` INT UNSIGNED NOT NULL)', $this->compile($ast, 'mysql'));
+			self::assertSame('CREATE TABLE `Foo` (`count` INT UNSIGNED NOT NULL) ENGINE=InnoDB', $this->compile($ast, 'mysql'));
 			self::assertSame('CREATE TABLE "Foo" ("count" INTEGER NOT NULL)', $this->compile($ast, 'pgsql'));
 			self::assertSame('CREATE TABLE `Foo` (`count` INTEGER NOT NULL)', $this->compile($ast, 'sqlite'));
 			self::assertSame('CREATE TABLE [Foo] ([count] INT NOT NULL)', $this->compile($ast, 'sqlsrv'));
@@ -131,7 +131,7 @@
 		public function testBareUnsignedDefaultsToInteger(): void {
 			$ast = $this->parse('create Foo (count = unsigned)');
 
-			self::assertSame('CREATE TABLE `Foo` (`count` INT UNSIGNED NOT NULL)', $this->compile($ast, 'mysql'));
+			self::assertSame('CREATE TABLE `Foo` (`count` INT UNSIGNED NOT NULL) ENGINE=InnoDB', $this->compile($ast, 'mysql'));
 		}
 
 		/**
@@ -159,7 +159,7 @@
 			$ast = $this->parse('create Bridge (post_id = integer, tag_id = integer, primary key (post_id, tag_id))');
 
 			self::assertSame(
-				'CREATE TABLE `Bridge` (`post_id` INT NOT NULL, `tag_id` INT NOT NULL, PRIMARY KEY (`post_id`, `tag_id`))',
+				'CREATE TABLE `Bridge` (`post_id` INT NOT NULL, `tag_id` INT NOT NULL, PRIMARY KEY (`post_id`, `tag_id`)) ENGINE=InnoDB',
 				$this->compile($ast, 'mysql')
 			);
 			self::assertSame(
@@ -188,7 +188,7 @@
 			$ast = $this->parse('create Posts (id = integer identity, author_id = integer, primary key (id), foreign key (author_id) references Users (id))');
 
 			self::assertSame(
-				'CREATE TABLE `Posts` (`id` INT NOT NULL AUTO_INCREMENT, `author_id` INT NOT NULL, PRIMARY KEY (`id`), CONSTRAINT `fk_Posts_author_id` FOREIGN KEY (`author_id`) REFERENCES `Users` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION)',
+				'CREATE TABLE `Posts` (`id` INT NOT NULL AUTO_INCREMENT, `author_id` INT NOT NULL, PRIMARY KEY (`id`), CONSTRAINT `fk_Posts_author_id` FOREIGN KEY (`author_id`) REFERENCES `Users` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION) ENGINE=InnoDB',
 				$this->compile($ast, 'mysql')
 			);
 			self::assertSame(
@@ -212,7 +212,7 @@
 			$ast = $this->parse('create Posts (id = integer, author_id = integer, foreign key (author_id) references Users (id) on delete cascade on update restrict)');
 
 			self::assertSame(
-				'CREATE TABLE `Posts` (`id` INT NOT NULL, `author_id` INT NOT NULL, CONSTRAINT `fk_Posts_author_id` FOREIGN KEY (`author_id`) REFERENCES `Users` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT)',
+				'CREATE TABLE `Posts` (`id` INT NOT NULL, `author_id` INT NOT NULL, CONSTRAINT `fk_Posts_author_id` FOREIGN KEY (`author_id`) REFERENCES `Users` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT) ENGINE=InnoDB',
 				$this->compile($ast, 'mysql')
 			);
 		}
@@ -221,7 +221,7 @@
 			$ast = $this->parse('create Posts (id = integer, author_id = integer, foreign key (author_id) references Users (id) on update restrict on delete cascade)');
 
 			self::assertSame(
-				'CREATE TABLE `Posts` (`id` INT NOT NULL, `author_id` INT NOT NULL, CONSTRAINT `fk_Posts_author_id` FOREIGN KEY (`author_id`) REFERENCES `Users` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT)',
+				'CREATE TABLE `Posts` (`id` INT NOT NULL, `author_id` INT NOT NULL, CONSTRAINT `fk_Posts_author_id` FOREIGN KEY (`author_id`) REFERENCES `Users` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT) ENGINE=InnoDB',
 				$this->compile($ast, 'mysql')
 			);
 		}
@@ -230,7 +230,7 @@
 			$ast = $this->parse('create Posts (id = integer nullable, author_id = integer nullable, foreign key (author_id) references Users (id) on delete set null on update no action)');
 
 			self::assertSame(
-				'CREATE TABLE `Posts` (`id` INT, `author_id` INT, CONSTRAINT `fk_Posts_author_id` FOREIGN KEY (`author_id`) REFERENCES `Users` (`id`) ON DELETE SET NULL ON UPDATE NO ACTION)',
+				'CREATE TABLE `Posts` (`id` INT, `author_id` INT, CONSTRAINT `fk_Posts_author_id` FOREIGN KEY (`author_id`) REFERENCES `Users` (`id`) ON DELETE SET NULL ON UPDATE NO ACTION) ENGINE=InnoDB',
 				$this->compile($ast, 'mysql')
 			);
 		}
@@ -303,7 +303,7 @@
 			$ast = $this->parse("create Foo (status = enum('active', 'inactive', 'banned'))");
 
 			self::assertSame(
-				"CREATE TABLE `Foo` (`status` ENUM('active', 'inactive', 'banned') NOT NULL)",
+				"CREATE TABLE `Foo` (`status` ENUM('active', 'inactive', 'banned') NOT NULL) ENGINE=InnoDB",
 				$this->compile($ast, 'mysql')
 			);
 			self::assertSame(
@@ -344,7 +344,7 @@
 			$ast = $this->parse("create Foo (status = enum('O\\'Brien'))");
 
 			self::assertSame(
-				"CREATE TABLE `Foo` (`status` ENUM('O''Brien') NOT NULL)",
+				"CREATE TABLE `Foo` (`status` ENUM('O''Brien') NOT NULL) ENGINE=InnoDB",
 				$this->compile($ast, 'mysql')
 			);
 		}

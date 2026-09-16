@@ -117,6 +117,17 @@
 				implode(', ', $columnDefs)
 			);
 
+			// MySQL/MariaDB default to whatever the connected server's own
+			// default_storage_engine is — never assume that's InnoDB. Foreign
+			// keys (see renderForeignKeyConstraint() above, and QuelToSQLAlter's
+			// `add foreign key`) are silently unenforced on any other engine
+			// (MyISAM accepts the CONSTRAINT syntax but only creates a plain
+			// index, no error), so InnoDB must be forced explicitly rather than
+			// left to the server's default.
+			if (in_array($this->platform->getDatabaseType(), ['mysql', 'mariadb'], true)) {
+				$createStatement .= ' ENGINE=InnoDB';
+			}
+
 			// T-SQL has no inline IF NOT EXISTS on CREATE TABLE at all (unlike
 			// DROP TABLE IF EXISTS, which SQL Server does support) — the whole
 			// statement is wrapped in an existence check instead, the standard
