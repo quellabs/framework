@@ -299,20 +299,62 @@
 			);
 		}
 
-		public function testSumWithBareByProducesPerRowGroupTotalWithoutCollapsingRows(): void {
-			// No `sort by` at all — bare `by` alone still forces the window strategy,
-			// giving a per-row group total (one row per input row) instead of collapsing
-			// via GROUP BY. User 1's ids (1,2,3) sum to 6; user 2's (4,5) sum to 9.
+		public function testBareByCollapsesLikeClassicGroupBy(): void {
+			// No `sort by` at all — bare `by` means classic collapsing GROUP BY (matching
+			// the QUEL reference manual), not a window broadcast: one row per user, not
+			// one row per post. User 1's ids (1,2,3) sum to 6; user 2's (4,5) sum to 9.
 			$result = iterator_to_array($this->em->executeQuery("
 				range of o is PostEntity
-				retrieve (o.id, o.userId, total = sum(o.id by o.userId))
-				sort by o.id
+				retrieve (o.userId, total = sum(o.id by o.userId))
+				sort by o.userId
 			"));
 
 			$this->assertSame(
-				[[1, 1, 6], [2, 1, 6], [3, 1, 6], [4, 2, 9], [5, 2, 9]],
-				array_map(fn($row) => [(int) $row['o.id'], (int) $row['o.userId'], (int) $row['total']], $result)
+				[[1, 6], [2, 9]],
+				array_map(fn($row) => [(int) $row['o.userId'], (int) $row['total']], $result)
 			);
+		}
+
+		public function testExplicitByGroupsByAColumnNotOtherwiseSelected(): void {
+			// o.userId never appears in the SELECT list — inference from "other selected
+			// columns" couldn't produce this GROUP BY at all; the explicit `by` is the
+			// only way to express it. Still one row per user (2), not one row overall.
+			$result = iterator_to_array($this->em->executeQuery("
+				range of o is PostEntity
+				retrieve (total = sum(o.id by o.userId))
+			"));
+
+			$totals = array_map(fn($row) => (int) $row['total'], $result);
+			sort($totals);
+			$this->assertSame([6, 9], $totals);
+		}
+
+		public function testExplicitByCombinedWithTheAggregatesOwnWhere(): void {
+			// Matches the QUEL manual's avg(e.age by e.dept where e.job=1023) shape:
+			// `by` groups, `where` filters which rows feed the aggregate, per group.
+			// User 1's published-only ids [1,3] average 2; user 2's [4,5] average 4.5
+			// (all of user 2's posts are published).
+			$result = iterator_to_array($this->em->executeQuery("
+				range of o is PostEntity
+				retrieve (o.userId, avgId = avg(o.id by o.userId where o.published = 1))
+				sort by o.userId
+			"));
+
+			$this->assertSame(
+				[[1, 2.0], [2, 4.5]],
+				array_map(fn($row) => [(int) $row['o.userId'], (float) $row['avgId']], $result)
+			);
+		}
+
+		public function testConflictingExplicitByListsAcrossAggregatesThrows(): void {
+			// GROUP BY is a single query-wide clause — two aggregates asking for
+			// different groupings in the same query is ambiguous and must fail loudly.
+			$this->expectException(QuelException::class);
+
+			$this->em->executeQuery("
+				range of o is PostEntity
+				retrieve (a = sum(o.id by o.userId), b = count(o.id by o.published))
+			");
 		}
 
 		public function testMixingDistinctAggregateWithSequenceFunctionInAggregateOnlyQueryThrows(): void {
