@@ -1,54 +1,48 @@
 <?php
-	
+
 	namespace Quellabs\AnnotationReader;
-	
+
 	/**
-	 * Process-wide locator for the shared AnnotationReader instance.
-	 *
-	 * This locator allows packages that cannot depend on Canvas (e.g. ObjectQuel)
-	 * to access the application's shared AnnotationReader without creating their
-	 * own. Canvas registers its reader at boot via setInstance(); ObjectQuel
-	 * retrieves it via getInstance(), falling back to null when running standalone.
-	 *
-	 * The pattern mirrors SignalHubLocator: a static singleton with no package
-	 * dependencies beyond quellabs/annotation-reader, which both Canvas and
-	 * ObjectQuel already require.
+	 * Process-wide registry of AnnotationReader instances, keyed by consumer (e.g.
+	 * "canvas", "objectquel"). Each package gets its own cache path; nothing is shared
+	 * implicitly. Mirrors SignalHubLocator.
 	 */
 	class AnnotationReaderLocator {
-		
+
+		/** @var array<string, AnnotationReader> Registered instances, keyed by consumer name */
+		private static array $instances = [];
+
 		/**
-		 * The shared AnnotationReader instance, or null if none has been registered.
-		 * @var AnnotationReader|null
-		 */
-		private static ?AnnotationReader $instance = null;
-		
-		/**
-		 * Register the application's shared AnnotationReader.
-		 * Called once during Canvas kernel boot so all packages share one instance
-		 * and one warm in-memory cache for the lifetime of the request.
-		 * @param AnnotationReader $reader
+		 * Registers an AnnotationReader instance under the given consumer key,
+		 * overwriting any instance previously registered under that same key.
+		 * @param AnnotationReader $reader The reader instance to register
+		 * @param string $key Consumer identifier (e.g. "canvas", "objectquel")
 		 * @return void
 		 */
-		public static function setInstance(AnnotationReader $reader): void {
-			self::$instance = $reader;
+		public static function setInstance(AnnotationReader $reader, string $key = 'default'): void {
+			self::$instances[$key] = $reader;
 		}
-		
+
 		/**
-		 * Retrieve the shared AnnotationReader, or null if none has been registered.
-		 * Callers that require a reader when running standalone should fall back to
-		 * constructing their own instance when this returns null.
-		 * @return AnnotationReader|null
+		 * Retrieves the AnnotationReader instance registered under the given consumer key.
+		 * @param string $key Consumer identifier (e.g. "canvas", "objectquel")
+		 * @return AnnotationReader|null The registered reader, or null if none has been registered under this key
 		 */
-		public static function getInstance(): ?AnnotationReader {
-			return self::$instance;
+		public static function getInstance(string $key = 'default'): ?AnnotationReader {
+			return self::$instances[$key] ?? null;
 		}
-		
+
 		/**
-		 * Clear the registered instance.
-		 * Intended for use in tests that need a clean state between runs.
+		 * Removes registered instance(s) from the registry. Intended for use
+		 * between test cases to prevent state leaking across the process.
+		 * @param string|null $key Clear only this key, or all instances when null
 		 * @return void
 		 */
-		public static function reset(): void {
-			self::$instance = null;
+		public static function reset(?string $key = null): void {
+			if ($key === null) {
+				self::$instances = [];
+			} else {
+				unset(self::$instances[$key]);
+			}
 		}
 	}

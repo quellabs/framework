@@ -204,155 +204,75 @@
 		}
 		
 		/**
-		 * Deletes all cache files listed in the manifest for the given annotation
-		 * class, then removes the manifest itself. Used by CLI cache-clear commands
-		 * to invalidate only the cache entries relevant to a specific subsystem
-		 * (e.g. routes:clear_cache passes Route::class).
+		 * Deletes every cache file that contains at least one annotation of the
+		 * given class. Used by CLI cache-clear commands to invalidate only the
+		 * cache entries relevant to a specific subsystem (e.g. routes:clear-cache
+		 * passes Route::class).
 		 *
-		 * If the manifest does not exist this is a no-op, so it is safe to call
-		 * even when the cache has never been written.
-		 *
-		 * After deleting the cache files, every other manifest in the cache directory
-		 * is updated: any reference to a deleted cache filename is removed. Manifests
-		 * that become empty as a result are deleted as well, so the manifest directory
-		 * never accumulates stale entries.
-		 *
-		 * Each manifest is processed under an exclusive lock held across the full
-		 * read-modify-write cycle, so concurrent updateManifests() appends cannot
-		 * be lost by a simultaneous rewrite.
+		 * Cache files are keyed per class and can hold a mix of annotation types,
+		 * so this reads each one back and checks its contents directly rather than
+		 * relying on a separate index — the cache directory is small and this is a
+		 * rare, manual operation, not something on the request path.
 		 * @param string $annotationClass Fully qualified annotation class name, e.g. Route::class
 		 * @return void
 		 */
 		public function clearCacheByAnnotationClass(string $annotationClass): void {
-			$manifestFilename = $this->generateManifestFilename($annotationClass);
-			$manifestPath = $this->annotationCachePath . DIRECTORY_SEPARATOR . $manifestFilename;
-			
-			// Nothing to do if no manifest exists for this annotation type
-			if (!file_exists($manifestPath)) {
+			if (!is_dir($this->annotationCachePath)) {
 				return;
 			}
-			
-			// Acquire exclusive lock before reading so no concurrent updateManifests()
-			// append can arrive between our read and our unlink
-			$lockHandle = $this->acquireManifestLock($manifestPath);
-			
-			// If no lock could be acquired, do nothing
-			if ($lockHandle === false) {
+
+			$files = glob($this->annotationCachePath . DIRECTORY_SEPARATOR . '*.cache');
+
+			if ($files === false) {
 				return;
 			}
-			
-			// Read the list of cache filenames from the manifest under the exclusive lock
-			$lines = $this->readManifestLocked($manifestPath);
-			
-			// Release the lock before proceeding
-			flock($lockHandle, LOCK_UN);
-			fclose($lockHandle);
-			
-			// If reading failed, bail out without deleting the manifest — its contents
-			// were never processed, so removing it would silently discard valid entries
-			if ($lines === null) {
-				return;
-			}
-			
-			// Remove the manifest now that its contents are safely in $lines.
-			// The lock is released before unlinking, so a concurrent updateManifests()
-			// could append a new entry between the two — but this is harmless: the
-			// manifest is being destroyed and its associated caches deleted anyway.
-			// The .lock file is intentionally kept: deleting it would let a waiting
-			// process and a new process lock different inodes, breaking synchronization.
-			@unlink($manifestPath);
-			
-			// Build a hash-keyed set for O(1) membership checks when scanning other manifests
-			$toDelete = array_flip($lines);
-			
-			// Delete each cache file listed in the manifest
-			foreach ($lines as $cacheFilename) {
-				@unlink($this->annotationCachePath . DIRECTORY_SEPARATOR . $cacheFilename);
-			}
-			
-			// Find all remaining manifest files in one syscall
-			$otherManifests = glob($this->annotationCachePath . DIRECTORY_SEPARATOR . '*.manifest');
-			
-			if ($otherManifests === false) {
-				return;
-			}
-			
-			// Strip references to deleted cache files from every other manifest.
-			// Each manifest is processed under its own exclusive lock to prevent
-			// a concurrent updateManifests() append from being silently overwritten.
-			foreach ($otherManifests as $otherManifestPath) {
-				// Guard against the deleted manifest appearing in glob() results due to
-				// filesystem buffering; also makes the exclusion intent explicit.
-				if (basename($otherManifestPath) === $manifestFilename) {
-					continue;
+
+			foreach ($files as $cachePath) {
+				$annotations = $this->readCacheFromFile(basename($cachePath));
+
+				if ($annotations !== null && $this->annotationSetHasClass($annotations, $annotationClass)) {
+					@unlink($cachePath);
 				}
-				
-				// Lock spans the full read-filter-write cycle to prevent a concurrent
-				// updateManifests() append from being overwritten by our rewrite
-				$otherLock = $this->acquireManifestLock($otherManifestPath);
-				
-				// If no lock could be acquired, continue to the next entry
-				if ($otherLock === false) {
-					continue;
-				}
-				
-				$entries = $this->readManifestLocked($otherManifestPath);
-				
-				if ($entries === null) {
-					flock($otherLock, LOCK_UN);
-					fclose($otherLock);
-					continue;
-				}
-				
-				// Filter out any cache filenames that were deleted
-				$remaining = array_filter($entries, static fn(string $e) => !isset($toDelete[$e]));
-				
-				if (empty($remaining)) {
-					// Manifest is now empty — remove it. The .lock file is left in place
-					// intentionally; see the comment above on lock-file lifecycle.
-					flock($otherLock, LOCK_UN);
-					fclose($otherLock);
-					@unlink($otherManifestPath);
-					continue;
-				}
-				
-				if (count($remaining) !== count($entries)) {
-					// Atomic rewrite under the lock: prevents a concurrent append to the
-					// old inode from being lost when rename() displaces it
-					$this->writeManifestAtomic($otherManifestPath, array_values($remaining));
-				}
-				
-				// Release lock
-				flock($otherLock, LOCK_UN);
-				fclose($otherLock);
 			}
 		}
-		
+
 		/**
-		 * Deletes all cache, manifest, and lock files in the annotation cache directory.
-		 * Used by the catch-all cache clear CLI command when a full reset is needed.
-		 *
-		 * Lock files are removed here because a full reset is a deployment/maintenance
-		 * operation with no concurrent workers. They will be recreated automatically by
-		 * acquireManifestLock() on the next request that writes to a manifest.
-		 *
-		 * Do not call this while application processes are actively serving requests:
-		 * deleting lock files while workers hold or wait on them introduces an inode
-		 * race that breaks the synchronization guarantee. Use clearCacheByAnnotationClass()
-		 * for targeted invalidation during live traffic instead.
+		 * Checks whether an AnnotationSet contains at least one instance of the given
+		 * annotation class, at the class, method, or property level.
+		 * @param AnnotationSet $annotations
+		 * @param string $annotationClass Fully qualified annotation class name
+		 * @return bool
+		 */
+		private function annotationSetHasClass(array $annotations, string $annotationClass): bool {
+			if (!$annotations['class']->filter(static fn($a) => $a instanceof $annotationClass)->isEmpty()) {
+				return true;
+			}
+
+			foreach ([...$annotations['methods'], ...$annotations['properties']] as $collection) {
+				if (!$collection->filter(static fn($a) => $a instanceof $annotationClass)->isEmpty()) {
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+		/**
+		 * Deletes all annotation cache files, so the next request rebuilds
+		 * everything from scratch. Used by the catch-all cache clear CLI command.
 		 * @return void
 		 */
 		public function clearAllCaches(): void {
 			if (!is_dir($this->annotationCachePath)) {
 				return;
 			}
-			
-			$files = glob($this->annotationCachePath . DIRECTORY_SEPARATOR . '*.{cache,manifest,lock}', GLOB_BRACE);
-			
+
+			$files = glob($this->annotationCachePath . DIRECTORY_SEPARATOR . '*.cache');
+
 			if ($files === false) {
 				return;
 			}
-			
+
 			foreach ($files as $file) {
 				if (is_file($file)) {
 					unlink($file);
@@ -693,12 +613,10 @@
 				
 				// No valid cache — parse from source
 				$annotations = $this->readAllObjectAnnotations($reflection);
-				
-				// Write to disk; only update manifests if the write succeeded
-				if ($this->writeCacheToFile($cacheFilename, $annotations)) {
-					$this->updateManifests($cacheFilename, $annotations);
-				}
-				
+
+				// Write to disk cache for subsequent requests
+				$this->writeCacheToFile($cacheFilename, $annotations);
+
 				// Populate memory cache for this request lifecycle
 				$this->cached_annotations[$cacheFilename] = $annotations;
 				
@@ -714,175 +632,4 @@
 			}
 		}
 		
-		/**
-		 * Transforms an annotation class name to a manifest filename using an MD5 hash.
-		 * Hashing keeps filenames short and filesystem-safe while remaining deterministic:
-		 * the CLI can reconstruct the filename from the annotation class name without
-		 * needing a lookup table.
-		 * @param string $annotationClass Fully qualified annotation class name
-		 * @return string
-		 */
-		protected function generateManifestFilename(string $annotationClass): string {
-			return md5($annotationClass) . '.manifest';
-		}
-		
-		/**
-		 * Acquires an exclusive lock on the companion lock file for a given manifest.
-		 *
-		 * Both updateManifests() and clearCacheByAnnotationClass() acquire LOCK_EX
-		 * on this file before reading or writing the manifest, serializing the entire
-		 * read-modify-write cycle across processes. This prevents a rewrite from
-		 * silently discarding a concurrent append, and vice versa.
-		 *
-		 * Lock files are never deleted. Deleting a lock file creates a race where a
-		 * process waiting on flock() and a new process calling fopen() can end up
-		 * locking different inodes, silently breaking the synchronization guarantee.
-		 * The storage cost of keeping them is negligible.
-		 *
-		 * The caller must release the lock with flock($handle, LOCK_UN) and close
-		 * the handle when the manifest operation is complete.
-		 *
-		 * Returns false if the lock file cannot be opened or locked.
-		 * @param string $manifestPath Full path to the manifest file (not the lock file)
-		 * @return resource|false An open file handle with LOCK_EX held, or false on failure
-		 * @noinspection PhpMixedReturnTypeCanBeReducedInspection
-		 */
-		protected function acquireManifestLock(string $manifestPath): mixed {
-			$lockPath = $manifestPath . '.lock';
-			
-			// Open in 'c' mode: creates the file if missing, does not truncate if existing.
-			// 'w' would truncate on open, which is unnecessary churn.
-			$handle = fopen($lockPath, 'c');
-			
-			if ($handle === false) {
-				return false;
-			}
-			
-			// Block until we are the sole writer for this manifest
-			if (!flock($handle, LOCK_EX)) {
-				fclose($handle);
-				return false;
-			}
-			
-			return $handle;
-		}
-		
-		/**
-		 * Reads a manifest file without acquiring a lock.
-		 *
-		 * This must only be called while the caller already holds the exclusive lock
-		 * obtained from acquireManifestLock(). The lock guarantees no concurrent writer
-		 * is modifying the file, so no additional locking is needed here.
-		 *
-		 * Returns an empty array when the file does not yet exist — this is a valid
-		 * state for a manifest that has never been written. Returns null only when
-		 * the file exists but cannot be read.
-		 * @param string $manifestPath Full path to the manifest file
-		 * @return list<string>|null Lines in the manifest, empty array if not yet created, null on read failure
-		 */
-		protected function readManifestLocked(string $manifestPath): ?array {
-			// A missing manifest is a valid empty state — not an error.
-			// Returning null is reserved for actual read failures on existing files.
-			if (!file_exists($manifestPath)) {
-				return [];
-			}
-			
-			$lines = file($manifestPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-			return $lines !== false ? $lines : null;
-		}
-		
-		/**
-		 * Atomically replaces a manifest file by writing to a per-process temp file
-		 * and then calling rename(), which is atomic on POSIX filesystems.
-		 *
-		 * Must be called while the caller holds the exclusive lock for this manifest
-		 * (from acquireManifestLock()). The lock ensures no concurrent appender can
-		 * write to the old inode between our write and our rename, so no entries are lost.
-		 *
-		 * The temp file is scoped to the current PID to avoid collisions under
-		 * parallel requests that somehow bypass the lock (e.g. on non-POSIX systems
-		 * where flock is advisory-only).
-		 * @param string $manifestPath Full path to the manifest file to replace
-		 * @param list<string> $entries Lines to write; a trailing newline is appended to each
-		 * @return void
-		 */
-		protected function writeManifestAtomic(string $manifestPath, array $entries): void {
-			$tmpPath = $manifestPath . '.' . getmypid() . '.tmp';
-			
-			// Temp write failed; leave the original manifest untouched
-			if (file_put_contents($tmpPath, implode("\n", $entries) . "\n") === false) {
-				return;
-			}
-			
-			// rename() is atomic on POSIX: readers see old or new, never partial
-			if (!rename($tmpPath, $manifestPath)) {
-				@unlink($tmpPath);
-			}
-		}
-		
-		/**
-		 * Adds a cache filename to the manifest for each annotation class present
-		 * in the given AnnotationSet. Called every time a cache file is written so
-		 * that manifests stay in sync with the cache directory.
-		 *
-		 * Each annotation type gets its own manifest file (keyed by MD5 of the
-		 * annotation class name), so CLI commands can clear cache files for a
-		 * specific annotation type without touching unrelated entries.
-		 *
-		 * Each manifest is updated under an exclusive lock that covers the full
-		 * read-check-write cycle, preventing duplicate entries when multiple
-		 * processes regenerate the same class cache simultaneously.
-		 * @param string $cacheFilename The cache filename to add to each manifest
-		 * @param AnnotationSet $annotations The full annotation set for the class
-		 * @return void
-		 */
-		protected function updateManifests(string $cacheFilename, array $annotations): void {
-			// Collect all unique annotation class names present in this cache entry.
-			// Using a map keyed by class name avoids redundant manifest updates when
-			// the same annotation type appears on multiple methods or properties.
-			$annotationClasses = [];
-			
-			// Collect annotation classes from class-level annotations
-			foreach ($annotations['class'] as $annotation) {
-				$annotationClasses[get_class($annotation)] = true;
-			}
-			
-			// Collect annotation classes from method-level annotations
-			foreach ($annotations['methods'] as $collection) {
-				foreach ($collection as $annotation) {
-					$annotationClasses[get_class($annotation)] = true;
-				}
-			}
-			
-			// Collect annotation classes from property-level annotations
-			foreach ($annotations['properties'] as $collection) {
-				foreach ($collection as $annotation) {
-					$annotationClasses[get_class($annotation)] = true;
-				}
-			}
-			
-			foreach (array_keys($annotationClasses) as $annotationClass) {
-				$manifestFilename = $this->generateManifestFilename($annotationClass);
-				$manifestPath = $this->annotationCachePath . DIRECTORY_SEPARATOR . $manifestFilename;
-				
-				// Lock before reading so the duplicate check and append are atomic;
-				// without this two processes could both append the same entry
-				$lockHandle = $this->acquireManifestLock($manifestPath);
-				
-				if ($lockHandle === false) {
-					continue;
-				}
-				
-				// Read current entries to check for duplicates
-				$existing = $this->readManifestLocked($manifestPath) ?? [];
-				
-				if (!in_array($cacheFilename, $existing, true)) {
-					// Append directly — no need for atomic rename since we hold the lock
-					file_put_contents($manifestPath, $cacheFilename . "\n", FILE_APPEND);
-				}
-				
-				flock($lockHandle, LOCK_UN);
-				fclose($lockHandle);
-			}
-		}
 	}
