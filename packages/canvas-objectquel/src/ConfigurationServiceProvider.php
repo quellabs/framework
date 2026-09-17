@@ -87,6 +87,11 @@
 			$defaultProxyPath = ComposerUtils::getProjectRoot() . DIRECTORY_SEPARATOR . 'storage' . DIRECTORY_SEPARATOR . 'objectquel' . DIRECTORY_SEPARATOR . 'proxies';
 			$proxyPath = $configData["proxy_path"] ?? $defaults["proxy_path"] ?? $defaultProxyPath;
 			$config->setProxyDir(is_string($proxyPath) ? $proxyPath : $defaultProxyPath);
+
+			// Configure entity annotation metadata cache directory
+			$defaultMetadataCachePath = ComposerUtils::getProjectRoot() . DIRECTORY_SEPARATOR . 'storage' . DIRECTORY_SEPARATOR . 'objectquel' . DIRECTORY_SEPARATOR . 'annotations';
+			$metadataCachePath = $configData["metadata_cache_path"] ?? $defaults["metadata_cache_path"] ?? $defaultMetadataCachePath;
+			$config->setMetadataCachePath((is_string($metadataCachePath) && $metadataCachePath !== '') ? $metadataCachePath : $defaultMetadataCachePath);
 			
 			// Configure entity class namespace
 			$defaultEntityNamespace = 'App\\Entities';
