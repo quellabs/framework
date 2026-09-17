@@ -258,6 +258,63 @@
 			);
 		}
 
+		public function testRankWithExplicitByMatchesInferredPartitioning(): void {
+			// Same query as testRankPartitionsCorrectlyWhenItsOwnOrderColumnIsAlsoSelected,
+			// but with an explicit `by o.userId` instead of relying on inference — must
+			// produce identical output.
+			$result = iterator_to_array($this->em->executeQuery("
+				range of o is PostEntity
+				retrieve (o.userId, o.published, r = rank(by o.userId sort by o.published desc), dr = dense_rank(by o.userId sort by o.published desc))
+				sort by o.userId, o.id
+			"));
+
+			$this->assertSame(
+				[
+					[1, 1, 1, 1],
+					[1, 0, 3, 2],
+					[1, 1, 1, 1],
+					[2, 1, 1, 1],
+					[2, 1, 1, 1],
+				],
+				array_map(
+					fn($row) => [(int) $row['o.userId'], (int) $row['o.published'], (int) $row['r'], (int) $row['dr']],
+					$result
+				)
+			);
+		}
+
+		public function testExplicitByOverridesInferenceWhenAnExtraColumnWouldBreakPartitioning(): void {
+			// o.title is unique per row; naive inference would treat it as a partition
+			// column too, putting every row in its own partition (rank always 1).
+			// Explicit `by o.userId` ignores o.title entirely and partitions correctly.
+			$result = iterator_to_array($this->em->executeQuery("
+				range of o is PostEntity
+				retrieve (o.userId, o.title, r = rank(by o.userId sort by o.published desc))
+				sort by o.userId, o.id
+			"));
+
+			$this->assertSame(
+				[1, 3, 1, 1, 1],
+				array_map(fn($row) => (int) $row['r'], $result)
+			);
+		}
+
+		public function testSumWithBareByProducesPerRowGroupTotalWithoutCollapsingRows(): void {
+			// No `sort by` at all — bare `by` alone still forces the window strategy,
+			// giving a per-row group total (one row per input row) instead of collapsing
+			// via GROUP BY. User 1's ids (1,2,3) sum to 6; user 2's (4,5) sum to 9.
+			$result = iterator_to_array($this->em->executeQuery("
+				range of o is PostEntity
+				retrieve (o.id, o.userId, total = sum(o.id by o.userId))
+				sort by o.id
+			"));
+
+			$this->assertSame(
+				[[1, 1, 6], [2, 1, 6], [3, 1, 6], [4, 2, 9], [5, 2, 9]],
+				array_map(fn($row) => [(int) $row['o.id'], (int) $row['o.userId'], (int) $row['total']], $result)
+			);
+		}
+
 		public function testMixingDistinctAggregateWithSequenceFunctionInAggregateOnlyQueryThrows(): void {
 			// countu() can never use the window strategy (DISTINCT is excluded), so
 			// forcing it alongside rank() in the same aggregate-only query has no

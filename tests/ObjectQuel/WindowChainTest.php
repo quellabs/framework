@@ -60,6 +60,33 @@
 			);
 		}
 
+		public function testChainingRelinksExplicitInnerByToTheHelperRange(): void {
+			// Same shape as testRunningSumOfGapBetweenConsecutiveRowsWithinPartition, but
+			// the inner lag() partitions explicitly via `by o.userId` instead of relying
+			// on inference from the outer query's own SELECT items — verifies that
+			// WindowChainRewriter's relinkIdentifiers() correctly re-points the `by`
+			// list's identifier at the helper range's cloned column, not the original.
+			$result = iterator_to_array($this->em->executeQuery("
+				range of o is PostEntity
+				retrieve (o.id, o.userId, gapSum = sum(o.id - lag(o.id by o.userId sort by o.id) sort by o.id))
+				sort by o.id
+			"));
+
+			$this->assertSame(
+				[
+					[1, 1, 0],
+					[2, 1, 1],
+					[3, 1, 2],
+					[4, 2, 0],
+					[5, 2, 1],
+				],
+				array_map(
+					fn($row) => [(int) $row['o.id'], (int) $row['o.userId'], (int) $row['gapSum']],
+					$result
+				)
+			);
+		}
+
 		public function testChainingWithoutOuterSortByStillExtractsNestedWindowFunction(): void {
 			// The outer sum has no sort by of its own — it's a plain (non-window)
 			// aggregate, but SQL still can't nest lag()'s OVER(...) inside its
