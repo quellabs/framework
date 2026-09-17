@@ -77,6 +77,23 @@
 			$this->assertSame(4, (int) $result[0]['total']);
 		}
 
+		public function testChainingForcesWindowStrategyOnOuterAggregateAndRejectsDistinctMix(): void {
+			// The outer sum() has its own trailing `sort by o.id`, so — even after
+			// WindowChainRewriter extracts the nested lag() into a helper range —
+			// the outer sum still requires the window strategy for itself. countu()
+			// can never use it (DISTINCT is excluded), so mixing the two in the same
+			// aggregate-only query has no valid SQL rendering and must fail loudly.
+			$this->expectException(QuelException::class);
+
+			$this->em->executeQuery("
+				range of o is PostEntity
+				retrieve (
+					total = sum(o.id - lag(o.id sort by o.id) sort by o.id),
+					uniqueUsers = countu(o.userId)
+				)
+			");
+		}
+
 		public function testChainingRejectsMultiRangeQueries(): void {
 			$this->expectException(QuelException::class);
 

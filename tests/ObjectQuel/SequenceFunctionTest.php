@@ -53,6 +53,87 @@
 			);
 		}
 
+		public function testRowNumberOrdersRowsWithinPartitionWhenIdIsAlsoDisplayed(): void {
+			// Unlike testRowNumberOrdersRowsWithinPartition, o.id is displayed here
+			// too — it must be excluded from partition inference as the primary key,
+			// or every row (each with a distinct id) would land in its own partition.
+			$result = iterator_to_array($this->em->executeQuery("
+				range of o is PostEntity
+				retrieve (o.id, o.userId, rn = row_number(sort by o.id))
+				sort by o.id
+			"));
+
+			$this->assertSame(
+				[[1, 1, 1], [2, 1, 2], [3, 1, 3], [4, 2, 1], [5, 2, 2]],
+				array_map(
+					fn($row) => [(int) $row['o.id'], (int) $row['o.userId'], (int) $row['rn']],
+					$result
+				)
+			);
+		}
+
+		public function testNtileDistributesRowsIntoBucketsWithinPartition(): void {
+			// NTILE(2) over 3 rows (user 1) splits unevenly: the earlier bucket
+			// absorbs the remainder, so bucket sizes are 2 then 1. Over 2 rows
+			// (user 2) it splits evenly: 1 and 1.
+			$result = iterator_to_array($this->em->executeQuery("
+				range of o is PostEntity
+				retrieve (o.userId, o.id, bucket = ntile(2 sort by o.id))
+				sort by o.userId, o.id
+			"));
+
+			$this->assertSame(
+				[[1, 1, 1], [1, 2, 1], [1, 3, 2], [2, 4, 1], [2, 5, 2]],
+				array_map(
+					fn($row) => [(int) $row['o.userId'], (int) $row['o.id'], (int) $row['bucket']],
+					$result
+				)
+			);
+		}
+
+		public function testLagAndLeadTogetherWithinPartition(): void {
+			$result = iterator_to_array($this->em->executeQuery("
+				range of o is PostEntity
+				retrieve (o.userId, o.id, prevId = lag(o.id sort by o.id), nextId = lead(o.id sort by o.id))
+				sort by o.userId, o.id
+			"));
+
+			$this->assertSame(
+				[
+					[1, 1, null, 2],
+					[1, 2, 1, 3],
+					[1, 3, 2, null],
+					[2, 4, null, 5],
+					[2, 5, 4, null],
+				],
+				array_map(
+					fn($row) => [
+						(int) $row['o.userId'],
+						(int) $row['o.id'],
+						$row['prevId'] === null ? null : (int) $row['prevId'],
+						$row['nextId'] === null ? null : (int) $row['nextId'],
+					],
+					$result
+				)
+			);
+		}
+
+		public function testRunningCountAccumulatesWithinPartition(): void {
+			$result = iterator_to_array($this->em->executeQuery("
+				range of o is PostEntity
+				retrieve (o.userId, o.id, runningCount = count(o.id sort by o.id))
+				sort by o.userId, o.id
+			"));
+
+			$this->assertSame(
+				[[1, 1, 1], [1, 2, 2], [1, 3, 3], [2, 4, 1], [2, 5, 2]],
+				array_map(
+					fn($row) => [(int) $row['o.userId'], (int) $row['o.id'], (int) $row['runningCount']],
+					$result
+				)
+			);
+		}
+
 		public function testRankLeavesGapsAfterTies(): void {
 			// Aggregate-only, no partition — published values [1,0,1,1,1] sorted
 			// desc give four ties at rank 1 and one row at rank 5 (RANK skips the
