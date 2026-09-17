@@ -342,10 +342,10 @@
 			$result = $comparator->getEntityForeignKeys(RelProfileEntity::class);
 
 			self::assertArrayHasKey('fk_rel_profiles_user_id', $result);
-			self::assertSame(['user_id'], $result['fk_rel_profiles_user_id']['columns']);
-			self::assertSame('rel_users', $result['fk_rel_profiles_user_id']['referencedTable']);
-			self::assertSame('CASCADE', $result['fk_rel_profiles_user_id']['onDelete']);
-			self::assertSame('NO ACTION', $result['fk_rel_profiles_user_id']['onUpdate']);
+			self::assertSame(['user_id'], $result['fk_rel_profiles_user_id']->columns);
+			self::assertSame('rel_users', $result['fk_rel_profiles_user_id']->referencedTable);
+			self::assertSame('CASCADE', $result['fk_rel_profiles_user_id']->onDelete);
+			self::assertSame('NO ACTION', $result['fk_rel_profiles_user_id']->onUpdate);
 		}
 
 		// -------------------------------------------------------------------------

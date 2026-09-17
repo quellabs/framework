@@ -68,22 +68,22 @@
 
 			$columns = self::em()->getConnection()->getColumns($tableName);
 
-			$this->assertSame('integer', $columns['id']['type']);
-			$this->assertTrue($columns['id']['identity']);
-			$this->assertTrue($columns['id']['primary_key']);
-			$this->assertFalse($columns['id']['nullable']);
+			$this->assertSame('integer', $columns['id']->type);
+			$this->assertTrue($columns['id']->identity);
+			$this->assertTrue($columns['id']->primary_key);
+			$this->assertFalse($columns['id']->nullable);
 
-			$this->assertSame('string', $columns['message']['type']);
-			$this->assertSame(500, $columns['message']['limit']);
-			$this->assertFalse($columns['message']['nullable']);
+			$this->assertSame('string', $columns['message']->type);
+			$this->assertSame(500, $columns['message']->limit);
+			$this->assertFalse($columns['message']->nullable);
 
-			$this->assertSame('decimal', $columns['amount']['type']);
-			$this->assertSame(10, $columns['amount']['precision']);
-			$this->assertSame(2, $columns['amount']['scale']);
-			$this->assertTrue($columns['amount']['nullable']);
+			$this->assertSame('decimal', $columns['amount']->type);
+			$this->assertSame(10, $columns['amount']->precision);
+			$this->assertSame(2, $columns['amount']->scale);
+			$this->assertTrue($columns['amount']->nullable);
 
-			$this->assertSame('datetime', $columns['created_at']['type']);
-			$this->assertFalse($columns['created_at']['nullable']);
+			$this->assertSame('datetime', $columns['created_at']->type);
+			$this->assertFalse($columns['created_at']->nullable);
 
 			$this->assertSame('id', self::em()->getConnection()->getPrimaryKey($tableName));
 		}
@@ -186,8 +186,8 @@
 			$this->assertNull($result);
 
 			$columns = self::em()->getConnection()->getColumns($tableName);
-			$this->assertFalse($columns['post_id']['nullable']);
-			$this->assertFalse($columns['tag_id']['nullable']);
+			$this->assertFalse($columns['post_id']->nullable);
+			$this->assertFalse($columns['tag_id']->nullable);
 		}
 
 		public function testIgnoresRangeDeclarationBeforeCreate(): void {
@@ -416,5 +416,37 @@
 					foreign key (nonexistent_column) references OtherTable (id)
 				)
 			");
+		}
+
+		/**
+		 * MySQL has native ENUM support (PlatformCapabilities::supportsNativeEnums()),
+		 * so the column renders as a real ENUM(...) — verified via getColumns(),
+		 * which round-trips the actual declared values back, not a VARCHAR
+		 * fallback.
+		 */
+		public function testCreatesAnEnumColumn(): void {
+			$tableName = $this->nextTableName();
+			$this->createdTables[] = $tableName;
+
+			$result = self::em()->executeQuery("
+				create {$tableName} (
+					id = integer identity,
+					status = enum('active', 'inactive', 'banned'),
+					primary key (id)
+				)
+			");
+
+			$this->assertNull($result);
+
+			$columns = self::em()->getConnection()->getColumns($tableName);
+
+			$this->assertSame('enum', $columns['status']->type);
+			$this->assertSame(['active', 'inactive', 'banned'], $columns['status']->values);
+			$this->assertFalse($columns['status']->nullable);
+
+			// A row can actually be written with one of the declared values.
+			self::em()->getConnection()->execute("INSERT INTO `{$tableName}` (id, status) VALUES (1, 'active')");
+			$row = self::em()->getConnection()->execute("SELECT status FROM `{$tableName}` WHERE id = 1")->fetchAssoc();
+			$this->assertSame('active', $row['status']);
 		}
 	}

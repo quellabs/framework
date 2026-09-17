@@ -53,7 +53,7 @@
 				->execute($this->parse('create Posts (id = integer nullable, index idx_id (id))'), new ExecutionContext([]));
 
 			self::assertSame(
-				['CREATE TABLE `Posts` (`id` INT)', 'CREATE INDEX `idx_id` ON `Posts` (`id`)'],
+				['CREATE TABLE `Posts` (`id` INT) ENGINE=InnoDB', 'CREATE INDEX `idx_id` ON `Posts` (`id`)'],
 				$capturedSql
 			);
 		}
@@ -67,7 +67,7 @@
 				->execute($this->parse('create Posts (id = integer nullable, author_id = integer, foreign key (author_id) references Users)'), new ExecutionContext([]));
 
 			self::assertSame(
-				['CREATE TABLE `Posts` (`id` INT, `author_id` INT NOT NULL, CONSTRAINT `fk_Posts_author_id` FOREIGN KEY (`author_id`) REFERENCES `Users` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION)'],
+				['CREATE TABLE `Posts` (`id` INT, `author_id` INT NOT NULL, CONSTRAINT `fk_Posts_author_id` FOREIGN KEY (`author_id`) REFERENCES `Users` (`id`) ON DELETE RESTRICT ON UPDATE NO ACTION) ENGINE=InnoDB'],
 				$capturedSql
 			);
 		}
@@ -160,7 +160,7 @@
 					->execute($this->parse('create Posts (id = integer nullable, index idx_id (id))'), new ExecutionContext([]));
 			} finally {
 				self::assertSame(
-					['CREATE TABLE `Posts` (`id` INT)', 'CREATE INDEX `idx_id` ON `Posts` (`id`)', 'DROP TABLE IF EXISTS `Posts`'],
+					['CREATE TABLE `Posts` (`id` INT) ENGINE=InnoDB', 'CREATE INDEX `idx_id` ON `Posts` (`id`)', 'DROP TABLE IF EXISTS `Posts`'],
 					$capturedSql
 				);
 			}
@@ -183,7 +183,7 @@
 					->execute($this->parse('create Posts (id = integer nullable, index idx_id (id)) if not exists'), new ExecutionContext([]));
 			} finally {
 				self::assertSame(
-					['CREATE TABLE IF NOT EXISTS `Posts` (`id` INT)', 'CREATE INDEX `idx_id` ON `Posts` (`id`)'],
+					['CREATE TABLE IF NOT EXISTS `Posts` (`id` INT) ENGINE=InnoDB', 'CREATE INDEX `idx_id` ON `Posts` (`id`)'],
 					$capturedSql
 				);
 			}

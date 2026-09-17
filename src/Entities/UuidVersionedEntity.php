@@ -34,7 +34,7 @@
 		protected string $label;
 
 		/**
-		 * @Orm\Column(name="token", type="uuid", limit=36)
+		 * @Orm\Column(name="token", type="uuid")
 		 * @Orm\Version
 		 */
 		protected string $token;
