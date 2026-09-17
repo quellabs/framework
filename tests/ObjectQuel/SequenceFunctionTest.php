@@ -149,6 +149,34 @@
 			$this->assertSame([1, 2, 3, 4, 5], $ranks);
 		}
 
+		public function testRankPartitionsCorrectlyWhenItsOwnOrderColumnIsAlsoSelected(): void {
+			// o.published is both the ORDER BY key for rank()/dense_rank() and a plain
+			// displayed column. It must not also become a partition key — that would
+			// fold every distinct published value into its own partition, making every
+			// rank trivially 1. Partition is o.userId alone; within it, user 1's
+			// published values [1,0,1] sorted desc give a tie at rank 1 for the two
+			// published=1 rows and rank 3 for the published=0 row (dense_rank: 1, 2).
+			$result = iterator_to_array($this->em->executeQuery("
+				range of o is PostEntity
+				retrieve (o.userId, o.published, r = rank(sort by o.published desc), dr = dense_rank(sort by o.published desc))
+				sort by o.userId, o.id
+			"));
+
+			$this->assertSame(
+				[
+					[1, 1, 1, 1],
+					[1, 0, 3, 2],
+					[1, 1, 1, 1],
+					[2, 1, 1, 1],
+					[2, 1, 1, 1],
+				],
+				array_map(
+					fn($row) => [(int) $row['o.userId'], (int) $row['o.published'], (int) $row['r'], (int) $row['dr']],
+					$result
+				)
+			);
+		}
+
 		public function testMixingDistinctAggregateWithSequenceFunctionInAggregateOnlyQueryThrows(): void {
 			// countu() can never use the window strategy (DISTINCT is excluded), so
 			// forcing it alongside rank() in the same aggregate-only query has no
