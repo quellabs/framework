@@ -7,7 +7,7 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAlterTable;
 	use Quellabs\ObjectQuel\ObjectQuel\Lexer;
 	use Quellabs\ObjectQuel\ObjectQuel\Parser;
-	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQLAlter;
+	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQL\QuelToSQLAlter;
 	use Quellabs\ObjectQuel\Tests\Support\FkTestSupport;
 
 	/**

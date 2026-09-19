@@ -1,0 +1,371 @@
+<?php
+
+	namespace Quellabs\ObjectQuel\Tests;
+
+	use Quellabs\ObjectQuel\Exception\QuelException;
+
+	/**
+	 * End-to-end coverage for sequence functions (rank, dense_rank, row_number, lag)
+	 * and running aggregates (sum with an inline `sort by`), exercising the full
+	 * pipeline: parser -> AggregateOptimizer window-strategy planning -> SQL
+	 * generation -> execution against a real database.
+	 *
+	 * Fixture: two users, five posts (three for user 1, two for user 2), so tests
+	 * can verify PARTITION BY (inferred from `o.userId`) behaves independently of
+	 * `o.id`, which is excluded from partition inference because it's the primary
+	 * key — the same fix that makes it possible to also display a row's own id
+	 * alongside a sequence function without collapsing every row into its own
+	 * single-row partition.
+	 */
+	class SequenceFunctionTest extends ObjectQuelTestCase {
+
+		protected function seedFixtures(): void {
+			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (1, 'alice', 'hash1', 0)");
+			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (2, 'bob', 'hash2', 0)");
+
+			$posts = [
+				[1, 'p1', 1, 1],
+				[2, 'p2', 0, 1],
+				[3, 'p3', 1, 1],
+				[4, 'p4', 1, 2],
+				[5, 'p5', 1, 2],
+			];
+
+			foreach ($posts as [$id, $title, $published, $userId]) {
+				$this->exec("INSERT INTO posts (id, title, content, published, created_at, test_enum, test_json, user_id)
+					VALUES ({$id}, '{$title}', 'content', {$published}, '2024-01-0{$id} 00:00:00', 'pending', '{}', {$userId})");
+			}
+		}
+
+		public function testRowNumberOrdersRowsWithinPartition(): void {
+			// Sorted by o.id (a real column) rather than the "rn" alias — the outer
+			// query's own sort-by-alias expansion is a separate mechanism unrelated
+			// to sequence functions, and not exercised here.
+			$result = iterator_to_array($this->em->executeQuery("
+				range of o is PostEntity
+				retrieve (o.userId, rn = row_number(sort by o.id))
+				sort by o.userId, o.id
+			"));
+
+			$this->assertSame(
+				[[1, 1], [1, 2], [1, 3], [2, 1], [2, 2]],
+				array_map(fn($row) => [(int) $row['o.userId'], (int) $row['rn']], $result)
+			);
+		}
+
+		public function testRowNumberOrdersRowsWithinPartitionWhenIdIsAlsoDisplayed(): void {
+			// Unlike testRowNumberOrdersRowsWithinPartition, o.id is displayed here
+			// too — it must be excluded from partition inference as the primary key,
+			// or every row (each with a distinct id) would land in its own partition.
+			$result = iterator_to_array($this->em->executeQuery("
+				range of o is PostEntity
+				retrieve (o.id, o.userId, rn = row_number(sort by o.id))
+				sort by o.id
+			"));
+
+			$this->assertSame(
+				[[1, 1, 1], [2, 1, 2], [3, 1, 3], [4, 2, 1], [5, 2, 2]],
+				array_map(
+					fn($row) => [(int) $row['o.id'], (int) $row['o.userId'], (int) $row['rn']],
+					$result
+				)
+			);
+		}
+
+		public function testNtileDistributesRowsIntoBucketsWithinPartition(): void {
+			// NTILE(2) over 3 rows (user 1) splits unevenly: the earlier bucket
+			// absorbs the remainder, so bucket sizes are 2 then 1. Over 2 rows
+			// (user 2) it splits evenly: 1 and 1.
+			$result = iterator_to_array($this->em->executeQuery("
+				range of o is PostEntity
+				retrieve (o.userId, o.id, bucket = ntile(2 sort by o.id))
+				sort by o.userId, o.id
+			"));
+
+			$this->assertSame(
+				[[1, 1, 1], [1, 2, 1], [1, 3, 2], [2, 4, 1], [2, 5, 2]],
+				array_map(
+					fn($row) => [(int) $row['o.userId'], (int) $row['o.id'], (int) $row['bucket']],
+					$result
+				)
+			);
+		}
+
+		public function testLagAndLeadTogetherWithinPartition(): void {
+			$result = iterator_to_array($this->em->executeQuery("
+				range of o is PostEntity
+				retrieve (o.userId, o.id, prevId = lag(o.id sort by o.id), nextId = lead(o.id sort by o.id))
+				sort by o.userId, o.id
+			"));
+
+			$this->assertSame(
+				[
+					[1, 1, null, 2],
+					[1, 2, 1, 3],
+					[1, 3, 2, null],
+					[2, 4, null, 5],
+					[2, 5, 4, null],
+				],
+				array_map(
+					fn($row) => [
+						(int) $row['o.userId'],
+						(int) $row['o.id'],
+						$row['prevId'] === null ? null : (int) $row['prevId'],
+						$row['nextId'] === null ? null : (int) $row['nextId'],
+					],
+					$result
+				)
+			);
+		}
+
+		public function testRunningCountAccumulatesWithinPartition(): void {
+			$result = iterator_to_array($this->em->executeQuery("
+				range of o is PostEntity
+				retrieve (o.userId, o.id, runningCount = count(o.id sort by o.id))
+				sort by o.userId, o.id
+			"));
+
+			$this->assertSame(
+				[[1, 1, 1], [1, 2, 2], [1, 3, 3], [2, 4, 1], [2, 5, 2]],
+				array_map(
+					fn($row) => [(int) $row['o.userId'], (int) $row['o.id'], (int) $row['runningCount']],
+					$result
+				)
+			);
+		}
+
+		public function testRankLeavesGapsAfterTies(): void {
+			// Aggregate-only, no partition — published values [1,0,1,1,1] sorted
+			// desc give four ties at rank 1 and one row at rank 5 (RANK skips the
+			// ranks consumed by the tie, unlike DENSE_RANK).
+			$result = iterator_to_array($this->em->executeQuery("
+				range of o is PostEntity
+				retrieve (r = rank(sort by o.published desc))
+			"));
+
+			$ranks = array_map(fn($row) => (int) $row['r'], $result);
+			sort($ranks);
+
+			$this->assertSame([1, 1, 1, 1, 5], $ranks);
+		}
+
+		public function testDenseRankHasNoGapsAfterTies(): void {
+			$result = iterator_to_array($this->em->executeQuery("
+				range of o is PostEntity
+				retrieve (r = dense_rank(sort by o.published desc))
+			"));
+
+			$ranks = array_map(fn($row) => (int) $row['r'], $result);
+			sort($ranks);
+
+			$this->assertSame([1, 1, 1, 1, 2], $ranks);
+		}
+
+		public function testLagReturnsPreviousRowValueWithinPartition(): void {
+			// o.id is displayed but excluded from partition inference (primary key),
+			// so o.userId alone is the partition key — this is the scenario that
+			// previously broke under plain GROUP BY-style inference.
+			$result = iterator_to_array($this->em->executeQuery("
+				range of o is PostEntity
+				retrieve (o.id, o.userId, prevTitle = lag(o.title sort by o.id))
+				sort by o.id
+			"));
+
+			$this->assertSame(
+				[
+					[1, 1, null],
+					[2, 1, 'p1'],
+					[3, 1, 'p2'],
+					[4, 2, null],
+					[5, 2, 'p4'],
+				],
+				array_map(
+					fn($row) => [(int) $row['o.id'], (int) $row['o.userId'], $row['prevTitle']],
+					$result
+				)
+			);
+		}
+
+		public function testRunningSumAccumulatesWithinPartition(): void {
+			$result = iterator_to_array($this->em->executeQuery("
+				range of o is PostEntity
+				retrieve (o.id, o.userId, runningTotal = sum(o.id sort by o.id))
+				sort by o.id
+			"));
+
+			$this->assertSame(
+				[
+					[1, 1, 1],
+					[2, 1, 3],
+					[3, 1, 6],
+					[4, 2, 4],
+					[5, 2, 9],
+				],
+				array_map(
+					fn($row) => [(int) $row['o.id'], (int) $row['o.userId'], (int) $row['runningTotal']],
+					$result
+				)
+			);
+		}
+
+		public function testAggregateOnlyQueryForcesPlainAggregatesThroughWindowStrategyToo(): void {
+			// total=sum(o.id) has no inline sort by of its own, but rank() in the
+			// same aggregate-only query requires the window strategy, which can't
+			// collapse to one row — so sum() must also become a window aggregate
+			// (SUM(...) OVER ()) instead of DIRECT_AGG_ONLY, keeping row counts
+			// consistent across every projection in the query.
+			$result = iterator_to_array($this->em->executeQuery("
+				range of o is PostEntity
+				retrieve (total = sum(o.id), r = rank(sort by o.id desc))
+			"));
+
+			$this->assertCount(5, $result);
+
+			foreach ($result as $row) {
+				$this->assertSame(15, (int) $row['total']);
+			}
+
+			$ranks = array_map(fn($row) => (int) $row['r'], $result);
+			sort($ranks);
+			$this->assertSame([1, 2, 3, 4, 5], $ranks);
+		}
+
+		public function testRankPartitionsCorrectlyWhenItsOwnOrderColumnIsAlsoSelected(): void {
+			// o.published is both the ORDER BY key for rank()/dense_rank() and a plain
+			// displayed column. It must not also become a partition key — that would
+			// fold every distinct published value into its own partition, making every
+			// rank trivially 1. Partition is o.userId alone; within it, user 1's
+			// published values [1,0,1] sorted desc give a tie at rank 1 for the two
+			// published=1 rows and rank 3 for the published=0 row (dense_rank: 1, 2).
+			$result = iterator_to_array($this->em->executeQuery("
+				range of o is PostEntity
+				retrieve (o.userId, o.published, r = rank(sort by o.published desc), dr = dense_rank(sort by o.published desc))
+				sort by o.userId, o.id
+			"));
+
+			$this->assertSame(
+				[
+					[1, 1, 1, 1],
+					[1, 0, 3, 2],
+					[1, 1, 1, 1],
+					[2, 1, 1, 1],
+					[2, 1, 1, 1],
+				],
+				array_map(
+					fn($row) => [(int) $row['o.userId'], (int) $row['o.published'], (int) $row['r'], (int) $row['dr']],
+					$result
+				)
+			);
+		}
+
+		public function testRankWithExplicitByMatchesInferredPartitioning(): void {
+			// Same query as testRankPartitionsCorrectlyWhenItsOwnOrderColumnIsAlsoSelected,
+			// but with an explicit `by o.userId` instead of relying on inference — must
+			// produce identical output.
+			$result = iterator_to_array($this->em->executeQuery("
+				range of o is PostEntity
+				retrieve (o.userId, o.published, r = rank(by o.userId sort by o.published desc), dr = dense_rank(by o.userId sort by o.published desc))
+				sort by o.userId, o.id
+			"));
+
+			$this->assertSame(
+				[
+					[1, 1, 1, 1],
+					[1, 0, 3, 2],
+					[1, 1, 1, 1],
+					[2, 1, 1, 1],
+					[2, 1, 1, 1],
+				],
+				array_map(
+					fn($row) => [(int) $row['o.userId'], (int) $row['o.published'], (int) $row['r'], (int) $row['dr']],
+					$result
+				)
+			);
+		}
+
+		public function testExplicitByOverridesInferenceWhenAnExtraColumnWouldBreakPartitioning(): void {
+			// o.title is unique per row; naive inference would treat it as a partition
+			// column too, putting every row in its own partition (rank always 1).
+			// Explicit `by o.userId` ignores o.title entirely and partitions correctly.
+			$result = iterator_to_array($this->em->executeQuery("
+				range of o is PostEntity
+				retrieve (o.userId, o.title, r = rank(by o.userId sort by o.published desc))
+				sort by o.userId, o.id
+			"));
+
+			$this->assertSame(
+				[1, 3, 1, 1, 1],
+				array_map(fn($row) => (int) $row['r'], $result)
+			);
+		}
+
+		public function testBareByCollapsesLikeClassicGroupBy(): void {
+			// No `sort by` at all — bare `by` means classic collapsing GROUP BY (matching
+			// the QUEL reference manual), not a window broadcast: one row per user, not
+			// one row per post. User 1's ids (1,2,3) sum to 6; user 2's (4,5) sum to 9.
+			$result = iterator_to_array($this->em->executeQuery("
+				range of o is PostEntity
+				retrieve (o.userId, total = sum(o.id by o.userId))
+				sort by o.userId
+			"));
+
+			$this->assertSame(
+				[[1, 6], [2, 9]],
+				array_map(fn($row) => [(int) $row['o.userId'], (int) $row['total']], $result)
+			);
+		}
+
+		public function testExplicitByGroupsByAColumnNotOtherwiseSelected(): void {
+			// o.userId never appears in the SELECT list — inference from "other selected
+			// columns" couldn't produce this GROUP BY at all; the explicit `by` is the
+			// only way to express it. Still one row per user (2), not one row overall.
+			$result = iterator_to_array($this->em->executeQuery("
+				range of o is PostEntity
+				retrieve (total = sum(o.id by o.userId))
+			"));
+
+			$totals = array_map(fn($row) => (int) $row['total'], $result);
+			sort($totals);
+			$this->assertSame([6, 9], $totals);
+		}
+
+		public function testExplicitByCombinedWithTheAggregatesOwnWhere(): void {
+			// Matches the QUEL manual's avg(e.age by e.dept where e.job=1023) shape:
+			// `by` groups, `where` filters which rows feed the aggregate, per group.
+			// User 1's published-only ids [1,3] average 2; user 2's [4,5] average 4.5
+			// (all of user 2's posts are published).
+			$result = iterator_to_array($this->em->executeQuery("
+				range of o is PostEntity
+				retrieve (o.userId, avgId = avg(o.id by o.userId where o.published = 1))
+				sort by o.userId
+			"));
+
+			$this->assertSame(
+				[[1, 2.0], [2, 4.5]],
+				array_map(fn($row) => [(int) $row['o.userId'], (float) $row['avgId']], $result)
+			);
+		}
+
+		public function testConflictingExplicitByListsAcrossAggregatesThrows(): void {
+			// GROUP BY is a single query-wide clause — two aggregates asking for
+			// different groupings in the same query is ambiguous and must fail loudly.
+			$this->expectException(QuelException::class);
+
+			$this->em->executeQuery("
+				range of o is PostEntity
+				retrieve (a = sum(o.id by o.userId), b = count(o.id by o.published))
+			");
+		}
+
+		public function testMixingDistinctAggregateWithSequenceFunctionInAggregateOnlyQueryThrows(): void {
+			// countu() can never use the window strategy (DISTINCT is excluded), so
+			// forcing it alongside rank() in the same aggregate-only query has no
+			// valid SQL rendering — this must fail loudly, not silently mix strategies.
+			$this->expectException(QuelException::class);
+
+			$this->em->executeQuery("
+				range of o is PostEntity
+				retrieve (c = countu(o.userId), r = rank(sort by o.id desc))
+			");
+		}
+	}

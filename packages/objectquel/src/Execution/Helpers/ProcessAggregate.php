@@ -111,7 +111,7 @@
 				case AstSubquery::TYPE_CASE_WHEN:
 					return $this->buildCaseWhenExistsSubquery($subquery);
 				
-				case AstSubquery::TYPE_WINDOW: // ← add
+				case AstSubquery::TYPE_WINDOW:
 					return $this->buildWindowAggregate($subquery);
 				
 				default:
@@ -177,13 +177,26 @@
 			
 			// Extract aggregate function details (COUNT, SUM, AVG, etc.)
 			$functionName = $this->aggregateToString($aggNode);
-			
+
 			// Handle DISTINCT modifier for aggregate functions (e.g., COUNT(DISTINCT column))
 			$distinctClause = $this->isDistinct($aggNode) ? 'DISTINCT ' : '';
-			
+
+			// Only MIN/MAX/AVG/SUM/COUNT reach a scalar subquery; the no-argument
+			// sequence functions (rank, dense_rank, row_number) always require the
+			// window-function strategy instead, so a null identifier here is a bug.
+			// These aggregates all have real per-type handlers (handleSum, etc.),
+			// which — unlike the sequence functions' no-op handlers — already visit
+			// and mark the identifier as a side effect of markExpressionAsHandled($aggNode)
+			// above, so no separate mark is needed here.
+			$identifier = $aggNode->getIdentifier();
+
+			if ($identifier === null) {
+				throw new \LogicException(get_class($aggNode) . ' requires a value argument; it cannot use the scalar subquery strategy');
+			}
+
 			// Convert the aggregate target expression to SQL
 			// Uses deepClone() to avoid modifying the original AST node during conversion
-			$targetExpression = $this->convertExpressionToSql($aggNode->getIdentifier()->deepClone());
+			$targetExpression = $this->convertExpressionToSql($identifier->deepClone());
 			
 			// Build FROM clause including all necessary table joins from correlated ranges.
 			// Correlated ranges define which tables this subquery needs to access
@@ -398,8 +411,10 @@
 		}
 		
 		/**
-		 * Builds a window aggregate: AGG([DISTINCT] expr) OVER ([PARTITION BY ...]).
-		 * SUM is wrapped in COALESCE(..., 0) to keep your current NULL behavior.
+		 * Builds a window aggregate: AGG([DISTINCT] expr) OVER ([PARTITION BY ...] [ORDER BY ...]).
+		 * SUM is wrapped in COALESCE(..., 0), matching the scalar-subquery and plain strategies.
+		 * @param AstSubquery $subquery Contains the windowed aggregate and its partition columns
+		 * @return string Complete SQL window function expression
 		 */
 		private function buildWindowAggregate(AstSubquery $subquery): string {
 			// Fetch aggregation from the subquery
@@ -410,23 +425,55 @@
 				$this->markExpressionAsHandled($aggNode);
 			}
 
+			// Mark the partition columns as processed too — AstSubquery::accept()
+			// visits them independently (for visitors that need to, e.g. range
+			// discovery), which would otherwise make this visitor append their raw
+			// SQL a second time outside the OVER (...) clause built below.
+			foreach ($subquery->getPartitionBy() as $partitionExpression) {
+				$this->markExpressionAsHandled($partitionExpression);
+			}
+
 			// Validate that we have a proper aggregate node before proceeding
 			if (!$aggNode instanceof AstAggregate) {
 				return "";
 			}
 
-			// Extract the aggregate function name (SUM, COUNT, AVG, etc.)
+			// Mark the identifier, inline `sort by`, and inline `by` expressions as
+			// processed too — AstAggregate::accept() unconditionally cascades into them
+			// regardless of whether $aggNode itself was already marked visited above,
+			// which would otherwise make this visitor append their raw SQL a second time
+			// outside the function-call / OVER (...) text built below. This applies even
+			// though the aggregate's own `by` list isn't what's used to build the
+			// PARTITION BY clause here (that comes from $subquery->getPartitionBy(),
+			// already resolved by the optimizer) — $aggNode still carries its original
+			// `by` list via deepClone(), and it must be marked handled regardless.
+			$identifier = $aggNode->getIdentifier();
+
+			if ($identifier !== null) {
+				$this->markExpressionAsHandled($identifier);
+			}
+
+			foreach ($aggNode->getOrder() ?? [] as $sortItem) {
+				$this->markExpressionAsHandled($sortItem['ast']);
+			}
+
+			foreach ($aggNode->getPartitionBy() ?? [] as $expression) {
+				$this->markExpressionAsHandled($expression);
+			}
+
+			// Extract the aggregate function name (SUM, COUNT, AVG, RANK, LAG, etc.)
 			$fn = $aggNode->getType();
 
 			// Add DISTINCT keyword if the aggregate uses DISTINCT semantics
 			$distinct = $this->isDistinct($aggNode) ? 'DISTINCT ' : '';
 
-			// Convert the aggregate's target expression to SQL, cloning to avoid side effects
-			$argSql = $this->convertExpressionToSql($aggNode->getIdentifier()->deepClone());
+			// Convert the aggregate's target expression to SQL, cloning to avoid side effects.
+			// No-argument sequence functions (rank, dense_rank, row_number) have no identifier.
+			$argSql = $identifier !== null ? $this->convertExpressionToSql($identifier->deepClone()) : '';
 
-			// Build the OVER clause from the query's partition columns (the
-			// non-aggregate SELECT items, mirroring GROUP BY inference)
-			$overClause = $this->buildOverClause($subquery->getPartitionBy());
+			// Build the OVER clause from the query's partition columns and the
+			// aggregate's inline `sort by`, if any
+			$overClause = $this->buildOverClause($aggNode, $subquery->getPartitionBy());
 
 			// Special handling for SUM: wrap entire window function in COALESCE for NULL safety
 			// OVER() creates window function, COALESCE ensures 0 instead of NULL result
@@ -439,21 +486,40 @@
 		}
 
 		/**
-		 * Builds the `OVER (...)` clause from the query's partition columns.
+		 * Builds the `OVER (...)` clause from the query's partition columns (the
+		 * non-aggregate SELECT items, mirroring GROUP BY inference) and the
+		 * aggregate's inline `sort by` list.
+		 * @param AstAggregate $aggNode
 		 * @param AstInterface[] $partitionBy
-		 * @return string e.g. "OVER ()" or "OVER (PARTITION BY o.accountId)"
+		 * @return string e.g. "OVER ()" or "OVER (PARTITION BY o.accountId ORDER BY o.eventTime ASC)"
 		 */
-		private function buildOverClause(array $partitionBy): string {
-			if ($partitionBy === []) {
-				return "OVER ()";
+		private function buildOverClause(AstAggregate $aggNode, array $partitionBy): string {
+			$clauseParts = [];
+
+			if ($partitionBy !== []) {
+				$partitionSql = array_map(
+					fn(AstInterface $expression): string => $this->convertExpressionToSql($expression->deepClone()),
+					$partitionBy
+				);
+
+				$clauseParts[] = 'PARTITION BY ' . implode(', ', $partitionSql);
 			}
 
-			$partitionSql = array_map(
-				fn(AstInterface $expression): string => $this->convertExpressionToSql($expression->deepClone()),
-				$partitionBy
-			);
+			$order = $aggNode->getOrder();
 
-			return "OVER (PARTITION BY " . implode(", ", $partitionSql) . ")";
+			if ($order !== null && $order !== []) {
+				$orderTerms = [];
+
+				foreach ($order as $sortItem) {
+					$sql = $this->convertExpressionToSql($sortItem['ast']->deepClone());
+					$direction = strtolower($sortItem['order']) === 'desc' ? 'DESC' : 'ASC';
+					$orderTerms[] = "{$sql} {$direction}";
+				}
+
+				$clauseParts[] = 'ORDER BY ' . implode(', ', $orderTerms);
+			}
+
+			return 'OVER (' . implode(' ', $clauseParts) . ')';
 		}
 		
 		/**
@@ -568,24 +634,42 @@
 			string $aggregateFunction,
 			bool $distinct = false
 		): string {
+			// This path only ever handles MIN/MAX/AVG/SUM/COUNT — the no-argument
+			// sequence functions (rank, dense_rank, row_number) always require the
+			// window-function strategy instead, so a null identifier here is a bug.
+			$identifier = $ast->getIdentifier();
+
+			if ($identifier === null) {
+				throw new \LogicException(get_class($ast) . ' requires a value argument outside the window-function strategy');
+			}
+
+			// Mark the inline `by` list as processed — AggregateOptimizer already
+			// consumed it into the query's GROUP BY clause (STRATEGY_DIRECT_EXPLICIT_GROUP),
+			// but $ast itself still carries it, and AstAggregate::accept() unconditionally
+			// cascades into it regardless, which would otherwise append its raw SQL a
+			// second time right after this method's own return value.
+			foreach ($ast->getPartitionBy() ?? [] as $expression) {
+				$this->markExpressionAsHandled($expression);
+			}
+
 			// Handle conditional aggregation: aggregate WHERE condition → CASE WHEN condition
 			if ($ast->getConditions() !== null) {
 				$condition = $this->convertExpressionToSql($ast->getConditions());
-				$expression = $this->convertExpressionToSql($ast->getIdentifier());
+				$expression = $this->convertExpressionToSql($identifier);
 				$caseExpression = "CASE WHEN {$condition} THEN {$expression} END";
-				
+
 				// Build aggregate function with CASE WHEN expression
 				$distinctClause = $distinct ? 'DISTINCT ' : '';
-				
+
 				if ($aggregateFunction === 'SUM') {
 					return "COALESCE({$aggregateFunction}({$distinctClause}{$caseExpression}), 0)";
 				} else {
 					return "{$aggregateFunction}({$distinctClause}{$caseExpression})";
 				}
 			}
-			
+
 			// Handle standard aggregation
-			$sqlExpression = $this->convertExpressionToSql($ast->getIdentifier());
+			$sqlExpression = $this->convertExpressionToSql($identifier);
 			$distinctClause = $distinct ? 'DISTINCT ' : '';
 			
 			// Apply function-specific NULL handling

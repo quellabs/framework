@@ -25,7 +25,7 @@
 		 *
 		 * @param AstAggregate $expression The window function expression (e.g., ROW_NUMBER(), SUM() OVER())
 		 * @param string|null $origin Optional origin identifier for debugging/tracing
-		 * @param AstInterface[] $partitionBy PARTITION BY columns for the OVER (...) clause
+		 * @param AstInterface[] $partitionBy PARTITION BY expressions, mirroring GROUP BY inference
 		 * @return AstSubquery             Window function subquery with empty ranges and no WHERE conditions
 		 */
 		public static function createWindowFunction(AstAggregate $expression, ?string $origin = null, array $partitionBy = []): AstSubquery {

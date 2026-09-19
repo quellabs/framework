@@ -188,13 +188,43 @@
 		}
 
 		/**
+		 * Checks if a condition expression references only the specified range.
+		 * @param AstExpression $condition The condition to check (e.g., "temp.id = 5")
+		 * @param AstRangeDatabase $range The range to test against
+		 * @return bool True if left OR right side of condition references the range
+		 */
+		public static function conditionReferencesRange(AstExpression $condition, AstRangeDatabase $range): bool {
+			$rangeName = $range->getName();
+			
+			// Extract the range from the left operand, or null if it's not an identifier
+			if ($condition->getLeft() instanceof AstIdentifier) {
+				$leftRange = $condition->getLeft()->getRange();
+			} else {
+				$leftRange = null;
+			}
+			
+			// Extract the range from the right operand, or null if it's not an identifier
+			if ($condition->getRight() instanceof AstIdentifier) {
+				$rightRange = $condition->getRight()->getRange();
+			} else {
+				$rightRange = null;
+			}
+			
+			// getRange() can return null for unresolved identifiers, so guard before calling getName()
+			$leftMatches = $leftRange !== null && $leftRange->getName() === $rangeName;
+			$rightMatches = $rightRange !== null && $rightRange->getName() === $rangeName;
+			
+			// Return true if either operand references the given range
+			return $leftMatches || $rightMatches;
+		}
+
+		/**
 		 * Filters out non-aggregate SELECT items that are bare references to their
-		 * range's declared primary key, before they're used as a window's PARTITION BY.
-		 * Without this, displaying a row's own id alongside a window aggregate (e.g.
-		 * `retrieve(o.id, total = sum(o.amount))`) would put every row in its own
-		 * partition, since every id is distinct — collapsing the window aggregate to
-		 * the same value as a non-windowed one and defeating the point of using a
-		 * window function at all.
+		 * range's declared primary key — used both for a window's PARTITION BY
+		 * (AggregateOptimizer) and for propagating the same partition columns into
+		 * a WindowChainRewriter helper query. Without this exclusion, a query that
+		 * also displays a row's own id (the common case) would put every row in
+		 * its own single-row partition.
 		 * @param EntityStore $entityStore
 		 * @param AstAlias[] $nonAggItems
 		 * @return AstAlias[]
@@ -239,33 +269,59 @@
 		}
 
 		/**
-		 * Checks if a condition expression references only the specified range.
-		 * @param AstExpression $condition The condition to check (e.g., "temp.id = 5")
-		 * @param AstRangeDatabase $range The range to test against
-		 * @return bool True if left OR right side of condition references the range
+		 * Wraps an aggregate's explicit inline `by` list into the AstAlias[] shape
+		 * AggregateRewriter::rewriteAggregateAsWindowFunction() expects, or null when
+		 * no explicit `by` was written (caller falls back to inference).
+		 * @param AstAggregate $aggregate
+		 * @return AstAlias[]|null
 		 */
-		public static function conditionReferencesRange(AstExpression $condition, AstRangeDatabase $range): bool {
-			$rangeName = $range->getName();
-			
-			// Extract the range from the left operand, or null if it's not an identifier
-			if ($condition->getLeft() instanceof AstIdentifier) {
-				$leftRange = $condition->getLeft()->getRange();
-			} else {
-				$leftRange = null;
+		public static function buildPartitionItemsFromExplicitBy(AstAggregate $aggregate): ?array {
+			$partitionBy = $aggregate->getPartitionBy();
+
+			if ($partitionBy === null) {
+				return null;
 			}
-			
-			// Extract the range from the right operand, or null if it's not an identifier
-			if ($condition->getRight() instanceof AstIdentifier) {
-				$rightRange = $condition->getRight()->getRange();
-			} else {
-				$rightRange = null;
+
+			return array_map(
+				static fn(AstInterface $expression): AstAlias => new AstAlias('_partition', $expression->deepClone()),
+				$partitionBy
+			);
+		}
+
+		/**
+		 * Filters out non-aggregate SELECT items that reference the same column as
+		 * one of the aggregate's own inline `sort by` expressions — applied alongside
+		 * excludePrimaryKeyItems() when inferring PARTITION BY. Without this, ranking
+		 * by a column that's also displayed (e.g. `rank(sort by o.published)` while
+		 * also selecting o.published) would put every distinct value of that column
+		 * in its own partition, making the rank trivially 1 for every row.
+		 * Matching is by getCompleteName() and only applies when the sort expression
+		 * is a bare identifier; a computed sort expression (e.g. `sort by o.a + o.b`)
+		 * has no safe general way to detect it re-appears in a SELECT item, so it is
+		 * left in the partition list unchanged.
+		 * @param AstAggregate $aggregate
+		 * @param AstAlias[] $nonAggItems
+		 * @return AstAlias[]
+		 */
+		public static function excludeAggregateOrderColumns(AstAggregate $aggregate, array $nonAggItems): array {
+			$orderColumnNames = [];
+
+			foreach ($aggregate->getOrder() ?? [] as $sortItem) {
+				if ($sortItem['ast'] instanceof AstIdentifier) {
+					$orderColumnNames[$sortItem['ast']->getCompleteName()] = true;
+				}
 			}
-			
-			// getRange() can return null for unresolved identifiers, so guard before calling getName()
-			$leftMatches = $leftRange !== null && $leftRange->getName() === $rangeName;
-			$rightMatches = $rightRange !== null && $rightRange->getName() === $rangeName;
-			
-			// Return true if either operand references the given range
-			return $leftMatches || $rightMatches;
+
+			if ($orderColumnNames === []) {
+				return $nonAggItems;
+			}
+
+			return array_values(array_filter(
+				$nonAggItems,
+				function (AstAlias $item) use ($orderColumnNames): bool {
+					$expression = $item->getExpression();
+					return !($expression instanceof AstIdentifier && isset($orderColumnNames[$expression->getCompleteName()]));
+				}
+			));
 		}
 	}

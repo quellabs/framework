@@ -8,7 +8,7 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstShowIndex;
 	use Quellabs\ObjectQuel\ObjectQuel\Lexer;
 	use Quellabs\ObjectQuel\ObjectQuel\Parser;
-	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQLIndexVisibility;
+	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQL\QuelToSQLIndexVisibility;
 	use Quellabs\ObjectQuel\Tests\Support\FakePlatformCapabilities;
 
 	/**
