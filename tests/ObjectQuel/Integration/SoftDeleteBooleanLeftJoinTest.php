@@ -18,6 +18,14 @@
 	 *
 	 * RelBoolSoftChildEntity.parentId is nullable, so `via child.parent`
 	 * compiles to a real LEFT JOIN with some rows having no matching parent.
+	 *
+	 * Also covers the follow-up the bug report raised but left as an open
+	 * question: for an optional relation, a soft-deleted related row is now
+	 * ANDed onto the JOIN's own ON clause rather than the query's WHERE
+	 * clause, so it behaves the same as an absent related row — the child
+	 * survives with the parent's columns coming back NULL — instead of the
+	 * child vanishing entirely the way a WHERE-clause filter forces
+	 * regardless of join type.
 	 */
 	class SoftDeleteBooleanLeftJoinTest extends TestCase {
 
@@ -74,11 +82,13 @@
 		}
 
 		/**
-		 * Contrast case: once the related parent is actually soft-deleted,
-		 * the filter must still exclude the child that points at it — the
-		 * fix must not turn the boolean filter into a no-op.
+		 * A child pointing at a soft-deleted parent must survive too — with
+		 * the parent's columns coming back NULL, exactly as if the child had
+		 * no parent at all. The filter still does its job (the soft-deleted
+		 * parent's own data isn't visible through this join), but it no
+		 * longer turns the LEFT JOIN into a de facto INNER JOIN.
 		 */
-		public function testChildOfSoftDeletedParentIsStillExcluded(): void {
+		public function testChildOfSoftDeletedParentSurvivesWithParentColumnsNull(): void {
 			$em = self::em();
 
 			$deletedParent = new RelBoolSoftParentEntity();
@@ -105,14 +115,18 @@
 			$rows = $em->executeQuery("
 				range of ch is Quellabs\\ObjectQuel\\Tests\\Fixtures\\RelationshipEntities\\RelBoolSoftChildEntity
 				range of p is Quellabs\\ObjectQuel\\Tests\\Fixtures\\RelationshipEntities\\RelBoolSoftParentEntity via ch.parent
-				retrieve (ch.id)
+				retrieve (ch.id, p.id)
+				sort by ch.id asc
 			");
 
-			$ids = array_map(fn($row) => $row['ch.id'], iterator_to_array($rows));
+			$rowsById = [];
+			foreach ($rows as $row) {
+				$rowsById[$row['ch.id']] = $row;
+			}
 
-			$this->assertCount(2, $ids);
-			$this->assertNotContains($childOfDeletedParent->getId(), $ids);
-			$this->assertContains($childOfActiveParent->getId(), $ids);
-			$this->assertContains($childWithoutParent->getId(), $ids);
+			$this->assertCount(3, $rowsById, 'All three children must survive, including the one pointing at a soft-deleted parent');
+			$this->assertNull($rowsById[$childOfDeletedParent->getId()]['p.id'], 'The soft-deleted parent must not be visible through the join');
+			$this->assertSame($activeParent->getId(), $rowsById[$childOfActiveParent->getId()]['p.id']);
+			$this->assertNull($rowsById[$childWithoutParent->getId()]['p.id']);
 		}
 	}
