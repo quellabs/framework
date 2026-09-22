@@ -23,12 +23,9 @@
 	 *   - Soft delete: $em->remove($post);                   $em->flush();
 	 *   - Hard delete: $em->remove($post, hardDelete: true); $em->flush();
 	 *
-	 * $em->remove() and the QUEL `delete <range> where ...` statement both
-	 * go through DeletePersister/QuelToSQLDelete, so both now compile to a
-	 * soft-delete UPDATE by default when the target entity carries
-	 * @SoftDelete, same as a normal `retrieve`'s read-side filter — the
-	 * `@ignoreSoftDelete true` directive (or remove()'s $hardDelete
-	 * argument) forces a real DELETE instead.
+	 * `$em->remove()` and QUEL `delete` both compile to a soft-delete UPDATE by
+	 * default for a soft-deletable entity; `@ignoreSoftDelete true` or `hardDelete`
+	 * forces a real DELETE.
 	 *
 	 * Filter behaviour:
 	 *   - Normal queries exclude rows where deleted_at IS NOT NULL.
@@ -184,10 +181,7 @@
 			$this->assertNotNull($result[0]['p']->getDeletedAt());
 		}
 
-		/**
-		 * Directive names are case-insensitive (see Parser::parseCompilerDirectives()) —
-		 * @IgnoreSoftDelete/@IGNORESOFTDELETE must behave exactly like @ignoreSoftDelete.
-		 */
+		/** Directive names are case-insensitive. */
 		public function testIgnoreSoftDeleteDirectiveNameIsCaseInsensitive(): void {
 			$post = $this->findPostById(1);
 			$this->assertNotNull($post);
@@ -362,10 +356,7 @@
 				delete p where p.id = :id
 			", ['id' => 1]);
 
-			// `delete` bypasses UnitOfWork entirely (see QuelToSQLDelete's
-			// docblock), so the identity map still holds the pre-delete
-			// instance — clear it so the next retrieve rehydrates from the
-			// row this statement actually wrote.
+			// `delete` bypasses UnitOfWork, so clear the identity map to rehydrate the row.
 			$this->em->getUnitOfWork()->clear();
 
 			$this->assertNull($this->findPostById(1));

@@ -2,22 +2,7 @@
 
 	namespace Quellabs\ObjectQuel\Tests;
 
-	/**
-	 * Regression test for AstRetrieve::deepClone() silently dropping GROUP BY.
-	 *
-	 * A mixed query (aggregate + non-aggregate column) whose ranges are joined but
-	 * not identical is planned as STRATEGY_DIRECT_OVERLAP, which infers GROUP BY
-	 * from the non-aggregate column (AggregateOptimizer::applyStrategy() ->
-	 * $root->setGroupBy(...)). Two ranges rules out the single-range WINDOW strategy
-	 * entirely (AggregateOptimizer::canUseWindowFunction() requires exactly one),
-	 * isolating the GROUP BY path this test targets.
-	 *
-	 * The standard single-stage execution path then deep-clones the fully-optimized
-	 * query (StageFactory::createDatabaseExecutionStage()) before generating SQL.
-	 * AstRetrieve::deepClone() never copied $group_by to the clone, so the GROUP BY
-	 * clause silently vanished from the executed SQL, collapsing what should be one
-	 * row per group into a single ungrouped aggregate over the whole table.
-	 */
+	/** Regression test for AstRetrieve::deepClone() silently dropping the inferred GROUP BY clause. */
 	class AggregateGroupByDeepCloneTest extends ObjectQuelTestCase {
 
 		protected function seedFixtures(): void {
@@ -39,9 +24,7 @@
 		}
 
 		public function testGroupByInferredFromMixedColumnSurvivesExecution(): void {
-			// u.username is a plain (non-aggregate) SELECT item from a joined range,
-			// so GROUP BY is inferred from it. Must return one row per user (2), not
-			// one row for the whole table.
+			// GROUP BY is inferred from u.username; must return one row per user, not one for the whole table.
 			$result = iterator_to_array($this->em->executeQuery("
 				range of o is PostEntity
 				range of u is UserEntity via o.user

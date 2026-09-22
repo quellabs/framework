@@ -9,12 +9,8 @@
 	use Quellabs\ObjectQuel\Annotations\Orm\SoftDelete;
 
 	/**
-	 * Like RelBoolSoftChildEntity, but itself boolean-soft-deletable too —
-	 * regression fixture for a query where the primary (FROM) range and a
-	 * joined range are both soft-deletable at once: the primary range's
-	 * filter still excludes it via WHERE (querying the deleted thing
-	 * directly), independent of whatever the joined range's own filter does
-	 * via its ON clause.
+	 * Like RelBoolSoftChildEntity, but itself boolean-soft-deletable too — for
+	 * queries where both the primary range and a joined range are soft-deletable.
 	 * @Orm\Table(name="rel_bool_soft_children_own_delete")
 	 */
 	class RelBoolSoftChildWithOwnDeleteEntity {

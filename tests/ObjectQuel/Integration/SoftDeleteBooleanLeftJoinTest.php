@@ -8,24 +8,9 @@
 	use Quellabs\ObjectQuel\Tests\Fixtures\RelationshipEntities\RelBoolSoftParentEntity;
 
 	/**
-	 * Regression coverage for bug-soft-delete-left-join-boolean-null.md:
-	 * InjectSoftDeleteCondition's boolean branch compiled to a plain
-	 * `range.property = false` WHERE condition, which is not NULL-safe. On an
-	 * optional (LEFT JOIN) range, a child row with no related parent at all
-	 * produced `NULL = false` (SQL's three-valued UNKNOWN), silently dropping
-	 * the child row — even though it has nothing to do with any parent being
-	 * soft-deleted.
-	 *
-	 * RelBoolSoftChildEntity.parentId is nullable, so `via child.parent`
-	 * compiles to a real LEFT JOIN with some rows having no matching parent.
-	 *
-	 * Also covers the follow-up the bug report raised but left as an open
-	 * question: for an optional relation, a soft-deleted related row is now
-	 * ANDed onto the JOIN's own ON clause rather than the query's WHERE
-	 * clause, so it behaves the same as an absent related row — the child
-	 * survives with the parent's columns coming back NULL — instead of the
-	 * child vanishing entirely the way a WHERE-clause filter forces
-	 * regardless of join type.
+	 * Regression coverage: InjectSoftDeleteCondition's boolean branch must not compile
+	 * to a plain WHERE `= false` on a LEFT JOIN range, since NULL = false silently
+	 * drops rows with no related parent.
 	 */
 	class SoftDeleteBooleanLeftJoinTest extends TestCase {
 
@@ -46,11 +31,7 @@
 			self::em()->getUnitOfWork()->clear();
 		}
 
-		/**
-		 * A child row with no related parent at all (parentId NULL) must
-		 * always survive the parent's boolean soft-delete filter, since
-		 * there is nothing to soft-delete-check.
-		 */
+		/** A child with no related parent must always survive the parent's boolean soft-delete filter. */
 		public function testChildWithNoParentAtAllSurvivesBooleanSoftDeleteFilter(): void {
 			$em = self::em();
 
@@ -81,13 +62,7 @@
 			$this->assertContains($childWithoutParent->getId(), $ids);
 		}
 
-		/**
-		 * A child pointing at a soft-deleted parent must survive too — with
-		 * the parent's columns coming back NULL, exactly as if the child had
-		 * no parent at all. The filter still does its job (the soft-deleted
-		 * parent's own data isn't visible through this join), but it no
-		 * longer turns the LEFT JOIN into a de facto INNER JOIN.
-		 */
+		/** A child of a soft-deleted parent must survive with the parent's columns NULL. */
 		public function testChildOfSoftDeletedParentSurvivesWithParentColumnsNull(): void {
 			$em = self::em();
 
@@ -130,16 +105,7 @@
 			$this->assertNull($rowsById[$childWithoutParent->getId()]['p.id']);
 		}
 
-		/**
-		 * When a WHERE reference to a non-nullable field of the parent range
-		 * promotes the LEFT JOIN to INNER (JoinOptimizer's ordinary
-		 * optimization, unrelated to soft-delete), the soft-delete condition
-		 * still lives in that range's ON clause. For an INNER JOIN, a
-		 * predicate in ON filters identically to the same predicate in WHERE,
-		 * so the child with a soft-deleted parent must still be excluded —
-		 * this fix must not accidentally change results once the join type
-		 * changes underneath it.
-		 */
+		/** The ON-clause soft-delete condition must still apply once the range is promoted to INNER JOIN. */
 		public function testSoftDeleteConditionStillAppliesOnceRangeIsPromotedToInnerJoin(): void {
 			$em = self::em();
 
@@ -164,8 +130,7 @@
 			$em->flush();
 			$em->getUnitOfWork()->clear();
 
-			// "p.id > 0" references a non-nullable column with no null check,
-			// so JoinOptimizer promotes range 'p' from LEFT to INNER.
+			// "p.id > 0" promotes range 'p' from LEFT to INNER.
 			$plan = $em->explainQuery("
 				range of ch is Quellabs\\ObjectQuel\\Tests\\Fixtures\\RelationshipEntities\\RelBoolSoftChildEntity
 				range of p is Quellabs\\ObjectQuel\\Tests\\Fixtures\\RelationshipEntities\\RelBoolSoftParentEntity via ch.parent
@@ -184,9 +149,7 @@
 
 			$ids = array_map(fn($row) => $row['ch.id'], iterator_to_array($rows));
 
-			// childWithoutParent is excluded here by "p.id > 0" itself (no match once
-			// required) — an expected consequence of referencing a joined column in
-			// WHERE, not something this fix changes.
+			// childWithoutParent is excluded by "p.id > 0" itself, not by this fix.
 			$this->assertCount(1, $ids);
 			$this->assertContains($childOfActiveParent->getId(), $ids);
 			$this->assertNotContains($childOfDeletedParent->getId(), $ids);

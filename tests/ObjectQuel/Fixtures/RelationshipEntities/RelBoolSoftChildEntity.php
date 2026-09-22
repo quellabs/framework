@@ -8,11 +8,7 @@
 	use Quellabs\ObjectQuel\Annotations\Orm\ManyToOne;
 
 	/**
-	 * The "many" side of an optional relation to RelBoolSoftParentEntity — the
-	 * FK column is nullable, so a row can have no related parent at all. Used
-	 * to reproduce bug-soft-delete-left-join-boolean-null.md: `via
-	 * child.parent` compiles to a LEFT JOIN, and a row with parentId = NULL
-	 * must survive the injected boolean soft-delete filter on the parent.
+	 * The "many" side of an optional (nullable FK) relation to RelBoolSoftParentEntity.
 	 * @Orm\Table(name="rel_bool_soft_children")
 	 */
 	class RelBoolSoftChildEntity {
