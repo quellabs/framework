@@ -5,6 +5,8 @@
 	use App\Entities\PostEntity;
 	use App\Entities\UserEntity;
 	use App\Enums\TestEnum;
+	use Quellabs\ObjectQuel\Persistence\DeleteType;
+	use Quellabs\SignalHub\Slot;
 	
 	/**
 	 * Tests soft-delete behaviour end-to-end.
@@ -15,9 +17,18 @@
 	 *   ALTER TABLE posts ADD COLUMN deleted_at DATETIME NULL DEFAULT NULL;
 	 *
 	 * Soft-delete lifecycle:
-	 *   - Mark:    $post->setDeletedAt(new \DateTime()); $em->flush();
-	 *   - Restore: $post->setDeletedAt(null);            $em->flush();
-	 *   - Hard:    $em->remove($post);                   $em->flush();
+	 *   - Mark:        $post->setDeletedAt(new \DateTime()); $em->flush();
+	 *   - Restore:     $post->setDeletedAt(null);            $em->flush();
+	 *   - Restore:     $em->restore($post);                  $em->flush(); (metadata-driven equivalent)
+	 *   - Soft delete: $em->remove($post);                   $em->flush();
+	 *   - Hard delete: $em->remove($post, hardDelete: true); $em->flush();
+	 *
+	 * $em->remove() and the QUEL `delete <range> where ...` statement both
+	 * go through DeletePersister/QuelToSQLDelete, so both now compile to a
+	 * soft-delete UPDATE by default when the target entity carries
+	 * @SoftDelete, same as a normal `retrieve`'s read-side filter — the
+	 * `@ignoreSoftDelete true` directive (or remove()'s $hardDelete
+	 * argument) forces a real DELETE instead.
 	 *
 	 * Filter behaviour:
 	 *   - Normal queries exclude rows where deleted_at IS NOT NULL.
@@ -161,14 +172,34 @@
 			$post = $this->findPostById(1);
 			$this->assertNotNull($post);
 			$this->softDeletePost($post);
-			
+
 			$result = $this->em->executeQuery("
 				@ignoreSoftDelete true
 				range of p is PostEntity
 				retrieve (p)
 				where p.id = :id
 			", ['id' => 1]);
-			
+
+			$this->assertCount(1, $result);
+			$this->assertNotNull($result[0]['p']->getDeletedAt());
+		}
+
+		/**
+		 * Directive names are case-insensitive (see Parser::parseCompilerDirectives()) —
+		 * @IgnoreSoftDelete/@IGNORESOFTDELETE must behave exactly like @ignoreSoftDelete.
+		 */
+		public function testIgnoreSoftDeleteDirectiveNameIsCaseInsensitive(): void {
+			$post = $this->findPostById(1);
+			$this->assertNotNull($post);
+			$this->softDeletePost($post);
+
+			$result = $this->em->executeQuery("
+				@IgnoreSoftDelete true
+				range of p is PostEntity
+				retrieve (p)
+				where p.id = :id
+			", ['id' => 1]);
+
 			$this->assertCount(1, $result);
 			$this->assertNotNull($result[0]['p']->getDeletedAt());
 		}
@@ -197,19 +228,72 @@
 			$this->assertNotNull($restored);
 			$this->assertNull($restored->getDeletedAt());
 		}
-		
-		// -------------------------------------------------------------------------
-		// Hard delete still works on soft-deletable entities
-		// -------------------------------------------------------------------------
-		
-		public function testHardDeleteRemovesRowPermanently(): void {
+
+		public function testEmRestoreMakesPostVisibleAgain(): void {
 			$post = $this->findPostById(1);
 			$this->assertNotNull($post);
-			
+			$this->softDeletePost($post);
+
+			// Confirm it's hidden
+			$this->assertNull($this->findPostById(1));
+
+			$deleted = $this->em->find(PostEntity::class, 1);
+			$this->assertNotNull($deleted);
+			$this->assertNotNull($deleted->getDeletedAt());
+
+			$this->em->restore($deleted);
+			$this->em->flush();
+			$this->em->getUnitOfWork()->clear();
+
+			$restored = $this->findPostById(1);
+			$this->assertNotNull($restored);
+			$this->assertNull($restored->getDeletedAt());
+		}
+
+		public function testEmRestoreOnEntityWithoutSoftDeleteThrows(): void {
+			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (3, 'carol', 'hash3', 0)");
+			$user = $this->em->find(UserEntity::class, 3);
+			$this->assertNotNull($user);
+
+			$this->expectException(\Quellabs\ObjectQuel\OrmException::class);
+			$this->em->restore($user);
+		}
+
+		// -------------------------------------------------------------------------
+		// $em->remove() on a soft-deletable entity
+		// -------------------------------------------------------------------------
+
+		public function testRemoveSoftDeletesByDefault(): void {
+			$post = $this->findPostById(1);
+			$this->assertNotNull($post);
+
 			$this->em->remove($post);
 			$this->em->flush();
 			$this->em->getUnitOfWork()->clear();
-			
+
+			// Hidden from a normal retrieve...
+			$this->assertNull($this->findPostById(1));
+
+			// ...but the row still exists, with deletedAt set
+			$result = $this->em->executeQuery("
+				@ignoreSoftDelete true
+				range of p is PostEntity
+				retrieve (p)
+				where p.id = :id
+			", ['id' => 1]);
+
+			$this->assertCount(1, $result);
+			$this->assertNotNull($result[0]['p']->getDeletedAt());
+		}
+
+		public function testRemoveWithHardDeleteFlagRemovesRowPermanently(): void {
+			$post = $this->findPostById(1);
+			$this->assertNotNull($post);
+
+			$this->em->remove($post, hardDelete: true);
+			$this->em->flush();
+			$this->em->getUnitOfWork()->clear();
+
 			// Must be gone even with the directive that bypasses the soft-delete filter
 			$result = $this->em->executeQuery("
 				@ignoreSoftDelete true
@@ -217,10 +301,144 @@
 				retrieve (p)
 				where p.id = :id
 			", ['id' => 1]);
-			
+
 			$this->assertCount(0, $result);
 		}
-		
+
+		public function testRemoveEmitsSoftDeleteTypeOnSignals(): void {
+			$post = $this->findPostById(1);
+			$this->assertNotNull($post);
+
+			$captured = [];
+			$slot = new Slot(function ($entity, $deleteType) use (&$captured) {
+				$captured[] = $deleteType;
+			});
+
+			$unitOfWork = $this->em->getUnitOfWork();
+			$unitOfWork->signalPreDelete->connect($slot);
+			$unitOfWork->signalPostDelete->connect($slot);
+
+			$this->em->remove($post);
+			$this->em->flush();
+
+			$unitOfWork->signalPreDelete->disconnect($slot);
+			$unitOfWork->signalPostDelete->disconnect($slot);
+
+			$this->assertSame([DeleteType::Soft, DeleteType::Soft], $captured);
+		}
+
+		public function testRemoveWithHardDeleteFlagEmitsHardDeleteTypeOnSignals(): void {
+			$post = $this->findPostById(1);
+			$this->assertNotNull($post);
+
+			$captured = [];
+			$slot = new Slot(function ($entity, $deleteType) use (&$captured) {
+				$captured[] = $deleteType;
+			});
+
+			$unitOfWork = $this->em->getUnitOfWork();
+			$unitOfWork->signalPreDelete->connect($slot);
+			$unitOfWork->signalPostDelete->connect($slot);
+
+			$this->em->remove($post, hardDelete: true);
+			$this->em->flush();
+
+			$unitOfWork->signalPreDelete->disconnect($slot);
+			$unitOfWork->signalPostDelete->disconnect($slot);
+
+			$this->assertSame([DeleteType::Hard, DeleteType::Hard], $captured);
+		}
+
+		// -------------------------------------------------------------------------
+		// QUEL `delete <range> where ...` on a soft-deletable entity
+		// -------------------------------------------------------------------------
+
+		public function testDeleteStatementSoftDeletesByDefault(): void {
+			$post = $this->findPostById(1);
+			$this->assertNotNull($post);
+
+			$this->em->executeQuery("
+				range of p is PostEntity
+				delete p where p.id = :id
+			", ['id' => 1]);
+
+			// `delete` bypasses UnitOfWork entirely (see QuelToSQLDelete's
+			// docblock), so the identity map still holds the pre-delete
+			// instance — clear it so the next retrieve rehydrates from the
+			// row this statement actually wrote.
+			$this->em->getUnitOfWork()->clear();
+
+			$this->assertNull($this->findPostById(1));
+
+			$result = $this->em->executeQuery("
+				@ignoreSoftDelete true
+				range of p is PostEntity
+				retrieve (p)
+				where p.id = :id
+			", ['id' => 1]);
+
+			$this->assertCount(1, $result);
+			$this->assertNotNull($result[0]['p']->getDeletedAt());
+		}
+
+		public function testDeleteStatementWithIgnoreSoftDeleteDirectiveHardDeletes(): void {
+			$post = $this->findPostById(1);
+			$this->assertNotNull($post);
+
+			$this->em->executeQuery("
+				@ignoreSoftDelete true
+				range of p is PostEntity
+				delete p where p.id = :id
+			", ['id' => 1]);
+
+			$result = $this->em->executeQuery("
+				@ignoreSoftDelete true
+				range of p is PostEntity
+				retrieve (p)
+				where p.id = :id
+			", ['id' => 1]);
+
+			$this->assertCount(0, $result);
+		}
+
+		public function testDeleteStatementIgnoreSoftDeleteDirectiveNameIsCaseInsensitive(): void {
+			$post = $this->findPostById(1);
+			$this->assertNotNull($post);
+
+			$this->em->executeQuery("
+				@IGNORESOFTDELETE true
+				range of p is PostEntity
+				delete p where p.id = :id
+			", ['id' => 1]);
+
+			$result = $this->em->executeQuery("
+				@ignoreSoftDelete true
+				range of p is PostEntity
+				retrieve (p)
+				where p.id = :id
+			", ['id' => 1]);
+
+			$this->assertCount(0, $result);
+		}
+
+		public function testDeleteStatementOnNonSoftDeletableEntityStillHardDeletes(): void {
+			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (3, 'carol', 'hash3', 0)");
+
+			// UserEntity carries no @SoftDelete — must behave exactly as before.
+			$result = $this->em->executeQuery("
+				range of u is UserEntity
+				delete u where u.id = :id
+			", ['id' => 3]);
+
+			$this->assertSame(1, $result->getAffectedRows());
+
+			$rows = $this->em->getAll(
+				'range of u is UserEntity retrieve (u) where u.id = :id',
+				['id' => 3]
+			);
+			$this->assertCount(0, $rows);
+		}
+
 		// -------------------------------------------------------------------------
 		// Filter applies correctly in joins
 		// -------------------------------------------------------------------------
