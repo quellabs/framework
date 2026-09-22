@@ -171,14 +171,34 @@
 			$post = $this->findPostById(1);
 			$this->assertNotNull($post);
 			$this->softDeletePost($post);
-			
+
 			$result = $this->em->executeQuery("
 				@ignoreSoftDelete true
 				range of p is PostEntity
 				retrieve (p)
 				where p.id = :id
 			", ['id' => 1]);
-			
+
+			$this->assertCount(1, $result);
+			$this->assertNotNull($result[0]['p']->getDeletedAt());
+		}
+
+		/**
+		 * Directive names are case-insensitive (see Parser::parseCompilerDirectives()) —
+		 * @IgnoreSoftDelete/@IGNORESOFTDELETE must behave exactly like @ignoreSoftDelete.
+		 */
+		public function testIgnoreSoftDeleteDirectiveNameIsCaseInsensitive(): void {
+			$post = $this->findPostById(1);
+			$this->assertNotNull($post);
+			$this->softDeletePost($post);
+
+			$result = $this->em->executeQuery("
+				@IgnoreSoftDelete true
+				range of p is PostEntity
+				retrieve (p)
+				where p.id = :id
+			", ['id' => 1]);
+
 			$this->assertCount(1, $result);
 			$this->assertNotNull($result[0]['p']->getDeletedAt());
 		}
@@ -336,6 +356,26 @@
 
 			$this->em->executeQuery("
 				@ignoreSoftDelete true
+				range of p is PostEntity
+				delete p where p.id = :id
+			", ['id' => 1]);
+
+			$result = $this->em->executeQuery("
+				@ignoreSoftDelete true
+				range of p is PostEntity
+				retrieve (p)
+				where p.id = :id
+			", ['id' => 1]);
+
+			$this->assertCount(0, $result);
+		}
+
+		public function testDeleteStatementIgnoreSoftDeleteDirectiveNameIsCaseInsensitive(): void {
+			$post = $this->findPostById(1);
+			$this->assertNotNull($post);
+
+			$this->em->executeQuery("
+				@IGNORESOFTDELETE true
 				range of p is PostEntity
 				delete p where p.id = :id
 			", ['id' => 1]);
