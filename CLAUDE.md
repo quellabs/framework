@@ -209,17 +209,3 @@ implementation.
 developer to understand the code, its purpose, and any non-obvious
 behavior. Do not add documentation merely because there is an
 opportunity to do so.
-
-## Documentation Restraint
-
-Do not create a large docblock unless explicitly requested.
-
-A function's docblock should generally be absent when its purpose is
-clear from its name, parameters, return type, and implementation.
-
-When a docblock is needed, keep it to a short description of the
-behavior and only the essential non-obvious details.
-
-Never include: - A narrative of the function's development history. - A
-detailed walkthrough of its implementation. - Redundant explanations of
-individual lines.
