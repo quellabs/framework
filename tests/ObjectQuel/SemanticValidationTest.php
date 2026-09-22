@@ -75,7 +75,23 @@
 				where count(p.id) > 1
 			"));
 		}
-		
+
+		/**
+		 * A window-shaped aggregate (a sequence function, or a running aggregate
+		 * with an inline `sort by`/`by`) is exempt from the plain-aggregate WHERE
+		 * restriction above — WhereWindowFilterRewriter stages it into a helper
+		 * range before AggregateOptimizer runs, so this must not throw.
+		 */
+		public function testWindowShapedAggregateInWhereClauseDoesNotThrow(): void {
+			$result = iterator_to_array($this->em->executeQuery("
+				range of p is PostEntity
+				retrieve (p.id, rn = row_number(sort by p.id))
+				where rn <= 1
+			"));
+
+			$this->assertIsArray($result);
+		}
+
 		// -------------------------------------------------------------------------
 		// RegExp in value list
 		// -------------------------------------------------------------------------
