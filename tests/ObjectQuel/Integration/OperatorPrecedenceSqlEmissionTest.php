@@ -45,6 +45,24 @@
 		}
 
 		/**
+		 * Same as above with the OR on the left of AND instead of the right —
+		 * operandSql() must wrap a lower-precedence child on either side, not
+		 * only the right operand (unlike the same-precedence right-side rule,
+		 * which is right-side-only because a left-side same-precedence chain
+		 * already prints correctly via the parser's left-fold).
+		 */
+		public function testOrNestedInAndKeepsItsGroupingOnTheLeft(): void {
+			$rows = $this->em->getAll("
+				range of u is App\\Entities\\UserEntity
+				retrieve (u.id, u.username)
+				where (u.username = 'alice' or u.username = 'carol') and u.banned = 0
+			");
+
+			$this->assertCount(1, $rows);
+			$this->assertSame('alice', $rows[0]['u.username']);
+		}
+
+		/**
 		 * `u.id * (3 + 4)` must not be re-read as `u.id * 3 + 4` once the
 		 * parentheses that built this AST are gone from the emitted SQL.
 		 */
@@ -88,5 +106,30 @@
 
 			$this->assertCount(1, $rows);
 			$this->assertSame(4.0, (float)$rows[0]['v']);
+		}
+
+		/**
+		 * handleWildcardString() and handleRegularExpression() render their
+		 * left operand directly (the right side is the wildcard/regex
+		 * pattern, never a nested operator), bypassing handleGenericExpression's
+		 * normal left/right handling — so they need their own operandSql()
+		 * call. `(username = 'alice' or banned = 1) = 'x*'` forces the LIKE
+		 * conversion's left operand to be a lower-precedence OR expression;
+		 * without parentheses it would compile as
+		 * `username = 'alice' or banned = 1 like "x%"`, which the database
+		 * reads as `username = 'alice' or (banned = 1 like "x%")` — silently
+		 * losing the wildcard comparison against the OR expression entirely.
+		 */
+		public function testWildcardComparisonParenthesizesALowerPrecedenceLeftOperand(): void {
+			$plan = $this->em->explainQuery("
+				range of u is App\\Entities\\UserEntity
+				retrieve (u.id)
+				where (u.username = 'alice' or u.banned = 1) = 'x*'
+			");
+
+			$this->assertStringContainsString(
+				'(`u`.`username` = "alice" OR `u`.`banned` = 1) LIKE "x%"',
+				$plan->getSql()[0]
+			);
 		}
 	}

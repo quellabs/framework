@@ -129,4 +129,67 @@
 			$this->assertSame($activeParent->getId(), $rowsById[$childOfActiveParent->getId()]['p.id']);
 			$this->assertNull($rowsById[$childWithoutParent->getId()]['p.id']);
 		}
+
+		/**
+		 * When a WHERE reference to a non-nullable field of the parent range
+		 * promotes the LEFT JOIN to INNER (JoinOptimizer's ordinary
+		 * optimization, unrelated to soft-delete), the soft-delete condition
+		 * still lives in that range's ON clause. For an INNER JOIN, a
+		 * predicate in ON filters identically to the same predicate in WHERE,
+		 * so the child with a soft-deleted parent must still be excluded —
+		 * this fix must not accidentally change results once the join type
+		 * changes underneath it.
+		 */
+		public function testSoftDeleteConditionStillAppliesOnceRangeIsPromotedToInnerJoin(): void {
+			$em = self::em();
+
+			$activeParent = new RelBoolSoftParentEntity();
+			$em->persist($activeParent);
+
+			$deletedParent = new RelBoolSoftParentEntity();
+			$deletedParent->setIsDeleted(true);
+			$em->persist($deletedParent);
+
+			$childOfActiveParent = new RelBoolSoftChildEntity();
+			$childOfActiveParent->parent = $activeParent;
+
+			$childOfDeletedParent = new RelBoolSoftChildEntity();
+			$childOfDeletedParent->parent = $deletedParent;
+
+			$childWithoutParent = new RelBoolSoftChildEntity();
+
+			$em->persist($childOfActiveParent);
+			$em->persist($childOfDeletedParent);
+			$em->persist($childWithoutParent);
+			$em->flush();
+			$em->getUnitOfWork()->clear();
+
+			// "p.id > 0" references a non-nullable column with no null check,
+			// so JoinOptimizer promotes range 'p' from LEFT to INNER.
+			$plan = $em->explainQuery("
+				range of ch is Quellabs\\ObjectQuel\\Tests\\Fixtures\\RelationshipEntities\\RelBoolSoftChildEntity
+				range of p is Quellabs\\ObjectQuel\\Tests\\Fixtures\\RelationshipEntities\\RelBoolSoftParentEntity via ch.parent
+				retrieve (ch.id, p.id)
+				where p.id > 0
+			");
+
+			$this->assertStringContainsString('INNER JOIN', $plan->getSql()[0], 'Range p must have been promoted to INNER JOIN for this assertion to be meaningful');
+
+			$rows = $em->executeQuery("
+				range of ch is Quellabs\\ObjectQuel\\Tests\\Fixtures\\RelationshipEntities\\RelBoolSoftChildEntity
+				range of p is Quellabs\\ObjectQuel\\Tests\\Fixtures\\RelationshipEntities\\RelBoolSoftParentEntity via ch.parent
+				retrieve (ch.id, p.id)
+				where p.id > 0
+			");
+
+			$ids = array_map(fn($row) => $row['ch.id'], iterator_to_array($rows));
+
+			// childWithoutParent is excluded here by "p.id > 0" itself (no match once
+			// required) — an expected consequence of referencing a joined column in
+			// WHERE, not something this fix changes.
+			$this->assertCount(1, $ids);
+			$this->assertContains($childOfActiveParent->getId(), $ids);
+			$this->assertNotContains($childOfDeletedParent->getId(), $ids);
+			$this->assertNotContains($childWithoutParent->getId(), $ids);
+		}
 	}
