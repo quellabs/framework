@@ -46,4 +46,9 @@
 		public function getDeletedAt(): ?\DateTime {
 			return $this->deletedAt;
 		}
+
+		public function setDeletedAt(?\DateTime $deletedAt): self {
+			$this->deletedAt = $deletedAt;
+			return $this;
+		}
 	}

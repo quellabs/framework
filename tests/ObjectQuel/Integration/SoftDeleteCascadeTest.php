@@ -24,6 +24,12 @@
 	 *     @SoftDelete — otherwise it's left pointing at a parent row that
 	 *     no longer exists.
 	 *
+	 * restore() walks the same Cascade(remove) graph in reverse: restoring
+	 * a parent also restores any dependent that is currently soft-deleted
+	 * (see UnitOfWork::restore()'s docblock for the tradeoff this implies —
+	 * it can't tell a dependent cascade-deleted with this parent apart from
+	 * one that happened to be soft-deleted independently).
+	 *
 	 * See RelationshipCascadeForeignKeyTest for the base (non-soft-delete)
 	 * cascade-remove/persist behavior this builds on, and its docblock for
 	 * why these fixtures live in their own isolated directory and share
@@ -177,5 +183,113 @@
 
 			$rows = $em->getConnection()->execute('SELECT id FROM rel_soft_child_of_plain_parent')->fetchAll('assoc');
 			self::assertSame([], $rows);
+		}
+
+		// -------------------------------------------------------------------------
+		// restore() cascades to currently soft-deleted Cascade(remove) dependents
+		// -------------------------------------------------------------------------
+
+		public function testRestoringParentAlsoRestoresCascadeSoftDeletedChild(): void {
+			$em = self::em();
+
+			$parent = new RelSoftParentEntity();
+			$em->persist($parent);
+			$em->flush();
+			$parentId = $parent->getId();
+
+			$child = new RelSoftChildOfSoftParentEntity();
+			$child->parent = $parent;
+			$em->persist($child);
+			$em->flush();
+			$childId = $child->getId();
+
+			$em->remove($parent);
+			$em->flush();
+			$em->getUnitOfWork()->clear();
+
+			$managedParent = $em->find(RelSoftParentEntity::class, $parentId);
+			self::assertNotNull($managedParent);
+			self::assertNotNull($managedParent->getDeletedAt());
+
+			$em->restore($managedParent);
+			$em->flush();
+
+			$parentRows = $em->getConnection()->execute('SELECT deleted_at FROM rel_soft_parents WHERE id = ' . $parentId)->fetchAll('assoc');
+			self::assertNull($parentRows[0]['deleted_at']);
+
+			$childRows = $em->getConnection()->execute('SELECT deleted_at FROM rel_soft_child_of_soft_parent WHERE id = ' . $childId)->fetchAll('assoc');
+			self::assertNull($childRows[0]['deleted_at']);
+		}
+
+		public function testRestoringParentLeavesAlreadyActiveChildUntouched(): void {
+			$em = self::em();
+
+			$parent = new RelSoftParentEntity();
+			$em->persist($parent);
+			$em->flush();
+			$parentId = $parent->getId();
+
+			$child = new RelSoftChildOfSoftParentEntity();
+			$child->parent = $parent;
+			$em->persist($child);
+			$em->flush();
+			$childId = $child->getId();
+
+			// Soft-delete the parent directly, bypassing remove()'s cascade,
+			// so the child stays active.
+			$parent->setDeletedAt(new \DateTime());
+			$em->flush();
+			$em->getUnitOfWork()->clear();
+
+			$managedParent = $em->find(RelSoftParentEntity::class, $parentId);
+			self::assertNotNull($managedParent);
+
+			$em->restore($managedParent);
+			$em->flush();
+
+			$childRows = $em->getConnection()->execute('SELECT deleted_at FROM rel_soft_child_of_soft_parent WHERE id = ' . $childId)->fetchAll('assoc');
+			self::assertNull($childRows[0]['deleted_at']);
+		}
+
+		/**
+		 * Documents a real tradeoff (see UnitOfWork::restore()'s docblock):
+		 * restore() has no record of *why* a dependent is soft-deleted, so
+		 * it restores every currently soft-deleted Cascade(remove) dependent
+		 * it finds — even one, like this, that was soft-deleted on its own
+		 * before the parent ever was.
+		 */
+		public function testRestoringParentAlsoRestoresIndependentlySoftDeletedChild(): void {
+			$em = self::em();
+
+			$parent = new RelSoftParentEntity();
+			$em->persist($parent);
+			$em->flush();
+			$parentId = $parent->getId();
+
+			$child = new RelSoftChildOfSoftParentEntity();
+			$child->parent = $parent;
+			$em->persist($child);
+			$em->flush();
+			$childId = $child->getId();
+
+			// Soft-delete the child on its own — the parent stays active.
+			$child->setDeletedAt(new \DateTime());
+			$em->flush();
+
+			// Now soft-delete the parent too, directly (not via remove()'s
+			// cascade — the child is already deleted, so cascade wouldn't
+			// touch it anyway).
+			$parent->setDeletedAt(new \DateTime());
+			$em->flush();
+			$em->getUnitOfWork()->clear();
+
+			$managedParent = $em->find(RelSoftParentEntity::class, $parentId);
+			self::assertNotNull($managedParent);
+
+			$em->restore($managedParent);
+			$em->flush();
+
+			$childRows = $em->getConnection()->execute('SELECT deleted_at FROM rel_soft_child_of_soft_parent WHERE id = ' . $childId)->fetchAll('assoc');
+			self::assertNull($childRows[0]['deleted_at']);
 		}
 	}
