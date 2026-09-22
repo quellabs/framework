@@ -19,6 +19,7 @@
 	 * Soft-delete lifecycle:
 	 *   - Mark:        $post->setDeletedAt(new \DateTime()); $em->flush();
 	 *   - Restore:     $post->setDeletedAt(null);            $em->flush();
+	 *   - Restore:     $em->restore($post);                  $em->flush(); (metadata-driven equivalent)
 	 *   - Soft delete: $em->remove($post);                   $em->flush();
 	 *   - Hard delete: $em->remove($post, hardDelete: true); $em->flush();
 	 *
@@ -227,7 +228,37 @@
 			$this->assertNotNull($restored);
 			$this->assertNull($restored->getDeletedAt());
 		}
-		
+
+		public function testEmRestoreMakesPostVisibleAgain(): void {
+			$post = $this->findPostById(1);
+			$this->assertNotNull($post);
+			$this->softDeletePost($post);
+
+			// Confirm it's hidden
+			$this->assertNull($this->findPostById(1));
+
+			$deleted = $this->em->find(PostEntity::class, 1);
+			$this->assertNotNull($deleted);
+			$this->assertNotNull($deleted->getDeletedAt());
+
+			$this->em->restore($deleted);
+			$this->em->flush();
+			$this->em->getUnitOfWork()->clear();
+
+			$restored = $this->findPostById(1);
+			$this->assertNotNull($restored);
+			$this->assertNull($restored->getDeletedAt());
+		}
+
+		public function testEmRestoreOnEntityWithoutSoftDeleteThrows(): void {
+			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (3, 'carol', 'hash3', 0)");
+			$user = $this->em->find(UserEntity::class, 3);
+			$this->assertNotNull($user);
+
+			$this->expectException(\Quellabs\ObjectQuel\OrmException::class);
+			$this->em->restore($user);
+		}
+
 		// -------------------------------------------------------------------------
 		// $em->remove() on a soft-deletable entity
 		// -------------------------------------------------------------------------
