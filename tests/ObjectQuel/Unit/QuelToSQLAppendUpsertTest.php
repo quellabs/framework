@@ -52,9 +52,9 @@
 			$em = $this->em();
 			$platform = new FakePlatformCapabilities($dialect);
 			$versionValueHandler = $em->getUnitOfWork()->getVersionValueHandler();
-			$replaceCompiler = new QuelToSQLReplace($em->getEntityStore(), $platform, $versionValueHandler);
-			$upsertCompiler = new QuelToSQLUpsert($em->getEntityStore(), $platform, $replaceCompiler);
-			$compiler = new QuelToSQLAppend($em, $platform, $upsertCompiler, $versionValueHandler);
+			$replaceCompiler = new QuelToSQLReplace($em->getEntityStore(), $platform, $dialect === 'sqlsrv' ? 'dbo' : null, $versionValueHandler);
+			$upsertCompiler = new QuelToSQLUpsert($em->getEntityStore(), $platform, $dialect === 'sqlsrv' ? 'dbo' : null, $replaceCompiler);
+			$compiler = new QuelToSQLAppend($em, $platform, $dialect === 'sqlsrv' ? 'dbo' : null, $upsertCompiler, $versionValueHandler);
 			return $compiler->convertToSQL($ast, $parameters);
 		}
 

@@ -30,7 +30,7 @@
 
 		private function compile(AstDelete $ast, string $dialect, array $parameters = []): string {
 			$platform = new FakePlatformCapabilities($dialect);
-			$compiler = new QuelToSQLDelete($this->em()->getEntityStore(), $platform);
+			$compiler = new QuelToSQLDelete($this->em()->getEntityStore(), $platform, $dialect === 'sqlsrv' ? 'dbo' : null);
 			return $compiler->convertToSQL($ast, $parameters);
 		}
 

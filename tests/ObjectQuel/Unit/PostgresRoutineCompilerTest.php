@@ -20,7 +20,7 @@
 		 * @return string Generated PostgreSQL CREATE statement
 		 */
 		private function compile(string $source): string {
-			$statements = (new ProcedureCompiler($GLOBALS['test_em'], new FakePlatformCapabilities('pgsql')))->compile($source);
+			$statements = (new ProcedureCompiler($GLOBALS['test_em'], new FakePlatformCapabilities('pgsql'), null))->compile($source);
 			self::assertCount(1, $statements);
 			return $statements[0];
 		}
@@ -262,7 +262,7 @@
 			$this->expectException(QuelException::class);
 			$this->expectExceptionMessage("Routines can't be compiled for 'sqlite'.");
 
-			(new ProcedureCompiler($GLOBALS['test_em'], new FakePlatformCapabilities('sqlite')))->compile('
+			(new ProcedureCompiler($GLOBALS['test_em'], new FakePlatformCapabilities('sqlite'), null))->compile('
 				define function f () void {
 					range of u is UserEntity
 					delete u where u.id = 1

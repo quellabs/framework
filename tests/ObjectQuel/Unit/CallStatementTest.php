@@ -41,7 +41,7 @@
 		 * @return QuelToSQLCall
 		 */
 		private function compiler(string $databaseType): QuelToSQLCall {
-			return new QuelToSQLCall($this->em()->getEntityStore(), new FakePlatformCapabilities($databaseType));
+			return new QuelToSQLCall($this->em()->getEntityStore(), new FakePlatformCapabilities($databaseType), $databaseType === 'sqlsrv' ? 'dbo' : null);
 		}
 
 		/**

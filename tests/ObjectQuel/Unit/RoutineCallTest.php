@@ -75,7 +75,7 @@
 			(new SemanticAnalyzer($store, $platform))->validate($retrieve);
 			(new QueryOptimizer($this->em(), $platform))->transform($retrieve, $parameters);
 
-			return (new QuelToSQLRetrieve($store, $parameters, $platform))->convertToSQL($retrieve);
+			return (new QuelToSQLRetrieve($store, $parameters, $platform, $databaseType === 'sqlsrv' ? 'dbo' : null))->convertToSQL($retrieve);
 		}
 
 		/**
@@ -162,7 +162,7 @@
 			self::assertInstanceOf(AstReplace::class, $replace);
 
 			$em = $this->em();
-			$compiler = new QuelToSQLReplace($em->getEntityStore(), new FakePlatformCapabilities($databaseType), $em->getUnitOfWork()->getVersionValueHandler());
+			$compiler = new QuelToSQLReplace($em->getEntityStore(), new FakePlatformCapabilities($databaseType), $databaseType === 'sqlsrv' ? 'dbo' : null, $em->getUnitOfWork()->getVersionValueHandler());
 			$parameters = [];
 			self::assertSame($expected, $compiler->convertToSQL($replace, $parameters));
 		}
@@ -191,6 +191,6 @@
 		public function testRoutineCantBeNamedAfterABuiltin(string $databaseType): void {
 			$this->expectException(SemanticException::class);
 			$this->expectExceptionMessage("'Count' is a built-in function, so a routine by that name could never be called.");
-			(new ProcedureCompiler($this->em(), new FakePlatformCapabilities($databaseType)))->compile('define function Count () integer { return 1 }');
+			(new ProcedureCompiler($this->em(), new FakePlatformCapabilities($databaseType), $databaseType === 'sqlsrv' ? 'dbo' : null))->compile('define function Count () integer { return 1 }');
 		}
 	}

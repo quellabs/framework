@@ -49,7 +49,7 @@
 
 			$platform = new FakePlatformCapabilities('mysql');
 			$replaceCompiler = $this->replaceCompiler('mysql');
-			$compiler = new QuelToSQLAppend($this->em(), $platform, new QuelToSQLUpsert($this->em()->getEntityStore(), $platform, $replaceCompiler), $this->em()->getUnitOfWork()->getVersionValueHandler());
+			$compiler = new QuelToSQLAppend($this->em(), $platform, null, new QuelToSQLUpsert($this->em()->getEntityStore(), $platform, null, $replaceCompiler), $this->em()->getUnitOfWork()->getVersionValueHandler());
 			$parameters = ['j' => '{}'];
 
 			if ($ast->isInsertFromSelect()) {
@@ -64,7 +64,7 @@
 		 * @return QuelToSQLReplace
 		 */
 		private function replaceCompiler(string $dialect): QuelToSQLReplace {
-			return new QuelToSQLReplace($this->em()->getEntityStore(), new FakePlatformCapabilities($dialect), $this->em()->getUnitOfWork()->getVersionValueHandler());
+			return new QuelToSQLReplace($this->em()->getEntityStore(), new FakePlatformCapabilities($dialect), $dialect === 'sqlsrv' ? 'dbo' : null, $this->em()->getUnitOfWork()->getVersionValueHandler());
 		}
 
 		/**
@@ -72,7 +72,7 @@
 		 * @return string The statement creating it on MySQL
 		 */
 		private function compileRoutine(string $routine): string {
-			$statements = (new ProcedureCompiler($this->em(), new FakePlatformCapabilities('mysql')))->compile($routine);
+			$statements = (new ProcedureCompiler($this->em(), new FakePlatformCapabilities('mysql'), null))->compile($routine);
 			return (string)end($statements);
 		}
 

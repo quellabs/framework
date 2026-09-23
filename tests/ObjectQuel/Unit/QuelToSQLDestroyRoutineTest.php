@@ -70,7 +70,7 @@
 		 */
 		#[DataProvider('dropStatements')]
 		public function testDropStatements(string $databaseType, bool $ifExists, array $expected): void {
-			$compiler = new QuelToSQLDestroyRoutine(new FakePlatformCapabilities($databaseType));
+			$compiler = new QuelToSQLDestroyRoutine(new FakePlatformCapabilities($databaseType), $databaseType === 'sqlsrv' ? 'dbo' : null);
 			self::assertSame($expected, $compiler->convertToSQL(new AstDestroyRoutine('f', $ifExists)));
 		}
 
@@ -80,6 +80,6 @@
 		public function testSqliteIsUnsupported(): void {
 			$this->expectException(QuelException::class);
 			$this->expectExceptionMessage("Routines can't be destroyed on 'sqlite'.");
-			(new QuelToSQLDestroyRoutine(new FakePlatformCapabilities('sqlite')))->convertToSQL(new AstDestroyRoutine('f'));
+			(new QuelToSQLDestroyRoutine(new FakePlatformCapabilities('sqlite'), null))->convertToSQL(new AstDestroyRoutine('f'));
 		}
 	}

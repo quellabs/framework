@@ -20,7 +20,7 @@
 		 * @return string The CREATE statement
 		 */
 		private function compile(string $databaseType, string $source): string {
-			$statements = (new ProcedureCompiler($GLOBALS['test_em'], new FakePlatformCapabilities($databaseType)))->compile($source);
+			$statements = (new ProcedureCompiler($GLOBALS['test_em'], new FakePlatformCapabilities($databaseType), $databaseType === 'sqlsrv' ? 'dbo' : null))->compile($source);
 			return end($statements);
 		}
 

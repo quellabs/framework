@@ -19,7 +19,7 @@
 		 * @return string Generated CREATE OR ALTER statement
 		 */
 		private function compile(string $source): string {
-			$statements = (new ProcedureCompiler($GLOBALS['test_em'], new FakePlatformCapabilities('sqlsrv')))->compile($source);
+			$statements = (new ProcedureCompiler($GLOBALS['test_em'], new FakePlatformCapabilities('sqlsrv'), 'dbo'))->compile($source);
 			self::assertCount(1, $statements);
 			return $statements[0];
 		}

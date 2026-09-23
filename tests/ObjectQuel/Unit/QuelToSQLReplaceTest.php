@@ -36,7 +36,7 @@
 		private function compile(AstReplace $ast, string $dialect, array $parameters = []): string {
 			$em = $this->em();
 			$platform = new FakePlatformCapabilities($dialect);
-			$compiler = new QuelToSQLReplace($em->getEntityStore(), $platform, $em->getUnitOfWork()->getVersionValueHandler());
+			$compiler = new QuelToSQLReplace($em->getEntityStore(), $platform, $dialect === 'sqlsrv' ? 'dbo' : null, $em->getUnitOfWork()->getVersionValueHandler());
 			return $compiler->convertToSQL($ast, $parameters);
 		}
 

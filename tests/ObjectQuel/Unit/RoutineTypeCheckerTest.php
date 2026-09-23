@@ -22,7 +22,7 @@
 		 * @return list<string> Generated statements
 		 */
 		private function compile(string $databaseType, string $source): array {
-			return (new ProcedureCompiler($GLOBALS['test_em'], new FakePlatformCapabilities($databaseType)))->compile($source);
+			return (new ProcedureCompiler($GLOBALS['test_em'], new FakePlatformCapabilities($databaseType), $databaseType === 'sqlsrv' ? 'dbo' : null))->compile($source);
 		}
 
 		/**

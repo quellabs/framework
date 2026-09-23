@@ -96,7 +96,7 @@
 		 * @return string The CREATE statement
 		 */
 		private function compileRegexRoutine(FakePlatformCapabilities $platform): string {
-			$statements = (new ProcedureCompiler($GLOBALS['test_em'], $platform))->compile(
+			$statements = (new ProcedureCompiler($GLOBALS['test_em'], $platform, $platform->getDatabaseType() === 'sqlsrv' ? 'dbo' : null))->compile(
 				"define function f (string s) integer { if s = /a\\.b'/i { return 1 } return 0 }"
 			);
 

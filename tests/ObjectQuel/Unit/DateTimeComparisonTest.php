@@ -42,7 +42,7 @@
 		private function compileDelete(string $query, array &$parameters = []): string {
 			$ast = (new Parser(new Lexer($query), $this->em()->getEntityStore()))->parse();
 			self::assertInstanceOf(AstDelete::class, $ast);
-			return (new QuelToSQLDelete($this->em()->getEntityStore(), new FakePlatformCapabilities('mysql')))->convertToSQL($ast, $parameters);
+			return (new QuelToSQLDelete($this->em()->getEntityStore(), new FakePlatformCapabilities('mysql'), null))->convertToSQL($ast, $parameters);
 		}
 
 		/**
@@ -53,7 +53,7 @@
 		private function compileReplace(string $query, array &$parameters = []): string {
 			$ast = (new Parser(new Lexer($query), $this->em()->getEntityStore()))->parse();
 			self::assertInstanceOf(AstReplace::class, $ast);
-			$compiler = new QuelToSQLReplace($this->em()->getEntityStore(), new FakePlatformCapabilities('mysql'), $this->em()->getUnitOfWork()->getVersionValueHandler());
+			$compiler = new QuelToSQLReplace($this->em()->getEntityStore(), new FakePlatformCapabilities('mysql'), null, $this->em()->getUnitOfWork()->getVersionValueHandler());
 			return $compiler->convertToSQL($ast, $parameters);
 		}
 
@@ -117,7 +117,7 @@
 		 * @return void
 		 */
 		public function testRoutineVariablesAndCursorFieldsCompareAsTimestamps(): void {
-			$statements = (new ProcedureCompiler($this->em(), new FakePlatformCapabilities('mysql')))->compile('
+			$statements = (new ProcedureCompiler($this->em(), new FakePlatformCapabilities('mysql'), null))->compile('
 				define function f (datetime since) void {
 					range of p is PostEntity
 					range of q is PostEntity
