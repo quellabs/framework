@@ -4,6 +4,7 @@
 
 	use PHPUnit\Framework\Attributes\DataProvider;
 	use PHPUnit\Framework\TestCase;
+	use Quellabs\ObjectQuel\Exception\QuelException;
 	use Quellabs\ObjectQuel\Exception\SemanticException;
 	use Quellabs\ObjectQuel\ObjectQuel\ProcedureCompiler;
 	use Quellabs\ObjectQuel\Tests\Support\FakePlatformCapabilities;
@@ -21,6 +22,57 @@
 		 */
 		private function compile(string $source, string $databaseType = 'mysql'): array {
 			return (new ProcedureCompiler($GLOBALS['test_em'], new FakePlatformCapabilities($databaseType)))->compile($source);
+		}
+
+		/**
+		 * @param string $source Routine source
+		 * @param string $collation Configured collation
+		 * @return string[] Generated statements
+		 */
+		private function compileWithCollation(string $source, string $collation): array {
+			$configuration = $GLOBALS['test_em']->getConfiguration();
+			$previous = $configuration->getCollation();
+			$configuration->setCollation($collation);
+
+			try {
+				return $this->compile($source);
+			} finally {
+				$configuration->setCollation($previous);
+			}
+		}
+
+		/**
+		 * A configured collation goes on every character-typed parameter, local, fetched field and return type.
+		 * @return void
+		 */
+		public function testConfiguredCollationOnCharacterTypes(): void {
+			$statements = $this->compileWithCollation('
+				define function find_user (string who, int minId) string {
+					string found = ""
+					range of u is UserEntity
+					cursor users = retrieve (u.id, u.username) where u.username = who and u.id > minId
+					foreach users {
+						found = users.username
+					}
+					return found
+				}
+			', 'utf8mb4_unicode_ci');
+
+			$collated = 'CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci';
+			self::assertStringContainsString("CREATE FUNCTION `find_user`(_v_who VARCHAR(255) {$collated}, _v_minId INT)", $statements[1]);
+			self::assertStringContainsString("RETURNS VARCHAR(255) {$collated}", $statements[1]);
+			self::assertStringContainsString("DECLARE _v_found VARCHAR(255) {$collated};", $statements[1]);
+			self::assertStringContainsString("DECLARE _row_users\$username VARCHAR(255) {$collated};", $statements[1]);
+			self::assertStringContainsString('DECLARE _row_users$id INT UNSIGNED;', $statements[1]);
+		}
+
+		/**
+		 * @return void
+		 */
+		public function testRejectsAnUnsafeCollationName(): void {
+			$this->expectException(QuelException::class);
+			$this->expectExceptionMessage("isn't a valid collation name");
+			$this->compileWithCollation('define function f () integer { return 1 }', 'utf8mb4_unicode_ci; DROP TABLE users');
 		}
 
 		/**

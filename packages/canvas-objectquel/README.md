@@ -250,7 +250,7 @@ The service providers include these default configuration values:
 | `host`                | `localhost`                            | Database host                 |
 | `port`                | `3306`                                 | Database port                 |
 | `encoding`            | `utf8mb4`                              | Character encoding            |
-| `collation`           | `utf8mb4_unicode_ci`                   | Database collation            |
+| `collation`           | database default                       | Collation of string variables in MySQL/MariaDB routines |
 | `entity_namespace`    | `App\\Entity`                          | Namespace for entity classes  |
 | `entity_path`         | `src/Entity`                           | Directory for entity classes  |
 | `proxy_namespace`     | `Quellabs\\ObjectQuel\\Proxy\\Runtime` | Namespace for proxy classes   |

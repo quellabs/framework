@@ -108,7 +108,11 @@
 			$slowQueryThreshold = $configData["slow_query_threshold"] ?? $defaults["slow_query_threshold"];
 			$config->setSlowQueryLog(is_string($slowQueryLog) ? $slowQueryLog : null);
 			$config->setSlowQueryThreshold(is_float($slowQueryThreshold) || is_int($slowQueryThreshold) ? (float)$slowQueryThreshold : 0.0);
-			
+
+			// Routine string collation; absent means the database default
+			$collation = $configData["collation"] ?? null;
+			$config->setCollation(is_string($collation) && $collation !== '' ? $collation : null);
+
 			// Cache and return the instance
 			self::$instance = $config;
 			return self::$instance;

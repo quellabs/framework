@@ -99,6 +99,46 @@
 		}
 
 		/**
+		 * With the column's collation configured, a string parameter compares with the column whatever the database default is.
+		 * @return void
+		 */
+		public function testConfiguredCollationComparesWithColumn(): void {
+			$statement = self::em()->getConnection()->execute(
+				"SELECT COLLATION_NAME AS c FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'username'"
+			);
+
+			self::assertNotNull($statement);
+			$row = $statement->fetch('assoc');
+			self::assertIsArray($row);
+
+			$configuration = self::em()->getConfiguration();
+			$previous = $configuration->getCollation();
+			$configuration->setCollation($row['c']);
+
+			try {
+				self::em()->executeQuery("
+					define function {$this->name} (string who) integer {
+						integer total = 0
+						range of u is UserEntity
+						cursor users = retrieve (u.id) where u.username = who
+						foreach users {
+							total = total + 1
+						}
+						return total
+					}
+				");
+			} finally {
+				$configuration->setCollation($previous);
+			}
+
+			$statement = self::em()->getConnection()->execute("SELECT `{$this->name}`(:who) AS result", ['who' => 'no such user']);
+			self::assertNotNull($statement, self::em()->getConnection()->getLastErrorMessage());
+			$row = $statement->fetch('assoc');
+			self::assertIsArray($row);
+			self::assertSame(0, (int)$row['result']);
+		}
+
+		/**
 		 * A cursor query reads its variables when the foreach starts, not at the hoisted declaration or per row.
 		 * @return void
 		 */
