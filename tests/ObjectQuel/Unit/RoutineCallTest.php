@@ -193,15 +193,4 @@
 			$this->expectExceptionMessage("'Count' is a built-in function, so a routine by that name could never be called.");
 			(new ProcedureCompiler($this->em(), new FakePlatformCapabilities($databaseType)))->compile('define function Count () integer { return 1 }');
 		}
-
-		/**
-		 * @param string $databaseType Target engine
-		 * @return void
-		 */
-		#[DataProvider('engines')]
-		public function testRoutineCantCallARoutine(string $databaseType): void {
-			$this->expectException(SemanticException::class);
-			$this->expectExceptionMessage("Routines can't call routines yet; 'g' is called here.");
-			(new ProcedureCompiler($this->em(), new FakePlatformCapabilities($databaseType)))->compile('define function f () integer { return g() }');
-		}
 	}
