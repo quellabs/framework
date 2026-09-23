@@ -1,0 +1,167 @@
+<?php
+
+	namespace Quellabs\ObjectQuel\Tests\Integration;
+
+	use PHPUnit\Framework\TestCase;
+	use Quellabs\ObjectQuel\EntityManager;
+	use Quellabs\ObjectQuel\Exception\QuelException;
+	use Quellabs\ObjectQuel\Exception\SemanticException;
+
+	/**
+	 * `define function` and `destroy function` through EntityManager::executeQuery(),
+	 * against the suite's MySQL connection.
+	 */
+	class RoutineDeployTest extends TestCase {
+
+		private string $name;
+
+		/**
+		 * @return EntityManager The suite's shared entity manager
+		 */
+		private static function em(): EntityManager {
+			$em = $GLOBALS['test_em'];
+
+			if (!$em instanceof EntityManager) {
+				throw new \RuntimeException("Test bootstrap did not initialize \$GLOBALS['test_em']");
+			}
+
+			return $em;
+		}
+
+		/**
+		 * @return void
+		 */
+		protected function setUp(): void {
+			$this->name = 'routine_test_' . getmypid();
+		}
+
+		/**
+		 * @return void
+		 */
+		protected function tearDown(): void {
+			self::em()->getConnection()->execute("DROP FUNCTION IF EXISTS `{$this->name}`");
+			self::em()->getConnection()->execute("DROP PROCEDURE IF EXISTS `{$this->name}`");
+		}
+
+		/**
+		 * @return int Number of functions and procedures named $this->name
+		 */
+		private function routineCount(): int {
+			$statement = self::em()->getConnection()->execute(
+				'SELECT COUNT(*) AS n FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = DATABASE() AND ROUTINE_NAME = :name',
+				['name' => $this->name]
+			);
+
+			self::assertNotNull($statement);
+			$row = $statement->fetch('assoc');
+			self::assertIsArray($row);
+			return (int)$row['n'];
+		}
+
+		/**
+		 * @param int $minId Argument for the deployed function
+		 * @return int The function's result
+		 */
+		private function callFunction(int $minId): int {
+			$statement = self::em()->getConnection()->execute("SELECT `{$this->name}`(:minId) AS result", ['minId' => $minId]);
+			self::assertNotNull($statement);
+			$row = $statement->fetch('assoc');
+			self::assertIsArray($row);
+			return (int)$row['result'];
+		}
+
+		/**
+		 * A deployed function runs on the server and matches the same count done in ObjectQuel;
+		 * defining it again replaces it.
+		 * @return void
+		 */
+		public function testDefinesAndRedefinesAFunction(): void {
+			$source = "
+				define function {$this->name} (int minId) integer {
+					integer total = 0
+					range of u is UserEntity
+					cursor users = retrieve (u.id, name = u.username) where u.id > minId
+					foreach users {
+						if users.name != \"\" {
+							total = total + 1
+						}
+					}
+					return total
+				}
+			";
+
+			self::assertNull(self::em()->executeQuery($source));
+			self::em()->executeQuery($source);
+
+			$expected = self::em()->executeQuery('range of u is UserEntity retrieve (n = count(u.id)) where u.id > 0 and u.username != ""');
+			self::assertNotNull($expected);
+			self::assertSame((int)$expected[0]['n'], $this->callFunction(0));
+		}
+
+		/**
+		 * A writing procedure is accepted by the server; it isn't called.
+		 * @return void
+		 */
+		public function testDefinesAWritingProcedure(): void {
+			self::em()->executeQuery("
+				define function {$this->name} (string who) void {
+					range of u is UserEntity
+					range of p is PostEntity
+					cursor users = retrieve (u.username) where u.username = who
+					foreach users {
+						replace users (banned = true)
+						delete users
+					}
+					begin transaction {
+						replace u (banned = false) where u.username = who
+						if who = \"\" {
+							abort
+						}
+					}
+					retrieve (p.title) where p.userId = 5
+				}
+			");
+
+			self::assertSame(1, $this->routineCount());
+		}
+
+		/**
+		 * @return void
+		 */
+		public function testDestroysARoutine(): void {
+			self::em()->executeQuery("define function {$this->name} () void { }");
+
+			self::assertNull(self::em()->executeQuery("destroy function {$this->name}"));
+			self::assertSame(0, $this->routineCount());
+		}
+
+		/**
+		 * @return void
+		 */
+		public function testDestroyIfExistsIgnoresAMissingRoutine(): void {
+			self::em()->executeQuery("destroy function {$this->name} if exists");
+			self::assertSame(0, $this->routineCount());
+		}
+
+		/**
+		 * @return void
+		 */
+		public function testDestroyingAMissingRoutineFails(): void {
+			$this->expectException(QuelException::class);
+			$this->expectExceptionMessage("Failed to destroy routine '{$this->name}': it doesn't exist");
+			self::em()->executeQuery("destroy function {$this->name}");
+		}
+
+		/**
+		 * @return void
+		 */
+		public function testInvalidRoutineIsASemanticError(): void {
+			try {
+				self::em()->executeQuery("define function {$this->name} () integer { return missing }");
+				self::fail('Expected a QuelException');
+			} catch (QuelException $e) {
+				self::assertSame(0, $this->routineCount());
+				self::assertInstanceOf(SemanticException::class, $e->getPrevious());
+			}
+		}
+	}
