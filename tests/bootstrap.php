@@ -16,6 +16,8 @@
 		'database' => getenv('TEST_DB_NAME') ?: 'canvas_blog',
 		// Cake's MySQL default is persistent, which shares this connection with other tests' Connections; PDO rolls back the shared transaction when one of those is garbage-collected
 		'persistent' => false,
+		// MySQL 8's default mode, so the suite catches values and queries a strict server rejects
+		'init' => ["SET SESSION sql_mode = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'"],
 	]);
 	
 	// Proxy directory — runtime-generated proxies are written here and reused
