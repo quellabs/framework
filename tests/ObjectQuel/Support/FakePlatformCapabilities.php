@@ -50,4 +50,18 @@
 		public function supportsQualifiedSetTarget(): bool {
 			return !in_array($this->databaseType, ['pgsql', 'sqlite'], true);
 		}
+
+		/**
+		 * Mirrors PlatformCapabilities::getDatetimeFromUnixTimestamp().
+		 * @param string $timestampSql SQL of the Unix timestamp
+		 * @return string
+		 */
+		public function getDatetimeFromUnixTimestamp(string $timestampSql): string {
+			return match ($this->databaseType) {
+				'pgsql' => "(TO_TIMESTAMP({$timestampSql}) AT TIME ZONE 'UTC')",
+				'sqlite' => "datetime({$timestampSql}, 'unixepoch')",
+				'sqlsrv' => "DATEADD(SECOND, CAST({$timestampSql} AS BIGINT) % 86400, DATEADD(DAY, CAST({$timestampSql} AS BIGINT) / 86400, CAST('1970-01-01' AS DATETIME2)))",
+				default => "FROM_UNIXTIME({$timestampSql})",
+			};
+		}
 	}
