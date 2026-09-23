@@ -169,11 +169,18 @@
 					continue;
 				}
 				
-				if (!is_array($package['extra']) || empty($package['extra'])) {
+				if (!is_array($package['extra'] ?? null)) {
 					continue;
 				}
-				
-				$extraMap[$package['name']] = $package['extra'];
+
+				// Composer's extra is a JSON object; drop integer keys from malformed (list-shaped) blocks
+				$extra = array_filter($package['extra'], 'is_string', ARRAY_FILTER_USE_KEY);
+
+				if (empty($extra)) {
+					continue;
+				}
+
+				$extraMap[$package['name']] = $extra;
 			}
 			
 			if ($packagesWithoutName > 0) {
