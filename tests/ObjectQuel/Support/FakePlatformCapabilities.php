@@ -59,6 +59,13 @@
 		}
 
 		/**
+		 * @return string|null 'dbo' on SQL Server, null elsewhere
+		 */
+		public function getRoutineSchema(): ?string {
+			return $this->databaseType === 'sqlsrv' ? 'dbo' : null;
+		}
+
+		/**
 		 * @return bool False on SQL Server, which uses BIT 1/0
 		 */
 		public function supportsBooleanLiterals(): bool {

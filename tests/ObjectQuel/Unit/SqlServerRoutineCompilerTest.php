@@ -50,7 +50,7 @@
 			');
 
 			self::assertSame(<<<'SQL'
-				CREATE OR ALTER FUNCTION [count_users](@minId INT)
+				CREATE OR ALTER FUNCTION [dbo].[count_users](@minId INT)
 				RETURNS INT
 				AS
 				BEGIN
@@ -117,7 +117,7 @@
 			');
 
 			self::assertSame(<<<'SQL'
-				CREATE OR ALTER PROCEDURE [purge] @who VARCHAR(255)
+				CREATE OR ALTER PROCEDURE [dbo].[purge] @who VARCHAR(255)
 				AS
 				BEGIN
 					DECLARE @_row_users$username VARCHAR(255);

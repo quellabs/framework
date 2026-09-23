@@ -55,8 +55,8 @@
 			return [
 				'pgsql' => ['pgsql', false, ['DROP ROUTINE "f"']],
 				'pgsql if exists' => ['pgsql', true, ['DROP ROUTINE IF EXISTS "f"']],
-				'sqlsrv' => ['sqlsrv', false, ["IF OBJECT_ID(N'f', N'P') IS NOT NULL DROP PROCEDURE [f] ELSE DROP FUNCTION [f]"]],
-				'sqlsrv if exists' => ['sqlsrv', true, ["IF OBJECT_ID(N'f', N'P') IS NOT NULL DROP PROCEDURE [f] ELSE DROP FUNCTION IF EXISTS [f]"]],
+				'sqlsrv' => ['sqlsrv', false, ["IF OBJECT_ID(N'[dbo].[f]', N'P') IS NOT NULL DROP PROCEDURE [dbo].[f] ELSE DROP FUNCTION [dbo].[f]"]],
+				'sqlsrv if exists' => ['sqlsrv', true, ["IF OBJECT_ID(N'[dbo].[f]', N'P') IS NOT NULL DROP PROCEDURE [dbo].[f] ELSE DROP FUNCTION IF EXISTS [dbo].[f]"]],
 				'mysql' => ['mysql', false, ['DROP FUNCTION IF EXISTS `f`', 'DROP PROCEDURE IF EXISTS `f`']],
 				'mariadb if exists' => ['mariadb', true, ['DROP FUNCTION IF EXISTS `f`', 'DROP PROCEDURE IF EXISTS `f`']],
 			];
