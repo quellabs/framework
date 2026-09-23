@@ -178,6 +178,7 @@
 
 			return [
 				'unknown parameter type'        => ['define function f (number n) void { }', "Unknown type 'number' for parameter"],
+				'query placeholder'             => ["define function f () void { {$range} delete u where u.id = :id }", "':id' placeholders aren't allowed"],
 				'void parameter'                => ['define function f (void n) void { }', "Unknown type 'void' for parameter"],
 				'cursor parameter'              => ['define function f (cursor c) void { }', "Unknown type 'cursor' for parameter"],
 				'unknown return type'           => ['define function f () number { return 1 }', "Unknown return type 'number'"],
