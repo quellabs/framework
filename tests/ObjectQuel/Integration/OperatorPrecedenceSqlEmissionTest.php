@@ -128,7 +128,7 @@
 			");
 
 			$this->assertStringContainsString(
-				'(`u`.`username` = "alice" OR `u`.`banned` = 1) LIKE "x%"',
+				"(`u`.`username` = 'alice' OR `u`.`banned` = 1) LIKE 'x%'",
 				$plan->getSql()[0]
 			);
 		}

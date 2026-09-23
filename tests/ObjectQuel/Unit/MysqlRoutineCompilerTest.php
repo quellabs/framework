@@ -69,7 +69,7 @@
 						SET _done = FALSE;
 						FETCH _cur_users INTO _row_users$id, _row_users$name, _row_users$flag;
 						IF _done THEN LEAVE _loop1; END IF;
-						IF _row_users$name = "x" AND _row_users$flag THEN
+						IF _row_users$name = 'x' AND _row_users$flag THEN
 							SET _v_total = _v_total + _row_users$id;
 							SET _v_found = _v_total > 3;
 						ELSE
@@ -134,12 +134,12 @@
 					CLOSE _cur_users;
 					START TRANSACTION;
 					UPDATE `users` as `u` SET `u`.`banned` = false WHERE `u`.`username` = _v_who;
-					IF _v_who = "" THEN
+					IF _v_who = '' THEN
 						ROLLBACK;
 					END IF;
 					COMMIT;
 					SELECT COUNT(*) INTO _discard FROM (SELECT `p`.`title` as `title` FROM `posts` as `p` WHERE `p`.`user_id` = 5 AND `p`.`deleted_at` IS NULL) AS `_discard`;
-					INSERT INTO `users` (`username`, `password`, `banned`) VALUES (_v_who, "x", false);
+					INSERT INTO `users` (`username`, `password`, `banned`) VALUES (_v_who, 'x', false);
 				END
 				SQL, $statements[1]);
 		}

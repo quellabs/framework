@@ -70,7 +70,7 @@
 			return [
 				'pgsql' => ['pgsql', 'CALL "f"(1, :p, \'s\', true, NULL)', 'SELECT "f"(1, :p, \'s\', true, NULL) AS "f"', 'CALL "f"()'],
 				'sqlsrv' => ['sqlsrv', "EXEC [dbo].[f] 1, :p, 's', 1, NULL", "SELECT [dbo].[f](1, :p, 's', 1, NULL) AS [f]", 'EXEC [dbo].[f]'],
-				'mysql' => ['mysql', 'CALL `f`(1, :p, "s", true, NULL)', 'SELECT `f`(1, :p, "s", true, NULL) AS `f`', 'CALL `f`()'],
+				'mysql' => ['mysql', "CALL `f`(1, :p, 's', true, NULL)", "SELECT `f`(1, :p, 's', true, NULL) AS `f`", 'CALL `f`()'],
 			];
 		}
 

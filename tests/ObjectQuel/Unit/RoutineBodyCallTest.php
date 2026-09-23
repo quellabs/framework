@@ -38,7 +38,7 @@
 			return [
 				'pgsql' => ['pgsql', 'CALL "p"("_routine"."n", -1, \'s\', true, NULL, "_row_users"."id");'],
 				'sqlsrv' => ['sqlsrv', "EXEC [dbo].[p] @n, -1, 's', 1, NULL, @_row_users\$id;"],
-				'mysql' => ['mysql', 'CALL `p`(_v_n, -1, "s", true, NULL, _row_users$id);'],
+				'mysql' => ['mysql', "CALL `p`(_v_n, -1, 's', true, NULL, _row_users\$id);"],
 			];
 		}
 
