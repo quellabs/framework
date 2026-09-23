@@ -14,6 +14,8 @@
 		'username' => getenv('TEST_DB_USER') ?: 'root',
 		'password' => getenv('TEST_DB_PASS') ?: '',
 		'database' => getenv('TEST_DB_NAME') ?: 'canvas_blog',
+		// Cake's MySQL default is persistent, which shares this connection with other tests' Connections; PDO rolls back the shared transaction when one of those is garbage-collected
+		'persistent' => false,
 	]);
 	
 	// Proxy directory — runtime-generated proxies are written here and reused
