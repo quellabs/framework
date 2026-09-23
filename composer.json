@@ -374,6 +374,7 @@
       "Quellabs\\ObjectQuel\\Tests\\": "tests/ObjectQuel/",
       "Quellabs\\Canvas\\Tests\\": "tests/Canvas/",
       "Quellabs\\Support\\Tests\\": "tests/Support/",
+      "Quellabs\\Discover\\Tests\\": "tests/Discover/",
       "Quellabs\\Recommender\\Tests\\": "tests/Recommender/"
     }
   },
