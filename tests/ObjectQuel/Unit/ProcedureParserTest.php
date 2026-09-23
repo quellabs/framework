@@ -38,6 +38,10 @@
 			return (new ProcedureParser(new Lexer($source), $GLOBALS['test_em']->getEntityStore()))->parse();
 		}
 
+		/**
+		 * Name, parameters and return type are read from the signature.
+		 * @return void
+		 */
 		public function testParsesSignature(): void {
 			$routine = $this->parse('define function sync_user (integer userId, string newEmail) void { }');
 
@@ -51,6 +55,10 @@
 			self::assertSame([], $routine->getBody());
 		}
 
+		/**
+		 * An empty parameter list parses, and a non-void return type is not void.
+		 * @return void
+		 */
 		public function testParsesEmptyParameterList(): void {
 			$routine = $this->parse('define function f () integer { return 1 }');
 
@@ -58,6 +66,10 @@
 			self::assertFalse($routine->isVoid());
 		}
 
+		/**
+		 * The design doc's cursor loop parses into declaration, range, cursor, foreach and return.
+		 * @return void
+		 */
 		public function testParsesCursorLoopExample(): void {
 			$routine = $this->parse('
 				define function count_active_users (integer regionId) integer {
@@ -98,6 +110,10 @@
 			self::assertInstanceOf(AstReturn::class, $body[4]);
 		}
 
+		/**
+		 * A declaration without `=` has no initializer.
+		 * @return void
+		 */
 		public function testDeclarationWithoutInitializer(): void {
 			$body = $this->parse('define function f () void { string email }')->getBody();
 
@@ -105,6 +121,10 @@
 			self::assertNull($body[0]->getInitializer());
 		}
 
+		/**
+		 * A target-list alias names the cursor field.
+		 * @return void
+		 */
 		public function testRetrieveAliasNamesTheField(): void {
 			$body = $this->parse('
 				define function f (integer userId) void {
@@ -116,6 +136,10 @@
 			self::assertSame('email_address', $body[1]->getInitializer()->getValues()[0]->getName());
 		}
 
+		/**
+		 * A retrieve outside a cursor declaration is a statement of its own.
+		 * @return void
+		 */
 		public function testStandaloneRetrieve(): void {
 			$body = $this->parse('
 				define function f () void {
@@ -127,6 +151,10 @@
 			self::assertInstanceOf(AstRetrieve::class, $body[1]);
 		}
 
+		/**
+		 * if/else and while bodies parse into their own statement lists.
+		 * @return void
+		 */
 		public function testIfElseAndWhile(): void {
 			$body = $this->parse('
 				define function f (integer n) integer {
@@ -150,12 +178,20 @@
 			self::assertCount(1, $body[2]->getBody());
 		}
 
+		/**
+		 * An if without else has a null else body.
+		 * @return void
+		 */
 		public function testIfWithoutElseHasNullElseBody(): void {
 			$body = $this->parse('define function f (integer n) void { if n > 1 { n = 1 } }')->getBody();
 
 			self::assertNull($body[0]->getElseBody());
 		}
 
+		/**
+		 * replace/delete on a cursor are current-row writes; on a range they are ordinary writes.
+		 * @return void
+		 */
 		public function testCurrentTupleWritesVersusRangeWrites(): void {
 			$body = $this->parse('
 				define function f () void {
@@ -181,6 +217,10 @@
 			self::assertInstanceOf(AstDelete::class, $body[4]);
 		}
 
+		/**
+		 * An append with `or replace` carries its conflict clause.
+		 * @return void
+		 */
 		public function testAppendAndUpsert(): void {
 			$body = $this->parse('
 				define function sync_user (integer userId, string newEmail) void {
@@ -193,6 +233,10 @@
 			self::assertNotNull($body[1]->getOnConflict());
 		}
 
+		/**
+		 * A transaction block parses with an abort inside it.
+		 * @return void
+		 */
 		public function testTransactionWithAbort(): void {
 			$body = $this->parse('
 				define function f (string newEmail) void {
@@ -208,12 +252,20 @@
 			self::assertInstanceOf(AstAbort::class, $body[0]->getBody()[0]->getThenBody()[0]);
 		}
 
+		/**
+		 * Statements may end in a semicolon.
+		 * @return void
+		 */
 		public function testSemicolonsAreOptional(): void {
 			$body = $this->parse('define function f () integer { integer x = 1; x = x + 1; return x; }')->getBody();
 
 			self::assertCount(3, $body);
 		}
 
+		/**
+		 * A foreach nested in a foreach parses.
+		 * @return void
+		 */
 		public function testNestedBlocksParseRecursively(): void {
 			$body = $this->parse('
 				define function f () void {
@@ -234,46 +286,82 @@
 			self::assertSame('b', $inner->getCursorName());
 		}
 
+		/**
+		 * A signature without a return type is rejected.
+		 * @return void
+		 */
 		public function testRejectsMissingReturnType(): void {
 			$this->expectException(ParserException::class);
 			$this->parse('define function f () { }');
 		}
 
+		/**
+		 * define must be followed by function.
+		 * @return void
+		 */
 		public function testRejectsDefineWithoutFunction(): void {
 			$this->expectException(ParserException::class);
 			$this->parse('define view v () void { }');
 		}
 
+		/**
+		 * Source that doesn't start with define is rejected.
+		 * @return void
+		 */
 		public function testRejectsSourceNotStartingWithDefine(): void {
 			$this->expectException(ParserException::class);
 			$this->parse('retrieve (1)');
 		}
 
+		/**
+		 * One source defines one routine.
+		 * @return void
+		 */
 		public function testRejectsASecondRoutineInOneSource(): void {
 			$this->expectException(ParserException::class);
 			$this->parse('define function f () void { } define function g () void { }');
 		}
 
+		/**
+		 * A body without its closing brace is rejected.
+		 * @return void
+		 */
 		public function testRejectsUnterminatedBody(): void {
 			$this->expectException(ParserException::class);
 			$this->parse('define function f () void { integer x = 1');
 		}
 
+		/**
+		 * else without a preceding if is rejected.
+		 * @return void
+		 */
 		public function testRejectsElseWithoutIf(): void {
 			$this->expectException(ParserException::class);
 			$this->parse('define function f () void { else { } }');
 		}
 
+		/**
+		 * begin must be followed by transaction.
+		 * @return void
+		 */
 		public function testRejectsBeginWithoutTransaction(): void {
 			$this->expectException(LexerException::class);
 			$this->parse('define function f () void { begin { } }');
 		}
 
+		/**
+		 * An identifier that starts no statement is rejected.
+		 * @return void
+		 */
 		public function testRejectsBareIdentifierStatement(): void {
 			$this->expectException(ParserException::class);
 			$this->parse('define function f () void { foo }');
 		}
 
+		/**
+		 * deepClone copies every node and reparents the copies.
+		 * @return void
+		 */
 		public function testDeepCloneProducesAnEqualButDistinctTree(): void {
 			$routine = $this->parse('
 				define function f (integer n) integer {
