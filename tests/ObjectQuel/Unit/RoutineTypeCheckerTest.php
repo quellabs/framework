@@ -80,6 +80,55 @@
 					}',
 					"'n' is integer, but the assigned value is datetime.",
 				],
+				'if condition' => [
+					'define function f (int n) void { if n { n = 0 } }',
+					"The condition of 'if' must be boolean, but it is numeric.",
+				],
+				'while condition' => [
+					'define function f (string s) void { while s { s = "" } }',
+					"The condition of 'while' must be boolean, but it is string.",
+				],
+				'procedural comparison' => [
+					'define function f (int n) void { if n = "x" { n = 0 } }',
+					"A comparison involving 'n' mixes numeric and string values.",
+				],
+				'where comparison' => [
+					'define function f (string who) void { range of u is UserEntity retrieve (u.id) where u.id = who }',
+					"A comparison involving 'who' mixes numeric and string values.",
+				],
+				'bare property comparison' => [
+					'define function f (string who) void { range of u is UserEntity delete u where banned = who }',
+					"A comparison involving 'who' mixes boolean and string values.",
+				],
+				'cursor field comparison' => [
+					'define function f () void {
+						range of u is UserEntity
+						range of p is PostEntity
+						cursor c = retrieve (u.id, u.username)
+						foreach c { delete p where p.userId = c.username }
+					}',
+					"A comparison involving 'c.username' mixes numeric and string values.",
+				],
+				'in list' => [
+					'define function f (string who) void { range of u is UserEntity retrieve (u.id) where who in (1, 2) }',
+					"An 'in' list involving 'who' mixes string and numeric values.",
+				],
+				'replace value' => [
+					'define function f (string who) void { range of u is UserEntity replace u (banned = who) where u.id = 1 }',
+					"Column 'banned' of",
+				],
+				'append value' => [
+					'define function f (int n) void { range of p is PostEntity append to p (title = n, content = "") }',
+					"is string, but the value written to it is numeric.",
+				],
+				'current-row replace value' => [
+					'define function f () void {
+						range of u is UserEntity
+						cursor c = retrieve (u.id)
+						foreach c { replace c (banned = 1) }
+					}',
+					"is boolean, but the value written to it is numeric.",
+				],
 			]);
 		}
 
@@ -117,6 +166,19 @@
 						cursor c = retrieve (u.id, u.username)
 						foreach c { s = c.username }
 					}',
+				],
+				'datetime column against integer and string' => [
+					'define function f (int n, string d) void {
+						range of p is PostEntity
+						retrieve (p.id) where p.createdAt > n
+						replace p (createdAt = d) where p.id = n
+					}',
+				],
+				'query comparison without routine names' => [
+					'define function f () void { range of u is UserEntity retrieve (u.id) where u.id = "x" }',
+				],
+				'boolean conditions' => [
+					'define function f (int n) void { boolean found = n > 0 if found { n = 1 } while n > 0 { n = n - 1 } }',
 				],
 			]);
 		}
