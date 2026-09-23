@@ -15,6 +15,9 @@
         <testsuite name="Support">
             <directory>tests/Support</directory>
         </testsuite>
+        <testsuite name="Discover">
+            <directory>tests/Discover</directory>
+        </testsuite>
         <testsuite name="Recommender">
             <directory>tests/Recommender</directory>
         </testsuite>
