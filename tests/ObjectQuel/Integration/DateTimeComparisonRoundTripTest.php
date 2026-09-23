@@ -6,7 +6,7 @@
 	use Quellabs\ObjectQuel\EntityManager;
 
 	/**
-	 * Datetime columns compared with date strings and routine variables, against the suite's MySQL connection.
+	 * Datetime columns compared with date strings and routine variables, and written from date arithmetic, against the suite's MySQL connection.
 	 */
 	class DateTimeComparisonRoundTripTest extends TestCase {
 
@@ -101,5 +101,34 @@
 			$result = self::em()->executeQuery("call {$this->tag}({$this->postId}, \"{$since}\")");
 			self::assertNotNull($result);
 			return (int)iterator_to_array($result)[0][$this->tag];
+		}
+
+		/**
+		 * @return void
+		 */
+		public function testReplaceStoresDateArithmeticAsADatetime(): void {
+			self::em()->executeQuery('range of p is PostEntity replace p (createdAt = p.createdAt + date("1 day")) where p.id = :id', ['id' => $this->postId]);
+
+			$statement = self::em()->getConnection()->execute('SELECT created_at FROM posts WHERE id = :id', ['id' => $this->postId]);
+			self::assertNotNull($statement);
+			$row = $statement->fetch('assoc');
+			self::assertIsArray($row);
+			self::assertSame('2025-06-02 12:00:00', $row['created_at']);
+		}
+
+		/**
+		 * @return void
+		 */
+		public function testRoutineStoresAndReturnsDateArithmeticAsADatetime(): void {
+			self::em()->executeQuery("
+				define function {$this->tag} (datetime since) datetime {
+					datetime next = since + date(\"1 day\")
+					return next + date(\"1 hour\")
+				}
+			");
+
+			$result = self::em()->executeQuery("call {$this->tag}(\"2025-01-01 00:00:00\")");
+			self::assertNotNull($result);
+			self::assertSame('2025-01-02 01:00:00', iterator_to_array($result)[0][$this->tag]);
 		}
 	}
