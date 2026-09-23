@@ -20,7 +20,9 @@
 		 * @return string Generated PostgreSQL CREATE statement
 		 */
 		private function compile(string $source): string {
-			return (new ProcedureCompiler($GLOBALS['test_em'], new FakePlatformCapabilities('pgsql')))->compile($source);
+			$statements = (new ProcedureCompiler($GLOBALS['test_em'], new FakePlatformCapabilities('pgsql')))->compile($source);
+			self::assertCount(1, $statements);
+			return $statements[0];
 		}
 
 		/**
@@ -56,7 +58,7 @@
 					"_row_users" RECORD;
 				BEGIN
 					"total" := 0;
-					FOR "_row_users" IN SELECT "u"."id" as "id","u"."username" as "name","u"."id" as "u.id" FROM "users" as "u" WHERE "u"."id" > "_routine"."minId" LOOP
+					FOR "_row_users" IN SELECT "u"."id" as "id","u"."username" as "name" FROM "users" as "u" WHERE "u"."id" > "_routine"."minId" LOOP
 						IF "_row_users"."name" = 'x' THEN
 							"total" := "_routine"."total" + "_row_users"."id";
 						ELSE
@@ -94,7 +96,7 @@
 				<<_routine>>
 				DECLARE
 					"_row_users" RECORD;
-					"users" CURSOR FOR SELECT "u"."id" as "id","u"."banned" as "u.banned" FROM "users" as "u" WHERE "u"."banned" = true FOR UPDATE;
+					"users" CURSOR FOR SELECT "u"."id" as "id" FROM "users" as "u" WHERE "u"."banned" = true FOR UPDATE;
 				BEGIN
 					"users" := NULL;
 					OPEN "users";
@@ -145,7 +147,7 @@
 				DECLARE
 					"who" VARCHAR(255) := $1;
 					"_row_users" RECORD;
-					"users" CURSOR FOR SELECT "u"."id" as "id","u"."username" as "u.username" FROM "users" as "u" WHERE "u"."username" = "_routine"."who" FOR UPDATE;
+					"users" CURSOR FOR SELECT "u"."id" as "id" FROM "users" as "u" WHERE "u"."username" = "_routine"."who" FOR UPDATE;
 				BEGIN
 					"users" := NULL;
 					OPEN "users";
@@ -162,7 +164,7 @@
 						ROLLBACK;
 					END IF;
 					COMMIT;
-					PERFORM "p"."title" as "title","p"."user_id" as "p.userId","p"."deleted_at" as "p.deletedAt" FROM "posts" as "p" WHERE "p"."user_id" = 5 AND "p"."deleted_at" IS NULL;
+					PERFORM "p"."title" as "title" FROM "posts" as "p" WHERE "p"."user_id" = 5 AND "p"."deleted_at" IS NULL;
 					INSERT INTO "users" ("username", "password", "banned") VALUES ("_routine"."who", 'x', false);
 				END;
 				$body$;
@@ -185,7 +187,7 @@
 			');
 
 			self::assertStringContainsString('FROM "users" as "u" LEFT JOIN "posts" as "p" ON "p"."user_id" = "u"."id"', $sql);
-			self::assertStringContainsString('PERFORM "other"."username" as "username","other"."id" as "other.id" FROM "users" as "other" WHERE "other"."id" = 2;', $sql);
+			self::assertStringContainsString('PERFORM "other"."username" as "username" FROM "users" as "other" WHERE "other"."id" = 2;', $sql);
 			self::assertStringNotContainsString("DECLARE", $sql, 'A routine without variables has no DECLARE section');
 		}
 
@@ -253,14 +255,14 @@
 		}
 
 		/**
-		 * Dialects other than PostgreSQL are not lowered yet.
+		 * SQLite has no stored routines.
 		 * @return void
 		 */
-		public function testOtherDialectsAreNotSupportedYet(): void {
+		public function testSqliteIsNotSupported(): void {
 			$this->expectException(QuelException::class);
-			$this->expectExceptionMessage("Routines can't be compiled for 'sqlsrv' yet.");
+			$this->expectExceptionMessage("Routines can't be compiled for 'sqlite'.");
 
-			(new ProcedureCompiler($GLOBALS['test_em'], new FakePlatformCapabilities('sqlsrv')))->compile('
+			(new ProcedureCompiler($GLOBALS['test_em'], new FakePlatformCapabilities('sqlite')))->compile('
 				define function f () void {
 					range of u is UserEntity
 					delete u where u.id = 1

@@ -47,6 +47,25 @@
 		}
 
 		/**
+		 * SQL Server declares the target alias in a FROM clause, for a DELETE and for a soft-delete UPDATE.
+		 * @return void
+		 */
+		public function testSqlServerDeclaresTheAliasInAFromClause(): void {
+			$hard = $this->parse('
+				range of u is App\Entities\UserEntity
+				delete u where u.id = :id
+			');
+
+			$soft = $this->parse('
+				range of p is App\Entities\PostEntity
+				delete p where p.published
+			');
+
+			self::assertSame('DELETE [u] FROM [users] as [u] WHERE [u].[id] = :id', $this->compile($hard, 'sqlsrv', ['id' => 1]));
+			self::assertSame('UPDATE [p] SET [p].[deleted_at] = SYSDATETIME() FROM [posts] as [p] WHERE [p].[published] = 1', $this->compile($soft, 'sqlsrv'));
+		}
+
+		/**
 		 * `any(...)` in a WHERE clause must compile to a bare EXISTS(...),
 		 * not `CASE WHEN EXISTS(...) THEN 1 ELSE 0 END` — the latter is what
 		 * BuildSqlFromAst's 'VALUES' mode produces (see

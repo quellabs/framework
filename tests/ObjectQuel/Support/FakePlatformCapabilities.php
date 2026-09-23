@@ -50,4 +50,30 @@
 		public function supportsQualifiedSetTarget(): bool {
 			return !in_array($this->databaseType, ['pgsql', 'sqlite'], true);
 		}
+
+		/**
+		 * @return bool False on SQL Server, which declares the alias in a FROM clause
+		 */
+		public function supportsAliasAfterDmlTarget(): bool {
+			return $this->databaseType !== 'sqlsrv';
+		}
+
+		/**
+		 * @return bool False on SQL Server, which uses BIT 1/0
+		 */
+		public function supportsBooleanLiterals(): bool {
+			return $this->databaseType !== 'sqlsrv';
+		}
+
+		/**
+		 * Mirrors PlatformCapabilities::getCurrentDatetimeFunction().
+		 * @return string
+		 */
+		public function getCurrentDatetimeFunction(): string {
+			return match ($this->databaseType) {
+				'sqlite' => 'CURRENT_TIMESTAMP',
+				'sqlsrv' => 'SYSDATETIME()',
+				default => 'NOW()',
+			};
+		}
 	}
