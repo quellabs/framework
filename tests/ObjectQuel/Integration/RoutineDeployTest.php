@@ -99,6 +99,36 @@
 		}
 
 		/**
+		 * A cursor query reads its variables when the foreach starts, not at the hoisted declaration or per row.
+		 * @return void
+		 */
+		public function testCursorQueryReadsVariablesWhenTheLoopStarts(): void {
+			self::em()->executeQuery("
+				define function {$this->name} (int minId) integer {
+					integer bound = -1
+					integer total = 0
+					range of u is UserEntity
+					cursor users = retrieve (u.id) where u.id > bound
+					bound = minId
+					foreach users {
+						total = total + 1
+						bound = -1
+					}
+					return total
+				}
+			");
+
+			// Passing the lowest id makes the result one less than counting from the declared bound would.
+			$lowest = self::em()->executeQuery('range of u is UserEntity retrieve (m = min(u.id))');
+			self::assertNotNull($lowest);
+			$minId = (int)$lowest[0]['m'];
+
+			$expected = self::em()->executeQuery('range of u is UserEntity retrieve (n = count(u.id)) where u.id > :minId', ['minId' => $minId]);
+			self::assertNotNull($expected);
+			self::assertSame((int)$expected[0]['n'], $this->callFunction($minId));
+		}
+
+		/**
 		 * A writing procedure is accepted by the server; it isn't called.
 		 * @return void
 		 */
