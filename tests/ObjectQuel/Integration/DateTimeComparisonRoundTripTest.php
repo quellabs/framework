@@ -74,6 +74,33 @@
 		}
 
 		/**
+		 * A JSON source makes the append run through the planner, which binds the fetched values.
+		 * @return void
+		 */
+		public function testPlannerAppendStoresDateArithmeticAsADatetime(): void {
+			$path = sys_get_temp_dir() . DIRECTORY_SEPARATOR . $this->tag . '.json';
+			file_put_contents($path, json_encode([['id' => $this->postId]]));
+
+			try {
+				self::em()->executeQuery("
+					range of dst is PostEntity
+					range of p is PostEntity
+					range of j is json_source('" . addslashes($path) . "')
+					append to dst (title, content, published, TestEnum, testJSON, createdAt, userId)
+					retrieve (p.title, p.content, p.published, p.TestEnum, p.testJSON, at = p.createdAt + date(\"1 day\"), p.userId) where p.id = j.id
+				");
+			} finally {
+				@unlink($path);
+			}
+
+			$statement = self::em()->getConnection()->execute('SELECT created_at FROM posts WHERE title = :title AND id <> :id', ['title' => $this->tag, 'id' => $this->postId]);
+			self::assertNotNull($statement);
+			$row = $statement->fetch('assoc');
+			self::assertIsArray($row);
+			self::assertSame('2025-06-02 12:00:00', $row['created_at']);
+		}
+
+		/**
 		 * @return void
 		 */
 		public function testRoutineComparesADatetimeParameterWithAColumn(): void {
