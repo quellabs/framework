@@ -216,7 +216,7 @@
 				define function counts (integer n) integer {
 					integer total = 0
 					total++
-					--total
+					total--
 					total += n * 2
 					total -= n - 1
 					return total

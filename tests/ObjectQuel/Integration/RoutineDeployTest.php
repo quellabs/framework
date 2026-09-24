@@ -236,7 +236,7 @@
 						i++
 						total += i * step
 					}
-					--total
+					total--
 					total -= step - 1
 					return total
 				}

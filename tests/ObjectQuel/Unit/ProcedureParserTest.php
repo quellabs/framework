@@ -293,7 +293,7 @@
 		}
 
 		/**
-		 * `++`, `--` (postfix and prefix), `+=` and `-=` become `name = name ± value`.
+		 * `++`, `--`, `+=` and `-=` become `name = name ± value`.
 		 * @return void
 		 */
 		public function testIncrementAndCompoundAssignment(): void {
@@ -302,38 +302,24 @@
 					integer total = 0
 					total++
 					total--
-					++total
-					--total
 					total += n * 2
 					total -= n - 1
 				}
 			')->getBody();
 
-			self::assertCount(7, $body);
+			self::assertCount(5, $body);
 
-			foreach ([1 => '+', 2 => '-', 3 => '+', 4 => '-'] as $index => $operator) {
+			foreach ([1 => '+', 2 => '-'] as $index => $operator) {
 				$value = $this->assertIncrementOf('total', $operator, $body[$index]);
 				self::assertInstanceOf(AstNumber::class, $value);
 				self::assertSame('1', $value->getValue());
 			}
 
-			self::assertInstanceOf(AstFactor::class, $this->assertIncrementOf('total', '+', $body[5]));
+			self::assertInstanceOf(AstFactor::class, $this->assertIncrementOf('total', '+', $body[3]));
 
-			$subtracted = $this->assertIncrementOf('total', '-', $body[6]);
+			$subtracted = $this->assertIncrementOf('total', '-', $body[4]);
 			self::assertInstanceOf(AstTerm::class, $subtracted);
 			self::assertSame('-', $subtracted->getOperator());
-		}
-
-		/**
-		 * A prefix increment after whitespace is the next statement, not part of the previous expression.
-		 * @return void
-		 */
-		public function testPrefixIncrementAfterAnExpressionStartsAStatement(): void {
-			$body = $this->parse("define function f (integer n, integer x) void { x = n\n++x }")->getBody();
-
-			self::assertCount(2, $body);
-			self::assertInstanceOf(AstIdentifier::class, $body[0]->getValue());
-			$this->assertIncrementOf('x', '+', $body[1]);
 		}
 
 		/**
@@ -361,7 +347,9 @@
 				'postfix in condition'   => ["{$f} { while n++ < 3 { } return n }", "'++' can't be used inside an expression"],
 				'signs without spacing'  => ["{$f} { x = n--x return x }", "'--' can't be used inside an expression"],
 				'space before postfix'   => ["{$f} { n ++ return n }", "Write '++' directly after 'n'"],
-				'space after prefix'     => ["{$f} { -- n return n }", "Write a variable name directly after '--'"],
+				'prefix statement'       => ["{$f} { ++n return n }", "Write '++' after the variable name, not before it"],
+				'spaced prefix'          => ["{$f} { -- n return n }", "Write '--' after the variable name, not before it"],
+				'prefix after assignment' => ["{$f} { x = n\n--x return x }", "'--' can't be used inside an expression"],
 				'space between signs'    => ["{$f} { n + + return n }", "Expected '++', '--', '+=' or '-=' after 'n'"],
 				'space in compound'      => ["{$f} { n - = 1 return n }", "Expected '++', '--', '+=' or '-=' after 'n'"],
 				'single sign statement'  => ["{$f} { +n return n }", "Unexpected token"],

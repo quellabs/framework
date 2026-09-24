@@ -202,7 +202,7 @@
 					'define function f (int n) void { boolean found = n > 0 if found { n = 1 } while n > 0 { n = n - 1 } }',
 				],
 				'numeric increments' => [
-					'define function f (int n) float { float x = 0 x++ --x x += n * 1.5 x -= n return x }',
+					'define function f (int n) float { float x = 0 x++ x-- x += n * 1.5 x -= n return x }',
 				],
 			]);
 		}
