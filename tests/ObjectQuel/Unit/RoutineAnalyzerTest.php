@@ -251,7 +251,6 @@
 				'field on scalar'               => ['define function f (integer n) integer { return n.x }', 'has no fields'],
 				'variable is also a property'   => ["define function f (string username) void { {$range} retrieve (u.id) where username = \"x\" }", 'both a routine variable and a property'],
 				'variable is also a target'     => ["define function f (integer k) void { {$range} retrieve (k = u.id) where u.id > k }", 'both a routine variable and a target-list name'],
-				'sort by'                       => ["define function f () void { {$range} retrieve (u.id) where u.id > 0 sort by u.id }", "'sort by' is not supported"],
 				'window'                        => ["define function f () void { {$range} retrieve (u.id) where u.id > 0 window 0, 10 }", "'window' is not supported"],
 				'whole entity target'           => ["define function f () void { {$range} cursor c = retrieve (u) where u.id > 0 }", 'not whole entities'],
 				'cursor as a value'             => ["define function f () void { {$range} cursor c = retrieve (u.id) where u.id > 0 integer x = c }", "Cursor 'c' is not a value"],

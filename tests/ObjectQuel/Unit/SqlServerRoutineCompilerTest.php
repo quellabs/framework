@@ -185,6 +185,28 @@
 		}
 
 		/**
+		 * Sort terms compile to ORDER BY, before FOR UPDATE on a cursor that takes current-row writes.
+		 * @return void
+		 */
+		public function testSortByCompilesToOrderBy(): void {
+			$sql = $this->compile('
+				define function f () void {
+					range of u is UserEntity
+					cursor readers = retrieve (u.id) sort by u.username
+					cursor writers = retrieve (u.id) where u.banned = true sort by u.id desc
+					foreach readers {
+					}
+					foreach writers {
+						replace writers (banned = false)
+					}
+				}
+			');
+
+			self::assertStringContainsString('DECLARE _cur_readers CURSOR LOCAL FORWARD_ONLY STATIC READ_ONLY FOR SELECT [u].[id] as [id] FROM [users] as [u] ORDER BY u.username;', $sql);
+			self::assertStringContainsString('DECLARE _cur_writers CURSOR LOCAL FORWARD_ONLY DYNAMIC SCROLL_LOCKS FOR SELECT [u].[id] as [id] FROM [users] as [u] WHERE [u].[banned] = 1 ORDER BY u.id desc FOR UPDATE;', $sql);
+		}
+
+		/**
 		 * ++, --, += and -= compile as the assignments they stand for; a subtracted expression is parenthesized.
 		 * @return void
 		 */

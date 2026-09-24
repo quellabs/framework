@@ -216,6 +216,24 @@
 		}
 
 		/**
+		 * Sort terms compile to ORDER BY; a target-list name is sorted by its expression.
+		 * @return void
+		 */
+		public function testSortByCompilesToOrderBy(): void {
+			$statements = $this->compile('
+				define function unban () void {
+					range of u is UserEntity
+					cursor users = retrieve (name = u.username) where u.banned sort by name desc, u.id
+					foreach users {
+						replace users (banned = false)
+					}
+				}
+			');
+
+			self::assertStringContainsString('DECLARE _cur_users CURSOR FOR SELECT `u`.`username` as `name`,`u`.`id` as `_pk_id` FROM `users` as `u` WHERE `u`.`banned` ORDER BY u.username desc,u.id;', $statements[1]);
+		}
+
+		/**
 		 * MariaDB replaces the routine in one statement.
 		 * @return void
 		 */

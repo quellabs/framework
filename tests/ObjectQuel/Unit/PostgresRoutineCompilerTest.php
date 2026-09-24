@@ -192,6 +192,28 @@
 		}
 
 		/**
+		 * Sort terms compile to ORDER BY, before FOR UPDATE on a cursor that takes current-row writes.
+		 * @return void
+		 */
+		public function testSortByCompilesToOrderBy(): void {
+			$sql = $this->compile('
+				define function f (int minId) void {
+					range of u is UserEntity
+					cursor readers = retrieve (u.id, name = u.username) where u.id > minId sort by name desc, abs(u.id - minId)
+					cursor writers = retrieve (u.id) where u.banned = true sort by u.id desc
+					foreach readers {
+					}
+					foreach writers {
+						replace writers (banned = false)
+					}
+				}
+			');
+
+			self::assertStringContainsString('FOR "_row_readers" IN SELECT "u"."id" as "id","u"."username" as "name" FROM "users" as "u" WHERE "u"."id" > "_routine"."minId" ORDER BY u.username desc,"abs"(u.id - "_routine"."minId") LOOP', $sql);
+			self::assertStringContainsString('"writers" CURSOR FOR SELECT "u"."id" as "id" FROM "users" as "u" WHERE "u"."banned" = true ORDER BY u.id desc FOR UPDATE;', $sql);
+		}
+
+		/**
 		 * The dollar-quote tag never occurs inside the body.
 		 * @return void
 		 */
