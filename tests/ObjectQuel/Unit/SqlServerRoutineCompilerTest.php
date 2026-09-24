@@ -185,6 +185,92 @@
 		}
 
 		/**
+		 * break/continue become BREAK/CONTINUE in a while and in read-only and current-row-writing cursor loops.
+		 * @return void
+		 */
+		public function testBreakAndContinue(): void {
+			$sql = $this->compile('
+				define function skip_some (integer n) void {
+					range of u is UserEntity
+					cursor ids = retrieve (u.id) where u.id > 0
+					cursor banned = retrieve (u.id) where u.banned = true
+					while n > 0 {
+						n = n - 1
+						if n = 5 {
+							continue
+						}
+						if n = 2 {
+							break
+						}
+					}
+					foreach ids {
+						if ids.id = n {
+							continue
+						}
+						break
+					}
+					foreach banned {
+						if banned.id = n {
+							continue
+						}
+						replace banned (banned = false)
+						break
+					}
+				}
+			');
+
+			self::assertSame(<<<'SQL'
+				CREATE OR ALTER PROCEDURE [dbo].[skip_some] @n INT
+				AS
+				BEGIN
+					DECLARE @_row_ids$id INT;
+					DECLARE @_row_banned$id INT;
+					WHILE @n > 0
+					BEGIN
+						SET @n = @n - 1;
+						IF @n = 5
+						BEGIN
+							CONTINUE;
+						END;
+						IF @n = 2
+						BEGIN
+							BREAK;
+						END;
+					END;
+					DECLARE _cur_ids CURSOR LOCAL FORWARD_ONLY STATIC READ_ONLY FOR SELECT [u].[id] as [id] FROM [users] as [u] WHERE [u].[id] > 0;
+					OPEN _cur_ids;
+					WHILE 1 = 1
+					BEGIN
+						FETCH NEXT FROM _cur_ids INTO @_row_ids$id;
+						IF @@FETCH_STATUS <> 0 BREAK;
+						IF @_row_ids$id = @n
+						BEGIN
+							CONTINUE;
+						END;
+						BREAK;
+					END;
+					CLOSE _cur_ids;
+					DEALLOCATE _cur_ids;
+					DECLARE _cur_banned CURSOR LOCAL FORWARD_ONLY DYNAMIC SCROLL_LOCKS FOR SELECT [u].[id] as [id] FROM [users] as [u] WHERE [u].[banned] = 1 FOR UPDATE;
+					OPEN _cur_banned;
+					WHILE 1 = 1
+					BEGIN
+						FETCH NEXT FROM _cur_banned INTO @_row_banned$id;
+						IF @@FETCH_STATUS <> 0 BREAK;
+						IF @_row_banned$id = @n
+						BEGIN
+							CONTINUE;
+						END;
+						UPDATE [users] SET [banned] = 0 WHERE CURRENT OF _cur_banned;
+						BREAK;
+					END;
+					CLOSE _cur_banned;
+					DEALLOCATE _cur_banned;
+				END;
+				SQL, $sql);
+		}
+
+		/**
 		 * @return array<string, array{string, string}>
 		 */
 		public static function rejectedRoutines(): array {

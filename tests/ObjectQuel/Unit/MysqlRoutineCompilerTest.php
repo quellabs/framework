@@ -129,9 +129,9 @@
 						END IF;
 					END LOOP _loop1;
 					CLOSE _cur_users;
-					WHILE _v_found DO
+					_loop2: WHILE _v_found DO
 						SET _v_found = false;
-					END WHILE;
+					END WHILE _loop2;
 					RETURN _v_total;
 				END
 				SQL, $statements[1]);
@@ -251,6 +251,146 @@
 			self::assertStringContainsString("\t_loop1: LOOP\n", $statements[1]);
 			self::assertStringContainsString("\t\t_loop2: LOOP\n", $statements[1]);
 			self::assertStringContainsString("IF _done THEN LEAVE _loop2; END IF;", $statements[1]);
+		}
+
+		/**
+		 * break/continue become LEAVE/ITERATE naming the loop's label; while loops are labelled too.
+		 * @return void
+		 */
+		public function testBreakAndContinue(): void {
+			$statements = $this->compile('
+				define function skip_some (integer n) void {
+					range of u is UserEntity
+					cursor ids = retrieve (u.id) where u.id > 0
+					cursor banned = retrieve (u.id) where u.banned = true
+					while n > 0 {
+						n = n - 1
+						if n = 5 {
+							continue
+						}
+						if n = 2 {
+							break
+						}
+					}
+					foreach ids {
+						if ids.id = n {
+							continue
+						}
+						break
+					}
+					foreach banned {
+						if banned.id = n {
+							continue
+						}
+						replace banned (banned = false)
+						break
+					}
+				}
+			');
+
+			self::assertSame(<<<'SQL'
+				CREATE PROCEDURE `skip_some`(_v_n INT)
+				MODIFIES SQL DATA
+				BEGIN
+					DECLARE _row_ids$id INT UNSIGNED;
+					DECLARE _row_banned$id INT UNSIGNED;
+					DECLARE _done BOOLEAN;
+					DECLARE _cur_ids CURSOR FOR SELECT `u`.`id` as `id` FROM `users` as `u` WHERE `u`.`id` > 0;
+					DECLARE _cur_banned CURSOR FOR SELECT `u`.`id` as `id` FROM `users` as `u` WHERE `u`.`banned` = true;
+					DECLARE CONTINUE HANDLER FOR NOT FOUND SET _done = TRUE;
+					_loop1: WHILE _v_n > 0 DO
+						SET _v_n = _v_n - 1;
+						IF _v_n = 5 THEN
+							ITERATE _loop1;
+						END IF;
+						IF _v_n = 2 THEN
+							LEAVE _loop1;
+						END IF;
+					END WHILE _loop1;
+					OPEN _cur_ids;
+					_loop2: LOOP
+						SET _done = FALSE;
+						FETCH _cur_ids INTO _row_ids$id;
+						IF _done THEN LEAVE _loop2; END IF;
+						IF _row_ids$id = _v_n THEN
+							ITERATE _loop2;
+						END IF;
+						LEAVE _loop2;
+					END LOOP _loop2;
+					CLOSE _cur_ids;
+					OPEN _cur_banned;
+					_loop3: LOOP
+						SET _done = FALSE;
+						FETCH _cur_banned INTO _row_banned$id;
+						IF _done THEN LEAVE _loop3; END IF;
+						IF _row_banned$id = _v_n THEN
+							ITERATE _loop3;
+						END IF;
+						UPDATE `users` as `u` SET `u`.`banned` = false WHERE `u`.`id` = _row_banned$id;
+						LEAVE _loop3;
+					END LOOP _loop3;
+					CLOSE _cur_banned;
+				END
+				SQL, $statements[1]);
+		}
+
+		/**
+		 * continue in a nested loop names the inner loop's label, break the outer one's.
+		 * @return void
+		 */
+		public function testLoopExitsNameTheirInnermostLoop(): void {
+			$statements = $this->compile('
+				define function nested (integer n) integer {
+					integer total = 0
+					range of u is UserEntity
+					cursor ids = retrieve (u.id) where u.id > 0
+					while n > 0 {
+						foreach ids {
+							if ids.id = n {
+								continue
+							}
+							total = total + 1
+						}
+						if total > 10 {
+							break
+						}
+						n = n - 1
+					}
+					return total
+				}
+			');
+
+			self::assertSame(<<<'SQL'
+				CREATE FUNCTION `nested`(_v_n INT)
+				RETURNS INT
+				READS SQL DATA
+				BEGIN
+					DECLARE _v_total INT;
+					DECLARE _row_ids$id INT UNSIGNED;
+					DECLARE _done BOOLEAN;
+					DECLARE _cur_ids CURSOR FOR SELECT `u`.`id` as `id` FROM `users` as `u` WHERE `u`.`id` > 0;
+					DECLARE CONTINUE HANDLER FOR NOT FOUND SET _done = TRUE;
+					SET _v_total = 0;
+					_loop1: WHILE _v_n > 0 DO
+						OPEN _cur_ids;
+						_loop2: LOOP
+							SET _done = FALSE;
+							FETCH _cur_ids INTO _row_ids$id;
+							IF _done THEN LEAVE _loop2; END IF;
+							IF _row_ids$id = _v_n THEN
+								ITERATE _loop2;
+							END IF;
+							SET _v_total = _v_total + 1;
+						END LOOP _loop2;
+						CLOSE _cur_ids;
+						IF _v_total > 10 THEN
+							LEAVE _loop1;
+						END IF;
+						SET _v_n = _v_n - 1;
+					END WHILE _loop1;
+					RETURN _v_total;
+				END
+				SQL, $statements[1]);
 		}
 
 		/**

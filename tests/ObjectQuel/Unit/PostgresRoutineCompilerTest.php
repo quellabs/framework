@@ -208,6 +208,84 @@
 		}
 
 		/**
+		 * break/continue become EXIT/CONTINUE in a while, a FOR ... IN loop and an explicit-cursor loop.
+		 * @return void
+		 */
+		public function testBreakAndContinue(): void {
+			$sql = $this->compile('
+				define function skip_some (integer n) void {
+					range of u is UserEntity
+					cursor ids = retrieve (u.id) where u.id > 0
+					cursor banned = retrieve (u.id) where u.banned = true
+					while n > 0 {
+						n = n - 1
+						if n = 5 {
+							continue
+						}
+						if n = 2 {
+							break
+						}
+					}
+					foreach ids {
+						if ids.id = n {
+							continue
+						}
+						break
+					}
+					foreach banned {
+						if banned.id = n {
+							continue
+						}
+						replace banned (banned = false)
+						break
+					}
+				}
+			');
+
+			self::assertSame(<<<'SQL'
+				CREATE OR REPLACE PROCEDURE "skip_some"("n" INTEGER)
+				LANGUAGE plpgsql
+				AS $body$
+				<<_routine>>
+				DECLARE
+					"n" INTEGER := $1;
+					"_row_ids" RECORD;
+					"_row_banned" RECORD;
+					"banned" CURSOR FOR SELECT "u"."id" as "id" FROM "users" as "u" WHERE "u"."banned" = true FOR UPDATE;
+				BEGIN
+					WHILE "_routine"."n" > 0 LOOP
+						"n" := "_routine"."n" - 1;
+						IF "_routine"."n" = 5 THEN
+							CONTINUE;
+						END IF;
+						IF "_routine"."n" = 2 THEN
+							EXIT;
+						END IF;
+					END LOOP;
+					FOR "_row_ids" IN SELECT "u"."id" as "id" FROM "users" as "u" WHERE "u"."id" > 0 LOOP
+						IF "_row_ids"."id" = "_routine"."n" THEN
+							CONTINUE;
+						END IF;
+						EXIT;
+					END LOOP;
+					"banned" := NULL;
+					OPEN "banned";
+					LOOP
+						FETCH "banned" INTO "_row_banned";
+						EXIT WHEN NOT FOUND;
+						IF "_row_banned"."id" = "_routine"."n" THEN
+							CONTINUE;
+						END IF;
+						UPDATE "users" as "u" SET "banned" = false WHERE CURRENT OF "banned";
+						EXIT;
+					END LOOP;
+					CLOSE "banned";
+				END;
+				$body$;
+				SQL, $sql);
+		}
+
+		/**
 		 * @return array<string, array{string, string}>
 		 */
 		public static function rejectedRoutines(): array {

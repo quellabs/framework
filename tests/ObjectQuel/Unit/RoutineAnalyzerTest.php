@@ -170,6 +170,38 @@
 		}
 
 		/**
+		 * break/continue in a loop inside a transaction, and in the inner loop of a nested pair.
+		 * @return void
+		 */
+		public function testAcceptsBreakAndContinueInsideTheirLoop(): void {
+			$this->analyze('
+				define function f (integer n) void {
+					range of u is UserEntity
+					cursor users = retrieve (u.id) where u.id > 0
+					begin transaction {
+						while n > 0 {
+							if n = 5 {
+								break
+							}
+							n = n - 1
+						}
+					}
+					while n < 10 {
+						foreach users {
+							if users.id = n {
+								continue
+							}
+							break
+						}
+						n = n + 1
+					}
+				}
+			');
+
+			$this->addToAssertionCount(1);
+		}
+
+		/**
 		 * Rejected routines and a fragment of the expected message.
 		 * @return array<string, array{string, string}>
 		 */
@@ -192,6 +224,7 @@
 				'local redeclares parameter'    => ['define function f (integer n) void { integer n }', "'n' is already declared"],
 				'local redeclares range'        => ["define function f () void { {$range} integer u }", "'u' is already declared"],
 				'statement keyword as name'     => ['define function f () void { integer foreach }', 'statement keyword'],
+				'break as name'                 => ['define function f () void { integer break }', 'statement keyword'],
 				'locals differing in case'      => ['define function f () void { integer total integer Total }', "'total' and 'Total' differ only in case"],
 				'local and parameter case'      => ['define function f (integer n) void { string N }', "'n' and 'N' differ only in case"],
 				'cursor and local case'         => ["define function f () void { {$range} integer rows cursor Rows = retrieve (u.id) }", "'rows' and 'Rows' differ only in case"],
@@ -233,6 +266,10 @@
 				'abort in a loop'               => ['define function f (integer n) void { begin transaction { while n > 0 { abort } } }', 'inside a loop'],
 				'nested transactions'           => ['define function f () void { begin transaction { begin transaction { } } }', "can't be nested"],
 				'return inside transaction'     => ['define function f () integer { begin transaction { return 1 } }', "'return' inside 'begin transaction"],
+				'break at top level'            => ['define function f () void { break }', "'break' is only valid inside 'while' or 'foreach'"],
+				'continue in if without loop'   => ['define function f (integer n) void { if n > 0 { continue } }', "'continue' is only valid inside 'while' or 'foreach'"],
+				'break out of transaction'      => ['define function f (integer n) void { while n > 0 { begin transaction { if n = 5 { break } } } }', "'break' would leave 'begin transaction { }' without committing it"],
+				'continue out of transaction'   => ['define function f (integer n) void { while n > 0 { begin transaction { continue } } }', "'continue' would leave 'begin transaction { }'"],
 			];
 		}
 

@@ -6,6 +6,8 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAbort;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAppend;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstBeginTransaction;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstBreak;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstContinue;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstDeclare;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstDelete;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstDeleteCurrent;
@@ -250,6 +252,37 @@
 
 			self::assertInstanceOf(AstBeginTransaction::class, $body[0]);
 			self::assertInstanceOf(AstAbort::class, $body[0]->getBody()[0]->getThenBody()[0]);
+		}
+
+		/**
+		 * break and continue parse inside while, foreach and a nested if.
+		 * @return void
+		 */
+		public function testBreakAndContinue(): void {
+			$body = $this->parse('
+				define function f (integer n) void {
+					range of u is UserEntity
+					cursor users = retrieve (u.id) where u.id > 0
+					while n > 0 {
+						continue
+					}
+					foreach users {
+						if n > 1 {
+							break
+						} else {
+							continue
+						}
+						break
+					}
+				}
+			')->getBody();
+
+			self::assertInstanceOf(AstContinue::class, $body[2]->getBody()[0]);
+
+			$loopBody = $body[3]->getBody();
+			self::assertInstanceOf(AstBreak::class, $loopBody[0]->getThenBody()[0]);
+			self::assertInstanceOf(AstContinue::class, $loopBody[0]->getElseBody()[0]);
+			self::assertInstanceOf(AstBreak::class, $loopBody[1]);
 		}
 
 		/**

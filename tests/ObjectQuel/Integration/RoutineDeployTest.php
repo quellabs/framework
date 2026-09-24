@@ -169,6 +169,61 @@
 		}
 
 		/**
+		 * continue skips a row and break closes the cursor early; the count matches a plain query capped one below its total.
+		 * @return void
+		 */
+		public function testForeachWithContinueAndBreak(): void {
+			self::em()->executeQuery("
+				define function {$this->name} (int maxCount) integer {
+					integer total = 0
+					range of u is UserEntity
+					cursor users = retrieve (u.id, name = u.username) where u.id > 0
+					foreach users {
+						if users.name = \"\" {
+							continue
+						}
+						if total >= maxCount {
+							break
+						}
+						total = total + 1
+					}
+					return total
+				}
+			");
+
+			$expected = self::em()->executeQuery('range of u is UserEntity retrieve (n = count(u.id)) where u.id > 0 and u.username != ""');
+			self::assertNotNull($expected);
+			$named = (int)$expected[0]['n'];
+			self::assertGreaterThan(0, $named, 'Fixture needs a user with a username for break to cut the loop short');
+
+			self::assertSame($named - 1, $this->callFunction($named - 1));
+			self::assertSame($named, $this->callFunction($named + 1));
+		}
+
+		/**
+		 * A labelled WHILE accepts ITERATE, which re-checks the condition.
+		 * @return void
+		 */
+		public function testWhileWithContinue(): void {
+			self::em()->executeQuery("
+				define function {$this->name} (int skip) integer {
+					integer i = 0
+					integer total = 0
+					while i < 10 {
+						i = i + 1
+						if i = skip {
+							continue
+						}
+						total = total + i
+					}
+					return total
+				}
+			");
+
+			self::assertSame(55 - 3, $this->callFunction(3));
+		}
+
+		/**
 		 * A writing procedure is accepted by the server; it isn't called.
 		 * @return void
 		 */
