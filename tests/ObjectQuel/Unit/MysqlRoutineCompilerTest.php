@@ -230,7 +230,7 @@
 				}
 			');
 
-			self::assertStringContainsString('DECLARE _cur_users CURSOR FOR SELECT `u`.`username` as `name`,`u`.`id` as `_pk_id` FROM `users` as `u` WHERE `u`.`banned` ORDER BY u.username desc,u.id;', $statements[1]);
+			self::assertStringContainsString('DECLARE _cur_users CURSOR FOR SELECT `u`.`username` as `name`,`u`.`id` as `_pk_id` FROM `users` as `u` WHERE `u`.`banned` ORDER BY `u`.`username` desc,`u`.`id`;', $statements[1]);
 		}
 
 		/**

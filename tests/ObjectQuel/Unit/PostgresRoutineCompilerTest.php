@@ -209,8 +209,8 @@
 				}
 			');
 
-			self::assertStringContainsString('FOR "_row_readers" IN SELECT "u"."id" as "id","u"."username" as "name" FROM "users" as "u" WHERE "u"."id" > "_routine"."minId" ORDER BY u.username desc,"abs"(u.id - "_routine"."minId") LOOP', $sql);
-			self::assertStringContainsString('"writers" CURSOR FOR SELECT "u"."id" as "id" FROM "users" as "u" WHERE "u"."banned" = true ORDER BY u.id desc FOR UPDATE;', $sql);
+			self::assertStringContainsString('FOR "_row_readers" IN SELECT "u"."id" as "id","u"."username" as "name" FROM "users" as "u" WHERE "u"."id" > "_routine"."minId" ORDER BY "u"."username" desc,"abs"("u"."id" - "_routine"."minId") LOOP', $sql);
+			self::assertStringContainsString('"writers" CURSOR FOR SELECT "u"."id" as "id" FROM "users" as "u" WHERE "u"."banned" = true ORDER BY "u"."id" desc FOR UPDATE;', $sql);
 		}
 
 		/**
