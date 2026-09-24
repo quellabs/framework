@@ -214,6 +214,23 @@
 		}
 
 		/**
+		 * A nullable datetime sorts with a date default, which PostgreSQL accepts for TIMESTAMP.
+		 * @return void
+		 */
+		public function testNullableDatetimeSortsWithDateDefault(): void {
+			$sql = $this->compile('
+				define function f () void {
+					range of p is PostEntity
+					cursor posts = retrieve (p.id) sort by p.deletedAt
+					foreach posts {
+					}
+				}
+			');
+
+			self::assertStringContainsString('ORDER BY COALESCE("p"."deleted_at", \'0001-01-01\') LOOP', $sql);
+		}
+
+		/**
 		 * The dollar-quote tag never occurs inside the body.
 		 * @return void
 		 */
