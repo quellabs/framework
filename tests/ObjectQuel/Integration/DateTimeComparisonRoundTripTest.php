@@ -125,7 +125,7 @@
 		 * @return int The function's result
 		 */
 		private function call(string $since): int {
-			$result = self::em()->executeQuery("call {$this->tag}({$this->postId}, \"{$since}\")");
+			$result = self::em()->executeQuery("{$this->tag}({$this->postId}, \"{$since}\")");
 			self::assertNotNull($result);
 			return (int)iterator_to_array($result)[0][$this->tag];
 		}
@@ -154,7 +154,7 @@
 				}
 			");
 
-			$result = self::em()->executeQuery("call {$this->tag}(\"2025-01-01 00:00:00\")");
+			$result = self::em()->executeQuery("{$this->tag}(\"2025-01-01 00:00:00\")");
 			self::assertNotNull($result);
 			self::assertSame('2025-01-02 01:00:00', iterator_to_array($result)[0][$this->tag]);
 		}

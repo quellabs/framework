@@ -54,7 +54,7 @@
 					range of u is UserEntity
 					cursor users = retrieve (u.id)
 					foreach users {
-						call p(n, -1, "s", true, null, users.id)
+						p(n, -1, "s", true, null, users.id)
 					}
 				}
 			');
@@ -80,7 +80,7 @@
 		 */
 		#[DataProvider('procedureCallsWithoutArguments')]
 		public function testCallStatementWithoutArguments(string $databaseType, string $expected): void {
-			self::assertStringContainsString($expected, $this->compile($databaseType, 'define function f () void { call p(); }'));
+			self::assertStringContainsString($expected, $this->compile($databaseType, 'define function f () void { p(); }'));
 		}
 
 		/**
@@ -134,8 +134,8 @@
 		#[DataProvider('engines')]
 		public function testExpressionArgumentIsRejected(string $databaseType): void {
 			$this->expectException(SemanticException::class);
-			$this->expectExceptionMessage("The arguments of 'call p' must be literals or variables; assign other values to a local first.");
-			$this->compile($databaseType, 'define function f (int n) void { call p(n + 1) }');
+			$this->expectExceptionMessage("The arguments of 'p()' must be literals or variables; assign other values to a local first.");
+			$this->compile($databaseType, 'define function f (int n) void { p(n + 1) }');
 		}
 
 		/**
@@ -146,7 +146,7 @@
 		public function testColumnArgumentIsRejected(string $databaseType): void {
 			$this->expectException(SemanticException::class);
 			$this->expectExceptionMessage("Range 'u' can only be used inside retrieve, append, replace or delete.");
-			$this->compile($databaseType, 'define function f () void { range of u is UserEntity call p(u.id) }');
+			$this->compile($databaseType, 'define function f () void { range of u is UserEntity; p(u.id) }');
 		}
 
 		/**
@@ -157,18 +157,32 @@
 		public function testUndefinedArgumentIsRejected(string $databaseType): void {
 			$this->expectException(SemanticException::class);
 			$this->expectExceptionMessage("Undefined name 'm'.");
-			$this->compile($databaseType, 'define function f () void { call p(m) }');
+			$this->compile($databaseType, 'define function f () void { p(m) }');
 		}
 
 		/**
-		 * @param string $databaseType Target engine
 		 * @return void
 		 */
-		#[DataProvider('engines')]
-		public function testCallCantBeAVariableName(string $databaseType): void {
+		public function testCallIsAnOrdinaryName(): void {
+			self::assertStringContainsString('SET _v_call = 1;', $this->compile('mysql', 'define function f () void { integer call = 1 }'));
+		}
+
+		/**
+		 * @return array<string, array{string}>
+		 */
+		public static function statementKeywords(): array {
+			return ['body keyword' => ['while'], 'top-level keyword' => ['show'], 'define' => ['DEFINE']];
+		}
+
+		/**
+		 * @param string $name Routine name that starts a statement
+		 * @return void
+		 */
+		#[DataProvider('statementKeywords')]
+		public function testStatementKeywordCantNameARoutine(string $name): void {
 			$this->expectException(SemanticException::class);
-			$this->expectExceptionMessage("'call' is a statement keyword and can't be used as a name.");
-			$this->compile($databaseType, 'define function f () void { integer call = 1 }');
+			$this->expectExceptionMessage("'{$name}' is a statement keyword, so a routine by that name couldn't be called as a statement.");
+			$this->compile('mysql', "define function {$name} () void { abort }");
 		}
 
 		/**
@@ -176,8 +190,8 @@
 		 */
 		public function testSqlServerFunctionCantCallAProcedure(): void {
 			$this->expectException(SemanticException::class);
-			$this->expectExceptionMessage("'f' returns a value, so SQL Server creates it as a FUNCTION, which can't run a procedure. Make it void to use 'call'.");
-			$this->compile('sqlsrv', 'define function f () integer { call p() return 1 }');
+			$this->expectExceptionMessage("'f' returns a value, so SQL Server creates it as a FUNCTION, which can't run a procedure. Make it void to call a procedure as a statement.");
+			$this->compile('sqlsrv', 'define function f () integer { p() return 1 }');
 		}
 
 		/**
@@ -204,7 +218,7 @@
 		 * @return void
 		 */
 		public function testMysqlFunctionCanCallAProcedureOfTheSameName(): void {
-			self::assertStringContainsString('CALL `f`();', $this->compile('mysql', 'define function f () integer { call f() return 1 }'));
+			self::assertStringContainsString('CALL `f`();', $this->compile('mysql', 'define function f () integer { f() return 1 }'));
 		}
 
 		/**

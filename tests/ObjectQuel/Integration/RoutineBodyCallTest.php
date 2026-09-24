@@ -98,7 +98,7 @@
 			$double = $this->define('double', '(int n) integer { return n * 2 }');
 			$outer = $this->define('outer', "(int n) integer { integer x = {$double}(n) + 1 return x }");
 
-			$result = self::em()->executeQuery("call {$outer}(:n)", ['n' => 21]);
+			$result = self::em()->executeQuery("{$outer}(:n)", ['n' => 21]);
 
 			self::assertNotNull($result);
 			self::assertSame([[$outer => 43]], iterator_to_array($result));
@@ -113,10 +113,10 @@
 				replace u (username = who) where u.id = uid
 			}');
 
-			$outer = $this->define('outer', "(int uid) void { string who = \"nested\" call {$rename}(uid, who) }");
+			$outer = $this->define('outer', "(int uid) void { string who = \"nested\" {$rename}(uid, who) }");
 			$id = $this->seedUser();
 
-			self::assertNull(self::em()->executeQuery("call {$outer}(:id)", ['id' => $id]));
+			self::assertNull(self::em()->executeQuery("{$outer}(:id)", ['id' => $id]));
 			self::assertSame('nested', $this->username($id));
 		}
 
@@ -130,10 +130,10 @@
 				replace u (username = "from function") where u.id = uid
 			}');
 
-			$outer = $this->define('outer', "(int uid) integer { call {$rename}(uid) return 1 }");
+			$outer = $this->define('outer', "(int uid) integer { {$rename}(uid) return 1 }");
 			$id = $this->seedUser();
 
-			$result = self::em()->executeQuery("call {$outer}(:id)", ['id' => $id]);
+			$result = self::em()->executeQuery("{$outer}(:id)", ['id' => $id]);
 
 			self::assertNotNull($result);
 			self::assertSame([[$outer => 1]], iterator_to_array($result));
@@ -154,13 +154,13 @@
 				range of u is UserEntity
 				cursor users = retrieve (u.id, name = (string){$suffix}(u.username)) where u.id = uid
 				foreach users {
-					call {$rename}(users.id, users.name)
+					{$rename}(users.id, users.name)
 				}
 			}");
 
 			$id = $this->seedUser();
 
-			self::assertNull(self::em()->executeQuery("call {$outer}(:id)", ['id' => $id]));
+			self::assertNull(self::em()->executeQuery("{$outer}(:id)", ['id' => $id]));
 			self::assertSame("{$this->prefix}!", $this->username($id));
 		}
 	}

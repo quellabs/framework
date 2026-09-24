@@ -7,7 +7,7 @@
 	use Quellabs\ObjectQuel\Exception\QuelException;
 
 	/**
-	 * The `call name(args)` statement against the suite's MySQL connection.
+	 * The `name(args)` statement against the suite's MySQL connection.
 	 */
 	class CallStatementTest extends TestCase {
 
@@ -64,7 +64,7 @@
 		public function testFunctionYieldsOneRow(): void {
 			self::em()->executeQuery("define function {$this->name} (int n) integer { return n * 2 }");
 
-			$result = self::em()->executeQuery("call {$this->name}(:n)", ['n' => 21]);
+			$result = self::em()->executeQuery("{$this->name}(:n)", ['n' => 21]);
 
 			self::assertNotNull($result);
 			self::assertSame([[$this->name => 42]], iterator_to_array($result));
@@ -89,7 +89,7 @@
 			self::assertNotNull($seeded);
 			$this->userId = (int)$seeded->getGeneratedId();
 
-			self::assertNull(self::em()->executeQuery("call {$this->name}(:id, :who)", ['id' => $this->userId, 'who' => 'called']));
+			self::assertNull(self::em()->executeQuery("{$this->name}(:id, :who)", ['id' => $this->userId, 'who' => 'called']));
 			self::assertSame('called', $this->username($this->userId));
 		}
 
@@ -99,7 +99,7 @@
 		public function testMissingRoutineIsRejected(): void {
 			$this->expectException(QuelException::class);
 			$this->expectExceptionMessage("Can't call '{$this->name}': no routine by that name exists.");
-			self::em()->executeQuery("call {$this->name}()");
+			self::em()->executeQuery("{$this->name}()");
 		}
 
 		/**
@@ -113,6 +113,6 @@
 
 			$this->expectException(QuelException::class);
 			$this->expectExceptionMessage("Can't call '{$this->name}': both a function and a procedure have that name.");
-			self::em()->executeQuery("call {$this->name}()");
+			self::em()->executeQuery("{$this->name}()");
 		}
 	}

@@ -45,7 +45,7 @@
 		 * @return mixed The routine's result
 		 */
 		private function call(string $name, string $arguments = ''): mixed {
-			$result = self::em()->executeQuery("call {$name}({$arguments})");
+			$result = self::em()->executeQuery("{$name}({$arguments})");
 			self::assertNotNull($result);
 			return iterator_to_array($result)[0][$name];
 		}

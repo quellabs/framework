@@ -15,7 +15,7 @@
 	use Quellabs\ObjectQuel\Tests\Support\FakePlatformCapabilities;
 
 	/**
-	 * The `call name(args)` statement: parsing, the catalog query and the per-engine SQL.
+	 * The `name(args)` statement: parsing, the catalog query and the per-engine SQL.
 	 */
 	class CallStatementTest extends TestCase {
 
@@ -48,7 +48,7 @@
 		 * @return void
 		 */
 		public function testParsesACall(): void {
-			$call = $this->parseCall('call f(1, :p, "s");')->getCall();
+			$call = $this->parseCall('f(1, :p, "s");')->getCall();
 
 			self::assertSame('f', $call->getName());
 			self::assertCount(3, $call->getArguments());
@@ -60,7 +60,7 @@
 		public function testBuiltinCantBeCalled(): void {
 			$this->expectException(ParserException::class);
 			$this->expectExceptionMessage("'count' is a built-in function, not a routine.");
-			$this->parseCall('call count(1)');
+			$this->parseCall('count(1)');
 		}
 
 		/**
@@ -86,9 +86,9 @@
 			$compiler = $this->compiler($databaseType);
 			$parameters = ['p' => 5];
 
-			self::assertSame($procedure, $compiler->convertToSQL($this->parseCall('call f(1, :p, "s", true, null)'), true, $parameters));
-			self::assertSame($function, $compiler->convertToSQL($this->parseCall('call f(1, :p, "s", true, null)'), false, $parameters));
-			self::assertSame($noArguments, $compiler->convertToSQL($this->parseCall('call f()'), true, $parameters));
+			self::assertSame($procedure, $compiler->convertToSQL($this->parseCall('f(1, :p, "s", true, null)'), true, $parameters));
+			self::assertSame($function, $compiler->convertToSQL($this->parseCall('f(1, :p, "s", true, null)'), false, $parameters));
+			self::assertSame($noArguments, $compiler->convertToSQL($this->parseCall('f()'), true, $parameters));
 			self::assertSame(['p' => 5], $parameters);
 		}
 
@@ -97,7 +97,7 @@
 		 */
 		public function testNegativeLiteralIsAnArgument(): void {
 			$parameters = [];
-			self::assertSame('CALL `f`(-1)', $this->compiler('mysql')->convertToSQL($this->parseCall('call f(-1)'), true, $parameters));
+			self::assertSame('CALL `f`(-1)', $this->compiler('mysql')->convertToSQL($this->parseCall('f(-1)'), true, $parameters));
 		}
 
 		/**
@@ -108,8 +108,8 @@
 		public function testExpressionArgumentIsRejected(string $databaseType): void {
 			$parameters = [];
 			$this->expectException(SemanticException::class);
-			$this->expectExceptionMessage("The arguments of 'call f' must be literals or parameters; compute other values before the call.");
-			$this->compiler($databaseType)->convertToSQL($this->parseCall('call f(:p + 1)'), true, $parameters);
+			$this->expectExceptionMessage("The arguments of 'f()' must be literals or parameters; compute other values before the call.");
+			$this->compiler($databaseType)->convertToSQL($this->parseCall('f(:p + 1)'), true, $parameters);
 		}
 
 		/**
@@ -138,7 +138,7 @@
 		 */
 		#[DataProvider('kindQueries')]
 		public function testKindQuery(string $databaseType, string $source, string $name): void {
-			[$sql, $parameters] = $this->compiler($databaseType)->kindQuery($this->parseCall('call f()'));
+			[$sql, $parameters] = $this->compiler($databaseType)->kindQuery($this->parseCall('f()'));
 
 			self::assertStringContainsString(' AS is_procedure ', $sql);
 			self::assertStringContainsString($source, $sql);
@@ -151,6 +151,6 @@
 		public function testEngineWithoutRoutinesIsRejected(): void {
 			$this->expectException(QuelException::class);
 			$this->expectExceptionMessage("Routines can't be called on 'sqlite'.");
-			$this->compiler('sqlite')->kindQuery($this->parseCall('call f()'));
+			$this->compiler('sqlite')->kindQuery($this->parseCall('f()'));
 		}
 	}
