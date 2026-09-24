@@ -82,7 +82,7 @@
 					range of u is UserEntity
 					cursor users = retrieve (u.id, name = u.username) where u.id > minId
 					foreach users {
-						if users.name != \"\" {
+						if (users.name != \"\") {
 							total = total + 1
 						}
 					}
@@ -179,10 +179,10 @@
 					range of u is UserEntity
 					cursor users = retrieve (u.id, name = u.username) where u.id > 0
 					foreach users {
-						if users.name = \"\" {
+						if (users.name = \"\") {
 							continue
 						}
-						if total >= maxCount {
+						if (total >= maxCount) {
 							break
 						}
 						total = total + 1
@@ -209,9 +209,9 @@
 				define function {$this->name} (int skip) integer {
 					integer i = 0
 					integer total = 0
-					while i < 10 {
+					while (i < 10) {
 						i = i + 1
-						if i = skip {
+						if (i = skip) {
 							continue
 						}
 						total = total + i
@@ -232,7 +232,7 @@
 				define function {$this->name} (int step) integer {
 					integer i = 0
 					integer total = 0
-					while i < 10 {
+					while (i < 10) {
 						i++
 						total += i * step
 					}
@@ -243,6 +243,31 @@
 			");
 
 			self::assertSame(55 * 3 - 1 - 2, $this->callFunction(3));
+		}
+
+		/**
+		 * An elseif / else if chain runs on the server and takes the first matching branch.
+		 * @return void
+		 */
+		public function testElseifChain(): void {
+			self::em()->executeQuery("
+				define function {$this->name} (int n) integer {
+					if (n < 0) {
+						return -1
+					} elseif (n = 0) {
+						return 0
+					} else if (n < 10) {
+						return 1
+					} else {
+						return 2
+					}
+				}
+			");
+
+			self::assertSame(-1, $this->callFunction(-5));
+			self::assertSame(0, $this->callFunction(0));
+			self::assertSame(1, $this->callFunction(5));
+			self::assertSame(2, $this->callFunction(50));
 		}
 
 		/**
@@ -261,7 +286,7 @@
 					}
 					begin transaction {
 						replace u (banned = false) where u.username = who
-						if who = \"\" {
+						if (who = \"\") {
 							abort
 						}
 					}

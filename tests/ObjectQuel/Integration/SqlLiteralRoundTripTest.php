@@ -72,7 +72,7 @@
 		 * @return void
 		 */
 		public function testRegexBackslashReachesTheEngine(): void {
-			$name = $this->define('match', '(string s) integer { if s = /^a\\.b$/ { return 1 } return 0 }');
+			$name = $this->define('match', '(string s) integer { if (s = /^a\\.b$/) { return 1 } return 0 }');
 
 			self::assertSame(1, $this->call($name, '"a.b"'));
 			self::assertSame(0, $this->call($name, '"axb"'));

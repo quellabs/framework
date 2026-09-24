@@ -133,7 +133,7 @@
 					range of u is UserEntity
 					begin transaction {
 						replace u (username = newName) where u.id = userId
-						if newName = "" {
+						if (newName = "") {
 							abort
 						} else {
 							replace u (banned = false) where u.id = userId
@@ -150,7 +150,16 @@
 		 * @return void
 		 */
 		public function testAcceptsReturnOnBothBranches(): void {
-			$this->analyze('define function sign (INT n) Integer { if n < 0 { return -1 } else { return 1 } }');
+			$this->analyze('define function sign (INT n) Integer { if (n < 0) { return -1 } else { return 1 } }');
+			$this->addToAssertionCount(1);
+		}
+
+		/**
+		 * An elseif chain ending in else returns on every path.
+		 * @return void
+		 */
+		public function testAcceptsReturnOnEveryElseifBranch(): void {
+			$this->analyze('define function sign (INT n) Integer { if (n < 0) { return -1 } elseif (n = 0) { return 0 } else { return 1 } }');
 			$this->addToAssertionCount(1);
 		}
 
@@ -179,16 +188,16 @@
 					range of u is UserEntity
 					cursor users = retrieve (u.id) where u.id > 0
 					begin transaction {
-						while n > 0 {
-							if n = 5 {
+						while (n > 0) {
+							if (n = 5) {
 								break
 							}
 							n = n - 1
 						}
 					}
-					while n < 10 {
+					while (n < 10) {
 						foreach users {
-							if users.id = n {
+							if (users.id = n) {
 								continue
 							}
 							break
@@ -219,12 +228,13 @@
 				'cursor without initializer'    => ['define function f () void { cursor c }', 'must be initialized with a retrieve'],
 				'cursor with expression'        => ['define function f () void { cursor c = 1 }', 'must be initialized with a retrieve'],
 				'scalar with retrieve'          => ["define function f () void { {$range} integer x = retrieve (u.id) where u.id = 1 }", 'Only a cursor can be initialized'],
-				'declaration inside if'         => ['define function f (integer n) void { if n > 1 { integer x = 1 } }', 'must be at the top level'],
-				'range inside while'            => ['define function f (integer n) void { while n > 1 { range of u is UserEntity } }', 'must be at the top level'],
+				'declaration inside if'         => ['define function f (integer n) void { if (n > 1) { integer x = 1 } }', 'must be at the top level'],
+				'range inside while'            => ['define function f (integer n) void { while (n > 1) { range of u is UserEntity } }', 'must be at the top level'],
 				'local redeclares parameter'    => ['define function f (integer n) void { integer n }', "'n' is already declared"],
 				'local redeclares range'        => ["define function f () void { {$range} integer u }", "'u' is already declared"],
 				'statement keyword as name'     => ['define function f () void { integer foreach }', 'statement keyword'],
 				'break as name'                 => ['define function f () void { integer break }', 'statement keyword'],
+				'elseif as name'                => ['define function f (integer elseif) void { }', 'statement keyword'],
 				'locals differing in case'      => ['define function f () void { integer total integer Total }', "'total' and 'Total' differ only in case"],
 				'local and parameter case'      => ['define function f (integer n) void { string N }', "'n' and 'N' differ only in case"],
 				'cursor and local case'         => ["define function f () void { {$range} integer rows cursor Rows = retrieve (u.id) }", "'rows' and 'Rows' differ only in case"],
@@ -236,7 +246,7 @@
 				'undefined name'                => ['define function f () integer { return y }', "Undefined name 'y'"],
 				'assignment to undeclared'      => ['define function f () void { y = 1 }', "undeclared variable 'y'"],
 				'increment of undeclared'       => ['define function f () void { y++ }', "undeclared variable 'y'"],
-				'range in expression'           => ["define function f () void { {$range} if u.id > 1 { } }", "Range 'u' can only be used inside"],
+				'range in expression'           => ["define function f () void { {$range} if (u.id > 1) { } }", "Range 'u' can only be used inside"],
 				'assignment to range'           => ["define function f () void { {$range} u = 1 }", "Range 'u' can't be assigned"],
 				'field on scalar'               => ['define function f (integer n) integer { return n.x }', 'has no fields'],
 				'variable is also a property'   => ["define function f (string username) void { {$range} retrieve (u.id) where username = \"x\" }", 'both a routine variable and a property'],
@@ -260,18 +270,19 @@
 				'delete current on relation'    => ["define function f () void { {$range} cursor c = retrieve (u.id, u.posts.title) where u.id > 0 foreach c { delete c } }", "reads related entity 'u.posts.title'"],
 				'replace current unknown column'=> ["define function f () void { {$range} cursor c = retrieve (u.id) where u.id > 0 foreach c { replace c (nickname = \"x\") } }", "'nickname' is not a column"],
 				'void returns a value'          => ['define function f () void { return 1 }', "A void routine can't return a value"],
-				'return only in if'             => ['define function f (integer n) integer { if n > 0 { return 1 } }', 'Not every path'],
-				'return only in loop'           => ['define function f (integer n) integer { while n > 0 { return 1 } }', 'Not every path'],
+				'return only in if'             => ['define function f (integer n) integer { if (n > 0) { return 1 } }', 'Not every path'],
+				'elseif without else'           => ['define function f (integer n) integer { if (n > 0) { return 1 } elseif (n < 0) { return -1 } }', 'Not every path'],
+				'return only in loop'           => ['define function f (integer n) integer { while (n > 0) { return 1 } }', 'Not every path'],
 				'abort outside transaction'     => ['define function f () void { abort }', "only valid inside 'begin transaction"],
-				'statement after abort'         => ['define function f (integer n) void { begin transaction { if n > 0 { abort } n = 1 } }', "A statement follows 'abort'"],
-				'statement after abort in if'   => ['define function f (integer n) void { begin transaction { if n > 0 { abort n = 1 } } }', "A statement follows 'abort'"],
-				'abort in a loop'               => ['define function f (integer n) void { begin transaction { while n > 0 { abort } } }', 'inside a loop'],
+				'statement after abort'         => ['define function f (integer n) void { begin transaction { if (n > 0) { abort } n = 1 } }', "A statement follows 'abort'"],
+				'statement after abort in if'   => ['define function f (integer n) void { begin transaction { if (n > 0) { abort n = 1 } } }', "A statement follows 'abort'"],
+				'abort in a loop'               => ['define function f (integer n) void { begin transaction { while (n > 0) { abort } } }', 'inside a loop'],
 				'nested transactions'           => ['define function f () void { begin transaction { begin transaction { } } }', "can't be nested"],
 				'return inside transaction'     => ['define function f () integer { begin transaction { return 1 } }', "'return' inside 'begin transaction"],
 				'break at top level'            => ['define function f () void { break }', "'break' is only valid inside 'while' or 'foreach'"],
-				'continue in if without loop'   => ['define function f (integer n) void { if n > 0 { continue } }', "'continue' is only valid inside 'while' or 'foreach'"],
-				'break out of transaction'      => ['define function f (integer n) void { while n > 0 { begin transaction { if n = 5 { break } } } }', "'break' would leave 'begin transaction { }' without committing it"],
-				'continue out of transaction'   => ['define function f (integer n) void { while n > 0 { begin transaction { continue } } }', "'continue' would leave 'begin transaction { }'"],
+				'continue in if without loop'   => ['define function f (integer n) void { if (n > 0) { continue } }', "'continue' is only valid inside 'while' or 'foreach'"],
+				'break out of transaction'      => ['define function f (integer n) void { while (n > 0) { begin transaction { if (n = 5) { break } } } }', "'break' would leave 'begin transaction { }' without committing it"],
+				'continue out of transaction'   => ['define function f (integer n) void { while (n > 0) { begin transaction { continue } } }', "'continue' would leave 'begin transaction { }'"],
 			];
 		}
 

@@ -36,13 +36,13 @@
 					range of u is UserEntity
 					cursor users = retrieve (u.id, name = u.username, flag = u.banned) where u.id > minId
 					foreach users {
-						if users.name = "x" and users.flag {
+						if (users.name = "x" and users.flag) {
 							total = total + users.id
 							found = total > 3
 						} else {
 						}
 					}
-					while found {
+					while (found) {
 						found = false
 					}
 					return total
@@ -107,7 +107,7 @@
 					}
 					begin transaction {
 						replace u (banned = false) where u.username = who
-						if who = "" {
+						if (who = "") {
 							abort
 						}
 					}
@@ -154,7 +154,7 @@
 		public function testFunctionEndsInReturn(): void {
 			$sql = $this->compile('
 				define function f (int a) integer {
-					if a > 1 {
+					if (a > 1) {
 						return 1
 					} else {
 						return 2
@@ -226,23 +226,23 @@
 					range of u is UserEntity
 					cursor ids = retrieve (u.id) where u.id > 0
 					cursor banned = retrieve (u.id) where u.banned = true
-					while n > 0 {
+					while (n > 0) {
 						n = n - 1
-						if n = 5 {
+						if (n = 5) {
 							continue
 						}
-						if n = 2 {
+						if (n = 2) {
 							break
 						}
 					}
 					foreach ids {
-						if ids.id = n {
+						if (ids.id = n) {
 							continue
 						}
 						break
 					}
 					foreach banned {
-						if banned.id = n {
+						if (banned.id = n) {
 							continue
 						}
 						replace banned (banned = false)

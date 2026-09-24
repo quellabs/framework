@@ -36,7 +36,7 @@
 					range of u is UserEntity
 					cursor users = retrieve (u.id, name = u.username) where u.id > minId
 					foreach users {
-						if users.name = "x" {
+						if (users.name = "x") {
 							total = total + users.id
 						} else {
 							total = total + 1
@@ -130,7 +130,7 @@
 					}
 					begin transaction {
 						replace u (banned = false) where u.username = who
-						if who = "" {
+						if (who = "") {
 							abort
 						}
 					}
@@ -254,23 +254,23 @@
 					range of u is UserEntity
 					cursor ids = retrieve (u.id) where u.id > 0
 					cursor banned = retrieve (u.id) where u.banned = true
-					while n > 0 {
+					while (n > 0) {
 						n = n - 1
-						if n = 5 {
+						if (n = 5) {
 							continue
 						}
-						if n = 2 {
+						if (n = 2) {
 							break
 						}
 					}
 					foreach ids {
-						if ids.id = n {
+						if (ids.id = n) {
 							continue
 						}
 						break
 					}
 					foreach banned {
-						if banned.id = n {
+						if (banned.id = n) {
 							continue
 						}
 						replace banned (banned = false)

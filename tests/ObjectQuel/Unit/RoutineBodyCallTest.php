@@ -196,7 +196,7 @@
 		public function testMysqlFunctionCantCallItself(string $databaseType, string $engineName): void {
 			$this->expectException(SemanticException::class);
 			$this->expectExceptionMessage("'fact' calls itself, but {$engineName} doesn't allow a stored function to be recursive.");
-			$this->compile($databaseType, 'define function fact (int n) integer { if n <= 1 { return 1 } return n * FACT(n - 1) }');
+			$this->compile($databaseType, 'define function fact (int n) integer { if (n <= 1) { return 1 } return n * FACT(n - 1) }');
 		}
 
 		/**
@@ -220,7 +220,7 @@
 		 */
 		#[DataProvider('recursionEngines')]
 		public function testRecursiveFunctionCompiles(string $databaseType): void {
-			$sql = $this->compile($databaseType, 'define function fact (int n) integer { if n <= 1 { return 1 } return n * fact(n - 1) }');
+			$sql = $this->compile($databaseType, 'define function fact (int n) integer { if (n <= 1) { return 1 } return n * fact(n - 1) }');
 			self::assertStringContainsString('fact', $sql);
 		}
 	}

@@ -168,12 +168,12 @@
 			$body = $this->parse('
 				define function f (integer n) integer {
 					integer processed = n
-					if processed > 10 {
+					if (processed > 10) {
 						processed = 10
 					} else {
 						processed = 0
 					}
-					while processed > 1000 {
+					while (processed > 1000) {
 						processed = processed - 1000
 					}
 					return processed
@@ -192,9 +192,57 @@
 		 * @return void
 		 */
 		public function testIfWithoutElseHasNullElseBody(): void {
-			$body = $this->parse('define function f (integer n) void { if n > 1 { n = 1 } }')->getBody();
+			$body = $this->parse('define function f (integer n) void { if (n > 1) { n = 1 } }')->getBody();
 
 			self::assertNull($body[0]->getElseBody());
+		}
+
+		/**
+		 * Each elseif is an if nested alone in the previous branch's else body; the final else belongs to the last one.
+		 * @return void
+		 */
+		public function testElseifNestsInTheElseBody(): void {
+			$body = $this->parse('
+				define function f (integer n) integer {
+					if (n < 0) {
+						return -1
+					} elseif (n = 0) {
+						return 0
+					} ELSEIF (n = 1) {
+						return 1
+					} else {
+						return 2
+					}
+				}
+			')->getBody();
+
+			self::assertCount(1, $body);
+			$branch = $body[0];
+
+			foreach (['-1', '0', '1'] as $value) {
+				self::assertInstanceOf(AstIf::class, $branch);
+				self::assertSame($value, $branch->getThenBody()[0]->getValue()->getValue());
+				$elseBody = $branch->getElseBody();
+				self::assertIsArray($elseBody);
+				self::assertCount(1, $elseBody);
+				$branch = $elseBody[0];
+			}
+
+			self::assertInstanceOf(AstReturn::class, $branch);
+			self::assertSame('2', $branch->getValue()->getValue());
+		}
+
+		/**
+		 * An elseif chain without a final else leaves the last branch's else body null.
+		 * @return void
+		 */
+		public function testElseifWithoutElse(): void {
+			$body = $this->parse('define function f (integer n) void { if (n > 1) { n = 1 } elseif (n < 0) { n = 0 } }')->getBody();
+
+			$elseBody = $body[0]->getElseBody();
+			self::assertIsArray($elseBody);
+			self::assertInstanceOf(AstIf::class, $elseBody[0]);
+			self::assertNull($elseBody[0]->getElseBody());
 		}
 
 		/**
@@ -250,7 +298,7 @@
 			$body = $this->parse('
 				define function f (string newEmail) void {
 					begin transaction {
-						if newEmail = "" {
+						if (newEmail = "") {
 							abort
 						}
 					}
@@ -270,11 +318,11 @@
 				define function f (integer n) void {
 					range of u is UserEntity
 					cursor users = retrieve (u.id) where u.id > 0
-					while n > 0 {
+					while (n > 0) {
 						continue
 					}
 					foreach users {
-						if n > 1 {
+						if (n > 1) {
 							break
 						} else {
 							continue
@@ -344,7 +392,7 @@
 				'postfix in assignment'  => ["{$f} { x = n++ return x }", "'++' can't be used inside an expression"],
 				'prefix in assignment'   => ["{$f} { x = ++n return x }", "'++' can't be used inside an expression"],
 				'postfix in return'      => ["{$f} { return n-- }", "'--' can't be used inside an expression"],
-				'postfix in condition'   => ["{$f} { while n++ < 3 { } return n }", "'++' can't be used inside an expression"],
+				'postfix in condition'   => ["{$f} { while (n++ < 3) { } return n }", "'++' can't be used inside an expression"],
 				'signs without spacing'  => ["{$f} { x = n--x return x }", "'--' can't be used inside an expression"],
 				'space before postfix'   => ["{$f} { n ++ return n }", "Write '++' directly after 'n'"],
 				'prefix statement'       => ["{$f} { ++n return n }", "Write '++' after the variable name, not before it"],
@@ -477,6 +525,87 @@
 		}
 
 		/**
+		 * @return array<string, array{string, string}>
+		 */
+		public static function unparenthesizedConditions(): array {
+			$f = 'define function f (integer n) void';
+
+			return [
+				'if'                  => ["{$f} { if n > 1 { } }", "Expected '(' after 'if'"],
+				'elseif'              => ["{$f} { if (n > 1) { } elseif n < 0 { } }", "Expected '(' after 'elseif'"],
+				'while'               => ["{$f} { while n > 1 { } }", "Expected '(' after 'while'"],
+				'unclosed'            => ["{$f} { if (n > 1 { } }", "Expected ')' to close the 'if' condition"],
+				'more after the parens' => ["{$f} { if (n > 1) or (n < 0) { } }", "Expected '{'"],
+			];
+		}
+
+		/**
+		 * if, elseif and while need their whole condition in one pair of parentheses.
+		 * @param string $source Routine source text
+		 * @param string $message Fragment of the expected ParserException message
+		 * @return void
+		 */
+		#[DataProvider('unparenthesizedConditions')]
+		public function testRejectsUnparenthesizedCondition(string $source, string $message): void {
+			$this->expectException(ParserException::class);
+			$this->expectExceptionMessage($message);
+			$this->parse($source);
+		}
+
+		/**
+		 * elseif without a preceding if is rejected.
+		 * @return void
+		 */
+		public function testRejectsElseifWithoutIf(): void {
+			$this->expectException(ParserException::class);
+			$this->expectExceptionMessage("'elseif' without a preceding 'if'");
+			$this->parse('define function f (integer n) void { elseif (n > 1) { } }');
+		}
+
+		/**
+		 * elseif after else is rejected: else ends the chain.
+		 * @return void
+		 */
+		public function testRejectsElseifAfterElse(): void {
+			$this->expectException(ParserException::class);
+			$this->expectExceptionMessage("'elseif' without a preceding 'if'");
+			$this->parse('define function f (integer n) void { if (n > 1) { } else { } elseif (n < 0) { } }');
+		}
+
+		/**
+		 * else if parses like elseif, and the two spellings can be mixed in one chain.
+		 * @return void
+		 */
+		public function testElseIfWithASpaceMatchesElseif(): void {
+			$body = $this->parse('
+				define function f (integer n) integer {
+					if (n < 0) {
+						return -1
+					} else if (n = 0) {
+						return 0
+					} elseif (n = 1) {
+						return 1
+					} else {
+						return 2
+					}
+				}
+			')->getBody();
+
+			$branch = $body[0];
+
+			foreach (['-1', '0', '1'] as $value) {
+				self::assertInstanceOf(AstIf::class, $branch);
+				self::assertSame($value, $branch->getThenBody()[0]->getValue()->getValue());
+				$elseBody = $branch->getElseBody();
+				self::assertIsArray($elseBody);
+				self::assertCount(1, $elseBody);
+				$branch = $elseBody[0];
+			}
+
+			self::assertInstanceOf(AstReturn::class, $branch);
+		}
+
+		/**
 		 * begin must be followed by transaction.
 		 * @return void
 		 */
@@ -502,8 +631,8 @@
 			$routine = $this->parse('
 				define function f (integer n) integer {
 					integer x = n
-					if x > 1 { x = 1 } else { x = 2 }
-					while x > 0 { x = x - 1 }
+					if (x > 1) { x = 1 } else { x = 2 }
+					while (x > 0) { x = x - 1 }
 					return x
 				}
 			');

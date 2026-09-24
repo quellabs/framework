@@ -81,15 +81,15 @@
 					"'n' is integer, but the assigned value is datetime.",
 				],
 				'if condition' => [
-					'define function f (int n) void { if n { n = 0 } }',
+					'define function f (int n) void { if (n) { n = 0 } }',
 					"The condition of 'if' must be boolean, but it is numeric.",
 				],
 				'while condition' => [
-					'define function f (string s) void { while s { s = "" } }',
+					'define function f (string s) void { while (s) { s = "" } }',
 					"The condition of 'while' must be boolean, but it is string.",
 				],
 				'procedural comparison' => [
-					'define function f (int n) void { if n = "x" { n = 0 } }',
+					'define function f (int n) void { if (n = "x") { n = 0 } }',
 					"A comparison involving 'n' mixes numeric and string values.",
 				],
 				'where comparison' => [
@@ -199,7 +199,7 @@
 					'define function f () void { range of u is UserEntity retrieve (u.id) where u.id = "x" }',
 				],
 				'boolean conditions' => [
-					'define function f (int n) void { boolean found = n > 0 if found { n = 1 } while n > 0 { n = n - 1 } }',
+					'define function f (int n) void { boolean found = n > 0 if (found) { n = 1 } while (n > 0) { n = n - 1 } }',
 				],
 				'numeric increments' => [
 					'define function f (int n) float { float x = 0 x++ x-- x += n * 1.5 x -= n return x }',
