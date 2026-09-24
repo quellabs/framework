@@ -2,6 +2,7 @@
 
 	namespace Quellabs\ObjectQuel\Tests\Unit;
 
+	use PHPUnit\Framework\Attributes\DataProvider;
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAbort;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAppend;
@@ -11,19 +12,25 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstDeclare;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstDelete;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstDeleteCurrent;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstFactor;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstForeach;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIdentifier;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIf;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstNumber;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDeclaration;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstReplace;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstReplaceCurrent;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstReturn;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRoutineDefinition;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstTerm;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstUnaryOperation;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstVariableAssignment;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstWhile;
 	use Quellabs\ObjectQuel\ObjectQuel\Lexer;
 	use Quellabs\ObjectQuel\ObjectQuel\LexerException;
 	use Quellabs\ObjectQuel\ObjectQuel\ParserException;
+	use Quellabs\ObjectQuel\ObjectQuel\AstInterface;
 	use Quellabs\ObjectQuel\ObjectQuel\ProcedureParser;
 
 	/**
@@ -283,6 +290,114 @@
 			self::assertInstanceOf(AstBreak::class, $loopBody[0]->getThenBody()[0]);
 			self::assertInstanceOf(AstContinue::class, $loopBody[0]->getElseBody()[0]);
 			self::assertInstanceOf(AstBreak::class, $loopBody[1]);
+		}
+
+		/**
+		 * `++`, `--` (postfix and prefix), `+=` and `-=` become `name = name ± value`.
+		 * @return void
+		 */
+		public function testIncrementAndCompoundAssignment(): void {
+			$body = $this->parse('
+				define function f (integer n) void {
+					integer total = 0
+					total++
+					total--
+					++total
+					--total
+					total += n * 2
+					total -= n - 1
+				}
+			')->getBody();
+
+			self::assertCount(7, $body);
+
+			foreach ([1 => '+', 2 => '-', 3 => '+', 4 => '-'] as $index => $operator) {
+				$value = $this->assertIncrementOf('total', $operator, $body[$index]);
+				self::assertInstanceOf(AstNumber::class, $value);
+				self::assertSame('1', $value->getValue());
+			}
+
+			self::assertInstanceOf(AstFactor::class, $this->assertIncrementOf('total', '+', $body[5]));
+
+			$subtracted = $this->assertIncrementOf('total', '-', $body[6]);
+			self::assertInstanceOf(AstTerm::class, $subtracted);
+			self::assertSame('-', $subtracted->getOperator());
+		}
+
+		/**
+		 * A prefix increment after whitespace is the next statement, not part of the previous expression.
+		 * @return void
+		 */
+		public function testPrefixIncrementAfterAnExpressionStartsAStatement(): void {
+			$body = $this->parse("define function f (integer n, integer x) void { x = n\n++x }")->getBody();
+
+			self::assertCount(2, $body);
+			self::assertInstanceOf(AstIdentifier::class, $body[0]->getValue());
+			$this->assertIncrementOf('x', '+', $body[1]);
+		}
+
+		/**
+		 * Signs separated by whitespace are still unary operators.
+		 * @return void
+		 */
+		public function testSpacedSignsRemainUnaryOperators(): void {
+			$body = $this->parse('define function f (integer n, integer x) void { x = n - -x }')->getBody();
+
+			$value = $body[0]->getValue();
+			self::assertInstanceOf(AstTerm::class, $value);
+			self::assertInstanceOf(AstUnaryOperation::class, $value->getRight());
+		}
+
+		/**
+		 * @return array<string, array{string, string}>
+		 */
+		public static function misplacedIncrements(): array {
+			$f = 'define function f (integer n, integer x) integer';
+
+			return [
+				'postfix in assignment'  => ["{$f} { x = n++ return x }", "'++' can't be used inside an expression"],
+				'prefix in assignment'   => ["{$f} { x = ++n return x }", "'++' can't be used inside an expression"],
+				'postfix in return'      => ["{$f} { return n-- }", "'--' can't be used inside an expression"],
+				'postfix in condition'   => ["{$f} { while n++ < 3 { } return n }", "'++' can't be used inside an expression"],
+				'signs without spacing'  => ["{$f} { x = n--x return x }", "'--' can't be used inside an expression"],
+				'space before postfix'   => ["{$f} { n ++ return n }", "Write '++' directly after 'n'"],
+				'space after prefix'     => ["{$f} { -- n return n }", "Write a variable name directly after '--'"],
+				'space between signs'    => ["{$f} { n + + return n }", "Expected '++', '--', '+=' or '-=' after 'n'"],
+				'space in compound'      => ["{$f} { n - = 1 return n }", "Expected '++', '--', '+=' or '-=' after 'n'"],
+				'single sign statement'  => ["{$f} { +n return n }", "Unexpected token"],
+			];
+		}
+
+		/**
+		 * @param string $source Routine source text
+		 * @param string $message Fragment of the expected ParserException message
+		 * @return void
+		 */
+		#[DataProvider('misplacedIncrements')]
+		public function testRejectsMisplacedIncrement(string $source, string $message): void {
+			$this->expectException(ParserException::class);
+			$this->expectExceptionMessage($message);
+			$this->parse($source);
+		}
+
+		/**
+		 * Asserts that $statement is `name = name <operator> value`.
+		 * @param string $name Variable assigned to
+		 * @param string $operator '+' or '-'
+		 * @param AstInterface $statement Parsed statement
+		 * @return AstInterface The value added or subtracted
+		 */
+		private function assertIncrementOf(string $name, string $operator, AstInterface $statement): AstInterface {
+			self::assertInstanceOf(AstVariableAssignment::class, $statement);
+			self::assertSame($name, $statement->getName());
+
+			$term = $statement->getValue();
+			self::assertInstanceOf(AstTerm::class, $term);
+			self::assertSame($operator, $term->getOperator());
+			self::assertInstanceOf(AstIdentifier::class, $term->getLeft());
+			self::assertSame($name, $term->getLeft()->getName());
+
+			return $term->getRight();
 		}
 
 		/**

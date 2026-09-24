@@ -224,6 +224,28 @@
 		}
 
 		/**
+		 * ++, --, += and -= run on the server as the assignments they stand for.
+		 * @return void
+		 */
+		public function testIncrementAndCompoundAssignment(): void {
+			self::em()->executeQuery("
+				define function {$this->name} (int step) integer {
+					integer i = 0
+					integer total = 0
+					while i < 10 {
+						i++
+						total += i * step
+					}
+					--total
+					total -= step - 1
+					return total
+				}
+			");
+
+			self::assertSame(55 * 3 - 1 - 2, $this->callFunction(3));
+		}
+
+		/**
 		 * A writing procedure is accepted by the server; it isn't called.
 		 * @return void
 		 */

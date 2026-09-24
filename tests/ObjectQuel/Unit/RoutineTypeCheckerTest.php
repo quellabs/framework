@@ -129,6 +129,27 @@
 					}',
 					"is boolean, but the value written to it is numeric.",
 				],
+				'string increment' => [
+					'define function f () void { string s = "" s++ }',
+					"Arithmetic involving 's' has a string operand; '+' only works on numbers and dates.",
+				],
+				'string compound assignment' => [
+					'define function f () void { string s = "" s -= "x" }',
+					"Arithmetic involving 's' has a string operand; '-' only works on numbers and dates.",
+				],
+				'string plus' => [
+					'define function f (string s) string { return s + "x" }',
+					"Arithmetic involving 's' has a string operand; '+' only works on numbers and dates.",
+				],
+				'string cursor field' => [
+					'define function f () void {
+						integer n = 0
+						range of u is UserEntity
+						cursor c = retrieve (u.id, u.username)
+						foreach c { n = n + c.username }
+					}',
+					"has a string operand; '+' only works on numbers and dates.",
+				],
 			]);
 		}
 
@@ -179,6 +200,9 @@
 				],
 				'boolean conditions' => [
 					'define function f (int n) void { boolean found = n > 0 if found { n = 1 } while n > 0 { n = n - 1 } }',
+				],
+				'numeric increments' => [
+					'define function f (int n) float { float x = 0 x++ --x x += n * 1.5 x -= n return x }',
 				],
 			]);
 		}

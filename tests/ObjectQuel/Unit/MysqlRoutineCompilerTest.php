@@ -254,6 +254,38 @@
 		}
 
 		/**
+		 * ++, --, += and -= compile as the assignments they stand for; a subtracted expression is parenthesized.
+		 * @return void
+		 */
+		public function testIncrementAndCompoundAssignment(): void {
+			$statements = $this->compile('
+				define function counts (integer n) integer {
+					integer total = 0
+					total++
+					--total
+					total += n * 2
+					total -= n - 1
+					return total
+				}
+			');
+
+			self::assertSame(<<<'SQL'
+				CREATE FUNCTION `counts`(_v_n INT)
+				RETURNS INT
+				READS SQL DATA
+				BEGIN
+					DECLARE _v_total INT;
+					SET _v_total = 0;
+					SET _v_total = _v_total + 1;
+					SET _v_total = _v_total - 1;
+					SET _v_total = _v_total + _v_n * 2;
+					SET _v_total = _v_total - (_v_n - 1);
+					RETURN _v_total;
+				END
+				SQL, $statements[1]);
+		}
+
+		/**
 		 * break/continue become LEAVE/ITERATE naming the loop's label; while loops are labelled too.
 		 * @return void
 		 */

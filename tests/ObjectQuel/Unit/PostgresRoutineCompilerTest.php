@@ -208,6 +208,43 @@
 		}
 
 		/**
+		 * ++, --, += and -= compile as the assignments they stand for; a subtracted expression is parenthesized.
+		 * @return void
+		 */
+		public function testIncrementAndCompoundAssignment(): void {
+			$sql = $this->compile('
+				define function counts (integer n) integer {
+					integer total = 0
+					total++
+					--total
+					total += n * 2
+					total -= n - 1
+					return total
+				}
+			');
+
+			self::assertSame(<<<'SQL'
+				CREATE OR REPLACE FUNCTION "counts"("n" INTEGER)
+				RETURNS INTEGER
+				LANGUAGE plpgsql
+				AS $body$
+				<<_routine>>
+				DECLARE
+					"n" INTEGER := $1;
+					"total" INTEGER;
+				BEGIN
+					"total" := 0;
+					"total" := "_routine"."total" + 1;
+					"total" := "_routine"."total" - 1;
+					"total" := "_routine"."total" + "_routine"."n" * 2;
+					"total" := "_routine"."total" - ("_routine"."n" - 1);
+					RETURN "_routine"."total";
+				END;
+				$body$;
+				SQL, $sql);
+		}
+
+		/**
 		 * break/continue become EXIT/CONTINUE in a while, a FOR ... IN loop and an explicit-cursor loop.
 		 * @return void
 		 */
