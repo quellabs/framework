@@ -224,7 +224,7 @@
 		}
 
 		/**
-		 * ++, --, += and -= run on the server as the assignments they stand for.
+		 * ++, --, +=, -=, *= and /= run on the server as the assignments they stand for.
 		 * @return void
 		 */
 		public function testIncrementAndCompoundAssignment(): void {
@@ -238,11 +238,13 @@
 					}
 					total--
 					total -= step - 1
+					total *= step + 1
+					total /= step * 2
 					return total
 				}
 			");
 
-			self::assertSame(55 * 3 - 1 - 2, $this->callFunction(3));
+			self::assertSame(intdiv((55 * 3 - 1 - 2) * (3 + 1), 3 * 2), $this->callFunction(3));
 		}
 
 		/**

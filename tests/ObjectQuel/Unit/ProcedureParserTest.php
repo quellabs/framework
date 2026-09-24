@@ -341,7 +341,7 @@
 		}
 
 		/**
-		 * `++`, `--`, `+=` and `-=` become `name = name ± value`.
+		 * `++`, `--`, `+=`, `-=`, `*=` and `/=` become `name = name op value`.
 		 * @return void
 		 */
 		public function testIncrementAndCompoundAssignment(): void {
@@ -352,10 +352,12 @@
 					total--
 					total += n * 2
 					total -= n - 1
+					total *= n + 1
+					total /= n * 2
 				}
 			')->getBody();
 
-			self::assertCount(5, $body);
+			self::assertCount(7, $body);
 
 			foreach ([1 => '+', 2 => '-'] as $index => $operator) {
 				$value = $this->assertIncrementOf('total', $operator, $body[$index]);
@@ -368,6 +370,14 @@
 			$subtracted = $this->assertIncrementOf('total', '-', $body[4]);
 			self::assertInstanceOf(AstTerm::class, $subtracted);
 			self::assertSame('-', $subtracted->getOperator());
+
+			foreach ([5 => ['*', AstTerm::class], 6 => ['/', AstFactor::class]] as $index => [$operator, $valueClass]) {
+				$value = $body[$index]->getValue();
+				self::assertInstanceOf(AstFactor::class, $value);
+				self::assertSame($operator, $value->getOperator());
+				self::assertSame('total', $value->getLeft()->getName());
+				self::assertInstanceOf($valueClass, $value->getRight());
+			}
 		}
 
 		/**
@@ -398,8 +408,9 @@
 				'prefix statement'       => ["{$f} { ++n return n }", "Write '++' after the variable name, not before it"],
 				'spaced prefix'          => ["{$f} { -- n return n }", "Write '--' after the variable name, not before it"],
 				'prefix after assignment' => ["{$f} { x = n\n--x return x }", "'--' can't be used inside an expression"],
-				'space between signs'    => ["{$f} { n + + return n }", "Expected '++', '--', '+=' or '-=' after 'n'"],
-				'space in compound'      => ["{$f} { n - = 1 return n }", "Expected '++', '--', '+=' or '-=' after 'n'"],
+				'space between signs'    => ["{$f} { n + + return n }", "Expected '++', '--', '+=', '-=', '*=' or '/=' after 'n'"],
+				'space in compound'      => ["{$f} { n - = 1 return n }", "Expected '++', '--', '+=', '-=', '*=' or '/=' after 'n'"],
+				'space in multiply'      => ["{$f} { n * = 2 return n }", "Expected '++', '--', '+=', '-=', '*=' or '/=' after 'n'"],
 				'single sign statement'  => ["{$f} { +n return n }", "Unexpected token"],
 			];
 		}

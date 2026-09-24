@@ -272,7 +272,7 @@
 		}
 
 		/**
-		 * ++, --, += and -= compile as the assignments they stand for; a subtracted expression is parenthesized.
+		 * ++, --, +=, -=, *= and /= compile as the assignments they stand for; the right-hand expression is parenthesized where precedence requires.
 		 * @return void
 		 */
 		public function testIncrementAndCompoundAssignment(): void {
@@ -283,6 +283,8 @@
 					total--
 					total += n * 2
 					total -= n - 1
+					total *= n + 1
+					total /= n * 2
 					return total
 				}
 			');
@@ -298,6 +300,8 @@
 					SET _v_total = _v_total - 1;
 					SET _v_total = _v_total + _v_n * 2;
 					SET _v_total = _v_total - (_v_n - 1);
+					SET _v_total = _v_total * (_v_n + 1);
+					SET _v_total = _v_total / (_v_n * 2);
 					RETURN _v_total;
 				END
 				SQL, $statements[1]);
