@@ -122,11 +122,11 @@
 		/**
 		 * @return array<string, array{string, string, string}>
 		 */
-		public static function kindQueries(): array {
+		public static function signatureQueries(): array {
 			return [
-				'pgsql' => ['pgsql', 'FROM pg_proc WHERE proname = :name AND pg_function_is_visible(oid)', 'f'],
-				'sqlsrv' => ['sqlsrv', 'FROM sys.objects WHERE object_id = OBJECT_ID(:name)', '[dbo].[f]'],
-				'mysql' => ['mysql', 'FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = DATABASE() AND ROUTINE_NAME = :name', 'f'],
+				'pgsql' => ['pgsql', 'format_type(prorettype, NULL) AS data_type, NULL AS type_detail, NULL AS max_length FROM pg_proc WHERE proname = :name AND pg_function_is_visible(oid)', 'f'],
+				'sqlsrv' => ['sqlsrv', 'FROM sys.objects o LEFT JOIN sys.parameters p ON p.object_id = o.object_id AND p.parameter_id = 0 WHERE o.object_id = OBJECT_ID(:name)', '[dbo].[f]'],
+				'mysql' => ['mysql', 'DATA_TYPE AS data_type, DTD_IDENTIFIER AS type_detail, CHARACTER_MAXIMUM_LENGTH AS max_length FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = DATABASE() AND ROUTINE_NAME = :name', 'f'],
 			];
 		}
 
@@ -136,11 +136,11 @@
 		 * @param string $name Expected bound name
 		 * @return void
 		 */
-		#[DataProvider('kindQueries')]
-		public function testKindQuery(string $databaseType, string $source, string $name): void {
-			[$sql, $parameters] = $this->compiler($databaseType)->kindQuery($this->parseCall('f()'));
+		#[DataProvider('signatureQueries')]
+		public function testSignatureQuery(string $databaseType, string $source, string $name): void {
+			[$sql, $parameters] = $this->compiler($databaseType)->signatureQuery('f');
 
-			self::assertStringContainsString(' AS is_procedure ', $sql);
+			self::assertStringContainsString(' AS is_procedure, ', $sql);
 			self::assertStringContainsString($source, $sql);
 			self::assertSame(['name' => $name], $parameters);
 		}
@@ -151,6 +151,6 @@
 		public function testEngineWithoutRoutinesIsRejected(): void {
 			$this->expectException(QuelException::class);
 			$this->expectExceptionMessage("Routines can't be called on 'sqlite'.");
-			$this->compiler('sqlite')->kindQuery($this->parseCall('f()'));
+			$this->compiler('sqlite')->signatureQuery('f');
 		}
 	}

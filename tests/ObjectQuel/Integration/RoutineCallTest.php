@@ -42,6 +42,9 @@
 		 */
 		protected function tearDown(): void {
 			self::em()->executeQuery("destroy function {$this->name} if exists");
+			self::em()->executeQuery("destroy function {$this->name}_flag if exists");
+			self::em()->executeQuery("destroy function {$this->name}_echo if exists");
+			self::em()->executeQuery("destroy function {$this->name}_proc if exists");
 
 			foreach ($this->createdFiles as $path) {
 				@unlink($path);
@@ -84,6 +87,54 @@
 			$none = self::em()->executeQuery("range of u is UserEntity retrieve (u.id) where {$this->name}(u.id) = u.id * 2 + 1");
 			self::assertNotNull($none);
 			self::assertSame(0, $none->count());
+		}
+
+		/**
+		 * A standalone call converts the value to the function's return type.
+		 * @return void
+		 */
+		public function testStandaloneCallConvertsToReturnType(): void {
+			self::em()->executeQuery("define function {$this->name}_flag (int n) boolean { if (n > 0) { return true } return false }");
+			self::em()->executeQuery("define function {$this->name}_echo (datetime d) datetime { return d }");
+
+			$flag = self::em()->executeQuery("{$this->name}_flag(:n)", ['n' => 5]);
+			$echo = self::em()->executeQuery("{$this->name}_echo(:d)", ['d' => '2026-09-24 10:30:00']);
+
+			self::assertNotNull($flag);
+			self::assertNotNull($echo);
+			self::assertSame([["{$this->name}_flag" => true]], iterator_to_array($flag));
+
+			$value = iterator_to_array($echo)[0]["{$this->name}_echo"];
+			self::assertInstanceOf(\DateTime::class, $value);
+			self::assertSame('2026-09-24 10:30:00', $value->format('Y-m-d H:i:s'));
+		}
+
+		/**
+		 * A call in the target list is converted like a column of the function's return type.
+		 * @return void
+		 */
+		public function testCallInTargetListConvertsToReturnType(): void {
+			self::em()->executeQuery("define function {$this->name}_flag (int n) boolean { if (n > 0) { return true } return false }");
+
+			$result = self::em()->executeQuery("range of u is UserEntity retrieve (u.id, flag = {$this->name}_flag(u.id)) sort by u.id");
+
+			self::assertNotNull($result);
+			self::assertGreaterThan(0, $result->count());
+
+			foreach ($result as $row) {
+				self::assertSame($row['u.id'] > 0, $row['flag']);
+			}
+		}
+
+		/**
+		 * @return void
+		 */
+		public function testProcedureInQueryIsRejected(): void {
+			self::em()->executeQuery("define function {$this->name}_proc (int n) void { }");
+
+			$this->expectException(QuelException::class);
+			$this->expectExceptionMessage("'{$this->name}_proc' is a procedure, which returns no value; only a function can be called inside a query.");
+			self::em()->executeQuery("range of u is UserEntity retrieve (u.id) where {$this->name}_proc(u.id) = 1");
 		}
 
 		/**

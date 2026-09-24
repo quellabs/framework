@@ -156,6 +156,8 @@
 
 			$result = self::em()->executeQuery("{$this->tag}(\"2025-01-01 00:00:00\")");
 			self::assertNotNull($result);
-			self::assertSame('2025-01-02 01:00:00', iterator_to_array($result)[0][$this->tag]);
+			$value = iterator_to_array($result)[0][$this->tag];
+			self::assertInstanceOf(\DateTime::class, $value);
+			self::assertSame('2025-01-02 01:00:00', $value->format('Y-m-d H:i:s'));
 		}
 	}
