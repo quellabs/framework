@@ -138,6 +138,25 @@
 		}
 
 		/**
+		 * Write statements look their calls up too, so a missing routine or a procedure fails before the statement runs.
+		 * @return void
+		 */
+		public function testWriteStatementCallsAreLookedUp(): void {
+			self::em()->executeQuery("define function {$this->name}_proc (int n) void { }");
+
+			try {
+				self::em()->executeQuery("range of u is UserEntity replace u (username = \"x\") where u.id = {$this->name}_missing(0)");
+				self::fail('A missing routine was not reported');
+			} catch (QuelException $e) {
+				self::assertSame("Can't call '{$this->name}_missing': no routine by that name exists.", $e->getMessage());
+			}
+
+			$this->expectException(QuelException::class);
+			$this->expectExceptionMessage("'{$this->name}_proc' is a procedure, which returns no value; only a function can be called inside a query.");
+			self::em()->executeQuery("range of u is UserEntity delete u where u.id = {$this->name}_proc(0)");
+		}
+
+		/**
 		 * @return void
 		 */
 		public function testRangelessRetrieveIsRejected(): void {

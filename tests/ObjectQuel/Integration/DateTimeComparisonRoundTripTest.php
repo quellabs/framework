@@ -101,6 +101,22 @@
 		}
 
 		/**
+		 * An integer function written to a datetime column is a Unix timestamp, like an integer column.
+		 * @return void
+		 */
+		public function testReplaceStoresAnIntegerFunctionAsADatetime(): void {
+			self::em()->executeQuery("define function {$this->tag} () integer { return 1735732800 }");
+			self::em()->executeQuery("range of p is PostEntity replace p (createdAt = {$this->tag}()) where p.id = :id", ['id' => $this->postId]);
+
+			// FROM_UNIXTIME uses the session time zone, as the conversion does
+			$statement = self::em()->getConnection()->execute('SELECT created_at = FROM_UNIXTIME(1735732800) AS converted FROM posts WHERE id = :id', ['id' => $this->postId]);
+			self::assertNotNull($statement);
+			$row = $statement->fetch('assoc');
+			self::assertIsArray($row);
+			self::assertSame(1, (int)$row['converted']);
+		}
+
+		/**
 		 * @return void
 		 */
 		public function testRoutineComparesADatetimeParameterWithAColumn(): void {
