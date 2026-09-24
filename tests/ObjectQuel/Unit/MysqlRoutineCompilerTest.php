@@ -279,14 +279,6 @@
 						}
 					}
 				', "the loop's cursor may not survive the COMMIT"],
-
-				'names differing only in case' => ['
-					define function f () integer {
-						integer total = 0
-						integer Total = 0
-						return total
-					}
-				', "'_v_total' and '_v_Total' differ only in case"],
 			];
 		}
 

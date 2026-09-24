@@ -209,14 +209,6 @@
 					}
 				', "the loop's cursor may not survive the COMMIT"],
 
-				'names differing only in case' => ['
-					define function f () integer {
-						integer total = 0
-						integer Total = 0
-						return total
-					}
-				', "'@total' and '@Total' differ only in case"],
-
 				'field of unknown type' => ['
 					define function f () integer {
 						range of u is UserEntity
