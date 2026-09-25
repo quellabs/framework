@@ -121,7 +121,6 @@
 				AS
 				BEGIN
 					DECLARE @_row_users$username VARCHAR(255);
-					DECLARE @_discard INT;
 					DECLARE _cur_users CURSOR LOCAL FORWARD_ONLY DYNAMIC SCROLL_LOCKS FOR SELECT [u].[username] as [username] FROM [users] as [u] WHERE [u].[username] = @who FOR UPDATE;
 					OPEN _cur_users;
 					WHILE 1 = 1
@@ -141,10 +140,51 @@
 						ROLLBACK TRANSACTION;
 					END;
 					IF @@TRANCOUNT > 0 COMMIT TRANSACTION;
-					SELECT @_discard = COUNT(*) FROM (SELECT [p].[title] as [title] FROM [posts] as [p] WHERE [p].[user_id] = 5 AND [p].[deleted_at] IS NULL) AS [_discard];
+					DECLARE _discard_1 CURSOR LOCAL FAST_FORWARD FOR SELECT [p].[title] as [title] FROM [posts] as [p] WHERE [p].[user_id] = 5 AND [p].[deleted_at] IS NULL; OPEN _discard_1; FETCH NEXT FROM _discard_1; WHILE @@FETCH_STATUS = 0 FETCH NEXT FROM _discard_1; CLOSE _discard_1; DEALLOCATE _discard_1;
 					INSERT INTO [users] ([username], [password], [banned]) VALUES (@who, 'x', 0);
 				END;
 				SQL, $sql);
+		}
+
+		/**
+		 * Standalone retrieves run as complete SQL Server queries, including sorting, aggregation and distinctness.
+		 * @return void
+		 */
+		public function testStandaloneRetrievesConsumeRowsWithoutDerivedTables(): void {
+			$sql = $this->compile('
+				define function inspect () void {
+					range of u is UserEntity
+					retrieve (result = inspect_value(u.id)) sort by u.id desc
+					retrieve (u.username)
+					retrieve (total = count(u.id))
+					retrieve unique (u.username) sort by u.username
+				}
+			');
+
+			self::assertStringContainsString('CURSOR LOCAL FAST_FORWARD FOR SELECT [dbo].[inspect_value]([u].[id]) as [result] FROM [users] as [u] ORDER BY [u].[id] desc;', $sql);
+			self::assertStringContainsString('CURSOR LOCAL FAST_FORWARD FOR SELECT [u].[username] as [username] FROM [users] as [u];', $sql);
+			self::assertStringContainsString('CURSOR LOCAL FAST_FORWARD FOR SELECT COUNT([u].[id]) as [total] FROM [users] as [u];', $sql);
+			self::assertStringContainsString('CURSOR LOCAL FAST_FORWARD FOR SELECT DISTINCT [u].[username] as [username] FROM [users] as [u] ORDER BY [u].[username];', $sql);
+			self::assertStringNotContainsString('FROM (SELECT', $sql);
+			self::assertStringNotContainsString('@_discard', $sql);
+		}
+
+		/**
+		 * A scalar function uses a sorted derived query with OFFSET, since SQL Server functions cannot declare cursors.
+		 * @return void
+		 */
+		public function testSortedStandaloneRetrieveInFunctionUsesLegalDerivedTable(): void {
+			$sql = $this->compile('
+				define function inspect () integer {
+					range of u is UserEntity
+					retrieve (result = inspect_value(u.id)) sort by u.id desc
+					return 1
+				}
+			');
+
+			self::assertStringContainsString('DECLARE @_discard INT;', $sql);
+			self::assertStringContainsString('SELECT @_discard = COUNT(*) FROM (SELECT [dbo].[inspect_value]([u].[id]) as [result] FROM [users] as [u] ORDER BY [u].[id] desc OFFSET 0 ROWS) AS [_discard];', $sql);
+			self::assertStringNotContainsString('CURSOR', $sql);
 		}
 
 		/**

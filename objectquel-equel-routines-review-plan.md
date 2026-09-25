@@ -139,7 +139,33 @@ in SQL Server condition and value positions.
 
 ## Phase 3 - Correct standalone retrieve discarding
 
-Status: not started.
+Status: implemented; awaiting inspection.
+
+**Implementation results:**
+
+- Reproduced the SQL Server lowering: a standalone sorted retrieve was wrapped
+  in `SELECT COUNT(*) FROM (SELECT ... ORDER BY ...)`, which SQL Server rejects
+  because the derived query has no pagination clause.
+- SQL Server procedures now consume standalone retrieves with uniquely named
+  local forward-only cursors. This executes the original query, including its
+  projection, sorting, aggregate or distinct operation, while discarding rows.
+  Fetch-status control handles both empty results and multiple rows.
+- SQL Server scalar functions cannot declare cursors. They retain the existing
+  row-count lowering; sorted inner queries receive `OFFSET 0 ROWS`, which makes
+  SQL Server accept their `ORDER BY` in a derived table. This preserves support
+  for standalone retrieves in functions and their existing row-count behavior;
+  function projection evaluation remains subject to the existing count-query
+  optimization and is not guaranteed.
+- Added compiler coverage for sorted and unsorted retrieves, projected routine
+  calls, aggregates, distinct results, and sorted retrieves in scalar functions.
+- Validation: SQL Server routine compiler tests passed (12 tests, 32 assertions).
+  The full ObjectQuel suite passed (1454 tests, 3343 assertions). PHPStan passed
+  for the changed production file, and `git diff --check` passed. Generated SQL
+  was inspected but not executed: no SQL Server instance was available. Thus
+  empty/multiple-row behavior and SQL Server syntax remain unverified against a
+  live SQL Server; tests validate their generated control flow only.
+- No commits, pushes, or merges performed. Pre-existing unrelated untracked
+  workspace files were left untouched.
 
 **Objective:** A standalone sorted retrieve inside a routine produces valid SQL
 and preserves the intended execution semantics.
