@@ -66,7 +66,7 @@
 		public function testDeletesUsingABareUnqualifiedColumnInWhere(): void {
 			// `id` instead of `u.id` — must resolve against the statement's
 			// single range the same way a retrieve's WHERE clause does (see
-			// WriteVerbIdentifierResolver, which now runs ResolveUnqualifiedProperty).
+			// WriteVerbIdentifierResolver, which now runs UnqualifiedPropertyResolver).
 			$id = $this->seedUser('erin', 'pw');
 
 			$result = $this->em->executeQuery('
