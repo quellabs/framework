@@ -22,7 +22,9 @@
 		 * @return list<string> Generated statements
 		 */
 		private function compile(string $databaseType, string $source): array {
-			return (new ProcedureCompiler($GLOBALS['test_em'], new FakePlatformCapabilities($databaseType), $databaseType === 'sqlsrv' ? 'dbo' : null))->compile($source);
+			$entityManager = $GLOBALS['test_em'];
+			self::assertInstanceOf(\Quellabs\ObjectQuel\EntityManager::class, $entityManager);
+			return (new ProcedureCompiler($entityManager, new FakePlatformCapabilities($databaseType), $databaseType === 'sqlsrv' ? 'dbo' : null))->compile($source);
 		}
 
 		/**
@@ -215,5 +217,36 @@
 		#[DataProvider('accepted')]
 		public function testAccepts(string $databaseType, string $source): void {
 			self::assertNotEmpty($this->compile($databaseType, $source));
+		}
+
+		/**
+		 * Reuses one compiler after a failed compilation and across routines with different same-named local and cursor types.
+		 * @return void
+		 */
+		public function testRoutineTypesDoNotLeakBetweenCompilations(): void {
+			$entityManager = $GLOBALS['test_em'];
+			self::assertInstanceOf(\Quellabs\ObjectQuel\EntityManager::class, $entityManager);
+			$compiler = new ProcedureCompiler($entityManager, new FakePlatformCapabilities('sqlsrv'), 'dbo');
+
+			try {
+				$compiler->compile('define function first () void { integer n = "wrong" }');
+				self::fail('The mismatched initializer should fail type checking.');
+			} catch (SemanticException) {
+				// The next compilation must start with an empty type environment.
+			}
+
+			self::assertNotEmpty($compiler->compile('define function second () void {
+				string n = ""
+				range of u is UserEntity
+				cursor c = retrieve (u.username)
+				foreach c { n = c.username }
+			}'));
+
+			self::assertNotEmpty($compiler->compile('define function third () void {
+				integer n = 0
+				range of u is UserEntity
+				cursor c = retrieve (u.id)
+				foreach c { n = c.id }
+			}'));
 		}
 	}

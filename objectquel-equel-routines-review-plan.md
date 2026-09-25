@@ -1,6 +1,6 @@
 # EQUEL routines review implementation plan
 
-Status: phases 1-2 implemented and validated; phase 1 committed (`0e0a00b5`); halted for phase 2 inspection. Phases 3-7 have not started.
+Status: phases 1-5 implemented and validated; phase 1 committed (`0e0a00b5`), phase 3 committed (`d6b75758`), phase 4 committed (`fa1b531c`), and phase 5 committed (`a80a72f4`). Phase 6 is implemented and awaiting inspection. Phase 7 has not started.
 
 This plan addresses the eight findings from the review of `feature/equel-routines`
 through commit `0206a53d`. Phases 1-4 address correctness, phases 5-6 address
@@ -164,8 +164,8 @@ Status: implemented; awaiting inspection.
   was inspected but not executed: no SQL Server instance was available. Thus
   empty/multiple-row behavior and SQL Server syntax remain unverified against a
   live SQL Server; tests validate their generated control flow only.
-- No commits, pushes, or merges performed. Pre-existing unrelated untracked
-  workspace files were left untouched.
+- Committed and pushed as `d6b75758`. Pre-existing unrelated untracked workspace
+  files were left untouched.
 
 **Objective:** A standalone sorted retrieve inside a routine produces valid SQL
 and preserves the intended execution semantics.
@@ -218,8 +218,8 @@ Status: implemented; awaiting inspection.
   PHPStan passed for the changed production visitor and `git diff --check`
   passed. PostgreSQL and SQL Server execution were unavailable, so their
   runtime behavior remains unverified.
-- No commits, pushes, or merges performed for phase 4. Pre-existing unrelated
-  untracked workspace files were left untouched.
+- Committed and pushed as `fa1b531c`. Pre-existing unrelated untracked workspace
+  files were left untouched.
 
 **Objective:** Comparisons and arithmetic treat known datetime-returning routines
 consistently with datetime columns.
@@ -273,8 +273,8 @@ Status: implemented; awaiting inspection.
   Including the pre-existing integration test file in that PHPStan run reports
   eight mixed-result diagnostics at unrelated existing lines 98, 164, 168 and
   196. `git diff --check` passed. No routine executor contains catalog SQL.
-- No commits, pushes, or merges performed for phase 5. Pre-existing unrelated
-  untracked workspace files were left untouched.
+- Committed and pushed as `a80a72f4`. Pre-existing unrelated untracked workspace
+  files were left untouched.
 
 **Objective:** Routine executors no longer query database catalogs directly.
 
@@ -302,7 +302,35 @@ Status: implemented; awaiting inspection.
 
 ## Phase 6 - Consolidate routine type state and compiler construction
 
-Status: not started.
+Status: implemented; awaiting inspection.
+
+**Implementation results:**
+
+- Consolidated routine variable, declared-range, and cursor-field typing into the
+  `RoutineFieldTypes` instance owned by `RoutineStatementCompiler`. Lowering now
+  prepares parameters, locals, and all declared ranges before cursor preparation;
+  cursor fields are then recorded in declaration order and the checker consumes
+  that same environment instead of rebuilding it.
+- Removed the checker's duplicate normalized-variable map and duplicate cursor
+  and range population. Missing declared variable types now fail as internal
+  logic errors rather than producing an undefined array access.
+- Each `ProcedureCompiler::lower()` still creates a fresh statement compiler,
+  lowering, and type environment per routine. A regression reuses one procedure
+  compiler across a failed compilation and subsequent routines whose same-named
+  locals and cursor fields change from string to integer; no state carries over.
+- Reviewed the routine compiler construction sites. `ProcedureCompiler` is the
+  sole construction point for lowering variants and the statement compiler;
+  there is no repeated setup that warrants a factory. Target-platform compiler
+  setup, lazy schema lookup in `DefineRoutineExecutor`, and connected-engine
+  metadata access remain unchanged.
+- Validation: `RoutineTypeCheckerTest` passed (85 tests, 146 assertions); the full
+  ObjectQuel suite passed (1477 tests, 3404 assertions); PHPStan passed for the
+  changed production and test files; `git diff --check` passed. Exact SQL
+  expectations in the suite passed for MySQL, PostgreSQL, and SQL Server target
+  compilers using the configured test EntityManager. No additional engine
+  execution was attempted.
+- No commits, pushes, or merges performed. Pre-existing unrelated untracked
+  workspace files were left untouched.
 
 **Objective:** Validation and rendering consume consistent routine type information,
 and compiler dependencies have clear ownership with less repeated setup.
