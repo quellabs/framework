@@ -310,6 +310,19 @@
 		}
 
 		/**
+		 * Destruction accepts a name shared by a function and a procedure, then drops both MySQL namespace matches.
+		 * @return void
+		 */
+		public function testDestroyAcceptsNameSharedByFunctionAndProcedure(): void {
+			self::em()->executeQuery("define function {$this->name} () integer { return 1 }");
+			self::em()->executeQuery("define function {$this->name} () void { }");
+			self::assertSame(2, $this->routineCount());
+
+			self::em()->executeQuery("destroy function {$this->name}");
+			self::assertSame(0, $this->routineCount());
+		}
+
+		/**
 		 * @return void
 		 */
 		public function testDestroyIfExistsIgnoresAMissingRoutine(): void {

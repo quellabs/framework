@@ -73,6 +73,46 @@
 		}
 
 		/**
+		 * Checks whether a name exists without rejecting a function/procedure name collision.
+		 * @param string $engine Database engine
+		 * @param string $source Expected catalog SQL fragment
+		 * @param string $boundName Expected bound routine name
+		 * @param int $count Number of matching kinds in the catalog
+		 * @param bool $expected Expected existence result
+		 * @return void
+		 */
+		#[DataProvider('existenceResults')]
+		public function testAdapterChecksRoutineExistence(string $engine, string $source, string $boundName, int $count, bool $expected): void {
+			$adapter = $this->getMockBuilder(DatabaseAdapter::class)->disableOriginalConstructor()
+				->onlyMethods(['getDatabaseType', 'getRoutineSchema', 'execute'])->getMock();
+			$adapter->method('getDatabaseType')->willReturn($engine);
+			$adapter->method('getRoutineSchema')->willReturn('d]bo');
+			$statement = $this->createMock(StatementInterface::class);
+			$statement->method('fetch')->with('assoc')->willReturn(['routine_count' => $count]);
+			$adapter->expects(self::once())->method('execute')->with(
+				self::callback(fn(string $sql): bool => str_contains($sql, $source) && str_contains($sql, 'COUNT(*) AS routine_count')),
+				['name' => $boundName]
+			)->willReturn($statement);
+
+			self::assertSame($expected, $adapter->routineExists('f]x'));
+		}
+
+		/**
+		 * Provides existence catalog queries and counts for absent, present and colliding routine kinds.
+		 * @return list<array{string, string, string, int, bool}>
+		 */
+		public static function existenceResults(): array {
+			return [
+				['mysql', 'FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = DATABASE()', 'f]x', 0, false],
+				['mysql', 'FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = DATABASE()', 'f]x', 1, true],
+				['mysql', 'FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = DATABASE()', 'f]x', 2, true],
+				['mariadb', 'FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = DATABASE()', 'f]x', 1, true],
+				['pgsql', 'FROM pg_proc WHERE proname = :name AND pg_function_is_visible(oid)', 'f]x', 1, true],
+				['sqlsrv', "OBJECT_ID(:name) AND type IN ('P', 'PC', 'FN', 'FS', 'IF', 'TF', 'FT')", '[d]]bo].[f]]x]', 1, true],
+			];
+		}
+
+		/**
 		 * Provides catalog queries and bound names for supported engines.
 		 * @return list<array{string, string, string}>
 		 */
@@ -151,6 +191,22 @@
 		}
 
 		/**
+		 * Verifies failed existence checks keep lookup errors distinct from missing routines.
+		 * @return void
+		 */
+		public function testExistenceLookupFailureRetainsDatabaseError(): void {
+			$adapter = $this->getMockBuilder(DatabaseAdapter::class)->disableOriginalConstructor()
+				->onlyMethods(['getDatabaseType', 'execute', 'getLastErrorMessage'])->getMock();
+			$adapter->method('getDatabaseType')->willReturn('mysql');
+			$adapter->method('execute')->willReturn(null);
+			$adapter->method('getLastErrorMessage')->willReturn('catalog unavailable');
+
+			$this->expectException(QuelException::class);
+			$this->expectExceptionMessage("Failed to look up routine 'f': catalog unavailable");
+			$adapter->routineExists('f');
+		}
+
+		/**
 		 * Verifies unsupported engines fail before querying the catalog.
 		 * @return void
 		 */
@@ -162,6 +218,40 @@
 			$this->expectException(QuelException::class);
 			$this->expectExceptionMessage("Routines can't be called on 'sqlite'.");
 			$adapter->getRoutineSignature('f');
+		}
+
+		/**
+		 * Verifies existence checks reject unsupported engines without querying a catalog.
+		 * @return void
+		 */
+		public function testRoutineExistsUnsupportedEngine(): void {
+			$adapter = $this->getMockBuilder(DatabaseAdapter::class)->disableOriginalConstructor()
+				->onlyMethods(['getDatabaseType', 'execute'])->getMock();
+			$adapter->method('getDatabaseType')->willReturn('sqlite');
+			$adapter->expects(self::never())->method('execute');
+
+			$this->expectException(QuelException::class);
+			$this->expectExceptionMessage("Routines can't be looked up on 'sqlite'.");
+			$adapter->routineExists('f');
+		}
+
+		/**
+		 * Verifies routine existence is read again after a routine is created or removed.
+		 * @return void
+		 */
+		public function testExistenceMetadataIsRefreshedBetweenLookups(): void {
+			$adapter = $this->getMockBuilder(DatabaseAdapter::class)->disableOriginalConstructor()
+				->onlyMethods(['getDatabaseType', 'execute'])->getMock();
+			$adapter->method('getDatabaseType')->willReturn('mysql');
+			$statement = $this->createMock(StatementInterface::class);
+			$statement->method('fetch')->with('assoc')->willReturnOnConsecutiveCalls(
+				['routine_count' => 0],
+				['routine_count' => 1]
+			);
+			$adapter->expects(self::exactly(2))->method('execute')->willReturn($statement);
+
+			self::assertFalse($adapter->routineExists('f'));
+			self::assertTrue($adapter->routineExists('f'));
 		}
 
 		/**

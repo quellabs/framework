@@ -246,7 +246,35 @@ consistently with datetime columns.
 
 ## Phase 5 - Complete adapter ownership of routine introspection
 
-Status: not started.
+Status: implemented; awaiting inspection.
+
+**Implementation results:**
+
+- Moved routine existence catalog queries into `RoutineInspector`, exposed them
+  through `DatabaseAdapter::routineExists()`, and removed direct catalog SQL
+  from `DestroyRoutineExecutor`.
+- Existence lookup counts any matching function or procedure without applying
+  call-signature ambiguity rules. This allows MySQL/MariaDB destruction when a
+  function and procedure share a name; call-signature lookup still rejects that
+  collision. PostgreSQL and SQL Server existence queries use their visible or
+  schema-qualified routine names. Results are queried fresh each time.
+- Preserved MySQL/MariaDB behavior: without `if exists`, missing routines fail
+  before DROP; `if exists` skips the lookup; catalog failures keep their error
+  details. Destruction SQL and execution policy remain in the existing compiler
+  and executor layers.
+- Added catalog query coverage across PostgreSQL, SQL Server, MySQL, and
+  MariaDB; absent, present, shared-kind, lookup failure, unsupported engine,
+  and metadata freshness cases; executor checks for present/absent/failure and
+  `if exists`; and a MySQL integration test that destroys same-named function
+  and procedure objects.
+- Validation: full ObjectQuel suite passed (1476 tests, 3402 assertions).
+  Focused inspector, executor, and routine deployment tests passed (50 tests,
+  134 assertions). PHPStan passed for changed production and unit-test files.
+  Including the pre-existing integration test file in that PHPStan run reports
+  eight mixed-result diagnostics at unrelated existing lines 98, 164, 168 and
+  196. `git diff --check` passed. No routine executor contains catalog SQL.
+- No commits, pushes, or merges performed for phase 5. Pre-existing unrelated
+  untracked workspace files were left untouched.
 
 **Objective:** Routine executors no longer query database catalogs directly.
 
