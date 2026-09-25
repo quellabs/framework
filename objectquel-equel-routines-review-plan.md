@@ -1,6 +1,6 @@
 # EQUEL routines review implementation plan
 
-Status: phase 1 implemented and validated; halted for inspection. Phases 2-7 have not started.
+Status: phases 1-2 implemented and validated; phase 1 committed (`0e0a00b5`); halted for phase 2 inspection. Phases 3-7 have not started.
 
 This plan addresses the eight findings from the review of `feature/equel-routines`
 through commit `0206a53d`. Phases 1-4 address correctness, phases 5-6 address
@@ -33,7 +33,7 @@ combines the two related findings about duplicated type state and compiler setup
 
 ## Phase 1 - Integrate routine arguments with AST replacement
 
-Status: implemented; awaiting inspection.
+Status: implemented; committed as `0e0a00b5`.
 
 **Implementation results:**
 
@@ -75,7 +75,41 @@ routine-call arguments without unsupported-parent exceptions.
 
 ## Phase 2 - Make boolean value and predicate conversion consistent
 
-Status: not started.
+Status: implemented; awaiting inspection.
+
+**Implementation results:**
+
+- Reproduced invalid T-SQL before the fix: bare boolean calls and casts as
+  conditions (`WHERE [dbo].[f](...)`, `NOT(...)`, `IF [dbo].[b](@n)`,
+  `IF CAST(@n AS BIT)`), and predicates as values (select list, cursor columns,
+  `SET`, `VALUES`, `CAST(p AS BIT)`, comparison operands). The optimizer also
+  folded `f(x) = true` / `f(x) = 1` into a bare `f(x)`.
+- Added `BooleanExpressionKind`, a structural classification of predicates and
+  scalar values. Conversion depends on node kind and position, not return type,
+  so routine-body calls with unknown return types need no catalog lookup.
+- `visitConditionAndReturnSQL()` now compares routine calls and casts to 1, as it
+  already did for identifiers, literals and parameters. The new
+  `visitValueAndReturnSQL()` renders predicates as
+  `CASE WHEN p THEN 1 WHEN NOT (p) THEN 0 END`, which keeps NULL. It is used for
+  select-list aliases, replace/append values, routine arguments, cast operands,
+  comparison/arithmetic operands and routine stored values.
+  `RoutineStatementCompiler::compileValue()` no longer uses a return-type check,
+  so boolean variables are no longer wrapped in a redundant CASE.
+- `BooleanConstantOptimizer` no longer folds `scalar = true/1` for any scalar
+  value (previously identifiers only).
+- Comparison operands of a comparison are now parenthesized on the left too
+  (`(a > 3) = f(x)`), because PostgreSQL rejects chained comparisons.
+- Validation: `BooleanValuePredicateTest` (17 tests) covers SQL Server
+  conditions, values and routine statements, plus PostgreSQL/MySQL behavior.
+  ObjectQuel suite: 1452 tests, 3309 assertions passed. PHPStan passed for all
+  changed files and the new test. SQL was compiled only: no `pdo_sqlsrv`, Docker
+  or SQL Server instance was available, so SQL Server execution remains for phase 7.
+- Limitations: the CASE form evaluates its predicate up to twice. A condition
+  whose value has an unknown non-boolean type compares to 1 on SQL Server, where
+  MySQL uses truthiness; the type checker already rejects known non-boolean
+  conditions. `is_empty()`/`is_numeric()`-style checks, `search()` and `any()`
+  are not classified and render as before. The grammar doesn't accept `not x`,
+  `is null` or bare predicates as target-list values or call arguments.
 
 **Objective:** Boolean-valued scalar expressions and predicates compile correctly
 in SQL Server condition and value positions.
