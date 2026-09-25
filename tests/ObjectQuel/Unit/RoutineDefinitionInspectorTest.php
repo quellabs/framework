@@ -7,12 +7,12 @@
 	use Cake\Database\StatementInterface;
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
 	use Quellabs\ObjectQuel\Exception\QuelException;
-	use Quellabs\ObjectQuel\DatabaseAdapter\Inspector\RoutineInspector;
+	use Quellabs\ObjectQuel\DatabaseAdapter\Inspector\RoutineDefinitionInspector;
 
 	/**
 	 * Verifies routine catalog lookup and native return-type mapping.
 	 */
-	class RoutineInspectorTest extends TestCase {
+	class RoutineDefinitionInspectorTest extends TestCase {
 
 		/**
 		 * Provides native return types and their normalized equivalents.
@@ -45,7 +45,7 @@
 		 */
 		#[DataProvider('returnTypes')]
 		public function testReturnType(string $databaseType, string $dataType, ?string $typeDetail, ?int $maxLength, ?string $expected): void {
-			self::assertSame($expected, RoutineInspector::returnType($databaseType, $dataType, $typeDetail, $maxLength));
+			self::assertSame($expected, RoutineDefinitionInspector::returnType($databaseType, $dataType, $typeDetail, $maxLength));
 		}
 
 		/**
