@@ -9,8 +9,8 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRoutineCall;
 	use Quellabs\ObjectQuel\ObjectQuel\Lexer;
 	use Quellabs\ObjectQuel\ObjectQuel\Parser;
-	use Quellabs\ObjectQuel\ObjectQuel\Passes\IdentifierTypeResolver;
-	use Quellabs\ObjectQuel\ObjectQuel\Passes\QueryNormalizer;
+	use Quellabs\ObjectQuel\ObjectQuel\Pipeline\IdentifierTypeResolver;
+	use Quellabs\ObjectQuel\ObjectQuel\Pipeline\QueryNormalizer;
 	use Quellabs\ObjectQuel\ObjectQuel\Routines\ProcedureCompiler;
 	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQL\QuelToSQLRetrieve;
 	use Quellabs\ObjectQuel\ObjectQuel\SemanticAnalyzer;
