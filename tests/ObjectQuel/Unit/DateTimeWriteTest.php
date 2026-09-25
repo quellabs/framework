@@ -10,7 +10,7 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRoutineCall;
 	use Quellabs\ObjectQuel\ObjectQuel\Lexer;
 	use Quellabs\ObjectQuel\ObjectQuel\Parser;
-	use Quellabs\ObjectQuel\ObjectQuel\ProcedureCompiler;
+	use Quellabs\ObjectQuel\ObjectQuel\Routines\ProcedureCompiler;
 	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQL\QuelToSQLAppend;
 	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQL\QuelToSQLReplace;
 	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQL\QuelToSQLUpsert;

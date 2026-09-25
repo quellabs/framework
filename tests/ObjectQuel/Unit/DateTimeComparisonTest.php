@@ -11,7 +11,7 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
 	use Quellabs\ObjectQuel\ObjectQuel\Lexer;
 	use Quellabs\ObjectQuel\ObjectQuel\Parser;
-	use Quellabs\ObjectQuel\ObjectQuel\ProcedureCompiler;
+	use Quellabs\ObjectQuel\ObjectQuel\Routines\ProcedureCompiler;
 	use Quellabs\ObjectQuel\ObjectQuel\Passes\IdentifierTypeResolver;
 	use Quellabs\ObjectQuel\ObjectQuel\Passes\QueryNormalizer;
 	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQL\QuelToSQLRetrieve;

@@ -31,7 +31,7 @@
 	use Quellabs\ObjectQuel\ObjectQuel\LexerException;
 	use Quellabs\ObjectQuel\ObjectQuel\ParserException;
 	use Quellabs\ObjectQuel\ObjectQuel\AstInterface;
-	use Quellabs\ObjectQuel\ObjectQuel\ProcedureParser;
+	use Quellabs\ObjectQuel\ObjectQuel\Routines\ProcedureParser;
 
 	/**
 	 * Grammar-level coverage for routine definitions (objectquel-equel-design.md).

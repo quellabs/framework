@@ -11,7 +11,7 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Parser;
 	use Quellabs\ObjectQuel\ObjectQuel\Passes\IdentifierTypeResolver;
 	use Quellabs\ObjectQuel\ObjectQuel\Passes\QueryNormalizer;
-	use Quellabs\ObjectQuel\ObjectQuel\ProcedureCompiler;
+	use Quellabs\ObjectQuel\ObjectQuel\Routines\ProcedureCompiler;
 	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQL\QuelToSQLRetrieve;
 	use Quellabs\ObjectQuel\ObjectQuel\SemanticAnalyzer;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\CollectNodes;

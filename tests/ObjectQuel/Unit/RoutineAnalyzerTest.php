@@ -9,7 +9,7 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRoutineDefinition;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\IdentifierType;
 	use Quellabs\ObjectQuel\ObjectQuel\Lexer;
-	use Quellabs\ObjectQuel\ObjectQuel\ProcedureParser;
+	use Quellabs\ObjectQuel\ObjectQuel\Routines\ProcedureParser;
 	use Quellabs\ObjectQuel\ObjectQuel\Routines\RoutineAnalyzer;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\CollectNodes;
 
