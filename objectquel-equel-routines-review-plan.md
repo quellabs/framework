@@ -1,6 +1,6 @@
 # EQUEL routines review implementation plan
 
-Status: phases 1-5 implemented and validated; phase 1 committed (`0e0a00b5`), phase 3 committed (`d6b75758`), phase 4 committed (`fa1b531c`), and phase 5 committed (`a80a72f4`). Phase 6 is implemented and awaiting inspection. Phase 7 has not started.
+Status: phases 1-6 implemented and validated; phase 1 committed (`0e0a00b5`), phase 3 committed (`d6b75758`), phase 4 committed (`fa1b531c`), phase 5 committed (`a80a72f4`), and phase 6 committed (`ca669e74`). Phase 7's MySQL/MariaDB validation is complete; PostgreSQL and SQL Server execution remains unavailable.
 
 This plan addresses the eight findings from the review of `feature/equel-routines`
 through commit `0206a53d`. Phases 1-4 address correctness, phases 5-6 address
@@ -329,8 +329,8 @@ Status: implemented; awaiting inspection.
   expectations in the suite passed for MySQL, PostgreSQL, and SQL Server target
   compilers using the configured test EntityManager. No additional engine
   execution was attempted.
-- No commits, pushes, or merges performed. Pre-existing unrelated untracked
-  workspace files were left untouched.
+- Committed and pushed as `ca669e74`. Pre-existing unrelated untracked workspace
+  files were left untouched.
 
 **Objective:** Validation and rendering consume consistent routine type information,
 and compiler dependencies have clear ownership with less repeated setup.
@@ -364,7 +364,39 @@ and compiler dependencies have clear ownership with less repeated setup.
 
 ## Phase 7 - Complete cross-engine execution coverage and final review
 
-Status: not started.
+Status: cross-engine validation incomplete; PostgreSQL and SQL Server execution remain unavailable.
+
+**Implementation results:**
+
+- Inspected the test and CI setup. PHPUnit reads database host, port, name, user,
+  and password from `TEST_DB_*`; the existing bootstrap uses Cake's MySQL driver,
+  which connected successfully to both the available MySQL and MariaDB servers.
+  The repository's main GitHub workflow syncs packages rather than running the
+  test suite; its PHPStan workflow runs the repository-wide static analysis.
+- MySQL 9.1.0 is available on port 3306 with the configured `canvas_blog` test
+  database. The full ObjectQuel suite passed (1478 tests, 3501 assertions), and
+  focused routine deployment, call, body-call, and datetime integration tests
+  passed (32 tests, 145 assertions).
+- MariaDB 11.5.2 is available on port 3307. Created a separate temporary
+  `objectquel_phase7_codex` database with routine fixtures, then ran the same
+  focused integration scenarios: 32 tests, 155 assertions passed. The first run
+  exposed that MariaDB rejects `DELETE FROM table AS alias`; `AliasedDmlSql`
+  now emits MariaDB's accepted `DELETE alias FROM table AS alias` form, covered
+  by a dialect regression test. After the passing rerun, test data and the
+  isolated database were removed; no test routines remained.
+- Full repository PHPStan passed, and the final changed-file PHPStan check plus
+  `git diff --check` passed. `QuelToSQLDeleteTest` passed (4 tests, 21 assertions).
+  SQLite is present as a PDO driver but does not
+  support stored routines. PostgreSQL and SQL Server PDO drivers are absent and
+  their local service ports are closed, so those engines could not be tested.
+- Disposition of the eight findings: alias arguments, boolean value/predicate
+  conversion, standalone retrieve lowering, datetime-valued expressions,
+  adapter-owned routine introspection, shared type state, and compiler
+  construction ownership are implemented and covered by the preceding phases.
+  Cross-engine execution coverage remains incomplete for PostgreSQL and SQL
+  Server; compiler output tests do not count as server execution.
+- The cumulative work is not committed or pushed for phase 7. Existing unrelated
+  untracked workspace files were left untouched.
 
 **Objective:** Validate the accepted changes against actual supported engines and
 make any remaining coverage gaps explicit.

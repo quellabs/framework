@@ -19,7 +19,9 @@
 	class QuelToSQLDeleteTest extends TestCase {
 
 		private function em(): EntityManager {
-			return $GLOBALS['test_em'];
+			$entityManager = $GLOBALS['test_em'];
+			self::assertInstanceOf(EntityManager::class, $entityManager);
+			return $entityManager;
 		}
 
 		private function parse(string $query): AstDelete {
@@ -28,6 +30,10 @@
 			return $ast;
 		}
 
+		/**
+		 * @param array<string, mixed> $parameters Bound values
+		 * @return string Generated DELETE statement
+		 */
 		private function compile(AstDelete $ast, string $dialect, array $parameters = []): string {
 			$platform = new FakePlatformCapabilities($dialect);
 			$compiler = new QuelToSQLDelete($this->em()->getEntityStore(), $platform, $dialect === 'sqlsrv' ? 'dbo' : null);
@@ -43,6 +49,22 @@
 			self::assertSame(
 				'DELETE FROM `users` as `u` WHERE `u`.`id` = :id',
 				$this->compile($ast, 'mysql', ['id' => 1])
+			);
+		}
+
+		/**
+		 * MariaDB places the target alias between DELETE and FROM for a single-table delete.
+		 * @return void
+		 */
+		public function testMariaDbPlacesTheAliasBeforeTheFromClause(): void {
+			$ast = $this->parse('
+				range of u is App\\Entities\\UserEntity
+				delete u where u.id = :id
+			');
+
+			self::assertSame(
+				'DELETE `u` FROM `users` as `u` WHERE `u`.`id` = :id',
+				$this->compile($ast, 'mariadb', ['id' => 1])
 			);
 		}
 
