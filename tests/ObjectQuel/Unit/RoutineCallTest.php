@@ -141,6 +141,19 @@
 		}
 
 		/**
+		 * Compiles projection aliases used as direct and nested routine arguments.
+		 * @param string $databaseType Target engine
+		 * @return void
+		 */
+		#[DataProvider('engines')]
+		public function testAliasArgumentsCompileLikeExplicitExpressions(string $databaseType): void {
+			$aliased = $this->retrieveSql($databaseType, 'range of u is UserEntity retrieve (score = u.id + 1) where f(score, g(score), 9) > 0');
+			$explicit = $this->retrieveSql($databaseType, 'range of u is UserEntity retrieve (score = u.id + 1) where f(u.id + 1, g(u.id + 1), 9) > 0');
+
+			self::assertSame($explicit, $aliased);
+		}
+
+		/**
 		 * @return array<string, array{string, string}>
 		 */
 		public static function replaceStatements(): array {
