@@ -7,12 +7,14 @@
 	use Quellabs\ObjectQuel\Exception\SemanticException;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAppend;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstReplace;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRoutineCall;
 	use Quellabs\ObjectQuel\ObjectQuel\Lexer;
 	use Quellabs\ObjectQuel\ObjectQuel\Parser;
 	use Quellabs\ObjectQuel\ObjectQuel\ProcedureCompiler;
 	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQL\QuelToSQLAppend;
 	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQL\QuelToSQLReplace;
 	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQL\QuelToSQLUpsert;
+	use Quellabs\ObjectQuel\ObjectQuel\Visitors\CollectNodes;
 	use Quellabs\ObjectQuel\Tests\Support\FakePlatformCapabilities;
 
 	/**
@@ -171,5 +173,26 @@
 			$this->expectException(SemanticException::class);
 			$this->expectExceptionMessage("'f' is a datetime, but the value written to it is an interval.");
 			$this->compileRoutine('define function f () datetime { return date("1 day") }');
+		}
+
+		/**
+		 * A datetime-valued routine call written to a datetime column remains a native datetime expression.
+		 * @return void
+		 */
+		public function testDatetimeRoutineResultWrittenToDatetimeColumnIsNotConverted(): void {
+			$store = $this->em()->getEntityStore();
+			$replace = (new Parser(new Lexer('range of p is PostEntity replace p (createdAt = latest_created_at()) where p.id = 1'), $store))->parse();
+			self::assertInstanceOf(AstReplace::class, $replace);
+
+			$calls = new CollectNodes(AstRoutineCall::class);
+			$replace->accept($calls);
+
+			foreach ($calls->getCollectedNodes() as $call) {
+				$call->setRoutineReturnType('datetime');
+			}
+
+			$parameters = [];
+			$sql = $this->replaceCompiler('mysql')->convertToSQL($replace, $parameters);
+			self::assertStringContainsString('SET `p`.`created_at` = `latest_created_at`()', $sql);
 		}
 	}

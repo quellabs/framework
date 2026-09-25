@@ -194,7 +194,32 @@ and preserves the intended execution semantics.
 
 ## Phase 4 - Normalize datetime-valued routine expressions
 
-Status: not started.
+Status: implemented; awaiting inspection.
+
+**Implementation results:**
+
+- Reproduced the mismatch with a datetime-returning routine compared to a
+  datetime column: the column compiled through `UNIX_TIMESTAMP()`, while the
+  routine result remained a native datetime.
+- `NormalizeDateTime` now recognizes non-identifier expressions whose resolved
+  return type is `\DateTime`, including calls typed from routine catalog
+  metadata. It wraps those values in `AstDate` so both sides use Unix timestamp
+  representation. Unknown return types remain unchanged; offline routine
+  compilation does not gain a catalog dependency or guess a call's type.
+- Added SQL-generation coverage for both operand orders, two datetime-returning
+  calls, date literals, bound parameters, NULL comparisons, datetime arithmetic,
+  and unknown return types. A write regression confirms a native datetime call
+  assigned to a datetime column is not converted as a Unix timestamp.
+- Added a MySQL round-trip test that deploys a datetime-returning routine and
+  compares its result with a datetime column in both operand orders. It passed
+  in the ObjectQuel suite against the configured MySQL test database.
+- Validation: DateTime comparison and write tests passed (24 tests, 60
+  assertions); the full ObjectQuel suite passed (1462 tests, 3368 assertions).
+  PHPStan passed for the changed production visitor and `git diff --check`
+  passed. PostgreSQL and SQL Server execution were unavailable, so their
+  runtime behavior remains unverified.
+- No commits, pushes, or merges performed for phase 4. Pre-existing unrelated
+  untracked workspace files were left untouched.
 
 **Objective:** Comparisons and arithmetic treat known datetime-returning routines
 consistently with datetime columns.
