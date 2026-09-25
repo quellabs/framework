@@ -266,7 +266,6 @@
     "symfony/http-foundation": "*",
     "symfony/http-client": "*",
     "dragonmantank/cron-expression": "*",
-    "robmorgan/phinx": "*",
     "cakephp/database": "*",
     "composer-plugin-api": "^2.0",
     "quellabs/canvas-authorization": "^1.0"
