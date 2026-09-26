@@ -144,7 +144,7 @@
 			self::em()->executeQuery("define function {$this->tag} (datetime at) datetime { return at }");
 
 			self::assertSame(1, $this->countPosts("p.createdAt < {$this->tag}(\"2025-06-02 00:00:00\")"));
-			self::assertSame(0, $this->countPosts("{$this->tag}(\"2025-05-01 00:00:00\") < p.createdAt"));
+			self::assertSame(0, $this->countPosts("{$this->tag}(\"2025-07-01 00:00:00\") < p.createdAt"));
 		}
 
 		/**

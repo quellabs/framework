@@ -5,7 +5,6 @@
 	use PHPUnit\Framework\Attributes\DataProvider;
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\ObjectQuel\EntityManager;
-	use Quellabs\ObjectQuel\Exception\SemanticException;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstCall;
 	use Quellabs\ObjectQuel\ObjectQuel\Lexer;
 	use Quellabs\ObjectQuel\ObjectQuel\Parser;
@@ -100,22 +99,58 @@
 		}
 
 		/**
-		 * @param string $databaseType Target engine
-		 * @return void
+		 * @return array<string, array{string, string, string}>
 		 */
-		#[DataProvider('engines')]
-		public function testExpressionArgumentIsRejected(string $databaseType): void {
-			$parameters = [];
-			$this->expectException(SemanticException::class);
-			$this->expectExceptionMessage("The arguments of 'f()' must be literals or parameters; compute other values before the call.");
-			$this->compiler($databaseType)->convertToSQL($this->parseCall('f(:p + 1)'), true, $parameters);
+		public static function expressionArguments(): array {
+			return [
+				'pgsql' => ['pgsql', 'CALL "f"(:p + 1, 1 > 0 AND :p < 3)', 'SELECT "f"(:p + 1, 1 > 0 AND :p < 3) AS "f"'],
+				'mysql' => ['mysql', 'CALL `f`(:p + 1, 1 > 0 AND :p < 3)', 'SELECT `f`(:p + 1, 1 > 0 AND :p < 3) AS `f`'],
+			];
 		}
 
 		/**
-		 * @return array<string, array{string}>
+		 * Engines whose procedure call takes expressions compile them inline.
+		 * @param string $databaseType Target engine
+		 * @param string $procedure Expected procedure call
+		 * @param string $function Expected function select
+		 * @return void
 		 */
-		public static function engines(): array {
-			return ['pgsql' => ['pgsql'], 'sqlsrv' => ['sqlsrv'], 'mysql' => ['mysql']];
+		#[DataProvider('expressionArguments')]
+		public function testExpressionArgumentsCompileInline(string $databaseType, string $procedure, string $function): void {
+			$compiler = $this->compiler($databaseType);
+			$call = $this->parseCall('f(:p + 1, 1 > 0 and :p < 3)');
+			$parameters = ['p' => 5];
+
+			self::assertFalse($compiler->requiresEvaluatedArguments($call, true));
+			self::assertSame($procedure, $compiler->convertToSQL($call, true, $parameters));
+			self::assertSame($function, $compiler->convertToSQL($call, false, $parameters));
+		}
+
+		/**
+		 * SQL Server selects a function's expression arguments inline, but evaluates a procedure's before the EXEC.
+		 * @return void
+		 */
+		public function testSqlServerProcedureEvaluatesExpressionArgumentsFirst(): void {
+			$compiler = $this->compiler('sqlsrv');
+			$call = $this->parseCall('f(:p + 1, 1 > 0 and :p < 3, "s")');
+			$parameters = ['p' => 5];
+
+			self::assertFalse($compiler->requiresEvaluatedArguments($call, false));
+			self::assertSame('SELECT [dbo].[f](:p + 1, CASE WHEN 1 > 0 AND :p < 3 THEN 1 WHEN NOT (1 > 0 AND :p < 3) THEN 0 END, \'s\') AS [f]', $compiler->convertToSQL($call, false, $parameters));
+
+			self::assertTrue($compiler->requiresEvaluatedArguments($call, true));
+			self::assertSame('SELECT :p + 1 AS [_call_arg0], CASE WHEN 1 > 0 AND :p < 3 THEN 1 WHEN NOT (1 > 0 AND :p < 3) THEN 0 END AS [_call_arg1], \'s\' AS [_call_arg2]', $compiler->argumentsQuery($call, $parameters));
+
+			$callParameters = [];
+			self::assertSame('EXEC [dbo].[f] :_call_arg0, :_call_arg1, :_call_arg2', $compiler->convertToSQL($call, true, $callParameters, [6, 1, 's']));
+			self::assertSame(['_call_arg0' => 6, '_call_arg1' => 1, '_call_arg2' => 's'], $callParameters);
+		}
+
+		/**
+		 * @return void
+		 */
+		public function testSqlServerProcedureTakesLiteralsAndParametersDirectly(): void {
+			self::assertFalse($this->compiler('sqlsrv')->requiresEvaluatedArguments($this->parseCall('f(1, :p, "s", true, null, -1)'), true));
 		}
 
 	}

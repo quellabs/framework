@@ -128,14 +128,54 @@
 		}
 
 		/**
+		 * @return array<string, array{string, list<string>}>
+		 */
+		public static function expressionArguments(): array {
+			return [
+				'pgsql' => ['pgsql', ['CALL "p"("_routine"."n" + 1, "_routine"."n" > 3 AND "_row_users"."id" > 2, "_row_users"."id", (TO_TIMESTAMP(UNIX_TIMESTAMP("_routine"."at") + 86400) AT TIME ZONE \'UTC\'));']],
+				'mysql' => ['mysql', ['CALL `p`(_v_n + 1, _v_n > 3 AND _row_users$id > 2, _row_users$id, FROM_UNIXTIME(UNIX_TIMESTAMP(_v_at) + 86400));']],
+				'sqlsrv' => ['sqlsrv', [
+					'DECLARE @_arg1 INT;',
+					'DECLARE @_arg2 BIT;',
+					'DECLARE @_arg3 DATETIME2;',
+					'SET @_arg1 = @n + 1;',
+					'SET @_arg2 = CASE WHEN @n > 3 AND @_row_users$id > 2 THEN 1 WHEN NOT (@n > 3 AND @_row_users$id > 2) THEN 0 END;',
+					"SET @_arg3 = DATEADD(SECOND, CAST(UNIX_TIMESTAMP(@at) + 86400 AS BIGINT) % 86400, DATEADD(DAY, CAST(UNIX_TIMESTAMP(@at) + 86400 AS BIGINT) / 86400, CAST('1970-01-01' AS DATETIME2)));",
+					'EXEC [dbo].[p] @_arg1, @_arg2, @_row_users$id, @_arg3;',
+				]],
+			];
+		}
+
+		/**
+		 * Expression arguments go straight into CALL; SQL Server's EXEC gets them through typed locals.
 		 * @param string $databaseType Target engine
+		 * @param list<string> $expected Lines the routine contains
 		 * @return void
 		 */
-		#[DataProvider('engines')]
-		public function testExpressionArgumentIsRejected(string $databaseType): void {
+		#[DataProvider('expressionArguments')]
+		public function testExpressionArguments(string $databaseType, array $expected): void {
+			$sql = $this->compile($databaseType, '
+				define function f (int n, datetime at) void {
+					range of u is UserEntity
+					cursor users = retrieve (u.id)
+					foreach users {
+						p(n + 1, n > 3 and users.id > 2, users.id, at + date("1 day"))
+					}
+				}
+			');
+
+			foreach ($expected as $line) {
+				self::assertStringContainsString($line, $sql);
+			}
+		}
+
+		/**
+		 * @return void
+		 */
+		public function testSqlServerUntypedArgumentIsRejected(): void {
 			$this->expectException(SemanticException::class);
-			$this->expectExceptionMessage("The arguments of 'p()' must be literals or variables; assign other values to a local first.");
-			$this->compile($databaseType, 'define function f (int n) void { p(n + 1) }');
+			$this->expectExceptionMessage("The type of an argument of 'p()' can't be determined, so it can't be stored for the call. Cast the value, e.g. (int)x.");
+			$this->compile('sqlsrv', 'define function f () void { p(ifnull(null, null)) }');
 		}
 
 		/**

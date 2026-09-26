@@ -136,6 +136,39 @@
 		}
 
 		/**
+		 * @return array<string, array{string, non-empty-string, non-empty-string}>
+		 */
+		public static function isEmptyBooleans(): array {
+			return [
+				'pgsql' => ['pgsql', 'WHERE ("u"."banned" IS NULL OR "u"."banned" = false)', 'WHERE (("u"."id" > 3) IS NULL OR ("u"."id" > 3) = false)'],
+				'mysql' => ['mysql', 'WHERE (`u`.`banned` IS NULL OR `u`.`banned` = false)', 'WHERE ((`u`.`id` > 3) IS NULL OR (`u`.`id` > 3) = false)'],
+				'sqlsrv' => ['sqlsrv', 'WHERE ([u].[banned] IS NULL OR [u].[banned] = 0)', 'WHERE ((CASE WHEN [u].[id] > 3 THEN 1 WHEN NOT ([u].[id] > 3) THEN 0 END) IS NULL OR (CASE WHEN [u].[id] > 3 THEN 1 WHEN NOT ([u].[id] > 3) THEN 0 END) = 0)'],
+			];
+		}
+
+		/**
+		 * is_empty() compares a boolean column or predicate with the engine's false, not '' or 0.
+		 * @param string $databaseType Target engine
+		 * @param non-empty-string $column Expected WHERE clause for a boolean column
+		 * @param non-empty-string $predicate Expected WHERE clause for a comparison
+		 * @return void
+		 */
+		#[DataProvider('isEmptyBooleans')]
+		public function testIsEmptyComparesBooleansWithFalse(string $databaseType, string $column, string $predicate): void {
+			self::assertStringEndsWith($column, $this->retrieveSql($databaseType, 'range of u is UserEntity retrieve (u.id) where is_empty(u.banned)'));
+			self::assertStringEndsWith($predicate, $this->retrieveSql($databaseType, 'range of u is UserEntity retrieve (u.id) where is_empty(u.id > 3)'));
+		}
+
+		/**
+		 * Function arguments take comparisons and AND/OR without extra parentheses.
+		 * @return void
+		 */
+		public function testFunctionArgumentsTakeLogicalExpressions(): void {
+			self::assertStringEndsWith('WHERE ((`u`.`id` > 3 OR `u`.`banned`) IS NULL OR (`u`.`id` > 3 OR `u`.`banned`) = false)', $this->retrieveSql('mysql', 'range of u is UserEntity retrieve (u.id) where is_empty(u.id > 3 or u.banned)'));
+			self::assertStringEndsWith('WHERE `f`(`u`.`id` > 3 AND `u`.`banned`, `u`.`id`)', $this->retrieveSql('mysql', 'range of u is UserEntity retrieve (u.id) where f(u.id > 3 and u.banned, u.id)'));
+		}
+
+		/**
 		 * A comparison with 1 isn't folded into the routine call itself, which may return an integer.
 		 * @return void
 		 */
