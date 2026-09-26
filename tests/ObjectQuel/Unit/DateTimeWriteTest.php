@@ -129,6 +129,41 @@
 		/**
 		 * @return void
 		 */
+		public function testReplaceConvertsAnIntegerColumn(): void {
+			$sql = $this->compileReplace('range of p is PostEntity replace p (createdAt = p.id) where p.id = 1');
+			self::assertStringContainsString('SET `p`.`created_at` = FROM_UNIXTIME(`p`.`id`)', $sql);
+		}
+
+		/**
+		 * @return void
+		 */
+		public function testReplaceRejectsDateArithmeticWithAScalarColumn(): void {
+			$this->expectException(SemanticException::class);
+			$this->expectExceptionMessage("cannot use '+' between a date() value and a plain scalar");
+			$this->compileReplace('range of p is PostEntity replace p (createdAt = date("now") + p.id) where p.id = 1');
+		}
+
+		/**
+		 * @return void
+		 */
+		public function testReplaceRejectsDateArithmeticWithAScalarColumnInWhere(): void {
+			$this->expectException(SemanticException::class);
+			$this->expectExceptionMessage("cannot use '-' between a date() value and a plain scalar");
+			$this->compileReplace('range of p is PostEntity replace p (title = "t") where date("now") - p.id > 5');
+		}
+
+		/**
+		 * @return void
+		 */
+		public function testAppendRejectsDateArithmeticWithAParameter(): void {
+			$this->expectException(SemanticException::class);
+			$this->expectExceptionMessage("cannot use '+' between a date() value and a plain scalar");
+			$this->compileAppend('range of p is PostEntity append to p (title = "t", content = "", published = false, TestEnum = "pending", testJSON = :j, createdAt = date("now") + :j, userId = 1)');
+		}
+
+		/**
+		 * @return void
+		 */
 		public function testAppendConvertsValues(): void {
 			$sql = $this->compileAppend('range of p is PostEntity append to p (title = "t", content = "", published = false, TestEnum = "pending", testJSON = :j, createdAt = date("now"), userId = 1)');
 			self::assertStringContainsString(':j, FROM_UNIXTIME(UNIX_TIMESTAMP()), 1)', $sql);
