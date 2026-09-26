@@ -10,6 +10,7 @@
 	use Quellabs\ObjectQuel\Execution\Helpers\ProcessExpression;
 	use Quellabs\ObjectQuel\Execution\Helpers\ResolveType;
 	use Quellabs\ObjectQuel\Execution\SqlGeneratorInterface;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAggregate;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAlias;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAny;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAvg;
@@ -23,6 +24,7 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstCount;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstCountU;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstDate;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstDenseRank;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstExpression;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstFactor;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIdentifier;
@@ -32,14 +34,19 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIsFloat;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIsInteger;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIsNumeric;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstLag;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstLead;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstMax;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstMin;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstNtile;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstNot;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstNull;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstNumber;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstParameter;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabase;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeJsonSource;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRank;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRowNumber;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstSearch;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstSearchFullText;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstSearchLike;
@@ -682,6 +689,64 @@
 		 */
 		protected function handleAny(AstAny $ast): void {
 			$this->result[] = $this->aggregateHandler->handleAny($ast);
+		}
+
+		/**
+		 * No-op target for the six sequence-function handlers below. They only run as
+		 * a side effect of ProcessAggregate::markExpressionAsHandled() (bookkeeping to
+		 * mark the node visited) — the real window SQL is built separately by
+		 * ProcessAggregate::buildWindowAggregate(), so there's nothing to append here.
+		 * @param AstAggregate $ast
+		 */
+		private function noOpSequenceFunctionHandler(AstAggregate $ast): void {
+		}
+
+		/**
+		 * Process a RANK() sequence function — see noOpSequenceFunctionHandler().
+		 * @param AstRank $ast The RANK function node to process
+		 */
+		protected function handleRank(AstRank $ast): void {
+			$this->noOpSequenceFunctionHandler($ast);
+		}
+
+		/**
+		 * Process a DENSE_RANK() sequence function — see noOpSequenceFunctionHandler().
+		 * @param AstDenseRank $ast The DENSE_RANK function node to process
+		 */
+		protected function handleDenseRank(AstDenseRank $ast): void {
+			$this->noOpSequenceFunctionHandler($ast);
+		}
+
+		/**
+		 * Process a ROW_NUMBER() sequence function — see noOpSequenceFunctionHandler().
+		 * @param AstRowNumber $ast The ROW_NUMBER function node to process
+		 */
+		protected function handleRowNumber(AstRowNumber $ast): void {
+			$this->noOpSequenceFunctionHandler($ast);
+		}
+
+		/**
+		 * Process an NTILE(n) sequence function — see noOpSequenceFunctionHandler().
+		 * @param AstNtile $ast The NTILE function node to process
+		 */
+		protected function handleNtile(AstNtile $ast): void {
+			$this->noOpSequenceFunctionHandler($ast);
+		}
+
+		/**
+		 * Process a LAG(expr) sequence function — see noOpSequenceFunctionHandler().
+		 * @param AstLag $ast The LAG function node to process
+		 */
+		protected function handleLag(AstLag $ast): void {
+			$this->noOpSequenceFunctionHandler($ast);
+		}
+
+		/**
+		 * Process a LEAD(expr) sequence function — see noOpSequenceFunctionHandler().
+		 * @param AstLead $ast The LEAD function node to process
+		 */
+		protected function handleLead(AstLead $ast): void {
+			$this->noOpSequenceFunctionHandler($ast);
 		}
 		
 		/**

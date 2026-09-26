@@ -8,6 +8,7 @@
 	use App\Entities\TestEntity;
 	use App\Entities\UserEntity;
 	use Quellabs\SignalHub\SignalHub;
+	use Quellabs\ObjectQuel\OrmException;
 	use Quellabs\Canvas\Annotations\Route;
 	use Quellabs\Canvas\Annotations\WithContext;
 	use Quellabs\Canvas\Annotations\InterceptWith;
@@ -29,6 +30,7 @@
 		 * @throws EntityResolutionException
 		 * @throws QuelException
 		 * @throws TemplateRenderException
+		 * @throws OrmException
 		 */
 		public function index(): Response {
 			$posts = $this->em()->findBy(PostEntity::class, ['published' => true]);

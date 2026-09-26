@@ -25,7 +25,7 @@
 		/** @var AstRange[] */
 		private array $correlatedRanges;
 
-		/** @var AstInterface[] PARTITION BY columns for a TYPE_WINDOW subquery; empty for other types */
+		/** @var AstInterface[] PARTITION BY expressions for TYPE_WINDOW subqueries */
 		private array $partitionBy;
 
 		/**
@@ -35,7 +35,7 @@
 		 * @param AstRange[] $correlatedRanges
 		 * @param AstInterface|null $conditions
 		 * @param string|null $origin
-		 * @param AstInterface[] $partitionBy
+		 * @param AstInterface[] $partitionBy PARTITION BY expressions (TYPE_WINDOW only)
 		 */
 		public function __construct(
 			string        $type = self::TYPE_SCALAR,
@@ -53,11 +53,33 @@
 			$this->partitionBy = $partitionBy;
 
 			$this->aggregation?->setParent($this);
+			
+			foreach ($this->partitionBy as $expression) {
+				$expression->setParent($this);
+			}
 		}
 		
+		/**
+		 * Accept a visitor to perform operations on this node.
+		 * Cascades into partitionBy independently of the aggregation so visitors
+		 * that need to see it (e.g. range discovery) still can.
+		 * @param AstVisitorInterface $visitor The visitor to accept.
+		 */
 		public function accept(AstVisitorInterface $visitor): void {
 			parent::accept($visitor);
 			$this->aggregation?->accept($visitor);
+
+			foreach ($this->partitionBy as $expression) {
+				$expression->accept($visitor);
+			}
+		}
+		
+		/**
+		 * Returns the PARTITION BY expressions for a TYPE_WINDOW subquery.
+		 * @return AstInterface[]
+		 */
+		public function getPartitionBy(): array {
+			return $this->partitionBy;
 		}
 		
 		/**
@@ -110,14 +132,6 @@
 			return $this->correlatedRanges;
 		}
 
-		/**
-		 * Get the PARTITION BY columns for a TYPE_WINDOW subquery.
-		 * @return AstInterface[]
-		 */
-		public function getPartitionBy(): array {
-			return $this->partitionBy;
-		}
-		
 		/**
 		 * Returns contents of WHERE
 		 * @return AstInterface|null

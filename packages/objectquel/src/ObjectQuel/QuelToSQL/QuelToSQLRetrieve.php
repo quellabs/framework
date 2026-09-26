@@ -1,8 +1,10 @@
 <?php
 	
-	namespace Quellabs\ObjectQuel\ObjectQuel;
+	namespace Quellabs\ObjectQuel\ObjectQuel\QuelToSQL;
 	
 	use Quellabs\ObjectQuel\EntityStore;
+	use Quellabs\ObjectQuel\ObjectQuel\AstInterface;
+	use Quellabs\ObjectQuel\ObjectQuel\Helpers\PrimaryKeyInfo;
 	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
 	use Quellabs\ObjectQuel\Exception\QuelException;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIdentifier;

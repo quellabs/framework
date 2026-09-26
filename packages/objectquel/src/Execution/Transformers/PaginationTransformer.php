@@ -14,8 +14,8 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIn;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstNumber;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
-	use Quellabs\ObjectQuel\ObjectQuel\PrimaryKeyInfo;
-	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQLRetrieve;
+	use Quellabs\ObjectQuel\ObjectQuel\Helpers\PrimaryKeyInfo;
+	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQL\QuelToSQLRetrieve;
 	use Quellabs\ObjectQuel\Execution\Visitors\DetectPrimaryKeyInClause;
 	use Quellabs\ObjectQuel\Execution\Visitors\DetectPrimaryKeyInClauseException;
 	
@@ -223,6 +223,8 @@
 		 * @param AstRetrieve $retrieve The AST to convert
 		 * @param array<int|string, mixed> $parameters Query parameters (passed by reference)
 		 * @return string The generated SQL query
+		 * @throws EntityResolutionException
+		 * @throws QuelException
 		 */
 		private function convertToSQL(AstRetrieve $retrieve, array $parameters): string {
 			// Convert all keys to strings

@@ -32,6 +32,8 @@
 		private Optimizers\RangeOptimizer $rangeOptimizer;                   // Optimizes range queries and filtering
 		private Optimizers\JoinOptimizer $joinOptimizer;                     // Handles JOIN operations and elimination
 		private Optimizers\AggregateOptimizer $aggregateOptimizer;           // Optimizes aggregate functions (COUNT, SUM, etc.)
+		private Optimizers\WindowChainRewriter $windowChainRewriter;         // Extracts nested sequence functions into helper ranges
+		private Optimizers\WhereWindowFilterRewriter $whereWindowFilterRewriter; // Extracts a WHERE-filtered sequence function into a helper range
 		private Optimizers\ExistsOptimizer $existsOptimizer;                 // Converts EXISTS subqueries to more efficient forms
 		private Optimizers\JoinConditionFieldInjector $JoinConditionFieldInjector; // Optimizes value references and constants
 		private Optimizers\FoldingRuleOptimizer $constantFoldingOptimizer;          // Folds statically-resolvable nodes to boolean constants
@@ -52,7 +54,9 @@
 			$this->rangeOptimizer = new Optimizers\RangeOptimizer($entityManager);
 			$this->joinOptimizer = new Optimizers\JoinOptimizer($entityManager);
 			$this->aggregateOptimizer = new Optimizers\AggregateOptimizer($this->entityStore, $platform);
-			
+			$this->windowChainRewriter = new Optimizers\WindowChainRewriter($this->entityStore, $platform);
+			$this->whereWindowFilterRewriter = new Optimizers\WhereWindowFilterRewriter($this->entityStore, $platform);
+
 			// Initialize stateless optimizers that work on AST structure alone
 			$this->existsOptimizer = new Optimizers\ExistsOptimizer();
 			$this->JoinConditionFieldInjector = new Optimizers\JoinConditionFieldInjector();
@@ -106,6 +110,24 @@
 			// These may create new optimization opportunities for previous phases
 			$this->existsOptimizer->optimize($ast, $log);
 			$this->anyOptimizer->optimize($ast);
+
+			// Extract a WHERE condition filtering on a sequence function's result
+			// (e.g. `where rn <= 3`) into its own helper range before the aggregate
+			// passes below run — SQL can't reference a window function's result in
+			// the same query block's WHERE. rangePromotor runs immediately after to
+			// promote the new helper range.
+			$this->whereWindowFilterRewriter->rewrite($ast, $log);
+			$this->rangePromotor->optimize($ast, $log);
+
+			// Extract nested sequence functions (e.g. sum(x - lag(x sort by y)))
+			// into their own helper ranges before AggregateOptimizer runs — SQL
+			// can't nest a window function inside another aggregate's argument.
+			// rangePromotor runs again immediately after to promote any helper
+			// range just added; it already ran once above and is a no-op for
+			// ranges it already processed.
+			$this->windowChainRewriter->rewrite($ast, $log);
+			$this->rangePromotor->optimize($ast, $log);
+
 			$this->aggregateOptimizer->optimize($ast, $log);
 			
 			// Convert search(...) to like/fulltext node

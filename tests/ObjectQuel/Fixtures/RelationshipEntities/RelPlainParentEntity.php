@@ -7,9 +7,7 @@
 	use Quellabs\ObjectQuel\Annotations\Orm\PrimaryKeyStrategy;
 
 	/**
-	 * A plain (non-soft-deletable) "one" side, paired with
-	 * RelSoftChildOfPlainParentEntity — exercises forcing a soft-deletable
-	 * dependent to a real delete when its parent has no @SoftDelete at all.
+	 * A plain (non-soft-deletable) "one" side, paired with RelSoftChildOfPlainParentEntity.
 	 * @Orm\Table(name="rel_plain_parents")
 	 */
 	class RelPlainParentEntity {

@@ -8,10 +8,8 @@
 	use Quellabs\ObjectQuel\Annotations\Orm\SoftDelete;
 
 	/**
-	 * A soft-deletable "one" side, paired with RelPlainChildOfSoftParentEntity
-	 * (no @SoftDelete) and RelSoftChildOfSoftParentEntity (@SoftDelete too) —
-	 * exercises how cascade-remove propagates a parent's actual soft/hard
-	 * outcome to its Cascade(remove) dependents (see UnitOfWork::scheduleForDelete()).
+	 * A soft-deletable "one" side, paired with RelPlainChildOfSoftParentEntity and
+	 * RelSoftChildOfSoftParentEntity, exercising cascade-remove propagation.
 	 * @Orm\Table(name="rel_soft_parents")
 	 */
 	class RelSoftParentEntity {

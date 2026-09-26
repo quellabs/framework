@@ -6,7 +6,7 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstDestroyIndex;
 	use Quellabs\ObjectQuel\ObjectQuel\Lexer;
 	use Quellabs\ObjectQuel\ObjectQuel\Parser;
-	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQLDestroyIndex;
+	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQL\QuelToSQLDestroyIndex;
 	use Quellabs\ObjectQuel\Tests\Support\FakePlatformCapabilities;
 
 	/**

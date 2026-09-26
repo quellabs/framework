@@ -8,10 +8,8 @@
 	use Quellabs\ObjectQuel\Annotations\Orm\SoftDelete;
 
 	/**
-	 * A boolean-typed soft-deletable "one" side, paired with
-	 * RelBoolSoftChildEntity via a nullable FK (an optional / LEFT JOIN
-	 * relation) — regression fixture for the boolean-soft-delete + LEFT JOIN
-	 * bug (bug-soft-delete-left-join-boolean-null.md).
+	 * Boolean-typed soft-deletable "one" side, paired with RelBoolSoftChildEntity
+	 * via a nullable FK (optional / LEFT JOIN relation).
 	 * @Orm\Table(name="rel_bool_soft_parents")
 	 */
 	class RelBoolSoftParentEntity {

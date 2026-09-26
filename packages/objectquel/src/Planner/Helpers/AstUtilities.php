@@ -188,57 +188,6 @@
 		}
 
 		/**
-		 * Filters out non-aggregate SELECT items that are bare references to their
-		 * range's declared primary key, before they're used as a window's PARTITION BY.
-		 * Without this, displaying a row's own id alongside a window aggregate (e.g.
-		 * `retrieve(o.id, total = sum(o.amount))`) would put every row in its own
-		 * partition, since every id is distinct — collapsing the window aggregate to
-		 * the same value as a non-windowed one and defeating the point of using a
-		 * window function at all.
-		 * @param EntityStore $entityStore
-		 * @param AstAlias[] $nonAggItems
-		 * @return AstAlias[]
-		 */
-		public static function excludePrimaryKeyItems(EntityStore $entityStore, array $nonAggItems): array {
-			return array_values(array_filter(
-				$nonAggItems,
-				fn(AstAlias $item): bool => !self::isPrimaryKeyIdentifier($entityStore, $item->getExpression())
-			));
-		}
-
-		/**
-		 * Returns true if the expression is a bare identifier referencing its
-		 * range's declared primary key column (e.g. `o.id`, not `o.id.something`).
-		 * @param EntityStore $entityStore
-		 * @param AstInterface $expression
-		 * @return bool
-		 */
-		public static function isPrimaryKeyIdentifier(EntityStore $entityStore, AstInterface $expression): bool {
-			if (!$expression instanceof AstIdentifier) {
-				return false;
-			}
-
-			// A property reference like `o.id` is a chain: the node itself is the
-			// range root (name "o"), and the actual property lives at the end of
-			// the `getNext()` chain — walk to it before comparing names.
-			$leaf = $expression;
-
-			while ($leaf->getNext() !== null) {
-				$leaf = $leaf->getNext();
-			}
-
-			$entityName = $leaf->getEntityName();
-
-			if ($entityName === null) {
-				return false;
-			}
-
-			$primaryKey = $entityStore->getMetadata($entityName)->getPrimaryKey();
-
-			return $primaryKey !== null && $leaf->getName() === $primaryKey;
-		}
-
-		/**
 		 * Checks if a condition expression references only the specified range.
 		 * @param AstExpression $condition The condition to check (e.g., "temp.id = 5")
 		 * @param AstRangeDatabase $range The range to test against
@@ -267,5 +216,122 @@
 			
 			// Return true if either operand references the given range
 			return $leftMatches || $rightMatches;
+		}
+
+		/**
+		 * Filters out non-aggregate SELECT items that are bare references to their range's
+		 * primary key, since displaying the row's own id would otherwise put every row in
+		 * its own single-row partition.
+		 * @param EntityStore $entityStore
+		 * @param AstAlias[] $nonAggItems
+		 * @return AstAlias[]
+		 */
+		public static function excludePrimaryKeyItems(EntityStore $entityStore, array $nonAggItems): array {
+			return array_values(array_filter(
+				$nonAggItems,
+				fn(AstAlias $item): bool => !self::isPrimaryKeyIdentifier($entityStore, $item->getExpression())
+			));
+		}
+
+		/**
+		 * Returns true if the expression is a bare identifier referencing its
+		 * range's declared primary key column (e.g. `o.id`, not `o.id.something`).
+		 * @param EntityStore $entityStore
+		 * @param AstInterface $expression
+		 * @return bool
+		 */
+		public static function isPrimaryKeyIdentifier(EntityStore $entityStore, AstInterface $expression): bool {
+			if (!$expression instanceof AstIdentifier) {
+				return false;
+			}
+
+			// Walk to the chain's leaf (e.g. `o.id`'s "id" part) before comparing names.
+			$leaf = $expression;
+
+			while ($leaf->getNext() !== null) {
+				$leaf = $leaf->getNext();
+			}
+
+			$entityName = $leaf->getEntityName();
+
+			if ($entityName === null) {
+				return false;
+			}
+
+			$primaryKey = $entityStore->getMetadata($entityName)->getPrimaryKey();
+
+			return $primaryKey !== null && $leaf->getName() === $primaryKey;
+		}
+
+		/**
+		 * Returns true if an aggregate node requires a window function - either a
+		 * sequence function (rank, dense_rank, row_number, ntile, lag, lead - which
+		 * only exist in window-shaped form) or a running aggregate using an inline
+		 * `sort by` and/or `by`. Shared definition used by WindowChainRewriter (to
+		 * find nested window aggregates), WhereWindowFilterRewriter (to find one
+		 * referenced in a WHERE condition), and SemanticAnalyzer (to let those same
+		 * nodes through the WHERE-clause aggregate restriction).
+		 * @param AstAggregate $node
+		 * @return bool
+		 */
+		public static function isWindowShaped(AstAggregate $node): bool {
+			return $node->getOrder() !== null || $node->getPartitionBy() !== null;
+		}
+
+		/**
+		 * Wraps an aggregate's explicit inline `by` list into the AstAlias[] shape
+		 * AggregateRewriter::rewriteAggregateAsWindowFunction() expects, or null when
+		 * no explicit `by` was written (caller falls back to inference).
+		 * @param AstAggregate $aggregate
+		 * @return AstAlias[]|null
+		 */
+		public static function buildPartitionItemsFromExplicitBy(AstAggregate $aggregate): ?array {
+			$partitionBy = $aggregate->getPartitionBy();
+
+			if ($partitionBy === null) {
+				return null;
+			}
+
+			return array_map(
+				static fn(AstInterface $expression): AstAlias => new AstAlias('_partition', $expression->deepClone()),
+				$partitionBy
+			);
+		}
+
+		/**
+		 * Filters out non-aggregate SELECT items that reference the same column as
+		 * one of the aggregate's own inline `sort by` expressions — applied alongside
+		 * excludePrimaryKeyItems() when inferring PARTITION BY. Without this, ranking
+		 * by a column that's also displayed (e.g. `rank(sort by o.published)` while
+		 * also selecting o.published) would put every distinct value of that column
+		 * in its own partition, making the rank trivially 1 for every row.
+		 * Matching is by getCompleteName() and only applies when the sort expression
+		 * is a bare identifier; a computed sort expression (e.g. `sort by o.a + o.b`)
+		 * has no safe general way to detect it re-appears in a SELECT item, so it is
+		 * left in the partition list unchanged.
+		 * @param AstAggregate $aggregate
+		 * @param AstAlias[] $nonAggItems
+		 * @return AstAlias[]
+		 */
+		public static function excludeAggregateOrderColumns(AstAggregate $aggregate, array $nonAggItems): array {
+			$orderColumnNames = [];
+
+			foreach ($aggregate->getOrder() ?? [] as $sortItem) {
+				if ($sortItem['ast'] instanceof AstIdentifier) {
+					$orderColumnNames[$sortItem['ast']->getCompleteName()] = true;
+				}
+			}
+
+			if ($orderColumnNames === []) {
+				return $nonAggItems;
+			}
+
+			return array_values(array_filter(
+				$nonAggItems,
+				function (AstAlias $item) use ($orderColumnNames): bool {
+					$expression = $item->getExpression();
+					return !($expression instanceof AstIdentifier && isset($orderColumnNames[$expression->getCompleteName()]));
+				}
+			));
 		}
 	}

@@ -1,7 +1,8 @@
 <?php
+	
+	namespace Quellabs\ObjectQuel\ObjectQuel\QuelToSQL;
 
-	namespace Quellabs\ObjectQuel\ObjectQuel;
-
+	use Quellabs\ObjectQuel\ObjectQuel\ForeignKeyConstraintNamer;
 	use Quellabs\ObjectQuel\Capabilities\PlatformCapabilitiesInterface;
 	use Quellabs\ObjectQuel\DatabaseAdapter\Mapper\DDLTypeMapper;
 	use Quellabs\ObjectQuel\DatabaseAdapter\SqlIdentifierQuoter;

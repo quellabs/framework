@@ -7,12 +7,7 @@
 	use Quellabs\ObjectQuel\Tests\Fixtures\RelationshipEntities\RelBoolSoftChildWithOwnDeleteEntity;
 	use Quellabs\ObjectQuel\Tests\Fixtures\RelationshipEntities\RelBoolSoftParentEntity;
 
-	/**
-	 * Coverage for a query where the primary (FROM) range and a joined range
-	 * are both soft-deletable at once, exercising InjectSoftDeleteCondition's
-	 * two placement paths (WHERE for the primary range, the range's own ON
-	 * clause for the joined range) together in one query.
-	 */
+	/** Coverage for a query where both the primary range and a joined range are soft-deletable at once. */
 	class SoftDeleteMultipleRangesTest extends TestCase {
 
 		private static function em(): EntityManager {
