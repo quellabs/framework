@@ -72,10 +72,10 @@
 
 		/**
 		 * A deployed function runs on the server and matches the same count done in ObjectQuel;
-		 * defining it again replaces it.
+		 * defining it again fails without changing the existing routine.
 		 * @return void
 		 */
-		public function testDefinesAndRedefinesAFunction(): void {
+		public function testDefinesAFunctionAndRejectsDuplicate(): void {
 			$source = "
 				define function {$this->name} (int minId) integer {
 					integer total = 0
@@ -91,7 +91,13 @@
 			";
 
 			self::assertNull(self::em()->executeQuery($source));
-			self::em()->executeQuery($source);
+			try {
+				self::em()->executeQuery($source);
+				self::fail('Defining an existing routine must fail');
+			} catch (QuelException $exception) {
+				self::assertSame('routine_definition_error', $exception->type);
+				self::assertStringContainsString('already exists', $exception->getMessage());
+			}
 
 			$expected = self::em()->executeQuery('range of u is UserEntity retrieve (n = count(u.id)) where u.id > 0 and u.username != ""');
 			self::assertNotNull($expected);
@@ -315,11 +321,32 @@
 		 */
 		public function testDestroyAcceptsNameSharedByFunctionAndProcedure(): void {
 			self::em()->executeQuery("define function {$this->name} () integer { return 1 }");
-			self::em()->executeQuery("define function {$this->name} () void { }");
+			self::em()->getConnection()->execute("CREATE PROCEDURE `{$this->name}`() BEGIN END");
 			self::assertSame(2, $this->routineCount());
 
 			self::em()->executeQuery("destroy function {$this->name}");
 			self::assertSame(0, $this->routineCount());
+		}
+
+		/**
+		 * A procedure cannot be defined through EQUEL when a function already has its name.
+		 * @return void
+		 */
+		public function testDifferentRoutineKindCannotReuseName(): void {
+			self::em()->executeQuery("define function {$this->name} () integer { return 1 }");
+
+			try {
+				self::em()->executeQuery("define function {$this->name} () void { }");
+				self::fail('Defining a procedure with an existing function name must fail');
+			} catch (QuelException $exception) {
+				self::assertSame('routine_definition_error', $exception->type);
+				self::assertStringContainsString('already exists', $exception->getMessage());
+			}
+
+			self::assertSame(1, $this->routineCount());
+			$statement = self::em()->getConnection()->execute("SELECT `{$this->name}`() AS result");
+			self::assertNotNull($statement);
+			self::assertSame(1, (int)$statement->fetch('assoc')['result']);
 		}
 
 		/**

@@ -196,7 +196,7 @@
 			');
 
 			self::assertSame(<<<'SQL'
-				CREATE OR ALTER FUNCTION [dbo].[a](@n INT, @flag BIT)
+				CREATE FUNCTION [dbo].[a](@n INT, @flag BIT)
 				RETURNS BIT
 				AS
 				BEGIN

@@ -16,7 +16,7 @@
 
 		/**
 		 * @param string $source Routine source
-		 * @return string Generated CREATE OR ALTER statement
+		 * @return string Generated CREATE statement
 		 */
 		private function compile(string $source): string {
 			$statements = (new ProcedureCompiler($GLOBALS['test_em'], new FakePlatformCapabilities('sqlsrv'), 'dbo'))->compile($source);
@@ -50,7 +50,7 @@
 			');
 
 			self::assertSame(<<<'SQL'
-				CREATE OR ALTER FUNCTION [dbo].[count_users](@minId INT)
+				CREATE FUNCTION [dbo].[count_users](@minId INT)
 				RETURNS INT
 				AS
 				BEGIN
@@ -117,7 +117,7 @@
 			');
 
 			self::assertSame(<<<'SQL'
-				CREATE OR ALTER PROCEDURE [dbo].[purge] @who VARCHAR(255)
+				CREATE PROCEDURE [dbo].[purge] @who VARCHAR(255)
 				AS
 				BEGIN
 					DECLARE @_row_users$username VARCHAR(255);
@@ -294,7 +294,7 @@
 			');
 
 			self::assertSame(<<<'SQL'
-				CREATE OR ALTER FUNCTION [dbo].[counts](@n INT)
+				CREATE FUNCTION [dbo].[counts](@n INT)
 				RETURNS INT
 				AS
 				BEGIN
@@ -347,7 +347,7 @@
 			');
 
 			self::assertSame(<<<'SQL'
-				CREATE OR ALTER PROCEDURE [dbo].[skip_some] @n INT
+				CREATE PROCEDURE [dbo].[skip_some] @n INT
 				AS
 				BEGIN
 					DECLARE @_row_ids$id INT;

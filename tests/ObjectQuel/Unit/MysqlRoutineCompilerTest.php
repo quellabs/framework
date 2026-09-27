@@ -59,11 +59,11 @@
 			', 'utf8mb4_unicode_ci');
 
 			$collated = 'CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci';
-			self::assertStringContainsString("CREATE FUNCTION `find_user`(_v_who VARCHAR(255) {$collated}, _v_minId INT)", $statements[1]);
-			self::assertStringContainsString("RETURNS VARCHAR(255) {$collated}", $statements[1]);
-			self::assertStringContainsString("DECLARE _v_found VARCHAR(255) {$collated};", $statements[1]);
-			self::assertStringContainsString("DECLARE _row_users\$username VARCHAR(255) {$collated};", $statements[1]);
-			self::assertStringContainsString('DECLARE _row_users$id INT UNSIGNED;', $statements[1]);
+			self::assertStringContainsString("CREATE FUNCTION `find_user`(_v_who VARCHAR(255) {$collated}, _v_minId INT)", $statements[0]);
+			self::assertStringContainsString("RETURNS VARCHAR(255) {$collated}", $statements[0]);
+			self::assertStringContainsString("DECLARE _v_found VARCHAR(255) {$collated};", $statements[0]);
+			self::assertStringContainsString("DECLARE _row_users\$username VARCHAR(255) {$collated};", $statements[0]);
+			self::assertStringContainsString('DECLARE _row_users$id INT UNSIGNED;', $statements[0]);
 		}
 
 		/**
@@ -100,7 +100,6 @@
 				}
 			');
 
-			self::assertSame('DROP FUNCTION IF EXISTS `count_users`', $statements[0]);
 			self::assertSame(<<<'SQL'
 				CREATE FUNCTION `count_users`(_v_minId INT)
 				RETURNS INT
@@ -134,7 +133,7 @@
 					END WHILE _loop2;
 					RETURN _v_total;
 				END
-				SQL, $statements[1]);
+				SQL, $statements[0]);
 		}
 
 		/**
@@ -163,7 +162,6 @@
 				}
 			');
 
-			self::assertSame('DROP PROCEDURE IF EXISTS `purge`', $statements[0]);
 			self::assertSame(<<<'SQL'
 				CREATE PROCEDURE `purge`(_v_who VARCHAR(255))
 				MODIFIES SQL DATA
@@ -193,7 +191,7 @@
 					SELECT COUNT(*) INTO _discard FROM (SELECT `p`.`title` as `title` FROM `posts` as `p` WHERE `p`.`user_id` = 5 AND `p`.`deleted_at` IS NULL) AS `_discard`;
 					INSERT INTO `users` (`username`, `password`, `banned`) VALUES (_v_who, 'x', false);
 				END
-				SQL, $statements[1]);
+				SQL, $statements[0]);
 		}
 
 		/**
@@ -211,8 +209,8 @@
 				}
 			');
 
-			self::assertStringContainsString('CURSOR FOR SELECT `u`.`id` as `id`,`u`.`username` as `username` FROM', $statements[1]);
-			self::assertStringContainsString('UPDATE `users` as `u` SET `u`.`banned` = false WHERE `u`.`id` = _row_users$id;', $statements[1]);
+			self::assertStringContainsString('CURSOR FOR SELECT `u`.`id` as `id`,`u`.`username` as `username` FROM', $statements[0]);
+			self::assertStringContainsString('UPDATE `users` as `u` SET `u`.`banned` = false WHERE `u`.`id` = _row_users$id;', $statements[0]);
 		}
 
 		/**
@@ -230,7 +228,7 @@
 				}
 			');
 
-			self::assertStringContainsString('DECLARE _cur_users CURSOR FOR SELECT `u`.`username` as `name`,`u`.`id` as `_pk_id` FROM `users` as `u` WHERE `u`.`banned` ORDER BY `u`.`username` desc,`u`.`id`;', $statements[1]);
+			self::assertStringContainsString('DECLARE _cur_users CURSOR FOR SELECT `u`.`username` as `name`,`u`.`id` as `_pk_id` FROM `users` as `u` WHERE `u`.`banned` ORDER BY `u`.`username` desc,`u`.`id`;', $statements[0]);
 		}
 
 		/**
@@ -246,23 +244,23 @@
 			retrieve (u.id) window 1
 		}');
 
-			self::assertStringContainsString('ORDER BY `u`.`id` LIMIT 5 OFFSET 0', $statements[1]);
-			self::assertStringContainsString('LIMIT 3 OFFSET 3', $statements[1]);
-			self::assertStringContainsString('LIMIT 1 OFFSET 1', $statements[1]);
+			self::assertStringContainsString('ORDER BY `u`.`id` LIMIT 5 OFFSET 0', $statements[0]);
+			self::assertStringContainsString('LIMIT 3 OFFSET 3', $statements[0]);
+			self::assertStringContainsString('LIMIT 1 OFFSET 1', $statements[0]);
 		}
 
 		/**
-		 * MariaDB replaces the routine in one statement.
+		 * MariaDB creates the routine in one statement without replacing an existing one.
 		 * @return void
 		 */
-		public function testMariaDbUsesCreateOrReplace(): void {
+		public function testMariaDbUsesCreateOnly(): void {
 			$statements = $this->compile('
 				define function f () integer {
 					return 1
 				}
 			', 'mariadb');
 
-			self::assertSame(["CREATE OR REPLACE FUNCTION `f`()\nRETURNS INT\nREADS SQL DATA\nBEGIN\n\tRETURN 1;\nEND"], $statements);
+			self::assertSame(["CREATE FUNCTION `f`()\nRETURNS INT\nREADS SQL DATA\nBEGIN\n\tRETURN 1;\nEND"], $statements);
 		}
 
 		/**
@@ -284,9 +282,9 @@
 				}
 			');
 
-			self::assertStringContainsString("\t_loop1: LOOP\n", $statements[1]);
-			self::assertStringContainsString("\t\t_loop2: LOOP\n", $statements[1]);
-			self::assertStringContainsString("IF _done THEN LEAVE _loop2; END IF;", $statements[1]);
+			self::assertStringContainsString("\t_loop1: LOOP\n", $statements[0]);
+			self::assertStringContainsString("\t\t_loop2: LOOP\n", $statements[0]);
+			self::assertStringContainsString("IF _done THEN LEAVE _loop2; END IF;", $statements[0]);
 		}
 
 		/**
@@ -322,7 +320,7 @@
 					SET _v_total = _v_total / (_v_n * 2);
 					RETURN _v_total;
 				END
-				SQL, $statements[1]);
+				SQL, $statements[0]);
 		}
 
 		/**
@@ -403,7 +401,7 @@
 					END LOOP _loop3;
 					CLOSE _cur_banned;
 				END
-				SQL, $statements[1]);
+				SQL, $statements[0]);
 		}
 
 		/**
@@ -462,7 +460,7 @@
 					END WHILE _loop1;
 					RETURN _v_total;
 				END
-				SQL, $statements[1]);
+				SQL, $statements[0]);
 		}
 
 		/**

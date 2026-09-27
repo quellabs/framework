@@ -47,7 +47,7 @@
 			');
 
 			self::assertSame(<<<'SQL'
-				CREATE OR REPLACE FUNCTION "count_users"("minId" INTEGER)
+				CREATE FUNCTION "count_users"("minId" INTEGER)
 				RETURNS INTEGER
 				LANGUAGE plpgsql
 				AS $body$
@@ -89,7 +89,7 @@
 			');
 
 			self::assertSame(<<<'SQL'
-				CREATE OR REPLACE FUNCTION "unban_first"()
+				CREATE FUNCTION "unban_first"()
 				RETURNS INTEGER
 				LANGUAGE plpgsql
 				AS $body$
@@ -140,7 +140,7 @@
 			');
 
 			self::assertSame(<<<'SQL'
-				CREATE OR REPLACE PROCEDURE "purge"("who" VARCHAR(255))
+				CREATE PROCEDURE "purge"("who" VARCHAR(255))
 				LANGUAGE plpgsql
 				AS $body$
 				<<_routine>>
@@ -277,7 +277,7 @@
 			');
 
 			self::assertSame(<<<'SQL'
-				CREATE OR REPLACE FUNCTION "counts"("n" INTEGER)
+				CREATE FUNCTION "counts"("n" INTEGER)
 				RETURNS INTEGER
 				LANGUAGE plpgsql
 				AS $body$
@@ -335,7 +335,7 @@
 			');
 
 			self::assertSame(<<<'SQL'
-				CREATE OR REPLACE PROCEDURE "skip_some"("n" INTEGER)
+				CREATE PROCEDURE "skip_some"("n" INTEGER)
 				LANGUAGE plpgsql
 				AS $body$
 				<<_routine>>
