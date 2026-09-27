@@ -25,16 +25,16 @@
 	class ManyToOneInverseOfViaTraversalTest extends ObjectQuelTestCase {
 		
 		protected function seedFixtures(): void {
-			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (1, 'alice', 'hash1', 0)");
-			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (2, 'bob',   'hash2', 0)");
+			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (1, 'alice', 'hash1', FALSE)");
+			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (2, 'bob',   'hash2', FALSE)");
 			
 			// alice owns posts 1 and 2; bob owns post 3
 			$this->exec("INSERT INTO posts (id, title, content, published, created_at, test_enum, test_json, user_id)
-            VALUES (1, 'Alice Post 1', 'Content 1', 1, '2024-01-01 00:00:00', 'pending',   '{\"id\": 1}', 1)");
+            VALUES (1, 'Alice Post 1', 'Content 1', TRUE, '2024-01-01 00:00:00', 'pending',   '{\"id\": 1}', 1)");
 			$this->exec("INSERT INTO posts (id, title, content, published, created_at, test_enum, test_json, user_id)
-            VALUES (2, 'Alice Post 2', 'Content 2', 0, '2024-01-02 00:00:00', 'shipped',   '{\"id\": 1}', 1)");
+            VALUES (2, 'Alice Post 2', 'Content 2', FALSE, '2024-01-02 00:00:00', 'shipped',   '{\"id\": 1}', 1)");
 			$this->exec("INSERT INTO posts (id, title, content, published, created_at, test_enum, test_json, user_id)
-            VALUES (3, 'Bob Post 1',   'Content 3', 1, '2024-01-03 00:00:00', 'delivered', '{\"id\": 2}', 2)");
+            VALUES (3, 'Bob Post 1',   'Content 3', TRUE, '2024-01-03 00:00:00', 'delivered', '{\"id\": 2}', 2)");
 		}
 		
 		// -------------------------------------------------------------------------
@@ -197,7 +197,7 @@
 		public function testUserWithNoPostsProducesOneRowWithNullPost(): void {
 			// via-clause joins are LEFT JOINs by default. A user with no posts still appears
 			// in the result set paired with a null post entity.
-			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (3, 'charlie', 'hash3', 0)");
+			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (3, 'charlie', 'hash3', FALSE)");
 			
 			$result = $this->em->executeQuery("
 			range of c is UserEntity
@@ -215,7 +215,7 @@
 			// With no WHERE clause the LEFT JOIN must surface a null-post row for charlie
 			// alongside the real rows for alice and bob.
 			// Fixtures: alice=2 posts, bob=1 post, charlie=0 posts -> 4 rows total.
-			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (3, 'charlie', 'hash3', 0)");
+			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (3, 'charlie', 'hash3', FALSE)");
 			
 			$result = $this->em->executeQuery("
 			range of c is UserEntity

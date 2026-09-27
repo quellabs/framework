@@ -35,7 +35,7 @@
 			$connection = self::em()->getConnection();
 
 			foreach ($this->createdTables as $tableName) {
-				$connection->execute("DROP TABLE IF EXISTS `{$tableName}`");
+				$connection->execute('DROP TABLE IF EXISTS ' . $connection->escapeIdentifier($tableName));
 			}
 
 			$this->createdTables = [];
@@ -106,14 +106,15 @@
 			$connection = self::em()->getConnection();
 
 			try {
-				$connection->execute("INSERT INTO `{$tableName}` (user_id, total) VALUES (1, 9.5)");
-				$stmt = $connection->execute("SELECT * FROM `{$tableName}`");
+				$quoted = $connection->escapeIdentifier($tableName);
+				$connection->execute("INSERT INTO {$quoted} (user_id, total) VALUES (1, 9.5)");
+				$stmt = $connection->execute("SELECT * FROM {$quoted}");
 				$rows = $stmt->fetchAll('assoc');
 
 				$this->assertCount(1, $rows);
 				$this->assertEquals(1, $rows[0]['user_id']);
 			} finally {
-				$connection->execute("DROP TEMPORARY TABLE IF EXISTS `{$tableName}`");
+				$connection->execute("DROP TABLE IF EXISTS {$quoted}");
 			}
 		}
 
@@ -308,6 +309,16 @@
 
 			$this->assertNull($result);
 
+			if (self::em()->getConnection()->getDatabaseType() === 'pgsql') {
+				$index = self::em()->getConnection()->execute(
+					'SELECT indexdef FROM pg_indexes WHERE schemaname = current_schema() AND tablename = :tableName AND indexname = :indexName',
+					['tableName' => $tableName, 'indexName' => 'idx_bio']
+				)->fetch('assoc');
+				$this->assertIsArray($index);
+				$this->assertStringContainsString('USING gin', $index['indexdef']);
+				return;
+			}
+
 			$indexes = self::em()->getConnection()->getIndexes($tableName);
 			$this->assertArrayHasKey('idx_bio', $indexes);
 			$this->assertSame('fulltext', $indexes['idx_bio']['type']);
@@ -440,13 +451,19 @@
 
 			$columns = self::em()->getConnection()->getColumns($tableName);
 
-			$this->assertSame('enum', $columns['status']->type);
-			$this->assertSame(['active', 'inactive', 'banned'], $columns['status']->values);
+			if (self::em()->getConnection()->getDatabaseType() === 'pgsql') {
+				$this->assertSame('string', $columns['status']->type);
+				$this->assertNull($columns['status']->values);
+			} else {
+				$this->assertSame('enum', $columns['status']->type);
+				$this->assertSame(['active', 'inactive', 'banned'], $columns['status']->values);
+			}
 			$this->assertFalse($columns['status']->nullable);
 
 			// A row can actually be written with one of the declared values.
-			self::em()->getConnection()->execute("INSERT INTO `{$tableName}` (id, status) VALUES (1, 'active')");
-			$row = self::em()->getConnection()->execute("SELECT status FROM `{$tableName}` WHERE id = 1")->fetchAssoc();
+			$quoted = self::em()->getConnection()->escapeIdentifier($tableName);
+			self::em()->getConnection()->execute("INSERT INTO {$quoted} (id, status) VALUES (1, 'active')");
+			$row = self::em()->getConnection()->execute("SELECT status FROM {$quoted} WHERE id = 1")->fetchAssoc();
 			$this->assertSame('active', $row['status']);
 		}
 	}

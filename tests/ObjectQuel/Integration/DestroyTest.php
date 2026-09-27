@@ -41,7 +41,7 @@
 			$connection = self::em()->getConnection();
 
 			foreach ($this->createdTables as $tableName) {
-				$connection->execute("DROP TABLE IF EXISTS `{$tableName}`");
+				$connection->execute('DROP TABLE IF EXISTS ' . $connection->escapeIdentifier($tableName));
 			}
 
 			$this->createdTables = [];

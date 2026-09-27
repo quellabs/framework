@@ -34,7 +34,7 @@
 			$connection = self::em()->getConnection();
 
 			foreach ($this->createdTables as $tableName) {
-				$connection->execute("DROP TABLE IF EXISTS `{$tableName}`");
+				$connection->execute('DROP TABLE IF EXISTS ' . $connection->escapeIdentifier($tableName));
 			}
 
 			$this->createdTables = [];
@@ -223,8 +223,13 @@
 			$this->assertNull($result);
 
 			$columns = self::em()->getConnection()->getColumns($tableName);
-			$this->assertSame('enum', $columns['status']->type);
-			$this->assertSame(['active', 'inactive', 'banned'], $columns['status']->values);
+			if (self::em()->getConnection()->getDatabaseType() === 'pgsql') {
+				$this->assertSame('string', $columns['status']->type);
+				$this->assertNull($columns['status']->values);
+			} else {
+				$this->assertSame('enum', $columns['status']->type);
+				$this->assertSame(['active', 'inactive', 'banned'], $columns['status']->values);
+			}
 		}
 
 		/**
@@ -239,8 +244,13 @@
 			$this->assertNull($result);
 
 			$columns = self::em()->getConnection()->getColumns($tableName);
-			$this->assertSame('enum', $columns['status']->type);
-			$this->assertSame(['active', 'inactive'], $columns['status']->values);
+			if (self::em()->getConnection()->getDatabaseType() === 'pgsql') {
+				$this->assertSame('string', $columns['status']->type);
+				$this->assertNull($columns['status']->values);
+			} else {
+				$this->assertSame('enum', $columns['status']->type);
+				$this->assertSame(['active', 'inactive'], $columns['status']->values);
+			}
 		}
 
 		/**
@@ -254,7 +264,8 @@
 			$tableName = $this->nextTableName();
 			$this->createTargetTable($tableName);
 
-			self::em()->getConnection()->execute("INSERT INTO `{$tableName}` (id, message) VALUES (1, 'first'), (2, 'second')");
+			$quoted = self::em()->getConnection()->escapeIdentifier($tableName);
+			self::em()->getConnection()->execute("INSERT INTO {$quoted} (id, message) VALUES (1, 'first'), (2, 'second')");
 
 			$result = self::em()->executeQuery("alter {$tableName} (add status = string(20) backfill 'pending')");
 
@@ -266,13 +277,13 @@
 			// The transient DEFAULT was dropped again after the backfill ran.
 			$this->assertNull($columns['status']->default);
 
-			$rows = self::em()->getConnection()->execute("SELECT id, status FROM `{$tableName}` ORDER BY id")->fetchAll('assoc');
+			$rows = self::em()->getConnection()->execute("SELECT id, status FROM {$quoted} ORDER BY id")->fetchAll('assoc');
 			$this->assertSame('pending', $rows[0]['status']);
 			$this->assertSame('pending', $rows[1]['status']);
 
 			// A row inserted afterward, with an explicit value, is unaffected.
-			self::em()->getConnection()->execute("INSERT INTO `{$tableName}` (id, message, status) VALUES (3, 'third', 'active')");
-			$newRow = self::em()->getConnection()->execute("SELECT status FROM `{$tableName}` WHERE id = 3")->fetchAssoc();
+			self::em()->getConnection()->execute("INSERT INTO {$quoted} (id, message, status) VALUES (3, 'third', 'active')");
+			$newRow = self::em()->getConnection()->execute("SELECT status FROM {$quoted} WHERE id = 3")->fetchAssoc();
 			$this->assertSame('active', $newRow['status']);
 		}
 
@@ -290,7 +301,10 @@
 		 */
 		private function createInnoDbTable(string $tableName, string $columnsSql): void {
 			$this->createdTables[] = $tableName;
-			self::em()->getConnection()->execute("CREATE TABLE `{$tableName}` ({$columnsSql}) ENGINE=InnoDB");
+			$connection = self::em()->getConnection();
+			$quoted = $connection->escapeIdentifier($tableName);
+			$engine = $connection->getDatabaseType() === 'pgsql' ? '' : ' ENGINE=InnoDB';
+			$connection->execute("CREATE TABLE {$quoted} ({$columnsSql}){$engine}");
 		}
 
 		public function testAddsAForeignKey(): void {

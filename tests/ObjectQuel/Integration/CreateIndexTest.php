@@ -36,7 +36,7 @@
 			$connection = self::em()->getConnection();
 
 			foreach ($this->createdTables as $tableName) {
-				$connection->execute("DROP TABLE IF EXISTS `{$tableName}`");
+				$connection->execute('DROP TABLE IF EXISTS ' . $connection->escapeIdentifier($tableName));
 			}
 
 			$this->createdTables = [];
@@ -111,14 +111,15 @@
 			self::em()->executeQuery("index unique on {$tableName} is {$tableName}_email_uniq (email)");
 
 			$connection = self::em()->getConnection();
-			$connection->execute("INSERT INTO `{$tableName}` (email, tenant_id) VALUES ('a@example.com', 1)");
+			$quotedTable = $connection->escapeIdentifier($tableName);
+			$connection->execute("INSERT INTO {$quotedTable} (email, tenant_id) VALUES ('a@example.com', 1)");
 
 			// execute() swallows the exception and returns null on failure
 			// rather than throwing (see CreateTableExecutor's own note on
 			// this) — a null return here proves the index actually enforces
 			// uniqueness at the database level, not just that no exception
 			// was thrown while creating it.
-			$result = $connection->execute("INSERT INTO `{$tableName}` (email, tenant_id) VALUES ('a@example.com', 2)");
+			$result = $connection->execute("INSERT INTO {$quotedTable} (email, tenant_id) VALUES ('a@example.com', 2)");
 			$this->assertNull($result);
 		}
 
@@ -168,6 +169,9 @@
 		}
 
 		public function testCreatesAFulltextIndexUsableWithMatchAgainst(): void {
+			if (self::em()->getConnection()->getDatabaseType() === 'pgsql') {
+				self::markTestSkipped('This test uses MySQL MATCH AGAINST syntax');
+			}
 			$tableName = $this->nextTableName();
 			$this->createdTables[] = $tableName;
 

@@ -21,10 +21,10 @@
 	class EntityRangeAdHocViaTest extends ObjectQuelTestCase {
 
 		protected function seedFixtures(): void {
-			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (1, 'has-post', 'hash1', 0)");
-			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (2, 'no-post', 'hash2', 0)");
+			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (1, 'has-post', 'hash1', FALSE)");
+			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (2, 'no-post', 'hash2', FALSE)");
 			$this->exec("INSERT INTO posts (id, title, content, published, created_at, test_enum, test_json, user_id)
-				VALUES (1, 'Hello', 'Hello world', 1, '2024-01-01 00:00:00', 'pending', '{\"id\": 1}', 1)");
+				VALUES (1, 'Hello', 'Hello world', TRUE, '2024-01-01 00:00:00', 'pending', '{\"id\": 1}', 1)");
 		}
 
 		public function testAdHocViaOnAnEntityRangeGeneratesARealLeftJoin(): void {

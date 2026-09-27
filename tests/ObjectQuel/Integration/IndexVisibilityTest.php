@@ -20,6 +20,16 @@
 		/** @var string[] Tables created by the current test, dropped in tearDown() */
 		private array $createdTables = [];
 
+		/**
+		 * Index visibility is only available on MySQL and MariaDB.
+		 * @return void
+		 */
+		protected function setUp(): void {
+			if (in_array(self::em()->getConnection()->getDatabaseType(), ['pgsql', 'sqlite', 'sqlsrv'], true)) {
+				self::markTestSkipped('Index visibility is not supported by this database.');
+			}
+		}
+
 		private static function em(): EntityManager {
 			$em = $GLOBALS['test_em'];
 

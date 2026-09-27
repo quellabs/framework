@@ -21,8 +21,8 @@
 	class AggregateGroupByDeepCloneTest extends ObjectQuelTestCase {
 
 		protected function seedFixtures(): void {
-			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (1, 'alice', 'hash1', 0)");
-			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (2, 'bob', 'hash2', 0)");
+			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (1, 'alice', 'hash1', FALSE)");
+			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (2, 'bob', 'hash2', FALSE)");
 
 			$posts = [
 				[1, 'p1', 1],
@@ -34,7 +34,7 @@
 
 			foreach ($posts as [$id, $title, $userId]) {
 				$this->exec("INSERT INTO posts (id, title, content, published, created_at, test_enum, test_json, user_id)
-					VALUES ({$id}, '{$title}', 'content', 1, '2024-01-0{$id} 00:00:00', 'pending', '{}', {$userId})");
+					VALUES ({$id}, '{$title}', 'content', TRUE, '2024-01-0{$id} 00:00:00', 'pending', '{}', {$userId})");
 			}
 		}
 

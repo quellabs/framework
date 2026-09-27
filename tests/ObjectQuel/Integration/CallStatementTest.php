@@ -108,6 +108,9 @@
 		 */
 		public function testNameOfBothKindsIsRejected(): void {
 			$connection = self::em()->getConnection();
+			if ($connection->getDatabaseType() !== 'mysql') {
+				self::markTestSkipped('Only MySQL permits a function and procedure to share a name');
+			}
 			self::assertNotNull($connection->execute("CREATE FUNCTION `{$this->name}`() RETURNS INT DETERMINISTIC RETURN 1"));
 			self::assertNotNull($connection->execute("CREATE PROCEDURE `{$this->name}`() BEGIN END"));
 

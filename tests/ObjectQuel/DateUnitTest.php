@@ -214,6 +214,13 @@
 			$this->assertInstanceOf(\DateTime::class, $result);
 			$this->assertSame('2024-01-15 10:30:00', $result->format('Y-m-d H:i:s'));
 		}
+
+		/** @return void */
+		public function testFractionalDatetimeStringReturnsDateTime(): void {
+			$result = $this->normalizer->normalize('2024-01-15 10:30:00.123456');
+			$this->assertInstanceOf(\DateTime::class, $result);
+			$this->assertSame('2024-01-15 10:30:00.123456', $result->format('Y-m-d H:i:s.u'));
+		}
 		
 		public function testMalformedStringReturnsNull(): void {
 			$this->assertNull($this->normalizer->normalize('not-a-date'));

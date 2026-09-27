@@ -21,7 +21,7 @@
 	class AppendParameterNormalizationTest extends ObjectQuelTestCase {
 
 		protected function seedFixtures(): void {
-			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (1, 'alice', 'hash1', 0)");
+			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (1, 'alice', 'hash1', FALSE)");
 		}
 
 		public function testAppendNormalizesDateTimeJsonAndEnumParametersLikePersist(): void {

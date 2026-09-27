@@ -8,6 +8,7 @@
             <file>tests/ObjectQuel/Integration/RoutineWindowMySqlTest.php</file>
             <file>tests/ObjectQuel/Integration/DatabaseAdapterPostgresColumnsTest.php</file>
             <file>tests/ObjectQuel/Integration/DatabaseAdapterForeignKeyPostgresTest.php</file>
+            <file>tests/ObjectQuel/Integration/DatabaseAdapterPostgresErrorCodeTest.php</file>
             <directory>tests/ObjectQuel/Unit</directory>
         </testsuite>
     </testsuites>

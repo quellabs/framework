@@ -19,9 +19,9 @@
 	class InverseOfValidationTest extends ObjectQuelTestCase {
 		
 		protected function seedFixtures(): void {
-			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (1, 'alice', 'hash1', 0)");
+			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (1, 'alice', 'hash1', FALSE)");
 			$this->exec("INSERT INTO posts (id, title, content, published, created_at, test_enum, test_json, user_id)
-            VALUES (1, 'First Post', 'Hello world', 1, '2024-01-01 00:00:00', 'pending', '{\"id\": 1}', 1)");
+            VALUES (1, 'First Post', 'Hello world', TRUE, '2024-01-01 00:00:00', 'pending', '{\"id\": 1}', 1)");
 		}
 		
 		/**
@@ -105,9 +105,9 @@
 		public function testInverseOfDoesNotHydrateFromUnrelatedEntity(): void {
 			// UserEntity::$posts is InverseOf(relation="user"). Loading two users
 			// should assign each user only their own posts.
-			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (2, 'bob', 'hash2', 0)");
+			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (2, 'bob', 'hash2', FALSE)");
 			$this->exec("INSERT INTO posts (id, title, content, published, created_at, test_enum, test_json, user_id)
-            VALUES (2, 'Bob Post', 'Bob content', 1, '2024-01-02 00:00:00', 'pending', '{\"id\": 2}', 2)");
+            VALUES (2, 'Bob Post', 'Bob content', TRUE, '2024-01-02 00:00:00', 'pending', '{\"id\": 2}', 2)");
 			
 			$alice = $this->em->find(UserEntity::class, 1);
 			$bob   = $this->em->find(UserEntity::class, 2);

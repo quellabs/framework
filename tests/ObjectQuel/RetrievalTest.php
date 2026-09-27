@@ -15,17 +15,17 @@
 	class RetrievalTest extends ObjectQuelTestCase {
 		
 		protected function seedFixtures(): void {
-			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (1, 'alice', 'hash1', 0)");
-			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (2, 'bob', 'hash2', 0)");
+			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (1, 'alice', 'hash1', FALSE)");
+			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (2, 'bob', 'hash2', FALSE)");
 			
 			$this->exec("INSERT INTO posts (id, title, content, published, created_at, test_enum, test_json, user_id)
-            VALUES (1, 'First Post', 'Hello world', 1, '2024-01-01 00:00:00', 'pending', '{\"id\": 2, \"test\": \"hi\"}', 1)");
+            VALUES (1, 'First Post', 'Hello world', TRUE, '2024-01-01 00:00:00', 'pending', '{\"id\": 2, \"test\": \"hi\"}', 1)");
 			
 			$this->exec("INSERT INTO posts (id, title, content, published, created_at, test_enum, test_json, user_id)
-            VALUES (2, 'Second Post', 'Foo bar', 0, '2024-01-02 00:00:00', 'shipped', '{\"id\": 2, \"test\": \"hi\"}', 1)");
+            VALUES (2, 'Second Post', 'Foo bar', FALSE, '2024-01-02 00:00:00', 'shipped', '{\"id\": 2, \"test\": \"hi\"}', 1)");
 			
 			$this->exec("INSERT INTO posts (id, title, content, published, created_at, test_enum, test_json, user_id)
-            VALUES (3, 'Third Post', 'Baz qux', 1, '2024-01-03 00:00:00', 'delivered', '{\"id\": 2, \"test\": \"hi\"}', 2)");
+            VALUES (3, 'Third Post', 'Baz qux', TRUE, '2024-01-03 00:00:00', 'delivered', '{\"id\": 2, \"test\": \"hi\"}', 2)");
 		}
 		
 		// -------------------------------------------------------------------------

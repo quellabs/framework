@@ -39,7 +39,7 @@
 			$connection = self::em()->getConnection();
 
 			foreach ($this->createdTables as $tableName) {
-				$connection->execute("DROP TABLE IF EXISTS `{$tableName}`");
+				$connection->execute('DROP TABLE IF EXISTS ' . $connection->escapeIdentifier($tableName));
 			}
 
 			$this->createdTables = [];
@@ -96,7 +96,7 @@
 
 		public function testExplainRejectsAppend(): void {
 			$connection = self::em()->getConnection();
-			$connection->execute('DELETE FROM `users`');
+			$connection->execute('DELETE FROM users');
 
 			$this->assertExplainRejectsAsNotPlannable(
 				'range of u is App\Entities\UserEntity
@@ -104,14 +104,14 @@
 				['username' => 'explain-user', 'password' => 'secret']
 			);
 
-			$count = $connection->execute('SELECT COUNT(*) AS c FROM `users`')->fetchAssoc()['c'];
+			$count = $connection->execute('SELECT COUNT(*) AS c FROM users')->fetchAssoc()['c'];
 			$this->assertSame(0, (int)$count);
 		}
 
 		public function testExplainRejectsReplace(): void {
 			$em = self::em();
 			$connection = $em->getConnection();
-			$connection->execute('DELETE FROM `users`');
+			$connection->execute('DELETE FROM users');
 
 			$seeded = $em->executeQuery(
 				'range of u is App\Entities\UserEntity
@@ -126,7 +126,7 @@
 			);
 
 			$row = $connection->execute(
-				'SELECT password FROM `users` WHERE id = :id',
+				'SELECT password FROM users WHERE id = :id',
 				['id' => $seeded->getGeneratedId()]
 			)->fetchAssoc();
 
@@ -136,7 +136,7 @@
 		public function testExplainRejectsDelete(): void {
 			$em = self::em();
 			$connection = $em->getConnection();
-			$connection->execute('DELETE FROM `users`');
+			$connection->execute('DELETE FROM users');
 
 			$seeded = $em->executeQuery(
 				'range of u is App\Entities\UserEntity
@@ -151,7 +151,7 @@
 			);
 
 			$count = $connection->execute(
-				'SELECT COUNT(*) AS c FROM `users` WHERE id = :id',
+				'SELECT COUNT(*) AS c FROM users WHERE id = :id',
 				['id' => $seeded->getGeneratedId()]
 			)->fetchAssoc()['c'];
 

@@ -21,23 +21,23 @@
 	class OperatorPrecedenceSqlEmissionTest extends ObjectQuelTestCase {
 
 		protected function seedFixtures(): void {
-			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (1, 'alice', 'h', 0)");
-			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (2, 'bob',   'h', 1)");
-			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (3, 'carol', 'h', 1)");
+			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (1, 'alice', 'h', FALSE)");
+			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (2, 'bob',   'h', TRUE)");
+			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (3, 'carol', 'h', TRUE)");
 		}
 
 		/**
-		 * `banned = 0 AND (username = 'alice' OR username = 'carol')` must keep
+		 * `banned = false AND (username = 'alice' OR username = 'carol')` must keep
 		 * carol excluded (she's banned). Without parentheses around the OR,
 		 * AND's higher precedence re-groups this as
-		 * `(banned = 0 AND username = 'alice') OR username = 'carol'`, which
+		 * `(banned = false AND username = 'alice') OR username = 'carol'`, which
 		 * wrongly admits carol via the bare OR clause.
 		 */
 		public function testOrNestedInAndKeepsItsGrouping(): void {
 			$rows = $this->em->getAll("
 				range of u is App\\Entities\\UserEntity
 				retrieve (u.id, u.username)
-				where u.banned = 0 and (u.username = 'alice' or u.username = 'carol')
+				where u.banned = false and (u.username = 'alice' or u.username = 'carol')
 			");
 
 			$this->assertCount(1, $rows);
@@ -55,7 +55,7 @@
 			$rows = $this->em->getAll("
 				range of u is App\\Entities\\UserEntity
 				retrieve (u.id, u.username)
-				where (u.username = 'alice' or u.username = 'carol') and u.banned = 0
+				where (u.username = 'alice' or u.username = 'carol') and u.banned = false
 			");
 
 			$this->assertCount(1, $rows);
@@ -113,23 +113,24 @@
 		 * left operand directly (the right side is the wildcard/regex
 		 * pattern, never a nested operator), bypassing handleGenericExpression's
 		 * normal left/right handling — so they need their own operandSql()
-		 * call. `(username = 'alice' or banned = 1) = 'x*'` forces the LIKE
+		 * call. `(username = 'alice' or banned = true) = 'x*'` forces the LIKE
 		 * conversion's left operand to be a lower-precedence OR expression;
 		 * without parentheses it would compile as
-		 * `username = 'alice' or banned = 1 like "x%"`, which the database
-		 * reads as `username = 'alice' or (banned = 1 like "x%")` — silently
+		 * `username = 'alice' or banned = true like "x%"`, which the database
+		 * reads as `username = 'alice' or (banned = true like "x%")` — silently
 		 * losing the wildcard comparison against the OR expression entirely.
 		 */
 		public function testWildcardComparisonParenthesizesALowerPrecedenceLeftOperand(): void {
 			$plan = $this->em->explainQuery("
 				range of u is App\\Entities\\UserEntity
 				retrieve (u.id)
-				where (u.username = 'alice' or u.banned = 1) = 'x*'
+				where (u.username = 'alice' or u.banned = true) = 'x*'
 			");
 
-			$this->assertStringContainsString(
-				"(`u`.`username` = 'alice' OR `u`.`banned` = 1) LIKE 'x%'",
-				$plan->getSql()[0]
-			);
+			$connection = $this->em->getConnection();
+			$alias = $connection->escapeIdentifier('u');
+			$username = $connection->escapeIdentifier('username');
+			$banned = $connection->escapeIdentifier('banned');
+			$this->assertStringContainsString("({$alias}.{$username} = 'alice' OR {$alias}.{$banned} = true) LIKE 'x%'", $plan->getSql()[0]);
 		}
 	}

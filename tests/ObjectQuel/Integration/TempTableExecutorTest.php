@@ -55,7 +55,14 @@
 			return $em;
 		}
 
+		/**
+		 * Prepares the MySQL native-type inspection fixture.
+		 * @return void
+		 */
 		protected function setUp(): void {
+			if (self::em()->getConnection()->getDatabaseType() === 'pgsql') {
+				self::markTestSkipped('This test inspects MySQL SHOW COLUMNS output and native MySQL types.');
+			}
 			$this->executor = new TempTableExecutor(
 				self::em()->getConnection(),
 				self::em()->getEntityStore(),

@@ -69,7 +69,7 @@
 		public static function unixTimestamps(): array {
 			return [
 				'sqlsrv' => ['sqlsrv', "DATEDIFF_BIG(SECOND, '1970-01-01', %s)", "DATEDIFF_BIG(SECOND, '1970-01-01', SYSUTCDATETIME())"],
-				'pgsql' => ['pgsql', 'EXTRACT(EPOCH FROM %s)::BIGINT', 'EXTRACT(EPOCH FROM NOW())::BIGINT'],
+				'pgsql' => ['pgsql', 'CAST(EXTRACT(EPOCH FROM %s) AS BIGINT)', 'CAST(EXTRACT(EPOCH FROM NOW()) AS BIGINT)'],
 				'mysql' => ['mysql', 'UNIX_TIMESTAMP(%s)', 'UNIX_TIMESTAMP()'],
 			];
 		}

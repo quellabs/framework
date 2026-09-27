@@ -6,7 +6,7 @@
 	use Quellabs\ObjectQuel\EntityManager;
 
 	/**
-	 * Datetime columns compared with date strings and routine variables, and written from date arithmetic, against the suite's MySQL connection.
+	 * Datetime columns compared with date strings and routine variables, and written from date arithmetic.
 	 */
 	class DateTimeComparisonRoundTripTest extends TestCase {
 
@@ -36,7 +36,7 @@
 			$this->tag = 'datetime_test_' . getmypid();
 
 			self::em()->getConnection()->execute(
-				"INSERT INTO posts (title, content, published, created_at, test_enum, test_json, user_id) VALUES (:title, '', 0, '2025-06-01 12:00:00', 'pending', '{}', 1)",
+				"INSERT INTO posts (title, content, published, created_at, test_enum, test_json, user_id) VALUES (:title, '', FALSE, '2025-06-01 12:00:00', 'pending', '{}', 1)",
 				['title' => $this->tag]
 			);
 
@@ -108,8 +108,10 @@
 			self::em()->executeQuery("define function {$this->tag} () integer { return 1735732800 }");
 			self::em()->executeQuery("range of p is PostEntity replace p (createdAt = {$this->tag}()) where p.id = :id", ['id' => $this->postId]);
 
-			// FROM_UNIXTIME uses the session time zone, as the conversion does
-			$statement = self::em()->getConnection()->execute('SELECT created_at = FROM_UNIXTIME(1735732800) AS converted FROM posts WHERE id = :id', ['id' => $this->postId]);
+			$conversion = self::em()->getConnection()->getDatabaseType() === 'pgsql'
+				? "(TO_TIMESTAMP(1735732800) AT TIME ZONE 'UTC')"
+				: 'FROM_UNIXTIME(1735732800)';
+			$statement = self::em()->getConnection()->execute("SELECT created_at = {$conversion} AS converted FROM posts WHERE id = :id", ['id' => $this->postId]);
 			self::assertNotNull($statement);
 			$row = $statement->fetch('assoc');
 			self::assertIsArray($row);

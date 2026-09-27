@@ -21,11 +21,11 @@
 	class DeleteParameterNormalizationTest extends ObjectQuelTestCase {
 
 		protected function seedFixtures(): void {
-			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (1, 'alice', 'hash1', 0)");
+			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (1, 'alice', 'hash1', FALSE)");
 			$this->exec("INSERT INTO posts (id, title, content, published, created_at, test_enum, test_json, user_id)
-                VALUES (1, 'Old post', 'Body', 0, '2020-01-01 00:00:00', 'pending', '{\"id\": 1}', 1)");
+                VALUES (1, 'Old post', 'Body', FALSE, '2020-01-01 00:00:00', 'pending', '{\"id\": 1}', 1)");
 			$this->exec("INSERT INTO posts (id, title, content, published, created_at, test_enum, test_json, user_id)
-                VALUES (2, 'New post', 'Body', 0, '2030-01-01 00:00:00', 'pending', '{\"id\": 2}', 1)");
+                VALUES (2, 'New post', 'Body', FALSE, '2030-01-01 00:00:00', 'pending', '{\"id\": 2}', 1)");
 		}
 
 		public function testDeleteNormalizesADateTimeParameterComparedAgainstADatetimeColumn(): void {

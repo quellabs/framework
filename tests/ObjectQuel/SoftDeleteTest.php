@@ -42,19 +42,19 @@
 		// -------------------------------------------------------------------------
 		
 		protected function seedFixtures(): void {
-			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (1, 'alice', 'hash1', 0)");
-			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (2, 'bob',   'hash2', 0)");
+			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (1, 'alice', 'hash1', FALSE)");
+			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (2, 'bob',   'hash2', FALSE)");
 			
 			// Posts 1 and 2 belong to alice; post 3 to bob.
 			// deleted_at is NULL for all — none are soft-deleted at fixture time.
 			$this->exec("INSERT INTO posts (id, title, content, published, created_at, test_enum, test_json, user_id, deleted_at)
-				VALUES (1, 'Active Post',  'Hello world', 1, '2024-01-01 00:00:00', 'pending',   '{\"id\":1,\"test\":\"hi\"}', 1, NULL)");
+				VALUES (1, 'Active Post',  'Hello world', TRUE, '2024-01-01 00:00:00', 'pending',   '{\"id\":1,\"test\":\"hi\"}', 1, NULL)");
 			
 			$this->exec("INSERT INTO posts (id, title, content, published, created_at, test_enum, test_json, user_id, deleted_at)
-				VALUES (2, 'Another Post', 'Foo bar',     0, '2024-01-02 00:00:00', 'shipped',   '{\"id\":2,\"test\":\"hi\"}', 1, NULL)");
+				VALUES (2, 'Another Post', 'Foo bar',     FALSE, '2024-01-02 00:00:00', 'shipped',   '{\"id\":2,\"test\":\"hi\"}', 1, NULL)");
 			
 			$this->exec("INSERT INTO posts (id, title, content, published, created_at, test_enum, test_json, user_id, deleted_at)
-				VALUES (3, 'Bob Post',     'Baz qux',     1, '2024-01-03 00:00:00', 'delivered', '{\"id\":3,\"test\":\"hi\"}', 2, NULL)");
+				VALUES (3, 'Bob Post',     'Baz qux',     TRUE, '2024-01-03 00:00:00', 'delivered', '{\"id\":3,\"test\":\"hi\"}', 2, NULL)");
 		}
 		
 		// -------------------------------------------------------------------------
@@ -251,7 +251,7 @@
 		}
 
 		public function testEmRestoreOnEntityWithoutSoftDeleteThrows(): void {
-			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (3, 'carol', 'hash3', 0)");
+			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (3, 'carol', 'hash3', FALSE)");
 			$user = $this->em->find(UserEntity::class, 3);
 			$this->assertNotNull($user);
 
@@ -422,7 +422,7 @@
 		}
 
 		public function testDeleteStatementOnNonSoftDeletableEntityStillHardDeletes(): void {
-			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (3, 'carol', 'hash3', 0)");
+			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (3, 'carol', 'hash3', FALSE)");
 
 			// UserEntity carries no @SoftDelete — must behave exactly as before.
 			$result = $this->em->executeQuery("

@@ -38,23 +38,32 @@
 	 */
 	class DateIntegrationTest extends ObjectQuelTestCase {
 		
+		/**
+		 * Seeds posts on both database engines with dates relative to the test run.
+		 * @return void
+		 */
 		protected function seedFixtures(): void {
-			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (1, 'alice', 'hash1', 0)");
+			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (1, 'alice', 'hash1', FALSE)");
 			
 			// Three posts with known created_at timestamps:
 			//   post 1 — 10 days ago
 			//   post 2 — 40 days ago
 			//   post 3 — 1 year + 1 day ago
-			// Computed relative to NOW() in the database so the tests are not
-			// sensitive to the clock at fixture-build time.
+			// Bind timestamps so the fixture SQL is portable across engines.
+			if ($this->em->getConnection()->getDatabaseType() === 'pgsql') {
+				$now = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
+			} else {
+				$databaseNow = $this->em->getConnection()->getConnection()->execute('SELECT CURRENT_TIMESTAMP AS fixture_clock')->fetch('assoc')['fixture_clock'];
+				$now = new \DateTimeImmutable($databaseNow);
+			}
 			$this->exec("INSERT INTO posts (id, title, content, published, created_at, test_enum, test_json, user_id)
-                VALUES (1, 'Recent',    'content', 1, DATE_SUB(NOW(), INTERVAL 10  DAY),  'pending',   '{\"id\": 1}', 1)");
+				VALUES (1, 'Recent', 'content', TRUE, :createdAt, 'pending', '{\"id\": 1}', 1)", ['createdAt' => $now->modify('-10 days')->format('Y-m-d H:i:s')]);
 			
 			$this->exec("INSERT INTO posts (id, title, content, published, created_at, test_enum, test_json, user_id)
-                VALUES (2, 'OldPost',   'content', 1, DATE_SUB(NOW(), INTERVAL 40  DAY),  'shipped',   '{\"id\": 2}', 1)");
+				VALUES (2, 'OldPost', 'content', TRUE, :createdAt, 'shipped', '{\"id\": 2}', 1)", ['createdAt' => $now->modify('-40 days')->format('Y-m-d H:i:s')]);
 			
 			$this->exec("INSERT INTO posts (id, title, content, published, created_at, test_enum, test_json, user_id)
-                VALUES (3, 'VeryOld',   'content', 1, DATE_SUB(NOW(), INTERVAL 366 DAY),  'delivered', '{\"id\": 3}', 1)");
+				VALUES (3, 'VeryOld', 'content', TRUE, :createdAt, 'delivered', '{\"id\": 3}', 1)", ['createdAt' => $now->modify('-366 days')->format('Y-m-d H:i:s')]);
 		}
 		
 		// =========================================================================
@@ -422,7 +431,7 @@
 			
 			$ageInSeconds = time() - $dt->getTimestamp();
 			
-			// Post 1 was inserted as DATE_SUB(NOW(), INTERVAL 10 DAY).
+			// Post 1 was inserted with a timestamp 10 days before fixture setup.
 			// Allow ±60 seconds of tolerance for test execution time.
 			$this->assertGreaterThan(10 * 86400 - 60, $ageInSeconds);
 			$this->assertLessThan(10 * 86400 + 60, $ageInSeconds);
