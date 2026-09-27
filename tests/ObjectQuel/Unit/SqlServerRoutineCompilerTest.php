@@ -170,6 +170,35 @@
 		}
 
 		/**
+		 * SQL Server windowed routine retrieves require explicit SQL ordering.
+		 * @return void
+		 */
+		public function testWindowRequiresSortByAndUsesOffsetFetch(): void {
+			$sql = $this->compile('define function f () void {
+				range of u is UserEntity
+				cursor c = retrieve (u.id) sort by u.id desc window 1, 4
+				foreach c { }
+				retrieve (u.id) sort by u.id window 0
+			}');
+
+			self::assertStringContainsString('ORDER BY [u].[id] desc OFFSET 4 ROWS FETCH NEXT 4 ROWS ONLY', $sql);
+			self::assertStringContainsString('ORDER BY [u].[id] OFFSET 0 ROWS FETCH NEXT 1 ROWS ONLY', $sql);
+		}
+
+		/**
+		 * @return void
+		 */
+		public function testWindowWithoutSortByIsRejected(): void {
+			$this->expectException(SemanticException::class);
+			$this->expectExceptionMessage("SQL Server requires an explicit 'sort by'");
+			$this->compile('define function f () void {
+				range of u is UserEntity
+				cursor c = retrieve (u.id) window 0, 2
+				foreach c { }
+			}');
+		}
+
+		/**
 		 * A scalar function uses a sorted derived query with OFFSET, since SQL Server functions cannot declare cursors.
 		 * @return void
 		 */

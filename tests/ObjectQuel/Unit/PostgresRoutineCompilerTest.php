@@ -171,6 +171,18 @@
 				SQL, $sql);
 		}
 
+		public function testWindowedRetrieveUsesLimitOffsetWithoutSort(): void {
+			$sql = $this->compile('define function f () void {
+				range of u is UserEntity
+				cursor c = retrieve (u.id) window 3, 2
+				foreach c { }
+				retrieve (u.id) window 0
+			}');
+
+			self::assertStringContainsString('LIMIT 2 OFFSET 6', $sql);
+			self::assertStringContainsString('LIMIT 1 OFFSET 0', $sql);
+		}
+
 		/**
 		 * An embedded retrieve keeps only the ranges it reads, plus the ranges their `via` conditions need.
 		 * @return void

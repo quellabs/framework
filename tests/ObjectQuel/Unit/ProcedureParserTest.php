@@ -65,6 +65,30 @@
 		}
 
 		/**
+		 * Window pages are nonnegative integers and sizes are positive integers.
+		 * @param string $window Window clause
+		 * @return void
+		 */
+		#[DataProvider('invalidWindows')]
+		public function testRejectsInvalidWindowValues(string $window): void {
+			$this->expectException(LexerException::class);
+			$this->parse("define function f () void { range of u is UserEntity retrieve (u.id) {$window} }");
+		}
+
+		/**
+		 * @return array<string, array{string}>
+		 */
+		public static function invalidWindows(): array {
+			return [
+				'fractional page' => ['window 1.5, 2'],
+				'negative page' => ['window -1, 2'],
+				'fractional size' => ['window 1, 2.5'],
+				'zero size' => ['window 1, 0'],
+				'negative size' => ['window 1, -2'],
+			];
+		}
+
+		/**
 		 * An empty parameter list parses, and a non-void return type is not void.
 		 * @return void
 		 */

@@ -234,6 +234,24 @@
 		}
 
 		/**
+		 * Routine windows paginate in SQL for cursor and discarded retrieve statements.
+		 * @return void
+		 */
+		public function testWindowedRetrievesCompileLimitAndOffset(): void {
+			$statements = $this->compile('define function f () void {
+				range of u is UserEntity
+			cursor c = retrieve (u.id) sort by u.id window 0, 5
+			foreach c { }
+			retrieve (u.id) window 1 using window_size 3
+			retrieve (u.id) window 1
+		}');
+
+			self::assertStringContainsString('ORDER BY `u`.`id` LIMIT 5 OFFSET 0', $statements[1]);
+			self::assertStringContainsString('LIMIT 3 OFFSET 3', $statements[1]);
+			self::assertStringContainsString('LIMIT 1 OFFSET 1', $statements[1]);
+		}
+
+		/**
 		 * MariaDB replaces the routine in one statement.
 		 * @return void
 		 */
