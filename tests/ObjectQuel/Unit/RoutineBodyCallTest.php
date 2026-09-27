@@ -222,7 +222,7 @@
 		public function testStatementKeywordCantNameARoutine(string $name): void {
 			$this->expectException(SemanticException::class);
 			$this->expectExceptionMessage("'{$name}' is a statement keyword, so a routine by that name couldn't be called as a statement.");
-			$this->compile('mysql', "define function {$name} () void { abort }");
+			$this->compile('mysql', "define function {$name} () void { exit }");
 		}
 
 		/**

@@ -124,17 +124,17 @@
 		}
 
 		/**
-		 * abort as the last statement of one branch is legal; the other branch may continue.
+		 * exit as the last statement of one branch is legal; the other branch may continue.
 		 * @return void
 		 */
-		public function testAcceptsAbortAsLastStatementOnItsPath(): void {
+		public function testAcceptsExitAsLastStatementOnItsPath(): void {
 			$this->analyze('
 				define function rename (integer userId, string newName) void {
 					range of u is UserEntity
-					begin transaction {
+					transaction {
 						replace u (username = newName) where u.id = userId
 						if (newName = "") {
-							abort
+							exit
 						} else {
 							replace u (banned = false) where u.id = userId
 						}
@@ -187,7 +187,7 @@
 				define function f (integer n) void {
 					range of u is UserEntity
 					cursor users = retrieve (u.id) where u.id > 0
-					begin transaction {
+					transaction {
 						while (n > 0) {
 							if (n = 5) {
 								break
@@ -236,6 +236,8 @@
 				'local redeclares range'        => ["define function f () void { {$range} integer u }", "'u' is already declared"],
 				'statement keyword as name'     => ['define function f () void { integer foreach }', 'statement keyword'],
 				'break as name'                 => ['define function f () void { integer break }', 'statement keyword'],
+				'transaction as name'           => ['define function f () void { integer transaction }', 'statement keyword'],
+				'exit as name'                  => ['define function f (integer exit) void { }', 'statement keyword'],
 				'elseif as name'                => ['define function f (integer elseif) void { }', 'statement keyword'],
 				'locals differing in case'      => ['define function f () void { integer total integer Total }', "'total' and 'Total' differ only in case"],
 				'local and parameter case'      => ['define function f (integer n) void { string N }', "'n' and 'N' differ only in case"],
@@ -273,16 +275,16 @@
 				'return only in if'             => ['define function f (integer n) integer { if (n > 0) { return 1 } }', 'Not every path'],
 				'elseif without else'           => ['define function f (integer n) integer { if (n > 0) { return 1 } elseif (n < 0) { return -1 } }', 'Not every path'],
 				'return only in loop'           => ['define function f (integer n) integer { while (n > 0) { return 1 } }', 'Not every path'],
-				'abort outside transaction'     => ['define function f () void { abort }', "only valid inside 'begin transaction"],
-				'statement after abort'         => ['define function f (integer n) void { begin transaction { if (n > 0) { abort } n = 1 } }', "A statement follows 'abort'"],
-				'statement after abort in if'   => ['define function f (integer n) void { begin transaction { if (n > 0) { abort n = 1 } } }', "A statement follows 'abort'"],
-				'abort in a loop'               => ['define function f (integer n) void { begin transaction { while (n > 0) { abort } } }', 'inside a loop'],
-				'nested transactions'           => ['define function f () void { begin transaction { begin transaction { } } }', "can't be nested"],
-				'return inside transaction'     => ['define function f () integer { begin transaction { return 1 } }', "'return' inside 'begin transaction"],
+				'exit outside transaction'     => ['define function f () void { exit }', "only valid inside 'transaction"],
+				'statement after exit'         => ['define function f (integer n) void { transaction { if (n > 0) { exit } n = 1 } }', "A statement follows 'exit'"],
+				'statement after exit in if'   => ['define function f (integer n) void { transaction { if (n > 0) { exit n = 1 } } }', "A statement follows 'exit'"],
+				'exit in a loop'               => ['define function f (integer n) void { transaction { while (n > 0) { exit } } }', 'inside a loop'],
+				'nested transactions'           => ['define function f () void { transaction { transaction { } } }', "can't be nested"],
+				'return inside transaction'     => ['define function f () integer { transaction { return 1 } }', "'return' inside 'transaction"],
 				'break at top level'            => ['define function f () void { break }', "'break' is only valid inside 'while' or 'foreach'"],
 				'continue in if without loop'   => ['define function f (integer n) void { if (n > 0) { continue } }', "'continue' is only valid inside 'while' or 'foreach'"],
-				'break out of transaction'      => ['define function f (integer n) void { while (n > 0) { begin transaction { if (n = 5) { break } } } }', "'break' would leave 'begin transaction { }' without finishing it"],
-				'continue out of transaction'   => ['define function f (integer n) void { while (n > 0) { begin transaction { continue } } }', "'continue' would leave 'begin transaction { }'"],
+				'break out of transaction'      => ['define function f (integer n) void { while (n > 0) { transaction { if (n = 5) { break } } } }', "'break' would leave 'transaction { }' without finishing it"],
+				'continue out of transaction'   => ['define function f (integer n) void { while (n > 0) { transaction { continue } } }', "'continue' would leave 'transaction { }'"],
 			];
 		}
 

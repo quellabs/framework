@@ -105,10 +105,10 @@
 						replace users (banned = true)
 						delete users
 					}
-					begin transaction {
+					transaction {
 						replace u (banned = false) where u.username = who
 						if (who = "") {
-							abort
+							exit
 						}
 					}
 					retrieve (p.title) where p.userId = 5
@@ -429,7 +429,7 @@
 					define function f () void {
 						range of u is UserEntity
 						cursor users = retrieve (u.id)
-						foreach users { begin transaction { delete u where u.id = users.id } }
+						foreach users { transaction { delete u where u.id = users.id } }
 					}
 				', 'while its cursor is open'],
 

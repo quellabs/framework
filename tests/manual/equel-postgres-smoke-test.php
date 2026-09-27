@@ -135,16 +135,16 @@ try {
 	$atomic = $name . '_atomic';
 	defineRoutine($entityManager, $defined, $atomic, '(int uid, int cancel) void {
 		range of u is UserEntity
-		begin transaction {
+		transaction {
 			replace u (banned = true) where u.id = uid
-			if (cancel = 1) { abort }
+			if (cancel = 1) { exit }
 		}
 	}');
 	$connection->begin();
 	try {
 		$connection->execute('UPDATE users SET banned = FALSE WHERE id = :id', ['id' => $id]);
 		$entityManager->executeQuery("{$atomic}(:id, 1)", ['id' => $id]);
-		check($connection->execute('SELECT banned FROM users WHERE id = :id', ['id' => $id])?->fetch('assoc')['banned'] === false, 'Abort did not roll back the atomic block');
+		check($connection->execute('SELECT banned FROM users WHERE id = :id', ['id' => $id])?->fetch('assoc')['banned'] === false, 'Exit did not roll back the atomic block');
 		$entityManager->executeQuery("{$atomic}(:id, 0)", ['id' => $id]);
 		check($connection->execute('SELECT banned FROM users WHERE id = :id', ['id' => $id])?->fetch('assoc')['banned'] === true, 'Atomic block success did not preserve its write');
 	} finally {
@@ -159,7 +159,7 @@ try {
 	$error = $name . '_error';
 	defineRoutine($entityManager, $defined, $error, '(int uid, string duplicateName) void {
 		range of u is UserEntity
-		begin transaction {
+		transaction {
 			replace u (banned = true) where u.id = uid
 			replace u (username = duplicateName) where u.id = uid
 		}

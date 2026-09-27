@@ -151,10 +151,10 @@
 						replace users (banned = true)
 						delete users
 					}
-					begin transaction {
+					transaction {
 						replace u (banned = false) where u.username = who
 						if (who = "") {
-							abort
+							exit
 						}
 					}
 					retrieve (p.title) where p.userId = 5
@@ -486,7 +486,7 @@
 				'transaction in a function' => ['
 					define function f () integer {
 						range of u is UserEntity
-						begin transaction {
+						transaction {
 							delete u where u.id = 1
 						}
 						return 1
@@ -496,7 +496,7 @@
 					define function f () void {
 						range of u is UserEntity
 						cursor users = retrieve (u.id)
-						foreach users { begin transaction { delete users } }
+						foreach users { transaction { delete users } }
 					}
 				', 'while its cursor is open'],
 

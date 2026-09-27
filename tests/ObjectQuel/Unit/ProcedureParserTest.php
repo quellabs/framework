@@ -4,9 +4,9 @@
 
 	use PHPUnit\Framework\Attributes\DataProvider;
 	use PHPUnit\Framework\TestCase;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAbort;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstExit;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAppend;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstBeginTransaction;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstTransaction;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstBreak;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstContinue;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstDeclare;
@@ -28,7 +28,6 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstVariableAssignment;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstWhile;
 	use Quellabs\ObjectQuel\ObjectQuel\Lexer;
-	use Quellabs\ObjectQuel\ObjectQuel\LexerException;
 	use Quellabs\ObjectQuel\ObjectQuel\ParserException;
 	use Quellabs\ObjectQuel\ObjectQuel\AstInterface;
 	use Quellabs\ObjectQuel\ObjectQuel\Routines\ProcedureParser;
@@ -322,22 +321,44 @@
 		}
 
 		/**
-		 * A transaction block parses with an abort inside it.
+		 * A transaction block parses with an exit inside it.
 		 * @return void
 		 */
-		public function testTransactionWithAbort(): void {
+		public function testTransactionWithExit(): void {
 			$body = $this->parse('
 				define function f (string newEmail) void {
-					begin transaction {
+					transaction {
 						if (newEmail = "") {
-							abort
+							exit
 						}
 					}
 				}
 			')->getBody();
 
-			self::assertInstanceOf(AstBeginTransaction::class, $body[0]);
-			self::assertInstanceOf(AstAbort::class, $body[0]->getBody()[0]->getThenBody()[0]);
+			self::assertInstanceOf(AstTransaction::class, $body[0]);
+			self::assertInstanceOf(AstExit::class, $body[0]->getBody()[0]->getThenBody()[0]);
+		}
+
+		/**
+		 * Legacy transaction and rollback words are rejected by the parser.
+		 * @param string $statement Deprecated statement text
+		 * @return void
+		 */
+		#[DataProvider('deprecatedTransactionStatements')]
+		public function testRejectsDeprecatedTransactionStatements(string $statement): void {
+			$this->expectException(ParserException::class);
+			$this->parse("define function f () void { {$statement} }");
+		}
+
+		/**
+		 * Supplies syntax replaced by transaction and exit.
+		 * @return array<string, array{string}>
+		 */
+		public static function deprecatedTransactionStatements(): array {
+			return [
+				'begin transaction' => ['begin transaction { }'],
+				'abort' => ['transaction { abort }'],
+			];
 		}
 
 		/**
@@ -648,11 +669,11 @@
 		}
 
 		/**
-		 * begin must be followed by transaction.
+		 * The old begin keyword is not a routine statement.
 		 * @return void
 		 */
-		public function testRejectsBeginWithoutTransaction(): void {
-			$this->expectException(LexerException::class);
+		public function testRejectsBeginKeyword(): void {
+			$this->expectException(ParserException::class);
 			$this->parse('define function f () void { begin { } }');
 		}
 

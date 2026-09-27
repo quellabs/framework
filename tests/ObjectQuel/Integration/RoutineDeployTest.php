@@ -308,10 +308,10 @@
 						replace users (banned = true)
 						delete users
 					}
-					begin transaction {
+					transaction {
 						replace u (banned = false) where u.username = who
 						if (who = \"\") {
-							abort
+							exit
 						}
 					}
 					retrieve (p.title) where p.userId = 5
@@ -335,9 +335,9 @@
 			self::em()->executeQuery("
 				define function {$this->name} (integer uid, integer cancel) void {
 					range of u is UserEntity
-					begin transaction {
+					transaction {
 						replace u (banned = true) where u.id = uid
-						if (cancel = 1) { abort }
+						if (cancel = 1) { exit }
 					}
 				}
 			");
@@ -374,7 +374,7 @@
 			self::em()->executeQuery("
 				define function {$this->name} (integer uid) void {
 					range of u is UserEntity
-					begin transaction { replace u (banned = true) where u.id = uid }
+					transaction { replace u (banned = true) where u.id = uid }
 				}
 			");
 
@@ -405,7 +405,7 @@
 			self::em()->executeQuery("
 				define function {$this->name} (integer uid) void {
 					range of u is UserEntity
-					begin transaction {
+					transaction {
 						replace u (banned = true) where u.id = uid
 						replace u (username = (string)null) where u.id = uid
 					}
