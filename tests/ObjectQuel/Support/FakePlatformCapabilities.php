@@ -39,6 +39,10 @@
 			return in_array($this->databaseType, ['mysql', 'mariadb'], true);
 		}
 
+		public function supportsSqlServerOffsetFetch(): bool {
+			return $this->databaseType === 'sqlsrv';
+		}
+
 		public function getFulltextIndexStyle(): FulltextIndexStyle {
 			return match ($this->databaseType) {
 				'sqlite' => FulltextIndexStyle::Fts5,
