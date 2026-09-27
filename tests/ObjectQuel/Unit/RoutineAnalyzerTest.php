@@ -220,7 +220,8 @@
 			return [
 				'unknown parameter type'        => ['define function f (number n) void { }', "Unknown type 'number' for parameter"],
 				'query placeholder'             => ["define function f () void { {$range} delete u where u.id = :id }", "':id' placeholders aren't allowed"],
-				'JSON range in retrieve'         => ['define function f () void { range of j is json_source("data.json") retrieve (j.id) }', "JSON ranges aren't supported in routine retrieves"],
+				'JSON range declaration'         => ['define function f () void { range of j is json_source("data.json") }', "JSON ranges aren't supported in routines"],
+				'JSON range in retrieve'         => ['define function f () void { range of j is json_source("data.json") retrieve (j.id) }', "JSON ranges aren't supported in routines"],
 				'void parameter'                => ['define function f (void n) void { }', "Unknown type 'void' for parameter"],
 				'cursor parameter'              => ['define function f (cursor c) void { }', "Unknown type 'cursor' for parameter"],
 				'unknown return type'           => ['define function f () number { return 1 }', "Unknown return type 'number'"],
