@@ -32,6 +32,9 @@
 	use Quellabs\ObjectQuel\ObjectQuel\ParserException;
 	use Quellabs\ObjectQuel\ObjectQuel\AstInterface;
 	use Quellabs\ObjectQuel\ObjectQuel\Routines\ProcedureParser;
+	use Quellabs\ObjectQuel\ObjectQuel\Parser;
+	use Quellabs\ObjectQuel\ObjectQuel\SemanticAnalyzer;
+	use Quellabs\ObjectQuel\Exception\SemanticException;
 
 	/**
 	 * Grammar-level coverage for routine definitions (objectquel-equel-design.md).
@@ -65,14 +68,18 @@
 		}
 
 		/**
-		 * Window pages are nonnegative integers and sizes are positive integers.
+		 * Numeric window values are parsed and validated by the semantic analyzer.
 		 * @param string $window Window clause
 		 * @return void
 		 */
 		#[DataProvider('invalidWindows')]
-		public function testRejectsInvalidWindowValues(string $window): void {
-			$this->expectException(LexerException::class);
-			$this->parse("define function f () void { range of u is UserEntity retrieve (u.id) {$window} }");
+		public function testRejectsInvalidWindowValuesSemantically(string $window): void {
+			$store = $GLOBALS['test_em']->getEntityStore();
+			$retrieve = (new Parser(new Lexer("retrieve (1) {$window}"), $store))->parse();
+			self::assertInstanceOf(AstRetrieve::class, $retrieve);
+
+			$this->expectException(SemanticException::class);
+			(new SemanticAnalyzer($store))->validate($retrieve);
 		}
 
 		/**
