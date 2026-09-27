@@ -99,14 +99,14 @@
 		 */
 		public static function dialectProvider(): array {
 			return [
-				'pgsql'  => ['pgsql', "(TO_TIMESTAMP(UNIX_TIMESTAMP() + 86400) AT TIME ZONE 'UTC')"],
-				'sqlite' => ['sqlite', "datetime(UNIX_TIMESTAMP() + 86400, 'unixepoch')"],
-				'sqlsrv' => ['sqlsrv', "DATEADD(SECOND, CAST(UNIX_TIMESTAMP() + 86400 AS BIGINT) % 86400, DATEADD(DAY, CAST(UNIX_TIMESTAMP() + 86400 AS BIGINT) / 86400, CAST('1970-01-01' AS DATETIME2)))"],
+				'pgsql'  => ['pgsql', "(TO_TIMESTAMP(CAST(EXTRACT(EPOCH FROM NOW()) AS BIGINT) + 86400) AT TIME ZONE 'UTC')"],
+				'sqlite' => ['sqlite', "datetime(CAST(strftime('%s','now') AS INTEGER) + 86400, 'unixepoch')"],
+				'sqlsrv' => ['sqlsrv', "DATEADD(SECOND, CAST(DATEDIFF_BIG(SECOND, '1970-01-01', SYSUTCDATETIME()) + 86400 AS BIGINT) % 86400, DATEADD(DAY, CAST(DATEDIFF_BIG(SECOND, '1970-01-01', SYSUTCDATETIME()) + 86400 AS BIGINT) / 86400, CAST('1970-01-01' AS DATETIME2)))"],
 			];
 		}
 
 		/**
-		 * The fake platform keeps UNIX_TIMESTAMP() for the forward conversion on every engine.
+		 * Checks both forward and reverse conversion in the generated write SQL.
 		 * @dataProvider dialectProvider
 		 * @param string $dialect Target engine
 		 * @param string $expected Converted value

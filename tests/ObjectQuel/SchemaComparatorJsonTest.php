@@ -26,7 +26,7 @@
 		 */
 		private function makePlatform(string $nativeJsonType): PlatformCapabilitiesInterface {
 			$platform = $this->createMock(PlatformCapabilitiesInterface::class);
-			$platform->method('getNativeJsonType')->willReturn($nativeJsonType);
+			$platform->method('getDatabaseType')->willReturn($nativeJsonType === 'jsonb' ? 'pgsql' : 'mysql');
 			return $platform;
 		}
 

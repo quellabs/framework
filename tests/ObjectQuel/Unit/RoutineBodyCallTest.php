@@ -132,7 +132,7 @@
 		 */
 		public static function expressionArguments(): array {
 			return [
-				'pgsql' => ['pgsql', ['CALL "p"("_routine"."n" + 1, "_routine"."n" > 3 AND "_row_users"."id" > 2, "_row_users"."id", (TO_TIMESTAMP(UNIX_TIMESTAMP("_routine"."at") + 86400) AT TIME ZONE \'UTC\'));']],
+				'pgsql' => ['pgsql', ['CALL "p"("_routine"."n" + 1, "_routine"."n" > 3 AND "_row_users"."id" > 2, "_row_users"."id", (TO_TIMESTAMP(CAST(EXTRACT(EPOCH FROM "_routine"."at") AS BIGINT) + 86400) AT TIME ZONE \'UTC\'));']],
 				'mysql' => ['mysql', ['CALL `p`(_v_n + 1, _v_n > 3 AND _row_users$id > 2, _row_users$id, FROM_UNIXTIME(UNIX_TIMESTAMP(_v_at) + 86400));']],
 				'sqlsrv' => ['sqlsrv', [
 					'DECLARE @_arg1 INT;',
@@ -140,7 +140,7 @@
 					'DECLARE @_arg3 DATETIME2;',
 					'SET @_arg1 = @n + 1;',
 					'SET @_arg2 = CASE WHEN @n > 3 AND @_row_users$id > 2 THEN 1 WHEN NOT (@n > 3 AND @_row_users$id > 2) THEN 0 END;',
-					"SET @_arg3 = DATEADD(SECOND, CAST(UNIX_TIMESTAMP(@at) + 86400 AS BIGINT) % 86400, DATEADD(DAY, CAST(UNIX_TIMESTAMP(@at) + 86400 AS BIGINT) / 86400, CAST('1970-01-01' AS DATETIME2)));",
+					"SET @_arg3 = DATEADD(SECOND, CAST(DATEDIFF_BIG(SECOND, '1970-01-01', @at) + 86400 AS BIGINT) % 86400, DATEADD(DAY, CAST(DATEDIFF_BIG(SECOND, '1970-01-01', @at) + 86400 AS BIGINT) / 86400, CAST('1970-01-01' AS DATETIME2)));",
 					'EXEC [dbo].[p] @_arg1, @_arg2, @_row_users$id, @_arg3;',
 				]],
 			];

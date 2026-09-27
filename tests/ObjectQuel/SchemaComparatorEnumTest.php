@@ -27,7 +27,7 @@
 		private function makePlatform(bool $supportsNativeEnums): PlatformCapabilitiesInterface {
 			$platform = $this->createMock(PlatformCapabilitiesInterface::class);
 			$platform->method('supportsNativeEnums')->willReturn($supportsNativeEnums);
-			$platform->method('getNativeJsonType')->willReturn('json');
+			$platform->method('getDatabaseType')->willReturn('mysql');
 			return $platform;
 		}
 

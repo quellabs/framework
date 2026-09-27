@@ -4,14 +4,12 @@
 
 	use PHPUnit\Framework\Attributes\DataProvider;
 	use PHPUnit\Framework\TestCase;
-	use Quellabs\ObjectQuel\Capabilities\PlatformCapabilities;
-	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
-	use Quellabs\ObjectQuel\DatabaseAdapter\SqlIdentifierQuoter;
+	use Quellabs\ObjectQuel\ObjectQuel\Helpers\SqlDialect\SqlIdentifierQuoter;
 	use Quellabs\ObjectQuel\ObjectQuel\Routines\ProcedureCompiler;
 	use Quellabs\ObjectQuel\Tests\Support\FakePlatformCapabilities;
 
 	/**
-	 * String literals, regex patterns and Unix timestamps per engine.
+	 * String literals and regex patterns per engine.
 	 */
 	class SqlLiteralDialectTest extends TestCase {
 
@@ -61,33 +59,6 @@
 			};
 
 			self::assertStringContainsString("IF REGEXP_LIKE(@s, 'a\\.b''', 'i')", $this->compileRegexRoutine($platform));
-		}
-
-		/**
-		 * @return array<string, array{string, string, string}>
-		 */
-		public static function unixTimestamps(): array {
-			return [
-				'sqlsrv' => ['sqlsrv', "DATEDIFF_BIG(SECOND, '1970-01-01', %s)", "DATEDIFF_BIG(SECOND, '1970-01-01', SYSUTCDATETIME())"],
-				'pgsql' => ['pgsql', 'CAST(EXTRACT(EPOCH FROM %s) AS BIGINT)', 'CAST(EXTRACT(EPOCH FROM NOW()) AS BIGINT)'],
-				'mysql' => ['mysql', 'UNIX_TIMESTAMP(%s)', 'UNIX_TIMESTAMP()'],
-			];
-		}
-
-		/**
-		 * @param string $databaseType Target engine
-		 * @param string $column Expected column conversion template
-		 * @param string $now Expected current-time expression
-		 * @return void
-		 */
-		#[DataProvider('unixTimestamps')]
-		public function testUnixTimestamp(string $databaseType, string $column, string $now): void {
-			$adapter = $this->createStub(DatabaseAdapter::class);
-			$adapter->method('getDatabaseType')->willReturn($databaseType);
-			$platform = new PlatformCapabilities($adapter);
-
-			self::assertSame($column, $platform->getUnixTimestampFunction());
-			self::assertSame($now, $platform->getCurrentUnixTimestamp());
 		}
 
 		/**
