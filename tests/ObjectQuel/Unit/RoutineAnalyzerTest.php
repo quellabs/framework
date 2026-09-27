@@ -281,7 +281,7 @@
 				'return inside transaction'     => ['define function f () integer { begin transaction { return 1 } }', "'return' inside 'begin transaction"],
 				'break at top level'            => ['define function f () void { break }', "'break' is only valid inside 'while' or 'foreach'"],
 				'continue in if without loop'   => ['define function f (integer n) void { if (n > 0) { continue } }', "'continue' is only valid inside 'while' or 'foreach'"],
-				'break out of transaction'      => ['define function f (integer n) void { while (n > 0) { begin transaction { if (n = 5) { break } } } }', "'break' would leave 'begin transaction { }' without committing it"],
+				'break out of transaction'      => ['define function f (integer n) void { while (n > 0) { begin transaction { if (n = 5) { break } } } }', "'break' would leave 'begin transaction { }' without finishing it"],
 				'continue out of transaction'   => ['define function f (integer n) void { while (n > 0) { begin transaction { continue } } }', "'continue' would leave 'begin transaction { }'"],
 			];
 		}

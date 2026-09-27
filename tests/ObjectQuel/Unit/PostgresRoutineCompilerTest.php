@@ -158,12 +158,14 @@
 						DELETE FROM "users" as "u" WHERE CURRENT OF "users";
 					END LOOP;
 					CLOSE "users";
-					COMMIT;
-					UPDATE "users" as "u" SET "banned" = false WHERE "u"."username" = "_routine"."who";
-					IF "_routine"."who" = '' THEN
-						ROLLBACK;
-					END IF;
-					COMMIT;
+					BEGIN
+						UPDATE "users" as "u" SET "banned" = false WHERE "u"."username" = "_routine"."who";
+						IF "_routine"."who" = '' THEN
+							RAISE SQLSTATE 'PZ001';
+						END IF;
+					EXCEPTION WHEN SQLSTATE 'PZ001' THEN
+						NULL;
+					END;
 					PERFORM "p"."title" as "title" FROM "posts" as "p" WHERE "p"."user_id" = 5 AND "p"."deleted_at" IS NULL;
 					INSERT INTO "users" ("username", "password", "banned") VALUES ("_routine"."who", 'x', false);
 				END;
@@ -390,19 +392,14 @@
 						}
 						return 1
 					}
-				', "PostgreSQL creates it as a FUNCTION, which can't commit or roll back"],
-
+				', 'only supported in void functions'],
 				'transaction inside a writing loop' => ['
 					define function f () void {
 						range of u is UserEntity
 						cursor users = retrieve (u.id)
-						foreach users {
-							begin transaction {
-								delete users
-							}
-						}
+						foreach users { begin transaction { delete users } }
 					}
-				', "uses a cursor that COMMIT would close"],
+				', 'while its writable cursor is open'],
 
 				'retrieve without a range' => ['
 					define function f () void {

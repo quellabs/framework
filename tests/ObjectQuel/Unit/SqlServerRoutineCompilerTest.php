@@ -121,6 +121,8 @@
 				AS
 				BEGIN
 					DECLARE @_row_users$username VARCHAR(255);
+					DECLARE @_equel_owns_1 BIT;
+					DECLARE @_equel_savepoint_1 VARCHAR(32);
 					DECLARE _cur_users CURSOR LOCAL FORWARD_ONLY DYNAMIC SCROLL_LOCKS FOR SELECT [u].[username] as [username] FROM [users] as [u] WHERE [u].[username] = @who FOR UPDATE;
 					OPEN _cur_users;
 					WHILE 1 = 1
@@ -133,13 +135,25 @@
 					END;
 					CLOSE _cur_users;
 					DEALLOCATE _cur_users;
-					BEGIN TRANSACTION;
-					UPDATE [u] SET [u].[banned] = 0 FROM [users] as [u] WHERE [u].[username] = @who;
-					IF @who = ''
-					BEGIN
-						ROLLBACK TRANSACTION;
+					SET @_equel_owns_1 = CASE WHEN @@TRANCOUNT = 0 THEN 1 ELSE 0 END;
+					IF @_equel_owns_1 = 1 BEGIN TRANSACTION;
+					IF @_equel_owns_1 = 0 BEGIN
+						SET @_equel_savepoint_1 = REPLACE(CONVERT(VARCHAR(36), NEWID()), '-', '');
+						SAVE TRANSACTION @_equel_savepoint_1;
 					END;
-					IF @@TRANCOUNT > 0 COMMIT TRANSACTION;
+					BEGIN TRY
+						UPDATE [u] SET [u].[banned] = 0 FROM [users] as [u] WHERE [u].[username] = @who;
+						IF @who = ''
+						BEGIN
+							IF @_equel_owns_1 = 1 BEGIN ROLLBACK TRANSACTION; END ELSE BEGIN ROLLBACK TRANSACTION @_equel_savepoint_1; END;
+						END;
+						IF @_equel_owns_1 = 1 AND @@TRANCOUNT > 0 COMMIT TRANSACTION;
+					END TRY
+					BEGIN CATCH
+						IF @_equel_owns_1 = 1 AND @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+						ELSE IF @_equel_owns_1 = 0 AND XACT_STATE() = 1 ROLLBACK TRANSACTION @_equel_savepoint_1;
+						THROW;
+					END CATCH;
 					DECLARE _discard_1 CURSOR LOCAL FAST_FORWARD FOR SELECT [p].[title] as [title] FROM [posts] as [p] WHERE [p].[user_id] = 5 AND [p].[deleted_at] IS NULL; OPEN _discard_1; FETCH NEXT FROM _discard_1; WHILE @@FETCH_STATUS = 0 FETCH NEXT FROM _discard_1; CLOSE _discard_1; DEALLOCATE _discard_1;
 					INSERT INTO [users] ([username], [password], [banned]) VALUES (@who, 'x', 0);
 				END;
@@ -410,17 +424,14 @@
 					}
 				', "SQL Server creates it as a FUNCTION, which can't write tables"],
 
+
 				'transaction inside a loop' => ['
 					define function f () void {
 						range of u is UserEntity
 						cursor users = retrieve (u.id)
-						foreach users {
-							begin transaction {
-								delete u where u.id = users.id
-							}
-						}
+						foreach users { begin transaction { delete u where u.id = users.id } }
 					}
-				', "the loop's cursor may not survive the COMMIT"],
+				', 'while its cursor is open'],
 
 				'field of unknown type' => ['
 					define function f () integer {

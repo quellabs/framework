@@ -165,6 +165,7 @@
 			self::assertSame(<<<'SQL'
 				CREATE PROCEDURE `purge`(_v_who VARCHAR(255))
 				MODIFIES SQL DATA
+				COMMENT 'ObjectQuel:atomic-block'
 				BEGIN
 					DECLARE _row_users$username VARCHAR(255);
 					DECLARE _row_users$_pk_id INT UNSIGNED;
@@ -182,12 +183,26 @@
 						DELETE FROM `users` as `u` WHERE `u`.`id` = _row_users$_pk_id;
 					END LOOP _loop1;
 					CLOSE _cur_users;
-					START TRANSACTION;
-					UPDATE `users` as `u` SET `u`.`banned` = false WHERE `u`.`username` = _v_who;
-					IF _v_who = '' THEN
-						ROLLBACK;
-					END IF;
-					COMMIT;
+					IF COALESCE(@_equel_guard_c1a4373e1006096b, 0) <> 0 THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Recursive atomic block is not supported'; END IF;
+					SAVEPOINT equel_c1a4373e1006096b;
+					RELEASE SAVEPOINT equel_c1a4373e1006096b;
+					SAVEPOINT equel_c1a4373e1006096b;
+					SET @_equel_guard_c1a4373e1006096b = 1;
+					_equel_atomic: BEGIN
+						DECLARE EXIT HANDLER FOR SQLEXCEPTION
+						BEGIN
+							SET @_equel_guard_c1a4373e1006096b = 0;
+							ROLLBACK TO SAVEPOINT equel_c1a4373e1006096b;
+							RELEASE SAVEPOINT equel_c1a4373e1006096b;
+							RESIGNAL;
+						END;
+						UPDATE `users` as `u` SET `u`.`banned` = false WHERE `u`.`username` = _v_who;
+						IF _v_who = '' THEN
+							ROLLBACK TO SAVEPOINT equel_c1a4373e1006096b; RELEASE SAVEPOINT equel_c1a4373e1006096b; SET @_equel_guard_c1a4373e1006096b = 0; LEAVE _equel_atomic;
+						END IF;
+						RELEASE SAVEPOINT equel_c1a4373e1006096b;
+						SET @_equel_guard_c1a4373e1006096b = 0;
+					END _equel_atomic;
 					SELECT COUNT(*) INTO _discard FROM (SELECT `p`.`title` as `title` FROM `posts` as `p` WHERE `p`.`user_id` = 5 AND `p`.`deleted_at` IS NULL) AS `_discard`;
 					INSERT INTO `users` (`username`, `password`, `banned`) VALUES (_v_who, 'x', false);
 				END
@@ -476,19 +491,15 @@
 						}
 						return 1
 					}
-				', "MySQL creates it as a FUNCTION, which can't commit or roll back"],
-
+				', 'only supported in void functions'],
 				'transaction inside a loop' => ['
 					define function f () void {
 						range of u is UserEntity
 						cursor users = retrieve (u.id)
-						foreach users {
-							begin transaction {
-								delete users
-							}
-						}
+						foreach users { begin transaction { delete users } }
 					}
-				', "the loop's cursor may not survive the COMMIT"],
+				', 'while its cursor is open'],
+
 			];
 		}
 

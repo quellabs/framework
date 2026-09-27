@@ -306,6 +306,109 @@
 		}
 
 		/**
+		 * An atomic block rolls back only its own writes and leaves the caller's transaction open.
+		 * @return void
+		 */
+		public function testAtomicBlockPreservesCallerTransaction(): void {
+			$connection = self::em()->getConnection();
+			$row = $connection->execute('SELECT id, banned FROM users ORDER BY id LIMIT 1')?->fetch('assoc');
+			self::assertIsArray($row);
+			$id = (int)$row['id'];
+			$original = (int)$row['banned'];
+
+			self::em()->executeQuery("
+				define function {$this->name} (integer uid, integer cancel) void {
+					range of u is UserEntity
+					begin transaction {
+						replace u (banned = true) where u.id = uid
+						if (cancel = 1) { abort }
+					}
+				}
+			");
+
+			$connection->beginTrans();
+
+			try {
+				$connection->execute('UPDATE users SET banned = 0 WHERE id = :id', ['id' => $id]);
+				self::em()->executeQuery("{$this->name}(:id, 1)", ['id' => $id]);
+				self::assertSame(0, (int)$connection->execute('SELECT banned FROM users WHERE id = :id', ['id' => $id])?->fetch('assoc')['banned']);
+				self::em()->executeQuery("{$this->name}(:id, 0)", ['id' => $id]);
+				self::assertSame(1, (int)$connection->execute('SELECT banned FROM users WHERE id = :id', ['id' => $id])?->fetch('assoc')['banned']);
+			} finally {
+				$connection->rollbackTrans();
+			}
+
+			self::assertSame($original, (int)$connection->execute('SELECT banned FROM users WHERE id = :id', ['id' => $id])?->fetch('assoc')['banned']);
+		}
+
+		/**
+		 * An ObjectQuel call supplies the outer transaction; an unwrapped SQL call fails before writes.
+		 * @return void
+		 */
+		public function testAtomicBlockRequiresTransactionForDirectCall(): void {
+			$connection = self::em()->getConnection();
+			$row = $connection->execute('SELECT id, banned FROM users ORDER BY id LIMIT 1')?->fetch('assoc');
+			self::assertIsArray($row);
+			$id = (int)$row['id'];
+			$original = (int)$row['banned'];
+
+			self::em()->executeQuery("
+				define function {$this->name} (integer uid) void {
+					range of u is UserEntity
+					begin transaction { replace u (banned = true) where u.id = uid }
+				}
+			");
+
+			self::assertNull($connection->execute("CALL `{$this->name}`(:id)", ['id' => $id]));
+			self::assertSame($original, (int)$connection->execute('SELECT banned FROM users WHERE id = :id', ['id' => $id])?->fetch('assoc')['banned']);
+
+			try {
+				self::em()->executeQuery("{$this->name}(:id)", ['id' => $id]);
+				self::assertSame(1, (int)$connection->execute('SELECT banned FROM users WHERE id = :id', ['id' => $id])?->fetch('assoc')['banned']);
+			} finally {
+				$connection->execute('UPDATE users SET banned = :banned WHERE id = :id', ['banned' => $original, 'id' => $id]);
+			}
+		}
+
+		/**
+		 * A database error inside the block restores its savepoint without discarding prior caller writes.
+		 * @return void
+		 */
+		public function testAtomicBlockRollsBackOnDatabaseError(): void {
+			$connection = self::em()->getConnection();
+			$row = $connection->execute('SELECT id, banned FROM users ORDER BY id LIMIT 1')?->fetch('assoc');
+			self::assertIsArray($row);
+			$id = (int)$row['id'];
+
+			self::em()->executeQuery("
+				define function {$this->name} (integer uid) void {
+					range of u is UserEntity
+					begin transaction {
+						replace u (banned = true) where u.id = uid
+						replace u (username = (string)null) where u.id = uid
+					}
+				}
+			");
+
+			$connection->beginTrans();
+
+			try {
+				$connection->execute('UPDATE users SET banned = 0 WHERE id = :id', ['id' => $id]);
+
+				try {
+					self::em()->executeQuery("{$this->name}(:id)", ['id' => $id]);
+					self::fail('Expected a NOT NULL violation');
+				} catch (QuelException $exception) {
+					self::assertSame('routine_call_error', $exception->type);
+				}
+
+				self::assertSame(0, (int)$connection->execute('SELECT banned FROM users WHERE id = :id', ['id' => $id])?->fetch('assoc')['banned']);
+			} finally {
+				$connection->rollbackTrans();
+			}
+		}
+
+		/**
 		 * @return void
 		 */
 		public function testDestroysARoutine(): void {
