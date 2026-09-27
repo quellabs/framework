@@ -63,12 +63,16 @@
 		}
 
 		private function isVisible(string $tableName, string $indexName): bool {
+			$mariaDb = self::em()->getConnection()->getDatabaseType() === 'mariadb';
+			$column = $mariaDb ? 'IGNORED' : 'IS_VISIBLE';
 			$stmt = self::em()->getConnection()->execute(
-				"SELECT IS_VISIBLE FROM information_schema.statistics " .
+				"SELECT {$column} FROM information_schema.statistics " .
 				"WHERE table_schema = DATABASE() AND table_name = '{$tableName}' AND index_name = '{$indexName}' LIMIT 1"
 			);
 
-			return $stmt->fetchAssoc()['IS_VISIBLE'] === 'YES';
+			self::assertNotNull($stmt);
+			$row = $stmt->fetchAssoc();
+			return $mariaDb ? $row['IGNORED'] === 'NO' : $row['IS_VISIBLE'] === 'YES';
 		}
 
 		public function testHideMarksTheIndexInvisibleToTheOptimizer(): void {

@@ -153,6 +153,7 @@
 			$this->adapter->execute('
 				CREATE TABLE oq_col_test (
 					payload JSON,
+					plain_text LONGTEXT,
 					data BLOB,
 					big_data LONGBLOB,
 					raw VARBINARY(50)
@@ -162,6 +163,7 @@
 			$columns = $this->adapter->getColumns('oq_col_test');
 
 			self::assertSame('json', $columns['payload']->type);
+			self::assertSame('text', $columns['plain_text']->type);
 			self::assertSame('blob', $columns['data']->type);
 			self::assertSame('blob', $columns['big_data']->type);
 			self::assertSame('binary', $columns['raw']->type);

@@ -162,7 +162,7 @@
 
 			$columns = $this->describeColumns($tableName);
 
-			self::assertSame('int unsigned', $columns['id']);
+			self::assertMatchesRegularExpression('/^int(?:\(\d+\))? unsigned$/', $columns['id']);
 			self::assertSame('varchar(255)', $columns['title']);
 			self::assertSame('text', $columns['content']);
 			self::assertSame('tinyint(1)', $columns['published']);
@@ -196,7 +196,7 @@
 			$columns = $this->describeColumns($tableName);
 
 			// Resolvable column still gets its real type...
-			self::assertSame('int unsigned', $columns['id']);
+			self::assertMatchesRegularExpression('/^int(?:\(\d+\))? unsigned$/', $columns['id']);
 
 			// ...while the computed expression falls back, rather than guessing.
 			self::assertSame('varchar(255)', $columns['literal_col']);
@@ -225,7 +225,7 @@
 
 			$columns = $this->describeColumns($tableName);
 
-			self::assertSame('int unsigned', $columns['id']);
+			self::assertMatchesRegularExpression('/^int(?:\(\d+\))? unsigned$/', $columns['id']);
 			self::assertSame('tinyint(1)', $columns['published']);
 		}
 

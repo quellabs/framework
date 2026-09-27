@@ -130,3 +130,17 @@
 
 	// Test connection
 	$GLOBALS['test_connection'] = $connection;
+
+	// Fixtures for OneToOneInverseOfViaTraversalTest. The test clears and seeds
+	// these tables itself, but an isolated test database must first have them.
+	$connection->execute('CREATE TABLE IF NOT EXISTS `accounts` (
+		`id` INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+		`label` VARCHAR(255) NOT NULL
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
+	$connection->execute('CREATE TABLE IF NOT EXISTS `credentials` (
+		`id` INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+		`secret` VARCHAR(255) NOT NULL,
+		`account_id` INT UNSIGNED NULL,
+		UNIQUE KEY `uq_credentials_account` (`account_id`),
+		CONSTRAINT `fk_credentials_account` FOREIGN KEY (`account_id`) REFERENCES `accounts` (`id`)
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');

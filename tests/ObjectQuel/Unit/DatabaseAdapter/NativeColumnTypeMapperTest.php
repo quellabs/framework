@@ -50,6 +50,7 @@
 		public static function mysqlSimpleTypeMappings(): array {
 			return [
 				'text' => ['text', 'text'],
+				'longtext' => ['longtext', 'text'],
 				'smallint' => ['smallint', 'smallinteger'],
 				'int' => ['int', 'integer'],
 				'bigint' => ['bigint', 'biginteger'],
