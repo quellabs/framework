@@ -156,7 +156,7 @@
 
 		public function testCannotWriteBothUniqueAndFulltextOnTheSameIndex(): void {
 			// `unique` and `fulltext` occupy the same grammar slot right
-			// after `index` (see Rules\CreateIndex) — writing both is a
+			// after `index` (see Rules\Index) — writing both is a
 			// syntax error (QueryExecutor wraps the LexerException as
 			// QuelException), not a semantic rejection.
 			$tableName = $this->nextTableName();
