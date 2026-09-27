@@ -22,8 +22,11 @@
 		 * Asserts that a query throws a QuelException caused by a SemanticException.
 		 * This is the correct way to test semantic validation since SemanticException
 		 * is an internal exception that is always wrapped before reaching the caller.
+		 * @param callable $fn
+		 * @param string|null $message Expected part of the semantic error message
+		 * @return void
 		 */
-		private function assertSemanticError(callable $fn): void {
+		private function assertSemanticError(callable $fn, ?string $message = null): void {
 			try {
 				$fn();
 				$this->fail('Expected QuelException to be thrown');
@@ -33,6 +36,9 @@
 					$e->getPrevious(),
 					'Expected QuelException to wrap a SemanticException'
 				);
+				if ($message !== null) {
+					$this->assertStringContainsString($message, $e->getPrevious()->getMessage());
+				}
 			}
 		}
 		
@@ -184,6 +190,49 @@
 			"));
 		}
 		
+		/**
+		 * Checks subquery fields nested inside projection expressions.
+		 * @return void
+		 */
+		public function testNestedProjectionReferenceToUnexportedSubqueryFieldThrows(): void {
+			$this->assertSemanticError(fn() => $this->em->executeQuery("
+				range of x is (
+					range of y is PostEntity
+					retrieve(y.id)
+				)
+				retrieve(value=x.title + 1)
+			"), 'referenced in retrieve list is not exported');
+		}
+
+		/**
+		 * Checks subquery fields used only in a sort expression.
+		 * @return void
+		 */
+		public function testSortReferenceToUnexportedSubqueryFieldThrows(): void {
+			$this->assertSemanticError(fn() => $this->em->executeQuery("
+				range of x is (
+					range of y is PostEntity
+					retrieve(y.id)
+				)
+				retrieve(x.id) sort by x.title
+			"), 'referenced in SORT BY clause is not exported');
+		}
+
+		/**
+		 * Allows exported fields inside both projection and sort expressions.
+		 * @return void
+		 */
+		public function testExportedSubqueryFieldInExpressionsIsAllowed(): void {
+			$result = $this->em->executeQuery("
+				range of x is (
+					range of y is PostEntity
+					retrieve(y.id)
+				)
+				retrieve(value=x.id + 1) sort by x.id + 1
+			");
+			$this->assertNotNull($result);
+		}
+
 		public function testSubqueryPropertyAccessIsAllowed(): void {
 			// Should not throw — x.id is a valid scalar reference into an explicit projection
 			$result = $this->em->executeQuery("
