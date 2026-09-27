@@ -9,7 +9,7 @@
 
 	/**
 	 * `define function` and `destroy function` through EntityManager::executeQuery(),
-	 * against the suite's MySQL connection.
+	 * against the suite's MySQL or PostgreSQL connection.
 	 */
 	class RoutineDeployTest extends TestCase {
 
@@ -39,6 +39,10 @@
 		 * @return void
 		 */
 		protected function tearDown(): void {
+			if (self::em()->getConnection()->getDatabaseType() === 'pgsql') {
+				self::em()->executeQuery("destroy function {$this->name} if exists");
+				return;
+			}
 			self::em()->getConnection()->execute("DROP FUNCTION IF EXISTS `{$this->name}`");
 			self::em()->getConnection()->execute("DROP PROCEDURE IF EXISTS `{$this->name}`");
 		}
@@ -47,6 +51,14 @@
 		 * @return int Number of functions and procedures named $this->name
 		 */
 		private function routineCount(): int {
+			if (self::em()->getConnection()->getDatabaseType() === 'pgsql') {
+				$statement = self::em()->getConnection()->execute(
+					'SELECT COUNT(*) AS n FROM pg_proc WHERE proname = :name AND pg_function_is_visible(oid)',
+					['name' => $this->name]
+				);
+				self::assertNotNull($statement);
+				return (int)$statement->fetch('assoc')['n'];
+			}
 			$statement = self::em()->getConnection()->execute(
 				'SELECT COUNT(*) AS n FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = DATABASE() AND ROUTINE_NAME = :name',
 				['name' => $this->name]
@@ -63,7 +75,8 @@
 		 * @return int The function's result
 		 */
 		private function callFunction(int $minId): int {
-			$statement = self::em()->getConnection()->execute("SELECT `{$this->name}`(:minId) AS result", ['minId' => $minId]);
+			$quoted = self::em()->getConnection()->getDatabaseType() === 'pgsql' ? '"' . $this->name . '"' : '`' . $this->name . '`';
+			$statement = self::em()->getConnection()->execute("SELECT {$quoted}(:minId) AS result", ['minId' => $minId]);
 			self::assertNotNull($statement);
 			$row = $statement->fetch('assoc');
 			self::assertIsArray($row);
@@ -109,6 +122,9 @@
 		 * @return void
 		 */
 		public function testConfiguredCollationComparesWithColumn(): void {
+			if (self::em()->getConnection()->getDatabaseType() === 'pgsql') {
+				self::markTestSkipped('This case inspects MySQL information_schema.COLUMNS collation metadata.');
+			}
 			$statement = self::em()->getConnection()->execute(
 				"SELECT COLLATION_NAME AS c FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'username'"
 			);
@@ -329,7 +345,7 @@
 			$connection->beginTrans();
 
 			try {
-				$connection->execute('UPDATE users SET banned = 0 WHERE id = :id', ['id' => $id]);
+				$connection->execute('UPDATE users SET banned = FALSE WHERE id = :id', ['id' => $id]);
 				self::em()->executeQuery("{$this->name}(:id, 1)", ['id' => $id]);
 				self::assertSame(0, (int)$connection->execute('SELECT banned FROM users WHERE id = :id', ['id' => $id])?->fetch('assoc')['banned']);
 				self::em()->executeQuery("{$this->name}(:id, 0)", ['id' => $id]);
@@ -346,6 +362,9 @@
 		 * @return void
 		 */
 		public function testAtomicBlockRequiresTransactionForDirectCall(): void {
+			if (self::em()->getConnection()->getDatabaseType() === 'pgsql') {
+				self::markTestSkipped('PostgreSQL atomic blocks work in a direct autocommit CALL.');
+			}
 			$connection = self::em()->getConnection();
 			$row = $connection->execute('SELECT id, banned FROM users ORDER BY id LIMIT 1')?->fetch('assoc');
 			self::assertIsArray($row);
@@ -375,6 +394,9 @@
 		 * @return void
 		 */
 		public function testAtomicBlockRollsBackOnDatabaseError(): void {
+			if (self::em()->getConnection()->getDatabaseType() === 'pgsql') {
+				self::markTestSkipped('The PostgreSQL live smoke test checks errors outside a caller transaction.');
+			}
 			$connection = self::em()->getConnection();
 			$row = $connection->execute('SELECT id, banned FROM users ORDER BY id LIMIT 1')?->fetch('assoc');
 			self::assertIsArray($row);
@@ -393,7 +415,7 @@
 			$connection->beginTrans();
 
 			try {
-				$connection->execute('UPDATE users SET banned = 0 WHERE id = :id', ['id' => $id]);
+				$connection->execute('UPDATE users SET banned = FALSE WHERE id = :id', ['id' => $id]);
 
 				try {
 					self::em()->executeQuery("{$this->name}(:id)", ['id' => $id]);
@@ -423,6 +445,9 @@
 		 * @return void
 		 */
 		public function testDestroyAcceptsNameSharedByFunctionAndProcedure(): void {
+			if (self::em()->getConnection()->getDatabaseType() === 'pgsql') {
+				self::markTestSkipped('This test creates a MySQL procedure using MySQL syntax.');
+			}
 			self::em()->executeQuery("define function {$this->name} () integer { return 1 }");
 			self::em()->getConnection()->execute("CREATE PROCEDURE `{$this->name}`() BEGIN END");
 			self::assertSame(2, $this->routineCount());
@@ -447,7 +472,8 @@
 			}
 
 			self::assertSame(1, $this->routineCount());
-			$statement = self::em()->getConnection()->execute("SELECT `{$this->name}`() AS result");
+			$quoted = self::em()->getConnection()->getDatabaseType() === 'pgsql' ? '"' . $this->name . '"' : '`' . $this->name . '`';
+			$statement = self::em()->getConnection()->execute("SELECT {$quoted}() AS result");
 			self::assertNotNull($statement);
 			self::assertSame(1, (int)$statement->fetch('assoc')['result']);
 		}
@@ -465,7 +491,9 @@
 		 */
 		public function testDestroyingAMissingRoutineFails(): void {
 			$this->expectException(QuelException::class);
-			$this->expectExceptionMessage("Failed to destroy routine '{$this->name}': it doesn't exist");
+			$this->expectExceptionMessage(self::em()->getConnection()->getDatabaseType() === 'pgsql'
+				? "Failed to destroy routine '{$this->name}':"
+				: "Failed to destroy routine '{$this->name}': it doesn't exist");
 			self::em()->executeQuery("destroy function {$this->name}");
 		}
 
