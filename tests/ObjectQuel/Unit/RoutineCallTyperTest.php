@@ -7,6 +7,7 @@
 	use Quellabs\ObjectQuel\DatabaseAdapter\RoutineSignature;
 	use Quellabs\ObjectQuel\Exception\QuelException;
 	use Quellabs\ObjectQuel\Execution\Helpers\RoutineCallTyper;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstCall;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRoutineCall;
 
 	class RoutineCallTyperTest extends TestCase {
@@ -52,5 +53,21 @@
 			$call = new AstRoutineCall('f', []);
 			(new RoutineCallTyper($adapter))->typeCalls($call);
 			self::assertNull($call->getRoutineReturnType());
+		}
+
+		/**
+		 * Standalone calls may invoke procedures, while expression arguments still need their types.
+		 * @return void
+		 */
+		public function testRoutineBodySkipsStandaloneCallButTypesItsExpressionArguments(): void {
+			$adapter = $this->createMock(DatabaseAdapter::class);
+			$adapter->expects(self::once())->method('getRoutineSignature')->with('f')
+				->willReturn(new RoutineSignature(false, 'text'));
+			$argument = new AstRoutineCall('f', []);
+			$statement = new AstCall(new AstRoutineCall('p', [$argument]));
+
+			(new RoutineCallTyper($adapter))->typeCalls($statement, true);
+
+			self::assertSame('text', $argument->getRoutineReturnType());
 		}
 	}
