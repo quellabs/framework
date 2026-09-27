@@ -5,6 +5,7 @@
     <testsuites>
         <testsuite name="ObjectQuel">
             <directory>tests/ObjectQuel</directory>
+            <exclude>tests/ObjectQuel/Integration/DatabaseAdapterPostgresErrorCodeTest.php</exclude>
         </testsuite>
         <testsuite name="Canvas">
             <directory>tests/Canvas</directory>

@@ -3,6 +3,7 @@
     <testsuites>
         <testsuite name="PostgreSQL EQUEL">
             <file>tests/ObjectQuel/Integration/RoutineDeployTest.php</file>
+            <file>tests/ObjectQuel/Integration/UpsertTest.php</file>
             <file>tests/ObjectQuel/Integration/RoutineCallTest.php</file>
             <file>tests/ObjectQuel/Integration/RoutineBodyCallTest.php</file>
             <file>tests/ObjectQuel/Integration/RoutineWindowMySqlTest.php</file>
