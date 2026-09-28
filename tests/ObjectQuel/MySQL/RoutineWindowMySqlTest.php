@@ -70,7 +70,7 @@
 				integer total = 0
 				range of u is UserEntity
 				cursor rows = retrieve (u.id) where {$condition} sort by u.banned, u.id window {$window}
-				foreach rows { total = total + rows.id }
+				foreach (rows as row) { total = total + row.id }
 				return total
 			}");
 

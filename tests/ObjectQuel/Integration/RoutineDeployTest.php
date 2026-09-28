@@ -118,8 +118,8 @@
 					integer total = 0
 					range of u is UserEntity
 					cursor users = retrieve (u.id, name = u.username) where u.id > minId
-					foreach users {
-						if (users.name != \"\") {
+					foreach (users as row) {
+						if (row.name != \"\") {
 							total = total + 1
 						}
 					}
@@ -165,7 +165,7 @@
 						integer total = 0
 						range of u is UserEntity
 						cursor users = retrieve (u.id) where u.username = who
-						foreach users {
+						foreach (users as row) {
 							total = total + 1
 						}
 						return total
@@ -196,7 +196,7 @@
 					range of u is UserEntity
 					cursor users = retrieve (u.id) where u.id > bound
 					bound = minId
-					foreach users {
+					foreach (users as row) {
 						total = total + 1
 						bound = -1
 					}
@@ -227,8 +227,8 @@
 					integer total = 0
 					range of u is UserEntity
 					cursor users = retrieve (u.id, name = u.username) where u.id > 0
-					foreach users {
-						if (users.name = \"\") {
+					foreach (users as row) {
+						if (row.name = \"\") {
 							continue
 						}
 						if (total >= maxCount) {
@@ -330,10 +330,10 @@
 				define function {$this->name} (string who) void {
 					range of u is UserEntity
 					range of p is PostEntity
-					cursor users = retrieve (u.username) where u.username = who
-					foreach users {
-						replace users (banned = true)
-						delete users
+					cursor users = retrieve (u.id, u.username) where u.username = who
+					foreach (users as row) {
+						replace u (banned = true) where u.id = row.id
+						delete u where u.id = row.id
 					}
 					transaction {
 						replace u (banned = false) where u.username = who

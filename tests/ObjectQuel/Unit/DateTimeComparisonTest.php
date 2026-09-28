@@ -162,9 +162,9 @@
 					range of p is PostEntity
 					range of q is PostEntity
 					cursor c = retrieve (at = p.createdAt) where p.createdAt > since
-					foreach c {
-						if (c.at < "2099-01-01") {
-							replace q (title = "x") where q.createdAt < c.at
+					foreach (c as row) {
+						if (row.at < "2099-01-01") {
+							replace q (title = "x") where q.createdAt < row.at
 						}
 					}
 				}

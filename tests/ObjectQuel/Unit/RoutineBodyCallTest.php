@@ -53,8 +53,8 @@
 				define function f (int n) void {
 					range of u is UserEntity
 					cursor users = retrieve (u.id)
-					foreach users {
-						p(n, -1, "s", true, null, users.id)
+					foreach (users as row) {
+						p(n, -1, "s", true, null, row.id)
 					}
 				}
 			');
@@ -158,8 +158,8 @@
 				define function f (int n, datetime at) void {
 					range of u is UserEntity
 					cursor users = retrieve (u.id)
-					foreach users {
-						p(n + 1, n > 3 and users.id > 2, users.id, at + date("1 day"))
+					foreach (users as row) {
+						p(n + 1, n > 3 and row.id > 2, row.id, at + date("1 day"))
 					}
 				}
 			');

@@ -61,7 +61,7 @@
 					integer total = 0
 					range of u is UserEntity
 					cursor users = retrieve (u.id) where u.id > minId
-					foreach users {
+					foreach (users as row) {
 						total = total + 1
 					}
 					return total
@@ -75,7 +75,8 @@
 		}
 
 		/**
-		 * A cursor row field inside its own loop is typed CursorRoot/CursorField, also inside an embedded append.
+		 * A row binding's field inside its own loop is typed CursorRoot/CursorField, also inside an
+		 * embedded append; the identifier is rewritten to the cursor's own name during analysis.
 		 * @return void
 		 */
 		public function testTypesCursorFieldReads(): void {
@@ -84,8 +85,8 @@
 					range of u is UserEntity
 					range of p is PostEntity
 					cursor users = retrieve (name = u.username) where u.banned = false
-					foreach users {
-						append to p (title = users.name, content = "")
+					foreach (users as row) {
+						append to p (title = row.name, content = "")
 					}
 				}
 			');
@@ -99,7 +100,8 @@
 		}
 
 		/**
-		 * The design's nested-loop example: two cursors, current-row deletes, and sequential reuse.
+		 * Two cursors, nested loops writing through their row's own field, and sequential reuse
+		 * of the same cursor's row-binding name across separate (non-nested) loops.
 		 * @return void
 		 */
 		public function testAcceptsNestedLoopsAndSequentialReuse(): void {
@@ -108,14 +110,14 @@
 					range of u is UserEntity
 					cursor banned = retrieve (u.id) where u.banned = true
 					cursor early = retrieve (u.id) where u.id < 5
-					foreach banned {
-						foreach early {
-							delete early
+					foreach (banned as row) {
+						foreach (early as earlyRow) {
+							delete u where u.id = earlyRow.id
 						}
-						delete banned
+						delete u where u.id = row.id
 					}
-					foreach banned {
-						replace banned (banned = false)
+					foreach (banned as row) {
+						replace u (banned = false) where u.id = row.id
 					}
 				}
 			');
@@ -196,13 +198,36 @@
 						}
 					}
 					while (n < 10) {
-						foreach users {
-							if (users.id = n) {
+						foreach (users as row) {
+							if (row.id = n) {
 								continue
 							}
 							break
 						}
 						n = n + 1
+					}
+				}
+			');
+
+			$this->addToAssertionCount(1);
+		}
+
+		/**
+		 * A cursor is a pure read source now: `unique` and an aggregate are both fine in its
+		 * query, since nothing about the loop identifies a single table row to write back to —
+		 * any write inside the loop is an ordinary, independently-targeted replace/delete with
+		 * its own ordinary WHERE.
+		 * @return void
+		 */
+		public function testAcceptsAggregateAndUniqueCursors(): void {
+			$this->analyze('
+				define function f () void {
+					range of u is UserEntity
+					cursor stats = retrieve unique (total = count(u.id)) where u.banned = false
+					foreach (stats as row) {
+						if (row.total > 10) {
+							replace u (banned = true) where u.banned = false
+						}
 					}
 				}
 			');
@@ -259,18 +284,14 @@
 				'cursor as a value'             => ["define function f () void { {$range} cursor c = retrieve (u.id) where u.id > 0 integer x = c }", "Cursor 'c' is not a value"],
 				'cursor reassigned'             => ["define function f () void { {$range} cursor c = retrieve (u.id) where u.id > 0 c = 1 }", "Cursor 'c' can't be reassigned"],
 				'cursor incremented'            => ["define function f () void { {$range} cursor c = retrieve (u.id) where u.id > 0 c += 1 }", "Cursor 'c' can't be reassigned"],
-				'cursor field outside loop'     => ["define function f () integer { {$range} cursor c = retrieve (u.id) where u.id > 0 return c.id }", "can only be read inside 'foreach c'"],
-				'declaration inside foreach'    => ["define function f () void { {$range} cursor c = retrieve (u.id) where u.id > 0 foreach c { integer x } }", 'must be at the top level'],
-				'missing cursor field'          => ["define function f () void { {$range} integer x cursor c = retrieve (u.id) where u.id > 0 foreach c { x = c.username } }", "has no field 'username'"],
-				'foreach over scalar'           => ['define function f (integer n) void { foreach n { } }', "needs a cursor, but 'n' is not one"],
-				'foreach undefined'             => ['define function f () void { foreach c { } }', "Undefined cursor 'c'"],
-				'foreach on open cursor'        => ["define function f () void { {$range} cursor a = retrieve (u.id) where u.id > 0 cursor b = retrieve (u.id) where u.id > 1 foreach a { foreach b { foreach a { } } } }", 'same cursor'],
-				'delete current outside loop'   => ["define function f () void { {$range} cursor c = retrieve (u.id) where u.id > 0 delete c }", "must be inside 'foreach c'"],
-				'delete current on multi-range' => ["define function f () void { {$range} range of p is PostEntity cursor c = retrieve (u.id, p.title) where p.userId = u.id foreach c { delete c } }", 'reads more than one range'],
-				'delete current on unique'      => ["define function f () void { {$range} cursor c = retrieve unique (u.username) where u.id > 0 foreach c { delete c } }", "uses 'retrieve unique'"],
-				'delete current on aggregate'   => ["define function f () void { {$range} cursor c = retrieve (n = count(u.id)) where u.id > 0 foreach c { delete c } }", 'uses an aggregate'],
-				'delete current on relation'    => ["define function f () void { {$range} cursor c = retrieve (u.id, u.posts.title) where u.id > 0 foreach c { delete c } }", "reads related entity 'u.posts.title'"],
-				'replace current unknown column'=> ["define function f () void { {$range} cursor c = retrieve (u.id) where u.id > 0 foreach c { replace c (nickname = \"x\") } }", "'nickname' is not a column"],
+				'cursor field outside loop'     => ["define function f () integer { {$range} cursor c = retrieve (u.id) where u.id > 0 return c.id }", "Cursor 'c' is not a value; read its fields through its 'foreach (c as row)' binding"],
+				'declaration inside foreach'    => ["define function f () void { {$range} cursor c = retrieve (u.id) where u.id > 0 foreach (c as row) { integer x } }", 'must be at the top level'],
+				'missing cursor field'          => ["define function f () void { {$range} integer x cursor c = retrieve (u.id) where u.id > 0 foreach (c as row) { x = row.username } }", "has no field 'username'"],
+				'foreach over scalar'           => ['define function f (integer n) void { foreach (n as row) { } }', "needs a cursor, but 'n' is not one"],
+				'foreach undefined'             => ['define function f () void { foreach (c as row) { } }', "Undefined cursor 'c'"],
+				'foreach on open cursor'        => ["define function f () void { {$range} cursor a = retrieve (u.id) where u.id > 0 cursor b = retrieve (u.id) where u.id > 1 foreach (a as ra) { foreach (b as rb) { foreach (a as ra2) { } } } }", 'same cursor'],
+				'foreach row name reused nested'=> ["define function f () void { {$range} cursor a = retrieve (u.id) where u.id > 0 cursor b = retrieve (u.id) where u.id > 1 foreach (a as row) { foreach (b as row) { } } }", "'row' is already in use"],
+				'foreach row name is its cursor'=> ["define function f () void { {$range} cursor c = retrieve (u.id) where u.id > 0 foreach (c as c) { } }", "'c' is already in use"],
 				'void returns a value'          => ['define function f () void { return 1 }', "A void routine can't return a value"],
 				'return only in if'             => ['define function f (integer n) integer { if (n > 0) { return 1 } }', 'Not every path'],
 				'elseif without else'           => ['define function f (integer n) integer { if (n > 0) { return 1 } elseif (n < 0) { return -1 } }', 'Not every path'],

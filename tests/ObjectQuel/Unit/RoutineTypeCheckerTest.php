@@ -69,7 +69,7 @@
 						string s = ""
 						range of u is UserEntity
 						cursor c = retrieve (u.id, u.banned)
-						foreach c { s = c.banned }
+						foreach (c as row) { s = row.banned }
 					}',
 					"'s' is string, but the assigned value is boolean.",
 				],
@@ -78,7 +78,7 @@
 						integer n = 0
 						range of p is PostEntity
 						cursor c = retrieve (p.id, p.createdAt)
-						foreach c { n = c.createdAt }
+						foreach (c as row) { n = row.createdAt }
 					}',
 					"'n' is integer, but the assigned value is datetime.",
 				],
@@ -107,7 +107,7 @@
 						range of u is UserEntity
 						range of p is PostEntity
 						cursor c = retrieve (u.id, u.username)
-						foreach c { delete p where p.userId = c.username }
+						foreach (c as row) { delete p where p.userId = row.username }
 					}',
 					"A comparison involving 'c.username' mixes numeric and string values.",
 				],
@@ -123,11 +123,11 @@
 					'define function f (int n) void { range of p is PostEntity append to p (title = n, content = "") }',
 					"is string, but the value written to it is numeric.",
 				],
-				'current-row replace value' => [
+				'cursor field replace value' => [
 					'define function f () void {
 						range of u is UserEntity
-						cursor c = retrieve (u.id)
-						foreach c { replace c (banned = 1) }
+						cursor c = retrieve (n = u.id) where u.banned = false
+						foreach (c as row) { replace u (banned = row.n) where u.id = 1 }
 					}',
 					"is boolean, but the value written to it is numeric.",
 				],
@@ -148,7 +148,7 @@
 						integer n = 0
 						range of u is UserEntity
 						cursor c = retrieve (u.id, u.username)
-						foreach c { n = n + c.username }
+						foreach (c as row) { n = n + row.username }
 					}',
 					"has a string operand; '+' only works on numbers and dates.",
 				],
@@ -187,7 +187,7 @@
 						text s = ""
 						range of u is UserEntity
 						cursor c = retrieve (u.id, u.username)
-						foreach c { s = c.username }
+						foreach (c as row) { s = row.username }
 					}',
 				],
 				'datetime column against integer and string' => [
@@ -239,14 +239,14 @@
 				string n = ""
 				range of u is UserEntity
 				cursor c = retrieve (u.username)
-				foreach c { n = c.username }
+				foreach (c as row) { n = row.username }
 			}'));
 
 			self::assertNotEmpty($compiler->compile('define function third () void {
 				integer n = 0
 				range of u is UserEntity
 				cursor c = retrieve (u.id)
-				foreach c { n = c.id }
+				foreach (c as row) { n = row.id }
 			}'));
 		}
 	}

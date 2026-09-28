@@ -127,7 +127,7 @@
 					integer total = 0
 					range of p is PostEntity
 					cursor posts = retrieve (p.id) where p.id = postId and p.createdAt > since
-					foreach posts {
+					foreach (posts as row) {
 						total = total + 1
 					}
 					return total

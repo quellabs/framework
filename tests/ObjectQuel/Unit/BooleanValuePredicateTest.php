@@ -226,8 +226,8 @@
 				define function a (int n) void {
 					range of u is UserEntity
 					cursor cc = retrieve (u.id, k = (u.id > n)) where b(u.id)
-					foreach cc {
-						if (cc.k) {
+					foreach (cc as row) {
+						if (row.k) {
 							replace u (banned = (u.id > n)) where b(u.id)
 						}
 					}

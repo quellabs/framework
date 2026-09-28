@@ -35,9 +35,9 @@
 					integer total = 0
 					range of u is UserEntity
 					cursor users = retrieve (u.id, name = u.username) where u.id > minId
-					foreach users {
-						if (users.name = "x") {
-							total = total + users.id
+					foreach (users as row) {
+						if (row.name = "x") {
+							total = total + row.id
 						} else {
 							total = total + 1
 						}
@@ -72,17 +72,18 @@
 		}
 
 		/**
-		 * Current-row writes use an explicit FOR UPDATE cursor; a return inside the loop closes it first.
+		 * A write inside a loop referencing the row's own fetched field compiles to an ordinary
+		 * UPDATE against that fetched value; PL/pgSQL's implicit FOR ... IN loop needs no CLOSE.
 		 * @return void
 		 */
-		public function testCurrentRowWritesUseExplicitCursor(): void {
+		public function testWriteInsideLoopReferencesRowField(): void {
 			$sql = $this->compile('
 				define function unban_first () integer {
 					range of u is UserEntity
 					cursor users = retrieve (u.id) where u.banned = true
-					foreach users {
-						replace users (banned = false)
-						return users.id
+					foreach (users as row) {
+						replace u (banned = false) where u.id = row.id
+						return row.id
 					}
 					return 0
 				}
@@ -96,18 +97,11 @@
 				<<_routine>>
 				DECLARE
 					"_row_users" RECORD;
-					"users" CURSOR FOR SELECT "u"."id" as "id" FROM "users" as "u" WHERE "u"."banned" = true FOR UPDATE;
 				BEGIN
-					"users" := NULL;
-					OPEN "users";
-					LOOP
-						FETCH "users" INTO "_row_users";
-						EXIT WHEN NOT FOUND;
-						UPDATE "users" as "u" SET "banned" = false WHERE CURRENT OF "users";
-						CLOSE "users";
+					FOR "_row_users" IN SELECT "u"."id" as "id" FROM "users" as "u" WHERE "u"."banned" = true LOOP
+						UPDATE "users" as "u" SET "banned" = false WHERE "u"."id" = "_row_users"."id";
 						RETURN "_row_users"."id";
 					END LOOP;
-					CLOSE "users";
 					RETURN 0;
 				END;
 				$body$;
@@ -115,7 +109,8 @@
 		}
 
 		/**
-		 * A void routine becomes a procedure; statements, current-row deletes (soft or not) and transactions lower in place.
+		 * A void routine becomes a procedure; statements, deletes (soft or not) referencing the loop's
+		 * row binding, and transactions lower in place.
 		 * @return void
 		 */
 		public function testProcedureStatements(): void {
@@ -124,9 +119,9 @@
 					range of u is UserEntity
 					range of p is PostEntity
 					cursor users = retrieve (u.id) where u.username = who
-					foreach users {
-						delete p where p.userId = users.id
-						delete users
+					foreach (users as row) {
+						delete p where p.userId = row.id
+						delete u where u.id = row.id
 					}
 					transaction {
 						replace u (banned = false) where u.username = who
@@ -147,17 +142,11 @@
 				DECLARE
 					"who" VARCHAR(255) := $1;
 					"_row_users" RECORD;
-					"users" CURSOR FOR SELECT "u"."id" as "id" FROM "users" as "u" WHERE "u"."username" = "_routine"."who" FOR UPDATE;
 				BEGIN
-					"users" := NULL;
-					OPEN "users";
-					LOOP
-						FETCH "users" INTO "_row_users";
-						EXIT WHEN NOT FOUND;
+					FOR "_row_users" IN SELECT "u"."id" as "id" FROM "users" as "u" WHERE "u"."username" = "_routine"."who" LOOP
 						UPDATE "posts" as "p" SET "deleted_at" = NOW() WHERE "p"."user_id" = "_row_users"."id";
-						DELETE FROM "users" as "u" WHERE CURRENT OF "users";
+						DELETE FROM "users" as "u" WHERE "u"."id" = "_row_users"."id";
 					END LOOP;
-					CLOSE "users";
 					BEGIN
 						UPDATE "users" as "u" SET "banned" = false WHERE "u"."username" = "_routine"."who";
 						IF "_routine"."who" = '' THEN
@@ -177,7 +166,7 @@
 			$sql = $this->compile('define function f () void {
 				range of u is UserEntity
 				cursor c = retrieve (u.id) window 3, 2
-				foreach c { }
+				foreach (c as row) { }
 				retrieve (u.id) window 0
 			}');
 
@@ -215,16 +204,16 @@
 					range of u is UserEntity
 					cursor readers = retrieve (u.id, name = u.username) where u.id > minId sort by name desc, abs(u.id - minId)
 					cursor writers = retrieve (u.id) where u.banned = true sort by u.id desc
-					foreach readers {
+					foreach (readers as row) {
 					}
-					foreach writers {
-						replace writers (banned = false)
+					foreach (writers as row) {
+						replace u (banned = false) where u.id = row.id
 					}
 				}
 			');
 
 			self::assertStringContainsString('FOR "_row_readers" IN SELECT "u"."id" as "id","u"."username" as "name" FROM "users" as "u" WHERE "u"."id" > "_routine"."minId" ORDER BY "u"."username" desc,"abs"("u"."id" - "_routine"."minId") LOOP', $sql);
-			self::assertStringContainsString('"writers" CURSOR FOR SELECT "u"."id" as "id" FROM "users" as "u" WHERE "u"."banned" = true ORDER BY "u"."id" desc FOR UPDATE;', $sql);
+			self::assertStringContainsString('FOR "_row_writers" IN SELECT "u"."id" as "id" FROM "users" as "u" WHERE "u"."banned" = true ORDER BY "u"."id" desc LOOP', $sql);
 		}
 
 		/**
@@ -236,7 +225,7 @@
 				define function f () void {
 					range of p is PostEntity
 					cursor posts = retrieve (p.id) sort by p.deletedAt
-					foreach posts {
+					foreach (posts as row) {
 					}
 				}
 			');
@@ -320,17 +309,17 @@
 							break
 						}
 					}
-					foreach ids {
-						if (ids.id = n) {
+					foreach (ids as row) {
+						if (row.id = n) {
 							continue
 						}
 						break
 					}
-					foreach banned {
-						if (banned.id = n) {
+					foreach (banned as row) {
+						if (row.id = n) {
 							continue
 						}
-						replace banned (banned = false)
+						replace u (banned = false) where u.id = row.id
 						break
 					}
 				}
@@ -345,7 +334,6 @@
 					"n" INTEGER := $1;
 					"_row_ids" RECORD;
 					"_row_banned" RECORD;
-					"banned" CURSOR FOR SELECT "u"."id" as "id" FROM "users" as "u" WHERE "u"."banned" = true FOR UPDATE;
 				BEGIN
 					WHILE "_routine"."n" > 0 LOOP
 						"n" := "_routine"."n" - 1;
@@ -362,21 +350,38 @@
 						END IF;
 						EXIT;
 					END LOOP;
-					"banned" := NULL;
-					OPEN "banned";
-					LOOP
-						FETCH "banned" INTO "_row_banned";
-						EXIT WHEN NOT FOUND;
+					FOR "_row_banned" IN SELECT "u"."id" as "id" FROM "users" as "u" WHERE "u"."banned" = true LOOP
 						IF "_row_banned"."id" = "_routine"."n" THEN
 							CONTINUE;
 						END IF;
-						UPDATE "users" as "u" SET "banned" = false WHERE CURRENT OF "banned";
+						UPDATE "users" as "u" SET "banned" = false WHERE "u"."id" = "_row_banned"."id";
 						EXIT;
 					END LOOP;
-					CLOSE "banned";
 				END;
 				$body$;
 				SQL, $sql);
+		}
+
+		/**
+		 * A `transaction` inside `foreach` is fine on PostgreSQL: PL/pgSQL's implicit `FOR ... IN`
+		 * loop holds no explicit cursor for a subtransaction rollback to invalidate.
+		 * @return void
+		 */
+		public function testTransactionInsideForeachIsSupported(): void {
+			$sql = $this->compile('
+				define function f () void {
+					range of u is UserEntity
+					cursor users = retrieve (u.id)
+					foreach (users as row) {
+						transaction {
+							delete u where u.id = row.id
+						}
+					}
+				}
+			');
+
+			self::assertStringContainsString('FOR "_row_users" IN SELECT "u"."id" as "id" FROM "users" as "u" LOOP', $sql);
+			self::assertStringContainsString('DELETE FROM "users" as "u" WHERE "u"."id" = "_row_users"."id";', $sql);
 		}
 
 		/**
@@ -393,14 +398,6 @@
 						return 1
 					}
 				', 'only supported in void functions'],
-				'transaction inside a writing loop' => ['
-					define function f () void {
-						range of u is UserEntity
-						cursor users = retrieve (u.id)
-						foreach users { transaction { delete users } }
-					}
-				', 'while its writable cursor is open'],
-
 				'retrieve without a range' => ['
 					define function f () void {
 						retrieve (x = 1)

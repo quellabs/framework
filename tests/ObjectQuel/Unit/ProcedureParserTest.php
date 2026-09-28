@@ -11,7 +11,6 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstContinue;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstDeclare;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstDelete;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstDeleteCurrent;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstFactor;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstForeach;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIdentifier;
@@ -19,7 +18,6 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstNumber;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDeclaration;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstReplace;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstReplaceCurrent;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstReturn;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRoutineDefinition;
@@ -116,7 +114,7 @@
 
 					range of u is UserEntity
 					cursor activeUsers = retrieve (u.id) where u.id = regionId and u.id > 0
-					foreach activeUsers {
+					foreach (activeUsers as row) {
 						active_count = active_count + 1
 					}
 
@@ -144,6 +142,7 @@
 
 			self::assertInstanceOf(AstForeach::class, $body[3]);
 			self::assertSame('activeUsers', $body[3]->getCursorName());
+			self::assertSame('row', $body[3]->getRowName());
 			self::assertInstanceOf(AstVariableAssignment::class, $body[3]->getBody()[0]);
 
 			self::assertInstanceOf(AstReturn::class, $body[4]);
@@ -276,17 +275,18 @@
 		}
 
 		/**
-		 * replace/delete on a cursor are current-row writes; on a range they are ordinary writes.
+		 * replace/delete always target a declared range, inside a loop or not; there is no
+		 * separate current-row form — the target must be a range name, not a cursor name.
 		 * @return void
 		 */
-		public function testCurrentTupleWritesVersusRangeWrites(): void {
+		public function testReplaceAndDeleteAlwaysTargetADeclaredRange(): void {
 			$body = $this->parse('
 				define function f () void {
 					range of u is UserEntity
 					cursor users = retrieve (u.id) where u.id > 0
-					foreach users {
-						replace users (id = 5)
-						delete users
+					foreach (users as row) {
+						replace u (id = 5) where u.id = row.id
+						delete u where u.id = row.id
 					}
 					replace u (id = 1) where u.id = 2
 					delete u where u.id = 3
@@ -294,14 +294,47 @@
 			')->getBody();
 
 			$loopBody = $body[2]->getBody();
-			self::assertInstanceOf(AstReplaceCurrent::class, $loopBody[0]);
-			self::assertSame('users', $loopBody[0]->getCursorName());
-			self::assertCount(1, $loopBody[0]->getAssignments());
-			self::assertInstanceOf(AstDeleteCurrent::class, $loopBody[1]);
-			self::assertSame('users', $loopBody[1]->getCursorName());
+			self::assertInstanceOf(AstReplace::class, $loopBody[0]);
+			self::assertInstanceOf(AstDelete::class, $loopBody[1]);
 
 			self::assertInstanceOf(AstReplace::class, $body[3]);
 			self::assertInstanceOf(AstDelete::class, $body[4]);
+		}
+
+		/**
+		 * A cursor's own name is never a valid replace/delete target: it isn't a declared range.
+		 * @return void
+		 */
+		public function testReplaceOnACursorNameIsRejected(): void {
+			$this->expectException(ParserException::class);
+			$this->expectExceptionMessage("Undefined range reference 'users' in replace statement");
+			$this->parse('
+				define function f () void {
+					range of u is UserEntity
+					cursor users = retrieve (u.id) where u.id > 0
+					foreach (users as row) {
+						replace users (id = 5)
+					}
+				}
+			');
+		}
+
+		/**
+		 * Same rejection for delete.
+		 * @return void
+		 */
+		public function testDeleteOnACursorNameIsRejected(): void {
+			$this->expectException(ParserException::class);
+			$this->expectExceptionMessage("Undefined range reference 'users' in delete statement");
+			$this->parse('
+				define function f () void {
+					range of u is UserEntity
+					cursor users = retrieve (u.id) where u.id > 0
+					foreach (users as row) {
+						delete users
+					}
+				}
+			');
 		}
 
 		/**
@@ -373,7 +406,7 @@
 					while (n > 0) {
 						continue
 					}
-					foreach users {
+					foreach (users as row) {
 						if (n > 1) {
 							break
 						} else {
@@ -519,11 +552,11 @@
 					range of u is UserEntity
 					cursor a = retrieve (u.id) where u.id > 0
 					cursor b = retrieve (u.id) where u.id < 5
-					foreach a {
-						foreach b {
-							delete b
+					foreach (a as rowA) {
+						foreach (b as rowB) {
+							delete u where u.id = rowB.id
 						}
-						delete a
+						delete u where u.id = rowA.id
 					}
 				}
 			')->getBody();
@@ -531,6 +564,7 @@
 			$inner = $body[3]->getBody()[0];
 			self::assertInstanceOf(AstForeach::class, $inner);
 			self::assertSame('b', $inner->getCursorName());
+			self::assertSame('rowB', $inner->getRowName());
 		}
 
 		/**

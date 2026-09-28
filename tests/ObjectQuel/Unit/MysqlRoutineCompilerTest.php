@@ -51,8 +51,8 @@
 					string found = ""
 					range of u is UserEntity
 					cursor users = retrieve (u.id, u.username) where u.username = who and u.id > minId
-					foreach users {
-						found = users.username
+					foreach (users as row) {
+						found = row.username
 					}
 					return found
 				}
@@ -86,9 +86,9 @@
 					boolean found = false
 					range of u is UserEntity
 					cursor users = retrieve (u.id, name = u.username, flag = u.banned) where u.id > minId
-					foreach users {
-						if (users.name = "x" and users.flag) {
-							total = total + users.id
+					foreach (users as row) {
+						if (row.name = "x" and row.flag) {
+							total = total + row.id
 							found = total > 3
 						} else {
 						}
@@ -137,7 +137,8 @@
 		}
 
 		/**
-		 * Current-row writes match the primary key, which the cursor fetches under a generated alias.
+		 * A write inside a loop is an ordinary replace/delete with its own explicit where,
+		 * referencing the loop's row binding just like any other routine variable.
 		 * @return void
 		 */
 		public function testProcedureStatements(): void {
@@ -145,11 +146,11 @@
 				define function purge (string who) void {
 					range of u is UserEntity
 					range of p is PostEntity
-					cursor users = retrieve (u.username) where u.username = who
-					foreach users {
+					cursor users = retrieve (u.id, u.username) where u.username = who
+					foreach (users as row) {
 						delete p where p.userId = 5
-						replace users (banned = true)
-						delete users
+						replace u (banned = true) where u.id = row.id
+						delete u where u.id = row.id
 					}
 					transaction {
 						replace u (banned = false) where u.username = who
@@ -167,20 +168,20 @@
 				MODIFIES SQL DATA
 				COMMENT 'ObjectQuel:atomic-block'
 				BEGIN
+					DECLARE _row_users$id INT UNSIGNED;
 					DECLARE _row_users$username VARCHAR(255);
-					DECLARE _row_users$_pk_id INT UNSIGNED;
 					DECLARE _done BOOLEAN;
 					DECLARE _discard INT;
-					DECLARE _cur_users CURSOR FOR SELECT `u`.`username` as `username`,`u`.`id` as `_pk_id` FROM `users` as `u` WHERE `u`.`username` = _v_who;
+					DECLARE _cur_users CURSOR FOR SELECT `u`.`id` as `id`,`u`.`username` as `username` FROM `users` as `u` WHERE `u`.`username` = _v_who;
 					DECLARE CONTINUE HANDLER FOR NOT FOUND SET _done = TRUE;
 					OPEN _cur_users;
 					_loop1: LOOP
 						SET _done = FALSE;
-						FETCH _cur_users INTO _row_users$username, _row_users$_pk_id;
+						FETCH _cur_users INTO _row_users$id, _row_users$username;
 						IF _done THEN LEAVE _loop1; END IF;
 						UPDATE `posts` as `p` SET `p`.`deleted_at` = NOW() WHERE `p`.`user_id` = 5;
-						UPDATE `users` as `u` SET `u`.`banned` = true WHERE `u`.`id` = _row_users$_pk_id;
-						DELETE FROM `users` as `u` WHERE `u`.`id` = _row_users$_pk_id;
+						UPDATE `users` as `u` SET `u`.`banned` = true WHERE `u`.`id` = _row_users$id;
+						DELETE FROM `users` as `u` WHERE `u`.`id` = _row_users$id;
 					END LOOP _loop1;
 					CLOSE _cur_users;
 					IF COALESCE(@_equel_guard_c1a4373e1006096b, 0) <> 0 THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Recursive atomic block is not supported'; END IF;
@@ -210,16 +211,17 @@
 		}
 
 		/**
-		 * A primary key the cursor already selects is reused instead of added.
+		 * A write inside a loop referencing the row's own fetched field compiles to the
+		 * variable that field was fetched into.
 		 * @return void
 		 */
-		public function testSelectedPrimaryKeyIsReused(): void {
+		public function testWriteInsideLoopReferencesRowField(): void {
 			$statements = $this->compile('
 				define function unban () void {
 					range of u is UserEntity
 					cursor users = retrieve (u.id, u.username) where u.banned
-					foreach users {
-						replace users (banned = false)
+					foreach (users as row) {
+						replace u (banned = false) where u.id = row.id
 					}
 				}
 			');
@@ -236,14 +238,14 @@
 			$statements = $this->compile('
 				define function unban () void {
 					range of u is UserEntity
-					cursor users = retrieve (name = u.username) where u.banned sort by name desc, u.id
-					foreach users {
-						replace users (banned = false)
+					cursor users = retrieve (name = u.username, u.id) where u.banned sort by name desc, u.id
+					foreach (users as row) {
+						replace u (banned = false) where u.id = row.id
 					}
 				}
 			');
 
-			self::assertStringContainsString('DECLARE _cur_users CURSOR FOR SELECT `u`.`username` as `name`,`u`.`id` as `_pk_id` FROM `users` as `u` WHERE `u`.`banned` ORDER BY `u`.`username` desc,`u`.`id`;', $statements[0]);
+			self::assertStringContainsString('DECLARE _cur_users CURSOR FOR SELECT `u`.`username` as `name`,`u`.`id` as `id` FROM `users` as `u` WHERE `u`.`banned` ORDER BY `u`.`username` desc,`u`.`id`;', $statements[0]);
 		}
 
 		/**
@@ -254,7 +256,7 @@
 			$statements = $this->compile('define function f () void {
 				range of u is UserEntity
 			cursor c = retrieve (u.id) sort by u.id window 0, 5
-			foreach c { }
+			foreach (c as row) { }
 			retrieve (u.id) window 1 using window_size 3
 			retrieve (u.id) window 1
 		}');
@@ -289,9 +291,9 @@
 					range of p is PostEntity
 					cursor users = retrieve (u.id)
 					cursor posts = retrieve (p.id)
-					foreach users {
-						foreach posts {
-							delete p where p.id = posts.id
+					foreach (users as ru) {
+						foreach (posts as rp) {
+							delete p where p.id = rp.id
 						}
 					}
 				}
@@ -357,17 +359,17 @@
 							break
 						}
 					}
-					foreach ids {
-						if (ids.id = n) {
+					foreach (ids as ri) {
+						if (ri.id = n) {
 							continue
 						}
 						break
 					}
-					foreach banned {
-						if (banned.id = n) {
+					foreach (banned as rb) {
+						if (rb.id = n) {
 							continue
 						}
-						replace banned (banned = false)
+						replace u (banned = false) where u.id = rb.id
 						break
 					}
 				}
@@ -430,8 +432,8 @@
 					range of u is UserEntity
 					cursor ids = retrieve (u.id) where u.id > 0
 					while (n > 0) {
-						foreach ids {
-							if (ids.id = n) {
+						foreach (ids as row) {
+							if (row.id = n) {
 								continue
 							}
 							total = total + 1
@@ -496,7 +498,7 @@
 					define function f () void {
 						range of u is UserEntity
 						cursor users = retrieve (u.id)
-						foreach users { transaction { delete users } }
+						foreach (users as row) { transaction { delete u where u.id = row.id } }
 					}
 				', 'while its cursor is open'],
 

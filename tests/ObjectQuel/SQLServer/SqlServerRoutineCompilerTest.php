@@ -35,9 +35,9 @@
 					boolean found = false
 					range of u is UserEntity
 					cursor users = retrieve (u.id, name = u.username, flag = u.banned) where u.id > minId
-					foreach users {
-						if (users.name = "x" and users.flag) {
-							total = total + users.id
+					foreach (users as row) {
+						if (row.name = "x" and row.flag) {
+							total = total + row.id
 							found = total > 3
 						} else {
 						}
@@ -90,8 +90,8 @@
 		}
 
 		/**
-		 * Current-row writes use a SCROLL_LOCKS FOR UPDATE cursor and unaliased WHERE CURRENT OF statements;
-		 * other writes declare their alias in FROM.
+		 * Every cursor is a STATIC READ_ONLY loop; a write inside it is an ordinary
+		 * replace/delete declaring its own alias in FROM, referencing the loop's row binding.
 		 * @return void
 		 */
 		public function testProcedureStatements(): void {
@@ -99,11 +99,11 @@
 				define function purge (string who) void {
 					range of u is UserEntity
 					range of p is PostEntity
-					cursor users = retrieve (u.username) where u.username = who
-					foreach users {
+					cursor users = retrieve (u.id, u.username) where u.username = who
+					foreach (users as row) {
 						delete p where p.userId = 5
-						replace users (banned = true)
-						delete users
+						replace u (banned = true) where u.id = row.id
+						delete u where u.id = row.id
 					}
 					transaction {
 						replace u (banned = false) where u.username = who
@@ -120,18 +120,19 @@
 				CREATE PROCEDURE [dbo].[purge] @who VARCHAR(255)
 				AS
 				BEGIN
+					DECLARE @_row_users$id INT;
 					DECLARE @_row_users$username VARCHAR(255);
 					DECLARE @_equel_owns_1 BIT;
 					DECLARE @_equel_savepoint_1 VARCHAR(32);
-					DECLARE _cur_users CURSOR LOCAL FORWARD_ONLY DYNAMIC SCROLL_LOCKS FOR SELECT [u].[username] as [username] FROM [users] as [u] WHERE [u].[username] = @who FOR UPDATE;
+					DECLARE _cur_users CURSOR LOCAL FORWARD_ONLY STATIC READ_ONLY FOR SELECT [u].[id] as [id],[u].[username] as [username] FROM [users] as [u] WHERE [u].[username] = @who;
 					OPEN _cur_users;
 					WHILE 1 = 1
 					BEGIN
-						FETCH NEXT FROM _cur_users INTO @_row_users$username;
+						FETCH NEXT FROM _cur_users INTO @_row_users$id, @_row_users$username;
 						IF @@FETCH_STATUS <> 0 BREAK;
 						UPDATE [p] SET [p].[deleted_at] = SYSDATETIME() FROM [posts] as [p] WHERE [p].[user_id] = 5;
-						UPDATE [users] SET [banned] = 1 WHERE CURRENT OF _cur_users;
-						DELETE FROM [users] WHERE CURRENT OF _cur_users;
+						UPDATE [u] SET [u].[banned] = 1 FROM [users] as [u] WHERE [u].[id] = @_row_users$id;
+						DELETE [u] FROM [users] as [u] WHERE [u].[id] = @_row_users$id;
 					END;
 					CLOSE _cur_users;
 					DEALLOCATE _cur_users;
@@ -191,7 +192,7 @@
 			$sql = $this->compile('define function f () void {
 				range of u is UserEntity
 				cursor c = retrieve (u.id) sort by u.id desc window 1, 4
-				foreach c { }
+				foreach (c as row) { }
 				retrieve (u.id) sort by u.id window 0
 			}');
 
@@ -208,7 +209,7 @@
 			$this->compile('define function f () void {
 				range of u is UserEntity
 				cursor c = retrieve (u.id) window 0, 2
-				foreach c { }
+				foreach (c as row) { }
 			}');
 		}
 
@@ -257,8 +258,8 @@
 				define function first_id () integer {
 					range of u is UserEntity
 					cursor users = retrieve (u.id)
-					foreach users {
-						return users.id
+					foreach (users as row) {
+						return row.id
 					}
 					return 0
 				}
@@ -277,16 +278,16 @@
 					range of u is UserEntity
 					cursor readers = retrieve (u.id) sort by u.username
 					cursor writers = retrieve (u.id) where u.banned = true sort by u.id desc
-					foreach readers {
+					foreach (readers as row) {
 					}
-					foreach writers {
-						replace writers (banned = false)
+					foreach (writers as row) {
+						replace u (banned = false) where u.id = row.id
 					}
 				}
 			');
 
 			self::assertStringContainsString('DECLARE _cur_readers CURSOR LOCAL FORWARD_ONLY STATIC READ_ONLY FOR SELECT [u].[id] as [id] FROM [users] as [u] ORDER BY [u].[username];', $sql);
-			self::assertStringContainsString('DECLARE _cur_writers CURSOR LOCAL FORWARD_ONLY DYNAMIC SCROLL_LOCKS FOR SELECT [u].[id] as [id] FROM [users] as [u] WHERE [u].[banned] = 1 ORDER BY [u].[id] desc FOR UPDATE;', $sql);
+			self::assertStringContainsString('DECLARE _cur_writers CURSOR LOCAL FORWARD_ONLY STATIC READ_ONLY FOR SELECT [u].[id] as [id] FROM [users] as [u] WHERE [u].[banned] = 1 ORDER BY [u].[id] desc;', $sql);
 		}
 
 		/**
@@ -344,17 +345,17 @@
 							break
 						}
 					}
-					foreach ids {
-						if (ids.id = n) {
+					foreach (ids as row) {
+						if (row.id = n) {
 							continue
 						}
 						break
 					}
-					foreach banned {
-						if (banned.id = n) {
+					foreach (banned as row) {
+						if (row.id = n) {
 							continue
 						}
-						replace banned (banned = false)
+						replace u (banned = false) where u.id = row.id
 						break
 					}
 				}
@@ -392,7 +393,7 @@
 					END;
 					CLOSE _cur_ids;
 					DEALLOCATE _cur_ids;
-					DECLARE _cur_banned CURSOR LOCAL FORWARD_ONLY DYNAMIC SCROLL_LOCKS FOR SELECT [u].[id] as [id] FROM [users] as [u] WHERE [u].[banned] = 1 FOR UPDATE;
+					DECLARE _cur_banned CURSOR LOCAL FORWARD_ONLY STATIC READ_ONLY FOR SELECT [u].[id] as [id] FROM [users] as [u] WHERE [u].[banned] = 1;
 					OPEN _cur_banned;
 					WHILE 1 = 1
 					BEGIN
@@ -402,7 +403,7 @@
 						BEGIN
 							CONTINUE;
 						END;
-						UPDATE [users] SET [banned] = 0 WHERE CURRENT OF _cur_banned;
+						UPDATE [u] SET [u].[banned] = 0 FROM [users] as [u] WHERE [u].[id] = @_row_banned$id;
 						BREAK;
 					END;
 					CLOSE _cur_banned;
@@ -429,7 +430,7 @@
 					define function f () void {
 						range of u is UserEntity
 						cursor users = retrieve (u.id)
-						foreach users { transaction { delete u where u.id = users.id } }
+						foreach (users as row) { transaction { delete u where u.id = row.id } }
 					}
 				', 'while its cursor is open'],
 

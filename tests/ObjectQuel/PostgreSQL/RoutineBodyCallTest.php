@@ -153,8 +153,8 @@
 			$outer = $this->define('outer', "(int uid) void {
 				range of u is UserEntity
 				cursor users = retrieve (u.id, name = {$suffix}(u.username)) where u.id = uid
-				foreach users {
-					{$rename}(users.id, users.name)
+				foreach (users as row) {
+					{$rename}(row.id, row.name)
 				}
 			}");
 
