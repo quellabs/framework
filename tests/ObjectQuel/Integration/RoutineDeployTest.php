@@ -478,15 +478,15 @@
 		}
 
 		/**
-		 * A procedure cannot be defined through EQUEL when a function already has its name.
+		 * A void function cannot be defined when a value-returning function has its name.
 		 * @return void
 		 */
-		public function testDifferentRoutineKindCannotReuseName(): void {
+		public function testVoidFunctionCannotReuseValueReturningFunctionName(): void {
 			self::em()->executeQuery("define function {$this->name} () integer { return 1 }");
 
 			try {
 				self::em()->executeQuery("define function {$this->name} () void { }");
-				self::fail('Defining a procedure with an existing function name must fail');
+				self::fail('Defining a void function with an existing function name must fail');
 			} catch (QuelException $exception) {
 				self::assertSame('routine_definition_error', $exception->type);
 				self::assertStringContainsString('already exists', $exception->getMessage());
@@ -497,6 +497,25 @@
 			$statement = self::em()->getConnection()->execute("SELECT {$quoted}() AS result");
 			self::assertNotNull($statement);
 			self::assertSame(1, (int)$statement->fetch('assoc')['result']);
+		}
+
+		/**
+		 * A value-returning definition cannot replace a void function with the same name.
+		 * @return void
+		 */
+		public function testValueReturningFunctionCannotReuseVoidFunctionName(): void {
+			self::em()->executeQuery("define function {$this->name} () void { }");
+
+			try {
+				self::em()->executeQuery("define function {$this->name} () integer { return 1 }");
+				self::fail('Defining a value-returning function with an existing void function name must fail');
+			} catch (QuelException $exception) {
+				self::assertSame('routine_definition_error', $exception->type);
+				self::assertStringContainsString('already exists', $exception->getMessage());
+			}
+
+			self::assertSame(1, $this->routineCount());
+			self::assertNull(self::em()->executeQuery("{$this->name}()"));
 		}
 
 		/**

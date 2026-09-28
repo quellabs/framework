@@ -167,7 +167,7 @@
 		public static function catalogResults(): array {
 			return [
 				'missing' => [[], false, null, 'no routine by that name exists'],
-				'ambiguous' => [[self::row(0, 'integer'), self::row(1, null)], false, null, 'both a function and a procedure'],
+				'ambiguous' => [[self::row(0, 'integer'), self::row(1, null)], false, null, 'both a void and a value-returning function'],
 				'procedure' => [[self::row(1, null)], true, null, null],
 				'same return types' => [[self::row(0, 'integer'), self::row(0, 'integer')], false, 'integer', null],
 				'different return types' => [[self::row(0, 'integer'), self::row(0, 'text')], false, null, null],

@@ -103,16 +103,16 @@
 		}
 
 		/**
-		 * MySQL and MariaDB allow each native routine kind to use the same name.
+		 * Native SQL can create both kinds under one name; an ObjectQuel call is then ambiguous.
 		 * @return void
 		 */
-		public function testNameOfBothKindsIsRejected(): void {
+		public function testNativeNameCollisionMakesStandaloneCallAmbiguous(): void {
 			$connection = self::em()->getConnection();
 			self::assertNotNull($connection->execute("CREATE FUNCTION `{$this->name}`() RETURNS INT DETERMINISTIC RETURN 1"));
 			self::assertNotNull($connection->execute("CREATE PROCEDURE `{$this->name}`() BEGIN END"));
 
 			$this->expectException(QuelException::class);
-			$this->expectExceptionMessage("Can't call '{$this->name}': both a function and a procedure have that name.");
+			$this->expectExceptionMessage("Can't call '{$this->name}': both a void and a value-returning function have that name.");
 			self::em()->executeQuery("{$this->name}()");
 		}
 	}
