@@ -236,6 +236,89 @@
 		}
 
 		/**
+		 * A local declared inside a block is invisible outside it, so a sibling branch may
+		 * reuse the same name for an unrelated local.
+		 * @return void
+		 */
+		public function testAcceptsBlockScopedLocalReusedInSiblingBranch(): void {
+			$this->analyze('
+				define function f (integer n) void {
+					if (n > 0) {
+						integer x = 1
+						n = n + x
+					} else {
+						integer x = 2
+						n = n + x
+					}
+				}
+			');
+
+			$this->addToAssertionCount(1);
+		}
+
+		/**
+		 * A local declared inside a loop body is analyzed once but re-runs every iteration.
+		 * @return void
+		 */
+		public function testAcceptsLocalDeclaredInsideLoopReassignedEachIteration(): void {
+			$this->analyze('
+				define function f (integer n) void {
+					while (n > 0) {
+						integer x = n
+						x = x + 1
+						n = n - x
+					}
+				}
+			');
+
+			$this->addToAssertionCount(1);
+		}
+
+		/**
+		 * A local declared inside a `foreach` body, reading the current row.
+		 * @return void
+		 */
+		public function testAcceptsLocalDeclaredInsideForeach(): void {
+			$this->analyze('
+				define function f () void {
+					range of u is UserEntity
+					cursor c = retrieve (u.id) where u.banned = true
+					foreach (c as row) {
+						integer x = row.id
+					}
+				}
+			');
+
+			$this->addToAssertionCount(1);
+		}
+
+		/**
+		 * A cursor declared and looped over inside an `if` branch; the sibling branch reuses
+		 * the same name for a differently-queried cursor.
+		 * @return void
+		 */
+		public function testAcceptsBlockScopedCursorReusedInSiblingBranch(): void {
+			$this->analyze('
+				define function f (integer n) void {
+					range of u is UserEntity
+					if (n > 0) {
+						cursor c = retrieve (u.id) where u.banned = true
+						foreach (c as row) {
+							n = n + 1
+						}
+					} else {
+						cursor c = retrieve (u.id) where u.banned = false
+						foreach (c as row) {
+							n = n - 1
+						}
+					}
+				}
+			');
+
+			$this->addToAssertionCount(1);
+		}
+
+		/**
 		 * Rejected routines and a fragment of the expected message.
 		 * @return array<string, array{string, string}>
 		 */
@@ -255,10 +338,13 @@
 				'cursor without initializer'    => ['define function f () void { cursor c }', 'must be initialized with a retrieve'],
 				'cursor with expression'        => ['define function f () void { cursor c = 1 }', 'must be initialized with a retrieve'],
 				'scalar with retrieve'          => ["define function f () void { {$range} integer x = retrieve (u.id) where u.id = 1 }", 'Only a cursor can be initialized'],
-				'declaration inside if'         => ['define function f (integer n) void { if (n > 1) { integer x = 1 } }', 'must be at the top level'],
 				'range inside while'            => ['define function f (integer n) void { while (n > 1) { range of u is UserEntity } }', 'must be at the top level'],
+				'range inside if'               => ['define function f (integer n) void { if (n > 1) { range of u is UserEntity } }', 'must be at the top level'],
 				'local redeclares parameter'    => ['define function f (integer n) void { integer n }', "'n' is already declared"],
 				'local redeclares range'        => ["define function f () void { {$range} integer u }", "'u' is already declared"],
+				'local shadows outer local'     => ['define function f (integer n) void { integer x = 1 if (n > 0) { integer x = 2 } }', "'x' is already declared"],
+				'local shadows outer range'     => ["define function f (integer n) void { {$range} while (n > 0) { integer u } }", "'u' is already declared"],
+				'cursor shadows outer cursor'   => ["define function f (integer n) void { {$range} cursor c = retrieve (u.id) where u.id > 0 if (n > 0) { cursor c = retrieve (u.id) where u.id > 1 } }", "'c' is already declared"],
 				'statement keyword as name'     => ['define function f () void { integer foreach }', 'statement keyword'],
 				'break as name'                 => ['define function f () void { integer break }', 'statement keyword'],
 				'transaction as name'           => ['define function f () void { integer transaction }', 'statement keyword'],
@@ -285,7 +371,6 @@
 				'cursor reassigned'             => ["define function f () void { {$range} cursor c = retrieve (u.id) where u.id > 0 c = 1 }", "Cursor 'c' can't be reassigned"],
 				'cursor incremented'            => ["define function f () void { {$range} cursor c = retrieve (u.id) where u.id > 0 c += 1 }", "Cursor 'c' can't be reassigned"],
 				'cursor field outside loop'     => ["define function f () integer { {$range} cursor c = retrieve (u.id) where u.id > 0 return c.id }", "Cursor 'c' is not a value; read its fields through its 'foreach (c as row)' binding"],
-				'declaration inside foreach'    => ["define function f () void { {$range} cursor c = retrieve (u.id) where u.id > 0 foreach (c as row) { integer x } }", 'must be at the top level'],
 				'missing cursor field'          => ["define function f () void { {$range} integer x cursor c = retrieve (u.id) where u.id > 0 foreach (c as row) { x = row.username } }", "has no field 'username'"],
 				'foreach over scalar'           => ['define function f (integer n) void { foreach (n as row) { } }', "needs a cursor, but 'n' is not one"],
 				'foreach undefined'             => ['define function f () void { foreach (c as row) { } }', "Undefined cursor 'c'"],

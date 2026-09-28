@@ -481,6 +481,57 @@
 		}
 
 		/**
+		 * Two locals of the same name in sibling `if`/`else` branches are block-scoped in EQUEL but
+		 * compile to one flat DECLARE section with distinct generated names.
+		 * @return void
+		 */
+		public function testSiblingBranchLocalsGetDistinctDeclarations(): void {
+			$statements = $this->compile('
+				define function f (integer n) void {
+					if (n > 0) {
+						integer x = 1
+						n = n + x
+					} else {
+						integer x = 2
+						n = n + x
+					}
+				}
+			');
+
+			self::assertStringContainsString('DECLARE _v_x INT;', $statements[0]);
+			self::assertStringContainsString('DECLARE _v_x_2 INT;', $statements[0]);
+			self::assertStringContainsString("SET _v_x = 1;\n\t\tSET _v_n = _v_n + _v_x;", $statements[0]);
+			self::assertStringContainsString("SET _v_x_2 = 2;\n\t\tSET _v_n = _v_n + _v_x_2;", $statements[0]);
+		}
+
+		/**
+		 * Two cursors of the same name in sibling `if`/`else` branches are block-scoped in EQUEL but
+		 * compile to two distinct `DECLARE ... CURSOR FOR` entries in the one preamble.
+		 * @return void
+		 */
+		public function testSiblingBranchCursorsGetDistinctDeclarations(): void {
+			$statements = $this->compile('
+				define function f (integer n) void {
+					range of u is UserEntity
+					if (n > 0) {
+						cursor c = retrieve (u.id) where u.banned = true
+						foreach (c as row) {
+							n = n + 1
+						}
+					} else {
+						cursor c = retrieve (u.id) where u.banned = false
+						foreach (c as row) {
+							n = n - 1
+						}
+					}
+				}
+			');
+
+			self::assertStringContainsString("DECLARE _cur_c CURSOR FOR SELECT `u`.`id` as `id` FROM `users` as `u` WHERE `u`.`banned` = true;", $statements[0]);
+			self::assertStringContainsString("DECLARE _cur_c_2 CURSOR FOR SELECT `u`.`id` as `id` FROM `users` as `u` WHERE `u`.`banned` = false;", $statements[0]);
+		}
+
+		/**
 		 * @return array<string, array{string, string}>
 		 */
 		public static function rejectedRoutines(): array {
