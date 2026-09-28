@@ -1,16 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <phpunit bootstrap="tests/postgres-bootstrap.php" colors="true" stopOnFailure="false">
     <testsuites>
-        <testsuite name="PostgreSQL EQUEL">
+        <testsuite name="ObjectQuelUniversal">
+            <directory>tests/ObjectQuel/Unit</directory>
+            <directory>tests/ObjectQuel/Universal</directory>
+        </testsuite>
+        <testsuite name="ObjectQuelPostgreSQL">
+            <directory>tests/ObjectQuel/PostgreSQL</directory>
             <file>tests/ObjectQuel/Integration/RoutineDeployTest.php</file>
             <file>tests/ObjectQuel/Integration/UpsertTest.php</file>
-            <file>tests/ObjectQuel/Integration/RoutineCallTest.php</file>
-            <file>tests/ObjectQuel/Integration/RoutineBodyCallTest.php</file>
-            <file>tests/ObjectQuel/Integration/RoutineWindowMySqlTest.php</file>
-            <file>tests/ObjectQuel/Integration/DatabaseAdapterPostgresColumnsTest.php</file>
-            <file>tests/ObjectQuel/Integration/DatabaseAdapterForeignKeyPostgresTest.php</file>
-            <file>tests/ObjectQuel/Integration/DatabaseAdapterPostgresErrorCodeTest.php</file>
-            <directory>tests/ObjectQuel/Unit</directory>
         </testsuite>
     </testsuites>
+    <groups>
+        <exclude>
+            <group>objectquel-mysql</group>
+        </exclude>
+    </groups>
 </phpunit>

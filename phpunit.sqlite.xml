@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit bootstrap="tests/objectquel-sqlite-bootstrap.php" colors="true" stopOnFailure="false">
+    <testsuites>
+        <testsuite name="ObjectQuelUniversal">
+            <directory>tests/ObjectQuel/Unit</directory>
+            <directory>tests/ObjectQuel/Universal</directory>
+        </testsuite>
+        <testsuite name="ObjectQuelSQLite">
+            <directory>tests/ObjectQuel/SQLite</directory>
+        </testsuite>
+    </testsuites>
+</phpunit>

@@ -13,13 +13,19 @@ if (!extension_loaded('pdo_pgsql')) {
 	throw new RuntimeException('The PostgreSQL test suite requires pdo_pgsql.');
 }
 
+$password = getenv('TEST_PG_PASS');
+if ($password === false) {
+	$localCredentials = __DIR__ . '/postgres.local.php';
+	$password = is_file($localCredentials) ? require $localCredentials : '';
+}
+
 $schema = 'objectquel_test_' . getmypid();
 $connection = new Connection([
 	'driver' => Postgres::class,
 	'host' => getenv('TEST_PG_HOST') ?: '127.0.0.1',
 	'port' => (int)(getenv('TEST_PG_PORT') ?: 5432),
 	'username' => getenv('TEST_PG_USER') ?: 'postgres',
-	'password' => getenv('TEST_PG_PASS') ?: '',
+	'password' => $password,
 	'database' => getenv('TEST_PG_NAME') ?: 'postgres',
 	'schema' => $schema,
 	'persistent' => false,

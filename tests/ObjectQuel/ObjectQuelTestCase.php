@@ -29,6 +29,12 @@
 					$tables = array_map($conn->getDriver()->quoteIdentifier(...), $this->truncateTables);
 					$conn->execute('TRUNCATE TABLE ' . implode(', ', $tables) . ' RESTART IDENTITY CASCADE');
 				}
+			} elseif ($this->em->getConnection()->getDatabaseType() === 'sqlite') {
+				foreach ($this->truncateTables as $table) {
+					$quoted = $conn->getDriver()->quoteIdentifier($table);
+					$conn->execute("DELETE FROM {$quoted}");
+					$conn->execute('DELETE FROM sqlite_sequence WHERE name = :table', ['table' => $table]);
+				}
 			} else {
 				foreach ($this->truncateTables as $table) {
 					$conn->execute("DELETE FROM `{$table}`");

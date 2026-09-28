@@ -3,6 +3,7 @@
 	namespace Quellabs\ObjectQuel\Tests\Integration;
 
 	use PHPUnit\Framework\TestCase;
+	use PHPUnit\Framework\Attributes\Group;
 	use Quellabs\ObjectQuel\EntityManager;
 	use Quellabs\ObjectQuel\Exception\QuelException;
 
@@ -143,10 +144,8 @@
 		}
 
 		/** @return void */
+		#[Group('objectquel-postgres')]
 		public function testExplicitIdentityValueIsNotReportedAsGeneratedOnPostgres(): void {
-			if (self::em()->getConnection()->getDatabaseType() !== 'pgsql') {
-				self::markTestSkipped('PostgreSQL identity readback');
-			}
 
 			$result = self::em()->executeQuery('
 				range of u is App\Entities\UpsertConflictEntity
@@ -158,6 +157,7 @@
 		}
 
 		/** @return void */
+		#[Group('objectquel-postgres')]
 		public function testNullIdentityParameterReturnsGeneratedIdOnPostgres18(): void {
 			$connection = self::em()->getConnection();
 			if ($connection->getDatabaseType() !== 'pgsql' || version_compare($connection->getServerVersion(), '18.0', '<')) {

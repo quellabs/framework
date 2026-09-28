@@ -3,6 +3,7 @@
 	namespace Quellabs\ObjectQuel\Tests\Integration;
 
 	use PHPUnit\Framework\TestCase;
+	use PHPUnit\Framework\Attributes\Group;
 	use Quellabs\ObjectQuel\EntityManager;
 	use Quellabs\ObjectQuel\Exception\QuelException;
 	use Quellabs\ObjectQuel\Exception\SemanticException;
@@ -14,6 +15,8 @@
 	class RoutineDeployTest extends TestCase {
 
 		private string $name;
+		/** @var list<int> User rows created by this test */
+		private array $userIds = [];
 
 		/**
 		 * @return EntityManager The suite's shared entity manager
@@ -41,10 +44,30 @@
 		protected function tearDown(): void {
 			if (self::em()->getConnection()->getDatabaseType() === 'pgsql') {
 				self::em()->executeQuery("destroy function {$this->name} if exists");
-				return;
+			} else {
+				self::em()->getConnection()->execute("DROP FUNCTION IF EXISTS `{$this->name}`");
+				self::em()->getConnection()->execute("DROP PROCEDURE IF EXISTS `{$this->name}`");
 			}
-			self::em()->getConnection()->execute("DROP FUNCTION IF EXISTS `{$this->name}`");
-			self::em()->getConnection()->execute("DROP PROCEDURE IF EXISTS `{$this->name}`");
+			foreach ($this->userIds as $id) {
+				self::em()->executeQuery('range of u is UserEntity delete u where u.id = :id', ['id' => $id]);
+			}
+		}
+
+		/**
+		 * Inserts a user owned by this test and returns its id.
+		 * @param string $username Username to insert
+		 * @return int Generated user id
+		 */
+		private function seedUser(string $username): int {
+			$seeded = self::em()->executeQuery(
+				'range of u is UserEntity append to u (username = :username, password = :password, banned = false)',
+				['username' => $username, 'password' => 'pw']
+			);
+			self::assertNotNull($seeded);
+			self::assertIsInt($seeded->getGeneratedId());
+			$id = $seeded->getGeneratedId();
+			$this->userIds[] = $id;
+			return $id;
 		}
 
 		/**
@@ -89,6 +112,7 @@
 		 * @return void
 		 */
 		public function testDefinesAFunctionAndRejectsDuplicate(): void {
+			$this->seedUser("{$this->name}_user");
 			$source = "
 				define function {$this->name} (int minId) integer {
 					integer total = 0
@@ -121,10 +145,8 @@
 		 * With the column's collation configured, a string parameter compares with the column whatever the database default is.
 		 * @return void
 		 */
+		#[Group('objectquel-mysql')]
 		public function testConfiguredCollationComparesWithColumn(): void {
-			if (self::em()->getConnection()->getDatabaseType() === 'pgsql') {
-				self::markTestSkipped('This case inspects MySQL information_schema.COLUMNS collation metadata.');
-			}
 			$statement = self::em()->getConnection()->execute(
 				"SELECT COLLATION_NAME AS c FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'username'"
 			);
@@ -165,6 +187,8 @@
 		 * @return void
 		 */
 		public function testCursorQueryReadsVariablesWhenTheLoopStarts(): void {
+			$this->seedUser("{$this->name}_first");
+			$this->seedUser("{$this->name}_second");
 			self::em()->executeQuery("
 				define function {$this->name} (int minId) integer {
 					integer bound = -1
@@ -195,6 +219,9 @@
 		 * @return void
 		 */
 		public function testForeachWithContinueAndBreak(): void {
+			$this->seedUser('');
+			$this->seedUser("{$this->name}_first");
+			$this->seedUser("{$this->name}_second");
 			self::em()->executeQuery("
 				define function {$this->name} (int maxCount) integer {
 					integer total = 0
@@ -326,10 +353,10 @@
 		 * @return void
 		 */
 		public function testAtomicBlockPreservesCallerTransaction(): void {
+			$id = $this->seedUser("{$this->name}_atomic");
 			$connection = self::em()->getConnection();
-			$row = $connection->execute('SELECT id, banned FROM users ORDER BY id LIMIT 1')?->fetch('assoc');
+			$row = $connection->execute('SELECT banned FROM users WHERE id = :id', ['id' => $id])?->fetch('assoc');
 			self::assertIsArray($row);
-			$id = (int)$row['id'];
 			$original = (int)$row['banned'];
 
 			self::em()->executeQuery("
@@ -361,14 +388,12 @@
 		 * An ObjectQuel call supplies the outer transaction; an unwrapped SQL call fails before writes.
 		 * @return void
 		 */
+		#[Group('objectquel-mysql')]
 		public function testAtomicBlockRequiresTransactionForDirectCall(): void {
-			if (self::em()->getConnection()->getDatabaseType() === 'pgsql') {
-				self::markTestSkipped('PostgreSQL atomic blocks work in a direct autocommit CALL.');
-			}
+			$id = $this->seedUser("{$this->name}_direct");
 			$connection = self::em()->getConnection();
-			$row = $connection->execute('SELECT id, banned FROM users ORDER BY id LIMIT 1')?->fetch('assoc');
+			$row = $connection->execute('SELECT banned FROM users WHERE id = :id', ['id' => $id])?->fetch('assoc');
 			self::assertIsArray($row);
-			$id = (int)$row['id'];
 			$original = (int)$row['banned'];
 
 			self::em()->executeQuery("
@@ -393,14 +418,12 @@
 		 * A database error inside the block restores its savepoint without discarding prior caller writes.
 		 * @return void
 		 */
+		#[Group('objectquel-mysql')]
 		public function testAtomicBlockRollsBackOnDatabaseError(): void {
-			if (self::em()->getConnection()->getDatabaseType() === 'pgsql') {
-				self::markTestSkipped('The PostgreSQL live smoke test checks errors outside a caller transaction.');
-			}
+			$id = $this->seedUser("{$this->name}_rollback");
 			$connection = self::em()->getConnection();
-			$row = $connection->execute('SELECT id, banned FROM users ORDER BY id LIMIT 1')?->fetch('assoc');
+			$row = $connection->execute('SELECT banned FROM users WHERE id = :id', ['id' => $id])?->fetch('assoc');
 			self::assertIsArray($row);
-			$id = (int)$row['id'];
 
 			self::em()->executeQuery("
 				define function {$this->name} (integer uid) void {
@@ -444,10 +467,8 @@
 		 * Destruction accepts a name shared by a function and a procedure, then drops both MySQL namespace matches.
 		 * @return void
 		 */
+		#[Group('objectquel-mysql')]
 		public function testDestroyAcceptsNameSharedByFunctionAndProcedure(): void {
-			if (self::em()->getConnection()->getDatabaseType() === 'pgsql') {
-				self::markTestSkipped('This test creates a MySQL procedure using MySQL syntax.');
-			}
 			self::em()->executeQuery("define function {$this->name} () integer { return 1 }");
 			self::em()->getConnection()->execute("CREATE PROCEDURE `{$this->name}`() BEGIN END");
 			self::assertSame(2, $this->routineCount());
