@@ -3,27 +3,6 @@
          colors="true"
          stopOnFailure="false">
     <testsuites>
-        <testsuite name="ObjectQuelUniversal">
-            <directory>tests/ObjectQuel/Unit</directory>
-            <directory>tests/ObjectQuel/Universal</directory>
-        </testsuite>
-        <testsuite name="ObjectQuelMySQL">
-            <directory>tests/ObjectQuel/MySQL</directory>
-            <file>tests/ObjectQuel/Integration/RoutineDeployTest.php</file>
-            <file>tests/ObjectQuel/Integration/UpsertTest.php</file>
-            <file>tests/ObjectQuel/SQLite/IfNullAltValueUnmatchedRowTest.php</file>
-            <file>tests/ObjectQuel/SQLite/SoftDeleteMultipleRangesTest.php</file>
-            <file>tests/ObjectQuel/SQLite/SoftDeleteDatetimeLeftJoinTest.php</file>
-            <file>tests/ObjectQuel/SQLite/SoftDeleteBooleanLeftJoinTest.php</file>
-            <file>tests/ObjectQuel/SQLite/RelationshipCascadeForeignKeyTest.php</file>
-            <file>tests/ObjectQuel/SQLite/EntityBridgeEagerLoadTest.php</file>
-            <file>tests/ObjectQuel/SQLite/EntityBridgeDirectQueryEagerLoadTest.php</file>
-            <file>tests/ObjectQuel/SQLite/EntityBridgeForwardEagerLoadTest.php</file>
-            <file>tests/ObjectQuel/SQLite/EntityBridgeSelfReferencingEagerLoadTest.php</file>
-            <file>tests/ObjectQuel/SQLite/SoftDeleteCascadeTest.php</file>
-            <file>tests/ObjectQuel/PostgreSQL/RoutineCallTest.php</file>
-            <file>tests/ObjectQuel/PostgreSQL/RoutineBodyCallTest.php</file>
-        </testsuite>
         <testsuite name="Canvas">
             <directory>tests/Canvas</directory>
         </testsuite>
@@ -40,11 +19,6 @@
             <directory>tests/Recommender</directory>
         </testsuite>
     </testsuites>
-    <groups>
-        <exclude>
-            <group>objectquel-postgres</group>
-        </exclude>
-    </groups>
     <php>
         <env name="TEST_DB_HOST" value="127.0.0.1"/>
         <env name="TEST_DB_PORT" value="3306"/>
