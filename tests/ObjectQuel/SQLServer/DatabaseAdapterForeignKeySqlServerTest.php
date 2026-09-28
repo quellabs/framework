@@ -1,6 +1,6 @@
 <?php
 
-	namespace Quellabs\ObjectQuel\Tests\Universal;
+	namespace Quellabs\ObjectQuel\Tests\SQLServer;
 
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\ObjectQuel\Capabilities\PlatformCapabilities;

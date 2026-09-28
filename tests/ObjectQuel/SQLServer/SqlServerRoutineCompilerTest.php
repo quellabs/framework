@@ -1,6 +1,6 @@
 <?php
 
-	namespace Quellabs\ObjectQuel\Tests\Unit;
+	namespace Quellabs\ObjectQuel\Tests\SQLServer;
 
 	use PHPUnit\Framework\Attributes\DataProvider;
 	use PHPUnit\Framework\TestCase;

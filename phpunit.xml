@@ -24,6 +24,9 @@
             <file>tests/ObjectQuel/PostgreSQL/RoutineCallTest.php</file>
             <file>tests/ObjectQuel/PostgreSQL/RoutineBodyCallTest.php</file>
         </testsuite>
+        <testsuite name="ObjectQuelSQLServer">
+            <directory>tests/ObjectQuel/SQLServer</directory>
+        </testsuite>
         <testsuite name="Canvas">
             <directory>tests/Canvas</directory>
         </testsuite>
