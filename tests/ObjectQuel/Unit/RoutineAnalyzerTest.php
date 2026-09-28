@@ -6,7 +6,10 @@
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\ObjectQuel\Exception\SemanticException;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIdentifier;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstDeclare;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstForeach;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRoutineDefinition;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstVariableAssignment;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\IdentifierType;
 	use Quellabs\ObjectQuel\ObjectQuel\Lexer;
 	use Quellabs\ObjectQuel\ObjectQuel\Routines\ProcedureParser;
@@ -123,6 +126,31 @@
 			');
 
 			$this->addToAssertionCount(1);
+		}
+
+		/**
+		 * A nested row binding takes precedence, then the outer row is visible again.
+		 * @return void
+		 */
+		public function testNestedForeachRowsShadowAndRestoreOuterBinding(): void {
+			$routine = $this->analyze('
+				define function f () void {
+					range of u is UserEntity
+					integer x = 0
+					cursor a = retrieve (u.id) where u.id > 0
+					cursor b = retrieve (u.id) where u.id > 1
+					foreach (a as row) {
+						x = row.id
+						foreach (b as row) { x = row.id }
+						x = row.id
+					}
+				}
+			');
+			$collector = new CollectNodes(AstIdentifier::class);
+			$routine->accept($collector);
+			$rows = array_values(array_filter($collector->getCollectedNodes(), fn(AstIdentifier $node) => $node->getType() === IdentifierType::CursorRoot));
+
+			self::assertSame(['a.id', 'b.id', 'a.id'], array_map(fn(AstIdentifier $node) => $node->getCompleteName(), $rows));
 		}
 
 		/**
@@ -319,6 +347,106 @@
 		}
 
 		/**
+		 * A nested local uses a fresh SQL name, while the outer local is restored afterward.
+		 * @return void
+		 */
+		public function testLocalShadowsOuterLocalWithoutLeaking(): void {
+			$routine = $this->analyze('define function f () integer { integer x = 1 if (x > 0) { integer x = 2 x = x + 1 } x = x + 1 return x }');
+			$declarations = new CollectNodes(AstDeclare::class);
+			$assignments = new CollectNodes(AstVariableAssignment::class);
+			$routine->accept($declarations);
+			$routine->accept($assignments);
+
+			self::assertSame(['x', 'x_2'], array_map(fn(AstDeclare $node) => $node->getName(), $declarations->getCollectedNodes()));
+			self::assertSame(['x_2', 'x'], array_map(fn(AstVariableAssignment $node) => $node->getName(), $assignments->getCollectedNodes()));
+			self::assertSame(IdentifierType::RoutineVariable, $this->rootIdentifierTypes($routine)['x_2']);
+		}
+
+		/**
+		 * A nested cursor resolves its loop to the new name and leaves the outer cursor visible later.
+		 * @return void
+		 */
+		public function testCursorShadowsOuterCursorWithoutLeaking(): void {
+			$routine = $this->analyze('
+				define function f () void {
+					range of u is UserEntity
+					cursor c = retrieve (u.id) where u.id > 0
+					if (1 = 1) {
+						cursor c = retrieve (u.id) where u.id > 1
+						foreach (c as innerRow) { }
+					}
+					foreach (c as outerRow) { }
+				}
+			');
+			$declarations = new CollectNodes(AstDeclare::class);
+			$loops = new CollectNodes(AstForeach::class);
+			$routine->accept($declarations);
+			$routine->accept($loops);
+
+			self::assertSame(['c', 'c_2'], array_map(fn(AstDeclare $node) => $node->getName(), $declarations->getCollectedNodes()));
+			self::assertSame(['c_2', 'c'], array_map(fn(AstForeach $node) => $node->getCursorName(), $loops->getCollectedNodes()));
+		}
+
+		/**
+		 * A nearer declaration wins even when it has a different kind from the outer name.
+		 * @return void
+		 */
+		public function testShadowingAcrossScalarAndCursorKinds(): void {
+			$routine = $this->analyze('
+				define function f () integer {
+					integer x = 1
+					range of u is UserEntity
+					if (x > 0) {
+						cursor x = retrieve (u.id)
+						foreach (x as row) { }
+					}
+					return x
+				}
+			');
+			$loops = new CollectNodes(AstForeach::class);
+			$routine->accept($loops);
+			self::assertSame('x_2', $loops->getCollectedNodes()[0]->getCursorName());
+		}
+
+		/**
+		 * A nested scalar hides an outer cursor until the block ends.
+		 * @return void
+		 */
+		public function testScalarShadowsOuterCursor(): void {
+			$routine = $this->analyze('
+				define function f () void {
+					range of u is UserEntity
+					cursor c = retrieve (u.id)
+					if (1 = 1) {
+						integer c = 2
+						c = c + 1
+					}
+					foreach (c as row) { }
+				}
+			');
+			$assignments = new CollectNodes(AstVariableAssignment::class);
+			$loops = new CollectNodes(AstForeach::class);
+			$routine->accept($assignments);
+			$routine->accept($loops);
+			self::assertSame('c_2', $assignments->getCollectedNodes()[0]->getName());
+			self::assertSame('c', $loops->getCollectedNodes()[0]->getCursorName());
+		}
+
+		/**
+		 * A nested local can shadow a parameter, then the parameter is visible again afterward.
+		 * @return void
+		 */
+		public function testLocalShadowsParameter(): void {
+			$routine = $this->analyze('define function f (integer n) integer { if (n > 0) { integer n = 2 n = n + 1 } return n }');
+			$declarations = new CollectNodes(AstDeclare::class);
+			$assignments = new CollectNodes(AstVariableAssignment::class);
+			$routine->accept($declarations);
+			$routine->accept($assignments);
+			self::assertSame('n_2', $declarations->getCollectedNodes()[0]->getName());
+			self::assertSame('n_2', $assignments->getCollectedNodes()[0]->getName());
+		}
+
+		/**
 		 * Rejected routines and a fragment of the expected message.
 		 * @return array<string, array{string, string}>
 		 */
@@ -342,15 +470,16 @@
 				'range inside if'               => ['define function f (integer n) void { if (n > 1) { range of u is UserEntity } }', 'must be at the top level'],
 				'local redeclares parameter'    => ['define function f (integer n) void { integer n }', "'n' is already declared"],
 				'local redeclares range'        => ["define function f () void { {$range} integer u }", "'u' is already declared"],
-				'local shadows outer local'     => ['define function f (integer n) void { integer x = 1 if (n > 0) { integer x = 2 } }', "'x' is already declared"],
+				'local duplicate in one block'  => ['define function f () void { integer x = 1 integer x = 2 }', "'x' is already declared in this scope"],
 				'local shadows outer range'     => ["define function f (integer n) void { {$range} while (n > 0) { integer u } }", "'u' is already declared"],
-				'cursor shadows outer cursor'   => ["define function f (integer n) void { {$range} cursor c = retrieve (u.id) where u.id > 0 if (n > 0) { cursor c = retrieve (u.id) where u.id > 1 } }", "'c' is already declared"],
+				'range redeclares local'        => ['define function f () void { integer u range of u is UserEntity }', "'u' is already declared"],
 				'statement keyword as name'     => ['define function f () void { integer foreach }', 'statement keyword'],
 				'break as name'                 => ['define function f () void { integer break }', 'statement keyword'],
 				'transaction as name'           => ['define function f () void { integer transaction }', 'statement keyword'],
 				'exit as name'                  => ['define function f (integer exit) void { }', 'statement keyword'],
 				'elseif as name'                => ['define function f (integer elseif) void { }', 'statement keyword'],
 				'locals differing in case'      => ['define function f () void { integer total integer Total }', "'total' and 'Total' differ only in case"],
+				'nested locals differing case'  => ['define function f () void { integer total if (1 = 1) { integer Total } }', "'total' and 'Total' differ only in case"],
 				'local and parameter case'      => ['define function f (integer n) void { string N }', "'n' and 'N' differ only in case"],
 				'cursor and local case'         => ["define function f () void { {$range} integer rows cursor Rows = retrieve (u.id) }", "'rows' and 'Rows' differ only in case"],
 				'cursor fields differing case'  => ["define function f () void { {$range} cursor c = retrieve (Id = u.username, u.id) }", "Fields 'c.Id' and 'c.id' differ only in case"],
@@ -369,13 +498,14 @@
 				'whole entity target'           => ["define function f () void { {$range} cursor c = retrieve (u) where u.id > 0 }", 'not whole entities'],
 				'cursor as a value'             => ["define function f () void { {$range} cursor c = retrieve (u.id) where u.id > 0 integer x = c }", "Cursor 'c' is not a value"],
 				'cursor reassigned'             => ["define function f () void { {$range} cursor c = retrieve (u.id) where u.id > 0 c = 1 }", "Cursor 'c' can't be reassigned"],
+				'inner cursor hides scalar'     => ["define function f () void { integer x = 1 {$range} if (x > 0) { cursor x = retrieve (u.id) x = 2 } }", "Cursor 'x' can't be reassigned"],
+				'inner scalar hides cursor'     => ["define function f () void { {$range} cursor c = retrieve (u.id) if (1 = 1) { integer c = 2 foreach (c as row) { } } }", "needs a cursor"],
 				'cursor incremented'            => ["define function f () void { {$range} cursor c = retrieve (u.id) where u.id > 0 c += 1 }", "Cursor 'c' can't be reassigned"],
 				'cursor field outside loop'     => ["define function f () integer { {$range} cursor c = retrieve (u.id) where u.id > 0 return c.id }", "Cursor 'c' is not a value; read its fields through its 'foreach (c as row)' binding"],
 				'missing cursor field'          => ["define function f () void { {$range} integer x cursor c = retrieve (u.id) where u.id > 0 foreach (c as row) { x = row.username } }", "has no field 'username'"],
 				'foreach over scalar'           => ['define function f (integer n) void { foreach (n as row) { } }', "needs a cursor, but 'n' is not one"],
 				'foreach undefined'             => ['define function f () void { foreach (c as row) { } }', "Undefined cursor 'c'"],
 				'foreach on open cursor'        => ["define function f () void { {$range} cursor a = retrieve (u.id) where u.id > 0 cursor b = retrieve (u.id) where u.id > 1 foreach (a as ra) { foreach (b as rb) { foreach (a as ra2) { } } } }", 'same cursor'],
-				'foreach row name reused nested'=> ["define function f () void { {$range} cursor a = retrieve (u.id) where u.id > 0 cursor b = retrieve (u.id) where u.id > 1 foreach (a as row) { foreach (b as row) { } } }", "'row' is already in use"],
 				'foreach row name is its cursor'=> ["define function f () void { {$range} cursor c = retrieve (u.id) where u.id > 0 foreach (c as c) { } }", "'c' is already in use"],
 				'void returns a value'          => ['define function f () void { return 1 }', "A void routine can't return a value"],
 				'return only in if'             => ['define function f (integer n) integer { if (n > 0) { return 1 } }', 'Not every path'],

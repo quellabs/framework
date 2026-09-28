@@ -464,6 +464,64 @@
 		}
 
 		/**
+		 * Nested shadows keep distinct variables and cursor declarations at their statement positions.
+		 * @return void
+		 */
+		public function testNestedShadowingCompilesWithDistinctNames(): void {
+			$sql = $this->compile('
+				define function f (integer n) void {
+					integer x = 1
+					range of u is UserEntity
+					cursor c = retrieve (u.id) where u.id > 0
+					if (n > 0) {
+						integer x = 2
+						x = x + 1
+						cursor c = retrieve (u.id) where u.id > 1
+						foreach (c as innerRow) { n = n + x }
+					}
+					x = x + 1
+					foreach (c as outerRow) { n = n + x }
+				}
+			');
+
+			self::assertStringContainsString('DECLARE @x INT;', $sql);
+			self::assertStringContainsString('DECLARE @x_2 INT;', $sql);
+			self::assertStringContainsString('SET @x = 1;', $sql);
+			self::assertStringContainsString('SET @x_2 = 2;', $sql);
+			self::assertStringContainsString('SET @x_2 = @x_2 + 1;', $sql);
+			self::assertStringContainsString('SET @x = @x + 1;', $sql);
+			self::assertStringContainsString('DECLARE _cur_c CURSOR LOCAL FORWARD_ONLY STATIC READ_ONLY FOR SELECT [u].[id] as [id] FROM [users] as [u] WHERE [u].[id] > 0;', $sql);
+			self::assertStringContainsString('DECLARE _cur_c_2 CURSOR LOCAL FORWARD_ONLY STATIC READ_ONLY FOR SELECT [u].[id] as [id] FROM [users] as [u] WHERE [u].[id] > 1;', $sql);
+			self::assertStringContainsString('OPEN _cur_c_2;', $sql);
+			self::assertStringContainsString('OPEN _cur_c;', $sql);
+		}
+
+		/**
+		 * Reused nested row names read the active cursor's fetched field variables.
+		 * @return void
+		 */
+		public function testNestedRowBindingShadowsAndRestoresOuterRow(): void {
+			$sql = $this->compile('
+				define function f () void {
+					range of u is UserEntity
+					integer x = 0
+					cursor a = retrieve (u.id)
+					cursor b = retrieve (u.id) where u.id > 1
+					foreach (a as row) {
+						x = row.id
+						foreach (b as row) { x = row.id }
+						x = row.id
+					}
+				}
+			');
+
+			self::assertSame(2, substr_count($sql, 'SET @x = @_row_a$id;'));
+			self::assertSame(1, substr_count($sql, 'SET @x = @_row_b$id;'));
+			self::assertStringContainsString('FETCH NEXT FROM _cur_a INTO @_row_a$id;', $sql);
+			self::assertStringContainsString('FETCH NEXT FROM _cur_b INTO @_row_b$id;', $sql);
+		}
+
+		/**
 		 * @return array<string, array{string, string}>
 		 */
 		public static function rejectedRoutines(): array {

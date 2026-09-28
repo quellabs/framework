@@ -436,6 +436,62 @@
 		}
 
 		/**
+		 * Nested shadows keep distinct local variables and cursor loop queries.
+		 * @return void
+		 */
+		public function testNestedShadowingCompilesWithDistinctNames(): void {
+			$sql = $this->compile('
+				define function f (integer n) void {
+					integer x = 1
+					range of u is UserEntity
+					cursor c = retrieve (u.id) where u.id > 0
+					if (n > 0) {
+						integer x = 2
+						x = x + 1
+						cursor c = retrieve (u.id) where u.id > 1
+						foreach (c as innerRow) { n = n + x }
+					}
+					x = x + 1
+					foreach (c as outerRow) { n = n + x }
+				}
+			');
+
+			self::assertStringContainsString('"x" INTEGER;', $sql);
+			self::assertStringContainsString('"x_2" INTEGER;', $sql);
+			self::assertStringContainsString('"x" := 1;', $sql);
+			self::assertStringContainsString('"x_2" := 2;', $sql);
+			self::assertStringContainsString('"x_2" := "_routine"."x_2" + 1;', $sql);
+			self::assertStringContainsString('"x" := "_routine"."x" + 1;', $sql);
+			self::assertStringContainsString('FOR "_row_c_2" IN SELECT "u"."id" as "id" FROM "users" as "u" WHERE "u"."id" > 1 LOOP', $sql);
+			self::assertStringContainsString('FOR "_row_c" IN SELECT "u"."id" as "id" FROM "users" as "u" WHERE "u"."id" > 0 LOOP', $sql);
+		}
+
+		/**
+		 * Reused nested row names resolve to each loop's own record variable.
+		 * @return void
+		 */
+		public function testNestedRowBindingShadowsAndRestoresOuterRow(): void {
+			$sql = $this->compile('
+				define function f () void {
+					range of u is UserEntity
+					integer x = 0
+					cursor a = retrieve (u.id)
+					cursor b = retrieve (u.id) where u.id > 1
+					foreach (a as row) {
+						x = row.id
+						foreach (b as row) { x = row.id }
+						x = row.id
+					}
+				}
+			');
+
+			self::assertSame(2, substr_count($sql, '"x" := "_row_a"."id";'));
+			self::assertSame(1, substr_count($sql, '"x" := "_row_b"."id";'));
+			self::assertStringContainsString('FOR "_row_a" IN SELECT', $sql);
+			self::assertStringContainsString('FOR "_row_b" IN SELECT', $sql);
+		}
+
+		/**
 		 * @return array<string, array{string, string}>
 		 */
 		public static function rejectedRoutines(): array {

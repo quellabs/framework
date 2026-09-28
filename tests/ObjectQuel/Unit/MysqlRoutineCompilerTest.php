@@ -532,6 +532,63 @@
 		}
 
 		/**
+		 * Nested shadowing gives locals and cursors separate declarations and preserves outer references.
+		 * @return void
+		 */
+		public function testNestedShadowingCompilesWithDistinctNames(): void {
+			$sql = $this->compile('
+				define function f (integer n) void {
+					integer x = 1
+					range of u is UserEntity
+					cursor c = retrieve (u.id) where u.id > 0
+					if (n > 0) {
+						integer x = 2
+						x = x + 1
+						cursor c = retrieve (u.id) where u.id > 1
+						foreach (c as innerRow) { n = n + x }
+					}
+					x = x + 1
+					foreach (c as outerRow) { n = n + x }
+				}
+			')[0];
+
+			self::assertStringContainsString('DECLARE _v_x INT;', $sql);
+			self::assertStringContainsString('DECLARE _v_x_2 INT;', $sql);
+			self::assertStringContainsString('DECLARE _cur_c CURSOR FOR SELECT `u`.`id` as `id` FROM `users` as `u` WHERE `u`.`id` > 0;', $sql);
+			self::assertStringContainsString('DECLARE _cur_c_2 CURSOR FOR SELECT `u`.`id` as `id` FROM `users` as `u` WHERE `u`.`id` > 1;', $sql);
+			self::assertStringContainsString("SET _v_x = 1;\n\tIF _v_n > 0 THEN\n\t\tSET _v_x_2 = 2;", $sql);
+			self::assertStringContainsString('SET _v_x_2 = _v_x_2 + 1;', $sql);
+			self::assertStringContainsString('OPEN _cur_c_2;', $sql);
+			self::assertStringContainsString('SET _v_x = _v_x + 1;', $sql);
+			self::assertStringContainsString('OPEN _cur_c;', $sql);
+		}
+
+		/**
+		 * Reused nested row names read the inner cursor only inside its loop.
+		 * @return void
+		 */
+		public function testNestedRowBindingShadowsAndRestoresOuterRow(): void {
+			$sql = $this->compile('
+				define function f () void {
+					range of u is UserEntity
+					integer x = 0
+					cursor a = retrieve (u.id)
+					cursor b = retrieve (u.id) where u.id > 1
+					foreach (a as row) {
+						x = row.id
+						foreach (b as row) { x = row.id }
+						x = row.id
+					}
+				}
+			')[0];
+
+			self::assertSame(2, substr_count($sql, 'SET _v_x = _row_a$id;'));
+			self::assertSame(1, substr_count($sql, 'SET _v_x = _row_b$id;'));
+			self::assertStringContainsString('FETCH _cur_a INTO _row_a$id;', $sql);
+			self::assertStringContainsString('FETCH _cur_b INTO _row_b$id;', $sql);
+		}
+
+		/**
 		 * @return array<string, array{string, string}>
 		 */
 		public static function rejectedRoutines(): array {
