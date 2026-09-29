@@ -349,6 +349,36 @@
 		}
 
 		/**
+		 * A bare `return` (void routines only) exits before the write that follows it,
+		 * without affecting a call where the guard doesn't trigger.
+		 * @return void
+		 */
+		public function testBareReturnSkipsWriteOnGuardClause(): void {
+			$skipId = $this->seedUser("{$this->name}_skip");
+			$updateId = $this->seedUser("{$this->name}_update");
+
+			self::em()->executeQuery("
+				define function {$this->name} (integer targetId, integer skip) void {
+					range of u is UserEntity
+					if (skip = 1) {
+						return
+					}
+					replace u (banned = true) where u.id = targetId
+				}
+			");
+
+			self::em()->executeQuery("{$this->name}(:id, :skip)", ['id' => $skipId, 'skip' => 1]);
+			self::em()->executeQuery("{$this->name}(:id, :skip)", ['id' => $updateId, 'skip' => 0]);
+
+			$connection = self::em()->getConnection();
+			$skipRow = $connection->execute('SELECT banned FROM users WHERE id = :id', ['id' => $skipId])?->fetch('assoc');
+			$updateRow = $connection->execute('SELECT banned FROM users WHERE id = :id', ['id' => $updateId])?->fetch('assoc');
+
+			self::assertSame(0, (int)$skipRow['banned']);
+			self::assertSame(1, (int)$updateRow['banned']);
+		}
+
+		/**
 		 * An atomic block rolls back only its own writes and leaves the caller's transaction open.
 		 * @return void
 		 */

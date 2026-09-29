@@ -211,6 +211,74 @@
 		}
 
 		/**
+		 * MySQL procedures don't support RETURN at all (function-only); a bare `return`
+		 * (void routines only) instead labels the routine body and lowers to `LEAVE` it.
+		 * @return void
+		 */
+		public function testBareReturnCompilesToLeaveLabeledRoutine(): void {
+			$statements = $this->compile('
+				define function maybe_ban (integer targetId) void {
+					range of u is UserEntity
+					if (targetId <= 0) {
+						return
+					}
+					replace u (banned = true) where u.id = targetId
+				}
+			');
+
+			self::assertSame(<<<'SQL'
+				CREATE PROCEDURE `maybe_ban`(_v_targetId INT)
+				MODIFIES SQL DATA
+				_equel_routine: BEGIN
+					IF _v_targetId <= 0 THEN
+						LEAVE _equel_routine;
+					END IF;
+					UPDATE `users` as `u` SET `u`.`banned` = true WHERE `u`.`id` = _v_targetId;
+				END _equel_routine
+				SQL, $statements[0]);
+		}
+
+		/**
+		 * A bare `return` inside a `foreach` needs no CLOSE: MySQL closes a cursor when its
+		 * declaring block exits, same as leaving the labeled routine body via LEAVE.
+		 * @return void
+		 */
+		public function testBareReturnInsideLoopNeedsNoCursorClose(): void {
+			$statements = $this->compile('
+				define function stop_early () void {
+					range of u is UserEntity
+					cursor users = retrieve (u.id) where u.banned = false
+					foreach (users as row) {
+						if (row.id > 100) {
+							return
+						}
+						replace u (banned = true) where u.id = row.id
+					}
+				}
+			');
+
+			self::assertStringContainsString("IF _row_users\$id > 100 THEN\n\t\t\tLEAVE _equel_routine;\n\t\tEND IF;", $statements[0]);
+			self::assertStringNotContainsString('CLOSE _cur_users;' . "\n\t\tLEAVE", $statements[0]);
+		}
+
+		/**
+		 * A routine with no bare `return` keeps its unlabeled body unchanged.
+		 * @return void
+		 */
+		public function testVoidRoutineWithoutBareReturnStaysUnlabeled(): void {
+			$statements = $this->compile('
+				define function ban_all () void {
+					range of u is UserEntity
+					replace u (banned = true) where u.id > 0
+				}
+			');
+
+			self::assertStringStartsWith("CREATE PROCEDURE `ban_all`()\nMODIFIES SQL DATA\nBEGIN\n", $statements[0]);
+			self::assertStringEndsWith("END", $statements[0]);
+			self::assertStringNotContainsString('_equel_routine', $statements[0]);
+		}
+
+		/**
 		 * A write inside a loop referencing the row's own fetched field compiles to the
 		 * variable that field was fetched into.
 		 * @return void

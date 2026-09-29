@@ -72,6 +72,39 @@
 		}
 
 		/**
+		 * A bare `return` (void routines only) compiles to a plain `RETURN;`, usable as an early exit;
+		 * void routines compile to a PROCEDURE, not a FUNCTION.
+		 * @return void
+		 */
+		public function testBareReturnCompilesToPlainReturn(): void {
+			$sql = $this->compile('
+				define function maybe_ban (integer targetId) void {
+					range of u is UserEntity
+					if (targetId <= 0) {
+						return
+					}
+					replace u (banned = true) where u.id = targetId
+				}
+			');
+
+			self::assertSame(<<<'SQL'
+				CREATE PROCEDURE "maybe_ban"("targetId" INTEGER)
+				LANGUAGE plpgsql
+				AS $body$
+				<<_routine>>
+				DECLARE
+					"targetId" INTEGER := $1;
+				BEGIN
+					IF "_routine"."targetId" <= 0 THEN
+						RETURN;
+					END IF;
+					UPDATE "users" as "u" SET "banned" = true WHERE "u"."id" = "_routine"."targetId";
+				END;
+				$body$;
+				SQL, $sql);
+		}
+
+		/**
 		 * A write inside a loop referencing the row's own fetched field compiles to an ordinary
 		 * UPDATE against that fetched value; PL/pgSQL's implicit FOR ... IN loop needs no CLOSE.
 		 * @return void

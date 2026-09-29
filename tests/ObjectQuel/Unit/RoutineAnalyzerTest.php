@@ -194,6 +194,33 @@
 		}
 
 		/**
+		 * A bare `return` (no value) is a valid early exit in a void routine.
+		 * @return void
+		 */
+		public function testAcceptsBareReturnInVoidRoutine(): void {
+			$this->analyze('
+				define function maybe_ban (integer targetId) void {
+					range of u is UserEntity
+					if (targetId <= 0) {
+						return
+					}
+					replace u (banned = true) where u.id = targetId
+				}
+			');
+
+			$this->addToAssertionCount(1);
+		}
+
+		/**
+		 * A bare `return` followed by an explicit `;` parses the same as one with none.
+		 * @return void
+		 */
+		public function testAcceptsBareReturnWithSemicolon(): void {
+			$this->analyze('define function f () void { return; }');
+			$this->addToAssertionCount(1);
+		}
+
+		/**
 		 * `retrieve (n)` names its entry after the variable it reads; that is not a collision.
 		 * @return void
 		 */
@@ -508,6 +535,7 @@
 				'foreach on open cursor'        => ["define function f () void { {$range} cursor a = retrieve (u.id) where u.id > 0 cursor b = retrieve (u.id) where u.id > 1 foreach (a as ra) { foreach (b as rb) { foreach (a as ra2) { } } } }", 'same cursor'],
 				'foreach row name is its cursor'=> ["define function f () void { {$range} cursor c = retrieve (u.id) where u.id > 0 foreach (c as c) { } }", "'c' is already in use"],
 				'void returns a value'          => ['define function f () void { return 1 }', "A void routine can't return a value"],
+				'bare return in non-void'       => ['define function f () integer { return }', 'must return a value'],
 				'return only in if'             => ['define function f (integer n) integer { if (n > 0) { return 1 } }', 'Not every path'],
 				'elseif without else'           => ['define function f (integer n) integer { if (n > 0) { return 1 } elseif (n < 0) { return -1 } }', 'Not every path'],
 				'return only in loop'           => ['define function f (integer n) integer { while (n > 0) { return 1 } }', 'Not every path'],
@@ -517,6 +545,7 @@
 				'exit in a loop'               => ['define function f (integer n) void { transaction { while (n > 0) { exit } } }', 'inside a loop'],
 				'nested transactions'           => ['define function f () void { transaction { transaction { } } }', "can't be nested"],
 				'return inside transaction'     => ['define function f () integer { transaction { return 1 } }', "'return' inside 'transaction"],
+				'bare return inside transaction'=> ['define function f () void { transaction { return } }', "'return' inside 'transaction"],
 				'break at top level'            => ['define function f () void { break }', "'break' is only valid inside 'while' or 'foreach'"],
 				'continue in if without loop'   => ['define function f (integer n) void { if (n > 0) { continue } }', "'continue' is only valid inside 'while' or 'foreach'"],
 				'break out of transaction'      => ['define function f (integer n) void { while (n > 0) { transaction { if (n = 5) { break } } } }', "'break' would leave 'transaction { }' without finishing it"],

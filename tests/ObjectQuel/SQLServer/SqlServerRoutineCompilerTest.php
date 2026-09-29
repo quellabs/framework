@@ -269,6 +269,28 @@
 		}
 
 		/**
+		 * A bare `return` (void routines only) compiles to a plain `RETURN;`, releasing the
+		 * loop's cursor first, same as a valued `return` does.
+		 * @return void
+		 */
+		public function testBareReturnInsideLoopReleasesCursor(): void {
+			$sql = $this->compile('
+				define function stop_early () void {
+					range of u is UserEntity
+					cursor users = retrieve (u.id) where u.banned = false
+					foreach (users as row) {
+						if (row.id > 100) {
+							return
+						}
+						replace u (banned = true) where u.id = row.id
+					}
+				}
+			');
+
+			self::assertStringContainsString("\t\t\tCLOSE _cur_users;\n\t\t\tDEALLOCATE _cur_users;\n\t\t\tRETURN;\n", $sql);
+		}
+
+		/**
 		 * Sort terms compile to ORDER BY, before FOR UPDATE on a cursor that takes current-row writes.
 		 * @return void
 		 */
