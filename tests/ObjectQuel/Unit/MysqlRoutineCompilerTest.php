@@ -600,6 +600,30 @@
 		}
 
 		/**
+		 * `c = retrieve (...)` rebinds a cursor to a fresh SQL cursor, declared alongside the
+		 * original; the rebind statement itself compiles to no SQL of its own, and each
+		 * `foreach` opens whichever cursor was current at that point in the source.
+		 * @return void
+		 */
+		public function testCursorRebindGetsItsOwnDeclarationAndNoStatement(): void {
+			$sql = $this->compile('
+				define function f () void {
+					range of u is UserEntity
+					cursor c = retrieve (u.id) where u.banned = false
+					foreach (c as row) { }
+					c = retrieve (u.id) where u.banned = true
+					foreach (c as row) { }
+				}
+			');
+
+			self::assertStringContainsString("DECLARE _cur_c CURSOR FOR SELECT `u`.`id` as `id` FROM `users` as `u` WHERE `u`.`banned` = false;", $sql[0]);
+			self::assertStringContainsString("DECLARE _cur_c_2 CURSOR FOR SELECT `u`.`id` as `id` FROM `users` as `u` WHERE `u`.`banned` = true;", $sql[0]);
+			self::assertStringContainsString("OPEN _cur_c;", $sql[0]);
+			self::assertStringContainsString("OPEN _cur_c_2;", $sql[0]);
+			self::assertSame(1, substr_count($sql[0], 'banned` = true'), 'the rebind must not emit a statement of its own');
+		}
+
+		/**
 		 * Nested shadowing gives locals and cursors separate declarations and preserves outer references.
 		 * @return void
 		 */

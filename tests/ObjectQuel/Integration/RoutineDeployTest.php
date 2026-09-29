@@ -415,6 +415,39 @@
 		}
 
 		/**
+		 * `c = retrieve (...)` rebinds a cursor to a new query; a second `foreach` after the
+		 * rebind reads the new query, not the one the first `foreach` already consumed.
+		 * @return void
+		 */
+		public function testCursorRebindDrivesASecondLoopWithANewQuery(): void {
+			$firstId = $this->seedUser("{$this->name}_first");
+			$secondId = $this->seedUser("{$this->name}_second");
+
+			self::em()->executeQuery("
+				define function {$this->name} () void {
+					range of u is UserEntity
+					cursor c = retrieve (u.id) where u.username = \"{$this->name}_first\"
+					foreach (c as row) {
+						replace u (banned = true) where u.id = row.id
+					}
+					c = retrieve (u.id) where u.username = \"{$this->name}_second\"
+					foreach (c as row) {
+						replace u (banned = true) where u.id = row.id
+					}
+				}
+			");
+
+			self::em()->executeQuery("{$this->name}()");
+
+			$connection = self::em()->getConnection();
+			$firstRow = $connection->execute('SELECT banned FROM users WHERE id = :id', ['id' => $firstId])?->fetch('assoc');
+			$secondRow = $connection->execute('SELECT banned FROM users WHERE id = :id', ['id' => $secondId])?->fetch('assoc');
+
+			self::assertSame(1, (int)$firstRow['banned']);
+			self::assertSame(1, (int)$secondRow['banned']);
+		}
+
+		/**
 		 * An ObjectQuel call supplies the outer transaction; an unwrapped SQL call fails before writes.
 		 * @return void
 		 */

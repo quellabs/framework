@@ -415,6 +415,53 @@
 		}
 
 		/**
+		 * `c = retrieve (...)` rebinds a cursor to a fresh resolved name; an earlier `foreach`
+		 * keeps reading the original query, a later one reads the new one.
+		 * @return void
+		 */
+		public function testAcceptsCursorRebindBetweenSequentialLoops(): void {
+			$routine = $this->analyze('
+				define function f () void {
+					range of u is UserEntity
+					cursor c = retrieve (u.id) where u.banned = false
+					foreach (c as row) { }
+					c = retrieve (u.id) where u.banned = true
+					foreach (c as row) { }
+				}
+			');
+			$assignments = new CollectNodes(AstVariableAssignment::class);
+			$loops = new CollectNodes(AstForeach::class);
+			$routine->accept($assignments);
+			$routine->accept($loops);
+
+			self::assertSame(['c_2'], array_map(fn(AstVariableAssignment $node) => $node->getName(), $assignments->getCollectedNodes()));
+			self::assertSame(['c', 'c_2'], array_map(fn(AstForeach $node) => $node->getCursorName(), $loops->getCollectedNodes()));
+		}
+
+		/**
+		 * A rebind inside an `if` block only shadows the cursor for that block; the loop after
+		 * the block still reads the original query.
+		 * @return void
+		 */
+		public function testCursorRebindInsideIfDoesNotLeak(): void {
+			$routine = $this->analyze('
+				define function f (integer n) void {
+					range of u is UserEntity
+					cursor c = retrieve (u.id) where u.banned = false
+					if (n > 0) {
+						c = retrieve (u.id) where u.banned = true
+						foreach (c as innerRow) { }
+					}
+					foreach (c as outerRow) { }
+				}
+			');
+			$loops = new CollectNodes(AstForeach::class);
+			$routine->accept($loops);
+
+			self::assertSame(['c_2', 'c'], array_map(fn(AstForeach $node) => $node->getCursorName(), $loops->getCollectedNodes()));
+		}
+
+		/**
 		 * A nearer declaration wins even when it has a different kind from the outer name.
 		 * @return void
 		 */
@@ -524,10 +571,10 @@
 				'variable is also a target'     => ["define function f (integer k) void { {$range} retrieve (k = u.id) where u.id > k }", 'both a routine variable and a target-list name'],
 				'whole entity target'           => ["define function f () void { {$range} cursor c = retrieve (u) where u.id > 0 }", 'not whole entities'],
 				'cursor as a value'             => ["define function f () void { {$range} cursor c = retrieve (u.id) where u.id > 0 integer x = c }", "Cursor 'c' is not a value"],
-				'cursor reassigned'             => ["define function f () void { {$range} cursor c = retrieve (u.id) where u.id > 0 c = 1 }", "Cursor 'c' can't be reassigned"],
-				'inner cursor hides scalar'     => ["define function f () void { integer x = 1 {$range} if (x > 0) { cursor x = retrieve (u.id) x = 2 } }", "Cursor 'x' can't be reassigned"],
+				'cursor assigned a scalar'       => ["define function f () void { {$range} cursor c = retrieve (u.id) where u.id > 0 c = 1 }", "Cursor 'c' can only be assigned a retrieve"],
+				'inner cursor hides scalar'     => ["define function f () void { integer x = 1 {$range} if (x > 0) { cursor x = retrieve (u.id) x = 2 } }", "Cursor 'x' can only be assigned a retrieve"],
 				'inner scalar hides cursor'     => ["define function f () void { {$range} cursor c = retrieve (u.id) if (1 = 1) { integer c = 2 foreach (c as row) { } } }", "needs a cursor"],
-				'cursor incremented'            => ["define function f () void { {$range} cursor c = retrieve (u.id) where u.id > 0 c += 1 }", "Cursor 'c' can't be reassigned"],
+				'cursor incremented'            => ["define function f () void { {$range} cursor c = retrieve (u.id) where u.id > 0 c += 1 }", "Cursor 'c' can only be assigned a retrieve"],
 				'cursor field outside loop'     => ["define function f () integer { {$range} cursor c = retrieve (u.id) where u.id > 0 return c.id }", "Cursor 'c' is not a value; read its fields through its 'foreach (c as row)' binding"],
 				'missing cursor field'          => ["define function f () void { {$range} integer x cursor c = retrieve (u.id) where u.id > 0 foreach (c as row) { x = row.username } }", "has no field 'username'"],
 				'foreach over scalar'           => ['define function f (integer n) void { foreach (n as row) { } }', "needs a cursor, but 'n' is not one"],
@@ -550,6 +597,10 @@
 				'continue in if without loop'   => ['define function f (integer n) void { if (n > 0) { continue } }', "'continue' is only valid inside 'while' or 'foreach'"],
 				'break out of transaction'      => ['define function f (integer n) void { while (n > 0) { transaction { if (n = 5) { break } } } }', "'break' would leave 'transaction { }' without finishing it"],
 				'continue out of transaction'   => ['define function f (integer n) void { while (n > 0) { transaction { continue } } }', "'continue' would leave 'transaction { }'"],
+				'rebind while own loop open'    => ["define function f () void { {$range} cursor c = retrieve (u.id) where u.id > 0 foreach (c as row) { c = retrieve (u.id) where u.id > 1 } }", "can't be assigned while its own 'foreach' loop is open"],
+				'scalar assigned a retrieve'    => ["define function f () void { {$range} integer x = 1 x = retrieve (u.id) where u.id > 0 }", "declared as a scalar, so it can't be assigned a retrieve"],
+				'undeclared assigned a retrieve'=> ["define function f () void { {$range} y = retrieve (u.id) where u.id > 0 }", "undeclared variable 'y'"],
+				'range assigned a retrieve'     => ["define function f () void { {$range} u = retrieve (u.id) where u.id > 0 }", "Range 'u' can't be assigned"],
 			];
 		}
 
