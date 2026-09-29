@@ -6,12 +6,12 @@
 	use Quellabs\ObjectQuel\EntityManager;
 	use Quellabs\ObjectQuel\Exception\SemanticException;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAppend;
-	use Quellabs\ObjectQuel\ObjectQuel\CompiledAppendSql;
+	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQL\CompiledAppendSql;
 	use Quellabs\ObjectQuel\ObjectQuel\Lexer;
 	use Quellabs\ObjectQuel\ObjectQuel\Parser;
-	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQLAppend;
-	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQLReplace;
-	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQLUpsert;
+	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQL\QuelToSQLAppend;
+	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQL\QuelToSQLReplace;
+	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQL\QuelToSQLUpsert;
 	use Quellabs\ObjectQuel\Tests\Support\FakePlatformCapabilities;
 
 	/**
@@ -52,9 +52,9 @@
 			$em = $this->em();
 			$platform = new FakePlatformCapabilities($dialect);
 			$versionValueHandler = $em->getUnitOfWork()->getVersionValueHandler();
-			$replaceCompiler = new QuelToSQLReplace($em->getEntityStore(), $platform, $versionValueHandler);
-			$upsertCompiler = new QuelToSQLUpsert($em->getEntityStore(), $platform, $replaceCompiler);
-			$compiler = new QuelToSQLAppend($em, $platform, $upsertCompiler, $versionValueHandler);
+			$replaceCompiler = new QuelToSQLReplace($em->getEntityStore(), $platform, $dialect === 'sqlsrv' ? 'dbo' : null, $versionValueHandler);
+			$upsertCompiler = new QuelToSQLUpsert($em->getEntityStore(), $platform, $dialect === 'sqlsrv' ? 'dbo' : null, $replaceCompiler);
+			$compiler = new QuelToSQLAppend($em, $platform, $dialect === 'sqlsrv' ? 'dbo' : null, $upsertCompiler, $versionValueHandler);
 			return $compiler->convertToSQL($ast, $parameters);
 		}
 

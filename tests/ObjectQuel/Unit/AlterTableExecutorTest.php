@@ -32,12 +32,18 @@
 		}
 
 		/**
-		 * @param string[] $capturedSql Populated, in call order, as execute() is invoked
+		 * @param string[] $capturedSql Populated, in call order, as DDL is executed
+		 * @param array<string, string>|null $queryResultRow Row returned for schema lookups
 		 */
-		private function mockConnection(array &$capturedSql): DatabaseAdapter {
+		private function mockConnection(array &$capturedSql, ?array $queryResultRow = null): DatabaseAdapter {
 			$connection = $this->createMock(DatabaseAdapter::class);
 			$connection->method('execute')
-				->willReturnCallback(function (string $sql) use (&$capturedSql) {
+				->willReturnCallback(function (string $sql) use (&$capturedSql, $queryResultRow) {
+					if ($queryResultRow !== null && str_starts_with($sql, 'SELECT ')) {
+						$statement = $this->createMock(StatementInterface::class);
+						$statement->method('fetch')->willReturn($queryResultRow);
+						return $statement;
+					}
 					$capturedSql[] = $sql;
 					return $this->createMock(StatementInterface::class);
 				});
@@ -71,14 +77,10 @@
 			);
 		}
 
-		public function testPrimaryKeyOperationOnPostgresResolvesConstraintNameViaGetIndexes(): void {
+		public function testPrimaryKeyOperationOnPostgresResolvesConstraintName(): void {
 			$capturedSql = [];
-			$connection = $this->mockConnection($capturedSql);
+			$connection = $this->mockConnection($capturedSql, ['conname' => 'posts_pkey']);
 			$connection->method('getPrimaryKeyColumns')->willReturn(['old_id']);
-			$connection->method('getIndexes')->willReturn([
-				'uniq_email' => ['type' => 'unique', 'columns' => ['email'], 'length' => null],
-				'posts_pkey' => ['type' => 'primary', 'columns' => ['old_id'], 'length' => null],
-			]);
 
 			(new AlterTableExecutor($connection, new FakePlatformCapabilities('pgsql')))
 				->execute($this->parse('alter Posts (primary key (id))'), new ExecutionContext([]));

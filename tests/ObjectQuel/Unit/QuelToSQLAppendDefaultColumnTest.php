@@ -7,9 +7,9 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAppend;
 	use Quellabs\ObjectQuel\ObjectQuel\Lexer;
 	use Quellabs\ObjectQuel\ObjectQuel\Parser;
-	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQLAppend;
-	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQLReplace;
-	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQLUpsert;
+	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQL\QuelToSQLAppend;
+	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQL\QuelToSQLReplace;
+	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQL\QuelToSQLUpsert;
 	use Quellabs\ObjectQuel\Tests\Support\FakePlatformCapabilities;
 
 	/**
@@ -40,9 +40,9 @@
 
 			$platform = new FakePlatformCapabilities('mysql');
 			$versionValueHandler = $em->getUnitOfWork()->getVersionValueHandler();
-			$replaceCompiler = new QuelToSQLReplace($em->getEntityStore(), $platform, $versionValueHandler);
-			$upsertCompiler = new QuelToSQLUpsert($em->getEntityStore(), $platform, $replaceCompiler);
-			$compiler = new QuelToSQLAppend($em, $platform, $upsertCompiler, $versionValueHandler);
+			$replaceCompiler = new QuelToSQLReplace($em->getEntityStore(), $platform, null, $versionValueHandler);
+			$upsertCompiler = new QuelToSQLUpsert($em->getEntityStore(), $platform, null, $replaceCompiler);
+			$compiler = new QuelToSQLAppend($em, $platform, null, $upsertCompiler, $versionValueHandler);
 
 			return $compiler->convertToSQL($ast, $parameters)->primarySql;
 		}

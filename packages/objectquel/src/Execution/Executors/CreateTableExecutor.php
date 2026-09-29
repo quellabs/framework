@@ -4,13 +4,13 @@
 
 	use Quellabs\ObjectQuel\Capabilities\PlatformCapabilitiesInterface;
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
-	use Quellabs\ObjectQuel\DatabaseAdapter\SqlIdentifierQuoter;
+	use Quellabs\ObjectQuel\ObjectQuel\Helpers\SqlDialect\SqlIdentifierQuoter;
 	use Quellabs\ObjectQuel\Exception\QuelException;
 	use Quellabs\ObjectQuel\Execution\ExecutionContext;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstCreateIndex;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstCreateTable;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstStatement;
-	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQLCreate;
+	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQL\QuelToSQLCreate;
 
 	/**
 	 * Executes an AstCreateTable statement: compiles it via QuelToSQLCreate

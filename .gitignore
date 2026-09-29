@@ -2,3 +2,4 @@
 /vendor
 /*.md
 /migrations
+/tests/postgres.local.php

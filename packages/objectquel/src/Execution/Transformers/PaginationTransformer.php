@@ -14,8 +14,8 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIn;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstNumber;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
-	use Quellabs\ObjectQuel\ObjectQuel\PrimaryKeyInfo;
-	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQLRetrieve;
+	use Quellabs\ObjectQuel\ObjectQuel\Helpers\PrimaryKeyInfo;
+	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQL\QuelToSQLRetrieve;
 	use Quellabs\ObjectQuel\Execution\Visitors\DetectPrimaryKeyInClause;
 	use Quellabs\ObjectQuel\Execution\Visitors\DetectPrimaryKeyInClauseException;
 	
@@ -50,14 +50,10 @@
 			$window = $ast->getWindow();
 			$windowSize = $ast->getWindowSize();
 			
-			if (
-				$window !== null &&
-				$windowSize !== null &&
-				!$ast->getSortInApplicationLogic()
-			) {
+			if ($window !== null && $windowSize !== null && !$ast->getSortInApplicationLogic()) {
 				try {
 					$this->primaryKeyInfo = PrimaryKeyInfo::fromRetrieve($ast, $this->entityStore);
-				$this->processPagination($ast, $parameters, $window, $windowSize);
+					$this->processPagination($ast, $parameters, (int)$window, (int)$windowSize);
 				} finally {
 					$this->primaryKeyInfo = null;
 				}
@@ -206,7 +202,7 @@
 				$ast->setUnique($originalUnique);
 			}
 		}
-
+		
 		/**
 		 * Gets the subset of primary keys for the current page.
 		 * @param list<int|string> $primaryKeys
@@ -232,7 +228,7 @@
 			}
 			
 			// Transform the Quel query to SQL
-			$quelToSQL = new QuelToSQLRetrieve($this->entityStore, $stringKeyedParameters, $this->platform);
+			$quelToSQL = new QuelToSQLRetrieve($this->entityStore, $stringKeyedParameters, $this->platform, $this->connection->getRoutineSchema());
 			return $quelToSQL->convertToSQL($retrieve);
 		}
 		

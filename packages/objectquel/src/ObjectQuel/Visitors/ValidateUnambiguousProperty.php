@@ -9,8 +9,8 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRange;
 	use Quellabs\ObjectQuel\ObjectQuel\AstInterface;
 	use Quellabs\ObjectQuel\ObjectQuel\AstVisitorInterface;
-	use Quellabs\ObjectQuel\ObjectQuel\Helpers\FindPropertyRange;
-	use Quellabs\ObjectQuel\ObjectQuel\IdentifierType;
+	use Quellabs\ObjectQuel\ObjectQuel\Helpers\PropertyRangeFinder;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\IdentifierType;
 	
 	/**
 	 * Validates that all unresolved bare identifiers can be unambiguously mapped
@@ -24,7 +24,7 @@
 	 * ambiguous case is reported here — an unknown property is intentionally left
 	 * alone so ValidateRangesDeclared reports it as an undefined reference.
 	 */
-	class ValidateUnambiguousProperty extends FindPropertyRange implements AstVisitorInterface {
+	class ValidateUnambiguousProperty extends PropertyRangeFinder implements AstVisitorInterface {
 		
 		/** @var AstRange[] */
 		private array $ranges;

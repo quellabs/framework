@@ -8,7 +8,7 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Lexer;
 	use Quellabs\ObjectQuel\ObjectQuel\Parser;
 	use Quellabs\ObjectQuel\ObjectQuel\ParserException;
-	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQLCreate;
+	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQL\QuelToSQLCreate;
 	use Quellabs\ObjectQuel\Tests\Support\FakePlatformCapabilities;
 
 	/**
