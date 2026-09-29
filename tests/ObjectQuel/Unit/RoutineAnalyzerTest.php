@@ -462,6 +462,27 @@
 		}
 
 		/**
+		 * A rebind inside a cursor's own open `foreach` shadows it to a new resolved name;
+		 * the enclosing loop keeps iterating the original, unaffected.
+		 * @return void
+		 */
+		public function testAcceptsCursorRebindInsideItsOwnOpenLoop(): void {
+			$routine = $this->analyze('
+				define function f () void {
+					range of u is UserEntity
+					cursor c = retrieve (u.id) where u.id > 0
+					foreach (c as row) {
+						c = retrieve (u.id) where u.id > 1
+					}
+				}
+			');
+			$loops = new CollectNodes(AstForeach::class);
+			$routine->accept($loops);
+
+			self::assertSame(['c'], array_map(fn(AstForeach $node) => $node->getCursorName(), $loops->getCollectedNodes()));
+		}
+
+		/**
 		 * A nearer declaration wins even when it has a different kind from the outer name.
 		 * @return void
 		 */
@@ -597,7 +618,6 @@
 				'continue in if without loop'   => ['define function f (integer n) void { if (n > 0) { continue } }', "'continue' is only valid inside 'while' or 'foreach'"],
 				'break out of atomic'           => ['define function f (integer n) void { while (n > 0) { atomic { if (n = 5) { break } } } }', "'break' would leave 'atomic { }' without finishing it"],
 				'continue out of atomic'        => ['define function f (integer n) void { while (n > 0) { atomic { continue } } }', "'continue' would leave 'atomic { }'"],
-				'rebind while own loop open'    => ["define function f () void { {$range} cursor c = retrieve (u.id) where u.id > 0 foreach (c as row) { c = retrieve (u.id) where u.id > 1 } }", "can't be assigned while its own 'foreach' loop is open"],
 				'scalar assigned a retrieve'    => ["define function f () void { {$range} integer x = 1 x = retrieve (u.id) where u.id > 0 }", "declared as a scalar, so it can't be assigned a retrieve"],
 				'undeclared assigned a retrieve'=> ["define function f () void { {$range} y = retrieve (u.id) where u.id > 0 }", "undeclared variable 'y'"],
 				'range assigned a retrieve'     => ["define function f () void { {$range} u = retrieve (u.id) where u.id > 0 }", "Range 'u' can't be assigned"],
