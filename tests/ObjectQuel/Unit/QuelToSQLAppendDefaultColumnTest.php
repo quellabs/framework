@@ -40,9 +40,9 @@
 
 			$platform = new FakePlatformCapabilities('mysql');
 			$versionValueHandler = $em->getUnitOfWork()->getVersionValueHandler();
-			$replaceCompiler = new QuelToSQLReplace($em->getEntityStore(), $platform, $versionValueHandler);
-			$upsertCompiler = new QuelToSQLUpsert($em->getEntityStore(), $platform, $replaceCompiler);
-			$compiler = new QuelToSQLAppend($em, $platform, $upsertCompiler, $versionValueHandler);
+			$replaceCompiler = new QuelToSQLReplace($em->getEntityStore(), $platform, null, $versionValueHandler);
+			$upsertCompiler = new QuelToSQLUpsert($em->getEntityStore(), $platform, null, $replaceCompiler);
+			$compiler = new QuelToSQLAppend($em, $platform, null, $upsertCompiler, $versionValueHandler);
 
 			return $compiler->convertToSQL($ast, $parameters)->primarySql;
 		}

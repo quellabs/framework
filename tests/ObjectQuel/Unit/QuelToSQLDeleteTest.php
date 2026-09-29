@@ -19,7 +19,9 @@
 	class QuelToSQLDeleteTest extends TestCase {
 
 		private function em(): EntityManager {
-			return $GLOBALS['test_em'];
+			$entityManager = $GLOBALS['test_em'];
+			self::assertInstanceOf(EntityManager::class, $entityManager);
+			return $entityManager;
 		}
 
 		private function parse(string $query): AstDelete {
@@ -28,9 +30,13 @@
 			return $ast;
 		}
 
+		/**
+		 * @param array<string, mixed> $parameters Bound values
+		 * @return string Generated DELETE statement
+		 */
 		private function compile(AstDelete $ast, string $dialect, array $parameters = []): string {
 			$platform = new FakePlatformCapabilities($dialect);
-			$compiler = new QuelToSQLDelete($this->em()->getEntityStore(), $platform);
+			$compiler = new QuelToSQLDelete($this->em()->getEntityStore(), $platform, $dialect === 'sqlsrv' ? 'dbo' : null);
 			return $compiler->convertToSQL($ast, $parameters);
 		}
 
@@ -44,6 +50,41 @@
 				'DELETE FROM `users` as `u` WHERE `u`.`id` = :id',
 				$this->compile($ast, 'mysql', ['id' => 1])
 			);
+		}
+
+		/**
+		 * MariaDB places the target alias between DELETE and FROM for a single-table delete.
+		 * @return void
+		 */
+		public function testMariaDbPlacesTheAliasBeforeTheFromClause(): void {
+			$ast = $this->parse('
+				range of u is App\\Entities\\UserEntity
+				delete u where u.id = :id
+			');
+
+			self::assertSame(
+				'DELETE `u` FROM `users` as `u` WHERE `u`.`id` = :id',
+				$this->compile($ast, 'mariadb', ['id' => 1])
+			);
+		}
+
+		/**
+		 * SQL Server declares the target alias in a FROM clause, for a DELETE and for a soft-delete UPDATE.
+		 * @return void
+		 */
+		public function testSqlServerDeclaresTheAliasInAFromClause(): void {
+			$hard = $this->parse('
+				range of u is App\Entities\UserEntity
+				delete u where u.id = :id
+			');
+
+			$soft = $this->parse('
+				range of p is App\Entities\PostEntity
+				delete p where p.published
+			');
+
+			self::assertSame('DELETE [u] FROM [users] as [u] WHERE [u].[id] = :id', $this->compile($hard, 'sqlsrv', ['id' => 1]));
+			self::assertSame('UPDATE [p] SET [p].[deleted_at] = SYSDATETIME() FROM [posts] as [p] WHERE [p].[published] = 1', $this->compile($soft, 'sqlsrv'));
 		}
 
 		/**

@@ -1,0 +1,2 @@
+# PHP sources stay LF on every platform; heredoc test fixtures compare against LF compiler output
+*.php text eol=lf

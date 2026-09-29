@@ -39,6 +39,10 @@
 			return in_array($this->databaseType, ['mysql', 'mariadb'], true);
 		}
 
+		public function supportsOffsetPagination(): bool {
+			return in_array($this->databaseType, ['mysql', 'mariadb', 'pgsql', 'sqlite', 'sqlsrv'], true);
+		}
+
 		public function getFulltextIndexStyle(): FulltextIndexStyle {
 			return match ($this->databaseType) {
 				'sqlite' => FulltextIndexStyle::Fts5,
@@ -52,16 +56,17 @@
 		}
 
 		/**
-		 * Mirrors PlatformCapabilities::getDatetimeFromUnixTimestamp().
-		 * @param string $timestampSql SQL of the Unix timestamp
-		 * @return string
+		 * @return bool False on SQL Server, which declares the alias in a FROM clause
 		 */
-		public function getDatetimeFromUnixTimestamp(string $timestampSql): string {
-			return match ($this->databaseType) {
-				'pgsql' => "(TO_TIMESTAMP({$timestampSql}) AT TIME ZONE 'UTC')",
-				'sqlite' => "datetime({$timestampSql}, 'unixepoch')",
-				'sqlsrv' => "DATEADD(SECOND, CAST({$timestampSql} AS BIGINT) % 86400, DATEADD(DAY, CAST({$timestampSql} AS BIGINT) / 86400, CAST('1970-01-01' AS DATETIME2)))",
-				default => "FROM_UNIXTIME({$timestampSql})",
-			};
+		public function supportsAliasAfterDmlTarget(): bool {
+			return $this->databaseType !== 'sqlsrv';
 		}
+
+		/**
+		 * @return bool False on SQL Server, which uses BIT 1/0
+		 */
+		public function supportsBooleanLiterals(): bool {
+			return $this->databaseType !== 'sqlsrv';
+		}
+
 	}

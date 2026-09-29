@@ -36,7 +36,7 @@
 		private function compile(AstReplace $ast, string $dialect, array $parameters = []): string {
 			$em = $this->em();
 			$platform = new FakePlatformCapabilities($dialect);
-			$compiler = new QuelToSQLReplace($em->getEntityStore(), $platform, $em->getUnitOfWork()->getVersionValueHandler());
+			$compiler = new QuelToSQLReplace($em->getEntityStore(), $platform, $dialect === 'sqlsrv' ? 'dbo' : null, $em->getUnitOfWork()->getVersionValueHandler());
 			return $compiler->convertToSQL($ast, $parameters);
 		}
 
@@ -54,10 +54,30 @@
 			);
 		}
 
+		/**
+		 * SQL Server takes no alias after the UPDATE target; it's declared in a FROM clause.
+		 * @return void
+		 */
 		public function testSqlServerQualifiesTheSetTargetColumnWithTheRangeAlias(): void {
 			self::assertSame(
-				'UPDATE [users] as [u] SET [u].[username] = :username WHERE [u].[id] = :id',
+				'UPDATE [u] SET [u].[username] = :username FROM [users] as [u] WHERE [u].[id] = :id',
 				$this->compile($this->entityQuery(), 'sqlsrv', ['username' => 'alice', 'id' => 1])
+			);
+		}
+
+		/**
+		 * SQL Server has no TRUE/FALSE literals; booleans are BIT 1/0 and a bare BIT condition is compared to 1.
+		 * @return void
+		 */
+		public function testSqlServerRendersBooleansAsBitValues(): void {
+			$ast = $this->parse('
+				range of u is App\Entities\UserEntity
+				replace u (banned = false) where u.banned and not u.banned or u.banned = true
+			');
+
+			self::assertSame(
+				'UPDATE [u] SET [u].[banned] = 0 FROM [users] as [u] WHERE [u].[banned] = 1 AND NOT([u].[banned] = 1) OR [u].[banned] = 1',
+				$this->compile($ast, 'sqlsrv')
 			);
 		}
 

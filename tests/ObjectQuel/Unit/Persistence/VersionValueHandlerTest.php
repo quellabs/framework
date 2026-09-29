@@ -5,7 +5,7 @@
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\ObjectQuel\Annotations\Orm\Column;
 	use Quellabs\ObjectQuel\Annotations\Orm\Version;
-	use Quellabs\ObjectQuel\DatabaseAdapter\SqlIdentifierQuoter;
+	use Quellabs\ObjectQuel\ObjectQuel\Helpers\SqlDialect\SqlIdentifierQuoter;
 	use Quellabs\ObjectQuel\OrmException;
 	use Quellabs\ObjectQuel\Persistence\VersionValueHandler;
 	use Quellabs\ObjectQuel\Tests\Support\FakePlatformCapabilities;
@@ -87,8 +87,8 @@
 				$params
 			);
 
-			// Exact fragment isn't the point here (PlatformCapabilities::
-			// getCurrentDatetimeFunction() owns that) — what matters is that
+			// Exact fragment isn't the point here (SqlDialectSyntax::currentDatetime()
+			// owns that) — what matters is that
 			// the two dialects actually produce different SQL, i.e. this
 			// isn't hardcoding MySQL's NOW().
 			self::assertNotSame($mysqlParts[0], $sqlsrvParts[0]);

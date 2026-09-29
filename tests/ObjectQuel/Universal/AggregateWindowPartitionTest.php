@@ -1,0 +1,40 @@
+<?php
+
+	namespace Quellabs\ObjectQuel\Tests\Universal;
+	use Quellabs\ObjectQuel\Tests\ObjectQuelTestCase;
+
+	/** Regression test for AggregateOptimizer's WINDOW strategy computing an empty PARTITION BY. */
+	class AggregateWindowPartitionTest extends ObjectQuelTestCase {
+
+		protected function seedFixtures(): void {
+			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (1, 'alice', 'hash1', FALSE)");
+			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (2, 'bob', 'hash2', FALSE)");
+
+			$posts = [
+				[1, 'p1', 1],
+				[2, 'p2', 1],
+				[3, 'p3', 1],
+				[4, 'p4', 2],
+				[5, 'p5', 2],
+			];
+
+			foreach ($posts as [$id, $title, $userId]) {
+				$this->exec("INSERT INTO posts (id, title, content, published, created_at, test_enum, test_json, user_id)
+					VALUES ({$id}, '{$title}', 'content', TRUE, '2024-01-0{$id} 00:00:00', 'pending', '{}', {$userId})");
+			}
+		}
+
+		public function testWindowAggregatePartitionsByOtherSelectedColumn(): void {
+			// o.userId becomes the PARTITION BY: user 1 shows total 6, user 2 shows 9 — not 15.
+			$result = iterator_to_array($this->em->executeQuery("
+				range of o is PostEntity
+				retrieve (o.userId, total = sum(o.id))
+				sort by o.userId
+			"));
+
+			$this->assertSame(
+				[[1, 6], [1, 6], [1, 6], [2, 9], [2, 9]],
+				array_map(fn($row) => [(int) $row['o.userId'], (int) $row['total']], $result)
+			);
+		}
+	}
