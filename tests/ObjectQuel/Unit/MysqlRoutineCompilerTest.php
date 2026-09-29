@@ -211,6 +211,32 @@
 		}
 
 		/**
+		 * `@ignoreSoftDelete true` ahead of `define function` covers the whole routine body:
+		 * `delete` issues a real DELETE instead of the soft-delete UPDATE, and `retrieve`
+		 * doesn't get the automatic `deleted_at IS NULL` filter — contrast with
+		 * testProcedureStatements(), whose identical body (no directive) keeps both.
+		 * @return void
+		 */
+		public function testIgnoreSoftDeleteDirectiveAppliesToWholeRoutineBody(): void {
+			$statements = $this->compile('
+				@ignoreSoftDelete true
+				define function purge (string who) void {
+					range of u is UserEntity
+					range of p is PostEntity
+					cursor users = retrieve (u.id, u.username) where u.username = who
+					foreach (users as row) {
+						delete p where p.userId = 5
+					}
+					retrieve (p.title) where p.userId = 5
+				}
+			');
+
+			self::assertStringContainsString('DELETE FROM `posts` as `p` WHERE `p`.`user_id` = 5;', $statements[0]);
+			self::assertStringContainsString('FROM `posts` as `p` WHERE `p`.`user_id` = 5) AS `_discard`;', $statements[0]);
+			self::assertStringNotContainsString('deleted_at', $statements[0]);
+		}
+
+		/**
 		 * MySQL procedures don't support RETURN at all (function-only); a bare `return`
 		 * (void routines only) instead labels the routine body and lowers to `LEAVE` it.
 		 * @return void
