@@ -65,6 +65,30 @@
 		}
 
 		/**
+		 * `@ignoreSoftDelete true` ahead of `define function` attaches to the routine, same
+		 * directive syntax and case-insensitive name lookup as AstDelete/AstRetrieve use.
+		 * @return void
+		 */
+		public function testParsesLeadingDirective(): void {
+			$routine = $this->parse('@ignoreSoftDelete true define function sync_user () void { }');
+
+			self::assertTrue($routine->getDirective('ignoreSoftDelete'));
+			self::assertTrue($routine->getDirective('IGNORESOFTDELETE'));
+			self::assertSame(['ignoresoftdelete' => true], $routine->getDirectives());
+		}
+
+		/**
+		 * A routine with no leading directive carries none.
+		 * @return void
+		 */
+		public function testNoDirectiveByDefault(): void {
+			$routine = $this->parse('define function sync_user () void { }');
+
+			self::assertSame([], $routine->getDirectives());
+			self::assertNull($routine->getDirective('ignoreSoftDelete'));
+		}
+
+		/**
 		 * Numeric window values are parsed and validated by the semantic analyzer.
 		 * @param string $window Window clause
 		 * @return void
