@@ -6,7 +6,7 @@
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRollback;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAppend;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstTransaction;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAtomic;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstBreak;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstContinue;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstDeclare;
@@ -354,13 +354,13 @@
 		}
 
 		/**
-		 * A transaction block parses with a rollback inside it.
+		 * An atomic block parses with a rollback inside it.
 		 * @return void
 		 */
-		public function testTransactionWithRollback(): void {
+		public function testAtomicWithRollback(): void {
 			$body = $this->parse('
 				define function f (string newEmail) void {
-					transaction {
+					atomic {
 						if (newEmail = "") {
 							rollback
 						}
@@ -368,30 +368,8 @@
 				}
 			')->getBody();
 
-			self::assertInstanceOf(AstTransaction::class, $body[0]);
+			self::assertInstanceOf(AstAtomic::class, $body[0]);
 			self::assertInstanceOf(AstRollback::class, $body[0]->getBody()[0]->getThenBody()[0]);
-		}
-
-		/**
-		 * Legacy `begin transaction` and `abort` syntax is rejected by the parser.
-		 * @param string $statement Deprecated statement text
-		 * @return void
-		 */
-		#[DataProvider('deprecatedTransactionStatements')]
-		public function testRejectsDeprecatedTransactionStatements(string $statement): void {
-			$this->expectException(ParserException::class);
-			$this->parse("define function f () void { {$statement} }");
-		}
-
-		/**
-		 * Supplies syntax replaced by `transaction` and `rollback`.
-		 * @return array<string, array{string}>
-		 */
-		public static function deprecatedTransactionStatements(): array {
-			return [
-				'begin transaction' => ['begin transaction { }'],
-				'abort' => ['transaction { abort }'],
-			];
 		}
 
 		/**

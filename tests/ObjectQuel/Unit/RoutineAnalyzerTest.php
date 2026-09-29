@@ -161,7 +161,7 @@
 			$this->analyze('
 				define function rename (integer userId, string newName) void {
 					range of u is UserEntity
-					transaction {
+					atomic {
 						replace u (username = newName) where u.id = userId
 						if (newName = "") {
 							rollback
@@ -236,7 +236,7 @@
 		}
 
 		/**
-		 * break/continue in a loop inside a transaction, and in the inner loop of a nested pair.
+		 * break/continue in a loop inside an atomic block, and in the inner loop of a nested pair.
 		 * @return void
 		 */
 		public function testAcceptsBreakAndContinueInsideTheirLoop(): void {
@@ -244,7 +244,7 @@
 				define function f (integer n) void {
 					range of u is UserEntity
 					cursor users = retrieve (u.id) where u.id > 0
-					transaction {
+					atomic {
 						while (n > 0) {
 							if (n = 5) {
 								break
@@ -549,7 +549,7 @@
 				'range redeclares local'        => ['define function f () void { integer u range of u is UserEntity }', "'u' is already declared"],
 				'statement keyword as name'     => ['define function f () void { integer foreach }', 'statement keyword'],
 				'break as name'                 => ['define function f () void { integer break }', 'statement keyword'],
-				'transaction as name'           => ['define function f () void { integer transaction }', 'statement keyword'],
+				'atomic as name'                => ['define function f () void { integer atomic }', 'statement keyword'],
 				'rollback as name'              => ['define function f (integer rollback) void { }', 'statement keyword'],
 				'elseif as name'                => ['define function f (integer elseif) void { }', 'statement keyword'],
 				'locals differing in case'      => ['define function f () void { integer total integer Total }', "'total' and 'Total' differ only in case"],
@@ -586,17 +586,17 @@
 				'return only in if'             => ['define function f (integer n) integer { if (n > 0) { return 1 } }', 'Not every path'],
 				'elseif without else'           => ['define function f (integer n) integer { if (n > 0) { return 1 } elseif (n < 0) { return -1 } }', 'Not every path'],
 				'return only in loop'           => ['define function f (integer n) integer { while (n > 0) { return 1 } }', 'Not every path'],
-				'rollback outside transaction'  => ['define function f () void { rollback }', "only valid inside 'transaction"],
-				'statement after rollback'      => ['define function f (integer n) void { transaction { if (n > 0) { rollback } n = 1 } }', "A statement follows 'rollback'"],
-				'statement after rollback in if'=> ['define function f (integer n) void { transaction { if (n > 0) { rollback n = 1 } } }', "A statement follows 'rollback'"],
-				'rollback in a loop'            => ['define function f (integer n) void { transaction { while (n > 0) { rollback } } }', 'inside a loop'],
-				'nested transactions'           => ['define function f () void { transaction { transaction { } } }', "can't be nested"],
-				'return inside transaction'     => ['define function f () integer { transaction { return 1 } }', "'return' inside 'transaction"],
-				'bare return inside transaction'=> ['define function f () void { transaction { return } }', "'return' inside 'transaction"],
+				'rollback outside atomic'       => ['define function f () void { rollback }', "only valid inside 'atomic"],
+				'statement after rollback'      => ['define function f (integer n) void { atomic { if (n > 0) { rollback } n = 1 } }', "A statement follows 'rollback'"],
+				'statement after rollback in if'=> ['define function f (integer n) void { atomic { if (n > 0) { rollback n = 1 } } }', "A statement follows 'rollback'"],
+				'rollback in a loop'            => ['define function f (integer n) void { atomic { while (n > 0) { rollback } } }', 'inside a loop'],
+				'nested atomic blocks'          => ['define function f () void { atomic { atomic { } } }', "can't be nested"],
+				'return inside atomic'          => ['define function f () integer { atomic { return 1 } }', "'return' inside 'atomic"],
+				'bare return inside atomic'     => ['define function f () void { atomic { return } }', "'return' inside 'atomic"],
 				'break at top level'            => ['define function f () void { break }', "'break' is only valid inside 'while' or 'foreach'"],
 				'continue in if without loop'   => ['define function f (integer n) void { if (n > 0) { continue } }', "'continue' is only valid inside 'while' or 'foreach'"],
-				'break out of transaction'      => ['define function f (integer n) void { while (n > 0) { transaction { if (n = 5) { break } } } }', "'break' would leave 'transaction { }' without finishing it"],
-				'continue out of transaction'   => ['define function f (integer n) void { while (n > 0) { transaction { continue } } }', "'continue' would leave 'transaction { }'"],
+				'break out of atomic'           => ['define function f (integer n) void { while (n > 0) { atomic { if (n = 5) { break } } } }', "'break' would leave 'atomic { }' without finishing it"],
+				'continue out of atomic'        => ['define function f (integer n) void { while (n > 0) { atomic { continue } } }', "'continue' would leave 'atomic { }'"],
 				'rebind while own loop open'    => ["define function f () void { {$range} cursor c = retrieve (u.id) where u.id > 0 foreach (c as row) { c = retrieve (u.id) where u.id > 1 } }", "can't be assigned while its own 'foreach' loop is open"],
 				'scalar assigned a retrieve'    => ["define function f () void { {$range} integer x = 1 x = retrieve (u.id) where u.id > 0 }", "declared as a scalar, so it can't be assigned a retrieve"],
 				'undeclared assigned a retrieve'=> ["define function f () void { {$range} y = retrieve (u.id) where u.id > 0 }", "undeclared variable 'y'"],

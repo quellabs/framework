@@ -335,7 +335,7 @@
 						replace u (banned = true) where u.id = row.id
 						delete u where u.id = row.id
 					}
-					transaction {
+					atomic {
 						replace u (banned = false) where u.username = who
 						if (who = \"\") {
 							rollback
@@ -392,7 +392,7 @@
 			self::em()->executeQuery("
 				define function {$this->name} (integer uid, integer cancel) void {
 					range of u is UserEntity
-					transaction {
+					atomic {
 						replace u (banned = true) where u.id = uid
 						if (cancel = 1) { rollback }
 					}
@@ -462,7 +462,7 @@
 			self::em()->executeQuery("
 				define function {$this->name} (integer uid) void {
 					range of u is UserEntity
-					transaction { replace u (banned = true) where u.id = uid }
+					atomic { replace u (banned = true) where u.id = uid }
 				}
 			");
 
@@ -491,7 +491,7 @@
 			self::em()->executeQuery("
 				define function {$this->name} (integer uid) void {
 					range of u is UserEntity
-					transaction {
+					atomic {
 						replace u (banned = true) where u.id = uid
 						replace u (username = (string)null) where u.id = uid
 					}

@@ -143,7 +143,7 @@
 
 		/**
 		 * A void routine becomes a procedure; statements, deletes (soft or not) referencing the loop's
-		 * row binding, and transactions lower in place.
+		 * row binding, and atomic blocks lower in place.
 		 * @return void
 		 */
 		public function testProcedureStatements(): void {
@@ -156,7 +156,7 @@
 						delete p where p.userId = row.id
 						delete u where u.id = row.id
 					}
-					transaction {
+					atomic {
 						replace u (banned = false) where u.username = who
 						if (who = "") {
 							rollback
@@ -396,17 +396,17 @@
 		}
 
 		/**
-		 * A `transaction` inside `foreach` is fine on PostgreSQL: PL/pgSQL's implicit `FOR ... IN`
+		 * An `atomic` block inside `foreach` is fine on PostgreSQL: PL/pgSQL's implicit `FOR ... IN`
 		 * loop holds no explicit cursor for a subtransaction rollback to invalidate.
 		 * @return void
 		 */
-		public function testTransactionInsideForeachIsSupported(): void {
+		public function testAtomicInsideForeachIsSupported(): void {
 			$sql = $this->compile('
 				define function f () void {
 					range of u is UserEntity
 					cursor users = retrieve (u.id)
 					foreach (users as row) {
-						transaction {
+						atomic {
 							delete u where u.id = row.id
 						}
 					}
@@ -551,10 +551,10 @@
 		 */
 		public static function rejectedRoutines(): array {
 			return [
-				'transaction in a function' => ['
+				'atomic in a function' => ['
 					define function f () integer {
 						range of u is UserEntity
-						transaction {
+						atomic {
 							delete u where u.id = 1
 						}
 						return 1

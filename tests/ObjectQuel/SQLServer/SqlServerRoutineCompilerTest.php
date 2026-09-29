@@ -105,7 +105,7 @@
 						replace u (banned = true) where u.id = row.id
 						delete u where u.id = row.id
 					}
-					transaction {
+					atomic {
 						replace u (banned = false) where u.username = who
 						if (who = "") {
 							rollback
@@ -579,11 +579,11 @@
 				', "SQL Server creates it as a FUNCTION, which can't write tables"],
 
 
-				'transaction inside a loop' => ['
+				'atomic inside a loop' => ['
 					define function f () void {
 						range of u is UserEntity
 						cursor users = retrieve (u.id)
-						foreach (users as row) { transaction { delete u where u.id = row.id } }
+						foreach (users as row) { atomic { delete u where u.id = row.id } }
 					}
 				', 'while its cursor is open'],
 
