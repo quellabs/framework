@@ -159,7 +159,7 @@
 					transaction {
 						replace u (banned = false) where u.username = who
 						if (who = "") {
-							exit
+							rollback
 						}
 					}
 					retrieve (p.title) where p.userId = 5

@@ -154,17 +154,17 @@
 		}
 
 		/**
-		 * exit as the last statement of one branch is legal; the other branch may continue.
+		 * rollback as the last statement of one branch is legal; the other branch may continue.
 		 * @return void
 		 */
-		public function testAcceptsExitAsLastStatementOnItsPath(): void {
+		public function testAcceptsRollbackAsLastStatementOnItsPath(): void {
 			$this->analyze('
 				define function rename (integer userId, string newName) void {
 					range of u is UserEntity
 					transaction {
 						replace u (username = newName) where u.id = userId
 						if (newName = "") {
-							exit
+							rollback
 						} else {
 							replace u (banned = false) where u.id = userId
 						}
@@ -503,7 +503,7 @@
 				'statement keyword as name'     => ['define function f () void { integer foreach }', 'statement keyword'],
 				'break as name'                 => ['define function f () void { integer break }', 'statement keyword'],
 				'transaction as name'           => ['define function f () void { integer transaction }', 'statement keyword'],
-				'exit as name'                  => ['define function f (integer exit) void { }', 'statement keyword'],
+				'rollback as name'              => ['define function f (integer rollback) void { }', 'statement keyword'],
 				'elseif as name'                => ['define function f (integer elseif) void { }', 'statement keyword'],
 				'locals differing in case'      => ['define function f () void { integer total integer Total }', "'total' and 'Total' differ only in case"],
 				'nested locals differing case'  => ['define function f () void { integer total if (1 = 1) { integer Total } }', "'total' and 'Total' differ only in case"],
@@ -539,10 +539,10 @@
 				'return only in if'             => ['define function f (integer n) integer { if (n > 0) { return 1 } }', 'Not every path'],
 				'elseif without else'           => ['define function f (integer n) integer { if (n > 0) { return 1 } elseif (n < 0) { return -1 } }', 'Not every path'],
 				'return only in loop'           => ['define function f (integer n) integer { while (n > 0) { return 1 } }', 'Not every path'],
-				'exit outside transaction'     => ['define function f () void { exit }', "only valid inside 'transaction"],
-				'statement after exit'         => ['define function f (integer n) void { transaction { if (n > 0) { exit } n = 1 } }', "A statement follows 'exit'"],
-				'statement after exit in if'   => ['define function f (integer n) void { transaction { if (n > 0) { exit n = 1 } } }', "A statement follows 'exit'"],
-				'exit in a loop'               => ['define function f (integer n) void { transaction { while (n > 0) { exit } } }', 'inside a loop'],
+				'rollback outside transaction'  => ['define function f () void { rollback }', "only valid inside 'transaction"],
+				'statement after rollback'      => ['define function f (integer n) void { transaction { if (n > 0) { rollback } n = 1 } }', "A statement follows 'rollback'"],
+				'statement after rollback in if'=> ['define function f (integer n) void { transaction { if (n > 0) { rollback n = 1 } } }', "A statement follows 'rollback'"],
+				'rollback in a loop'            => ['define function f (integer n) void { transaction { while (n > 0) { rollback } } }', 'inside a loop'],
 				'nested transactions'           => ['define function f () void { transaction { transaction { } } }', "can't be nested"],
 				'return inside transaction'     => ['define function f () integer { transaction { return 1 } }', "'return' inside 'transaction"],
 				'bare return inside transaction'=> ['define function f () void { transaction { return } }', "'return' inside 'transaction"],

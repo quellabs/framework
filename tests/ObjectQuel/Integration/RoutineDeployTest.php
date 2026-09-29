@@ -338,7 +338,7 @@
 					transaction {
 						replace u (banned = false) where u.username = who
 						if (who = \"\") {
-							exit
+							rollback
 						}
 					}
 					retrieve (p.title) where p.userId = 5
@@ -394,7 +394,7 @@
 					range of u is UserEntity
 					transaction {
 						replace u (banned = true) where u.id = uid
-						if (cancel = 1) { exit }
+						if (cancel = 1) { rollback }
 					}
 				}
 			");

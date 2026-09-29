@@ -4,7 +4,7 @@
 
 	use PHPUnit\Framework\Attributes\DataProvider;
 	use PHPUnit\Framework\TestCase;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstExit;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRollback;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAppend;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstTransaction;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstBreak;
@@ -354,26 +354,26 @@
 		}
 
 		/**
-		 * A transaction block parses with an exit inside it.
+		 * A transaction block parses with a rollback inside it.
 		 * @return void
 		 */
-		public function testTransactionWithExit(): void {
+		public function testTransactionWithRollback(): void {
 			$body = $this->parse('
 				define function f (string newEmail) void {
 					transaction {
 						if (newEmail = "") {
-							exit
+							rollback
 						}
 					}
 				}
 			')->getBody();
 
 			self::assertInstanceOf(AstTransaction::class, $body[0]);
-			self::assertInstanceOf(AstExit::class, $body[0]->getBody()[0]->getThenBody()[0]);
+			self::assertInstanceOf(AstRollback::class, $body[0]->getBody()[0]->getThenBody()[0]);
 		}
 
 		/**
-		 * Legacy transaction and rollback words are rejected by the parser.
+		 * Legacy `begin transaction` and `abort` syntax is rejected by the parser.
 		 * @param string $statement Deprecated statement text
 		 * @return void
 		 */
@@ -384,7 +384,7 @@
 		}
 
 		/**
-		 * Supplies syntax replaced by transaction and exit.
+		 * Supplies syntax replaced by `transaction` and `rollback`.
 		 * @return array<string, array{string}>
 		 */
 		public static function deprecatedTransactionStatements(): array {
