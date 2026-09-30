@@ -54,17 +54,7 @@
 	 */
 	class ProcessExpression {
 
-		/**
-		 * Binding strength of each binary operator, low to high. AstBinaryOperator
-		 * (AND/OR), AstExpression (comparisons), AstTerm (+/-), and AstFactor (multiply/divide)
-		 * all render through handleGenericExpression() as flat "{left} {op}
-		 * {right}" text with no grouping of their own — the query's tree shape is
-		 * the only record of which operand belongs to which operator (parentheses
-		 * in the source are consumed by the parser to shape the tree, then
-		 * discarded; see ArithmeticExpression::parsePrimaryExpression()). This
-		 * table drives operandSql() so a nested operator that binds more loosely
-		 * than its parent gets parentheses back before emission.
-		 */
+		/** Binding strength of each binary operator, low to high; drives operandSql()'s re-parenthesization. */
 		private const array OPERATOR_PRECEDENCE = [
 			'OR'  => 1,
 			'AND' => 2,
@@ -180,9 +170,7 @@
 				}
 			}
 			
-			// Standard binary operation: visit both sides and combine with operator.
-			// Operands are wrapped in parentheses when needed to preserve precedence
-			// (see operandSql()).
+			// Parenthesize operands as needed to preserve precedence (see operandSql()).
 			$parentPrecedence = self::OPERATOR_PRECEDENCE[$operator] ?? null;
 			$isLogical = in_array($operator, ['AND', 'OR'], true);
 			$leftResult = $this->operandSql($ast->getLeft(), $parentPrecedence, false, $isLogical);

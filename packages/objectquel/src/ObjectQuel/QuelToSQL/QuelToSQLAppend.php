@@ -93,7 +93,7 @@
 		 * @param array<string, mixed> $parameters Bound parameters, by reference
 		 *        (mutated only for insert-from-select's nested retrieve)
 		 * @return CompiledAppendSql
-		 * @throws SemanticException|EntityResolutionException
+		 * @throws SemanticException|EntityResolutionException|AnnotationReaderException|OrmException
 		 */
 		public function convertToSQL(AstAppend $statement, array &$parameters): CompiledAppendSql {
 			$entityName = $statement->getEntityName();
@@ -122,7 +122,7 @@
 		 * @param string $tableName
 		 * @param array<string, mixed> $parameters
 		 * @return CompiledAppendSql
-		 * @throws SemanticException|AnnotationReaderException
+		 * @throws SemanticException|AnnotationReaderException|OrmException
 		 */
 		private function compileValues(AstAppend $statement, EntityMetadataRecord $metadata, string $tableName, array &$parameters): CompiledAppendSql {
 			$rows = $statement->getRowsOrFail();

@@ -219,6 +219,8 @@
 		 * @param AstRetrieve $retrieve The AST to convert
 		 * @param array<int|string, mixed> $parameters Query parameters (passed by reference)
 		 * @return string The generated SQL query
+		 * @throws EntityResolutionException
+		 * @throws QuelException
 		 */
 		private function convertToSQL(AstRetrieve $retrieve, array $parameters): string {
 			// Convert all keys to strings

@@ -185,8 +185,8 @@ implementation.
 -   Do not include complete historical information, implementation
     history, or lengthy explanations of design decisions in code
     comments.
--   Every method gets a docblock, containing briefly what the code does and 
-    parameter + return type docs. Even when the comment merely restates the code. 
+-   Every method gets a docblock, containing briefly what the code does and
+    parameter + return type docs. Even when the comment merely restates the code.
 -   Document non-obvious business rules, constraints, side effects,
     workarounds, and important edge cases when they cannot be adequately
     expressed through the code itself.

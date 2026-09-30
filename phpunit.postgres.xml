@@ -9,6 +9,9 @@
             <directory>tests/ObjectQuel/PostgreSQL</directory>
             <file>tests/ObjectQuel/Integration/RoutineDeployTest.php</file>
             <file>tests/ObjectQuel/Integration/UpsertTest.php</file>
+            <file>tests/ObjectQuel/SequenceFunctionTest.php</file>
+            <file>tests/ObjectQuel/WhereWindowFilterTest.php</file>
+            <file>tests/ObjectQuel/WindowChainTest.php</file>
         </testsuite>
     </testsuites>
     <groups>

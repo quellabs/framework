@@ -7,16 +7,7 @@
 	use Quellabs\ObjectQuel\Tests\Fixtures\RelationshipEntities\RelPlainChildOfSoftParentEntity;
 	use Quellabs\ObjectQuel\Tests\Fixtures\RelationshipEntities\RelSoftParentEntity;
 
-	/**
-	 * Companion to SoftDeleteBooleanLeftJoinTest: confirms the same ON-clause
-	 * fix (InjectSoftDeleteCondition attaching the filter to a joined range's
-	 * own JOIN condition rather than the query's WHERE clause) applies
-	 * equally to the `datetime` soft-delete branch, not just `boolean`. The
-	 * bug report only described the boolean variant, but the
-	 * `range.property IS NULL` WHERE-clause placement had the identical
-	 * "soft-deleted related row drops the whole parent row" problem before
-	 * this fix.
-	 */
+	/** Companion to SoftDeleteBooleanLeftJoinTest: confirms the ON-clause fix also applies to the `datetime` branch. */
 	class SoftDeleteDatetimeLeftJoinTest extends TestCase {
 
 		private static function em(): EntityManager {

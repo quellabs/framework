@@ -27,13 +27,8 @@
 	 * Compiles an AstDelete statement to dialect-correct SQL. Sibling to
 	 * QuelToSQLReplace/QuelToSQLAppend.
 	 *
-	 * When the target entity carries @SoftDelete, `delete` compiles to an
-	 * UPDATE that sets the soft-delete column instead of a real DELETE —
-	 * mirroring InjectSoftDeleteCondition's read-side filtering with the
-	 * same opt-out: the `@ignoreSoftDelete true` directive forces a real
-	 * DELETE regardless of @SoftDelete, same directive name and meaning
-	 * `retrieve` uses. An entity with no recognised soft-delete column type
-	 * (see buildSoftDeleteSetClause()) falls back to a real DELETE too.
+	 * A soft-deletable entity compiles `delete` to an UPDATE of its soft-delete
+	 * column instead of a real DELETE, unless `@ignoreSoftDelete true` is set.
 	 *
 	 * A routine's delete compiler is built with $alwaysIgnoreSoftDelete
 	 * instead, set when the routine's own `@ignoreSoftDelete true` directive
@@ -82,9 +77,7 @@
 		}
 
 		/**
-		 * Compiles a `delete <range> where ...` statement to SQL — a real
-		 * DELETE, or a soft-delete UPDATE when applicable (see this class's
-		 * docblock).
+		 * Compiles a `delete <range> where ...` statement to SQL (see class docblock).
 		 * @param AstDelete $statement
 		 * @param array<string, mixed> $parameters Bound parameters, by reference
 		 * @return string
@@ -160,10 +153,7 @@
 				return null;
 			}
 
-			// softDeleteColumn is non-null here: EntityMetadataBuilder always
-			// sets it together with softDeleteProperty, which hasSoftDelete()
-			// just confirmed is set. The assertion satisfies PHPStan without
-			// a runtime cost — same pattern InjectSoftDeleteCondition uses.
+			// Non-null here: hasSoftDelete() confirmed softDeleteProperty is set.
 			$softDeleteColumn = $metadata->softDeleteColumn ?? throw new \LogicException('buildSoftDeleteSetClause called on entity without @SoftDelete');
 			$targetColumn = SetTargetColumnQuoter::quote($softDeleteColumn, $alias, $this->identifierQuoter, $this->platform);
 

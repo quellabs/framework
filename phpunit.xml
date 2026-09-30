@@ -23,6 +23,9 @@
             <file>tests/ObjectQuel/SQLite/SoftDeleteCascadeTest.php</file>
             <file>tests/ObjectQuel/PostgreSQL/RoutineCallTest.php</file>
             <file>tests/ObjectQuel/PostgreSQL/RoutineBodyCallTest.php</file>
+            <file>tests/ObjectQuel/SequenceFunctionTest.php</file>
+            <file>tests/ObjectQuel/WhereWindowFilterTest.php</file>
+            <file>tests/ObjectQuel/WindowChainTest.php</file>
         </testsuite>
         <testsuite name="ObjectQuelSQLServer">
             <directory>tests/ObjectQuel/SQLServer</directory>

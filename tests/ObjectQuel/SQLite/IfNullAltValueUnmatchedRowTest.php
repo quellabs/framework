@@ -7,21 +7,9 @@
 	use Quellabs\ObjectQuel\Tests\Fixtures\RelationshipEntities\RelBoolSoftChildEntity;
 
 	/**
-	 * Row-level regression test for the bug IfNullNonNullablePromotionTest's
-	 * first (too-narrow) version of the DetectNonNullableField fix caused:
-	 * a reference used as ifnull()'s alt-value argument was still treated as
-	 * proof the referenced range's row must exist, which isn't sound — the
-	 * alt value is only ever consulted when the checked argument is NULL, so
-	 * whenever the checked argument is non-null, the alt value (and thus its
-	 * range) is irrelevant to the result.
-	 *
-	 * Here `:val` is always bound to a non-null value, so
-	 * `ifnull(:val, p.isDeleted)` always evaluates to `:val` regardless of
-	 * `p.isDeleted` or whether `p` exists at all — the WHERE clause never
-	 * actually depends on range `p`. Before the fix, referencing
-	 * `p.isDeleted` as the alt value still promoted `p` from LEFT to INNER
-	 * JOIN, which silently dropped the child with no parent at all — a row
-	 * that has nothing to do with `p` in this query.
+	 * Regression test: a reference used as ifnull()'s alt-value argument must not
+	 * promote its range's LEFT JOIN to INNER, since the alt value is only ever
+	 * consulted when the checked argument is NULL.
 	 */
 	class IfNullAltValueUnmatchedRowTest extends TestCase {
 

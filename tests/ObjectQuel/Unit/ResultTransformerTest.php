@@ -7,12 +7,7 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIdentifier;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRange;
 
-	/**
-	 * Regression coverage for sortResults() reading the wrong array key.
-	 * AstRetrieve::getSort() produces 'order' (see Retrieve::parseSortExpressions),
-	 * but sortResults() used to read 'direction', so it silently sorted every
-	 * in-memory result set ascending regardless of "sort by ... desc".
-	 */
+	/** Regression coverage for sortResults() reading the wrong array key ('direction' instead of 'order'). */
 	class ResultTransformerTest extends TestCase {
 
 		private function identifierForRange(string $rangeName): AstIdentifier {

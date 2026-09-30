@@ -164,7 +164,7 @@
 		 * @param array<string, mixed> $parameters
 		 * @return QuelResult
 		 * @throws QuelException On compile or execution failure
-		 * @throws \ReflectionException|SemanticException|EntityResolutionException
+		 * @throws \ReflectionException|SemanticException|EntityResolutionException|\Throwable
 		 */
 		private function executeDirectInsert(AstAppend $statement, array $parameters): QuelResult {
 			$prepared = $this->prepare($statement, $parameters);

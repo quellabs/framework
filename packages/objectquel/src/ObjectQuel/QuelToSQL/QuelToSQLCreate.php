@@ -1,5 +1,5 @@
 <?php
-
+	
 	namespace Quellabs\ObjectQuel\ObjectQuel\QuelToSQL;
 
 	use Quellabs\ObjectQuel\Capabilities\PlatformCapabilitiesInterface;

@@ -11,29 +11,9 @@
 	use Quellabs\ObjectQuel\Tests\Fixtures\RelationshipEntities\RelSoftParentEntity;
 
 	/**
-	 * How Cascade(remove) interacts with @SoftDelete: a dependent's outcome
-	 * follows the parent's *actual* result, not a fixed default (see
-	 * UnitOfWork::scheduleForDelete()/cascadeDeleteDependentObjects()).
-	 *
-	 *   - Parent soft-deleted, dependent has no @SoftDelete: left untouched.
-	 *     Really deleting it would make the parent's soft-delete
-	 *     irreversible for data reachable through this relation.
-	 *   - Parent soft-deleted, dependent has @SoftDelete: soft-deleted too.
-	 *   - Parent really deleted (forced, or because it has no @SoftDelete):
-	 *     every dependent is really deleted too, regardless of its own
-	 *     @SoftDelete — otherwise it's left pointing at a parent row that
-	 *     no longer exists.
-	 *
-	 * restore() walks the same Cascade(remove) graph in reverse: restoring
-	 * a parent also restores any dependent that is currently soft-deleted
-	 * (see UnitOfWork::restore()'s docblock for the tradeoff this implies —
-	 * it can't tell a dependent cascade-deleted with this parent apart from
-	 * one that happened to be soft-deleted independently).
-	 *
-	 * See RelationshipCascadeForeignKeyTest for the base (non-soft-delete)
-	 * cascade-remove/persist behavior this builds on, and its docblock for
-	 * why these fixtures live in their own isolated directory and share
-	 * $GLOBALS['test_em'].
+	 * How Cascade(remove) interacts with soft-delete: a dependent's outcome follows
+	 * the parent's actual result (soft/hard), not a fixed default — see
+	 * UnitOfWork::scheduleForDelete()/restore().
 	 */
 	class SoftDeleteCascadeTest extends TestCase {
 
@@ -89,13 +69,7 @@
 			self::assertNotNull($parentRows[0]['deleted_at']);
 		}
 
-		/**
-		 * Mirrors testCascadeRemoveCatchesAnUnflushedNewOrderInTheSameUnitOfWork:
-		 * a New (persisted but not yet flushed) child has no row in the
-		 * database yet, so it's found by cascadeDeleteUnpersistedDependents()
-		 * rather than the DB-driven lookup. It must be left scheduled for a
-		 * normal insert, not skipped or scheduled for deletion.
-		 */
+		/** An unflushed (New) child must stay scheduled for insert, found via cascadeDeleteUnpersistedDependents(). */
 		public function testSoftDeletingParentLeavesUnflushedNonSoftDeletableChildUnscheduled(): void {
 			$em = self::em();
 
@@ -251,13 +225,7 @@
 			self::assertNull($childRows[0]['deleted_at']);
 		}
 
-		/**
-		 * Documents a real tradeoff (see UnitOfWork::restore()'s docblock):
-		 * restore() has no record of *why* a dependent is soft-deleted, so
-		 * it restores every currently soft-deleted Cascade(remove) dependent
-		 * it finds — even one, like this, that was soft-deleted on its own
-		 * before the parent ever was.
-		 */
+		/** restore() also restores a dependent that was soft-deleted independently of the parent. */
 		public function testRestoringParentAlsoRestoresIndependentlySoftDeletedChild(): void {
 			$em = self::em();
 

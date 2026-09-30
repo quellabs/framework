@@ -10,9 +10,7 @@
 	use Quellabs\ObjectQuel\Annotations\Orm\SoftDelete;
 
 	/**
-	 * Cascade(remove) child of RelSoftParentEntity that is itself
-	 * @SoftDelete. When the parent is only soft-deleted, this should be
-	 * soft-deleted too — not left untouched, not really removed.
+	 * Soft-deletable Cascade(remove) child of RelSoftParentEntity (also soft-deletable).
 	 * @Orm\Table(name="rel_soft_child_of_soft_parent")
 	 */
 	class RelSoftChildOfSoftParentEntity {
