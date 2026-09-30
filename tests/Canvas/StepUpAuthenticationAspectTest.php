@@ -3,7 +3,7 @@
 	namespace Quellabs\Canvas\Tests\Security;
 
 	use PHPUnit\Framework\TestCase;
-	use Quellabs\Canvas\Exceptions\StaleAuthenticationException;
+	use Quellabs\Canvas\Exceptions\StepUpAuthenticationException;
 	use Quellabs\Canvas\Routing\Contracts\MethodContextInterface;
 	use Quellabs\Canvas\Security\StepUpAuthenticationAspect;
 	use Symfony\Component\HttpFoundation\Request;
@@ -209,7 +209,7 @@
 		public function testStaleAuthTimeThrowsInExceptionMode(): void {
 			$request = $this->makeAuthenticatedRequest(time() - 301);
 
-			$this->expectException(StaleAuthenticationException::class);
+			$this->expectException(StepUpAuthenticationException::class);
 			(new StepUpAuthenticationAspect(maxAge: 300, throwOnFailure: true))->before($this->makeContext($request));
 		}
 
@@ -218,8 +218,8 @@
 
 			try {
 				(new StepUpAuthenticationAspect(maxAge: 300, throwOnFailure: true))->before($this->makeContext($request));
-				$this->fail('Expected StaleAuthenticationException was not thrown.');
-			} catch (StaleAuthenticationException $e) {
+				$this->fail('Expected StepUpAuthenticationException was not thrown.');
+			} catch (StepUpAuthenticationException $e) {
 				$this->assertSame(300, $e->getMaxAge());
 			}
 		}
@@ -230,8 +230,8 @@
 			try {
 				(new StepUpAuthenticationAspect(maxAge: 300, requiredMethods: ['pwd'], throwOnFailure: true))
 					->before($this->makeContext($request));
-				$this->fail('Expected StaleAuthenticationException was not thrown.');
-			} catch (StaleAuthenticationException $e) {
+				$this->fail('Expected StepUpAuthenticationException was not thrown.');
+			} catch (StepUpAuthenticationException $e) {
 				$this->assertSame(['pwd'], $e->getRequiredMethods());
 				$this->assertSame(['refresh'], $e->getPresentedMethods());
 			}
@@ -242,8 +242,8 @@
 
 			try {
 				(new StepUpAuthenticationAspect(maxAge: 300, throwOnFailure: true))->before($this->makeContext($request));
-				$this->fail('Expected StaleAuthenticationException was not thrown.');
-			} catch (StaleAuthenticationException $e) {
+				$this->fail('Expected StepUpAuthenticationException was not thrown.');
+			} catch (StepUpAuthenticationException $e) {
 				$this->assertSame('POST', $e->getRequestMethod());
 				$this->assertSame('/account/delete', $e->getRequestPath());
 			}
