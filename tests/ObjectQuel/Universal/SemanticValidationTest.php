@@ -75,12 +75,20 @@
 		// Aggregates in WHERE clause
 		// -------------------------------------------------------------------------
 		
-		public function testAggregateInWhereClauseThrows(): void {
-			$this->assertSemanticError(fn() => $this->em->executeQuery("
+		/**
+		 * A plain aggregate in WHERE (e.g. `where count(p.id) > 1`) is no longer
+		 * rejected — WhereHavingFilterRewriter moves it into an implicit SQL
+		 * HAVING clause instead of throwing. See WhereHavingFilterTest for SQL
+		 * emission coverage of this rewrite.
+		 */
+		public function testPlainAggregateInWhereClauseDoesNotThrow(): void {
+			$result = iterator_to_array($this->em->executeQuery("
 				range of p is PostEntity
-				retrieve (p.id)
+				retrieve (total = count(p.id))
 				where count(p.id) > 1
 			"));
+
+			$this->assertIsArray($result);
 		}
 
 		/**
@@ -97,6 +105,22 @@
 			"));
 
 			$this->assertIsArray($result);
+		}
+
+		/**
+		 * An aggregate condition combined with OR has no single defined clause to
+		 * live in (some branches may not reference an aggregate at all) — rejected
+		 * by WhereHavingFilterRewriter with a plain QuelException, matching the
+		 * window-filter precedent (WhereWindowFilterTest::testRejectsSequenceFunctionFilterCombinedWithOr).
+		 */
+		public function testPlainAggregateInWhereClauseCombinedWithOrThrows(): void {
+			$this->expectException(QuelException::class);
+
+			$this->em->executeQuery("
+				range of p is PostEntity
+				retrieve (p.id)
+				where count(p.id) > 1 or p.published = true
+			");
 		}
 
 		// -------------------------------------------------------------------------

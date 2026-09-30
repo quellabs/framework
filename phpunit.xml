@@ -25,6 +25,7 @@
             <file>tests/ObjectQuel/PostgreSQL/RoutineBodyCallTest.php</file>
             <file>tests/ObjectQuel/SequenceFunctionTest.php</file>
             <file>tests/ObjectQuel/WhereWindowFilterTest.php</file>
+            <file>tests/ObjectQuel/WhereHavingFilterTest.php</file>
             <file>tests/ObjectQuel/WindowChainTest.php</file>
         </testsuite>
         <testsuite name="ObjectQuelSQLServer">
