@@ -5,11 +5,11 @@
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\Canvas\Exceptions\StaleAuthenticationException;
 	use Quellabs\Canvas\Routing\Contracts\MethodContextInterface;
-	use Quellabs\Canvas\Security\RecentAuthenticationAspect;
+	use Quellabs\Canvas\Security\StepUpAuthenticationAspect;
 	use Symfony\Component\HttpFoundation\Request;
 
 	/**
-	 * Unit tests for RecentAuthenticationAspect.
+	 * Unit tests for StepUpAuthenticationAspect.
 	 *
 	 * Each test constructs the aspect directly, builds a minimal MethodContext
 	 * stub carrying a crafted Request with 'auth_time'/'auth_methods' attributes
@@ -18,7 +18,7 @@
 	 * (exception mode). No JWT or authenticator involved — the aspect is
 	 * auth-mechanism agnostic by design.
 	 */
-	class RecentAuthenticationAspectTest extends TestCase {
+	class StepUpAuthenticationAspectTest extends TestCase {
 
 		// =========================================================================
 		// Helpers
@@ -62,12 +62,12 @@
 
 		public function testConstructorThrowsWhenMaxAgeIsZero(): void {
 			$this->expectException(\InvalidArgumentException::class);
-			new RecentAuthenticationAspect(maxAge: 0);
+			new StepUpAuthenticationAspect(maxAge: 0);
 		}
 
 		public function testConstructorThrowsWhenMaxAgeIsNegative(): void {
 			$this->expectException(\InvalidArgumentException::class);
-			new RecentAuthenticationAspect(maxAge: -1);
+			new StepUpAuthenticationAspect(maxAge: -1);
 		}
 
 		// =========================================================================
@@ -78,7 +78,7 @@
 			$request = $this->makeAuthenticatedRequest(time());
 			$request->attributes->set('recent_auth_error', 'stale error');
 
-			(new RecentAuthenticationAspect(maxAge: 300))->before($this->makeContext($request));
+			(new StepUpAuthenticationAspect(maxAge: 300))->before($this->makeContext($request));
 
 			$this->assertNull($request->attributes->get('recent_auth_error'));
 		}
@@ -86,7 +86,7 @@
 		public function testAuthTimeExactlyAtBoundaryIsAccepted(): void {
 			$request = $this->makeAuthenticatedRequest(time() - 300);
 
-			(new RecentAuthenticationAspect(maxAge: 300))->before($this->makeContext($request));
+			(new StepUpAuthenticationAspect(maxAge: 300))->before($this->makeContext($request));
 
 			$this->assertNull($request->attributes->get('recent_auth_error'));
 		}
@@ -94,7 +94,7 @@
 		public function testAuthTimeJustBeyondBoundarySetsRecentAuthError(): void {
 			$request = $this->makeAuthenticatedRequest(time() - 301);
 
-			(new RecentAuthenticationAspect(maxAge: 300))->before($this->makeContext($request));
+			(new StepUpAuthenticationAspect(maxAge: 300))->before($this->makeContext($request));
 
 			$this->assertNotNull($request->attributes->get('recent_auth_error'));
 		}
@@ -102,7 +102,7 @@
 		public function testMissingAuthTimeSetsRecentAuthError(): void {
 			$request = $this->makeAuthenticatedRequest(null);
 
-			(new RecentAuthenticationAspect(maxAge: 300))->before($this->makeContext($request));
+			(new StepUpAuthenticationAspect(maxAge: 300))->before($this->makeContext($request));
 
 			$this->assertNotNull($request->attributes->get('recent_auth_error'));
 		}
@@ -110,7 +110,7 @@
 		public function testNonNumericAuthTimeSetsRecentAuthError(): void {
 			$request = $this->makeAuthenticatedRequest('not-a-timestamp');
 
-			(new RecentAuthenticationAspect(maxAge: 300))->before($this->makeContext($request));
+			(new StepUpAuthenticationAspect(maxAge: 300))->before($this->makeContext($request));
 
 			$this->assertNotNull($request->attributes->get('recent_auth_error'));
 		}
@@ -118,7 +118,7 @@
 		public function testFloatAuthTimeIsAccepted(): void {
 			$request = $this->makeAuthenticatedRequest((float)time());
 
-			(new RecentAuthenticationAspect(maxAge: 300))->before($this->makeContext($request));
+			(new StepUpAuthenticationAspect(maxAge: 300))->before($this->makeContext($request));
 
 			$this->assertNull($request->attributes->get('recent_auth_error'));
 		}
@@ -126,7 +126,7 @@
 		public function testBeforeReturnsNullOnSuccess(): void {
 			$request = $this->makeAuthenticatedRequest(time());
 
-			$result = (new RecentAuthenticationAspect(maxAge: 300))->before($this->makeContext($request));
+			$result = (new StepUpAuthenticationAspect(maxAge: 300))->before($this->makeContext($request));
 
 			$this->assertNull($result);
 		}
@@ -134,7 +134,7 @@
 		public function testBeforeReturnsNullOnFailureInAttributeMode(): void {
 			$request = $this->makeAuthenticatedRequest(null);
 
-			$result = (new RecentAuthenticationAspect(maxAge: 300))->before($this->makeContext($request));
+			$result = (new StepUpAuthenticationAspect(maxAge: 300))->before($this->makeContext($request));
 
 			$this->assertNull($result);
 		}
@@ -146,7 +146,7 @@
 		public function testNoRequiredMethodsAllowsEmptyAuthMethods(): void {
 			$request = $this->makeAuthenticatedRequest(time(), []);
 
-			(new RecentAuthenticationAspect(maxAge: 300))->before($this->makeContext($request));
+			(new StepUpAuthenticationAspect(maxAge: 300))->before($this->makeContext($request));
 
 			$this->assertNull($request->attributes->get('recent_auth_error'));
 		}
@@ -154,7 +154,7 @@
 		public function testMatchingRequiredMethodIsAccepted(): void {
 			$request = $this->makeAuthenticatedRequest(time(), ['pwd']);
 
-			(new RecentAuthenticationAspect(maxAge: 300, requiredMethods: ['pwd']))->before($this->makeContext($request));
+			(new StepUpAuthenticationAspect(maxAge: 300, requiredMethods: ['pwd']))->before($this->makeContext($request));
 
 			$this->assertNull($request->attributes->get('recent_auth_error'));
 		}
@@ -162,7 +162,7 @@
 		public function testOneOfMultipleRequiredMethodsIsSufficient(): void {
 			$request = $this->makeAuthenticatedRequest(time(), ['refresh', 'hwk']);
 
-			(new RecentAuthenticationAspect(maxAge: 300, requiredMethods: ['pwd', 'hwk']))->before($this->makeContext($request));
+			(new StepUpAuthenticationAspect(maxAge: 300, requiredMethods: ['pwd', 'hwk']))->before($this->makeContext($request));
 
 			$this->assertNull($request->attributes->get('recent_auth_error'));
 		}
@@ -172,7 +172,7 @@
 			// stateless equivalent of Symfony rejecting a remember-me-only session
 			$request = $this->makeAuthenticatedRequest(time(), ['refresh']);
 
-			(new RecentAuthenticationAspect(maxAge: 300, requiredMethods: ['pwd']))->before($this->makeContext($request));
+			(new StepUpAuthenticationAspect(maxAge: 300, requiredMethods: ['pwd']))->before($this->makeContext($request));
 
 			$this->assertNotNull($request->attributes->get('recent_auth_error'));
 		}
@@ -180,7 +180,7 @@
 		public function testMissingAuthMethodsWithRequiredMethodsSetsRecentAuthError(): void {
 			$request = $this->makeAuthenticatedRequest(time());
 
-			(new RecentAuthenticationAspect(maxAge: 300, requiredMethods: ['pwd']))->before($this->makeContext($request));
+			(new StepUpAuthenticationAspect(maxAge: 300, requiredMethods: ['pwd']))->before($this->makeContext($request));
 
 			$this->assertNotNull($request->attributes->get('recent_auth_error'));
 		}
@@ -188,7 +188,7 @@
 		public function testNonArrayAuthMethodsIsTreatedAsEmpty(): void {
 			$request = $this->makeAuthenticatedRequest(time(), 'pwd');
 
-			(new RecentAuthenticationAspect(maxAge: 300, requiredMethods: ['pwd']))->before($this->makeContext($request));
+			(new StepUpAuthenticationAspect(maxAge: 300, requiredMethods: ['pwd']))->before($this->makeContext($request));
 
 			$this->assertNotNull($request->attributes->get('recent_auth_error'));
 		}
@@ -197,7 +197,7 @@
 			// Both checks must pass — a strong method doesn't excuse an old proof
 			$request = $this->makeAuthenticatedRequest(time() - 301, ['pwd']);
 
-			(new RecentAuthenticationAspect(maxAge: 300, requiredMethods: ['pwd']))->before($this->makeContext($request));
+			(new StepUpAuthenticationAspect(maxAge: 300, requiredMethods: ['pwd']))->before($this->makeContext($request));
 
 			$this->assertNotNull($request->attributes->get('recent_auth_error'));
 		}
@@ -210,14 +210,14 @@
 			$request = $this->makeAuthenticatedRequest(time() - 301);
 
 			$this->expectException(StaleAuthenticationException::class);
-			(new RecentAuthenticationAspect(maxAge: 300, throwOnFailure: true))->before($this->makeContext($request));
+			(new StepUpAuthenticationAspect(maxAge: 300, throwOnFailure: true))->before($this->makeContext($request));
 		}
 
 		public function testExceptionCarriesMaxAge(): void {
 			$request = $this->makeAuthenticatedRequest(null);
 
 			try {
-				(new RecentAuthenticationAspect(maxAge: 300, throwOnFailure: true))->before($this->makeContext($request));
+				(new StepUpAuthenticationAspect(maxAge: 300, throwOnFailure: true))->before($this->makeContext($request));
 				$this->fail('Expected StaleAuthenticationException was not thrown.');
 			} catch (StaleAuthenticationException $e) {
 				$this->assertSame(300, $e->getMaxAge());
@@ -228,7 +228,7 @@
 			$request = $this->makeAuthenticatedRequest(time(), ['refresh']);
 
 			try {
-				(new RecentAuthenticationAspect(maxAge: 300, requiredMethods: ['pwd'], throwOnFailure: true))
+				(new StepUpAuthenticationAspect(maxAge: 300, requiredMethods: ['pwd'], throwOnFailure: true))
 					->before($this->makeContext($request));
 				$this->fail('Expected StaleAuthenticationException was not thrown.');
 			} catch (StaleAuthenticationException $e) {
@@ -241,7 +241,7 @@
 			$request = $this->makeAuthenticatedRequest(null);
 
 			try {
-				(new RecentAuthenticationAspect(maxAge: 300, throwOnFailure: true))->before($this->makeContext($request));
+				(new StepUpAuthenticationAspect(maxAge: 300, throwOnFailure: true))->before($this->makeContext($request));
 				$this->fail('Expected StaleAuthenticationException was not thrown.');
 			} catch (StaleAuthenticationException $e) {
 				$this->assertSame('POST', $e->getRequestMethod());
@@ -252,7 +252,7 @@
 		public function testFreshAuthDoesNotThrowInExceptionMode(): void {
 			$request = $this->makeAuthenticatedRequest(time());
 
-			$result = (new RecentAuthenticationAspect(maxAge: 300, throwOnFailure: true))->before($this->makeContext($request));
+			$result = (new StepUpAuthenticationAspect(maxAge: 300, throwOnFailure: true))->before($this->makeContext($request));
 
 			$this->assertNull($result);
 		}
