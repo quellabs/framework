@@ -268,4 +268,110 @@
 			self::assertSame('integer', $adapter->getRoutineSignature('f')->returnType);
 			self::assertSame('text', $adapter->getRoutineSignature('f')->returnType);
 		}
+
+		/**
+		 * Verifies list queries select every routine in the schema, unfiltered by name.
+		 * @param string $engine Database engine
+		 * @param string $source Expected catalog SQL fragment
+		 * @param array<string, string> $parameters Expected bound parameters
+		 * @return void
+		 */
+		#[DataProvider('listCatalogEngines')]
+		public function testListRoutinesBuildsCatalogQuery(string $engine, string $source, array $parameters): void {
+			$adapter = $this->getMockBuilder(DatabaseAdapter::class)->disableOriginalConstructor()
+				->onlyMethods(['getDatabaseType', 'getRoutineSchema', 'execute'])->getMock();
+			$adapter->method('getDatabaseType')->willReturn($engine);
+			$adapter->method('getRoutineSchema')->willReturn('d]bo');
+			$statement = $this->createMock(StatementInterface::class);
+			$statement->method('fetchAll')->with('assoc')->willReturn([]);
+			$adapter->expects(self::once())->method('execute')->with(
+				self::callback(fn(string $sql): bool => str_contains($sql, $source) && !str_contains($sql, 'ROUTINE_NAME = :name') && !str_contains($sql, 'proname = :name')),
+				$parameters
+			)->willReturn($statement);
+
+			self::assertSame([], $adapter->listRoutines());
+		}
+
+		/**
+		 * Provides list-catalog queries and bound parameters for supported engines.
+		 * @return list<array{string, string, array<string, string>}>
+		 */
+		public static function listCatalogEngines(): array {
+			return [
+				['mysql', 'FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = DATABASE()', []],
+				['mariadb', 'FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = DATABASE()', []],
+				['pgsql', 'FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = current_schema()', []],
+				['sqlsrv', 'FROM sys.objects o JOIN sys.schemas s ON s.schema_id = o.schema_id', ['schema' => 'd]bo']],
+			];
+		}
+
+		/**
+		 * Verifies catalog rows are grouped by name and kind: same-kind overloads merge their
+		 * return types, and a name shared between a function and a procedure yields two entries.
+		 * @return void
+		 */
+		public function testListRoutinesGroupsByNameAndKind(): void {
+			$adapter = $this->getMockBuilder(DatabaseAdapter::class)->disableOriginalConstructor()
+				->onlyMethods(['getDatabaseType', 'execute'])->getMock();
+			$adapter->method('getDatabaseType')->willReturn('pgsql');
+			$statement = $this->createMock(StatementInterface::class);
+			$statement->method('fetchAll')->willReturn([
+				self::namedRow('overloaded', 0, 'integer'),
+				self::namedRow('overloaded', 0, 'integer'),
+				self::namedRow('mixed_return', 0, 'integer'),
+				self::namedRow('mixed_return', 0, 'text'),
+				self::namedRow('dual', 0, 'integer'),
+				self::namedRow('dual', 1, null),
+			]);
+			$adapter->method('execute')->willReturn($statement);
+
+			self::assertSame([
+				['name' => 'dual', 'isProcedure' => false, 'returnType' => 'integer'],
+				['name' => 'dual', 'isProcedure' => true, 'returnType' => null],
+				['name' => 'mixed_return', 'isProcedure' => false, 'returnType' => null],
+				['name' => 'overloaded', 'isProcedure' => false, 'returnType' => 'integer'],
+			], $adapter->listRoutines());
+		}
+
+		/**
+		 * Builds a named catalog row for listRoutines().
+		 * @param string $name Routine name
+		 * @param int $procedure Procedure flag: 1 for procedures, 0 for functions
+		 * @param string|null $type Native return type
+		 * @return array{name: string, is_procedure: int, data_type: string|null, type_detail: null, max_length: null}
+		 */
+		private static function namedRow(string $name, int $procedure, ?string $type): array {
+			return ['name' => $name] + self::row($procedure, $type);
+		}
+
+		/**
+		 * Verifies a failed catalog read surfaces as a QuelException.
+		 * @return void
+		 */
+		public function testListRoutinesLookupFailure(): void {
+			$adapter = $this->getMockBuilder(DatabaseAdapter::class)->disableOriginalConstructor()
+				->onlyMethods(['getDatabaseType', 'execute', 'getLastErrorMessage'])->getMock();
+			$adapter->method('getDatabaseType')->willReturn('mysql');
+			$adapter->method('execute')->willReturn(null);
+			$adapter->method('getLastErrorMessage')->willReturn('catalog unavailable');
+
+			$this->expectException(QuelException::class);
+			$this->expectExceptionMessage('Failed to list routines: catalog unavailable');
+			$adapter->listRoutines();
+		}
+
+		/**
+		 * Verifies unsupported engines fail before querying the catalog.
+		 * @return void
+		 */
+		public function testListRoutinesUnsupportedEngine(): void {
+			$adapter = $this->getMockBuilder(DatabaseAdapter::class)->disableOriginalConstructor()
+				->onlyMethods(['getDatabaseType', 'execute'])->getMock();
+			$adapter->method('getDatabaseType')->willReturn('sqlite');
+			$adapter->expects(self::never())->method('execute');
+
+			$this->expectException(QuelException::class);
+			$this->expectExceptionMessage("Routines can't be listed on 'sqlite'.");
+			$adapter->listRoutines();
+		}
 	}
