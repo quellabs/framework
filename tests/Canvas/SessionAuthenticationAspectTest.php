@@ -57,7 +57,7 @@
 		// =========================================================================
 
 		public function testAuthenticatedSessionSetsSessionUserId(): void {
-			$request = $this->makeRequestWithSession(['auth_user_id' => 'user-42']);
+			$request = $this->makeRequestWithSession(['user_id' => 'user-42']);
 
 			(new SessionAuthenticationAspect())->before($this->makeContext($request));
 
@@ -66,7 +66,7 @@
 
 		public function testAuthenticatedSessionSetsAuthTimeWhenPresent(): void {
 			$loginTime = time() - 60;
-			$request   = $this->makeRequestWithSession(['auth_user_id' => 'user-1', 'auth_time' => $loginTime]);
+			$request   = $this->makeRequestWithSession(['user_id' => 'user-1', 'auth_time' => $loginTime]);
 
 			(new SessionAuthenticationAspect())->before($this->makeContext($request));
 
@@ -74,7 +74,7 @@
 		}
 
 		public function testAuthTimeAttributeAbsentWhenNotInSession(): void {
-			$request = $this->makeRequestWithSession(['auth_user_id' => 'user-1']);
+			$request = $this->makeRequestWithSession(['user_id' => 'user-1']);
 
 			(new SessionAuthenticationAspect())->before($this->makeContext($request));
 
@@ -82,7 +82,7 @@
 		}
 
 		public function testNonNumericAuthTimeInSessionIsNotPublished(): void {
-			$request = $this->makeRequestWithSession(['auth_user_id' => 'user-1', 'auth_time' => 'not-a-timestamp']);
+			$request = $this->makeRequestWithSession(['user_id' => 'user-1', 'auth_time' => 'not-a-timestamp']);
 
 			(new SessionAuthenticationAspect())->before($this->makeContext($request));
 
@@ -90,7 +90,7 @@
 		}
 
 		public function testAuthenticatedSessionSetsAuthMethods(): void {
-			$request = $this->makeRequestWithSession(['auth_user_id' => 'user-1', 'auth_methods' => ['pwd']]);
+			$request = $this->makeRequestWithSession(['user_id' => 'user-1', 'auth_methods' => ['pwd']]);
 
 			(new SessionAuthenticationAspect())->before($this->makeContext($request));
 
@@ -98,7 +98,7 @@
 		}
 
 		public function testAuthMethodsDefaultsToEmptyArrayWhenAbsent(): void {
-			$request = $this->makeRequestWithSession(['auth_user_id' => 'user-1']);
+			$request = $this->makeRequestWithSession(['user_id' => 'user-1']);
 
 			(new SessionAuthenticationAspect())->before($this->makeContext($request));
 
@@ -106,7 +106,7 @@
 		}
 
 		public function testNonArrayAuthMethodsInSessionIsTreatedAsEmpty(): void {
-			$request = $this->makeRequestWithSession(['auth_user_id' => 'user-1', 'auth_methods' => 'pwd']);
+			$request = $this->makeRequestWithSession(['user_id' => 'user-1', 'auth_methods' => 'pwd']);
 
 			(new SessionAuthenticationAspect())->before($this->makeContext($request));
 
@@ -114,7 +114,7 @@
 		}
 
 		public function testAuthenticatedSessionClearsStaleSessionError(): void {
-			$request = $this->makeRequestWithSession(['auth_user_id' => 'user-1']);
+			$request = $this->makeRequestWithSession(['user_id' => 'user-1']);
 			$request->attributes->set('session_error', 'stale error');
 
 			(new SessionAuthenticationAspect())->before($this->makeContext($request));
@@ -123,7 +123,7 @@
 		}
 
 		public function testBeforeReturnsNullOnSuccess(): void {
-			$request = $this->makeRequestWithSession(['auth_user_id' => 'user-1']);
+			$request = $this->makeRequestWithSession(['user_id' => 'user-1']);
 
 			$result = (new SessionAuthenticationAspect())->before($this->makeContext($request));
 
@@ -182,7 +182,7 @@
 		}
 
 		public function testAuthenticatedSessionDoesNotThrowInExceptionMode(): void {
-			$request = $this->makeRequestWithSession(['auth_user_id' => 'user-1']);
+			$request = $this->makeRequestWithSession(['user_id' => 'user-1']);
 
 			$result = (new SessionAuthenticationAspect(throwOnFailure: true))->before($this->makeContext($request));
 
