@@ -20,15 +20,15 @@
 	class SequenceFunctionTest extends ObjectQuelTestCase {
 
 		protected function seedFixtures(): void {
-			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (1, 'alice', 'hash1', 0)");
-			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (2, 'bob', 'hash2', 0)");
+			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (1, 'alice', 'hash1', FALSE)");
+			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (2, 'bob', 'hash2', FALSE)");
 
 			$posts = [
-				[1, 'p1', 1, 1],
-				[2, 'p2', 0, 1],
-				[3, 'p3', 1, 1],
-				[4, 'p4', 1, 2],
-				[5, 'p5', 1, 2],
+				[1, 'p1', 'TRUE', 1],
+				[2, 'p2', 'FALSE', 1],
+				[3, 'p3', 'TRUE', 1],
+				[4, 'p4', 'TRUE', 2],
+				[5, 'p5', 'TRUE', 2],
 			];
 
 			foreach ($posts as [$id, $title, $published, $userId]) {
@@ -336,7 +336,7 @@
 			// (all of user 2's posts are published).
 			$result = iterator_to_array($this->em->executeQuery("
 				range of o is PostEntity
-				retrieve (o.userId, avgId = avg(o.id by o.userId where o.published = 1))
+				retrieve (o.userId, avgId = avg(o.id by o.userId where o.published = true))
 				sort by o.userId
 			"));
 

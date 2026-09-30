@@ -19,15 +19,15 @@
 	class WhereWindowFilterTest extends ObjectQuelTestCase {
 
 		protected function seedFixtures(): void {
-			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (1, 'alice', 'hash1', 0)");
-			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (2, 'bob', 'hash2', 0)");
+			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (1, 'alice', 'hash1', FALSE)");
+			$this->exec("INSERT INTO users (id, username, password, banned) VALUES (2, 'bob', 'hash2', FALSE)");
 
 			$posts = [
-				[1, 'p1', 1, 1],
-				[2, 'p2', 0, 1],
-				[3, 'p3', 1, 1],
-				[4, 'p4', 1, 2],
-				[5, 'p5', 1, 2],
+				[1, 'p1', 'TRUE', 1],
+				[2, 'p2', 'FALSE', 1],
+				[3, 'p3', 'TRUE', 1],
+				[4, 'p4', 'TRUE', 2],
+				[5, 'p5', 'TRUE', 2],
 			];
 
 			foreach ($posts as [$id, $title, $published, $userId]) {
@@ -72,14 +72,14 @@
 		}
 
 		public function testPlainConditionIsCarriedIntoTheHelperRangesRanking(): void {
-			// Only published posts should be ranked at all — o.published = 1
+			// Only published posts should be ranked at all — o.published = true
 			// excludes post 2 (user 1's unpublished post) from the ranking itself,
 			// not just from the final result, so user 1's published posts (1, 3)
 			// get row numbers 1 and 2 rather than 1 and 3.
 			$result = iterator_to_array($this->em->executeQuery("
 				range of o is PostEntity
 				retrieve (o.userId, o.id, rn = row_number(sort by o.id))
-				where rn <= 1 and o.published = 1
+				where rn <= 1 and o.published = true
 				sort by o.userId, o.id
 			"));
 
@@ -173,18 +173,19 @@
 		public function testLagAsAFilterFunction(): void {
 			// lag() is value-bearing (unlike row_number()/rank()), and its
 			// argument is a boolean-typed column — this specifically regression-
-			// tests a BooleanConstantOptimizer bug where `expr = 1` folds down to
-			// bare `expr` without updating the surviving node's parent pointer,
-			// which broke replacement here whenever a `= 1`/`= 0` comparison wraps
-			// the sequence function directly (see BooleanConstantOptimizer::propagate()).
+			// tests a BooleanConstantOptimizer bug where `expr = true` folds down
+			// to bare `expr` without updating the surviving node's parent pointer,
+			// which broke replacement here whenever a comparison against a boolean
+			// constant wraps the sequence function directly (normalizeBoolLiteral()
+			// folds `= 1`/`= 0` the same way — see BooleanConstantOptimizer::propagate()).
 			// lag(o.published) is null for each partition's first row (no previous
 			// row) and otherwise the *previous* row's published value: user 1's
-			// id 2 (prev id 1 published=1) and user 2's id 5 (prev id 4
-			// published=1) are the only rows where that previous value is 1.
+			// id 2 (prev id 1 published=true) and user 2's id 5 (prev id 4
+			// published=true) are the only rows where that previous value is true.
 			$result = iterator_to_array($this->em->executeQuery("
 				range of o is PostEntity
 				retrieve (o.userId, o.id)
-				where lag(o.published sort by o.id) = 1
+				where lag(o.published sort by o.id) = true
 				sort by o.userId, o.id
 			"));
 
@@ -215,7 +216,7 @@
 			$result = iterator_to_array($this->em->executeQuery("
 				range of o is PostEntity
 				retrieve (o.userId, o.id)
-				where o.published = 1 and row_number(sort by o.id) <= 2 and o.id > 0
+				where o.published = true and row_number(sort by o.id) <= 2 and o.id > 0
 				sort by o.userId, o.id
 			"));
 
@@ -272,7 +273,7 @@
 			$this->em->executeQuery("
 				range of o is PostEntity
 				retrieve (o.userId, o.id, rn = row_number(sort by o.id))
-				where rn <= 1 or o.published = 1
+				where rn <= 1 or o.published = true
 			");
 		}
 
