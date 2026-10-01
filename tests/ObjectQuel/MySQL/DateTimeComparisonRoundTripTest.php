@@ -123,9 +123,9 @@
 		 */
 		public function testRoutineComparesADatetimeParameterWithAColumn(): void {
 			self::em()->executeQuery("
+				range of p is PostEntity
 				define function {$this->tag} (integer postId, datetime since) integer {
 					integer total = 0
-					range of p is PostEntity
 					cursor posts = retrieve (p.id) where p.id = postId and p.createdAt > since
 					foreach (posts as row) {
 						total = total + 1

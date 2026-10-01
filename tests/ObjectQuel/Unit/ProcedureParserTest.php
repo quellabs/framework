@@ -16,7 +16,6 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIdentifier;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIf;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstNumber;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDeclaration;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstReplace;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstReturn;
@@ -26,9 +25,9 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstVariableAssignment;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstWhile;
 	use Quellabs\ObjectQuel\ObjectQuel\Lexer;
+	use Quellabs\ObjectQuel\ObjectQuel\LexerException;
 	use Quellabs\ObjectQuel\ObjectQuel\ParserException;
 	use Quellabs\ObjectQuel\ObjectQuel\AstInterface;
-	use Quellabs\ObjectQuel\ObjectQuel\Routines\ProcedureParser;
 	use Quellabs\ObjectQuel\ObjectQuel\Parser;
 	use Quellabs\ObjectQuel\ObjectQuel\SemanticAnalyzer;
 	use Quellabs\ObjectQuel\Exception\SemanticException;
@@ -44,7 +43,13 @@
 		 * @return AstRoutineDefinition
 		 */
 		private function parse(string $source): AstRoutineDefinition {
-			return (new ProcedureParser(new Lexer($source), $GLOBALS['test_em']->getEntityStore()))->parse();
+			$ast = (new Parser(new Lexer($source), $GLOBALS['test_em']->getEntityStore()))->parse();
+
+			if (!$ast instanceof AstRoutineDefinition) {
+				throw new ParserException("A routine source must contain exactly one 'define function'.");
+			}
+
+			return $ast;
 		}
 
 		/**
@@ -133,10 +138,10 @@
 		 */
 		public function testParsesCursorLoopExample(): void {
 			$routine = $this->parse('
+				range of u is UserEntity
 				define function count_active_users (integer regionId) integer {
 					integer active_count = 0
 
-					range of u is UserEntity
 					cursor activeUsers = retrieve (u.id) where u.id = regionId and u.id > 0
 					foreach (activeUsers as row) {
 						active_count = active_count + 1
@@ -146,30 +151,30 @@
 				}
 			');
 
+			self::assertCount(1, $routine->getRanges());
+			self::assertSame('u', $routine->getRanges()[0]->getName());
+
 			$body = $routine->getBody();
-			self::assertCount(5, $body);
+			self::assertCount(4, $body);
 
 			self::assertInstanceOf(AstDeclare::class, $body[0]);
 			self::assertSame('active_count', $body[0]->getName());
 			self::assertSame('integer', $body[0]->getType());
 			self::assertNotNull($body[0]->getInitializer());
 
-			self::assertInstanceOf(AstRangeDeclaration::class, $body[1]);
-			self::assertSame('u', $body[1]->getRange()->getName());
-
-			self::assertInstanceOf(AstDeclare::class, $body[2]);
-			self::assertTrue($body[2]->isCursor());
-			$retrieve = $body[2]->getInitializer();
+			self::assertInstanceOf(AstDeclare::class, $body[1]);
+			self::assertTrue($body[1]->isCursor());
+			$retrieve = $body[1]->getInitializer();
 			self::assertInstanceOf(AstRetrieve::class, $retrieve);
 			self::assertSame('id', $retrieve->getValues()[0]->getName());
 			self::assertNotNull($retrieve->getConditions());
 
-			self::assertInstanceOf(AstForeach::class, $body[3]);
-			self::assertSame('activeUsers', $body[3]->getCursorName());
-			self::assertSame('row', $body[3]->getRowName());
-			self::assertInstanceOf(AstVariableAssignment::class, $body[3]->getBody()[0]);
+			self::assertInstanceOf(AstForeach::class, $body[2]);
+			self::assertSame('activeUsers', $body[2]->getCursorName());
+			self::assertSame('row', $body[2]->getRowName());
+			self::assertInstanceOf(AstVariableAssignment::class, $body[2]->getBody()[0]);
 
-			self::assertInstanceOf(AstReturn::class, $body[4]);
+			self::assertInstanceOf(AstReturn::class, $body[3]);
 		}
 
 		/**
@@ -189,13 +194,13 @@
 		 */
 		public function testRetrieveAliasNamesTheField(): void {
 			$body = $this->parse('
+				range of u is UserEntity
 				define function f (integer userId) void {
-					range of u is UserEntity
 					cursor found = retrieve (email_address = u.id) where u.id = userId
 				}
 			')->getBody();
 
-			self::assertSame('email_address', $body[1]->getInitializer()->getValues()[0]->getName());
+			self::assertSame('email_address', $body[0]->getInitializer()->getValues()[0]->getName());
 		}
 
 		/**
@@ -204,13 +209,13 @@
 		 */
 		public function testStandaloneRetrieve(): void {
 			$body = $this->parse('
+				range of u is UserEntity
 				define function f () void {
-					range of u is UserEntity
 					retrieve (u.id) where u.id = 1
 				}
 			')->getBody();
 
-			self::assertInstanceOf(AstRetrieve::class, $body[1]);
+			self::assertInstanceOf(AstRetrieve::class, $body[0]);
 		}
 
 		/**
@@ -305,8 +310,8 @@
 		 */
 		public function testReplaceAndDeleteAlwaysTargetADeclaredRange(): void {
 			$body = $this->parse('
+				range of u is UserEntity
 				define function f () void {
-					range of u is UserEntity
 					cursor users = retrieve (u.id) where u.id > 0
 					foreach (users as row) {
 						replace u (id = 5) where u.id = row.id
@@ -317,12 +322,12 @@
 				}
 			')->getBody();
 
-			$loopBody = $body[2]->getBody();
+			$loopBody = $body[1]->getBody();
 			self::assertInstanceOf(AstReplace::class, $loopBody[0]);
 			self::assertInstanceOf(AstDelete::class, $loopBody[1]);
 
-			self::assertInstanceOf(AstReplace::class, $body[3]);
-			self::assertInstanceOf(AstDelete::class, $body[4]);
+			self::assertInstanceOf(AstReplace::class, $body[2]);
+			self::assertInstanceOf(AstDelete::class, $body[3]);
 		}
 
 		/**
@@ -333,8 +338,8 @@
 			$this->expectException(ParserException::class);
 			$this->expectExceptionMessage("Undefined range reference 'users' in replace statement");
 			$this->parse('
+				range of u is UserEntity
 				define function f () void {
-					range of u is UserEntity
 					cursor users = retrieve (u.id) where u.id > 0
 					foreach (users as row) {
 						replace users (id = 5)
@@ -351,8 +356,8 @@
 			$this->expectException(ParserException::class);
 			$this->expectExceptionMessage("Undefined range reference 'users' in delete statement");
 			$this->parse('
+				range of u is UserEntity
 				define function f () void {
-					range of u is UserEntity
 					cursor users = retrieve (u.id) where u.id > 0
 					foreach (users as row) {
 						delete users
@@ -367,14 +372,14 @@
 		 */
 		public function testAppendAndUpsert(): void {
 			$body = $this->parse('
+				range of u is UserEntity
 				define function sync_user (integer userId, string newEmail) void {
-					range of u is UserEntity
 					append to u (id = userId, email = newEmail) or replace (email = newEmail) where u.id = userId
 				}
 			')->getBody();
 
-			self::assertInstanceOf(AstAppend::class, $body[1]);
-			self::assertNotNull($body[1]->getOnConflict());
+			self::assertInstanceOf(AstAppend::class, $body[0]);
+			self::assertNotNull($body[0]->getOnConflict());
 		}
 
 		/**
@@ -402,8 +407,8 @@
 		 */
 		public function testBreakAndContinue(): void {
 			$body = $this->parse('
+				range of u is UserEntity
 				define function f (integer n) void {
-					range of u is UserEntity
 					cursor users = retrieve (u.id) where u.id > 0
 					while (n > 0) {
 						continue
@@ -419,9 +424,9 @@
 				}
 			')->getBody();
 
-			self::assertInstanceOf(AstContinue::class, $body[2]->getBody()[0]);
+			self::assertInstanceOf(AstContinue::class, $body[1]->getBody()[0]);
 
-			$loopBody = $body[3]->getBody();
+			$loopBody = $body[2]->getBody();
 			self::assertInstanceOf(AstBreak::class, $loopBody[0]->getThenBody()[0]);
 			self::assertInstanceOf(AstContinue::class, $loopBody[0]->getElseBody()[0]);
 			self::assertInstanceOf(AstBreak::class, $loopBody[1]);
@@ -550,8 +555,8 @@
 		 */
 		public function testNestedBlocksParseRecursively(): void {
 			$body = $this->parse('
+				range of u is UserEntity
 				define function f () void {
-					range of u is UserEntity
 					cursor a = retrieve (u.id) where u.id > 0
 					cursor b = retrieve (u.id) where u.id < 5
 					foreach (a as rowA) {
@@ -563,7 +568,7 @@
 				}
 			')->getBody();
 
-			$inner = $body[3]->getBody()[0];
+			$inner = $body[2]->getBody()[0];
 			self::assertInstanceOf(AstForeach::class, $inner);
 			self::assertSame('b', $inner->getCursorName());
 			self::assertSame('rowB', $inner->getRowName());
@@ -579,11 +584,12 @@
 		}
 
 		/**
-		 * define must be followed by function.
+		 * define must be followed by function; matchKeyword() reports this
+		 * as a LexerException, since it's a plain keyword mismatch.
 		 * @return void
 		 */
 		public function testRejectsDefineWithoutFunction(): void {
-			$this->expectException(ParserException::class);
+			$this->expectException(LexerException::class);
 			$this->parse('define view v () void { }');
 		}
 

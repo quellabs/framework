@@ -223,8 +223,8 @@
 		 */
 		public function testSqlServerRoutineStatements(): void {
 			$sql = $this->routineSql('sqlsrv', '
+				range of u is UserEntity
 				define function a (int n) void {
-					range of u is UserEntity
 					cursor cc = retrieve (u.id, k = (u.id > n)) where b(u.id)
 					foreach (cc as row) {
 						if (row.k) {

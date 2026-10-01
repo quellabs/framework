@@ -63,10 +63,11 @@ function callValue(EntityManager $entityManager, string $name, array $parameters
  * @param list<string> $defined Names to remove during cleanup
  * @param string $name Function name
  * @param string $source Function signature and body
+ * @param string $ranges Ranges declared ahead of `define function`, e.g. "range of u is UserEntity "
  * @return void
  */
-function defineRoutine(EntityManager $entityManager, array &$defined, string $name, string $source): void {
-	$entityManager->executeQuery("define function {$name} {$source}");
+function defineRoutine(EntityManager $entityManager, array &$defined, string $name, string $source, string $ranges = ''): void {
+	$entityManager->executeQuery("{$ranges}define function {$name} {$source}");
 	$defined[] = $name;
 }
 
@@ -105,26 +106,23 @@ try {
 	$count = $name . '_count';
 	defineRoutine($entityManager, $defined, $count, '(int minId) integer {
 		integer total = 0
-		range of u is UserEntity
 		cursor users = retrieve (u.id) where u.id >= minId
 		foreach users { total++ }
 		return total
-	}');
+	}', 'range of u is UserEntity ');
 	check(callValue($entityManager, $count, ['minId' => $id]) >= 1, 'Cursor loop failed');
 
 	$suffix = $name . '_suffix';
 	defineRoutine($entityManager, $defined, $suffix, '(string s) string { return concat(s, "!") }');
 	$rename = $name . '_rename';
 	defineRoutine($entityManager, $defined, $rename, '(int uid, string who) void {
-		range of u is UserEntity
 		replace u (username = who) where u.id = uid
-	}');
+	}', 'range of u is UserEntity ');
 	$renameOuter = $name . '_rename_outer';
 	defineRoutine($entityManager, $defined, $renameOuter, "(int uid) void {
-		range of u is UserEntity
 		cursor users = retrieve (u.id, name = {$suffix}(u.username)) where u.id = uid
 		foreach users { {$rename}(users.id, users.name) }
-	}");
+	}", 'range of u is UserEntity ');
 	$entityManager->executeQuery("{$renameOuter}(:id)", ['id' => $id]);
 	check((string)$connection->execute('SELECT username FROM users WHERE id = :id', ['id' => $id])?->fetch('assoc')['username'] === $name . '!', 'Procedure call in a cursor failed');
 	$renameByFunction = $name . '_rename_by_function';
@@ -134,12 +132,11 @@ try {
 
 	$atomic = $name . '_atomic';
 	defineRoutine($entityManager, $defined, $atomic, '(int uid, int cancel) void {
-		range of u is UserEntity
 		transaction {
 			replace u (banned = true) where u.id = uid
 			if (cancel = 1) { exit }
 		}
-	}');
+	}', 'range of u is UserEntity ');
 	$connection->begin();
 	try {
 		$connection->execute('UPDATE users SET banned = FALSE WHERE id = :id', ['id' => $id]);
@@ -158,12 +155,11 @@ try {
 	$connection->execute('INSERT INTO users (username, password) VALUES (:username, :password)', ['username' => 'duplicate_' . $name, 'password' => 'pw']);
 	$error = $name . '_error';
 	defineRoutine($entityManager, $defined, $error, '(int uid, string duplicateName) void {
-		range of u is UserEntity
 		transaction {
 			replace u (banned = true) where u.id = uid
 			replace u (username = duplicateName) where u.id = uid
 		}
-	}');
+	}', 'range of u is UserEntity ');
 	try {
 		$entityManager->executeQuery("{$error}(:id, :who)", ['id' => $id, 'who' => 'duplicate_' . $name]);
 		throw new RuntimeException('Unique violation in atomic block unexpectedly succeeded');
