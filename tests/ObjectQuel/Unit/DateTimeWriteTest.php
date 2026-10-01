@@ -188,9 +188,9 @@
 		 */
 		public function testRoutineConvertsVariablesReturnsAndWrites(): void {
 			$sql = $this->compileRoutine('
+				range of p is PostEntity
 				define function f (datetime since) datetime {
 					datetime next = since + date("1 day")
-					range of p is PostEntity
 					replace p (createdAt = next - date("1 hour")) where p.id = 1
 					return next + date("1 day")
 				}

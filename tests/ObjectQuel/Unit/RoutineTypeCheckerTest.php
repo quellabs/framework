@@ -65,18 +65,18 @@
 					"'b' is boolean, but its initializer is numeric.",
 				],
 				'boolean cursor field' => [
-					'define function f () void {
+					'range of u is UserEntity
+					define function f () void {
 						string s = ""
-						range of u is UserEntity
 						cursor c = retrieve (u.id, u.banned)
 						foreach (c as row) { s = row.banned }
 					}',
 					"'s' is string, but the assigned value is boolean.",
 				],
 				'datetime cursor field' => [
-					'define function f () void {
+					'range of p is PostEntity
+					define function f () void {
 						integer n = 0
-						range of p is PostEntity
 						cursor c = retrieve (p.id, p.createdAt)
 						foreach (c as row) { n = row.createdAt }
 					}',
@@ -95,37 +95,37 @@
 					"A comparison involving 'n' mixes numeric and string values.",
 				],
 				'where comparison' => [
-					'define function f (string who) void { range of u is UserEntity retrieve (u.id) where u.id = who }',
+					'range of u is UserEntity define function f (string who) void { retrieve (u.id) where u.id = who }',
 					"A comparison involving 'who' mixes numeric and string values.",
 				],
 				'bare property comparison' => [
-					'define function f (string who) void { range of u is UserEntity delete u where banned = who }',
+					'range of u is UserEntity define function f (string who) void { delete u where banned = who }',
 					"A comparison involving 'who' mixes boolean and string values.",
 				],
 				'cursor field comparison' => [
-					'define function f () void {
-						range of u is UserEntity
-						range of p is PostEntity
+					'range of u is UserEntity
+					range of p is PostEntity
+					define function f () void {
 						cursor c = retrieve (u.id, u.username)
 						foreach (c as row) { delete p where p.userId = row.username }
 					}',
 					"A comparison involving 'c.username' mixes numeric and string values.",
 				],
 				'in list' => [
-					'define function f (string who) void { range of u is UserEntity retrieve (u.id) where who in (1, 2) }',
+					'range of u is UserEntity define function f (string who) void { retrieve (u.id) where who in (1, 2) }',
 					"An 'in' list involving 'who' mixes string and numeric values.",
 				],
 				'replace value' => [
-					'define function f (string who) void { range of u is UserEntity replace u (banned = who) where u.id = 1 }',
+					'range of u is UserEntity define function f (string who) void { replace u (banned = who) where u.id = 1 }',
 					"Column 'banned' of",
 				],
 				'append value' => [
-					'define function f (int n) void { range of p is PostEntity append to p (title = n, content = "") }',
+					'range of p is PostEntity define function f (int n) void { append to p (title = n, content = "") }',
 					"is string, but the value written to it is numeric.",
 				],
 				'cursor field replace value' => [
-					'define function f () void {
-						range of u is UserEntity
+					'range of u is UserEntity
+					define function f () void {
 						cursor c = retrieve (n = u.id) where u.banned = false
 						foreach (c as row) { replace u (banned = row.n) where u.id = 1 }
 					}',
@@ -144,9 +144,9 @@
 					"Arithmetic involving 's' has a string operand; '+' only works on numbers and dates.",
 				],
 				'string cursor field' => [
-					'define function f () void {
+					'range of u is UserEntity
+					define function f () void {
 						integer n = 0
-						range of u is UserEntity
 						cursor c = retrieve (u.id, u.username)
 						foreach (c as row) { n = n + row.username }
 					}',
@@ -183,22 +183,22 @@
 					'define function f (int n) boolean { boolean b = n > 3 and n < 10 return b }',
 				],
 				'string column into text' => [
-					'define function f () void {
+					'range of u is UserEntity
+					define function f () void {
 						text s = ""
-						range of u is UserEntity
 						cursor c = retrieve (u.id, u.username)
 						foreach (c as row) { s = row.username }
 					}',
 				],
 				'datetime column against integer and string' => [
-					'define function f (int n, string d) void {
-						range of p is PostEntity
+					'range of p is PostEntity
+					define function f (int n, string d) void {
 						retrieve (p.id) where p.createdAt > n
 						replace p (createdAt = d) where p.id = n
 					}',
 				],
 				'query comparison without routine names' => [
-					'define function f () void { range of u is UserEntity retrieve (u.id) where u.id = "x" }',
+					'range of u is UserEntity define function f () void { retrieve (u.id) where u.id = "x" }',
 				],
 				'boolean conditions' => [
 					'define function f (int n) void { boolean found = n > 0 if (found) { n = 1 } while (n > 0) { n = n - 1 } }',
@@ -235,16 +235,14 @@
 				// The next compilation must start with an empty type environment.
 			}
 
-			self::assertNotEmpty($compiler->compile('define function second () void {
+			self::assertNotEmpty($compiler->compile('range of u is UserEntity define function second () void {
 				string n = ""
-				range of u is UserEntity
 				cursor c = retrieve (u.username)
 				foreach (c as row) { n = row.username }
 			}'));
 
-			self::assertNotEmpty($compiler->compile('define function third () void {
+			self::assertNotEmpty($compiler->compile('range of u is UserEntity define function third () void {
 				integer n = 0
-				range of u is UserEntity
 				cursor c = retrieve (u.id)
 				foreach (c as row) { n = row.id }
 			}'));

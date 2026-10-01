@@ -66,9 +66,8 @@
 		 */
 		private function deployCursorSum(string $suffix, string $condition, string $window): string {
 			$routine = "{$this->name}_{$suffix}";
-			self::em()->executeQuery("define function {$routine} () integer {
+			self::em()->executeQuery("range of u is UserEntity define function {$routine} () integer {
 				integer total = 0
-				range of u is UserEntity
 				cursor rows = retrieve (u.id) where {$condition} sort by u.banned, u.id window {$window}
 				foreach (rows as row) { total = total + row.id }
 				return total
@@ -117,8 +116,7 @@
 		public function testStandaloneWindowedRetrieveExecutes(): void {
 			$routine = "{$this->name}_standalone";
 			$ids = implode(', ', $this->userIds);
-			self::em()->executeQuery("define function {$routine} () void {
-				range of u is UserEntity
+			self::em()->executeQuery("range of u is UserEntity define function {$routine} () void {
 				retrieve (u.id) where u.id in ({$ids}) sort by u.id window 0, 2
 			}");
 

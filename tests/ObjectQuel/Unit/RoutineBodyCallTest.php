@@ -50,8 +50,8 @@
 		#[DataProvider('procedureCalls')]
 		public function testCallStatement(string $databaseType, string $expected): void {
 			$sql = $this->compile($databaseType, '
+				range of u is UserEntity
 				define function f (int n) void {
-					range of u is UserEntity
 					cursor users = retrieve (u.id)
 					foreach (users as row) {
 						p(n, -1, "s", true, null, row.id)
@@ -118,8 +118,8 @@
 		#[DataProvider('engines')]
 		public function testCallInEmbeddedQuery(string $databaseType): void {
 			$sql = $this->compile($databaseType, '
+				range of u is UserEntity
 				define function f (int n) void {
-					range of u is UserEntity
 					replace u (username = g(u.username, n)) where h(u.id) > n
 				}
 			');
@@ -155,8 +155,8 @@
 		#[DataProvider('expressionArguments')]
 		public function testExpressionArguments(string $databaseType, array $expected): void {
 			$sql = $this->compile($databaseType, '
+				range of u is UserEntity
 				define function f (int n, datetime at) void {
-					range of u is UserEntity
 					cursor users = retrieve (u.id)
 					foreach (users as row) {
 						p(n + 1, n > 3 and row.id > 2, row.id, at + date("1 day"))
@@ -186,7 +186,7 @@
 		public function testColumnArgumentIsRejected(string $databaseType): void {
 			$this->expectException(SemanticException::class);
 			$this->expectExceptionMessage("Range 'u' can only be used inside retrieve, append, replace or delete.");
-			$this->compile($databaseType, 'define function f () void { range of u is UserEntity; p(u.id) }');
+			$this->compile($databaseType, 'range of u is UserEntity define function f () void { p(u.id) }');
 		}
 
 		/**
