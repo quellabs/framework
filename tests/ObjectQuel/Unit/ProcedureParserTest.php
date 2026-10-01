@@ -25,6 +25,7 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstVariableAssignment;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstWhile;
 	use Quellabs\ObjectQuel\ObjectQuel\Lexer;
+	use Quellabs\ObjectQuel\ObjectQuel\LexerException;
 	use Quellabs\ObjectQuel\ObjectQuel\ParserException;
 	use Quellabs\ObjectQuel\ObjectQuel\AstInterface;
 	use Quellabs\ObjectQuel\ObjectQuel\Parser;
@@ -583,11 +584,12 @@
 		}
 
 		/**
-		 * define must be followed by function.
+		 * define must be followed by function; matchKeyword() reports this
+		 * as a LexerException, since it's a plain keyword mismatch.
 		 * @return void
 		 */
 		public function testRejectsDefineWithoutFunction(): void {
-			$this->expectException(ParserException::class);
+			$this->expectException(LexerException::class);
 			$this->parse('define view v () void { }');
 		}
 
