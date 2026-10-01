@@ -28,7 +28,6 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Lexer;
 	use Quellabs\ObjectQuel\ObjectQuel\ParserException;
 	use Quellabs\ObjectQuel\ObjectQuel\AstInterface;
-	use Quellabs\ObjectQuel\ObjectQuel\Routines\ProcedureParser;
 	use Quellabs\ObjectQuel\ObjectQuel\Parser;
 	use Quellabs\ObjectQuel\ObjectQuel\SemanticAnalyzer;
 	use Quellabs\ObjectQuel\Exception\SemanticException;
@@ -44,7 +43,13 @@
 		 * @return AstRoutineDefinition
 		 */
 		private function parse(string $source): AstRoutineDefinition {
-			return (new ProcedureParser(new Lexer($source), $GLOBALS['test_em']->getEntityStore()))->parse();
+			$ast = (new Parser(new Lexer($source), $GLOBALS['test_em']->getEntityStore()))->parse();
+
+			if (!$ast instanceof AstRoutineDefinition) {
+				throw new ParserException("A routine source must contain exactly one 'define function'.");
+			}
+
+			return $ast;
 		}
 
 		/**

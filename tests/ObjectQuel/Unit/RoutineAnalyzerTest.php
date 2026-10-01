@@ -12,7 +12,8 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstVariableAssignment;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\IdentifierType;
 	use Quellabs\ObjectQuel\ObjectQuel\Lexer;
-	use Quellabs\ObjectQuel\ObjectQuel\Routines\ProcedureParser;
+	use Quellabs\ObjectQuel\ObjectQuel\Parser;
+	use Quellabs\ObjectQuel\ObjectQuel\ParserException;
 	use Quellabs\ObjectQuel\ObjectQuel\Routines\RoutineAnalyzer;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\CollectNodes;
 
@@ -29,7 +30,12 @@
 		 */
 		private function analyze(string $source): AstRoutineDefinition {
 			$entityStore = $GLOBALS['test_em']->getEntityStore();
-			$routine = (new ProcedureParser(new Lexer($source), $entityStore))->parse();
+			$routine = (new Parser(new Lexer($source), $entityStore))->parse();
+
+			if (!$routine instanceof AstRoutineDefinition) {
+				throw new ParserException("A routine source must contain exactly one 'define function'.");
+			}
+
 			(new RoutineAnalyzer($entityStore))->analyze($routine);
 			return $routine;
 		}
