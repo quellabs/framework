@@ -12,7 +12,8 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstVariableAssignment;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\IdentifierType;
 	use Quellabs\ObjectQuel\ObjectQuel\Lexer;
-	use Quellabs\ObjectQuel\ObjectQuel\Routines\ProcedureParser;
+	use Quellabs\ObjectQuel\ObjectQuel\Parser;
+	use Quellabs\ObjectQuel\ObjectQuel\ParserException;
 	use Quellabs\ObjectQuel\ObjectQuel\Routines\RoutineAnalyzer;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\CollectNodes;
 
@@ -29,7 +30,12 @@
 		 */
 		private function analyze(string $source): AstRoutineDefinition {
 			$entityStore = $GLOBALS['test_em']->getEntityStore();
-			$routine = (new ProcedureParser(new Lexer($source), $entityStore))->parse();
+			$routine = (new Parser(new Lexer($source), $entityStore))->parse();
+
+			if (!$routine instanceof AstRoutineDefinition) {
+				throw new ParserException("A routine source must contain exactly one 'define function'.");
+			}
+
 			(new RoutineAnalyzer($entityStore))->analyze($routine);
 			return $routine;
 		}
@@ -60,9 +66,9 @@
 		 */
 		public function testTypesVariableReferences(): void {
 			$routine = $this->analyze('
+				range of u is UserEntity
 				define function count_users (int minId) integer {
 					integer total = 0
-					range of u is UserEntity
 					cursor users = retrieve (u.id) where u.id > minId
 					foreach (users as row) {
 						total = total + 1
@@ -84,9 +90,9 @@
 		 */
 		public function testTypesCursorFieldReads(): void {
 			$routine = $this->analyze('
+				range of u is UserEntity
+				range of p is PostEntity
 				define function copy_titles () void {
-					range of u is UserEntity
-					range of p is PostEntity
 					cursor users = retrieve (name = u.username) where u.banned = false
 					foreach (users as row) {
 						append to p (title = row.name, content = "")
@@ -109,8 +115,8 @@
 		 */
 		public function testAcceptsNestedLoopsAndSequentialReuse(): void {
 			$this->analyze('
+				range of u is UserEntity
 				define function purge () void {
-					range of u is UserEntity
 					cursor banned = retrieve (u.id) where u.banned = true
 					cursor early = retrieve (u.id) where u.id < 5
 					foreach (banned as row) {
@@ -134,8 +140,8 @@
 		 */
 		public function testNestedForeachRowsShadowAndRestoreOuterBinding(): void {
 			$routine = $this->analyze('
+				range of u is UserEntity
 				define function f () void {
-					range of u is UserEntity
 					integer x = 0
 					cursor a = retrieve (u.id) where u.id > 0
 					cursor b = retrieve (u.id) where u.id > 1
@@ -159,8 +165,8 @@
 		 */
 		public function testAcceptsRollbackAsLastStatementOnItsPath(): void {
 			$this->analyze('
+				range of u is UserEntity
 				define function rename (integer userId, string newName) void {
-					range of u is UserEntity
 					atomic {
 						replace u (username = newName) where u.id = userId
 						if (newName = "") {
@@ -199,8 +205,8 @@
 		 */
 		public function testAcceptsBareReturnInVoidRoutine(): void {
 			$this->analyze('
+				range of u is UserEntity
 				define function maybe_ban (integer targetId) void {
-					range of u is UserEntity
 					if (targetId <= 0) {
 						return
 					}
@@ -226,8 +232,8 @@
 		 */
 		public function testAcceptsTargetNamedAfterItsOwnVariable(): void {
 			$this->analyze('
+				range of u is UserEntity
 				define function f (integer n) void {
-					range of u is UserEntity
 					retrieve (n) where u.id = n
 				}
 			');
@@ -241,8 +247,8 @@
 		 */
 		public function testAcceptsBreakAndContinueInsideTheirLoop(): void {
 			$this->analyze('
+				range of u is UserEntity
 				define function f (integer n) void {
-					range of u is UserEntity
 					cursor users = retrieve (u.id) where u.id > 0
 					atomic {
 						while (n > 0) {
@@ -276,8 +282,8 @@
 		 */
 		public function testAcceptsAggregateAndUniqueCursors(): void {
 			$this->analyze('
+				range of u is UserEntity
 				define function f () void {
-					range of u is UserEntity
 					cursor stats = retrieve unique (total = count(u.id)) where u.banned = false
 					foreach (stats as row) {
 						if (row.total > 10) {
@@ -335,8 +341,8 @@
 		 */
 		public function testAcceptsLocalDeclaredInsideForeach(): void {
 			$this->analyze('
+				range of u is UserEntity
 				define function f () void {
-					range of u is UserEntity
 					cursor c = retrieve (u.id) where u.banned = true
 					foreach (c as row) {
 						integer x = row.id
@@ -354,8 +360,8 @@
 		 */
 		public function testAcceptsBlockScopedCursorReusedInSiblingBranch(): void {
 			$this->analyze('
+				range of u is UserEntity
 				define function f (integer n) void {
-					range of u is UserEntity
 					if (n > 0) {
 						cursor c = retrieve (u.id) where u.banned = true
 						foreach (c as row) {
@@ -395,8 +401,8 @@
 		 */
 		public function testCursorShadowsOuterCursorWithoutLeaking(): void {
 			$routine = $this->analyze('
+				range of u is UserEntity
 				define function f () void {
-					range of u is UserEntity
 					cursor c = retrieve (u.id) where u.id > 0
 					if (1 = 1) {
 						cursor c = retrieve (u.id) where u.id > 1
@@ -421,8 +427,8 @@
 		 */
 		public function testAcceptsCursorRebindBetweenSequentialLoops(): void {
 			$routine = $this->analyze('
+				range of u is UserEntity
 				define function f () void {
-					range of u is UserEntity
 					cursor c = retrieve (u.id) where u.banned = false
 					foreach (c as row) { }
 					c = retrieve (u.id) where u.banned = true
@@ -445,8 +451,8 @@
 		 */
 		public function testCursorRebindInsideIfDoesNotLeak(): void {
 			$routine = $this->analyze('
+				range of u is UserEntity
 				define function f (integer n) void {
-					range of u is UserEntity
 					cursor c = retrieve (u.id) where u.banned = false
 					if (n > 0) {
 						c = retrieve (u.id) where u.banned = true
@@ -468,8 +474,8 @@
 		 */
 		public function testAcceptsCursorRebindInsideItsOwnOpenLoop(): void {
 			$routine = $this->analyze('
+				range of u is UserEntity
 				define function f () void {
-					range of u is UserEntity
 					cursor c = retrieve (u.id) where u.id > 0
 					foreach (c as row) {
 						c = retrieve (u.id) where u.id > 1
@@ -488,9 +494,9 @@
 		 */
 		public function testShadowingAcrossScalarAndCursorKinds(): void {
 			$routine = $this->analyze('
+				range of u is UserEntity
 				define function f () integer {
 					integer x = 1
-					range of u is UserEntity
 					if (x > 0) {
 						cursor x = retrieve (u.id)
 						foreach (x as row) { }
@@ -509,8 +515,8 @@
 		 */
 		public function testScalarShadowsOuterCursor(): void {
 			$routine = $this->analyze('
+				range of u is UserEntity
 				define function f () void {
-					range of u is UserEntity
 					cursor c = retrieve (u.id)
 					if (1 = 1) {
 						integer c = 2
@@ -550,9 +556,9 @@
 
 			return [
 				'unknown parameter type'        => ['define function f (number n) void { }', "Unknown type 'number' for parameter"],
-				'query placeholder'             => ["define function f () void { {$range} delete u where u.id = :id }", "':id' placeholders aren't allowed"],
-				'JSON range declaration'         => ['define function f () void { range of j is json_source("data.json") }', "JSON ranges aren't supported in routines"],
-				'JSON range in retrieve'         => ['define function f () void { range of j is json_source("data.json") retrieve (j.id) }', "JSON ranges aren't supported in routines"],
+				'query placeholder'             => ["{$range}define function f () void { delete u where u.id = :id }", "':id' placeholders aren't allowed"],
+				'JSON range declaration'        => ['range of j is json_source("data.json") define function f () void { }', "JSON ranges aren't supported in routines"],
+				'JSON range in retrieve'        => ['range of j is json_source("data.json") define function f () void { retrieve (j.id) }', "JSON ranges aren't supported in routines"],
 				'void parameter'                => ['define function f (void n) void { }', "Unknown type 'void' for parameter"],
 				'cursor parameter'              => ['define function f (cursor c) void { }', "Unknown type 'cursor' for parameter"],
 				'unknown return type'           => ['define function f () number { return 1 }', "Unknown return type 'number'"],
@@ -560,14 +566,11 @@
 				'void local'                    => ['define function f () void { void x }', "Unknown type 'void' for local"],
 				'cursor without initializer'    => ['define function f () void { cursor c }', 'must be initialized with a retrieve'],
 				'cursor with expression'        => ['define function f () void { cursor c = 1 }', 'must be initialized with a retrieve'],
-				'scalar with retrieve'          => ["define function f () void { {$range} integer x = retrieve (u.id) where u.id = 1 }", 'Only a cursor can be initialized'],
-				'range inside while'            => ['define function f (integer n) void { while (n > 1) { range of u is UserEntity } }', 'must be at the top level'],
-				'range inside if'               => ['define function f (integer n) void { if (n > 1) { range of u is UserEntity } }', 'must be at the top level'],
+				'scalar with retrieve'          => ["{$range}define function f () void { integer x = retrieve (u.id) where u.id = 1 }", 'Only a cursor can be initialized'],
 				'local redeclares parameter'    => ['define function f (integer n) void { integer n }', "'n' is already declared"],
-				'local redeclares range'        => ["define function f () void { {$range} integer u }", "'u' is already declared"],
+				'local redeclares range'        => ["{$range}define function f () void { integer u }", "'u' is already declared"],
 				'local duplicate in one block'  => ['define function f () void { integer x = 1 integer x = 2 }', "'x' is already declared in this scope"],
-				'local shadows outer range'     => ["define function f (integer n) void { {$range} while (n > 0) { integer u } }", "'u' is already declared"],
-				'range redeclares local'        => ['define function f () void { integer u range of u is UserEntity }', "'u' is already declared"],
+				'local shadows outer range'     => ["{$range}define function f (integer n) void { while (n > 0) { integer u } }", "'u' is already declared"],
 				'statement keyword as name'     => ['define function f () void { integer foreach }', 'statement keyword'],
 				'break as name'                 => ['define function f () void { integer break }', 'statement keyword'],
 				'atomic as name'                => ['define function f () void { integer atomic }', 'statement keyword'],
@@ -576,32 +579,31 @@
 				'locals differing in case'      => ['define function f () void { integer total integer Total }', "'total' and 'Total' differ only in case"],
 				'nested locals differing case'  => ['define function f () void { integer total if (1 = 1) { integer Total } }', "'total' and 'Total' differ only in case"],
 				'local and parameter case'      => ['define function f (integer n) void { string N }', "'n' and 'N' differ only in case"],
-				'cursor and local case'         => ["define function f () void { {$range} integer rows cursor Rows = retrieve (u.id) }", "'rows' and 'Rows' differ only in case"],
-				'cursor fields differing case'  => ["define function f () void { {$range} cursor c = retrieve (Id = u.username, u.id) }", "Fields 'c.Id' and 'c.id' differ only in case"],
+				'cursor and local case'         => ["{$range}define function f () void { integer rows cursor Rows = retrieve (u.id) }", "'rows' and 'Rows' differ only in case"],
+				'cursor fields differing case'  => ["{$range}define function f () void { cursor c = retrieve (Id = u.username, u.id) }", "Fields 'c.Id' and 'c.id' differ only in case"],
 				'assignment before declaration' => ['define function f () void { x = 1 integer x }', 'assigned before its declaration'],
 				'read before declaration'       => ['define function f () void { integer y = x integer x }', "'x' is used before its declaration"],
-				'range before declaration'      => ['define function f () void { cursor c = retrieve (u.id) where u.id = 1 range of u is UserEntity }', "'u' is used before its declaration"],
 				'self-referencing initializer'  => ['define function f () void { integer x = x + 1 }', "'x' is used before its declaration"],
 				'undefined name'                => ['define function f () integer { return y }', "Undefined name 'y'"],
 				'assignment to undeclared'      => ['define function f () void { y = 1 }', "undeclared variable 'y'"],
 				'increment of undeclared'       => ['define function f () void { y++ }', "undeclared variable 'y'"],
-				'range in expression'           => ["define function f () void { {$range} if (u.id > 1) { } }", "Range 'u' can only be used inside"],
-				'assignment to range'           => ["define function f () void { {$range} u = 1 }", "Range 'u' can't be assigned"],
+				'range in expression'           => ["{$range}define function f () void { if (u.id > 1) { } }", "Range 'u' can only be used inside"],
+				'assignment to range'           => ["{$range}define function f () void { u = 1 }", "Range 'u' can't be assigned"],
 				'field on scalar'               => ['define function f (integer n) integer { return n.x }', 'has no fields'],
-				'variable is also a property'   => ["define function f (string username) void { {$range} retrieve (u.id) where username = \"x\" }", 'both a routine variable and a property'],
-				'variable is also a target'     => ["define function f (integer k) void { {$range} retrieve (k = u.id) where u.id > k }", 'both a routine variable and a target-list name'],
-				'whole entity target'           => ["define function f () void { {$range} cursor c = retrieve (u) where u.id > 0 }", 'not whole entities'],
-				'cursor as a value'             => ["define function f () void { {$range} cursor c = retrieve (u.id) where u.id > 0 integer x = c }", "Cursor 'c' is not a value"],
-				'cursor assigned a scalar'       => ["define function f () void { {$range} cursor c = retrieve (u.id) where u.id > 0 c = 1 }", "Cursor 'c' can only be assigned a retrieve"],
-				'inner cursor hides scalar'     => ["define function f () void { integer x = 1 {$range} if (x > 0) { cursor x = retrieve (u.id) x = 2 } }", "Cursor 'x' can only be assigned a retrieve"],
-				'inner scalar hides cursor'     => ["define function f () void { {$range} cursor c = retrieve (u.id) if (1 = 1) { integer c = 2 foreach (c as row) { } } }", "needs a cursor"],
-				'cursor incremented'            => ["define function f () void { {$range} cursor c = retrieve (u.id) where u.id > 0 c += 1 }", "Cursor 'c' can only be assigned a retrieve"],
-				'cursor field outside loop'     => ["define function f () integer { {$range} cursor c = retrieve (u.id) where u.id > 0 return c.id }", "Cursor 'c' is not a value; read its fields through its 'foreach (c as row)' binding"],
-				'missing cursor field'          => ["define function f () void { {$range} integer x cursor c = retrieve (u.id) where u.id > 0 foreach (c as row) { x = row.username } }", "has no field 'username'"],
+				'variable is also a property'   => ["{$range}define function f (string username) void { retrieve (u.id) where username = \"x\" }", 'both a routine variable and a property'],
+				'variable is also a target'     => ["{$range}define function f (integer k) void { retrieve (k = u.id) where u.id > k }", 'both a routine variable and a target-list name'],
+				'whole entity target'           => ["{$range}define function f () void { cursor c = retrieve (u) where u.id > 0 }", 'not whole entities'],
+				'cursor as a value'             => ["{$range}define function f () void { cursor c = retrieve (u.id) where u.id > 0 integer x = c }", "Cursor 'c' is not a value"],
+				'cursor assigned a scalar'       => ["{$range}define function f () void { cursor c = retrieve (u.id) where u.id > 0 c = 1 }", "Cursor 'c' can only be assigned a retrieve"],
+				'inner cursor hides scalar'     => ["{$range}define function f () void { integer x = 1 if (x > 0) { cursor x = retrieve (u.id) x = 2 } }", "Cursor 'x' can only be assigned a retrieve"],
+				'inner scalar hides cursor'     => ["{$range}define function f () void { cursor c = retrieve (u.id) if (1 = 1) { integer c = 2 foreach (c as row) { } } }", "needs a cursor"],
+				'cursor incremented'            => ["{$range}define function f () void { cursor c = retrieve (u.id) where u.id > 0 c += 1 }", "Cursor 'c' can only be assigned a retrieve"],
+				'cursor field outside loop'     => ["{$range}define function f () integer { cursor c = retrieve (u.id) where u.id > 0 return c.id }", "Cursor 'c' is not a value; read its fields through its 'foreach (c as row)' binding"],
+				'missing cursor field'          => ["{$range}define function f () void { integer x cursor c = retrieve (u.id) where u.id > 0 foreach (c as row) { x = row.username } }", "has no field 'username'"],
 				'foreach over scalar'           => ['define function f (integer n) void { foreach (n as row) { } }', "needs a cursor, but 'n' is not one"],
 				'foreach undefined'             => ['define function f () void { foreach (c as row) { } }', "Undefined cursor 'c'"],
-				'foreach on open cursor'        => ["define function f () void { {$range} cursor a = retrieve (u.id) where u.id > 0 cursor b = retrieve (u.id) where u.id > 1 foreach (a as ra) { foreach (b as rb) { foreach (a as ra2) { } } } }", 'same cursor'],
-				'foreach row name is its cursor'=> ["define function f () void { {$range} cursor c = retrieve (u.id) where u.id > 0 foreach (c as c) { } }", "'c' is already in use"],
+				'foreach on open cursor'        => ["{$range}define function f () void { cursor a = retrieve (u.id) where u.id > 0 cursor b = retrieve (u.id) where u.id > 1 foreach (a as ra) { foreach (b as rb) { foreach (a as ra2) { } } } }", 'same cursor'],
+				'foreach row name is its cursor'=> ["{$range}define function f () void { cursor c = retrieve (u.id) where u.id > 0 foreach (c as c) { } }", "'c' is already in use"],
 				'void returns a value'          => ['define function f () void { return 1 }', "A void routine can't return a value"],
 				'bare return in non-void'       => ['define function f () integer { return }', 'must return a value'],
 				'return only in if'             => ['define function f (integer n) integer { if (n > 0) { return 1 } }', 'Not every path'],
@@ -618,9 +620,9 @@
 				'continue in if without loop'   => ['define function f (integer n) void { if (n > 0) { continue } }', "'continue' is only valid inside 'while' or 'foreach'"],
 				'break out of atomic'           => ['define function f (integer n) void { while (n > 0) { atomic { if (n = 5) { break } } } }', "'break' would leave 'atomic { }' without finishing it"],
 				'continue out of atomic'        => ['define function f (integer n) void { while (n > 0) { atomic { continue } } }', "'continue' would leave 'atomic { }'"],
-				'scalar assigned a retrieve'    => ["define function f () void { {$range} integer x = 1 x = retrieve (u.id) where u.id > 0 }", "declared as a scalar, so it can't be assigned a retrieve"],
-				'undeclared assigned a retrieve'=> ["define function f () void { {$range} y = retrieve (u.id) where u.id > 0 }", "undeclared variable 'y'"],
-				'range assigned a retrieve'     => ["define function f () void { {$range} u = retrieve (u.id) where u.id > 0 }", "Range 'u' can't be assigned"],
+				'scalar assigned a retrieve'    => ["{$range}define function f () void { integer x = 1 x = retrieve (u.id) where u.id > 0 }", "declared as a scalar, so it can't be assigned a retrieve"],
+				'undeclared assigned a retrieve'=> ["{$range}define function f () void { y = retrieve (u.id) where u.id > 0 }", "undeclared variable 'y'"],
+				'range assigned a retrieve'     => ["{$range}define function f () void { u = retrieve (u.id) where u.id > 0 }", "Range 'u' can't be assigned"],
 			];
 		}
 
@@ -634,5 +636,16 @@
 			$this->expectException(SemanticException::class);
 			$this->expectExceptionMessage($message);
 			$this->analyze($source);
+		}
+
+		/**
+		 * `range of` inside the body — at any depth — is a syntax error now that ranges
+		 * are declared ahead of `define function`, not a placement rule checked here.
+		 * @return void
+		 */
+		public function testRejectsRangeInsideTheBody(): void {
+			$this->expectException(ParserException::class);
+			$this->expectExceptionMessage("must be declared ahead of 'define function'");
+			$this->analyze('define function f (integer n) void { while (n > 1) { range of u is UserEntity } }');
 		}
 	}

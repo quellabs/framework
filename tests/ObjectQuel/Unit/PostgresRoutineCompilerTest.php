@@ -31,9 +31,9 @@
 		 */
 		public function testReadOnlyFunction(): void {
 			$sql = $this->compile('
+				range of u is UserEntity
 				define function count_users (int minId) integer {
 					integer total = 0
-					range of u is UserEntity
 					cursor users = retrieve (u.id, name = u.username) where u.id > minId
 					foreach (users as row) {
 						if (row.name = "x") {
@@ -78,8 +78,8 @@
 		 */
 		public function testBareReturnCompilesToPlainReturn(): void {
 			$sql = $this->compile('
+				range of u is UserEntity
 				define function maybe_ban (integer targetId) void {
-					range of u is UserEntity
 					if (targetId <= 0) {
 						return
 					}
@@ -111,8 +111,8 @@
 		 */
 		public function testWriteInsideLoopReferencesRowField(): void {
 			$sql = $this->compile('
+				range of u is UserEntity
 				define function unban_first () integer {
-					range of u is UserEntity
 					cursor users = retrieve (u.id) where u.banned = true
 					foreach (users as row) {
 						replace u (banned = false) where u.id = row.id
@@ -148,9 +148,9 @@
 		 */
 		public function testProcedureStatements(): void {
 			$sql = $this->compile('
+				range of u is UserEntity
+				range of p is PostEntity
 				define function purge (string who) void {
-					range of u is UserEntity
-					range of p is PostEntity
 					cursor users = retrieve (u.id) where u.username = who
 					foreach (users as row) {
 						delete p where p.userId = row.id
@@ -196,8 +196,7 @@
 		}
 
 		public function testWindowedRetrieveUsesLimitOffsetWithoutSort(): void {
-			$sql = $this->compile('define function f () void {
-				range of u is UserEntity
+			$sql = $this->compile('range of u is UserEntity define function f () void {
 				cursor c = retrieve (u.id) window 3, 2
 				foreach (c as row) { }
 				retrieve (u.id) window 0
@@ -213,10 +212,10 @@
 		 */
 		public function testEmbeddedRetrieveDropsUnusedRanges(): void {
 			$sql = $this->compile('
+				range of u is UserEntity
+				range of p is PostEntity via p.userId = u.id
+				range of other is UserEntity
 				define function f () void {
-					range of u is UserEntity
-					range of p is PostEntity via p.userId = u.id
-					range of other is UserEntity
 					retrieve (p.title) where u.id = 1
 					retrieve (other.username) where other.id = 2
 				}
@@ -233,8 +232,8 @@
 		 */
 		public function testSortByCompilesToOrderBy(): void {
 			$sql = $this->compile('
+				range of u is UserEntity
 				define function f (int minId) void {
-					range of u is UserEntity
 					cursor readers = retrieve (u.id, name = u.username) where u.id > minId sort by name desc, abs(u.id - minId)
 					cursor writers = retrieve (u.id) where u.banned = true sort by u.id desc
 					foreach (readers as row) {
@@ -255,8 +254,8 @@
 		 */
 		public function testNullableDatetimeSortsWithDateDefault(): void {
 			$sql = $this->compile('
+				range of p is PostEntity
 				define function f () void {
-					range of p is PostEntity
 					cursor posts = retrieve (p.id) sort by p.deletedAt
 					foreach (posts as row) {
 					}
@@ -272,8 +271,8 @@
 		 */
 		public function testDollarQuoteTagAvoidsBodyText(): void {
 			$sql = $this->compile('
+				range of u is UserEntity
 				define function f () void {
-					range of u is UserEntity
 					retrieve (n = "$body$") where u.id = 1
 				}
 			');
@@ -329,8 +328,8 @@
 		 */
 		public function testBreakAndContinue(): void {
 			$sql = $this->compile('
+				range of u is UserEntity
 				define function skip_some (integer n) void {
-					range of u is UserEntity
 					cursor ids = retrieve (u.id) where u.id > 0
 					cursor banned = retrieve (u.id) where u.banned = true
 					while (n > 0) {
@@ -402,8 +401,8 @@
 		 */
 		public function testAtomicInsideForeachIsSupported(): void {
 			$sql = $this->compile('
+				range of u is UserEntity
 				define function f () void {
-					range of u is UserEntity
 					cursor users = retrieve (u.id)
 					foreach (users as row) {
 						atomic {
@@ -448,8 +447,8 @@
 		 */
 		public function testSiblingBranchCursorsGetDistinctQueries(): void {
 			$sql = $this->compile('
+				range of u is UserEntity
 				define function f (integer n) void {
-					range of u is UserEntity
 					if (n > 0) {
 						cursor c = retrieve (u.id) where u.banned = true
 						foreach (c as row) {
@@ -476,8 +475,8 @@
 		 */
 		public function testCursorRebindCompilesToNoStatementOfItsOwn(): void {
 			$sql = $this->compile('
+				range of u is UserEntity
 				define function f () void {
-					range of u is UserEntity
 					cursor c = retrieve (u.id) where u.banned = false
 					foreach (c as row) { }
 					c = retrieve (u.id) where u.banned = true
@@ -496,9 +495,9 @@
 		 */
 		public function testNestedShadowingCompilesWithDistinctNames(): void {
 			$sql = $this->compile('
+				range of u is UserEntity
 				define function f (integer n) void {
 					integer x = 1
-					range of u is UserEntity
 					cursor c = retrieve (u.id) where u.id > 0
 					if (n > 0) {
 						integer x = 2
@@ -527,8 +526,8 @@
 		 */
 		public function testNestedRowBindingShadowsAndRestoresOuterRow(): void {
 			$sql = $this->compile('
+				range of u is UserEntity
 				define function f () void {
-					range of u is UserEntity
 					integer x = 0
 					cursor a = retrieve (u.id)
 					cursor b = retrieve (u.id) where u.id > 1
@@ -552,8 +551,8 @@
 		public static function rejectedRoutines(): array {
 			return [
 				'atomic in a function' => ['
+					range of u is UserEntity
 					define function f () integer {
-						range of u is UserEntity
 						atomic {
 							delete u where u.id = 1
 						}
@@ -589,8 +588,8 @@
 			$this->expectExceptionMessage("Routines can't be compiled for 'sqlite'.");
 
 			(new ProcedureCompiler($GLOBALS['test_em'], new FakePlatformCapabilities('sqlite'), null))->compile('
+				range of u is UserEntity
 				define function f () void {
-					range of u is UserEntity
 					delete u where u.id = 1
 				}
 			');

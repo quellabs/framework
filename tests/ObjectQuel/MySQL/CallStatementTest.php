@@ -76,8 +76,8 @@
 		 */
 		public function testProcedureYieldsNull(): void {
 			self::em()->executeQuery("
+				range of u is UserEntity
 				define function {$this->name} (int uid, string who) void {
-					range of u is UserEntity
 					replace u (username = who) where u.id = uid
 				}
 			");

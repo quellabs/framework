@@ -36,12 +36,13 @@
 		 * Defines a routine and records it for cleanup.
 		 * @param string $suffix Name suffix, appended to the test's prefix
 		 * @param string $definition Everything after the name: parameters, return type and body
+		 * @param string $ranges Ranges declared ahead of `define function`, e.g. "range of u is UserEntity "
 		 * @return string The routine's name
 		 */
-		private function define(string $suffix, string $definition): string {
+		private function define(string $suffix, string $definition, string $ranges = ''): string {
 			$name = "{$this->prefix}_{$suffix}";
 			$this->routines[] = $name;
-			self::em()->executeQuery("define function {$name} {$definition}");
+			self::em()->executeQuery("{$ranges}define function {$name} {$definition}");
 			return $name;
 		}
 
@@ -109,9 +110,8 @@
 		 */
 		public function testProcedureCallsProcedure(): void {
 			$rename = $this->define('rename', '(int uid, string who) void {
-				range of u is UserEntity
 				replace u (username = who) where u.id = uid
-			}');
+			}', 'range of u is UserEntity ');
 
 			$outer = $this->define('outer', "(int uid) void { string who = \"nested\" {$rename}(uid, who) }");
 			$id = $this->seedUser();
@@ -126,9 +126,8 @@
 		 */
 		public function testFunctionCallsProcedure(): void {
 			$rename = $this->define('rename', '(int uid) void {
-				range of u is UserEntity
 				replace u (username = "from function") where u.id = uid
-			}');
+			}', 'range of u is UserEntity ');
 
 			$outer = $this->define('outer', "(int uid) integer { {$rename}(uid) return 1 }");
 			$id = $this->seedUser();
@@ -146,17 +145,15 @@
 		public function testCallInEmbeddedQueryAndCursorLoop(): void {
 			$suffix = $this->define('suffix', '(string s) string { return concat(s, "!") }');
 			$rename = $this->define('rename', '(int uid, string who) void {
-				range of u is UserEntity
 				replace u (username = who) where u.id = uid
-			}');
+			}', 'range of u is UserEntity ');
 
 			$outer = $this->define('outer', "(int uid) void {
-				range of u is UserEntity
 				cursor users = retrieve (u.id, name = {$suffix}(u.username)) where u.id = uid
 				foreach (users as row) {
 					{$rename}(row.id, row.name)
 				}
-			}");
+			}", 'range of u is UserEntity ');
 
 			$id = $this->seedUser();
 
