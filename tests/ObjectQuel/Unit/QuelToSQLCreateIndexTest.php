@@ -20,11 +20,11 @@
 	 * so, unlike upsert's parser tests, this covers both grammar and
 	 * generated SQL in one file, mirroring QuelToSQLCreateTest/
 	 * QuelToSQLDestroyTest's pattern. A real EntityStore is still needed to
-	 * parse (there's no `table` keyword — see Rules\Range), even though
-	 * `index` rejects a `range of` declaration ahead of it rather than using
-	 * one (see testRejectsRangeDeclarationBeforeIndex()). The suite's only
-	 * live connection (see tests/Integration/CreateIndexTest) is MySQL, so
-	 * this is the only place pgsql/sqlite/sqlsrv generated SQL is compared.
+	 * parse (there's no `table` keyword — see Rules\Range), even though the
+	 * only `range of` declaration exercised here is ignored (see
+	 * testIgnoresRangeDeclarationBeforeIndex()). The suite's only live
+	 * connection (see tests/Integration/CreateIndexTest) is MySQL, so this
+	 * is the only place pgsql/sqlite/sqlsrv generated SQL is compared.
 	 */
 	class QuelToSQLCreateIndexTest extends TestCase {
 
@@ -84,13 +84,13 @@
 			);
 		}
 
-		public function testRejectsRangeDeclarationBeforeIndex(): void {
-			$this->expectException(ParserException::class);
-
-			$this->parse('
+		public function testIgnoresRangeDeclarationBeforeIndex(): void {
+			$ast = $this->parse('
 				range of x is UserEntity
 				index on ArchiveLog is archive_log_email_idx (email)
 			');
+
+			self::assertSame('CREATE INDEX `archive_log_email_idx` ON `ArchiveLog` (`email`)', $this->compile($ast, 'mysql'));
 		}
 
 		public function testRejectsADuplicateColumnInTheColumnList(): void {

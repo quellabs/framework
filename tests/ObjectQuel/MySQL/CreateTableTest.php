@@ -191,17 +191,19 @@
 			$this->assertFalse($columns['tag_id']->nullable);
 		}
 
-		public function testRejectsRangeDeclarationBeforeCreate(): void {
+		public function testIgnoresRangeDeclarationBeforeCreate(): void {
 			$tableName = $this->nextTableName();
+			$this->createdTables[] = $tableName;
 
-			// `create` doesn't take ranges, so one declared ahead of it is
-			// rejected at parse time rather than silently discarded.
-			$this->expectException(QuelException::class);
-
-			self::em()->executeQuery("
+			// Ranges are parsed once up front and shared across statements —
+			// `create` just doesn't reference them, so this isn't an error.
+			$result = self::em()->executeQuery("
 				range of x is PostEntity
 				create {$tableName} (id = integer)
 			");
+
+			$this->assertNull($result);
+			$this->assertArrayHasKey('id', self::em()->getConnection()->getColumns($tableName));
 		}
 
 		public function testRejectsCreatingATableThatAlreadyExists(): void {

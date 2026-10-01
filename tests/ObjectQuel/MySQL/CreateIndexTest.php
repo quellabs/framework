@@ -123,18 +123,19 @@
 			$this->assertNull($result);
 		}
 
-		public function testRejectsRangeDeclarationBeforeIndex(): void {
+		public function testIgnoresRangeDeclarationBeforeIndex(): void {
 			$tableName = $this->nextTableName();
 			$this->createTargetTable($tableName);
 
-			// `index` doesn't take ranges, same as `create` — one declared
-			// ahead of it is rejected at parse time.
-			$this->expectException(QuelException::class);
-
-			self::em()->executeQuery("
+			// Ranges are parsed once up front and shared across statements —
+			// `index` just doesn't reference them, same as `create`.
+			$result = self::em()->executeQuery("
 				range of x is PostEntity
 				index on {$tableName} is {$tableName}_email_idx (email)
 			");
+
+			$this->assertNull($result);
+			$this->assertArrayHasKey("{$tableName}_email_idx", self::em()->getConnection()->getIndexes($tableName));
 		}
 
 		public function testRejectsIndexingATableThatDoesNotExist(): void {
