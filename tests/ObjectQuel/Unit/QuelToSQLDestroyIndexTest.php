@@ -6,6 +6,7 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstDestroyIndex;
 	use Quellabs\ObjectQuel\ObjectQuel\Lexer;
 	use Quellabs\ObjectQuel\ObjectQuel\Parser;
+	use Quellabs\ObjectQuel\ObjectQuel\ParserException;
 	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQL\QuelToSQLDestroyIndex;
 	use Quellabs\ObjectQuel\Tests\Support\FakePlatformCapabilities;
 
@@ -83,13 +84,13 @@
 			);
 		}
 
-		public function testIgnoresRangeDeclarationBeforeDestroyIndex(): void {
-			$ast = $this->parse('
+		public function testRejectsRangeDeclarationBeforeDestroyIndex(): void {
+			$this->expectException(ParserException::class);
+
+			$this->parse('
 				range of x is UserEntity
 				destroy archive_log_email_idx on ArchiveLog
 			');
-
-			self::assertSame(['DROP INDEX `archive_log_email_idx` ON `ArchiveLog`'], $this->compile($ast, 'mysql'));
 		}
 
 		public function testUnqualifiedDestroyStillParsesAsTheTableForm(): void {

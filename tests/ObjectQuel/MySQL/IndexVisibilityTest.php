@@ -4,6 +4,7 @@
 
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\ObjectQuel\EntityManager;
+	use Quellabs\ObjectQuel\Exception\QuelException;
 
 	/**
 	 * Integration coverage for QUEL's `hide Name on Table` / `show Name on
@@ -119,12 +120,24 @@
 			$indexName = "{$tableName}_email_idx";
 			$this->createTargetTableWithIndex($tableName, $indexName);
 
-			$result = self::em()->executeQuery("
-				range of x is UserEntity
-				hide {$indexName} on {$tableName}
-			");
+			$result = self::em()->executeQuery("hide {$indexName} on {$tableName}");
 
 			self::assertNull($result);
 			self::assertFalse($this->isVisible($tableName, $indexName));
+		}
+
+		public function testRejectsRangeDeclarationBeforeHide(): void {
+			$tableName = $this->nextTableName();
+			$indexName = "{$tableName}_email_idx";
+			$this->createTargetTableWithIndex($tableName, $indexName);
+
+			// `hide` doesn't take ranges — one declared ahead of it is
+			// rejected at parse time rather than silently discarded.
+			$this->expectException(QuelException::class);
+
+			self::em()->executeQuery("
+				range of x is UserEntity
+				hide {$indexName} on {$tableName}
+			");
 		}
 	}

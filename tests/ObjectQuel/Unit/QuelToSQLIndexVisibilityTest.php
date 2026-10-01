@@ -8,6 +8,7 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstShowIndex;
 	use Quellabs\ObjectQuel\ObjectQuel\Lexer;
 	use Quellabs\ObjectQuel\ObjectQuel\Parser;
+	use Quellabs\ObjectQuel\ObjectQuel\ParserException;
 	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQL\QuelToSQLIndexVisibility;
 	use Quellabs\ObjectQuel\Tests\Support\FakePlatformCapabilities;
 
@@ -92,15 +93,13 @@
 			self::assertSame('ALTER TABLE `UserEntity` ALTER INDEX `user_username_idx` INVISIBLE', $sql);
 		}
 
-		public function testIgnoresRangeDeclarationBeforeHide(): void {
-			$ast = $this->parseHide('
+		public function testRejectsRangeDeclarationBeforeHide(): void {
+			$this->expectException(ParserException::class);
+
+			$this->parseHide('
 				range of x is UserEntity
 				hide archive_log_email_idx on ArchiveLog
 			');
-
-			$sql = (new QuelToSQLIndexVisibility(new FakePlatformCapabilities('mysql')))->convertHideToSQL($ast);
-
-			self::assertSame('ALTER TABLE `ArchiveLog` ALTER INDEX `archive_log_email_idx` INVISIBLE', $sql);
 		}
 
 		public function testTrailingSemicolonIsConsumed(): void {

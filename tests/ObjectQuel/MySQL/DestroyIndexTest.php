@@ -96,18 +96,19 @@
 			$this->assertArrayNotHasKey($indexName, self::em()->getConnection()->getIndexes($tableName));
 		}
 
-		public function testIgnoresRangeDeclarationBeforeDestroyIndex(): void {
+		public function testRejectsRangeDeclarationBeforeDestroyIndex(): void {
 			$tableName = $this->nextTableName();
 			$indexName = "{$tableName}_email_idx";
 			$this->createTargetTableWithIndex($tableName, $indexName);
 
-			$result = self::em()->executeQuery("
+			// `destroy` doesn't take ranges — one declared ahead of it is
+			// rejected at parse time rather than silently discarded.
+			$this->expectException(QuelException::class);
+
+			self::em()->executeQuery("
 				range of x is PostEntity
 				destroy {$indexName} on {$tableName}
 			");
-
-			$this->assertNull($result);
-			$this->assertArrayNotHasKey($indexName, self::em()->getConnection()->getIndexes($tableName));
 		}
 
 		public function testRejectsDestroyingAnIndexThatDoesNotExist(): void {
