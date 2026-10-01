@@ -158,9 +158,9 @@
 		 */
 		public function testRoutineVariablesAndCursorFieldsCompareAsTimestamps(): void {
 			$statements = (new ProcedureCompiler($this->em(), new FakePlatformCapabilities('mysql'), null))->compile('
+				range of p is PostEntity
+				range of q is PostEntity
 				define function f (datetime since) void {
-					range of p is PostEntity
-					range of q is PostEntity
 					cursor c = retrieve (at = p.createdAt) where p.createdAt > since
 					foreach (c as row) {
 						if (row.at < "2099-01-01") {

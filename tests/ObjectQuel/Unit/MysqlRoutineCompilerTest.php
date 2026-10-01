@@ -47,9 +47,9 @@
 		 */
 		public function testConfiguredCollationOnCharacterTypes(): void {
 			$statements = $this->compileWithCollation('
+				range of u is UserEntity
 				define function find_user (string who, int minId) string {
 					string found = ""
-					range of u is UserEntity
 					cursor users = retrieve (u.id, u.username) where u.username = who and u.id > minId
 					foreach (users as row) {
 						found = row.username
@@ -81,10 +81,10 @@
 		 */
 		public function testReadOnlyFunction(): void {
 			$statements = $this->compile('
+				range of u is UserEntity
 				define function count_users (int minId) integer {
 					integer total = 0
 					boolean found = false
-					range of u is UserEntity
 					cursor users = retrieve (u.id, name = u.username, flag = u.banned) where u.id > minId
 					foreach (users as row) {
 						if (row.name = "x" and row.flag) {
@@ -143,9 +143,9 @@
 		 */
 		public function testProcedureStatements(): void {
 			$statements = $this->compile('
+				range of u is UserEntity
+				range of p is PostEntity
 				define function purge (string who) void {
-					range of u is UserEntity
-					range of p is PostEntity
 					cursor users = retrieve (u.id, u.username) where u.username = who
 					foreach (users as row) {
 						delete p where p.userId = 5
@@ -220,9 +220,9 @@
 		public function testIgnoreSoftDeleteDirectiveAppliesToWholeRoutineBody(): void {
 			$statements = $this->compile('
 				@ignoreSoftDelete true
+				range of u is UserEntity
+				range of p is PostEntity
 				define function purge (string who) void {
-					range of u is UserEntity
-					range of p is PostEntity
 					cursor users = retrieve (u.id, u.username) where u.username = who
 					foreach (users as row) {
 						delete p where p.userId = 5
@@ -243,8 +243,8 @@
 		 */
 		public function testBareReturnCompilesToLeaveLabeledRoutine(): void {
 			$statements = $this->compile('
+				range of u is UserEntity
 				define function maybe_ban (integer targetId) void {
-					range of u is UserEntity
 					if (targetId <= 0) {
 						return
 					}
@@ -271,8 +271,8 @@
 		 */
 		public function testBareReturnInsideLoopNeedsNoCursorClose(): void {
 			$statements = $this->compile('
+				range of u is UserEntity
 				define function stop_early () void {
-					range of u is UserEntity
 					cursor users = retrieve (u.id) where u.banned = false
 					foreach (users as row) {
 						if (row.id > 100) {
@@ -293,8 +293,8 @@
 		 */
 		public function testVoidRoutineWithoutBareReturnStaysUnlabeled(): void {
 			$statements = $this->compile('
+				range of u is UserEntity
 				define function ban_all () void {
-					range of u is UserEntity
 					replace u (banned = true) where u.id > 0
 				}
 			');
@@ -311,8 +311,8 @@
 		 */
 		public function testWriteInsideLoopReferencesRowField(): void {
 			$statements = $this->compile('
+				range of u is UserEntity
 				define function unban () void {
-					range of u is UserEntity
 					cursor users = retrieve (u.id, u.username) where u.banned
 					foreach (users as row) {
 						replace u (banned = false) where u.id = row.id
@@ -330,8 +330,8 @@
 		 */
 		public function testSortByCompilesToOrderBy(): void {
 			$statements = $this->compile('
+				range of u is UserEntity
 				define function unban () void {
-					range of u is UserEntity
 					cursor users = retrieve (name = u.username, u.id) where u.banned sort by name desc, u.id
 					foreach (users as row) {
 						replace u (banned = false) where u.id = row.id
@@ -347,8 +347,7 @@
 		 * @return void
 		 */
 		public function testWindowedRetrievesCompileLimitAndOffset(): void {
-			$statements = $this->compile('define function f () void {
-				range of u is UserEntity
+			$statements = $this->compile('range of u is UserEntity define function f () void {
 			cursor c = retrieve (u.id) sort by u.id window 0, 5
 			foreach (c as row) { }
 			retrieve (u.id) window 1 using window_size 3
@@ -380,9 +379,9 @@
 		 */
 		public function testNestedLoopsGetDistinctLabels(): void {
 			$statements = $this->compile('
+				range of u is UserEntity
+				range of p is PostEntity
 				define function f () void {
-					range of u is UserEntity
-					range of p is PostEntity
 					cursor users = retrieve (u.id)
 					cursor posts = retrieve (p.id)
 					foreach (users as ru) {
@@ -440,8 +439,8 @@
 		 */
 		public function testBreakAndContinue(): void {
 			$statements = $this->compile('
+				range of u is UserEntity
 				define function skip_some (integer n) void {
-					range of u is UserEntity
 					cursor ids = retrieve (u.id) where u.id > 0
 					cursor banned = retrieve (u.id) where u.banned = true
 					while (n > 0) {
@@ -521,9 +520,9 @@
 		 */
 		public function testLoopExitsNameTheirInnermostLoop(): void {
 			$statements = $this->compile('
+				range of u is UserEntity
 				define function nested (integer n) integer {
 					integer total = 0
-					range of u is UserEntity
 					cursor ids = retrieve (u.id) where u.id > 0
 					while (n > 0) {
 						foreach (ids as row) {
@@ -605,8 +604,8 @@
 		 */
 		public function testSiblingBranchCursorsGetDistinctDeclarations(): void {
 			$statements = $this->compile('
+				range of u is UserEntity
 				define function f (integer n) void {
-					range of u is UserEntity
 					if (n > 0) {
 						cursor c = retrieve (u.id) where u.banned = true
 						foreach (c as row) {
@@ -633,8 +632,8 @@
 		 */
 		public function testCursorRebindGetsItsOwnDeclarationAndNoStatement(): void {
 			$sql = $this->compile('
+				range of u is UserEntity
 				define function f () void {
-					range of u is UserEntity
 					cursor c = retrieve (u.id) where u.banned = false
 					foreach (c as row) { }
 					c = retrieve (u.id) where u.banned = true
@@ -655,9 +654,9 @@
 		 */
 		public function testNestedShadowingCompilesWithDistinctNames(): void {
 			$sql = $this->compile('
+				range of u is UserEntity
 				define function f (integer n) void {
 					integer x = 1
-					range of u is UserEntity
 					cursor c = retrieve (u.id) where u.id > 0
 					if (n > 0) {
 						integer x = 2
@@ -687,8 +686,8 @@
 		 */
 		public function testNestedRowBindingShadowsAndRestoresOuterRow(): void {
 			$sql = $this->compile('
+				range of u is UserEntity
 				define function f () void {
-					range of u is UserEntity
 					integer x = 0
 					cursor a = retrieve (u.id)
 					cursor b = retrieve (u.id) where u.id > 1
@@ -712,8 +711,8 @@
 		public static function rejectedRoutines(): array {
 			return [
 				'atomic in a function' => ['
+					range of u is UserEntity
 					define function f () integer {
-						range of u is UserEntity
 						atomic {
 							delete u where u.id = 1
 						}
@@ -721,8 +720,8 @@
 					}
 				', 'only supported in void functions'],
 				'atomic inside a loop' => ['
+					range of u is UserEntity
 					define function f () void {
-						range of u is UserEntity
 						cursor users = retrieve (u.id)
 						foreach (users as row) { atomic { delete u where u.id = row.id } }
 					}

@@ -114,9 +114,9 @@
 		public function testDefinesAFunctionAndRejectsDuplicate(): void {
 			$this->seedUser("{$this->name}_user");
 			$source = "
+				range of u is UserEntity
 				define function {$this->name} (int minId) integer {
 					integer total = 0
-					range of u is UserEntity
 					cursor users = retrieve (u.id, name = u.username) where u.id > minId
 					foreach (users as row) {
 						if (row.name != \"\") {
@@ -161,9 +161,9 @@
 
 			try {
 				self::em()->executeQuery("
+					range of u is UserEntity
 					define function {$this->name} (string who) integer {
 						integer total = 0
-						range of u is UserEntity
 						cursor users = retrieve (u.id) where u.username = who
 						foreach (users as row) {
 							total = total + 1
@@ -190,10 +190,10 @@
 			$this->seedUser("{$this->name}_first");
 			$this->seedUser("{$this->name}_second");
 			self::em()->executeQuery("
+				range of u is UserEntity
 				define function {$this->name} (int minId) integer {
 					integer bound = -1
 					integer total = 0
-					range of u is UserEntity
 					cursor users = retrieve (u.id) where u.id > bound
 					bound = minId
 					foreach (users as row) {
@@ -223,9 +223,9 @@
 			$this->seedUser("{$this->name}_first");
 			$this->seedUser("{$this->name}_second");
 			self::em()->executeQuery("
+				range of u is UserEntity
 				define function {$this->name} (int maxCount) integer {
 					integer total = 0
-					range of u is UserEntity
 					cursor users = retrieve (u.id, name = u.username) where u.id > 0
 					foreach (users as row) {
 						if (row.name = \"\") {
@@ -327,9 +327,9 @@
 		 */
 		public function testDefinesAWritingProcedure(): void {
 			self::em()->executeQuery("
+				range of u is UserEntity
+				range of p is PostEntity
 				define function {$this->name} (string who) void {
-					range of u is UserEntity
-					range of p is PostEntity
 					cursor users = retrieve (u.id, u.username) where u.username = who
 					foreach (users as row) {
 						replace u (banned = true) where u.id = row.id
@@ -358,8 +358,8 @@
 			$updateId = $this->seedUser("{$this->name}_update");
 
 			self::em()->executeQuery("
+				range of u is UserEntity
 				define function {$this->name} (integer targetId, integer skip) void {
-					range of u is UserEntity
 					if (skip = 1) {
 						return
 					}
@@ -390,8 +390,8 @@
 			$original = (int)$row['banned'];
 
 			self::em()->executeQuery("
+				range of u is UserEntity
 				define function {$this->name} (integer uid, integer cancel) void {
-					range of u is UserEntity
 					atomic {
 						replace u (banned = true) where u.id = uid
 						if (cancel = 1) { rollback }
@@ -424,8 +424,8 @@
 			$secondId = $this->seedUser("{$this->name}_second");
 
 			self::em()->executeQuery("
+				range of u is UserEntity
 				define function {$this->name} () void {
-					range of u is UserEntity
 					cursor c = retrieve (u.id) where u.username = \"{$this->name}_first\"
 					foreach (c as row) {
 						replace u (banned = true) where u.id = row.id
@@ -460,8 +460,8 @@
 			$original = (int)$row['banned'];
 
 			self::em()->executeQuery("
+				range of u is UserEntity
 				define function {$this->name} (integer uid) void {
-					range of u is UserEntity
 					atomic { replace u (banned = true) where u.id = uid }
 				}
 			");
@@ -489,8 +489,8 @@
 			self::assertIsArray($row);
 
 			self::em()->executeQuery("
+				range of u is UserEntity
 				define function {$this->name} (integer uid) void {
-					range of u is UserEntity
 					atomic {
 						replace u (banned = true) where u.id = uid
 						replace u (username = (string)null) where u.id = uid
