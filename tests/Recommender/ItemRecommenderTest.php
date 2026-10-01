@@ -56,6 +56,26 @@
 			$result = $this->recommender->getLinkedItems(1, filter: [2]);
 			$this->assertSame([2], $result);
 		}
+
+		/** Filtering must happen before a query limit.
+		 * @return void
+		 */
+		public function testGetLinkedItemsFilterFillsLimit(): void {
+			$this->insertLink(1, 2, 10);
+			$this->insertLink(1, 3, 5);
+			$this->assertSame([3], $this->recommender->getLinkedItems(1, [3], 1));
+		}
+
+		/** Large allowlists use the bounded temporary-table path.
+		 * @return void
+		 */
+		public function testLargeAllowedListStillFillsLimit(): void {
+			$this->insertLink(1, 2, 10);
+			$this->insertLink(1, 3, 5);
+			$allowed = array_merge(range(1000, 1500), [3]);
+			$this->assertSame([3], $this->recommender->getLinkedItems(1, $allowed, 1));
+			$this->assertSame([3], $this->recommender->getLinkedItems(1, [3], 1));
+		}
 		
 		// =========================================================================
 		// memberGetRecommendedItems (links strategy)
@@ -92,6 +112,16 @@
 			$this->insertLink(10, 40, 5);
 			$result = $this->recommender->memberGetRecommendedItems(1, limit: 2);
 			$this->assertCount(2, $result);
+		}
+
+		/** Allowed candidates beyond the first raw result still fill the limit.
+		 * @return void
+		 */
+		public function testMemberRecommendationsFilterFillsLimit(): void {
+			$this->insertRating(1, 10, 0.9);
+			$this->insertLink(10, 20, 10);
+			$this->insertLink(10, 30, 5);
+			$this->assertSame([30], $this->recommender->memberGetRecommendedItems(1, [30], 1));
 		}
 		
 		// =========================================================================
@@ -142,6 +172,15 @@
 			$this->assertCount(1, $result);
 			$this->assertSame(3, $result[0]['product_id']);
 		}
+
+		/** Slope allowlists are applied before SQL limits.
+		 * @return void
+		 */
+		public function testSlopeItemsFilterFillsLimit(): void {
+			$this->insertLink(1, 2, 2, 0.8);
+			$this->insertLink(1, 3, 2, 0.2);
+			$this->assertSame(3, $this->recommender->getSlopeItems(1, filter: [3], limit: 1)[0]['product_id']);
+		}
 		
 		// =========================================================================
 		// memberPredict
@@ -159,6 +198,21 @@
 			$result = $this->recommender->memberPredict(1, 1);
 			$this->assertNotNull($result);
 			$this->assertEqualsWithDelta(0.9, $result, 0.0001);
+		}
+
+		/** A single prediction ignores disinterest and matches the all-item result.
+		 * @return void
+		 */
+		public function testMemberPredictionMatchesAllAndIgnoresDisinterest(): void {
+			$this->insertRating(1, 10, 0.8);
+			$this->insertRating(1, 30, -1.0);
+			$this->insertLink(10, 20, 2, 0.2);
+			$this->insertLink(20, 10, 2, -0.2);
+			$this->insertLink(20, 30, 2, 0.1);
+			$all = $this->recommender->memberPredictAll(1);
+			$this->assertCount(1, $all);
+			$this->assertSame(20, $all[0]['product_id']);
+			$this->assertEqualsWithDelta($all[0]['rating'], $this->recommender->memberPredict(1, 20), 0.00001);
 		}
 		
 		public function testMemberPredictClampsToOne(): void {

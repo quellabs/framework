@@ -70,12 +70,24 @@
 		    `item_id1`   INT UNSIGNED NOT NULL,
 		    `item_id2`   INT UNSIGNED NOT NULL,
 		    `category`   INT UNSIGNED NOT NULL DEFAULT 1,
-		    `cnt`        INT          NOT NULL DEFAULT 0,
+		    `liked_count` INT UNSIGNED NOT NULL DEFAULT 0,
+		    `slope_count` INT UNSIGNED NOT NULL DEFAULT 0,
 		    `diff_slope` FLOAT        NOT NULL DEFAULT 0.0,
 		    PRIMARY KEY (`item_id1`, `item_id2`, `category`),
-		    INDEX `idx_item2` (`item_id2`, `category`)
+		    INDEX `idx_item2` (`item_id2`, `category`),
+		    INDEX `idx_category` (`category`, `item_id1`, `item_id2`)
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
 	');
+
+	// Older local test databases may still have the legacy combined count.
+	$legacyColumn = $connection->execute("SHOW COLUMNS FROM `vogoo_links` LIKE 'cnt'")->fetchAssoc();
+	if ($legacyColumn !== []) {
+		$connection->execute('TRUNCATE TABLE `vogoo_links`');
+		$connection->execute('ALTER TABLE `vogoo_links` DROP COLUMN `cnt`,
+			ADD COLUMN `liked_count` INT UNSIGNED NOT NULL DEFAULT 0,
+			ADD COLUMN `slope_count` INT UNSIGNED NOT NULL DEFAULT 0,
+			ADD INDEX `idx_category` (`category`, `item_id1`, `item_id2`)');
+	}
 	
 	// Backs App\Entities\VersionedEntity — the only fixture entity with an
 	// @Orm\Version column, used to exercise append's version-column
