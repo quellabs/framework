@@ -114,6 +114,11 @@ class ClickModelTrainerTest extends IntegrationTestCase {
         $this->assertSame(252, $artifact['holdout_items']);
         $this->assertSame(500, $artifact['training_clicks']);
         $this->assertSame(126, $artifact['holdout_clicks']);
+        $this->assertSame('click', $artifact['objective']);
+        $this->assertSame(sprintf('%032x', 500), $artifact['training_interval']['last_impression_id']);
+        $this->assertSame(sprintf('%032x', 501), $artifact['holdout_interval']['first_impression_id']);
+        $this->assertLessThanOrEqual($artifact['holdout_interval']['first_shown_at'],
+            $artifact['training_interval']['last_shown_at']);
     }
 
     /** @return void */
@@ -188,6 +193,9 @@ class ClickModelTrainerTest extends IntegrationTestCase {
             $artifact = json_decode((string)$artifactRow['artifact'], true, 512, JSON_THROW_ON_ERROR);
             $this->assertSame(1000, $artifact['training_items']);
             $this->assertSame(250, $artifact['holdout_items']);
+            $this->assertSame('click', $artifact['objective']);
+            $this->assertArrayHasKey('training_interval', $artifact);
+            $this->assertArrayHasKey('holdout_interval', $artifact);
             $trainer->activate($id);
             $row = $this->connection->execute('SELECT status FROM recommender_models
                 WHERE id = UNHEX(?)', [$id])->fetchAssoc();

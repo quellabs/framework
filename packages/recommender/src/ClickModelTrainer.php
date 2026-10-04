@@ -67,6 +67,7 @@ readonly class ClickModelTrainer {
                 'as_of' => self::utc($asOf), 'click_window' => $clickWindowSeconds,
                 'mature_window' => $clickWindowSeconds, 'mature_as_of' => self::utc($asOf)])->fetchAll('assoc');
         $groups = [];
+        $groupTimes = [];
         foreach ($rows as $row) {
             $snapshot = json_decode((string)$row['feature_snapshot'], true, 512, JSON_THROW_ON_ERROR);
             if (!is_array($snapshot) || !isset($snapshot['features'], $snapshot['depth_searched'])
@@ -100,9 +101,12 @@ readonly class ClickModelTrainer {
                 }
             }
             $features['log_position'] = log((int)$row['position']);
-            $groups[$row['impression_id']][] = ['features' => $features, 'label' => (int)$row['clicked']];
+            $impressionId = (string)$row['impression_id'];
+            $groups[$impressionId][] = ['features' => $features, 'label' => (int)$row['clicked']];
+            $groupTimes[$impressionId] = (string)$row['shown_at'];
         }
-        $split = (int)floor(count($groups) * 0.8);
+        $groupIds = array_keys($groups);
+        $split = (int)floor(count($groupIds) * 0.8);
         $training = [];
         $holdout = [];
         foreach (array_values($groups) as $index => $items) {
@@ -121,6 +125,19 @@ readonly class ClickModelTrainer {
             throw new \RuntimeException('Not enough mature displayed items and clicks to train a model.');
         }
         $artifact = (new ClickModelFitter())->fit($training, $holdout);
+        $artifact['objective'] = 'click';
+        $artifact['training_interval'] = [
+            'first_impression_id' => strtolower($groupIds[0]),
+            'first_shown_at' => $groupTimes[$groupIds[0]],
+            'last_impression_id' => strtolower($groupIds[$split - 1]),
+            'last_shown_at' => $groupTimes[$groupIds[$split - 1]],
+        ];
+        $artifact['holdout_interval'] = [
+            'first_impression_id' => strtolower($groupIds[$split]),
+            'first_shown_at' => $groupTimes[$groupIds[$split]],
+            'last_impression_id' => strtolower($groupIds[count($groupIds) - 1]),
+            'last_shown_at' => $groupTimes[$groupIds[count($groupIds) - 1]],
+        ];
         $artifact['click_window_seconds'] = $clickWindowSeconds;
         $artifact['from'] = self::utc($from);
         $artifact['to'] = self::utc($to);
