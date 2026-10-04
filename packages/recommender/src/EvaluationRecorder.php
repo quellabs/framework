@@ -5,6 +5,8 @@ namespace Quellabs\Recommender;
 use Cake\Database\Connection;
 use DateTimeImmutable;
 use DateTimeZone;
+use Quellabs\Recommender\Internal\Model\ClickModel;
+use Quellabs\Recommender\Internal\Persistence\EvaluationSchema;
 
 /** Explicit, transactional recording of displayed recommendations and outcomes. */
 readonly class EvaluationRecorder {

@@ -1,6 +1,6 @@
 <?php
 
-namespace Quellabs\Recommender;
+namespace Quellabs\Recommender\Internal\Model;
 
 /** Deterministic full-batch logistic fitting and chronological holdout checks. */
 final class ClickModelFitter {

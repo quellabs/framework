@@ -2,7 +2,7 @@
 
 namespace Quellabs\Recommender\Sculpt;
 
-use Quellabs\Recommender\ClickModelTrainer;
+use Quellabs\Recommender\Internal\Model\ClickModelTrainer;
 use Quellabs\Sculpt\ConfigurationManager;
 use Quellabs\Sculpt\Contracts\CommandBase;
 

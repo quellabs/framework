@@ -1,10 +1,13 @@
 <?php
 
-namespace Quellabs\Recommender;
+namespace Quellabs\Recommender\Internal\Model;
 
 use Cake\Database\Connection;
 use DateTimeImmutable;
 use DateTimeZone;
+use Quellabs\Recommender\Internal\Persistence\EvaluationSchema;
+use Quellabs\Recommender\RecommendationSource;
+use Quellabs\Recommender\ReconciliationRequest;
 
 /** Builds versioned model candidates from mature, opted-in impression snapshots. */
 readonly class ClickModelTrainer {

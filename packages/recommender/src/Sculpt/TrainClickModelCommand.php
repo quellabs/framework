@@ -3,7 +3,7 @@
 namespace Quellabs\Recommender\Sculpt;
 
 use DateTimeImmutable;
-use Quellabs\Recommender\ClickModelTrainer;
+use Quellabs\Recommender\Internal\Model\ClickModelTrainer;
 use Quellabs\Recommender\RecommendationSource;
 use Quellabs\Sculpt\ConfigurationManager;
 use Quellabs\Sculpt\Contracts\CommandBase;

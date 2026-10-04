@@ -9,6 +9,13 @@ Existing public algorithm signatures and result shapes remain unchanged.
 Reconciliation uses rank fusion until a validated click model is explicitly
 activated for the exact category, placement, enabled sources, and context key.
 
+Application-facing types remain in `Quellabs\Recommender`. Implementation
+classes moved to `Internal\Model`, `Internal\Persistence`, and `Internal\Links`;
+the Canvas DI provider is now `Integration\ServiceProvider`. Code that directly
+used those implementation classes must update its imports. Rebuild Composer
+discovery metadata when upgrading so it uses the provider class in this
+package's `composer.json`.
+
 The optional evaluation upgrade adds five package-owned tables. Back up the
 database and run `sculpt recommender:init-evaluation-db`; this does not require
 `--force` and does not change the two existing tables. Display logging is opt-in

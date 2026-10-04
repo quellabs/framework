@@ -5,6 +5,7 @@ namespace Quellabs\Recommender;
 use Cake\Database\Connection;
 use DateTimeImmutable;
 use DateTimeZone;
+use Quellabs\Recommender\Internal\Persistence\EvaluationSchema;
 
 /** Descriptive reporting over opted-in displayed-item impressions. */
 readonly class EvaluationReport {

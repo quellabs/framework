@@ -4,6 +4,7 @@ namespace Quellabs\Recommender;
 
 use Cake\Database\Connection;
 use Quellabs\Recommender\Config\RecommendationConfig;
+use Quellabs\Recommender\Internal\Model\ClickModel;
 
 /** Combines explicitly selected candidate generators using reciprocal ranks. */
 readonly class RecommendationReconciler {

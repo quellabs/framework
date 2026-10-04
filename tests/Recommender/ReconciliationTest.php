@@ -8,7 +8,7 @@ use Quellabs\Recommender\RecommendationReconciler;
 use Quellabs\Recommender\RecommendationSource;
 use Quellabs\Recommender\ReconciliationRequest;
 use Quellabs\Recommender\VisitorContext;
-use Quellabs\Recommender\ServiceProvider;
+use Quellabs\Recommender\Integration\ServiceProvider;
 use Quellabs\Recommender\EvaluationRecorder;
 use Quellabs\Recommender\EvaluationReport;
 use Quellabs\Recommender\RecommendationList;
@@ -437,6 +437,15 @@ class ReconciliationTest extends IntegrationTestCase {
             $this->assertTrue($provider->supports($class, []));
             $this->assertInstanceOf($class, $provider->createInstance($class, $dependencies, []));
         }
+    }
+
+    /** @return void */
+    public function testComposerDiscoveryPointsToTheMovedCanvasProvider(): void {
+        $package = json_decode((string)file_get_contents(
+            __DIR__ . '/../../packages/recommender/composer.json'), true, 512, JSON_THROW_ON_ERROR);
+        $provider = $package['extra']['discover']['di']['provider'];
+        $this->assertSame(ServiceProvider::class, $provider);
+        $this->assertTrue(class_exists($provider));
     }
 
     /** @return void */

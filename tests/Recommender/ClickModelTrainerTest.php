@@ -5,7 +5,7 @@ namespace Quellabs\Recommender\Tests;
 use Cake\Database\Connection;
 use Cake\Database\StatementInterface;
 use DateTimeImmutable;
-use Quellabs\Recommender\ClickModelTrainer;
+use Quellabs\Recommender\Internal\Model\ClickModelTrainer;
 use Quellabs\Recommender\RecommendationSource;
 
 /** Mature-label and activation integration coverage. */

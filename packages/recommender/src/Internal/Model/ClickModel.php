@@ -1,6 +1,6 @@
 <?php
 
-namespace Quellabs\Recommender;
+namespace Quellabs\Recommender\Internal\Model;
 
 /** Immutable version-1 standardized logistic click model. */
 readonly class ClickModel {

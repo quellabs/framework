@@ -4,6 +4,7 @@
 	
 	use Cake\Database\Connection;
 	use Quellabs\Recommender\Config\RecommendationConfig;
+	use Quellabs\Recommender\Internal\Links\LinkUpdater;
 	
 	/**
 	 * Core ratings engine. Handles reading and writing member ratings, and

@@ -5,7 +5,7 @@ namespace Quellabs\Recommender\Tests;
 use Cake\Database\Connection;
 use Cake\Database\StatementInterface;
 use PHPUnit\Framework\TestCase;
-use Quellabs\Recommender\EvaluationSchema;
+use Quellabs\Recommender\Internal\Persistence\EvaluationSchema;
 
 /** Missing optional schema produces a clear package error. */
 class EvaluationSchemaTest extends TestCase {

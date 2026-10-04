@@ -24,7 +24,7 @@
   "extra": {
     "discover": {
       "di": {
-        "provider": "Quellabs\\Recommender\\ServiceProvider",
+        "provider": "Quellabs\\Recommender\\Integration\\ServiceProvider",
         "config": "config/recommender.php"
       },
       "sculpt": {

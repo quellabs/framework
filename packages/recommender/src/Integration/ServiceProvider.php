@@ -1,8 +1,11 @@
 <?php
 	
-	namespace Quellabs\Recommender;
+	namespace Quellabs\Recommender\Integration;
 	
 	use Quellabs\Recommender\Config\RecommendationConfig;
+	use Quellabs\Recommender\EvaluationRecorder;
+	use Quellabs\Recommender\EvaluationReport;
+	use Quellabs\Recommender\RecommendationReconciler;
 	use Quellabs\Contracts\Context\MethodContextInterface;
 	use Quellabs\Contracts\DependencyInjection\ServiceProviderInterface;
 	

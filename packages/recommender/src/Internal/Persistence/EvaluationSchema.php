@@ -1,6 +1,6 @@
 <?php
 
-namespace Quellabs\Recommender;
+namespace Quellabs\Recommender\Internal\Persistence;
 
 use Cake\Database\Connection;
 

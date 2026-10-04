@@ -3,8 +3,8 @@
 namespace Quellabs\Recommender\Tests;
 
 use PHPUnit\Framework\TestCase;
-use Quellabs\Recommender\ClickModel;
-use Quellabs\Recommender\ClickModelFitter;
+use Quellabs\Recommender\Internal\Model\ClickModel;
+use Quellabs\Recommender\Internal\Model\ClickModelFitter;
 
 /** Checks deterministic standardized fitting and finite serving probabilities. */
 class ClickModelFitterTest extends TestCase {
