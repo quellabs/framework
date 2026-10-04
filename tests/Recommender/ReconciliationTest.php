@@ -128,6 +128,33 @@ class ReconciliationTest extends IntegrationTestCase {
     }
 
     /** @return void */
+    public function testExhaustedSourceDoesNotStopAnotherSourcesBackfill(): void {
+        $this->insertRating(1, 10, 0.9);
+        for ($id = 100; $id < 170; $id++) {
+            $this->insertLink(10, $id, 200 - $id);
+        }
+        $provider = new class implements EligibilityProvider {
+            /** @var array<int, int> */
+            public array $received = [];
+            /** @inheritDoc */
+            public function filterEligible(array $candidateIds): array {
+                array_push($this->received, ...$candidateIds);
+                return array_values(array_filter($candidateIds, fn($id) => $id === 160));
+            }
+        };
+        $list = (new RecommendationReconciler($this->connection, $this->config))->recommendMember(1,
+            new ReconciliationRequest($provider,
+                [RecommendationSource::NewProducts, RecommendationSource::ItemLinks],
+                1, 'home', [200, 201], maxCandidateDepth: 100));
+        $this->assertSame(160, $list->items[0]->itemId);
+        $this->assertSame(50, $list->items[0]->searchedDepths['new_products']);
+        $this->assertSame(100, $list->items[0]->searchedDepths['item_links']);
+        $this->assertSame(1, $list->items[0]->evidence[0]->sourceRank);
+        $this->assertCount(72, $provider->received);
+        $this->assertCount(72, array_unique($provider->received));
+    }
+
+    /** @return void */
     public function testContextKeyValidationRejectsEmptyString(): void {
         $this->expectException(\InvalidArgumentException::class);
         new ReconciliationRequest(new ArrayEligibilityProvider([]), [RecommendationSource::NewProducts],
@@ -170,6 +197,51 @@ class ReconciliationTest extends IntegrationTestCase {
     }
 
     /** @return void */
+    public function testProviderFailureOnFirstCallPropagates(): void {
+        $provider = new class implements EligibilityProvider {
+            /** @inheritDoc */
+            public function filterEligible(array $candidateIds): array {
+                throw new \RuntimeException('Catalog unavailable');
+            }
+        };
+        $this->expectExceptionMessage('Catalog unavailable');
+        (new RecommendationReconciler($this->connection, $this->config))->recommendMember(1,
+            new ReconciliationRequest($provider, [RecommendationSource::NewProducts],
+                1, 'home', [20]));
+    }
+
+    /** @return void */
+    public function testSeenAndRejectedProductsNeverReachEligibilityProvider(): void {
+        $this->insertRating(1, 10, 0.8);
+        $this->insertRating(1, 11, -1.0);
+        $provider = new class implements EligibilityProvider {
+            /** @var array<int, int> */
+            public array $received = [];
+            /** @inheritDoc */
+            public function filterEligible(array $candidateIds): array {
+                array_push($this->received, ...$candidateIds);
+                return $candidateIds;
+            }
+        };
+        $list = (new RecommendationReconciler($this->connection, $this->config))->recommendMember(1,
+            new ReconciliationRequest($provider, [RecommendationSource::NewProducts],
+                1, 'home', [10, 11, 12]));
+        $this->assertSame([12], $provider->received);
+        $this->assertSame(12, $list->items[0]->itemId);
+    }
+
+    /** @return void */
+    public function testEmptySourceStillRecordsTheRequestedSearchDepth(): void {
+        $list = (new RecommendationReconciler($this->connection, $this->config))->recommendMember(1,
+            new ReconciliationRequest(new ArrayEligibilityProvider([20]),
+                [RecommendationSource::NewProducts], 1, 'home', additionalCandidateIds: [20]));
+        $this->assertSame(50, $list->items[0]->searchedDepths['new_products']);
+        $this->assertSame(0.0, $list->items[0]->featureSnapshot['new_products.present']);
+        $this->assertEqualsWithDelta(log(50),
+            $list->items[0]->featureSnapshot['new_products.log_depth_searched'], 1e-9);
+    }
+
+    /** @return void */
     public function testSlopeAndTopRatedRemainEligibleAndCategoryBound(): void {
         $this->insertRating(1, 10, 0.8);
         $this->insertLink(10, 20, 3, 0.3);
@@ -182,6 +254,105 @@ class ReconciliationTest extends IntegrationTestCase {
         $list = (new RecommendationReconciler($this->connection, $this->config))->recommendMember(1, $request);
         $this->assertSame([20, 30], array_map(fn($item) => $item->itemId, $list->items));
         $this->assertSame(3, $list->items[0]->evidence[0]->supportCount);
+    }
+
+    /** @return void */
+    public function testMemberAndVisitorHaveEqualEvidenceForSharedSources(): void {
+        $this->insertRating(1, 10, 0.8);
+        $this->insertLink(10, 20, 3, 0.3);
+        $this->insertRating(2, 20, 0.9);
+        $this->insertRating(3, 20, 0.7);
+        $visitor = new VisitorContext($this->config);
+        $visitor->setRating(10, 0.8);
+        $request = new ReconciliationRequest(new ArrayEligibilityProvider([20, 30]),
+            [RecommendationSource::ItemLinks, RecommendationSource::SlopeOne,
+                RecommendationSource::TopRated, RecommendationSource::NewProducts],
+            2, 'parity', [30]);
+        $reconciler = new RecommendationReconciler($this->connection, $this->config);
+        $this->assertEquals($reconciler->recommendMember(1, $request)->items,
+            $reconciler->recommendVisitor($visitor, $request)->items);
+    }
+
+    /** @return void */
+    public function testCatalogProviderFiltersUnknownAndStaleCandidatesPerRequest(): void {
+        $this->insertRating(1, 10, 0.9);
+        $this->insertLink(10, 20, 3);
+        $this->insertLink(10, 99, 3);
+        $reconciler = new RecommendationReconciler($this->connection, $this->config);
+        $sources = [RecommendationSource::ItemLinks, RecommendationSource::NewProducts];
+        $tenantA = $reconciler->recommendMember(1,
+            new ReconciliationRequest(new ArrayEligibilityProvider([20, 30]), $sources,
+                3, 'home', [30, 999], contextKey: 'tenant-a'));
+        $tenantB = $reconciler->recommendMember(1,
+            new ReconciliationRequest(new ArrayEligibilityProvider([30]), $sources,
+                3, 'home', [30, 999], contextKey: 'tenant-b'));
+        $this->assertSame([20, 30], array_map(fn($item) => $item->itemId, $tenantA->items));
+        $this->assertSame([30], array_map(fn($item) => $item->itemId, $tenantB->items));
+    }
+
+    /** @return void */
+    public function testDerivedSignalsDependOnRowsEvenWhenIncrementalUpdatesAreDisabled(): void {
+        $this->insertRating(1, 10, 0.9);
+        $this->insertRating(2, 20, 0.9);
+        $this->insertRating(3, 20, 0.8);
+        $reconciler = new RecommendationReconciler($this->connection, $this->config);
+        $request = new ReconciliationRequest(new ArrayEligibilityProvider([20, 30]),
+            [RecommendationSource::ItemLinks, RecommendationSource::SlopeOne,
+                RecommendationSource::NewProducts], 2, 'derived_modes', [30]);
+        $before = $reconciler->recommendMember(1, $request);
+        $this->assertSame([30], array_map(fn($item) => $item->itemId, $before->items));
+        $this->insertLink(10, 20, 3, 0.3);
+        $after = $reconciler->recommendMember(1, $request);
+        $this->assertSame([20, 30], array_map(fn($item) => $item->itemId, $after->items));
+        $this->assertSame([RecommendationSource::ItemLinks, RecommendationSource::SlopeOne],
+            array_map(fn($evidence) => $evidence->source, $after->items[0]->evidence));
+    }
+
+    /** @return void */
+    public function testTopRatedTieBreaksByItemId(): void {
+        foreach ([20, 30] as $id) {
+            $this->insertRating($id, $id, 0.8);
+            $this->insertRating($id + 100, $id, 0.8);
+        }
+        $list = (new RecommendationReconciler($this->connection, $this->config))->recommendMember(1,
+            new ReconciliationRequest(new ArrayEligibilityProvider([20, 30]),
+                [RecommendationSource::TopRated], 2, 'tie_test'));
+        $this->assertSame([20, 30], array_map(fn($item) => $item->itemId, $list->items));
+        $this->assertSame([1, 2], array_map(fn($item) => $item->evidence[0]->sourceRank, $list->items));
+    }
+
+    /** @return void */
+    public function testTopRatedQueryCountAndLimitStayBoundedAsRatingsGrow(): void {
+        $reconciler = new RecommendationReconciler($this->connection, $this->config);
+        $request = new ReconciliationRequest(new ArrayEligibilityProvider(range(100, 399)),
+            [RecommendationSource::TopRated], 10, 'query_bounds');
+        $counts = [];
+        foreach ([[100, 149], [150, 399]] as [$start, $end]) {
+            for ($id = $start; $id <= $end; $id++) {
+                $this->insertRating($id, $id, 0.8);
+                $this->insertRating($id + 1000, $id, 0.8);
+            }
+            $logger = new SqlCaptureLogger();
+            $driver = $this->connection->getDriver();
+            $previousLogger = $driver->getLogger();
+            $driver->setLogger($logger);
+            try {
+                $list = $reconciler->recommendMember(1, $request);
+            } finally {
+                $driver->disableQueryLogging();
+                if ($previousLogger !== null) {
+                    $driver->setLogger($previousLogger);
+                }
+            }
+            $this->assertCount(10, $list->items);
+            $topRatedQueries = array_values(array_filter($logger->queries,
+                fn($query) => str_contains($query, 'AVG(r.rating) AS score')));
+            $this->assertCount(1, $topRatedQueries);
+            $this->assertStringContainsString('LIMIT 50', $topRatedQueries[0]);
+            $counts[] = count($logger->queries);
+        }
+        $this->assertSame($counts[0], $counts[1]);
+        $this->assertLessThanOrEqual(8, $counts[1]);
     }
 
     /** @return void */

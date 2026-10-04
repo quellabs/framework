@@ -90,6 +90,63 @@
 			$this->assertSame(4, $result[0]->supportCount);
 			$this->assertEqualsWithDelta(0.9, $result[0]->predictedRating, 1e-8);
 		}
+
+		/** @return void */
+		public function testDetailedVisitorPredictionCleansTemporaryTablesAfterQueryFailure(): void {
+			$visitor = new VisitorContext($this->config);
+			$visitor->setRating(10, 0.8);
+			$logger = new SqlCaptureLogger();
+			$driver = $this->connection->getDriver();
+			$previousLogger = $driver->getLogger();
+			$this->connection->execute('CREATE TEMPORARY TABLE vogoo_links (dummy INT)');
+			$driver->setLogger($logger);
+			try {
+				try {
+					$this->recommender->visitorPredictAllDetailed($visitor);
+					$this->fail('The malformed link table did not cause a query failure.');
+				} catch (\Cake\Database\Exception\QueryException) {
+					$this->assertTrue(true);
+				}
+			} finally {
+				$driver->disableQueryLogging();
+				if ($previousLogger !== null) {
+					$driver->setLogger($previousLogger);
+				}
+				$this->connection->execute('DROP TEMPORARY TABLE vogoo_links');
+			}
+			$created = array_values(array_filter($logger->queries,
+				fn($query) => str_contains($query, 'CREATE TEMPORARY TABLE recommender_visitor_prediction_input_')));
+			$this->assertCount(1, $created);
+			$this->assertMatchesRegularExpression('/CREATE TEMPORARY TABLE (recommender_visitor_prediction_input_[a-f0-9]+)/',
+				$created[0]);
+			preg_match('/CREATE TEMPORARY TABLE (recommender_visitor_prediction_input_[a-f0-9]+)/',
+				$created[0], $matches);
+			$this->assertContains("DROP TEMPORARY TABLE {$matches[1]}", $logger->queries);
+			try {
+				$this->connection->execute("SELECT product_id FROM {$matches[1]}");
+				$this->fail('Visitor input table remained after failure.');
+			} catch (\Cake\Database\Exception\QueryException) {
+				$this->assertTrue(true);
+			}
+		}
+
+		/** @return void */
+		public function testDetailedPredictionRejectsNonpositiveSupportThreshold(): void {
+			$visitor = new VisitorContext($this->config);
+			foreach ([
+				fn() => $this->recommender->memberPredictDetailed(1, 20, 0),
+				fn() => $this->recommender->memberPredictAllDetailed(1, minSupport: 0),
+				fn() => $this->recommender->visitorPredictDetailed($visitor, 20, 0),
+				fn() => $this->recommender->visitorPredictAllDetailed($visitor, minSupport: 0),
+			] as $predict) {
+				try {
+					$predict();
+					$this->fail('Nonpositive minimum support was accepted.');
+				} catch (\InvalidArgumentException) {
+					$this->assertTrue(true);
+				}
+			}
+		}
 		
 		// =========================================================================
 		// getLinkedItems

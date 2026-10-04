@@ -44,10 +44,21 @@ class TrainClickModelCommand extends CommandBase {
             $sources[] = $source;
         }
         $parse = static function (mixed $raw): DateTimeImmutable {
-            if (!is_string($raw) || preg_match('/(Z|[+-]\d\d:\d\d)$/', $raw) !== 1) {
-                throw new \InvalidArgumentException('Training timestamps require an explicit UTC offset.');
+            if (!is_string($raw) || preg_match(
+                '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/D',
+                $raw) !== 1) {
+                throw new \InvalidArgumentException('Training timestamps require ISO-8601 with an explicit UTC offset.');
             }
-            return new DateTimeImmutable($raw);
+            try {
+                $time = new DateTimeImmutable($raw);
+            } catch (\Exception $exception) {
+                throw new \InvalidArgumentException('Invalid training timestamp.', previous: $exception);
+            }
+            $errors = DateTimeImmutable::getLastErrors();
+            if ($errors !== false && ($errors['warning_count'] > 0 || $errors['error_count'] > 0)) {
+                throw new \InvalidArgumentException('Invalid training timestamp.');
+            }
+            return $time;
         };
         /** @var RecommenderProvider $provider */
         $provider = $this->provider;

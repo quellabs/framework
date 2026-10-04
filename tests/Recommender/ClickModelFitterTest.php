@@ -27,4 +27,24 @@ class ClickModelFitterTest extends TestCase {
         $this->assertLessThan(1.0, $model->probability(['signal.present' => 1.0], 1));
         $this->assertSame($artifact, (new ClickModelFitter())->fit($training, $holdout));
     }
+
+    /** @return void */
+    public function testFailedHoldoutValidationDoesNotProduceActivatableArtifact(): void {
+        $training = [];
+        $holdout = [];
+        for ($index = 0; $index < 200; $index++) {
+            $signal = (float)($index % 2);
+            $training[] = ['features' => ['signal.present' => $signal], 'label' => (int)$signal];
+        }
+        for ($index = 0; $index < 100; $index++) {
+            $signal = (float)($index % 2);
+            $holdout[] = ['features' => ['signal.present' => $signal], 'label' => 1 - (int)$signal];
+        }
+        $artifact = (new ClickModelFitter())->fit($training, $holdout);
+        $this->assertFalse($artifact['validated']);
+        $this->assertGreaterThan($artifact['baseline_metrics']['log_loss'],
+            $artifact['model_metrics']['log_loss']);
+        $this->assertGreaterThan($artifact['baseline_metrics']['brier'],
+            $artifact['model_metrics']['brier']);
+    }
 }

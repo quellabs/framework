@@ -216,6 +216,16 @@ class EvaluationTest extends IntegrationTestCase {
             $this->assertSame('rank_fusion',
                 (new RecommendationReconciler($this->connection, $this->config))
                     ->recommendMember(7, $otherContext)->scoreKind);
+            $otherPlacement = new ReconciliationRequest(new ArrayEligibilityProvider([40, 41]),
+                [RecommendationSource::NewProducts], 2, 'other', [40, 41]);
+            $otherCategory = new ReconciliationRequest(new ArrayEligibilityProvider([40, 41]),
+                [RecommendationSource::NewProducts], 2, 'home', [40, 41], category: 2);
+            $this->assertSame('rank_fusion',
+                (new RecommendationReconciler($this->connection, $this->config))
+                    ->recommendMember(7, $otherPlacement)->scoreKind);
+            $this->assertSame('rank_fusion',
+                (new RecommendationReconciler($this->connection, $this->config))
+                    ->recommendMember(7, $otherCategory)->scoreKind);
             $this->assertSame($modelId, $list->modelId);
             $this->assertSame(0.5, $list->items[0]->rankingScore);
             $recorder = new EvaluationRecorder($this->connection);

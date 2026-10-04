@@ -5,6 +5,8 @@
 	use Cake\Database\Connection;
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\Recommender\Config\RecommendationConfig;
+	use Cake\Database\Log\LoggedQuery;
+	use Psr\Log\AbstractLogger;
 	
 	/**
 	 * Base class for integration tests that require a live database connection.
@@ -71,5 +73,22 @@
 			
 			$row = $stmt->fetchAssoc();
 			return $row !== [] ? $row : null;
+		}
+	}
+
+	/** Captures SQL issued by the shared CakePHP test connection. */
+	class SqlCaptureLogger extends AbstractLogger {
+		/** @var array<int, string> */
+		public array $queries = [];
+
+		/** @param mixed $level Log level
+		 * @param string|\Stringable $message Logged query
+		 * @param array<string, mixed> $context Query metadata
+		 * @return void
+		 */
+		public function log($level, string|\Stringable $message, array $context = []): void {
+			$query = $context['query'] ?? null;
+			$this->queries[] = $query instanceof LoggedQuery
+				? (string)$query->getContext()['query'] : (string)$message;
 		}
 	}
