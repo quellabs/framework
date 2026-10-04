@@ -30,6 +30,32 @@ class ClickModelTrainerTest extends IntegrationTestCase {
     }
 
     /** @return void */
+    public function testRejectedCandidateCannotReplaceAnActiveModel(): void {
+        $active = bin2hex(random_bytes(16));
+        $rejected = bin2hex(random_bytes(16));
+        foreach ([[$active, 'active', true], [$rejected, 'rejected', false]] as [$id, $status, $validated]) {
+            $this->connection->execute('INSERT INTO recommender_models
+                (id, objective, category, placement, source_mask, context_key,
+                feature_schema_version, artifact, trained_at, status)
+                VALUES (UNHEX(?), \'click\', 1, \'train_test\', 16, \'\', 1, ?, UTC_TIMESTAMP(6), ?)',
+                [$id, json_encode(['validated' => $validated], JSON_THROW_ON_ERROR), $status]);
+        }
+        try {
+            try {
+                (new ClickModelTrainer($this->connection))->activate($rejected);
+                $this->fail('Rejected model was activated.');
+            } catch (\InvalidArgumentException) {
+                $this->assertTrue(true);
+            }
+            $row = $this->connection->execute('SELECT status FROM recommender_models WHERE id = UNHEX(?)',
+                [$active])->fetchAssoc();
+            $this->assertSame('active', $row['status']);
+        } finally {
+            $this->connection->execute("DELETE FROM recommender_models WHERE placement = 'train_test'");
+        }
+    }
+
+    /** @return void */
     public function testTrainingAndActivationUseMatureDisplayedItems(): void {
         $impressions = [];
         $items = [];

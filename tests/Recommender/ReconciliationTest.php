@@ -45,6 +45,89 @@ class ReconciliationTest extends IntegrationTestCase {
     }
 
     /** @return void */
+    public function testProviderRejectsDuplicateAndReorderedResponses(): void {
+        foreach ([[20, 20], [30, 20], [20, 999]] as $response) {
+            $provider = new class($response) implements EligibilityProvider {
+                /** @param array<int, int> $response Invalid reply. */
+                public function __construct(private array $response) {}
+                /** @inheritDoc */
+                public function filterEligible(array $candidateIds): array { return $this->response; }
+            };
+            try {
+                (new RecommendationReconciler($this->connection, $this->config))->recommendMember(1,
+                    new ReconciliationRequest($provider, [RecommendationSource::NewProducts],
+                        2, 'home', [20, 30]));
+                $this->fail('Invalid provider reply was accepted.');
+            } catch (\UnexpectedValueException) {
+                $this->assertTrue(true);
+            }
+        }
+    }
+
+    /** @return void */
+    public function testEligibilityChangesAreVisibleOnTheNextRequest(): void {
+        $provider = new class implements EligibilityProvider {
+            /** @var array<int, int> */
+            public array $allowed = [20];
+            /** @inheritDoc */
+            public function filterEligible(array $candidateIds): array {
+                return array_values(array_intersect($candidateIds, $this->allowed));
+            }
+        };
+        $request = new ReconciliationRequest($provider, [RecommendationSource::NewProducts],
+            1, 'home', [20, 30]);
+        $reconciler = new RecommendationReconciler($this->connection, $this->config);
+        $this->assertSame(20, $reconciler->recommendMember(1, $request)->items[0]->itemId);
+        $provider->allowed = [30];
+        $this->assertSame(30, $reconciler->recommendMember(1, $request)->items[0]->itemId);
+    }
+
+    /** @return void */
+    public function testRejectingProviderStopsAtConfiguredBackfillBounds(): void {
+        $provider = new class implements EligibilityProvider {
+            public int $calls = 0;
+            public int $largestBatch = 0;
+            /** @inheritDoc */
+            public function filterEligible(array $candidateIds): array {
+                $this->calls++;
+                $this->largestBatch = max($this->largestBatch, count($candidateIds));
+                return [];
+            }
+        };
+        $request = new ReconciliationRequest($provider, [RecommendationSource::NewProducts],
+            10, 'home', range(1, 120), maxCandidateDepth: 100,
+            maxBackfillRounds: 1, maxEligibilityBatchSize: 25);
+        $list = (new RecommendationReconciler($this->connection, $this->config))
+            ->recommendMember(1, $request);
+        $this->assertSame([], $list->items);
+        $this->assertSame(4, $provider->calls);
+        $this->assertSame(25, $provider->largestBatch);
+    }
+
+    /** @return void */
+    public function testDepthFeatureTracksBackfillEvenWhenSourceDoesNotNominateItem(): void {
+        $this->insertRating(1, 10, 0.9);
+        for ($id = 100; $id < 160; $id++) {
+            $this->insertLink(10, $id, 200 - $id);
+        }
+        $provider = new ArrayEligibilityProvider([999]);
+        $reconciler = new RecommendationReconciler($this->connection, $this->config);
+        $shallow = $reconciler->recommendMember(1, new ReconciliationRequest($provider,
+            [RecommendationSource::ItemLinks], 1, 'home', additionalCandidateIds: [999]));
+        $deep = $reconciler->recommendMember(1, new ReconciliationRequest($provider,
+            [RecommendationSource::ItemLinks], 2, 'home', additionalCandidateIds: [999],
+            maxCandidateDepth: 100));
+        $this->assertSame(50, $shallow->items[0]->searchedDepths['item_links']);
+        $this->assertSame(100, $deep->items[0]->searchedDepths['item_links']);
+        $this->assertSame(0.0, $shallow->items[0]->featureSnapshot['item_links.present']);
+        $this->assertSame(0.0, $deep->items[0]->featureSnapshot['item_links.present']);
+        $this->assertEqualsWithDelta(log(50),
+            $shallow->items[0]->featureSnapshot['item_links.log_depth_searched'], 1e-9);
+        $this->assertEqualsWithDelta(log(100),
+            $deep->items[0]->featureSnapshot['item_links.log_depth_searched'], 1e-9);
+    }
+
+    /** @return void */
     public function testContextKeyValidationRejectsEmptyString(): void {
         $this->expectException(\InvalidArgumentException::class);
         new ReconciliationRequest(new ArrayEligibilityProvider([]), [RecommendationSource::NewProducts],

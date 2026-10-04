@@ -6,6 +6,7 @@ use DateTimeImmutable;
 use Quellabs\Recommender\AttributionWindows;
 use Quellabs\Recommender\EvaluationRecorder;
 use Quellabs\Recommender\EvaluationReport;
+use Quellabs\Recommender\ImpressionId;
 use Quellabs\Recommender\OutcomeType;
 use Quellabs\Recommender\ArrayEligibilityProvider;
 use Quellabs\Recommender\RecommendationReconciler;
@@ -59,6 +60,9 @@ class EvaluationTest extends IntegrationTestCase {
             RecommendationSource::NewProducts)->clickedItems);
         $this->assertSame(0, $report->summary(1, $shown, $end, $end, $windows,
             RecommendationSource::SlopeOne)->impressions);
+        $recorder->recordOutcome($id, 42, 'purchase-1', OutcomeType::Purchase, $click);
+        $recorder->recordOutcome($id, 42, 'purchase-2', OutcomeType::Purchase, $click);
+        $this->assertSame(1, $report->summary(1, $shown, $end, $end, $windows)->purchasedItems);
         try {
             $recorder->recordOutcome($id, 42, 'event-1', OutcomeType::Purchase, $click);
             $this->fail('Conflicting event IDs must be rejected.');
@@ -67,6 +71,122 @@ class EvaluationTest extends IntegrationTestCase {
         }
         $recorder->deleteMemberHistory(7);
         $this->assertSame(0, $report->summary(1, $shown, $end, $end, $windows)->impressions);
+    }
+
+    /** @return void */
+    public function testOutcomeBoundariesAndAsOfCutoff(): void {
+        $recorder = new EvaluationRecorder($this->connection);
+        $item = new ReconciledRecommendation(42, null,
+            [new SourceEvidence(RecommendationSource::NewProducts, sourceRank: 1)]);
+        $other = new ReconciledRecommendation(43, null,
+            [new SourceEvidence(RecommendationSource::NewProducts, sourceRank: 2)]);
+        $shown = new DateTimeImmutable('2026-01-01T12:00:00Z');
+        $id = $recorder->recordImpression(RecommendationList::fromDisplayedItems(1, 'home', [$item, $other]),
+            null, $shown);
+        try {
+            $recorder->recordOutcome($id, 42, 'too-early', OutcomeType::Click,
+                new DateTimeImmutable('2026-01-01T11:59:59Z'));
+            $this->fail('Outcome before display was accepted.');
+        } catch (\InvalidArgumentException) {
+            $this->assertTrue(true);
+        }
+        $recorder->recordOutcome($id, 42, 'exact-boundary', OutcomeType::Click,
+            new DateTimeImmutable('2026-01-01T13:00:00Z'));
+        $recorder->recordOutcome($id, 43, 'past-boundary', OutcomeType::Click,
+            new DateTimeImmutable('2026-01-01T13:00:01Z'));
+        $report = new EvaluationReport($this->connection);
+        $end = new DateTimeImmutable('2026-01-02T00:00:00Z');
+        $windows = new AttributionWindows(3600, 3600);
+        $before = $report->summary(1, $shown, $end, $end, $windows);
+        $this->assertSame(2, $before->impressions);
+        $this->assertSame(1, $before->clickedItems);
+        $this->assertSame(0.5, $before->clickThroughRate());
+        $short = $report->summary(1, $shown, $end, $end, new AttributionWindows(3599, 3600));
+        $this->assertSame(0, $short->clickedItems);
+    }
+
+    /** @return void */
+    public function testAsOfExcludesAnOutcomeThatArrivesAfterTheReportCutoff(): void {
+        $recorder = new EvaluationRecorder($this->connection);
+        $item = new ReconciledRecommendation(42, null,
+            [new SourceEvidence(RecommendationSource::NewProducts, sourceRank: 1)]);
+        $shown = new DateTimeImmutable('2026-01-01T23:30:00Z');
+        $id = $recorder->recordImpression(RecommendationList::fromDisplayedItems(1, 'home', [$item]),
+            null, $shown);
+        $recorder->recordOutcome($id, 42, 'next-day-click', OutcomeType::Click,
+            new DateTimeImmutable('2026-01-02T00:15:00Z'));
+        $report = new EvaluationReport($this->connection);
+        $end = new DateTimeImmutable('2026-01-02T00:00:00Z');
+        $windows = new AttributionWindows(3600, 3600);
+        $this->assertSame(0, $report->summary(1, $shown, $end, $end, $windows)->clickedItems);
+        $this->assertSame(1, $report->summary(1, $shown, $end,
+            new DateTimeImmutable('2026-01-03T00:00:00Z'), $windows)->clickedItems);
+    }
+
+    /** @return void */
+    public function testReportSeparatesCategoryAndContextPartitions(): void {
+        $recorder = new EvaluationRecorder($this->connection);
+        $item = new ReconciledRecommendation(42, null,
+            [new SourceEvidence(RecommendationSource::NewProducts, sourceRank: 1)]);
+        $shown = new DateTimeImmutable('2026-01-01T00:00:00Z');
+        foreach ([[1, null], [1, 'tenant-a'], [2, null]] as [$category, $context]) {
+            $recorder->recordImpression(RecommendationList::fromDisplayedItems(
+                $category, 'home', [$item], $context), null, $shown);
+        }
+        $report = new EvaluationReport($this->connection);
+        $end = new DateTimeImmutable('2026-01-02T00:00:00Z');
+        $windows = new AttributionWindows(3600, 3600);
+        $this->assertSame(1, $report->summary(1, $shown, $end, $end, $windows)->impressions);
+        $this->assertSame(1, $report->summary(1, $shown, $end, $end, $windows,
+            contextKey: 'tenant-a')->impressions);
+        $this->assertSame(1, $report->summary(2, $shown, $end, $end, $windows)->impressions);
+        $this->assertSame(0, $report->summary(2, $shown, $end, $end, $windows,
+            contextKey: 'tenant-a')->impressions);
+    }
+
+    /** @return void */
+    public function testRecorderRejectsInvalidEventIdsAndUndisplayedItems(): void {
+        $recorder = new EvaluationRecorder($this->connection);
+        $item = new ReconciledRecommendation(42, null,
+            [new SourceEvidence(RecommendationSource::NewProducts, sourceRank: 1)]);
+        $id = $recorder->recordImpression(RecommendationList::fromDisplayedItems(1, 'home', [$item]),
+            null, new DateTimeImmutable('2026-01-01T00:00:00Z'));
+        foreach (['', "bad\nevent", str_repeat('x', 129)] as $eventId) {
+            try {
+                $recorder->recordOutcome($id, 42, $eventId, OutcomeType::Click,
+                    new DateTimeImmutable('2026-01-01T00:01:00Z'));
+                $this->fail('Invalid event ID was accepted.');
+            } catch (\InvalidArgumentException) {
+                $this->assertTrue(true);
+            }
+        }
+        $this->expectException(\InvalidArgumentException::class);
+        $recorder->recordOutcome($id, 43, 'unshown', OutcomeType::Click,
+            new DateTimeImmutable('2026-01-01T00:01:00Z'));
+    }
+
+    /** @return void */
+    public function testEvaluationFailureDoesNotRollBackAnExistingRatingWrite(): void {
+        $this->insertRating(7, 42, 0.8);
+        $item = new ReconciledRecommendation(42, null,
+            [new SourceEvidence(RecommendationSource::NewProducts, sourceRank: 1)]);
+        $list = RecommendationList::fromDisplayedItems(1, 'home', [$item]);
+        try {
+            (new EvaluationRecorder($this->connection))->recordImpression($list, -1);
+            $this->fail('Invalid member ID was accepted.');
+        } catch (\InvalidArgumentException) {
+            $this->assertTrue(true);
+        }
+        $this->assertNotNull($this->fetchRatingRow(7, 42));
+        $count = $this->connection->execute('SELECT COUNT(*) AS total FROM recommender_impressions')
+            ->fetchAssoc();
+        $this->assertSame(0, (int)$count['total']);
+    }
+
+    /** @return void */
+    public function testImpressionIdRejectsInvalidTokens(): void {
+        $this->expectException(\InvalidArgumentException::class);
+        new ImpressionId('not-a-token');
     }
 
     /** @return void */
@@ -114,6 +234,15 @@ class EvaluationTest extends IntegrationTestCase {
                 new DateTimeImmutable('2026-01-03T00:00:00Z'), 3600);
             $this->assertSame(2, $calibration[$modelId . ':home']['impressions']);
             $this->assertSame(0.5, $calibration[$modelId . ':home']['observed_click_rate']);
+            $this->connection->execute('UPDATE recommender_models SET feature_schema_version = 2
+                WHERE id = UNHEX(?)', [$modelId]);
+            try {
+                (new RecommendationReconciler($this->connection, $this->config))
+                    ->recommendMember(7, $request);
+                $this->fail('An incompatible active feature schema was accepted.');
+            } catch (\UnexpectedValueException) {
+                $this->assertTrue(true);
+            }
         } finally {
             $this->connection->execute('DELETE FROM recommender_impressions');
             $this->connection->execute('DELETE FROM recommender_models WHERE id = UNHEX(?)', [$modelId]);
@@ -142,14 +271,97 @@ class EvaluationTest extends IntegrationTestCase {
         }
         $item = new ReconciledRecommendation(42, null,
             [new SourceEvidence(RecommendationSource::NewProducts, sourceRank: 1)]);
-        (new EvaluationRecorder($this->connection))->recordImpression(
+        $recorder = new EvaluationRecorder($this->connection);
+        $impressionId = $recorder->recordImpression(
             RecommendationList::fromDisplayedItems(1, 'prune_test', [$item]), null,
             new DateTimeImmutable('2026-01-01T00:00:00Z'));
+        $recorder->recordOutcome($impressionId, 42, 'prune-click', OutcomeType::Click,
+            new DateTimeImmutable('2026-01-01T00:01:00Z'));
         $this->assertSame(0, $prune->execute(new ConfigurationManager(['--before=2026-02-01T00:00:00Z', '--batch-size=1'])));
         $remaining = $this->connection->execute("SELECT COUNT(*) AS total FROM recommender_impressions WHERE placement = 'prune_test'")
             ->fetchAssoc();
         $this->assertSame(0, (int)$remaining['total']);
+        foreach (['recommender_impression_items', 'recommender_impression_evidence',
+            'recommender_outcomes'] as $table) {
+            $children = $this->connection->execute("SELECT COUNT(*) AS total FROM {$table}
+                WHERE impression_id = ?", [$impressionId->binary()])->fetchAssoc();
+            $this->assertSame(0, (int)$children['total']);
+        }
         fclose($stream);
+    }
+
+    /** @return void */
+    public function testEvaluationInitRejectsAnIndexWithTheRightNameButWrongColumns(): void {
+        $provider = new class($this->connection) extends RecommenderProvider {
+            /** @param \Cake\Database\Connection $database Test connection. */
+            public function __construct(private \Cake\Database\Connection $database) {}
+            /** @return \Cake\Database\Connection Test connection. */
+            public function getConnection(): \Cake\Database\Connection { return $this->database; }
+        };
+        $stream = fopen('php://temp', 'w+');
+        $output = new ConsoleOutput($stream);
+        $command = new InitEvaluationCommand(new ConsoleInput($output), $output, $provider);
+        $this->connection->execute('ALTER TABLE recommender_impressions DROP INDEX ix_recommender_impression_key');
+        $this->connection->execute('ALTER TABLE recommender_impressions ADD INDEX ix_recommender_impression_key (category)');
+        try {
+            $this->expectException(\RuntimeException::class);
+            $command->execute(new ConfigurationManager());
+        } finally {
+            $this->connection->execute('ALTER TABLE recommender_impressions DROP INDEX ix_recommender_impression_key');
+            $this->connection->execute('ALTER TABLE recommender_impressions ADD INDEX ix_recommender_impression_key
+                (category, placement, source_mask, context_key, shown_at)');
+            fclose($stream);
+        }
+    }
+
+    /** @return void */
+    public function testEvaluationInitRejectsAnIncorrectForeignKeyDeleteRule(): void {
+        $provider = new class($this->connection) extends RecommenderProvider {
+            /** @param \Cake\Database\Connection $database Test connection. */
+            public function __construct(private \Cake\Database\Connection $database) {}
+            /** @return \Cake\Database\Connection Test connection. */
+            public function getConnection(): \Cake\Database\Connection { return $this->database; }
+        };
+        $stream = fopen('php://temp', 'w+');
+        $output = new ConsoleOutput($stream);
+        $command = new InitEvaluationCommand(new ConsoleInput($output), $output, $provider);
+        $this->connection->execute('ALTER TABLE recommender_outcomes DROP FOREIGN KEY fk_recommender_outcome_item');
+        $this->connection->execute('ALTER TABLE recommender_outcomes ADD CONSTRAINT fk_recommender_outcome_item
+            FOREIGN KEY (impression_id, item_id) REFERENCES recommender_impression_items(impression_id, item_id)
+            ON DELETE RESTRICT');
+        try {
+            $this->expectException(\RuntimeException::class);
+            $command->execute(new ConfigurationManager());
+        } finally {
+            $this->connection->execute('ALTER TABLE recommender_outcomes DROP FOREIGN KEY fk_recommender_outcome_item');
+            $this->connection->execute('ALTER TABLE recommender_outcomes ADD CONSTRAINT fk_recommender_outcome_item
+                FOREIGN KEY (impression_id, item_id) REFERENCES recommender_impression_items(impression_id, item_id)
+                ON DELETE CASCADE');
+            fclose($stream);
+        }
+    }
+
+    /** @return void */
+    public function testEvaluationInitRejectsAnIncorrectColumnWidth(): void {
+        $provider = new class($this->connection) extends RecommenderProvider {
+            /** @param \Cake\Database\Connection $database Test connection. */
+            public function __construct(private \Cake\Database\Connection $database) {}
+            /** @return \Cake\Database\Connection Test connection. */
+            public function getConnection(): \Cake\Database\Connection { return $this->database; }
+        };
+        $stream = fopen('php://temp', 'w+');
+        $output = new ConsoleOutput($stream);
+        $command = new InitEvaluationCommand(new ConsoleInput($output), $output, $provider);
+        $this->connection->execute("ALTER TABLE recommender_impressions
+            MODIFY context_key VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT ''");
+        try {
+            $this->expectException(\RuntimeException::class);
+            $command->execute(new ConfigurationManager());
+        } finally {
+            $this->connection->execute("ALTER TABLE recommender_impressions
+                MODIFY context_key VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT ''");
+            fclose($stream);
+        }
     }
 
     /** @return void */

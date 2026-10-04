@@ -52,6 +52,44 @@
 			$this->assertSame(3, $facade->memberPredictDetailed(1, 20)->supportCount);
 			$this->assertSame(20, $facade->visitorPredictAllDetailed($visitor)[0]->itemId);
 		}
+
+		/** @return void */
+		public function testDetailedSlopeHandlesRejectedHistoryAndSupportTies(): void {
+			$visitor = new VisitorContext($this->config);
+			$visitor->setRating(10, -1.0);
+			$this->insertRating(1, 10, -1.0);
+			$this->insertLink(10, 20, 3, 0.0);
+			$this->assertSame([], $this->recommender->memberPredictAllDetailed(1));
+			$this->assertSame([], $this->recommender->visitorPredictAllDetailed($visitor));
+			$this->assertNull($this->recommender->visitorPredictDetailed($visitor, 20));
+			$this->insertRating(1, 11, 0.8);
+			$visitor->setRating(11, 0.8);
+			$this->insertLink(11, 20, 2, 0.0);
+			$this->insertLink(20, 11, 2, 0.0);
+			$this->insertLink(11, 30, 3, 0.0);
+			$this->insertLink(11, 40, 3, 0.0);
+			$this->assertSame([30, 40, 20], array_map(fn($result) => $result->itemId,
+				$this->recommender->memberPredictAllDetailed(1)));
+			$this->assertSame([30, 40, 20], array_map(fn($result) => $result->itemId,
+				$this->recommender->visitorPredictAllDetailed($visitor)));
+			$this->assertNull($this->recommender->memberPredictDetailed(1, 20, 3));
+			$this->assertNull($this->recommender->visitorPredictDetailed($visitor, 20, 3));
+			$this->assertSame([], $this->recommender->memberPredictAllDetailed(1, category: 2));
+		}
+
+		/** @return void */
+		public function testDetailedVisitorPredictionBatchesLargeHistory(): void {
+			$visitor = new VisitorContext($this->config);
+			for ($id = 1; $id <= 501; $id++) {
+				$visitor->setRating($id, 0.8);
+			}
+			$this->insertLink(501, 600, 4, 0.4);
+			$result = $this->recommender->visitorPredictAllDetailed($visitor);
+			$this->assertCount(1, $result);
+			$this->assertSame(600, $result[0]->itemId);
+			$this->assertSame(4, $result[0]->supportCount);
+			$this->assertEqualsWithDelta(0.9, $result[0]->predictedRating, 1e-8);
+		}
 		
 		// =========================================================================
 		// getLinkedItems
