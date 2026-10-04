@@ -176,41 +176,63 @@
 		 * @param int $maxNeighbours Maximum neighbours to use
 		 * @param int $limit Maximum candidates
 		 * @param int|null $category Category override
+		 * @param array<int, int>|null $candidateIds Optional exact candidate batch to score
 		 * @return array<int, array{itemId:int, score:float}>
 		 */
 		public function memberRecommendationsScored(int $memberId, int $minSimilarity,
-			int $maxNeighbours, int $limit, ?int $category = null): array {
+			int $maxNeighbours, int $limit, ?int $category = null, ?array $candidateIds = null): array {
+			if ($candidateIds === []) {
+				return [];
+			}
 			$cat = $this->config->resolveCategory($category);
 			$neighbours = $this->getNeighbours($memberId, $minSimilarity, $maxNeighbours, $cat);
 			if ($neighbours === []) {
 				return [];
 			}
 			$table = 'recommender_neighbours_' . bin2hex(random_bytes(6));
+			$candidateTable = $candidateIds === null ? null : 'recommender_neighbour_candidates_' . bin2hex(random_bytes(6));
 			$this->connection->execute("CREATE TEMPORARY TABLE {$table}
 				(member_id INT UNSIGNED PRIMARY KEY, similarity INT UNSIGNED NOT NULL)");
 			try {
-				foreach (array_chunk($neighbours, 500) as $batch) {
-					$values = [];
-					$params = [];
-					foreach ($batch as $neighbour) {
-						$values[] = '(?, ?)';
-						$params[] = $neighbour['member_id'];
-						$params[] = $neighbour['similarity'];
-					}
-					$this->connection->execute("INSERT INTO {$table} (member_id, similarity) VALUES "
-						. implode(',', $values), $params);
+				if ($candidateTable !== null) {
+					$this->connection->execute("CREATE TEMPORARY TABLE {$candidateTable} (product_id INT UNSIGNED PRIMARY KEY)");
 				}
-				$rows = $this->connection->execute("SELECT r.product_id AS item_id,
-					SUM(r.rating * n.similarity) / SUM(n.similarity) AS score
-					FROM {$table} n JOIN vogoo_ratings r ON r.member_id = n.member_id
-					WHERE r.category = :category AND r.rating >= :threshold
-					AND NOT EXISTS (SELECT 1 FROM vogoo_ratings seen WHERE seen.member_id = :member
-						AND seen.category = :seen_category AND seen.product_id = r.product_id)
-					GROUP BY r.product_id ORDER BY score DESC, r.product_id ASC LIMIT {$limit}",
-					['category' => $cat, 'threshold' => $this->config->getThresholdRating(),
-						'member' => $memberId, 'seen_category' => $cat])->fetchAll('assoc');
-				return array_map(fn($row) => ['itemId' => (int)$row['item_id'],
-					'score' => (float)$row['score']], $rows);
+				try {
+					if ($candidateTable !== null) {
+						foreach (array_chunk(array_values(array_unique($candidateIds)), 500) as $batch) {
+							$holders = implode(',', array_fill(0, count($batch), '(?)'));
+							$this->connection->execute("INSERT INTO {$candidateTable} (product_id) VALUES {$holders}", $batch);
+						}
+					}
+					foreach (array_chunk($neighbours, 500) as $batch) {
+						$values = [];
+						$params = [];
+						foreach ($batch as $neighbour) {
+							$values[] = '(?, ?)';
+							$params[] = $neighbour['member_id'];
+							$params[] = $neighbour['similarity'];
+						}
+						$this->connection->execute("INSERT INTO {$table} (member_id, similarity) VALUES "
+							. implode(',', $values), $params);
+					}
+					$candidateJoin = $candidateTable === null ? '' : "JOIN {$candidateTable} candidates ON candidates.product_id = r.product_id";
+					$rows = $this->connection->execute("SELECT r.product_id AS item_id,
+						SUM(r.rating * n.similarity) / SUM(n.similarity) AS score
+						FROM {$table} n JOIN vogoo_ratings r ON r.member_id = n.member_id
+						{$candidateJoin}
+						WHERE r.category = :category AND r.rating >= :threshold
+						AND NOT EXISTS (SELECT 1 FROM vogoo_ratings seen WHERE seen.member_id = :member
+							AND seen.category = :seen_category AND seen.product_id = r.product_id)
+						GROUP BY r.product_id ORDER BY score DESC, r.product_id ASC LIMIT {$limit}",
+						['category' => $cat, 'threshold' => $this->config->getThresholdRating(),
+							'member' => $memberId, 'seen_category' => $cat])->fetchAll('assoc');
+					return array_map(fn($row) => ['itemId' => (int)$row['item_id'],
+						'score' => (float)$row['score']], $rows);
+				} finally {
+					if ($candidateTable !== null) {
+						$this->connection->execute("DROP TEMPORARY TABLE {$candidateTable}");
+					}
+				}
 			} finally {
 				$this->connection->execute("DROP TEMPORARY TABLE {$table}");
 			}

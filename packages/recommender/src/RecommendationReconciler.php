@@ -160,10 +160,12 @@ readonly class RecommendationReconciler {
                     $row['count'], $row['contributors']);
             }
         }
+        $auditSignals = $this->auditSignals(array_keys($eligible), $signals, $request,
+            $ratings, $memberId, $category);
         $activeModel = $this->activeModel($category, $request);
         $items = [];
         foreach (array_keys($eligible) as $id) {
-            $evidence = $signals[$id] ?? [];
+            $evidence = array_merge($signals[$id] ?? [], $auditSignals[$id] ?? []);
             $score = 0.0;
             $features = [];
             foreach ($request->sources as $source) {
@@ -175,6 +177,9 @@ readonly class RecommendationReconciler {
                 $features[$prefix . 'count'] = 0.0;
             }
             foreach ($evidence as $signal) {
+                if ($signal->sourceRank === null) {
+                    continue;
+                }
                 $prefix = $signal->source->value . '.';
                 $reciprocal = 1 / (60 + $signal->sourceRank);
                 $score += $reciprocal;
@@ -252,6 +257,150 @@ readonly class RecommendationReconciler {
                 throw new \UnexpectedValueException('Eligibility response is not an ordered subset.');
             }
             $cursor++;
+        }
+    }
+
+    /** @param array<int, int> $eligibleIds Eligible pool IDs
+     * @param array<int, array<int, SourceEvidence>> $nominatedSignals Depth-bounded nominations
+     * @param ReconciliationRequest $request Enabled source settings
+     * @param array<int, float> $ratings Seen ratings
+     * @param int|null $memberId Persisted member or visitor
+     * @param int $category Resolved category
+     * @return array<int, array<int, SourceEvidence>> Additional audit signals without source rank
+     */
+    private function auditSignals(array $eligibleIds, array $nominatedSignals,
+        ReconciliationRequest $request, array $ratings, ?int $memberId, int $category): array {
+        $audit = [];
+        foreach ($request->sources as $source) {
+            $missing = [];
+            foreach ($eligibleIds as $id) {
+                $hasNomination = false;
+                foreach ($nominatedSignals[$id] ?? [] as $signal) {
+                    if ($signal->source === $source) {
+                        $hasNomination = true;
+                        break;
+                    }
+                }
+                if (!$hasNomination) {
+                    $missing[] = $id;
+                }
+            }
+            if ($missing === []) {
+                continue;
+            }
+            if ($source === RecommendationSource::NewProducts) {
+                $newProducts = array_fill_keys($request->newProductIds, true);
+                foreach ($missing as $id) {
+                    if (isset($newProducts[$id])) {
+                        $audit[$id][] = new SourceEvidence($source);
+                    }
+                }
+                continue;
+            }
+            if ($source === RecommendationSource::UserSimilarity) {
+                if ($memberId === null) {
+                    continue;
+                }
+                $similarity = new UserSimilarity($this->connection, $this->config,
+                    new RecommendationEngine($this->connection, $this->config));
+                $rows = $similarity->memberRecommendationsScored($memberId,
+                    $request->minNeighbourSimilarity, $request->maxNeighbours,
+                    count($missing), $category, $missing);
+                foreach ($rows as $row) {
+                    $audit[$row['itemId']][] = new SourceEvidence($source, $row['score']);
+                }
+                continue;
+            }
+            if ($source === RecommendationSource::TopRated) {
+                $rows = $this->withCandidateTable($missing, fn($table) => $this->connection->execute(
+                    "SELECT r.product_id AS id, AVG(r.rating) AS score, COUNT(*) AS support_count
+                    FROM vogoo_ratings r JOIN {$table} candidates ON candidates.product_id = r.product_id
+                    WHERE r.category = :category AND r.rating >= 0
+                    GROUP BY r.product_id HAVING support_count >= :minimum",
+                    ['category' => $category, 'minimum' => $request->topRatedMinRatings])->fetchAll('assoc'));
+            } else {
+                $genuine = array_filter($ratings, fn($rating) => $rating >= 0.0);
+                if ($genuine === []) {
+                    continue;
+                }
+                $rows = $this->auditRatingRows($source, $missing, $genuine, $category, $request);
+            }
+            foreach ($this->normalizeRows($rows, $ratings) as $row) {
+                $audit[$row['id']][] = new SourceEvidence($source, $row['score'], null,
+                    $row['count'], $row['contributors']);
+            }
+        }
+        return $audit;
+    }
+
+    /** @param RecommendationSource $source Item-links or Slope One
+     * @param array<int, int> $candidateIds Eligible IDs to score
+     * @param array<int, float> $ratings Genuine ratings
+     * @param int $category Resolved category
+     * @param ReconciliationRequest $request Source thresholds
+     * @return array<int, array<string, mixed>> Aggregate candidate rows
+     */
+    private function auditRatingRows(RecommendationSource $source, array $candidateIds,
+        array $ratings, int $category, ReconciliationRequest $request): array {
+        $ratingsTable = 'recommender_audit_ratings_' . bin2hex(random_bytes(6));
+        $this->connection->execute("CREATE TEMPORARY TABLE {$ratingsTable}
+            (product_id INT UNSIGNED PRIMARY KEY, rating DOUBLE NOT NULL)");
+        try {
+            foreach (array_chunk($ratings, 500, true) as $batch) {
+                $holders = [];
+                $params = [];
+                foreach ($batch as $id => $rating) {
+                    $holders[] = '(?, ?)';
+                    $params[] = $id;
+                    $params[] = $rating;
+                }
+                $this->connection->execute("INSERT INTO {$ratingsTable} (product_id, rating) VALUES "
+                    . implode(',', $holders), $params);
+            }
+            return $this->withCandidateTable($candidateIds, function ($candidateTable) use ($source,
+                $ratingsTable, $category, $request): array {
+                if ($source === RecommendationSource::ItemLinks) {
+                    $sql = "SELECT l.item_id2 AS id,
+                        SUM(l.liked_count * (r.rating - :threshold)) AS score,
+                        JSON_ARRAYAGG(r.product_id) AS contributors
+                        FROM vogoo_links l JOIN {$ratingsTable} r ON r.product_id = l.item_id1
+                        JOIN {$candidateTable} candidates ON candidates.product_id = l.item_id2
+                        WHERE l.category = :category AND l.liked_count > 0
+                        GROUP BY l.item_id2 HAVING score > 0";
+                    $params = ['threshold' => $this->config->getThresholdRating(), 'category' => $category];
+                } else {
+                    $sql = "SELECT l.item_id2 AS id, SUM(l.slope_count) AS support_count,
+                        LEAST(1.0, GREATEST(0.0,
+                            SUM(r.rating * l.slope_count + l.diff_slope) / SUM(l.slope_count))) AS score
+                        FROM vogoo_links l JOIN {$ratingsTable} r ON r.product_id = l.item_id1
+                        JOIN {$candidateTable} candidates ON candidates.product_id = l.item_id2
+                        WHERE l.category = :category AND l.slope_count > 0
+                        GROUP BY l.item_id2 HAVING support_count >= :minimum";
+                    $params = ['category' => $category, 'minimum' => $request->minSlopeSupport];
+                }
+                return $this->connection->execute($sql, $params)->fetchAll('assoc');
+            });
+        } finally {
+            $this->connection->execute("DROP TEMPORARY TABLE {$ratingsTable}");
+        }
+    }
+
+    /** @template T
+     * @param array<int, int> $candidateIds Distinct candidate IDs
+     * @param callable(string): T $operation Query receiving temporary table name
+     * @return T Query result
+     */
+    private function withCandidateTable(array $candidateIds, callable $operation): mixed {
+        $table = 'recommender_audit_candidates_' . bin2hex(random_bytes(6));
+        $this->connection->execute("CREATE TEMPORARY TABLE {$table} (product_id INT UNSIGNED PRIMARY KEY)");
+        try {
+            foreach (array_chunk($candidateIds, 500) as $batch) {
+                $holders = implode(',', array_fill(0, count($batch), '(?)'));
+                $this->connection->execute("INSERT INTO {$table} (product_id) VALUES {$holders}", $batch);
+            }
+            return $operation($table);
+        } finally {
+            $this->connection->execute("DROP TEMPORARY TABLE {$table}");
         }
     }
 

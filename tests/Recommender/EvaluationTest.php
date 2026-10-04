@@ -151,4 +151,28 @@ class EvaluationTest extends IntegrationTestCase {
         $this->assertSame(0, (int)$remaining['total']);
         fclose($stream);
     }
+
+    /** @return void */
+    public function testAuditedSignalOutsideTopSliceIsLoggedAndReportable(): void {
+        for ($id = 100; $id <= 150; $id++) {
+            $rating = 1.0 - ($id - 100) / 100;
+            $this->insertRating($id, $id, $rating);
+            $this->insertRating($id + 1000, $id, $rating);
+        }
+        $request = new ReconciliationRequest(new ArrayEligibilityProvider([150]),
+            [RecommendationSource::TopRated], 1, 'audit_test', additionalCandidateIds: [150]);
+        $list = (new RecommendationReconciler($this->connection, $this->config))
+            ->recommendMember(1, $request);
+        $shown = new DateTimeImmutable('2026-01-01T00:00:00Z');
+        $id = (new EvaluationRecorder($this->connection))->recordImpression($list, null, $shown);
+        $row = $this->connection->execute('SELECT source, source_rank FROM recommender_impression_evidence
+            WHERE impression_id = ? AND item_id = 150', [$id->binary()])->fetchAssoc();
+        $this->assertSame('top_rated', $row['source']);
+        $this->assertNull($row['source_rank']);
+        $summary = (new EvaluationReport($this->connection))->summary(1, $shown,
+            new DateTimeImmutable('2026-01-02T00:00:00Z'),
+            new DateTimeImmutable('2026-01-03T00:00:00Z'),
+            new AttributionWindows(3600, 7200), RecommendationSource::TopRated);
+        $this->assertSame(1, $summary->impressions);
+    }
 }

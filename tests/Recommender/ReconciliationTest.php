@@ -198,4 +198,49 @@ class ReconciliationTest extends IntegrationTestCase {
         $this->expectException(\InvalidArgumentException::class);
         RecommendationList::fromDisplayedItems(1, 'home', [$first, $first]);
     }
+
+    /** @return void */
+    public function testDisplayedCandidateKeepsSignalOutsideSourceTopSlice(): void {
+        for ($id = 100; $id <= 150; $id++) {
+            $rating = 1.0 - ($id - 100) / 100;
+            $this->insertRating($id, $id, $rating);
+            $this->insertRating($id + 1000, $id, $rating);
+        }
+        $request = new ReconciliationRequest(new ArrayEligibilityProvider([150]),
+            [RecommendationSource::TopRated], 1, 'home', additionalCandidateIds: [150]);
+        $list = (new RecommendationReconciler($this->connection, $this->config))->recommendMember(1, $request);
+        $this->assertSame(150, $list->items[0]->itemId);
+        $this->assertSame(0.0, $list->items[0]->rankingScore);
+        $this->assertSame(0.0, $list->items[0]->featureSnapshot['top_rated.present']);
+        $this->assertSame(50, $list->items[0]->searchedDepths['top_rated']);
+        $this->assertCount(1, $list->items[0]->evidence);
+        $this->assertNull($list->items[0]->evidence[0]->sourceRank);
+        $this->assertEqualsWithDelta(0.5, $list->items[0]->evidence[0]->rawScore, 0.00001);
+    }
+
+    /** @return void */
+    public function testOutsideSliceEvidenceIsAuditedForOtherSources(): void {
+        $this->insertRating(1, 10, 0.9);
+        $this->insertRating(2, 10, 0.9);
+        for ($id = 100; $id <= 150; $id++) {
+            $this->insertLink(10, $id, 200 - $id, 200 - $id);
+            $this->insertRating(2, $id, 1.0 - ($id - 100) / 200);
+        }
+        $request = new ReconciliationRequest(new ArrayEligibilityProvider([150]),
+            [RecommendationSource::NewProducts, RecommendationSource::ItemLinks,
+                RecommendationSource::SlopeOne, RecommendationSource::UserSimilarity],
+            1, 'home', range(100, 150), additionalCandidateIds: [150]);
+        $list = (new RecommendationReconciler($this->connection, $this->config))->recommendMember(1, $request);
+        $item = $list->items[0];
+        $this->assertSame(150, $item->itemId);
+        $this->assertSame(0.0, $item->rankingScore);
+        $this->assertCount(4, $item->evidence);
+        $sources = array_map(fn($evidence) => $evidence->source->value, $item->evidence);
+        sort($sources);
+        $this->assertSame(['item_links', 'new_products', 'slope_one', 'user_similarity'], $sources);
+        foreach ($item->evidence as $evidence) {
+            $this->assertNull($evidence->sourceRank);
+            $this->assertSame(0.0, $item->featureSnapshot[$evidence->source->value . '.present']);
+        }
+    }
 }
