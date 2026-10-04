@@ -14,6 +14,9 @@
 		 * @param float $notInterested Sentinel value stored in vogoo_ratings to mark "not interested"
 		 * @param bool $directLinks Whether to maintain the item co-occurrence link table incrementally on every rating change
 		 * @param bool $directSlope Whether to maintain the slope one diff table incrementally on every rating change
+		 * @param int $maxCandidateDepth Maximum reconciliation source depth
+		 * @param int $maxBackfillRounds Maximum deeper-query rounds
+		 * @param int $maxEligibilityBatchSize Maximum IDs in one provider call
 		 */
 		public function __construct(
 			// Default category for all operations
@@ -39,13 +42,26 @@
 			
 			// Whether to maintain the slope one diff table incrementally on every rating change
 			private readonly bool  $directSlope = true,
+			private readonly int $maxCandidateDepth = 2000,
+			private readonly int $maxBackfillRounds = 3,
+			private readonly int $maxEligibilityBatchSize = 500,
 		) {
-			if ($category < 0 || $thresholdNrCommonRatings < 1 || $thresholdMult < 1
+			if ($category < 0 || $category > 4294967295 || $thresholdNrCommonRatings < 1 || $thresholdMult < 1
 				|| !is_finite($thresholdRating) || $thresholdRating < 0.0 || $thresholdRating > 1.0
-				|| !is_finite($cost) || $cost <= 0.0 || $notInterested !== -1.0) {
+				|| !is_finite($cost) || $cost <= 0.0 || $notInterested !== -1.0
+				|| $maxCandidateDepth < 50 || $maxBackfillRounds < 1 || $maxEligibilityBatchSize < 1) {
 				throw new \InvalidArgumentException('Invalid recommender configuration.');
 			}
 		}
+
+		/** @return int Maximum generated depth per source. */
+		public function getMaxCandidateDepth(): int { return $this->maxCandidateDepth; }
+
+		/** @return int Maximum deeper-query rounds. */
+		public function getMaxBackfillRounds(): int { return $this->maxBackfillRounds; }
+
+		/** @return int Maximum IDs submitted to one eligibility call. */
+		public function getMaxEligibilityBatchSize(): int { return $this->maxEligibilityBatchSize; }
 		
 		/**
 		 * Return the configured default category.
@@ -119,8 +135,8 @@
 		 */
 		public function resolveCategory(?int $category): int {
 			$resolved = $category ?? $this->category;
-			if ($resolved < 0) {
-				throw new \InvalidArgumentException('Category must be nonnegative.');
+			if ($resolved < 0 || $resolved > 4294967295) {
+				throw new \InvalidArgumentException('Category must be an unsigned 32-bit integer.');
 			}
 			return $resolved;
 		}

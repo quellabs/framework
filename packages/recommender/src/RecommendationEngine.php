@@ -17,6 +17,7 @@
 	 * than returning false). Wrap calls in try/catch if you need to handle errors.
 	 */
 	readonly class RecommendationEngine {
+		private ItemRecommender $itemRecommender;
 		
 		private LinkUpdater $linkUpdater;
 		
@@ -30,6 +31,52 @@
 			private RecommendationConfig $config,
 		) {
 			$this->linkUpdater = new LinkUpdater($connection, $config);
+			$this->itemRecommender = new ItemRecommender($connection, $config);
+		}
+
+		/** @param int $memberId Member ID
+		 * @param int $productId Candidate ID
+		 * @param int $minSupport Minimum summed Slope One pair support
+		 * @param int|null $category Category override
+		 * @return PredictionResult|null Detailed prediction
+		 */
+		public function memberPredictDetailed(int $memberId, int $productId, int $minSupport = 1, ?int $category = null): ?PredictionResult {
+			return $this->itemRecommender->memberPredictDetailed($memberId, $productId, $minSupport, $category);
+		}
+
+		/** @param int $memberId Member ID
+		 * @param array<int> $filter Allowed IDs, or empty for all
+		 * @param int $limit Maximum results, or zero for all
+		 * @param int $minSupport Minimum summed Slope One pair support
+		 * @param int|null $category Category override
+		 * @return array<int, PredictionResult> Detailed predictions
+		 */
+		public function memberPredictAllDetailed(int $memberId, array $filter = [], int $limit = 0,
+			int $minSupport = 1, ?int $category = null): array {
+			return $this->itemRecommender->memberPredictAllDetailed($memberId, $filter, $limit, $minSupport, $category);
+		}
+
+		/** @param VisitorContext $visitor Visitor ratings
+		 * @param int $productId Candidate ID
+		 * @param int $minSupport Minimum summed Slope One pair support
+		 * @param int|null $category Category override
+		 * @return PredictionResult|null Detailed prediction
+		 */
+		public function visitorPredictDetailed(VisitorContext $visitor, int $productId, int $minSupport = 1,
+			?int $category = null): ?PredictionResult {
+			return $this->itemRecommender->visitorPredictDetailed($visitor, $productId, $minSupport, $category);
+		}
+
+		/** @param VisitorContext $visitor Visitor ratings
+		 * @param array<int> $filter Allowed IDs, or empty for all
+		 * @param int $limit Maximum results, or zero for all
+		 * @param int $minSupport Minimum summed Slope One pair support
+		 * @param int|null $category Category override
+		 * @return array<int, PredictionResult> Detailed predictions
+		 */
+		public function visitorPredictAllDetailed(VisitorContext $visitor, array $filter = [], int $limit = 0,
+			int $minSupport = 1, ?int $category = null): array {
+			return $this->itemRecommender->visitorPredictAllDetailed($visitor, $filter, $limit, $minSupport, $category);
 		}
 		
 		// -------------------------------------------------------------------------

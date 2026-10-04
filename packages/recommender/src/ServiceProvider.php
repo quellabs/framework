@@ -62,13 +62,14 @@
 		}
 		
 		/**
-		 * This provider handles RecommendationConfig only.
+		 * This provider handles configuration and optional recommendation services.
 		 * @param string $className Fully-qualified class name being resolved
 		 * @param array<string, mixed> $metadata Provider metadata
 		 * @return bool True if this provider handles the class
 		 */
 		public function supports(string $className, array $metadata): bool {
-			return $className === RecommendationConfig::class;
+			return in_array($className, [RecommendationConfig::class, RecommendationReconciler::class,
+				EvaluationRecorder::class, EvaluationReport::class], true);
 		}
 		
 		/**
@@ -77,9 +78,12 @@
 		 * @param array<string, mixed> $dependencies Resolved constructor dependencies
 		 * @param array<string, mixed> $metadata Provider metadata
 		 * @param MethodContextInterface|null $methodContext Optional method-call context
-		 * @return RecommendationConfig The configured instance
+		 * @return object The configured instance or requested recommender service
 		 */
-		public function createInstance(string $className, array $dependencies, array $metadata, ?MethodContextInterface $methodContext = null): RecommendationConfig {
+		public function createInstance(string $className, array $dependencies, array $metadata, ?MethodContextInterface $methodContext = null): object {
+			if ($className !== RecommendationConfig::class) {
+				return new $className(...$dependencies);
+			}
 			return new RecommendationConfig(
 				category: $this->getInt('category', 1),
 				thresholdNrCommonRatings: $this->getInt('threshold_nr_common_ratings', 30),
@@ -89,6 +93,9 @@
 				notInterested: $this->getFloat('not_interested', -1.0),
 				directLinks: $this->getBool('direct_links', false),
 				directSlope: $this->getBool('direct_slope', true),
+				maxCandidateDepth: $this->getInt('max_candidate_depth', 2000),
+				maxBackfillRounds: $this->getInt('max_backfill_rounds', 3),
+				maxEligibilityBatchSize: $this->getInt('max_eligibility_batch_size', 500),
 			);
 		}
 		

@@ -499,6 +499,213 @@
 			return $limit > 0 ? array_slice($result, 0, $limit) : $result;
 		}
 		
+		/**
+		 * Predict a single member rating with directed-pair support.
+		 * @param int $memberId Member ID
+		 * @param int $productId Candidate ID
+		 * @param int $minSupport Minimum summed pair support
+		 * @param int|null $category Category override
+		 * @return PredictionResult|null
+		 */
+		public function memberPredictDetailed(int $memberId, int $productId, int $minSupport = 1, ?int $category = null): ?PredictionResult {
+			$this->validateSupport($minSupport);
+			$cat = $this->config->resolveCategory($category);
+			$row = $this->connection->execute('SELECT SUM(l.slope_count) AS support,
+				SUM(r.rating * l.slope_count - l.diff_slope) AS numerator
+				FROM vogoo_links l JOIN vogoo_ratings r ON r.product_id = l.item_id2
+				AND r.category = l.category AND r.member_id = :member AND r.rating >= 0.0
+				WHERE l.item_id1 = :product AND l.category = :category AND l.slope_count > 0',
+				['member' => $memberId, 'product' => $productId, 'category' => $cat])->fetchAssoc();
+			$support = (int)$row['support'];
+			return $support < $minSupport ? null : new PredictionResult($productId,
+				$this->clampRating((float)$row['numerator'] / $support), $support);
+		}
+
+		/**
+		 * Predict all unseen member ratings with directed-pair support.
+		 * @param int $memberId Member ID
+		 * @param array<int> $filter Allowed IDs, or empty for all
+		 * @param int $limit Maximum results, or zero for all
+		 * @param int $minSupport Minimum summed pair support
+		 * @param int|null $category Category override
+		 * @return array<int, PredictionResult>
+		 */
+		public function memberPredictAllDetailed(int $memberId, array $filter = [], int $limit = 0, int $minSupport = 1, ?int $category = null): array {
+			$this->validateSupport($minSupport);
+			$cat = $this->config->resolveCategory($category);
+			$params = ['member' => $memberId, 'category' => $cat, 'seen_member' => $memberId, 'seen_category' => $cat];
+			$sql = 'SELECT l.item_id2, SUM(l.slope_count) AS support,
+				SUM(r.rating * l.slope_count + l.diff_slope) AS numerator,
+				LEAST(1.0, GREATEST(0.0,
+					SUM(r.rating * l.slope_count + l.diff_slope) / SUM(l.slope_count))) AS predicted
+				FROM vogoo_links l JOIN vogoo_ratings r ON r.product_id = l.item_id1
+				AND r.category = l.category AND r.member_id = :member AND r.rating >= 0.0
+				WHERE l.category = :category AND l.slope_count > 0
+				AND NOT EXISTS (SELECT 1 FROM vogoo_ratings seen WHERE seen.member_id = :seen_member
+				AND seen.category = :seen_category AND seen.product_id = l.item_id2)';
+			$sql .= $this->allowedSql($filter, 'l.item_id2', $params);
+			$sql .= ' GROUP BY l.item_id2 HAVING support >= :min_support
+				ORDER BY predicted DESC, support DESC, l.item_id2 ASC';
+			$params['min_support'] = $minSupport;
+			if ($limit > 0) {
+				$sql .= ' LIMIT ' . $limit;
+			}
+			try {
+				$rows = $this->connection->execute($sql, $params)->fetchAll('assoc');
+			} finally {
+				$this->clearAllowedTable($filter);
+			}
+			return $this->detailedPredictions($rows, $filter, $limit);
+		}
+
+		/**
+		 * Predict one visitor rating with directed-pair support.
+		 * @param VisitorContext $visitor Visitor ratings
+		 * @param int $productId Candidate ID
+		 * @param int $minSupport Minimum summed pair support
+		 * @param int|null $category Category override
+		 * @return PredictionResult|null
+		 */
+		public function visitorPredictDetailed(VisitorContext $visitor, int $productId, int $minSupport = 1, ?int $category = null): ?PredictionResult {
+			$this->validateSupport($minSupport);
+			$cat = $this->config->resolveCategory($category);
+			$ratings = $this->collectGenuineRatings($visitor->getRatings($cat));
+			if ($ratings === []) {
+				return null;
+			}
+			$rows = $this->withVisitorRatingTable($ratings, fn($table) => $this->connection->execute(
+				"SELECT SUM(l.slope_count) AS support,
+				SUM(v.rating * l.slope_count - l.diff_slope) AS numerator
+				FROM vogoo_links l JOIN {$table} v ON v.product_id = l.item_id2
+				WHERE l.item_id1 = :product AND l.category = :category AND l.slope_count > 0",
+				['product' => $productId, 'category' => $cat])->fetchAssoc());
+			if (!is_array($rows) || !isset($rows['support'], $rows['numerator'])) {
+				return null;
+			}
+			$support = (int)$rows['support'];
+			return $support < $minSupport ? null : new PredictionResult($productId,
+				$this->clampRating((float)$rows['numerator'] / $support), $support);
+		}
+
+		/**
+		 * Predict unseen visitor ratings with a batched temporary input table.
+		 * @param VisitorContext $visitor Visitor ratings
+		 * @param array<int> $filter Allowed IDs, or empty for all
+		 * @param int $limit Maximum results, or zero for all
+		 * @param int $minSupport Minimum summed pair support
+		 * @param int|null $category Category override
+		 * @return array<int, PredictionResult>
+		 */
+		public function visitorPredictAllDetailed(VisitorContext $visitor, array $filter = [], int $limit = 0, int $minSupport = 1, ?int $category = null): array {
+			$this->validateSupport($minSupport);
+			$cat = $this->config->resolveCategory($category);
+			$ratings = $this->collectGenuineRatings($visitor->getRatings($cat));
+			if ($ratings === []) {
+				return [];
+			}
+			$seen = array_fill_keys($visitor->getRatedProductIds($cat), true);
+			$rows = $this->withVisitorRatingTable($ratings, function ($table) use ($cat, $minSupport, $filter, $limit, $seen) {
+				$seenTable = 'recommender_visitor_seen_' . bin2hex(random_bytes(6));
+				$this->connection->execute("CREATE TEMPORARY TABLE {$seenTable} (product_id INT UNSIGNED PRIMARY KEY)");
+				try {
+					foreach (array_chunk(array_keys($seen), 500) as $batch) {
+						$holders = implode(',', array_fill(0, count($batch), '(?)'));
+						$this->connection->execute("INSERT INTO {$seenTable} (product_id) VALUES {$holders}", $batch);
+					}
+				$params = ['category' => $cat, 'min_support' => $minSupport];
+				$sql = "SELECT l.item_id2, SUM(l.slope_count) AS support,
+					SUM(v.rating * l.slope_count + l.diff_slope) AS numerator,
+					LEAST(1.0, GREATEST(0.0,
+						SUM(v.rating * l.slope_count + l.diff_slope) / SUM(l.slope_count))) AS predicted
+					FROM vogoo_links l JOIN {$table} v ON v.product_id = l.item_id1
+					WHERE l.category = :category AND l.slope_count > 0
+					AND NOT EXISTS (SELECT 1 FROM {$seenTable} s WHERE s.product_id = l.item_id2)";
+				$sql .= $this->allowedSql($filter, 'l.item_id2', $params);
+				$sql .= ' GROUP BY l.item_id2 HAVING support >= :min_support
+					ORDER BY predicted DESC, support DESC, l.item_id2 ASC';
+				if ($limit > 0) {
+					$sql .= ' LIMIT ' . $limit;
+				}
+					return $this->connection->execute($sql, $params)->fetchAll('assoc');
+				} finally {
+					try {
+						$this->clearAllowedTable($filter);
+					} finally {
+						$this->connection->execute("DROP TEMPORARY TABLE {$seenTable}");
+					}
+				}
+			});
+			if (!is_array($rows)) {
+				throw new \UnexpectedValueException('Invalid visitor prediction rows.');
+			}
+			$rows = array_values(array_filter($rows, fn($row) => is_array($row)
+				&& isset($row['item_id2']) && is_numeric($row['item_id2'])
+				&& !isset($seen[(int)$row['item_id2']])));
+			return $this->detailedPredictions($rows, $filter, $limit);
+		}
+
+		/** @param int $minSupport Minimum support
+		 * @return void
+		 */
+		private function validateSupport(int $minSupport): void {
+			if ($minSupport < 1) {
+				throw new \InvalidArgumentException('Minimum support must be positive.');
+			}
+		}
+
+		/** @param array<mixed> $rows Aggregated rows
+		 * @param array<int> $filter Allowed IDs
+		 * @param int $limit Maximum results
+		 * @return array<int, PredictionResult>
+		 */
+		private function detailedPredictions(array $rows, array $filter, int $limit): array {
+			$allowed = $filter === [] ? null : array_fill_keys($filter, true);
+			$results = [];
+			foreach ($rows as $row) {
+				if (!is_array($row) || !isset($row['item_id2'], $row['support'], $row['numerator'])
+					|| !is_numeric($row['item_id2']) || !is_numeric($row['support'])
+					|| !is_numeric($row['numerator'])) {
+					throw new \UnexpectedValueException('Invalid prediction row.');
+				}
+				$id = (int)$row['item_id2'];
+				if ($allowed !== null && !isset($allowed[$id])) {
+					continue;
+				}
+				$support = (int)$row['support'];
+				$results[] = new PredictionResult($id, $this->clampRating((float)$row['numerator'] / $support), $support);
+			}
+			usort($results, fn($a, $b) => ($b->predictedRating <=> $a->predictedRating)
+				?: ($b->supportCount <=> $a->supportCount) ?: ($a->itemId <=> $b->itemId));
+			return $limit > 0 ? array_slice($results, 0, $limit) : $results;
+		}
+
+		/** @template T
+		 * @param array<int, float> $ratings Genuine visitor ratings
+		 * @param callable(string): T $operation Query using the temporary table
+		 * @return T Query result
+		 */
+		private function withVisitorRatingTable(array $ratings, callable $operation): mixed {
+			$table = 'recommender_visitor_prediction_input_' . bin2hex(random_bytes(6));
+			$this->connection->execute("CREATE TEMPORARY TABLE {$table}
+				(product_id INT UNSIGNED NOT NULL PRIMARY KEY, rating DOUBLE NOT NULL)");
+			try {
+				foreach (array_chunk($ratings, 500, true) as $batch) {
+					$values = [];
+					$params = [];
+					foreach ($batch as $id => $rating) {
+						$values[] = '(?, ?)';
+						$params[] = $id;
+						$params[] = $rating;
+					}
+					$this->connection->execute("INSERT INTO {$table} (product_id, rating) VALUES "
+						. implode(',', $values), $params);
+				}
+				return $operation($table);
+			} finally {
+				$this->connection->execute("DROP TEMPORARY TABLE {$table}");
+			}
+		}
+
 		// -------------------------------------------------------------------------
 		// Helpers
 		// -------------------------------------------------------------------------

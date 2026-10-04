@@ -5,6 +5,7 @@
 	use Quellabs\Recommender\Config\RecommendationConfig;
 	use Quellabs\Recommender\ItemRecommender;
 	use Quellabs\Recommender\VisitorContext;
+	use Quellabs\Recommender\RecommendationEngine;
 	
 	/**
 	 * Integration tests for ItemRecommender.
@@ -17,6 +18,39 @@
 		protected function setUp(): void {
 			parent::setUp();
 			$this->recommender = new ItemRecommender($this->connection, $this->config);
+		}
+
+		/** Verify support, ordering, legacy parity, and the rejected-item exclusion.
+		 * @return void
+		 */
+		public function testDetailedSlopePredictions(): void {
+			$this->insertRating(1, 10, 0.8);
+			$this->insertRating(1, 40, -1.0);
+			$this->insertLink(10, 20, 3, 0.3);
+			$this->insertLink(20, 10, 3, -0.3);
+			$this->insertLink(10, 30, 2, 0.2);
+			$this->insertLink(10, 40, 5, 0.5);
+
+			$member = $this->recommender->memberPredictAllDetailed(1);
+			$this->assertSame([20, 30], array_map(fn($row) => $row->itemId, $member));
+			$this->assertSame(3, $member[0]->supportCount);
+			$this->assertEqualsWithDelta($this->recommender->memberPredict(1, 20),
+				$member[0]->predictedRating, 0.00001);
+			$this->assertSame([20], array_map(fn($row) => $row->itemId,
+				$this->recommender->memberPredictAllDetailed(1, minSupport: 3)));
+
+			$visitor = new VisitorContext($this->config);
+			$visitor->setRating(10, 0.8);
+			$visitor->setRating(40, -1.0);
+			$results = $this->recommender->visitorPredictAllDetailed($visitor);
+			$this->assertSame([20, 30], array_map(fn($row) => $row->itemId, $results));
+			$this->assertSame(20, $this->recommender->visitorPredictAllDetailed($visitor, limit: 1)[0]->itemId);
+			$this->assertSame(30, $this->recommender->visitorPredictAllDetailed($visitor, [30], 1)[0]->itemId);
+			$this->assertEqualsWithDelta($this->recommender->visitorPredict($visitor, 20),
+				$this->recommender->visitorPredictDetailed($visitor, 20)->predictedRating, 0.00001);
+			$facade = new RecommendationEngine($this->connection, $this->config);
+			$this->assertSame(3, $facade->memberPredictDetailed(1, 20)->supportCount);
+			$this->assertSame(20, $facade->visitorPredictAllDetailed($visitor)[0]->itemId);
 		}
 		
 		// =========================================================================

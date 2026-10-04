@@ -319,6 +319,49 @@ $booksEngine  = new RecommendationEngine($connection, $booksConfig);
 $moviesEngine = new RecommendationEngine($connection, $moviesConfig);
 ```
 
+## Optional reconciliation and catalog eligibility
+
+The existing item-link, Slope One, and user-similarity methods remain independently callable. Detailed Slope One methods (`memberPredictDetailed`, `memberPredictAllDetailed`, and visitor equivalents) are available on `ItemRecommender` and `RecommendationEngine`. They return `PredictionResult` with a clamped rating and `supportCount`. Support is the sum of directed-pair `slope_count` values, not a count of independent people. Their `minSupport` defaults to 1 and must be positive.
+
+For a combined pool, construct `RecommendationReconciler` with the same connection and config used by the existing algorithms. The application must supply an `EligibilityProvider` already bound to the relevant category, tenant, locale, and current catalog state. Its `filterEligible(array $candidateIds): array` method receives a distinct, small batch and returns an order-preserving subset. It must enforce any timeout itself. Any exception or invalid response on any batch fails the whole reconciliation request; the caller decides whether to use a cache or show nothing.
+
+```php
+use Quellabs\Recommender\ArrayEligibilityProvider;
+use Quellabs\Recommender\RecommendationReconciler;
+use Quellabs\Recommender\RecommendationSource;
+use Quellabs\Recommender\ReconciliationRequest;
+
+$request = new ReconciliationRequest(
+    eligibility: new ArrayEligibilityProvider($smallCatalogEligibleIds),
+    sources: [RecommendationSource::SlopeOne, RecommendationSource::TopRated,
+        RecommendationSource::NewProducts],
+    limit: 10,
+    placement: 'home',
+    newProductIds: $orderedNewProductIds,
+    additionalCandidateIds: $explorationIds,
+    contextKey: 'tenant-a',
+);
+$reconciler = new RecommendationReconciler($connection, $config);
+$pool = $reconciler->rankCandidatesMember($memberId, $request);
+$shown = $pool->selectDisplayedIds([/* distinct item IDs from $pool */]);
+```
+
+The source array is a set; its order does not affect ranking. A visitor can use `rankCandidatesVisitor` or `recommendVisitor` with the same request shape, except `user_similarity` requires a persisted member. `recommendMember` and `recommendVisitor` return up to `limit` items; sparse or ineligible catalogs can yield fewer. `rankCandidatesMember` and its visitor equivalent expose the bounded full candidate pool for application-controlled selection. New products can be unrated but must be supplied as IDs by the application. The package does not query or verify a host product table. `ArrayEligibilityProvider` keeps the complete eligible-ID set in memory and suits small catalogs; larger catalogs should implement the interface using their own indexed or cached store. Eligibility answers are never cached by the package.
+
+Each source first searches `max(50, 5 * limit)` candidates. If too few survive, it doubles the source depth up to `max_candidate_depth` (default 2000) for at most `max_backfill_rounds` (default 3) additional rounds. Provider calls carry no more than `max_eligibility_batch_size` IDs (default 500). These are payload and search bounds; the provider is responsible for its own latency. A concurrent change that alters the prefix of a deeper source result fails the request. Seen and rejected items are excluded before provider calls. The provider's bound catalog context and the optional `contextKey` are separate: `contextKey` only partitions model training and evaluation records, alongside category, placement, and enabled sources. Omit it for the no-context partition; an empty string is invalid.
+
+Before a validated model is activated for the exact partition, `scoreKind` is `rank_fusion`: a sum of `1 / (60 + post-eligibility source rank)` across nominating sources. It is a rank score, not a probability. After activation, `scoreKind` becomes `click_probability`; each ranking score estimates a click at position 1 under the observed display policy. Source evidence includes native scores, post-eligibility ranks, available support or rating counts, and fitted source contributions when a model is active. Incremental `direct_links` and `direct_slope` flags do not prove that derived data exists; a rebuild may have populated it, and disabled incremental maintenance can make it stale.
+
+## Opt-in evaluation and click model
+
+Back up the database, then run `sculpt recommender:init-evaluation-db` to add the five optional tables from [`migrations/2026-10-evaluation-tables.sql`](migrations/2026-10-evaluation-tables.sql). This command does not drop ratings or links. A rollback backs up and drops, in order, `recommender_outcomes`, `recommender_impression_evidence`, `recommender_impression_items`, `recommender_impressions`, and `recommender_models`. Keep old model artifacts while their logged items reference them. Indexes support scoring-key lookup, display cohorts, model references, and item outcomes; table size grows with every opted-in display and event.
+
+Generating or ranking a list makes no analytics write. After actual display, call `EvaluationRecorder::recordImpression($shown, $memberId, $shownAt)` and retain its `ImpressionId`. Direct algorithm callers can build a `RecommendationList::fromDisplayedItems(...)` with their displayed `ReconciledRecommendation` items and evidence. Record clicks and purchases with a stable printable-ASCII event ID, an `OutcomeType`, and the actual event timestamp via `recordOutcome`; exact retries are harmless. A visitor display can omit member ID. To erase a member's evaluation history, call `deleteMemberHistory($memberId)` as well as the existing ratings deletion operation.
+
+Reports require explicit positive `AttributionWindows` and an `asOf` cutoff. `EvaluationReport::summary` counts each displayed item once per outcome type within the chosen window and exact context partition; source-specific reports overlap when an item has several source signals. The cohort is final only after the longest window has elapsed beyond the cohort end and all events through `asOf` have arrived. Choose a retention period yourself and run `sculpt recommender:prune-evaluation --before=<UTC ISO-8601 timestamp> [--batch-size=N]`; no automatic deletion occurs.
+
+Train with `sculpt recommender:train-click-model --category=N --placement=KEY --sources=slope_one,top_rated --from=UTC --to=UTC --as-of=UTC --click-window-seconds=N [--context=KEY]`. The command requires mature displayed-item labels, a chronological holdout, minimum sample counts, and validation against a constant-rate baseline. It stores a candidate model; activate a validated candidate explicitly with `sculpt recommender:activate-click-model --id=HEX`. Without enough data or an active validated model, rank fusion continues to serve. Logged position helps calibrate observed displays but does not remove exposure selection bias; rarely shown products do not have a reliable unbiased click estimate.
+
 ## License
 
 MIT

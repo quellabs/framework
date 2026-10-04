@@ -50,6 +50,9 @@
 				'not_interested'              => -1.0,
 				'direct_links'                => false,
 				'direct_slope'                => true,
+				'max_candidate_depth'         => 2000,
+				'max_backfill_rounds'         => 3,
+				'max_eligibility_batch_size'  => 500,
 			];
 		}
 		
@@ -63,6 +66,10 @@
 				PublishConfigCommand::class,
 				InitCommand::class,
 				RebuildLinksCommand::class,
+				InitEvaluationCommand::class,
+				PruneEvaluationCommand::class,
+				TrainClickModelCommand::class,
+				ActivateClickModelCommand::class,
 			]);
 		}
 		
@@ -108,6 +115,9 @@
 				notInterested: $this->getConfigValueAsFloat('not_interested', -1.0),
 				directLinks: (bool)$this->getConfigValue('direct_links', false),
 				directSlope: (bool)$this->getConfigValue('direct_slope', true),
+				maxCandidateDepth: $this->getConfigValueAsInt('max_candidate_depth', 2000),
+				maxBackfillRounds: $this->getConfigValueAsInt('max_backfill_rounds', 3),
+				maxEligibilityBatchSize: $this->getConfigValueAsInt('max_eligibility_batch_size', 500),
 			);
 			
 			return $this->recommendationConfig;

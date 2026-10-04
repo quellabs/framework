@@ -1,5 +1,34 @@
 # Independent recommender measures
 
+## Optional reconciliation and evaluation API
+
+This update adds detailed Slope One predictions with summed directed-pair support,
+an optional `RecommendationReconciler`, a required per-request catalog
+`EligibilityProvider`, ranked candidate pools, and caller-supplied new products.
+Existing public algorithm signatures and result shapes remain unchanged.
+Reconciliation uses rank fusion until a validated click model is explicitly
+activated for the exact category, placement, enabled sources, and context key.
+
+The optional evaluation upgrade adds five package-owned tables. Back up the
+database and run `sculpt recommender:init-evaluation-db`; this does not require
+`--force` and does not change the two existing tables. Display logging is opt-in
+through `EvaluationRecorder`; attribution reports require explicit windows and
+cutoff times. `recommender:prune-evaluation` requires an explicit cutoff.
+Training and activation are separate commands. Applications handling complete
+member deletion should call both the existing ratings deletion method and
+`EvaluationRecorder::deleteMemberHistory()`.
+
+To roll back only the optional feature, back up evaluation data and drop the
+five new tables in foreign-key-safe order: outcomes, evidence, impression items,
+impressions, and models. Existing rating and link data require no rollback.
+
+On a local MySQL test database with one member rating and 1,000 directed links,
+one 10-item item-link request used 10 queries and 9.425 ms when all 1,000 IDs
+were eligible. With only an item beyond the configured depth cap eligible, it
+returned zero items after bounded backfill using 24 queries and 21.617 ms.
+These are single-run fixture measurements, not production latency estimates.
+
+
 The `vogoo_links.cnt` column is replaced by `liked_count` and `slope_count`.
 `diff_slope` now sums the directed rating difference only for genuine rating
 pairs. Existing `cnt` values mix the two algorithms and cannot be reused.
