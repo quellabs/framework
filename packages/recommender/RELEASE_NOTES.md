@@ -28,6 +28,15 @@ were eligible. With only an item beyond the configured depth cap eligible, it
 returned zero items after bounded backfill using 24 queries and 21.617 ms.
 These are single-run fixture measurements, not production latency estimates.
 
+The repeatable [`benchmarks/reconciliation.php`](benchmarks/reconciliation.php) top-rated
+fixture uses 100 members, 200 products, and either 4 or 40 ratings per member.
+On the local MySQL test database, five-request medians with 20 eligible IDs
+were 5.581 ms (sparse, 400 ratings) and 11.595 ms (dense, 4,000 ratings),
+at 11 queries per request. With 180 eligible IDs, medians were 3.593 ms
+and 6.706 ms respectively, at 7 queries per request. All four cases
+returned 10 items. These measurements include local query overhead and do
+not predict production latency.
+
 
 The `vogoo_links.cnt` column is replaced by `liked_count` and `slope_count`.
 `diff_slope` now sums the directed rating difference only for genuine rating
