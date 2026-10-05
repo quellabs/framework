@@ -69,12 +69,12 @@
 					SUM((r2.`rating` - r1.`rating`) * (r2.`rating` - r1.`rating`)) AS s
 				FROM `vogoo_ratings` r1
 				INNER JOIN `vogoo_ratings` r2 ON r2.`member_id` = :member_id2 AND
-				                                 r2.`product_id` = r1.`product_id` AND
-				                                 r2.`category` = r1.`category` AND
-				                                 r2.`rating` >= 0.0
+					r2.`product_id` = r1.`product_id` AND
+					r2.`category` = r1.`category` AND
+					r2.`rating` >= 0.0
 				WHERE r1.`member_id` = :member_id1 AND
-				      r1.`category` = :category AND
-				      r1.`rating` >= 0.0
+					r1.`category` = :category AND
+					r1.`rating` >= 0.0
 			', [
 				'member_id1' => $memberId1,
 				'member_id2' => $memberId2,
@@ -146,12 +146,12 @@
 					SUM((r2.`rating` - r1.`rating`) * (r2.`rating` - r1.`rating`)) AS squared_diff
 				FROM `vogoo_ratings` r1
 				INNER JOIN `vogoo_ratings` r2 ON r2.`product_id` = r1.`product_id` AND
-				                                 r2.`category` = r1.`category` AND
-				                                 r2.`member_id` <> :member_id
+					r2.`category` = r1.`category` AND
+					r2.`member_id` <> :member_id
 				WHERE r1.`member_id` = :member_id2 AND
-				      r1.`category` = :category AND
-				      r1.`rating` >= 0.0 AND
-				      r2.`rating` >= 0.0
+					r1.`category` = :category AND
+					r1.`rating` >= 0.0 AND
+					r2.`rating` >= 0.0
 				GROUP BY r2.`member_id`
 			', [
 				'member_id'  => $memberId,
@@ -323,8 +323,12 @@
 			$similarities = array_column($neighbours, 'similarity', 'member_id');
 			
 			foreach (array_chunk(array_keys($similarities), 500) as $memberIds) {
-				$params = ['category' => $category, 'threshold' => $threshold,
-					'target_member' => $memberId, 'target_category' => $category];
+				$params = [
+					'category' => $category,
+					'threshold' => $threshold,
+					'target_member' => $memberId,
+					'target_category' => $category,
+				];
 				$names = [];
 	
 				foreach (array_values($memberIds) as $index => $neighbourId) {

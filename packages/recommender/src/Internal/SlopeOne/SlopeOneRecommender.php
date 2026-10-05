@@ -125,10 +125,12 @@
 			$resolvedCategory = $this->config->resolveCategory($category);
 			
 			$prediction = $this->detailedPrediction($productId, 1, $resolvedCategory,
-				'JOIN vogoo_ratings r ON r.product_id = l.item_id2 AND r.category = l.category
-				AND r.member_id = :member AND r.rating >= 0.0',
+				'JOIN vogoo_ratings r ON r.product_id = l.item_id2 AND
+					r.category = l.category AND
+					r.member_id = :member AND
+					r.rating >= 0.0',
 				['member' => $memberId]);
-	
+
 			return $prediction?->predictedRating;
 		}
 	
@@ -143,11 +145,20 @@
 		public function memberPredictAll(int $memberId, array $filter = [], int $limit = 0, ?int $category = null): array {
 			$resolvedCategory = $this->config->resolveCategory($category);
 			$rows = $this->unseenSlopeRows(
-				'JOIN vogoo_ratings r ON r.product_id = l.item_id1 AND r.category = l.category
-				AND r.member_id = :member AND r.rating >= 0.0',
-				'NOT EXISTS (SELECT 1 FROM vogoo_ratings seen WHERE seen.member_id = :seen_member
-				AND seen.category = :seen_category AND seen.product_id = l.item_id2)',
-				['member' => $memberId, 'seen_member' => $memberId, 'seen_category' => $resolvedCategory],
+				'JOIN vogoo_ratings r ON r.product_id = l.item_id1 AND
+					r.category = l.category AND
+					r.member_id = :member AND
+					r.rating >= 0.0',
+				'NOT EXISTS (SELECT 1 FROM vogoo_ratings seen
+					WHERE seen.member_id = :seen_member AND
+						seen.category = :seen_category AND
+						seen.product_id = l.item_id2
+				)',
+				[
+					'member' => $memberId,
+					'seen_member' => $memberId,
+					'seen_category' => $resolvedCategory,
+				],
 				$filter, $resolvedCategory, '');
 	
 			return $this->rankPredictions($rows, $limit);
@@ -215,8 +226,10 @@
 			$resolvedCategory = $this->config->resolveCategory($category);
 	
 			return $this->detailedPrediction($productId, $minSupport, $resolvedCategory,
-				'JOIN vogoo_ratings r ON r.product_id = l.item_id2 AND r.category = l.category
-				AND r.member_id = :member AND r.rating >= 0.0',
+				'JOIN vogoo_ratings r ON r.product_id = l.item_id2 AND
+					r.category = l.category AND
+					r.member_id = :member AND
+					r.rating >= 0.0',
 				['member' => $memberId]);
 		}
 	
@@ -236,11 +249,20 @@
 			$resolvedCategory = $this->config->resolveCategory($category);
 	
 			return $this->unseenDetailedPredictions(
-				'JOIN vogoo_ratings r ON r.product_id = l.item_id1 AND r.category = l.category
-				AND r.member_id = :member AND r.rating >= 0.0',
-				'NOT EXISTS (SELECT 1 FROM vogoo_ratings seen WHERE seen.member_id = :seen_member
-				AND seen.category = :seen_category AND seen.product_id = l.item_id2)',
-				['member' => $memberId, 'seen_member' => $memberId, 'seen_category' => $resolvedCategory],
+				'JOIN vogoo_ratings r ON r.product_id = l.item_id1 AND
+					r.category = l.category AND
+					r.member_id = :member AND
+					r.rating >= 0.0',
+				'NOT EXISTS (SELECT 1 FROM vogoo_ratings seen
+					WHERE seen.member_id = :seen_member AND
+						seen.category = :seen_category AND
+						seen.product_id = l.item_id2
+				)',
+				[
+					'member' => $memberId,
+					'seen_member' => $memberId,
+					'seen_category' => $resolvedCategory,
+				],
 				$filter, $limit, $resolvedCategory, $minSupport);
 		}
 	
@@ -437,7 +459,9 @@
 					SUM(r.rating * l.slope_count + l.diff_slope) AS numerator,
 					LEAST(1.0, GREATEST(0.0, SUM(r.rating * l.slope_count + l.diff_slope) / SUM(l.slope_count))) AS predicted
 				FROM vogoo_links l {$ratingJoin}
-				WHERE l.category = :category AND l.slope_count > 0 AND {$seenPredicate}";
+				WHERE l.category = :category AND
+					l.slope_count > 0 AND
+					{$seenPredicate}";
 			$sql .= $this->allowlist->predicate($filter, 'l.item_id2', $params);
 			$sql .= ' GROUP BY l.item_id2' . $tail;
 	

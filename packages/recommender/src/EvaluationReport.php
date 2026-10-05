@@ -110,8 +110,12 @@
 		private function summarySql(?RecommendationSource $source): string {
 			$clicked = OutcomeSubquery::exists('click', 'as_of', 'click_window');
 			$purchased = OutcomeSubquery::exists('purchase', 'as_of2', 'purchase_window');
-			$whereSource = $source === null ? '' : 'AND EXISTS (SELECT 1 FROM vogoo_impression_evidence e
-				WHERE e.impression_id = item.impression_id AND e.item_id = item.item_id AND e.source = :source)';
+			$whereSource = $source === null ? '' : 'AND EXISTS (
+				SELECT 1 FROM vogoo_impression_evidence e
+				WHERE e.impression_id = item.impression_id AND
+					e.item_id = item.item_id AND
+					e.source = :source
+			)';
 	
 			return "
 				SELECT
@@ -227,11 +231,17 @@
 			$brier = array_sum(array_map(fn($row) => ($row['probability'] - $row['clicked']) ** 2, $samples)) / $count;
 			[$modelId, $placement] = explode(':', $key, 2);
 			
-			return ['model_id'                 => $modelId, 'placement' => $placement,
-			        'impressions'              => $count, 'observed_click_rate' => $clicks / $count,
-			        'mean_display_probability' => $meanProbability, 'brier' => $brier,
-			        'bins'                     => self::calibrationBins($samples, $count), 'as_of' => $asOf,
-			        'click_window_seconds'     => $clickWindowSeconds];
+			return [
+				'model_id' => $modelId,
+				'placement' => $placement,
+				'impressions' => $count,
+				'observed_click_rate' => $clicks / $count,
+				'mean_display_probability' => $meanProbability,
+				'brier' => $brier,
+				'bins' => self::calibrationBins($samples, $count),
+				'as_of' => $asOf,
+				'click_window_seconds' => $clickWindowSeconds,
+			];
 		}
 		
 		/**

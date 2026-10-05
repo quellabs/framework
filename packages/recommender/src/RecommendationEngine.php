@@ -487,7 +487,11 @@
 		 */
 		private function deleteRatingsWhere(string $column, int $id, int $category): void {
 			if (!$this->config->isDirectLinks() && !$this->config->isDirectSlope()) {
-				$this->connection->execute("DELETE FROM `vogoo_ratings` WHERE `{$column}` = :id AND `category` = :category", [
+				$this->connection->execute("
+					DELETE FROM `vogoo_ratings`
+					WHERE `{$column}` = :id AND
+						`category` = :category
+				", [
 					'id'       => $id,
 					'category' => $category,
 				]);

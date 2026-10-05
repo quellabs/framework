@@ -103,15 +103,25 @@
 	                a.product_id,
 	                b.product_id,
 	                a.category,
-	                SUM(CASE WHEN a.rating >= :threshold1 AND b.rating >= :threshold2 THEN 1 ELSE 0 END),
+	                SUM(CASE
+	                    WHEN a.rating >= :threshold1 AND
+	                        b.rating >= :threshold2
+	                    THEN 1 ELSE 0 END),
 	                COUNT(*),
 	                SUM(b.rating - a.rating)
 	            FROM vogoo_ratings a
-	            INNER JOIN vogoo_ratings b ON b.member_id = a.member_id
-	                AND b.category = a.category AND b.product_id <> a.product_id AND b.rating >= 0.0
-	            WHERE a.category = :category AND a.rating >= 0.0
+	            INNER JOIN vogoo_ratings b ON b.member_id = a.member_id AND
+	                b.category = a.category AND
+	                b.product_id <> a.product_id AND
+	                b.rating >= 0.0
+	            WHERE a.category = :category AND
+	                a.rating >= 0.0
 	            GROUP BY a.product_id, b.product_id, a.category',
-					['threshold1' => $threshold, 'threshold2' => $threshold, 'category' => $category]);
+					[
+						'threshold1' => $threshold,
+						'threshold2' => $threshold,
+						'category' => $category,
+					]);
 					
 				$connection->transactional(function () use ($connection, $category): void {
 					$connection->execute('DELETE FROM vogoo_links WHERE category = :category', ['category' => $category]);

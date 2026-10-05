@@ -35,11 +35,19 @@
 			$fitted = $this->optimize($training, $names, $intercept, $coefficients, $means, $scales);
 			$holdoutReport = $this->evaluateHoldout($holdout, $fitted['intercept'], $fitted['coefficients'], $means, $scales, $rate);
 			
-			return ['feature_schema_version' => 1, 'intercept' => $fitted['intercept'],
-			        'coefficients'           => $fitted['coefficients'], 'means' => $means, 'scales' => $scales,
-			        'training_rate'          => $trainingRate, 'training_items' => count($training),
-			        'holdout_items'          => count($holdout), 'model_metrics' => $holdoutReport['model_metrics'],
-			        'baseline_metrics'       => $holdoutReport['baseline_metrics'], 'validated' => $holdoutReport['validated']];
+			return [
+				'feature_schema_version' => 1,
+				'intercept' => $fitted['intercept'],
+				'coefficients' => $fitted['coefficients'],
+				'means' => $means,
+				'scales' => $scales,
+				'training_rate' => $trainingRate,
+				'training_items' => count($training),
+				'holdout_items' => count($holdout),
+				'model_metrics' => $holdoutReport['model_metrics'],
+				'baseline_metrics' => $holdoutReport['baseline_metrics'],
+				'validated' => $holdoutReport['validated'],
+			];
 		}
 		
 		/**
@@ -164,7 +172,11 @@
 				$candidateLoss = $this->loss($training, $candidateIntercept, $candidateCoefficients, $means, $scales);
 				
 				if ($candidateLoss <= $loss || $step < 1e-12) {
-					return ['intercept' => $candidateIntercept, 'coefficients' => $candidateCoefficients, 'loss' => $candidateLoss];
+					return [
+						'intercept' => $candidateIntercept,
+						'coefficients' => $candidateCoefficients,
+						'loss' => $candidateLoss,
+					];
 				}
 				
 				$step /= 2;
@@ -195,7 +207,11 @@
 			$validated = $modelMetrics['log_loss'] <= $baselineMetrics['log_loss']
 				&& $modelMetrics['brier'] <= $baselineMetrics['brier'] && $modelMetrics['ece'] <= 0.05;
 				
-			return ['model_metrics' => $modelMetrics, 'baseline_metrics' => $baselineMetrics, 'validated' => $validated];
+			return [
+				'model_metrics' => $modelMetrics,
+				'baseline_metrics' => $baselineMetrics,
+				'validated' => $validated,
+			];
 		}
 		
 		/**
@@ -268,12 +284,20 @@
 				
 				$predicted = array_sum(array_column($slice, 'probability')) / count($slice);
 				$observed = array_sum(array_column($slice, 'label')) / count($slice);
-				$bins[] = ['count' => count($slice), 'predicted' => $predicted, 'observed' => $observed];
+				$bins[] = [
+					'count' => count($slice),
+					'predicted' => $predicted,
+					'observed' => $observed,
+				];
 				$ece += count($slice) / count($predictions) * abs($predicted - $observed);
 			}
 			
-			return ['log_loss' => $logLoss / count($predictions), 'brier' => $brier / count($predictions),
-			        'ece'      => $ece, 'bins' => $bins];
+			return [
+				'log_loss' => $logLoss / count($predictions),
+				'brier' => $brier / count($predictions),
+				'ece' => $ece,
+				'bins' => $bins,
+			];
 		}
 	
 		/**

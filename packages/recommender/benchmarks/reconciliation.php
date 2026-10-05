@@ -74,9 +74,14 @@
 	            $returned[] = count($list->items);
 	        }
 	        sort($times);
-	        echo json_encode(['density' => $density, 'eligible' => $size,
-	            'ratings' => 100 * $ratingsPerMember, 'eligible_ids' => count($eligible),
-	            'returned' => $returned[0], 'queries' => $queries,
-	            'median_ms' => round($times[2], 3)], JSON_THROW_ON_ERROR), PHP_EOL;
+	        echo json_encode([
+	            'density' => $density,
+	            'eligible' => $size,
+	            'ratings' => 100 * $ratingsPerMember,
+	            'eligible_ids' => count($eligible),
+	            'returned' => $returned[0],
+	            'queries' => $queries,
+	            'median_ms' => round($times[2], 3),
+	        ], JSON_THROW_ON_ERROR), PHP_EOL;
 	    }
 	}

@@ -121,8 +121,12 @@
 				}
 				
 				$this->connection->execute('UPDATE vogoo_models SET status = \'retired\'
-	                WHERE objective = ? AND category = ? AND placement = ? AND source_mask = ?
-	                AND context_key = ? AND status = \'active\'',
+	                WHERE objective = ? AND
+	                    category = ? AND
+	                    placement = ? AND
+	                    source_mask = ? AND
+	                    context_key = ? AND
+	                    status = \'active\'',
 					[$row['objective'], $row['category'], $row['placement'], $row['source_mask'], $row['context_key']]);
 				$this->connection->execute('UPDATE vogoo_models SET status = \'active\',
 	                activated_at = UTC_TIMESTAMP(6) WHERE id = UNHEX(?)', [$modelId]);

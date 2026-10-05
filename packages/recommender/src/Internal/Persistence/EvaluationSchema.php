@@ -121,10 +121,17 @@
 		
 		/** @var array<string, int> Required character length per column */
 		private const COLUMN_LENGTHS = [
-			'id'        => 16, 'impression_id' => 16, 'model_id' => 16,
-			'objective' => 16, 'placement' => 64, 'context_key' => 128,
-			'status'    => 16, 'score_kind' => 24, 'source' => 32,
-			'event_id'  => 128, 'event_type' => 16,
+			'id' => 16,
+			'impression_id' => 16,
+			'model_id' => 16,
+			'objective' => 16,
+			'placement' => 64,
+			'context_key' => 128,
+			'status' => 16,
+			'score_kind' => 24,
+			'source' => 32,
+			'event_id' => 128,
+			'event_type' => 16,
 		];
 		
 		/**

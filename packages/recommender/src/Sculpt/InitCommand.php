@@ -95,9 +95,9 @@
 					'
 						SELECT
 							COUNT(*) AS cnt
-					 FROM information_schema.tables
-					 WHERE table_schema = DATABASE()
-					   AND table_name = :table',
+						FROM information_schema.tables
+						WHERE table_schema = DATABASE() AND
+							table_name = :table',
 					['table' => $table],
 				)->fetchAssoc();
 	

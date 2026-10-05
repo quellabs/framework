@@ -14,9 +14,14 @@
 		 * @return string SQL expression
 		 */
 		public static function exists(string $eventType, string $asOfParam, string $windowParam): string {
-			return "EXISTS (SELECT 1 FROM vogoo_outcomes o WHERE o.impression_id = i.id
-				AND o.item_id = item.item_id AND o.event_type = '{$eventType}'
-				AND o.occurred_at >= i.shown_at AND o.occurred_at <= :{$asOfParam}
-				AND o.occurred_at <= TIMESTAMPADD(SECOND, :{$windowParam}, i.shown_at))";
+			return "EXISTS (
+				SELECT 1 FROM vogoo_outcomes o
+				WHERE o.impression_id = i.id AND
+					o.item_id = item.item_id AND
+					o.event_type = '{$eventType}' AND
+					o.occurred_at >= i.shown_at AND
+					o.occurred_at <= :{$asOfParam} AND
+					o.occurred_at <= TIMESTAMPADD(SECOND, :{$windowParam}, i.shown_at)
+			)";
 		}
 	}

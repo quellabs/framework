@@ -142,11 +142,21 @@
 		 */
 		private function changePair(int $first, int $second, int $category, int $likedDelta, int $slopeDelta, float $diffDelta): void {
 			if ($likedDelta < 0 || $slopeDelta < 0) {
-				$this->connection->execute('UPDATE vogoo_links SET liked_count = liked_count + :liked,
-            slope_count = slope_count + :slope, diff_slope = diff_slope + :diff
-            WHERE item_id1 = :first AND item_id2 = :second AND category = :category',
-					['first' => $first, 'second' => $second, 'category' => $category,
-					 'liked' => $likedDelta, 'slope' => $slopeDelta, 'diff' => $diffDelta]);
+				$this->connection->execute('UPDATE vogoo_links
+					SET liked_count = liked_count + :liked,
+						slope_count = slope_count + :slope,
+						diff_slope = diff_slope + :diff
+					WHERE item_id1 = :first AND
+						item_id2 = :second AND
+						category = :category',
+					[
+						'first' => $first,
+						'second' => $second,
+						'category' => $category,
+						'liked' => $likedDelta,
+						'slope' => $slopeDelta,
+						'diff' => $diffDelta,
+					]);
 				return;
 			}
 			
@@ -155,8 +165,14 @@
             VALUES (:first, :second, :category, :liked, :slope, :diff)
             ON DUPLICATE KEY UPDATE liked_count = liked_count + VALUES(liked_count),
             slope_count = slope_count + VALUES(slope_count), diff_slope = diff_slope + VALUES(diff_slope)',
-				['first' => $first, 'second' => $second, 'category' => $category,
-				 'liked' => $likedDelta, 'slope' => $slopeDelta, 'diff' => $diffDelta]
+				[
+					'first' => $first,
+					'second' => $second,
+					'category' => $category,
+					'liked' => $likedDelta,
+					'slope' => $slopeDelta,
+					'diff' => $diffDelta,
+				]
 			);
 		}
 		
@@ -166,7 +182,10 @@
 		 * @return void
 		 */
 		private function prune(int $category): void {
-			$this->connection->execute('DELETE FROM vogoo_links WHERE category = :category AND liked_count = 0 AND slope_count = 0',
+			$this->connection->execute('DELETE FROM vogoo_links
+				WHERE category = :category AND
+					liked_count = 0 AND
+					slope_count = 0',
 				['category' => $category]);
 		}
 	}

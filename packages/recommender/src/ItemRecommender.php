@@ -71,7 +71,8 @@
 					`liked_count`
 				FROM `vogoo_links`
 				WHERE `item_id1` = :product_id AND
-				      `category` = :category AND `liked_count` > 0
+					`category` = :category AND
+					`liked_count` > 0
 	        ';
 			$params = ['product_id' => $productId, 'category' => $resolvedCategory];
 			$sql .= $this->allowlist->predicate($filter, '`item_id2`', $params);
@@ -101,11 +102,20 @@
 		public function memberGetRecommendedItems(int $memberId, array $filter = [], int $limit = 0, ?int $category = null): array {
 			$resolvedCategory = $this->config->resolveCategory($category);
 			$rows = $this->linkScoreRows(
-				'JOIN vogoo_ratings r ON r.member_id = :member AND l.item_id1 = r.product_id
-				AND l.category = r.category AND r.rating >= 0.0',
-				'NOT EXISTS (SELECT 1 FROM vogoo_ratings vr WHERE vr.member_id = :member2
-				AND vr.category = :category2 AND vr.product_id = l.item_id2)',
-				['member' => $memberId, 'member2' => $memberId, 'category2' => $resolvedCategory],
+				'JOIN vogoo_ratings r ON r.member_id = :member AND
+					l.item_id1 = r.product_id AND
+					l.category = r.category AND
+					r.rating >= 0.0',
+				'NOT EXISTS (SELECT 1 FROM vogoo_ratings vr
+					WHERE vr.member_id = :member2 AND
+						vr.category = :category2 AND
+						vr.product_id = l.item_id2
+				)',
+				[
+					'member' => $memberId,
+					'member2' => $memberId,
+					'category2' => $resolvedCategory,
+				],
 				$filter, $resolvedCategory, $limit);
 	
 			return $this->rowProductIds($rows);
@@ -129,12 +139,12 @@
 					r.`product_id`
 				FROM `vogoo_ratings` r
 				INNER JOIN `vogoo_links` l ON l.`item_id1` = :product_id AND
-				                             r.`product_id` = l.`item_id2` AND
-				                             l.`liked_count` > 0 AND
-				                             l.`category` = r.`category`
+					r.`product_id` = l.`item_id2` AND
+					l.`liked_count` > 0 AND
+					l.`category` = r.`category`
 				WHERE r.`member_id` = :member_id AND
-				      r.`category` = :category AND
-				      r.`rating` >= :threshold
+					r.`category` = :category AND
+					r.`rating` >= :threshold
 			';
 			
 			$params = [
@@ -409,7 +419,7 @@
 		 * Decode the JSON contributor list returned for an item-links recommendation.
 		 * @param string $json JSON array of product IDs
 		 * @return array<int, int> Unique contributing product IDs in ascending order
-		 * @throws \UnexpectedValueException When the JSON is not an array of integers
+		 * @throws \UnexpectedValueException|\JsonException When the JSON is not an array of integers
 		 */
 		private function decodeContributorIds(string $json): array {
 			$decoded = json_decode($json, true, 512, JSON_THROW_ON_ERROR);
@@ -596,15 +606,18 @@
 		 * @param int $limit Maximum results, or zero for all
 		 * @return array<int, array<string, mixed>> Rows with item_id2 and score
 		 */
-		private function linkScoreRows(string $ratingJoin, string $seenPredicate, array $params,
-			array $filter, int $category, int $limit): array {
+		private function linkScoreRows(string $ratingJoin, string $seenPredicate, array $params, array $filter, int $category, int $limit): array {
 			$params += ['threshold' => $this->config->getThresholdRating(), 'category' => $category];
+			
 			$sql = "
 				SELECT
 					l.item_id2,
 					SUM(l.liked_count * (r.rating - :threshold)) AS score
 				FROM vogoo_links l {$ratingJoin}
-				WHERE l.category = :category AND l.liked_count > 0 AND {$seenPredicate}";
+				WHERE l.category = :category AND
+					l.liked_count > 0 AND
+					{$seenPredicate}";
+
 			$sql .= $this->allowlist->predicate($filter, 'l.item_id2', $params);
 			$sql .= ' GROUP BY l.item_id2 HAVING score > 0 ORDER BY score DESC, l.item_id2 ASC' . Results::limitSql($limit);
 	
@@ -623,18 +636,34 @@
 		 * @return array<int, array<string, mixed>> Rows with item_id2, score and contributors
 		 */
 		private function memberLinkScoreRows(int $memberId, array $filter, int $category): array {
-			$params = ['member' => $memberId, 'category' => $category, 'threshold' => $this->config->getThresholdRating(),
-				'member2' => $memberId, 'category2' => $category];
+			$params = [
+				'member' => $memberId,
+				'category' => $category,
+				'threshold' => $this->config->getThresholdRating(),
+				'member2' => $memberId,
+				'category2' => $category,
+			];
+
 			$sql = '
 				SELECT
 					l.item_id2,
 					SUM(l.liked_count * (r.rating - :threshold)) AS score,
 					JSON_ARRAYAGG(r.product_id) AS contributors
-				FROM vogoo_links l JOIN vogoo_ratings r ON r.product_id = l.item_id1
-					AND r.category = l.category AND r.member_id = :member AND r.rating >= 0.0
-				WHERE l.category = :category AND l.liked_count > 0
-					AND NOT EXISTS (SELECT 1 FROM vogoo_ratings seen WHERE seen.member_id = :member2
-						AND seen.category = :category2 AND seen.product_id = l.item_id2)';
+				FROM vogoo_links l
+				JOIN vogoo_ratings r ON r.product_id = l.item_id1 AND
+					r.category = l.category AND
+					r.member_id = :member AND
+					r.rating >= 0.0
+				WHERE l.category = :category AND
+					l.liked_count > 0 AND
+					NOT EXISTS (
+						SELECT 1 FROM vogoo_ratings seen
+						WHERE seen.member_id = :member2 AND
+							seen.category = :category2 AND
+							seen.product_id = l.item_id2
+					)
+			';
+			
 			$sql .= $this->allowlist->predicate($filter, 'l.item_id2', $params);
 			$sql .= ' GROUP BY l.item_id2 HAVING score > 0 ORDER BY score DESC, l.item_id2 ASC';
 	
