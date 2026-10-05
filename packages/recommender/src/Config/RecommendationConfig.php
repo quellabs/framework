@@ -4,40 +4,40 @@ namespace Quellabs\Recommender\Config;
 
 use Quellabs\Recommender\Internal\Identifier;
 
-class RecommendationConfig {
+readonly class RecommendationConfig {
 	
 	/** @var int Default category for all operations */
-	private readonly int $category;
+	private int $category;
 	
 	/** @var int Minimum common ratings before similarity is considered reliable */
-	private readonly int $thresholdNrCommonRatings;
+	private int $thresholdNrCommonRatings;
 	
 	/** @var int Multiplier used in the similarity confidence calculation */
-	private readonly int $thresholdMult;
+	private int $thresholdMult;
 	
 	/** @var float Minimum rating for an item to count as liked in link and slope calculations */
-	private readonly float $thresholdRating;
+	private float $thresholdRating;
 	
 	/** @var float Cost factor used in the similarity spread calculation */
-	private readonly float $cost;
+	private float $cost;
 	
 	/** @var float Sentinel rating stored in vogoo_ratings to mark not interested */
-	private readonly float $notInterested;
+	private float $notInterested;
 	
 	/** @var bool Whether the link table is maintained incrementally on every rating change */
-	private readonly bool $directLinks;
+	private bool $directLinks;
 	
 	/** @var bool Whether the slope one diff table is maintained incrementally on every rating change */
-	private readonly bool $directSlope;
+	private bool $directSlope;
 	
 	/** @var int Maximum reconciliation source depth */
-	private readonly int $maxCandidateDepth;
+	private int $maxCandidateDepth;
 	
 	/** @var int Maximum deeper-query rounds */
-	private readonly int $maxBackfillRounds;
+	private int $maxBackfillRounds;
 	
 	/** @var int Maximum IDs in one eligibility provider call */
-	private readonly int $maxEligibilityBatchSize;
+	private int $maxEligibilityBatchSize;
 	
 	/**
 	 * Build an immutable recommendation configuration.
