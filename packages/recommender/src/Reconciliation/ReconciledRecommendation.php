@@ -36,12 +36,12 @@
 		 * @throws \InvalidArgumentException When a value is outside its allowed range
 		 */
 		public function __construct(
-			int    $itemId,
+			int $itemId,
 			?float $rankingScore,
-			array  $evidence,
-			array  $featureSnapshot = [],
-			array  $sourceLogOddsContributions = [],
-			array  $searchedDepths = []
+			array $evidence,
+			array $featureSnapshot = [],
+			array $sourceLogOddsContributions = [],
+			array $searchedDepths = []
 		) {
 			if ($itemId < 0 || $itemId > Identifier::MAX) {
 				throw new \InvalidArgumentException("Item ID must be an unsigned 32-bit integer, got {$itemId}.");
@@ -56,7 +56,7 @@
 			
 			self::validateSourceContributions($sourceLogOddsContributions);
 			self::validateSearchedDepths($searchedDepths);
-
+			
 			$this->itemId = $itemId;
 			$this->rankingScore = $rankingScore;
 			$this->evidence = $evidence;
@@ -64,7 +64,7 @@
 			$this->sourceLogOddsContributions = $sourceLogOddsContributions;
 			$this->searchedDepths = $searchedDepths;
 		}
-
+		
 		/**
 		 * Reject source log-odds contributions that are not finite floats keyed by source name.
 		 * @param array<mixed> $contributions Source log-odds contributions
@@ -78,7 +78,7 @@
 				}
 			}
 		}
-
+		
 		/**
 		 * Reject searched depths that are not positive integers keyed by source name.
 		 * @param array<mixed> $depths Searched depths per source

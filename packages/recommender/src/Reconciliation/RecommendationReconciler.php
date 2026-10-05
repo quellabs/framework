@@ -30,6 +30,9 @@
 	 */
 	readonly class RecommendationReconciler {
 		
+		/** @var string Error message */
+		private const string MALFORMED_CANDIDATE_ROW = 'Source candidate row must have a numeric id, and numeric score and support_count when present.';
+		
 		/** @var Connection Ratings database connection */
 		private Connection $connection;
 		
@@ -542,7 +545,7 @@
 		 */
 		private function auditUserSimilarity(int $memberId, array $missing, ReconciliationRequest $request, int $category, array &$audit): void {
 			$similarity = new UserSimilarity($this->connection, $this->config, new RecommendationEngine($this->connection, $this->config));
-
+			
 			$rows = $similarity->memberRecommendationsScored(
 				$memberId, $request->minNeighbourSimilarity, $request->maxNeighbours,
 				count($missing), $category, $missing
@@ -567,7 +570,7 @@
 						"AND EXISTS (SELECT 1 FROM {$table} candidates WHERE candidates.product_id = r.product_id)", null);
 				});
 		}
-
+		
 		/**
 		 * Run the top-rated aggregate under a restriction, keeping the top rows when a depth is given.
 		 * @param int $category Resolved category
@@ -610,18 +613,30 @@
 		 * @param ReconciliationRequest $request Source thresholds
 		 * @return array<mixed> Aggregate candidate rows
 		 */
-		private function auditRatingRows(RecommendationSource $source, array $candidateIds,
-			array $ratings, int $category, ReconciliationRequest $request): array {
+		private function auditRatingRows(RecommendationSource $source, array $candidateIds, array $ratings, int $category, ReconciliationRequest $request): array {
 			return $this->temporary->withRatingTable('vogoo_audit_ratings_', $ratings,
 				function (string $ratingsTable) use ($source, $candidateIds, $category, $request): array {
-					return $this->temporary->withIdTable('vogoo_audit_candidates_', $candidateIds,
-						function (string $candidateTable) use ($source, $ratingsTable, $category, $request): array {
-							return $this->sourceRows($source, $ratingsTable, $category, $request,
-								"AND EXISTS (SELECT 1 FROM {$candidateTable} candidates WHERE candidates.product_id = l.item_id2)", null);
-						});
+					return $this->auditRatingCandidates($source, $ratingsTable, $candidateIds, $category, $request);
 				});
 		}
-
+		
+		/**
+		 * Score the given candidates against a rating table with the item-links or Slope One aggregate.
+		 * @param RecommendationSource $source Item-links or Slope One
+		 * @param string $ratingsTable Temporary table of rating inputs
+		 * @param array<int, int> $candidateIds Candidate IDs to score
+		 * @param int $category Resolved category
+		 * @param ReconciliationRequest $request Source thresholds
+		 * @return array<mixed> Aggregate candidate rows
+		 */
+		private function auditRatingCandidates(RecommendationSource $source, string $ratingsTable, array $candidateIds, int $category, ReconciliationRequest $request): array {
+			return $this->temporary->withIdTable('vogoo_audit_candidates_', $candidateIds,
+				function (string $candidateTable) use ($source, $ratingsTable, $category, $request): array {
+					$restriction = "AND EXISTS (SELECT 1 FROM {$candidateTable} candidates WHERE candidates.product_id = l.item_id2)";
+					return $this->sourceRows($source, $ratingsTable, $category, $request, $restriction, null);
+				});
+		}
+		
 		/**
 		 * Run the item-links or Slope One aggregate against a rating table under a restriction.
 		 * @param RecommendationSource $source Item-links or Slope One
@@ -632,8 +647,7 @@
 		 * @param int|null $depth Keeps the top rows by score up to this depth, or all rows when null
 		 * @return array<mixed> Aggregate candidate rows
 		 */
-		private function sourceRows(RecommendationSource $source, string $ratingsTable, int $category,
-			ReconciliationRequest $request, string $restriction, ?int $depth): array {
+		private function sourceRows(RecommendationSource $source, string $ratingsTable, int $category, ReconciliationRequest $request, string $restriction, ?int $depth): array {
 			return $this->connection->execute(
 				$this->sourceAggregateSql($source, $ratingsTable, $restriction, $depth),
 				$this->sourceAggregateParams($source, $category, $request)
@@ -648,8 +662,7 @@
 		 * @param int|null $depth Keeps the top rows by score up to this depth, or all rows when null
 		 * @return string Query with :threshold, :category and :minimum placeholders as used by the source
 		 */
-		private function sourceAggregateSql(RecommendationSource $source, string $ratingsTable,
-			string $restriction, ?int $depth): string {
+		private function sourceAggregateSql(RecommendationSource $source, string $ratingsTable, string $restriction, ?int $depth): string {
 			if ($source === RecommendationSource::ItemLinks) {
 				$sql = "
 					SELECT
@@ -689,9 +702,9 @@
 		private function sourceAggregateParams(RecommendationSource $source, int $category, ReconciliationRequest $request): array {
 			if ($source === RecommendationSource::ItemLinks) {
 				return ['threshold' => $this->config->getThresholdRating(), 'category' => $category];
+			} else {
+				return ['category' => $category, 'minimum' => $request->minSlopeSupport];
 			}
-			
-			return ['category' => $category, 'minimum' => $request->minSlopeSupport];
 		}
 		
 		/**
@@ -704,8 +717,7 @@
 		 * @param ReconciliationRequest $request Source settings
 		 * @return array<int, CandidateRow>
 		 */
-		private function generate(RecommendationSource $source, ?int $memberId, array $ratings,
-			int $category, int $depth, ReconciliationRequest $request): array {
+		private function generate(RecommendationSource $source, ?int $memberId, array $ratings, int $category, int $depth, ReconciliationRequest $request): array {
 			if ($source === RecommendationSource::NewProducts) {
 				return $this->generateNewProducts($request, $ratings, $depth);
 			}
@@ -762,7 +774,7 @@
 					return $this->topRatedRows($category, $request,
 						"AND NOT EXISTS (SELECT 1 FROM {$seenTable} s WHERE s.product_id = r.product_id)", $depth);
 				});
-
+			
 			return $this->normalizeRows($rows, $ratings);
 		}
 		
@@ -780,10 +792,8 @@
 				throw new \InvalidArgumentException('User similarity requires a persisted member.');
 			}
 			
-			$similarity = new UserSimilarity($this->connection, $this->config,
-				new RecommendationEngine($this->connection, $this->config));
-			$rows = $similarity->memberRecommendationsScored($memberId, $request->minNeighbourSimilarity,
-				$request->maxNeighbours, $depth, $category);
+			$similarity = new UserSimilarity($this->connection, $this->config, new RecommendationEngine($this->connection, $this->config));
+			$rows = $similarity->memberRecommendationsScored($memberId, $request->minNeighbourSimilarity, $request->maxNeighbours, $depth, $category);
 			
 			return array_map(function ($row): array {
 				return [
@@ -805,17 +815,28 @@
 		 * @param ReconciliationRequest $request Source settings
 		 * @return array<int, CandidateRow>
 		 */
-		private function generateFromRatings(RecommendationSource $source, array $genuine,
-			array $seen, int $category, int $depth, ReconciliationRequest $request): array {
+		private function generateFromRatings(RecommendationSource $source, array $genuine, array $seen, int $category, int $depth, ReconciliationRequest $request): array {
 			return $this->temporary->withRatingTable('vogoo_source_input_', $genuine,
-				function (string $table) use ($source, $seen, $category, $request, $depth): array {
-					return $this->temporary->withIdTable('vogoo_seen_', array_keys($seen),
-						function (string $seenTable) use ($source, $table, $seen, $category, $request, $depth): array {
-							return $this->normalizeRows(
-								$this->sourceRows($source, $table, $category, $request,
-									"AND NOT EXISTS (SELECT 1 FROM {$seenTable} s WHERE s.product_id = l.item_id2)", $depth),
-								$seen);
-						});
+				function (string $table) use ($source, $seen, $category, $depth, $request): array {
+					return $this->seenCandidates($source, $table, $seen, $category, $depth, $request);
+				});
+		}
+		
+		/**
+		 * Return the aggregate candidates of a rating table that the member has not seen, up to the depth.
+		 * @param RecommendationSource $source Item-link or Slope One source
+		 * @param string $ratingsTable Temporary table of rating inputs
+		 * @param array<int, float> $seen All seen ratings
+		 * @param int $category Resolved category
+		 * @param int $depth Source depth
+		 * @param ReconciliationRequest $request Source settings
+		 * @return array<int, CandidateRow>
+		 */
+		private function seenCandidates(RecommendationSource $source, string $ratingsTable, array $seen, int $category, int $depth, ReconciliationRequest $request): array {
+			return $this->temporary->withIdTable('vogoo_seen_', array_keys($seen),
+				function (string $seenTable) use ($source, $ratingsTable, $seen, $category, $depth, $request): array {
+					$restriction = "AND NOT EXISTS (SELECT 1 FROM {$seenTable} s WHERE s.product_id = l.item_id2)";
+					return $this->normalizeRows($this->sourceRows($source, $ratingsTable, $category, $request, $restriction, $depth), $seen);
 				});
 		}
 		
@@ -850,9 +871,6 @@
 			
 			return $result;
 		}
-		
-		private const MALFORMED_CANDIDATE_ROW = 'Source candidate row must have a numeric id, and numeric score and support_count when present.';
-		
 		
 		/**
 		 * Read the id, score and support count from a candidate row.
