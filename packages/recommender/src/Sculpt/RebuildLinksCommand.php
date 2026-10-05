@@ -62,7 +62,16 @@ HELP;
 		}
 		
 		if ($category === null) {
-			$rows = $connection->execute('SELECT category FROM vogoo_ratings UNION SELECT category FROM vogoo_links ORDER BY category')->fetchAll('assoc');
+			$rows = $connection->execute('
+				SELECT
+					category
+				FROM vogoo_ratings
+				UNION
+				SELECT
+					category
+				FROM vogoo_links
+				ORDER BY category
+			')->fetchAll('assoc');
 			$categories = array_map('intval', array_column($rows, 'category'));
 		} else {
 			$categories = [$category];
@@ -90,9 +99,13 @@ HELP;
 		try {
 			$connection->execute('INSERT INTO vogoo_links_stage
             (item_id1, item_id2, category, liked_count, slope_count, diff_slope)
-            SELECT a.product_id, b.product_id, a.category,
+            SELECT
+                a.product_id,
+                b.product_id,
+                a.category,
                 SUM(CASE WHEN a.rating >= :threshold1 AND b.rating >= :threshold2 THEN 1 ELSE 0 END),
-                COUNT(*), SUM(b.rating - a.rating)
+                COUNT(*),
+                SUM(b.rating - a.rating)
             FROM vogoo_ratings a
             INNER JOIN vogoo_ratings b ON b.member_id = a.member_id
                 AND b.category = a.category AND b.product_id <> a.product_id AND b.rating >= 0.0
@@ -104,11 +117,21 @@ HELP;
 				$connection->execute('DELETE FROM vogoo_links WHERE category = :category', ['category' => $category]);
 				$connection->execute('INSERT INTO vogoo_links
                 (item_id1, item_id2, category, liked_count, slope_count, diff_slope)
-                SELECT item_id1, item_id2, category, liked_count, slope_count, diff_slope
+                SELECT
+                    item_id1,
+                    item_id2,
+                    category,
+                    liked_count,
+                    slope_count,
+                    diff_slope
                 FROM vogoo_links_stage');
 			});
 			
-			$count = $connection->execute('SELECT COUNT(*) AS total FROM vogoo_links_stage')->fetchAssoc()['total'];
+			$count = $connection->execute('
+				SELECT
+					COUNT(*) AS total
+				FROM vogoo_links_stage
+			')->fetchAssoc()['total'];
 			$this->output->success("Category {$category}: rebuilt {$count} directed pairs.");
 		} finally {
 			$connection->execute('DROP TEMPORARY TABLE IF EXISTS vogoo_links_stage');

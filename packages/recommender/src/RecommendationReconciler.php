@@ -66,9 +66,17 @@ readonly class RecommendationReconciler {
 		}
 		
 		$category = $this->config->resolveCategory($request->category);
-		$rows = $this->connection->execute('SELECT product_id, rating FROM vogoo_ratings
-            WHERE member_id = :member AND category = :category',
-			['member' => $memberId, 'category' => $category])->fetchAll('assoc');
+		$rows = $this->connection->execute('
+			SELECT
+				product_id,
+				rating
+			FROM vogoo_ratings
+			WHERE member_id = :member AND
+			      category = :category
+		', [
+			'member' => $memberId,
+			'category' => $category,
+		])->fetchAll('assoc');
 			
 		$ratings = [];
 		
@@ -336,17 +344,40 @@ readonly class RecommendationReconciler {
 	 * @throws \UnexpectedValueException When the model schema or feature names do not match the request
 	 */
 	private function activeModel(int $category, ReconciliationRequest $request): ?array {
-		$exists = $this->connection->execute('SELECT COUNT(*) AS total FROM information_schema.tables
-            WHERE table_schema = DATABASE() AND table_name = \'vogoo_models\'')->fetchAssoc();
-		
+		$exists = $this->connection->execute('
+			SELECT
+				COUNT(*) AS total
+			FROM information_schema.tables
+			WHERE table_schema = DATABASE() AND
+			      table_name = :table_name
+		', [
+			'table_name' => 'vogoo_models',
+		])->fetchAssoc();
+
 		if ((int)$exists['total'] === 0) {
 			return null;
 		}
-		
-		$row = $this->connection->execute('SELECT HEX(id) AS model_id, feature_schema_version, artifact
-            FROM vogoo_models WHERE objective = \'click\' AND category = ? AND placement = ?
-                AND source_mask = ? AND context_key = ? AND status = \'active\'',
-			[$category, $request->placement, $request->sourceMask(), $request->contextKey ?? ''])->fetchAssoc();
+
+		$row = $this->connection->execute('
+			SELECT
+				HEX(id) AS model_id,
+				feature_schema_version,
+				artifact
+			FROM vogoo_models
+			WHERE objective = :objective AND
+			      category = :category AND
+			      placement = :placement AND
+			      source_mask = :source_mask AND
+			      context_key = :context_key AND
+			      status = :status
+		', [
+			'objective' => 'click',
+			'category' => $category,
+			'placement' => $request->placement,
+			'source_mask' => $request->sourceMask(),
+			'context_key' => $request->contextKey ?? '',
+			'status' => 'active',
+		])->fetchAssoc();
 			
 		if (!$row) {
 			return null;
@@ -548,7 +579,11 @@ readonly class RecommendationReconciler {
 	 * @return string Query with :category and :minimum placeholders
 	 */
 	private function topRatedSql(string $restriction, ?int $depth): string {
-		$sql = "SELECT r.product_id AS id, AVG(r.rating) AS score, COUNT(*) AS support_count
+		$sql = "
+			SELECT
+				r.product_id AS id,
+				AVG(r.rating) AS score,
+				COUNT(*) AS support_count
 			FROM vogoo_ratings r WHERE r.category = :category AND r.rating >= 0 {$restriction}
 			GROUP BY r.product_id HAVING support_count >= :minimum";
 
@@ -590,15 +625,21 @@ readonly class RecommendationReconciler {
 	private function sourceAggregateSql(RecommendationSource $source, string $ratingsTable,
 		string $restriction, ?int $depth): string {
 		if ($source === RecommendationSource::ItemLinks) {
-			$sql = "SELECT l.item_id2 AS id, SUM(l.liked_count * (r.rating - :threshold)) AS score,
-				JSON_ARRAYAGG(r.product_id) AS contributors
+			$sql = "
+				SELECT
+					l.item_id2 AS id,
+					SUM(l.liked_count * (r.rating - :threshold)) AS score,
+					JSON_ARRAYAGG(r.product_id) AS contributors
 				FROM vogoo_links l JOIN {$ratingsTable} r ON r.product_id = l.item_id1
 				WHERE l.category = :category AND l.liked_count > 0 {$restriction}
 				GROUP BY l.item_id2 HAVING score > 0";
 			$order = 'score DESC, id ASC';
 		} else {
-			$sql = "SELECT l.item_id2 AS id, SUM(l.slope_count) AS support_count,
-				LEAST(1.0, GREATEST(0.0, SUM(r.rating * l.slope_count + l.diff_slope) / SUM(l.slope_count))) AS score
+			$sql = "
+				SELECT
+					l.item_id2 AS id,
+					SUM(l.slope_count) AS support_count,
+					LEAST(1.0, GREATEST(0.0, SUM(r.rating * l.slope_count + l.diff_slope) / SUM(l.slope_count))) AS score
 				FROM vogoo_links l JOIN {$ratingsTable} r ON r.product_id = l.item_id1
 				WHERE l.category = :category AND l.slope_count > 0 {$restriction}
 				GROUP BY l.item_id2 HAVING support_count >= :minimum";

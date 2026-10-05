@@ -55,8 +55,16 @@ class PruneEvaluationCommand extends RecommenderCommand {
 		$deleted = 0;
 		
 		do {
-			$ids = $connection->execute('SELECT HEX(id) AS id FROM vogoo_impressions
-            WHERE shown_at < ? ORDER BY shown_at, id LIMIT ' . (int)$size, [$cutoff])->fetchAll('assoc');
+			$ids = $connection->execute('
+				SELECT
+					HEX(id) AS id
+				FROM vogoo_impressions
+				WHERE shown_at < :cutoff
+				ORDER BY shown_at, id
+				LIMIT ' . (int)$size . '
+			', [
+				'cutoff' => $cutoff,
+			])->fetchAll('assoc');
 			
 			if ($ids !== []) {
 				$connection->transactional(function () use ($connection, $ids): void {

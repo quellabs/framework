@@ -306,11 +306,16 @@ readonly class SlopeOneRecommender {
 	 */
 	private function detailedPrediction(int $productId, int $minSupport, int $category,
 		string $ratingJoin, array $params): ?PredictionResult {
-		$row = $this->connection->execute("SELECT SUM(l.slope_count) AS support,
-			SUM(r.rating * l.slope_count - l.diff_slope) AS numerator
-			FROM vogoo_links l {$ratingJoin}
-			WHERE l.item_id1 = :product AND l.category = :category AND l.slope_count > 0",
-			$params + ['product' => $productId, 'category' => $category])->fetchAssoc();
+		$row = $this->connection->execute("
+			SELECT
+				SUM(l.slope_count) AS support,
+				SUM(r.rating * l.slope_count - l.diff_slope) AS numerator
+			FROM vogoo_links l
+			{$ratingJoin}
+			WHERE l.item_id1 = :product AND
+			      l.category = :category AND
+			      l.slope_count > 0
+		", $params + ['product' => $productId, 'category' => $category])->fetchAssoc();
 
 		if (!isset($row['support'], $row['numerator'])) {
 			return null;
@@ -423,10 +428,12 @@ readonly class SlopeOneRecommender {
 	private function unseenSlopeRows(string $ratingJoin, string $seenPredicate, array $params,
 		array $filter, int $category, string $tail): array {
 		$params += ['category' => $category];
-		$sql = "SELECT l.item_id2, SUM(l.slope_count) AS support,
-			SUM(r.rating * l.slope_count + l.diff_slope) AS numerator,
-			LEAST(1.0, GREATEST(0.0,
-				SUM(r.rating * l.slope_count + l.diff_slope) / SUM(l.slope_count))) AS predicted
+		$sql = "
+			SELECT
+				l.item_id2,
+				SUM(l.slope_count) AS support,
+				SUM(r.rating * l.slope_count + l.diff_slope) AS numerator,
+				LEAST(1.0, GREATEST(0.0, SUM(r.rating * l.slope_count + l.diff_slope) / SUM(l.slope_count))) AS predicted
 			FROM vogoo_links l {$ratingJoin}
 			WHERE l.category = :category AND l.slope_count > 0 AND {$seenPredicate}";
 		$sql .= $this->allowlist->predicate($filter, 'l.item_id2', $params);

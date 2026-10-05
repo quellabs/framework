@@ -51,7 +51,8 @@ readonly class Statistics {
 		$resolvedCategory = $this->config->resolveCategory($category);
 		
 		$rows = $this->connection->execute('
-			SELECT DISTINCT `member_id`
+			SELECT DISTINCT
+				`member_id`
 			FROM `vogoo_ratings`
 			WHERE `category` = :category
 		', [

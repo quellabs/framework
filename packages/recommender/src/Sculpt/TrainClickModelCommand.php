@@ -67,8 +67,15 @@ class TrainClickModelCommand extends RecommenderCommand {
 		$id = (new ClickModelTrainer($connection))->train((int)$category, $placement,
 			$sources, self::parseTimestamp($config->get('from')), self::parseTimestamp($config->get('to')),
 			self::parseTimestamp($config->get('as-of')), (int)$window, $context);
-		$row = $connection->execute('SELECT artifact, status FROM vogoo_models
-            WHERE id = UNHEX(?)', [$id])->fetchAssoc();
+		$row = $connection->execute('
+			SELECT
+				artifact,
+				status
+			FROM vogoo_models
+			WHERE id = UNHEX(:id)
+		', [
+			'id' => $id,
+		])->fetchAssoc();
 		
 		$artifact = json_decode((string)$row['artifact'], true, 512, JSON_THROW_ON_ERROR);
 		

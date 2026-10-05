@@ -95,7 +95,7 @@ class ClickModelTrainerTest extends IntegrationTestCase {
             if (str_contains($sql, 'information_schema.TABLES')) {
                 return $tables;
             }
-            if (str_contains($sql, 'SELECT HEX(i.id) AS impression_id')) {
+            if (str_contains($sql, 'HEX(i.id) AS impression_id')) {
                 $selectParams = $params;
                 $this->assertStringContainsString('ORDER BY i.shown_at ASC, i.id ASC', $sql);
                 $this->assertStringContainsString('TIMESTAMPADD(SECOND, :mature_window', $sql);

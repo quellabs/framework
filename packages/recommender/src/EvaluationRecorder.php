@@ -117,10 +117,21 @@ readonly class EvaluationRecorder {
 	 * @throws \UnexpectedValueException When the model is missing or does not match the list
 	 */
 	private function loadCalibratedModel(RecommendationList $shown): ClickModel {
-		$row = $this->connection->execute('SELECT artifact, objective, category, placement,
-                source_mask, context_key, feature_schema_version FROM vogoo_models WHERE id = UNHEX(?)',
-			[$shown->modelId])->fetchAssoc();
-			
+		$row = $this->connection->execute('
+			SELECT
+				artifact,
+				objective,
+				category,
+				placement,
+				source_mask,
+				context_key,
+				feature_schema_version
+			FROM vogoo_models
+			WHERE id = UNHEX(:model_id)
+		', [
+			'model_id' => $shown->modelId,
+		])->fetchAssoc();
+
 		if (!$row) {
 			throw new \UnexpectedValueException("Calibrated list refers to missing model {$shown->modelId}.");
 		}
@@ -210,9 +221,17 @@ readonly class EvaluationRecorder {
 	 * @throws \InvalidArgumentException When the item was not displayed or the outcome precedes the display
 	 */
 	private function assertOutcomeFollowsDisplay(ImpressionId $impressionId, int $itemId, string $timestamp): void {
-		$row = $this->connection->execute('SELECT i.shown_at FROM vogoo_impressions i
-                JOIN vogoo_impression_items item ON item.impression_id = i.id
-                WHERE i.id = ? AND item.item_id = ?', [$impressionId->binary(), $itemId])->fetchAssoc();
+		$row = $this->connection->execute('
+			SELECT
+				i.shown_at
+			FROM vogoo_impressions i
+			JOIN vogoo_impression_items item ON item.impression_id = i.id
+			WHERE i.id = :impression_id AND
+			      item.item_id = :item_id
+		', [
+			'impression_id' => $impressionId->binary(),
+			'item_id' => $itemId,
+		])->fetchAssoc();
 		
 		if (!$row) {
 			throw new \InvalidArgumentException("Item {$itemId} is not part of impression {$impressionId->hex}.");
@@ -235,8 +254,17 @@ readonly class EvaluationRecorder {
 	 */
 	private function assertStoredEventMatches(ImpressionId $impressionId, int $itemId, string $eventId,
 		OutcomeType $type, string $timestamp): void {
-		$stored = $this->connection->execute('SELECT HEX(impression_id) AS impression_hex,
-                item_id, event_type, occurred_at FROM vogoo_outcomes WHERE event_id = ?', [$eventId])->fetchAssoc();
+		$stored = $this->connection->execute('
+			SELECT
+				HEX(impression_id) AS impression_hex,
+				item_id,
+				event_type,
+				occurred_at
+			FROM vogoo_outcomes
+			WHERE event_id = :event_id
+		', [
+			'event_id' => $eventId,
+		])->fetchAssoc();
 		
 		if (strtolower((string)$stored['impression_hex']) !== $impressionId->hex
 			|| (int)$stored['item_id'] !== $itemId || $stored['event_type'] !== $type->value

@@ -93,9 +93,21 @@ readonly class ClickModelTrainer {
 		}
 		
 		$this->connection->transactional(function () use ($modelId): void {
-			$row = $this->connection->execute('SELECT objective, category, placement, source_mask,
-                context_key, artifact, status FROM vogoo_models WHERE id = UNHEX(?) FOR UPDATE',
-				[$modelId])->fetchAssoc();
+			$row = $this->connection->execute('
+				SELECT
+					objective,
+					category,
+					placement,
+					source_mask,
+					context_key,
+					artifact,
+					status
+				FROM vogoo_models
+				WHERE id = UNHEX(:model_id)
+				FOR UPDATE
+			', [
+				'model_id' => $modelId,
+			])->fetchAssoc();
 				
 			if (!$row || $row['status'] !== 'validated') {
 				throw new \InvalidArgumentException("Model '{$modelId}' is missing or has not passed validation.");
@@ -207,19 +219,36 @@ readonly class ClickModelTrainer {
 		DateTimeImmutable $from, DateTimeImmutable $to, DateTimeImmutable $asOf, int $clickWindowSeconds): array {
 		$clicked = OutcomeSubquery::exists('click', 'as_of', 'click_window');
 
-		return $this->connection->execute("SELECT HEX(i.id) AS impression_id, i.shown_at,
-            item.position, item.feature_snapshot,
-            {$clicked} AS clicked
-            FROM vogoo_impressions i JOIN vogoo_impression_items item ON item.impression_id = i.id
-            WHERE i.category = :category AND i.placement = :placement AND i.source_mask = :mask
-                AND i.context_key = :context AND item.feature_schema_version = 1
-                AND i.shown_at >= :from AND i.shown_at < :to
-                AND TIMESTAMPADD(SECOND, :mature_window, i.shown_at) <= :mature_as_of
-            ORDER BY i.shown_at ASC, i.id ASC, item.position ASC",
-			['category'      => $category, 'placement' => $placement, 'mask' => $mask,
-			 'context'       => $contextKey ?? '', 'from' => MysqlTimestamp::utc($from), 'to' => MysqlTimestamp::utc($to),
-			 'as_of'         => MysqlTimestamp::utc($asOf), 'click_window' => $clickWindowSeconds,
-			 'mature_window' => $clickWindowSeconds, 'mature_as_of' => MysqlTimestamp::utc($asOf)])->fetchAll('assoc');
+		return $this->connection->execute("
+			SELECT
+				HEX(i.id) AS impression_id,
+				i.shown_at,
+				item.position,
+				item.feature_snapshot,
+				{$clicked} AS clicked
+			FROM vogoo_impressions i
+			JOIN vogoo_impression_items item ON item.impression_id = i.id
+			WHERE i.category = :category AND
+			      i.placement = :placement AND
+			      i.source_mask = :mask AND
+			      i.context_key = :context AND
+			      item.feature_schema_version = 1 AND
+			      i.shown_at >= :from AND
+			      i.shown_at < :to AND
+			      TIMESTAMPADD(SECOND, :mature_window, i.shown_at) <= :mature_as_of
+			ORDER BY i.shown_at ASC, i.id ASC, item.position ASC
+		", [
+			'category' => $category,
+			'placement' => $placement,
+			'mask' => $mask,
+			'context' => $contextKey ?? '',
+			'from' => MysqlTimestamp::utc($from),
+			'to' => MysqlTimestamp::utc($to),
+			'as_of' => MysqlTimestamp::utc($asOf),
+			'click_window' => $clickWindowSeconds,
+			'mature_window' => $clickWindowSeconds,
+			'mature_as_of' => MysqlTimestamp::utc($asOf),
+		])->fetchAll('assoc');
 	}
 	
 	/**

@@ -92,7 +92,9 @@ HELP;
 
 		foreach ($tables as $table) {
 			$rows = $connection->execute(
-				'SELECT COUNT(*) AS cnt
+				'
+					SELECT
+						COUNT(*) AS cnt
 				 FROM information_schema.tables
 				 WHERE table_schema = DATABASE()
 				   AND table_name = :table',

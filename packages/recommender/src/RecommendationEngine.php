@@ -141,9 +141,9 @@ readonly class RecommendationEngine {
 			SELECT
 				AVG(`rating`) AS average
 			FROM `vogoo_ratings`
-			WHERE `member_id` = :member_id
-			AND `category` = :category
-			AND `rating` >= 0.0
+			WHERE `member_id` = :member_id AND
+			      `category` = :category AND
+			      `rating` >= 0.0
 		', [
 			'member_id' => $memberId,
 			'category'  => $resolvedCategory,
@@ -269,9 +269,9 @@ readonly class RecommendationEngine {
 				`rating`,
 				`ts`
 			FROM `vogoo_ratings`
-			WHERE `product_id` = :product_id
-			AND `rating` >= 0.0
-			AND `category` = :category
+			WHERE `product_id` = :product_id AND
+			      `rating` >= 0.0 AND
+			      `category` = :category
 		';
 		
 		$params = [
@@ -495,8 +495,13 @@ readonly class RecommendationEngine {
 		}
 
 		$otherColumn = $column === 'member_id' ? 'product_id' : 'member_id';
-		$rows = $this->connection->execute("SELECT `{$otherColumn}` FROM `vogoo_ratings`
-			WHERE `{$column}` = :id AND `category` = :category", [
+		$rows = $this->connection->execute("
+			SELECT
+				`{$otherColumn}`
+			FROM `vogoo_ratings`
+			WHERE `{$column}` = :id AND
+			      `category` = :category
+		", [
 			'id'       => $id,
 			'category' => $category,
 		])->fetchAll('assoc');
@@ -522,7 +527,8 @@ readonly class RecommendationEngine {
 	 */
 	private function fetchExistingRating(int $memberId, int $productId, int $category): ?float {
 		$row = $this->connection->execute('
-			SELECT `rating`
+			SELECT
+				`rating`
 			FROM `vogoo_ratings`
 			WHERE `member_id` = :member_id AND
 			      `product_id` = :product_id AND

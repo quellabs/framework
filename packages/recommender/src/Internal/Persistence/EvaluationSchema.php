@@ -16,8 +16,22 @@ final class EvaluationSchema {
 	public static function requireTables(Connection $connection): void {
 		$tables = ['vogoo_models', 'vogoo_impressions', 'vogoo_impression_items',
 			'vogoo_impression_evidence', 'vogoo_outcomes'];
-		$rows = $connection->execute('SELECT TABLE_NAME FROM information_schema.TABLES
-            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN (?,?,?,?,?)', $tables)->fetchAll('assoc');
+		$params = [];
+		$names = [];
+
+		foreach ($tables as $index => $table) {
+			$params['table_' . $index] = $table;
+			$names[] = ':table_' . $index;
+		}
+
+		$inList = implode(',', $names);
+		$rows = $connection->execute("
+			SELECT
+				TABLE_NAME
+			FROM information_schema.TABLES
+			WHERE TABLE_SCHEMA = DATABASE() AND
+			      TABLE_NAME IN ({$inList})
+		", $params)->fetchAll('assoc');
 		
 		if (count($rows) !== count($tables)) {
 			throw new \RuntimeException('Recommender evaluation tables are missing; run recommender:init-evaluation-db.');
@@ -122,10 +136,23 @@ final class EvaluationSchema {
 	 * @throws \RuntimeException When a column is missing, unexpected, or incompatible
 	 */
 	private static function verifyColumns(Connection $connection, string $table, array $columns): void {
-		$rows = $connection->execute('SELECT COLUMN_NAME, DATA_TYPE, COLUMN_TYPE, IS_NULLABLE,
-            COLLATION_NAME, EXTRA, CHARACTER_MAXIMUM_LENGTH, DATETIME_PRECISION,
-            COLUMN_DEFAULT FROM information_schema.COLUMNS
-            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?', [$table])->fetchAll('assoc');
+		$rows = $connection->execute('
+			SELECT
+				COLUMN_NAME,
+				DATA_TYPE,
+				COLUMN_TYPE,
+				IS_NULLABLE,
+				COLLATION_NAME,
+				EXTRA,
+				CHARACTER_MAXIMUM_LENGTH,
+				DATETIME_PRECISION,
+				COLUMN_DEFAULT
+			FROM information_schema.COLUMNS
+			WHERE TABLE_SCHEMA = DATABASE() AND
+			      TABLE_NAME = :table
+		', [
+			'table' => $table,
+		])->fetchAll('assoc');
 		$actual = array_column($rows, 'COLUMN_NAME');
 		
 		if (array_diff($columns, $actual) !== [] || array_diff($actual, $columns) !== []) {
@@ -181,8 +208,15 @@ final class EvaluationSchema {
 	 * @throws \RuntimeException When the table does not use InnoDB
 	 */
 	private static function verifyEngine(Connection $connection, string $table): void {
-		$engine = $connection->execute('SELECT ENGINE FROM information_schema.TABLES
-            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?', [$table])->fetchAssoc();
+		$engine = $connection->execute('
+			SELECT
+				ENGINE
+			FROM information_schema.TABLES
+			WHERE TABLE_SCHEMA = DATABASE() AND
+			      TABLE_NAME = :table
+		', [
+			'table' => $table,
+		])->fetchAssoc();
 		
 		if ($engine['ENGINE'] !== 'InnoDB') {
 			throw new \RuntimeException("Existing {$table} table must use InnoDB.");
@@ -197,9 +231,19 @@ final class EvaluationSchema {
 	 * @throws \RuntimeException When an index is incompatible or has a prefix length
 	 */
 	private static function verifyIndexes(Connection $connection, string $table): void {
-		$indexes = $connection->execute('SELECT INDEX_NAME, COLUMN_NAME, NON_UNIQUE, SUB_PART
-            FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?
-            ORDER BY INDEX_NAME, SEQ_IN_INDEX', [$table])->fetchAll('assoc');
+		$indexes = $connection->execute('
+			SELECT
+				INDEX_NAME,
+				COLUMN_NAME,
+				NON_UNIQUE,
+				SUB_PART
+			FROM information_schema.STATISTICS
+			WHERE TABLE_SCHEMA = DATABASE() AND
+			      TABLE_NAME = :table
+			ORDER BY INDEX_NAME, SEQ_IN_INDEX
+		', [
+			'table' => $table,
+		])->fetchAll('assoc');
 		
 		$actualIndexes = [];
 		
@@ -229,13 +273,25 @@ final class EvaluationSchema {
 	 */
 	private static function verifyForeignKeys(Connection $connection, string $table): void {
 		foreach (self::EXPECTED_FOREIGN_KEYS[$table] ?? [] as $name => $definition) {
-			$keys = $connection->execute('SELECT k.COLUMN_NAME, k.REFERENCED_TABLE_NAME,
-                k.REFERENCED_COLUMN_NAME, r.DELETE_RULE FROM information_schema.KEY_COLUMN_USAGE k
-                JOIN information_schema.REFERENTIAL_CONSTRAINTS r
-                  ON r.CONSTRAINT_SCHEMA = k.CONSTRAINT_SCHEMA
-                 AND r.TABLE_NAME = k.TABLE_NAME AND r.CONSTRAINT_NAME = k.CONSTRAINT_NAME
-                WHERE k.CONSTRAINT_SCHEMA = DATABASE() AND k.TABLE_NAME = ? AND k.CONSTRAINT_NAME = ?
-                ORDER BY k.ORDINAL_POSITION', [$table, $name])->fetchAll('assoc');
+			$keys = $connection->execute('
+				SELECT
+					k.COLUMN_NAME,
+					k.REFERENCED_TABLE_NAME,
+					k.REFERENCED_COLUMN_NAME,
+					r.DELETE_RULE
+				FROM information_schema.KEY_COLUMN_USAGE k
+				JOIN information_schema.REFERENTIAL_CONSTRAINTS r
+				  ON r.CONSTRAINT_SCHEMA = k.CONSTRAINT_SCHEMA AND
+				     r.TABLE_NAME = k.TABLE_NAME AND
+				     r.CONSTRAINT_NAME = k.CONSTRAINT_NAME
+				WHERE k.CONSTRAINT_SCHEMA = DATABASE() AND
+				      k.TABLE_NAME = :table AND
+				      k.CONSTRAINT_NAME = :constraint
+				ORDER BY k.ORDINAL_POSITION
+			', [
+				'table' => $table,
+				'constraint' => $name,
+			])->fetchAll('assoc');
 			
 			$actualDefinition = $keys === [] ? null : [$keys[0]['REFERENCED_TABLE_NAME'],
 				array_column($keys, 'COLUMN_NAME'), array_column($keys, 'REFERENCED_COLUMN_NAME'),

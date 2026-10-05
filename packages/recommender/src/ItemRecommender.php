@@ -123,7 +123,8 @@ readonly class ItemRecommender {
 		$threshold = $this->config->getThresholdRating();
 		
 		$sql = '
-			SELECT r.`product_id`
+			SELECT
+				r.`product_id`
 			FROM `vogoo_ratings` r
 			INNER JOIN `vogoo_links` l ON l.`item_id1` = :product_id AND
 			                             r.`product_id` = l.`item_id2` AND
@@ -201,20 +202,28 @@ readonly class ItemRecommender {
 			return [];
 		}
 		
-		$placeholders = implode(',', array_fill(0, count($likedIds), '?'));
-		
+		$params = ['category' => $resolvedCategory, 'product_id' => $productId];
+		$names = [];
+
+		foreach (array_values($likedIds) as $index => $likedId) {
+			$params['liked_' . $index] = $likedId;
+			$names[] = ':liked_' . $index;
+		}
+
+		$inList = implode(',', $names);
 		$sql = "
-			SELECT `item_id2`
+			SELECT
+				`item_id2`
 			FROM `vogoo_links`
-			WHERE `category` = ? AND
-			      `item_id1` = ? AND
-			      `item_id2` IN ({$placeholders}) AND
+			WHERE `category` = :category AND
+			      `item_id1` = :product_id AND
+			      `item_id2` IN ({$inList}) AND
 			      `liked_count` > 0
 		";
-		
+
 		$sql .= Results::limitSql($limit);
-		
-		$rows = $this->connection->execute($sql, array_merge([$resolvedCategory, $productId], $likedIds))->fetchAll('assoc');
+
+		$rows = $this->connection->execute($sql, $params)->fetchAll('assoc');
 		return array_map('intval', array_column($rows, 'item_id2'));
 	}
 
@@ -348,13 +357,29 @@ readonly class ItemRecommender {
 	public function memberRecommendationsDetailed(int $memberId, array $filter = [], int $limit = 0, ?int $category = null,
 		int $minHistory = 1, int $minRatings = 2): array {
 		$resolvedCategory = $this->config->resolveCategory($category);
-		$history = (int)$this->connection->execute('SELECT COUNT(*) AS total FROM vogoo_ratings WHERE member_id = :member AND category = :category AND rating >= 0.0',
-			['member' => $memberId, 'category' => $resolvedCategory])->fetchAssoc()['total'];
+		$history = (int)$this->connection->execute('
+			SELECT
+				COUNT(*) AS total
+			FROM vogoo_ratings
+			WHERE member_id = :member AND
+			      category = :category AND
+			      rating >= 0.0
+		', [
+			'member' => $memberId,
+			'category' => $resolvedCategory,
+		])->fetchAssoc()['total'];
 
 		if ($history < max(1, $minHistory)) {
-			$excluded = array_map('intval', array_column($this->connection->execute(
-				'SELECT product_id FROM vogoo_ratings WHERE member_id = :member AND category = :category',
-				['member' => $memberId, 'category' => $resolvedCategory])->fetchAll('assoc'), 'product_id'));
+			$excluded = array_map('intval', array_column($this->connection->execute('
+				SELECT
+					product_id
+				FROM vogoo_ratings
+				WHERE member_id = :member AND
+				      category = :category
+			', [
+				'member' => $memberId,
+				'category' => $resolvedCategory,
+			])->fetchAll('assoc'), 'product_id'));
 			return $this->fallbackResults($excluded, $filter, $limit, $resolvedCategory, $minRatings);
 		}
 
@@ -572,7 +597,10 @@ readonly class ItemRecommender {
 	private function linkScoreRows(string $ratingJoin, string $seenPredicate, array $params,
 		array $filter, int $category, int $limit): array {
 		$params += ['threshold' => $this->config->getThresholdRating(), 'category' => $category];
-		$sql = "SELECT l.item_id2, SUM(l.liked_count * (r.rating - :threshold)) AS score
+		$sql = "
+			SELECT
+				l.item_id2,
+				SUM(l.liked_count * (r.rating - :threshold)) AS score
 			FROM vogoo_links l {$ratingJoin}
 			WHERE l.category = :category AND l.liked_count > 0 AND {$seenPredicate}";
 		$sql .= $this->allowlist->predicate($filter, 'l.item_id2', $params);
@@ -595,8 +623,11 @@ readonly class ItemRecommender {
 	private function memberLinkScoreRows(int $memberId, array $filter, int $category): array {
 		$params = ['member' => $memberId, 'category' => $category, 'threshold' => $this->config->getThresholdRating(),
 			'member2' => $memberId, 'category2' => $category];
-		$sql = 'SELECT l.item_id2, SUM(l.liked_count * (r.rating - :threshold)) AS score,
-			JSON_ARRAYAGG(r.product_id) AS contributors
+		$sql = '
+			SELECT
+				l.item_id2,
+				SUM(l.liked_count * (r.rating - :threshold)) AS score,
+				JSON_ARRAYAGG(r.product_id) AS contributors
 			FROM vogoo_links l JOIN vogoo_ratings r ON r.product_id = l.item_id1
 				AND r.category = l.category AND r.member_id = :member AND r.rating >= 0.0
 			WHERE l.category = :category AND l.liked_count > 0

@@ -137,8 +137,10 @@ readonly class UserSimilarity {
 	 */
 	private function neighbourRows(int $memberId, int $category): array {
 		return $this->connection->execute('
-			SELECT r2.`member_id`, COUNT(*) AS common_count,
-			       SUM((r2.`rating` - r1.`rating`) * (r2.`rating` - r1.`rating`)) AS squared_diff
+			SELECT
+				r2.`member_id`,
+				COUNT(*) AS common_count,
+				SUM((r2.`rating` - r1.`rating`) * (r2.`rating` - r1.`rating`)) AS squared_diff
 			FROM `vogoo_ratings` r1
 			INNER JOIN `vogoo_ratings` r2 ON r2.`product_id` = r1.`product_id` AND
 			                                 r2.`category` = r1.`category` AND
@@ -238,17 +240,29 @@ readonly class UserSimilarity {
 			? ''
 			: "JOIN {$candidateTable} candidates ON candidates.product_id = r.product_id";
 			
-		$rows = $this->connection->execute("SELECT r.product_id AS item_id,
-			SUM(r.rating * n.similarity) / SUM(n.similarity) AS score
-			FROM {$neighbourTable} n JOIN vogoo_ratings r ON r.member_id = n.member_id
+		$rows = $this->connection->execute("
+			SELECT
+				r.product_id AS item_id,
+				SUM(r.rating * n.similarity) / SUM(n.similarity) AS score
+			FROM {$neighbourTable} n
+			JOIN vogoo_ratings r ON r.member_id = n.member_id
 			{$candidateJoin}
-			WHERE r.category = :category AND r.rating >= :threshold
-			AND NOT EXISTS (SELECT 1 FROM vogoo_ratings seen WHERE seen.member_id = :member
-				AND seen.category = :seen_category AND seen.product_id = r.product_id)
-			GROUP BY r.product_id ORDER BY score DESC, r.product_id ASC LIMIT {$limit}",
-			['category' => $category, 'threshold' => $this->config->getThresholdRating(),
-			 'member'   => $memberId, 'seen_category' => $category])->fetchAll('assoc');
-			
+			WHERE r.category = :category AND
+			      r.rating >= :threshold AND
+			      NOT EXISTS (SELECT 1 FROM vogoo_ratings seen
+			                  WHERE seen.member_id = :member AND
+			                        seen.category = :seen_category AND
+			                        seen.product_id = r.product_id)
+			GROUP BY r.product_id
+			ORDER BY score DESC, r.product_id ASC
+			LIMIT {$limit}
+		", [
+			'category' => $category,
+			'threshold' => $this->config->getThresholdRating(),
+			'member' => $memberId,
+			'seen_category' => $category,
+		])->fetchAll('assoc');
+
 		return array_map(fn($row) => ['itemId' => (int)$row['item_id'], 'score' => (float)$row['score']], $rows);
 	}
 	
@@ -306,15 +320,30 @@ readonly class UserSimilarity {
 		$similarities = array_column($neighbours, 'similarity', 'member_id');
 		
 		foreach (array_chunk(array_keys($similarities), 500) as $memberIds) {
-			$placeholders = implode(',', array_fill(0, count($memberIds), '?'));
-			$rows = $this->connection->execute("SELECT r.member_id, r.product_id, r.rating
-				FROM vogoo_ratings r WHERE r.member_id IN ({$placeholders})
-				AND r.category = ? AND r.rating >= ?
-				AND NOT EXISTS (SELECT 1 FROM vogoo_ratings target
-					WHERE target.member_id = ? AND target.category = ?
-					AND target.product_id = r.product_id)",
-				array_merge($memberIds, [$category, $threshold, $memberId, $category])
-			)->fetchAll('assoc');
+			$params = ['category' => $category, 'threshold' => $threshold,
+				'target_member' => $memberId, 'target_category' => $category];
+			$names = [];
+
+			foreach (array_values($memberIds) as $index => $neighbourId) {
+				$params['neighbour_' . $index] = $neighbourId;
+				$names[] = ':neighbour_' . $index;
+			}
+
+			$inList = implode(',', $names);
+			$rows = $this->connection->execute("
+				SELECT
+					r.member_id,
+					r.product_id,
+					r.rating
+				FROM vogoo_ratings r
+				WHERE r.member_id IN ({$inList}) AND
+				      r.category = :category AND
+				      r.rating >= :threshold AND
+				      NOT EXISTS (SELECT 1 FROM vogoo_ratings target
+				                  WHERE target.member_id = :target_member AND
+				                        target.category = :target_category AND
+				                        target.product_id = r.product_id)
+			", $params)->fetchAll('assoc');
 			
 			foreach ($rows as $row) {
 				$productId = (int)$row['product_id'];
