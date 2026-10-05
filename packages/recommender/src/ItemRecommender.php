@@ -5,8 +5,6 @@
 	use Cake\Database\Connection;
 	use Quellabs\Recommender\Config\RecommendationConfig;
 	use Quellabs\Recommender\Internal\Eligibility\EligibilityFilter;
-	use Quellabs\Recommender\Internal\Persistence\TemporaryTable;
-	use Quellabs\Recommender\Internal\Query\CandidateAllowlist;
 	use Quellabs\Recommender\Internal\Query\Results;
 	use Quellabs\Recommender\Internal\SlopeOne\SlopeOneRecommender;
 	use Quellabs\Recommender\Reconciliation\EligibilityProvider;
@@ -37,12 +35,6 @@
 		/** @var SlopeOneRecommender Slope One predictions and rankings */
 		private SlopeOneRecommender $slopeOne;
 
-		/** @var TemporaryTable Temporary tables for visitor rating and seen inputs */
-		private TemporaryTable $temporary;
-
-		/** @var CandidateAllowlist Product ID allowlist predicates */
-		private CandidateAllowlist $allowlist;
-
 		/** @var EligibilityFilter Applies eligibility providers to ranked results */
 		private EligibilityFilter $eligibilityFilter;
 
@@ -55,8 +47,6 @@
 			$this->connection = $connection;
 			$this->config = $config;
 			$this->slopeOne = new SlopeOneRecommender($connection, $config);
-			$this->temporary = new TemporaryTable($connection);
-			$this->allowlist = new CandidateAllowlist($this->temporary);
 			$this->eligibilityFilter = new EligibilityFilter($config);
 		}
 
@@ -72,8 +62,8 @@
 			$resolvedCategory = $this->config->resolveCategory($category);
 
 			return $this->eligibilityFilter->withEligibility($eligibility, $limit,
-				function (array $filter, int $depth) use ($productId, $resolvedCategory): array {
-					return $this->linkedRows($productId, $filter, $depth, $resolvedCategory);
+				function (int $depth) use ($productId, $resolvedCategory): array {
+					return $this->linkedRows($productId, $depth, $resolvedCategory);
 				},
 				function (RecommendationResult $row): int {
 					return $row->itemId;
@@ -180,8 +170,8 @@
 		public function slopeItems(int $productId, int $minLinks = 1, ?EligibilityProvider $eligibility = null,
 			int $limit = 0, ?int $category = null): array {
 			return $this->eligibilityFilter->withEligibility($eligibility, $limit,
-				function (array $filter, int $depth) use ($productId, $minLinks, $category): array {
-					$diffs = $this->slopeOne->getSlopeItems($productId, $minLinks, $filter, $depth, $category);
+				function (int $depth) use ($productId, $minLinks, $category): array {
+					$diffs = $this->slopeOne->getSlopeItems($productId, $minLinks, $depth, $category);
 
 					return array_map(function (array $diff): RecommendationResult {
 						return new RecommendationResult($diff['product_id'], $diff['diff'], 'slope_one', []);
@@ -218,8 +208,8 @@
 		public function memberPredictions(int $memberId, ?EligibilityProvider $eligibility = null, int $limit = 0,
 			int $minSupport = 1, ?int $category = null): array {
 			return $this->eligibilityFilter->withEligibility($eligibility, $limit,
-				function (array $filter, int $depth) use ($memberId, $minSupport, $category): array {
-					return $this->slopeOne->memberPredictAllDetailed($memberId, $filter, $depth, $minSupport, $category);
+				function (int $depth) use ($memberId, $minSupport, $category): array {
+					return $this->slopeOne->memberPredictAllDetailed($memberId, $depth, $minSupport, $category);
 				},
 				function (PredictionResult $row): int {
 					return $row->itemId;
@@ -252,8 +242,8 @@
 		public function visitorPredictions(VisitorContext $visitor, ?EligibilityProvider $eligibility = null, int $limit = 0,
 			int $minSupport = 1, ?int $category = null): array {
 			return $this->eligibilityFilter->withEligibility($eligibility, $limit,
-				function (array $filter, int $depth) use ($visitor, $minSupport, $category): array {
-					return $this->slopeOne->visitorPredictAllDetailed($visitor, $filter, $depth, $minSupport, $category);
+				function (int $depth) use ($visitor, $minSupport, $category): array {
+					return $this->slopeOne->visitorPredictAllDetailed($visitor, $depth, $minSupport, $category);
 				},
 				function (PredictionResult $row): int {
 					return $row->itemId;
@@ -277,8 +267,8 @@
 			$resolvedCategory = $this->config->resolveCategory($category);
 
 			return $this->eligibilityFilter->withEligibility($eligibility, $limit,
-				function (array $filter, int $depth) use ($memberId, $resolvedCategory, $minHistory, $minRatings): array {
-					return $this->memberRecommendationRows($memberId, $filter, $depth, $resolvedCategory, $minHistory, $minRatings);
+				function (int $depth) use ($memberId, $resolvedCategory, $minHistory, $minRatings): array {
+					return $this->memberRecommendationRows($memberId, $depth, $resolvedCategory, $minHistory, $minRatings);
 				},
 				function (RecommendationResult $row): int {
 					return $row->itemId;
@@ -328,8 +318,8 @@
 			$resolvedCategory = $this->config->resolveCategory($category);
 
 			return $this->eligibilityFilter->withEligibility($eligibility, $limit,
-				function (array $filter, int $depth) use ($visitor, $resolvedCategory, $minHistory, $minRatings): array {
-					return $this->visitorRecommendationRows($visitor, $filter, $depth, $resolvedCategory, $minHistory, $minRatings);
+				function (int $depth) use ($visitor, $resolvedCategory, $minHistory, $minRatings): array {
+					return $this->visitorRecommendationRows($visitor, $depth, $resolvedCategory, $minHistory, $minRatings);
 				},
 				function (RecommendationResult $row): int {
 					return $row->itemId;
@@ -337,14 +327,13 @@
 		}
 
 		/**
-		 * Return the linked products of one product, scored by liked count, with an optional allowlist and limit.
+		 * Return the linked products of one product, scored by liked count, with a limit.
 		 * @param int $productId The product ID
-		 * @param array<int> $filter Allowed product IDs, or empty for all
 		 * @param int $limit Maximum results, or zero for all
 		 * @param int $category Already-resolved category
 		 * @return array<int, RecommendationResult>
 		 */
-		private function linkedRows(int $productId, array $filter, int $limit, int $category): array {
+		private function linkedRows(int $productId, int $limit, int $category): array {
 			$sql = '
 				SELECT
 					`item_id2`,
@@ -353,36 +342,24 @@
 				WHERE `item_id1` = :product_id AND
 					`category` = :category AND
 					`liked_count` > 0
-	        ';
-			$params = ['product_id' => $productId, 'category' => $category];
-			$sql .= $this->allowlist->predicate($filter, '`item_id2`', $params);
-			$sql .= ' ORDER BY `liked_count` DESC, `item_id2` ASC';
-
+				ORDER BY `liked_count` DESC, `item_id2` ASC
+			';
 			$sql .= Results::limitSql($limit);
 
-			try {
-				$rows = $this->connection->execute($sql, $params)->fetchAll('assoc');
-			} finally {
-				$this->allowlist->release($filter);
-			}
+			$rows = $this->connection->execute($sql, ['product_id' => $productId, 'category' => $category])->fetchAll('assoc');
 
 			$results = [];
 
 			foreach ($rows as $row) {
-				$id = (int)$row['item_id2'];
-
-				if (Results::allows($filter, $id)) {
-					$results[] = new RecommendationResult($id, (float)$row['liked_count'], 'item_links', []);
-				}
+				$results[] = new RecommendationResult((int)$row['item_id2'], (float)$row['liked_count'], 'item_links', []);
 			}
 
 			return Results::limit($results, $limit);
 		}
 
 		/**
-		 * Return the scored collaborative or fallback member recommendations, with an optional allowlist and limit.
+		 * Return the scored collaborative or fallback member recommendations, with a limit.
 		 * @param int $memberId Member ID
-		 * @param array<int> $filter Allowed product IDs, or empty for all
 		 * @param int $limit Maximum results, or zero for all
 		 * @param int $category Already-resolved category
 		 * @param int $minHistory Minimum genuine ratings before collaborative scoring
@@ -390,7 +367,7 @@
 		 * @return array<int, RecommendationResult>
 		 * @throws \UnexpectedValueException When a link score row or its contributors are malformed
 		 */
-		private function memberRecommendationRows(int $memberId, array $filter, int $limit, int $category,
+		private function memberRecommendationRows(int $memberId, int $limit, int $category,
 			int $minHistory, int $minRatings): array {
 			$history = (int)$this->connection->execute('
 				SELECT
@@ -415,40 +392,33 @@
 					'member' => $memberId,
 					'category' => $category,
 				])->fetchAll('assoc'), 'product_id'));
-				return $this->fallbackResults($excluded, $filter, $limit, $category, $minRatings);
+				return $this->fallbackResults($excluded, $limit, $category, $minRatings);
 			}
 
 			$results = [];
 
-			foreach ($this->memberLinkScoreRows($memberId, $filter, $category) as $row) {
+			foreach ($this->memberLinkScoreRows($memberId, $category) as $row) {
 				if (!is_numeric($row['item_id2']) || !is_numeric($row['score']) || !is_scalar($row['contributors'])) {
 					throw new \UnexpectedValueException('Link score row must contain numeric item_id2 and score and a contributors value.');
 				}
 
-				$id = (int)$row['item_id2'];
-
-				if (!Results::allows($filter, $id)) {
-					continue;
-				}
-
 				$contributors = $this->decodeContributorIds((string)$row['contributors']);
-				$results[] = new RecommendationResult($id, (float)$row['score'], 'item_links', $contributors);
+				$results[] = new RecommendationResult((int)$row['item_id2'], (float)$row['score'], 'item_links', $contributors);
 			}
 
 			return Results::limit($results, $limit);
 		}
 
 		/**
-		 * Return the scored collaborative or fallback visitor recommendations, with an optional allowlist and limit.
+		 * Return the scored collaborative or fallback visitor recommendations, with a limit.
 		 * @param VisitorContext $visitor Visitor ratings
-		 * @param array<int> $filter Allowed product IDs, or empty for all
 		 * @param int $limit Maximum results, or zero for all
 		 * @param int $category Already-resolved category
 		 * @param int $minHistory Minimum genuine ratings before collaborative scoring
 		 * @param int $minRatings Minimum ratings for a fallback item
 		 * @return array<int, RecommendationResult>
 		 */
-		private function visitorRecommendationRows(VisitorContext $visitor, array $filter, int $limit, int $category,
+		private function visitorRecommendationRows(VisitorContext $visitor, int $limit, int $category,
 			int $minHistory, int $minRatings): array {
 			$ratings = $visitor->ratings($category);
 			$history = count(array_filter($ratings, function ($row): bool {
@@ -456,11 +426,11 @@
 			}));
 
 			if ($history < max(1, $minHistory)) {
-				return $this->fallbackResults(array_column($ratings, 'product_id'), $filter, $limit, $category, $minRatings);
+				return $this->fallbackResults(array_column($ratings, 'product_id'), $limit, $category, $minRatings);
 			}
 
 			$reasons = [];
-			$scores = array_filter($this->scoreVisitorCandidates($ratings, $filter, $category, $reasons), function ($score): bool {
+			$scores = array_filter($this->scoreVisitorCandidates($ratings, $category, $reasons), function ($score): bool {
 				return $score > 0;
 			});
 			$scores = Results::sortByScore($scores);
@@ -479,20 +449,19 @@
 		/**
 		 * Rank popular high-rated items while excluding every rated or rejected item.
 		 * @param array<int> $excluded Items already seen
-		 * @param array<int> $filter Allowed IDs, or empty for all
 		 * @param int $limit Maximum results, or zero for all
 		 * @param int $category Category
 		 * @param int $minRatings Minimum rating count
 		 * @return array<int, RecommendationResult>
 		 */
-		private function fallbackResults(array $excluded, array $filter, int $limit, int $category, int $minRatings): array {
+		private function fallbackResults(array $excluded, int $limit, int $category, int $minRatings): array {
 			$stats = new Statistics($this->connection, $this->config);
 			$results = [];
 
 			foreach ($stats->topRatedProducts(0, max(1, $minRatings), $category) as $row) {
 				$id = $row->productId;
 
-				if (in_array($id, $excluded, true) || !Results::allows($filter, $id)) {
+				if (in_array($id, $excluded, true)) {
 					continue;
 				}
 
@@ -510,12 +479,11 @@
 		 * Accumulate weighted co-occurrence scores for every candidate item linked to the visitor's rated products.
 		 * Skips not-interested entries, zero-count links, and items the visitor has already rated.
 		 * @param RatingList $ratings Visitor rating entries
-		 * @param array<int> $filter When non-empty, only score product IDs in this set
 		 * @param int $category Already-resolved category
 		 * @param array<int, array<int, int>>|null $reasons Optional contributing IDs by candidate, filled in place
 		 * @return array<int, float> Map of candidate product_id to raw score
 		 */
-		private function scoreVisitorCandidates(array $ratings, array $filter, int $category, ?array &$reasons = null): array {
+		private function scoreVisitorCandidates(array $ratings, int $category, ?array &$reasons = null): array {
 			$threshold = $this->config->getThresholdRating();
 			$ratedIds = array_column($ratings, 'product_id');
 			$scores = [];
@@ -534,7 +502,7 @@
 
 					[$id, $likedCount] = $fields;
 
-					if (!Results::allows($filter, $id) || in_array($id, $ratedIds, true) || $likedCount === 0) {
+					if (in_array($id, $ratedIds, true) || $likedCount === 0) {
 						continue;
 					}
 
@@ -571,11 +539,10 @@
 		/**
 		 * Return the co-occurrence score and contributing product IDs of each candidate linked to the member's rated items.
 		 * @param int $memberId Member ID
-		 * @param array<int> $filter Allowed product IDs, or empty for all
 		 * @param int $category Already-resolved category
 		 * @return array<int, array<string, mixed>> Rows with item_id2, score and contributors
 		 */
-		private function memberLinkScoreRows(int $memberId, array $filter, int $category): array {
+		private function memberLinkScoreRows(int $memberId, int $category): array {
 			$params = [
 				'member' => $memberId,
 				'category' => $category,
@@ -604,14 +571,9 @@
 					)
 			';
 
-			$sql .= $this->allowlist->predicate($filter, 'l.item_id2', $params);
 			$sql .= ' GROUP BY l.item_id2 HAVING score > 0 ORDER BY score DESC, l.item_id2 ASC';
 
-			try {
-				return $this->connection->execute($sql, $params)->fetchAll('assoc');
-			} finally {
-				$this->allowlist->release($filter);
-			}
+			return $this->connection->execute($sql, $params)->fetchAll('assoc');
 		}
 
 		/**

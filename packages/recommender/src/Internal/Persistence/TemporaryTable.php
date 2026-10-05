@@ -73,16 +73,6 @@
 		}
 	
 		/**
-		 * Create a named product ID table, replacing any table of the same name left by an earlier call.
-		 * @param string $name Table name
-		 * @return void
-		 */
-		public function createIdTable(string $name): void {
-			$this->dropTable($name);
-			$this->connection->execute("CREATE TEMPORARY TABLE {$name} (product_id INT UNSIGNED PRIMARY KEY)");
-		}
-	
-		/**
 		 * Insert distinct product IDs into an existing table in batches.
 		 * @param string $table Table name
 		 * @param array<int, int> $ids Product IDs, duplicates allowed

@@ -3,7 +3,6 @@
 	namespace Quellabs\Recommender\Internal\Eligibility;
 
 	use Quellabs\Recommender\Config\RecommendationConfig;
-	use Quellabs\Recommender\Reconciliation\ArrayEligibilityProvider;
 	use Quellabs\Recommender\Reconciliation\EligibilityProvider;
 
 	/**
@@ -49,31 +48,20 @@
 
 		/**
 		 * Run a ranked query with an optional eligibility provider applied.
-		 * Array providers become an SQL allowlist. Other providers are checked row by row, fetching deeper
-		 * until the limit is met or the depth cap is reached.
+		 * Rows are checked in batches, fetching deeper until the limit is met or the depth cap is reached.
 		 * @template T
 		 * @param EligibilityProvider|null $eligibility Eligibility provider, or null for no restriction
 		 * @param int $limit Maximum results, or zero for all
-		 * @param callable(array<int, int>, int): array<int, T> $query Receives an allowlist (empty for none) and a depth (zero for all), returns ranked rows
+		 * @param callable(int): array<int, T> $query Receives a depth (zero for all), returns ranked rows
 		 * @param callable(T): int $idOf Returns the product ID of a row
 		 * @return array<int, T> Ranked rows that pass eligibility
 		 */
 		public function withEligibility(?EligibilityProvider $eligibility, int $limit, callable $query, callable $idOf): array {
 			if ($eligibility === null) {
-				return $query([], $limit);
+				return $query($limit);
 			}
 
-			if ($eligibility instanceof ArrayEligibilityProvider) {
-				$ids = $eligibility->ids();
-
-				// An empty allowlist means "no restriction" in SQL, so an empty eligible set must short-circuit.
-				return $ids === [] ? [] : $query($ids, $limit);
-			}
-
-			return $this->fetchUntilFilled($limit, $eligibility,
-				function (int $depth) use ($query): array {
-					return $query([], $depth);
-				}, $idOf);
+			return $this->fetchUntilFilled($limit, $eligibility, $query, $idOf);
 		}
 
 		/**

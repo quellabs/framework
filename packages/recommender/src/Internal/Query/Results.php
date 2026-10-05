@@ -35,16 +35,6 @@
 		}
 	
 		/**
-		 * Check whether a product ID passes an allowlist filter.
-		 * @param array<int> $filter Allowed product IDs, or empty for all
-		 * @param int $productId Product ID to test
-		 * @return bool
-		 */
-		public static function allows(array $filter, int $productId): bool {
-			return $filter === [] || in_array($productId, $filter, true);
-		}
-	
-		/**
 		 * Order product IDs by score descending, breaking ties by ascending product ID.
 		 * @param array<int, float> $scores Score per product ID
 		 * @return array<int, float> The same map, reordered

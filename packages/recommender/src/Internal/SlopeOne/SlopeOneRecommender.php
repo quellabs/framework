@@ -5,7 +5,6 @@
 	use Cake\Database\Connection;
 	use Quellabs\Recommender\Config\RecommendationConfig;
 	use Quellabs\Recommender\Internal\Persistence\TemporaryTable;
-	use Quellabs\Recommender\Internal\Query\CandidateAllowlist;
 	use Quellabs\Recommender\Internal\Query\Results;
 	use Quellabs\Recommender\PredictionResult;
 	use Quellabs\Recommender\VisitorContext;
@@ -29,10 +28,7 @@
 	
 		/** @var TemporaryTable Temporary tables for candidate sets and rating inputs */
 		private TemporaryTable $temporary;
-	
-		/** @var CandidateAllowlist Product ID allowlist predicates */
-		private CandidateAllowlist $allowlist;
-	
+
 		/**
 		 * Build the Slope One recommender.
 		 * @param Connection $connection The CakePHP database connection
@@ -42,24 +38,22 @@
 			$this->connection = $connection;
 			$this->config = $config;
 			$this->temporary = new TemporaryTable($connection);
-			$this->allowlist = new CandidateAllowlist($this->temporary);
 		}
-	
+
 		/**
 		 * Return items sorted by their average Slope One diff relative to the given product, best match first.
 		 * @param int $productId The product ID
 		 * @param int $minLinks Minimum co-occurrence count to include a pair
-		 * @param array<int> $filter When non-empty, only return product IDs in this set
 		 * @param int $limit Maximum number of results (0 = unlimited)
 		 * @param int|null $category Defaults to configured default
 		 * @return array<int, ProductDiff>
 		 */
-		public function getSlopeItems(int $productId, int $minLinks = 1, array $filter = [], int $limit = 0, ?int $category = null): array {
+		public function getSlopeItems(int $productId, int $minLinks = 1, int $limit = 0, ?int $category = null): array {
 			$resolvedCategory = $this->config->resolveCategory($category);
 			$limit = max(0, $limit);
 			$result = [];
-	
-			foreach ($this->slopeItemRows($productId, max(1, $minLinks), $filter, $resolvedCategory, $limit) as $row) {
+
+			foreach ($this->slopeItemRows($productId, max(1, $minLinks), $resolvedCategory, $limit) as $row) {
 				if (
 					!is_array($row) ||
 					!isset($row['item_id2'], $row['avg_diff']) ||
@@ -68,29 +62,22 @@
 				) {
 					continue;
 				}
-	
-				$id = (int)$row['item_id2'];
-	
-				if (!Results::allows($filter, $id)) {
-					continue;
-				}
-	
-				$result[] = ['product_id' => $id, 'diff' => (float)$row['avg_diff']];
+
+				$result[] = ['product_id' => (int)$row['item_id2'], 'diff' => (float)$row['avg_diff']];
 			}
-	
+
 			return Results::limit($result, $limit);
 		}
-	
+
 		/**
 		 * Return the linked candidates of a product ordered by average Slope One diff, best first.
 		 * @param int $productId The product ID
 		 * @param int $minLinks Minimum co-occurrence count, at least one
-		 * @param array<int> $filter Allowed IDs, or empty for all
 		 * @param int $category Already-resolved category
 		 * @param int $limit Maximum results, or zero for all
 		 * @return array<int, array<string, mixed>> Rows with item_id2 and avg_diff
 		 */
-		private function slopeItemRows(int $productId, int $minLinks, array $filter, int $category, int $limit): array {
+		private function slopeItemRows(int $productId, int $minLinks, int $category, int $limit): array {
 			$sql = '
 				SELECT
 					`item_id2`,
@@ -106,16 +93,11 @@
 				'category'   => $category,
 				'min_links'  => $minLinks,
 			];
-			$sql .= $this->allowlist->predicate($filter, '`item_id2`', $params);
 			$sql .= ' ORDER BY avg_diff DESC, `item_id2` ASC';
 	
 			$sql .= Results::limitSql($limit);
 	
-			try {
-				return $this->connection->execute($sql, $params)->fetchAll('assoc');
-			} finally {
-				$this->allowlist->release($filter);
-			}
+			return $this->connection->execute($sql, $params)->fetchAll('assoc');
 		}
 	
 		/**
@@ -141,12 +123,11 @@
 		/**
 		 * Predict ratings for all unrated items for a member using Slope One, sorted by predicted rating descending.
 		 * @param int $memberId The member ID
-		 * @param array<int> $filter When non-empty, only return product IDs in this set
 		 * @param int $limit Maximum number of results (0 = unlimited)
 		 * @param int|null $category Defaults to configured default
 		 * @return array<int, ProductRating>
 		 */
-		public function memberPredictAll(int $memberId, array $filter = [], int $limit = 0, ?int $category = null): array {
+		public function memberPredictAll(int $memberId, int $limit = 0, ?int $category = null): array {
 			$resolvedCategory = $this->config->resolveCategory($category);
 			$rows = $this->unseenSlopeRows(
 				'JOIN vogoo_ratings r ON r.product_id = l.item_id1 AND
@@ -163,7 +144,7 @@
 					'seen_member' => $memberId,
 					'seen_category' => $resolvedCategory,
 				],
-				$filter, $resolvedCategory, '');
+				$resolvedCategory, '');
 	
 			return $this->rankPredictions($rows, $limit);
 		}
@@ -193,12 +174,11 @@
 		/**
 		 * Predict ratings for all unrated items for an anonymous visitor using Slope One, sorted by predicted rating descending.
 		 * @param VisitorContext $visitor The visitor context holding the current session's ratings
-		 * @param array<int> $filter When non-empty, only return product IDs in this set
 		 * @param int $limit Maximum number of results (0 = unlimited)
 		 * @param int|null $category Defaults to configured default
 		 * @return array<int, ProductRating>
 		 */
-		public function visitorPredictAll(VisitorContext $visitor, array $filter = [], int $limit = 0, ?int $category = null): array {
+		public function visitorPredictAll(VisitorContext $visitor, int $limit = 0, ?int $category = null): array {
 			$resolvedCategory = $this->config->resolveCategory($category);
 			$products = $this->collectGenuineRatings($visitor->ratings($resolvedCategory));
 	
@@ -211,7 +191,7 @@
 				fn(string $table) => $this->temporary->withIdTable('vogoo_visitor_seen_', $seenIds,
 					fn(string $seenTable) => $this->unseenSlopeRows("JOIN {$table} r ON r.product_id = l.item_id1",
 						"NOT EXISTS (SELECT 1 FROM {$seenTable} s WHERE s.product_id = l.item_id2)",
-						[], $filter, $resolvedCategory, '')));
+						[], $resolvedCategory, '')));
 	
 			return $this->rankPredictions($rows, $limit);
 		}
@@ -240,14 +220,13 @@
 		/**
 		 * Predict all unseen member ratings with directed-pair support.
 		 * @param int $memberId Member ID
-		 * @param array<int> $filter Allowed IDs, or empty for all
 		 * @param int $limit Maximum results, or zero for all
 		 * @param int $minSupport Minimum summed pair support
 		 * @param int|null $category Category override
 		 * @return array<int, PredictionResult>
 		 * @throws \InvalidArgumentException When the minimum support is not positive
 		 */
-		public function memberPredictAllDetailed(int $memberId, array $filter = [], int $limit = 0,
+		public function memberPredictAllDetailed(int $memberId, int $limit = 0,
 			int $minSupport = 1, ?int $category = null): array {
 			$this->validateSupport($minSupport);
 			$resolvedCategory = $this->config->resolveCategory($category);
@@ -267,7 +246,7 @@
 					'seen_member' => $memberId,
 					'seen_category' => $resolvedCategory,
 				],
-				$filter, $limit, $resolvedCategory, $minSupport);
+				$limit, $resolvedCategory, $minSupport);
 		}
 	
 		/**
@@ -296,14 +275,13 @@
 		/**
 		 * Predict unseen visitor ratings with a batched temporary input table.
 		 * @param VisitorContext $visitor Visitor ratings
-		 * @param array<int> $filter Allowed IDs, or empty for all
 		 * @param int $limit Maximum results, or zero for all
 		 * @param int $minSupport Minimum summed pair support
 		 * @param int|null $category Category override
 		 * @return array<int, PredictionResult>
 		 * @throws \InvalidArgumentException When the minimum support is not positive
 		 */
-		public function visitorPredictAllDetailed(VisitorContext $visitor, array $filter = [], int $limit = 0,
+		public function visitorPredictAllDetailed(VisitorContext $visitor, int $limit = 0,
 			int $minSupport = 1, ?int $category = null): array {
 			$this->validateSupport($minSupport);
 			$resolvedCategory = $this->config->resolveCategory($category);
@@ -320,7 +298,7 @@
 					fn(string $seenTable) => $this->unseenDetailedPredictions(
 						"JOIN {$table} r ON r.product_id = l.item_id1",
 						"NOT EXISTS (SELECT 1 FROM {$seenTable} s WHERE s.product_id = l.item_id2)",
-						[], $filter, $limit, $resolvedCategory, $minSupport)));
+						[], $limit, $resolvedCategory, $minSupport)));
 		}
 	
 		/**
@@ -363,19 +341,18 @@
 		 * @param string $ratingJoin Join from vogoo_links to the rating source, aliased r on l.item_id1
 		 * @param string $seenPredicate Predicate excluding candidates already rated, referring to l.item_id2
 		 * @param array<string, int|float> $params Parameters referenced by the join and predicate
-		 * @param array<int> $filter Allowed IDs, or empty for all
 		 * @param int $limit Maximum results, or zero for all
 		 * @param int $category Already-resolved category
 		 * @param int $minSupport Minimum summed pair support
 		 * @return array<int, PredictionResult>
 		 */
 		private function unseenDetailedPredictions(string $ratingJoin, string $seenPredicate, array $params,
-			array $filter, int $limit, int $category, int $minSupport): array {
+			int $limit, int $category, int $minSupport): array {
 			$rows = $this->unseenSlopeRows($ratingJoin, $seenPredicate, $params + ['min_support' => $minSupport],
-				$filter, $category, ' HAVING support >= :min_support ORDER BY predicted DESC, support DESC, l.item_id2 ASC'
+				$category, ' HAVING support >= :min_support ORDER BY predicted DESC, support DESC, l.item_id2 ASC'
 				. Results::limitSql($limit));
 	
-			return $this->detailedPredictions($rows, $filter, $limit);
+			return $this->detailedPredictions($rows, $limit);
 		}
 	
 		/**
@@ -391,16 +368,14 @@
 		}
 	
 		/**
-		 * Convert aggregated rows into predictions, keeping only allowed IDs and ordering by rating then support.
+		 * Convert aggregated rows into predictions, ordering by rating then support.
 		 * @param array<mixed> $rows Aggregated rows
-		 * @param array<int> $filter Allowed IDs
 		 * @param int $limit Maximum results
 		 * @return array<int, PredictionResult>
 		 * @throws \UnexpectedValueException When a row is missing a required field
 		 */
-		private function detailedPredictions(array $rows, array $filter, int $limit): array {
-			$allowed = $filter === [] ? null : array_fill_keys($filter, true);
-			$results = [];
+		private function detailedPredictions(array $rows, int $limit): array {
+				$results = [];
 			
 			foreach ($rows as $row) {
 				$fields = self::predictionFields($row);
@@ -410,10 +385,6 @@
 				}
 
 				[$id, $support, $numerator] = $fields;
-
-				if ($allowed !== null && !isset($allowed[$id])) {
-					continue;
-				}
 
 				$results[] = new PredictionResult($id, Results::clampRating($numerator / $support), $support);
 			}
@@ -466,13 +437,12 @@
 		 * @param string $ratingJoin Join from vogoo_links to the rating source, aliased r on l.item_id1
 		 * @param string $seenPredicate Predicate excluding candidates already rated, referring to l.item_id2
 		 * @param array<string, int|float> $params Parameters referenced by the join and predicate
-		 * @param array<int> $filter Allowed IDs, or empty for all
 		 * @param int $category Already-resolved category
 		 * @param string $tail Clause appended after GROUP BY, such as HAVING or ORDER BY
 		 * @return array<int, array<string, mixed>> Rows with item_id2, support and numerator
 		 */
 		private function unseenSlopeRows(string $ratingJoin, string $seenPredicate, array $params,
-			array $filter, int $category, string $tail): array {
+			int $category, string $tail): array {
 			$params += ['category' => $category];
 			$sql = "
 				SELECT
@@ -484,14 +454,9 @@
 				WHERE l.category = :category AND
 					l.slope_count > 0 AND
 					{$seenPredicate}";
-			$sql .= $this->allowlist->predicate($filter, 'l.item_id2', $params);
 			$sql .= ' GROUP BY l.item_id2' . $tail;
 	
-			try {
-				return $this->connection->execute($sql, $params)->fetchAll('assoc');
-			} finally {
-				$this->allowlist->release($filter);
-			}
+			return $this->connection->execute($sql, $params)->fetchAll('assoc');
 		}
 	
 		/**

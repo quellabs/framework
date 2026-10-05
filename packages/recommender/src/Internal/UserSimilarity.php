@@ -186,8 +186,8 @@
 			$minSimilarity = max(0, min(100, $minSimilarity));
 
 			return $this->eligibilityFilter->withEligibility($eligibility, max(0, $limit),
-				function (array $filter, int $depth) use ($memberId, $minSimilarity, $resolvedCategory): array {
-					return $this->memberRecommendationRows($memberId, $minSimilarity, $filter, $depth, $resolvedCategory);
+				function (int $depth) use ($memberId, $minSimilarity, $resolvedCategory): array {
+					return $this->memberRecommendationRows($memberId, $minSimilarity, $depth, $resolvedCategory);
 				},
 				function (RecommendationResult $row): int {
 					return $row->itemId;
@@ -195,15 +195,14 @@
 		}
 
 		/**
-		 * Return the similarity-weighted member recommendations, with an optional allowlist and limit.
+		 * Return the similarity-weighted member recommendations, with a limit.
 		 * @param int $memberId The member ID
 		 * @param int $minSimilarity Minimum neighbour similarity, already clamped to [0, 100]
-		 * @param array<int> $filter Allowed product IDs, or empty for all
 		 * @param int $limit Maximum results, or zero for all
 		 * @param int $resolvedCategory Already-resolved category
 		 * @return array<int, RecommendationResult>
 		 */
-		private function memberRecommendationRows(int $memberId, int $minSimilarity, array $filter, int $limit, int $resolvedCategory): array {
+		private function memberRecommendationRows(int $memberId, int $minSimilarity, int $limit, int $resolvedCategory): array {
 
 			$neighbours = $this->memberNeighbours($memberId, $minSimilarity, 0, $resolvedCategory);
 
@@ -211,7 +210,7 @@
 				return [];
 			}
 
-			$scores = $this->computeNeighbourScores($memberId, $neighbours, $filter, $resolvedCategory);
+			$scores = $this->computeNeighbourScores($memberId, $neighbours, $resolvedCategory);
 
 			if ($scores === []) {
 				return [];
@@ -348,11 +347,10 @@
 		 * Each score is the similarity-weighted average of the neighbours' ratings. Runs one query per chunk of neighbours.
 		 * @param int $memberId The member receiving recommendations
 		 * @param array<int, Neighbour> $neighbours Neighbours with their similarity
-		 * @param array<int> $filter When non-empty, only score product IDs in this set
 		 * @param int $category Already-resolved category
 		 * @return array<int, float> Map of candidate product_id to weighted score
 		 */
-		private function computeNeighbourScores(int $memberId, array $neighbours, array $filter, int $category): array {
+		private function computeNeighbourScores(int $memberId, array $neighbours, int $category): array {
 			$threshold = $this->config->getThresholdRating();
 			$scores = [];
 			$weights = [];
@@ -392,11 +390,7 @@
 				foreach ($rows as $row) {
 					$productId = (int)$row['product_id'];
 					
-					if (!Results::allows($filter, $productId)) {
-						continue;
-					}
-					
-					$similarity = $similarities[(int)$row['member_id']];
+										$similarity = $similarities[(int)$row['member_id']];
 					$scores[$productId] = ($scores[$productId] ?? 0.0) + $similarity * (float)$row['rating'];
 					$weights[$productId] = ($weights[$productId] ?? 0) + $similarity;
 				}
