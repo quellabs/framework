@@ -18,8 +18,8 @@ class UserSimilarityTest extends IntegrationTestCase {
         $engine->setRating(1, 10, 1.0);
         $engine->setRating(2, 10, 0.0);
         $engine->setRating(2, 20, 1.0);
-        $this->assertSame([], $users->getNeighbours(1, 0));
-        $this->assertSame([], $users->memberGetRecommendedItems(1, 0));
+        $this->assertSame([], $users->memberNeighbours(1, 0));
+        $this->assertSame([], $users->memberRecommendations(1, 0));
     }
 
     /** Equal similarities use member ID to give stable limited pages.
@@ -31,8 +31,8 @@ class UserSimilarityTest extends IntegrationTestCase {
         foreach ([1, 2, 3] as $member) {
             $engine->setRating($member, 10, 0.8);
         }
-        $this->assertSame([2, 3], array_column($users->getNeighbours(1), 'member_id'));
-        $this->assertSame([2], array_column($users->getNeighbours(1, limit: 1), 'member_id'));
+        $this->assertSame([2, 3], array_map(fn($n) => $n->memberId, $users->memberNeighbours(1)));
+        $this->assertSame([2], array_map(fn($n) => $n->memberId, $users->memberNeighbours(1, limit: 1)));
     }
 
     /** Grouped neighbour reads keep query count independent of neighbour count.
@@ -64,9 +64,9 @@ class UserSimilarityTest extends IntegrationTestCase {
         };
         $engine = new RecommendationEngine($counting, $this->config);
         $users = new UserSimilarity($counting, $this->config, $engine);
-        $this->assertCount(20, $users->memberGetRecommendedItems(1));
+        $this->assertCount(20, $users->memberRecommendations(1));
         $this->assertSame(3, $counting->queries);
         $this->assertSame($users->memberSimilarity(1, 2),
-            $users->getNeighbours(1, limit: 1)[0]['similarity']);
+            $users->memberNeighbours(1, limit: 1)[0]->similarity);
     }
 }

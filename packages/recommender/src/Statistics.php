@@ -96,7 +96,7 @@
 		 * Return the most-rated products, ordered by rating count descending.
 		 * @param int $limit Maximum number of results (0 = unlimited)
 		 * @param int|null $category Defaults to configured default
-		 * @return array<int, array{product_id: int, num_ratings: int}>
+		 * @return array<int, ProductCount>
 		 */
 		public function mostRatedProducts(int $limit = 10, ?int $category = null): array {
 			$resolvedCategory = $this->config->resolveCategory($category);
@@ -120,10 +120,7 @@
 			$rows = $this->connection->execute($sql, ['category' => $resolvedCategory])->fetchAll('assoc');
 			
 			return array_map(
-				fn($row) => [
-					'product_id'  => (int)$row['product_id'],
-					'num_ratings' => (int)$row['num_ratings'],
-				],
+				fn($row) => new ProductCount((int)$row['product_id'], (int)$row['num_ratings']),
 				$rows
 			);
 		}
@@ -134,7 +131,7 @@
 		 * @param int $limit Maximum number of results (0 = unlimited)
 		 * @param int $minRatings Minimum number of ratings to qualify
 		 * @param int|null $category Defaults to configured default
-		 * @return array<int, array{product_id: int, avg_rating: float}>
+		 * @return array<int, ProductAverage>
 		 */
 		public function topRatedProducts(int $limit = 10, int $minRatings = 1, ?int $category = null): array {
 			$resolvedCategory = $this->config->resolveCategory($category);
@@ -163,10 +160,7 @@
 			])->fetchAll('assoc');
 			
 			return array_map(
-				fn($row) => [
-					'product_id' => (int)$row['product_id'],
-					'avg_rating' => (float)$row['avg_rating'],
-				],
+				fn($row) => new ProductAverage((int)$row['product_id'], (float)$row['avg_rating']),
 				$rows
 			);
 		}

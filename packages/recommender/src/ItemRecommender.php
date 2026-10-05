@@ -394,13 +394,13 @@
 			$results = [];
 			
 			foreach ($stats->topRatedProducts(0, max(1, $minRatings), $category) as $row) {
-				$id = $row['product_id'];
+				$id = $row->productId;
 				
 				if (in_array($id, $excluded, true) || !Results::allows($filter, $id)) {
 					continue;
 				}
 				
-				$results[] = new RecommendationResult($id, $row['avg_rating'], 'top_rated', []);
+				$results[] = new RecommendationResult($id, $row->averageRating, 'top_rated', []);
 				
 				if ($limit > 0 && count($results) >= $limit) {
 					break;

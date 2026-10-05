@@ -8,7 +8,9 @@
 	use Quellabs\Recommender\Internal\Query\Results;
 	
 	
+	use Quellabs\Recommender\Neighbour;
 	use Quellabs\Recommender\RecommendationEngine;
+	use Quellabs\Recommender\RecommendationResult;
 	/**
 	 * User-based collaborative filtering: member similarity scoring and
 	 * neighbour-based recommendations.
@@ -19,7 +21,6 @@
 	 *
 	 * Methods throw on database failure.
 	 *
-	 * @phpstan-type Neighbour array{member_id: int, similarity: int}
 	 * @phpstan-type ItemScore array{itemId: int, score: float}
 	 */
 	readonly class UserSimilarity {
@@ -102,7 +103,7 @@
 		 * @return array<int, Neighbour>
 		 * @throws \UnexpectedValueException When a neighbour row is malformed
 		 */
-		public function getNeighbours(int $memberId, int $minSimilarity = 1, int $limit = 0, ?int $category = null): array {
+		public function memberNeighbours(int $memberId, int $minSimilarity = 1, int $limit = 0, ?int $category = null): array {
 			$resolvedCategory = $this->config->resolveCategory($category);
 			$minSimilarity = max(0, min(100, $minSimilarity));
 			$limit = max(0, $limit);
@@ -127,10 +128,10 @@
 					continue;
 				}
 	
-				$neighbours[] = ['member_id' => $otherId, 'similarity' => $similarity];
+				$neighbours[] = new Neighbour($otherId, $similarity);
 			}
-	
-			usort($neighbours, fn($a, $b) => ($b['similarity'] <=> $a['similarity']) ?: ($a['member_id'] <=> $b['member_id']));
+
+			usort($neighbours, fn($a, $b) => ($b->similarity <=> $a->similarity) ?: ($a->memberId <=> $b->memberId));
 			return Results::limit($neighbours, $limit);
 		}
 	
@@ -170,29 +171,33 @@
 		 * @param array<int> $filter When non-empty, only return product IDs in this set
 		 * @param int $limit Maximum number of results (0 = unlimited)
 		 * @param int|null $category Defaults to configured default
-		 * @return array<int, int> List of product IDs ordered by score
+		 * @return array<int, RecommendationResult> Recommended products ordered by score, with strategy user_similarity
 		 */
-		public function memberGetRecommendedItems(int $memberId, int $minSimilarity = 1, array $filter = [], int $limit = 0, ?int $category = null): array {
+		public function memberRecommendations(int $memberId, int $minSimilarity = 1, array $filter = [], int $limit = 0, ?int $category = null): array {
 			$resolvedCategory = $this->config->resolveCategory($category);
 			$minSimilarity = max(0, min(100, $minSimilarity));
 			$limit = max(0, $limit);
-			
-			$neighbours = $this->getNeighbours($memberId, $minSimilarity, 0, $resolvedCategory);
-			
+
+			$neighbours = $this->memberNeighbours($memberId, $minSimilarity, 0, $resolvedCategory);
+
 			if ($neighbours === []) {
 				return [];
 			}
-			
+
 			$scores = $this->computeNeighbourScores($memberId, $neighbours, $filter, $resolvedCategory);
-			
+
 			if ($scores === []) {
 				return [];
 			}
-			
+
 			$scores = Results::sortByScore($scores);
-	
-			$result = array_keys($scores);
-			return Results::limit($result, $limit);
+			$results = [];
+
+			foreach ($scores as $itemId => $score) {
+				$results[] = new RecommendationResult($itemId, $score, 'user_similarity', []);
+			}
+
+			return Results::limit($results, $limit);
 		}
 		
 		/**
@@ -212,7 +217,7 @@
 			}
 			
 			$resolvedCategory = $this->config->resolveCategory($category);
-			$neighbours = $this->getNeighbours($memberId, $minSimilarity, $maxNeighbours, $resolvedCategory);
+			$neighbours = $this->memberNeighbours($memberId, $minSimilarity, $maxNeighbours, $resolvedCategory);
 			
 			if ($neighbours === []) {
 				return [];
@@ -322,7 +327,7 @@
 			$scores = [];
 			$weights = [];
 			
-			$similarities = array_column($neighbours, 'similarity', 'member_id');
+			$similarities = array_column($neighbours, 'similarity', 'memberId');
 			
 			foreach (array_chunk(array_keys($similarities), 500) as $memberIds) {
 				$params = [

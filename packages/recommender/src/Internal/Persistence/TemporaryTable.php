@@ -3,12 +3,11 @@
 	namespace Quellabs\Recommender\Internal\Persistence;
 	
 	use Cake\Database\Connection;
-	use Quellabs\Recommender\Internal\UserSimilarity;
+	use Quellabs\Recommender\Neighbour;
 	
 	/**
 	 * Creates temporary tables that hold candidate sets and rating inputs for one query.
 	 *
-	 * @phpstan-import-type Neighbour from UserSimilarity
 	 */
 	final class TemporaryTable {
 	
@@ -67,7 +66,7 @@
 		 * @return T Operation result
 		 */
 		public function withNeighbourTable(string $prefix, array $neighbours, callable $operation): mixed {
-			$rows = array_map(fn($neighbour) => [$neighbour['member_id'], $neighbour['similarity']], $neighbours);
+			$rows = array_map(fn($neighbour) => [$neighbour->memberId, $neighbour->similarity], $neighbours);
 	
 			return $this->scoped($prefix, 'member_id INT UNSIGNED PRIMARY KEY, similarity INT UNSIGNED NOT NULL',
 				fn(string $table) => $this->insertRows($table, ['member_id', 'similarity'], $rows), $operation);
