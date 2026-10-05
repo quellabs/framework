@@ -204,8 +204,9 @@
 			
 			$modelMetrics = $this->metrics($predictions);
 			$baselineMetrics = $this->metrics(array_map(fn($sample) => ['probability' => $rate, 'label' => $sample['label']], $holdout));
-			$validated = $modelMetrics['log_loss'] <= $baselineMetrics['log_loss']
-				&& $modelMetrics['brier'] <= $baselineMetrics['brier'] && $modelMetrics['ece'] <= 0.05;
+			$validated = $modelMetrics['log_loss'] <= $baselineMetrics['log_loss'] &&
+				$modelMetrics['brier'] <= $baselineMetrics['brier'] &&
+				$modelMetrics['ece'] <= 0.05;
 				
 			return [
 				'model_metrics' => $modelMetrics,

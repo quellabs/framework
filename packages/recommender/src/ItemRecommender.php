@@ -553,8 +553,12 @@
 				}
 	
 				foreach ($this->linkedCandidateRows($entry['product_id'], $category) as $row) {
-					if (!is_array($row) || !isset($row['item_id2'], $row['liked_count'])
-						|| !is_numeric($row['item_id2']) || !is_numeric($row['liked_count'])) {
+					if (
+						!is_array($row) ||
+						!isset($row['item_id2'], $row['liked_count']) ||
+						!is_numeric($row['item_id2']) ||
+						!is_numeric($row['liked_count'])
+					) {
 						continue;
 					}
 	

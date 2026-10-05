@@ -60,8 +60,12 @@
 			$result = [];
 	
 			foreach ($this->slopeItemRows($productId, max(1, $minLinks), $filter, $resolvedCategory, $limit) as $row) {
-				if (!is_array($row) || !isset($row['item_id2'], $row['avg_diff'])
-					|| !is_numeric($row['item_id2']) || !is_numeric($row['avg_diff'])) {
+				if (
+					!is_array($row) ||
+					!isset($row['item_id2'], $row['avg_diff']) ||
+					!is_numeric($row['item_id2']) ||
+					!is_numeric($row['avg_diff'])
+				) {
 					continue;
 				}
 	
@@ -399,9 +403,13 @@
 			$results = [];
 			
 			foreach ($rows as $row) {
-				if (!is_array($row) || !isset($row['item_id2'], $row['support'], $row['numerator'])
-					|| !is_numeric($row['item_id2']) || !is_numeric($row['support'])
-					|| !is_numeric($row['numerator'])) {
+				if (
+					!is_array($row) ||
+					!isset($row['item_id2'], $row['support'], $row['numerator']) ||
+					!is_numeric($row['item_id2']) ||
+					!is_numeric($row['support']) ||
+					!is_numeric($row['numerator'])
+				) {
 					throw new \UnexpectedValueException('Prediction row must contain numeric item_id2, support, and numerator values.');
 				}
 				

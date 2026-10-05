@@ -68,7 +68,7 @@
 		 * @param OutcomeType $type Action type
 		 * @param DateTimeImmutable $occurredAt Event time
 		 * @return void
-		 * @throws \InvalidArgumentException When the IDs are invalid or the event conflicts with a stored one
+		 * @throws \InvalidArgumentException|\Exception When the IDs are invalid or the event conflicts with a stored one
 		 */
 		public function recordOutcome(ImpressionId $impressionId, int $itemId, string $eventId,
 			OutcomeType $type, DateTimeImmutable $occurredAt): void {
@@ -86,10 +86,20 @@
 			
 			$this->connection->transactional(function () use ($impressionId, $itemId, $eventId, $type, $timestamp): void {
 				$this->assertOutcomeFollowsDisplay($impressionId, $itemId, $timestamp);
+				
 				$this->connection->execute('INSERT INTO vogoo_outcomes
 	                (event_id, impression_id, item_id, event_type, occurred_at)
-	                VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE event_id = event_id',
-					[$eventId, $impressionId->binary(), $itemId, $type->value, $timestamp]);
+	                VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE event_id = event_id
+                ',
+					[
+						$eventId,
+						$impressionId->binary(),
+						$itemId,
+						$type->value,
+						$timestamp
+					]
+				);
+				
 				$this->assertStoredEventMatches($impressionId, $itemId, $eventId, $type, $timestamp);
 			});
 		}
@@ -131,30 +141,36 @@
 			', [
 				'model_id' => $shown->modelId,
 			])->fetchAssoc();
-	
+			
 			if (!$row) {
 				throw new \UnexpectedValueException("Calibrated list refers to missing model {$shown->modelId}.");
 			}
 			
-			if ($row['objective'] !== 'click' || (int)$row['category'] !== $shown->category
-				|| $row['placement'] !== $shown->placement || (int)$row['source_mask'] !== $shown->sourceMask()
-				|| $row['context_key'] !== ($shown->contextKey ?? '')
-				|| (int)$row['feature_schema_version'] !== 1) {
+			if (
+				$row['objective'] !== 'click' ||
+				(int)$row['category'] !== $shown->category ||
+				$row['placement'] !== $shown->placement ||
+				(int)$row['source_mask'] !== $shown->sourceMask() ||
+				$row['context_key'] !== ($shown->contextKey ?? '') ||
+				(int)$row['feature_schema_version'] !== 1
+			) {
 				throw new \UnexpectedValueException("Calibrated list does not match the partition of model {$shown->modelId}.");
 			}
 			
 			$model = ClickModel::fromJson((string)$row['artifact']);
 			$expectedFeatures = array_values(array_filter($model->featureNames(),
 				fn($name) => $name !== 'log_position'));
-				
+			
 			foreach ($shown->items as $item) {
 				$actualFeatures = array_keys($item->featureSnapshot);
 				sort($actualFeatures);
 				
-				if ($actualFeatures !== $expectedFeatures
-					|| !$this->hasCompleteFeatureSnapshot($item, $shown->sources)
-					|| $item->rankingScore === null
-					|| abs($model->probability($item->featureSnapshot, 1) - $item->rankingScore) > 1e-9) {
+				if (
+					$actualFeatures !== $expectedFeatures ||
+					!$this->hasCompleteFeatureSnapshot($item, $shown->sources) ||
+					$item->rankingScore === null ||
+					abs($model->probability($item->featureSnapshot, 1) - $item->rankingScore) > 1e-9
+				) {
 					throw new \UnexpectedValueException("Features or reference score of item {$item->itemId} do not match model {$shown->modelId}.");
 				}
 			}
@@ -189,8 +205,8 @@
 		 */
 		private function insertImpressionItem(ImpressionId $id, RecommendationList $shown, ReconciledRecommendation $item,
 			int $position, ?ClickModel $model): void {
-			$snapshot = json_encode(['features' => $item->featureSnapshot,
-				'depth_searched' => $item->searchedDepths], JSON_THROW_ON_ERROR);
+			$snapshot = json_encode(['features'       => $item->featureSnapshot,
+			                         'depth_searched' => $item->searchedDepths], JSON_THROW_ON_ERROR);
 			$schemaVersion = $this->hasCompleteFeatureSnapshot($item, $shown->sources) ? 1 : 0;
 			$displayProbability = $model?->probability($item->featureSnapshot, $position);
 			
@@ -201,7 +217,7 @@
 				[$id->binary(), $item->itemId, $position, $item->rankingScore,
 					$displayProbability, $shown->modelId === null ? null : hex2bin($shown->modelId),
 					$schemaVersion, $snapshot]);
-					
+			
 			foreach ($item->evidence as $signal) {
 				$this->connection->execute('INSERT INTO vogoo_impression_evidence
 	                (impression_id, item_id, source, raw_score, source_rank, support_count,
@@ -230,7 +246,7 @@
 				      item.item_id = :item_id
 			', [
 				'impression_id' => $impressionId->binary(),
-				'item_id' => $itemId,
+				'item_id'       => $itemId,
 			])->fetchAssoc();
 			
 			if (!$row) {
@@ -266,13 +282,16 @@
 				'event_id' => $eventId,
 			])->fetchAssoc();
 			
-			if (strtolower((string)$stored['impression_hex']) !== $impressionId->hex
-				|| (int)$stored['item_id'] !== $itemId || $stored['event_type'] !== $type->value
-				|| (string)$stored['occurred_at'] !== $timestamp) {
+			if (
+				strtolower((string)$stored['impression_hex']) !== $impressionId->hex ||
+				(int)$stored['item_id'] !== $itemId ||
+				$stored['event_type'] !== $type->value ||
+				(string)$stored['occurred_at'] !== $timestamp
+			) {
 				throw new \InvalidArgumentException("Event ID '{$eventId}' was already recorded with different details.");
 			}
 		}
-			
+		
 		/**
 		 * Check whether an item carries a complete version-1 feature snapshot for the enabled sources.
 		 * @param ReconciledRecommendation $item Displayed item

@@ -44,8 +44,13 @@
 			$before = $config->get('before');
 			$size = $config->get('batch-size') ?? '1000';
 			
-			if (!is_string($before) || preg_match('/(Z|[+-]\d\d:\d\d)$/', $before) !== 1
-				|| !is_string($size) || !ctype_digit($size) || (int)$size < 1) {
+			if (
+				!is_string($before) ||
+				preg_match('/(Z|[+-]\d\d:\d\d)$/', $before) !== 1 ||
+				!is_string($size) ||
+				!ctype_digit($size) ||
+				(int)$size < 1
+			) {
 				throw new \InvalidArgumentException('An explicit UTC cutoff and positive batch size are required.');
 			}
 			

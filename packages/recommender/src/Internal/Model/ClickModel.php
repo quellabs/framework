@@ -26,11 +26,15 @@
 		 * @throws \UnexpectedValueException When the artifact or a coefficient is invalid
 		 */
 		public function __construct(array $artifact) {
-			if (($artifact['feature_schema_version'] ?? null) !== 1
-				|| !isset($artifact['intercept'], $artifact['coefficients'], $artifact['means'], $artifact['scales'])
-				|| !is_numeric($artifact['intercept']) || !is_finite((float)$artifact['intercept'])
-				|| !is_array($artifact['coefficients']) || !is_array($artifact['means'])
-				|| !is_array($artifact['scales'])) {
+			if (
+				($artifact['feature_schema_version'] ?? null) !== 1 ||
+				!isset($artifact['intercept'], $artifact['coefficients'], $artifact['means'], $artifact['scales']) ||
+				!is_numeric($artifact['intercept']) ||
+				!is_finite((float)$artifact['intercept']) ||
+				!is_array($artifact['coefficients']) ||
+				!is_array($artifact['means']) ||
+				!is_array($artifact['scales'])
+			) {
 				throw new \UnexpectedValueException('Incompatible click model artifact.');
 			}
 			
@@ -39,11 +43,17 @@
 			$scales = [];
 			
 			foreach ($artifact['coefficients'] as $name => $coefficient) {
-				if (!is_string($name) || !is_numeric($coefficient)
-					|| !isset($artifact['means'][$name], $artifact['scales'][$name])
-					|| !is_numeric($artifact['means'][$name]) || !is_numeric($artifact['scales'][$name])
-					|| !is_finite((float)$coefficient) || !is_finite((float)$artifact['means'][$name])
-					|| !is_finite((float)$artifact['scales'][$name]) || (float)$artifact['scales'][$name] <= 0) {
+				if (
+					!is_string($name) ||
+					!is_numeric($coefficient) ||
+					!isset($artifact['means'][$name], $artifact['scales'][$name]) ||
+					!is_numeric($artifact['means'][$name]) ||
+					!is_numeric($artifact['scales'][$name]) ||
+					!is_finite((float)$coefficient) ||
+					!is_finite((float)$artifact['means'][$name]) ||
+					!is_finite((float)$artifact['scales'][$name]) ||
+					(float)$artifact['scales'][$name] <= 0
+				) {
 					throw new \UnexpectedValueException("Invalid click model coefficient for feature '{$name}'.");
 				}
 				

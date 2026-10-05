@@ -813,9 +813,13 @@
 				$result = [];
 				
 				foreach ($rows as $row) {
-					if (!is_array($row) || !isset($row['id']) || !is_numeric($row['id'])
-						|| (isset($row['score']) && !is_numeric($row['score']))
-						|| (isset($row['support_count']) && !is_numeric($row['support_count']))) {
+					if (
+						!is_array($row) ||
+						!isset($row['id']) ||
+						!is_numeric($row['id']) ||
+						(isset($row['score']) && !is_numeric($row['score'])) ||
+						(isset($row['support_count']) && !is_numeric($row['support_count']))
+					) {
 						throw new \UnexpectedValueException('Source candidate row must have a numeric id, and numeric score and support_count when present.');
 					}
 					

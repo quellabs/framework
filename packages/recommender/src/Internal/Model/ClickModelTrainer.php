@@ -294,9 +294,13 @@
 		private function decodeSnapshot(array $row, array $expectedFeatures, array $expectedDepthSources): ?array {
 			$snapshot = json_decode((string)$row['feature_snapshot'], true, 512, JSON_THROW_ON_ERROR);
 			
-			if (!is_array($snapshot) || !isset($snapshot['features'], $snapshot['depth_searched'])
-				|| !is_array($snapshot['features']) || !is_array($snapshot['depth_searched'])
-				|| $snapshot['features'] === []) {
+			if (
+				!is_array($snapshot) ||
+				!isset($snapshot['features'], $snapshot['depth_searched']) ||
+				!is_array($snapshot['features']) ||
+				!is_array($snapshot['depth_searched']) ||
+				$snapshot['features'] === []
+			) {
 				return null;
 			}
 			
@@ -339,8 +343,11 @@
 			}
 			
 			foreach ($depths as $source => $depth) {
-				if (!is_string($source) || !is_int($depth)
-					|| !SourceFeatures::depthMatches($depth, $features[$source . '.log_depth_searched'])) {
+				if (
+					!is_string($source) ||
+					!is_int($depth) ||
+					!SourceFeatures::depthMatches($depth, $features[$source . '.log_depth_searched'])
+				) {
 					throw new \UnexpectedValueException('Recorded source depth does not match its feature.');
 				}
 			}
@@ -380,8 +387,12 @@
 		 * @throws \RuntimeException When the sample is too small
 		 */
 		private static function assertSampleSizes(int $trainingItems, int $holdoutItems, int $trainingClicks, int $holdoutClicks): void {
-			if ($trainingItems < 1000 || $trainingClicks < 100
-				|| $holdoutClicks < 20 || $holdoutItems - $holdoutClicks < 20) {
+			if (
+				$trainingItems < 1000 ||
+				$trainingClicks < 100 ||
+				$holdoutClicks < 20 ||
+				$holdoutItems - $holdoutClicks < 20
+			) {
 				throw new \RuntimeException("Not enough mature displayed items and clicks to train a model: {$trainingItems} training items with {$trainingClicks} clicks, {$holdoutItems} holdout items with {$holdoutClicks} clicks.");
 			}
 		}

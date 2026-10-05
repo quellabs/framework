@@ -49,10 +49,15 @@
 			$rawSources = $config->get('sources');
 			$window = $config->get('click-window-seconds');
 			
-			if ((!is_int($category) && !is_string($category))
-				|| (!is_int($window) && !is_string($window))
-				|| !ctype_digit((string)$category) || !is_string($placement) || !is_string($rawSources)
-				|| !ctype_digit((string)$window) || (int)$window < 1) {
+			if (
+				(!is_int($category) && !is_string($category)) ||
+				(!is_int($window) && !is_string($window)) ||
+				!ctype_digit((string)$category) ||
+				!is_string($placement) ||
+				!is_string($rawSources) ||
+				!ctype_digit((string)$window) ||
+				(int)$window < 1
+			) {
 				throw new \InvalidArgumentException('Category, placement, sources, and positive click window are required.');
 			}
 			
@@ -122,9 +127,10 @@
 		 * @throws \InvalidArgumentException When the value is not a valid timestamp with an offset
 		 */
 		private static function parseTimestamp(mixed $raw): DateTimeImmutable {
-			if (!is_string($raw) || preg_match(
-					'/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/D',
-					$raw) !== 1) {
+			if (
+				!is_string($raw) ||
+				preg_match( '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/D', $raw) !== 1
+			) {
 				throw new \InvalidArgumentException('Training timestamps require ISO-8601 with an explicit UTC offset.');
 			}
 			
@@ -176,9 +182,13 @@
 			foreach (['baseline_metrics' => 'Baseline', 'model_metrics' => 'Model'] as $key => $label) {
 				$metrics = $artifact[$key];
 				
-				if (!is_array($metrics) || !isset($metrics['log_loss'], $metrics['brier'], $metrics['ece'])
-					|| !is_numeric($metrics['log_loss']) || !is_numeric($metrics['brier'])
-					|| !is_numeric($metrics['ece'])) {
+				if (
+					!is_array($metrics) ||
+					!isset($metrics['log_loss'], $metrics['brier'], $metrics['ece']) ||
+					!is_numeric($metrics['log_loss']) ||
+					!is_numeric($metrics['brier']) ||
+					!is_numeric($metrics['ece'])
+				) {
 					throw new \UnexpectedValueException("Stored {$label} metrics are invalid.");
 				}
 				

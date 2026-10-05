@@ -175,14 +175,17 @@
 				$unsigned = in_array($expectedType, ['int', 'bigint'], true);
 				$asciiKey = in_array($column, ['placement', 'context_key', 'event_id'], true);
 				
-				if ($definition['DATA_TYPE'] !== $expectedType || ($definition['IS_NULLABLE'] === 'YES') !== $nullable
-					|| ($unsigned && !str_contains((string)$definition['COLUMN_TYPE'], 'unsigned'))
-					|| ($asciiKey && $definition['COLLATION_NAME'] !== 'ascii_bin')
-					|| (isset(self::COLUMN_LENGTHS[$column])
-						&& (int)$definition['CHARACTER_MAXIMUM_LENGTH'] !== self::COLUMN_LENGTHS[$column])
-					|| ($expectedType === 'datetime' && (int)$definition['DATETIME_PRECISION'] !== 6)
-					|| ($column === 'context_key' && $definition['COLUMN_DEFAULT'] !== '')
-					|| ($column === 'active_marker' && !str_contains((string)$definition['EXTRA'], 'GENERATED'))) {
+				if (
+					$definition['DATA_TYPE'] !== $expectedType ||
+					($definition['IS_NULLABLE'] === 'YES') !== $nullable ||
+					($unsigned && !str_contains((string)$definition['COLUMN_TYPE'], 'unsigned')) ||
+					($asciiKey && $definition['COLLATION_NAME'] !== 'ascii_bin') ||
+					(isset(self::COLUMN_LENGTHS[$column]) &&
+						(int)$definition['CHARACTER_MAXIMUM_LENGTH'] !== self::COLUMN_LENGTHS[$column]) ||
+					($expectedType === 'datetime' && (int)$definition['DATETIME_PRECISION'] !== 6) ||
+					($column === 'context_key' && $definition['COLUMN_DEFAULT'] !== '') ||
+					($column === 'active_marker' && !str_contains((string)$definition['EXTRA'], 'GENERATED'))
+				) {
 					throw new \RuntimeException("Existing {$table}.{$column} has an incompatible definition.");
 				}
 			}
