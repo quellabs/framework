@@ -2,6 +2,8 @@
 	
 	namespace Quellabs\Recommender;
 	
+	use Random\RandomException;
+	
 	/** Opaque random 16-byte impression token exposed as lowercase hex. */
 	readonly class ImpressionId {
 		
@@ -24,6 +26,7 @@
 		/**
 		 * Generate a fresh random impression token.
 		 * @return self Fresh random impression token
+		 * @throws RandomException
 		 */
 		public static function generate(): self {
 			return new self(bin2hex(random_bytes(16)));
