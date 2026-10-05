@@ -4,10 +4,9 @@ namespace Quellabs\Recommender\Sculpt;
 
 use Cake\Database\Connection;
 use Quellabs\Sculpt\ConfigurationManager;
-use Quellabs\Sculpt\Contracts\CommandBase;
 
 /** Installs only the optional evaluation and model tables. */
-class InitEvaluationCommand extends CommandBase {
+class InitEvaluationCommand extends RecommenderCommand {
 	
 	/** @var array<string, array<int, string>> Expected column names per evaluation table */
 	private const EXPECTED_COLUMNS = [
@@ -114,10 +113,8 @@ class InitEvaluationCommand extends CommandBase {
 	 * @throws \RuntimeException When the migration file is missing or a table does not match the schema
 	 */
 	public function execute(ConfigurationManager $config): int {
-		/** @var RecommenderProvider $provider */
-		$provider = $this->provider;
-		$connection = $provider->getConnection();
-		
+		$connection = $this->getRecommenderProvider()->getConnection();
+
 		$this->applyMigration($connection);
 		
 		foreach (self::EXPECTED_COLUMNS as $table => $columns) {

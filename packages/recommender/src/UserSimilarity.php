@@ -4,6 +4,8 @@ namespace Quellabs\Recommender;
 
 use Cake\Database\Connection;
 use Quellabs\Recommender\Config\RecommendationConfig;
+use Quellabs\Recommender\Internal\Persistence\TemporaryTable;
+use Quellabs\Recommender\Internal\Query\Results;
 
 /**
  * User-based collaborative filtering: member similarity scoring and
@@ -25,7 +27,10 @@ readonly class UserSimilarity {
 	
 	/** @var RecommendationEngine Engine used for rating lookups */
 	private RecommendationEngine $engine;
-	
+
+	/** @var TemporaryTable Temporary tables for neighbour and candidate sets */
+	private TemporaryTable $temporary;
+
 	/**
 	 * Build the similarity service.
 	 * @param Connection $connection The CakePHP database connection
@@ -36,6 +41,7 @@ readonly class UserSimilarity {
 		$this->connection = $connection;
 		$this->config = $config;
 		$this->engine = $engine;
+		$this->temporary = new TemporaryTable($connection);
 	}
 	
 	/**
@@ -133,7 +139,7 @@ readonly class UserSimilarity {
 		}
 		
 		usort($neighbours, fn($a, $b) => ($b['similarity'] <=> $a['similarity']) ?: ($a['member_id'] <=> $b['member_id']));
-		return $limit > 0 ? array_slice($neighbours, 0, $limit) : $neighbours;
+		return Results::limit($neighbours, $limit);
 	}
 	
 	/**
@@ -163,10 +169,10 @@ readonly class UserSimilarity {
 			return [];
 		}
 		
-		uksort($scores, fn($a, $b) => ($scores[$b] <=> $scores[$a]) ?: ($a <=> $b));
-		
+		$scores = Results::sortByScore($scores);
+
 		$result = array_keys($scores);
-		return $limit > 0 ? array_slice($result, 0, $limit) : $result;
+		return Results::limit($result, $limit);
 	}
 	
 	/**
@@ -192,79 +198,16 @@ readonly class UserSimilarity {
 			return [];
 		}
 		
-		$neighbourTable = 'recommender_neighbours_' . bin2hex(random_bytes(6));
-		$this->connection->execute("CREATE TEMPORARY TABLE {$neighbourTable}
-			(member_id INT UNSIGNED PRIMARY KEY, similarity INT UNSIGNED NOT NULL)");
-			
-		try {
-			return $this->scoreThroughNeighbourTable($memberId, $neighbours, $neighbourTable, $candidateIds, $resolvedCategory, $limit);
-		} finally {
-			$this->connection->execute("DROP TEMPORARY TABLE {$neighbourTable}");
-		}
-	}
-	
-	/**
-	 * Score candidates from the neighbour table, optionally through a temporary candidate table.
-	 * @param int $memberId Member receiving recommendations
-	 * @param array<int, array{member_id: int, similarity: int}> $neighbours Neighbours to load
-	 * @param string $neighbourTable Temporary table that receives the neighbours
-	 * @param array<int, int>|null $candidateIds Optional exact candidate batch to score
-	 * @param int $category Already-resolved category
-	 * @param int $limit Maximum candidates
-	 * @return array<int, array{itemId: int, score: float}>
-	 */
-	private function scoreThroughNeighbourTable(int $memberId, array $neighbours, string $neighbourTable,
-		?array $candidateIds, int $category, int $limit): array {
-		if ($candidateIds === null) {
-			$this->insertNeighbours($neighbourTable, $neighbours);
-			return $this->queryNeighbourRecommendations($memberId, $neighbourTable, null, $category, $limit);
-		}
-		
-		$candidateTable = 'recommender_neighbour_candidates_' . bin2hex(random_bytes(6));
-		$this->connection->execute("CREATE TEMPORARY TABLE {$candidateTable} (product_id INT UNSIGNED PRIMARY KEY)");
-		
-		try {
-			$this->insertCandidates($candidateTable, $candidateIds);
-			$this->insertNeighbours($neighbourTable, $neighbours);
-			return $this->queryNeighbourRecommendations($memberId, $neighbourTable, $candidateTable, $category, $limit);
-		} finally {
-			$this->connection->execute("DROP TEMPORARY TABLE {$candidateTable}");
-		}
-	}
-	
-	/**
-	 * Insert neighbours into a temporary table in batches of 500.
-	 * @param string $table Temporary table name
-	 * @param array<int, array{member_id: int, similarity: int}> $neighbours Neighbours to insert
-	 * @return void
-	 */
-	private function insertNeighbours(string $table, array $neighbours): void {
-		foreach (array_chunk($neighbours, 500) as $batch) {
-			$values = [];
-			$params = [];
-			
-			foreach ($batch as $neighbour) {
-				$values[] = '(?, ?)';
-				$params[] = $neighbour['member_id'];
-				$params[] = $neighbour['similarity'];
-			}
-			
-			$this->connection->execute("INSERT INTO {$table} (member_id, similarity) VALUES "
-				. implode(',', $values), $params);
-		}
-	}
-	
-	/**
-	 * Insert distinct candidate product IDs into a temporary table in batches of 500.
-	 * @param string $table Temporary table name
-	 * @param array<int, int> $candidateIds Candidate product IDs
-	 * @return void
-	 */
-	private function insertCandidates(string $table, array $candidateIds): void {
-		foreach (array_chunk(array_values(array_unique($candidateIds)), 500) as $batch) {
-			$holders = implode(',', array_fill(0, count($batch), '(?)'));
-			$this->connection->execute("INSERT INTO {$table} (product_id) VALUES {$holders}", $batch);
-		}
+		return $this->temporary->withNeighbourTable('recommender_neighbours_', $neighbours,
+			function (string $neighbourTable) use ($memberId, $candidateIds, $resolvedCategory, $limit): array {
+				if ($candidateIds === null) {
+					return $this->queryNeighbourRecommendations($memberId, $neighbourTable, null, $resolvedCategory, $limit);
+				}
+
+				return $this->temporary->withIdTable('recommender_neighbour_candidates_', $candidateIds,
+					fn(string $candidateTable): array => $this->queryNeighbourRecommendations(
+						$memberId, $neighbourTable, $candidateTable, $resolvedCategory, $limit));
+			});
 	}
 	
 	/**

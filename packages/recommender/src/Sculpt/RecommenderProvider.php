@@ -23,26 +23,6 @@ class RecommenderProvider extends ServiceProvider {
 	private ?RecommendationConfig $recommendationConfig = null;
 	
 	/**
-	 * Return the default configuration values. Database defaults are read from database.php instead.
-	 * @return array<string, mixed>
-	 */
-	public static function getDefaults(): array {
-		return [
-			'category'                    => 1,
-			'threshold_nr_common_ratings' => 30,
-			'threshold_mult'              => 2,
-			'threshold_rating'            => 0.66,
-			'cost'                        => 5.0,
-			'not_interested'              => -1.0,
-			'direct_links'                => false,
-			'direct_slope'                => true,
-			'max_candidate_depth'         => 2000,
-			'max_backfill_rounds'         => 3,
-			'max_eligibility_batch_size'  => 500,
-		];
-	}
-	
-	/**
 	 * Register all recommender commands with the Sculpt application.
 	 * @param Application $application The application the provider registers with
 	 * @return void
@@ -90,48 +70,8 @@ class RecommenderProvider extends ServiceProvider {
 			return $this->recommendationConfig;
 		}
 		
-		$this->recommendationConfig = new RecommendationConfig(
-			category: $this->getConfigValueAsInt('category', 1),
-			thresholdNrCommonRatings: $this->getConfigValueAsInt('threshold_nr_common_ratings', 30),
-			thresholdMult: $this->getConfigValueAsInt('threshold_mult', 2),
-			thresholdRating: $this->getConfigValueAsFloat('threshold_rating', 0.66),
-			cost: $this->getConfigValueAsFloat('cost', 5.0),
-			notInterested: $this->getConfigValueAsFloat('not_interested', -1.0),
-			directLinks: $this->getConfigFlag('direct_links', false),
-			directSlope: $this->getConfigFlag('direct_slope', true),
-			maxCandidateDepth: $this->getConfigValueAsInt('max_candidate_depth', 2000),
-			maxBackfillRounds: $this->getConfigValueAsInt('max_backfill_rounds', 3),
-			maxEligibilityBatchSize: $this->getConfigValueAsInt('max_eligibility_batch_size', 500),
-		);
-		
+		$this->recommendationConfig = RecommendationConfig::fromArray($this->getConfig());
 		return $this->recommendationConfig;
-	}
-	
-	/**
-	 * Read a float config value, falling back to the default when the key is missing or non-numeric.
-	 * @param string $key Config key
-	 * @param float $default Fallback value
-	 * @return float
-	 */
-	private function getConfigValueAsFloat(string $key, float $default): float {
-		$value = $this->getConfigValue($key);
-		return is_numeric($value) ? (float)$value : $default;
-	}
-	
-	/**
-	 * Read a boolean config value, parsing string forms such as "false" and "0".
-	 * @param string $key Config key
-	 * @param bool $default Fallback value when the key is missing or a string is not a recognized boolean
-	 * @return bool
-	 */
-	private function getConfigFlag(string $key, bool $default): bool {
-		$value = $this->getConfigValue($key, $default);
-
-		if (is_string($value)) {
-			return filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? $default;
-		}
-
-		return (bool)$value;
 	}
 
 	/**

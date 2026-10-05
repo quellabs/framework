@@ -3,7 +3,6 @@
 namespace Quellabs\Recommender\Sculpt;
 
 use Quellabs\Sculpt\ConfigurationManager;
-use Quellabs\Sculpt\Contracts\CommandBase;
 use Cake\Database\Connection;
 
 /**
@@ -13,7 +12,7 @@ use Cake\Database\Connection;
  *   sculpt recommender:init-db
  *   sculpt recommender:init-db --force   (drop and recreate existing tables)
  */
-class InitCommand extends CommandBase {
+class InitCommand extends RecommenderCommand {
 	
 	/**
 	 * Return the command signature.
@@ -58,9 +57,7 @@ HELP;
 	 * @return int Exit code: 0 on success, 1 when a table exists and --force was not given
 	 */
 	public function execute(ConfigurationManager $config): int {
-		/** @var RecommenderProvider $provider */
-		$provider = $this->provider;
-		$connection = $provider->getConnection();
+		$connection = $this->getRecommenderProvider()->getConnection();
 		$force = $config->hasFlag('force');
 		$tables = ['vogoo_ratings', 'vogoo_links'];
 		

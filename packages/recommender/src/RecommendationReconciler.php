@@ -5,17 +5,21 @@ namespace Quellabs\Recommender;
 use Cake\Database\Connection;
 use Quellabs\Recommender\Config\RecommendationConfig;
 use Quellabs\Recommender\Internal\Model\ClickModel;
+use Quellabs\Recommender\Internal\Persistence\TemporaryTable;
 use Quellabs\Recommender\Internal\Reconciliation\CandidateRoundState;
 
 /** Combines explicitly selected candidate generators using reciprocal ranks. */
 readonly class RecommendationReconciler {
-	
+
 	/** @var Connection Ratings database connection */
 	private Connection $connection;
-	
+
 	/** @var RecommendationConfig Recommender settings */
 	private RecommendationConfig $config;
-	
+
+	/** @var TemporaryTable Temporary tables for candidate sets and rating inputs */
+	private TemporaryTable $temporary;
+
 	/**
 	 * Build the reconciler.
 	 * @param Connection $connection Ratings database connection
@@ -24,6 +28,7 @@ readonly class RecommendationReconciler {
 	public function __construct(Connection $connection, RecommendationConfig $config) {
 		$this->connection = $connection;
 		$this->config = $config;
+		$this->temporary = new TemporaryTable($connection);
 	}
 	
 	/**
@@ -486,7 +491,7 @@ readonly class RecommendationReconciler {
 	 * @return array<int, array<string, mixed>> Aggregate candidate rows
 	 */
 	private function auditTopRatedRows(array $missing, ReconciliationRequest $request, int $category): array {
-		return $this->withIdTable('recommender_audit_candidates_', $missing, fn($table) => $this->connection->execute(
+		return $this->temporary->withIdTable('recommender_audit_candidates_', $missing, fn($table) => $this->connection->execute(
 			"SELECT r.product_id AS id, AVG(r.rating) AS score, COUNT(*) AS support_count
             FROM vogoo_ratings r JOIN {$table} candidates ON candidates.product_id = r.product_id
             WHERE r.category = :category AND r.rating >= 0
@@ -505,78 +510,61 @@ readonly class RecommendationReconciler {
 	 */
 	private function auditRatingRows(RecommendationSource $source, array $candidateIds,
 		array $ratings, int $category, ReconciliationRequest $request): array {
-		$ratingsTable = 'recommender_audit_ratings_' . bin2hex(random_bytes(6));
-		$this->connection->execute("CREATE TEMPORARY TABLE {$ratingsTable}
-            (product_id INT UNSIGNED PRIMARY KEY, rating DOUBLE NOT NULL)");
-		
-		try {
-			foreach (array_chunk($ratings, 500, true) as $batch) {
-				$holders = [];
-				$params = [];
-				
-				foreach ($batch as $id => $rating) {
-					$holders[] = '(?, ?)';
-					$params[] = $id;
-					$params[] = $rating;
-				}
-				
-				$this->connection->execute("INSERT INTO {$ratingsTable} (product_id, rating) VALUES "
-					. implode(',', $holders), $params);
-			}
-			
-			return $this->withIdTable('recommender_audit_candidates_', $candidateIds, function ($candidateTable) use (
-				$source,
-				$ratingsTable, $category, $request
+		return $this->temporary->withRatingTable('recommender_audit_ratings_', $ratings, fn($ratingsTable) =>
+			$this->temporary->withIdTable('recommender_audit_candidates_', $candidateIds, function (string $candidateTable) use (
+				$source, $ratingsTable, $category, $request
 			): array {
-				if ($source === RecommendationSource::ItemLinks) {
-					$sql = "SELECT l.item_id2 AS id,
-                    SUM(l.liked_count * (r.rating - :threshold)) AS score,
-                    JSON_ARRAYAGG(r.product_id) AS contributors
-                    FROM vogoo_links l JOIN {$ratingsTable} r ON r.product_id = l.item_id1
-                    JOIN {$candidateTable} candidates ON candidates.product_id = l.item_id2
-                    WHERE l.category = :category AND l.liked_count > 0
-                    GROUP BY l.item_id2 HAVING score > 0";
-					$params = ['threshold' => $this->config->getThresholdRating(), 'category' => $category];
-				} else {
-					$sql = "SELECT l.item_id2 AS id, SUM(l.slope_count) AS support_count,
-                    LEAST(1.0, GREATEST(0.0,
-                        SUM(r.rating * l.slope_count + l.diff_slope) / SUM(l.slope_count))) AS score
-                    FROM vogoo_links l JOIN {$ratingsTable} r ON r.product_id = l.item_id1
-                    JOIN {$candidateTable} candidates ON candidates.product_id = l.item_id2
-                    WHERE l.category = :category AND l.slope_count > 0
-                    GROUP BY l.item_id2 HAVING support_count >= :minimum";
-					$params = ['category' => $category, 'minimum' => $request->minSlopeSupport];
-				}
-				
-				return $this->connection->execute($sql, $params)->fetchAll('assoc');
-			});
-		} finally {
-			$this->connection->execute("DROP TEMPORARY TABLE {$ratingsTable}");
-		}
+				$restriction = "AND EXISTS (SELECT 1 FROM {$candidateTable} candidates WHERE candidates.product_id = l.item_id2)";
+
+				return $this->connection->execute(
+					$this->sourceAggregateSql($source, $ratingsTable, $restriction, null),
+					$this->sourceAggregateParams($source, $category, $request)
+				)->fetchAll('assoc');
+			}));
 	}
-	
+
 	/**
-	 * Load IDs into a temporary table for the duration of one operation.
-	 * @template T
-	 * @param string $prefix Table name prefix, followed by a random suffix
-	 * @param array<int, int> $ids Distinct IDs to load
-	 * @param callable(string): T $operation Query receiving the temporary table name
-	 * @return T Query result
+	 * Build the aggregate query that scores candidates from item-links or Slope One pairs against a rating table.
+	 * @param RecommendationSource $source Item-links or Slope One
+	 * @param string $ratingsTable Temporary table of rating inputs, joined on l.item_id1
+	 * @param string $restriction Extra predicate limiting the candidates, referring to l.item_id2
+	 * @param int|null $depth Keeps the top rows by score up to this depth, or all rows when null
+	 * @return string Query with :threshold, :category and :minimum placeholders as used by the source
 	 */
-	private function withIdTable(string $prefix, array $ids, callable $operation): mixed {
-		$table = $prefix . bin2hex(random_bytes(6));
-		$this->connection->execute("CREATE TEMPORARY TABLE {$table} (product_id INT UNSIGNED PRIMARY KEY)");
-		
-		try {
-			foreach (array_chunk($ids, 500) as $batch) {
-				$holders = implode(',', array_fill(0, count($batch), '(?)'));
-				$this->connection->execute("INSERT INTO {$table} (product_id) VALUES {$holders}", $batch);
-			}
-			
-			return $operation($table);
-		} finally {
-			$this->connection->execute("DROP TEMPORARY TABLE {$table}");
+	private function sourceAggregateSql(RecommendationSource $source, string $ratingsTable,
+		string $restriction, ?int $depth): string {
+		if ($source === RecommendationSource::ItemLinks) {
+			$sql = "SELECT l.item_id2 AS id, SUM(l.liked_count * (r.rating - :threshold)) AS score,
+				JSON_ARRAYAGG(r.product_id) AS contributors
+				FROM vogoo_links l JOIN {$ratingsTable} r ON r.product_id = l.item_id1
+				WHERE l.category = :category AND l.liked_count > 0 {$restriction}
+				GROUP BY l.item_id2 HAVING score > 0";
+			$order = 'score DESC, id ASC';
+		} else {
+			$sql = "SELECT l.item_id2 AS id, SUM(l.slope_count) AS support_count,
+				LEAST(1.0, GREATEST(0.0, SUM(r.rating * l.slope_count + l.diff_slope) / SUM(l.slope_count))) AS score
+				FROM vogoo_links l JOIN {$ratingsTable} r ON r.product_id = l.item_id1
+				WHERE l.category = :category AND l.slope_count > 0 {$restriction}
+				GROUP BY l.item_id2 HAVING support_count >= :minimum";
+			$order = 'score DESC, support_count DESC, id ASC';
 		}
+
+		return $depth === null ? $sql : $sql . " ORDER BY {$order} LIMIT {$depth}";
+	}
+
+	/**
+	 * Return the bound parameters for the aggregate query of an item-links or Slope One source.
+	 * @param RecommendationSource $source Item-links or Slope One
+	 * @param int $category Resolved category
+	 * @param ReconciliationRequest $request Source thresholds
+	 * @return array<string, int|float> Parameters for sourceAggregateSql()
+	 */
+	private function sourceAggregateParams(RecommendationSource $source, int $category, ReconciliationRequest $request): array {
+		if ($source === RecommendationSource::ItemLinks) {
+			return ['threshold' => $this->config->getThresholdRating(), 'category' => $category];
+		}
+
+		return ['category' => $category, 'minimum' => $request->minSlopeSupport];
 	}
 	
 	/**
@@ -609,7 +597,7 @@ readonly class RecommendationReconciler {
 			return [];
 		}
 		
-		return $this->generateFromRatings($source, $memberId, $genuine, $ratings, $category, $depth, $request);
+		return $this->generateFromRatings($source, $genuine, $ratings, $category, $depth, $request);
 	}
 	
 	/**
@@ -682,7 +670,6 @@ readonly class RecommendationReconciler {
 	/**
 	 * Generate item-links or Slope One candidates from the member's genuine ratings, up to the depth.
 	 * @param RecommendationSource $source Item-link or Slope One source
-	 * @param int|null $memberId Member or visitor
 	 * @param array<int, float> $genuine Genuine ratings
 	 * @param array<int, float> $seen All seen ratings
 	 * @param int $category Resolved category
@@ -690,52 +677,18 @@ readonly class RecommendationReconciler {
 	 * @param ReconciliationRequest $request Source settings
 	 * @return array<int, array{id:int,score:float|null,count:int|null,contributors:array<int,int>}>
 	 */
-	private function generateFromRatings(RecommendationSource $source, ?int $memberId, array $genuine,
+	private function generateFromRatings(RecommendationSource $source, array $genuine,
 		array $seen, int $category, int $depth, ReconciliationRequest $request): array {
-		$table = 'recommender_source_input_' . bin2hex(random_bytes(6));
-		$this->connection->execute("CREATE TEMPORARY TABLE {$table} (product_id INT UNSIGNED PRIMARY KEY, rating DOUBLE NOT NULL)");
-		
-		try {
-			foreach (array_chunk($genuine, 500, true) as $batch) {
-				$params = [];
-				$values = [];
-				
-				foreach ($batch as $id => $rating) {
-					$values[] = '(?, ?)';
-					$params[] = $id;
-					$params[] = $rating;
-				}
-				
-				$this->connection->execute("INSERT INTO {$table} (product_id, rating) VALUES " . implode(',', $values), $params);
-			}
-			
-			return $this->withSeenTable($seen, function ($seenTable) use ($source, $table, $category, $depth, $request, $seen) {
-				if ($source === RecommendationSource::ItemLinks) {
-					$sql = "SELECT l.item_id2 AS id, SUM(l.liked_count * (i.rating - :threshold)) AS score,
-                    JSON_ARRAYAGG(i.product_id) AS contributors
-                    FROM vogoo_links l JOIN {$table} i ON i.product_id = l.item_id1
-                    WHERE l.category = :category AND l.liked_count > 0
-                    AND NOT EXISTS (SELECT 1 FROM {$seenTable} s WHERE s.product_id = l.item_id2)
-                    GROUP BY l.item_id2 HAVING score > 0 ORDER BY score DESC, id ASC LIMIT {$depth}";
-					$params = ['threshold' => $this->config->getThresholdRating(), 'category' => $category];
-				} else {
-					$sql = "SELECT l.item_id2 AS id, SUM(l.slope_count) AS support_count,
-                    LEAST(1.0, GREATEST(0.0,
-                        SUM(i.rating * l.slope_count + l.diff_slope) / SUM(l.slope_count))) AS score
-                    FROM vogoo_links l JOIN {$table} i ON i.product_id = l.item_id1
-                    WHERE l.category = :category AND l.slope_count > 0
-                    AND NOT EXISTS (SELECT 1 FROM {$seenTable} s WHERE s.product_id = l.item_id2)
-                    GROUP BY l.item_id2 HAVING support_count >= :minimum
-                    ORDER BY score DESC, support_count DESC, id ASC LIMIT {$depth}";
-					$params = ['category' => $category, 'minimum' => $request->minSlopeSupport];
-				}
-				
-				$rows = $this->connection->execute($sql, $params)->fetchAll('assoc');
+		return $this->temporary->withRatingTable('recommender_source_input_', $genuine, fn($table) =>
+			$this->withSeenTable($seen, function (string $seenTable) use ($source, $table, $category, $depth, $request, $seen): array {
+				$restriction = "AND NOT EXISTS (SELECT 1 FROM {$seenTable} s WHERE s.product_id = l.item_id2)";
+				$rows = $this->connection->execute(
+					$this->sourceAggregateSql($source, $table, $restriction, $depth),
+					$this->sourceAggregateParams($source, $category, $request)
+				)->fetchAll('assoc');
+
 				return $this->normalizeRows($rows, $seen);
-			});
-		} finally {
-			$this->connection->execute("DROP TEMPORARY TABLE {$table}");
-		}
+			}));
 	}
 	
 	/**
@@ -746,7 +699,7 @@ readonly class RecommendationReconciler {
 	 * @return T Query result
 	 */
 	private function withSeenTable(array $seen, callable $operation): mixed {
-		return $this->withIdTable('recommender_seen_', array_keys($seen), $operation);
+		return $this->temporary->withIdTable('recommender_seen_', array_keys($seen), $operation);
 	}
 	
 	/**

@@ -4,10 +4,9 @@ namespace Quellabs\Recommender\Sculpt;
 
 use Cake\Database\Connection;
 use Quellabs\Sculpt\ConfigurationManager;
-use Quellabs\Sculpt\Contracts\CommandBase;
 
 /** Recomputes both derived pair measures from persisted ratings. */
-class RebuildLinksCommand extends CommandBase {
+class RebuildLinksCommand extends RecommenderCommand {
 	
 	/**
 	 * Return the command signature.
@@ -48,8 +47,7 @@ HELP;
 	 * @throws \InvalidArgumentException When the category is not a nonnegative integer
 	 */
 	public function execute(ConfigurationManager $config): int {
-		/** @var RecommenderProvider $provider */
-		$provider = $this->provider;
+		$provider = $this->getRecommenderProvider();
 		$connection = $provider->getConnection();
 		$rawCategory = $config->get('category');
 		

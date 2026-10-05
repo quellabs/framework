@@ -114,4 +114,21 @@
 			$this->expectException(\InvalidArgumentException::class);
 			new RecommendationConfig(notInterested: -0.5);
 		}
+
+		/** Numeric strings are coerced, string booleans are parsed, and invalid values fall back to defaults.
+		 * @return void
+		 */
+		public function testFromArrayCoercesScalarsAndFallsBackToDefaults(): void {
+			$config = RecommendationConfig::fromArray([
+				'threshold_mult' => '3',
+				'threshold_rating' => 'not-a-number',
+				'direct_links' => 'false',
+				'direct_slope' => 'maybe',
+			]);
+
+			$this->assertSame(3, $config->getThresholdMult());
+			$this->assertSame(0.66, $config->getThresholdRating());
+			$this->assertFalse($config->isDirectLinks());
+			$this->assertTrue($config->isDirectSlope());
+		}
 	}

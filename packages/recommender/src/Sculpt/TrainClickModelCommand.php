@@ -6,10 +6,9 @@ use DateTimeImmutable;
 use Quellabs\Recommender\Internal\Model\ClickModelTrainer;
 use Quellabs\Recommender\RecommendationSource;
 use Quellabs\Sculpt\ConfigurationManager;
-use Quellabs\Sculpt\Contracts\CommandBase;
 
 /** Trains a candidate model for one exact scoring partition. */
-class TrainClickModelCommand extends CommandBase {
+class TrainClickModelCommand extends RecommenderCommand {
 	
 	/**
 	 * Return the command signature.
@@ -64,12 +63,11 @@ class TrainClickModelCommand extends CommandBase {
 			throw new \InvalidArgumentException('Context must be a string.');
 		}
 		
-		/** @var RecommenderProvider $provider */
-		$provider = $this->provider;
-		$id = (new ClickModelTrainer($provider->getConnection()))->train((int)$category, $placement,
+		$connection = $this->getRecommenderProvider()->getConnection();
+		$id = (new ClickModelTrainer($connection))->train((int)$category, $placement,
 			$sources, self::parseTimestamp($config->get('from')), self::parseTimestamp($config->get('to')),
 			self::parseTimestamp($config->get('as-of')), (int)$window, $context);
-		$row = $provider->getConnection()->execute('SELECT artifact, status FROM recommender_models
+		$row = $connection->execute('SELECT artifact, status FROM recommender_models
             WHERE id = UNHEX(?)', [$id])->fetchAssoc();
 		
 		$artifact = json_decode((string)$row['artifact'], true, 512, JSON_THROW_ON_ERROR);

@@ -5,10 +5,9 @@ namespace Quellabs\Recommender\Sculpt;
 use DateTimeImmutable;
 use DateTimeZone;
 use Quellabs\Sculpt\ConfigurationManager;
-use Quellabs\Sculpt\Contracts\CommandBase;
 
 /** Deletes explicitly selected old evaluation cohorts in bounded batches. */
-class PruneEvaluationCommand extends CommandBase {
+class PruneEvaluationCommand extends RecommenderCommand {
 	
 	/**
 	 * Return the command signature.
@@ -52,9 +51,7 @@ class PruneEvaluationCommand extends CommandBase {
 		
 		$cutoff = (new DateTimeImmutable($before))->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s.u');
 		
-		/** @var RecommenderProvider $provider */
-		$provider = $this->provider;
-		$connection = $provider->getConnection();
+		$connection = $this->getRecommenderProvider()->getConnection();
 		$deleted = 0;
 		
 		do {

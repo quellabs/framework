@@ -82,6 +82,30 @@ class RecommendationConfig {
 	}
 	
 	/**
+	 * Build a configuration from raw config values, using the constructor defaults for missing or invalid keys.
+	 * @param array<string, mixed> $values Raw values keyed by config name, such as threshold_rating
+	 * @return self
+	 * @throws \InvalidArgumentException When a present value is outside its allowed range
+	 */
+	public static function fromArray(array $values): self {
+		$defaults = new self();
+
+		return new self(
+			category: self::intValue($values, 'category', $defaults->category),
+			thresholdNrCommonRatings: self::intValue($values, 'threshold_nr_common_ratings', $defaults->thresholdNrCommonRatings),
+			thresholdMult: self::intValue($values, 'threshold_mult', $defaults->thresholdMult),
+			thresholdRating: self::floatValue($values, 'threshold_rating', $defaults->thresholdRating),
+			cost: self::floatValue($values, 'cost', $defaults->cost),
+			notInterested: self::floatValue($values, 'not_interested', $defaults->notInterested),
+			directLinks: self::boolValue($values, 'direct_links', $defaults->directLinks),
+			directSlope: self::boolValue($values, 'direct_slope', $defaults->directSlope),
+			maxCandidateDepth: self::intValue($values, 'max_candidate_depth', $defaults->maxCandidateDepth),
+			maxBackfillRounds: self::intValue($values, 'max_backfill_rounds', $defaults->maxBackfillRounds),
+			maxEligibilityBatchSize: self::intValue($values, 'max_eligibility_batch_size', $defaults->maxEligibilityBatchSize),
+		);
+	}
+
+	/**
 	 * Return the maximum generated depth per source.
 	 * @return int Maximum generated depth per source
 	 */
@@ -185,6 +209,47 @@ class RecommendationConfig {
 		return $resolved;
 	}
 	
+	/**
+	 * Read an integer value, falling back to the default when the key is missing or non-numeric.
+	 * @param array<string, mixed> $values Raw config values
+	 * @param string $key Config key
+	 * @param int $default Fallback value
+	 * @return int
+	 */
+	private static function intValue(array $values, string $key, int $default): int {
+		return isset($values[$key]) && is_numeric($values[$key]) ? (int)$values[$key] : $default;
+	}
+
+	/**
+	 * Read a float value, falling back to the default when the key is missing or non-numeric.
+	 * @param array<string, mixed> $values Raw config values
+	 * @param string $key Config key
+	 * @param float $default Fallback value
+	 * @return float
+	 */
+	private static function floatValue(array $values, string $key, float $default): float {
+		return isset($values[$key]) && is_numeric($values[$key]) ? (float)$values[$key] : $default;
+	}
+
+	/**
+	 * Read a boolean value, parsing string forms such as "false" and "0".
+	 * @param array<string, mixed> $values Raw config values
+	 * @param string $key Config key
+	 * @param bool $default Fallback value when the key is missing or a string is not a recognized boolean
+	 * @return bool
+	 */
+	private static function boolValue(array $values, string $key, bool $default): bool {
+		if (!isset($values[$key])) {
+			return $default;
+		}
+
+		if (is_string($values[$key])) {
+			return filter_var($values[$key], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? $default;
+		}
+
+		return (bool)$values[$key];
+	}
+
 	/**
 	 * Reject rating, cost and sentinel values outside their allowed ranges.
 	 * @return void

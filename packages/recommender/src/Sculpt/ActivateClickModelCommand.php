@@ -4,10 +4,9 @@ namespace Quellabs\Recommender\Sculpt;
 
 use Quellabs\Recommender\Internal\Model\ClickModelTrainer;
 use Quellabs\Sculpt\ConfigurationManager;
-use Quellabs\Sculpt\Contracts\CommandBase;
 
 /** Atomically replaces the active model after validation. */
-class ActivateClickModelCommand extends CommandBase {
+class ActivateClickModelCommand extends RecommenderCommand {
 	
 	/**
 	 * Return the command signature.
@@ -40,15 +39,13 @@ class ActivateClickModelCommand extends CommandBase {
 	 * @throws \InvalidArgumentException When no model ID is given
 	 */
 	public function execute(ConfigurationManager $config): int {
-		/** @var RecommenderProvider $provider */
-		$provider = $this->provider;
 		$id = $config->get('id');
-		
+
 		if (!is_string($id)) {
 			throw new \InvalidArgumentException('A model ID is required.');
 		}
-		
-		(new ClickModelTrainer($provider->getConnection()))->activate($id);
+
+		(new ClickModelTrainer($this->getRecommenderProvider()->getConnection()))->activate($id);
 		$this->output->success('Click model activated.');
 		return 0;
 	}
