@@ -158,7 +158,7 @@ readonly class ReconciliationRequest {
 	 * @return int Canonical enabled-source mask
 	 */
 	public function sourceMask(): int {
-		return array_reduce($this->sources, fn($mask, $source) => $mask | $source->bit(), 0);
+		return RecommendationSource::mask($this->sources);
 	}
 	
 	/**

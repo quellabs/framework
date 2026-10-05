@@ -265,7 +265,7 @@ readonly class EvaluationRecorder {
 		}
 		
 		foreach ($item->searchedDepths as $source => $depth) {
-			if ($depth < 50 || abs(log($depth) - $item->featureSnapshot[$source . '.log_depth_searched']) > 1e-9) {
+			if (!SourceFeatures::depthMatches($depth, $item->featureSnapshot[$source . '.log_depth_searched'])) {
 				return false;
 			}
 		}

@@ -54,9 +54,37 @@ readonly class SlopeOneRecommender {
 	 */
 	public function getSlopeItems(int $productId, int $minLinks = 1, array $filter = [], int $limit = 0, ?int $category = null): array {
 		$resolvedCategory = $this->config->resolveCategory($category);
-		$minLinks = max(1, $minLinks);
 		$limit = max(0, $limit);
-		
+		$result = [];
+
+		foreach ($this->slopeItemRows($productId, max(1, $minLinks), $filter, $resolvedCategory, $limit) as $row) {
+			if (!is_array($row) || !isset($row['item_id2'], $row['avg_diff'])
+				|| !is_numeric($row['item_id2']) || !is_numeric($row['avg_diff'])) {
+				continue;
+			}
+
+			$id = (int)$row['item_id2'];
+
+			if (!Results::allows($filter, $id)) {
+				continue;
+			}
+
+			$result[] = ['product_id' => $id, 'diff' => (float)$row['avg_diff']];
+		}
+
+		return Results::limit($result, $limit);
+	}
+
+	/**
+	 * Return the linked candidates of a product ordered by average Slope One diff, best first.
+	 * @param int $productId The product ID
+	 * @param int $minLinks Minimum co-occurrence count, at least one
+	 * @param array<int> $filter Allowed IDs, or empty for all
+	 * @param int $category Already-resolved category
+	 * @param int $limit Maximum results, or zero for all
+	 * @return array<int, array<string, mixed>> Rows with item_id2 and avg_diff
+	 */
+	private function slopeItemRows(int $productId, int $minLinks, array $filter, int $category, int $limit): array {
 		$sql = '
 			SELECT
 				`item_id2`,
@@ -66,40 +94,22 @@ readonly class SlopeOneRecommender {
 			      `category` = :category AND
 			      `slope_count` >= :min_links
 		';
-		
+
 		$params = [
 			'product_id' => $productId,
-			'category'   => $resolvedCategory,
+			'category'   => $category,
 			'min_links'  => $minLinks,
 		];
 		$sql .= $this->allowlist->predicate($filter, '`item_id2`', $params);
 		$sql .= ' ORDER BY avg_diff DESC, `item_id2` ASC';
-		
+
 		$sql .= Results::limitSql($limit);
-		
+
 		try {
-			$rows = $this->connection->execute($sql, $params)->fetchAll('assoc');
+			return $this->connection->execute($sql, $params)->fetchAll('assoc');
 		} finally {
 			$this->allowlist->release($filter);
 		}
-		
-		$result = [];
-		
-		foreach ($rows as $row) {
-			if (!is_array($row) || !isset($row['item_id2'], $row['avg_diff']) || !is_scalar($row['item_id2'])) {
-				continue;
-			}
-			
-			$id = (int)$row['item_id2'];
-			
-			if (!empty($filter) && !in_array($id, $filter, true)) {
-				continue;
-			}
-			
-			$result[] = ['product_id' => $id, 'diff' => (float)$row['avg_diff']];
-		}
-		
-		return Results::limit($result, $limit);
 	}
 
 	/**

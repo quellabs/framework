@@ -162,47 +162,67 @@ readonly class RecommendationReconciler {
 		array $ratings, ?int $memberId, int $roundCap, int $batchSize): void {
 		$additional = array_values(array_filter($request->additionalCandidateIds,
 			fn($id) => !array_key_exists($id, $ratings)));
-			
+
 		for ($round = 0; ; $round++) {
 			$newIds = $round === 0 ? $additional : [];
-			
+
 			foreach ($request->sources as $source) {
-				$key = $source->value;
-				
-				if ($round > 0 && $state->depth($key) <= $state->nominationCount($key)) {
-					continue;
-				}
-				
-				$current = $this->generate($source, $memberId, $ratings, $category, $state->depth($key), $request);
-				$old = $state->nominations($key);
-				
-				if (array_slice(array_column($current, 'id'), 0, count($old)) !== array_column($old, 'id')) {
-					throw new \RuntimeException("Candidate order changed during depth backfill for source '{$key}'.");
-				}
-				
-				foreach (array_slice($current, count($old)) as $row) {
-					if (!$state->isSubmitted($row['id'])) {
-						$newIds[] = $row['id'];
-					}
-				}
-				
-				$state->setNominations($key, $current);
+				$newIds = array_merge($newIds, $this->nominateSource($source, $round, $request, $state, $category, $ratings, $memberId));
 			}
-			
+
 			foreach (array_chunk($state->claimUnsubmitted($newIds), $batchSize) as $chunk) {
 				foreach ($this->filterEligibleBatch($request->eligibility, $chunk) as $id) {
 					$state->markEligible($id);
 				}
 			}
-			
+
 			if ($state->eligibleCount() >= $request->limit || $round >= $roundCap) {
 				break;
 			}
-			
+
 			if (!$state->growDepths()) {
 				break;
 			}
 		}
+	}
+
+	/**
+	 * Re-query one source at its current depth, record its nominations and return the newly nominated IDs.
+	 * @param RecommendationSource $source Source to query
+	 * @param int $round Zero-based round; later rounds skip sources whose depth is already exhausted
+	 * @param ReconciliationRequest $request Request
+	 * @param CandidateRoundState $state Round bookkeeping, updated in place
+	 * @param int $category Resolved category
+	 * @param array<int, float> $ratings Seen ratings
+	 * @param int|null $memberId Member or visitor
+	 * @return array<int, int> Unsubmitted IDs this source newly nominated
+	 * @throws \RuntimeException When the source changes its candidate order during depth backfill
+	 */
+	private function nominateSource(RecommendationSource $source, int $round, ReconciliationRequest $request,
+		CandidateRoundState $state, int $category, array $ratings, ?int $memberId): array {
+		$key = $source->value;
+
+		if ($round > 0 && $state->depth($key) <= $state->nominationCount($key)) {
+			return [];
+		}
+
+		$current = $this->generate($source, $memberId, $ratings, $category, $state->depth($key), $request);
+		$old = $state->nominations($key);
+
+		if (array_slice(array_column($current, 'id'), 0, count($old)) !== array_column($old, 'id')) {
+			throw new \RuntimeException("Candidate order changed during depth backfill for source '{$key}'.");
+		}
+
+		$newIds = [];
+
+		foreach (array_slice($current, count($old)) as $row) {
+			if (!$state->isSubmitted($row['id'])) {
+				$newIds[] = $row['id'];
+			}
+		}
+
+		$state->setNominations($key, $current);
+		return $newIds;
 	}
 	
 	/**
@@ -246,7 +266,7 @@ readonly class RecommendationReconciler {
 	}
 	
 	/**
-	 * Build one ranked item from its evidence, using the active click model when one applies.
+	 * Build a ranked candidate from its source evidence, scoring it with the active click model when one is calibrated.
 	 * @param int $id Candidate ID
 	 * @param array<int, SourceEvidence> $evidence Source signals for the candidate
 	 * @param array<int, RecommendationSource> $sources Enabled sources
@@ -256,22 +276,13 @@ readonly class RecommendationReconciler {
 	 */
 	private function buildRankedItem(int $id, array $evidence, array $sources, array $depths, ?array $activeModel): ReconciledRecommendation {
 		$score = 0.0;
-		$features = [];
-		
-		foreach ($sources as $source) {
-			$prefix = $source->value . '.';
-			$features[$prefix . 'log_depth_searched'] = log($depths[$source->value]);
-			$features[$prefix . 'present'] = 0.0;
-			$features[$prefix . 'reciprocal_rank'] = 0.0;
-			$features[$prefix . 'score'] = 0.0;
-			$features[$prefix . 'count'] = 0.0;
-		}
-		
+		$features = $this->baseFeatures($sources, $depths);
+
 		foreach ($evidence as $signal) {
 			if ($signal->sourceRank === null) {
 				continue;
 			}
-			
+
 			$prefix = $signal->source->value . '.';
 			$reciprocal = 1 / (60 + $signal->sourceRank);
 			$score += $reciprocal;
@@ -281,9 +292,9 @@ readonly class RecommendationReconciler {
 				? log1p(max(0.0, $signal->rawScore ?? 0.0)) : ($signal->rawScore ?? 0.0);
 			$features[$prefix . 'count'] = log1p($signal->supportCount ?? 0);
 		}
-		
+
 		$contributions = [];
-		
+
 		if ($activeModel !== null) {
 			[, $model] = $activeModel;
 			$score = $model->probability($features, 1);
@@ -292,8 +303,29 @@ readonly class RecommendationReconciler {
 				$signal->rawScore, $signal->sourceRank, $signal->supportCount,
 				$signal->contributingItemIds, $contributions[$signal->source->value] ?? 0.0), $evidence);
 		}
-		
+
 		return new ReconciledRecommendation($id, $score, $evidence, $features, $contributions, $depths);
+	}
+
+	/**
+	 * Return the feature defaults for every enabled source: its log depth, and zero for each signal feature.
+	 * @param array<int, RecommendationSource> $sources Enabled sources
+	 * @param array<string, int> $depths Searched depth per source
+	 * @return array<string, float> Feature values keyed by "source.suffix"
+	 */
+	private function baseFeatures(array $sources, array $depths): array {
+		$features = [];
+
+		foreach ($sources as $source) {
+			$prefix = $source->value . '.';
+			$features[$prefix . 'log_depth_searched'] = log($depths[$source->value]);
+			$features[$prefix . 'present'] = 0.0;
+			$features[$prefix . 'reciprocal_rank'] = 0.0;
+			$features[$prefix . 'score'] = 0.0;
+			$features[$prefix . 'count'] = 0.0;
+		}
+
+		return $features;
 	}
 	
 	/**
@@ -375,47 +407,60 @@ readonly class RecommendationReconciler {
 	private function auditSignals(array $eligibleIds, array $nominatedSignals,
 		ReconciliationRequest $request, array $ratings, ?int $memberId, int $category): array {
 		$audit = [];
-		
+
 		foreach ($request->sources as $source) {
 			$missing = $this->unnominatedIds($eligibleIds, $nominatedSignals, $source);
-			
-			if ($missing === []) {
-				continue;
-			}
-			
-			if ($source === RecommendationSource::NewProducts) {
-				$this->auditNewProducts($missing, $request, $audit);
-				continue;
-			}
-			
-			if ($source === RecommendationSource::UserSimilarity) {
-				if ($memberId === null) {
-					continue;
-				}
-				
-				$this->auditUserSimilarity($memberId, $missing, $request, $category, $audit);
-				continue;
-			}
-			
-			if ($source === RecommendationSource::TopRated) {
-				$rows = $this->auditTopRatedRows($missing, $request, $category);
-			} else {
-				$genuine = array_filter($ratings, fn($rating) => $rating >= 0.0);
-				
-				if ($genuine === []) {
-					continue;
-				}
-				
-				$rows = $this->auditRatingRows($source, $missing, $genuine, $category, $request);
-			}
-			
-			foreach ($this->normalizeRows($rows, $ratings) as $row) {
-				$audit[$row['id']][] = new SourceEvidence($source, $row['score'], null,
-					$row['count'], $row['contributors']);
+
+			if ($missing !== []) {
+				$this->auditSource($source, $missing, $request, $ratings, $memberId, $category, $audit);
 			}
 		}
-		
+
 		return $audit;
+	}
+
+	/**
+	 * Add the audit signals of one source for the candidates it did not nominate.
+	 * @param RecommendationSource $source Source to audit
+	 * @param array<int, int> $missing Eligible IDs the source did not nominate
+	 * @param ReconciliationRequest $request Enabled source settings
+	 * @param array<int, float> $ratings Seen ratings
+	 * @param int|null $memberId Persisted member or visitor
+	 * @param int $category Resolved category
+	 * @param array<int, array<int, SourceEvidence>> $audit Audit signals by candidate, filled in place
+	 * @return void
+	 */
+	private function auditSource(RecommendationSource $source, array $missing, ReconciliationRequest $request,
+		array $ratings, ?int $memberId, int $category, array &$audit): void {
+		if ($source === RecommendationSource::NewProducts) {
+			$this->auditNewProducts($missing, $request, $audit);
+			return;
+		}
+
+		if ($source === RecommendationSource::UserSimilarity) {
+			if ($memberId !== null) {
+				$this->auditUserSimilarity($memberId, $missing, $request, $category, $audit);
+			}
+
+			return;
+		}
+
+		if ($source === RecommendationSource::TopRated) {
+			$rows = $this->auditTopRatedRows($missing, $request, $category);
+		} else {
+			$genuine = array_filter($ratings, fn($rating) => $rating >= 0.0);
+
+			if ($genuine === []) {
+				return;
+			}
+
+			$rows = $this->auditRatingRows($source, $missing, $genuine, $category, $request);
+		}
+
+		foreach ($this->normalizeRows($rows, $ratings) as $row) {
+			$audit[$row['id']][] = new SourceEvidence($source, $row['score'], null,
+				$row['count'], $row['contributors']);
+		}
 	}
 	
 	/**
@@ -640,7 +685,7 @@ readonly class RecommendationReconciler {
 	 * @throws \UnexpectedValueException When the query does not return an array
 	 */
 	private function generateTopRated(array $ratings, int $category, int $depth, ReconciliationRequest $request): array {
-		$rows = $this->withSeenTable($ratings, function (string $seenTable) use ($category, $depth, $request): array {
+		$rows = $this->temporary->withIdTable('recommender_seen_', array_keys($ratings), function (string $seenTable) use ($category, $depth, $request): array {
 			$restriction = "AND NOT EXISTS (SELECT 1 FROM {$seenTable} s WHERE s.product_id = r.product_id)";
 
 			return $this->connection->execute($this->topRatedSql($restriction, $depth),
@@ -690,26 +735,17 @@ readonly class RecommendationReconciler {
 	private function generateFromRatings(RecommendationSource $source, array $genuine,
 		array $seen, int $category, int $depth, ReconciliationRequest $request): array {
 		return $this->temporary->withRatingTable('recommender_source_input_', $genuine, fn($table) =>
-			$this->withSeenTable($seen, function (string $seenTable) use ($source, $table, $category, $depth, $request, $seen): array {
-				$restriction = "AND NOT EXISTS (SELECT 1 FROM {$seenTable} s WHERE s.product_id = l.item_id2)";
-				$rows = $this->connection->execute(
-					$this->sourceAggregateSql($source, $table, $restriction, $depth),
-					$this->sourceAggregateParams($source, $category, $request)
-				)->fetchAll('assoc');
+			$this->temporary->withIdTable('recommender_seen_', array_keys($seen),
+				function (string $seenTable) use ($source, $table, $category, $depth, $request, $seen): array {
+					$restriction = "AND NOT EXISTS (SELECT 1 FROM {$seenTable} s WHERE s.product_id = l.item_id2)";
+					$rows = $this->connection->execute(
+						$this->sourceAggregateSql($source, $table, $restriction, $depth),
+						$this->sourceAggregateParams($source, $category, $request)
+					)->fetchAll('assoc');
 
-				return $this->normalizeRows($rows, $seen);
-			}));
-	}
-	
-	/**
-	 * Load the seen IDs into a temporary table for the duration of one operation.
-	 * @template T
-	 * @param array<int, float> $seen Previously rated or rejected IDs
-	 * @param callable(string): T $operation Source query receiving the temporary table name
-	 * @return T Query result
-	 */
-	private function withSeenTable(array $seen, callable $operation): mixed {
-		return $this->temporary->withIdTable('recommender_seen_', array_keys($seen), $operation);
+					return $this->normalizeRows($rows, $seen);
+				})
+		);
 	}
 	
 	/**

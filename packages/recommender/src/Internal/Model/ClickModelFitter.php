@@ -206,8 +206,8 @@ final class ClickModelFitter {
 		$sum = 0.0;
 		
 		foreach ($samples as $sample) {
-			$p = min(1 - 1e-15, max(1e-15,
-				$this->probability($sample['features'], $intercept, $coefficients, $means, $scales)));
+			$p = self::clampProbability(
+				$this->probability($sample['features'], $intercept, $coefficients, $means, $scales));
 			$sum -= $sample['label'] ? log($p) : log(1 - $p);
 		}
 		
@@ -244,7 +244,7 @@ final class ClickModelFitter {
 		$brier = 0.0;
 		
 		foreach ($predictions as $row) {
-			$p = min(1 - 1e-15, max(1e-15, $row['probability']));
+			$p = self::clampProbability($row['probability']);
 			$logLoss -= $row['label'] ? log($p) : log(1 - $p);
 			$brier += ($p - $row['label']) ** 2;
 		}
@@ -269,5 +269,14 @@ final class ClickModelFitter {
 		
 		return ['log_loss' => $logLoss / count($predictions), 'brier' => $brier / count($predictions),
 		        'ece'      => $ece, 'bins' => $bins];
+	}
+
+	/**
+	 * Clamp a probability away from 0 and 1 so log loss stays finite.
+	 * @param float $probability Predicted probability
+	 * @return float Clamped probability
+	 */
+	private static function clampProbability(float $probability): float {
+		return min(1 - 1e-15, max(1e-15, $probability));
 	}
 }

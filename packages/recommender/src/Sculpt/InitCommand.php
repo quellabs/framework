@@ -60,10 +60,36 @@ HELP;
 		$connection = $this->getRecommenderProvider()->getConnection();
 		$force = $config->hasFlag('force');
 		$tables = ['vogoo_ratings', 'vogoo_links'];
-		
-		// Check which tables already exist
+		$existing = $this->existingTables($connection, $tables);
+
+		// Bail out if tables exist and --force was not given
+		if ($existing !== [] && !$force) {
+			foreach ($existing as $table) {
+				$this->output->warning("Table '{$table}' already exists. Use --force to drop and recreate.");
+			}
+
+			return 1;
+		}
+
+		if ($force && $existing !== []) {
+			$this->dropTables($connection, $tables);
+		}
+
+		$this->createRatingsTable($connection);
+		$this->createLinksTable($connection);
+
+		return 0;
+	}
+
+	/**
+	 * Return the subset of tables that already exist in the current database.
+	 * @param Connection $connection The recommender database connection
+	 * @param array<int, string> $tables Table names to check
+	 * @return array<int, string> Names of the existing tables
+	 */
+	private function existingTables(Connection $connection, array $tables): array {
 		$existing = [];
-		
+
 		foreach ($tables as $table) {
 			$rows = $connection->execute(
 				'SELECT COUNT(*) AS cnt
@@ -72,33 +98,26 @@ HELP;
 				   AND table_name = :table',
 				['table' => $table],
 			)->fetchAssoc();
-			
+
 			if ((int)$rows['cnt'] > 0) {
 				$existing[] = $table;
 			}
 		}
-		
-		// Bail out if tables exist and --force was not given
-		if (!empty($existing) && !$force) {
-			foreach ($existing as $table) {
-				$this->output->warning("Table '{$table}' already exists. Use --force to drop and recreate.");
-			}
-			
-			return 1;
+
+		return $existing;
+	}
+
+	/**
+	 * Drop the given tables, in reverse order to avoid foreign key issues.
+	 * @param Connection $connection The recommender database connection
+	 * @param array<int, string> $tables Table names in creation order
+	 * @return void
+	 */
+	private function dropTables(Connection $connection, array $tables): void {
+		foreach (array_reverse($tables) as $table) {
+			$connection->execute("DROP TABLE IF EXISTS `{$table}`");
+			$this->output->writeLn("<dim>Dropped table '{$table}'.</dim>");
 		}
-		
-		// Drop in reverse order to avoid foreign key issues
-		if ($force && !empty($existing)) {
-			foreach (array_reverse($tables) as $table) {
-				$connection->execute("DROP TABLE IF EXISTS `{$table}`");
-				$this->output->writeLn("<dim>Dropped table '{$table}'.</dim>");
-			}
-		}
-		
-		$this->createRatingsTable($connection);
-		$this->createLinksTable($connection);
-		
-		return 0;
 	}
 	
 	/**

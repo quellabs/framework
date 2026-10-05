@@ -343,52 +343,38 @@ readonly class ItemRecommender {
 	 * @param int $minHistory Minimum genuine ratings before collaborative scoring
 	 * @param int $minRatings Minimum ratings for a fallback item
 	 * @return array<int, RecommendationResult>
+	 * @throws \UnexpectedValueException When a link score row or its contributors are malformed
 	 */
 	public function memberRecommendationsDetailed(int $memberId, array $filter = [], int $limit = 0, ?int $category = null,
 		int $minHistory = 1, int $minRatings = 2): array {
 		$resolvedCategory = $this->config->resolveCategory($category);
 		$history = (int)$this->connection->execute('SELECT COUNT(*) AS total FROM vogoo_ratings WHERE member_id = :member AND category = :category AND rating >= 0.0',
 			['member' => $memberId, 'category' => $resolvedCategory])->fetchAssoc()['total'];
-			
+
 		if ($history < max(1, $minHistory)) {
 			$excluded = array_map('intval', array_column($this->connection->execute(
 				'SELECT product_id FROM vogoo_ratings WHERE member_id = :member AND category = :category',
 				['member' => $memberId, 'category' => $resolvedCategory])->fetchAll('assoc'), 'product_id'));
 			return $this->fallbackResults($excluded, $filter, $limit, $resolvedCategory, $minRatings);
 		}
-		
-		$params = ['member' => $memberId, 'category' => $resolvedCategory, 'threshold' => $this->config->getThresholdRating()];
-		$sql = 'SELECT l.item_id2, SUM(l.liked_count * (r.rating - :threshold)) AS score,
-			JSON_ARRAYAGG(r.product_id) AS contributors
-			FROM vogoo_links l JOIN vogoo_ratings r ON r.product_id = l.item_id1
-				AND r.category = l.category AND r.member_id = :member AND r.rating >= 0.0
-			WHERE l.category = :category AND l.liked_count > 0
-				AND NOT EXISTS (SELECT 1 FROM vogoo_ratings seen WHERE seen.member_id = :member2
-					AND seen.category = :category2 AND seen.product_id = l.item_id2)';
-		$params['member2'] = $memberId;
-		$params['category2'] = $resolvedCategory;
-		$sql .= $this->allowlist->predicate($filter, 'l.item_id2', $params);
-		$sql .= ' GROUP BY l.item_id2 HAVING score > 0 ORDER BY score DESC, l.item_id2 ASC';
-		
-		try {
-			$rows = $this->connection->execute($sql, $params)->fetchAll('assoc');
-		} finally {
-			$this->allowlist->release($filter);
-		}
-		
+
 		$results = [];
-		
-		foreach ($rows as $row) {
+
+		foreach ($this->memberLinkScoreRows($memberId, $filter, $resolvedCategory) as $row) {
+			if (!is_numeric($row['item_id2']) || !is_numeric($row['score']) || !is_scalar($row['contributors'])) {
+				throw new \UnexpectedValueException('Link score row must contain numeric item_id2 and score and a contributors value.');
+			}
+
 			$id = (int)$row['item_id2'];
-			
-			if ($filter !== [] && !in_array($id, $filter, true)) {
+
+			if (!Results::allows($filter, $id)) {
 				continue;
 			}
-			
+
 			$contributors = $this->decodeContributorIds((string)$row['contributors']);
 			$results[] = new RecommendationResult($id, (float)$row['score'], 'item_links', $contributors);
 		}
-		
+
 		return Results::limit($results, $limit);
 	}
 
@@ -471,7 +457,7 @@ readonly class ItemRecommender {
 		foreach ($stats->topRatedProducts(0, max(1, $minRatings), $category) as $row) {
 			$id = $row['product_id'];
 			
-			if (in_array($id, $excluded, true) || ($filter !== [] && !in_array($id, $filter, true))) {
+			if (in_array($id, $excluded, true) || !Results::allows($filter, $id)) {
 				continue;
 			}
 			
@@ -502,7 +488,7 @@ readonly class ItemRecommender {
 			
 			$id = (int)$row[$column];
 			
-			if (empty($filter) || in_array($id, $filter, true)) {
+			if (Results::allows($filter, $id)) {
 				$result[] = $id;
 			}
 		}
@@ -523,47 +509,32 @@ readonly class ItemRecommender {
 		$threshold = $this->config->getThresholdRating();
 		$ratedIds = array_column($ratings, 'product_id');
 		$scores = [];
-		
+
 		foreach ($ratings as $entry) {
 			if ($entry['rating'] === $this->config->getNotInterested()) {
 				continue;
 			}
-			
-			$rows = $this->connection->execute('
-				SELECT
-					`item_id2`,
-					`liked_count`
-				FROM `vogoo_links`
-				WHERE `category` = :category AND
-				      `item_id1` = :product_id
-			', [
-				'category'   => $category,
-				'product_id' => $entry['product_id'],
-			])->fetchAll('assoc');
-			
-			foreach ($rows as $row) {
-				if (!is_array($row) || !isset($row['item_id2'], $row['liked_count']) || !is_scalar($row['item_id2'])) {
+
+			foreach ($this->linkedCandidateRows($entry['product_id'], $category) as $row) {
+				if (!is_array($row) || !isset($row['item_id2'], $row['liked_count'])
+					|| !is_numeric($row['item_id2']) || !is_numeric($row['liked_count'])) {
 					continue;
 				}
-				
+
 				$id = (int)$row['item_id2'];
-				
-				if ((!empty($filter) && !in_array($id, $filter, true)) || in_array($id, $ratedIds, true)) {
+
+				if (!Results::allows($filter, $id) || in_array($id, $ratedIds, true) || (int)$row['liked_count'] === 0) {
 					continue;
 				}
-				
-				if ((int)$row['liked_count'] === 0) {
-					continue;
-				}
-				
+
 				$scores[$id] = ($scores[$id] ?? 0.0) + ($entry['rating'] - $threshold) * (int)$row['liked_count'];
-				
+
 				if ($reasons !== null) {
 					$reasons[$id][] = $entry['product_id'];
 				}
 			}
 		}
-		
+
 		return $scores;
 	}
 
@@ -612,5 +583,52 @@ readonly class ItemRecommender {
 		} finally {
 			$this->allowlist->release($filter);
 		}
+	}
+
+	/**
+	 * Return the co-occurrence score and contributing product IDs of each candidate linked to the member's rated items.
+	 * @param int $memberId Member ID
+	 * @param array<int> $filter Allowed product IDs, or empty for all
+	 * @param int $category Already-resolved category
+	 * @return array<int, array<string, mixed>> Rows with item_id2, score and contributors
+	 */
+	private function memberLinkScoreRows(int $memberId, array $filter, int $category): array {
+		$params = ['member' => $memberId, 'category' => $category, 'threshold' => $this->config->getThresholdRating(),
+			'member2' => $memberId, 'category2' => $category];
+		$sql = 'SELECT l.item_id2, SUM(l.liked_count * (r.rating - :threshold)) AS score,
+			JSON_ARRAYAGG(r.product_id) AS contributors
+			FROM vogoo_links l JOIN vogoo_ratings r ON r.product_id = l.item_id1
+				AND r.category = l.category AND r.member_id = :member AND r.rating >= 0.0
+			WHERE l.category = :category AND l.liked_count > 0
+				AND NOT EXISTS (SELECT 1 FROM vogoo_ratings seen WHERE seen.member_id = :member2
+					AND seen.category = :category2 AND seen.product_id = l.item_id2)';
+		$sql .= $this->allowlist->predicate($filter, 'l.item_id2', $params);
+		$sql .= ' GROUP BY l.item_id2 HAVING score > 0 ORDER BY score DESC, l.item_id2 ASC';
+
+		try {
+			return $this->connection->execute($sql, $params)->fetchAll('assoc');
+		} finally {
+			$this->allowlist->release($filter);
+		}
+	}
+
+	/**
+	 * Return the linked candidates of one rated product with their co-occurrence counts.
+	 * @param int $productId Rated product ID
+	 * @param int $category Already-resolved category
+	 * @return array<int, array<string, mixed>> Rows with item_id2 and liked_count
+	 */
+	private function linkedCandidateRows(int $productId, int $category): array {
+		return $this->connection->execute('
+			SELECT
+				`item_id2`,
+				`liked_count`
+			FROM `vogoo_links`
+			WHERE `category` = :category AND
+			      `item_id1` = :product_id
+		', [
+			'category'   => $category,
+			'product_id' => $productId,
+		])->fetchAll('assoc');
 	}
 }

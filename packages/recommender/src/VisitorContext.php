@@ -3,6 +3,7 @@
 namespace Quellabs\Recommender;
 
 use Quellabs\Recommender\Config\RecommendationConfig;
+use Quellabs\Recommender\Internal\RatingRule;
 
 /**
  * Holds the in-memory rating state for an anonymous visitor (no member_id).
@@ -42,7 +43,7 @@ class VisitorContext {
 			throw new \InvalidArgumentException("Product ID must not be negative, got {$productId}.");
 		}
 		
-		if (!is_finite($rating) || ($rating < 0.0 && $rating !== $this->config->getNotInterested()) || $rating > 1.0) {
+		if (!RatingRule::isValid($rating, $this->config->getNotInterested())) {
 			throw new \InvalidArgumentException("Rating must be in [0.0, 1.0] or the not-interested sentinel, got {$rating}.");
 		}
 		

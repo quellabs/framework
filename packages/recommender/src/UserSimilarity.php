@@ -95,19 +95,48 @@ readonly class UserSimilarity {
 	 * @param int $limit Maximum number of neighbours (0 = unlimited)
 	 * @param int|null $category Defaults to configured default
 	 * @return array<int, array{member_id: int, similarity: int}>
+	 * @throws \UnexpectedValueException When a neighbour row is malformed
 	 */
 	public function getNeighbours(int $memberId, int $minSimilarity = 1, int $limit = 0, ?int $category = null): array {
 		$resolvedCategory = $this->config->resolveCategory($category);
 		$minSimilarity = max(0, min(100, $minSimilarity));
 		$limit = max(0, $limit);
-		
+
 		$ownRatingCount = $this->engine->memberNumRatings($memberId, true, false, $resolvedCategory);
-		
+
 		if ($ownRatingCount === 0) {
 			return [];
 		}
-		
-		$rows = $this->connection->execute('
+
+		$neighbours = [];
+
+		foreach ($this->neighbourRows($memberId, $resolvedCategory) as $row) {
+			if (!is_numeric($row['member_id']) || !is_numeric($row['common_count']) || !is_numeric($row['squared_diff'])) {
+				throw new \UnexpectedValueException('Neighbour row must contain numeric member_id, common_count and squared_diff.');
+			}
+
+			$otherId = (int)$row['member_id'];
+			$similarity = $this->scoreSimilarity((int)$row['common_count'], (float)$row['squared_diff'], $ownRatingCount);
+
+			if ($similarity === 0 || $similarity < $minSimilarity) {
+				continue;
+			}
+
+			$neighbours[] = ['member_id' => $otherId, 'similarity' => $similarity];
+		}
+
+		usort($neighbours, fn($a, $b) => ($b['similarity'] <=> $a['similarity']) ?: ($a['member_id'] <=> $b['member_id']));
+		return Results::limit($neighbours, $limit);
+	}
+
+	/**
+	 * Return the common-rating count and squared rating difference between a member and every other member who rated the same products.
+	 * @param int $memberId The member ID
+	 * @param int $category Already-resolved category
+	 * @return array<int, array<string, mixed>> Rows with member_id, common_count and squared_diff
+	 */
+	private function neighbourRows(int $memberId, int $category): array {
+		return $this->connection->execute('
 			SELECT r2.`member_id`, COUNT(*) AS common_count,
 			       SUM((r2.`rating` - r1.`rating`) * (r2.`rating` - r1.`rating`)) AS squared_diff
 			FROM `vogoo_ratings` r1
@@ -122,24 +151,8 @@ readonly class UserSimilarity {
 		', [
 			'member_id'  => $memberId,
 			'member_id2' => $memberId,
-			'category'   => $resolvedCategory,
+			'category'   => $category,
 		])->fetchAll('assoc');
-		
-		$neighbours = [];
-		
-		foreach ($rows as $row) {
-			$otherId = (int)$row['member_id'];
-			$similarity = $this->scoreSimilarity((int)$row['common_count'], (float)$row['squared_diff'], $ownRatingCount);
-			
-			if ($similarity === 0 || $similarity < $minSimilarity) {
-				continue;
-			}
-			
-			$neighbours[] = ['member_id' => $otherId, 'similarity' => $similarity];
-		}
-		
-		usort($neighbours, fn($a, $b) => ($b['similarity'] <=> $a['similarity']) ?: ($a['member_id'] <=> $b['member_id']));
-		return Results::limit($neighbours, $limit);
 	}
 	
 	/**
@@ -306,7 +319,7 @@ readonly class UserSimilarity {
 			foreach ($rows as $row) {
 				$productId = (int)$row['product_id'];
 				
-				if ($filter !== [] && !in_array($productId, $filter, true)) {
+				if (!Results::allows($filter, $productId)) {
 					continue;
 				}
 				

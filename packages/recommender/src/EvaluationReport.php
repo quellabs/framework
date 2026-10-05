@@ -4,9 +4,10 @@ namespace Quellabs\Recommender;
 
 use Cake\Database\Connection;
 use DateTimeImmutable;
-use Quellabs\Recommender\Internal\Persistence\EvaluationSchema;
 use Quellabs\Recommender\Internal\Identifier;
+use Quellabs\Recommender\Internal\Persistence\EvaluationSchema;
 use Quellabs\Recommender\Internal\Persistence\MysqlTimestamp;
+use Quellabs\Recommender\Internal\Query\OutcomeSubquery;
 
 /** Descriptive reporting over opted-in displayed-item impressions. */
 readonly class EvaluationReport {
@@ -44,55 +45,75 @@ readonly class EvaluationReport {
 		?string             $contextKey = null
 	): EvaluationSummary {
 		EvaluationSchema::requireTables($this->connection);
-		
-		if ($category < 0 || $category > Identifier::MAX) {
-			throw new \InvalidArgumentException("Category must be an unsigned 32-bit integer, got {$category}.");
-		}
-		
-		if ($start >= $end) {
-			throw new \InvalidArgumentException('Report start ' . $start->format(DATE_ATOM) . ' must be before its end ' . $end->format(DATE_ATOM) . '.');
-		}
-		
-		if ($asOf < $end) {
-			throw new \InvalidArgumentException('Outcome cutoff ' . $asOf->format(DATE_ATOM) . ' must not precede the report end ' . $end->format(DATE_ATOM) . '.');
-		}
-		
-		if ($contextKey !== null) {
-			ReconciliationRequest::validateKey($contextKey, 128, 'context');
-		}
-		
-		$whereSource = $source === null ? '' : 'AND EXISTS (SELECT 1 FROM recommender_impression_evidence e
-            WHERE e.impression_id = item.impression_id AND e.item_id = item.item_id AND e.source = :source)';
+		$this->assertSummaryArguments($category, $start, $end, $asOf, $contextKey);
+
 		$params = [
-			'category'     => $category,
-			'context'      => $contextKey ?? '',
-			'start'        => MysqlTimestamp::utc($start),
-			'end'          => MysqlTimestamp::utc($end),
-			'as_of'        => MysqlTimestamp::utc($asOf),
-			'click_window' => $windows->clickSeconds,
+			'category'        => $category,
+			'context'         => $contextKey ?? '',
+			'start'           => MysqlTimestamp::utc($start),
+			'end'             => MysqlTimestamp::utc($end),
+			'as_of'           => MysqlTimestamp::utc($asOf),
+			'as_of2'          => MysqlTimestamp::utc($asOf),
+			'click_window'    => $windows->clickSeconds,
 			'purchase_window' => $windows->purchaseSeconds,
 		];
-		
+
 		if ($source !== null) {
 			$params['source'] = $source->value;
 		}
-		
-		$row = $this->connection->execute("SELECT COUNT(*) AS impressions,
-            COALESCE(SUM(EXISTS (SELECT 1 FROM recommender_outcomes o
-                WHERE o.impression_id = item.impression_id AND o.item_id = item.item_id
-                AND o.event_type = 'click' AND o.occurred_at >= i.shown_at AND o.occurred_at <= :as_of
-                AND o.occurred_at <= TIMESTAMPADD(SECOND, :click_window, i.shown_at))), 0) AS clicked,
-            COALESCE(SUM(EXISTS (SELECT 1 FROM recommender_outcomes p
-                WHERE p.impression_id = item.impression_id AND p.item_id = item.item_id
-                AND p.event_type = 'purchase' AND p.occurred_at >= i.shown_at AND p.occurred_at <= :as_of2
-                AND p.occurred_at <= TIMESTAMPADD(SECOND, :purchase_window, i.shown_at))), 0) AS purchased
-            FROM recommender_impressions i JOIN recommender_impression_items item ON item.impression_id = i.id
-            WHERE i.category = :category AND i.context_key = :context
-            AND i.shown_at >= :start AND i.shown_at < :end {$whereSource}",
-			$params + ['as_of2' => MysqlTimestamp::utc($asOf)])->fetchAssoc();
-			
+
+		$row = $this->connection->execute($this->summarySql($source), $params)->fetchAssoc();
+
 		return new EvaluationSummary((int)$row['impressions'], (int)$row['clicked'],
 			(int)$row['purchased'], $asOf, $windows);
+	}
+
+	/**
+	 * Validate the arguments of a summary query.
+	 * @param int $category Resolved category
+	 * @param DateTimeImmutable $start Inclusive display start
+	 * @param DateTimeImmutable $end Exclusive display end
+	 * @param DateTimeImmutable $asOf Included outcome cutoff
+	 * @param string|null $contextKey Exact model partition
+	 * @return void
+	 * @throws \InvalidArgumentException When the category, interval, cutoff, or context key is invalid
+	 */
+	private function assertSummaryArguments(int $category, DateTimeImmutable $start, DateTimeImmutable $end,
+		DateTimeImmutable $asOf, ?string $contextKey): void {
+		if ($category < 0 || $category > Identifier::MAX) {
+			throw new \InvalidArgumentException("Category must be an unsigned 32-bit integer, got {$category}.");
+		}
+
+		if ($start >= $end) {
+			throw new \InvalidArgumentException('Report start ' . $start->format(DATE_ATOM) . ' must be before its end ' . $end->format(DATE_ATOM) . '.');
+		}
+
+		if ($asOf < $end) {
+			throw new \InvalidArgumentException('Outcome cutoff ' . $asOf->format(DATE_ATOM) . ' must not precede the report end ' . $end->format(DATE_ATOM) . '.');
+		}
+
+		if ($contextKey !== null) {
+			ReconciliationRequest::validateKey($contextKey, 128, 'context');
+		}
+	}
+
+	/**
+	 * Build the summary query, optionally restricted to impressions carrying evidence from one source.
+	 * @param RecommendationSource|null $source Optional descriptive source filter
+	 * @return string SQL with named parameters
+	 */
+	private function summarySql(?RecommendationSource $source): string {
+		$clicked = OutcomeSubquery::exists('click', 'as_of', 'click_window');
+		$purchased = OutcomeSubquery::exists('purchase', 'as_of2', 'purchase_window');
+		$whereSource = $source === null ? '' : 'AND EXISTS (SELECT 1 FROM recommender_impression_evidence e
+            WHERE e.impression_id = item.impression_id AND e.item_id = item.item_id AND e.source = :source)';
+
+		return "SELECT COUNT(*) AS impressions,
+            COALESCE(SUM({$clicked}), 0) AS clicked,
+            COALESCE(SUM({$purchased}), 0) AS purchased
+            FROM recommender_impressions i JOIN recommender_impression_items item ON item.impression_id = i.id
+            WHERE i.category = :category AND i.context_key = :context
+            AND i.shown_at >= :start AND i.shown_at < :end {$whereSource}";
 	}
 	
 	/**
@@ -136,16 +157,15 @@ readonly class EvaluationReport {
 	 */
 	private function fetchCalibrationRows(DateTimeImmutable $start, DateTimeImmutable $end,
 		DateTimeImmutable $asOf, int $clickWindowSeconds): array {
-		return $this->connection->execute('SELECT LOWER(HEX(item.model_id)) AS model_id,
+		$clicked = OutcomeSubquery::exists('click', 'as_of', 'window');
+
+		return $this->connection->execute("SELECT LOWER(HEX(item.model_id)) AS model_id,
             i.placement, item.display_click_probability AS probability,
-            EXISTS (SELECT 1 FROM recommender_outcomes o WHERE o.impression_id = i.id
-                AND o.item_id = item.item_id AND o.event_type = \'click\'
-                AND o.occurred_at >= i.shown_at AND o.occurred_at <= :as_of
-                AND o.occurred_at <= TIMESTAMPADD(SECOND, :window, i.shown_at)) AS clicked
+            {$clicked} AS clicked
             FROM recommender_impressions i JOIN recommender_impression_items item ON item.impression_id = i.id
             WHERE item.model_id IS NOT NULL AND item.display_click_probability IS NOT NULL
                 AND i.shown_at >= :start AND i.shown_at < :end
-                AND TIMESTAMPADD(SECOND, :mature_window, i.shown_at) <= :mature_as_of',
+                AND TIMESTAMPADD(SECOND, :mature_window, i.shown_at) <= :mature_as_of",
 			['as_of'         => MysqlTimestamp::utc($asOf), 'window' => $clickWindowSeconds,
 			 'start'         => MysqlTimestamp::utc($start), 'end' => MysqlTimestamp::utc($end),
 			 'mature_window' => $clickWindowSeconds, 'mature_as_of' => MysqlTimestamp::utc($asOf)])->fetchAll('assoc');

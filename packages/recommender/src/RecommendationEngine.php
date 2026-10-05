@@ -5,6 +5,7 @@ namespace Quellabs\Recommender;
 use Cake\Database\Connection;
 use Quellabs\Recommender\Config\RecommendationConfig;
 use Quellabs\Recommender\Internal\Links\LinkUpdater;
+use Quellabs\Recommender\Internal\RatingRule;
 
 /**
  * Core ratings engine. Reads and writes member ratings, and maintains the
@@ -348,8 +349,7 @@ readonly class RecommendationEngine {
 	public function setRating(int $memberId, int $productId, float $rating, ?int $category = null): bool {
 		$resolvedCategory = $this->config->resolveCategory($category);
 		
-		if ($memberId < 0 || $productId < 0 || !is_finite($rating)
-			|| ($rating < 0.0 && $rating !== $this->config->getNotInterested()) || $rating > 1.0) {
+		if ($memberId < 0 || $productId < 0 || !RatingRule::isValid($rating, $this->config->getNotInterested())) {
 			return false;
 		}
 		

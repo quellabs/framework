@@ -4,11 +4,12 @@ namespace Quellabs\Recommender\Internal\Model;
 
 use Cake\Database\Connection;
 use DateTimeImmutable;
+use Quellabs\Recommender\Internal\Identifier;
 use Quellabs\Recommender\Internal\Persistence\EvaluationSchema;
+use Quellabs\Recommender\Internal\Persistence\MysqlTimestamp;
+use Quellabs\Recommender\Internal\Query\OutcomeSubquery;
 use Quellabs\Recommender\RecommendationSource;
 use Quellabs\Recommender\ReconciliationRequest;
-use Quellabs\Recommender\Internal\Identifier;
-use Quellabs\Recommender\Internal\Persistence\MysqlTimestamp;
 
 /**
  * Builds versioned model candidates from mature, opted-in impression snapshots.
@@ -133,39 +134,49 @@ readonly class ClickModelTrainer {
 		if ($category < 0 || $category > Identifier::MAX) {
 			throw new \InvalidArgumentException("Category must be an unsigned 32-bit integer, got {$category}.");
 		}
-		
+
 		if ($from >= $to) {
 			throw new \InvalidArgumentException('Cohort start ' . $from->format(DATE_ATOM) . ' must be before its end ' . $to->format(DATE_ATOM) . '.');
 		}
-		
+
 		if ($to > $asOf) {
 			throw new \InvalidArgumentException('Cohort end ' . $to->format(DATE_ATOM) . ' must not follow the outcome cutoff ' . $asOf->format(DATE_ATOM) . '.');
 		}
-		
+
 		if ($clickWindowSeconds < 1) {
 			throw new \InvalidArgumentException("Click window must be positive, got {$clickWindowSeconds}.");
 		}
-		
+
 		if ($sources === []) {
 			throw new \InvalidArgumentException('At least one recommendation source is required.');
 		}
-		
+
 		ReconciliationRequest::validateKey($placement, 64, 'placement');
-		
+
 		if ($contextKey !== null) {
 			ReconciliationRequest::validateKey($contextKey, 128, 'context');
 		}
-		
+
+		return self::distinctSourceMask($sources);
+	}
+
+	/**
+	 * Combine the enabled sources into a source mask, rejecting repeated or non-source values.
+	 * @param array<int, RecommendationSource> $sources Enabled source set
+	 * @return int Canonical source mask
+	 * @throws \InvalidArgumentException When a source is repeated or is not a RecommendationSource
+	 */
+	private static function distinctSourceMask(array $sources): int {
 		$mask = 0;
-		
+
 		foreach ($sources as $source) {
 			if (!$source instanceof RecommendationSource || ($mask & $source->bit()) !== 0) {
 				throw new \InvalidArgumentException('Sources must be distinct RecommendationSource values.');
 			}
-			
+
 			$mask |= $source->bit();
 		}
-		
+
 		return $mask;
 	}
 	
@@ -194,18 +205,17 @@ readonly class ClickModelTrainer {
 	 */
 	private function fetchMatureRows(int $category, string $placement, int $mask, ?string $contextKey,
 		DateTimeImmutable $from, DateTimeImmutable $to, DateTimeImmutable $asOf, int $clickWindowSeconds): array {
-		return $this->connection->execute('SELECT HEX(i.id) AS impression_id, i.shown_at,
+		$clicked = OutcomeSubquery::exists('click', 'as_of', 'click_window');
+
+		return $this->connection->execute("SELECT HEX(i.id) AS impression_id, i.shown_at,
             item.position, item.feature_snapshot,
-            EXISTS (SELECT 1 FROM recommender_outcomes o WHERE o.impression_id = i.id
-                AND o.item_id = item.item_id AND o.event_type = \'click\'
-                AND o.occurred_at >= i.shown_at AND o.occurred_at <= :as_of
-                AND o.occurred_at <= TIMESTAMPADD(SECOND, :click_window, i.shown_at)) AS clicked
+            {$clicked} AS clicked
             FROM recommender_impressions i JOIN recommender_impression_items item ON item.impression_id = i.id
             WHERE i.category = :category AND i.placement = :placement AND i.source_mask = :mask
                 AND i.context_key = :context AND item.feature_schema_version = 1
                 AND i.shown_at >= :from AND i.shown_at < :to
                 AND TIMESTAMPADD(SECOND, :mature_window, i.shown_at) <= :mature_as_of
-            ORDER BY i.shown_at ASC, i.id ASC, item.position ASC',
+            ORDER BY i.shown_at ASC, i.id ASC, item.position ASC",
 			['category'      => $category, 'placement' => $placement, 'mask' => $mask,
 			 'context'       => $contextKey ?? '', 'from' => MysqlTimestamp::utc($from), 'to' => MysqlTimestamp::utc($to),
 			 'as_of'         => MysqlTimestamp::utc($asOf), 'click_window' => $clickWindowSeconds,
@@ -295,8 +305,8 @@ readonly class ClickModelTrainer {
 		}
 		
 		foreach ($depths as $source => $depth) {
-			if (!is_string($source) || !is_int($depth) || $depth < 50
-				|| abs(log($depth) - $features[$source . '.log_depth_searched']) > 1e-9) {
+			if (!is_string($source) || !is_int($depth)
+				|| !SourceFeatures::depthMatches($depth, $features[$source . '.log_depth_searched'])) {
 				throw new \UnexpectedValueException('Recorded source depth does not match its feature.');
 			}
 		}
