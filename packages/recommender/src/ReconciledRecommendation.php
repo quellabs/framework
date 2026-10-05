@@ -1,112 +1,112 @@
 <?php
-
-namespace Quellabs\Recommender;
-
-use Quellabs\Recommender\Internal\Identifier;
-
-/** A ranked candidate with its bounded source evidence. */
-readonly class ReconciledRecommendation {
 	
-	/** @var int Catalog ID */
-	public int $itemId;
+	namespace Quellabs\Recommender;
 	
-	/** @var float|null Rank-fusion score or reference-position probability */
-	public ?float $rankingScore;
+	use Quellabs\Recommender\Internal\Identifier;
 	
-	/** @var array<int, SourceEvidence> Available source signals */
-	public array $evidence;
-	
-	/** @var array<string, float> Serving-time feature values */
-	public array $featureSnapshot;
-	
-	/** @var array<string, float> Fitted terms for all enabled sources */
-	public array $sourceLogOddsContributions;
-	
-	/** @var array<string, int> Requested LIMIT reached per enabled source */
-	public array $searchedDepths;
-	
-	/**
-	 * Build a ranked candidate, rejecting values outside their allowed ranges.
-	 * @param int $itemId Catalog ID, an unsigned 32-bit integer
-	 * @param float|null $rankingScore Rank-fusion score or reference-position probability
-	 * @param array<int, SourceEvidence> $evidence Available source signals
-	 * @param array<string, float> $featureSnapshot Serving-time feature values
-	 * @param array<string, float> $sourceLogOddsContributions Fitted terms for all enabled sources
-	 * @param array<string, int> $searchedDepths Requested LIMIT reached per enabled source
-	 * @throws \InvalidArgumentException When a value is outside its allowed range
-	 */
-	public function __construct(
-		int    $itemId,
-		?float $rankingScore,
-		array  $evidence,
-		array  $featureSnapshot = [],
-		array  $sourceLogOddsContributions = [],
-		array  $searchedDepths = []
-	) {
-		if ($itemId < 0 || $itemId > Identifier::MAX) {
-			throw new \InvalidArgumentException("Item ID must be an unsigned 32-bit integer, got {$itemId}.");
-		}
+	/** A ranked candidate with its bounded source evidence. */
+	readonly class ReconciledRecommendation {
 		
-		if ($rankingScore !== null && !is_finite($rankingScore)) {
-			throw new \InvalidArgumentException("Ranking score for item {$itemId} must be finite, got {$rankingScore}.");
-		}
+		/** @var int Catalog ID */
+		public int $itemId;
 		
-		$this->validateEvidence($evidence);
-		$this->validateFeatureValues($featureSnapshot);
+		/** @var float|null Rank-fusion score or reference-position probability */
+		public ?float $rankingScore;
 		
-		foreach ($sourceLogOddsContributions as $name => $value) {
-			if (!is_string($name) || !is_float($value) || !is_finite($value)) {
-				throw new \InvalidArgumentException("Source contribution '{$name}' must be a finite float, got " . var_export($value, true) . '.');
-			}
-		}
+		/** @var array<int, SourceEvidence> Available source signals */
+		public array $evidence;
 		
-		foreach ($searchedDepths as $name => $depth) {
-			if (!is_string($name) || !is_int($depth) || $depth < 1) {
-				throw new \InvalidArgumentException("Searched depth for '{$name}' must be a positive integer, got " . var_export($depth, true) . '.');
-			}
-		}
+		/** @var array<string, float> Serving-time feature values */
+		public array $featureSnapshot;
 		
-		$this->itemId = $itemId;
-		$this->rankingScore = $rankingScore;
-		$this->evidence = $evidence;
-		$this->featureSnapshot = $featureSnapshot;
-		$this->sourceLogOddsContributions = $sourceLogOddsContributions;
-		$this->searchedDepths = $searchedDepths;
-	}
-	
-	/**
-	 * Reject evidence that is not a SourceEvidence or repeats a source.
-	 * @param array<mixed> $evidence Source signals to check
-	 * @return void
-	 * @throws \InvalidArgumentException When a signal is invalid or repeats a source
-	 */
-	private function validateEvidence(array $evidence): void {
-		$sourceValues = [];
+		/** @var array<string, float> Fitted terms for all enabled sources */
+		public array $sourceLogOddsContributions;
 		
-		foreach ($evidence as $signal) {
-			if (!$signal instanceof SourceEvidence) {
-				throw new \InvalidArgumentException('Evidence must contain SourceEvidence instances, got ' . get_debug_type($signal) . '.');
+		/** @var array<string, int> Requested LIMIT reached per enabled source */
+		public array $searchedDepths;
+		
+		/**
+		 * Build a ranked candidate, rejecting values outside their allowed ranges.
+		 * @param int $itemId Catalog ID, an unsigned 32-bit integer
+		 * @param float|null $rankingScore Rank-fusion score or reference-position probability
+		 * @param array<int, SourceEvidence> $evidence Available source signals
+		 * @param array<string, float> $featureSnapshot Serving-time feature values
+		 * @param array<string, float> $sourceLogOddsContributions Fitted terms for all enabled sources
+		 * @param array<string, int> $searchedDepths Requested LIMIT reached per enabled source
+		 * @throws \InvalidArgumentException When a value is outside its allowed range
+		 */
+		public function __construct(
+			int    $itemId,
+			?float $rankingScore,
+			array  $evidence,
+			array  $featureSnapshot = [],
+			array  $sourceLogOddsContributions = [],
+			array  $searchedDepths = []
+		) {
+			if ($itemId < 0 || $itemId > Identifier::MAX) {
+				throw new \InvalidArgumentException("Item ID must be an unsigned 32-bit integer, got {$itemId}.");
 			}
 			
-			if (isset($sourceValues[$signal->source->value])) {
-				throw new \InvalidArgumentException("Evidence repeats source '{$signal->source->value}'.");
+			if ($rankingScore !== null && !is_finite($rankingScore)) {
+				throw new \InvalidArgumentException("Ranking score for item {$itemId} must be finite, got {$rankingScore}.");
 			}
 			
-			$sourceValues[$signal->source->value] = true;
+			$this->validateEvidence($evidence);
+			$this->validateFeatureValues($featureSnapshot);
+			
+			foreach ($sourceLogOddsContributions as $name => $value) {
+				if (!is_string($name) || !is_float($value) || !is_finite($value)) {
+					throw new \InvalidArgumentException("Source contribution '{$name}' must be a finite float, got " . var_export($value, true) . '.');
+				}
+			}
+			
+			foreach ($searchedDepths as $name => $depth) {
+				if (!is_string($name) || !is_int($depth) || $depth < 1) {
+					throw new \InvalidArgumentException("Searched depth for '{$name}' must be a positive integer, got " . var_export($depth, true) . '.');
+				}
+			}
+			
+			$this->itemId = $itemId;
+			$this->rankingScore = $rankingScore;
+			$this->evidence = $evidence;
+			$this->featureSnapshot = $featureSnapshot;
+			$this->sourceLogOddsContributions = $sourceLogOddsContributions;
+			$this->searchedDepths = $searchedDepths;
 		}
-	}
-	
-	/**
-	 * Reject feature values that are not finite int or float numbers.
-	 * @param array<mixed> $featureSnapshot Feature values to check
-	 * @return void
-	 * @throws \InvalidArgumentException When a value is not a finite number
-	 */
-	private function validateFeatureValues(array $featureSnapshot): void {
-		foreach ($featureSnapshot as $name => $value) {
-			if ((!is_float($value) && !is_int($value)) || !is_finite((float)$value)) {
-				throw new \InvalidArgumentException("Feature '{$name}' must be a finite number, got " . var_export($value, true) . '.');
+		
+		/**
+		 * Reject evidence that is not a SourceEvidence or repeats a source.
+		 * @param array<mixed> $evidence Source signals to check
+		 * @return void
+		 * @throws \InvalidArgumentException When a signal is invalid or repeats a source
+		 */
+		private function validateEvidence(array $evidence): void {
+			$sourceValues = [];
+			
+			foreach ($evidence as $signal) {
+				if (!$signal instanceof SourceEvidence) {
+					throw new \InvalidArgumentException('Evidence must contain SourceEvidence instances, got ' . get_debug_type($signal) . '.');
+				}
+				
+				if (isset($sourceValues[$signal->source->value])) {
+					throw new \InvalidArgumentException("Evidence repeats source '{$signal->source->value}'.");
+				}
+				
+				$sourceValues[$signal->source->value] = true;
+			}
+		}
+		
+		/**
+		 * Reject feature values that are not finite int or float numbers.
+		 * @param array<mixed> $featureSnapshot Feature values to check
+		 * @return void
+		 * @throws \InvalidArgumentException When a value is not a finite number
+		 */
+		private function validateFeatureValues(array $featureSnapshot): void {
+			foreach ($featureSnapshot as $name => $value) {
+				if ((!is_float($value) && !is_int($value)) || !is_finite((float)$value)) {
+					throw new \InvalidArgumentException("Feature '{$name}' must be a finite number, got " . var_export($value, true) . '.');
+				}
 			}
 		}
 	}
-}

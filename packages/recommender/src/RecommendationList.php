@@ -1,230 +1,230 @@
 <?php
-
-namespace Quellabs\Recommender;
-
-use Quellabs\Recommender\Internal\Identifier;
-
-/** Immutable ordered candidates or the application's selected display. */
-readonly class RecommendationList {
 	
-	/** @var int Resolved category */
-	public int $category;
+	namespace Quellabs\Recommender;
 	
-	/** @var string Display surface */
-	public string $placement;
+	use Quellabs\Recommender\Internal\Identifier;
 	
-	/** @var array<int, RecommendationSource> Enabled source set */
-	public array $sources;
-	
-	/** @var string|null Model and logging partition */
-	public ?string $contextKey;
-	
-	/** @var string direct, rank_fusion, or click_probability */
-	public string $scoreKind;
-	
-	/** @var string|null Active model token, when calibrated */
-	public ?string $modelId;
-	
-	/** @var array<int, ReconciledRecommendation> Ordered results */
-	public array $items;
-	
-	/** @var int Maximum selectable displayed items */
-	public int $limit;
-	
-	/**
-	 * Build a list, rejecting metadata or items that do not fit together.
-	 * @param int $category Resolved category
-	 * @param string $placement Display surface
-	 * @param array<int, RecommendationSource> $sources Enabled source set
-	 * @param string|null $contextKey Model and logging partition
-	 * @param string $scoreKind direct, rank_fusion, or click_probability
-	 * @param string|null $modelId Active model token, required for click_probability
-	 * @param array<int, ReconciledRecommendation> $items Ordered results
-	 * @param int $limit Maximum selectable displayed items, from 1 to 100
-	 * @throws \InvalidArgumentException When the metadata or items are invalid
-	 */
-	public function __construct(
-		int     $category,
-		string  $placement,
-		array   $sources,
-		?string $contextKey,
-		string  $scoreKind,
-		?string $modelId,
-		array   $items,
-		int     $limit
-	) {
-		if ($category < 0 || $category > Identifier::MAX) {
-			throw new \InvalidArgumentException("Category must be an unsigned 32-bit integer, got {$category}.");
-		}
+	/** Immutable ordered candidates or the application's selected display. */
+	readonly class RecommendationList {
 		
-		if ($limit < 1 || $limit > 100) {
-			throw new \InvalidArgumentException("Limit must be between 1 and 100, got {$limit}.");
-		}
+		/** @var int Resolved category */
+		public int $category;
 		
-		if (!in_array($scoreKind, ['direct', 'rank_fusion', 'click_probability'], true)) {
-			throw new \InvalidArgumentException("Score kind must be direct, rank_fusion, or click_probability, got '{$scoreKind}'.");
-		}
+		/** @var string Display surface */
+		public string $placement;
 		
-		if (($scoreKind === 'click_probability') !== ($modelId !== null)) {
-			$modelLabel = $modelId ?? 'null';
-			throw new \InvalidArgumentException("A model ID is required only for click_probability lists; got score kind '{$scoreKind}' and model ID {$modelLabel}.");
-		}
+		/** @var array<int, RecommendationSource> Enabled source set */
+		public array $sources;
 		
-		ReconciliationRequest::validateKey($placement, 64, 'placement');
+		/** @var string|null Model and logging partition */
+		public ?string $contextKey;
 		
-		if ($contextKey !== null) {
-			ReconciliationRequest::validateKey($contextKey, 128, 'context');
-		}
+		/** @var string direct, rank_fusion, or click_probability */
+		public string $scoreKind;
 		
-		if ($modelId !== null && preg_match('/^[0-9a-f]{32}$/D', $modelId) !== 1) {
-			throw new \InvalidArgumentException("Model ID must be 32 lowercase hexadecimal characters, got '{$modelId}'.");
-		}
+		/** @var string|null Active model token, when calibrated */
+		public ?string $modelId;
 		
-		$sourceSet = self::sourceSet($sources);
-		self::validateItems($items, $scoreKind, $sourceSet);
+		/** @var array<int, ReconciledRecommendation> Ordered results */
+		public array $items;
 		
-		$this->category = $category;
-		$this->placement = $placement;
-		$this->sources = $sources;
-		$this->contextKey = $contextKey;
-		$this->scoreKind = $scoreKind;
-		$this->modelId = $modelId;
-		$this->items = $items;
-		$this->limit = $limit;
-	}
-	
-	/**
-	 * Build a direct display list from items in the order they were shown.
-	 * @param int $category Resolved category
-	 * @param string $placement Display surface
-	 * @param array<int, ReconciledRecommendation> $items Displayed items in order
-	 * @param string|null $contextKey Optional model partition
-	 * @return self Direct display list
-	 * @throws \InvalidArgumentException When an item is not a ReconciledRecommendation
-	 */
-	public static function fromDisplayedItems(int $category, string $placement, array $items, ?string $contextKey = null): self {
-		$sources = [];
+		/** @var int Maximum selectable displayed items */
+		public int $limit;
 		
-		foreach ($items as $item) {
-			if (!$item instanceof ReconciledRecommendation) {
-				throw new \InvalidArgumentException('Displayed items must be ReconciledRecommendation instances, got ' . get_debug_type($item) . '.');
+		/**
+		 * Build a list, rejecting metadata or items that do not fit together.
+		 * @param int $category Resolved category
+		 * @param string $placement Display surface
+		 * @param array<int, RecommendationSource> $sources Enabled source set
+		 * @param string|null $contextKey Model and logging partition
+		 * @param string $scoreKind direct, rank_fusion, or click_probability
+		 * @param string|null $modelId Active model token, required for click_probability
+		 * @param array<int, ReconciledRecommendation> $items Ordered results
+		 * @param int $limit Maximum selectable displayed items, from 1 to 100
+		 * @throws \InvalidArgumentException When the metadata or items are invalid
+		 */
+		public function __construct(
+			int     $category,
+			string  $placement,
+			array   $sources,
+			?string $contextKey,
+			string  $scoreKind,
+			?string $modelId,
+			array   $items,
+			int     $limit
+		) {
+			if ($category < 0 || $category > Identifier::MAX) {
+				throw new \InvalidArgumentException("Category must be an unsigned 32-bit integer, got {$category}.");
 			}
 			
-			foreach ($item->evidence as $signal) {
-				$sources[$signal->source->value] = $signal->source;
+			if ($limit < 1 || $limit > 100) {
+				throw new \InvalidArgumentException("Limit must be between 1 and 100, got {$limit}.");
 			}
+			
+			if (!in_array($scoreKind, ['direct', 'rank_fusion', 'click_probability'], true)) {
+				throw new \InvalidArgumentException("Score kind must be direct, rank_fusion, or click_probability, got '{$scoreKind}'.");
+			}
+			
+			if (($scoreKind === 'click_probability') !== ($modelId !== null)) {
+				$modelLabel = $modelId ?? 'null';
+				throw new \InvalidArgumentException("A model ID is required only for click_probability lists; got score kind '{$scoreKind}' and model ID {$modelLabel}.");
+			}
+			
+			ReconciliationRequest::validateKey($placement, 64, 'placement');
+			
+			if ($contextKey !== null) {
+				ReconciliationRequest::validateKey($contextKey, 128, 'context');
+			}
+			
+			if ($modelId !== null && preg_match('/^[0-9a-f]{32}$/D', $modelId) !== 1) {
+				throw new \InvalidArgumentException("Model ID must be 32 lowercase hexadecimal characters, got '{$modelId}'.");
+			}
+			
+			$sourceSet = self::sourceSet($sources);
+			self::validateItems($items, $scoreKind, $sourceSet);
+			
+			$this->category = $category;
+			$this->placement = $placement;
+			$this->sources = $sources;
+			$this->contextKey = $contextKey;
+			$this->scoreKind = $scoreKind;
+			$this->modelId = $modelId;
+			$this->items = $items;
+			$this->limit = $limit;
 		}
 		
-		return new self($category, $placement, array_values($sources), $contextKey, 'direct', null,
-			$items, max(1, count($items)));
-	}
-	
-	/**
-	 * Return a list containing only the selected items, in the selected order.
-	 * @param array<int, int> $itemIds Selected IDs in actual display order
-	 * @return self A list retaining source evidence and model information
-	 * @throws \InvalidArgumentException When the selection exceeds the limit or names an item outside the pool
-	 */
-	public function selectDisplayedIds(array $itemIds): self {
-		$selectionCount = count($itemIds);
-		
-		if ($selectionCount > $this->limit) {
-			throw new \InvalidArgumentException("Selection has {$selectionCount} items, but the list limit is {$this->limit}.");
+		/**
+		 * Build a direct display list from items in the order they were shown.
+		 * @param int $category Resolved category
+		 * @param string $placement Display surface
+		 * @param array<int, ReconciledRecommendation> $items Displayed items in order
+		 * @param string|null $contextKey Optional model partition
+		 * @return self Direct display list
+		 * @throws \InvalidArgumentException When an item is not a ReconciledRecommendation
+		 */
+		public static function fromDisplayedItems(int $category, string $placement, array $items, ?string $contextKey = null): self {
+			$sources = [];
+			
+			foreach ($items as $item) {
+				if (!$item instanceof ReconciledRecommendation) {
+					throw new \InvalidArgumentException('Displayed items must be ReconciledRecommendation instances, got ' . get_debug_type($item) . '.');
+				}
+				
+				foreach ($item->evidence as $signal) {
+					$sources[$signal->source->value] = $signal->source;
+				}
+			}
+			
+			return new self($category, $placement, array_values($sources), $contextKey, 'direct', null,
+				$items, max(1, count($items)));
 		}
 		
-		$pool = [];
-		
-		foreach ($this->items as $item) {
-			$pool[$item->itemId] = $item;
+		/**
+		 * Return a list containing only the selected items, in the selected order.
+		 * @param array<int, int> $itemIds Selected IDs in actual display order
+		 * @return self A list retaining source evidence and model information
+		 * @throws \InvalidArgumentException When the selection exceeds the limit or names an item outside the pool
+		 */
+		public function selectDisplayedIds(array $itemIds): self {
+			$selectionCount = count($itemIds);
+			
+			if ($selectionCount > $this->limit) {
+				throw new \InvalidArgumentException("Selection has {$selectionCount} items, but the list limit is {$this->limit}.");
+			}
+			
+			$pool = [];
+			
+			foreach ($this->items as $item) {
+				$pool[$item->itemId] = $item;
+			}
+			
+			$selected = [];
+			$seen = [];
+			
+			foreach ($itemIds as $id) {
+				if (!is_int($id)) {
+					throw new \InvalidArgumentException('Selected ID must be an integer, got ' . var_export($id, true) . '.');
+				}
+				
+				if (!isset($pool[$id])) {
+					throw new \InvalidArgumentException("Selected ID {$id} is outside the ranked pool.");
+				}
+				
+				if (isset($seen[$id])) {
+					throw new \InvalidArgumentException("Selected ID {$id} appears more than once.");
+				}
+				
+				$seen[$id] = true;
+				$selected[] = $pool[$id];
+			}
+			
+			return new self($this->category, $this->placement, $this->sources, $this->contextKey,
+				$this->scoreKind, $this->modelId, $selected, $this->limit);
 		}
 		
-		$selected = [];
-		$seen = [];
-		
-		foreach ($itemIds as $id) {
-			if (!is_int($id)) {
-				throw new \InvalidArgumentException('Selected ID must be an integer, got ' . var_export($id, true) . '.');
-			}
-			
-			if (!isset($pool[$id])) {
-				throw new \InvalidArgumentException("Selected ID {$id} is outside the ranked pool.");
-			}
-			
-			if (isset($seen[$id])) {
-				throw new \InvalidArgumentException("Selected ID {$id} appears more than once.");
-			}
-			
-			$seen[$id] = true;
-			$selected[] = $pool[$id];
+		/**
+		 * Return the canonical enabled-source mask.
+		 * @return int Canonical enabled-source mask
+		 */
+		public function sourceMask(): int {
+			return RecommendationSource::mask($this->sources);
 		}
 		
-		return new self($this->category, $this->placement, $this->sources, $this->contextKey,
-			$this->scoreKind, $this->modelId, $selected, $this->limit);
-	}
-	
-	/**
-	 * Return the canonical enabled-source mask.
-	 * @return int Canonical enabled-source mask
-	 */
-	public function sourceMask(): int {
-		return RecommendationSource::mask($this->sources);
-	}
-	
-	/**
-	 * Index the enabled sources by value, rejecting non-sources and duplicates.
-	 * @param array<mixed> $sources Enabled sources
-	 * @return array<string, true> Enabled source values as keys
-	 * @throws \InvalidArgumentException When a source is not a RecommendationSource or is repeated
-	 */
-	private static function sourceSet(array $sources): array {
-		$sourceSet = [];
-		
-		foreach ($sources as $source) {
-			if (!$source instanceof RecommendationSource) {
-				throw new \InvalidArgumentException('Sources must be RecommendationSource values, got ' . get_debug_type($source) . '.');
+		/**
+		 * Index the enabled sources by value, rejecting non-sources and duplicates.
+		 * @param array<mixed> $sources Enabled sources
+		 * @return array<string, true> Enabled source values as keys
+		 * @throws \InvalidArgumentException When a source is not a RecommendationSource or is repeated
+		 */
+		private static function sourceSet(array $sources): array {
+			$sourceSet = [];
+			
+			foreach ($sources as $source) {
+				if (!$source instanceof RecommendationSource) {
+					throw new \InvalidArgumentException('Sources must be RecommendationSource values, got ' . get_debug_type($source) . '.');
+				}
+				
+				if (isset($sourceSet[$source->value])) {
+					throw new \InvalidArgumentException("Source '{$source->value}' is listed more than once.");
+				}
+				
+				$sourceSet[$source->value] = true;
 			}
 			
-			if (isset($sourceSet[$source->value])) {
-				throw new \InvalidArgumentException("Source '{$source->value}' is listed more than once.");
-			}
-			
-			$sourceSet[$source->value] = true;
+			return $sourceSet;
 		}
 		
-		return $sourceSet;
-	}
-	
-	/**
-	 * Reject items that are not unique recommendations, lack a score, or use a disabled source.
-	 * @param array<mixed> $items Ordered results to check
-	 * @param string $scoreKind Score kind of the list
-	 * @param array<string, true> $sourceSet Enabled source values
-	 * @return void
-	 * @throws \InvalidArgumentException When an item is invalid
-	 */
-	private static function validateItems(array $items, string $scoreKind, array $sourceSet): void {
-		$seen = [];
-		
-		foreach ($items as $item) {
-			if (!$item instanceof ReconciledRecommendation) {
-				throw new \InvalidArgumentException('Items must be ReconciledRecommendation instances, got ' . get_debug_type($item) . '.');
-			}
+		/**
+		 * Reject items that are not unique recommendations, lack a score, or use a disabled source.
+		 * @param array<mixed> $items Ordered results to check
+		 * @param string $scoreKind Score kind of the list
+		 * @param array<string, true> $sourceSet Enabled source values
+		 * @return void
+		 * @throws \InvalidArgumentException When an item is invalid
+		 */
+		private static function validateItems(array $items, string $scoreKind, array $sourceSet): void {
+			$seen = [];
 			
-			if (isset($seen[$item->itemId])) {
-				throw new \InvalidArgumentException("Item ID {$item->itemId} appears more than once.");
-			}
-			
-			if ($scoreKind !== 'direct' && $item->rankingScore === null) {
-				throw new \InvalidArgumentException("Item ID {$item->itemId} needs a ranking score for score kind '{$scoreKind}'.");
-			}
-			
-			$seen[$item->itemId] = true;
-			
-			foreach ($item->evidence as $signal) {
-				if (!isset($sourceSet[$signal->source->value])) {
-					throw new \InvalidArgumentException("Item ID {$item->itemId} has evidence from source '{$signal->source->value}', which is not enabled.");
+			foreach ($items as $item) {
+				if (!$item instanceof ReconciledRecommendation) {
+					throw new \InvalidArgumentException('Items must be ReconciledRecommendation instances, got ' . get_debug_type($item) . '.');
+				}
+				
+				if (isset($seen[$item->itemId])) {
+					throw new \InvalidArgumentException("Item ID {$item->itemId} appears more than once.");
+				}
+				
+				if ($scoreKind !== 'direct' && $item->rankingScore === null) {
+					throw new \InvalidArgumentException("Item ID {$item->itemId} needs a ranking score for score kind '{$scoreKind}'.");
+				}
+				
+				$seen[$item->itemId] = true;
+				
+				foreach ($item->evidence as $signal) {
+					if (!isset($sourceSet[$signal->source->value])) {
+						throw new \InvalidArgumentException("Item ID {$item->itemId} has evidence from source '{$signal->source->value}', which is not enabled.");
+					}
 				}
 			}
 		}
 	}
-}
