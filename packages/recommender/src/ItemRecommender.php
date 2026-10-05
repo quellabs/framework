@@ -21,6 +21,8 @@ use Quellabs\Recommender\Internal\SlopeOne\SlopeOneRecommender;
  * Methods throw on database failure.
  *
  * @phpstan-import-type RatingList from VisitorContext
+ * @phpstan-import-type ProductRating from SlopeOneRecommender
+ * @phpstan-import-type ProductDiff from SlopeOneRecommender
  */
 readonly class ItemRecommender {
 
@@ -234,7 +236,7 @@ readonly class ItemRecommender {
 	 * @param array<int> $filter When non-empty, only return product IDs in this set
 	 * @param int $limit Maximum number of results (0 = unlimited)
 	 * @param int|null $category Defaults to configured default
-	 * @return array<int, array{product_id: int, diff: float}>
+	 * @return array<int, ProductDiff>
 	 */
 	public function getSlopeItems(int $productId, int $minLinks = 1, array $filter = [], int $limit = 0, ?int $category = null): array {
 		return $this->slopeOne->getSlopeItems($productId, $minLinks, $filter, $limit, $category);
@@ -257,7 +259,7 @@ readonly class ItemRecommender {
 	 * @param array<int> $filter When non-empty, only return product IDs in this set
 	 * @param int $limit Maximum number of results (0 = unlimited)
 	 * @param int|null $category Defaults to configured default
-	 * @return array<int, array{product_id: int, rating: float}>
+	 * @return array<int, ProductRating>
 	 */
 	public function memberPredictAll(int $memberId, array $filter = [], int $limit = 0, ?int $category = null): array {
 		return $this->slopeOne->memberPredictAll($memberId, $filter, $limit, $category);
@@ -280,7 +282,7 @@ readonly class ItemRecommender {
 	 * @param array<int> $filter When non-empty, only return product IDs in this set
 	 * @param int $limit Maximum number of results (0 = unlimited)
 	 * @param int|null $category Defaults to configured default
-	 * @return array<int, array{product_id: int, rating: float}>
+	 * @return array<int, ProductRating>
 	 */
 	public function visitorPredictAll(VisitorContext $visitor, array $filter = [], int $limit = 0, ?int $category = null): array {
 		return $this->slopeOne->visitorPredictAll($visitor, $filter, $limit, $category);

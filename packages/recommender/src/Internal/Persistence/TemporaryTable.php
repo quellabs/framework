@@ -3,8 +3,13 @@
 namespace Quellabs\Recommender\Internal\Persistence;
 
 use Cake\Database\Connection;
+use Quellabs\Recommender\UserSimilarity;
 
-/** Creates temporary tables that hold candidate sets and rating inputs for one query. */
+/**
+ * Creates temporary tables that hold candidate sets and rating inputs for one query.
+ *
+ * @phpstan-import-type Neighbour from UserSimilarity
+ */
 final class TemporaryTable {
 
 	/** @var int Rows per multi-row INSERT */
@@ -57,7 +62,7 @@ final class TemporaryTable {
 	 * Load neighbour similarities into a temporary table for the duration of one operation.
 	 * @template T
 	 * @param string $prefix Table name prefix, followed by a random suffix
-	 * @param array<int, array{member_id: int, similarity: int}> $neighbours Neighbours with their similarity
+	 * @param array<int, Neighbour> $neighbours Neighbours with their similarity
 	 * @param callable(string): T $operation Receives the table name
 	 * @return T Operation result
 	 */

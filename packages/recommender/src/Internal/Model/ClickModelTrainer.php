@@ -14,6 +14,7 @@ use Quellabs\Recommender\ReconciliationRequest;
 /**
  * Builds versioned model candidates from mature, opted-in impression snapshots.
  *
+ * @phpstan-import-type LabeledSample from ClickModelFitter
  * @phpstan-type MatureRow array{impression_id: string, shown_at: string, position: int|string, feature_snapshot: string, clicked: int|string}
  */
 readonly class ClickModelTrainer {
@@ -256,7 +257,7 @@ readonly class ClickModelTrainer {
 	 * @param array<int, MatureRow> $rows Rows from fetchMatureRows()
 	 * @param array<int, string> $expectedFeatures Sorted feature names of schema version 1
 	 * @param array<int, string> $expectedDepthSources Sorted depth source values
-	 * @return array{0: array<string, list<array{features: array<string, float>, label: int}>>, 1: array<string, string>}
+	 * @return array{0: array<string, list<LabeledSample>>, 1: array<string, string>}
 	 *     Items per impression ID, and shown time per impression ID
 	 */
 	private function groupSamples(array $rows, array $expectedFeatures, array $expectedDepthSources): array {
@@ -343,8 +344,8 @@ readonly class ClickModelTrainer {
 	
 	/**
 	 * Split impressions by order: the first 80% train the model and the rest hold it out.
-	 * @param array<string, list<array{features: array<string, float>, label: int}>> $groups Items per impression, in time order
-	 * @return array{0: list<array{features: array<string, float>, label: int}>, 1: list<array{features: array<string, float>, label: int}>, 2: int}
+	 * @param array<string, list<LabeledSample>> $groups Items per impression, in time order
+	 * @return array{0: list<LabeledSample>, 1: list<LabeledSample>, 2: int}
 	 *     Training items, holdout items, and the number of training impressions
 	 */
 	private static function splitByImpression(array $groups): array {

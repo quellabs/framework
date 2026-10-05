@@ -15,6 +15,8 @@ use Quellabs\Recommender\VisitorContext;
  *
  * Methods throw on database failure.
  *
+ * @phpstan-type ProductRating array{product_id: int, rating: float}
+ * @phpstan-type ProductDiff array{product_id: int, diff: float}
  * @phpstan-import-type RatingList from VisitorContext
  */
 readonly class SlopeOneRecommender {
@@ -50,7 +52,7 @@ readonly class SlopeOneRecommender {
 	 * @param array<int> $filter When non-empty, only return product IDs in this set
 	 * @param int $limit Maximum number of results (0 = unlimited)
 	 * @param int|null $category Defaults to configured default
-	 * @return array<int, array{product_id: int, diff: float}>
+	 * @return array<int, ProductDiff>
 	 */
 	public function getSlopeItems(int $productId, int $minLinks = 1, array $filter = [], int $limit = 0, ?int $category = null): array {
 		$resolvedCategory = $this->config->resolveCategory($category);
@@ -136,7 +138,7 @@ readonly class SlopeOneRecommender {
 	 * @param array<int> $filter When non-empty, only return product IDs in this set
 	 * @param int $limit Maximum number of results (0 = unlimited)
 	 * @param int|null $category Defaults to configured default
-	 * @return array<int, array{product_id: int, rating: float}>
+	 * @return array<int, ProductRating>
 	 */
 	public function memberPredictAll(int $memberId, array $filter = [], int $limit = 0, ?int $category = null): array {
 		$resolvedCategory = $this->config->resolveCategory($category);
@@ -179,7 +181,7 @@ readonly class SlopeOneRecommender {
 	 * @param array<int> $filter When non-empty, only return product IDs in this set
 	 * @param int $limit Maximum number of results (0 = unlimited)
 	 * @param int|null $category Defaults to configured default
-	 * @return array<int, array{product_id: int, rating: float}>
+	 * @return array<int, ProductRating>
 	 */
 	public function visitorPredictAll(VisitorContext $visitor, array $filter = [], int $limit = 0, ?int $category = null): array {
 		$resolvedCategory = $this->config->resolveCategory($category);
@@ -450,7 +452,7 @@ readonly class SlopeOneRecommender {
 	 * Convert grouped slope rows into clamped predictions, best first with ties broken by ascending product ID.
 	 * @param array<int, array<string, mixed>> $rows Rows with item_id2, support and numerator
 	 * @param int $limit Maximum number of results, or zero for all
-	 * @return array<int, array{product_id: int, rating: float}>
+	 * @return array<int, ProductRating>
 	 */
 	private function rankPredictions(array $rows, int $limit): array {
 		$result = [];

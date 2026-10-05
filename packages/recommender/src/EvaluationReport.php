@@ -9,7 +9,12 @@ use Quellabs\Recommender\Internal\Persistence\EvaluationSchema;
 use Quellabs\Recommender\Internal\Persistence\MysqlTimestamp;
 use Quellabs\Recommender\Internal\Query\OutcomeSubquery;
 
-/** Descriptive reporting over opted-in displayed-item impressions. */
+/**
+ * Descriptive reporting over opted-in displayed-item impressions.
+ *
+ * @phpstan-type CalibrationRow array{model_id: string, placement: string, probability: float|string, clicked: int|string}
+ * @phpstan-type CalibrationSample array{probability: float, clicked: int}
+ */
 readonly class EvaluationReport {
 	
 	/** @var Connection Evaluation database connection */
@@ -160,7 +165,7 @@ readonly class EvaluationReport {
 	 * @param DateTimeImmutable $end Exclusive display end
 	 * @param DateTimeImmutable $asOf Outcome cutoff
 	 * @param int $clickWindowSeconds Positive attribution period
-	 * @return array<int, array{model_id: string, placement: string, probability: float|string, clicked: int|string}> Calibration rows
+	 * @return array<int, CalibrationRow> Calibration rows
 	 */
 	private function fetchCalibrationRows(DateTimeImmutable $start, DateTimeImmutable $end,
 		DateTimeImmutable $asOf, int $clickWindowSeconds): array {
@@ -191,8 +196,8 @@ readonly class EvaluationReport {
 	
 	/**
 	 * Group calibration rows into samples keyed by "model_id:placement".
-	 * @param array<int, array{model_id: string, placement: string, probability: float|string, clicked: int|string}> $rows Rows from fetchCalibrationRows()
-	 * @return array<string, list<array{probability: float, clicked: int}>> Samples per model and placement
+	 * @param array<int, CalibrationRow> $rows Rows from fetchCalibrationRows()
+	 * @return array<string, list<CalibrationSample>> Samples per model and placement
 	 */
 	private static function groupCalibrationSamples(array $rows): array {
 		$groups = [];
@@ -208,7 +213,7 @@ readonly class EvaluationReport {
 	/**
 	 * Summarize one model and placement group: observed click rate, Brier score, and decile bins.
 	 * @param string $key Group key in the form "model_id:placement"
-	 * @param list<array{probability: float, clicked: int}> $samples Samples in the group
+	 * @param list<CalibrationSample> $samples Samples in the group
 	 * @param DateTimeImmutable $asOf Outcome cutoff
 	 * @param int $clickWindowSeconds Positive attribution period
 	 * @return array<string, mixed> Calibration summary for the group
@@ -231,7 +236,7 @@ readonly class EvaluationReport {
 	
 	/**
 	 * Split sorted samples into up to ten bins of near-equal size.
-	 * @param list<array{probability: float, clicked: int}> $samples Samples sorted by probability
+	 * @param list<CalibrationSample> $samples Samples sorted by probability
 	 * @param int $count Number of samples
 	 * @return list<array{count: int, predicted: float, observed: float}> Non-empty bins
 	 */

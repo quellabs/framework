@@ -10,7 +10,12 @@ use Quellabs\Recommender\Internal\Persistence\TemporaryTable;
 use Quellabs\Recommender\Internal\Reconciliation\CandidateRoundState;
 use Quellabs\Recommender\Internal\Identifier;
 
-/** Combines explicitly selected candidate generators using reciprocal ranks. */
+/**
+ * Combines explicitly selected candidate generators using reciprocal ranks.
+ *
+ * @phpstan-type ActiveModel array{0: string, 1: ClickModel}
+ * @phpstan-import-type CandidateRow from CandidateRoundState
+ */
 readonly class RecommendationReconciler {
 
 	/** @var Connection Ratings database connection */
@@ -279,7 +284,7 @@ readonly class RecommendationReconciler {
 	 * @param array<int, SourceEvidence> $evidence Source signals for the candidate
 	 * @param array<int, RecommendationSource> $sources Enabled sources
 	 * @param array<string, int> $depths Searched depth per source
-	 * @param array{0: string, 1: ClickModel}|null $activeModel Active model token and model, when calibrated
+	 * @param ActiveModel|null $activeModel Active model token and model, when calibrated
 	 * @return ReconciledRecommendation Ranked candidate
 	 */
 	private function buildRankedItem(int $id, array $evidence, array $sources, array $depths, ?array $activeModel): ReconciledRecommendation {
@@ -340,7 +345,7 @@ readonly class RecommendationReconciler {
 	 * Return the active click model for the request partition, when the optional model tables exist.
 	 * @param int $category Resolved category
 	 * @param ReconciliationRequest $request Model partition key
-	 * @return array{0: string, 1: ClickModel}|null Active model token and model, or null when none is active
+	 * @return ActiveModel|null Active model token and model, or null when none is active
 	 * @throws \UnexpectedValueException When the model schema or feature names do not match the request
 	 */
 	private function activeModel(int $category, ReconciliationRequest $request): ?array {
@@ -672,7 +677,7 @@ readonly class RecommendationReconciler {
 	 * @param int $category Resolved category
 	 * @param int $depth Requested source depth
 	 * @param ReconciliationRequest $request Source settings
-	 * @return array<int, array{id:int,score:float|null,count:int|null,contributors:array<int,int>}>
+	 * @return array<int, CandidateRow>
 	 */
 	private function generate(RecommendationSource $source, ?int $memberId, array $ratings,
 		int $category, int $depth, ReconciliationRequest $request): array {
@@ -702,7 +707,7 @@ readonly class RecommendationReconciler {
 	 * @param ReconciliationRequest $request Request with the new-product list
 	 * @param array<int, float> $ratings Seen ratings
 	 * @param int $depth Requested source depth
-	 * @return array<int, array{id:int,score:float|null,count:int|null,contributors:array<int,int>}>
+	 * @return array<int, CandidateRow>
 	 */
 	private function generateNewProducts(ReconciliationRequest $request, array $ratings, int $depth): array {
 		$rows = [];
@@ -722,7 +727,7 @@ readonly class RecommendationReconciler {
 	 * @param int $category Resolved category
 	 * @param int $depth Requested source depth
 	 * @param ReconciliationRequest $request Source settings
-	 * @return array<int, array{id:int,score:float|null,count:int|null,contributors:array<int,int>}>
+	 * @return array<int, CandidateRow>
 	 * @throws \UnexpectedValueException When the query does not return an array
 	 */
 	private function generateTopRated(array $ratings, int $category, int $depth, ReconciliationRequest $request): array {
@@ -746,7 +751,7 @@ readonly class RecommendationReconciler {
 	 * @param int $category Resolved category
 	 * @param int $depth Requested source depth
 	 * @param ReconciliationRequest $request Source settings
-	 * @return array<int, array{id:int,score:float|null,count:int|null,contributors:array<int,int>}>
+	 * @return array<int, CandidateRow>
 	 * @throws \InvalidArgumentException When no member is given
 	 */
 	private function generateUserSimilarity(?int $memberId, int $category, int $depth, ReconciliationRequest $request): array {
@@ -771,7 +776,7 @@ readonly class RecommendationReconciler {
 	 * @param int $category Resolved category
 	 * @param int $depth Source depth
 	 * @param ReconciliationRequest $request Source settings
-	 * @return array<int, array{id:int,score:float|null,count:int|null,contributors:array<int,int>}>
+	 * @return array<int, CandidateRow>
 	 */
 	private function generateFromRatings(RecommendationSource $source, array $genuine,
 		array $seen, int $category, int $depth, ReconciliationRequest $request): array {
@@ -793,7 +798,7 @@ readonly class RecommendationReconciler {
 	 * Convert raw SQL rows into candidates, dropping IDs that were already seen.
 	 * @param array<mixed> $rows SQL rows
 	 * @param array<int, float> $seen Previously rated and rejected IDs
-	 * @return array<int, array{id:int,score:float|null,count:int|null,contributors:array<int,int>}>
+	 * @return array<int, CandidateRow>
 	 * @throws \UnexpectedValueException When a row or its contributors are malformed
 	 */
 	private function normalizeRows(array $rows, array $seen): array {

@@ -4,8 +4,13 @@
 	
 	use Cake\Database\Connection;
 	use Quellabs\Recommender\Config\RecommendationConfig;
-	
-	/** Maintains independent liked and Slope One pair measures during rating writes. */
+	use Quellabs\Recommender\Internal\SlopeOne\SlopeOneRecommender;
+
+	/**
+	 * Maintains independent liked and Slope One pair measures during rating writes.
+	 *
+	 * @phpstan-import-type ProductRating from SlopeOneRecommender
+	 */
 	readonly class LinkUpdater {
 		
 		/** @var Connection Database connection */
@@ -90,7 +95,7 @@
 		 * @param int $productId Product to exclude
 		 * @param int $category Category
 		 * @param float $minimum Minimum rating
-		 * @return array<int, array{product_id: int, rating: float}>
+		 * @return array<int, ProductRating>
 		 * @throws \UnexpectedValueException When a row lacks a numeric product ID or rating
 		 */
 		private function otherRatings(int $memberId, int $productId, int $category, float $minimum): array {

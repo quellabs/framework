@@ -16,6 +16,9 @@ use Quellabs\Recommender\Internal\Query\Results;
  * member's total ratings.
  *
  * Methods throw on database failure.
+ *
+ * @phpstan-type Neighbour array{member_id: int, similarity: int}
+ * @phpstan-type ItemScore array{itemId: int, score: float}
  */
 readonly class UserSimilarity {
 	
@@ -94,7 +97,7 @@ readonly class UserSimilarity {
 	 * @param int $minSimilarity Minimum score to include (0 to 100)
 	 * @param int $limit Maximum number of neighbours (0 = unlimited)
 	 * @param int|null $category Defaults to configured default
-	 * @return array<int, array{member_id: int, similarity: int}>
+	 * @return array<int, Neighbour>
 	 * @throws \UnexpectedValueException When a neighbour row is malformed
 	 */
 	public function getNeighbours(int $memberId, int $minSimilarity = 1, int $limit = 0, ?int $category = null): array {
@@ -198,7 +201,7 @@ readonly class UserSimilarity {
 	 * @param int $limit Maximum candidates
 	 * @param int|null $category Category override
 	 * @param array<int, int>|null $candidateIds Optional exact candidate batch to score
-	 * @return array<int, array{itemId: int, score: float}>
+	 * @return array<int, ItemScore>
 	 */
 	public function memberRecommendationsScored(int $memberId, int $minSimilarity,
 		int $maxNeighbours, int $limit, ?int $category = null, ?array $candidateIds = null): array {
@@ -232,7 +235,7 @@ readonly class UserSimilarity {
 	 * @param string|null $candidateTable Temporary table restricting candidates, or null for all items
 	 * @param int $category Already-resolved category
 	 * @param int $limit Maximum candidates
-	 * @return array<int, array{itemId: int, score: float}>
+	 * @return array<int, ItemScore>
 	 */
 	private function queryNeighbourRecommendations(int $memberId, string $neighbourTable, ?string $candidateTable,
 		int $category, int $limit): array {
@@ -307,7 +310,7 @@ readonly class UserSimilarity {
 	 * Compute similarity-weighted scores for every product liked by the neighbours that the member has not rated.
 	 * Each score is the similarity-weighted average of the neighbours' ratings. Runs one query per chunk of neighbours.
 	 * @param int $memberId The member receiving recommendations
-	 * @param array<int, array{member_id: int, similarity: int}> $neighbours Neighbours with their similarity
+	 * @param array<int, Neighbour> $neighbours Neighbours with their similarity
 	 * @param array<int> $filter When non-empty, only score product IDs in this set
 	 * @param int $category Already-resolved category
 	 * @return array<int, float> Map of candidate product_id to weighted score

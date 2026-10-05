@@ -2,13 +2,18 @@
 
 namespace Quellabs\Recommender\Internal\Model;
 
-/** Deterministic full-batch logistic fitting and chronological holdout checks. */
+/**
+ * Deterministic full-batch logistic fitting and chronological holdout checks.
+ *
+ * @phpstan-type LabeledSample array{features: array<string, float>, label: int}
+ * @phpstan-type ScoredSample array{probability: float, label: int}
+ */
 final class ClickModelFitter {
 	
 	/**
 	 * Fit the model on the training items and evaluate it on the holdout items.
-	 * @param array<int, array{features: array<string, float>, label: int}> $training Mature training items
-	 * @param array<int, array{features: array<string, float>, label: int}> $holdout Later mature items
+	 * @param array<int, LabeledSample> $training Mature training items
+	 * @param array<int, LabeledSample> $holdout Later mature items
 	 * @return array<string, mixed> Versioned model artifact and validation metrics
 	 * @throws \InvalidArgumentException When the training or holdout set is empty
 	 * @throws \RuntimeException When fitting does not converge or reaches its iteration limit
@@ -39,7 +44,7 @@ final class ClickModelFitter {
 	
 	/**
 	 * Compute the mean and standard deviation of each feature over the training items.
-	 * @param array<int, array{features: array<string, float>, label: int}> $training Training items
+	 * @param array<int, LabeledSample> $training Training items
 	 * @param array<int, string> $names Sorted feature names
 	 * @return array{0: array<string, float>, 1: array<string, float>} Means and scales per feature
 	 */
@@ -60,7 +65,7 @@ final class ClickModelFitter {
 	
 	/**
 	 * Run full-batch gradient descent until the loss stops improving.
-	 * @param array<int, array{features: array<string, float>, label: int}> $training Training items
+	 * @param array<int, LabeledSample> $training Training items
 	 * @param array<int, string> $names Sorted feature names
 	 * @param float $intercept Starting intercept
 	 * @param array<string, float> $coefficients Starting coefficients
@@ -99,7 +104,7 @@ final class ClickModelFitter {
 	
 	/**
 	 * Compute the gradient of the regularized loss at the current parameters.
-	 * @param array<int, array{features: array<string, float>, label: int}> $training Training items
+	 * @param array<int, LabeledSample> $training Training items
 	 * @param array<int, string> $names Sorted feature names
 	 * @param float $intercept Current intercept
 	 * @param array<string, float> $coefficients Current coefficients
@@ -133,7 +138,7 @@ final class ClickModelFitter {
 	
 	/**
 	 * Halve the step size until the loss does not increase, or the step becomes negligible.
-	 * @param array<int, array{features: array<string, float>, label: int}> $training Training items
+	 * @param array<int, LabeledSample> $training Training items
 	 * @param array<int, string> $names Sorted feature names
 	 * @param float $loss Loss at the current parameters
 	 * @param float $intercept Current intercept
@@ -168,7 +173,7 @@ final class ClickModelFitter {
 	
 	/**
 	 * Score the holdout items with the fitted model and with the training click rate as a baseline.
-	 * @param array<int, array{features: array<string, float>, label: int}> $holdout Holdout items
+	 * @param array<int, LabeledSample> $holdout Holdout items
 	 * @param float $intercept Fitted intercept
 	 * @param array<string, float> $coefficients Fitted coefficients
 	 * @param array<string, float> $means Feature means
@@ -195,7 +200,7 @@ final class ClickModelFitter {
 	
 	/**
 	 * Compute the regularized mean log loss of the training items.
-	 * @param array<int, array{features: array<string, float>, label: int}> $samples Training items
+	 * @param array<int, LabeledSample> $samples Training items
 	 * @param float $intercept Current intercept
 	 * @param array<string, float> $coefficients Current coefficients
 	 * @param array<string, float> $means Feature means
@@ -236,7 +241,7 @@ final class ClickModelFitter {
 	
 	/**
 	 * Compute log loss, Brier score, expected calibration error, and calibration bins.
-	 * @param array<int, array{probability: float, label: int}> $predictions Holdout scores
+	 * @param array<int, ScoredSample> $predictions Holdout scores
 	 * @return array<string, mixed> Log loss, Brier score, ECE, and calibration bins
 	 */
 	private function metrics(array $predictions): array {
