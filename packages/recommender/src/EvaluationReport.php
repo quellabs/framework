@@ -1,46 +1,82 @@
 <?php
+
+namespace Quellabs\Recommender;
+
+use Cake\Database\Connection;
+use DateTimeImmutable;
+use DateTimeZone;
+use Quellabs\Recommender\Internal\Persistence\EvaluationSchema;
+
+/** Descriptive reporting over opted-in displayed-item impressions. */
+readonly class EvaluationReport {
 	
-	namespace Quellabs\Recommender;
+	/** @var Connection Evaluation database connection */
+	private Connection $connection;
 	
-	use Cake\Database\Connection;
-	use DateTimeImmutable;
-	use DateTimeZone;
-	use Quellabs\Recommender\Internal\Persistence\EvaluationSchema;
+	/**
+	 * Build a report over the evaluation database.
+	 * @param Connection $connection Evaluation database
+	 */
+	public function __construct(Connection $connection) {
+		$this->connection = $connection;
+	}
 	
-	/** Descriptive reporting over opted-in displayed-item impressions. */
-	readonly class EvaluationReport {
-		/** @param Connection $connection Evaluation database. */
-		public function __construct(private Connection $connection) {
+	/**
+	 * Return displayed-item outcome counts and rates for a display interval.
+	 * @param int $category Resolved category
+	 * @param DateTimeImmutable $start Inclusive display start
+	 * @param DateTimeImmutable $end Exclusive display end
+	 * @param DateTimeImmutable $asOf Included outcome cutoff
+	 * @param AttributionWindows $windows Caller-selected windows
+	 * @param RecommendationSource|null $source Optional descriptive source filter
+	 * @param string|null $contextKey Exact model partition
+	 * @return EvaluationSummary Displayed-item outcome counts and rates
+	 * @throws \InvalidArgumentException When the category, interval, or cutoff is invalid
+	 */
+	public function summary(
+		int                 $category,
+		DateTimeImmutable   $start,
+		DateTimeImmutable   $end,
+		DateTimeImmutable   $asOf,
+		AttributionWindows  $windows,
+		?RecommendationSource $source = null,
+		?string             $contextKey = null
+	): EvaluationSummary {
+		EvaluationSchema::requireTables($this->connection);
+		
+		if ($category < 0 || $category > 4294967295) {
+			throw new \InvalidArgumentException("Category must be an unsigned 32-bit integer, got {$category}.");
 		}
 		
-		/** @param int $category Resolved category
-		 * @param DateTimeImmutable $start Inclusive display start
-		 * @param DateTimeImmutable $end Exclusive display end
-		 * @param DateTimeImmutable $asOf Included outcome cutoff
-		 * @param AttributionWindows $windows Caller-selected windows
-		 * @param RecommendationSource|null $source Optional descriptive source filter
-		 * @param string|null $contextKey Exact model partition
-		 * @return EvaluationSummary Displayed-item outcome counts and rates
-		 */
-		public function summary(int $category, DateTimeImmutable $start, DateTimeImmutable $end,
-			DateTimeImmutable $asOf, AttributionWindows $windows, ?RecommendationSource $source = null,
-			?string $contextKey = null): EvaluationSummary {
-			EvaluationSchema::requireTables($this->connection);
-			if ($category < 0 || $category > 4294967295 || $start >= $end || $asOf < $end) {
-				throw new \InvalidArgumentException('Invalid category or report interval.');
-			}
-			if ($contextKey !== null) {
-				ReconciliationRequest::validateKey($contextKey, 128, 'context');
-			}
-			$whereSource = $source === null ? '' : 'AND EXISTS (SELECT 1 FROM recommender_impression_evidence e
+		if ($start >= $end) {
+			throw new \InvalidArgumentException('Report start ' . $start->format(DATE_ATOM) . ' must be before its end ' . $end->format(DATE_ATOM) . '.');
+		}
+		
+		if ($asOf < $end) {
+			throw new \InvalidArgumentException('Outcome cutoff ' . $asOf->format(DATE_ATOM) . ' must not precede the report end ' . $end->format(DATE_ATOM) . '.');
+		}
+		
+		if ($contextKey !== null) {
+			ReconciliationRequest::validateKey($contextKey, 128, 'context');
+		}
+		
+		$whereSource = $source === null ? '' : 'AND EXISTS (SELECT 1 FROM recommender_impression_evidence e
             WHERE e.impression_id = item.impression_id AND e.item_id = item.item_id AND e.source = :source)';
-			$params = ['category'     => $category, 'context' => $contextKey ?? '',
-			           'start'        => self::utc($start), 'end' => self::utc($end), 'as_of' => self::utc($asOf),
-			           'click_window' => $windows->clickSeconds, 'purchase_window' => $windows->purchaseSeconds];
-			if ($source !== null) {
-				$params['source'] = $source->value;
-			}
-			$row = $this->connection->execute("SELECT COUNT(*) AS impressions,
+		$params = [
+			'category'     => $category,
+			'context'      => $contextKey ?? '',
+			'start'        => self::utc($start),
+			'end'          => self::utc($end),
+			'as_of'        => self::utc($asOf),
+			'click_window' => $windows->clickSeconds,
+			'purchase_window' => $windows->purchaseSeconds,
+		];
+		
+		if ($source !== null) {
+			$params['source'] = $source->value;
+		}
+		
+		$row = $this->connection->execute("SELECT COUNT(*) AS impressions,
             COALESCE(SUM(EXISTS (SELECT 1 FROM recommender_outcomes o
                 WHERE o.impression_id = item.impression_id AND o.item_id = item.item_id
                 AND o.event_type = 'click' AND o.occurred_at >= i.shown_at AND o.occurred_at <= :as_of
@@ -52,26 +88,54 @@
             FROM recommender_impressions i JOIN recommender_impression_items item ON item.impression_id = i.id
             WHERE i.category = :category AND i.context_key = :context
             AND i.shown_at >= :start AND i.shown_at < :end {$whereSource}",
-				$params + ['as_of2' => self::utc($asOf)])->fetchAssoc();
-			return new EvaluationSummary((int)$row['impressions'], (int)$row['clicked'],
-				(int)$row['purchased'], $asOf, $windows);
+			$params + ['as_of2' => self::utc($asOf)])->fetchAssoc();
+			
+		return new EvaluationSummary((int)$row['impressions'], (int)$row['clicked'],
+			(int)$row['purchased'], $asOf, $windows);
+	}
+	
+	/**
+	 * Compare mature observed clicks with logged display-position estimates by model and placement.
+	 * @param DateTimeImmutable $start Inclusive display start
+	 * @param DateTimeImmutable $end Exclusive display end
+	 * @param DateTimeImmutable $asOf Outcome cutoff
+	 * @param int $clickWindowSeconds Positive attribution period
+	 * @return array<string, array<string, mixed>> Model and placement calibration summaries
+	 * @throws \InvalidArgumentException When the interval or click window is invalid
+	 */
+	public function calibrationByModel(DateTimeImmutable $start, DateTimeImmutable $end,
+		DateTimeImmutable $asOf, int $clickWindowSeconds): array {
+		EvaluationSchema::requireTables($this->connection);
+		
+		if ($start >= $end || $asOf < $end) {
+			throw new \InvalidArgumentException('Calibration interval must be ordered start < end <= cutoff.');
 		}
 		
-		/**
-		 * Compare mature observed clicks with logged display-position estimates by model and placement.
-		 * @param DateTimeImmutable $start Inclusive display start
-		 * @param DateTimeImmutable $end Exclusive display end
-		 * @param DateTimeImmutable $asOf Outcome cutoff
-		 * @param int $clickWindowSeconds Positive attribution period
-		 * @return array<string, array<string, mixed>> Model and placement calibration summaries
-		 */
-		public function calibrationByModel(DateTimeImmutable $start, DateTimeImmutable $end,
-			DateTimeImmutable $asOf, int $clickWindowSeconds): array {
-			EvaluationSchema::requireTables($this->connection);
-			if ($start >= $end || $asOf < $end || $clickWindowSeconds < 1) {
-				throw new \InvalidArgumentException('Invalid calibration interval or click window.');
-			}
-			$rows = $this->connection->execute('SELECT LOWER(HEX(item.model_id)) AS model_id,
+		if ($clickWindowSeconds < 1) {
+			throw new \InvalidArgumentException("Click window must be positive, got {$clickWindowSeconds}.");
+		}
+		
+		$rows = $this->fetchCalibrationRows($start, $end, $asOf, $clickWindowSeconds);
+		$result = [];
+		
+		foreach (self::groupCalibrationSamples($rows) as $key => $samples) {
+			$result[$key] = self::summarizeCalibrationGroup($key, $samples, $asOf, $clickWindowSeconds);
+		}
+		
+		return $result;
+	}
+	
+	/**
+	 * Fetch one row per displayed item that has a model probability and a mature click window.
+	 * @param DateTimeImmutable $start Inclusive display start
+	 * @param DateTimeImmutable $end Exclusive display end
+	 * @param DateTimeImmutable $asOf Outcome cutoff
+	 * @param int $clickWindowSeconds Positive attribution period
+	 * @return array<int, array{model_id: string, placement: string, probability: float|string, clicked: int|string}> Calibration rows
+	 */
+	private function fetchCalibrationRows(DateTimeImmutable $start, DateTimeImmutable $end,
+		DateTimeImmutable $asOf, int $clickWindowSeconds): array {
+		return $this->connection->execute('SELECT LOWER(HEX(item.model_id)) AS model_id,
             i.placement, item.display_click_probability AS probability,
             EXISTS (SELECT 1 FROM recommender_outcomes o WHERE o.impression_id = i.id
                 AND o.item_id = item.item_id AND o.event_type = \'click\'
@@ -81,44 +145,82 @@
             WHERE item.model_id IS NOT NULL AND item.display_click_probability IS NOT NULL
                 AND i.shown_at >= :start AND i.shown_at < :end
                 AND TIMESTAMPADD(SECOND, :mature_window, i.shown_at) <= :mature_as_of',
-				['as_of'         => self::utc($asOf), 'window' => $clickWindowSeconds,
-				 'start'         => self::utc($start), 'end' => self::utc($end),
-				 'mature_window' => $clickWindowSeconds, 'mature_as_of' => self::utc($asOf)])->fetchAll('assoc');
-			$groups = [];
-			foreach ($rows as $row) {
-				$key = $row['model_id'] . ':' . $row['placement'];
-				$groups[$key][] = ['probability' => (float)$row['probability'], 'clicked' => (int)$row['clicked']];
-			}
-			$result = [];
-			foreach ($groups as $key => $samples) {
-				usort($samples, fn($a, $b) => $a['probability'] <=> $b['probability']);
-				$count = count($samples);
-				$clicks = array_sum(array_column($samples, 'clicked'));
-				$meanProbability = array_sum(array_column($samples, 'probability')) / $count;
-				$brier = array_sum(array_map(fn($row) => ($row['probability'] - $row['clicked']) ** 2, $samples)) / $count;
-				$bins = [];
-				for ($index = 0; $index < 10; $index++) {
-					$slice = array_slice($samples, (int)floor($index * $count / 10),
-						(int)floor(($index + 1) * $count / 10) - (int)floor($index * $count / 10));
-					if ($slice !== []) {
-						$bins[] = ['count'     => count($slice),
-						           'predicted' => array_sum(array_column($slice, 'probability')) / count($slice),
-						           'observed'  => array_sum(array_column($slice, 'clicked')) / count($slice)];
-					}
-				}
-				[$modelId, $placement] = explode(':', $key, 2);
-				$result[$key] = ['model_id'                 => $modelId, 'placement' => $placement,
-				                 'impressions'              => $count, 'observed_click_rate' => $clicks / $count,
-				                 'mean_display_probability' => $meanProbability, 'brier' => $brier,
-				                 'bins'                     => $bins, 'as_of' => $asOf, 'click_window_seconds' => $clickWindowSeconds];
-			}
-			return $result;
+			['as_of'         => self::utc($asOf), 'window' => $clickWindowSeconds,
+			 'start'         => self::utc($start), 'end' => self::utc($end),
+			 'mature_window' => $clickWindowSeconds, 'mature_as_of' => self::utc($asOf)])->fetchAll('assoc');
+	}
+	
+	/**
+	 * Group calibration rows into samples keyed by "model_id:placement".
+	 * @param array<int, array{model_id: string, placement: string, probability: float|string, clicked: int|string}> $rows Rows from fetchCalibrationRows()
+	 * @return array<string, list<array{probability: float, clicked: int}>> Samples per model and placement
+	 */
+	private static function groupCalibrationSamples(array $rows): array {
+		$groups = [];
+		
+		foreach ($rows as $row) {
+			$key = $row['model_id'] . ':' . $row['placement'];
+			$groups[$key][] = ['probability' => (float)$row['probability'], 'clicked' => (int)$row['clicked']];
 		}
 		
-		/** @param DateTimeImmutable $time Caller time
-		 * @return string UTC MySQL timestamp
-		 */
-		private static function utc(DateTimeImmutable $time): string {
-			return $time->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s.u');
-		}
+		return $groups;
 	}
+	
+	/**
+	 * Summarize one model and placement group: observed click rate, Brier score, and decile bins.
+	 * @param string $key Group key in the form "model_id:placement"
+	 * @param list<array{probability: float, clicked: int}> $samples Samples in the group
+	 * @param DateTimeImmutable $asOf Outcome cutoff
+	 * @param int $clickWindowSeconds Positive attribution period
+	 * @return array<string, mixed> Calibration summary for the group
+	 */
+	private static function summarizeCalibrationGroup(string $key, array $samples, DateTimeImmutable $asOf,
+		int $clickWindowSeconds): array {
+		usort($samples, fn($a, $b) => $a['probability'] <=> $b['probability']);
+		$count = count($samples);
+		$clicks = array_sum(array_column($samples, 'clicked'));
+		$meanProbability = array_sum(array_column($samples, 'probability')) / $count;
+		$brier = array_sum(array_map(fn($row) => ($row['probability'] - $row['clicked']) ** 2, $samples)) / $count;
+		[$modelId, $placement] = explode(':', $key, 2);
+		
+		return ['model_id'                 => $modelId, 'placement' => $placement,
+		        'impressions'              => $count, 'observed_click_rate' => $clicks / $count,
+		        'mean_display_probability' => $meanProbability, 'brier' => $brier,
+		        'bins'                     => self::calibrationBins($samples, $count), 'as_of' => $asOf,
+		        'click_window_seconds'     => $clickWindowSeconds];
+	}
+	
+	/**
+	 * Split sorted samples into up to ten bins of near-equal size.
+	 * @param list<array{probability: float, clicked: int}> $samples Samples sorted by probability
+	 * @param int $count Number of samples
+	 * @return list<array{count: int, predicted: float, observed: float}> Non-empty bins
+	 */
+	private static function calibrationBins(array $samples, int $count): array {
+		$bins = [];
+		
+		for ($index = 0; $index < 10; $index++) {
+			$start = (int)floor($index * $count / 10);
+			$slice = array_slice($samples, $start, (int)floor(($index + 1) * $count / 10) - $start);
+			
+			if ($slice === []) {
+				continue;
+			}
+			
+			$bins[] = ['count'     => count($slice),
+			           'predicted' => array_sum(array_column($slice, 'probability')) / count($slice),
+			           'observed'  => array_sum(array_column($slice, 'clicked')) / count($slice)];
+		}
+		
+		return $bins;
+	}
+	
+	/**
+	 * Return the UTC MySQL timestamp for a point in time.
+	 * @param DateTimeImmutable $time Caller time
+	 * @return string UTC MySQL timestamp
+	 */
+	private static function utc(DateTimeImmutable $time): string {
+		return $time->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s.u');
+	}
+}

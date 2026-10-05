@@ -1,17 +1,41 @@
 <?php
+
+namespace Quellabs\Recommender;
+
+/** A Slope One rating with summed directed-pair support. */
+readonly class PredictionResult {
 	
-	namespace Quellabs\Recommender;
+	/** @var int Product ID */
+	public int $itemId;
 	
-	/** A Slope One rating with summed directed-pair support. */
-	readonly class PredictionResult {
-		/** @param int $itemId Product ID
-		 * @param float $predictedRating Clamped predicted rating
-		 * @param int $supportCount Sum of contributing pair counts
-		 */
-		public function __construct(public int $itemId, public float $predictedRating, public int $supportCount) {
-			if ($itemId < 0 || $itemId > 4294967295 || !is_finite($predictedRating)
-				|| $predictedRating < 0 || $predictedRating > 1 || $supportCount < 1) {
-				throw new \InvalidArgumentException('Invalid prediction result.');
-			}
+	/** @var float Clamped predicted rating */
+	public float $predictedRating;
+	
+	/** @var int Sum of contributing pair counts */
+	public int $supportCount;
+	
+	/**
+	 * Build a prediction, rejecting values outside their allowed ranges.
+	 * @param int $itemId Product ID, an unsigned 32-bit integer
+	 * @param float $predictedRating Clamped predicted rating in [0, 1]
+	 * @param int $supportCount Sum of contributing pair counts, at least 1
+	 * @throws \InvalidArgumentException When a value is outside its allowed range
+	 */
+	public function __construct(int $itemId, float $predictedRating, int $supportCount) {
+		if ($itemId < 0 || $itemId > 4294967295) {
+			throw new \InvalidArgumentException("Product ID must be an unsigned 32-bit integer, got {$itemId}.");
 		}
+		
+		if (!is_finite($predictedRating) || $predictedRating < 0 || $predictedRating > 1) {
+			throw new \InvalidArgumentException("Predicted rating must be a finite value in [0, 1], got {$predictedRating}.");
+		}
+		
+		if ($supportCount < 1) {
+			throw new \InvalidArgumentException("Support count must be at least 1, got {$supportCount}.");
+		}
+		
+		$this->itemId = $itemId;
+		$this->predictedRating = $predictedRating;
+		$this->supportCount = $supportCount;
 	}
+}
