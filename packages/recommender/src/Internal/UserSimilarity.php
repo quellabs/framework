@@ -137,7 +137,9 @@
 				$neighbours[] = new Neighbour($otherId, $similarity);
 			}
 
-			usort($neighbours, fn($a, $b) => ($b->similarity <=> $a->similarity) ?: ($a->memberId <=> $b->memberId));
+			usort($neighbours, function ($a, $b): int {
+				return ($b->similarity <=> $a->similarity) ?: ($a->memberId <=> $b->memberId);
+			});
 			return Results::limit($neighbours, $limit);
 		}
 	
@@ -184,8 +186,12 @@
 			$minSimilarity = max(0, min(100, $minSimilarity));
 
 			return $this->eligibilityFilter->withEligibility($eligibility, max(0, $limit),
-				fn(array $filter, int $depth) => $this->memberRecommendationRows($memberId, $minSimilarity, $filter, $depth, $resolvedCategory),
-				fn(RecommendationResult $row) => $row->itemId);
+				function (array $filter, int $depth) use ($memberId, $minSimilarity, $resolvedCategory): array {
+					return $this->memberRecommendationRows($memberId, $minSimilarity, $filter, $depth, $resolvedCategory);
+				},
+				function (RecommendationResult $row): int {
+					return $row->itemId;
+				});
 		}
 
 		/**
@@ -251,8 +257,9 @@
 					}
 	
 					return $this->temporary->withIdTable('vogoo_neighbour_candidates_', $candidateIds,
-						fn(string $candidateTable): array => $this->queryNeighbourRecommendations(
-							$memberId, $neighbourTable, $candidateTable, $resolvedCategory, $limit));
+						function (string $candidateTable) use ($memberId, $neighbourTable, $resolvedCategory, $limit): array {
+							return $this->queryNeighbourRecommendations($memberId, $neighbourTable, $candidateTable, $resolvedCategory, $limit);
+						});
 				});
 		}
 		
@@ -294,7 +301,9 @@
 				'seen_category' => $category,
 			])->fetchAll('assoc');
 	
-			return array_map(fn($row) => ['itemId' => (int)$row['item_id'], 'score' => (float)$row['score']], $rows);
+			return array_map(function ($row): array {
+				return ['itemId' => (int)$row['item_id'], 'score' => (float)$row['score']];
+			}, $rows);
 		}
 		
 		/**

@@ -70,7 +70,10 @@
 				return $ids === [] ? [] : $query($ids, $limit);
 			}
 
-			return $this->fetchUntilFilled($limit, $eligibility, fn(int $depth) => $query([], $depth), $idOf);
+			return $this->fetchUntilFilled($limit, $eligibility,
+				function (int $depth) use ($query): array {
+					return $query([], $depth);
+				}, $idOf);
 		}
 
 		/**

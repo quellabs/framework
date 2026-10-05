@@ -72,8 +72,12 @@
 			$resolvedCategory = $this->config->resolveCategory($category);
 
 			return $this->eligibilityFilter->withEligibility($eligibility, $limit,
-				fn(array $filter, int $depth) => $this->linkedRows($productId, $filter, $depth, $resolvedCategory),
-				fn(RecommendationResult $row) => $row->itemId);
+				function (array $filter, int $depth) use ($productId, $resolvedCategory): array {
+					return $this->linkedRows($productId, $filter, $depth, $resolvedCategory);
+				},
+				function (RecommendationResult $row): int {
+					return $row->itemId;
+				});
 		}
 
 		/**
@@ -129,7 +133,9 @@
 			$ratings = $visitor->ratings($resolvedCategory);
 
 			$likedIds = array_column(
-				array_filter($ratings, fn($entry) => $entry['rating'] >= $threshold),
+				array_filter($ratings, function ($entry) use ($threshold): bool {
+					return $entry['rating'] >= $threshold;
+				}),
 				'product_id'
 			);
 
@@ -174,11 +180,16 @@
 		public function slopeItems(int $productId, int $minLinks = 1, ?EligibilityProvider $eligibility = null,
 			int $limit = 0, ?int $category = null): array {
 			return $this->eligibilityFilter->withEligibility($eligibility, $limit,
-				fn(array $filter, int $depth) => array_map(
-					fn(array $diff) => new RecommendationResult($diff['product_id'], $diff['diff'], 'slope_one', []),
-					$this->slopeOne->getSlopeItems($productId, $minLinks, $filter, $depth, $category)
-				),
-				fn(RecommendationResult $row) => $row->itemId);
+				function (array $filter, int $depth) use ($productId, $minLinks, $category): array {
+					$diffs = $this->slopeOne->getSlopeItems($productId, $minLinks, $filter, $depth, $category);
+
+					return array_map(function (array $diff): RecommendationResult {
+						return new RecommendationResult($diff['product_id'], $diff['diff'], 'slope_one', []);
+					}, $diffs);
+				},
+				function (RecommendationResult $row): int {
+					return $row->itemId;
+				});
 		}
 
 		/**
@@ -207,8 +218,12 @@
 		public function memberPredictions(int $memberId, ?EligibilityProvider $eligibility = null, int $limit = 0,
 			int $minSupport = 1, ?int $category = null): array {
 			return $this->eligibilityFilter->withEligibility($eligibility, $limit,
-				fn(array $filter, int $depth) => $this->slopeOne->memberPredictAllDetailed($memberId, $filter, $depth, $minSupport, $category),
-				fn(PredictionResult $row) => $row->itemId);
+				function (array $filter, int $depth) use ($memberId, $minSupport, $category): array {
+					return $this->slopeOne->memberPredictAllDetailed($memberId, $filter, $depth, $minSupport, $category);
+				},
+				function (PredictionResult $row): int {
+					return $row->itemId;
+				});
 		}
 
 		/**
@@ -237,8 +252,12 @@
 		public function visitorPredictions(VisitorContext $visitor, ?EligibilityProvider $eligibility = null, int $limit = 0,
 			int $minSupport = 1, ?int $category = null): array {
 			return $this->eligibilityFilter->withEligibility($eligibility, $limit,
-				fn(array $filter, int $depth) => $this->slopeOne->visitorPredictAllDetailed($visitor, $filter, $depth, $minSupport, $category),
-				fn(PredictionResult $row) => $row->itemId);
+				function (array $filter, int $depth) use ($visitor, $minSupport, $category): array {
+					return $this->slopeOne->visitorPredictAllDetailed($visitor, $filter, $depth, $minSupport, $category);
+				},
+				function (PredictionResult $row): int {
+					return $row->itemId;
+				});
 		}
 
 		/**
@@ -258,9 +277,12 @@
 			$resolvedCategory = $this->config->resolveCategory($category);
 
 			return $this->eligibilityFilter->withEligibility($eligibility, $limit,
-				fn(array $filter, int $depth) => $this->memberRecommendationRows($memberId, $filter, $depth,
-					$resolvedCategory, $minHistory, $minRatings),
-				fn(RecommendationResult $row) => $row->itemId);
+				function (array $filter, int $depth) use ($memberId, $resolvedCategory, $minHistory, $minRatings): array {
+					return $this->memberRecommendationRows($memberId, $filter, $depth, $resolvedCategory, $minHistory, $minRatings);
+				},
+				function (RecommendationResult $row): int {
+					return $row->itemId;
+				});
 		}
 
 		/**
@@ -306,9 +328,12 @@
 			$resolvedCategory = $this->config->resolveCategory($category);
 
 			return $this->eligibilityFilter->withEligibility($eligibility, $limit,
-				fn(array $filter, int $depth) => $this->visitorRecommendationRows($visitor, $filter, $depth,
-					$resolvedCategory, $minHistory, $minRatings),
-				fn(RecommendationResult $row) => $row->itemId);
+				function (array $filter, int $depth) use ($visitor, $resolvedCategory, $minHistory, $minRatings): array {
+					return $this->visitorRecommendationRows($visitor, $filter, $depth, $resolvedCategory, $minHistory, $minRatings);
+				},
+				function (RecommendationResult $row): int {
+					return $row->itemId;
+				});
 		}
 
 		/**
@@ -426,14 +451,18 @@
 		private function visitorRecommendationRows(VisitorContext $visitor, array $filter, int $limit, int $category,
 			int $minHistory, int $minRatings): array {
 			$ratings = $visitor->ratings($category);
-			$history = count(array_filter($ratings, fn($row) => $row['rating'] >= 0.0));
+			$history = count(array_filter($ratings, function ($row): bool {
+				return $row['rating'] >= 0.0;
+			}));
 
 			if ($history < max(1, $minHistory)) {
 				return $this->fallbackResults(array_column($ratings, 'product_id'), $filter, $limit, $category, $minRatings);
 			}
 
 			$reasons = [];
-			$scores = array_filter($this->scoreVisitorCandidates($ratings, $filter, $category, $reasons), fn($score) => $score > 0);
+			$scores = array_filter($this->scoreVisitorCandidates($ratings, $filter, $category, $reasons), function ($score): bool {
+				return $score > 0;
+			});
 			$scores = Results::sortByScore($scores);
 
 			$results = [];
