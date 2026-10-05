@@ -5,6 +5,7 @@ namespace Quellabs\Recommender;
 use Cake\Database\Connection;
 use Quellabs\Recommender\Config\RecommendationConfig;
 use Quellabs\Recommender\Internal\Model\ClickModel;
+use Quellabs\Recommender\Internal\Reconciliation\CandidateRoundState;
 
 /** Combines explicitly selected candidate generators using reciprocal ranks. */
 readonly class RecommendationReconciler {
@@ -117,22 +118,41 @@ readonly class RecommendationReconciler {
 		$depthCap = $request->maxCandidateDepth ?? $this->config->getMaxCandidateDepth();
 		$roundCap = $request->maxBackfillRounds ?? $this->config->getMaxBackfillRounds();
 		$batchSize = max(1, $request->maxEligibilityBatchSize ?? $this->config->getMaxEligibilityBatchSize());
-		$initialDepth = max(50, 5 * $request->limit);
+		$state = new CandidateRoundState($request->sources, min(max(50, 5 * $request->limit), $depthCap), $depthCap);
 		
-		/** @var array<string, int> $depths */
-		$depths = [];
+		$this->collectCandidateRounds($request, $state, $category, $ratings, $memberId, $roundCap, $batchSize);
 		
-		/** @var array<string, array<int, array{id:int,score:float|null,count:int|null,contributors:array<int,int>}>> $previous */
-		$previous = [];
+		$signals = $this->collectSignals($request, $state);
+		$auditSignals = $this->auditSignals($state->eligibleIds(), $signals, $request, $ratings, $memberId, $category);
+		$activeModel = $this->activeModel($category, $request);
+		$items = [];
 		
-		foreach ($request->sources as $source) {
-			$depths[$source->value] = min($initialDepth, $depthCap);
-			$previous[$source->value] = [];
+		foreach ($state->eligibleIds() as $id) {
+			$evidence = array_merge($signals[$id] ?? [], $auditSignals[$id] ?? []);
+			$items[] = $this->buildRankedItem($id, $evidence, $request->sources, $state->depths(), $activeModel);
 		}
 		
-		$eligible = [];
-		$eligibleCount = 0;
-		$submitted = [];
+		usort($items, fn($a, $b) => ($b->rankingScore <=> $a->rankingScore) ?: ($a->itemId <=> $b->itemId));
+		
+		return new RecommendationList($category, $request->placement, $request->sources, $request->contextKey,
+			$activeModel === null ? 'rank_fusion' : 'click_probability', $activeModel[0] ?? null,
+			$items, $request->limit);
+	}
+	
+	/**
+	 * Query the sources round by round, sending new candidates to eligibility until enough are found or the caps are reached.
+	 * @param ReconciliationRequest $request Request
+	 * @param CandidateRoundState $state Round bookkeeping, updated in place
+	 * @param int $category Resolved category
+	 * @param array<int, float> $ratings Seen ratings
+	 * @param int|null $memberId Member or visitor
+	 * @param int $roundCap Maximum number of rounds
+	 * @param int<1, max> $batchSize Maximum IDs per eligibility call
+	 * @return void
+	 * @throws \RuntimeException When a source changes its candidate order during depth backfill
+	 */
+	private function collectCandidateRounds(ReconciliationRequest $request, CandidateRoundState $state, int $category,
+		array $ratings, ?int $memberId, int $roundCap, int $batchSize): void {
 		$additional = array_values(array_filter($request->additionalCandidateIds,
 			fn($id) => !array_key_exists($id, $ratings)));
 			
@@ -142,77 +162,40 @@ readonly class RecommendationReconciler {
 			foreach ($request->sources as $source) {
 				$key = $source->value;
 				
-				if ($round > 0 && $depths[$key] <= count($previous[$key])) {
+				if ($round > 0 && $state->depth($key) <= $state->nominationCount($key)) {
 					continue;
 				}
 				
-				$current = $this->generate($source, $memberId, $ratings, $category, $depths[$key], $request);
-				$old = $previous[$key];
+				$current = $this->generate($source, $memberId, $ratings, $category, $state->depth($key), $request);
+				$old = $state->nominations($key);
 				
 				if (array_slice(array_column($current, 'id'), 0, count($old)) !== array_column($old, 'id')) {
 					throw new \RuntimeException("Candidate order changed during depth backfill for source '{$key}'.");
 				}
 				
 				foreach (array_slice($current, count($old)) as $row) {
-					if (!isset($submitted[$row['id']])) {
+					if (!$state->isSubmitted($row['id'])) {
 						$newIds[] = $row['id'];
 					}
 				}
 				
-				$previous[$key] = $current;
+				$state->setNominations($key, $current);
 			}
 			
-			$batch = [];
-			
-			foreach ($newIds as $id) {
-				if (!isset($submitted[$id])) {
-					$submitted[$id] = true;
-					$batch[] = $id;
-				}
-			}
-			
-			foreach (array_chunk($batch, $batchSize) as $chunk) {
+			foreach (array_chunk($state->claimUnsubmitted($newIds), $batchSize) as $chunk) {
 				foreach ($this->filterEligibleBatch($request->eligibility, $chunk) as $id) {
-					$eligible[$id] = true;
-					$eligibleCount++;
+					$state->markEligible($id);
 				}
 			}
 			
-			if ($eligibleCount >= $request->limit || $round >= $roundCap) {
+			if ($state->eligibleCount() >= $request->limit || $round >= $roundCap) {
 				break;
 			}
 			
-			$growing = false;
-			
-			foreach ($request->sources as $source) {
-				$key = $source->value;
-				
-				if ($depths[$key] < $depthCap && count($previous[$key]) >= $depths[$key]) {
-					$depths[$key] = min($depthCap, 2 * $depths[$key]);
-					$growing = true;
-				}
-			}
-			
-			if (!$growing) {
+			if (!$state->growDepths()) {
 				break;
 			}
 		}
-		
-		$signals = $this->collectSignals($request, $eligible, $previous);
-		$auditSignals = $this->auditSignals(array_keys($eligible), $signals, $request, $ratings, $memberId, $category);
-		$activeModel = $this->activeModel($category, $request);
-		$items = [];
-		
-		foreach (array_keys($eligible) as $id) {
-			$evidence = array_merge($signals[$id] ?? [], $auditSignals[$id] ?? []);
-			$items[] = $this->buildRankedItem($id, $evidence, $request->sources, $depths, $activeModel);
-		}
-		
-		usort($items, fn($a, $b) => ($b->rankingScore <=> $a->rankingScore) ?: ($a->itemId <=> $b->itemId));
-		
-		return new RecommendationList($category, $request->placement, $request->sources, $request->contextKey,
-			$activeModel === null ? 'rank_fusion' : 'click_probability', $activeModel[0] ?? null,
-			$items, $request->limit);
 	}
 	
 	/**
@@ -230,21 +213,20 @@ readonly class RecommendationReconciler {
 	
 	/**
 	 * Record the rank of each eligible nominated candidate per source.
-	 * @param array<int, true> $eligible Eligible IDs as keys
-	 * @param array<string, array<int, array{id:int,score:float|null,count:int|null,contributors:array<int,int>}>> $previous Nominations per source
 	 * @param ReconciliationRequest $request Enabled sources
+	 * @param CandidateRoundState $state Round bookkeeping holding the nominations and eligible IDs
 	 * @return array<int, array<int, SourceEvidence>> Ranked evidence per candidate ID
 	 */
-	private function collectSignals(ReconciliationRequest $request, array $eligible, array $previous): array {
+	private function collectSignals(ReconciliationRequest $request, CandidateRoundState $state): array {
 		$signals = [];
 		
 		foreach ($request->sources as $source) {
 			$rank = 0;
 			
-			foreach ($previous[$source->value] as $row) {
+			foreach ($state->nominations($source->value) as $row) {
 				$id = $row['id'];
 				
-				if (!isset($eligible[$id])) {
+				if (!$state->isEligible($id)) {
 					continue;
 				}
 				
