@@ -5,8 +5,10 @@ namespace Quellabs\Recommender;
 use Cake\Database\Connection;
 use Quellabs\Recommender\Config\RecommendationConfig;
 use Quellabs\Recommender\Internal\Model\ClickModel;
+use Quellabs\Recommender\Internal\Model\SourceFeatures;
 use Quellabs\Recommender\Internal\Persistence\TemporaryTable;
 use Quellabs\Recommender\Internal\Reconciliation\CandidateRoundState;
+use Quellabs\Recommender\Internal\Identifier;
 
 /** Combines explicitly selected candidate generators using reciprocal ranks. */
 readonly class RecommendationReconciler {
@@ -59,7 +61,7 @@ readonly class RecommendationReconciler {
 	 * @throws \InvalidArgumentException When the member ID is not an unsigned 32-bit integer
 	 */
 	public function rankCandidatesMember(int $memberId, ReconciliationRequest $request): RecommendationList {
-		if ($memberId < 0 || $memberId > 4294967295) {
+		if ($memberId < 0 || $memberId > Identifier::MAX) {
 			throw new \InvalidArgumentException("Member ID must be an unsigned 32-bit integer, got {$memberId}.");
 		}
 		
@@ -323,14 +325,7 @@ readonly class RecommendationReconciler {
 		}
 		
 		$model = ClickModel::fromJson((string)$row['artifact']);
-		$expected = ['log_position'];
-		
-		foreach ($request->sources as $source) {
-			foreach (['log_depth_searched', 'present', 'reciprocal_rank', 'score', 'count'] as $name) {
-				$expected[] = $source->value . '.' . $name;
-			}
-		}
-		
+		$expected = array_merge(['log_position'], SourceFeatures::names($request->sources));
 		sort($expected);
 		
 		if ($model->featureNames() !== $expected) {
@@ -491,12 +486,28 @@ readonly class RecommendationReconciler {
 	 * @return array<int, array<string, mixed>> Aggregate candidate rows
 	 */
 	private function auditTopRatedRows(array $missing, ReconciliationRequest $request, int $category): array {
-		return $this->temporary->withIdTable('recommender_audit_candidates_', $missing, fn($table) => $this->connection->execute(
-			"SELECT r.product_id AS id, AVG(r.rating) AS score, COUNT(*) AS support_count
-            FROM vogoo_ratings r JOIN {$table} candidates ON candidates.product_id = r.product_id
-            WHERE r.category = :category AND r.rating >= 0
-            GROUP BY r.product_id HAVING support_count >= :minimum",
-			['category' => $category, 'minimum' => $request->topRatedMinRatings])->fetchAll('assoc'));
+		return $this->temporary->withIdTable('recommender_audit_candidates_', $missing, function (string $table) use (
+			$category, $request
+		): array {
+			$restriction = "AND EXISTS (SELECT 1 FROM {$table} candidates WHERE candidates.product_id = r.product_id)";
+
+			return $this->connection->execute($this->topRatedSql($restriction, null),
+				['category' => $category, 'minimum' => $request->topRatedMinRatings])->fetchAll('assoc');
+		});
+	}
+
+	/**
+	 * Build the query that averages the genuine ratings of each product, optionally restricted and ranked.
+	 * @param string $restriction Extra predicate limiting the products, referring to r.product_id
+	 * @param int|null $depth Keeps the top rows by score up to this depth, or all rows when null
+	 * @return string Query with :category and :minimum placeholders
+	 */
+	private function topRatedSql(string $restriction, ?int $depth): string {
+		$sql = "SELECT r.product_id AS id, AVG(r.rating) AS score, COUNT(*) AS support_count
+			FROM vogoo_ratings r WHERE r.category = :category AND r.rating >= 0 {$restriction}
+			GROUP BY r.product_id HAVING support_count >= :minimum";
+
+		return $depth === null ? $sql : $sql . " ORDER BY score DESC, id ASC LIMIT {$depth}";
 	}
 	
 	/**
@@ -629,13 +640,12 @@ readonly class RecommendationReconciler {
 	 * @throws \UnexpectedValueException When the query does not return an array
 	 */
 	private function generateTopRated(array $ratings, int $category, int $depth, ReconciliationRequest $request): array {
-		$rows = $this->withSeenTable($ratings, fn($seenTable) => $this->connection->execute(
-			"SELECT r.product_id AS id, AVG(r.rating) AS score, COUNT(*) AS support_count
-            FROM vogoo_ratings r WHERE r.category = :category AND r.rating >= 0
-            AND NOT EXISTS (SELECT 1 FROM {$seenTable} s WHERE s.product_id = r.product_id)
-            GROUP BY r.product_id HAVING support_count >= :minimum
-            ORDER BY score DESC, id ASC LIMIT {$depth}",
-			['category' => $category, 'minimum' => $request->topRatedMinRatings])->fetchAll('assoc'));
+		$rows = $this->withSeenTable($ratings, function (string $seenTable) use ($category, $depth, $request): array {
+			$restriction = "AND NOT EXISTS (SELECT 1 FROM {$seenTable} s WHERE s.product_id = r.product_id)";
+
+			return $this->connection->execute($this->topRatedSql($restriction, $depth),
+				['category' => $category, 'minimum' => $request->topRatedMinRatings])->fetchAll('assoc');
+		});
 			
 		if (!is_array($rows)) {
 			throw new \UnexpectedValueException('Top-rated query did not return an array of rows.');

@@ -2,6 +2,8 @@
 
 namespace Quellabs\Recommender;
 
+use Quellabs\Recommender\Internal\Identifier;
+
 /** In-memory adapter for catalogs small enough to supply every eligible ID. */
 readonly class ArrayEligibilityProvider implements EligibilityProvider {
 	
@@ -17,7 +19,7 @@ readonly class ArrayEligibilityProvider implements EligibilityProvider {
 		$eligible = [];
 		
 		foreach ($eligibleIds as $id) {
-			if (!is_int($id) || $id < 0 || $id > 4294967295) {
+			if (!is_int($id) || $id < 0 || $id > Identifier::MAX) {
 				throw new \InvalidArgumentException('Eligible ID must be an unsigned 32-bit integer, got ' . var_export($id, true) . '.');
 			}
 			

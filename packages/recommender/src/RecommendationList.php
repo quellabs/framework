@@ -2,6 +2,8 @@
 
 namespace Quellabs\Recommender;
 
+use Quellabs\Recommender\Internal\Identifier;
+
 /** Immutable ordered candidates or the application's selected display. */
 readonly class RecommendationList {
 	
@@ -51,7 +53,7 @@ readonly class RecommendationList {
 		array   $items,
 		int     $limit
 	) {
-		if ($category < 0 || $category > 4294967295) {
+		if ($category < 0 || $category > Identifier::MAX) {
 			throw new \InvalidArgumentException("Category must be an unsigned 32-bit integer, got {$category}.");
 		}
 		

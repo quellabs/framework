@@ -4,10 +4,11 @@ namespace Quellabs\Recommender\Internal\Model;
 
 use Cake\Database\Connection;
 use DateTimeImmutable;
-use DateTimeZone;
 use Quellabs\Recommender\Internal\Persistence\EvaluationSchema;
 use Quellabs\Recommender\RecommendationSource;
 use Quellabs\Recommender\ReconciliationRequest;
+use Quellabs\Recommender\Internal\Identifier;
+use Quellabs\Recommender\Internal\Persistence\MysqlTimestamp;
 
 /**
  * Builds versioned model candidates from mature, opted-in impression snapshots.
@@ -60,9 +61,9 @@ readonly class ClickModelTrainer {
 		$artifact['training_interval'] = self::interval($groupIds, $groupTimes, 0, $split - 1);
 		$artifact['holdout_interval'] = self::interval($groupIds, $groupTimes, $split, count($groupIds) - 1);
 		$artifact['click_window_seconds'] = $clickWindowSeconds;
-		$artifact['from'] = self::utc($from);
-		$artifact['to'] = self::utc($to);
-		$artifact['as_of'] = self::utc($asOf);
+		$artifact['from'] = MysqlTimestamp::utc($from);
+		$artifact['to'] = MysqlTimestamp::utc($to);
+		$artifact['as_of'] = MysqlTimestamp::utc($asOf);
 		$artifact['training_clicks'] = $trainingClicks;
 		$artifact['holdout_clicks'] = $holdoutClicks;
 		
@@ -129,7 +130,7 @@ readonly class ClickModelTrainer {
 	 */
 	private function validateTrainingRequest(int $category, string $placement, array $sources, DateTimeImmutable $from,
 		DateTimeImmutable $to, DateTimeImmutable $asOf, int $clickWindowSeconds, ?string $contextKey): int {
-		if ($category < 0 || $category > 4294967295) {
+		if ($category < 0 || $category > Identifier::MAX) {
 			throw new \InvalidArgumentException("Category must be an unsigned 32-bit integer, got {$category}.");
 		}
 		
@@ -174,20 +175,9 @@ readonly class ClickModelTrainer {
 	 * @return array{0: array<int, string>, 1: array<int, string>} Sorted feature names and sorted depth source values
 	 */
 	private static function expectedSchema(array $sources): array {
-		$expectedFeatures = [];
-		$expectedDepthSources = [];
-		
-		foreach ($sources as $source) {
-			$expectedDepthSources[] = $source->value;
-			
-			foreach (['log_depth_searched', 'present', 'reciprocal_rank', 'score', 'count'] as $name) {
-				$expectedFeatures[] = $source->value . '.' . $name;
-			}
-		}
-		
-		sort($expectedFeatures);
+		$expectedDepthSources = array_map(fn($source) => $source->value, $sources);
 		sort($expectedDepthSources);
-		return [$expectedFeatures, $expectedDepthSources];
+		return [SourceFeatures::names($sources), $expectedDepthSources];
 	}
 	
 	/**
@@ -217,9 +207,9 @@ readonly class ClickModelTrainer {
                 AND TIMESTAMPADD(SECOND, :mature_window, i.shown_at) <= :mature_as_of
             ORDER BY i.shown_at ASC, i.id ASC, item.position ASC',
 			['category'      => $category, 'placement' => $placement, 'mask' => $mask,
-			 'context'       => $contextKey ?? '', 'from' => self::utc($from), 'to' => self::utc($to),
-			 'as_of'         => self::utc($asOf), 'click_window' => $clickWindowSeconds,
-			 'mature_window' => $clickWindowSeconds, 'mature_as_of' => self::utc($asOf)])->fetchAll('assoc');
+			 'context'       => $contextKey ?? '', 'from' => MysqlTimestamp::utc($from), 'to' => MysqlTimestamp::utc($to),
+			 'as_of'         => MysqlTimestamp::utc($asOf), 'click_window' => $clickWindowSeconds,
+			 'mature_window' => $clickWindowSeconds, 'mature_as_of' => MysqlTimestamp::utc($asOf)])->fetchAll('assoc');
 	}
 	
 	/**
@@ -368,13 +358,4 @@ readonly class ClickModelTrainer {
 			'last_shown_at'       => $groupTimes[$groupIds[$last]],
 		];
 	}
-	
-	/**
-	 * Return the UTC MySQL timestamp for a point in time.
-	 * @param DateTimeImmutable $time Caller time
-	 * @return string UTC timestamp
-	 */
-	private static function utc(DateTimeImmutable $time): string {
-		return $time->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s.u');
 	}
-}

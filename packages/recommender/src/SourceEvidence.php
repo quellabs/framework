@@ -2,6 +2,8 @@
 
 namespace Quellabs\Recommender;
 
+use Quellabs\Recommender\Internal\Identifier;
+
 /** One candidate's evidence from one enabled source. */
 readonly class SourceEvidence {
 	
@@ -58,7 +60,7 @@ readonly class SourceEvidence {
 		}
 		
 		foreach ($contributingItemIds as $id) {
-			if (!is_int($id) || $id < 0 || $id > 4294967295) {
+			if (!is_int($id) || $id < 0 || $id > Identifier::MAX) {
 				throw new \InvalidArgumentException('Contributing item ID must be an unsigned 32-bit integer, got ' . var_export($id, true) . '.');
 			}
 		}

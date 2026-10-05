@@ -2,6 +2,8 @@
 
 namespace Quellabs\Recommender;
 
+use Quellabs\Recommender\Internal\Identifier;
+
 /** A Slope One rating with summed directed-pair support. */
 readonly class PredictionResult {
 	
@@ -22,7 +24,7 @@ readonly class PredictionResult {
 	 * @throws \InvalidArgumentException When a value is outside its allowed range
 	 */
 	public function __construct(int $itemId, float $predictedRating, int $supportCount) {
-		if ($itemId < 0 || $itemId > 4294967295) {
+		if ($itemId < 0 || $itemId > Identifier::MAX) {
 			throw new \InvalidArgumentException("Product ID must be an unsigned 32-bit integer, got {$itemId}.");
 		}
 		

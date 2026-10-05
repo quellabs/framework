@@ -2,6 +2,8 @@
 
 namespace Quellabs\Recommender\Config;
 
+use Quellabs\Recommender\Internal\Identifier;
+
 class RecommendationConfig {
 	
 	/** @var int Default category for all operations */
@@ -202,7 +204,7 @@ class RecommendationConfig {
 	public function resolveCategory(?int $category): int {
 		$resolved = $category ?? $this->category;
 		
-		if ($resolved < 0 || $resolved > 4294967295) {
+		if ($resolved < 0 || $resolved > Identifier::MAX) {
 			throw new \InvalidArgumentException("Category must be an unsigned 32-bit integer, got {$resolved}.");
 		}
 		
@@ -275,7 +277,7 @@ class RecommendationConfig {
 	 * @throws \InvalidArgumentException When a limit is outside its allowed range
 	 */
 	private function validateLimits(): void {
-		if ($this->category < 0 || $this->category > 4294967295) {
+		if ($this->category < 0 || $this->category > Identifier::MAX) {
 			throw new \InvalidArgumentException("Category must be an unsigned 32-bit integer, got {$this->category}.");
 		}
 		

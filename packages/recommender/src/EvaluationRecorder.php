@@ -4,9 +4,11 @@ namespace Quellabs\Recommender;
 
 use Cake\Database\Connection;
 use DateTimeImmutable;
-use DateTimeZone;
 use Quellabs\Recommender\Internal\Model\ClickModel;
+use Quellabs\Recommender\Internal\Model\SourceFeatures;
 use Quellabs\Recommender\Internal\Persistence\EvaluationSchema;
+use Quellabs\Recommender\Internal\Identifier;
+use Quellabs\Recommender\Internal\Persistence\MysqlTimestamp;
 
 /** Explicit, transactional recording of displayed recommendations and outcomes. */
 readonly class EvaluationRecorder {
@@ -39,13 +41,13 @@ readonly class EvaluationRecorder {
 			throw new \InvalidArgumentException('An impression needs at least one displayed item.');
 		}
 		
-		if ($memberId !== null && ($memberId < 0 || $memberId > 4294967295)) {
+		if ($memberId !== null && ($memberId < 0 || $memberId > Identifier::MAX)) {
 			throw new \InvalidArgumentException("Member ID must be an unsigned 32-bit integer, got {$memberId}.");
 		}
 		
 		$model = $shown->scoreKind === 'click_probability' ? $this->loadCalibratedModel($shown) : null;
 		$id = ImpressionId::generate();
-		$timestamp = self::utc($shownAt ?? new DateTimeImmutable('now'));
+		$timestamp = MysqlTimestamp::utc($shownAt ?? new DateTimeImmutable('now'));
 		
 		$this->connection->transactional(function () use ($shown, $memberId, $id, $timestamp, $model): void {
 			$this->insertImpressionRow($id, $shown, $memberId, $timestamp);
@@ -72,7 +74,7 @@ readonly class EvaluationRecorder {
 		OutcomeType $type, DateTimeImmutable $occurredAt): void {
 		EvaluationSchema::requireTables($this->connection);
 		
-		if ($itemId < 0 || $itemId > 4294967295) {
+		if ($itemId < 0 || $itemId > Identifier::MAX) {
 			throw new \InvalidArgumentException("Item ID must be an unsigned 32-bit integer, got {$itemId}.");
 		}
 		
@@ -80,7 +82,7 @@ readonly class EvaluationRecorder {
 			throw new \InvalidArgumentException("Event ID must be 1 to 128 printable ASCII characters, got '{$eventId}'.");
 		}
 		
-		$timestamp = self::utc($occurredAt);
+		$timestamp = MysqlTimestamp::utc($occurredAt);
 		
 		$this->connection->transactional(function () use ($impressionId, $itemId, $eventId, $type, $timestamp): void {
 			$this->assertOutcomeFollowsDisplay($impressionId, $itemId, $timestamp);
@@ -101,7 +103,7 @@ readonly class EvaluationRecorder {
 	public function deleteMemberHistory(int $memberId): void {
 		EvaluationSchema::requireTables($this->connection);
 		
-		if ($memberId < 0 || $memberId > 4294967295) {
+		if ($memberId < 0 || $memberId > Identifier::MAX) {
 			throw new \InvalidArgumentException("Member ID must be an unsigned 32-bit integer, got {$memberId}.");
 		}
 		
@@ -242,16 +244,7 @@ readonly class EvaluationRecorder {
 			throw new \InvalidArgumentException("Event ID '{$eventId}' was already recorded with different details.");
 		}
 	}
-	
-	/**
-	 * Return the UTC MySQL microsecond timestamp for a point in time.
-	 * @param DateTimeImmutable $time Caller time
-	 * @return string UTC MySQL microsecond timestamp
-	 */
-	private static function utc(DateTimeImmutable $time): string {
-		return $time->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s.u');
-	}
-	
+		
 	/**
 	 * Check whether an item carries a complete version-1 feature snapshot for the enabled sources.
 	 * @param ReconciledRecommendation $item Displayed item
@@ -259,18 +252,8 @@ readonly class EvaluationRecorder {
 	 * @return bool Whether this item has a complete version-1 feature snapshot
 	 */
 	private function hasCompleteFeatureSnapshot(ReconciledRecommendation $item, array $sources): bool {
-		$expected = [];
-		$sourceNames = [];
-		
-		foreach ($sources as $source) {
-			$sourceNames[] = $source->value;
-			
-			foreach (['log_depth_searched', 'present', 'reciprocal_rank', 'score', 'count'] as $name) {
-				$expected[] = $source->value . '.' . $name;
-			}
-		}
-		
-		sort($expected);
+		$expected = SourceFeatures::names($sources);
+		$sourceNames = array_map(fn($source) => $source->value, $sources);
 		sort($sourceNames);
 		$actual = array_keys($item->featureSnapshot);
 		$depthSources = array_keys($item->searchedDepths);

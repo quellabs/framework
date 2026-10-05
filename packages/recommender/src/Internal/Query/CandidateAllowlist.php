@@ -3,6 +3,7 @@
 namespace Quellabs\Recommender\Internal\Query;
 
 use Quellabs\Recommender\Internal\Persistence\TemporaryTable;
+use Quellabs\Recommender\Internal\Identifier;
 
 /** Restricts a query to an allowlist of product IDs, using a temporary table for large lists. */
 final class CandidateAllowlist {
@@ -39,7 +40,7 @@ final class CandidateAllowlist {
 		}
 
 		foreach ($filter as $id) {
-			if (!is_int($id) || $id < 0 || $id > 4294967295) {
+			if (!is_int($id) || $id < 0 || $id > Identifier::MAX) {
 				throw new \InvalidArgumentException('Allowed product ID must be an unsigned 32-bit integer, got ' . var_export($id, true) . '.');
 			}
 		}

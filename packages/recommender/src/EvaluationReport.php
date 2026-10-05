@@ -4,8 +4,9 @@ namespace Quellabs\Recommender;
 
 use Cake\Database\Connection;
 use DateTimeImmutable;
-use DateTimeZone;
 use Quellabs\Recommender\Internal\Persistence\EvaluationSchema;
+use Quellabs\Recommender\Internal\Identifier;
+use Quellabs\Recommender\Internal\Persistence\MysqlTimestamp;
 
 /** Descriptive reporting over opted-in displayed-item impressions. */
 readonly class EvaluationReport {
@@ -44,7 +45,7 @@ readonly class EvaluationReport {
 	): EvaluationSummary {
 		EvaluationSchema::requireTables($this->connection);
 		
-		if ($category < 0 || $category > 4294967295) {
+		if ($category < 0 || $category > Identifier::MAX) {
 			throw new \InvalidArgumentException("Category must be an unsigned 32-bit integer, got {$category}.");
 		}
 		
@@ -65,9 +66,9 @@ readonly class EvaluationReport {
 		$params = [
 			'category'     => $category,
 			'context'      => $contextKey ?? '',
-			'start'        => self::utc($start),
-			'end'          => self::utc($end),
-			'as_of'        => self::utc($asOf),
+			'start'        => MysqlTimestamp::utc($start),
+			'end'          => MysqlTimestamp::utc($end),
+			'as_of'        => MysqlTimestamp::utc($asOf),
 			'click_window' => $windows->clickSeconds,
 			'purchase_window' => $windows->purchaseSeconds,
 		];
@@ -88,7 +89,7 @@ readonly class EvaluationReport {
             FROM recommender_impressions i JOIN recommender_impression_items item ON item.impression_id = i.id
             WHERE i.category = :category AND i.context_key = :context
             AND i.shown_at >= :start AND i.shown_at < :end {$whereSource}",
-			$params + ['as_of2' => self::utc($asOf)])->fetchAssoc();
+			$params + ['as_of2' => MysqlTimestamp::utc($asOf)])->fetchAssoc();
 			
 		return new EvaluationSummary((int)$row['impressions'], (int)$row['clicked'],
 			(int)$row['purchased'], $asOf, $windows);
@@ -145,9 +146,9 @@ readonly class EvaluationReport {
             WHERE item.model_id IS NOT NULL AND item.display_click_probability IS NOT NULL
                 AND i.shown_at >= :start AND i.shown_at < :end
                 AND TIMESTAMPADD(SECOND, :mature_window, i.shown_at) <= :mature_as_of',
-			['as_of'         => self::utc($asOf), 'window' => $clickWindowSeconds,
-			 'start'         => self::utc($start), 'end' => self::utc($end),
-			 'mature_window' => $clickWindowSeconds, 'mature_as_of' => self::utc($asOf)])->fetchAll('assoc');
+			['as_of'         => MysqlTimestamp::utc($asOf), 'window' => $clickWindowSeconds,
+			 'start'         => MysqlTimestamp::utc($start), 'end' => MysqlTimestamp::utc($end),
+			 'mature_window' => $clickWindowSeconds, 'mature_as_of' => MysqlTimestamp::utc($asOf)])->fetchAll('assoc');
 	}
 	
 	/**
@@ -214,13 +215,4 @@ readonly class EvaluationReport {
 		
 		return $bins;
 	}
-	
-	/**
-	 * Return the UTC MySQL timestamp for a point in time.
-	 * @param DateTimeImmutable $time Caller time
-	 * @return string UTC MySQL timestamp
-	 */
-	private static function utc(DateTimeImmutable $time): string {
-		return $time->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s.u');
 	}
-}

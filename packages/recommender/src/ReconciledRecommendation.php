@@ -2,6 +2,8 @@
 
 namespace Quellabs\Recommender;
 
+use Quellabs\Recommender\Internal\Identifier;
+
 /** A ranked candidate with its bounded source evidence. */
 readonly class ReconciledRecommendation {
 	
@@ -41,7 +43,7 @@ readonly class ReconciledRecommendation {
 		array  $sourceLogOddsContributions = [],
 		array  $searchedDepths = []
 	) {
-		if ($itemId < 0 || $itemId > 4294967295) {
+		if ($itemId < 0 || $itemId > Identifier::MAX) {
 			throw new \InvalidArgumentException("Item ID must be an unsigned 32-bit integer, got {$itemId}.");
 		}
 		

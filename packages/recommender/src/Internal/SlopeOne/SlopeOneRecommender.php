@@ -112,28 +112,12 @@ readonly class SlopeOneRecommender {
 	public function memberPredict(int $memberId, int $productId, ?int $category = null): ?float {
 		$resolvedCategory = $this->config->resolveCategory($category);
 		
-		$row = $this->connection->execute('
-			SELECT
-				SUM(l.`slope_count`) AS cnter,
-				SUM(r.`rating` * l.`slope_count` - l.`diff_slope`) AS diff
-			FROM `vogoo_links` l
-			INNER JOIN `vogoo_ratings` r ON r.`member_id` = :member_id AND
-			                               r.`product_id` = l.`item_id2` AND
-			                               r.`category` = l.`category` AND
-			                               r.`rating` >= 0.0
-			WHERE l.`item_id1` = :product_id AND
-			      l.`category` = :category AND l.`slope_count` > 0
-		', [
-			'member_id'  => $memberId,
-			'product_id' => $productId,
-			'category'   => $resolvedCategory,
-		])->fetchAssoc();
-		
-		if ((int)$row['cnter'] === 0) {
-			return null;
-		}
-		
-		return Results::clampRating((float)$row['diff'] / (float)$row['cnter']);
+		$prediction = $this->detailedPrediction($productId, 1, $resolvedCategory,
+			'JOIN vogoo_ratings r ON r.product_id = l.item_id2 AND r.category = l.category
+			AND r.member_id = :member AND r.rating >= 0.0',
+			['member' => $memberId]);
+
+		return $prediction?->predictedRating;
 	}
 
 	/**
@@ -212,41 +196,11 @@ readonly class SlopeOneRecommender {
 			return null;
 		}
 		
-		$rows = $this->connection->execute('
-			SELECT
-				`item_id2`,
-				`slope_count`,
-				`diff_slope`
-			FROM `vogoo_links`
-			WHERE `item_id1` = :product_id AND
-			      `category` = :category AND
-			      `slope_count` > 0
-		', [
-			'product_id' => $productId,
-			'category'   => $resolvedCategory,
-		])->fetchAll('assoc');
-		
-		$numerator = 0.0;
-		$denominator = 0;
-		
-		foreach ($rows as $row) {
-			if (!is_array($row) || !isset($row['item_id2'], $row['slope_count'], $row['diff_slope']) || !is_scalar($row['item_id2'])) {
-				continue;
-			}
-			
-			$id = (int)$row['item_id2'];
-			
-			if (isset($products[$id])) {
-				$numerator += $products[$id] * (int)$row['slope_count'] - (float)$row['diff_slope'];
-				$denominator += (int)$row['slope_count'];
-			}
-		}
-		
-		if ($denominator === 0) {
-			return null;
-		}
-		
-		return Results::clampRating($numerator / $denominator);
+		$prediction = $this->temporary->withRatingTable('recommender_visitor_prediction_input_', $products,
+			fn(string $table) => $this->detailedPrediction($productId, 1, $resolvedCategory,
+				"JOIN {$table} r ON r.product_id = l.item_id2", []));
+
+		return $prediction?->predictedRating;
 	}
 
 	/**

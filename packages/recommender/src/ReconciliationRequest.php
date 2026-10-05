@@ -2,6 +2,8 @@
 
 namespace Quellabs\Recommender;
 
+use Quellabs\Recommender\Internal\Identifier;
+
 /** Validated inputs for one optional reconciliation request. */
 readonly class ReconciliationRequest {
 	
@@ -135,7 +137,7 @@ readonly class ReconciliationRequest {
 		$unique = [];
 		
 		foreach ($ids as $id) {
-			if (!is_int($id) || $id < 0 || $id > 4294967295) {
+			if (!is_int($id) || $id < 0 || $id > Identifier::MAX) {
 				throw new \InvalidArgumentException('Candidate ID must be an unsigned 32-bit integer, got ' . var_export($id, true) . '.');
 			}
 			
@@ -227,7 +229,7 @@ readonly class ReconciliationRequest {
 			throw new \InvalidArgumentException("Maximum eligibility batch size must be at least 1, got {$this->maxEligibilityBatchSize}.");
 		}
 		
-		if ($this->category !== null && ($this->category < 0 || $this->category > 4294967295)) {
+		if ($this->category !== null && ($this->category < 0 || $this->category > Identifier::MAX)) {
 			throw new \InvalidArgumentException("Category must be an unsigned 32-bit integer, got {$this->category}.");
 		}
 	}
