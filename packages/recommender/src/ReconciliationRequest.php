@@ -61,44 +61,33 @@
 		 * @param array<int, int> $newProductIds Ordered new-product suggestions
 		 * @param array<int, int> $additionalCandidateIds Application exploration candidates
 		 * @param int|null $category Category override
-		 * @param int $minSlopeSupport Minimum summed Slope One pair support
-		 * @param int $topRatedMinRatings Minimum ratings for a top-rated candidate
-		 * @param int $minNeighbourSimilarity Minimum neighbour similarity, from 1 to 100
-		 * @param int $maxNeighbours Maximum neighbours used for user similarity
-		 * @param int|null $maxCandidateDepth Maximum source depth override, at least 50
-		 * @param int|null $maxBackfillRounds Maximum deeper-query rounds override, at least 1
-		 * @param int|null $maxEligibilityBatchSize Maximum IDs per eligibility call override, at least 1
 		 * @param string|null $contextKey Model and logging partition, a printable ASCII key up to 128 bytes
+		 * @param ReconciliationTuning|null $tuning Threshold and source limit overrides, defaults when null
 		 * @throws \InvalidArgumentException When an input is outside its allowed range
 		 */
 		public function __construct(
-			EligibilityProvider $eligibility,
-			array               $sources,
-			int                 $limit,
-			string              $placement,
-			array               $newProductIds = [],
-			array               $additionalCandidateIds = [],
-			?int                $category = null,
-			int                 $minSlopeSupport = 1,
-			int                 $topRatedMinRatings = 2,
-			int                 $minNeighbourSimilarity = 1,
-			int                 $maxNeighbours = 100,
-			?int                $maxCandidateDepth = null,
-			?int                $maxBackfillRounds = null,
-			?int                $maxEligibilityBatchSize = null,
-			?string             $contextKey = null
+			EligibilityProvider   $eligibility,
+			array                 $sources,
+			int                   $limit,
+			string                $placement,
+			array                 $newProductIds = [],
+			array                 $additionalCandidateIds = [],
+			?int                  $category = null,
+			?string               $contextKey = null,
+			?ReconciliationTuning $tuning = null
 		) {
+			$tuning ??= new ReconciliationTuning();
 			$this->eligibility = $eligibility;
 			$this->limit = $limit;
 			$this->placement = $placement;
 			$this->category = $category;
-			$this->minSlopeSupport = $minSlopeSupport;
-			$this->topRatedMinRatings = $topRatedMinRatings;
-			$this->minNeighbourSimilarity = $minNeighbourSimilarity;
-			$this->maxNeighbours = $maxNeighbours;
-			$this->maxCandidateDepth = $maxCandidateDepth;
-			$this->maxBackfillRounds = $maxBackfillRounds;
-			$this->maxEligibilityBatchSize = $maxEligibilityBatchSize;
+			$this->minSlopeSupport = $tuning->minSlopeSupport;
+			$this->topRatedMinRatings = $tuning->topRatedMinRatings;
+			$this->minNeighbourSimilarity = $tuning->minNeighbourSimilarity;
+			$this->maxNeighbours = $tuning->maxNeighbours;
+			$this->maxCandidateDepth = $tuning->maxCandidateDepth;
+			$this->maxBackfillRounds = $tuning->maxBackfillRounds;
+			$this->maxEligibilityBatchSize = $tuning->maxEligibilityBatchSize;
 			$this->contextKey = $contextKey;
 			$this->sources = self::canonicalSources($sources);
 			

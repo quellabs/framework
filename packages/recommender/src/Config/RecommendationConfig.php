@@ -49,23 +49,19 @@
 		 * @param float $notInterested Sentinel rating marking not interested, must be -1.0
 		 * @param bool $directLinks Whether the link table is maintained incrementally
 		 * @param bool $directSlope Whether the slope one diff table is maintained incrementally
-		 * @param int $maxCandidateDepth Maximum reconciliation source depth, at least 50
-		 * @param int $maxBackfillRounds Maximum deeper-query rounds, at least 1
-		 * @param int $maxEligibilityBatchSize Maximum IDs in one eligibility provider call, at least 1
+		 * @param ReconciliationLimits $limits Default reconciliation source depth, backfill rounds and batch size
 		 * @throws \InvalidArgumentException When a value is outside its allowed range
 		 */
 		public function __construct(
-			int   $category = 1,
-			int   $thresholdNrCommonRatings = 30,
-			int   $thresholdMult = 2,
-			float $thresholdRating = 0.66,
-			float $cost = 5.0,
-			float $notInterested = -1.0,
-			bool  $directLinks = false,
-			bool  $directSlope = true,
-			int   $maxCandidateDepth = 2000,
-			int   $maxBackfillRounds = 3,
-			int   $maxEligibilityBatchSize = 500
+			int                $category = 1,
+			int                $thresholdNrCommonRatings = 30,
+			int                $thresholdMult = 2,
+			float              $thresholdRating = 0.66,
+			float              $cost = 5.0,
+			float              $notInterested = -1.0,
+			bool               $directLinks = false,
+			bool               $directSlope = true,
+			ReconciliationLimits $limits = new ReconciliationLimits()
 		) {
 			$this->category = $category;
 			$this->thresholdNrCommonRatings = $thresholdNrCommonRatings;
@@ -75,10 +71,10 @@
 			$this->notInterested = $notInterested;
 			$this->directLinks = $directLinks;
 			$this->directSlope = $directSlope;
-			$this->maxCandidateDepth = $maxCandidateDepth;
-			$this->maxBackfillRounds = $maxBackfillRounds;
-			$this->maxEligibilityBatchSize = $maxEligibilityBatchSize;
-			
+			$this->maxCandidateDepth = $limits->maxCandidateDepth;
+			$this->maxBackfillRounds = $limits->maxBackfillRounds;
+			$this->maxEligibilityBatchSize = $limits->maxEligibilityBatchSize;
+
 			$this->validateRatingThresholds();
 			$this->validateLimits();
 		}
@@ -91,7 +87,8 @@
 		 */
 		public static function fromArray(array $values): self {
 			$defaults = new self();
-	
+			$defaultLimits = new ReconciliationLimits();
+
 			return new self(
 				category: self::intValue($values, 'category', $defaults->category),
 				thresholdNrCommonRatings: self::intValue($values, 'threshold_nr_common_ratings', $defaults->thresholdNrCommonRatings),
@@ -101,9 +98,11 @@
 				notInterested: self::floatValue($values, 'not_interested', $defaults->notInterested),
 				directLinks: self::boolValue($values, 'direct_links', $defaults->directLinks),
 				directSlope: self::boolValue($values, 'direct_slope', $defaults->directSlope),
-				maxCandidateDepth: self::intValue($values, 'max_candidate_depth', $defaults->maxCandidateDepth),
-				maxBackfillRounds: self::intValue($values, 'max_backfill_rounds', $defaults->maxBackfillRounds),
-				maxEligibilityBatchSize: self::intValue($values, 'max_eligibility_batch_size', $defaults->maxEligibilityBatchSize),
+				limits: new ReconciliationLimits(
+					maxCandidateDepth: self::intValue($values, 'max_candidate_depth', $defaultLimits->maxCandidateDepth),
+					maxBackfillRounds: self::intValue($values, 'max_backfill_rounds', $defaultLimits->maxBackfillRounds),
+					maxEligibilityBatchSize: self::intValue($values, 'max_eligibility_batch_size', $defaultLimits->maxEligibilityBatchSize),
+				),
 			);
 		}
 	

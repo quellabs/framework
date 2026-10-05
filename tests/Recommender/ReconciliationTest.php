@@ -7,6 +7,7 @@ use Quellabs\Recommender\EligibilityProvider;
 use Quellabs\Recommender\RecommendationReconciler;
 use Quellabs\Recommender\RecommendationSource;
 use Quellabs\Recommender\ReconciliationRequest;
+use Quellabs\Recommender\ReconciliationTuning;
 use Quellabs\Recommender\VisitorContext;
 use Quellabs\Recommender\Integration\ServiceProvider;
 use Quellabs\Recommender\EvaluationRecorder;
@@ -95,8 +96,7 @@ class ReconciliationTest extends IntegrationTestCase {
             }
         };
         $request = new ReconciliationRequest($provider, [RecommendationSource::NewProducts],
-            10, 'home', range(1, 120), maxCandidateDepth: 100,
-            maxBackfillRounds: 1, maxEligibilityBatchSize: 25);
+            10, 'home', range(1, 120), tuning: new ReconciliationTuning(maxCandidateDepth: 100, maxBackfillRounds: 1, maxEligibilityBatchSize: 25));
         $list = (new RecommendationReconciler($this->connection, $this->config))
             ->recommendMember(1, $request);
         $this->assertSame([], $list->items);
@@ -116,7 +116,7 @@ class ReconciliationTest extends IntegrationTestCase {
             [RecommendationSource::ItemLinks], 1, 'home', additionalCandidateIds: [999]));
         $deep = $reconciler->recommendMember(1, new ReconciliationRequest($provider,
             [RecommendationSource::ItemLinks], 2, 'home', additionalCandidateIds: [999],
-            maxCandidateDepth: 100));
+            tuning: new ReconciliationTuning(maxCandidateDepth: 100)));
         $this->assertSame(50, $shallow->items[0]->searchedDepths['item_links']);
         $this->assertSame(100, $deep->items[0]->searchedDepths['item_links']);
         $this->assertSame(0.0, $shallow->items[0]->featureSnapshot['item_links.present']);
@@ -145,7 +145,7 @@ class ReconciliationTest extends IntegrationTestCase {
         $list = (new RecommendationReconciler($this->connection, $this->config))->recommendMember(1,
             new ReconciliationRequest($provider,
                 [RecommendationSource::NewProducts, RecommendationSource::ItemLinks],
-                1, 'home', [200, 201], maxCandidateDepth: 100));
+                1, 'home', [200, 201], tuning: new ReconciliationTuning(maxCandidateDepth: 100)));
         $this->assertSame(160, $list->items[0]->itemId);
         $this->assertSame(50, $list->items[0]->searchedDepths['new_products']);
         $this->assertSame(100, $list->items[0]->searchedDepths['item_links']);
@@ -191,7 +191,7 @@ class ReconciliationTest extends IntegrationTestCase {
             }
         };
         $request = new ReconciliationRequest($provider, [RecommendationSource::ItemLinks],
-            2, 'home', maxCandidateDepth: 100);
+            2, 'home', tuning: new ReconciliationTuning(maxCandidateDepth: 100));
         $this->expectException(\RuntimeException::class);
         (new RecommendationReconciler($this->connection, $this->config))->recommendMember(1, $request);
     }
@@ -381,7 +381,7 @@ class ReconciliationTest extends IntegrationTestCase {
             }
         };
         $request = new ReconciliationRequest($provider, [RecommendationSource::NewProducts],
-            10, 'home', range(1, 80), maxEligibilityBatchSize: 7);
+            10, 'home', range(1, 80), tuning: new ReconciliationTuning(maxEligibilityBatchSize: 7));
         $list = (new RecommendationReconciler($this->connection, $this->config))
             ->recommendVisitor(new VisitorContext($this->config), $request);
         $this->assertCount(10, $list->items);
@@ -423,7 +423,7 @@ class ReconciliationTest extends IntegrationTestCase {
             }
         };
         $request = new ReconciliationRequest($provider, [RecommendationSource::ItemLinks],
-            2, 'home', maxCandidateDepth: 100);
+            2, 'home', tuning: new ReconciliationTuning(maxCandidateDepth: 100));
         $this->expectExceptionMessage('Candidate order changed');
         (new RecommendationReconciler($this->connection, $this->config))->recommendMember(1, $request);
     }
