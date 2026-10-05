@@ -314,7 +314,8 @@
     "quellabs/canvas-loom": "dev-main as 1.999.999",
     "quellabs/canvas-scheduler-redis": "dev-main as 1.999.999",
     "quellabs/canvas-scheduler-rabbitmq": "dev-main as 1.999.999",
-    "quellabs/recommender": "dev-main as 1.999.999"
+    "quellabs/recommender": "dev-main as 1.999.999",
+    "phpmd/phpmd": "^3.0"
   },
   "autoload": {
     "psr-4": {
