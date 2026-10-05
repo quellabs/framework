@@ -124,6 +124,13 @@ class ServiceProvider implements ServiceProviderInterface {
 	 * @return bool
 	 */
 	private function getBool(string $key, bool $default): bool {
-		return isset($this->config[$key]) ? (bool)$this->config[$key] : $default;
+		$value = $this->config[$key] ?? $default;
+
+		// (bool)"false" is true, so string values are parsed explicitly; unrecognized strings fall back to the default
+		if (is_string($value)) {
+			return filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? $default;
+		}
+
+		return (bool)$value;
 	}
 }

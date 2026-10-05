@@ -449,6 +449,15 @@ class ReconciliationTest extends IntegrationTestCase {
     }
 
     /** @return void */
+    public function testProviderParsesStringBooleanConfigValues(): void {
+        $provider = new ServiceProvider();
+        $provider->setConfig(['direct_links' => 'false', 'direct_slope' => '1']);
+        $config = $provider->createInstance(\Quellabs\Recommender\Config\RecommendationConfig::class, [], []);
+        $this->assertFalse($config->isDirectLinks());
+        $this->assertTrue($config->isDirectSlope());
+    }
+
+    /** @return void */
     public function testDirectListSelectionPreservesEvidenceAndRejectsDuplicates(): void {
         $first = new ReconciledRecommendation(10, null,
             [new SourceEvidence(RecommendationSource::ItemLinks, 2.0, 1)]);
