@@ -95,7 +95,7 @@
 		 * @param int|null $category Defaults to the configured default category
 		 * @return RatingList
 		 */
-		public function getRatings(?int $category = null): array {
+		public function ratings(?int $category = null): array {
 			$resolvedCategory = $this->config->resolveCategory($category);
 			
 			return array_values(
@@ -108,8 +108,8 @@
 		 * @param int|null $category Defaults to the configured default category
 		 * @return array<int, int>
 		 */
-		public function getRatedProductIds(?int $category = null): array {
-			return array_column($this->getRatings($category), 'product_id');
+		public function ratedProductIds(?int $category = null): array {
+			return array_column($this->ratings($category), 'product_id');
 		}
 		
 		/**
@@ -118,6 +118,6 @@
 		 * @return bool
 		 */
 		public function isEmpty(?int $category = null): bool {
-			return empty($this->getRatings($category));
+			return empty($this->ratings($category));
 		}
 	}

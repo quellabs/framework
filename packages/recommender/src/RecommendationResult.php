@@ -11,7 +11,7 @@
 		/** @var float Strategy-specific score */
 		public float $score;
 		
-		/** @var string Either item_links or top_rated */
+		/** @var string Strategy name, such as item_links, slope_one or top_rated */
 		public string $strategy;
 		
 		/** @var array<int, int> Rated items contributing to the score */
@@ -21,7 +21,7 @@
 		 * Build a recommendation result from its scored fields.
 		 * @param int $itemId Recommended product ID
 		 * @param float $score Strategy-specific score
-		 * @param string $strategy Either item_links or top_rated
+		 * @param string $strategy Strategy name, such as item_links, slope_one or top_rated
 		 * @param array<int, int> $contributingItemIds Rated items contributing to the score
 		 */
 		public function __construct(

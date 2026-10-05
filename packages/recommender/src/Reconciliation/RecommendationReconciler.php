@@ -117,7 +117,7 @@
 				$category = $this->config->resolveCategory($request->category);
 				$ratings = [];
 				
-				foreach ($visitor->getRatings($category) as $row) {
+				foreach ($visitor->ratings($category) as $row) {
 					$ratings[$row['product_id']] = $row['rating'];
 				}
 				

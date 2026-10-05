@@ -28,9 +28,6 @@
 		/** @var LinkUpdater Maintains the vogoo_links table incrementally */
 		private LinkUpdater $linkUpdater;
 		
-		/** @var ItemRecommender Item-based recommendations and predictions */
-		private ItemRecommender $itemRecommender;
-		
 		/**
 		 * Build the engine and its collaborators.
 		 * @param Connection $connection The CakePHP database connection
@@ -40,60 +37,6 @@
 			$this->connection = $connection;
 			$this->config = $config;
 			$this->linkUpdater = new LinkUpdater($connection, $config);
-			$this->itemRecommender = new ItemRecommender($connection, $config);
-		}
-		
-		/**
-		 * Return the detailed Slope One prediction for a member and product.
-		 * @param int $memberId Member ID
-		 * @param int $productId Candidate ID
-		 * @param int $minSupport Minimum summed Slope One pair support
-		 * @param int|null $category Category override
-		 * @return PredictionResult|null Detailed prediction
-		 */
-		public function memberPredictDetailed(int $memberId, int $productId, int $minSupport = 1, ?int $category = null): ?PredictionResult {
-			return $this->itemRecommender->memberPredictDetailed($memberId, $productId, $minSupport, $category);
-		}
-		
-		/**
-		 * Return detailed Slope One predictions for every unseen product of a member.
-		 * @param int $memberId Member ID
-		 * @param array<int> $filter Allowed IDs, or empty for all
-		 * @param int $limit Maximum results, or zero for all
-		 * @param int $minSupport Minimum summed Slope One pair support
-		 * @param int|null $category Category override
-		 * @return array<int, PredictionResult> Detailed predictions
-		 */
-		public function memberPredictAllDetailed(int $memberId, array $filter = [], int $limit = 0,
-			int $minSupport = 1, ?int $category = null): array {
-			return $this->itemRecommender->memberPredictAllDetailed($memberId, $filter, $limit, $minSupport, $category);
-		}
-		
-		/**
-		 * Return the detailed Slope One prediction for a visitor and product.
-		 * @param VisitorContext $visitor Visitor ratings
-		 * @param int $productId Candidate ID
-		 * @param int $minSupport Minimum summed Slope One pair support
-		 * @param int|null $category Category override
-		 * @return PredictionResult|null Detailed prediction
-		 */
-		public function visitorPredictDetailed(VisitorContext $visitor, int $productId, int $minSupport = 1,
-			?int $category = null): ?PredictionResult {
-			return $this->itemRecommender->visitorPredictDetailed($visitor, $productId, $minSupport, $category);
-		}
-		
-		/**
-		 * Return detailed Slope One predictions for every unseen product of a visitor.
-		 * @param VisitorContext $visitor Visitor ratings
-		 * @param array<int> $filter Allowed IDs, or empty for all
-		 * @param int $limit Maximum results, or zero for all
-		 * @param int $minSupport Minimum summed Slope One pair support
-		 * @param int|null $category Category override
-		 * @return array<int, PredictionResult> Detailed predictions
-		 */
-		public function visitorPredictAllDetailed(VisitorContext $visitor, array $filter = [], int $limit = 0,
-			int $minSupport = 1, ?int $category = null): array {
-			return $this->itemRecommender->visitorPredictAllDetailed($visitor, $filter, $limit, $minSupport, $category);
 		}
 		
 		// ----- Members -----
@@ -306,7 +249,7 @@
 		 * @param int|null $category Defaults to configured default
 		 * @return array{rating: float, ts: string}|array{}
 		 */
-		public function getRating(int $memberId, int $productId, bool $notInterested = false, ?int $category = null): array {
+		public function memberRating(int $memberId, int $productId, bool $notInterested = false, ?int $category = null): array {
 			$resolvedCategory = $this->config->resolveCategory($category);
 			
 			$sql = '
@@ -344,26 +287,28 @@
 		 * @param int $productId The product ID
 		 * @param float $rating Must be in [0.0, 1.0] or equal getNotInterested()
 		 * @param int|null $category Defaults to configured default
-		 * @return bool True when the rating was written, false when the input is invalid
+		 * @return void
+		 * @throws \InvalidArgumentException When an ID is negative or the rating is not in [0.0, 1.0] or the not-interested value
 		 */
-		public function setRating(int $memberId, int $productId, float $rating, ?int $category = null): bool {
+		public function setRating(int $memberId, int $productId, float $rating, ?int $category = null): void {
 			$resolvedCategory = $this->config->resolveCategory($category);
-			
+
 			if ($memberId < 0 || $productId < 0 || !RatingRule::isValid($rating, $this->config->getNotInterested())) {
-				return false;
+				throw new \InvalidArgumentException('Member and product IDs must not be negative, and the rating must be in [0.0, 1.0] or the not-interested value.');
 			}
-			
+
 			// One transaction keeps vogoo_links consistent with vogoo_ratings if a statement fails.
-			// transactional() returns mixed, so the result is cast to satisfy the bool return type.
-			return (bool)$this->connection->transactional(function () use ($memberId, $productId, $resolvedCategory, $rating): bool {
+			$this->connection->transactional(function () use ($memberId, $productId, $resolvedCategory, $rating): void {
 				$previous = $this->fetchExistingRating($memberId, $productId, $resolvedCategory);
-				
+
 				// -1.0 marks "no previous rating" for the link and slope updates
 				$this->triggerIncrementalUpdates($memberId, $productId, $resolvedCategory, $rating, $previous ?? -1.0);
-				
-				return $previous !== null
-					? $this->updateRatingRow($memberId, $productId, $resolvedCategory, $rating)
-					: $this->insertRatingRow($memberId, $productId, $resolvedCategory, $rating);
+
+				if ($previous !== null) {
+					$this->updateRatingRow($memberId, $productId, $resolvedCategory, $rating);
+				} else {
+					$this->insertRatingRow($memberId, $productId, $resolvedCategory, $rating);
+				}
 			});
 		}
 		
@@ -373,27 +318,24 @@
 		 * @param int $productId The product ID
 		 * @param bool $purchase True for a purchase, false for a click
 		 * @param int|null $category Defaults to configured default
-		 * @return bool
+		 * @return void
 		 * @throws \Exception
 		 */
-		public function automaticRating(int $memberId, int $productId, bool $purchase, ?int $category = null): bool {
+		public function automaticRating(int $memberId, int $productId, bool $purchase, ?int $category = null): void {
 			$resolvedCategory = $this->config->resolveCategory($category);
-			
+
 			if ($purchase) {
-				return $this->setRating($memberId, $productId, 1.0, $resolvedCategory);
+				$this->setRating($memberId, $productId, 1.0, $resolvedCategory);
+				return;
 			}
-			
-			$existing = $this->getRating($memberId, $productId, false, $resolvedCategory);
-			
+
+			$existing = $this->memberRating($memberId, $productId, false, $resolvedCategory);
+
 			if (empty($existing)) {
-				return $this->setRating($memberId, $productId, 0.7, $resolvedCategory);
+				$this->setRating($memberId, $productId, 0.7, $resolvedCategory);
+			} elseif ($existing['rating'] < 1.0) {
+				$this->setRating($memberId, $productId, min(1.0, $existing['rating'] + 0.01), $resolvedCategory);
 			}
-			
-			if ($existing['rating'] < 1.0) {
-				return $this->setRating($memberId, $productId, min(1.0, $existing['rating'] + 0.01), $resolvedCategory);
-			}
-			
-			return true;
 		}
 		
 		/**
@@ -401,11 +343,11 @@
 		 * @param int $memberId The member ID
 		 * @param int $productId The product ID
 		 * @param int|null $category Defaults to configured default
-		 * @return bool
-		 * @throws \Exception
+		 * @return void
+		 * @throws \InvalidArgumentException When an ID is negative
 		 */
-		public function setNotInterested(int $memberId, int $productId, ?int $category = null): bool {
-			return $this->setRating($memberId, $productId, $this->config->getNotInterested(), $category);
+		public function setNotInterested(int $memberId, int $productId, ?int $category = null): void {
+			$this->setRating($memberId, $productId, $this->config->getNotInterested(), $category);
 		}
 		
 		/**

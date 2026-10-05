@@ -1,29 +1,38 @@
 <?php
-	
+
 	namespace Quellabs\Recommender\Tests;
-	
-	use Quellabs\Recommender\Config\RecommendationConfig;
+
 	use Quellabs\Recommender\ItemRecommender;
+	use Quellabs\Recommender\PredictionResult;
+	use Quellabs\Recommender\RecommendationResult;
 	use Quellabs\Recommender\VisitorContext;
-	use Quellabs\Recommender\RecommendationEngine;
-	
+
 	/**
 	 * Integration tests for ItemRecommender.
 	 * Requires a live MySQL database — see tests/bootstrap.php.
 	 */
 	class ItemRecommenderTest extends IntegrationTestCase {
-		
+
 		private ItemRecommender $recommender;
-		
+
 		protected function setUp(): void {
 			parent::setUp();
 			$this->recommender = new ItemRecommender($this->connection, $this->config);
 		}
 
+		/**
+		 * Extract item IDs from a list of recommendation or prediction results, preserving order.
+		 * @param array<int, RecommendationResult|PredictionResult> $results Results carrying an item ID
+		 * @return array<int, int> Item IDs in result order
+		 */
+		private function itemIds(array $results): array {
+			return array_map(fn($result) => $result->itemId, $results);
+		}
+
 		/** Verify support, ordering, legacy parity, and the rejected-item exclusion.
 		 * @return void
 		 */
-		public function testDetailedSlopePredictions(): void {
+		public function testSlopePredictionsCarrySupportAndOrdering(): void {
 			$this->insertRating(1, 10, 0.8);
 			$this->insertRating(1, 40, -1.0);
 			$this->insertLink(10, 20, 3, 0.3);
@@ -31,60 +40,54 @@
 			$this->insertLink(10, 30, 2, 0.2);
 			$this->insertLink(10, 40, 5, 0.5);
 
-			$member = $this->recommender->memberPredictAllDetailed(1);
-			$this->assertSame([20, 30], array_map(fn($row) => $row->itemId, $member));
+			$member = $this->recommender->memberPredictions(1);
+			$this->assertSame([20, 30], $this->itemIds($member));
 			$this->assertSame(3, $member[0]->supportCount);
-			$this->assertEqualsWithDelta($this->recommender->memberPredict(1, 20),
+			$this->assertEqualsWithDelta($this->recommender->memberPrediction(1, 20)->predictedRating,
 				$member[0]->predictedRating, 0.00001);
-			$this->assertSame([20], array_map(fn($row) => $row->itemId,
-				$this->recommender->memberPredictAllDetailed(1, minSupport: 3)));
+			$this->assertSame([20], $this->itemIds($this->recommender->memberPredictions(1, minSupport: 3)));
 
 			$visitor = new VisitorContext($this->config);
 			$visitor->setRating(10, 0.8);
 			$visitor->setRating(40, -1.0);
-			$results = $this->recommender->visitorPredictAllDetailed($visitor);
-			$this->assertSame([20, 30], array_map(fn($row) => $row->itemId, $results));
-			$this->assertSame(20, $this->recommender->visitorPredictAllDetailed($visitor, limit: 1)[0]->itemId);
-			$this->assertSame(30, $this->recommender->visitorPredictAllDetailed($visitor, [30], 1)[0]->itemId);
-			$this->assertEqualsWithDelta($this->recommender->visitorPredict($visitor, 20),
-				$this->recommender->visitorPredictDetailed($visitor, 20)->predictedRating, 0.00001);
-			$facade = new RecommendationEngine($this->connection, $this->config);
-			$this->assertSame(3, $facade->memberPredictDetailed(1, 20)->supportCount);
-			$this->assertSame(20, $facade->visitorPredictAllDetailed($visitor)[0]->itemId);
+			$results = $this->recommender->visitorPredictions($visitor);
+			$this->assertSame([20, 30], $this->itemIds($results));
+			$this->assertSame(20, $this->recommender->visitorPredictions($visitor, limit: 1)[0]->itemId);
+			$this->assertSame(30, $this->recommender->visitorPredictions($visitor, [30], 1)[0]->itemId);
+			$this->assertEqualsWithDelta($this->recommender->visitorPrediction($visitor, 20)->predictedRating,
+				$results[0]->predictedRating, 0.00001);
 		}
 
 		/** @return void */
-		public function testDetailedSlopeHandlesRejectedHistoryAndSupportTies(): void {
+		public function testSlopePredictionsHandleRejectedHistoryAndSupportTies(): void {
 			$visitor = new VisitorContext($this->config);
 			$visitor->setRating(10, -1.0);
 			$this->insertRating(1, 10, -1.0);
 			$this->insertLink(10, 20, 3, 0.0);
-			$this->assertSame([], $this->recommender->memberPredictAllDetailed(1));
-			$this->assertSame([], $this->recommender->visitorPredictAllDetailed($visitor));
-			$this->assertNull($this->recommender->visitorPredictDetailed($visitor, 20));
+			$this->assertSame([], $this->recommender->memberPredictions(1));
+			$this->assertSame([], $this->recommender->visitorPredictions($visitor));
+			$this->assertNull($this->recommender->visitorPrediction($visitor, 20));
 			$this->insertRating(1, 11, 0.8);
 			$visitor->setRating(11, 0.8);
 			$this->insertLink(11, 20, 2, 0.0);
 			$this->insertLink(20, 11, 2, 0.0);
 			$this->insertLink(11, 30, 3, 0.0);
 			$this->insertLink(11, 40, 3, 0.0);
-			$this->assertSame([30, 40, 20], array_map(fn($result) => $result->itemId,
-				$this->recommender->memberPredictAllDetailed(1)));
-			$this->assertSame([30, 40, 20], array_map(fn($result) => $result->itemId,
-				$this->recommender->visitorPredictAllDetailed($visitor)));
-			$this->assertNull($this->recommender->memberPredictDetailed(1, 20, 3));
-			$this->assertNull($this->recommender->visitorPredictDetailed($visitor, 20, 3));
-			$this->assertSame([], $this->recommender->memberPredictAllDetailed(1, category: 2));
+			$this->assertSame([30, 40, 20], $this->itemIds($this->recommender->memberPredictions(1)));
+			$this->assertSame([30, 40, 20], $this->itemIds($this->recommender->visitorPredictions($visitor)));
+			$this->assertNull($this->recommender->memberPrediction(1, 20, 3));
+			$this->assertNull($this->recommender->visitorPrediction($visitor, 20, 3));
+			$this->assertSame([], $this->recommender->memberPredictions(1, category: 2));
 		}
 
 		/** @return void */
-		public function testDetailedVisitorPredictionBatchesLargeHistory(): void {
+		public function testVisitorPredictionBatchesLargeHistory(): void {
 			$visitor = new VisitorContext($this->config);
 			for ($id = 1; $id <= 501; $id++) {
 				$visitor->setRating($id, 0.8);
 			}
 			$this->insertLink(501, 600, 4, 0.4);
-			$result = $this->recommender->visitorPredictAllDetailed($visitor);
+			$result = $this->recommender->visitorPredictions($visitor);
 			$this->assertCount(1, $result);
 			$this->assertSame(600, $result[0]->itemId);
 			$this->assertSame(4, $result[0]->supportCount);
@@ -92,7 +95,7 @@
 		}
 
 		/** @return void */
-		public function testDetailedVisitorPredictionCleansTemporaryTablesAfterQueryFailure(): void {
+		public function testVisitorPredictionCleansTemporaryTablesAfterQueryFailure(): void {
 			$visitor = new VisitorContext($this->config);
 			$visitor->setRating(10, 0.8);
 			$logger = new SqlCaptureLogger();
@@ -102,7 +105,7 @@
 			$driver->setLogger($logger);
 			try {
 				try {
-					$this->recommender->visitorPredictAllDetailed($visitor);
+					$this->recommender->visitorPredictions($visitor);
 					$this->fail('The malformed link table did not cause a query failure.');
 				} catch (\Cake\Database\Exception\QueryException) {
 					$this->assertTrue(true);
@@ -131,13 +134,13 @@
 		}
 
 		/** @return void */
-		public function testDetailedPredictionRejectsNonpositiveSupportThreshold(): void {
+		public function testPredictionRejectsNonpositiveSupportThreshold(): void {
 			$visitor = new VisitorContext($this->config);
 			foreach ([
-				fn() => $this->recommender->memberPredictDetailed(1, 20, 0),
-				fn() => $this->recommender->memberPredictAllDetailed(1, minSupport: 0),
-				fn() => $this->recommender->visitorPredictDetailed($visitor, 20, 0),
-				fn() => $this->recommender->visitorPredictAllDetailed($visitor, minSupport: 0),
+				fn() => $this->recommender->memberPrediction(1, 20, 0),
+				fn() => $this->recommender->memberPredictions(1, minSupport: 0),
+				fn() => $this->recommender->visitorPrediction($visitor, 20, 0),
+				fn() => $this->recommender->visitorPredictions($visitor, minSupport: 0),
 			] as $predict) {
 				try {
 					$predict();
@@ -147,52 +150,59 @@
 				}
 			}
 		}
-		
+
 		// =========================================================================
-		// getLinkedItems
+		// linkedItems
 		// =========================================================================
-		
-		public function testGetLinkedItemsReturnsEmptyWhenNoLinks(): void {
-			$this->assertSame([], $this->recommender->getLinkedItems(1));
+
+		public function testLinkedItemsReturnsEmptyWhenNoLinks(): void {
+			$this->assertSame([], $this->recommender->linkedItems(1));
 		}
-		
-		public function testGetLinkedItemsReturnsLinkedProducts(): void {
+
+		public function testLinkedItemsReturnsLinkedProducts(): void {
 			$this->insertLink(1, 2, 5);
 			$this->insertLink(1, 3, 3);
-			$result = $this->recommender->getLinkedItems(1);
-			$this->assertEqualsCanonicalizing([2, 3], $result);
+			$result = $this->recommender->linkedItems(1);
+			$this->assertEqualsCanonicalizing([2, 3], $this->itemIds($result));
 		}
-		
-		public function testGetLinkedItemsOrderedByCountDescending(): void {
+
+		public function testLinkedItemsScoreIsTheLikedCount(): void {
+			$this->insertLink(1, 2, 5);
+			$result = $this->recommender->linkedItems(1);
+			$this->assertSame('item_links', $result[0]->strategy);
+			$this->assertEqualsWithDelta(5.0, $result[0]->score, 0.00001);
+		}
+
+		public function testLinkedItemsOrderedByCountDescending(): void {
 			$this->insertLink(1, 2, 3);
 			$this->insertLink(1, 3, 10);
 			$this->insertLink(1, 4, 5);
-			$result = $this->recommender->getLinkedItems(1);
-			$this->assertSame([3, 4, 2], $result);
+			$result = $this->recommender->linkedItems(1);
+			$this->assertSame([3, 4, 2], $this->itemIds($result));
 		}
-		
-		public function testGetLinkedItemsRespectsLimit(): void {
+
+		public function testLinkedItemsRespectsLimit(): void {
 			$this->insertLink(1, 2, 5);
 			$this->insertLink(1, 3, 3);
 			$this->insertLink(1, 4, 1);
-			$result = $this->recommender->getLinkedItems(1, limit: 2);
+			$result = $this->recommender->linkedItems(1, limit: 2);
 			$this->assertCount(2, $result);
 		}
-		
-		public function testGetLinkedItemsRespectsFilter(): void {
+
+		public function testLinkedItemsRespectsFilter(): void {
 			$this->insertLink(1, 2, 5);
 			$this->insertLink(1, 3, 3);
-			$result = $this->recommender->getLinkedItems(1, filter: [2]);
-			$this->assertSame([2], $result);
+			$result = $this->recommender->linkedItems(1, filter: [2]);
+			$this->assertSame([2], $this->itemIds($result));
 		}
 
 		/** Filtering must happen before a query limit.
 		 * @return void
 		 */
-		public function testGetLinkedItemsFilterFillsLimit(): void {
+		public function testLinkedItemsFilterFillsLimit(): void {
 			$this->insertLink(1, 2, 10);
 			$this->insertLink(1, 3, 5);
-			$this->assertSame([3], $this->recommender->getLinkedItems(1, [3], 1));
+			$this->assertSame([3], $this->itemIds($this->recommender->linkedItems(1, [3], 1)));
 		}
 
 		/** Large allowlists use the bounded temporary-table path.
@@ -202,44 +212,44 @@
 			$this->insertLink(1, 2, 10);
 			$this->insertLink(1, 3, 5);
 			$allowed = array_merge(range(1000, 1500), [3]);
-			$this->assertSame([3], $this->recommender->getLinkedItems(1, $allowed, 1));
-			$this->assertSame([3], $this->recommender->getLinkedItems(1, [3], 1));
+			$this->assertSame([3], $this->itemIds($this->recommender->linkedItems(1, $allowed, 1)));
+			$this->assertSame([3], $this->itemIds($this->recommender->linkedItems(1, [3], 1)));
 		}
-		
+
 		// =========================================================================
-		// memberGetRecommendedItems (links strategy)
+		// memberRecommendations (links strategy)
 		// =========================================================================
-		
-		public function testMemberGetRecommendedItemsReturnsEmptyWhenNoLinks(): void {
+
+		public function testMemberRecommendationsReturnsEmptyWhenNoLinks(): void {
 			$this->insertRating(1, 10, 0.8);
-			$this->assertSame([], $this->recommender->memberGetRecommendedItems(1));
+			$this->assertSame([], $this->recommender->memberRecommendations(1));
 		}
-		
-		public function testMemberGetRecommendedItemsReturnsUnratedLinkedItems(): void {
+
+		public function testMemberRecommendationsReturnsUnratedLinkedItems(): void {
 			// Member rated product 10; product 10 is linked to 20 and 30
 			$this->insertRating(1, 10, 0.9);
 			$this->insertLink(10, 20, 5);
 			$this->insertLink(10, 30, 3);
-			$result = $this->recommender->memberGetRecommendedItems(1);
-			$this->assertEqualsCanonicalizing([20, 30], $result);
+			$result = $this->recommender->memberRecommendations(1);
+			$this->assertEqualsCanonicalizing([20, 30], $this->itemIds($result));
 		}
-		
-		public function testMemberGetRecommendedItemsExcludesAlreadyRatedItems(): void {
+
+		public function testMemberRecommendationsExcludesAlreadyRatedItems(): void {
 			$this->insertRating(1, 10, 0.9);
 			$this->insertRating(1, 20, 0.5);
 			$this->insertLink(10, 20, 5);
 			$this->insertLink(10, 30, 3);
-			$result = $this->recommender->memberGetRecommendedItems(1);
+			$result = $this->itemIds($this->recommender->memberRecommendations(1));
 			$this->assertNotContains(20, $result);
 			$this->assertContains(30, $result);
 		}
-		
-		public function testMemberGetRecommendedItemsRespectsLimit(): void {
+
+		public function testMemberRecommendationsRespectsLimit(): void {
 			$this->insertRating(1, 10, 0.9);
 			$this->insertLink(10, 20, 10);
 			$this->insertLink(10, 30, 8);
 			$this->insertLink(10, 40, 5);
-			$result = $this->recommender->memberGetRecommendedItems(1, limit: 2);
+			$result = $this->recommender->memberRecommendations(1, limit: 2);
 			$this->assertCount(2, $result);
 		}
 
@@ -250,56 +260,54 @@
 			$this->insertRating(1, 10, 0.9);
 			$this->insertLink(10, 20, 10);
 			$this->insertLink(10, 30, 5);
-			$this->assertSame([30], $this->recommender->memberGetRecommendedItems(1, [30], 1));
+			$this->assertSame([30], $this->itemIds($this->recommender->memberRecommendations(1, [30], 1)));
 		}
-		
+
 		// =========================================================================
-		// memberGetReasons
+		// memberReasons
 		// =========================================================================
-		
-		public function testMemberGetReasonsReturnsRatedLinkedProducts(): void {
+
+		public function testMemberReasonsReturnsRatedLinkedProducts(): void {
 			// Member rated 10 and 20; product 30 is linked to both
 			$this->insertRating(1, 10, 0.9);
 			$this->insertRating(1, 20, 0.8);
 			$this->insertLink(30, 10, 5);
 			$this->insertLink(30, 20, 3);
-			$result = $this->recommender->memberGetReasons(1, 30);
+			$result = $this->recommender->memberReasons(1, 30);
 			$this->assertEqualsCanonicalizing([10, 20], $result);
 		}
-		
-		public function testMemberGetReasonsReturnsEmptyWhenNoLinks(): void {
+
+		public function testMemberReasonsReturnsEmptyWhenNoLinks(): void {
 			$this->insertRating(1, 10, 0.9);
-			$this->assertSame([], $this->recommender->memberGetReasons(1, 99));
+			$this->assertSame([], $this->recommender->memberReasons(1, 99));
 		}
-		
+
 		// =========================================================================
-		// getSlopeItems
+		// slopeItems
 		// =========================================================================
-		
-		public function testGetSlopeItemsReturnsItemsWithDiff(): void {
+
+		public function testSlopeItemsReturnsItemsWithDiffScore(): void {
 			$this->insertLink(1, 2, 3, 0.6);
 			$this->insertLink(1, 3, 2, 0.2);
-			$result = $this->recommender->getSlopeItems(1);
+			$result = $this->recommender->slopeItems(1);
 			$this->assertCount(2, $result);
-			$this->assertArrayHasKey('product_id', $result[0]);
-			$this->assertArrayHasKey('diff', $result[0]);
+			$this->assertSame('slope_one', $result[0]->strategy);
+			$this->assertIsFloat($result[0]->score);
 		}
-		
-		public function testGetSlopeItemsOrderedByAvgDiffDescending(): void {
+
+		public function testSlopeItemsOrderedByAvgDiffDescending(): void {
 			// item 2: diff=0.6/3=0.2, item 3: diff=0.9/2=0.45
 			$this->insertLink(1, 2, 3, 0.6);
 			$this->insertLink(1, 3, 2, 0.9);
-			$result = $this->recommender->getSlopeItems(1);
-			$this->assertSame(3, $result[0]['product_id']);
-			$this->assertSame(2, $result[1]['product_id']);
+			$result = $this->recommender->slopeItems(1);
+			$this->assertSame([3, 2], $this->itemIds($result));
 		}
-		
-		public function testGetSlopeItemsRespectsMinLinks(): void {
+
+		public function testSlopeItemsRespectsMinLinks(): void {
 			$this->insertLink(1, 2, 1, 0.5);
 			$this->insertLink(1, 3, 5, 0.5);
-			$result = $this->recommender->getSlopeItems(1, minLinks: 3);
-			$this->assertCount(1, $result);
-			$this->assertSame(3, $result[0]['product_id']);
+			$result = $this->recommender->slopeItems(1, minLinks: 3);
+			$this->assertSame([3], $this->itemIds($result));
 		}
 
 		/** Slope allowlists are applied before SQL limits.
@@ -308,25 +316,25 @@
 		public function testSlopeItemsFilterFillsLimit(): void {
 			$this->insertLink(1, 2, 2, 0.8);
 			$this->insertLink(1, 3, 2, 0.2);
-			$this->assertSame(3, $this->recommender->getSlopeItems(1, filter: [3], limit: 1)[0]['product_id']);
+			$this->assertSame(3, $this->recommender->slopeItems(1, filter: [3], limit: 1)[0]->itemId);
 		}
-		
+
 		// =========================================================================
-		// memberPredict
+		// memberPrediction
 		// =========================================================================
-		
-		public function testMemberPredictReturnsNullWithNoData(): void {
-			$this->assertNull($this->recommender->memberPredict(1, 99));
+
+		public function testMemberPredictionReturnsNullWithNoData(): void {
+			$this->assertNull($this->recommender->memberPrediction(1, 99));
 		}
-		
-		public function testMemberPredictReturnsPredictedRating(): void {
+
+		public function testMemberPredictionReturnsPredictedRating(): void {
 			// Member rated product 2 at 0.8; link 1->2 has cnt=1, diff_slope=-0.1
 			// predicted = (0.8 * 1 - (-0.1)) / 1 = 0.9
 			$this->insertRating(1, 2, 0.8);
 			$this->insertLink(1, 2, 1, -0.1);
-			$result = $this->recommender->memberPredict(1, 1);
+			$result = $this->recommender->memberPrediction(1, 1);
 			$this->assertNotNull($result);
-			$this->assertEqualsWithDelta(0.9, $result, 0.0001);
+			$this->assertEqualsWithDelta(0.9, $result->predictedRating, 0.0001);
 		}
 
 		/** A single prediction ignores disinterest and matches the all-item result.
@@ -338,107 +346,106 @@
 			$this->insertLink(10, 20, 2, 0.2);
 			$this->insertLink(20, 10, 2, -0.2);
 			$this->insertLink(20, 30, 2, 0.1);
-			$all = $this->recommender->memberPredictAll(1);
+			$all = $this->recommender->memberPredictions(1);
 			$this->assertCount(1, $all);
-			$this->assertSame(20, $all[0]['product_id']);
-			$this->assertEqualsWithDelta($all[0]['rating'], $this->recommender->memberPredict(1, 20), 0.00001);
+			$this->assertSame(20, $all[0]->itemId);
+			$this->assertEqualsWithDelta($all[0]->predictedRating,
+				$this->recommender->memberPrediction(1, 20)->predictedRating, 0.00001);
 		}
-		
-		public function testMemberPredictClampsToOne(): void {
+
+		public function testMemberPredictionClampsToOne(): void {
 			$this->insertRating(1, 2, 1.0);
 			$this->insertLink(1, 2, 1, 0.5);
-			$result = $this->recommender->memberPredict(1, 1);
-			$this->assertLessThanOrEqual(1.0, $result);
+			$result = $this->recommender->memberPrediction(1, 1);
+			$this->assertLessThanOrEqual(1.0, $result->predictedRating);
 		}
-		
-		public function testMemberPredictClampsToZero(): void {
+
+		public function testMemberPredictionClampsToZero(): void {
 			$this->insertRating(1, 2, 0.0);
 			$this->insertLink(1, 2, 1, -0.5);
-			$result = $this->recommender->memberPredict(1, 1);
-			$this->assertGreaterThanOrEqual(0.0, $result);
+			$result = $this->recommender->memberPrediction(1, 1);
+			$this->assertGreaterThanOrEqual(0.0, $result->predictedRating);
 		}
-		
+
 		// =========================================================================
-		// memberPredictAll
+		// memberPredictions
 		// =========================================================================
-		
-		public function testMemberPredictAllReturnsEmptyWhenNoLinks(): void {
+
+		public function testMemberPredictionsReturnsEmptyWhenNoLinks(): void {
 			$this->insertRating(1, 10, 0.8);
-			$this->assertSame([], $this->recommender->memberPredictAll(1));
+			$this->assertSame([], $this->recommender->memberPredictions(1));
 		}
-		
-		public function testMemberPredictAllExcludesAlreadyRatedItems(): void {
+
+		public function testMemberPredictionsExcludesAlreadyRatedItems(): void {
 			$this->insertRating(1, 10, 0.8);
 			$this->insertRating(1, 20, 0.5);
 			$this->insertLink(10, 20, 2, 0.1);
 			$this->insertLink(10, 30, 2, 0.2);
-			$result     = $this->recommender->memberPredictAll(1);
-			$productIds = array_column($result, 'product_id');
+			$productIds = $this->itemIds($this->recommender->memberPredictions(1));
 			$this->assertNotContains(10, $productIds);
 			$this->assertNotContains(20, $productIds);
 		}
-		
-		public function testMemberPredictAllIsSortedDescending(): void {
+
+		public function testMemberPredictionsAreSortedDescending(): void {
 			$this->insertRating(1, 10, 0.8);
 			$this->insertLink(10, 20, 2, 0.1);
 			$this->insertLink(10, 30, 2, -0.1);
-			$result  = $this->recommender->memberPredictAll(1);
-			$ratings = array_column($result, 'rating');
-			
+			$ratings = array_map(fn($result) => $result->predictedRating, $this->recommender->memberPredictions(1));
+
 			for ($i = 1; $i < count($ratings); $i++) {
 				$this->assertGreaterThanOrEqual($ratings[$i], $ratings[$i - 1]);
 			}
 		}
-		
+
 		// =========================================================================
 		// Visitor methods
 		// =========================================================================
-		
-		public function testVisitorGetRecommendedItemsReturnsEmptyForEmptyContext(): void {
+
+		public function testVisitorRecommendationsReturnsEmptyForEmptyContext(): void {
 			$visitor = new VisitorContext($this->config);
-			$this->assertSame([], $this->recommender->visitorGetRecommendedItems($visitor));
+			$this->assertSame([], $this->recommender->visitorRecommendations($visitor));
 		}
-		
-		public function testVisitorGetRecommendedItemsReturnsLinkedItems(): void {
+
+		public function testVisitorRecommendationsReturnsLinkedItems(): void {
 			$this->insertLink(10, 20, 5);
 			$this->insertLink(10, 30, 3);
 			$visitor = new VisitorContext($this->config);
 			$visitor->setRating(10, 0.9);
-			$result = $this->recommender->visitorGetRecommendedItems($visitor);
-			$this->assertEqualsCanonicalizing([20, 30], $result);
+			$result = $this->recommender->visitorRecommendations($visitor);
+			$this->assertEqualsCanonicalizing([20, 30], $this->itemIds($result));
 		}
-		
-		public function testVisitorGetRecommendedItemsExcludesAlreadyRatedProducts(): void {
+
+		public function testVisitorRecommendationsExcludesAlreadyRatedProducts(): void {
 			$this->insertLink(10, 20, 5);
 			$visitor = new VisitorContext($this->config);
 			$visitor->setRating(10, 0.9);
 			$visitor->setRating(20, 0.5);
-			$result = $this->recommender->visitorGetRecommendedItems($visitor);
+			$result = $this->itemIds($this->recommender->visitorRecommendations($visitor));
 			$this->assertNotContains(20, $result);
 		}
-		
-		public function testVisitorPredictReturnsNullForEmptyContext(): void {
+
+		public function testVisitorPredictionReturnsNullForEmptyContext(): void {
 			$visitor = new VisitorContext($this->config);
-			$this->assertNull($this->recommender->visitorPredict($visitor, 1));
+			$this->assertNull($this->recommender->visitorPrediction($visitor, 1));
 		}
-		
-		public function testVisitorPredictReturnsPredictedRating(): void {
+
+		public function testVisitorPredictionReturnsPredictedRating(): void {
 			$this->insertLink(1, 2, 1, -0.1);
 			$visitor = new VisitorContext($this->config);
 			$visitor->setRating(2, 0.8);
-			$result = $this->recommender->visitorPredict($visitor, 1);
+			$result = $this->recommender->visitorPrediction($visitor, 1);
 			$this->assertNotNull($result);
-			$this->assertEqualsWithDelta(0.9, $result, 0.0001);
+			$this->assertEqualsWithDelta(0.9, $result->predictedRating, 0.0001);
 		}
-		
+
 		// =========================================================================
 		// Category isolation
 		// =========================================================================
-		
-		public function testGetLinkedItemsIsolatedByCategory(): void {
+
+		public function testLinkedItemsIsolatedByCategory(): void {
 			$this->insertLink(1, 2, 5, 0.0, 1);
 			$this->insertLink(1, 3, 5, 0.0, 2);
-			$this->assertSame([2], $this->recommender->getLinkedItems(1, category: 1));
-			$this->assertSame([3], $this->recommender->getLinkedItems(1, category: 2));
+			$this->assertSame([2], $this->itemIds($this->recommender->linkedItems(1, category: 1)));
+			$this->assertSame([3], $this->itemIds($this->recommender->linkedItems(1, category: 2)));
 		}
 	}

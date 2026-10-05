@@ -177,7 +177,7 @@
 		 */
 		public function visitorPredict(VisitorContext $visitor, int $productId, ?int $category = null): ?float {
 			$resolvedCategory = $this->config->resolveCategory($category);
-			$products = $this->collectGenuineRatings($visitor->getRatings($resolvedCategory));
+			$products = $this->collectGenuineRatings($visitor->ratings($resolvedCategory));
 			
 			if (empty($products)) {
 				return null;
@@ -200,13 +200,13 @@
 		 */
 		public function visitorPredictAll(VisitorContext $visitor, array $filter = [], int $limit = 0, ?int $category = null): array {
 			$resolvedCategory = $this->config->resolveCategory($category);
-			$products = $this->collectGenuineRatings($visitor->getRatings($resolvedCategory));
+			$products = $this->collectGenuineRatings($visitor->ratings($resolvedCategory));
 	
 			if (empty($products)) {
 				return [];
 			}
 	
-			$seenIds = $visitor->getRatedProductIds($resolvedCategory);
+			$seenIds = $visitor->ratedProductIds($resolvedCategory);
 			$rows = $this->temporary->withRatingTable('vogoo_visitor_prediction_input_', $products,
 				fn(string $table) => $this->temporary->withIdTable('vogoo_visitor_seen_', $seenIds,
 					fn(string $seenTable) => $this->unseenSlopeRows("JOIN {$table} r ON r.product_id = l.item_id1",
@@ -282,7 +282,7 @@
 		public function visitorPredictDetailed(VisitorContext $visitor, int $productId, int $minSupport = 1, ?int $category = null): ?PredictionResult {
 			$this->validateSupport($minSupport);
 			$resolvedCategory = $this->config->resolveCategory($category);
-			$ratings = $this->collectGenuineRatings($visitor->getRatings($resolvedCategory));
+			$ratings = $this->collectGenuineRatings($visitor->ratings($resolvedCategory));
 			
 			if ($ratings === []) {
 				return null;
@@ -307,13 +307,13 @@
 			int $minSupport = 1, ?int $category = null): array {
 			$this->validateSupport($minSupport);
 			$resolvedCategory = $this->config->resolveCategory($category);
-			$ratings = $this->collectGenuineRatings($visitor->getRatings($resolvedCategory));
+			$ratings = $this->collectGenuineRatings($visitor->ratings($resolvedCategory));
 			
 			if ($ratings === []) {
 				return [];
 			}
 			
-			$seenIds = $visitor->getRatedProductIds($resolvedCategory);
+			$seenIds = $visitor->ratedProductIds($resolvedCategory);
 	
 			return $this->temporary->withRatingTable('vogoo_visitor_prediction_input_', $ratings,
 				fn(string $table) => $this->temporary->withIdTable('vogoo_visitor_seen_', $seenIds,

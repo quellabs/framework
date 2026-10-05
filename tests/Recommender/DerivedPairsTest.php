@@ -38,7 +38,7 @@ class DerivedPairsTest extends IntegrationTestCase {
         $engine->setRating(2, 10, 0.4);
         $engine->setRating(2, 20, 0.7);
         $this->assertPair(10, 20, $links ? 1 : 0, $slope ? 2 : 0, $slope ? 0.2 : 0.0);
-        $this->assertSame($links ? [20] : [], $items->getLinkedItems(10));
+        $this->assertSame($links ? [20] : [], array_map(fn($item) => $item->itemId, $items->linkedItems(10)));
 
         $engine->setRating(2, 10, 0.9);
         $engine->setNotInterested(1, 20);
@@ -50,7 +50,7 @@ class DerivedPairsTest extends IntegrationTestCase {
         $this->rebuild($config);
         $rebuilt = $this->rows();
         $this->assertPair(10, 20, 1, 1, -0.2);
-        $this->assertSame([20], $items->getLinkedItems(10));
+        $this->assertSame([20], array_map(fn($item) => $item->itemId, $items->linkedItems(10)));
         if ($links && $slope) {
             $this->assertEquals($before, $rebuilt);
         }
@@ -90,7 +90,7 @@ class DerivedPairsTest extends IntegrationTestCase {
         $engine->setRating(2, 30, 0.9);
         $engine->setNotInterested(3, 20);
         $engine->setRating(3, 10, 0.9);
-        $member = $items->memberRecommendationsDetailed(3, [20, 30]);
+        $member = $items->memberRecommendations(3, [20, 30]);
         $this->assertSame('item_links', $member[0]->strategy);
         $this->assertSame(30, $member[0]->itemId);
         $this->assertSame([10], $member[0]->contributingItemIds);
@@ -98,14 +98,14 @@ class DerivedPairsTest extends IntegrationTestCase {
 
         $visitor = new VisitorContext($config);
         $visitor->setNotInterested(20);
-        $fallback = $items->visitorRecommendationsDetailed($visitor, [20, 30], minRatings: 1);
+        $fallback = $items->visitorRecommendations($visitor, [20, 30], minRatings: 1);
         $this->assertCount(1, $fallback);
         $this->assertSame(30, $fallback[0]->itemId);
         $this->assertSame('top_rated', $fallback[0]->strategy);
         $this->assertSame([], $fallback[0]->contributingItemIds);
 
         $visitor->setRating(10, 0.9);
-        $collaborative = $items->visitorRecommendationsDetailed($visitor, [20, 30]);
+        $collaborative = $items->visitorRecommendations($visitor, [20, 30]);
         $this->assertCount(1, $collaborative);
         $this->assertSame(30, $collaborative[0]->itemId);
         $this->assertSame('item_links', $collaborative[0]->strategy);

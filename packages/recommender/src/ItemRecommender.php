@@ -23,7 +23,6 @@
 	 *
 	 * @phpstan-import-type RatingList from VisitorContext
 	 * @phpstan-import-type ProductRating from SlopeOneRecommender
-	 * @phpstan-import-type ProductDiff from SlopeOneRecommender
 	 */
 	readonly class ItemRecommender {
 	
@@ -61,9 +60,9 @@
 		 * @param array<int> $filter When non-empty, only return product IDs in this set
 		 * @param int $limit Maximum number of results (0 = unlimited)
 		 * @param int|null $category Defaults to configured default
-		 * @return array<int, int> List of product IDs
+		 * @return array<int, RecommendationResult> Co-occurring products, scored by liked count
 		 */
-		public function getLinkedItems(int $productId, array $filter = [], int $limit = 0, ?int $category = null): array {
+		public function linkedItems(int $productId, array $filter = [], int $limit = 0, ?int $category = null): array {
 			$resolvedCategory = $this->config->resolveCategory($category);
 			
 			$sql = '
@@ -87,39 +86,17 @@
 				$this->allowlist->release($filter);
 			}
 			
-			$result = $this->filterAndExtract($rows, 'item_id2', $filter);
-			return Results::limit($result, $limit);
-		}
-	
-		/**
-		 * Return recommended items for a member using item-based CF, ordered by weighted co-occurrence score descending.
-		 * Only returns items the member has not already rated.
-		 * @param int $memberId The member ID
-		 * @param array<int> $filter When non-empty, only return product IDs in this set
-		 * @param int $limit Maximum number of results (0 = unlimited)
-		 * @param int|null $category Defaults to configured default
-		 * @return array<int, int> List of product IDs
-		 */
-		public function memberGetRecommendedItems(int $memberId, array $filter = [], int $limit = 0, ?int $category = null): array {
-			$resolvedCategory = $this->config->resolveCategory($category);
-			$rows = $this->linkScoreRows(
-				'JOIN vogoo_ratings r ON r.member_id = :member AND
-					l.item_id1 = r.product_id AND
-					l.category = r.category AND
-					r.rating >= 0.0',
-				'NOT EXISTS (SELECT 1 FROM vogoo_ratings vr
-					WHERE vr.member_id = :member2 AND
-						vr.category = :category2 AND
-						vr.product_id = l.item_id2
-				)',
-				[
-					'member' => $memberId,
-					'member2' => $memberId,
-					'category2' => $resolvedCategory,
-				],
-				$filter, $resolvedCategory, $limit);
-	
-			return $this->rowProductIds($rows);
+			$results = [];
+
+			foreach ($rows as $row) {
+				$id = (int)$row['item_id2'];
+
+				if (Results::allows($filter, $id)) {
+					$results[] = new RecommendationResult($id, (float)$row['liked_count'], 'item_links', []);
+				}
+			}
+
+			return Results::limit($results, $limit);
 		}
 	
 		/**
@@ -130,7 +107,7 @@
 		 * @param int|null $category Defaults to configured default
 		 * @return array<int, int> List of product IDs
 		 */
-		public function memberGetReasons(int $memberId, int $productId, int $limit = 0, ?int $category = null): array {
+		public function memberReasons(int $memberId, int $productId, int $limit = 0, ?int $category = null): array {
 			$resolvedCategory = $this->config->resolveCategory($category);
 			$limit = max(0, $limit);
 			$threshold = $this->config->getThresholdRating();
@@ -162,38 +139,6 @@
 		}
 	
 		/**
-		 * Return recommended items for an anonymous visitor using item-based CF, with ratings read from the visitor context.
-		 * @param VisitorContext $visitor The visitor context holding the current session's ratings
-		 * @param array<int> $filter When non-empty, only return product IDs in this set
-		 * @param int $limit Maximum number of results (0 = unlimited)
-		 * @param int|null $category Defaults to configured default
-		 * @return array<int, int> List of product IDs
-		 */
-		public function visitorGetRecommendedItems(VisitorContext $visitor, array $filter = [], int $limit = 0, ?int $category = null): array {
-			$resolvedCategory = $this->config->resolveCategory($category);
-			$genuine = [];
-	
-			foreach ($visitor->getRatings($resolvedCategory) as $entry) {
-				if ($entry['rating'] >= 0.0) {
-					$genuine[$entry['product_id']] = $entry['rating'];
-				}
-			}
-	
-			if ($genuine === []) {
-				return [];
-			}
-	
-			$seenIds = $visitor->getRatedProductIds($resolvedCategory);
-			$rows = $this->temporary->withRatingTable('vogoo_visitor_link_input_', $genuine,
-				fn(string $table) => $this->temporary->withIdTable('vogoo_visitor_seen_', $seenIds,
-					fn(string $seenTable) => $this->linkScoreRows("JOIN {$table} r ON r.product_id = l.item_id1",
-						"NOT EXISTS (SELECT 1 FROM {$seenTable} s WHERE s.product_id = l.item_id2)",
-						[], $filter, $resolvedCategory, $limit)));
-	
-			return $this->rowProductIds($rows);
-		}
-	
-		/**
 		 * Return the visitor's rated products that are linked to the given product, the "why we recommend this" list for visitors.
 		 * @param VisitorContext $visitor The visitor context holding the current session's ratings
 		 * @param int $productId The product ID
@@ -201,10 +146,10 @@
 		 * @param int|null $category Defaults to configured default
 		 * @return array<int, int> List of product IDs
 		 */
-		public function visitorGetReasons(VisitorContext $visitor, int $productId, int $limit = 0, ?int $category = null): array {
+		public function visitorReasons(VisitorContext $visitor, int $productId, int $limit = 0, ?int $category = null): array {
 			$resolvedCategory = $this->config->resolveCategory($category);
 			$threshold = $this->config->getThresholdRating();
-			$ratings = $visitor->getRatings($resolvedCategory);
+			$ratings = $visitor->ratings($resolvedCategory);
 			
 			$likedIds = array_column(
 				array_filter($ratings, fn($entry) => $entry['rating'] >= $threshold),
@@ -247,56 +192,12 @@
 		 * @param array<int> $filter When non-empty, only return product IDs in this set
 		 * @param int $limit Maximum number of results (0 = unlimited)
 		 * @param int|null $category Defaults to configured default
-		 * @return array<int, ProductDiff>
+		 * @return array<int, RecommendationResult> Products scored by their average Slope One diff
 		 */
-		public function getSlopeItems(int $productId, int $minLinks = 1, array $filter = [], int $limit = 0, ?int $category = null): array {
-			return $this->slopeOne->getSlopeItems($productId, $minLinks, $filter, $limit, $category);
-		}
-	
-		/**
-		 * Predict a member's rating for a single product using Slope One.
-		 * @param int $memberId The member ID
-		 * @param int $productId The product ID
-		 * @param int|null $category Defaults to configured default
-		 * @return float|null Predicted rating in [0.0, 1.0], or null when there is insufficient data
-		 */
-		public function memberPredict(int $memberId, int $productId, ?int $category = null): ?float {
-			return $this->slopeOne->memberPredict($memberId, $productId, $category);
-		}
-	
-		/**
-		 * Predict ratings for all unrated items for a member using Slope One, sorted by predicted rating descending.
-		 * @param int $memberId The member ID
-		 * @param array<int> $filter When non-empty, only return product IDs in this set
-		 * @param int $limit Maximum number of results (0 = unlimited)
-		 * @param int|null $category Defaults to configured default
-		 * @return array<int, ProductRating>
-		 */
-		public function memberPredictAll(int $memberId, array $filter = [], int $limit = 0, ?int $category = null): array {
-			return $this->slopeOne->memberPredictAll($memberId, $filter, $limit, $category);
-		}
-	
-		/**
-		 * Predict a rating for a single product for an anonymous visitor using Slope One.
-		 * @param VisitorContext $visitor The visitor context holding the current session's ratings
-		 * @param int $productId The product ID
-		 * @param int|null $category Defaults to configured default
-		 * @return float|null Predicted rating in [0.0, 1.0], or null when there is insufficient data
-		 */
-		public function visitorPredict(VisitorContext $visitor, int $productId, ?int $category = null): ?float {
-			return $this->slopeOne->visitorPredict($visitor, $productId, $category);
-		}
-	
-		/**
-		 * Predict ratings for all unrated items for an anonymous visitor using Slope One, sorted by predicted rating descending.
-		 * @param VisitorContext $visitor The visitor context holding the current session's ratings
-		 * @param array<int> $filter When non-empty, only return product IDs in this set
-		 * @param int $limit Maximum number of results (0 = unlimited)
-		 * @param int|null $category Defaults to configured default
-		 * @return array<int, ProductRating>
-		 */
-		public function visitorPredictAll(VisitorContext $visitor, array $filter = [], int $limit = 0, ?int $category = null): array {
-			return $this->slopeOne->visitorPredictAll($visitor, $filter, $limit, $category);
+		public function slopeItems(int $productId, int $minLinks = 1, array $filter = [], int $limit = 0, ?int $category = null): array {
+			$diffs = $this->slopeOne->getSlopeItems($productId, $minLinks, $filter, $limit, $category);
+
+			return array_map(fn(array $diff) => new RecommendationResult($diff['product_id'], $diff['diff'], 'slope_one', []), $diffs);
 		}
 	
 		/**
@@ -308,7 +209,7 @@
 		 * @return PredictionResult|null
 		 * @throws \InvalidArgumentException When the minimum support is not positive
 		 */
-		public function memberPredictDetailed(int $memberId, int $productId, int $minSupport = 1, ?int $category = null): ?PredictionResult {
+		public function memberPrediction(int $memberId, int $productId, int $minSupport = 1, ?int $category = null): ?PredictionResult {
 			return $this->slopeOne->memberPredictDetailed($memberId, $productId, $minSupport, $category);
 		}
 	
@@ -322,7 +223,7 @@
 		 * @return array<int, PredictionResult>
 		 * @throws \InvalidArgumentException When the minimum support is not positive
 		 */
-		public function memberPredictAllDetailed(int $memberId, array $filter = [], int $limit = 0,
+		public function memberPredictions(int $memberId, array $filter = [], int $limit = 0,
 			int $minSupport = 1, ?int $category = null): array {
 			return $this->slopeOne->memberPredictAllDetailed($memberId, $filter, $limit, $minSupport, $category);
 		}
@@ -336,7 +237,7 @@
 		 * @return PredictionResult|null
 		 * @throws \InvalidArgumentException When the minimum support is not positive
 		 */
-		public function visitorPredictDetailed(VisitorContext $visitor, int $productId, int $minSupport = 1, ?int $category = null): ?PredictionResult {
+		public function visitorPrediction(VisitorContext $visitor, int $productId, int $minSupport = 1, ?int $category = null): ?PredictionResult {
 			return $this->slopeOne->visitorPredictDetailed($visitor, $productId, $minSupport, $category);
 		}
 	
@@ -350,7 +251,7 @@
 		 * @return array<int, PredictionResult>
 		 * @throws \InvalidArgumentException When the minimum support is not positive
 		 */
-		public function visitorPredictAllDetailed(VisitorContext $visitor, array $filter = [], int $limit = 0,
+		public function visitorPredictions(VisitorContext $visitor, array $filter = [], int $limit = 0,
 			int $minSupport = 1, ?int $category = null): array {
 			return $this->slopeOne->visitorPredictAllDetailed($visitor, $filter, $limit, $minSupport, $category);
 		}
@@ -367,7 +268,7 @@
 		 * @return array<int, RecommendationResult>
 		 * @throws \UnexpectedValueException When a link score row or its contributors are malformed
 		 */
-		public function memberRecommendationsDetailed(int $memberId, array $filter = [], int $limit = 0, ?int $category = null,
+		public function memberRecommendations(int $memberId, array $filter = [], int $limit = 0, ?int $category = null,
 			int $minHistory = 1, int $minRatings = 2): array {
 			$resolvedCategory = $this->config->resolveCategory($category);
 			$history = (int)$this->connection->execute('
@@ -454,10 +355,10 @@
 		 * @param int $minRatings Minimum ratings for a fallback item
 		 * @return array<int, RecommendationResult>
 		 */
-		public function visitorRecommendationsDetailed(VisitorContext $visitor, array $filter = [], int $limit = 0, ?int $category = null,
+		public function visitorRecommendations(VisitorContext $visitor, array $filter = [], int $limit = 0, ?int $category = null,
 			int $minHistory = 1, int $minRatings = 2): array {
 			$resolvedCategory = $this->config->resolveCategory($category);
-			$ratings = $visitor->getRatings($resolvedCategory);
+			$ratings = $visitor->ratings($resolvedCategory);
 			$history = count(array_filter($ratings, fn($row) => $row['rating'] >= 0.0));
 			
 			if ($history < max(1, $minHistory)) {
@@ -507,31 +408,6 @@
 			}
 			
 			return $results;
-		}
-	
-		/**
-		 * Extract a product ID column from rows, optionally keeping only IDs in a whitelist.
-		 * @param array<int, mixed> $rows Rows from the query
-		 * @param string $column Name of the result column holding the product ID
-		 * @param array<int> $filter When non-empty, only return product IDs in this set
-		 * @return array<int, int>
-		 */
-		private function filterAndExtract(array $rows, string $column, array $filter): array {
-			$result = [];
-			
-			foreach ($rows as $row) {
-				if (!is_array($row) || !isset($row[$column]) || !is_scalar($row[$column])) {
-					continue;
-				}
-				
-				$id = (int)$row[$column];
-				
-				if (Results::allows($filter, $id)) {
-					$result[] = $id;
-				}
-			}
-			
-			return $result;
 		}
 	
 		/**
@@ -595,58 +471,6 @@
 			return [(int)$row['item_id2'], (int)$row['liked_count']];
 		}
 	
-	
-		/**
-		 * Extract the product ID column from link score rows, in row order.
-		 * @param array<int, array<string, mixed>> $rows Rows with an item_id2 column
-		 * @return array<int, int> Product IDs
-		 * @throws \UnexpectedValueException When a row has no numeric product ID
-		 */
-		private function rowProductIds(array $rows): array {
-			$ids = [];
-	
-			foreach ($rows as $row) {
-				if (!is_numeric($row['item_id2'])) {
-					throw new \UnexpectedValueException('Link score row must contain a numeric item_id2.');
-				}
-	
-				$ids[] = (int)$row['item_id2'];
-			}
-	
-			return $ids;
-		}
-	
-		/**
-		 * Return the co-occurrence score of every candidate linked to the rated items, best first.
-		 * @param string $ratingJoin Join from vogoo_links to the rating source, aliased r on l.item_id1
-		 * @param string $seenPredicate Predicate excluding candidates already rated, referring to l.item_id2
-		 * @param array<string, int|float> $params Parameters referenced by the join and predicate
-		 * @param array<int> $filter Allowed IDs, or empty for all
-		 * @param int $category Already-resolved category
-		 * @param int $limit Maximum results, or zero for all
-		 * @return array<int, array<string, mixed>> Rows with item_id2 and score
-		 */
-		private function linkScoreRows(string $ratingJoin, string $seenPredicate, array $params, array $filter, int $category, int $limit): array {
-			$params += ['threshold' => $this->config->getThresholdRating(), 'category' => $category];
-			
-			$sql = "
-				SELECT
-					l.item_id2,
-					SUM(l.liked_count * (r.rating - :threshold)) AS score
-				FROM vogoo_links l {$ratingJoin}
-				WHERE l.category = :category AND
-					l.liked_count > 0 AND
-					{$seenPredicate}";
-
-			$sql .= $this->allowlist->predicate($filter, 'l.item_id2', $params);
-			$sql .= ' GROUP BY l.item_id2 HAVING score > 0 ORDER BY score DESC, l.item_id2 ASC' . Results::limitSql($limit);
-	
-			try {
-				return $this->connection->execute($sql, $params)->fetchAll('assoc');
-			} finally {
-				$this->allowlist->release($filter);
-			}
-		}
 	
 		/**
 		 * Return the co-occurrence score and contributing product IDs of each candidate linked to the member's rated items.
