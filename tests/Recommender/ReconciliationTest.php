@@ -458,6 +458,20 @@ class ReconciliationTest extends IntegrationTestCase {
     }
 
     /** @return void */
+    public function testSculptProviderParsesStringBooleanConfigValues(): void {
+        $falsy = new \Quellabs\Recommender\Sculpt\RecommenderProvider();
+        $falsy->setConfig(['direct_links' => 'false', 'direct_slope' => '0']);
+        $this->assertFalse($falsy->getRecommendationConfig()->isDirectLinks());
+        $this->assertFalse($falsy->getRecommendationConfig()->isDirectSlope());
+
+        // getRecommendationConfig() caches its result, so each case needs its own provider
+        $unrecognized = new \Quellabs\Recommender\Sculpt\RecommenderProvider();
+        $unrecognized->setConfig(['direct_links' => 'true', 'direct_slope' => 'maybe']);
+        $this->assertTrue($unrecognized->getRecommendationConfig()->isDirectLinks());
+        $this->assertTrue($unrecognized->getRecommendationConfig()->isDirectSlope());
+    }
+
+    /** @return void */
     public function testDirectListSelectionPreservesEvidenceAndRejectsDuplicates(): void {
         $first = new ReconciledRecommendation(10, null,
             [new SourceEvidence(RecommendationSource::ItemLinks, 2.0, 1)]);
