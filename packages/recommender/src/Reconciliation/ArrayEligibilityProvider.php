@@ -30,6 +30,14 @@
 		}
 		
 		/**
+		 * Return the eligible IDs, so engines can push them into SQL as an allowlist.
+		 * @return array<int, int> Eligible IDs
+		 */
+		public function ids(): array {
+			return array_keys($this->eligible);
+		}
+
+		/**
 		 * Return the candidate IDs that are eligible, preserving candidate order.
 		 * @param array<int, int> $candidateIds Distinct IDs in candidate order
 		 * @return array<int, int> An order-preserving subset of the input

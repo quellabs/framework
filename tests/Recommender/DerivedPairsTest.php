@@ -6,6 +6,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use Quellabs\Recommender\Config\RecommendationConfig;
 use Quellabs\Recommender\ItemRecommender;
 use Quellabs\Recommender\RecommendationEngine;
+use Quellabs\Recommender\Reconciliation\ArrayEligibilityProvider;
 use Quellabs\Recommender\Sculpt\RebuildLinksCommand;
 use Quellabs\Recommender\Sculpt\RecommenderProvider;
 use Quellabs\Recommender\VisitorContext;
@@ -90,7 +91,7 @@ class DerivedPairsTest extends IntegrationTestCase {
         $engine->setRating(2, 30, 0.9);
         $engine->setNotInterested(3, 20);
         $engine->setRating(3, 10, 0.9);
-        $member = $items->memberRecommendations(3, [20, 30]);
+        $member = $items->memberRecommendations(3, new ArrayEligibilityProvider([20, 30]));
         $this->assertSame('item_links', $member[0]->strategy);
         $this->assertSame(30, $member[0]->itemId);
         $this->assertSame([10], $member[0]->contributingItemIds);
@@ -98,14 +99,14 @@ class DerivedPairsTest extends IntegrationTestCase {
 
         $visitor = new VisitorContext($config);
         $visitor->setNotInterested(20);
-        $fallback = $items->visitorRecommendations($visitor, [20, 30], minRatings: 1);
+        $fallback = $items->visitorRecommendations($visitor, new ArrayEligibilityProvider([20, 30]), minRatings: 1);
         $this->assertCount(1, $fallback);
         $this->assertSame(30, $fallback[0]->itemId);
         $this->assertSame('top_rated', $fallback[0]->strategy);
         $this->assertSame([], $fallback[0]->contributingItemIds);
 
         $visitor->setRating(10, 0.9);
-        $collaborative = $items->visitorRecommendations($visitor, [20, 30]);
+        $collaborative = $items->visitorRecommendations($visitor, new ArrayEligibilityProvider([20, 30]));
         $this->assertCount(1, $collaborative);
         $this->assertSame(30, $collaborative[0]->itemId);
         $this->assertSame('item_links', $collaborative[0]->strategy);

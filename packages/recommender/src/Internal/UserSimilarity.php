@@ -4,6 +4,7 @@
 	
 	use Cake\Database\Connection;
 	use Quellabs\Recommender\Config\RecommendationConfig;
+	use Quellabs\Recommender\Internal\Eligibility\EligibilityFilter;
 	use Quellabs\Recommender\Internal\Persistence\TemporaryTable;
 	use Quellabs\Recommender\Internal\Query\Results;
 	
@@ -11,6 +12,7 @@
 	use Quellabs\Recommender\Neighbour;
 	use Quellabs\Recommender\RecommendationEngine;
 	use Quellabs\Recommender\RecommendationResult;
+	use Quellabs\Recommender\Reconciliation\EligibilityProvider;
 	/**
 	 * User-based collaborative filtering: member similarity scoring and
 	 * neighbour-based recommendations.
@@ -36,6 +38,9 @@
 	
 		/** @var TemporaryTable Temporary tables for neighbour and candidate sets */
 		private TemporaryTable $temporary;
+
+		/** @var EligibilityFilter Applies eligibility providers to ranked results */
+		private EligibilityFilter $eligibilityFilter;
 	
 		/**
 		 * Build the similarity service.
@@ -48,6 +53,7 @@
 			$this->config = $config;
 			$this->engine = $engine;
 			$this->temporary = new TemporaryTable($connection);
+			$this->eligibilityFilter = new EligibilityFilter($config);
 		}
 		
 		/**
@@ -168,15 +174,30 @@
 		 * Only returns items the member has not already rated.
 		 * @param int $memberId The member ID
 		 * @param int $minSimilarity Minimum neighbour similarity to consider
-		 * @param array<int> $filter When non-empty, only return product IDs in this set
+		 * @param EligibilityProvider|null $eligibility Restricts results to eligible products, or null for all
 		 * @param int $limit Maximum number of results (0 = unlimited)
 		 * @param int|null $category Defaults to configured default
 		 * @return array<int, RecommendationResult> Recommended products ordered by score, with strategy user_similarity
 		 */
-		public function memberRecommendations(int $memberId, int $minSimilarity = 1, array $filter = [], int $limit = 0, ?int $category = null): array {
+		public function memberRecommendations(int $memberId, int $minSimilarity = 1, ?EligibilityProvider $eligibility = null, int $limit = 0, ?int $category = null): array {
 			$resolvedCategory = $this->config->resolveCategory($category);
 			$minSimilarity = max(0, min(100, $minSimilarity));
-			$limit = max(0, $limit);
+
+			return $this->eligibilityFilter->withEligibility($eligibility, max(0, $limit),
+				fn(array $filter, int $depth) => $this->memberRecommendationRows($memberId, $minSimilarity, $filter, $depth, $resolvedCategory),
+				fn(RecommendationResult $row) => $row->itemId);
+		}
+
+		/**
+		 * Return the similarity-weighted member recommendations, with an optional allowlist and limit.
+		 * @param int $memberId The member ID
+		 * @param int $minSimilarity Minimum neighbour similarity, already clamped to [0, 100]
+		 * @param array<int> $filter Allowed product IDs, or empty for all
+		 * @param int $limit Maximum results, or zero for all
+		 * @param int $resolvedCategory Already-resolved category
+		 * @return array<int, RecommendationResult>
+		 */
+		private function memberRecommendationRows(int $memberId, int $minSimilarity, array $filter, int $limit, int $resolvedCategory): array {
 
 			$neighbours = $this->memberNeighbours($memberId, $minSimilarity, 0, $resolvedCategory);
 

@@ -9,6 +9,7 @@
 		use Quellabs\Recommender\Internal\Persistence\TemporaryTable;
 		use Quellabs\Recommender\Internal\Reconciliation\CandidateRoundState;
 		use Quellabs\Recommender\Internal\Identifier;
+		use Quellabs\Recommender\Internal\Eligibility\EligibilityFilter;
 		
 	
 	use Quellabs\Recommender\Internal\UserSimilarity;
@@ -36,6 +37,9 @@
 			
 			/** @var TemporaryTable Temporary tables for candidate sets and rating inputs */
 			private TemporaryTable $temporary;
+
+			/** @var EligibilityFilter Batched eligibility checks */
+			private EligibilityFilter $filter;
 			
 			/**
 			 * Build the reconciler.
@@ -46,6 +50,7 @@
 				$this->connection = $connection;
 				$this->config = $config;
 				$this->temporary = new TemporaryTable($connection);
+			$this->filter = new EligibilityFilter($config);
 			}
 			
 			/**
@@ -193,10 +198,8 @@
 						$newIds = array_merge($newIds, $this->nominateSource($source, $round, $request, $state, $category, $ratings, $memberId));
 					}
 					
-					foreach (array_chunk($state->claimUnsubmitted($newIds), $batchSize) as $chunk) {
-						foreach ($this->filterEligibleBatch($request->eligibility, $chunk) as $id) {
-							$state->markEligible($id);
-						}
+					foreach ($this->filter->check($request->eligibility, $state->claimUnsubmitted($newIds), $batchSize) as $id) {
+						$state->markEligible($id);
 					}
 					
 					if ($state->eligibleCount() >= $request->limit || $round >= $roundCap) {
@@ -246,19 +249,6 @@
 				
 				$state->setNominations($key, $current);
 				return $newIds;
-			}
-			
-			/**
-			 * Check eligibility for one batch of candidate IDs and validate the provider's answer.
-			 * @param EligibilityProvider $eligibility Application eligibility check
-			 * @param array<int, int> $batch Candidate IDs to check
-			 * @return array<int, int> Eligible IDs in candidate order
-			 * @throws \UnexpectedValueException When the provider answer is not an ordered subset of the batch
-			 */
-			private function filterEligibleBatch(EligibilityProvider $eligibility, array $batch): array {
-				$response = $eligibility->filterEligible($batch);
-				$this->validateEligibilityResponse($batch, $response);
-				return $response;
 			}
 			
 			/**
@@ -411,33 +401,6 @@
 				}
 				
 				return [strtolower((string)$row['model_id']), $model];
-			}
-			
-			/**
-			 * Check that the eligibility answer is an ordered subset of the submitted batch.
-			 * @param array<int, int> $submitted Submitted batch
-			 * @param array<mixed> $response Provider response
-			 * @return void
-			 * @throws \UnexpectedValueException When the response has a non-integer ID or is out of order
-			 */
-			private function validateEligibilityResponse(array $submitted, array $response): void {
-				$cursor = 0;
-				
-				foreach ($response as $id) {
-					if (!is_int($id)) {
-						throw new \UnexpectedValueException('Eligibility response contains a non-integer ID: ' . var_export($id, true) . '.');
-					}
-					
-					while ($cursor < count($submitted) && $submitted[$cursor] !== $id) {
-						$cursor++;
-					}
-					
-					if ($cursor === count($submitted)) {
-						throw new \UnexpectedValueException("Eligibility response ID {$id} is not an ordered subset of the submitted IDs.");
-					}
-					
-					$cursor++;
-				}
 			}
 			
 			/**

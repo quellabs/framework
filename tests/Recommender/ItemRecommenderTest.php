@@ -5,7 +5,8 @@
 	use Quellabs\Recommender\ItemRecommender;
 	use Quellabs\Recommender\PredictionResult;
 	use Quellabs\Recommender\RecommendationResult;
-	use Quellabs\Recommender\VisitorContext;
+	use Quellabs\Recommender\Reconciliation\ArrayEligibilityProvider;
+use Quellabs\Recommender\VisitorContext;
 
 	/**
 	 * Integration tests for ItemRecommender.
@@ -53,7 +54,7 @@
 			$results = $this->recommender->visitorPredictions($visitor);
 			$this->assertSame([20, 30], $this->itemIds($results));
 			$this->assertSame(20, $this->recommender->visitorPredictions($visitor, limit: 1)[0]->itemId);
-			$this->assertSame(30, $this->recommender->visitorPredictions($visitor, [30], 1)[0]->itemId);
+			$this->assertSame(30, $this->recommender->visitorPredictions($visitor, new ArrayEligibilityProvider([30]), 1)[0]->itemId);
 			$this->assertEqualsWithDelta($this->recommender->visitorPrediction($visitor, 20)->predictedRating,
 				$results[0]->predictedRating, 0.00001);
 		}
@@ -192,7 +193,7 @@
 		public function testLinkedItemsRespectsFilter(): void {
 			$this->insertLink(1, 2, 5);
 			$this->insertLink(1, 3, 3);
-			$result = $this->recommender->linkedItems(1, filter: [2]);
+			$result = $this->recommender->linkedItems(1, new ArrayEligibilityProvider([2]));
 			$this->assertSame([2], $this->itemIds($result));
 		}
 
@@ -202,7 +203,7 @@
 		public function testLinkedItemsFilterFillsLimit(): void {
 			$this->insertLink(1, 2, 10);
 			$this->insertLink(1, 3, 5);
-			$this->assertSame([3], $this->itemIds($this->recommender->linkedItems(1, [3], 1)));
+			$this->assertSame([3], $this->itemIds($this->recommender->linkedItems(1, new ArrayEligibilityProvider([3]), 1)));
 		}
 
 		/** Large allowlists use the bounded temporary-table path.
@@ -212,8 +213,8 @@
 			$this->insertLink(1, 2, 10);
 			$this->insertLink(1, 3, 5);
 			$allowed = array_merge(range(1000, 1500), [3]);
-			$this->assertSame([3], $this->itemIds($this->recommender->linkedItems(1, $allowed, 1)));
-			$this->assertSame([3], $this->itemIds($this->recommender->linkedItems(1, [3], 1)));
+			$this->assertSame([3], $this->itemIds($this->recommender->linkedItems(1, new ArrayEligibilityProvider($allowed), 1)));
+			$this->assertSame([3], $this->itemIds($this->recommender->linkedItems(1, new ArrayEligibilityProvider([3]), 1)));
 		}
 
 		// =========================================================================
@@ -260,7 +261,7 @@
 			$this->insertRating(1, 10, 0.9);
 			$this->insertLink(10, 20, 10);
 			$this->insertLink(10, 30, 5);
-			$this->assertSame([30], $this->itemIds($this->recommender->memberRecommendations(1, [30], 1)));
+			$this->assertSame([30], $this->itemIds($this->recommender->memberRecommendations(1, new ArrayEligibilityProvider([30]), 1)));
 		}
 
 		// =========================================================================
@@ -316,7 +317,7 @@
 		public function testSlopeItemsFilterFillsLimit(): void {
 			$this->insertLink(1, 2, 2, 0.8);
 			$this->insertLink(1, 3, 2, 0.2);
-			$this->assertSame(3, $this->recommender->slopeItems(1, filter: [3], limit: 1)[0]->itemId);
+			$this->assertSame(3, $this->recommender->slopeItems(1, eligibility: new ArrayEligibilityProvider([3]), limit: 1)[0]->itemId);
 		}
 
 		// =========================================================================
