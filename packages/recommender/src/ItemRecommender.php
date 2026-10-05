@@ -520,7 +520,7 @@
 			return $support < $minSupport ? null : new PredictionResult($productId,
 				$this->clampRating((float)$row['numerator'] / $support), $support);
 		}
-
+		
 		/**
 		 * Predict all unseen member ratings with directed-pair support.
 		 * @param int $memberId Member ID
@@ -557,7 +557,7 @@
 			}
 			return $this->detailedPredictions($rows, $filter, $limit);
 		}
-
+		
 		/**
 		 * Predict one visitor rating with directed-pair support.
 		 * @param VisitorContext $visitor Visitor ratings
@@ -586,7 +586,7 @@
 			return $support < $minSupport ? null : new PredictionResult($productId,
 				$this->clampRating((float)$rows['numerator'] / $support), $support);
 		}
-
+		
 		/**
 		 * Predict unseen visitor ratings with a batched temporary input table.
 		 * @param VisitorContext $visitor Visitor ratings
@@ -612,20 +612,20 @@
 						$holders = implode(',', array_fill(0, count($batch), '(?)'));
 						$this->connection->execute("INSERT INTO {$seenTable} (product_id) VALUES {$holders}", $batch);
 					}
-				$params = ['category' => $cat, 'min_support' => $minSupport];
-				$sql = "SELECT l.item_id2, SUM(l.slope_count) AS support,
+					$params = ['category' => $cat, 'min_support' => $minSupport];
+					$sql = "SELECT l.item_id2, SUM(l.slope_count) AS support,
 					SUM(v.rating * l.slope_count + l.diff_slope) AS numerator,
 					LEAST(1.0, GREATEST(0.0,
 						SUM(v.rating * l.slope_count + l.diff_slope) / SUM(l.slope_count))) AS predicted
 					FROM vogoo_links l JOIN {$table} v ON v.product_id = l.item_id1
 					WHERE l.category = :category AND l.slope_count > 0
 					AND NOT EXISTS (SELECT 1 FROM {$seenTable} s WHERE s.product_id = l.item_id2)";
-				$sql .= $this->allowedSql($filter, 'l.item_id2', $params);
-				$sql .= ' GROUP BY l.item_id2 HAVING support >= :min_support
+					$sql .= $this->allowedSql($filter, 'l.item_id2', $params);
+					$sql .= ' GROUP BY l.item_id2 HAVING support >= :min_support
 					ORDER BY predicted DESC, support DESC, l.item_id2 ASC';
-				if ($limit > 0) {
-					$sql .= ' LIMIT ' . $limit;
-				}
+					if ($limit > 0) {
+						$sql .= ' LIMIT ' . $limit;
+					}
 					return $this->connection->execute($sql, $params)->fetchAll('assoc');
 				} finally {
 					try {
@@ -643,7 +643,7 @@
 				&& !isset($seen[(int)$row['item_id2']])));
 			return $this->detailedPredictions($rows, $filter, $limit);
 		}
-
+		
 		/** @param int $minSupport Minimum support
 		 * @return void
 		 */
@@ -652,7 +652,7 @@
 				throw new \InvalidArgumentException('Minimum support must be positive.');
 			}
 		}
-
+		
 		/** @param array<mixed> $rows Aggregated rows
 		 * @param array<int> $filter Allowed IDs
 		 * @param int $limit Maximum results
@@ -678,7 +678,7 @@
 				?: ($b->supportCount <=> $a->supportCount) ?: ($a->itemId <=> $b->itemId));
 			return $limit > 0 ? array_slice($results, 0, $limit) : $results;
 		}
-
+		
 		/** @template T
 		 * @param array<int, float> $ratings Genuine visitor ratings
 		 * @param callable(string): T $operation Query using the temporary table
@@ -705,11 +705,11 @@
 				$this->connection->execute("DROP TEMPORARY TABLE {$table}");
 			}
 		}
-
+		
 		// -------------------------------------------------------------------------
 		// Helpers
 		// -------------------------------------------------------------------------
-
+		
 		/** Return scored member recommendations, falling back to top rated items for short histories.
 		 * item_links scores sum liked_count multiplied by (member rating minus threshold);
 		 * top_rated scores are mean genuine ratings.
@@ -771,7 +771,7 @@
 			}
 			return $limit > 0 ? array_slice($results, 0, $limit) : $results;
 		}
-
+		
 		/** Return scored visitor recommendations with the same cold-start rule.
 		 * @param VisitorContext $visitor Visitor ratings
 		 * @param array<int> $filter Allowed product IDs, or empty for all
@@ -799,7 +799,7 @@
 			}
 			return $limit > 0 ? array_slice($results, 0, $limit) : $results;
 		}
-
+		
 		/** Rank popular high-rated items while excluding every rated or rejected item.
 		 * @param array<int> $excluded Items already seen
 		 * @param array<int> $filter Allowed IDs, or empty for all
@@ -823,7 +823,7 @@
 			}
 			return $results;
 		}
-
+		
 		/** Append a parameterized allowlist predicate before SQL limits.
 		 * Large lists use a temporary indexed table populated in bounded batches.
 		 * @param array<int> $filter Allowed product IDs
@@ -862,7 +862,7 @@
 			}
 			return ' AND ' . $column . ' IN (' . implode(',', $names) . ')';
 		}
-
+		
 		/** Release the temporary table used for a large allowlist.
 		 * @param array<int> $filter Allowed IDs
 		 * @return void

@@ -168,7 +168,7 @@
 			$result = array_keys($scores);
 			return $limit > 0 ? array_slice($result, 0, $limit) : $result;
 		}
-
+		
 		/**
 		 * Return scored neighbour candidates for the optional reconciler.
 		 * @param int $memberId Member ID
@@ -225,9 +225,9 @@
 							AND seen.category = :seen_category AND seen.product_id = r.product_id)
 						GROUP BY r.product_id ORDER BY score DESC, r.product_id ASC LIMIT {$limit}",
 						['category' => $cat, 'threshold' => $this->config->getThresholdRating(),
-							'member' => $memberId, 'seen_category' => $cat])->fetchAll('assoc');
+						 'member'   => $memberId, 'seen_category' => $cat])->fetchAll('assoc');
 					return array_map(fn($row) => ['itemId' => (int)$row['item_id'],
-						'score' => (float)$row['score']], $rows);
+					                              'score'  => (float)$row['score']], $rows);
 				} finally {
 					if ($candidateTable !== null) {
 						$this->connection->execute("DROP TEMPORARY TABLE {$candidateTable}");
@@ -237,7 +237,7 @@
 				$this->connection->execute("DROP TEMPORARY TABLE {$table}");
 			}
 		}
-
+		
 		/**
 		 * Convert the raw sum of squared rating differences into a 0–100 similarity
 		 * score, applying the Vogoo confidence penalty when the number of common

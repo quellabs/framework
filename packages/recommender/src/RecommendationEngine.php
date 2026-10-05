@@ -34,7 +34,7 @@
 			$this->linkUpdater = new LinkUpdater($connection, $config);
 			$this->itemRecommender = new ItemRecommender($connection, $config);
 		}
-
+		
 		/** @param int $memberId Member ID
 		 * @param int $productId Candidate ID
 		 * @param int $minSupport Minimum summed Slope One pair support
@@ -44,7 +44,7 @@
 		public function memberPredictDetailed(int $memberId, int $productId, int $minSupport = 1, ?int $category = null): ?PredictionResult {
 			return $this->itemRecommender->memberPredictDetailed($memberId, $productId, $minSupport, $category);
 		}
-
+		
 		/** @param int $memberId Member ID
 		 * @param array<int> $filter Allowed IDs, or empty for all
 		 * @param int $limit Maximum results, or zero for all
@@ -56,7 +56,7 @@
 			int $minSupport = 1, ?int $category = null): array {
 			return $this->itemRecommender->memberPredictAllDetailed($memberId, $filter, $limit, $minSupport, $category);
 		}
-
+		
 		/** @param VisitorContext $visitor Visitor ratings
 		 * @param int $productId Candidate ID
 		 * @param int $minSupport Minimum summed Slope One pair support
@@ -67,7 +67,7 @@
 			?int $category = null): ?PredictionResult {
 			return $this->itemRecommender->visitorPredictDetailed($visitor, $productId, $minSupport, $category);
 		}
-
+		
 		/** @param VisitorContext $visitor Visitor ratings
 		 * @param array<int> $filter Allowed IDs, or empty for all
 		 * @param int $limit Maximum results, or zero for all
@@ -433,7 +433,7 @@
 			//
 			// transactional() is declared to return mixed, which erases the closure's
 			// bool return; cast so the method's declared bool return type still holds.
-			return (bool) $this->connection->transactional(function () use ($memberId, $productId, $cat, $rating): bool {
+			return (bool)$this->connection->transactional(function () use ($memberId, $productId, $cat, $rating): bool {
 				$previous = $this->fetchExistingRating($memberId, $productId, $cat);
 				
 				// -1.0 sentinel marks "no previous rating" for the link/slope updates
@@ -592,11 +592,11 @@
 				      `product_id` = :product_id AND
 				      `category` = :category
 			', [
-				'rating'     => $rating,
-				'member_id'  => $memberId,
-				'product_id' => $productId,
-				'category'   => $category
-			])->rowCount() === 1;
+					'rating'     => $rating,
+					'member_id'  => $memberId,
+					'product_id' => $productId,
+					'category'   => $category
+				])->rowCount() === 1;
 		}
 		
 		/**
@@ -612,10 +612,10 @@
 				INSERT INTO `vogoo_ratings` (`member_id`, `product_id`, `category`, `rating`, `ts`)
 				VALUES (:member_id, :product_id, :category, :rating, NOW())
 			', [
-				'member_id'  => $memberId,
-				'product_id' => $productId,
-				'category'   => $category,
-				'rating'     => $rating
-			])->rowCount() === 1;
+					'member_id'  => $memberId,
+					'product_id' => $productId,
+					'category'   => $category,
+					'rating'     => $rating
+				])->rowCount() === 1;
 		}
 	}
