@@ -58,6 +58,19 @@ echo $recommendations[0]->itemId; // 102
 
 Ratings run from 0.0 to 1.0, and -1.0 marks "not interested".
 
+## API at a glance
+
+| Task | Method | Returns |
+|------|--------|---------|
+| Rate a product | `RecommendationEngine::setRating()` | `void`, throws on invalid input |
+| Recommendations for a member | `ItemRecommender::memberRecommendations()` | `RecommendationResult[]` |
+| Recommendations for a visitor | `ItemRecommender::visitorRecommendations()` | `RecommendationResult[]` |
+| Predicted rating for one product | `ItemRecommender::memberPrediction()` | `PredictionResult\|null` |
+| Predicted ratings for all unrated products | `ItemRecommender::memberPredictions()` | `PredictionResult[]` |
+| Ranking filtered by catalogue eligibility | `RecommendationReconciler::recommendMember()` | `RecommendationList` |
+
+Visitor variants take a `VisitorContext` in place of the member ID.
+
 ## Documentation
 
 The full API, configuration reference, reconciliation and evaluation workflows are documented in the Recommender
