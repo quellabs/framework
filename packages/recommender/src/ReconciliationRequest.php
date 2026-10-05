@@ -103,6 +103,8 @@
 			$this->sources = self::canonicalSources($sources);
 			
 			$this->validateLimits();
+			$this->validateOptionalLimits();
+			$this->validateCategory();
 			self::validateKey($placement, 64, 'placement');
 			
 			if ($contextKey !== null) {
@@ -200,35 +202,49 @@
 			if ($this->limit < 1 || $this->limit > 100) {
 				throw new \InvalidArgumentException("Limit must be between 1 and 100, got {$this->limit}.");
 			}
-			
+
 			if ($this->minSlopeSupport < 1) {
 				throw new \InvalidArgumentException("Minimum slope support must be at least 1, got {$this->minSlopeSupport}.");
 			}
-			
+
 			if ($this->topRatedMinRatings < 1) {
 				throw new \InvalidArgumentException("Top-rated minimum ratings must be at least 1, got {$this->topRatedMinRatings}.");
 			}
-			
+
 			if ($this->minNeighbourSimilarity < 1 || $this->minNeighbourSimilarity > 100) {
 				throw new \InvalidArgumentException("Minimum neighbour similarity must be between 1 and 100, got {$this->minNeighbourSimilarity}.");
 			}
-			
+
 			if ($this->maxNeighbours < 1) {
 				throw new \InvalidArgumentException("Maximum neighbours must be at least 1, got {$this->maxNeighbours}.");
 			}
-			
+		}
+
+		/**
+		 * Reject optional source-depth, backfill and batch overrides outside their allowed ranges.
+		 * @return void
+		 * @throws \InvalidArgumentException When an override is outside its allowed range
+		 */
+		private function validateOptionalLimits(): void {
 			if ($this->maxCandidateDepth !== null && $this->maxCandidateDepth < 50) {
 				throw new \InvalidArgumentException("Maximum candidate depth must be at least 50, got {$this->maxCandidateDepth}.");
 			}
-			
+
 			if ($this->maxBackfillRounds !== null && $this->maxBackfillRounds < 1) {
 				throw new \InvalidArgumentException("Maximum backfill rounds must be at least 1, got {$this->maxBackfillRounds}.");
 			}
-			
+
 			if ($this->maxEligibilityBatchSize !== null && $this->maxEligibilityBatchSize < 1) {
 				throw new \InvalidArgumentException("Maximum eligibility batch size must be at least 1, got {$this->maxEligibilityBatchSize}.");
 			}
-			
+		}
+
+		/**
+		 * Reject a category outside the unsigned 32-bit range.
+		 * @return void
+		 * @throws \InvalidArgumentException When the category is outside the unsigned 32-bit range
+		 */
+		private function validateCategory(): void {
 			if ($this->category !== null && ($this->category < 0 || $this->category > Identifier::MAX)) {
 				throw new \InvalidArgumentException("Category must be an unsigned 32-bit integer, got {$this->category}.");
 			}

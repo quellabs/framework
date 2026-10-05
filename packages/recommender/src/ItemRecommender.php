@@ -553,22 +553,19 @@
 				}
 	
 				foreach ($this->linkedCandidateRows($entry['product_id'], $category) as $row) {
-					if (
-						!is_array($row) ||
-						!isset($row['item_id2'], $row['liked_count']) ||
-						!is_numeric($row['item_id2']) ||
-						!is_numeric($row['liked_count'])
-					) {
+					$fields = self::linkScoreFields($row);
+
+					if ($fields === null) {
 						continue;
 					}
-	
-					$id = (int)$row['item_id2'];
-	
-					if (!Results::allows($filter, $id) || in_array($id, $ratedIds, true) || (int)$row['liked_count'] === 0) {
+
+					[$id, $likedCount] = $fields;
+
+					if (!Results::allows($filter, $id) || in_array($id, $ratedIds, true) || $likedCount === 0) {
 						continue;
 					}
-	
-					$scores[$id] = ($scores[$id] ?? 0.0) + ($entry['rating'] - $threshold) * (int)$row['liked_count'];
+
+					$scores[$id] = ($scores[$id] ?? 0.0) + ($entry['rating'] - $threshold) * $likedCount;
 	
 					if ($reasons !== null) {
 						$reasons[$id][] = $entry['product_id'];
@@ -577,6 +574,24 @@
 			}
 	
 			return $scores;
+		}
+
+		/**
+		 * Read the item ID and liked count from a link score row.
+		 * @param mixed $row Link score row
+		 * @return array{int, int}|null [item_id2, liked_count], or null when the row is unusable
+		 */
+		private static function linkScoreFields(mixed $row): ?array {
+			if (
+				!is_array($row) ||
+				!isset($row['item_id2'], $row['liked_count']) ||
+				!is_numeric($row['item_id2']) ||
+				!is_numeric($row['liked_count'])
+			) {
+				return null;
+			}
+
+			return [(int)$row['item_id2'], (int)$row['liked_count']];
 		}
 	
 	

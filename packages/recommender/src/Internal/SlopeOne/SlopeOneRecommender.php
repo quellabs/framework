@@ -403,29 +403,43 @@
 			$results = [];
 			
 			foreach ($rows as $row) {
-				if (
-					!is_array($row) ||
-					!isset($row['item_id2'], $row['support'], $row['numerator']) ||
-					!is_numeric($row['item_id2']) ||
-					!is_numeric($row['support']) ||
-					!is_numeric($row['numerator'])
-				) {
+				$fields = self::predictionFields($row);
+
+				if ($fields === null) {
 					throw new \UnexpectedValueException('Prediction row must contain numeric item_id2, support, and numerator values.');
 				}
-				
-				$id = (int)$row['item_id2'];
-				
+
+				[$id, $support, $numerator] = $fields;
+
 				if ($allowed !== null && !isset($allowed[$id])) {
 					continue;
 				}
-				
-				$support = (int)$row['support'];
-				$results[] = new PredictionResult($id, Results::clampRating((float)$row['numerator'] / $support), $support);
+
+				$results[] = new PredictionResult($id, Results::clampRating($numerator / $support), $support);
 			}
 			
 			usort($results, fn($a, $b) => ($b->predictedRating <=> $a->predictedRating)
 				?: ($b->supportCount <=> $a->supportCount) ?: ($a->itemId <=> $b->itemId));
 			return Results::limit($results, $limit);
+		}
+
+		/**
+		 * Read the item ID, support and numerator from a prediction row.
+		 * @param mixed $row Prediction row
+		 * @return array{int, int, float}|null [item_id2, support, numerator], or null when the row is unusable
+		 */
+		private static function predictionFields(mixed $row): ?array {
+			if (
+				!is_array($row) ||
+				!isset($row['item_id2'], $row['support'], $row['numerator']) ||
+				!is_numeric($row['item_id2']) ||
+				!is_numeric($row['support']) ||
+				!is_numeric($row['numerator'])
+			) {
+				return null;
+			}
+
+			return [(int)$row['item_id2'], (int)$row['support'], (float)$row['numerator']];
 		}
 	
 		/**

@@ -62,12 +62,8 @@
 			}
 			
 			$sources = $this->parseSources($rawSources);
-			$context = $config->get('context');
-			
-			if ($context !== null && !is_string($context)) {
-				throw new \InvalidArgumentException('Context must be a string.');
-			}
-			
+			$context = self::parseContext($config->get('context'));
+
 			$connection = $this->getRecommenderProvider()->getConnection();
 			$id = (new ClickModelTrainer($connection))->train((int)$category, $placement,
 				$sources, self::parseTimestamp($config->get('from')), self::parseTimestamp($config->get('to')),
@@ -82,18 +78,45 @@
 				'id' => $id,
 			])->fetchAssoc();
 			
-			$artifact = json_decode((string)$row['artifact'], true, 512, JSON_THROW_ON_ERROR);
-			
-			if (!is_array($artifact)) {
-				throw new \UnexpectedValueException('Stored model artifact is invalid.');
-			}
-			
+			$artifact = self::decodeArtifact((string)$row['artifact']);
+
 			$this->output->success("Created model candidate {$id} ({$row['status']}).");
 			$this->printSampleCounts($artifact);
 			$this->printMetrics($artifact);
 			return 0;
 		}
 		
+		/**
+		 * Validate the optional context option.
+		 * @param mixed $context Raw context option value
+		 * @return string|null Context string, or null when not given
+		 * @throws \InvalidArgumentException When the context is not a string
+		 */
+		private static function parseContext(mixed $context): ?string {
+			if ($context !== null && !is_string($context)) {
+				throw new \InvalidArgumentException('Context must be a string.');
+			}
+
+			return $context;
+		}
+
+		/**
+		 * Decode the stored model artifact JSON.
+		 * @param string $json Stored artifact JSON
+		 * @return array<mixed> Decoded artifact
+		 * @throws \UnexpectedValueException When the artifact does not decode to an array
+		 * @throws \JsonException When the JSON is malformed
+		 */
+		private static function decodeArtifact(string $json): array {
+			$artifact = json_decode($json, true, 512, JSON_THROW_ON_ERROR);
+
+			if (!is_array($artifact)) {
+				throw new \UnexpectedValueException('Stored model artifact is invalid.');
+			}
+
+			return $artifact;
+		}
+
 		/**
 		 * Parse a comma-separated list of source values, rejecting unknown and repeated entries.
 		 * @param string $rawSources Comma-separated source values

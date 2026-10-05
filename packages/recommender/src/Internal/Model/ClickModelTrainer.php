@@ -304,16 +304,7 @@
 				return null;
 			}
 			
-			$features = [];
-			
-			foreach ($snapshot['features'] as $name => $value) {
-				if (!is_string($name) || !is_numeric($value) || !is_finite((float)$value)) {
-					throw new \UnexpectedValueException('Recorded feature ' . var_export($name, true) . ' must be a finite number.');
-				}
-				
-				$features[$name] = (float)$value;
-			}
-			
+			$features = self::decodeFeatureValues($snapshot['features']);
 			$actualFeatures = array_keys($features);
 			sort($actualFeatures);
 			
@@ -326,6 +317,26 @@
 			return $features;
 		}
 		
+		/**
+		 * Convert recorded feature values to floats, rejecting any that are not finite numbers.
+		 * @param array<mixed> $values Recorded feature values keyed by feature name
+		 * @return array<string, float> Feature values as floats
+		 * @throws \UnexpectedValueException When a feature name is not a string or a value is not a finite number
+		 */
+		private static function decodeFeatureValues(array $values): array {
+			$features = [];
+
+			foreach ($values as $name => $value) {
+				if (!is_string($name) || !is_numeric($value) || !is_finite((float)$value)) {
+					throw new \UnexpectedValueException('Recorded feature ' . var_export($name, true) . ' must be a finite number.');
+				}
+
+				$features[$name] = (float)$value;
+			}
+
+			return $features;
+		}
+
 		/**
 		 * Check that the recorded depths cover the enabled sources and agree with their log-depth features.
 		 * @param array<mixed> $depths Recorded depth per source

@@ -26,6 +26,30 @@
 		 * @throws \UnexpectedValueException When the artifact or a coefficient is invalid
 		 */
 		public function __construct(array $artifact) {
+			[$intercept, $rawCoefficients, $rawMeans, $rawScales] = self::readArtifactShape($artifact);
+
+			$coefficients = [];
+			$means = [];
+			$scales = [];
+
+			foreach ($rawCoefficients as $name => $coefficient) {
+				[$coefficients[$name], $means[$name], $scales[$name]] = self::readCoefficient($name, $coefficient, $rawMeans, $rawScales);
+			}
+
+			$this->artifact = $artifact;
+			$this->intercept = $intercept;
+			$this->coefficients = $coefficients;
+			$this->means = $means;
+			$this->scales = $scales;
+		}
+
+		/**
+		 * Validate the version-1 top-level fields and return the typed values the constructor needs.
+		 * @param array<string, mixed> $artifact Stored model artifact
+		 * @return array{float, array<mixed>, array<mixed>, array<mixed>} Intercept, coefficients, means and scales
+		 * @throws \UnexpectedValueException When a required field is missing or malformed
+		 */
+		private static function readArtifactShape(array $artifact): array {
 			if (
 				($artifact['feature_schema_version'] ?? null) !== 1 ||
 				!isset($artifact['intercept'], $artifact['coefficients'], $artifact['means'], $artifact['scales']) ||
@@ -37,36 +61,35 @@
 			) {
 				throw new \UnexpectedValueException('Incompatible click model artifact.');
 			}
-			
-			$coefficients = [];
-			$means = [];
-			$scales = [];
-			
-			foreach ($artifact['coefficients'] as $name => $coefficient) {
-				if (
-					!is_string($name) ||
-					!is_numeric($coefficient) ||
-					!isset($artifact['means'][$name], $artifact['scales'][$name]) ||
-					!is_numeric($artifact['means'][$name]) ||
-					!is_numeric($artifact['scales'][$name]) ||
-					!is_finite((float)$coefficient) ||
-					!is_finite((float)$artifact['means'][$name]) ||
-					!is_finite((float)$artifact['scales'][$name]) ||
-					(float)$artifact['scales'][$name] <= 0
-				) {
-					throw new \UnexpectedValueException("Invalid click model coefficient for feature '{$name}'.");
-				}
-				
-				$coefficients[$name] = (float)$coefficient;
-				$means[$name] = (float)$artifact['means'][$name];
-				$scales[$name] = (float)$artifact['scales'][$name];
+
+			return [(float)$artifact['intercept'], $artifact['coefficients'], $artifact['means'], $artifact['scales']];
+		}
+
+		/**
+		 * Validate one coefficient with its mean and scale and return them as floats.
+		 * @param int|string $name Feature name
+		 * @param mixed $coefficient Stored coefficient
+		 * @param array<mixed> $means Stored feature means
+		 * @param array<mixed> $scales Stored feature scales
+		 * @return array{float, float, float} Coefficient, mean and scale
+		 * @throws \UnexpectedValueException When the coefficient or its standardization values are invalid
+		 */
+		private static function readCoefficient(int|string $name, mixed $coefficient, array $means, array $scales): array {
+			if (
+				!is_string($name) ||
+				!is_numeric($coefficient) ||
+				!isset($means[$name], $scales[$name]) ||
+				!is_numeric($means[$name]) ||
+				!is_numeric($scales[$name]) ||
+				!is_finite((float)$coefficient) ||
+				!is_finite((float)$means[$name]) ||
+				!is_finite((float)$scales[$name]) ||
+				(float)$scales[$name] <= 0
+			) {
+				throw new \UnexpectedValueException("Invalid click model coefficient for feature '{$name}'.");
 			}
-			
-			$this->artifact = $artifact;
-			$this->intercept = (float)$artifact['intercept'];
-			$this->coefficients = $coefficients;
-			$this->means = $means;
-			$this->scales = $scales;
+
+			return [(float)$coefficient, (float)$means[$name], (float)$scales[$name]];
 		}
 		
 		/**

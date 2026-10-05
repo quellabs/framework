@@ -3,6 +3,7 @@
 	// Run only against the dedicated test database; this resets its recommender fixtures.
 	require dirname(__DIR__, 3) . '/tests/bootstrap.php';
 	
+	use Cake\Database\Connection;
 	use Psr\Log\AbstractLogger;
 	use Quellabs\Recommender\ArrayEligibilityProvider;
 	use Quellabs\Recommender\Config\RecommendationConfig;
@@ -10,7 +11,12 @@
 	use Quellabs\Recommender\RecommendationSource;
 	use Quellabs\Recommender\ReconciliationRequest;
 	
-	$connection = $GLOBALS['test_connection'];
+	$connection = $GLOBALS['test_connection'] ?? null;
+
+	if (!$connection instanceof Connection) {
+		throw new \RuntimeException('Benchmark requires the test connection set by tests/bootstrap.php.');
+	}
+
 	$reconciler = new RecommendationReconciler($connection,
 	    new RecommendationConfig(directLinks: false, directSlope: false));
 	$driver = $connection->getDriver();
@@ -63,13 +69,12 @@
 	            try {
 	                $list = $reconciler->recommendMember(1, $request);
 	            } finally {
-	                $elapsedMs = (hrtime(true) - $start) / 1_000_000;
 	                $driver->disableQueryLogging();
 	                if ($previousLogger !== null) {
 	                    $driver->setLogger($previousLogger);
 	                }
 	            }
-	            $times[] = $elapsedMs;
+	            $times[] = (hrtime(true) - $start) / 1_000_000;
 	            $queries[] = $logger->queries;
 	            $returned[] = count($list->items);
 	        }

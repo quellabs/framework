@@ -54,24 +54,43 @@
 			$this->validateEvidence($evidence);
 			$this->validateFeatureValues($featureSnapshot);
 			
-			foreach ($sourceLogOddsContributions as $name => $value) {
-				if (!is_string($name) || !is_float($value) || !is_finite($value)) {
-					throw new \InvalidArgumentException("Source contribution '{$name}' must be a finite float, got " . var_export($value, true) . '.');
-				}
-			}
-			
-			foreach ($searchedDepths as $name => $depth) {
-				if (!is_string($name) || !is_int($depth) || $depth < 1) {
-					throw new \InvalidArgumentException("Searched depth for '{$name}' must be a positive integer, got " . var_export($depth, true) . '.');
-				}
-			}
-			
+			self::validateSourceContributions($sourceLogOddsContributions);
+			self::validateSearchedDepths($searchedDepths);
+
 			$this->itemId = $itemId;
 			$this->rankingScore = $rankingScore;
 			$this->evidence = $evidence;
 			$this->featureSnapshot = $featureSnapshot;
 			$this->sourceLogOddsContributions = $sourceLogOddsContributions;
 			$this->searchedDepths = $searchedDepths;
+		}
+
+		/**
+		 * Reject source log-odds contributions that are not finite floats keyed by source name.
+		 * @param array<mixed> $contributions Source log-odds contributions
+		 * @return void
+		 * @throws \InvalidArgumentException When a contribution is not a finite float
+		 */
+		private static function validateSourceContributions(array $contributions): void {
+			foreach ($contributions as $name => $value) {
+				if (!is_string($name) || !is_float($value) || !is_finite($value)) {
+					throw new \InvalidArgumentException("Source contribution '{$name}' must be a finite float, got " . var_export($value, true) . '.');
+				}
+			}
+		}
+
+		/**
+		 * Reject searched depths that are not positive integers keyed by source name.
+		 * @param array<mixed> $depths Searched depths per source
+		 * @return void
+		 * @throws \InvalidArgumentException When a depth is not a positive integer
+		 */
+		private static function validateSearchedDepths(array $depths): void {
+			foreach ($depths as $name => $depth) {
+				if (!is_string($name) || !is_int($depth) || $depth < 1) {
+					throw new \InvalidArgumentException("Searched depth for '{$name}' must be a positive integer, got " . var_export($depth, true) . '.');
+				}
+			}
 		}
 		
 		/**

@@ -172,23 +172,47 @@
 				$definition = $byName[$column];
 				$expectedType = self::expectedColumnType($column);
 				$nullable = in_array($column, self::NULLABLE_COLUMNS[$table], true);
-				$unsigned = in_array($expectedType, ['int', 'bigint'], true);
-				$asciiKey = in_array($column, ['placement', 'context_key', 'event_id'], true);
-				
+
 				if (
-					$definition['DATA_TYPE'] !== $expectedType ||
-					($definition['IS_NULLABLE'] === 'YES') !== $nullable ||
-					($unsigned && !str_contains((string)$definition['COLUMN_TYPE'], 'unsigned')) ||
-					($asciiKey && $definition['COLLATION_NAME'] !== 'ascii_bin') ||
-					(isset(self::COLUMN_LENGTHS[$column]) &&
-						(int)$definition['CHARACTER_MAXIMUM_LENGTH'] !== self::COLUMN_LENGTHS[$column]) ||
-					($expectedType === 'datetime' && (int)$definition['DATETIME_PRECISION'] !== 6) ||
-					($column === 'context_key' && $definition['COLUMN_DEFAULT'] !== '') ||
-					($column === 'active_marker' && !str_contains((string)$definition['EXTRA'], 'GENERATED'))
+					self::hasIncompatibleType($definition, $column, $expectedType, $nullable) ||
+					self::hasIncompatibleShape($definition, $column, $expectedType)
 				) {
 					throw new \RuntimeException("Existing {$table}.{$column} has an incompatible definition.");
 				}
 			}
+		}
+
+		/**
+		 * Report whether a column's data type, nullability, unsigned flag or collation differ from the schema.
+		 * @param array<string, string|int|float|bool|null> $definition information_schema row for the column
+		 * @param string $column Column name
+		 * @param string $expectedType Expected DATA_TYPE value
+		 * @param bool $nullable Whether the column must allow NULL
+		 * @return bool True when the definition differs
+		 */
+		private static function hasIncompatibleType(array $definition, string $column, string $expectedType, bool $nullable): bool {
+			$unsigned = in_array($expectedType, ['int', 'bigint'], true);
+			$asciiKey = in_array($column, ['placement', 'context_key', 'event_id'], true);
+
+			return $definition['DATA_TYPE'] !== $expectedType ||
+				($definition['IS_NULLABLE'] === 'YES') !== $nullable ||
+				($unsigned && !str_contains((string)$definition['COLUMN_TYPE'], 'unsigned')) ||
+				($asciiKey && $definition['COLLATION_NAME'] !== 'ascii_bin');
+		}
+
+		/**
+		 * Report whether a column's length, precision, default or generated marker differ from the schema.
+		 * @param array<string, string|int|float|bool|null> $definition information_schema row for the column
+		 * @param string $column Column name
+		 * @param string $expectedType Expected DATA_TYPE value
+		 * @return bool True when the definition differs
+		 */
+		private static function hasIncompatibleShape(array $definition, string $column, string $expectedType): bool {
+			return (isset(self::COLUMN_LENGTHS[$column]) &&
+					(int)$definition['CHARACTER_MAXIMUM_LENGTH'] !== self::COLUMN_LENGTHS[$column]) ||
+				($expectedType === 'datetime' && (int)$definition['DATETIME_PRECISION'] !== 6) ||
+				($column === 'context_key' && $definition['COLUMN_DEFAULT'] !== '') ||
+				($column === 'active_marker' && !str_contains((string)$definition['EXTRA'], 'GENERATED'));
 		}
 		
 		/**

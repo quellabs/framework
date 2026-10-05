@@ -813,17 +813,11 @@
 				$result = [];
 				
 				foreach ($rows as $row) {
-					if (
-						!is_array($row) ||
-						!isset($row['id']) ||
-						!is_numeric($row['id']) ||
-						(isset($row['score']) && !is_numeric($row['score'])) ||
-						(isset($row['support_count']) && !is_numeric($row['support_count']))
-					) {
-						throw new \UnexpectedValueException('Source candidate row must have a numeric id, and numeric score and support_count when present.');
+					if (!is_array($row)) {
+						throw new \UnexpectedValueException(self::MALFORMED_CANDIDATE_ROW);
 					}
 					
-					$id = (int)$row['id'];
+					[$id, $score, $count] = self::candidateFields($row);
 					
 					if (array_key_exists($id, $seen)) {
 						continue;
@@ -831,15 +825,41 @@
 					
 					$result[] = [
 						'id'           => $id,
-						'score'        => isset($row['score']) ? (float)$row['score'] : null,
-						'count'        => isset($row['support_count']) ? (int)$row['support_count'] : null,
+						'score'        => $score,
+						'count'        => $count,
 						'contributors' => $this->decodeContributors($row),
 					];
 				}
 				
 				return $result;
 			}
+		private const MALFORMED_CANDIDATE_ROW = 'Source candidate row must have a numeric id, and numeric score and support_count when present.';
+		
+
 			
+			/**
+			 * Read the id, score and support count from a candidate row.
+			 * @param array<mixed> $row SQL row
+			 * @return array{int, float|null, int|null} Item ID, score and support count, the last two null when absent
+			 * @throws \UnexpectedValueException When the id is missing or the score or support count is non-numeric
+			 */
+			private static function candidateFields(array $row): array {
+				if (
+					!isset($row['id']) ||
+					!is_numeric($row['id']) ||
+					(isset($row['score']) && !is_numeric($row['score'])) ||
+					(isset($row['support_count']) && !is_numeric($row['support_count']))
+				) {
+					throw new \UnexpectedValueException(self::MALFORMED_CANDIDATE_ROW);
+				}
+
+				return [
+					(int)$row['id'],
+					isset($row['score']) ? (float)$row['score'] : null,
+					isset($row['support_count']) ? (int)$row['support_count'] : null,
+				];
+			}
+
 			/**
 			 * Decode the JSON contributor list of a candidate row.
 			 * @param array<mixed> $row SQL row, which may hold a JSON "contributors" string

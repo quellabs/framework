@@ -59,17 +59,27 @@
 				throw new \InvalidArgumentException("Log-odds contribution must be finite, got {$logOddsContribution}.");
 			}
 			
-			foreach ($contributingItemIds as $id) {
-				if (!is_int($id) || $id < 0 || $id > Identifier::MAX) {
-					throw new \InvalidArgumentException('Contributing item ID must be an unsigned 32-bit integer, got ' . var_export($id, true) . '.');
-				}
-			}
-			
+			self::assertContributingItemIds($contributingItemIds);
+
 			$this->source = $source;
 			$this->rawScore = $rawScore;
 			$this->sourceRank = $sourceRank;
 			$this->supportCount = $supportCount;
 			$this->contributingItemIds = $contributingItemIds;
 			$this->logOddsContribution = $logOddsContribution;
+		}
+
+		/**
+		 * Reject contributing item IDs outside the unsigned 32-bit range.
+		 * @param array<int, mixed> $ids Contributing item IDs
+		 * @return void
+		 * @throws \InvalidArgumentException When an ID is not an unsigned 32-bit integer
+		 */
+		private static function assertContributingItemIds(array $ids): void {
+			foreach ($ids as $id) {
+				if (!is_int($id) || $id < 0 || $id > Identifier::MAX) {
+					throw new \InvalidArgumentException('Contributing item ID must be an unsigned 32-bit integer, got ' . var_export($id, true) . '.');
+				}
+			}
 		}
 	}

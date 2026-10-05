@@ -146,6 +146,21 @@
 				throw new \UnexpectedValueException("Calibrated list refers to missing model {$shown->modelId}.");
 			}
 			
+			$this->assertPartitionMatches($row, $shown);
+
+			$model = ClickModel::fromJson((string)$row['artifact']);
+			$this->assertItemsMatchModel($shown, $model);
+			return $model;
+		}
+
+		/**
+		 * Check that a stored model row belongs to the partition of a calibrated list.
+		 * @param array<string, string|int|float|bool|null> $row Stored model row
+		 * @param RecommendationList $shown Calibrated list
+		 * @return void
+		 * @throws \UnexpectedValueException When the row does not match the list partition
+		 */
+		private function assertPartitionMatches(array $row, RecommendationList $shown): void {
 			if (
 				$row['objective'] !== 'click' ||
 				(int)$row['category'] !== $shown->category ||
@@ -156,15 +171,23 @@
 			) {
 				throw new \UnexpectedValueException("Calibrated list does not match the partition of model {$shown->modelId}.");
 			}
-			
-			$model = ClickModel::fromJson((string)$row['artifact']);
+		}
+
+		/**
+		 * Check that each displayed item carries the model's features and reproduces its reference score.
+		 * @param RecommendationList $shown Calibrated list
+		 * @param ClickModel $model Model referenced by the list
+		 * @return void
+		 * @throws \UnexpectedValueException When an item's features or reference score do not match the model
+		 */
+		private function assertItemsMatchModel(RecommendationList $shown, ClickModel $model): void {
 			$expectedFeatures = array_values(array_filter($model->featureNames(),
 				fn($name) => $name !== 'log_position'));
-			
+
 			foreach ($shown->items as $item) {
 				$actualFeatures = array_keys($item->featureSnapshot);
 				sort($actualFeatures);
-				
+
 				if (
 					$actualFeatures !== $expectedFeatures ||
 					!$this->hasCompleteFeatureSnapshot($item, $shown->sources) ||
@@ -174,8 +197,6 @@
 					throw new \UnexpectedValueException("Features or reference score of item {$item->itemId} do not match model {$shown->modelId}.");
 				}
 			}
-			
-			return $model;
 		}
 		
 		/**
