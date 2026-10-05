@@ -12,7 +12,7 @@ class EvaluationSchemaTest extends TestCase {
     /** @return void */
     public function testMissingTablesProduceInstallationHint(): void {
         $statement = $this->createMock(StatementInterface::class);
-        $statement->method('fetchAll')->willReturn([['TABLE_NAME' => 'recommender_models']]);
+        $statement->method('fetchAll')->willReturn([['TABLE_NAME' => 'vogoo_models']]);
         $connection = $this->createMock(Connection::class);
         $connection->method('execute')->willReturn($statement);
         $this->expectExceptionMessage('run recommender:init-evaluation-db');

@@ -170,8 +170,8 @@ readonly class ItemRecommender {
 		}
 
 		$seenIds = $visitor->getRatedProductIds($resolvedCategory);
-		$rows = $this->temporary->withRatingTable('recommender_visitor_link_input_', $genuine,
-			fn(string $table) => $this->temporary->withIdTable('recommender_visitor_seen_', $seenIds,
+		$rows = $this->temporary->withRatingTable('vogoo_visitor_link_input_', $genuine,
+			fn(string $table) => $this->temporary->withIdTable('vogoo_visitor_seen_', $seenIds,
 				fn(string $seenTable) => $this->linkScoreRows("JOIN {$table} r ON r.product_id = l.item_id1",
 					"NOT EXISTS (SELECT 1 FROM {$seenTable} s WHERE s.product_id = l.item_id2)",
 					[], $filter, $resolvedCategory, $limit)));

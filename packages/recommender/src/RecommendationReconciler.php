@@ -337,14 +337,14 @@ readonly class RecommendationReconciler {
 	 */
 	private function activeModel(int $category, ReconciliationRequest $request): ?array {
 		$exists = $this->connection->execute('SELECT COUNT(*) AS total FROM information_schema.tables
-            WHERE table_schema = DATABASE() AND table_name = \'recommender_models\'')->fetchAssoc();
+            WHERE table_schema = DATABASE() AND table_name = \'vogoo_models\'')->fetchAssoc();
 		
 		if ((int)$exists['total'] === 0) {
 			return null;
 		}
 		
 		$row = $this->connection->execute('SELECT HEX(id) AS model_id, feature_schema_version, artifact
-            FROM recommender_models WHERE objective = \'click\' AND category = ? AND placement = ?
+            FROM vogoo_models WHERE objective = \'click\' AND category = ? AND placement = ?
                 AND source_mask = ? AND context_key = ? AND status = \'active\'',
 			[$category, $request->placement, $request->sourceMask(), $request->contextKey ?? ''])->fetchAssoc();
 			
@@ -531,7 +531,7 @@ readonly class RecommendationReconciler {
 	 * @return array<int, array<string, mixed>> Aggregate candidate rows
 	 */
 	private function auditTopRatedRows(array $missing, ReconciliationRequest $request, int $category): array {
-		return $this->temporary->withIdTable('recommender_audit_candidates_', $missing, function (string $table) use (
+		return $this->temporary->withIdTable('vogoo_audit_candidates_', $missing, function (string $table) use (
 			$category, $request
 		): array {
 			$restriction = "AND EXISTS (SELECT 1 FROM {$table} candidates WHERE candidates.product_id = r.product_id)";
@@ -566,8 +566,8 @@ readonly class RecommendationReconciler {
 	 */
 	private function auditRatingRows(RecommendationSource $source, array $candidateIds,
 		array $ratings, int $category, ReconciliationRequest $request): array {
-		return $this->temporary->withRatingTable('recommender_audit_ratings_', $ratings, fn($ratingsTable) =>
-			$this->temporary->withIdTable('recommender_audit_candidates_', $candidateIds, function (string $candidateTable) use (
+		return $this->temporary->withRatingTable('vogoo_audit_ratings_', $ratings, fn($ratingsTable) =>
+			$this->temporary->withIdTable('vogoo_audit_candidates_', $candidateIds, function (string $candidateTable) use (
 				$source, $ratingsTable, $category, $request
 			): array {
 				$restriction = "AND EXISTS (SELECT 1 FROM {$candidateTable} candidates WHERE candidates.product_id = l.item_id2)";
@@ -685,7 +685,7 @@ readonly class RecommendationReconciler {
 	 * @throws \UnexpectedValueException When the query does not return an array
 	 */
 	private function generateTopRated(array $ratings, int $category, int $depth, ReconciliationRequest $request): array {
-		$rows = $this->temporary->withIdTable('recommender_seen_', array_keys($ratings), function (string $seenTable) use ($category, $depth, $request): array {
+		$rows = $this->temporary->withIdTable('vogoo_seen_', array_keys($ratings), function (string $seenTable) use ($category, $depth, $request): array {
 			$restriction = "AND NOT EXISTS (SELECT 1 FROM {$seenTable} s WHERE s.product_id = r.product_id)";
 
 			return $this->connection->execute($this->topRatedSql($restriction, $depth),
@@ -734,8 +734,8 @@ readonly class RecommendationReconciler {
 	 */
 	private function generateFromRatings(RecommendationSource $source, array $genuine,
 		array $seen, int $category, int $depth, ReconciliationRequest $request): array {
-		return $this->temporary->withRatingTable('recommender_source_input_', $genuine, fn($table) =>
-			$this->temporary->withIdTable('recommender_seen_', array_keys($seen),
+		return $this->temporary->withRatingTable('vogoo_source_input_', $genuine, fn($table) =>
+			$this->temporary->withIdTable('vogoo_seen_', array_keys($seen),
 				function (string $seenTable) use ($source, $table, $category, $depth, $request, $seen): array {
 					$restriction = "AND NOT EXISTS (SELECT 1 FROM {$seenTable} s WHERE s.product_id = l.item_id2)";
 					$rows = $this->connection->execute(

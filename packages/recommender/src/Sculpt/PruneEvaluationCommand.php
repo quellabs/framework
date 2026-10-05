@@ -55,13 +55,13 @@ class PruneEvaluationCommand extends RecommenderCommand {
 		$deleted = 0;
 		
 		do {
-			$ids = $connection->execute('SELECT HEX(id) AS id FROM recommender_impressions
+			$ids = $connection->execute('SELECT HEX(id) AS id FROM vogoo_impressions
             WHERE shown_at < ? ORDER BY shown_at, id LIMIT ' . (int)$size, [$cutoff])->fetchAll('assoc');
 			
 			if ($ids !== []) {
 				$connection->transactional(function () use ($connection, $ids): void {
 					foreach ($ids as $row) {
-						$connection->execute('DELETE FROM recommender_impressions WHERE id = UNHEX(?)', [$row['id']]);
+						$connection->execute('DELETE FROM vogoo_impressions WHERE id = UNHEX(?)', [$row['id']]);
 					}
 				});
 				$deleted += count($ids);

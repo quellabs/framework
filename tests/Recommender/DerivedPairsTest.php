@@ -139,28 +139,28 @@ class DerivedPairsTest extends IntegrationTestCase {
      */
     public function testLegacySchemaMigration(): void {
         $this->insertRating(1, 10, 0.9);
-        $this->connection->execute('CREATE TEMPORARY TABLE recommender_legacy_links_fixture (
+        $this->connection->execute('CREATE TEMPORARY TABLE vogoo_legacy_links_fixture (
             item_id1 INT UNSIGNED NOT NULL, item_id2 INT UNSIGNED NOT NULL,
             category INT UNSIGNED NOT NULL, cnt INT NOT NULL, diff_slope FLOAT NOT NULL,
             PRIMARY KEY (item_id1, item_id2, category))');
         try {
-            $this->connection->execute('INSERT INTO recommender_legacy_links_fixture VALUES (10, 20, 1, 7, 0.4)');
+            $this->connection->execute('INSERT INTO vogoo_legacy_links_fixture VALUES (10, 20, 1, 7, 0.4)');
             $sql = file_get_contents(__DIR__ . '/../../packages/recommender/migrations/2026-10-independent-pair-counts.sql');
-            $sql = str_replace('vogoo_links', 'recommender_legacy_links_fixture', $sql);
+            $sql = str_replace('vogoo_links', 'vogoo_legacy_links_fixture', $sql);
             $sql = implode("\n", array_filter(explode("\n", $sql), fn($line) => !str_starts_with(trim($line), '--')));
             foreach (explode(';', $sql) as $statement) {
                 if (trim($statement) !== '') {
                     $this->connection->execute($statement);
                 }
             }
-            $this->assertSame([], $this->connection->execute('SELECT * FROM recommender_legacy_links_fixture')->fetchAll('assoc'));
+            $this->assertSame([], $this->connection->execute('SELECT * FROM vogoo_legacy_links_fixture')->fetchAll('assoc'));
             $this->assertNotNull($this->fetchRatingRow(1, 10));
-            $columns = array_column($this->connection->execute('SHOW COLUMNS FROM recommender_legacy_links_fixture')->fetchAll('assoc'), 'Field');
+            $columns = array_column($this->connection->execute('SHOW COLUMNS FROM vogoo_legacy_links_fixture')->fetchAll('assoc'), 'Field');
             $this->assertContains('liked_count', $columns);
             $this->assertContains('slope_count', $columns);
             $this->assertNotContains('cnt', $columns);
         } finally {
-            $this->connection->execute('DROP TEMPORARY TABLE IF EXISTS recommender_legacy_links_fixture');
+            $this->connection->execute('DROP TEMPORARY TABLE IF EXISTS vogoo_legacy_links_fixture');
         }
     }
 
@@ -171,7 +171,7 @@ class DerivedPairsTest extends IntegrationTestCase {
         $config = new RecommendationConfig(directLinks: true, directSlope: true);
         $engine = new RecommendationEngine($this->connection, $config);
         $engine->setRating(1, 10, 0.9);
-        $this->connection->execute("CREATE TRIGGER recommender_rating_failure BEFORE INSERT ON vogoo_ratings
+        $this->connection->execute("CREATE TRIGGER vogoo_rating_failure BEFORE INSERT ON vogoo_ratings
             FOR EACH ROW BEGIN IF NEW.product_id = 30 THEN SIGNAL SQLSTATE '45000'
             SET MESSAGE_TEXT = 'Injected rating failure'; END IF; END");
         try {
@@ -184,7 +184,7 @@ class DerivedPairsTest extends IntegrationTestCase {
                 $this->assertNull($this->fetchLinkRow(30, 10));
             }
         } finally {
-            $this->connection->execute('DROP TRIGGER IF EXISTS recommender_rating_failure');
+            $this->connection->execute('DROP TRIGGER IF EXISTS vogoo_rating_failure');
         }
     }
 

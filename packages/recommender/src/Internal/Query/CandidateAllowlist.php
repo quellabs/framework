@@ -12,7 +12,7 @@ final class CandidateAllowlist {
 	private const TABLE_THRESHOLD = 500;
 
 	/** @var string Temporary table holding a large allowlist for one query */
-	private const TABLE = 'recommender_allowed_items';
+	private const TABLE = 'vogoo_allowed_items';
 
 	/** @var TemporaryTable Temporary table helper */
 	private TemporaryTable $temporary;

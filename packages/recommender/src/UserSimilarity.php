@@ -211,13 +211,13 @@ readonly class UserSimilarity {
 			return [];
 		}
 		
-		return $this->temporary->withNeighbourTable('recommender_neighbours_', $neighbours,
+		return $this->temporary->withNeighbourTable('vogoo_neighbours_', $neighbours,
 			function (string $neighbourTable) use ($memberId, $candidateIds, $resolvedCategory, $limit): array {
 				if ($candidateIds === null) {
 					return $this->queryNeighbourRecommendations($memberId, $neighbourTable, null, $resolvedCategory, $limit);
 				}
 
-				return $this->temporary->withIdTable('recommender_neighbour_candidates_', $candidateIds,
+				return $this->temporary->withIdTable('vogoo_neighbour_candidates_', $candidateIds,
 					fn(string $candidateTable): array => $this->queryNeighbourRecommendations(
 						$memberId, $neighbourTable, $candidateTable, $resolvedCategory, $limit));
 			});

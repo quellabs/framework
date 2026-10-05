@@ -31,7 +31,7 @@ class EvaluationTest extends IntegrationTestCase {
         foreach (array_filter(array_map('trim', explode(';', preg_replace('/^--.*$/m', '', $sql)))) as $statement) {
             $this->connection->execute($statement);
         }
-        $this->connection->execute('DELETE FROM recommender_impressions');
+        $this->connection->execute('DELETE FROM vogoo_impressions');
     }
 
     /** @return void */
@@ -178,7 +178,7 @@ class EvaluationTest extends IntegrationTestCase {
             $this->assertTrue(true);
         }
         $this->assertNotNull($this->fetchRatingRow(7, 42));
-        $count = $this->connection->execute('SELECT COUNT(*) AS total FROM recommender_impressions')
+        $count = $this->connection->execute('SELECT COUNT(*) AS total FROM vogoo_impressions')
             ->fetchAssoc();
         $this->assertSame(0, (int)$count['total']);
     }
@@ -200,7 +200,7 @@ class EvaluationTest extends IntegrationTestCase {
             'means' => array_fill_keys($names, 0.0), 'scales' => array_fill_keys($names, 1.0),
             'validated' => true];
         $modelId = bin2hex(random_bytes(16));
-        $this->connection->execute('INSERT INTO recommender_models
+        $this->connection->execute('INSERT INTO vogoo_models
             (id, objective, category, placement, source_mask, context_key,
             feature_schema_version, artifact, trained_at, status)
             VALUES (UNHEX(?), \'click\', 1, \'home\', 16, \'\', 1, ?, UTC_TIMESTAMP(6), \'active\')',
@@ -234,7 +234,7 @@ class EvaluationTest extends IntegrationTestCase {
             $recorder->recordOutcome($impressionId, $list->items[0]->itemId, 'model-click',
                 OutcomeType::Click, new DateTimeImmutable('2026-01-01T00:01:00Z'));
             $rows = $this->connection->execute('SELECT position, display_click_probability
-                FROM recommender_impression_items WHERE impression_id = ? ORDER BY position',
+                FROM vogoo_impression_items WHERE impression_id = ? ORDER BY position',
                 [$impressionId->binary()])->fetchAll('assoc');
             $this->assertEqualsWithDelta(0.5, (float)$rows[0]['display_click_probability'], 0.00001);
             $this->assertLessThan(0.5, (float)$rows[1]['display_click_probability']);
@@ -244,7 +244,7 @@ class EvaluationTest extends IntegrationTestCase {
                 new DateTimeImmutable('2026-01-03T00:00:00Z'), 3600);
             $this->assertSame(2, $calibration[$modelId . ':home']['impressions']);
             $this->assertSame(0.5, $calibration[$modelId . ':home']['observed_click_rate']);
-            $this->connection->execute('UPDATE recommender_models SET feature_schema_version = 2
+            $this->connection->execute('UPDATE vogoo_models SET feature_schema_version = 2
                 WHERE id = UNHEX(?)', [$modelId]);
             try {
                 (new RecommendationReconciler($this->connection, $this->config))
@@ -254,8 +254,8 @@ class EvaluationTest extends IntegrationTestCase {
                 $this->assertTrue(true);
             }
         } finally {
-            $this->connection->execute('DELETE FROM recommender_impressions');
-            $this->connection->execute('DELETE FROM recommender_models WHERE id = UNHEX(?)', [$modelId]);
+            $this->connection->execute('DELETE FROM vogoo_impressions');
+            $this->connection->execute('DELETE FROM vogoo_models WHERE id = UNHEX(?)', [$modelId]);
         }
     }
 
@@ -288,11 +288,11 @@ class EvaluationTest extends IntegrationTestCase {
         $recorder->recordOutcome($impressionId, 42, 'prune-click', OutcomeType::Click,
             new DateTimeImmutable('2026-01-01T00:01:00Z'));
         $this->assertSame(0, $prune->execute(new ConfigurationManager(['--before=2026-02-01T00:00:00Z', '--batch-size=1'])));
-        $remaining = $this->connection->execute("SELECT COUNT(*) AS total FROM recommender_impressions WHERE placement = 'prune_test'")
+        $remaining = $this->connection->execute("SELECT COUNT(*) AS total FROM vogoo_impressions WHERE placement = 'prune_test'")
             ->fetchAssoc();
         $this->assertSame(0, (int)$remaining['total']);
-        foreach (['recommender_impression_items', 'recommender_impression_evidence',
-            'recommender_outcomes'] as $table) {
+        foreach (['vogoo_impression_items', 'vogoo_impression_evidence',
+            'vogoo_outcomes'] as $table) {
             $children = $this->connection->execute("SELECT COUNT(*) AS total FROM {$table}
                 WHERE impression_id = ?", [$impressionId->binary()])->fetchAssoc();
             $this->assertSame(0, (int)$children['total']);
@@ -311,14 +311,14 @@ class EvaluationTest extends IntegrationTestCase {
         $stream = fopen('php://temp', 'w+');
         $output = new ConsoleOutput($stream);
         $command = new InitEvaluationCommand(new ConsoleInput($output), $output, $provider);
-        $this->connection->execute('ALTER TABLE recommender_impressions DROP INDEX ix_recommender_impression_key');
-        $this->connection->execute('ALTER TABLE recommender_impressions ADD INDEX ix_recommender_impression_key (category)');
+        $this->connection->execute('ALTER TABLE vogoo_impressions DROP INDEX ix_vogoo_impression_key');
+        $this->connection->execute('ALTER TABLE vogoo_impressions ADD INDEX ix_vogoo_impression_key (category)');
         try {
             $this->expectException(\RuntimeException::class);
             $command->execute(new ConfigurationManager());
         } finally {
-            $this->connection->execute('ALTER TABLE recommender_impressions DROP INDEX ix_recommender_impression_key');
-            $this->connection->execute('ALTER TABLE recommender_impressions ADD INDEX ix_recommender_impression_key
+            $this->connection->execute('ALTER TABLE vogoo_impressions DROP INDEX ix_vogoo_impression_key');
+            $this->connection->execute('ALTER TABLE vogoo_impressions ADD INDEX ix_vogoo_impression_key
                 (category, placement, source_mask, context_key, shown_at)');
             fclose($stream);
         }
@@ -335,17 +335,17 @@ class EvaluationTest extends IntegrationTestCase {
         $stream = fopen('php://temp', 'w+');
         $output = new ConsoleOutput($stream);
         $command = new InitEvaluationCommand(new ConsoleInput($output), $output, $provider);
-        $this->connection->execute('ALTER TABLE recommender_outcomes DROP FOREIGN KEY fk_recommender_outcome_item');
-        $this->connection->execute('ALTER TABLE recommender_outcomes ADD CONSTRAINT fk_recommender_outcome_item
-            FOREIGN KEY (impression_id, item_id) REFERENCES recommender_impression_items(impression_id, item_id)
+        $this->connection->execute('ALTER TABLE vogoo_outcomes DROP FOREIGN KEY fk_vogoo_outcome_item');
+        $this->connection->execute('ALTER TABLE vogoo_outcomes ADD CONSTRAINT fk_vogoo_outcome_item
+            FOREIGN KEY (impression_id, item_id) REFERENCES vogoo_impression_items(impression_id, item_id)
             ON DELETE RESTRICT');
         try {
             $this->expectException(\RuntimeException::class);
             $command->execute(new ConfigurationManager());
         } finally {
-            $this->connection->execute('ALTER TABLE recommender_outcomes DROP FOREIGN KEY fk_recommender_outcome_item');
-            $this->connection->execute('ALTER TABLE recommender_outcomes ADD CONSTRAINT fk_recommender_outcome_item
-                FOREIGN KEY (impression_id, item_id) REFERENCES recommender_impression_items(impression_id, item_id)
+            $this->connection->execute('ALTER TABLE vogoo_outcomes DROP FOREIGN KEY fk_vogoo_outcome_item');
+            $this->connection->execute('ALTER TABLE vogoo_outcomes ADD CONSTRAINT fk_vogoo_outcome_item
+                FOREIGN KEY (impression_id, item_id) REFERENCES vogoo_impression_items(impression_id, item_id)
                 ON DELETE CASCADE');
             fclose($stream);
         }
@@ -362,13 +362,13 @@ class EvaluationTest extends IntegrationTestCase {
         $stream = fopen('php://temp', 'w+');
         $output = new ConsoleOutput($stream);
         $command = new InitEvaluationCommand(new ConsoleInput($output), $output, $provider);
-        $this->connection->execute("ALTER TABLE recommender_impressions
+        $this->connection->execute("ALTER TABLE vogoo_impressions
             MODIFY context_key VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT ''");
         try {
             $this->expectException(\RuntimeException::class);
             $command->execute(new ConfigurationManager());
         } finally {
-            $this->connection->execute("ALTER TABLE recommender_impressions
+            $this->connection->execute("ALTER TABLE vogoo_impressions
                 MODIFY context_key VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT ''");
             fclose($stream);
         }
@@ -387,7 +387,7 @@ class EvaluationTest extends IntegrationTestCase {
             ->recommendMember(1, $request);
         $shown = new DateTimeImmutable('2026-01-01T00:00:00Z');
         $id = (new EvaluationRecorder($this->connection))->recordImpression($list, null, $shown);
-        $row = $this->connection->execute('SELECT source, source_rank FROM recommender_impression_evidence
+        $row = $this->connection->execute('SELECT source, source_rank FROM vogoo_impression_evidence
             WHERE impression_id = ? AND item_id = 150', [$id->binary()])->fetchAssoc();
         $this->assertSame('top_rated', $row['source']);
         $this->assertNull($row['source_rank']);

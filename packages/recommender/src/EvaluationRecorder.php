@@ -86,7 +86,7 @@ readonly class EvaluationRecorder {
 		
 		$this->connection->transactional(function () use ($impressionId, $itemId, $eventId, $type, $timestamp): void {
 			$this->assertOutcomeFollowsDisplay($impressionId, $itemId, $timestamp);
-			$this->connection->execute('INSERT INTO recommender_outcomes
+			$this->connection->execute('INSERT INTO vogoo_outcomes
                 (event_id, impression_id, item_id, event_type, occurred_at)
                 VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE event_id = event_id',
 				[$eventId, $impressionId->binary(), $itemId, $type->value, $timestamp]);
@@ -107,7 +107,7 @@ readonly class EvaluationRecorder {
 			throw new \InvalidArgumentException("Member ID must be an unsigned 32-bit integer, got {$memberId}.");
 		}
 		
-		$this->connection->execute('DELETE FROM recommender_impressions WHERE member_id = ?', [$memberId]);
+		$this->connection->execute('DELETE FROM vogoo_impressions WHERE member_id = ?', [$memberId]);
 	}
 	
 	/**
@@ -118,7 +118,7 @@ readonly class EvaluationRecorder {
 	 */
 	private function loadCalibratedModel(RecommendationList $shown): ClickModel {
 		$row = $this->connection->execute('SELECT artifact, objective, category, placement,
-                source_mask, context_key, feature_schema_version FROM recommender_models WHERE id = UNHEX(?)',
+                source_mask, context_key, feature_schema_version FROM vogoo_models WHERE id = UNHEX(?)',
 			[$shown->modelId])->fetchAssoc();
 			
 		if (!$row) {
@@ -160,7 +160,7 @@ readonly class EvaluationRecorder {
 	 * @return void
 	 */
 	private function insertImpressionRow(ImpressionId $id, RecommendationList $shown, ?int $memberId, string $timestamp): void {
-		$this->connection->execute('INSERT INTO recommender_impressions
+		$this->connection->execute('INSERT INTO vogoo_impressions
             (id, category, placement, source_mask, context_key, score_kind, member_id, shown_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
 			[$id->binary(), $shown->category, $shown->placement, $shown->sourceMask(),
@@ -183,7 +183,7 @@ readonly class EvaluationRecorder {
 		$schemaVersion = $this->hasCompleteFeatureSnapshot($item, $shown->sources) ? 1 : 0;
 		$displayProbability = $model?->probability($item->featureSnapshot, $position);
 		
-		$this->connection->execute('INSERT INTO recommender_impression_items
+		$this->connection->execute('INSERT INTO vogoo_impression_items
             (impression_id, item_id, position, ranking_score, display_click_probability,
             model_id, feature_schema_version, feature_snapshot)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
@@ -192,7 +192,7 @@ readonly class EvaluationRecorder {
 				$schemaVersion, $snapshot]);
 				
 		foreach ($item->evidence as $signal) {
-			$this->connection->execute('INSERT INTO recommender_impression_evidence
+			$this->connection->execute('INSERT INTO vogoo_impression_evidence
                 (impression_id, item_id, source, raw_score, source_rank, support_count,
                 log_odds_contribution, contributing_item_ids) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
 				[$id->binary(), $item->itemId, $signal->source->value, $signal->rawScore,
@@ -210,8 +210,8 @@ readonly class EvaluationRecorder {
 	 * @throws \InvalidArgumentException When the item was not displayed or the outcome precedes the display
 	 */
 	private function assertOutcomeFollowsDisplay(ImpressionId $impressionId, int $itemId, string $timestamp): void {
-		$row = $this->connection->execute('SELECT i.shown_at FROM recommender_impressions i
-                JOIN recommender_impression_items item ON item.impression_id = i.id
+		$row = $this->connection->execute('SELECT i.shown_at FROM vogoo_impressions i
+                JOIN vogoo_impression_items item ON item.impression_id = i.id
                 WHERE i.id = ? AND item.item_id = ?', [$impressionId->binary(), $itemId])->fetchAssoc();
 		
 		if (!$row) {
@@ -236,7 +236,7 @@ readonly class EvaluationRecorder {
 	private function assertStoredEventMatches(ImpressionId $impressionId, int $itemId, string $eventId,
 		OutcomeType $type, string $timestamp): void {
 		$stored = $this->connection->execute('SELECT HEX(impression_id) AS impression_hex,
-                item_id, event_type, occurred_at FROM recommender_outcomes WHERE event_id = ?', [$eventId])->fetchAssoc();
+                item_id, event_type, occurred_at FROM vogoo_outcomes WHERE event_id = ?', [$eventId])->fetchAssoc();
 		
 		if (strtolower((string)$stored['impression_hex']) !== $impressionId->hex
 			|| (int)$stored['item_id'] !== $itemId || $stored['event_type'] !== $type->value

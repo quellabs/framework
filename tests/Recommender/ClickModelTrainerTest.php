@@ -17,8 +17,8 @@ class ClickModelTrainerTest extends IntegrationTestCase {
         foreach (array_filter(array_map('trim', explode(';', preg_replace('/^--.*$/m', '', $sql)))) as $statement) {
             $this->connection->execute($statement);
         }
-        $this->connection->execute("DELETE FROM recommender_impressions WHERE placement = 'train_test'");
-        $this->connection->execute("DELETE FROM recommender_models WHERE placement = 'train_test'");
+        $this->connection->execute("DELETE FROM vogoo_impressions WHERE placement = 'train_test'");
+        $this->connection->execute("DELETE FROM vogoo_models WHERE placement = 'train_test'");
     }
 
     /** @return void */
@@ -36,7 +36,7 @@ class ClickModelTrainerTest extends IntegrationTestCase {
         $active = bin2hex(random_bytes(16));
         $rejected = bin2hex(random_bytes(16));
         foreach ([[$active, 'active', true], [$rejected, 'rejected', false]] as [$id, $status, $validated]) {
-            $this->connection->execute('INSERT INTO recommender_models
+            $this->connection->execute('INSERT INTO vogoo_models
                 (id, objective, category, placement, source_mask, context_key,
                 feature_schema_version, artifact, trained_at, status)
                 VALUES (UNHEX(?), \'click\', 1, \'train_test\', 16, \'\', 1, ?, UTC_TIMESTAMP(6), ?)',
@@ -49,11 +49,11 @@ class ClickModelTrainerTest extends IntegrationTestCase {
             } catch (\InvalidArgumentException) {
                 $this->assertTrue(true);
             }
-            $row = $this->connection->execute('SELECT status FROM recommender_models WHERE id = UNHEX(?)',
+            $row = $this->connection->execute('SELECT status FROM vogoo_models WHERE id = UNHEX(?)',
                 [$active])->fetchAssoc();
             $this->assertSame('active', $row['status']);
         } finally {
-            $this->connection->execute("DELETE FROM recommender_models WHERE placement = 'train_test'");
+            $this->connection->execute("DELETE FROM vogoo_models WHERE placement = 'train_test'");
         }
     }
 
@@ -82,8 +82,8 @@ class ClickModelTrainerTest extends IntegrationTestCase {
         }
         $tables = $this->createMock(StatementInterface::class);
         $tables->method('fetchAll')->willReturn(array_map(fn($name) => ['TABLE_NAME' => $name],
-            ['recommender_models', 'recommender_impressions', 'recommender_impression_items',
-                'recommender_impression_evidence', 'recommender_outcomes']));
+            ['vogoo_models', 'vogoo_impressions', 'vogoo_impression_items',
+                'vogoo_impression_evidence', 'vogoo_outcomes']));
         $trainingRows = $this->createMock(StatementInterface::class);
         $trainingRows->method('fetchAll')->willReturn($rows);
         $insert = $this->createMock(StatementInterface::class);
@@ -101,7 +101,7 @@ class ClickModelTrainerTest extends IntegrationTestCase {
                 $this->assertStringContainsString('TIMESTAMPADD(SECOND, :mature_window', $sql);
                 return $trainingRows;
             }
-            $this->assertStringContainsString('INSERT INTO recommender_models', $sql);
+            $this->assertStringContainsString('INSERT INTO vogoo_models', $sql);
             $artifact = json_decode($params[5], true, 512, JSON_THROW_ON_ERROR);
             return $insert;
         });
@@ -148,7 +148,7 @@ class ClickModelTrainerTest extends IntegrationTestCase {
                 $parts[] = "(UNHEX(?), 1, 'train_test', 16, '', 'rank_fusion', ?)";
                 array_push($params, $hex, $shown);
             }
-            $this->connection->execute('INSERT INTO recommender_impressions
+            $this->connection->execute('INSERT INTO vogoo_impressions
                 (id, category, placement, source_mask, context_key, score_kind, shown_at) VALUES '
                 . implode(',', $parts), $params);
         }
@@ -159,7 +159,7 @@ class ClickModelTrainerTest extends IntegrationTestCase {
                 $parts[] = '(UNHEX(?), 42, 1, 0.016, 1, ?)';
                 array_push($params, $hex, $snapshot);
             }
-            $this->connection->execute('INSERT INTO recommender_impression_items
+            $this->connection->execute('INSERT INTO vogoo_impression_items
                 (impression_id, item_id, position, ranking_score, feature_schema_version, feature_snapshot)
                 VALUES ' . implode(',', $parts), $params);
         }
@@ -170,16 +170,16 @@ class ClickModelTrainerTest extends IntegrationTestCase {
                 $parts[] = "(?, UNHEX(?), 42, 'click', ?)";
                 array_push($params, 'training-event-' . $index, $hex, $shown);
             }
-            $this->connection->execute('INSERT INTO recommender_outcomes
+            $this->connection->execute('INSERT INTO vogoo_outcomes
                 (event_id, impression_id, item_id, event_type, occurred_at) VALUES '
                 . implode(',', $parts), $params);
         }
         $immatureId = sprintf('%032x', 9999);
-        $this->connection->execute('INSERT INTO recommender_impressions
+        $this->connection->execute('INSERT INTO vogoo_impressions
             (id, category, placement, source_mask, context_key, score_kind, shown_at)
             VALUES (UNHEX(?), 1, \'train_test\', 16, \'\', \'rank_fusion\', \'2026-01-02 23:59:00\')',
             [$immatureId]);
-        $this->connection->execute('INSERT INTO recommender_impression_items
+        $this->connection->execute('INSERT INTO vogoo_impression_items
             (impression_id, item_id, position, ranking_score, feature_schema_version, feature_snapshot)
             VALUES (UNHEX(?), 42, 1, 0.016, 1, ?)', [$immatureId, $items[0][1]]);
         $trainer = new ClickModelTrainer($this->connection);
@@ -188,7 +188,7 @@ class ClickModelTrainerTest extends IntegrationTestCase {
                 new DateTimeImmutable('2026-01-01T00:00:00Z'),
                 new DateTimeImmutable('2026-01-03T00:00:00Z'),
                 new DateTimeImmutable('2026-01-03T00:00:00Z'), 3600);
-            $artifactRow = $this->connection->execute('SELECT artifact FROM recommender_models
+            $artifactRow = $this->connection->execute('SELECT artifact FROM vogoo_models
                 WHERE id = UNHEX(?)', [$id])->fetchAssoc();
             $artifact = json_decode((string)$artifactRow['artifact'], true, 512, JSON_THROW_ON_ERROR);
             $this->assertSame(1000, $artifact['training_items']);
@@ -197,12 +197,12 @@ class ClickModelTrainerTest extends IntegrationTestCase {
             $this->assertArrayHasKey('training_interval', $artifact);
             $this->assertArrayHasKey('holdout_interval', $artifact);
             $trainer->activate($id);
-            $row = $this->connection->execute('SELECT status FROM recommender_models
+            $row = $this->connection->execute('SELECT status FROM vogoo_models
                 WHERE id = UNHEX(?)', [$id])->fetchAssoc();
             $this->assertSame('active', $row['status']);
         } finally {
-            $this->connection->execute("DELETE FROM recommender_impressions WHERE placement = 'train_test'");
-            $this->connection->execute("DELETE FROM recommender_models WHERE placement = 'train_test'");
+            $this->connection->execute("DELETE FROM vogoo_impressions WHERE placement = 'train_test'");
+            $this->connection->execute("DELETE FROM vogoo_models WHERE placement = 'train_test'");
         }
     }
 }

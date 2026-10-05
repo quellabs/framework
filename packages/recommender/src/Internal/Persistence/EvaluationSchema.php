@@ -14,8 +14,8 @@ final class EvaluationSchema {
 	 * @throws \RuntimeException When any evaluation table is missing
 	 */
 	public static function requireTables(Connection $connection): void {
-		$tables = ['recommender_models', 'recommender_impressions', 'recommender_impression_items',
-			'recommender_impression_evidence', 'recommender_outcomes'];
+		$tables = ['vogoo_models', 'vogoo_impressions', 'vogoo_impression_items',
+			'vogoo_impression_evidence', 'vogoo_outcomes'];
 		$rows = $connection->execute('SELECT TABLE_NAME FROM information_schema.TABLES
             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN (?,?,?,?,?)', $tables)->fetchAll('assoc');
 		
@@ -41,68 +41,68 @@ final class EvaluationSchema {
 
 	/** @var array<string, array<int, string>> Expected column names per evaluation table */
 	private const EXPECTED_COLUMNS = [
-		'recommender_models'              => ['id', 'objective', 'category', 'placement', 'source_mask',
+		'vogoo_models'              => ['id', 'objective', 'category', 'placement', 'source_mask',
 			'context_key', 'feature_schema_version', 'artifact', 'trained_at', 'activated_at', 'status', 'active_marker'],
-		'recommender_impressions'         => ['id', 'category', 'placement', 'source_mask', 'context_key',
+		'vogoo_impressions'         => ['id', 'category', 'placement', 'source_mask', 'context_key',
 			'score_kind', 'member_id', 'shown_at'],
-		'recommender_impression_items'    => ['impression_id', 'item_id', 'position', 'ranking_score',
+		'vogoo_impression_items'    => ['impression_id', 'item_id', 'position', 'ranking_score',
 			'display_click_probability', 'model_id', 'feature_schema_version', 'feature_snapshot'],
-		'recommender_impression_evidence' => ['impression_id', 'item_id', 'source', 'raw_score',
+		'vogoo_impression_evidence' => ['impression_id', 'item_id', 'source', 'raw_score',
 			'source_rank', 'support_count', 'log_odds_contribution', 'contributing_item_ids'],
-		'recommender_outcomes'            => ['event_id', 'impression_id', 'item_id', 'event_type', 'occurred_at'],
+		'vogoo_outcomes'            => ['event_id', 'impression_id', 'item_id', 'event_type', 'occurred_at'],
 	];
 	
 	/** @var array<string, array<string, array{0: bool, 1: array<int, string>}>> Expected unique flag and columns per index */
 	private const EXPECTED_INDEXES = [
-		'recommender_models'              => [
+		'vogoo_models'              => [
 			'PRIMARY'                     => [true, ['id']],
-			'uq_recommender_active_model' => [true, ['objective', 'category', 'placement',
+			'uq_vogoo_active_model' => [true, ['objective', 'category', 'placement',
 				'source_mask', 'context_key', 'active_marker']],
 		],
-		'recommender_impressions'         => [
+		'vogoo_impressions'         => [
 			'PRIMARY'                          => [true, ['id']],
-			'ix_recommender_impression_key'    => [false, ['category', 'placement', 'source_mask',
+			'ix_vogoo_impression_key'    => [false, ['category', 'placement', 'source_mask',
 				'context_key', 'shown_at']],
-			'ix_recommender_impression_member' => [false, ['member_id', 'shown_at']],
+			'ix_vogoo_impression_member' => [false, ['member_id', 'shown_at']],
 		],
-		'recommender_impression_items'    => [
+		'vogoo_impression_items'    => [
 			'PRIMARY'                            => [true, ['impression_id', 'item_id']],
-			'uq_recommender_impression_position' => [true, ['impression_id', 'position']],
-			'ix_recommender_item_model'          => [false, ['model_id']],
+			'uq_vogoo_impression_position' => [true, ['impression_id', 'position']],
+			'ix_vogoo_item_model'          => [false, ['model_id']],
 		],
-		'recommender_impression_evidence' => [
+		'vogoo_impression_evidence' => [
 			'PRIMARY' => [true, ['impression_id', 'item_id', 'source']],
 		],
-		'recommender_outcomes'            => [
+		'vogoo_outcomes'            => [
 			'PRIMARY'                     => [true, ['event_id']],
-			'ix_recommender_outcome_item' => [false, ['impression_id', 'item_id', 'event_type', 'occurred_at']],
+			'ix_vogoo_outcome_item' => [false, ['impression_id', 'item_id', 'event_type', 'occurred_at']],
 		],
 	];
 	
 	/** @var array<string, array<string, array{0: string, 1: array<int, string>, 2: array<int, string>, 3: string}>> Expected foreign keys per table */
 	private const EXPECTED_FOREIGN_KEYS = [
-		'recommender_impression_items'    => [
-			'fk_recommender_item_impression' => ['recommender_impressions', ['impression_id'], ['id'], 'CASCADE'],
-			'fk_recommender_item_model'      => ['recommender_models', ['model_id'], ['id'], 'RESTRICT'],
+		'vogoo_impression_items'    => [
+			'fk_vogoo_item_impression' => ['vogoo_impressions', ['impression_id'], ['id'], 'CASCADE'],
+			'fk_vogoo_item_model'      => ['vogoo_models', ['model_id'], ['id'], 'RESTRICT'],
 		],
-		'recommender_impression_evidence' => [
-			'fk_recommender_evidence_item' => ['recommender_impression_items',
+		'vogoo_impression_evidence' => [
+			'fk_vogoo_evidence_item' => ['vogoo_impression_items',
 				['impression_id', 'item_id'], ['impression_id', 'item_id'], 'CASCADE'],
 		],
-		'recommender_outcomes'            => [
-			'fk_recommender_outcome_item' => ['recommender_impression_items',
+		'vogoo_outcomes'            => [
+			'fk_vogoo_outcome_item' => ['vogoo_impression_items',
 				['impression_id', 'item_id'], ['impression_id', 'item_id'], 'CASCADE'],
 		],
 	];
 	
 	/** @var array<string, array<int, string>> Columns allowed to be NULL per table */
 	private const NULLABLE_COLUMNS = [
-		'recommender_models'              => ['activated_at', 'active_marker'],
-		'recommender_impressions'         => ['member_id'],
-		'recommender_impression_items'    => ['ranking_score', 'display_click_probability', 'model_id'],
-		'recommender_impression_evidence' => ['raw_score', 'source_rank', 'support_count',
+		'vogoo_models'              => ['activated_at', 'active_marker'],
+		'vogoo_impressions'         => ['member_id'],
+		'vogoo_impression_items'    => ['ranking_score', 'display_click_probability', 'model_id'],
+		'vogoo_impression_evidence' => ['raw_score', 'source_rank', 'support_count',
 			'log_odds_contribution', 'contributing_item_ids'],
-		'recommender_outcomes'            => [],
+		'vogoo_outcomes'            => [],
 	];
 	
 	/** @var array<string, int> Required character length per column */

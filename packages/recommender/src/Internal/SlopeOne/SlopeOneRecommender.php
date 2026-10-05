@@ -166,7 +166,7 @@ readonly class SlopeOneRecommender {
 			return null;
 		}
 		
-		$prediction = $this->temporary->withRatingTable('recommender_visitor_prediction_input_', $products,
+		$prediction = $this->temporary->withRatingTable('vogoo_visitor_prediction_input_', $products,
 			fn(string $table) => $this->detailedPrediction($productId, 1, $resolvedCategory,
 				"JOIN {$table} r ON r.product_id = l.item_id2", []));
 
@@ -190,8 +190,8 @@ readonly class SlopeOneRecommender {
 		}
 
 		$seenIds = $visitor->getRatedProductIds($resolvedCategory);
-		$rows = $this->temporary->withRatingTable('recommender_visitor_prediction_input_', $products,
-			fn(string $table) => $this->temporary->withIdTable('recommender_visitor_seen_', $seenIds,
+		$rows = $this->temporary->withRatingTable('vogoo_visitor_prediction_input_', $products,
+			fn(string $table) => $this->temporary->withIdTable('vogoo_visitor_seen_', $seenIds,
 				fn(string $seenTable) => $this->unseenSlopeRows("JOIN {$table} r ON r.product_id = l.item_id1",
 					"NOT EXISTS (SELECT 1 FROM {$seenTable} s WHERE s.product_id = l.item_id2)",
 					[], $filter, $resolvedCategory, '')));
@@ -260,7 +260,7 @@ readonly class SlopeOneRecommender {
 			return null;
 		}
 		
-		return $this->temporary->withRatingTable('recommender_visitor_prediction_input_', $ratings,
+		return $this->temporary->withRatingTable('vogoo_visitor_prediction_input_', $ratings,
 			fn(string $table) => $this->detailedPrediction($productId, $minSupport, $resolvedCategory,
 				"JOIN {$table} r ON r.product_id = l.item_id2", []));
 	}
@@ -287,8 +287,8 @@ readonly class SlopeOneRecommender {
 		
 		$seenIds = $visitor->getRatedProductIds($resolvedCategory);
 
-		return $this->temporary->withRatingTable('recommender_visitor_prediction_input_', $ratings,
-			fn(string $table) => $this->temporary->withIdTable('recommender_visitor_seen_', $seenIds,
+		return $this->temporary->withRatingTable('vogoo_visitor_prediction_input_', $ratings,
+			fn(string $table) => $this->temporary->withIdTable('vogoo_visitor_seen_', $seenIds,
 				fn(string $seenTable) => $this->unseenDetailedPredictions(
 					"JOIN {$table} r ON r.product_id = l.item_id1",
 					"NOT EXISTS (SELECT 1 FROM {$seenTable} s WHERE s.product_id = l.item_id2)",

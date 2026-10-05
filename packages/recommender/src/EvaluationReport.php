@@ -105,13 +105,13 @@ readonly class EvaluationReport {
 	private function summarySql(?RecommendationSource $source): string {
 		$clicked = OutcomeSubquery::exists('click', 'as_of', 'click_window');
 		$purchased = OutcomeSubquery::exists('purchase', 'as_of2', 'purchase_window');
-		$whereSource = $source === null ? '' : 'AND EXISTS (SELECT 1 FROM recommender_impression_evidence e
+		$whereSource = $source === null ? '' : 'AND EXISTS (SELECT 1 FROM vogoo_impression_evidence e
             WHERE e.impression_id = item.impression_id AND e.item_id = item.item_id AND e.source = :source)';
 
 		return "SELECT COUNT(*) AS impressions,
             COALESCE(SUM({$clicked}), 0) AS clicked,
             COALESCE(SUM({$purchased}), 0) AS purchased
-            FROM recommender_impressions i JOIN recommender_impression_items item ON item.impression_id = i.id
+            FROM vogoo_impressions i JOIN vogoo_impression_items item ON item.impression_id = i.id
             WHERE i.category = :category AND i.context_key = :context
             AND i.shown_at >= :start AND i.shown_at < :end {$whereSource}";
 	}
@@ -162,7 +162,7 @@ readonly class EvaluationReport {
 		return $this->connection->execute("SELECT LOWER(HEX(item.model_id)) AS model_id,
             i.placement, item.display_click_probability AS probability,
             {$clicked} AS clicked
-            FROM recommender_impressions i JOIN recommender_impression_items item ON item.impression_id = i.id
+            FROM vogoo_impressions i JOIN vogoo_impression_items item ON item.impression_id = i.id
             WHERE item.model_id IS NOT NULL AND item.display_click_probability IS NOT NULL
                 AND i.shown_at >= :start AND i.shown_at < :end
                 AND TIMESTAMPADD(SECOND, :mature_window, i.shown_at) <= :mature_as_of",

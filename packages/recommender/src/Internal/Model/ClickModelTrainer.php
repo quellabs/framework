@@ -69,7 +69,7 @@ readonly class ClickModelTrainer {
 		$artifact['holdout_clicks'] = $holdoutClicks;
 		
 		$id = bin2hex(random_bytes(16));
-		$this->connection->execute('INSERT INTO recommender_models
+		$this->connection->execute('INSERT INTO vogoo_models
             (id, objective, category, placement, source_mask, context_key, feature_schema_version,
                 artifact, trained_at, activated_at, status)
             VALUES (UNHEX(?), \'click\', ?, ?, ?, ?, 1, ?, UTC_TIMESTAMP(6), NULL, ?)',
@@ -94,7 +94,7 @@ readonly class ClickModelTrainer {
 		
 		$this->connection->transactional(function () use ($modelId): void {
 			$row = $this->connection->execute('SELECT objective, category, placement, source_mask,
-                context_key, artifact, status FROM recommender_models WHERE id = UNHEX(?) FOR UPDATE',
+                context_key, artifact, status FROM vogoo_models WHERE id = UNHEX(?) FOR UPDATE',
 				[$modelId])->fetchAssoc();
 				
 			if (!$row || $row['status'] !== 'validated') {
@@ -107,11 +107,11 @@ readonly class ClickModelTrainer {
 				throw new \InvalidArgumentException("Model '{$modelId}' artifact failed validation.");
 			}
 			
-			$this->connection->execute('UPDATE recommender_models SET status = \'retired\'
+			$this->connection->execute('UPDATE vogoo_models SET status = \'retired\'
                 WHERE objective = ? AND category = ? AND placement = ? AND source_mask = ?
                 AND context_key = ? AND status = \'active\'',
 				[$row['objective'], $row['category'], $row['placement'], $row['source_mask'], $row['context_key']]);
-			$this->connection->execute('UPDATE recommender_models SET status = \'active\',
+			$this->connection->execute('UPDATE vogoo_models SET status = \'active\',
                 activated_at = UTC_TIMESTAMP(6) WHERE id = UNHEX(?)', [$modelId]);
 		});
 	}
@@ -210,7 +210,7 @@ readonly class ClickModelTrainer {
 		return $this->connection->execute("SELECT HEX(i.id) AS impression_id, i.shown_at,
             item.position, item.feature_snapshot,
             {$clicked} AS clicked
-            FROM recommender_impressions i JOIN recommender_impression_items item ON item.impression_id = i.id
+            FROM vogoo_impressions i JOIN vogoo_impression_items item ON item.impression_id = i.id
             WHERE i.category = :category AND i.placement = :placement AND i.source_mask = :mask
                 AND i.context_key = :context AND item.feature_schema_version = 1
                 AND i.shown_at >= :from AND i.shown_at < :to
