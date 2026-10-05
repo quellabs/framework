@@ -48,9 +48,9 @@ class VisitorContext {
 		
 		$resolvedCategory = $this->config->resolveCategory($category);
 		
-		foreach ($this->ratings as &$entry) {
+		foreach ($this->ratings as $index => $entry) {
 			if ($entry['product_id'] === $productId && $entry['category'] === $resolvedCategory) {
-				$entry['rating'] = $rating;
+				$this->ratings[$index]['rating'] = $rating;
 				return;
 			}
 		}
