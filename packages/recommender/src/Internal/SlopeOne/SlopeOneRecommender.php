@@ -130,55 +130,15 @@ readonly class SlopeOneRecommender {
 	 */
 	public function memberPredictAll(int $memberId, array $filter = [], int $limit = 0, ?int $category = null): array {
 		$resolvedCategory = $this->config->resolveCategory($category);
-		$limit = max(0, $limit);
-		
-		$rows = $this->connection->execute('
-			SELECT
-				l.`item_id2`,
-				SUM(l.`slope_count`) AS cnter,
-				SUM(r.`rating` * l.`slope_count` + l.`diff_slope`) AS diff
-			FROM `vogoo_links` l
-			INNER JOIN `vogoo_ratings` r ON r.`member_id` = :member_id AND
-			                               r.`rating` >= 0.0 AND
-			                               l.`item_id1` = r.`product_id` AND
-			                               l.`slope_count` > 0 AND
-			                               r.`category` = :category AND
-			                               l.`category` = r.`category`
-			 WHERE NOT EXISTS (
-					SELECT 1 FROM `vogoo_ratings` vr
-					WHERE vr.`member_id` = :member_id2 AND
-					      vr.`category` = :category2 AND
-					      vr.`product_id` = l.`item_id2`
-			 )
-			GROUP BY l.`item_id2`
-		', [
-			'member_id'  => $memberId,
-			'category'   => $resolvedCategory,
-			'member_id2' => $memberId,
-			'category2'  => $resolvedCategory,
-		])->fetchAll('assoc');
-		
-		$result = [];
-		
-		foreach ($rows as $row) {
-			if (!is_array($row) || !isset($row['item_id2'], $row['cnter'], $row['diff']) || !is_scalar($row['item_id2'])) {
-				continue;
-			}
-			
-			$id = (int)$row['item_id2'];
-			
-			if (!empty($filter) && !in_array($id, $filter, true)) {
-				continue;
-			}
-			
-			$result[] = [
-				'product_id' => $id,
-				'rating'     => Results::clampRating((float)$row['diff'] / (float)$row['cnter']),
-			];
-		}
-		
-		usort($result, fn($a, $b) => ($b['rating'] <=> $a['rating']) ?: ($a['product_id'] <=> $b['product_id']));
-		return Results::limit($result, $limit);
+		$rows = $this->unseenSlopeRows(
+			'JOIN vogoo_ratings r ON r.product_id = l.item_id1 AND r.category = l.category
+			AND r.member_id = :member AND r.rating >= 0.0',
+			'NOT EXISTS (SELECT 1 FROM vogoo_ratings seen WHERE seen.member_id = :seen_member
+			AND seen.category = :seen_category AND seen.product_id = l.item_id2)',
+			['member' => $memberId, 'seen_member' => $memberId, 'seen_category' => $resolvedCategory],
+			$filter, $resolvedCategory, '');
+
+		return $this->rankPredictions($rows, $limit);
 	}
 
 	/**
@@ -214,28 +174,19 @@ readonly class SlopeOneRecommender {
 	public function visitorPredictAll(VisitorContext $visitor, array $filter = [], int $limit = 0, ?int $category = null): array {
 		$resolvedCategory = $this->config->resolveCategory($category);
 		$products = $this->collectGenuineRatings($visitor->getRatings($resolvedCategory));
-		
+
 		if (empty($products)) {
 			return [];
 		}
-		
-		$accumulated = $this->accumulateSlopePredictions($products, $filter, $resolvedCategory);
-		$ratedIds = $visitor->getRatedProductIds($resolvedCategory);
-		$result = [];
-		
-		foreach ($accumulated as $id => [$cnter, $diff]) {
-			if (in_array($id, $ratedIds, true)) {
-				continue;
-			}
-			
-			$result[] = [
-				'product_id' => $id,
-				'rating'     => Results::clampRating($diff / $cnter),
-			];
-		}
-		
-		usort($result, fn($a, $b) => ($b['rating'] <=> $a['rating']) ?: ($a['product_id'] <=> $b['product_id']));
-		return Results::limit($result, $limit);
+
+		$seenIds = $visitor->getRatedProductIds($resolvedCategory);
+		$rows = $this->temporary->withRatingTable('recommender_visitor_prediction_input_', $products,
+			fn(string $table) => $this->temporary->withIdTable('recommender_visitor_seen_', $seenIds,
+				fn(string $seenTable) => $this->unseenSlopeRows("JOIN {$table} r ON r.product_id = l.item_id1",
+					"NOT EXISTS (SELECT 1 FROM {$seenTable} s WHERE s.product_id = l.item_id2)",
+					[], $filter, $resolvedCategory, '')));
+
+		return $this->rankPredictions($rows, $limit);
 	}
 
 	/**
@@ -377,24 +328,9 @@ readonly class SlopeOneRecommender {
 	 */
 	private function unseenDetailedPredictions(string $ratingJoin, string $seenPredicate, array $params,
 		array $filter, int $limit, int $category, int $minSupport): array {
-		$params += ['category' => $category, 'min_support' => $minSupport];
-		$sql = "SELECT l.item_id2, SUM(l.slope_count) AS support,
-			SUM(r.rating * l.slope_count + l.diff_slope) AS numerator,
-			LEAST(1.0, GREATEST(0.0,
-				SUM(r.rating * l.slope_count + l.diff_slope) / SUM(l.slope_count))) AS predicted
-			FROM vogoo_links l {$ratingJoin}
-			WHERE l.category = :category AND l.slope_count > 0 AND {$seenPredicate}";
-		$sql .= $this->allowlist->predicate($filter, 'l.item_id2', $params);
-		$sql .= ' GROUP BY l.item_id2 HAVING support >= :min_support
-			ORDER BY predicted DESC, support DESC, l.item_id2 ASC';
-
-		$sql .= Results::limitSql($limit);
-
-		try {
-			$rows = $this->connection->execute($sql, $params)->fetchAll('assoc');
-		} finally {
-			$this->allowlist->release($filter);
-		}
+		$rows = $this->unseenSlopeRows($ratingJoin, $seenPredicate, $params + ['min_support' => $minSupport],
+			$filter, $category, ' HAVING support >= :min_support ORDER BY predicted DESC, support DESC, l.item_id2 ASC'
+			. Results::limitSql($limit));
 
 		return $this->detailedPredictions($rows, $filter, $limit);
 	}
@@ -462,55 +398,58 @@ readonly class SlopeOneRecommender {
 		return $products;
 	}
 
+
+
 	/**
-	 * Accumulate Slope One (count, diff) totals per candidate item across all of the visitor's rated products.
-	 * Runs one query per rated product.
-	 * @param array<int, float> $products Map of rated product_id to rating
-	 * @param array<int> $filter When non-empty, only accumulate product IDs in this set
+	 * Return the grouped support and numerator of every unseen candidate linked to the rated items.
+	 * @param string $ratingJoin Join from vogoo_links to the rating source, aliased r on l.item_id1
+	 * @param string $seenPredicate Predicate excluding candidates already rated, referring to l.item_id2
+	 * @param array<string, int|float> $params Parameters referenced by the join and predicate
+	 * @param array<int> $filter Allowed IDs, or empty for all
 	 * @param int $category Already-resolved category
-	 * @return array<int, array{0: float, 1: float}> Map of candidate id to [count, diff]
+	 * @param string $tail Clause appended after GROUP BY, such as HAVING or ORDER BY
+	 * @return array<int, array<string, mixed>> Rows with item_id2, support and numerator
 	 */
-	private function accumulateSlopePredictions(array $products, array $filter, int $category): array {
-		$accumulated = [];
-		
-		foreach ($products as $ratedProductId => $ratedRating) {
-			$rows = $this->connection->execute('
-				SELECT
-					`item_id2`,
-					SUM(`slope_count`) AS cnter,
-					SUM(:rating * `slope_count` + `diff_slope`) AS diff
-				FROM `vogoo_links`
-				WHERE `item_id1` = :product_id AND
-				      `slope_count` > 0 AND
-				      `category` = :category
-				GROUP BY `item_id2`
-			', [
-				'rating'     => $ratedRating,
-				'product_id' => $ratedProductId,
-				'category'   => $category,
-			])->fetchAll('assoc');
-			
-			foreach ($rows as $row) {
-				if (!is_array($row) || !isset($row['item_id2'], $row['cnter'], $row['diff']) || !is_scalar($row['item_id2'])) {
-					continue;
-				}
-				
-				$id = (int)$row['item_id2'];
-				
-				if (!empty($filter) && !in_array($id, $filter, true)) {
-					continue;
-				}
-				
-				if (isset($accumulated[$id])) {
-					$accumulated[$id][0] += (float)$row['cnter'];
-					$accumulated[$id][1] += (float)$row['diff'];
-				} else {
-					$accumulated[$id] = [(float)$row['cnter'], (float)$row['diff']];
-				}
-			}
+	private function unseenSlopeRows(string $ratingJoin, string $seenPredicate, array $params,
+		array $filter, int $category, string $tail): array {
+		$params += ['category' => $category];
+		$sql = "SELECT l.item_id2, SUM(l.slope_count) AS support,
+			SUM(r.rating * l.slope_count + l.diff_slope) AS numerator,
+			LEAST(1.0, GREATEST(0.0,
+				SUM(r.rating * l.slope_count + l.diff_slope) / SUM(l.slope_count))) AS predicted
+			FROM vogoo_links l {$ratingJoin}
+			WHERE l.category = :category AND l.slope_count > 0 AND {$seenPredicate}";
+		$sql .= $this->allowlist->predicate($filter, 'l.item_id2', $params);
+		$sql .= ' GROUP BY l.item_id2' . $tail;
+
+		try {
+			return $this->connection->execute($sql, $params)->fetchAll('assoc');
+		} finally {
+			$this->allowlist->release($filter);
 		}
-		
-		return $accumulated;
 	}
 
+	/**
+	 * Convert grouped slope rows into clamped predictions, best first with ties broken by ascending product ID.
+	 * @param array<int, array<string, mixed>> $rows Rows with item_id2, support and numerator
+	 * @param int $limit Maximum number of results, or zero for all
+	 * @return array<int, array{product_id: int, rating: float}>
+	 */
+	private function rankPredictions(array $rows, int $limit): array {
+		$result = [];
+
+		foreach ($rows as $row) {
+			if (!is_numeric($row['item_id2']) || !is_numeric($row['support']) || !is_numeric($row['numerator'])) {
+				throw new \UnexpectedValueException('Slope One row must contain numeric item_id2, support, and numerator values.');
+			}
+
+			$result[] = [
+				'product_id' => (int)$row['item_id2'],
+				'rating'     => Results::clampRating((float)$row['numerator'] / (float)$row['support']),
+			];
+		}
+
+		usort($result, fn($a, $b) => ($b['rating'] <=> $a['rating']) ?: ($a['product_id'] <=> $b['product_id']));
+		return Results::limit($result, $limit);
+	}
 }

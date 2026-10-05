@@ -121,15 +121,8 @@ readonly class RecommendationEngine {
 			'category'  => $resolvedCategory,
 		];
 		
-		if ($realRatings) {
-			if (!$notInterested) {
-				$sql .= ' AND `rating` >= 0.0';
-			}
-		} else {
-			$sql .= ' AND `rating` = :not_interested';
-			$params['not_interested'] = $this->config->getNotInterested();
-		}
-		
+		$sql .= $this->ratingFilterSql($realRatings, $notInterested, $params);
+
 		$row = $this->connection->execute($sql, $params)->fetchAssoc();
 		return (int)$row['number_of_ratings'];
 	}
@@ -188,23 +181,12 @@ readonly class RecommendationEngine {
 			'category'  => $resolvedCategory,
 		];
 		
-		if ($realRatings) {
-			if (!$notInterested) {
-				$sql .= ' AND `rating` >= 0.0';
-			}
-		} else {
-			$sql .= ' AND `rating` = :not_interested';
-			$params['not_interested'] = $this->config->getNotInterested();
-		}
-		
-		if ($orderByDate || $orderByRating) {
-			$sql .= ' ORDER BY ' . ($orderByDate ? '`ts`' : '`rating`');
-			$sql .= $ascending ? ' ASC' : ' DESC';
-		}
-		
+		$sql .= $this->ratingFilterSql($realRatings, $notInterested, $params);
+		$sql .= $this->orderSql($orderByDate, $orderByRating, $ascending);
+
 		return $this->connection->execute($sql, $params)->fetchAll('assoc');
 	}
-	
+
 	/**
 	 * Delete all ratings for a member. When incremental link updates are enabled,
 	 * each rating is removed via deleteRating() to keep vogoo_links consistent.
@@ -214,35 +196,7 @@ readonly class RecommendationEngine {
 	 * @throws \Exception
 	 */
 	public function deleteMember(int $memberId, ?int $category = null): void {
-		$resolvedCategory = $this->config->resolveCategory($category);
-		
-		if ($this->config->isDirectLinks() || $this->config->isDirectSlope()) {
-			$rows = $this->connection->execute('
-				SELECT `product_id`
-				FROM `vogoo_ratings`
-				WHERE `member_id` = :member_id AND
-				      `category` = :category
-			', [
-				'member_id' => $memberId,
-				'category'  => $resolvedCategory,
-			])->fetchAll('assoc');
-			
-			foreach ($rows as $row) {
-				$this->deleteRating($memberId, (int)$row['product_id'], $resolvedCategory);
-			}
-			
-			return;
-		}
-		
-		$this->connection->execute('
-			DELETE
-			FROM `vogoo_ratings`
-			WHERE `member_id` = :member_id AND
-			      `category` = :category
-		', [
-			'member_id' => $memberId,
-			'category'  => $resolvedCategory,
-		]);
+		$this->deleteRatingsWhere('member_id', $memberId, $this->config->resolveCategory($category));
 	}
 	
 	// ----- Products -----
@@ -324,14 +278,11 @@ readonly class RecommendationEngine {
 			'category'   => $resolvedCategory,
 		];
 		
-		if ($orderByDate || $orderByRating) {
-			$sql .= ' ORDER BY ' . ($orderByDate ? '`ts`' : '`rating`');
-			$sql .= $ascending ? ' ASC' : ' DESC';
-		}
-		
+		$sql .= $this->orderSql($orderByDate, $orderByRating, $ascending);
+
 		return $this->connection->execute($sql, $params)->fetchAll('assoc');
 	}
-	
+
 	/**
 	 * Delete all ratings for a product. When incremental link updates are enabled,
 	 * each rating is removed via deleteRating() to keep vogoo_links consistent.
@@ -341,35 +292,7 @@ readonly class RecommendationEngine {
 	 * @throws \Exception
 	 */
 	public function deleteProduct(int $productId, ?int $category = null): void {
-		$resolvedCategory = $this->config->resolveCategory($category);
-		
-		if ($this->config->isDirectLinks() || $this->config->isDirectSlope()) {
-			$rows = $this->connection->execute('
-				SELECT `member_id`
-				FROM `vogoo_ratings`
-				WHERE `product_id` = :product_id
-				AND `category` = :category
-			', [
-				'product_id' => $productId,
-				'category'   => $resolvedCategory,
-			])->fetchAll('assoc');
-			
-			foreach ($rows as $row) {
-				$this->deleteRating((int)$row['member_id'], $productId, $resolvedCategory);
-			}
-			
-			return;
-		}
-		
-		$this->connection->execute('
-			DELETE
-			FROM `vogoo_ratings`
-			WHERE `product_id` = :product_id AND
-			      `category` = :category
-		', [
-			'product_id' => $productId,
-			'category'   => $resolvedCategory,
-		]);
+		$this->deleteRatingsWhere('product_id', $productId, $this->config->resolveCategory($category));
 	}
 	
 	// ----- Combined -----
@@ -521,7 +444,74 @@ readonly class RecommendationEngine {
 	}
 	
 	// ----- Internal helpers -----
-	
+
+	/**
+	 * Build the rating filter for a count or listing query, binding the sentinel when filtering on it.
+	 * @param bool $realRatings When true, match genuine ratings unless $notInterested is set
+	 * @param bool $notInterested When true with $realRatings, match every rating
+	 * @param array<string, mixed> $params Bound parameters, extended in place
+	 * @return string Filter clause with a leading space, or an empty string
+	 */
+	private function ratingFilterSql(bool $realRatings, bool $notInterested, array &$params): string {
+		if (!$realRatings) {
+			$params['not_interested'] = $this->config->getNotInterested();
+			return ' AND `rating` = :not_interested';
+		}
+
+		return $notInterested ? '' : ' AND `rating` >= 0.0';
+	}
+
+	/**
+	 * Build the ORDER BY clause for a ratings listing.
+	 * @param bool $orderByDate Order by timestamp
+	 * @param bool $orderByRating Order by rating value
+	 * @param bool $ascending Sort direction
+	 * @return string Clause with a leading space, or an empty string when no order is requested
+	 */
+	private function orderSql(bool $orderByDate, bool $orderByRating, bool $ascending): string {
+		if (!$orderByDate && !$orderByRating) {
+			return '';
+		}
+
+		return ' ORDER BY ' . ($orderByDate ? '`ts`' : '`rating`') . ($ascending ? ' ASC' : ' DESC');
+	}
+
+	/**
+	 * Delete the ratings of one member or one product in a category.
+	 * With incremental link updates enabled, each rating is removed via deleteRating().
+	 * @param string $column Ratings column holding the ID, either member_id or product_id
+	 * @param int $id Member or product ID
+	 * @param int $category Already-resolved category
+	 * @return void
+	 * @throws \Exception
+	 */
+	private function deleteRatingsWhere(string $column, int $id, int $category): void {
+		if (!$this->config->isDirectLinks() && !$this->config->isDirectSlope()) {
+			$this->connection->execute("DELETE FROM `vogoo_ratings` WHERE `{$column}` = :id AND `category` = :category", [
+				'id'       => $id,
+				'category' => $category,
+			]);
+			return;
+		}
+
+		$otherColumn = $column === 'member_id' ? 'product_id' : 'member_id';
+		$rows = $this->connection->execute("SELECT `{$otherColumn}` FROM `vogoo_ratings`
+			WHERE `{$column}` = :id AND `category` = :category", [
+			'id'       => $id,
+			'category' => $category,
+		])->fetchAll('assoc');
+
+		foreach ($rows as $row) {
+			$other = (int)$row[$otherColumn];
+
+			if ($column === 'member_id') {
+				$this->deleteRating($id, $other, $category);
+			} else {
+				$this->deleteRating($other, $id, $category);
+			}
+		}
+	}
+
 	/**
 	 * Return the member's current rating for a product, or null when no rating row exists.
 	 * Drives the INSERT or UPDATE choice and the incremental updates.

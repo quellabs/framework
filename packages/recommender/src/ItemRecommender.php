@@ -33,6 +33,9 @@ readonly class ItemRecommender {
 	/** @var SlopeOneRecommender Slope One predictions and rankings */
 	private SlopeOneRecommender $slopeOne;
 
+	/** @var TemporaryTable Temporary tables for visitor rating and seen inputs */
+	private TemporaryTable $temporary;
+
 	/** @var CandidateAllowlist Product ID allowlist predicates */
 	private CandidateAllowlist $allowlist;
 
@@ -45,7 +48,8 @@ readonly class ItemRecommender {
 		$this->connection = $connection;
 		$this->config = $config;
 		$this->slopeOne = new SlopeOneRecommender($connection, $config);
-		$this->allowlist = new CandidateAllowlist(new TemporaryTable($connection));
+		$this->temporary = new TemporaryTable($connection);
+		$this->allowlist = new CandidateAllowlist($this->temporary);
 	}
 
 	/**
@@ -94,50 +98,15 @@ readonly class ItemRecommender {
 	 */
 	public function memberGetRecommendedItems(int $memberId, array $filter = [], int $limit = 0, ?int $category = null): array {
 		$resolvedCategory = $this->config->resolveCategory($category);
-		$limit = max(0, $limit);
-		$threshold = $this->config->getThresholdRating();
-		
-		$sql = '
-			SELECT
-				l.`item_id2`,
-				SUM(l.`liked_count` * (r.`rating` - :threshold)) AS cnter
-			FROM `vogoo_links` l
-			INNER JOIN `vogoo_ratings` r ON r.`member_id` = :member_id AND
-			                               l.`item_id1` = r.`product_id` AND
-			                               r.`rating` >= 0.0 AND
-			                               l.`category` = r.`category` AND
-			                               r.`category` = :category
-	        WHERE NOT EXISTS (
-				SELECT 1 FROM `vogoo_ratings` vr
-				WHERE vr.`member_id` = :member_id2 AND
-				      vr.`category` = :category2 AND
-				      vr.`product_id` = l.`item_id2`
-	        )
-		';
-		$params = [
-			'threshold'  => $threshold,
-			'member_id'  => $memberId,
-			'category'   => $resolvedCategory,
-			'member_id2' => $memberId,
-			'category2'  => $resolvedCategory,
-		];
-		$sql .= $this->allowlist->predicate($filter, 'l.`item_id2`', $params);
-		$sql .= '
-			GROUP BY l.`item_id2`
-	        HAVING cnter > 0
-			ORDER BY cnter DESC, l.`item_id2` ASC
-		';
-		
-		$sql .= Results::limitSql($limit);
-		
-		try {
-			$rows = $this->connection->execute($sql, $params)->fetchAll('assoc');
-		} finally {
-			$this->allowlist->release($filter);
-		}
-		
-		$result = $this->filterAndExtract($rows, 'item_id2', $filter);
-		return Results::limit($result, $limit);
+		$rows = $this->linkScoreRows(
+			'JOIN vogoo_ratings r ON r.member_id = :member AND l.item_id1 = r.product_id
+			AND l.category = r.category AND r.rating >= 0.0',
+			'NOT EXISTS (SELECT 1 FROM vogoo_ratings vr WHERE vr.member_id = :member2
+			AND vr.category = :category2 AND vr.product_id = l.item_id2)',
+			['member' => $memberId, 'member2' => $memberId, 'category2' => $resolvedCategory],
+			$filter, $resolvedCategory, $limit);
+
+		return $this->rowProductIds($rows);
 	}
 
 	/**
@@ -188,18 +157,26 @@ readonly class ItemRecommender {
 	 */
 	public function visitorGetRecommendedItems(VisitorContext $visitor, array $filter = [], int $limit = 0, ?int $category = null): array {
 		$resolvedCategory = $this->config->resolveCategory($category);
-		$ratings = $visitor->getRatings($resolvedCategory);
-		
-		if (empty($ratings)) {
+		$genuine = [];
+
+		foreach ($visitor->getRatings($resolvedCategory) as $entry) {
+			if ($entry['rating'] >= 0.0) {
+				$genuine[$entry['product_id']] = $entry['rating'];
+			}
+		}
+
+		if ($genuine === []) {
 			return [];
 		}
-		
-		$scores = $this->scoreVisitorCandidates($ratings, $filter, $resolvedCategory);
-		$scores = array_filter($scores, fn($score) => $score > 0);
-		$scores = Results::sortByScore($scores);
-		
-		$result = array_keys($scores);
-		return Results::limit($result, $limit);
+
+		$seenIds = $visitor->getRatedProductIds($resolvedCategory);
+		$rows = $this->temporary->withRatingTable('recommender_visitor_link_input_', $genuine,
+			fn(string $table) => $this->temporary->withIdTable('recommender_visitor_seen_', $seenIds,
+				fn(string $seenTable) => $this->linkScoreRows("JOIN {$table} r ON r.product_id = l.item_id1",
+					"NOT EXISTS (SELECT 1 FROM {$seenTable} s WHERE s.product_id = l.item_id2)",
+					[], $filter, $resolvedCategory, $limit)));
+
+		return $this->rowProductIds($rows);
 	}
 
 	/**
@@ -590,4 +567,50 @@ readonly class ItemRecommender {
 		return $scores;
 	}
 
+
+	/**
+	 * Extract the product ID column from link score rows, in row order.
+	 * @param array<int, array<string, mixed>> $rows Rows with an item_id2 column
+	 * @return array<int, int> Product IDs
+	 * @throws \UnexpectedValueException When a row has no numeric product ID
+	 */
+	private function rowProductIds(array $rows): array {
+		$ids = [];
+
+		foreach ($rows as $row) {
+			if (!is_numeric($row['item_id2'])) {
+				throw new \UnexpectedValueException('Link score row must contain a numeric item_id2.');
+			}
+
+			$ids[] = (int)$row['item_id2'];
+		}
+
+		return $ids;
+	}
+
+	/**
+	 * Return the co-occurrence score of every candidate linked to the rated items, best first.
+	 * @param string $ratingJoin Join from vogoo_links to the rating source, aliased r on l.item_id1
+	 * @param string $seenPredicate Predicate excluding candidates already rated, referring to l.item_id2
+	 * @param array<string, int|float> $params Parameters referenced by the join and predicate
+	 * @param array<int> $filter Allowed IDs, or empty for all
+	 * @param int $category Already-resolved category
+	 * @param int $limit Maximum results, or zero for all
+	 * @return array<int, array<string, mixed>> Rows with item_id2 and score
+	 */
+	private function linkScoreRows(string $ratingJoin, string $seenPredicate, array $params,
+		array $filter, int $category, int $limit): array {
+		$params += ['threshold' => $this->config->getThresholdRating(), 'category' => $category];
+		$sql = "SELECT l.item_id2, SUM(l.liked_count * (r.rating - :threshold)) AS score
+			FROM vogoo_links l {$ratingJoin}
+			WHERE l.category = :category AND l.liked_count > 0 AND {$seenPredicate}";
+		$sql .= $this->allowlist->predicate($filter, 'l.item_id2', $params);
+		$sql .= ' GROUP BY l.item_id2 HAVING score > 0 ORDER BY score DESC, l.item_id2 ASC' . Results::limitSql($limit);
+
+		try {
+			return $this->connection->execute($sql, $params)->fetchAll('assoc');
+		} finally {
+			$this->allowlist->release($filter);
+		}
+	}
 }
