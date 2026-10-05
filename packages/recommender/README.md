@@ -78,9 +78,64 @@ page of the Canvas documentation.
 
 ## Upgrading
 
-Upgrading from the legacy `cnt` schema requires a migration and a rebuild. Follow
-[`migrations/2026-10-independent-pair-counts.sql`](migrations/2026-10-independent-pair-counts.sql) and back up both
-tables first.
+### Breaking API changes
+
+Rename calls as shown. Methods not listed are unchanged.
+
+| Previous | Now |
+|----------|-----|
+| `ItemRecommender::getLinkedItems()` | `ItemRecommender::linkedItems()` |
+| `ItemRecommender::getSlopeItems()` | `ItemRecommender::slopeItems()` |
+| `ItemRecommender::memberGetRecommendedItems()` | `ItemRecommender::memberRecommendations()` |
+| `ItemRecommender::visitorGetRecommendedItems()` | `ItemRecommender::visitorRecommendations()` |
+| `ItemRecommender::memberRecommendationsDetailed()` | `ItemRecommender::memberRecommendations()` |
+| `ItemRecommender::visitorRecommendationsDetailed()` | `ItemRecommender::visitorRecommendations()` |
+| `ItemRecommender::memberGetReasons()` | `ItemRecommender::memberReasons()` |
+| `ItemRecommender::visitorGetReasons()` | `ItemRecommender::visitorReasons()` |
+| `ItemRecommender::memberPredict()` | `ItemRecommender::memberPrediction()` |
+| `ItemRecommender::memberPredictAll()` | `ItemRecommender::memberPredictions()` |
+| `ItemRecommender::visitorPredict()` | `ItemRecommender::visitorPrediction()` |
+| `ItemRecommender::visitorPredictAll()` | `ItemRecommender::visitorPredictions()` |
+| `RecommendationEngine::getRating()` | `RecommendationEngine::memberRating()` |
+| `RecommendationEngine::memberPredictDetailed()` and the other `*Detailed()` predictions on the engine | `ItemRecommender::memberPrediction()` and its visitor and list variants |
+| `VisitorContext::getRatings()` | `VisitorContext::ratings()` |
+| `VisitorContext::getRatedProductIds()` | `VisitorContext::ratedProductIds()` |
+
+Other changes:
+
+- The `array $filter` parameter of the `ItemRecommender` recommendation, prediction and link methods is now
+  `?EligibilityProvider $eligibility`. Wrap an ID list in `ArrayEligibilityProvider` to keep the old behaviour.
+  The parameter is in the second position, so positional calls must be updated.
+- `memberRecommendations()` and `visitorRecommendations()` return `RecommendationResult[]`. They previously
+  returned bare product IDs.
+- `RecommendationEngine::setRating()`, `automaticRating()` and `setNotInterested()` return `void`. They throw on
+  invalid input instead of returning `false`.
+- `Statistics::mostRatedProducts()` and `topRatedProducts()` return `ProductCount[]` and `ProductAverage[]` instead
+  of arrays.
+- Implementation classes moved to `Quellabs\Recommender\Internal\Model`, `Internal\Persistence` and
+  `Internal\Links`. The Canvas DI provider is now `Quellabs\Recommender\Integration\ServiceProvider`.
+  Rebuild Composer discovery metadata after upgrading.
+
+### Database: pair counts
+
+Upgrading from the legacy `cnt` schema requires a migration and a rebuild.
+
+1. Pause rating writes and back up `vogoo_ratings` and `vogoo_links` together.
+2. Run [`migrations/2026-10-independent-pair-counts.sql`](migrations/2026-10-independent-pair-counts.sql) once. It
+   deletes all rows in `vogoo_links`, so recommendations are empty until step 3 completes. It fails if run again.
+3. Run `sculpt recommender:rebuild-links`.
+4. Verify recommendations, then resume rating writes.
+
+Do not use `recommender:init-db --force` for an upgrade. It drops ratings.
+
+### Database: evaluation tables
+
+Optional. Run `sculpt recommender:init-evaluation-db`, or apply
+[`migrations/2026-10-evaluation-tables.sql`](migrations/2026-10-evaluation-tables.sql) directly. It creates five
+tables and does not modify existing tables. The SQL uses `CREATE TABLE IF NOT EXISTS`, so running it again is safe.
+
+Applications that handle full member deletion must call `EvaluationRecorder::deleteMemberHistory()` in addition to
+the existing rating deletion.
 
 ## License
 
