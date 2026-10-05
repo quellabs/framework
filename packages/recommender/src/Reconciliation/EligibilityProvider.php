@@ -1,6 +1,6 @@
 <?php
 	
-	namespace Quellabs\Recommender;
+	namespace Quellabs\Recommender\Reconciliation;
 	
 	/** Application-owned current catalog eligibility. */
 	interface EligibilityProvider {

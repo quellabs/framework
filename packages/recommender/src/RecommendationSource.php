@@ -1,6 +1,8 @@
 <?php
 	
 	namespace Quellabs\Recommender;
+
+	
 	
 	/** Candidate generators available to reconciliation. */
 	enum RecommendationSource: string {

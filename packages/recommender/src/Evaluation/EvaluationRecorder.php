@@ -1,6 +1,6 @@
 <?php
 	
-	namespace Quellabs\Recommender;
+	namespace Quellabs\Recommender\Evaluation;
 	
 	use Cake\Database\Connection;
 	use DateTimeImmutable;
@@ -10,6 +10,12 @@
 	use Quellabs\Recommender\Internal\Identifier;
 	use Quellabs\Recommender\Internal\Persistence\MysqlTimestamp;
 	
+	
+	use Quellabs\Recommender\RecommendationList;
+	
+	use Quellabs\Recommender\RecommendationSource;
+	
+	use Quellabs\Recommender\Reconciliation\ReconciledRecommendation;
 	/** Explicit, transactional recording of displayed recommendations and outcomes. */
 	readonly class EvaluationRecorder {
 		

@@ -9,7 +9,7 @@
 	use Quellabs\Recommender\Internal\Persistence\MysqlTimestamp;
 	use Quellabs\Recommender\Internal\Query\OutcomeSubquery;
 	use Quellabs\Recommender\RecommendationSource;
-	use Quellabs\Recommender\ReconciliationRequest;
+	use Quellabs\Recommender\Reconciliation\ReconciliationRequest;
 	
 	/**
 	 * Builds versioned model candidates from mature, opted-in impression snapshots.

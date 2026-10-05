@@ -9,6 +9,7 @@
 	use Quellabs\Recommender\Internal\Query\Results;
 	use Quellabs\Recommender\Internal\SlopeOne\SlopeOneRecommender;
 	
+	
 	/**
 	 * Item-based collaborative filtering and Slope One recommendations.
 	 *

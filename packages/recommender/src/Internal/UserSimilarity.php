@@ -1,12 +1,14 @@
 <?php
 	
-	namespace Quellabs\Recommender;
+	namespace Quellabs\Recommender\Internal;
 	
 	use Cake\Database\Connection;
 	use Quellabs\Recommender\Config\RecommendationConfig;
 	use Quellabs\Recommender\Internal\Persistence\TemporaryTable;
 	use Quellabs\Recommender\Internal\Query\Results;
 	
+	
+	use Quellabs\Recommender\RecommendationEngine;
 	/**
 	 * User-based collaborative filtering: member similarity scoring and
 	 * neighbour-based recommendations.

@@ -1,6 +1,6 @@
 <?php
 
-	namespace Quellabs\Recommender;
+	namespace Quellabs\Recommender\Reconciliation;
 
 	/** Per-request overrides for reconciliation thresholds and source limits. */
 	readonly class ReconciliationTuning {

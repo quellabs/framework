@@ -4,6 +4,10 @@
 	
 	use Quellabs\Recommender\Internal\Identifier;
 	
+	
+	use Quellabs\Recommender\Reconciliation\ReconciledRecommendation;
+	
+	use Quellabs\Recommender\Reconciliation\ReconciliationRequest;
 	/** Immutable ordered candidates or the application's selected display. */
 	readonly class RecommendationList {
 		

@@ -3,10 +3,10 @@
 namespace Quellabs\Recommender\Tests;
 
 use PHPUnit\Framework\TestCase;
-use Quellabs\Recommender\ArrayEligibilityProvider;
+use Quellabs\Recommender\Reconciliation\ArrayEligibilityProvider;
 use Quellabs\Recommender\RecommendationList;
 use Quellabs\Recommender\RecommendationSource;
-use Quellabs\Recommender\ReconciliationRequest;
+use Quellabs\Recommender\Reconciliation\ReconciliationRequest;
 
 /** Request, result, and in-memory eligibility contracts. */
 class ReconciliationContractsTest extends TestCase {

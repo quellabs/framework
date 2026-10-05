@@ -1,9 +1,11 @@
 <?php
 	
-	namespace Quellabs\Recommender;
+	namespace Quellabs\Recommender\Reconciliation;
 	
 	use Quellabs\Recommender\Internal\Identifier;
 	
+	
+	use Quellabs\Recommender\RecommendationSource;
 	/** Validated inputs for one optional reconciliation request. */
 	readonly class ReconciliationRequest {
 		

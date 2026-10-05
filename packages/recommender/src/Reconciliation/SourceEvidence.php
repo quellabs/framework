@@ -1,9 +1,11 @@
 <?php
 	
-	namespace Quellabs\Recommender;
+	namespace Quellabs\Recommender\Reconciliation;
 	
 	use Quellabs\Recommender\Internal\Identifier;
 	
+	
+	use Quellabs\Recommender\RecommendationSource;
 	/** One candidate's evidence from one enabled source. */
 	readonly class SourceEvidence {
 		

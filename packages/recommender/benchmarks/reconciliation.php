@@ -5,12 +5,12 @@
 	
 	use Cake\Database\Connection;
 	use Psr\Log\AbstractLogger;
-	use Quellabs\Recommender\ArrayEligibilityProvider;
+	use Quellabs\Recommender\Reconciliation\ArrayEligibilityProvider;
 	use Quellabs\Recommender\Config\RecommendationConfig;
-	use Quellabs\Recommender\RecommendationReconciler;
+	use Quellabs\Recommender\Reconciliation\RecommendationReconciler;
 	use Quellabs\Recommender\RecommendationSource;
-	use Quellabs\Recommender\ReconciliationRequest;
-	use Quellabs\Recommender\ReconciliationTuning;
+	use Quellabs\Recommender\Reconciliation\ReconciliationRequest;
+	use Quellabs\Recommender\Reconciliation\ReconciliationTuning;
 	
 	$connection = $GLOBALS['test_connection'] ?? null;
 

@@ -1,6 +1,6 @@
 <?php
 	
-	namespace Quellabs\Recommender;
+	namespace Quellabs\Recommender\Reconciliation;
 	
 	use Quellabs\Recommender\Internal\Identifier;
 	

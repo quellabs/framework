@@ -6,9 +6,9 @@
 	use Quellabs\Contracts\DependencyInjection\ServiceProviderInterface;
 	use Quellabs\Discover\Provider\AbstractProvider;
 	use Quellabs\Recommender\Config\RecommendationConfig;
-	use Quellabs\Recommender\EvaluationRecorder;
-	use Quellabs\Recommender\EvaluationReport;
-	use Quellabs\Recommender\RecommendationReconciler;
+	use Quellabs\Recommender\Evaluation\EvaluationRecorder;
+	use Quellabs\Recommender\Evaluation\EvaluationReport;
+	use Quellabs\Recommender\Reconciliation\RecommendationReconciler;
 	
 	/**
 	 * Registers the recommender services with Canvas's DI container.

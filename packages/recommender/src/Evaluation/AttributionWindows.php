@@ -1,6 +1,6 @@
 <?php
 	
-	namespace Quellabs\Recommender;
+	namespace Quellabs\Recommender\Evaluation;
 	
 	/** Caller-selected outcome attribution periods. */
 	readonly class AttributionWindows {

@@ -1,6 +1,6 @@
 <?php
 	
-	namespace Quellabs\Recommender;
+	namespace Quellabs\Recommender\Evaluation;
 	
 	/** Observed action on a displayed item. */
 	enum OutcomeType: string {

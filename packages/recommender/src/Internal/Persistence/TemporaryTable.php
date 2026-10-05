@@ -3,7 +3,7 @@
 	namespace Quellabs\Recommender\Internal\Persistence;
 	
 	use Cake\Database\Connection;
-	use Quellabs\Recommender\UserSimilarity;
+	use Quellabs\Recommender\Internal\UserSimilarity;
 	
 	/**
 	 * Creates temporary tables that hold candidate sets and rating inputs for one query.

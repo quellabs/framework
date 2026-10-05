@@ -1,6 +1,6 @@
 <?php
 	
-	namespace Quellabs\Recommender;
+	namespace Quellabs\Recommender\Evaluation;
 	
 	use Cake\Database\Connection;
 	use DateTimeImmutable;
@@ -9,6 +9,10 @@
 	use Quellabs\Recommender\Internal\Persistence\MysqlTimestamp;
 	use Quellabs\Recommender\Internal\Query\OutcomeSubquery;
 	
+	
+	use Quellabs\Recommender\RecommendationSource;
+	
+	use Quellabs\Recommender\Reconciliation\ReconciliationRequest;
 	/**
 	 * Descriptive reporting over opted-in displayed-item impressions.
 	 *

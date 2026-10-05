@@ -326,10 +326,10 @@ The existing item-link, Slope One, and user-similarity methods remain independen
 For a combined pool, construct `RecommendationReconciler` with the same connection and config used by the existing algorithms. The application must supply an `EligibilityProvider` already bound to the relevant category, tenant, locale, and current catalog state. Its `filterEligible(array $candidateIds): array` method receives a distinct, small batch and returns an order-preserving subset. It must enforce any timeout itself. Any exception or invalid response on any batch fails the whole reconciliation request; the caller decides whether to use a cache or show nothing.
 
 ```php
-use Quellabs\Recommender\ArrayEligibilityProvider;
-use Quellabs\Recommender\RecommendationReconciler;
+use Quellabs\Recommender\Reconciliation\ArrayEligibilityProvider;
+use Quellabs\Recommender\Reconciliation\RecommendationReconciler;
 use Quellabs\Recommender\RecommendationSource;
-use Quellabs\Recommender\ReconciliationRequest;
+use Quellabs\Recommender\Reconciliation\ReconciliationRequest;
 
 $request = new ReconciliationRequest(
     eligibility: new ArrayEligibilityProvider($smallCatalogEligibleIds),

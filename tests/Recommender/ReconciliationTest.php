@@ -2,19 +2,19 @@
 
 namespace Quellabs\Recommender\Tests;
 
-use Quellabs\Recommender\ArrayEligibilityProvider;
-use Quellabs\Recommender\EligibilityProvider;
-use Quellabs\Recommender\RecommendationReconciler;
+use Quellabs\Recommender\Reconciliation\ArrayEligibilityProvider;
+use Quellabs\Recommender\Reconciliation\EligibilityProvider;
+use Quellabs\Recommender\Reconciliation\RecommendationReconciler;
 use Quellabs\Recommender\RecommendationSource;
-use Quellabs\Recommender\ReconciliationRequest;
-use Quellabs\Recommender\ReconciliationTuning;
+use Quellabs\Recommender\Reconciliation\ReconciliationRequest;
+use Quellabs\Recommender\Reconciliation\ReconciliationTuning;
 use Quellabs\Recommender\VisitorContext;
 use Quellabs\Recommender\Integration\ServiceProvider;
-use Quellabs\Recommender\EvaluationRecorder;
-use Quellabs\Recommender\EvaluationReport;
+use Quellabs\Recommender\Evaluation\EvaluationRecorder;
+use Quellabs\Recommender\Evaluation\EvaluationReport;
 use Quellabs\Recommender\RecommendationList;
-use Quellabs\Recommender\ReconciledRecommendation;
-use Quellabs\Recommender\SourceEvidence;
+use Quellabs\Recommender\Reconciliation\ReconciledRecommendation;
+use Quellabs\Recommender\Reconciliation\SourceEvidence;
 
 /** MySQL coverage for bounded eligibility and source fusion. */
 class ReconciliationTest extends IntegrationTestCase {

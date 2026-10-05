@@ -5,7 +5,7 @@ namespace Quellabs\Recommender\Tests;
 use Cake\Database\Connection;
 use Cake\Database\StatementInterface;
 use Quellabs\Recommender\RecommendationEngine;
-use Quellabs\Recommender\UserSimilarity;
+use Quellabs\Recommender\Internal\UserSimilarity;
 
 /** Integration coverage for neighbour scoring and ordering. */
 class UserSimilarityTest extends IntegrationTestCase {

@@ -1,6 +1,6 @@
 <?php
 	
-	namespace Quellabs\Recommender;
+	namespace Quellabs\Recommender\Reconciliation;
 		
 		use Cake\Database\Connection;
 		use Quellabs\Recommender\Config\RecommendationConfig;
@@ -10,6 +10,16 @@
 		use Quellabs\Recommender\Internal\Reconciliation\CandidateRoundState;
 		use Quellabs\Recommender\Internal\Identifier;
 		
+	
+	use Quellabs\Recommender\Internal\UserSimilarity;
+	
+	use Quellabs\Recommender\RecommendationEngine;
+	
+	use Quellabs\Recommender\RecommendationList;
+	
+	use Quellabs\Recommender\RecommendationSource;
+	
+	use Quellabs\Recommender\VisitorContext;
 		/**
 		 * Combines explicitly selected candidate generators using reciprocal ranks.
 		 *
