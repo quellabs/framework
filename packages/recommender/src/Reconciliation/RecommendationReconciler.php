@@ -6,6 +6,7 @@
 	use Quellabs\Recommender\Config\RecommendationConfig;
 	use Quellabs\Recommender\Internal\Model\ActiveModel;
 	use Quellabs\Recommender\Internal\Model\ClickModel;
+	use Quellabs\Recommender\Internal\Model\ClickModelScorer;
 	use Quellabs\Recommender\Internal\Model\SourceFeatures;
 	use Quellabs\Recommender\Internal\Reconciliation\CandidateRoundState;
 	use Quellabs\Recommender\Internal\Query\SubjectRatings;
@@ -57,6 +58,9 @@
 
 		/** @var TopRatedSource Top-rated candidate source */
 		private TopRatedSource $topRated;
+		
+		/** @var RankFusionScorer Scorer for lists without an active click model */
+		private RankFusionScorer $rankFusion;
 
 		/**
 		 * Build the reconciler.
@@ -76,6 +80,7 @@
 			$this->topRated = $topRated;
 			$this->filter = new EligibilityFilter($config);
 			$this->ratings = new SubjectRatings($connection);
+			$this->rankFusion = new RankFusionScorer();
 		}
 		
 		/**
@@ -158,11 +163,12 @@
 			$signals = $this->collectSignals($request, $state);
 			$auditSignals = $this->auditSignals($state->eligibleIds(), $signals, $request, $subject, $category);
 			$activeModel = $this->activeModel($category, $request);
+			$scorer = $activeModel === null ? $this->rankFusion : new ClickModelScorer($activeModel->model);
 			
 			$items = [];
 			foreach ($state->eligibleIds() as $id) {
 				$evidence = array_merge($signals[$id] ?? [], $auditSignals[$id] ?? []);
-				$items[] = $this->buildRankedItem($id, $evidence, $request->sources, $state->depths(), $activeModel);
+				$items[] = $this->buildRankedItem($id, $evidence, $request, $state->depths(), $scorer);
 			}
 			
 			usort($items, function ($a, $b): int {
@@ -297,16 +303,35 @@
 		}
 		
 		/**
-		 * Build a ranked candidate from its source evidence, scoring it with the active click model when one is calibrated.
+		 * Score a candidate and build it with the features and contributions the scorer produced.
 		 * @param int $id Candidate ID
+		 * @param array<int, SourceEvidence> $evidence Source signals for the candidate
+		 * @param ReconciliationRequest $request Request with the enabled sources and diagnostics flag
+		 * @param array<string, int> $depths Searched depth per source
+		 * @param CandidateScorer $scorer Scorer that produces the ranking score
+		 * @return ReconciledRecommendation Ranked candidate
+		 */
+		private function buildRankedItem(int $id, array $evidence, ReconciliationRequest $request, array $depths, CandidateScorer $scorer): ReconciledRecommendation {
+			$features = $this->features($evidence, $request->sources, $depths);
+			$scored = $scorer->score($features, $evidence);
+			
+			if ($scored->contributions !== null) {
+				$evidence = $this->withContributions($evidence, $scored->contributions);
+			}
+			
+			$diagnostics = $request->diagnostics ? new ReconciliationDiagnostics($features, $scored->contributions ?? [], $depths) : null;
+			
+			return new ReconciledRecommendation($id, $scored->score, $evidence, $diagnostics);
+		}
+		
+		/**
+		 * Build the serving-time feature values of a candidate from its ranked source signals.
 		 * @param array<int, SourceEvidence> $evidence Source signals for the candidate
 		 * @param array<int, RecommendationSource> $sources Enabled sources
 		 * @param array<string, int> $depths Searched depth per source
-		 * @param ActiveModel|null $activeModel Active model token and model, when calibrated
-		 * @return ReconciledRecommendation Ranked candidate
+		 * @return array<string, float> Feature values keyed by "source.suffix"
 		 */
-		private function buildRankedItem(int $id, array $evidence, array $sources, array $depths, ?ActiveModel $activeModel): ReconciledRecommendation {
-			$score = 0.0;
+		private function features(array $evidence, array $sources, array $depths): array {
 			$features = $this->baseFeatures($sources, $depths);
 			
 			foreach ($evidence as $signal) {
@@ -315,11 +340,8 @@
 				}
 				
 				$prefix = $signal->source->value . '.';
-				$reciprocal = 1 / (60 + $signal->sourceRank);
-				$score += $reciprocal;
-				
 				$features[$prefix . 'present'] = 1.0;
-				$features[$prefix . 'reciprocal_rank'] = $reciprocal;
+				$features[$prefix . 'reciprocal_rank'] = RankFusionScorer::reciprocalRank($signal->sourceRank);
 				
 				if ($signal->source === RecommendationSource::ItemLinks) {
 					$features[$prefix . 'score'] = log1p(max(0.0, $signal->rawScore ?? 0.0));
@@ -330,21 +352,19 @@
 				$features[$prefix . 'count'] = log1p($signal->supportCount ?? 0);
 			}
 			
-			$contributions = [];
-			
-			if ($activeModel !== null) {
-				$model = $activeModel->model;
-				$score = $model->probability($features, 1);
-				$contributions = $model->sourceContributions($features);
-				
-				$evidence = array_map(function ($signal) use ($contributions): SourceEvidence {
-					return new SourceEvidence($signal->source, $signal->rawScore, $signal->sourceRank, $signal->supportCount,
-						$signal->contributingProductIds, $contributions[$signal->source->value] ?? 0.0);
-				}, $evidence
-				);
-			}
-			
-			return new ReconciledRecommendation($id, $score, $evidence, new ReconciliationDiagnostics($features, $contributions, $depths));
+			return $features;
+		}
+		
+		/**
+		 * Attach each source's log-odds term from the scorer to the signals of that source.
+		 * @param array<int, SourceEvidence> $evidence Source signals for the candidate
+		 * @param array<string, float> $contributions Log-odds term per source value
+		 * @return array<int, SourceEvidence> Signals carrying their contributions
+		 */
+		private function withContributions(array $evidence, array $contributions): array {
+			return array_map(fn(SourceEvidence $signal): SourceEvidence => new SourceEvidence($signal->source,
+				$signal->rawScore, $signal->sourceRank, $signal->supportCount, $signal->contributingProductIds,
+				$contributions[$signal->source->value] ?? 0.0), $evidence);
 		}
 		
 		/**
@@ -544,38 +564,18 @@
 		 * @return array<int, CandidateRow>
 		 */
 		private function generate(RecommendationSource $source, Subject $subject, int $category, int $depth, ReconciliationRequest $request): array {
-			if ($source === RecommendationSource::NewProducts) {
-				return array_map(self::asRow(...), $this->newProducts($request)->candidates($subject, null, $depth, $request->tuning->sources, $category));
-			}
-
-			if ($source === RecommendationSource::TopRated) {
-				return array_map(self::asRow(...), $this->topRated->candidates($subject, null, $depth, $request->tuning->sources, $category));
-			}
-
-			if ($source === RecommendationSource::UserSimilarity) {
-				return array_map(self::asRow(...), $this->similarity->candidates($subject, null, $depth, $request->tuning->sources, $category));
-			}
-
-			return $this->generateFromLinks($source, $subject, $category, $depth, $request);
-		}
-		
-		/**
-		 * Return the item-links or Slope One candidates of a member or visitor, up to the depth, as candidate rows.
-		 * @param RecommendationSource $source Item-links or Slope One
-		 * @param Subject $subject Member or visitor
-		 * @param int $category Resolved category
-		 * @param int $depth Source depth
-		 * @param ReconciliationRequest $request Source settings
-		 * @return array<int, CandidateRow>
-		 */
-		private function generateFromLinks(RecommendationSource $source, Subject $subject, int $category, int $depth, ReconciliationRequest $request): array {
-			$results = $source === RecommendationSource::SlopeOne
-				? $this->slopeOne->candidates($subject, null, $depth, $request->tuning->sources, $category)
-				: $this->itemLinks->candidates($subject, null, $depth, $request->tuning->sources, $category);
-
+			$settings = $request->tuning->sources;
+			$results = match ($source) {
+				RecommendationSource::NewProducts => $this->newProducts($request)->candidates($subject, null, $depth, $settings, $category),
+				RecommendationSource::TopRated => $this->topRated->candidates($subject, null, $depth, $settings, $category),
+				RecommendationSource::UserSimilarity => $this->similarity->candidates($subject, null, $depth, $settings, $category),
+				RecommendationSource::SlopeOne => $this->slopeOne->candidates($subject, null, $depth, $settings, $category),
+				RecommendationSource::ItemLinks => $this->itemLinks->candidates($subject, null, $depth, $settings, $category),
+			};
+			
 			return array_map(self::asRow(...), $results);
 		}
-
+		
 		/**
 		 * Convert a recommendation result into the candidate row shape the rounds use.
 		 * @param RecommendationResult $result Candidate result

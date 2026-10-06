@@ -213,7 +213,7 @@ class EvaluationTest extends IntegrationTestCase {
             [$modelId, json_encode($artifact, JSON_THROW_ON_ERROR)]);
         try {
             $request = new ReconciliationRequest(new ArrayEligibilityProvider([40, 41]),
-                [RecommendationSource::NewProducts], 2, 'home', [40, 41]);
+                [RecommendationSource::NewProducts], 2, 'home', [40, 41], diagnostics: true);
             $list = ($this->reconciler())
                 ->memberSlate(7, $request);
             $this->assertSame(ScoreKind::ClickProbability, $list->scoreKind);
@@ -388,7 +388,7 @@ class EvaluationTest extends IntegrationTestCase {
             $this->insertRating($id + 1000, $id, $rating);
         }
         $request = new ReconciliationRequest(new ArrayEligibilityProvider([150]),
-            [RecommendationSource::TopRated], 1, 'audit_test', additionalCandidateIds: [150]);
+            [RecommendationSource::TopRated], 1, 'audit_test', additionalCandidateIds: [150], diagnostics: true);
         $list = ($this->reconciler())
             ->memberSlate(1, $request);
         $shown = new DateTimeImmutable('2026-01-01T00:00:00Z');
@@ -402,5 +402,17 @@ class EvaluationTest extends IntegrationTestCase {
             new DateTimeImmutable('2026-01-03T00:00:00Z'),
             new AttributionWindows(3600, 7200), RecommendationSource::TopRated);
         $this->assertSame(1, $summary->impressions);
+    }
+
+    /** A ranked impression without diagnostics is rejected rather than stored with an empty snapshot.
+     * @return void
+     */
+    public function testRankedImpressionRequiresDiagnostics(): void {
+        $this->insertRating(1, 999, 0.9);
+        $request = new ReconciliationRequest(new ArrayEligibilityProvider([40]),
+            [RecommendationSource::NewProducts], 1, 'home', [40]);
+        $list = $this->reconciler()->memberSlate(1, $request);
+        $this->expectException(\UnexpectedValueException::class);
+        (new EvaluationRecorder($this->connection))->recordImpression($list, null, new DateTimeImmutable('2026-01-01T00:00:00Z'));
     }
 }

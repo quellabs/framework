@@ -16,6 +16,7 @@
 	use Quellabs\Recommender\RecommendationSource;
 	
 	use Quellabs\Recommender\Reconciliation\ReconciledRecommendation;
+	use Quellabs\Recommender\Reconciliation\ReconciliationDiagnostics;
 	/** Explicit, transactional recording of displayed recommendations and outcomes. */
 	readonly class EvaluationRecorder {
 		
@@ -185,14 +186,15 @@
 				fn($name) => $name !== 'log_position'));
 
 			foreach ($shown->items as $item) {
-				$actualFeatures = array_keys($item->diagnostics->featureSnapshot);
+				$diagnostics = $this->diagnosticsOf($shown, $item);
+				$actualFeatures = array_keys($diagnostics->featureSnapshot);
 				sort($actualFeatures);
 
 				if (
 					$actualFeatures !== $expectedFeatures ||
-					!$this->hasCompleteFeatureSnapshot($item, $shown->sources) ||
+					!$this->hasCompleteFeatureSnapshot($diagnostics, $shown->sources) ||
 					$item->rankingScore === null ||
-					abs($model->probability($item->diagnostics->featureSnapshot, 1) - $item->rankingScore) > 1e-9
+					abs($model->probability($diagnostics->featureSnapshot, 1) - $item->rankingScore) > 1e-9
 				) {
 					throw new \UnexpectedValueException("Features or reference score of product {$item->productId} do not match model {$shown->modelId}.");
 				}
@@ -226,10 +228,11 @@
 		 */
 		private function insertImpressionItem(ImpressionId $id, RecommendationList $shown, ReconciledRecommendation $item,
 			int $position, ?ClickModel $model): void {
-			$snapshot = json_encode(['features'       => $item->diagnostics->featureSnapshot,
-			                         'depth_searched' => $item->diagnostics->searchedDepths], JSON_THROW_ON_ERROR);
-			$schemaVersion = $this->hasCompleteFeatureSnapshot($item, $shown->sources) ? 1 : 0;
-			$displayProbability = $model?->probability($item->diagnostics->featureSnapshot, $position);
+			$diagnostics = $this->diagnosticsOf($shown, $item);
+			$snapshot = json_encode(['features'       => $diagnostics->featureSnapshot,
+			                         'depth_searched' => $diagnostics->searchedDepths], JSON_THROW_ON_ERROR);
+			$schemaVersion = $this->hasCompleteFeatureSnapshot($diagnostics, $shown->sources) ? 1 : 0;
+			$displayProbability = $model?->probability($diagnostics->featureSnapshot, $position);
 			
 			$this->connection->execute('INSERT INTO vogoo_impression_items
 	            (impression_id, item_id, position, ranking_score, display_click_probability,
@@ -314,17 +317,36 @@
 		}
 		
 		/**
-		 * Check whether an item carries a complete version-1 feature snapshot for the enabled sources.
+		 * Return the diagnostics of a displayed item: empty for a direct list, required for a ranked list.
+		 * @param RecommendationList $shown Displayed list
 		 * @param ReconciledRecommendation $item Displayed item
-		 * @param array<int, RecommendationSource> $sources Enabled source set
-		 * @return bool Whether this item has a complete version-1 feature snapshot
+		 * @return ReconciliationDiagnostics Features and depths of the item
+		 * @throws \UnexpectedValueException When a ranked list item has no diagnostics
 		 */
-		private function hasCompleteFeatureSnapshot(ReconciledRecommendation $item, array $sources): bool {
+		private function diagnosticsOf(RecommendationList $shown, ReconciledRecommendation $item): ReconciliationDiagnostics {
+			if ($item->diagnostics !== null) {
+				return $item->diagnostics;
+			}
+
+			if ($shown->scoreKind === ScoreKind::Direct) {
+				return new ReconciliationDiagnostics();
+			}
+
+			throw new \UnexpectedValueException("Product {$item->productId} has no diagnostics; reconcile with diagnostics: true to record a ranked impression.");
+		}
+
+		/**
+		 * Check whether the diagnostics hold a complete version-1 feature snapshot for the enabled sources.
+		 * @param ReconciliationDiagnostics $diagnostics Features and depths of a displayed item
+		 * @param array<int, RecommendationSource> $sources Enabled source set
+		 * @return bool Whether the diagnostics are a complete version-1 feature snapshot
+		 */
+		private function hasCompleteFeatureSnapshot(ReconciliationDiagnostics $diagnostics, array $sources): bool {
 			$expected = SourceFeatures::names($sources);
 			$sourceNames = array_map(fn($source) => $source->value, $sources);
 			sort($sourceNames);
-			$actual = array_keys($item->diagnostics->featureSnapshot);
-			$depthSources = array_keys($item->diagnostics->searchedDepths);
+			$actual = array_keys($diagnostics->featureSnapshot);
+			$depthSources = array_keys($diagnostics->searchedDepths);
 			sort($actual);
 			sort($depthSources);
 			
@@ -332,8 +354,8 @@
 				return false;
 			}
 			
-			foreach ($item->diagnostics->searchedDepths as $source => $depth) {
-				if (!SourceFeatures::depthMatches($depth, $item->diagnostics->featureSnapshot[$source . '.log_depth_searched'])) {
+			foreach ($diagnostics->searchedDepths as $source => $depth) {
+				if (!SourceFeatures::depthMatches($depth, $diagnostics->featureSnapshot[$source . '.log_depth_searched'])) {
 					return false;
 				}
 			}

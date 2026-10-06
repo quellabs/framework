@@ -6,7 +6,8 @@ Names, argument order and value types now follow one convention across the publi
 boolean flags and magic strings: `RatingKind` and `RatingOrder` for ratings queries, `ScoreKind` for list scoring,
 and `RecommendationSource` for the candidate source of a result. `RecommendationEngine::automaticRating()` is split into
 `recordPurchase()` and `recordClick()`. Reconciliation settings live in `ReconciliationTuning`, and per-item
-diagnostics in `ReconciliationDiagnostics`. `EligibilityProvider` moved to the root namespace. Member and visitor recommendations come from `RecommendationReconciler` slates. `ItemRecommender` is removed. Its item-to-item lookups, predictions and reasons are methods on the candidate sources in `Quellabs\Recommender\Sources`. Reasons methods return `RecommendationResult[]`, average-rating
+diagnostics in `ReconciliationDiagnostics`, attached only when a request sets `diagnostics: true`. Ranking goes through the
+`CandidateScorer` interface, with `RankFusionScorer` as the default. `EligibilityProvider` moved to the root namespace. Member and visitor recommendations come from `RecommendationReconciler` slates. `ItemRecommender` is removed. Its item-to-item lookups, predictions and reasons are methods on the candidate sources in `Quellabs\Recommender\Sources`. Reasons methods return `RecommendationResult[]`, average-rating
 methods return `null` when there is no data, and reconciler methods are `memberSlate()` and `visitorSlate()` for the displayed slate, with `memberCandidatePool()`
 and `visitorCandidatePool()` for the full pool. Value objects use `productId` for product IDs and `source` for candidate
 sources. Rating accessors return `Rating` and `VisitorRating` objects. Member

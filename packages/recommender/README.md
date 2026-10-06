@@ -79,6 +79,10 @@ Ratings run from 0.0 to 1.0, and -1.0 marks "not interested".
 Visitor variants take a `VisitorContext` in place of the member ID. Visitor reconciliation takes a
 `VisitorReconciliationRequest`, built from `VisitorSource` values, in place of `ReconciliationRequest`.
 
+Items carry `$diagnostics` (`ReconciliationDiagnostics`) only when the request sets `diagnostics: true`; otherwise it is `null`.
+`EvaluationRecorder::recordImpression()` rejects a ranked list whose items have no diagnostics. Items are scored by
+`RankFusionScorer` unless a calibrated click model is active for the request. Both implement `CandidateScorer`.
+
 ### Item lookups and predictions
 
 The candidate sources in `Quellabs\Recommender\Sources` answer item-to-item lookups, predictions and reasons. Each
@@ -212,7 +216,7 @@ Return and type changes:
 | `RecommendationResult::$itemId`, `ReconciledRecommendation::$itemId` | `$itemId` | `$productId`, same `int` type |
 | `RecommendationResult::$contributingItemIds`, `SourceEvidence::$contributingItemIds` | `$contributingItemIds` | `$contributingProductIds`, same `int[]` type |
 | `RecommendationList::$scoreKind` | `string` such as `'rank_fusion'` | `ScoreKind` enum case |
-| `ReconciledRecommendation::$featureSnapshot`, `$searchedDepths`, `$sourceLogOddsContributions` | Properties on the item | Properties on `$item->diagnostics` (`ReconciliationDiagnostics`) |
+| `ReconciledRecommendation::$featureSnapshot`, `$searchedDepths`, `$sourceLogOddsContributions` | Properties on the item | Properties on `$item->diagnostics` (`ReconciliationDiagnostics`), which is `null` unless the request sets `diagnostics: true` |
 | `new RecommendationList(...)` | Public constructor | Private. Use `RecommendationList::ranked()` or `fromDisplayedItems()` |
 | `ReconciliationRequest` tuning properties such as `$minSlopeSupport` | Properties on the request | `$request->tuning` (`ReconciliationTuning`). `minSlopeSupport` is now `minSupport` |
 

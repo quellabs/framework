@@ -16,15 +16,15 @@
 		/** @var array<int, SourceEvidence> Available source signals */
 		public array $evidence;
 
-		/** @var ReconciliationDiagnostics Features and depths behind the ranking */
-		public ReconciliationDiagnostics $diagnostics;
+		/** @var ReconciliationDiagnostics|null Features and depths, null unless the request asked for them */
+		public ?ReconciliationDiagnostics $diagnostics;
 
 		/**
 		 * Build a ranked candidate, rejecting values outside their allowed ranges.
 		 * @param int $productId Catalog ID, an unsigned 32-bit integer
 		 * @param float|null $rankingScore Rank-fusion score or reference-position probability
 		 * @param array<mixed> $evidence Available source signals
-		 * @param ReconciliationDiagnostics|null $diagnostics Features and depths, empty when null
+		 * @param ReconciliationDiagnostics|null $diagnostics Features and depths, or null when not requested
 		 * @throws \InvalidArgumentException When a value is outside its allowed range
 		 */
 		public function __construct(
@@ -44,7 +44,7 @@
 			$this->productId = $productId;
 			$this->rankingScore = $rankingScore;
 			$this->evidence = $this->validateEvidence($evidence);
-			$this->diagnostics = $diagnostics ?? new ReconciliationDiagnostics();
+			$this->diagnostics = $diagnostics;
 		}
 
 		/**

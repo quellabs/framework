@@ -37,6 +37,9 @@
 		/** @var array<int, int> Application exploration candidates */
 		public array $additionalCandidateIds;
 		
+		/** @var bool Attach serving-time diagnostics to each item, required to record its impression */
+		public bool $diagnostics;
+		
 		/**
 		 * Validate the request inputs and store them in canonical form.
 		 * @param EligibilityProvider $eligibility Application eligibility check
@@ -48,6 +51,7 @@
 		 * @param int|null $category Category override
 		 * @param string|null $contextKey Model and logging partition, a printable ASCII key up to 128 bytes
 		 * @param ReconciliationTuning|null $tuning Threshold and source limit overrides, defaults when null
+		 * @param bool $diagnostics Attach serving-time diagnostics to each item
 		 * @throws \InvalidArgumentException When an input is outside its allowed range
 		 */
 		public function __construct(
@@ -59,7 +63,8 @@
 			array                 $additionalCandidateIds = [],
 			?int                  $category = null,
 			?string               $contextKey = null,
-			?ReconciliationTuning $tuning = null
+			?ReconciliationTuning $tuning = null,
+			bool                  $diagnostics = false
 		) {
 			$this->eligibility = $eligibility;
 			$this->limit = $limit;
@@ -67,6 +72,7 @@
 			$this->category = $category;
 			$this->contextKey = $contextKey;
 			$this->tuning = $tuning ?? new ReconciliationTuning();
+			$this->diagnostics = $diagnostics;
 			$this->sources = self::canonicalSources($sources);
 			
 			$this->validateLimit();
@@ -89,7 +95,8 @@
 		 */
 		public function withSources(array $sources): self {
 			return new self($this->eligibility, $sources, $this->limit, $this->placement,
-				$this->newProductIds, $this->additionalCandidateIds, $this->category, $this->contextKey, $this->tuning);
+				$this->newProductIds, $this->additionalCandidateIds, $this->category, $this->contextKey, $this->tuning,
+				$this->diagnostics);
 		}
 
 		/**

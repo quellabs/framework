@@ -154,10 +154,10 @@ class ReconciliationTest extends IntegrationTestCase {
         $provider = new ArrayEligibilityProvider([999]);
         $reconciler = $this->reconciler();
         $shallow = $reconciler->memberSlate(1, new ReconciliationRequest($provider,
-            [RecommendationSource::ItemLinks], 1, 'home', additionalCandidateIds: [999]));
+            [RecommendationSource::ItemLinks], 1, 'home', additionalCandidateIds: [999], diagnostics: true));
         $deep = $reconciler->memberSlate(1, new ReconciliationRequest($provider,
             [RecommendationSource::ItemLinks], 2, 'home', additionalCandidateIds: [999],
-            tuning: new ReconciliationTuning(maxCandidateDepth: 100)));
+            tuning: new ReconciliationTuning(maxCandidateDepth: 100), diagnostics: true));
         $this->assertSame(50, $shallow->items[0]->diagnostics->searchedDepths['item_links']);
         $this->assertSame(100, $deep->items[0]->diagnostics->searchedDepths['item_links']);
         $this->assertSame(0.0, $shallow->items[0]->diagnostics->featureSnapshot['item_links.present']);
@@ -186,7 +186,7 @@ class ReconciliationTest extends IntegrationTestCase {
         $list = $this->reconciler()->memberSlate(1,
             new ReconciliationRequest($provider,
                 [RecommendationSource::NewProducts, RecommendationSource::ItemLinks],
-                1, 'home', [200, 201], tuning: new ReconciliationTuning(maxCandidateDepth: 100)));
+                1, 'home', [200, 201], tuning: new ReconciliationTuning(maxCandidateDepth: 100), diagnostics: true));
         $this->assertSame(160, $list->items[0]->productId);
         $this->assertSame(50, $list->items[0]->diagnostics->searchedDepths['new_products']);
         $this->assertSame(100, $list->items[0]->diagnostics->searchedDepths['item_links']);
@@ -277,7 +277,7 @@ class ReconciliationTest extends IntegrationTestCase {
         $this->insertRating(1, 999, 0.9); // Warm subject: cold subjects get only top-rated.
         $list = $this->reconciler()->memberSlate(1,
             new ReconciliationRequest(new ArrayEligibilityProvider([20]),
-                [RecommendationSource::NewProducts], 1, 'home', additionalCandidateIds: [20]));
+                [RecommendationSource::NewProducts], 1, 'home', additionalCandidateIds: [20], diagnostics: true));
         $this->assertSame(50, $list->items[0]->diagnostics->searchedDepths['new_products']);
         $this->assertSame(0.0, $list->items[0]->diagnostics->featureSnapshot['new_products.present']);
         $this->assertEqualsWithDelta(log(50),
@@ -537,7 +537,7 @@ class ReconciliationTest extends IntegrationTestCase {
             $this->insertRating($id + 1000, $id, $rating);
         }
         $request = new ReconciliationRequest(new ArrayEligibilityProvider([150]),
-            [RecommendationSource::TopRated], 1, 'home', additionalCandidateIds: [150]);
+            [RecommendationSource::TopRated], 1, 'home', additionalCandidateIds: [150], diagnostics: true);
         $list = $this->reconciler()->memberSlate(1, $request);
         $this->assertSame(150, $list->items[0]->productId);
         $this->assertSame(0.0, $list->items[0]->rankingScore);
@@ -559,7 +559,7 @@ class ReconciliationTest extends IntegrationTestCase {
         $request = new ReconciliationRequest(new ArrayEligibilityProvider([150]),
             [RecommendationSource::NewProducts, RecommendationSource::ItemLinks,
                 RecommendationSource::SlopeOne, RecommendationSource::UserSimilarity],
-            1, 'home', range(100, 150), additionalCandidateIds: [150]);
+            1, 'home', range(100, 150), additionalCandidateIds: [150], diagnostics: true);
         $list = $this->reconciler()->memberSlate(1, $request);
         $item = $list->items[0];
         $this->assertSame(150, $item->productId);
@@ -572,5 +572,21 @@ class ReconciliationTest extends IntegrationTestCase {
             $this->assertNull($evidence->sourceRank);
             $this->assertSame(0.0, $item->diagnostics->featureSnapshot[$evidence->source->value . '.present']);
         }
+    }
+
+    /** Diagnostics are attached to items only when the request asks for them.
+     * @return void
+     */
+    public function testDiagnosticsAreAttachedOnlyWhenRequested(): void {
+        $this->insertRating(1, 10, 0.9);
+        $this->insertLink(10, 20, 10);
+        $provider = new ArrayEligibilityProvider([20]);
+        $plain = $this->reconciler()->memberSlate(1,
+            new ReconciliationRequest($provider, [RecommendationSource::ItemLinks], 1, 'home'));
+        $explained = $this->reconciler()->memberSlate(1,
+            new ReconciliationRequest($provider, [RecommendationSource::ItemLinks], 1, 'home', diagnostics: true));
+        $this->assertNull($plain->items[0]->diagnostics);
+        $this->assertSame(['item_links' => 50], $explained->items[0]->diagnostics?->searchedDepths);
+        $this->assertSame($plain->items[0]->rankingScore, $explained->items[0]->rankingScore);
     }
 }

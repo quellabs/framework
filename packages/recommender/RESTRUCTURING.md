@@ -84,16 +84,16 @@ Reason for the order: each query exists once from the start. Writing product-sub
 
 ### Phase 4: shrink the combiner
 
-- [ ] Reduce `RecommendationReconciler` to fusion, source orchestration and evidence.
-- [ ] Move `ReconciliationDiagnostics` out of the normal result path.
-- [ ] Add the scorer interface, with rank fusion as the default implementation.
+- [x] Reduce `RecommendationReconciler` to fusion, source orchestration and evidence. Feature building and scoring moved out; the reconciler selects a scorer and keeps the rounds, the source calls and the evidence.
+- [x] Move `ReconciliationDiagnostics` out of the normal result path. `ReconciliationRequest::$diagnostics` (default `false`) attaches them to each item. Impression recording rejects ranked items without them. Decided: opt-in on the request, not a second call, because the impression must record the features from the same run that produced the displayed score.
+- [x] Add the scorer interface, with rank fusion as the default implementation. `CandidateScorer` returns a `ScoredCandidate`. `RankFusionScorer` is the default. `ClickModelScorer` implements the same interface and is selected when a calibrated model is active.
 
 ### Phase 5: extract evaluation and click models
 
 - [ ] Move `ClickModelTrainer`, `ClickModelFitter`, `ActiveModel`, `EvaluationRecorder`, the Evaluation namespace, the evaluation migrations, and the `TrainClickModel`, `ActivateClickModel`, `InitEvaluation` and `PruneEvaluation` Sculpt commands into the separate package.
 - [ ] Remove calibrated fields from `RecommendationList`. Move `ScoreKind::ClickProbability` with the click-model code.
 - [ ] Remove the evaluation hooks from `RecommendationEngine`. `deleteMemberData()` no longer takes a recorder.
-- [ ] Connect the click-model scorer to the combiner through the scorer interface.
+- [x] Connect the click-model scorer to the combiner through the scorer interface. Done in Phase 4 with `ClickModelScorer`; the click-model code itself still moves in this phase.
 
 ### Phase 6: subject and public surface
 
