@@ -88,11 +88,12 @@
 			$this->connection->transactional(function () use ($impressionId, $product, $eventId, $type, $timestamp): void {
 				$this->assertOutcomeFollowsDisplay($impressionId, $product, $timestamp);
 				
-				$this->connection->execute('INSERT INTO vogoo_outcomes
-				(event_id, impression_id, item_id, event_type, occurred_at)
-				VALUES (:event_id, :impression_id, :item_id, :event_type, :occurred_at) ON DUPLICATE KEY UPDATE event_id = event_id
-				',
-				[
+				$this->connection->execute('
+					INSERT INTO `vogoo_outcomes`
+						(`event_id`, `impression_id`, `item_id`, `event_type`, `occurred_at`)
+						VALUES
+					    (:event_id, :impression_id, :item_id, :event_type, :occurred_at) ON DUPLICATE KEY UPDATE event_id = event_id
+				', [
 					'event_id'      => $eventId,
 					'impression_id' => $impressionId->binary(),
 					'item_id'       => $product,
@@ -114,7 +115,7 @@
 			Identifier::assertId($member, 'Member ID');
 			EvaluationSchema::requireTables($this->connection);
 
-			$this->connection->execute('DELETE FROM vogoo_impressions WHERE member_id = ?', [$member]);
+			$this->connection->execute('DELETE FROM `vogoo_impressions` WHERE `member_id` = ?', [$member]);
 		}
 		
 		/**
@@ -130,15 +131,15 @@
 
 			$row = $this->connection->execute('
 				SELECT
-					artifact,
-					objective,
-					category,
-					placement,
-					source_mask,
-					context_key,
-					feature_schema_version
-				FROM vogoo_models
-				WHERE id = UNHEX(:model_id)
+					`artifact`,
+					`objective`,
+					`category`,
+					`placement`,
+					`source_mask`,
+					`context_key`,
+					`feature_schema_version`
+				FROM `vogoo_models`
+				WHERE `id` = UNHEX(:model_id)
 			', [
 				'model_id' => $shown->scorerId,
 			])->fetchAssoc();
@@ -182,8 +183,7 @@
 		 * @throws \UnexpectedValueException When an item's features or reference score do not match the model
 		 */
 		private function assertItemsMatchModel(RecommendationList $shown, ClickModel $model): void {
-			$expectedFeatures = array_values(array_filter($model->featureNames(),
-				fn($name) => $name !== 'log_position'));
+			$expectedFeatures = array_values(array_filter($model->featureNames(), fn($name) => $name !== 'log_position'));
 
 			foreach ($shown->items as $item) {
 				$diagnostics = $this->diagnosticsOf($shown, $item);
@@ -210,10 +210,12 @@
 		 * @return void
 		 */
 		private function insertImpressionRow(ImpressionId $id, RecommendationList $shown, ?int $memberId, string $timestamp): void {
-			$this->connection->execute('INSERT INTO vogoo_impressions
-			(id, category, placement, source_mask, context_key, score_kind, member_id, shown_at)
-			VALUES (:id, :category, :placement, :source_mask, :context_key, :score_kind, :member_id, :shown_at)',
-			[
+			$this->connection->execute('
+				INSERT INTO `vogoo_impressions`
+					(`id`, `category`, `placement`, `source_mask`, `context_key`, `score_kind`, `member_id`, `shown_at`)
+					VALUES
+				    (:id, :category, :placement, :source_mask, :context_key, :score_kind, :member_id, :shown_at)
+		    ', [
 				'id'          => $id->binary(),
 				'category'    => $shown->category,
 				'placement'   => $shown->placement,
@@ -233,6 +235,7 @@
 		 * @param int $position One-based display position
 		 * @param ClickModel|null $model Calibrated model, or null for uncalibrated lists
 		 * @return void
+		 * @throws \JsonException
 		 */
 		private function insertImpressionItem(ImpressionId $id, RecommendationList $shown, ReconciledRecommendation $item, int $position, ?ClickModel $model): void {
 			$diagnostics = $this->diagnosticsOf($shown, $item);
@@ -241,12 +244,14 @@
 			$schemaVersion = $this->hasCompleteFeatureSnapshot($diagnostics, $shown->sources) ? 1 : 0;
 			$displayProbability = $model?->probability($diagnostics->featureSnapshot, $position);
 			
-			$this->connection->execute('INSERT INTO vogoo_impression_items
-			(impression_id, item_id, position, ranking_score, display_click_probability,
-			model_id, feature_schema_version, feature_snapshot)
-			VALUES (:impression_id, :item_id, :position, :ranking_score, :display_click_probability,
-			:model_id, :feature_schema_version, :feature_snapshot)',
-			[
+			$this->connection->execute('
+				INSERT INTO `vogoo_impression_items`
+					(`impression_id`, `item_id`, `position`, `ranking_score`, `display_click_probability`,
+					 `model_id`, `feature_schema_version`, `feature_snapshot`)
+					VALUES
+				    (:impression_id, :item_id, :position, :ranking_score, :display_click_probability,
+					 :model_id, :feature_schema_version, :feature_snapshot)
+			', [
 				'impression_id'             => $id->binary(),
 				'item_id'                   => $item->productId,
 				'position'                  => $position,
@@ -258,11 +263,14 @@
 			]);
 			
 			foreach ($item->evidence as $signal) {
-				$this->connection->execute('INSERT INTO vogoo_impression_evidence
-			(impression_id, item_id, source, raw_score, source_rank, support_count,
-			log_odds_contribution, contributing_item_ids) VALUES (:impression_id, :item_id, :source, :raw_score,
-			:source_rank, :support_count, :log_odds_contribution, :contributing_item_ids)',
-			[
+				$this->connection->execute('
+					INSERT INTO `vogoo_impression_evidence`
+						(`impression_id`, `item_id`, `source`, `raw_score`, `source_rank`, `support_count`,
+						 `log_odds_contribution`, `contributing_item_ids`)
+					VALUES
+					    (:impression_id, :item_id, :source, :raw_score,
+			  			 :source_rank, :support_count, :log_odds_contribution, :contributing_item_ids)
+				', [
 					'impression_id'         => $id->binary(),
 					'item_id'               => $item->productId,
 					'source'                => $signal->source->value,
@@ -287,10 +295,9 @@
 			$row = $this->connection->execute('
 				SELECT
 					i.shown_at
-				FROM vogoo_impressions i
-				JOIN vogoo_impression_items item ON item.impression_id = i.id
-				WHERE i.id = :impression_id AND
-				      item.item_id = :item_id
+				FROM `vogoo_impressions` i
+				JOIN `vogoo_impression_items` item ON item.impression_id = i.id
+				WHERE i.id = :impression_id AND item.item_id = :item_id
 			', [
 				'impression_id' => $impressionId->binary(),
 				'item_id'       => $productId,
@@ -318,12 +325,12 @@
 		private function assertStoredEventMatches(ImpressionId $impressionId, int $productId, string $eventId, OutcomeType $type, string $timestamp): void {
 			$stored = $this->connection->execute('
 				SELECT
-					HEX(impression_id) AS impression_hex,
-					item_id,
-					event_type,
-					occurred_at
-				FROM vogoo_outcomes
-				WHERE event_id = :event_id
+					HEX(`impression_id`) AS impression_hex,
+					`item_id`,
+					`event_type`,
+					`occurred_at`
+				FROM `vogoo_outcomes`
+				WHERE `event_id` = :event_id
 			', [
 				'event_id' => $eventId,
 			])->fetchAssoc();

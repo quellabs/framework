@@ -46,7 +46,7 @@
 		public function summary(int $category, DateTimeImmutable $start, DateTimeImmutable $end, DateTimeImmutable $asOf, AttributionWindows $windows, ?RecommendationSource $source = null, ?string $contextKey = null): EvaluationSummary {
 			EvaluationSchema::requireTables($this->connection);
 			$this->assertSummaryArguments($category, $start, $end, $asOf, $contextKey);
-	
+			
 			$params = [
 				'category'        => $category,
 				'context'         => $contextKey ?? '',
@@ -57,17 +57,17 @@
 				'click_window'    => $windows->clickSeconds,
 				'purchase_window' => $windows->purchaseSeconds,
 			];
-	
+			
 			if ($source !== null) {
 				$params['source'] = $source->value;
 			}
-	
+			
 			$row = $this->connection->execute($this->summarySql($source), $params)->fetchAssoc();
-	
+			
 			return new EvaluationSummary((int)$row['impressions'], (int)$row['clicked'],
 				(int)$row['purchased'], $asOf, $windows);
 		}
-	
+		
 		/**
 		 * Validate the arguments of a summary query.
 		 * @param int $category Resolved category
@@ -82,20 +82,20 @@
 			if ($category < 0 || $category > Identifier::MAX) {
 				throw new \InvalidArgumentException("Category must be an unsigned 32-bit integer, got {$category}.");
 			}
-	
+			
 			if ($start >= $end) {
 				throw new \InvalidArgumentException('Report start ' . $start->format(DATE_ATOM) . ' must be before its end ' . $end->format(DATE_ATOM) . '.');
 			}
-	
+			
 			if ($asOf < $end) {
 				throw new \InvalidArgumentException('Outcome cutoff ' . $asOf->format(DATE_ATOM) . ' must not precede the report end ' . $end->format(DATE_ATOM) . '.');
 			}
-	
+			
 			if ($contextKey !== null) {
 				Identifier::validateKey($contextKey, 128, 'context');
 			}
 		}
-	
+		
 		/**
 		 * Build the summary query, optionally restricted to impressions carrying evidence from one source.
 		 * @param RecommendationSource|null $source Optional descriptive source filter
@@ -110,14 +110,14 @@
 					e.item_id = item.item_id AND
 					e.source = :source
 			)';
-	
+			
 			return "
 				SELECT
 					COUNT(*) AS impressions,
 					COALESCE(SUM({$clicked}), 0) AS clicked,
 					COALESCE(SUM({$purchased}), 0) AS purchased
-				FROM vogoo_impressions i
-				JOIN vogoo_impression_items item ON item.impression_id = i.id
+				FROM `vogoo_impressions` i
+				JOIN `vogoo_impression_items` item ON item.impression_id = i.id
 				WHERE i.category = :category AND
 				      i.context_key = :context AND
 				      i.shown_at >= :start AND
@@ -166,27 +166,27 @@
 		 */
 		private function fetchCalibrationRows(DateTimeImmutable $start, DateTimeImmutable $end, DateTimeImmutable $asOf, int $clickWindowSeconds): array {
 			$clicked = OutcomeSubquery::exists('click', 'as_of', 'window');
-	
+			
 			return $this->connection->execute("
 				SELECT
 					LOWER(HEX(item.model_id)) AS model_id,
 					i.placement,
 					item.display_click_probability AS probability,
 					{$clicked} AS clicked
-				FROM vogoo_impressions i
-				JOIN vogoo_impression_items item ON item.impression_id = i.id
+				FROM `vogoo_impressions` i
+				JOIN `vogoo_impression_items` item ON item.impression_id = i.id
 				WHERE item.model_id IS NOT NULL AND
 				      item.display_click_probability IS NOT NULL AND
 				      i.shown_at >= :start AND
 				      i.shown_at < :end AND
 				      TIMESTAMPADD(SECOND, :mature_window, i.shown_at) <= :mature_as_of
 			", [
-				'as_of' => MysqlTimestamp::utc($asOf),
-				'window' => $clickWindowSeconds,
-				'start' => MysqlTimestamp::utc($start),
-				'end' => MysqlTimestamp::utc($end),
+				'as_of'         => MysqlTimestamp::utc($asOf),
+				'window'        => $clickWindowSeconds,
+				'start'         => MysqlTimestamp::utc($start),
+				'end'           => MysqlTimestamp::utc($end),
 				'mature_window' => $clickWindowSeconds,
-				'mature_as_of' => MysqlTimestamp::utc($asOf),
+				'mature_as_of'  => MysqlTimestamp::utc($asOf),
 			])->fetchAll('assoc');
 		}
 		
@@ -216,6 +216,7 @@
 		 */
 		private static function summarizeCalibrationGroup(string $key, array $samples, DateTimeImmutable $asOf, int $clickWindowSeconds): array {
 			usort($samples, fn($a, $b) => $a['probability'] <=> $b['probability']);
+			
 			$count = count($samples);
 			$clicks = array_sum(array_column($samples, 'clicked'));
 			$meanProbability = array_sum(array_column($samples, 'probability')) / $count;
@@ -223,15 +224,15 @@
 			[$modelId, $placement] = explode(':', $key, 2);
 			
 			return [
-				'model_id' => $modelId,
-				'placement' => $placement,
-				'impressions' => $count,
-				'observed_click_rate' => $clicks / $count,
+				'model_id'                 => $modelId,
+				'placement'                => $placement,
+				'impressions'              => $count,
+				'observed_click_rate'      => $clicks / $count,
 				'mean_display_probability' => $meanProbability,
-				'brier' => $brier,
-				'bins' => self::calibrationBins($samples, $count),
-				'as_of' => $asOf,
-				'click_window_seconds' => $clickWindowSeconds,
+				'brier'                    => $brier,
+				'bins'                     => self::calibrationBins($samples, $count),
+				'as_of'                    => $asOf,
+				'click_window_seconds'     => $clickWindowSeconds,
 			];
 		}
 		
@@ -246,17 +247,20 @@
 			
 			for ($index = 0; $index < 10; $index++) {
 				$start = (int)floor($index * $count / 10);
+				
 				$slice = array_slice($samples, $start, (int)floor(($index + 1) * $count / 10) - $start);
 				
 				if ($slice === []) {
 					continue;
 				}
 				
-				$bins[] = ['count'     => count($slice),
-				           'predicted' => array_sum(array_column($slice, 'probability')) / count($slice),
-				           'observed'  => array_sum(array_column($slice, 'clicked')) / count($slice)];
+				$bins[] = [
+					'count'     => count($slice),
+					'predicted' => array_sum(array_column($slice, 'probability')) / count($slice),
+					'observed'  => array_sum(array_column($slice, 'clicked')) / count($slice)
+				];
 			}
 			
 			return $bins;
 		}
-		}
+	}
