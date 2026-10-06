@@ -69,8 +69,8 @@ Ratings run from 0.0 to 1.0, and -1.0 marks "not interested".
 | Task | Method | Returns |
 |------|--------|---------|
 | Rate a product | `RecommendationEngine::setRating()` | `void`, throws on invalid input |
-| Predicted rating for one product | `ItemRecommender::memberPrediction()` | `PredictionResult\|null` |
-| Predicted ratings for all unrated products | `ItemRecommender::memberPredictions()` | `PredictionResult[]` |
+| Predicted rating for one product | `ItemRecommender::memberPrediction()` | `RecommendationResult\|null`, with the rating in `score` |
+| Predicted ratings for all unrated products | `ItemRecommender::memberPredictions()` | `RecommendationResult[]`, with the rating in `score` |
 | Displayed slate for a member, filtered by catalogue eligibility | `RecommendationReconciler::memberSlate()` | `RecommendationList` |
 | Displayed slate for a visitor, filtered by catalogue eligibility | `RecommendationReconciler::visitorSlate()` | `RecommendationList` |
 | Record a visitor purchase or click in session state | `VisitorContext::recordPurchase()`, `recordClick()` | `void` |
@@ -105,7 +105,7 @@ Visitor variants take a `VisitorContext` in place of the member ID. Visitor reco
 | `linkedProducts()` | Liked count of the co-occurrence link |
 | `slopeProducts()` | Average Slope One difference, which can be negative |
 | `RecommendationReconciler` slates | `rankingScore` is the fused rank score. Each `evidence` entry's `rawScore` is the source's native score: for item links, the sum of liked count times (rating minus threshold); for top-rated, the average rating |
-| `memberPredictions()`, `visitorPredictions()` | Use `PredictionResult::$predictedRating` |
+| `memberPredictions()`, `visitorPredictions()`, `memberPrediction()`, `visitorPrediction()` | The predicted rating, in `[0, 1]` |
 | `memberReasons()`, `visitorReasons()` | Liked count of the link to the given product |
 
 ## Documentation
@@ -150,15 +150,15 @@ Rename calls as shown. Methods not listed are unchanged.
 | `RecommendationList::selectDisplayedIds()` | `RecommendationList::selectDisplayedProducts()` |
 | `RecommendationEngine::deleteMember()` for full member erasure | `RecommendationEngine::deleteMemberData()` |
 
-Prediction methods that were renamed also changed return type. Read `->predictedRating` and `->supportCount` on the
-new `PredictionResult` objects:
+Prediction methods that were renamed also changed return type. Read `->score` for the predicted rating and
+`->supportCount` on the new `RecommendationResult` objects:
 
 | Previous | Previous return | Now return |
 |----------|-----------------|------------|
-| `ItemRecommender::memberPredict()` | `float\|null` | `PredictionResult\|null` |
-| `ItemRecommender::visitorPredict()` | `float\|null` | `PredictionResult\|null` |
-| `ItemRecommender::memberPredictAll()` | `ProductRating[]` | `PredictionResult[]` |
-| `ItemRecommender::visitorPredictAll()` | `ProductRating[]` | `PredictionResult[]` |
+| `ItemRecommender::memberPredict()` | `float\|null` | `RecommendationResult\|null` |
+| `ItemRecommender::visitorPredict()` | `float\|null` | `RecommendationResult\|null` |
+| `ItemRecommender::memberPredictAll()` | `ProductRating[]` | `RecommendationResult[]` |
+| `ItemRecommender::visitorPredictAll()` | `ProductRating[]` | `RecommendationResult[]` |
 
 Argument changes. Positional calls must move their arguments. Named calls only need the renamed names.
 
@@ -195,7 +195,7 @@ Return and type changes:
 | `RecommendationEngine::memberRatings()`, `productRatings()` | Raw database values | `Rating[]`, with `memberId`, `productId`, `rating` as `float` and `timestamp` as `string` |
 | `VisitorContext::ratings()` | `array` rows with `product_id`, `rating` and `category` | `VisitorRating[]`, with `productId` and `rating`. Filter by category with the argument |
 | `RecommendationResult::$strategy` | `string` such as `'item_links'` | `RecommendationResult::$source`, a `RecommendationSource` enum case |
-| `RecommendationResult::$itemId`, `PredictionResult::$itemId`, `ReconciledRecommendation::$itemId` | `$itemId` | `$productId`, same `int` type |
+| `RecommendationResult::$itemId`, `ReconciledRecommendation::$itemId` | `$itemId` | `$productId`, same `int` type |
 | `RecommendationResult::$contributingItemIds`, `SourceEvidence::$contributingItemIds` | `$contributingItemIds` | `$contributingProductIds`, same `int[]` type |
 | `RecommendationList::$scoreKind` | `string` such as `'rank_fusion'` | `ScoreKind` enum case |
 | `ReconciledRecommendation::$featureSnapshot`, `$searchedDepths`, `$sourceLogOddsContributions` | Properties on the item | Properties on `$item->diagnostics` (`ReconciliationDiagnostics`) |

@@ -9,8 +9,7 @@ use Quellabs\Recommender\MemberId;
 
 	use Quellabs\Recommender\RecommendationSource;
 	use Quellabs\Recommender\ItemRecommender;
-	use Quellabs\Recommender\PredictionResult;
-	use Quellabs\Recommender\RecommendationResult;
+		use Quellabs\Recommender\RecommendationResult;
 	use Quellabs\Recommender\ArrayEligibilityProvider;
 	use Quellabs\Recommender\VisitorContext;
 
@@ -31,7 +30,7 @@ use Quellabs\Recommender\MemberId;
 
 		/**
 		 * Extract item IDs from a list of recommendation or prediction results, preserving order.
-		 * @param array<int, RecommendationResult|PredictionResult> $results Results carrying an item ID
+		 * @param array<int, RecommendationResult|RecommendationResult> $results Results carrying an item ID
 		 * @return array<int, int> Item IDs in result order
 		 */
 		private function itemIds(array $results): array {
@@ -52,8 +51,8 @@ use Quellabs\Recommender\MemberId;
 			$member = $this->recommender->memberPredictions(1);
 			$this->assertSame([20, 30], $this->itemIds($member));
 			$this->assertSame(3, $member[0]->supportCount);
-			$this->assertEqualsWithDelta($this->recommender->memberPrediction(new MemberId(1), new ProductId(20))->predictedRating,
-				$member[0]->predictedRating, 0.00001);
+			$this->assertEqualsWithDelta($this->recommender->memberPrediction(new MemberId(1), new ProductId(20))->score,
+				$member[0]->score, 0.00001);
 			$this->assertSame([20], $this->itemIds($this->recommender->memberPredictions(1, minSupport: 3)));
 
 			$visitor = new VisitorContext($this->config);
@@ -63,8 +62,8 @@ use Quellabs\Recommender\MemberId;
 			$this->assertSame([20, 30], $this->itemIds($results));
 			$this->assertSame(20, $this->recommender->visitorPredictions($visitor, limit: 1)[0]->productId);
 			$this->assertSame(30, $this->recommender->visitorPredictions($visitor, new ArrayEligibilityProvider([30]), 1)[0]->productId);
-			$this->assertEqualsWithDelta($this->recommender->visitorPrediction($visitor, 20)->predictedRating,
-				$results[0]->predictedRating, 0.00001);
+			$this->assertEqualsWithDelta($this->recommender->visitorPrediction($visitor, 20)->score,
+				$results[0]->score, 0.00001);
 		}
 
 		/** @return void */
@@ -100,7 +99,7 @@ use Quellabs\Recommender\MemberId;
 			$this->assertCount(1, $result);
 			$this->assertSame(600, $result[0]->productId);
 			$this->assertSame(4, $result[0]->supportCount);
-			$this->assertEqualsWithDelta(0.9, $result[0]->predictedRating, 1e-8);
+			$this->assertEqualsWithDelta(0.9, $result[0]->score, 1e-8);
 		}
 
 		/** @return void */
@@ -382,7 +381,7 @@ use Quellabs\Recommender\MemberId;
 			$this->insertLink(2, 1, 1, 0.1);
 			$result = $this->recommender->memberPrediction(new MemberId(1), new ProductId(1));
 			$this->assertNotNull($result);
-			$this->assertEqualsWithDelta(0.9, $result->predictedRating, 0.0001);
+			$this->assertEqualsWithDelta(0.9, $result->score, 0.0001);
 		}
 
 		/** A single prediction ignores disinterest and matches the all-item result.
@@ -397,8 +396,8 @@ use Quellabs\Recommender\MemberId;
 			$all = $this->recommender->memberPredictions(1);
 			$this->assertCount(1, $all);
 			$this->assertSame(20, $all[0]->productId);
-			$this->assertEqualsWithDelta($all[0]->predictedRating,
-				$this->recommender->memberPrediction(new MemberId(1), new ProductId(20))->predictedRating, 0.00001);
+			$this->assertEqualsWithDelta($all[0]->score,
+				$this->recommender->memberPrediction(new MemberId(1), new ProductId(20))->score, 0.00001);
 		}
 
 		public function testMemberPredictionClampsToOne(): void {
@@ -406,7 +405,7 @@ use Quellabs\Recommender\MemberId;
 			$this->insertLink(1, 2, 1, -0.5);
 			$this->insertLink(2, 1, 1, 0.5);
 			$result = $this->recommender->memberPrediction(new MemberId(1), new ProductId(1));
-			$this->assertLessThanOrEqual(1.0, $result->predictedRating);
+			$this->assertLessThanOrEqual(1.0, $result->score);
 		}
 
 		public function testMemberPredictionClampsToZero(): void {
@@ -414,7 +413,7 @@ use Quellabs\Recommender\MemberId;
 			$this->insertLink(1, 2, 1, 0.5);
 			$this->insertLink(2, 1, 1, -0.5);
 			$result = $this->recommender->memberPrediction(new MemberId(1), new ProductId(1));
-			$this->assertGreaterThanOrEqual(0.0, $result->predictedRating);
+			$this->assertGreaterThanOrEqual(0.0, $result->score);
 		}
 
 		// =========================================================================
@@ -440,7 +439,7 @@ use Quellabs\Recommender\MemberId;
 			$this->insertRating(1, 10, 0.8);
 			$this->insertLink(10, 20, 2, 0.1);
 			$this->insertLink(10, 30, 2, -0.1);
-			$ratings = array_map(fn($result) => $result->predictedRating, $this->recommender->memberPredictions(1));
+			$ratings = array_map(fn($result) => $result->score, $this->recommender->memberPredictions(1));
 
 			for ($i = 1; $i < count($ratings); $i++) {
 				$this->assertGreaterThanOrEqual($ratings[$i], $ratings[$i - 1]);
@@ -486,7 +485,7 @@ use Quellabs\Recommender\MemberId;
 			$visitor->setRating(2, 0.8);
 			$result = $this->recommender->visitorPrediction($visitor, 1);
 			$this->assertNotNull($result);
-			$this->assertEqualsWithDelta(0.9, $result->predictedRating, 0.0001);
+			$this->assertEqualsWithDelta(0.9, $result->score, 0.0001);
 		}
 
 		// =========================================================================

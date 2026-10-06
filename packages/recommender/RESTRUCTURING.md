@@ -15,6 +15,7 @@ The package has not been released. Breaking changes to the public API are allowe
 9. **Source-level candidates are public.** Each source's `candidates(subject, provider, limit)` is part of the public API, so a caller can use one source alone. The combiner's fused list is the second public recommendation call. Both return ranked, filtered products.
 
 10. **Depth is the caller's, backfill is the caller's.** `CandidateSource::candidates()` takes a depth, filters the top depth candidates in one provider round, and never fetches deeper. Callers that need more eligible results deepen the request. The reconciler keeps its round loop, and `ItemRecommender` keeps its backfill loop around the source call, so results do not change.
+11. **One result type.** `RecommendationResult` carries an optional `supportCount`, null for sources that do not count support. `PredictionResult` is removed. Slope One predictions are `RecommendationResult`s whose score is the predicted rating.
 
 ## Terms
 

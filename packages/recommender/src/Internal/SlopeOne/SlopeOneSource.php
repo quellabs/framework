@@ -9,7 +9,6 @@ use Quellabs\Recommender\EligibilityProvider;
 use Quellabs\Recommender\Internal\Eligibility\EligibilityFilter;
 use Quellabs\Recommender\Internal\Persistence\TemporaryTable;
 use Quellabs\Recommender\Internal\Query\Results;
-use Quellabs\Recommender\PredictionResult;
 use Quellabs\Recommender\RecommendationResult;
 use Quellabs\Recommender\RecommendationSource;
 use Quellabs\Recommender\Reconciliation\SourceSettings;
@@ -181,10 +180,10 @@ readonly class SlopeOneSource implements CandidateSource {
 	 * @param int $productId Candidate ID
 	 * @param int $minSupport Minimum summed pair support
 	 * @param int|null $category Category override
-	 * @return PredictionResult|null
+	 * @return RecommendationResult|null
 	 * @throws \InvalidArgumentException When the minimum support is not positive
 	 */
-	public function memberPredictDetailed(int $memberId, int $productId, int $minSupport = 1, ?int $category = null): ?PredictionResult {
+	public function memberPredictDetailed(int $memberId, int $productId, int $minSupport = 1, ?int $category = null): ?RecommendationResult {
 		$this->validateSupport($minSupport);
 		$resolvedCategory = $this->config->resolveCategory($category);
 
@@ -199,7 +198,7 @@ readonly class SlopeOneSource implements CandidateSource {
 	 * @param int $limit Maximum results, or zero for all
 	 * @param int $minSupport Minimum summed pair support
 	 * @param int|null $category Category override
-	 * @return array<int, PredictionResult>
+	 * @return array<int, RecommendationResult>
 	 * @throws \InvalidArgumentException When the minimum support is not positive
 	 */
 	public function memberPredictAllDetailed(int $memberId, int $limit = 0,
@@ -224,10 +223,10 @@ readonly class SlopeOneSource implements CandidateSource {
 	 * @param int $productId Candidate ID
 	 * @param int $minSupport Minimum summed pair support
 	 * @param int|null $category Category override
-	 * @return PredictionResult|null
+	 * @return RecommendationResult|null
 	 * @throws \InvalidArgumentException When the minimum support is not positive
 	 */
-	public function visitorPredictDetailed(VisitorContext $visitor, int $productId, int $minSupport = 1, ?int $category = null): ?PredictionResult {
+	public function visitorPredictDetailed(VisitorContext $visitor, int $productId, int $minSupport = 1, ?int $category = null): ?RecommendationResult {
 		$this->validateSupport($minSupport);
 		$resolvedCategory = $this->config->resolveCategory($category);
 		$ratings = $this->collectGenuineRatings($visitor->ratings($resolvedCategory));
@@ -248,7 +247,7 @@ readonly class SlopeOneSource implements CandidateSource {
 	 * @param int $limit Maximum results, or zero for all
 	 * @param int $minSupport Minimum summed pair support
 	 * @param int|null $category Category override
-	 * @return array<int, PredictionResult>
+	 * @return array<int, RecommendationResult>
 	 * @throws \InvalidArgumentException When the minimum support is not positive
 	 */
 	public function visitorPredictAllDetailed(VisitorContext $visitor, int $limit = 0,
@@ -285,32 +284,32 @@ readonly class SlopeOneSource implements CandidateSource {
 	/**
 	 * Return the first prediction of a candidate query, or null when there is none.
 	 * @param array<int, array<string, mixed>> $rows Rows from candidateRows()
-	 * @return PredictionResult|null
+	 * @return RecommendationResult|null
 	 */
-	private function firstPrediction(array $rows): ?PredictionResult {
+	private function firstPrediction(array $rows): ?RecommendationResult {
 		return $rows === [] ? null : $this->predictionFromRow($rows[0]);
 	}
 
 	/**
 	 * Convert candidate rows into predictions, keeping their order.
 	 * @param array<int, array<string, mixed>> $rows Rows from candidateRows()
-	 * @return array<int, PredictionResult>
+	 * @return array<int, RecommendationResult>
 	 */
 	private function predictionsFromRows(array $rows): array {
-		return array_map(fn(array $row): PredictionResult => $this->predictionFromRow($row), $rows);
+		return array_map(fn(array $row): RecommendationResult => $this->predictionFromRow($row), $rows);
 	}
 
 	/**
 	 * Build a prediction from one candidate row.
 	 * @param array<string, mixed> $row Row with id, support_count and score
-	 * @return PredictionResult
+	 * @return RecommendationResult
 	 */
-	private function predictionFromRow(array $row): PredictionResult {
+	private function predictionFromRow(array $row): RecommendationResult {
 		if (!is_numeric($row['id'] ?? null) || !is_numeric($row['score'] ?? null) || !is_numeric($row['support_count'] ?? null)) {
 			throw new \UnexpectedValueException('Slope One row must contain numeric id, score and support_count values.');
 		}
 
-		return new PredictionResult((int)$row['id'], (float)$row['score'], (int)$row['support_count']);
+		return new RecommendationResult((int)$row['id'], (float)$row['score'], RecommendationSource::SlopeOne, [], (int)$row['support_count']);
 	}
 
 	/**

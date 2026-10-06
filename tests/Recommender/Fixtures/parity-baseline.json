@@ -4,19 +4,22 @@
             "productId": 14,
             "score": 5.0,
             "source": "item_links",
-            "contributingProductIds": []
+            "contributingProductIds": [],
+            "supportCount": null
         },
         {
             "productId": 11,
             "score": 4.0,
             "source": "item_links",
-            "contributingProductIds": []
+            "contributingProductIds": [],
+            "supportCount": null
         },
         {
             "productId": 12,
             "score": 3.0,
             "source": "item_links",
-            "contributingProductIds": []
+            "contributingProductIds": [],
+            "supportCount": null
         }
     ],
     "item.linked.11.off": [
@@ -24,19 +27,22 @@
             "productId": 12,
             "score": 6.0,
             "source": "item_links",
-            "contributingProductIds": []
+            "contributingProductIds": [],
+            "supportCount": null
         },
         {
             "productId": 10,
             "score": 4.0,
             "source": "item_links",
-            "contributingProductIds": []
+            "contributingProductIds": [],
+            "supportCount": null
         },
         {
             "productId": 17,
             "score": 3.0,
             "source": "item_links",
-            "contributingProductIds": []
+            "contributingProductIds": [],
+            "supportCount": null
         }
     ],
     "item.slope.10.off": [
@@ -44,31 +50,36 @@
             "productId": 16,
             "score": 0.25,
             "source": "slope_one",
-            "contributingProductIds": []
+            "contributingProductIds": [],
+            "supportCount": null
         },
         {
             "productId": 12,
             "score": 0.066666668,
             "source": "slope_one",
-            "contributingProductIds": []
+            "contributingProductIds": [],
+            "supportCount": null
         },
         {
             "productId": 31,
             "score": 0.066666668,
             "source": "slope_one",
-            "contributingProductIds": []
+            "contributingProductIds": [],
+            "supportCount": null
         },
         {
             "productId": 14,
             "score": 0.060000002,
             "source": "slope_one",
-            "contributingProductIds": []
+            "contributingProductIds": [],
+            "supportCount": null
         },
         {
             "productId": 11,
             "score": -0.025,
             "source": "slope_one",
-            "contributingProductIds": []
+            "contributingProductIds": [],
+            "supportCount": null
         }
     ],
     "item.slope.14.off": [
@@ -76,19 +87,22 @@
             "productId": 15,
             "score": 0.087499999,
             "source": "slope_one",
-            "contributingProductIds": []
+            "contributingProductIds": [],
+            "supportCount": null
         },
         {
             "productId": 17,
             "score": 0.050000002,
             "source": "slope_one",
-            "contributingProductIds": []
+            "contributingProductIds": [],
+            "supportCount": null
         },
         {
             "productId": 10,
             "score": -0.060000002,
             "source": "slope_one",
-            "contributingProductIds": []
+            "contributingProductIds": [],
+            "supportCount": null
         }
     ],
     "links.member.1.off": {
@@ -553,126 +567,174 @@
     "item.member.predictions.1.off": [
         {
             "productId": 16,
-            "predictedRating": 1.0,
+            "score": 1.0,
+            "source": "slope_one",
+            "contributingProductIds": [],
             "supportCount": 2
         },
         {
             "productId": 18,
-            "predictedRating": 1.0,
+            "score": 1.0,
+            "source": "slope_one",
+            "contributingProductIds": [],
             "supportCount": 2
         },
         {
             "productId": 31,
-            "predictedRating": 0.966666644,
+            "score": 0.966666644,
+            "source": "slope_one",
+            "contributingProductIds": [],
             "supportCount": 3
         },
         {
             "productId": 14,
-            "predictedRating": 0.959999979,
+            "score": 0.959999979,
+            "source": "slope_one",
+            "contributingProductIds": [],
             "supportCount": 5
         },
         {
             "productId": 19,
-            "predictedRating": 0.824999988,
+            "score": 0.824999988,
+            "source": "slope_one",
+            "contributingProductIds": [],
             "supportCount": 2
         },
         {
             "productId": 30,
-            "predictedRating": 0.700000006,
+            "score": 0.700000006,
+            "source": "slope_one",
+            "contributingProductIds": [],
             "supportCount": 10
         },
         {
             "productId": 15,
-            "predictedRating": 0.619999987,
+            "score": 0.619999987,
+            "source": "slope_one",
+            "contributingProductIds": [],
             "supportCount": 5
         },
         {
             "productId": 17,
-            "predictedRating": 0.333333338,
+            "score": 0.333333338,
+            "source": "slope_one",
+            "contributingProductIds": [],
             "supportCount": 3
         }
     ],
     "item.member.predictions.1.support2.off": [
         {
             "productId": 16,
-            "predictedRating": 1.0,
+            "score": 1.0,
+            "source": "slope_one",
+            "contributingProductIds": [],
             "supportCount": 2
         },
         {
             "productId": 18,
-            "predictedRating": 1.0,
+            "score": 1.0,
+            "source": "slope_one",
+            "contributingProductIds": [],
             "supportCount": 2
         },
         {
             "productId": 31,
-            "predictedRating": 0.966666644,
+            "score": 0.966666644,
+            "source": "slope_one",
+            "contributingProductIds": [],
             "supportCount": 3
         },
         {
             "productId": 14,
-            "predictedRating": 0.959999979,
+            "score": 0.959999979,
+            "source": "slope_one",
+            "contributingProductIds": [],
             "supportCount": 5
         },
         {
             "productId": 19,
-            "predictedRating": 0.824999988,
+            "score": 0.824999988,
+            "source": "slope_one",
+            "contributingProductIds": [],
             "supportCount": 2
         },
         {
             "productId": 30,
-            "predictedRating": 0.700000006,
+            "score": 0.700000006,
+            "source": "slope_one",
+            "contributingProductIds": [],
             "supportCount": 10
         },
         {
             "productId": 15,
-            "predictedRating": 0.619999987,
+            "score": 0.619999987,
+            "source": "slope_one",
+            "contributingProductIds": [],
             "supportCount": 5
         },
         {
             "productId": 17,
-            "predictedRating": 0.333333338,
+            "score": 0.333333338,
+            "source": "slope_one",
+            "contributingProductIds": [],
             "supportCount": 3
         }
     ],
     "item.visitor.predictions.A.off": [
         {
             "productId": 16,
-            "predictedRating": 1.0,
+            "score": 1.0,
+            "source": "slope_one",
+            "contributingProductIds": [],
             "supportCount": 2
         },
         {
             "productId": 31,
-            "predictedRating": 0.966666668,
+            "score": 0.966666668,
+            "source": "slope_one",
+            "contributingProductIds": [],
             "supportCount": 3
         },
         {
             "productId": 15,
-            "predictedRating": 0.887499999,
+            "score": 0.887499999,
+            "source": "slope_one",
+            "contributingProductIds": [],
             "supportCount": 4
         },
         {
             "productId": 17,
-            "predictedRating": 0.850000002,
+            "score": 0.850000002,
+            "source": "slope_one",
+            "contributingProductIds": [],
             "supportCount": 3
         },
         {
             "productId": 18,
-            "predictedRating": 0.700000012,
+            "score": 0.700000012,
+            "source": "slope_one",
+            "contributingProductIds": [],
             "supportCount": 2
         },
         {
             "productId": 11,
-            "predictedRating": 0.549999999,
+            "score": 0.549999999,
+            "source": "slope_one",
+            "contributingProductIds": [],
             "supportCount": 10
         },
         {
             "productId": 13,
-            "predictedRating": 0.425,
+            "score": 0.425,
+            "source": "slope_one",
+            "contributingProductIds": [],
             "supportCount": 4
         },
         {
             "productId": 30,
-            "predictedRating": 0.250000004,
+            "score": 0.250000004,
+            "source": "slope_one",
+            "contributingProductIds": [],
             "supportCount": 6
         }
     ],
@@ -681,19 +743,22 @@
             "productId": 14,
             "score": 5.0,
             "source": "item_links",
-            "contributingProductIds": []
+            "contributingProductIds": [],
+            "supportCount": null
         },
         {
             "productId": 11,
             "score": 4.0,
             "source": "item_links",
-            "contributingProductIds": []
+            "contributingProductIds": [],
+            "supportCount": null
         },
         {
             "productId": 31,
             "score": 3.0,
             "source": "item_links",
-            "contributingProductIds": []
+            "contributingProductIds": [],
+            "supportCount": null
         }
     ],
     "item.linked.11.on": [
@@ -701,13 +766,15 @@
             "productId": 10,
             "score": 4.0,
             "source": "item_links",
-            "contributingProductIds": []
+            "contributingProductIds": [],
+            "supportCount": null
         },
         {
             "productId": 17,
             "score": 3.0,
             "source": "item_links",
-            "contributingProductIds": []
+            "contributingProductIds": [],
+            "supportCount": null
         }
     ],
     "item.slope.10.on": [
@@ -715,25 +782,29 @@
             "productId": 16,
             "score": 0.25,
             "source": "slope_one",
-            "contributingProductIds": []
+            "contributingProductIds": [],
+            "supportCount": null
         },
         {
             "productId": 31,
             "score": 0.066666668,
             "source": "slope_one",
-            "contributingProductIds": []
+            "contributingProductIds": [],
+            "supportCount": null
         },
         {
             "productId": 14,
             "score": 0.060000002,
             "source": "slope_one",
-            "contributingProductIds": []
+            "contributingProductIds": [],
+            "supportCount": null
         },
         {
             "productId": 11,
             "score": -0.025,
             "source": "slope_one",
-            "contributingProductIds": []
+            "contributingProductIds": [],
+            "supportCount": null
         }
     ],
     "item.slope.14.on": [
@@ -741,13 +812,15 @@
             "productId": 17,
             "score": 0.050000002,
             "source": "slope_one",
-            "contributingProductIds": []
+            "contributingProductIds": [],
+            "supportCount": null
         },
         {
             "productId": 10,
             "score": -0.060000002,
             "source": "slope_one",
-            "contributingProductIds": []
+            "contributingProductIds": [],
+            "supportCount": null
         }
     ],
     "links.member.1.on": {
@@ -1163,92 +1236,126 @@
     "item.member.predictions.1.on": [
         {
             "productId": 16,
-            "predictedRating": 1.0,
+            "score": 1.0,
+            "source": "slope_one",
+            "contributingProductIds": [],
             "supportCount": 2
         },
         {
             "productId": 31,
-            "predictedRating": 0.966666644,
+            "score": 0.966666644,
+            "source": "slope_one",
+            "contributingProductIds": [],
             "supportCount": 3
         },
         {
             "productId": 14,
-            "predictedRating": 0.959999979,
+            "score": 0.959999979,
+            "source": "slope_one",
+            "contributingProductIds": [],
             "supportCount": 5
         },
         {
             "productId": 19,
-            "predictedRating": 0.824999988,
+            "score": 0.824999988,
+            "source": "slope_one",
+            "contributingProductIds": [],
             "supportCount": 2
         },
         {
             "productId": 17,
-            "predictedRating": 0.333333338,
+            "score": 0.333333338,
+            "source": "slope_one",
+            "contributingProductIds": [],
             "supportCount": 3
         }
     ],
     "item.member.predictions.1.support2.on": [
         {
             "productId": 16,
-            "predictedRating": 1.0,
+            "score": 1.0,
+            "source": "slope_one",
+            "contributingProductIds": [],
             "supportCount": 2
         },
         {
             "productId": 31,
-            "predictedRating": 0.966666644,
+            "score": 0.966666644,
+            "source": "slope_one",
+            "contributingProductIds": [],
             "supportCount": 3
         },
         {
             "productId": 14,
-            "predictedRating": 0.959999979,
+            "score": 0.959999979,
+            "source": "slope_one",
+            "contributingProductIds": [],
             "supportCount": 5
         },
         {
             "productId": 19,
-            "predictedRating": 0.824999988,
+            "score": 0.824999988,
+            "source": "slope_one",
+            "contributingProductIds": [],
             "supportCount": 2
         },
         {
             "productId": 17,
-            "predictedRating": 0.333333338,
+            "score": 0.333333338,
+            "source": "slope_one",
+            "contributingProductIds": [],
             "supportCount": 3
         }
     ],
     "item.visitor.predictions.A.on": [
         {
             "productId": 16,
-            "predictedRating": 1.0,
+            "score": 1.0,
+            "source": "slope_one",
+            "contributingProductIds": [],
             "supportCount": 2
         },
         {
             "productId": 31,
-            "predictedRating": 0.966666668,
+            "score": 0.966666668,
+            "source": "slope_one",
+            "contributingProductIds": [],
             "supportCount": 3
         },
         {
             "productId": 17,
-            "predictedRating": 0.850000002,
+            "score": 0.850000002,
+            "source": "slope_one",
+            "contributingProductIds": [],
             "supportCount": 3
         },
         {
             "productId": 11,
-            "predictedRating": 0.549999999,
+            "score": 0.549999999,
+            "source": "slope_one",
+            "contributingProductIds": [],
             "supportCount": 10
         },
         {
             "productId": 13,
-            "predictedRating": 0.425,
+            "score": 0.425,
+            "source": "slope_one",
+            "contributingProductIds": [],
             "supportCount": 4
         }
     ],
     "item.member.prediction.1.30": {
         "productId": 30,
-        "predictedRating": 0.700000006,
+        "score": 0.700000006,
+        "source": "slope_one",
+        "contributingProductIds": [],
         "supportCount": 10
     },
     "item.visitor.prediction.A.30": {
         "productId": 30,
-        "predictedRating": 0.250000004,
+        "score": 0.250000004,
+        "source": "slope_one",
+        "contributingProductIds": [],
         "supportCount": 6
     },
     "item.member.reasons.1.14": [
@@ -1256,7 +1363,8 @@
             "productId": 10,
             "score": 5.0,
             "source": "item_links",
-            "contributingProductIds": []
+            "contributingProductIds": [],
+            "supportCount": null
         }
     ],
     "item.visitor.reasons.A.11": [
@@ -1264,7 +1372,8 @@
             "productId": 10,
             "score": 4.0,
             "source": "item_links",
-            "contributingProductIds": []
+            "contributingProductIds": [],
+            "supportCount": null
         }
     ],
     "stats.top_rated.min2": [

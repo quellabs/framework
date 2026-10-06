@@ -213,10 +213,10 @@ use Quellabs\Recommender\Reconciliation\SourceSettings;
 		 * @param ProductId $product Candidate ID
 		 * @param int $minSupport Minimum summed pair support, at least 1
 		 * @param int|null $category Category override
-		 * @return PredictionResult|null
+		 * @return RecommendationResult|null
 		 * @throws \InvalidArgumentException When the minimum support is below 1
 		 */
-		public function memberPrediction(MemberId $member, ProductId $product, int $minSupport = 1, ?int $category = null): ?PredictionResult {
+		public function memberPrediction(MemberId $member, ProductId $product, int $minSupport = 1, ?int $category = null): ?RecommendationResult {
 			Identifier::assertAtLeast($minSupport, 1, 'Minimum support');
 			$memberId = $member->value;
 			$productId = $product->value;
@@ -231,7 +231,7 @@ use Quellabs\Recommender\Reconciliation\SourceSettings;
 		 * @param int $limit Maximum results, or zero for all
 		 * @param int $minSupport Minimum summed pair support, at least 1
 		 * @param int|null $category Category override
-		 * @return array<int, PredictionResult>
+		 * @return array<int, RecommendationResult>
 		 * @throws \InvalidArgumentException When the member ID or minimum support is invalid
 		 */
 		public function memberPredictions(int $member, ?EligibilityProvider $eligibility = null, int $limit = 10,
@@ -243,7 +243,7 @@ use Quellabs\Recommender\Reconciliation\SourceSettings;
 				function (int $depth) use ($member, $minSupport, $category): array {
 					return $this->slopeOne->memberPredictAllDetailed($member, $depth, $minSupport, $category);
 				},
-				function (PredictionResult $row): int {
+				function (RecommendationResult $row): int {
 					return $row->productId;
 				});
 		}
@@ -254,10 +254,10 @@ use Quellabs\Recommender\Reconciliation\SourceSettings;
 		 * @param int $product Candidate ID
 		 * @param int $minSupport Minimum summed pair support, at least 1
 		 * @param int|null $category Category override
-		 * @return PredictionResult|null
+		 * @return RecommendationResult|null
 		 * @throws \InvalidArgumentException When the product ID or minimum support is invalid
 		 */
-		public function visitorPrediction(VisitorContext $visitor, int $product, int $minSupport = 1, ?int $category = null): ?PredictionResult {
+		public function visitorPrediction(VisitorContext $visitor, int $product, int $minSupport = 1, ?int $category = null): ?RecommendationResult {
 			Identifier::assertId($product, 'Product ID');
 			Identifier::assertAtLeast($minSupport, 1, 'Minimum support');
 			return $this->slopeOne->visitorPredictDetailed($visitor, $product, $minSupport, $category);
@@ -271,7 +271,7 @@ use Quellabs\Recommender\Reconciliation\SourceSettings;
 		 * @param int $limit Maximum results, or zero for all
 		 * @param int $minSupport Minimum summed pair support, at least 1
 		 * @param int|null $category Category override
-		 * @return array<int, PredictionResult>
+		 * @return array<int, RecommendationResult>
 		 * @throws \InvalidArgumentException When the minimum support is below 1
 		 */
 		public function visitorPredictions(VisitorContext $visitor, ?EligibilityProvider $eligibility = null, int $limit = 10,
@@ -282,7 +282,7 @@ use Quellabs\Recommender\Reconciliation\SourceSettings;
 				function (int $depth) use ($visitor, $minSupport, $category): array {
 					return $this->slopeOne->visitorPredictAllDetailed($visitor, $depth, $minSupport, $category);
 				},
-				function (PredictionResult $row): int {
+				function (RecommendationResult $row): int {
 					return $row->productId;
 				});
 		}
