@@ -10,9 +10,7 @@
 	use Quellabs\Recommender\Reconciliation\RecommendationReconciler;
 	use Quellabs\Recommender\Internal\Reconciliation\RequestSourcesFactory;
 	use Quellabs\Recommender\Evaluation\ModelScorerResolver;
-use Quellabs\Recommender\RecommendationSource;
-use Quellabs\Recommender\Subject;
-use Quellabs\Recommender\Reconciliation\ReconciliationRequest;
+	use Quellabs\Recommender\Subject;
 use Quellabs\Recommender\Internal\UserSimilarity;
 use Quellabs\Recommender\Sources\UserSimilaritySource;
 use Quellabs\Recommender\Sources\SlopeOneSource;

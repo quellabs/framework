@@ -45,14 +45,21 @@ use Quellabs\Recommender\ArrayEligibilityProvider;
 use Quellabs\Recommender\RecommendationSource;
 use Quellabs\Recommender\Reconciliation\ReconciliationRequest;
 use Quellabs\Recommender\Reconciliation\RecommendationReconciler;
+use Quellabs\Recommender\Evaluation\ModelScorerResolver;
+use Quellabs\Recommender\Internal\Reconciliation\RequestSourcesFactory;
+use Quellabs\Recommender\Internal\UserSimilarity;
 use Quellabs\Recommender\MemberId;
 use Quellabs\Recommender\ProductId;
 use Quellabs\Recommender\RecommendationEngine;
+use Quellabs\Recommender\Subject;
 
-$config      = new RecommendationConfig(directLinks: true);
-$engine      = new RecommendationEngine($connection, $config);
-$scorers     = new ModelScorerResolver($connection);
-$reconciler  = new RecommendationReconciler($config, $sourceFactory, $scorers);
+// $connection is the application's Cake\Database\Connection.
+$config        = new RecommendationConfig(directLinks: true);
+$engine        = new RecommendationEngine($connection, $config);
+$similarity    = new UserSimilarity($connection, $config, $engine);
+$sourceFactory = new RequestSourcesFactory($connection, $config, $similarity);
+$scorers       = new ModelScorerResolver($connection);
+$reconciler    = new RecommendationReconciler($config, $sourceFactory, $scorers);
 
 $engine->setRating(new MemberId(1), new ProductId(101), 0.9);
 $engine->setRating(new MemberId(2), new ProductId(101), 0.8);
