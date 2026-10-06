@@ -2,6 +2,8 @@
 
 namespace Quellabs\Recommender\Tests;
 
+use Quellabs\Recommender\Subject;
+use Quellabs\Recommender\Config\RecommendationConfig;
 use Quellabs\Recommender\ProductId;
 
 use Quellabs\Recommender\MemberId;
@@ -13,8 +15,6 @@ use Quellabs\Recommender\Reconciliation\RecommendationReconciler;
 use Quellabs\Recommender\RecommendationSource;
 use Quellabs\Recommender\Reconciliation\ReconciliationRequest;
 use Quellabs\Recommender\Reconciliation\ReconciliationTuning;
-use Quellabs\Recommender\Reconciliation\VisitorReconciliationRequest;
-use Quellabs\Recommender\Reconciliation\VisitorSource;
 use Quellabs\Recommender\VisitorContext;
 use Quellabs\Recommender\Integration\ServiceProvider;
 use Quellabs\Recommender\Evaluation\EvaluationRecorder;
@@ -33,7 +33,7 @@ class ReconciliationTest extends IntegrationTestCase {
         $request = new ReconciliationRequest(new ArrayEligibilityProvider([20, 40]),
             [RecommendationSource::NewProducts, RecommendationSource::ItemLinks], 3, 'home', [40]);
         $reconciler = $this->reconciler();
-        $list = $reconciler->memberSlate(1, $request);
+        $list = $reconciler->slate(Subject::member(1), $request);
         $this->assertSame(ScoreKind::Ranked, $list->scoreKind);
         $this->assertNull($list->scorerId);
         $this->assertSame([20, 40], array_map(fn($item) => $item->productId, $list->items));
@@ -47,7 +47,7 @@ class ReconciliationTest extends IntegrationTestCase {
         $this->insertRating(3, 20, 0.8);
         $request = new ReconciliationRequest(new ArrayEligibilityProvider([20, 30]),
             [RecommendationSource::NewProducts, RecommendationSource::ItemLinks, RecommendationSource::TopRated], 5, 'home', [30]);
-        $list = $this->reconciler()->memberSlate(1, $request);
+        $list = $this->reconciler()->slate(Subject::member(1), $request);
         $this->assertSame([RecommendationSource::TopRated], $list->sources);
         $this->assertSame([20], array_map(fn($item) => $item->productId, $list->items));
     }
@@ -61,8 +61,8 @@ class ReconciliationTest extends IntegrationTestCase {
         $request = fn(int $minHistory) => new ReconciliationRequest(new ArrayEligibilityProvider([20]),
             [RecommendationSource::ItemLinks], 5, 'home', tuning: new ReconciliationTuning(minHistory: $minHistory));
         $reconciler = $this->reconciler();
-        $this->assertSame([RecommendationSource::ItemLinks], $reconciler->memberSlate(1, $request(1))->sources);
-        $this->assertSame([RecommendationSource::TopRated], $reconciler->memberSlate(1, $request(2))->sources);
+        $this->assertSame([RecommendationSource::ItemLinks], $reconciler->slate(Subject::member(1), $request(1))->sources);
+        $this->assertSame([RecommendationSource::TopRated], $reconciler->slate(Subject::member(1), $request(2))->sources);
     }
 
     /** @return VisitorContext Visitor with one rating outside every candidate list */
@@ -78,10 +78,10 @@ class ReconciliationTest extends IntegrationTestCase {
             /** @inheritDoc */
             public function filterEligible(array $candidateIds): array { return [999]; }
         };
-        $request = new VisitorReconciliationRequest($provider, [VisitorSource::NewProducts], 1, 'home', [20]);
+        $request = new ReconciliationRequest($provider, [RecommendationSource::NewProducts], 1, 'home', [20]);
         $this->expectException(\UnexpectedValueException::class);
         ($this->reconciler())
-            ->visitorSlate($this->warmVisitor(), $request);
+            ->slate(Subject::visitor($this->warmVisitor()), $request);
     }
 
     /** @return void */
@@ -95,7 +95,7 @@ class ReconciliationTest extends IntegrationTestCase {
                 public function filterEligible(array $candidateIds): array { return $this->response; }
             };
             try {
-                $this->reconciler()->memberSlate(1,
+                $this->reconciler()->slate(Subject::member(1),
                     new ReconciliationRequest($provider, [RecommendationSource::NewProducts],
                         2, 'home', [20, 30]));
                 $this->fail('Invalid provider reply was accepted.');
@@ -119,9 +119,9 @@ class ReconciliationTest extends IntegrationTestCase {
         $request = new ReconciliationRequest($provider, [RecommendationSource::NewProducts],
             1, 'home', [20, 30]);
         $reconciler = $this->reconciler();
-        $this->assertSame(20, $reconciler->memberSlate(1, $request)->items[0]->productId);
+        $this->assertSame(20, $reconciler->slate(Subject::member(1), $request)->items[0]->productId);
         $provider->allowed = [30];
-        $this->assertSame(30, $reconciler->memberSlate(1, $request)->items[0]->productId);
+        $this->assertSame(30, $reconciler->slate(Subject::member(1), $request)->items[0]->productId);
     }
 
     /** @return void */
@@ -138,9 +138,9 @@ class ReconciliationTest extends IntegrationTestCase {
             }
         };
         $request = new ReconciliationRequest($provider, [RecommendationSource::NewProducts],
-            10, 'home', range(1, 120), tuning: new ReconciliationTuning(maxCandidateDepth: 100, maxBackfillRounds: 1, maxEligibilityBatchSize: 25));
-        $list = ($this->reconciler())
-            ->memberSlate(1, $request);
+            10, 'home', range(1, 120), tuning: new ReconciliationTuning(maxCandidateDepth: 100, maxEligibilityBatchSize: 25));
+        $list = ($this->reconcilerWith(new RecommendationConfig(directLinks: false, directSlope: false, maxBackfillRounds: 1)))
+            ->slate(Subject::member(1), $request);
         $this->assertSame([], $list->items);
         $this->assertSame(4, $provider->calls);
         $this->assertSame(25, $provider->largestBatch);
@@ -154,9 +154,9 @@ class ReconciliationTest extends IntegrationTestCase {
         }
         $provider = new ArrayEligibilityProvider([999]);
         $reconciler = $this->reconciler();
-        $shallow = $reconciler->memberSlate(1, new ReconciliationRequest($provider,
+        $shallow = $reconciler->slate(Subject::member(1), new ReconciliationRequest($provider,
             [RecommendationSource::ItemLinks], 1, 'home', additionalCandidateIds: [999], diagnostics: true));
-        $deep = $reconciler->memberSlate(1, new ReconciliationRequest($provider,
+        $deep = $reconciler->slate(Subject::member(1), new ReconciliationRequest($provider,
             [RecommendationSource::ItemLinks], 2, 'home', additionalCandidateIds: [999],
             tuning: new ReconciliationTuning(maxCandidateDepth: 100), diagnostics: true));
         $this->assertSame(50, $shallow->items[0]->diagnostics->searchedDepths['item_links']);
@@ -184,7 +184,7 @@ class ReconciliationTest extends IntegrationTestCase {
                 return array_values(array_filter($candidateIds, fn($id) => $id === 160));
             }
         };
-        $list = $this->reconciler()->memberSlate(1,
+        $list = $this->reconciler()->slate(Subject::member(1),
             new ReconciliationRequest($provider,
                 [RecommendationSource::NewProducts, RecommendationSource::ItemLinks],
                 1, 'home', [200, 201], tuning: new ReconciliationTuning(maxCandidateDepth: 100), diagnostics: true));
@@ -209,9 +209,9 @@ class ReconciliationTest extends IntegrationTestCase {
         $this->insertLink(10, 20, 3);
         $reconciler = $this->reconciler();
         $provider = new ArrayEligibilityProvider([20, 40]);
-        $first = $reconciler->memberSlate(1, new ReconciliationRequest($provider,
+        $first = $reconciler->slate(Subject::member(1), new ReconciliationRequest($provider,
             [RecommendationSource::NewProducts, RecommendationSource::ItemLinks], 2, 'home', [40]));
-        $second = $reconciler->memberSlate(1, new ReconciliationRequest($provider,
+        $second = $reconciler->slate(Subject::member(1), new ReconciliationRequest($provider,
             [RecommendationSource::ItemLinks, RecommendationSource::NewProducts], 2, 'home', [40]));
         $this->assertEquals($first, $second);
     }
@@ -235,7 +235,7 @@ class ReconciliationTest extends IntegrationTestCase {
         $request = new ReconciliationRequest($provider, [RecommendationSource::ItemLinks],
             2, 'home', tuning: new ReconciliationTuning(maxCandidateDepth: 100));
         $this->expectException(\RuntimeException::class);
-        $this->reconciler()->memberSlate(1, $request);
+        $this->reconciler()->slate(Subject::member(1), $request);
     }
 
     /** @return void */
@@ -248,7 +248,7 @@ class ReconciliationTest extends IntegrationTestCase {
             }
         };
         $this->expectExceptionMessage('Catalog unavailable');
-        $this->reconciler()->memberSlate(1,
+        $this->reconciler()->slate(Subject::member(1),
             new ReconciliationRequest($provider, [RecommendationSource::NewProducts],
                 1, 'home', [20]));
     }
@@ -266,7 +266,7 @@ class ReconciliationTest extends IntegrationTestCase {
                 return $candidateIds;
             }
         };
-        $list = $this->reconciler()->memberSlate(1,
+        $list = $this->reconciler()->slate(Subject::member(1),
             new ReconciliationRequest($provider, [RecommendationSource::NewProducts],
                 1, 'home', [10, 11, 12]));
         $this->assertSame([12], $provider->received);
@@ -276,7 +276,7 @@ class ReconciliationTest extends IntegrationTestCase {
     /** @return void */
     public function testEmptySourceStillRecordsTheRequestedSearchDepth(): void {
         $this->insertRating(1, 999, 0.9); // Warm subject: cold subjects get only top-rated.
-        $list = $this->reconciler()->memberSlate(1,
+        $list = $this->reconciler()->slate(Subject::member(1),
             new ReconciliationRequest(new ArrayEligibilityProvider([20]),
                 [RecommendationSource::NewProducts], 1, 'home', additionalCandidateIds: [20], diagnostics: true));
         $this->assertSame(50, $list->items[0]->diagnostics->searchedDepths['new_products']);
@@ -295,7 +295,7 @@ class ReconciliationTest extends IntegrationTestCase {
         $this->insertRating(3, 99, 1.0, 2);
         $request = new ReconciliationRequest(new ArrayEligibilityProvider([20, 30, 99]),
             [RecommendationSource::SlopeOne, RecommendationSource::TopRated], 3, 'home');
-        $list = $this->reconciler()->memberSlate(1, $request);
+        $list = $this->reconciler()->slate(Subject::member(1), $request);
         $this->assertSame([20, 30], array_map(fn($item) => $item->productId, $list->items));
         $this->assertSame(3, $list->items[0]->evidence[0]->supportCount);
     }
@@ -312,12 +312,12 @@ class ReconciliationTest extends IntegrationTestCase {
             [RecommendationSource::ItemLinks, RecommendationSource::SlopeOne,
                 RecommendationSource::TopRated, RecommendationSource::NewProducts],
             2, 'parity', [30]);
-        $visitorRequest = new VisitorReconciliationRequest(new ArrayEligibilityProvider([20, 30]),
-            [VisitorSource::ItemLinks, VisitorSource::SlopeOne, VisitorSource::TopRated, VisitorSource::NewProducts],
+        $visitorRequest = new ReconciliationRequest(new ArrayEligibilityProvider([20, 30]),
+            [RecommendationSource::ItemLinks, RecommendationSource::SlopeOne, RecommendationSource::TopRated, RecommendationSource::NewProducts],
             2, 'parity', [30]);
         $reconciler = $this->reconciler();
-        $this->assertEquals($reconciler->memberSlate(1, $request)->items,
-            $reconciler->visitorSlate($visitor, $visitorRequest)->items);
+        $this->assertEquals($reconciler->slate(Subject::member(1), $request)->items,
+            $reconciler->slate(Subject::visitor($visitor), $visitorRequest)->items);
     }
 
     /** @return void */
@@ -327,10 +327,10 @@ class ReconciliationTest extends IntegrationTestCase {
         $this->insertLink(10, 99, 3);
         $reconciler = $this->reconciler();
         $sources = [RecommendationSource::ItemLinks, RecommendationSource::NewProducts];
-        $tenantA = $reconciler->memberSlate(1,
+        $tenantA = $reconciler->slate(Subject::member(1),
             new ReconciliationRequest(new ArrayEligibilityProvider([20, 30]), $sources,
                 3, 'home', [30, 999], contextKey: 'tenant-a'));
-        $tenantB = $reconciler->memberSlate(1,
+        $tenantB = $reconciler->slate(Subject::member(1),
             new ReconciliationRequest(new ArrayEligibilityProvider([30]), $sources,
                 3, 'home', [30, 999], contextKey: 'tenant-b'));
         $this->assertSame([20, 30], array_map(fn($item) => $item->productId, $tenantA->items));
@@ -346,10 +346,10 @@ class ReconciliationTest extends IntegrationTestCase {
         $request = new ReconciliationRequest(new ArrayEligibilityProvider([20, 30]),
             [RecommendationSource::ItemLinks, RecommendationSource::SlopeOne,
                 RecommendationSource::NewProducts], 2, 'derived_modes', [30]);
-        $before = $reconciler->memberSlate(1, $request);
+        $before = $reconciler->slate(Subject::member(1), $request);
         $this->assertSame([30], array_map(fn($item) => $item->productId, $before->items));
         $this->insertLink(10, 20, 3, 0.3);
-        $after = $reconciler->memberSlate(1, $request);
+        $after = $reconciler->slate(Subject::member(1), $request);
         $this->assertSame([20, 30], array_map(fn($item) => $item->productId, $after->items));
         $this->assertSame([RecommendationSource::ItemLinks, RecommendationSource::SlopeOne],
             array_map(fn($evidence) => $evidence->source, $after->items[0]->evidence));
@@ -361,7 +361,7 @@ class ReconciliationTest extends IntegrationTestCase {
             $this->insertRating($id, $id, 0.8);
             $this->insertRating($id + 100, $id, 0.8);
         }
-        $list = $this->reconciler()->memberSlate(1,
+        $list = $this->reconciler()->slate(Subject::member(1),
             new ReconciliationRequest(new ArrayEligibilityProvider([20, 30]),
                 [RecommendationSource::TopRated], 2, 'tie_test'));
         $this->assertSame([20, 30], array_map(fn($item) => $item->productId, $list->items));
@@ -384,7 +384,7 @@ class ReconciliationTest extends IntegrationTestCase {
             $previousLogger = $driver->getLogger();
             $driver->setLogger($logger);
             try {
-                $list = $reconciler->memberSlate(1, $request);
+                $list = $reconciler->slate(Subject::member(1), $request);
             } finally {
                 $driver->disableQueryLogging();
                 if ($previousLogger !== null) {
@@ -415,7 +415,7 @@ class ReconciliationTest extends IntegrationTestCase {
         $previousLogger = $driver->getLogger();
         $driver->setLogger($logger);
         try {
-            $this->reconciler()->memberSlate(1, new ReconciliationRequest(new ArrayEligibilityProvider([20, 30]),
+            $this->reconciler()->slate(Subject::member(1), new ReconciliationRequest(new ArrayEligibilityProvider([20, 30]),
                 [RecommendationSource::ItemLinks, RecommendationSource::SlopeOne, RecommendationSource::TopRated,
                     RecommendationSource::NewProducts, RecommendationSource::UserSimilarity],
                 5, 'home', [30]));
@@ -438,7 +438,7 @@ class ReconciliationTest extends IntegrationTestCase {
         $request = new ReconciliationRequest(new ArrayEligibilityProvider([20]),
             [RecommendationSource::UserSimilarity], 1, 'home');
         $reconciler = $this->reconciler();
-        $list = $reconciler->memberSlate(1, $request);
+        $list = $reconciler->slate(Subject::member(1), $request);
         $this->assertSame(20, $list->items[0]->productId);
         $this->assertGreaterThan(0.0, $list->items[0]->evidence[0]->rawScore);
     }
@@ -453,10 +453,10 @@ class ReconciliationTest extends IntegrationTestCase {
                 return $candidateIds;
             }
         };
-        $request = new VisitorReconciliationRequest($provider, [VisitorSource::NewProducts],
+        $request = new ReconciliationRequest($provider, [RecommendationSource::NewProducts],
             10, 'home', range(1, 80), tuning: new ReconciliationTuning(maxEligibilityBatchSize: 7));
         $list = ($this->reconciler())
-            ->visitorSlate($this->warmVisitor(), $request);
+            ->slate(Subject::visitor($this->warmVisitor()), $request);
         $this->assertCount(10, $list->items);
         $this->assertSame(7, $provider->maxSeen);
     }
@@ -469,7 +469,7 @@ class ReconciliationTest extends IntegrationTestCase {
         }
         $request = new ReconciliationRequest(new ArrayEligibilityProvider([149]),
             [RecommendationSource::ItemLinks], 1, 'home');
-        $list = $this->reconciler()->memberSlate(1, $request);
+        $list = $this->reconciler()->slate(Subject::member(1), $request);
         $this->assertSame(149, $list->items[0]->productId);
         $this->assertSame(1, $list->items[0]->evidence[0]->sourceRank);
         $this->assertEqualsWithDelta(1 / 61, $list->items[0]->rankingScore, 0.0000001);
@@ -498,7 +498,7 @@ class ReconciliationTest extends IntegrationTestCase {
         $request = new ReconciliationRequest($provider, [RecommendationSource::ItemLinks],
             2, 'home', tuning: new ReconciliationTuning(maxCandidateDepth: 100));
         $this->expectExceptionMessage('Candidate order changed');
-        $this->reconciler()->memberSlate(1, $request);
+        $this->reconciler()->slate(Subject::member(1), $request);
     }
 
     /** @return void */
@@ -567,7 +567,7 @@ class ReconciliationTest extends IntegrationTestCase {
         }
         $request = new ReconciliationRequest(new ArrayEligibilityProvider([150]),
             [RecommendationSource::TopRated], 1, 'home', additionalCandidateIds: [150], diagnostics: true);
-        $list = $this->reconciler()->memberSlate(1, $request);
+        $list = $this->reconciler()->slate(Subject::member(1), $request);
         $this->assertSame(150, $list->items[0]->productId);
         $this->assertSame(0.0, $list->items[0]->rankingScore);
         $this->assertSame(0.0, $list->items[0]->diagnostics->featureSnapshot['top_rated.present']);
@@ -589,7 +589,7 @@ class ReconciliationTest extends IntegrationTestCase {
             [RecommendationSource::NewProducts, RecommendationSource::ItemLinks,
                 RecommendationSource::SlopeOne, RecommendationSource::UserSimilarity],
             1, 'home', range(100, 150), additionalCandidateIds: [150], diagnostics: true);
-        $list = $this->reconciler()->memberSlate(1, $request);
+        $list = $this->reconciler()->slate(Subject::member(1), $request);
         $item = $list->items[0];
         $this->assertSame(150, $item->productId);
         $this->assertSame(0.0, $item->rankingScore);
@@ -610,12 +610,20 @@ class ReconciliationTest extends IntegrationTestCase {
         $this->insertRating(1, 10, 0.9);
         $this->insertLink(10, 20, 10);
         $provider = new ArrayEligibilityProvider([20]);
-        $plain = $this->reconciler()->memberSlate(1,
+        $plain = $this->reconciler()->slate(Subject::member(1),
             new ReconciliationRequest($provider, [RecommendationSource::ItemLinks], 1, 'home'));
-        $explained = $this->reconciler()->memberSlate(1,
+        $explained = $this->reconciler()->slate(Subject::member(1),
             new ReconciliationRequest($provider, [RecommendationSource::ItemLinks], 1, 'home', diagnostics: true));
         $this->assertNull($plain->items[0]->diagnostics);
         $this->assertSame(['item_links' => 50], $explained->items[0]->diagnostics?->searchedDepths);
         $this->assertSame($plain->items[0]->rankingScore, $explained->items[0]->rankingScore);
+    }
+
+    /** @return void */
+    public function testVisitorCannotRequestUserSimilarity(): void {
+        $request = new ReconciliationRequest(new ArrayEligibilityProvider([20]), [RecommendationSource::UserSimilarity], 1, 'home');
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->reconciler()->slate(Subject::visitor($this->warmVisitor()), $request);
     }
 }

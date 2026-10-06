@@ -41,8 +41,17 @@ use Quellabs\Recommender\Sources\TopRatedSource;
 		 * @return RecommendationReconciler
 		 */
 		protected function reconciler(): RecommendationReconciler {
-			return new RecommendationReconciler($this->config,
-				new RequestSourcesFactory($this->connection, $this->config, new UserSimilarity($this->connection, $this->config, new RecommendationEngine($this->connection, $this->config))),
+			return $this->reconcilerWith($this->config);
+		}
+		
+		/**
+		 * Build a reconciler that uses the given configuration.
+		 * @param RecommendationConfig $config Recommender settings
+		 * @return RecommendationReconciler
+		 */
+		protected function reconcilerWith(RecommendationConfig $config): RecommendationReconciler {
+			return new RecommendationReconciler($config,
+				new RequestSourcesFactory($this->connection, $config, new UserSimilarity($this->connection, $config, new RecommendationEngine($this->connection, $config))),
 				new ModelScorerResolver($this->connection));
 		}
 		

@@ -97,9 +97,9 @@ Reason for the order: each query exists once from the start. Writing product-sub
 
 ### Phase 6: subject and public surface
 
-- [ ] Collapse the remaining parallel member and visitor methods onto `Subject`.
-- [ ] Remove types that have only one caller. Shrink `ReconciliationTuning` to the settings callers actually set.
-- [ ] Leave `MemberId` and `ProductId` where they are, in the two-ID methods only.
+- [x] Collapse the remaining parallel member and visitor methods onto `Subject`. `slate()` and `candidatePool()` replace the four member and visitor methods. A visitor request with user similarity throws. `VisitorSource` and `VisitorReconciliationRequest` are removed.
+- [x] Remove types that have only one caller. Shrink `ReconciliationTuning` to the settings callers actually set. `maxBackfillRounds` moves to `RecommendationConfig`, the only place it is read.
+- [x] Leave `MemberId` and `ProductId` where they are, in the two-ID methods only.
 
 ## Risks
 

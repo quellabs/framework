@@ -18,7 +18,6 @@
 
 	use Quellabs\Recommender\Subject;
 	use Quellabs\Recommender\SubjectKind;
-	use Quellabs\Recommender\VisitorContext;
 
 	/**
 	 * Combines explicitly selected candidate generators using reciprocal ranks.
@@ -57,51 +56,43 @@
 		}
 		
 		/**
-		 * Return the displayed slate of up to the requested limit for a persisted member.
-		 * @param int $member Member ID
+		 * Return the displayed slate of up to the requested limit for a member or visitor.
+		 * @param Subject $subject Member or visitor
 		 * @param ReconciliationRequest $request Candidate request
 		 * @return RecommendationList Displayed slate, at most the request limit
-		 * @throws \InvalidArgumentException When the member ID is outside the unsigned 32-bit range
+		 * @throws \InvalidArgumentException When a visitor requests user similarity
 		 */
-		public function memberSlate(int $member, ReconciliationRequest $request): RecommendationList {
-			return $this->firstPage($this->memberCandidatePool($member, $request), $request->limit);
+		public function slate(Subject $subject, ReconciliationRequest $request): RecommendationList {
+			return $this->firstPage($this->candidatePool($subject, $request), $request->limit);
 		}
-		
+
 		/**
-		 * Return the displayed slate of up to the requested limit for an anonymous visitor.
-		 * @param VisitorContext $visitor Visitor ratings
-		 * @param VisitorReconciliationRequest $request Candidate request for a visitor
-		 * @return RecommendationList Displayed slate, at most the request limit
-		 */
-		public function visitorSlate(VisitorContext $visitor, VisitorReconciliationRequest $request): RecommendationList {
-			return $this->firstPage($this->visitorCandidatePool($visitor, $request), $request->request->limit);
-		}
-		
-		/**
-		 * Return the full bounded eligible pool for a persisted member.
-		 * @param int $member Member ID
+		 * Return the full bounded eligible pool for a member or visitor.
+		 * @param Subject $subject Member or visitor
 		 * @param ReconciliationRequest $request Candidate request
 		 * @return RecommendationList Full bounded eligible pool
-		 * @throws \InvalidArgumentException When the member ID is not an unsigned 32-bit integer
+		 * @throws \InvalidArgumentException When a visitor requests user similarity
 		 */
-		public function memberCandidatePool(int $member, ReconciliationRequest $request): RecommendationList {
+		public function candidatePool(Subject $subject, ReconciliationRequest $request): RecommendationList {
+			$this->assertSourcesFitSubject($subject, $request);
 			$category = $this->config->resolveCategory($request->category);
 
-			return $this->rank($request, $category, Subject::member($member));
+			return $this->rank($request, $category, $subject);
 		}
 		
 		/**
-		 * Return the full bounded eligible pool for an anonymous visitor.
-		 * @param VisitorContext $visitor Visitor ratings
-		 * @param VisitorReconciliationRequest $request Candidate request for a visitor
-		 * @return RecommendationList Full bounded eligible pool
+		 * Reject a visitor request that includes user similarity, which needs a persisted member.
+		 * @param Subject $subject Member or visitor
+		 * @param ReconciliationRequest $request Candidate request
+		 * @return void
+		 * @throws \InvalidArgumentException When a visitor requests user similarity
 		 */
-		public function visitorCandidatePool(VisitorContext $visitor, VisitorReconciliationRequest $request): RecommendationList {
-			$category = $this->config->resolveCategory($request->request->category);
-
-			return $this->rank($request->request, $category, Subject::visitor($visitor));
+		private function assertSourcesFitSubject(Subject $subject, ReconciliationRequest $request): void {
+			if ($subject->kind === SubjectKind::Visitor && in_array(RecommendationSource::UserSimilarity, $request->sources, true)) {
+				throw new \InvalidArgumentException('User similarity needs a persisted member and cannot serve a visitor.');
+			}
 		}
-		
+
 		/**
 		 * Return the first page of a list, keeping its metadata.
 		 * @param RecommendationList $list Full pool
@@ -128,7 +119,7 @@
 			$ratings = $sources->ratings->seen($subject, $category);
 			$request = $this->applyColdStart($request, $ratings);
 			$depthCap = $request->tuning->maxCandidateDepth ?? $this->config->maxCandidateDepth();
-			$roundCap = $request->tuning->maxBackfillRounds ?? $this->config->maxBackfillRounds();
+			$roundCap = $this->config->maxBackfillRounds();
 			$batchSize = max(1, $request->tuning->maxEligibilityBatchSize ?? $this->config->maxEligibilityBatchSize());
 			$state = new CandidateRoundState($request->sources, min(max(50, 5 * $request->limit), $depthCap), $depthCap);
 
@@ -401,9 +392,6 @@
 		 * @return void
 		 */
 		private function auditSource(RecommendationSource $source, array $missing, ReconciliationRequest $request, Subject $subject, int $category, RequestSources $sources, array &$audit): void {
-			if ($source === RecommendationSource::UserSimilarity && $subject->kind !== SubjectKind::Member) {
-				return;
-			}
 
 			foreach ($this->scoredBy($source, $subject, $missing, $request, $category, $sources) as $result) {
 				$audit[$result->productId][] = new SourceEvidence($source, self::rawScore($result), null,

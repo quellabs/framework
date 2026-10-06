@@ -2,6 +2,7 @@
 
 namespace Quellabs\Recommender\Tests;
 
+use Quellabs\Recommender\Subject;
 use Quellabs\Recommender\ProductId;
 
 use Quellabs\Recommender\MemberId;
@@ -215,21 +216,21 @@ class EvaluationTest extends IntegrationTestCase {
             $request = new ReconciliationRequest(new ArrayEligibilityProvider([40, 41]),
                 [RecommendationSource::NewProducts], 2, 'home', [40, 41], diagnostics: true);
             $list = ($this->reconciler())
-                ->memberSlate(7, $request);
+                ->slate(Subject::member(7), $request);
             $this->assertSame(ScoreKind::Ranked, $list->scoreKind);
             $this->assertSame($modelId, $list->scorerId);
             $otherContext = new ReconciliationRequest(new ArrayEligibilityProvider([40, 41]),
                 [RecommendationSource::NewProducts], 2, 'home', [40, 41], contextKey: 'tenant-x');
             $this->assertNull(($this->reconciler())
-                    ->memberSlate(7, $otherContext)->scorerId);
+                    ->slate(Subject::member(7), $otherContext)->scorerId);
             $otherPlacement = new ReconciliationRequest(new ArrayEligibilityProvider([40, 41]),
                 [RecommendationSource::NewProducts], 2, 'other', [40, 41]);
             $otherCategory = new ReconciliationRequest(new ArrayEligibilityProvider([40, 41]),
                 [RecommendationSource::NewProducts], 2, 'home', [40, 41], category: 2);
             $this->assertNull(($this->reconciler())
-                    ->memberSlate(7, $otherPlacement)->scorerId);
+                    ->slate(Subject::member(7), $otherPlacement)->scorerId);
             $this->assertNull(($this->reconciler())
-                    ->memberSlate(7, $otherCategory)->scorerId);
+                    ->slate(Subject::member(7), $otherCategory)->scorerId);
             $this->assertSame(0.5, $list->items[0]->rankingScore);
             $recorder = new EvaluationRecorder($this->connection);
             $impressionId = $recorder->recordImpression($list, null,
@@ -251,7 +252,7 @@ class EvaluationTest extends IntegrationTestCase {
                 WHERE id = UNHEX(?)', [$modelId]);
             try {
                 ($this->reconciler())
-                    ->memberSlate(7, $request);
+                    ->slate(Subject::member(7), $request);
                 $this->fail('An incompatible active feature schema was accepted.');
             } catch (\UnexpectedValueException) {
                 $this->assertTrue(true);
@@ -387,7 +388,7 @@ class EvaluationTest extends IntegrationTestCase {
         $request = new ReconciliationRequest(new ArrayEligibilityProvider([150]),
             [RecommendationSource::TopRated], 1, 'audit_test', additionalCandidateIds: [150], diagnostics: true);
         $list = ($this->reconciler())
-            ->memberSlate(1, $request);
+            ->slate(Subject::member(1), $request);
         $shown = new DateTimeImmutable('2026-01-01T00:00:00Z');
         $id = (new EvaluationRecorder($this->connection))->recordImpression($list, null, $shown);
         $row = $this->connection->execute('SELECT source, source_rank FROM vogoo_impression_evidence
@@ -408,7 +409,7 @@ class EvaluationTest extends IntegrationTestCase {
         $this->insertRating(1, 999, 0.9);
         $request = new ReconciliationRequest(new ArrayEligibilityProvider([40]),
             [RecommendationSource::NewProducts], 1, 'home', [40]);
-        $list = $this->reconciler()->memberSlate(1, $request);
+        $list = $this->reconciler()->slate(Subject::member(1), $request);
         $this->expectException(\UnexpectedValueException::class);
         (new EvaluationRecorder($this->connection))->recordImpression($list, null, new DateTimeImmutable('2026-01-01T00:00:00Z'));
     }

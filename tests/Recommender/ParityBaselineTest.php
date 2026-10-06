@@ -3,6 +3,7 @@
 namespace Quellabs\Recommender\Tests;
 
 use Quellabs\Recommender\ArrayEligibilityProvider;
+use Quellabs\Recommender\Config\RecommendationConfig;
 use Quellabs\Recommender\EligibilityProvider;
 use Quellabs\Recommender\Sources\ItemLinksSource;
 use Quellabs\Recommender\Sources\SlopeOneSource;
@@ -12,8 +13,6 @@ use Quellabs\Recommender\RecommendationSource;
 use Quellabs\Recommender\Reconciliation\ReconciliationRequest;
 use Quellabs\Recommender\Reconciliation\ReconciliationTuning;
 use Quellabs\Recommender\Reconciliation\RecommendationReconciler;
-use Quellabs\Recommender\Reconciliation\VisitorReconciliationRequest;
-use Quellabs\Recommender\Reconciliation\VisitorSource;
 use Quellabs\Recommender\Statistics;
 use Quellabs\Recommender\VisitorContext;
 
@@ -117,13 +116,13 @@ class ParityBaselineTest extends IntegrationTestCase {
 
             $provider = $eligibility ?? $this->openProvider();
             $linksMember = new ReconciliationRequest($provider, [RecommendationSource::ItemLinks], 5, 'home');
-            $linksVisitor = new VisitorReconciliationRequest($provider, [VisitorSource::ItemLinks], 5, 'home');
-            $outputs["links.member.1.{$mode}"] = $this->normalize($reconciler->memberSlate(1, $linksMember));
-            $outputs["links.member.5.short.{$mode}"] = $this->normalize($reconciler->memberSlate(5, $linksMember));
-            $outputs["links.member.6.cold.{$mode}"] = $this->normalize($reconciler->memberSlate(6, $linksMember));
-            $outputs["links.visitor.A.{$mode}"] = $this->normalize($reconciler->visitorSlate($this->visitorA(), $linksVisitor));
-            $outputs["links.visitor.C.short.{$mode}"] = $this->normalize($reconciler->visitorSlate($this->visitorC(), $linksVisitor));
-            $outputs["links.visitor.B.empty.{$mode}"] = $this->normalize($reconciler->visitorSlate($this->visitorB(), $linksVisitor));
+            $linksVisitor = new ReconciliationRequest($provider, [RecommendationSource::ItemLinks], 5, 'home');
+            $outputs["links.member.1.{$mode}"] = $this->normalize($reconciler->slate(Subject::member(1), $linksMember));
+            $outputs["links.member.5.short.{$mode}"] = $this->normalize($reconciler->slate(Subject::member(5), $linksMember));
+            $outputs["links.member.6.cold.{$mode}"] = $this->normalize($reconciler->slate(Subject::member(6), $linksMember));
+            $outputs["links.visitor.A.{$mode}"] = $this->normalize($reconciler->slate(Subject::visitor($this->visitorA()), $linksVisitor));
+            $outputs["links.visitor.C.short.{$mode}"] = $this->normalize($reconciler->slate(Subject::visitor($this->visitorC()), $linksVisitor));
+            $outputs["links.visitor.B.empty.{$mode}"] = $this->normalize($reconciler->slate(Subject::visitor($this->visitorB()), $linksVisitor));
 
             $outputs["item.member.predictions.1.{$mode}"] = $this->normalize($slopeOne->candidates(Subject::member(1), $eligibility, 10, new SourceSettings()));
             $outputs["item.member.predictions.1.support2.{$mode}"] = $this->normalize($slopeOne->candidates(Subject::member(1), $eligibility, 10, new SourceSettings(minSupport: 2)));
@@ -146,8 +145,8 @@ class ParityBaselineTest extends IntegrationTestCase {
 
                 foreach ([1, 5, 6] as $member) {
                     $suffix = "member.{$member}.{$set}.{$mode}";
-                    $outputs["slate.{$suffix}"] = $this->normalize($reconciler->memberSlate($member, $request));
-                    $outputs["pool.{$suffix}"] = $this->normalize($reconciler->memberCandidatePool($member, $request));
+                    $outputs["slate.{$suffix}"] = $this->normalize($reconciler->slate(Subject::member($member), $request));
+                    $outputs["pool.{$suffix}"] = $this->normalize($reconciler->candidatePool(Subject::member($member), $request));
                 }
             }
         }
@@ -158,21 +157,22 @@ class ParityBaselineTest extends IntegrationTestCase {
 
                 foreach (['A' => $this->visitorA(), 'C' => $this->visitorC(), 'B' => $this->visitorB()] as $label => $visitor) {
                     $suffix = "visitor.{$label}.{$set}.{$mode}";
-                    $outputs["slate.{$suffix}"] = $this->normalize($reconciler->visitorSlate($visitor, $request));
-                    $outputs["pool.{$suffix}"] = $this->normalize($reconciler->visitorCandidatePool($visitor, $request));
+                    $outputs["slate.{$suffix}"] = $this->normalize($reconciler->slate(Subject::visitor($visitor), $request));
+                    $outputs["pool.{$suffix}"] = $this->normalize($reconciler->candidatePool(Subject::visitor($visitor), $request));
                 }
             }
         }
 
         // Tight bounds force the backfill loop to stop before the eligible pool is exhausted.
-        $tight = new ReconciliationTuning(maxCandidateDepth: 50, maxBackfillRounds: 1, maxEligibilityBatchSize: 5);
+        $tight = new ReconciliationTuning(maxCandidateDepth: 50, maxEligibilityBatchSize: 5);
+        $tightReconciler = $this->reconcilerWith(new RecommendationConfig(directLinks: false, directSlope: false, maxBackfillRounds: 1));
         $tightMember = new ReconciliationRequest($this->restrictedProvider(), $this->memberSourceSets()['all'],
             5, 'home', [33, 12, 27], [26, 31], null, 'parity', $tight);
-        $outputs['slate.member.1.all.tight'] = $this->normalize($reconciler->memberSlate(1, $tightMember));
+        $outputs['slate.member.1.all.tight'] = $this->normalize($tightReconciler->slate(Subject::member(1), $tightMember));
 
-        $tightVisitor = new VisitorReconciliationRequest($this->restrictedProvider(), $this->visitorSourceSets()['all'],
+        $tightVisitor = new ReconciliationRequest($this->restrictedProvider(), $this->visitorSourceSets()['all'],
             5, 'home', [33, 12, 27], [26, 31], null, 'parity', $tight);
-        $outputs['slate.visitor.A.all.tight'] = $this->normalize($reconciler->visitorSlate($this->visitorA(), $tightVisitor));
+        $outputs['slate.visitor.A.all.tight'] = $this->normalize($tightReconciler->slate(Subject::visitor($this->visitorA()), $tightVisitor));
 
         return $outputs;
     }
@@ -200,15 +200,15 @@ class ParityBaselineTest extends IntegrationTestCase {
 
     /**
      * Visitor source sets: each source alone, then all of them together.
-     * @return array<string, array<int, VisitorSource>>
+     * @return array<string, array<int, RecommendationSource>>
      */
     private function visitorSourceSets(): array {
         return [
-            'item_links' => [VisitorSource::ItemLinks],
-            'slope_one' => [VisitorSource::SlopeOne],
-            'top_rated' => [VisitorSource::TopRated],
-            'new_products' => [VisitorSource::NewProducts],
-            'all' => [VisitorSource::ItemLinks, VisitorSource::SlopeOne, VisitorSource::TopRated, VisitorSource::NewProducts],
+            'item_links' => [RecommendationSource::ItemLinks],
+            'slope_one' => [RecommendationSource::SlopeOne],
+            'top_rated' => [RecommendationSource::TopRated],
+            'new_products' => [RecommendationSource::NewProducts],
+            'all' => [RecommendationSource::ItemLinks, RecommendationSource::SlopeOne, RecommendationSource::TopRated, RecommendationSource::NewProducts],
         ];
     }
 
@@ -225,11 +225,11 @@ class ParityBaselineTest extends IntegrationTestCase {
     /**
      * Build a visitor reconciliation request with fixed placement, limit and suggestions.
      * @param EligibilityProvider $provider Catalog eligibility
-     * @param array<int, VisitorSource> $sources Enabled sources
-     * @return VisitorReconciliationRequest
+     * @param array<int, RecommendationSource> $sources Enabled sources
+     * @return ReconciliationRequest
      */
-    private function visitorRequest(EligibilityProvider $provider, array $sources): VisitorReconciliationRequest {
-        return new VisitorReconciliationRequest($provider, $sources, 5, 'home', [33, 12, 27], [26, 31], null, 'parity');
+    private function visitorRequest(EligibilityProvider $provider, array $sources): ReconciliationRequest {
+        return new ReconciliationRequest($provider, $sources, 5, 'home', [33, 12, 27], [26, 31], null, 'parity');
     }
 
     /**

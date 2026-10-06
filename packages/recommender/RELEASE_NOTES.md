@@ -8,11 +8,10 @@ and `RecommendationSource` for the candidate source of a result. `Recommendation
 `recordPurchase()` and `recordClick()`. Reconciliation settings live in `ReconciliationTuning`, and per-item
 diagnostics in `ReconciliationDiagnostics`, attached only when a request sets `diagnostics: true`. Ranking goes through the
 `CandidateScorer` interface, with `RankFusionScorer` as the default. `EligibilityProvider` moved to the root namespace. Member and visitor recommendations come from `RecommendationReconciler` slates. `ItemRecommender` is removed. Its item-to-item lookups, predictions and reasons are methods on the candidate sources in `Quellabs\Recommender\Sources`. Reasons methods return `RecommendationResult[]`, average-rating
-methods return `null` when there is no data, and reconciler methods are `memberSlate()` and `visitorSlate()` for the displayed slate, with `memberCandidatePool()`
-and `visitorCandidatePool()` for the full pool. Value objects use `productId` for product IDs and `source` for candidate
+methods return `null` when there is no data, and reconciler methods are `slate()` for the displayed slate and `candidatePool()` for the full pool, both taking a `Subject`. Value objects use `productId` for product IDs and `source` for candidate
 sources. Rating accessors return `Rating` and `VisitorRating` objects. Member
 erasure is a single `RecommendationEngine::deleteMemberData()` call. Visitors record clicks and purchases with
-`VisitorContext::recordClick()` and `recordPurchase()`, visitor reconciliation takes a `VisitorReconciliationRequest`
+`VisitorContext::recordClick()` and `recordPurchase()`, visitor reconciliation takes a `ReconciliationRequest`
 that cannot include user similarity, and cold-start thresholds are `ReconciliationTuning` values. Thresholds are validated
 `int` values. Member and product IDs are `int` parameters named `member` and `product`, except where a method takes both
 a member and a product: those take `MemberId` and `ProductId` values so the two cannot be swapped. Configuration accessors drop the `get` prefix. The [README upgrade section](README.md#upgrading)

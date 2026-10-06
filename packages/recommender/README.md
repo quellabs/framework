@@ -58,7 +58,7 @@ $engine->setRating(new MemberId(1), new ProductId(101), 0.9);
 $engine->setRating(new MemberId(2), new ProductId(101), 0.8);
 $engine->setRating(new MemberId(2), new ProductId(102), 0.7);
 
-$slate = $reconciler->memberSlate(1, new ReconciliationRequest(
+$slate = $reconciler->slate(Subject::member(1), new ReconciliationRequest(
     new ArrayEligibilityProvider([102]), [RecommendationSource::ItemLinks], 5, 'home'));
 echo $slate->items[0]->productId; // 102
 ```
@@ -72,13 +72,12 @@ Ratings run from 0.0 to 1.0, and -1.0 marks "not interested".
 | Rate a product | `RecommendationEngine::setRating()` | `void`, throws on invalid input |
 | Predicted rating for one product | `SlopeOneSource::predict()` with `Subject::member()` | `RecommendationResult\|null`, with the rating in `score` |
 | Predicted ratings for all unrated products | `SlopeOneSource::candidates()` with `Subject::member()` | `RecommendationResult[]`, with the rating in `score` |
-| Displayed slate for a member, filtered by catalogue eligibility | `RecommendationReconciler::memberSlate()` | `RecommendationList` |
-| Displayed slate for a visitor, filtered by catalogue eligibility | `RecommendationReconciler::visitorSlate()` | `RecommendationList` |
+| Displayed slate for a member or visitor, filtered by catalogue eligibility | `RecommendationReconciler::slate()` with `Subject::member()` or `Subject::visitor()` | `RecommendationList` |
 | Record a visitor purchase or click in session state | `VisitorContext::recordPurchase()`, `recordClick()` | `void` |
-| Full bounded eligible pool, not cut to `limit` | `RecommendationReconciler::memberCandidatePool()` | `RecommendationList` |
+| Full bounded eligible pool, not cut to `limit` | `RecommendationReconciler::candidatePool()` with `Subject::member()` or `Subject::visitor()` | `RecommendationList` |
 
-Visitor variants take a `VisitorContext` in place of the member ID. Visitor reconciliation takes a
-`VisitorReconciliationRequest`, built from `VisitorSource` values, in place of `ReconciliationRequest`.
+Visitor requests use the same `ReconciliationRequest`. A visitor request that includes
+`RecommendationSource::UserSimilarity` throws `InvalidArgumentException`, because user similarity needs a persisted member.
 
 Items carry `$diagnostics` (`ReconciliationDiagnostics`) only when the request sets `diagnostics: true`; otherwise it is `null`.
 `EvaluationRecorder::recordImpression()` rejects a ranked list whose items have no diagnostics. Items are scored by
@@ -142,10 +141,10 @@ Rename calls as shown. Methods not listed are unchanged.
 |----------|-----|
 | `ItemRecommender::getLinkedItems()` | `ItemLinksSource::candidates()` with `Subject::product()` |
 | `ItemRecommender::getSlopeItems()` | `SlopeOneSource::candidates()` with `Subject::product()` |
-| `ItemRecommender::memberGetRecommendedItems()` | `RecommendationReconciler::memberSlate()` with an item-links request |
-| `ItemRecommender::visitorGetRecommendedItems()` | `RecommendationReconciler::visitorSlate()` with an item-links request |
-| `ItemRecommender::memberRecommendationsDetailed()` | `RecommendationReconciler::memberSlate()` with an item-links request |
-| `ItemRecommender::visitorRecommendationsDetailed()` | `RecommendationReconciler::visitorSlate()` with an item-links request |
+| `ItemRecommender::memberGetRecommendedItems()` | `RecommendationReconciler::slate()` with `Subject::member()` with an item-links request |
+| `ItemRecommender::visitorGetRecommendedItems()` | `RecommendationReconciler::slate()` with `Subject::visitor()` with an item-links request |
+| `ItemRecommender::memberRecommendationsDetailed()` | `RecommendationReconciler::slate()` with `Subject::member()` with an item-links request |
+| `ItemRecommender::visitorRecommendationsDetailed()` | `RecommendationReconciler::slate()` with `Subject::visitor()` with an item-links request |
 | `ItemRecommender::memberGetReasons()` | `ItemLinksSource::reasons()` with `Subject::member()` |
 | `ItemRecommender::visitorGetReasons()` | `ItemLinksSource::reasons()` with `Subject::visitor()` |
 | `ItemRecommender::memberPredict()` | `SlopeOneSource::predict()` with `Subject::member()` |
@@ -159,12 +158,12 @@ Rename calls as shown. Methods not listed are unchanged.
 | `VisitorContext::getRatings()` | `VisitorContext::ratings()` |
 | `VisitorContext::getRatedProductIds()` | `VisitorContext::ratedProductIds()` |
 | `VisitorContext::removeRating()` | `VisitorContext::deleteRating()` |
-| `RecommendationReconciler::rankCandidatesMember()` | `RecommendationReconciler::memberCandidatePool()` |
-| `RecommendationReconciler::rankCandidatesVisitor()` | `RecommendationReconciler::visitorCandidatePool()` |
-| `RecommendationReconciler::candidatePoolMember()` | `RecommendationReconciler::memberCandidatePool()` |
-| `RecommendationReconciler::candidatePoolVisitor()` | `RecommendationReconciler::visitorCandidatePool()` |
-| `RecommendationReconciler::recommendMember()` | `RecommendationReconciler::memberSlate()` |
-| `RecommendationReconciler::recommendVisitor()` | `RecommendationReconciler::visitorSlate()` |
+| `RecommendationReconciler::rankCandidatesMember()` | `RecommendationReconciler::candidatePool()` with `Subject::member()` |
+| `RecommendationReconciler::rankCandidatesVisitor()` | `RecommendationReconciler::candidatePool()` with `Subject::visitor()` |
+| `RecommendationReconciler::candidatePoolMember()` | `RecommendationReconciler::candidatePool()` with `Subject::member()` |
+| `RecommendationReconciler::candidatePoolVisitor()` | `RecommendationReconciler::candidatePool()` with `Subject::visitor()` |
+| `RecommendationReconciler::recommendMember()` | `RecommendationReconciler::slate()` with `Subject::member()` |
+| `RecommendationReconciler::recommendVisitor()` | `RecommendationReconciler::slate()` with `Subject::visitor()` |
 | `EvaluationRecorder::deleteMemberHistory()` | `EvaluationRecorder::deleteMemberEvaluations()` |
 | `RecommendationList::selectDisplayedIds()` | `RecommendationList::selectDisplayedProducts()` |
 | `RecommendationEngine::deleteMember()` for full member erasure | `RecommendationEngine::deleteMemberData()` |
@@ -250,10 +249,11 @@ Other changes:
   fixed at `RecommendationConfig::NOT_INTERESTED` (-1.0). Remove the key from `config/recommender.php`.
 - `RecommendationConfig` takes `maxCandidateDepth`, `maxBackfillRounds` and `maxEligibilityBatchSize` directly.
   `ReconciliationLimits` is removed. The `fromArray()` keys are unchanged.
-- `ReconciliationTuning` validates its own values, with the same messages as before.
+- `ReconciliationTuning` validates its own values, with the same messages as before. It no longer takes
+  `maxBackfillRounds`; set that on `RecommendationConfig`.
 - `ItemRecommender::memberRecommendations()` and `visitorRecommendations()` are removed. Use
-  `RecommendationReconciler::memberSlate()` or `visitorSlate()` with a `RecommendationSource::ItemLinks` or
-  `VisitorSource::ItemLinks` request. Slates return `ReconciledRecommendation` items: `rankingScore` is the fused score,
+  `RecommendationReconciler::slate()` with `Subject::member()` or `Subject::visitor()` and a
+  `RecommendationSource::ItemLinks` request. Slates return `ReconciledRecommendation` items: `rankingScore` is the fused score,
   and `evidence[]->rawScore` is the liked-count score. Slate `limit` is 1 to 100, and a provider is required; pass one
   that accepts every candidate where the old call passed `null`.
 - `RecommendationEngine::setRating()`, `recordPurchase()`, `recordClick()` and `setNotInterested()` return `void`.
@@ -268,8 +268,8 @@ Other changes:
 - The source `candidates()` methods take `limit` with no default. Pass `limit: 0` to get all results.
 - `RecommendationEngine`, `RecommendationReconciler` and the candidate sources throw `InvalidArgumentException` when a
   member or product ID is outside the unsigned 32-bit range. Read methods now validate their IDs too.
-- `RecommendationReconciler::visitorSlate()` and `visitorCandidatePool()` take a `VisitorReconciliationRequest`, built
-  from `VisitorSource` values. `VisitorSource` has no user-similarity case, so a visitor request cannot include it.
+- `RecommendationReconciler::slate()` and `candidatePool()` take a `Subject`. Visitor requests cannot include
+  `RecommendationSource::UserSimilarity`, which throws `InvalidArgumentException`.
   Passing a `ReconciliationRequest` is a type error.
 - A subject with fewer than `minHistory` non-negative ratings gets only the top-rated source. Other requested
   sources are not used for it, including new products. `minHistory` defaults to 1 and is a `ReconciliationTuning`

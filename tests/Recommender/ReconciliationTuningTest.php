@@ -14,7 +14,6 @@ class ReconciliationTuningTest extends TestCase {
 		$tuning = new ReconciliationTuning(
 			new SourceSettings(minSupport: 3, maxNeighbours: 7),
 			maxCandidateDepth: 200,
-			maxBackfillRounds: 2,
 			maxEligibilityBatchSize: 9,
 			minHistory: 4,
 		);
@@ -22,7 +21,6 @@ class ReconciliationTuningTest extends TestCase {
 		$this->assertSame(3, $tuning->sources->minSupport);
 		$this->assertSame(7, $tuning->sources->maxNeighbours);
 		$this->assertSame(200, $tuning->maxCandidateDepth);
-		$this->assertSame(2, $tuning->maxBackfillRounds);
 		$this->assertSame(9, $tuning->maxEligibilityBatchSize);
 		$this->assertSame(4, $tuning->minHistory);
 	}
@@ -51,7 +49,6 @@ class ReconciliationTuningTest extends TestCase {
 	public function testTuningRejectsOutOfRangeValues(): void {
 		$invalid = [
 			['maxCandidateDepth', 49],
-			['maxBackfillRounds', 0],
 			['maxEligibilityBatchSize', 0],
 			['minHistory', 0],
 		];

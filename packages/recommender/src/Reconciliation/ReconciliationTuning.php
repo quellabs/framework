@@ -13,9 +13,6 @@ readonly class ReconciliationTuning {
 	/** @var int|null Maximum source depth override, or null for the configured default */
 	public ?int $maxCandidateDepth;
 
-	/** @var int|null Maximum deeper-query rounds override, or null for the configured default */
-	public ?int $maxBackfillRounds;
-
 	/** @var int|null Maximum IDs per eligibility call override, or null for the configured default */
 	public ?int $maxEligibilityBatchSize;
 
@@ -26,7 +23,6 @@ readonly class ReconciliationTuning {
 	 * Store the overrides after validating each one.
 	 * @param SourceSettings|null $sources Source settings, defaults when null
 	 * @param int|null $maxCandidateDepth Maximum source depth override, at least 50, or null for the configured default
-	 * @param int|null $maxBackfillRounds Maximum deeper-query rounds override, at least 1, or null for the configured default
 	 * @param int|null $maxEligibilityBatchSize Maximum IDs per eligibility call override, at least 1, or null for the configured default
 	 * @param int $minHistory Non-negative ratings needed before personal sources run, at least 1
 	 * @throws \InvalidArgumentException When a value is outside its allowed range
@@ -34,16 +30,11 @@ readonly class ReconciliationTuning {
 	public function __construct(
 		?SourceSettings $sources = null,
 		?int $maxCandidateDepth = null,
-		?int $maxBackfillRounds = null,
 		?int $maxEligibilityBatchSize = null,
 		int $minHistory = 1
 	) {
 		if ($maxCandidateDepth !== null) {
 			Identifier::assertAtLeast($maxCandidateDepth, 50, 'Maximum candidate depth');
-		}
-
-		if ($maxBackfillRounds !== null) {
-			Identifier::assertAtLeast($maxBackfillRounds, 1, 'Maximum backfill rounds');
 		}
 
 		if ($maxEligibilityBatchSize !== null) {
@@ -54,7 +45,6 @@ readonly class ReconciliationTuning {
 
 		$this->sources = $sources ?? new SourceSettings();
 		$this->maxCandidateDepth = $maxCandidateDepth;
-		$this->maxBackfillRounds = $maxBackfillRounds;
 		$this->maxEligibilityBatchSize = $maxEligibilityBatchSize;
 		$this->minHistory = $minHistory;
 	}
