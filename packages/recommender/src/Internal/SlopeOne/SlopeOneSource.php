@@ -7,6 +7,7 @@ use Quellabs\Recommender\CandidateSource;
 use Quellabs\Recommender\Config\RecommendationConfig;
 use Quellabs\Recommender\EligibilityProvider;
 use Quellabs\Recommender\Internal\Eligibility\EligibilityFilter;
+use Quellabs\Recommender\Internal\Links\LinkCandidates;
 use Quellabs\Recommender\Internal\Persistence\TemporaryTable;
 use Quellabs\Recommender\Internal\Query\Results;
 use Quellabs\Recommender\RecommendationResult;
@@ -39,6 +40,9 @@ readonly class SlopeOneSource implements CandidateSource {
 	/** @var EligibilityFilter Applies eligibility providers with bounded backfill */
 	private EligibilityFilter $eligibilityFilter;
 
+	/** @var LinkCandidates Member and visitor candidates from the subject's ratings */
+	private LinkCandidates $linkCandidates;
+
 	/**
 	 * Build the Slope One source.
 	 * @param Connection $connection The CakePHP database connection
@@ -49,41 +53,56 @@ readonly class SlopeOneSource implements CandidateSource {
 		$this->config = $config;
 		$this->temporary = new TemporaryTable($connection);
 		$this->eligibilityFilter = new EligibilityFilter($config);
+		$this->linkCandidates = new LinkCandidates($connection);
 	}
 
 	/**
-	 * Report whether this source answers for a subject kind. Only product subjects are supported so far.
+	 * Report whether this source answers for a subject kind.
 	 * @param SubjectKind $kind Subject kind
-	 * @return bool True for product subjects
+	 * @return bool True for every subject kind
 	 */
 	public function supports(SubjectKind $kind): bool {
-		return $kind === SubjectKind::Product;
+		return true;
 	}
 
 	/**
-	 * Return the products with the closest Slope One diff to a product, best match first.
-	 * Score is the average diff, which can be negative.
-	 * @param Subject $subject Product subject
+	 * Return the products with the best Slope One prediction for a subject, best first.
+	 * Product subjects rank by the average diff to the product, which can be negative. Member and visitor subjects
+	 * rank by the predicted rating from their genuine ratings, bounded to [0, 1].
+	 * @param Subject $subject Subject the candidates are for
 	 * @param EligibilityProvider|null $eligibility Restricts candidates, or null for all
 	 * @param int $depth Number of top candidates to consider before eligibility, or zero for all
 	 * @param SourceSettings $settings Source settings; minimum support applies to the pair count
 	 * @param int|null $category Category override
-	 * @return array<int, RecommendationResult> Products scored by their average Slope One diff
-	 * @throws \InvalidArgumentException When the subject is not a product
+	 * @return array<int, RecommendationResult> Products with their Slope One score and support
 	 */
 	public function candidates(Subject $subject, ?EligibilityProvider $eligibility, int $depth,
 		SourceSettings $settings, ?int $category = null): array {
-		if (!$this->supports($subject->kind)) {
-			throw new \InvalidArgumentException("Slope One does not support {$subject->kind->value} subjects.");
-		}
+		$resolved = $this->config->resolveCategory($category);
 
-		$productId = $subject->id ?? throw new \LogicException('A product subject always has an ID.');
-		$rows = array_map(fn(array $diff): RecommendationResult => new RecommendationResult(
-			$diff['product_id'], $diff['diff'], RecommendationSource::SlopeOne, []),
-			$this->slopeDiffs($productId, $settings->minSupport, $depth, $category));
+		$rows = match ($subject->kind) {
+			SubjectKind::Product => $this->productRows($subject->id ?? throw new \LogicException('A product subject always has an ID.'),
+				$settings->minSupport, $depth, $category),
+			SubjectKind::Member, SubjectKind::Visitor => $this->linkCandidates->candidates($subject, $resolved, $depth, RecommendationSource::SlopeOne,
+				fn(string $join, string $restriction, ?int $limit): array => $this->candidateRows($join, $restriction, [], $resolved, $settings->minSupport, $limit)),
+		};
 
 		return $eligibility === null ? $rows : $this->eligibilityFilter->keepEligible($eligibility, $rows,
 			fn(RecommendationResult $row): int => $row->productId);
+	}
+
+	/**
+	 * Return the products closest to a product by average Slope One diff, as results.
+	 * @param int $productId Seed product ID
+	 * @param int $minSupport Minimum co-occurrence count to include a pair
+	 * @param int $depth Number of top candidates, or zero for all
+	 * @param int|null $category Category override
+	 * @return array<int, RecommendationResult>
+	 */
+	private function productRows(int $productId, int $minSupport, int $depth, ?int $category): array {
+		return array_map(fn(array $diff): RecommendationResult => new RecommendationResult(
+			$diff['product_id'], $diff['diff'], RecommendationSource::SlopeOne, []),
+			$this->slopeDiffs($productId, $minSupport, $depth, $category));
 	}
 
 	/**

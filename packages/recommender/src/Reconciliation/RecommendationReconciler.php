@@ -9,58 +9,62 @@
 	use Quellabs\Recommender\Internal\Model\SourceFeatures;
 	use Quellabs\Recommender\Internal\Persistence\TemporaryTable;
 	use Quellabs\Recommender\Internal\Reconciliation\CandidateRoundState;
-	use Quellabs\Recommender\Internal\Identifier;
+	use Quellabs\Recommender\Internal\Query\CandidateRows;
+	use Quellabs\Recommender\Internal\Query\SubjectRatings;
 	use Quellabs\Recommender\Internal\Eligibility\EligibilityFilter;
 
 	use Quellabs\Recommender\Internal\UserSimilarity;
 	use Quellabs\Recommender\Internal\SlopeOne\SlopeOneSource;
 	use Quellabs\Recommender\Internal\Links\ItemLinksSource;
-	
+
 	use Quellabs\Recommender\RecommendationList;
+	use Quellabs\Recommender\RecommendationResult;
 	use Quellabs\Recommender\ScoreKind;
-	
+
 	use Quellabs\Recommender\RecommendationSource;
-	
+
+	use Quellabs\Recommender\Subject;
+	use Quellabs\Recommender\SubjectKind;
 	use Quellabs\Recommender\VisitorContext;
-	
+
 	/**
 	 * Combines explicitly selected candidate generators using reciprocal ranks.
 	 *
 	 * @phpstan-import-type CandidateRow from CandidateRoundState
 	 */
 	readonly class RecommendationReconciler {
-		
-		/** @var string Error message */
-		private const string MALFORMED_CANDIDATE_ROW = 'Source candidate row must have a numeric id, and numeric score and support_count when present.';
-		
+
 		/** @var Connection Ratings database connection */
 		private Connection $connection;
-		
+
 		/** @var RecommendationConfig Recommender settings */
 		private RecommendationConfig $config;
-		
+
 		/** @var TemporaryTable Temporary tables for candidate sets and rating inputs */
 		private TemporaryTable $temporary;
-		
+
 		/** @var EligibilityFilter Batched eligibility checks */
 		private EligibilityFilter $filter;
-		
+
+		/** @var SubjectRatings Seen ratings of member and visitor subjects */
+		private SubjectRatings $ratings;
+
 		/** @var UserSimilarity Neighbour candidates for member subjects */
 		private UserSimilarity $similarity;
-		
-		/** @var SlopeOneSource Shared Slope One candidate query */
+
+		/** @var SlopeOneSource Slope One candidate source */
 		private SlopeOneSource $slopeOne;
-		
-		/** @var ItemLinksSource Shared item-links candidate query */
+
+		/** @var ItemLinksSource Item-links candidate source */
 		private ItemLinksSource $itemLinks;
-		
+
 		/**
 		 * Build the reconciler.
 		 * @param Connection $connection Ratings database connection
 		 * @param RecommendationConfig $config Recommender settings
 		 * @param UserSimilarity $similarity Neighbour source for member subjects
-		 * @param SlopeOneSource $slopeOne Shared Slope One candidate query
-		 * @param ItemLinksSource $itemLinks Shared item-links candidate query
+		 * @param SlopeOneSource $slopeOne Slope One candidate source
+		 * @param ItemLinksSource $itemLinks Item-links candidate source
 		 */
 		public function __construct(Connection $connection, RecommendationConfig $config, UserSimilarity $similarity, SlopeOneSource $slopeOne, ItemLinksSource $itemLinks) {
 			$this->connection = $connection;
@@ -70,6 +74,7 @@
 			$this->itemLinks = $itemLinks;
 			$this->temporary = new TemporaryTable($connection);
 			$this->filter = new EligibilityFilter($config);
+			$this->ratings = new SubjectRatings($connection);
 		}
 		
 		/**
@@ -101,28 +106,9 @@
 		 * @throws \InvalidArgumentException When the member ID is not an unsigned 32-bit integer
 		 */
 		public function memberCandidatePool(int $member, ReconciliationRequest $request): RecommendationList {
-			Identifier::assertId($member, 'Member ID');
-
 			$category = $this->config->resolveCategory($request->category);
-			
-			$rows = $this->connection->execute('
-				SELECT
-					product_id,
-					rating
-				FROM vogoo_ratings
-				WHERE member_id = :member AND
-				      category = :category
-			', [
-				'member'   => $member,
-				'category' => $category,
-			])->fetchAll('assoc');
-			
-			$ratings = [];
-			foreach ($rows as $row) {
-				$ratings[(int)$row['product_id']] = (float)$row['rating'];
-			}
-			
-			return $this->rank($request, $category, $ratings, $member);
+
+			return $this->rank($request, $category, Subject::member($member));
 		}
 		
 		/**
@@ -134,12 +120,7 @@
 		public function visitorCandidatePool(VisitorContext $visitor, VisitorReconciliationRequest $request): RecommendationList {
 			$category = $this->config->resolveCategory($request->request->category);
 
-			$ratings = [];
-			foreach ($visitor->ratings($category) as $rating) {
-				$ratings[$rating->productId] = $rating->rating;
-			}
-
-			return $this->rank($request->request, $category, $ratings, null);
+			return $this->rank($request->request, $category, Subject::visitor($visitor));
 		}
 		
 		/**
@@ -159,22 +140,22 @@
 		 * Run the bounded candidate rounds and rank every eligible candidate by reciprocal-rank fusion or the active model.
 		 * @param ReconciliationRequest $request Request
 		 * @param int $category Resolved category
-		 * @param array<int, float> $ratings Seen ratings
-		 * @param int|null $memberId Member or visitor
+		 * @param Subject $subject Member or visitor
 		 * @return RecommendationList Full bounded rank-fusion pool
 		 * @throws \RuntimeException When a source changes its candidate order during depth backfill
 		 */
-		private function rank(ReconciliationRequest $request, int $category, array $ratings, ?int $memberId): RecommendationList {
+		private function rank(ReconciliationRequest $request, int $category, Subject $subject): RecommendationList {
+			$ratings = $this->ratings->seen($subject, $category);
 			$request = $this->applyColdStart($request, $ratings);
 			$depthCap = $request->tuning->maxCandidateDepth ?? $this->config->maxCandidateDepth();
 			$roundCap = $request->tuning->maxBackfillRounds ?? $this->config->maxBackfillRounds();
 			$batchSize = max(1, $request->tuning->maxEligibilityBatchSize ?? $this->config->maxEligibilityBatchSize());
 			$state = new CandidateRoundState($request->sources, min(max(50, 5 * $request->limit), $depthCap), $depthCap);
-			
-			$this->collectCandidateRounds($request, $state, $category, $ratings, $memberId, $roundCap, $batchSize);
-			
+
+			$this->collectCandidateRounds($request, $state, $category, $ratings, $subject, $roundCap, $batchSize);
+
 			$signals = $this->collectSignals($request, $state);
-			$auditSignals = $this->auditSignals($state->eligibleIds(), $signals, $request, $ratings, $memberId, $category);
+			$auditSignals = $this->auditSignals($state->eligibleIds(), $signals, $request, $ratings, $subject, $category);
 			$activeModel = $this->activeModel($category, $request);
 			
 			$items = [];
@@ -216,13 +197,13 @@
 		 * @param CandidateRoundState $state Round bookkeeping, updated in place
 		 * @param int $category Resolved category
 		 * @param array<int, float> $ratings Seen ratings
-		 * @param int|null $memberId Member or visitor
+		 * @param Subject $subject Member or visitor
 		 * @param int $roundCap Maximum number of rounds
 		 * @param int<1, max> $batchSize Maximum IDs per eligibility call
 		 * @return void
 		 * @throws \RuntimeException When a source changes its candidate order during depth backfill
 		 */
-		private function collectCandidateRounds(ReconciliationRequest $request, CandidateRoundState $state, int $category, array $ratings, ?int $memberId, int $roundCap, int $batchSize): void {
+		private function collectCandidateRounds(ReconciliationRequest $request, CandidateRoundState $state, int $category, array $ratings, Subject $subject, int $roundCap, int $batchSize): void {
 			$additional = array_values(array_filter($request->additionalCandidateIds,
 				function ($id) use ($ratings): bool {
 					return !array_key_exists($id, $ratings);
@@ -232,7 +213,7 @@
 				$newIds = $round === 0 ? $additional : [];
 				
 				foreach ($request->sources as $source) {
-					$newIds = array_merge($newIds, $this->nominateSource($source, $round, $request, $state, $category, $ratings, $memberId));
+					$newIds = array_merge($newIds, $this->nominateSource($source, $round, $request, $state, $category, $ratings, $subject));
 				}
 				
 				foreach ($this->filter->check($request->eligibility, $state->claimUnsubmitted($newIds), $batchSize) as $id) {
@@ -257,19 +238,19 @@
 		 * @param CandidateRoundState $state Round bookkeeping, updated in place
 		 * @param int $category Resolved category
 		 * @param array<int, float> $ratings Seen ratings
-		 * @param int|null $memberId Member or visitor
+		 * @param Subject $subject Member or visitor
 		 * @return array<int, int> Unsubmitted IDs this source newly nominated
 		 * @throws \RuntimeException When the source changes its candidate order during depth backfill
 		 */
 		private function nominateSource(RecommendationSource $source, int $round, ReconciliationRequest $request,
-			CandidateRoundState $state, int $category, array $ratings, ?int $memberId): array {
+			CandidateRoundState $state, int $category, array $ratings, Subject $subject): array {
 			$key = $source->value;
-			
+
 			if ($round > 0 && $state->depth($key) <= $state->nominationCount($key)) {
 				return [];
 			}
-			
-			$current = $this->generate($source, $memberId, $ratings, $category, $state->depth($key), $request);
+
+			$current = $this->generate($source, $subject, $ratings, $category, $state->depth($key), $request);
 			$old = $state->nominations($key);
 			
 			if (array_slice(array_column($current, 'id'), 0, count($old)) !== array_column($old, 'id')) {
@@ -457,18 +438,18 @@
 		 * @param array<int, array<int, SourceEvidence>> $nominatedSignals Depth-bounded nominations
 		 * @param ReconciliationRequest $request Enabled source settings
 		 * @param array<int, float> $ratings Seen ratings
-		 * @param int|null $memberId Persisted member or visitor
+		 * @param Subject $subject Member or visitor
 		 * @param int $category Resolved category
 		 * @return array<int, array<int, SourceEvidence>> Additional audit signals without source rank
 		 */
-		private function auditSignals(array $eligibleIds, array $nominatedSignals, ReconciliationRequest $request, array $ratings, ?int $memberId, int $category): array {
+		private function auditSignals(array $eligibleIds, array $nominatedSignals, ReconciliationRequest $request, array $ratings, Subject $subject, int $category): array {
 			$audit = [];
-			
+
 			foreach ($request->sources as $source) {
 				$missing = $this->unnominatedIds($eligibleIds, $nominatedSignals, $source);
-				
+
 				if ($missing !== []) {
-					$this->auditSource($source, $missing, $request, $ratings, $memberId, $category, $audit);
+					$this->auditSource($source, $missing, $request, $ratings, $subject, $category, $audit);
 				}
 			}
 			
@@ -481,40 +462,42 @@
 		 * @param array<int, int> $missing Eligible IDs the source did not nominate
 		 * @param ReconciliationRequest $request Enabled source settings
 		 * @param array<int, float> $ratings Seen ratings
-		 * @param int|null $memberId Persisted member or visitor
+		 * @param Subject $subject Member or visitor
 		 * @param int $category Resolved category
 		 * @param array<int, array<int, SourceEvidence>> $audit Audit signals by candidate, filled in place
 		 * @return void
 		 */
-		private function auditSource(RecommendationSource $source, array $missing, ReconciliationRequest $request, array $ratings, ?int $memberId, int $category, array &$audit): void {
+		private function auditSource(RecommendationSource $source, array $missing, ReconciliationRequest $request, array $ratings, Subject $subject, int $category, array &$audit): void {
 			if ($source === RecommendationSource::NewProducts) {
 				$this->auditNewProducts($missing, $request, $audit);
 				return;
 			}
-			
+
 			if ($source === RecommendationSource::UserSimilarity) {
+				$memberId = self::memberId($subject);
+
 				if ($memberId !== null) {
 					$this->auditUserSimilarity($memberId, $missing, $request, $category, $audit);
 				}
-				
+
 				return;
 			}
-			
+
 			if ($source === RecommendationSource::TopRated) {
 				$rows = $this->auditTopRatedRows($missing, $request, $category);
 			} else {
 				$genuine = array_filter($ratings, function ($rating): bool {
 					return $rating >= 0.0;
 				});
-				
+
 				if ($genuine === []) {
 					return;
 				}
-				
+
 				$rows = $this->auditRatingRows($source, $missing, $genuine, $category, $request);
 			}
-			
-			foreach ($this->normalizeRows($rows, $ratings) as $row) {
+
+			foreach ($this->normalizeRows($rows, $source, $ratings) as $row) {
 				$audit[$row['id']][] = new SourceEvidence($source, $row['score'], null,
 					$row['count'], $row['contributors']);
 			}
@@ -684,35 +667,27 @@
 		/**
 		 * Generate the bounded candidates of one source.
 		 * @param RecommendationSource $source Candidate generator
-		 * @param int|null $memberId Member or visitor
+		 * @param Subject $subject Member or visitor
 		 * @param array<int, float> $ratings Seen ratings
 		 * @param int $category Resolved category
 		 * @param int $depth Requested source depth
 		 * @param ReconciliationRequest $request Source settings
 		 * @return array<int, CandidateRow>
 		 */
-		private function generate(RecommendationSource $source, ?int $memberId, array $ratings, int $category, int $depth, ReconciliationRequest $request): array {
+		private function generate(RecommendationSource $source, Subject $subject, array $ratings, int $category, int $depth, ReconciliationRequest $request): array {
 			if ($source === RecommendationSource::NewProducts) {
 				return $this->generateNewProducts($request, $ratings, $depth);
 			}
-			
+
 			if ($source === RecommendationSource::TopRated) {
 				return $this->generateTopRated($ratings, $category, $depth, $request);
 			}
-			
+
 			if ($source === RecommendationSource::UserSimilarity) {
-				return $this->generateUserSimilarity($memberId, $category, $depth, $request);
+				return $this->generateUserSimilarity($subject, $category, $depth, $request);
 			}
-			
-			$genuine = array_filter($ratings, function ($rating): bool {
-				return $rating >= 0.0;
-			});
-			
-			if ($genuine === []) {
-				return [];
-			}
-			
-			return $this->generateFromRatings($source, $genuine, $ratings, $category, $depth, $request);
+
+			return $this->generateFromLinks($source, $subject, $category, $depth, $request);
 		}
 		
 		/**
@@ -748,24 +723,22 @@
 					return $this->topRatedRows($category, $request,
 						"AND NOT EXISTS (SELECT 1 FROM {$seenTable} s WHERE s.product_id = r.product_id)", $depth);
 				});
-			
-			return $this->normalizeRows($rows, $ratings);
+
+			return $this->normalizeRows($rows, RecommendationSource::TopRated, $ratings);
 		}
-		
+
 		/**
 		 * Return the similarity-scored neighbour candidates, up to the depth.
-		 * @param int|null $memberId Member, required for user similarity
+		 * @param Subject $subject Subject, which must be a member
 		 * @param int $category Resolved category
 		 * @param int $depth Requested source depth
 		 * @param ReconciliationRequest $request Source settings
 		 * @return array<int, CandidateRow>
-		 * @throws \InvalidArgumentException When no member is given
+		 * @throws \InvalidArgumentException When the subject is not a member
 		 */
-		private function generateUserSimilarity(?int $memberId, int $category, int $depth, ReconciliationRequest $request): array {
-			if ($memberId === null) {
-				throw new \InvalidArgumentException('User similarity requires a persisted member.');
-			}
-			
+		private function generateUserSimilarity(Subject $subject, int $category, int $depth, ReconciliationRequest $request): array {
+			$memberId = self::memberId($subject) ?? throw new \InvalidArgumentException('User similarity requires a persisted member.');
+
 			$rows = $this->similarity->memberRecommendationsScored($memberId, $request->tuning->sources->minNeighbourSimilarity, $request->tuning->sources->maxNeighbours, $depth, $category);
 			
 			return array_map(function ($row): array {
@@ -779,126 +752,54 @@
 		}
 		
 		/**
-		 * Generate item-links or Slope One candidates from the member's genuine ratings, up to the depth.
-		 * @param RecommendationSource $source Item-link or Slope One source
-		 * @param array<int, float> $genuine Genuine ratings
-		 * @param array<int, float> $seen All seen ratings
+		 * Return the item-links or Slope One candidates of a member or visitor, up to the depth, as candidate rows.
+		 * @param RecommendationSource $source Item-links or Slope One
+		 * @param Subject $subject Member or visitor
 		 * @param int $category Resolved category
 		 * @param int $depth Source depth
 		 * @param ReconciliationRequest $request Source settings
 		 * @return array<int, CandidateRow>
 		 */
-		private function generateFromRatings(RecommendationSource $source, array $genuine, array $seen, int $category, int $depth, ReconciliationRequest $request): array {
-			return $this->temporary->withRatingTable('vogoo_source_input_', $genuine,
-				function (string $table) use ($source, $seen, $category, $depth, $request): array {
-					return $this->seenCandidates($source, $table, $seen, $category, $depth, $request);
-				});
+		private function generateFromLinks(RecommendationSource $source, Subject $subject, int $category, int $depth, ReconciliationRequest $request): array {
+			$results = $source === RecommendationSource::SlopeOne
+				? $this->slopeOne->candidates($subject, null, $depth, $request->tuning->sources, $category)
+				: $this->itemLinks->candidates($subject, null, $depth, $request->tuning->sources, $category);
+
+			return array_map(self::asRow(...), $results);
 		}
-		
+
 		/**
-		 * Return the aggregate candidates of a rating table that the member has not seen, up to the depth.
-		 * @param RecommendationSource $source Item-link or Slope One source
-		 * @param string $ratingsTable Temporary table of rating inputs
-		 * @param array<int, float> $seen All seen ratings
-		 * @param int $category Resolved category
-		 * @param int $depth Source depth
-		 * @param ReconciliationRequest $request Source settings
-		 * @return array<int, CandidateRow>
-		 */
-		private function seenCandidates(RecommendationSource $source, string $ratingsTable, array $seen, int $category, int $depth, ReconciliationRequest $request): array {
-			return $this->temporary->withIdTable('vogoo_seen_', array_keys($seen),
-				function (string $seenTable) use ($source, $ratingsTable, $seen, $category, $depth, $request): array {
-					$restriction = "AND NOT EXISTS (SELECT 1 FROM {$seenTable} s WHERE s.product_id = l.item_id2)";
-					return $this->normalizeRows($this->sourceRows($source, $ratingsTable, $category, $request, $restriction, $depth), $seen);
-				});
-		}
-		
-		/**
-		 * Convert raw SQL rows into candidates, dropping IDs that were already seen.
+		 * Convert SQL rows into candidate rows, dropping IDs that were already seen.
 		 * @param array<mixed> $rows SQL rows
+		 * @param RecommendationSource $source Source that produced the rows
 		 * @param array<int, float> $seen Previously rated and rejected IDs
 		 * @return array<int, CandidateRow>
 		 * @throws \UnexpectedValueException When a row or its contributors are malformed
 		 */
-		private function normalizeRows(array $rows, array $seen): array {
-			$result = [];
-			
-			foreach ($rows as $row) {
-				if (!is_array($row)) {
-					throw new \UnexpectedValueException(self::MALFORMED_CANDIDATE_ROW);
-				}
-				
-				[$id, $score, $count] = self::candidateFields($row);
-				
-				if (array_key_exists($id, $seen)) {
-					continue;
-				}
-				
-				$result[] = [
-					'id'           => $id,
-					'score'        => $score,
-					'count'        => $count,
-					'contributors' => $this->decodeContributors($row),
-				];
-			}
-			
-			return $result;
+		private function normalizeRows(array $rows, RecommendationSource $source, array $seen): array {
+			return array_map(self::asRow(...), CandidateRows::fromSql($rows, $source, $seen));
 		}
-		
+
 		/**
-		 * Read the id, score and support count from a candidate row.
-		 * @param array<mixed> $row SQL row
-		 * @return array{int, float|null, int|null} Item ID, score and support count, the last two null when absent
-		 * @throws \UnexpectedValueException When the id is missing or the score or support count is non-numeric
+		 * Convert a recommendation result into the candidate row shape the rounds use.
+		 * @param RecommendationResult $result Candidate result
+		 * @return CandidateRow
 		 */
-		private static function candidateFields(array $row): array {
-			if (
-				!isset($row['id']) ||
-				!is_numeric($row['id']) ||
-				(isset($row['score']) && !is_numeric($row['score'])) ||
-				(isset($row['support_count']) && !is_numeric($row['support_count']))
-			) {
-				throw new \UnexpectedValueException(self::MALFORMED_CANDIDATE_ROW);
-			}
-			
+		private static function asRow(RecommendationResult $result): array {
 			return [
-				(int)$row['id'],
-				isset($row['score']) ? (float)$row['score'] : null,
-				isset($row['support_count']) ? (int)$row['support_count'] : null,
+				'id'           => $result->productId,
+				'score'        => $result->score,
+				'count'        => $result->supportCount,
+				'contributors' => $result->contributingProductIds,
 			];
 		}
-		
+
 		/**
-		 * Decode the JSON contributor list of a candidate row.
-		 * @param array<mixed> $row SQL row, which may hold a JSON "contributors" string
-		 * @return array<int, int> Contributing item IDs, empty when the row has none
-		 * @throws \UnexpectedValueException When the contributors are not a JSON array of IDs
+		 * Return the member ID of a subject, or null when the subject is not a member.
+		 * @param Subject $subject Member or visitor
+		 * @return int|null Member ID, or null for a visitor
 		 */
-		private function decodeContributors(array $row): array {
-			if (!isset($row['contributors'])) {
-				return [];
-			}
-			
-			if (!is_string($row['contributors'])) {
-				throw new \UnexpectedValueException('Source contributors must be a JSON string, got ' . get_debug_type($row['contributors']) . '.');
-			}
-			
-			$decoded = json_decode($row['contributors'], true, 512, JSON_THROW_ON_ERROR);
-			
-			if (!is_array($decoded)) {
-				throw new \UnexpectedValueException('Source contributors must decode to a JSON array.');
-			}
-			
-			$contributors = [];
-			
-			foreach ($decoded as $contributor) {
-				if (!is_int($contributor) && (!is_string($contributor) || !ctype_digit($contributor))) {
-					throw new \UnexpectedValueException('Source contributor ID must be an unsigned integer, got ' . var_export($contributor, true) . '.');
-				}
-				
-				$contributors[] = (int)$contributor;
-			}
-			
-			return $contributors;
+		private static function memberId(Subject $subject): ?int {
+			return $subject->kind === SubjectKind::Member ? $subject->id : null;
 		}
 	}

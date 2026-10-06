@@ -3,6 +3,7 @@
 namespace Quellabs\Recommender\Tests;
 
 use Quellabs\Recommender\ArrayEligibilityProvider;
+use Quellabs\Recommender\CandidateSource;
 use Quellabs\Recommender\Internal\Links\ItemLinksSource;
 use Quellabs\Recommender\Internal\SlopeOne\SlopeOneSource;
 use Quellabs\Recommender\Reconciliation\SourceSettings;
@@ -10,33 +11,38 @@ use Quellabs\Recommender\Subject;
 use Quellabs\Recommender\SubjectKind;
 use Quellabs\Recommender\VisitorContext;
 
-/** Subject support for the candidate sources. */
+/** Subject support and candidate depth for the candidate sources. */
 class CandidateSourceTest extends IntegrationTestCase {
 
     /** @return void */
-    public function testBothSourcesSupportOnlyProductSubjects(): void {
-        foreach ([new ItemLinksSource($this->connection, $this->config), new SlopeOneSource($this->connection, $this->config)] as $source) {
-            $this->assertTrue($source->supports(SubjectKind::Product));
-            $this->assertFalse($source->supports(SubjectKind::Member));
-            $this->assertFalse($source->supports(SubjectKind::Visitor));
-        }
-    }
-
-    /** @return void */
-    public function testUnsupportedSubjectsAreRejected(): void {
-        $subjects = [Subject::member(1), Subject::visitor(new VisitorContext($this->config))];
-
-        foreach ([new ItemLinksSource($this->connection, $this->config), new SlopeOneSource($this->connection, $this->config)] as $source) {
-            foreach ($subjects as $subject) {
-                try {
-                    $source->candidates($subject, null, 5, new SourceSettings());
-                    $this->fail("{$subject->kind->value} subject was accepted.");
-                } catch (\InvalidArgumentException) {
-                    $this->assertTrue(true);
-                }
+    public function testBothSourcesSupportEverySubjectKind(): void {
+        foreach ($this->sources() as $source) {
+            foreach (SubjectKind::cases() as $kind) {
+                $this->assertTrue($source->supports($kind), "{$kind->value} subjects are not supported.");
             }
         }
     }
+
+    /** Seen products, including not-interested ones, never reach the candidates of a member or visitor.
+     * @return void
+     */
+    public function testMemberAndVisitorCandidatesExcludeSeenProducts(): void {
+        $this->insertRating(5, 1, 1.0);
+        $this->insertRating(5, 30, 0.5);
+        $this->insertLink(1, 20, 5);
+        $this->insertLink(1, 30, 3);
+        $this->insertLink(1, 40, 1);
+
+        $visitor = new VisitorContext($this->config);
+        $visitor->setRating(1, 1.0);
+        $visitor->setRating(30, 0.5);
+
+        foreach ($this->sources() as $source) {
+            $this->assertSame([20, 40], $this->candidateIds($source->candidates(Subject::member(5), null, 0, new SourceSettings())));
+            $this->assertSame([20, 40], $this->candidateIds($source->candidates(Subject::visitor($visitor), null, 0, new SourceSettings())));
+        }
+    }
+
     /** One round filters only the top depth candidates, so a shallow depth misses eligible products below it.
      * @return void
      */
@@ -49,6 +55,29 @@ class CandidateSourceTest extends IntegrationTestCase {
         $this->assertSame([], $this->candidateIds($source->candidates(Subject::product(10), $eligible, 1, new SourceSettings())));
         $this->assertSame([30], $this->candidateIds($source->candidates(Subject::product(10), $eligible, 2, new SourceSettings())));
         $this->assertSame([30, 40], $this->candidateIds($source->candidates(Subject::product(10), $eligible, 0, new SourceSettings())));
+    }
+
+    /** Member depth bounds the same single round: at depth one only product 20 is checked, and it is not eligible.
+     * @return void
+     */
+    public function testMemberDepthBoundsOneRoundOfEligibility(): void {
+        $this->insertRating(5, 1, 1.0);
+        $this->insertLink(1, 20, 5);
+        $this->insertLink(1, 40, 1);
+        $eligible = new ArrayEligibilityProvider([40]);
+
+        foreach ($this->sources() as $source) {
+            $this->assertSame([], $this->candidateIds($source->candidates(Subject::member(5), $eligible, 1, new SourceSettings())));
+            $this->assertSame([40], $this->candidateIds($source->candidates(Subject::member(5), $eligible, 0, new SourceSettings())));
+        }
+    }
+
+    /**
+     * Return both candidate sources, which share the link-table candidate code paths under test.
+     * @return array<int, CandidateSource>
+     */
+    private function sources(): array {
+        return [new ItemLinksSource($this->connection, $this->config), new SlopeOneSource($this->connection, $this->config)];
     }
 
     /**

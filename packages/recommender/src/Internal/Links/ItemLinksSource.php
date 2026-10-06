@@ -26,6 +26,9 @@ readonly class ItemLinksSource implements CandidateSource {
 	/** @var EligibilityFilter Applies eligibility providers with bounded backfill */
 	private EligibilityFilter $eligibilityFilter;
 
+	/** @var LinkCandidates Member and visitor candidates from the subject's ratings */
+	private LinkCandidates $linkCandidates;
+
 	/**
 	 * Build the item-links source.
 	 * @param Connection $connection The CakePHP database connection
@@ -35,35 +38,37 @@ readonly class ItemLinksSource implements CandidateSource {
 		$this->connection = $connection;
 		$this->config = $config;
 		$this->eligibilityFilter = new EligibilityFilter($config);
+		$this->linkCandidates = new LinkCandidates($connection);
 	}
 
 	/**
-	 * Report whether this source answers for a subject kind. Only product subjects are supported so far.
+	 * Report whether this source answers for a subject kind.
 	 * @param SubjectKind $kind Subject kind
-	 * @return bool True for product subjects
+	 * @return bool True for every subject kind
 	 */
 	public function supports(SubjectKind $kind): bool {
-		return $kind === SubjectKind::Product;
+		return true;
 	}
 
 	/**
-	 * Return the products that co-occur with a product, scored by liked count. Settings are not used for product subjects.
-	 * @param Subject $subject Product subject
+	 * Return the products linked to a subject, scored by liked count. Settings are not used.
+	 * Product subjects use the liked pairs of the product. Member and visitor subjects use the links of their genuine ratings.
+	 * @param Subject $subject Subject the candidates are for
 	 * @param EligibilityProvider|null $eligibility Restricts candidates, or null for all
 	 * @param int $depth Number of top candidates to consider before eligibility, or zero for all
-	 * @param SourceSettings $settings Source settings, unused for product subjects
+	 * @param SourceSettings $settings Source settings, unused
 	 * @param int|null $category Category override
-	 * @return array<int, RecommendationResult> Co-occurring products, scored by liked count
-	 * @throws \InvalidArgumentException When the subject is not a product
+	 * @return array<int, RecommendationResult> Linked products, scored by liked count
 	 */
 	public function candidates(Subject $subject, ?EligibilityProvider $eligibility, int $depth,
 		SourceSettings $settings, ?int $category = null): array {
-		if (!$this->supports($subject->kind)) {
-			throw new \InvalidArgumentException("Item links does not support {$subject->kind->value} subjects.");
-		}
+		$resolved = $this->config->resolveCategory($category);
 
-		$productId = $subject->id ?? throw new \LogicException('A product subject always has an ID.');
-		$rows = $this->linkedRows($productId, $depth, $this->config->resolveCategory($category));
+		$rows = match ($subject->kind) {
+			SubjectKind::Product => $this->linkedRows($subject->id ?? throw new \LogicException('A product subject always has an ID.'), $depth, $resolved),
+			SubjectKind::Member, SubjectKind::Visitor => $this->linkCandidates->candidates($subject, $resolved, $depth, RecommendationSource::ItemLinks,
+				fn(string $join, string $restriction, ?int $limit): array => $this->candidateRows($join, $restriction, [], $resolved, $limit)),
+		};
 
 		return $eligibility === null ? $rows : $this->eligibilityFilter->keepEligible($eligibility, $rows,
 			fn(RecommendationResult $row): int => $row->productId);

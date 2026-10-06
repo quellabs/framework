@@ -72,7 +72,8 @@ Decisions made in Phase 1:
 - [x] 2b-2: The ItemLinks candidate query is `Internal/Links/ItemLinksSource::candidateRows()`, and the reconciler calls it. `CandidateRoundState` remains the bounded-depth state that sources read from.
 - [ ] 2b-3: Add the product subject, predict and reasons, and declare each source's supported subjects. Sources reject unsupported kinds with an exception. Done so far: the CandidateSource interface, with supports() and candidates(Subject, provider, limit, SourceSettings, category). Both sources implement it for product subjects, and ItemRecommender::linkedProducts() and slopeProducts() delegate to them. Still open: predict and reasons, and member and visitor support in candidates(), which needs 2c.
 - [ ] 2b-4: Remove \`ItemRecommender\`. Its item-to-item queries are now product-subject queries on the sources.
-- [ ] 2c: Move the UserSimilarity, TopRated and NewProducts candidate code into their own source classes, and shrink the reconciler to fusion and orchestration.
+- [ ] 2c-1: ItemLinks and Slope One accept member and visitor subjects in `candidates()`. Ratings load once in `Internal/Query/SubjectRatings`, row conversion lives once in `Internal/Query/CandidateRows`, and the member and visitor path is shared in `Internal/Links/LinkCandidates`. The reconciler calls these sources and no longer has its own copies of those queries.
+- [ ] 2c-2: Move the UserSimilarity, TopRated and NewProducts candidate code into their own source classes, and shrink the reconciler to fusion and orchestration.
 
 Reason for the order: each query exists once from the start. Writing product-subject queries first would mean writing them against copies that are later removed.
 
