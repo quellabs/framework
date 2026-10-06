@@ -120,6 +120,8 @@ takes a `Subject`, which is a member, a visitor or a product:
 
 - `memberRating()` returns `null` when the member has no rating for the product. `memberAverageRating()` and
   `productAverageRating()` return `null` when there are no ratings. A `0.0` result is a real rating.
+- `setRating()` overwrites an existing rating for the same member, product and category. Read the previous value with
+  `memberRating()` first only when the new value depends on it. `deleteRating()` removes the rating.
 - Rating accessors return objects. `memberRating()` returns a `Rating`, `memberRatings()` and `productRatings()` return
   `Rating[]`, and `VisitorContext::ratings()` returns `VisitorRating[]`. Read their properties, such as `->rating`.
 - Pass `null` for "no eligibility filter". An `ArrayEligibilityProvider` built from an empty list accepts no candidates,
