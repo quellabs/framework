@@ -61,9 +61,9 @@ $sourceFactory = new RequestSourcesFactory($connection, $config, $similarity);
 $scorers       = new ModelScorerResolver($connection);
 $reconciler    = new RecommendationReconciler($config, $sourceFactory, $scorers);
 
-$engine->setRating(new MemberId(1), new ProductId(101), 0.9);
-$engine->setRating(new MemberId(2), new ProductId(101), 0.8);
-$engine->setRating(new MemberId(2), new ProductId(102), 0.7);
+$engine->setRating(MemberId::of(1), ProductId::of(101), 0.9);
+$engine->setRating(MemberId::of(2), ProductId::of(101), 0.8);
+$engine->setRating(MemberId::of(2), ProductId::of(102), 0.7);
 
 $slate = $reconciler->slate(Subject::member(1), new ReconciliationRequest(
     new ArrayEligibilityProvider([102]), [RecommendationSource::ItemLinks], 5, 'home'));

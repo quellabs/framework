@@ -20,4 +20,14 @@
 
 			$this->value = $value;
 		}
+
+		/**
+		 * Wrap a raw member identifier.
+		 * @param int $value Member identifier, an unsigned 32-bit integer
+		 * @return self Validated member identifier
+		 * @throws \InvalidArgumentException When the ID is outside the unsigned 32-bit range
+		 */
+		public static function of(int $value): self {
+			return new self($value);
+		}
 	}
