@@ -50,24 +50,34 @@
 			$limit = $depth === 0 ? null : $depth;
 			
 			return $this->temporary->withRatingTable('vogoo_source_input_', $genuine,
-				function (string $ratingsTable) use ($seen, $source, $query, $limit, $productIds): array {
-					$join = "JOIN {$ratingsTable} r ON r.product_id = l.item_id1";
-					
-					return $this->temporary->withIdTable('vogoo_seen_', array_keys($seen),
-						function (string $seenTable) use ($join, $seen, $source, $query, $limit, $productIds): array {
-							$restriction = "AND NOT EXISTS (SELECT 1 FROM {$seenTable} s WHERE s.product_id = l.item_id2)";
-							
-							if ($productIds === null) {
-								return CandidateRows::fromSql($query($join, $restriction, $limit), $source, $seen);
-							}
-							
-							return $this->temporary->withIdTable('vogoo_scored_', $productIds,
-								function (string $idTable) use ($join, $seen, $source, $query, $limit, $restriction): array {
-									$only = "{$restriction} AND EXISTS (SELECT 1 FROM {$idTable} c WHERE c.product_id = l.item_id2)";
-									
-									return CandidateRows::fromSql($query($join, $only, $limit), $source, $seen);
-								});
-						});
-				});
+				fn(string $ratingsTable) => $this->temporary->withIdTable('vogoo_seen_', array_keys($seen),
+					fn(string $seenTable) => $this->restrictToProducts(
+						"AND NOT EXISTS (SELECT 1 FROM {$seenTable} s WHERE s.product_id = l.item_id2)",
+						$productIds,
+						fn(string $restriction): array => CandidateRows::fromSql(
+							$query("JOIN {$ratingsTable} r ON r.product_id = l.item_id1", $restriction, $limit),
+							$source,
+							$seen
+						)
+					)
+				)
+			);
+		}
+		
+		/**
+		 * Narrow a restriction to the given products through a temporary table, or pass it through unchanged.
+		 * @template T
+		 * @param string $restriction SQL restriction on the candidate row's item_id2
+		 * @param array<int, int>|null $productIds Products to restrict to, or null for all
+		 * @param callable(string): T $operation Receives the final restriction
+		 * @return T Operation result
+		 */
+		private function restrictToProducts(string $restriction, ?array $productIds, callable $operation): mixed {
+			if ($productIds === null) {
+				return $operation($restriction);
+			}
+			
+			return $this->temporary->withIdTable('vogoo_scored_', $productIds,
+				fn(string $idTable) => $operation("{$restriction} AND EXISTS (SELECT 1 FROM {$idTable} c WHERE c.product_id = l.item_id2)"));
 		}
 	}
