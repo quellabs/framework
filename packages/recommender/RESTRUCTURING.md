@@ -5,7 +5,7 @@ The package has not been released. Breaking changes to the public API are allowe
 ## Decisions
 
 1. **Sources are standalone.** Each source takes an optional `EligibilityProvider` and can be called on its own. The combiner is not required to use any source.
-2. **Click models and evaluation live in a separate package.** They have their own tables, Sculpt commands and activation lifecycle. The combiner does not depend on them.
+2. **Click models and evaluation live in a separate namespace.** They have their own tables, Sculpt commands and activation lifecycle. They stay in `packages/recommender`. The combiner does not import from them, and a test enforces this.
 3. **Backfill stays.** The depth-and-backfill loop lives in the shared eligibility helper, and every source uses it.
 4. **One subject type.** A small `Subject` abstraction replaces the parallel member and visitor methods.
 5. **Filtering happens in sources, including under the combiner.** The combiner passes its provider to each source and does not filter. Backfill needs the source's depth loop, so the combiner cannot filter on a source's behalf.
@@ -32,7 +32,7 @@ The package has not been released. Breaking changes to the public API are allowe
 - **Combiner.** `recommend(subject, sources, provider, limit, scorer)`. Runs the sources, passes the same provider to each, and returns the fused list with per-source evidence. It does not filter.
 - **Scorer.** Takes the per-source evidence for each product and returns a score. Rank fusion is the default. The click-model scorer implements the same interface and is trained from outcomes.
 - **Item and rating engines.** The item-to-item lookups, predictions and reasons are methods on the candidate sources in `Quellabs\Recommender\Sources`. `ItemRecommender` is removed. `RecommendationEngine` keeps rating storage.
-- **Evaluation and click models.** Separate package. It consumes the combiner's output (impressions) and rating-independent outcome events. The combiner has no dependency on it. The click-model scorer is the only path by which outcomes affect ranking.
+- **Evaluation and click models.** Separate namespace (`Quellabs\Recommender\Evaluation` and `Internal\Model`), same package. It consumes the combiner's output (impressions) and rating-independent outcome events. The combiner has no dependency on it. The click-model scorer is the only path by which outcomes affect ranking.
 
 ## Open
 
@@ -90,7 +90,7 @@ Reason for the order: each query exists once from the start. Writing product-sub
 
 ### Phase 5: extract evaluation and click models
 
-- [ ] Move `ClickModelTrainer`, `ClickModelFitter`, `ActiveModel`, `EvaluationRecorder`, the Evaluation namespace, the evaluation migrations, and the `TrainClickModel`, `ActivateClickModel`, `InitEvaluation` and `PruneEvaluation` Sculpt commands into the separate package.
+- [ ] Move `ClickModelTrainer`, `ClickModelFitter`, `ActiveModel`, `EvaluationRecorder`, the Evaluation namespace, the evaluation migrations, and the `TrainClickModel`, `ActivateClickModel`, `InitEvaluation` and `PruneEvaluation` Sculpt commands into their own namespace, with the import-boundary test added.
 - [ ] Remove calibrated fields from `RecommendationList`. Move `ScoreKind::ClickProbability` with the click-model code.
 - [ ] Remove the evaluation hooks from `RecommendationEngine`. `deleteMemberData()` no longer takes a recorder.
 - [x] Connect the click-model scorer to the combiner through the scorer interface. Done in Phase 4 with `ClickModelScorer`; the click-model code itself still moves in this phase.
