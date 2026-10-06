@@ -8,6 +8,8 @@
 use Quellabs\Recommender\Internal\Identifier;
 	use Quellabs\Recommender\Internal\Query\Results;
 	use Quellabs\Recommender\Internal\SlopeOne\SlopeOneSource;
+use Quellabs\Recommender\Internal\Links\ItemLinksSource;
+use Quellabs\Recommender\Reconciliation\SourceSettings;
 
 	/**
 	 * Item-based collaborative filtering and Slope One recommendations.
@@ -33,6 +35,9 @@ use Quellabs\Recommender\Internal\Identifier;
 		/** @var SlopeOneSource Slope One predictions and rankings */
 		private SlopeOneSource $slopeOne;
 
+		/** @var ItemLinksSource Item-links candidates */
+		private ItemLinksSource $itemLinks;
+
 		/** @var EligibilityFilter Applies eligibility providers to ranked results */
 		private EligibilityFilter $eligibilityFilter;
 
@@ -45,6 +50,7 @@ use Quellabs\Recommender\Internal\Identifier;
 			$this->connection = $connection;
 			$this->config = $config;
 			$this->slopeOne = new SlopeOneSource($connection, $config);
+			$this->itemLinks = new ItemLinksSource($connection, $config);
 			$this->eligibilityFilter = new EligibilityFilter($config);
 		}
 
@@ -59,16 +65,7 @@ use Quellabs\Recommender\Internal\Identifier;
 		 * @throws \InvalidArgumentException When the product ID is outside the unsigned 32-bit range
 		 */
 		public function linkedProducts(int $product, ?EligibilityProvider $eligibility = null, int $limit = 10, ?int $category = null): array {
-			Identifier::assertId($product, 'Product ID');
-			$resolvedCategory = $this->config->resolveCategory($category);
-
-			return $this->eligibilityFilter->withEligibility($eligibility, $limit,
-				function (int $depth) use ($product, $resolvedCategory): array {
-					return $this->linkedRows($product, $depth, $resolvedCategory);
-				},
-				function (RecommendationResult $row): int {
-					return $row->productId;
-				});
+			return $this->itemLinks->candidates(Subject::product($product), $eligibility, $limit, new SourceSettings(), $category);
 		}
 
 		/**
@@ -197,20 +194,8 @@ use Quellabs\Recommender\Internal\Identifier;
 		 */
 		public function slopeProducts(int $product, ?EligibilityProvider $eligibility = null, int $limit = 10,
 			int $minSupport = 1, ?int $category = null): array {
-			Identifier::assertId($product, 'Product ID');
-			Identifier::assertAtLeast($minSupport, 1, 'Minimum support');
-
-			return $this->eligibilityFilter->withEligibility($eligibility, $limit,
-				function (int $depth) use ($product, $minSupport, $category): array {
-					$diffs = $this->slopeOne->getSlopeItems($product, $minSupport, $depth, $category);
-
-					return array_map(function (array $diff): RecommendationResult {
-						return new RecommendationResult($diff['product_id'], $diff['diff'], RecommendationSource::SlopeOne, []);
-					}, $diffs);
-				},
-				function (RecommendationResult $row): int {
-					return $row->productId;
-				});
+			return $this->slopeOne->candidates(Subject::product($product), $eligibility, $limit,
+				new SourceSettings(minSupport: $minSupport), $category);
 		}
 
 		/**
@@ -293,34 +278,4 @@ use Quellabs\Recommender\Internal\Identifier;
 				});
 		}
 
-		/**
-		 * Return the linked products of one product, scored by liked count, with a limit.
-		 * @param int $productId The product ID
-		 * @param int $limit Maximum results, or zero for all
-		 * @param int $category Already-resolved category
-		 * @return array<int, RecommendationResult>
-		 */
-		private function linkedRows(int $productId, int $limit, int $category): array {
-			$sql = '
-				SELECT
-					`item_id2`,
-					`liked_count`
-				FROM `vogoo_links`
-				WHERE `item_id1` = :product_id AND
-					`category` = :category AND
-					`liked_count` > 0
-				ORDER BY `liked_count` DESC, `item_id2` ASC
-			';
-			$sql .= Results::limitSql($limit);
-
-			$rows = $this->connection->execute($sql, ['product_id' => $productId, 'category' => $category])->fetchAll('assoc');
-
-			$results = [];
-
-			foreach ($rows as $row) {
-				$results[] = new RecommendationResult((int)$row['item_id2'], (float)$row['liked_count'], RecommendationSource::ItemLinks, []);
-			}
-
-			return Results::limit($results, $limit);
-		}
 	}

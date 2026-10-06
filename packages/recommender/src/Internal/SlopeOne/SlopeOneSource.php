@@ -3,10 +3,18 @@
 namespace Quellabs\Recommender\Internal\SlopeOne;
 
 use Cake\Database\Connection;
+use Quellabs\Recommender\CandidateSource;
 use Quellabs\Recommender\Config\RecommendationConfig;
+use Quellabs\Recommender\EligibilityProvider;
+use Quellabs\Recommender\Internal\Eligibility\EligibilityFilter;
 use Quellabs\Recommender\Internal\Persistence\TemporaryTable;
 use Quellabs\Recommender\Internal\Query\Results;
 use Quellabs\Recommender\PredictionResult;
+use Quellabs\Recommender\RecommendationResult;
+use Quellabs\Recommender\RecommendationSource;
+use Quellabs\Recommender\Reconciliation\SourceSettings;
+use Quellabs\Recommender\Subject;
+use Quellabs\Recommender\SubjectKind;
 use Quellabs\Recommender\VisitorContext;
 use Quellabs\Recommender\VisitorRating;
 
@@ -18,7 +26,7 @@ use Quellabs\Recommender\VisitorRating;
  * @phpstan-type ProductRating array{product_id: int, rating: float}
  * @phpstan-type ProductDiff array{product_id: int, diff: float}
  */
-readonly class SlopeOneSource {
+readonly class SlopeOneSource implements CandidateSource {
 
 	/** @var Connection Database connection */
 	private Connection $connection;
@@ -29,8 +37,11 @@ readonly class SlopeOneSource {
 	/** @var TemporaryTable Temporary tables for candidate sets and rating inputs */
 	private TemporaryTable $temporary;
 
+	/** @var EligibilityFilter Applies eligibility providers with bounded backfill */
+	private EligibilityFilter $eligibilityFilter;
+
 	/**
-	 * Build the Slope One recommender.
+	 * Build the Slope One source.
 	 * @param Connection $connection The CakePHP database connection
 	 * @param RecommendationConfig $config The recommendation configuration
 	 */
@@ -38,6 +49,46 @@ readonly class SlopeOneSource {
 		$this->connection = $connection;
 		$this->config = $config;
 		$this->temporary = new TemporaryTable($connection);
+		$this->eligibilityFilter = new EligibilityFilter($config);
+	}
+
+	/**
+	 * Report whether this source answers for a subject kind. Only product subjects are supported so far.
+	 * @param SubjectKind $kind Subject kind
+	 * @return bool True for product subjects
+	 */
+	public function supports(SubjectKind $kind): bool {
+		return $kind === SubjectKind::Product;
+	}
+
+	/**
+	 * Return the products with the closest Slope One diff to a product, best match first.
+	 * Score is the average diff, which can be negative.
+	 * @param Subject $subject Product subject
+	 * @param EligibilityProvider|null $eligibility Restricts candidates, or null for all
+	 * @param int $limit Maximum results, or zero for all
+	 * @param SourceSettings $settings Source settings; minimum support applies to the pair count
+	 * @param int|null $category Category override
+	 * @return array<int, RecommendationResult> Products scored by their average Slope One diff
+	 * @throws \InvalidArgumentException When the subject is not a product
+	 */
+	public function candidates(Subject $subject, ?EligibilityProvider $eligibility, int $limit,
+		SourceSettings $settings, ?int $category = null): array {
+		if (!$this->supports($subject->kind)) {
+			throw new \InvalidArgumentException("Slope One does not support {$subject->kind->value} subjects.");
+		}
+
+		$productId = $subject->id ?? throw new \LogicException('A product subject always has an ID.');
+
+		return $this->eligibilityFilter->withEligibility($eligibility, $limit,
+			function (int $depth) use ($productId, $settings, $category): array {
+				$diffs = $this->slopeDiffs($productId, $settings->minSupport, $depth, $category);
+
+				return array_map(function (array $diff): RecommendationResult {
+					return new RecommendationResult($diff['product_id'], $diff['diff'], RecommendationSource::SlopeOne, []);
+				}, $diffs);
+			},
+			fn(RecommendationResult $row): int => $row->productId);
 	}
 
 	/**
@@ -48,7 +99,7 @@ readonly class SlopeOneSource {
 	 * @param int|null $category Defaults to configured default
 	 * @return array<int, ProductDiff>
 	 */
-	public function getSlopeItems(int $productId, int $minSupport = 1, int $limit = 0, ?int $category = null): array {
+	private function slopeDiffs(int $productId, int $minSupport = 1, int $limit = 0, ?int $category = null): array {
 		$resolvedCategory = $this->config->resolveCategory($category);
 		$limit = max(0, $limit);
 		$result = [];
