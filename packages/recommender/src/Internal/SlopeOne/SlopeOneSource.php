@@ -18,7 +18,7 @@ use Quellabs\Recommender\VisitorRating;
  * @phpstan-type ProductRating array{product_id: int, rating: float}
  * @phpstan-type ProductDiff array{product_id: int, diff: float}
  */
-readonly class SlopeOneRecommender {
+readonly class SlopeOneSource {
 
 	/** @var Connection Database connection */
 	private Connection $connection;

@@ -8,6 +8,7 @@ use Quellabs\Recommender\MemberId;
 
 use PHPUnit\Framework\Attributes\DataProvider;
 use Quellabs\Recommender\Reconciliation\ReconciliationTuning;
+use Quellabs\Recommender\Reconciliation\SourceSettings;
 use Quellabs\Recommender\RecommendationSource;
 use Quellabs\Recommender\Config\RecommendationConfig;
 use Quellabs\Recommender\ItemRecommender;
@@ -108,7 +109,7 @@ class DerivedPairsTest extends IntegrationTestCase {
         $visitor = new VisitorContext($config);
         $visitor->setNotInterested(20);
         $fallback = $this->visitorLinks($visitor, new ArrayEligibilityProvider([20, 30]),
-            tuning: new ReconciliationTuning(topRatedMinRatings: 1));
+            tuning: new ReconciliationTuning(sources: new SourceSettings(topRatedMinRatings: 1)));
         $this->assertCount(1, $fallback);
         $this->assertSame(30, $fallback[0]->productId);
         $this->assertSame(RecommendationSource::TopRated, $fallback[0]->evidence[0]->source);

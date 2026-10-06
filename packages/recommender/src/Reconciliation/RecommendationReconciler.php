@@ -13,7 +13,7 @@
 	use Quellabs\Recommender\Internal\Eligibility\EligibilityFilter;
 
 	use Quellabs\Recommender\Internal\UserSimilarity;
-	use Quellabs\Recommender\Internal\SlopeOne\SlopeOneRecommender;
+	use Quellabs\Recommender\Internal\SlopeOne\SlopeOneSource;
 	use Quellabs\Recommender\Internal\Links\ItemLinksSource;
 	
 	use Quellabs\Recommender\RecommendationList;
@@ -48,8 +48,8 @@
 		/** @var UserSimilarity Neighbour candidates for member subjects */
 		private UserSimilarity $similarity;
 		
-		/** @var SlopeOneRecommender Shared Slope One candidate query */
-		private SlopeOneRecommender $slopeOne;
+		/** @var SlopeOneSource Shared Slope One candidate query */
+		private SlopeOneSource $slopeOne;
 		
 		/** @var ItemLinksSource Shared item-links candidate query */
 		private ItemLinksSource $itemLinks;
@@ -59,10 +59,10 @@
 		 * @param Connection $connection Ratings database connection
 		 * @param RecommendationConfig $config Recommender settings
 		 * @param UserSimilarity $similarity Neighbour source for member subjects
-		 * @param SlopeOneRecommender $slopeOne Shared Slope One candidate query
+		 * @param SlopeOneSource $slopeOne Shared Slope One candidate query
 		 * @param ItemLinksSource $itemLinks Shared item-links candidate query
 		 */
-		public function __construct(Connection $connection, RecommendationConfig $config, UserSimilarity $similarity, SlopeOneRecommender $slopeOne, ItemLinksSource $itemLinks) {
+		public function __construct(Connection $connection, RecommendationConfig $config, UserSimilarity $similarity, SlopeOneSource $slopeOne, ItemLinksSource $itemLinks) {
 			$this->connection = $connection;
 			$this->config = $config;
 			$this->similarity = $similarity;
@@ -572,7 +572,7 @@
 		private function auditUserSimilarity(int $memberId, array $missing, ReconciliationRequest $request, int $category, array &$audit): void {
 			
 			$rows = $this->similarity->memberRecommendationsScored(
-				$memberId, $request->tuning->minNeighbourSimilarity, $request->tuning->maxNeighbours,
+				$memberId, $request->tuning->sources->minNeighbourSimilarity, $request->tuning->sources->maxNeighbours,
 				count($missing), $category, $missing
 			);
 			
@@ -606,7 +606,7 @@
 		 */
 		private function topRatedRows(int $category, ReconciliationRequest $request, string $restriction, ?int $depth): array {
 			return $this->connection->execute($this->topRatedSql($restriction, $depth),
-				['category' => $category, 'minimum' => $request->tuning->topRatedMinRatings])->fetchAll('assoc');
+				['category' => $category, 'minimum' => $request->tuning->sources->topRatedMinRatings])->fetchAll('assoc');
 		}
 		
 		/**
@@ -676,7 +676,7 @@
 			$join = "JOIN {$ratingsTable} r ON r.product_id = l.item_id1";
 
 			if ($source === RecommendationSource::SlopeOne) {
-				return $this->slopeOne->candidateRows($join, $restriction, [], $category, $request->tuning->minSupport, $depth);
+				return $this->slopeOne->candidateRows($join, $restriction, [], $category, $request->tuning->sources->minSupport, $depth);
 			}
 
 			return $this->itemLinks->candidateRows($join, $restriction, [], $category, $depth);
@@ -766,7 +766,7 @@
 				throw new \InvalidArgumentException('User similarity requires a persisted member.');
 			}
 			
-			$rows = $this->similarity->memberRecommendationsScored($memberId, $request->tuning->minNeighbourSimilarity, $request->tuning->maxNeighbours, $depth, $category);
+			$rows = $this->similarity->memberRecommendationsScored($memberId, $request->tuning->sources->minNeighbourSimilarity, $request->tuning->sources->maxNeighbours, $depth, $category);
 			
 			return array_map(function ($row): array {
 				return [

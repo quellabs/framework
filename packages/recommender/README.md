@@ -253,7 +253,8 @@ Other changes:
   Passing a `ReconciliationRequest` is a type error.
 - A subject with fewer than `minHistory` non-negative ratings gets only the top-rated source. Other requested
   sources are not used for it, including new products. `minHistory` defaults to 1 and is a `ReconciliationTuning`
-  argument. `ColdStartPolicy` is removed.
+  argument. The source settings `minSupport`, `topRatedMinRatings`, `minNeighbourSimilarity` and `maxNeighbours` are a `SourceSettings`
+  object, passed as `ReconciliationTuning::$sources`. `ColdStartPolicy` is removed.
 - Thresholds are plain `int` values, checked when the call runs. The `minSupport` argument of the prediction and slope
   methods is `int $minSupport`, and `Statistics::topRatedProducts()` takes `int $topRatedMinRatings`. `ReconciliationTuning` takes ints too. Values below their minimum throw `InvalidArgumentException`.
   `Statistics::topRatedProducts()` previously clamped values below 1 to 1, and now rejects them.

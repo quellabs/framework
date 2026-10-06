@@ -7,20 +7,20 @@
 	use Quellabs\Recommender\Internal\Eligibility\EligibilityFilter;
 use Quellabs\Recommender\Internal\Identifier;
 	use Quellabs\Recommender\Internal\Query\Results;
-	use Quellabs\Recommender\Internal\SlopeOne\SlopeOneRecommender;
+	use Quellabs\Recommender\Internal\SlopeOne\SlopeOneSource;
 
 	/**
 	 * Item-based collaborative filtering and Slope One recommendations.
 	 *
 	 * Co-occurrence methods read the liked_count column of vogoo_links. Slope One methods
-	 * are delegated to SlopeOneRecommender and read slope_count and diff_slope.
+	 * are delegated to SlopeOneSource and read slope_count and diff_slope.
 	 *
 	 * Both strategies require vogoo_links to be pre-populated, either via a
 	 * batch rebuild or via incremental updates through LinkUpdater.
 	 *
 	 * Methods throw on database failure.
 	 *
-		 * @phpstan-import-type ProductRating from SlopeOneRecommender
+		 * @phpstan-import-type ProductRating from SlopeOneSource
 	 */
 	readonly class ItemRecommender {
 
@@ -30,8 +30,8 @@ use Quellabs\Recommender\Internal\Identifier;
 		/** @var RecommendationConfig Recommendation settings */
 		private RecommendationConfig $config;
 
-		/** @var SlopeOneRecommender Slope One predictions and rankings */
-		private SlopeOneRecommender $slopeOne;
+		/** @var SlopeOneSource Slope One predictions and rankings */
+		private SlopeOneSource $slopeOne;
 
 		/** @var EligibilityFilter Applies eligibility providers to ranked results */
 		private EligibilityFilter $eligibilityFilter;
@@ -44,7 +44,7 @@ use Quellabs\Recommender\Internal\Identifier;
 		public function __construct(Connection $connection, RecommendationConfig $config) {
 			$this->connection = $connection;
 			$this->config = $config;
-			$this->slopeOne = new SlopeOneRecommender($connection, $config);
+			$this->slopeOne = new SlopeOneSource($connection, $config);
 			$this->eligibilityFilter = new EligibilityFilter($config);
 		}
 

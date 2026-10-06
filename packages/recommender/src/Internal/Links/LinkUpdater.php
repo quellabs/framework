@@ -4,12 +4,12 @@
 	
 	use Cake\Database\Connection;
 	use Quellabs\Recommender\Config\RecommendationConfig;
-	use Quellabs\Recommender\Internal\SlopeOne\SlopeOneRecommender;
+	use Quellabs\Recommender\Internal\SlopeOne\SlopeOneSource;
 
 	/**
 	 * Maintains independent liked and Slope One pair measures during rating writes.
 	 *
-	 * @phpstan-import-type ProductRating from SlopeOneRecommender
+	 * @phpstan-import-type ProductRating from SlopeOneSource
 	 */
 	readonly class LinkUpdater {
 		
