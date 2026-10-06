@@ -8,7 +8,7 @@
 	readonly class PredictionResult {
 		
 		/** @var int Product ID */
-		public int $itemId;
+		public int $productId;
 		
 		/** @var float Clamped predicted rating */
 		public float $predictedRating;
@@ -18,14 +18,14 @@
 		
 		/**
 		 * Build a prediction, rejecting values outside their allowed ranges.
-		 * @param int $itemId Product ID, an unsigned 32-bit integer
+		 * @param int $productId Product ID, an unsigned 32-bit integer
 		 * @param float $predictedRating Clamped predicted rating in [0, 1]
 		 * @param int $supportCount Sum of contributing pair counts, at least 1
 		 * @throws \InvalidArgumentException When a value is outside its allowed range
 		 */
-		public function __construct(int $itemId, float $predictedRating, int $supportCount) {
-			if ($itemId < 0 || $itemId > Identifier::MAX) {
-				throw new \InvalidArgumentException("Product ID must be an unsigned 32-bit integer, got {$itemId}.");
+		public function __construct(int $productId, float $predictedRating, int $supportCount) {
+			if ($productId < 0 || $productId > Identifier::MAX) {
+				throw new \InvalidArgumentException("Product ID must be an unsigned 32-bit integer, got {$productId}.");
 			}
 			
 			if (!is_finite($predictedRating) || $predictedRating < 0 || $predictedRating > 1) {
@@ -36,7 +36,7 @@
 				throw new \InvalidArgumentException("Support count must be at least 1, got {$supportCount}.");
 			}
 			
-			$this->itemId = $itemId;
+			$this->productId = $productId;
 			$this->predictedRating = $predictedRating;
 			$this->supportCount = $supportCount;
 		}

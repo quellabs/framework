@@ -4,11 +4,13 @@
 
 Names, argument order and value types now follow one convention across the public API. Typed values replace
 boolean flags and magic strings: `RatingKind` and `RatingOrder` for ratings queries, `ScoreKind` for list scoring,
-and `RecommendationSource` for result strategies. `RecommendationEngine::automaticRating()` is split into
+and `RecommendationSource` for the candidate source of a result. `RecommendationEngine::automaticRating()` is split into
 `recordPurchase()` and `recordClick()`. Reconciliation settings live in `ReconciliationTuning`, and per-item
 diagnostics in `ReconciliationDiagnostics`. `EligibilityProvider` moved to the root namespace. Reasons methods return `RecommendationResult[]`, average-rating
-methods return `null` when there is no data, and reconciler methods use the same `member*` and `visitor*` naming as
-`ItemRecommender`. Configuration accessors drop the `get` prefix. The [README upgrade section](README.md#upgrading)
+methods return `null` when there is no data, and reconciler methods are `memberSlate()` and `visitorSlate()` for the displayed slate, with `memberCandidatePool()`
+and `visitorCandidatePool()` for the full pool. Value objects use `productId` for product IDs and `source` for candidate
+sources. Rating accessors return `Rating` and `VisitorRating` objects. `ItemRecommender` limits default to `10`. Member
+erasure is a single `RecommendationEngine::deleteMemberData()` call. Configuration accessors drop the `get` prefix. The [README upgrade section](README.md#upgrading)
 lists every changed call.
 
 ## Optional reconciliation and evaluation API
@@ -33,8 +35,7 @@ database and run `sculpt recommender:init-evaluation-db`; this does not require
 through `EvaluationRecorder`; attribution reports require explicit windows and
 cutoff times. `recommender:prune-evaluation` requires an explicit cutoff.
 Training and activation are separate commands. Applications handling complete
-member deletion should call both the existing ratings deletion method and
-`EvaluationRecorder::deleteMemberEvaluations()`.
+member deletion should call `RecommendationEngine::deleteMemberData()` with their `EvaluationRecorder`.
 
 To roll back only the optional feature, back up evaluation data and drop the
 five new tables in foreign-key-safe order: outcomes, evidence, impression items,
@@ -59,7 +60,7 @@ not predict production latency.
 The `vogoo_links.cnt` column is replaced by `liked_count` and `slope_count`.
 `diff_slope` now sums the directed rating difference only for genuine rating
 pairs. Existing `cnt` values mix the two algorithms and cannot be reused.
-`getLinkedItems()` now requires a positive liked count; Slope One uses only
+`linkedProducts()` now requires a positive liked count; Slope One uses only
 the slope count. The rebuild command computes both measures regardless of
 incremental settings and clears stale categories.
 

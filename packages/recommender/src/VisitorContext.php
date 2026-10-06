@@ -93,14 +93,19 @@
 		/**
 		 * Return all ratings for the given category.
 		 * @param int|null $category Defaults to the configured default category
-		 * @return RatingList
+		 * @return array<int, VisitorRating>
 		 */
 		public function ratings(?int $category = null): array {
 			$resolvedCategory = $this->config->resolveCategory($category);
+			$ratings = [];
 			
-			return array_values(
-				array_filter($this->ratings, fn($entry) => $entry['category'] === $resolvedCategory)
-			);
+			foreach ($this->ratings as $entry) {
+				if ($entry['category'] === $resolvedCategory) {
+					$ratings[] = new VisitorRating($entry['product_id'], $entry['rating']);
+				}
+			}
+			
+			return $ratings;
 		}
 		
 		/**
@@ -109,7 +114,7 @@
 		 * @return array<int, int>
 		 */
 		public function ratedProductIds(?int $category = null): array {
-			return array_column($this->ratings($category), 'product_id');
+			return array_map(fn(VisitorRating $rating) => $rating->productId, $this->ratings($category));
 		}
 		
 		/**

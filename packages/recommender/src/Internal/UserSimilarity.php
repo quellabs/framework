@@ -192,7 +192,7 @@
 					return $this->memberRecommendationRows($memberId, $minSimilarity, $depth, $resolvedCategory);
 				},
 				function (RecommendationResult $row): int {
-					return $row->itemId;
+					return $row->productId;
 				});
 		}
 

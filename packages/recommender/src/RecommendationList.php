@@ -137,13 +137,13 @@
 		}
 		
 		/**
-		 * Return a list containing only the selected items, in the selected order.
-		 * @param array<int, int> $itemIds Selected IDs in actual display order
+		 * Return a list containing only the selected products, in the selected order.
+		 * @param array<int, int> $productIds Selected product IDs in actual display order
 		 * @return self A list retaining source evidence and model information
-		 * @throws \InvalidArgumentException When the selection exceeds the limit or names an item outside the pool
+		 * @throws \InvalidArgumentException When the selection exceeds the limit or names a product outside the pool
 		 */
-		public function selectDisplayedIds(array $itemIds): self {
-			$selectionCount = count($itemIds);
+		public function selectDisplayedProducts(array $productIds): self {
+			$selectionCount = count($productIds);
 			
 			if ($selectionCount > $this->limit) {
 				throw new \InvalidArgumentException("Selection has {$selectionCount} items, but the list limit is {$this->limit}.");
@@ -152,13 +152,13 @@
 			$pool = [];
 			
 			foreach ($this->items as $item) {
-				$pool[$item->itemId] = $item;
+				$pool[$item->productId] = $item;
 			}
 			
 			$selected = [];
 			$seen = [];
 			
-			foreach ($itemIds as $id) {
+			foreach ($productIds as $id) {
 				if (!is_int($id)) {
 					throw new \InvalidArgumentException('Selected ID must be an integer, got ' . var_export($id, true) . '.');
 				}
@@ -227,19 +227,19 @@
 					throw new \InvalidArgumentException('Items must be ReconciledRecommendation instances, got ' . get_debug_type($item) . '.');
 				}
 				
-				if (isset($seen[$item->itemId])) {
-					throw new \InvalidArgumentException("Item ID {$item->itemId} appears more than once.");
+				if (isset($seen[$item->productId])) {
+					throw new \InvalidArgumentException("Product ID {$item->productId} appears more than once.");
 				}
 				
 				if ($scoreKind !== ScoreKind::Direct && $item->rankingScore === null) {
-					throw new \InvalidArgumentException("Item ID {$item->itemId} needs a ranking score for score kind '{$scoreKind->value}'.");
+					throw new \InvalidArgumentException("Product ID {$item->productId} needs a ranking score for score kind '{$scoreKind->value}'.");
 				}
 				
-				$seen[$item->itemId] = true;
+				$seen[$item->productId] = true;
 				
 				foreach ($item->evidence as $signal) {
 					if (!isset($sourceSet[$signal->source->value])) {
-						throw new \InvalidArgumentException("Item ID {$item->itemId} has evidence from source '{$signal->source->value}', which is not enabled.");
+						throw new \InvalidArgumentException("Product ID {$item->productId} has evidence from source '{$signal->source->value}', which is not enabled.");
 					}
 				}
 			}

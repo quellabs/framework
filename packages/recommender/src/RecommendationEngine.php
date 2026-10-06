@@ -4,6 +4,8 @@
 	
 	use Cake\Database\Connection;
 	use Quellabs\Recommender\Config\RecommendationConfig;
+	use Quellabs\Recommender\Evaluation\EvaluationRecorder;
+	use Quellabs\Recommender\Internal\Identifier;
 	use Quellabs\Recommender\Internal\Links\LinkUpdater;
 	use Quellabs\Recommender\Internal\RatingRule;
 	
@@ -49,6 +51,7 @@
 		 * @return int Number of matching ratings
 		 */
 		public function memberNumRatings(int $memberId, RatingKind $kind = RatingKind::Genuine, ?int $category = null): int {
+			Identifier::assertId($memberId, 'Member ID');
 			$resolvedCategory = $this->config->resolveCategory($category);
 			
 			$sql = '
@@ -77,6 +80,7 @@
 		 * @return float|null Average rating, or null when the member has none
 		 */
 		public function memberAverageRating(int $memberId, ?int $category = null): ?float {
+			Identifier::assertId($memberId, 'Member ID');
 			$resolvedCategory = $this->config->resolveCategory($category);
 			
 			$row = $this->connection->execute('
@@ -95,15 +99,17 @@
 		}
 		
 		/**
-		 * Return all ratings for a member as ['product_id' => int, 'rating' => float, 'ts' => string] rows.
+		 * Return all ratings a member has given.
 		 * @param int $memberId The member ID
 		 * @param RatingKind $kind Which ratings to return
 		 * @param RatingOrder|null $order Sort order, or null for storage order
 		 * @param int|null $category Defaults to configured default
-		 * @return array<int, array{product_id: int, rating: float, ts: string}>
+		 * @return array<int, Rating>
+		 * @throws \InvalidArgumentException When the member ID is outside the unsigned 32-bit range
 		 */
 		public function memberRatings(int $memberId, RatingKind $kind = RatingKind::Genuine, ?RatingOrder $order = null,
 			?int $category = null): array {
+			Identifier::assertId($memberId, 'Member ID');
 			$resolvedCategory = $this->config->resolveCategory($category);
 			
 			$sql = '
@@ -129,22 +135,39 @@
 
 			foreach ($rows as $row) {
 				$typed = $this->typedRatingRow($row, 'product_id');
-				$ratings[] = ['product_id' => $typed['id'], 'rating' => $typed['rating'], 'ts' => $typed['ts']];
+				$ratings[] = new Rating($memberId, $typed['id'], $typed['rating'], $typed['ts']);
 			}
 
 			return $ratings;
 		}
 	
 		/**
-		 * Delete all ratings for a member. When incremental link updates are enabled,
+		 * Delete a member's ratings in one category. When incremental link updates are enabled,
 		 * each rating is removed via deleteRating() to keep vogoo_links consistent.
 		 * @param int $memberId The member ID
 		 * @param int|null $category Defaults to configured default
 		 * @return void
+		 * @throws \InvalidArgumentException When the member ID is outside the unsigned 32-bit range
 		 * @throws \Exception When a database statement fails
 		 */
 		public function deleteMember(int $memberId, ?int $category = null): void {
+			Identifier::assertId($memberId, 'Member ID');
 			$this->deleteRatingsWhere('member_id', $memberId, $this->config->resolveCategory($category));
+		}
+
+		/**
+		 * Erase everything stored about a member: their ratings in every category, and their evaluation
+		 * history when a recorder is given. Pass null when the evaluation tables are not installed.
+		 * @param int $memberId The member ID
+		 * @param EvaluationRecorder|null $evaluations Recorder whose evaluation history for the member is erased, or null
+		 * @return void
+		 * @throws \InvalidArgumentException When the member ID is outside the unsigned 32-bit range
+		 * @throws \Exception When a database statement fails
+		 */
+		public function deleteMemberData(int $memberId, ?EvaluationRecorder $evaluations = null): void {
+			Identifier::assertId($memberId, 'Member ID');
+			$evaluations?->deleteMemberEvaluations($memberId);
+			$this->deleteRatingsWhere('member_id', $memberId, null);
 		}
 		
 		// ----- Products -----
@@ -156,6 +179,7 @@
 		 * @return int Number of matching ratings
 		 */
 		public function productNumRatings(int $productId, ?int $category = null): int {
+			Identifier::assertId($productId, 'Product ID');
 			$resolvedCategory = $this->config->resolveCategory($category);
 			
 			$row = $this->connection->execute('
@@ -180,6 +204,7 @@
 		 * @return float|null Average rating, or null when the product has none
 		 */
 		public function productAverageRating(int $productId, ?int $category = null): ?float {
+			Identifier::assertId($productId, 'Product ID');
 			$resolvedCategory = $this->config->resolveCategory($category);
 			
 			$row = $this->connection->execute('
@@ -198,13 +223,15 @@
 		}
 		
 		/**
-		 * Return all ratings for a product as ['member_id' => int, 'rating' => float, 'ts' => string] rows.
+		 * Return all genuine ratings a product has received.
 		 * @param int $productId The product ID
 		 * @param RatingOrder|null $order Sort order, or null for storage order
 		 * @param int|null $category Defaults to configured default
-		 * @return array<int, array{member_id: int, rating: float, ts: string}>
+		 * @return array<int, Rating>
+		 * @throws \InvalidArgumentException When the product ID is outside the unsigned 32-bit range
 		 */
 		public function productRatings(int $productId, ?RatingOrder $order = null, ?int $category = null): array {
+			Identifier::assertId($productId, 'Product ID');
 			$resolvedCategory = $this->config->resolveCategory($category);
 			
 			$sql = '
@@ -230,7 +257,7 @@
 
 			foreach ($rows as $row) {
 				$typed = $this->typedRatingRow($row, 'member_id');
-				$ratings[] = ['member_id' => $typed['id'], 'rating' => $typed['rating'], 'ts' => $typed['ts']];
+				$ratings[] = new Rating($typed['id'], $productId, $typed['rating'], $typed['ts']);
 			}
 
 			return $ratings;
@@ -245,20 +272,24 @@
 		 * @throws \Exception When a database statement fails
 		 */
 		public function deleteProduct(int $productId, ?int $category = null): void {
+			Identifier::assertId($productId, 'Product ID');
 			$this->deleteRatingsWhere('product_id', $productId, $this->config->resolveCategory($category));
 		}
 		
 		// ----- Combined -----
 		
 		/**
-		 * Return the rating and timestamp for a member and product pair, or null when none exists.
+		 * Return the rating a member gave a product, or null when none exists.
 		 * @param int $memberId The member ID
 		 * @param int $productId The product ID
 		 * @param RatingKind $kind Which ratings to match
 		 * @param int|null $category Defaults to configured default
-		 * @return array{rating: float, ts: string}|null
+		 * @return Rating|null
+		 * @throws \InvalidArgumentException When an ID is outside the unsigned 32-bit range
 		 */
-		public function memberRating(int $memberId, int $productId, RatingKind $kind = RatingKind::Genuine, ?int $category = null): ?array {
+		public function memberRating(int $memberId, int $productId, RatingKind $kind = RatingKind::Genuine, ?int $category = null): ?Rating {
+			Identifier::assertId($memberId, 'Member ID');
+			Identifier::assertId($productId, 'Product ID');
 			$resolvedCategory = $this->config->resolveCategory($category);
 			
 			$sql = '
@@ -285,7 +316,7 @@
 				return null;
 			}
 
-			return ['rating' => (float)$row['rating'], 'ts' => $row['ts']];
+			return new Rating($memberId, $productId, (float)$row['rating'], (string)$row['ts']);
 		}
 		
 		/**
@@ -300,8 +331,11 @@
 		public function setRating(int $memberId, int $productId, float $rating, ?int $category = null): void {
 			$resolvedCategory = $this->config->resolveCategory($category);
 
-			if ($memberId < 0 || $productId < 0 || !RatingRule::isValid($rating, RecommendationConfig::NOT_INTERESTED)) {
-				throw new \InvalidArgumentException('Member and product IDs must not be negative, and the rating must be in [0.0, 1.0] or the not-interested value.');
+			Identifier::assertId($memberId, 'Member ID');
+			Identifier::assertId($productId, 'Product ID');
+
+			if (!RatingRule::isValid($rating, RecommendationConfig::NOT_INTERESTED)) {
+				throw new \InvalidArgumentException("Rating must be in [0.0, 1.0] or the not-interested value, got {$rating}.");
 			}
 
 			// One transaction keeps vogoo_links consistent with vogoo_ratings if a statement fails.
@@ -328,6 +362,8 @@
 		 * @throws \Exception When a database statement fails
 		 */
 		public function recordPurchase(int $memberId, int $productId, ?int $category = null): void {
+			Identifier::assertId($memberId, 'Member ID');
+			Identifier::assertId($productId, 'Product ID');
 			$this->setRating($memberId, $productId, 1.0, $category);
 		}
 
@@ -340,13 +376,15 @@
 		 * @throws \Exception When a database statement fails
 		 */
 		public function recordClick(int $memberId, int $productId, ?int $category = null): void {
+			Identifier::assertId($memberId, 'Member ID');
+			Identifier::assertId($productId, 'Product ID');
 			$resolvedCategory = $this->config->resolveCategory($category);
 			$existing = $this->memberRating($memberId, $productId, RatingKind::Genuine, $resolvedCategory);
 
 			if ($existing === null) {
 				$this->setRating($memberId, $productId, 0.7, $resolvedCategory);
-			} elseif ($existing['rating'] < 1.0) {
-				$this->setRating($memberId, $productId, min(1.0, $existing['rating'] + 0.01), $resolvedCategory);
+			} elseif ($existing->rating < 1.0) {
+				$this->setRating($memberId, $productId, min(1.0, $existing->rating + 0.01), $resolvedCategory);
 			}
 		}
 
@@ -371,6 +409,8 @@
 		 * @throws \Exception When a database statement fails
 		 */
 		public function deleteRating(int $memberId, int $productId, ?int $category = null): void {
+			Identifier::assertId($memberId, 'Member ID');
+			Identifier::assertId($productId, 'Product ID');
 			$resolvedCategory = $this->config->resolveCategory($category);
 			
 			// One transaction keeps vogoo_links consistent with vogoo_ratings if a statement fails.
@@ -449,42 +489,36 @@
 		 * With incremental link updates enabled, each rating is removed via deleteRating().
 		 * @param string $column Ratings column holding the ID, either member_id or product_id
 		 * @param int $id Member or product ID
-		 * @param int $category Already-resolved category
+		 * @param int|null $category Already-resolved category, or null for every category
 		 * @return void
 		 * @throws \Exception When a database statement fails
 		 */
-		private function deleteRatingsWhere(string $column, int $id, int $category): void {
+		private function deleteRatingsWhere(string $column, int $id, ?int $category): void {
+			$categoryClause = $category === null ? '' : ' AND `category` = :category';
+			$params = $category === null ? ['id' => $id] : ['id' => $id, 'category' => $category];
+
 			if (!$this->config->isDirectLinks() && !$this->config->isDirectSlope()) {
-				$this->connection->execute("
-					DELETE FROM `vogoo_ratings`
-					WHERE `{$column}` = :id AND
-						`category` = :category
-				", [
-					'id'       => $id,
-					'category' => $category,
-				]);
+				$this->connection->execute("DELETE FROM `vogoo_ratings` WHERE `{$column}` = :id{$categoryClause}", $params);
 				return;
 			}
-	
+
 			$otherColumn = $column === 'member_id' ? 'product_id' : 'member_id';
 			$rows = $this->connection->execute("
 				SELECT
-					`{$otherColumn}`
+					`{$otherColumn}`,
+					`category`
 				FROM `vogoo_ratings`
-				WHERE `{$column}` = :id AND
-				      `category` = :category
-			", [
-				'id'       => $id,
-				'category' => $category,
-			])->fetchAll('assoc');
-	
+				WHERE `{$column}` = :id{$categoryClause}
+			", $params)->fetchAll('assoc');
+
 			foreach ($rows as $row) {
 				$other = (int)$row[$otherColumn];
-	
+				$rowCategory = (int)$row['category'];
+
 				if ($column === 'member_id') {
-					$this->deleteRating($id, $other, $category);
+					$this->deleteRating($id, $other, $rowCategory);
 				} else {
-					$this->deleteRating($other, $id, $category);
+					$this->deleteRating($other, $id, $rowCategory);
 				}
 			}
 		}

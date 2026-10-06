@@ -8,7 +8,7 @@
 	readonly class ReconciledRecommendation {
 
 		/** @var int Catalog ID */
-		public int $itemId;
+		public int $productId;
 
 		/** @var float|null Rank-fusion score or reference-position probability */
 		public ?float $rankingScore;
@@ -21,27 +21,27 @@
 
 		/**
 		 * Build a ranked candidate, rejecting values outside their allowed ranges.
-		 * @param int $itemId Catalog ID, an unsigned 32-bit integer
+		 * @param int $productId Catalog ID, an unsigned 32-bit integer
 		 * @param float|null $rankingScore Rank-fusion score or reference-position probability
 		 * @param array<mixed> $evidence Available source signals
 		 * @param ReconciliationDiagnostics|null $diagnostics Features and depths, empty when null
 		 * @throws \InvalidArgumentException When a value is outside its allowed range
 		 */
 		public function __construct(
-			int $itemId,
+			int $productId,
 			?float $rankingScore,
 			array $evidence,
 			?ReconciliationDiagnostics $diagnostics = null
 		) {
-			if ($itemId < 0 || $itemId > Identifier::MAX) {
-				throw new \InvalidArgumentException("Item ID must be an unsigned 32-bit integer, got {$itemId}.");
+			if ($productId < 0 || $productId > Identifier::MAX) {
+				throw new \InvalidArgumentException("Product ID must be an unsigned 32-bit integer, got {$productId}.");
 			}
 
 			if ($rankingScore !== null && !is_finite($rankingScore)) {
-				throw new \InvalidArgumentException("Ranking score for item {$itemId} must be finite, got {$rankingScore}.");
+				throw new \InvalidArgumentException("Ranking score for product {$productId} must be finite, got {$rankingScore}.");
 			}
 
-			$this->itemId = $itemId;
+			$this->productId = $productId;
 			$this->rankingScore = $rankingScore;
 			$this->evidence = $this->validateEvidence($evidence);
 			$this->diagnostics = $diagnostics ?? new ReconciliationDiagnostics();

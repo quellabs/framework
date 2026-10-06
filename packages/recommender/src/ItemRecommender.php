@@ -5,6 +5,7 @@
 	use Cake\Database\Connection;
 	use Quellabs\Recommender\Config\RecommendationConfig;
 	use Quellabs\Recommender\Internal\Eligibility\EligibilityFilter;
+use Quellabs\Recommender\Internal\Identifier;
 	use Quellabs\Recommender\Internal\Query\Results;
 	use Quellabs\Recommender\Internal\SlopeOne\SlopeOneRecommender;
 
@@ -20,8 +21,7 @@
 	 *
 	 * Methods throw on database failure.
 	 *
-	 * @phpstan-import-type RatingList from VisitorContext
-	 * @phpstan-import-type ProductRating from SlopeOneRecommender
+		 * @phpstan-import-type ProductRating from SlopeOneRecommender
 	 */
 	readonly class ItemRecommender {
 
@@ -58,7 +58,8 @@
 		 * @param int|null $category Defaults to configured default
 		 * @return array<int, RecommendationResult> Co-occurring products, scored by liked count
 		 */
-		public function linkedItems(int $productId, ?EligibilityProvider $eligibility = null, int $limit = 0, ?int $category = null): array {
+		public function linkedProducts(int $productId, ?EligibilityProvider $eligibility = null, int $limit = 10, ?int $category = null): array {
+			Identifier::assertId($productId, 'Product ID');
 			$resolvedCategory = $this->config->resolveCategory($category);
 
 			return $this->eligibilityFilter->withEligibility($eligibility, $limit,
@@ -66,7 +67,7 @@
 					return $this->linkedRows($productId, $depth, $resolvedCategory);
 				},
 				function (RecommendationResult $row): int {
-					return $row->itemId;
+					return $row->productId;
 				});
 		}
 
@@ -80,7 +81,9 @@
 		 * @return array<int, RecommendationResult> Rated products linked to the given product, scored by liked count
 		 * @throws \UnexpectedValueException When a reason row from the database is malformed
 		 */
-		public function memberReasons(int $memberId, int $productId, int $limit = 0, ?int $category = null): array {
+		public function memberReasons(int $memberId, int $productId, int $limit = 10, ?int $category = null): array {
+			Identifier::assertId($memberId, 'Member ID');
+			Identifier::assertId($productId, 'Product ID');
 			$resolvedCategory = $this->config->resolveCategory($category);
 			$limit = max(0, $limit);
 			$threshold = $this->config->thresholdRating();
@@ -120,15 +123,14 @@
 		 * @return array<int, RecommendationResult> Rated products linked to the given product, scored by liked count
 		 * @throws \UnexpectedValueException When a reason row from the database is malformed
 		 */
-		public function visitorReasons(VisitorContext $visitor, int $productId, int $limit = 0, ?int $category = null): array {
+		public function visitorReasons(VisitorContext $visitor, int $productId, int $limit = 10, ?int $category = null): array {
+			Identifier::assertId($productId, 'Product ID');
 			$resolvedCategory = $this->config->resolveCategory($category);
 			$threshold = $this->config->thresholdRating();
 			$ratings = $visitor->ratings($resolvedCategory);
-			$likedIds = array_column(
-				array_filter($ratings, function ($entry) use ($threshold): bool {
-					return $entry['rating'] >= $threshold;
-				}),
-				'product_id'
+			$likedIds = array_map(
+				fn(VisitorRating $rating): int => $rating->productId,
+				array_filter($ratings, fn(VisitorRating $rating): bool => $rating->rating >= $threshold)
 			);
 
 			if (empty($likedIds)) {
@@ -191,8 +193,9 @@
 		 * @param int|null $category Defaults to configured default
 		 * @return array<int, RecommendationResult> Products scored by their average Slope One diff
 		 */
-		public function slopeItems(int $productId, ?EligibilityProvider $eligibility = null, int $limit = 0,
+		public function slopeProducts(int $productId, ?EligibilityProvider $eligibility = null, int $limit = 10,
 			int $minSupport = 1, ?int $category = null): array {
+			Identifier::assertId($productId, 'Product ID');
 			return $this->eligibilityFilter->withEligibility($eligibility, $limit,
 				function (int $depth) use ($productId, $minSupport, $category): array {
 					$diffs = $this->slopeOne->getSlopeItems($productId, $minSupport, $depth, $category);
@@ -202,7 +205,7 @@
 					}, $diffs);
 				},
 				function (RecommendationResult $row): int {
-					return $row->itemId;
+					return $row->productId;
 				});
 		}
 
@@ -216,6 +219,8 @@
 		 * @throws \InvalidArgumentException When the minimum support is not positive
 		 */
 		public function memberPrediction(int $memberId, int $productId, int $minSupport = 1, ?int $category = null): ?PredictionResult {
+			Identifier::assertId($memberId, 'Member ID');
+			Identifier::assertId($productId, 'Product ID');
 			return $this->slopeOne->memberPredictDetailed($memberId, $productId, $minSupport, $category);
 		}
 
@@ -230,14 +235,15 @@
 		 * @return array<int, PredictionResult>
 		 * @throws \InvalidArgumentException When the minimum support is not positive
 		 */
-		public function memberPredictions(int $memberId, ?EligibilityProvider $eligibility = null, int $limit = 0,
+		public function memberPredictions(int $memberId, ?EligibilityProvider $eligibility = null, int $limit = 10,
 			int $minSupport = 1, ?int $category = null): array {
+			Identifier::assertId($memberId, 'Member ID');
 			return $this->eligibilityFilter->withEligibility($eligibility, $limit,
 				function (int $depth) use ($memberId, $minSupport, $category): array {
 					return $this->slopeOne->memberPredictAllDetailed($memberId, $depth, $minSupport, $category);
 				},
 				function (PredictionResult $row): int {
-					return $row->itemId;
+					return $row->productId;
 				});
 		}
 
@@ -251,6 +257,7 @@
 		 * @throws \InvalidArgumentException When the minimum support is not positive
 		 */
 		public function visitorPrediction(VisitorContext $visitor, int $productId, int $minSupport = 1, ?int $category = null): ?PredictionResult {
+			Identifier::assertId($productId, 'Product ID');
 			return $this->slopeOne->visitorPredictDetailed($visitor, $productId, $minSupport, $category);
 		}
 
@@ -265,14 +272,14 @@
 		 * @return array<int, PredictionResult>
 		 * @throws \InvalidArgumentException When the minimum support is not positive
 		 */
-		public function visitorPredictions(VisitorContext $visitor, ?EligibilityProvider $eligibility = null, int $limit = 0,
+		public function visitorPredictions(VisitorContext $visitor, ?EligibilityProvider $eligibility = null, int $limit = 10,
 			int $minSupport = 1, ?int $category = null): array {
 			return $this->eligibilityFilter->withEligibility($eligibility, $limit,
 				function (int $depth) use ($visitor, $minSupport, $category): array {
 					return $this->slopeOne->visitorPredictAllDetailed($visitor, $depth, $minSupport, $category);
 				},
 				function (PredictionResult $row): int {
-					return $row->itemId;
+					return $row->productId;
 				});
 		}
 
@@ -289,8 +296,9 @@
 		 * @return array<int, RecommendationResult>
 		 * @throws \UnexpectedValueException When a link score row or its contributors are malformed
 		 */
-		public function memberRecommendations(int $memberId, ?EligibilityProvider $eligibility = null, int $limit = 0,
+		public function memberRecommendations(int $memberId, ?EligibilityProvider $eligibility = null, int $limit = 10,
 			int $minHistory = 1, int $topRatedMinRatings = 2, ?int $category = null): array {
+			Identifier::assertId($memberId, 'Member ID');
 			$resolvedCategory = $this->config->resolveCategory($category);
 
 			return $this->eligibilityFilter->withEligibility($eligibility, $limit,
@@ -298,7 +306,7 @@
 					return $this->memberRecommendationRows($memberId, $depth, $resolvedCategory, $minHistory, $topRatedMinRatings);
 				},
 				function (RecommendationResult $row): int {
-					return $row->itemId;
+					return $row->productId;
 				});
 		}
 
@@ -341,7 +349,7 @@
 		 * @param int|null $category Category override
 		 * @return array<int, RecommendationResult>
 		 */
-		public function visitorRecommendations(VisitorContext $visitor, ?EligibilityProvider $eligibility = null, int $limit = 0,
+		public function visitorRecommendations(VisitorContext $visitor, ?EligibilityProvider $eligibility = null, int $limit = 10,
 			int $minHistory = 1, int $topRatedMinRatings = 2, ?int $category = null): array {
 			$resolvedCategory = $this->config->resolveCategory($category);
 
@@ -350,7 +358,7 @@
 					return $this->visitorRecommendationRows($visitor, $depth, $resolvedCategory, $minHistory, $topRatedMinRatings);
 				},
 				function (RecommendationResult $row): int {
-					return $row->itemId;
+					return $row->productId;
 				});
 		}
 
@@ -449,12 +457,11 @@
 		private function visitorRecommendationRows(VisitorContext $visitor, int $limit, int $category,
 			int $minHistory, int $topRatedMinRatings): array {
 			$ratings = $visitor->ratings($category);
-			$history = count(array_filter($ratings, function ($row): bool {
-				return $row['rating'] >= 0.0;
-			}));
+			$history = count(array_filter($ratings, fn(VisitorRating $rating): bool => $rating->rating >= 0.0));
 
 			if ($history < max(1, $minHistory)) {
-				return $this->fallbackResults(array_column($ratings, 'product_id'), $limit, $category, $topRatedMinRatings);
+				return $this->fallbackResults(array_map(fn(VisitorRating $rating): int => $rating->productId, $ratings),
+					$limit, $category, $topRatedMinRatings);
 			}
 
 			$reasons = [];
@@ -506,22 +513,22 @@
 		/**
 		 * Accumulate weighted co-occurrence scores for every candidate item linked to the visitor's rated products.
 		 * Skips not-interested entries, zero-count links, and items the visitor has already rated.
-		 * @param RatingList $ratings Visitor rating entries
+		 * @param array<int, VisitorRating> $ratings Visitor ratings
 		 * @param int $category Already-resolved category
 		 * @param array<int, array<int, int>>|null $reasons Optional contributing IDs by candidate, filled in place
 		 * @return array<int, float> Map of candidate product_id to raw score
 		 */
 		private function scoreVisitorCandidates(array $ratings, int $category, ?array &$reasons = null): array {
 			$threshold = $this->config->thresholdRating();
-			$ratedIds = array_column($ratings, 'product_id');
+			$ratedIds = array_map(fn(VisitorRating $rating): int => $rating->productId, $ratings);
 			$scores = [];
 
 			foreach ($ratings as $entry) {
-				if ($entry['rating'] === RecommendationConfig::NOT_INTERESTED) {
+				if ($entry->rating === RecommendationConfig::NOT_INTERESTED) {
 					continue;
 				}
 
-				foreach ($this->linkedCandidateRows($entry['product_id'], $category) as $row) {
+				foreach ($this->linkedCandidateRows($entry->productId, $category) as $row) {
 					$fields = self::linkScoreFields($row);
 
 					if ($fields === null) {
@@ -534,10 +541,10 @@
 						continue;
 					}
 
-					$scores[$id] = ($scores[$id] ?? 0.0) + ($entry['rating'] - $threshold) * $likedCount;
+					$scores[$id] = ($scores[$id] ?? 0.0) + ($entry->rating - $threshold) * $likedCount;
 
 					if ($reasons !== null) {
-						$reasons[$id][] = $entry['product_id'];
+						$reasons[$id][] = $entry->productId;
 					}
 				}
 			}

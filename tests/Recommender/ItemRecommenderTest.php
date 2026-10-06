@@ -28,7 +28,7 @@
 		 * @return array<int, int> Item IDs in result order
 		 */
 		private function itemIds(array $results): array {
-			return array_map(fn($result) => $result->itemId, $results);
+			return array_map(fn($result) => $result->productId, $results);
 		}
 
 		/** Verify support, ordering, legacy parity, and the rejected-item exclusion.
@@ -54,8 +54,8 @@
 			$visitor->setRating(40, -1.0);
 			$results = $this->recommender->visitorPredictions($visitor);
 			$this->assertSame([20, 30], $this->itemIds($results));
-			$this->assertSame(20, $this->recommender->visitorPredictions($visitor, limit: 1)[0]->itemId);
-			$this->assertSame(30, $this->recommender->visitorPredictions($visitor, new ArrayEligibilityProvider([30]), 1)[0]->itemId);
+			$this->assertSame(20, $this->recommender->visitorPredictions($visitor, limit: 1)[0]->productId);
+			$this->assertSame(30, $this->recommender->visitorPredictions($visitor, new ArrayEligibilityProvider([30]), 1)[0]->productId);
 			$this->assertEqualsWithDelta($this->recommender->visitorPrediction($visitor, 20)->predictedRating,
 				$results[0]->predictedRating, 0.00001);
 		}
@@ -91,7 +91,7 @@
 			$this->insertLink(501, 600, 4, 0.4);
 			$result = $this->recommender->visitorPredictions($visitor);
 			$this->assertCount(1, $result);
-			$this->assertSame(600, $result[0]->itemId);
+			$this->assertSame(600, $result[0]->productId);
 			$this->assertSame(4, $result[0]->supportCount);
 			$this->assertEqualsWithDelta(0.9, $result[0]->predictedRating, 1e-8);
 		}
@@ -154,24 +154,38 @@
 		}
 
 		// =========================================================================
-		// linkedItems
+		// linkedProducts
 		// =========================================================================
 
-		public function testLinkedItemsReturnsEmptyWhenNoLinks(): void {
-			$this->assertSame([], $this->recommender->linkedItems(1));
+		public function testLinkedProductsReturnsEmptyWhenNoLinks(): void {
+			$this->assertSame([], $this->recommender->linkedProducts(1));
 		}
 
-		public function testLinkedItemsReturnsLinkedProducts(): void {
+		public function testLinkedProductsReturnsLinkedProducts(): void {
 			$this->insertLink(1, 2, 5);
 			$this->insertLink(1, 3, 3);
-			$result = $this->recommender->linkedItems(1);
+			$result = $this->recommender->linkedProducts(1);
 			$this->assertEqualsCanonicalizing([2, 3], $this->itemIds($result));
 		}
 
-		public function testLinkedItemsScoreIsTheLikedCount(): void {
+		public function testLinkedProductsDefaultLimitIsTen(): void {
+			for ($product = 2; $product <= 13; $product++) {
+				$this->insertLink(1, $product, 1);
+			}
+
+			$this->assertCount(10, $this->recommender->linkedProducts(1));
+			$this->assertCount(12, $this->recommender->linkedProducts(1, limit: 0));
+		}
+
+		public function testNegativeProductIdIsRejected(): void {
+			$this->expectException(\InvalidArgumentException::class);
+			$this->recommender->linkedProducts(-1);
+		}
+
+		public function testLinkedProductsScoreIsTheLikedCount(): void {
 			$this->insertLink(1, 2, 5);
-			$result = $this->recommender->linkedItems(1);
-			$this->assertSame(RecommendationSource::ItemLinks, $result[0]->strategy);
+			$result = $this->recommender->linkedProducts(1);
+			$this->assertSame(RecommendationSource::ItemLinks, $result[0]->source);
 			$this->assertEqualsWithDelta(5.0, $result[0]->score, 0.00001);
 		}
 
@@ -179,7 +193,7 @@
 			$this->insertLink(1, 2, 3);
 			$this->insertLink(1, 3, 10);
 			$this->insertLink(1, 4, 5);
-			$result = $this->recommender->linkedItems(1);
+			$result = $this->recommender->linkedProducts(1);
 			$this->assertSame([3, 4, 2], $this->itemIds($result));
 		}
 
@@ -187,14 +201,14 @@
 			$this->insertLink(1, 2, 5);
 			$this->insertLink(1, 3, 3);
 			$this->insertLink(1, 4, 1);
-			$result = $this->recommender->linkedItems(1, limit: 2);
+			$result = $this->recommender->linkedProducts(1, limit: 2);
 			$this->assertCount(2, $result);
 		}
 
 		public function testLinkedItemsRespectsFilter(): void {
 			$this->insertLink(1, 2, 5);
 			$this->insertLink(1, 3, 3);
-			$result = $this->recommender->linkedItems(1, new ArrayEligibilityProvider([2]));
+			$result = $this->recommender->linkedProducts(1, new ArrayEligibilityProvider([2]));
 			$this->assertSame([2], $this->itemIds($result));
 		}
 
@@ -204,7 +218,7 @@
 		public function testLinkedItemsFilterFillsLimit(): void {
 			$this->insertLink(1, 2, 10);
 			$this->insertLink(1, 3, 5);
-			$this->assertSame([3], $this->itemIds($this->recommender->linkedItems(1, new ArrayEligibilityProvider([3]), 1)));
+			$this->assertSame([3], $this->itemIds($this->recommender->linkedProducts(1, new ArrayEligibilityProvider([3]), 1)));
 		}
 
 		/** Large allowlists use the bounded temporary-table path.
@@ -214,12 +228,12 @@
 			$this->insertLink(1, 2, 10);
 			$this->insertLink(1, 3, 5);
 			$allowed = array_merge(range(1000, 1500), [3]);
-			$this->assertSame([3], $this->itemIds($this->recommender->linkedItems(1, new ArrayEligibilityProvider($allowed), 1)));
-			$this->assertSame([3], $this->itemIds($this->recommender->linkedItems(1, new ArrayEligibilityProvider([3]), 1)));
+			$this->assertSame([3], $this->itemIds($this->recommender->linkedProducts(1, new ArrayEligibilityProvider($allowed), 1)));
+			$this->assertSame([3], $this->itemIds($this->recommender->linkedProducts(1, new ArrayEligibilityProvider([3]), 1)));
 		}
 
 		// =========================================================================
-		// memberRecommendations (links strategy)
+		// memberRecommendations (item_links source)
 		// =========================================================================
 
 		public function testMemberRecommendationsReturnsEmptyWhenNoLinks(): void {
@@ -284,7 +298,7 @@
 			$this->insertRating(1, 10, 0.9);
 			$this->insertLink(30, 10, 5);
 			$result = $this->recommender->memberReasons(1, 30);
-			$this->assertSame(RecommendationSource::ItemLinks, $result[0]->strategy);
+			$this->assertSame(RecommendationSource::ItemLinks, $result[0]->source);
 			$this->assertSame(5.0, $result[0]->score);
 		}
 
@@ -309,15 +323,15 @@
 		}
 
 		// =========================================================================
-		// slopeItems
+		// slopeProducts
 		// =========================================================================
 
 		public function testSlopeItemsReturnsItemsWithDiffScore(): void {
 			$this->insertLink(1, 2, 3, 0.6);
 			$this->insertLink(1, 3, 2, 0.2);
-			$result = $this->recommender->slopeItems(1);
+			$result = $this->recommender->slopeProducts(1);
 			$this->assertCount(2, $result);
-			$this->assertSame(RecommendationSource::SlopeOne, $result[0]->strategy);
+			$this->assertSame(RecommendationSource::SlopeOne, $result[0]->source);
 			$this->assertIsFloat($result[0]->score);
 		}
 
@@ -325,14 +339,14 @@
 			// item 2: diff=0.6/3=0.2, item 3: diff=0.9/2=0.45
 			$this->insertLink(1, 2, 3, 0.6);
 			$this->insertLink(1, 3, 2, 0.9);
-			$result = $this->recommender->slopeItems(1);
+			$result = $this->recommender->slopeProducts(1);
 			$this->assertSame([3, 2], $this->itemIds($result));
 		}
 
 		public function testSlopeItemsRespectsMinSupport(): void {
 			$this->insertLink(1, 2, 1, 0.5);
 			$this->insertLink(1, 3, 5, 0.5);
-			$result = $this->recommender->slopeItems(1, minSupport: 3);
+			$result = $this->recommender->slopeProducts(1, minSupport: 3);
 			$this->assertSame([3], $this->itemIds($result));
 		}
 
@@ -342,7 +356,7 @@
 		public function testSlopeItemsFilterFillsLimit(): void {
 			$this->insertLink(1, 2, 2, 0.8);
 			$this->insertLink(1, 3, 2, 0.2);
-			$this->assertSame(3, $this->recommender->slopeItems(1, eligibility: new ArrayEligibilityProvider([3]), limit: 1)[0]->itemId);
+			$this->assertSame(3, $this->recommender->slopeProducts(1, eligibility: new ArrayEligibilityProvider([3]), limit: 1)[0]->productId);
 		}
 
 		// =========================================================================
@@ -374,7 +388,7 @@
 			$this->insertLink(20, 30, 2, 0.1);
 			$all = $this->recommender->memberPredictions(1);
 			$this->assertCount(1, $all);
-			$this->assertSame(20, $all[0]->itemId);
+			$this->assertSame(20, $all[0]->productId);
 			$this->assertEqualsWithDelta($all[0]->predictedRating,
 				$this->recommender->memberPrediction(1, 20)->predictedRating, 0.00001);
 		}
@@ -471,7 +485,7 @@
 		public function testLinkedItemsIsolatedByCategory(): void {
 			$this->insertLink(1, 2, 5, 0.0, 1);
 			$this->insertLink(1, 3, 5, 0.0, 2);
-			$this->assertSame([2], $this->itemIds($this->recommender->linkedItems(1, category: 1)));
-			$this->assertSame([3], $this->itemIds($this->recommender->linkedItems(1, category: 2)));
+			$this->assertSame([2], $this->itemIds($this->recommender->linkedProducts(1, category: 1)));
+			$this->assertSame([3], $this->itemIds($this->recommender->linkedProducts(1, category: 2)));
 		}
 	}

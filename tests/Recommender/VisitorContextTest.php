@@ -42,9 +42,9 @@
 			$this->visitor->setRating(10, 0.9);
 			$ratings = $this->visitor->ratings();
 			$this->assertCount(1, $ratings);
-			$this->assertSame(10, $ratings[0]['product_id']);
-			$this->assertEqualsWithDelta(0.9, $ratings[0]['rating'], 0.0001);
-			$this->assertSame(1, $ratings[0]['category']);
+			$this->assertSame(10, $ratings[0]->productId);
+			$this->assertEqualsWithDelta(0.9, $ratings[0]->rating, 0.0001);
+			$this->assertCount(1, $this->visitor->ratings(1));
 		}
 		
 		public function testSetRatingUpdatesExistingEntry(): void {
@@ -52,7 +52,7 @@
 			$this->visitor->setRating(10, 0.9);
 			$ratings = $this->visitor->ratings();
 			$this->assertCount(1, $ratings);
-			$this->assertEqualsWithDelta(0.9, $ratings[0]['rating'], 0.0001);
+			$this->assertEqualsWithDelta(0.9, $ratings[0]->rating, 0.0001);
 		}
 		
 		public function testSetRatingStoresMultipleProducts(): void {
@@ -71,8 +71,7 @@
 		
 		public function testSetRatingUsesDefaultCategoryWhenNull(): void {
 			$this->visitor->setRating(1, 0.8, null);
-			$ratings = $this->visitor->ratings();
-			$this->assertSame(1, $ratings[0]['category']);
+			$this->assertCount(1, $this->visitor->ratings(1));
 		}
 		
 		// =========================================================================
@@ -83,7 +82,7 @@
 			$this->visitor->setNotInterested(5);
 			$ratings = $this->visitor->ratings();
 			$this->assertCount(1, $ratings);
-			$this->assertEqualsWithDelta(RecommendationConfig::NOT_INTERESTED, $ratings[0]['rating'], 0.0001);
+			$this->assertEqualsWithDelta(RecommendationConfig::NOT_INTERESTED, $ratings[0]->rating, 0.0001);
 		}
 		
 		public function testSetNotInterestedUpdatesExistingRating(): void {
@@ -91,7 +90,7 @@
 			$this->visitor->setNotInterested(5);
 			$ratings = $this->visitor->ratings();
 			$this->assertCount(1, $ratings);
-			$this->assertEqualsWithDelta(RecommendationConfig::NOT_INTERESTED, $ratings[0]['rating'], 0.0001);
+			$this->assertEqualsWithDelta(RecommendationConfig::NOT_INTERESTED, $ratings[0]->rating, 0.0001);
 		}
 		
 		// =========================================================================
@@ -104,7 +103,7 @@
 			$this->visitor->deleteRating(1);
 			$ratings = $this->visitor->ratings();
 			$this->assertCount(1, $ratings);
-			$this->assertSame(2, $ratings[0]['product_id']);
+			$this->assertSame(2, $ratings[0]->productId);
 		}
 		
 		public function testRemoveRatingOnNonExistentProductIsNoop(): void {
@@ -164,6 +163,6 @@
 			$visitor->setRating(1, 0.8, 2);
 			$visitor->setRating(2, 0.5, 3);
 			$this->assertCount(1, $visitor->ratings(null));
-			$this->assertSame(1, $visitor->ratings(null)[0]['product_id']);
+			$this->assertSame(1, $visitor->ratings(null)[0]->productId);
 		}
 	}

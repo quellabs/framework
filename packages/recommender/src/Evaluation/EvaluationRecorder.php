@@ -70,19 +70,19 @@
 		/**
 		 * Record an outcome for a displayed item, ignoring exact retries of the same event.
 		 * @param ImpressionId $impressionId Display token
-		 * @param int $itemId Displayed item ID
+		 * @param int $productId Displayed item ID
 		 * @param string $eventId Stable printable ASCII event key, 1 to 128 characters
 		 * @param OutcomeType $type Action type
 		 * @param DateTimeImmutable $occurredAt Event time
 		 * @return void
 		 * @throws \InvalidArgumentException|\Exception When the IDs are invalid or the event conflicts with a stored one
 		 */
-		public function recordOutcome(ImpressionId $impressionId, int $itemId, string $eventId,
+		public function recordOutcome(ImpressionId $impressionId, int $productId, string $eventId,
 			OutcomeType $type, DateTimeImmutable $occurredAt): void {
 			EvaluationSchema::requireTables($this->connection);
 			
-			if ($itemId < 0 || $itemId > Identifier::MAX) {
-				throw new \InvalidArgumentException("Item ID must be an unsigned 32-bit integer, got {$itemId}.");
+			if ($productId < 0 || $productId > Identifier::MAX) {
+				throw new \InvalidArgumentException("Product ID must be an unsigned 32-bit integer, got {$productId}.");
 			}
 			
 			if (preg_match('/^[\x20-\x7e]{1,128}$/D', $eventId) !== 1) {
@@ -91,8 +91,8 @@
 			
 			$timestamp = MysqlTimestamp::utc($occurredAt);
 			
-			$this->connection->transactional(function () use ($impressionId, $itemId, $eventId, $type, $timestamp): void {
-				$this->assertOutcomeFollowsDisplay($impressionId, $itemId, $timestamp);
+			$this->connection->transactional(function () use ($impressionId, $productId, $eventId, $type, $timestamp): void {
+				$this->assertOutcomeFollowsDisplay($impressionId, $productId, $timestamp);
 				
 				$this->connection->execute('INSERT INTO vogoo_outcomes
 	                (event_id, impression_id, item_id, event_type, occurred_at)
@@ -101,13 +101,13 @@
 					[
 						$eventId,
 						$impressionId->binary(),
-						$itemId,
+						$productId,
 						$type->value,
 						$timestamp
 					]
 				);
 				
-				$this->assertStoredEventMatches($impressionId, $itemId, $eventId, $type, $timestamp);
+				$this->assertStoredEventMatches($impressionId, $productId, $eventId, $type, $timestamp);
 			});
 		}
 		
@@ -201,7 +201,7 @@
 					$item->rankingScore === null ||
 					abs($model->probability($item->diagnostics->featureSnapshot, 1) - $item->rankingScore) > 1e-9
 				) {
-					throw new \UnexpectedValueException("Features or reference score of item {$item->itemId} do not match model {$shown->modelId}.");
+					throw new \UnexpectedValueException("Features or reference score of product {$item->productId} do not match model {$shown->modelId}.");
 				}
 			}
 		}
@@ -242,7 +242,7 @@
 	            (impression_id, item_id, position, ranking_score, display_click_probability,
 	            model_id, feature_schema_version, feature_snapshot)
 	            VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-				[$id->binary(), $item->itemId, $position, $item->rankingScore,
+				[$id->binary(), $item->productId, $position, $item->rankingScore,
 					$displayProbability, $shown->modelId === null ? null : hex2bin($shown->modelId),
 					$schemaVersion, $snapshot]);
 			
@@ -250,21 +250,21 @@
 				$this->connection->execute('INSERT INTO vogoo_impression_evidence
 	                (impression_id, item_id, source, raw_score, source_rank, support_count,
 	                log_odds_contribution, contributing_item_ids) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-					[$id->binary(), $item->itemId, $signal->source->value, $signal->rawScore,
+					[$id->binary(), $item->productId, $signal->source->value, $signal->rawScore,
 						$signal->sourceRank, $signal->supportCount, $signal->logOddsContribution,
-						json_encode($signal->contributingItemIds, JSON_THROW_ON_ERROR)]);
+						json_encode($signal->contributingProductIds, JSON_THROW_ON_ERROR)]);
 			}
 		}
 		
 		/**
 		 * Check that the item was displayed in the impression and that the outcome is not earlier than the display.
 		 * @param ImpressionId $impressionId Display token
-		 * @param int $itemId Displayed item ID
+		 * @param int $productId Displayed item ID
 		 * @param string $timestamp UTC outcome timestamp
 		 * @return void
 		 * @throws \InvalidArgumentException When the item was not displayed or the outcome precedes the display
 		 */
-		private function assertOutcomeFollowsDisplay(ImpressionId $impressionId, int $itemId, string $timestamp): void {
+		private function assertOutcomeFollowsDisplay(ImpressionId $impressionId, int $productId, string $timestamp): void {
 			$row = $this->connection->execute('
 				SELECT
 					i.shown_at
@@ -274,11 +274,11 @@
 				      item.item_id = :item_id
 			', [
 				'impression_id' => $impressionId->binary(),
-				'item_id'       => $itemId,
+				'item_id'       => $productId,
 			])->fetchAssoc();
 			
 			if (!$row) {
-				throw new \InvalidArgumentException("Item {$itemId} is not part of impression {$impressionId->hex}.");
+				throw new \InvalidArgumentException("Product {$productId} is not part of impression {$impressionId->hex}.");
 			}
 			
 			if ($timestamp < (string)$row['shown_at']) {
@@ -289,14 +289,14 @@
 		/**
 		 * Check that a stored event with this ID has the same details as the one just written.
 		 * @param ImpressionId $impressionId Display token
-		 * @param int $itemId Displayed item ID
+		 * @param int $productId Displayed item ID
 		 * @param string $eventId Event key
 		 * @param OutcomeType $type Action type
 		 * @param string $timestamp UTC outcome timestamp
 		 * @return void
 		 * @throws \InvalidArgumentException When the stored event differs from the requested one
 		 */
-		private function assertStoredEventMatches(ImpressionId $impressionId, int $itemId, string $eventId,
+		private function assertStoredEventMatches(ImpressionId $impressionId, int $productId, string $eventId,
 			OutcomeType $type, string $timestamp): void {
 			$stored = $this->connection->execute('
 				SELECT
@@ -312,7 +312,7 @@
 			
 			if (
 				strtolower((string)$stored['impression_hex']) !== $impressionId->hex ||
-				(int)$stored['item_id'] !== $itemId ||
+				(int)$stored['item_id'] !== $productId ||
 				$stored['event_type'] !== $type->value ||
 				(string)$stored['occurred_at'] !== $timestamp
 			) {

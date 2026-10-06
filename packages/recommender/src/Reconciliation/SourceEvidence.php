@@ -22,7 +22,7 @@
 		public ?int $supportCount;
 		
 		/** @var array<int, int> Rated items behind this signal */
-		public array $contributingItemIds;
+		public array $contributingProductIds;
 		
 		/** @var float|null Fitted source contribution */
 		public ?float $logOddsContribution;
@@ -33,7 +33,7 @@
 		 * @param float|null $rawScore Native algorithm score
 		 * @param int|null $sourceRank Rank after eligibility filtering, at least 1
 		 * @param int|null $supportCount Summed pair support or rating count, at least 0
-		 * @param array<int, int> $contributingItemIds Rated items behind this signal
+		 * @param array<int, int> $contributingProductIds Rated items behind this signal
 		 * @param float|null $logOddsContribution Fitted source contribution
 		 * @throws \InvalidArgumentException When a value is outside its allowed range
 		 */
@@ -42,7 +42,7 @@
 			?float               $rawScore = null,
 			?int                 $sourceRank = null,
 			?int                 $supportCount = null,
-			array                $contributingItemIds = [],
+			array                $contributingProductIds = [],
 			?float               $logOddsContribution = null
 		) {
 			if ($rawScore !== null && !is_finite($rawScore)) {
@@ -61,13 +61,13 @@
 				throw new \InvalidArgumentException("Log-odds contribution must be finite, got {$logOddsContribution}.");
 			}
 			
-			self::assertContributingItemIds($contributingItemIds);
+			self::assertContributingProductIds($contributingProductIds);
 
 			$this->source = $source;
 			$this->rawScore = $rawScore;
 			$this->sourceRank = $sourceRank;
 			$this->supportCount = $supportCount;
-			$this->contributingItemIds = $contributingItemIds;
+			$this->contributingProductIds = $contributingProductIds;
 			$this->logOddsContribution = $logOddsContribution;
 		}
 
@@ -77,7 +77,7 @@
 		 * @return void
 		 * @throws \InvalidArgumentException When an ID is not an unsigned 32-bit integer
 		 */
-		private static function assertContributingItemIds(array $ids): void {
+		private static function assertContributingProductIds(array $ids): void {
 			foreach ($ids as $id) {
 				if (!is_int($id) || $id < 0 || $id > Identifier::MAX) {
 					throw new \InvalidArgumentException('Contributing item ID must be an unsigned 32-bit integer, got ' . var_export($id, true) . '.');

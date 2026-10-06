@@ -59,22 +59,24 @@
 		}
 		
 		/**
-		 * Return the top requested results for a persisted member.
+		 * Return the displayed slate of up to the requested limit for a persisted member.
 		 * @param int $memberId Member ID
 		 * @param ReconciliationRequest $request Candidate request
-		 * @return RecommendationList Top requested results
+		 * @return RecommendationList Displayed slate, at most the request limit
+		 * @throws \InvalidArgumentException When the member ID is outside the unsigned 32-bit range
 		 */
-		public function memberRecommendations(int $memberId, ReconciliationRequest $request): RecommendationList {
+		public function memberSlate(int $memberId, ReconciliationRequest $request): RecommendationList {
 			return $this->firstPage($this->memberCandidatePool($memberId, $request), $request->limit);
 		}
 		
 		/**
-		 * Return the top requested results for an anonymous visitor.
+		 * Return the displayed slate of up to the requested limit for an anonymous visitor.
 		 * @param VisitorContext $visitor Visitor ratings
-		 * @param ReconciliationRequest $request Candidate request
-		 * @return RecommendationList Top requested results
+		 * @param ReconciliationRequest $request Candidate request, which must not include the user-similarity source
+		 * @return RecommendationList Displayed slate, at most the request limit
+		 * @throws \InvalidArgumentException When the request includes the user-similarity source
 		 */
-		public function visitorRecommendations(VisitorContext $visitor, ReconciliationRequest $request): RecommendationList {
+		public function visitorSlate(VisitorContext $visitor, ReconciliationRequest $request): RecommendationList {
 			return $this->firstPage($this->visitorCandidatePool($visitor, $request), $request->limit);
 		}
 		
@@ -127,8 +129,8 @@
 			$category = $this->config->resolveCategory($request->category);
 			
 			$ratings = [];
-			foreach ($visitor->ratings($category) as $row) {
-				$ratings[$row['product_id']] = $row['rating'];
+			foreach ($visitor->ratings($category) as $rating) {
+				$ratings[$rating->productId] = $rating->rating;
 			}
 			
 			return $this->rank($request, $category, $ratings, null);
@@ -175,7 +177,7 @@
 			}
 			
 			usort($items, function ($a, $b): int {
-				return ($b->rankingScore <=> $a->rankingScore) ?: ($a->itemId <=> $b->itemId);
+				return ($b->rankingScore <=> $a->rankingScore) ?: ($a->productId <=> $b->productId);
 			});
 			
 			return RecommendationList::ranked(
@@ -333,7 +335,7 @@
 				
 				$evidence = array_map(function ($signal) use ($contributions): SourceEvidence {
 					return new SourceEvidence($signal->source, $signal->rawScore, $signal->sourceRank, $signal->supportCount,
-						$signal->contributingItemIds, $contributions[$signal->source->value] ?? 0.0);
+						$signal->contributingProductIds, $contributions[$signal->source->value] ?? 0.0);
 				}, $evidence
 				);
 			}

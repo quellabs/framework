@@ -9,6 +9,19 @@
 		public const MAX = 4294967295;
 
 		/**
+		 * Validate that an ID is an unsigned 32-bit integer.
+		 * @param int $id ID to validate
+		 * @param string $name Error context, such as "Member ID"
+		 * @return void
+		 * @throws \InvalidArgumentException When the ID is outside the unsigned 32-bit range
+		 */
+		public static function assertId(int $id, string $name): void {
+			if ($id < 0 || $id > self::MAX) {
+				throw new \InvalidArgumentException("{$name} must be an unsigned 32-bit integer, got {$id}.");
+			}
+		}
+		
+		/**
 		 * Validate a key as a non-empty printable ASCII string within a byte limit.
 		 * @param string $value Key to validate
 		 * @param int $maxLength Maximum byte length

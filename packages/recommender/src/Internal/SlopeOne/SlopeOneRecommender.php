@@ -8,6 +8,7 @@
 	use Quellabs\Recommender\Internal\Query\Results;
 	use Quellabs\Recommender\PredictionResult;
 	use Quellabs\Recommender\VisitorContext;
+	use Quellabs\Recommender\VisitorRating;
 	
 	/**
 	 * Slope One predictions and rankings from the diff_slope and slope_count columns of vogoo_links.
@@ -16,8 +17,7 @@
 	 *
 	 * @phpstan-type ProductRating array{product_id: int, rating: float}
 	 * @phpstan-type ProductDiff array{product_id: int, diff: float}
-	 * @phpstan-import-type RatingList from VisitorContext
-	 */
+		 */
 	readonly class SlopeOneRecommender {
 	
 		/** @var Connection Database connection */
@@ -390,7 +390,7 @@
 			}
 			
 			usort($results, fn($a, $b) => ($b->predictedRating <=> $a->predictedRating)
-				?: ($b->supportCount <=> $a->supportCount) ?: ($a->itemId <=> $b->itemId));
+				?: ($b->supportCount <=> $a->supportCount) ?: ($a->productId <=> $b->productId));
 			return Results::limit($results, $limit);
 		}
 
@@ -415,15 +415,15 @@
 	
 		/**
 		 * Build a product-to-rating map of genuine ratings (>= 0.0, excluding not interested) for Slope One input.
-		 * @param RatingList $ratings Visitor rating entries
+		 * @param array<int, VisitorRating> $ratings Visitor ratings
 		 * @return array<int, float> Map of product_id to rating
 		 */
 		private function collectGenuineRatings(array $ratings): array {
 			$products = [];
 			
 			foreach ($ratings as $entry) {
-				if ($entry['rating'] >= 0.0) {
-					$products[$entry['product_id']] = $entry['rating'];
+				if ($entry->rating >= 0.0) {
+					$products[$entry->productId] = $entry->rating;
 				}
 			}
 			

@@ -55,7 +55,7 @@ class EligibilityProviderTest extends IntegrationTestCase {
 	 * @return array<int, int> Product IDs in result order
 	 */
 	private function itemIds(array $results): array {
-		return array_map(fn($result) => $result->itemId, $results);
+		return array_map(fn($result) => $result->productId, $results);
 	}
 
 	/** @return void */
@@ -63,8 +63,8 @@ class EligibilityProviderTest extends IntegrationTestCase {
 		$this->insertLink(1, 2, 10);
 		$this->insertLink(1, 3, 5);
 		$this->insertLink(1, 4, 1);
-		$this->assertSame([3], $this->itemIds($this->recommender->linkedItems(1, $this->rejecting(2), 1)));
-		$this->assertSame([4], $this->itemIds($this->recommender->linkedItems(1, $this->rejecting(2, 3), 1)));
+		$this->assertSame([3], $this->itemIds($this->recommender->linkedProducts(1, $this->rejecting(2), 1)));
+		$this->assertSame([4], $this->itemIds($this->recommender->linkedProducts(1, $this->rejecting(2, 3), 1)));
 	}
 
 	/** Fetching deeper must reach eligible rows beyond the first doubling steps.
@@ -81,14 +81,14 @@ class EligibilityProviderTest extends IntegrationTestCase {
 			}
 		}
 
-		$this->assertSame([57], $this->itemIds($this->recommender->linkedItems(1, $this->rejecting(...$rejected), 1)));
+		$this->assertSame([57], $this->itemIds($this->recommender->linkedProducts(1, $this->rejecting(...$rejected), 1)));
 	}
 
 	/** @return void */
 	public function testCustomProviderReturnsFewerResultsWhenNothingIsEligible(): void {
 		$this->insertLink(1, 2, 10);
 		$this->insertLink(1, 3, 5);
-		$this->assertSame([], $this->recommender->linkedItems(1, $this->rejecting(2, 3), 1));
+		$this->assertSame([], $this->recommender->linkedProducts(1, $this->rejecting(2, 3), 1));
 	}
 
 	/** An array provider and a custom provider with the same eligible set must give the same results.
@@ -111,8 +111,8 @@ class EligibilityProviderTest extends IntegrationTestCase {
 	 */
 	public function testEmptyArrayProviderReturnsNothing(): void {
 		$this->insertLink(1, 2, 10);
-		$this->assertSame([], $this->recommender->linkedItems(1, new ArrayEligibilityProvider([])));
-		$this->assertSame([], $this->recommender->slopeItems(1, new ArrayEligibilityProvider([])));
+		$this->assertSame([], $this->recommender->linkedProducts(1, new ArrayEligibilityProvider([])));
+		$this->assertSame([], $this->recommender->slopeProducts(1, new ArrayEligibilityProvider([])));
 	}
 
 	/** @return void */
@@ -149,6 +149,6 @@ class EligibilityProviderTest extends IntegrationTestCase {
 			}
 		};
 		$this->expectException(\UnexpectedValueException::class);
-		$this->recommender->linkedItems(1, $reversing);
+		$this->recommender->linkedProducts(1, $reversing);
 	}
 }

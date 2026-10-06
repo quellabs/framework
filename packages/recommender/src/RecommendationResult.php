@@ -2,37 +2,37 @@
 	
 	namespace Quellabs\Recommender;
 	
-	/** A recommendation with a score whose meaning is defined by its strategy. */
+	/** A recommendation with a score whose meaning is defined by its source. */
 	readonly class RecommendationResult {
 		
 		/** @var int Recommended product ID */
-		public int $itemId;
+		public int $productId;
 		
-		/** @var float Strategy-specific score */
+		/** @var float Source-specific score */
 		public float $score;
 		
 		/** @var RecommendationSource Candidate source that produced the score */
-		public RecommendationSource $strategy;
+		public RecommendationSource $source;
 		
-		/** @var array<int, int> Rated items contributing to the score */
-		public array $contributingItemIds;
+		/** @var array<int, int> Rated products contributing to the score */
+		public array $contributingProductIds;
 		
 		/**
 		 * Build a recommendation result from its scored fields.
-		 * @param int $itemId Recommended product ID
-		 * @param float $score Strategy-specific score
-		 * @param RecommendationSource $strategy Candidate source that produced the score
-		 * @param array<int, int> $contributingItemIds Rated items contributing to the score
+		 * @param int $productId Recommended product ID
+		 * @param float $score Source-specific score
+		 * @param RecommendationSource $source Candidate source that produced the score
+		 * @param array<int, int> $contributingProductIds Rated products contributing to the score
 		 */
 		public function __construct(
-			int    $itemId,
+			int    $productId,
 			float  $score,
-			RecommendationSource $strategy,
-			array  $contributingItemIds
+			RecommendationSource $source,
+			array  $contributingProductIds
 		) {
-			$this->itemId = $itemId;
+			$this->productId = $productId;
 			$this->score = $score;
-			$this->strategy = $strategy;
-			$this->contributingItemIds = $contributingItemIds;
+			$this->source = $source;
+			$this->contributingProductIds = $contributingProductIds;
 		}
 	}

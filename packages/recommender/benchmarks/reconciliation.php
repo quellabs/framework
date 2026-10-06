@@ -68,7 +68,7 @@
 	            $driver->setLogger($logger);
 	            $start = hrtime(true);
 	            try {
-	                $list = $reconciler->memberRecommendations(1, $request);
+	                $list = $reconciler->memberSlate(1, $request);
 	            } finally {
 	                $driver->disableQueryLogging();
 	                if ($previousLogger !== null) {
