@@ -77,6 +77,8 @@ Ratings run from 0.0 to 1.0, and -1.0 marks "not interested".
 | Task | Method | Returns |
 |------|--------|---------|
 | Rate a product | `RecommendationEngine::setRating()` | `void`, throws on invalid input |
+| Average rating for a product | `RecommendationEngine::productAverageRating()` | `float\|null`, averages genuine ratings only, excluding "not interested" |
+| Number of ratings for a product | `RecommendationEngine::productNumRatings()` | `int`, counts genuine ratings only |
 | Predicted rating for one product | `SlopeOneSource::predict()` with `Subject::member()` | `RecommendationResult\|null`, with the rating in `score` |
 | Predicted ratings for all unrated products | `SlopeOneSource::candidates()` with `Subject::member()` | `RecommendationResult[]`, with the rating in `score` |
 | Displayed slate for a member or visitor, filtered by catalogue eligibility | `RecommendationReconciler::slate()` with `Subject::member()` or `Subject::visitor()` | `RecommendationList` |
