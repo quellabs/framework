@@ -64,13 +64,14 @@ readonly class NewProductsSource implements CandidateSource {
 	 * @param int $limit Number of list positions without eligibility, or eligible results with it; zero for all
 	 * @param SourceSettings $settings Source settings, unused
 	 * @param int|null $category Category override
+	 * @param array<int, float>|null $seen Seen ratings of the subject, loaded when null
 	 * @return array<int, RecommendationResult> New products in list order
 	 * @throws \InvalidArgumentException When the subject is a product
 	 */
 	public function candidates(Subject $subject, ?EligibilityProvider $eligibility, int $limit,
-		SourceSettings $settings, ?int $category = null): array {
+		SourceSettings $settings, ?int $category = null, ?array $seen = null): array {
 		$this->assertSupported($subject);
-		$seen = $this->ratings->seen($subject, $this->config->resolveCategory($category));
+		$seen ??= $this->ratings->seen($subject, $this->config->resolveCategory($category));
 
 		if ($eligibility !== null) {
 			return $this->eligibilityFilter->firstEligible($eligibility, $this->unseen($seen, $this->productIds), $limit,

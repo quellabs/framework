@@ -401,6 +401,34 @@ class ReconciliationTest extends IntegrationTestCase {
         $this->assertLessThanOrEqual(8, $counts[1]);
     }
 
+    /** A request reads the subject's ratings once, however many rounds and sources it runs.
+     * @return void
+     */
+    public function testSubjectRatingsAreReadOncePerRequest(): void {
+        $this->insertRating(1, 10, 0.9);
+        $this->insertRating(2, 10, 0.9);
+        $this->insertRating(2, 40, 0.8);
+        $this->insertLink(10, 20, 10, 0.1);
+        $logger = new SqlCaptureLogger();
+        $driver = $this->connection->getDriver();
+        $previousLogger = $driver->getLogger();
+        $driver->setLogger($logger);
+        try {
+            $this->reconciler()->memberSlate(1, new ReconciliationRequest(new ArrayEligibilityProvider([20, 30]),
+                [RecommendationSource::ItemLinks, RecommendationSource::SlopeOne, RecommendationSource::TopRated,
+                    RecommendationSource::NewProducts, RecommendationSource::UserSimilarity],
+                5, 'home', [30]));
+        } finally {
+            $driver->disableQueryLogging();
+            if ($previousLogger !== null) {
+                $driver->setLogger($previousLogger);
+            }
+        }
+        $seenReads = array_values(array_filter($logger->queries,
+            fn($query) => preg_match('/SELECT\s+product_id,\s+rating\s+FROM vogoo_ratings/', $query) === 1));
+        $this->assertCount(1, $seenReads);
+    }
+
     /** @return void */
     public function testUserSimilarityUsesNeighboursForMembersOnly(): void {
         $this->insertRating(1, 10, 0.9);

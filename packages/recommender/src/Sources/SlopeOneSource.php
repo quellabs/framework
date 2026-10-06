@@ -74,17 +74,18 @@ readonly class SlopeOneSource implements CandidateSource {
 	 * @param int $limit Maximum results, or zero for all
 	 * @param SourceSettings $settings Source settings; minimum support applies to the pair count
 	 * @param int|null $category Category override
+	 * @param array<int, float>|null $seen Seen ratings of the subject, loaded when null
 	 * @return array<int, RecommendationResult> Products with their Slope One score and support
 	 */
 	public function candidates(Subject $subject, ?EligibilityProvider $eligibility, int $limit,
-		SourceSettings $settings, ?int $category = null): array {
+		SourceSettings $settings, ?int $category = null, ?array $seen = null): array {
 		$resolved = $this->config->resolveCategory($category);
 
 		return $this->eligibilityFilter->withEligibility($eligibility, $limit,
 			fn(int $depth): array => match ($subject->kind) {
 				SubjectKind::Product => $this->productRows($subject->id ?? throw new \LogicException('A product subject always has an ID.'),
 					$settings->minSupport, $depth, $category),
-				SubjectKind::Member, SubjectKind::Visitor => $this->ratedCandidates($subject, $resolved, $depth, $settings, null),
+				SubjectKind::Member, SubjectKind::Visitor => $this->ratedCandidates($subject, $resolved, $depth, $settings, null, $seen),
 			},
 			fn(RecommendationResult $row): int => $row->productId);
 	}
@@ -95,15 +96,16 @@ readonly class SlopeOneSource implements CandidateSource {
 	 * @param array<int, int> $productIds Product IDs to score
 	 * @param SourceSettings $settings Source settings; minimum support applies to the pair count
 	 * @param int|null $category Category override
+	 * @param array<int, float>|null $seen Seen ratings of the subject, loaded when null
 	 * @return array<int, RecommendationResult> Scored products, in no particular order
 	 */
-	public function scores(Subject $subject, array $productIds, SourceSettings $settings, ?int $category = null): array {
+	public function scores(Subject $subject, array $productIds, SourceSettings $settings, ?int $category = null, ?array $seen = null): array {
 		if ($subject->kind === SubjectKind::Product) {
 			return array_values(array_filter($this->candidates($subject, null, 0, $settings, $category),
 				fn(RecommendationResult $row): bool => in_array($row->productId, $productIds, true)));
 		}
 
-		return $this->ratedCandidates($subject, $this->config->resolveCategory($category), 0, $settings, $productIds);
+		return $this->ratedCandidates($subject, $this->config->resolveCategory($category), 0, $settings, $productIds, $seen);
 	}
 
 	/**
@@ -113,12 +115,13 @@ readonly class SlopeOneSource implements CandidateSource {
 	 * @param int $depth Number of top candidates, or zero for all
 	 * @param SourceSettings $settings Source settings; minimum support applies to the pair count
 	 * @param array<int, int>|null $productIds Restricts the products to these, or null for all
+	 * @param array<int, float>|null $seen Seen ratings of the subject, loaded when null
 	 * @return array<int, RecommendationResult>
 	 */
-	private function ratedCandidates(Subject $subject, int $category, int $depth, SourceSettings $settings, ?array $productIds): array {
+	private function ratedCandidates(Subject $subject, int $category, int $depth, SourceSettings $settings, ?array $productIds, ?array $seen): array {
 		return $this->linkCandidates->candidates($subject, $category, $depth, RecommendationSource::SlopeOne,
 			fn(string $join, string $restriction, ?int $limit): array => $this->candidateRows($join, $restriction, [], $category, $settings->minSupport, $limit),
-			$productIds);
+			$productIds, $seen);
 	}
 
 	/**

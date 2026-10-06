@@ -99,7 +99,7 @@ takes a `Subject`, which is a member, a visitor or a product:
 ### Limits
 
 - `limit` is the maximum number of results. `0` means all results. `Statistics` methods default to `10`. Source
-  `candidates()` methods have no default, so pass `limit` explicitly.
+  `candidates()` methods have no default, so pass `limit` explicitly. Each source accepts the subject's seen ratings as an optional last argument, `$seen`, so several sources can share one load; the reconciler uses this and standalone calls omit it.
 - With an `EligibilityProvider`, the recommender fetches deeper candidates until `limit` eligible results are found
   or the candidate depth cap (`max_candidate_depth`, default 2000) is reached. It can return fewer results than
   `limit` without an error. Check the count when the list must be full.
