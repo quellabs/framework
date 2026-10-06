@@ -10,6 +10,7 @@
 	use Quellabs\Recommender\Internal\UserSimilarity;
 	use Quellabs\Recommender\Internal\SlopeOne\SlopeOneSource;
 	use Quellabs\Recommender\Internal\Links\ItemLinksSource;
+use Quellabs\Recommender\Internal\TopRated\TopRatedSource;
 	use Quellabs\Recommender\RecommendationEngine;
 	use Quellabs\Recommender\Reconciliation\RecommendationReconciler;
 	
@@ -39,7 +40,8 @@
 		protected function reconciler(): RecommendationReconciler {
 			return new RecommendationReconciler($this->connection, $this->config,
 				new UserSimilarity($this->connection, $this->config, new RecommendationEngine($this->connection, $this->config)),
-				new SlopeOneSource($this->connection, $this->config), new ItemLinksSource($this->connection, $this->config));
+				new SlopeOneSource($this->connection, $this->config), new ItemLinksSource($this->connection, $this->config),
+				new TopRatedSource($this->connection, $this->config));
 		}
 		
 		/**

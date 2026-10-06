@@ -7,7 +7,6 @@
 	use Quellabs\Recommender\Internal\Model\ActiveModel;
 	use Quellabs\Recommender\Internal\Model\ClickModel;
 	use Quellabs\Recommender\Internal\Model\SourceFeatures;
-	use Quellabs\Recommender\Internal\Persistence\TemporaryTable;
 	use Quellabs\Recommender\Internal\Reconciliation\CandidateRoundState;
 	use Quellabs\Recommender\Internal\Query\CandidateRows;
 	use Quellabs\Recommender\Internal\Query\SubjectRatings;
@@ -16,6 +15,7 @@
 	use Quellabs\Recommender\Internal\UserSimilarity;
 	use Quellabs\Recommender\Internal\SlopeOne\SlopeOneSource;
 	use Quellabs\Recommender\Internal\Links\ItemLinksSource;
+	use Quellabs\Recommender\Internal\TopRated\TopRatedSource;
 
 	use Quellabs\Recommender\RecommendationList;
 	use Quellabs\Recommender\RecommendationResult;
@@ -40,9 +40,6 @@
 		/** @var RecommendationConfig Recommender settings */
 		private RecommendationConfig $config;
 
-		/** @var TemporaryTable Temporary tables for candidate sets and rating inputs */
-		private TemporaryTable $temporary;
-
 		/** @var EligibilityFilter Batched eligibility checks */
 		private EligibilityFilter $filter;
 
@@ -58,6 +55,9 @@
 		/** @var ItemLinksSource Item-links candidate source */
 		private ItemLinksSource $itemLinks;
 
+		/** @var TopRatedSource Top-rated candidate source */
+		private TopRatedSource $topRated;
+
 		/**
 		 * Build the reconciler.
 		 * @param Connection $connection Ratings database connection
@@ -65,14 +65,15 @@
 		 * @param UserSimilarity $similarity Neighbour source for member subjects
 		 * @param SlopeOneSource $slopeOne Slope One candidate source
 		 * @param ItemLinksSource $itemLinks Item-links candidate source
+		 * @param TopRatedSource $topRated Top-rated candidate source
 		 */
-		public function __construct(Connection $connection, RecommendationConfig $config, UserSimilarity $similarity, SlopeOneSource $slopeOne, ItemLinksSource $itemLinks) {
+		public function __construct(Connection $connection, RecommendationConfig $config, UserSimilarity $similarity, SlopeOneSource $slopeOne, ItemLinksSource $itemLinks, TopRatedSource $topRated) {
 			$this->connection = $connection;
 			$this->config = $config;
 			$this->similarity = $similarity;
 			$this->slopeOne = $slopeOne;
 			$this->itemLinks = $itemLinks;
-			$this->temporary = new TemporaryTable($connection);
+			$this->topRated = $topRated;
 			$this->filter = new EligibilityFilter($config);
 			$this->ratings = new SubjectRatings($connection);
 		}
@@ -155,7 +156,7 @@
 			$this->collectCandidateRounds($request, $state, $category, $ratings, $subject, $roundCap, $batchSize);
 
 			$signals = $this->collectSignals($request, $state);
-			$auditSignals = $this->auditSignals($state->eligibleIds(), $signals, $request, $ratings, $subject, $category);
+			$auditSignals = $this->auditSignals($state->eligibleIds(), $signals, $request, $subject, $category);
 			$activeModel = $this->activeModel($category, $request);
 			
 			$items = [];
@@ -437,19 +438,18 @@
 		 * @param array<int, int> $eligibleIds Eligible pool IDs
 		 * @param array<int, array<int, SourceEvidence>> $nominatedSignals Depth-bounded nominations
 		 * @param ReconciliationRequest $request Enabled source settings
-		 * @param array<int, float> $ratings Seen ratings
 		 * @param Subject $subject Member or visitor
 		 * @param int $category Resolved category
 		 * @return array<int, array<int, SourceEvidence>> Additional audit signals without source rank
 		 */
-		private function auditSignals(array $eligibleIds, array $nominatedSignals, ReconciliationRequest $request, array $ratings, Subject $subject, int $category): array {
+		private function auditSignals(array $eligibleIds, array $nominatedSignals, ReconciliationRequest $request, Subject $subject, int $category): array {
 			$audit = [];
 
 			foreach ($request->sources as $source) {
 				$missing = $this->unnominatedIds($eligibleIds, $nominatedSignals, $source);
 
 				if ($missing !== []) {
-					$this->auditSource($source, $missing, $request, $ratings, $subject, $category, $audit);
+					$this->auditSource($source, $missing, $request, $subject, $category, $audit);
 				}
 			}
 			
@@ -461,13 +461,12 @@
 		 * @param RecommendationSource $source Source to audit
 		 * @param array<int, int> $missing Eligible IDs the source did not nominate
 		 * @param ReconciliationRequest $request Enabled source settings
-		 * @param array<int, float> $ratings Seen ratings
 		 * @param Subject $subject Member or visitor
 		 * @param int $category Resolved category
 		 * @param array<int, array<int, SourceEvidence>> $audit Audit signals by candidate, filled in place
 		 * @return void
 		 */
-		private function auditSource(RecommendationSource $source, array $missing, ReconciliationRequest $request, array $ratings, Subject $subject, int $category, array &$audit): void {
+		private function auditSource(RecommendationSource $source, array $missing, ReconciliationRequest $request, Subject $subject, int $category, array &$audit): void {
 			if ($source === RecommendationSource::NewProducts) {
 				$this->auditNewProducts($missing, $request, $audit);
 				return;
@@ -483,24 +482,29 @@
 				return;
 			}
 
-			if ($source === RecommendationSource::TopRated) {
-				foreach ($this->normalizeRows($this->auditTopRatedRows($missing, $request, $category), $source, $ratings) as $row) {
-					$audit[$row['id']][] = new SourceEvidence($source, $row['score'], null, $row['count'], $row['contributors']);
-				}
-
-				return;
-			}
-
-			$scored = $source === RecommendationSource::SlopeOne
-				? $this->slopeOne->scores($subject, $missing, $request->tuning->sources, $category)
-				: $this->itemLinks->scores($subject, $missing, $request->tuning->sources, $category);
-
-			foreach ($scored as $result) {
+			foreach ($this->scoredBy($source, $subject, $missing, $request, $category) as $result) {
 				$audit[$result->productId][] = new SourceEvidence($source, $result->score, null,
 					$result->supportCount, $result->contributingProductIds);
 			}
 		}
 		
+		/**
+		 * Score the given candidates with a rated source, scored against the subject.
+		 * @param RecommendationSource $source Source to score with; it must have a scores() query
+		 * @param Subject $subject Member or visitor
+		 * @param array<int, int> $missing Candidate IDs to score
+		 * @param ReconciliationRequest $request Source settings
+		 * @param int $category Resolved category
+		 * @return array<int, \Quellabs\Recommender\RecommendationResult> Scored candidates
+		 */
+		private function scoredBy(RecommendationSource $source, Subject $subject, array $missing, ReconciliationRequest $request, int $category): array {
+			return match ($source) {
+				RecommendationSource::SlopeOne => $this->slopeOne->scores($subject, $missing, $request->tuning->sources, $category),
+				RecommendationSource::ItemLinks => $this->itemLinks->scores($subject, $missing, $request->tuning->sources, $category),
+				RecommendationSource::TopRated => $this->topRated->scores($subject, $missing, $request->tuning->sources, $category),
+				default => throw new \LogicException("Source {$source->value} has no scores query."),
+			};
+		}
 		/**
 		 * Return the eligible IDs that the given source did not nominate.
 		 * @param array<int, int> $eligibleIds Eligible pool IDs
@@ -563,54 +567,6 @@
 		}
 		
 		/**
-		 * Score missing candidates against the top-rated aggregate.
-		 * @param array<int, int> $missing Candidate IDs without a nomination
-		 * @param ReconciliationRequest $request Request with the top-rated minimum
-		 * @param int $category Resolved category
-		 * @return array<mixed> Aggregate candidate rows
-		 */
-		private function auditTopRatedRows(array $missing, ReconciliationRequest $request, int $category): array {
-			return $this->temporary->withIdTable('vogoo_audit_candidates_', $missing,
-				function (string $table) use ($category, $request): array {
-					return $this->topRatedRows($category, $request,
-						"AND EXISTS (SELECT 1 FROM {$table} candidates WHERE candidates.product_id = r.product_id)", null);
-				});
-		}
-		
-		/**
-		 * Run the top-rated aggregate under a restriction, keeping the top rows when a depth is given.
-		 * @param int $category Resolved category
-		 * @param ReconciliationRequest $request Request with the top-rated minimum
-		 * @param string $restriction Extra predicate limiting the products, referring to r.product_id
-		 * @param int|null $depth Keeps the top rows by score up to this depth, or all rows when null
-		 * @return array<mixed> Aggregate candidate rows
-		 */
-		private function topRatedRows(int $category, ReconciliationRequest $request, string $restriction, ?int $depth): array {
-			return $this->connection->execute($this->topRatedSql($restriction, $depth),
-				['category' => $category, 'minimum' => $request->tuning->sources->topRatedMinRatings])->fetchAll('assoc');
-		}
-		
-		/**
-		 * Build the query that averages the genuine ratings of each product, optionally restricted and ranked.
-		 * @param string $restriction Extra predicate limiting the products, referring to r.product_id
-		 * @param int|null $depth Keeps the top rows by score up to this depth, or all rows when null
-		 * @return string Query with :category and :minimum placeholders
-		 */
-		private function topRatedSql(string $restriction, ?int $depth): string {
-			$sql = "
-				SELECT
-					r.product_id AS id,
-					AVG(r.rating) AS score,
-					COUNT(*) AS support_count
-				FROM vogoo_ratings r
-				WHERE r.category = :category AND
-					r.rating >= 0 {$restriction}
-				GROUP BY r.product_id HAVING support_count >= :minimum";
-			
-			return $depth === null ? $sql : $sql . " ORDER BY score DESC, id ASC LIMIT {$depth}";
-		}
-		
-		/**
 		 * Generate the bounded candidates of one source.
 		 * @param RecommendationSource $source Candidate generator
 		 * @param Subject $subject Member or visitor
@@ -626,7 +582,7 @@
 			}
 
 			if ($source === RecommendationSource::TopRated) {
-				return $this->generateTopRated($ratings, $category, $depth, $request);
+				return array_map(self::asRow(...), $this->topRated->candidates($subject, null, $depth, $request->tuning->sources, $category));
 			}
 
 			if ($source === RecommendationSource::UserSimilarity) {
@@ -655,24 +611,6 @@
 			return $rows;
 		}
 		
-		/**
-		 * Return the top-rated items the member has not seen, up to the depth.
-		 * @param array<int, float> $ratings Seen ratings
-		 * @param int $category Resolved category
-		 * @param int $depth Requested source depth
-		 * @param ReconciliationRequest $request Source settings
-		 * @return array<int, CandidateRow>
-		 */
-		private function generateTopRated(array $ratings, int $category, int $depth, ReconciliationRequest $request): array {
-			$rows = $this->temporary->withIdTable('vogoo_seen_', array_keys($ratings),
-				function (string $seenTable) use ($category, $request, $depth): array {
-					return $this->topRatedRows($category, $request,
-						"AND NOT EXISTS (SELECT 1 FROM {$seenTable} s WHERE s.product_id = r.product_id)", $depth);
-				});
-
-			return $this->normalizeRows($rows, RecommendationSource::TopRated, $ratings);
-		}
-
 		/**
 		 * Return the similarity-scored neighbour candidates, up to the depth.
 		 * @param Subject $subject Subject, which must be a member
@@ -712,18 +650,6 @@
 				: $this->itemLinks->candidates($subject, null, $depth, $request->tuning->sources, $category);
 
 			return array_map(self::asRow(...), $results);
-		}
-
-		/**
-		 * Convert SQL rows into candidate rows, dropping IDs that were already seen.
-		 * @param array<mixed> $rows SQL rows
-		 * @param RecommendationSource $source Source that produced the rows
-		 * @param array<int, float> $seen Previously rated and rejected IDs
-		 * @return array<int, CandidateRow>
-		 * @throws \UnexpectedValueException When a row or its contributors are malformed
-		 */
-		private function normalizeRows(array $rows, RecommendationSource $source, array $seen): array {
-			return array_map(self::asRow(...), CandidateRows::fromSql($rows, $source, $seen));
 		}
 
 		/**

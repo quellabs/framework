@@ -6,6 +6,7 @@ use Quellabs\Recommender\ArrayEligibilityProvider;
 use Quellabs\Recommender\CandidateSource;
 use Quellabs\Recommender\Internal\Links\ItemLinksSource;
 use Quellabs\Recommender\Internal\SlopeOne\SlopeOneSource;
+use Quellabs\Recommender\Internal\TopRated\TopRatedSource;
 use Quellabs\Recommender\Reconciliation\SourceSettings;
 use Quellabs\Recommender\Subject;
 use Quellabs\Recommender\SubjectKind;
@@ -120,6 +121,27 @@ class CandidateSourceTest extends IntegrationTestCase {
             $this->assertSame([40], $this->candidateIds($source->scores(Subject::member(5), [40, 99], new SourceSettings())));
             $this->assertSame([], $this->candidateIds($source->scores(Subject::member(5), [], new SourceSettings())));
         }
+    }
+
+    /** Top-rated orders by average rating, skips seen products and rejects product subjects.
+     * @return void
+     */
+    public function testTopRatedOrdersByAverageAndSkipsSeenProducts(): void {
+        $this->insertRating(5, 1, 1.0);
+        $this->insertRating(6, 20, 0.9);
+        $this->insertRating(7, 20, 0.7);
+        $this->insertRating(6, 40, 0.5);
+        $this->insertRating(7, 40, 0.4);
+        $source = new TopRatedSource($this->connection, $this->config);
+
+        $this->assertSame([20, 40], $this->candidateIds($source->candidates(Subject::member(5), null, 0, new SourceSettings())));
+        $this->assertSame([20], $this->candidateIds($source->candidates(Subject::member(5), null, 1, new SourceSettings())));
+        $scored = $this->candidateIds($source->scores(Subject::member(5), [20, 40, 1], new SourceSettings()));
+        sort($scored);
+        $this->assertSame([20, 40], $scored);
+        $this->assertFalse($source->supports(SubjectKind::Product));
+        $this->expectException(\InvalidArgumentException::class);
+        $source->candidates(Subject::product(1), null, 0, new SourceSettings());
     }
 
     /** Single-product lookups answer only for member and visitor subjects.
