@@ -16,6 +16,7 @@
 	use Quellabs\Recommender\Internal\SlopeOne\SlopeOneSource;
 	use Quellabs\Recommender\Internal\Links\ItemLinksSource;
 	use Quellabs\Recommender\Internal\TopRated\TopRatedSource;
+	use Quellabs\Recommender\Internal\NewProducts\NewProductsSource;
 
 	use Quellabs\Recommender\RecommendationList;
 	use Quellabs\Recommender\RecommendationResult;
@@ -214,7 +215,7 @@
 				$newIds = $round === 0 ? $additional : [];
 				
 				foreach ($request->sources as $source) {
-					$newIds = array_merge($newIds, $this->nominateSource($source, $round, $request, $state, $category, $ratings, $subject));
+					$newIds = array_merge($newIds, $this->nominateSource($source, $round, $request, $state, $category, $subject));
 				}
 				
 				foreach ($this->filter->check($request->eligibility, $state->claimUnsubmitted($newIds), $batchSize) as $id) {
@@ -238,20 +239,19 @@
 		 * @param ReconciliationRequest $request Request
 		 * @param CandidateRoundState $state Round bookkeeping, updated in place
 		 * @param int $category Resolved category
-		 * @param array<int, float> $ratings Seen ratings
 		 * @param Subject $subject Member or visitor
 		 * @return array<int, int> Unsubmitted IDs this source newly nominated
 		 * @throws \RuntimeException When the source changes its candidate order during depth backfill
 		 */
 		private function nominateSource(RecommendationSource $source, int $round, ReconciliationRequest $request,
-			CandidateRoundState $state, int $category, array $ratings, Subject $subject): array {
+			CandidateRoundState $state, int $category, Subject $subject): array {
 			$key = $source->value;
 
 			if ($round > 0 && $state->depth($key) <= $state->nominationCount($key)) {
 				return [];
 			}
 
-			$current = $this->generate($source, $subject, $ratings, $category, $state->depth($key), $request);
+			$current = $this->generate($source, $subject, $category, $state->depth($key), $request);
 			$old = $state->nominations($key);
 			
 			if (array_slice(array_column($current, 'id'), 0, count($old)) !== array_column($old, 'id')) {
@@ -467,11 +467,6 @@
 		 * @return void
 		 */
 		private function auditSource(RecommendationSource $source, array $missing, ReconciliationRequest $request, Subject $subject, int $category, array &$audit): void {
-			if ($source === RecommendationSource::NewProducts) {
-				$this->auditNewProducts($missing, $request, $audit);
-				return;
-			}
-
 			if ($source === RecommendationSource::UserSimilarity) {
 				$memberId = self::memberId($subject);
 
@@ -483,7 +478,7 @@
 			}
 
 			foreach ($this->scoredBy($source, $subject, $missing, $request, $category) as $result) {
-				$audit[$result->productId][] = new SourceEvidence($source, $result->score, null,
+				$audit[$result->productId][] = new SourceEvidence($source, self::rawScore($result), null,
 					$result->supportCount, $result->contributingProductIds);
 			}
 		}
@@ -499,11 +494,29 @@
 		 */
 		private function scoredBy(RecommendationSource $source, Subject $subject, array $missing, ReconciliationRequest $request, int $category): array {
 			return match ($source) {
+				RecommendationSource::NewProducts => $this->newProducts($request)->scores($subject, $missing, $request->tuning->sources, $category),
 				RecommendationSource::SlopeOne => $this->slopeOne->scores($subject, $missing, $request->tuning->sources, $category),
 				RecommendationSource::ItemLinks => $this->itemLinks->scores($subject, $missing, $request->tuning->sources, $category),
 				RecommendationSource::TopRated => $this->topRated->scores($subject, $missing, $request->tuning->sources, $category),
 				default => throw new \LogicException("Source {$source->value} has no scores query."),
 			};
+		}
+		/**
+		 * Build the new-products source for one request's ordered list.
+		 * @param ReconciliationRequest $request Request with the new-product list
+		 * @return NewProductsSource
+		 */
+		private function newProducts(ReconciliationRequest $request): NewProductsSource {
+			return new NewProductsSource($this->connection, $this->config, $request->newProductIds);
+		}
+
+		/**
+		 * Return the native score of a result, or null for a new product, which has no score.
+		 * @param RecommendationResult $result Candidate result
+		 * @return float|null
+		 */
+		private static function rawScore(RecommendationResult $result): ?float {
+			return $result->source === RecommendationSource::NewProducts ? null : $result->score;
 		}
 		/**
 		 * Return the eligible IDs that the given source did not nominate.
@@ -526,23 +539,6 @@
 			}
 			
 			return $missing;
-		}
-		
-		/**
-		 * Add new-product evidence for missing candidates that are listed as new products.
-		 * @param array<int, int> $missing Candidate IDs without a nomination
-		 * @param ReconciliationRequest $request Request with the new-product list
-		 * @param array<int, array<int, SourceEvidence>> $audit Audit signals, updated in place
-		 * @return void
-		 */
-		private function auditNewProducts(array $missing, ReconciliationRequest $request, array &$audit): void {
-			$newProducts = array_fill_keys($request->newProductIds, true);
-			
-			foreach ($missing as $id) {
-				if (isset($newProducts[$id])) {
-					$audit[$id][] = new SourceEvidence(RecommendationSource::NewProducts);
-				}
-			}
 		}
 		
 		/**
@@ -570,15 +566,14 @@
 		 * Generate the bounded candidates of one source.
 		 * @param RecommendationSource $source Candidate generator
 		 * @param Subject $subject Member or visitor
-		 * @param array<int, float> $ratings Seen ratings
 		 * @param int $category Resolved category
 		 * @param int $depth Requested source depth
 		 * @param ReconciliationRequest $request Source settings
 		 * @return array<int, CandidateRow>
 		 */
-		private function generate(RecommendationSource $source, Subject $subject, array $ratings, int $category, int $depth, ReconciliationRequest $request): array {
+		private function generate(RecommendationSource $source, Subject $subject, int $category, int $depth, ReconciliationRequest $request): array {
 			if ($source === RecommendationSource::NewProducts) {
-				return $this->generateNewProducts($request, $ratings, $depth);
+				return array_map(self::asRow(...), $this->newProducts($request)->candidates($subject, null, $depth, $request->tuning->sources, $category));
 			}
 
 			if ($source === RecommendationSource::TopRated) {
@@ -590,25 +585,6 @@
 			}
 
 			return $this->generateFromLinks($source, $subject, $category, $depth, $request);
-		}
-		
-		/**
-		 * Return the first unseen new products, up to the depth.
-		 * @param ReconciliationRequest $request Request with the new-product list
-		 * @param array<int, float> $ratings Seen ratings
-		 * @param int $depth Requested source depth
-		 * @return array<int, CandidateRow>
-		 */
-		private function generateNewProducts(ReconciliationRequest $request, array $ratings, int $depth): array {
-			$rows = [];
-			
-			foreach (array_slice($request->newProductIds, 0, $depth) as $id) {
-				if (!array_key_exists($id, $ratings)) {
-					$rows[] = ['id' => $id, 'score' => null, 'count' => null, 'contributors' => []];
-				}
-			}
-			
-			return $rows;
 		}
 		
 		/**
@@ -660,7 +636,7 @@
 		private static function asRow(RecommendationResult $result): array {
 			return [
 				'id'           => $result->productId,
-				'score'        => $result->score,
+				'score'        => self::rawScore($result),
 				'count'        => $result->supportCount,
 				'contributors' => $result->contributingProductIds,
 			];

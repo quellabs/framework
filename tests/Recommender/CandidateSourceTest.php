@@ -5,6 +5,7 @@ namespace Quellabs\Recommender\Tests;
 use Quellabs\Recommender\ArrayEligibilityProvider;
 use Quellabs\Recommender\CandidateSource;
 use Quellabs\Recommender\Internal\Links\ItemLinksSource;
+use Quellabs\Recommender\Internal\NewProducts\NewProductsSource;
 use Quellabs\Recommender\Internal\SlopeOne\SlopeOneSource;
 use Quellabs\Recommender\Internal\TopRated\TopRatedSource;
 use Quellabs\Recommender\Reconciliation\SourceSettings;
@@ -142,6 +143,20 @@ class CandidateSourceTest extends IntegrationTestCase {
         $this->assertFalse($source->supports(SubjectKind::Product));
         $this->expectException(\InvalidArgumentException::class);
         $source->candidates(Subject::product(1), null, 0, new SourceSettings());
+    }
+
+    /** New products keep list order, skip seen products, and count seen list positions toward depth.
+     * @return void
+     */
+    public function testNewProductsKeepListOrderAndCountSeenPositions(): void {
+        $this->insertRating(5, 1, 1.0);
+        $source = new NewProductsSource($this->connection, $this->config, [1, 30, 40]);
+
+        $this->assertSame([30, 40], $this->candidateIds($source->candidates(Subject::member(5), null, 0, new SourceSettings())));
+        $this->assertSame([30], $this->candidateIds($source->candidates(Subject::member(5), null, 2, new SourceSettings())));
+        $this->assertSame([40], $this->candidateIds($source->scores(Subject::member(5), [40, 99], new SourceSettings())));
+        $this->expectException(\InvalidArgumentException::class);
+        $source->scores(Subject::product(1), [1], new SourceSettings());
     }
 
     /** Single-product lookups answer only for member and visitor subjects.
