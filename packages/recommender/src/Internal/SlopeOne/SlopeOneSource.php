@@ -7,6 +7,7 @@ use Quellabs\Recommender\CandidateSource;
 use Quellabs\Recommender\Config\RecommendationConfig;
 use Quellabs\Recommender\EligibilityProvider;
 use Quellabs\Recommender\Internal\Eligibility\EligibilityFilter;
+use Quellabs\Recommender\Internal\Identifier;
 use Quellabs\Recommender\Internal\Links\LinkCandidates;
 use Quellabs\Recommender\Internal\Persistence\TemporaryTable;
 use Quellabs\Recommender\Internal\Query\Results;
@@ -194,60 +195,31 @@ readonly class SlopeOneSource implements CandidateSource {
 	}
 
 	/**
-	 * Predict a member's rating for a single product using Slope One.
-	 * @param int $memberId Member ID
-	 * @param int $productId Candidate ID
-	 * @param int $minSupport Minimum summed pair support
+	 * Predict one rating for a member or visitor with directed-pair support, whether or not the subject has seen the product.
+	 * @param Subject $subject Member or visitor subject
+	 * @param int $product Product ID to predict
+	 * @param int $minSupport Minimum summed pair support, at least 1
 	 * @param int|null $category Category override
-	 * @return RecommendationResult|null
-	 * @throws \InvalidArgumentException When the minimum support is not positive
+	 * @return RecommendationResult|null Prediction as the score, or null when no linked rating gives support
+	 * @throws \InvalidArgumentException When the subject is a product, or the product or minimum support is invalid
 	 */
-	public function memberPredictDetailed(int $memberId, int $productId, int $minSupport = 1, ?int $category = null): ?RecommendationResult {
+	public function predict(Subject $subject, int $product, int $minSupport = 1, ?int $category = null): ?RecommendationResult {
+		if ($subject->kind === SubjectKind::Product) {
+			throw new \InvalidArgumentException('Slope One predictions need a member or visitor subject.');
+		}
+
+		Identifier::assertId($product, 'Product ID');
 		$this->validateSupport($minSupport);
 		$resolvedCategory = $this->config->resolveCategory($category);
 
-		return $this->firstPrediction($this->candidateRows(
-			$this->memberRatingJoin(), 'AND l.item_id2 = :product', ['member' => $memberId, 'product' => $productId],
-			$resolvedCategory, $minSupport, 1));
-	}
+		if ($subject->kind === SubjectKind::Member) {
+			return $this->firstPrediction($this->candidateRows(
+				$this->memberRatingJoin(), 'AND l.item_id2 = :product',
+				['member' => $subject->id ?? throw new \LogicException('A member subject always has an ID.'), 'product' => $product],
+				$resolvedCategory, $minSupport, 1));
+		}
 
-	/**
-	 * Predict all unseen member ratings with directed-pair support.
-	 * @param int $memberId Member ID
-	 * @param int $limit Maximum results, or zero for all
-	 * @param int $minSupport Minimum summed pair support
-	 * @param int|null $category Category override
-	 * @return array<int, RecommendationResult>
-	 * @throws \InvalidArgumentException When the minimum support is not positive
-	 */
-	public function memberPredictAllDetailed(int $memberId, int $limit = 0,
-		int $minSupport = 1, ?int $category = null): array {
-		$this->validateSupport($minSupport);
-		$resolvedCategory = $this->config->resolveCategory($category);
-
-		return $this->predictionsFromRows($this->candidateRows(
-			$this->memberRatingJoin(),
-			'AND NOT EXISTS (SELECT 1 FROM vogoo_ratings seen
-				WHERE seen.member_id = :seen_member AND
-					seen.category = :seen_category AND
-					seen.product_id = l.item_id2
-			)',
-			['member' => $memberId, 'seen_member' => $memberId, 'seen_category' => $resolvedCategory],
-			$resolvedCategory, $minSupport, $limit > 0 ? $limit : null));
-	}
-
-	/**
-	 * Predict one visitor rating with directed-pair support.
-	 * @param VisitorContext $visitor Visitor ratings
-	 * @param int $productId Candidate ID
-	 * @param int $minSupport Minimum summed pair support
-	 * @param int|null $category Category override
-	 * @return RecommendationResult|null
-	 * @throws \InvalidArgumentException When the minimum support is not positive
-	 */
-	public function visitorPredictDetailed(VisitorContext $visitor, int $productId, int $minSupport = 1, ?int $category = null): ?RecommendationResult {
-		$this->validateSupport($minSupport);
-		$resolvedCategory = $this->config->resolveCategory($category);
+		$visitor = $subject->visitor ?? throw new \LogicException('A visitor subject always has a visitor context.');
 		$ratings = $this->collectGenuineRatings($visitor->ratings($resolvedCategory));
 
 		if ($ratings === []) {
@@ -256,37 +228,8 @@ readonly class SlopeOneSource implements CandidateSource {
 
 		return $this->temporary->withRatingTable('vogoo_visitor_prediction_input_', $ratings,
 			fn(string $table) => $this->firstPrediction($this->candidateRows(
-				"JOIN {$table} r ON r.product_id = l.item_id1", 'AND l.item_id2 = :product', ['product' => $productId],
+				"JOIN {$table} r ON r.product_id = l.item_id1", 'AND l.item_id2 = :product', ['product' => $product],
 				$resolvedCategory, $minSupport, 1)));
-	}
-
-	/**
-	 * Predict unseen visitor ratings with a batched temporary input table.
-	 * @param VisitorContext $visitor Visitor ratings
-	 * @param int $limit Maximum results, or zero for all
-	 * @param int $minSupport Minimum summed pair support
-	 * @param int|null $category Category override
-	 * @return array<int, RecommendationResult>
-	 * @throws \InvalidArgumentException When the minimum support is not positive
-	 */
-	public function visitorPredictAllDetailed(VisitorContext $visitor, int $limit = 0,
-		int $minSupport = 1, ?int $category = null): array {
-		$this->validateSupport($minSupport);
-		$resolvedCategory = $this->config->resolveCategory($category);
-		$ratings = $this->collectGenuineRatings($visitor->ratings($resolvedCategory));
-
-		if ($ratings === []) {
-			return [];
-		}
-
-		$seenIds = $visitor->ratedProductIds($resolvedCategory);
-
-		return $this->temporary->withRatingTable('vogoo_visitor_prediction_input_', $ratings,
-			fn(string $table) => $this->temporary->withIdTable('vogoo_visitor_seen_', $seenIds,
-				fn(string $seenTable) => $this->predictionsFromRows($this->candidateRows(
-					"JOIN {$table} r ON r.product_id = l.item_id1",
-					"AND NOT EXISTS (SELECT 1 FROM {$seenTable} s WHERE s.product_id = l.item_id2)",
-					[], $resolvedCategory, $minSupport, $limit > 0 ? $limit : null))));
 	}
 
 	/**
@@ -307,15 +250,6 @@ readonly class SlopeOneSource implements CandidateSource {
 	 */
 	private function firstPrediction(array $rows): ?RecommendationResult {
 		return $rows === [] ? null : $this->predictionFromRow($rows[0]);
-	}
-
-	/**
-	 * Convert candidate rows into predictions, keeping their order.
-	 * @param array<int, array<string, mixed>> $rows Rows from candidateRows()
-	 * @return array<int, RecommendationResult>
-	 */
-	private function predictionsFromRows(array $rows): array {
-		return array_map(fn(array $row): RecommendationResult => $this->predictionFromRow($row), $rows);
 	}
 
 	/**

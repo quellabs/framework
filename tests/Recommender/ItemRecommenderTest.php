@@ -126,11 +126,11 @@ use Quellabs\Recommender\MemberId;
 				$this->connection->execute('DROP TEMPORARY TABLE vogoo_links');
 			}
 			$created = array_values(array_filter($logger->queries,
-				fn($query) => str_contains($query, 'CREATE TEMPORARY TABLE vogoo_visitor_prediction_input_')));
+				fn($query) => str_contains($query, 'CREATE TEMPORARY TABLE vogoo_source_input_')));
 			$this->assertCount(1, $created);
-			$this->assertMatchesRegularExpression('/CREATE TEMPORARY TABLE (vogoo_visitor_prediction_input_[a-f0-9]+)/',
+			$this->assertMatchesRegularExpression('/CREATE TEMPORARY TABLE (vogoo_source_input_[a-f0-9]+)/',
 				$created[0]);
-			preg_match('/CREATE TEMPORARY TABLE (vogoo_visitor_prediction_input_[a-f0-9]+)/',
+			preg_match('/CREATE TEMPORARY TABLE (vogoo_source_input_[a-f0-9]+)/',
 				$created[0], $matches);
 			$this->assertContains("DROP TEMPORARY TABLE {$matches[1]}", $logger->queries);
 			try {

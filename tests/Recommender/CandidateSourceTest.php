@@ -72,6 +72,51 @@ class CandidateSourceTest extends IntegrationTestCase {
         }
     }
 
+    /** Predict one product for a member and a visitor, from the links of their genuine ratings.
+     * @return void
+     */
+    public function testSlopeOnePredictsOneProductForMemberAndVisitor(): void {
+        $this->insertRating(5, 1, 1.0);
+        $this->insertLink(1, 20, 5);
+        $visitor = new VisitorContext($this->config);
+        $visitor->setRating(1, 1.0);
+        $source = new SlopeOneSource($this->connection, $this->config);
+
+        $member = $source->predict(Subject::member(5), 20);
+        $this->assertSame(1.0, $member->score);
+        $this->assertSame(5, $member->supportCount);
+        $this->assertSame(20, $source->predict(Subject::visitor($visitor), 20)->productId);
+        $this->assertNull($source->predict(Subject::member(5), 99));
+    }
+
+    /** Reasons are the subject's liked products that link to the product, scored by the link's liked count.
+     * @return void
+     */
+    public function testItemLinksReasonsListLikedProductsLinkedToTheProduct(): void {
+        $this->insertRating(5, 1, 1.0);
+        $this->insertRating(5, 2, 0.1);
+        $this->insertLink(40, 1, 3);
+        $this->insertLink(40, 2, 9);
+        $source = new ItemLinksSource($this->connection, $this->config);
+        $visitor = new VisitorContext($this->config);
+        $visitor->setRating(1, 1.0);
+
+        foreach ([Subject::member(5), Subject::visitor($visitor)] as $subject) {
+            $reasons = $source->reasons($subject, 40);
+            $this->assertSame([1], $this->candidateIds($reasons));
+            $this->assertSame(3.0, $reasons[0]->score);
+        }
+    }
+
+    /** Single-product lookups answer only for member and visitor subjects.
+     * @return void
+     */
+    public function testSingleProductLookupsRejectProductSubjects(): void {
+        $source = new SlopeOneSource($this->connection, $this->config);
+        $this->expectException(\InvalidArgumentException::class);
+        $source->predict(Subject::product(1), 2);
+    }
+
     /**
      * Return both candidate sources, which share the link-table candidate code paths under test.
      * @return array<int, CandidateSource>
