@@ -8,6 +8,8 @@
 	use Quellabs\Recommender\ArrayEligibilityProvider;
 	use Quellabs\Recommender\Config\RecommendationConfig;
 	use Quellabs\Recommender\Reconciliation\RecommendationReconciler;
+use Quellabs\Recommender\Internal\UserSimilarity;
+use Quellabs\Recommender\RecommendationEngine;
 	use Quellabs\Recommender\RecommendationSource;
 	use Quellabs\Recommender\Reconciliation\ReconciliationRequest;
 	use Quellabs\Recommender\Reconciliation\ReconciliationTuning;
@@ -18,8 +20,9 @@
 		throw new \RuntimeException('Benchmark requires the test connection set by tests/bootstrap.php.');
 	}
 
-	$reconciler = new RecommendationReconciler($connection,
-	    new RecommendationConfig(directLinks: false, directSlope: false));
+	$config = new RecommendationConfig(directLinks: false, directSlope: false);
+	$reconciler = new RecommendationReconciler($connection, $config,
+	    new UserSimilarity($connection, $config, new RecommendationEngine($connection, $config)));
 	$driver = $connection->getDriver();
 	$previousLogger = $driver->getLogger();
 	$logger = new class extends AbstractLogger {

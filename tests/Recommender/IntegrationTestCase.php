@@ -7,6 +7,9 @@
 	use Quellabs\Recommender\Config\RecommendationConfig;
 	use Cake\Database\Log\LoggedQuery;
 	use Psr\Log\AbstractLogger;
+	use Quellabs\Recommender\Internal\UserSimilarity;
+	use Quellabs\Recommender\RecommendationEngine;
+	use Quellabs\Recommender\Reconciliation\RecommendationReconciler;
 	
 	/**
 	 * Base class for integration tests that require a live database connection.
@@ -25,6 +28,15 @@
 			
 			$this->connection->execute('TRUNCATE TABLE vogoo_ratings');
 			$this->connection->execute('TRUNCATE TABLE vogoo_links');
+		}
+		
+		/**
+		 * Build a reconciler with its user-similarity collaborator.
+		 * @return RecommendationReconciler
+		 */
+		protected function reconciler(): RecommendationReconciler {
+			return new RecommendationReconciler($this->connection, $this->config,
+				new UserSimilarity($this->connection, $this->config, new RecommendationEngine($this->connection, $this->config)));
 		}
 		
 		/**

@@ -14,8 +14,6 @@
 
 	use Quellabs\Recommender\Internal\UserSimilarity;
 	
-	use Quellabs\Recommender\RecommendationEngine;
-	
 	use Quellabs\Recommender\RecommendationList;
 	use Quellabs\Recommender\ScoreKind;
 	
@@ -45,14 +43,19 @@
 		/** @var EligibilityFilter Batched eligibility checks */
 		private EligibilityFilter $filter;
 		
+		/** @var UserSimilarity Neighbour candidates for member subjects */
+		private UserSimilarity $similarity;
+		
 		/**
 		 * Build the reconciler.
 		 * @param Connection $connection Ratings database connection
 		 * @param RecommendationConfig $config Recommender settings
+		 * @param UserSimilarity $similarity Neighbour source for member subjects
 		 */
-		public function __construct(Connection $connection, RecommendationConfig $config) {
+		public function __construct(Connection $connection, RecommendationConfig $config, UserSimilarity $similarity) {
 			$this->connection = $connection;
 			$this->config = $config;
+			$this->similarity = $similarity;
 			$this->temporary = new TemporaryTable($connection);
 			$this->filter = new EligibilityFilter($config);
 		}
@@ -555,9 +558,8 @@
 		 * @return void
 		 */
 		private function auditUserSimilarity(int $memberId, array $missing, ReconciliationRequest $request, int $category, array &$audit): void {
-			$similarity = new UserSimilarity($this->connection, $this->config, new RecommendationEngine($this->connection, $this->config));
 			
-			$rows = $similarity->memberRecommendationsScored(
+			$rows = $this->similarity->memberRecommendationsScored(
 				$memberId, $request->tuning->minNeighbourSimilarity, $request->tuning->maxNeighbours,
 				count($missing), $category, $missing
 			);
@@ -803,8 +805,7 @@
 				throw new \InvalidArgumentException('User similarity requires a persisted member.');
 			}
 			
-			$similarity = new UserSimilarity($this->connection, $this->config, new RecommendationEngine($this->connection, $this->config));
-			$rows = $similarity->memberRecommendationsScored($memberId, $request->tuning->minNeighbourSimilarity, $request->tuning->maxNeighbours, $depth, $category);
+			$rows = $this->similarity->memberRecommendationsScored($memberId, $request->tuning->minNeighbourSimilarity, $request->tuning->maxNeighbours, $depth, $category);
 			
 			return array_map(function ($row): array {
 				return [

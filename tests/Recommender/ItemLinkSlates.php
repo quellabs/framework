@@ -25,7 +25,7 @@ trait ItemLinkSlates {
 	 */
 	protected function memberLinks(int $member, ?EligibilityProvider $eligibility = null, int $limit = 10, ?ReconciliationTuning $tuning = null): array {
 		$request = new ReconciliationRequest($eligibility ?? $this->acceptAll(), [RecommendationSource::ItemLinks], $limit, 'test', tuning: $tuning);
-		return (new RecommendationReconciler($this->connection, $this->config))->memberSlate($member, $request)->items;
+		return $this->reconciler()->memberSlate($member, $request)->items;
 	}
 
 	/**
@@ -38,7 +38,7 @@ trait ItemLinkSlates {
 	 */
 	protected function visitorLinks(VisitorContext $visitor, ?EligibilityProvider $eligibility = null, int $limit = 10, ?ReconciliationTuning $tuning = null): array {
 		$request = new VisitorReconciliationRequest($eligibility ?? $this->acceptAll(), [VisitorSource::ItemLinks], $limit, 'test', tuning: $tuning);
-		return (new RecommendationReconciler($this->connection, $this->config))->visitorSlate($visitor, $request)->items;
+		return $this->reconciler()->visitorSlate($visitor, $request)->items;
 	}
 
 	/**

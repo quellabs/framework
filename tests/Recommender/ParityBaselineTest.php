@@ -104,7 +104,7 @@ class ParityBaselineTest extends IntegrationTestCase {
         $outputs = [];
         $items = new ItemRecommender($this->connection, $this->config);
         $stats = new Statistics($this->connection, $this->config);
-        $reconciler = new RecommendationReconciler($this->connection, $this->config);
+        $reconciler = $this->reconciler();
 
         // Item paths take null for eligibility-off; reconciliation requires a provider in both modes.
         foreach (['off' => null, 'on' => $this->restrictedProvider()] as $mode => $eligibility) {

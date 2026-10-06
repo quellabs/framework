@@ -2,13 +2,16 @@
 	
 	namespace Quellabs\Recommender\Integration;
 	
-	use Quellabs\Contracts\Context\MethodContextInterface;
+	use Cake\Database\Connection;
+use Quellabs\Contracts\Context\MethodContextInterface;
 	use Quellabs\Contracts\DependencyInjection\ServiceProviderInterface;
 	use Quellabs\Discover\Provider\AbstractProvider;
 	use Quellabs\Recommender\Config\RecommendationConfig;
 	use Quellabs\Recommender\Evaluation\EvaluationRecorder;
 	use Quellabs\Recommender\Evaluation\EvaluationReport;
 	use Quellabs\Recommender\Reconciliation\RecommendationReconciler;
+use Quellabs\Recommender\Internal\UserSimilarity;
+use Quellabs\Recommender\RecommendationEngine;
 	
 	/**
 	 * Registers the recommender services with Canvas's DI container.
@@ -49,10 +52,35 @@
 			array                   $metadata,
 			?MethodContextInterface $methodContext = null
 		): object {
+			if ($className === RecommendationReconciler::class) {
+				$connection = $this->dependency($dependencies, Connection::class);
+				$config = $this->dependency($dependencies, RecommendationConfig::class);
+				return new RecommendationReconciler($connection, $config,
+					new UserSimilarity($connection, $config, new RecommendationEngine($connection, $config)));
+			}
+
 			if ($className !== RecommendationConfig::class) {
 				return new $className(...$dependencies);
 			}
 	
 			return RecommendationConfig::fromArray($this->getConfig());
+		}
+
+		/**
+		 * Return the first dependency of the given type.
+		 * @template T of object
+		 * @param array<mixed> $dependencies Resolved constructor dependencies
+		 * @param class-string<T> $type Required type
+		 * @return T
+		 * @throws \InvalidArgumentException When no dependency has the type
+		 */
+		private function dependency(array $dependencies, string $type): object {
+			foreach ($dependencies as $dependency) {
+				if ($dependency instanceof $type) {
+					return $dependency;
+				}
+			}
+
+			throw new \InvalidArgumentException("Missing dependency {$type}.");
 		}
 	}
