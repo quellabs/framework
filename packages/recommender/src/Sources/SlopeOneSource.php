@@ -78,8 +78,7 @@ readonly class SlopeOneSource implements CandidateSource {
 	 * @param int|null $category Category override
 	 * @return array<int, RecommendationResult> Products with their Slope One score and support
 	 */
-	public function candidates(Subject $subject, ?EligibilityProvider $eligibility, int $limit,
-		SourceSettings $settings, ?int $category = null): array {
+	public function candidates(Subject $subject, ?EligibilityProvider $eligibility, int $limit, SourceSettings $settings, ?int $category = null): array {
 		$resolved = $this->config->resolveCategory($category);
 
 		return $this->eligibilityFilter->withEligibility($eligibility, $limit,

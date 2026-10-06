@@ -43,15 +43,7 @@
 		 * @return EvaluationSummary Displayed-item outcome counts and rates
 		 * @throws \InvalidArgumentException When the category, interval, or cutoff is invalid
 		 */
-		public function summary(
-			int                 $category,
-			DateTimeImmutable   $start,
-			DateTimeImmutable   $end,
-			DateTimeImmutable   $asOf,
-			AttributionWindows  $windows,
-			?RecommendationSource $source = null,
-			?string             $contextKey = null
-		): EvaluationSummary {
+		public function summary(int $category, DateTimeImmutable $start, DateTimeImmutable $end, DateTimeImmutable $asOf, AttributionWindows $windows, ?RecommendationSource $source = null, ?string $contextKey = null): EvaluationSummary {
 			EvaluationSchema::requireTables($this->connection);
 			$this->assertSummaryArguments($category, $start, $end, $asOf, $contextKey);
 	
@@ -86,8 +78,7 @@
 		 * @return void
 		 * @throws \InvalidArgumentException When the category, interval, cutoff, or context key is invalid
 		 */
-		private function assertSummaryArguments(int $category, DateTimeImmutable $start, DateTimeImmutable $end,
-			DateTimeImmutable $asOf, ?string $contextKey): void {
+		private function assertSummaryArguments(int $category, DateTimeImmutable $start, DateTimeImmutable $end, DateTimeImmutable $asOf, ?string $contextKey): void {
 			if ($category < 0 || $category > Identifier::MAX) {
 				throw new \InvalidArgumentException("Category must be an unsigned 32-bit integer, got {$category}.");
 			}
@@ -144,8 +135,7 @@
 		 * @return array<string, array<string, mixed>> Model and placement calibration summaries
 		 * @throws \InvalidArgumentException When the interval or click window is invalid
 		 */
-		public function calibrationByModel(DateTimeImmutable $start, DateTimeImmutable $end,
-			DateTimeImmutable $asOf, int $clickWindowSeconds): array {
+		public function calibrationByModel(DateTimeImmutable $start, DateTimeImmutable $end, DateTimeImmutable $asOf, int $clickWindowSeconds): array {
 			EvaluationSchema::requireTables($this->connection);
 			
 			if ($start >= $end || $asOf < $end) {
@@ -174,8 +164,7 @@
 		 * @param int $clickWindowSeconds Positive attribution period
 		 * @return array<int, CalibrationRow> Calibration rows
 		 */
-		private function fetchCalibrationRows(DateTimeImmutable $start, DateTimeImmutable $end,
-			DateTimeImmutable $asOf, int $clickWindowSeconds): array {
+		private function fetchCalibrationRows(DateTimeImmutable $start, DateTimeImmutable $end, DateTimeImmutable $asOf, int $clickWindowSeconds): array {
 			$clicked = OutcomeSubquery::exists('click', 'as_of', 'window');
 	
 			return $this->connection->execute("
@@ -225,8 +214,7 @@
 		 * @param int $clickWindowSeconds Positive attribution period
 		 * @return array<string, mixed> Calibration summary for the group
 		 */
-		private static function summarizeCalibrationGroup(string $key, array $samples, DateTimeImmutable $asOf,
-			int $clickWindowSeconds): array {
+		private static function summarizeCalibrationGroup(string $key, array $samples, DateTimeImmutable $asOf, int $clickWindowSeconds): array {
 			usort($samples, fn($a, $b) => $a['probability'] <=> $b['probability']);
 			$count = count($samples);
 			$clicks = array_sum(array_column($samples, 'clicked'));

@@ -215,8 +215,7 @@
 		 * @return array<int, int> Unsubmitted IDs this source newly nominated
 		 * @throws \RuntimeException When the source changes its candidate order during depth backfill
 		 */
-		private function nominateSource(RecommendationSource $source, int $round, ReconciliationRequest $request,
-			CandidateRoundState $state, int $category, Subject $subject, RequestSources $sources): array {
+		private function nominateSource(RecommendationSource $source, int $round, ReconciliationRequest $request, CandidateRoundState $state, int $category, Subject $subject, RequestSources $sources): array {
 			$key = $source->value;
 
 			if ($round > 0 && $state->depth($key) <= $state->nominationCount($key)) {

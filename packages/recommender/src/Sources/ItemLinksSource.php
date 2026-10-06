@@ -73,8 +73,7 @@ readonly class ItemLinksSource implements CandidateSource {
 	 * @param int|null $category Category override
 	 * @return array<int, RecommendationResult> Linked products, scored by liked count
 	 */
-	public function candidates(Subject $subject, ?EligibilityProvider $eligibility, int $limit,
-		SourceSettings $settings, ?int $category = null): array {
+	public function candidates(Subject $subject, ?EligibilityProvider $eligibility, int $limit, SourceSettings $settings, ?int $category = null): array {
 		$resolved = $this->config->resolveCategory($category);
 
 		return $this->eligibilityFilter->withEligibility($eligibility, $limit,

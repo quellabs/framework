@@ -29,13 +29,7 @@
 		 * @param int|null $supportCount Summed pair support, at least 1, or null when the source does not count support
 		 * @throws \InvalidArgumentException When the support count is below 1
 		 */
-		public function __construct(
-			int    $productId,
-			float  $score,
-			RecommendationSource $source,
-			array  $contributingProductIds,
-			?int   $supportCount = null
-		) {
+		public function __construct(int $productId, float $score, RecommendationSource $source, array $contributingProductIds, ?int $supportCount = null) {
 			if ($supportCount !== null && $supportCount < 1) {
 				throw new \InvalidArgumentException("Support count must be at least 1, got {$supportCount}.");
 			}

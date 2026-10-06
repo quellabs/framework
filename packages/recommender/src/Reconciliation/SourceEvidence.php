@@ -37,14 +37,7 @@
 		 * @param float|null $logOddsContribution Fitted source contribution
 		 * @throws \InvalidArgumentException When a value is outside its allowed range
 		 */
-		public function __construct(
-			RecommendationSource $source,
-			?float               $rawScore = null,
-			?int                 $sourceRank = null,
-			?int                 $supportCount = null,
-			array                $contributingProductIds = [],
-			?float               $logOddsContribution = null
-		) {
+		public function __construct(RecommendationSource $source, ?float $rawScore = null, ?int $sourceRank = null, ?int $supportCount = null, array $contributingProductIds = [], ?float $logOddsContribution = null) {
 			if ($rawScore !== null && !is_finite($rawScore)) {
 				throw new \InvalidArgumentException("Raw score must be finite, got {$rawScore}.");
 			}

@@ -111,8 +111,7 @@ use Quellabs\Recommender\Internal\Links\LinkUpdater;
 		 * @return array<int, Rating>
 		 * @throws \InvalidArgumentException When the member ID is outside the unsigned 32-bit range
 		 */
-		public function memberRatings(int $member, RatingKind $kind = RatingKind::Genuine, ?RatingOrder $order = null,
-			?int $category = null): array {
+		public function memberRatings(int $member, RatingKind $kind = RatingKind::Genuine, ?RatingOrder $order = null, ?int $category = null): array {
 			Identifier::assertId($member, 'Member ID');
 			$resolvedCategory = $this->config->resolveCategory($category);
 			

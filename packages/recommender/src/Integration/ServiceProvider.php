@@ -52,12 +52,7 @@ use Quellabs\Recommender\RecommendationEngine;
 		 * @param MethodContextInterface|null $methodContext Optional method-call context
 		 * @return object The configured instance or requested recommender service
 		 */
-		public function createInstance(
-			string                  $className,
-			array                   $dependencies,
-			array                   $metadata,
-			?MethodContextInterface $methodContext = null
-		): object {
+		public function createInstance(string $className, array $dependencies, array $metadata, ?MethodContextInterface $methodContext = null): object {
 			if ($className === RecommendationReconciler::class) {
 				$connection = $this->dependency($dependencies, Connection::class);
 				$config = $this->dependency($dependencies, RecommendationConfig::class);

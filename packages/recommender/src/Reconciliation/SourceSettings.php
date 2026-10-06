@@ -27,12 +27,7 @@ readonly class SourceSettings {
 	 * @param int $maxNeighbours Maximum neighbours used for user similarity, at least 1
 	 * @throws \InvalidArgumentException When a value is outside its allowed range
 	 */
-	public function __construct(
-		int $minSupport = 1,
-		int $topRatedMinRatings = 2,
-		int $minNeighbourSimilarity = 1,
-		int $maxNeighbours = 100
-	) {
+	public function __construct(int $minSupport = 1, int $topRatedMinRatings = 2, int $minNeighbourSimilarity = 1, int $maxNeighbours = 100) {
 		Identifier::assertAtLeast($minSupport, 1, 'Minimum support');
 		Identifier::assertAtLeast($topRatedMinRatings, 1, 'Minimum ratings');
 		Identifier::assertInRange($minNeighbourSimilarity, 1, 100, 'Minimum neighbour similarity');

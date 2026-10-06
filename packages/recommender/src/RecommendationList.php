@@ -46,16 +46,7 @@
 		 * @param int $limit Maximum selectable displayed items, from 1 to 100
 		 * @throws \InvalidArgumentException When the metadata or items are invalid
 		 */
-		private function __construct(
-			int     $category,
-			string  $placement,
-			array   $sources,
-			?string $contextKey,
-			ScoreKind $scoreKind,
-			?string $scorerId,
-			array   $items,
-			int     $limit
-		) {
+		private function __construct(int $category, string $placement, array $sources, ?string $contextKey, ScoreKind $scoreKind, ?string $scorerId, array $items, int $limit) {
 			if ($category < 0 || $category > Identifier::MAX) {
 				throw new \InvalidArgumentException("Category must be an unsigned 32-bit integer, got {$category}.");
 			}
@@ -126,8 +117,7 @@
 		 * @return self Ranked list
 		 * @throws \InvalidArgumentException When the metadata or items are invalid
 		 */
-		public static function ranked(int $category, string $placement, array $sources, ?string $contextKey,
-			?string $scorerId, array $items, int $limit): self {
+		public static function ranked(int $category, string $placement, array $sources, ?string $contextKey, ?string $scorerId, array $items, int $limit): self {
 			return new self($category, $placement, $sources, $contextKey, ScoreKind::Ranked, $scorerId, $items, $limit);
 		}
 		

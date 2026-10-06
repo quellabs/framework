@@ -67,8 +67,7 @@ readonly class UserSimilaritySource implements CandidateSource {
 	 * @return array<int, RecommendationResult> Products scored by similarity-weighted rating
 	 * @throws \InvalidArgumentException When the subject is not a member
 	 */
-	public function candidates(Subject $subject, ?EligibilityProvider $eligibility, int $limit,
-		SourceSettings $settings, ?int $category = null): array {
+	public function candidates(Subject $subject, ?EligibilityProvider $eligibility, int $limit, SourceSettings $settings, ?int $category = null): array {
 		$memberId = $this->memberOf($subject);
 		$resolved = $this->config->resolveCategory($category);
 
@@ -159,8 +158,7 @@ readonly class UserSimilaritySource implements CandidateSource {
 	 * @param int|null $limit Maximum rows, or null for all
 	 * @return array<int, array{itemId: int, score: float}>
 	 */
-	private function queryNeighbourRecommendations(int $memberId, string $neighbourTable, ?string $candidateTable,
-		int $category, ?int $limit): array {
+	private function queryNeighbourRecommendations(int $memberId, string $neighbourTable, ?string $candidateTable, int $category, ?int $limit): array {
 		$candidateJoin = $candidateTable === null
 			? ''
 			: "JOIN {$candidateTable} candidates ON candidates.product_id = r.product_id";

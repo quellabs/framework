@@ -30,13 +30,7 @@
 		 * @param DateTimeImmutable $asOf Outcome cutoff
 		 * @param AttributionWindows $windows Caller-selected attribution periods
 		 */
-		public function __construct(
-			int                $impressions,
-			int                $clickedItems,
-			int                $purchasedItems,
-			DateTimeImmutable  $asOf,
-			AttributionWindows $windows
-		) {
+		public function __construct(int $impressions, int $clickedItems, int $purchasedItems, DateTimeImmutable $asOf, AttributionWindows $windows) {
 			$this->impressions = $impressions;
 			$this->clickedItems = $clickedItems;
 			$this->purchasedItems = $purchasedItems;

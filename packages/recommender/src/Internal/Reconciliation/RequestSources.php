@@ -45,8 +45,7 @@ readonly class RequestSources {
 	 * @param ItemLinksSource $itemLinks Item-links candidate source
 	 * @param TopRatedSource $topRated Top-rated candidate source
 	 */
-	public function __construct(Connection $connection, RecommendationConfig $config, SubjectRatings $ratings,
-		UserSimilaritySource $similarity, SlopeOneSource $slopeOne, ItemLinksSource $itemLinks, TopRatedSource $topRated) {
+	public function __construct(Connection $connection, RecommendationConfig $config, SubjectRatings $ratings, UserSimilaritySource $similarity, SlopeOneSource $slopeOne, ItemLinksSource $itemLinks, TopRatedSource $topRated) {
 		$this->connection = $connection;
 		$this->config = $config;
 		$this->ratings = $ratings;

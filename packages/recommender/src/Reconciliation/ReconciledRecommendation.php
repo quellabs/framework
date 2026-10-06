@@ -27,12 +27,7 @@
 		 * @param ReconciliationDiagnostics|null $diagnostics Features and depths, or null when not requested
 		 * @throws \InvalidArgumentException When a value is outside its allowed range
 		 */
-		public function __construct(
-			int $productId,
-			?float $rankingScore,
-			array $evidence,
-			?ReconciliationDiagnostics $diagnostics = null
-		) {
+		public function __construct(int $productId, ?float $rankingScore, array $evidence, ?ReconciliationDiagnostics $diagnostics = null) {
 			if ($productId < 0 || $productId > Identifier::MAX) {
 				throw new \InvalidArgumentException("Product ID must be an unsigned 32-bit integer, got {$productId}.");
 			}

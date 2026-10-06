@@ -10,13 +10,11 @@
 	use Quellabs\Recommender\Internal\Persistence\EvaluationSchema;
 	use Quellabs\Recommender\Internal\Identifier;
 	use Quellabs\Recommender\Internal\Persistence\MysqlTimestamp;
-
 	use Quellabs\Recommender\RecommendationList;
-	
 	use Quellabs\Recommender\RecommendationSource;
-	
 	use Quellabs\Recommender\Reconciliation\ReconciledRecommendation;
 	use Quellabs\Recommender\Reconciliation\ReconciliationDiagnostics;
+	
 	/** Explicit, transactional recording of displayed recommendations and outcomes. */
 	readonly class EvaluationRecorder {
 		
@@ -38,10 +36,10 @@
 		 * @param DateTimeImmutable|null $shownAt Actual display time
 		 * @return ImpressionId New opaque impression token
 		 * @throws \InvalidArgumentException When the list is empty or the member ID is invalid
-		 * @throws \UnexpectedValueException When a calibrated list does not match its stored model
+		 * @throws \UnexpectedValueException|\Random\RandomException When a calibrated list does not match its stored model
+		 * @throws \Exception
 		 */
-		public function recordImpression(RecommendationList $shown, ?int $member = null,
-			?DateTimeImmutable $shownAt = null): ImpressionId {
+		public function recordImpression(RecommendationList $shown, ?int $member = null, ?DateTimeImmutable $shownAt = null): ImpressionId {
 			if ($member !== null) {
 				Identifier::assertId($member, 'Member ID');
 			}
@@ -51,9 +49,9 @@
 			if ($shown->items === []) {
 				throw new \InvalidArgumentException('An impression needs at least one displayed item.');
 			}
-
-			$model = $shown->scorerId === null ? null : $this->loadCalibratedModel($shown);
+			
 			$id = ImpressionId::generate();
+			$model = $shown->scorerId === null ? null : $this->loadCalibratedModel($shown);
 			$timestamp = MysqlTimestamp::utc($shownAt ?? new DateTimeImmutable('now'));
 			
 			$this->connection->transactional(function () use ($shown, $member, $id, $timestamp, $model): void {
@@ -77,8 +75,7 @@
 		 * @return void
 		 * @throws \InvalidArgumentException|\Exception When the IDs are invalid or the event conflicts with a stored one
 		 */
-		public function recordOutcome(ImpressionId $impressionId, int $product, string $eventId,
-			OutcomeType $type, DateTimeImmutable $occurredAt): void {
+		public function recordOutcome(ImpressionId $impressionId, int $product, string $eventId, OutcomeType $type, DateTimeImmutable $occurredAt): void {
 			Identifier::assertId($product, 'Product ID');
 			EvaluationSchema::requireTables($this->connection);
 
@@ -230,8 +227,7 @@
 		 * @param ClickModel|null $model Calibrated model, or null for uncalibrated lists
 		 * @return void
 		 */
-		private function insertImpressionItem(ImpressionId $id, RecommendationList $shown, ReconciledRecommendation $item,
-			int $position, ?ClickModel $model): void {
+		private function insertImpressionItem(ImpressionId $id, RecommendationList $shown, ReconciledRecommendation $item, int $position, ?ClickModel $model): void {
 			$diagnostics = $this->diagnosticsOf($shown, $item);
 			$snapshot = json_encode(['features'       => $diagnostics->featureSnapshot,
 			                         'depth_searched' => $diagnostics->searchedDepths], JSON_THROW_ON_ERROR);
@@ -296,8 +292,7 @@
 		 * @return void
 		 * @throws \InvalidArgumentException When the stored event differs from the requested one
 		 */
-		private function assertStoredEventMatches(ImpressionId $impressionId, int $productId, string $eventId,
-			OutcomeType $type, string $timestamp): void {
+		private function assertStoredEventMatches(ImpressionId $impressionId, int $productId, string $eventId, OutcomeType $type, string $timestamp): void {
 			$stored = $this->connection->execute('
 				SELECT
 					HEX(impression_id) AS impression_hex,

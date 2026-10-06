@@ -53,18 +53,7 @@
 		 * @param int $maxEligibilityBatchSize Maximum IDs in one eligibility provider call, at least 1
 		 * @throws \InvalidArgumentException When a value is outside its allowed range
 		 */
-		public function __construct(
-			int                $category = 1,
-			int                $thresholdNrCommonRatings = 30,
-			int                $thresholdMult = 2,
-			float              $thresholdRating = 0.66,
-			float              $cost = 5.0,
-			bool               $directLinks = false,
-			bool               $directSlope = true,
-			int                $maxCandidateDepth = 2000,
-			int                $maxBackfillRounds = 3,
-			int                $maxEligibilityBatchSize = 500
-		) {
+		public function __construct(int $category = 1, int $thresholdNrCommonRatings = 30, int $thresholdMult = 2, float $thresholdRating = 0.66, float $cost = 5.0, bool $directLinks = false, bool $directSlope = true, int $maxCandidateDepth = 2000, int $maxBackfillRounds = 3, int $maxEligibilityBatchSize = 500) {
 			$this->category = $category;
 			$this->thresholdNrCommonRatings = $thresholdNrCommonRatings;
 			$this->thresholdMult = $thresholdMult;

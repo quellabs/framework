@@ -25,8 +25,7 @@ interface CandidateSource {
 	 * @return array<int, RecommendationResult>
 	 * @throws \InvalidArgumentException When the source does not support the subject kind
 	 */
-	public function candidates(Subject $subject, ?EligibilityProvider $eligibility, int $limit,
-		SourceSettings $settings, ?int $category = null): array;
+	public function candidates(Subject $subject, ?EligibilityProvider $eligibility, int $limit, SourceSettings $settings, ?int $category = null): array;
 
 	/**
 	 * Score the given products for a subject, without depth or eligibility. Used to score candidates that other sources nominated.

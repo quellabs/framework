@@ -82,8 +82,7 @@
 		 * @return array{intercept: float, coefficients: array<string, float>} Fitted parameters
 		 * @throws \RuntimeException When the loss increases or the iteration limit is reached
 		 */
-		private function optimize(array $training, array $names, float $intercept, array $coefficients,
-			array $means, array $scales): array {
+		private function optimize(array $training, array $names, float $intercept, array $coefficients, array $means, array $scales): array {
 			$loss = $this->loss($training, $intercept, $coefficients, $means, $scales);
 			$smallSteps = 0;
 			
@@ -120,8 +119,7 @@
 		 * @param array<string, float> $scales Feature scales
 		 * @return array{0: float, 1: array<string, float>} Intercept gradient and coefficient gradients
 		 */
-		private function gradient(array $training, array $names, float $intercept, array $coefficients,
-			array $means, array $scales): array {
+		private function gradient(array $training, array $names, float $intercept, array $coefficients, array $means, array $scales): array {
 			$gradient = array_fill_keys($names, 0.0);
 			$interceptGradient = 0.0;
 			
@@ -157,8 +155,7 @@
 		 * @param array<string, float> $scales Feature scales
 		 * @return array{intercept: float, coefficients: array<string, float>, loss: float} Accepted or last-tried parameters
 		 */
-		private function lineSearch(array $training, array $names, float $loss, float $intercept, array $coefficients,
-			float $interceptGradient, array $gradient, array $means, array $scales): array {
+		private function lineSearch(array $training, array $names, float $loss, float $intercept, array $coefficients, float $interceptGradient, array $gradient, array $means, array $scales): array {
 			$step = 1.0;
 			
 			do {
@@ -193,8 +190,7 @@
 		 * @param float $rate Training click rate used as the baseline probability
 		 * @return array{model_metrics: array<string, mixed>, baseline_metrics: array<string, mixed>, validated: bool}
 		 */
-		private function evaluateHoldout(array $holdout, float $intercept, array $coefficients,
-			array $means, array $scales, float $rate): array {
+		private function evaluateHoldout(array $holdout, float $intercept, array $coefficients, array $means, array $scales, float $rate): array {
 			$predictions = [];
 			
 			foreach ($holdout as $sample) {
@@ -245,8 +241,7 @@
 		 * @param array<string, float> $scales Feature scales
 		 * @return float Sigmoid probability
 		 */
-		private function probability(array $features, float $intercept, array $coefficients,
-			array $means, array $scales): float {
+		private function probability(array $features, float $intercept, array $coefficients, array $means, array $scales): float {
 			$z = $intercept;
 			
 			foreach ($coefficients as $name => $coefficient) {

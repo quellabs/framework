@@ -67,8 +67,7 @@ readonly class TopRatedSource implements CandidateSource {
 	 * @return array<int, RecommendationResult> Products scored by their average rating
 	 * @throws \InvalidArgumentException When the subject is a product
 	 */
-	public function candidates(Subject $subject, ?EligibilityProvider $eligibility, int $limit,
-		SourceSettings $settings, ?int $category = null): array {
+	public function candidates(Subject $subject, ?EligibilityProvider $eligibility, int $limit, SourceSettings $settings, ?int $category = null): array {
 		$this->assertSupported($subject);
 		$resolved = $this->config->resolveCategory($category);
 		$seen = $this->ratings->seen($subject, $resolved);

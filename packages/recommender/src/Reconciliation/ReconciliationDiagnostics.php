@@ -21,11 +21,7 @@
 		 * @param array<mixed> $searchedDepths Requested LIMIT reached per enabled source
 		 * @throws \InvalidArgumentException When a value is outside its allowed range
 		 */
-		public function __construct(
-			array $featureSnapshot = [],
-			array $sourceLogOddsContributions = [],
-			array $searchedDepths = []
-		) {
+		public function __construct(array $featureSnapshot = [], array $sourceLogOddsContributions = [], array $searchedDepths = []) {
 			$this->featureSnapshot = $this->validateFeatureValues($featureSnapshot);
 			$this->sourceLogOddsContributions = self::validateSourceContributions($sourceLogOddsContributions);
 			$this->searchedDepths = self::validateSearchedDepths($searchedDepths);

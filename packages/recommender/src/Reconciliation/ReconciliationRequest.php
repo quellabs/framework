@@ -54,18 +54,7 @@
 		 * @param bool $diagnostics Attach serving-time diagnostics to each item
 		 * @throws \InvalidArgumentException When an input is outside its allowed range
 		 */
-		public function __construct(
-			EligibilityProvider   $eligibility,
-			array                 $sources,
-			int                   $limit,
-			string                $placement,
-			array                 $newProductIds = [],
-			array                 $additionalCandidateIds = [],
-			?int                  $category = null,
-			?string               $contextKey = null,
-			?ReconciliationTuning $tuning = null,
-			bool                  $diagnostics = false
-		) {
+		public function __construct(EligibilityProvider $eligibility, array $sources, int $limit, string $placement, array $newProductIds = [], array $additionalCandidateIds = [], ?int $category = null, ?string $contextKey = null, ?ReconciliationTuning $tuning = null, bool $diagnostics = false) {
 			$this->eligibility = $eligibility;
 			$this->limit = $limit;
 			$this->placement = $placement;

@@ -44,9 +44,7 @@
 		 * @throws \InvalidArgumentException When the request is invalid
 		 * @throws \RuntimeException When there are too few mature items or clicks to train
 		 */
-		public function train(int $category, string $placement, array $sources, DateTimeImmutable $from,
-			DateTimeImmutable $to, DateTimeImmutable $asOf, int $clickWindowSeconds,
-			?string $contextKey = null): string {
+		public function train(int $category, string $placement, array $sources, DateTimeImmutable $from, DateTimeImmutable $to, DateTimeImmutable $asOf, int $clickWindowSeconds, ?string $contextKey = null): string {
 			EvaluationSchema::requireTables($this->connection);
 			$mask = $this->validateTrainingRequest($category, $placement, $sources, $from, $to, $asOf, $clickWindowSeconds, $contextKey);
 			[$expectedFeatures, $expectedDepthSources] = self::expectedSchema($sources);
@@ -146,8 +144,7 @@
 		 * @return int Canonical source mask
 		 * @throws \InvalidArgumentException When the request is invalid
 		 */
-		private function validateTrainingRequest(int $category, string $placement, array $sources, DateTimeImmutable $from,
-			DateTimeImmutable $to, DateTimeImmutable $asOf, int $clickWindowSeconds, ?string $contextKey): int {
+		private function validateTrainingRequest(int $category, string $placement, array $sources, DateTimeImmutable $from, DateTimeImmutable $to, DateTimeImmutable $asOf, int $clickWindowSeconds, ?string $contextKey): int {
 			if ($category < 0 || $category > Identifier::MAX) {
 				throw new \InvalidArgumentException("Category must be an unsigned 32-bit integer, got {$category}.");
 			}
@@ -220,8 +217,7 @@
 		 * @param int $clickWindowSeconds Positive click attribution period
 		 * @return array<int, MatureRow> Rows with impression, position, snapshot, and click fields
 		 */
-		private function fetchMatureRows(int $category, string $placement, int $mask, ?string $contextKey,
-			DateTimeImmutable $from, DateTimeImmutable $to, DateTimeImmutable $asOf, int $clickWindowSeconds): array {
+		private function fetchMatureRows(int $category, string $placement, int $mask, ?string $contextKey, DateTimeImmutable $from, DateTimeImmutable $to, DateTimeImmutable $asOf, int $clickWindowSeconds): array {
 			$clicked = OutcomeSubquery::exists('click', 'as_of', 'click_window');
 	
 			return $this->connection->execute("

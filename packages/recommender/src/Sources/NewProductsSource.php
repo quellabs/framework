@@ -68,8 +68,7 @@ readonly class NewProductsSource implements CandidateSource {
 	 * @return array<int, RecommendationResult> New products in list order
 	 * @throws \InvalidArgumentException When the subject is a product
 	 */
-	public function candidates(Subject $subject, ?EligibilityProvider $eligibility, int $limit,
-		SourceSettings $settings, ?int $category = null): array {
+	public function candidates(Subject $subject, ?EligibilityProvider $eligibility, int $limit, SourceSettings $settings, ?int $category = null): array {
 		$this->assertSupported($subject);
 		$seen = $this->ratings->seen($subject, $this->config->resolveCategory($category));
 

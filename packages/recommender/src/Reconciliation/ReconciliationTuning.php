@@ -27,12 +27,7 @@ readonly class ReconciliationTuning {
 	 * @param int $minHistory Non-negative ratings needed before personal sources run, at least 1
 	 * @throws \InvalidArgumentException When a value is outside its allowed range
 	 */
-	public function __construct(
-		?SourceSettings $sources = null,
-		?int $maxCandidateDepth = null,
-		?int $maxEligibilityBatchSize = null,
-		int $minHistory = 1
-	) {
+	public function __construct(?SourceSettings $sources = null, ?int $maxCandidateDepth = null, ?int $maxEligibilityBatchSize = null, int $minHistory = 1) {
 		if ($maxCandidateDepth !== null) {
 			Identifier::assertAtLeast($maxCandidateDepth, 50, 'Maximum candidate depth');
 		}
