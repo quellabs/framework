@@ -72,20 +72,22 @@
 
 		/**
 		 * Return the products this member has rated that are linked to the given product, the "why we recommend this" list.
+		 * Score is the liked count of the link to the given product.
 		 * @param int $memberId The member ID
 		 * @param int $productId The product ID
 		 * @param int $limit Maximum number of results (0 = unlimited)
 		 * @param int|null $category Defaults to configured default
-		 * @return array<int, int> List of product IDs
+		 * @return array<int, RecommendationResult> Rated products linked to the given product, scored by liked count
+		 * @throws \UnexpectedValueException When a reason row from the database is malformed
 		 */
 		public function memberReasons(int $memberId, int $productId, int $limit = 0, ?int $category = null): array {
 			$resolvedCategory = $this->config->resolveCategory($category);
 			$limit = max(0, $limit);
-			$threshold = $this->config->getThresholdRating();
-
+			$threshold = $this->config->thresholdRating();
 			$sql = '
 				SELECT
-					r.`product_id`
+					r.`product_id` AS reason_id,
+					l.`liked_count`
 				FROM `vogoo_ratings` r
 				INNER JOIN `vogoo_links` l ON l.`item_id1` = :product_id AND
 					r.`product_id` = l.`item_id2` AND
@@ -94,34 +96,34 @@
 				WHERE r.`member_id` = :member_id AND
 					r.`category` = :category AND
 					r.`rating` >= :threshold
+				ORDER BY l.`liked_count` DESC, r.`product_id` ASC
 			';
-
 			$params = [
 				'product_id' => $productId,
 				'member_id'  => $memberId,
 				'category'   => $resolvedCategory,
 				'threshold'  => $threshold,
 			];
-
 			$sql .= Results::limitSql($limit);
-
 			$rows = $this->connection->execute($sql, $params)->fetchAll('assoc');
-			return array_map('intval', array_column($rows, 'product_id'));
+
+			return $this->reasonResults($rows);
 		}
 
 		/**
 		 * Return the visitor's rated products that are linked to the given product, the "why we recommend this" list for visitors.
+		 * Score is the liked count of the link to the given product.
 		 * @param VisitorContext $visitor The visitor context holding the current session's ratings
 		 * @param int $productId The product ID
 		 * @param int $limit Maximum number of results (0 = unlimited)
 		 * @param int|null $category Defaults to configured default
-		 * @return array<int, int> List of product IDs
+		 * @return array<int, RecommendationResult> Rated products linked to the given product, scored by liked count
+		 * @throws \UnexpectedValueException When a reason row from the database is malformed
 		 */
 		public function visitorReasons(VisitorContext $visitor, int $productId, int $limit = 0, ?int $category = null): array {
 			$resolvedCategory = $this->config->resolveCategory($category);
-			$threshold = $this->config->getThresholdRating();
+			$threshold = $this->config->thresholdRating();
 			$ratings = $visitor->ratings($resolvedCategory);
-
 			$likedIds = array_column(
 				array_filter($ratings, function ($entry) use ($threshold): bool {
 					return $entry['rating'] >= $threshold;
@@ -144,18 +146,39 @@
 			$inList = implode(',', $names);
 			$sql = "
 				SELECT
-					`item_id2`
+					`item_id2` AS reason_id,
+					`liked_count`
 				FROM `vogoo_links`
 				WHERE `category` = :category AND
 				      `item_id1` = :product_id AND
 				      `item_id2` IN ({$inList}) AND
 				      `liked_count` > 0
+				ORDER BY `liked_count` DESC, `item_id2` ASC
 			";
-
 			$sql .= Results::limitSql($limit);
-
 			$rows = $this->connection->execute($sql, $params)->fetchAll('assoc');
-			return array_map('intval', array_column($rows, 'item_id2'));
+
+			return $this->reasonResults($rows);
+		}
+
+		/**
+		 * Map reason rows to recommendation results, scored by the link's liked count.
+		 * @param array<int, array<string, mixed>> $rows Rows with reason_id and liked_count
+		 * @return array<int, RecommendationResult>
+		 * @throws \UnexpectedValueException When a row has a non-numeric reason ID or liked count
+		 */
+		private function reasonResults(array $rows): array {
+			$results = [];
+
+			foreach ($rows as $row) {
+				if (!is_numeric($row['reason_id']) || !is_numeric($row['liked_count'])) {
+					throw new \UnexpectedValueException('Reason rows returned by the database must have numeric reason_id and liked_count.');
+				}
+
+				$results[] = new RecommendationResult((int)$row['reason_id'], (float)$row['liked_count'], RecommendationSource::ItemLinks, []);
+			}
+
+			return $results;
 		}
 
 		/**
@@ -164,15 +187,15 @@
 		 * @param int $productId The product ID
 		 * @param EligibilityProvider|null $eligibility Restricts results to eligible products, or null for all
 		 * @param int $limit Maximum number of results (0 = unlimited)
-		 * @param int $minLinks Minimum co-occurrence count to include a pair
+		 * @param int $minSupport Minimum co-occurrence count to include a pair
 		 * @param int|null $category Defaults to configured default
 		 * @return array<int, RecommendationResult> Products scored by their average Slope One diff
 		 */
 		public function slopeItems(int $productId, ?EligibilityProvider $eligibility = null, int $limit = 0,
-			int $minLinks = 1, ?int $category = null): array {
+			int $minSupport = 1, ?int $category = null): array {
 			return $this->eligibilityFilter->withEligibility($eligibility, $limit,
-				function (int $depth) use ($productId, $minLinks, $category): array {
-					$diffs = $this->slopeOne->getSlopeItems($productId, $minLinks, $depth, $category);
+				function (int $depth) use ($productId, $minSupport, $category): array {
+					$diffs = $this->slopeOne->getSlopeItems($productId, $minSupport, $depth, $category);
 
 					return array_map(function (array $diff): RecommendationResult {
 						return new RecommendationResult($diff['product_id'], $diff['diff'], RecommendationSource::SlopeOne, []);
@@ -489,12 +512,12 @@
 		 * @return array<int, float> Map of candidate product_id to raw score
 		 */
 		private function scoreVisitorCandidates(array $ratings, int $category, ?array &$reasons = null): array {
-			$threshold = $this->config->getThresholdRating();
+			$threshold = $this->config->thresholdRating();
 			$ratedIds = array_column($ratings, 'product_id');
 			$scores = [];
 
 			foreach ($ratings as $entry) {
-				if ($entry['rating'] === $this->config->getNotInterested()) {
+				if ($entry['rating'] === RecommendationConfig::NOT_INTERESTED) {
 					continue;
 				}
 
@@ -551,7 +574,7 @@
 			$params = [
 				'member' => $memberId,
 				'category' => $category,
-				'threshold' => $this->config->getThresholdRating(),
+				'threshold' => $this->config->thresholdRating(),
 				'member2' => $memberId,
 				'category2' => $category,
 			];

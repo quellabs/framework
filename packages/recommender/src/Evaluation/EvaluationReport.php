@@ -12,7 +12,6 @@
 	
 	use Quellabs\Recommender\RecommendationSource;
 	
-	use Quellabs\Recommender\Reconciliation\ReconciliationRequest;
 	/**
 	 * Descriptive reporting over opted-in displayed-item impressions.
 	 *
@@ -102,7 +101,7 @@
 			}
 	
 			if ($contextKey !== null) {
-				ReconciliationRequest::validateKey($contextKey, 128, 'context');
+				Identifier::validateKey($contextKey, 128, 'context');
 			}
 		}
 	

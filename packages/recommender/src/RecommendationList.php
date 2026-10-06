@@ -7,7 +7,6 @@
 	
 	use Quellabs\Recommender\Reconciliation\ReconciledRecommendation;
 	
-	use Quellabs\Recommender\Reconciliation\ReconciliationRequest;
 	/** Immutable ordered candidates or the application's selected display. */
 	readonly class RecommendationList {
 		
@@ -70,10 +69,10 @@
 				throw new \InvalidArgumentException("A model ID is required only for click_probability lists; got score kind '{$scoreKind->value}' and model ID {$modelLabel}.");
 			}
 			
-			ReconciliationRequest::validateKey($placement, 64, 'placement');
+			Identifier::validateKey($placement, 64, 'placement');
 			
 			if ($contextKey !== null) {
-				ReconciliationRequest::validateKey($contextKey, 128, 'context');
+				Identifier::validateKey($contextKey, 128, 'context');
 			}
 			
 			if ($modelId !== null && preg_match('/^[0-9a-f]{32}$/D', $modelId) !== 1) {

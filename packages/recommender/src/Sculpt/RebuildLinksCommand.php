@@ -78,7 +78,7 @@
 			}
 			
 			foreach ($categories as $value) {
-				$this->rebuildCategory($connection, $value, $provider->getRecommendationConfig()->getThresholdRating());
+				$this->rebuildCategory($connection, $value, $provider->getRecommendationConfig()->thresholdRating());
 			}
 			
 			return 0;

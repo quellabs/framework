@@ -80,7 +80,7 @@
 				return $this->takeEligible($fetch(0), 0, $eligibility, $idOf, $verdicts);
 			}
 
-			$maxDepth = max($limit, $this->config->getMaxCandidateDepth());
+			$maxDepth = max($limit, $this->config->maxCandidateDepth());
 			$depth = $limit;
 
 			while (true) {
@@ -106,7 +106,7 @@
 		 * @return array<int, T> Eligible rows in ranked order
 		 */
 		private function takeEligible(array $rows, int $limit, EligibilityProvider $eligibility, callable $idOf, array &$verdicts): array {
-			$batchSize = max(1, $this->config->getMaxEligibilityBatchSize());
+			$batchSize = max(1, $this->config->maxEligibilityBatchSize());
 			$taken = [];
 
 			foreach (array_chunk($rows, $batchSize) as $chunk) {

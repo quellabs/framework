@@ -297,7 +297,7 @@
 				LIMIT {$limit}
 			", [
 				'category' => $category,
-				'threshold' => $this->config->getThresholdRating(),
+				'threshold' => $this->config->thresholdRating(),
 				'member' => $memberId,
 				'seen_category' => $category,
 			])->fetchAll('assoc');
@@ -316,7 +316,7 @@
 		 * @return int Similarity score in [0, 100]
 		 */
 		private function scoreSimilarity(int $nrCommonRatings, float $sumSquaredDiff, int $ownRatingCount): int {
-			$cost = $this->config->getCost();
+			$cost = $this->config->cost();
 			$spread = $sumSquaredDiff * $cost * $cost * 20.0;
 			$spreadPerCommonRating = $spread / $nrCommonRatings;
 			
@@ -324,8 +324,8 @@
 				return 0;
 			}
 			
-			$thresholdNr = $this->config->getThresholdNrCommonRatings();
-			$thresholdMult = $this->config->getThresholdMult();
+			$thresholdNr = $this->config->thresholdNrCommonRatings();
+			$thresholdMult = $this->config->thresholdMult();
 			
 			// Enough common ratings: return the direct score
 			if ($nrCommonRatings > $thresholdNr || ($nrCommonRatings * $thresholdMult) >= $ownRatingCount) {
@@ -353,7 +353,7 @@
 		 * @return array<int, float> Map of candidate product_id to weighted score
 		 */
 		private function computeNeighbourScores(int $memberId, array $neighbours, int $category): array {
-			$threshold = $this->config->getThresholdRating();
+			$threshold = $this->config->thresholdRating();
 			$scores = [];
 			$weights = [];
 			

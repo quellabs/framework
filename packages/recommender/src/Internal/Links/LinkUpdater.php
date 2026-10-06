@@ -40,7 +40,7 @@
 		 * @throws \Exception
 		 */
 		public function updateLinks(int $memberId, int $productId, int $category, float $rating, float $previous): void {
-			$threshold = $this->config->getThresholdRating();
+			$threshold = $this->config->thresholdRating();
 			$delta = (int)($rating >= $threshold) - (int)($previous >= $threshold);
 			
 			if ($delta === 0) {

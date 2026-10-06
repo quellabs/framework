@@ -64,8 +64,8 @@
 		 * @param ReconciliationRequest $request Candidate request
 		 * @return RecommendationList Top requested results
 		 */
-		public function recommendMember(int $memberId, ReconciliationRequest $request): RecommendationList {
-			return $this->firstPage($this->candidatePoolMember($memberId, $request), $request->limit);
+		public function memberRecommendations(int $memberId, ReconciliationRequest $request): RecommendationList {
+			return $this->firstPage($this->memberCandidatePool($memberId, $request), $request->limit);
 		}
 		
 		/**
@@ -74,8 +74,8 @@
 		 * @param ReconciliationRequest $request Candidate request
 		 * @return RecommendationList Top requested results
 		 */
-		public function recommendVisitor(VisitorContext $visitor, ReconciliationRequest $request): RecommendationList {
-			return $this->firstPage($this->candidatePoolVisitor($visitor, $request), $request->limit);
+		public function visitorRecommendations(VisitorContext $visitor, ReconciliationRequest $request): RecommendationList {
+			return $this->firstPage($this->visitorCandidatePool($visitor, $request), $request->limit);
 		}
 		
 		/**
@@ -85,7 +85,7 @@
 		 * @return RecommendationList Full bounded eligible pool
 		 * @throws \InvalidArgumentException When the member ID is not an unsigned 32-bit integer
 		 */
-		public function candidatePoolMember(int $memberId, ReconciliationRequest $request): RecommendationList {
+		public function memberCandidatePool(int $memberId, ReconciliationRequest $request): RecommendationList {
 			if ($memberId < 0 || $memberId > Identifier::MAX) {
 				throw new \InvalidArgumentException("Member ID must be an unsigned 32-bit integer, got {$memberId}.");
 			}
@@ -119,7 +119,7 @@
 		 * @return RecommendationList Full bounded eligible pool
 		 * @throws \InvalidArgumentException When the request includes the user-similarity source
 		 */
-		public function candidatePoolVisitor(VisitorContext $visitor, ReconciliationRequest $request): RecommendationList {
+		public function visitorCandidatePool(VisitorContext $visitor, ReconciliationRequest $request): RecommendationList {
 			if (in_array(RecommendationSource::UserSimilarity, $request->sources, true)) {
 				throw new \InvalidArgumentException('User similarity requires a persisted member.');
 			}
@@ -157,9 +157,9 @@
 		 * @throws \RuntimeException When a source changes its candidate order during depth backfill
 		 */
 		private function rank(ReconciliationRequest $request, int $category, array $ratings, ?int $memberId): RecommendationList {
-			$depthCap = $request->tuning->maxCandidateDepth ?? $this->config->getMaxCandidateDepth();
-			$roundCap = $request->tuning->maxBackfillRounds ?? $this->config->getMaxBackfillRounds();
-			$batchSize = max(1, $request->tuning->maxEligibilityBatchSize ?? $this->config->getMaxEligibilityBatchSize());
+			$depthCap = $request->tuning->maxCandidateDepth ?? $this->config->maxCandidateDepth();
+			$roundCap = $request->tuning->maxBackfillRounds ?? $this->config->maxBackfillRounds();
+			$batchSize = max(1, $request->tuning->maxEligibilityBatchSize ?? $this->config->maxEligibilityBatchSize());
 			$state = new CandidateRoundState($request->sources, min(max(50, 5 * $request->limit), $depthCap), $depthCap);
 			
 			$this->collectCandidateRounds($request, $state, $category, $ratings, $memberId, $roundCap, $batchSize);
@@ -401,7 +401,7 @@
 				'objective'   => 'click',
 				'category'    => $category,
 				'placement'   => $request->placement,
-				'source_mask' => $request->sourceMask(),
+				'source_mask' => RecommendationSource::mask($request->sources),
 				'context_key' => $request->contextKey ?? '',
 				'status'      => 'active',
 			])->fetchAssoc();
@@ -702,7 +702,7 @@
 		 */
 		private function sourceAggregateParams(RecommendationSource $source, int $category, ReconciliationRequest $request): array {
 			if ($source === RecommendationSource::ItemLinks) {
-				return ['threshold' => $this->config->getThresholdRating(), 'category' => $category];
+				return ['threshold' => $this->config->thresholdRating(), 'category' => $category];
 			} else {
 				return ['category' => $category, 'minimum' => $request->tuning->minSupport];
 			}

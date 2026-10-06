@@ -7,7 +7,7 @@
 	use Quellabs\Recommender\PredictionResult;
 	use Quellabs\Recommender\RecommendationResult;
 	use Quellabs\Recommender\ArrayEligibilityProvider;
-use Quellabs\Recommender\VisitorContext;
+	use Quellabs\Recommender\VisitorContext;
 
 	/**
 	 * Integration tests for ItemRecommender.
@@ -276,7 +276,31 @@ use Quellabs\Recommender\VisitorContext;
 			$this->insertLink(30, 10, 5);
 			$this->insertLink(30, 20, 3);
 			$result = $this->recommender->memberReasons(1, 30);
-			$this->assertEqualsCanonicalizing([10, 20], $result);
+			$this->assertEqualsCanonicalizing([10, 20], $this->itemIds($result));
+			$this->assertSame(5.0, $result[0]->score);
+		}
+
+		public function testMemberReasonsScoreIsLikedCountOfLink(): void {
+			$this->insertRating(1, 10, 0.9);
+			$this->insertLink(30, 10, 5);
+			$result = $this->recommender->memberReasons(1, 30);
+			$this->assertSame(RecommendationSource::ItemLinks, $result[0]->strategy);
+			$this->assertSame(5.0, $result[0]->score);
+		}
+
+		public function testVisitorReasonsReturnsRatedLinkedProducts(): void {
+			$visitor = new VisitorContext($this->config);
+			$visitor->setRating(10, 0.9);
+			$visitor->setRating(20, 0.8);
+			$this->insertLink(30, 10, 5);
+			$this->insertLink(30, 20, 3);
+			$result = $this->recommender->visitorReasons($visitor, 30);
+			$this->assertSame([10, 20], $this->itemIds($result));
+			$this->assertSame([5.0, 3.0], array_map(fn($r) => $r->score, $result));
+		}
+
+		public function testVisitorReasonsReturnsEmptyWhenNoRatings(): void {
+			$this->assertSame([], $this->recommender->visitorReasons(new VisitorContext($this->config), 30));
 		}
 
 		public function testMemberReasonsReturnsEmptyWhenNoLinks(): void {
@@ -305,10 +329,10 @@ use Quellabs\Recommender\VisitorContext;
 			$this->assertSame([3, 2], $this->itemIds($result));
 		}
 
-		public function testSlopeItemsRespectsMinLinks(): void {
+		public function testSlopeItemsRespectsMinSupport(): void {
 			$this->insertLink(1, 2, 1, 0.5);
 			$this->insertLink(1, 3, 5, 0.5);
-			$result = $this->recommender->slopeItems(1, minLinks: 3);
+			$result = $this->recommender->slopeItems(1, minSupport: 3);
 			$this->assertSame([3], $this->itemIds($result));
 		}
 

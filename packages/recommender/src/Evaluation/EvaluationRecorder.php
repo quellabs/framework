@@ -117,7 +117,7 @@
 		 * @return void
 		 * @throws \InvalidArgumentException When the member ID is not an unsigned 32-bit integer
 		 */
-		public function deleteMemberHistory(int $memberId): void {
+		public function deleteMemberEvaluations(int $memberId): void {
 			EvaluationSchema::requireTables($this->connection);
 			
 			if ($memberId < 0 || $memberId > Identifier::MAX) {

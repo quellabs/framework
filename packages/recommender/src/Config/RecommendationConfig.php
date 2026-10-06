@@ -107,7 +107,7 @@
 		 * Return the maximum generated depth per source.
 		 * @return int Maximum generated depth per source
 		 */
-		public function getMaxCandidateDepth(): int {
+		public function maxCandidateDepth(): int {
 			return $this->maxCandidateDepth;
 		}
 		
@@ -115,7 +115,7 @@
 		 * Return the maximum number of deeper-query rounds.
 		 * @return int Maximum deeper-query rounds
 		 */
-		public function getMaxBackfillRounds(): int {
+		public function maxBackfillRounds(): int {
 			return $this->maxBackfillRounds;
 		}
 		
@@ -123,7 +123,7 @@
 		 * Return the maximum number of IDs submitted to one eligibility call.
 		 * @return int Maximum IDs submitted to one eligibility call
 		 */
-		public function getMaxEligibilityBatchSize(): int {
+		public function maxEligibilityBatchSize(): int {
 			return $this->maxEligibilityBatchSize;
 		}
 		
@@ -131,7 +131,7 @@
 		 * Return the configured default category.
 		 * @return int The configured default category
 		 */
-		public function getCategory(): int {
+		public function category(): int {
 			return $this->category;
 		}
 		
@@ -139,7 +139,7 @@
 		 * Return the minimum number of common ratings required before a similarity is considered reliable.
 		 * @return int Minimum common ratings before a similarity is considered reliable
 		 */
-		public function getThresholdNrCommonRatings(): int {
+		public function thresholdNrCommonRatings(): int {
 			return $this->thresholdNrCommonRatings;
 		}
 		
@@ -147,7 +147,7 @@
 		 * Return the multiplier used in the similarity confidence calculation.
 		 * @return int Multiplier used in the similarity confidence calculation
 		 */
-		public function getThresholdMult(): int {
+		public function thresholdMult(): int {
 			return $this->thresholdMult;
 		}
 		
@@ -155,7 +155,7 @@
 		 * Return the minimum rating for an item to count as liked.
 		 * @return float Minimum rating for an item to count as liked
 		 */
-		public function getThresholdRating(): float {
+		public function thresholdRating(): float {
 			return $this->thresholdRating;
 		}
 		
@@ -163,16 +163,8 @@
 		 * Return the cost factor used in the similarity spread calculation.
 		 * @return float Cost factor used in the similarity spread calculation
 		 */
-		public function getCost(): float {
+		public function cost(): float {
 			return $this->cost;
-		}
-		
-		/**
-		 * Return the sentinel rating value that marks not interested.
-		 * @return float Sentinel rating value marking not interested
-		 */
-		public function getNotInterested(): float {
-			return self::NOT_INTERESTED;
 		}
 		
 		/**

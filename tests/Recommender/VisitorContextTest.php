@@ -83,7 +83,7 @@
 			$this->visitor->setNotInterested(5);
 			$ratings = $this->visitor->ratings();
 			$this->assertCount(1, $ratings);
-			$this->assertEqualsWithDelta($this->config->getNotInterested(), $ratings[0]['rating'], 0.0001);
+			$this->assertEqualsWithDelta(RecommendationConfig::NOT_INTERESTED, $ratings[0]['rating'], 0.0001);
 		}
 		
 		public function testSetNotInterestedUpdatesExistingRating(): void {
@@ -91,7 +91,7 @@
 			$this->visitor->setNotInterested(5);
 			$ratings = $this->visitor->ratings();
 			$this->assertCount(1, $ratings);
-			$this->assertEqualsWithDelta($this->config->getNotInterested(), $ratings[0]['rating'], 0.0001);
+			$this->assertEqualsWithDelta(RecommendationConfig::NOT_INTERESTED, $ratings[0]['rating'], 0.0001);
 		}
 		
 		// =========================================================================

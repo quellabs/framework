@@ -68,7 +68,7 @@
 		}
 
 		public function testSetRatingAcceptsNotInterestedSentinel(): void {
-			$this->engine->setRating(1, 10, $this->config->getNotInterested());
+			$this->engine->setRating(1, 10, RecommendationConfig::NOT_INTERESTED);
 			$row = $this->fetchRatingRow(1, 10);
 			$this->assertNotNull($row);
 		}
@@ -101,7 +101,7 @@
 			$this->engine->setNotInterested(1, 10);
 			$result = $this->engine->memberRating(1, 10, RatingKind::All);
 			$this->assertNotEmpty($result);
-			$this->assertEqualsWithDelta($this->config->getNotInterested(), $result['rating'], 0.0001);
+			$this->assertEqualsWithDelta(RecommendationConfig::NOT_INTERESTED, $result['rating'], 0.0001);
 		}
 		
 		// =========================================================================
@@ -112,7 +112,7 @@
 			$this->engine->setNotInterested(1, 10);
 			$row = $this->fetchRatingRow(1, 10);
 			$this->assertNotNull($row);
-			$this->assertEqualsWithDelta($this->config->getNotInterested(), (float)$row['rating'], 0.0001);
+			$this->assertEqualsWithDelta(RecommendationConfig::NOT_INTERESTED, (float)$row['rating'], 0.0001);
 		}
 		
 		// =========================================================================
@@ -160,8 +160,13 @@
 		// memberAverageRating
 		// =========================================================================
 		
-		public function testMemberAverageRatingReturnsZeroWhenNoRatings(): void {
-			$this->assertEqualsWithDelta(0.0, $this->engine->memberAverageRating(1), 0.0001);
+		public function testMemberAverageRatingReturnsNullWhenNoRatings(): void {
+			$this->assertNull($this->engine->memberAverageRating(1));
+		}
+		
+		public function testMemberAverageRatingKeepsZeroRatingDistinctFromNone(): void {
+			$this->engine->setRating(1, 10, 0.0);
+			$this->assertSame(0.0, $this->engine->memberAverageRating(1));
 		}
 		
 		public function testMemberAverageRatingCalculatesCorrectly(): void {
@@ -217,8 +222,8 @@
 			$this->assertEqualsWithDelta(0.6, $this->engine->productAverageRating(10), 0.0001);
 		}
 		
-		public function testProductAverageRatingReturnsZeroWhenNoRatings(): void {
-			$this->assertEqualsWithDelta(0.0, $this->engine->productAverageRating(99), 0.0001);
+		public function testProductAverageRatingReturnsNullWhenNoRatings(): void {
+			$this->assertNull($this->engine->productAverageRating(99));
 		}
 		
 		// =========================================================================

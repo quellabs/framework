@@ -12,7 +12,7 @@
 	 * vogoo_links table via LinkUpdater when incremental updates are enabled.
 	 *
 	 * Ratings are normalised floats in [0.0, 1.0]. The special value
-	 * RecommendationConfig::getNotInterested() (-1.0) marks explicit disinterest.
+	 * RecommendationConfig::NOT_INTERESTED (-1.0) marks explicit disinterest.
 	 *
 	 * Methods throw on database failure (CakePHP 5 execute() throws rather
 	 * than returning false).
@@ -71,12 +71,12 @@
 		}
 		
 		/**
-		 * Return the average genuine rating a member has given, or 0.0 when the member has none.
+		 * Return the average genuine rating a member has given, or null when the member has none.
 		 * @param int $memberId The member ID
 		 * @param int|null $category Defaults to configured default
-		 * @return float Average rating, or 0.0 when the member has none
+		 * @return float|null Average rating, or null when the member has none
 		 */
-		public function memberAverageRating(int $memberId, ?int $category = null): float {
+		public function memberAverageRating(int $memberId, ?int $category = null): ?float {
 			$resolvedCategory = $this->config->resolveCategory($category);
 			
 			$row = $this->connection->execute('
@@ -91,7 +91,7 @@
 				'category'  => $resolvedCategory,
 			])->fetchAssoc();
 			
-			return $row['average'] !== null ? (float)$row['average'] : 0.0;
+			return $row['average'] !== null ? (float)$row['average'] : null;
 		}
 		
 		/**
@@ -174,12 +174,12 @@
 		}
 		
 		/**
-		 * Return the average genuine rating for a product, or 0.0 when no ratings exist.
+		 * Return the average genuine rating for a product, or null when no ratings exist.
 		 * @param int $productId The product ID
 		 * @param int|null $category Defaults to configured default
-		 * @return float Average rating, or 0.0 when the product has none
+		 * @return float|null Average rating, or null when the product has none
 		 */
-		public function productAverageRating(int $productId, ?int $category = null): float {
+		public function productAverageRating(int $productId, ?int $category = null): ?float {
 			$resolvedCategory = $this->config->resolveCategory($category);
 			
 			$row = $this->connection->execute('
@@ -194,7 +194,7 @@
 				'category'   => $resolvedCategory,
 			])->fetchAssoc();
 			
-			return $row['average'] !== null ? (float)$row['average'] : 0.0;
+			return $row['average'] !== null ? (float)$row['average'] : null;
 		}
 		
 		/**
@@ -292,7 +292,7 @@
 		 * Set or update a rating for a member and product pair, with incremental link and slope updates when enabled.
 		 * @param int $memberId The member ID
 		 * @param int $productId The product ID
-		 * @param float $rating Must be in [0.0, 1.0] or equal getNotInterested()
+		 * @param float $rating Must be in [0.0, 1.0] or equal RecommendationConfig::NOT_INTERESTED
 		 * @param int|null $category Defaults to configured default
 		 * @return void
 		 * @throws \InvalidArgumentException When an ID is negative or the rating is not in [0.0, 1.0] or the not-interested value
@@ -300,7 +300,7 @@
 		public function setRating(int $memberId, int $productId, float $rating, ?int $category = null): void {
 			$resolvedCategory = $this->config->resolveCategory($category);
 
-			if ($memberId < 0 || $productId < 0 || !RatingRule::isValid($rating, $this->config->getNotInterested())) {
+			if ($memberId < 0 || $productId < 0 || !RatingRule::isValid($rating, RecommendationConfig::NOT_INTERESTED)) {
 				throw new \InvalidArgumentException('Member and product IDs must not be negative, and the rating must be in [0.0, 1.0] or the not-interested value.');
 			}
 
@@ -359,7 +359,7 @@
 		 * @throws \InvalidArgumentException When an ID is negative
 		 */
 		public function setNotInterested(int $memberId, int $productId, ?int $category = null): void {
-			$this->setRating($memberId, $productId, $this->config->getNotInterested(), $category);
+			$this->setRating($memberId, $productId, RecommendationConfig::NOT_INTERESTED, $category);
 		}
 		
 		/**
@@ -422,7 +422,7 @@
 		 */
 		private function ratingFilterSql(RatingKind $kind, array &$params): string {
 			if ($kind === RatingKind::NotInterested) {
-				$params['not_interested'] = $this->config->getNotInterested();
+				$params['not_interested'] = RecommendationConfig::NOT_INTERESTED;
 				return ' AND `rating` = :not_interested';
 			}
 

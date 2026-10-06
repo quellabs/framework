@@ -9,7 +9,6 @@
 	use Quellabs\Recommender\Internal\Persistence\MysqlTimestamp;
 	use Quellabs\Recommender\Internal\Query\OutcomeSubquery;
 	use Quellabs\Recommender\RecommendationSource;
-	use Quellabs\Recommender\Reconciliation\ReconciliationRequest;
 	
 	/**
 	 * Builds versioned model candidates from mature, opted-in impression snapshots.
@@ -168,10 +167,10 @@
 				throw new \InvalidArgumentException('At least one recommendation source is required.');
 			}
 	
-			ReconciliationRequest::validateKey($placement, 64, 'placement');
+			Identifier::validateKey($placement, 64, 'placement');
 	
 			if ($contextKey !== null) {
-				ReconciliationRequest::validateKey($contextKey, 128, 'context');
+				Identifier::validateKey($contextKey, 128, 'context');
 			}
 	
 			return self::distinctSourceMask($sources);

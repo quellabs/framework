@@ -6,15 +6,17 @@ Names, argument order and value types now follow one convention across the publi
 boolean flags and magic strings: `RatingKind` and `RatingOrder` for ratings queries, `ScoreKind` for list scoring,
 and `RecommendationSource` for result strategies. `RecommendationEngine::automaticRating()` is split into
 `recordPurchase()` and `recordClick()`. Reconciliation settings live in `ReconciliationTuning`, and per-item
-diagnostics in `ReconciliationDiagnostics`. `EligibilityProvider` moved to the root namespace. The
-[README upgrade section](README.md#upgrading) lists every changed call.
+diagnostics in `ReconciliationDiagnostics`. `EligibilityProvider` moved to the root namespace. Reasons methods return `RecommendationResult[]`, average-rating
+methods return `null` when there is no data, and reconciler methods use the same `member*` and `visitor*` naming as
+`ItemRecommender`. Configuration accessors drop the `get` prefix. The [README upgrade section](README.md#upgrading)
+lists every changed call.
 
 ## Optional reconciliation and evaluation API
 
 This update adds detailed Slope One predictions with summed directed-pair support,
 an optional `RecommendationReconciler`, a required per-request catalog
 `EligibilityProvider`, ranked candidate pools, and caller-supplied new products.
-Existing public algorithm signatures and result shapes remain unchanged.
+Signatures and result shapes changed in this update; the [README upgrade section](README.md#upgrading) lists each one.
 Reconciliation uses rank fusion until a validated click model is explicitly
 activated for the exact category, placement, enabled sources, and context key.
 
@@ -32,7 +34,7 @@ through `EvaluationRecorder`; attribution reports require explicit windows and
 cutoff times. `recommender:prune-evaluation` requires an explicit cutoff.
 Training and activation are separate commands. Applications handling complete
 member deletion should call both the existing ratings deletion method and
-`EvaluationRecorder::deleteMemberHistory()`.
+`EvaluationRecorder::deleteMemberEvaluations()`.
 
 To roll back only the optional feature, back up evaluation data and drop the
 five new tables in foreign-key-safe order: outcomes, evidence, impression items,

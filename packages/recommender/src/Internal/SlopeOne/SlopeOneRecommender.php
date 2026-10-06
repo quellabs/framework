@@ -43,17 +43,17 @@
 		/**
 		 * Return items sorted by their average Slope One diff relative to the given product, best match first.
 		 * @param int $productId The product ID
-		 * @param int $minLinks Minimum co-occurrence count to include a pair
+		 * @param int $minSupport Minimum co-occurrence count to include a pair
 		 * @param int $limit Maximum number of results (0 = unlimited)
 		 * @param int|null $category Defaults to configured default
 		 * @return array<int, ProductDiff>
 		 */
-		public function getSlopeItems(int $productId, int $minLinks = 1, int $limit = 0, ?int $category = null): array {
+		public function getSlopeItems(int $productId, int $minSupport = 1, int $limit = 0, ?int $category = null): array {
 			$resolvedCategory = $this->config->resolveCategory($category);
 			$limit = max(0, $limit);
 			$result = [];
 
-			foreach ($this->slopeItemRows($productId, max(1, $minLinks), $resolvedCategory, $limit) as $row) {
+			foreach ($this->slopeItemRows($productId, max(1, $minSupport), $resolvedCategory, $limit) as $row) {
 				if (
 					!is_array($row) ||
 					!isset($row['item_id2'], $row['avg_diff']) ||
@@ -72,12 +72,12 @@
 		/**
 		 * Return the linked candidates of a product ordered by average Slope One diff, best first.
 		 * @param int $productId The product ID
-		 * @param int $minLinks Minimum co-occurrence count, at least one
+		 * @param int $minSupport Minimum co-occurrence count, at least one
 		 * @param int $category Already-resolved category
 		 * @param int $limit Maximum results, or zero for all
 		 * @return array<int, array<string, mixed>> Rows with item_id2 and avg_diff
 		 */
-		private function slopeItemRows(int $productId, int $minLinks, int $category, int $limit): array {
+		private function slopeItemRows(int $productId, int $minSupport, int $category, int $limit): array {
 			$sql = '
 				SELECT
 					`item_id2`,
@@ -85,13 +85,13 @@
 				FROM `vogoo_links`
 				WHERE `item_id1` = :product_id AND
 				      `category` = :category AND
-				      `slope_count` >= :min_links
+				      `slope_count` >= :min_support
 			';
 	
 			$params = [
 				'product_id' => $productId,
 				'category'   => $category,
-				'min_links'  => $minLinks,
+				'min_support' => $minSupport,
 			];
 			$sql .= ' ORDER BY avg_diff DESC, `item_id2` ASC';
 	

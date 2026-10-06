@@ -70,7 +70,7 @@ class EvaluationTest extends IntegrationTestCase {
         } catch (\InvalidArgumentException) {
             $this->assertTrue(true);
         }
-        $recorder->deleteMemberHistory(7);
+        $recorder->deleteMemberEvaluations(7);
         $this->assertSame(0, $report->summary(1, $shown, $end, $end, $windows)->impressions);
     }
 
@@ -210,23 +210,23 @@ class EvaluationTest extends IntegrationTestCase {
             $request = new ReconciliationRequest(new ArrayEligibilityProvider([40, 41]),
                 [RecommendationSource::NewProducts], 2, 'home', [40, 41]);
             $list = (new RecommendationReconciler($this->connection, $this->config))
-                ->recommendMember(7, $request);
+                ->memberRecommendations(7, $request);
             $this->assertSame(ScoreKind::ClickProbability, $list->scoreKind);
             $otherContext = new ReconciliationRequest(new ArrayEligibilityProvider([40, 41]),
                 [RecommendationSource::NewProducts], 2, 'home', [40, 41], contextKey: 'tenant-x');
             $this->assertSame(ScoreKind::RankFusion,
                 (new RecommendationReconciler($this->connection, $this->config))
-                    ->recommendMember(7, $otherContext)->scoreKind);
+                    ->memberRecommendations(7, $otherContext)->scoreKind);
             $otherPlacement = new ReconciliationRequest(new ArrayEligibilityProvider([40, 41]),
                 [RecommendationSource::NewProducts], 2, 'other', [40, 41]);
             $otherCategory = new ReconciliationRequest(new ArrayEligibilityProvider([40, 41]),
                 [RecommendationSource::NewProducts], 2, 'home', [40, 41], category: 2);
             $this->assertSame(ScoreKind::RankFusion,
                 (new RecommendationReconciler($this->connection, $this->config))
-                    ->recommendMember(7, $otherPlacement)->scoreKind);
+                    ->memberRecommendations(7, $otherPlacement)->scoreKind);
             $this->assertSame(ScoreKind::RankFusion,
                 (new RecommendationReconciler($this->connection, $this->config))
-                    ->recommendMember(7, $otherCategory)->scoreKind);
+                    ->memberRecommendations(7, $otherCategory)->scoreKind);
             $this->assertSame($modelId, $list->modelId);
             $this->assertSame(0.5, $list->items[0]->rankingScore);
             $recorder = new EvaluationRecorder($this->connection);
@@ -249,7 +249,7 @@ class EvaluationTest extends IntegrationTestCase {
                 WHERE id = UNHEX(?)', [$modelId]);
             try {
                 (new RecommendationReconciler($this->connection, $this->config))
-                    ->recommendMember(7, $request);
+                    ->memberRecommendations(7, $request);
                 $this->fail('An incompatible active feature schema was accepted.');
             } catch (\UnexpectedValueException) {
                 $this->assertTrue(true);
@@ -385,7 +385,7 @@ class EvaluationTest extends IntegrationTestCase {
         $request = new ReconciliationRequest(new ArrayEligibilityProvider([150]),
             [RecommendationSource::TopRated], 1, 'audit_test', additionalCandidateIds: [150]);
         $list = (new RecommendationReconciler($this->connection, $this->config))
-            ->recommendMember(1, $request);
+            ->memberRecommendations(1, $request);
         $shown = new DateTimeImmutable('2026-01-01T00:00:00Z');
         $id = (new EvaluationRecorder($this->connection))->recordImpression($list, null, $shown);
         $row = $this->connection->execute('SELECT source, source_rank FROM vogoo_impression_evidence

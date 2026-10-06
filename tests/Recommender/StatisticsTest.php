@@ -2,7 +2,8 @@
 	
 	namespace Quellabs\Recommender\Tests;
 	
-	use Quellabs\Recommender\Statistics;
+	use Quellabs\Recommender\Config\RecommendationConfig;
+use Quellabs\Recommender\Statistics;
 	
 	/**
 	 * Integration tests for Statistics.
@@ -64,7 +65,7 @@
 		
 		public function testNumProductsExcludesNotInterestedRatings(): void {
 			$this->insertRating(1, 10, 0.8);
-			$this->insertRating(1, 11, $this->config->getNotInterested());
+			$this->insertRating(1, 11, RecommendationConfig::NOT_INTERESTED);
 			$this->assertSame(1, $this->stats->numProducts());
 		}
 		

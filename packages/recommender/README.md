@@ -67,8 +67,8 @@ Ratings run from 0.0 to 1.0, and -1.0 marks "not interested".
 | Recommendations for a visitor | `ItemRecommender::visitorRecommendations()` | `RecommendationResult[]` |
 | Predicted rating for one product | `ItemRecommender::memberPrediction()` | `PredictionResult\|null` |
 | Predicted ratings for all unrated products | `ItemRecommender::memberPredictions()` | `PredictionResult[]` |
-| Ranking filtered by catalogue eligibility | `RecommendationReconciler::recommendMember()` | `RecommendationList` |
-| Full bounded eligible pool, not cut to `limit` | `RecommendationReconciler::candidatePoolMember()` | `RecommendationList` |
+| Ranking filtered by catalogue eligibility | `RecommendationReconciler::memberRecommendations()` | `RecommendationList` |
+| Full bounded eligible pool, not cut to `limit` | `RecommendationReconciler::memberCandidatePool()` | `RecommendationList` |
 
 Visitor variants take a `VisitorContext` in place of the member ID.
 
@@ -80,6 +80,14 @@ Visitor variants take a `VisitorContext` in place of the member ID.
   or the candidate depth cap (`max_candidate_depth`, default 2000) is reached. It can return fewer results than
   `limit` without an error. Check the count when the list must be full.
 - `limit = 0` with an eligibility provider checks every candidate, which costs more on large catalogues.
+- `RecommendationReconciler` `limit` is the size of the displayed slate, from 1 to 100. Zero is rejected.
+
+### Missing values and eligibility
+
+- `memberRating()` returns `null` when the member has no rating for the product. `memberAverageRating()` and
+  `productAverageRating()` return `null` when there are no ratings. A `0.0` result is a real rating.
+- Pass `null` for "no eligibility filter". An `ArrayEligibilityProvider` built from an empty list accepts no candidates,
+  so the call returns no results.
 
 ### Scores
 
@@ -89,6 +97,7 @@ Visitor variants take a `VisitorContext` in place of the member ID.
 | `slopeItems()` | Average Slope One difference, which can be negative |
 | `memberRecommendations()`, `visitorRecommendations()` | Sum of liked count times (rating minus threshold). Fallback items use the average rating |
 | `memberPredictions()`, `visitorPredictions()` | Use `PredictionResult::$predictedRating` |
+| `memberReasons()`, `visitorReasons()` | Liked count of the link to the given product |
 
 ## Documentation
 
@@ -122,8 +131,13 @@ Rename calls as shown. Methods not listed are unchanged.
 | `VisitorContext::getRatings()` | `VisitorContext::ratings()` |
 | `VisitorContext::getRatedProductIds()` | `VisitorContext::ratedProductIds()` |
 | `VisitorContext::removeRating()` | `VisitorContext::deleteRating()` |
-| `RecommendationReconciler::rankCandidatesMember()` | `RecommendationReconciler::candidatePoolMember()` |
-| `RecommendationReconciler::rankCandidatesVisitor()` | `RecommendationReconciler::candidatePoolVisitor()` |
+| `RecommendationReconciler::rankCandidatesMember()` | `RecommendationReconciler::memberCandidatePool()` |
+| `RecommendationReconciler::rankCandidatesVisitor()` | `RecommendationReconciler::visitorCandidatePool()` |
+| `RecommendationReconciler::candidatePoolMember()` | `RecommendationReconciler::memberCandidatePool()` |
+| `RecommendationReconciler::candidatePoolVisitor()` | `RecommendationReconciler::visitorCandidatePool()` |
+| `RecommendationReconciler::recommendMember()` | `RecommendationReconciler::memberRecommendations()` |
+| `RecommendationReconciler::recommendVisitor()` | `RecommendationReconciler::visitorRecommendations()` |
+| `EvaluationRecorder::deleteMemberHistory()` | `EvaluationRecorder::deleteMemberEvaluations()` |
 
 Prediction methods that were renamed also changed return type. Read `->predictedRating` and `->supportCount` on the
 new `PredictionResult` objects:
@@ -139,7 +153,7 @@ Argument changes. Positional calls must move their arguments. Named calls only n
 
 | Method | Now |
 |--------|-----|
-| `ItemRecommender::slopeItems()` | `(productId, eligibility, limit, minLinks, category)` |
+| `ItemRecommender::slopeItems()` | `(productId, eligibility, limit, minSupport, category)` |
 | `ItemRecommender::memberRecommendations()` | `(memberId, eligibility, limit, minHistory, topRatedMinRatings, category)` |
 | `ItemRecommender::visitorRecommendations()` | `(visitor, eligibility, limit, minHistory, topRatedMinRatings, category)` |
 | `RecommendationEngine::memberNumRatings()` | `(memberId, RatingKind $kind, category)` |
@@ -169,6 +183,8 @@ Return and type changes:
 | Member | Previous | Now |
 |--------|----------|-----|
 | `RecommendationEngine::memberRating()` | `array`, empty when absent | `array{rating, ts}\|null`, `null` when absent |
+| `RecommendationEngine::memberAverageRating()`, `productAverageRating()` | `float`, `0.0` when absent | `float\|null`, `null` when absent |
+| `ItemRecommender::memberReasons()`, `visitorReasons()` | `int[]` of product IDs | `RecommendationResult[]`, score is the link's liked count |
 | `RecommendationEngine::memberRatings()`, `productRatings()` | Raw database values | `product_id` or `member_id` as `int`, `rating` as `float`, `ts` as `string` |
 | `RecommendationResult::$strategy` | `string` such as `'item_links'` | `RecommendationSource` enum case |
 | `RecommendationList::$scoreKind` | `string` such as `'rank_fusion'` | `ScoreKind` enum case |
@@ -176,8 +192,25 @@ Return and type changes:
 | `new RecommendationList(...)` | Public constructor | Private. Use `RecommendationList::ranked()` or `fromDisplayedItems()` |
 | `ReconciliationRequest` tuning properties such as `$minSlopeSupport` | Properties on the request | `$request->tuning` (`ReconciliationTuning`). `minSlopeSupport` is now `minSupport` |
 
+Configuration accessors drop the `get` prefix. Booleans keep `is`:
+
+| Previous | Now |
+|----------|-----|
+| `RecommendationConfig::getCategory()` | `RecommendationConfig::category()` |
+| `RecommendationConfig::getThresholdNrCommonRatings()` | `RecommendationConfig::thresholdNrCommonRatings()` |
+| `RecommendationConfig::getThresholdMult()` | `RecommendationConfig::thresholdMult()` |
+| `RecommendationConfig::getThresholdRating()` | `RecommendationConfig::thresholdRating()` |
+| `RecommendationConfig::getCost()` | `RecommendationConfig::cost()` |
+| `RecommendationConfig::getMaxCandidateDepth()` | `RecommendationConfig::maxCandidateDepth()` |
+| `RecommendationConfig::getMaxBackfillRounds()` | `RecommendationConfig::maxBackfillRounds()` |
+| `RecommendationConfig::getMaxEligibilityBatchSize()` | `RecommendationConfig::maxEligibilityBatchSize()` |
+| `RecommendationConfig::getNotInterested()` | `RecommendationConfig::NOT_INTERESTED` |
+
 Other changes:
 
+- `ReconciliationRequest::validateKey()` and `ReconciliationRequest::distinctIds()` are no longer public. The
+  `ReconciliationRequest::sourceMask()` method is removed; use `RecommendationSource::mask($request->sources)`.
+  `RecommendationList::sourceMask()` is unchanged.
 - `EligibilityProvider` and `ArrayEligibilityProvider` moved from `Quellabs\Recommender\Reconciliation` to
   `Quellabs\Recommender`. Update the imports.
 - The `array $filter` parameter of the `ItemRecommender` recommendation, prediction and link methods is now
@@ -217,7 +250,7 @@ Optional. Run `sculpt recommender:init-evaluation-db`, or apply
 [`migrations/2026-10-evaluation-tables.sql`](migrations/2026-10-evaluation-tables.sql) directly. It creates five
 tables and does not modify existing tables. The SQL uses `CREATE TABLE IF NOT EXISTS`, so running it again is safe.
 
-Applications that handle full member deletion must call `EvaluationRecorder::deleteMemberHistory()` in addition to
+Applications that handle full member deletion must call `EvaluationRecorder::deleteMemberEvaluations()` in addition to
 the existing rating deletion.
 
 ## License

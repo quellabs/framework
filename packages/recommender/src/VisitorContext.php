@@ -43,7 +43,7 @@
 				throw new \InvalidArgumentException("Product ID must not be negative, got {$productId}.");
 			}
 			
-			if (!RatingRule::isValid($rating, $this->config->getNotInterested())) {
+			if (!RatingRule::isValid($rating, RecommendationConfig::NOT_INTERESTED)) {
 				throw new \InvalidArgumentException("Rating must be in [0.0, 1.0] or the not-interested sentinel, got {$rating}.");
 			}
 			
@@ -70,7 +70,7 @@
 		 * @return void
 		 */
 		public function setNotInterested(int $productId, ?int $category = null): void {
-			$this->setRating($productId, $this->config->getNotInterested(), $category);
+			$this->setRating($productId, RecommendationConfig::NOT_INTERESTED, $category);
 		}
 		
 		/**
