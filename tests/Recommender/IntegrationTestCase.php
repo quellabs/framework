@@ -8,6 +8,7 @@
 	use Cake\Database\Log\LoggedQuery;
 	use Psr\Log\AbstractLogger;
 	use Quellabs\Recommender\Internal\UserSimilarity;
+	use Quellabs\Recommender\Internal\SlopeOne\SlopeOneRecommender;
 	use Quellabs\Recommender\RecommendationEngine;
 	use Quellabs\Recommender\Reconciliation\RecommendationReconciler;
 	
@@ -36,7 +37,8 @@
 		 */
 		protected function reconciler(): RecommendationReconciler {
 			return new RecommendationReconciler($this->connection, $this->config,
-				new UserSimilarity($this->connection, $this->config, new RecommendationEngine($this->connection, $this->config)));
+				new UserSimilarity($this->connection, $this->config, new RecommendationEngine($this->connection, $this->config)),
+				new SlopeOneRecommender($this->connection, $this->config));
 		}
 		
 		/**

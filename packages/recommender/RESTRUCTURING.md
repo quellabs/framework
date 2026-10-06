@@ -64,12 +64,14 @@ Decisions made in Phase 1:
 
 ### Phase 2: extract sources
 
-- [ ] Move each candidate-generation method out of `RecommendationReconciler` into its source class.
-- [ ] Remove the hidden construction of `UserSimilarity` and `RecommendationEngine` inside the reconciler. Inject them instead.
-- [ ] Keep `CandidateRoundState` as the bounded-depth state that sources read from.
-- [ ] Declare the supported subjects on each source.
-- [ ] Introduce `Subject` (member, visitor, product) as one class with a kind field. Sources reject unsupported kinds with an exception.
-- [ ] Replace `ItemRecommender::linkedProducts()` and `slopeProducts()` with product-subject queries on `ItemLinks` and `SlopeOne`, and remove `ItemRecommender`.
+- [x] Remove the hidden construction of `UserSimilarity` and `RecommendationEngine` inside the reconciler. Inject them instead. (Step 2a. `Subject` added.)
+- [x] 2b-1: `SlopeOneRecommender::candidateRows()` is the only Slope One candidate query. The reconciler and both prediction paths call it. Removed the unused `memberPredict`, `memberPredictAll`, `visitorPredict`, `visitorPredictAll` and `rankPredictions`. The single-product lookup now reads the pair from the candidate's side. This relies on the link table storing both directions of every pair with opposite `diff_slope`, which both the rebuild and `LinkUpdater` do. The test fixtures that broke were one-sided and are fixed.
+- [ ] 2b-2: Move the reconciler's ItemLinks candidate code into `ItemLinksSource`, which the reconciler calls. Keep \`CandidateRoundState\` as the bounded-depth state that sources read from.
+- [ ] 2b-3: Add the product subject, \`SlopeOne::predict()\` and \`ItemLinks::reasons()\` on the two sources, and declare each source's supported subjects. Sources reject unsupported kinds with an exception.
+- [ ] 2b-4: Remove \`ItemRecommender\`. Its item-to-item queries are now product-subject queries on the sources.
+- [ ] 2c: Move the UserSimilarity, TopRated and NewProducts candidate code into their own source classes, and shrink the reconciler to fusion and orchestration.
+
+Reason for the order: each query exists once from the start. Writing product-subject queries first would mean writing them against copies that are later removed.
 
 ### Phase 3: filtering in sources
 

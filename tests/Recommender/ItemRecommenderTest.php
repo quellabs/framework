@@ -375,10 +375,11 @@ use Quellabs\Recommender\MemberId;
 		}
 
 		public function testMemberPredictionReturnsPredictedRating(): void {
-			// Member rated product 2 at 0.8; link 1->2 has cnt=1, diff_slope=-0.1
-			// predicted = (0.8 * 1 - (-0.1)) / 1 = 0.9
+			// Member rated product 2 at 0.8; the pair is stored in both directions with opposite diff_slope
+			// predicted = 0.8 * 1 + 0.1 = 0.9
 			$this->insertRating(1, 2, 0.8);
 			$this->insertLink(1, 2, 1, -0.1);
+			$this->insertLink(2, 1, 1, 0.1);
 			$result = $this->recommender->memberPrediction(new MemberId(1), new ProductId(1));
 			$this->assertNotNull($result);
 			$this->assertEqualsWithDelta(0.9, $result->predictedRating, 0.0001);
@@ -402,14 +403,16 @@ use Quellabs\Recommender\MemberId;
 
 		public function testMemberPredictionClampsToOne(): void {
 			$this->insertRating(1, 2, 1.0);
-			$this->insertLink(1, 2, 1, 0.5);
+			$this->insertLink(1, 2, 1, -0.5);
+			$this->insertLink(2, 1, 1, 0.5);
 			$result = $this->recommender->memberPrediction(new MemberId(1), new ProductId(1));
 			$this->assertLessThanOrEqual(1.0, $result->predictedRating);
 		}
 
 		public function testMemberPredictionClampsToZero(): void {
 			$this->insertRating(1, 2, 0.0);
-			$this->insertLink(1, 2, 1, -0.5);
+			$this->insertLink(1, 2, 1, 0.5);
+			$this->insertLink(2, 1, 1, -0.5);
 			$result = $this->recommender->memberPrediction(new MemberId(1), new ProductId(1));
 			$this->assertGreaterThanOrEqual(0.0, $result->predictedRating);
 		}
@@ -478,6 +481,7 @@ use Quellabs\Recommender\MemberId;
 
 		public function testVisitorPredictionReturnsPredictedRating(): void {
 			$this->insertLink(1, 2, 1, -0.1);
+			$this->insertLink(2, 1, 1, 0.1);
 			$visitor = new VisitorContext($this->config);
 			$visitor->setRating(2, 0.8);
 			$result = $this->recommender->visitorPrediction($visitor, 1);

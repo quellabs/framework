@@ -13,6 +13,7 @@
 	use Quellabs\Recommender\Internal\Eligibility\EligibilityFilter;
 
 	use Quellabs\Recommender\Internal\UserSimilarity;
+	use Quellabs\Recommender\Internal\SlopeOne\SlopeOneRecommender;
 	
 	use Quellabs\Recommender\RecommendationList;
 	use Quellabs\Recommender\ScoreKind;
@@ -46,16 +47,21 @@
 		/** @var UserSimilarity Neighbour candidates for member subjects */
 		private UserSimilarity $similarity;
 		
+		/** @var SlopeOneRecommender Shared Slope One candidate query */
+		private SlopeOneRecommender $slopeOne;
+		
 		/**
 		 * Build the reconciler.
 		 * @param Connection $connection Ratings database connection
 		 * @param RecommendationConfig $config Recommender settings
 		 * @param UserSimilarity $similarity Neighbour source for member subjects
+		 * @param SlopeOneRecommender $slopeOne Shared Slope One candidate query
 		 */
-		public function __construct(Connection $connection, RecommendationConfig $config, UserSimilarity $similarity) {
+		public function __construct(Connection $connection, RecommendationConfig $config, UserSimilarity $similarity, SlopeOneRecommender $slopeOne) {
 			$this->connection = $connection;
 			$this->config = $config;
 			$this->similarity = $similarity;
+			$this->slopeOne = $slopeOne;
 			$this->temporary = new TemporaryTable($connection);
 			$this->filter = new EligibilityFilter($config);
 		}
@@ -651,75 +657,49 @@
 		}
 		
 		/**
-		 * Run the item-links or Slope One aggregate against a rating table under a restriction.
+		 * Run the item-links or Slope One candidate query against a rating table under a restriction.
 		 * @param RecommendationSource $source Item-links or Slope One
 		 * @param string $ratingsTable Temporary table of rating inputs, joined on l.item_id1
 		 * @param int $category Resolved category
 		 * @param ReconciliationRequest $request Source thresholds
-		 * @param string $restriction Extra predicate limiting the candidates, referring to l.item_id2
+		 * @param string $restriction Extra predicate limiting the candidates, starting with AND and referring to l.item_id2
 		 * @param int|null $depth Keeps the top rows by score up to this depth, or all rows when null
-		 * @return array<mixed> Aggregate candidate rows
+		 * @return array<mixed> Candidate rows with id, score and support_count or contributors
 		 */
 		private function sourceRows(RecommendationSource $source, string $ratingsTable, int $category, ReconciliationRequest $request, string $restriction, ?int $depth): array {
-			return $this->connection->execute(
-				$this->sourceAggregateSql($source, $ratingsTable, $restriction, $depth),
-				$this->sourceAggregateParams($source, $category, $request)
-			)->fetchAll('assoc');
+			if ($source === RecommendationSource::SlopeOne) {
+				return $this->slopeOne->candidateRows("JOIN {$ratingsTable} r ON r.product_id = l.item_id1", $restriction, [],
+					$category, $request->tuning->minSupport, $depth);
+			}
+
+			return $this->connection->execute($this->itemLinksSql($ratingsTable, $restriction, $depth), [
+				'threshold' => $this->config->thresholdRating(),
+				'category' => $category,
+			])->fetchAll('assoc');
 		}
-		
+
 		/**
-		 * Build the aggregate query that scores candidates from item-links or Slope One pairs against a rating table.
-		 * @param RecommendationSource $source Item-links or Slope One
+		 * Build the item-links aggregate that scores candidates from liked pairs against a rating table.
 		 * @param string $ratingsTable Temporary table of rating inputs, joined on l.item_id1
-		 * @param string $restriction Extra predicate limiting the candidates, referring to l.item_id2
+		 * @param string $restriction Extra predicate limiting the candidates, starting with AND and referring to l.item_id2
 		 * @param int|null $depth Keeps the top rows by score up to this depth, or all rows when null
-		 * @return string Query with :threshold, :category and :minimum placeholders as used by the source
+		 * @return string Query with :threshold and :category placeholders
 		 */
-		private function sourceAggregateSql(RecommendationSource $source, string $ratingsTable, string $restriction, ?int $depth): string {
-			if ($source === RecommendationSource::ItemLinks) {
-				$sql = "
-					SELECT
-						l.item_id2 AS id,
-						SUM(l.liked_count * (r.rating - :threshold)) AS score,
-						JSON_ARRAYAGG(r.product_id) AS contributors
-					FROM vogoo_links l
-					JOIN {$ratingsTable} r ON r.product_id = l.item_id1
-					WHERE l.category = :category AND
-						l.liked_count > 0 {$restriction}
-					GROUP BY l.item_id2 HAVING score > 0";
-				$order = 'score DESC, id ASC';
-			} else {
-				$sql = "
-					SELECT
-						l.item_id2 AS id,
-						SUM(l.slope_count) AS support_count,
-						LEAST(1.0, GREATEST(0.0, SUM(r.rating * l.slope_count + l.diff_slope) / SUM(l.slope_count))) AS score
-					FROM vogoo_links l
-					JOIN {$ratingsTable} r ON r.product_id = l.item_id1
-					WHERE l.category = :category AND
-						l.slope_count > 0 {$restriction}
-					GROUP BY l.item_id2 HAVING support_count >= :minimum";
-				$order = 'score DESC, support_count DESC, id ASC';
-			}
-			
-			return $depth === null ? $sql : $sql . " ORDER BY {$order} LIMIT {$depth}";
+		private function itemLinksSql(string $ratingsTable, string $restriction, ?int $depth): string {
+			$sql = "
+				SELECT
+					l.item_id2 AS id,
+					SUM(l.liked_count * (r.rating - :threshold)) AS score,
+					JSON_ARRAYAGG(r.product_id) AS contributors
+				FROM vogoo_links l
+				JOIN {$ratingsTable} r ON r.product_id = l.item_id1
+				WHERE l.category = :category AND
+					l.liked_count > 0 {$restriction}
+				GROUP BY l.item_id2 HAVING score > 0";
+
+			return $depth === null ? $sql : $sql . " ORDER BY score DESC, id ASC LIMIT {$depth}";
 		}
-		
-		/**
-		 * Return the bound parameters for the aggregate query of an item-links or Slope One source.
-		 * @param RecommendationSource $source Item-links or Slope One
-		 * @param int $category Resolved category
-		 * @param ReconciliationRequest $request Source thresholds
-		 * @return array<string, int|float> Parameters for sourceAggregateSql()
-		 */
-		private function sourceAggregateParams(RecommendationSource $source, int $category, ReconciliationRequest $request): array {
-			if ($source === RecommendationSource::ItemLinks) {
-				return ['threshold' => $this->config->thresholdRating(), 'category' => $category];
-			} else {
-				return ['category' => $category, 'minimum' => $request->tuning->minSupport];
-			}
-		}
-		
+
 		/**
 		 * Generate the bounded candidates of one source.
 		 * @param RecommendationSource $source Candidate generator

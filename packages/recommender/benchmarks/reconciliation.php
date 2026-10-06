@@ -9,6 +9,7 @@
 	use Quellabs\Recommender\Config\RecommendationConfig;
 	use Quellabs\Recommender\Reconciliation\RecommendationReconciler;
 use Quellabs\Recommender\Internal\UserSimilarity;
+use Quellabs\Recommender\Internal\SlopeOne\SlopeOneRecommender;
 use Quellabs\Recommender\RecommendationEngine;
 	use Quellabs\Recommender\RecommendationSource;
 	use Quellabs\Recommender\Reconciliation\ReconciliationRequest;
@@ -22,7 +23,8 @@ use Quellabs\Recommender\RecommendationEngine;
 
 	$config = new RecommendationConfig(directLinks: false, directSlope: false);
 	$reconciler = new RecommendationReconciler($connection, $config,
-	    new UserSimilarity($connection, $config, new RecommendationEngine($connection, $config)));
+	    new UserSimilarity($connection, $config, new RecommendationEngine($connection, $config)),
+	    new SlopeOneRecommender($connection, $config));
 	$driver = $connection->getDriver();
 	$previousLogger = $driver->getLogger();
 	$logger = new class extends AbstractLogger {
