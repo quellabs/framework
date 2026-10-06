@@ -4,8 +4,6 @@
 
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\Recommender\ColdStartPolicy;
-use Quellabs\Recommender\MinHistory;
-use Quellabs\Recommender\MinRatings;
 
 	/** Unit tests for ColdStartPolicy validation. */
 	class ColdStartPolicyTest extends TestCase {
@@ -13,6 +11,7 @@ use Quellabs\Recommender\MinRatings;
 		/** @return void */
 		public function testDefaultsMatchRecommendationDefaults(): void {
 			$policy = new ColdStartPolicy();
+
 			$this->assertSame(1, $policy->minHistory);
 			$this->assertSame(2, $policy->topRatedMinRatings);
 		}
@@ -20,12 +19,12 @@ use Quellabs\Recommender\MinRatings;
 		/** @return void */
 		public function testRejectsMinHistoryBelowOne(): void {
 			$this->expectException(\InvalidArgumentException::class);
-			new MinHistory(0);
+			new ColdStartPolicy(minHistory: 0);
 		}
 
 		/** @return void */
 		public function testRejectsTopRatedMinRatingsBelowOne(): void {
 			$this->expectException(\InvalidArgumentException::class);
-			new MinRatings(0);
+			new ColdStartPolicy(topRatedMinRatings: 0);
 		}
 	}

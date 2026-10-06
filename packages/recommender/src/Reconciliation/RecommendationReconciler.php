@@ -17,7 +17,6 @@
 	use Quellabs\Recommender\RecommendationEngine;
 	
 	use Quellabs\Recommender\RecommendationList;
-	use Quellabs\Recommender\MemberId;
 	use Quellabs\Recommender\ScoreKind;
 	
 	use Quellabs\Recommender\RecommendationSource;
@@ -60,12 +59,12 @@
 		
 		/**
 		 * Return the displayed slate of up to the requested limit for a persisted member.
-		 * @param MemberId $member Member ID
+		 * @param int $member Member ID
 		 * @param ReconciliationRequest $request Candidate request
 		 * @return RecommendationList Displayed slate, at most the request limit
 		 * @throws \InvalidArgumentException When the member ID is outside the unsigned 32-bit range
 		 */
-		public function memberSlate(MemberId $member, ReconciliationRequest $request): RecommendationList {
+		public function memberSlate(int $member, ReconciliationRequest $request): RecommendationList {
 			return $this->firstPage($this->memberCandidatePool($member, $request), $request->limit);
 		}
 		
@@ -81,14 +80,14 @@
 		
 		/**
 		 * Return the full bounded eligible pool for a persisted member.
-		 * @param MemberId $member Member ID
+		 * @param int $member Member ID
 		 * @param ReconciliationRequest $request Candidate request
 		 * @return RecommendationList Full bounded eligible pool
 		 * @throws \InvalidArgumentException When the member ID is not an unsigned 32-bit integer
 		 */
-		public function memberCandidatePool(MemberId $member, ReconciliationRequest $request): RecommendationList {
-			$memberId = $member->value;
-			
+		public function memberCandidatePool(int $member, ReconciliationRequest $request): RecommendationList {
+			Identifier::assertId($member, 'Member ID');
+
 			$category = $this->config->resolveCategory($request->category);
 			
 			$rows = $this->connection->execute('
@@ -99,7 +98,7 @@
 				WHERE member_id = :member AND
 				      category = :category
 			', [
-				'member'   => $memberId,
+				'member'   => $member,
 				'category' => $category,
 			])->fetchAll('assoc');
 			
@@ -108,7 +107,7 @@
 				$ratings[(int)$row['product_id']] = (float)$row['rating'];
 			}
 			
-			return $this->rank($request, $category, $ratings, $memberId);
+			return $this->rank($request, $category, $ratings, $member);
 		}
 		
 		/**

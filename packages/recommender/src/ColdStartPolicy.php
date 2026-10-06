@@ -2,6 +2,8 @@
 
 	namespace Quellabs\Recommender;
 
+	use Quellabs\Recommender\Internal\Identifier;
+
 	/** Thresholds that decide when a member or visitor gets fallback items instead of collaborative scores. */
 	readonly class ColdStartPolicy {
 
@@ -13,11 +15,15 @@
 
 		/**
 		 * Build a cold-start policy from validated thresholds.
-		 * @param MinHistory $minHistory Minimum genuine ratings before collaborative scoring
-		 * @param MinRatings $topRatedMinRatings Minimum ratings for a top-rated fallback item
+		 * @param int $minHistory Minimum genuine ratings before collaborative scoring, at least 1
+		 * @param int $topRatedMinRatings Minimum ratings for a top-rated fallback item, at least 1
+		 * @throws \InvalidArgumentException When a threshold is below 1
 		 */
-		public function __construct(MinHistory $minHistory = new MinHistory(1), MinRatings $topRatedMinRatings = new MinRatings(2)) {
-			$this->minHistory = $minHistory->value;
-			$this->topRatedMinRatings = $topRatedMinRatings->value;
+		public function __construct(int $minHistory = 1, int $topRatedMinRatings = 2) {
+			Identifier::assertAtLeast($minHistory, 1, 'Minimum history');
+			Identifier::assertAtLeast($topRatedMinRatings, 1, 'Minimum ratings');
+
+			$this->minHistory = $minHistory;
+			$this->topRatedMinRatings = $topRatedMinRatings;
 		}
 	}

@@ -3,6 +3,7 @@
 	namespace Quellabs\Recommender;
 	
 	use Quellabs\Recommender\Config\RecommendationConfig;
+	use Quellabs\Recommender\Internal\Identifier;
 	use Quellabs\Recommender\Internal\ImplicitRating;
 	use Quellabs\Recommender\Internal\RatingRule;
 
@@ -33,18 +34,15 @@
 		
 		/**
 		 * Record or update a rating for a product in the given category.
-		 * @param ProductId $product The product ID
+		 * @param int $product The product ID
 		 * @param float $rating Rating in [0.0, 1.0], or the not-interested sentinel
 		 * @param int|null $category Defaults to the configured default category
 		 * @return void
 		 * @throws \InvalidArgumentException When the product ID or rating is invalid
 		 */
-		public function setRating(ProductId $product, float $rating, ?int $category = null): void {
-			$productId = $product->value;
-			if ($productId < 0) {
-				throw new \InvalidArgumentException("Product ID must not be negative, got {$productId}.");
-			}
-			
+		public function setRating(int $product, float $rating, ?int $category = null): void {
+			Identifier::assertId($product, 'Product ID');
+
 			if (!RatingRule::isValid($rating, RecommendationConfig::NOT_INTERESTED)) {
 				throw new \InvalidArgumentException("Rating must be in [0.0, 1.0] or the not-interested sentinel, got {$rating}.");
 			}
@@ -52,14 +50,14 @@
 			$resolvedCategory = $this->config->resolveCategory($category);
 			
 			foreach ($this->ratings as $index => $entry) {
-				if ($entry['product_id'] === $productId && $entry['category'] === $resolvedCategory) {
+				if ($entry['product_id'] === $product && $entry['category'] === $resolvedCategory) {
 					$this->ratings[$index]['rating'] = $rating;
 					return;
 				}
 			}
 			
 			$this->ratings[] = [
-				'product_id' => $productId,
+				'product_id' => $product,
 				'rating'     => $rating,
 				'category'   => $resolvedCategory,
 			];
@@ -67,38 +65,37 @@
 		
 		/**
 		 * Mark a product as not interested for the given category.
-		 * @param ProductId $product The product ID
+		 * @param int $product The product ID
 		 * @param int|null $category Defaults to the configured default category
 		 * @return void
+		 * @throws \InvalidArgumentException When the product ID is outside the unsigned 32-bit range
 		 */
-		public function setNotInterested(ProductId $product, ?int $category = null): void {
-			$productId = $product->value;
+		public function setNotInterested(int $product, ?int $category = null): void {
 			$this->setRating($product, RecommendationConfig::NOT_INTERESTED, $category);
 		}
-		
+
 		/**
 		 * Record a purchase as a rating of 1.0 for a product in the given category.
-		 * @param ProductId $product The product ID
+		 * @param int $product The product ID
 		 * @param int|null $category Defaults to the configured default category
 		 * @return void
-		 * @throws \InvalidArgumentException When the product ID is negative
+		 * @throws \InvalidArgumentException When the product ID is outside the unsigned 32-bit range
 		 */
-		public function recordPurchase(ProductId $product, ?int $category = null): void {
-			$productId = $product->value;
+		public function recordPurchase(int $product, ?int $category = null): void {
 			$this->setRating($product, ImplicitRating::PURCHASE, $category);
 		}
 
 		/**
 		 * Record a click as a rating of 0.7, or raise an existing genuine rating by 0.01 up to 1.0.
-		 * @param ProductId $product The product ID
+		 * @param int $product The product ID
 		 * @param int|null $category Defaults to the configured default category
 		 * @return void
-		 * @throws \InvalidArgumentException When the product ID is negative
+		 * @throws \InvalidArgumentException When the product ID is outside the unsigned 32-bit range
 		 */
-		public function recordClick(ProductId $product, ?int $category = null): void {
-			$productId = $product->value;
+		public function recordClick(int $product, ?int $category = null): void {
+			Identifier::assertId($product, 'Product ID');
 			$resolvedCategory = $this->config->resolveCategory($category);
-			$existing = $this->genuineRating($productId, $resolvedCategory);
+			$existing = $this->genuineRating($product, $resolvedCategory);
 
 			if ($existing === null || $existing < ImplicitRating::PURCHASE) {
 				$this->setRating($product, ImplicitRating::afterClick($existing), $resolvedCategory);
@@ -107,18 +104,19 @@
 
 		/**
 		 * Delete a rating for a product in the given category.
-		 * @param ProductId $product The product ID
+		 * @param int $product The product ID
 		 * @param int|null $category Defaults to the configured default category
 		 * @return void
+		 * @throws \InvalidArgumentException When the product ID is outside the unsigned 32-bit range
 		 */
-		public function deleteRating(ProductId $product, ?int $category = null): void {
-			$productId = $product->value;
+		public function deleteRating(int $product, ?int $category = null): void {
+			Identifier::assertId($product, 'Product ID');
 			$resolvedCategory = $this->config->resolveCategory($category);
 			
 			$this->ratings = array_values(
 				array_filter(
 					$this->ratings,
-					fn($entry) => !($entry['product_id'] === $productId && $entry['category'] === $resolvedCategory)
+					fn($entry) => !($entry['product_id'] === $product && $entry['category'] === $resolvedCategory)
 				)
 			);
 		}

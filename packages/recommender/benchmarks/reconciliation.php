@@ -11,7 +11,6 @@
 	use Quellabs\Recommender\RecommendationSource;
 	use Quellabs\Recommender\Reconciliation\ReconciliationRequest;
 	use Quellabs\Recommender\Reconciliation\ReconciliationTuning;
-use Quellabs\Recommender\Reconciliation\SourceDepth;
 	
 	$connection = $GLOBALS['test_connection'] ?? null;
 
@@ -60,7 +59,7 @@ use Quellabs\Recommender\Reconciliation\SourceDepth;
 	    }
 	    foreach (['small' => range(100, 119), 'large' => range(100, 279)] as $size => $eligible) {
 	        $request = new ReconciliationRequest(new ArrayEligibilityProvider($eligible),
-	            [RecommendationSource::TopRated], 10, 'benchmark', tuning: new ReconciliationTuning(maxCandidateDepth: new SourceDepth(200)));
+	            [RecommendationSource::TopRated], 10, 'benchmark', tuning: new ReconciliationTuning(maxCandidateDepth: 200));
 	        $times = [];
 	        $queries = [];
 	        $returned = [];

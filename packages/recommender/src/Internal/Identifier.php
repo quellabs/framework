@@ -22,6 +22,35 @@
 		}
 		
 		/**
+		 * Validate that a threshold or limit is at least a minimum.
+		 * @param int $value Value to validate
+		 * @param int $min Smallest allowed value
+		 * @param string $name Error context, such as "Minimum support"
+		 * @return void
+		 * @throws \InvalidArgumentException When the value is below the minimum
+		 */
+		public static function assertAtLeast(int $value, int $min, string $name): void {
+			if ($value < $min) {
+				throw new \InvalidArgumentException("{$name} must be at least {$min}, got {$value}.");
+			}
+		}
+
+		/**
+		 * Validate that a threshold is within an inclusive range.
+		 * @param int $value Value to validate
+		 * @param int $min Smallest allowed value
+		 * @param int $max Largest allowed value
+		 * @param string $name Error context, such as "Minimum neighbour similarity"
+		 * @return void
+		 * @throws \InvalidArgumentException When the value is outside the range
+		 */
+		public static function assertInRange(int $value, int $min, int $max, string $name): void {
+			if ($value < $min || $value > $max) {
+				throw new \InvalidArgumentException("{$name} must be between {$min} and {$max}, got {$value}.");
+			}
+		}
+
+		/**
 		 * Validate a key as a non-empty printable ASCII string within a byte limit.
 		 * @param string $value Key to validate
 		 * @param int $maxLength Maximum byte length

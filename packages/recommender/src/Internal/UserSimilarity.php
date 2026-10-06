@@ -9,7 +9,6 @@
 	use Quellabs\Recommender\Internal\Query\Results;
 	
 	
-	use Quellabs\Recommender\MemberId;
 	use Quellabs\Recommender\Neighbour;
 	use Quellabs\Recommender\RecommendationEngine;
 	use Quellabs\Recommender\RecommendationResult;
@@ -69,7 +68,7 @@
 		 */
 		public function memberSimilarity(int $memberId1, int $memberId2, ?int $category = null): int {
 			$resolvedCategory = $this->config->resolveCategory($category);
-			$ownRatingCount = $this->engine->memberNumRatings(new MemberId($memberId1), RatingKind::Genuine, $resolvedCategory);
+			$ownRatingCount = $this->engine->memberNumRatings($memberId1, RatingKind::Genuine, $resolvedCategory);
 			
 			if ($ownRatingCount === 0) {
 				return 0;
@@ -117,7 +116,7 @@
 			$minSimilarity = max(0, min(100, $minSimilarity));
 			$limit = max(0, $limit);
 	
-			$ownRatingCount = $this->engine->memberNumRatings(new MemberId($memberId), RatingKind::Genuine, $resolvedCategory);
+			$ownRatingCount = $this->engine->memberNumRatings($memberId, RatingKind::Genuine, $resolvedCategory);
 	
 			if ($ownRatingCount === 0) {
 				return [];

@@ -9,8 +9,6 @@
 	use Quellabs\Recommender\Internal\Model\SourceFeatures;
 	use Quellabs\Recommender\Internal\Persistence\EvaluationSchema;
 	use Quellabs\Recommender\Internal\Identifier;
-	use Quellabs\Recommender\MemberId;
-	use Quellabs\Recommender\ProductId;
 	use Quellabs\Recommender\Internal\Persistence\MysqlTimestamp;
 
 	use Quellabs\Recommender\RecommendationList;
@@ -35,15 +33,18 @@
 		/**
 		 * Record the displayed order of a list and return its impression token.
 		 * @param RecommendationList $shown Actual displayed order
-		 * @param MemberId|null $member Optional persisted member
+		 * @param int|null $member Optional persisted member ID
 		 * @param DateTimeImmutable|null $shownAt Actual display time
 		 * @return ImpressionId New opaque impression token
 		 * @throws \InvalidArgumentException When the list is empty or the member ID is invalid
 		 * @throws \UnexpectedValueException When a calibrated list does not match its stored model
 		 */
-		public function recordImpression(RecommendationList $shown, ?MemberId $member = null,
+		public function recordImpression(RecommendationList $shown, ?int $member = null,
 			?DateTimeImmutable $shownAt = null): ImpressionId {
-			$memberId = $member?->value;
+			if ($member !== null) {
+				Identifier::assertId($member, 'Member ID');
+			}
+
 			EvaluationSchema::requireTables($this->connection);
 			
 			if ($shown->items === []) {
@@ -54,8 +55,8 @@
 			$id = ImpressionId::generate();
 			$timestamp = MysqlTimestamp::utc($shownAt ?? new DateTimeImmutable('now'));
 			
-			$this->connection->transactional(function () use ($shown, $memberId, $id, $timestamp, $model): void {
-				$this->insertImpressionRow($id, $shown, $memberId, $timestamp);
+			$this->connection->transactional(function () use ($shown, $member, $id, $timestamp, $model): void {
+				$this->insertImpressionRow($id, $shown, $member, $timestamp);
 				
 				foreach ($shown->items as $index => $item) {
 					$this->insertImpressionItem($id, $shown, $item, $index + 1, $model);
@@ -68,16 +69,16 @@
 		/**
 		 * Record an outcome for a displayed item, ignoring exact retries of the same event.
 		 * @param ImpressionId $impressionId Display token
-		 * @param ProductId $product Displayed item ID
+		 * @param int $product Displayed item ID
 		 * @param string $eventId Stable printable ASCII event key, 1 to 128 characters
 		 * @param OutcomeType $type Action type
 		 * @param DateTimeImmutable $occurredAt Event time
 		 * @return void
 		 * @throws \InvalidArgumentException|\Exception When the IDs are invalid or the event conflicts with a stored one
 		 */
-		public function recordOutcome(ImpressionId $impressionId, ProductId $product, string $eventId,
+		public function recordOutcome(ImpressionId $impressionId, int $product, string $eventId,
 			OutcomeType $type, DateTimeImmutable $occurredAt): void {
-			$productId = $product->value;
+			Identifier::assertId($product, 'Product ID');
 			EvaluationSchema::requireTables($this->connection);
 
 			if (preg_match('/^[\x20-\x7e]{1,128}$/D', $eventId) !== 1) {
@@ -86,8 +87,8 @@
 			
 			$timestamp = MysqlTimestamp::utc($occurredAt);
 			
-			$this->connection->transactional(function () use ($impressionId, $productId, $eventId, $type, $timestamp): void {
-				$this->assertOutcomeFollowsDisplay($impressionId, $productId, $timestamp);
+			$this->connection->transactional(function () use ($impressionId, $product, $eventId, $type, $timestamp): void {
+				$this->assertOutcomeFollowsDisplay($impressionId, $product, $timestamp);
 				
 				$this->connection->execute('INSERT INTO vogoo_outcomes
 	                (event_id, impression_id, item_id, event_type, occurred_at)
@@ -96,27 +97,27 @@
 					[
 						$eventId,
 						$impressionId->binary(),
-						$productId,
+						$product,
 						$type->value,
 						$timestamp
 					]
 				);
 				
-				$this->assertStoredEventMatches($impressionId, $productId, $eventId, $type, $timestamp);
+				$this->assertStoredEventMatches($impressionId, $product, $eventId, $type, $timestamp);
 			});
 		}
 		
 		/**
 		 * Delete the evaluation history recorded for a member.
-		 * @param MemberId $member Member whose evaluation history should be erased
+		 * @param int $member Member whose evaluation history should be erased
 		 * @return void
 		 * @throws \InvalidArgumentException When the member ID is not an unsigned 32-bit integer
 		 */
-		public function deleteMemberEvaluations(MemberId $member): void {
-			$memberId = $member->value;
+		public function deleteMemberEvaluations(int $member): void {
+			Identifier::assertId($member, 'Member ID');
 			EvaluationSchema::requireTables($this->connection);
 
-			$this->connection->execute('DELETE FROM vogoo_impressions WHERE member_id = ?', [$memberId]);
+			$this->connection->execute('DELETE FROM vogoo_impressions WHERE member_id = ?', [$member]);
 		}
 		
 		/**

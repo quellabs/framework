@@ -4,6 +4,7 @@
 	
 	use Cake\Database\Connection;
 	use Quellabs\Recommender\Config\RecommendationConfig;
+	use Quellabs\Recommender\Internal\Identifier;
 	
 	/**
 	 * Catalogue-level statistics about the ratings store.
@@ -129,11 +130,13 @@
 		 * Return the highest-rated products, ordered by average rating descending.
 		 * Products with fewer than $topRatedMinRatings ratings are excluded.
 		 * @param int $limit Maximum number of results (0 = unlimited)
-		 * @param MinRatings $topRatedMinRatings Minimum number of ratings to qualify
+		 * @param int $topRatedMinRatings Minimum number of ratings to qualify, at least 1
 		 * @param int|null $category Defaults to configured default
 		 * @return array<int, ProductAverage>
+		 * @throws \InvalidArgumentException When the minimum ratings is below 1
 		 */
-		public function topRatedProducts(int $limit = 10, MinRatings $topRatedMinRatings = new MinRatings(), ?int $category = null): array {
+		public function topRatedProducts(int $limit = 10, int $topRatedMinRatings = 1, ?int $category = null): array {
+			Identifier::assertAtLeast($topRatedMinRatings, 1, 'Minimum ratings');
 			$resolvedCategory = $this->config->resolveCategory($category);
 			$limit = max(0, $limit);
 			
@@ -155,7 +158,7 @@
 			
 			$rows = $this->connection->execute($sql, [
 				'category'    => $resolvedCategory,
-				'min_ratings' => $topRatedMinRatings->value,
+				'min_ratings' => $topRatedMinRatings,
 			])->fetchAll('assoc');
 			
 			return array_map(

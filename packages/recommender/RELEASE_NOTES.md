@@ -12,9 +12,9 @@ and `visitorCandidatePool()` for the full pool. Value objects use `productId` fo
 sources. Rating accessors return `Rating` and `VisitorRating` objects. `ItemRecommender` limits default to `10`. Member
 erasure is a single `RecommendationEngine::deleteMemberData()` call. Visitors record clicks and purchases with
 `VisitorContext::recordClick()` and `recordPurchase()`, visitor reconciliation takes a `VisitorReconciliationRequest`
-that cannot include user similarity, and cold-start thresholds are one `ColdStartPolicy` argument. Support and rating-count thresholds are `MinSupport` and `MinRatings` values, so
-they cannot be swapped with `limit` or an ID. Member and product parameters are `MemberId` and `ProductId` values named
-`member` and `product`, and reconciliation tuning and cold-start thresholds are value objects. Configuration accessors drop the `get` prefix. The [README upgrade section](README.md#upgrading)
+that cannot include user similarity, and cold-start thresholds are one `ColdStartPolicy` argument. Thresholds are validated
+`int` values. Member and product IDs are `int` parameters named `member` and `product`, except where a method takes both
+a member and a product: those take `MemberId` and `ProductId` values so the two cannot be swapped. Configuration accessors drop the `get` prefix. The [README upgrade section](README.md#upgrading)
 lists every changed call.
 
 ## Optional reconciliation and evaluation API

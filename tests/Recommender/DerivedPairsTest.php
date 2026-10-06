@@ -16,7 +16,6 @@ use Quellabs\Recommender\ArrayEligibilityProvider;
 use Quellabs\Recommender\Sculpt\RebuildLinksCommand;
 use Quellabs\Recommender\Sculpt\RecommenderProvider;
 use Quellabs\Recommender\VisitorContext;
-use Quellabs\Recommender\MinRatings;
 use Quellabs\Sculpt\ConfigurationManager;
 use Quellabs\Sculpt\Console\ConsoleInput;
 use Quellabs\Sculpt\Console\ConsoleOutput;
@@ -46,7 +45,7 @@ class DerivedPairsTest extends IntegrationTestCase {
         $engine->setRating(new MemberId(2), new ProductId(10), 0.4);
         $engine->setRating(new MemberId(2), new ProductId(20), 0.7);
         $this->assertPair(10, 20, $links ? 1 : 0, $slope ? 2 : 0, $slope ? 0.2 : 0.0);
-        $this->assertSame($links ? [20] : [], array_map(fn($item) => $item->productId, $items->linkedProducts(new ProductId(10))));
+        $this->assertSame($links ? [20] : [], array_map(fn($item) => $item->productId, $items->linkedProducts(10)));
 
         $engine->setRating(new MemberId(2), new ProductId(10), 0.9);
         $engine->setNotInterested(new MemberId(1), new ProductId(20));
@@ -58,7 +57,7 @@ class DerivedPairsTest extends IntegrationTestCase {
         $this->rebuild($config);
         $rebuilt = $this->rows();
         $this->assertPair(10, 20, 1, 1, -0.2);
-        $this->assertSame([20], array_map(fn($item) => $item->productId, $items->linkedProducts(new ProductId(10))));
+        $this->assertSame([20], array_map(fn($item) => $item->productId, $items->linkedProducts(10)));
         if ($links && $slope) {
             $this->assertEquals($before, $rebuilt);
         }
@@ -98,21 +97,21 @@ class DerivedPairsTest extends IntegrationTestCase {
         $engine->setRating(new MemberId(2), new ProductId(30), 0.9);
         $engine->setNotInterested(new MemberId(3), new ProductId(20));
         $engine->setRating(new MemberId(3), new ProductId(10), 0.9);
-        $member = $items->memberRecommendations(new MemberId(3), new ArrayEligibilityProvider([20, 30]));
+        $member = $items->memberRecommendations(3, new ArrayEligibilityProvider([20, 30]));
         $this->assertSame(RecommendationSource::ItemLinks, $member[0]->source);
         $this->assertSame(30, $member[0]->productId);
         $this->assertSame([10], $member[0]->contributingProductIds);
         $this->assertGreaterThan(0, $member[0]->score);
 
         $visitor = new VisitorContext($config);
-        $visitor->setNotInterested(new ProductId(20));
-        $fallback = $items->visitorRecommendations($visitor, new ArrayEligibilityProvider([20, 30]), coldStart: new ColdStartPolicy(topRatedMinRatings: new MinRatings(1)));
+        $visitor->setNotInterested(20);
+        $fallback = $items->visitorRecommendations($visitor, new ArrayEligibilityProvider([20, 30]), coldStart: new ColdStartPolicy(topRatedMinRatings: 1));
         $this->assertCount(1, $fallback);
         $this->assertSame(30, $fallback[0]->productId);
         $this->assertSame(RecommendationSource::TopRated, $fallback[0]->source);
         $this->assertSame([], $fallback[0]->contributingProductIds);
 
-        $visitor->setRating(new ProductId(10), 0.9);
+        $visitor->setRating(10, 0.9);
         $collaborative = $items->visitorRecommendations($visitor, new ArrayEligibilityProvider([20, 30]));
         $this->assertCount(1, $collaborative);
         $this->assertSame(30, $collaborative[0]->productId);
@@ -130,13 +129,13 @@ class DerivedPairsTest extends IntegrationTestCase {
             $engine->setRating(new MemberId($member), new ProductId(10), 0.9);
             $engine->setRating(new MemberId($member), new ProductId(20), 0.8);
         }
-        $engine->deleteMember(new MemberId(1));
+        $engine->deleteMember(1);
         $this->assertPair(10, 20, 1, 1, -0.1);
         $this->assertPair(20, 10, 1, 1, 0.1);
         $before = $this->rows();
         $this->rebuild($config);
         $this->assertEquals($before, $this->rows());
-        $engine->deleteProduct(new ProductId(20));
+        $engine->deleteProduct(20);
         $this->assertSame([], $this->rows());
         $this->rebuild($config);
         $this->assertSame([], $this->rows());

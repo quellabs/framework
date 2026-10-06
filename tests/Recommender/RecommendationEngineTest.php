@@ -140,25 +140,25 @@ use Quellabs\Recommender\MemberId;
 		// =========================================================================
 		
 		public function testMemberNumRatingsReturnsZeroWhenNoRatings(): void {
-			$this->assertSame(0, $this->engine->memberNumRatings(new MemberId(1)));
+			$this->assertSame(0, $this->engine->memberNumRatings(1));
 		}
 		
 		public function testMemberNumRatingsCountsRealRatings(): void {
 			$this->engine->setRating(new MemberId(1), new ProductId(10), 0.8);
 			$this->engine->setRating(new MemberId(1), new ProductId(11), 0.5);
-			$this->assertSame(2, $this->engine->memberNumRatings(new MemberId(1)));
+			$this->assertSame(2, $this->engine->memberNumRatings(1));
 		}
 		
 		public function testMemberNumRatingsExcludesNotInterestedByDefault(): void {
 			$this->engine->setRating(new MemberId(1), new ProductId(10), 0.8);
 			$this->engine->setNotInterested(new MemberId(1), new ProductId(11));
-			$this->assertSame(1, $this->engine->memberNumRatings(new MemberId(1)));
+			$this->assertSame(1, $this->engine->memberNumRatings(1));
 		}
 		
 		public function testMemberNumRatingsCountsNotInterestedWhenRequested(): void {
 			$this->engine->setNotInterested(new MemberId(1), new ProductId(10));
 			$this->engine->setNotInterested(new MemberId(1), new ProductId(11));
-			$this->assertSame(2, $this->engine->memberNumRatings(new MemberId(1), RatingKind::NotInterested));
+			$this->assertSame(2, $this->engine->memberNumRatings(1, RatingKind::NotInterested));
 		}
 		
 		// =========================================================================
@@ -166,18 +166,18 @@ use Quellabs\Recommender\MemberId;
 		// =========================================================================
 		
 		public function testMemberAverageRatingReturnsNullWhenNoRatings(): void {
-			$this->assertNull($this->engine->memberAverageRating(new MemberId(1)));
+			$this->assertNull($this->engine->memberAverageRating(1));
 		}
 		
 		public function testMemberAverageRatingKeepsZeroRatingDistinctFromNone(): void {
 			$this->engine->setRating(new MemberId(1), new ProductId(10), 0.0);
-			$this->assertSame(0.0, $this->engine->memberAverageRating(new MemberId(1)));
+			$this->assertSame(0.0, $this->engine->memberAverageRating(1));
 		}
 		
 		public function testMemberAverageRatingCalculatesCorrectly(): void {
 			$this->engine->setRating(new MemberId(1), new ProductId(10), 0.8);
 			$this->engine->setRating(new MemberId(1), new ProductId(11), 0.4);
-			$this->assertEqualsWithDelta(0.6, $this->engine->memberAverageRating(new MemberId(1)), 0.0001);
+			$this->assertEqualsWithDelta(0.6, $this->engine->memberAverageRating(1), 0.0001);
 		}
 		
 		// =========================================================================
@@ -187,7 +187,7 @@ use Quellabs\Recommender\MemberId;
 		public function testMemberRatingsReturnsAllRatings(): void {
 			$this->engine->setRating(new MemberId(1), new ProductId(10), 0.8);
 			$this->engine->setRating(new MemberId(1), new ProductId(11), 0.5);
-			$ratings = $this->engine->memberRatings(new MemberId(1));
+			$ratings = $this->engine->memberRatings(1);
 			$this->assertCount(2, $ratings);
 		}
 		
@@ -195,7 +195,7 @@ use Quellabs\Recommender\MemberId;
 			$this->engine->setRating(new MemberId(1), new ProductId(10), 0.8);
 			$this->engine->setRating(new MemberId(1), new ProductId(11), 0.3);
 			$this->engine->setRating(new MemberId(1), new ProductId(12), 0.5);
-			$ratings = $this->engine->memberRatings(new MemberId(1), order: RatingOrder::RatingAscending);
+			$ratings = $this->engine->memberRatings(1, order: RatingOrder::RatingAscending);
 			$values = array_map('floatval', array_column($ratings, 'rating'));
 			
 			for ($i = 1; $i < count($values); $i++) {
@@ -206,7 +206,7 @@ use Quellabs\Recommender\MemberId;
 		public function testMemberRatingsOrderByRatingDescending(): void {
 			$this->engine->setRating(new MemberId(1), new ProductId(10), 0.8);
 			$this->engine->setRating(new MemberId(1), new ProductId(11), 0.3);
-			$ratings = $this->engine->memberRatings(new MemberId(1), order: RatingOrder::RatingDescending);
+			$ratings = $this->engine->memberRatings(1, order: RatingOrder::RatingDescending);
 			$values = array_column($ratings, 'rating');
 			$this->assertGreaterThanOrEqual((float)$values[1], (float)$values[0]);
 		}
@@ -218,17 +218,17 @@ use Quellabs\Recommender\MemberId;
 		public function testProductNumRatingsCountsRatings(): void {
 			$this->engine->setRating(new MemberId(1), new ProductId(10), 0.8);
 			$this->engine->setRating(new MemberId(2), new ProductId(10), 0.5);
-			$this->assertSame(2, $this->engine->productNumRatings(new ProductId(10)));
+			$this->assertSame(2, $this->engine->productNumRatings(10));
 		}
 		
 		public function testProductAverageRatingCalculatesCorrectly(): void {
 			$this->engine->setRating(new MemberId(1), new ProductId(10), 0.8);
 			$this->engine->setRating(new MemberId(2), new ProductId(10), 0.4);
-			$this->assertEqualsWithDelta(0.6, $this->engine->productAverageRating(new ProductId(10)), 0.0001);
+			$this->assertEqualsWithDelta(0.6, $this->engine->productAverageRating(10), 0.0001);
 		}
 		
 		public function testProductAverageRatingReturnsNullWhenNoRatings(): void {
-			$this->assertNull($this->engine->productAverageRating(new ProductId(99)));
+			$this->assertNull($this->engine->productAverageRating(99));
 		}
 		
 		// =========================================================================
@@ -238,15 +238,15 @@ use Quellabs\Recommender\MemberId;
 		public function testDeleteMemberRemovesAllRatings(): void {
 			$this->engine->setRating(new MemberId(1), new ProductId(10), 0.8);
 			$this->engine->setRating(new MemberId(1), new ProductId(11), 0.5);
-			$this->engine->deleteMember(new MemberId(1));
-			$this->assertSame(0, $this->engine->memberNumRatings(new MemberId(1)));
+			$this->engine->deleteMember(1);
+			$this->assertSame(0, $this->engine->memberNumRatings(1));
 		}
 		
 		public function testDeleteProductRemovesAllRatings(): void {
 			$this->engine->setRating(new MemberId(1), new ProductId(10), 0.8);
 			$this->engine->setRating(new MemberId(2), new ProductId(10), 0.5);
-			$this->engine->deleteProduct(new ProductId(10));
-			$this->assertSame(0, $this->engine->productNumRatings(new ProductId(10)));
+			$this->engine->deleteProduct(10);
+			$this->assertSame(0, $this->engine->productNumRatings(10));
 		}
 		
 		// =========================================================================
@@ -303,8 +303,8 @@ use Quellabs\Recommender\MemberId;
 			$config = new RecommendationConfig(category: 2);
 			$engine = new RecommendationEngine($this->connection, $config);
 			$engine->setRating(new MemberId(1), new ProductId(10), 0.8);   // goes into category 2
-			$this->assertSame(0, $engine->memberNumRatings(new MemberId(1), category: 1));
-			$this->assertSame(1, $engine->memberNumRatings(new MemberId(1), category: 2));
+			$this->assertSame(0, $engine->memberNumRatings(1, category: 1));
+			$this->assertSame(1, $engine->memberNumRatings(1, category: 2));
 		}
 
 		// =========================================================================
@@ -314,20 +314,20 @@ use Quellabs\Recommender\MemberId;
 		public function testDeleteMemberDataRemovesRatingsInEveryCategory(): void {
 			$this->engine->setRating(new MemberId(1), new ProductId(10), 0.8, 1);
 			$this->engine->setRating(new MemberId(1), new ProductId(11), 0.5, 2);
-			$this->engine->deleteMemberData(new MemberId(1));
-			$this->assertSame(0, $this->engine->memberNumRatings(new MemberId(1), category: 1));
-			$this->assertSame(0, $this->engine->memberNumRatings(new MemberId(1), category: 2));
+			$this->engine->deleteMemberData(1);
+			$this->assertSame(0, $this->engine->memberNumRatings(1, category: 1));
+			$this->assertSame(0, $this->engine->memberNumRatings(1, category: 2));
 		}
 
 		public function testMemberRatingsReturnsRatingObjects(): void {
 			$this->engine->setRating(new MemberId(1), new ProductId(10), 0.8);
-			$ratings = $this->engine->memberRatings(new MemberId(1));
+			$ratings = $this->engine->memberRatings(1);
 			$this->assertContainsOnlyInstancesOf(\Quellabs\Recommender\Rating::class, $ratings);
 			$this->assertSame(10, $ratings[0]->productId);
 		}
 
 		public function testNegativeMemberIdIsRejected(): void {
 			$this->expectException(\InvalidArgumentException::class);
-			$this->engine->memberNumRatings(new MemberId(-1));
+			$this->engine->memberNumRatings(-1);
 		}
 	}

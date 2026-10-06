@@ -24,9 +24,7 @@
 		 * @throws \InvalidArgumentException When a value is outside its allowed range
 		 */
 		public function __construct(int $productId, float $predictedRating, int $supportCount) {
-			if ($productId < 0 || $productId > Identifier::MAX) {
-				throw new \InvalidArgumentException("Product ID must be an unsigned 32-bit integer, got {$productId}.");
-			}
+			Identifier::assertId($productId, 'Product ID');
 			
 			if (!is_finite($predictedRating) || $predictedRating < 0 || $predictedRating > 1) {
 				throw new \InvalidArgumentException("Predicted rating must be a finite value in [0, 1], got {$predictedRating}.");
