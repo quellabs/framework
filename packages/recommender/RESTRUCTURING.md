@@ -80,8 +80,7 @@ Reason for the order: each query exists once from the start. Writing product-sub
 ### Phase 3: filtering in sources
 
 - [x] Make each source filter through the shared eligibility helper, with backfill. `candidates()` takes a limit. With a provider, it deepens until the limit is met. `NewProductsSource` checks its whole unseen list in batches, because its depth counts list positions and a plain deepening loop would stop early.
-- [ ] Make the combiner pass its provider to every source. Open: the combiner's depth counts raw ranks, and it records that depth as a click-model feature. Passing the provider would make depth count eligible results and change the candidate sets. Needs a decision before it is done.
-- [ ] Remove the batching logic from the reconciler. Open, depends on the item above. The per-method `withEligibility()` calls in `ItemRecommender` are removed.
+- [x] Decided: the combiner does not pass its provider to sources. Depth stays a raw rank, because `log_depth_searched` and click-model inputs depend on it. The combiner's batched check on each round's pooled new candidates is its only eligibility step, and it stays.
 
 ### Phase 4: shrink the combiner
 
