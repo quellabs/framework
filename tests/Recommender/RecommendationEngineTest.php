@@ -2,6 +2,8 @@
 	
 	namespace Quellabs\Recommender\Tests;
 	
+	use Quellabs\Recommender\RatingKind;
+	use Quellabs\Recommender\RatingOrder;
 	use Quellabs\Recommender\Config\RecommendationConfig;
 	use Quellabs\Recommender\RecommendationEngine;
 	
@@ -86,18 +88,18 @@
 			$this->assertEqualsWithDelta(0.7, $result['rating'], 0.0001);
 		}
 		
-		public function testGetRatingReturnsEmptyArrayWhenNotFound(): void {
-			$this->assertSame([], $this->engine->memberRating(1, 99));
+		public function testMemberRatingReturnsNullWhenNotFound(): void {
+			$this->assertNull($this->engine->memberRating(1, 99));
 		}
 		
-		public function testGetRatingExcludesNotInterestedByDefault(): void {
+		public function testMemberRatingExcludesNotInterestedByDefault(): void {
 			$this->engine->setNotInterested(1, 10);
-			$this->assertSame([], $this->engine->memberRating(1, 10));
+			$this->assertNull($this->engine->memberRating(1, 10));
 		}
 		
 		public function testGetRatingIncludesNotInterestedWhenRequested(): void {
 			$this->engine->setNotInterested(1, 10);
-			$result = $this->engine->memberRating(1, 10, notInterested: true);
+			$result = $this->engine->memberRating(1, 10, RatingKind::All);
 			$this->assertNotEmpty($result);
 			$this->assertEqualsWithDelta($this->config->getNotInterested(), $result['rating'], 0.0001);
 		}
@@ -151,7 +153,7 @@
 		public function testMemberNumRatingsCountsNotInterestedWhenRequested(): void {
 			$this->engine->setNotInterested(1, 10);
 			$this->engine->setNotInterested(1, 11);
-			$this->assertSame(2, $this->engine->memberNumRatings(1, realRatings: false, notInterested: true));
+			$this->assertSame(2, $this->engine->memberNumRatings(1, RatingKind::NotInterested));
 		}
 		
 		// =========================================================================
@@ -183,7 +185,7 @@
 			$this->engine->setRating(1, 10, 0.8);
 			$this->engine->setRating(1, 11, 0.3);
 			$this->engine->setRating(1, 12, 0.5);
-			$ratings = $this->engine->memberRatings(1, orderByRating: true, ascending: true);
+			$ratings = $this->engine->memberRatings(1, order: RatingOrder::RatingAscending);
 			$values = array_map('floatval', array_column($ratings, 'rating'));
 			
 			for ($i = 1; $i < count($values); $i++) {
@@ -194,7 +196,7 @@
 		public function testMemberRatingsOrderByRatingDescending(): void {
 			$this->engine->setRating(1, 10, 0.8);
 			$this->engine->setRating(1, 11, 0.3);
-			$ratings = $this->engine->memberRatings(1, orderByRating: true, ascending: false);
+			$ratings = $this->engine->memberRatings(1, order: RatingOrder::RatingDescending);
 			$values = array_column($ratings, 'rating');
 			$this->assertGreaterThanOrEqual((float)$values[1], (float)$values[0]);
 		}
@@ -238,31 +240,31 @@
 		}
 		
 		// =========================================================================
-		// automaticRating
+		// recordPurchase / recordClick
 		// =========================================================================
 		
-		public function testAutomaticRatingPurchaseSetsMaxRating(): void {
-			$this->engine->automaticRating(1, 10, purchase: true);
+		public function testRecordPurchaseSetsMaxRating(): void {
+			$this->engine->recordPurchase(1, 10);
 			$result = $this->engine->memberRating(1, 10);
 			$this->assertEqualsWithDelta(1.0, $result['rating'], 0.0001);
 		}
 		
-		public function testAutomaticRatingClickSetsInitialRating(): void {
-			$this->engine->automaticRating(1, 10, purchase: false);
+		public function testRecordClickSetsInitialRating(): void {
+			$this->engine->recordClick(1, 10);
 			$result = $this->engine->memberRating(1, 10);
 			$this->assertEqualsWithDelta(0.7, $result['rating'], 0.0001);
 		}
 		
-		public function testAutomaticRatingClickIncrementsExistingRating(): void {
+		public function testRecordClickIncrementsExistingRating(): void {
 			$this->engine->setRating(1, 10, 0.5);
-			$this->engine->automaticRating(1, 10, purchase: false);
+			$this->engine->recordClick(1, 10);
 			$result = $this->engine->memberRating(1, 10);
 			$this->assertEqualsWithDelta(0.51, $result['rating'], 0.0001);
 		}
 		
-		public function testAutomaticRatingClickDoesNotExceedOne(): void {
+		public function testRecordClickDoesNotExceedOne(): void {
 			$this->engine->setRating(1, 10, 1.0);
-			$this->engine->automaticRating(1, 10, purchase: false);
+			$this->engine->recordClick(1, 10);
 			$result = $this->engine->memberRating(1, 10);
 			$this->assertEqualsWithDelta(1.0, $result['rating'], 0.0001);
 		}
@@ -270,9 +272,9 @@
 		/** A click near the upper boundary clamps before rating validation.
 		 * @return void
 		 */
-		public function testAutomaticRatingClickClampsNearOne(): void {
+		public function testRecordClickClampsNearOne(): void {
 			$this->engine->setRating(1, 10, 0.995);
-			$this->engine->automaticRating(1, 10, purchase: false);
+			$this->engine->recordClick(1, 10);
 			$this->assertEqualsWithDelta(1.0, $this->engine->memberRating(1, 10)['rating'], 0.00001);
 		}
 		

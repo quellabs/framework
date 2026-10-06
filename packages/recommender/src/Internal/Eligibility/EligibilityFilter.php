@@ -3,7 +3,7 @@
 	namespace Quellabs\Recommender\Internal\Eligibility;
 
 	use Quellabs\Recommender\Config\RecommendationConfig;
-	use Quellabs\Recommender\Reconciliation\EligibilityProvider;
+	use Quellabs\Recommender\EligibilityProvider;
 
 	/**
 	 * Applies an application eligibility provider to ranked rows, calling it in batches.

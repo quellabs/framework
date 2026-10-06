@@ -7,7 +7,6 @@
 	use Quellabs\Recommender\Internal\Eligibility\EligibilityFilter;
 	use Quellabs\Recommender\Internal\Query\Results;
 	use Quellabs\Recommender\Internal\SlopeOne\SlopeOneRecommender;
-	use Quellabs\Recommender\Reconciliation\EligibilityProvider;
 
 
 	/**
@@ -52,6 +51,7 @@
 
 		/**
 		 * Return items that co-occur with the given product, ordered by co-occurrence count descending.
+		 * Score is the liked count. With eligibility, fewer than $limit results are returned when the depth cap is reached.
 		 * @param int $productId The product ID
 		 * @param EligibilityProvider|null $eligibility Restricts results to eligible products, or null for all
 		 * @param int $limit Maximum number of results (0 = unlimited)
@@ -160,21 +160,22 @@
 
 		/**
 		 * Return items sorted by their average Slope One diff relative to the given product, best match first.
+		 * Score is the average diff, which can be negative. With eligibility, fewer than $limit results may be returned.
 		 * @param int $productId The product ID
-		 * @param int $minLinks Minimum co-occurrence count to include a pair
 		 * @param EligibilityProvider|null $eligibility Restricts results to eligible products, or null for all
 		 * @param int $limit Maximum number of results (0 = unlimited)
+		 * @param int $minLinks Minimum co-occurrence count to include a pair
 		 * @param int|null $category Defaults to configured default
 		 * @return array<int, RecommendationResult> Products scored by their average Slope One diff
 		 */
-		public function slopeItems(int $productId, int $minLinks = 1, ?EligibilityProvider $eligibility = null,
-			int $limit = 0, ?int $category = null): array {
+		public function slopeItems(int $productId, ?EligibilityProvider $eligibility = null, int $limit = 0,
+			int $minLinks = 1, ?int $category = null): array {
 			return $this->eligibilityFilter->withEligibility($eligibility, $limit,
 				function (int $depth) use ($productId, $minLinks, $category): array {
 					$diffs = $this->slopeOne->getSlopeItems($productId, $minLinks, $depth, $category);
 
 					return array_map(function (array $diff): RecommendationResult {
-						return new RecommendationResult($diff['product_id'], $diff['diff'], 'slope_one', []);
+						return new RecommendationResult($diff['product_id'], $diff['diff'], RecommendationSource::SlopeOne, []);
 					}, $diffs);
 				},
 				function (RecommendationResult $row): int {
@@ -197,6 +198,7 @@
 
 		/**
 		 * Predict unseen member ratings with directed-pair support, best prediction first.
+		 * With eligibility, fewer than $limit results may be returned when the depth cap is reached.
 		 * @param int $memberId Member ID
 		 * @param EligibilityProvider|null $eligibility Restricts results to eligible products, or null for all
 		 * @param int $limit Maximum results, or zero for all
@@ -231,6 +233,7 @@
 
 		/**
 		 * Predict unseen visitor ratings with a batched temporary input table, best prediction first.
+		 * With eligibility, fewer than $limit results may be returned when the depth cap is reached.
 		 * @param VisitorContext $visitor Visitor ratings
 		 * @param EligibilityProvider|null $eligibility Restricts results to eligible products, or null for all
 		 * @param int $limit Maximum results, or zero for all
@@ -252,23 +255,24 @@
 
 		/**
 		 * Return scored member recommendations, falling back to top-rated items for short histories.
-		 * item_links scores sum liked_count multiplied by (member rating minus threshold).
+		 * item_links scores sum liked_count multiplied by (member rating minus threshold). Fallback scores are average ratings.
+		 * With eligibility, fewer than $limit results may be returned when the depth cap is reached.
 		 * @param int $memberId Member ID
 		 * @param EligibilityProvider|null $eligibility Restricts results to eligible products, or null for all
 		 * @param int $limit Maximum results, or zero for all
-		 * @param int|null $category Category override
 		 * @param int $minHistory Minimum genuine ratings before collaborative scoring
-		 * @param int $minRatings Minimum ratings for a fallback item
+		 * @param int $topRatedMinRatings Minimum ratings for a top-rated fallback item
+		 * @param int|null $category Category override
 		 * @return array<int, RecommendationResult>
 		 * @throws \UnexpectedValueException When a link score row or its contributors are malformed
 		 */
 		public function memberRecommendations(int $memberId, ?EligibilityProvider $eligibility = null, int $limit = 0,
-			?int $category = null, int $minHistory = 1, int $minRatings = 2): array {
+			int $minHistory = 1, int $topRatedMinRatings = 2, ?int $category = null): array {
 			$resolvedCategory = $this->config->resolveCategory($category);
 
 			return $this->eligibilityFilter->withEligibility($eligibility, $limit,
-				function (int $depth) use ($memberId, $resolvedCategory, $minHistory, $minRatings): array {
-					return $this->memberRecommendationRows($memberId, $depth, $resolvedCategory, $minHistory, $minRatings);
+				function (int $depth) use ($memberId, $resolvedCategory, $minHistory, $topRatedMinRatings): array {
+					return $this->memberRecommendationRows($memberId, $depth, $resolvedCategory, $minHistory, $topRatedMinRatings);
 				},
 				function (RecommendationResult $row): int {
 					return $row->itemId;
@@ -304,22 +308,23 @@
 		}
 
 		/**
-		 * Return scored visitor recommendations, with the same cold-start rule as members.
+		 * Return scored visitor recommendations, with the same cold-start rule and score meanings as members.
+		 * With eligibility, fewer than $limit results may be returned when the depth cap is reached.
 		 * @param VisitorContext $visitor Visitor ratings
 		 * @param EligibilityProvider|null $eligibility Restricts results to eligible products, or null for all
 		 * @param int $limit Maximum results, or zero for all
-		 * @param int|null $category Category override
 		 * @param int $minHistory Minimum genuine ratings before collaborative scoring
-		 * @param int $minRatings Minimum ratings for a fallback item
+		 * @param int $topRatedMinRatings Minimum ratings for a top-rated fallback item
+		 * @param int|null $category Category override
 		 * @return array<int, RecommendationResult>
 		 */
 		public function visitorRecommendations(VisitorContext $visitor, ?EligibilityProvider $eligibility = null, int $limit = 0,
-			?int $category = null, int $minHistory = 1, int $minRatings = 2): array {
+			int $minHistory = 1, int $topRatedMinRatings = 2, ?int $category = null): array {
 			$resolvedCategory = $this->config->resolveCategory($category);
 
 			return $this->eligibilityFilter->withEligibility($eligibility, $limit,
-				function (int $depth) use ($visitor, $resolvedCategory, $minHistory, $minRatings): array {
-					return $this->visitorRecommendationRows($visitor, $depth, $resolvedCategory, $minHistory, $minRatings);
+				function (int $depth) use ($visitor, $resolvedCategory, $minHistory, $topRatedMinRatings): array {
+					return $this->visitorRecommendationRows($visitor, $depth, $resolvedCategory, $minHistory, $topRatedMinRatings);
 				},
 				function (RecommendationResult $row): int {
 					return $row->itemId;
@@ -351,7 +356,7 @@
 			$results = [];
 
 			foreach ($rows as $row) {
-				$results[] = new RecommendationResult((int)$row['item_id2'], (float)$row['liked_count'], 'item_links', []);
+				$results[] = new RecommendationResult((int)$row['item_id2'], (float)$row['liked_count'], RecommendationSource::ItemLinks, []);
 			}
 
 			return Results::limit($results, $limit);
@@ -363,12 +368,12 @@
 		 * @param int $limit Maximum results, or zero for all
 		 * @param int $category Already-resolved category
 		 * @param int $minHistory Minimum genuine ratings before collaborative scoring
-		 * @param int $minRatings Minimum ratings for a fallback item
+		 * @param int $topRatedMinRatings Minimum ratings for a fallback item
 		 * @return array<int, RecommendationResult>
 		 * @throws \UnexpectedValueException When a link score row or its contributors are malformed
 		 */
 		private function memberRecommendationRows(int $memberId, int $limit, int $category,
-			int $minHistory, int $minRatings): array {
+			int $minHistory, int $topRatedMinRatings): array {
 			$history = (int)$this->connection->execute('
 				SELECT
 					COUNT(*) AS total
@@ -392,7 +397,7 @@
 					'member' => $memberId,
 					'category' => $category,
 				])->fetchAll('assoc'), 'product_id'));
-				return $this->fallbackResults($excluded, $limit, $category, $minRatings);
+				return $this->fallbackResults($excluded, $limit, $category, $topRatedMinRatings);
 			}
 
 			$results = [];
@@ -403,7 +408,7 @@
 				}
 
 				$contributors = $this->decodeContributorIds((string)$row['contributors']);
-				$results[] = new RecommendationResult((int)$row['item_id2'], (float)$row['score'], 'item_links', $contributors);
+				$results[] = new RecommendationResult((int)$row['item_id2'], (float)$row['score'], RecommendationSource::ItemLinks, $contributors);
 			}
 
 			return Results::limit($results, $limit);
@@ -415,18 +420,18 @@
 		 * @param int $limit Maximum results, or zero for all
 		 * @param int $category Already-resolved category
 		 * @param int $minHistory Minimum genuine ratings before collaborative scoring
-		 * @param int $minRatings Minimum ratings for a fallback item
+		 * @param int $topRatedMinRatings Minimum ratings for a fallback item
 		 * @return array<int, RecommendationResult>
 		 */
 		private function visitorRecommendationRows(VisitorContext $visitor, int $limit, int $category,
-			int $minHistory, int $minRatings): array {
+			int $minHistory, int $topRatedMinRatings): array {
 			$ratings = $visitor->ratings($category);
 			$history = count(array_filter($ratings, function ($row): bool {
 				return $row['rating'] >= 0.0;
 			}));
 
 			if ($history < max(1, $minHistory)) {
-				return $this->fallbackResults(array_column($ratings, 'product_id'), $limit, $category, $minRatings);
+				return $this->fallbackResults(array_column($ratings, 'product_id'), $limit, $category, $topRatedMinRatings);
 			}
 
 			$reasons = [];
@@ -440,7 +445,7 @@
 			foreach ($scores as $id => $score) {
 				$contributors = array_values(array_unique($reasons[$id] ?? []));
 				sort($contributors);
-				$results[] = new RecommendationResult((int)$id, (float)$score, 'item_links', $contributors);
+				$results[] = new RecommendationResult((int)$id, (float)$score, RecommendationSource::ItemLinks, $contributors);
 			}
 
 			return Results::limit($results, $limit);
@@ -451,21 +456,21 @@
 		 * @param array<int> $excluded Items already seen
 		 * @param int $limit Maximum results, or zero for all
 		 * @param int $category Category
-		 * @param int $minRatings Minimum rating count
+		 * @param int $topRatedMinRatings Minimum rating count
 		 * @return array<int, RecommendationResult>
 		 */
-		private function fallbackResults(array $excluded, int $limit, int $category, int $minRatings): array {
+		private function fallbackResults(array $excluded, int $limit, int $category, int $topRatedMinRatings): array {
 			$stats = new Statistics($this->connection, $this->config);
 			$results = [];
 
-			foreach ($stats->topRatedProducts(0, max(1, $minRatings), $category) as $row) {
+			foreach ($stats->topRatedProducts(0, max(1, $topRatedMinRatings), $category) as $row) {
 				$id = $row->productId;
 
 				if (in_array($id, $excluded, true)) {
 					continue;
 				}
 
-				$results[] = new RecommendationResult($id, $row->averageRating, 'top_rated', []);
+				$results[] = new RecommendationResult($id, $row->averageRating, RecommendationSource::TopRated, []);
 
 				if ($limit > 0 && count($results) >= $limit) {
 					break;

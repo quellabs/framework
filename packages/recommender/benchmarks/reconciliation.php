@@ -5,7 +5,7 @@
 	
 	use Cake\Database\Connection;
 	use Psr\Log\AbstractLogger;
-	use Quellabs\Recommender\Reconciliation\ArrayEligibilityProvider;
+	use Quellabs\Recommender\ArrayEligibilityProvider;
 	use Quellabs\Recommender\Config\RecommendationConfig;
 	use Quellabs\Recommender\Reconciliation\RecommendationReconciler;
 	use Quellabs\Recommender\RecommendationSource;

@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\Recommender\Evaluation;
 	
+	use Quellabs\Recommender\ScoreKind;
 	use Cake\Database\Connection;
 	use DateTimeImmutable;
 	use Quellabs\Recommender\Internal\Model\ClickModel;
@@ -51,7 +52,7 @@
 				throw new \InvalidArgumentException("Member ID must be an unsigned 32-bit integer, got {$memberId}.");
 			}
 			
-			$model = $shown->scoreKind === 'click_probability' ? $this->loadCalibratedModel($shown) : null;
+			$model = $shown->scoreKind === ScoreKind::ClickProbability ? $this->loadCalibratedModel($shown) : null;
 			$id = ImpressionId::generate();
 			$timestamp = MysqlTimestamp::utc($shownAt ?? new DateTimeImmutable('now'));
 			
@@ -191,14 +192,14 @@
 				fn($name) => $name !== 'log_position'));
 
 			foreach ($shown->items as $item) {
-				$actualFeatures = array_keys($item->featureSnapshot);
+				$actualFeatures = array_keys($item->diagnostics->featureSnapshot);
 				sort($actualFeatures);
 
 				if (
 					$actualFeatures !== $expectedFeatures ||
 					!$this->hasCompleteFeatureSnapshot($item, $shown->sources) ||
 					$item->rankingScore === null ||
-					abs($model->probability($item->featureSnapshot, 1) - $item->rankingScore) > 1e-9
+					abs($model->probability($item->diagnostics->featureSnapshot, 1) - $item->rankingScore) > 1e-9
 				) {
 					throw new \UnexpectedValueException("Features or reference score of item {$item->itemId} do not match model {$shown->modelId}.");
 				}
@@ -218,7 +219,7 @@
 	            (id, category, placement, source_mask, context_key, score_kind, member_id, shown_at)
 	            VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
 				[$id->binary(), $shown->category, $shown->placement, $shown->sourceMask(),
-					$shown->contextKey ?? '', $shown->scoreKind, $memberId, $timestamp]);
+					$shown->contextKey ?? '', $shown->scoreKind->value, $memberId, $timestamp]);
 		}
 		
 		/**
@@ -232,10 +233,10 @@
 		 */
 		private function insertImpressionItem(ImpressionId $id, RecommendationList $shown, ReconciledRecommendation $item,
 			int $position, ?ClickModel $model): void {
-			$snapshot = json_encode(['features'       => $item->featureSnapshot,
-			                         'depth_searched' => $item->searchedDepths], JSON_THROW_ON_ERROR);
+			$snapshot = json_encode(['features'       => $item->diagnostics->featureSnapshot,
+			                         'depth_searched' => $item->diagnostics->searchedDepths], JSON_THROW_ON_ERROR);
 			$schemaVersion = $this->hasCompleteFeatureSnapshot($item, $shown->sources) ? 1 : 0;
-			$displayProbability = $model?->probability($item->featureSnapshot, $position);
+			$displayProbability = $model?->probability($item->diagnostics->featureSnapshot, $position);
 			
 			$this->connection->execute('INSERT INTO vogoo_impression_items
 	            (impression_id, item_id, position, ranking_score, display_click_probability,
@@ -329,8 +330,8 @@
 			$expected = SourceFeatures::names($sources);
 			$sourceNames = array_map(fn($source) => $source->value, $sources);
 			sort($sourceNames);
-			$actual = array_keys($item->featureSnapshot);
-			$depthSources = array_keys($item->searchedDepths);
+			$actual = array_keys($item->diagnostics->featureSnapshot);
+			$depthSources = array_keys($item->diagnostics->searchedDepths);
 			sort($actual);
 			sort($depthSources);
 			
@@ -338,8 +339,8 @@
 				return false;
 			}
 			
-			foreach ($item->searchedDepths as $source => $depth) {
-				if (!SourceFeatures::depthMatches($depth, $item->featureSnapshot[$source . '.log_depth_searched'])) {
+			foreach ($item->diagnostics->searchedDepths as $source => $depth) {
+				if (!SourceFeatures::depthMatches($depth, $item->diagnostics->featureSnapshot[$source . '.log_depth_searched'])) {
 					return false;
 				}
 			}

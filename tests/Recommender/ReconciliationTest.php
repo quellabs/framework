@@ -2,8 +2,9 @@
 
 namespace Quellabs\Recommender\Tests;
 
-use Quellabs\Recommender\Reconciliation\ArrayEligibilityProvider;
-use Quellabs\Recommender\Reconciliation\EligibilityProvider;
+use Quellabs\Recommender\ScoreKind;
+use Quellabs\Recommender\ArrayEligibilityProvider;
+use Quellabs\Recommender\EligibilityProvider;
 use Quellabs\Recommender\Reconciliation\RecommendationReconciler;
 use Quellabs\Recommender\RecommendationSource;
 use Quellabs\Recommender\Reconciliation\ReconciliationRequest;
@@ -27,7 +28,7 @@ class ReconciliationTest extends IntegrationTestCase {
             [RecommendationSource::NewProducts, RecommendationSource::ItemLinks], 3, 'home', [40]);
         $reconciler = new RecommendationReconciler($this->connection, $this->config);
         $list = $reconciler->recommendMember(1, $request);
-        $this->assertSame('rank_fusion', $list->scoreKind);
+        $this->assertSame(ScoreKind::RankFusion, $list->scoreKind);
         $this->assertSame([20, 40], array_map(fn($item) => $item->itemId, $list->items));
         $this->assertEqualsWithDelta(1 / 61, $list->items[0]->rankingScore, 0.0000001);
         $this->assertSame(1, $list->items[0]->evidence[0]->sourceRank);
@@ -117,14 +118,14 @@ class ReconciliationTest extends IntegrationTestCase {
         $deep = $reconciler->recommendMember(1, new ReconciliationRequest($provider,
             [RecommendationSource::ItemLinks], 2, 'home', additionalCandidateIds: [999],
             tuning: new ReconciliationTuning(maxCandidateDepth: 100)));
-        $this->assertSame(50, $shallow->items[0]->searchedDepths['item_links']);
-        $this->assertSame(100, $deep->items[0]->searchedDepths['item_links']);
-        $this->assertSame(0.0, $shallow->items[0]->featureSnapshot['item_links.present']);
-        $this->assertSame(0.0, $deep->items[0]->featureSnapshot['item_links.present']);
+        $this->assertSame(50, $shallow->items[0]->diagnostics->searchedDepths['item_links']);
+        $this->assertSame(100, $deep->items[0]->diagnostics->searchedDepths['item_links']);
+        $this->assertSame(0.0, $shallow->items[0]->diagnostics->featureSnapshot['item_links.present']);
+        $this->assertSame(0.0, $deep->items[0]->diagnostics->featureSnapshot['item_links.present']);
         $this->assertEqualsWithDelta(log(50),
-            $shallow->items[0]->featureSnapshot['item_links.log_depth_searched'], 1e-9);
+            $shallow->items[0]->diagnostics->featureSnapshot['item_links.log_depth_searched'], 1e-9);
         $this->assertEqualsWithDelta(log(100),
-            $deep->items[0]->featureSnapshot['item_links.log_depth_searched'], 1e-9);
+            $deep->items[0]->diagnostics->featureSnapshot['item_links.log_depth_searched'], 1e-9);
     }
 
     /** @return void */
@@ -147,8 +148,8 @@ class ReconciliationTest extends IntegrationTestCase {
                 [RecommendationSource::NewProducts, RecommendationSource::ItemLinks],
                 1, 'home', [200, 201], tuning: new ReconciliationTuning(maxCandidateDepth: 100)));
         $this->assertSame(160, $list->items[0]->itemId);
-        $this->assertSame(50, $list->items[0]->searchedDepths['new_products']);
-        $this->assertSame(100, $list->items[0]->searchedDepths['item_links']);
+        $this->assertSame(50, $list->items[0]->diagnostics->searchedDepths['new_products']);
+        $this->assertSame(100, $list->items[0]->diagnostics->searchedDepths['item_links']);
         $this->assertSame(1, $list->items[0]->evidence[0]->sourceRank);
         $this->assertCount(72, $provider->received);
         $this->assertCount(72, array_unique($provider->received));
@@ -235,10 +236,10 @@ class ReconciliationTest extends IntegrationTestCase {
         $list = (new RecommendationReconciler($this->connection, $this->config))->recommendMember(1,
             new ReconciliationRequest(new ArrayEligibilityProvider([20]),
                 [RecommendationSource::NewProducts], 1, 'home', additionalCandidateIds: [20]));
-        $this->assertSame(50, $list->items[0]->searchedDepths['new_products']);
-        $this->assertSame(0.0, $list->items[0]->featureSnapshot['new_products.present']);
+        $this->assertSame(50, $list->items[0]->diagnostics->searchedDepths['new_products']);
+        $this->assertSame(0.0, $list->items[0]->diagnostics->featureSnapshot['new_products.present']);
         $this->assertEqualsWithDelta(log(50),
-            $list->items[0]->featureSnapshot['new_products.log_depth_searched'], 1e-9);
+            $list->items[0]->diagnostics->featureSnapshot['new_products.log_depth_searched'], 1e-9);
     }
 
     /** @return void */
@@ -497,8 +498,8 @@ class ReconciliationTest extends IntegrationTestCase {
         $list = (new RecommendationReconciler($this->connection, $this->config))->recommendMember(1, $request);
         $this->assertSame(150, $list->items[0]->itemId);
         $this->assertSame(0.0, $list->items[0]->rankingScore);
-        $this->assertSame(0.0, $list->items[0]->featureSnapshot['top_rated.present']);
-        $this->assertSame(50, $list->items[0]->searchedDepths['top_rated']);
+        $this->assertSame(0.0, $list->items[0]->diagnostics->featureSnapshot['top_rated.present']);
+        $this->assertSame(50, $list->items[0]->diagnostics->searchedDepths['top_rated']);
         $this->assertCount(1, $list->items[0]->evidence);
         $this->assertNull($list->items[0]->evidence[0]->sourceRank);
         $this->assertEqualsWithDelta(0.5, $list->items[0]->evidence[0]->rawScore, 0.00001);
@@ -526,7 +527,7 @@ class ReconciliationTest extends IntegrationTestCase {
         $this->assertSame(['item_links', 'new_products', 'slope_one', 'user_similarity'], $sources);
         foreach ($item->evidence as $evidence) {
             $this->assertNull($evidence->sourceRank);
-            $this->assertSame(0.0, $item->featureSnapshot[$evidence->source->value . '.present']);
+            $this->assertSame(0.0, $item->diagnostics->featureSnapshot[$evidence->source->value . '.present']);
         }
     }
 }

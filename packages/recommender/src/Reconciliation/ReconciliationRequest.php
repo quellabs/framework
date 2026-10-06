@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\Recommender\Reconciliation;
 	
+	use Quellabs\Recommender\EligibilityProvider;
 	use Quellabs\Recommender\Internal\Identifier;
 	
 	
@@ -24,26 +25,8 @@
 		/** @var int|null Category override */
 		public ?int $category;
 		
-		/** @var int Minimum summed Slope One pair support */
-		public int $minSlopeSupport;
-		
-		/** @var int Minimum ratings for a top-rated candidate */
-		public int $topRatedMinRatings;
-		
-		/** @var int Minimum neighbour similarity, from 1 to 100 */
-		public int $minNeighbourSimilarity;
-		
-		/** @var int Maximum neighbours used for user similarity */
-		public int $maxNeighbours;
-		
-		/** @var int|null Maximum source depth override */
-		public ?int $maxCandidateDepth;
-		
-		/** @var int|null Maximum deeper-query rounds override */
-		public ?int $maxBackfillRounds;
-		
-		/** @var int|null Maximum IDs per eligibility call override */
-		public ?int $maxEligibilityBatchSize;
+		/** @var ReconciliationTuning Threshold and source limit overrides */
+		public ReconciliationTuning $tuning;
 		
 		/** @var string|null Model and logging partition */
 		public ?string $contextKey;
@@ -78,23 +61,15 @@
 			?string               $contextKey = null,
 			?ReconciliationTuning $tuning = null
 		) {
-			$tuning ??= new ReconciliationTuning();
 			$this->eligibility = $eligibility;
 			$this->limit = $limit;
 			$this->placement = $placement;
 			$this->category = $category;
-			$this->minSlopeSupport = $tuning->minSlopeSupport;
-			$this->topRatedMinRatings = $tuning->topRatedMinRatings;
-			$this->minNeighbourSimilarity = $tuning->minNeighbourSimilarity;
-			$this->maxNeighbours = $tuning->maxNeighbours;
-			$this->maxCandidateDepth = $tuning->maxCandidateDepth;
-			$this->maxBackfillRounds = $tuning->maxBackfillRounds;
-			$this->maxEligibilityBatchSize = $tuning->maxEligibilityBatchSize;
 			$this->contextKey = $contextKey;
+			$this->tuning = $tuning ?? new ReconciliationTuning();
 			$this->sources = self::canonicalSources($sources);
 			
-			$this->validateLimits();
-			$this->validateOptionalLimits();
+			$this->validateLimit();
 			$this->validateCategory();
 			self::validateKey($placement, 64, 'placement');
 			
@@ -185,51 +160,16 @@
 		}
 		
 		/**
-		 * Reject numeric limits and the category when they are outside their allowed ranges.
+		 * Reject a limit outside its allowed range.
 		 * @return void
-		 * @throws \InvalidArgumentException When a limit or the category is outside its allowed range
+		 * @throws \InvalidArgumentException When the limit is outside 1 to 100
 		 */
-		private function validateLimits(): void {
+		private function validateLimit(): void {
 			if ($this->limit < 1 || $this->limit > 100) {
 				throw new \InvalidArgumentException("Limit must be between 1 and 100, got {$this->limit}.");
 			}
-
-			if ($this->minSlopeSupport < 1) {
-				throw new \InvalidArgumentException("Minimum slope support must be at least 1, got {$this->minSlopeSupport}.");
-			}
-
-			if ($this->topRatedMinRatings < 1) {
-				throw new \InvalidArgumentException("Top-rated minimum ratings must be at least 1, got {$this->topRatedMinRatings}.");
-			}
-
-			if ($this->minNeighbourSimilarity < 1 || $this->minNeighbourSimilarity > 100) {
-				throw new \InvalidArgumentException("Minimum neighbour similarity must be between 1 and 100, got {$this->minNeighbourSimilarity}.");
-			}
-
-			if ($this->maxNeighbours < 1) {
-				throw new \InvalidArgumentException("Maximum neighbours must be at least 1, got {$this->maxNeighbours}.");
-			}
 		}
-
-		/**
-		 * Reject optional source-depth, backfill and batch overrides outside their allowed ranges.
-		 * @return void
-		 * @throws \InvalidArgumentException When an override is outside its allowed range
-		 */
-		private function validateOptionalLimits(): void {
-			if ($this->maxCandidateDepth !== null && $this->maxCandidateDepth < 50) {
-				throw new \InvalidArgumentException("Maximum candidate depth must be at least 50, got {$this->maxCandidateDepth}.");
-			}
-
-			if ($this->maxBackfillRounds !== null && $this->maxBackfillRounds < 1) {
-				throw new \InvalidArgumentException("Maximum backfill rounds must be at least 1, got {$this->maxBackfillRounds}.");
-			}
-
-			if ($this->maxEligibilityBatchSize !== null && $this->maxEligibilityBatchSize < 1) {
-				throw new \InvalidArgumentException("Maximum eligibility batch size must be at least 1, got {$this->maxEligibilityBatchSize}.");
-			}
-		}
-
+		
 		/**
 		 * Reject a category outside the unsigned 32-bit range.
 		 * @return void

@@ -74,12 +74,12 @@
 		}
 		
 		/**
-		 * Remove a rating for a product in the given category.
+		 * Delete a rating for a product in the given category.
 		 * @param int $productId The product ID
 		 * @param int|null $category Defaults to the configured default category
 		 * @return void
 		 */
-		public function removeRating(int $productId, ?int $category = null): void {
+		public function deleteRating(int $productId, ?int $category = null): void {
 			$resolvedCategory = $this->config->resolveCategory($category);
 			
 			$this->ratings = array_values(

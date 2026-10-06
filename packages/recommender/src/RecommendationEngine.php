@@ -44,12 +44,11 @@
 		/**
 		 * Return the number of ratings a member has given.
 		 * @param int $memberId The member ID
-		 * @param bool $realRatings When true, count genuine ratings (>= 0.0)
-		 * @param bool $notInterested When true, count not-interested ratings instead
+		 * @param RatingKind $kind Which ratings to count
 		 * @param int|null $category Defaults to configured default
 		 * @return int Number of matching ratings
 		 */
-		public function memberNumRatings(int $memberId, bool $realRatings = true, bool $notInterested = false, ?int $category = null): int {
+		public function memberNumRatings(int $memberId, RatingKind $kind = RatingKind::Genuine, ?int $category = null): int {
 			$resolvedCategory = $this->config->resolveCategory($category);
 			
 			$sql = '
@@ -65,7 +64,7 @@
 				'category'  => $resolvedCategory,
 			];
 			
-			$sql .= $this->ratingFilterSql($realRatings, $notInterested, $params);
+			$sql .= $this->ratingFilterSql($kind, $params);
 	
 			$row = $this->connection->execute($sql, $params)->fetchAssoc();
 			return (int)$row['number_of_ratings'];
@@ -98,16 +97,13 @@
 		/**
 		 * Return all ratings for a member as ['product_id' => int, 'rating' => float, 'ts' => string] rows.
 		 * @param int $memberId The member ID
-		 * @param bool $orderByDate Order by timestamp
-		 * @param bool $orderByRating Order by rating value
-		 * @param bool $ascending Sort direction
-		 * @param bool $realRatings Include genuine ratings
-		 * @param bool $notInterested Include not-interested ratings
+		 * @param RatingKind $kind Which ratings to return
+		 * @param RatingOrder|null $order Sort order, or null for storage order
 		 * @param int|null $category Defaults to configured default
 		 * @return array<int, array{product_id: int, rating: float, ts: string}>
 		 */
-		public function memberRatings(int $memberId, bool $orderByDate = false, bool $orderByRating = false,
-			bool $ascending = true, bool $realRatings = true, bool $notInterested = false, ?int $category = null): array {
+		public function memberRatings(int $memberId, RatingKind $kind = RatingKind::Genuine, ?RatingOrder $order = null,
+			?int $category = null): array {
 			$resolvedCategory = $this->config->resolveCategory($category);
 			
 			$sql = '
@@ -125,10 +121,18 @@
 				'category'  => $resolvedCategory,
 			];
 			
-			$sql .= $this->ratingFilterSql($realRatings, $notInterested, $params);
-			$sql .= $this->orderSql($orderByDate, $orderByRating, $ascending);
+			$sql .= $this->ratingFilterSql($kind, $params);
+			$sql .= $this->orderSql($order);
 	
-			return $this->connection->execute($sql, $params)->fetchAll('assoc');
+			$rows = $this->connection->execute($sql, $params)->fetchAll('assoc');
+			$ratings = [];
+
+			foreach ($rows as $row) {
+				$typed = $this->typedRatingRow($row, 'product_id');
+				$ratings[] = ['product_id' => $typed['id'], 'rating' => $typed['rating'], 'ts' => $typed['ts']];
+			}
+
+			return $ratings;
 		}
 	
 		/**
@@ -137,7 +141,7 @@
 		 * @param int $memberId The member ID
 		 * @param int|null $category Defaults to configured default
 		 * @return void
-		 * @throws \Exception
+		 * @throws \Exception When a database statement fails
 		 */
 		public function deleteMember(int $memberId, ?int $category = null): void {
 			$this->deleteRatingsWhere('member_id', $memberId, $this->config->resolveCategory($category));
@@ -196,14 +200,11 @@
 		/**
 		 * Return all ratings for a product as ['member_id' => int, 'rating' => float, 'ts' => string] rows.
 		 * @param int $productId The product ID
-		 * @param bool $orderByDate Order by timestamp
-		 * @param bool $orderByRating Order by rating value
-		 * @param bool $ascending Sort direction
+		 * @param RatingOrder|null $order Sort order, or null for storage order
 		 * @param int|null $category Defaults to configured default
 		 * @return array<int, array{member_id: int, rating: float, ts: string}>
 		 */
-		public function productRatings(int $productId, bool $orderByDate = false, bool $orderByRating = false,
-			bool $ascending = true, ?int $category = null): array {
+		public function productRatings(int $productId, ?RatingOrder $order = null, ?int $category = null): array {
 			$resolvedCategory = $this->config->resolveCategory($category);
 			
 			$sql = '
@@ -222,9 +223,17 @@
 				'category'   => $resolvedCategory,
 			];
 			
-			$sql .= $this->orderSql($orderByDate, $orderByRating, $ascending);
+			$sql .= $this->orderSql($order);
 	
-			return $this->connection->execute($sql, $params)->fetchAll('assoc');
+			$rows = $this->connection->execute($sql, $params)->fetchAll('assoc');
+			$ratings = [];
+
+			foreach ($rows as $row) {
+				$typed = $this->typedRatingRow($row, 'member_id');
+				$ratings[] = ['member_id' => $typed['id'], 'rating' => $typed['rating'], 'ts' => $typed['ts']];
+			}
+
+			return $ratings;
 		}
 	
 		/**
@@ -233,7 +242,7 @@
 		 * @param int $productId The product ID
 		 * @param int|null $category Defaults to configured default
 		 * @return void
-		 * @throws \Exception
+		 * @throws \Exception When a database statement fails
 		 */
 		public function deleteProduct(int $productId, ?int $category = null): void {
 			$this->deleteRatingsWhere('product_id', $productId, $this->config->resolveCategory($category));
@@ -242,14 +251,14 @@
 		// ----- Combined -----
 		
 		/**
-		 * Return the rating and timestamp for a member and product pair, or an empty array when none exists.
+		 * Return the rating and timestamp for a member and product pair, or null when none exists.
 		 * @param int $memberId The member ID
 		 * @param int $productId The product ID
-		 * @param bool $notInterested Include not-interested ratings
+		 * @param RatingKind $kind Which ratings to match
 		 * @param int|null $category Defaults to configured default
-		 * @return array{rating: float, ts: string}|array{}
+		 * @return array{rating: float, ts: string}|null
 		 */
-		public function memberRating(int $memberId, int $productId, bool $notInterested = false, ?int $category = null): array {
+		public function memberRating(int $memberId, int $productId, RatingKind $kind = RatingKind::Genuine, ?int $category = null): ?array {
 			$resolvedCategory = $this->config->resolveCategory($category);
 			
 			$sql = '
@@ -268,16 +277,14 @@
 				'category'   => $resolvedCategory,
 			];
 			
-			if (!$notInterested) {
-				$sql .= ' AND `rating` >= 0.0';
-			}
+			$sql .= $this->ratingFilterSql($kind, $params);
 			
 			$row = $this->connection->execute($sql, $params)->fetchAssoc();
 			
 			if (empty($row)) {
-				return [];
+				return null;
 			}
-			
+
 			return ['rating' => (float)$row['rating'], 'ts' => $row['ts']];
 		}
 		
@@ -313,31 +320,36 @@
 		}
 		
 		/**
-		 * Record an implicit rating from a purchase (1.0) or a click (0.7, or increased by 0.01 when already rated below 1.0).
+		 * Record a purchase as a rating of 1.0.
 		 * @param int $memberId The member ID
 		 * @param int $productId The product ID
-		 * @param bool $purchase True for a purchase, false for a click
 		 * @param int|null $category Defaults to configured default
 		 * @return void
-		 * @throws \Exception
+		 * @throws \Exception When a database statement fails
 		 */
-		public function automaticRating(int $memberId, int $productId, bool $purchase, ?int $category = null): void {
+		public function recordPurchase(int $memberId, int $productId, ?int $category = null): void {
+			$this->setRating($memberId, $productId, 1.0, $category);
+		}
+
+		/**
+		 * Record a click as a rating of 0.7, or raise an existing rating by 0.01 up to 1.0.
+		 * @param int $memberId The member ID
+		 * @param int $productId The product ID
+		 * @param int|null $category Defaults to configured default
+		 * @return void
+		 * @throws \Exception When a database statement fails
+		 */
+		public function recordClick(int $memberId, int $productId, ?int $category = null): void {
 			$resolvedCategory = $this->config->resolveCategory($category);
+			$existing = $this->memberRating($memberId, $productId, RatingKind::Genuine, $resolvedCategory);
 
-			if ($purchase) {
-				$this->setRating($memberId, $productId, 1.0, $resolvedCategory);
-				return;
-			}
-
-			$existing = $this->memberRating($memberId, $productId, false, $resolvedCategory);
-
-			if (empty($existing)) {
+			if ($existing === null) {
 				$this->setRating($memberId, $productId, 0.7, $resolvedCategory);
 			} elseif ($existing['rating'] < 1.0) {
 				$this->setRating($memberId, $productId, min(1.0, $existing['rating'] + 0.01), $resolvedCategory);
 			}
 		}
-		
+
 		/**
 		 * Mark a product as not interested for a member.
 		 * @param int $memberId The member ID
@@ -356,7 +368,7 @@
 		 * @param int $productId The product ID
 		 * @param int|null $category Defaults to configured default
 		 * @return void
-		 * @throws \Exception
+		 * @throws \Exception When a database statement fails
 		 */
 		public function deleteRating(int $memberId, int $productId, ?int $category = null): void {
 			$resolvedCategory = $this->config->resolveCategory($category);
@@ -386,38 +398,52 @@
 		}
 		
 		// ----- Internal helpers -----
-	
+
+		/**
+		 * Validate one raw vogoo_ratings row and return its ID, rating and timestamp in typed form.
+		 * @param array<string, mixed> $row Row selecting the ID column, rating and ts
+		 * @param string $idColumn Name of the ID column, product_id or member_id
+		 * @return array{id: int, rating: float, ts: string} Typed ID, rating and timestamp
+		 * @throws \UnexpectedValueException When the ID or rating is not numeric, or the timestamp is not a string
+		 */
+		private function typedRatingRow(array $row, string $idColumn): array {
+			if (!is_numeric($row[$idColumn]) || !is_numeric($row['rating']) || !is_string($row['ts'])) {
+				throw new \UnexpectedValueException("Rating row must have a numeric {$idColumn} and rating and a string ts.");
+			}
+
+			return ['id' => (int)$row[$idColumn], 'rating' => (float)$row['rating'], 'ts' => $row['ts']];
+		}
+
 		/**
 		 * Build the rating filter for a count or listing query, binding the sentinel when filtering on it.
-		 * @param bool $realRatings When true, match genuine ratings unless $notInterested is set
-		 * @param bool $notInterested When true with $realRatings, match every rating
+		 * @param RatingKind $kind Which ratings to match
 		 * @param array<string, mixed> $params Bound parameters, extended in place
 		 * @return string Filter clause with a leading space, or an empty string
 		 */
-		private function ratingFilterSql(bool $realRatings, bool $notInterested, array &$params): string {
-			if (!$realRatings) {
+		private function ratingFilterSql(RatingKind $kind, array &$params): string {
+			if ($kind === RatingKind::NotInterested) {
 				$params['not_interested'] = $this->config->getNotInterested();
 				return ' AND `rating` = :not_interested';
 			}
-	
-			return $notInterested ? '' : ' AND `rating` >= 0.0';
+
+			return $kind === RatingKind::All ? '' : ' AND `rating` >= 0.0';
 		}
-	
+
 		/**
 		 * Build the ORDER BY clause for a ratings listing.
-		 * @param bool $orderByDate Order by timestamp
-		 * @param bool $orderByRating Order by rating value
-		 * @param bool $ascending Sort direction
+		 * @param RatingOrder|null $order Sort order, or null when no order is requested
 		 * @return string Clause with a leading space, or an empty string when no order is requested
 		 */
-		private function orderSql(bool $orderByDate, bool $orderByRating, bool $ascending): string {
-			if (!$orderByDate && !$orderByRating) {
-				return '';
-			}
-	
-			return ' ORDER BY ' . ($orderByDate ? '`ts`' : '`rating`') . ($ascending ? ' ASC' : ' DESC');
+		private function orderSql(?RatingOrder $order): string {
+			return match ($order) {
+				null => '',
+				RatingOrder::DateAscending => ' ORDER BY `ts` ASC',
+				RatingOrder::DateDescending => ' ORDER BY `ts` DESC',
+				RatingOrder::RatingAscending => ' ORDER BY `rating` ASC',
+				RatingOrder::RatingDescending => ' ORDER BY `rating` DESC',
+			};
 		}
-	
+
 		/**
 		 * Delete the ratings of one member or one product in a category.
 		 * With incremental link updates enabled, each rating is removed via deleteRating().
@@ -425,7 +451,7 @@
 		 * @param int $id Member or product ID
 		 * @param int $category Already-resolved category
 		 * @return void
-		 * @throws \Exception
+		 * @throws \Exception When a database statement fails
 		 */
 		private function deleteRatingsWhere(string $column, int $id, int $category): void {
 			if (!$this->config->isDirectLinks() && !$this->config->isDirectSlope()) {
@@ -497,7 +523,7 @@
 		 * @param float $rating The rating value
 		 * @param float $previous The previous rating, or -1.0 when there was none
 		 * @return void
-		 * @throws \Exception
+		 * @throws \Exception When a database statement fails
 		 */
 		private function triggerIncrementalUpdates(int $memberId, int $productId, int $category, float $rating, float $previous): void {
 			if ($this->config->isDirectLinks()) {

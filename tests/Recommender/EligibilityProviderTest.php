@@ -4,8 +4,8 @@ namespace Quellabs\Recommender\Tests;
 
 use Quellabs\Recommender\ItemRecommender;
 use Quellabs\Recommender\RecommendationResult;
-use Quellabs\Recommender\Reconciliation\ArrayEligibilityProvider;
-use Quellabs\Recommender\Reconciliation\EligibilityProvider;
+use Quellabs\Recommender\ArrayEligibilityProvider;
+use Quellabs\Recommender\EligibilityProvider;
 
 /**
  * Integration tests for eligibility providers applied to item-based recommendations.
@@ -112,7 +112,7 @@ class EligibilityProviderTest extends IntegrationTestCase {
 	public function testEmptyArrayProviderReturnsNothing(): void {
 		$this->insertLink(1, 2, 10);
 		$this->assertSame([], $this->recommender->linkedItems(1, new ArrayEligibilityProvider([])));
-		$this->assertSame([], $this->recommender->slopeItems(1, 1, new ArrayEligibilityProvider([])));
+		$this->assertSame([], $this->recommender->slopeItems(1, new ArrayEligibilityProvider([])));
 	}
 
 	/** @return void */

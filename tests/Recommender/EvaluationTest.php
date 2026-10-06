@@ -3,12 +3,13 @@
 namespace Quellabs\Recommender\Tests;
 
 use DateTimeImmutable;
+use Quellabs\Recommender\ScoreKind;
 use Quellabs\Recommender\Evaluation\AttributionWindows;
 use Quellabs\Recommender\Evaluation\EvaluationRecorder;
 use Quellabs\Recommender\Evaluation\EvaluationReport;
 use Quellabs\Recommender\Evaluation\ImpressionId;
 use Quellabs\Recommender\Evaluation\OutcomeType;
-use Quellabs\Recommender\Reconciliation\ArrayEligibilityProvider;
+use Quellabs\Recommender\ArrayEligibilityProvider;
 use Quellabs\Recommender\Reconciliation\RecommendationReconciler;
 use Quellabs\Recommender\Reconciliation\ReconciliationRequest;
 use Quellabs\Recommender\Reconciliation\ReconciledRecommendation;
@@ -210,20 +211,20 @@ class EvaluationTest extends IntegrationTestCase {
                 [RecommendationSource::NewProducts], 2, 'home', [40, 41]);
             $list = (new RecommendationReconciler($this->connection, $this->config))
                 ->recommendMember(7, $request);
-            $this->assertSame('click_probability', $list->scoreKind);
+            $this->assertSame(ScoreKind::ClickProbability, $list->scoreKind);
             $otherContext = new ReconciliationRequest(new ArrayEligibilityProvider([40, 41]),
                 [RecommendationSource::NewProducts], 2, 'home', [40, 41], contextKey: 'tenant-x');
-            $this->assertSame('rank_fusion',
+            $this->assertSame(ScoreKind::RankFusion,
                 (new RecommendationReconciler($this->connection, $this->config))
                     ->recommendMember(7, $otherContext)->scoreKind);
             $otherPlacement = new ReconciliationRequest(new ArrayEligibilityProvider([40, 41]),
                 [RecommendationSource::NewProducts], 2, 'other', [40, 41]);
             $otherCategory = new ReconciliationRequest(new ArrayEligibilityProvider([40, 41]),
                 [RecommendationSource::NewProducts], 2, 'home', [40, 41], category: 2);
-            $this->assertSame('rank_fusion',
+            $this->assertSame(ScoreKind::RankFusion,
                 (new RecommendationReconciler($this->connection, $this->config))
                     ->recommendMember(7, $otherPlacement)->scoreKind);
-            $this->assertSame('rank_fusion',
+            $this->assertSame(ScoreKind::RankFusion,
                 (new RecommendationReconciler($this->connection, $this->config))
                     ->recommendMember(7, $otherCategory)->scoreKind);
             $this->assertSame($modelId, $list->modelId);

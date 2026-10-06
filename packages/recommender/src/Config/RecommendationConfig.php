@@ -5,24 +5,24 @@
 	use Quellabs\Recommender\Internal\Identifier;
 	
 	readonly class RecommendationConfig {
-		
+
+		/** @var float Sentinel rating stored in vogoo_ratings to mark not interested */
+		public const float NOT_INTERESTED = -1.0;
+
 		/** @var int Default category for all operations */
 		private int $category;
 		
-		/** @var int Minimum common ratings before similarity is considered reliable */
+		/** @var int Common ratings above which member similarity needs no confidence penalty */
 		private int $thresholdNrCommonRatings;
 		
-		/** @var int Multiplier used in the similarity confidence calculation */
+		/** @var int Scales the common-rating requirement in the member similarity confidence penalty */
 		private int $thresholdMult;
 		
 		/** @var float Minimum rating for an item to count as liked in link and slope calculations */
 		private float $thresholdRating;
 		
-		/** @var float Cost factor used in the similarity spread calculation */
+		/** @var float Scales squared rating differences into the member similarity spread */
 		private float $cost;
-		
-		/** @var float Sentinel rating stored in vogoo_ratings to mark not interested */
-		private float $notInterested;
 		
 		/** @var bool Whether the link table is maintained incrementally on every rating change */
 		private bool $directLinks;
@@ -42,14 +42,15 @@
 		/**
 		 * Build an immutable recommendation configuration.
 		 * @param int $category Default category for all operations
-		 * @param int $thresholdNrCommonRatings Minimum common ratings before similarity is considered reliable
-		 * @param int $thresholdMult Multiplier used in the similarity confidence calculation
+		 * @param int $thresholdNrCommonRatings Common ratings above which member similarity needs no confidence penalty
+		 * @param int $thresholdMult Scales the common-rating requirement in the member similarity confidence penalty
 		 * @param float $thresholdRating Minimum rating for an item to count as liked
-		 * @param float $cost Cost factor used in the similarity spread calculation
-		 * @param float $notInterested Sentinel rating marking not interested, must be -1.0
+		 * @param float $cost Scales squared rating differences into the member similarity spread, greater than 0
 		 * @param bool $directLinks Whether the link table is maintained incrementally
 		 * @param bool $directSlope Whether the slope one diff table is maintained incrementally
-		 * @param ReconciliationLimits $limits Default reconciliation source depth, backfill rounds and batch size
+		 * @param int $maxCandidateDepth Maximum reconciliation source depth, at least 50
+		 * @param int $maxBackfillRounds Maximum deeper-query rounds, at least 1
+		 * @param int $maxEligibilityBatchSize Maximum IDs in one eligibility provider call, at least 1
 		 * @throws \InvalidArgumentException When a value is outside its allowed range
 		 */
 		public function __construct(
@@ -58,22 +59,22 @@
 			int                $thresholdMult = 2,
 			float              $thresholdRating = 0.66,
 			float              $cost = 5.0,
-			float              $notInterested = -1.0,
 			bool               $directLinks = false,
 			bool               $directSlope = true,
-			ReconciliationLimits $limits = new ReconciliationLimits()
+			int                $maxCandidateDepth = 2000,
+			int                $maxBackfillRounds = 3,
+			int                $maxEligibilityBatchSize = 500
 		) {
 			$this->category = $category;
 			$this->thresholdNrCommonRatings = $thresholdNrCommonRatings;
 			$this->thresholdMult = $thresholdMult;
 			$this->thresholdRating = $thresholdRating;
 			$this->cost = $cost;
-			$this->notInterested = $notInterested;
 			$this->directLinks = $directLinks;
 			$this->directSlope = $directSlope;
-			$this->maxCandidateDepth = $limits->maxCandidateDepth;
-			$this->maxBackfillRounds = $limits->maxBackfillRounds;
-			$this->maxEligibilityBatchSize = $limits->maxEligibilityBatchSize;
+			$this->maxCandidateDepth = $maxCandidateDepth;
+			$this->maxBackfillRounds = $maxBackfillRounds;
+			$this->maxEligibilityBatchSize = $maxEligibilityBatchSize;
 
 			$this->validateRatingThresholds();
 			$this->validateLimits();
@@ -87,7 +88,6 @@
 		 */
 		public static function fromArray(array $values): self {
 			$defaults = new self();
-			$defaultLimits = new ReconciliationLimits();
 
 			return new self(
 				category: self::intValue($values, 'category', $defaults->category),
@@ -95,14 +95,11 @@
 				thresholdMult: self::intValue($values, 'threshold_mult', $defaults->thresholdMult),
 				thresholdRating: self::floatValue($values, 'threshold_rating', $defaults->thresholdRating),
 				cost: self::floatValue($values, 'cost', $defaults->cost),
-				notInterested: self::floatValue($values, 'not_interested', $defaults->notInterested),
 				directLinks: self::boolValue($values, 'direct_links', $defaults->directLinks),
 				directSlope: self::boolValue($values, 'direct_slope', $defaults->directSlope),
-				limits: new ReconciliationLimits(
-					maxCandidateDepth: self::intValue($values, 'max_candidate_depth', $defaultLimits->maxCandidateDepth),
-					maxBackfillRounds: self::intValue($values, 'max_backfill_rounds', $defaultLimits->maxBackfillRounds),
-					maxEligibilityBatchSize: self::intValue($values, 'max_eligibility_batch_size', $defaultLimits->maxEligibilityBatchSize),
-				),
+				maxCandidateDepth: self::intValue($values, 'max_candidate_depth', $defaults->maxCandidateDepth),
+				maxBackfillRounds: self::intValue($values, 'max_backfill_rounds', $defaults->maxBackfillRounds),
+				maxEligibilityBatchSize: self::intValue($values, 'max_eligibility_batch_size', $defaults->maxEligibilityBatchSize),
 			);
 		}
 	
@@ -175,7 +172,7 @@
 		 * @return float Sentinel rating value marking not interested
 		 */
 		public function getNotInterested(): float {
-			return $this->notInterested;
+			return self::NOT_INTERESTED;
 		}
 		
 		/**
@@ -263,10 +260,6 @@
 			
 			if (!is_finite($this->cost) || $this->cost <= 0.0) {
 				throw new \InvalidArgumentException("Cost must be a finite value greater than 0, got {$this->cost}.");
-			}
-			
-			if ($this->notInterested !== -1.0) {
-				throw new \InvalidArgumentException("Not interested sentinel must be -1.0, got {$this->notInterested}.");
 			}
 		}
 		

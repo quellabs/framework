@@ -1,5 +1,14 @@
 # Independent recommender measures
 
+## Public API consistency
+
+Names, argument order and value types now follow one convention across the public API. Typed values replace
+boolean flags and magic strings: `RatingKind` and `RatingOrder` for ratings queries, `ScoreKind` for list scoring,
+and `RecommendationSource` for result strategies. `RecommendationEngine::automaticRating()` is split into
+`recordPurchase()` and `recordClick()`. Reconciliation settings live in `ReconciliationTuning`, and per-item
+diagnostics in `ReconciliationDiagnostics`. `EligibilityProvider` moved to the root namespace. The
+[README upgrade section](README.md#upgrading) lists every changed call.
+
 ## Optional reconciliation and evaluation API
 
 This update adds detailed Slope One predictions with summed directed-pair support,

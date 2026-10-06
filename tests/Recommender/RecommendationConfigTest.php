@@ -107,12 +107,11 @@
 			new RecommendationConfig(thresholdRating: NAN);
 		}
 
-		/** The internal absence marker requires the fixed disinterest sentinel.
+		/** The disinterest sentinel is fixed at -1.0 and is not configurable.
 		 * @return void
 		 */
-		public function testRejectsDifferentDisinterestSentinel(): void {
-			$this->expectException(\InvalidArgumentException::class);
-			new RecommendationConfig(notInterested: -0.5);
+		public function testDisinterestSentinelIsFixed(): void {
+			$this->assertSame(-1.0, (new RecommendationConfig())->getNotInterested());
 		}
 
 		/** Numeric strings are coerced, string booleans are parsed, and invalid values fall back to defaults.

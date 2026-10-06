@@ -95,13 +95,13 @@
 		}
 		
 		// =========================================================================
-		// removeRating
+		// deleteRating
 		// =========================================================================
 		
 		public function testRemoveRatingDeletesEntry(): void {
 			$this->visitor->setRating(1, 0.8);
 			$this->visitor->setRating(2, 0.5);
-			$this->visitor->removeRating(1);
+			$this->visitor->deleteRating(1);
 			$ratings = $this->visitor->ratings();
 			$this->assertCount(1, $ratings);
 			$this->assertSame(2, $ratings[0]['product_id']);
@@ -109,14 +109,14 @@
 		
 		public function testRemoveRatingOnNonExistentProductIsNoop(): void {
 			$this->visitor->setRating(1, 0.8);
-			$this->visitor->removeRating(99);
+			$this->visitor->deleteRating(99);
 			$this->assertCount(1, $this->visitor->ratings());
 		}
 		
 		public function testRemoveRatingRespectsCategory(): void {
 			$this->visitor->setRating(1, 0.8, 1);
 			$this->visitor->setRating(1, 0.5, 2);
-			$this->visitor->removeRating(1, 1);
+			$this->visitor->deleteRating(1, 1);
 			$this->assertCount(0, $this->visitor->ratings(1));
 			$this->assertCount(1, $this->visitor->ratings(2));
 		}
@@ -125,7 +125,7 @@
 			$this->visitor->setRating(1, 0.8);
 			$this->visitor->setRating(2, 0.5);
 			$this->visitor->setRating(3, 0.3);
-			$this->visitor->removeRating(2);
+			$this->visitor->deleteRating(2);
 			$ratings = $this->visitor->ratings();
 			$this->assertArrayHasKey(0, $ratings);
 			$this->assertArrayHasKey(1, $ratings);

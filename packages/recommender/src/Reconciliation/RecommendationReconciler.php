@@ -18,6 +18,7 @@
 	use Quellabs\Recommender\RecommendationEngine;
 	
 	use Quellabs\Recommender\RecommendationList;
+	use Quellabs\Recommender\ScoreKind;
 	
 	use Quellabs\Recommender\RecommendationSource;
 	
@@ -64,7 +65,7 @@
 		 * @return RecommendationList Top requested results
 		 */
 		public function recommendMember(int $memberId, ReconciliationRequest $request): RecommendationList {
-			return $this->firstPage($this->rankCandidatesMember($memberId, $request), $request->limit);
+			return $this->firstPage($this->candidatePoolMember($memberId, $request), $request->limit);
 		}
 		
 		/**
@@ -74,7 +75,7 @@
 		 * @return RecommendationList Top requested results
 		 */
 		public function recommendVisitor(VisitorContext $visitor, ReconciliationRequest $request): RecommendationList {
-			return $this->firstPage($this->rankCandidatesVisitor($visitor, $request), $request->limit);
+			return $this->firstPage($this->candidatePoolVisitor($visitor, $request), $request->limit);
 		}
 		
 		/**
@@ -84,7 +85,7 @@
 		 * @return RecommendationList Full bounded eligible pool
 		 * @throws \InvalidArgumentException When the member ID is not an unsigned 32-bit integer
 		 */
-		public function rankCandidatesMember(int $memberId, ReconciliationRequest $request): RecommendationList {
+		public function candidatePoolMember(int $memberId, ReconciliationRequest $request): RecommendationList {
 			if ($memberId < 0 || $memberId > Identifier::MAX) {
 				throw new \InvalidArgumentException("Member ID must be an unsigned 32-bit integer, got {$memberId}.");
 			}
@@ -118,7 +119,7 @@
 		 * @return RecommendationList Full bounded eligible pool
 		 * @throws \InvalidArgumentException When the request includes the user-similarity source
 		 */
-		public function rankCandidatesVisitor(VisitorContext $visitor, ReconciliationRequest $request): RecommendationList {
+		public function candidatePoolVisitor(VisitorContext $visitor, ReconciliationRequest $request): RecommendationList {
 			if (in_array(RecommendationSource::UserSimilarity, $request->sources, true)) {
 				throw new \InvalidArgumentException('User similarity requires a persisted member.');
 			}
@@ -140,7 +141,7 @@
 		 * @return RecommendationList Limited list
 		 */
 		private function firstPage(RecommendationList $list, int $limit): RecommendationList {
-			return new RecommendationList(
+			return RecommendationList::ranked(
 				$list->category, $list->placement, $list->sources, $list->contextKey,
 				$list->scoreKind, $list->modelId, array_slice($list->items, 0, $limit), $limit
 			);
@@ -156,9 +157,9 @@
 		 * @throws \RuntimeException When a source changes its candidate order during depth backfill
 		 */
 		private function rank(ReconciliationRequest $request, int $category, array $ratings, ?int $memberId): RecommendationList {
-			$depthCap = $request->maxCandidateDepth ?? $this->config->getMaxCandidateDepth();
-			$roundCap = $request->maxBackfillRounds ?? $this->config->getMaxBackfillRounds();
-			$batchSize = max(1, $request->maxEligibilityBatchSize ?? $this->config->getMaxEligibilityBatchSize());
+			$depthCap = $request->tuning->maxCandidateDepth ?? $this->config->getMaxCandidateDepth();
+			$roundCap = $request->tuning->maxBackfillRounds ?? $this->config->getMaxBackfillRounds();
+			$batchSize = max(1, $request->tuning->maxEligibilityBatchSize ?? $this->config->getMaxEligibilityBatchSize());
 			$state = new CandidateRoundState($request->sources, min(max(50, 5 * $request->limit), $depthCap), $depthCap);
 			
 			$this->collectCandidateRounds($request, $state, $category, $ratings, $memberId, $roundCap, $batchSize);
@@ -177,9 +178,9 @@
 				return ($b->rankingScore <=> $a->rankingScore) ?: ($a->itemId <=> $b->itemId);
 			});
 			
-			return new RecommendationList(
+			return RecommendationList::ranked(
 				$category, $request->placement, $request->sources, $request->contextKey,
-				$activeModel === null ? 'rank_fusion' : 'click_probability', $activeModel?->id,
+				$activeModel === null ? ScoreKind::RankFusion : ScoreKind::ClickProbability, $activeModel?->id,
 				$items, $request->limit
 			);
 		}
@@ -337,7 +338,7 @@
 				);
 			}
 			
-			return new ReconciledRecommendation($id, $score, $evidence, $features, $contributions, $depths);
+			return new ReconciledRecommendation($id, $score, $evidence, new ReconciliationDiagnostics($features, $contributions, $depths));
 		}
 		
 		/**
@@ -547,7 +548,7 @@
 			$similarity = new UserSimilarity($this->connection, $this->config, new RecommendationEngine($this->connection, $this->config));
 			
 			$rows = $similarity->memberRecommendationsScored(
-				$memberId, $request->minNeighbourSimilarity, $request->maxNeighbours,
+				$memberId, $request->tuning->minNeighbourSimilarity, $request->tuning->maxNeighbours,
 				count($missing), $category, $missing
 			);
 			
@@ -581,7 +582,7 @@
 		 */
 		private function topRatedRows(int $category, ReconciliationRequest $request, string $restriction, ?int $depth): array {
 			return $this->connection->execute($this->topRatedSql($restriction, $depth),
-				['category' => $category, 'minimum' => $request->topRatedMinRatings])->fetchAll('assoc');
+				['category' => $category, 'minimum' => $request->tuning->topRatedMinRatings])->fetchAll('assoc');
 		}
 		
 		/**
@@ -703,7 +704,7 @@
 			if ($source === RecommendationSource::ItemLinks) {
 				return ['threshold' => $this->config->getThresholdRating(), 'category' => $category];
 			} else {
-				return ['category' => $category, 'minimum' => $request->minSlopeSupport];
+				return ['category' => $category, 'minimum' => $request->tuning->minSupport];
 			}
 		}
 		
@@ -793,7 +794,7 @@
 			}
 			
 			$similarity = new UserSimilarity($this->connection, $this->config, new RecommendationEngine($this->connection, $this->config));
-			$rows = $similarity->memberRecommendationsScored($memberId, $request->minNeighbourSimilarity, $request->maxNeighbours, $depth, $category);
+			$rows = $similarity->memberRecommendationsScored($memberId, $request->tuning->minNeighbourSimilarity, $request->tuning->maxNeighbours, $depth, $category);
 			
 			return array_map(function ($row): array {
 				return [

@@ -2,10 +2,11 @@
 
 	namespace Quellabs\Recommender\Tests;
 
+	use Quellabs\Recommender\RecommendationSource;
 	use Quellabs\Recommender\ItemRecommender;
 	use Quellabs\Recommender\PredictionResult;
 	use Quellabs\Recommender\RecommendationResult;
-	use Quellabs\Recommender\Reconciliation\ArrayEligibilityProvider;
+	use Quellabs\Recommender\ArrayEligibilityProvider;
 use Quellabs\Recommender\VisitorContext;
 
 	/**
@@ -170,7 +171,7 @@ use Quellabs\Recommender\VisitorContext;
 		public function testLinkedItemsScoreIsTheLikedCount(): void {
 			$this->insertLink(1, 2, 5);
 			$result = $this->recommender->linkedItems(1);
-			$this->assertSame('item_links', $result[0]->strategy);
+			$this->assertSame(RecommendationSource::ItemLinks, $result[0]->strategy);
 			$this->assertEqualsWithDelta(5.0, $result[0]->score, 0.00001);
 		}
 
@@ -292,7 +293,7 @@ use Quellabs\Recommender\VisitorContext;
 			$this->insertLink(1, 3, 2, 0.2);
 			$result = $this->recommender->slopeItems(1);
 			$this->assertCount(2, $result);
-			$this->assertSame('slope_one', $result[0]->strategy);
+			$this->assertSame(RecommendationSource::SlopeOne, $result[0]->strategy);
 			$this->assertIsFloat($result[0]->score);
 		}
 

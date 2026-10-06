@@ -3,7 +3,7 @@
 namespace Quellabs\Recommender\Tests;
 
 use PHPUnit\Framework\TestCase;
-use Quellabs\Recommender\Reconciliation\ArrayEligibilityProvider;
+use Quellabs\Recommender\ArrayEligibilityProvider;
 use Quellabs\Recommender\RecommendationList;
 use Quellabs\Recommender\RecommendationSource;
 use Quellabs\Recommender\Reconciliation\ReconciliationRequest;

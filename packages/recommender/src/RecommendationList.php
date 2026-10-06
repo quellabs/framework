@@ -23,8 +23,8 @@
 		/** @var string|null Model and logging partition */
 		public ?string $contextKey;
 		
-		/** @var string direct, rank_fusion, or click_probability */
-		public string $scoreKind;
+		/** @var ScoreKind How the item scores are interpreted */
+		public ScoreKind $scoreKind;
 		
 		/** @var string|null Active model token, when calibrated */
 		public ?string $modelId;
@@ -41,18 +41,18 @@
 		 * @param string $placement Display surface
 		 * @param array<int, RecommendationSource> $sources Enabled source set
 		 * @param string|null $contextKey Model and logging partition
-		 * @param string $scoreKind direct, rank_fusion, or click_probability
+		 * @param ScoreKind $scoreKind How the item scores are interpreted
 		 * @param string|null $modelId Active model token, required for click_probability
 		 * @param array<int, ReconciledRecommendation> $items Ordered results
 		 * @param int $limit Maximum selectable displayed items, from 1 to 100
 		 * @throws \InvalidArgumentException When the metadata or items are invalid
 		 */
-		public function __construct(
+		private function __construct(
 			int     $category,
 			string  $placement,
 			array   $sources,
 			?string $contextKey,
-			string  $scoreKind,
+			ScoreKind $scoreKind,
 			?string $modelId,
 			array   $items,
 			int     $limit
@@ -65,13 +65,9 @@
 				throw new \InvalidArgumentException("Limit must be between 1 and 100, got {$limit}.");
 			}
 			
-			if (!in_array($scoreKind, ['direct', 'rank_fusion', 'click_probability'], true)) {
-				throw new \InvalidArgumentException("Score kind must be direct, rank_fusion, or click_probability, got '{$scoreKind}'.");
-			}
-			
-			if (($scoreKind === 'click_probability') !== ($modelId !== null)) {
+			if (($scoreKind === ScoreKind::ClickProbability) !== ($modelId !== null)) {
 				$modelLabel = $modelId ?? 'null';
-				throw new \InvalidArgumentException("A model ID is required only for click_probability lists; got score kind '{$scoreKind}' and model ID {$modelLabel}.");
+				throw new \InvalidArgumentException("A model ID is required only for click_probability lists; got score kind '{$scoreKind->value}' and model ID {$modelLabel}.");
 			}
 			
 			ReconciliationRequest::validateKey($placement, 64, 'placement');
@@ -119,8 +115,26 @@
 				}
 			}
 			
-			return new self($category, $placement, array_values($sources), $contextKey, 'direct', null,
+			return new self($category, $placement, array_values($sources), $contextKey, ScoreKind::Direct, null,
 				$items, max(1, count($items)));
+		}
+		
+		/**
+		 * Build a ranked list with the given score kind, model and item order.
+		 * @param int $category Resolved category
+		 * @param string $placement Display surface
+		 * @param array<int, RecommendationSource> $sources Enabled source set
+		 * @param string|null $contextKey Model and logging partition
+		 * @param ScoreKind $scoreKind How the item scores are interpreted
+		 * @param string|null $modelId Active model token, required for click_probability
+		 * @param array<int, ReconciledRecommendation> $items Ordered results
+		 * @param int $limit Maximum selectable displayed items, from 1 to 100
+		 * @return self Ranked list
+		 * @throws \InvalidArgumentException When the metadata or items are invalid
+		 */
+		public static function ranked(int $category, string $placement, array $sources, ?string $contextKey,
+			ScoreKind $scoreKind, ?string $modelId, array $items, int $limit): self {
+			return new self($category, $placement, $sources, $contextKey, $scoreKind, $modelId, $items, $limit);
 		}
 		
 		/**
@@ -201,12 +215,12 @@
 		/**
 		 * Reject items that are not unique recommendations, lack a score, or use a disabled source.
 		 * @param array<mixed> $items Ordered results to check
-		 * @param string $scoreKind Score kind of the list
+		 * @param ScoreKind $scoreKind Score kind of the list
 		 * @param array<string, true> $sourceSet Enabled source values
 		 * @return void
 		 * @throws \InvalidArgumentException When an item is invalid
 		 */
-		private static function validateItems(array $items, string $scoreKind, array $sourceSet): void {
+		private static function validateItems(array $items, ScoreKind $scoreKind, array $sourceSet): void {
 			$seen = [];
 			
 			foreach ($items as $item) {
@@ -218,8 +232,8 @@
 					throw new \InvalidArgumentException("Item ID {$item->itemId} appears more than once.");
 				}
 				
-				if ($scoreKind !== 'direct' && $item->rankingScore === null) {
-					throw new \InvalidArgumentException("Item ID {$item->itemId} needs a ranking score for score kind '{$scoreKind}'.");
+				if ($scoreKind !== ScoreKind::Direct && $item->rankingScore === null) {
+					throw new \InvalidArgumentException("Item ID {$item->itemId} needs a ranking score for score kind '{$scoreKind->value}'.");
 				}
 				
 				$seen[$item->itemId] = true;

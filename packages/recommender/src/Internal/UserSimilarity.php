@@ -12,7 +12,9 @@
 	use Quellabs\Recommender\Neighbour;
 	use Quellabs\Recommender\RecommendationEngine;
 	use Quellabs\Recommender\RecommendationResult;
-	use Quellabs\Recommender\Reconciliation\EligibilityProvider;
+	use Quellabs\Recommender\RatingKind;
+	use Quellabs\Recommender\RecommendationSource;
+	use Quellabs\Recommender\EligibilityProvider;
 	/**
 	 * User-based collaborative filtering: member similarity scoring and
 	 * neighbour-based recommendations.
@@ -66,7 +68,7 @@
 		 */
 		public function memberSimilarity(int $memberId1, int $memberId2, ?int $category = null): int {
 			$resolvedCategory = $this->config->resolveCategory($category);
-			$ownRatingCount = $this->engine->memberNumRatings($memberId1, true, false, $resolvedCategory);
+			$ownRatingCount = $this->engine->memberNumRatings($memberId1, RatingKind::Genuine, $resolvedCategory);
 			
 			if ($ownRatingCount === 0) {
 				return 0;
@@ -114,7 +116,7 @@
 			$minSimilarity = max(0, min(100, $minSimilarity));
 			$limit = max(0, $limit);
 	
-			$ownRatingCount = $this->engine->memberNumRatings($memberId, true, false, $resolvedCategory);
+			$ownRatingCount = $this->engine->memberNumRatings($memberId, RatingKind::Genuine, $resolvedCategory);
 	
 			if ($ownRatingCount === 0) {
 				return [];
@@ -179,7 +181,7 @@
 		 * @param EligibilityProvider|null $eligibility Restricts results to eligible products, or null for all
 		 * @param int $limit Maximum number of results (0 = unlimited)
 		 * @param int|null $category Defaults to configured default
-		 * @return array<int, RecommendationResult> Recommended products ordered by score, with strategy user_similarity
+		 * @return array<int, RecommendationResult> Recommended products ordered by score, with source user_similarity
 		 */
 		public function memberRecommendations(int $memberId, int $minSimilarity = 1, ?EligibilityProvider $eligibility = null, int $limit = 0, ?int $category = null): array {
 			$resolvedCategory = $this->config->resolveCategory($category);
@@ -220,7 +222,7 @@
 			$results = [];
 
 			foreach ($scores as $itemId => $score) {
-				$results[] = new RecommendationResult($itemId, $score, 'user_similarity', []);
+				$results[] = new RecommendationResult($itemId, $score, RecommendationSource::UserSimilarity, []);
 			}
 
 			return Results::limit($results, $limit);

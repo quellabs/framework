@@ -68,8 +68,27 @@ Ratings run from 0.0 to 1.0, and -1.0 marks "not interested".
 | Predicted rating for one product | `ItemRecommender::memberPrediction()` | `PredictionResult\|null` |
 | Predicted ratings for all unrated products | `ItemRecommender::memberPredictions()` | `PredictionResult[]` |
 | Ranking filtered by catalogue eligibility | `RecommendationReconciler::recommendMember()` | `RecommendationList` |
+| Full bounded eligible pool, not cut to `limit` | `RecommendationReconciler::candidatePoolMember()` | `RecommendationList` |
 
 Visitor variants take a `VisitorContext` in place of the member ID.
+
+### Limits
+
+- `limit` is the maximum number of results. `0` means all results. `ItemRecommender` methods default to `0`.
+  `Statistics` top-N methods default to `10`.
+- With an `EligibilityProvider`, the recommender fetches deeper candidates until `limit` eligible results are found
+  or the candidate depth cap (`max_candidate_depth`, default 2000) is reached. It can return fewer results than
+  `limit` without an error. Check the count when the list must be full.
+- `limit = 0` with an eligibility provider checks every candidate, which costs more on large catalogues.
+
+### Scores
+
+| Method | `score` meaning |
+|--------|-----------------|
+| `linkedItems()` | Liked count of the co-occurrence link |
+| `slopeItems()` | Average Slope One difference, which can be negative |
+| `memberRecommendations()`, `visitorRecommendations()` | Sum of liked count times (rating minus threshold). Fallback items use the average rating |
+| `memberPredictions()`, `visitorPredictions()` | Use `PredictionResult::$predictedRating` |
 
 ## Documentation
 
@@ -98,18 +117,82 @@ Rename calls as shown. Methods not listed are unchanged.
 | `ItemRecommender::visitorPredictAll()` | `ItemRecommender::visitorPredictions()` |
 | `RecommendationEngine::getRating()` | `RecommendationEngine::memberRating()` |
 | `RecommendationEngine::memberPredictDetailed()` and the other `*Detailed()` predictions on the engine | `ItemRecommender::memberPrediction()` and its visitor and list variants |
+| `RecommendationEngine::automaticRating($m, $p, true)` | `RecommendationEngine::recordPurchase($m, $p)` |
+| `RecommendationEngine::automaticRating($m, $p, false)` | `RecommendationEngine::recordClick($m, $p)` |
 | `VisitorContext::getRatings()` | `VisitorContext::ratings()` |
 | `VisitorContext::getRatedProductIds()` | `VisitorContext::ratedProductIds()` |
+| `VisitorContext::removeRating()` | `VisitorContext::deleteRating()` |
+| `RecommendationReconciler::rankCandidatesMember()` | `RecommendationReconciler::candidatePoolMember()` |
+| `RecommendationReconciler::rankCandidatesVisitor()` | `RecommendationReconciler::candidatePoolVisitor()` |
+
+Prediction methods that were renamed also changed return type. Read `->predictedRating` and `->supportCount` on the
+new `PredictionResult` objects:
+
+| Previous | Previous return | Now return |
+|----------|-----------------|------------|
+| `ItemRecommender::memberPredict()` | `float\|null` | `PredictionResult\|null` |
+| `ItemRecommender::visitorPredict()` | `float\|null` | `PredictionResult\|null` |
+| `ItemRecommender::memberPredictAll()` | `ProductRating[]` | `PredictionResult[]` |
+| `ItemRecommender::visitorPredictAll()` | `ProductRating[]` | `PredictionResult[]` |
+
+Argument changes. Positional calls must move their arguments. Named calls only need the renamed names.
+
+| Method | Now |
+|--------|-----|
+| `ItemRecommender::slopeItems()` | `(productId, eligibility, limit, minLinks, category)` |
+| `ItemRecommender::memberRecommendations()` | `(memberId, eligibility, limit, minHistory, topRatedMinRatings, category)` |
+| `ItemRecommender::visitorRecommendations()` | `(visitor, eligibility, limit, minHistory, topRatedMinRatings, category)` |
+| `RecommendationEngine::memberNumRatings()` | `(memberId, RatingKind $kind, category)` |
+| `RecommendationEngine::memberRatings()` | `(memberId, RatingKind $kind, ?RatingOrder $order, category)` |
+| `RecommendationEngine::productRatings()` | `(productId, ?RatingOrder $order, category)` |
+| `RecommendationEngine::memberRating()` | `(memberId, productId, RatingKind $kind, category)` |
+| `Statistics::topRatedProducts()` | `(limit, topRatedMinRatings, category)` |
+
+The eligibility argument is second, and `category` is last, in every method that takes them. The
+`minRatings` argument of `memberRecommendations()` and `visitorRecommendations()` is now `topRatedMinRatings`, and
+the `minRatings` argument of `Statistics::topRatedProducts()` has the same new name.
+
+Replace the old boolean flags with the enums:
+
+| Old flags | New |
+|-----------|-----|
+| `realRatings: true` (default), `notInterested: false` | `RatingKind::Genuine` (default) |
+| `realRatings: true, notInterested: true` | `RatingKind::All` |
+| `realRatings: false` | `RatingKind::NotInterested` |
+| `orderByDate: true, ascending: true` | `RatingOrder::DateAscending` |
+| `orderByDate: true, ascending: false` | `RatingOrder::DateDescending` |
+| `orderByRating: true, ascending: true` | `RatingOrder::RatingAscending` |
+| `orderByRating: true, ascending: false` | `RatingOrder::RatingDescending` |
+
+Return and type changes:
+
+| Member | Previous | Now |
+|--------|----------|-----|
+| `RecommendationEngine::memberRating()` | `array`, empty when absent | `array{rating, ts}\|null`, `null` when absent |
+| `RecommendationEngine::memberRatings()`, `productRatings()` | Raw database values | `product_id` or `member_id` as `int`, `rating` as `float`, `ts` as `string` |
+| `RecommendationResult::$strategy` | `string` such as `'item_links'` | `RecommendationSource` enum case |
+| `RecommendationList::$scoreKind` | `string` such as `'rank_fusion'` | `ScoreKind` enum case |
+| `ReconciledRecommendation::$featureSnapshot`, `$searchedDepths`, `$sourceLogOddsContributions` | Properties on the item | Properties on `$item->diagnostics` (`ReconciliationDiagnostics`) |
+| `new RecommendationList(...)` | Public constructor | Private. Use `RecommendationList::ranked()` or `fromDisplayedItems()` |
+| `ReconciliationRequest` tuning properties such as `$minSlopeSupport` | Properties on the request | `$request->tuning` (`ReconciliationTuning`). `minSlopeSupport` is now `minSupport` |
 
 Other changes:
 
+- `EligibilityProvider` and `ArrayEligibilityProvider` moved from `Quellabs\Recommender\Reconciliation` to
+  `Quellabs\Recommender`. Update the imports.
 - The `array $filter` parameter of the `ItemRecommender` recommendation, prediction and link methods is now
-  `?EligibilityProvider $eligibility`. Wrap an ID list in `ArrayEligibilityProvider` to keep the old behaviour.
-  The parameter is in the second position, so positional calls must be updated.
+  `?EligibilityProvider $eligibility`. Pass `null` where the old call passed `[]`, because an empty array meant
+  "no filter". Wrap a non-empty ID list in `ArrayEligibilityProvider`. An `ArrayEligibilityProvider` built from an
+  empty list accepts no candidates, so it does not replace an empty filter.
+- `RecommendationConfig` no longer accepts `notInterested` or the `not_interested` config key. The sentinel is
+  fixed at `RecommendationConfig::NOT_INTERESTED` (-1.0). Remove the key from `config/recommender.php`.
+- `RecommendationConfig` takes `maxCandidateDepth`, `maxBackfillRounds` and `maxEligibilityBatchSize` directly.
+  `ReconciliationLimits` is removed. The `fromArray()` keys are unchanged.
+- `ReconciliationTuning` validates its own values, with the same messages as before.
 - `memberRecommendations()` and `visitorRecommendations()` return `RecommendationResult[]`. They previously
   returned bare product IDs.
-- `RecommendationEngine::setRating()`, `automaticRating()` and `setNotInterested()` return `void`. They throw on
-  invalid input instead of returning `false`.
+- `RecommendationEngine::setRating()`, `recordPurchase()`, `recordClick()` and `setNotInterested()` return `void`.
+  They throw on invalid input instead of returning `false`.
 - `Statistics::mostRatedProducts()` and `topRatedProducts()` return `ProductCount[]` and `ProductAverage[]` instead
   of arrays.
 - Implementation classes moved to `Quellabs\Recommender\Internal\Model`, `Internal\Persistence` and
