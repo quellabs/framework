@@ -48,31 +48,31 @@ class CandidateSourceTest extends IntegrationTestCase {
         }
     }
 
-    /** One round filters only the top depth candidates, so a shallow depth misses eligible products below it.
+    /** With eligibility, deeper candidates are checked until the limit is met, so an ineligible top candidate is skipped.
      * @return void
      */
-    public function testDepthBoundsOneRoundOfEligibility(): void {
+    public function testEligibilityBackfillsUntilLimit(): void {
         $this->insertLink(10, 20, 5);
         $this->insertLink(10, 30, 3);
         $this->insertLink(10, 40, 1);
         $source = new ItemLinksSource($this->connection, $this->config);
         $eligible = new ArrayEligibilityProvider([30, 40]);
-        $this->assertSame([], $this->candidateIds($source->candidates(Subject::product(10), $eligible, 1, new SourceSettings())));
-        $this->assertSame([30], $this->candidateIds($source->candidates(Subject::product(10), $eligible, 2, new SourceSettings())));
+        $this->assertSame([30], $this->candidateIds($source->candidates(Subject::product(10), $eligible, 1, new SourceSettings())));
+        $this->assertSame([30, 40], $this->candidateIds($source->candidates(Subject::product(10), $eligible, 2, new SourceSettings())));
         $this->assertSame([30, 40], $this->candidateIds($source->candidates(Subject::product(10), $eligible, 0, new SourceSettings())));
     }
 
-    /** Member depth bounds the same single round: at depth one only product 20 is checked, and it is not eligible.
+    /** Member candidates backfill the same way: product 20 is ineligible, so the limit of one takes product 40.
      * @return void
      */
-    public function testMemberDepthBoundsOneRoundOfEligibility(): void {
+    public function testMemberEligibilityBackfillsUntilLimit(): void {
         $this->insertRating(5, 1, 1.0);
         $this->insertLink(1, 20, 5);
         $this->insertLink(1, 40, 1);
         $eligible = new ArrayEligibilityProvider([40]);
 
         foreach ($this->sources() as $source) {
-            $this->assertSame([], $this->candidateIds($source->candidates(Subject::member(5), $eligible, 1, new SourceSettings())));
+            $this->assertSame([40], $this->candidateIds($source->candidates(Subject::member(5), $eligible, 1, new SourceSettings())));
             $this->assertSame([40], $this->candidateIds($source->candidates(Subject::member(5), $eligible, 0, new SourceSettings())));
         }
     }
@@ -148,7 +148,7 @@ class CandidateSourceTest extends IntegrationTestCase {
         $source->candidates(Subject::product(1), null, 0, new SourceSettings());
     }
 
-    /** New products keep list order, skip seen products, and count seen list positions toward depth.
+    /** New products keep list order, skip seen products, count seen list positions toward depth, and skip ineligible ones.
      * @return void
      */
     public function testNewProductsKeepListOrderAndCountSeenPositions(): void {
@@ -157,6 +157,7 @@ class CandidateSourceTest extends IntegrationTestCase {
 
         $this->assertSame([30, 40], $this->candidateIds($source->candidates(Subject::member(5), null, 0, new SourceSettings())));
         $this->assertSame([30], $this->candidateIds($source->candidates(Subject::member(5), null, 2, new SourceSettings())));
+        $this->assertSame([40], $this->candidateIds($source->candidates(Subject::member(5), new ArrayEligibilityProvider([40]), 1, new SourceSettings())));
         $this->assertSame([40], $this->candidateIds($source->scores(Subject::member(5), [40, 99], new SourceSettings())));
         $this->expectException(\InvalidArgumentException::class);
         $source->scores(Subject::product(1), [1], new SourceSettings());

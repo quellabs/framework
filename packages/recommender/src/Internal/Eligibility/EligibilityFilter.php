@@ -47,18 +47,19 @@
 		}
 
 		/**
-		 * Keep the rows that pass eligibility, in one provider round without fetching deeper.
+		 * Return the first rows that pass eligibility from a complete in-memory list, checking them in batches.
 		 * @template T
 		 * @param EligibilityProvider $eligibility Application eligibility check
 		 * @param array<int, T> $rows Rows in ranked order, with distinct product IDs
+		 * @param int $limit Maximum results, or zero for all
 		 * @param callable(T): int $idOf Returns the product ID of a row
 		 * @return array<int, T> Eligible rows in ranked order
 		 * @throws \UnexpectedValueException When a provider answer is not an ordered subset of its batch
 		 */
-		public function keepEligible(EligibilityProvider $eligibility, array $rows, callable $idOf): array {
-			$eligible = array_flip($this->check($eligibility, array_map($idOf, $rows), max(1, $this->config->maxEligibilityBatchSize())));
+		public function firstEligible(EligibilityProvider $eligibility, array $rows, int $limit, callable $idOf): array {
+			$verdicts = [];
 
-			return array_values(array_filter($rows, fn($row): bool => isset($eligible[$idOf($row)])));
+			return $this->takeEligible($rows, $limit, $eligibility, $idOf, $verdicts);
 		}
 
 		/**

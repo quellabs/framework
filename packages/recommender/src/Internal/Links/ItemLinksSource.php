@@ -66,21 +66,20 @@ readonly class ItemLinksSource implements CandidateSource {
 	 * Product subjects use the liked pairs of the product. Member and visitor subjects use the links of their genuine ratings.
 	 * @param Subject $subject Subject the candidates are for
 	 * @param EligibilityProvider|null $eligibility Restricts candidates, or null for all
-	 * @param int $depth Number of top candidates to consider before eligibility, or zero for all
+	 * @param int $limit Maximum results, or zero for all
 	 * @param SourceSettings $settings Source settings, unused
 	 * @param int|null $category Category override
 	 * @return array<int, RecommendationResult> Linked products, scored by liked count
 	 */
-	public function candidates(Subject $subject, ?EligibilityProvider $eligibility, int $depth,
+	public function candidates(Subject $subject, ?EligibilityProvider $eligibility, int $limit,
 		SourceSettings $settings, ?int $category = null): array {
 		$resolved = $this->config->resolveCategory($category);
 
-		$rows = match ($subject->kind) {
-			SubjectKind::Product => $this->linkedRows($subject->id ?? throw new \LogicException('A product subject always has an ID.'), $depth, $resolved),
-			SubjectKind::Member, SubjectKind::Visitor => $this->ratedCandidates($subject, $resolved, $depth, null),
-		};
-
-		return $eligibility === null ? $rows : $this->eligibilityFilter->keepEligible($eligibility, $rows,
+		return $this->eligibilityFilter->withEligibility($eligibility, $limit,
+			fn(int $depth): array => match ($subject->kind) {
+				SubjectKind::Product => $this->linkedRows($subject->id ?? throw new \LogicException('A product subject always has an ID.'), $depth, $resolved),
+				SubjectKind::Member, SubjectKind::Visitor => $this->ratedCandidates($subject, $resolved, $depth, null),
+			},
 			fn(RecommendationResult $row): int => $row->productId);
 	}
 

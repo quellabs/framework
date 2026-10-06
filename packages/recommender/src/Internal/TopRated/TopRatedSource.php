@@ -60,27 +60,27 @@ readonly class TopRatedSource implements CandidateSource {
 	 * Return the top-rated products the subject has not seen, highest average rating first.
 	 * @param Subject $subject Member or visitor subject
 	 * @param EligibilityProvider|null $eligibility Restricts candidates, or null for all
-	 * @param int $depth Number of top candidates to consider before eligibility, or zero for all
+	 * @param int $limit Maximum results, or zero for all
 	 * @param SourceSettings $settings Source settings; the minimum rating count applies
 	 * @param int|null $category Category override
 	 * @return array<int, RecommendationResult> Products scored by their average rating
 	 * @throws \InvalidArgumentException When the subject is a product
 	 */
-	public function candidates(Subject $subject, ?EligibilityProvider $eligibility, int $depth,
+	public function candidates(Subject $subject, ?EligibilityProvider $eligibility, int $limit,
 		SourceSettings $settings, ?int $category = null): array {
 		$this->assertSupported($subject);
 		$resolved = $this->config->resolveCategory($category);
 		$seen = $this->ratings->seen($subject, $resolved);
-		$limit = $depth === 0 ? null : $depth;
 
-		$rows = $this->temporary->withIdTable('vogoo_seen_', array_keys($seen),
-			function (string $seenTable) use ($resolved, $settings, $limit): array {
-				return $this->rows($resolved, $settings, "AND NOT EXISTS (SELECT 1 FROM {$seenTable} s WHERE s.product_id = r.product_id)", $limit);
-			});
+		return $this->eligibilityFilter->withEligibility($eligibility, $limit,
+			function (int $depth) use ($resolved, $settings, $seen): array {
+				$rows = $this->temporary->withIdTable('vogoo_seen_', array_keys($seen),
+					function (string $seenTable) use ($resolved, $settings, $depth): array {
+						return $this->rows($resolved, $settings, "AND NOT EXISTS (SELECT 1 FROM {$seenTable} s WHERE s.product_id = r.product_id)", $depth === 0 ? null : $depth);
+					});
 
-		$results = CandidateRows::fromSql($rows, RecommendationSource::TopRated, $seen);
-
-		return $eligibility === null ? $results : $this->eligibilityFilter->keepEligible($eligibility, $results,
+				return CandidateRows::fromSql($rows, RecommendationSource::TopRated, $seen);
+			},
 			fn(RecommendationResult $row): int => $row->productId);
 	}
 

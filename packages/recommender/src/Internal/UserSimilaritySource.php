@@ -60,20 +60,20 @@ readonly class UserSimilaritySource implements CandidateSource {
 	 * Return the products similar members rated well that the member has not seen, best score first.
 	 * @param Subject $subject Member subject
 	 * @param EligibilityProvider|null $eligibility Restricts candidates, or null for all
-	 * @param int $depth Number of top candidates to consider before eligibility, or zero for all
+	 * @param int $limit Maximum results, or zero for all
 	 * @param SourceSettings $settings Neighbour similarity and neighbour count limits
 	 * @param int|null $category Category override
 	 * @return array<int, RecommendationResult> Products scored by similarity-weighted rating
 	 * @throws \InvalidArgumentException When the subject is not a member
 	 */
-	public function candidates(Subject $subject, ?EligibilityProvider $eligibility, int $depth,
+	public function candidates(Subject $subject, ?EligibilityProvider $eligibility, int $limit,
 		SourceSettings $settings, ?int $category = null): array {
 		$memberId = $this->memberOf($subject);
-		$rows = $this->scoredRows($memberId, $settings, $this->config->resolveCategory($category),
-			$depth === 0 ? null : $depth, null);
-		$results = $this->results($rows);
+		$resolved = $this->config->resolveCategory($category);
 
-		return $eligibility === null ? $results : $this->eligibilityFilter->keepEligible($eligibility, $results,
+		return $this->eligibilityFilter->withEligibility($eligibility, $limit,
+			fn(int $depth): array => $this->results($this->scoredRows($memberId, $settings, $resolved,
+				$depth === 0 ? null : $depth, null)),
 			fn(RecommendationResult $row): int => $row->productId);
 	}
 

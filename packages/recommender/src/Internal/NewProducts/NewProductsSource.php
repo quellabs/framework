@@ -56,30 +56,46 @@ readonly class NewProductsSource implements CandidateSource {
 	}
 
 	/**
-	 * Return the first new products in list order, up to the depth, that the subject has not seen.
-	 * Depth counts positions in the list, so seen products use up depth.
+	 * Return new products the subject has not seen, in list order.
+	 * Without eligibility, the limit counts list positions, so seen products use it up. With eligibility, the limit
+	 * counts eligible results and the whole unseen list is checked in batches.
 	 * @param Subject $subject Member or visitor subject
 	 * @param EligibilityProvider|null $eligibility Restricts candidates, or null for all
-	 * @param int $depth Number of list positions to consider before eligibility, or zero for all
+	 * @param int $limit Number of list positions without eligibility, or eligible results with it; zero for all
 	 * @param SourceSettings $settings Source settings, unused
 	 * @param int|null $category Category override
 	 * @return array<int, RecommendationResult> New products in list order
 	 * @throws \InvalidArgumentException When the subject is a product
 	 */
-	public function candidates(Subject $subject, ?EligibilityProvider $eligibility, int $depth,
+	public function candidates(Subject $subject, ?EligibilityProvider $eligibility, int $limit,
 		SourceSettings $settings, ?int $category = null): array {
 		$this->assertSupported($subject);
 		$seen = $this->ratings->seen($subject, $this->config->resolveCategory($category));
+
+		if ($eligibility !== null) {
+			return $this->eligibilityFilter->firstEligible($eligibility, $this->unseen($seen, $this->productIds), $limit,
+				fn(RecommendationResult $row): int => $row->productId);
+		}
+
+		return $this->unseen($seen, array_slice($this->productIds, 0, $limit === 0 ? null : $limit));
+	}
+
+	/**
+	 * Build results for the listed products the subject has not seen, keeping their order.
+	 * @param array<int, float> $seen Seen product IDs as keys
+	 * @param array<int, int> $productIds Product IDs in list order
+	 * @return array<int, RecommendationResult> Unseen products in list order
+	 */
+	private function unseen(array $seen, array $productIds): array {
 		$results = [];
 
-		foreach (array_slice($this->productIds, 0, $depth === 0 ? null : $depth) as $id) {
+		foreach ($productIds as $id) {
 			if (!array_key_exists($id, $seen)) {
 				$results[] = $this->result($id);
 			}
 		}
 
-		return $eligibility === null ? $results : $this->eligibilityFilter->keepEligible($eligibility, $results,
-			fn(RecommendationResult $row): int => $row->productId);
+		return $results;
 	}
 
 	/**

@@ -4,7 +4,6 @@ namespace Quellabs\Recommender;
 
 use Cake\Database\Connection;
 use Quellabs\Recommender\Config\RecommendationConfig;
-use Quellabs\Recommender\Internal\Eligibility\EligibilityFilter;
 use Quellabs\Recommender\Internal\Links\ItemLinksSource;
 use Quellabs\Recommender\Internal\SlopeOne\SlopeOneSource;
 use Quellabs\Recommender\Reconciliation\SourceSettings;
@@ -12,7 +11,7 @@ use Quellabs\Recommender\Reconciliation\SourceSettings;
 /**
  * Item-to-item and member or visitor lookups over the item-links and Slope One sources.
  *
- * Delegates to the sources. Eligibility backfill is applied here around each list call.
+ * Delegates to the sources, which apply eligibility backfill.
  * Methods throw on database failure.
  */
 readonly class ItemRecommender {
@@ -23,9 +22,6 @@ readonly class ItemRecommender {
 	/** @var ItemLinksSource Item-links candidates and reasons */
 	private ItemLinksSource $itemLinks;
 
-	/** @var EligibilityFilter Applies eligibility providers with bounded backfill */
-	private EligibilityFilter $eligibilityFilter;
-
 	/**
 	 * Build the recommender.
 	 * @param Connection $connection The CakePHP database connection
@@ -34,7 +30,6 @@ readonly class ItemRecommender {
 	public function __construct(Connection $connection, RecommendationConfig $config) {
 		$this->slopeOne = new SlopeOneSource($connection, $config);
 		$this->itemLinks = new ItemLinksSource($connection, $config);
-		$this->eligibilityFilter = new EligibilityFilter($config);
 	}
 
 	/**
@@ -48,11 +43,7 @@ readonly class ItemRecommender {
 	 * @throws \InvalidArgumentException When the product ID is outside the unsigned 32-bit range
 	 */
 	public function linkedProducts(int $product, ?EligibilityProvider $eligibility = null, int $limit = 10, ?int $category = null): array {
-		$subject = Subject::product($product);
-
-		return $this->eligibilityFilter->withEligibility($eligibility, $limit,
-			fn(int $depth): array => $this->itemLinks->candidates($subject, null, $depth, new SourceSettings(), $category),
-			fn(RecommendationResult $row): int => $row->productId);
+		return $this->itemLinks->candidates(Subject::product($product), $eligibility, $limit, new SourceSettings(), $category);
 	}
 
 	/**
@@ -97,12 +88,7 @@ readonly class ItemRecommender {
 	 */
 	public function slopeProducts(int $product, ?EligibilityProvider $eligibility = null, int $limit = 10,
 		int $minSupport = 1, ?int $category = null): array {
-		$subject = Subject::product($product);
-		$settings = new SourceSettings(minSupport: $minSupport);
-
-		return $this->eligibilityFilter->withEligibility($eligibility, $limit,
-			fn(int $depth): array => $this->slopeOne->candidates($subject, null, $depth, $settings, $category),
-			fn(RecommendationResult $row): int => $row->productId);
+		return $this->slopeOne->candidates(Subject::product($product), $eligibility, $limit, new SourceSettings(minSupport: $minSupport), $category);
 	}
 
 	/**
@@ -131,12 +117,7 @@ readonly class ItemRecommender {
 	 */
 	public function memberPredictions(int $member, ?EligibilityProvider $eligibility = null, int $limit = 10,
 		int $minSupport = 1, ?int $category = null): array {
-		$subject = Subject::member($member);
-		$settings = new SourceSettings(minSupport: $minSupport);
-
-		return $this->eligibilityFilter->withEligibility($eligibility, $limit,
-			fn(int $depth): array => $this->slopeOne->candidates($subject, null, $depth, $settings, $category),
-			fn(RecommendationResult $row): int => $row->productId);
+		return $this->slopeOne->candidates(Subject::member($member), $eligibility, $limit, new SourceSettings(minSupport: $minSupport), $category);
 	}
 
 	/**
@@ -165,11 +146,6 @@ readonly class ItemRecommender {
 	 */
 	public function visitorPredictions(VisitorContext $visitor, ?EligibilityProvider $eligibility = null, int $limit = 10,
 		int $minSupport = 1, ?int $category = null): array {
-		$subject = Subject::visitor($visitor);
-		$settings = new SourceSettings(minSupport: $minSupport);
-
-		return $this->eligibilityFilter->withEligibility($eligibility, $limit,
-			fn(int $depth): array => $this->slopeOne->candidates($subject, null, $depth, $settings, $category),
-			fn(RecommendationResult $row): int => $row->productId);
+		return $this->slopeOne->candidates(Subject::visitor($visitor), $eligibility, $limit, new SourceSettings(minSupport: $minSupport), $category);
 	}
 }

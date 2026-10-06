@@ -71,22 +71,21 @@ readonly class SlopeOneSource implements CandidateSource {
 	 * rank by the predicted rating from their genuine ratings, bounded to [0, 1].
 	 * @param Subject $subject Subject the candidates are for
 	 * @param EligibilityProvider|null $eligibility Restricts candidates, or null for all
-	 * @param int $depth Number of top candidates to consider before eligibility, or zero for all
+	 * @param int $limit Maximum results, or zero for all
 	 * @param SourceSettings $settings Source settings; minimum support applies to the pair count
 	 * @param int|null $category Category override
 	 * @return array<int, RecommendationResult> Products with their Slope One score and support
 	 */
-	public function candidates(Subject $subject, ?EligibilityProvider $eligibility, int $depth,
+	public function candidates(Subject $subject, ?EligibilityProvider $eligibility, int $limit,
 		SourceSettings $settings, ?int $category = null): array {
 		$resolved = $this->config->resolveCategory($category);
 
-		$rows = match ($subject->kind) {
-			SubjectKind::Product => $this->productRows($subject->id ?? throw new \LogicException('A product subject always has an ID.'),
-				$settings->minSupport, $depth, $category),
-			SubjectKind::Member, SubjectKind::Visitor => $this->ratedCandidates($subject, $resolved, $depth, $settings, null),
-		};
-
-		return $eligibility === null ? $rows : $this->eligibilityFilter->keepEligible($eligibility, $rows,
+		return $this->eligibilityFilter->withEligibility($eligibility, $limit,
+			fn(int $depth): array => match ($subject->kind) {
+				SubjectKind::Product => $this->productRows($subject->id ?? throw new \LogicException('A product subject always has an ID.'),
+					$settings->minSupport, $depth, $category),
+				SubjectKind::Member, SubjectKind::Visitor => $this->ratedCandidates($subject, $resolved, $depth, $settings, null),
+			},
 			fn(RecommendationResult $row): int => $row->productId);
 	}
 
