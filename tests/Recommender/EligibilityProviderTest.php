@@ -2,6 +2,10 @@
 
 namespace Quellabs\Recommender\Tests;
 
+use Quellabs\Recommender\ProductId;
+
+use Quellabs\Recommender\MemberId;
+
 use Quellabs\Recommender\ItemRecommender;
 use Quellabs\Recommender\RecommendationResult;
 use Quellabs\Recommender\ArrayEligibilityProvider;
@@ -63,8 +67,8 @@ class EligibilityProviderTest extends IntegrationTestCase {
 		$this->insertLink(1, 2, 10);
 		$this->insertLink(1, 3, 5);
 		$this->insertLink(1, 4, 1);
-		$this->assertSame([3], $this->itemIds($this->recommender->linkedProducts(1, $this->rejecting(2), 1)));
-		$this->assertSame([4], $this->itemIds($this->recommender->linkedProducts(1, $this->rejecting(2, 3), 1)));
+		$this->assertSame([3], $this->itemIds($this->recommender->linkedProducts(new ProductId(1), $this->rejecting(2), 1)));
+		$this->assertSame([4], $this->itemIds($this->recommender->linkedProducts(new ProductId(1), $this->rejecting(2, 3), 1)));
 	}
 
 	/** Fetching deeper must reach eligible rows beyond the first doubling steps.
@@ -81,14 +85,14 @@ class EligibilityProviderTest extends IntegrationTestCase {
 			}
 		}
 
-		$this->assertSame([57], $this->itemIds($this->recommender->linkedProducts(1, $this->rejecting(...$rejected), 1)));
+		$this->assertSame([57], $this->itemIds($this->recommender->linkedProducts(new ProductId(1), $this->rejecting(...$rejected), 1)));
 	}
 
 	/** @return void */
 	public function testCustomProviderReturnsFewerResultsWhenNothingIsEligible(): void {
 		$this->insertLink(1, 2, 10);
 		$this->insertLink(1, 3, 5);
-		$this->assertSame([], $this->recommender->linkedProducts(1, $this->rejecting(2, 3), 1));
+		$this->assertSame([], $this->recommender->linkedProducts(new ProductId(1), $this->rejecting(2, 3), 1));
 	}
 
 	/** An array provider and a custom provider with the same eligible set must give the same results.
@@ -101,9 +105,9 @@ class EligibilityProviderTest extends IntegrationTestCase {
 		$this->insertLink(10, 40, 2);
 		$array = new ArrayEligibilityProvider([30, 40]);
 		$custom = $this->rejecting(20);
-		$this->assertSame($this->itemIds($this->recommender->memberRecommendations(1, $array, 2)),
-			$this->itemIds($this->recommender->memberRecommendations(1, $custom, 2)));
-		$this->assertSame([30, 40], $this->itemIds($this->recommender->memberRecommendations(1, $custom, 2)));
+		$this->assertSame($this->itemIds($this->recommender->memberRecommendations(new MemberId(1), $array, 2)),
+			$this->itemIds($this->recommender->memberRecommendations(new MemberId(1), $custom, 2)));
+		$this->assertSame([30, 40], $this->itemIds($this->recommender->memberRecommendations(new MemberId(1), $custom, 2)));
 	}
 
 	/** An empty array provider means nothing is eligible, not "no restriction".
@@ -111,8 +115,8 @@ class EligibilityProviderTest extends IntegrationTestCase {
 	 */
 	public function testEmptyArrayProviderReturnsNothing(): void {
 		$this->insertLink(1, 2, 10);
-		$this->assertSame([], $this->recommender->linkedProducts(1, new ArrayEligibilityProvider([])));
-		$this->assertSame([], $this->recommender->slopeProducts(1, new ArrayEligibilityProvider([])));
+		$this->assertSame([], $this->recommender->linkedProducts(new ProductId(1), new ArrayEligibilityProvider([])));
+		$this->assertSame([], $this->recommender->slopeProducts(new ProductId(1), new ArrayEligibilityProvider([])));
 	}
 
 	/** @return void */
@@ -120,7 +124,7 @@ class EligibilityProviderTest extends IntegrationTestCase {
 		$this->insertRating(1, 10, 0.9);
 		$this->insertLink(10, 20, 10);
 		$this->insertLink(10, 30, 5);
-		$this->assertSame([30], $this->itemIds($this->recommender->memberRecommendations(1, $this->rejecting(20), 1)));
+		$this->assertSame([30], $this->itemIds($this->recommender->memberRecommendations(new MemberId(1), $this->rejecting(20), 1)));
 	}
 
 	/** @return void */
@@ -128,7 +132,7 @@ class EligibilityProviderTest extends IntegrationTestCase {
 		$this->insertRating(1, 10, 0.8);
 		$this->insertLink(10, 20, 2, 0.1);
 		$this->insertLink(10, 30, 2, 0.2);
-		$this->assertSame([30], $this->itemIds($this->recommender->memberPredictions(1, $this->rejecting(20))));
+		$this->assertSame([30], $this->itemIds($this->recommender->memberPredictions(new MemberId(1), $this->rejecting(20))));
 	}
 
 	/** A provider answer that reorders its input must be rejected.
@@ -149,6 +153,6 @@ class EligibilityProviderTest extends IntegrationTestCase {
 			}
 		};
 		$this->expectException(\UnexpectedValueException::class);
-		$this->recommender->linkedProducts(1, $reversing);
+		$this->recommender->linkedProducts(new ProductId(1), $reversing);
 	}
 }

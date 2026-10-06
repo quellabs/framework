@@ -13,7 +13,8 @@ sources. Rating accessors return `Rating` and `VisitorRating` objects. `ItemReco
 erasure is a single `RecommendationEngine::deleteMemberData()` call. Visitors record clicks and purchases with
 `VisitorContext::recordClick()` and `recordPurchase()`, visitor reconciliation takes a `VisitorReconciliationRequest`
 that cannot include user similarity, and cold-start thresholds are one `ColdStartPolicy` argument. Support and rating-count thresholds are `MinSupport` and `MinRatings` values, so
-they cannot be swapped with `limit` or an ID. Configuration accessors drop the `get` prefix. The [README upgrade section](README.md#upgrading)
+they cannot be swapped with `limit` or an ID. Member and product parameters are `MemberId` and `ProductId` values named
+`member` and `product`, and reconciliation tuning and cold-start thresholds are value objects. Configuration accessors drop the `get` prefix. The [README upgrade section](README.md#upgrading)
 lists every changed call.
 
 ## Optional reconciliation and evaluation API

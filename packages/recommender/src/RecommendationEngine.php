@@ -7,6 +7,8 @@
 	use Quellabs\Recommender\Evaluation\EvaluationRecorder;
 	use Quellabs\Recommender\Internal\Identifier;
 	use Quellabs\Recommender\Internal\ImplicitRating;
+	use Quellabs\Recommender\MemberId;
+	use Quellabs\Recommender\ProductId;
 use Quellabs\Recommender\Internal\Links\LinkUpdater;
 	use Quellabs\Recommender\Internal\RatingRule;
 	
@@ -46,13 +48,13 @@ use Quellabs\Recommender\Internal\Links\LinkUpdater;
 		
 		/**
 		 * Return the number of ratings a member has given.
-		 * @param int $memberId The member ID
+		 * @param MemberId $member The member ID
 		 * @param RatingKind $kind Which ratings to count
 		 * @param int|null $category Defaults to configured default
 		 * @return int Number of matching ratings
 		 */
-		public function memberNumRatings(int $memberId, RatingKind $kind = RatingKind::Genuine, ?int $category = null): int {
-			Identifier::assertId($memberId, 'Member ID');
+		public function memberNumRatings(MemberId $member, RatingKind $kind = RatingKind::Genuine, ?int $category = null): int {
+			$memberId = $member->value;
 			$resolvedCategory = $this->config->resolveCategory($category);
 			
 			$sql = '
@@ -76,12 +78,12 @@ use Quellabs\Recommender\Internal\Links\LinkUpdater;
 		
 		/**
 		 * Return the average genuine rating a member has given, or null when the member has none.
-		 * @param int $memberId The member ID
+		 * @param MemberId $member The member ID
 		 * @param int|null $category Defaults to configured default
 		 * @return float|null Average rating, or null when the member has none
 		 */
-		public function memberAverageRating(int $memberId, ?int $category = null): ?float {
-			Identifier::assertId($memberId, 'Member ID');
+		public function memberAverageRating(MemberId $member, ?int $category = null): ?float {
+			$memberId = $member->value;
 			$resolvedCategory = $this->config->resolveCategory($category);
 			
 			$row = $this->connection->execute('
@@ -101,16 +103,16 @@ use Quellabs\Recommender\Internal\Links\LinkUpdater;
 		
 		/**
 		 * Return all ratings a member has given.
-		 * @param int $memberId The member ID
+		 * @param MemberId $member The member ID
 		 * @param RatingKind $kind Which ratings to return
 		 * @param RatingOrder|null $order Sort order, or null for storage order
 		 * @param int|null $category Defaults to configured default
 		 * @return array<int, Rating>
 		 * @throws \InvalidArgumentException When the member ID is outside the unsigned 32-bit range
 		 */
-		public function memberRatings(int $memberId, RatingKind $kind = RatingKind::Genuine, ?RatingOrder $order = null,
+		public function memberRatings(MemberId $member, RatingKind $kind = RatingKind::Genuine, ?RatingOrder $order = null,
 			?int $category = null): array {
-			Identifier::assertId($memberId, 'Member ID');
+			$memberId = $member->value;
 			$resolvedCategory = $this->config->resolveCategory($category);
 			
 			$sql = '
@@ -145,29 +147,29 @@ use Quellabs\Recommender\Internal\Links\LinkUpdater;
 		/**
 		 * Delete a member's ratings in one category. When incremental link updates are enabled,
 		 * each rating is removed via deleteRating() to keep vogoo_links consistent.
-		 * @param int $memberId The member ID
+		 * @param MemberId $member The member ID
 		 * @param int|null $category Defaults to configured default
 		 * @return void
 		 * @throws \InvalidArgumentException When the member ID is outside the unsigned 32-bit range
 		 * @throws \Exception When a database statement fails
 		 */
-		public function deleteMember(int $memberId, ?int $category = null): void {
-			Identifier::assertId($memberId, 'Member ID');
+		public function deleteMember(MemberId $member, ?int $category = null): void {
+			$memberId = $member->value;
 			$this->deleteRatingsWhere('member_id', $memberId, $this->config->resolveCategory($category));
 		}
 
 		/**
 		 * Erase everything stored about a member: their ratings in every category, and their evaluation
 		 * history when a recorder is given. Pass null when the evaluation tables are not installed.
-		 * @param int $memberId The member ID
+		 * @param MemberId $member The member ID
 		 * @param EvaluationRecorder|null $evaluations Recorder whose evaluation history for the member is erased, or null
 		 * @return void
 		 * @throws \InvalidArgumentException When the member ID is outside the unsigned 32-bit range
 		 * @throws \Exception When a database statement fails
 		 */
-		public function deleteMemberData(int $memberId, ?EvaluationRecorder $evaluations = null): void {
-			Identifier::assertId($memberId, 'Member ID');
-			$evaluations?->deleteMemberEvaluations($memberId);
+		public function deleteMemberData(MemberId $member, ?EvaluationRecorder $evaluations = null): void {
+			$memberId = $member->value;
+			$evaluations?->deleteMemberEvaluations($member);
 			$this->deleteRatingsWhere('member_id', $memberId, null);
 		}
 		
@@ -175,12 +177,12 @@ use Quellabs\Recommender\Internal\Links\LinkUpdater;
 		
 		/**
 		 * Return the number of genuine ratings a product has received.
-		 * @param int $productId The product ID
+		 * @param ProductId $product The product ID
 		 * @param int|null $category Defaults to configured default
 		 * @return int Number of matching ratings
 		 */
-		public function productNumRatings(int $productId, ?int $category = null): int {
-			Identifier::assertId($productId, 'Product ID');
+		public function productNumRatings(ProductId $product, ?int $category = null): int {
+			$productId = $product->value;
 			$resolvedCategory = $this->config->resolveCategory($category);
 			
 			$row = $this->connection->execute('
@@ -200,12 +202,12 @@ use Quellabs\Recommender\Internal\Links\LinkUpdater;
 		
 		/**
 		 * Return the average genuine rating for a product, or null when no ratings exist.
-		 * @param int $productId The product ID
+		 * @param ProductId $product The product ID
 		 * @param int|null $category Defaults to configured default
 		 * @return float|null Average rating, or null when the product has none
 		 */
-		public function productAverageRating(int $productId, ?int $category = null): ?float {
-			Identifier::assertId($productId, 'Product ID');
+		public function productAverageRating(ProductId $product, ?int $category = null): ?float {
+			$productId = $product->value;
 			$resolvedCategory = $this->config->resolveCategory($category);
 			
 			$row = $this->connection->execute('
@@ -225,14 +227,14 @@ use Quellabs\Recommender\Internal\Links\LinkUpdater;
 		
 		/**
 		 * Return all genuine ratings a product has received.
-		 * @param int $productId The product ID
+		 * @param ProductId $product The product ID
 		 * @param RatingOrder|null $order Sort order, or null for storage order
 		 * @param int|null $category Defaults to configured default
 		 * @return array<int, Rating>
 		 * @throws \InvalidArgumentException When the product ID is outside the unsigned 32-bit range
 		 */
-		public function productRatings(int $productId, ?RatingOrder $order = null, ?int $category = null): array {
-			Identifier::assertId($productId, 'Product ID');
+		public function productRatings(ProductId $product, ?RatingOrder $order = null, ?int $category = null): array {
+			$productId = $product->value;
 			$resolvedCategory = $this->config->resolveCategory($category);
 			
 			$sql = '
@@ -267,13 +269,13 @@ use Quellabs\Recommender\Internal\Links\LinkUpdater;
 		/**
 		 * Delete all ratings for a product. When incremental link updates are enabled,
 		 * each rating is removed via deleteRating() to keep vogoo_links consistent.
-		 * @param int $productId The product ID
+		 * @param ProductId $product The product ID
 		 * @param int|null $category Defaults to configured default
 		 * @return void
 		 * @throws \Exception When a database statement fails
 		 */
-		public function deleteProduct(int $productId, ?int $category = null): void {
-			Identifier::assertId($productId, 'Product ID');
+		public function deleteProduct(ProductId $product, ?int $category = null): void {
+			$productId = $product->value;
 			$this->deleteRatingsWhere('product_id', $productId, $this->config->resolveCategory($category));
 		}
 		
@@ -281,16 +283,16 @@ use Quellabs\Recommender\Internal\Links\LinkUpdater;
 		
 		/**
 		 * Return the rating a member gave a product, or null when none exists.
-		 * @param int $memberId The member ID
-		 * @param int $productId The product ID
+		 * @param MemberId $member The member ID
+		 * @param ProductId $product The product ID
 		 * @param RatingKind $kind Which ratings to match
 		 * @param int|null $category Defaults to configured default
 		 * @return Rating|null
 		 * @throws \InvalidArgumentException When an ID is outside the unsigned 32-bit range
 		 */
-		public function memberRating(int $memberId, int $productId, RatingKind $kind = RatingKind::Genuine, ?int $category = null): ?Rating {
-			Identifier::assertId($memberId, 'Member ID');
-			Identifier::assertId($productId, 'Product ID');
+		public function memberRating(MemberId $member, ProductId $product, RatingKind $kind = RatingKind::Genuine, ?int $category = null): ?Rating {
+			$memberId = $member->value;
+			$productId = $product->value;
 			$resolvedCategory = $this->config->resolveCategory($category);
 			
 			$sql = '
@@ -322,18 +324,17 @@ use Quellabs\Recommender\Internal\Links\LinkUpdater;
 		
 		/**
 		 * Set or update a rating for a member and product pair, with incremental link and slope updates when enabled.
-		 * @param int $memberId The member ID
-		 * @param int $productId The product ID
+		 * @param MemberId $member The member ID
+		 * @param ProductId $product The product ID
 		 * @param float $rating Must be in [0.0, 1.0] or equal RecommendationConfig::NOT_INTERESTED
 		 * @param int|null $category Defaults to configured default
 		 * @return void
 		 * @throws \InvalidArgumentException When an ID is negative or the rating is not in [0.0, 1.0] or the not-interested value
 		 */
-		public function setRating(int $memberId, int $productId, float $rating, ?int $category = null): void {
+		public function setRating(MemberId $member, ProductId $product, float $rating, ?int $category = null): void {
+			$memberId = $member->value;
+			$productId = $product->value;
 			$resolvedCategory = $this->config->resolveCategory($category);
-
-			Identifier::assertId($memberId, 'Member ID');
-			Identifier::assertId($productId, 'Product ID');
 
 			if (!RatingRule::isValid($rating, RecommendationConfig::NOT_INTERESTED)) {
 				throw new \InvalidArgumentException("Rating must be in [0.0, 1.0] or the not-interested value, got {$rating}.");
@@ -356,60 +357,62 @@ use Quellabs\Recommender\Internal\Links\LinkUpdater;
 		
 		/**
 		 * Record a purchase as a rating of 1.0.
-		 * @param int $memberId The member ID
-		 * @param int $productId The product ID
+		 * @param MemberId $member The member ID
+		 * @param ProductId $product The product ID
 		 * @param int|null $category Defaults to configured default
 		 * @return void
 		 * @throws \Exception When a database statement fails
 		 */
-		public function recordPurchase(int $memberId, int $productId, ?int $category = null): void {
-			Identifier::assertId($memberId, 'Member ID');
-			Identifier::assertId($productId, 'Product ID');
-			$this->setRating($memberId, $productId, ImplicitRating::PURCHASE, $category);
+		public function recordPurchase(MemberId $member, ProductId $product, ?int $category = null): void {
+			$memberId = $member->value;
+			$productId = $product->value;
+			$this->setRating($member, $product, ImplicitRating::PURCHASE, $category);
 		}
 
 		/**
 		 * Record a click as a rating of 0.7, or raise an existing rating by 0.01 up to 1.0.
-		 * @param int $memberId The member ID
-		 * @param int $productId The product ID
+		 * @param MemberId $member The member ID
+		 * @param ProductId $product The product ID
 		 * @param int|null $category Defaults to configured default
 		 * @return void
 		 * @throws \Exception When a database statement fails
 		 */
-		public function recordClick(int $memberId, int $productId, ?int $category = null): void {
-			Identifier::assertId($memberId, 'Member ID');
-			Identifier::assertId($productId, 'Product ID');
+		public function recordClick(MemberId $member, ProductId $product, ?int $category = null): void {
+			$memberId = $member->value;
+			$productId = $product->value;
 			$resolvedCategory = $this->config->resolveCategory($category);
-			$existing = $this->memberRating($memberId, $productId, RatingKind::Genuine, $resolvedCategory);
+			$existing = $this->memberRating($member, $product, RatingKind::Genuine, $resolvedCategory);
 
 			if ($existing === null || $existing->rating < ImplicitRating::PURCHASE) {
-				$this->setRating($memberId, $productId, ImplicitRating::afterClick($existing?->rating), $resolvedCategory);
+				$this->setRating($member, $product, ImplicitRating::afterClick($existing?->rating), $resolvedCategory);
 			}
 		}
 
 		/**
 		 * Mark a product as not interested for a member.
-		 * @param int $memberId The member ID
-		 * @param int $productId The product ID
+		 * @param MemberId $member The member ID
+		 * @param ProductId $product The product ID
 		 * @param int|null $category Defaults to configured default
 		 * @return void
 		 * @throws \InvalidArgumentException When an ID is negative
 		 */
-		public function setNotInterested(int $memberId, int $productId, ?int $category = null): void {
-			$this->setRating($memberId, $productId, RecommendationConfig::NOT_INTERESTED, $category);
+		public function setNotInterested(MemberId $member, ProductId $product, ?int $category = null): void {
+			$memberId = $member->value;
+			$productId = $product->value;
+			$this->setRating($member, $product, RecommendationConfig::NOT_INTERESTED, $category);
 		}
 		
 		/**
 		 * Delete a single member and product rating, with incremental link and slope cleanup when enabled.
-		 * @param int $memberId The member ID
-		 * @param int $productId The product ID
+		 * @param MemberId $member The member ID
+		 * @param ProductId $product The product ID
 		 * @param int|null $category Defaults to configured default
 		 * @return void
 		 * @throws \Exception When a database statement fails
 		 */
-		public function deleteRating(int $memberId, int $productId, ?int $category = null): void {
-			Identifier::assertId($memberId, 'Member ID');
-			Identifier::assertId($productId, 'Product ID');
+		public function deleteRating(MemberId $member, ProductId $product, ?int $category = null): void {
+			$memberId = $member->value;
+			$productId = $product->value;
 			$resolvedCategory = $this->config->resolveCategory($category);
 			
 			// One transaction keeps vogoo_links consistent with vogoo_ratings if a statement fails.
@@ -515,9 +518,9 @@ use Quellabs\Recommender\Internal\Links\LinkUpdater;
 				$rowCategory = (int)$row['category'];
 
 				if ($column === 'member_id') {
-					$this->deleteRating($id, $other, $rowCategory);
+					$this->deleteRating(new MemberId($id), new ProductId($other), $rowCategory);
 				} else {
-					$this->deleteRating($other, $id, $rowCategory);
+					$this->deleteRating(new MemberId($other), new ProductId($id), $rowCategory);
 				}
 			}
 		}

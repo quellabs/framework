@@ -42,17 +42,19 @@ sculpt recommender:rebuild-links
 ```php
 use Quellabs\Recommender\Config\RecommendationConfig;
 use Quellabs\Recommender\ItemRecommender;
+use Quellabs\Recommender\MemberId;
+use Quellabs\Recommender\ProductId;
 use Quellabs\Recommender\RecommendationEngine;
 
 $config      = new RecommendationConfig(directLinks: true);
 $engine      = new RecommendationEngine($connection, $config);
 $recommender = new ItemRecommender($connection, $config);
 
-$engine->setRating(memberId: 1, productId: 101, rating: 0.9);
-$engine->setRating(memberId: 2, productId: 101, rating: 0.8);
-$engine->setRating(memberId: 2, productId: 102, rating: 0.7);
+$engine->setRating(new MemberId(1), new ProductId(101), 0.9);
+$engine->setRating(new MemberId(2), new ProductId(101), 0.8);
+$engine->setRating(new MemberId(2), new ProductId(102), 0.7);
 
-$recommendations = $recommender->memberRecommendations(memberId: 1, limit: 5);
+$recommendations = $recommender->memberRecommendations(new MemberId(1), limit: 5);
 echo $recommendations[0]->productId; // 102
 ```
 
@@ -160,13 +162,13 @@ Argument changes. Positional calls must move their arguments. Named calls only n
 
 | Method | Now |
 |--------|-----|
-| `ItemRecommender::slopeProducts()` | `(productId, eligibility, limit, MinSupport $minSupport, category)` |
-| `ItemRecommender::memberRecommendations()` | `(memberId, eligibility, limit, coldStart, category)` |
+| `ItemRecommender::slopeProducts()` | `(ProductId $product, eligibility, limit, MinSupport $minSupport, category)` |
+| `ItemRecommender::memberRecommendations()` | `(MemberId $member, eligibility, limit, coldStart, category)` |
 | `ItemRecommender::visitorRecommendations()` | `(visitor, eligibility, limit, coldStart, category)` |
-| `RecommendationEngine::memberNumRatings()` | `(memberId, RatingKind $kind, category)` |
-| `RecommendationEngine::memberRatings()` | `(memberId, RatingKind $kind, ?RatingOrder $order, category)` |
-| `RecommendationEngine::productRatings()` | `(productId, ?RatingOrder $order, category)` |
-| `RecommendationEngine::memberRating()` | `(memberId, productId, RatingKind $kind, category)` |
+| `RecommendationEngine::memberNumRatings()` | `(MemberId $member, RatingKind $kind, category)` |
+| `RecommendationEngine::memberRatings()` | `(MemberId $member, RatingKind $kind, ?RatingOrder $order, category)` |
+| `RecommendationEngine::productRatings()` | `(ProductId $product, ?RatingOrder $order, category)` |
+| `RecommendationEngine::memberRating()` | `(MemberId $member, ProductId $product, RatingKind $kind, category)` |
 | `Statistics::topRatedProducts()` | `(limit, MinRatings $topRatedMinRatings, category)` |
 
 The eligibility argument is second, and `category` is last, in every method that takes them. The `minHistory` and
@@ -254,6 +256,13 @@ Other changes:
   takes a `MinSupport`, and `Statistics::topRatedProducts()` takes a `MinRatings`, so a threshold can no longer be
   swapped with `limit` or an ID. `Statistics::topRatedProducts()` previously clamped values below 1 to 1, and now rejects
   them. Pass `new MinSupport(3)` in place of `3`.
+
+- Member and product parameters take `MemberId` and `ProductId` values instead of `int`. The parameters are named
+  `member` and `product`, so named arguments change from `memberId:` and `productId:` to `member:` and `product:`. Wrap
+  IDs as `new MemberId(1)` and `new ProductId(101)`. Results, value objects and ID arrays keep `int`.
+- `ReconciliationTuning` takes `MinSupport`, `MinRatings`, `MinSimilarity`, `NeighbourLimit`, `SourceDepth`,
+  `BackfillRounds` and `EligibilityBatchSize` values. `ColdStartPolicy` takes `MinHistory` and `MinRatings`. Each value
+  object rejects values outside its range.
 
 ### Database: pair counts
 

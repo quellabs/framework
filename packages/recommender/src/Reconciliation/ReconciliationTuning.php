@@ -2,6 +2,9 @@
 
 	namespace Quellabs\Recommender\Reconciliation;
 
+	use Quellabs\Recommender\MinRatings;
+	use Quellabs\Recommender\MinSupport;
+
 	/** Per-request overrides for reconciliation thresholds and source limits, validated on construction. */
 	readonly class ReconciliationTuning {
 
@@ -27,76 +30,30 @@
 		public ?int $maxEligibilityBatchSize;
 
 		/**
-		 * Store and validate the overrides.
-		 * @param int $minSupport Minimum summed Slope One pair support, at least 1
-		 * @param int $topRatedMinRatings Minimum ratings for a top-rated candidate, at least 1
-		 * @param int $minNeighbourSimilarity Minimum neighbour similarity, from 1 to 100
-		 * @param int $maxNeighbours Maximum neighbours used for user similarity, at least 1
-		 * @param int|null $maxCandidateDepth Maximum source depth override, at least 50
-		 * @param int|null $maxBackfillRounds Maximum deeper-query rounds override, at least 1
-		 * @param int|null $maxEligibilityBatchSize Maximum IDs per eligibility call override, at least 1
-		 * @throws \InvalidArgumentException When a value is outside its allowed range
+		 * Store the overrides, validating each through its value object.
+		 * @param MinSupport $minSupport Minimum summed Slope One pair support
+		 * @param MinRatings $topRatedMinRatings Minimum ratings for a top-rated candidate
+		 * @param MinSimilarity $minNeighbourSimilarity Minimum neighbour similarity, from 1 to 100
+		 * @param NeighbourLimit $maxNeighbours Maximum neighbours used for user similarity
+		 * @param SourceDepth|null $maxCandidateDepth Maximum source depth override, or null for the configured default
+		 * @param BackfillRounds|null $maxBackfillRounds Maximum deeper-query rounds override, or null for the configured default
+		 * @param EligibilityBatchSize|null $maxEligibilityBatchSize Maximum IDs per eligibility call override, or null for the configured default
 		 */
 		public function __construct(
-			int  $minSupport = 1,
-			int  $topRatedMinRatings = 2,
-			int  $minNeighbourSimilarity = 1,
-			int  $maxNeighbours = 100,
-			?int $maxCandidateDepth = null,
-			?int $maxBackfillRounds = null,
-			?int $maxEligibilityBatchSize = null
+			MinSupport          $minSupport = new MinSupport(),
+			MinRatings          $topRatedMinRatings = new MinRatings(2),
+			MinSimilarity       $minNeighbourSimilarity = new MinSimilarity(1),
+			NeighbourLimit      $maxNeighbours = new NeighbourLimit(100),
+			?SourceDepth        $maxCandidateDepth = null,
+			?BackfillRounds     $maxBackfillRounds = null,
+			?EligibilityBatchSize $maxEligibilityBatchSize = null
 		) {
-			$this->minSupport = $minSupport;
-			$this->topRatedMinRatings = $topRatedMinRatings;
-			$this->minNeighbourSimilarity = $minNeighbourSimilarity;
-			$this->maxNeighbours = $maxNeighbours;
-			$this->maxCandidateDepth = $maxCandidateDepth;
-			$this->maxBackfillRounds = $maxBackfillRounds;
-			$this->maxEligibilityBatchSize = $maxEligibilityBatchSize;
-
-			$this->validateThresholds();
-			$this->validateOverrides();
-		}
-
-		/**
-		 * Reject thresholds and neighbour settings outside their allowed ranges.
-		 * @return void
-		 * @throws \InvalidArgumentException When a value is outside its allowed range
-		 */
-		private function validateThresholds(): void {
-			if ($this->minSupport < 1) {
-				throw new \InvalidArgumentException("Minimum slope support must be at least 1, got {$this->minSupport}.");
-			}
-
-			if ($this->topRatedMinRatings < 1) {
-				throw new \InvalidArgumentException("Top-rated minimum ratings must be at least 1, got {$this->topRatedMinRatings}.");
-			}
-
-			if ($this->minNeighbourSimilarity < 1 || $this->minNeighbourSimilarity > 100) {
-				throw new \InvalidArgumentException("Minimum neighbour similarity must be between 1 and 100, got {$this->minNeighbourSimilarity}.");
-			}
-
-			if ($this->maxNeighbours < 1) {
-				throw new \InvalidArgumentException("Maximum neighbours must be at least 1, got {$this->maxNeighbours}.");
-			}
-		}
-
-		/**
-		 * Reject optional source-depth, backfill and batch overrides outside their allowed ranges.
-		 * @return void
-		 * @throws \InvalidArgumentException When an override is outside its allowed range
-		 */
-		private function validateOverrides(): void {
-			if ($this->maxCandidateDepth !== null && $this->maxCandidateDepth < 50) {
-				throw new \InvalidArgumentException("Maximum candidate depth must be at least 50, got {$this->maxCandidateDepth}.");
-			}
-
-			if ($this->maxBackfillRounds !== null && $this->maxBackfillRounds < 1) {
-				throw new \InvalidArgumentException("Maximum backfill rounds must be at least 1, got {$this->maxBackfillRounds}.");
-			}
-
-			if ($this->maxEligibilityBatchSize !== null && $this->maxEligibilityBatchSize < 1) {
-				throw new \InvalidArgumentException("Maximum eligibility batch size must be at least 1, got {$this->maxEligibilityBatchSize}.");
-			}
+			$this->minSupport = $minSupport->value;
+			$this->topRatedMinRatings = $topRatedMinRatings->value;
+			$this->minNeighbourSimilarity = $minNeighbourSimilarity->value;
+			$this->maxNeighbours = $maxNeighbours->value;
+			$this->maxCandidateDepth = $maxCandidateDepth?->value;
+			$this->maxBackfillRounds = $maxBackfillRounds?->value;
+			$this->maxEligibilityBatchSize = $maxEligibilityBatchSize?->value;
 		}
 	}

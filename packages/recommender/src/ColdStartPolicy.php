@@ -12,21 +12,12 @@
 		public int $topRatedMinRatings;
 
 		/**
-		 * Build a cold-start policy.
-		 * @param int $minHistory Minimum genuine ratings before collaborative scoring, at least 1
-		 * @param int $topRatedMinRatings Minimum ratings for a top-rated fallback item, at least 1
-		 * @throws \InvalidArgumentException When a threshold is below 1
+		 * Build a cold-start policy from validated thresholds.
+		 * @param MinHistory $minHistory Minimum genuine ratings before collaborative scoring
+		 * @param MinRatings $topRatedMinRatings Minimum ratings for a top-rated fallback item
 		 */
-		public function __construct(int $minHistory = 1, int $topRatedMinRatings = 2) {
-			if ($minHistory < 1) {
-				throw new \InvalidArgumentException("Minimum history must be at least 1, got {$minHistory}.");
-			}
-
-			if ($topRatedMinRatings < 1) {
-				throw new \InvalidArgumentException("Top-rated minimum ratings must be at least 1, got {$topRatedMinRatings}.");
-			}
-
-			$this->minHistory = $minHistory;
-			$this->topRatedMinRatings = $topRatedMinRatings;
+		public function __construct(MinHistory $minHistory = new MinHistory(1), MinRatings $topRatedMinRatings = new MinRatings(2)) {
+			$this->minHistory = $minHistory->value;
+			$this->topRatedMinRatings = $topRatedMinRatings->value;
 		}
 	}

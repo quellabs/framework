@@ -2,6 +2,10 @@
 
 namespace Quellabs\Recommender\Tests;
 
+use Quellabs\Recommender\ProductId;
+
+use Quellabs\Recommender\MemberId;
+
 use Cake\Database\Connection;
 use Cake\Database\StatementInterface;
 use Quellabs\Recommender\RecommendationEngine;
@@ -15,9 +19,9 @@ class UserSimilarityTest extends IntegrationTestCase {
     public function testZeroSimilarityCannotEnterRecommendationWeights(): void {
         $engine = new RecommendationEngine($this->connection, $this->config);
         $users = new UserSimilarity($this->connection, $this->config, $engine);
-        $engine->setRating(1, 10, 1.0);
-        $engine->setRating(2, 10, 0.0);
-        $engine->setRating(2, 20, 1.0);
+        $engine->setRating(new MemberId(1), new ProductId(10), 1.0);
+        $engine->setRating(new MemberId(2), new ProductId(10), 0.0);
+        $engine->setRating(new MemberId(2), new ProductId(20), 1.0);
         $this->assertSame([], $users->memberNeighbours(1, 0));
         $this->assertSame([], $users->memberRecommendations(1, 0));
     }
@@ -29,7 +33,7 @@ class UserSimilarityTest extends IntegrationTestCase {
         $engine = new RecommendationEngine($this->connection, $this->config);
         $users = new UserSimilarity($this->connection, $this->config, $engine);
         foreach ([1, 2, 3] as $member) {
-            $engine->setRating($member, 10, 0.8);
+            $engine->setRating(new MemberId($member), new ProductId(10), 0.8);
         }
         $this->assertSame([2, 3], array_map(fn($n) => $n->memberId, $users->memberNeighbours(1)));
         $this->assertSame([2], array_map(fn($n) => $n->memberId, $users->memberNeighbours(1, limit: 1)));
@@ -40,10 +44,10 @@ class UserSimilarityTest extends IntegrationTestCase {
      */
     public function testRecommendationUsesGroupedQueries(): void {
         $writer = new RecommendationEngine($this->connection, $this->config);
-        $writer->setRating(1, 10, 0.9);
+        $writer->setRating(new MemberId(1), new ProductId(10), 0.9);
         foreach (range(2, 21) as $member) {
-            $writer->setRating($member, 10, 0.9);
-            $writer->setRating($member, 100 + $member, 0.9);
+            $writer->setRating(new MemberId($member), new ProductId(10), 0.9);
+            $writer->setRating(new MemberId($member), new ProductId(100 + $member), 0.9);
         }
         $counting = new class($this->connection) extends Connection {
             public int $queries = 0;

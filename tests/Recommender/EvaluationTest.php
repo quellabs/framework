@@ -2,6 +2,10 @@
 
 namespace Quellabs\Recommender\Tests;
 
+use Quellabs\Recommender\ProductId;
+
+use Quellabs\Recommender\MemberId;
+
 use DateTimeImmutable;
 use Quellabs\Recommender\ScoreKind;
 use Quellabs\Recommender\Evaluation\AttributionWindows;
@@ -48,11 +52,11 @@ class EvaluationTest extends IntegrationTestCase {
         $empty = $report->summary(1, $shown, $end, $end, $windows);
         $this->assertSame(0, $empty->impressions);
         $this->assertSame(0.0, $empty->clickThroughRate());
-        $id = $recorder->recordImpression($list, 7, $shown);
+        $id = $recorder->recordImpression($list, new MemberId(7), $shown);
         $click = new DateTimeImmutable('2026-01-01T13:00:00+00:00');
-        $recorder->recordOutcome($id, 42, 'event-1', OutcomeType::Click, $click);
-        $recorder->recordOutcome($id, 42, 'event-1', OutcomeType::Click, $click);
-        $recorder->recordOutcome($id, 42, 'event-2', OutcomeType::Click, $click);
+        $recorder->recordOutcome($id, new ProductId(42), 'event-1', OutcomeType::Click, $click);
+        $recorder->recordOutcome($id, new ProductId(42), 'event-1', OutcomeType::Click, $click);
+        $recorder->recordOutcome($id, new ProductId(42), 'event-2', OutcomeType::Click, $click);
         $summary = $report->summary(1, $shown, $end, $end, $windows);
         $this->assertSame(1, $summary->impressions);
         $this->assertSame(1, $summary->clickedItems);
@@ -61,16 +65,16 @@ class EvaluationTest extends IntegrationTestCase {
             RecommendationSource::NewProducts)->clickedItems);
         $this->assertSame(0, $report->summary(1, $shown, $end, $end, $windows,
             RecommendationSource::SlopeOne)->impressions);
-        $recorder->recordOutcome($id, 42, 'purchase-1', OutcomeType::Purchase, $click);
-        $recorder->recordOutcome($id, 42, 'purchase-2', OutcomeType::Purchase, $click);
+        $recorder->recordOutcome($id, new ProductId(42), 'purchase-1', OutcomeType::Purchase, $click);
+        $recorder->recordOutcome($id, new ProductId(42), 'purchase-2', OutcomeType::Purchase, $click);
         $this->assertSame(1, $report->summary(1, $shown, $end, $end, $windows)->purchasedItems);
         try {
-            $recorder->recordOutcome($id, 42, 'event-1', OutcomeType::Purchase, $click);
+            $recorder->recordOutcome($id, new ProductId(42), 'event-1', OutcomeType::Purchase, $click);
             $this->fail('Conflicting event IDs must be rejected.');
         } catch (\InvalidArgumentException) {
             $this->assertTrue(true);
         }
-        $recorder->deleteMemberEvaluations(7);
+        $recorder->deleteMemberEvaluations(new MemberId(7));
         $this->assertSame(0, $report->summary(1, $shown, $end, $end, $windows)->impressions);
     }
 
@@ -85,15 +89,15 @@ class EvaluationTest extends IntegrationTestCase {
         $id = $recorder->recordImpression(RecommendationList::fromDisplayedItems(1, 'home', [$item, $other]),
             null, $shown);
         try {
-            $recorder->recordOutcome($id, 42, 'too-early', OutcomeType::Click,
+            $recorder->recordOutcome($id, new ProductId(42), 'too-early', OutcomeType::Click,
                 new DateTimeImmutable('2026-01-01T11:59:59Z'));
             $this->fail('Outcome before display was accepted.');
         } catch (\InvalidArgumentException) {
             $this->assertTrue(true);
         }
-        $recorder->recordOutcome($id, 42, 'exact-boundary', OutcomeType::Click,
+        $recorder->recordOutcome($id, new ProductId(42), 'exact-boundary', OutcomeType::Click,
             new DateTimeImmutable('2026-01-01T13:00:00Z'));
-        $recorder->recordOutcome($id, 43, 'past-boundary', OutcomeType::Click,
+        $recorder->recordOutcome($id, new ProductId(43), 'past-boundary', OutcomeType::Click,
             new DateTimeImmutable('2026-01-01T13:00:01Z'));
         $report = new EvaluationReport($this->connection);
         $end = new DateTimeImmutable('2026-01-02T00:00:00Z');
@@ -114,7 +118,7 @@ class EvaluationTest extends IntegrationTestCase {
         $shown = new DateTimeImmutable('2026-01-01T23:30:00Z');
         $id = $recorder->recordImpression(RecommendationList::fromDisplayedItems(1, 'home', [$item]),
             null, $shown);
-        $recorder->recordOutcome($id, 42, 'next-day-click', OutcomeType::Click,
+        $recorder->recordOutcome($id, new ProductId(42), 'next-day-click', OutcomeType::Click,
             new DateTimeImmutable('2026-01-02T00:15:00Z'));
         $report = new EvaluationReport($this->connection);
         $end = new DateTimeImmutable('2026-01-02T00:00:00Z');
@@ -154,7 +158,7 @@ class EvaluationTest extends IntegrationTestCase {
             null, new DateTimeImmutable('2026-01-01T00:00:00Z'));
         foreach (['', "bad\nevent", str_repeat('x', 129)] as $eventId) {
             try {
-                $recorder->recordOutcome($id, 42, $eventId, OutcomeType::Click,
+                $recorder->recordOutcome($id, new ProductId(42), $eventId, OutcomeType::Click,
                     new DateTimeImmutable('2026-01-01T00:01:00Z'));
                 $this->fail('Invalid event ID was accepted.');
             } catch (\InvalidArgumentException) {
@@ -162,7 +166,7 @@ class EvaluationTest extends IntegrationTestCase {
             }
         }
         $this->expectException(\InvalidArgumentException::class);
-        $recorder->recordOutcome($id, 43, 'unshown', OutcomeType::Click,
+        $recorder->recordOutcome($id, new ProductId(43), 'unshown', OutcomeType::Click,
             new DateTimeImmutable('2026-01-01T00:01:00Z'));
     }
 
@@ -173,7 +177,7 @@ class EvaluationTest extends IntegrationTestCase {
             [new SourceEvidence(RecommendationSource::NewProducts, sourceRank: 1)]);
         $list = RecommendationList::fromDisplayedItems(1, 'home', [$item]);
         try {
-            (new EvaluationRecorder($this->connection))->recordImpression($list, -1);
+            (new EvaluationRecorder($this->connection))->recordImpression($list, new MemberId(-1));
             $this->fail('Invalid member ID was accepted.');
         } catch (\InvalidArgumentException) {
             $this->assertTrue(true);
@@ -210,29 +214,29 @@ class EvaluationTest extends IntegrationTestCase {
             $request = new ReconciliationRequest(new ArrayEligibilityProvider([40, 41]),
                 [RecommendationSource::NewProducts], 2, 'home', [40, 41]);
             $list = (new RecommendationReconciler($this->connection, $this->config))
-                ->memberSlate(7, $request);
+                ->memberSlate(new MemberId(7), $request);
             $this->assertSame(ScoreKind::ClickProbability, $list->scoreKind);
             $otherContext = new ReconciliationRequest(new ArrayEligibilityProvider([40, 41]),
                 [RecommendationSource::NewProducts], 2, 'home', [40, 41], contextKey: 'tenant-x');
             $this->assertSame(ScoreKind::RankFusion,
                 (new RecommendationReconciler($this->connection, $this->config))
-                    ->memberSlate(7, $otherContext)->scoreKind);
+                    ->memberSlate(new MemberId(7), $otherContext)->scoreKind);
             $otherPlacement = new ReconciliationRequest(new ArrayEligibilityProvider([40, 41]),
                 [RecommendationSource::NewProducts], 2, 'other', [40, 41]);
             $otherCategory = new ReconciliationRequest(new ArrayEligibilityProvider([40, 41]),
                 [RecommendationSource::NewProducts], 2, 'home', [40, 41], category: 2);
             $this->assertSame(ScoreKind::RankFusion,
                 (new RecommendationReconciler($this->connection, $this->config))
-                    ->memberSlate(7, $otherPlacement)->scoreKind);
+                    ->memberSlate(new MemberId(7), $otherPlacement)->scoreKind);
             $this->assertSame(ScoreKind::RankFusion,
                 (new RecommendationReconciler($this->connection, $this->config))
-                    ->memberSlate(7, $otherCategory)->scoreKind);
+                    ->memberSlate(new MemberId(7), $otherCategory)->scoreKind);
             $this->assertSame($modelId, $list->modelId);
             $this->assertSame(0.5, $list->items[0]->rankingScore);
             $recorder = new EvaluationRecorder($this->connection);
             $impressionId = $recorder->recordImpression($list, null,
                 new DateTimeImmutable('2026-01-01T00:00:00Z'));
-            $recorder->recordOutcome($impressionId, $list->items[0]->productId, 'model-click',
+            $recorder->recordOutcome($impressionId, new ProductId($list->items[0]->productId), 'model-click',
                 OutcomeType::Click, new DateTimeImmutable('2026-01-01T00:01:00Z'));
             $rows = $this->connection->execute('SELECT position, display_click_probability
                 FROM vogoo_impression_items WHERE impression_id = ? ORDER BY position',
@@ -249,7 +253,7 @@ class EvaluationTest extends IntegrationTestCase {
                 WHERE id = UNHEX(?)', [$modelId]);
             try {
                 (new RecommendationReconciler($this->connection, $this->config))
-                    ->memberSlate(7, $request);
+                    ->memberSlate(new MemberId(7), $request);
                 $this->fail('An incompatible active feature schema was accepted.');
             } catch (\UnexpectedValueException) {
                 $this->assertTrue(true);
@@ -286,7 +290,7 @@ class EvaluationTest extends IntegrationTestCase {
         $impressionId = $recorder->recordImpression(
             RecommendationList::fromDisplayedItems(1, 'prune_test', [$item]), null,
             new DateTimeImmutable('2026-01-01T00:00:00Z'));
-        $recorder->recordOutcome($impressionId, 42, 'prune-click', OutcomeType::Click,
+        $recorder->recordOutcome($impressionId, new ProductId(42), 'prune-click', OutcomeType::Click,
             new DateTimeImmutable('2026-01-01T00:01:00Z'));
         $this->assertSame(0, $prune->execute(new ConfigurationManager(['--before=2026-02-01T00:00:00Z', '--batch-size=1'])));
         $remaining = $this->connection->execute("SELECT COUNT(*) AS total FROM vogoo_impressions WHERE placement = 'prune_test'")
@@ -385,7 +389,7 @@ class EvaluationTest extends IntegrationTestCase {
         $request = new ReconciliationRequest(new ArrayEligibilityProvider([150]),
             [RecommendationSource::TopRated], 1, 'audit_test', additionalCandidateIds: [150]);
         $list = (new RecommendationReconciler($this->connection, $this->config))
-            ->memberSlate(1, $request);
+            ->memberSlate(new MemberId(1), $request);
         $shown = new DateTimeImmutable('2026-01-01T00:00:00Z');
         $id = (new EvaluationRecorder($this->connection))->recordImpression($list, null, $shown);
         $row = $this->connection->execute('SELECT source, source_rank FROM vogoo_impression_evidence

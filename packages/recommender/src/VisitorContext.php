@@ -33,13 +33,14 @@
 		
 		/**
 		 * Record or update a rating for a product in the given category.
-		 * @param int $productId The product ID
+		 * @param ProductId $product The product ID
 		 * @param float $rating Rating in [0.0, 1.0], or the not-interested sentinel
 		 * @param int|null $category Defaults to the configured default category
 		 * @return void
 		 * @throws \InvalidArgumentException When the product ID or rating is invalid
 		 */
-		public function setRating(int $productId, float $rating, ?int $category = null): void {
+		public function setRating(ProductId $product, float $rating, ?int $category = null): void {
+			$productId = $product->value;
 			if ($productId < 0) {
 				throw new \InvalidArgumentException("Product ID must not be negative, got {$productId}.");
 			}
@@ -66,48 +67,52 @@
 		
 		/**
 		 * Mark a product as not interested for the given category.
-		 * @param int $productId The product ID
+		 * @param ProductId $product The product ID
 		 * @param int|null $category Defaults to the configured default category
 		 * @return void
 		 */
-		public function setNotInterested(int $productId, ?int $category = null): void {
-			$this->setRating($productId, RecommendationConfig::NOT_INTERESTED, $category);
+		public function setNotInterested(ProductId $product, ?int $category = null): void {
+			$productId = $product->value;
+			$this->setRating($product, RecommendationConfig::NOT_INTERESTED, $category);
 		}
 		
 		/**
 		 * Record a purchase as a rating of 1.0 for a product in the given category.
-		 * @param int $productId The product ID
+		 * @param ProductId $product The product ID
 		 * @param int|null $category Defaults to the configured default category
 		 * @return void
 		 * @throws \InvalidArgumentException When the product ID is negative
 		 */
-		public function recordPurchase(int $productId, ?int $category = null): void {
-			$this->setRating($productId, ImplicitRating::PURCHASE, $category);
+		public function recordPurchase(ProductId $product, ?int $category = null): void {
+			$productId = $product->value;
+			$this->setRating($product, ImplicitRating::PURCHASE, $category);
 		}
 
 		/**
 		 * Record a click as a rating of 0.7, or raise an existing genuine rating by 0.01 up to 1.0.
-		 * @param int $productId The product ID
+		 * @param ProductId $product The product ID
 		 * @param int|null $category Defaults to the configured default category
 		 * @return void
 		 * @throws \InvalidArgumentException When the product ID is negative
 		 */
-		public function recordClick(int $productId, ?int $category = null): void {
+		public function recordClick(ProductId $product, ?int $category = null): void {
+			$productId = $product->value;
 			$resolvedCategory = $this->config->resolveCategory($category);
 			$existing = $this->genuineRating($productId, $resolvedCategory);
 
 			if ($existing === null || $existing < ImplicitRating::PURCHASE) {
-				$this->setRating($productId, ImplicitRating::afterClick($existing), $resolvedCategory);
+				$this->setRating($product, ImplicitRating::afterClick($existing), $resolvedCategory);
 			}
 		}
 
 		/**
 		 * Delete a rating for a product in the given category.
-		 * @param int $productId The product ID
+		 * @param ProductId $product The product ID
 		 * @param int|null $category Defaults to the configured default category
 		 * @return void
 		 */
-		public function deleteRating(int $productId, ?int $category = null): void {
+		public function deleteRating(ProductId $product, ?int $category = null): void {
+			$productId = $product->value;
 			$resolvedCategory = $this->config->resolveCategory($category);
 			
 			$this->ratings = array_values(

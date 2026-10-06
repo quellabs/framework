@@ -9,9 +9,10 @@
 	use Quellabs\Recommender\Internal\Model\SourceFeatures;
 	use Quellabs\Recommender\Internal\Persistence\EvaluationSchema;
 	use Quellabs\Recommender\Internal\Identifier;
+	use Quellabs\Recommender\MemberId;
+	use Quellabs\Recommender\ProductId;
 	use Quellabs\Recommender\Internal\Persistence\MysqlTimestamp;
-	
-	
+
 	use Quellabs\Recommender\RecommendationList;
 	
 	use Quellabs\Recommender\RecommendationSource;
@@ -34,24 +35,21 @@
 		/**
 		 * Record the displayed order of a list and return its impression token.
 		 * @param RecommendationList $shown Actual displayed order
-		 * @param int|null $memberId Optional persisted member
+		 * @param MemberId|null $member Optional persisted member
 		 * @param DateTimeImmutable|null $shownAt Actual display time
 		 * @return ImpressionId New opaque impression token
 		 * @throws \InvalidArgumentException When the list is empty or the member ID is invalid
 		 * @throws \UnexpectedValueException When a calibrated list does not match its stored model
 		 */
-		public function recordImpression(RecommendationList $shown, ?int $memberId = null,
+		public function recordImpression(RecommendationList $shown, ?MemberId $member = null,
 			?DateTimeImmutable $shownAt = null): ImpressionId {
+			$memberId = $member?->value;
 			EvaluationSchema::requireTables($this->connection);
 			
 			if ($shown->items === []) {
 				throw new \InvalidArgumentException('An impression needs at least one displayed item.');
 			}
-			
-			if ($memberId !== null && ($memberId < 0 || $memberId > Identifier::MAX)) {
-				throw new \InvalidArgumentException("Member ID must be an unsigned 32-bit integer, got {$memberId}.");
-			}
-			
+
 			$model = $shown->scoreKind === ScoreKind::ClickProbability ? $this->loadCalibratedModel($shown) : null;
 			$id = ImpressionId::generate();
 			$timestamp = MysqlTimestamp::utc($shownAt ?? new DateTimeImmutable('now'));
@@ -70,21 +68,18 @@
 		/**
 		 * Record an outcome for a displayed item, ignoring exact retries of the same event.
 		 * @param ImpressionId $impressionId Display token
-		 * @param int $productId Displayed item ID
+		 * @param ProductId $product Displayed item ID
 		 * @param string $eventId Stable printable ASCII event key, 1 to 128 characters
 		 * @param OutcomeType $type Action type
 		 * @param DateTimeImmutable $occurredAt Event time
 		 * @return void
 		 * @throws \InvalidArgumentException|\Exception When the IDs are invalid or the event conflicts with a stored one
 		 */
-		public function recordOutcome(ImpressionId $impressionId, int $productId, string $eventId,
+		public function recordOutcome(ImpressionId $impressionId, ProductId $product, string $eventId,
 			OutcomeType $type, DateTimeImmutable $occurredAt): void {
+			$productId = $product->value;
 			EvaluationSchema::requireTables($this->connection);
-			
-			if ($productId < 0 || $productId > Identifier::MAX) {
-				throw new \InvalidArgumentException("Product ID must be an unsigned 32-bit integer, got {$productId}.");
-			}
-			
+
 			if (preg_match('/^[\x20-\x7e]{1,128}$/D', $eventId) !== 1) {
 				throw new \InvalidArgumentException("Event ID must be 1 to 128 printable ASCII characters, got '{$eventId}'.");
 			}
@@ -113,17 +108,14 @@
 		
 		/**
 		 * Delete the evaluation history recorded for a member.
-		 * @param int $memberId Member whose evaluation history should be erased
+		 * @param MemberId $member Member whose evaluation history should be erased
 		 * @return void
 		 * @throws \InvalidArgumentException When the member ID is not an unsigned 32-bit integer
 		 */
-		public function deleteMemberEvaluations(int $memberId): void {
+		public function deleteMemberEvaluations(MemberId $member): void {
+			$memberId = $member->value;
 			EvaluationSchema::requireTables($this->connection);
-			
-			if ($memberId < 0 || $memberId > Identifier::MAX) {
-				throw new \InvalidArgumentException("Member ID must be an unsigned 32-bit integer, got {$memberId}.");
-			}
-			
+
 			$this->connection->execute('DELETE FROM vogoo_impressions WHERE member_id = ?', [$memberId]);
 		}
 		

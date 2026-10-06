@@ -11,13 +11,13 @@
 	use Quellabs\Recommender\Internal\Reconciliation\CandidateRoundState;
 	use Quellabs\Recommender\Internal\Identifier;
 	use Quellabs\Recommender\Internal\Eligibility\EligibilityFilter;
-	
-	
+
 	use Quellabs\Recommender\Internal\UserSimilarity;
 	
 	use Quellabs\Recommender\RecommendationEngine;
 	
 	use Quellabs\Recommender\RecommendationList;
+	use Quellabs\Recommender\MemberId;
 	use Quellabs\Recommender\ScoreKind;
 	
 	use Quellabs\Recommender\RecommendationSource;
@@ -60,13 +60,13 @@
 		
 		/**
 		 * Return the displayed slate of up to the requested limit for a persisted member.
-		 * @param int $memberId Member ID
+		 * @param MemberId $member Member ID
 		 * @param ReconciliationRequest $request Candidate request
 		 * @return RecommendationList Displayed slate, at most the request limit
 		 * @throws \InvalidArgumentException When the member ID is outside the unsigned 32-bit range
 		 */
-		public function memberSlate(int $memberId, ReconciliationRequest $request): RecommendationList {
-			return $this->firstPage($this->memberCandidatePool($memberId, $request), $request->limit);
+		public function memberSlate(MemberId $member, ReconciliationRequest $request): RecommendationList {
+			return $this->firstPage($this->memberCandidatePool($member, $request), $request->limit);
 		}
 		
 		/**
@@ -81,15 +81,13 @@
 		
 		/**
 		 * Return the full bounded eligible pool for a persisted member.
-		 * @param int $memberId Member ID
+		 * @param MemberId $member Member ID
 		 * @param ReconciliationRequest $request Candidate request
 		 * @return RecommendationList Full bounded eligible pool
 		 * @throws \InvalidArgumentException When the member ID is not an unsigned 32-bit integer
 		 */
-		public function memberCandidatePool(int $memberId, ReconciliationRequest $request): RecommendationList {
-			if ($memberId < 0 || $memberId > Identifier::MAX) {
-				throw new \InvalidArgumentException("Member ID must be an unsigned 32-bit integer, got {$memberId}.");
-			}
+		public function memberCandidatePool(MemberId $member, ReconciliationRequest $request): RecommendationList {
+			$memberId = $member->value;
 			
 			$category = $this->config->resolveCategory($request->category);
 			
