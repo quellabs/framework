@@ -14,6 +14,7 @@
 
 	use Quellabs\Recommender\Internal\UserSimilarity;
 	use Quellabs\Recommender\Internal\SlopeOne\SlopeOneRecommender;
+	use Quellabs\Recommender\Internal\Links\ItemLinksSource;
 	
 	use Quellabs\Recommender\RecommendationList;
 	use Quellabs\Recommender\ScoreKind;
@@ -50,18 +51,23 @@
 		/** @var SlopeOneRecommender Shared Slope One candidate query */
 		private SlopeOneRecommender $slopeOne;
 		
+		/** @var ItemLinksSource Shared item-links candidate query */
+		private ItemLinksSource $itemLinks;
+		
 		/**
 		 * Build the reconciler.
 		 * @param Connection $connection Ratings database connection
 		 * @param RecommendationConfig $config Recommender settings
 		 * @param UserSimilarity $similarity Neighbour source for member subjects
 		 * @param SlopeOneRecommender $slopeOne Shared Slope One candidate query
+		 * @param ItemLinksSource $itemLinks Shared item-links candidate query
 		 */
-		public function __construct(Connection $connection, RecommendationConfig $config, UserSimilarity $similarity, SlopeOneRecommender $slopeOne) {
+		public function __construct(Connection $connection, RecommendationConfig $config, UserSimilarity $similarity, SlopeOneRecommender $slopeOne, ItemLinksSource $itemLinks) {
 			$this->connection = $connection;
 			$this->config = $config;
 			$this->similarity = $similarity;
 			$this->slopeOne = $slopeOne;
+			$this->itemLinks = $itemLinks;
 			$this->temporary = new TemporaryTable($connection);
 			$this->filter = new EligibilityFilter($config);
 		}
@@ -667,39 +673,14 @@
 		 * @return array<mixed> Candidate rows with id, score and support_count or contributors
 		 */
 		private function sourceRows(RecommendationSource $source, string $ratingsTable, int $category, ReconciliationRequest $request, string $restriction, ?int $depth): array {
+			$join = "JOIN {$ratingsTable} r ON r.product_id = l.item_id1";
+
 			if ($source === RecommendationSource::SlopeOne) {
-				return $this->slopeOne->candidateRows("JOIN {$ratingsTable} r ON r.product_id = l.item_id1", $restriction, [],
-					$category, $request->tuning->minSupport, $depth);
+				return $this->slopeOne->candidateRows($join, $restriction, [], $category, $request->tuning->minSupport, $depth);
 			}
 
-			return $this->connection->execute($this->itemLinksSql($ratingsTable, $restriction, $depth), [
-				'threshold' => $this->config->thresholdRating(),
-				'category' => $category,
-			])->fetchAll('assoc');
+			return $this->itemLinks->candidateRows($join, $restriction, [], $category, $depth);
 		}
-
-		/**
-		 * Build the item-links aggregate that scores candidates from liked pairs against a rating table.
-		 * @param string $ratingsTable Temporary table of rating inputs, joined on l.item_id1
-		 * @param string $restriction Extra predicate limiting the candidates, starting with AND and referring to l.item_id2
-		 * @param int|null $depth Keeps the top rows by score up to this depth, or all rows when null
-		 * @return string Query with :threshold and :category placeholders
-		 */
-		private function itemLinksSql(string $ratingsTable, string $restriction, ?int $depth): string {
-			$sql = "
-				SELECT
-					l.item_id2 AS id,
-					SUM(l.liked_count * (r.rating - :threshold)) AS score,
-					JSON_ARRAYAGG(r.product_id) AS contributors
-				FROM vogoo_links l
-				JOIN {$ratingsTable} r ON r.product_id = l.item_id1
-				WHERE l.category = :category AND
-					l.liked_count > 0 {$restriction}
-				GROUP BY l.item_id2 HAVING score > 0";
-
-			return $depth === null ? $sql : $sql . " ORDER BY score DESC, id ASC LIMIT {$depth}";
-		}
-
 		/**
 		 * Generate the bounded candidates of one source.
 		 * @param RecommendationSource $source Candidate generator

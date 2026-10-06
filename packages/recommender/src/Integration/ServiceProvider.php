@@ -12,6 +12,7 @@ use Quellabs\Contracts\Context\MethodContextInterface;
 	use Quellabs\Recommender\Reconciliation\RecommendationReconciler;
 use Quellabs\Recommender\Internal\UserSimilarity;
 use Quellabs\Recommender\Internal\SlopeOne\SlopeOneRecommender;
+use Quellabs\Recommender\Internal\Links\ItemLinksSource;
 use Quellabs\Recommender\RecommendationEngine;
 	
 	/**
@@ -58,7 +59,7 @@ use Quellabs\Recommender\RecommendationEngine;
 				$config = $this->dependency($dependencies, RecommendationConfig::class);
 				return new RecommendationReconciler($connection, $config,
 					new UserSimilarity($connection, $config, new RecommendationEngine($connection, $config)),
-					new SlopeOneRecommender($connection, $config));
+					new SlopeOneRecommender($connection, $config), new ItemLinksSource($connection, $config));
 			}
 
 			if ($className !== RecommendationConfig::class) {
