@@ -8,6 +8,7 @@
 	use Quellabs\Recommender\Internal\Persistence\EvaluationSchema;
 	use Quellabs\Recommender\Internal\Persistence\MysqlTimestamp;
 	use Quellabs\Recommender\Internal\Query\OutcomeSubquery;
+	use Quellabs\Recommender\Internal\Reconciliation\SourceFeatures;
 	use Quellabs\Recommender\RecommendationSource;
 	
 	/**

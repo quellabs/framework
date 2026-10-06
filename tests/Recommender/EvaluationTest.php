@@ -216,23 +216,20 @@ class EvaluationTest extends IntegrationTestCase {
                 [RecommendationSource::NewProducts], 2, 'home', [40, 41], diagnostics: true);
             $list = ($this->reconciler())
                 ->memberSlate(7, $request);
-            $this->assertSame(ScoreKind::ClickProbability, $list->scoreKind);
+            $this->assertSame(ScoreKind::Ranked, $list->scoreKind);
+            $this->assertSame($modelId, $list->scorerId);
             $otherContext = new ReconciliationRequest(new ArrayEligibilityProvider([40, 41]),
                 [RecommendationSource::NewProducts], 2, 'home', [40, 41], contextKey: 'tenant-x');
-            $this->assertSame(ScoreKind::RankFusion,
-                ($this->reconciler())
-                    ->memberSlate(7, $otherContext)->scoreKind);
+            $this->assertNull(($this->reconciler())
+                    ->memberSlate(7, $otherContext)->scorerId);
             $otherPlacement = new ReconciliationRequest(new ArrayEligibilityProvider([40, 41]),
                 [RecommendationSource::NewProducts], 2, 'other', [40, 41]);
             $otherCategory = new ReconciliationRequest(new ArrayEligibilityProvider([40, 41]),
                 [RecommendationSource::NewProducts], 2, 'home', [40, 41], category: 2);
-            $this->assertSame(ScoreKind::RankFusion,
-                ($this->reconciler())
-                    ->memberSlate(7, $otherPlacement)->scoreKind);
-            $this->assertSame(ScoreKind::RankFusion,
-                ($this->reconciler())
-                    ->memberSlate(7, $otherCategory)->scoreKind);
-            $this->assertSame($modelId, $list->modelId);
+            $this->assertNull(($this->reconciler())
+                    ->memberSlate(7, $otherPlacement)->scorerId);
+            $this->assertNull(($this->reconciler())
+                    ->memberSlate(7, $otherCategory)->scorerId);
             $this->assertSame(0.5, $list->items[0]->rankingScore);
             $recorder = new EvaluationRecorder($this->connection);
             $impressionId = $recorder->recordImpression($list, null,

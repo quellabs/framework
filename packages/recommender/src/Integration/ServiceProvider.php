@@ -8,6 +8,7 @@ use Quellabs\Contracts\Context\MethodContextInterface;
 	use Quellabs\Discover\Provider\AbstractProvider;
 	use Quellabs\Recommender\Config\RecommendationConfig;
 	use Quellabs\Recommender\Evaluation\EvaluationRecorder;
+	use Quellabs\Recommender\Evaluation\ModelScorerResolver;
 	use Quellabs\Recommender\Evaluation\EvaluationReport;
 	use Quellabs\Recommender\Internal\Reconciliation\RequestSourcesFactory;
 use Quellabs\Recommender\Reconciliation\RecommendationReconciler;
@@ -60,8 +61,9 @@ use Quellabs\Recommender\RecommendationEngine;
 			if ($className === RecommendationReconciler::class) {
 				$connection = $this->dependency($dependencies, Connection::class);
 				$config = $this->dependency($dependencies, RecommendationConfig::class);
-				return new RecommendationReconciler($connection, $config,
-					new RequestSourcesFactory($connection, $config, new UserSimilarity($connection, $config, new RecommendationEngine($connection, $config))));
+				return new RecommendationReconciler($config,
+					new RequestSourcesFactory($connection, $config, new UserSimilarity($connection, $config, new RecommendationEngine($connection, $config))),
+					new ModelScorerResolver($connection));
 			}
 
 			if ($className !== RecommendationConfig::class) {

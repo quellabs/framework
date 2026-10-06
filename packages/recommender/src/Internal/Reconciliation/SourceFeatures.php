@@ -1,6 +1,6 @@
 <?php
 	
-	namespace Quellabs\Recommender\Internal\Model;
+	namespace Quellabs\Recommender\Internal\Reconciliation;
 	
 	use Quellabs\Recommender\RecommendationSource;
 	

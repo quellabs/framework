@@ -6,7 +6,7 @@
 	use Cake\Database\Connection;
 	use DateTimeImmutable;
 	use Quellabs\Recommender\Internal\Model\ClickModel;
-	use Quellabs\Recommender\Internal\Model\SourceFeatures;
+	use Quellabs\Recommender\Internal\Reconciliation\SourceFeatures;
 	use Quellabs\Recommender\Internal\Persistence\EvaluationSchema;
 	use Quellabs\Recommender\Internal\Identifier;
 	use Quellabs\Recommender\Internal\Persistence\MysqlTimestamp;
@@ -52,7 +52,7 @@
 				throw new \InvalidArgumentException('An impression needs at least one displayed item.');
 			}
 
-			$model = $shown->scoreKind === ScoreKind::ClickProbability ? $this->loadCalibratedModel($shown) : null;
+			$model = $shown->scorerId === null ? null : $this->loadCalibratedModel($shown);
 			$id = ImpressionId::generate();
 			$timestamp = MysqlTimestamp::utc($shownAt ?? new DateTimeImmutable('now'));
 			
@@ -128,6 +128,10 @@
 		 * @throws \UnexpectedValueException When the model is missing or does not match the list
 		 */
 		private function loadCalibratedModel(RecommendationList $shown): ClickModel {
+			if (preg_match('/^[0-9a-f]{32}$/D', (string)$shown->scorerId) !== 1) {
+				throw new \UnexpectedValueException("Scorer ID '{$shown->scorerId}' is not a model row ID.");
+			}
+
 			$row = $this->connection->execute('
 				SELECT
 					artifact,
@@ -140,11 +144,11 @@
 				FROM vogoo_models
 				WHERE id = UNHEX(:model_id)
 			', [
-				'model_id' => $shown->modelId,
+				'model_id' => $shown->scorerId,
 			])->fetchAssoc();
 			
 			if (!$row) {
-				throw new \UnexpectedValueException("Calibrated list refers to missing model {$shown->modelId}.");
+				throw new \UnexpectedValueException("Calibrated list refers to missing model {$shown->scorerId}.");
 			}
 			
 			$this->assertPartitionMatches($row, $shown);
@@ -170,7 +174,7 @@
 				$row['context_key'] !== ($shown->contextKey ?? '') ||
 				(int)$row['feature_schema_version'] !== 1
 			) {
-				throw new \UnexpectedValueException("Calibrated list does not match the partition of model {$shown->modelId}.");
+				throw new \UnexpectedValueException("Calibrated list does not match the partition of model {$shown->scorerId}.");
 			}
 		}
 
@@ -196,7 +200,7 @@
 					$item->rankingScore === null ||
 					abs($model->probability($diagnostics->featureSnapshot, 1) - $item->rankingScore) > 1e-9
 				) {
-					throw new \UnexpectedValueException("Features or reference score of product {$item->productId} do not match model {$shown->modelId}.");
+					throw new \UnexpectedValueException("Features or reference score of product {$item->productId} do not match model {$shown->scorerId}.");
 				}
 			}
 		}
@@ -239,7 +243,7 @@
 	            model_id, feature_schema_version, feature_snapshot)
 	            VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
 				[$id->binary(), $item->productId, $position, $item->rankingScore,
-					$displayProbability, $shown->modelId === null ? null : hex2bin($shown->modelId),
+					$displayProbability, $shown->scorerId === null ? null : hex2bin($shown->scorerId),
 					$schemaVersion, $snapshot]);
 			
 			foreach ($item->evidence as $signal) {

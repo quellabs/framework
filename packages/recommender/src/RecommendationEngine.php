@@ -4,7 +4,6 @@
 	
 	use Cake\Database\Connection;
 	use Quellabs\Recommender\Config\RecommendationConfig;
-	use Quellabs\Recommender\Evaluation\EvaluationRecorder;
 	use Quellabs\Recommender\Internal\Identifier;
 	use Quellabs\Recommender\Internal\ImplicitRating;
 	use Quellabs\Recommender\MemberId;
@@ -161,17 +160,14 @@ use Quellabs\Recommender\Internal\Links\LinkUpdater;
 		}
 
 		/**
-		 * Erase everything stored about a member: their ratings in every category, and their evaluation
-		 * history when a recorder is given. Pass null when the evaluation tables are not installed.
+		 * Erase a member's ratings in every category. Evaluation history is erased separately by EvaluationRecorder.
 		 * @param int $member The member ID
-		 * @param EvaluationRecorder|null $evaluations Recorder whose evaluation history for the member is erased, or null
 		 * @return void
 		 * @throws \InvalidArgumentException When the member ID is outside the unsigned 32-bit range
 		 * @throws \Exception When a database statement fails
 		 */
-		public function deleteMemberData(int $member, ?EvaluationRecorder $evaluations = null): void {
+		public function deleteMemberData(int $member): void {
 			Identifier::assertId($member, 'Member ID');
-			$evaluations?->deleteMemberEvaluations($member);
 			$this->deleteRatingsWhere('member_id', $member, null);
 		}
 		

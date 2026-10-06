@@ -40,7 +40,7 @@ database and run `sculpt recommender:init-evaluation-db`; this does not require
 through `EvaluationRecorder`; attribution reports require explicit windows and
 cutoff times. `recommender:prune-evaluation` requires an explicit cutoff.
 Training and activation are separate commands. Applications handling complete
-member deletion should call `RecommendationEngine::deleteMemberData()` with their `EvaluationRecorder`.
+member deletion should call `RecommendationEngine::deleteMemberData()` and `EvaluationRecorder::deleteMemberEvaluations()`.
 
 To roll back only the optional feature, back up evaluation data and drop the
 five new tables in foreign-key-safe order: outcomes, evidence, impression items,

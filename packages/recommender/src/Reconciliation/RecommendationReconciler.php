@@ -2,15 +2,11 @@
 	
 	namespace Quellabs\Recommender\Reconciliation;
 	
-	use Cake\Database\Connection;
 	use Quellabs\Recommender\Config\RecommendationConfig;
-	use Quellabs\Recommender\Internal\Model\ActiveModel;
-	use Quellabs\Recommender\Internal\Model\ClickModel;
-	use Quellabs\Recommender\Internal\Model\ClickModelScorer;
-	use Quellabs\Recommender\Internal\Model\SourceFeatures;
 	use Quellabs\Recommender\Internal\Reconciliation\CandidateRoundState;
 	use Quellabs\Recommender\Internal\Reconciliation\RequestSources;
 	use Quellabs\Recommender\Internal\Reconciliation\RequestSourcesFactory;
+	use Quellabs\Recommender\Internal\Reconciliation\SourceFeatures;
 	use Quellabs\Recommender\Internal\Eligibility\EligibilityFilter;
 
 
@@ -31,9 +27,6 @@
 	 */
 	readonly class RecommendationReconciler {
 
-		/** @var Connection Ratings database connection */
-		private Connection $connection;
-
 		/** @var RecommendationConfig Recommender settings */
 		private RecommendationConfig $config;
 
@@ -43,18 +36,21 @@
 		/** @var RequestSourcesFactory Builds the candidate sources for each request */
 		private RequestSourcesFactory $sourceFactory;
 		
-		/** @var RankFusionScorer Scorer for lists without an active click model */
+		/** @var RankFusionScorer Scorer for lists without an active scorer */
 		private RankFusionScorer $rankFusion;
+
+		/** @var ScorerResolver|null Chooses the active scorer per partition, null for rank fusion only */
+		private ?ScorerResolver $scorers;
 
 		/**
 		 * Build the reconciler.
-		 * @param Connection $connection Ratings database connection
 		 * @param RecommendationConfig $config Recommender settings
 		 * @param RequestSourcesFactory $sourceFactory Builds the candidate sources for each request
+		 * @param ScorerResolver|null $scorers Chooses the active scorer per partition, or null
 		 */
-		public function __construct(Connection $connection, RecommendationConfig $config, RequestSourcesFactory $sourceFactory) {
-			$this->connection = $connection;
+		public function __construct(RecommendationConfig $config, RequestSourcesFactory $sourceFactory, ?ScorerResolver $scorers = null) {
 			$this->config = $config;
+			$this->scorers = $scorers;
 			$this->sourceFactory = $sourceFactory;
 			$this->filter = new EligibilityFilter($config);
 			$this->rankFusion = new RankFusionScorer();
@@ -115,16 +111,16 @@
 		private function firstPage(RecommendationList $list, int $limit): RecommendationList {
 			return RecommendationList::ranked(
 				$list->category, $list->placement, $list->sources, $list->contextKey,
-				$list->scoreKind, $list->modelId, array_slice($list->items, 0, $limit), $limit
+				$list->scorerId, array_slice($list->items, 0, $limit), $limit
 			);
 		}
 		
 		/**
-		 * Run the bounded candidate rounds and rank every eligible candidate by reciprocal-rank fusion or the active model.
+		 * Run the bounded candidate rounds and rank every eligible candidate with the active scorer or rank fusion.
 		 * @param ReconciliationRequest $request Request
 		 * @param int $category Resolved category
 		 * @param Subject $subject Member or visitor
-		 * @return RecommendationList Full bounded rank-fusion pool
+		 * @return RecommendationList Full bounded eligible pool
 		 * @throws \RuntimeException When a source changes its candidate order during depth backfill
 		 */
 		private function rank(ReconciliationRequest $request, int $category, Subject $subject): RecommendationList {
@@ -140,23 +136,23 @@
 
 			$signals = $this->collectSignals($request, $state);
 			$auditSignals = $this->auditSignals($state->eligibleIds(), $signals, $request, $subject, $category, $sources);
-			$activeModel = $this->activeModel($category, $request);
-			$scorer = $activeModel === null ? $this->rankFusion : new ClickModelScorer($activeModel->model);
-			
+			$active = $this->scorers?->resolve($category, $request->placement, $request->sources, $request->contextKey);
+			$scorer = $active === null ? $this->rankFusion : $active->scorer;
+
 			$items = [];
+
 			foreach ($state->eligibleIds() as $id) {
 				$evidence = array_merge($signals[$id] ?? [], $auditSignals[$id] ?? []);
 				$items[] = $this->buildRankedItem($id, $evidence, $request, $state->depths(), $scorer);
 			}
-			
+
 			usort($items, function ($a, $b): int {
 				return ($b->rankingScore <=> $a->rankingScore) ?: ($a->productId <=> $b->productId);
 			});
-			
+
 			return RecommendationList::ranked(
 				$category, $request->placement, $request->sources, $request->contextKey,
-				$activeModel === null ? ScoreKind::RankFusion : ScoreKind::ClickProbability, $activeModel?->id,
-				$items, $request->limit
+				$active?->id, $items, $request->limit
 			);
 		}
 		
@@ -367,69 +363,6 @@
 			}
 			
 			return $features;
-		}
-		
-		/**
-		 * Return the active click model for the request partition, when the optional model tables exist.
-		 * @param int $category Resolved category
-		 * @param ReconciliationRequest $request Model partition key
-		 * @return ActiveModel|null Active model token and model, or null when none is active
-		 * @throws \UnexpectedValueException When the model schema or feature names do not match the request
-		 */
-		private function activeModel(int $category, ReconciliationRequest $request): ?ActiveModel {
-			$exists = $this->connection->execute('
-				SELECT
-					COUNT(*) AS total
-				FROM information_schema.tables
-				WHERE table_schema = DATABASE() AND
-				      table_name = :table_name
-			', [
-				'table_name' => 'vogoo_models',
-			])->fetchAssoc();
-			
-			if ((int)$exists['total'] === 0) {
-				return null;
-			}
-			
-			$row = $this->connection->execute('
-				SELECT
-					HEX(id) AS model_id,
-					feature_schema_version,
-					artifact
-				FROM vogoo_models
-				WHERE objective = :objective AND
-				      category = :category AND
-				      placement = :placement AND
-				      source_mask = :source_mask AND
-				      context_key = :context_key AND
-				      status = :status
-			', [
-				'objective'   => 'click',
-				'category'    => $category,
-				'placement'   => $request->placement,
-				'source_mask' => RecommendationSource::mask($request->sources),
-				'context_key' => $request->contextKey ?? '',
-				'status'      => 'active',
-			])->fetchAssoc();
-			
-			if (!$row) {
-				return null;
-			}
-			
-			if ((int)$row['feature_schema_version'] !== 1) {
-				throw new \UnexpectedValueException("Active click model feature schema version {$row['feature_schema_version']} is incompatible; expected 1.");
-			}
-			
-			$model = ClickModel::fromJson((string)$row['artifact']);
-			$expected = array_merge(['log_position'], SourceFeatures::names($request->sources));
-			
-			sort($expected);
-			
-			if ($model->featureNames() !== $expected) {
-				throw new \UnexpectedValueException("Active click model {$row['model_id']} feature names do not match the request sources.");
-			}
-			
-			return new ActiveModel(strtolower((string)$row['model_id']), $model);
 		}
 		
 		/**

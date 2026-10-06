@@ -25,8 +25,8 @@
 		/** @var ScoreKind How the item scores are interpreted */
 		public ScoreKind $scoreKind;
 		
-		/** @var string|null Active model token, when calibrated */
-		public ?string $modelId;
+		/** @var string|null ID of the scorer that ranked the items, null for rank fusion */
+		public ?string $scorerId;
 		
 		/** @var array<int, ReconciledRecommendation> Ordered results */
 		public array $items;
@@ -41,7 +41,7 @@
 		 * @param array<int, RecommendationSource> $sources Enabled source set
 		 * @param string|null $contextKey Model and logging partition
 		 * @param ScoreKind $scoreKind How the item scores are interpreted
-		 * @param string|null $modelId Active model token, required for click_probability
+		 * @param string|null $scorerId Opaque ID of the scorer that ranked the items
 		 * @param array<int, ReconciledRecommendation> $items Ordered results
 		 * @param int $limit Maximum selectable displayed items, from 1 to 100
 		 * @throws \InvalidArgumentException When the metadata or items are invalid
@@ -52,7 +52,7 @@
 			array   $sources,
 			?string $contextKey,
 			ScoreKind $scoreKind,
-			?string $modelId,
+			?string $scorerId,
 			array   $items,
 			int     $limit
 		) {
@@ -64,9 +64,8 @@
 				throw new \InvalidArgumentException("Limit must be between 1 and 100, got {$limit}.");
 			}
 			
-			if (($scoreKind === ScoreKind::ClickProbability) !== ($modelId !== null)) {
-				$modelLabel = $modelId ?? 'null';
-				throw new \InvalidArgumentException("A model ID is required only for click_probability lists; got score kind '{$scoreKind->value}' and model ID {$modelLabel}.");
+			if ($scorerId !== null && $scoreKind !== ScoreKind::Ranked) {
+				throw new \InvalidArgumentException("A scorer ID requires a ranked list; got score kind '{$scoreKind->value}'.");
 			}
 			
 			Identifier::validateKey($placement, 64, 'placement');
@@ -75,9 +74,6 @@
 				Identifier::validateKey($contextKey, 128, 'context');
 			}
 			
-			if ($modelId !== null && preg_match('/^[0-9a-f]{32}$/D', $modelId) !== 1) {
-				throw new \InvalidArgumentException("Model ID must be 32 lowercase hexadecimal characters, got '{$modelId}'.");
-			}
 			
 			$sourceSet = self::sourceSet($sources);
 			self::validateItems($items, $scoreKind, $sourceSet);
@@ -87,7 +83,7 @@
 			$this->sources = $sources;
 			$this->contextKey = $contextKey;
 			$this->scoreKind = $scoreKind;
-			$this->modelId = $modelId;
+			$this->scorerId = $scorerId;
 			$this->items = $items;
 			$this->limit = $limit;
 		}
@@ -119,21 +115,20 @@
 		}
 		
 		/**
-		 * Build a ranked list with the given score kind, model and item order.
+		 * Build a ranked list with the given scorer and item order.
 		 * @param int $category Resolved category
 		 * @param string $placement Display surface
 		 * @param array<int, RecommendationSource> $sources Enabled source set
 		 * @param string|null $contextKey Model and logging partition
-		 * @param ScoreKind $scoreKind How the item scores are interpreted
-		 * @param string|null $modelId Active model token, required for click_probability
+		 * @param string|null $scorerId Opaque ID of the scorer, null for rank fusion
 		 * @param array<int, ReconciledRecommendation> $items Ordered results
 		 * @param int $limit Maximum selectable displayed items, from 1 to 100
 		 * @return self Ranked list
 		 * @throws \InvalidArgumentException When the metadata or items are invalid
 		 */
 		public static function ranked(int $category, string $placement, array $sources, ?string $contextKey,
-			ScoreKind $scoreKind, ?string $modelId, array $items, int $limit): self {
-			return new self($category, $placement, $sources, $contextKey, $scoreKind, $modelId, $items, $limit);
+			?string $scorerId, array $items, int $limit): self {
+			return new self($category, $placement, $sources, $contextKey, ScoreKind::Ranked, $scorerId, $items, $limit);
 		}
 		
 		/**
@@ -176,7 +171,7 @@
 			}
 			
 			return new self($this->category, $this->placement, $this->sources, $this->contextKey,
-				$this->scoreKind, $this->modelId, $selected, $this->limit);
+				$this->scoreKind, $this->scorerId, $selected, $this->limit);
 		}
 		
 		/**

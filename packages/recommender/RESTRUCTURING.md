@@ -90,9 +90,9 @@ Reason for the order: each query exists once from the start. Writing product-sub
 
 ### Phase 5: extract evaluation and click models
 
-- [ ] Move `ClickModelTrainer`, `ClickModelFitter`, `ActiveModel`, `EvaluationRecorder`, the Evaluation namespace, the evaluation migrations, and the `TrainClickModel`, `ActivateClickModel`, `InitEvaluation` and `PruneEvaluation` Sculpt commands into their own namespace, with the import-boundary test added.
-- [ ] Remove calibrated fields from `RecommendationList`. Move `ScoreKind::ClickProbability` with the click-model code.
-- [ ] Remove the evaluation hooks from `RecommendationEngine`. `deleteMemberData()` no longer takes a recorder.
+- [x] Move `ClickModelTrainer`, `ClickModelFitter`, `EvaluationRecorder`, the Evaluation namespace, the evaluation migrations, and the `TrainClickModel`, `ActivateClickModel`, `InitEvaluation` and `PruneEvaluation` Sculpt commands into their own namespace. `ActiveModel` is replaced by `ActiveScorer`, and `ModelScorerResolver` (Evaluation) supplies it through the `ScorerResolver` interface. `SourceFeatures` moved to `Internal\Reconciliation`, because the reconciler uses it. `ImportBoundaryTest` checks that core does not reference evaluation code.
+- [x] Remove calibrated fields from `RecommendationList`. `ScoreKind` is now `Direct` or `Ranked`, and `modelId` became the opaque `scorerId` (`null` for rank fusion). This keeps the scorer ID on the list, a deliberate departure from the literal wording: the impression then records the scorer from the same run that produced the list.
+- [x] Remove the evaluation hooks from `RecommendationEngine`. `deleteMemberData()` no longer takes a recorder.
 - [x] Connect the click-model scorer to the combiner through the scorer interface. Done in Phase 4 with `ClickModelScorer`; the click-model code itself still moves in this phase.
 
 ### Phase 6: subject and public surface

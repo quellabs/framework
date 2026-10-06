@@ -112,8 +112,8 @@
             "item_links"
         ],
         "contextKey": null,
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 14,
@@ -206,8 +206,8 @@
             "item_links"
         ],
         "contextKey": null,
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 14,
@@ -299,8 +299,8 @@
             "top_rated"
         ],
         "contextKey": null,
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 10,
@@ -382,8 +382,8 @@
             "item_links"
         ],
         "contextKey": null,
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 31,
@@ -459,8 +459,8 @@
             "item_links"
         ],
         "contextKey": null,
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 23,
@@ -488,8 +488,8 @@
             "top_rated"
         ],
         "contextKey": null,
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 10,
@@ -830,8 +830,8 @@
             "item_links"
         ],
         "contextKey": null,
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 14,
@@ -907,8 +907,8 @@
             "item_links"
         ],
         "contextKey": null,
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 14,
@@ -984,8 +984,8 @@
             "top_rated"
         ],
         "contextKey": null,
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 10,
@@ -1067,8 +1067,8 @@
             "item_links"
         ],
         "contextKey": null,
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 31,
@@ -1128,8 +1128,8 @@
             "item_links"
         ],
         "contextKey": null,
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 23,
@@ -1157,8 +1157,8 @@
             "top_rated"
         ],
         "contextKey": null,
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 10,
@@ -1497,8 +1497,8 @@
             "item_links"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 14,
@@ -1591,8 +1591,8 @@
             "item_links"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 14,
@@ -1722,8 +1722,8 @@
             "item_links"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 14,
@@ -1815,8 +1815,8 @@
             "item_links"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 14,
@@ -1913,8 +1913,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 10,
@@ -1996,8 +1996,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 10,
@@ -2117,8 +2117,8 @@
             "item_links"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 14,
@@ -2199,8 +2199,8 @@
             "item_links"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 14,
@@ -2281,8 +2281,8 @@
             "item_links"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 14,
@@ -2363,8 +2363,8 @@
             "item_links"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 14,
@@ -2445,8 +2445,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 10,
@@ -2528,8 +2528,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 10,
@@ -2621,8 +2621,8 @@
             "slope_one"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 16,
@@ -2704,8 +2704,8 @@
             "slope_one"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 16,
@@ -2834,8 +2834,8 @@
             "slope_one"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 16,
@@ -2917,8 +2917,8 @@
             "slope_one"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 16,
@@ -3005,8 +3005,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 10,
@@ -3088,8 +3088,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 10,
@@ -3209,8 +3209,8 @@
             "slope_one"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 16,
@@ -3292,8 +3292,8 @@
             "slope_one"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 16,
@@ -3380,8 +3380,8 @@
             "slope_one"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 16,
@@ -3454,8 +3454,8 @@
             "slope_one"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 16,
@@ -3528,8 +3528,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 10,
@@ -3611,8 +3611,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 10,
@@ -3704,8 +3704,8 @@
             "user_similarity"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 14,
@@ -3769,8 +3769,8 @@
             "user_similarity"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 14,
@@ -3834,8 +3834,8 @@
             "user_similarity"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 14,
@@ -3899,8 +3899,8 @@
             "user_similarity"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 14,
@@ -3964,8 +3964,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 10,
@@ -4047,8 +4047,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 10,
@@ -4168,8 +4168,8 @@
             "user_similarity"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 14,
@@ -4219,8 +4219,8 @@
             "user_similarity"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 14,
@@ -4270,8 +4270,8 @@
             "user_similarity"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 14,
@@ -4321,8 +4321,8 @@
             "user_similarity"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 14,
@@ -4372,8 +4372,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 10,
@@ -4455,8 +4455,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 10,
@@ -4548,8 +4548,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 17,
@@ -4613,8 +4613,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 17,
@@ -4678,8 +4678,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 13,
@@ -4761,8 +4761,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 13,
@@ -4868,8 +4868,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 10,
@@ -4951,8 +4951,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 10,
@@ -5072,8 +5072,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 17,
@@ -5123,8 +5123,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 17,
@@ -5174,8 +5174,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 13,
@@ -5248,8 +5248,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 13,
@@ -5327,8 +5327,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 10,
@@ -5410,8 +5410,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 10,
@@ -5503,8 +5503,8 @@
             "new_products"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 26,
@@ -5526,8 +5526,8 @@
             "new_products"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 26,
@@ -5549,8 +5549,8 @@
             "new_products"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 12,
@@ -5586,8 +5586,8 @@
             "new_products"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 12,
@@ -5623,8 +5623,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 10,
@@ -5706,8 +5706,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 10,
@@ -5827,8 +5827,8 @@
             "new_products"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 26,
@@ -5850,8 +5850,8 @@
             "new_products"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 26,
@@ -5873,8 +5873,8 @@
             "new_products"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 26,
@@ -5896,8 +5896,8 @@
             "new_products"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 26,
@@ -5919,8 +5919,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 10,
@@ -6002,8 +6002,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 10,
@@ -6099,8 +6099,8 @@
             "new_products"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 14,
@@ -6274,8 +6274,8 @@
             "new_products"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 14,
@@ -6527,8 +6527,8 @@
             "new_products"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 12,
@@ -6710,8 +6710,8 @@
             "new_products"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 12,
@@ -6946,8 +6946,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 10,
@@ -7029,8 +7029,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 10,
@@ -7154,8 +7154,8 @@
             "new_products"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 14,
@@ -7313,8 +7313,8 @@
             "new_products"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 14,
@@ -7477,8 +7477,8 @@
             "new_products"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 14,
@@ -7636,8 +7636,8 @@
             "new_products"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 14,
@@ -7810,8 +7810,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 10,
@@ -7893,8 +7893,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 10,
@@ -7986,8 +7986,8 @@
             "item_links"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 31,
@@ -8068,8 +8068,8 @@
             "item_links"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 31,
@@ -8150,8 +8150,8 @@
             "item_links"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 23,
@@ -8189,8 +8189,8 @@
             "item_links"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 23,
@@ -8228,8 +8228,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 10,
@@ -8311,8 +8311,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 10,
@@ -8432,8 +8432,8 @@
             "item_links"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 31,
@@ -8498,8 +8498,8 @@
             "item_links"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 31,
@@ -8564,8 +8564,8 @@
             "item_links"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 23,
@@ -8603,8 +8603,8 @@
             "item_links"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 23,
@@ -8642,8 +8642,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 10,
@@ -8725,8 +8725,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 10,
@@ -8818,8 +8818,8 @@
             "slope_one"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 16,
@@ -8901,8 +8901,8 @@
             "slope_one"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 16,
@@ -9031,8 +9031,8 @@
             "slope_one"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 23,
@@ -9068,8 +9068,8 @@
             "slope_one"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 23,
@@ -9105,8 +9105,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 10,
@@ -9188,8 +9188,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 10,
@@ -9309,8 +9309,8 @@
             "slope_one"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 16,
@@ -9392,8 +9392,8 @@
             "slope_one"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 16,
@@ -9480,8 +9480,8 @@
             "slope_one"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 23,
@@ -9517,8 +9517,8 @@
             "slope_one"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 23,
@@ -9554,8 +9554,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 10,
@@ -9637,8 +9637,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 10,
@@ -9730,8 +9730,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 13,
@@ -9804,8 +9804,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 13,
@@ -9883,8 +9883,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 10,
@@ -9966,8 +9966,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 10,
@@ -10087,8 +10087,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 10,
@@ -10170,8 +10170,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 10,
@@ -10291,8 +10291,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 13,
@@ -10356,8 +10356,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 13,
@@ -10421,8 +10421,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 10,
@@ -10504,8 +10504,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 10,
@@ -10597,8 +10597,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 10,
@@ -10680,8 +10680,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 10,
@@ -10773,8 +10773,8 @@
             "new_products"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 26,
@@ -10796,8 +10796,8 @@
             "new_products"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 26,
@@ -10819,8 +10819,8 @@
             "new_products"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 12,
@@ -10856,8 +10856,8 @@
             "new_products"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 12,
@@ -10893,8 +10893,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 10,
@@ -10976,8 +10976,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 10,
@@ -11097,8 +11097,8 @@
             "new_products"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 26,
@@ -11120,8 +11120,8 @@
             "new_products"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 26,
@@ -11143,8 +11143,8 @@
             "new_products"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 26,
@@ -11166,8 +11166,8 @@
             "new_products"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 26,
@@ -11189,8 +11189,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 10,
@@ -11272,8 +11272,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 10,
@@ -11368,8 +11368,8 @@
             "new_products"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 15,
@@ -11518,8 +11518,8 @@
             "new_products"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 15,
@@ -11723,8 +11723,8 @@
             "new_products"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 23,
@@ -11827,8 +11827,8 @@
             "new_products"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 23,
@@ -11980,8 +11980,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 10,
@@ -12063,8 +12063,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 10,
@@ -12187,8 +12187,8 @@
             "new_products"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 17,
@@ -12327,8 +12327,8 @@
             "new_products"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 17,
@@ -12472,8 +12472,8 @@
             "new_products"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 23,
@@ -12568,8 +12568,8 @@
             "new_products"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 23,
@@ -12685,8 +12685,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 10,
@@ -12768,8 +12768,8 @@
             "top_rated"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 10,
@@ -12865,8 +12865,8 @@
             "new_products"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 14,
@@ -13023,8 +13023,8 @@
             "new_products"
         ],
         "contextKey": "parity",
-        "scoreKind": "rank_fusion",
-        "modelId": null,
+        "scoreKind": "ranked",
+        "scorerId": null,
         "items": [
             {
                 "productId": 17,

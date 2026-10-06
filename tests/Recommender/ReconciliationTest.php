@@ -34,7 +34,8 @@ class ReconciliationTest extends IntegrationTestCase {
             [RecommendationSource::NewProducts, RecommendationSource::ItemLinks], 3, 'home', [40]);
         $reconciler = $this->reconciler();
         $list = $reconciler->memberSlate(1, $request);
-        $this->assertSame(ScoreKind::RankFusion, $list->scoreKind);
+        $this->assertSame(ScoreKind::Ranked, $list->scoreKind);
+        $this->assertNull($list->scorerId);
         $this->assertSame([20, 40], array_map(fn($item) => $item->productId, $list->items));
         $this->assertEqualsWithDelta(1 / 61, $list->items[0]->rankingScore, 0.0000001);
         $this->assertSame(1, $list->items[0]->evidence[0]->sourceRank);

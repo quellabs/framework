@@ -51,7 +51,8 @@ use Quellabs\Recommender\RecommendationEngine;
 
 $config      = new RecommendationConfig(directLinks: true);
 $engine      = new RecommendationEngine($connection, $config);
-$reconciler  = new RecommendationReconciler($connection, $config);
+$scorers     = new ModelScorerResolver($connection);
+$reconciler  = new RecommendationReconciler($config, $sourceFactory, $scorers);
 
 $engine->setRating(new MemberId(1), new ProductId(101), 0.9);
 $engine->setRating(new MemberId(2), new ProductId(101), 0.8);
@@ -215,7 +216,7 @@ Return and type changes:
 | `RecommendationResult::$strategy` | `string` such as `'item_links'` | `RecommendationResult::$source`, a `RecommendationSource` enum case |
 | `RecommendationResult::$itemId`, `ReconciledRecommendation::$itemId` | `$itemId` | `$productId`, same `int` type |
 | `RecommendationResult::$contributingItemIds`, `SourceEvidence::$contributingItemIds` | `$contributingItemIds` | `$contributingProductIds`, same `int[]` type |
-| `RecommendationList::$scoreKind` | `string` such as `'rank_fusion'` | `ScoreKind` enum case |
+| `RecommendationList::$scoreKind` | `string` such as `'rank_fusion'` | `ScoreKind` enum, `Direct` or `Ranked`. The scorer is `RecommendationList::$scorerId`, `null` for rank fusion |
 | `ReconciledRecommendation::$featureSnapshot`, `$searchedDepths`, `$sourceLogOddsContributions` | Properties on the item | Properties on `$item->diagnostics` (`ReconciliationDiagnostics`), which is `null` unless the request sets `diagnostics: true` |
 | `new RecommendationList(...)` | Public constructor | Private. Use `RecommendationList::ranked()` or `fromDisplayedItems()` |
 | `ReconciliationRequest` tuning properties such as `$minSlopeSupport` | Properties on the request | `$request->tuning` (`ReconciliationTuning`). `minSlopeSupport` is now `minSupport` |
@@ -302,9 +303,8 @@ Optional. Run `sculpt recommender:init-evaluation-db`, or apply
 [`migrations/2026-10-evaluation-tables.sql`](migrations/2026-10-evaluation-tables.sql) directly. It creates five
 tables and does not modify existing tables. The SQL uses `CREATE TABLE IF NOT EXISTS`, so running it again is safe.
 
-Applications that handle full member deletion must call `RecommendationEngine::deleteMemberData()` with their
-`EvaluationRecorder`. It erases the member's ratings in every category and their evaluation history. Pass `null` when the
-evaluation tables are not installed.
+`RecommendationEngine::deleteMemberData()` erases the member's ratings in every category. Applications that installed
+the evaluation tables must also call `EvaluationRecorder::deleteMemberEvaluations()` for the same member.
 
 ## License
 
