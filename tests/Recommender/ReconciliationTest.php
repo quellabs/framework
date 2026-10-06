@@ -9,6 +9,8 @@ use Quellabs\Recommender\Reconciliation\RecommendationReconciler;
 use Quellabs\Recommender\RecommendationSource;
 use Quellabs\Recommender\Reconciliation\ReconciliationRequest;
 use Quellabs\Recommender\Reconciliation\ReconciliationTuning;
+use Quellabs\Recommender\Reconciliation\VisitorReconciliationRequest;
+use Quellabs\Recommender\Reconciliation\VisitorSource;
 use Quellabs\Recommender\VisitorContext;
 use Quellabs\Recommender\Integration\ServiceProvider;
 use Quellabs\Recommender\Evaluation\EvaluationRecorder;
@@ -40,7 +42,7 @@ class ReconciliationTest extends IntegrationTestCase {
             /** @inheritDoc */
             public function filterEligible(array $candidateIds): array { return [999]; }
         };
-        $request = new ReconciliationRequest($provider, [RecommendationSource::NewProducts], 1, 'home', [20]);
+        $request = new VisitorReconciliationRequest($provider, [VisitorSource::NewProducts], 1, 'home', [20]);
         $this->expectException(\UnexpectedValueException::class);
         (new RecommendationReconciler($this->connection, $this->config))
             ->visitorSlate(new VisitorContext($this->config), $request);
@@ -269,9 +271,12 @@ class ReconciliationTest extends IntegrationTestCase {
             [RecommendationSource::ItemLinks, RecommendationSource::SlopeOne,
                 RecommendationSource::TopRated, RecommendationSource::NewProducts],
             2, 'parity', [30]);
+        $visitorRequest = new VisitorReconciliationRequest(new ArrayEligibilityProvider([20, 30]),
+            [VisitorSource::ItemLinks, VisitorSource::SlopeOne, VisitorSource::TopRated, VisitorSource::NewProducts],
+            2, 'parity', [30]);
         $reconciler = new RecommendationReconciler($this->connection, $this->config);
         $this->assertEquals($reconciler->memberSlate(1, $request)->items,
-            $reconciler->visitorSlate($visitor, $request)->items);
+            $reconciler->visitorSlate($visitor, $visitorRequest)->items);
     }
 
     /** @return void */
@@ -367,8 +372,6 @@ class ReconciliationTest extends IntegrationTestCase {
         $list = $reconciler->memberSlate(1, $request);
         $this->assertSame(20, $list->items[0]->productId);
         $this->assertGreaterThan(0.0, $list->items[0]->evidence[0]->rawScore);
-        $this->expectException(\InvalidArgumentException::class);
-        $reconciler->visitorSlate(new VisitorContext($this->config), $request);
     }
 
     /** @return void */
@@ -381,7 +384,7 @@ class ReconciliationTest extends IntegrationTestCase {
                 return $candidateIds;
             }
         };
-        $request = new ReconciliationRequest($provider, [RecommendationSource::NewProducts],
+        $request = new VisitorReconciliationRequest($provider, [VisitorSource::NewProducts],
             10, 'home', range(1, 80), tuning: new ReconciliationTuning(maxEligibilityBatchSize: 7));
         $list = (new RecommendationReconciler($this->connection, $this->config))
             ->visitorSlate(new VisitorContext($this->config), $request);

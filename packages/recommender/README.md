@@ -69,9 +69,11 @@ Ratings run from 0.0 to 1.0, and -1.0 marks "not interested".
 | Predicted ratings for all unrated products | `ItemRecommender::memberPredictions()` | `PredictionResult[]` |
 | Displayed slate for a member, filtered by catalogue eligibility | `RecommendationReconciler::memberSlate()` | `RecommendationList` |
 | Displayed slate for a visitor, filtered by catalogue eligibility | `RecommendationReconciler::visitorSlate()` | `RecommendationList` |
+| Record a visitor purchase or click in session state | `VisitorContext::recordPurchase()`, `recordClick()` | `void` |
 | Full bounded eligible pool, not cut to `limit` | `RecommendationReconciler::memberCandidatePool()` | `RecommendationList` |
 
-Visitor variants take a `VisitorContext` in place of the member ID.
+Visitor variants take a `VisitorContext` in place of the member ID. Visitor reconciliation takes a
+`VisitorReconciliationRequest`, built from `VisitorSource` values, in place of `ReconciliationRequest`.
 
 ### Limits
 
@@ -158,18 +160,18 @@ Argument changes. Positional calls must move their arguments. Named calls only n
 
 | Method | Now |
 |--------|-----|
-| `ItemRecommender::slopeProducts()` | `(productId, eligibility, limit, minSupport, category)` |
-| `ItemRecommender::memberRecommendations()` | `(memberId, eligibility, limit, minHistory, topRatedMinRatings, category)` |
-| `ItemRecommender::visitorRecommendations()` | `(visitor, eligibility, limit, minHistory, topRatedMinRatings, category)` |
+| `ItemRecommender::slopeProducts()` | `(productId, eligibility, limit, MinSupport $minSupport, category)` |
+| `ItemRecommender::memberRecommendations()` | `(memberId, eligibility, limit, coldStart, category)` |
+| `ItemRecommender::visitorRecommendations()` | `(visitor, eligibility, limit, coldStart, category)` |
 | `RecommendationEngine::memberNumRatings()` | `(memberId, RatingKind $kind, category)` |
 | `RecommendationEngine::memberRatings()` | `(memberId, RatingKind $kind, ?RatingOrder $order, category)` |
 | `RecommendationEngine::productRatings()` | `(productId, ?RatingOrder $order, category)` |
 | `RecommendationEngine::memberRating()` | `(memberId, productId, RatingKind $kind, category)` |
-| `Statistics::topRatedProducts()` | `(limit, topRatedMinRatings, category)` |
+| `Statistics::topRatedProducts()` | `(limit, MinRatings $topRatedMinRatings, category)` |
 
-The eligibility argument is second, and `category` is last, in every method that takes them. The
-`minRatings` argument of `memberRecommendations()` and `visitorRecommendations()` is now `topRatedMinRatings`, and
-the `minRatings` argument of `Statistics::topRatedProducts()` has the same new name.
+The eligibility argument is second, and `category` is last, in every method that takes them. The `minHistory` and
+`topRatedMinRatings` arguments of `memberRecommendations()` and `visitorRecommendations()` are now one `ColdStartPolicy`
+argument, `coldStart`. The `minRatings` argument of `Statistics::topRatedProducts()` is now `topRatedMinRatings`.
 
 Replace the old boolean flags with the enums:
 
@@ -243,8 +245,15 @@ Other changes:
 - `ItemRecommender` methods that take `limit` default to `10`, not `0`. Pass `limit: 0` to get all results.
 - `ItemRecommender`, `RecommendationEngine` and `RecommendationReconciler` methods throw `InvalidArgumentException` when a
   member or product ID is outside the unsigned 32-bit range. Read methods now validate their IDs too.
-- `RecommendationReconciler::visitorSlate()` rejects a request that includes `RecommendationSource::UserSimilarity`,
-  because user similarity needs a persisted member. This is a runtime check, not a compile-time one.
+- `RecommendationReconciler::visitorSlate()` and `visitorCandidatePool()` take a `VisitorReconciliationRequest`, built
+  from `VisitorSource` values. `VisitorSource` has no user-similarity case, so a visitor request cannot include it.
+  Passing a `ReconciliationRequest` is a type error.
+- `ItemRecommender::memberRecommendations()` and `visitorRecommendations()` take a `ColdStartPolicy` in place of the
+  `minHistory` and `topRatedMinRatings` integers. `ColdStartPolicy` rejects values below 1.
+- Support and rating-count thresholds are value objects. The `minSupport` argument of the prediction and slope methods
+  takes a `MinSupport`, and `Statistics::topRatedProducts()` takes a `MinRatings`, so a threshold can no longer be
+  swapped with `limit` or an ID. `Statistics::topRatedProducts()` previously clamped values below 1 to 1, and now rejects
+  them. Pass `new MinSupport(3)` in place of `3`.
 
 ### Database: pair counts
 

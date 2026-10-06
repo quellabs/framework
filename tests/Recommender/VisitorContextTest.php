@@ -165,4 +165,31 @@
 			$this->assertCount(1, $visitor->ratings(null));
 			$this->assertSame(1, $visitor->ratings(null)[0]->productId);
 		}
+
+		// =========================================================================
+		// recordPurchase / recordClick
+		// =========================================================================
+
+		public function testRecordPurchaseStoresMaximumRating(): void {
+			$this->visitor->recordPurchase(10);
+			$this->assertEqualsWithDelta(1.0, $this->visitor->ratings()[0]->rating, 0.0001);
+		}
+
+		public function testRecordClickStartsAtFirstClickRating(): void {
+			$this->visitor->recordClick(10);
+			$this->assertEqualsWithDelta(0.7, $this->visitor->ratings()[0]->rating, 0.0001);
+		}
+
+		public function testRecordClickRaisesExistingRating(): void {
+			$this->visitor->recordClick(10);
+			$this->visitor->recordClick(10);
+			$this->assertCount(1, $this->visitor->ratings());
+			$this->assertEqualsWithDelta(0.71, $this->visitor->ratings()[0]->rating, 0.0001);
+		}
+
+		public function testRecordClickLeavesPurchaseUnchanged(): void {
+			$this->visitor->recordPurchase(10);
+			$this->visitor->recordClick(10);
+			$this->assertEqualsWithDelta(1.0, $this->visitor->ratings()[0]->rating, 0.0001);
+		}
 	}

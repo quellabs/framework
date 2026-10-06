@@ -129,14 +129,13 @@
 		 * Return the highest-rated products, ordered by average rating descending.
 		 * Products with fewer than $topRatedMinRatings ratings are excluded.
 		 * @param int $limit Maximum number of results (0 = unlimited)
-		 * @param int $topRatedMinRatings Minimum number of ratings to qualify
+		 * @param MinRatings $topRatedMinRatings Minimum number of ratings to qualify
 		 * @param int|null $category Defaults to configured default
 		 * @return array<int, ProductAverage>
 		 */
-		public function topRatedProducts(int $limit = 10, int $topRatedMinRatings = 1, ?int $category = null): array {
+		public function topRatedProducts(int $limit = 10, MinRatings $topRatedMinRatings = new MinRatings(), ?int $category = null): array {
 			$resolvedCategory = $this->config->resolveCategory($category);
 			$limit = max(0, $limit);
-			$topRatedMinRatings = max(1, $topRatedMinRatings);
 			
 			$sql = '
 				SELECT
@@ -156,7 +155,7 @@
 			
 			$rows = $this->connection->execute($sql, [
 				'category'    => $resolvedCategory,
-				'min_ratings' => $topRatedMinRatings,
+				'min_ratings' => $topRatedMinRatings->value,
 			])->fetchAll('assoc');
 			
 			return array_map(

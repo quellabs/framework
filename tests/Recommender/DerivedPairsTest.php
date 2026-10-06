@@ -3,6 +3,7 @@
 namespace Quellabs\Recommender\Tests;
 
 use PHPUnit\Framework\Attributes\DataProvider;
+use Quellabs\Recommender\ColdStartPolicy;
 use Quellabs\Recommender\RecommendationSource;
 use Quellabs\Recommender\Config\RecommendationConfig;
 use Quellabs\Recommender\ItemRecommender;
@@ -100,7 +101,7 @@ class DerivedPairsTest extends IntegrationTestCase {
 
         $visitor = new VisitorContext($config);
         $visitor->setNotInterested(20);
-        $fallback = $items->visitorRecommendations($visitor, new ArrayEligibilityProvider([20, 30]), topRatedMinRatings: 1);
+        $fallback = $items->visitorRecommendations($visitor, new ArrayEligibilityProvider([20, 30]), coldStart: new ColdStartPolicy(topRatedMinRatings: 1));
         $this->assertCount(1, $fallback);
         $this->assertSame(30, $fallback[0]->productId);
         $this->assertSame(RecommendationSource::TopRated, $fallback[0]->source);

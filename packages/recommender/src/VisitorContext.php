@@ -3,8 +3,9 @@
 	namespace Quellabs\Recommender;
 	
 	use Quellabs\Recommender\Config\RecommendationConfig;
+	use Quellabs\Recommender\Internal\ImplicitRating;
 	use Quellabs\Recommender\Internal\RatingRule;
-	
+
 	/**
 	 * Holds the in-memory rating state for an anonymous visitor (no member_id).
 	 *
@@ -74,6 +75,33 @@
 		}
 		
 		/**
+		 * Record a purchase as a rating of 1.0 for a product in the given category.
+		 * @param int $productId The product ID
+		 * @param int|null $category Defaults to the configured default category
+		 * @return void
+		 * @throws \InvalidArgumentException When the product ID is negative
+		 */
+		public function recordPurchase(int $productId, ?int $category = null): void {
+			$this->setRating($productId, ImplicitRating::PURCHASE, $category);
+		}
+
+		/**
+		 * Record a click as a rating of 0.7, or raise an existing genuine rating by 0.01 up to 1.0.
+		 * @param int $productId The product ID
+		 * @param int|null $category Defaults to the configured default category
+		 * @return void
+		 * @throws \InvalidArgumentException When the product ID is negative
+		 */
+		public function recordClick(int $productId, ?int $category = null): void {
+			$resolvedCategory = $this->config->resolveCategory($category);
+			$existing = $this->genuineRating($productId, $resolvedCategory);
+
+			if ($existing === null || $existing < ImplicitRating::PURCHASE) {
+				$this->setRating($productId, ImplicitRating::afterClick($existing), $resolvedCategory);
+			}
+		}
+
+		/**
 		 * Delete a rating for a product in the given category.
 		 * @param int $productId The product ID
 		 * @param int|null $category Defaults to the configured default category
@@ -108,6 +136,22 @@
 			return $ratings;
 		}
 		
+		/**
+		 * Return the genuine rating stored for a product in the given category, or null when there is none.
+		 * @param int $productId The product ID
+		 * @param int $category Already-resolved category
+		 * @return float|null
+		 */
+		private function genuineRating(int $productId, int $category): ?float {
+			foreach ($this->ratings as $entry) {
+				if ($entry['product_id'] === $productId && $entry['category'] === $category && $entry['rating'] >= 0.0) {
+					return $entry['rating'];
+				}
+			}
+
+			return null;
+		}
+
 		/**
 		 * Return all rated product IDs for the given category.
 		 * @param int|null $category Defaults to the configured default category

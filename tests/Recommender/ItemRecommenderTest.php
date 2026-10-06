@@ -2,6 +2,8 @@
 
 	namespace Quellabs\Recommender\Tests;
 
+use Quellabs\Recommender\MinSupport;
+
 	use Quellabs\Recommender\RecommendationSource;
 	use Quellabs\Recommender\ItemRecommender;
 	use Quellabs\Recommender\PredictionResult;
@@ -47,7 +49,7 @@
 			$this->assertSame(3, $member[0]->supportCount);
 			$this->assertEqualsWithDelta($this->recommender->memberPrediction(1, 20)->predictedRating,
 				$member[0]->predictedRating, 0.00001);
-			$this->assertSame([20], $this->itemIds($this->recommender->memberPredictions(1, minSupport: 3)));
+			$this->assertSame([20], $this->itemIds($this->recommender->memberPredictions(1, minSupport: new MinSupport(3))));
 
 			$visitor = new VisitorContext($this->config);
 			$visitor->setRating(10, 0.8);
@@ -77,8 +79,8 @@
 			$this->insertLink(11, 40, 3, 0.0);
 			$this->assertSame([30, 40, 20], $this->itemIds($this->recommender->memberPredictions(1)));
 			$this->assertSame([30, 40, 20], $this->itemIds($this->recommender->visitorPredictions($visitor)));
-			$this->assertNull($this->recommender->memberPrediction(1, 20, 3));
-			$this->assertNull($this->recommender->visitorPrediction($visitor, 20, 3));
+			$this->assertNull($this->recommender->memberPrediction(1, 20, new MinSupport(3)));
+			$this->assertNull($this->recommender->visitorPrediction($visitor, 20, new MinSupport(3)));
 			$this->assertSame([], $this->recommender->memberPredictions(1, category: 2));
 		}
 
@@ -139,10 +141,10 @@
 		public function testPredictionRejectsNonpositiveSupportThreshold(): void {
 			$visitor = new VisitorContext($this->config);
 			foreach ([
-				fn() => $this->recommender->memberPrediction(1, 20, 0),
-				fn() => $this->recommender->memberPredictions(1, minSupport: 0),
-				fn() => $this->recommender->visitorPrediction($visitor, 20, 0),
-				fn() => $this->recommender->visitorPredictions($visitor, minSupport: 0),
+				fn() => $this->recommender->memberPrediction(1, 20, new MinSupport(0)),
+				fn() => $this->recommender->memberPredictions(1, minSupport: new MinSupport(0)),
+				fn() => $this->recommender->visitorPrediction($visitor, 20, new MinSupport(0)),
+				fn() => $this->recommender->visitorPredictions($visitor, minSupport: new MinSupport(0)),
 			] as $predict) {
 				try {
 					$predict();
@@ -346,7 +348,7 @@
 		public function testSlopeItemsRespectsMinSupport(): void {
 			$this->insertLink(1, 2, 1, 0.5);
 			$this->insertLink(1, 3, 5, 0.5);
-			$result = $this->recommender->slopeProducts(1, minSupport: 3);
+			$result = $this->recommender->slopeProducts(1, minSupport: new MinSupport(3));
 			$this->assertSame([3], $this->itemIds($result));
 		}
 

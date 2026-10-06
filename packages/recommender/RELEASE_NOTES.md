@@ -10,7 +10,10 @@ diagnostics in `ReconciliationDiagnostics`. `EligibilityProvider` moved to the r
 methods return `null` when there is no data, and reconciler methods are `memberSlate()` and `visitorSlate()` for the displayed slate, with `memberCandidatePool()`
 and `visitorCandidatePool()` for the full pool. Value objects use `productId` for product IDs and `source` for candidate
 sources. Rating accessors return `Rating` and `VisitorRating` objects. `ItemRecommender` limits default to `10`. Member
-erasure is a single `RecommendationEngine::deleteMemberData()` call. Configuration accessors drop the `get` prefix. The [README upgrade section](README.md#upgrading)
+erasure is a single `RecommendationEngine::deleteMemberData()` call. Visitors record clicks and purchases with
+`VisitorContext::recordClick()` and `recordPurchase()`, visitor reconciliation takes a `VisitorReconciliationRequest`
+that cannot include user similarity, and cold-start thresholds are one `ColdStartPolicy` argument. Support and rating-count thresholds are `MinSupport` and `MinRatings` values, so
+they cannot be swapped with `limit` or an ID. Configuration accessors drop the `get` prefix. The [README upgrade section](README.md#upgrading)
 lists every changed call.
 
 ## Optional reconciliation and evaluation API

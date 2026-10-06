@@ -6,7 +6,8 @@
 	use Quellabs\Recommender\Config\RecommendationConfig;
 	use Quellabs\Recommender\Evaluation\EvaluationRecorder;
 	use Quellabs\Recommender\Internal\Identifier;
-	use Quellabs\Recommender\Internal\Links\LinkUpdater;
+	use Quellabs\Recommender\Internal\ImplicitRating;
+use Quellabs\Recommender\Internal\Links\LinkUpdater;
 	use Quellabs\Recommender\Internal\RatingRule;
 	
 	/**
@@ -364,7 +365,7 @@
 		public function recordPurchase(int $memberId, int $productId, ?int $category = null): void {
 			Identifier::assertId($memberId, 'Member ID');
 			Identifier::assertId($productId, 'Product ID');
-			$this->setRating($memberId, $productId, 1.0, $category);
+			$this->setRating($memberId, $productId, ImplicitRating::PURCHASE, $category);
 		}
 
 		/**
@@ -381,10 +382,8 @@
 			$resolvedCategory = $this->config->resolveCategory($category);
 			$existing = $this->memberRating($memberId, $productId, RatingKind::Genuine, $resolvedCategory);
 
-			if ($existing === null) {
-				$this->setRating($memberId, $productId, 0.7, $resolvedCategory);
-			} elseif ($existing->rating < 1.0) {
-				$this->setRating($memberId, $productId, min(1.0, $existing->rating + 0.01), $resolvedCategory);
+			if ($existing === null || $existing->rating < ImplicitRating::PURCHASE) {
+				$this->setRating($memberId, $productId, ImplicitRating::afterClick($existing?->rating), $resolvedCategory);
 			}
 		}
 

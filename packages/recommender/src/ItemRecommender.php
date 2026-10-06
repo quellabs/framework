@@ -189,16 +189,16 @@ use Quellabs\Recommender\Internal\Identifier;
 		 * @param int $productId The product ID
 		 * @param EligibilityProvider|null $eligibility Restricts results to eligible products, or null for all
 		 * @param int $limit Maximum number of results (0 = unlimited)
-		 * @param int $minSupport Minimum co-occurrence count to include a pair
+		 * @param MinSupport $minSupport Minimum co-occurrence count to include a pair
 		 * @param int|null $category Defaults to configured default
 		 * @return array<int, RecommendationResult> Products scored by their average Slope One diff
 		 */
 		public function slopeProducts(int $productId, ?EligibilityProvider $eligibility = null, int $limit = 10,
-			int $minSupport = 1, ?int $category = null): array {
+			MinSupport $minSupport = new MinSupport(), ?int $category = null): array {
 			Identifier::assertId($productId, 'Product ID');
 			return $this->eligibilityFilter->withEligibility($eligibility, $limit,
 				function (int $depth) use ($productId, $minSupport, $category): array {
-					$diffs = $this->slopeOne->getSlopeItems($productId, $minSupport, $depth, $category);
+					$diffs = $this->slopeOne->getSlopeItems($productId, $minSupport->value, $depth, $category);
 
 					return array_map(function (array $diff): RecommendationResult {
 						return new RecommendationResult($diff['product_id'], $diff['diff'], RecommendationSource::SlopeOne, []);
@@ -213,15 +213,14 @@ use Quellabs\Recommender\Internal\Identifier;
 		 * Predict a single member rating with directed-pair support.
 		 * @param int $memberId Member ID
 		 * @param int $productId Candidate ID
-		 * @param int $minSupport Minimum summed pair support
+		 * @param MinSupport $minSupport Minimum summed pair support
 		 * @param int|null $category Category override
 		 * @return PredictionResult|null
-		 * @throws \InvalidArgumentException When the minimum support is not positive
 		 */
-		public function memberPrediction(int $memberId, int $productId, int $minSupport = 1, ?int $category = null): ?PredictionResult {
+		public function memberPrediction(int $memberId, int $productId, MinSupport $minSupport = new MinSupport(), ?int $category = null): ?PredictionResult {
 			Identifier::assertId($memberId, 'Member ID');
 			Identifier::assertId($productId, 'Product ID');
-			return $this->slopeOne->memberPredictDetailed($memberId, $productId, $minSupport, $category);
+			return $this->slopeOne->memberPredictDetailed($memberId, $productId, $minSupport->value, $category);
 		}
 
 		/**
@@ -230,17 +229,16 @@ use Quellabs\Recommender\Internal\Identifier;
 		 * @param int $memberId Member ID
 		 * @param EligibilityProvider|null $eligibility Restricts results to eligible products, or null for all
 		 * @param int $limit Maximum results, or zero for all
-		 * @param int $minSupport Minimum summed pair support
+		 * @param MinSupport $minSupport Minimum summed pair support
 		 * @param int|null $category Category override
 		 * @return array<int, PredictionResult>
-		 * @throws \InvalidArgumentException When the minimum support is not positive
 		 */
 		public function memberPredictions(int $memberId, ?EligibilityProvider $eligibility = null, int $limit = 10,
-			int $minSupport = 1, ?int $category = null): array {
+			MinSupport $minSupport = new MinSupport(), ?int $category = null): array {
 			Identifier::assertId($memberId, 'Member ID');
 			return $this->eligibilityFilter->withEligibility($eligibility, $limit,
 				function (int $depth) use ($memberId, $minSupport, $category): array {
-					return $this->slopeOne->memberPredictAllDetailed($memberId, $depth, $minSupport, $category);
+					return $this->slopeOne->memberPredictAllDetailed($memberId, $depth, $minSupport->value, $category);
 				},
 				function (PredictionResult $row): int {
 					return $row->productId;
@@ -251,14 +249,13 @@ use Quellabs\Recommender\Internal\Identifier;
 		 * Predict one visitor rating with directed-pair support.
 		 * @param VisitorContext $visitor Visitor ratings
 		 * @param int $productId Candidate ID
-		 * @param int $minSupport Minimum summed pair support
+		 * @param MinSupport $minSupport Minimum summed pair support
 		 * @param int|null $category Category override
 		 * @return PredictionResult|null
-		 * @throws \InvalidArgumentException When the minimum support is not positive
 		 */
-		public function visitorPrediction(VisitorContext $visitor, int $productId, int $minSupport = 1, ?int $category = null): ?PredictionResult {
+		public function visitorPrediction(VisitorContext $visitor, int $productId, MinSupport $minSupport = new MinSupport(), ?int $category = null): ?PredictionResult {
 			Identifier::assertId($productId, 'Product ID');
-			return $this->slopeOne->visitorPredictDetailed($visitor, $productId, $minSupport, $category);
+			return $this->slopeOne->visitorPredictDetailed($visitor, $productId, $minSupport->value, $category);
 		}
 
 		/**
@@ -267,16 +264,15 @@ use Quellabs\Recommender\Internal\Identifier;
 		 * @param VisitorContext $visitor Visitor ratings
 		 * @param EligibilityProvider|null $eligibility Restricts results to eligible products, or null for all
 		 * @param int $limit Maximum results, or zero for all
-		 * @param int $minSupport Minimum summed pair support
+		 * @param MinSupport $minSupport Minimum summed pair support
 		 * @param int|null $category Category override
 		 * @return array<int, PredictionResult>
-		 * @throws \InvalidArgumentException When the minimum support is not positive
 		 */
 		public function visitorPredictions(VisitorContext $visitor, ?EligibilityProvider $eligibility = null, int $limit = 10,
-			int $minSupport = 1, ?int $category = null): array {
+			MinSupport $minSupport = new MinSupport(), ?int $category = null): array {
 			return $this->eligibilityFilter->withEligibility($eligibility, $limit,
 				function (int $depth) use ($visitor, $minSupport, $category): array {
-					return $this->slopeOne->visitorPredictAllDetailed($visitor, $depth, $minSupport, $category);
+					return $this->slopeOne->visitorPredictAllDetailed($visitor, $depth, $minSupport->value, $category);
 				},
 				function (PredictionResult $row): int {
 					return $row->productId;
@@ -290,20 +286,20 @@ use Quellabs\Recommender\Internal\Identifier;
 		 * @param int $memberId Member ID
 		 * @param EligibilityProvider|null $eligibility Restricts results to eligible products, or null for all
 		 * @param int $limit Maximum results, or zero for all
-		 * @param int $minHistory Minimum genuine ratings before collaborative scoring
-		 * @param int $topRatedMinRatings Minimum ratings for a top-rated fallback item
+		 * @param ColdStartPolicy $coldStart Fallback thresholds for short histories
 		 * @param int|null $category Category override
 		 * @return array<int, RecommendationResult>
 		 * @throws \UnexpectedValueException When a link score row or its contributors are malformed
 		 */
 		public function memberRecommendations(int $memberId, ?EligibilityProvider $eligibility = null, int $limit = 10,
-			int $minHistory = 1, int $topRatedMinRatings = 2, ?int $category = null): array {
+			ColdStartPolicy $coldStart = new ColdStartPolicy(), ?int $category = null): array {
 			Identifier::assertId($memberId, 'Member ID');
 			$resolvedCategory = $this->config->resolveCategory($category);
 
 			return $this->eligibilityFilter->withEligibility($eligibility, $limit,
-				function (int $depth) use ($memberId, $resolvedCategory, $minHistory, $topRatedMinRatings): array {
-					return $this->memberRecommendationRows($memberId, $depth, $resolvedCategory, $minHistory, $topRatedMinRatings);
+				function (int $depth) use ($memberId, $resolvedCategory, $coldStart): array {
+					return $this->memberRecommendationRows($memberId, $depth, $resolvedCategory,
+						$coldStart->minHistory, $coldStart->topRatedMinRatings);
 				},
 				function (RecommendationResult $row): int {
 					return $row->productId;
@@ -344,18 +340,18 @@ use Quellabs\Recommender\Internal\Identifier;
 		 * @param VisitorContext $visitor Visitor ratings
 		 * @param EligibilityProvider|null $eligibility Restricts results to eligible products, or null for all
 		 * @param int $limit Maximum results, or zero for all
-		 * @param int $minHistory Minimum genuine ratings before collaborative scoring
-		 * @param int $topRatedMinRatings Minimum ratings for a top-rated fallback item
+		 * @param ColdStartPolicy $coldStart Fallback thresholds for short histories
 		 * @param int|null $category Category override
 		 * @return array<int, RecommendationResult>
 		 */
 		public function visitorRecommendations(VisitorContext $visitor, ?EligibilityProvider $eligibility = null, int $limit = 10,
-			int $minHistory = 1, int $topRatedMinRatings = 2, ?int $category = null): array {
+			ColdStartPolicy $coldStart = new ColdStartPolicy(), ?int $category = null): array {
 			$resolvedCategory = $this->config->resolveCategory($category);
 
 			return $this->eligibilityFilter->withEligibility($eligibility, $limit,
-				function (int $depth) use ($visitor, $resolvedCategory, $minHistory, $topRatedMinRatings): array {
-					return $this->visitorRecommendationRows($visitor, $depth, $resolvedCategory, $minHistory, $topRatedMinRatings);
+				function (int $depth) use ($visitor, $resolvedCategory, $coldStart): array {
+					return $this->visitorRecommendationRows($visitor, $depth, $resolvedCategory,
+						$coldStart->minHistory, $coldStart->topRatedMinRatings);
 				},
 				function (RecommendationResult $row): int {
 					return $row->productId;
@@ -493,7 +489,7 @@ use Quellabs\Recommender\Internal\Identifier;
 			$stats = new Statistics($this->connection, $this->config);
 			$results = [];
 
-			foreach ($stats->topRatedProducts(0, max(1, $topRatedMinRatings), $category) as $row) {
+			foreach ($stats->topRatedProducts(0, new MinRatings($topRatedMinRatings), $category) as $row) {
 				$id = $row->productId;
 
 				if (in_array($id, $excluded, true)) {

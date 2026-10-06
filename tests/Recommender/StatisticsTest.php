@@ -3,6 +3,7 @@
 	namespace Quellabs\Recommender\Tests;
 	
 	use Quellabs\Recommender\Config\RecommendationConfig;
+use Quellabs\Recommender\MinRatings;
 use Quellabs\Recommender\Statistics;
 	
 	/**
@@ -133,7 +134,7 @@ use Quellabs\Recommender\Statistics;
 			$this->insertRating(1, 11, 0.8);
 			$this->insertRating(2, 11, 0.7);
 			// product 10 has 1 rating, product 11 has 2 — minRatings=2 should exclude 10
-			$result     = $this->stats->topRatedProducts(topRatedMinRatings: 2);
+			$result     = $this->stats->topRatedProducts(topRatedMinRatings: new MinRatings(2));
 			$productIds = array_map(fn($row) => $row->productId, $result);
 			$this->assertNotContains(10, $productIds);
 			$this->assertContains(11, $productIds);

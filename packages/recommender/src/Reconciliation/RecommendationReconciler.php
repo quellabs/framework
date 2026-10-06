@@ -72,12 +72,11 @@
 		/**
 		 * Return the displayed slate of up to the requested limit for an anonymous visitor.
 		 * @param VisitorContext $visitor Visitor ratings
-		 * @param ReconciliationRequest $request Candidate request, which must not include the user-similarity source
+		 * @param VisitorReconciliationRequest $request Candidate request for a visitor
 		 * @return RecommendationList Displayed slate, at most the request limit
-		 * @throws \InvalidArgumentException When the request includes the user-similarity source
 		 */
-		public function visitorSlate(VisitorContext $visitor, ReconciliationRequest $request): RecommendationList {
-			return $this->firstPage($this->visitorCandidatePool($visitor, $request), $request->limit);
+		public function visitorSlate(VisitorContext $visitor, VisitorReconciliationRequest $request): RecommendationList {
+			return $this->firstPage($this->visitorCandidatePool($visitor, $request), $request->request->limit);
 		}
 		
 		/**
@@ -117,23 +116,18 @@
 		/**
 		 * Return the full bounded eligible pool for an anonymous visitor.
 		 * @param VisitorContext $visitor Visitor ratings
-		 * @param ReconciliationRequest $request Candidate request
+		 * @param VisitorReconciliationRequest $request Candidate request for a visitor
 		 * @return RecommendationList Full bounded eligible pool
-		 * @throws \InvalidArgumentException When the request includes the user-similarity source
 		 */
-		public function visitorCandidatePool(VisitorContext $visitor, ReconciliationRequest $request): RecommendationList {
-			if (in_array(RecommendationSource::UserSimilarity, $request->sources, true)) {
-				throw new \InvalidArgumentException('User similarity requires a persisted member.');
-			}
-			
-			$category = $this->config->resolveCategory($request->category);
-			
+		public function visitorCandidatePool(VisitorContext $visitor, VisitorReconciliationRequest $request): RecommendationList {
+			$category = $this->config->resolveCategory($request->request->category);
+
 			$ratings = [];
 			foreach ($visitor->ratings($category) as $rating) {
 				$ratings[$rating->productId] = $rating->rating;
 			}
-			
-			return $this->rank($request, $category, $ratings, null);
+
+			return $this->rank($request->request, $category, $ratings, null);
 		}
 		
 		/**
