@@ -4,17 +4,12 @@
 	
 	use Cake\Database\Connection;
 	use Quellabs\Recommender\Config\RecommendationConfig;
-	use Quellabs\Recommender\Internal\Eligibility\EligibilityFilter;
-	use Quellabs\Recommender\Internal\Persistence\TemporaryTable;
 	use Quellabs\Recommender\Internal\Query\Results;
 	
 	
 	use Quellabs\Recommender\Neighbour;
 	use Quellabs\Recommender\RecommendationEngine;
-	use Quellabs\Recommender\RecommendationResult;
 	use Quellabs\Recommender\RatingKind;
-	use Quellabs\Recommender\RecommendationSource;
-	use Quellabs\Recommender\EligibilityProvider;
 	/**
 	 * User-based collaborative filtering: member similarity scoring and
 	 * neighbour-based recommendations.
@@ -38,11 +33,7 @@
 		/** @var RecommendationEngine Engine used for rating lookups */
 		private RecommendationEngine $engine;
 	
-		/** @var TemporaryTable Temporary tables for neighbour and candidate sets */
-		private TemporaryTable $temporary;
 
-		/** @var EligibilityFilter Applies eligibility providers to ranked results */
-		private EligibilityFilter $eligibilityFilter;
 	
 		/**
 		 * Build the similarity service.
@@ -54,8 +45,6 @@
 			$this->connection = $connection;
 			$this->config = $config;
 			$this->engine = $engine;
-			$this->temporary = new TemporaryTable($connection);
-			$this->eligibilityFilter = new EligibilityFilter($config);
 		}
 		
 		/**
@@ -174,140 +163,6 @@
 		}
 		
 		/**
-		 * Return recommended items for a member based on what similar members have liked, weighted by similarity.
-		 * Only returns items the member has not already rated.
-		 * @param int $memberId The member ID
-		 * @param int $minSimilarity Minimum neighbour similarity to consider
-		 * @param EligibilityProvider|null $eligibility Restricts results to eligible products, or null for all
-		 * @param int $limit Maximum number of results (0 = unlimited)
-		 * @param int|null $category Defaults to configured default
-		 * @return array<int, RecommendationResult> Recommended products ordered by score, with source user_similarity
-		 */
-		public function memberRecommendations(int $memberId, int $minSimilarity = 1, ?EligibilityProvider $eligibility = null, int $limit = 0, ?int $category = null): array {
-			$resolvedCategory = $this->config->resolveCategory($category);
-			$minSimilarity = max(0, min(100, $minSimilarity));
-
-			return $this->eligibilityFilter->withEligibility($eligibility, max(0, $limit),
-				function (int $depth) use ($memberId, $minSimilarity, $resolvedCategory): array {
-					return $this->memberRecommendationRows($memberId, $minSimilarity, $depth, $resolvedCategory);
-				},
-				function (RecommendationResult $row): int {
-					return $row->productId;
-				});
-		}
-
-		/**
-		 * Return the similarity-weighted member recommendations, with a limit.
-		 * @param int $memberId The member ID
-		 * @param int $minSimilarity Minimum neighbour similarity, already clamped to [0, 100]
-		 * @param int $limit Maximum results, or zero for all
-		 * @param int $resolvedCategory Already-resolved category
-		 * @return array<int, RecommendationResult>
-		 */
-		private function memberRecommendationRows(int $memberId, int $minSimilarity, int $limit, int $resolvedCategory): array {
-
-			$neighbours = $this->memberNeighbours($memberId, $minSimilarity, 0, $resolvedCategory);
-
-			if ($neighbours === []) {
-				return [];
-			}
-
-			$scores = $this->computeNeighbourScores($memberId, $neighbours, $resolvedCategory);
-
-			if ($scores === []) {
-				return [];
-			}
-
-			$scores = Results::sortByScore($scores);
-			$results = [];
-
-			foreach ($scores as $itemId => $score) {
-				$results[] = new RecommendationResult($itemId, $score, RecommendationSource::UserSimilarity, []);
-			}
-
-			return Results::limit($results, $limit);
-		}
-		
-		/**
-		 * Return scored neighbour candidates for the optional reconciler.
-		 * @param int $memberId Member ID
-		 * @param int $minSimilarity Minimum neighbour similarity
-		 * @param int $maxNeighbours Maximum neighbours to use
-		 * @param int $limit Maximum candidates
-		 * @param int|null $category Category override
-		 * @param array<int, int>|null $candidateIds Optional exact candidate batch to score
-		 * @return array<int, ItemScore>
-		 */
-		public function memberRecommendationsScored(int $memberId, int $minSimilarity,
-			int $maxNeighbours, int $limit, ?int $category = null, ?array $candidateIds = null): array {
-			if ($candidateIds === []) {
-				return [];
-			}
-			
-			$resolvedCategory = $this->config->resolveCategory($category);
-			$neighbours = $this->memberNeighbours($memberId, $minSimilarity, $maxNeighbours, $resolvedCategory);
-			
-			if ($neighbours === []) {
-				return [];
-			}
-			
-			return $this->temporary->withNeighbourTable('vogoo_neighbours_', $neighbours,
-				function (string $neighbourTable) use ($memberId, $candidateIds, $resolvedCategory, $limit): array {
-					if ($candidateIds === null) {
-						return $this->queryNeighbourRecommendations($memberId, $neighbourTable, null, $resolvedCategory, $limit);
-					}
-	
-					return $this->temporary->withIdTable('vogoo_neighbour_candidates_', $candidateIds,
-						function (string $candidateTable) use ($memberId, $neighbourTable, $resolvedCategory, $limit): array {
-							return $this->queryNeighbourRecommendations($memberId, $neighbourTable, $candidateTable, $resolvedCategory, $limit);
-						});
-				});
-		}
-		
-		/**
-		 * Aggregate the neighbours' ratings into unseen item recommendations.
-		 * @param int $memberId Member receiving recommendations
-		 * @param string $neighbourTable Temporary table holding the neighbours
-		 * @param string|null $candidateTable Temporary table restricting candidates, or null for all items
-		 * @param int $category Already-resolved category
-		 * @param int $limit Maximum candidates
-		 * @return array<int, ItemScore>
-		 */
-		private function queryNeighbourRecommendations(int $memberId, string $neighbourTable, ?string $candidateTable,
-			int $category, int $limit): array {
-			$candidateJoin = $candidateTable === null
-				? ''
-				: "JOIN {$candidateTable} candidates ON candidates.product_id = r.product_id";
-				
-			$rows = $this->connection->execute("
-				SELECT
-					r.product_id AS item_id,
-					SUM(r.rating * n.similarity) / SUM(n.similarity) AS score
-				FROM {$neighbourTable} n
-				JOIN vogoo_ratings r ON r.member_id = n.member_id
-				{$candidateJoin}
-				WHERE r.category = :category AND
-				      r.rating >= :threshold AND
-				      NOT EXISTS (SELECT 1 FROM vogoo_ratings seen
-				                  WHERE seen.member_id = :member AND
-				                        seen.category = :seen_category AND
-				                        seen.product_id = r.product_id)
-				GROUP BY r.product_id
-				ORDER BY score DESC, r.product_id ASC
-				LIMIT {$limit}
-			", [
-				'category' => $category,
-				'threshold' => $this->config->thresholdRating(),
-				'member' => $memberId,
-				'seen_category' => $category,
-			])->fetchAll('assoc');
-	
-			return array_map(function ($row): array {
-				return ['itemId' => (int)$row['item_id'], 'score' => (float)$row['score']];
-			}, $rows);
-		}
-		
-		/**
 		 * Convert the raw sum of squared rating differences into a 0 to 100 similarity score.
 		 * Applies the Vogoo confidence penalty when the number of common ratings is small relative to the member's total.
 		 * @param int $nrCommonRatings Number of products both members rated
@@ -344,65 +199,4 @@
 			return (int)((100.0 - $spreadPerCommonRating) * (0.1 + 0.9 * $squaredConfidence));
 		}
 		
-		/**
-		 * Compute similarity-weighted scores for every product liked by the neighbours that the member has not rated.
-		 * Each score is the similarity-weighted average of the neighbours' ratings. Runs one query per chunk of neighbours.
-		 * @param int $memberId The member receiving recommendations
-		 * @param array<int, Neighbour> $neighbours Neighbours with their similarity
-		 * @param int $category Already-resolved category
-		 * @return array<int, float> Map of candidate product_id to weighted score
-		 */
-		private function computeNeighbourScores(int $memberId, array $neighbours, int $category): array {
-			$threshold = $this->config->thresholdRating();
-			$scores = [];
-			$weights = [];
-			
-			$similarities = array_column($neighbours, 'similarity', 'memberId');
-			
-			foreach (array_chunk(array_keys($similarities), 500) as $memberIds) {
-				$params = [
-					'category' => $category,
-					'threshold' => $threshold,
-					'target_member' => $memberId,
-					'target_category' => $category,
-				];
-				$names = [];
-	
-				foreach (array_values($memberIds) as $index => $neighbourId) {
-					$params['neighbour_' . $index] = $neighbourId;
-					$names[] = ':neighbour_' . $index;
-				}
-	
-				$inList = implode(',', $names);
-				$rows = $this->connection->execute("
-					SELECT
-						r.member_id,
-						r.product_id,
-						r.rating
-					FROM vogoo_ratings r
-					WHERE r.member_id IN ({$inList}) AND
-					      r.category = :category AND
-					      r.rating >= :threshold AND
-					      NOT EXISTS (SELECT 1 FROM vogoo_ratings target
-					                  WHERE target.member_id = :target_member AND
-					                        target.category = :target_category AND
-					                        target.product_id = r.product_id)
-				", $params)->fetchAll('assoc');
-				
-				foreach ($rows as $row) {
-					$productId = (int)$row['product_id'];
-					
-										$similarity = $similarities[(int)$row['member_id']];
-					$scores[$productId] = ($scores[$productId] ?? 0.0) + $similarity * (float)$row['rating'];
-					$weights[$productId] = ($weights[$productId] ?? 0) + $similarity;
-				}
-			}
-			
-			// Normalise by total weight
-			foreach ($scores as $productId => $score) {
-				$scores[$productId] = $score / $weights[$productId];
-			}
-			
-			return $scores;
-		}
 	}

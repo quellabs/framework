@@ -16,7 +16,6 @@ use Quellabs\Recommender\RecommendationSource;
 use Quellabs\Recommender\Reconciliation\SourceSettings;
 use Quellabs\Recommender\Subject;
 use Quellabs\Recommender\SubjectKind;
-use Quellabs\Recommender\VisitorContext;
 use Quellabs\Recommender\VisitorRating;
 
 /**

@@ -10,6 +10,9 @@ use Cake\Database\Connection;
 use Cake\Database\StatementInterface;
 use Quellabs\Recommender\RecommendationEngine;
 use Quellabs\Recommender\Internal\UserSimilarity;
+use Quellabs\Recommender\Internal\UserSimilaritySource;
+use Quellabs\Recommender\Reconciliation\SourceSettings;
+use Quellabs\Recommender\Subject;
 
 /** Integration coverage for neighbour scoring and ordering. */
 class UserSimilarityTest extends IntegrationTestCase {
@@ -23,7 +26,8 @@ class UserSimilarityTest extends IntegrationTestCase {
         $engine->setRating(new MemberId(2), new ProductId(10), 0.0);
         $engine->setRating(new MemberId(2), new ProductId(20), 1.0);
         $this->assertSame([], $users->memberNeighbours(1, 0));
-        $this->assertSame([], $users->memberRecommendations(1, 0));
+        $source = new UserSimilaritySource($this->connection, $this->config, $users);
+        $this->assertSame([], $source->candidates(Subject::member(1), null, 0, new SourceSettings()));
     }
 
     /** Equal similarities use member ID to give stable limited pages.
@@ -68,8 +72,10 @@ class UserSimilarityTest extends IntegrationTestCase {
         };
         $engine = new RecommendationEngine($counting, $this->config);
         $users = new UserSimilarity($counting, $this->config, $engine);
-        $this->assertCount(20, $users->memberRecommendations(1));
-        $this->assertSame(3, $counting->queries);
+        $source = new UserSimilaritySource($counting, $this->config, $users);
+        $this->assertCount(20, $source->candidates(Subject::member(1), null, 0, new SourceSettings()));
+        // The scored path issues a fixed number of queries, whatever the number of neighbours.
+        $this->assertSame(6, $counting->queries);
         $this->assertSame($users->memberSimilarity(1, 2),
             $users->memberNeighbours(1, limit: 1)[0]->similarity);
     }

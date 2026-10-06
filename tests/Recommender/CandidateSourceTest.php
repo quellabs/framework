@@ -8,6 +8,9 @@ use Quellabs\Recommender\Internal\Links\ItemLinksSource;
 use Quellabs\Recommender\Internal\NewProducts\NewProductsSource;
 use Quellabs\Recommender\Internal\SlopeOne\SlopeOneSource;
 use Quellabs\Recommender\Internal\TopRated\TopRatedSource;
+use Quellabs\Recommender\Internal\UserSimilarity;
+use Quellabs\Recommender\Internal\UserSimilaritySource;
+use Quellabs\Recommender\RecommendationEngine;
 use Quellabs\Recommender\Reconciliation\SourceSettings;
 use Quellabs\Recommender\Subject;
 use Quellabs\Recommender\SubjectKind;
@@ -157,6 +160,19 @@ class CandidateSourceTest extends IntegrationTestCase {
         $this->assertSame([40], $this->candidateIds($source->scores(Subject::member(5), [40, 99], new SourceSettings())));
         $this->expectException(\InvalidArgumentException::class);
         $source->scores(Subject::product(1), [1], new SourceSettings());
+    }
+
+    /** User similarity answers only for members.
+     * @return void
+     */
+    public function testUserSimilarityRejectsNonMemberSubjects(): void {
+        $similarity = new UserSimilarity($this->connection, $this->config, new RecommendationEngine($this->connection, $this->config));
+        $source = new UserSimilaritySource($this->connection, $this->config, $similarity);
+        $this->assertTrue($source->supports(SubjectKind::Member));
+        $this->assertFalse($source->supports(SubjectKind::Visitor));
+        $this->assertFalse($source->supports(SubjectKind::Product));
+        $this->expectException(\InvalidArgumentException::class);
+        $source->candidates(Subject::product(1), null, 0, new SourceSettings());
     }
 
     /** Single-product lookups answer only for member and visitor subjects.

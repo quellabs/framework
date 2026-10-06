@@ -8,11 +8,10 @@
 	use Quellabs\Recommender\Internal\Model\ClickModel;
 	use Quellabs\Recommender\Internal\Model\SourceFeatures;
 	use Quellabs\Recommender\Internal\Reconciliation\CandidateRoundState;
-	use Quellabs\Recommender\Internal\Query\CandidateRows;
 	use Quellabs\Recommender\Internal\Query\SubjectRatings;
 	use Quellabs\Recommender\Internal\Eligibility\EligibilityFilter;
 
-	use Quellabs\Recommender\Internal\UserSimilarity;
+	use Quellabs\Recommender\Internal\UserSimilaritySource;
 	use Quellabs\Recommender\Internal\SlopeOne\SlopeOneSource;
 	use Quellabs\Recommender\Internal\Links\ItemLinksSource;
 	use Quellabs\Recommender\Internal\TopRated\TopRatedSource;
@@ -47,8 +46,8 @@
 		/** @var SubjectRatings Seen ratings of member and visitor subjects */
 		private SubjectRatings $ratings;
 
-		/** @var UserSimilarity Neighbour candidates for member subjects */
-		private UserSimilarity $similarity;
+		/** @var UserSimilaritySource User-similarity candidate source */
+		private UserSimilaritySource $similarity;
 
 		/** @var SlopeOneSource Slope One candidate source */
 		private SlopeOneSource $slopeOne;
@@ -63,12 +62,12 @@
 		 * Build the reconciler.
 		 * @param Connection $connection Ratings database connection
 		 * @param RecommendationConfig $config Recommender settings
-		 * @param UserSimilarity $similarity Neighbour source for member subjects
+		 * @param UserSimilaritySource $similarity User-similarity candidate source
 		 * @param SlopeOneSource $slopeOne Slope One candidate source
 		 * @param ItemLinksSource $itemLinks Item-links candidate source
 		 * @param TopRatedSource $topRated Top-rated candidate source
 		 */
-		public function __construct(Connection $connection, RecommendationConfig $config, UserSimilarity $similarity, SlopeOneSource $slopeOne, ItemLinksSource $itemLinks, TopRatedSource $topRated) {
+		public function __construct(Connection $connection, RecommendationConfig $config, UserSimilaritySource $similarity, SlopeOneSource $slopeOne, ItemLinksSource $itemLinks, TopRatedSource $topRated) {
 			$this->connection = $connection;
 			$this->config = $config;
 			$this->similarity = $similarity;
@@ -467,13 +466,7 @@
 		 * @return void
 		 */
 		private function auditSource(RecommendationSource $source, array $missing, ReconciliationRequest $request, Subject $subject, int $category, array &$audit): void {
-			if ($source === RecommendationSource::UserSimilarity) {
-				$memberId = self::memberId($subject);
-
-				if ($memberId !== null) {
-					$this->auditUserSimilarity($memberId, $missing, $request, $category, $audit);
-				}
-
+			if ($source === RecommendationSource::UserSimilarity && $subject->kind !== SubjectKind::Member) {
 				return;
 			}
 
@@ -494,11 +487,11 @@
 		 */
 		private function scoredBy(RecommendationSource $source, Subject $subject, array $missing, ReconciliationRequest $request, int $category): array {
 			return match ($source) {
+				RecommendationSource::UserSimilarity => $this->similarity->scores($subject, $missing, $request->tuning->sources, $category),
 				RecommendationSource::NewProducts => $this->newProducts($request)->scores($subject, $missing, $request->tuning->sources, $category),
 				RecommendationSource::SlopeOne => $this->slopeOne->scores($subject, $missing, $request->tuning->sources, $category),
 				RecommendationSource::ItemLinks => $this->itemLinks->scores($subject, $missing, $request->tuning->sources, $category),
 				RecommendationSource::TopRated => $this->topRated->scores($subject, $missing, $request->tuning->sources, $category),
-				default => throw new \LogicException("Source {$source->value} has no scores query."),
 			};
 		}
 		/**
@@ -542,27 +535,6 @@
 		}
 		
 		/**
-		 * Add user-similarity evidence for missing candidates scored against the member's neighbours.
-		 * @param int $memberId Persisted member
-		 * @param array<int, int> $missing Candidate IDs without a nomination
-		 * @param ReconciliationRequest $request Request with neighbour settings
-		 * @param int $category Resolved category
-		 * @param array<int, array<int, SourceEvidence>> $audit Audit signals, updated in place
-		 * @return void
-		 */
-		private function auditUserSimilarity(int $memberId, array $missing, ReconciliationRequest $request, int $category, array &$audit): void {
-			
-			$rows = $this->similarity->memberRecommendationsScored(
-				$memberId, $request->tuning->sources->minNeighbourSimilarity, $request->tuning->sources->maxNeighbours,
-				count($missing), $category, $missing
-			);
-			
-			foreach ($rows as $row) {
-				$audit[$row['itemId']][] = new SourceEvidence(RecommendationSource::UserSimilarity, $row['score']);
-			}
-		}
-		
-		/**
 		 * Generate the bounded candidates of one source.
 		 * @param RecommendationSource $source Candidate generator
 		 * @param Subject $subject Member or visitor
@@ -581,34 +553,10 @@
 			}
 
 			if ($source === RecommendationSource::UserSimilarity) {
-				return $this->generateUserSimilarity($subject, $category, $depth, $request);
+				return array_map(self::asRow(...), $this->similarity->candidates($subject, null, $depth, $request->tuning->sources, $category));
 			}
 
 			return $this->generateFromLinks($source, $subject, $category, $depth, $request);
-		}
-		
-		/**
-		 * Return the similarity-scored neighbour candidates, up to the depth.
-		 * @param Subject $subject Subject, which must be a member
-		 * @param int $category Resolved category
-		 * @param int $depth Requested source depth
-		 * @param ReconciliationRequest $request Source settings
-		 * @return array<int, CandidateRow>
-		 * @throws \InvalidArgumentException When the subject is not a member
-		 */
-		private function generateUserSimilarity(Subject $subject, int $category, int $depth, ReconciliationRequest $request): array {
-			$memberId = self::memberId($subject) ?? throw new \InvalidArgumentException('User similarity requires a persisted member.');
-
-			$rows = $this->similarity->memberRecommendationsScored($memberId, $request->tuning->sources->minNeighbourSimilarity, $request->tuning->sources->maxNeighbours, $depth, $category);
-			
-			return array_map(function ($row): array {
-				return [
-					'id'           => $row['itemId'],
-					'score'        => $row['score'],
-					'count'        => null,
-					'contributors' => [],
-				];
-			}, $rows);
 		}
 		
 		/**
@@ -642,12 +590,4 @@
 			];
 		}
 
-		/**
-		 * Return the member ID of a subject, or null when the subject is not a member.
-		 * @param Subject $subject Member or visitor
-		 * @return int|null Member ID, or null for a visitor
-		 */
-		private static function memberId(Subject $subject): ?int {
-			return $subject->kind === SubjectKind::Member ? $subject->id : null;
-		}
 	}
