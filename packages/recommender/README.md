@@ -74,21 +74,23 @@ Ratings run from 0.0 to 1.0, and -1.0 marks "not interested".
 
 ## API at a glance
 
-| Task | Method | Returns |
-|------|--------|---------|
-| Rate a product | `RecommendationEngine::setRating()` | `void`, throws on invalid input |
-| Average rating for a product | `RecommendationEngine::productAverageRating()` | `float\|null`, averages genuine ratings only, excluding "not interested" |
-| Number of ratings for a product | `RecommendationEngine::productNumRatings()` | `int`, counts genuine ratings only |
-| Predicted rating for one product | `SlopeOneSource::predict()` with `Subject::member()` | `RecommendationResult\|null`, with the rating in `score` |
-| Predicted ratings for all unrated products | `SlopeOneSource::candidates()` with `Subject::member()` | `RecommendationResult[]`, with the rating in `score` |
-| Displayed slate for a member or visitor, filtered by catalogue eligibility | `RecommendationReconciler::slate()` with `Subject::member()` or `Subject::visitor()` | `RecommendationList` |
-| Record a visitor purchase or click in session state | `VisitorContext::recordPurchase()`, `recordClick()` | `void` |
-| Full bounded eligible pool, not cut to `limit` | `RecommendationReconciler::candidatePool()` with `Subject::member()` or `Subject::visitor()` | `RecommendationList` |
+| Task                                                                       | Method                                                                                       | Returns                                                                  |
+|----------------------------------------------------------------------------|----------------------------------------------------------------------------------------------|--------------------------------------------------------------------------|
+| Rate a product                                                             | `RecommendationEngine::setRating()`                                                          | `void`, throws on invalid input                                          |
+| Average rating for a product                                               | `RecommendationEngine::productAverageRating()`                                               | `float\|null`, averages genuine ratings only, excluding "not interested" |
+| Number of ratings for a product                                            | `RecommendationEngine::productNumRatings()`                                                  | `int`, counts genuine ratings only                                       |
+| Predicted rating for one product                                           | `SlopeOneSource::predict()` with `Subject::member()`                                         | `RecommendationResult\|null`, with the rating in `score`                 |
+| Predicted ratings for all unrated products                                 | `SlopeOneSource::candidates()` with `Subject::member()`                                      | `RecommendationResult[]`, with the rating in `score`                     |
+| Displayed slate for a member or visitor, filtered by catalogue eligibility | `RecommendationReconciler::slate()` with `Subject::member()` or `Subject::visitor()`         | `RecommendationList`                                                     |
+| Record a visitor purchase or click in session state                        | `VisitorContext::recordPurchase()`, `recordClick()`                                          | `void`                                                                   |
+| Full bounded eligible pool, not cut to `limit`                             | `RecommendationReconciler::candidatePool()` with `Subject::member()` or `Subject::visitor()` | `RecommendationList`                                                     |
 
 Visitor requests use the same `ReconciliationRequest`. A visitor request that includes
-`RecommendationSource::UserSimilarity` throws `InvalidArgumentException`, because user similarity needs a persisted member.
+`RecommendationSource::UserSimilarity` throws `InvalidArgumentException`, because user similarity needs a persisted
+member.
 
-Items carry `$diagnostics` (`ReconciliationDiagnostics`) only when the request sets `diagnostics: true`; otherwise it is `null`.
+Items carry `$diagnostics` (`ReconciliationDiagnostics`) only when the request sets `diagnostics: true`; otherwise it is
+`null`.
 `EvaluationRecorder::recordImpression()` rejects a ranked list whose items have no diagnostics. Items are scored by
 `RankFusionScorer` unless a calibrated click model is active for the request. Both implement `CandidateScorer`.
 
@@ -97,23 +99,25 @@ Items carry `$diagnostics` (`ReconciliationDiagnostics`) only when the request s
 The candidate sources in `Quellabs\Recommender\Sources` answer item-to-item lookups, predictions and reasons. Each
 takes a `Subject`, which is a member, a visitor or a product:
 
-| Task | Method |
-|------|--------|
-| Products linked to a product | `ItemLinksSource::candidates(Subject::product($id), ...)` |
-| Products with a Slope One difference to a product | `SlopeOneSource::candidates(Subject::product($id), ...)` |
-| Rated products that explain a recommendation | `ItemLinksSource::reasons(Subject::member($id), $product)` or `Subject::visitor($visitor)` |
-| One predicted rating | `SlopeOneSource::predict(Subject::member($id), $product)` or `Subject::visitor($visitor)` |
-| All predicted ratings | `SlopeOneSource::candidates(Subject::member($id), ...)` or `Subject::visitor($visitor)` |
+| Task                                              | Method                                                                                     |
+|---------------------------------------------------|--------------------------------------------------------------------------------------------|
+| Products linked to a product                      | `ItemLinksSource::candidates(Subject::product($id), ...)`                                  |
+| Products with a Slope One difference to a product | `SlopeOneSource::candidates(Subject::product($id), ...)`                                   |
+| Rated products that explain a recommendation      | `ItemLinksSource::reasons(Subject::member($id), $product)` or `Subject::visitor($visitor)` |
+| One predicted rating                              | `SlopeOneSource::predict(Subject::member($id), $product)` or `Subject::visitor($visitor)`  |
+| All predicted ratings                             | `SlopeOneSource::candidates(Subject::member($id), ...)` or `Subject::visitor($visitor)`    |
 
 ### Limits
 
 - `limit` is the maximum number of results. `0` means all results. `Statistics` methods default to `10`. Source
-  `candidates()` methods have no default, so pass `limit` explicitly. The reconciler reads a member's ratings once per request. Standalone sources load their own ratings.
+  `candidates()` methods have no default, so pass `limit` explicitly. The reconciler reads a member's ratings once per
+  request. Standalone sources load their own ratings.
 - With an `EligibilityProvider`, the recommender fetches deeper candidates until `limit` eligible results are found
   or the candidate depth cap (`max_candidate_depth`, default 2000) is reached. It can return fewer results than
   `limit` without an error. Check the count when the list must be full.
 - `limit = 0` with an eligibility provider checks every candidate, which costs more on large catalogues.
-- `RecommendationReconciler` `limit` is the size of the displayed slate, from 1 to 100. Zero is rejected, because a slate
+- `RecommendationReconciler` `limit` is the size of the displayed slate, from 1 to 100. Zero is rejected, because a
+  slate
   is always bounded.
 
 ### Missing values and eligibility
@@ -129,13 +133,13 @@ takes a `Subject`, which is a member, a visitor or a product:
 
 ### Scores
 
-| Method | `score` meaning |
-|--------|-----------------|
-| `ItemLinksSource::candidates()` for a product | Liked count of the co-occurrence link |
-| `SlopeOneSource::candidates()` for a product | Average Slope One difference, which can be negative |
-| `RecommendationReconciler` slates | `rankingScore` is the fused rank score. Each `evidence` entry's `rawScore` is the source's native score: for item links, the sum of liked count times (rating minus threshold); for top-rated, the average rating |
-| `SlopeOneSource::candidates()` and `predict()` for a member or visitor | The predicted rating, in `[0, 1]` |
-| `ItemLinksSource::reasons()` | Liked count of the link to the given product |
+| Method                                                                 | `score` meaning                                                                                                                                                                                                   |
+|------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `ItemLinksSource::candidates()` for a product                          | Liked count of the co-occurrence link                                                                                                                                                                             |
+| `SlopeOneSource::candidates()` for a product                           | Average Slope One difference, which can be negative                                                                                                                                                               |
+| `RecommendationReconciler` slates                                      | `rankingScore` is the fused rank score. Each `evidence` entry's `rawScore` is the source's native score: for item links, the sum of liked count times (rating minus threshold); for top-rated, the average rating |
+| `SlopeOneSource::candidates()` and `predict()` for a member or visitor | The predicted rating, in `[0, 1]`                                                                                                                                                                                 |
+| `ItemLinksSource::reasons()`                                           | Liked count of the link to the given product                                                                                                                                                                      |
 
 ## Documentation
 

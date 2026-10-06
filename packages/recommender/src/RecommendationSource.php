@@ -1,7 +1,6 @@
 <?php
 	
 	namespace Quellabs\Recommender;
-
 	
 	
 	/** Candidate generators available to reconciliation. */
@@ -21,7 +20,7 @@
 		public static function mask(array $sources): int {
 			return array_reduce($sources, fn(int $mask, self $source) => $mask | $source->bit(), 0);
 		}
-	
+		
 		/**
 		 * Return the bit this source occupies in a canonical source mask.
 		 * @return int Source bit

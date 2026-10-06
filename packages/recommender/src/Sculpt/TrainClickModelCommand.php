@@ -63,7 +63,7 @@
 			
 			$sources = $this->parseSources($rawSources);
 			$context = self::parseContext($config->get('context'));
-
+			
 			$connection = $this->getRecommenderProvider()->getConnection();
 			$id = (new ClickModelTrainer($connection))->train((int)$category, $placement,
 				$sources, self::parseTimestamp($config->get('from')), self::parseTimestamp($config->get('to')),
@@ -79,7 +79,7 @@
 			])->fetchAssoc();
 			
 			$artifact = self::decodeArtifact((string)$row['artifact']);
-
+			
 			$this->output->success("Created model candidate {$id} ({$row['status']}).");
 			$this->printSampleCounts($artifact);
 			$this->printMetrics($artifact);
@@ -96,10 +96,10 @@
 			if ($context !== null && !is_string($context)) {
 				throw new \InvalidArgumentException('Context must be a string.');
 			}
-
+			
 			return $context;
 		}
-
+		
 		/**
 		 * Decode the stored model artifact JSON.
 		 * @param string $json Stored artifact JSON
@@ -109,14 +109,14 @@
 		 */
 		private static function decodeArtifact(string $json): array {
 			$artifact = json_decode($json, true, 512, JSON_THROW_ON_ERROR);
-
+			
 			if (!is_array($artifact)) {
 				throw new \UnexpectedValueException('Stored model artifact is invalid.');
 			}
-
+			
 			return $artifact;
 		}
-
+		
 		/**
 		 * Parse a comma-separated list of source values, rejecting unknown and repeated entries.
 		 * @param string $rawSources Comma-separated source values
@@ -152,7 +152,7 @@
 		private static function parseTimestamp(mixed $raw): DateTimeImmutable {
 			if (
 				!is_string($raw) ||
-				preg_match( '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/D', $raw) !== 1
+				preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/D', $raw) !== 1
 			) {
 				throw new \InvalidArgumentException('Training timestamps require ISO-8601 with an explicit UTC offset.');
 			}

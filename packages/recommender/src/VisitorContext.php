@@ -6,7 +6,7 @@
 	use Quellabs\Recommender\Internal\Identifier;
 	use Quellabs\Recommender\Internal\ImplicitRating;
 	use Quellabs\Recommender\Internal\RatingRule;
-
+	
 	/**
 	 * Holds the in-memory rating state for an anonymous visitor (no member_id).
 	 *
@@ -42,7 +42,7 @@
 		 */
 		public function setRating(int $product, float $rating, ?int $category = null): void {
 			Identifier::assertId($product, 'Product ID');
-
+			
 			if (!RatingRule::isValid($rating, RecommendationConfig::NOT_INTERESTED)) {
 				throw new \InvalidArgumentException("Rating must be in [0.0, 1.0] or the not-interested sentinel, got {$rating}.");
 			}
@@ -73,7 +73,7 @@
 		public function setNotInterested(int $product, ?int $category = null): void {
 			$this->setRating($product, RecommendationConfig::NOT_INTERESTED, $category);
 		}
-
+		
 		/**
 		 * Record a purchase as a rating of 1.0 for a product in the given category.
 		 * @param int $product The product ID
@@ -84,7 +84,7 @@
 		public function recordPurchase(int $product, ?int $category = null): void {
 			$this->setRating($product, ImplicitRating::PURCHASE, $category);
 		}
-
+		
 		/**
 		 * Record a click as a rating of 0.7, or raise an existing genuine rating by 0.01 up to 1.0.
 		 * @param int $product The product ID
@@ -96,12 +96,12 @@
 			Identifier::assertId($product, 'Product ID');
 			$resolvedCategory = $this->config->resolveCategory($category);
 			$existing = $this->genuineRating($product, $resolvedCategory);
-
+			
 			if ($existing === null || $existing < ImplicitRating::PURCHASE) {
 				$this->setRating($product, ImplicitRating::afterClick($existing), $resolvedCategory);
 			}
 		}
-
+		
 		/**
 		 * Delete a rating for a product in the given category.
 		 * @param int $product The product ID
@@ -151,10 +151,10 @@
 					return $entry['rating'];
 				}
 			}
-
+			
 			return null;
 		}
-
+		
 		/**
 		 * Return all rated product IDs for the given category.
 		 * @param int|null $category Defaults to the configured default category

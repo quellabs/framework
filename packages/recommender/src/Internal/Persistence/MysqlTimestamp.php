@@ -7,7 +7,7 @@
 	
 	/** Formats timestamps for MySQL DATETIME(6) columns. */
 	final class MysqlTimestamp {
-	
+		
 		/**
 		 * Return the UTC MySQL microsecond timestamp for a point in time.
 		 * @param DateTimeImmutable $time Caller time

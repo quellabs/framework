@@ -16,7 +16,7 @@
 		
 		/** @var array<int, int> Rated products contributing to the score */
 		public array $contributingProductIds;
-
+		
 		/** @var int|null Summed pair support, or null when the source does not count support */
 		public ?int $supportCount;
 		
@@ -33,7 +33,7 @@
 			if ($supportCount !== null && $supportCount < 1) {
 				throw new \InvalidArgumentException("Support count must be at least 1, got {$supportCount}.");
 			}
-
+			
 			$this->productId = $productId;
 			$this->score = $score;
 			$this->source = $source;

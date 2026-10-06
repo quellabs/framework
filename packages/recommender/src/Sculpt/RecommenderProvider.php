@@ -73,7 +73,7 @@
 			$this->recommendationConfig = RecommendationConfig::fromArray($this->getConfig());
 			return $this->recommendationConfig;
 		}
-	
+		
 		/**
 		 * Resolve a short driver name to a fully qualified CakePHP driver class.
 		 * @param string $driver The configured database driver name or alias

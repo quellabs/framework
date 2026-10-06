@@ -27,22 +27,22 @@
 		 */
 		public function __construct(array $artifact) {
 			[$intercept, $rawCoefficients, $rawMeans, $rawScales] = self::readArtifactShape($artifact);
-
+			
 			$coefficients = [];
 			$means = [];
 			$scales = [];
-
+			
 			foreach ($rawCoefficients as $name => $coefficient) {
 				[$coefficients[$name], $means[$name], $scales[$name]] = self::readCoefficient($name, $coefficient, $rawMeans, $rawScales);
 			}
-
+			
 			$this->artifact = $artifact;
 			$this->intercept = $intercept;
 			$this->coefficients = $coefficients;
 			$this->means = $means;
 			$this->scales = $scales;
 		}
-
+		
 		/**
 		 * Validate the version-1 top-level fields and return the typed values the constructor needs.
 		 * @param array<string, mixed> $artifact Stored model artifact
@@ -61,10 +61,10 @@
 			) {
 				throw new \UnexpectedValueException('Incompatible click model artifact.');
 			}
-
+			
 			return [(float)$artifact['intercept'], $artifact['coefficients'], $artifact['means'], $artifact['scales']];
 		}
-
+		
 		/**
 		 * Validate one coefficient with its mean and scale and return them as floats.
 		 * @param int|string $name Feature name
@@ -88,7 +88,7 @@
 			) {
 				throw new \UnexpectedValueException("Invalid click model coefficient for feature '{$name}'.");
 			}
-
+			
 			return [(float)$coefficient, (float)$means[$name], (float)$scales[$name]];
 		}
 		

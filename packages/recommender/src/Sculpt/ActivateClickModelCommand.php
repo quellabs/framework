@@ -40,11 +40,11 @@
 		 */
 		public function execute(ConfigurationManager $config): int {
 			$id = $config->get('id');
-	
+			
 			if (!is_string($id)) {
 				throw new \InvalidArgumentException('A model ID is required.');
 			}
-	
+			
 			(new ClickModelTrainer($this->getRecommenderProvider()->getConnection()))->activate($id);
 			$this->output->success('Click model activated.');
 			return 0;

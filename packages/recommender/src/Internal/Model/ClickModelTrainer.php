@@ -73,16 +73,16 @@
 				artifact, trained_at, activated_at, status)
 			VALUES (UNHEX(:id), \'click\', :category, :placement, :source_mask, :context_key, 1,
 				:artifact, UTC_TIMESTAMP(6), NULL, :status)',
-			[
-				'id'          => $id,
-				'category'    => $category,
-				'placement'   => $placement,
-				'source_mask' => $mask,
-				'context_key' => $contextKey ?? '',
-				'artifact'    => json_encode($artifact, JSON_THROW_ON_ERROR),
-				'status'      => $artifact['validated'] ? 'validated' : 'rejected',
-			]);
-					
+				[
+					'id'          => $id,
+					'category'    => $category,
+					'placement'   => $placement,
+					'source_mask' => $mask,
+					'context_key' => $contextKey ?? '',
+					'artifact'    => json_encode($artifact, JSON_THROW_ON_ERROR),
+					'status'      => $artifact['validated'] ? 'validated' : 'rejected',
+				]);
+			
 			return $id;
 		}
 		
@@ -115,7 +115,7 @@
 				', [
 					'model_id' => $modelId,
 				])->fetchAssoc();
-					
+				
 				if (!$row || $row['status'] !== 'validated') {
 					throw new \InvalidArgumentException("Model '{$modelId}' is missing or has not passed validation.");
 				}
@@ -133,13 +133,13 @@
 					source_mask = :source_mask AND
 					context_key = :context_key AND
 					status = \'active\'',
-				[
-					'objective'   => $row['objective'],
-					'category'    => $row['category'],
-					'placement'   => $row['placement'],
-					'source_mask' => $row['source_mask'],
-					'context_key' => $row['context_key'],
-				]);
+					[
+						'objective'   => $row['objective'],
+						'category'    => $row['category'],
+						'placement'   => $row['placement'],
+						'source_mask' => $row['source_mask'],
+						'context_key' => $row['context_key'],
+					]);
 				$this->connection->execute('UPDATE vogoo_models SET status = \'active\',
 				activated_at = UTC_TIMESTAMP(6) WHERE id = UNHEX(:id)', ['id' => $modelId]);
 			});
@@ -162,32 +162,32 @@
 			if ($category < 0 || $category > Identifier::MAX) {
 				throw new \InvalidArgumentException("Category must be an unsigned 32-bit integer, got {$category}.");
 			}
-	
+			
 			if ($from >= $to) {
 				throw new \InvalidArgumentException('Cohort start ' . $from->format(DATE_ATOM) . ' must be before its end ' . $to->format(DATE_ATOM) . '.');
 			}
-	
+			
 			if ($to > $asOf) {
 				throw new \InvalidArgumentException('Cohort end ' . $to->format(DATE_ATOM) . ' must not follow the outcome cutoff ' . $asOf->format(DATE_ATOM) . '.');
 			}
-	
+			
 			if ($clickWindowSeconds < 1) {
 				throw new \InvalidArgumentException("Click window must be positive, got {$clickWindowSeconds}.");
 			}
-	
+			
 			if ($sources === []) {
 				throw new \InvalidArgumentException('At least one recommendation source is required.');
 			}
-	
+			
 			Identifier::validateKey($placement, 64, 'placement');
-	
+			
 			if ($contextKey !== null) {
 				Identifier::validateKey($contextKey, 128, 'context');
 			}
-	
+			
 			return self::distinctSourceMask($sources);
 		}
-	
+		
 		/**
 		 * Combine the enabled sources into a source mask, rejecting repeated or non-source values.
 		 * @param array<int, RecommendationSource> $sources Enabled source set
@@ -196,15 +196,15 @@
 		 */
 		private static function distinctSourceMask(array $sources): int {
 			$mask = 0;
-	
+			
 			foreach ($sources as $source) {
 				if (!$source instanceof RecommendationSource || ($mask & $source->bit()) !== 0) {
 					throw new \InvalidArgumentException('Sources must be distinct RecommendationSource values.');
 				}
-	
+				
 				$mask |= $source->bit();
 			}
-	
+			
 			return $mask;
 		}
 		
@@ -233,7 +233,7 @@
 		 */
 		private function fetchMatureRows(int $category, string $placement, int $mask, ?string $contextKey, DateTimeImmutable $from, DateTimeImmutable $to, DateTimeImmutable $asOf, int $clickWindowSeconds): array {
 			$clicked = OutcomeSubquery::exists('click', 'as_of', 'click_window');
-	
+			
 			return $this->connection->execute("
 				SELECT
 					HEX(i.id) AS impression_id,
@@ -253,16 +253,16 @@
 				      TIMESTAMPADD(SECOND, :mature_window, i.shown_at) <= :mature_as_of
 				ORDER BY i.shown_at ASC, i.id ASC, item.position ASC
 			", [
-				'category' => $category,
-				'placement' => $placement,
-				'mask' => $mask,
-				'context' => $contextKey ?? '',
-				'from' => MysqlTimestamp::utc($from),
-				'to' => MysqlTimestamp::utc($to),
-				'as_of' => MysqlTimestamp::utc($asOf),
-				'click_window' => $clickWindowSeconds,
+				'category'      => $category,
+				'placement'     => $placement,
+				'mask'          => $mask,
+				'context'       => $contextKey ?? '',
+				'from'          => MysqlTimestamp::utc($from),
+				'to'            => MysqlTimestamp::utc($to),
+				'as_of'         => MysqlTimestamp::utc($asOf),
+				'click_window'  => $clickWindowSeconds,
 				'mature_window' => $clickWindowSeconds,
-				'mature_as_of' => MysqlTimestamp::utc($asOf),
+				'mature_as_of'  => MysqlTimestamp::utc($asOf),
 			])->fetchAll('assoc');
 		}
 		
@@ -335,18 +335,18 @@
 		 */
 		private static function decodeFeatureValues(array $values): array {
 			$features = [];
-
+			
 			foreach ($values as $name => $value) {
 				if (!is_string($name) || !is_numeric($value) || !is_finite((float)$value)) {
 					throw new \UnexpectedValueException('Recorded feature ' . var_export($name, true) . ' must be a finite number.');
 				}
-
+				
 				$features[$name] = (float)$value;
 			}
-
+			
 			return $features;
 		}
-
+		
 		/**
 		 * Check that the recorded depths cover the enabled sources and agree with their log-depth features.
 		 * @param array<mixed> $depths Recorded depth per source
@@ -434,4 +434,4 @@
 				'last_shown_at'       => $groupTimes[$groupIds[$last]],
 			];
 		}
-		}
+	}

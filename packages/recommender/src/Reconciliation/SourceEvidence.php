@@ -6,6 +6,7 @@
 	
 	
 	use Quellabs\Recommender\RecommendationSource;
+	
 	/** One candidate's evidence from one enabled source. */
 	readonly class SourceEvidence {
 		
@@ -55,7 +56,7 @@
 			}
 			
 			self::assertContributingProductIds($contributingProductIds);
-
+			
 			$this->source = $source;
 			$this->rawScore = $rawScore;
 			$this->sourceRank = $sourceRank;
@@ -63,7 +64,7 @@
 			$this->contributingProductIds = $contributingProductIds;
 			$this->logOddsContribution = $logOddsContribution;
 		}
-
+		
 		/**
 		 * Reject contributing item IDs outside the unsigned 32-bit range.
 		 * @param array<int, mixed> $ids Contributing item IDs

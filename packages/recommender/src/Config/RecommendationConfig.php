@@ -5,10 +5,10 @@
 	use Quellabs\Recommender\Internal\Identifier;
 	
 	readonly class RecommendationConfig {
-
+		
 		/** @var float Sentinel rating stored in vogoo_ratings to mark not interested */
 		public const float NOT_INTERESTED = -1.0;
-
+		
 		/** @var int Default category for all operations */
 		private int $category;
 		
@@ -64,7 +64,7 @@
 			$this->maxCandidateDepth = $maxCandidateDepth;
 			$this->maxBackfillRounds = $maxBackfillRounds;
 			$this->maxEligibilityBatchSize = $maxEligibilityBatchSize;
-
+			
 			$this->validateRatingThresholds();
 			$this->validateLimits();
 		}
@@ -77,7 +77,7 @@
 		 */
 		public static function fromArray(array $values): self {
 			$defaults = new self();
-
+			
 			return new self(
 				category: self::intValue($values, 'category', $defaults->category),
 				thresholdNrCommonRatings: self::intValue($values, 'threshold_nr_common_ratings', $defaults->thresholdNrCommonRatings),
@@ -91,7 +91,7 @@
 				maxEligibilityBatchSize: self::intValue($values, 'max_eligibility_batch_size', $defaults->maxEligibilityBatchSize),
 			);
 		}
-	
+		
 		/**
 		 * Return the maximum generated depth per source.
 		 * @return int Maximum generated depth per source
@@ -198,7 +198,7 @@
 		private static function intValue(array $values, string $key, int $default): int {
 			return isset($values[$key]) && is_numeric($values[$key]) ? (int)$values[$key] : $default;
 		}
-	
+		
 		/**
 		 * Read a float value, falling back to the default when the key is missing or non-numeric.
 		 * @param array<string, mixed> $values Raw config values
@@ -209,7 +209,7 @@
 		private static function floatValue(array $values, string $key, float $default): float {
 			return isset($values[$key]) && is_numeric($values[$key]) ? (float)$values[$key] : $default;
 		}
-	
+		
 		/**
 		 * Read a boolean value, parsing string forms such as "false" and "0".
 		 * @param array<string, mixed> $values Raw config values
@@ -221,14 +221,14 @@
 			if (!isset($values[$key])) {
 				return $default;
 			}
-	
+			
 			if (is_string($values[$key])) {
 				return filter_var($values[$key], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? $default;
 			}
-	
+			
 			return (bool)$values[$key];
 		}
-	
+		
 		/**
 		 * Reject rating, cost and sentinel values outside their allowed ranges.
 		 * @return void

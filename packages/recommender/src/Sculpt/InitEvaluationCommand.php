@@ -41,11 +41,11 @@
 		 */
 		public function execute(ConfigurationManager $config): int {
 			$connection = $this->getRecommenderProvider()->getConnection();
-	
+			
 			$this->applyMigration($connection);
 			
 			EvaluationSchema::verify($connection);
-	
+			
 			$this->output->success('Evaluation tables are ready.');
 			return 0;
 		}

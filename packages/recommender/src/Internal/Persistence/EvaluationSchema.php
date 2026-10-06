@@ -18,12 +18,12 @@
 				'vogoo_impression_evidence', 'vogoo_outcomes'];
 			$params = [];
 			$names = [];
-	
+			
 			foreach ($tables as $index => $table) {
 				$params['table_' . $index] = $table;
 				$names[] = ':table_' . $index;
 			}
-	
+			
 			$inList = implode(',', $names);
 			$rows = $connection->execute("
 				SELECT
@@ -37,7 +37,7 @@
 				throw new \RuntimeException('Recommender evaluation tables are missing; run recommender:init-evaluation-db.');
 			}
 		}
-	
+		
 		/**
 		 * Check every evaluation table against the expected columns, engine, indexes and foreign keys.
 		 * @param Connection $connection Evaluation database connection
@@ -52,7 +52,7 @@
 				self::verifyForeignKeys($connection, $table);
 			}
 		}
-	
+		
 		/** @var array<string, array<int, string>> Expected column names per evaluation table */
 		private const EXPECTED_COLUMNS = [
 			'vogoo_models'              => ['id', 'objective', 'category', 'placement', 'source_mask',
@@ -69,18 +69,18 @@
 		/** @var array<string, array<string, array{0: bool, 1: array<int, string>}>> Expected unique flag and columns per index */
 		private const EXPECTED_INDEXES = [
 			'vogoo_models'              => [
-				'PRIMARY'                     => [true, ['id']],
+				'PRIMARY'               => [true, ['id']],
 				'uq_vogoo_active_model' => [true, ['objective', 'category', 'placement',
 					'source_mask', 'context_key', 'active_marker']],
 			],
 			'vogoo_impressions'         => [
-				'PRIMARY'                          => [true, ['id']],
+				'PRIMARY'                    => [true, ['id']],
 				'ix_vogoo_impression_key'    => [false, ['category', 'placement', 'source_mask',
 					'context_key', 'shown_at']],
 				'ix_vogoo_impression_member' => [false, ['member_id', 'shown_at']],
 			],
 			'vogoo_impression_items'    => [
-				'PRIMARY'                            => [true, ['impression_id', 'item_id']],
+				'PRIMARY'                      => [true, ['impression_id', 'item_id']],
 				'uq_vogoo_impression_position' => [true, ['impression_id', 'position']],
 				'ix_vogoo_item_model'          => [false, ['model_id']],
 			],
@@ -88,7 +88,7 @@
 				'PRIMARY' => [true, ['impression_id', 'item_id', 'source']],
 			],
 			'vogoo_outcomes'            => [
-				'PRIMARY'                     => [true, ['event_id']],
+				'PRIMARY'               => [true, ['event_id']],
 				'ix_vogoo_outcome_item' => [false, ['impression_id', 'item_id', 'event_type', 'occurred_at']],
 			],
 		];
@@ -121,17 +121,17 @@
 		
 		/** @var array<string, int> Required character length per column */
 		private const COLUMN_LENGTHS = [
-			'id' => 16,
+			'id'            => 16,
 			'impression_id' => 16,
-			'model_id' => 16,
-			'objective' => 16,
-			'placement' => 64,
-			'context_key' => 128,
-			'status' => 16,
-			'score_kind' => 24,
-			'source' => 32,
-			'event_id' => 128,
-			'event_type' => 16,
+			'model_id'      => 16,
+			'objective'     => 16,
+			'placement'     => 64,
+			'context_key'   => 128,
+			'status'        => 16,
+			'score_kind'    => 24,
+			'source'        => 32,
+			'event_id'      => 128,
+			'event_type'    => 16,
 		];
 		
 		/**
@@ -172,7 +172,7 @@
 				$definition = $byName[$column];
 				$expectedType = self::expectedColumnType($column);
 				$nullable = in_array($column, self::NULLABLE_COLUMNS[$table], true);
-
+				
 				if (
 					self::hasIncompatibleType($definition, $column, $expectedType, $nullable) ||
 					self::hasIncompatibleShape($definition, $column, $expectedType)
@@ -181,7 +181,7 @@
 				}
 			}
 		}
-
+		
 		/**
 		 * Report whether a column's data type, nullability, unsigned flag or collation differ from the schema.
 		 * @param array<string, string|int|float|bool|null> $definition information_schema row for the column
@@ -193,13 +193,13 @@
 		private static function hasIncompatibleType(array $definition, string $column, string $expectedType, bool $nullable): bool {
 			$unsigned = in_array($expectedType, ['int', 'bigint'], true);
 			$asciiKey = in_array($column, ['placement', 'context_key', 'event_id'], true);
-
+			
 			return $definition['DATA_TYPE'] !== $expectedType ||
 				($definition['IS_NULLABLE'] === 'YES') !== $nullable ||
 				($unsigned && !str_contains((string)$definition['COLUMN_TYPE'], 'unsigned')) ||
 				($asciiKey && $definition['COLLATION_NAME'] !== 'ascii_bin');
 		}
-
+		
 		/**
 		 * Report whether a column's length, precision, default or generated marker differ from the schema.
 		 * @param array<string, string|int|float|bool|null> $definition information_schema row for the column
@@ -323,14 +323,14 @@
 					      k.CONSTRAINT_NAME = :constraint
 					ORDER BY k.ORDINAL_POSITION
 				', [
-					'table' => $table,
+					'table'      => $table,
 					'constraint' => $name,
 				])->fetchAll('assoc');
 				
 				$actualDefinition = $keys === [] ? null : [$keys[0]['REFERENCED_TABLE_NAME'],
 					array_column($keys, 'COLUMN_NAME'), array_column($keys, 'REFERENCED_COLUMN_NAME'),
 					$keys[0]['DELETE_RULE']];
-					
+				
 				if ($actualDefinition !== $definition) {
 					throw new \RuntimeException("Existing {$table}.{$name} has an incompatible foreign key.");
 				}

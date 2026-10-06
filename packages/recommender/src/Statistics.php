@@ -40,7 +40,9 @@
 					COUNT(DISTINCT `member_id`) AS cnter
 				FROM `vogoo_ratings`
 				WHERE `category` = :category
-			', $this->config->resolveCategory($category));
+			',
+				$this->config->resolveCategory($category)
+			);
 		}
 		
 		/**

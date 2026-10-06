@@ -1,12 +1,12 @@
 <?php
-
+	
 	namespace Quellabs\Recommender\Reconciliation;
-
+	
 	use Quellabs\Recommender\RecommendationSource;
-
+	
 	/** Chooses the active scorer for a ranking partition. */
 	interface ScorerResolver {
-
+		
 		/**
 		 * Return the active scorer for a partition, or null to use rank fusion.
 		 * @param int $category Resolved category

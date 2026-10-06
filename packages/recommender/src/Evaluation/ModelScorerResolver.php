@@ -1,7 +1,7 @@
 <?php
-
+	
 	namespace Quellabs\Recommender\Evaluation;
-
+	
 	use Cake\Database\Connection;
 	use Quellabs\Recommender\Internal\Model\ClickModel;
 	use Quellabs\Recommender\Internal\Model\ClickModelScorer;
@@ -9,13 +9,13 @@
 	use Quellabs\Recommender\RecommendationSource;
 	use Quellabs\Recommender\Reconciliation\ActiveScorer;
 	use Quellabs\Recommender\Reconciliation\ScorerResolver;
-
+	
 	/** Serves the active click model of a partition from the evaluation tables. */
 	readonly class ModelScorerResolver implements ScorerResolver {
-
+		
 		/** @var Connection Ratings database connection */
 		private Connection $connection;
-
+		
 		/**
 		 * Store the database connection.
 		 * @param Connection $connection Ratings database connection
@@ -23,7 +23,7 @@
 		public function __construct(Connection $connection) {
 			$this->connection = $connection;
 		}
-
+		
 		/**
 		 * Return the active click model for a partition, when the model table exists.
 		 * @param int $category Resolved category
@@ -43,11 +43,11 @@
 			', [
 				'table_name' => 'vogoo_models',
 			])->fetchAssoc();
-
+			
 			if ((int)$exists['total'] === 0) {
 				return null;
 			}
-
+			
 			$row = $this->connection->execute('
 				SELECT
 					HEX(id) AS model_id,
@@ -68,24 +68,24 @@
 				'context_key' => $contextKey ?? '',
 				'status'      => 'active',
 			])->fetchAssoc();
-
+			
 			if (!$row) {
 				return null;
 			}
-
+			
 			if ((int)$row['feature_schema_version'] !== 1) {
 				throw new \UnexpectedValueException("Active click model feature schema version {$row['feature_schema_version']} is incompatible; expected 1.");
 			}
-
+			
 			$model = ClickModel::fromJson((string)$row['artifact']);
 			$expected = array_merge(['log_position'], SourceFeatures::names($sources));
-
+			
 			sort($expected);
-
+			
 			if ($model->featureNames() !== $expected) {
 				throw new \UnexpectedValueException("Active click model {$row['model_id']} feature names do not match the request sources.");
 			}
-
+			
 			return new ActiveScorer(strtolower((string)$row['model_id']), new ClickModelScorer($model));
 		}
 	}

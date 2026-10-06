@@ -10,6 +10,7 @@
 	use Quellabs\Recommender\Neighbour;
 	use Quellabs\Recommender\RecommendationEngine;
 	use Quellabs\Recommender\RatingKind;
+	
 	/**
 	 * User-based collaborative filtering: member similarity scoring and
 	 * neighbour-based recommendations.
@@ -32,9 +33,8 @@
 		
 		/** @var RecommendationEngine Engine used for rating lookups */
 		private RecommendationEngine $engine;
-	
-
-	
+		
+		
 		/**
 		 * Build the similarity service.
 		 * @param Connection $connection The CakePHP database connection
@@ -104,36 +104,36 @@
 			$resolvedCategory = $this->config->resolveCategory($category);
 			$minSimilarity = max(0, min(100, $minSimilarity));
 			$limit = max(0, $limit);
-	
+			
 			$ownRatingCount = $this->engine->memberNumRatings($memberId, RatingKind::Genuine, $resolvedCategory);
-	
+			
 			if ($ownRatingCount === 0) {
 				return [];
 			}
-	
+			
 			$neighbours = [];
-	
+			
 			foreach ($this->neighbourRows($memberId, $resolvedCategory) as $row) {
 				if (!is_numeric($row['member_id']) || !is_numeric($row['common_count']) || !is_numeric($row['squared_diff'])) {
 					throw new \UnexpectedValueException('Neighbour row must contain numeric member_id, common_count and squared_diff.');
 				}
-	
+				
 				$otherId = (int)$row['member_id'];
 				$similarity = $this->scoreSimilarity((int)$row['common_count'], (float)$row['squared_diff'], $ownRatingCount);
-	
+				
 				if ($similarity === 0 || $similarity < $minSimilarity) {
 					continue;
 				}
-	
+				
 				$neighbours[] = new Neighbour($otherId, $similarity);
 			}
-
+			
 			usort($neighbours, function ($a, $b): int {
 				return ($b->similarity <=> $a->similarity) ?: ($a->memberId <=> $b->memberId);
 			});
 			return Results::limit($neighbours, $limit);
 		}
-	
+		
 		/**
 		 * Return the common-rating count and squared rating difference between a member and every other member who rated the same products.
 		 * @param int $memberId The member ID

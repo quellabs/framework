@@ -6,7 +6,7 @@
 	
 	/** Base class for recommender Sculpt commands that need the recommender provider. */
 	abstract class RecommenderCommand extends CommandBase {
-	
+		
 		/**
 		 * Return the recommender provider that created this command.
 		 * @return RecommenderProvider The provider holding the database connection and recommender settings
@@ -16,7 +16,7 @@
 			if (!$this->provider instanceof RecommenderProvider) {
 				throw new \LogicException('Recommender commands require a RecommenderProvider.');
 			}
-	
+			
 			return $this->provider;
 		}
 	}

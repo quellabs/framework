@@ -4,10 +4,10 @@
 	
 	/** Shared bounds and validators for the recommender's identifiers and keys. */
 	final class Identifier {
-	
+		
 		/** @var int Largest valid member, product or category ID */
 		public const MAX = 4294967295;
-
+		
 		/**
 		 * Validate that an ID is an unsigned 32-bit integer.
 		 * @param int $id ID to validate
@@ -34,7 +34,7 @@
 				throw new \InvalidArgumentException("{$name} must be at least {$min}, got {$value}.");
 			}
 		}
-
+		
 		/**
 		 * Validate that a threshold is within an inclusive range.
 		 * @param int $value Value to validate
@@ -49,7 +49,7 @@
 				throw new \InvalidArgumentException("{$name} must be between {$min} and {$max}, got {$value}.");
 			}
 		}
-
+		
 		/**
 		 * Validate a key as a non-empty printable ASCII string within a byte limit.
 		 * @param string $value Key to validate

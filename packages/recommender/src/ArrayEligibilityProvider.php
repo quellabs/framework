@@ -5,9 +5,9 @@
 	use Quellabs\Recommender\Internal\Identifier;
 	
 	/**
- * In-memory adapter for catalogs small enough to supply every eligible ID.
- * An empty list accepts no candidates. Pass null to a source's candidates() to skip filtering.
- */
+	 * In-memory adapter for catalogs small enough to supply every eligible ID.
+	 * An empty list accepts no candidates. Pass null to a source's candidates() to skip filtering.
+	 */
 	readonly class ArrayEligibilityProvider implements EligibilityProvider {
 		
 		/** @var array<int, true> Eligible IDs as keys */

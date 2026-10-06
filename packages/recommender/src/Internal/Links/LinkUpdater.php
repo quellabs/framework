@@ -5,7 +5,7 @@
 	use Cake\Database\Connection;
 	use Quellabs\Recommender\Config\RecommendationConfig;
 	use Quellabs\Recommender\Sources\SlopeOneSource;
-
+	
 	/**
 	 * Maintains independent liked and Slope One pair measures during rating writes.
 	 *
@@ -110,10 +110,10 @@
 				      rating >= :minimum
 			',
 				[
-					'member' => $memberId,
+					'member'   => $memberId,
 					'category' => $category,
-					'product' => $productId,
-					'minimum' => $minimum
+					'product'  => $productId,
+					'minimum'  => $minimum
 				]
 			)->fetchAll('assoc');
 			
@@ -150,12 +150,12 @@
 						item_id2 = :second AND
 						category = :category',
 					[
-						'first' => $first,
-						'second' => $second,
+						'first'    => $first,
+						'second'   => $second,
 						'category' => $category,
-						'liked' => $likedDelta,
-						'slope' => $slopeDelta,
-						'diff' => $diffDelta,
+						'liked'    => $likedDelta,
+						'slope'    => $slopeDelta,
+						'diff'     => $diffDelta,
 					]);
 				return;
 			}
@@ -166,12 +166,12 @@
             ON DUPLICATE KEY UPDATE liked_count = liked_count + VALUES(liked_count),
             slope_count = slope_count + VALUES(slope_count), diff_slope = diff_slope + VALUES(diff_slope)',
 				[
-					'first' => $first,
-					'second' => $second,
+					'first'    => $first,
+					'second'   => $second,
 					'category' => $category,
-					'liked' => $likedDelta,
-					'slope' => $slopeDelta,
-					'diff' => $diffDelta,
+					'liked'    => $likedDelta,
+					'slope'    => $slopeDelta,
+					'diff'     => $diffDelta,
 				]
 			);
 		}

@@ -3,7 +3,7 @@
 	namespace Quellabs\Recommender\Integration;
 	
 	use Cake\Database\Connection;
-use Quellabs\Contracts\Context\MethodContextInterface;
+	use Quellabs\Contracts\Context\MethodContextInterface;
 	use Quellabs\Contracts\DependencyInjection\ServiceProviderInterface;
 	use Quellabs\Discover\Provider\AbstractProvider;
 	use Quellabs\Recommender\Config\RecommendationConfig;
@@ -11,13 +11,13 @@ use Quellabs\Contracts\Context\MethodContextInterface;
 	use Quellabs\Recommender\Evaluation\ModelScorerResolver;
 	use Quellabs\Recommender\Evaluation\EvaluationReport;
 	use Quellabs\Recommender\Internal\Reconciliation\RequestSourcesFactory;
-use Quellabs\Recommender\Reconciliation\RecommendationReconciler;
-use Quellabs\Recommender\Internal\UserSimilarity;
-use Quellabs\Recommender\Sources\UserSimilaritySource;
-use Quellabs\Recommender\Sources\SlopeOneSource;
-use Quellabs\Recommender\Sources\ItemLinksSource;
-use Quellabs\Recommender\Sources\TopRatedSource;
-use Quellabs\Recommender\RecommendationEngine;
+	use Quellabs\Recommender\Reconciliation\RecommendationReconciler;
+	use Quellabs\Recommender\Internal\UserSimilarity;
+	use Quellabs\Recommender\Sources\UserSimilaritySource;
+	use Quellabs\Recommender\Sources\SlopeOneSource;
+	use Quellabs\Recommender\Sources\ItemLinksSource;
+	use Quellabs\Recommender\Sources\TopRatedSource;
+	use Quellabs\Recommender\RecommendationEngine;
 	
 	/**
 	 * Registers the recommender services with Canvas's DI container.
@@ -26,7 +26,7 @@ use Quellabs\Recommender\RecommendationEngine;
 	 * and are injected through setConfig() before createInstance() is called.
 	 */
 	class ServiceProvider extends AbstractProvider implements ServiceProviderInterface {
-	
+		
 		/**
 		 * Check whether this provider handles the requested class.
 		 * @param string $className Fully-qualified class name being resolved
@@ -40,10 +40,10 @@ use Quellabs\Recommender\RecommendationEngine;
 				EvaluationRecorder::class,
 				EvaluationReport::class,
 			];
-	
+			
 			return in_array($className, $supportedClasses, true);
 		}
-	
+		
 		/**
 		 * Build the requested service, constructing RecommendationConfig from the loaded config values.
 		 * @param string $className Fully-qualified class name being resolved
@@ -60,14 +60,14 @@ use Quellabs\Recommender\RecommendationEngine;
 					new RequestSourcesFactory($connection, $config, new UserSimilarity($connection, $config, new RecommendationEngine($connection, $config))),
 					new ModelScorerResolver($connection));
 			}
-
+			
 			if ($className !== RecommendationConfig::class) {
 				return new $className(...$dependencies);
 			}
-	
+			
 			return RecommendationConfig::fromArray($this->getConfig());
 		}
-
+		
 		/**
 		 * Return the first dependency of the given type.
 		 * @template T of object
@@ -82,7 +82,7 @@ use Quellabs\Recommender\RecommendationEngine;
 					return $dependency;
 				}
 			}
-
+			
 			throw new \InvalidArgumentException("Missing dependency {$type}.");
 		}
 	}

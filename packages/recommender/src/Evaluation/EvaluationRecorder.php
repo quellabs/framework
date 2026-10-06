@@ -43,7 +43,7 @@
 			if ($member !== null) {
 				Identifier::assertId($member, 'Member ID');
 			}
-
+			
 			EvaluationSchema::requireTables($this->connection);
 			
 			if ($shown->items === []) {
@@ -78,7 +78,7 @@
 		public function recordOutcome(ImpressionId $impressionId, int $product, string $eventId, OutcomeType $type, DateTimeImmutable $occurredAt): void {
 			Identifier::assertId($product, 'Product ID');
 			EvaluationSchema::requireTables($this->connection);
-
+			
 			if (preg_match('/^[\x20-\x7e]{1,128}$/D', $eventId) !== 1) {
 				throw new \InvalidArgumentException("Event ID must be 1 to 128 printable ASCII characters, got '{$eventId}'.");
 			}
@@ -114,7 +114,7 @@
 		public function deleteMemberEvaluations(int $member): void {
 			Identifier::assertId($member, 'Member ID');
 			EvaluationSchema::requireTables($this->connection);
-
+			
 			$this->connection->execute('DELETE FROM `vogoo_impressions` WHERE `member_id` = ?', [$member]);
 		}
 		
@@ -128,7 +128,7 @@
 			if (preg_match('/^[0-9a-f]{32}$/D', (string)$shown->scorerId) !== 1) {
 				throw new \UnexpectedValueException("Scorer ID '{$shown->scorerId}' is not a model row ID.");
 			}
-
+			
 			$row = $this->connection->execute('
 				SELECT
 					`artifact`,
@@ -149,12 +149,12 @@
 			}
 			
 			$this->assertPartitionMatches($row, $shown);
-
+			
 			$model = ClickModel::fromJson((string)$row['artifact']);
 			$this->assertItemsMatchModel($shown, $model);
 			return $model;
 		}
-
+		
 		/**
 		 * Check that a stored model row belongs to the partition of a calibrated list.
 		 * @param array<string, string|int|float|bool|null> $row Stored model row
@@ -174,7 +174,7 @@
 				throw new \UnexpectedValueException("Calibrated list does not match the partition of model {$shown->scorerId}.");
 			}
 		}
-
+		
 		/**
 		 * Check that each displayed item carries the model's features and reproduces its reference score.
 		 * @param RecommendationList $shown Calibrated list
@@ -184,12 +184,12 @@
 		 */
 		private function assertItemsMatchModel(RecommendationList $shown, ClickModel $model): void {
 			$expectedFeatures = array_values(array_filter($model->featureNames(), fn($name) => $name !== 'log_position'));
-
+			
 			foreach ($shown->items as $item) {
 				$diagnostics = $this->diagnosticsOf($shown, $item);
 				$actualFeatures = array_keys($diagnostics->featureSnapshot);
 				sort($actualFeatures);
-
+				
 				if (
 					$actualFeatures !== $expectedFeatures ||
 					!$this->hasCompleteFeatureSnapshot($diagnostics, $shown->sources) ||
@@ -356,14 +356,14 @@
 			if ($item->diagnostics !== null) {
 				return $item->diagnostics;
 			}
-
+			
 			if ($shown->scoreKind === ScoreKind::Direct) {
 				return new ReconciliationDiagnostics();
 			}
-
+			
 			throw new \UnexpectedValueException("Product {$item->productId} has no diagnostics; reconcile with diagnostics: true to record a ranked impression.");
 		}
-
+		
 		/**
 		 * Check whether the diagnostics hold a complete version-1 feature snapshot for the enabled sources.
 		 * @param ReconciliationDiagnostics $diagnostics Features and depths of a displayed item

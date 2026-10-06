@@ -37,16 +37,16 @@
 			
 			return [
 				'feature_schema_version' => 1,
-				'intercept' => $fitted['intercept'],
-				'coefficients' => $fitted['coefficients'],
-				'means' => $means,
-				'scales' => $scales,
-				'training_rate' => $trainingRate,
-				'training_items' => count($training),
-				'holdout_items' => count($holdout),
-				'model_metrics' => $holdoutReport['model_metrics'],
-				'baseline_metrics' => $holdoutReport['baseline_metrics'],
-				'validated' => $holdoutReport['validated'],
+				'intercept'              => $fitted['intercept'],
+				'coefficients'           => $fitted['coefficients'],
+				'means'                  => $means,
+				'scales'                 => $scales,
+				'training_rate'          => $trainingRate,
+				'training_items'         => count($training),
+				'holdout_items'          => count($holdout),
+				'model_metrics'          => $holdoutReport['model_metrics'],
+				'baseline_metrics'       => $holdoutReport['baseline_metrics'],
+				'validated'              => $holdoutReport['validated'],
 			];
 		}
 		
@@ -90,7 +90,7 @@
 				[$interceptGradient, $gradient] = $this->gradient($training, $names, $intercept, $coefficients, $means, $scales);
 				$candidate = $this->lineSearch($training, $names, $loss, $intercept, $coefficients,
 					$interceptGradient, $gradient, $means, $scales);
-					
+				
 				if ($candidate['loss'] > $loss || !is_finite($candidate['loss'])) {
 					throw new \RuntimeException('Click model fitting did not converge.');
 				}
@@ -170,9 +170,9 @@
 				
 				if ($candidateLoss <= $loss || $step < 1e-12) {
 					return [
-						'intercept' => $candidateIntercept,
+						'intercept'    => $candidateIntercept,
 						'coefficients' => $candidateCoefficients,
-						'loss' => $candidateLoss,
+						'loss'         => $candidateLoss,
 					];
 				}
 				
@@ -194,7 +194,7 @@
 			$predictions = [];
 			
 			foreach ($holdout as $sample) {
-				$predictions[] = ['probability' => $this->probability($sample['features'], $intercept,
+				$predictions[] = ['probability'              => $this->probability($sample['features'], $intercept,
 					$coefficients, $means, $scales), 'label' => $sample['label']];
 			}
 			
@@ -203,11 +203,11 @@
 			$validated = $modelMetrics['log_loss'] <= $baselineMetrics['log_loss'] &&
 				$modelMetrics['brier'] <= $baselineMetrics['brier'] &&
 				$modelMetrics['ece'] <= 0.05;
-				
+			
 			return [
-				'model_metrics' => $modelMetrics,
+				'model_metrics'    => $modelMetrics,
 				'baseline_metrics' => $baselineMetrics,
-				'validated' => $validated,
+				'validated'        => $validated,
 			];
 		}
 		
@@ -281,21 +281,21 @@
 				$predicted = array_sum(array_column($slice, 'probability')) / count($slice);
 				$observed = array_sum(array_column($slice, 'label')) / count($slice);
 				$bins[] = [
-					'count' => count($slice),
+					'count'     => count($slice),
 					'predicted' => $predicted,
-					'observed' => $observed,
+					'observed'  => $observed,
 				];
 				$ece += count($slice) / count($predictions) * abs($predicted - $observed);
 			}
 			
 			return [
 				'log_loss' => $logLoss / count($predictions),
-				'brier' => $brier / count($predictions),
-				'ece' => $ece,
-				'bins' => $bins,
+				'brier'    => $brier / count($predictions),
+				'ece'      => $ece,
+				'bins'     => $bins,
 			];
 		}
-	
+		
 		/**
 		 * Clamp a probability away from 0 and 1 so log loss stays finite.
 		 * @param float $probability Predicted probability

@@ -4,7 +4,7 @@
 	
 	/** Validity rule shared by every rating entry point. */
 	final class RatingRule {
-	
+		
 		/**
 		 * Check that a rating is finite and either within [0.0, 1.0] or the not-interested sentinel.
 		 * @param float $rating Rating to check

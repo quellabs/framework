@@ -120,9 +120,9 @@
 					[
 						'threshold1' => $threshold,
 						'threshold2' => $threshold,
-						'category' => $category,
+						'category'   => $category,
 					]);
-					
+				
 				$connection->transactional(function () use ($connection, $category): void {
 					$connection->execute('DELETE FROM vogoo_links WHERE category = :category', ['category' => $category]);
 					$connection->execute('INSERT INTO vogoo_links

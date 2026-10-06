@@ -7,6 +7,7 @@
 	
 	
 	use Quellabs\Recommender\RecommendationSource;
+	
 	/** Validated inputs for one optional reconciliation request. */
 	readonly class ReconciliationRequest {
 		
@@ -87,7 +88,7 @@
 				$this->newProductIds, $this->additionalCandidateIds, $this->category, $this->contextKey, $this->tuning,
 				$this->diagnostics);
 		}
-
+		
 		/**
 		 * Validate and deduplicate sources, returning them in canonical bit order.
 		 * @param array<mixed> $sources Requested sources

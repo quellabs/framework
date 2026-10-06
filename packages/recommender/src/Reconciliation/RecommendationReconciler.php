@@ -8,39 +8,39 @@
 	use Quellabs\Recommender\Internal\Reconciliation\RequestSourcesFactory;
 	use Quellabs\Recommender\Internal\Reconciliation\SourceFeatures;
 	use Quellabs\Recommender\Internal\Eligibility\EligibilityFilter;
-
-
+	
+	
 	use Quellabs\Recommender\RecommendationList;
 	use Quellabs\Recommender\RecommendationResult;
 	use Quellabs\Recommender\ScoreKind;
-
+	
 	use Quellabs\Recommender\RecommendationSource;
-
+	
 	use Quellabs\Recommender\Subject;
 	use Quellabs\Recommender\SubjectKind;
-
+	
 	/**
 	 * Combines explicitly selected candidate generators using reciprocal ranks.
 	 *
 	 * @phpstan-import-type CandidateRow from CandidateRoundState
 	 */
 	readonly class RecommendationReconciler {
-
+		
 		/** @var RecommendationConfig Recommender settings */
 		private RecommendationConfig $config;
-
+		
 		/** @var EligibilityFilter Batched eligibility checks */
 		private EligibilityFilter $filter;
-
+		
 		/** @var RequestSourcesFactory Builds the candidate sources for each request */
 		private RequestSourcesFactory $sourceFactory;
 		
 		/** @var RankFusionScorer Scorer for lists without an active scorer */
 		private RankFusionScorer $rankFusion;
-
+		
 		/** @var ScorerResolver|null Chooses the active scorer per partition, null for rank fusion only */
 		private ?ScorerResolver $scorers;
-
+		
 		/**
 		 * Build the reconciler.
 		 * @param RecommendationConfig $config Recommender settings
@@ -65,7 +65,7 @@
 		public function slate(Subject $subject, ReconciliationRequest $request): RecommendationList {
 			return $this->firstPage($this->candidatePool($subject, $request), $request->limit);
 		}
-
+		
 		/**
 		 * Return the full bounded eligible pool for a member or visitor.
 		 * @param Subject $subject Member or visitor
@@ -76,7 +76,7 @@
 		public function candidatePool(Subject $subject, ReconciliationRequest $request): RecommendationList {
 			$this->assertSourcesFitSubject($subject, $request);
 			$category = $this->config->resolveCategory($request->category);
-
+			
 			return $this->rank($request, $category, $subject);
 		}
 		
@@ -92,7 +92,7 @@
 				throw new \InvalidArgumentException('User similarity needs a persisted member and cannot serve a visitor.');
 			}
 		}
-
+		
 		/**
 		 * Return the first page of a list, keeping its metadata.
 		 * @param RecommendationList $list Full pool
@@ -122,25 +122,25 @@
 			$roundCap = $this->config->maxBackfillRounds();
 			$batchSize = max(1, $request->tuning->maxEligibilityBatchSize ?? $this->config->maxEligibilityBatchSize());
 			$state = new CandidateRoundState($request->sources, min(max(50, 5 * $request->limit), $depthCap), $depthCap);
-
+			
 			$this->collectCandidateRounds($request, $state, $category, $ratings, $subject, $sources, $roundCap, $batchSize);
-
+			
 			$signals = $this->collectSignals($request, $state);
 			$auditSignals = $this->auditSignals($state->eligibleIds(), $signals, $request, $subject, $category, $sources);
 			$active = $this->scorers?->resolve($category, $request->placement, $request->sources, $request->contextKey);
 			$scorer = $active === null ? $this->rankFusion : $active->scorer;
-
+			
 			$items = [];
-
+			
 			foreach ($state->eligibleIds() as $id) {
 				$evidence = array_merge($signals[$id] ?? [], $auditSignals[$id] ?? []);
 				$items[] = $this->buildRankedItem($id, $evidence, $request, $state->depths(), $scorer);
 			}
-
+			
 			usort($items, function ($a, $b): int {
 				return ($b->rankingScore <=> $a->rankingScore) ?: ($a->productId <=> $b->productId);
 			});
-
+			
 			return RecommendationList::ranked(
 				$category, $request->placement, $request->sources, $request->contextKey,
 				$active?->id, $items, $request->limit
@@ -155,14 +155,14 @@
 		 */
 		private function applyColdStart(ReconciliationRequest $request, array $ratings): ReconciliationRequest {
 			$history = count(array_filter($ratings, fn(float $rating): bool => $rating >= 0.0));
-
+			
 			if ($history >= $request->tuning->minHistory) {
 				return $request;
 			}
-
+			
 			return $request->withSources([RecommendationSource::TopRated]);
 		}
-
+		
 		/**
 		 * Query the sources round by round, sending new candidates to eligibility until enough are found or the caps are reached.
 		 * @param ReconciliationRequest $request Request
@@ -172,7 +172,7 @@
 		 * @param Subject $subject Member or visitor
 		 * @param int $roundCap Maximum number of rounds
 		 * @param int<1, max> $batchSize Maximum IDs per eligibility call
-		 @param RequestSources $sources Candidate sources of this request
+		 * @param RequestSources $sources Candidate sources of this request
 		 * @return void
 		 * @throws \RuntimeException When a source changes its candidate order during depth backfill
 		 */
@@ -211,17 +211,17 @@
 		 * @param CandidateRoundState $state Round bookkeeping, updated in place
 		 * @param int $category Resolved category
 		 * @param Subject $subject Member or visitor
-		 @param RequestSources $sources Candidate sources of this request
+		 * @param RequestSources $sources Candidate sources of this request
 		 * @return array<int, int> Unsubmitted IDs this source newly nominated
 		 * @throws \RuntimeException When the source changes its candidate order during depth backfill
 		 */
 		private function nominateSource(RecommendationSource $source, int $round, ReconciliationRequest $request, CandidateRoundState $state, int $category, Subject $subject, RequestSources $sources): array {
 			$key = $source->value;
-
+			
 			if ($round > 0 && $state->depth($key) <= $state->nominationCount($key)) {
 				return [];
 			}
-
+			
 			$current = $this->generate($source, $subject, $category, $state->depth($key), $request, $sources);
 			$old = $state->nominations($key);
 			
@@ -362,15 +362,15 @@
 		 * @param ReconciliationRequest $request Enabled source settings
 		 * @param Subject $subject Member or visitor
 		 * @param int $category Resolved category
-		 @param RequestSources $sources Candidate sources of this request
+		 * @param RequestSources $sources Candidate sources of this request
 		 * @return array<int, array<int, SourceEvidence>> Additional audit signals without source rank
 		 */
 		private function auditSignals(array $eligibleIds, array $nominatedSignals, ReconciliationRequest $request, Subject $subject, int $category, RequestSources $sources): array {
 			$audit = [];
-
+			
 			foreach ($request->sources as $source) {
 				$missing = $this->unnominatedIds($eligibleIds, $nominatedSignals, $source);
-
+				
 				if ($missing !== []) {
 					$this->auditSource($source, $missing, $request, $subject, $category, $sources, $audit);
 				}
@@ -387,11 +387,11 @@
 		 * @param Subject $subject Member or visitor
 		 * @param int $category Resolved category
 		 * @param array<int, array<int, SourceEvidence>> $audit Audit signals by candidate, filled in place
-		  @param RequestSources $sources Candidate sources of this request
+		 * @param RequestSources $sources Candidate sources of this request
 		 * @return void
 		 */
 		private function auditSource(RecommendationSource $source, array $missing, ReconciliationRequest $request, Subject $subject, int $category, RequestSources $sources, array &$audit): void {
-
+			
 			foreach ($this->scoredBy($source, $subject, $missing, $request, $category, $sources) as $result) {
 				$audit[$result->productId][] = new SourceEvidence($source, self::rawScore($result), null,
 					$result->supportCount, $result->contributingProductIds);
@@ -405,7 +405,7 @@
 		 * @param array<int, int> $missing Candidate IDs to score
 		 * @param ReconciliationRequest $request Source settings
 		 * @param int $category Resolved category
-		 @param RequestSources $sources Candidate sources of this request
+		 * @param RequestSources $sources Candidate sources of this request
 		 * @return array<int, \Quellabs\Recommender\RecommendationResult> Scored candidates
 		 */
 		private function scoredBy(RecommendationSource $source, Subject $subject, array $missing, ReconciliationRequest $request, int $category, RequestSources $sources): array {
@@ -417,6 +417,7 @@
 				RecommendationSource::TopRated => $sources->topRated->scores($subject, $missing, $request->tuning->sources, $category),
 			};
 		}
+		
 		/**
 		 * Return the native score of a result, or null for a new product, which has no score.
 		 * @param RecommendationResult $result Candidate result
@@ -425,6 +426,7 @@
 		private static function rawScore(RecommendationResult $result): ?float {
 			return $result->source === RecommendationSource::NewProducts ? null : $result->score;
 		}
+		
 		/**
 		 * Return the eligible IDs that the given source did not nominate.
 		 * @param array<int, int> $eligibleIds Eligible pool IDs
@@ -455,11 +457,11 @@
 		 * @param int $category Resolved category
 		 * @param int $depth Requested source depth
 		 * @param ReconciliationRequest $request Source settings
-		 @param RequestSources $sources Candidate sources of this request
+		 * @param RequestSources $sources Candidate sources of this request
 		 * @return array<int, CandidateRow>
 		 */
 		private function generate(RecommendationSource $source, Subject $subject, int $category, int $depth, ReconciliationRequest $request, RequestSources $sources): array {
-		$settings = $request->tuning->sources;
+			$settings = $request->tuning->sources;
 			$results = match ($source) {
 				RecommendationSource::NewProducts => $sources->newProducts($request->newProductIds)->candidates($subject, null, $depth, $settings, $category),
 				RecommendationSource::TopRated => $sources->topRated->candidates($subject, null, $depth, $settings, $category),
@@ -484,5 +486,5 @@
 				'contributors' => $result->contributingProductIds,
 			];
 		}
-
+		
 	}

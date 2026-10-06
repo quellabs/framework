@@ -24,7 +24,7 @@
 		// Maintain slope_count and diff_slope incrementally on every rating change.
 		// When false, run "sculpt recommender:rebuild-links" after bulk imports.
 		'direct_slope'                => true,
-
+		
 		// Reconciliation depth and provider payload bounds.
 		'max_candidate_depth'         => 2000,
 		'max_backfill_rounds'         => 3,

@@ -4,7 +4,7 @@
 	
 	/** SQL predicate for whether a displayed item received a timely outcome event. */
 	final class OutcomeSubquery {
-	
+		
 		/**
 		 * Return an EXISTS expression for an outcome within its attribution window after the impression.
 		 * The outer query must alias vogoo_impressions as i and vogoo_impression_items as item.

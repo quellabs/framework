@@ -8,7 +8,7 @@
 	use Quellabs\Recommender\Internal\ImplicitRating;
 	use Quellabs\Recommender\MemberId;
 	use Quellabs\Recommender\ProductId;
-use Quellabs\Recommender\Internal\Links\LinkUpdater;
+	use Quellabs\Recommender\Internal\Links\LinkUpdater;
 	use Quellabs\Recommender\Internal\RatingRule;
 	
 	/**
@@ -71,7 +71,7 @@ use Quellabs\Recommender\Internal\Links\LinkUpdater;
 			];
 			
 			$sql .= $this->ratingFilterSql($kind, $params);
-	
+			
 			$row = $this->connection->execute($sql, $params)->fetchAssoc();
 			return (int)$row['number_of_ratings'];
 		}
@@ -132,18 +132,18 @@ use Quellabs\Recommender\Internal\Links\LinkUpdater;
 			
 			$sql .= $this->ratingFilterSql($kind, $params);
 			$sql .= $this->orderSql($order);
-	
+			
 			$rows = $this->connection->execute($sql, $params)->fetchAll('assoc');
 			$ratings = [];
-
+			
 			foreach ($rows as $row) {
 				$typed = $this->typedRatingRow($row, 'product_id');
 				$ratings[] = new Rating($member, $typed['id'], $typed['rating'], $typed['ts']);
 			}
-
+			
 			return $ratings;
 		}
-	
+		
 		/**
 		 * Delete a member's ratings in one category. When incremental link updates are enabled,
 		 * each rating is removed via deleteRating() to keep vogoo_links consistent.
@@ -157,7 +157,7 @@ use Quellabs\Recommender\Internal\Links\LinkUpdater;
 			Identifier::assertId($member, 'Member ID');
 			$this->deleteRatingsWhere('member_id', $member, $this->config->resolveCategory($category));
 		}
-
+		
 		/**
 		 * Erase a member's ratings in every category. Evaluation history is erased separately by EvaluationRecorder.
 		 * @param int $member The member ID
@@ -253,18 +253,18 @@ use Quellabs\Recommender\Internal\Links\LinkUpdater;
 			];
 			
 			$sql .= $this->orderSql($order);
-	
+			
 			$rows = $this->connection->execute($sql, $params)->fetchAll('assoc');
 			$ratings = [];
-
+			
 			foreach ($rows as $row) {
 				$typed = $this->typedRatingRow($row, 'member_id');
 				$ratings[] = new Rating($typed['id'], $product, $typed['rating'], $typed['ts']);
 			}
-
+			
 			return $ratings;
 		}
-	
+		
 		/**
 		 * Delete all ratings for a product. When incremental link updates are enabled,
 		 * each rating is removed via deleteRating() to keep vogoo_links consistent.
@@ -318,7 +318,7 @@ use Quellabs\Recommender\Internal\Links\LinkUpdater;
 			if (empty($row)) {
 				return null;
 			}
-
+			
 			return new Rating($memberId, $productId, (float)$row['rating'], (string)$row['ts']);
 		}
 		
@@ -335,18 +335,18 @@ use Quellabs\Recommender\Internal\Links\LinkUpdater;
 			$memberId = $member->value;
 			$productId = $product->value;
 			$resolvedCategory = $this->config->resolveCategory($category);
-
+			
 			if (!RatingRule::isValid($rating, RecommendationConfig::NOT_INTERESTED)) {
 				throw new \InvalidArgumentException("Rating must be in [0.0, 1.0] or the not-interested value, got {$rating}.");
 			}
-
+			
 			// One transaction keeps vogoo_links consistent with vogoo_ratings if a statement fails.
 			$this->connection->transactional(function () use ($memberId, $productId, $resolvedCategory, $rating): void {
 				$previous = $this->fetchExistingRating($memberId, $productId, $resolvedCategory);
-
+				
 				// -1.0 marks "no previous rating" for the link and slope updates
 				$this->triggerIncrementalUpdates($memberId, $productId, $resolvedCategory, $rating, $previous ?? -1.0);
-
+				
 				if ($previous !== null) {
 					$this->updateRatingRow($memberId, $productId, $resolvedCategory, $rating);
 				} else {
@@ -366,7 +366,7 @@ use Quellabs\Recommender\Internal\Links\LinkUpdater;
 		public function recordPurchase(MemberId $member, ProductId $product, ?int $category = null): void {
 			$this->setRating($member, $product, ImplicitRating::PURCHASE, $category);
 		}
-
+		
 		/**
 		 * Record a click as a rating of 0.7, or raise an existing rating by 0.01 up to 1.0.
 		 * @param MemberId $member The member ID
@@ -378,12 +378,12 @@ use Quellabs\Recommender\Internal\Links\LinkUpdater;
 		public function recordClick(MemberId $member, ProductId $product, ?int $category = null): void {
 			$resolvedCategory = $this->config->resolveCategory($category);
 			$existing = $this->memberRating($member, $product, RatingKind::Genuine, $resolvedCategory);
-
+			
 			if ($existing === null || $existing->rating < ImplicitRating::PURCHASE) {
 				$this->setRating($member, $product, ImplicitRating::afterClick($existing?->rating), $resolvedCategory);
 			}
 		}
-
+		
 		/**
 		 * Mark a product as not interested for a member.
 		 * @param MemberId $member The member ID
@@ -434,7 +434,7 @@ use Quellabs\Recommender\Internal\Links\LinkUpdater;
 		}
 		
 		// ----- Internal helpers -----
-
+		
 		/**
 		 * Validate one raw vogoo_ratings row and return its ID, rating and timestamp in typed form.
 		 * @param array<string, mixed> $row Row selecting the ID column, rating and ts
@@ -446,10 +446,10 @@ use Quellabs\Recommender\Internal\Links\LinkUpdater;
 			if (!is_numeric($row[$idColumn]) || !is_numeric($row['rating']) || !is_string($row['ts'])) {
 				throw new \UnexpectedValueException("Rating row must have a numeric {$idColumn} and rating and a string ts.");
 			}
-
+			
 			return ['id' => (int)$row[$idColumn], 'rating' => (float)$row['rating'], 'ts' => $row['ts']];
 		}
-
+		
 		/**
 		 * Build the rating filter for a count or listing query, binding the sentinel when filtering on it.
 		 * @param RatingKind $kind Which ratings to match
@@ -461,10 +461,10 @@ use Quellabs\Recommender\Internal\Links\LinkUpdater;
 				$params['not_interested'] = RecommendationConfig::NOT_INTERESTED;
 				return ' AND `rating` = :not_interested';
 			}
-
+			
 			return $kind === RatingKind::All ? '' : ' AND `rating` >= 0.0';
 		}
-
+		
 		/**
 		 * Build the ORDER BY clause for a ratings listing.
 		 * @param RatingOrder|null $order Sort order, or null when no order is requested
@@ -479,7 +479,7 @@ use Quellabs\Recommender\Internal\Links\LinkUpdater;
 				RatingOrder::RatingDescending => ' ORDER BY `rating` DESC',
 			};
 		}
-
+		
 		/**
 		 * Delete the ratings of one member or one product in a category.
 		 * With incremental link updates enabled, each rating is removed via deleteRating().
@@ -492,12 +492,12 @@ use Quellabs\Recommender\Internal\Links\LinkUpdater;
 		private function deleteRatingsWhere(string $column, int $id, ?int $category): void {
 			$categoryClause = $category === null ? '' : ' AND `category` = :category';
 			$params = $category === null ? ['id' => $id] : ['id' => $id, 'category' => $category];
-
+			
 			if (!$this->config->isDirectLinks() && !$this->config->isDirectSlope()) {
 				$this->connection->execute("DELETE FROM `vogoo_ratings` WHERE `{$column}` = :id{$categoryClause}", $params);
 				return;
 			}
-
+			
 			$otherColumn = $column === 'member_id' ? 'product_id' : 'member_id';
 			$rows = $this->connection->execute("
 				SELECT
@@ -506,11 +506,11 @@ use Quellabs\Recommender\Internal\Links\LinkUpdater;
 				FROM `vogoo_ratings`
 				WHERE `{$column}` = :id{$categoryClause}
 			", $params)->fetchAll('assoc');
-
+			
 			foreach ($rows as $row) {
 				$other = (int)$row[$otherColumn];
 				$rowCategory = (int)$row['category'];
-
+				
 				if ($column === 'member_id') {
 					$this->deleteRating(new MemberId($id), new ProductId($other), $rowCategory);
 				} else {
@@ -518,7 +518,7 @@ use Quellabs\Recommender\Internal\Links\LinkUpdater;
 				}
 			}
 		}
-	
+		
 		/**
 		 * Return the member's current rating for a product, or null when no rating row exists.
 		 * Drives the INSERT or UPDATE choice and the incremental updates.
@@ -583,11 +583,11 @@ use Quellabs\Recommender\Internal\Links\LinkUpdater;
 				      `product_id` = :product_id AND
 				      `category` = :category
 			', [
-				'rating'     => $rating,
-				'member_id'  => $memberId,
-				'product_id' => $productId,
-				'category'   => $category,
-			])->rowCount() === 1;
+					'rating'     => $rating,
+					'member_id'  => $memberId,
+					'product_id' => $productId,
+					'category'   => $category,
+				])->rowCount() === 1;
 		}
 		
 		/**
@@ -603,10 +603,10 @@ use Quellabs\Recommender\Internal\Links\LinkUpdater;
 				INSERT INTO `vogoo_ratings` (`member_id`, `product_id`, `category`, `rating`, `ts`)
 				VALUES (:member_id, :product_id, :category, :rating, NOW())
 			', [
-				'member_id'  => $memberId,
-				'product_id' => $productId,
-				'category'   => $category,
-				'rating'     => $rating,
-			])->rowCount() === 1;
+					'member_id'  => $memberId,
+					'product_id' => $productId,
+					'category'   => $category,
+					'rating'     => $rating,
+				])->rowCount() === 1;
 		}
 	}

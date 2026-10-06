@@ -10,13 +10,13 @@
 	 *
 	 */
 	final class TemporaryTable {
-	
+		
 		/** @var int Rows per multi-row INSERT */
 		private const CHUNK_SIZE = 500;
-	
+		
 		/** @var Connection Database connection */
 		private Connection $connection;
-	
+		
 		/**
 		 * Build the helper.
 		 * @param Connection $connection The CakePHP database connection
@@ -24,7 +24,7 @@
 		public function __construct(Connection $connection) {
 			$this->connection = $connection;
 		}
-	
+		
 		/**
 		 * Load distinct product IDs into a temporary table for the duration of one operation.
 		 * @template T
@@ -37,7 +37,7 @@
 			return $this->scoped($prefix, 'product_id INT UNSIGNED PRIMARY KEY',
 				fn(string $table) => $this->insertIds($table, $ids), $operation);
 		}
-	
+		
 		/**
 		 * Load a product-to-rating map into a temporary table for the duration of one operation.
 		 * @template T
@@ -48,15 +48,15 @@
 		 */
 		public function withRatingTable(string $prefix, array $ratings, callable $operation): mixed {
 			$rows = [];
-	
+			
 			foreach ($ratings as $id => $rating) {
 				$rows[] = [$id, $rating];
 			}
-	
+			
 			return $this->scoped($prefix, 'product_id INT UNSIGNED PRIMARY KEY, rating DOUBLE NOT NULL',
 				fn(string $table) => $this->insertRows($table, ['product_id', 'rating'], $rows), $operation);
 		}
-	
+		
 		/**
 		 * Load neighbour similarities into a temporary table for the duration of one operation.
 		 * @template T
@@ -67,11 +67,11 @@
 		 */
 		public function withNeighbourTable(string $prefix, array $neighbours, callable $operation): mixed {
 			$rows = array_map(fn($neighbour) => [$neighbour->memberId, $neighbour->similarity], $neighbours);
-	
+			
 			return $this->scoped($prefix, 'member_id INT UNSIGNED PRIMARY KEY, similarity INT UNSIGNED NOT NULL',
 				fn(string $table) => $this->insertRows($table, ['member_id', 'similarity'], $rows), $operation);
 		}
-	
+		
 		/**
 		 * Insert distinct product IDs into an existing table in batches.
 		 * @param string $table Table name
@@ -82,7 +82,7 @@
 			$rows = array_map(fn($id) => [$id], array_values(array_unique($ids)));
 			$this->insertRows($table, ['product_id'], $rows);
 		}
-	
+		
 		/**
 		 * Drop a temporary table if it exists.
 		 * @param string $name Table name
@@ -91,7 +91,7 @@
 		public function dropTable(string $name): void {
 			$this->connection->execute("DROP TEMPORARY TABLE IF EXISTS {$name}");
 		}
-	
+		
 		/**
 		 * Create a uniquely named table, load it, run the operation, and drop the table afterwards.
 		 * @template T
@@ -104,7 +104,7 @@
 		private function scoped(string $prefix, string $definition, callable $load, callable $operation): mixed {
 			$table = $prefix . bin2hex(random_bytes(6));
 			$this->connection->execute("CREATE TEMPORARY TABLE {$table} ({$definition})");
-	
+			
 			try {
 				$load($table);
 				return $operation($table);
@@ -112,7 +112,7 @@
 				$this->connection->execute("DROP TEMPORARY TABLE {$table}");
 			}
 		}
-	
+		
 		/**
 		 * Insert rows as multi-row statements of at most CHUNK_SIZE rows.
 		 * @param string $table Table name
@@ -121,26 +121,26 @@
 		 * @return void
 		 */
 		private function insertRows(string $table, array $columns, array $rows): void {
-		foreach (array_chunk($rows, self::CHUNK_SIZE) as $batch) {
-			$groups = [];
-			$params = [];
-
-			foreach ($batch as $rowIndex => $row) {
-				$names = [];
-
-				foreach ($row as $columnIndex => $value) {
-					$name = "r{$rowIndex}c{$columnIndex}";
-					$names[] = ":{$name}";
-					$params[$name] = $value;
+			foreach (array_chunk($rows, self::CHUNK_SIZE) as $batch) {
+				$groups = [];
+				$params = [];
+				
+				foreach ($batch as $rowIndex => $row) {
+					$names = [];
+					
+					foreach ($row as $columnIndex => $value) {
+						$name = "r{$rowIndex}c{$columnIndex}";
+						$names[] = ":{$name}";
+						$params[$name] = $value;
+					}
+					
+					$groups[] = '(' . implode(',', $names) . ')';
 				}
-
-				$groups[] = '(' . implode(',', $names) . ')';
+				
+				$this->connection->execute(
+					sprintf('INSERT INTO %s (%s) VALUES %s', $table, implode(', ', $columns), implode(',', $groups)),
+					$params
+				);
 			}
-
-			$this->connection->execute(
-				sprintf('INSERT INTO %s (%s) VALUES %s', $table, implode(', ', $columns), implode(',', $groups)),
-				$params
-			);
 		}
-	}
 	}
