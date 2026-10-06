@@ -2,14 +2,13 @@
 
 namespace Quellabs\Recommender\Tests;
 
-use Quellabs\Recommender\ProductId;
-
-use Quellabs\Recommender\MemberId;
-
-use Quellabs\Recommender\ItemRecommender;
+use Quellabs\Recommender\Sources\ItemLinksSource;
+use Quellabs\Recommender\Sources\SlopeOneSource;
 use Quellabs\Recommender\RecommendationResult;
 use Quellabs\Recommender\ArrayEligibilityProvider;
 use Quellabs\Recommender\EligibilityProvider;
+use Quellabs\Recommender\Subject;
+use Quellabs\Recommender\Reconciliation\SourceSettings;
 
 /**
  * Integration tests for eligibility providers applied to item-based recommendations.
@@ -19,11 +18,16 @@ class EligibilityProviderTest extends IntegrationTestCase {
     use ItemLinkSlates;
 
 
-	private ItemRecommender $recommender;
+	/** @var ItemLinksSource Item-links candidates */
+	private ItemLinksSource $itemLinks;
+
+	/** @var SlopeOneSource Slope One candidates and predictions */
+	private SlopeOneSource $slopeOne;
 
 	protected function setUp(): void {
 		parent::setUp();
-		$this->recommender = new ItemRecommender($this->connection, $this->config);
+		$this->itemLinks = new ItemLinksSource($this->connection, $this->config);
+		$this->slopeOne = new SlopeOneSource($this->connection, $this->config);
 	}
 
 	/**
@@ -69,8 +73,8 @@ class EligibilityProviderTest extends IntegrationTestCase {
 		$this->insertLink(1, 2, 10);
 		$this->insertLink(1, 3, 5);
 		$this->insertLink(1, 4, 1);
-		$this->assertSame([3], $this->itemIds($this->recommender->linkedProducts(1, $this->rejecting(2), 1)));
-		$this->assertSame([4], $this->itemIds($this->recommender->linkedProducts(1, $this->rejecting(2, 3), 1)));
+		$this->assertSame([3], $this->itemIds($this->itemLinks->candidates(Subject::product(1), $this->rejecting(2), 1, new SourceSettings())));
+		$this->assertSame([4], $this->itemIds($this->itemLinks->candidates(Subject::product(1), $this->rejecting(2, 3), 1, new SourceSettings())));
 	}
 
 	/** Fetching deeper must reach eligible rows beyond the first doubling steps.
@@ -87,14 +91,14 @@ class EligibilityProviderTest extends IntegrationTestCase {
 			}
 		}
 
-		$this->assertSame([57], $this->itemIds($this->recommender->linkedProducts(1, $this->rejecting(...$rejected), 1)));
+		$this->assertSame([57], $this->itemIds($this->itemLinks->candidates(Subject::product(1), $this->rejecting(...$rejected), 1, new SourceSettings())));
 	}
 
 	/** @return void */
 	public function testCustomProviderReturnsFewerResultsWhenNothingIsEligible(): void {
 		$this->insertLink(1, 2, 10);
 		$this->insertLink(1, 3, 5);
-		$this->assertSame([], $this->recommender->linkedProducts(1, $this->rejecting(2, 3), 1));
+		$this->assertSame([], $this->itemLinks->candidates(Subject::product(1), $this->rejecting(2, 3), 1, new SourceSettings()));
 	}
 
 	/** An array provider and a custom provider with the same eligible set must give the same results.
@@ -117,8 +121,8 @@ class EligibilityProviderTest extends IntegrationTestCase {
 	 */
 	public function testEmptyArrayProviderReturnsNothing(): void {
 		$this->insertLink(1, 2, 10);
-		$this->assertSame([], $this->recommender->linkedProducts(1, new ArrayEligibilityProvider([])));
-		$this->assertSame([], $this->recommender->slopeProducts(1, new ArrayEligibilityProvider([])));
+		$this->assertSame([], $this->itemLinks->candidates(Subject::product(1), new ArrayEligibilityProvider([]), 10, new SourceSettings()));
+		$this->assertSame([], $this->slopeOne->candidates(Subject::product(1), new ArrayEligibilityProvider([]), 10, new SourceSettings()));
 	}
 
 	/** @return void */
@@ -134,7 +138,7 @@ class EligibilityProviderTest extends IntegrationTestCase {
 		$this->insertRating(1, 10, 0.8);
 		$this->insertLink(10, 20, 2, 0.1);
 		$this->insertLink(10, 30, 2, 0.2);
-		$this->assertSame([30], $this->itemIds($this->recommender->memberPredictions(1, $this->rejecting(20))));
+		$this->assertSame([30], $this->itemIds($this->slopeOne->candidates(Subject::member(1), $this->rejecting(20), 10, new SourceSettings())));
 	}
 
 	/** A provider answer that reorders its input must be rejected.
@@ -155,6 +159,6 @@ class EligibilityProviderTest extends IntegrationTestCase {
 			}
 		};
 		$this->expectException(\UnexpectedValueException::class);
-		$this->recommender->linkedProducts(1, $reversing);
+		$this->itemLinks->candidates(Subject::product(1), $reversing, 10, new SourceSettings());
 	}
 }

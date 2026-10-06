@@ -11,7 +11,8 @@ use Quellabs\Recommender\Reconciliation\ReconciliationTuning;
 use Quellabs\Recommender\Reconciliation\SourceSettings;
 use Quellabs\Recommender\RecommendationSource;
 use Quellabs\Recommender\Config\RecommendationConfig;
-use Quellabs\Recommender\ItemRecommender;
+use Quellabs\Recommender\Sources\ItemLinksSource;
+use Quellabs\Recommender\Subject;
 use Quellabs\Recommender\RecommendationEngine;
 use Quellabs\Recommender\ArrayEligibilityProvider;
 use Quellabs\Recommender\Sculpt\RebuildLinksCommand;
@@ -42,13 +43,13 @@ class DerivedPairsTest extends IntegrationTestCase {
     public function testIncrementalMeasuresMatchRebuild(bool $links, bool $slope): void {
         $config = new RecommendationConfig(directLinks: $links, directSlope: $slope);
         $engine = new RecommendationEngine($this->connection, $config);
-        $items = new ItemRecommender($this->connection, $config);
+        $items = new ItemLinksSource($this->connection, $config);
         $engine->setRating(new MemberId(1), new ProductId(10), 0.9);
         $engine->setRating(new MemberId(1), new ProductId(20), 0.8);
         $engine->setRating(new MemberId(2), new ProductId(10), 0.4);
         $engine->setRating(new MemberId(2), new ProductId(20), 0.7);
         $this->assertPair(10, 20, $links ? 1 : 0, $slope ? 2 : 0, $slope ? 0.2 : 0.0);
-        $this->assertSame($links ? [20] : [], array_map(fn($item) => $item->productId, $items->linkedProducts(10)));
+        $this->assertSame($links ? [20] : [], array_map(fn($item) => $item->productId, $items->candidates(Subject::product(10), null, 10, new SourceSettings())));
 
         $engine->setRating(new MemberId(2), new ProductId(10), 0.9);
         $engine->setNotInterested(new MemberId(1), new ProductId(20));
@@ -60,7 +61,7 @@ class DerivedPairsTest extends IntegrationTestCase {
         $this->rebuild($config);
         $rebuilt = $this->rows();
         $this->assertPair(10, 20, 1, 1, -0.2);
-        $this->assertSame([20], array_map(fn($item) => $item->productId, $items->linkedProducts(10)));
+        $this->assertSame([20], array_map(fn($item) => $item->productId, $items->candidates(Subject::product(10), null, 10, new SourceSettings())));
         if ($links && $slope) {
             $this->assertEquals($before, $rebuilt);
         }

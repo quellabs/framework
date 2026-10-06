@@ -2,30 +2,34 @@
 
 	namespace Quellabs\Recommender\Tests;
 
-use Quellabs\Recommender\ProductId;
-
-use Quellabs\Recommender\MemberId;
-
-
-	use Quellabs\Recommender\RecommendationSource;
-	use Quellabs\Recommender\ItemRecommender;
-		use Quellabs\Recommender\RecommendationResult;
-	use Quellabs\Recommender\ArrayEligibilityProvider;
-	use Quellabs\Recommender\VisitorContext;
+use Quellabs\Recommender\Sources\ItemLinksSource;
+use Quellabs\Recommender\Sources\SlopeOneSource;
+use Quellabs\Recommender\Subject;
+use Quellabs\Recommender\Reconciliation\SourceSettings;
+use Quellabs\Recommender\RecommendationResult;
+use Quellabs\Recommender\RecommendationSource;
+use Quellabs\Recommender\ArrayEligibilityProvider;
+use Quellabs\Recommender\EligibilityProvider;
+use Quellabs\Recommender\VisitorContext;
 
 	/**
-	 * Integration tests for ItemRecommender.
+	 * Integration tests for item-to-item, prediction and reasons lookups on the item-links and Slope One sources.
 	 * Requires a live MySQL database — see tests/bootstrap.php.
 	 */
-	class ItemRecommenderTest extends IntegrationTestCase {
+	class ItemLookupsTest extends IntegrationTestCase {
 		use ItemLinkSlates;
 
+		/** @var SlopeOneSource Slope One predictions and product lookups */
+		private SlopeOneSource $slopeOne;
 
-		private ItemRecommender $recommender;
+		/** @var ItemLinksSource Item-links candidates and reasons */
+		private ItemLinksSource $itemLinks;
 
+		/** @return void */
 		protected function setUp(): void {
 			parent::setUp();
-			$this->recommender = new ItemRecommender($this->connection, $this->config);
+			$this->slopeOne = new SlopeOneSource($this->connection, $this->config);
+			$this->itemLinks = new ItemLinksSource($this->connection, $this->config);
 		}
 
 		/**
@@ -48,21 +52,21 @@ use Quellabs\Recommender\MemberId;
 			$this->insertLink(10, 30, 2, 0.2);
 			$this->insertLink(10, 40, 5, 0.5);
 
-			$member = $this->recommender->memberPredictions(1);
+			$member = $this->slopeOne->candidates(Subject::member(1), null, 10, new SourceSettings());
 			$this->assertSame([20, 30], $this->itemIds($member));
 			$this->assertSame(3, $member[0]->supportCount);
-			$this->assertEqualsWithDelta($this->recommender->memberPrediction(new MemberId(1), new ProductId(20))->score,
+			$this->assertEqualsWithDelta($this->slopeOne->predict(Subject::member(1), 20)->score,
 				$member[0]->score, 0.00001);
-			$this->assertSame([20], $this->itemIds($this->recommender->memberPredictions(1, minSupport: 3)));
+			$this->assertSame([20], $this->itemIds($this->slopeOne->candidates(Subject::member(1), null, 10, new SourceSettings(minSupport: 3))));
 
 			$visitor = new VisitorContext($this->config);
 			$visitor->setRating(10, 0.8);
 			$visitor->setRating(40, -1.0);
-			$results = $this->recommender->visitorPredictions($visitor);
+			$results = $this->slopeOne->candidates(Subject::visitor($visitor), null, 10, new SourceSettings());
 			$this->assertSame([20, 30], $this->itemIds($results));
-			$this->assertSame(20, $this->recommender->visitorPredictions($visitor, limit: 1)[0]->productId);
-			$this->assertSame(30, $this->recommender->visitorPredictions($visitor, new ArrayEligibilityProvider([30]), 1)[0]->productId);
-			$this->assertEqualsWithDelta($this->recommender->visitorPrediction($visitor, 20)->score,
+			$this->assertSame(20, $this->slopeOne->candidates(Subject::visitor($visitor), null, 1, new SourceSettings())[0]->productId);
+			$this->assertSame(30, $this->slopeOne->candidates(Subject::visitor($visitor), new ArrayEligibilityProvider([30]), 1, new SourceSettings())[0]->productId);
+			$this->assertEqualsWithDelta($this->slopeOne->predict(Subject::visitor($visitor), 20)->score,
 				$results[0]->score, 0.00001);
 		}
 
@@ -72,20 +76,20 @@ use Quellabs\Recommender\MemberId;
 			$visitor->setRating(10, -1.0);
 			$this->insertRating(1, 10, -1.0);
 			$this->insertLink(10, 20, 3, 0.0);
-			$this->assertSame([], $this->recommender->memberPredictions(1));
-			$this->assertSame([], $this->recommender->visitorPredictions($visitor));
-			$this->assertNull($this->recommender->visitorPrediction($visitor, 20));
+			$this->assertSame([], $this->slopeOne->candidates(Subject::member(1), null, 10, new SourceSettings()));
+			$this->assertSame([], $this->slopeOne->candidates(Subject::visitor($visitor), null, 10, new SourceSettings()));
+			$this->assertNull($this->slopeOne->predict(Subject::visitor($visitor), 20));
 			$this->insertRating(1, 11, 0.8);
 			$visitor->setRating(11, 0.8);
 			$this->insertLink(11, 20, 2, 0.0);
 			$this->insertLink(20, 11, 2, 0.0);
 			$this->insertLink(11, 30, 3, 0.0);
 			$this->insertLink(11, 40, 3, 0.0);
-			$this->assertSame([30, 40, 20], $this->itemIds($this->recommender->memberPredictions(1)));
-			$this->assertSame([30, 40, 20], $this->itemIds($this->recommender->visitorPredictions($visitor)));
-			$this->assertNull($this->recommender->memberPrediction(new MemberId(1), new ProductId(20), 3));
-			$this->assertNull($this->recommender->visitorPrediction($visitor, 20, 3));
-			$this->assertSame([], $this->recommender->memberPredictions(1, category: 2));
+			$this->assertSame([30, 40, 20], $this->itemIds($this->slopeOne->candidates(Subject::member(1), null, 10, new SourceSettings())));
+			$this->assertSame([30, 40, 20], $this->itemIds($this->slopeOne->candidates(Subject::visitor($visitor), null, 10, new SourceSettings())));
+			$this->assertNull($this->slopeOne->predict(Subject::member(1), 20, 3));
+			$this->assertNull($this->slopeOne->predict(Subject::visitor($visitor), 20, 3));
+			$this->assertSame([], $this->slopeOne->candidates(Subject::member(1), null, 10, new SourceSettings(), 2));
 		}
 
 		/** @return void */
@@ -95,7 +99,7 @@ use Quellabs\Recommender\MemberId;
 				$visitor->setRating($id, 0.8);
 			}
 			$this->insertLink(501, 600, 4, 0.4);
-			$result = $this->recommender->visitorPredictions($visitor);
+			$result = $this->slopeOne->candidates(Subject::visitor($visitor), null, 10, new SourceSettings());
 			$this->assertCount(1, $result);
 			$this->assertSame(600, $result[0]->productId);
 			$this->assertSame(4, $result[0]->supportCount);
@@ -113,7 +117,7 @@ use Quellabs\Recommender\MemberId;
 			$driver->setLogger($logger);
 			try {
 				try {
-					$this->recommender->visitorPredictions($visitor);
+					$this->slopeOne->candidates(Subject::visitor($visitor), null, 10, new SourceSettings());
 					$this->fail('The malformed link table did not cause a query failure.');
 				} catch (\Cake\Database\Exception\QueryException) {
 					$this->assertTrue(true);
@@ -145,10 +149,10 @@ use Quellabs\Recommender\MemberId;
 		public function testPredictionRejectsNonpositiveSupportThreshold(): void {
 			$visitor = new VisitorContext($this->config);
 			foreach ([
-				fn() => $this->recommender->memberPrediction(new MemberId(1), new ProductId(20), 0),
-				fn() => $this->recommender->memberPredictions(1, minSupport: 0),
-				fn() => $this->recommender->visitorPrediction($visitor, 20, 0),
-				fn() => $this->recommender->visitorPredictions($visitor, minSupport: 0),
+				fn() => $this->slopeOne->predict(Subject::member(1), 20, 0),
+				fn() => $this->slopeOne->candidates(Subject::member(1), null, 10, new SourceSettings(minSupport: 0)),
+				fn() => $this->slopeOne->predict(Subject::visitor($visitor), 20, 0),
+				fn() => $this->slopeOne->candidates(Subject::visitor($visitor), null, 10, new SourceSettings(minSupport: 0)),
 			] as $predict) {
 				try {
 					$predict();
@@ -164,13 +168,13 @@ use Quellabs\Recommender\MemberId;
 		// =========================================================================
 
 		public function testLinkedProductsReturnsEmptyWhenNoLinks(): void {
-			$this->assertSame([], $this->recommender->linkedProducts(1));
+			$this->assertSame([], $this->linked(1));
 		}
 
 		public function testLinkedProductsReturnsLinkedProducts(): void {
 			$this->insertLink(1, 2, 5);
 			$this->insertLink(1, 3, 3);
-			$result = $this->recommender->linkedProducts(1);
+			$result = $this->linked(1);
 			$this->assertEqualsCanonicalizing([2, 3], $this->itemIds($result));
 		}
 
@@ -179,18 +183,18 @@ use Quellabs\Recommender\MemberId;
 				$this->insertLink(1, $product, 1);
 			}
 
-			$this->assertCount(10, $this->recommender->linkedProducts(1));
-			$this->assertCount(12, $this->recommender->linkedProducts(1, limit: 0));
+			$this->assertCount(10, $this->linked(1, null, 10));
+			$this->assertCount(12, $this->linked(1, null, 0));
 		}
 
 		public function testNegativeProductIdIsRejected(): void {
 			$this->expectException(\InvalidArgumentException::class);
-			$this->recommender->linkedProducts(-1);
+			$this->linked(-1);
 		}
 
 		public function testLinkedProductsScoreIsTheLikedCount(): void {
 			$this->insertLink(1, 2, 5);
-			$result = $this->recommender->linkedProducts(1);
+			$result = $this->linked(1);
 			$this->assertSame(RecommendationSource::ItemLinks, $result[0]->source);
 			$this->assertEqualsWithDelta(5.0, $result[0]->score, 0.00001);
 		}
@@ -199,7 +203,7 @@ use Quellabs\Recommender\MemberId;
 			$this->insertLink(1, 2, 3);
 			$this->insertLink(1, 3, 10);
 			$this->insertLink(1, 4, 5);
-			$result = $this->recommender->linkedProducts(1);
+			$result = $this->linked(1);
 			$this->assertSame([3, 4, 2], $this->itemIds($result));
 		}
 
@@ -207,14 +211,14 @@ use Quellabs\Recommender\MemberId;
 			$this->insertLink(1, 2, 5);
 			$this->insertLink(1, 3, 3);
 			$this->insertLink(1, 4, 1);
-			$result = $this->recommender->linkedProducts(1, limit: 2);
+			$result = $this->linked(1, null, 2);
 			$this->assertCount(2, $result);
 		}
 
 		public function testLinkedItemsRespectsFilter(): void {
 			$this->insertLink(1, 2, 5);
 			$this->insertLink(1, 3, 3);
-			$result = $this->recommender->linkedProducts(1, new ArrayEligibilityProvider([2]));
+			$result = $this->linked(1, new ArrayEligibilityProvider([2]));
 			$this->assertSame([2], $this->itemIds($result));
 		}
 
@@ -224,7 +228,7 @@ use Quellabs\Recommender\MemberId;
 		public function testLinkedItemsFilterFillsLimit(): void {
 			$this->insertLink(1, 2, 10);
 			$this->insertLink(1, 3, 5);
-			$this->assertSame([3], $this->itemIds($this->recommender->linkedProducts(1, new ArrayEligibilityProvider([3]), 1)));
+			$this->assertSame([3], $this->itemIds($this->linked(1, new ArrayEligibilityProvider([3]), 1)));
 		}
 
 		/** Large allowlists use the bounded temporary-table path.
@@ -234,8 +238,8 @@ use Quellabs\Recommender\MemberId;
 			$this->insertLink(1, 2, 10);
 			$this->insertLink(1, 3, 5);
 			$allowed = array_merge(range(1000, 1500), [3]);
-			$this->assertSame([3], $this->itemIds($this->recommender->linkedProducts(1, new ArrayEligibilityProvider($allowed), 1)));
-			$this->assertSame([3], $this->itemIds($this->recommender->linkedProducts(1, new ArrayEligibilityProvider([3]), 1)));
+			$this->assertSame([3], $this->itemIds($this->linked(1, new ArrayEligibilityProvider($allowed), 1)));
+			$this->assertSame([3], $this->itemIds($this->linked(1, new ArrayEligibilityProvider([3]), 1)));
 		}
 
 		// =========================================================================
@@ -295,7 +299,7 @@ use Quellabs\Recommender\MemberId;
 			$this->insertRating(1, 20, 0.8);
 			$this->insertLink(30, 10, 5);
 			$this->insertLink(30, 20, 3);
-			$result = $this->recommender->memberReasons(new MemberId(1), new ProductId(30));
+			$result = $this->itemLinks->reasons(Subject::member(1), 30);
 			$this->assertEqualsCanonicalizing([10, 20], $this->itemIds($result));
 			$this->assertSame(5.0, $result[0]->score);
 		}
@@ -303,7 +307,7 @@ use Quellabs\Recommender\MemberId;
 		public function testMemberReasonsScoreIsLikedCountOfLink(): void {
 			$this->insertRating(1, 10, 0.9);
 			$this->insertLink(30, 10, 5);
-			$result = $this->recommender->memberReasons(new MemberId(1), new ProductId(30));
+			$result = $this->itemLinks->reasons(Subject::member(1), 30);
 			$this->assertSame(RecommendationSource::ItemLinks, $result[0]->source);
 			$this->assertSame(5.0, $result[0]->score);
 		}
@@ -314,18 +318,18 @@ use Quellabs\Recommender\MemberId;
 			$visitor->setRating(20, 0.8);
 			$this->insertLink(30, 10, 5);
 			$this->insertLink(30, 20, 3);
-			$result = $this->recommender->visitorReasons($visitor, 30);
+			$result = $this->itemLinks->reasons(Subject::visitor($visitor), 30);
 			$this->assertSame([10, 20], $this->itemIds($result));
 			$this->assertSame([5.0, 3.0], array_map(fn($r) => $r->score, $result));
 		}
 
 		public function testVisitorReasonsReturnsEmptyWhenNoRatings(): void {
-			$this->assertSame([], $this->recommender->visitorReasons(new VisitorContext($this->config), 30));
+			$this->assertSame([], $this->itemLinks->reasons(Subject::visitor(new VisitorContext($this->config)), 30));
 		}
 
 		public function testMemberReasonsReturnsEmptyWhenNoLinks(): void {
 			$this->insertRating(1, 10, 0.9);
-			$this->assertSame([], $this->recommender->memberReasons(new MemberId(1), new ProductId(99)));
+			$this->assertSame([], $this->itemLinks->reasons(Subject::member(1), 99));
 		}
 
 		// =========================================================================
@@ -335,7 +339,7 @@ use Quellabs\Recommender\MemberId;
 		public function testSlopeItemsReturnsItemsWithDiffScore(): void {
 			$this->insertLink(1, 2, 3, 0.6);
 			$this->insertLink(1, 3, 2, 0.2);
-			$result = $this->recommender->slopeProducts(1);
+			$result = $this->slope(1);
 			$this->assertCount(2, $result);
 			$this->assertSame(RecommendationSource::SlopeOne, $result[0]->source);
 			$this->assertIsFloat($result[0]->score);
@@ -345,14 +349,14 @@ use Quellabs\Recommender\MemberId;
 			// item 2: diff=0.6/3=0.2, item 3: diff=0.9/2=0.45
 			$this->insertLink(1, 2, 3, 0.6);
 			$this->insertLink(1, 3, 2, 0.9);
-			$result = $this->recommender->slopeProducts(1);
+			$result = $this->slope(1);
 			$this->assertSame([3, 2], $this->itemIds($result));
 		}
 
 		public function testSlopeItemsRespectsMinSupport(): void {
 			$this->insertLink(1, 2, 1, 0.5);
 			$this->insertLink(1, 3, 5, 0.5);
-			$result = $this->recommender->slopeProducts(1, minSupport: 3);
+			$result = $this->slope(1, null, 10, 3);
 			$this->assertSame([3], $this->itemIds($result));
 		}
 
@@ -362,15 +366,15 @@ use Quellabs\Recommender\MemberId;
 		public function testSlopeItemsFilterFillsLimit(): void {
 			$this->insertLink(1, 2, 2, 0.8);
 			$this->insertLink(1, 3, 2, 0.2);
-			$this->assertSame(3, $this->recommender->slopeProducts(1, eligibility: new ArrayEligibilityProvider([3]), limit: 1)[0]->productId);
+			$this->assertSame(3, $this->slope(1, new ArrayEligibilityProvider([3]), 1)[0]->productId);
 		}
 
 		// =========================================================================
-		// memberPrediction
+		// predict (single member or visitor product)
 		// =========================================================================
 
 		public function testMemberPredictionReturnsNullWithNoData(): void {
-			$this->assertNull($this->recommender->memberPrediction(new MemberId(1), new ProductId(99)));
+			$this->assertNull($this->slopeOne->predict(Subject::member(1), 99));
 		}
 
 		public function testMemberPredictionReturnsPredictedRating(): void {
@@ -379,7 +383,7 @@ use Quellabs\Recommender\MemberId;
 			$this->insertRating(1, 2, 0.8);
 			$this->insertLink(1, 2, 1, -0.1);
 			$this->insertLink(2, 1, 1, 0.1);
-			$result = $this->recommender->memberPrediction(new MemberId(1), new ProductId(1));
+			$result = $this->slopeOne->predict(Subject::member(1), 1);
 			$this->assertNotNull($result);
 			$this->assertEqualsWithDelta(0.9, $result->score, 0.0001);
 		}
@@ -393,18 +397,18 @@ use Quellabs\Recommender\MemberId;
 			$this->insertLink(10, 20, 2, 0.2);
 			$this->insertLink(20, 10, 2, -0.2);
 			$this->insertLink(20, 30, 2, 0.1);
-			$all = $this->recommender->memberPredictions(1);
+			$all = $this->slopeOne->candidates(Subject::member(1), null, 10, new SourceSettings());
 			$this->assertCount(1, $all);
 			$this->assertSame(20, $all[0]->productId);
 			$this->assertEqualsWithDelta($all[0]->score,
-				$this->recommender->memberPrediction(new MemberId(1), new ProductId(20))->score, 0.00001);
+				$this->slopeOne->predict(Subject::member(1), 20)->score, 0.00001);
 		}
 
 		public function testMemberPredictionClampsToOne(): void {
 			$this->insertRating(1, 2, 1.0);
 			$this->insertLink(1, 2, 1, -0.5);
 			$this->insertLink(2, 1, 1, 0.5);
-			$result = $this->recommender->memberPrediction(new MemberId(1), new ProductId(1));
+			$result = $this->slopeOne->predict(Subject::member(1), 1);
 			$this->assertLessThanOrEqual(1.0, $result->score);
 		}
 
@@ -412,17 +416,17 @@ use Quellabs\Recommender\MemberId;
 			$this->insertRating(1, 2, 0.0);
 			$this->insertLink(1, 2, 1, 0.5);
 			$this->insertLink(2, 1, 1, -0.5);
-			$result = $this->recommender->memberPrediction(new MemberId(1), new ProductId(1));
+			$result = $this->slopeOne->predict(Subject::member(1), 1);
 			$this->assertGreaterThanOrEqual(0.0, $result->score);
 		}
 
 		// =========================================================================
-		// memberPredictions
+		// member predictions (list)
 		// =========================================================================
 
 		public function testMemberPredictionsReturnsEmptyWhenNoLinks(): void {
 			$this->insertRating(1, 10, 0.8);
-			$this->assertSame([], $this->recommender->memberPredictions(1));
+			$this->assertSame([], $this->slopeOne->candidates(Subject::member(1), null, 10, new SourceSettings()));
 		}
 
 		public function testMemberPredictionsExcludesAlreadyRatedItems(): void {
@@ -430,7 +434,7 @@ use Quellabs\Recommender\MemberId;
 			$this->insertRating(1, 20, 0.5);
 			$this->insertLink(10, 20, 2, 0.1);
 			$this->insertLink(10, 30, 2, 0.2);
-			$productIds = $this->itemIds($this->recommender->memberPredictions(1));
+			$productIds = $this->itemIds($this->slopeOne->candidates(Subject::member(1), null, 10, new SourceSettings()));
 			$this->assertNotContains(10, $productIds);
 			$this->assertNotContains(20, $productIds);
 		}
@@ -439,7 +443,7 @@ use Quellabs\Recommender\MemberId;
 			$this->insertRating(1, 10, 0.8);
 			$this->insertLink(10, 20, 2, 0.1);
 			$this->insertLink(10, 30, 2, -0.1);
-			$ratings = array_map(fn($result) => $result->score, $this->recommender->memberPredictions(1));
+			$ratings = array_map(fn($result) => $result->score, $this->slopeOne->candidates(Subject::member(1), null, 10, new SourceSettings()));
 
 			for ($i = 1; $i < count($ratings); $i++) {
 				$this->assertGreaterThanOrEqual($ratings[$i], $ratings[$i - 1]);
@@ -475,7 +479,7 @@ use Quellabs\Recommender\MemberId;
 
 		public function testVisitorPredictionReturnsNullForEmptyContext(): void {
 			$visitor = new VisitorContext($this->config);
-			$this->assertNull($this->recommender->visitorPrediction($visitor, 1));
+			$this->assertNull($this->slopeOne->predict(Subject::visitor($visitor), 1));
 		}
 
 		public function testVisitorPredictionReturnsPredictedRating(): void {
@@ -483,7 +487,7 @@ use Quellabs\Recommender\MemberId;
 			$this->insertLink(2, 1, 1, 0.1);
 			$visitor = new VisitorContext($this->config);
 			$visitor->setRating(2, 0.8);
-			$result = $this->recommender->visitorPrediction($visitor, 1);
+			$result = $this->slopeOne->predict(Subject::visitor($visitor), 1);
 			$this->assertNotNull($result);
 			$this->assertEqualsWithDelta(0.9, $result->score, 0.0001);
 		}
@@ -495,7 +499,31 @@ use Quellabs\Recommender\MemberId;
 		public function testLinkedItemsIsolatedByCategory(): void {
 			$this->insertLink(1, 2, 5, 0.0, 1);
 			$this->insertLink(1, 3, 5, 0.0, 2);
-			$this->assertSame([2], $this->itemIds($this->recommender->linkedProducts(1, category: 1)));
-			$this->assertSame([3], $this->itemIds($this->recommender->linkedProducts(1, category: 2)));
+			$this->assertSame([2], $this->itemIds($this->linked(1, null, 10, 1)));
+			$this->assertSame([3], $this->itemIds($this->linked(1, null, 10, 2)));
+		}
+
+		/**
+		 * Product-subject item-links lookup with the source's default settings.
+		 * @param int $product Product ID
+		 * @param EligibilityProvider|null $eligibility Restricts results, or null for all
+		 * @param int $limit Maximum results, or zero for all
+		 * @param int|null $category Category override
+		 * @return array<int, RecommendationResult>
+		 */
+		private function linked(int $product, ?EligibilityProvider $eligibility = null, int $limit = 10, ?int $category = null): array {
+			return $this->itemLinks->candidates(Subject::product($product), $eligibility, $limit, new SourceSettings(), $category);
+		}
+
+		/**
+		 * Product-subject Slope One lookup.
+		 * @param int $product Product ID
+		 * @param EligibilityProvider|null $eligibility Restricts results, or null for all
+		 * @param int $limit Maximum results, or zero for all
+		 * @param int $minSupport Minimum co-occurrence count
+		 * @return array<int, RecommendationResult>
+		 */
+		private function slope(int $product, ?EligibilityProvider $eligibility = null, int $limit = 10, int $minSupport = 1): array {
+			return $this->slopeOne->candidates(Subject::product($product), $eligibility, $limit, new SourceSettings(minSupport: $minSupport));
 		}
 	}

@@ -4,9 +4,10 @@ namespace Quellabs\Recommender\Tests;
 
 use Quellabs\Recommender\ArrayEligibilityProvider;
 use Quellabs\Recommender\EligibilityProvider;
-use Quellabs\Recommender\ItemRecommender;
-use Quellabs\Recommender\MemberId;
-use Quellabs\Recommender\ProductId;
+use Quellabs\Recommender\Sources\ItemLinksSource;
+use Quellabs\Recommender\Sources\SlopeOneSource;
+use Quellabs\Recommender\Reconciliation\SourceSettings;
+use Quellabs\Recommender\Subject;
 use Quellabs\Recommender\RecommendationSource;
 use Quellabs\Recommender\Reconciliation\ReconciliationRequest;
 use Quellabs\Recommender\Reconciliation\ReconciliationTuning;
@@ -102,16 +103,17 @@ class ParityBaselineTest extends IntegrationTestCase {
      */
     private function collectOutputs(): array {
         $outputs = [];
-        $items = new ItemRecommender($this->connection, $this->config);
+        $slopeOne = new SlopeOneSource($this->connection, $this->config);
+        $itemLinks = new ItemLinksSource($this->connection, $this->config);
         $stats = new Statistics($this->connection, $this->config);
         $reconciler = $this->reconciler();
 
         // Item paths take null for eligibility-off; reconciliation requires a provider in both modes.
         foreach (['off' => null, 'on' => $this->restrictedProvider()] as $mode => $eligibility) {
-            $outputs["item.linked.10.{$mode}"] = $this->normalize($items->linkedProducts(10, $eligibility, 3));
-            $outputs["item.linked.11.{$mode}"] = $this->normalize($items->linkedProducts(11, $eligibility, 10));
-            $outputs["item.slope.10.{$mode}"] = $this->normalize($items->slopeProducts(10, $eligibility, 10));
-            $outputs["item.slope.14.{$mode}"] = $this->normalize($items->slopeProducts(14, $eligibility, 10, 2));
+            $outputs["item.linked.10.{$mode}"] = $this->normalize($itemLinks->candidates(Subject::product(10), $eligibility, 3, new SourceSettings()));
+            $outputs["item.linked.11.{$mode}"] = $this->normalize($itemLinks->candidates(Subject::product(11), $eligibility, 10, new SourceSettings()));
+            $outputs["item.slope.10.{$mode}"] = $this->normalize($slopeOne->candidates(Subject::product(10), $eligibility, 10, new SourceSettings()));
+            $outputs["item.slope.14.{$mode}"] = $this->normalize($slopeOne->candidates(Subject::product(14), $eligibility, 10, new SourceSettings(minSupport: 2)));
 
             $provider = $eligibility ?? $this->openProvider();
             $linksMember = new ReconciliationRequest($provider, [RecommendationSource::ItemLinks], 5, 'home');
@@ -123,17 +125,16 @@ class ParityBaselineTest extends IntegrationTestCase {
             $outputs["links.visitor.C.short.{$mode}"] = $this->normalize($reconciler->visitorSlate($this->visitorC(), $linksVisitor));
             $outputs["links.visitor.B.empty.{$mode}"] = $this->normalize($reconciler->visitorSlate($this->visitorB(), $linksVisitor));
 
-            $outputs["item.member.predictions.1.{$mode}"] = $this->normalize($items->memberPredictions(1, $eligibility, 10));
-            $outputs["item.member.predictions.1.support2.{$mode}"] = $this->normalize($items->memberPredictions(1, $eligibility, 10, 2));
-            $outputs["item.visitor.predictions.A.{$mode}"] = $this->normalize($items->visitorPredictions($this->visitorA(), $eligibility, 10));
+            $outputs["item.member.predictions.1.{$mode}"] = $this->normalize($slopeOne->candidates(Subject::member(1), $eligibility, 10, new SourceSettings()));
+            $outputs["item.member.predictions.1.support2.{$mode}"] = $this->normalize($slopeOne->candidates(Subject::member(1), $eligibility, 10, new SourceSettings(minSupport: 2)));
+            $outputs["item.visitor.predictions.A.{$mode}"] = $this->normalize($slopeOne->candidates(Subject::visitor($this->visitorA()), $eligibility, 10, new SourceSettings()));
         }
 
-        $outputs['item.member.prediction.1.30'] = $this->normalize(
-            $items->memberPrediction(new MemberId(1), new ProductId(30)));
-        $outputs['item.visitor.prediction.A.30'] = $this->normalize($items->visitorPrediction($this->visitorA(), 30));
-        $outputs['item.member.reasons.1.14'] = $this->normalize(
-            $items->memberReasons(new MemberId(1), new ProductId(14), 10));
-        $outputs['item.visitor.reasons.A.11'] = $this->normalize($items->visitorReasons($this->visitorA(), 11, 10));
+        $outputs['item.member.prediction.1.30'] = $this->normalize($slopeOne->predict(Subject::member(1), 30));
+        $outputs['item.visitor.prediction.A.30'] = $this->normalize($slopeOne->predict(Subject::visitor($this->visitorA()), 30));
+        $outputs['item.member.reasons.1.14'] = $this->normalize($itemLinks->reasons(Subject::member(1), 14, 10));
+        $outputs['item.visitor.reasons.A.11'] = $this->normalize($itemLinks->reasons(Subject::visitor($this->visitorA()), 11, 10));
+
 
         $outputs['stats.top_rated.min2'] = $this->normalize($stats->topRatedProducts(10, 2));
         $outputs['stats.top_rated.min1'] = $this->normalize($stats->topRatedProducts(10, 1));

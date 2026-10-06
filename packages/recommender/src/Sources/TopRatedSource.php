@@ -1,6 +1,6 @@
 <?php
 
-namespace Quellabs\Recommender\Internal\TopRated;
+namespace Quellabs\Recommender\Sources;
 
 use Cake\Database\Connection;
 use Quellabs\Recommender\CandidateSource;

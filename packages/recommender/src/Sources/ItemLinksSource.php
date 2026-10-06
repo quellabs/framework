@@ -1,12 +1,13 @@
 <?php
 
-namespace Quellabs\Recommender\Internal\Links;
+namespace Quellabs\Recommender\Sources;
 
 use Cake\Database\Connection;
 use Quellabs\Recommender\CandidateSource;
 use Quellabs\Recommender\Config\RecommendationConfig;
 use Quellabs\Recommender\EligibilityProvider;
 use Quellabs\Recommender\Internal\Eligibility\EligibilityFilter;
+use Quellabs\Recommender\Internal\Links\LinkCandidates;
 use Quellabs\Recommender\Internal\Identifier;
 use Quellabs\Recommender\Internal\Persistence\TemporaryTable;
 use Quellabs\Recommender\Internal\Query\Results;

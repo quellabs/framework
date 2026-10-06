@@ -10,7 +10,7 @@ use Cake\Database\Connection;
 use Cake\Database\StatementInterface;
 use Quellabs\Recommender\RecommendationEngine;
 use Quellabs\Recommender\Internal\UserSimilarity;
-use Quellabs\Recommender\Internal\UserSimilaritySource;
+use Quellabs\Recommender\Sources\UserSimilaritySource;
 use Quellabs\Recommender\Reconciliation\SourceSettings;
 use Quellabs\Recommender\Subject;
 

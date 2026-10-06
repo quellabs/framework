@@ -6,10 +6,10 @@ Names, argument order and value types now follow one convention across the publi
 boolean flags and magic strings: `RatingKind` and `RatingOrder` for ratings queries, `ScoreKind` for list scoring,
 and `RecommendationSource` for the candidate source of a result. `RecommendationEngine::automaticRating()` is split into
 `recordPurchase()` and `recordClick()`. Reconciliation settings live in `ReconciliationTuning`, and per-item
-diagnostics in `ReconciliationDiagnostics`. `EligibilityProvider` moved to the root namespace. Member and visitor recommendations come from `RecommendationReconciler` slates, and `ItemRecommender` no longer ranks them. Reasons methods return `RecommendationResult[]`, average-rating
+diagnostics in `ReconciliationDiagnostics`. `EligibilityProvider` moved to the root namespace. Member and visitor recommendations come from `RecommendationReconciler` slates. `ItemRecommender` is removed. Its item-to-item lookups, predictions and reasons are methods on the candidate sources in `Quellabs\Recommender\Sources`. Reasons methods return `RecommendationResult[]`, average-rating
 methods return `null` when there is no data, and reconciler methods are `memberSlate()` and `visitorSlate()` for the displayed slate, with `memberCandidatePool()`
 and `visitorCandidatePool()` for the full pool. Value objects use `productId` for product IDs and `source` for candidate
-sources. Rating accessors return `Rating` and `VisitorRating` objects. `ItemRecommender` limits default to `10`. Member
+sources. Rating accessors return `Rating` and `VisitorRating` objects. Member
 erasure is a single `RecommendationEngine::deleteMemberData()` call. Visitors record clicks and purchases with
 `VisitorContext::recordClick()` and `recordPurchase()`, visitor reconciliation takes a `VisitorReconciliationRequest`
 that cannot include user similarity, and cold-start thresholds are `ReconciliationTuning` values. Thresholds are validated
@@ -27,8 +27,8 @@ Reconciliation uses rank fusion until a validated click model is explicitly
 activated for the exact category, placement, enabled sources, and context key.
 
 Application-facing types remain in `Quellabs\Recommender`. Implementation
-classes moved to `Internal\Model`, `Internal\Persistence`, and `Internal\Links`;
-the Canvas DI provider is now `Integration\ServiceProvider`. Code that directly
+classes moved to `Internal\Model`, `Internal\Persistence`, and `Internal\Links`. The candidate sources moved to the
+public `Sources` namespace. The Canvas DI provider is now `Integration\ServiceProvider`. Code that directly
 used those implementation classes must update its imports. Rebuild Composer
 discovery metadata when upgrading so it uses the provider class in this
 package's `composer.json`.

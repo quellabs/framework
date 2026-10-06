@@ -69,8 +69,8 @@ Ratings run from 0.0 to 1.0, and -1.0 marks "not interested".
 | Task | Method | Returns |
 |------|--------|---------|
 | Rate a product | `RecommendationEngine::setRating()` | `void`, throws on invalid input |
-| Predicted rating for one product | `ItemRecommender::memberPrediction()` | `RecommendationResult\|null`, with the rating in `score` |
-| Predicted ratings for all unrated products | `ItemRecommender::memberPredictions()` | `RecommendationResult[]`, with the rating in `score` |
+| Predicted rating for one product | `SlopeOneSource::predict()` with `Subject::member()` | `RecommendationResult\|null`, with the rating in `score` |
+| Predicted ratings for all unrated products | `SlopeOneSource::candidates()` with `Subject::member()` | `RecommendationResult[]`, with the rating in `score` |
 | Displayed slate for a member, filtered by catalogue eligibility | `RecommendationReconciler::memberSlate()` | `RecommendationList` |
 | Displayed slate for a visitor, filtered by catalogue eligibility | `RecommendationReconciler::visitorSlate()` | `RecommendationList` |
 | Record a visitor purchase or click in session state | `VisitorContext::recordPurchase()`, `recordClick()` | `void` |
@@ -79,9 +79,23 @@ Ratings run from 0.0 to 1.0, and -1.0 marks "not interested".
 Visitor variants take a `VisitorContext` in place of the member ID. Visitor reconciliation takes a
 `VisitorReconciliationRequest`, built from `VisitorSource` values, in place of `ReconciliationRequest`.
 
+### Item lookups and predictions
+
+The candidate sources in `Quellabs\Recommender\Sources` answer item-to-item lookups, predictions and reasons. Each
+takes a `Subject`, which is a member, a visitor or a product:
+
+| Task | Method |
+|------|--------|
+| Products linked to a product | `ItemLinksSource::candidates(Subject::product($id), ...)` |
+| Products with a Slope One difference to a product | `SlopeOneSource::candidates(Subject::product($id), ...)` |
+| Rated products that explain a recommendation | `ItemLinksSource::reasons(Subject::member($id), $product)` or `Subject::visitor($visitor)` |
+| One predicted rating | `SlopeOneSource::predict(Subject::member($id), $product)` or `Subject::visitor($visitor)` |
+| All predicted ratings | `SlopeOneSource::candidates(Subject::member($id), ...)` or `Subject::visitor($visitor)` |
+
 ### Limits
 
-- `limit` is the maximum number of results. `0` means all results. `ItemRecommender` and `Statistics` methods default to `10`.
+- `limit` is the maximum number of results. `0` means all results. `Statistics` methods default to `10`. Source
+  `candidates()` methods have no default, so pass `limit` explicitly.
 - With an `EligibilityProvider`, the recommender fetches deeper candidates until `limit` eligible results are found
   or the candidate depth cap (`max_candidate_depth`, default 2000) is reached. It can return fewer results than
   `limit` without an error. Check the count when the list must be full.
@@ -102,11 +116,11 @@ Visitor variants take a `VisitorContext` in place of the member ID. Visitor reco
 
 | Method | `score` meaning |
 |--------|-----------------|
-| `linkedProducts()` | Liked count of the co-occurrence link |
-| `slopeProducts()` | Average Slope One difference, which can be negative |
+| `ItemLinksSource::candidates()` for a product | Liked count of the co-occurrence link |
+| `SlopeOneSource::candidates()` for a product | Average Slope One difference, which can be negative |
 | `RecommendationReconciler` slates | `rankingScore` is the fused rank score. Each `evidence` entry's `rawScore` is the source's native score: for item links, the sum of liked count times (rating minus threshold); for top-rated, the average rating |
-| `memberPredictions()`, `visitorPredictions()`, `memberPrediction()`, `visitorPrediction()` | The predicted rating, in `[0, 1]` |
-| `memberReasons()`, `visitorReasons()` | Liked count of the link to the given product |
+| `SlopeOneSource::candidates()` and `predict()` for a member or visitor | The predicted rating, in `[0, 1]` |
+| `ItemLinksSource::reasons()` | Liked count of the link to the given product |
 
 ## Documentation
 
@@ -121,20 +135,20 @@ Rename calls as shown. Methods not listed are unchanged.
 
 | Previous | Now |
 |----------|-----|
-| `ItemRecommender::getLinkedItems()` | `ItemRecommender::linkedProducts()` |
-| `ItemRecommender::getSlopeItems()` | `ItemRecommender::slopeProducts()` |
+| `ItemRecommender::getLinkedItems()` | `ItemLinksSource::candidates()` with `Subject::product()` |
+| `ItemRecommender::getSlopeItems()` | `SlopeOneSource::candidates()` with `Subject::product()` |
 | `ItemRecommender::memberGetRecommendedItems()` | `RecommendationReconciler::memberSlate()` with an item-links request |
 | `ItemRecommender::visitorGetRecommendedItems()` | `RecommendationReconciler::visitorSlate()` with an item-links request |
 | `ItemRecommender::memberRecommendationsDetailed()` | `RecommendationReconciler::memberSlate()` with an item-links request |
 | `ItemRecommender::visitorRecommendationsDetailed()` | `RecommendationReconciler::visitorSlate()` with an item-links request |
-| `ItemRecommender::memberGetReasons()` | `ItemRecommender::memberReasons()` |
-| `ItemRecommender::visitorGetReasons()` | `ItemRecommender::visitorReasons()` |
-| `ItemRecommender::memberPredict()` | `ItemRecommender::memberPrediction()` |
-| `ItemRecommender::memberPredictAll()` | `ItemRecommender::memberPredictions()` |
-| `ItemRecommender::visitorPredict()` | `ItemRecommender::visitorPrediction()` |
-| `ItemRecommender::visitorPredictAll()` | `ItemRecommender::visitorPredictions()` |
+| `ItemRecommender::memberGetReasons()` | `ItemLinksSource::reasons()` with `Subject::member()` |
+| `ItemRecommender::visitorGetReasons()` | `ItemLinksSource::reasons()` with `Subject::visitor()` |
+| `ItemRecommender::memberPredict()` | `SlopeOneSource::predict()` with `Subject::member()` |
+| `ItemRecommender::memberPredictAll()` | `SlopeOneSource::candidates()` with `Subject::member()` |
+| `ItemRecommender::visitorPredict()` | `SlopeOneSource::predict()` with `Subject::visitor()` |
+| `ItemRecommender::visitorPredictAll()` | `SlopeOneSource::candidates()` with `Subject::visitor()` |
 | `RecommendationEngine::getRating()` | `RecommendationEngine::memberRating()` |
-| `RecommendationEngine::memberPredictDetailed()` and the other `*Detailed()` predictions on the engine | `ItemRecommender::memberPrediction()` and its visitor and list variants |
+| `RecommendationEngine::memberPredictDetailed()` and the other `*Detailed()` predictions on the engine | `SlopeOneSource::predict()` and `candidates()` |
 | `RecommendationEngine::automaticRating($m, $p, true)` | `RecommendationEngine::recordPurchase($m, $p)` |
 | `RecommendationEngine::automaticRating($m, $p, false)` | `RecommendationEngine::recordClick($m, $p)` |
 | `VisitorContext::getRatings()` | `VisitorContext::ratings()` |
@@ -155,16 +169,16 @@ Prediction methods that were renamed also changed return type. Read `->score` fo
 
 | Previous | Previous return | Now return |
 |----------|-----------------|------------|
-| `ItemRecommender::memberPredict()` | `float\|null` | `RecommendationResult\|null` |
-| `ItemRecommender::visitorPredict()` | `float\|null` | `RecommendationResult\|null` |
-| `ItemRecommender::memberPredictAll()` | `ProductRating[]` | `RecommendationResult[]` |
-| `ItemRecommender::visitorPredictAll()` | `ProductRating[]` | `RecommendationResult[]` |
+| `ItemRecommender::memberPredict()` | `float\|null` | `SlopeOneSource::predict()`, returning `RecommendationResult\|null` |
+| `ItemRecommender::visitorPredict()` | `float\|null` | `SlopeOneSource::predict()`, returning `RecommendationResult\|null` |
+| `ItemRecommender::memberPredictAll()` | `ProductRating[]` | `SlopeOneSource::candidates()`, returning `RecommendationResult[]` |
+| `ItemRecommender::visitorPredictAll()` | `ProductRating[]` | `SlopeOneSource::candidates()`, returning `RecommendationResult[]` |
 
 Argument changes. Positional calls must move their arguments. Named calls only need the renamed names.
 
 | Method | Now |
 |--------|-----|
-| `ItemRecommender::slopeProducts()` | `(int $product, eligibility, limit, int $minSupport, category)` |
+| `ItemRecommender::slopeProducts()` | `SlopeOneSource::candidates(Subject $subject, eligibility, int $limit, SourceSettings $settings, category)` |
 | `RecommendationEngine::memberNumRatings()` | `(int $member, RatingKind $kind, category)` |
 | `RecommendationEngine::memberRatings()` | `(int $member, RatingKind $kind, ?RatingOrder $order, category)` |
 | `RecommendationEngine::productRatings()` | `(int $product, ?RatingOrder $order, category)` |
@@ -191,7 +205,7 @@ Return and type changes:
 |--------|----------|-----|
 | `RecommendationEngine::memberRating()` | `array`, empty when absent | `Rating\|null`, `null` when absent |
 | `RecommendationEngine::memberAverageRating()`, `productAverageRating()` | `float`, `0.0` when absent | `float\|null`, `null` when absent |
-| `ItemRecommender::memberReasons()`, `visitorReasons()` | `int[]` of product IDs | `RecommendationResult[]`, score is the link's liked count |
+| `ItemRecommender::memberReasons()`, `visitorReasons()` | `int[]` of product IDs | `ItemLinksSource::reasons()`, returning `RecommendationResult[]`; score is the link's liked count |
 | `RecommendationEngine::memberRatings()`, `productRatings()` | Raw database values | `Rating[]`, with `memberId`, `productId`, `rating` as `float` and `timestamp` as `string` |
 | `VisitorContext::ratings()` | `array` rows with `product_id`, `rating` and `category` | `VisitorRating[]`, with `productId` and `rating`. Filter by category with the argument |
 | `RecommendationResult::$strategy` | `string` such as `'item_links'` | `RecommendationResult::$source`, a `RecommendationSource` enum case |
@@ -223,7 +237,7 @@ Other changes:
   `RecommendationList::sourceMask()` is unchanged.
 - `EligibilityProvider` and `ArrayEligibilityProvider` moved from `Quellabs\Recommender\Reconciliation` to
   `Quellabs\Recommender`. Update the imports.
-- The `array $filter` parameter of the `ItemRecommender` prediction and link methods is now
+- The `array $filter` parameter of the former `ItemRecommender` prediction and link methods, now on the sources, is
   `?EligibilityProvider $eligibility`. Pass `null` where the old call passed `[]`, because an empty array meant
   "no filter". Wrap a non-empty ID list in `ArrayEligibilityProvider`. An `ArrayEligibilityProvider` built from an
   empty list accepts no candidates, so it does not replace an empty filter.
@@ -241,12 +255,13 @@ Other changes:
   They throw on invalid input instead of returning `false`.
 - `Statistics::mostRatedProducts()` and `topRatedProducts()` return `ProductCount[]` and `ProductAverage[]` instead
   of arrays.
+- The candidate sources moved from `Internal` to `Quellabs\Recommender\Sources`, and `ItemRecommender` is removed.
 - Implementation classes moved to `Quellabs\Recommender\Internal\Model`, `Internal\Persistence` and
   `Internal\Links`. The Canvas DI provider is now `Quellabs\Recommender\Integration\ServiceProvider`.
   Rebuild Composer discovery metadata after upgrading.
 
-- `ItemRecommender` methods that take `limit` default to `10`, not `0`. Pass `limit: 0` to get all results.
-- `ItemRecommender`, `RecommendationEngine` and `RecommendationReconciler` methods throw `InvalidArgumentException` when a
+- The source `candidates()` methods take `limit` with no default. Pass `limit: 0` to get all results.
+- `RecommendationEngine`, `RecommendationReconciler` and the candidate sources throw `InvalidArgumentException` when a
   member or product ID is outside the unsigned 32-bit range. Read methods now validate their IDs too.
 - `RecommendationReconciler::visitorSlate()` and `visitorCandidatePool()` take a `VisitorReconciliationRequest`, built
   from `VisitorSource` values. `VisitorSource` has no user-similarity case, so a visitor request cannot include it.
@@ -260,10 +275,10 @@ Other changes:
   `Statistics::topRatedProducts()` previously clamped values below 1 to 1, and now rejects them.
 - Member and product IDs are `int` parameters, checked to the unsigned 32-bit range. The exception is methods that take
   both a member and a product: `RecommendationEngine::memberRating()`, `setRating()`, `recordPurchase()`,
-  `recordClick()`, `setNotInterested()` and `deleteRating()`, and `ItemRecommender::memberReasons()` and
-  `memberPrediction()`. These take `MemberId` and `ProductId` so the two cannot be swapped. Wrap IDs as
-  `new MemberId(1)` and `new ProductId(101)` in those calls. Named arguments are `member:` and `product:`. Results, value
-  objects and ID arrays keep `int`.
+  `recordClick()`, `setNotInterested()` and `deleteRating()`. These take `MemberId` and `ProductId` so the two cannot be
+  swapped. Wrap IDs as `new MemberId(1)` and `new ProductId(101)` in those calls. Named arguments are `member:` and
+  `product:`. Results, value objects and ID arrays keep `int`. The source methods take a `Subject` for the member or
+  visitor and an `int` product.
 
 ### Database: pair counts
 

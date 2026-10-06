@@ -4,7 +4,7 @@
 	
 	use Cake\Database\Connection;
 	use Quellabs\Recommender\Config\RecommendationConfig;
-	use Quellabs\Recommender\Internal\SlopeOne\SlopeOneSource;
+	use Quellabs\Recommender\Sources\SlopeOneSource;
 
 	/**
 	 * Maintains independent liked and Slope One pair measures during rating writes.

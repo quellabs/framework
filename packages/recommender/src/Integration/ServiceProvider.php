@@ -11,10 +11,10 @@ use Quellabs\Contracts\Context\MethodContextInterface;
 	use Quellabs\Recommender\Evaluation\EvaluationReport;
 	use Quellabs\Recommender\Reconciliation\RecommendationReconciler;
 use Quellabs\Recommender\Internal\UserSimilarity;
-use Quellabs\Recommender\Internal\UserSimilaritySource;
-use Quellabs\Recommender\Internal\SlopeOne\SlopeOneSource;
-use Quellabs\Recommender\Internal\Links\ItemLinksSource;
-use Quellabs\Recommender\Internal\TopRated\TopRatedSource;
+use Quellabs\Recommender\Sources\UserSimilaritySource;
+use Quellabs\Recommender\Sources\SlopeOneSource;
+use Quellabs\Recommender\Sources\ItemLinksSource;
+use Quellabs\Recommender\Sources\TopRatedSource;
 use Quellabs\Recommender\RecommendationEngine;
 	
 	/**

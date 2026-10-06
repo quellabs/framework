@@ -11,11 +11,11 @@
 	use Quellabs\Recommender\Internal\Query\SubjectRatings;
 	use Quellabs\Recommender\Internal\Eligibility\EligibilityFilter;
 
-	use Quellabs\Recommender\Internal\UserSimilaritySource;
-	use Quellabs\Recommender\Internal\SlopeOne\SlopeOneSource;
-	use Quellabs\Recommender\Internal\Links\ItemLinksSource;
-	use Quellabs\Recommender\Internal\TopRated\TopRatedSource;
-	use Quellabs\Recommender\Internal\NewProducts\NewProductsSource;
+	use Quellabs\Recommender\Sources\UserSimilaritySource;
+	use Quellabs\Recommender\Sources\SlopeOneSource;
+	use Quellabs\Recommender\Sources\ItemLinksSource;
+	use Quellabs\Recommender\Sources\TopRatedSource;
+	use Quellabs\Recommender\Sources\NewProductsSource;
 
 	use Quellabs\Recommender\RecommendationList;
 	use Quellabs\Recommender\RecommendationResult;
