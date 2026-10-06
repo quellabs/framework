@@ -12,12 +12,20 @@ final class SubjectRatings {
 	/** @var Connection Ratings database connection */
 	private Connection $connection;
 
+	/** @var bool Whether member ratings are kept for the life of this instance */
+	private bool $memoize;
+
+	/** @var array<string, array<int, float>> Member ratings by member and category, filled when memoizing */
+	private array $memo = [];
+
 	/**
 	 * Build the loader.
 	 * @param Connection $connection Ratings database connection
+	 * @param bool $memoize Keep member ratings for the life of this instance; use only within one request
 	 */
-	public function __construct(Connection $connection) {
+	public function __construct(Connection $connection, bool $memoize = false) {
 		$this->connection = $connection;
+		$this->memoize = $memoize;
 	}
 
 	/**
@@ -43,6 +51,30 @@ final class SubjectRatings {
 			return $ratings;
 		}
 
+		return $this->memberRatings($subject->id ?? throw new \LogicException('A member subject always has an ID.'), $category);
+	}
+
+	/**
+	 * Return the stored ratings of a member in one category, from the memo when memoizing.
+	 * @param int $member Member ID
+	 * @param int $category Resolved category
+	 * @return array<int, float> Rating per product ID
+	 */
+	private function memberRatings(int $member, int $category): array {
+		if (!$this->memoize) {
+			return $this->loadMember($member, $category);
+		}
+
+		return $this->memo["{$member}:{$category}"] ??= $this->loadMember($member, $category);
+	}
+
+	/**
+	 * Read a member's ratings in one category from the database.
+	 * @param int $member Member ID
+	 * @param int $category Resolved category
+	 * @return array<int, float> Rating per product ID
+	 */
+	private function loadMember(int $member, int $category): array {
 		$rows = $this->connection->execute('
 			SELECT
 				product_id,
@@ -51,7 +83,7 @@ final class SubjectRatings {
 			WHERE member_id = :member AND
 			      category = :category
 		', [
-			'member'   => $subject->id,
+			'member'   => $member,
 			'category' => $category,
 		])->fetchAll('assoc');
 

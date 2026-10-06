@@ -38,10 +38,11 @@ readonly class NewProductsSource implements CandidateSource {
 	 * @param Connection $connection The CakePHP database connection
 	 * @param RecommendationConfig $config The recommendation configuration
 	 * @param array<int, int> $productIds Ordered, distinct new-product IDs
+	 * @param SubjectRatings|null $ratings Ratings loader shared within one request, or null to create one
 	 */
-	public function __construct(Connection $connection, RecommendationConfig $config, array $productIds) {
+	public function __construct(Connection $connection, RecommendationConfig $config, array $productIds, ?SubjectRatings $ratings = null) {
 		$this->config = $config;
-		$this->ratings = new SubjectRatings($connection);
+		$this->ratings = $ratings ?? new SubjectRatings($connection);
 		$this->eligibilityFilter = new EligibilityFilter($config);
 		$this->productIds = $productIds;
 	}
@@ -64,14 +65,13 @@ readonly class NewProductsSource implements CandidateSource {
 	 * @param int $limit Number of list positions without eligibility, or eligible results with it; zero for all
 	 * @param SourceSettings $settings Source settings, unused
 	 * @param int|null $category Category override
-	 * @param array<int, float>|null $seen Seen ratings of the subject, loaded when null
 	 * @return array<int, RecommendationResult> New products in list order
 	 * @throws \InvalidArgumentException When the subject is a product
 	 */
 	public function candidates(Subject $subject, ?EligibilityProvider $eligibility, int $limit,
-		SourceSettings $settings, ?int $category = null, ?array $seen = null): array {
+		SourceSettings $settings, ?int $category = null): array {
 		$this->assertSupported($subject);
-		$seen ??= $this->ratings->seen($subject, $this->config->resolveCategory($category));
+		$seen = $this->ratings->seen($subject, $this->config->resolveCategory($category));
 
 		if ($eligibility !== null) {
 			return $this->eligibilityFilter->firstEligible($eligibility, $this->unseen($seen, $this->productIds), $limit,

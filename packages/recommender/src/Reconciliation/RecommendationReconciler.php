@@ -9,14 +9,10 @@
 	use Quellabs\Recommender\Internal\Model\ClickModelScorer;
 	use Quellabs\Recommender\Internal\Model\SourceFeatures;
 	use Quellabs\Recommender\Internal\Reconciliation\CandidateRoundState;
-	use Quellabs\Recommender\Internal\Query\SubjectRatings;
+	use Quellabs\Recommender\Internal\Reconciliation\RequestSources;
+	use Quellabs\Recommender\Internal\Reconciliation\RequestSourcesFactory;
 	use Quellabs\Recommender\Internal\Eligibility\EligibilityFilter;
 
-	use Quellabs\Recommender\Sources\UserSimilaritySource;
-	use Quellabs\Recommender\Sources\SlopeOneSource;
-	use Quellabs\Recommender\Sources\ItemLinksSource;
-	use Quellabs\Recommender\Sources\TopRatedSource;
-	use Quellabs\Recommender\Sources\NewProductsSource;
 
 	use Quellabs\Recommender\RecommendationList;
 	use Quellabs\Recommender\RecommendationResult;
@@ -44,20 +40,8 @@
 		/** @var EligibilityFilter Batched eligibility checks */
 		private EligibilityFilter $filter;
 
-		/** @var SubjectRatings Seen ratings of member and visitor subjects */
-		private SubjectRatings $ratings;
-
-		/** @var UserSimilaritySource User-similarity candidate source */
-		private UserSimilaritySource $similarity;
-
-		/** @var SlopeOneSource Slope One candidate source */
-		private SlopeOneSource $slopeOne;
-
-		/** @var ItemLinksSource Item-links candidate source */
-		private ItemLinksSource $itemLinks;
-
-		/** @var TopRatedSource Top-rated candidate source */
-		private TopRatedSource $topRated;
+		/** @var RequestSourcesFactory Builds the candidate sources for each request */
+		private RequestSourcesFactory $sourceFactory;
 		
 		/** @var RankFusionScorer Scorer for lists without an active click model */
 		private RankFusionScorer $rankFusion;
@@ -66,20 +50,13 @@
 		 * Build the reconciler.
 		 * @param Connection $connection Ratings database connection
 		 * @param RecommendationConfig $config Recommender settings
-		 * @param UserSimilaritySource $similarity User-similarity candidate source
-		 * @param SlopeOneSource $slopeOne Slope One candidate source
-		 * @param ItemLinksSource $itemLinks Item-links candidate source
-		 * @param TopRatedSource $topRated Top-rated candidate source
+		 * @param RequestSourcesFactory $sourceFactory Builds the candidate sources for each request
 		 */
-		public function __construct(Connection $connection, RecommendationConfig $config, UserSimilaritySource $similarity, SlopeOneSource $slopeOne, ItemLinksSource $itemLinks, TopRatedSource $topRated) {
+		public function __construct(Connection $connection, RecommendationConfig $config, RequestSourcesFactory $sourceFactory) {
 			$this->connection = $connection;
 			$this->config = $config;
-			$this->similarity = $similarity;
-			$this->slopeOne = $slopeOne;
-			$this->itemLinks = $itemLinks;
-			$this->topRated = $topRated;
+			$this->sourceFactory = $sourceFactory;
 			$this->filter = new EligibilityFilter($config);
-			$this->ratings = new SubjectRatings($connection);
 			$this->rankFusion = new RankFusionScorer();
 		}
 		
@@ -151,17 +128,18 @@
 		 * @throws \RuntimeException When a source changes its candidate order during depth backfill
 		 */
 		private function rank(ReconciliationRequest $request, int $category, Subject $subject): RecommendationList {
-			$ratings = $this->ratings->seen($subject, $category);
+			$sources = $this->sourceFactory->create();
+			$ratings = $sources->ratings->seen($subject, $category);
 			$request = $this->applyColdStart($request, $ratings);
 			$depthCap = $request->tuning->maxCandidateDepth ?? $this->config->maxCandidateDepth();
 			$roundCap = $request->tuning->maxBackfillRounds ?? $this->config->maxBackfillRounds();
 			$batchSize = max(1, $request->tuning->maxEligibilityBatchSize ?? $this->config->maxEligibilityBatchSize());
 			$state = new CandidateRoundState($request->sources, min(max(50, 5 * $request->limit), $depthCap), $depthCap);
 
-			$this->collectCandidateRounds($request, $state, $category, $ratings, $subject, $roundCap, $batchSize);
+			$this->collectCandidateRounds($request, $state, $category, $ratings, $subject, $sources, $roundCap, $batchSize);
 
 			$signals = $this->collectSignals($request, $state);
-			$auditSignals = $this->auditSignals($state->eligibleIds(), $signals, $request, $subject, $category, $ratings);
+			$auditSignals = $this->auditSignals($state->eligibleIds(), $signals, $request, $subject, $category, $sources);
 			$activeModel = $this->activeModel($category, $request);
 			$scorer = $activeModel === null ? $this->rankFusion : new ClickModelScorer($activeModel->model);
 			
@@ -207,10 +185,11 @@
 		 * @param Subject $subject Member or visitor
 		 * @param int $roundCap Maximum number of rounds
 		 * @param int<1, max> $batchSize Maximum IDs per eligibility call
+		 @param RequestSources $sources Candidate sources of this request
 		 * @return void
 		 * @throws \RuntimeException When a source changes its candidate order during depth backfill
 		 */
-		private function collectCandidateRounds(ReconciliationRequest $request, CandidateRoundState $state, int $category, array $ratings, Subject $subject, int $roundCap, int $batchSize): void {
+		private function collectCandidateRounds(ReconciliationRequest $request, CandidateRoundState $state, int $category, array $ratings, Subject $subject, RequestSources $sources, int $roundCap, int $batchSize): void {
 			$additional = array_values(array_filter($request->additionalCandidateIds,
 				function ($id) use ($ratings): bool {
 					return !array_key_exists($id, $ratings);
@@ -220,7 +199,7 @@
 				$newIds = $round === 0 ? $additional : [];
 				
 				foreach ($request->sources as $source) {
-					$newIds = array_merge($newIds, $this->nominateSource($source, $round, $request, $state, $category, $subject, $ratings));
+					$newIds = array_merge($newIds, $this->nominateSource($source, $round, $request, $state, $category, $subject, $sources));
 				}
 				
 				foreach ($this->filter->check($request->eligibility, $state->claimUnsubmitted($newIds), $batchSize) as $id) {
@@ -245,19 +224,19 @@
 		 * @param CandidateRoundState $state Round bookkeeping, updated in place
 		 * @param int $category Resolved category
 		 * @param Subject $subject Member or visitor
-		 * @param array<int, float> $ratings Seen ratings of the subject, loaded once per request
+		 @param RequestSources $sources Candidate sources of this request
 		 * @return array<int, int> Unsubmitted IDs this source newly nominated
 		 * @throws \RuntimeException When the source changes its candidate order during depth backfill
 		 */
 		private function nominateSource(RecommendationSource $source, int $round, ReconciliationRequest $request,
-			CandidateRoundState $state, int $category, Subject $subject, array $ratings): array {
+			CandidateRoundState $state, int $category, Subject $subject, RequestSources $sources): array {
 			$key = $source->value;
 
 			if ($round > 0 && $state->depth($key) <= $state->nominationCount($key)) {
 				return [];
 			}
 
-			$current = $this->generate($source, $subject, $category, $state->depth($key), $request, $ratings);
+			$current = $this->generate($source, $subject, $category, $state->depth($key), $request, $sources);
 			$old = $state->nominations($key);
 			
 			if (array_slice(array_column($current, 'id'), 0, count($old)) !== array_column($old, 'id')) {
@@ -460,17 +439,17 @@
 		 * @param ReconciliationRequest $request Enabled source settings
 		 * @param Subject $subject Member or visitor
 		 * @param int $category Resolved category
-		  @param array<int, float> $ratings Seen ratings of the subject, loaded once per request
+		 @param RequestSources $sources Candidate sources of this request
 		 * @return array<int, array<int, SourceEvidence>> Additional audit signals without source rank
 		 */
-		private function auditSignals(array $eligibleIds, array $nominatedSignals, ReconciliationRequest $request, Subject $subject, int $category, array $ratings): array {
+		private function auditSignals(array $eligibleIds, array $nominatedSignals, ReconciliationRequest $request, Subject $subject, int $category, RequestSources $sources): array {
 			$audit = [];
 
 			foreach ($request->sources as $source) {
 				$missing = $this->unnominatedIds($eligibleIds, $nominatedSignals, $source);
 
 				if ($missing !== []) {
-					$this->auditSource($source, $missing, $request, $subject, $category, $audit, $ratings);
+					$this->auditSource($source, $missing, $request, $subject, $category, $sources, $audit);
 				}
 			}
 			
@@ -485,15 +464,15 @@
 		 * @param Subject $subject Member or visitor
 		 * @param int $category Resolved category
 		 * @param array<int, array<int, SourceEvidence>> $audit Audit signals by candidate, filled in place
-		  @param array<int, float> $ratings Seen ratings of the subject, loaded once per request
+		  @param RequestSources $sources Candidate sources of this request
 		 * @return void
 		 */
-		private function auditSource(RecommendationSource $source, array $missing, ReconciliationRequest $request, Subject $subject, int $category, array &$audit, array $ratings): void {
+		private function auditSource(RecommendationSource $source, array $missing, ReconciliationRequest $request, Subject $subject, int $category, RequestSources $sources, array &$audit): void {
 			if ($source === RecommendationSource::UserSimilarity && $subject->kind !== SubjectKind::Member) {
 				return;
 			}
 
-			foreach ($this->scoredBy($source, $subject, $missing, $request, $category, $ratings) as $result) {
+			foreach ($this->scoredBy($source, $subject, $missing, $request, $category, $sources) as $result) {
 				$audit[$result->productId][] = new SourceEvidence($source, self::rawScore($result), null,
 					$result->supportCount, $result->contributingProductIds);
 			}
@@ -506,27 +485,18 @@
 		 * @param array<int, int> $missing Candidate IDs to score
 		 * @param ReconciliationRequest $request Source settings
 		 * @param int $category Resolved category
-		  @param array<int, float> $ratings Seen ratings of the subject, loaded once per request
+		 @param RequestSources $sources Candidate sources of this request
 		 * @return array<int, \Quellabs\Recommender\RecommendationResult> Scored candidates
 		 */
-		private function scoredBy(RecommendationSource $source, Subject $subject, array $missing, ReconciliationRequest $request, int $category, array $ratings): array {
+		private function scoredBy(RecommendationSource $source, Subject $subject, array $missing, ReconciliationRequest $request, int $category, RequestSources $sources): array {
 			return match ($source) {
-				RecommendationSource::UserSimilarity => $this->similarity->scores($subject, $missing, $request->tuning->sources, $category),
-				RecommendationSource::NewProducts => $this->newProducts($request)->scores($subject, $missing, $request->tuning->sources, $category),
-				RecommendationSource::SlopeOne => $this->slopeOne->scores($subject, $missing, $request->tuning->sources, $category, $ratings),
-				RecommendationSource::ItemLinks => $this->itemLinks->scores($subject, $missing, $request->tuning->sources, $category, $ratings),
-				RecommendationSource::TopRated => $this->topRated->scores($subject, $missing, $request->tuning->sources, $category, $ratings),
+				RecommendationSource::UserSimilarity => $sources->similarity->scores($subject, $missing, $request->tuning->sources, $category),
+				RecommendationSource::NewProducts => $sources->newProducts($request->newProductIds)->scores($subject, $missing, $request->tuning->sources, $category),
+				RecommendationSource::SlopeOne => $sources->slopeOne->scores($subject, $missing, $request->tuning->sources, $category),
+				RecommendationSource::ItemLinks => $sources->itemLinks->scores($subject, $missing, $request->tuning->sources, $category),
+				RecommendationSource::TopRated => $sources->topRated->scores($subject, $missing, $request->tuning->sources, $category),
 			};
 		}
-		/**
-		 * Build the new-products source for one request's ordered list.
-		 * @param ReconciliationRequest $request Request with the new-product list
-		 * @return NewProductsSource
-		 */
-		private function newProducts(ReconciliationRequest $request): NewProductsSource {
-			return new NewProductsSource($this->connection, $this->config, $request->newProductIds);
-		}
-
 		/**
 		 * Return the native score of a result, or null for a new product, which has no score.
 		 * @param RecommendationResult $result Candidate result
@@ -565,17 +535,17 @@
 		 * @param int $category Resolved category
 		 * @param int $depth Requested source depth
 		 * @param ReconciliationRequest $request Source settings
-		  @param array<int, float> $ratings Seen ratings of the subject, loaded once per request
+		 @param RequestSources $sources Candidate sources of this request
 		 * @return array<int, CandidateRow>
 		 */
-		private function generate(RecommendationSource $source, Subject $subject, int $category, int $depth, ReconciliationRequest $request, array $ratings): array {
-			$settings = $request->tuning->sources;
+		private function generate(RecommendationSource $source, Subject $subject, int $category, int $depth, ReconciliationRequest $request, RequestSources $sources): array {
+		$settings = $request->tuning->sources;
 			$results = match ($source) {
-				RecommendationSource::NewProducts => $this->newProducts($request)->candidates($subject, null, $depth, $settings, $category, $ratings),
-				RecommendationSource::TopRated => $this->topRated->candidates($subject, null, $depth, $settings, $category, $ratings),
-				RecommendationSource::UserSimilarity => $this->similarity->candidates($subject, null, $depth, $settings, $category),
-				RecommendationSource::SlopeOne => $this->slopeOne->candidates($subject, null, $depth, $settings, $category, $ratings),
-				RecommendationSource::ItemLinks => $this->itemLinks->candidates($subject, null, $depth, $settings, $category, $ratings),
+				RecommendationSource::NewProducts => $sources->newProducts($request->newProductIds)->candidates($subject, null, $depth, $settings, $category),
+				RecommendationSource::TopRated => $sources->topRated->candidates($subject, null, $depth, $settings, $category),
+				RecommendationSource::UserSimilarity => $sources->similarity->candidates($subject, null, $depth, $settings, $category),
+				RecommendationSource::SlopeOne => $sources->slopeOne->candidates($subject, null, $depth, $settings, $category),
+				RecommendationSource::ItemLinks => $sources->itemLinks->candidates($subject, null, $depth, $settings, $category),
 			};
 			
 			return array_map(self::asRow(...), $results);

@@ -38,13 +38,14 @@ readonly class TopRatedSource implements CandidateSource {
 	 * Build the top-rated source.
 	 * @param Connection $connection The CakePHP database connection
 	 * @param RecommendationConfig $config The recommendation configuration
+	 * @param SubjectRatings|null $ratings Ratings loader shared within one request, or null to create one
 	 */
-	public function __construct(Connection $connection, RecommendationConfig $config) {
+	public function __construct(Connection $connection, RecommendationConfig $config, ?SubjectRatings $ratings = null) {
 		$this->connection = $connection;
 		$this->config = $config;
 		$this->temporary = new TemporaryTable($connection);
 		$this->eligibilityFilter = new EligibilityFilter($config);
-		$this->ratings = new SubjectRatings($connection);
+		$this->ratings = $ratings ?? new SubjectRatings($connection);
 	}
 
 	/**
@@ -63,15 +64,14 @@ readonly class TopRatedSource implements CandidateSource {
 	 * @param int $limit Maximum results, or zero for all
 	 * @param SourceSettings $settings Source settings; the minimum rating count applies
 	 * @param int|null $category Category override
-	 * @param array<int, float>|null $seen Seen ratings of the subject, loaded when null
 	 * @return array<int, RecommendationResult> Products scored by their average rating
 	 * @throws \InvalidArgumentException When the subject is a product
 	 */
 	public function candidates(Subject $subject, ?EligibilityProvider $eligibility, int $limit,
-		SourceSettings $settings, ?int $category = null, ?array $seen = null): array {
+		SourceSettings $settings, ?int $category = null): array {
 		$this->assertSupported($subject);
 		$resolved = $this->config->resolveCategory($category);
-		$seen ??= $this->ratings->seen($subject, $resolved);
+		$seen = $this->ratings->seen($subject, $resolved);
 
 		return $this->eligibilityFilter->withEligibility($eligibility, $limit,
 			function (int $depth) use ($resolved, $settings, $seen): array {
@@ -91,11 +91,10 @@ readonly class TopRatedSource implements CandidateSource {
 	 * @param array<int, int> $productIds Product IDs to score
 	 * @param SourceSettings $settings Source settings; the minimum rating count applies
 	 * @param int|null $category Category override
-	 * @param array<int, float>|null $seen Seen ratings of the subject, loaded when null
 	 * @return array<int, RecommendationResult> Scored products, in no particular order
 	 * @throws \InvalidArgumentException When the subject is a product
 	 */
-	public function scores(Subject $subject, array $productIds, SourceSettings $settings, ?int $category = null, ?array $seen = null): array {
+	public function scores(Subject $subject, array $productIds, SourceSettings $settings, ?int $category = null): array {
 		$this->assertSupported($subject);
 		$resolved = $this->config->resolveCategory($category);
 
@@ -109,7 +108,7 @@ readonly class TopRatedSource implements CandidateSource {
 					"AND EXISTS (SELECT 1 FROM {$candidateTable} candidates WHERE candidates.product_id = r.product_id)", null);
 			});
 
-		return CandidateRows::fromSql($rows, RecommendationSource::TopRated, $seen ?? $this->ratings->seen($subject, $resolved));
+		return CandidateRows::fromSql($rows, RecommendationSource::TopRated, $this->ratings->seen($subject, $resolved));
 	}
 
 	/**

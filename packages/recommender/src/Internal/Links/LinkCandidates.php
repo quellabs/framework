@@ -22,10 +22,11 @@ final class LinkCandidates {
 	/**
 	 * Build the helper.
 	 * @param Connection $connection The CakePHP database connection
+	 * @param SubjectRatings $ratings Seen ratings loader
 	 */
-	public function __construct(Connection $connection) {
+	public function __construct(Connection $connection, SubjectRatings $ratings) {
 		$this->temporary = new TemporaryTable($connection);
-		$this->ratings = new SubjectRatings($connection);
+		$this->ratings = $ratings;
 	}
 
 	/**
@@ -36,11 +37,10 @@ final class LinkCandidates {
 	 * @param RecommendationSource $source Source the rows are reported under
 	 * @param callable(string, string, ?int): array<mixed> $query Runs the source's candidate query, given the rating join, the restriction and the row limit
 	 * @param array<int, int>|null $productIds Restricts the candidates to these products, or null for all
-	 * @param array<int, float>|null $seen Seen ratings of the subject, loaded when null
 	 * @return array<int, RecommendationResult>
 	 */
-	public function candidates(Subject $subject, int $category, int $depth, RecommendationSource $source, callable $query, ?array $productIds = null, ?array $seen = null): array {
-		$seen ??= $this->ratings->seen($subject, $category);
+	public function candidates(Subject $subject, int $category, int $depth, RecommendationSource $source, callable $query, ?array $productIds = null): array {
+		$seen = $this->ratings->seen($subject, $category);
 		$genuine = array_filter($seen, fn(float $rating): bool => $rating >= 0.0);
 
 		if ($genuine === [] || $productIds === []) {

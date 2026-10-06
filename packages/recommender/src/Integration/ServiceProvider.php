@@ -9,7 +9,8 @@ use Quellabs\Contracts\Context\MethodContextInterface;
 	use Quellabs\Recommender\Config\RecommendationConfig;
 	use Quellabs\Recommender\Evaluation\EvaluationRecorder;
 	use Quellabs\Recommender\Evaluation\EvaluationReport;
-	use Quellabs\Recommender\Reconciliation\RecommendationReconciler;
+	use Quellabs\Recommender\Internal\Reconciliation\RequestSourcesFactory;
+use Quellabs\Recommender\Reconciliation\RecommendationReconciler;
 use Quellabs\Recommender\Internal\UserSimilarity;
 use Quellabs\Recommender\Sources\UserSimilaritySource;
 use Quellabs\Recommender\Sources\SlopeOneSource;
@@ -60,9 +61,7 @@ use Quellabs\Recommender\RecommendationEngine;
 				$connection = $this->dependency($dependencies, Connection::class);
 				$config = $this->dependency($dependencies, RecommendationConfig::class);
 				return new RecommendationReconciler($connection, $config,
-					new UserSimilaritySource($connection, $config, new UserSimilarity($connection, $config, new RecommendationEngine($connection, $config))),
-					new SlopeOneSource($connection, $config), new ItemLinksSource($connection, $config),
-					new TopRatedSource($connection, $config));
+					new RequestSourcesFactory($connection, $config, new UserSimilarity($connection, $config, new RecommendationEngine($connection, $config))));
 			}
 
 			if ($className !== RecommendationConfig::class) {

@@ -14,6 +14,7 @@ use Quellabs\Recommender\Sources\UserSimilaritySource;
 use Quellabs\Recommender\Sources\TopRatedSource;
 	use Quellabs\Recommender\RecommendationEngine;
 	use Quellabs\Recommender\Reconciliation\RecommendationReconciler;
+	use Quellabs\Recommender\Internal\Reconciliation\RequestSourcesFactory;
 	
 	/**
 	 * Base class for integration tests that require a live database connection.
@@ -40,9 +41,7 @@ use Quellabs\Recommender\Sources\TopRatedSource;
 		 */
 		protected function reconciler(): RecommendationReconciler {
 			return new RecommendationReconciler($this->connection, $this->config,
-				new UserSimilaritySource($this->connection, $this->config, new UserSimilarity($this->connection, $this->config, new RecommendationEngine($this->connection, $this->config))),
-				new SlopeOneSource($this->connection, $this->config), new ItemLinksSource($this->connection, $this->config),
-				new TopRatedSource($this->connection, $this->config));
+				new RequestSourcesFactory($this->connection, $this->config, new UserSimilarity($this->connection, $this->config, new RecommendationEngine($this->connection, $this->config))));
 		}
 		
 		/**
