@@ -19,6 +19,8 @@ use Quellabs\Recommender\MemberId;
 	 * Requires a live MySQL database — see tests/bootstrap.php.
 	 */
 	class ItemRecommenderTest extends IntegrationTestCase {
+		use ItemLinkSlates;
+
 
 		private ItemRecommender $recommender;
 
@@ -238,50 +240,50 @@ use Quellabs\Recommender\MemberId;
 		}
 
 		// =========================================================================
-		// memberRecommendations (item_links source)
+		// memberLinks (item_links source)
 		// =========================================================================
 
-		public function testMemberRecommendationsReturnsEmptyWhenNoLinks(): void {
+		public function testMemberLinksReturnsEmptyWhenNoLinks(): void {
 			$this->insertRating(1, 10, 0.8);
-			$this->assertSame([], $this->recommender->memberRecommendations(1));
+			$this->assertSame([], $this->memberLinks(1));
 		}
 
-		public function testMemberRecommendationsReturnsUnratedLinkedItems(): void {
+		public function testMemberLinksReturnsUnratedLinkedItems(): void {
 			// Member rated product 10; product 10 is linked to 20 and 30
 			$this->insertRating(1, 10, 0.9);
 			$this->insertLink(10, 20, 5);
 			$this->insertLink(10, 30, 3);
-			$result = $this->recommender->memberRecommendations(1);
+			$result = $this->memberLinks(1);
 			$this->assertEqualsCanonicalizing([20, 30], $this->itemIds($result));
 		}
 
-		public function testMemberRecommendationsExcludesAlreadyRatedItems(): void {
+		public function testMemberLinksExcludesAlreadyRatedItems(): void {
 			$this->insertRating(1, 10, 0.9);
 			$this->insertRating(1, 20, 0.5);
 			$this->insertLink(10, 20, 5);
 			$this->insertLink(10, 30, 3);
-			$result = $this->itemIds($this->recommender->memberRecommendations(1));
+			$result = $this->itemIds($this->memberLinks(1));
 			$this->assertNotContains(20, $result);
 			$this->assertContains(30, $result);
 		}
 
-		public function testMemberRecommendationsRespectsLimit(): void {
+		public function testMemberLinksRespectsLimit(): void {
 			$this->insertRating(1, 10, 0.9);
 			$this->insertLink(10, 20, 10);
 			$this->insertLink(10, 30, 8);
 			$this->insertLink(10, 40, 5);
-			$result = $this->recommender->memberRecommendations(1, limit: 2);
+			$result = $this->memberLinks(1, limit: 2);
 			$this->assertCount(2, $result);
 		}
 
 		/** Allowed candidates beyond the first raw result still fill the limit.
 		 * @return void
 		 */
-		public function testMemberRecommendationsFilterFillsLimit(): void {
+		public function testMemberLinksFilterFillsLimit(): void {
 			$this->insertRating(1, 10, 0.9);
 			$this->insertLink(10, 20, 10);
 			$this->insertLink(10, 30, 5);
-			$this->assertSame([30], $this->itemIds($this->recommender->memberRecommendations(1, new ArrayEligibilityProvider([30]), 1)));
+			$this->assertSame([30], $this->itemIds($this->memberLinks(1, new ArrayEligibilityProvider([30]), 1)));
 		}
 
 		// =========================================================================
@@ -446,26 +448,26 @@ use Quellabs\Recommender\MemberId;
 		// Visitor methods
 		// =========================================================================
 
-		public function testVisitorRecommendationsReturnsEmptyForEmptyContext(): void {
+		public function testVisitorLinksReturnsEmptyForEmptyContext(): void {
 			$visitor = new VisitorContext($this->config);
-			$this->assertSame([], $this->recommender->visitorRecommendations($visitor));
+			$this->assertSame([], $this->visitorLinks($visitor));
 		}
 
-		public function testVisitorRecommendationsReturnsLinkedItems(): void {
+		public function testVisitorLinksReturnsLinkedItems(): void {
 			$this->insertLink(10, 20, 5);
 			$this->insertLink(10, 30, 3);
 			$visitor = new VisitorContext($this->config);
 			$visitor->setRating(10, 0.9);
-			$result = $this->recommender->visitorRecommendations($visitor);
+			$result = $this->visitorLinks($visitor);
 			$this->assertEqualsCanonicalizing([20, 30], $this->itemIds($result));
 		}
 
-		public function testVisitorRecommendationsExcludesAlreadyRatedProducts(): void {
+		public function testVisitorLinksExcludesAlreadyRatedProducts(): void {
 			$this->insertLink(10, 20, 5);
 			$visitor = new VisitorContext($this->config);
 			$visitor->setRating(10, 0.9);
 			$visitor->setRating(20, 0.5);
-			$result = $this->itemIds($this->recommender->visitorRecommendations($visitor));
+			$result = $this->itemIds($this->visitorLinks($visitor));
 			$this->assertNotContains(20, $result);
 		}
 

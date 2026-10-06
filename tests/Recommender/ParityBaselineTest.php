@@ -113,12 +113,15 @@ class ParityBaselineTest extends IntegrationTestCase {
             $outputs["item.slope.10.{$mode}"] = $this->normalize($items->slopeProducts(10, $eligibility, 10));
             $outputs["item.slope.14.{$mode}"] = $this->normalize($items->slopeProducts(14, $eligibility, 10, 2));
 
-            $outputs["item.member.1.{$mode}"] = $this->normalize($items->memberRecommendations(1, $eligibility, 5));
-            $outputs["item.member.5.short.{$mode}"] = $this->normalize($items->memberRecommendations(5, $eligibility, 5));
-            $outputs["item.member.6.cold.{$mode}"] = $this->normalize($items->memberRecommendations(6, $eligibility, 5));
-            $outputs["item.visitor.A.{$mode}"] = $this->normalize($items->visitorRecommendations($this->visitorA(), $eligibility, 5));
-            $outputs["item.visitor.C.short.{$mode}"] = $this->normalize($items->visitorRecommendations($this->visitorC(), $eligibility, 5));
-            $outputs["item.visitor.B.empty.{$mode}"] = $this->normalize($items->visitorRecommendations($this->visitorB(), $eligibility, 5));
+            $provider = $eligibility ?? $this->openProvider();
+            $linksMember = new ReconciliationRequest($provider, [RecommendationSource::ItemLinks], 5, 'home');
+            $linksVisitor = new VisitorReconciliationRequest($provider, [VisitorSource::ItemLinks], 5, 'home');
+            $outputs["links.member.1.{$mode}"] = $this->normalize($reconciler->memberSlate(1, $linksMember));
+            $outputs["links.member.5.short.{$mode}"] = $this->normalize($reconciler->memberSlate(5, $linksMember));
+            $outputs["links.member.6.cold.{$mode}"] = $this->normalize($reconciler->memberSlate(6, $linksMember));
+            $outputs["links.visitor.A.{$mode}"] = $this->normalize($reconciler->visitorSlate($this->visitorA(), $linksVisitor));
+            $outputs["links.visitor.C.short.{$mode}"] = $this->normalize($reconciler->visitorSlate($this->visitorC(), $linksVisitor));
+            $outputs["links.visitor.B.empty.{$mode}"] = $this->normalize($reconciler->visitorSlate($this->visitorB(), $linksVisitor));
 
             $outputs["item.member.predictions.1.{$mode}"] = $this->normalize($items->memberPredictions(1, $eligibility, 10));
             $outputs["item.member.predictions.1.support2.{$mode}"] = $this->normalize($items->memberPredictions(1, $eligibility, 10, 2));

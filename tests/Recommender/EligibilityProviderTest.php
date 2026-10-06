@@ -16,6 +16,8 @@ use Quellabs\Recommender\EligibilityProvider;
  * Requires a live MySQL database — see tests/bootstrap.php.
  */
 class EligibilityProviderTest extends IntegrationTestCase {
+    use ItemLinkSlates;
+
 
 	private ItemRecommender $recommender;
 
@@ -105,9 +107,9 @@ class EligibilityProviderTest extends IntegrationTestCase {
 		$this->insertLink(10, 40, 2);
 		$array = new ArrayEligibilityProvider([30, 40]);
 		$custom = $this->rejecting(20);
-		$this->assertSame($this->itemIds($this->recommender->memberRecommendations(1, $array, 2)),
-			$this->itemIds($this->recommender->memberRecommendations(1, $custom, 2)));
-		$this->assertSame([30, 40], $this->itemIds($this->recommender->memberRecommendations(1, $custom, 2)));
+		$this->assertSame($this->itemIds($this->memberLinks(1, $array, 2)),
+			$this->itemIds($this->memberLinks(1, $custom, 2)));
+		$this->assertSame([30, 40], $this->itemIds($this->memberLinks(1, $custom, 2)));
 	}
 
 	/** An empty array provider means nothing is eligible, not "no restriction".
@@ -124,7 +126,7 @@ class EligibilityProviderTest extends IntegrationTestCase {
 		$this->insertRating(1, 10, 0.9);
 		$this->insertLink(10, 20, 10);
 		$this->insertLink(10, 30, 5);
-		$this->assertSame([30], $this->itemIds($this->recommender->memberRecommendations(1, $this->rejecting(20), 1)));
+		$this->assertSame([30], $this->itemIds($this->memberLinks(1, $this->rejecting(20), 1)));
 	}
 
 	/** @return void */

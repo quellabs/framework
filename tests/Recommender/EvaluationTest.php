@@ -196,6 +196,7 @@ class EvaluationTest extends IntegrationTestCase {
 
     /** @return void */
     public function testActiveModelScoresReferenceAndActualPositions(): void {
+        $this->insertRating(7, 999, 0.9);
         $names = ['log_position', 'new_products.log_depth_searched', 'new_products.present',
             'new_products.reciprocal_rank', 'new_products.score', 'new_products.count'];
         $coefficients = array_fill_keys($names, 0.0);

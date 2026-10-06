@@ -82,6 +82,17 @@
 		}
 		
 		/**
+		 * Return a copy of this request with a different source set.
+		 * @param array<int, RecommendationSource> $sources Enabled source set
+		 * @return self Request with the same inputs and the given sources
+		 * @throws \InvalidArgumentException When the source set is empty, repeats a source, or contains a non-source
+		 */
+		public function withSources(array $sources): self {
+			return new self($this->eligibility, $sources, $this->limit, $this->placement,
+				$this->newProductIds, $this->additionalCandidateIds, $this->category, $this->contextKey, $this->tuning);
+		}
+
+		/**
 		 * Validate and deduplicate sources, returning them in canonical bit order.
 		 * @param array<mixed> $sources Requested sources
 		 * @return array<int, RecommendationSource> Distinct sources ordered by bit

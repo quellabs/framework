@@ -6,13 +6,13 @@ Names, argument order and value types now follow one convention across the publi
 boolean flags and magic strings: `RatingKind` and `RatingOrder` for ratings queries, `ScoreKind` for list scoring,
 and `RecommendationSource` for the candidate source of a result. `RecommendationEngine::automaticRating()` is split into
 `recordPurchase()` and `recordClick()`. Reconciliation settings live in `ReconciliationTuning`, and per-item
-diagnostics in `ReconciliationDiagnostics`. `EligibilityProvider` moved to the root namespace. Reasons methods return `RecommendationResult[]`, average-rating
+diagnostics in `ReconciliationDiagnostics`. `EligibilityProvider` moved to the root namespace. Member and visitor recommendations come from `RecommendationReconciler` slates, and `ItemRecommender` no longer ranks them. Reasons methods return `RecommendationResult[]`, average-rating
 methods return `null` when there is no data, and reconciler methods are `memberSlate()` and `visitorSlate()` for the displayed slate, with `memberCandidatePool()`
 and `visitorCandidatePool()` for the full pool. Value objects use `productId` for product IDs and `source` for candidate
 sources. Rating accessors return `Rating` and `VisitorRating` objects. `ItemRecommender` limits default to `10`. Member
 erasure is a single `RecommendationEngine::deleteMemberData()` call. Visitors record clicks and purchases with
 `VisitorContext::recordClick()` and `recordPurchase()`, visitor reconciliation takes a `VisitorReconciliationRequest`
-that cannot include user similarity, and cold-start thresholds are one `ColdStartPolicy` argument. Thresholds are validated
+that cannot include user similarity, and cold-start thresholds are `ReconciliationTuning` values. Thresholds are validated
 `int` values. Member and product IDs are `int` parameters named `member` and `product`, except where a method takes both
 a member and a product: those take `MemberId` and `ProductId` values so the two cannot be swapped. Configuration accessors drop the `get` prefix. The [README upgrade section](README.md#upgrading)
 lists every changed call.

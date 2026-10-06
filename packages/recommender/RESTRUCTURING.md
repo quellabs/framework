@@ -9,6 +9,10 @@ The package has not been released. Breaking changes to the public API are allowe
 3. **Backfill stays.** The depth-and-backfill loop lives in the shared eligibility helper, and every source uses it.
 4. **One subject type.** A small `Subject` abstraction replaces the parallel member and visitor methods.
 5. **Filtering happens in sources, including under the combiner.** The combiner passes its provider to each source and does not filter. Backfill needs the source's depth loop, so the combiner cannot filter on a source's behalf.
+6. **Subject covers member, visitor and product.** `Subject` is one class with a kind field and an identifier or visitor context. A product subject is the seed for item-to-item queries. Replaces `ItemRecommender`, whose item-to-item methods become product-subject queries on `ItemLinks` and `SlopeOne`.
+7. **Unsupported requests are rejected.** A request that asks a source for a subject kind it does not support fails with an exception. It is not skipped silently.
+8. **Single-product lookups stay, as source methods.** `SlopeOne::predict(subject, product)` returns the predicted rating and support for one product. `ItemLinks::reasons(subject, product, limit)` returns the subject's liked items that link to the product. Each answers only for the product named. Neither filters nor backfills, because the caller owns eligibility for a product it has chosen.
+9. **Source-level candidates are public.** Each source's `candidates(subject, provider, limit)` is part of the public API, so a caller can use one source alone. The combiner's fused list is the second public recommendation call. Both return ranked, filtered products.
 
 ## Terms
 
@@ -29,7 +33,7 @@ The package has not been released. Breaking changes to the public API are allowe
 
 ## Open
 
-- **Predictions and reasons.** `ItemRecommender` exposes `memberPredictions()` and `visitorPredictions()` (predicted ratings, `PredictionResult`) and `memberReasons()` and `visitorReasons()` (the "why this" lists). They do not fit the combiner's ranked-candidate output. Decide whether predictions become a separate entry point over the Slope One source, and whether reasons become a method on the item sources, before Phase 1 removes the ranking methods.
+None.
 
 ## Phases
 
@@ -45,11 +49,18 @@ No production code changes.
 
 ### Phase 1: one ranking path
 
-- [ ] Resolve the Open item on predictions and reasons.
-- [ ] Remove `ItemRecommender::memberRecommendations()` and `visitorRecommendations()`.
-- [ ] Move `fallbackResults()` into `TopRatedSource`.
-- [ ] Route recommendation calls through the combiner.
-- [ ] Remove the README and test references to the removed methods.
+- [x] Resolve the Open item on predictions and reasons. Decision 8: single-product lookups stay as source methods.
+- [x] Remove `ItemRecommender::memberRecommendations()` and `visitorRecommendations()`.
+- [x] Replace `fallbackResults()` with the cold-start rule in the combiner. The top-rated fallback now runs as the combiner's `TopRated` source. `TopRatedSource` as a class is Phase 2.
+- [x] Route recommendation calls through the combiner. Member and visitor slates use `RecommendationReconciler` with an item-links request.
+- [x] Remove the README and test references to the removed methods.
+
+Decisions made in Phase 1:
+
+- Scores. Slates return the fused `rankingScore`. The liked-count score is `evidence[]->rawScore`. Order for warm subjects is unchanged, checked against the Phase 0 baseline.
+- Cold start. A subject with fewer than `minHistory` non-negative ratings gets only the `TopRated` source. This rule removes `NewProducts` for cold subjects too. It is the approved wording, not a separate choice.
+- `ColdStartPolicy` is removed. `minHistory` moves to `ReconciliationTuning`, which already held `topRatedMinRatings`, so the duplicate knob is gone.
+- Parity. Baseline cases for warm subjects keep their item order. Baseline slates for cold subjects change, as expected from the cold-start rule. The baseline was re-recorded for those cases.
 
 ### Phase 2: extract sources
 
@@ -57,6 +68,8 @@ No production code changes.
 - [ ] Remove the hidden construction of `UserSimilarity` and `RecommendationEngine` inside the reconciler. Inject them instead.
 - [ ] Keep `CandidateRoundState` as the bounded-depth state that sources read from.
 - [ ] Declare the supported subjects on each source.
+- [ ] Introduce `Subject` (member, visitor, product) as one class with a kind field. Sources reject unsupported kinds with an exception.
+- [ ] Replace `ItemRecommender::linkedProducts()` and `slopeProducts()` with product-subject queries on `ItemLinks` and `SlopeOne`, and remove `ItemRecommender`.
 
 ### Phase 3: filtering in sources
 
@@ -79,7 +92,7 @@ No production code changes.
 
 ### Phase 6: subject and public surface
 
-- [ ] Introduce `Subject` for member and visitor, and collapse the parallel methods onto it.
+- [ ] Collapse the remaining parallel member and visitor methods onto `Subject`.
 - [ ] Remove types that have only one caller. Shrink `ReconciliationTuning` to the settings callers actually set.
 - [ ] Leave `MemberId` and `ProductId` where they are, in the two-ID methods only.
 

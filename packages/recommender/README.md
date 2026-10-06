@@ -41,21 +41,25 @@ sculpt recommender:rebuild-links
 
 ```php
 use Quellabs\Recommender\Config\RecommendationConfig;
-use Quellabs\Recommender\ItemRecommender;
+use Quellabs\Recommender\ArrayEligibilityProvider;
+use Quellabs\Recommender\RecommendationSource;
+use Quellabs\Recommender\Reconciliation\ReconciliationRequest;
+use Quellabs\Recommender\Reconciliation\RecommendationReconciler;
 use Quellabs\Recommender\MemberId;
 use Quellabs\Recommender\ProductId;
 use Quellabs\Recommender\RecommendationEngine;
 
 $config      = new RecommendationConfig(directLinks: true);
 $engine      = new RecommendationEngine($connection, $config);
-$recommender = new ItemRecommender($connection, $config);
+$reconciler  = new RecommendationReconciler($connection, $config);
 
 $engine->setRating(new MemberId(1), new ProductId(101), 0.9);
 $engine->setRating(new MemberId(2), new ProductId(101), 0.8);
 $engine->setRating(new MemberId(2), new ProductId(102), 0.7);
 
-$recommendations = $recommender->memberRecommendations(1, limit: 5);
-echo $recommendations[0]->productId; // 102
+$slate = $reconciler->memberSlate(1, new ReconciliationRequest(
+    new ArrayEligibilityProvider([102]), [RecommendationSource::ItemLinks], 5, 'home'));
+echo $slate->items[0]->productId; // 102
 ```
 
 Ratings run from 0.0 to 1.0, and -1.0 marks "not interested".
@@ -65,8 +69,6 @@ Ratings run from 0.0 to 1.0, and -1.0 marks "not interested".
 | Task | Method | Returns |
 |------|--------|---------|
 | Rate a product | `RecommendationEngine::setRating()` | `void`, throws on invalid input |
-| Recommendations for a member | `ItemRecommender::memberRecommendations()` | `RecommendationResult[]` |
-| Recommendations for a visitor | `ItemRecommender::visitorRecommendations()` | `RecommendationResult[]` |
 | Predicted rating for one product | `ItemRecommender::memberPrediction()` | `PredictionResult\|null` |
 | Predicted ratings for all unrated products | `ItemRecommender::memberPredictions()` | `PredictionResult[]` |
 | Displayed slate for a member, filtered by catalogue eligibility | `RecommendationReconciler::memberSlate()` | `RecommendationList` |
@@ -102,7 +104,7 @@ Visitor variants take a `VisitorContext` in place of the member ID. Visitor reco
 |--------|-----------------|
 | `linkedProducts()` | Liked count of the co-occurrence link |
 | `slopeProducts()` | Average Slope One difference, which can be negative |
-| `memberRecommendations()`, `visitorRecommendations()` | Sum of liked count times (rating minus threshold). Fallback items use the average rating |
+| `RecommendationReconciler` slates | `rankingScore` is the fused rank score. Each `evidence` entry's `rawScore` is the source's native score: for item links, the sum of liked count times (rating minus threshold); for top-rated, the average rating |
 | `memberPredictions()`, `visitorPredictions()` | Use `PredictionResult::$predictedRating` |
 | `memberReasons()`, `visitorReasons()` | Liked count of the link to the given product |
 
@@ -121,10 +123,10 @@ Rename calls as shown. Methods not listed are unchanged.
 |----------|-----|
 | `ItemRecommender::getLinkedItems()` | `ItemRecommender::linkedProducts()` |
 | `ItemRecommender::getSlopeItems()` | `ItemRecommender::slopeProducts()` |
-| `ItemRecommender::memberGetRecommendedItems()` | `ItemRecommender::memberRecommendations()` |
-| `ItemRecommender::visitorGetRecommendedItems()` | `ItemRecommender::visitorRecommendations()` |
-| `ItemRecommender::memberRecommendationsDetailed()` | `ItemRecommender::memberRecommendations()` |
-| `ItemRecommender::visitorRecommendationsDetailed()` | `ItemRecommender::visitorRecommendations()` |
+| `ItemRecommender::memberGetRecommendedItems()` | `RecommendationReconciler::memberSlate()` with an item-links request |
+| `ItemRecommender::visitorGetRecommendedItems()` | `RecommendationReconciler::visitorSlate()` with an item-links request |
+| `ItemRecommender::memberRecommendationsDetailed()` | `RecommendationReconciler::memberSlate()` with an item-links request |
+| `ItemRecommender::visitorRecommendationsDetailed()` | `RecommendationReconciler::visitorSlate()` with an item-links request |
 | `ItemRecommender::memberGetReasons()` | `ItemRecommender::memberReasons()` |
 | `ItemRecommender::visitorGetReasons()` | `ItemRecommender::visitorReasons()` |
 | `ItemRecommender::memberPredict()` | `ItemRecommender::memberPrediction()` |
@@ -163,17 +165,13 @@ Argument changes. Positional calls must move their arguments. Named calls only n
 | Method | Now |
 |--------|-----|
 | `ItemRecommender::slopeProducts()` | `(int $product, eligibility, limit, int $minSupport, category)` |
-| `ItemRecommender::memberRecommendations()` | `(int $member, eligibility, limit, coldStart, category)` |
-| `ItemRecommender::visitorRecommendations()` | `(visitor, eligibility, limit, coldStart, category)` |
 | `RecommendationEngine::memberNumRatings()` | `(int $member, RatingKind $kind, category)` |
 | `RecommendationEngine::memberRatings()` | `(int $member, RatingKind $kind, ?RatingOrder $order, category)` |
 | `RecommendationEngine::productRatings()` | `(int $product, ?RatingOrder $order, category)` |
 | `RecommendationEngine::memberRating()` | `(MemberId $member, ProductId $product, RatingKind $kind, category)` |
 | `Statistics::topRatedProducts()` | `(limit, int $topRatedMinRatings, category)` |
 
-The eligibility argument is second, and `category` is last, in every method that takes them. The `minHistory` and
-`topRatedMinRatings` arguments of `memberRecommendations()` and `visitorRecommendations()` are now one `ColdStartPolicy`
-argument, `coldStart`. The `minRatings` argument of `Statistics::topRatedProducts()` is now `topRatedMinRatings`.
+The eligibility argument is second, and `category` is last, in every method that takes them. `minHistory` and `topRatedMinRatings` are `ReconciliationTuning` arguments. The `minRatings` argument of `Statistics::topRatedProducts()` is now `topRatedMinRatings`.
 
 Replace the old boolean flags with the enums:
 
@@ -225,7 +223,7 @@ Other changes:
   `RecommendationList::sourceMask()` is unchanged.
 - `EligibilityProvider` and `ArrayEligibilityProvider` moved from `Quellabs\Recommender\Reconciliation` to
   `Quellabs\Recommender`. Update the imports.
-- The `array $filter` parameter of the `ItemRecommender` recommendation, prediction and link methods is now
+- The `array $filter` parameter of the `ItemRecommender` prediction and link methods is now
   `?EligibilityProvider $eligibility`. Pass `null` where the old call passed `[]`, because an empty array meant
   "no filter". Wrap a non-empty ID list in `ArrayEligibilityProvider`. An `ArrayEligibilityProvider` built from an
   empty list accepts no candidates, so it does not replace an empty filter.
@@ -234,8 +232,11 @@ Other changes:
 - `RecommendationConfig` takes `maxCandidateDepth`, `maxBackfillRounds` and `maxEligibilityBatchSize` directly.
   `ReconciliationLimits` is removed. The `fromArray()` keys are unchanged.
 - `ReconciliationTuning` validates its own values, with the same messages as before.
-- `memberRecommendations()` and `visitorRecommendations()` return `RecommendationResult[]`. They previously
-  returned bare product IDs.
+- `ItemRecommender::memberRecommendations()` and `visitorRecommendations()` are removed. Use
+  `RecommendationReconciler::memberSlate()` or `visitorSlate()` with a `RecommendationSource::ItemLinks` or
+  `VisitorSource::ItemLinks` request. Slates return `ReconciledRecommendation` items: `rankingScore` is the fused score,
+  and `evidence[]->rawScore` is the liked-count score. Slate `limit` is 1 to 100, and a provider is required; pass one
+  that accepts every candidate where the old call passed `null`.
 - `RecommendationEngine::setRating()`, `recordPurchase()`, `recordClick()` and `setNotInterested()` return `void`.
   They throw on invalid input instead of returning `false`.
 - `Statistics::mostRatedProducts()` and `topRatedProducts()` return `ProductCount[]` and `ProductAverage[]` instead
@@ -250,11 +251,11 @@ Other changes:
 - `RecommendationReconciler::visitorSlate()` and `visitorCandidatePool()` take a `VisitorReconciliationRequest`, built
   from `VisitorSource` values. `VisitorSource` has no user-similarity case, so a visitor request cannot include it.
   Passing a `ReconciliationRequest` is a type error.
-- `ItemRecommender::memberRecommendations()` and `visitorRecommendations()` take a `ColdStartPolicy` in place of the
-  `minHistory` and `topRatedMinRatings` integers. `ColdStartPolicy` rejects values below 1.
+- A subject with fewer than `minHistory` non-negative ratings gets only the top-rated source. Other requested
+  sources are not used for it, including new products. `minHistory` defaults to 1 and is a `ReconciliationTuning`
+  argument. `ColdStartPolicy` is removed.
 - Thresholds are plain `int` values, checked when the call runs. The `minSupport` argument of the prediction and slope
-  methods is `int $minSupport`, and `Statistics::topRatedProducts()` takes `int $topRatedMinRatings`. `ReconciliationTuning`
-  and `ColdStartPolicy` take ints too. Values below their minimum throw `InvalidArgumentException`.
+  methods is `int $minSupport`, and `Statistics::topRatedProducts()` takes `int $topRatedMinRatings`. `ReconciliationTuning` takes ints too. Values below their minimum throw `InvalidArgumentException`.
   `Statistics::topRatedProducts()` previously clamped values below 1 to 1, and now rejects them.
 - Member and product IDs are `int` parameters, checked to the unsigned 32-bit range. The exception is methods that take
   both a member and a product: `RecommendationEngine::memberRating()`, `setRating()`, `recordPurchase()`,

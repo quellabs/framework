@@ -28,6 +28,9 @@
 		/** @var int|null Maximum IDs per eligibility call override, or null for the configured default */
 		public ?int $maxEligibilityBatchSize;
 
+		/** @var int Minimum ratings before personal sources are used; below it only the top-rated source runs */
+		public int $minHistory;
+
 		/**
 		 * Store the overrides after validating each one.
 		 * @param int $minSupport Minimum summed Slope One pair support, at least 1
@@ -37,6 +40,7 @@
 		 * @param int|null $maxCandidateDepth Maximum source depth override, at least 50, or null for the configured default
 		 * @param int|null $maxBackfillRounds Maximum deeper-query rounds override, at least 1, or null for the configured default
 		 * @param int|null $maxEligibilityBatchSize Maximum IDs per eligibility call override, at least 1, or null for the configured default
+		 * @param int $minHistory Non-negative ratings needed before personal sources run, at least 1
 		 * @throws \InvalidArgumentException When a value is outside its allowed range
 		 */
 		public function __construct(
@@ -46,7 +50,8 @@
 			int  $maxNeighbours = 100,
 			?int $maxCandidateDepth = null,
 			?int $maxBackfillRounds = null,
-			?int $maxEligibilityBatchSize = null
+			?int $maxEligibilityBatchSize = null,
+			int  $minHistory = 1
 		) {
 			Identifier::assertAtLeast($minSupport, 1, 'Minimum support');
 			Identifier::assertAtLeast($topRatedMinRatings, 1, 'Minimum ratings');
@@ -64,6 +69,8 @@
 				Identifier::assertAtLeast($maxEligibilityBatchSize, 1, 'Maximum eligibility batch size');
 			}
 
+			Identifier::assertAtLeast($minHistory, 1, 'Minimum history');
+
 			$this->minSupport = $minSupport;
 			$this->topRatedMinRatings = $topRatedMinRatings;
 			$this->minNeighbourSimilarity = $minNeighbourSimilarity;
@@ -71,5 +78,6 @@
 			$this->maxCandidateDepth = $maxCandidateDepth;
 			$this->maxBackfillRounds = $maxBackfillRounds;
 			$this->maxEligibilityBatchSize = $maxEligibilityBatchSize;
+			$this->minHistory = $minHistory;
 		}
 	}

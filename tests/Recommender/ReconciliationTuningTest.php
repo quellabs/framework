@@ -34,6 +34,7 @@
 				['maxCandidateDepth', 49],
 				['maxBackfillRounds', 0],
 				['maxEligibilityBatchSize', 0],
+				['minHistory', 0],
 			];
 
 			foreach ($invalid as [$name, $value]) {

@@ -150,6 +150,7 @@
 		 * @throws \RuntimeException When a source changes its candidate order during depth backfill
 		 */
 		private function rank(ReconciliationRequest $request, int $category, array $ratings, ?int $memberId): RecommendationList {
+			$request = $this->applyColdStart($request, $ratings);
 			$depthCap = $request->tuning->maxCandidateDepth ?? $this->config->maxCandidateDepth();
 			$roundCap = $request->tuning->maxBackfillRounds ?? $this->config->maxBackfillRounds();
 			$batchSize = max(1, $request->tuning->maxEligibilityBatchSize ?? $this->config->maxEligibilityBatchSize());
@@ -178,6 +179,22 @@
 			);
 		}
 		
+		/**
+		 * Limit a subject below the minimum history to the top-rated source.
+		 * @param ReconciliationRequest $request Request as the caller made it
+		 * @param array<int, float> $ratings Seen ratings, where negative values are not-interested entries
+		 * @return ReconciliationRequest Request with the source set narrowed when the subject is cold
+		 */
+		private function applyColdStart(ReconciliationRequest $request, array $ratings): ReconciliationRequest {
+			$history = count(array_filter($ratings, fn(float $rating): bool => $rating >= 0.0));
+
+			if ($history >= $request->tuning->minHistory) {
+				return $request;
+			}
+
+			return $request->withSources([RecommendationSource::TopRated]);
+		}
+
 		/**
 		 * Query the sources round by round, sending new candidates to eligibility until enough are found or the caps are reached.
 		 * @param ReconciliationRequest $request Request

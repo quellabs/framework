@@ -40,6 +40,37 @@ class ReconciliationTest extends IntegrationTestCase {
         $this->assertSame(1, $list->items[0]->evidence[0]->sourceRank);
     }
 
+    /** A subject with no ratings gets only the top-rated source, whatever sources were requested. @return void */
+    public function testColdMemberGetsOnlyTopRated(): void {
+        $this->insertRating(2, 20, 0.9);
+        $this->insertRating(3, 20, 0.8);
+        $request = new ReconciliationRequest(new ArrayEligibilityProvider([20, 30]),
+            [RecommendationSource::NewProducts, RecommendationSource::ItemLinks, RecommendationSource::TopRated], 5, 'home', [30]);
+        $list = (new RecommendationReconciler($this->connection, $this->config))->memberSlate(1, $request);
+        $this->assertSame([RecommendationSource::TopRated], $list->sources);
+        $this->assertSame([20], array_map(fn($item) => $item->productId, $list->items));
+    }
+
+    /** Ratings below the configured minimum history make a subject cold, and the minimum counts only non-negative ratings. @return void */
+    public function testMinimumHistoryDecidesColdStart(): void {
+        $this->insertRating(1, 10, 0.9);
+        $this->insertRating(1, 11, -1.0);
+        $this->insertLink(10, 20, 5);
+        $this->insertRating(2, 20, 0.9);
+        $request = fn(int $minHistory) => new ReconciliationRequest(new ArrayEligibilityProvider([20]),
+            [RecommendationSource::ItemLinks], 5, 'home', tuning: new ReconciliationTuning(minHistory: $minHistory));
+        $reconciler = new RecommendationReconciler($this->connection, $this->config);
+        $this->assertSame([RecommendationSource::ItemLinks], $reconciler->memberSlate(1, $request(1))->sources);
+        $this->assertSame([RecommendationSource::TopRated], $reconciler->memberSlate(1, $request(2))->sources);
+    }
+
+    /** @return VisitorContext Visitor with one rating outside every candidate list */
+    private function warmVisitor(): VisitorContext {
+        $visitor = new VisitorContext($this->config);
+        $visitor->setRating(999, 0.9);
+        return $visitor;
+    }
+
     /** @return void */
     public function testInvalidProviderResponseFailsTheWholeRequest(): void {
         $provider = new class implements EligibilityProvider {
@@ -49,11 +80,12 @@ class ReconciliationTest extends IntegrationTestCase {
         $request = new VisitorReconciliationRequest($provider, [VisitorSource::NewProducts], 1, 'home', [20]);
         $this->expectException(\UnexpectedValueException::class);
         (new RecommendationReconciler($this->connection, $this->config))
-            ->visitorSlate(new VisitorContext($this->config), $request);
+            ->visitorSlate($this->warmVisitor(), $request);
     }
 
     /** @return void */
     public function testProviderRejectsDuplicateAndReorderedResponses(): void {
+        $this->insertRating(1, 999, 0.9); // Warm subject: cold subjects get only top-rated.
         foreach ([[20, 20], [30, 20], [20, 999]] as $response) {
             $provider = new class($response) implements EligibilityProvider {
                 /** @param array<int, int> $response Invalid reply. */
@@ -74,6 +106,7 @@ class ReconciliationTest extends IntegrationTestCase {
 
     /** @return void */
     public function testEligibilityChangesAreVisibleOnTheNextRequest(): void {
+        $this->insertRating(1, 999, 0.9); // Warm subject: cold subjects get only top-rated.
         $provider = new class implements EligibilityProvider {
             /** @var array<int, int> */
             public array $allowed = [20];
@@ -92,6 +125,7 @@ class ReconciliationTest extends IntegrationTestCase {
 
     /** @return void */
     public function testRejectingProviderStopsAtConfiguredBackfillBounds(): void {
+        $this->insertRating(1, 999, 0.9); // Warm subject: cold subjects get only top-rated.
         $provider = new class implements EligibilityProvider {
             public int $calls = 0;
             public int $largestBatch = 0;
@@ -205,6 +239,7 @@ class ReconciliationTest extends IntegrationTestCase {
 
     /** @return void */
     public function testProviderFailureOnFirstCallPropagates(): void {
+        $this->insertRating(1, 999, 0.9); // Warm subject: cold subjects get only top-rated.
         $provider = new class implements EligibilityProvider {
             /** @inheritDoc */
             public function filterEligible(array $candidateIds): array {
@@ -239,6 +274,7 @@ class ReconciliationTest extends IntegrationTestCase {
 
     /** @return void */
     public function testEmptySourceStillRecordsTheRequestedSearchDepth(): void {
+        $this->insertRating(1, 999, 0.9); // Warm subject: cold subjects get only top-rated.
         $list = (new RecommendationReconciler($this->connection, $this->config))->memberSlate(1,
             new ReconciliationRequest(new ArrayEligibilityProvider([20]),
                 [RecommendationSource::NewProducts], 1, 'home', additionalCandidateIds: [20]));
@@ -391,7 +427,7 @@ class ReconciliationTest extends IntegrationTestCase {
         $request = new VisitorReconciliationRequest($provider, [VisitorSource::NewProducts],
             10, 'home', range(1, 80), tuning: new ReconciliationTuning(maxEligibilityBatchSize: 7));
         $list = (new RecommendationReconciler($this->connection, $this->config))
-            ->visitorSlate(new VisitorContext($this->config), $request);
+            ->visitorSlate($this->warmVisitor(), $request);
         $this->assertCount(10, $list->items);
         $this->assertSame(7, $provider->maxSeen);
     }

@@ -7,7 +7,7 @@ use Quellabs\Recommender\ProductId;
 use Quellabs\Recommender\MemberId;
 
 use PHPUnit\Framework\Attributes\DataProvider;
-use Quellabs\Recommender\ColdStartPolicy;
+use Quellabs\Recommender\Reconciliation\ReconciliationTuning;
 use Quellabs\Recommender\RecommendationSource;
 use Quellabs\Recommender\Config\RecommendationConfig;
 use Quellabs\Recommender\ItemRecommender;
@@ -22,6 +22,8 @@ use Quellabs\Sculpt\Console\ConsoleOutput;
 
 /** Integration coverage for incremental and rebuilt pair measures. */
 class DerivedPairsTest extends IntegrationTestCase {
+    use ItemLinkSlates;
+
     /** Supply each incremental mode.
      * @return array<string, array{bool, bool}>
      */
@@ -88,8 +90,8 @@ class DerivedPairsTest extends IntegrationTestCase {
      */
     public function testDetailedResultsAndColdStart(): void {
         $config = new RecommendationConfig(directLinks: true, directSlope: true);
+        $this->config = $config;
         $engine = new RecommendationEngine($this->connection, $config);
-        $items = new ItemRecommender($this->connection, $config);
         $engine->setRating(new MemberId(1), new ProductId(10), 0.9);
         $engine->setRating(new MemberId(1), new ProductId(20), 0.8);
         $engine->setRating(new MemberId(2), new ProductId(10), 0.9);
@@ -97,26 +99,27 @@ class DerivedPairsTest extends IntegrationTestCase {
         $engine->setRating(new MemberId(2), new ProductId(30), 0.9);
         $engine->setNotInterested(new MemberId(3), new ProductId(20));
         $engine->setRating(new MemberId(3), new ProductId(10), 0.9);
-        $member = $items->memberRecommendations(3, new ArrayEligibilityProvider([20, 30]));
-        $this->assertSame(RecommendationSource::ItemLinks, $member[0]->source);
+        $member = $this->memberLinks(3, new ArrayEligibilityProvider([20, 30]));
+        $this->assertSame(RecommendationSource::ItemLinks, $member[0]->evidence[0]->source);
         $this->assertSame(30, $member[0]->productId);
-        $this->assertSame([10], $member[0]->contributingProductIds);
-        $this->assertGreaterThan(0, $member[0]->score);
+        $this->assertSame([10], $member[0]->evidence[0]->contributingProductIds);
+        $this->assertGreaterThan(0, $member[0]->rankingScore);
 
         $visitor = new VisitorContext($config);
         $visitor->setNotInterested(20);
-        $fallback = $items->visitorRecommendations($visitor, new ArrayEligibilityProvider([20, 30]), coldStart: new ColdStartPolicy(topRatedMinRatings: 1));
+        $fallback = $this->visitorLinks($visitor, new ArrayEligibilityProvider([20, 30]),
+            tuning: new ReconciliationTuning(topRatedMinRatings: 1));
         $this->assertCount(1, $fallback);
         $this->assertSame(30, $fallback[0]->productId);
-        $this->assertSame(RecommendationSource::TopRated, $fallback[0]->source);
-        $this->assertSame([], $fallback[0]->contributingProductIds);
+        $this->assertSame(RecommendationSource::TopRated, $fallback[0]->evidence[0]->source);
+        $this->assertSame([], $fallback[0]->evidence[0]->contributingProductIds);
 
         $visitor->setRating(10, 0.9);
-        $collaborative = $items->visitorRecommendations($visitor, new ArrayEligibilityProvider([20, 30]));
+        $collaborative = $this->visitorLinks($visitor, new ArrayEligibilityProvider([20, 30]));
         $this->assertCount(1, $collaborative);
         $this->assertSame(30, $collaborative[0]->productId);
-        $this->assertSame(RecommendationSource::ItemLinks, $collaborative[0]->source);
-        $this->assertSame([10], $collaborative[0]->contributingProductIds);
+        $this->assertSame(RecommendationSource::ItemLinks, $collaborative[0]->evidence[0]->source);
+        $this->assertSame([10], $collaborative[0]->evidence[0]->contributingProductIds);
     }
 
     /** Member and product deletion remove both pair directions.
