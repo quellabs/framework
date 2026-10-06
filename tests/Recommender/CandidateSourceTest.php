@@ -108,6 +108,20 @@ class CandidateSourceTest extends IntegrationTestCase {
         }
     }
 
+    /** Scores cover only the products asked for, with no depth or eligibility applied.
+     * @return void
+     */
+    public function testScoresCoverOnlyTheRequestedProducts(): void {
+        $this->insertRating(5, 1, 1.0);
+        $this->insertLink(1, 20, 5);
+        $this->insertLink(1, 40, 1);
+
+        foreach ($this->sources() as $source) {
+            $this->assertSame([40], $this->candidateIds($source->scores(Subject::member(5), [40, 99], new SourceSettings())));
+            $this->assertSame([], $this->candidateIds($source->scores(Subject::member(5), [], new SourceSettings())));
+        }
+    }
+
     /** Single-product lookups answer only for member and visitor subjects.
      * @return void
      */

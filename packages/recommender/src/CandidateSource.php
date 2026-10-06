@@ -27,4 +27,15 @@ interface CandidateSource {
 	 */
 	public function candidates(Subject $subject, ?EligibilityProvider $eligibility, int $depth,
 		SourceSettings $settings, ?int $category = null): array;
+
+	/**
+	 * Score the given products for a subject, without depth or eligibility. Used to score candidates that other sources nominated.
+	 * @param Subject $subject Subject the scores are for
+	 * @param array<int, int> $productIds Product IDs to score
+	 * @param SourceSettings $settings Source settings; sources read only the fields they use
+	 * @param int|null $category Category override
+	 * @return array<int, RecommendationResult> Scored products, in no particular order; unscored products are omitted
+	 * @throws \InvalidArgumentException When the source does not support the subject kind
+	 */
+	public function scores(Subject $subject, array $productIds, SourceSettings $settings, ?int $category = null): array;
 }

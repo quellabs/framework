@@ -77,12 +77,44 @@ readonly class ItemLinksSource implements CandidateSource {
 
 		$rows = match ($subject->kind) {
 			SubjectKind::Product => $this->linkedRows($subject->id ?? throw new \LogicException('A product subject always has an ID.'), $depth, $resolved),
-			SubjectKind::Member, SubjectKind::Visitor => $this->linkCandidates->candidates($subject, $resolved, $depth, RecommendationSource::ItemLinks,
-				fn(string $join, string $restriction, ?int $limit): array => $this->candidateRows($join, $restriction, [], $resolved, $limit)),
+			SubjectKind::Member, SubjectKind::Visitor => $this->ratedCandidates($subject, $resolved, $depth, null),
 		};
 
 		return $eligibility === null ? $rows : $this->eligibilityFilter->keepEligible($eligibility, $rows,
 			fn(RecommendationResult $row): int => $row->productId);
+	}
+
+	/**
+	 * Score the given products for a subject by liked count, without depth or eligibility.
+	 * @param Subject $subject Subject the scores are for
+	 * @param array<int, int> $productIds Product IDs to score
+	 * @param SourceSettings $settings Source settings, unused
+	 * @param int|null $category Category override
+	 * @return array<int, RecommendationResult> Scored products, in no particular order
+	 */
+	public function scores(Subject $subject, array $productIds, SourceSettings $settings, ?int $category = null): array {
+		$resolved = $this->config->resolveCategory($category);
+
+		if ($subject->kind === SubjectKind::Product) {
+			return array_values(array_filter($this->candidates($subject, null, 0, $settings, $category),
+				fn(RecommendationResult $row): bool => in_array($row->productId, $productIds, true)));
+		}
+
+		return $this->ratedCandidates($subject, $resolved, 0, $productIds);
+	}
+
+	/**
+	 * Return the products linked to a member's or visitor's genuine ratings that they have not seen.
+	 * @param Subject $subject Member or visitor subject
+	 * @param int $category Resolved category
+	 * @param int $depth Number of top candidates, or zero for all
+	 * @param array<int, int>|null $productIds Restricts the products to these, or null for all
+	 * @return array<int, RecommendationResult>
+	 */
+	private function ratedCandidates(Subject $subject, int $category, int $depth, ?array $productIds): array {
+		return $this->linkCandidates->candidates($subject, $category, $depth, RecommendationSource::ItemLinks,
+			fn(string $join, string $restriction, ?int $limit): array => $this->candidateRows($join, $restriction, [], $category, $limit),
+			$productIds);
 	}
 
 	/**
@@ -194,7 +226,7 @@ readonly class ItemLinksSource implements CandidateSource {
 	 * @param int|null $limit Maximum rows, or null for all
 	 * @return array<int, array<string, mixed>> Rows with id, score and contributors, a JSON array of product IDs
 	 */
-	public function candidateRows(string $ratingJoin, string $restriction, array $params, int $category, ?int $limit): array {
+	private function candidateRows(string $ratingJoin, string $restriction, array $params, int $category, ?int $limit): array {
 		$sql = "
 			SELECT
 				l.item_id2 AS id,

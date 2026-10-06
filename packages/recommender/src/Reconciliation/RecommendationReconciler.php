@@ -484,22 +484,20 @@
 			}
 
 			if ($source === RecommendationSource::TopRated) {
-				$rows = $this->auditTopRatedRows($missing, $request, $category);
-			} else {
-				$genuine = array_filter($ratings, function ($rating): bool {
-					return $rating >= 0.0;
-				});
-
-				if ($genuine === []) {
-					return;
+				foreach ($this->normalizeRows($this->auditTopRatedRows($missing, $request, $category), $source, $ratings) as $row) {
+					$audit[$row['id']][] = new SourceEvidence($source, $row['score'], null, $row['count'], $row['contributors']);
 				}
 
-				$rows = $this->auditRatingRows($source, $missing, $genuine, $category, $request);
+				return;
 			}
 
-			foreach ($this->normalizeRows($rows, $source, $ratings) as $row) {
-				$audit[$row['id']][] = new SourceEvidence($source, $row['score'], null,
-					$row['count'], $row['contributors']);
+			$scored = $source === RecommendationSource::SlopeOne
+				? $this->slopeOne->scores($subject, $missing, $request->tuning->sources, $category)
+				: $this->itemLinks->scores($subject, $missing, $request->tuning->sources, $category);
+
+			foreach ($scored as $result) {
+				$audit[$result->productId][] = new SourceEvidence($source, $result->score, null,
+					$result->supportCount, $result->contributingProductIds);
 			}
 		}
 		
@@ -612,58 +610,6 @@
 			return $depth === null ? $sql : $sql . " ORDER BY score DESC, id ASC LIMIT {$depth}";
 		}
 		
-		/**
-		 * Score missing candidates from the seen ratings of item-links or Slope One.
-		 * @param RecommendationSource $source Item-links or Slope One
-		 * @param array<int, int> $candidateIds Eligible IDs to score
-		 * @param array<int, float> $ratings Genuine ratings
-		 * @param int $category Resolved category
-		 * @param ReconciliationRequest $request Source thresholds
-		 * @return array<mixed> Aggregate candidate rows
-		 */
-		private function auditRatingRows(RecommendationSource $source, array $candidateIds, array $ratings, int $category, ReconciliationRequest $request): array {
-			return $this->temporary->withRatingTable('vogoo_audit_ratings_', $ratings,
-				function (string $ratingsTable) use ($source, $candidateIds, $category, $request): array {
-					return $this->auditRatingCandidates($source, $ratingsTable, $candidateIds, $category, $request);
-				});
-		}
-		
-		/**
-		 * Score the given candidates against a rating table with the item-links or Slope One aggregate.
-		 * @param RecommendationSource $source Item-links or Slope One
-		 * @param string $ratingsTable Temporary table of rating inputs
-		 * @param array<int, int> $candidateIds Candidate IDs to score
-		 * @param int $category Resolved category
-		 * @param ReconciliationRequest $request Source thresholds
-		 * @return array<mixed> Aggregate candidate rows
-		 */
-		private function auditRatingCandidates(RecommendationSource $source, string $ratingsTable, array $candidateIds, int $category, ReconciliationRequest $request): array {
-			return $this->temporary->withIdTable('vogoo_audit_candidates_', $candidateIds,
-				function (string $candidateTable) use ($source, $ratingsTable, $category, $request): array {
-					$restriction = "AND EXISTS (SELECT 1 FROM {$candidateTable} candidates WHERE candidates.product_id = l.item_id2)";
-					return $this->sourceRows($source, $ratingsTable, $category, $request, $restriction, null);
-				});
-		}
-		
-		/**
-		 * Run the item-links or Slope One candidate query against a rating table under a restriction.
-		 * @param RecommendationSource $source Item-links or Slope One
-		 * @param string $ratingsTable Temporary table of rating inputs, joined on l.item_id1
-		 * @param int $category Resolved category
-		 * @param ReconciliationRequest $request Source thresholds
-		 * @param string $restriction Extra predicate limiting the candidates, starting with AND and referring to l.item_id2
-		 * @param int|null $depth Keeps the top rows by score up to this depth, or all rows when null
-		 * @return array<mixed> Candidate rows with id, score and support_count or contributors
-		 */
-		private function sourceRows(RecommendationSource $source, string $ratingsTable, int $category, ReconciliationRequest $request, string $restriction, ?int $depth): array {
-			$join = "JOIN {$ratingsTable} r ON r.product_id = l.item_id1";
-
-			if ($source === RecommendationSource::SlopeOne) {
-				return $this->slopeOne->candidateRows($join, $restriction, [], $category, $request->tuning->sources->minSupport, $depth);
-			}
-
-			return $this->itemLinks->candidateRows($join, $restriction, [], $category, $depth);
-		}
 		/**
 		 * Generate the bounded candidates of one source.
 		 * @param RecommendationSource $source Candidate generator

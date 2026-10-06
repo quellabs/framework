@@ -84,12 +84,43 @@ readonly class SlopeOneSource implements CandidateSource {
 		$rows = match ($subject->kind) {
 			SubjectKind::Product => $this->productRows($subject->id ?? throw new \LogicException('A product subject always has an ID.'),
 				$settings->minSupport, $depth, $category),
-			SubjectKind::Member, SubjectKind::Visitor => $this->linkCandidates->candidates($subject, $resolved, $depth, RecommendationSource::SlopeOne,
-				fn(string $join, string $restriction, ?int $limit): array => $this->candidateRows($join, $restriction, [], $resolved, $settings->minSupport, $limit)),
+			SubjectKind::Member, SubjectKind::Visitor => $this->ratedCandidates($subject, $resolved, $depth, $settings, null),
 		};
 
 		return $eligibility === null ? $rows : $this->eligibilityFilter->keepEligible($eligibility, $rows,
 			fn(RecommendationResult $row): int => $row->productId);
+	}
+
+	/**
+	 * Score the given products for a subject by Slope One prediction, without depth or eligibility.
+	 * @param Subject $subject Subject the scores are for
+	 * @param array<int, int> $productIds Product IDs to score
+	 * @param SourceSettings $settings Source settings; minimum support applies to the pair count
+	 * @param int|null $category Category override
+	 * @return array<int, RecommendationResult> Scored products, in no particular order
+	 */
+	public function scores(Subject $subject, array $productIds, SourceSettings $settings, ?int $category = null): array {
+		if ($subject->kind === SubjectKind::Product) {
+			return array_values(array_filter($this->candidates($subject, null, 0, $settings, $category),
+				fn(RecommendationResult $row): bool => in_array($row->productId, $productIds, true)));
+		}
+
+		return $this->ratedCandidates($subject, $this->config->resolveCategory($category), 0, $settings, $productIds);
+	}
+
+	/**
+	 * Return the products predicted from a member's or visitor's genuine ratings that they have not seen.
+	 * @param Subject $subject Member or visitor subject
+	 * @param int $category Resolved category
+	 * @param int $depth Number of top candidates, or zero for all
+	 * @param SourceSettings $settings Source settings; minimum support applies to the pair count
+	 * @param array<int, int>|null $productIds Restricts the products to these, or null for all
+	 * @return array<int, RecommendationResult>
+	 */
+	private function ratedCandidates(Subject $subject, int $category, int $depth, SourceSettings $settings, ?array $productIds): array {
+		return $this->linkCandidates->candidates($subject, $category, $depth, RecommendationSource::SlopeOne,
+			fn(string $join, string $restriction, ?int $limit): array => $this->candidateRows($join, $restriction, [], $category, $settings->minSupport, $limit),
+			$productIds);
 	}
 
 	/**
@@ -168,7 +199,7 @@ readonly class SlopeOneSource implements CandidateSource {
 
 	/**
 	 * Score candidates from the rated items they are linked to, best prediction first.
-	 * This is the one Slope One candidate query. Predictions and the recommendation reconciler both use it.
+	 * This is the one Slope One candidate query. Candidates and predictions both use it.
 	 * @param string $ratingJoin Join from vogoo_links to the rating source, aliased r on l.item_id1
 	 * @param string $restriction Extra condition starting with AND and referring to l.item_id2, or empty
 	 * @param array<string, int|float|string> $params Parameters referenced by the join and restriction
@@ -177,7 +208,7 @@ readonly class SlopeOneSource implements CandidateSource {
 	 * @param int|null $limit Maximum rows, or null for all
 	 * @return array<int, array<string, mixed>> Rows with id, support_count and score
 	 */
-	public function candidateRows(string $ratingJoin, string $restriction, array $params, int $category, int $minSupport, ?int $limit): array {
+	private function candidateRows(string $ratingJoin, string $restriction, array $params, int $category, int $minSupport, ?int $limit): array {
 		$sql = "
 			SELECT
 				l.item_id2 AS id,
