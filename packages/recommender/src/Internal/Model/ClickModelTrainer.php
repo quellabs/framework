@@ -69,11 +69,19 @@
 			
 			$id = bin2hex(random_bytes(16));
 			$this->connection->execute('INSERT INTO vogoo_models
-	            (id, objective, category, placement, source_mask, context_key, feature_schema_version,
-	                artifact, trained_at, activated_at, status)
-	            VALUES (UNHEX(?), \'click\', ?, ?, ?, ?, 1, ?, UTC_TIMESTAMP(6), NULL, ?)',
-				[$id, $category, $placement, $mask, $contextKey ?? '',
-					json_encode($artifact, JSON_THROW_ON_ERROR), $artifact['validated'] ? 'validated' : 'rejected']);
+			(id, objective, category, placement, source_mask, context_key, feature_schema_version,
+				artifact, trained_at, activated_at, status)
+			VALUES (UNHEX(:id), \'click\', :category, :placement, :source_mask, :context_key, 1,
+				:artifact, UTC_TIMESTAMP(6), NULL, :status)',
+			[
+				'id'          => $id,
+				'category'    => $category,
+				'placement'   => $placement,
+				'source_mask' => $mask,
+				'context_key' => $contextKey ?? '',
+				'artifact'    => json_encode($artifact, JSON_THROW_ON_ERROR),
+				'status'      => $artifact['validated'] ? 'validated' : 'rejected',
+			]);
 					
 			return $id;
 		}
@@ -119,15 +127,21 @@
 				}
 				
 				$this->connection->execute('UPDATE vogoo_models SET status = \'retired\'
-	                WHERE objective = ? AND
-	                    category = ? AND
-	                    placement = ? AND
-	                    source_mask = ? AND
-	                    context_key = ? AND
-	                    status = \'active\'',
-					[$row['objective'], $row['category'], $row['placement'], $row['source_mask'], $row['context_key']]);
+				WHERE objective = :objective AND
+					category = :category AND
+					placement = :placement AND
+					source_mask = :source_mask AND
+					context_key = :context_key AND
+					status = \'active\'',
+				[
+					'objective'   => $row['objective'],
+					'category'    => $row['category'],
+					'placement'   => $row['placement'],
+					'source_mask' => $row['source_mask'],
+					'context_key' => $row['context_key'],
+				]);
 				$this->connection->execute('UPDATE vogoo_models SET status = \'active\',
-	                activated_at = UTC_TIMESTAMP(6) WHERE id = UNHEX(?)', [$modelId]);
+				activated_at = UTC_TIMESTAMP(6) WHERE id = UNHEX(:id)', ['id' => $modelId]);
 			});
 		}
 		

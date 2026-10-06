@@ -121,14 +121,26 @@
 		 * @return void
 		 */
 		private function insertRows(string $table, array $columns, array $rows): void {
-			$holder = '(' . implode(',', array_fill(0, count($columns), '?')) . ')';
-	
-			foreach (array_chunk($rows, self::CHUNK_SIZE) as $batch) {
-				$this->connection->execute(
-					sprintf('INSERT INTO %s (%s) VALUES %s', $table, implode(', ', $columns),
-						implode(',', array_fill(0, count($batch), $holder))),
-					array_merge(...$batch)
-				);
+		foreach (array_chunk($rows, self::CHUNK_SIZE) as $batch) {
+			$groups = [];
+			$params = [];
+
+			foreach ($batch as $rowIndex => $row) {
+				$names = [];
+
+				foreach ($row as $columnIndex => $value) {
+					$name = "r{$rowIndex}c{$columnIndex}";
+					$names[] = ":{$name}";
+					$params[$name] = $value;
+				}
+
+				$groups[] = '(' . implode(',', $names) . ')';
 			}
+
+			$this->connection->execute(
+				sprintf('INSERT INTO %s (%s) VALUES %s', $table, implode(', ', $columns), implode(',', $groups)),
+				$params
+			);
 		}
+	}
 	}

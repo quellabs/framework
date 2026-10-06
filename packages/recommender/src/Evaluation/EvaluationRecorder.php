@@ -89,17 +89,16 @@
 				$this->assertOutcomeFollowsDisplay($impressionId, $product, $timestamp);
 				
 				$this->connection->execute('INSERT INTO vogoo_outcomes
-	                (event_id, impression_id, item_id, event_type, occurred_at)
-	                VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE event_id = event_id
-                ',
-					[
-						$eventId,
-						$impressionId->binary(),
-						$product,
-						$type->value,
-						$timestamp
-					]
-				);
+				(event_id, impression_id, item_id, event_type, occurred_at)
+				VALUES (:event_id, :impression_id, :item_id, :event_type, :occurred_at) ON DUPLICATE KEY UPDATE event_id = event_id
+				',
+				[
+					'event_id'      => $eventId,
+					'impression_id' => $impressionId->binary(),
+					'item_id'       => $product,
+					'event_type'    => $type->value,
+					'occurred_at'   => $timestamp,
+				]);
 				
 				$this->assertStoredEventMatches($impressionId, $product, $eventId, $type, $timestamp);
 			});
@@ -212,10 +211,18 @@
 		 */
 		private function insertImpressionRow(ImpressionId $id, RecommendationList $shown, ?int $memberId, string $timestamp): void {
 			$this->connection->execute('INSERT INTO vogoo_impressions
-	            (id, category, placement, source_mask, context_key, score_kind, member_id, shown_at)
-	            VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-				[$id->binary(), $shown->category, $shown->placement, $shown->sourceMask(),
-					$shown->contextKey ?? '', $shown->scoreKind->value, $memberId, $timestamp]);
+			(id, category, placement, source_mask, context_key, score_kind, member_id, shown_at)
+			VALUES (:id, :category, :placement, :source_mask, :context_key, :score_kind, :member_id, :shown_at)',
+			[
+				'id'          => $id->binary(),
+				'category'    => $shown->category,
+				'placement'   => $shown->placement,
+				'source_mask' => $shown->sourceMask(),
+				'context_key' => $shown->contextKey ?? '',
+				'score_kind'  => $shown->scoreKind->value,
+				'member_id'   => $memberId,
+				'shown_at'    => $timestamp,
+			]);
 		}
 		
 		/**
@@ -235,20 +242,36 @@
 			$displayProbability = $model?->probability($diagnostics->featureSnapshot, $position);
 			
 			$this->connection->execute('INSERT INTO vogoo_impression_items
-	            (impression_id, item_id, position, ranking_score, display_click_probability,
-	            model_id, feature_schema_version, feature_snapshot)
-	            VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-				[$id->binary(), $item->productId, $position, $item->rankingScore,
-					$displayProbability, $shown->scorerId === null ? null : hex2bin($shown->scorerId),
-					$schemaVersion, $snapshot]);
+			(impression_id, item_id, position, ranking_score, display_click_probability,
+			model_id, feature_schema_version, feature_snapshot)
+			VALUES (:impression_id, :item_id, :position, :ranking_score, :display_click_probability,
+			:model_id, :feature_schema_version, :feature_snapshot)',
+			[
+				'impression_id'             => $id->binary(),
+				'item_id'                   => $item->productId,
+				'position'                  => $position,
+				'ranking_score'             => $item->rankingScore,
+				'display_click_probability' => $displayProbability,
+				'model_id'                  => $shown->scorerId === null ? null : hex2bin($shown->scorerId),
+				'feature_schema_version'    => $schemaVersion,
+				'feature_snapshot'          => $snapshot,
+			]);
 			
 			foreach ($item->evidence as $signal) {
 				$this->connection->execute('INSERT INTO vogoo_impression_evidence
-	                (impression_id, item_id, source, raw_score, source_rank, support_count,
-	                log_odds_contribution, contributing_item_ids) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-					[$id->binary(), $item->productId, $signal->source->value, $signal->rawScore,
-						$signal->sourceRank, $signal->supportCount, $signal->logOddsContribution,
-						json_encode($signal->contributingProductIds, JSON_THROW_ON_ERROR)]);
+			(impression_id, item_id, source, raw_score, source_rank, support_count,
+			log_odds_contribution, contributing_item_ids) VALUES (:impression_id, :item_id, :source, :raw_score,
+			:source_rank, :support_count, :log_odds_contribution, :contributing_item_ids)',
+			[
+					'impression_id'         => $id->binary(),
+					'item_id'               => $item->productId,
+					'source'                => $signal->source->value,
+					'raw_score'             => $signal->rawScore,
+					'source_rank'           => $signal->sourceRank,
+					'support_count'         => $signal->supportCount,
+					'log_odds_contribution' => $signal->logOddsContribution,
+					'contributing_item_ids' => json_encode($signal->contributingProductIds, JSON_THROW_ON_ERROR),
+				]);
 			}
 		}
 		

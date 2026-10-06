@@ -102,7 +102,7 @@ class ClickModelTrainerTest extends IntegrationTestCase {
                 return $trainingRows;
             }
             $this->assertStringContainsString('INSERT INTO vogoo_models', $sql);
-            $artifact = json_decode($params[5], true, 512, JSON_THROW_ON_ERROR);
+            $artifact = json_decode($params['artifact'], true, 512, JSON_THROW_ON_ERROR);
             return $insert;
         });
         (new ClickModelTrainer($connection))->train(1, 'train_test',
