@@ -65,7 +65,12 @@ use Quellabs\Recommender\Reconciliation\SourceSettings;
 		 * @throws \InvalidArgumentException When the product ID is outside the unsigned 32-bit range
 		 */
 		public function linkedProducts(int $product, ?EligibilityProvider $eligibility = null, int $limit = 10, ?int $category = null): array {
-			return $this->itemLinks->candidates(Subject::product($product), $eligibility, $limit, new SourceSettings(), $category);
+			$subject = Subject::product($product);
+			$resolvedCategory = $this->config->resolveCategory($category);
+
+			return $this->eligibilityFilter->withEligibility($eligibility, $limit,
+				fn(int $depth): array => $this->itemLinks->candidates($subject, null, $depth, new SourceSettings(), $resolvedCategory),
+				fn(RecommendationResult $row): int => $row->productId);
 		}
 
 		/**
@@ -194,8 +199,12 @@ use Quellabs\Recommender\Reconciliation\SourceSettings;
 		 */
 		public function slopeProducts(int $product, ?EligibilityProvider $eligibility = null, int $limit = 10,
 			int $minSupport = 1, ?int $category = null): array {
-			return $this->slopeOne->candidates(Subject::product($product), $eligibility, $limit,
-				new SourceSettings(minSupport: $minSupport), $category);
+			$subject = Subject::product($product);
+			$settings = new SourceSettings(minSupport: $minSupport);
+
+			return $this->eligibilityFilter->withEligibility($eligibility, $limit,
+				fn(int $depth): array => $this->slopeOne->candidates($subject, null, $depth, $settings, $category),
+				fn(RecommendationResult $row): int => $row->productId);
 		}
 
 		/**

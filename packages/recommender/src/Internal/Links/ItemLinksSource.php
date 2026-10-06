@@ -50,23 +50,22 @@ readonly class ItemLinksSource implements CandidateSource {
 	 * Return the products that co-occur with a product, scored by liked count. Settings are not used for product subjects.
 	 * @param Subject $subject Product subject
 	 * @param EligibilityProvider|null $eligibility Restricts candidates, or null for all
-	 * @param int $limit Maximum results, or zero for all
+	 * @param int $depth Number of top candidates to consider before eligibility, or zero for all
 	 * @param SourceSettings $settings Source settings, unused for product subjects
 	 * @param int|null $category Category override
 	 * @return array<int, RecommendationResult> Co-occurring products, scored by liked count
 	 * @throws \InvalidArgumentException When the subject is not a product
 	 */
-	public function candidates(Subject $subject, ?EligibilityProvider $eligibility, int $limit,
+	public function candidates(Subject $subject, ?EligibilityProvider $eligibility, int $depth,
 		SourceSettings $settings, ?int $category = null): array {
 		if (!$this->supports($subject->kind)) {
 			throw new \InvalidArgumentException("Item links does not support {$subject->kind->value} subjects.");
 		}
 
 		$productId = $subject->id ?? throw new \LogicException('A product subject always has an ID.');
-		$resolvedCategory = $this->config->resolveCategory($category);
+		$rows = $this->linkedRows($productId, $depth, $this->config->resolveCategory($category));
 
-		return $this->eligibilityFilter->withEligibility($eligibility, $limit,
-			fn(int $depth): array => $this->linkedRows($productId, $depth, $resolvedCategory),
+		return $eligibility === null ? $rows : $this->eligibilityFilter->keepEligible($eligibility, $rows,
 			fn(RecommendationResult $row): int => $row->productId);
 	}
 

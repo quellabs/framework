@@ -66,28 +66,24 @@ readonly class SlopeOneSource implements CandidateSource {
 	 * Score is the average diff, which can be negative.
 	 * @param Subject $subject Product subject
 	 * @param EligibilityProvider|null $eligibility Restricts candidates, or null for all
-	 * @param int $limit Maximum results, or zero for all
+	 * @param int $depth Number of top candidates to consider before eligibility, or zero for all
 	 * @param SourceSettings $settings Source settings; minimum support applies to the pair count
 	 * @param int|null $category Category override
 	 * @return array<int, RecommendationResult> Products scored by their average Slope One diff
 	 * @throws \InvalidArgumentException When the subject is not a product
 	 */
-	public function candidates(Subject $subject, ?EligibilityProvider $eligibility, int $limit,
+	public function candidates(Subject $subject, ?EligibilityProvider $eligibility, int $depth,
 		SourceSettings $settings, ?int $category = null): array {
 		if (!$this->supports($subject->kind)) {
 			throw new \InvalidArgumentException("Slope One does not support {$subject->kind->value} subjects.");
 		}
 
 		$productId = $subject->id ?? throw new \LogicException('A product subject always has an ID.');
+		$rows = array_map(fn(array $diff): RecommendationResult => new RecommendationResult(
+			$diff['product_id'], $diff['diff'], RecommendationSource::SlopeOne, []),
+			$this->slopeDiffs($productId, $settings->minSupport, $depth, $category));
 
-		return $this->eligibilityFilter->withEligibility($eligibility, $limit,
-			function (int $depth) use ($productId, $settings, $category): array {
-				$diffs = $this->slopeDiffs($productId, $settings->minSupport, $depth, $category);
-
-				return array_map(function (array $diff): RecommendationResult {
-					return new RecommendationResult($diff['product_id'], $diff['diff'], RecommendationSource::SlopeOne, []);
-				}, $diffs);
-			},
+		return $eligibility === null ? $rows : $this->eligibilityFilter->keepEligible($eligibility, $rows,
 			fn(RecommendationResult $row): int => $row->productId);
 	}
 

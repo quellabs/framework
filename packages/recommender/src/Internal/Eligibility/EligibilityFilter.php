@@ -47,6 +47,21 @@
 		}
 
 		/**
+		 * Keep the rows that pass eligibility, in one provider round without fetching deeper.
+		 * @template T
+		 * @param EligibilityProvider $eligibility Application eligibility check
+		 * @param array<int, T> $rows Rows in ranked order, with distinct product IDs
+		 * @param callable(T): int $idOf Returns the product ID of a row
+		 * @return array<int, T> Eligible rows in ranked order
+		 * @throws \UnexpectedValueException When a provider answer is not an ordered subset of its batch
+		 */
+		public function keepEligible(EligibilityProvider $eligibility, array $rows, callable $idOf): array {
+			$eligible = array_flip($this->check($eligibility, array_map($idOf, $rows), max(1, $this->config->maxEligibilityBatchSize())));
+
+			return array_values(array_filter($rows, fn($row): bool => isset($eligible[$idOf($row)])));
+		}
+
+		/**
 		 * Run a ranked query with an optional eligibility provider applied.
 		 * Rows are checked in batches, fetching deeper until the limit is met or the depth cap is reached.
 		 * @template T

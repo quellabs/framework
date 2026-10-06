@@ -14,6 +14,8 @@ The package has not been released. Breaking changes to the public API are allowe
 8. **Single-product lookups stay, as source methods.** `SlopeOne::predict(subject, product)` returns the predicted rating and support for one product. `ItemLinks::reasons(subject, product, limit)` returns the subject's liked items that link to the product. Each answers only for the product named. Neither filters nor backfills, because the caller owns eligibility for a product it has chosen.
 9. **Source-level candidates are public.** Each source's `candidates(subject, provider, limit)` is part of the public API, so a caller can use one source alone. The combiner's fused list is the second public recommendation call. Both return ranked, filtered products.
 
+10. **Depth is the caller's, backfill is the caller's.** `CandidateSource::candidates()` takes a depth, filters the top depth candidates in one provider round, and never fetches deeper. Callers that need more eligible results deepen the request. The reconciler keeps its round loop, and `ItemRecommender` keeps its backfill loop around the source call, so results do not change.
+
 ## Terms
 
 - **Rating event.** A write to the ratings store through `RecommendationEngine`: `recordClick()`, `recordPurchase()`, `setNotInterested()`. Rating events are input to the sources.
