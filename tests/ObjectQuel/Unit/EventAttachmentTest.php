@@ -171,6 +171,9 @@
 				'unmapped field'                => ["{$range}after replace u call f(old.bogus)", "has no mapped column 'bogus'"],
 				'relationship field'            => ["{$range}after replace u call f(old.posts)", "has no mapped column 'posts'"],
 				'field has no further fields'   => ["{$range}after replace u call f(old.username.length)", 'a row field has no further fields'],
+				'literal argument'              => ["{$range}after replace u call f(1, old)", 'other expressions aren\'t supported'],
+				'bound parameter argument'      => ["{$range}after replace u call f(:x, old)", 'other expressions aren\'t supported'],
+				'arithmetic argument'           => ["{$range}after replace u call f(old.id + 1)", 'other expressions aren\'t supported'],
 			];
 		}
 

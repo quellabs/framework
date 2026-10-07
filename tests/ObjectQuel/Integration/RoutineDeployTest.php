@@ -42,6 +42,10 @@
 		 * @return void
 		 */
 		protected function tearDown(): void {
+			// Always dropped first and with 'if exists': a no-op for tests that never attached
+			// one, but removes it before the routine below if a test did and failed early.
+			self::em()->executeQuery("range of u is UserEntity destroy event after replace u call {$this->name} if exists");
+
 			if (self::em()->getConnection()->getDatabaseType() === 'pgsql') {
 				self::em()->executeQuery("destroy function {$this->name} if exists");
 			} else {
@@ -369,6 +373,132 @@
 			$this->expectException(QuelException::class);
 			$this->expectExceptionMessage("is declared 'trigger'");
 			self::em()->executeQuery("{$this->name}(1, 2)");
+		}
+
+		/**
+		 * End-to-end: define a trigger routine, attach it to `after replace`, fire it with an
+		 * ordinary EQUEL write, then detach and redefine-free it (stage 3, both engines). The
+		 * routine writes an unrelated table (default_column_test), proving the attachment's
+		 * own write actually ran the deployed trigger, not just that the DDL applied cleanly.
+		 * @return void
+		 */
+		public function testAttachmentFiresOnReplaceAndCanBeDetached(): void {
+			$userId = $this->seedUser("{$this->name}_user");
+			$marker = "{$this->name}_fired";
+
+			self::em()->executeQuery("
+				range of u is UserEntity
+				range of d is DefaultColumnEntity
+				define function {$this->name} (UserEntity old, UserEntity new) trigger {
+					append to d (name = \"{$marker}\", priority = 1)
+				}
+			");
+
+			self::em()->executeQuery("
+				range of u is UserEntity
+				after replace u call {$this->name}(old, new)
+			");
+
+			try {
+				self::em()->executeQuery('range of u is UserEntity replace u (banned = true) where u.id = :id', ['id' => $userId]);
+
+				$row = self::em()->getConnection()->execute(
+					'SELECT COUNT(*) AS n FROM default_column_test WHERE name = :name',
+					['name' => $marker]
+				)?->fetch('assoc');
+				self::assertSame(1, (int)($row['n'] ?? 0), 'The attached trigger should have fired exactly once.');
+
+				// Re-attaching the same (table, event, routine) triple is a conflict.
+				$this->expectException(QuelException::class);
+				$this->expectExceptionMessage('already exists');
+				self::em()->executeQuery("
+					range of u is UserEntity
+					after replace u call {$this->name}(old, new)
+				");
+			} finally {
+				self::em()->getConnection()->execute('DELETE FROM default_column_test WHERE name = :name', ['name' => $marker]);
+			}
+		}
+
+		/**
+		 * The INSERT event maps to `after append to`, binding only `new`.
+		 * @return void
+		 */
+		public function testAppendAttachmentFiresOnInsert(): void {
+			$marker = "{$this->name}_append_fired";
+
+			self::em()->executeQuery("
+				range of u is UserEntity
+				range of d is DefaultColumnEntity
+				define function {$this->name} (UserEntity new) trigger {
+					append to d (name = \"{$marker}\", priority = 1)
+				}
+			");
+			self::em()->executeQuery("
+				range of u is UserEntity
+				after append to u call {$this->name}(new)
+			");
+
+			try {
+				$this->seedUser("{$this->name}_append_user");
+
+				$row = self::em()->getConnection()->execute(
+					'SELECT COUNT(*) AS n FROM default_column_test WHERE name = :name',
+					['name' => $marker]
+				)?->fetch('assoc');
+				self::assertSame(1, (int)($row['n'] ?? 0), 'The attached trigger should have fired on insert.');
+			} finally {
+				self::em()->getConnection()->execute('DELETE FROM default_column_test WHERE name = :name', ['name' => $marker]);
+				self::em()->executeQuery("range of u is UserEntity destroy event after append to u call {$this->name} if exists");
+			}
+		}
+
+		/**
+		 * `destroy event ... if exists` removes only the attachment; the routine keeps working
+		 * and a second detach is a safe no-op.
+		 * @return void
+		 */
+		public function testDestroyEventRemovesOnlyTheAttachment(): void {
+			$userId = $this->seedUser("{$this->name}_detach");
+			$marker = "{$this->name}_detach_fired";
+
+			self::em()->executeQuery("
+				range of u is UserEntity
+				range of d is DefaultColumnEntity
+				define function {$this->name} (UserEntity old, UserEntity new) trigger {
+					append to d (name = \"{$marker}\", priority = 1)
+				}
+			");
+			self::em()->executeQuery("
+				range of u is UserEntity
+				after replace u call {$this->name}(old, new)
+			");
+
+			self::em()->executeQuery("range of u is UserEntity destroy event after replace u call {$this->name}");
+
+			try {
+				// No attachment left, so this ordinary write no longer fires it.
+				self::em()->executeQuery('range of u is UserEntity replace u (banned = true) where u.id = :id', ['id' => $userId]);
+
+				$row = self::em()->getConnection()->execute(
+					'SELECT COUNT(*) AS n FROM default_column_test WHERE name = :name',
+					['name' => $marker]
+				)?->fetch('assoc');
+				self::assertSame(0, (int)($row['n'] ?? 0), 'A detached attachment must not fire.');
+
+				// Detaching again without 'if exists' is an error; with it, a safe no-op.
+				try {
+					self::em()->executeQuery("range of u is UserEntity destroy event after replace u call {$this->name}");
+					self::fail('Expected an exception for destroying a missing attachment.');
+				} catch (QuelException $exception) {
+					self::assertStringContainsString("doesn't exist", $exception->getMessage());
+				}
+
+				self::em()->executeQuery("range of u is UserEntity destroy event after replace u call {$this->name} if exists");
+				$this->addToAssertionCount(1);
+			} finally {
+				self::em()->getConnection()->execute('DELETE FROM default_column_test WHERE name = :name', ['name' => $marker]);
+			}
 		}
 
 		/**
