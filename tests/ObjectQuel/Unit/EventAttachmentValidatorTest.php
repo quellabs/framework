@@ -18,7 +18,7 @@
 	class EventAttachmentValidatorTest extends TestCase {
 
 		/**
-		 * Parses one `after ... call ...(...)` statement.
+		 * Parses one `after ... call ...` statement.
 		 * @param string $source Statement source
 		 * @return AstEventAttachment
 		 */
@@ -66,14 +66,14 @@
 		}
 
 		/**
-		 * A valid attachment whose called routine's row parameter matches the target entity and
-		 * writes an unrelated table passes without error.
+		 * A valid attachment whose called routine's row parameters match the target entity, in
+		 * the event's own row count, and write only an unrelated table passes without error.
 		 * @return void
 		 */
 		public function testValidAttachmentPasses(): void {
 			$attachment = $this->parse('
 				range of u is UserEntity
-				after replace u call audit_user(old, new)
+				after replace u call audit_user
 			');
 			$entityClass = $GLOBALS['test_em']->getEntityStore()->getMetadata('UserEntity')->className;
 			$adapter = $this->adapterReturning([
@@ -93,7 +93,7 @@
 		public function testRejectsNonTriggerRoutine(): void {
 			$attachment = $this->parse('
 				range of u is UserEntity
-				after replace u call helper(old, new)
+				after replace u call helper
 			');
 			$adapter = $this->adapterReturning([
 				'helper' => ['objectQuel' => 1, 'returnType' => 'void', 'atomic' => false, 'parameters' => [], 'safety' => ['calls' => [], 'reads' => [], 'writes' => []]],
@@ -105,12 +105,14 @@
 		}
 
 		/**
+		 * `replace` supplies two rows (old, new); a routine declaring only one entity-row
+		 * parameter can't be attached to it.
 		 * @return void
 		 */
-		public function testRejectsArgumentCountMismatch(): void {
+		public function testRejectsParameterCountMismatch(): void {
 			$attachment = $this->parse('
 				range of u is UserEntity
-				after replace u call audit_user(old, new)
+				after replace u call audit_user
 			');
 			$entityClass = $GLOBALS['test_em']->getEntityStore()->getMetadata('UserEntity')->className;
 			$adapter = $this->adapterReturning([
@@ -118,44 +120,27 @@
 			]);
 
 			$this->expectException(QuelException::class);
-			$this->expectExceptionMessage('takes 1 parameter(s), but the attachment passes 2');
+			$this->expectExceptionMessage("it declares 1 entity-row parameter(s), but 'replace' supplies 2");
 			(new EventAttachmentValidator($adapter, $GLOBALS['test_em']->getEntityStore()))->validate($attachment);
 		}
 
 		/**
-		 * A whole-row argument against a scalar parameter is rejected.
+		 * A non-entity parameter is rejected — unreachable through RoutineAnalyzer's own rule
+		 * that a trigger routine's parameters must all be entity-row, but defended here too in
+		 * case the deployed metadata was hand-edited or predates that rule.
 		 * @return void
 		 */
-		public function testRejectsWholeRowAgainstScalarParameter(): void {
+		public function testRejectsNonEntityParameter(): void {
 			$attachment = $this->parse('
 				range of u is UserEntity
-				after append to u call on_created(new)
+				after append to u call on_created
 			');
 			$adapter = $this->adapterReturning([
 				'on_created' => self::triggerMetadata([['kind' => 'scalar', 'type' => 'integer']]),
 			]);
 
 			$this->expectException(QuelException::class);
-			$this->expectExceptionMessage("parameter 1 isn't a row parameter");
-			(new EventAttachmentValidator($adapter, $GLOBALS['test_em']->getEntityStore()))->validate($attachment);
-		}
-
-		/**
-		 * A field argument against an entity-row parameter is rejected.
-		 * @return void
-		 */
-		public function testRejectsFieldArgumentAgainstRowParameter(): void {
-			$attachment = $this->parse('
-				range of u is UserEntity
-				after append to u call on_created(new.username)
-			');
-			$entityClass = $GLOBALS['test_em']->getEntityStore()->getMetadata('UserEntity')->className;
-			$adapter = $this->adapterReturning([
-				'on_created' => self::triggerMetadata([['kind' => 'entity', 'type' => $entityClass]]),
-			]);
-
-			$this->expectException(QuelException::class);
-			$this->expectExceptionMessage('parameter 1 is a row parameter, but the attachment doesn\'t pass the whole row');
+			$this->expectExceptionMessage("parameter 1 isn't an entity-row parameter");
 			(new EventAttachmentValidator($adapter, $GLOBALS['test_em']->getEntityStore()))->validate($attachment);
 		}
 
@@ -166,7 +151,7 @@
 		public function testRejectsMismatchedRowEntity(): void {
 			$attachment = $this->parse('
 				range of u is UserEntity
-				after append to u call on_created(new)
+				after append to u call on_created
 			');
 			$adapter = $this->adapterReturning([
 				'on_created' => self::triggerMetadata([['kind' => 'entity', 'type' => 'App\\Entities\\PostEntity']]),
@@ -185,7 +170,7 @@
 		public function testRejectsDirectWriteToTriggeringTable(): void {
 			$attachment = $this->parse('
 				range of u is UserEntity
-				after replace u call audit_user(old, new)
+				after replace u call audit_user
 			');
 			$entityClass = $GLOBALS['test_em']->getEntityStore()->getMetadata('UserEntity')->className;
 			$adapter = $this->adapterReturning([
@@ -207,7 +192,7 @@
 		public function testRejectsTransitiveWriteToTriggeringTable(): void {
 			$attachment = $this->parse('
 				range of u is UserEntity
-				after replace u call audit_user(old, new)
+				after replace u call audit_user
 			');
 			$entityClass = $GLOBALS['test_em']->getEntityStore()->getMetadata('UserEntity')->className;
 			$adapter = $this->adapterReturning([
@@ -230,7 +215,7 @@
 		public function testCallGraphCycleTerminates(): void {
 			$attachment = $this->parse('
 				range of u is UserEntity
-				after replace u call audit_user(old, new)
+				after replace u call audit_user
 			');
 			$entityClass = $GLOBALS['test_em']->getEntityStore()->getMetadata('UserEntity')->className;
 			$adapter = $this->adapterReturning([

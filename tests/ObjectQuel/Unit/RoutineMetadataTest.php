@@ -90,20 +90,6 @@
 		}
 
 		/**
-		 * A scalar parameter alongside an entity-row parameter keeps its own 'scalar' kind.
-		 * @return void
-		 */
-		public function testMixedScalarAndEntityRowParameters(): void {
-			$metadata = $this->metadata('
-				range of u is UserEntity
-				define function f (integer attempt, UserEntity old) trigger { string n = old.username }
-			');
-
-			self::assertSame(['kind' => 'scalar', 'type' => 'integer'], $metadata['parameters'][0]);
-			self::assertSame('entity', $metadata['parameters'][1]['kind']);
-		}
-
-		/**
 		 * `atomic` is true only when the body contains an atomic block.
 		 * @return void
 		 */

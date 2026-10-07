@@ -135,22 +135,21 @@
 		}
 
 		/**
-		 * A scalar parameter alongside an entity-row parameter keeps working as before;
-		 * resolving a parameter's type against entity metadata doesn't affect plain columns.
+		 * A trigger routine's parameters must all be entity-row: an attachment supplies no
+		 * argument list of its own to fill a scalar parameter from, since the event's rows are
+		 * bound to the routine's entity-row parameters by declaration order alone.
 		 * @return void
 		 */
-		public function testEntityRowParameterAlongsideScalarParameter(): void {
-			$routine = $this->analyze('
+		public function testTriggerRejectsScalarParameter(): void {
+			$this->expectException(SemanticException::class);
+			$this->expectExceptionMessage("has a scalar parameter; a trigger routine's parameters must all be entity-row parameters");
+			$this->analyze('
 				range of u is UserEntity
 				define function f (integer attempt, UserEntity old) trigger {
 					integer n = attempt
 					string name = old.username
 				}
 			');
-
-			$types = $this->rootIdentifierTypes($routine);
-			self::assertSame(IdentifierType::RoutineVariable, $types['attempt']);
-			self::assertSame(IdentifierType::EntityRowRoot, $types['old.username']);
 		}
 
 		/**
@@ -669,6 +668,7 @@
 				'undeclared assigned a retrieve'=> ["{$range}define function f () void { y = retrieve (u.id) where u.id > 0 }", "undeclared variable 'y'"],
 				'range assigned a retrieve'     => ["{$range}define function f () void { u = retrieve (u.id) where u.id > 0 }", "Range 'u' can't be assigned"],
 				'trigger without row param'     => ['define function f () trigger { }', "declares return type 'trigger' but has no entity-row parameter"],
+				'trigger with scalar param'     => ["{$range}define function f (integer attempt, UserEntity old) trigger { }", "has a scalar parameter; a trigger routine's parameters must all be entity-row parameters"],
 				'trigger returns a value'       => ["{$range}define function f (UserEntity old) trigger { return 1 }", "declares return type 'trigger' and can't return a value"],
 				'row param without trigger'     => ["{$range}define function f (UserEntity old) void { }", "has an entity-row parameter, so it must declare return type 'trigger'"],
 				'row param scalar return type'  => ["{$range}define function f (UserEntity old) integer { return 1 }", "has an entity-row parameter, so it must declare return type 'trigger'"],

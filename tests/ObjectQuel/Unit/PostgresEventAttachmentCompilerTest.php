@@ -49,7 +49,7 @@
 			$entityClass = $GLOBALS['test_em']->getEntityStore()->getMetadata('UserEntity')->className;
 			$statements = $this->compile('
 				range of u is UserEntity
-				after replace u call audit_user(old, new) as audit_trigger
+				after replace u call audit_user as audit_trigger
 			', ['audit_user' => self::triggerMetadata($entityClass, 2)]);
 
 			self::assertCount(2, $statements);
@@ -83,7 +83,7 @@
 			$entityClass = $GLOBALS['test_em']->getEntityStore()->getMetadata('UserEntity')->className;
 			$statements = $this->compile('
 				range of u is UserEntity
-				after delete u call on_removed(old)
+				after delete u call on_removed
 			', ['on_removed' => self::triggerMetadata($entityClass, 1)]);
 
 			self::assertStringContainsString('RETURN OLD;', $statements[0]);
@@ -98,7 +98,7 @@
 			$entityClass = $GLOBALS['test_em']->getEntityStore()->getMetadata('UserEntity')->className;
 			$statements = $this->compile('
 				range of u is UserEntity
-				after append to u call on_created(new)
+				after append to u call on_created
 			', ['on_created' => self::triggerMetadata($entityClass, 1)]);
 
 			self::assertStringContainsString('RETURN NEW;', $statements[0]);

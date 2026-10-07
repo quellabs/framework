@@ -2,23 +2,22 @@
 
 	namespace Quellabs\ObjectQuel\Tests\Unit;
 
-	use PHPUnit\Framework\Attributes\DataProvider;
 	use PHPUnit\Framework\TestCase;
-	use Quellabs\ObjectQuel\Exception\SemanticException;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstDestroy;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstDestroyEventAttachment;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstDestroyIndex;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstEventAttachment;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIdentifier;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AttachmentEvent;
 	use Quellabs\ObjectQuel\ObjectQuel\Lexer;
 	use Quellabs\ObjectQuel\ObjectQuel\Parser;
 	use Quellabs\ObjectQuel\ObjectQuel\ParserException;
-	use Quellabs\ObjectQuel\ObjectQuel\Routines\EventAttachmentAnalyzer;
 
 	/**
-	 * `after ... call ...(...) [as <alias>]` and `destroy trigger ...`
-	 * (objectquel-equel-triggers-design.md).
+	 * `after ... call ... [as <alias>]` and `destroy trigger ...`
+	 * (objectquel-equel-triggers-design.md). The attachment carries no argument list: a
+	 * called routine's entity-row parameters receive the event's rows by declaration order
+	 * (AttachmentEvent::rowRoles()), checked against live routine metadata by
+	 * EventAttachmentValidator (see EventAttachmentValidatorTest), not at parse time.
 	 */
 	class EventAttachmentTest extends TestCase {
 
@@ -33,76 +32,60 @@
 		}
 
 		/**
-		 * Parses and runs the database-independent attachment checks.
-		 * @param string $source Statement source
-		 * @return AstEventAttachment
-		 */
-		private function analyze(string $source): AstEventAttachment {
-			$entityStore = $GLOBALS['test_em']->getEntityStore();
-			$attachment = $this->parse($source);
-
-			if (!$attachment instanceof AstEventAttachment) {
-				throw new ParserException('Expected an event attachment statement.');
-			}
-
-			(new EventAttachmentAnalyzer($entityStore))->analyze($attachment);
-			return $attachment;
-		}
-
-		/**
 		 * @return void
 		 */
-		public function testAppendAttachmentBindsOnlyNew(): void {
-			$attachment = $this->analyze('
+		public function testAppendAttachmentParsesRoutineName(): void {
+			$attachment = $this->parse('
 				range of u is UserEntity
-				after append to u call on_created(new)
+				after append to u call on_created
 			');
 
+			self::assertInstanceOf(AstEventAttachment::class, $attachment);
 			self::assertSame(AttachmentEvent::Append, $attachment->getEvent());
 			self::assertSame('u', $attachment->getRange()->getName());
-			self::assertSame('on_created', $attachment->getCall()->getName());
-			self::assertCount(1, $attachment->getCall()->getArguments());
-			self::assertInstanceOf(AstIdentifier::class, $attachment->getCall()->getArguments()[0]);
-			self::assertSame('new', $attachment->getCall()->getArguments()[0]->getName());
+			self::assertSame('on_created', $attachment->getRoutineName());
 		}
 
 		/**
 		 * @return void
 		 */
-		public function testReplaceAttachmentBindsOldAndNew(): void {
-			$attachment = $this->analyze('
+		public function testReplaceAttachmentParsesRoutineName(): void {
+			$attachment = $this->parse('
 				range of u is UserEntity
-				after replace u call on_changed(old, new)
+				after replace u call on_changed
 			');
 
+			self::assertInstanceOf(AstEventAttachment::class, $attachment);
 			self::assertSame(AttachmentEvent::Replace, $attachment->getEvent());
-			self::assertCount(2, $attachment->getCall()->getArguments());
+			self::assertSame('on_changed', $attachment->getRoutineName());
 		}
 
 		/**
 		 * @return void
 		 */
-		public function testDeleteAttachmentBindsOnlyOld(): void {
-			$attachment = $this->analyze('
+		public function testDeleteAttachmentParsesRoutineName(): void {
+			$attachment = $this->parse('
 				range of u is UserEntity
-				after delete u call on_removed(old)
+				after delete u call on_removed
 			');
 
+			self::assertInstanceOf(AstEventAttachment::class, $attachment);
 			self::assertSame(AttachmentEvent::Delete, $attachment->getEvent());
-			self::assertCount(1, $attachment->getCall()->getArguments());
+			self::assertSame('on_removed', $attachment->getRoutineName());
 		}
 
 		/**
-		 * A single field of `old`/`new` is a legal scalar argument alongside the whole row.
+		 * A parenthesized argument list is no longer valid syntax: the routine's own entity-row
+		 * parameters receive the event's rows by declaration order, so there is nothing to pass.
 		 * @return void
 		 */
-		public function testFieldOfOldOrNewIsAValidArgument(): void {
-			$attachment = $this->analyze('
+		public function testParenthesizedArgumentListIsRejected(): void {
+			$this->expectException(ParserException::class);
+			$this->expectExceptionMessage('Unexpected content after the statement');
+			$this->parse('
 				range of u is UserEntity
-				after replace u call audit_user(old.username, new.username, new)
+				after replace u call audit_user(old, new)
 			');
-
-			self::assertCount(3, $attachment->getCall()->getArguments());
 		}
 
 		/**
@@ -110,9 +93,9 @@
 		 * @return void
 		 */
 		public function testAcceptsTrailingSemicolon(): void {
-			$this->analyze('
+			$this->parse('
 				range of u is UserEntity
-				after replace u call on_changed(old, new);
+				after replace u call on_changed;
 			');
 			$this->addToAssertionCount(1);
 		}
@@ -122,11 +105,12 @@
 		 * @return void
 		 */
 		public function testAsAliasIsParsed(): void {
-			$attachment = $this->analyze('
+			$attachment = $this->parse('
 				range of u is UserEntity
-				after replace u call audit_user(old, new) as audit_trigger
+				after replace u call audit_user as audit_trigger
 			');
 
+			self::assertInstanceOf(AstEventAttachment::class, $attachment);
 			self::assertSame('audit_trigger', $attachment->getAlias());
 		}
 
@@ -136,11 +120,12 @@
 		 * @return void
 		 */
 		public function testAliasIsNullWhenOmitted(): void {
-			$attachment = $this->analyze('
+			$attachment = $this->parse('
 				range of u is UserEntity
-				after replace u call audit_user(old, new)
+				after replace u call audit_user
 			');
 
+			self::assertInstanceOf(AstEventAttachment::class, $attachment);
 			self::assertNull($attachment->getAlias());
 		}
 
@@ -149,9 +134,9 @@
 		 * @return void
 		 */
 		public function testAcceptsTrailingSemicolonAfterAlias(): void {
-			$this->analyze('
+			$this->parse('
 				range of u is UserEntity
-				after replace u call on_changed(old, new) as named;
+				after replace u call on_changed as named;
 			');
 			$this->addToAssertionCount(1);
 		}
@@ -196,46 +181,14 @@
 		}
 
 		/**
-		 * Attachment-specific and shared range-resolution rejections.
-		 * @return array<string, array{string, string}>
-		 */
-		public static function rejectedAttachments(): array {
-			$range = 'range of u is UserEntity ';
-
-			return [
-				'old unavailable for append'    => ["{$range}after append to u call f(old)", "'old' is not available for 'append to'"],
-				'new unavailable for delete'    => ["{$range}after delete u call f(new)", "'new' is not available for 'delete'"],
-				'undefined bare name'           => ["{$range}after replace u call f(x)", "Undefined name 'x'"],
-				'unmapped field'                => ["{$range}after replace u call f(old.bogus)", "has no mapped column 'bogus'"],
-				'relationship field'            => ["{$range}after replace u call f(old.posts)", "has no mapped column 'posts'"],
-				'field has no further fields'   => ["{$range}after replace u call f(old.username.length)", 'a row field has no further fields'],
-				'literal argument'              => ["{$range}after replace u call f(1, old)", 'other expressions aren\'t supported'],
-				'bound parameter argument'      => ["{$range}after replace u call f(:x, old)", 'other expressions aren\'t supported'],
-				'arithmetic argument'           => ["{$range}after replace u call f(old.id + 1)", 'other expressions aren\'t supported'],
-			];
-		}
-
-		/**
 		 * The target range must already be declared ahead of `after`, same as replace/delete —
-		 * a parse-time error (TargetRangeResolver), not one of the analyzer's own checks.
+		 * a parse-time error (TargetRangeResolver).
 		 * @return void
 		 */
 		public function testRejectsUndeclaredTargetRange(): void {
 			$this->expectException(ParserException::class);
 			$this->expectExceptionMessage("Undefined range reference 'u'");
-			$this->analyze('after replace u call f(old, new)');
-		}
-
-		/**
-		 * @param string $source Statement source
-		 * @param string $message Expected error message fragment
-		 * @return void
-		 */
-		#[DataProvider('rejectedAttachments')]
-		public function testRejects(string $source, string $message): void {
-			$this->expectException(SemanticException::class);
-			$this->expectExceptionMessage($message);
-			$this->analyze($source);
+			$this->parse('after replace u call f');
 		}
 
 		/**
@@ -245,7 +198,7 @@
 		public function testRejectsJsonSourceTarget(): void {
 			$this->expectException(ParserException::class);
 			$this->expectExceptionMessage("after target 'j' must be a database entity range");
-			$this->analyze('range of j is json_source("data.json") after replace j call f(old, new)');
+			$this->parse('range of j is json_source("data.json") after replace j call f');
 		}
 
 		/**
@@ -257,8 +210,8 @@
 			$this->expectExceptionMessage('only one statement is allowed per query');
 			$this->parse('
 				range of u is UserEntity
-				after replace u call on_changed(old, new)
-				after replace u call on_changed(old, new)
+				after replace u call on_changed
+				after replace u call on_changed
 			');
 		}
 	}

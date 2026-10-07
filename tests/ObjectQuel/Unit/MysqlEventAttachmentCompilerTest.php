@@ -47,7 +47,7 @@
 			$entityClass = $GLOBALS['test_em']->getEntityStore()->getMetadata('UserEntity')->className;
 			$statements = $this->compile('
 				range of u is UserEntity
-				after replace u call audit_user(old, new) as audit_trigger
+				after replace u call audit_user as audit_trigger
 			', ['audit_user' => self::triggerMetadata($entityClass, 2)]);
 
 			self::assertCount(1, $statements);
@@ -67,7 +67,7 @@
 			$entityClass = $GLOBALS['test_em']->getEntityStore()->getMetadata('UserEntity')->className;
 			$statements = $this->compile('
 				range of u is UserEntity
-				after append to u call on_created(new) as on_created_trigger
+				after append to u call on_created as on_created_trigger
 			', ['on_created' => self::triggerMetadata($entityClass, 1)]);
 
 			self::assertSame(
@@ -86,7 +86,7 @@
 			$entityClass = $GLOBALS['test_em']->getEntityStore()->getMetadata('UserEntity')->className;
 			$statements = $this->compile('
 				range of u is UserEntity
-				after delete u call on_removed(old) as on_removed_trigger
+				after delete u call on_removed as on_removed_trigger
 			', ['on_removed' => self::triggerMetadata($entityClass, 1)]);
 
 			self::assertSame(
@@ -94,33 +94,6 @@
 				. "AFTER DELETE ON `users`\n"
 				. "FOR EACH ROW\n"
 				. "CALL `on_removed`(OLD.`id`, OLD.`username`, OLD.`password`, OLD.`banned`);",
-				$statements[0]
-			);
-		}
-
-		/**
-		 * A single scalar field argument expands to one column reference, not the whole row.
-		 * @return void
-		 */
-		public function testFieldArgumentExpandsToOneColumn(): void {
-			$statements = $this->compile('
-				range of u is UserEntity
-				after replace u call notify_rename(old.username, new.username) as notify_trigger
-			', [
-				'notify_rename' => [
-					'objectQuel' => 1,
-					'returnType' => 'trigger',
-					'atomic'     => false,
-					'parameters' => [['kind' => 'scalar', 'type' => 'string'], ['kind' => 'scalar', 'type' => 'string']],
-					'safety'     => ['calls' => [], 'reads' => [], 'writes' => []],
-				],
-			]);
-
-			self::assertSame(
-				"CREATE TRIGGER `eq_users_notify_trigger`\n"
-				. "AFTER UPDATE ON `users`\n"
-				. "FOR EACH ROW\n"
-				. "CALL `notify_rename`(OLD.`username`, NEW.`username`);",
 				$statements[0]
 			);
 		}
@@ -135,7 +108,7 @@
 			$entityClass = $GLOBALS['test_em']->getEntityStore()->getMetadata('UserEntity')->className;
 			$statements = $this->compile('
 				range of u is UserEntity
-				after replace u call audit_user(old, new)
+				after replace u call audit_user
 			', ['audit_user' => self::triggerMetadata($entityClass, 2)]);
 
 			self::assertCount(1, $statements);

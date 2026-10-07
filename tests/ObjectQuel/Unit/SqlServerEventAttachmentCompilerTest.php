@@ -52,7 +52,7 @@
 			$entityClass = $GLOBALS['test_em']->getEntityStore()->getMetadata('UserEntity')->className;
 			$statements = $this->compile('
 				range of u is UserEntity
-				after replace u call audit_user(old, new) as audit_trigger
+				after replace u call audit_user as audit_trigger
 			', ['audit_user' => self::triggerMetadata($entityClass, 2)]);
 
 			self::assertCount(1, $statements);
@@ -78,7 +78,7 @@
 			$entityClass = $GLOBALS['test_em']->getEntityStore()->getMetadata('UserEntity')->className;
 			$statements = $this->compile('
 				range of u is UserEntity
-				after append to u call on_created(new)
+				after append to u call on_created
 			', ['on_created' => self::triggerMetadata($entityClass, 1)]);
 
 			$sql = $statements[0];
@@ -96,7 +96,7 @@
 			$entityClass = $GLOBALS['test_em']->getEntityStore()->getMetadata('UserEntity')->className;
 			$statements = $this->compile('
 				range of u is UserEntity
-				after delete u call on_removed(old)
+				after delete u call on_removed
 			', ['on_removed' => self::triggerMetadata($entityClass, 1)]);
 
 			$sql = $statements[0];
@@ -116,7 +116,7 @@
 			$this->expectExceptionMessage('no mapped primary key');
 			$this->compile('
 				range of n is NoKeyEntity
-				after replace n call f(old, new)
+				after replace n call f
 			', ['f' => self::triggerMetadata($entityClass, 2)]);
 		}
 	}

@@ -396,7 +396,7 @@
 
 			self::em()->executeQuery("
 				range of u is UserEntity
-				after replace u call {$this->name}(old, new) as {$this->name}
+				after replace u call {$this->name} as {$this->name}
 			");
 
 			try {
@@ -413,7 +413,7 @@
 				$this->expectExceptionMessage('already exists');
 				self::em()->executeQuery("
 					range of u is UserEntity
-					after replace u call {$this->name}(old, new) as {$this->name}
+					after replace u call {$this->name} as {$this->name}
 				");
 			} finally {
 				self::em()->getConnection()->execute('DELETE FROM default_column_test WHERE name = :name', ['name' => $marker]);
@@ -436,7 +436,7 @@
 			");
 			self::em()->executeQuery("
 				range of u is UserEntity
-				after append to u call {$this->name}(new) as {$this->name}
+				after append to u call {$this->name} as {$this->name}
 			");
 
 			try {
@@ -468,7 +468,7 @@
 			");
 			self::em()->executeQuery("
 				range of d is DefaultColumnEntity
-				after replace d call {$this->name}(old, new) as {$this->name}
+				after replace d call {$this->name} as {$this->name}
 			");
 
 			try {
@@ -506,7 +506,7 @@
 			");
 			self::em()->executeQuery("
 				range of u is UserEntity
-				after replace u call {$this->name}(old, new) as {$this->name}
+				after replace u call {$this->name} as {$this->name}
 			");
 
 			self::em()->executeQuery("range of u is UserEntity destroy trigger u {$this->name}");
@@ -730,7 +730,7 @@
 			");
 			self::em()->executeQuery("
 				range of u is UserEntity
-				after replace u call {$this->name}(old, new) as {$this->name}
+				after replace u call {$this->name} as {$this->name}
 			");
 
 			try {
@@ -756,7 +756,7 @@
 			");
 			self::em()->executeQuery("
 				range of u is UserEntity
-				after replace u call {$this->name}(old, new) as {$this->name}
+				after replace u call {$this->name} as {$this->name}
 			");
 			self::em()->executeQuery("range of u is UserEntity destroy trigger u {$this->name}");
 
