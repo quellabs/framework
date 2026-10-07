@@ -614,4 +614,68 @@
 			$this->expectExceptionMessage("Routines can't be listed on 'sqlite'.");
 			$adapter->listRoutines();
 		}
+
+		/**
+		 * @param DatabaseAdapter&\PHPUnit\Framework\MockObject\MockObject $adapter Mock with a fixed getDatabaseType()
+		 * @param list<array<string, mixed>> $rows Catalog rows to return
+		 * @return void
+		 */
+		private function returningRows(\PHPUnit\Framework\MockObject\MockObject $adapter, array $rows): void {
+			$statement = $this->createStub(StatementInterface::class);
+			$statement->method('fetchAll')->willReturn($rows);
+			$adapter->method('execute')->willReturn($statement);
+		}
+
+		/**
+		 * A valid, current-version metadata document is decoded and returned whole.
+		 * @return void
+		 */
+		public function testGetRoutineMetadataDecodesCurrentVersion(): void {
+			$adapter = $this->getMockBuilder(DatabaseAdapter::class)->disableOriginalConstructor()
+				->onlyMethods(['getDatabaseType', 'execute'])->getMock();
+			$adapter->method('getDatabaseType')->willReturn('mysql');
+			$row = self::row(1, null);
+			$row['routine_comment'] = '{"objectQuel":1,"returnType":"trigger","atomic":false,"parameters":[],"safety":{"calls":[],"reads":[],"writes":[],"features":[]}}';
+			$this->returningRows($adapter, [$row]);
+
+			$metadata = $adapter->getRoutineMetadata('f');
+			self::assertSame('trigger', $metadata['returnType']);
+		}
+
+		/**
+		 * @return array<string, array{list<array<string, mixed>>, string}>
+		 */
+		public static function invalidMetadataCatalogResults(): array {
+			$missing = self::row(1, null);
+			$missing['routine_comment'] = null;
+			$foreign = self::row(1, null);
+			$foreign['routine_comment'] = 'not ObjectQuel metadata';
+			$unsupportedVersion = self::row(1, null);
+			$unsupportedVersion['routine_comment'] = '{"objectQuel":2,"returnType":"trigger"}';
+
+			return [
+				'no routine'           => [[], "no routine by that name exists"],
+				'ambiguous'            => [[self::row(0, 'integer'), self::row(1, null)], 'both a void and a value-returning function'],
+				'missing metadata'     => [[$missing], 'it has no ObjectQuel metadata'],
+				'foreign comment'      => [[$foreign], 'its metadata is missing or unreadable'],
+				'unsupported version'  => [[$unsupportedVersion], 'unsupported ObjectQuel version'],
+			];
+		}
+
+		/**
+		 * @param list<array<string, mixed>> $rows Catalog rows
+		 * @param string $message Expected error message fragment
+		 * @return void
+		 */
+		#[DataProvider('invalidMetadataCatalogResults')]
+		public function testGetRoutineMetadataRejectsInvalidResults(array $rows, string $message): void {
+			$adapter = $this->getMockBuilder(DatabaseAdapter::class)->disableOriginalConstructor()
+				->onlyMethods(['getDatabaseType', 'execute'])->getMock();
+			$adapter->method('getDatabaseType')->willReturn('mysql');
+			$this->returningRows($adapter, $rows);
+
+			$this->expectException(QuelException::class);
+			$this->expectExceptionMessage($message);
+			$adapter->getRoutineMetadata('f');
+		}
 	}
