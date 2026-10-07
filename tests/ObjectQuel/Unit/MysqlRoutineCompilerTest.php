@@ -6,7 +6,7 @@
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\ObjectQuel\Exception\QuelException;
 	use Quellabs\ObjectQuel\Exception\SemanticException;
-	use Quellabs\ObjectQuel\ObjectQuel\Routines\ProcedureCompiler;
+	use Quellabs\ObjectQuel\ObjectQuel\Routines\RoutineCompiler;
 	use Quellabs\ObjectQuel\Tests\Support\FakePlatformCapabilities;
 
 	/**
@@ -21,7 +21,7 @@
 		 * @return string[] Generated statements
 		 */
 		private function compile(string $source, string $databaseType = 'mysql'): array {
-			return (new ProcedureCompiler($GLOBALS['test_em'], new FakePlatformCapabilities($databaseType), $databaseType === 'sqlsrv' ? 'dbo' : null))->compile($source);
+			return (new RoutineCompiler($GLOBALS['test_em'], new FakePlatformCapabilities($databaseType), $databaseType === 'sqlsrv' ? 'dbo' : null))->compile($source);
 		}
 
 		/**

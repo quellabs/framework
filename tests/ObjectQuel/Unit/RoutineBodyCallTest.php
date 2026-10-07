@@ -5,7 +5,7 @@
 	use PHPUnit\Framework\Attributes\DataProvider;
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\ObjectQuel\Exception\SemanticException;
-	use Quellabs\ObjectQuel\ObjectQuel\Routines\ProcedureCompiler;
+	use Quellabs\ObjectQuel\ObjectQuel\Routines\RoutineCompiler;
 	use Quellabs\ObjectQuel\Tests\Support\FakePlatformCapabilities;
 
 	/**
@@ -20,7 +20,7 @@
 		 * @return string The CREATE statement
 		 */
 		private function compile(string $databaseType, string $source): string {
-			$statements = (new ProcedureCompiler($GLOBALS['test_em'], new FakePlatformCapabilities($databaseType), $databaseType === 'sqlsrv' ? 'dbo' : null))->compile($source);
+			$statements = (new RoutineCompiler($GLOBALS['test_em'], new FakePlatformCapabilities($databaseType), $databaseType === 'sqlsrv' ? 'dbo' : null))->compile($source);
 			return $statements[0];
 		}
 

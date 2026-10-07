@@ -5,7 +5,7 @@
 	use PHPUnit\Framework\Attributes\DataProvider;
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\ObjectQuel\Exception\SemanticException;
-	use Quellabs\ObjectQuel\ObjectQuel\Routines\ProcedureCompiler;
+	use Quellabs\ObjectQuel\ObjectQuel\Routines\RoutineCompiler;
 	use Quellabs\ObjectQuel\Tests\Support\FakePlatformCapabilities;
 
 	/**
@@ -19,7 +19,7 @@
 		 * @return string Generated CREATE statement
 		 */
 		private function compile(string $source): string {
-			$statements = (new ProcedureCompiler($GLOBALS['test_em'], new FakePlatformCapabilities('sqlsrv'), 'dbo'))->compile($source);
+			$statements = (new RoutineCompiler($GLOBALS['test_em'], new FakePlatformCapabilities('sqlsrv'), 'dbo'))->compile($source);
 
 			// Every routine carries a second statement attaching its JSON metadata
 			// (see RoutineMetadataTest); body-shape tests here only care about the CREATE itself.
@@ -616,7 +616,7 @@
 		 * @return void
 		 */
 		public function testSecondStatementCarriesRoutineMetadata(): void {
-			$statements = (new ProcedureCompiler($GLOBALS['test_em'], new FakePlatformCapabilities('sqlsrv'), 'dbo'))->compile('
+			$statements = (new RoutineCompiler($GLOBALS['test_em'], new FakePlatformCapabilities('sqlsrv'), 'dbo'))->compile('
 				range of u is UserEntity
 				define function ban_all (integer minId) void { replace u (banned = true) where u.id > minId }
 			');

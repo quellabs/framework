@@ -5,7 +5,7 @@
 	use PHPUnit\Framework\Attributes\DataProvider;
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\ObjectQuel\Exception\SemanticException;
-	use Quellabs\ObjectQuel\ObjectQuel\Routines\ProcedureCompiler;
+	use Quellabs\ObjectQuel\ObjectQuel\Routines\RoutineCompiler;
 	use Quellabs\ObjectQuel\Tests\Support\FakePlatformCapabilities;
 
 	/**
@@ -24,7 +24,7 @@
 		private function compile(string $databaseType, string $source): array {
 			$entityManager = $GLOBALS['test_em'];
 			self::assertInstanceOf(\Quellabs\ObjectQuel\EntityManager::class, $entityManager);
-			return (new ProcedureCompiler($entityManager, new FakePlatformCapabilities($databaseType), $databaseType === 'sqlsrv' ? 'dbo' : null))->compile($source);
+			return (new RoutineCompiler($entityManager, new FakePlatformCapabilities($databaseType), $databaseType === 'sqlsrv' ? 'dbo' : null))->compile($source);
 		}
 
 		/**
@@ -226,7 +226,7 @@
 		public function testRoutineTypesDoNotLeakBetweenCompilations(): void {
 			$entityManager = $GLOBALS['test_em'];
 			self::assertInstanceOf(\Quellabs\ObjectQuel\EntityManager::class, $entityManager);
-			$compiler = new ProcedureCompiler($entityManager, new FakePlatformCapabilities('sqlsrv'), 'dbo');
+			$compiler = new RoutineCompiler($entityManager, new FakePlatformCapabilities('sqlsrv'), 'dbo');
 
 			try {
 				$compiler->compile('define function first () void { integer n = "wrong" }');

@@ -6,7 +6,7 @@
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\ObjectQuel\Exception\QuelException;
 	use Quellabs\ObjectQuel\Exception\SemanticException;
-	use Quellabs\ObjectQuel\ObjectQuel\Routines\ProcedureCompiler;
+	use Quellabs\ObjectQuel\ObjectQuel\Routines\RoutineCompiler;
 	use Quellabs\ObjectQuel\Tests\Support\FakePlatformCapabilities;
 
 	/**
@@ -20,7 +20,7 @@
 		 * @return string Generated PostgreSQL CREATE statement
 		 */
 		private function compile(string $source): string {
-			$statements = (new ProcedureCompiler($GLOBALS['test_em'], new FakePlatformCapabilities('pgsql'), null))->compile($source);
+			$statements = (new RoutineCompiler($GLOBALS['test_em'], new FakePlatformCapabilities('pgsql'), null))->compile($source);
 
 			// Every routine carries a second statement attaching its JSON metadata
 			// (see RoutineMetadataTest); body-shape tests here only care about the CREATE itself.
@@ -588,7 +588,7 @@
 		 * @return void
 		 */
 		public function testSecondStatementCarriesRoutineMetadata(): void {
-			$statements = (new ProcedureCompiler($GLOBALS['test_em'], new FakePlatformCapabilities('pgsql'), null))->compile('
+			$statements = (new RoutineCompiler($GLOBALS['test_em'], new FakePlatformCapabilities('pgsql'), null))->compile('
 				range of u is UserEntity
 				define function ban_all (integer minId) void { replace u (banned = true) where u.id > minId }
 			');
@@ -605,7 +605,7 @@
 			$this->expectException(QuelException::class);
 			$this->expectExceptionMessage("Routines can't be compiled for 'sqlite'.");
 
-			(new ProcedureCompiler($GLOBALS['test_em'], new FakePlatformCapabilities('sqlite'), null))->compile('
+			(new RoutineCompiler($GLOBALS['test_em'], new FakePlatformCapabilities('sqlite'), null))->compile('
 				range of u is UserEntity
 				define function f () void {
 					delete u where u.id = 1

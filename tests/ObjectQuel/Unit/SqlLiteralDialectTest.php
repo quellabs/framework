@@ -5,7 +5,7 @@
 	use PHPUnit\Framework\Attributes\DataProvider;
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\ObjectQuel\ObjectQuel\Helpers\SqlDialect\SqlIdentifierQuoter;
-	use Quellabs\ObjectQuel\ObjectQuel\Routines\ProcedureCompiler;
+	use Quellabs\ObjectQuel\ObjectQuel\Routines\RoutineCompiler;
 	use Quellabs\ObjectQuel\Tests\Support\FakePlatformCapabilities;
 
 	/**
@@ -67,7 +67,7 @@
 		 * @return string The CREATE statement
 		 */
 		private function compileRegexRoutine(FakePlatformCapabilities $platform): string {
-			$statements = (new ProcedureCompiler($GLOBALS['test_em'], $platform, $platform->getDatabaseType() === 'sqlsrv' ? 'dbo' : null))->compile(
+			$statements = (new RoutineCompiler($GLOBALS['test_em'], $platform, $platform->getDatabaseType() === 'sqlsrv' ? 'dbo' : null))->compile(
 				"define function f (string s) integer { if (s = /a\\.b'/i) { return 1 } return 0 }"
 			);
 
