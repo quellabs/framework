@@ -594,7 +594,7 @@
 			');
 
 			self::assertCount(2, $statements);
-			self::assertSame('COMMENT ON PROCEDURE "ban_all"(INTEGER) IS \'{"objectQuel":1,"returnType":"void","atomic":false,"parameters":[{"kind":"scalar","type":"integer"}],"safety":{"calls":[],"reads":[],"writes":["users"],"features":[]}}\';', $statements[1]);
+			self::assertSame('COMMENT ON PROCEDURE "ban_all"(INTEGER) IS \'{"objectQuel":1,"returnType":"void","atomic":false,"parameters":[{"kind":"scalar","type":"integer"}],"safety":{"calls":[],"reads":[],"writes":["users"]}}\';', $statements[1]);
 		}
 
 		/**

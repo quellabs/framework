@@ -61,7 +61,7 @@
 				'returnType'  => 'trigger',
 				'atomic'      => false,
 				'parameters'  => $parameters,
-				'safety'      => ['calls' => $calls, 'reads' => [], 'writes' => $writes, 'features' => []],
+				'safety'      => ['calls' => $calls, 'reads' => [], 'writes' => $writes],
 			];
 		}
 
@@ -96,7 +96,7 @@
 				after replace u call helper(old, new)
 			');
 			$adapter = $this->adapterReturning([
-				'helper' => ['objectQuel' => 1, 'returnType' => 'void', 'atomic' => false, 'parameters' => [], 'safety' => ['calls' => [], 'reads' => [], 'writes' => [], 'features' => []]],
+				'helper' => ['objectQuel' => 1, 'returnType' => 'void', 'atomic' => false, 'parameters' => [], 'safety' => ['calls' => [], 'reads' => [], 'writes' => []]],
 			]);
 
 			$this->expectException(QuelException::class);
@@ -215,7 +215,7 @@
 					['kind' => 'entity', 'type' => $entityClass],
 					['kind' => 'entity', 'type' => $entityClass],
 				], writes: ['posts'], calls: ['helper']),
-				'helper' => ['objectQuel' => 1, 'returnType' => 'void', 'atomic' => false, 'parameters' => [], 'safety' => ['calls' => [], 'reads' => [], 'writes' => ['users'], 'features' => []]],
+				'helper' => ['objectQuel' => 1, 'returnType' => 'void', 'atomic' => false, 'parameters' => [], 'safety' => ['calls' => [], 'reads' => [], 'writes' => ['users']]],
 			]);
 
 			$this->expectException(QuelException::class);
@@ -238,39 +238,11 @@
 					['kind' => 'entity', 'type' => $entityClass],
 					['kind' => 'entity', 'type' => $entityClass],
 				], writes: ['posts'], calls: ['helper']),
-				'helper' => ['objectQuel' => 1, 'returnType' => 'void', 'atomic' => false, 'parameters' => [], 'safety' => ['calls' => ['audit_user'], 'reads' => [], 'writes' => [], 'features' => []]],
+				'helper' => ['objectQuel' => 1, 'returnType' => 'void', 'atomic' => false, 'parameters' => [], 'safety' => ['calls' => ['audit_user'], 'reads' => [], 'writes' => []]],
 			]);
 
 			(new EventAttachmentValidator($adapter, $GLOBALS['test_em']->getEntityStore()))->validate($attachment);
 			$this->addToAssertionCount(1);
 		}
 
-		/**
-		 * A feature flag anywhere in the call graph (even a routine not authored by EQUEL,
-		 * whose metadata was crafted to claim one) is rejected.
-		 * @return void
-		 */
-		public function testRejectsUnsafeFeatureInCallGraph(): void {
-			$attachment = $this->parse('
-				range of u is UserEntity
-				after replace u call audit_user(old, new)
-			');
-			$entityClass = $GLOBALS['test_em']->getEntityStore()->getMetadata('UserEntity')->className;
-			$adapter = $this->adapterReturning([
-				'audit_user' => [
-					'objectQuel' => 1,
-					'returnType' => 'trigger',
-					'atomic'     => false,
-					'parameters' => [
-						['kind' => 'entity', 'type' => $entityClass],
-						['kind' => 'entity', 'type' => $entityClass],
-					],
-					'safety'     => ['calls' => [], 'reads' => [], 'writes' => [], 'features' => ['dynamic-sql']],
-				],
-			]);
-
-			$this->expectException(QuelException::class);
-			$this->expectExceptionMessage("'dynamic-sql'");
-			(new EventAttachmentValidator($adapter, $GLOBALS['test_em']->getEntityStore()))->validate($attachment);
-		}
 	}

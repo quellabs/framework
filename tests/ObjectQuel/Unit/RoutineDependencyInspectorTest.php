@@ -44,7 +44,7 @@
 		 * @return array<string, mixed>
 		 */
 		private static function metadata(string $returnType): array {
-			return ['objectQuel' => 1, 'returnType' => $returnType, 'atomic' => false, 'parameters' => [], 'safety' => ['calls' => [], 'reads' => [], 'writes' => [], 'features' => []]];
+			return ['objectQuel' => 1, 'returnType' => $returnType, 'atomic' => false, 'parameters' => [], 'safety' => ['calls' => [], 'reads' => [], 'writes' => []]];
 		}
 
 		/**

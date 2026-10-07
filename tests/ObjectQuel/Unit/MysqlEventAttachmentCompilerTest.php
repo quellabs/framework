@@ -24,7 +24,7 @@
 				'returnType' => 'trigger',
 				'atomic'     => false,
 				'parameters' => array_fill(0, $parameterCount, ['kind' => 'entity', 'type' => $entityClass]),
-				'safety'     => ['calls' => [], 'reads' => [], 'writes' => [], 'features' => []],
+				'safety'     => ['calls' => [], 'reads' => [], 'writes' => []],
 			];
 		}
 
@@ -112,7 +112,7 @@
 					'returnType' => 'trigger',
 					'atomic'     => false,
 					'parameters' => [['kind' => 'scalar', 'type' => 'string'], ['kind' => 'scalar', 'type' => 'string']],
-					'safety'     => ['calls' => [], 'reads' => [], 'writes' => [], 'features' => []],
+					'safety'     => ['calls' => [], 'reads' => [], 'writes' => []],
 				],
 			]);
 

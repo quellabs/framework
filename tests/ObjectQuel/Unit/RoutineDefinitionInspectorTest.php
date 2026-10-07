@@ -185,8 +185,8 @@
 			return [
 				'no comment'               => [null, false],
 				'legacy sentinel'          => ['ObjectQuel:atomic-block', true],
-				'json atomic true'         => ['{"objectQuel":1,"returnType":"void","atomic":true,"parameters":[],"safety":{"calls":[],"reads":[],"writes":[],"features":[]}}', true],
-				'json atomic false'        => ['{"objectQuel":1,"returnType":"void","atomic":false,"parameters":[],"safety":{"calls":[],"reads":[],"writes":[],"features":[]}}', false],
+				'json atomic true'         => ['{"objectQuel":1,"returnType":"void","atomic":true,"parameters":[],"safety":{"calls":[],"reads":[],"writes":[]}}', true],
+				'json atomic false'        => ['{"objectQuel":1,"returnType":"void","atomic":false,"parameters":[],"safety":{"calls":[],"reads":[],"writes":[]}}', false],
 				'unrelated comment'        => ['not ObjectQuel metadata at all', false],
 			];
 		}
@@ -237,8 +237,8 @@
 		public static function triggerComments(): array {
 			return [
 				'no comment'            => [null, false],
-				'void metadata'         => ['{"objectQuel":1,"returnType":"void","atomic":false,"parameters":[],"safety":{"calls":[],"reads":[],"writes":[],"features":[]}}', false],
-				'trigger metadata'      => ['{"objectQuel":1,"returnType":"trigger","atomic":false,"parameters":[{"kind":"entity","type":"App\\\\Entities\\\\UserEntity"}],"safety":{"calls":[],"reads":[],"writes":[],"features":[]}}', true],
+				'void metadata'         => ['{"objectQuel":1,"returnType":"void","atomic":false,"parameters":[],"safety":{"calls":[],"reads":[],"writes":[]}}', false],
+				'trigger metadata'      => ['{"objectQuel":1,"returnType":"trigger","atomic":false,"parameters":[{"kind":"entity","type":"App\\\\Entities\\\\UserEntity"}],"safety":{"calls":[],"reads":[],"writes":[]}}', true],
 				'legacy sentinel'       => ['ObjectQuel:atomic-block', false],
 				'unrelated comment'     => ['not ObjectQuel metadata at all', false],
 			];
@@ -652,7 +652,7 @@
 					'returnType' => $returnType,
 					'atomic'     => false,
 					'parameters' => [],
-					'safety'     => ['calls' => [], 'reads' => [], 'writes' => [], 'features' => []],
+					'safety'     => ['calls' => [], 'reads' => [], 'writes' => []],
 				]),
 			];
 		}
@@ -708,7 +708,7 @@
 				->onlyMethods(['getDatabaseType', 'execute'])->getMock();
 			$adapter->method('getDatabaseType')->willReturn('mysql');
 			$row = self::row(1, null);
-			$row['routine_comment'] = '{"objectQuel":1,"returnType":"trigger","atomic":false,"parameters":[],"safety":{"calls":[],"reads":[],"writes":[],"features":[]}}';
+			$row['routine_comment'] = '{"objectQuel":1,"returnType":"trigger","atomic":false,"parameters":[],"safety":{"calls":[],"reads":[],"writes":[]}}';
 			$this->returningRows($adapter, [$row]);
 
 			$metadata = $adapter->getRoutineMetadata('f');

@@ -52,7 +52,7 @@
 				['kind' => 'scalar', 'type' => 'integer'],
 				['kind' => 'scalar', 'type' => 'integer'],
 			], $metadata['parameters']);
-			self::assertSame(['calls' => [], 'reads' => [], 'writes' => [], 'features' => []], $metadata['safety']);
+			self::assertSame(['calls' => [], 'reads' => [], 'writes' => []], $metadata['safety']);
 		}
 
 		/**
@@ -171,17 +171,4 @@
 			self::assertSame(['helper', 'other'], $metadata['safety']['calls']);
 		}
 
-		/**
-		 * EQUEL has no syntax for transaction control, client result sets, or dynamic SQL, so
-		 * `features` is always empty for an ObjectQuel-authored routine.
-		 * @return void
-		 */
-		public function testFeaturesIsAlwaysEmpty(): void {
-			$metadata = $this->metadata('
-				range of u is UserEntity
-				define function f (integer n) void { atomic { replace u (banned = true) where u.id = n } }
-			');
-
-			self::assertSame([], $metadata['safety']['features']);
-		}
 	}
