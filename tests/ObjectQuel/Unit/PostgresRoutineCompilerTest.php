@@ -558,7 +558,7 @@
 						}
 						return 1
 					}
-				', 'only supported in void functions'],
+				', 'only supported in void or trigger functions'],
 				'retrieve without a range' => ['
 					define function f () void {
 						retrieve (x = 1)

@@ -718,7 +718,7 @@
 						}
 						return 1
 					}
-				', 'only supported in void functions'],
+				', 'only supported in void or trigger functions'],
 				'atomic inside a loop' => ['
 					range of u is UserEntity
 					define function f () void {
