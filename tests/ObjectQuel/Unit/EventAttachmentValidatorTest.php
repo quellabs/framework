@@ -105,11 +105,11 @@
 		}
 
 		/**
-		 * `replace` supplies two rows (old, new); a routine declaring only one entity-row
-		 * parameter can't be attached to it.
+		 * `replace` supplies two rows (old, new); a routine declaring only its first row
+		 * parameter (old) binds by the leading-rows rule and passes, reporting 1 parameter back.
 		 * @return void
 		 */
-		public function testRejectsParameterCountMismatch(): void {
+		public function testPrefixBindingAllowsFewerParametersThanTheEventSupplies(): void {
 			$attachment = $this->parse('
 				range of u is UserEntity
 				after replace u call audit_user
@@ -119,8 +119,31 @@
 				'audit_user' => self::triggerMetadata([['kind' => 'entity', 'type' => $entityClass]]),
 			]);
 
+			$parameterCount = (new EventAttachmentValidator($adapter, $GLOBALS['test_em']->getEntityStore()))->validate($attachment);
+			self::assertSame(1, $parameterCount);
+		}
+
+		/**
+		 * `replace` supplies two rows (old, new); a routine declaring more entity-row parameters
+		 * than that can't be attached, since there's no third row to bind.
+		 * @return void
+		 */
+		public function testRejectsMoreParametersThanTheEventSupplies(): void {
+			$attachment = $this->parse('
+				range of u is UserEntity
+				after replace u call audit_user
+			');
+			$entityClass = $GLOBALS['test_em']->getEntityStore()->getMetadata('UserEntity')->className;
+			$adapter = $this->adapterReturning([
+				'audit_user' => self::triggerMetadata([
+					['kind' => 'entity', 'type' => $entityClass],
+					['kind' => 'entity', 'type' => $entityClass],
+					['kind' => 'entity', 'type' => $entityClass],
+				]),
+			]);
+
 			$this->expectException(QuelException::class);
-			$this->expectExceptionMessage("it declares 1 entity-row parameter(s), but 'replace' supplies 2");
+			$this->expectExceptionMessage("it declares 3 entity-row parameter(s), but 'replace' only supplies 2");
 			(new EventAttachmentValidator($adapter, $GLOBALS['test_em']->getEntityStore()))->validate($attachment);
 		}
 

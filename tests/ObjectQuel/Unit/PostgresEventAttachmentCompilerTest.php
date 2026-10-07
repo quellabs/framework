@@ -76,6 +76,24 @@
 		}
 
 		/**
+		 * A `replace` routine declaring only one entity-row parameter binds the leading row
+		 * (old) by position; the helper's call carries only that row's columns.
+		 * @return void
+		 */
+		public function testReplaceAttachmentWithOneParameterBindsOldOnly(): void {
+			$entityClass = $GLOBALS['test_em']->getEntityStore()->getMetadata('UserEntity')->className;
+			$statements = $this->compile('
+				range of u is UserEntity
+				after replace u call audit_old_only as audit_trigger
+			', ['audit_old_only' => self::triggerMetadata($entityClass, 1)]);
+
+			self::assertStringContainsString(
+				"CALL \"audit_old_only\"(OLD.\"id\", OLD.\"username\", OLD.\"password\", OLD.\"banned\");",
+				$statements[0]
+			);
+		}
+
+		/**
 		 * A DELETE attachment's helper returns OLD, since there is no resulting row.
 		 * @return void
 		 */

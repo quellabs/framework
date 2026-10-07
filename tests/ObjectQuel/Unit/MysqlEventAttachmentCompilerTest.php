@@ -99,6 +99,27 @@
 		}
 
 		/**
+		 * A `replace` routine declaring only one entity-row parameter binds the leading row
+		 * (old) by position, and the call carries only that row's columns — never `new`.
+		 * @return void
+		 */
+		public function testReplaceAttachmentWithOneParameterBindsOldOnly(): void {
+			$entityClass = $GLOBALS['test_em']->getEntityStore()->getMetadata('UserEntity')->className;
+			$statements = $this->compile('
+				range of u is UserEntity
+				after replace u call audit_old_only as audit_trigger
+			', ['audit_old_only' => self::triggerMetadata($entityClass, 1)]);
+
+			self::assertSame(
+				"CREATE TRIGGER `eq_users_audit_trigger`\n"
+				. "AFTER UPDATE ON `users`\n"
+				. "FOR EACH ROW\n"
+				. "CALL `audit_old_only`(OLD.`id`, OLD.`username`, OLD.`password`, OLD.`banned`);",
+				$statements[0]
+			);
+		}
+
+		/**
 		 * Omitting `as <alias>` still compiles: the mocked connection reports no existing
 		 * trigger, so the generated alias is accepted on the first attempt. The exact alias is
 		 * opaque and random, so only the surrounding DDL shape is asserted here.

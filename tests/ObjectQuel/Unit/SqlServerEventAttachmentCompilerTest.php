@@ -71,6 +71,26 @@
 		}
 
 		/**
+		 * A `replace` routine declaring only one entity-row parameter binds the leading row
+		 * (old) by position: the pairing join/guards still run (they don't depend on the
+		 * routine's arity), but only `d`-aliased columns are selected and EXECed.
+		 * @return void
+		 */
+		public function testReplaceAttachmentWithOneParameterBindsOldOnly(): void {
+			$entityClass = $GLOBALS['test_em']->getEntityStore()->getMetadata('UserEntity')->className;
+			$statements = $this->compile('
+				range of u is UserEntity
+				after replace u call audit_old_only as audit_trigger
+			', ['audit_old_only' => self::triggerMetadata($entityClass, 1)]);
+
+			$sql = $statements[0];
+			self::assertStringContainsString('JOIN inserted AS i ON d.[id] = i.[id]', $sql);
+			self::assertStringContainsString('d.[id] AS [c0]', $sql);
+			self::assertStringNotContainsString('i.[id] AS', $sql);
+			self::assertStringContainsString('EXEC [dbo].[audit_old_only] @_a0, @_a1, @_a2, @_a3;', $sql);
+		}
+
+		/**
 		 * INSERT iterates `inserted` alone, with no key pairing or guards at all.
 		 * @return void
 		 */
