@@ -6,6 +6,7 @@
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
 	use Quellabs\ObjectQuel\Exception\QuelException;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AttachmentEvent;
 
 	/**
 	 * Scanning live triggers for a dependency on a routine (objectquel-equel-triggers-design.md,
@@ -195,6 +196,60 @@
 			], ['audit_user' => self::metadata('trigger')]);
 
 			self::assertSame(['eq_users_replace_audit_user'], $adapter->findAttachmentTriggersOnTable('users'));
+		}
+
+		/**
+		 * @return void
+		 */
+		public function testListAttachmentsReturnsTableEventRoutineAndAlias(): void {
+			$adapter = $this->adapterReturning('mysql', null, [
+				['trigger_name' => 'eq_users_audit_trigger', 'table_name' => 'users', 'event' => 'INSERT', 'body' => 'CALL `audit_user`(NEW.`id`)'],
+			], ['audit_user' => self::metadata('trigger')]);
+
+			self::assertSame([
+				['table' => 'users', 'event' => AttachmentEvent::Append, 'routine' => 'audit_user', 'alias' => 'audit_trigger'],
+			], $adapter->listAttachments());
+		}
+
+		/**
+		 * UPDATE and DELETE map to Replace and Delete, same as Append for INSERT.
+		 * @return void
+		 */
+		public function testListAttachmentsMapsUpdateAndDelete(): void {
+			$adapter = $this->adapterReturning('mysql', null, [
+				['trigger_name' => 'eq_users_t1', 'table_name' => 'users', 'event' => 'UPDATE', 'body' => 'CALL `f`(OLD.`id`)'],
+				['trigger_name' => 'eq_users_t2', 'table_name' => 'users', 'event' => 'DELETE', 'body' => 'CALL `f`(OLD.`id`)'],
+			], ['f' => self::metadata('trigger')]);
+
+			$events = array_column($adapter->listAttachments(), 'event');
+			self::assertSame([AttachmentEvent::Replace, AttachmentEvent::Delete], $events);
+		}
+
+		/**
+		 * A trigger calling a non-trigger or unmanaged routine is excluded, same as
+		 * findAttachmentTriggersOnTable().
+		 * @return void
+		 */
+		public function testListAttachmentsExcludesNonAttachmentTriggers(): void {
+			$adapter = $this->adapterReturning('mysql', null, [
+				['trigger_name' => 'some_user_trigger', 'table_name' => 'users', 'event' => 'UPDATE', 'body' => 'CALL `log_change`(OLD.`id`)'],
+			], ['log_change' => self::metadata('void')]);
+
+			self::assertSame([], $adapter->listAttachments());
+		}
+
+		/**
+		 * A trigger name that doesn't start with the expected `eq_<table>_` prefix (the
+		 * truncation edge case — see EventAttachmentNaming::truncate()) is shown whole rather
+		 * than guessed at.
+		 * @return void
+		 */
+		public function testListAttachmentsFallsBackToWholeNameWhenPrefixIsMissing(): void {
+			$adapter = $this->adapterReturning('mysql', null, [
+				['trigger_name' => 'eq_somethingelse_ab12cd34', 'table_name' => 'users', 'event' => 'INSERT', 'body' => 'CALL `audit_user`(NEW.`id`)'],
+			], ['audit_user' => self::metadata('trigger')]);
+
+			self::assertSame('eq_somethingelse_ab12cd34', $adapter->listAttachments()[0]['alias']);
 		}
 
 		/**

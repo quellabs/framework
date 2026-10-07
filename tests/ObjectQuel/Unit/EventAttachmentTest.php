@@ -17,7 +17,8 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Routines\EventAttachmentAnalyzer;
 
 	/**
-	 * `after ... call ...(...)` and `destroy event ...` (objectquel-equel-triggers-design.md).
+	 * `after ... call ...(...) [as <alias>]` and `destroy trigger ...`
+	 * (objectquel-equel-triggers-design.md).
 	 */
 	class EventAttachmentTest extends TestCase {
 
@@ -117,44 +118,81 @@
 		}
 
 		/**
+		 * `as <alias>` names the attachment, for later reference in `destroy trigger`.
 		 * @return void
 		 */
-		public function testDestroyEventRemovesOneAttachment(): void {
+		public function testAsAliasIsParsed(): void {
+			$attachment = $this->analyze('
+				range of u is UserEntity
+				after replace u call audit_user(old, new) as audit_trigger
+			');
+
+			self::assertSame('audit_trigger', $attachment->getAlias());
+		}
+
+		/**
+		 * Omitting `as <alias>` leaves the alias null; it is resolved (given or generated) at
+		 * compile time, not parse time — see EventAttachmentCompiler::resolveAlias().
+		 * @return void
+		 */
+		public function testAliasIsNullWhenOmitted(): void {
+			$attachment = $this->analyze('
+				range of u is UserEntity
+				after replace u call audit_user(old, new)
+			');
+
+			self::assertNull($attachment->getAlias());
+		}
+
+		/**
+		 * A trailing semicolon is accepted after `as <alias>` too.
+		 * @return void
+		 */
+		public function testAcceptsTrailingSemicolonAfterAlias(): void {
+			$this->analyze('
+				range of u is UserEntity
+				after replace u call on_changed(old, new) as named;
+			');
+			$this->addToAssertionCount(1);
+		}
+
+		/**
+		 * @return void
+		 */
+		public function testDestroyTriggerRemovesOneAttachment(): void {
 			$statement = $this->parse('
 				range of u is UserEntity
-				destroy event after replace u call audit_user if exists
+				destroy trigger u audit_trigger if exists
 			');
 
 			self::assertInstanceOf(AstDestroyEventAttachment::class, $statement);
-			self::assertSame(AttachmentEvent::Replace, $statement->getEvent());
 			self::assertSame('u', $statement->getRange()->getName());
-			self::assertSame('audit_user', $statement->getRoutineName());
+			self::assertSame('audit_trigger', $statement->getAlias());
 			self::assertTrue($statement->isIfExists());
 		}
 
 		/**
 		 * @return void
 		 */
-		public function testDestroyEventWithoutIfExists(): void {
+		public function testDestroyTriggerWithoutIfExists(): void {
 			$statement = $this->parse('
 				range of u is UserEntity
-				destroy event after append to u call on_created
+				destroy trigger u audit_trigger
 			');
 
 			self::assertInstanceOf(AstDestroyEventAttachment::class, $statement);
-			self::assertSame(AttachmentEvent::Append, $statement->getEvent());
 			self::assertFalse($statement->isIfExists());
 		}
 
 		/**
-		 * `event` immediately followed by `after` is the attachment-removal form; otherwise a
-		 * table/index literally named `event` keeps its ordinary meaning.
+		 * `trigger` immediately followed by its range name is the attachment-removal form;
+		 * otherwise a table/index literally named `trigger` keeps its ordinary meaning.
 		 * @return void
 		 */
-		public function testEventKeywordDoesNotShadowATableNamedEvent(): void {
-			self::assertInstanceOf(AstDestroy::class, $this->parse('destroy event'));
-			self::assertInstanceOf(AstDestroy::class, $this->parse('destroy event if exists'));
-			self::assertInstanceOf(AstDestroyIndex::class, $this->parse('destroy event on sometable'));
+		public function testTriggerKeywordDoesNotShadowATableNamedTrigger(): void {
+			self::assertInstanceOf(AstDestroy::class, $this->parse('destroy trigger'));
+			self::assertInstanceOf(AstDestroy::class, $this->parse('destroy trigger if exists'));
+			self::assertInstanceOf(AstDestroyIndex::class, $this->parse('destroy trigger on sometable'));
 		}
 
 		/**

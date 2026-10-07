@@ -49,13 +49,13 @@
 			$entityClass = $GLOBALS['test_em']->getEntityStore()->getMetadata('UserEntity')->className;
 			$statements = $this->compile('
 				range of u is UserEntity
-				after replace u call audit_user(old, new)
+				after replace u call audit_user(old, new) as audit_trigger
 			', ['audit_user' => self::triggerMetadata($entityClass, 2)]);
 
 			self::assertCount(2, $statements);
 
 			self::assertSame(
-				"CREATE FUNCTION \"eq_users_replace_audit_user_fn\"()\n"
+				"CREATE FUNCTION \"eq_users_audit_trigger_fn\"()\n"
 				. "RETURNS trigger\n"
 				. "LANGUAGE plpgsql\n"
 				. "AS \$body\$\n"
@@ -68,9 +68,9 @@
 			);
 
 			self::assertSame(
-				"CREATE TRIGGER \"eq_users_replace_audit_user\"\n"
+				"CREATE TRIGGER \"eq_users_audit_trigger\"\n"
 				. "AFTER UPDATE ON \"users\"\n"
-				. "FOR EACH ROW EXECUTE FUNCTION \"eq_users_replace_audit_user_fn\"();",
+				. "FOR EACH ROW EXECUTE FUNCTION \"eq_users_audit_trigger_fn\"();",
 				$statements[1]
 			);
 		}

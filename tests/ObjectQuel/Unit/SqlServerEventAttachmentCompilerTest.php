@@ -52,13 +52,13 @@
 			$entityClass = $GLOBALS['test_em']->getEntityStore()->getMetadata('UserEntity')->className;
 			$statements = $this->compile('
 				range of u is UserEntity
-				after replace u call audit_user(old, new)
+				after replace u call audit_user(old, new) as audit_trigger
 			', ['audit_user' => self::triggerMetadata($entityClass, 2)]);
 
 			self::assertCount(1, $statements);
 			$sql = $statements[0];
 
-			self::assertStringContainsString("CREATE TRIGGER [eq_users_replace_audit_user]\nON [dbo].[users]\nAFTER UPDATE", $sql);
+			self::assertStringContainsString("CREATE TRIGGER [eq_users_audit_trigger]\nON [dbo].[users]\nAFTER UPDATE", $sql);
 			self::assertStringContainsString('IF NOT EXISTS (SELECT 1 FROM inserted)', $sql);
 			self::assertStringContainsString('IF UPDATE([id])', $sql);
 			self::assertStringContainsString('FROM deleted AS d', $sql);

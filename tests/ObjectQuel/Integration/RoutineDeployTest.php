@@ -44,7 +44,7 @@
 		protected function tearDown(): void {
 			// Always dropped first and with 'if exists': a no-op for tests that never attached
 			// one, but removes it before the routine below if a test did and failed early.
-			self::em()->executeQuery("range of u is UserEntity destroy event after replace u call {$this->name} if exists");
+			self::em()->executeQuery("range of u is UserEntity destroy trigger u {$this->name} if exists");
 
 			if (self::em()->getConnection()->getDatabaseType() === 'pgsql') {
 				self::em()->executeQuery("destroy function {$this->name} if exists");
@@ -396,7 +396,7 @@
 
 			self::em()->executeQuery("
 				range of u is UserEntity
-				after replace u call {$this->name}(old, new)
+				after replace u call {$this->name}(old, new) as {$this->name}
 			");
 
 			try {
@@ -408,12 +408,12 @@
 				)?->fetch('assoc');
 				self::assertSame(1, (int)($row['n'] ?? 0), 'The attached trigger should have fired exactly once.');
 
-				// Re-attaching the same (table, event, routine) triple is a conflict.
+				// Re-attaching under the same alias on the same table is a conflict.
 				$this->expectException(QuelException::class);
 				$this->expectExceptionMessage('already exists');
 				self::em()->executeQuery("
 					range of u is UserEntity
-					after replace u call {$this->name}(old, new)
+					after replace u call {$this->name}(old, new) as {$this->name}
 				");
 			} finally {
 				self::em()->getConnection()->execute('DELETE FROM default_column_test WHERE name = :name', ['name' => $marker]);
@@ -436,7 +436,7 @@
 			");
 			self::em()->executeQuery("
 				range of u is UserEntity
-				after append to u call {$this->name}(new)
+				after append to u call {$this->name}(new) as {$this->name}
 			");
 
 			try {
@@ -449,7 +449,7 @@
 				self::assertSame(1, (int)($row['n'] ?? 0), 'The attached trigger should have fired on insert.');
 			} finally {
 				self::em()->getConnection()->execute('DELETE FROM default_column_test WHERE name = :name', ['name' => $marker]);
-				self::em()->executeQuery("range of u is UserEntity destroy event after append to u call {$this->name} if exists");
+				self::em()->executeQuery("range of u is UserEntity destroy trigger u {$this->name} if exists");
 			}
 		}
 
@@ -468,7 +468,7 @@
 			");
 			self::em()->executeQuery("
 				range of d is DefaultColumnEntity
-				after replace d call {$this->name}(old, new)
+				after replace d call {$this->name}(old, new) as {$this->name}
 			");
 
 			try {
@@ -479,21 +479,21 @@
 					self::assertStringContainsString('depend on its mapped columns', $exception->getMessage());
 				}
 
-				self::em()->executeQuery("range of d is DefaultColumnEntity destroy event after replace d call {$this->name}");
+				self::em()->executeQuery("range of d is DefaultColumnEntity destroy trigger d {$this->name}");
 
 				// Same statement, now unblocked.
 				self::assertNull(self::em()->executeQuery('alter default_column_test (retype priority = integer)'));
 			} finally {
-				self::em()->executeQuery("range of d is DefaultColumnEntity destroy event after replace d call {$this->name} if exists");
+				self::em()->executeQuery("range of d is DefaultColumnEntity destroy trigger d {$this->name} if exists");
 			}
 		}
 
 		/**
-		 * `destroy event ... if exists` removes only the attachment; the routine keeps working
-		 * and a second detach is a safe no-op.
+		 * `destroy trigger ... if exists` removes only the attachment; the routine keeps
+		 * working and a second detach is a safe no-op.
 		 * @return void
 		 */
-		public function testDestroyEventRemovesOnlyTheAttachment(): void {
+		public function testDestroyTriggerRemovesOnlyTheAttachment(): void {
 			$userId = $this->seedUser("{$this->name}_detach");
 			$marker = "{$this->name}_detach_fired";
 
@@ -506,10 +506,10 @@
 			");
 			self::em()->executeQuery("
 				range of u is UserEntity
-				after replace u call {$this->name}(old, new)
+				after replace u call {$this->name}(old, new) as {$this->name}
 			");
 
-			self::em()->executeQuery("range of u is UserEntity destroy event after replace u call {$this->name}");
+			self::em()->executeQuery("range of u is UserEntity destroy trigger u {$this->name}");
 
 			try {
 				// No attachment left, so this ordinary write no longer fires it.
@@ -523,13 +523,13 @@
 
 				// Detaching again without 'if exists' is an error; with it, a safe no-op.
 				try {
-					self::em()->executeQuery("range of u is UserEntity destroy event after replace u call {$this->name}");
+					self::em()->executeQuery("range of u is UserEntity destroy trigger u {$this->name}");
 					self::fail('Expected an exception for destroying a missing attachment.');
 				} catch (QuelException $exception) {
 					self::assertStringContainsString("doesn't exist", $exception->getMessage());
 				}
 
-				self::em()->executeQuery("range of u is UserEntity destroy event after replace u call {$this->name} if exists");
+				self::em()->executeQuery("range of u is UserEntity destroy trigger u {$this->name} if exists");
 				$this->addToAssertionCount(1);
 			} finally {
 				self::em()->getConnection()->execute('DELETE FROM default_column_test WHERE name = :name', ['name' => $marker]);
@@ -730,7 +730,7 @@
 			");
 			self::em()->executeQuery("
 				range of u is UserEntity
-				after replace u call {$this->name}(old, new)
+				after replace u call {$this->name}(old, new) as {$this->name}
 			");
 
 			try {
@@ -738,7 +738,7 @@
 				$this->expectExceptionMessage("still call it");
 				self::em()->executeQuery("destroy function {$this->name}");
 			} finally {
-				self::em()->executeQuery("range of u is UserEntity destroy event after replace u call {$this->name} if exists");
+				self::em()->executeQuery("range of u is UserEntity destroy trigger u {$this->name} if exists");
 			}
 		}
 
@@ -756,9 +756,9 @@
 			");
 			self::em()->executeQuery("
 				range of u is UserEntity
-				after replace u call {$this->name}(old, new)
+				after replace u call {$this->name}(old, new) as {$this->name}
 			");
-			self::em()->executeQuery("range of u is UserEntity destroy event after replace u call {$this->name}");
+			self::em()->executeQuery("range of u is UserEntity destroy trigger u {$this->name}");
 
 			self::assertNull(self::em()->executeQuery("destroy function {$this->name}"));
 			self::assertSame(0, $this->routineCount());

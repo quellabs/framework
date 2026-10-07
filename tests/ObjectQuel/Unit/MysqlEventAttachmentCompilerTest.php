@@ -47,12 +47,12 @@
 			$entityClass = $GLOBALS['test_em']->getEntityStore()->getMetadata('UserEntity')->className;
 			$statements = $this->compile('
 				range of u is UserEntity
-				after replace u call audit_user(old, new)
+				after replace u call audit_user(old, new) as audit_trigger
 			', ['audit_user' => self::triggerMetadata($entityClass, 2)]);
 
 			self::assertCount(1, $statements);
 			self::assertSame(
-				"CREATE TRIGGER `eq_users_replace_audit_user`\n"
+				"CREATE TRIGGER `eq_users_audit_trigger`\n"
 				. "AFTER UPDATE ON `users`\n"
 				. "FOR EACH ROW\n"
 				. "CALL `audit_user`(OLD.`id`, OLD.`username`, OLD.`password`, OLD.`banned`, NEW.`id`, NEW.`username`, NEW.`password`, NEW.`banned`);",
@@ -67,11 +67,11 @@
 			$entityClass = $GLOBALS['test_em']->getEntityStore()->getMetadata('UserEntity')->className;
 			$statements = $this->compile('
 				range of u is UserEntity
-				after append to u call on_created(new)
+				after append to u call on_created(new) as on_created_trigger
 			', ['on_created' => self::triggerMetadata($entityClass, 1)]);
 
 			self::assertSame(
-				"CREATE TRIGGER `eq_users_append_on_created`\n"
+				"CREATE TRIGGER `eq_users_on_created_trigger`\n"
 				. "AFTER INSERT ON `users`\n"
 				. "FOR EACH ROW\n"
 				. "CALL `on_created`(NEW.`id`, NEW.`username`, NEW.`password`, NEW.`banned`);",
@@ -86,11 +86,11 @@
 			$entityClass = $GLOBALS['test_em']->getEntityStore()->getMetadata('UserEntity')->className;
 			$statements = $this->compile('
 				range of u is UserEntity
-				after delete u call on_removed(old)
+				after delete u call on_removed(old) as on_removed_trigger
 			', ['on_removed' => self::triggerMetadata($entityClass, 1)]);
 
 			self::assertSame(
-				"CREATE TRIGGER `eq_users_delete_on_removed`\n"
+				"CREATE TRIGGER `eq_users_on_removed_trigger`\n"
 				. "AFTER DELETE ON `users`\n"
 				. "FOR EACH ROW\n"
 				. "CALL `on_removed`(OLD.`id`, OLD.`username`, OLD.`password`, OLD.`banned`);",
@@ -105,7 +105,7 @@
 		public function testFieldArgumentExpandsToOneColumn(): void {
 			$statements = $this->compile('
 				range of u is UserEntity
-				after replace u call notify_rename(old.username, new.username)
+				after replace u call notify_rename(old.username, new.username) as notify_trigger
 			', [
 				'notify_rename' => [
 					'objectQuel' => 1,
@@ -117,11 +117,28 @@
 			]);
 
 			self::assertSame(
-				"CREATE TRIGGER `eq_users_replace_notify_rename`\n"
+				"CREATE TRIGGER `eq_users_notify_trigger`\n"
 				. "AFTER UPDATE ON `users`\n"
 				. "FOR EACH ROW\n"
 				. "CALL `notify_rename`(OLD.`username`, NEW.`username`);",
 				$statements[0]
 			);
+		}
+
+		/**
+		 * Omitting `as <alias>` still compiles: the mocked connection reports no existing
+		 * trigger, so the generated alias is accepted on the first attempt. The exact alias is
+		 * opaque and random, so only the surrounding DDL shape is asserted here.
+		 * @return void
+		 */
+		public function testOmittedAliasStillCompiles(): void {
+			$entityClass = $GLOBALS['test_em']->getEntityStore()->getMetadata('UserEntity')->className;
+			$statements = $this->compile('
+				range of u is UserEntity
+				after replace u call audit_user(old, new)
+			', ['audit_user' => self::triggerMetadata($entityClass, 2)]);
+
+			self::assertCount(1, $statements);
+			self::assertMatchesRegularExpression('/^CREATE TRIGGER `eq_users_[0-9a-f]+`\n/', $statements[0]);
 		}
 	}
