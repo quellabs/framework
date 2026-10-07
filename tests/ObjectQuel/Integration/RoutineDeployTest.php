@@ -680,6 +680,56 @@
 		}
 
 		/**
+		 * `destroy function` is refused while a live attachment still calls it, and succeeds
+		 * once that attachment is detached (objectquel-equel-triggers-design.md, "Attachment
+		 * dependency discovery").
+		 * @return void
+		 */
+		public function testDestroyFunctionRefusedWhileAttachmentDependsOnIt(): void {
+			self::em()->executeQuery("
+				range of u is UserEntity
+				range of d is DefaultColumnEntity
+				define function {$this->name} (UserEntity old, UserEntity new) trigger {
+					append to d (name = \"{$this->name}_dep\", priority = 1)
+				}
+			");
+			self::em()->executeQuery("
+				range of u is UserEntity
+				after replace u call {$this->name}(old, new)
+			");
+
+			try {
+				$this->expectException(QuelException::class);
+				$this->expectExceptionMessage("still call it");
+				self::em()->executeQuery("destroy function {$this->name}");
+			} finally {
+				self::em()->executeQuery("range of u is UserEntity destroy event after replace u call {$this->name} if exists");
+			}
+		}
+
+		/**
+		 * Once the attachment is detached, the routine can be destroyed normally.
+		 * @return void
+		 */
+		public function testDestroyFunctionSucceedsOnceAttachmentIsDetached(): void {
+			self::em()->executeQuery("
+				range of u is UserEntity
+				range of d is DefaultColumnEntity
+				define function {$this->name} (UserEntity old, UserEntity new) trigger {
+					append to d (name = \"{$this->name}_dep2\", priority = 1)
+				}
+			");
+			self::em()->executeQuery("
+				range of u is UserEntity
+				after replace u call {$this->name}(old, new)
+			");
+			self::em()->executeQuery("range of u is UserEntity destroy event after replace u call {$this->name}");
+
+			self::assertNull(self::em()->executeQuery("destroy function {$this->name}"));
+			self::assertSame(0, $this->routineCount());
+		}
+
+		/**
 		 * Destruction accepts a name shared by a function and a procedure, then drops both MySQL namespace matches.
 		 * @return void
 		 */
