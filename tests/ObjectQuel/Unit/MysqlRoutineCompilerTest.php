@@ -104,6 +104,7 @@
 				CREATE FUNCTION `count_users`(_v_minId INT)
 				RETURNS INT
 				READS SQL DATA
+				COMMENT '{"objectQuel":1,"returnType":"integer","atomic":false,"parameters":[{"kind":"scalar","type":"integer"}],"safety":{"calls":[],"reads":["users"],"writes":[],"features":[]}}'
 				BEGIN
 					DECLARE _v_total INT;
 					DECLARE _v_found TINYINT(1);
@@ -372,7 +373,7 @@
 				}
 			', 'mariadb');
 
-			self::assertSame(["CREATE FUNCTION `f`()\nRETURNS INT\nREADS SQL DATA\nBEGIN\n\tRETURN 1;\nEND"], $statements);
+			self::assertSame(["CREATE FUNCTION `f`()\nRETURNS INT\nREADS SQL DATA\nCOMMENT '{\"objectQuel\":1,\"returnType\":\"integer\",\"atomic\":false,\"parameters\":[],\"safety\":{\"calls\":[],\"reads\":[],\"writes\":[],\"features\":[]}}'\nBEGIN\n\tRETURN 1;\nEND"], $statements);
 		}
 
 		/**
@@ -421,6 +422,7 @@
 				CREATE FUNCTION `counts`(_v_n INT)
 				RETURNS INT
 				READS SQL DATA
+				COMMENT '{"objectQuel":1,"returnType":"integer","atomic":false,"parameters":[{"kind":"scalar","type":"integer"}],"safety":{"calls":[],"reads":[],"writes":[],"features":[]}}'
 				BEGIN
 					DECLARE _v_total INT;
 					SET _v_total = 0;
@@ -547,6 +549,7 @@
 				CREATE FUNCTION `nested`(_v_n INT)
 				RETURNS INT
 				READS SQL DATA
+				COMMENT '{"objectQuel":1,"returnType":"integer","atomic":false,"parameters":[{"kind":"scalar","type":"integer"}],"safety":{"calls":[],"reads":["users"],"writes":[],"features":[]}}'
 				BEGIN
 					DECLARE _v_total INT;
 					DECLARE _row_ids$id INT UNSIGNED;

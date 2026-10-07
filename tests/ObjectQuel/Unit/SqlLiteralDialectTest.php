@@ -71,6 +71,6 @@
 				"define function f (string s) integer { if (s = /a\\.b'/i) { return 1 } return 0 }"
 			);
 
-			return end($statements);
+			return $statements[0];
 		}
 	}

@@ -21,9 +21,9 @@
 		private function compile(string $source): string {
 			$statements = (new ProcedureCompiler($GLOBALS['test_em'], new FakePlatformCapabilities('sqlsrv'), 'dbo'))->compile($source);
 
-			// A void/trigger routine carries a second statement attaching its JSON metadata
+			// Every routine carries a second statement attaching its JSON metadata
 			// (see RoutineMetadataTest); body-shape tests here only care about the CREATE itself.
-			self::assertContains(count($statements), [1, 2]);
+			self::assertSame(2, count($statements));
 			return $statements[0];
 		}
 
