@@ -21,7 +21,7 @@
 		 */
 		private function compile(string $databaseType, string $source): string {
 			$statements = (new ProcedureCompiler($GLOBALS['test_em'], new FakePlatformCapabilities($databaseType), $databaseType === 'sqlsrv' ? 'dbo' : null))->compile($source);
-			return end($statements);
+			return $statements[0];
 		}
 
 		/**

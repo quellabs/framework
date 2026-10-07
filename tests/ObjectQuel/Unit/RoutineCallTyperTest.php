@@ -56,18 +56,52 @@
 		}
 
 		/**
-		 * Standalone calls may invoke procedures, while expression arguments still need their types.
+		 * Standalone calls may invoke procedures (still looked up, to reject a trigger-declared
+		 * target), while expression arguments still need their types.
 		 * @return void
 		 */
 		public function testRoutineBodySkipsStandaloneCallButTypesItsExpressionArguments(): void {
 			$adapter = $this->createMock(DatabaseAdapter::class);
-			$adapter->expects(self::once())->method('getRoutineSignature')->with('f')
-				->willReturn(new RoutineSignature(false, 'text'));
+			$adapter->method('getRoutineSignature')->willReturnMap([
+				['p', new RoutineSignature(true, null)],
+				['f', new RoutineSignature(false, 'text')],
+			]);
 			$argument = new AstRoutineCall('f', []);
 			$statement = new AstCall(new AstRoutineCall('p', [$argument]));
 
 			(new RoutineCallTyper($adapter))->typeCalls($statement, true);
 
 			self::assertSame('text', $argument->getRoutineReturnType());
+		}
+
+		/**
+		 * A trigger-declared routine has no call path outside an event attachment, not even as
+		 * a standalone statement call.
+		 * @return void
+		 */
+		public function testTriggerRoutineRejectedEvenAsStandaloneStatementCall(): void {
+			$adapter = $this->createMock(DatabaseAdapter::class);
+			$adapter->method('getRoutineSignature')->with('audit_user')
+				->willReturn(new RoutineSignature(true, null, false, true));
+			$statement = new AstCall(new AstRoutineCall('audit_user', []));
+
+			$this->expectException(QuelException::class);
+			$this->expectExceptionMessage("'audit_user' is declared 'trigger'");
+			(new RoutineCallTyper($adapter))->typeCalls($statement, true);
+		}
+
+		/**
+		 * A trigger-declared routine is rejected in an expression too, before the
+		 * procedure-in-an-expression check even runs.
+		 * @return void
+		 */
+		public function testTriggerRoutineRejectedAsExpression(): void {
+			$adapter = $this->createMock(DatabaseAdapter::class);
+			$adapter->method('getRoutineSignature')->with('audit_user')
+				->willReturn(new RoutineSignature(true, null, false, true));
+
+			$this->expectException(QuelException::class);
+			$this->expectExceptionMessage("'audit_user' is declared 'trigger'");
+			(new RoutineCallTyper($adapter))->typeCalls(new AstRoutineCall('audit_user', []));
 		}
 	}

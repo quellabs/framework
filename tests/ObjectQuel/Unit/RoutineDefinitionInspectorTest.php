@@ -176,6 +176,94 @@
 		}
 
 		/**
+		 * Provides a MySQL ROUTINE_COMMENT and whether it marks the routine as needing a
+		 * caller-side transaction: the legacy sentinel, current JSON metadata with `atomic`
+		 * true/false, and unrelated comment content.
+		 * @return array<string, array{string|null, bool}>
+		 */
+		public static function atomicComments(): array {
+			return [
+				'no comment'               => [null, false],
+				'legacy sentinel'          => ['ObjectQuel:atomic-block', true],
+				'json atomic true'         => ['{"objectQuel":1,"returnType":"void","atomic":true,"parameters":[],"safety":{"calls":[],"reads":[],"writes":[],"features":[]}}', true],
+				'json atomic false'        => ['{"objectQuel":1,"returnType":"void","atomic":false,"parameters":[],"safety":{"calls":[],"reads":[],"writes":[],"features":[]}}', false],
+				'unrelated comment'        => ['not ObjectQuel metadata at all', false],
+			];
+		}
+
+		/**
+		 * @param string|null $comment MySQL ROUTINE_COMMENT, legacy sentinel or JSON metadata
+		 * @param bool $expected Expected needsTransaction
+		 * @return void
+		 */
+		#[DataProvider('atomicComments')]
+		public function testNeedsTransactionFromRoutineComment(?string $comment, bool $expected): void {
+			$adapter = $this->getMockBuilder(DatabaseAdapter::class)->disableOriginalConstructor()
+				->onlyMethods(['getDatabaseType', 'execute'])->getMock();
+			$adapter->method('getDatabaseType')->willReturn('mysql');
+			$statement = $this->createMock(StatementInterface::class);
+			$row = self::row(1, null);
+			$row['routine_comment'] = $comment;
+			$statement->method('fetchAll')->willReturn([$row]);
+			$adapter->method('execute')->willReturn($statement);
+
+			self::assertSame($expected, $adapter->getRoutineSignature('f')->needsTransaction);
+		}
+
+		/**
+		 * JSON that isn't ObjectQuel's own versioned shape (no `objectQuel` key) falls back to
+		 * the legacy exact-match check rather than being misread as metadata.
+		 * @return void
+		 */
+		public function testNeedsTransactionIgnoresForeignJsonComment(): void {
+			$adapter = $this->getMockBuilder(DatabaseAdapter::class)->disableOriginalConstructor()
+				->onlyMethods(['getDatabaseType', 'execute'])->getMock();
+			$adapter->method('getDatabaseType')->willReturn('mysql');
+			$statement = $this->createMock(StatementInterface::class);
+			$row = self::row(1, null);
+			$row['routine_comment'] = '{"unrelated":"json"}';
+			$statement->method('fetchAll')->willReturn([$row]);
+			$adapter->method('execute')->willReturn($statement);
+
+			self::assertFalse($adapter->getRoutineSignature('f')->needsTransaction);
+		}
+
+		/**
+		 * Provides a routine comment/extended-property value and whether it marks the routine
+		 * as `trigger`-declared. Unlike `atomic`, there is no legacy sentinel for `trigger` — it
+		 * did not exist before this metadata did.
+		 * @return array<string, array{string|null, bool}>
+		 */
+		public static function triggerComments(): array {
+			return [
+				'no comment'            => [null, false],
+				'void metadata'         => ['{"objectQuel":1,"returnType":"void","atomic":false,"parameters":[],"safety":{"calls":[],"reads":[],"writes":[],"features":[]}}', false],
+				'trigger metadata'      => ['{"objectQuel":1,"returnType":"trigger","atomic":false,"parameters":[{"kind":"entity","type":"App\\\\Entities\\\\UserEntity"}],"safety":{"calls":[],"reads":[],"writes":[],"features":[]}}', true],
+				'legacy sentinel'       => ['ObjectQuel:atomic-block', false],
+				'unrelated comment'     => ['not ObjectQuel metadata at all', false],
+			];
+		}
+
+		/**
+		 * @param string|null $comment Routine comment or extended-property value
+		 * @param bool $expected Expected isTrigger
+		 * @return void
+		 */
+		#[DataProvider('triggerComments')]
+		public function testIsTriggerFromRoutineComment(?string $comment, bool $expected): void {
+			$adapter = $this->getMockBuilder(DatabaseAdapter::class)->disableOriginalConstructor()
+				->onlyMethods(['getDatabaseType', 'execute'])->getMock();
+			$adapter->method('getDatabaseType')->willReturn('pgsql');
+			$statement = $this->createMock(StatementInterface::class);
+			$row = self::row(1, null);
+			$row['routine_comment'] = $comment;
+			$statement->method('fetchAll')->willReturn([$row]);
+			$adapter->method('execute')->willReturn($statement);
+
+			self::assertSame($expected, $adapter->getRoutineSignature('f')->isTrigger);
+		}
+
+		/**
 		 * Verifies failed lookups retain the database error.
 		 * @return void
 		 */

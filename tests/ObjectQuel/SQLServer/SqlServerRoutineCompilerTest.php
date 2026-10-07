@@ -20,7 +20,10 @@
 		 */
 		private function compile(string $source): string {
 			$statements = (new ProcedureCompiler($GLOBALS['test_em'], new FakePlatformCapabilities('sqlsrv'), 'dbo'))->compile($source);
-			self::assertCount(1, $statements);
+
+			// A void/trigger routine carries a second statement attaching its JSON metadata
+			// (see RoutineMetadataTest); body-shape tests here only care about the CREATE itself.
+			self::assertContains(count($statements), [1, 2]);
 			return $statements[0];
 		}
 
@@ -605,5 +608,23 @@
 			$this->expectException(SemanticException::class);
 			$this->expectExceptionMessage($message);
 			$this->compile($source);
+		}
+
+		/**
+		 * The routine's JSON metadata (RoutineMetadataTest) is attached as a second statement,
+		 * an `sp_addextendedproperty` call naming the schema and procedure.
+		 * @return void
+		 */
+		public function testSecondStatementCarriesRoutineMetadata(): void {
+			$statements = (new ProcedureCompiler($GLOBALS['test_em'], new FakePlatformCapabilities('sqlsrv'), 'dbo'))->compile('
+				range of u is UserEntity
+				define function ban_all (integer minId) void { replace u (banned = true) where u.id > minId }
+			');
+
+			self::assertCount(2, $statements);
+			self::assertSame(
+				"EXEC sys.sp_addextendedproperty @name = N'ObjectQuel_Metadata', @value = N'{\"objectQuel\":1,\"returnType\":\"void\",\"atomic\":false,\"parameters\":[{\"kind\":\"scalar\",\"type\":\"integer\"}],\"safety\":{\"calls\":[],\"reads\":[],\"writes\":[\"users\"],\"features\":[]}}', @level0type = N'SCHEMA', @level0name = N'dbo', @level1type = N'PROCEDURE', @level1name = N'ban_all';",
+				$statements[1]
+			);
 		}
 	}

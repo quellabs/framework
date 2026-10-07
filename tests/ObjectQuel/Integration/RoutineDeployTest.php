@@ -349,6 +349,29 @@
 		}
 
 		/**
+		 * A `trigger`-returning routine with entity-row parameters deploys on both engines
+		 * (objectquel-equel-triggers-design.md, stage 2) and is marked `trigger` in its
+		 * metadata, read back through the native catalog. It has no attachment yet (stage 3),
+		 * so it can't be called at all — not even directly, and not as an ordinary expression.
+		 * @return void
+		 */
+		public function testDefinesATriggerRoutineWithEntityRowParameters(): void {
+			self::em()->executeQuery("
+				range of u is UserEntity
+				define function {$this->name} (UserEntity old, UserEntity new) trigger {
+					replace u (banned = true) where u.id = new.id
+				}
+			");
+
+			self::assertSame(1, $this->routineCount());
+			self::assertTrue(self::em()->getConnection()->getRoutineSignature($this->name)->isTrigger);
+
+			$this->expectException(QuelException::class);
+			$this->expectExceptionMessage("is declared 'trigger'");
+			self::em()->executeQuery("{$this->name}(1, 2)");
+		}
+
+		/**
 		 * A bare `return` (void routines only) exits before the write that follows it,
 		 * without affecting a call where the guard doesn't trigger.
 		 * @return void

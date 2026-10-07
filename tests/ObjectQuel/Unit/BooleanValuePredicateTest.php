@@ -71,7 +71,7 @@
 		private function routineSql(string $databaseType, string $source): string {
 			$statements = (new ProcedureCompiler($this->em(), new FakePlatformCapabilities($databaseType), $databaseType === 'sqlsrv' ? 'dbo' : null))->compile($source);
 			self::assertNotEmpty($statements);
-			return $statements[array_key_last($statements)];
+			return $statements[0];
 		}
 
 		/**

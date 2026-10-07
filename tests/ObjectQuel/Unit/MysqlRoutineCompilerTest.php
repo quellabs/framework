@@ -166,7 +166,7 @@
 			self::assertSame(<<<'SQL'
 				CREATE PROCEDURE `purge`(_v_who VARCHAR(255))
 				MODIFIES SQL DATA
-				COMMENT 'ObjectQuel:atomic-block'
+				COMMENT '{"objectQuel":1,"returnType":"void","atomic":true,"parameters":[{"kind":"scalar","type":"string"}],"safety":{"calls":[],"reads":[],"writes":["posts","users"],"features":[]}}'
 				BEGIN
 					DECLARE _row_users$id INT UNSIGNED;
 					DECLARE _row_users$username VARCHAR(255);
@@ -255,6 +255,7 @@
 			self::assertSame(<<<'SQL'
 				CREATE PROCEDURE `maybe_ban`(_v_targetId INT)
 				MODIFIES SQL DATA
+				COMMENT '{"objectQuel":1,"returnType":"void","atomic":false,"parameters":[{"kind":"scalar","type":"integer"}],"safety":{"calls":[],"reads":[],"writes":["users"],"features":[]}}'
 				_equel_routine: BEGIN
 					IF _v_targetId <= 0 THEN
 						LEAVE _equel_routine;
@@ -299,7 +300,8 @@
 				}
 			');
 
-			self::assertStringStartsWith("CREATE PROCEDURE `ban_all`()\nMODIFIES SQL DATA\nBEGIN\n", $statements[0]);
+			self::assertStringStartsWith("CREATE PROCEDURE `ban_all`()\nMODIFIES SQL DATA\n", $statements[0]);
+			self::assertStringContainsString("\nBEGIN\n", $statements[0]);
 			self::assertStringEndsWith("END", $statements[0]);
 			self::assertStringNotContainsString('_equel_routine', $statements[0]);
 		}
@@ -471,6 +473,7 @@
 			self::assertSame(<<<'SQL'
 				CREATE PROCEDURE `skip_some`(_v_n INT)
 				MODIFIES SQL DATA
+				COMMENT '{"objectQuel":1,"returnType":"void","atomic":false,"parameters":[{"kind":"scalar","type":"integer"}],"safety":{"calls":[],"reads":[],"writes":["users"],"features":[]}}'
 				BEGIN
 					DECLARE _row_ids$id INT UNSIGNED;
 					DECLARE _row_banned$id INT UNSIGNED;
@@ -740,5 +743,24 @@
 			$this->expectException(SemanticException::class);
 			$this->expectExceptionMessage($message);
 			$this->compile($source);
+		}
+
+		/**
+		 * The routine's JSON metadata (RoutineMetadataTest) is embedded as the procedure's
+		 * COMMENT, inline in the single CREATE statement MySQL/MariaDB produce.
+		 * @return void
+		 */
+		public function testCommentCarriesRoutineMetadata(): void {
+			$statements = $this->compile('
+				range of u is UserEntity
+				define function ban_all () void { replace u (banned = true) where u.id > 0 }
+			');
+
+			self::assertCount(1, $statements);
+			self::assertMatchesRegularExpression('/COMMENT \'(\{.*\})\'/', $statements[0], 'metadata JSON must be a single-quoted COMMENT');
+			preg_match('/COMMENT \'(\{.*\})\'/', $statements[0], $match);
+			$metadata = json_decode($match[1], true);
+			self::assertSame('void', $metadata['returnType']);
+			self::assertSame(['users'], $metadata['safety']['writes']);
 		}
 	}
