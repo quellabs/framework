@@ -3,6 +3,7 @@
 	namespace Quellabs\ObjectQuel\Tests\Unit;
 
 	use Cake\Database\StatementInterface;
+	use PHPUnit\Framework\Attributes\DataProvider;
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
 	use Quellabs\ObjectQuel\Execution\ExecutionContext;
@@ -288,5 +289,86 @@
 
 			(new AlterTableExecutor($connection, new FakePlatformCapabilities('pgsql')))
 				->execute($this->parse('alter Posts (drop legacy_flag)'), new ExecutionContext([]));
+		}
+
+		/**
+		 * @return array<string, array{string}>
+		 */
+		public static function signatureRelevantOperations(): array {
+			return [
+				'drop column'      => ['alter Posts (drop legacy_flag)'],
+				'rename column'    => ['alter Posts (rename title to old_title)'],
+				'retype column'    => ['alter Posts (retype title = string(500))'],
+				'set primary key'  => ['alter Posts (primary key (id))'],
+				'drop primary key' => ['alter Posts (drop primary key)'],
+			];
+		}
+
+		/**
+		 * A column-shape or primary-key change is refused while a live attachment exists on the
+		 * table, before any DDL runs (objectquel-equel-triggers-design.md, stage 4).
+		 * @param string $quel Alter statement
+		 * @return void
+		 */
+		#[DataProvider('signatureRelevantOperations')]
+		public function testRefusedWhileAttachmentExistsOnTable(string $quel): void {
+			$connection = $this->createMock(DatabaseAdapter::class);
+			$connection->method('getPrimaryKeyColumns')->willReturn(['id']);
+			$connection->expects(self::once())->method('findAttachmentTriggersOnTable')->with('Posts')
+				->willReturn(['eq_posts_replace_audit_post']);
+			$connection->expects(self::never())->method('execute');
+
+			$this->expectException(QuelException::class);
+			$this->expectExceptionMessage("attachment trigger(s) 'eq_posts_replace_audit_post' depend on its mapped columns");
+			(new AlterTableExecutor($connection, new FakePlatformCapabilities('mysql')))
+				->execute($this->parse($quel), new ExecutionContext([]));
+		}
+
+		/**
+		 * The same operations proceed normally once no live attachment exists.
+		 * @param string $quel Alter statement
+		 * @return void
+		 */
+		#[DataProvider('signatureRelevantOperations')]
+		public function testProceedsWhenNoAttachmentExistsOnTable(string $quel): void {
+			$capturedSql = [];
+			$connection = $this->mockConnection($capturedSql);
+			$connection->method('getPrimaryKeyColumns')->willReturn(['id']);
+			$connection->expects(self::once())->method('findAttachmentTriggersOnTable')->with('Posts')->willReturn([]);
+
+			(new AlterTableExecutor($connection, new FakePlatformCapabilities('mysql')))
+				->execute($this->parse($quel), new ExecutionContext([]));
+
+			self::assertNotEmpty($capturedSql);
+		}
+
+		/**
+		 * Adding a column never checks for a live attachment: it can't invalidate one.
+		 * @return void
+		 */
+		public function testAddColumnNeverChecksForAttachments(): void {
+			$capturedSql = [];
+			$connection = $this->mockConnection($capturedSql);
+			$connection->expects(self::never())->method('findAttachmentTriggersOnTable');
+
+			(new AlterTableExecutor($connection, new FakePlatformCapabilities('mysql')))
+				->execute($this->parse('alter Posts (add view_count = integer)'), new ExecutionContext([]));
+
+			self::assertNotEmpty($capturedSql);
+		}
+
+		/**
+		 * Adding or dropping an index never checks for a live attachment either.
+		 * @return void
+		 */
+		public function testIndexOperationsNeverCheckForAttachments(): void {
+			$capturedSql = [];
+			$connection = $this->mockConnection($capturedSql);
+			$connection->expects(self::never())->method('findAttachmentTriggersOnTable');
+
+			(new AlterTableExecutor($connection, new FakePlatformCapabilities('mysql')))
+				->execute($this->parse('alter Posts (drop index idx_a)'), new ExecutionContext([]));
+
+			self::assertNotEmpty($capturedSql);
 		}
 	}

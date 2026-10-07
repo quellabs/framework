@@ -454,6 +454,41 @@
 		}
 
 		/**
+		 * `alter table` refuses a column-shape change on a table with a live attachment, and
+		 * the same statement succeeds once it's detached (objectquel-equel-triggers-design.md,
+		 * stage 4). The attachment targets `default_column_test` directly (an otherwise-unused
+		 * fixture table) rather than `users`, so this never risks altering a table other tests
+		 * share; the trigger body is empty, since it only needs to exist, not do anything.
+		 * @return void
+		 */
+		public function testAlterTableRefusedWhileAttachmentExistsOnTargetTable(): void {
+			self::em()->executeQuery("
+				range of d is DefaultColumnEntity
+				define function {$this->name} (DefaultColumnEntity old, DefaultColumnEntity new) trigger { }
+			");
+			self::em()->executeQuery("
+				range of d is DefaultColumnEntity
+				after replace d call {$this->name}(old, new)
+			");
+
+			try {
+				try {
+					self::em()->executeQuery('alter default_column_test (retype priority = integer)');
+					self::fail('Expected the alter to be refused while the attachment exists.');
+				} catch (QuelException $exception) {
+					self::assertStringContainsString('depend on its mapped columns', $exception->getMessage());
+				}
+
+				self::em()->executeQuery("range of d is DefaultColumnEntity destroy event after replace d call {$this->name}");
+
+				// Same statement, now unblocked.
+				self::assertNull(self::em()->executeQuery('alter default_column_test (retype priority = integer)'));
+			} finally {
+				self::em()->executeQuery("range of d is DefaultColumnEntity destroy event after replace d call {$this->name} if exists");
+			}
+		}
+
+		/**
 		 * `destroy event ... if exists` removes only the attachment; the routine keeps working
 		 * and a second detach is a safe no-op.
 		 * @return void
