@@ -175,6 +175,8 @@ When evaluating approaches:
 
 Prioritize correctness, clarity, maintainability, and appropriate scope over cleverness.
 
+Constructors: declare properties explicitly and assign them in the constructor body. Do not use PHP 8 constructor property promotion (`private readonly Type $x` in the parameter list).
+
 # Code Documentation Instructions
 
 Keep code comments and documentation concise and focused on the present
