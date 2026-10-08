@@ -109,14 +109,14 @@
 		}
 
 		/**
-		 * `trigger`-returning routine: entity-row parameters resolve against mapped entity
-		 * columns, typed EntityRowRoot/EntityRowField, same shape as a cursor row's fields.
+		 * A tfunction's entity-row parameters resolve against mapped entity columns, typed
+		 * EntityRowRoot/EntityRowField, same shape as a cursor row's fields.
 		 * @return void
 		 */
 		public function testTypesEntityRowParameterFieldReads(): void {
 			$routine = $this->analyze('
 				range of u is UserEntity
-				define function audit_user (UserEntity old, UserEntity new) trigger {
+				define tfunction audit_user (UserEntity old, UserEntity new) {
 					string oldName = old.username
 					string newName = new.username
 					boolean wasBanned = old.banned
@@ -145,7 +145,7 @@
 			$this->expectExceptionMessage("has a scalar parameter; a trigger routine's parameters must all be entity-row parameters");
 			$this->analyze('
 				range of u is UserEntity
-				define function f (integer attempt, UserEntity old) trigger {
+				define tfunction f (integer attempt, UserEntity old) {
 					integer n = attempt
 					string name = old.username
 				}
@@ -667,21 +667,21 @@
 				'scalar assigned a retrieve'    => ["{$range}define function f () void { integer x = 1 x = retrieve (u.id) where u.id > 0 }", "declared as a scalar, so it can't be assigned a retrieve"],
 				'undeclared assigned a retrieve'=> ["{$range}define function f () void { y = retrieve (u.id) where u.id > 0 }", "undeclared variable 'y'"],
 				'range assigned a retrieve'     => ["{$range}define function f () void { u = retrieve (u.id) where u.id > 0 }", "Range 'u' can't be assigned"],
-				'trigger without row param'     => ['define function f () trigger { }', "declares return type 'trigger' but has no entity-row parameter"],
-				'trigger with scalar param'     => ["{$range}define function f (integer attempt, UserEntity old) trigger { }", "has a scalar parameter; a trigger routine's parameters must all be entity-row parameters"],
-				'trigger returns a value'       => ["{$range}define function f (UserEntity old) trigger { return 1 }", "declares return type 'trigger' and can't return a value"],
-				'row param without trigger'     => ["{$range}define function f (UserEntity old) void { }", "has an entity-row parameter, so it must declare return type 'trigger'"],
-				'row param scalar return type'  => ["{$range}define function f (UserEntity old) integer { return 1 }", "has an entity-row parameter, so it must declare return type 'trigger'"],
-				'row param unmapped field'      => ["{$range}define function f (UserEntity old) trigger { if (old.bogus = 1) { } }", "has no mapped column 'bogus'"],
-				'row param relationship field'  => ["{$range}define function f (UserEntity old) trigger { if (old.posts = 1) { } }", "has no mapped column 'posts'"],
-				'row param bare use'            => ["{$range}define function f (UserEntity old) trigger { if (old) { } }", "'old' is a row parameter and not a value"],
-				'row param field has no fields' => ["{$range}define function f (UserEntity old) trigger { if (old.username.length = 1) { } }", 'a row parameter field has no further fields'],
-				'row param assigned'            => ["{$range}define function f (UserEntity old) trigger { old = 1 }", "'old' is a row parameter and read-only; it can't be assigned"],
-				'row param assigned a retrieve'  => ["{$range}define function f (UserEntity old) trigger { old = retrieve (u.id) where u.id > 0 }", "'old' is a row parameter and read-only; it can't be assigned a retrieve"],
-				'row param as cursor'           => ["{$range}define function f (UserEntity old) trigger { foreach (old as row) { } }", "needs a cursor, but 'old' is not one"],
-				'row param redeclares range'    => ['range of old is UserEntity define function f (UserEntity old) trigger { }', "'old' is already declared in this scope"],
-				'row param redeclares scalar'   => ["{$range}define function f (UserEntity old, integer old) trigger { }", "'old' is already declared in this scope"],
-				'scalar redeclares row param'   => ["{$range}define function f (integer old, UserEntity old) trigger { }", "'old' is already declared in this scope"],
+				'trigger without row param'     => ['define tfunction f () { }', "is a tfunction but has no entity-row parameter"],
+				'trigger with scalar param'     => ["{$range}define tfunction f (integer attempt, UserEntity old) { }", "has a scalar parameter; a trigger routine's parameters must all be entity-row parameters"],
+				'trigger returns a value'       => ["{$range}define tfunction f (UserEntity old) { return 1 }", "is a tfunction and can't return a value"],
+				'row param without trigger'     => ["{$range}define function f (UserEntity old) void { }", "has an entity-row parameter, so it must be defined with 'define tfunction'"],
+				'row param scalar return type'  => ["{$range}define function f (UserEntity old) integer { return 1 }", "has an entity-row parameter, so it must be defined with 'define tfunction'"],
+				'row param unmapped field'      => ["{$range}define tfunction f (UserEntity old) { if (old.bogus = 1) { } }", "has no mapped column 'bogus'"],
+				'row param relationship field'  => ["{$range}define tfunction f (UserEntity old) { if (old.posts = 1) { } }", "has no mapped column 'posts'"],
+				'row param bare use'            => ["{$range}define tfunction f (UserEntity old) { if (old) { } }", "'old' is a row parameter and not a value"],
+				'row param field has no fields' => ["{$range}define tfunction f (UserEntity old) { if (old.username.length = 1) { } }", 'a row parameter field has no further fields'],
+				'row param assigned'            => ["{$range}define tfunction f (UserEntity old) { old = 1 }", "'old' is a row parameter and read-only; it can't be assigned"],
+				'row param assigned a retrieve'  => ["{$range}define tfunction f (UserEntity old) { old = retrieve (u.id) where u.id > 0 }", "'old' is a row parameter and read-only; it can't be assigned a retrieve"],
+				'row param as cursor'           => ["{$range}define tfunction f (UserEntity old) { foreach (old as row) { } }", "needs a cursor, but 'old' is not one"],
+				'row param redeclares range'    => ['range of old is UserEntity define tfunction f (UserEntity old) { }', "'old' is already declared in this scope"],
+				'row param redeclares scalar'   => ["{$range}define tfunction f (UserEntity old, integer old) { }", "'old' is already declared in this scope"],
+				'scalar redeclares row param'   => ["{$range}define tfunction f (integer old, UserEntity old) { }", "'old' is already declared in this scope"],
 			];
 		}
 

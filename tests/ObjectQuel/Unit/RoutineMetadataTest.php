@@ -69,13 +69,13 @@
 		}
 
 		/**
-		 * A `trigger`-returning routine reports its entity-row parameters by fully qualified class.
+		 * A tfunction reports its entity-row parameters by fully qualified class.
 		 * @return void
 		 */
 		public function testTriggerRoutineParameters(): void {
 			$metadata = $this->metadata('
 				range of u is UserEntity
-				define function audit_user (UserEntity old, UserEntity new) trigger {
+				define tfunction audit_user (UserEntity old, UserEntity new) {
 					string oldName = old.username
 					string newName = new.username
 				}

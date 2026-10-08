@@ -362,7 +362,7 @@
 		public function testDefinesATriggerRoutineWithEntityRowParameters(): void {
 			self::em()->executeQuery("
 				range of u is UserEntity
-				define function {$this->name} (UserEntity old, UserEntity new) trigger {
+				define tfunction {$this->name} (UserEntity old, UserEntity new) {
 					replace u (banned = true) where u.id = new.id
 				}
 			");
@@ -389,7 +389,7 @@
 			self::em()->executeQuery("
 				range of u is UserEntity
 				range of d is DefaultColumnEntity
-				define function {$this->name} (UserEntity old, UserEntity new) trigger {
+				define tfunction {$this->name} (UserEntity old, UserEntity new) {
 					append to d (name = \"{$marker}\", priority = 1)
 				}
 			");
@@ -430,7 +430,7 @@
 			self::em()->executeQuery("
 				range of u is UserEntity
 				range of d is DefaultColumnEntity
-				define function {$this->name} (UserEntity new) trigger {
+				define tfunction {$this->name} (UserEntity new) {
 					append to d (name = \"{$marker}\", priority = 1)
 				}
 			");
@@ -464,7 +464,7 @@
 		public function testAlterTableRefusedWhileAttachmentExistsOnTargetTable(): void {
 			self::em()->executeQuery("
 				range of d is DefaultColumnEntity
-				define function {$this->name} (DefaultColumnEntity old, DefaultColumnEntity new) trigger { }
+				define tfunction {$this->name} (DefaultColumnEntity old, DefaultColumnEntity new) { }
 			");
 			self::em()->executeQuery("
 				range of d is DefaultColumnEntity
@@ -500,7 +500,7 @@
 			self::em()->executeQuery("
 				range of u is UserEntity
 				range of d is DefaultColumnEntity
-				define function {$this->name} (UserEntity old, UserEntity new) trigger {
+				define tfunction {$this->name} (UserEntity old, UserEntity new) {
 					append to d (name = \"{$marker}\", priority = 1)
 				}
 			");
@@ -724,7 +724,7 @@
 			self::em()->executeQuery("
 				range of u is UserEntity
 				range of d is DefaultColumnEntity
-				define function {$this->name} (UserEntity old, UserEntity new) trigger {
+				define tfunction {$this->name} (UserEntity old, UserEntity new) {
 					append to d (name = \"{$this->name}_dep\", priority = 1)
 				}
 			");
@@ -750,7 +750,7 @@
 			self::em()->executeQuery("
 				range of u is UserEntity
 				range of d is DefaultColumnEntity
-				define function {$this->name} (UserEntity old, UserEntity new) trigger {
+				define tfunction {$this->name} (UserEntity old, UserEntity new) {
 					append to d (name = \"{$this->name}_dep2\", priority = 1)
 				}
 			");
