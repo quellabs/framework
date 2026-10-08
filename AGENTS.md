@@ -233,6 +233,12 @@ If the choice is still open and would materially affect public contracts, data s
 
 Choose routine implementation details yourself when they fit the established design and do not materially constrain future work. Do not ask about naming, small refactors, local algorithms, or other readily reversible details unless they affect a material requirement.
 
+## Reuse Existing Behavior
+
+Before adding or overriding a method, inspect the current class, its parent classes, traits, interfaces, and relevant collaborators for behavior that already solves the task. Search nearby implementations, call sites, and tests by behavior as well as by method name. Use an inherited protected method directly when it already provides the needed behavior; do not copy its implementation into the child class.
+
+If existing behavior is close but insufficient, extend it through the intended hook or a small change at the owning layer. Add a separate implementation only after identifying the specific gap, and explain that gap in the change summary. Keep this investigation proportional to the affected code; routine changes do not require an exhaustive repository search.
+
 ## ObjectQuel Pipeline
 
 Respect the existing boundary between parsing and execution. `packages/objectquel/src/ObjectQuel/Lexer.php`, `Parser.php`, and the `Rules/` classes recognize ObjectQuel syntax and produce the AST. Code under `packages/objectquel/src/Execution/` and the `QuelToSQL/` classes work from that AST to plan, generate SQL, and execute it. `QueryExecutor` may call the parser as an entry point; it must not implement or duplicate grammar rules, inspect query text to recognize syntax, or repair an AST because syntax was parsed elsewhere.
