@@ -5,6 +5,7 @@
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
 	use Quellabs\ObjectQuel\ObjectQuel\Routines\EventBindingCompiler;
+	use Quellabs\ObjectQuel\ObjectQuel\Routines\Lowering\PostgresEventBindingLowering;
 	use Quellabs\ObjectQuel\Tests\Support\FakePlatformCapabilities;
 
 	/**
@@ -32,13 +33,34 @@
 		/**
 		 * @param string $source Binding source
 		 * @param array<string, array<string, mixed>> $metadataByRoutine Decoded metadata, by routine name
+		 * @param string|null $schema Active schema, when known
 		 * @return list<string> Generated statements
 		 */
-		private function compile(string $source, array $metadataByRoutine): array {
+		private function compile(string $source, array $metadataByRoutine, ?string $schema = null): array {
 			$adapter = $this->createMock(DatabaseAdapter::class);
 			$adapter->method('getRoutineMetadata')->willReturnCallback(fn(string $name) => $metadataByRoutine[$name]);
 
-			return (new EventBindingCompiler($GLOBALS['test_em'], new FakePlatformCapabilities('pgsql'), null, $adapter))->compile($source);
+			return (new EventBindingCompiler($GLOBALS['test_em'], new FakePlatformCapabilities('pgsql'), $schema, $adapter))->compile($source);
+		}
+
+		/**
+		 * Qualifies the helper, called routine, and table with the active schema.
+		 * @return void
+		 */
+		public function testBindingUsesActiveSchema(): void {
+			$entityClass = $GLOBALS['test_em']->getEntityStore()->getMetadata('UserEntity')->className;
+			$statements = $this->compile('range of u is UserEntity after append to u call on_created',
+				['on_created' => self::triggerMetadata($entityClass, 1)], 'app');
+
+			self::assertStringContainsString('CREATE FUNCTION "app".', $statements[0]);
+			self::assertStringContainsString('CALL "app"."on_created"(', $statements[0]);
+			self::assertStringContainsString('AFTER INSERT ON "app"."users"', $statements[1]);
+			self::assertStringContainsString('EXECUTE FUNCTION "app".', $statements[1]);
+
+			$lowering = new PostgresEventBindingLowering($GLOBALS['test_em']->getEntityStore(), new FakePlatformCapabilities('pgsql'), 'app');
+			$destroy = $lowering->renderDestroy('users', 'audit_trigger');
+			self::assertStringContainsString('ON "app"."users"', $destroy[0]);
+			self::assertStringContainsString('DROP FUNCTION "app".', $destroy[1]);
 		}
 
 		/**

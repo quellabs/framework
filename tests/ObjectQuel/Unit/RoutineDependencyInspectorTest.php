@@ -3,6 +3,7 @@
 	namespace Quellabs\ObjectQuel\Tests\Unit;
 
 	use Cake\Database\StatementInterface;
+	use PHPUnit\Framework\Attributes\DataProvider;
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
 	use Quellabs\ObjectQuel\Exception\QuelException;
@@ -14,6 +15,46 @@
 	 * "Binding dependency discovery"), ahead of `destroy function`.
 	 */
 	class RoutineDependencyInspectorTest extends TestCase {
+		/**
+		 * @return list<array{string, string, string}>
+		 */
+		public static function schemaCatalogs(): array {
+			return [
+				['pgsql', 'JOIN pg_namespace s ON s.oid = c.relnamespace', 's.nspname = :schema'],
+				['sqlsrv', 'JOIN sys.schemas s ON s.schema_id = o.schema_id', 's.name = :schema'],
+			];
+		}
+
+		/**
+		 * All trigger scans restrict the parent table to the active schema.
+		 * @param string $databaseType Engine
+		 * @param string $join Catalog schema join
+		 * @param string $predicate Schema predicate
+		 * @return void
+		 */
+		#[DataProvider('schemaCatalogs')]
+		public function testTriggerScansUseActiveSchema(string $databaseType, string $join, string $predicate): void {
+			$adapter = $this->getMockBuilder(DatabaseAdapter::class)->disableOriginalConstructor()
+				->onlyMethods(['getDatabaseType', 'getRoutineSchema', 'execute'])->getMock();
+			$adapter->method('getDatabaseType')->willReturn($databaseType);
+			$adapter->method('getRoutineSchema')->willReturn('app');
+			$statement = $this->createStub(StatementInterface::class);
+			$statement->method('fetchAll')->willReturn([]);
+			$calls = 0;
+			$adapter->expects(self::exactly(3))->method('execute')->willReturnCallback(
+				function (string $sql, array $parameters) use ($join, $predicate, $statement, &$calls): StatementInterface {
+					self::assertStringContainsString($join, $sql);
+					self::assertStringContainsString($predicate, $sql);
+					self::assertSame($calls === 1 ? ['schema' => 'app', 'table' => 'users'] : ['schema' => 'app'], $parameters);
+					$calls++;
+					return $statement;
+				}
+			);
+
+			self::assertSame([], $adapter->findDependentTriggers('audit_user'));
+			self::assertSame([], $adapter->findBindingTriggersOnTable('users'));
+			self::assertSame([], $adapter->listBindings());
+		}
 
 		/**
 		 * @param string $databaseType Engine

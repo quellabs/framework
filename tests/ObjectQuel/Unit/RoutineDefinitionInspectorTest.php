@@ -107,7 +107,7 @@
 				['mysql', 'FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = DATABASE()', 'f]x', 1, true],
 				['mysql', 'FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = DATABASE()', 'f]x', 2, true],
 				['mariadb', 'FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = DATABASE()', 'f]x', 1, true],
-				['pgsql', 'FROM pg_proc WHERE proname = :name AND pg_function_is_visible(oid)', 'f]x', 1, true],
+				['pgsql', 'JOIN pg_namespace s ON s.oid = p.pronamespace WHERE p.proname = :name AND s.nspname = current_schema()', 'f]x', 1, true],
 				['sqlsrv', "OBJECT_ID(:name) AND type IN ('P', 'PC', 'FN', 'FS', 'IF', 'TF', 'FT')", '[d]]bo].[f]]x]', 1, true],
 			];
 		}
@@ -120,7 +120,7 @@
 			return [
 				['mysql', 'FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = DATABASE()', 'f]x'],
 				['mariadb', 'FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = DATABASE()', 'f]x'],
-				['pgsql', 'FROM pg_proc WHERE proname = :name AND pg_function_is_visible(oid)', 'f]x'],
+				['pgsql', 'JOIN pg_namespace s ON s.oid = p.pronamespace WHERE p.proname = :name AND s.nspname = current_schema()', 'f]x'],
 				['sqlsrv', 'WHERE o.object_id = OBJECT_ID(:name)', '[d]]bo].[f]]x]'],
 			];
 		}
