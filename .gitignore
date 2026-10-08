@@ -1,5 +1,9 @@
 /.idea
+/.github
 /vendor
-/*.md
 /migrations
+/storage
+/*.md
+!AGENTS.md
+!CLAUDE.md
 /tests/postgres.local.php
