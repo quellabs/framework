@@ -4,27 +4,27 @@
 
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstDestroy;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstDestroyEventAttachment;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstDestroyEventBinding;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstDestroyIndex;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstEventAttachment;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AttachmentEvent;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstEventBinding;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\BindingEvent;
 	use Quellabs\ObjectQuel\ObjectQuel\Lexer;
 	use Quellabs\ObjectQuel\ObjectQuel\Parser;
 	use Quellabs\ObjectQuel\ObjectQuel\ParserException;
 
 	/**
 	 * `after ... call ... [as <alias>]` and `destroy trigger ...`
-	 * (objectquel-equel-triggers-design.md). The attachment carries no argument list: a
+	 * (objectquel-equel-triggers-design.md). The binding carries no argument list: a
 	 * called routine's entity-row parameters receive the event's rows by declaration order
-	 * (AttachmentEvent::rowRoles()), checked against live routine metadata by
-	 * EventAttachmentValidator (see EventAttachmentValidatorTest), not at parse time.
+	 * (BindingEvent::rowRoles()), checked against live routine metadata by
+	 * EventBindingValidator (see EventBindingValidatorTest), not at parse time.
 	 */
-	class EventAttachmentTest extends TestCase {
+	class EventBindingTest extends TestCase {
 
 		/**
 		 * Parses one statement.
 		 * @param string $source Statement source
-		 * @return AstEventAttachment|AstDestroyEventAttachment|AstDestroy|AstDestroyIndex
+		 * @return AstEventBinding|AstDestroyEventBinding|AstDestroy|AstDestroyIndex
 		 */
 		private function parse(string $source): mixed {
 			$entityStore = $GLOBALS['test_em']->getEntityStore();
@@ -34,44 +34,44 @@
 		/**
 		 * @return void
 		 */
-		public function testAppendAttachmentParsesRoutineName(): void {
-			$attachment = $this->parse('
+		public function testAppendBindingParsesRoutineName(): void {
+			$binding = $this->parse('
 				range of u is UserEntity
 				after append to u call on_created
 			');
 
-			self::assertInstanceOf(AstEventAttachment::class, $attachment);
-			self::assertSame(AttachmentEvent::Append, $attachment->getEvent());
-			self::assertSame('u', $attachment->getRange()->getName());
-			self::assertSame('on_created', $attachment->getRoutineName());
+			self::assertInstanceOf(AstEventBinding::class, $binding);
+			self::assertSame(BindingEvent::Append, $binding->getEvent());
+			self::assertSame('u', $binding->getRange()->getName());
+			self::assertSame('on_created', $binding->getRoutineName());
 		}
 
 		/**
 		 * @return void
 		 */
-		public function testReplaceAttachmentParsesRoutineName(): void {
-			$attachment = $this->parse('
+		public function testReplaceBindingParsesRoutineName(): void {
+			$binding = $this->parse('
 				range of u is UserEntity
 				after replace u call on_changed
 			');
 
-			self::assertInstanceOf(AstEventAttachment::class, $attachment);
-			self::assertSame(AttachmentEvent::Replace, $attachment->getEvent());
-			self::assertSame('on_changed', $attachment->getRoutineName());
+			self::assertInstanceOf(AstEventBinding::class, $binding);
+			self::assertSame(BindingEvent::Replace, $binding->getEvent());
+			self::assertSame('on_changed', $binding->getRoutineName());
 		}
 
 		/**
 		 * @return void
 		 */
-		public function testDeleteAttachmentParsesRoutineName(): void {
-			$attachment = $this->parse('
+		public function testDeleteBindingParsesRoutineName(): void {
+			$binding = $this->parse('
 				range of u is UserEntity
 				after delete u call on_removed
 			');
 
-			self::assertInstanceOf(AstEventAttachment::class, $attachment);
-			self::assertSame(AttachmentEvent::Delete, $attachment->getEvent());
-			self::assertSame('on_removed', $attachment->getRoutineName());
+			self::assertInstanceOf(AstEventBinding::class, $binding);
+			self::assertSame(BindingEvent::Delete, $binding->getEvent());
+			self::assertSame('on_removed', $binding->getRoutineName());
 		}
 
 		/**
@@ -101,32 +101,32 @@
 		}
 
 		/**
-		 * `as <alias>` names the attachment, for later reference in `destroy trigger`.
+		 * `as <alias>` names the binding, for later reference in `destroy trigger`.
 		 * @return void
 		 */
 		public function testAsAliasIsParsed(): void {
-			$attachment = $this->parse('
+			$binding = $this->parse('
 				range of u is UserEntity
 				after replace u call audit_user as audit_trigger
 			');
 
-			self::assertInstanceOf(AstEventAttachment::class, $attachment);
-			self::assertSame('audit_trigger', $attachment->getAlias());
+			self::assertInstanceOf(AstEventBinding::class, $binding);
+			self::assertSame('audit_trigger', $binding->getAlias());
 		}
 
 		/**
 		 * Omitting `as <alias>` leaves the alias null; it is resolved (given or generated) at
-		 * compile time, not parse time — see EventAttachmentCompiler::resolveAlias().
+		 * compile time, not parse time — see EventBindingCompiler::resolveAlias().
 		 * @return void
 		 */
 		public function testAliasIsNullWhenOmitted(): void {
-			$attachment = $this->parse('
+			$binding = $this->parse('
 				range of u is UserEntity
 				after replace u call audit_user
 			');
 
-			self::assertInstanceOf(AstEventAttachment::class, $attachment);
-			self::assertNull($attachment->getAlias());
+			self::assertInstanceOf(AstEventBinding::class, $binding);
+			self::assertNull($binding->getAlias());
 		}
 
 		/**
@@ -144,13 +144,13 @@
 		/**
 		 * @return void
 		 */
-		public function testDestroyTriggerRemovesOneAttachment(): void {
+		public function testDestroyTriggerRemovesOneBinding(): void {
 			$statement = $this->parse('
 				range of u is UserEntity
 				destroy trigger u audit_trigger if exists
 			');
 
-			self::assertInstanceOf(AstDestroyEventAttachment::class, $statement);
+			self::assertInstanceOf(AstDestroyEventBinding::class, $statement);
 			self::assertSame('u', $statement->getRange()->getName());
 			self::assertSame('audit_trigger', $statement->getAlias());
 			self::assertTrue($statement->isIfExists());
@@ -165,12 +165,12 @@
 				destroy trigger u audit_trigger
 			');
 
-			self::assertInstanceOf(AstDestroyEventAttachment::class, $statement);
+			self::assertInstanceOf(AstDestroyEventBinding::class, $statement);
 			self::assertFalse($statement->isIfExists());
 		}
 
 		/**
-		 * `trigger` immediately followed by its range name is the attachment-removal form;
+		 * `trigger` immediately followed by its range name is the binding-removal form;
 		 * otherwise a table/index literally named `trigger` keeps its ordinary meaning.
 		 * @return void
 		 */

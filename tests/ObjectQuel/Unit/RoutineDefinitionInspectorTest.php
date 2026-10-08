@@ -230,15 +230,15 @@
 
 		/**
 		 * Provides a routine comment/extended-property value and whether it marks the routine
-		 * as `trigger`-declared. Unlike `atomic`, there is no legacy sentinel for `trigger` — it
-		 * did not exist before this metadata did.
+		 * as declared with `tfunction`. Unlike `atomic`, there is no legacy sentinel for this —
+		 * `tfunction` did not exist before this metadata did.
 		 * @return array<string, array{string|null, bool}>
 		 */
 		public static function triggerComments(): array {
 			return [
 				'no comment'            => [null, false],
-				'void metadata'         => ['{"objectQuel":1,"returnType":"void","atomic":false,"parameters":[],"safety":{"calls":[],"reads":[],"writes":[]}}', false],
-				'trigger metadata'      => ['{"objectQuel":1,"returnType":"trigger","atomic":false,"parameters":[{"kind":"entity","type":"App\\\\Entities\\\\UserEntity"}],"safety":{"calls":[],"reads":[],"writes":[]}}', true],
+				'void metadata'         => ['{"objectQuel":1,"isTrigger":false,"returnType":"void","atomic":false,"parameters":[],"safety":{"calls":[],"reads":[],"writes":[]}}', false],
+				'trigger metadata'      => ['{"objectQuel":1,"isTrigger":true,"returnType":"void","atomic":false,"parameters":[{"kind":"entity","type":"App\\\\Entities\\\\UserEntity"}],"safety":{"calls":[],"reads":[],"writes":[]}}', true],
 				'legacy sentinel'       => ['ObjectQuel:atomic-block', false],
 				'unrelated comment'     => ['not ObjectQuel metadata at all', false],
 			];
@@ -453,6 +453,29 @@
 		}
 
 		/**
+		 * Verifies a routine metadata marks `isTrigger` shows as 'trigger' in the listing, even
+		 * though its underlying returnType is 'void' like any other routine with no return value.
+		 * @return void
+		 */
+		public function testListRoutinesShowsTriggerForIsTriggerMetadata(): void {
+			$adapter = $this->getMockBuilder(DatabaseAdapter::class)->disableOriginalConstructor()
+				->onlyMethods(['getDatabaseType', 'execute'])->getMock();
+			$adapter->method('getDatabaseType')->willReturn('mysql');
+
+			$listStatement = $this->createMock(StatementInterface::class);
+			$listStatement->method('fetchAll')->willReturn([self::managedRow('audit_user', 1, 'void', isTrigger: true)]);
+
+			$paramStatement = $this->createMock(StatementInterface::class);
+			$paramStatement->method('fetchAll')->willReturn([]);
+
+			$adapter->method('execute')->willReturnOnConsecutiveCalls($listStatement, $paramStatement);
+
+			self::assertSame([
+				['name' => 'audit_user', 'isProcedure' => true, 'returnType' => 'trigger', 'parameters' => []],
+			], $adapter->listRoutines());
+		}
+
+		/**
 		 * Verifies a catalog row without recognizable ObjectQuel metadata — created outside
 		 * ObjectQuel, or deployed before this metadata existed — is excluded entirely.
 		 * @return void
@@ -640,15 +663,17 @@
 		 * metadata, so the routine passes the metadata filter listRoutines() now applies.
 		 * @param string $name Routine name
 		 * @param int $procedure Procedure flag: 1 for procedures, 0 for functions
-		 * @param string $returnType Metadata return type ('void', 'trigger', or a scalar type)
+		 * @param string $returnType Metadata return type ('void' or a scalar type)
+		 * @param bool $isTrigger Whether the routine is declared with `tfunction`
 		 * @return array{name: string, is_procedure: int, routine_comment: string}
 		 */
-		private static function managedRow(string $name, int $procedure, string $returnType): array {
+		private static function managedRow(string $name, int $procedure, string $returnType, bool $isTrigger = false): array {
 			return [
 				'name'            => $name,
 				'is_procedure'    => $procedure,
 				'routine_comment' => json_encode([
 					'objectQuel' => 1,
+					'isTrigger'  => $isTrigger,
 					'returnType' => $returnType,
 					'atomic'     => false,
 					'parameters' => [],
@@ -708,11 +733,11 @@
 				->onlyMethods(['getDatabaseType', 'execute'])->getMock();
 			$adapter->method('getDatabaseType')->willReturn('mysql');
 			$row = self::row(1, null);
-			$row['routine_comment'] = '{"objectQuel":1,"returnType":"trigger","atomic":false,"parameters":[],"safety":{"calls":[],"reads":[],"writes":[]}}';
+			$row['routine_comment'] = '{"objectQuel":1,"isTrigger":false,"returnType":"integer","atomic":false,"parameters":[],"safety":{"calls":[],"reads":[],"writes":[]}}';
 			$this->returningRows($adapter, [$row]);
 
 			$metadata = $adapter->getRoutineMetadata('f');
-			self::assertSame('trigger', $metadata['returnType']);
+			self::assertSame('integer', $metadata['returnType']);
 		}
 
 		/**

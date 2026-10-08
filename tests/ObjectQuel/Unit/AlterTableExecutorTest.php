@@ -305,36 +305,36 @@
 		}
 
 		/**
-		 * A column-shape or primary-key change is refused while a live attachment exists on the
+		 * A column-shape or primary-key change is refused while a live binding exists on the
 		 * table, before any DDL runs (objectquel-equel-triggers-design.md, stage 4).
 		 * @param string $quel Alter statement
 		 * @return void
 		 */
 		#[DataProvider('signatureRelevantOperations')]
-		public function testRefusedWhileAttachmentExistsOnTable(string $quel): void {
+		public function testRefusedWhileBindingExistsOnTable(string $quel): void {
 			$connection = $this->createMock(DatabaseAdapter::class);
 			$connection->method('getPrimaryKeyColumns')->willReturn(['id']);
-			$connection->expects(self::once())->method('findAttachmentTriggersOnTable')->with('Posts')
+			$connection->expects(self::once())->method('findBindingTriggersOnTable')->with('Posts')
 				->willReturn(['eq_posts_replace_audit_post']);
 			$connection->expects(self::never())->method('execute');
 
 			$this->expectException(QuelException::class);
-			$this->expectExceptionMessage("attachment trigger(s) 'eq_posts_replace_audit_post' depend on its mapped columns");
+			$this->expectExceptionMessage("binding trigger(s) 'eq_posts_replace_audit_post' depend on its mapped columns");
 			(new AlterTableExecutor($connection, new FakePlatformCapabilities('mysql')))
 				->execute($this->parse($quel), new ExecutionContext([]));
 		}
 
 		/**
-		 * The same operations proceed normally once no live attachment exists.
+		 * The same operations proceed normally once no live binding exists.
 		 * @param string $quel Alter statement
 		 * @return void
 		 */
 		#[DataProvider('signatureRelevantOperations')]
-		public function testProceedsWhenNoAttachmentExistsOnTable(string $quel): void {
+		public function testProceedsWhenNoBindingExistsOnTable(string $quel): void {
 			$capturedSql = [];
 			$connection = $this->mockConnection($capturedSql);
 			$connection->method('getPrimaryKeyColumns')->willReturn(['id']);
-			$connection->expects(self::once())->method('findAttachmentTriggersOnTable')->with('Posts')->willReturn([]);
+			$connection->expects(self::once())->method('findBindingTriggersOnTable')->with('Posts')->willReturn([]);
 
 			(new AlterTableExecutor($connection, new FakePlatformCapabilities('mysql')))
 				->execute($this->parse($quel), new ExecutionContext([]));
@@ -343,13 +343,13 @@
 		}
 
 		/**
-		 * Adding a column never checks for a live attachment: it can't invalidate one.
+		 * Adding a column never checks for a live binding: it can't invalidate one.
 		 * @return void
 		 */
-		public function testAddColumnNeverChecksForAttachments(): void {
+		public function testAddColumnNeverChecksForBindings(): void {
 			$capturedSql = [];
 			$connection = $this->mockConnection($capturedSql);
-			$connection->expects(self::never())->method('findAttachmentTriggersOnTable');
+			$connection->expects(self::never())->method('findBindingTriggersOnTable');
 
 			(new AlterTableExecutor($connection, new FakePlatformCapabilities('mysql')))
 				->execute($this->parse('alter Posts (add view_count = integer)'), new ExecutionContext([]));
@@ -358,13 +358,13 @@
 		}
 
 		/**
-		 * Adding or dropping an index never checks for a live attachment either.
+		 * Adding or dropping an index never checks for a live binding either.
 		 * @return void
 		 */
-		public function testIndexOperationsNeverCheckForAttachments(): void {
+		public function testIndexOperationsNeverCheckForBindings(): void {
 			$capturedSql = [];
 			$connection = $this->mockConnection($capturedSql);
-			$connection->expects(self::never())->method('findAttachmentTriggersOnTable');
+			$connection->expects(self::never())->method('findBindingTriggersOnTable');
 
 			(new AlterTableExecutor($connection, new FakePlatformCapabilities('mysql')))
 				->execute($this->parse('alter Posts (drop index idx_a)'), new ExecutionContext([]));

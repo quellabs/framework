@@ -5,16 +5,16 @@
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
 	use Quellabs\ObjectQuel\Exception\SemanticException;
-	use Quellabs\ObjectQuel\ObjectQuel\Routines\EventAttachmentCompiler;
+	use Quellabs\ObjectQuel\ObjectQuel\Routines\EventBindingCompiler;
 	use Quellabs\ObjectQuel\Tests\Support\FakePlatformCapabilities;
 
 	/**
-	 * SQL Server lowering of attachments (objectquel-equel-triggers-design.md, "Event
+	 * SQL Server lowering of bindings (objectquel-equel-triggers-design.md, "Event
 	 * lowering"): a statement-level trigger that loops over inserted/deleted itself, pairing
 	 * them on the target's mapped key for UPDATE. The expected SQL is not run against SQL
 	 * Server here.
 	 */
-	class SqlServerEventAttachmentCompilerTest extends TestCase {
+	class SqlServerEventBindingCompilerTest extends TestCase {
 
 		/**
 		 * @param string $entityClass Fully qualified entity class the row parameters are typed with
@@ -24,7 +24,8 @@
 		private static function triggerMetadata(string $entityClass, int $parameterCount): array {
 			return [
 				'objectQuel' => 1,
-				'returnType' => 'trigger',
+				'isTrigger'  => true,
+				'returnType' => 'void',
 				'atomic'     => false,
 				'parameters' => array_fill(0, $parameterCount, ['kind' => 'entity', 'type' => $entityClass]),
 				'safety'     => ['calls' => [], 'reads' => [], 'writes' => []],
@@ -32,7 +33,7 @@
 		}
 
 		/**
-		 * @param string $source Attachment source
+		 * @param string $source Binding source
 		 * @param array<string, array<string, mixed>> $metadataByRoutine Decoded metadata, by routine name
 		 * @return list<string> Generated statements
 		 */
@@ -40,7 +41,7 @@
 			$adapter = $this->createMock(DatabaseAdapter::class);
 			$adapter->method('getRoutineMetadata')->willReturnCallback(fn(string $name) => $metadataByRoutine[$name]);
 
-			return (new EventAttachmentCompiler($GLOBALS['test_em'], new FakePlatformCapabilities('sqlsrv'), 'dbo', $adapter))->compile($source);
+			return (new EventBindingCompiler($GLOBALS['test_em'], new FakePlatformCapabilities('sqlsrv'), 'dbo', $adapter))->compile($source);
 		}
 
 		/**
@@ -48,7 +49,7 @@
 		 * key-column-targeted check, then EXECs the routine once per fetched pair.
 		 * @return void
 		 */
-		public function testReplaceAttachmentPairsOldAndNewByKey(): void {
+		public function testReplaceBindingPairsOldAndNewByKey(): void {
 			$entityClass = $GLOBALS['test_em']->getEntityStore()->getMetadata('UserEntity')->className;
 			$statements = $this->compile('
 				range of u is UserEntity
@@ -76,7 +77,7 @@
 		 * routine's arity), but only `d`-aliased columns are selected and EXECed.
 		 * @return void
 		 */
-		public function testReplaceAttachmentWithOneParameterBindsOldOnly(): void {
+		public function testReplaceBindingWithOneParameterBindsOldOnly(): void {
 			$entityClass = $GLOBALS['test_em']->getEntityStore()->getMetadata('UserEntity')->className;
 			$statements = $this->compile('
 				range of u is UserEntity
@@ -94,7 +95,7 @@
 		 * INSERT iterates `inserted` alone, with no key pairing or guards at all.
 		 * @return void
 		 */
-		public function testAppendAttachmentIteratesInsertedAlone(): void {
+		public function testAppendBindingIteratesInsertedAlone(): void {
 			$entityClass = $GLOBALS['test_em']->getEntityStore()->getMetadata('UserEntity')->className;
 			$statements = $this->compile('
 				range of u is UserEntity
@@ -112,7 +113,7 @@
 		 * DELETE iterates `deleted` alone, with no key pairing or guards at all.
 		 * @return void
 		 */
-		public function testDeleteAttachmentIteratesDeletedAlone(): void {
+		public function testDeleteBindingIteratesDeletedAlone(): void {
 			$entityClass = $GLOBALS['test_em']->getEntityStore()->getMetadata('UserEntity')->className;
 			$statements = $this->compile('
 				range of u is UserEntity
@@ -126,11 +127,11 @@
 		}
 
 		/**
-		 * A target entity with no mapped primary key can't receive an UPDATE attachment on
+		 * A target entity with no mapped primary key can't receive an UPDATE binding on
 		 * SQL Server: there is nothing reliable to pair deleted/inserted on.
 		 * @return void
 		 */
-		public function testRejectsUpdateAttachmentWithoutAUsableKey(): void {
+		public function testRejectsUpdateBindingWithoutAUsableKey(): void {
 			$entityClass = $GLOBALS['test_em']->getEntityStore()->getMetadata('NoKeyEntity')->className;
 			$this->expectException(SemanticException::class);
 			$this->expectExceptionMessage('no mapped primary key');

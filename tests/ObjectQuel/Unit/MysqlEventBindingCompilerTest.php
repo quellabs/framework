@@ -4,14 +4,14 @@
 
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
-	use Quellabs\ObjectQuel\ObjectQuel\Routines\EventAttachmentCompiler;
+	use Quellabs\ObjectQuel\ObjectQuel\Routines\EventBindingCompiler;
 	use Quellabs\ObjectQuel\Tests\Support\FakePlatformCapabilities;
 
 	/**
-	 * MySQL/MariaDB lowering of attachments (objectquel-equel-triggers-design.md, "Event
+	 * MySQL/MariaDB lowering of bindings (objectquel-equel-triggers-design.md, "Event
 	 * lowering"). The expected SQL is not run against MySQL or MariaDB here.
 	 */
-	class MysqlEventAttachmentCompilerTest extends TestCase {
+	class MysqlEventBindingCompilerTest extends TestCase {
 
 		/**
 		 * @param string $entityClass Fully qualified entity class the row parameters are typed with
@@ -21,7 +21,8 @@
 		private static function triggerMetadata(string $entityClass, int $parameterCount): array {
 			return [
 				'objectQuel' => 1,
-				'returnType' => 'trigger',
+				'isTrigger'  => true,
+				'returnType' => 'void',
 				'atomic'     => false,
 				'parameters' => array_fill(0, $parameterCount, ['kind' => 'entity', 'type' => $entityClass]),
 				'safety'     => ['calls' => [], 'reads' => [], 'writes' => []],
@@ -29,7 +30,7 @@
 		}
 
 		/**
-		 * @param string $source Attachment source
+		 * @param string $source Binding source
 		 * @param array<string, array<string, mixed>> $metadataByRoutine Decoded metadata, by routine name
 		 * @return list<string> Generated statements
 		 */
@@ -37,13 +38,13 @@
 			$adapter = $this->createMock(DatabaseAdapter::class);
 			$adapter->method('getRoutineMetadata')->willReturnCallback(fn(string $name) => $metadataByRoutine[$name]);
 
-			return (new EventAttachmentCompiler($GLOBALS['test_em'], new FakePlatformCapabilities('mysql'), null, $adapter))->compile($source);
+			return (new EventBindingCompiler($GLOBALS['test_em'], new FakePlatformCapabilities('mysql'), null, $adapter))->compile($source);
 		}
 
 		/**
 		 * @return void
 		 */
-		public function testReplaceAttachmentCallsRoutineWithOldAndNew(): void {
+		public function testReplaceBindingCallsRoutineWithOldAndNew(): void {
 			$entityClass = $GLOBALS['test_em']->getEntityStore()->getMetadata('UserEntity')->className;
 			$statements = $this->compile('
 				range of u is UserEntity
@@ -63,7 +64,7 @@
 		/**
 		 * @return void
 		 */
-		public function testAppendAttachmentOnlyBindsNew(): void {
+		public function testAppendBindingOnlyBindsNew(): void {
 			$entityClass = $GLOBALS['test_em']->getEntityStore()->getMetadata('UserEntity')->className;
 			$statements = $this->compile('
 				range of u is UserEntity
@@ -82,7 +83,7 @@
 		/**
 		 * @return void
 		 */
-		public function testDeleteAttachmentOnlyBindsOld(): void {
+		public function testDeleteBindingOnlyBindsOld(): void {
 			$entityClass = $GLOBALS['test_em']->getEntityStore()->getMetadata('UserEntity')->className;
 			$statements = $this->compile('
 				range of u is UserEntity
@@ -103,7 +104,7 @@
 		 * (old) by position, and the call carries only that row's columns — never `new`.
 		 * @return void
 		 */
-		public function testReplaceAttachmentWithOneParameterBindsOldOnly(): void {
+		public function testReplaceBindingWithOneParameterBindsOldOnly(): void {
 			$entityClass = $GLOBALS['test_em']->getEntityStore()->getMetadata('UserEntity')->className;
 			$statements = $this->compile('
 				range of u is UserEntity

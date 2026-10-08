@@ -4,14 +4,14 @@
 
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
-	use Quellabs\ObjectQuel\ObjectQuel\Routines\EventAttachmentCompiler;
+	use Quellabs\ObjectQuel\ObjectQuel\Routines\EventBindingCompiler;
 	use Quellabs\ObjectQuel\Tests\Support\FakePlatformCapabilities;
 
 	/**
-	 * PostgreSQL lowering of attachments (objectquel-equel-triggers-design.md, "Event
+	 * PostgreSQL lowering of bindings (objectquel-equel-triggers-design.md, "Event
 	 * lowering"). The expected SQL is not run against PostgreSQL here.
 	 */
-	class PostgresEventAttachmentCompilerTest extends TestCase {
+	class PostgresEventBindingCompilerTest extends TestCase {
 
 		/**
 		 * @param string $entityClass Fully qualified entity class the row parameters are typed with
@@ -21,7 +21,8 @@
 		private static function triggerMetadata(string $entityClass, int $parameterCount): array {
 			return [
 				'objectQuel' => 1,
-				'returnType' => 'trigger',
+				'isTrigger'  => true,
+				'returnType' => 'void',
 				'atomic'     => false,
 				'parameters' => array_fill(0, $parameterCount, ['kind' => 'entity', 'type' => $entityClass]),
 				'safety'     => ['calls' => [], 'reads' => [], 'writes' => []],
@@ -29,7 +30,7 @@
 		}
 
 		/**
-		 * @param string $source Attachment source
+		 * @param string $source Binding source
 		 * @param array<string, array<string, mixed>> $metadataByRoutine Decoded metadata, by routine name
 		 * @return list<string> Generated statements
 		 */
@@ -37,7 +38,7 @@
 			$adapter = $this->createMock(DatabaseAdapter::class);
 			$adapter->method('getRoutineMetadata')->willReturnCallback(fn(string $name) => $metadataByRoutine[$name]);
 
-			return (new EventAttachmentCompiler($GLOBALS['test_em'], new FakePlatformCapabilities('pgsql'), null, $adapter))->compile($source);
+			return (new EventBindingCompiler($GLOBALS['test_em'], new FakePlatformCapabilities('pgsql'), null, $adapter))->compile($source);
 		}
 
 		/**
@@ -45,7 +46,7 @@
 		 * the trigger then executes that helper.
 		 * @return void
 		 */
-		public function testReplaceAttachmentGeneratesHelperAndTrigger(): void {
+		public function testReplaceBindingGeneratesHelperAndTrigger(): void {
 			$entityClass = $GLOBALS['test_em']->getEntityStore()->getMetadata('UserEntity')->className;
 			$statements = $this->compile('
 				range of u is UserEntity
@@ -80,7 +81,7 @@
 		 * (old) by position; the helper's call carries only that row's columns.
 		 * @return void
 		 */
-		public function testReplaceAttachmentWithOneParameterBindsOldOnly(): void {
+		public function testReplaceBindingWithOneParameterBindsOldOnly(): void {
 			$entityClass = $GLOBALS['test_em']->getEntityStore()->getMetadata('UserEntity')->className;
 			$statements = $this->compile('
 				range of u is UserEntity
@@ -94,10 +95,10 @@
 		}
 
 		/**
-		 * A DELETE attachment's helper returns OLD, since there is no resulting row.
+		 * A DELETE binding's helper returns OLD, since there is no resulting row.
 		 * @return void
 		 */
-		public function testDeleteAttachmentHelperReturnsOld(): void {
+		public function testDeleteBindingHelperReturnsOld(): void {
 			$entityClass = $GLOBALS['test_em']->getEntityStore()->getMetadata('UserEntity')->className;
 			$statements = $this->compile('
 				range of u is UserEntity
@@ -109,10 +110,10 @@
 		}
 
 		/**
-		 * An INSERT attachment's helper returns NEW.
+		 * An INSERT binding's helper returns NEW.
 		 * @return void
 		 */
-		public function testAppendAttachmentHelperReturnsNew(): void {
+		public function testAppendBindingHelperReturnsNew(): void {
 			$entityClass = $GLOBALS['test_em']->getEntityStore()->getMetadata('UserEntity')->className;
 			$statements = $this->compile('
 				range of u is UserEntity

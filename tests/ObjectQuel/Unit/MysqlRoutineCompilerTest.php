@@ -104,7 +104,7 @@
 				CREATE FUNCTION `count_users`(_v_minId INT)
 				RETURNS INT
 				READS SQL DATA
-				COMMENT '{"objectQuel":1,"returnType":"integer","atomic":false,"parameters":[{"kind":"scalar","type":"integer"}],"safety":{"calls":[],"reads":["users"],"writes":[]}}'
+				COMMENT '{"objectQuel":1,"isTrigger":false,"returnType":"integer","atomic":false,"parameters":[{"kind":"scalar","type":"integer"}],"safety":{"calls":[],"reads":["users"],"writes":[]}}'
 				BEGIN
 					DECLARE _v_total INT;
 					DECLARE _v_found TINYINT(1);
@@ -167,7 +167,7 @@
 			self::assertSame(<<<'SQL'
 				CREATE PROCEDURE `purge`(_v_who VARCHAR(255))
 				MODIFIES SQL DATA
-				COMMENT '{"objectQuel":1,"returnType":"void","atomic":true,"parameters":[{"kind":"scalar","type":"string"}],"safety":{"calls":[],"reads":[],"writes":["posts","users"]}}'
+				COMMENT '{"objectQuel":1,"isTrigger":false,"returnType":"void","atomic":true,"parameters":[{"kind":"scalar","type":"string"}],"safety":{"calls":[],"reads":[],"writes":["posts","users"]}}'
 				BEGIN
 					DECLARE _row_users$id INT UNSIGNED;
 					DECLARE _row_users$username VARCHAR(255);
@@ -256,7 +256,7 @@
 			self::assertSame(<<<'SQL'
 				CREATE PROCEDURE `maybe_ban`(_v_targetId INT)
 				MODIFIES SQL DATA
-				COMMENT '{"objectQuel":1,"returnType":"void","atomic":false,"parameters":[{"kind":"scalar","type":"integer"}],"safety":{"calls":[],"reads":[],"writes":["users"]}}'
+				COMMENT '{"objectQuel":1,"isTrigger":false,"returnType":"void","atomic":false,"parameters":[{"kind":"scalar","type":"integer"}],"safety":{"calls":[],"reads":[],"writes":["users"]}}'
 				_equel_routine: BEGIN
 					IF _v_targetId <= 0 THEN
 						LEAVE _equel_routine;
@@ -373,7 +373,7 @@
 				}
 			', 'mariadb');
 
-			self::assertSame(["CREATE FUNCTION `f`()\nRETURNS INT\nREADS SQL DATA\nCOMMENT '{\"objectQuel\":1,\"returnType\":\"integer\",\"atomic\":false,\"parameters\":[],\"safety\":{\"calls\":[],\"reads\":[],\"writes\":[]}}'\nBEGIN\n\tRETURN 1;\nEND"], $statements);
+			self::assertSame(["CREATE FUNCTION `f`()\nRETURNS INT\nREADS SQL DATA\nCOMMENT '{\"objectQuel\":1,\"isTrigger\":false,\"returnType\":\"integer\",\"atomic\":false,\"parameters\":[],\"safety\":{\"calls\":[],\"reads\":[],\"writes\":[]}}'\nBEGIN\n\tRETURN 1;\nEND"], $statements);
 		}
 
 		/**
@@ -422,7 +422,7 @@
 				CREATE FUNCTION `counts`(_v_n INT)
 				RETURNS INT
 				READS SQL DATA
-				COMMENT '{"objectQuel":1,"returnType":"integer","atomic":false,"parameters":[{"kind":"scalar","type":"integer"}],"safety":{"calls":[],"reads":[],"writes":[]}}'
+				COMMENT '{"objectQuel":1,"isTrigger":false,"returnType":"integer","atomic":false,"parameters":[{"kind":"scalar","type":"integer"}],"safety":{"calls":[],"reads":[],"writes":[]}}'
 				BEGIN
 					DECLARE _v_total INT;
 					SET _v_total = 0;
@@ -475,7 +475,7 @@
 			self::assertSame(<<<'SQL'
 				CREATE PROCEDURE `skip_some`(_v_n INT)
 				MODIFIES SQL DATA
-				COMMENT '{"objectQuel":1,"returnType":"void","atomic":false,"parameters":[{"kind":"scalar","type":"integer"}],"safety":{"calls":[],"reads":[],"writes":["users"]}}'
+				COMMENT '{"objectQuel":1,"isTrigger":false,"returnType":"void","atomic":false,"parameters":[{"kind":"scalar","type":"integer"}],"safety":{"calls":[],"reads":[],"writes":["users"]}}'
 				BEGIN
 					DECLARE _row_ids$id INT UNSIGNED;
 					DECLARE _row_banned$id INT UNSIGNED;
@@ -549,7 +549,7 @@
 				CREATE FUNCTION `nested`(_v_n INT)
 				RETURNS INT
 				READS SQL DATA
-				COMMENT '{"objectQuel":1,"returnType":"integer","atomic":false,"parameters":[{"kind":"scalar","type":"integer"}],"safety":{"calls":[],"reads":["users"],"writes":[]}}'
+				COMMENT '{"objectQuel":1,"isTrigger":false,"returnType":"integer","atomic":false,"parameters":[{"kind":"scalar","type":"integer"}],"safety":{"calls":[],"reads":["users"],"writes":[]}}'
 				BEGIN
 					DECLARE _v_total INT;
 					DECLARE _row_ids$id INT UNSIGNED;

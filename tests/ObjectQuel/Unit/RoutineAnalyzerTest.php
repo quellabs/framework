@@ -135,7 +135,7 @@
 		}
 
 		/**
-		 * A trigger routine's parameters must all be entity-row: an attachment supplies no
+		 * A trigger routine's parameters must all be entity-row: a binding supplies no
 		 * argument list of its own to fill a scalar parameter from, since the event's rows are
 		 * bound to the routine's entity-row parameters by declaration order alone.
 		 * @return void

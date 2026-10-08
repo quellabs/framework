@@ -623,7 +623,7 @@
 
 			self::assertCount(2, $statements);
 			self::assertSame(
-				"EXEC sys.sp_addextendedproperty @name = N'ObjectQuel_Metadata', @value = N'{\"objectQuel\":1,\"returnType\":\"void\",\"atomic\":false,\"parameters\":[{\"kind\":\"scalar\",\"type\":\"integer\"}],\"safety\":{\"calls\":[],\"reads\":[],\"writes\":[\"users\"]}}', @level0type = N'SCHEMA', @level0name = N'dbo', @level1type = N'PROCEDURE', @level1name = N'ban_all';",
+				"EXEC sys.sp_addextendedproperty @name = N'ObjectQuel_Metadata', @value = N'{\"objectQuel\":1,\"isTrigger\":false,\"returnType\":\"void\",\"atomic\":false,\"parameters\":[{\"kind\":\"scalar\",\"type\":\"integer\"}],\"safety\":{\"calls\":[],\"reads\":[],\"writes\":[\"users\"]}}', @level0type = N'SCHEMA', @level0name = N'dbo', @level1type = N'PROCEDURE', @level1name = N'ban_all';",
 				$statements[1]
 			);
 		}

@@ -5,28 +5,28 @@
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
 	use Quellabs\ObjectQuel\Exception\QuelException;
-	use Quellabs\ObjectQuel\Execution\Helpers\EventAttachmentValidator;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstEventAttachment;
+	use Quellabs\ObjectQuel\Execution\Helpers\EventBindingValidator;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstEventBinding;
 	use Quellabs\ObjectQuel\ObjectQuel\Lexer;
 	use Quellabs\ObjectQuel\ObjectQuel\Parser;
 
 	/**
-	 * Attachment validation against a called routine's live metadata (objectquel-equel-
-	 * triggers-design.md). The routine catalog is mocked; only EventAttachmentValidator's own
+	 * Binding validation against a called routine's live metadata (objectquel-equel-
+	 * triggers-design.md). The routine catalog is mocked; only EventBindingValidator's own
 	 * logic is under test here, not RoutineDefinitionInspector's SQL (see that class's own tests).
 	 */
-	class EventAttachmentValidatorTest extends TestCase {
+	class EventBindingValidatorTest extends TestCase {
 
 		/**
 		 * Parses one `after ... call ...` statement.
 		 * @param string $source Statement source
-		 * @return AstEventAttachment
+		 * @return AstEventBinding
 		 */
-		private function parse(string $source): AstEventAttachment {
+		private function parse(string $source): AstEventBinding {
 			$entityStore = $GLOBALS['test_em']->getEntityStore();
-			$attachment = (new Parser(new Lexer($source), $entityStore))->parse();
-			self::assertInstanceOf(AstEventAttachment::class, $attachment);
-			return $attachment;
+			$binding = (new Parser(new Lexer($source), $entityStore))->parse();
+			self::assertInstanceOf(AstEventBinding::class, $binding);
+			return $binding;
 		}
 
 		/**
@@ -38,7 +38,7 @@
 			$adapter->method('getRoutineMetadata')->willReturnCallback(
 				function (string $name) use ($metadataByRoutine) {
 					if (!isset($metadataByRoutine[$name])) {
-						throw new QuelException("Can't attach to '{$name}': no routine by that name exists.", 'routine_call_error');
+						throw new QuelException("Can't bind to '{$name}': no routine by that name exists.", 'routine_call_error');
 					}
 
 					return $metadataByRoutine[$name];
@@ -58,7 +58,8 @@
 		private static function triggerMetadata(array $parameters, array $writes = [], array $calls = []): array {
 			return [
 				'objectQuel'  => 1,
-				'returnType'  => 'trigger',
+				'isTrigger'   => true,
+				'returnType'  => 'void',
 				'atomic'      => false,
 				'parameters'  => $parameters,
 				'safety'      => ['calls' => $calls, 'reads' => [], 'writes' => $writes],
@@ -66,12 +67,12 @@
 		}
 
 		/**
-		 * A valid attachment whose called routine's row parameters match the target entity, in
+		 * A valid binding whose called routine's row parameters match the target entity, in
 		 * the event's own row count, and write only an unrelated table passes without error.
 		 * @return void
 		 */
-		public function testValidAttachmentPasses(): void {
-			$attachment = $this->parse('
+		public function testValidBindingPasses(): void {
+			$binding = $this->parse('
 				range of u is UserEntity
 				after replace u call audit_user
 			');
@@ -83,7 +84,7 @@
 				], writes: ['posts']),
 			]);
 
-			(new EventAttachmentValidator($adapter, $GLOBALS['test_em']->getEntityStore()))->validate($attachment);
+			(new EventBindingValidator($adapter, $GLOBALS['test_em']->getEntityStore()))->validate($binding);
 			$this->addToAssertionCount(1);
 		}
 
@@ -91,7 +92,7 @@
 		 * @return void
 		 */
 		public function testRejectsNonTriggerRoutine(): void {
-			$attachment = $this->parse('
+			$binding = $this->parse('
 				range of u is UserEntity
 				after replace u call helper
 			');
@@ -100,8 +101,8 @@
 			]);
 
 			$this->expectException(QuelException::class);
-			$this->expectExceptionMessage("'helper': it isn't declared 'trigger'");
-			(new EventAttachmentValidator($adapter, $GLOBALS['test_em']->getEntityStore()))->validate($attachment);
+			$this->expectExceptionMessage("'helper': it isn't declared with 'tfunction'");
+			(new EventBindingValidator($adapter, $GLOBALS['test_em']->getEntityStore()))->validate($binding);
 		}
 
 		/**
@@ -110,7 +111,7 @@
 		 * @return void
 		 */
 		public function testPrefixBindingAllowsFewerParametersThanTheEventSupplies(): void {
-			$attachment = $this->parse('
+			$binding = $this->parse('
 				range of u is UserEntity
 				after replace u call audit_user
 			');
@@ -119,17 +120,17 @@
 				'audit_user' => self::triggerMetadata([['kind' => 'entity', 'type' => $entityClass]]),
 			]);
 
-			$parameterCount = (new EventAttachmentValidator($adapter, $GLOBALS['test_em']->getEntityStore()))->validate($attachment);
+			$parameterCount = (new EventBindingValidator($adapter, $GLOBALS['test_em']->getEntityStore()))->validate($binding);
 			self::assertSame(1, $parameterCount);
 		}
 
 		/**
 		 * `replace` supplies two rows (old, new); a routine declaring more entity-row parameters
-		 * than that can't be attached, since there's no third row to bind.
+		 * than that can't be bound, since there's no third row to bind.
 		 * @return void
 		 */
 		public function testRejectsMoreParametersThanTheEventSupplies(): void {
-			$attachment = $this->parse('
+			$binding = $this->parse('
 				range of u is UserEntity
 				after replace u call audit_user
 			');
@@ -144,7 +145,7 @@
 
 			$this->expectException(QuelException::class);
 			$this->expectExceptionMessage("it declares 3 entity-row parameter(s), but 'replace' only supplies 2");
-			(new EventAttachmentValidator($adapter, $GLOBALS['test_em']->getEntityStore()))->validate($attachment);
+			(new EventBindingValidator($adapter, $GLOBALS['test_em']->getEntityStore()))->validate($binding);
 		}
 
 		/**
@@ -154,7 +155,7 @@
 		 * @return void
 		 */
 		public function testRejectsNonEntityParameter(): void {
-			$attachment = $this->parse('
+			$binding = $this->parse('
 				range of u is UserEntity
 				after append to u call on_created
 			');
@@ -164,15 +165,15 @@
 
 			$this->expectException(QuelException::class);
 			$this->expectExceptionMessage("parameter 1 isn't an entity-row parameter");
-			(new EventAttachmentValidator($adapter, $GLOBALS['test_em']->getEntityStore()))->validate($attachment);
+			(new EventBindingValidator($adapter, $GLOBALS['test_em']->getEntityStore()))->validate($binding);
 		}
 
 		/**
-		 * A row parameter typed for a different entity than the attachment's target is rejected.
+		 * A row parameter typed for a different entity than the binding's target is rejected.
 		 * @return void
 		 */
 		public function testRejectsMismatchedRowEntity(): void {
-			$attachment = $this->parse('
+			$binding = $this->parse('
 				range of u is UserEntity
 				after append to u call on_created
 			');
@@ -182,7 +183,7 @@
 
 			$this->expectException(QuelException::class);
 			$this->expectExceptionMessage("is typed 'App\\Entities\\PostEntity'");
-			(new EventAttachmentValidator($adapter, $GLOBALS['test_em']->getEntityStore()))->validate($attachment);
+			(new EventBindingValidator($adapter, $GLOBALS['test_em']->getEntityStore()))->validate($binding);
 		}
 
 		/**
@@ -191,7 +192,7 @@
 		 * @return void
 		 */
 		public function testRejectsDirectWriteToTriggeringTable(): void {
-			$attachment = $this->parse('
+			$binding = $this->parse('
 				range of u is UserEntity
 				after replace u call audit_user
 			');
@@ -204,8 +205,8 @@
 			]);
 
 			$this->expectException(QuelException::class);
-			$this->expectExceptionMessage("writes 'users', the table the attachment fires on");
-			(new EventAttachmentValidator($adapter, $GLOBALS['test_em']->getEntityStore()))->validate($attachment);
+			$this->expectExceptionMessage("writes 'users', the table the binding fires on");
+			(new EventBindingValidator($adapter, $GLOBALS['test_em']->getEntityStore()))->validate($binding);
 		}
 
 		/**
@@ -213,7 +214,7 @@
 		 * @return void
 		 */
 		public function testRejectsTransitiveWriteToTriggeringTable(): void {
-			$attachment = $this->parse('
+			$binding = $this->parse('
 				range of u is UserEntity
 				after replace u call audit_user
 			');
@@ -228,7 +229,7 @@
 
 			$this->expectException(QuelException::class);
 			$this->expectExceptionMessage("'helper' writes 'users'");
-			(new EventAttachmentValidator($adapter, $GLOBALS['test_em']->getEntityStore()))->validate($attachment);
+			(new EventBindingValidator($adapter, $GLOBALS['test_em']->getEntityStore()))->validate($binding);
 		}
 
 		/**
@@ -236,7 +237,7 @@
 		 * @return void
 		 */
 		public function testCallGraphCycleTerminates(): void {
-			$attachment = $this->parse('
+			$binding = $this->parse('
 				range of u is UserEntity
 				after replace u call audit_user
 			');
@@ -249,7 +250,7 @@
 				'helper' => ['objectQuel' => 1, 'returnType' => 'void', 'atomic' => false, 'parameters' => [], 'safety' => ['calls' => ['audit_user'], 'reads' => [], 'writes' => []]],
 			]);
 
-			(new EventAttachmentValidator($adapter, $GLOBALS['test_em']->getEntityStore()))->validate($attachment);
+			(new EventBindingValidator($adapter, $GLOBALS['test_em']->getEntityStore()))->validate($binding);
 			$this->addToAssertionCount(1);
 		}
 

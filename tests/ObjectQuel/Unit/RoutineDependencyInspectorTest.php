@@ -6,11 +6,11 @@
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
 	use Quellabs\ObjectQuel\Exception\QuelException;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AttachmentEvent;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\BindingEvent;
 
 	/**
 	 * Scanning live triggers for a dependency on a routine (objectquel-equel-triggers-design.md,
-	 * "Attachment dependency discovery"), ahead of `destroy function`.
+	 * "Binding dependency discovery"), ahead of `destroy function`.
 	 */
 	class RoutineDependencyInspectorTest extends TestCase {
 
@@ -31,7 +31,7 @@
 			$adapter->method('execute')->willReturn($statement);
 			$adapter->method('getRoutineMetadata')->willReturnCallback(function (string $name) use ($metadataByRoutine) {
 				if (!isset($metadataByRoutine[$name])) {
-					throw new QuelException("Can't attach to '{$name}': no routine by that name exists.", 'routine_call_error');
+					throw new QuelException("Can't bind to '{$name}': no routine by that name exists.", 'routine_call_error');
 				}
 
 				return $metadataByRoutine[$name];
@@ -41,11 +41,12 @@
 		}
 
 		/**
-		 * @param string $returnType 'trigger' or 'void'
+		 * @param string $returnType Metadata return type ('void' or a scalar type)
+		 * @param bool $isTrigger Whether the routine is declared with `tfunction`
 		 * @return array<string, mixed>
 		 */
-		private static function metadata(string $returnType): array {
-			return ['objectQuel' => 1, 'returnType' => $returnType, 'atomic' => false, 'parameters' => [], 'safety' => ['calls' => [], 'reads' => [], 'writes' => []]];
+		private static function metadata(string $returnType, bool $isTrigger = false): array {
+			return ['objectQuel' => 1, 'isTrigger' => $isTrigger, 'returnType' => $returnType, 'atomic' => false, 'parameters' => [], 'safety' => ['calls' => [], 'reads' => [], 'writes' => []]];
 		}
 
 		/**
@@ -126,20 +127,20 @@
 		}
 
 		/**
-		 * A trigger on the table calling a `trigger`-declared routine is reported as an
-		 * attachment, regardless of which routine it calls.
+		 * A trigger on the table calling a tfunction is reported as a
+		 * binding, regardless of which routine it calls.
 		 * @return void
 		 */
-		public function testFindsAttachmentTriggerOnTable(): void {
+		public function testFindsBindingTriggerOnTable(): void {
 			$adapter = $this->adapterReturning('mysql', null, [
 				['trigger_name' => 'eq_users_replace_audit_user', 'body' => 'CALL `audit_user`(OLD.`id`, NEW.`id`)'],
-			], ['audit_user' => self::metadata('trigger')]);
+			], ['audit_user' => self::metadata('void', isTrigger: true)]);
 
-			self::assertSame(['eq_users_replace_audit_user'], $adapter->findAttachmentTriggersOnTable('users'));
+			self::assertSame(['eq_users_replace_audit_user'], $adapter->findBindingTriggersOnTable('users'));
 		}
 
 		/**
-		 * A trigger calling an ordinary (non-trigger) routine isn't an attachment.
+		 * A trigger calling an ordinary (non-trigger) routine isn't a binding.
 		 * @return void
 		 */
 		public function testIgnoresATriggerCallingAnOrdinaryRoutine(): void {
@@ -147,11 +148,11 @@
 				['trigger_name' => 'some_user_trigger', 'body' => 'CALL `log_change`(OLD.`id`)'],
 			], ['log_change' => self::metadata('void')]);
 
-			self::assertSame([], $adapter->findAttachmentTriggersOnTable('users'));
+			self::assertSame([], $adapter->findBindingTriggersOnTable('users'));
 		}
 
 		/**
-		 * A trigger calling a routine with no recognizable ObjectQuel metadata isn't an attachment.
+		 * A trigger calling a routine with no recognizable ObjectQuel metadata isn't a binding.
 		 * @return void
 		 */
 		public function testIgnoresATriggerCallingAnUnmanagedRoutine(): void {
@@ -159,11 +160,11 @@
 				['trigger_name' => 'some_user_trigger', 'body' => 'CALL `legacy_proc`(OLD.`id`)'],
 			], []);
 
-			self::assertSame([], $adapter->findAttachmentTriggersOnTable('users'));
+			self::assertSame([], $adapter->findBindingTriggersOnTable('users'));
 		}
 
 		/**
-		 * A trigger body with no recognizable CALL/EXEC pattern at all isn't an attachment.
+		 * A trigger body with no recognizable CALL/EXEC pattern at all isn't a binding.
 		 * @return void
 		 */
 		public function testIgnoresATriggerWithNoCallAtAll(): void {
@@ -171,85 +172,85 @@
 				['trigger_name' => 'some_user_trigger', 'body' => 'SET NEW.updated_at = NOW()'],
 			], []);
 
-			self::assertSame([], $adapter->findAttachmentTriggersOnTable('users'));
+			self::assertSame([], $adapter->findBindingTriggersOnTable('users'));
 		}
 
 		/**
-		 * PostgreSQL finds the attachment through the generated helper function's source.
+		 * PostgreSQL finds the binding through the generated helper function's source.
 		 * @return void
 		 */
-		public function testPostgresFindsAttachmentThroughHelperSource(): void {
+		public function testPostgresFindsBindingThroughHelperSource(): void {
 			$adapter = $this->adapterReturning('pgsql', null, [
 				['trigger_name' => 'eq_users_replace_audit_user', 'body' => 'BEGIN CALL "audit_user"(OLD."id", NEW."id"); RETURN NEW; END;'],
-			], ['audit_user' => self::metadata('trigger')]);
+			], ['audit_user' => self::metadata('void', isTrigger: true)]);
 
-			self::assertSame(['eq_users_replace_audit_user'], $adapter->findAttachmentTriggersOnTable('users'));
+			self::assertSame(['eq_users_replace_audit_user'], $adapter->findBindingTriggersOnTable('users'));
 		}
 
 		/**
-		 * SQL Server finds the attachment whether the call is schema-qualified or not.
+		 * SQL Server finds the binding whether the call is schema-qualified or not.
 		 * @return void
 		 */
-		public function testSqlServerFindsAttachmentRegardlessOfSchemaQualification(): void {
+		public function testSqlServerFindsBindingRegardlessOfSchemaQualification(): void {
 			$adapter = $this->adapterReturning('sqlsrv', 'dbo', [
 				['trigger_name' => 'eq_users_replace_audit_user', 'body' => 'EXEC [dbo].[audit_user] @_a0, @_a1;'],
-			], ['audit_user' => self::metadata('trigger')]);
+			], ['audit_user' => self::metadata('void', isTrigger: true)]);
 
-			self::assertSame(['eq_users_replace_audit_user'], $adapter->findAttachmentTriggersOnTable('users'));
+			self::assertSame(['eq_users_replace_audit_user'], $adapter->findBindingTriggersOnTable('users'));
 		}
 
 		/**
 		 * @return void
 		 */
-		public function testListAttachmentsReturnsTableEventRoutineAndAlias(): void {
+		public function testListBindingsReturnsTableEventRoutineAndAlias(): void {
 			$adapter = $this->adapterReturning('mysql', null, [
 				['trigger_name' => 'eq_users_audit_trigger', 'table_name' => 'users', 'event' => 'INSERT', 'body' => 'CALL `audit_user`(NEW.`id`)'],
-			], ['audit_user' => self::metadata('trigger')]);
+			], ['audit_user' => self::metadata('void', isTrigger: true)]);
 
 			self::assertSame([
-				['table' => 'users', 'event' => AttachmentEvent::Append, 'routine' => 'audit_user', 'alias' => 'audit_trigger'],
-			], $adapter->listAttachments());
+				['table' => 'users', 'event' => BindingEvent::Append, 'routine' => 'audit_user', 'alias' => 'audit_trigger'],
+			], $adapter->listBindings());
 		}
 
 		/**
 		 * UPDATE and DELETE map to Replace and Delete, same as Append for INSERT.
 		 * @return void
 		 */
-		public function testListAttachmentsMapsUpdateAndDelete(): void {
+		public function testListBindingsMapsUpdateAndDelete(): void {
 			$adapter = $this->adapterReturning('mysql', null, [
 				['trigger_name' => 'eq_users_t1', 'table_name' => 'users', 'event' => 'UPDATE', 'body' => 'CALL `f`(OLD.`id`)'],
 				['trigger_name' => 'eq_users_t2', 'table_name' => 'users', 'event' => 'DELETE', 'body' => 'CALL `f`(OLD.`id`)'],
-			], ['f' => self::metadata('trigger')]);
+			], ['f' => self::metadata('void', isTrigger: true)]);
 
-			$events = array_column($adapter->listAttachments(), 'event');
-			self::assertSame([AttachmentEvent::Replace, AttachmentEvent::Delete], $events);
+			$events = array_column($adapter->listBindings(), 'event');
+			self::assertSame([BindingEvent::Replace, BindingEvent::Delete], $events);
 		}
 
 		/**
 		 * A trigger calling a non-trigger or unmanaged routine is excluded, same as
-		 * findAttachmentTriggersOnTable().
+		 * findBindingTriggersOnTable().
 		 * @return void
 		 */
-		public function testListAttachmentsExcludesNonAttachmentTriggers(): void {
+		public function testListBindingsExcludesNonBindingTriggers(): void {
 			$adapter = $this->adapterReturning('mysql', null, [
 				['trigger_name' => 'some_user_trigger', 'table_name' => 'users', 'event' => 'UPDATE', 'body' => 'CALL `log_change`(OLD.`id`)'],
 			], ['log_change' => self::metadata('void')]);
 
-			self::assertSame([], $adapter->listAttachments());
+			self::assertSame([], $adapter->listBindings());
 		}
 
 		/**
 		 * A trigger name that doesn't start with the expected `eq_<table>_` prefix (the
-		 * truncation edge case — see EventAttachmentNaming::truncate()) is shown whole rather
+		 * truncation edge case — see EventBindingNaming::truncate()) is shown whole rather
 		 * than guessed at.
 		 * @return void
 		 */
-		public function testListAttachmentsFallsBackToWholeNameWhenPrefixIsMissing(): void {
+		public function testListBindingsFallsBackToWholeNameWhenPrefixIsMissing(): void {
 			$adapter = $this->adapterReturning('mysql', null, [
 				['trigger_name' => 'eq_somethingelse_ab12cd34', 'table_name' => 'users', 'event' => 'INSERT', 'body' => 'CALL `audit_user`(NEW.`id`)'],
-			], ['audit_user' => self::metadata('trigger')]);
+			], ['audit_user' => self::metadata('void', isTrigger: true)]);
 
-			self::assertSame('eq_somethingelse_ab12cd34', $adapter->listAttachments()[0]['alias']);
+			self::assertSame('eq_somethingelse_ab12cd34', $adapter->listBindings()[0]['alias']);
 		}
 
 		/**

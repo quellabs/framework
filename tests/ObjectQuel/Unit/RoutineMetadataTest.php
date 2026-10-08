@@ -12,7 +12,7 @@
 
 	/**
 	 * JSON metadata built for a deployed routine (objectquel-equel-triggers-design.md,
-	 * "Routine metadata and attachment dependencies"). Dialect-independent: built once from
+	 * "Routine metadata and binding dependencies"). Dialect-independent: built once from
 	 * the analyzed AST, read back per dialect by RoutineDefinitionInspector.
 	 */
 	class RoutineMetadataTest extends TestCase {
@@ -56,7 +56,7 @@
 		}
 
 		/**
-		 * `void` is reported as such, distinct from `trigger`.
+		 * `void` is reported as such.
 		 * @return void
 		 */
 		public function testVoidReturnType(): void {
@@ -69,7 +69,8 @@
 		}
 
 		/**
-		 * A tfunction reports its entity-row parameters by fully qualified class.
+		 * A tfunction reports its entity-row parameters by fully qualified class, is flagged
+		 * `isTrigger`, and otherwise returns no value just like a `void` function.
 		 * @return void
 		 */
 		public function testTriggerRoutineParameters(): void {
@@ -81,7 +82,8 @@
 				}
 			');
 
-			self::assertSame('trigger', $metadata['returnType']);
+			self::assertTrue($metadata['isTrigger']);
+			self::assertSame('void', $metadata['returnType']);
 			self::assertCount(2, $metadata['parameters']);
 			self::assertSame('entity', $metadata['parameters'][0]['kind']);
 			self::assertSame('entity', $metadata['parameters'][1]['kind']);

@@ -56,7 +56,7 @@
 		}
 
 		/**
-		 * Standalone calls may invoke procedures (still looked up, to reject a trigger-declared
+		 * Standalone calls may invoke procedures (still looked up, to reject a tfunction
 		 * target), while expression arguments still need their types.
 		 * @return void
 		 */
@@ -75,7 +75,7 @@
 		}
 
 		/**
-		 * A trigger-declared routine has no call path outside an event attachment, not even as
+		 * A tfunction has no call path outside an event binding, not even as
 		 * a standalone statement call.
 		 * @return void
 		 */
@@ -86,12 +86,12 @@
 			$statement = new AstCall(new AstRoutineCall('audit_user', []));
 
 			$this->expectException(QuelException::class);
-			$this->expectExceptionMessage("'audit_user' is declared 'trigger'");
+			$this->expectExceptionMessage("'audit_user' is declared with 'tfunction'");
 			(new RoutineCallTyper($adapter))->typeCalls($statement, true);
 		}
 
 		/**
-		 * A trigger-declared routine is rejected in an expression too, before the
+		 * A tfunction is rejected in an expression too, before the
 		 * procedure-in-an-expression check even runs.
 		 * @return void
 		 */
@@ -101,7 +101,7 @@
 				->willReturn(new RoutineSignature(true, null, false, true));
 
 			$this->expectException(QuelException::class);
-			$this->expectExceptionMessage("'audit_user' is declared 'trigger'");
+			$this->expectExceptionMessage("'audit_user' is declared with 'tfunction'");
 			(new RoutineCallTyper($adapter))->typeCalls(new AstRoutineCall('audit_user', []));
 		}
 	}
