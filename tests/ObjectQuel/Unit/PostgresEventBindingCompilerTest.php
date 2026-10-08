@@ -56,7 +56,7 @@
 			self::assertCount(2, $statements);
 
 			self::assertSame(
-				"CREATE FUNCTION \"eq_users_audit_trigger_fn\"()\n"
+				"CREATE FUNCTION \"eq_7dfb4cf67742_audit_trigger_fn\"()\n"
 				. "RETURNS trigger\n"
 				. "LANGUAGE plpgsql\n"
 				. "AS \$body\$\n"
@@ -69,9 +69,9 @@
 			);
 
 			self::assertSame(
-				"CREATE TRIGGER \"eq_users_audit_trigger\"\n"
+				"CREATE TRIGGER \"eq_7dfb4cf67742_audit_trigger\"\n"
 				. "AFTER UPDATE ON \"users\"\n"
-				. "FOR EACH ROW EXECUTE FUNCTION \"eq_users_audit_trigger_fn\"();",
+				. "FOR EACH ROW EXECUTE FUNCTION \"eq_7dfb4cf67742_audit_trigger_fn\"();",
 				$statements[1]
 			);
 		}

@@ -3,6 +3,7 @@
 	namespace Quellabs\ObjectQuel\Tests\Unit;
 
 	use PHPUnit\Framework\TestCase;
+	use Quellabs\ObjectQuel\Exception\QuelException;
 	use Quellabs\ObjectQuel\ObjectQuel\Routines\EventBindingNaming;
 
 	/**
@@ -15,7 +16,7 @@
 		 * @return void
 		 */
 		public function testShortNameIsNotTruncated(): void {
-			self::assertSame('eq_users_audit_trigger', EventBindingNaming::triggerName('users', 'audit_trigger'));
+			self::assertSame('eq_7dfb4cf67742_audit_trigger', EventBindingNaming::triggerName('users', 'audit_trigger'));
 		}
 
 		/**
@@ -38,23 +39,22 @@
 		}
 
 		/**
-		 * A name long enough to exceed every engine's identifier limit is truncated with a
-		 * stable hash suffix, not just cut off.
+		 * A long table name does not consume space reserved for the alias.
 		 * @return void
 		 */
-		public function testLongNameIsTruncatedWithHashSuffix(): void {
+		public function testLongTableNamePreservesTheAlias(): void {
+			$alias = 'a_very_long_alias_as_well';
 			$name = EventBindingNaming::triggerName(
 				'a_very_long_physical_table_name_that_exceeds_every_engine_limit',
-				'a_very_long_alias_as_well'
+				$alias
 			);
 
 			self::assertLessThanOrEqual(60, strlen($name));
-			self::assertMatchesRegularExpression('/_[0-9a-f]{8}$/', $name);
+			self::assertStringEndsWith('_' . $alias, $name);
 		}
 
 		/**
-		 * Two different long identities that would truncate to the same prefix still produce
-		 * distinct names, because the hash is over the full identity, not the truncated prefix.
+		 * Distinct long table names keep distinct hash prefixes.
 		 * @return void
 		 */
 		public function testLongNamesWithSamePrefixStayDistinct(): void {
@@ -62,6 +62,27 @@
 			$first = EventBindingNaming::triggerName($base . '_one', 'f');
 			$second = EventBindingNaming::triggerName($base . '_two', 'f');
 			self::assertNotSame($first, $second);
+		}
+
+		/**
+		 * Accepts the longest reversible alias.
+		 * @return void
+		 */
+		public function testAliasAtLengthLimitFits(): void {
+			$alias = str_repeat('a', EventBindingNaming::MAX_ALIAS_LENGTH);
+			$name = EventBindingNaming::triggerName(str_repeat('t', 60), $alias);
+			self::assertSame(60, strlen($name));
+			self::assertStringEndsWith($alias, $name);
+		}
+
+		/**
+		 * Rejects aliases that would have to be shortened.
+		 * @return void
+		 */
+		public function testAliasPastLengthLimitIsRejected(): void {
+			$this->expectException(QuelException::class);
+			$this->expectExceptionMessage('44-character limit');
+			EventBindingNaming::triggerName('users', str_repeat('a', EventBindingNaming::MAX_ALIAS_LENGTH + 1));
 		}
 
 		/**
@@ -94,13 +115,12 @@
 		}
 
 		/**
-		 * The prefix recovers exactly the portion a trigger name built from it would have after
-		 * the alias — used to read an alias back out of an existing name (see
-		 * RoutineDependencyInspector::listBindings()).
+		 * The fixed prefix leaves the complete alias available to the inspector.
 		 * @return void
 		 */
 		public function testTriggerNamePrefixMatchesTriggerName(): void {
-			$prefix = EventBindingNaming::triggerNamePrefix('users');
-			self::assertSame($prefix . 'audit_trigger', EventBindingNaming::triggerName('users', 'audit_trigger'));
+			$table = str_repeat('t', 49);
+			$prefix = EventBindingNaming::triggerNamePrefix($table);
+			self::assertSame($prefix . 'audit_trigger', EventBindingNaming::triggerName($table, 'audit_trigger'));
 		}
 	}

@@ -4,6 +4,7 @@
 
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
+	use Quellabs\ObjectQuel\Exception\QuelException;
 	use Quellabs\ObjectQuel\ObjectQuel\Routines\EventBindingCompiler;
 	use Quellabs\ObjectQuel\Tests\Support\FakePlatformCapabilities;
 
@@ -53,7 +54,7 @@
 
 			self::assertCount(1, $statements);
 			self::assertSame(
-				"CREATE TRIGGER `eq_users_audit_trigger`\n"
+				"CREATE TRIGGER `eq_7dfb4cf67742_audit_trigger`\n"
 				. "AFTER UPDATE ON `users`\n"
 				. "FOR EACH ROW\n"
 				. "CALL `audit_user`(OLD.`id`, OLD.`username`, OLD.`password`, OLD.`banned`, NEW.`id`, NEW.`username`, NEW.`password`, NEW.`banned`);",
@@ -72,7 +73,7 @@
 			', ['on_created' => self::triggerMetadata($entityClass, 1)]);
 
 			self::assertSame(
-				"CREATE TRIGGER `eq_users_on_created_trigger`\n"
+				"CREATE TRIGGER `eq_7dfb4cf67742_on_created_trigger`\n"
 				. "AFTER INSERT ON `users`\n"
 				. "FOR EACH ROW\n"
 				. "CALL `on_created`(NEW.`id`, NEW.`username`, NEW.`password`, NEW.`banned`);",
@@ -91,7 +92,7 @@
 			', ['on_removed' => self::triggerMetadata($entityClass, 1)]);
 
 			self::assertSame(
-				"CREATE TRIGGER `eq_users_on_removed_trigger`\n"
+				"CREATE TRIGGER `eq_7dfb4cf67742_on_removed_trigger`\n"
 				. "AFTER DELETE ON `users`\n"
 				. "FOR EACH ROW\n"
 				. "CALL `on_removed`(OLD.`id`, OLD.`username`, OLD.`password`, OLD.`banned`);",
@@ -112,7 +113,7 @@
 			', ['audit_old_only' => self::triggerMetadata($entityClass, 1)]);
 
 			self::assertSame(
-				"CREATE TRIGGER `eq_users_audit_trigger`\n"
+				"CREATE TRIGGER `eq_7dfb4cf67742_audit_trigger`\n"
 				. "AFTER UPDATE ON `users`\n"
 				. "FOR EACH ROW\n"
 				. "CALL `audit_old_only`(OLD.`id`, OLD.`username`, OLD.`password`, OLD.`banned`);",
@@ -134,6 +135,21 @@
 			', ['audit_user' => self::triggerMetadata($entityClass, 2)]);
 
 			self::assertCount(1, $statements);
-			self::assertMatchesRegularExpression('/^CREATE TRIGGER `eq_users_[0-9a-f]+`\n/', $statements[0]);
+			self::assertMatchesRegularExpression('/^CREATE TRIGGER `eq_7dfb4cf67742_[0-9a-f]+`\n/', $statements[0]);
+		}
+
+		/**
+		 * An explicit alias that cannot fit is rejected before DDL is emitted.
+		 * @return void
+		 */
+		public function testOverlongAliasIsRejected(): void {
+			$entityClass = $GLOBALS['test_em']->getEntityStore()->getMetadata('UserEntity')->className;
+			$alias = str_repeat('a', 45);
+
+			$this->expectException(QuelException::class);
+			$this->expectExceptionMessage('44-character limit');
+			$this->compile("range of u is UserEntity after replace u call audit_user as {$alias}", [
+				'audit_user' => self::triggerMetadata($entityClass, 2),
+			]);
 		}
 	}

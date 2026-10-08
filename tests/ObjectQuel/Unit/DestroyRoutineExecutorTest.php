@@ -38,11 +38,11 @@
 		public function testRoutineWithDependentBindingIsRefused(): void {
 			$connection = $this->createMock(DatabaseAdapter::class);
 			$connection->method('routineExists')->willReturn(true);
-			$connection->expects(self::once())->method('findDependentTriggers')->with('f')->willReturn(['eq_users_replace_f']);
+			$connection->expects(self::once())->method('findDependentTriggers')->with('f')->willReturn(['eq_7dfb4cf67742_replace_f']);
 			$connection->expects(self::never())->method('execute');
 
 			$this->expectException(QuelException::class);
-			$this->expectExceptionMessage("binding trigger(s) 'eq_users_replace_f' still call it");
+			$this->expectExceptionMessage("binding trigger(s) 'eq_7dfb4cf67742_replace_f' still call it");
 			(new DestroyRoutineExecutor($connection, new FakePlatformCapabilities('mysql')))
 				->execute(new AstDestroyRoutine('f', false), new ExecutionContext([]));
 		}

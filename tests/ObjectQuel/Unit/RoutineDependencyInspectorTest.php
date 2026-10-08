@@ -7,6 +7,7 @@
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
 	use Quellabs\ObjectQuel\Exception\QuelException;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\BindingEvent;
+	use Quellabs\ObjectQuel\ObjectQuel\Routines\EventBindingNaming;
 
 	/**
 	 * Scanning live triggers for a dependency on a routine (objectquel-equel-triggers-design.md,
@@ -54,10 +55,10 @@
 		 */
 		public function testMysqlFindsATriggerThatCallsTheRoutine(): void {
 			$adapter = $this->adapterReturning('mysql', null, [
-				['trigger_name' => 'eq_users_replace_audit_user', 'body' => 'CALL `audit_user`(OLD.`id`, NEW.`id`)'],
+				['trigger_name' => 'eq_7dfb4cf67742_replace_audit_user', 'body' => 'CALL `audit_user`(OLD.`id`, NEW.`id`)'],
 			]);
 
-			self::assertSame(['eq_users_replace_audit_user'], $adapter->findDependentTriggers('audit_user'));
+			self::assertSame(['eq_7dfb4cf67742_replace_audit_user'], $adapter->findDependentTriggers('audit_user'));
 		}
 
 		/**
@@ -66,7 +67,7 @@
 		 */
 		public function testMysqlDoesNotMatchALongerRoutineName(): void {
 			$adapter = $this->adapterReturning('mysql', null, [
-				['trigger_name' => 'eq_users_replace_foo', 'body' => 'CALL `foo`(OLD.`id`)'],
+				['trigger_name' => 'eq_7dfb4cf67742_replace_foo', 'body' => 'CALL `foo`(OLD.`id`)'],
 			]);
 
 			self::assertSame([], $adapter->findDependentTriggers('f'));
@@ -77,7 +78,7 @@
 		 */
 		public function testMysqlIgnoresUnrelatedTriggers(): void {
 			$adapter = $this->adapterReturning('mysql', null, [
-				['trigger_name' => 'eq_users_replace_other', 'body' => 'CALL `other_routine`(OLD.`id`)'],
+				['trigger_name' => 'eq_7dfb4cf67742_replace_other', 'body' => 'CALL `other_routine`(OLD.`id`)'],
 			]);
 
 			self::assertSame([], $adapter->findDependentTriggers('audit_user'));
@@ -90,10 +91,10 @@
 		 */
 		public function testPostgresFindsAHelperThatCallsTheRoutine(): void {
 			$adapter = $this->adapterReturning('pgsql', null, [
-				['trigger_name' => 'eq_users_replace_audit_user', 'body' => 'BEGIN CALL "audit_user"(OLD."id", NEW."id"); RETURN NEW; END;'],
+				['trigger_name' => 'eq_7dfb4cf67742_replace_audit_user', 'body' => 'BEGIN CALL "audit_user"(OLD."id", NEW."id"); RETURN NEW; END;'],
 			]);
 
-			self::assertSame(['eq_users_replace_audit_user'], $adapter->findDependentTriggers('audit_user'));
+			self::assertSame(['eq_7dfb4cf67742_replace_audit_user'], $adapter->findDependentTriggers('audit_user'));
 		}
 
 		/**
@@ -101,10 +102,10 @@
 		 */
 		public function testSqlServerFindsATriggerThatCallsTheRoutineUnqualified(): void {
 			$adapter = $this->adapterReturning('sqlsrv', 'dbo', [
-				['trigger_name' => 'eq_users_replace_audit_user', 'body' => 'EXEC [audit_user] @_a0, @_a1;'],
+				['trigger_name' => 'eq_7dfb4cf67742_replace_audit_user', 'body' => 'EXEC [audit_user] @_a0, @_a1;'],
 			]);
 
-			self::assertSame(['eq_users_replace_audit_user'], $adapter->findDependentTriggers('audit_user'));
+			self::assertSame(['eq_7dfb4cf67742_replace_audit_user'], $adapter->findDependentTriggers('audit_user'));
 		}
 
 		/**
@@ -112,10 +113,10 @@
 		 */
 		public function testSqlServerFindsATriggerThatCallsTheRoutineSchemaQualified(): void {
 			$adapter = $this->adapterReturning('sqlsrv', 'dbo', [
-				['trigger_name' => 'eq_users_replace_audit_user', 'body' => 'EXEC [dbo].[audit_user] @_a0, @_a1;'],
+				['trigger_name' => 'eq_7dfb4cf67742_replace_audit_user', 'body' => 'EXEC [dbo].[audit_user] @_a0, @_a1;'],
 			]);
 
-			self::assertSame(['eq_users_replace_audit_user'], $adapter->findDependentTriggers('audit_user'));
+			self::assertSame(['eq_7dfb4cf67742_replace_audit_user'], $adapter->findDependentTriggers('audit_user'));
 		}
 
 		/**
@@ -133,10 +134,10 @@
 		 */
 		public function testFindsBindingTriggerOnTable(): void {
 			$adapter = $this->adapterReturning('mysql', null, [
-				['trigger_name' => 'eq_users_replace_audit_user', 'body' => 'CALL `audit_user`(OLD.`id`, NEW.`id`)'],
+				['trigger_name' => 'eq_7dfb4cf67742_replace_audit_user', 'body' => 'CALL `audit_user`(OLD.`id`, NEW.`id`)'],
 			], ['audit_user' => self::metadata('void', isTrigger: true)]);
 
-			self::assertSame(['eq_users_replace_audit_user'], $adapter->findBindingTriggersOnTable('users'));
+			self::assertSame(['eq_7dfb4cf67742_replace_audit_user'], $adapter->findBindingTriggersOnTable('users'));
 		}
 
 		/**
@@ -181,10 +182,10 @@
 		 */
 		public function testPostgresFindsBindingThroughHelperSource(): void {
 			$adapter = $this->adapterReturning('pgsql', null, [
-				['trigger_name' => 'eq_users_replace_audit_user', 'body' => 'BEGIN CALL "audit_user"(OLD."id", NEW."id"); RETURN NEW; END;'],
+				['trigger_name' => 'eq_7dfb4cf67742_replace_audit_user', 'body' => 'BEGIN CALL "audit_user"(OLD."id", NEW."id"); RETURN NEW; END;'],
 			], ['audit_user' => self::metadata('void', isTrigger: true)]);
 
-			self::assertSame(['eq_users_replace_audit_user'], $adapter->findBindingTriggersOnTable('users'));
+			self::assertSame(['eq_7dfb4cf67742_replace_audit_user'], $adapter->findBindingTriggersOnTable('users'));
 		}
 
 		/**
@@ -193,10 +194,10 @@
 		 */
 		public function testSqlServerFindsBindingRegardlessOfSchemaQualification(): void {
 			$adapter = $this->adapterReturning('sqlsrv', 'dbo', [
-				['trigger_name' => 'eq_users_replace_audit_user', 'body' => 'EXEC [dbo].[audit_user] @_a0, @_a1;'],
+				['trigger_name' => 'eq_7dfb4cf67742_replace_audit_user', 'body' => 'EXEC [dbo].[audit_user] @_a0, @_a1;'],
 			], ['audit_user' => self::metadata('void', isTrigger: true)]);
 
-			self::assertSame(['eq_users_replace_audit_user'], $adapter->findBindingTriggersOnTable('users'));
+			self::assertSame(['eq_7dfb4cf67742_replace_audit_user'], $adapter->findBindingTriggersOnTable('users'));
 		}
 
 		/**
@@ -204,7 +205,7 @@
 		 */
 		public function testListBindingsReturnsTableEventRoutineAndAlias(): void {
 			$adapter = $this->adapterReturning('mysql', null, [
-				['trigger_name' => 'eq_users_audit_trigger', 'table_name' => 'users', 'event' => 'INSERT', 'body' => 'CALL `audit_user`(NEW.`id`)'],
+				['trigger_name' => 'eq_7dfb4cf67742_audit_trigger', 'table_name' => 'users', 'event' => 'INSERT', 'body' => 'CALL `audit_user`(NEW.`id`)'],
 			], ['audit_user' => self::metadata('void', isTrigger: true)]);
 
 			self::assertSame([
@@ -213,13 +214,31 @@
 		}
 
 		/**
+		 * A generated alias on a long table name survives listing and rebuilds the
+		 * same physical name used by destroy trigger.
+		 * @return void
+		 */
+		public function testLongTableBindingAliasRoundTripsThroughListing(): void {
+			$table = str_repeat('t', 49);
+			$alias = 'a1b2c3d4';
+			$triggerName = EventBindingNaming::triggerName($table, $alias);
+			$adapter = $this->adapterReturning('mysql', null, [
+				['trigger_name' => $triggerName, 'table_name' => $table, 'event' => 'INSERT', 'body' => 'CALL `audit_user`(NEW.`id`)'],
+			], ['audit_user' => self::metadata('void', isTrigger: true)]);
+
+			$listedAlias = $adapter->listBindings()[0]['alias'];
+			self::assertSame($alias, $listedAlias);
+			self::assertSame($triggerName, EventBindingNaming::triggerName($table, $listedAlias));
+		}
+
+		/**
 		 * UPDATE and DELETE map to Replace and Delete, same as Append for INSERT.
 		 * @return void
 		 */
 		public function testListBindingsMapsUpdateAndDelete(): void {
 			$adapter = $this->adapterReturning('mysql', null, [
-				['trigger_name' => 'eq_users_t1', 'table_name' => 'users', 'event' => 'UPDATE', 'body' => 'CALL `f`(OLD.`id`)'],
-				['trigger_name' => 'eq_users_t2', 'table_name' => 'users', 'event' => 'DELETE', 'body' => 'CALL `f`(OLD.`id`)'],
+				['trigger_name' => 'eq_7dfb4cf67742_t1', 'table_name' => 'users', 'event' => 'UPDATE', 'body' => 'CALL `f`(OLD.`id`)'],
+				['trigger_name' => 'eq_7dfb4cf67742_t2', 'table_name' => 'users', 'event' => 'DELETE', 'body' => 'CALL `f`(OLD.`id`)'],
 			], ['f' => self::metadata('void', isTrigger: true)]);
 
 			$events = array_column($adapter->listBindings(), 'event');
@@ -240,9 +259,7 @@
 		}
 
 		/**
-		 * A trigger name that doesn't start with the expected `eq_<table>_` prefix (the
-		 * truncation edge case — see EventBindingNaming::truncate()) is shown whole rather
-		 * than guessed at.
+		 * An unrecognized trigger name is shown whole rather than guessed at.
 		 * @return void
 		 */
 		public function testListBindingsFallsBackToWholeNameWhenPrefixIsMissing(): void {

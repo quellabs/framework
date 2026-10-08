@@ -59,7 +59,7 @@
 			self::assertCount(1, $statements);
 			$sql = $statements[0];
 
-			self::assertStringContainsString("CREATE TRIGGER [eq_users_audit_trigger]\nON [dbo].[users]\nAFTER UPDATE", $sql);
+			self::assertStringContainsString("CREATE TRIGGER [eq_7dfb4cf67742_audit_trigger]\nON [dbo].[users]\nAFTER UPDATE", $sql);
 			self::assertStringContainsString('IF NOT EXISTS (SELECT 1 FROM inserted)', $sql);
 			self::assertStringContainsString('IF UPDATE([id])', $sql);
 			self::assertStringContainsString('FROM deleted AS d', $sql);
