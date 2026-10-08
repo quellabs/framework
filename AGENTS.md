@@ -224,3 +224,17 @@ Before considering a task complete:
 - Consider edge cases and regression scenarios, not only the happy path.
 - Run the broader related test suite when the change can affect adjacent behavior.
 - Do not report completion while relevant tests are failing.
+
+## Architecture Decisions
+
+Before changing the architecture, inspect the relevant code and documentation for an established design. Follow an explicit user decision or an existing project convention without asking again.
+
+If the choice is still open and would materially affect public contracts, data storage or migration, module or service boundaries, major dependencies, deployment, or backward compatibility, present the viable options, recommend one with a brief reason, and ask the user to choose before implementing that part. Continue independent investigation or work that does not depend on the decision.
+
+Choose routine implementation details yourself when they fit the established design and do not materially constrain future work. Do not ask about naming, small refactors, local algorithms, or other readily reversible details unless they affect a material requirement.
+
+## ObjectQuel Pipeline
+
+Respect the existing boundary between parsing and execution. `packages/objectquel/src/ObjectQuel/Lexer.php`, `Parser.php`, and the `Rules/` classes recognize ObjectQuel syntax and produce the AST. Code under `packages/objectquel/src/Execution/` and the `QuelToSQL/` classes work from that AST to plan, generate SQL, and execute it. `QueryExecutor` may call the parser as an entry point; it must not implement or duplicate grammar rules, inspect query text to recognize syntax, or repair an AST because syntax was parsed elsewhere.
+
+For a language feature, trace the query from source text through the AST to SQL before editing. Put each change in the stage that owns it, and test the parsed AST separately from the resulting SQL or execution when both stages change. If a proposed solution needs to move syntax handling across this boundary, explain why and ask the user before implementing that design change.
