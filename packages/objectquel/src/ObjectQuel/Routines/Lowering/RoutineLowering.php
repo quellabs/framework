@@ -208,7 +208,6 @@
 		 * Engine-specific checks before lowering starts.
 		 * @param AstRoutineDefinition $routine The routine
 		 * @return void
-		 * @throws SemanticException
 		 */
 		protected function validate(AstRoutineDefinition $routine): void {
 		}
@@ -272,9 +271,11 @@
 		 */
 		protected function targetLoop(int $levels, bool $break): array {
 			$index = count($this->loopStack) - $levels;
+			
 			if ($levels < 1 || !isset($this->loopStack[$index])) {
 				throw new \LogicException('Loop jump was not validated before lowering.');
 			}
+			
 			$this->loopStack[$index][$break ? 'breakTarget' : 'continueTarget'] = true;
 			return $this->loopStack[$index];
 		}
@@ -286,9 +287,11 @@
 		 */
 		private function jumpLevels(AstBreak|AstContinue $statement): int {
 			$levels = $statement->getLevels();
+			
 			if (!is_int($levels) || $levels < 1) {
 				throw new \LogicException('Loop jump level was not validated before lowering.');
 			}
+			
 			return $levels;
 		}
 
@@ -539,12 +542,13 @@
 
 			return $flattened;
 		}
-
+		
 		/**
 		 * Maps an entity-row parameter field to its native SQL type, from the entity's mapped column.
 		 * @param string $entityClass Fully qualified entity class
 		 * @param string $property Mapped property name
 		 * @return string SQL type on the target engine
+		 * @throws EntityResolutionException
 		 */
 		protected function entityRowFieldSqlType(string $entityClass, string $property): string {
 			$definition = $this->statements->getFieldTypes()->columnType($entityClass, $property);
@@ -555,11 +559,12 @@
 
 			return $this->typeMapper->getTempTableColumnType($definition);
 		}
-
+		
 		/**
 		 * Records the declared type of every parameter and scalar local, for statements that read them.
 		 * @param AstRoutineDefinition $routine The routine
 		 * @return void
+		 * @throws EntityResolutionException
 		 */
 		private function declareVariableTypes(AstRoutineDefinition $routine): void {
 			$fieldTypes = $this->statements->getFieldTypes();

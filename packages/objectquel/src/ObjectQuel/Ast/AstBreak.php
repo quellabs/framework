@@ -6,6 +6,8 @@
 	 * `break` — leaves the requested number of enclosing loops.
 	 */
 	class AstBreak extends Ast {
+		
+		/** @var int|float Break level */
 		private int|float $levels;
 
 		/**

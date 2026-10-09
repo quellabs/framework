@@ -108,7 +108,6 @@
 		 * Resets the per-routine lowering state.
 		 * @param AstRoutineDefinition $routine The routine
 		 * @return void
-		 * @throws SemanticException
 		 */
 		protected function validate(AstRoutineDefinition $routine): void {
 			$this->cursorFields = [];
@@ -148,21 +147,13 @@
 		 */
 		protected function lowerAtomic(AstAtomic $atomic, int $depth): string {
 			$openCursors = $this->openLoopCursors();
+			
 			if ($openCursors !== []) {
 				throw new SemanticException("'atomic' inside 'foreach {$openCursors[0]}' isn't supported on {$this->engineName()} while its cursor is open.");
 			}
 
 			return $this->lowerAtomicBlock($atomic, $depth);
 		}
-
-		/**
-		 * Lowers an atomic block while enforcing cursor transaction restrictions.
-		 * @param AstAtomic $atomic The atomic block, outside any loop
-		 * @param int $depth Indentation depth
-		 * @return string
-		 * @throws SemanticException|EntityResolutionException|TransformationException|QuelException
-		 */
-		abstract protected function lowerAtomicBlock(AstAtomic $atomic, int $depth): string;
 
 		/**
 		 * Runs the query and counts its rows into a scratch variable, discarding them.
@@ -174,7 +165,16 @@
 			$this->usesDiscardVariable = true;
 			return $this->countInto('(' . $this->statements->retrieveSql($this->statements->prepareRetrieve($retrieve)) . ')');
 		}
-
+		
+		/**
+		 * Lowers an atomic block while enforcing cursor transaction restrictions.
+		 * @param AstAtomic $atomic The atomic block, outside any loop
+		 * @param int $depth Indentation depth
+		 * @return string
+		 * @throws SemanticException|EntityResolutionException|TransformationException|QuelException
+		 */
+		abstract protected function lowerAtomicBlock(AstAtomic $atomic, int $depth): string;
+		
 		/**
 		 * Compiles a row-count assignment for the target engine.
 		 * @param string $derivedTable Parenthesized SELECT

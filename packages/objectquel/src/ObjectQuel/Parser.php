@@ -168,19 +168,21 @@
 		}
 		
 		/**
+		 * Parse a compiler directive's value
 		 * @param string $directiveName Used only for the error message
 		 * @return bool|int|float|string
 		 * @throws LexerException|ParserException
 		 */
 		private function matchDirectiveValue(string $directiveName): bool|int|float|string {
-			if ($this->lexer->lookahead() === Token::Minus) {
+			if (
+				$this->lexer->lookahead() === Token::Minus ||
+				$this->lexer->lookahead() === Token::Number
+			) {
 				return SignedNumber::parse($this->lexer);
 			} elseif ($this->lexer->optionalMatch(Token::True)) {
 				return true;
 			} elseif ($this->lexer->optionalMatch(Token::False)) {
 				return false;
-			} elseif ($this->lexer->lookahead() === Token::Number) {
-				return SignedNumber::parse($this->lexer);
 			} elseif (($token = $this->lexer->optionalMatch(Token::Identifier)) !== null) {
 				return $token->getStringValue();
 			} else {

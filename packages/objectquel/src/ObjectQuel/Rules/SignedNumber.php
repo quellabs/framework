@@ -10,6 +10,7 @@
 	 * Reads a numeric literal with an optional minus sign.
 	 */
 	class SignedNumber {
+		
 		/**
 		 * @param Lexer $lexer Source of the numeric literal
 		 * @return int|float Parsed value

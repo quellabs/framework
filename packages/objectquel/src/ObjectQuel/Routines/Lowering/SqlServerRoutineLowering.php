@@ -2,6 +2,7 @@
 
 	namespace Quellabs\ObjectQuel\ObjectQuel\Routines\Lowering;
 
+	use Quellabs\ObjectQuel\Exception\TransformationException;
 	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
 	use Quellabs\ObjectQuel\Exception\QuelException;
 	use Quellabs\ObjectQuel\Exception\SemanticException;
@@ -45,6 +46,7 @@
 		private bool $isFunction;
 		private int $discardCursorCount;
 		private int $atomicBlockCount;
+		
 		/** @var array<string, string> Scratch variables used by atomic blocks */
 		private array $atomicVariables;
 		private string $atomicOwnerVariable;
@@ -81,11 +83,15 @@
 				throw new SemanticException("'{$routine->getName()}' returns a value, so SQL Server creates it as a FUNCTION, which can't run a procedure. Make it void to call a procedure as a statement.");
 			}
 		}
-
+		
 		/**
 		 * Renders the routine definition as SQL.
 		 * @param AstRoutineDefinition $routine The routine, with cursors prepared
 		 * @return list<string> The CREATE FUNCTION/PROCEDURE statement
+		 * @throws EntityResolutionException
+		 * @throws QuelException
+		 * @throws SemanticException
+		 * @throws TransformationException
 		 */
 		protected function render(AstRoutineDefinition $routine): array {
 			$body = $this->lowerBlock($routine->getBody(), 1);
@@ -152,23 +158,27 @@
 
 			return "CREATE FUNCTION {$name}({$list})\nRETURNS " . $this->sqlType($routine->getDeclaredReturnType());
 		}
-
+		
 		/**
 		 * Compiles a routine variable assignment.
 		 * @param string $name Variable name
 		 * @param AstInterface $value Value expression
 		 * @return string `SET @name = value;`
+		 * @throws EntityResolutionException
+		 * @throws QuelException
 		 * @throws SemanticException
 		 */
 		protected function assignment(string $name, AstInterface $value): string {
 			return 'SET ' . $this->variableName($name) . ' = ' . $this->assignedValue($name, $value) . ';';
 		}
-
+		
 		/**
 		 * Releases the cursors of enclosing loops before returning.
 		 * @param AstReturn $return The return
 		 * @param int $depth Indentation depth
 		 * @return string
+		 * @throws EntityResolutionException
+		 * @throws QuelException
 		 * @throws SemanticException
 		 */
 		protected function lowerReturn(AstReturn $return, int $depth): string {
@@ -195,6 +205,7 @@
 		 */
 		protected function lowerIf(AstIf $if, int $depth): string {
 			$elseBody = $if->getElseBody();
+			
 			$result = $this->line('IF ' . $this->statements->compileCondition($if->getCondition()), $depth)
 				. $this->block($this->lowerBlock($if->getThenBody(), $depth + 1), $depth, $elseBody === null);
 
@@ -204,17 +215,22 @@
 
 			return $result;
 		}
-
+		
 		/**
 		 * Compiles a while loop for the target database engine.
 		 * @param AstWhile $while The loop
 		 * @param int $depth Indentation depth
 		 * @return string
+		 * @throws EntityResolutionException
+		 * @throws QuelException
+		 * @throws SemanticException
+		 * @throws TransformationException
 		 */
 		protected function lowerWhile(AstWhile $while, int $depth): string {
 			$this->pushLoop(null);
 			$body = $this->lowerBlock($while->getBody(), $depth + 1);
 			$frame = $this->popLoop();
+			
 			return $this->nextLabel($frame, $depth)
 				. $this->line('WHILE ' . $this->statements->compileCondition($while->getCondition()), $depth)
 				. $this->block($body, $depth, true)
@@ -237,6 +253,7 @@
 				"FETCH NEXT FROM {$cursor} INTO " . implode(', ', $this->fieldVariables($cursorName)) . ';',
 				'IF @@FETCH_STATUS <> 0 BREAK;',
 			], $depth + 1);
+			
 			$this->pushLoop($cursorName);
 			$body = $this->lowerBlock($foreach->getBody(), $depth + 1);
 			$frame = $this->popLoop();
@@ -250,12 +267,16 @@
 				. $this->breakLabel($frame, $depth)
 				. $this->lines(["CLOSE {$cursor};", "DEALLOCATE {$cursor};"], $depth);
 		}
-
+		
 		/**
 		 * Uses a savepoint for caller-owned transactions and commits only transactions started here.
 		 * @param AstAtomic $atomic The atomic block
 		 * @param int $depth Indentation depth
 		 * @return string
+		 * @throws EntityResolutionException
+		 * @throws QuelException
+		 * @throws SemanticException
+		 * @throws TransformationException
 		 */
 		protected function lowerAtomicBlock(AstAtomic $atomic, int $depth): string {
 			$number = ++$this->atomicBlockCount;
@@ -330,10 +351,12 @@
 		 */
 		private function skippedCursorCleanup(int $levels, int $depth): string {
 			$result = '';
+			
 			foreach ($this->skippedCursors($levels) as $cursorName) {
 				$cursor = $this->cursorName($cursorName);
 				$result .= $this->lines(["CLOSE {$cursor};", "DEALLOCATE {$cursor};"], $depth);
 			}
+			
 			return $result;
 		}
 
@@ -399,11 +422,15 @@
 		protected function countInto(string $derivedTable): string {
 			return 'SELECT ' . self::DISCARD_VARIABLE . " = COUNT(*) FROM {$derivedTable} AS " . $this->quoter->quoteIdentifier('_discard') . ';';
 		}
-
+		
 		/**
 		 * Executes the complete retrieve while discarding each fetched row.
 		 * @param AstRetrieve $retrieve The retrieve
 		 * @return string T-SQL cursor statements
+		 * @throws EntityResolutionException
+		 * @throws QuelException
+		 * @throws SemanticException
+		 * @throws TransformationException
 		 */
 		protected function discardRetrieve(AstRetrieve $retrieve): string {
 			$sql = $this->statements->retrieveSql($this->statements->prepareRetrieve($retrieve));

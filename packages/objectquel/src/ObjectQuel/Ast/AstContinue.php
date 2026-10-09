@@ -6,8 +6,10 @@
 	 * `continue` — starts the next iteration of the requested enclosing loop.
 	 */
 	class AstContinue extends Ast {
+		
+		/** @var int|float Continue level */
 		private int|float $levels;
-
+		
 		/**
 		 * @param int|float $levels Parsed number of enclosing loops to continue
 		 */
