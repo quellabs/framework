@@ -28,6 +28,7 @@
 	 *   anywhere else in the routine.
 	 * - A function can't write tables or run a procedure, so a non-void routine that does is rejected.
 	 * - EXEC takes only literals and variables, so any other procedure argument is first stored in a local.
+	 * @phpstan-import-type LoopFrame from RoutineLowering
 	 */
 	class SqlServerRoutineLowering extends FetchIntoRoutineLowering {
 
@@ -173,7 +174,7 @@
 		protected function lowerReturn(AstReturn $return, int $depth): string {
 			$result = '';
 
-			foreach (array_reverse($this->openLoops) as $cursorName) {
+			foreach (array_reverse($this->openLoopCursors()) as $cursorName) {
 				$result .= $this->lines(['CLOSE ' . $this->cursorName($cursorName) . ';', 'DEALLOCATE ' . $this->cursorName($cursorName) . ';'], $depth);
 			}
 
@@ -211,8 +212,13 @@
 		 * @return string
 		 */
 		protected function lowerWhile(AstWhile $while, int $depth): string {
-			return $this->line('WHILE ' . $this->statements->compileCondition($while->getCondition()), $depth)
-				. $this->block($this->lowerBlock($while->getBody(), $depth + 1), $depth, true);
+			$this->pushLoop(null);
+			$body = $this->lowerBlock($while->getBody(), $depth + 1);
+			$frame = $this->popLoop();
+			return $this->nextLabel($frame, $depth)
+				. $this->line('WHILE ' . $this->statements->compileCondition($while->getCondition()), $depth)
+				. $this->block($body, $depth, true)
+				. $this->breakLabel($frame, $depth);
 		}
 
 		/**
@@ -231,11 +237,18 @@
 				"FETCH NEXT FROM {$cursor} INTO " . implode(', ', $this->fieldVariables($cursorName)) . ';',
 				'IF @@FETCH_STATUS <> 0 BREAK;',
 			], $depth + 1);
+			$this->pushLoop($cursorName);
+			$body = $this->lowerBlock($foreach->getBody(), $depth + 1);
+			$frame = $this->popLoop();
 
-			return $this->lines([$declaration, "OPEN {$cursor};", 'WHILE 1 = 1', 'BEGIN'], $depth)
+			return $this->lines([$declaration, "OPEN {$cursor};"], $depth)
+				. $this->nextLabel($frame, $depth)
+				. $this->lines(['WHILE 1 = 1', 'BEGIN'], $depth)
 				. $fetch
-				. $this->lowerLoopBody($foreach, $depth + 1)
-				. $this->lines(['END;', "CLOSE {$cursor};", "DEALLOCATE {$cursor};"], $depth);
+				. $body
+				. $this->line('END;', $depth)
+				. $this->breakLabel($frame, $depth)
+				. $this->lines(["CLOSE {$cursor};", "DEALLOCATE {$cursor};"], $depth);
 		}
 
 		/**
@@ -281,18 +294,72 @@
 
 		/**
 		 * Compiles a break statement for the target engine.
-		 * @return string
+		 * @param int $levels Number of loops to leave
+		 * @param int $depth Indentation depth
+		 * @return string Jump and skipped cursor cleanup
 		 */
-		protected function breakStatement(): string {
-			return 'BREAK;';
+		protected function breakStatement(int $levels, int $depth): string {
+			if ($levels === 1) {
+				return $this->line('BREAK;', $depth);
+			}
+
+			$target = $this->targetLoop($levels, true);
+			return $this->skippedCursorCleanup($levels, $depth) . $this->line('GOTO _break_' . substr($target['label'], 5) . ';', $depth);
 		}
 
 		/**
 		 * Jumps to `WHILE`; a cursor loop fetches its next row at the top of the body.
-		 * @return string
+		 * @param int $levels Number of loops to target
+		 * @param int $depth Indentation depth
+		 * @return string Jump and skipped cursor cleanup
 		 */
-		protected function continueStatement(): string {
-			return 'CONTINUE;';
+		protected function continueStatement(int $levels, int $depth): string {
+			if ($levels === 1) {
+				return $this->line('CONTINUE;', $depth);
+			}
+
+			$target = $this->targetLoop($levels, false);
+			return $this->skippedCursorCleanup($levels, $depth) . $this->line('GOTO _next_' . substr($target['label'], 5) . ';', $depth);
+		}
+
+		/**
+		 * Closes and deallocates cursors in loops skipped by a jump.
+		 * @param int $levels Level of the jump
+		 * @param int $depth Indentation depth
+		 * @return string Cursor cleanup statements
+		 */
+		private function skippedCursorCleanup(int $levels, int $depth): string {
+			$result = '';
+			foreach ($this->skippedCursors($levels) as $cursorName) {
+				$cursor = $this->cursorName($cursorName);
+				$result .= $this->lines(["CLOSE {$cursor};", "DEALLOCATE {$cursor};"], $depth);
+			}
+			return $result;
+		}
+
+		/**
+		 * Labels the entry to a targeted loop.
+		 * @param LoopFrame $frame Loop frame
+		 * @param int $depth Indentation depth
+		 * @return string Label or empty string
+		 */
+		private function nextLabel(array $frame, int $depth): string {
+			return $frame['continueTarget'] ? $this->line('_next_' . substr($frame['label'], 5) . ':', $depth) : '';
+		}
+
+		/**
+		 * Labels the exit from a targeted loop before its cursor cleanup.
+		 * @param LoopFrame $frame Loop frame
+		 * @param int $depth Indentation depth
+		 * @return string Label and no-op, or empty string
+		 */
+		private function breakLabel(array $frame, int $depth): string {
+			if (!$frame['breakTarget']) {
+				return '';
+			}
+
+			$this->usesNoopVariable = true;
+			return $this->lines(['_break_' . substr($frame['label'], 5) . ':', 'SET ' . self::NOOP_VARIABLE . ' = 0;'], $depth);
 		}
 
 		/**

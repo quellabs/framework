@@ -436,6 +436,61 @@
 		}
 
 		/**
+		 * Outer-loop jumps release skipped cursors and place labels before target cleanup.
+		 * @return void
+		 */
+		public function testMultiLevelJumpsCloseSkippedCursors(): void {
+			$sql = $this->compile('
+				range of u is UserEntity
+				define function f (integer n) void {
+					cursor a = retrieve (u.id)
+					cursor b = retrieve (u.id)
+					while (n > 0) {
+						n = n - 1
+						foreach (a as rowA) {
+							foreach (b as rowB) {
+								if (rowB.id = n) { continue 3 }
+								break 3
+							}
+						}
+					}
+				}
+			');
+
+			self::assertMatchesRegularExpression('/CLOSE _cur_b;\s+DEALLOCATE _cur_b;\s+CLOSE _cur_a;\s+DEALLOCATE _cur_a;\s+GOTO _next_1;/', $sql);
+			self::assertMatchesRegularExpression('/CLOSE _cur_b;\s+DEALLOCATE _cur_b;\s+CLOSE _cur_a;\s+DEALLOCATE _cur_a;\s+GOTO _break_1;/', $sql);
+			self::assertStringContainsString("_next_1:\n\tWHILE", $sql);
+			self::assertStringContainsString("_break_1:\n\tSET @_noop = 0;", $sql);
+			self::assertStringContainsString('DECLARE @_noop BIT;', $sql);
+			self::assertStringNotContainsString('_next_2:', $sql);
+		}
+
+		/**
+		 * A targeted foreach restarts after OPEN and breaks before its own cleanup.
+		 * @return void
+		 */
+		public function testMultiLevelJumpTargetsOuterForeach(): void {
+			$sql = $this->compile('
+				range of u is UserEntity
+				define function f () void {
+					cursor a = retrieve (u.id)
+					cursor b = retrieve (u.id)
+					foreach (a as rowA) {
+						foreach (b as rowB) {
+							continue 2
+							break 2
+					}
+					}
+				}
+			');
+
+			self::assertMatchesRegularExpression('/OPEN _cur_a;\s+_next_1:\s+WHILE 1 = 1/', $sql);
+			self::assertMatchesRegularExpression('/CLOSE _cur_b;\s+DEALLOCATE _cur_b;\s+GOTO _next_1;/', $sql);
+			self::assertMatchesRegularExpression('/CLOSE _cur_b;\s+DEALLOCATE _cur_b;\s+GOTO _break_1;/', $sql);
+			self::assertMatchesRegularExpression('/_break_1:\s+SET @_noop = 0;\s+CLOSE _cur_a;\s+DEALLOCATE _cur_a;/', $sql);
+		}
+
+		/**
 		 * Two locals of the same name in sibling `if`/`else` branches are block-scoped in EQUEL but
 		 * compile to one flat DECLARE section with distinct generated names.
 		 * @return void

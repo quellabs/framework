@@ -147,8 +147,9 @@
 		 * @throws SemanticException|EntityResolutionException|TransformationException|QuelException
 		 */
 		protected function lowerAtomic(AstAtomic $atomic, int $depth): string {
-			if (!empty($this->openLoops)) {
-				throw new SemanticException("'atomic' inside 'foreach {$this->openLoops[0]}' isn't supported on {$this->engineName()} while its cursor is open.");
+			$openCursors = $this->openLoopCursors();
+			if ($openCursors !== []) {
+				throw new SemanticException("'atomic' inside 'foreach {$openCursors[0]}' isn't supported on {$this->engineName()} while its cursor is open.");
 			}
 
 			return $this->lowerAtomicBlock($atomic, $depth);

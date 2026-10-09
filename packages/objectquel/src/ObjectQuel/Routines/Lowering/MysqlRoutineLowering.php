@@ -36,11 +36,6 @@
 		private const string ATOMIC_LABEL = '_equel_atomic';
 		private const string ROUTINE_LABEL = '_equel_routine';
 
-		private int $loopCount;
-
-		/** @var string[] Labels of the loops enclosing the statement being lowered, outermost first */
-		private array $loopLabels;
-
 		/** Collation of string variables and return values, or null for the database default */
 		private ?string $collation;
 
@@ -77,8 +72,6 @@
 		 */
 		protected function validate(AstRoutineDefinition $routine): void {
 			parent::validate($routine);
-			$this->loopCount = 0;
-			$this->loopLabels = [];
 
 			if (!$routine->returnsNoValue()) {
 				$this->assertNotRecursive($routine);
@@ -254,10 +247,9 @@
 		 * @return string
 		 */
 		protected function lowerWhile(AstWhile $while, int $depth): string {
-			$label = $this->nextLoopLabel();
-			$this->loopLabels[] = $label;
+			$label = $this->pushLoop(null);
 			$body = $this->statementList($this->lowerBlock($while->getBody(), $depth + 1), $depth + 1);
-			array_pop($this->loopLabels);
+			$this->popLoop();
 
 			return $this->line("{$label}: WHILE " . $this->statements->compileCondition($while->getCondition()) . ' DO', $depth)
 				. $body
@@ -273,7 +265,7 @@
 		protected function lowerForeach(AstForeach $foreach, int $depth): string {
 			$cursorName = $foreach->getCursorName();
 			$cursor = $this->cursorName($cursorName);
-			$label = $this->nextLoopLabel();
+			$label = $this->pushLoop($cursorName);
 
 			// Reset before each FETCH: an inner loop, or anything else raising NOT FOUND, may have set it
 			$fetch = $this->lines([
@@ -282,22 +274,13 @@
 				'IF ' . self::DONE_VARIABLE . " THEN LEAVE {$label}; END IF;",
 			], $depth + 1);
 
-			$this->loopLabels[] = $label;
-			$body = $this->lowerLoopBody($foreach, $depth + 1);
-			array_pop($this->loopLabels);
+			$body = $this->lowerBlock($foreach->getBody(), $depth + 1);
+			$this->popLoop();
 
 			return $this->lines(["OPEN {$cursor};", "{$label}: LOOP"], $depth)
 				. $fetch
 				. $body
 				. $this->lines(["END LOOP {$label};", "CLOSE {$cursor};"], $depth);
-		}
-
-		/**
-		 * Labels are numbered: MySQL limits them to 16 characters.
-		 * @return string A label no other loop in the routine uses
-		 */
-		private function nextLoopLabel(): string {
-			return '_loop' . (++$this->loopCount);
 		}
 
 		/**
@@ -355,18 +338,32 @@
 
 		/**
 		 * A foreach's CLOSE follows its loop, so leaving it closes the cursor too.
-		 * @return string
+		 * @param int $levels Number of loops to leave
+		 * @param int $depth Indentation depth
+		 * @return string Jump and skipped cursor cleanup
 		 */
-		protected function breakStatement(): string {
-			return 'LEAVE ' . end($this->loopLabels) . ';';
+		protected function breakStatement(int $levels, int $depth): string {
+			$target = $this->targetLoop($levels, true);
+			$result = '';
+			foreach ($this->skippedCursors($levels) as $cursorName) {
+				$result .= $this->line('CLOSE ' . $this->cursorName($cursorName) . ';', $depth);
+			}
+			return $result . $this->line('LEAVE ' . $target['label'] . ';', $depth);
 		}
 
 		/**
 		 * A foreach's ITERATE re-runs the `_done` reset and FETCH at the top of the loop.
-		 * @return string
+		 * @param int $levels Number of loops to target
+		 * @param int $depth Indentation depth
+		 * @return string Jump and skipped cursor cleanup
 		 */
-		protected function continueStatement(): string {
-			return 'ITERATE ' . end($this->loopLabels) . ';';
+		protected function continueStatement(int $levels, int $depth): string {
+			$target = $this->targetLoop($levels, false);
+			$result = '';
+			foreach ($this->skippedCursors($levels) as $cursorName) {
+				$result .= $this->line('CLOSE ' . $this->cursorName($cursorName) . ';', $depth);
+			}
+			return $result . $this->line('ITERATE ' . $target['label'] . ';', $depth);
 		}
 
 		/**

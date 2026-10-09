@@ -157,8 +157,12 @@
 		 * @return string
 		 */
 		protected function lowerWhile(AstWhile $while, int $depth): string {
-			return $this->line('WHILE ' . $this->statements->compileCondition($while->getCondition()) . ' LOOP', $depth)
-				. $this->lowerBlock($while->getBody(), $depth + 1)
+			$label = $this->pushLoop(null);
+			$body = $this->lowerBlock($while->getBody(), $depth + 1);
+			$frame = $this->popLoop();
+			return ($frame['breakTarget'] || $frame['continueTarget'] ? $this->line("<<{$label}>>", $depth) : '')
+				. $this->line('WHILE ' . $this->statements->compileCondition($while->getCondition()) . ' LOOP', $depth)
+				. $body
 				. $this->line('END LOOP;', $depth);
 		}
 
@@ -171,9 +175,12 @@
 		protected function lowerForeach(AstForeach $foreach, int $depth): string {
 			$cursorName = $foreach->getCursorName();
 			$row = $this->quoter->quoteIdentifier(RoutineReferenceSql::cursorRowVariable($cursorName));
-			$body = $this->lowerLoopBody($foreach, $depth + 1);
+			$label = $this->pushLoop($cursorName);
+			$body = $this->lowerBlock($foreach->getBody(), $depth + 1);
+			$frame = $this->popLoop();
 
-			return $this->line("FOR {$row} IN " . $this->statements->retrieveSql($this->cursorQueries[$cursorName]) . ' LOOP', $depth)
+			return ($frame['breakTarget'] || $frame['continueTarget'] ? $this->line("<<{$label}>>", $depth) : '')
+				. $this->line("FOR {$row} IN " . $this->statements->retrieveSql($this->cursorQueries[$cursorName]) . ' LOOP', $depth)
 				. $body
 				. $this->line('END LOOP;', $depth);
 		}
@@ -204,18 +211,30 @@
 
 		/**
 		 * An unlabelled EXIT leaves the innermost loop, never the `_routine` block.
-		 * @return string
+		 * @param int $levels Number of loops to leave
+		 * @param int $depth Indentation depth
+		 * @return string Jump statement
 		 */
-		protected function breakStatement(): string {
-			return 'EXIT;';
+		protected function breakStatement(int $levels, int $depth): string {
+			if ($levels === 1) {
+				return $this->line('EXIT;', $depth);
+			}
+
+			return $this->line('EXIT ' . $this->targetLoop($levels, true)['label'] . ';', $depth);
 		}
 
 		/**
 		 * Compiles a continue statement for the target engine.
-		 * @return string
+		 * @param int $levels Number of loops to target
+		 * @param int $depth Indentation depth
+		 * @return string Jump statement
 		 */
-		protected function continueStatement(): string {
-			return 'CONTINUE;';
+		protected function continueStatement(int $levels, int $depth): string {
+			if ($levels === 1) {
+				return $this->line('CONTINUE;', $depth);
+			}
+
+			return $this->line('CONTINUE ' . $this->targetLoop($levels, false)['label'] . ';', $depth);
 		}
 
 		/**

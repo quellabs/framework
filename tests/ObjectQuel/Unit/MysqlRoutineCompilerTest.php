@@ -520,6 +520,60 @@
 		}
 
 		/**
+		 * Multi-level jumps close skipped cursors before targeting the outer loop.
+		 * @return void
+		 */
+		public function testMultiLevelJumpsCloseSkippedCursors(): void {
+			$source = '
+				range of u is UserEntity
+				define function f (integer n) void {
+					cursor a = retrieve (u.id) where u.id > 0
+					cursor b = retrieve (u.id) where u.id > 1
+					while (n > 0) {
+						n = n - 1
+						foreach (a as rowA) {
+							foreach (b as rowB) {
+								if (rowB.id = n) { continue 3 }
+								break 3
+						}
+						}
+					}
+				}
+			';
+
+			foreach (['mysql', 'mariadb'] as $engine) {
+				$sql = $this->compile($source, $engine)[0];
+				self::assertMatchesRegularExpression('/CLOSE _cur_b;\s+CLOSE _cur_a;\s+ITERATE _loop1;/', $sql);
+				self::assertMatchesRegularExpression('/CLOSE _cur_b;\s+CLOSE _cur_a;\s+LEAVE _loop1;/', $sql);
+				self::assertStringContainsString('END LOOP _loop3;' . "\n\t\t\tCLOSE _cur_b;", $sql);
+			}
+		}
+
+		/**
+		 * A two-level jump to a foreach keeps that cursor open and closes its inner cursor.
+		 * @return void
+		 */
+		public function testMultiLevelJumpTargetsOuterForeach(): void {
+			$sql = $this->compile('
+				range of u is UserEntity
+				define function f () void {
+					cursor a = retrieve (u.id)
+					cursor b = retrieve (u.id)
+					foreach (a as rowA) {
+						foreach (b as rowB) {
+							continue 2
+							break 2
+						}
+					}
+				}
+			')[0];
+
+			self::assertMatchesRegularExpression('/CLOSE _cur_b;\s+ITERATE _loop1;/', $sql);
+			self::assertMatchesRegularExpression('/CLOSE _cur_b;\s+LEAVE _loop1;/', $sql);
+			self::assertStringContainsString("END LOOP _loop1;\n\tCLOSE _cur_a;", $sql);
+		}
+
+		/**
 		 * continue in a nested loop names the inner loop's label, break the outer one's.
 		 * @return void
 		 */
