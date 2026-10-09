@@ -3,26 +3,29 @@
 	namespace Quellabs\Recommender;
 	
 	use Quellabs\Recommender\Config\RecommendationConfig;
+	use Quellabs\Recommender\Internal\Identifier;
+	use Quellabs\Recommender\Internal\ImplicitRating;
+	use Quellabs\Recommender\Internal\RatingRule;
 	
 	/**
 	 * Holds the in-memory rating state for an anonymous visitor (no member_id).
-	 * Replaces the $vogoo_session global from the original Vogoo codebase.
 	 *
-	 * The caller is responsible for persisting and restoring this object across
-	 * requests (e.g. via session serialization). The recommender classes receive
-	 * it as a method argument rather than reading a global.
+	 * The caller persists and restores this object across requests, for example
+	 * through session serialization. Recommender classes receive it as an argument.
 	 *
 	 * @phpstan-type RatingEntry array{product_id: int, rating: float, category: int}
 	 * @phpstan-type RatingList array<int, RatingEntry>
 	 */
 	class VisitorContext {
 		
-		/** @var RatingList */
+		/** @var RatingList Ratings held for this visitor */
 		private array $ratings = [];
+		
+		/** @var RecommendationConfig Recommendation settings used to resolve categories */
 		private readonly RecommendationConfig $config;
 		
 		/**
-		 * VisitorContext constructor
+		 * Build an empty visitor context.
 		 * @param RecommendationConfig $config The recommendation configuration
 		 */
 		public function __construct(RecommendationConfig $config) {
@@ -31,54 +34,89 @@
 		
 		/**
 		 * Record or update a rating for a product in the given category.
-		 * @param int $productId The product ID
-		 * @param float $rating Use RecommendationConfig::getNotInterested() for "not interested"
+		 * @param int $product The product ID
+		 * @param float $rating Rating in [0.0, 1.0], or the not-interested sentinel
 		 * @param int|null $category Defaults to the configured default category
 		 * @return void
+		 * @throws \InvalidArgumentException When the product ID or rating is invalid
 		 */
-		public function setRating(int $productId, float $rating, ?int $category = null): void {
-			if ($productId < 0 || !is_finite($rating) || ($rating < 0.0 && $rating !== $this->config->getNotInterested()) || $rating > 1.0) {
-				throw new \InvalidArgumentException('Invalid visitor rating or product ID.');
-			}
-			$cat = $this->config->resolveCategory($category);
+		public function setRating(int $product, float $rating, ?int $category = null): void {
+			Identifier::assertId($product, 'Product ID');
 			
-			foreach ($this->ratings as &$entry) {
-				if ($entry['product_id'] === $productId && $entry['category'] === $cat) {
-					$entry['rating'] = $rating;
+			if (!RatingRule::isValid($rating, RecommendationConfig::NOT_INTERESTED)) {
+				throw new \InvalidArgumentException("Rating must be in [0.0, 1.0] or the not-interested sentinel, got {$rating}.");
+			}
+			
+			$resolvedCategory = $this->config->resolveCategory($category);
+			
+			foreach ($this->ratings as $index => $entry) {
+				if ($entry['product_id'] === $product && $entry['category'] === $resolvedCategory) {
+					$this->ratings[$index]['rating'] = $rating;
 					return;
 				}
 			}
 			
 			$this->ratings[] = [
-				'product_id' => $productId,
+				'product_id' => $product,
 				'rating'     => $rating,
-				'category'   => $cat
+				'category'   => $resolvedCategory,
 			];
 		}
 		
 		/**
-		 * Mark a product as "not interested" for the given category.
-		 * @param int $productId The product ID
+		 * Mark a product as not interested for the given category.
+		 * @param int $product The product ID
 		 * @param int|null $category Defaults to the configured default category
 		 * @return void
+		 * @throws \InvalidArgumentException When the product ID is outside the unsigned 32-bit range
 		 */
-		public function setNotInterested(int $productId, ?int $category = null): void {
-			$this->setRating($productId, $this->config->getNotInterested(), $category);
+		public function setNotInterested(int $product, ?int $category = null): void {
+			$this->setRating($product, RecommendationConfig::NOT_INTERESTED, $category);
 		}
 		
 		/**
-		 * Remove a rating for a product in the given category.
-		 * @param int $productId The product ID
+		 * Record a purchase as a rating of 1.0 for a product in the given category.
+		 * @param int $product The product ID
 		 * @param int|null $category Defaults to the configured default category
 		 * @return void
+		 * @throws \InvalidArgumentException When the product ID is outside the unsigned 32-bit range
 		 */
-		public function removeRating(int $productId, ?int $category = null): void {
-			$cat = $this->config->resolveCategory($category);
+		public function recordPurchase(int $product, ?int $category = null): void {
+			$this->setRating($product, ImplicitRating::PURCHASE, $category);
+		}
+		
+		/**
+		 * Record a click as a rating of 0.7, or raise an existing genuine rating by 0.01 up to 1.0.
+		 * @param int $product The product ID
+		 * @param int|null $category Defaults to the configured default category
+		 * @return void
+		 * @throws \InvalidArgumentException When the product ID is outside the unsigned 32-bit range
+		 */
+		public function recordClick(int $product, ?int $category = null): void {
+			Identifier::assertId($product, 'Product ID');
+			$resolvedCategory = $this->config->resolveCategory($category);
+			$existing = $this->genuineRating($product, $resolvedCategory);
+			
+			if ($existing === null || $existing < ImplicitRating::PURCHASE) {
+				$this->setRating($product, ImplicitRating::afterClick($existing), $resolvedCategory);
+			}
+		}
+		
+		/**
+		 * Delete a rating for a product in the given category.
+		 * @param int $product The product ID
+		 * @param int|null $category Defaults to the configured default category
+		 * @return void
+		 * @throws \InvalidArgumentException When the product ID is outside the unsigned 32-bit range
+		 */
+		public function deleteRating(int $product, ?int $category = null): void {
+			Identifier::assertId($product, 'Product ID');
+			$resolvedCategory = $this->config->resolveCategory($category);
 			
 			$this->ratings = array_values(
 				array_filter(
 					$this->ratings,
-					fn($e) => !($e['product_id'] === $productId && $e['category'] === $cat)
+					fn($entry) => !($entry['product_id'] === $product && $entry['category'] === $resolvedCategory)
 				)
 			);
 		}
@@ -86,14 +124,35 @@
 		/**
 		 * Return all ratings for the given category.
 		 * @param int|null $category Defaults to the configured default category
-		 * @return RatingList
+		 * @return array<int, VisitorRating>
 		 */
-		public function getRatings(?int $category = null): array {
-			$cat = $this->config->resolveCategory($category);
+		public function ratings(?int $category = null): array {
+			$resolvedCategory = $this->config->resolveCategory($category);
+			$ratings = [];
 			
-			return array_values(
-				array_filter($this->ratings, fn($e) => $e['category'] === $cat)
-			);
+			foreach ($this->ratings as $entry) {
+				if ($entry['category'] === $resolvedCategory) {
+					$ratings[] = new VisitorRating($entry['product_id'], $entry['rating']);
+				}
+			}
+			
+			return $ratings;
+		}
+		
+		/**
+		 * Return the genuine rating stored for a product in the given category, or null when there is none.
+		 * @param int $productId The product ID
+		 * @param int $category Already-resolved category
+		 * @return float|null
+		 */
+		private function genuineRating(int $productId, int $category): ?float {
+			foreach ($this->ratings as $entry) {
+				if ($entry['product_id'] === $productId && $entry['category'] === $category && $entry['rating'] >= 0.0) {
+					return $entry['rating'];
+				}
+			}
+			
+			return null;
 		}
 		
 		/**
@@ -101,16 +160,16 @@
 		 * @param int|null $category Defaults to the configured default category
 		 * @return array<int, int>
 		 */
-		public function getRatedProductIds(?int $category = null): array {
-			return array_column($this->getRatings($category), 'product_id');
+		public function ratedProductIds(?int $category = null): array {
+			return array_map(fn(VisitorRating $rating) => $rating->productId, $this->ratings($category));
 		}
 		
 		/**
-		 * Whether the visitor has no ratings in the given category.
+		 * Check whether the visitor has no ratings in the given category.
 		 * @param int|null $category Defaults to the configured default category
 		 * @return bool
 		 */
 		public function isEmpty(?int $category = null): bool {
-			return empty($this->getRatings($category));
+			return empty($this->ratings($category));
 		}
 	}

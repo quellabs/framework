@@ -4,48 +4,58 @@
 	
 	use Cake\Database\Connection;
 	use Quellabs\Recommender\Config\RecommendationConfig;
+	use Quellabs\Recommender\Internal\Identifier;
+	use Quellabs\Recommender\Internal\ImplicitRating;
+	use Quellabs\Recommender\MemberId;
+	use Quellabs\Recommender\ProductId;
+	use Quellabs\Recommender\Internal\Links\LinkUpdater;
+	use Quellabs\Recommender\Internal\RatingRule;
 	
 	/**
-	 * Core ratings engine. Handles reading and writing member ratings, and
-	 * maintains the vogoo_links table via LinkUpdater when incremental updates
-	 * are enabled.
+	 * Core ratings engine. Reads and writes member ratings, and maintains the
+	 * vogoo_links table via LinkUpdater when incremental updates are enabled.
 	 *
 	 * Ratings are normalised floats in [0.0, 1.0]. The special value
-	 * RecommendationConfig::getNotInterested() (-1.0) marks explicit disinterest.
+	 * RecommendationConfig::NOT_INTERESTED (-1.0) marks explicit disinterest.
 	 *
-	 * All methods throw on database failure (CakePHP 5 execute() throws rather
-	 * than returning false). Wrap calls in try/catch if you need to handle errors.
+	 * Methods throw on database failure (CakePHP 5 execute() throws rather
+	 * than returning false).
 	 */
 	readonly class RecommendationEngine {
 		
+		/** @var Connection Database connection */
+		private Connection $connection;
+		
+		/** @var RecommendationConfig Recommendation settings */
+		private RecommendationConfig $config;
+		
+		/** @var LinkUpdater Maintains the vogoo_links table incrementally */
 		private LinkUpdater $linkUpdater;
 		
 		/**
-		 * RecommendationEngine constructor
+		 * Build the engine and its collaborators.
 		 * @param Connection $connection The CakePHP database connection
 		 * @param RecommendationConfig $config The recommendation configuration
 		 */
-		public function __construct(
-			private Connection $connection,
-			private RecommendationConfig $config,
-		) {
+		public function __construct(Connection $connection, RecommendationConfig $config) {
+			$this->connection = $connection;
+			$this->config = $config;
 			$this->linkUpdater = new LinkUpdater($connection, $config);
 		}
 		
-		// -------------------------------------------------------------------------
-		// Members
-		// -------------------------------------------------------------------------
+		// ----- Members -----
 		
 		/**
 		 * Return the number of ratings a member has given.
-		 * @param int $memberId The member ID
-		 * @param bool $realRatings When true, count genuine ratings (>= 0.0)
-		 * @param bool $notInterested When true, count "not interested" ratings instead
+		 * @param int $member The member ID
+		 * @param RatingKind $kind Which ratings to count
 		 * @param int|null $category Defaults to configured default
 		 * @return int Number of matching ratings
+		 * @throws \InvalidArgumentException When the member ID is outside the unsigned 32-bit range
 		 */
-		public function memberNumRatings(int $memberId, bool $realRatings = true, bool $notInterested = false, ?int $category = null): int {
-			$cat = $this->config->resolveCategory($category);
+		public function memberNumRatings(int $member, RatingKind $kind = RatingKind::Genuine, ?int $category = null): int {
+			Identifier::assertId($member, 'Member ID');
+			$resolvedCategory = $this->config->resolveCategory($category);
 			
 			$sql = '
 				SELECT
@@ -56,62 +66,54 @@
 			';
 			
 			$params = [
-				'member_id' => $memberId,
-				'category'  => $cat
+				'member_id' => $member,
+				'category'  => $resolvedCategory,
 			];
 			
-			if ($realRatings) {
-				if (!$notInterested) {
-					$sql .= ' AND `rating` >= 0.0';
-				}
-			} else {
-				$sql .= ' AND `rating` = :not_interested';
-				$params['not_interested'] = $this->config->getNotInterested();
-			}
+			$sql .= $this->ratingFilterSql($kind, $params);
 			
 			$row = $this->connection->execute($sql, $params)->fetchAssoc();
 			return (int)$row['number_of_ratings'];
 		}
 		
 		/**
-		 * Return the average rating this member has given.
-		 * Returns 0.0 when the member has no ratings.
-		 * @param int $memberId The member ID
+		 * Return the average genuine rating a member has given, or null when the member has none.
+		 * @param int $member The member ID
 		 * @param int|null $category Defaults to configured default
-		 * @return float Average rating, or 0.0 when the member has none
+		 * @return float|null Average rating, or null when the member has none
+		 * @throws \InvalidArgumentException When the member ID is outside the unsigned 32-bit range
 		 */
-		public function memberAverageRating(int $memberId, ?int $category = null): float {
-			$cat = $this->config->resolveCategory($category);
+		public function memberAverageRating(int $member, ?int $category = null): ?float {
+			Identifier::assertId($member, 'Member ID');
+			$resolvedCategory = $this->config->resolveCategory($category);
 			
 			$row = $this->connection->execute('
 				SELECT
 					AVG(`rating`) AS average
 				FROM `vogoo_ratings`
-				WHERE `member_id` = :member_id
-				AND `category` = :category
-				AND `rating` >= 0.0
+				WHERE `member_id` = :member_id AND
+				      `category` = :category AND
+				      `rating` >= 0.0
 			', [
-				'member_id' => $memberId,
-				'category'  => $cat
+				'member_id' => $member,
+				'category'  => $resolvedCategory,
 			])->fetchAssoc();
 			
-			return $row['average'] !== null ? (float)$row['average'] : 0.0;
+			return $row['average'] !== null ? (float)$row['average'] : null;
 		}
 		
 		/**
-		 * Return all ratings for a member as an array of
-		 * ['product_id' => int, 'rating' => float, 'ts' => string].
-		 * @param int $memberId The member ID
-		 * @param bool $orderByDate Order by timestamp
-		 * @param bool $orderByRating Order by rating value
-		 * @param bool $ascending Sort direction
-		 * @param bool $realRatings Include genuine ratings
-		 * @param bool $notInterested Include "not interested" ratings
+		 * Return all ratings a member has given.
+		 * @param int $member The member ID
+		 * @param RatingKind $kind Which ratings to return
+		 * @param RatingOrder|null $order Sort order, or null for storage order
 		 * @param int|null $category Defaults to configured default
-		 * @return array<int, array{product_id: int, rating: float, ts: string}>
+		 * @return array<int, Rating>
+		 * @throws \InvalidArgumentException When the member ID is outside the unsigned 32-bit range
 		 */
-		public function memberRatings(int $memberId, bool $orderByDate = false, bool $orderByRating = false, bool $ascending = true, bool $realRatings = true, bool $notInterested = false, ?int $category = null): array {
-			$cat = $this->config->resolveCategory($category);
+		public function memberRatings(int $member, RatingKind $kind = RatingKind::Genuine, ?RatingOrder $order = null, ?int $category = null): array {
+			Identifier::assertId($member, 'Member ID');
+			$resolvedCategory = $this->config->resolveCategory($category);
 			
 			$sql = '
 				SELECT
@@ -124,80 +126,62 @@
 			';
 			
 			$params = [
-				'member_id' => $memberId,
-				'category'  => $cat
+				'member_id' => $member,
+				'category'  => $resolvedCategory,
 			];
 			
-			if ($realRatings) {
-				if (!$notInterested) {
-					$sql .= ' AND `rating` >= 0.0';
-				}
-			} else {
-				$sql .= ' AND `rating` = :not_interested';
-				$params['not_interested'] = $this->config->getNotInterested();
+			$sql .= $this->ratingFilterSql($kind, $params);
+			$sql .= $this->orderSql($order);
+			
+			$rows = $this->connection->execute($sql, $params)->fetchAll('assoc');
+			$ratings = [];
+			
+			foreach ($rows as $row) {
+				$typed = $this->typedRatingRow($row, 'product_id');
+				$ratings[] = new Rating($member, $typed['id'], $typed['rating'], $typed['ts']);
 			}
 			
-			if ($orderByDate || $orderByRating) {
-				$sql .= ' ORDER BY ' . ($orderByDate ? '`ts`' : '`rating`');
-				$sql .= $ascending ? ' ASC' : ' DESC';
-			}
-			
-			return $this->connection->execute($sql, $params)->fetchAll('assoc');
+			return $ratings;
 		}
 		
 		/**
-		 * Delete all ratings for a member. When incremental link updates are
-		 * enabled, each rating is removed via deleteRating() to keep vogoo_links
-		 * consistent.
-		 * @param int $memberId The member ID
+		 * Delete a member's ratings in one category. When incremental link updates are enabled,
+		 * each rating is removed via deleteRating() to keep vogoo_links consistent.
+		 * @param int $member The member ID
 		 * @param int|null $category Defaults to configured default
 		 * @return void
-		 * @throws \Exception
+		 * @throws \InvalidArgumentException When the member ID is outside the unsigned 32-bit range
+		 * @throws \Exception When a database statement fails
 		 */
-		public function deleteMember(int $memberId, ?int $category = null): void {
-			$cat = $this->config->resolveCategory($category);
-			
-			if ($this->config->isDirectLinks() || $this->config->isDirectSlope()) {
-				$rows = $this->connection->execute('
-					SELECT `product_id`
-					FROM `vogoo_ratings`
-					WHERE `member_id` = :member_id AND
-					      `category` = :category
-				', [
-					'member_id' => $memberId,
-					'category'  => $cat
-				])->fetchAll('assoc');
-				
-				foreach ($rows as $row) {
-					$this->deleteRating($memberId, (int)$row['product_id'], $cat);
-				}
-				
-				return;
-			}
-			
-			$this->connection->execute('
-				DELETE
-				FROM `vogoo_ratings`
-				WHERE `member_id` = :member_id AND
-				      `category` = :category
-			', [
-				'member_id' => $memberId,
-				'category'  => $cat
-			]);
+		public function deleteMember(int $member, ?int $category = null): void {
+			Identifier::assertId($member, 'Member ID');
+			$this->deleteRatingsWhere('member_id', $member, $this->config->resolveCategory($category));
 		}
 		
-		// -------------------------------------------------------------------------
-		// Products
-		// -------------------------------------------------------------------------
+		/**
+		 * Erase a member's ratings in every category. Evaluation history is erased separately by EvaluationRecorder.
+		 * @param int $member The member ID
+		 * @return void
+		 * @throws \InvalidArgumentException When the member ID is outside the unsigned 32-bit range
+		 * @throws \Exception When a database statement fails
+		 */
+		public function deleteMemberData(int $member): void {
+			Identifier::assertId($member, 'Member ID');
+			$this->deleteRatingsWhere('member_id', $member, null);
+		}
+		
+		// ----- Products -----
 		
 		/**
 		 * Return the number of genuine ratings a product has received.
-		 * @param int $productId The product ID
+		 * @param int $product The product ID
 		 * @param int|null $category Defaults to configured default
 		 * @return int Number of matching ratings
+		 * @throws \InvalidArgumentException When the product ID is outside the unsigned 32-bit range
 		 */
-		public function productNumRatings(int $productId, ?int $category = null): int {
-			$cat = $this->config->resolveCategory($category);
+		public function productNumRatings(int $product, ?int $category = null): int {
+			Identifier::assertId($product, 'Product ID');
+			$resolvedCategory = $this->config->resolveCategory($category);
 			
 			$row = $this->connection->execute('
 				SELECT
@@ -207,22 +191,23 @@
 				      `rating` >= 0.0 AND
 				      `category` = :category
 			', [
-				'product_id' => $productId,
-				'category'   => $cat
+				'product_id' => $product,
+				'category'   => $resolvedCategory,
 			])->fetchAssoc();
 			
 			return (int)$row['number_of_ratings'];
 		}
 		
 		/**
-		 * Return the average genuine rating for a product. Returns 0.0 when no
-		 * ratings exist.
-		 * @param int $productId The product ID
+		 * Return the average genuine rating for a product, or null when no ratings exist.
+		 * @param int $product The product ID
 		 * @param int|null $category Defaults to configured default
-		 * @return float Average rating, or 0.0 when the product has none
+		 * @return float|null Average rating, or null when the product has none
+		 * @throws \InvalidArgumentException When the product ID is outside the unsigned 32-bit range
 		 */
-		public function productAverageRating(int $productId, ?int $category = null): float {
-			$cat = $this->config->resolveCategory($category);
+		public function productAverageRating(int $product, ?int $category = null): ?float {
+			Identifier::assertId($product, 'Product ID');
+			$resolvedCategory = $this->config->resolveCategory($category);
 			
 			$row = $this->connection->execute('
 				SELECT
@@ -232,25 +217,24 @@
 				      `category` = :category AND
 				      `rating` >= 0.0
 			', [
-				'product_id' => $productId,
-				'category'   => $cat
+				'product_id' => $product,
+				'category'   => $resolvedCategory,
 			])->fetchAssoc();
 			
-			return $row['average'] !== null ? (float)$row['average'] : 0.0;
+			return $row['average'] !== null ? (float)$row['average'] : null;
 		}
 		
 		/**
-		 * Return all ratings for a product as an array of
-		 * ['member_id' => int, 'rating' => float, 'ts' => string].
-		 * @param int $productId The product ID
-		 * @param bool $orderByDate Order by timestamp
-		 * @param bool $orderByRating Order by rating value
-		 * @param bool $ascending Sort direction
+		 * Return all genuine ratings a product has received.
+		 * @param int $product The product ID
+		 * @param RatingOrder|null $order Sort order, or null for storage order
 		 * @param int|null $category Defaults to configured default
-		 * @return array<int, array{member_id: int, rating: float, ts: string}>
+		 * @return array<int, Rating>
+		 * @throws \InvalidArgumentException When the product ID is outside the unsigned 32-bit range
 		 */
-		public function productRatings(int $productId, bool $orderByDate = false, bool $orderByRating = false, bool $ascending = true, ?int $category = null): array {
-			$cat = $this->config->resolveCategory($category);
+		public function productRatings(int $product, ?RatingOrder $order = null, ?int $category = null): array {
+			Identifier::assertId($product, 'Product ID');
+			$resolvedCategory = $this->config->resolveCategory($category);
 			
 			$sql = '
 				SELECT
@@ -258,80 +242,58 @@
 					`rating`,
 					`ts`
 				FROM `vogoo_ratings`
-				WHERE `product_id` = :product_id
-				AND `rating` >= 0.0
-				AND `category` = :category
+				WHERE `product_id` = :product_id AND
+				      `rating` >= 0.0 AND
+				      `category` = :category
 			';
 			
 			$params = [
-				'product_id' => $productId,
-				'category'   => $cat
+				'product_id' => $product,
+				'category'   => $resolvedCategory,
 			];
 			
-			if ($orderByDate || $orderByRating) {
-				$sql .= ' ORDER BY ' . ($orderByDate ? '`ts`' : '`rating`');
-				$sql .= $ascending ? ' ASC' : ' DESC';
+			$sql .= $this->orderSql($order);
+			
+			$rows = $this->connection->execute($sql, $params)->fetchAll('assoc');
+			$ratings = [];
+			
+			foreach ($rows as $row) {
+				$typed = $this->typedRatingRow($row, 'member_id');
+				$ratings[] = new Rating($typed['id'], $product, $typed['rating'], $typed['ts']);
 			}
 			
-			return $this->connection->execute($sql, $params)->fetchAll('assoc');
+			return $ratings;
 		}
 		
 		/**
-		 * Delete all ratings for a product. When incremental link updates are
-		 * enabled, each rating is removed via deleteRating() to keep vogoo_links
-		 * consistent.
-		 * @param int $productId The product ID
+		 * Delete all ratings for a product. When incremental link updates are enabled,
+		 * each rating is removed via deleteRating() to keep vogoo_links consistent.
+		 * @param int $product The product ID
 		 * @param int|null $category Defaults to configured default
-		 * @throws \Exception
+		 * @return void
+		 * @throws \InvalidArgumentException When the product ID is outside the unsigned 32-bit range
+		 * @throws \Exception When a database statement fails
 		 */
-		public function deleteProduct(int $productId, ?int $category = null): void {
-			$cat = $this->config->resolveCategory($category);
-			
-			if ($this->config->isDirectLinks() || $this->config->isDirectSlope()) {
-				$rows = $this->connection->execute('
-					SELECT `member_id`
-					FROM `vogoo_ratings`
-					WHERE `product_id` = :product_id
-					AND `category` = :category
-				', [
-					'product_id' => $productId,
-					'category'   => $cat
-				])->fetchAll('assoc');
-				
-				foreach ($rows as $row) {
-					$this->deleteRating((int)$row['member_id'], $productId, $cat);
-				}
-				
-				return;
-			}
-			
-			$this->connection->execute('
-				DELETE
-				FROM `vogoo_ratings`
-				WHERE `product_id` = :product_id AND
-				      `category` = :category
-			', [
-				'product_id' => $productId,
-				'category'   => $cat
-			]);
+		public function deleteProduct(int $product, ?int $category = null): void {
+			Identifier::assertId($product, 'Product ID');
+			$this->deleteRatingsWhere('product_id', $product, $this->config->resolveCategory($category));
 		}
 		
-		// -------------------------------------------------------------------------
-		// Combined
-		// -------------------------------------------------------------------------
+		// ----- Combined -----
 		
 		/**
-		 * Return the rating and timestamp for a specific member/product pair as
-		 * ['rating' => float, 'ts' => string], or an empty array when no rating
-		 * exists.
-		 * @param int $memberId The member ID
-		 * @param int $productId The product ID
-		 * @param bool $notInterested Include "not interested" ratings
+		 * Return the rating a member gave a product, or null when none exists.
+		 * @param MemberId $member The member ID
+		 * @param ProductId $product The product ID
+		 * @param RatingKind $kind Which ratings to match
 		 * @param int|null $category Defaults to configured default
-		 * @return array{rating: float, ts: string}|array{}
+		 * @return Rating|null
+		 * @throws \InvalidArgumentException When an ID is outside the unsigned 32-bit range
 		 */
-		public function getRating(int $memberId, int $productId, bool $notInterested = false, ?int $category = null): array {
-			$cat = $this->config->resolveCategory($category);
+		public function memberRating(MemberId $member, ProductId $product, RatingKind $kind = RatingKind::Genuine, ?int $category = null): ?Rating {
+			$memberId = $member->value;
+			$productId = $product->value;
+			$resolvedCategory = $this->config->resolveCategory($category);
 			
 			$sql = '
 				SELECT
@@ -346,119 +308,114 @@
 			$params = [
 				'member_id'  => $memberId,
 				'product_id' => $productId,
-				'category'   => $cat
+				'category'   => $resolvedCategory,
 			];
 			
-			if (!$notInterested) {
-				$sql .= ' AND `rating` >= 0.0';
-			}
+			$sql .= $this->ratingFilterSql($kind, $params);
 			
 			$row = $this->connection->execute($sql, $params)->fetchAssoc();
 			
 			if (empty($row)) {
-				return [];
+				return null;
 			}
 			
-			return ['rating' => (float)$row['rating'], 'ts' => $row['ts']];
+			return new Rating($memberId, $productId, (float)$row['rating'], (string)$row['ts']);
 		}
 		
 		/**
-		 * Set or update a rating for a member/product pair.
-		 * Triggers incremental link/slope updates if enabled.
-		 * @param int $memberId The member ID
-		 * @param int $productId The product ID
-		 * @param float $rating Must be in [0.0, 1.0] or equal getNotInterested()
+		 * Set or update a rating for a member and product pair, with incremental link and slope updates when enabled.
+		 * @param MemberId $member The member ID
+		 * @param ProductId $product The product ID
+		 * @param float $rating Must be in [0.0, 1.0] or equal RecommendationConfig::NOT_INTERESTED
 		 * @param int|null $category Defaults to configured default
-		 * @return bool True when the rating was written
+		 * @return void
+		 * @throws \InvalidArgumentException When an ID is negative or the rating is not in [0.0, 1.0] or the not-interested value
 		 */
-		public function setRating(int $memberId, int $productId, float $rating, ?int $category = null): bool {
-			$cat = $this->config->resolveCategory($category);
+		public function setRating(MemberId $member, ProductId $product, float $rating, ?int $category = null): void {
+			$memberId = $member->value;
+			$productId = $product->value;
+			$resolvedCategory = $this->config->resolveCategory($category);
 			
-			if ($memberId < 0 || $productId < 0 || !is_finite($rating)
-				|| ($rating < 0.0 && $rating !== $this->config->getNotInterested()) || $rating > 1.0) {
-				return false;
+			if (!RatingRule::isValid($rating, RecommendationConfig::NOT_INTERESTED)) {
+				throw new \InvalidArgumentException("Rating must be in [0.0, 1.0] or the not-interested value, got {$rating}.");
 			}
 			
-			// Write the rating together with its incremental link/slope updates in a
-			// single transaction so vogoo_links can never end up inconsistent with
-			// vogoo_ratings if one of the statements fails.
-			//
-			// transactional() is declared to return mixed, which erases the closure's
-			// bool return; cast so the method's declared bool return type still holds.
-			return (bool) $this->connection->transactional(function () use ($memberId, $productId, $cat, $rating): bool {
-				$previous = $this->fetchExistingRating($memberId, $productId, $cat);
+			// One transaction keeps vogoo_links consistent with vogoo_ratings if a statement fails.
+			$this->connection->transactional(function () use ($memberId, $productId, $resolvedCategory, $rating): void {
+				$previous = $this->fetchExistingRating($memberId, $productId, $resolvedCategory);
 				
-				// -1.0 sentinel marks "no previous rating" for the link/slope updates
-				$this->triggerIncrementalUpdates($memberId, $productId, $cat, $rating, $previous ?? -1.0);
+				// -1.0 marks "no previous rating" for the link and slope updates
+				$this->triggerIncrementalUpdates($memberId, $productId, $resolvedCategory, $rating, $previous ?? -1.0);
 				
-				return $previous !== null
-					? $this->updateRatingRow($memberId, $productId, $cat, $rating)
-					: $this->insertRatingRow($memberId, $productId, $cat, $rating);
+				if ($previous !== null) {
+					$this->updateRatingRow($memberId, $productId, $resolvedCategory, $rating);
+				} else {
+					$this->insertRatingRow($memberId, $productId, $resolvedCategory, $rating);
+				}
 			});
 		}
 		
 		/**
-		 * Record an implicit rating from a purchase (1.0) or a click (0.7, or
-		 * increment by 0.01 if already rated below 1.0).
-		 * @param int $memberId The member ID
-		 * @param int $productId The product ID
-		 * @param bool $purchase True for a purchase, false for a click
+		 * Record a purchase as a rating of 1.0.
+		 * @param MemberId $member The member ID
+		 * @param ProductId $product The product ID
 		 * @param int|null $category Defaults to configured default
-		 * @return bool
-		 * @throws \Exception
+		 * @return void
+		 * @throws \Exception When a database statement fails
 		 */
-		public function automaticRating(int $memberId, int $productId, bool $purchase, ?int $category = null): bool {
-			$cat = $this->config->resolveCategory($category);
-			
-			if ($purchase) {
-				return $this->setRating($memberId, $productId, 1.0, $cat);
-			}
-			
-			// Click: initialise at 0.7, or nudge existing rating up by 0.01
-			$existing = $this->getRating($memberId, $productId, false, $cat);
-			
-			if (empty($existing)) {
-				return $this->setRating($memberId, $productId, 0.7, $cat);
-			}
-			
-			if ($existing['rating'] < 1.0) {
-				return $this->setRating($memberId, $productId, min(1.0, $existing['rating'] + 0.01), $cat);
-			}
-			
-			return true;
+		public function recordPurchase(MemberId $member, ProductId $product, ?int $category = null): void {
+			$this->setRating($member, $product, ImplicitRating::PURCHASE, $category);
 		}
 		
 		/**
-		 * Mark a product as "not interested" for a member.
-		 * @param int $memberId The member ID
-		 * @param int $productId The product ID
+		 * Record a click as a rating of 0.7, or raise an existing rating by 0.01 up to 1.0.
+		 * @param MemberId $member The member ID
+		 * @param ProductId $product The product ID
 		 * @param int|null $category Defaults to configured default
-		 * @return bool
-		 * @throws \Exception
+		 * @return void
+		 * @throws \Exception When a database statement fails
 		 */
-		public function setNotInterested(int $memberId, int $productId, ?int $category = null): bool {
-			return $this->setRating($memberId, $productId, $this->config->getNotInterested(), $category);
+		public function recordClick(MemberId $member, ProductId $product, ?int $category = null): void {
+			$resolvedCategory = $this->config->resolveCategory($category);
+			$existing = $this->memberRating($member, $product, RatingKind::Genuine, $resolvedCategory);
+			
+			if ($existing === null || $existing->rating < ImplicitRating::PURCHASE) {
+				$this->setRating($member, $product, ImplicitRating::afterClick($existing?->rating), $resolvedCategory);
+			}
 		}
 		
 		/**
-		 * Delete a single member/product rating.
-		 * Triggers incremental link/slope cleanup if enabled.
-		 * @param int $memberId The member ID
-		 * @param int $productId The product ID
+		 * Mark a product as not interested for a member.
+		 * @param MemberId $member The member ID
+		 * @param ProductId $product The product ID
 		 * @param int|null $category Defaults to configured default
-		 * @throws \Exception
+		 * @return void
+		 * @throws \InvalidArgumentException When an ID is negative
 		 */
-		public function deleteRating(int $memberId, int $productId, ?int $category = null): void {
-			$cat = $this->config->resolveCategory($category);
+		public function setNotInterested(MemberId $member, ProductId $product, ?int $category = null): void {
+			$this->setRating($member, $product, RecommendationConfig::NOT_INTERESTED, $category);
+		}
+		
+		/**
+		 * Delete a single member and product rating, with incremental link and slope cleanup when enabled.
+		 * @param MemberId $member The member ID
+		 * @param ProductId $product The product ID
+		 * @param int|null $category Defaults to configured default
+		 * @return void
+		 * @throws \Exception When a database statement fails
+		 */
+		public function deleteRating(MemberId $member, ProductId $product, ?int $category = null): void {
+			$memberId = $member->value;
+			$productId = $product->value;
+			$resolvedCategory = $this->config->resolveCategory($category);
 			
-			// Remove the rating together with its incremental link/slope cleanup in a
-			// single transaction to keep vogoo_links consistent with vogoo_ratings.
-			$this->connection->transactional(function () use ($memberId, $productId, $cat): void {
+			// One transaction keeps vogoo_links consistent with vogoo_ratings if a statement fails.
+			$this->connection->transactional(function () use ($memberId, $productId, $resolvedCategory): void {
 				if ($this->config->isDirectLinks() || $this->config->isDirectSlope()) {
-					$previous = $this->fetchExistingRating($memberId, $productId, $cat);
+					$previous = $this->fetchExistingRating($memberId, $productId, $resolvedCategory);
 					
 					if ($previous !== null) {
-						$this->triggerIncrementalUpdates($memberId, $productId, $cat, -1.0, $previous);
+						$this->triggerIncrementalUpdates($memberId, $productId, $resolvedCategory, -1.0, $previous);
 					}
 				}
 				
@@ -471,18 +428,100 @@
 				', [
 					'member_id'  => $memberId,
 					'product_id' => $productId,
-					'category'   => $cat
+					'category'   => $resolvedCategory,
 				]);
 			});
 		}
 		
-		// -------------------------------------------------------------------------
-		// Internal helpers
-		// -------------------------------------------------------------------------
+		// ----- Internal helpers -----
 		
 		/**
-		 * Return the member's current rating for a product, or null when no rating
-		 * row exists. Drives the INSERT/UPDATE choice and the incremental updates.
+		 * Validate one raw vogoo_ratings row and return its ID, rating and timestamp in typed form.
+		 * @param array<string, mixed> $row Row selecting the ID column, rating and ts
+		 * @param string $idColumn Name of the ID column, product_id or member_id
+		 * @return array{id: int, rating: float, ts: string} Typed ID, rating and timestamp
+		 * @throws \UnexpectedValueException When the ID or rating is not numeric, or the timestamp is not a string
+		 */
+		private function typedRatingRow(array $row, string $idColumn): array {
+			if (!is_numeric($row[$idColumn]) || !is_numeric($row['rating']) || !is_string($row['ts'])) {
+				throw new \UnexpectedValueException("Rating row must have a numeric {$idColumn} and rating and a string ts.");
+			}
+			
+			return ['id' => (int)$row[$idColumn], 'rating' => (float)$row['rating'], 'ts' => $row['ts']];
+		}
+		
+		/**
+		 * Build the rating filter for a count or listing query, binding the sentinel when filtering on it.
+		 * @param RatingKind $kind Which ratings to match
+		 * @param array<string, mixed> $params Bound parameters, extended in place
+		 * @return string Filter clause with a leading space, or an empty string
+		 */
+		private function ratingFilterSql(RatingKind $kind, array &$params): string {
+			if ($kind === RatingKind::NotInterested) {
+				$params['not_interested'] = RecommendationConfig::NOT_INTERESTED;
+				return ' AND `rating` = :not_interested';
+			}
+			
+			return $kind === RatingKind::All ? '' : ' AND `rating` >= 0.0';
+		}
+		
+		/**
+		 * Build the ORDER BY clause for a ratings listing.
+		 * @param RatingOrder|null $order Sort order, or null when no order is requested
+		 * @return string Clause with a leading space, or an empty string when no order is requested
+		 */
+		private function orderSql(?RatingOrder $order): string {
+			return match ($order) {
+				null => '',
+				RatingOrder::DateAscending => ' ORDER BY `ts` ASC',
+				RatingOrder::DateDescending => ' ORDER BY `ts` DESC',
+				RatingOrder::RatingAscending => ' ORDER BY `rating` ASC',
+				RatingOrder::RatingDescending => ' ORDER BY `rating` DESC',
+			};
+		}
+		
+		/**
+		 * Delete the ratings of one member or one product in a category.
+		 * With incremental link updates enabled, each rating is removed via deleteRating().
+		 * @param string $column Ratings column holding the ID, either member_id or product_id
+		 * @param int $id Member or product ID
+		 * @param int|null $category Already-resolved category, or null for every category
+		 * @return void
+		 * @throws \Exception When a database statement fails
+		 */
+		private function deleteRatingsWhere(string $column, int $id, ?int $category): void {
+			$categoryClause = $category === null ? '' : ' AND `category` = :category';
+			$params = $category === null ? ['id' => $id] : ['id' => $id, 'category' => $category];
+			
+			if (!$this->config->isDirectLinks() && !$this->config->isDirectSlope()) {
+				$this->connection->execute("DELETE FROM `vogoo_ratings` WHERE `{$column}` = :id{$categoryClause}", $params);
+				return;
+			}
+			
+			$otherColumn = $column === 'member_id' ? 'product_id' : 'member_id';
+			$rows = $this->connection->execute("
+				SELECT
+					`{$otherColumn}`,
+					`category`
+				FROM `vogoo_ratings`
+				WHERE `{$column}` = :id{$categoryClause}
+			", $params)->fetchAll('assoc');
+			
+			foreach ($rows as $row) {
+				$other = (int)$row[$otherColumn];
+				$rowCategory = (int)$row['category'];
+				
+				if ($column === 'member_id') {
+					$this->deleteRating(new MemberId($id), new ProductId($other), $rowCategory);
+				} else {
+					$this->deleteRating(new MemberId($other), new ProductId($id), $rowCategory);
+				}
+			}
+		}
+		
+		/**
+		 * Return the member's current rating for a product, or null when no rating row exists.
+		 * Drives the INSERT or UPDATE choice and the incremental updates.
 		 * @param int $memberId The member ID
 		 * @param int $productId The product ID
 		 * @param int $category Already-resolved category
@@ -490,7 +529,8 @@
 		 */
 		private function fetchExistingRating(int $memberId, int $productId, int $category): ?float {
 			$row = $this->connection->execute('
-				SELECT `rating`
+				SELECT
+					`rating`
 				FROM `vogoo_ratings`
 				WHERE `member_id` = :member_id AND
 				      `product_id` = :product_id AND
@@ -498,23 +538,22 @@
 			', [
 				'member_id'  => $memberId,
 				'product_id' => $productId,
-				'category'   => $category
+				'category'   => $category,
 			])->fetchAssoc();
 			
 			return !empty($row) ? (float)$row['rating'] : null;
 		}
 		
 		/**
-		 * Fire the incremental link and slope updates that are enabled in config.
-		 * A -1.0 sentinel in $rating or $previous means the rating is being created
-		 * or deleted respectively.
+		 * Run the link and slope updates that are enabled in the configuration.
+		 * A -1.0 value in $rating or $previous means the rating is being created or deleted respectively.
 		 * @param int $memberId The member ID
 		 * @param int $productId The product ID
 		 * @param int $category Already-resolved category
 		 * @param float $rating The rating value
 		 * @param float $previous The previous rating, or -1.0 when there was none
 		 * @return void
-		 * @throws \Exception
+		 * @throws \Exception When a database statement fails
 		 */
 		private function triggerIncrementalUpdates(int $memberId, int $productId, int $category, float $rating, float $previous): void {
 			if ($this->config->isDirectLinks()) {
@@ -527,7 +566,7 @@
 		}
 		
 		/**
-		 * Update an existing rating row, refreshing its timestamp.
+		 * Update an existing rating row and refresh its timestamp.
 		 * @param int $memberId The member ID
 		 * @param int $productId The product ID
 		 * @param int $category Already-resolved category
@@ -544,11 +583,11 @@
 				      `product_id` = :product_id AND
 				      `category` = :category
 			', [
-				'rating'     => $rating,
-				'member_id'  => $memberId,
-				'product_id' => $productId,
-				'category'   => $category
-			])->rowCount() === 1;
+					'rating'     => $rating,
+					'member_id'  => $memberId,
+					'product_id' => $productId,
+					'category'   => $category,
+				])->rowCount() === 1;
 		}
 		
 		/**
@@ -564,10 +603,10 @@
 				INSERT INTO `vogoo_ratings` (`member_id`, `product_id`, `category`, `rating`, `ts`)
 				VALUES (:member_id, :product_id, :category, :rating, NOW())
 			', [
-				'member_id'  => $memberId,
-				'product_id' => $productId,
-				'category'   => $category,
-				'rating'     => $rating
-			])->rowCount() === 1;
+					'member_id'  => $memberId,
+					'product_id' => $productId,
+					'category'   => $category,
+					'rating'     => $rating,
+				])->rowCount() === 1;
 		}
 	}

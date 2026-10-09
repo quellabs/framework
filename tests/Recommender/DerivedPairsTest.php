@@ -2,10 +2,19 @@
 
 namespace Quellabs\Recommender\Tests;
 
+use Quellabs\Recommender\ProductId;
+
+use Quellabs\Recommender\MemberId;
+
 use PHPUnit\Framework\Attributes\DataProvider;
+use Quellabs\Recommender\Reconciliation\ReconciliationTuning;
+use Quellabs\Recommender\Reconciliation\SourceSettings;
+use Quellabs\Recommender\RecommendationSource;
 use Quellabs\Recommender\Config\RecommendationConfig;
-use Quellabs\Recommender\ItemRecommender;
+use Quellabs\Recommender\Sources\ItemLinksSource;
+use Quellabs\Recommender\Subject;
 use Quellabs\Recommender\RecommendationEngine;
+use Quellabs\Recommender\ArrayEligibilityProvider;
 use Quellabs\Recommender\Sculpt\RebuildLinksCommand;
 use Quellabs\Recommender\Sculpt\RecommenderProvider;
 use Quellabs\Recommender\VisitorContext;
@@ -15,6 +24,8 @@ use Quellabs\Sculpt\Console\ConsoleOutput;
 
 /** Integration coverage for incremental and rebuilt pair measures. */
 class DerivedPairsTest extends IntegrationTestCase {
+    use ItemLinkSlates;
+
     /** Supply each incremental mode.
      * @return array<string, array{bool, bool}>
      */
@@ -32,25 +43,25 @@ class DerivedPairsTest extends IntegrationTestCase {
     public function testIncrementalMeasuresMatchRebuild(bool $links, bool $slope): void {
         $config = new RecommendationConfig(directLinks: $links, directSlope: $slope);
         $engine = new RecommendationEngine($this->connection, $config);
-        $items = new ItemRecommender($this->connection, $config);
-        $engine->setRating(1, 10, 0.9);
-        $engine->setRating(1, 20, 0.8);
-        $engine->setRating(2, 10, 0.4);
-        $engine->setRating(2, 20, 0.7);
+        $items = new ItemLinksSource($this->connection, $config);
+        $engine->setRating(new MemberId(1), new ProductId(10), 0.9);
+        $engine->setRating(new MemberId(1), new ProductId(20), 0.8);
+        $engine->setRating(new MemberId(2), new ProductId(10), 0.4);
+        $engine->setRating(new MemberId(2), new ProductId(20), 0.7);
         $this->assertPair(10, 20, $links ? 1 : 0, $slope ? 2 : 0, $slope ? 0.2 : 0.0);
-        $this->assertSame($links ? [20] : [], $items->getLinkedItems(10));
+        $this->assertSame($links ? [20] : [], array_map(fn($item) => $item->productId, $items->candidates(Subject::product(10), null, 10, new SourceSettings())));
 
-        $engine->setRating(2, 10, 0.9);
-        $engine->setNotInterested(1, 20);
-        $engine->setRating(1, 20, 0.7);
-        $engine->deleteRating(2, 20);
+        $engine->setRating(new MemberId(2), new ProductId(10), 0.9);
+        $engine->setNotInterested(new MemberId(1), new ProductId(20));
+        $engine->setRating(new MemberId(1), new ProductId(20), 0.7);
+        $engine->deleteRating(new MemberId(2), new ProductId(20));
         $this->assertPair(10, 20, $links ? 1 : 0, $slope ? 1 : 0, $slope ? -0.2 : 0.0);
         $before = $this->rows();
 
         $this->rebuild($config);
         $rebuilt = $this->rows();
         $this->assertPair(10, 20, 1, 1, -0.2);
-        $this->assertSame([20], $items->getLinkedItems(10));
+        $this->assertSame([20], array_map(fn($item) => $item->productId, $items->candidates(Subject::product(10), null, 10, new SourceSettings())));
         if ($links && $slope) {
             $this->assertEquals($before, $rebuilt);
         }
@@ -64,8 +75,8 @@ class DerivedPairsTest extends IntegrationTestCase {
     public function testRebuildClearsStaleCategories(): void {
         $config = new RecommendationConfig(directLinks: true, directSlope: true);
         $engine = new RecommendationEngine($this->connection, $config);
-        $engine->setRating(1, 10, 0.9, 2);
-        $engine->setRating(1, 20, 0.9, 2);
+        $engine->setRating(new MemberId(1), new ProductId(10), 0.9, 2);
+        $engine->setRating(new MemberId(1), new ProductId(20), 0.9, 2);
         $this->assertNotEmpty($this->rows());
         $this->connection->execute('DELETE FROM vogoo_ratings WHERE category = 2');
         $this->rebuild($config);
@@ -81,35 +92,36 @@ class DerivedPairsTest extends IntegrationTestCase {
      */
     public function testDetailedResultsAndColdStart(): void {
         $config = new RecommendationConfig(directLinks: true, directSlope: true);
+        $this->config = $config;
         $engine = new RecommendationEngine($this->connection, $config);
-        $items = new ItemRecommender($this->connection, $config);
-        $engine->setRating(1, 10, 0.9);
-        $engine->setRating(1, 20, 0.8);
-        $engine->setRating(2, 10, 0.9);
-        $engine->setRating(2, 20, 0.8);
-        $engine->setRating(2, 30, 0.9);
-        $engine->setNotInterested(3, 20);
-        $engine->setRating(3, 10, 0.9);
-        $member = $items->memberRecommendationsDetailed(3, [20, 30]);
-        $this->assertSame('item_links', $member[0]->strategy);
-        $this->assertSame(30, $member[0]->itemId);
-        $this->assertSame([10], $member[0]->contributingItemIds);
-        $this->assertGreaterThan(0, $member[0]->score);
+        $engine->setRating(new MemberId(1), new ProductId(10), 0.9);
+        $engine->setRating(new MemberId(1), new ProductId(20), 0.8);
+        $engine->setRating(new MemberId(2), new ProductId(10), 0.9);
+        $engine->setRating(new MemberId(2), new ProductId(20), 0.8);
+        $engine->setRating(new MemberId(2), new ProductId(30), 0.9);
+        $engine->setNotInterested(new MemberId(3), new ProductId(20));
+        $engine->setRating(new MemberId(3), new ProductId(10), 0.9);
+        $member = $this->memberLinks(3, new ArrayEligibilityProvider([20, 30]));
+        $this->assertSame(RecommendationSource::ItemLinks, $member[0]->evidence[0]->source);
+        $this->assertSame(30, $member[0]->productId);
+        $this->assertSame([10], $member[0]->evidence[0]->contributingProductIds);
+        $this->assertGreaterThan(0, $member[0]->rankingScore);
 
         $visitor = new VisitorContext($config);
         $visitor->setNotInterested(20);
-        $fallback = $items->visitorRecommendationsDetailed($visitor, [20, 30], minRatings: 1);
+        $fallback = $this->visitorLinks($visitor, new ArrayEligibilityProvider([20, 30]),
+            tuning: new ReconciliationTuning(sources: new SourceSettings(topRatedMinRatings: 1)));
         $this->assertCount(1, $fallback);
-        $this->assertSame(30, $fallback[0]->itemId);
-        $this->assertSame('top_rated', $fallback[0]->strategy);
-        $this->assertSame([], $fallback[0]->contributingItemIds);
+        $this->assertSame(30, $fallback[0]->productId);
+        $this->assertSame(RecommendationSource::TopRated, $fallback[0]->evidence[0]->source);
+        $this->assertSame([], $fallback[0]->evidence[0]->contributingProductIds);
 
         $visitor->setRating(10, 0.9);
-        $collaborative = $items->visitorRecommendationsDetailed($visitor, [20, 30]);
+        $collaborative = $this->visitorLinks($visitor, new ArrayEligibilityProvider([20, 30]));
         $this->assertCount(1, $collaborative);
-        $this->assertSame(30, $collaborative[0]->itemId);
-        $this->assertSame('item_links', $collaborative[0]->strategy);
-        $this->assertSame([10], $collaborative[0]->contributingItemIds);
+        $this->assertSame(30, $collaborative[0]->productId);
+        $this->assertSame(RecommendationSource::ItemLinks, $collaborative[0]->evidence[0]->source);
+        $this->assertSame([10], $collaborative[0]->evidence[0]->contributingProductIds);
     }
 
     /** Member and product deletion remove both pair directions.
@@ -119,8 +131,8 @@ class DerivedPairsTest extends IntegrationTestCase {
         $config = new RecommendationConfig(directLinks: true, directSlope: true);
         $engine = new RecommendationEngine($this->connection, $config);
         foreach ([1, 2] as $member) {
-            $engine->setRating($member, 10, 0.9);
-            $engine->setRating($member, 20, 0.8);
+            $engine->setRating(new MemberId($member), new ProductId(10), 0.9);
+            $engine->setRating(new MemberId($member), new ProductId(20), 0.8);
         }
         $engine->deleteMember(1);
         $this->assertPair(10, 20, 1, 1, -0.1);
@@ -139,28 +151,28 @@ class DerivedPairsTest extends IntegrationTestCase {
      */
     public function testLegacySchemaMigration(): void {
         $this->insertRating(1, 10, 0.9);
-        $this->connection->execute('CREATE TEMPORARY TABLE recommender_legacy_links_fixture (
+        $this->connection->execute('CREATE TEMPORARY TABLE vogoo_legacy_links_fixture (
             item_id1 INT UNSIGNED NOT NULL, item_id2 INT UNSIGNED NOT NULL,
             category INT UNSIGNED NOT NULL, cnt INT NOT NULL, diff_slope FLOAT NOT NULL,
             PRIMARY KEY (item_id1, item_id2, category))');
         try {
-            $this->connection->execute('INSERT INTO recommender_legacy_links_fixture VALUES (10, 20, 1, 7, 0.4)');
+            $this->connection->execute('INSERT INTO vogoo_legacy_links_fixture VALUES (10, 20, 1, 7, 0.4)');
             $sql = file_get_contents(__DIR__ . '/../../packages/recommender/migrations/2026-10-independent-pair-counts.sql');
-            $sql = str_replace('vogoo_links', 'recommender_legacy_links_fixture', $sql);
+            $sql = str_replace('vogoo_links', 'vogoo_legacy_links_fixture', $sql);
             $sql = implode("\n", array_filter(explode("\n", $sql), fn($line) => !str_starts_with(trim($line), '--')));
             foreach (explode(';', $sql) as $statement) {
                 if (trim($statement) !== '') {
                     $this->connection->execute($statement);
                 }
             }
-            $this->assertSame([], $this->connection->execute('SELECT * FROM recommender_legacy_links_fixture')->fetchAll('assoc'));
+            $this->assertSame([], $this->connection->execute('SELECT * FROM vogoo_legacy_links_fixture')->fetchAll('assoc'));
             $this->assertNotNull($this->fetchRatingRow(1, 10));
-            $columns = array_column($this->connection->execute('SHOW COLUMNS FROM recommender_legacy_links_fixture')->fetchAll('assoc'), 'Field');
+            $columns = array_column($this->connection->execute('SHOW COLUMNS FROM vogoo_legacy_links_fixture')->fetchAll('assoc'), 'Field');
             $this->assertContains('liked_count', $columns);
             $this->assertContains('slope_count', $columns);
             $this->assertNotContains('cnt', $columns);
         } finally {
-            $this->connection->execute('DROP TEMPORARY TABLE IF EXISTS recommender_legacy_links_fixture');
+            $this->connection->execute('DROP TEMPORARY TABLE IF EXISTS vogoo_legacy_links_fixture');
         }
     }
 
@@ -170,13 +182,13 @@ class DerivedPairsTest extends IntegrationTestCase {
     public function testRatingWriteFailureRollsBackDerivedRows(): void {
         $config = new RecommendationConfig(directLinks: true, directSlope: true);
         $engine = new RecommendationEngine($this->connection, $config);
-        $engine->setRating(1, 10, 0.9);
-        $this->connection->execute("CREATE TRIGGER recommender_rating_failure BEFORE INSERT ON vogoo_ratings
+        $engine->setRating(new MemberId(1), new ProductId(10), 0.9);
+        $this->connection->execute("CREATE TRIGGER vogoo_rating_failure BEFORE INSERT ON vogoo_ratings
             FOR EACH ROW BEGIN IF NEW.product_id = 30 THEN SIGNAL SQLSTATE '45000'
             SET MESSAGE_TEXT = 'Injected rating failure'; END IF; END");
         try {
             try {
-                $engine->setRating(1, 30, 0.8);
+                $engine->setRating(new MemberId(1), new ProductId(30), 0.8);
                 $this->fail('Expected rating insert failure');
             } catch (\Exception $exception) {
                 $this->assertNull($this->fetchRatingRow(1, 30));
@@ -184,7 +196,7 @@ class DerivedPairsTest extends IntegrationTestCase {
                 $this->assertNull($this->fetchLinkRow(30, 10));
             }
         } finally {
-            $this->connection->execute('DROP TRIGGER IF EXISTS recommender_rating_failure');
+            $this->connection->execute('DROP TRIGGER IF EXISTS vogoo_rating_failure');
         }
     }
 
