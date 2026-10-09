@@ -318,6 +318,42 @@
 		}
 
 		/**
+		 * Two-level jumps through an if may target either enclosing loop inside atomic.
+		 * @return void
+		 */
+		public function testAcceptsTwoLevelJumpsInsideAtomicLoops(): void {
+			$this->analyze('
+				range of u is UserEntity
+				define function f (integer n) void {
+					cursor users = retrieve (u.id) where u.id > 0
+					atomic {
+						while (n > 0) {
+							foreach (users as row) {
+								if (row.id = n) { continue 2 }
+								break 2
+						}
+							n = n - 1
+						}
+						rollback
+					}
+				}
+			');
+
+			$this->addToAssertionCount(1);
+		}
+
+		/**
+		 * Loops outside atomic do not prevent rollback or count toward jumps inside it.
+		 * @return void
+		 */
+		public function testAtomicResetsItsLoopDepth(): void {
+			$this->analyze('define function f (integer n) void { while (n > 0) { atomic { rollback } n = n - 1 } }');
+			$this->analyze('define function f (integer n) void { while (n > 0) { atomic { while (n > 1) { while (n > 2) { break 2 } } } n = n - 1 } }');
+
+			$this->addToAssertionCount(2);
+		}
+
+		/**
 		 * A cursor is a pure read source now: `unique` and an aggregate are both fine in its
 		 * query, since nothing about the loop identifies a single table row to write back to —
 		 * any write inside the loop is an ordinary, independently-targeted replace/delete with
@@ -661,6 +697,8 @@
 				'return inside atomic'          => ['define function f () integer { atomic { return 1 } }', "'return' inside 'atomic"],
 				'bare return inside atomic'     => ['define function f () void { atomic { return } }', "'return' inside 'atomic"],
 				'break at top level'            => ['define function f () void { break }', "'break' is only valid inside 'while' or 'foreach'"],
+				'break above loop depth'        => ['define function f (integer n) void { while (n > 0) { break 2 } }', "'break' level 2 exceeds the 1 enclosing loop"],
+				'continue above loop depth'     => ['define function f (integer n) void { while (n > 0) { while (n > 1) { continue 3 } } }', "'continue' level 3 exceeds the 2 enclosing loop"],
 				'zero break level'             => ['define function f (integer n) void { while (n > 0) { break 0 } }', "'break' level must be a positive integer"],
 				'negative break level'         => ['define function f (integer n) void { while (n > 0) { break -1 } }', "'break' level must be a positive integer"],
 				'fractional break level'       => ['define function f (integer n) void { while (n > 0) { break 1.5 } }', "'break' level must be an integer"],
@@ -671,6 +709,8 @@
 				'continue in if without loop'   => ['define function f (integer n) void { if (n > 0) { continue } }', "'continue' is only valid inside 'while' or 'foreach'"],
 				'break out of atomic'           => ['define function f (integer n) void { while (n > 0) { atomic { if (n = 5) { break } } } }', "'break' would leave 'atomic { }' without finishing it"],
 				'continue out of atomic'        => ['define function f (integer n) void { while (n > 0) { atomic { continue } } }', "'continue' would leave 'atomic { }'"],
+				'break two out of atomic'       => ['define function f (integer n) void { while (n > 0) { atomic { while (n > 1) { break 2 } } } }', "'break' would leave 'atomic { }'"],
+				'continue two out of atomic'    => ['define function f (integer n) void { while (n > 0) { atomic { while (n > 1) { if (n = 2) { continue 2 } } } } }', "'continue' would leave 'atomic { }'"],
 				'scalar assigned a retrieve'    => ["{$range}define function f () void { integer x = 1 x = retrieve (u.id) where u.id > 0 }", "declared as a scalar, so it can't be assigned a retrieve"],
 				'undeclared assigned a retrieve'=> ["{$range}define function f () void { y = retrieve (u.id) where u.id > 0 }", "undeclared variable 'y'"],
 				'range assigned a retrieve'     => ["{$range}define function f () void { u = retrieve (u.id) where u.id > 0 }", "Range 'u' can't be assigned"],
