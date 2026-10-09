@@ -10,7 +10,7 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRoutineCall;
 	use Quellabs\ObjectQuel\ObjectQuel\Lexer;
 	use Quellabs\ObjectQuel\ObjectQuel\Parser;
-	use Quellabs\ObjectQuel\ObjectQuel\Routines\ProcedureCompiler;
+	use Quellabs\ObjectQuel\ObjectQuel\Routines\RoutineCompiler;
 	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQL\QuelToSQLAppend;
 	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQL\QuelToSQLReplace;
 	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQL\QuelToSQLUpsert;
@@ -74,7 +74,7 @@
 		 * @return string The statement creating it on MySQL
 		 */
 		private function compileRoutine(string $routine): string {
-			$statements = (new ProcedureCompiler($this->em(), new FakePlatformCapabilities('mysql'), null))->compile($routine);
+			$statements = (new RoutineCompiler($this->em(), new FakePlatformCapabilities('mysql'), null))->compile($routine);
 			return (string)end($statements);
 		}
 

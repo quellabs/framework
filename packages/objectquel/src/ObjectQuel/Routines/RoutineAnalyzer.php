@@ -45,7 +45,8 @@
 
 		private EntityStore $entityStore;
 		private RoutineScope $scope;
-		private bool $isVoid;
+		private bool $returnsNoValue;
+		private AstRoutineDefinition $routine;
 
 		/**
 		 * Initializes semantic analysis with the entity metadata store.
@@ -62,8 +63,9 @@
 		 * @throws SemanticException|EntityResolutionException
 		 */
 		public function analyze(AstRoutineDefinition $routine): void {
+			$this->routine = $routine;
 			$this->scope = new RoutineScope($this->collectDeclaredNames($routine));
-			$this->isVoid = $routine->isVoid();
+			$this->returnsNoValue = $routine->returnsNoValue();
 
 			if (QueryFunction::isBuiltin($routine->getName())) {
 				throw new SemanticException("'{$routine->getName()}' is a built-in function, so a routine by that name could never be called.");
@@ -80,18 +82,45 @@
 				throw new SemanticException("Routines take values through their parameters; ':{$placeholders->getCollectedNodes()[0]->getName()}' placeholders aren't allowed.");
 			}
 
-			$returnType = self::normalizeType($routine->getDeclaredReturnType());
+			// A tfunction declares no return type at all; nothing to validate here
+			if (!$routine->isTrigger()) {
+				$returnType = self::normalizeType($routine->getDeclaredReturnType());
 
-			if ($returnType !== 'void' && !TypeMapper::isValidColumnType($returnType)) {
-				throw new SemanticException("Unknown return type '{$routine->getDeclaredReturnType()}' for routine '{$routine->getName()}'.");
+				if ($returnType !== 'void' && !TypeMapper::isValidColumnType($returnType)) {
+					throw new SemanticException("Unknown return type '{$routine->getDeclaredReturnType()}' for routine '{$routine->getName()}'.");
+				}
 			}
 
+			$hasEntityRowParameter = false;
+			$hasScalarParameter = false;
+
 			foreach ($routine->getParameters() as $parameter) {
-				if (!TypeMapper::isValidColumnType(self::normalizeType($parameter->getType()))) {
-					throw new SemanticException("Unknown type '{$parameter->getType()}' for parameter '{$parameter->getName()}'. Parameters take column types; 'void' and 'cursor' aren't allowed.");
+				$entityClass = self::resolveEntityType($this->entityStore, $parameter->getType());
+
+				if ($entityClass !== null) {
+					$hasEntityRowParameter = true;
+					$this->scope->declareEntityRow($parameter->getName(), $entityClass);
+					continue;
 				}
 
+				if (!TypeMapper::isValidColumnType(self::normalizeType($parameter->getType()))) {
+					throw new SemanticException("Unknown type '{$parameter->getType()}' for parameter '{$parameter->getName()}'. Parameters take column types or a declared entity name; 'void' and 'cursor' aren't allowed.");
+				}
+
+				$hasScalarParameter = true;
 				$this->scope->declareScalar($parameter->getName());
+			}
+
+			if ($routine->isTrigger() && !$hasEntityRowParameter) {
+				throw new SemanticException("'{$routine->getName()}' is a tfunction but has no entity-row parameter; a trigger routine needs at least one, e.g. '(UserEntity old)'.");
+			}
+
+			if ($routine->isTrigger() && $hasScalarParameter) {
+				throw new SemanticException("'{$routine->getName()}' is a tfunction but has a scalar parameter; a trigger routine's parameters must all be entity-row parameters, since a binding supplies none itself.");
+			}
+
+			if ($hasEntityRowParameter && !$routine->isTrigger()) {
+				throw new SemanticException("'{$routine->getName()}' has an entity-row parameter, so it must be defined with 'define tfunction', not 'define function'.");
 			}
 
 			$this->analyzeRanges($routine->getRanges());
@@ -147,16 +176,20 @@
 					break;
 
 				case $statement instanceof AstReturn:
-					if ($this->isVoid) {
+					if ($this->returnsNoValue) {
 						if ($statement->getValue() !== null) {
-							throw new SemanticException("A void routine can't return a value.");
+							if ($this->routine->isTrigger()) {
+								throw new SemanticException("'{$this->routine->getName()}' is a tfunction and can't return a value.");
+							}
+
+							throw new SemanticException("'{$this->routine->getName()}' declares return type '{$this->routine->getDeclaredReturnType()}' and can't return a value.");
 						}
 
 						break;
 					}
 
 					if ($statement->getValue() === null) {
-						throw new SemanticException("A non-void routine must return a value; bare 'return' is only allowed in a void routine.");
+						throw new SemanticException("A non-void routine must return a value; bare 'return' is only allowed in a void or trigger routine.");
 					}
 
 					$statement->getValue()->accept($this->referenceResolver(false));
@@ -277,6 +310,7 @@
 			if (!$this->scope->isScalar($name)) {
 				throw new SemanticException(match (true) {
 					$this->scope->isCursor($name) => "Cursor '{$name}' can only be assigned a retrieve: '{$name} = retrieve (...)'.",
+					$this->scope->isEntityRow($name) => "'{$name}' is a row parameter and read-only; it can't be assigned.",
 					$this->scope->isRange($name) => "Range '{$name}' can't be assigned; use replace to change its rows.",
 					$this->scope->isDeclaredAnywhere($name) => "'{$name}' is assigned before its declaration.",
 					default => "Assignment to undeclared variable '{$name}'.",
@@ -308,6 +342,7 @@
 			if (!$this->scope->isCursor($name)) {
 				throw new SemanticException(match (true) {
 					$this->scope->isScalar($name) => "'{$name}' is declared as a scalar, so it can't be assigned a retrieve.",
+					$this->scope->isEntityRow($name) => "'{$name}' is a row parameter and read-only; it can't be assigned a retrieve.",
 					$this->scope->isRange($name) => "Range '{$name}' can't be assigned; use replace to change its rows.",
 					$this->scope->isDeclaredAnywhere($name) => "Cursor '{$name}' is used before its declaration.",
 					default => "Assignment to undeclared variable '{$name}'.",
@@ -407,7 +442,7 @@
 			}
 
 			throw new SemanticException(match (true) {
-				$this->scope->isScalar($name), $this->scope->isRange($name) => "'{$statement} {$name}' needs a cursor, but '{$name}' is not one.",
+				$this->scope->isScalar($name), $this->scope->isRange($name), $this->scope->isEntityRow($name) => "'{$statement} {$name}' needs a cursor, but '{$name}' is not one.",
 				$this->scope->isDeclaredAnywhere($name) => "Cursor '{$name}' is used before its declaration.",
 				default => "Undefined cursor '{$name}'.",
 			});
@@ -450,6 +485,23 @@
 		 */
 		public static function normalizeType(string $type): string {
 			return TypeMapper::normalizeType($type);
+		}
+
+		/**
+		 * Resolves a parameter's declared type against entity metadata, for entity-row parameters.
+		 * Shared with RoutineLowering, which needs the same resolution to type an entity-row
+		 * parameter's fields for RoutineFieldTypes/RoutineTypeChecker.
+		 * @param EntityStore $entityStore Entity metadata
+		 * @param string $type Type name as written at the parameter
+		 * @return string|null Fully qualified entity class, or null when $type isn't a declared entity
+		 * @throws EntityResolutionException
+		 */
+		public static function resolveEntityType(EntityStore $entityStore, string $type): ?string {
+			if (!$entityStore->exists($type)) {
+				return null;
+			}
+
+			return $entityStore->getMetadata($type)->className;
 		}
 
 		/**

@@ -80,7 +80,7 @@
 			$this->loopCount = 0;
 			$this->loopLabels = [];
 
-			if (!$routine->isVoid()) {
+			if (!$routine->returnsNoValue()) {
 				$this->assertNotRecursive($routine);
 			}
 		}
@@ -138,7 +138,7 @@
 			}
 
 			// MySQL procedures have no RETURN; a bare `return` needs a labeled body to LEAVE
-			$hasBareReturn = $routine->isVoid() && $this->contains($routine, [AstReturn::class]);
+			$hasBareReturn = $routine->returnsNoValue() && $this->contains($routine, [AstReturn::class]);
 			$beginLabel = $hasBareReturn ? self::ROUTINE_LABEL . ': ' : '';
 			$endLabel = $hasBareReturn ? ' ' . self::ROUTINE_LABEL : '';
 
@@ -159,13 +159,13 @@
 
 			// Advisory on MySQL, but binary logging rejects a function without READS SQL DATA (or NO SQL/DETERMINISTIC)
 			$dataAccess = $this->writesTables($routine) ? 'MODIFIES SQL DATA' : 'READS SQL DATA';
+			$comment = "\nCOMMENT " . $this->quoter->quoteStringLiteral($this->metadataJson);
 
-			if ($routine->isVoid()) {
-				$marker = $this->contains($routine, [AstAtomic::class]) ? "\nCOMMENT 'ObjectQuel:atomic-block'" : '';
-				return "CREATE PROCEDURE {$signature}\n{$dataAccess}{$marker}";
+			if ($routine->returnsNoValue()) {
+				return "CREATE PROCEDURE {$signature}\n{$dataAccess}{$comment}";
 			}
 
-			return "CREATE FUNCTION {$signature}\nRETURNS " . $this->sqlType($routine->getDeclaredReturnType()) . "\n{$dataAccess}";
+			return "CREATE FUNCTION {$signature}\nRETURNS " . $this->sqlType($routine->getDeclaredReturnType()) . "\n{$dataAccess}{$comment}";
 		}
 
 		/**

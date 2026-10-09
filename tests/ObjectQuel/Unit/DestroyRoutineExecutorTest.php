@@ -12,7 +12,8 @@
 	use Quellabs\ObjectQuel\Tests\Support\FakePlatformCapabilities;
 
 	/**
-	 * Verifies routine destruction checks existence through DatabaseAdapter before running MySQL DROP statements.
+	 * Verifies routine destruction checks existence and live binding dependencies through
+	 * DatabaseAdapter before running MySQL DROP statements.
 	 */
 	class DestroyRoutineExecutorTest extends TestCase {
 
@@ -23,8 +24,25 @@
 		public function testPresentRoutineRunsBothDrops(): void {
 			$connection = $this->createMock(DatabaseAdapter::class);
 			$connection->expects(self::once())->method('routineExists')->with('f')->willReturn(true);
+			$connection->method('findDependentTriggers')->with('f')->willReturn([]);
 			$connection->expects(self::exactly(2))->method('execute')->willReturn($this->createMock(StatementInterface::class));
 
+			(new DestroyRoutineExecutor($connection, new FakePlatformCapabilities('mysql')))
+				->execute(new AstDestroyRoutine('f', false), new ExecutionContext([]));
+		}
+
+		/**
+		 * A routine a live binding still calls is refused before any DROP statement runs.
+		 * @return void
+		 */
+		public function testRoutineWithDependentBindingIsRefused(): void {
+			$connection = $this->createMock(DatabaseAdapter::class);
+			$connection->method('routineExists')->willReturn(true);
+			$connection->expects(self::once())->method('findDependentTriggers')->with('f')->willReturn(['eq_7dfb4cf67742_replace_f']);
+			$connection->expects(self::never())->method('execute');
+
+			$this->expectException(QuelException::class);
+			$this->expectExceptionMessage("binding trigger(s) 'eq_7dfb4cf67742_replace_f' still call it");
 			(new DestroyRoutineExecutor($connection, new FakePlatformCapabilities('mysql')))
 				->execute(new AstDestroyRoutine('f', false), new ExecutionContext([]));
 		}

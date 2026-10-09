@@ -49,6 +49,10 @@ When fixing bugs or type errors, assume the full codebase may be modified unless
 
 Use a localized fix instead when a root-cause change would introduce disproportionate risk, unnecessary scope, or incompatible behavior. Explain the tradeoff when relevant.
 
+### Ignored Files
+
+Respect `.gitignore` as an intentional boundary. Do not add an exception to an ignore rule, use `git add -f`, or otherwise stage or commit an ignored file unless the user explicitly asks to track that file. In particular, root-level Markdown files ignored by `/*.md` are local working documents; creating or editing one does not imply permission to commit it. Before staging or committing, check whether each intended file is ignored and leave ignored files out unless explicitly authorized.
+
 ## Accuracy and Verification
 
 Prioritize correctness over agreement, speed, or reassurance.
@@ -175,6 +179,8 @@ When evaluating approaches:
 
 Prioritize correctness, clarity, maintainability, and appropriate scope over cleverness.
 
+Constructors: declare properties explicitly and assign them in the constructor body. Do not use PHP 8 constructor property promotion (`private readonly Type $x` in the parameter list).
+
 # Code Documentation Instructions
 
 Keep code comments and documentation concise and focused on the present
@@ -206,14 +212,3 @@ implementation.
 developer to understand the code, its purpose, and any non-obvious
 behavior. Do not add documentation merely because there is an
 opportunity to do so.
-
-## Resolved Code Style Conflicts
-
-These rules resolve the conflicts between CLAUDE.md and CODE_STYLE.md. Where they differ, follow this section.
-
--   **Comments:** Keep comments to one short line for non-obvious rationale. No multi-paragraph blocks.
--   **Section markers:** A single `//` line may mark a logical section as a visible boundary, even when it adds little information.
--   **Docblocks:** Every method and property has a docblock. Keep the summary short and each `@param` description to one line.
--   **Constructors:** Constructors have no return value, so they omit `@return`.
--   **Constructor parameters:** Do not use constructor property promotion. Declare each property explicitly with a docblock and assign it in the constructor body.
--   **History:** Do not record history in comments, such as "why this changed" notes or references to earlier plans.

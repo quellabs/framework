@@ -11,7 +11,7 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
 	use Quellabs\ObjectQuel\ObjectQuel\Lexer;
 	use Quellabs\ObjectQuel\ObjectQuel\Parser;
-	use Quellabs\ObjectQuel\ObjectQuel\Routines\ProcedureCompiler;
+	use Quellabs\ObjectQuel\ObjectQuel\Routines\RoutineCompiler;
 	use Quellabs\ObjectQuel\ObjectQuel\Pipeline\IdentifierTypeResolver;
 	use Quellabs\ObjectQuel\ObjectQuel\Pipeline\QueryNormalizer;
 	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQL\QuelToSQLRetrieve;
@@ -157,7 +157,7 @@
 		 * @return void
 		 */
 		public function testRoutineVariablesAndCursorFieldsCompareAsTimestamps(): void {
-			$statements = (new ProcedureCompiler($this->em(), new FakePlatformCapabilities('mysql'), null))->compile('
+			$statements = (new RoutineCompiler($this->em(), new FakePlatformCapabilities('mysql'), null))->compile('
 				range of p is PostEntity
 				range of q is PostEntity
 				define function f (datetime since) void {

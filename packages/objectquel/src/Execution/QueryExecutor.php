@@ -9,8 +9,10 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstCreateTable;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstDelete;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstDestroy;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstDestroyEventBinding;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstDestroyIndex;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstDestroyRoutine;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstEventBinding;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstHideIndex;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstReplace;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRoutineDefinition;
@@ -33,6 +35,8 @@
 	use Quellabs\ObjectQuel\ObjectQuel\QuelResult;
 	use Quellabs\ObjectQuel\Execution\Executors\AlterTableExecutor;
 	use Quellabs\ObjectQuel\Execution\Executors\AppendExecutor;
+	use Quellabs\ObjectQuel\Execution\Executors\BindEventExecutor;
+	use Quellabs\ObjectQuel\Execution\Executors\DestroyTriggerExecutor;
 	use Quellabs\ObjectQuel\Execution\Executors\CallExecutor;
 	use Quellabs\ObjectQuel\Execution\Executors\CreateIndexExecutor;
 	use Quellabs\ObjectQuel\Execution\Executors\CreateTableExecutor;
@@ -84,6 +88,8 @@
 		private DestroyIndexExecutor $destroyIndexExecutor;
 		private DefineRoutineExecutor $defineRoutineExecutor;
 		private DestroyRoutineExecutor $destroyRoutineExecutor;
+		private BindEventExecutor $bindEventExecutor;
+		private DestroyTriggerExecutor $destroyTriggerExecutor;
 		private HideIndexExecutor $hideIndexExecutor;
 		private ShowIndexExecutor $showIndexExecutor;
 		private AppendExecutor $appendExecutor;
@@ -123,6 +129,8 @@
 			$this->destroyIndexExecutor = new DestroyIndexExecutor($this->connection, $this->capabilities);
 			$this->defineRoutineExecutor = new DefineRoutineExecutor($entityManager, $this->capabilities);
 			$this->destroyRoutineExecutor = new DestroyRoutineExecutor($this->connection, $this->capabilities);
+			$this->bindEventExecutor = new BindEventExecutor($entityManager, $this->capabilities);
+			$this->destroyTriggerExecutor = new DestroyTriggerExecutor($entityManager, $this->capabilities);
 			$this->hideIndexExecutor = new HideIndexExecutor($this->connection, $this->capabilities);
 			$this->showIndexExecutor = new ShowIndexExecutor($this->connection, $this->capabilities);
 			$this->appendExecutor = new AppendExecutor($this->connection, $entityManager, $this->capabilities, $this->planExecutor);
@@ -193,8 +201,9 @@
 				$this->databaseExecutor->resetLastExecutedSql();
 				
 				// Parse the input query string into an Abstract Syntax Tree (AST)
-				$ast = (new Parser(new Lexer($query), $this->entityManager->getEntityStore()))->parse();
+				$ast = $this->parseQuery($query);
 
+				// Create the execution context
 				$context = new ExecutionContext($normalizedParameters);
 
 				// DDL statements bypass the retrieve pipeline entirely — none
@@ -208,7 +217,9 @@
 					$ast instanceof AstHideIndex ||
 					$ast instanceof AstShowIndex ||
 					$ast instanceof AstRoutineDefinition ||
-					$ast instanceof AstDestroyRoutine
+					$ast instanceof AstDestroyRoutine ||
+					$ast instanceof AstEventBinding ||
+					$ast instanceof AstDestroyEventBinding
 				) {
 					match (true) {
 						$ast instanceof AstCreateTable => $this->createTableExecutor->execute($ast, $context),
@@ -219,6 +230,8 @@
 						$ast instanceof AstShowIndex => $this->showIndexExecutor->execute($ast, $context),
 						$ast instanceof AstRoutineDefinition => $this->defineRoutineExecutor->execute($ast, $context),
 						$ast instanceof AstDestroyRoutine => $this->destroyRoutineExecutor->execute($ast, $context),
+						$ast instanceof AstEventBinding => $this->bindEventExecutor->execute($ast, $context),
+						$ast instanceof AstDestroyEventBinding => $this->destroyTriggerExecutor->execute($ast, $context),
 						default => $this->createIndexExecutor->execute($ast, $context),
 					};
 
@@ -304,6 +317,47 @@
 		public function getLastExecutedSql(): array {
 			return $this->databaseExecutor->getLastExecutedSql();
 		}
+
+		/**
+		 * Returns planner decisions and generated SQL for a retrieve query
+		 * without executing it. Combines explain() with a SQL dry-run into one
+		 * coherent result.
+		 *
+		 * DDL and write-verb statements have no optimizer/planner pipeline to
+		 * report decisions from, and replaying them via the retrieve
+		 * pipeline's dry-run executor would re-run the write for real — so
+		 * they're rejected outright rather than explained.
+		 * @param string $query The ObjectQuel query string
+		 * @param array<int|string, mixed> $parameters Query parameters
+		 * @return QueryPlan Planning decisions and generated SQL
+		 * @throws QuelException If $query isn't a retrieve statement, or on a syntax error
+		 * @throws \ReflectionException Errors when inspecting entity classes
+		 */
+		public function explainQuery(string $query, array $parameters = []): QueryPlan {
+			try {
+				$ast = $this->parseQuery($query);
+			} catch (ParserException|LexerException $e) {
+				throw new QuelException("Syntax error: " . $e->getMessage(), 'syntax_error', 0, $e);
+			}
+
+			if (!$ast instanceof AstRetrieve) {
+				throw new QuelException("explain is not supported for DDL or write-verb statements", 'not_plannable');
+			}
+
+			return $this->explainRetrieveQuery($query, $parameters);
+		}
+
+		/**
+		 * Parses a query into a fresh AST.
+		 * @param string $query The ObjectQuel query string
+		 * @return AstStatement
+		 * @throws LexerException|ParserException|\ReflectionException
+		 */
+		private function parseQuery(string $query): AstStatement {
+			$lexer = new Lexer($query);
+			$parser = new Parser($lexer, $this->entityManager->getEntityStore());
+			return $parser->parse();
+		}
 		
 		/**
 		 * Runs the planning pipeline and returns a log of every decision made.
@@ -311,7 +365,7 @@
 		 * @param string $query The ObjectQuel query string
 		 * @param array<int|string, mixed> $parameters Query parameters
 		 * @return PlanLog Planning decisions in pipeline order
-		 * @throws QuelException
+		 * @throws QuelException|\ReflectionException
 		 */
 		private function explain(string $query, array $parameters = []): PlanLog {
 			try {
@@ -319,7 +373,7 @@
 				$normalizedParameters = $this->normalizeParams($parameters);
 				
 				// Parse and resolve identifiers
-				$ast = (new Parser(new Lexer($query), $this->entityManager->getEntityStore()))->parse();
+				$ast = $this->parseQuery($query);
 				
 				// explainQuery() already rejects anything but a retrieve statement
 				// before ever calling explain() — this check is a defensive
@@ -328,6 +382,7 @@
 					throw new QuelException("explain() only supports retrieve statements", 'not_plannable');
 				}
 				
+				// Resolve types
 				$this->identifierTypeResolver->resolve($ast);
 				$this->routineCallTyper->typeCalls($ast);
 
@@ -355,34 +410,6 @@
 			} catch (EntityResolutionException $e) {
 				throw new QuelException($e->getMessage(), 'resolution_error', 0, $e);
 			}
-		}
-		
-		/**
-		 * Returns planner decisions and generated SQL for a retrieve query
-		 * without executing it. Combines explain() with a SQL dry-run into one
-		 * coherent result.
-		 *
-		 * DDL and write-verb statements have no optimizer/planner pipeline to
-		 * report decisions from, and replaying them via the retrieve
-		 * pipeline's dry-run executor would re-run the write for real — so
-		 * they're rejected outright rather than explained.
-		 * @param string $query The ObjectQuel query string
-		 * @param array<int|string, mixed> $parameters Query parameters
-		 * @return QueryPlan Planning decisions and generated SQL
-		 * @throws QuelException If $query isn't a retrieve statement, or on a syntax error
-		 */
-		public function explainQuery(string $query, array $parameters = []): QueryPlan {
-			try {
-				$ast = (new Parser(new Lexer($query), $this->entityManager->getEntityStore()))->parse();
-			} catch (ParserException|LexerException $e) {
-				throw new QuelException("Syntax error: " . $e->getMessage(), 'syntax_error', 0, $e);
-			}
-
-			if (!$ast instanceof AstRetrieve) {
-				throw new QuelException("explain is not supported for DDL or write-verb statements", 'not_plannable');
-			}
-
-			return $this->explainRetrieveQuery($query, $parameters);
 		}
 		
 		/**

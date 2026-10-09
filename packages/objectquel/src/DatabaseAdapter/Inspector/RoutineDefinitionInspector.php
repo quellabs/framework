@@ -9,15 +9,21 @@
 
 	/**
 	 * Reads routine kinds and return types from the connected database catalog.
+	 * @phpstan-import-type RoutineParameter from DatabaseAdapter
+	 * @phpstan-import-type RoutineListEntry from DatabaseAdapter
 	 */
-	class RoutineDefinitionInspector {
+	readonly class RoutineDefinitionInspector {
+
+		/** @var DatabaseAdapter Database connection */
+		private DatabaseAdapter $connection;
 
 		/**
 		 * Creates an inspector for the connected database.
 		 * @param DatabaseAdapter $connection Connection whose routine catalog is read
 		 * @return void
 		 */
-		public function __construct(private readonly DatabaseAdapter $connection) {
+		public function __construct(DatabaseAdapter $connection) {
+			$this->connection = $connection;
 		}
 
 		/**
@@ -37,11 +43,22 @@
 			$kinds = [];
 			$returnTypes = [];
 			$needsTransaction = false;
+			$isTrigger = false;
+			$databaseType = $this->connection->getDatabaseType();
 
 			foreach ($result->fetchAll('assoc') as $row) {
 				$isProcedure = (int)$row['is_procedure'] === 1;
 				$kinds[(int)$isProcedure] = true;
-				$needsTransaction = $needsTransaction || ($row['routine_comment'] ?? null) === 'ObjectQuel:atomic-block';
+				$comment = $row['routine_comment'] ?? null;
+
+				// The savepoint-based caller transaction is a MySQL/MariaDB-only mechanism (see
+				// MysqlRoutineLowering); Postgres/SQL Server handle 'atomic' entirely inside the
+				// routine body, so an 'atomic' metadata flag there implies no caller obligation.
+				if (in_array($databaseType, ['mysql', 'mariadb'], true)) {
+					$needsTransaction = $needsTransaction || self::isAtomic($comment);
+				}
+
+				$isTrigger = $isTrigger || self::isTriggerMetadata($comment);
 
 				if (!$isProcedure) {
 					$returnTypes[] = self::returnType(
@@ -63,7 +80,65 @@
 
 			// PostgreSQL overloads that return different types leave the type unknown
 			$distinctTypes = array_unique($returnTypes);
-			return new RoutineSignature(isset($kinds[1]), count($distinctTypes) === 1 ? $distinctTypes[0] : null, $needsTransaction);
+			return new RoutineSignature(isset($kinds[1]), count($distinctTypes) === 1 ? $distinctTypes[0] : null, $needsTransaction, $isTrigger);
+		}
+
+		/**
+		 * Reads a routine's full versioned JSON metadata (RoutineMetadata), for binding
+		 * validation: matching the called routine's row-parameter types and walking its safety
+		 * graph needs the whole document, not just the isTrigger/needsTransaction flags
+		 * getRoutineSignature() exposes.
+		 * @param string $name Routine name as written
+		 * @return array<string, mixed> Decoded metadata
+		 * @throws QuelException When the routine is missing/ambiguous, its metadata is missing,
+		 *         unreadable, malformed, or from an unsupported version, or the lookup fails
+		 */
+		public function getRoutineMetadata(string $name): array {
+			[$sql, $parameters] = $this->signatureQuery($name);
+			$result = $this->connection->execute($sql, $parameters);
+
+			if ($result === null) {
+				throw new QuelException("Failed to look up routine '{$name}': {$this->connection->getLastErrorMessage()}", 'routine_call_error');
+			}
+
+			$rows = $result->fetchAll('assoc');
+
+			// Binding validation needs one unambiguous routine, not merely a matching name.
+			if ($rows === []) {
+				throw new QuelException("Can't bind to '{$name}': no routine by that name exists.", 'routine_call_error');
+			}
+
+			if (count($rows) > 1) {
+				throw new QuelException("Can't bind to '{$name}': both a void and a value-returning function have that name.", 'routine_call_error');
+			}
+
+			// Row-parameter types and the safety graph exist only in ObjectQuel's metadata.
+			$comment = $rows[0]['routine_comment'] ?? null;
+
+			if ($comment === null || $comment === '') {
+				throw new QuelException("Can't bind to '{$name}': it has no ObjectQuel metadata. Redefine it with the current ObjectQuel version.", 'routine_definition_error');
+			}
+
+			// Decode the JSON
+			$decoded = json_decode($comment, true);
+
+			if (!is_array($decoded) || !isset($decoded['objectQuel'])) {
+				throw new QuelException("Can't bind to '{$name}': its metadata is missing or unreadable.", 'routine_definition_error');
+			}
+
+			// The validator can only interpret the metadata format it was built for.
+			if ($decoded['objectQuel'] !== 1) {
+				throw new QuelException("Can't bind to '{$name}': its metadata is from an unsupported ObjectQuel version.", 'routine_definition_error');
+			}
+
+			// Fetch the metadata
+			$metadata = [];
+
+			foreach ($decoded as $field => $value) {
+				$metadata[(string)$field] = $value;
+			}
+
+			return $metadata;
 		}
 
 		/**
@@ -85,12 +160,15 @@
 		}
 
 		/**
-		 * Lists every function and procedure in the connected schema, with return types and
-		 * parameter types normalized to ObjectQuel's abstract column types rather than
-		 * engine-native ones. A name can appear twice (once as a function, once as a procedure)
-		 * since MySQL/MariaDB give the two kinds separate namespaces; overloads of the same kind
-		 * are merged the same way getRoutineSignature() merges them.
-		 * @return array<int, array{name: string, isProcedure: bool, returnType: ?string, parameters: list<array{name: string, type: ?string}>}>
+		 * Lists every ObjectQuel-managed function and procedure in the connected schema: one
+		 * carrying recognizable, current-version metadata (RoutineMetadata). A routine without
+		 * it — created outside ObjectQuel, or deployed before metadata existed — is not listed,
+		 * since its EQUEL-level return type and row-parameter shape can't be recovered. Return
+		 * type comes from the metadata itself (`void`, `trigger` for an `isTrigger` routine, or a
+		 * scalar type), not the native catalog; parameter types are still normalized to ObjectQuel's abstract column
+		 * types from the native catalog. A name can appear twice (once as a function, once as a
+		 * procedure) since MySQL/MariaDB give the two kinds separate namespaces.
+		 * @return list<RoutineListEntry>
 		 * @throws QuelException When the lookup fails or the engine has no stored routines
 		 */
 		public function listRoutines(): array {
@@ -104,30 +182,29 @@
 			$grouped = [];
 
 			foreach ($result->fetchAll('assoc') as $row) {
+				$metadata = self::decodeManagedMetadata($row['routine_comment'] ?? null);
+
+				if ($metadata === null) {
+					continue;
+				}
+
 				$isProcedure = (int)$row['is_procedure'] === 1;
 				$key = $row['name'] . '|' . (int)$isProcedure;
+				$returnType = $metadata['returnType'] ?? null;
+				$displayReturnType = (bool)($metadata['isTrigger'] ?? false) ? 'trigger' : $returnType;
 
-				$grouped[$key]['name'] ??= (string)$row['name'];
-				$grouped[$key]['isProcedure'] ??= $isProcedure;
-				$grouped[$key]['returnTypes'][] = $isProcedure ? null : self::returnType(
-					$this->connection->getDatabaseType(),
-					(string)$row['data_type'],
-					$row['type_detail'] === null ? null : (string)$row['type_detail'],
-					$row['max_length'] === null ? null : (int)$row['max_length']
-				);
+				$grouped[$key] = [
+					'name'        => (string)$row['name'],
+					'isProcedure' => $isProcedure,
+					'returnType'  => is_string($displayReturnType) ? $displayReturnType : 'unknown',
+				];
 			}
 
 			$parametersByRoutine = $this->listParameters();
 			$routines = [];
 
 			foreach ($grouped as $key => $group) {
-				$distinctTypes = array_unique($group['returnTypes']);
-				$routines[] = [
-					'name'        => $group['name'],
-					'isProcedure' => $group['isProcedure'],
-					'returnType'  => count($distinctTypes) === 1 ? reset($distinctTypes) : null,
-					'parameters'  => $parametersByRoutine[$key] ?? [],
-				];
+				$routines[] = $group + ['parameters' => $parametersByRoutine[$key] ?? []];
 			}
 
 			usort($routines, static fn(array $a, array $b): int => $a['name'] <=> $b['name'] ?: $a['isProcedure'] <=> $b['isProcedure']);
@@ -140,7 +217,7 @@
 		 * routines ("name|0" for a function, "name|1" for a procedure), each ordered by
 		 * declaration position. Parameter types go through the same native-to-abstract
 		 * mapping as return types.
-		 * @return array<string, list<array{name: string, type: ?string}>>
+		 * @return array<string, list<RoutineParameter>>
 		 * @throws QuelException When the lookup fails
 		 */
 		private function listParameters(): array {
@@ -194,24 +271,27 @@
 
 		/**
 		 * Builds the catalog query listing every routine's name, kind and return-type columns
-		 * for the connected schema. Mirrors signatureQuery() but without a name filter.
+		 * for the connected schema. Only `name`, `is_procedure` and `routine_comment` are read:
+		 * listRoutines() takes return type from the metadata, not the native catalog.
 		 * @return array{string, array<string, string>} SQL and its parameters
 		 * @throws QuelException When the engine has no stored routines
 		 */
 		private function listQuery(): array {
 			return match ($this->connection->getDatabaseType()) {
+				// obj_description() reads the ObjectQuel metadata written by COMMENT ON FUNCTION/PROCEDURE (RoutineMetadata)
 				'pgsql' => [
-					"SELECT p.proname AS name, CASE WHEN p.prokind = 'p' THEN 1 ELSE 0 END AS is_procedure, format_type(p.prorettype, NULL) AS data_type, NULL AS type_detail, NULL AS max_length, NULL AS routine_comment FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = current_schema() ORDER BY p.proname",
+					"SELECT p.proname AS name, CASE WHEN p.prokind = 'p' THEN 1 ELSE 0 END AS is_procedure, obj_description(p.oid, 'pg_proc') AS routine_comment FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = current_schema() ORDER BY p.proname",
 					[],
 				],
 
+				// The extended property reads the ObjectQuel metadata written by sp_addextendedproperty (RoutineMetadata)
 				'sqlsrv' => [
-					"SELECT o.name AS name, CASE WHEN o.type IN ('P', 'PC') THEN 1 ELSE 0 END AS is_procedure, TYPE_NAME(p.system_type_id) AS data_type, NULL AS type_detail, p.max_length AS max_length, NULL AS routine_comment FROM sys.objects o JOIN sys.schemas s ON s.schema_id = o.schema_id LEFT JOIN sys.parameters p ON p.object_id = o.object_id AND p.parameter_id = 0 WHERE s.name = :schema AND o.type IN ('P', 'PC', 'FN', 'FS') ORDER BY o.name",
+					"SELECT o.name AS name, CASE WHEN o.type IN ('P', 'PC') THEN 1 ELSE 0 END AS is_procedure, CAST(ep.value AS NVARCHAR(MAX)) AS routine_comment FROM sys.objects o JOIN sys.schemas s ON s.schema_id = o.schema_id LEFT JOIN sys.extended_properties ep ON ep.major_id = o.object_id AND ep.minor_id = 0 AND ep.name = N'ObjectQuel_Metadata' WHERE s.name = :schema AND o.type IN ('P', 'PC', 'FN', 'FS') ORDER BY o.name",
 					['schema' => (string)$this->connection->getRoutineSchema()],
 				],
 
 				'mysql', 'mariadb' => [
-					"SELECT ROUTINE_NAME AS name, CASE WHEN ROUTINE_TYPE = 'PROCEDURE' THEN 1 ELSE 0 END AS is_procedure, DATA_TYPE AS data_type, DTD_IDENTIFIER AS type_detail, CHARACTER_MAXIMUM_LENGTH AS max_length, ROUTINE_COMMENT AS routine_comment FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = DATABASE() ORDER BY ROUTINE_NAME",
+					"SELECT ROUTINE_NAME AS name, CASE WHEN ROUTINE_TYPE = 'PROCEDURE' THEN 1 ELSE 0 END AS is_procedure, ROUTINE_COMMENT AS routine_comment FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = DATABASE() ORDER BY ROUTINE_NAME",
 					[],
 				],
 
@@ -261,15 +341,17 @@
 		 */
 		private function signatureQuery(string $name): array {
 			return match ($this->connection->getDatabaseType()) {
-				// Routine return types carry no type modifier, so format_type() gets none
+				// Routine return types carry no type modifier, so format_type() gets none.
+				// obj_description() reads the ObjectQuel metadata written by COMMENT ON PROCEDURE (RoutineMetadata).
 				'pgsql' => [
-					"SELECT DISTINCT CASE WHEN prokind = 'p' THEN 1 ELSE 0 END AS is_procedure, format_type(prorettype, NULL) AS data_type, NULL AS type_detail, NULL AS max_length, NULL AS routine_comment FROM pg_proc WHERE proname = :name AND pg_function_is_visible(oid)",
+					"SELECT DISTINCT CASE WHEN p.prokind = 'p' THEN 1 ELSE 0 END AS is_procedure, format_type(p.prorettype, NULL) AS data_type, NULL AS type_detail, NULL AS max_length, obj_description(p.oid, 'pg_proc') AS routine_comment FROM pg_proc p JOIN pg_namespace s ON s.oid = p.pronamespace WHERE p.proname = :name AND s.nspname = current_schema()",
 					['name' => $name],
 				],
 
-				// Procedures and scalar functions, native or CLR; a scalar function's return value is parameter 0
+				// Procedures and scalar functions, native or CLR; a scalar function's return value is parameter 0.
+				// The extended property reads the ObjectQuel metadata written by sp_addextendedproperty (RoutineMetadata).
 				'sqlsrv' => [
-					"SELECT CASE WHEN o.type IN ('P', 'PC') THEN 1 ELSE 0 END AS is_procedure, TYPE_NAME(p.system_type_id) AS data_type, NULL AS type_detail, p.max_length AS max_length, NULL AS routine_comment FROM sys.objects o LEFT JOIN sys.parameters p ON p.object_id = o.object_id AND p.parameter_id = 0 WHERE o.object_id = OBJECT_ID(:name) AND o.type IN ('P', 'PC', 'FN', 'FS')",
+					"SELECT CASE WHEN o.type IN ('P', 'PC') THEN 1 ELSE 0 END AS is_procedure, TYPE_NAME(p.system_type_id) AS data_type, NULL AS type_detail, p.max_length AS max_length, CAST(ep.value AS NVARCHAR(MAX)) AS routine_comment FROM sys.objects o LEFT JOIN sys.parameters p ON p.object_id = o.object_id AND p.parameter_id = 0 LEFT JOIN sys.extended_properties ep ON ep.major_id = o.object_id AND ep.minor_id = 0 AND ep.name = N'ObjectQuel_Metadata' WHERE o.object_id = OBJECT_ID(:name) AND o.type IN ('P', 'PC', 'FN', 'FS')",
 					['name' => $this->sqlServerRoutineName($name)],
 				],
 
@@ -292,7 +374,7 @@
 		private function existenceQuery(string $name): array {
 			return match ($this->connection->getDatabaseType()) {
 				'pgsql' => [
-					'SELECT COUNT(*) AS routine_count FROM pg_proc WHERE proname = :name AND pg_function_is_visible(oid)',
+					'SELECT COUNT(*) AS routine_count FROM pg_proc p JOIN pg_namespace s ON s.oid = p.pronamespace WHERE p.proname = :name AND s.nspname = current_schema()',
 					['name' => $name],
 				],
 
@@ -344,5 +426,68 @@
 
 			// An enum's PHP class isn't in the catalog, so its value stays a string
 			return $type === 'enum' ? 'string' : $type;
+		}
+
+		/**
+		 * Reads whether a routine's comment marks it as containing an `atomic` block, requiring
+		 * the caller to wrap its call in a transaction (MySQL/MariaDB only — see
+		 * MysqlRoutineLowering). Recognizes the current versioned JSON metadata (RoutineMetadata)
+		 * and falls back to the legacy `ObjectQuel:atomic-block` sentinel for a routine deployed
+		 * before that metadata existed.
+		 * @param string|null $comment MySQL/MariaDB ROUTINE_COMMENT
+		 * @return bool
+		 */
+		private static function isAtomic(?string $comment): bool {
+			if ($comment === null || $comment === '') {
+				return false;
+			}
+
+			$decoded = json_decode($comment, true);
+
+			if (is_array($decoded) && isset($decoded['objectQuel'])) {
+				return (bool)($decoded['atomic'] ?? false);
+			}
+
+			return $comment === 'ObjectQuel:atomic-block';
+		}
+
+		/**
+		 * Reads whether a routine's comment/extended property marks it as declared with
+		 * `tfunction` (RoutineMetadata), on any of the three engines. There is no legacy
+		 * sentinel for this: `tfunction` did not exist before this metadata did, so a routine
+		 * without recognizable ObjectQuel metadata is never one.
+		 * @param string|null $comment Routine comment (MySQL/MariaDB) or extended property value (Postgres/SQL Server)
+		 * @return bool
+		 */
+		private static function isTriggerMetadata(?string $comment): bool {
+			if ($comment === null || $comment === '') {
+				return false;
+			}
+
+			$decoded = json_decode($comment, true);
+
+			return is_array($decoded) && isset($decoded['objectQuel']) && (bool)($decoded['isTrigger'] ?? false);
+		}
+
+		/**
+		 * Decodes a routine's comment/extended property as current-version ObjectQuel metadata
+		 * (RoutineMetadata), for listRoutines() to tell an ObjectQuel-managed routine from one
+		 * created outside ObjectQuel. Unlike getRoutineMetadata(), a bad comment here is not an
+		 * error: the caller just excludes the routine from the listing.
+		 * @param string|null $comment Routine comment (MySQL/MariaDB) or extended property value (Postgres/SQL Server)
+		 * @return array<string, mixed>|null Decoded metadata, or null when it isn't valid current-version ObjectQuel metadata
+		 */
+		private static function decodeManagedMetadata(?string $comment): ?array {
+			if ($comment === null || $comment === '') {
+				return null;
+			}
+
+			$decoded = json_decode($comment, true);
+
+			if (!is_array($decoded) || ($decoded['objectQuel'] ?? null) !== 1) {
+				return null;
+			}
+
+			return $decoded;
 		}
 	}

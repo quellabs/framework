@@ -6,10 +6,12 @@
 	use Cake\Database\Schema\Collection as SchemaCollection;
 	use Cake\Database\StatementInterface;
 	use Cake\Database\Connection;
+	use Quellabs\ObjectQuel\DatabaseAdapter\Inspector\EventBindingInspector;
 	use Quellabs\ObjectQuel\DatabaseAdapter\Inspector\MysqlSchemaIntrospector;
 	use Quellabs\ObjectQuel\DatabaseAdapter\Inspector\NullSchemaIntrospector;
 	use Quellabs\ObjectQuel\DatabaseAdapter\Inspector\PostgresSchemaIntrospector;
 	use Quellabs\ObjectQuel\DatabaseAdapter\Inspector\RoutineDefinitionInspector;
+	use Quellabs\ObjectQuel\DatabaseAdapter\Inspector\RoutineDependencyInspector;
 	use Quellabs\ObjectQuel\DatabaseAdapter\Inspector\RoutineSchemaIntrospector;
 	use Quellabs\ObjectQuel\DatabaseAdapter\Inspector\SchemaIntrospectorInterface;
 	use Quellabs\ObjectQuel\DatabaseAdapter\Inspector\SqlServerCompatibilityLevelInspector;
@@ -17,6 +19,7 @@
 	use Quellabs\ObjectQuel\DatabaseAdapter\Inspector\SqlServerSchemaIntrospector;
 	use Quellabs\ObjectQuel\DatabaseAdapter\Inspector\SqliteFulltextIndexInspector;
 	use Quellabs\ObjectQuel\DatabaseAdapter\Inspector\SqliteSchemaIntrospector;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\BindingEvent;
 
 	/**
 	 * Database adapter that ties ObjectQuel and CakePHP Database together
@@ -37,6 +40,11 @@
 	 * }
 	 *
 	 * @phpstan-type IndexUsageStats array{reads: int, writes: int}
+	 *
+	 * @phpstan-type RoutineParameter array{name: string, type: ?string}
+	 * @phpstan-type RoutineListEntry array{name: string, isProcedure: bool, returnType: string, parameters: list<RoutineParameter>}
+	 *
+	 * @phpstan-type BindingListEntry array{table: string, event: BindingEvent, routine: string, alias: string}
 	 */
 	class DatabaseAdapter {
 		
@@ -108,6 +116,12 @@
 
 		/** @var RoutineDefinitionInspector|null Lazily created inspector; routine metadata itself is not cached */
 		private ?RoutineDefinitionInspector $routineDefinitionInspectorCache = null;
+
+		/** @var EventBindingInspector|null Lazily created inspector */
+		private ?EventBindingInspector $eventBindingInspectorCache = null;
+
+		/** @var RoutineDependencyInspector|null Lazily created inspector */
+		private ?RoutineDependencyInspector $routineDependencyInspectorCache = null;
 		
 		/**
 		 * Constructs a new database adapter instance
@@ -297,6 +311,68 @@
 		}
 
 		/**
+		 * Reads a routine's full JSON metadata, for binding validation.
+		 * @param string $name Routine name as written
+		 * @return array<string, mixed> Decoded metadata
+		 * @throws \Quellabs\ObjectQuel\Exception\QuelException When missing, ambiguous, unmanaged, or the lookup fails
+		 * @see RoutineDefinitionInspector::getRoutineMetadata()
+		 */
+		public function getRoutineMetadata(string $name): array {
+			$this->routineDefinitionInspectorCache ??= new RoutineDefinitionInspector($this);
+			return $this->routineDefinitionInspectorCache->getRoutineMetadata($name);
+		}
+
+		/**
+		 * Checks whether a trigger by this name already exists on this table.
+		 * @param string $table Physical table the trigger would be on
+		 * @param string $name Generated trigger name
+		 * @return bool
+		 * @throws \Quellabs\ObjectQuel\Exception\QuelException When the lookup fails or triggers are unsupported
+		 * @see EventBindingInspector::triggerExists()
+		 */
+		public function triggerExists(string $table, string $name): bool {
+			$this->eventBindingInspectorCache ??= new EventBindingInspector($this);
+			return $this->eventBindingInspectorCache->triggerExists($table, $name);
+		}
+
+		/**
+		 * Finds every trigger that depends on this routine, so `destroy function` can refuse
+		 * while one still calls it.
+		 * @param string $routineName Routine a `destroy function` would remove
+		 * @return list<string> Names of dependent triggers; empty when none depend on it
+		 * @throws \Quellabs\ObjectQuel\Exception\QuelException When the lookup fails or triggers are unsupported
+		 * @see RoutineDependencyInspector::findDependentTriggers()
+		 */
+		public function findDependentTriggers(string $routineName): array {
+			$this->routineDependencyInspectorCache ??= new RoutineDependencyInspector($this);
+			return $this->routineDependencyInspectorCache->findDependentTriggers($routineName);
+		}
+
+		/**
+		 * Finds every binding trigger on a table, so `alter table` can refuse to change a
+		 * mapped column while one still depends on it.
+		 * @param string $table Physical table being altered
+		 * @return list<string> Names of binding triggers found on it; empty when none exist
+		 * @throws \Quellabs\ObjectQuel\Exception\QuelException When the lookup fails or triggers are unsupported
+		 * @see RoutineDependencyInspector::findBindingTriggersOnTable()
+		 */
+		public function findBindingTriggersOnTable(string $table): array {
+			$this->routineDependencyInspectorCache ??= new RoutineDependencyInspector($this);
+			return $this->routineDependencyInspectorCache->findBindingTriggersOnTable($table);
+		}
+
+		/**
+		 * Lists every live binding in the connected schema.
+		 * @return list<BindingListEntry>
+		 * @throws \Quellabs\ObjectQuel\Exception\QuelException When the lookup fails or triggers are unsupported
+		 * @see RoutineDependencyInspector::listBindings()
+		 */
+		public function listBindings(): array {
+			$this->routineDependencyInspectorCache ??= new RoutineDependencyInspector($this);
+			return $this->routineDependencyInspectorCache->listBindings();
+		}
+
+		/**
 		 * Checks whether a function or procedure has this name, without resolving its call signature.
 		 * @param string $name Routine name as written
 		 * @return bool True when either routine kind exists
@@ -309,7 +385,7 @@
 
 		/**
 		 * Lists every EQUEL-callable function and procedure in the connected schema.
-		 * @return array<int, array{name: string, isProcedure: bool, returnType: ?string, parameters: list<array{name: string, type: ?string}>}>
+		 * @return list<RoutineListEntry>
 		 * @throws \Quellabs\ObjectQuel\Exception\QuelException When the lookup fails or routines are unsupported
 		 * @see RoutineDefinitionInspector::listRoutines()
 		 */

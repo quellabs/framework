@@ -6,7 +6,7 @@
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\ObjectQuel\Exception\QuelException;
 	use Quellabs\ObjectQuel\Exception\SemanticException;
-	use Quellabs\ObjectQuel\ObjectQuel\Routines\ProcedureCompiler;
+	use Quellabs\ObjectQuel\ObjectQuel\Routines\RoutineCompiler;
 	use Quellabs\ObjectQuel\Tests\Support\FakePlatformCapabilities;
 
 	/**
@@ -20,8 +20,11 @@
 		 * @return string Generated PostgreSQL CREATE statement
 		 */
 		private function compile(string $source): string {
-			$statements = (new ProcedureCompiler($GLOBALS['test_em'], new FakePlatformCapabilities('pgsql'), null))->compile($source);
-			self::assertCount(1, $statements);
+			$statements = (new RoutineCompiler($GLOBALS['test_em'], new FakePlatformCapabilities('pgsql'), null))->compile($source);
+
+			// Every routine carries a second statement attaching its JSON metadata
+			// (see RoutineMetadataTest); body-shape tests here only care about the CREATE itself.
+			self::assertSame(2, count($statements));
 			return $statements[0];
 		}
 
@@ -558,7 +561,7 @@
 						}
 						return 1
 					}
-				', 'only supported in void functions'],
+				', 'only supported in void or trigger functions'],
 				'retrieve without a range' => ['
 					define function f () void {
 						retrieve (x = 1)
@@ -580,6 +583,21 @@
 		}
 
 		/**
+		 * The routine's JSON metadata (RoutineMetadataTest) is attached as a second statement,
+		 * `COMMENT ON PROCEDURE`, disambiguated by argument types like the CREATE signature.
+		 * @return void
+		 */
+		public function testSecondStatementCarriesRoutineMetadata(): void {
+			$statements = (new RoutineCompiler($GLOBALS['test_em'], new FakePlatformCapabilities('pgsql'), null))->compile('
+				range of u is UserEntity
+				define function ban_all (integer minId) void { replace u (banned = true) where u.id > minId }
+			');
+
+			self::assertCount(2, $statements);
+			self::assertSame('COMMENT ON PROCEDURE "ban_all"(INTEGER) IS \'{"objectQuel":1,"isTrigger":false,"returnType":"void","atomic":false,"parameters":[{"kind":"scalar","type":"integer"}],"safety":{"calls":[],"reads":[],"writes":["users"]}}\';', $statements[1]);
+		}
+
+		/**
 		 * SQLite has no stored routines.
 		 * @return void
 		 */
@@ -587,7 +605,7 @@
 			$this->expectException(QuelException::class);
 			$this->expectExceptionMessage("Routines can't be compiled for 'sqlite'.");
 
-			(new ProcedureCompiler($GLOBALS['test_em'], new FakePlatformCapabilities('sqlite'), null))->compile('
+			(new RoutineCompiler($GLOBALS['test_em'], new FakePlatformCapabilities('sqlite'), null))->compile('
 				range of u is UserEntity
 				define function f () void {
 					delete u where u.id = 1
