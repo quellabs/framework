@@ -107,7 +107,7 @@
 				['mysql', 'FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = DATABASE()', 'f]x', 1, true],
 				['mysql', 'FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = DATABASE()', 'f]x', 2, true],
 				['mariadb', 'FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = DATABASE()', 'f]x', 1, true],
-				['pgsql', 'FROM pg_proc WHERE proname = :name AND pg_function_is_visible(oid)', 'f]x', 1, true],
+				['pgsql', 'JOIN pg_namespace s ON s.oid = p.pronamespace WHERE p.proname = :name AND s.nspname = current_schema()', 'f]x', 1, true],
 				['sqlsrv', "OBJECT_ID(:name) AND type IN ('P', 'PC', 'FN', 'FS', 'IF', 'TF', 'FT')", '[d]]bo].[f]]x]', 1, true],
 			];
 		}
@@ -120,7 +120,7 @@
 			return [
 				['mysql', 'FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = DATABASE()', 'f]x'],
 				['mariadb', 'FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = DATABASE()', 'f]x'],
-				['pgsql', 'FROM pg_proc WHERE proname = :name AND pg_function_is_visible(oid)', 'f]x'],
+				['pgsql', 'JOIN pg_namespace s ON s.oid = p.pronamespace WHERE p.proname = :name AND s.nspname = current_schema()', 'f]x'],
 				['sqlsrv', 'WHERE o.object_id = OBJECT_ID(:name)', '[d]]bo].[f]]x]'],
 			];
 		}
@@ -173,6 +173,94 @@
 				'different return types' => [[self::row(0, 'integer'), self::row(0, 'text')], false, null, null],
 				'unknown return type' => [[self::row(0, 'money')], false, null, null],
 			];
+		}
+
+		/**
+		 * Provides a MySQL ROUTINE_COMMENT and whether it marks the routine as needing a
+		 * caller-side transaction: the legacy sentinel, current JSON metadata with `atomic`
+		 * true/false, and unrelated comment content.
+		 * @return array<string, array{string|null, bool}>
+		 */
+		public static function atomicComments(): array {
+			return [
+				'no comment'               => [null, false],
+				'legacy sentinel'          => ['ObjectQuel:atomic-block', true],
+				'json atomic true'         => ['{"objectQuel":1,"returnType":"void","atomic":true,"parameters":[],"safety":{"calls":[],"reads":[],"writes":[]}}', true],
+				'json atomic false'        => ['{"objectQuel":1,"returnType":"void","atomic":false,"parameters":[],"safety":{"calls":[],"reads":[],"writes":[]}}', false],
+				'unrelated comment'        => ['not ObjectQuel metadata at all', false],
+			];
+		}
+
+		/**
+		 * @param string|null $comment MySQL ROUTINE_COMMENT, legacy sentinel or JSON metadata
+		 * @param bool $expected Expected needsTransaction
+		 * @return void
+		 */
+		#[DataProvider('atomicComments')]
+		public function testNeedsTransactionFromRoutineComment(?string $comment, bool $expected): void {
+			$adapter = $this->getMockBuilder(DatabaseAdapter::class)->disableOriginalConstructor()
+				->onlyMethods(['getDatabaseType', 'execute'])->getMock();
+			$adapter->method('getDatabaseType')->willReturn('mysql');
+			$statement = $this->createMock(StatementInterface::class);
+			$row = self::row(1, null);
+			$row['routine_comment'] = $comment;
+			$statement->method('fetchAll')->willReturn([$row]);
+			$adapter->method('execute')->willReturn($statement);
+
+			self::assertSame($expected, $adapter->getRoutineSignature('f')->needsTransaction);
+		}
+
+		/**
+		 * JSON that isn't ObjectQuel's own versioned shape (no `objectQuel` key) falls back to
+		 * the legacy exact-match check rather than being misread as metadata.
+		 * @return void
+		 */
+		public function testNeedsTransactionIgnoresForeignJsonComment(): void {
+			$adapter = $this->getMockBuilder(DatabaseAdapter::class)->disableOriginalConstructor()
+				->onlyMethods(['getDatabaseType', 'execute'])->getMock();
+			$adapter->method('getDatabaseType')->willReturn('mysql');
+			$statement = $this->createMock(StatementInterface::class);
+			$row = self::row(1, null);
+			$row['routine_comment'] = '{"unrelated":"json"}';
+			$statement->method('fetchAll')->willReturn([$row]);
+			$adapter->method('execute')->willReturn($statement);
+
+			self::assertFalse($adapter->getRoutineSignature('f')->needsTransaction);
+		}
+
+		/**
+		 * Provides a routine comment/extended-property value and whether it marks the routine
+		 * as declared with `tfunction`. Unlike `atomic`, there is no legacy sentinel for this —
+		 * `tfunction` did not exist before this metadata did.
+		 * @return array<string, array{string|null, bool}>
+		 */
+		public static function triggerComments(): array {
+			return [
+				'no comment'            => [null, false],
+				'void metadata'         => ['{"objectQuel":1,"isTrigger":false,"returnType":"void","atomic":false,"parameters":[],"safety":{"calls":[],"reads":[],"writes":[]}}', false],
+				'trigger metadata'      => ['{"objectQuel":1,"isTrigger":true,"returnType":"void","atomic":false,"parameters":[{"kind":"entity","type":"App\\\\Entities\\\\UserEntity"}],"safety":{"calls":[],"reads":[],"writes":[]}}', true],
+				'legacy sentinel'       => ['ObjectQuel:atomic-block', false],
+				'unrelated comment'     => ['not ObjectQuel metadata at all', false],
+			];
+		}
+
+		/**
+		 * @param string|null $comment Routine comment or extended-property value
+		 * @param bool $expected Expected isTrigger
+		 * @return void
+		 */
+		#[DataProvider('triggerComments')]
+		public function testIsTriggerFromRoutineComment(?string $comment, bool $expected): void {
+			$adapter = $this->getMockBuilder(DatabaseAdapter::class)->disableOriginalConstructor()
+				->onlyMethods(['getDatabaseType', 'execute'])->getMock();
+			$adapter->method('getDatabaseType')->willReturn('pgsql');
+			$statement = $this->createMock(StatementInterface::class);
+			$row = self::row(1, null);
+			$row['routine_comment'] = $comment;
+			$statement->method('fetchAll')->willReturn([$row]);
+			$adapter->method('execute')->willReturn($statement);
+
+			self::assertSame($expected, $adapter->getRoutineSignature('f')->isTrigger);
 		}
 
 		/**
@@ -336,8 +424,8 @@
 		}
 
 		/**
-		 * Verifies catalog rows are grouped by name and kind: same-kind overloads merge their
-		 * return types, and a name shared between a function and a procedure yields two entries.
+		 * Verifies catalog rows are grouped by name and kind: a name shared between a function
+		 * and a procedure yields two entries, each taking its return type from its own metadata.
 		 * @return void
 		 */
 		public function testListRoutinesGroupsByNameAndKind(): void {
@@ -347,12 +435,8 @@
 
 			$listStatement = $this->createMock(StatementInterface::class);
 			$listStatement->method('fetchAll')->willReturn([
-				self::namedRow('overloaded', 0, 'integer'),
-				self::namedRow('overloaded', 0, 'integer'),
-				self::namedRow('mixed_return', 0, 'integer'),
-				self::namedRow('mixed_return', 0, 'text'),
-				self::namedRow('dual', 0, 'integer'),
-				self::namedRow('dual', 1, null),
+				self::managedRow('dual', 0, 'integer'),
+				self::managedRow('dual', 1, 'void'),
 			]);
 
 			$paramStatement = $this->createMock(StatementInterface::class);
@@ -364,10 +448,88 @@
 
 			self::assertSame([
 				['name' => 'dual', 'isProcedure' => false, 'returnType' => 'integer', 'parameters' => []],
-				['name' => 'dual', 'isProcedure' => true, 'returnType' => null, 'parameters' => []],
-				['name' => 'mixed_return', 'isProcedure' => false, 'returnType' => null, 'parameters' => []],
-				['name' => 'overloaded', 'isProcedure' => false, 'returnType' => 'integer', 'parameters' => []],
+				['name' => 'dual', 'isProcedure' => true, 'returnType' => 'void', 'parameters' => []],
 			], $adapter->listRoutines());
+		}
+
+		/**
+		 * Verifies a routine metadata marks `isTrigger` shows as 'trigger' in the listing, even
+		 * though its underlying returnType is 'void' like any other routine with no return value.
+		 * @return void
+		 */
+		public function testListRoutinesShowsTriggerForIsTriggerMetadata(): void {
+			$adapter = $this->getMockBuilder(DatabaseAdapter::class)->disableOriginalConstructor()
+				->onlyMethods(['getDatabaseType', 'execute'])->getMock();
+			$adapter->method('getDatabaseType')->willReturn('mysql');
+
+			$listStatement = $this->createMock(StatementInterface::class);
+			$listStatement->method('fetchAll')->willReturn([self::managedRow('audit_user', 1, 'void', isTrigger: true)]);
+
+			$paramStatement = $this->createMock(StatementInterface::class);
+			$paramStatement->method('fetchAll')->willReturn([]);
+
+			$adapter->method('execute')->willReturnOnConsecutiveCalls($listStatement, $paramStatement);
+
+			self::assertSame([
+				['name' => 'audit_user', 'isProcedure' => true, 'returnType' => 'trigger', 'parameters' => []],
+			], $adapter->listRoutines());
+		}
+
+		/**
+		 * Verifies a catalog row without recognizable ObjectQuel metadata — created outside
+		 * ObjectQuel, or deployed before this metadata existed — is excluded entirely.
+		 * @return void
+		 */
+		public function testListRoutinesExcludesRoutineWithoutMetadata(): void {
+			$adapter = $this->getMockBuilder(DatabaseAdapter::class)->disableOriginalConstructor()
+				->onlyMethods(['getDatabaseType', 'execute'])->getMock();
+			$adapter->method('getDatabaseType')->willReturn('mysql');
+
+			$listStatement = $this->createMock(StatementInterface::class);
+			$listStatement->method('fetchAll')->willReturn([self::namedRow('legacy', 0, 'int')]);
+
+			$paramStatement = $this->createMock(StatementInterface::class);
+			$paramStatement->method('fetchAll')->willReturn([]);
+
+			$adapter->method('execute')->willReturnOnConsecutiveCalls($listStatement, $paramStatement);
+
+			self::assertSame([], $adapter->listRoutines());
+		}
+
+		/**
+		 * Verifies malformed and unsupported-version metadata are treated the same as missing
+		 * metadata: excluded, not an error.
+		 * @param string $comment Catalog routine_comment value
+		 * @return void
+		 */
+		#[DataProvider('unmanagedMetadataComments')]
+		public function testListRoutinesExcludesUnrecognizedMetadata(string $comment): void {
+			$adapter = $this->getMockBuilder(DatabaseAdapter::class)->disableOriginalConstructor()
+				->onlyMethods(['getDatabaseType', 'execute'])->getMock();
+			$adapter->method('getDatabaseType')->willReturn('mysql');
+
+			$row = self::namedRow('f', 0, 'int');
+			$row['routine_comment'] = $comment;
+			$listStatement = $this->createMock(StatementInterface::class);
+			$listStatement->method('fetchAll')->willReturn([$row]);
+
+			$paramStatement = $this->createMock(StatementInterface::class);
+			$paramStatement->method('fetchAll')->willReturn([]);
+
+			$adapter->method('execute')->willReturnOnConsecutiveCalls($listStatement, $paramStatement);
+
+			self::assertSame([], $adapter->listRoutines());
+		}
+
+		/**
+		 * @return array<string, array{string}>
+		 */
+		public static function unmanagedMetadataComments(): array {
+			return [
+				'not JSON at all'       => ['not ObjectQuel metadata'],
+				'legacy atomic sentinel' => ['ObjectQuel:atomic-block'],
+				'unsupported version'   => ['{"objectQuel":2,"returnType":"integer"}'],
+			];
 		}
 
 		/**
@@ -381,7 +543,7 @@
 			$adapter->method('getDatabaseType')->willReturn('mysql');
 
 			$listStatement = $this->createMock(StatementInterface::class);
-			$listStatement->method('fetchAll')->willReturn([self::namedRow('greet', 0, 'int')]);
+			$listStatement->method('fetchAll')->willReturn([self::managedRow('greet', 0, 'integer')]);
 
 			$paramStatement = $this->createMock(StatementInterface::class);
 			$paramStatement->method('fetchAll')->willReturn([
@@ -410,7 +572,7 @@
 			$adapter->method('getDatabaseType')->willReturn('mysql');
 
 			$listStatement = $this->createMock(StatementInterface::class);
-			$listStatement->method('fetchAll')->willReturn([self::namedRow('no_args', 0, 'int')]);
+			$listStatement->method('fetchAll')->willReturn([self::managedRow('no_args', 0, 'integer')]);
 
 			$paramStatement = $this->createMock(StatementInterface::class);
 			$paramStatement->method('fetchAll')->willReturn([]);
@@ -439,7 +601,7 @@
 			$adapter->method('getRoutineSchema')->willReturn('dbo');
 
 			$listStatement = $this->createMock(StatementInterface::class);
-			$listStatement->method('fetchAll')->willReturn([self::namedRow('f', 0, 'int')]);
+			$listStatement->method('fetchAll')->willReturn([self::managedRow('f', 0, 'integer')]);
 
 			$paramStatement = $this->createMock(StatementInterface::class);
 			$paramStatement->method('fetchAll')->willReturn([
@@ -497,6 +659,30 @@
 		}
 
 		/**
+		 * Builds a catalog row for listRoutines() carrying valid, current-version ObjectQuel
+		 * metadata, so the routine passes the metadata filter listRoutines() now applies.
+		 * @param string $name Routine name
+		 * @param int $procedure Procedure flag: 1 for procedures, 0 for functions
+		 * @param string $returnType Metadata return type ('void' or a scalar type)
+		 * @param bool $isTrigger Whether the routine is declared with `tfunction`
+		 * @return array{name: string, is_procedure: int, routine_comment: string}
+		 */
+		private static function managedRow(string $name, int $procedure, string $returnType, bool $isTrigger = false): array {
+			return [
+				'name'            => $name,
+				'is_procedure'    => $procedure,
+				'routine_comment' => json_encode([
+					'objectQuel' => 1,
+					'isTrigger'  => $isTrigger,
+					'returnType' => $returnType,
+					'atomic'     => false,
+					'parameters' => [],
+					'safety'     => ['calls' => [], 'reads' => [], 'writes' => []],
+				]),
+			];
+		}
+
+		/**
 		 * Verifies a failed catalog read surfaces as a QuelException.
 		 * @return void
 		 */
@@ -525,5 +711,69 @@
 			$this->expectException(QuelException::class);
 			$this->expectExceptionMessage("Routines can't be listed on 'sqlite'.");
 			$adapter->listRoutines();
+		}
+
+		/**
+		 * @param DatabaseAdapter&\PHPUnit\Framework\MockObject\MockObject $adapter Mock with a fixed getDatabaseType()
+		 * @param list<array<string, mixed>> $rows Catalog rows to return
+		 * @return void
+		 */
+		private function returningRows(\PHPUnit\Framework\MockObject\MockObject $adapter, array $rows): void {
+			$statement = $this->createStub(StatementInterface::class);
+			$statement->method('fetchAll')->willReturn($rows);
+			$adapter->method('execute')->willReturn($statement);
+		}
+
+		/**
+		 * A valid, current-version metadata document is decoded and returned whole.
+		 * @return void
+		 */
+		public function testGetRoutineMetadataDecodesCurrentVersion(): void {
+			$adapter = $this->getMockBuilder(DatabaseAdapter::class)->disableOriginalConstructor()
+				->onlyMethods(['getDatabaseType', 'execute'])->getMock();
+			$adapter->method('getDatabaseType')->willReturn('mysql');
+			$row = self::row(1, null);
+			$row['routine_comment'] = '{"objectQuel":1,"isTrigger":false,"returnType":"integer","atomic":false,"parameters":[],"safety":{"calls":[],"reads":[],"writes":[]}}';
+			$this->returningRows($adapter, [$row]);
+
+			$metadata = $adapter->getRoutineMetadata('f');
+			self::assertSame('integer', $metadata['returnType']);
+		}
+
+		/**
+		 * @return array<string, array{list<array<string, mixed>>, string}>
+		 */
+		public static function invalidMetadataCatalogResults(): array {
+			$missing = self::row(1, null);
+			$missing['routine_comment'] = null;
+			$foreign = self::row(1, null);
+			$foreign['routine_comment'] = 'not ObjectQuel metadata';
+			$unsupportedVersion = self::row(1, null);
+			$unsupportedVersion['routine_comment'] = '{"objectQuel":2,"returnType":"trigger"}';
+
+			return [
+				'no routine'           => [[], "no routine by that name exists"],
+				'ambiguous'            => [[self::row(0, 'integer'), self::row(1, null)], 'both a void and a value-returning function'],
+				'missing metadata'     => [[$missing], 'it has no ObjectQuel metadata'],
+				'foreign comment'      => [[$foreign], 'its metadata is missing or unreadable'],
+				'unsupported version'  => [[$unsupportedVersion], 'unsupported ObjectQuel version'],
+			];
+		}
+
+		/**
+		 * @param list<array<string, mixed>> $rows Catalog rows
+		 * @param string $message Expected error message fragment
+		 * @return void
+		 */
+		#[DataProvider('invalidMetadataCatalogResults')]
+		public function testGetRoutineMetadataRejectsInvalidResults(array $rows, string $message): void {
+			$adapter = $this->getMockBuilder(DatabaseAdapter::class)->disableOriginalConstructor()
+				->onlyMethods(['getDatabaseType', 'execute'])->getMock();
+			$adapter->method('getDatabaseType')->willReturn('mysql');
+			$this->returningRows($adapter, $rows);
+
+			$this->expectException(QuelException::class);
+			$this->expectExceptionMessage($message);
+			$adapter->getRoutineMetadata('f');
 		}
 	}

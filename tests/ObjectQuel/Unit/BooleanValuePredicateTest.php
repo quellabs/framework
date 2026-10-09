@@ -11,7 +11,7 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Parser;
 	use Quellabs\ObjectQuel\ObjectQuel\Pipeline\IdentifierTypeResolver;
 	use Quellabs\ObjectQuel\ObjectQuel\Pipeline\QueryNormalizer;
-	use Quellabs\ObjectQuel\ObjectQuel\Routines\ProcedureCompiler;
+	use Quellabs\ObjectQuel\ObjectQuel\Routines\RoutineCompiler;
 	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQL\QuelToSQLRetrieve;
 	use Quellabs\ObjectQuel\ObjectQuel\SemanticAnalyzer;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\CollectNodes;
@@ -69,9 +69,9 @@
 		 * @return string The CREATE statement
 		 */
 		private function routineSql(string $databaseType, string $source): string {
-			$statements = (new ProcedureCompiler($this->em(), new FakePlatformCapabilities($databaseType), $databaseType === 'sqlsrv' ? 'dbo' : null))->compile($source);
+			$statements = (new RoutineCompiler($this->em(), new FakePlatformCapabilities($databaseType), $databaseType === 'sqlsrv' ? 'dbo' : null))->compile($source);
 			self::assertNotEmpty($statements);
-			return $statements[array_key_last($statements)];
+			return $statements[0];
 		}
 
 		/**

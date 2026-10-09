@@ -3,25 +3,34 @@
 	namespace Quellabs\ObjectQuel\ObjectQuel\Rules;
 
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstDestroy;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstDestroyEventBinding;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstDestroyIndex;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstDestroyRoutine;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRange;
+	use Quellabs\ObjectQuel\ObjectQuel\Helpers\TargetRangeResolver;
 	use Quellabs\ObjectQuel\ObjectQuel\Lexer;
 	use Quellabs\ObjectQuel\ObjectQuel\LexerException;
+	use Quellabs\ObjectQuel\ObjectQuel\ParserException;
 	use Quellabs\ObjectQuel\ObjectQuel\Token;
 
 	/**
-	 * Parser for `destroy` statements in the ObjectQuel language. Both forms
-	 * share the `destroy Name` prefix parsed here; what follows decides the
-	 * shape, not a keyword (see objectquel-destroy-index-plan.md):
+	 * Parser for `destroy` statements in the ObjectQuel language. Every form
+	 * shares the `destroy` keyword parsed here; what follows decides the
+	 * shape, not a dedicated keyword in most cases (see
+	 * objectquel-destroy-index-plan.md):
 	 *
-	 *   destroy [temporary] Name [if exists]        -> AstDestroy (table)
-	 *   destroy Name on Table [if exists]            -> AstDestroyIndex
-	 *   destroy function Name [if exists]            -> AstDestroyRoutine
+	 *   destroy [temporary] Name [if exists]              -> AstDestroy (table)
+	 *   destroy Name on Table [if exists]                  -> AstDestroyIndex
+	 *   destroy function Name [if exists]                  -> AstDestroyRoutine
+	 *   destroy trigger Range Alias [if exists]             -> AstDestroyEventBinding
 	 *
 	 * `temporary` only makes sense for the table form, so seeing it commits
 	 * to that form immediately; otherwise the token right after the name
 	 * (`on`, or not) decides. The index form's own trailing clause is
-	 * parsed by Rules\DestroyIndex.
+	 * parsed by Rules\DestroyIndex; the trigger form names the binding
+	 * directly by (range, alias) — see "Binding identity and removal" in
+	 * objectquel-equel-triggers-design.md — so it shares nothing with
+	 * Rules\EventBinding beyond the alias concept.
 	 */
 	class Destroy {
 
@@ -40,11 +49,16 @@
 
 		/**
 		 * Parse a complete `destroy` statement.
-		 * @return AstDestroy|AstDestroyIndex|AstDestroyRoutine
-		 * @throws LexerException
+		 * @param AstRange[] $ranges Ranges already parsed ahead of this statement — only the event form needs them
+		 * @return AstDestroy|AstDestroyIndex|AstDestroyRoutine|AstDestroyEventBinding
+		 * @throws LexerException|ParserException
 		 */
-		public function parse(): AstDestroy|AstDestroyIndex|AstDestroyRoutine {
+		public function parse(array $ranges = []): AstDestroy|AstDestroyIndex|AstDestroyRoutine|AstDestroyEventBinding {
 			$this->lexer->matchKeyword('destroy');
+
+			if ($this->matchTriggerKeyword()) {
+				return $this->parseTriggerDestroy($ranges);
+			}
 
 			if ($this->matchRoutineKeyword()) {
 				$routineName = $this->lexer->match(Token::Identifier)->getStringValue();
@@ -87,6 +101,47 @@
 			}
 
 			return true;
+		}
+
+		/**
+		 * Consumes `trigger` only when it starts the binding-removal form (`trigger`
+		 * immediately followed by its range name, never by `if` or `on`); a table or index
+		 * named `trigger` keeps its meaning, same disambiguation style as matchRoutineKeyword().
+		 * @return bool True when `trigger` was consumed
+		 * @throws LexerException
+		 */
+		private function matchTriggerKeyword(): bool {
+			if (!$this->lexer->peekKeyword('trigger') || $this->lexer->peekNext() !== Token::Identifier) {
+				return false;
+			}
+
+			$state = $this->lexer->saveState();
+			$this->lexer->matchKeyword('trigger');
+
+			if ($this->lexer->peekKeyword('if') || $this->lexer->peekKeyword('on')) {
+				$this->lexer->restoreState($state);
+				return false;
+			}
+
+			return true;
+		}
+
+		/**
+		 * Parses the remainder of `destroy trigger Range Alias [if exists]`, once `destroy
+		 * trigger` has already been consumed. Unlike the bind statement, this names the
+		 * binding directly by (range, alias) — no event, call or routine to parse.
+		 * @param AstRange[] $ranges Ranges already parsed ahead of this statement
+		 * @return AstDestroyEventBinding
+		 * @throws LexerException|ParserException
+		 */
+		private function parseTriggerDestroy(array $ranges): AstDestroyEventBinding {
+			$targetName = $this->lexer->match(Token::Identifier)->getStringValue();
+			$range = TargetRangeResolver::resolve($targetName, $ranges, 'destroy trigger');
+			$alias = $this->lexer->match(Token::Identifier)->getStringValue();
+			$ifExists = $this->parseOptionalIfExists();
+			$this->consumeOptionalSemicolon();
+
+			return new AstDestroyEventBinding($range, $alias, $ifExists);
 		}
 
 		/**

@@ -28,10 +28,11 @@
 		private function makeAdapter(array $columnRows): DatabaseAdapter {
 			$adapter = $this->getMockBuilder(DatabaseAdapter::class)
 				->disableOriginalConstructor()
-				->onlyMethods(['execute', 'getDatabaseType', 'getSchemaCollection'])
+				->onlyMethods(['execute', 'getDatabaseType', 'getRoutineSchema', 'getSchemaCollection'])
 				->getMock();
 
 			$adapter->method('getDatabaseType')->willReturn('sqlsrv');
+			$adapter->method('getRoutineSchema')->willReturn('dbo');
 			$adapter->method('execute')->willReturn(new FakeForeignKeyStatement($columnRows));
 
 			$schema = $this->createMock(\Cake\Database\Schema\TableSchemaInterface::class);

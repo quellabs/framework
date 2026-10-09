@@ -42,6 +42,10 @@
 		 * @return void
 		 */
 		protected function tearDown(): void {
+			// Always dropped first and with 'if exists': a no-op for tests that never bound
+			// one, but removes it before the routine below if a test did and failed early.
+			self::em()->executeQuery("range of u is UserEntity destroy trigger u {$this->name} if exists");
+
 			if (self::em()->getConnection()->getDatabaseType() === 'pgsql') {
 				self::em()->executeQuery("destroy function {$this->name} if exists");
 			} else {
@@ -349,6 +353,190 @@
 		}
 
 		/**
+		 * A tfunction with entity-row parameters deploys on both engines
+		 * (objectquel-equel-triggers-design.md, stage 2) and is marked `trigger` in its
+		 * metadata, read back through the native catalog. It has no binding yet (stage 3),
+		 * so it can't be called at all — not even directly, and not as an ordinary expression.
+		 * @return void
+		 */
+		public function testDefinesATriggerRoutineWithEntityRowParameters(): void {
+			self::em()->executeQuery("
+				range of u is UserEntity
+				define tfunction {$this->name} (UserEntity old, UserEntity new) {
+					replace u (banned = true) where u.id = new.id
+				}
+			");
+
+			self::assertSame(1, $this->routineCount());
+			self::assertTrue(self::em()->getConnection()->getRoutineSignature($this->name)->isTrigger);
+
+			$this->expectException(QuelException::class);
+			$this->expectExceptionMessage("is declared with 'tfunction'");
+			self::em()->executeQuery("{$this->name}(1, 2)");
+		}
+
+		/**
+		 * End-to-end: define a trigger routine, bind it to `after replace`, fire it with an
+		 * ordinary EQUEL write, then unbind and redefine-free it (stage 3, both engines). The
+		 * routine writes an unrelated table (default_column_test), proving the binding's
+		 * own write actually ran the deployed trigger, not just that the DDL applied cleanly.
+		 * @return void
+		 */
+		public function testBindingFiresOnReplaceAndCanBeUnbound(): void {
+			$userId = $this->seedUser("{$this->name}_user");
+			$marker = "{$this->name}_fired";
+
+			self::em()->executeQuery("
+				range of u is UserEntity
+				range of d is DefaultColumnEntity
+				define tfunction {$this->name} (UserEntity old, UserEntity new) {
+					append to d (name = \"{$marker}\", priority = 1)
+				}
+			");
+
+			self::em()->executeQuery("
+				range of u is UserEntity
+				after replace u call {$this->name} as {$this->name}
+			");
+
+			try {
+				self::em()->executeQuery('range of u is UserEntity replace u (banned = true) where u.id = :id', ['id' => $userId]);
+
+				$row = self::em()->getConnection()->execute(
+					'SELECT COUNT(*) AS n FROM default_column_test WHERE name = :name',
+					['name' => $marker]
+				)?->fetch('assoc');
+				self::assertSame(1, (int)($row['n'] ?? 0), 'The bound trigger should have fired exactly once.');
+
+				// Re-binding under the same alias on the same table is a conflict.
+				$this->expectException(QuelException::class);
+				$this->expectExceptionMessage('already exists');
+				self::em()->executeQuery("
+					range of u is UserEntity
+					after replace u call {$this->name} as {$this->name}
+				");
+			} finally {
+				self::em()->getConnection()->execute('DELETE FROM default_column_test WHERE name = :name', ['name' => $marker]);
+			}
+		}
+
+		/**
+		 * The INSERT event maps to `after append to`, binding only `new`.
+		 * @return void
+		 */
+		public function testAppendBindingFiresOnInsert(): void {
+			$marker = "{$this->name}_append_fired";
+
+			self::em()->executeQuery("
+				range of u is UserEntity
+				range of d is DefaultColumnEntity
+				define tfunction {$this->name} (UserEntity new) {
+					append to d (name = \"{$marker}\", priority = 1)
+				}
+			");
+			self::em()->executeQuery("
+				range of u is UserEntity
+				after append to u call {$this->name} as {$this->name}
+			");
+
+			try {
+				$this->seedUser("{$this->name}_append_user");
+
+				$row = self::em()->getConnection()->execute(
+					'SELECT COUNT(*) AS n FROM default_column_test WHERE name = :name',
+					['name' => $marker]
+				)?->fetch('assoc');
+				self::assertSame(1, (int)($row['n'] ?? 0), 'The bound trigger should have fired on insert.');
+			} finally {
+				self::em()->getConnection()->execute('DELETE FROM default_column_test WHERE name = :name', ['name' => $marker]);
+				self::em()->executeQuery("range of u is UserEntity destroy trigger u {$this->name} if exists");
+			}
+		}
+
+		/**
+		 * `alter table` refuses a column-shape change on a table with a live binding, and
+		 * the same statement succeeds once it is unbound (objectquel-equel-triggers-design.md,
+		 * stage 4). The binding targets `default_column_test` directly (an otherwise-unused
+		 * fixture table) rather than `users`, so this never risks altering a table other tests
+		 * share; the trigger body is empty, since it only needs to exist, not do anything.
+		 * @return void
+		 */
+		public function testAlterTableRefusedWhileBindingExistsOnTargetTable(): void {
+			self::em()->executeQuery("
+				range of d is DefaultColumnEntity
+				define tfunction {$this->name} (DefaultColumnEntity old, DefaultColumnEntity new) { }
+			");
+			self::em()->executeQuery("
+				range of d is DefaultColumnEntity
+				after replace d call {$this->name} as {$this->name}
+			");
+
+			try {
+				try {
+					self::em()->executeQuery('alter default_column_test (retype priority = integer)');
+					self::fail('Expected the alter to be refused while the binding exists.');
+				} catch (QuelException $exception) {
+					self::assertStringContainsString('depend on its mapped columns', $exception->getMessage());
+				}
+
+				self::em()->executeQuery("range of d is DefaultColumnEntity destroy trigger d {$this->name}");
+
+				// Same statement, now unblocked.
+				self::assertNull(self::em()->executeQuery('alter default_column_test (retype priority = integer)'));
+			} finally {
+				self::em()->executeQuery("range of d is DefaultColumnEntity destroy trigger d {$this->name} if exists");
+			}
+		}
+
+		/**
+		 * `destroy trigger ... if exists` removes only the binding; the routine keeps
+		 * working and a second unbind is a safe no-op.
+		 * @return void
+		 */
+		public function testDestroyTriggerRemovesOnlyTheBinding(): void {
+			$userId = $this->seedUser("{$this->name}_unbind");
+			$marker = "{$this->name}_unbind_fired";
+
+			self::em()->executeQuery("
+				range of u is UserEntity
+				range of d is DefaultColumnEntity
+				define tfunction {$this->name} (UserEntity old, UserEntity new) {
+					append to d (name = \"{$marker}\", priority = 1)
+				}
+			");
+			self::em()->executeQuery("
+				range of u is UserEntity
+				after replace u call {$this->name} as {$this->name}
+			");
+
+			self::em()->executeQuery("range of u is UserEntity destroy trigger u {$this->name}");
+
+			try {
+				// No binding left, so this ordinary write no longer fires it.
+				self::em()->executeQuery('range of u is UserEntity replace u (banned = true) where u.id = :id', ['id' => $userId]);
+
+				$row = self::em()->getConnection()->execute(
+					'SELECT COUNT(*) AS n FROM default_column_test WHERE name = :name',
+					['name' => $marker]
+				)?->fetch('assoc');
+				self::assertSame(0, (int)($row['n'] ?? 0), 'An unbound binding must not fire.');
+
+				// Unbinding again without 'if exists' is an error; with it, a safe no-op.
+				try {
+					self::em()->executeQuery("range of u is UserEntity destroy trigger u {$this->name}");
+					self::fail('Expected an exception for destroying a missing binding.');
+				} catch (QuelException $exception) {
+					self::assertStringContainsString("doesn't exist", $exception->getMessage());
+				}
+
+				self::em()->executeQuery("range of u is UserEntity destroy trigger u {$this->name} if exists");
+				$this->addToAssertionCount(1);
+			} finally {
+				self::em()->getConnection()->execute('DELETE FROM default_column_test WHERE name = :name', ['name' => $marker]);
+			}
+		}
+
+		/**
 		 * A bare `return` (void routines only) exits before the write that follows it,
 		 * without affecting a call where the guard doesn't trigger.
 		 * @return void
@@ -521,6 +709,56 @@
 		 */
 		public function testDestroysARoutine(): void {
 			self::em()->executeQuery("define function {$this->name} () void { }");
+
+			self::assertNull(self::em()->executeQuery("destroy function {$this->name}"));
+			self::assertSame(0, $this->routineCount());
+		}
+
+		/**
+		 * `destroy function` is refused while a live binding still calls it, and succeeds
+		 * once that binding is unbound (objectquel-equel-triggers-design.md, "Binding
+		 * dependency discovery").
+		 * @return void
+		 */
+		public function testDestroyFunctionRefusedWhileBindingDependsOnIt(): void {
+			self::em()->executeQuery("
+				range of u is UserEntity
+				range of d is DefaultColumnEntity
+				define tfunction {$this->name} (UserEntity old, UserEntity new) {
+					append to d (name = \"{$this->name}_dep\", priority = 1)
+				}
+			");
+			self::em()->executeQuery("
+				range of u is UserEntity
+				after replace u call {$this->name} as {$this->name}
+			");
+
+			try {
+				$this->expectException(QuelException::class);
+				$this->expectExceptionMessage("still call it");
+				self::em()->executeQuery("destroy function {$this->name}");
+			} finally {
+				self::em()->executeQuery("range of u is UserEntity destroy trigger u {$this->name} if exists");
+			}
+		}
+
+		/**
+		 * Once the binding is unbound, the routine can be destroyed normally.
+		 * @return void
+		 */
+		public function testDestroyFunctionSucceedsOnceBindingIsUnbound(): void {
+			self::em()->executeQuery("
+				range of u is UserEntity
+				range of d is DefaultColumnEntity
+				define tfunction {$this->name} (UserEntity old, UserEntity new) {
+					append to d (name = \"{$this->name}_dep2\", priority = 1)
+				}
+			");
+			self::em()->executeQuery("
+				range of u is UserEntity
+				after replace u call {$this->name} as {$this->name}
+			");
+			self::em()->executeQuery("range of u is UserEntity destroy trigger u {$this->name}");
 
 			self::assertNull(self::em()->executeQuery("destroy function {$this->name}"));
 			self::assertSame(0, $this->routineCount());

@@ -6,7 +6,7 @@
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\ObjectQuel\Exception\QuelException;
 	use Quellabs\ObjectQuel\Exception\SemanticException;
-	use Quellabs\ObjectQuel\ObjectQuel\Routines\ProcedureCompiler;
+	use Quellabs\ObjectQuel\ObjectQuel\Routines\RoutineCompiler;
 	use Quellabs\ObjectQuel\Tests\Support\FakePlatformCapabilities;
 
 	/**
@@ -21,7 +21,7 @@
 		 * @return string[] Generated statements
 		 */
 		private function compile(string $source, string $databaseType = 'mysql'): array {
-			return (new ProcedureCompiler($GLOBALS['test_em'], new FakePlatformCapabilities($databaseType), $databaseType === 'sqlsrv' ? 'dbo' : null))->compile($source);
+			return (new RoutineCompiler($GLOBALS['test_em'], new FakePlatformCapabilities($databaseType), $databaseType === 'sqlsrv' ? 'dbo' : null))->compile($source);
 		}
 
 		/**
@@ -104,6 +104,7 @@
 				CREATE FUNCTION `count_users`(_v_minId INT)
 				RETURNS INT
 				READS SQL DATA
+				COMMENT '{"objectQuel":1,"isTrigger":false,"returnType":"integer","atomic":false,"parameters":[{"kind":"scalar","type":"integer"}],"safety":{"calls":[],"reads":["users"],"writes":[]}}'
 				BEGIN
 					DECLARE _v_total INT;
 					DECLARE _v_found TINYINT(1);
@@ -166,7 +167,7 @@
 			self::assertSame(<<<'SQL'
 				CREATE PROCEDURE `purge`(_v_who VARCHAR(255))
 				MODIFIES SQL DATA
-				COMMENT 'ObjectQuel:atomic-block'
+				COMMENT '{"objectQuel":1,"isTrigger":false,"returnType":"void","atomic":true,"parameters":[{"kind":"scalar","type":"string"}],"safety":{"calls":[],"reads":[],"writes":["posts","users"]}}'
 				BEGIN
 					DECLARE _row_users$id INT UNSIGNED;
 					DECLARE _row_users$username VARCHAR(255);
@@ -255,6 +256,7 @@
 			self::assertSame(<<<'SQL'
 				CREATE PROCEDURE `maybe_ban`(_v_targetId INT)
 				MODIFIES SQL DATA
+				COMMENT '{"objectQuel":1,"isTrigger":false,"returnType":"void","atomic":false,"parameters":[{"kind":"scalar","type":"integer"}],"safety":{"calls":[],"reads":[],"writes":["users"]}}'
 				_equel_routine: BEGIN
 					IF _v_targetId <= 0 THEN
 						LEAVE _equel_routine;
@@ -299,7 +301,8 @@
 				}
 			');
 
-			self::assertStringStartsWith("CREATE PROCEDURE `ban_all`()\nMODIFIES SQL DATA\nBEGIN\n", $statements[0]);
+			self::assertStringStartsWith("CREATE PROCEDURE `ban_all`()\nMODIFIES SQL DATA\n", $statements[0]);
+			self::assertStringContainsString("\nBEGIN\n", $statements[0]);
 			self::assertStringEndsWith("END", $statements[0]);
 			self::assertStringNotContainsString('_equel_routine', $statements[0]);
 		}
@@ -370,7 +373,7 @@
 				}
 			', 'mariadb');
 
-			self::assertSame(["CREATE FUNCTION `f`()\nRETURNS INT\nREADS SQL DATA\nBEGIN\n\tRETURN 1;\nEND"], $statements);
+			self::assertSame(["CREATE FUNCTION `f`()\nRETURNS INT\nREADS SQL DATA\nCOMMENT '{\"objectQuel\":1,\"isTrigger\":false,\"returnType\":\"integer\",\"atomic\":false,\"parameters\":[],\"safety\":{\"calls\":[],\"reads\":[],\"writes\":[]}}'\nBEGIN\n\tRETURN 1;\nEND"], $statements);
 		}
 
 		/**
@@ -419,6 +422,7 @@
 				CREATE FUNCTION `counts`(_v_n INT)
 				RETURNS INT
 				READS SQL DATA
+				COMMENT '{"objectQuel":1,"isTrigger":false,"returnType":"integer","atomic":false,"parameters":[{"kind":"scalar","type":"integer"}],"safety":{"calls":[],"reads":[],"writes":[]}}'
 				BEGIN
 					DECLARE _v_total INT;
 					SET _v_total = 0;
@@ -471,6 +475,7 @@
 			self::assertSame(<<<'SQL'
 				CREATE PROCEDURE `skip_some`(_v_n INT)
 				MODIFIES SQL DATA
+				COMMENT '{"objectQuel":1,"isTrigger":false,"returnType":"void","atomic":false,"parameters":[{"kind":"scalar","type":"integer"}],"safety":{"calls":[],"reads":[],"writes":["users"]}}'
 				BEGIN
 					DECLARE _row_ids$id INT UNSIGNED;
 					DECLARE _row_banned$id INT UNSIGNED;
@@ -544,6 +549,7 @@
 				CREATE FUNCTION `nested`(_v_n INT)
 				RETURNS INT
 				READS SQL DATA
+				COMMENT '{"objectQuel":1,"isTrigger":false,"returnType":"integer","atomic":false,"parameters":[{"kind":"scalar","type":"integer"}],"safety":{"calls":[],"reads":["users"],"writes":[]}}'
 				BEGIN
 					DECLARE _v_total INT;
 					DECLARE _row_ids$id INT UNSIGNED;
@@ -718,7 +724,7 @@
 						}
 						return 1
 					}
-				', 'only supported in void functions'],
+				', 'only supported in void or trigger functions'],
 				'atomic inside a loop' => ['
 					range of u is UserEntity
 					define function f () void {
@@ -740,5 +746,24 @@
 			$this->expectException(SemanticException::class);
 			$this->expectExceptionMessage($message);
 			$this->compile($source);
+		}
+
+		/**
+		 * The routine's JSON metadata (RoutineMetadataTest) is embedded as the procedure's
+		 * COMMENT, inline in the single CREATE statement MySQL/MariaDB produce.
+		 * @return void
+		 */
+		public function testCommentCarriesRoutineMetadata(): void {
+			$statements = $this->compile('
+				range of u is UserEntity
+				define function ban_all () void { replace u (banned = true) where u.id > 0 }
+			');
+
+			self::assertCount(1, $statements);
+			self::assertMatchesRegularExpression('/COMMENT \'(\{.*\})\'/', $statements[0], 'metadata JSON must be a single-quoted COMMENT');
+			preg_match('/COMMENT \'(\{.*\})\'/', $statements[0], $match);
+			$metadata = json_decode($match[1], true);
+			self::assertSame('void', $metadata['returnType']);
+			self::assertSame(['users'], $metadata['safety']['writes']);
 		}
 	}

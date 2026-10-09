@@ -15,13 +15,19 @@
 	 */
 	class DatabaseAdapterForeignKeySqlServerTest extends TestCase {
 
+		/**
+		 * Provides catalog rows for the SQL Server schema inspector.
+		 * @param array<int, array<string, mixed>> $rows Foreign-key catalog rows
+		 * @return DatabaseAdapter
+		 */
 		private function makeAdapter(array $rows): DatabaseAdapter {
 			$adapter = $this->getMockBuilder(DatabaseAdapter::class)
 				->disableOriginalConstructor()
-				->onlyMethods(['execute', 'getDatabaseType'])
+				->onlyMethods(['execute', 'getDatabaseType', 'getRoutineSchema'])
 				->getMock();
 
 			$adapter->method('getDatabaseType')->willReturn('sqlsrv');
+			$adapter->method('getRoutineSchema')->willReturn('dbo');
 			$adapter->method('execute')->willReturn(new FakeForeignKeyStatement($rows));
 
 			return $adapter;

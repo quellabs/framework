@@ -16,7 +16,7 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Lexer;
 	use Quellabs\ObjectQuel\ObjectQuel\Parser;
 	use Quellabs\ObjectQuel\ObjectQuel\ParserException;
-	use Quellabs\ObjectQuel\ObjectQuel\Routines\ProcedureCompiler;
+	use Quellabs\ObjectQuel\ObjectQuel\Routines\RoutineCompiler;
 	use Quellabs\ObjectQuel\ObjectQuel\Pipeline\QueryNormalizer;
 	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQL\QuelToSQLReplace;
 	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQL\QuelToSQLRetrieve;
@@ -204,6 +204,6 @@
 		public function testRoutineCantBeNamedAfterABuiltin(string $databaseType): void {
 			$this->expectException(SemanticException::class);
 			$this->expectExceptionMessage("'Count' is a built-in function, so a routine by that name could never be called.");
-			(new ProcedureCompiler($this->em(), new FakePlatformCapabilities($databaseType), $databaseType === 'sqlsrv' ? 'dbo' : null))->compile('define function Count () integer { return 1 }');
+			(new RoutineCompiler($this->em(), new FakePlatformCapabilities($databaseType), $databaseType === 'sqlsrv' ? 'dbo' : null))->compile('define function Count () integer { return 1 }');
 		}
 	}

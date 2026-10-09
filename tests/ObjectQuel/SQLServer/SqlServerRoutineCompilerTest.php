@@ -5,7 +5,7 @@
 	use PHPUnit\Framework\Attributes\DataProvider;
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\ObjectQuel\Exception\SemanticException;
-	use Quellabs\ObjectQuel\ObjectQuel\Routines\ProcedureCompiler;
+	use Quellabs\ObjectQuel\ObjectQuel\Routines\RoutineCompiler;
 	use Quellabs\ObjectQuel\Tests\Support\FakePlatformCapabilities;
 
 	/**
@@ -19,8 +19,11 @@
 		 * @return string Generated CREATE statement
 		 */
 		private function compile(string $source): string {
-			$statements = (new ProcedureCompiler($GLOBALS['test_em'], new FakePlatformCapabilities('sqlsrv'), 'dbo'))->compile($source);
-			self::assertCount(1, $statements);
+			$statements = (new RoutineCompiler($GLOBALS['test_em'], new FakePlatformCapabilities('sqlsrv'), 'dbo'))->compile($source);
+
+			// Every routine carries a second statement attaching its JSON metadata
+			// (see RoutineMetadataTest); body-shape tests here only care about the CREATE itself.
+			self::assertSame(2, count($statements));
 			return $statements[0];
 		}
 
@@ -605,5 +608,23 @@
 			$this->expectException(SemanticException::class);
 			$this->expectExceptionMessage($message);
 			$this->compile($source);
+		}
+
+		/**
+		 * The routine's JSON metadata (RoutineMetadataTest) is attached as a second statement,
+		 * an `sp_addextendedproperty` call naming the schema and procedure.
+		 * @return void
+		 */
+		public function testSecondStatementCarriesRoutineMetadata(): void {
+			$statements = (new RoutineCompiler($GLOBALS['test_em'], new FakePlatformCapabilities('sqlsrv'), 'dbo'))->compile('
+				range of u is UserEntity
+				define function ban_all (integer minId) void { replace u (banned = true) where u.id > minId }
+			');
+
+			self::assertCount(2, $statements);
+			self::assertSame(
+				"EXEC sys.sp_addextendedproperty @name = N'ObjectQuel_Metadata', @value = N'{\"objectQuel\":1,\"isTrigger\":false,\"returnType\":\"void\",\"atomic\":false,\"parameters\":[{\"kind\":\"scalar\",\"type\":\"integer\"}],\"safety\":{\"calls\":[],\"reads\":[],\"writes\":[\"users\"]}}', @level0type = N'SCHEMA', @level0name = N'dbo', @level1type = N'PROCEDURE', @level1name = N'ban_all';",
+				$statements[1]
+			);
 		}
 	}

@@ -49,6 +49,10 @@ When fixing bugs or type errors, assume the full codebase may be modified unless
 
 Use a localized fix instead when a root-cause change would introduce disproportionate risk, unnecessary scope, or incompatible behavior. Explain the tradeoff when relevant.
 
+### Ignored Files
+
+Respect `.gitignore` as an intentional boundary. Do not add an exception to an ignore rule, use `git add -f`, or otherwise stage or commit an ignored file unless the user explicitly asks to track that file. In particular, root-level Markdown files ignored by `/*.md` are local working documents; creating or editing one does not imply permission to commit it. Before staging or committing, check whether each intended file is ignored and leave ignored files out unless explicitly authorized.
+
 ## Accuracy and Verification
 
 Prioritize correctness over agreement, speed, or reassurance.
@@ -174,6 +178,8 @@ When evaluating approaches:
 - state why one option is preferable when applicable.
 
 Prioritize correctness, clarity, maintainability, and appropriate scope over cleverness.
+
+Constructors: declare properties explicitly and assign them in the constructor body. Do not use PHP 8 constructor property promotion (`private readonly Type $x` in the parameter list).
 
 # Code Documentation Instructions
 
