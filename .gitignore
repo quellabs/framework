@@ -3,6 +3,7 @@
 /vendor
 /migrations
 /storage
+/.deptrac.cache
 /*.md
 !AGENTS.md
 !CLAUDE.md
