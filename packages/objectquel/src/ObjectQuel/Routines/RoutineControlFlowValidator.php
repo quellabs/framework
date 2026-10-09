@@ -82,7 +82,7 @@
 			}
 
 			if ($statement instanceof AstBreak || $statement instanceof AstContinue) {
-				$this->checkLoopExit($statement instanceof AstBreak ? 'break' : 'continue', $inAtomic, $inLoop, $inAnyLoop);
+				$this->checkLoopExit($statement instanceof AstBreak ? 'break' : 'continue', $statement->getLevels(), $inAtomic, $inLoop, $inAnyLoop);
 				return false;
 			}
 
@@ -115,15 +115,24 @@
 		}
 
 		/**
-		 * Rejects `break`/`continue` outside a loop, or whose loop encloses the atomic block, skipping its cleanup.
+		 * Rejects invalid loop levels and jumps that leave a loop or atomic block incorrectly.
 		 * @param string $keyword 'break' or 'continue', for error messages
+		 * @param int|float $levels Parsed loop level
 		 * @param bool $inAtomic True inside an `atomic` body
 		 * @param bool $inLoop True inside a loop that is itself inside the atomic block
 		 * @param bool $inAnyLoop True inside any loop
 		 * @return void
 		 * @throws SemanticException
 		 */
-		private function checkLoopExit(string $keyword, bool $inAtomic, bool $inLoop, bool $inAnyLoop): void {
+		private function checkLoopExit(string $keyword, int|float $levels, bool $inAtomic, bool $inLoop, bool $inAnyLoop): void {
+			if (!is_int($levels)) {
+				throw new SemanticException("'{$keyword}' level must be an integer.");
+			}
+
+			if ($levels < 1) {
+				throw new SemanticException("'{$keyword}' level must be a positive integer.");
+			}
+
 			if (!$inAnyLoop) {
 				throw new SemanticException("'{$keyword}' is only valid inside 'while' or 'foreach'.");
 			}
