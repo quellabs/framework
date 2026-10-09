@@ -398,6 +398,43 @@
 		}
 
 		/**
+		 * Only targeted loops gain labels; PostgreSQL manages foreach cursors itself.
+		 * @return void
+		 */
+		public function testMultiLevelJumpsTargetWhileAndForeach(): void {
+			$sql = $this->compile('
+				range of u is UserEntity
+				define function f (integer n) void {
+					cursor a = retrieve (u.id)
+					cursor b = retrieve (u.id)
+					while (n > 0) {
+						n = n - 1
+						foreach (a as rowA) {
+							foreach (b as rowB) {
+								if (rowB.id = n) { continue 3 }
+								break 3
+							}
+						}
+					}
+						foreach (a as rowA) {
+						foreach (b as rowB) {
+							continue 2
+						}
+						}
+				}
+			');
+
+			self::assertStringContainsString("<<_loop1>>\n\tWHILE", $sql);
+			self::assertStringContainsString('CONTINUE _loop1;', $sql);
+			self::assertStringContainsString('EXIT _loop1;', $sql);
+			self::assertStringContainsString("<<_loop4>>\n\tFOR", $sql);
+			self::assertStringContainsString('CONTINUE _loop4;', $sql);
+			self::assertStringNotContainsString('<<_loop2>>', $sql);
+			self::assertStringNotContainsString('<<_loop3>>', $sql);
+			self::assertStringNotContainsString('CLOSE _cur_', $sql);
+		}
+
+		/**
 		 * An `atomic` block inside `foreach` is fine on PostgreSQL: PL/pgSQL's implicit `FOR ... IN`
 		 * loop holds no explicit cursor for a subtransaction rollback to invalidate.
 		 * @return void
