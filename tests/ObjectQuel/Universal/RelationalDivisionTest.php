@@ -179,11 +179,48 @@
 				"SELECT `c`.`id` as `c.id` FROM `rel_div_customers` as `c` " .
 				"WHERE NOT(EXISTS (SELECT 1 FROM `rel_div_products` `rp` " .
 				"WHERE `rp`.`category` = 'bundle' AND NOT(EXISTS (SELECT 1 FROM `rel_div_orders` `o` " .
-				"LEFT JOIN `rel_div_order_items` `oi` ON `oi`.`order_id` = `o`.`id` " .
+				"INNER JOIN `rel_div_order_items` `oi` ON `oi`.`order_id` = `o`.`id` " .
 				"WHERE `oi`.`product_id` = `rp`.`id` AND `o`.`customer_id` = `c`.`id`)))) " .
 				"ORDER BY `c`.`id` asc",
 				$sql
 			);
+		}
+
+		// -------------------------------------------------------------------------
+		// SELECT-context any(...)
+		// -------------------------------------------------------------------------
+
+		/**
+		 * Runs a query projecting any(...) as `h` and returns the distinct flag values.
+		 * @param string $query
+		 * @param array<string, mixed> $parameters
+		 * @return int[]
+		 */
+		private function flags(string $query, array $parameters = []): array {
+			$flags = array_map(fn(array $row) => (int)$row['h'], iterator_to_array($this->em->executeQuery($query, $parameters)));
+			return array_values(array_unique($flags));
+		}
+
+		public function testSelectAnySubquerySelectsFromEveryUnjoinedRange(): void {
+			$query = "
+				range of c  is " . self::NS . "RelDivCustomerEntity
+				range of p  is " . self::NS . "RelDivProductEntity
+				range of bi is " . self::NS . "RelDivBundleItemEntity
+				retrieve (c.id, h = any(p.id where p.id = bi.productId and bi.bundle = :bundle))
+			";
+
+			self::assertSame([1], $this->flags($query, ['bundle' => 'dup']));
+			self::assertSame([0], $this->flags($query, ['bundle' => 'missing']));
+		}
+
+		public function testSelectAnyKeepsLeftJoinedRangeOptional(): void {
+			// Product 3 has no bundle items; it only matches through the LEFT join's NULL-extended row
+			self::assertSame([1], $this->flags("
+				range of c  is " . self::NS . "RelDivCustomerEntity
+				range of p  is " . self::NS . "RelDivProductEntity
+				range of bi is " . self::NS . "RelDivBundleItemEntity via bi.productId = p.id
+				retrieve (c.id, h = any(p.id where bi.bundle = 'missing' or p.category = 'other'))
+			"));
 		}
 
 		// -------------------------------------------------------------------------
