@@ -223,6 +223,56 @@
 			"));
 		}
 
+		/**
+		 * Runs a query projecting c.id and any(...) as `h`, and returns h keyed by customer id.
+		 * @param string $query
+		 * @return array<int, int>
+		 */
+		private function flagsByCustomer(string $query): array {
+			$flags = [];
+
+			foreach ($this->em->executeQuery($query) as $row) {
+				$flags[(int)$row['c.id']] = (int)$row['h'];
+			}
+
+			return $flags;
+		}
+
+		public function testSelectAnyOverViaRangeIsCorrelatedToTheOwner(): void {
+			$query = $this->ranges() . "
+				retrieve (c.id, h = any(o.id))
+				sort by c.id asc
+			";
+
+			self::assertCount(5, iterator_to_array($this->em->executeQuery($query)));
+			self::assertSame([1 => 1, 2 => 1, 3 => 0, 4 => 1, 5 => 1], $this->flagsByCustomer($query));
+		}
+
+		public function testSelectAnyOverViaChainIsCorrelatedToTheOwner(): void {
+			self::assertSame([1 => 1, 2 => 0, 3 => 0, 4 => 0, 5 => 1], $this->flagsByCustomer($this->ranges() . "
+				retrieve (c.id, h = any(oi.id where oi.productId = 2))
+				sort by c.id asc
+			"));
+		}
+
+		public function testSelectAnyIncludesViaParentTheOuterQueryDoesNotKeep(): void {
+			// The product range is not kept by the outer query, so the any(...) searches all products
+			self::assertSame([1 => 1, 2 => 1, 3 => 1, 4 => 1, 5 => 1], $this->flagsByCustomer("
+				range of c  is " . self::NS . "RelDivCustomerEntity
+				range of p  is " . self::NS . "RelDivProductEntity
+				range of bi is " . self::NS . "RelDivBundleItemEntity via bi.productId = p.id
+				retrieve (c.id, h = any(bi.id where bi.bundle = 'dup'))
+			"));
+		}
+
+		public function testUnreferencedLeftViaRangesAreNotJoined(): void {
+			// Joining the unused orders and items would repeat customers 1 and 5
+			self::assertSame([1, 2, 3, 4, 5], $this->customerIds($this->ranges() . "
+				retrieve (c.id)
+				sort by c.id asc
+			"));
+		}
+
 		// -------------------------------------------------------------------------
 		// Rejected range scoping
 		// -------------------------------------------------------------------------
