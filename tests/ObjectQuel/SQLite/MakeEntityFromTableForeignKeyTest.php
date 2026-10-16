@@ -79,16 +79,16 @@
 
 			$foreignKeys = $generateForeignKeys
 				? $invoke('getTableForeignKeys', [$table])
-				: [];
+				: ['single' => [], 'composite' => []];
 
 			$camelCase = $this->camelCase($table);
 
 			$code = "<?php\n";
 			$code .= $invoke('generateNamespace');
 			$code .= $invoke('generateImports');
-			$code .= $invoke('generateClassDocBlock', [$table, $camelCase]);
+			$code .= $invoke('generateClassDocBlock', [$table, $camelCase, $foreignKeys['composite']]);
 			$code .= "    class {$camelCase}Entity {\n";
-			$code .= $invoke('generateMemberVariables', [$tableDescription, $foreignKeys]);
+			$code .= $invoke('generateMemberVariables', [$tableDescription, $foreignKeys['single']]);
 			$code .= $invoke('generateGettersAndSetters', [$tableDescription]);
 			$code .= "    }\n";
 
@@ -256,10 +256,12 @@
 		}
 
 		// -------------------------------------------------------------------------
-		// Composite foreign keys aren't representable, so they're skipped
+		// Composite foreign keys are emitted at class level, since @Orm\ForeignKey's
+		// 'columns' map (unlike the property-level 'referencedColumn' form) can
+		// represent more than one column pair.
 		// -------------------------------------------------------------------------
 
-		public function testCompositeForeignKeyIsSkippedRatherThanEmittingAPartialAnnotation(): void {
+		public function testCompositeForeignKeyIsEmittedAtClassLevel(): void {
 			[$command, $provider] = $this->makeCommand(true);
 			$adapter = $provider->getDatabaseAdapter();
 
@@ -275,8 +277,13 @@
 
 			$code = $this->generateEntityCode($command, $provider, 'stores', true);
 
-			self::assertStringNotContainsString('@Orm\ForeignKey', $code);
-			self::assertStringNotContainsString('@Orm\ForeignKeyAction', $code);
+			self::assertStringContainsString(
+				'@Orm\ForeignKey(target=App\\Entities\\RegionsEntity::class, columns={"countryCode"="countryCode", "regionCode"="regionCode"})',
+				$code
+			);
+
+			// Not attached to either scalar property — this is a class-level declaration.
+			self::assertStringNotContainsString('* @Orm\ForeignKey(target=App\\Entities\\RegionsEntity::class, referencedColumn', $code);
 		}
 
 		// -------------------------------------------------------------------------
