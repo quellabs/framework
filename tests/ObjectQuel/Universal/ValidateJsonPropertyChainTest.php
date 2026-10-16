@@ -43,6 +43,7 @@
 				manyToOneRelations: [],
 				inverseOfRelations: [],
 				oneToOneRelations:  [],
+				relationColumnMappings: [],
 				indexes:            [],
 				autoIncrementColumn: null,
 				columnDefinitions:  $columnDefinitions,
