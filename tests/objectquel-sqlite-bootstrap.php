@@ -70,6 +70,8 @@ foreach ($relationshipTables as $table => $columns) {
 $connection->execute('CREATE TABLE cki_orders (tenant_id INTEGER NOT NULL, number VARCHAR(20) NOT NULL, amount INTEGER NOT NULL, PRIMARY KEY (tenant_id, number))');
 $connection->execute('CREATE TABLE cki_order_lines (id INTEGER PRIMARY KEY AUTOINCREMENT, order_tenant_id INTEGER NOT NULL, order_number VARCHAR(20) NOT NULL, line_amount INTEGER NOT NULL)');
 $connection->execute('CREATE TABLE cki_order_lines_lazy (id INTEGER PRIMARY KEY AUTOINCREMENT, order_tenant_id INTEGER NOT NULL, order_number VARCHAR(20) NOT NULL)');
+$connection->execute('CREATE TABLE cki_generated_key_orders (tenant_id INTEGER NOT NULL, token VARCHAR(36) NOT NULL, amount INTEGER NOT NULL, PRIMARY KEY (tenant_id, token))');
+$connection->execute('CREATE TABLE cki_sequence_orders (group_id INTEGER NOT NULL, seq INTEGER NOT NULL, PRIMARY KEY (group_id, seq))');
 $connection->execute('CREATE TABLE non_pk_ref_users (id INTEGER PRIMARY KEY AUTOINCREMENT, email VARCHAR(255) NOT NULL)');
 $connection->execute('CREATE TABLE non_pk_ref_profiles (id INTEGER PRIMARY KEY AUTOINCREMENT, user_email VARCHAR(255) NOT NULL)');
 
