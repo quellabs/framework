@@ -94,4 +94,27 @@
 					(groupId = 1)
 			');
 		}
+
+		public function testAppendGeneratesASequenceStrategyComponentFromItsOwnColumnRegardlessOfItsPosition(): void {
+			// group_id and seq are deliberately given disjoint ranges: MAX(group_id)
+			// is 1, MAX(seq) is 6. SequenceGenerator must read MAX(seq)+1 for the
+			// 'seq' component specifically — reading identifierKeys[0]'s column
+			// ('group_id') instead would generate 2, not 7.
+			$adapter = self::em()->getConnection();
+			$adapter->execute('INSERT INTO cki_sequence_orders (group_id, seq) VALUES (1, 5)');
+			$adapter->execute('INSERT INTO cki_sequence_orders (group_id, seq) VALUES (1, 6)');
+
+			$result = self::em()->executeQuery('
+				range of o is Quellabs\\ObjectQuel\\Tests\\Fixtures\\CompositeKeyRelationshipEntities\\CkiSequenceOrderEntity
+				append to o (groupId = :groupId)
+			', ['groupId' => 1]);
+
+			$this->assertSame(1, $result->getAffectedRows());
+
+			$generatedId = $result->getGeneratedId();
+			$this->assertIsArray($generatedId);
+			$this->assertSame(['groupId', 'seq'], array_keys($generatedId));
+			$this->assertSame(1, $generatedId['groupId']);
+			$this->assertSame(7, $generatedId['seq']);
+		}
 	}
