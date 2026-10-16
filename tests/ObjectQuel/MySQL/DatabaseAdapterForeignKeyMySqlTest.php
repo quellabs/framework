@@ -88,6 +88,33 @@
 			self::assertSame([], $this->adapter->getForeignKeys('oq_fk_test_customers'));
 		}
 
+		/**
+		 * KEY_COLUMN_USAGE's ORDINAL_POSITION gives the correct column
+		 * order for a composite constraint. The declared order here
+		 * ('region' before 'id') is not alphabetical, so a regression that
+		 * dropped ordinal ordering (e.g. sorted by name instead) would be
+		 * caught.
+		 */
+		public function testGetForeignKeysReadsBackACompositeConstraintInDeclaredColumnOrder(): void {
+			$this->adapter->execute('CREATE TABLE oq_fk_test_customers (region VARCHAR(10), id INT, PRIMARY KEY (region, id)) ENGINE=InnoDB');
+			$this->adapter->execute(
+				'CREATE TABLE oq_fk_test_orders (' .
+				'customer_region VARCHAR(10) NOT NULL, customer_id INT NOT NULL, ' .
+				'CONSTRAINT fk_oq_fk_test_orders_customer_region_customer_id FOREIGN KEY (customer_region, customer_id) ' .
+				'REFERENCES oq_fk_test_customers(region, id) ON DELETE CASCADE ON UPDATE RESTRICT' .
+				') ENGINE=InnoDB'
+			);
+
+			$foreignKeys = $this->adapter->getForeignKeys('oq_fk_test_orders');
+
+			self::assertArrayHasKey('fk_oq_fk_test_orders_customer_region_customer_id', $foreignKeys);
+
+			$fk = $foreignKeys['fk_oq_fk_test_orders_customer_region_customer_id'];
+			self::assertSame(['customer_region', 'customer_id'], $fk->columns);
+			self::assertSame('oq_fk_test_customers', $fk->referencedTable);
+			self::assertSame(['region', 'id'], $fk->referencedColumns);
+		}
+
 		public function testConstraintActuallyEnforcesReferentialIntegrityNotJustDeclaresIt(): void {
 			$this->adapter->execute('CREATE TABLE oq_fk_test_customers (id INT PRIMARY KEY) ENGINE=InnoDB');
 			$this->adapter->execute(
