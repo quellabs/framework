@@ -1,21 +1,22 @@
 # quellabs/recommender
 
-Collaborative filtering recommendation engine for PHP 8.2+, built on the CakePHP 5 database layer. Implements two
-complementary algorithms:
+Collaborative filtering recommendations for PHP 8.2+, built on the CakePHP 5 database layer. Member ratings
+become "people who liked A also liked B" suggestions and rating predictions for unrated items, with no
+machine-learning infrastructure required.
 
-- **Item-based collaborative filtering** — "people who liked A also liked B"
-- **Slope One** — lightweight weighted rating prediction for unrated items
+- **Item-based collaborative filtering** for members and anonymous visitors
+- **Slope One** rating prediction
+- **Optional reconciliation** of several sources, filtered by your own catalogue eligibility
+- **Opt-in evaluation** of displayed recommendations and a click model
 
 Based on the [Vogoo PHP recommendation engine](http://www.vogoo.net/) (2007–2008) by Stéphane Droux, modernised for PHP
 8.2+ and the Quellabs ecosystem.
-
----
 
 ## Requirements
 
 - PHP 8.2+
 - `cakephp/database` ^5.0
-- MySQL (incremental updates use `INSERT ... ON DUPLICATE KEY UPDATE`)
+- MySQL
 
 ## Installation
 
@@ -23,301 +24,127 @@ Based on the [Vogoo PHP recommendation engine](http://www.vogoo.net/) (2007–20
 composer require quellabs/recommender
 ```
 
-## Setup
-
-### 1. Publish the configuration file
+Then set up the database:
 
 ```bash
-sculpt recommender:init
+sculpt recommender:init        # publish config/recommender.php
+sculpt recommender:init-db     # create vogoo_ratings and vogoo_links
 ```
 
-This copies `config/recommender.php` to your project root. Edit it to tune the engine constants. Database credentials
-are read from `config/database.php`, which is shared with other Canvas packages.
-
-### 2. Create the database tables
-
-```bash
-sculpt recommender:init-db
-```
-
-Creates `vogoo_ratings` and `vogoo_links`. Use `--force` to drop and recreate existing tables.
-`--force` deletes ratings and is not a migration procedure.
-
-### 3. Populate the link table
-
-If you have existing ratings, rebuild the link table from scratch:
+If you already have ratings, rebuild the link tables from them:
 
 ```bash
 sculpt recommender:rebuild-links
 ```
 
-To rebuild a single category only:
-
-```bash
-sculpt recommender:rebuild-links --category=2
-```
-
-Pause rating writes while rebuilding. The command computes each category in staging storage,
-then replaces its rows in one transaction. It rebuilds both measures regardless of the
-`direct_links` and `direct_slope` settings, and clears stale rows for empty categories.
-
-### Upgrade an existing installation
-
-Back up both `vogoo_ratings` and `vogoo_links`, pause rating writes, run
-[`migrations/2026-10-independent-pair-counts.sql`](migrations/2026-10-independent-pair-counts.sql),
-then run `sculpt recommender:rebuild-links` before resuming writes. The old
-`cnt` column mixes liked and Slope One contributions, so its values cannot be
-assigned to either new count. The migration preserves `vogoo_ratings`; the rebuild
-reconstructs every derived row from those ratings. If an upgrade fails, restore
-both backed-up tables together, then run the previous package version.
-
-## Database schema
-
-### `vogoo_ratings`
-
-Stores member/product ratings.
-
-| Column       | Type         | Description                           |
-|--------------|--------------|---------------------------------------|
-| `member_id`  | INT UNSIGNED | Your application's user ID            |
-| `product_id` | INT UNSIGNED | Your application's product/item ID    |
-| `category`   | INT UNSIGNED | Category grouping (default: 1)        |
-| `rating`     | FLOAT        | 0.0–1.0, or -1.0 for "not interested" |
-| `ts`         | DATETIME     | Last updated timestamp                |
-
-### `vogoo_links`
-
-Stores pre-computed item co-occurrence counts and Slope One diff values. Populated by the rebuild command or maintained
-incrementally.
-
-| Column       | Type         | Description                               |
-|--------------|--------------|-------------------------------------------|
-| `item_id1`   | INT UNSIGNED | First item in the pair                    |
-| `item_id2`   | INT UNSIGNED | Second item in the pair                   |
-| `category`   | INT UNSIGNED | Category grouping                         |
-| `liked_count` | INT UNSIGNED | Members who liked both items |
-| `slope_count` | INT UNSIGNED | Members who genuinely rated both items |
-| `diff_slope` | FLOAT | Sum of rating(item_id2) minus rating(item_id1) over slope contributors |
-
-A directed pair row exists while either count is positive. `Statistics::numLinks()`
-counts rows of either kind. Each incremental option updates only its own measure.
-
-## Configuration
-
-All options with their defaults:
+## Quick start
 
 ```php
-// config/recommender.php
-return [
-    // Default category used when no category is passed to engine methods
-    'category' => 1,
-
-    // Minimum number of common ratings before similarity is considered reliable
-    'threshold_nr_common_ratings' => 30,
-
-    // Multiplier used in the similarity confidence calculation
-    'threshold_mult' => 2,
-
-    // Minimum rating for an item to count as "liked" in link calculations
-    'threshold_rating' => 0.66,
-
-    // Cost factor used in the member similarity spread calculation
-    'cost' => 5.0,
-
-    // Sentinel value stored to mark "not interested" (fixed at -1.0)
-    'not_interested' => -1.0,
-
-    // Maintain vogoo_links incrementally on every rating change.
-    // When false, run "sculpt recommender:rebuild-links" after bulk imports.
-    'direct_links' => false,
-    'direct_slope' => true,
-];
-```
-
-`direct_links` and `direct_slope` are independent. You can enable either or both:
-
-|        | `direct_links`                                    | `direct_slope`                                             |
-|--------|---------------------------------------------------|------------------------------------------------------------|
-| Powers | `getLinkedItems()`, `memberGetRecommendedItems()` | `getSlopeItems()`, `memberPredict()`, `memberPredictAll()` |
-| Counts | Co-occurrence (liked pairs only)                  | All rated pairs                                            |
-
-When both are `false`, `vogoo_links` is read-only at runtime and must be rebuilt manually.
-Run a full rebuild when enabling either incremental option on an existing ratings store.
-Invalid persisted ratings return `false` from `setRating()`; visitor ratings and
-invalid configuration throw `InvalidArgumentException`. Ratings must be finite,
-within 0.0–1.0, or exactly -1.0. IDs and categories must be nonnegative.
-
-## Usage
-
-### With Canvas (autowired)
-
-`RecommendationEngine` and `ItemRecommender` are resolved automatically by the Canvas DI container — their
-constructors depend only on `Connection` (provided by `quellabs/canvas-database`) and `RecommendationConfig`
-(provided by this package), so no manual wiring is required:
-
-```php
-use Quellabs\Recommender\ItemRecommender;
-use Quellabs\Recommender\RecommendationEngine;
-
-class ProductController
-{
-    public function __construct(
-        private RecommendationEngine $engine,
-        private ItemRecommender $recommender,
-    ) {}
-}
-```
-
-### Standalone
-
-```php
-use Cake\Database\Connection;
-use Cake\Database\Driver\Mysql;
 use Quellabs\Recommender\Config\RecommendationConfig;
+use Quellabs\Recommender\ArrayEligibilityProvider;
+use Quellabs\Recommender\RecommendationSource;
+use Quellabs\Recommender\Reconciliation\ReconciliationRequest;
+use Quellabs\Recommender\Reconciliation\RecommendationReconciler;
+use Quellabs\Recommender\Evaluation\ModelScorerResolver;
+use Quellabs\Recommender\Internal\Reconciliation\RequestSourcesFactory;
+use Quellabs\Recommender\Internal\UserSimilarity;
+use Quellabs\Recommender\MemberId;
+use Quellabs\Recommender\ProductId;
 use Quellabs\Recommender\RecommendationEngine;
-use Quellabs\Recommender\ItemRecommender;
+use Quellabs\Recommender\Subject;
 
-$connection = new Connection([
-    'driver'   => Mysql::class,
-    'host'     => 'localhost',
-    'username' => 'root',
-    'password' => '',
-    'database' => 'mydb',
-]);
+// $connection is the application's Cake\Database\Connection.
+$config        = new RecommendationConfig(directLinks: true);
+$engine        = new RecommendationEngine($connection, $config);
+$similarity    = new UserSimilarity($connection, $config, $engine);
+$sourceFactory = new RequestSourcesFactory($connection, $config, $similarity);
+$scorers       = new ModelScorerResolver($connection);
+$reconciler    = new RecommendationReconciler($config, $sourceFactory, $scorers);
 
-$config    = new RecommendationConfig();
-$engine    = new RecommendationEngine($connection, $config);
-$recommender = new ItemRecommender($connection, $config);
+$engine->setRating(MemberId::of(1), ProductId::of(101), 0.9);
+$engine->setRating(MemberId::of(2), ProductId::of(101), 0.8);
+$engine->setRating(MemberId::of(2), ProductId::of(102), 0.7);
+
+$slate = $reconciler->slate(Subject::member(1), new ReconciliationRequest(
+    new ArrayEligibilityProvider([102]), [RecommendationSource::ItemLinks], 5, 'home'));
+echo $slate->items[0]->productId; // 102
 ```
 
----
+Ratings run from 0.0 to 1.0, and -1.0 marks "not interested".
 
-## API reference
+## API at a glance
 
-### `RecommendationEngine`
+| Task                                                                       | Method                                                                                       | Returns                                                                  |
+|----------------------------------------------------------------------------|----------------------------------------------------------------------------------------------|--------------------------------------------------------------------------|
+| Rate a product                                                             | `RecommendationEngine::setRating()`                                                          | `void`, throws on invalid input                                          |
+| Average rating for a product                                               | `RecommendationEngine::productAverageRating()`                                               | `float\|null`, averages genuine ratings only, excluding "not interested" |
+| Number of ratings for a product                                            | `RecommendationEngine::productNumRatings()`                                                  | `int`, counts genuine ratings only                                       |
+| Predicted rating for one product                                           | `SlopeOneSource::predict()` with `Subject::member()`                                         | `RecommendationResult\|null`, with the rating in `score`                 |
+| Predicted ratings for all unrated products                                 | `SlopeOneSource::candidates()` with `Subject::member()`                                      | `RecommendationResult[]`, with the rating in `score`                     |
+| Displayed slate for a member or visitor, filtered by catalogue eligibility | `RecommendationReconciler::slate()` with `Subject::member()` or `Subject::visitor()`         | `RecommendationList`                                                     |
+| Record a visitor purchase or click in session state                        | `VisitorContext::recordPurchase()`, `recordClick()`                                          | `void`                                                                   |
+| Full bounded eligible pool, not cut to `limit`                             | `RecommendationReconciler::candidatePool()` with `Subject::member()` or `Subject::visitor()` | `RecommendationList`                                                     |
 
-Handles rating CRUD. All write methods trigger incremental link/slope updates when `direct_links` or `direct_slope` is
-enabled.
+Visitor requests use the same `ReconciliationRequest`. A visitor request that includes
+`RecommendationSource::UserSimilarity` throws `InvalidArgumentException`, because user similarity needs a persisted
+member.
 
-```php
-// Record ratings
-$engine->setRating($memberId, $productId, 0.8);
-$engine->automaticRating($memberId, $productId, purchase: true);  // 1.0
-$engine->automaticRating($memberId, $productId, purchase: false); // 0.7, or +0.01
-$engine->setNotInterested($memberId, $productId);
+Items carry `$diagnostics` (`ReconciliationDiagnostics`) only when the request sets `diagnostics: true`; otherwise it is
+`null`.
+`EvaluationRecorder::recordImpression()` rejects a ranked list whose items have no diagnostics. Items are scored by
+`RankFusionScorer` unless a calibrated click model is active for the request. Both implement `CandidateScorer`.
 
-// Read ratings
-$engine->getRating($memberId, $productId);           // ['rating' => 0.8, 'ts' => '...']
-$engine->memberRatings($memberId);                   // [['product_id', 'rating', 'ts'], ...]
-$engine->memberNumRatings($memberId);
-$engine->memberAverageRating($memberId);
-$engine->productRatings($productId);
-$engine->productNumRatings($productId);
-$engine->productAverageRating($productId);
+### Item lookups and predictions
 
-// Delete
-$engine->deleteRating($memberId, $productId);
-$engine->deleteMember($memberId);
-$engine->deleteProduct($productId);
-```
+The candidate sources in `Quellabs\Recommender\Sources` answer item-to-item lookups, predictions and reasons. Each
+takes a `Subject`, which is a member, a visitor or a product:
 
-### `ItemRecommender`
+| Task                                              | Method                                                                                     |
+|---------------------------------------------------|--------------------------------------------------------------------------------------------|
+| Products linked to a product                      | `ItemLinksSource::candidates(Subject::product($id), ...)`                                  |
+| Products with a Slope One difference to a product | `SlopeOneSource::candidates(Subject::product($id), ...)`                                   |
+| Rated products that explain a recommendation      | `ItemLinksSource::reasons(Subject::member($id), $product)` or `Subject::visitor($visitor)` |
+| One predicted rating                              | `SlopeOneSource::predict(Subject::member($id), $product)` or `Subject::visitor($visitor)`  |
+| All predicted ratings                             | `SlopeOneSource::candidates(Subject::member($id), ...)` or `Subject::visitor($visitor)`    |
 
-Item-based CF and Slope One recommendations.
+### Limits
 
-```php
-// Item-based CF (requires direct_links or rebuild)
-$recommender->getLinkedItems($productId);                          // [productId, ...]
-$recommender->memberGetRecommendedItems($memberId);                // [productId, ...]
-$recommender->memberGetReasons($memberId, $productId);             // [productId, ...]
+- `limit` is the maximum number of results. `0` means all results. `Statistics` methods default to `10`. Source
+  `candidates()` methods have no default, so pass `limit` explicitly. The reconciler reads a member's ratings once per
+  request. Standalone sources load their own ratings.
+- With an `EligibilityProvider`, the recommender fetches deeper candidates until `limit` eligible results are found
+  or the candidate depth cap (`max_candidate_depth`, default 2000) is reached. It can return fewer results than
+  `limit` without an error. Check the count when the list must be full.
+- `limit = 0` with an eligibility provider checks every candidate, which costs more on large catalogues.
+- `RecommendationReconciler` `limit` is the size of the displayed slate, from 1 to 100. Zero is rejected, because a
+  slate
+  is always bounded.
 
-// Slope One (requires direct_slope or rebuild)
-$recommender->memberPredict($memberId, $productId);                // float|null
-$recommender->memberPredictAll($memberId);                         // [['product_id', 'rating'], ...]
-$recommender->getSlopeItems($productId);                           // [['product_id', 'diff'], ...]
+### Missing values and eligibility
 
-// Opt-in scores, strategy, and contributing product IDs
-$recommender->memberRecommendationsDetailed($memberId);           // RecommendationResult[]
-$recommender->visitorRecommendationsDetailed($visitor);           // RecommendationResult[]
+- `memberRating()` returns `null` when the member has no rating for the product. `memberAverageRating()` and
+  `productAverageRating()` return `null` when there are no ratings. A `0.0` result is a real rating.
+- `setRating()` overwrites an existing rating for the same member, product and category. Read the previous value with
+  `memberRating()` first only when the new value depends on it. `deleteRating()` removes the rating.
+- Rating accessors return objects. `memberRating()` returns a `Rating`, `memberRatings()` and `productRatings()` return
+  `Rating[]`, and `VisitorContext::ratings()` returns `VisitorRating[]`. Read their properties, such as `->rating`.
+- Pass `null` for "no eligibility filter". An `ArrayEligibilityProvider` built from an empty list accepts no candidates,
+  so the call returns no results.
 
-// Anonymous visitors (pass a VisitorContext instead of a member ID)
-$recommender->visitorGetRecommendedItems($visitor);
-$recommender->visitorPredict($visitor, $productId);
-$recommender->visitorPredictAll($visitor);
-```
+### Scores
 
-All methods accept an optional `$filter` (array of allowed product IDs), `$limit`, and `$category` parameter.
-The detailed methods also accept `$minHistory` (default 1) and `$minRatings`
-(default 2). Below the genuine-rating history threshold they rank top-rated
-products with at least `$minRatings` ratings. Seen and rejected products are
-excluded. `item_links` scores sum `liked_count × (source rating − like threshold)`;
-`top_rated` scores are average genuine ratings. Scores are meaningful only
-within the same strategy. A single-item Slope One prediction estimates even
-an already rated item; the all-item methods return only unrated items.
+| Method                                                                 | `score` meaning                                                                                                                                                                                                   |
+|------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `ItemLinksSource::candidates()` for a product                          | Liked count of the co-occurrence link                                                                                                                                                                             |
+| `SlopeOneSource::candidates()` for a product                           | Average Slope One difference, which can be negative                                                                                                                                                               |
+| `RecommendationReconciler` slates                                      | `rankingScore` is the fused rank score. Each `evidence` entry's `rawScore` is the source's native score: for item links, the sum of liked count times (rating minus threshold); for top-rated, the average rating |
+| `SlopeOneSource::candidates()` and `predict()` for a member or visitor | The predicted rating, in `[0, 1]`                                                                                                                                                                                 |
+| `ItemLinksSource::reasons()`                                           | Liked count of the link to the given product                                                                                                                                                                      |
 
-Allowed-item filters are applied before SQL limits. Lists above 500 IDs are
-loaded into a temporary indexed table in batches of 500 for bounded query size.
+## Documentation
 
-### `UserSimilarity`
-
-User-based CF. Similarity scores range from 0 (no overlap) to 100 (identical taste).
-
-```php
-$similarity = $userSimilarity->memberSimilarity($memberId1, $memberId2); // int 0–100
-$neighbours = $userSimilarity->getNeighbours($memberId, minSimilarity: 10, limit: 20);
-$items      = $userSimilarity->memberGetRecommendedItems($memberId);
-```
-
-`getNeighbours()` aggregates candidate overlaps in one query. Recommendation
-rating reads are grouped in batches of 500 neighbours.
-
-### `VisitorContext`
-
-Holds in-memory ratings for anonymous visitors. Persist and restore it across requests via session serialization.
-
-```php
-$visitor = new VisitorContext($config);
-$visitor->setRating($productId, 0.9);
-$visitor->setNotInterested($productId);
-$visitor->removeRating($productId);
-$visitor->getRatings();         // [['product_id', 'rating', 'category'], ...]
-$visitor->getRatedProductIds(); // [productId, ...]
-```
-
-### `Statistics`
-
-```php
-$stats->numMembers();
-$stats->numProducts();
-$stats->numRatings();
-$stats->numLinks();
-$stats->mostRatedProducts(limit: 10);  // [['product_id', 'num_ratings'], ...]
-$stats->topRatedProducts(limit: 10, minRatings: 5); // [['product_id', 'avg_rating'], ...]
-```
-
-## Sculpt CLI commands
-
-| Command                                         | Description                                     |
-|-------------------------------------------------|-------------------------------------------------|
-| `sculpt recommender:init`                       | Publish `config/recommender.php`                |
-| `sculpt recommender:init-db`                    | Create `vogoo_ratings` and `vogoo_links` tables |
-| `sculpt recommender:init-db --force`            | Drop and recreate tables                        |
-| `sculpt recommender:rebuild-links`              | Rebuild `vogoo_links` from all ratings          |
-| `sculpt recommender:rebuild-links --category=N` | Rebuild a single category                       |
-
-## Multi-category support
-
-Every method accepts an optional `?int $category` parameter. When omitted it falls back to the `category` value in
-`RecommendationConfig` (default: 1). To work with multiple catalogues, either pass the category explicitly or
-instantiate separate `RecommendationConfig` objects per category:
-
-```php
-$booksConfig    = new RecommendationConfig(category: 1);
-$moviesConfig   = new RecommendationConfig(category: 2);
-
-$booksEngine  = new RecommendationEngine($connection, $booksConfig);
-$moviesEngine = new RecommendationEngine($connection, $moviesConfig);
-```
+The full API, configuration reference, reconciliation and evaluation workflows are documented in the Recommender
+page of the Canvas documentation.
 
 ## License
 

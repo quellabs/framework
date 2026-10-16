@@ -11,7 +11,10 @@
   ],
   "require": {
     "php": ">=8.2",
-    "cakephp/database": "^5.0"
+    "cakephp/database": "^5.0",
+    "quellabs/contracts": "^1.",
+    "quellabs/discover": "^1.",
+    "quellabs/sculpt": "^1."
   },
   "suggest": {
     "quellabs/canvas-database": "Provides Connection autowiring for Canvas applications via the DI container"
@@ -24,7 +27,7 @@
   "extra": {
     "discover": {
       "di": {
-        "provider": "Quellabs\\Recommender\\ServiceProvider",
+        "provider": "Quellabs\\Recommender\\Integration\\ServiceProvider",
         "config": "config/recommender.php"
       },
       "sculpt": {
