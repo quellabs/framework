@@ -11,13 +11,13 @@
 	use Quellabs\ObjectQuel\Annotations\Orm\ForeignKeyAction;
 
 	/**
-	 * The owning side of a bidirectional OneToOne. 'referencedColumn' being
-	 * set here only drives setter-sync codegen for the InverseOf side — it
-	 * has no bearing on cascade-remove eligibility or insert ordering, both
-	 * of which apply the same way to a unidirectional OneToOne (see
-	 * RelProfileUnidirectionalEntity). Carries the same Cascade(remove,
-	 * persist) + ForeignKey/ForeignKeyAction combo as FkOrderEntity, but for
-	 * OneToOne rather than ManyToOne.
+	 * The owning side of a bidirectional OneToOne. 'referencedColumn' names the
+	 * scalar column on RelUserEntity that the FK (userId) points to — here its
+	 * primary key, 'id'. It has no bearing on cascade-remove eligibility or
+	 * insert ordering, both of which apply the same way to a unidirectional
+	 * OneToOne (see RelProfileUnidirectionalEntity). Carries the same
+	 * Cascade(remove, persist) + ForeignKey/ForeignKeyAction combo as
+	 * FkOrderEntity, but for OneToOne rather than ManyToOne.
 	 * @Orm\Table(name="rel_profiles")
 	 */
 	class RelProfileEntity {
@@ -28,7 +28,7 @@
 		protected ?int $id = null;
 
 		/**
-		 * @Orm\OneToOne(targetEntity=RelUserEntity::class, referencedColumn="profile", localColumn="userId", fetch="EAGER")
+		 * @Orm\OneToOne(targetEntity=RelUserEntity::class, referencedColumn="id", localColumn="userId", fetch="EAGER")
 		 * @Orm\Cascade(operations={"remove", "persist"})
 		 */
 		public ?RelUserEntity $user = null;
