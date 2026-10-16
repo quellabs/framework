@@ -6,6 +6,7 @@
 	use Quellabs\ObjectQuel\Annotations\Orm\Column;
 	use Quellabs\ObjectQuel\Annotations\Orm\PrimaryKeyStrategy;
 	use Quellabs\ObjectQuel\Annotations\Orm\ManyToOne;
+	use Quellabs\ObjectQuel\Annotations\Orm\Cascade;
 
 	/**
 	 * Owning side of a composite ManyToOne to CkiOrderEntity's (tenantId, number)
@@ -13,6 +14,8 @@
 	 * Eager-fetched so EntityManager::find() exercises RewriteViaRelationToJoinCondition's
 	 * direct-path AND-of-equalities JOIN against a real SQLite database; the
 	 * InverseOf side on CkiOrderEntity::$lines exercises the inverse path.
+	 * Cascade(remove) exercises UnitOfWork::cascadeDeleteDependentObjects()'s
+	 * composite (full-tuple) matching when the parent order is deleted.
 	 * @Orm\Table(name="cki_order_lines")
 	 */
 	class CkiOrderLineEntity {
@@ -29,6 +32,7 @@
 		 *     referencedColumns={"tenantId", "number"},
 		 *     fetch="EAGER"
 		 * )
+		 * @Orm\Cascade(operations={"remove"})
 		 */
 		public ?CkiOrderEntity $order = null;
 
