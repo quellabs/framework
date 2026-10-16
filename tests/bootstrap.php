@@ -156,3 +156,27 @@
 		UNIQUE KEY `uq_credentials_account` (`account_id`),
 		CONSTRAINT `fk_credentials_account` FOREIGN KEY (`account_id`) REFERENCES `accounts` (`id`)
 	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
+
+	// Fixtures for RelationalDivisionTest (customer -> orders -> items, plus a product required set).
+	$connection->execute('CREATE TABLE IF NOT EXISTS `rel_div_customers` (
+		`id` INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+		`name` VARCHAR(100) NOT NULL
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
+	$connection->execute('CREATE TABLE IF NOT EXISTS `rel_div_orders` (
+		`id` INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+		`customer_id` INT UNSIGNED NULL
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
+	$connection->execute('CREATE TABLE IF NOT EXISTS `rel_div_order_items` (
+		`id` INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+		`order_id` INT UNSIGNED NULL,
+		`product_id` INT UNSIGNED NULL
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
+	$connection->execute('CREATE TABLE IF NOT EXISTS `rel_div_products` (
+		`id` INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+		`category` VARCHAR(100) NOT NULL
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
+	$connection->execute('CREATE TABLE IF NOT EXISTS `rel_div_bundle_items` (
+		`id` INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+		`bundle` VARCHAR(100) NOT NULL,
+		`product_id` INT UNSIGNED NULL
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
