@@ -66,12 +66,15 @@ $relationshipTables = [
 foreach ($relationshipTables as $table => $columns) {
 	$connection->execute("CREATE TABLE {$table} (id INTEGER PRIMARY KEY AUTOINCREMENT{$columns})");
 }
+$connection->execute('CREATE TABLE non_pk_ref_users (id INTEGER PRIMARY KEY AUTOINCREMENT, email VARCHAR(255) NOT NULL)');
+$connection->execute('CREATE TABLE non_pk_ref_profiles (id INTEGER PRIMARY KEY AUTOINCREMENT, user_email VARCHAR(255) NOT NULL)');
 
 $configuration = new Configuration();
 $configuration->setEntityNamespace('App\\Entities');
 $configuration->setEntityPath(__DIR__ . '/../src/Entities');
 $configuration->setProxyDir(sys_get_temp_dir() . '/objectquel-sqlite-phpunit-proxies');
 $configuration->addAdditionalEntityPath(__DIR__ . '/ObjectQuel/Fixtures/RelationshipEntities');
+$configuration->addAdditionalEntityPath(__DIR__ . '/ObjectQuel/Fixtures/NonPkReferenceEntities');
 $GLOBALS['test_em'] = new EntityManager($configuration, $connection);
 $GLOBALS['test_connection'] = $connection;
 
