@@ -67,6 +67,8 @@ foreach ($relationshipTables as $table => $columns) {
 	$connection->execute("CREATE TABLE {$table} (id INTEGER PRIMARY KEY AUTOINCREMENT{$columns})");
 }
 $connection->execute('CREATE TABLE cki_orders (tenant_id INTEGER NOT NULL, number VARCHAR(20) NOT NULL, amount INTEGER NOT NULL, PRIMARY KEY (tenant_id, number))');
+$connection->execute('CREATE TABLE cki_order_lines (id INTEGER PRIMARY KEY AUTOINCREMENT, order_tenant_id INTEGER NOT NULL, order_number VARCHAR(20) NOT NULL, line_amount INTEGER NOT NULL)');
+$connection->execute('CREATE TABLE cki_order_lines_lazy (id INTEGER PRIMARY KEY AUTOINCREMENT, order_tenant_id INTEGER NOT NULL, order_number VARCHAR(20) NOT NULL)');
 
 $configuration = new Configuration();
 $configuration->setEntityNamespace('App\\Entities');
