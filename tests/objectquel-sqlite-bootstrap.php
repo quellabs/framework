@@ -57,6 +57,11 @@ $relationshipTables = [
 	'rel_bool_soft_parents' => ', is_deleted BOOLEAN NOT NULL DEFAULT 0',
 	'rel_bool_soft_children' => ', parent_id INTEGER',
 	'rel_bool_soft_children_own_delete' => ', is_deleted BOOLEAN NOT NULL DEFAULT 0, parent_id INTEGER',
+	'rel_div_customers' => ', name VARCHAR(100) NOT NULL',
+	'rel_div_orders' => ', customer_id INTEGER',
+	'rel_div_order_items' => ', order_id INTEGER, product_id INTEGER',
+	'rel_div_products' => ', category VARCHAR(100) NOT NULL',
+	'rel_div_bundle_items' => ', bundle VARCHAR(100) NOT NULL, product_id INTEGER',
 ];
 foreach ($relationshipTables as $table => $columns) {
 	$connection->execute("CREATE TABLE {$table} (id INTEGER PRIMARY KEY AUTOINCREMENT{$columns})");
