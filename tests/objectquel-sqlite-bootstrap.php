@@ -66,12 +66,14 @@ $relationshipTables = [
 foreach ($relationshipTables as $table => $columns) {
 	$connection->execute("CREATE TABLE {$table} (id INTEGER PRIMARY KEY AUTOINCREMENT{$columns})");
 }
+$connection->execute('CREATE TABLE cki_orders (tenant_id INTEGER NOT NULL, number VARCHAR(20) NOT NULL, amount INTEGER NOT NULL, PRIMARY KEY (tenant_id, number))');
 
 $configuration = new Configuration();
 $configuration->setEntityNamespace('App\\Entities');
 $configuration->setEntityPath(__DIR__ . '/../src/Entities');
 $configuration->setProxyDir(sys_get_temp_dir() . '/objectquel-sqlite-phpunit-proxies');
 $configuration->addAdditionalEntityPath(__DIR__ . '/ObjectQuel/Fixtures/RelationshipEntities');
+$configuration->addAdditionalEntityPath(__DIR__ . '/ObjectQuel/Fixtures/CompositeKeyRelationshipEntities');
 $GLOBALS['test_em'] = new EntityManager($configuration, $connection);
 $GLOBALS['test_connection'] = $connection;
 
