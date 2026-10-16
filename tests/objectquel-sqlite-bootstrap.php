@@ -27,6 +27,8 @@ $connection->execute('CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, 
 $connection->execute('CREATE TABLE posts (id INTEGER PRIMARY KEY AUTOINCREMENT, title VARCHAR(255) NOT NULL, content TEXT NOT NULL DEFAULT \'\', published BOOLEAN NOT NULL DEFAULT 0, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, test_enum VARCHAR(50), test_json TEXT, user_id INTEGER, deleted_at DATETIME NULL)');
 $connection->execute('CREATE TABLE versioned_entities (id INTEGER PRIMARY KEY AUTOINCREMENT, label VARCHAR(255) NOT NULL, version INTEGER NOT NULL)');
 $connection->execute('CREATE TABLE uuid_versioned_entities (id INTEGER PRIMARY KEY AUTOINCREMENT, label VARCHAR(255) NOT NULL, token VARCHAR(36) NOT NULL)');
+$connection->execute('CREATE TABLE sequence_component_entities (token VARCHAR(36) NOT NULL, seq INTEGER NOT NULL, amount INTEGER NOT NULL, PRIMARY KEY (token, seq))');
+$connection->execute('CREATE TABLE string_pk_entities (code VARCHAR(20) PRIMARY KEY, position INTEGER NOT NULL)');
 $connection->execute('CREATE TABLE sti_vehicles (id INTEGER PRIMARY KEY AUTOINCREMENT, name VARCHAR(100) NOT NULL, vehicle_type VARCHAR(50) NOT NULL)');
 $connection->execute('CREATE TABLE default_column_test (id INTEGER PRIMARY KEY AUTOINCREMENT, name VARCHAR(100) NOT NULL, priority INTEGER NOT NULL DEFAULT 99)');
 $connection->execute('CREATE TABLE accounts (id INTEGER PRIMARY KEY AUTOINCREMENT, label VARCHAR(255) NOT NULL)');
