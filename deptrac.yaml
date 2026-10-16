@@ -1,0 +1,23 @@
+deptrac:
+  paths:
+    - packages/objectquel/src
+
+  layers:
+    - name: Syntax
+      collectors:
+        - type: classLike
+          value: '^Quellabs\\ObjectQuel\\ObjectQuel\\(Lexer|Parser)$'
+        - type: classLike
+          value: '^Quellabs\\ObjectQuel\\ObjectQuel\\Rules\\.*'
+
+    - name: Execution
+      collectors:
+        - type: classLike
+          value: '^Quellabs\\ObjectQuel\\Execution\\.*'
+        - type: classLike
+          value: '^Quellabs\\ObjectQuel\\ObjectQuel\\QuelToSQL\\.*'
+
+  ruleset:
+    Syntax: ~
+    Execution:
+      - Syntax
