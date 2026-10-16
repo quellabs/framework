@@ -252,4 +252,71 @@
 				self::assertSame([$expected], array_column(self::em()->getAll(sprintf($unsortedQuery, $third, $first, $second, $page)), 'u.id'));
 			}
 		}
+
+		/**
+		 * @InValuesAreFinal pages an existing primary-key IN(...) list by position, in the
+		 * list's own order, with no separate key query — a non-matching id in the list
+		 * costs that page a row instead of being silently skipped over.
+		 * @return void
+		 */
+		public function testInValuesAreFinalPagesExistingInClauseInListOrderWithoutKeyQuery(): void {
+			$suffix = bin2hex(random_bytes(8));
+			$first = $this->insertUser('pagination_ivaf_first_' . $suffix);
+			$second = $this->insertUser('pagination_ivaf_second_' . $suffix);
+			$third = $this->insertUser('pagination_ivaf_third_' . $suffix);
+			$missing = $third + 1000000;
+			$adapter = self::em()->getConnection();
+
+			$logger = new class extends \Psr\Log\AbstractLogger {
+				/** @var list<string> */
+				public array $queries = [];
+
+				/**
+				 * Capture executed SQL from Cake's query context.
+				 * @param mixed $level Log level
+				 * @param string|\Stringable $message Log message
+				 * @param array<string, mixed> $context Log context
+				 * @return void
+				 */
+				public function log($level, string|\Stringable $message, array $context = []): void {
+					$this->queries[] = $context['query']->getContext()['query'];
+				}
+			};
+			$driver = $adapter->getConnection()->getDriver();
+			$previousLogger = $driver->getLogger();
+			$driver->setLogger($logger);
+
+			try {
+				// List order deliberately differs from id order and has a non-existent
+				// id at position 2, so the page split is purely positional, not DB-matched.
+				$query = '
+					@InValuesAreFinal true
+					range of u is App\\Entities\\UserEntity
+					retrieve (u.id)
+					where u.id in (%d, %d, %d, %d)
+					window %d, 2
+				';
+				$page0 = self::em()->getAll(sprintf($query, $third, $first, $missing, $second, 0));
+				$page1 = self::em()->getAll(sprintf($query, $third, $first, $missing, $second, 1));
+			} finally {
+				if ($previousLogger !== null) {
+					$driver->setLogger($previousLogger);
+				} else {
+					$driver->disableQueryLogging();
+				}
+			}
+
+			self::assertSame([$third, $first], array_column($page0, 'u.id'));
+			self::assertSame([$second], array_column($page1, 'u.id'));
+
+			// No key-fetch pass: exactly one query per page, each ordered by IN-list position.
+			self::assertCount(2, $logger->queries);
+
+			foreach ($logger->queries as $sql) {
+				self::assertTrue(
+					str_contains($sql, 'ORDER BY FIELD') || str_contains($sql, 'ORDER BY CASE'),
+					"Expected an IN-list order clause, got: {$sql}"
+				);
+			}
+		}
 	}
