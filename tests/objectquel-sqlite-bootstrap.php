@@ -31,6 +31,7 @@ $connection->execute('CREATE TABLE sti_vehicles (id INTEGER PRIMARY KEY AUTOINCR
 $connection->execute('CREATE TABLE default_column_test (id INTEGER PRIMARY KEY AUTOINCREMENT, name VARCHAR(100) NOT NULL, priority INTEGER NOT NULL DEFAULT 99)');
 $connection->execute('CREATE TABLE accounts (id INTEGER PRIMARY KEY AUTOINCREMENT, label VARCHAR(255) NOT NULL)');
 $connection->execute('CREATE TABLE credentials (id INTEGER PRIMARY KEY AUTOINCREMENT, secret VARCHAR(255) NOT NULL, account_id INTEGER UNIQUE REFERENCES accounts(id))');
+$connection->execute('CREATE TABLE string_pk_entities (code VARCHAR(20) PRIMARY KEY, position INTEGER NOT NULL)');
 $relationshipTables = [
 	'rel_customers' => '',
 	'rel_orders_cascade' => ', customer_id INTEGER',
