@@ -4,8 +4,6 @@
 
 	use Symfony\Component\HttpFoundation\Request;
 	use Symfony\Component\HttpFoundation\Response;
-	use Quellabs\Canvas\Exceptions\MethodNotAllowedException;
-	use Quellabs\Canvas\Exceptions\RateLimitException;
 	use Quellabs\Canvas\Exceptions\RouteNotFoundException;
 	use Quellabs\Canvas\Security\SecurityHeaderPolicyInterface;
 
@@ -47,14 +45,9 @@
 
 			$response = new Response($content, $status, ['Content-Type' => 'text/html']);
 
-			if ($e instanceof MethodNotAllowedException) {
-				// RFC 7231 requires a 405 response to list the allowed methods
-				$response->headers->set('Allow', implode(', ', $e->getAllowedMethods()));
-			}
-
-			if ($e instanceof RateLimitException) {
-				// RateLimitAspect::before() computed these (including Retry-After) before
-				// throwing; this handler never recalculates rate-limit state itself.
+			if ($e instanceof ProvidesResponseHeaders) {
+				// The exception computed these itself (e.g. RateLimitException's Retry-After,
+				// MethodNotAllowedException's Allow); this handler never recalculates them.
 				foreach ($e->getHeaders() as $name => $value) {
 					$response->headers->set((string)$name, (string)$value);
 				}

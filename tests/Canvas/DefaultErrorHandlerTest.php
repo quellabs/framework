@@ -4,6 +4,7 @@
 
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\Canvas\Error\DefaultErrorHandler;
+	use Quellabs\Canvas\Error\ProvidesResponseHeaders;
 	use Quellabs\Canvas\Exceptions\MethodNotAllowedException;
 	use Quellabs\Canvas\Exceptions\RateLimitException;
 	use Quellabs\Canvas\Exceptions\RouteNotFoundException;
@@ -14,8 +15,9 @@
 	 * Unit tests for DefaultErrorHandler.
 	 *
 	 * Covers the status/Allow-header handling specific to method-aware routing,
-	 * RateLimitException's headers, and the optional global SecurityHeaderPolicy;
-	 * does not re-test unrelated error rendering already covered elsewhere.
+	 * RateLimitException's headers, ProvidesResponseHeaders generically, and the
+	 * optional global SecurityHeaderPolicy; does not re-test unrelated error
+	 * rendering already covered elsewhere.
 	 */
 	class DefaultErrorHandlerTest extends TestCase {
 
@@ -64,6 +66,24 @@
 			$this->assertSame(429, $response->getStatusCode());
 			$this->assertSame('42', $response->headers->get('Retry-After'));
 			$this->assertSame('10', $response->headers->get('X-RateLimit-Limit'));
+		}
+
+		public function testAnyExceptionImplementingProvidesResponseHeadersGetsThemApplied(): void {
+			$exception = new class ('Custom limiter tripped', 429) extends \Exception implements ProvidesResponseHeaders {
+				public function __construct(string $message, private readonly int $status) {
+					parent::__construct($message, $status);
+				}
+
+				public function getHeaders(): array {
+					return ['Retry-After' => 17, 'X-Custom-Limiter' => 'tripped'];
+				}
+			};
+
+			$response = $this->handler->handle($exception, Request::create('/third-party'), false);
+
+			$this->assertSame(429, $response->getStatusCode());
+			$this->assertSame('17', $response->headers->get('Retry-After'));
+			$this->assertSame('tripped', $response->headers->get('X-Custom-Limiter'));
 		}
 
 		public function testSecurityHeaderPolicyIsAppliedWhenConfigured(): void {
