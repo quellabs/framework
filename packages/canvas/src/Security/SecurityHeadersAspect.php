@@ -5,7 +5,6 @@
 	use Quellabs\Canvas\AOP\Contracts\AfterAspectInterface;
 	use Quellabs\Canvas\Kernel;
 	use Quellabs\Canvas\Routing\Contracts\MethodContextInterface;
-	use Quellabs\Canvas\Security\Policies\BasicSecurityHeaderPolicy;
 	use Symfony\Component\HttpFoundation\Response;
 
 	/**
@@ -14,7 +13,6 @@
 	 * Adds security-related HTTP headers to protect against common attacks, via
 	 * a SecurityHeaderPolicyInterface: config/app.php's security_header_policy by
 	 * default, or the $policyClass given here to override it for this route only.
-	 * Falls back to the basic built-in BasicSecurityHeaderPolicy if neither is set.
 	 *
 	 * As an AfterAspectInterface, this only runs when the controller method it's
 	 * attached to actually executes - a before-aspect short circuit on the same
@@ -34,21 +32,22 @@
 		 * @param class-string<SecurityHeaderPolicyInterface>|null $policyClass Class implementing SecurityHeaderPolicyInterface to use for this route instead of the application-wide default
 		 */
 		public function __construct(Kernel $kernel, ?string $policyClass = null) {
-			if ($policyClass !== null) {
-				$policy = $kernel->getDependencyInjector()->make($policyClass);
-
-				if (!$policy instanceof SecurityHeaderPolicyInterface) {
-					throw new \InvalidArgumentException(sprintf(
-						"SecurityHeadersAspect's policyClass '%s' must implement %s.",
-						$policyClass,
-						SecurityHeaderPolicyInterface::class
-					));
-				}
-			} else {
-				$policy = $kernel->getDefaultSecurityHeaderPolicy();
+			if ($policyClass === null) {
+				$this->policy = $kernel->getDefaultSecurityHeaderPolicy();
+				return;
 			}
 
-			$this->policy = $policy ?? new BasicSecurityHeaderPolicy();
+			$policy = $kernel->getDependencyInjector()->make($policyClass);
+
+			if (!$policy instanceof SecurityHeaderPolicyInterface) {
+				throw new \InvalidArgumentException(sprintf(
+					"SecurityHeadersAspect's policyClass '%s' must implement %s.",
+					$policyClass,
+					SecurityHeaderPolicyInterface::class
+				));
+			}
+
+			$this->policy = $policy;
 		}
 
 		/**

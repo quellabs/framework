@@ -39,6 +39,7 @@
 	use Quellabs\Canvas\Legacy\LegacyBridge;
 	use Quellabs\Canvas\Legacy\LegacyHandler;
 	use Quellabs\Canvas\Security\Policies\BasicSecurityHeaderPolicy;
+	use Quellabs\Canvas\Security\Policies\NullSecurityHeaderPolicy;
 	use Quellabs\Canvas\Security\SecurityHeaderPolicyInterface;
 	use Quellabs\Contracts\Configuration\ConfigProviderInterface;
 	use Quellabs\Contracts\Configuration\ConfigurationInterface;
@@ -82,8 +83,8 @@
 		/** @var array<int, class-string<ErrorHandlerInterface>> */
 		private array $errorHandlers;
 
-		/** @var SecurityHeaderPolicyInterface|null Application-wide default, resolved from config/app.php's security_header_policy; null when explicitly disabled */
-		private ?SecurityHeaderPolicyInterface $defaultSecurityHeaderPolicy;
+		/** @var SecurityHeaderPolicyInterface Application-wide default, resolved from config/app.php's security_header_policy */
+		private SecurityHeaderPolicyInterface $defaultSecurityHeaderPolicy;
 
 		/**
 		 * Kernel constructor
@@ -154,29 +155,38 @@
 			// SecurityHeadersAspect (when no $policyClass override is given) and
 			// DefaultErrorHandler apply, so a route's headers and an error page's
 			// headers never silently diverge. config/app.php can point this at a
-			// custom class, or set it to null to disable the default entirely.
-			// Configuration::get()'s null-coalescing default can't tell an omitted key
-			// from one explicitly set to null, so an explicit null (opting out of the
-			// default) must be checked for via has() rather than get()'s own fallback.
+			// custom class, including NullSecurityHeaderPolicy to opt out of
+			// security headers entirely; the key itself must resolve to a real
+			// policy, so an explicit null is rejected rather than treated as "disabled".
 			$securityHeaderPolicyClass = $this->configuration->has('security_header_policy')
 				? $this->configuration->get('security_header_policy')
 				: BasicSecurityHeaderPolicy::class;
 
 			if ($securityHeaderPolicyClass === null) {
-				$this->defaultSecurityHeaderPolicy = null;
-			} else {
-				$policy = $this->dependencyInjector->make($securityHeaderPolicyClass);
-
-				if (!$policy instanceof SecurityHeaderPolicyInterface) {
-					throw new \RuntimeException(sprintf(
-						"Configured security_header_policy class '%s' must implement %s.",
-						$securityHeaderPolicyClass,
-						SecurityHeaderPolicyInterface::class
-					));
-				}
-
-				$this->defaultSecurityHeaderPolicy = $policy;
+				throw new \RuntimeException(sprintf(
+					"config/app.php's security_header_policy must not be null; use %s::class to disable security headers.",
+					NullSecurityHeaderPolicy::class
+				));
 			}
+
+			if (!class_exists($securityHeaderPolicyClass)) {
+				throw new \RuntimeException(sprintf(
+					"Configured security_header_policy class '%s' does not exist.",
+					$securityHeaderPolicyClass
+				));
+			}
+
+			$policy = $this->dependencyInjector->make($securityHeaderPolicyClass);
+
+			if (!$policy instanceof SecurityHeaderPolicyInterface) {
+				throw new \RuntimeException(sprintf(
+					"Configured security_header_policy class '%s' must implement %s.",
+					$securityHeaderPolicyClass,
+					SecurityHeaderPolicyInterface::class
+				));
+			}
+
+			$this->defaultSecurityHeaderPolicy = $policy;
 		}
 		
 		/**
@@ -213,9 +223,9 @@
 
 		/**
 		 * Returns the application-wide default security header policy
-		 * @return SecurityHeaderPolicyInterface|null Null when config/app.php's security_header_policy is explicitly disabled
+		 * @return SecurityHeaderPolicyInterface
 		 */
-		public function getDefaultSecurityHeaderPolicy(): ?SecurityHeaderPolicyInterface {
+		public function getDefaultSecurityHeaderPolicy(): SecurityHeaderPolicyInterface {
 			return $this->defaultSecurityHeaderPolicy;
 		}
 		

@@ -6,6 +6,7 @@
 	use Quellabs\Canvas\Kernel;
 	use Quellabs\Canvas\Routing\Contracts\MethodContextInterface;
 	use Quellabs\Canvas\Security\Policies\BasicSecurityHeaderPolicy;
+	use Quellabs\Canvas\Security\Policies\NullSecurityHeaderPolicy;
 	use Quellabs\Canvas\Security\SecurityHeadersAspect;
 	use Quellabs\DependencyInjection\Container;
 	use Symfony\Component\HttpFoundation\Request;
@@ -13,8 +14,7 @@
 
 	/**
 	 * Unit tests for SecurityHeadersAspect's policy resolution: a $policyClass
-	 * override, the kernel's application-wide default, or a fallback to the
-	 * basic built-in BasicSecurityHeaderPolicy when neither is set.
+	 * override, or the kernel's application-wide default.
 	 */
 	class SecurityHeadersAspectTest extends TestCase {
 
@@ -37,15 +37,15 @@
 			$this->assertSame('DENY', $response->headers->get('X-Frame-Options'));
 		}
 
-		public function testFallsBackToTheBasicPolicyWhenTheKernelHasNoDefault(): void {
+		public function testNullSecurityHeaderPolicyAsTheKernelsDefaultAddsNoHeaders(): void {
 			$kernel = $this->createStub(Kernel::class);
-			$kernel->method('getDefaultSecurityHeaderPolicy')->willReturn(null);
+			$kernel->method('getDefaultSecurityHeaderPolicy')->willReturn(new NullSecurityHeaderPolicy());
 
 			$aspect = new SecurityHeadersAspect($kernel);
 			$response = new Response();
 			$aspect->after($this->makeContext(), $response);
 
-			$this->assertSame('SAMEORIGIN', $response->headers->get('X-Frame-Options'));
+			$this->assertFalse($response->headers->has('X-Frame-Options'));
 		}
 
 		public function testPolicyClassOverridesTheKernelsDefault(): void {
