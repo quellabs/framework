@@ -4,6 +4,7 @@
 	
 	use Symfony\Component\HttpFoundation\Request;
 	use Symfony\Component\HttpFoundation\Response;
+	use Quellabs\Canvas\Exceptions\MethodNotAllowedException;
 	use Quellabs\Canvas\Exceptions\RouteNotFoundException;
 	
 	class DefaultErrorHandler {
@@ -24,14 +25,20 @@
 		 */
 		public function handle(\Throwable $e, Request $request, bool $isDevelopment): Response {
 			$status = $this->resolveStatus($e);
-			
+
 			if ($isDevelopment) {
 				$content = $this->renderDebugErrorPageContent($e);
 			} else {
 				$content = $this->renderProductionErrorPageContent($status);
 			}
-			
-			return new Response($content, $status, ['Content-Type' => 'text/html']);
+
+			$response = new Response($content, $status, ['Content-Type' => 'text/html']);
+
+			if ($e instanceof MethodNotAllowedException) {
+				$response->headers->set('Allow', implode(', ', $e->getAllowedMethods()));
+			}
+
+			return $response;
 		}
 		
 		/**
