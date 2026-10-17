@@ -56,7 +56,6 @@
 	 * routing scenarios including nested wildcards and type validation.
 	 *
 	 * @phpstan-import-type CompiledSegment from RouteTypes
-	 * @phpstan-import-type PatternMetadata from RouteTypes
 	 * @phpstan-type VarInfo array{
 	 *     name: string,
 	 *     clean_name: string,
@@ -265,11 +264,13 @@
 		}
 		
 		/**
-		 * Optimized regex lookup using cached patterns
+		 * Optimized regex lookup using cached patterns.
+		 * Static because PartialVariableStrategy also calls it at match time to
+		 * re-validate a type constraint when compilation fell back to legacy parsing.
 		 * @param string $type The type constraint (int, alpha, uuid, etc.)
 		 * @return string The corresponding regex pattern
 		 */
-		public function resolveTypeToRegex(string $type): string {
+		public static function resolveTypeToRegex(string $type): string {
 			return match ($type) {
 				'*' => '[^\/]*',     // Single wildcard - any chars except path separator
 				'**' => '.*',        // Multi-wildcard - any chars including path separators
@@ -326,7 +327,7 @@
 			// Typed variable (e.g. {id:int}, {path:**})
 			if (str_contains($segment, ':')) {
 				$parts = explode(':', trim($segment, '{}'), 2);
-				$pattern = $this->resolveTypeToRegex($parts[1]);
+				$pattern = self::resolveTypeToRegex($parts[1]);
 				$isMultiWildcard = in_array($parts[1], ['**', '.*'], true); // {path:**} behaves like a multi-wildcard
 			} else {
 				// Untyped variable: matches any single segment
@@ -412,19 +413,17 @@
 			$variableNames = [];    // Ordered list of variable names for capture extraction
 			$literalPrefix = null;  // Static text before the first variable (e.g. "v" in "v{ver}")
 			$literalSuffix = null;  // Static text after the last variable (e.g. ".json" in "{name}.json")
-			$patternMetadata = null;  // Pre-computed lengths and name for single-variable fast path
 			$isMultiWildcard = false;
 			$variableName = null;  // Set only when a wildcard variable is present in the segment
-			
+
 			$result = $this->compilePartialSegmentPattern($segment);
-			
+
 			if ($result !== null) {
 				$compiledRegex = $result['pattern'];
 				$variableNames = $result['variables'];
 				$literalPrefix = $result['literal_prefix'];
 				$literalSuffix = $result['literal_suffix'];
-				$patternMetadata = $this->compilePatternMetadata($segment); // Null for multi-variable segments
-				
+
 				// Promote wildcard flags from the first wildcard variable found, if any.
 				// Partial wildcard segments are unusual but valid (e.g. "prefix{path:**}").
 				foreach ($result['variable_info'] as $varInfo) {
@@ -435,8 +434,8 @@
 					}
 				}
 			}
-			
-			$compiled = [
+
+			return [
 				'type'                     => 'partial_variable',
 				'original'                 => $segment,
 				'variable_name'            => $variableName,
@@ -448,61 +447,8 @@
 				'literal_suffix'           => $literalSuffix,
 				'remaining_segments_count' => 0,
 			];
-			
-			// pattern_metadata is omitted entirely when null rather than stored as null,
-			// because its presence signals to the strategy that the fast path is available.
-			if ($patternMetadata !== null) {
-				$compiled['pattern_metadata'] = $patternMetadata;
-			}
-			
-			return $compiled;
 		}
-		
-		/**
-		 * Parses route segments like "prefix{variable}suffix" and extracts
-		 * structural information needed for efficient matching and validation.
-		 * @param string $segment Route segment to analyze (e.g., "user{id}.json")
-		 * @return PatternMetadata|null
-		 */
-		private function compilePatternMetadata(string $segment): ?array {
-			// Match pattern: literal_prefix + {variable} + literal_suffix
-			// Examples: "user{id}", "{name}.json", "api/v1/{endpoint}/data"
-			if (preg_match('/^([^{]*)(\{[^}]+})(.*)$/', $segment, $matches)) {
-				// Extract the three parts of the segment
-				$literalPrefix = $matches[1];  // Text before the variable
-				$variablePart = $matches[2];   // The {variable} part including braces
-				$literalSuffix = $matches[3];  // Text after the variable
-				
-				// Pre-calculate string lengths for performance optimization
-				// These will be used frequently during route matching
-				$prefixLength = strlen($literalPrefix);
-				$suffixLength = strlen($literalSuffix);
-				
-				// Extract the variable name from within the braces
-				// Remove surrounding { } characters
-				$variableName = trim($variablePart, '{}');
-				
-				// Handle variable constraints (e.g., {id:int} -> "id")
-				// If variable has a type constraint, extract just the name part
-				if (str_contains($variableName, ':')) {
-					$variableName = explode(':', $variableName)[0];
-				}
-				
-				// Return compiled metadata for efficient route matching
-				return [
-					'literal_prefix' => $literalPrefix,    // Static text before variable
-					'literal_suffix' => $literalSuffix,    // Static text after variable
-					'prefix_length'  => $prefixLength,     // Length of prefix (performance)
-					'suffix_length'  => $suffixLength,     // Length of suffix (performance)
-					'variable_name'  => $variableName,     // Clean variable name for parameter extraction
-					'min_length'     => $prefixLength + $suffixLength // Minimum possible segment length
-				];
-			}
-			
-			// Return null for segments without variables (pure literal segments)
-			return null;
-		}
-		
+
 		/**
 		 * Builds the regex pattern for a variable based on its type.
 		 * @param VarInfo $varInfo Variable information containing name, regex, and type flags
@@ -717,7 +663,7 @@
 			return [
 				'name'              => $parts[0],
 				'clean_name'        => $parts[0],
-				'regex'             => $this->resolveTypeToRegex($parts[1]),
+				'regex'             => self::resolveTypeToRegex($parts[1]),
 				'is_wildcard'       => false,
 				'is_multi_wildcard' => false,
 				'original_content'  => $content
