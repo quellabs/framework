@@ -6,11 +6,12 @@
 	use Symfony\Component\HttpFoundation\Response;
 
 	/**
-	 * The basic, built-in SecurityHeaderPolicyInterface implementation. Used as the
-	 * application-wide default (config/app.php's security_header_policy) unless an
-	 * application configures its own policy class, and as SecurityHeadersAspect's
-	 * fallback when neither a policyClass override nor an application-wide default
-	 * is configured.
+	 * The basic tier of Canvas's three built-in SecurityHeaderPolicyInterface
+	 * implementations (basic / MediumSecurityHeaderPolicy / StrictSecurityHeaderPolicy).
+	 * Used as the application-wide default (config/app.php's security_header_policy)
+	 * unless an application configures its own policy class, and as
+	 * SecurityHeadersAspect's fallback when neither a policyClass override nor an
+	 * application-wide default is configured.
 	 *
 	 * Every add* method only sets a header when one isn't already present, so
 	 * a route-specific value set earlier always wins over this policy's own.
@@ -32,6 +33,9 @@
 		/** @var bool Include subdomains in HSTS */
 		private bool $hstsIncludeSubdomains;
 
+		/** @var bool Add the preload directive to HSTS */
+		private bool $hstsPreload;
+
 		/** @var string Referrer-Policy value */
 		private string $referrerPolicy;
 
@@ -45,6 +49,7 @@
 		 * @param bool $xssProtection Enable X-XSS-Protection: 1; mode=block
 		 * @param int $hstsMaxAge HSTS max-age in seconds (0 disables HSTS)
 		 * @param bool $hstsIncludeSubdomains Include subdomains in HSTS
+		 * @param bool $hstsPreload Add the preload directive to HSTS
 		 * @param string $referrerPolicy Referrer-Policy value
 		 * @param string|null $csp Content-Security-Policy value (null disables CSP)
 		 */
@@ -54,6 +59,7 @@
 			bool    $xssProtection = true,
 			int     $hstsMaxAge = 31536000, // 1 year
 			bool    $hstsIncludeSubdomains = true,
+			bool    $hstsPreload = false,
 			string  $referrerPolicy = 'strict-origin-when-cross-origin',
 			?string $csp = null
 		) {
@@ -62,6 +68,7 @@
 			$this->xssProtection = $xssProtection;
 			$this->hstsMaxAge = $hstsMaxAge;
 			$this->hstsIncludeSubdomains = $hstsIncludeSubdomains;
+			$this->hstsPreload = $hstsPreload;
 			$this->referrerPolicy = $referrerPolicy;
 			$this->csp = $csp;
 		}
@@ -127,6 +134,10 @@
 
 				if ($this->hstsIncludeSubdomains) {
 					$hsts .= '; includeSubDomains';
+				}
+
+				if ($this->hstsPreload) {
+					$hsts .= '; preload';
 				}
 
 				$response->headers->set('Strict-Transport-Security', $hsts);

@@ -47,6 +47,18 @@
 			$this->assertSame('max-age=1000; includeSubDomains', $httpsResponse->headers->get('Strict-Transport-Security'));
 		}
 
+		public function testHstsPreloadIsAppendedWhenEnabled(): void {
+			$policy = new SecurityHeaderPolicy(hstsMaxAge: 1000, hstsIncludeSubdomains: true, hstsPreload: true);
+
+			$request = Request::create('https://example.test/');
+			$request->server->set('HTTPS', 'on');
+			$response = new Response();
+
+			$policy->apply($request, $response);
+
+			$this->assertSame('max-age=1000; includeSubDomains; preload', $response->headers->get('Strict-Transport-Security'));
+		}
+
 		public function testZeroHstsMaxAgeDisablesHsts(): void {
 			$policy = new SecurityHeaderPolicy(hstsMaxAge: 0);
 

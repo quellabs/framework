@@ -34,5 +34,7 @@
 		// Class implementing SecurityHeaderPolicyInterface, applied by both
 		// SecurityHeadersAspect (unless a route overrides it via policyClass)
 		// and DefaultErrorHandler. Set to null to disable the default entirely.
+		// Canvas ships three tiers: SecurityHeaderPolicy (basic), MediumSecurityHeaderPolicy,
+		// and StrictSecurityHeaderPolicy - all in the Quellabs\Canvas\Security namespace.
 		'security_header_policy'  => \Quellabs\Canvas\Security\SecurityHeaderPolicy::class
 	];
