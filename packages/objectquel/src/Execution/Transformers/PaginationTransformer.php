@@ -8,24 +8,33 @@
 	use Quellabs\ObjectQuel\EntityStore;
 	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
 	use Quellabs\ObjectQuel\Exception\QuelException;
+	use Quellabs\ObjectQuel\Execution\Visitors\DetectPrimaryKeyInClause;
+	use Quellabs\ObjectQuel\Execution\Visitors\DetectPrimaryKeyInClauseException;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAlias;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstBinaryOperator;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIdentifier;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIn;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstNumber;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstParameter;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabase;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
 	use Quellabs\ObjectQuel\ObjectQuel\Helpers\PrimaryKeyInfo;
 	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQL\QuelToSQLRetrieve;
-	use Quellabs\ObjectQuel\Execution\Visitors\DetectPrimaryKeyInClause;
-	use Quellabs\ObjectQuel\Execution\Visitors\DetectPrimaryKeyInClauseException;
+	use Quellabs\ObjectQuel\Planner\Helpers\RangeUtilities;
 	
+	/**
+	 * Selects a page of root entities before loading their complete joined rows.
+	 */
 	class PaginationTransformer {
 		
 		private EntityStore $entityStore;
 		private DatabaseAdapter $connection;
 		private PlatformCapabilitiesInterface $platform;
 		private ?PrimaryKeyInfo $primaryKeyInfo = null;
-		
+
+		/** Monotonic counter for this transform() call's generated bound-parameter names. */
+		private int $parameterSequence = 0;
+
 		/**
 		 * QueryBuilder constructor
 		 * @param EntityManager $entityManager
@@ -40,118 +49,89 @@
 		/**
 		 * Apply pagination logic using the provided parameters
 		 * This may involve primary key fetching, result counting, and query modification
-		 * Parameters are needed for pagination to work with bound values in conditions
+		 * Parameters are needed for pagination to work with bound values in conditions; new
+		 * bound values generated for the page filter are added back into $parameters.
 		 * @param AstRetrieve $ast
-		 * @param array<int|string, mixed> $parameters
+		 * @param array<string, mixed> $parameters
 		 * @return void
 		 * @throws QuelException|EntityResolutionException
 		 */
-		public function transform(AstRetrieve $ast, array $parameters): void {
+		public function transform(AstRetrieve $ast, array &$parameters): void {
 			$window = $ast->getWindow();
 			$windowSize = $ast->getWindowSize();
-			
-			if ($window !== null && $windowSize !== null && !$ast->getSortInApplicationLogic()) {
-				try {
-					$this->primaryKeyInfo = PrimaryKeyInfo::fromRetrieve($ast, $this->entityStore);
-					$this->processPagination($ast, $parameters, (int)$window, (int)$windowSize);
-				} finally {
-					$this->primaryKeyInfo = null;
-				}
+
+			// Only database-sorted WINDOW queries need a primary-key page pass.
+			if ($window === null || $windowSize === null || $ast->getSortInApplicationLogic()) {
+				return;
 			}
-		}
-		
-		// ========== PAGINATION METHODS ==========
-		
-		/**
-		 * Processes pagination for the query.
-		 * @param AstRetrieve $ast
-		 * @param array<int|string, mixed> $parameters
-		 * @param int $window
-		 * @param int $windowSize
-		 * @return void
-		 * @throws QuelException
-		 * @throws EntityResolutionException
-		 */
-		private function processPagination(AstRetrieve $ast, array $parameters, int $window, int $windowSize): void {
-			// Look for the 'InValuesAreFinal' directive which indicates that any IN conditions
-			// in the query are already finalized and don't need additional validation/processing
-			// This is an optimization flag that can skip the validation phase of pagination
-			$skipValidation = $ast->getDirective('InValuesAreFinal') === true;
-			
-			// Choose the appropriate pagination strategy based on the directive
-			if ($skipValidation) {
-				// Fast path: Skip the validation step and process pagination directly
-				// Used when we know the IN conditions are already properly constructed
-				$this->processPaginationSkippingValidation($ast, $parameters, $window, $windowSize);
-			} else {
-				// Standard path: Use the full validation approach which fetches all primary keys first
-				// This is the safer, more comprehensive method for most queries
-				$this->processPaginationWithValidation($ast, $parameters, $window, $windowSize);
-			}
-		}
-		
-		/**
-		 * Processes pagination by directly manipulating existing IN() values.
-		 * @param AstRetrieve $ast
-		 * @param array<int|string, mixed> $parameters
-		 * @param int $window
-		 * @param int $windowSize
-		 * @return void
-		 */
-		private function processPaginationSkippingValidation(
-			AstRetrieve $ast,
-			array $parameters,
-			int $window,
-			int $windowSize
-		): void {
+
 			try {
-				// Fetch IN() statement
-				$astIdentifier = $this->createPrimaryKeyIdentifier();
-				$visitor = new DetectPrimaryKeyInClause($astIdentifier);
-				$ast->getConditions()?->accept($visitor);
-				
-				// If no exception, fall back to validation method
-				$this->processPaginationWithValidation($ast, $parameters, $window, $windowSize);
-				
-			} catch (DetectPrimaryKeyInClauseException $exception) {
-				$astObject = $exception->getAstObject();
-				
-				$filteredParams = array_slice(
-					$astObject->getParameters(),
-					$window * $windowSize,
-					$windowSize
-				);
-				
-				$astObject->setParameters($filteredParams);
+				// Resolve the root key used by both the key query and the final page filter.
+				$this->primaryKeyInfo = PrimaryKeyInfo::fromRetrieve($ast, $this->entityStore);
+				$this->parameterSequence = 0;
+
+				// Select parent keys before loading their complete joined rows.
+				$this->processPagination($ast, $parameters, (int)$window, (int)$windowSize);
+
+				if ($ast->isUnique() || $ast->getDirective('InValuesAreFinal') === true) {
+					return;
+				}
+
+				// Break sort ties by primary key in the final non-unique query.
+				$sort = $ast->getSort();
+				$sort[] = ['ast' => $this->createPrimaryKeyIdentifier(), 'order' => 'asc'];
+				$ast->setSort($sort);
+			} finally {
+				// Release the key metadata even if the key query fails.
+				$this->primaryKeyInfo = null;
 			}
 		}
 		
 		/**
-		 * Processes pagination by fetching all primary keys first.
+		 * Pages primary keys before fetching the complete matching joined rows.
 		 * @param AstRetrieve $ast
-		 * @param array<int|string, mixed> $parameters
+		 * @param array<string, mixed> $parameters
 		 * @param int $window
 		 * @param int $windowSize
 		 * @return void
+		 * @throws QuelException|EntityResolutionException
 		 */
-		private function processPaginationWithValidation(
-			AstRetrieve $ast,
-			array $parameters,
-			int $window,
-			int $windowSize
-		): void {
-			// First pass: Execute a lightweight query to fetch only the primary keys
-			// This avoids loading full records when we only need to determine pagination boundaries
-			$primaryKeys = $this->fetchAllPrimaryKeysForPagination($ast, $parameters);
-			
+		private function processPagination(AstRetrieve $ast, array &$parameters, int $window, int $windowSize): void {
+			// Validate window size
+			if ($window > intdiv(PHP_INT_MAX, $windowSize)) {
+				throw new QuelException('The window page and size produce an offset that is too large.');
+			}
+
+			// @InValuesAreFinal declares an existing primary-key IN(...) list as the
+			// already-validated, final candidate set: page it directly, with no key
+			// query at all, instead of re-deriving it from the database.
+			if ($ast->getDirective('InValuesAreFinal') === true && $this->sliceExistingPrimaryKeyIn($ast, $window, $windowSize)) {
+				return;
+			}
+
+			// SQL can page keys only when the key query has one row per parent.
+			// Otherwise, fetch all matching keys for PHP deduplication and slicing.
+			$useSqlPage = $this->canPageKeysInSql($ast);
+			$primaryKeys = $this->fetchPrimaryKeysForPagination(
+				$ast,
+				$parameters,
+				$useSqlPage ? $window * $windowSize : null,
+				$windowSize
+			);
+
+			// The fallback key query can repeat a parent for every joined child.
+			if (!$useSqlPage) {
+				$primaryKeys = array_values(array_unique($primaryKeys));
+			}
+
 			// Early exit if no records match the query conditions
 			if (empty($primaryKeys)) {
+				$this->addImpossibleCondition($ast);
 				return;
 			}
 			
-			// Apply pagination logic to get only the subset of primary keys for the requested page
-			// Uses the window (offset) and window size (limit) from the AST
-			$filteredKeys = $this->getPageSubset($primaryKeys, $window, $windowSize);
+			// The SQL key query is already paged; slice only the fallback results.
+			$filteredKeys = $useSqlPage ? $primaryKeys : $this->getPageSubset($primaryKeys, $window, $windowSize);
 			
 			// Handle edge case where pagination parameters result in no valid results
 			// (e.g., requesting page 100 when there are only 50 total pages)
@@ -165,41 +145,174 @@
 			// Modify the original query to include an IN condition that limits results
 			// to only the primary keys we determined should be on this page
 			// This ensures the final query returns exactly the records we want, in the right order
-			$this->addInConditionForPagination($ast, $filteredKeys);
+			$this->addInConditionForPagination($ast, $parameters, $filteredKeys);
+		}
+
+		/**
+		 * Pages an existing primary-key IN(...) clause in place, without querying the
+		 * database for the candidate key set. Only applies when the IN clause is on the
+		 * root entity's primary key; any other shape falls back to the key query.
+		 * @param AstRetrieve $ast
+		 * @param int $window
+		 * @param int $windowSize
+		 * @return bool True if a matching IN clause was found and paged
+		 */
+		private function sliceExistingPrimaryKeyIn(AstRetrieve $ast, int $window, int $windowSize): bool {
+			assert($this->primaryKeyInfo !== null);
+
+			$visitor = new DetectPrimaryKeyInClause($this->primaryKeyInfo->range, $this->primaryKeyInfo->primaryKey);
+
+			try {
+				$ast->getConditions()?->accept($visitor);
+				return false;
+			} catch (DetectPrimaryKeyInClauseException $exception) {
+				$astIn = $exception->getAstObject();
+				$filteredParams = array_slice($astIn->getParameters(), $window * $windowSize, $windowSize);
+
+				if (empty($filteredParams)) {
+					$this->addImpossibleCondition($ast);
+				} else {
+					$astIn->setParameters($filteredParams);
+				}
+
+				return true;
+			}
+		}
+
+		/**
+		 * Checks whether the key query can have exactly one row per root entity.
+		 * @param AstRetrieve $ast Query after normalization and optimization
+		 * @return bool
+		 * @throws EntityResolutionException
+		 */
+		private function canPageKeysInSql(AstRetrieve $ast): bool {
+			// Offset paging cannot preserve custom IN-list order or grouped results.
+			if (!$this->platform->supportsOffsetPagination() ||
+				$ast->getDirective('InValuesAreFinal') === true ||
+				$ast->getHaving() !== null ||
+				$ast->getGroupBy() !== []) {
+				return false;
+			}
+
+			// The key pass needs primary-key metadata for the root entity.
+			$primaryKeyInfo = $this->primaryKeyInfo;
+			
+			if ($primaryKeyInfo === null) {
+				return false;
+			}
+
+			// Replacing the range list is safe only for a plain database root.
+			$root = $primaryKeyInfo->range;
+			
+			if ($root::class !== AstRangeDatabase::class) {
+				return false;
+			}
+
+			// Required or custom joins can change which parents appear in the page.
+			foreach ($ast->getRanges() as $range) {
+				if ($range === $root) {
+					continue;
+				}
+
+				if (get_class($range) !== AstRangeDatabase::class ||
+					$range->getJoinProperty() === null ||
+					$range->isRequired()) {
+					return false;
+				}
+			}
+
+			// Computed values may depend on joins removed from the key pass.
+			foreach ($ast->getValues() as $value) {
+				if (!$value->getExpression() instanceof AstIdentifier) {
+					return false;
+				}
+			}
+
+			// A predicate on a joined range changes which parent keys match.
+			if ($ast->getConditions() !== null) {
+				foreach (RangeUtilities::collectRangesFromNode($ast->getConditions()) as $range) {
+					if ($range->getName() !== $root->getName()) {
+						return false;
+					}
+				}
+			}
+
+			// Only mapped root columns retain their order without the joins.
+			$metadata = $this->entityStore->getMetadata($primaryKeyInfo->entityName);
+
+			foreach ($ast->getSort() as $sortItem) {
+				$identifier = $sortItem['ast'];
+
+				if (!$identifier instanceof AstIdentifier ||
+					$identifier->getRange()?->getName() !== $root->getName() ||
+					$identifier->getNext() === null ||
+					$identifier->getNext()->getNext() !== null ||
+					$metadata->getColumnName($identifier->getNext()->getName()) === null) {
+					return false;
+				}
+			}
+
+			return true;
 		}
 		
 		/**
-		 * Fetches all primary keys for pagination by temporarily modifying the query.
+		 * Fetches a bounded root-key page when safe, otherwise all sorted joined keys.
+		 * The fallback is deduplicated afterward so joined-column sorting works.
 		 * @param AstRetrieve $ast
-		 * @param array<int|string, mixed> $parameters
+		 * @param array<string, mixed> $parameters
+		 * @param int|null $offset SQL row offset when the key query has one row per parent
+		 * @param int $windowSize Requested parent count
 		 * @return list<int|string>
+		 * @throws EntityResolutionException
+		 * @throws QuelException
 		 */
-		private function fetchAllPrimaryKeysForPagination(AstRetrieve $ast, array $parameters): array {
+		private function fetchPrimaryKeysForPagination(AstRetrieve $ast, array $parameters, ?int $offset, int $windowSize): array {
 			// Store original state
 			$originalValues = $ast->getValues();
-			$originalUnique = $ast->getUnique();
-			
+			$originalUnique = $ast->isUnique();
+			$originalSort = $ast->getSort();
+			$originalRanges = $ast->getRanges();
+
 			try {
 				// Modify query to get only primary keys
-				$ast->setUnique(true);
 				$astIdentifier = $this->createPrimaryKeyIdentifier();
 				$ast->setValues([new AstAlias("pk", $astIdentifier)]);
-				
+				$ast->setUnique(false);
+
+				if ($offset !== null) {
+					if ($this->primaryKeyInfo === null) {
+						throw new \LogicException('Pagination primary key information is missing.');
+					}
+
+					$ast->setRanges([$this->primaryKeyInfo->range]);
+				}
+
+				if ($ast->getDirective('InValuesAreFinal') !== true) {
+					$sort = $originalSort;
+					$sort[] = ['ast' => $this->createPrimaryKeyIdentifier(), 'order' => 'asc'];
+					$ast->setSort($sort);
+				}
+
 				// Execute modified query
 				$sql = $this->convertToSQL($ast, $parameters);
-				
+
+				if ($offset !== null) {
+					if ($this->platform->getDatabaseType() === 'sqlsrv') {
+						$sql .= " OFFSET {$offset} ROWS FETCH NEXT {$windowSize} ROWS ONLY";
+					} else {
+						$sql .= " LIMIT {$windowSize} OFFSET {$offset}";
+					}
+				}
+
 				// Execute the query and return the first column
 				$result = $this->connection->execute($sql, $parameters);
-				
-				if ($result === null) {
-					return [];
-				}
-				
-				return array_column($result->fetchAll(), 0);
+				return $result !== null ? array_column($result->fetchAll(), 0) : [];
 			} finally {
 				// Always restore original state
 				$ast->setValues($originalValues);
 				$ast->setUnique($originalUnique);
+				$ast->setSort($originalSort);
+				$ast->setRanges($originalRanges);
 			}
 		}
 		
@@ -217,7 +330,7 @@
 		/**
 		 * Convert AstRetrieve node to SQL
 		 * @param AstRetrieve $retrieve The AST to convert
-		 * @param array<int|string, mixed> $parameters Query parameters (passed by reference)
+		 * @param array<string, mixed> $parameters Query parameters (passed by reference)
 		 * @return string The generated SQL query
 		 * @throws EntityResolutionException
 		 * @throws QuelException
@@ -230,7 +343,13 @@
 			}
 			
 			// Transform the Quel query to SQL
-			$quelToSQL = new QuelToSQLRetrieve($this->entityStore, $stringKeyedParameters, $this->platform, $this->connection->getRoutineSchema());
+			$quelToSQL = new QuelToSQLRetrieve(
+				$this->entityStore,
+				$stringKeyedParameters,
+				$this->platform,
+				$this->connection->getRoutineSchema()
+			);
+			
 			return $quelToSQL->convertToSQL($retrieve);
 		}
 		
@@ -247,31 +366,41 @@
 		}
 		
 		/**
-		 * Adds IN condition for pagination filtering.
+		 * Returns a bound-parameter name unused by the caller.
+		 * @param array<string, mixed> $parameters Existing bound parameters
+		 * @return string
+		 */
+		private function nextParameterName(array $parameters): string {
+			do {
+				$name = '__pagination_pk_' . $this->parameterSequence++;
+			} while (array_key_exists($name, $parameters));
+			
+			return $name;
+		}
+
+		/**
+		 * Adds IN condition for pagination filtering. Binds each page value as a named
+		 * parameter instead of embedding it as a literal AstNumber node — a non-numeric
+		 * primary key (e.g. a string key) is no longer silently miscompiled as a number.
 		 * @param AstRetrieve $ast
+		 * @param array<string, mixed> $parameters
 		 * @param list<int|string> $filteredKeys
 		 * @return void
 		 */
-		private function addInConditionForPagination(AstRetrieve $ast, array $filteredKeys): void {
+		private function addInConditionForPagination(AstRetrieve $ast, array &$parameters, array $filteredKeys): void {
 			// Create the primary key identifier
 			$astIdentifier = $this->createPrimaryKeyIdentifier();
-			
-			// Transform filtered keys to AstNumbers
-			$astValues = array_map(
-				fn($item) => new AstNumber((string)$item),
-				$filteredKeys
-			);
-			
-			// Check if AstIn already exists and replace its parameters
-			try {
-				$visitor = new DetectPrimaryKeyInClause($astIdentifier);
-				$ast->getConditions()?->accept($visitor);
-			} catch (DetectPrimaryKeyInClauseException $exception) {
-				$exception->getAstObject()->setParameters($astValues);
-				return;
+
+			// Bind each page value as a named parameter rather than guessing its AST literal type
+			$astValues = [];
+
+			foreach ($filteredKeys as $item) {
+				$paramName = $this->nextParameterName($parameters);
+				$parameters[$paramName] = $item;
+				$astValues[] = new AstParameter($paramName);
 			}
-			
-			// Create new AstIn condition
+
+			// Keep the original predicate intact, including any OR branch containing an IN.
 			$astIn = new AstIn($astIdentifier, $astValues);
 			
 			if ($ast->getConditions() === null) {

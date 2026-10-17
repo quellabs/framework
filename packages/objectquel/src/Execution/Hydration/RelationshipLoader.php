@@ -199,7 +199,7 @@
 			// resolveTargetProperty returns null only when the target entity has no
 			// primary key — a configuration error that should have been caught earlier.
 			$relationPropertyName = $this->resolveTargetProperty($dependency);
-			
+
 			// Error when entity has no primary key
 			if ($relationPropertyName === null) {
 				throw new \LogicException(
@@ -207,14 +207,25 @@
 					"has no primary key. Ensure the entity is correctly annotated."
 				);
 			}
-			
-			// Create the proxy
-			$proxy = $this->findOrCreateProxy($targetEntityName, $relationPropertyName, $relationColumnValue);
+
+			// The fast, PK-based proxy only works when $relationPropertyName actually is the
+			// target's primary key: it seeds the proxy's PK and later calls find() by that
+			// same value, relying on EntityHydrator to populate this exact instance in place
+			// once it's re-discovered in the UnitOfWork by that PK. When referencedColumn names
+			// a different (non-PK) property, that value is not a valid PK lookup at all, so a
+			// separate path resolves it correctly instead.
+			$targetMetadata = $this->entityStore->getMetadata($targetEntityName);
+
+			if ($relationPropertyName === $targetMetadata->getPrimaryKey()) {
+				$proxy = $this->findOrCreateProxy($targetEntityName, $relationPropertyName, $relationColumnValue);
+			} else {
+				$proxy = $this->createNonPrimaryKeyProxy($entity, $property, $targetEntityName, $relationPropertyName, $relationColumnValue);
+			}
 			
 			// Set the proxy on the original entity
 			$this->propertyHandler->set($entity, $property, $proxy);
 		}
-		
+
 		/**
 		 * Returns an existing entity from the UnitOfWork, or instantiates and persists a new proxy.
 		 * @param class-string $targetEntityName
@@ -223,48 +234,108 @@
 		 * @return object
 		 * @throws EntityResolutionException
 		 */
-		private function findOrCreateProxy(
-			string $targetEntityName,
-			string $relationPropertyName,
-			int|string $relationColumnValue
-		): object {
+		private function findOrCreateProxy(string $targetEntityName, string $relationPropertyName, int|string $relationColumnValue): object {
 			// Check if the entity already exists in the UnitOfWork
 			$existing = $this->unitOfWork->findEntity($targetEntityName, [
 				$relationPropertyName => $relationColumnValue
 			]);
-			
+
 			// If the entity already is in UnitOfWork, return it
 			if ($existing !== null) {
 				return $existing;
 			}
-			
+
 			// Create a new proxy if no existing entity was found
 			$generator = $this->entityStore->getProxyGenerator();
 			$proxyClassName = $generator->getProxyClass($targetEntityName);
-			
+
 			// Load the proxy class file if it doesn't exist
 			if (!class_exists($proxyClassName, false)) {
 				require_once $generator->getProxyFilePath($targetEntityName);
 			}
-			
+
 			// Build the PK-based initializer: seeds this proxy's PK then lets find() hydrate it
 			$entityManager = $this->entityManager;
 			$initializer = function () use ($entityManager, $targetEntityName, $relationColumnValue): void {
 				$entityManager->find($targetEntityName, $relationColumnValue);
 			};
-			
+
 			// Instantiate the proxy with the explicit initializer
 			$proxy = new $proxyClassName($this->entityManager, $initializer);
-			
+
 			// Set the primary key on the proxy using the target entity's primary key property name
 			$metadata = $this->entityStore->getMetadata($targetEntityName);
 			$this->propertyHandler->set($proxy, $metadata->identifierKeys[0], $relationColumnValue);
-			
+
 			// Put the proxy under ownership
 			$this->entityManager->persist($proxy);
-			
+
 			// Return the proxy
 			return $proxy;
+		}
+
+		/**
+		 * Builds a lazy proxy for an owning relation whose referencedColumn names a non-PK
+		 * property on the target entity. Such a proxy cannot be pre-registered under the
+		 * identity-map key find() would use (the UnitOfWork only indexes entities by their
+		 * real primary key), so it is resolved by findOneBy() on $relationPropertyName instead,
+		 * and the result is copied into this exact proxy instance — mirroring the InverseOf
+		 * scalar lazy-load pattern in loadInverseScalarLazy(), which faces the same constraint.
+		 * @param object $entity The entity on which the proxy will be set
+		 * @param string $property The property on $entity that will hold the proxy
+		 * @param class-string $targetEntityName
+		 * @param string $relationPropertyName The (non-PK) property on the target to match
+		 * @param int|string $relationColumnValue The value to match it against
+		 * @return object
+		 */
+		private function createNonPrimaryKeyProxy(object $entity, string $property, string $targetEntityName, string $relationPropertyName, int|string $relationColumnValue): object {
+			$generator = $this->entityStore->getProxyGenerator();
+			$proxyClassName = $generator->getProxyClass($targetEntityName);
+
+			if (!class_exists($proxyClassName, false)) {
+				require_once $generator->getProxyFilePath($targetEntityName);
+			}
+
+			// Capture references for the initializer closure
+			$entityManager = $this->entityManager;
+			$propertyHandler = $this->propertyHandler;
+			$unitOfWork = $this->unitOfWork;
+
+			return new $proxyClassName(
+				$this->entityManager,
+				function (ProxyInterface $proxy) use (
+					$entityManager,
+					$unitOfWork,
+					$propertyHandler,
+					$entity,
+					$property,
+					$targetEntityName,
+					$relationPropertyName,
+					$relationColumnValue
+				): void {
+					// doInitialize() invokes this on every accessor call, so bail out once the
+					// proxy has already been resolved to avoid re-running the findOneBy query.
+					if ($proxy->isInitialized()) {
+						return;
+					}
+
+					// findOneBy returns a fully hydrated entity registered in the UnitOfWork.
+					$result = $entityManager->findOneBy($targetEntityName, [$relationPropertyName => $relationColumnValue]);
+
+					// Copy scalar fields to the proxy so generated accessors return resolved data.
+					// Mark initialized first to prevent deserialize() from triggering recursive
+					// initialization through the proxy's generated setters.
+					if ($result !== null) {
+						$proxy->setInitialized();
+						$serializer = $unitOfWork->getSerializer();
+						$serializer->deserialize($proxy, $serializer->serialize($result));
+					}
+
+					// Point the parent at the fully hydrated managed entity so subsequent reads
+					// (including its own relations) resolve through it rather than the proxy.
+					$propertyHandler->set($entity, $property, $result);
+				}
+			);
 		}
 		
 		/**
@@ -366,21 +437,22 @@
 					
 					// findOneBy returns a fully hydrated entity registered in the UnitOfWork.
 					$result = $entityManager->findOneBy($targetEntity, [$relation => $parentKeyValue]);
-					
-					// Copy the resolved entity's scalar columns into the proxy itself. Generated
-					// accessors read the proxy's own fields via parent::, so the access that triggered
-					// initialization must see real data rather than an empty proxy.
+
+					// Copy resolved scalar fields into the proxy for generated accessors.
+					// Mark initialized before deserializing to prevent generated setters
+					// from recursively triggering initialization.
 					if ($result !== null) {
+						$proxy->setInitialized();
 						$serializer = $unitOfWork->getSerializer();
 						$serializer->deserialize($proxy, $serializer->serialize($result));
 					}
-					
+
 					// Point the parent at the fully hydrated managed entity so subsequent reads
 					// (including its own relations) resolve through it rather than the proxy.
 					$propertyHandler->set($entity, $property, $result);
 				}
 			);
-			
+
 			// Set proxy on the entity
 			$this->propertyHandler->set($entity, $property, $proxy);
 		}
@@ -516,12 +588,7 @@
 		 * @throws QuelException
 		 * @throws \LogicException When the property is not a CollectionInterface
 		 */
-		private function loadInverseCollectionLazy(
-			object $entity,
-			string $entityClass,
-			string $property,
-			InverseOf $dependency
-		): void {
+		private function loadInverseCollectionLazy(object $entity, string $entityClass, string $property, InverseOf $dependency): void {
 			// Fetch the property
 			$propertyValue = $this->propertyHandler->get($entity, $property);
 			
@@ -591,7 +658,7 @@
 		 *
 		 * Membership uses the same predicate the linear scan did — instanceof the target,
 		 * candidateMapsToParent(), and a strict comparison of the candidate's FK value against the
-		 * parent key — so behaviour and result-set ordering are preserved.
+		 * parent key — so behavior and result-set ordering are preserved.
 		 * @param object $entity The parent entity
 		 * @param string $entityClass The resolved class name of the parent entity
 		 * @param InverseOf $dependency The relation annotation
@@ -673,7 +740,7 @@
 		/**
 		 * Returns the ManyToOne or owning-side OneToOne annotation for a given property
 		 * on an entity, or null if no such relation exists.
-		 * Centralises the repeated pattern of checking both relation types.
+		 * Centralizes the repeated pattern of checking both relation types.
 		 * @param EntityMetadataRecord $metadata
 		 * @param string $property
 		 * @return ManyToOne|OneToOne|null
@@ -832,21 +899,12 @@
 			
 			return $result;
 		}
-		
 		/**
-		 * Resolves the back-reference property name on the target entity for a ManyToOne or OneToOne relation.
-		 *
-		 * For OneToOne, inversedBy is the primary key property on the target entity that the
-		 * foreign key column points to. If not set, the target entity's primary key is used as a fallback.
-		 *
-		 * For ManyToOne, inversedBy is a direct property name on the target entity. If absent,
-		 * the target entity's primary key is used as a fallback.
-		 *
-		 * Returns null when no property can be determined.
-		 *
-		 * @param ManyToOne|OneToOne $relation The relation annotation to resolve
-		 * @return string|null The back-reference property name on the target entity, or null if unresolvable
-		 * @throws EntityResolutionException When target entity metadata cannot be loaded
+		 * Resolves the target property for a ManyToOne or OneToOne relation.
+		 * Uses inversedBy if set, otherwise falls back to the target's primary key.
+		 * @param ManyToOne|OneToOne $relation
+		 * @return string|null Null if unresolvable
+		 * @throws EntityResolutionException If target metadata cannot be loaded
 		 */
 		private function resolveTargetProperty(ManyToOne|OneToOne $relation): ?string {
 			// Fetch metadata for entity
