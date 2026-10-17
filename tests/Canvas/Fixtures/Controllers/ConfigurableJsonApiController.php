@@ -20,14 +20,14 @@
 	 */
 	class ConfigurableJsonApiController extends JsonApiController {
 
-		/** @var list<string> */
-		public array $writableFieldsForCreate = [];
+		/** @var list<string>|null Shared default used by both operations when the per-operation list below is null */
+		public ?array $writableFields = null;
 
-		/** @var list<string> */
-		public array $writableFieldsForUpdate = [];
+		/** @var list<string>|null Null means "fall back to getWritableFields()", same as the base class */
+		public ?array $writableFieldsForCreate = null;
 
-		/** @var list<string> */
-		public array $reflectivelyWritableFields = [];
+		/** @var list<string>|null Null means "fall back to getWritableFields()", same as the base class */
+		public ?array $writableFieldsForUpdate = null;
 
 		/** @var \Closure(Request, object, WriteOperation): ?JsonResponse|null */
 		public ?\Closure $authorizeCallback = null;
@@ -52,16 +52,16 @@
 			return 'products';
 		}
 
+		protected function getWritableFields(): array {
+			return $this->writableFields ?? [];
+		}
+
 		protected function getWritableFieldsForCreate(): array {
-			return $this->writableFieldsForCreate;
+			return $this->writableFieldsForCreate ?? parent::getWritableFieldsForCreate();
 		}
 
 		protected function getWritableFieldsForUpdate(): array {
-			return $this->writableFieldsForUpdate;
-		}
-
-		protected function getReflectivelyWritableFields(): array {
-			return $this->reflectivelyWritableFields;
+			return $this->writableFieldsForUpdate ?? parent::getWritableFieldsForUpdate();
 		}
 
 		protected function authorizeAttributeWrite(Request $request, object $entity, WriteOperation $operation): ?JsonResponse {

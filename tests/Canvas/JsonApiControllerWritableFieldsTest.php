@@ -17,11 +17,11 @@
 
 	/**
 	 * Tests JsonApiController's writable-field policy: the deny-by-default
-	 * create/update allowlists, the hard identifier guard, the reflective-write
-	 * opt-in, and the resource-authorization hook. Uses a mocked EntityManager
-	 * (metadata comes from a real EntityStore over the fixture entity; persist/
-	 * flush/find are controlled per test) so these stay unit tests — nothing
-	 * here touches a database.
+	 * create/update allowlists, the hard identifier guard, the reflective
+	 * write fallback for setter-less properties, and the resource-authorization
+	 * hook. Uses a mocked EntityManager (metadata comes from a real EntityStore
+	 * over the fixture entity; persist/flush/find are controlled per test) so
+	 * these stay unit tests — nothing here touches a database.
 	 */
 	class JsonApiControllerWritableFieldsTest extends TestCase {
 
@@ -103,15 +103,12 @@
 			$this->assertNull($response);
 		}
 
-		public function testUnknownAttributeIsRejectedWith422AndPerFieldPointer(): void {
+		public function testUnknownAttributeIsSilentlyIgnoredRatherThanRejected(): void {
 			$controller = $this->makeController();
 
 			$response = $controller->callValidateAttributes(new TestProductEntity(), ['doesNotExist' => 'x'], WriteOperation::Create);
 
-			$this->assertNotNull($response);
-			$this->assertSame(422, $response->getStatusCode());
-			$payload = json_decode((string)$response->getContent(), true);
-			$this->assertSame('/data/attributes/doesNotExist', $payload['errors'][0]['source']['pointer']);
+			$this->assertNull($response);
 		}
 
 		public function testKnownButUnlistedAttributeIsRejectedWith403AndPerFieldPointer(): void {
@@ -129,7 +126,7 @@
 			$this->assertSame('/data/attributes/role', $payload['errors'][0]['source']['pointer']);
 		}
 
-		public function testForbiddenTakesPriorityOverUnknownWhenBothArePresent(): void {
+		public function testForbiddenAttributeFailsEvenWhenAnUnknownOneIsAlsoPresent(): void {
 			$controller = $this->makeController();
 			$controller->writableFieldsForCreate = ['name'];
 
@@ -184,6 +181,39 @@
 		}
 
 		// -------------------------------------------------------------------------
+		// getWritableFields(): shared default for create and update
+		// -------------------------------------------------------------------------
+
+		public function testGetWritableFieldsForCreateDefaultsToTheSharedList(): void {
+			$controller = $this->makeController();
+			$controller->writableFields = ['name'];
+
+			$response = $controller->callValidateAttributes(new TestProductEntity(), ['name' => 'Widget'], WriteOperation::Create);
+
+			$this->assertNull($response);
+		}
+
+		public function testGetWritableFieldsForUpdateDefaultsToTheSharedList(): void {
+			$controller = $this->makeController();
+			$controller->writableFields = ['name'];
+
+			$response = $controller->callValidateAttributes(new TestProductEntity(), ['name' => 'Widget'], WriteOperation::Update);
+
+			$this->assertNull($response);
+		}
+
+		public function testOverridingWritableFieldsForCreateTakesPriorityOverTheSharedList(): void {
+			$controller = $this->makeController();
+			$controller->writableFields = ['name'];
+			$controller->writableFieldsForCreate = []; // explicit override wins over the shared default
+
+			$response = $controller->callValidateAttributes(new TestProductEntity(), ['name' => 'Widget'], WriteOperation::Create);
+
+			$this->assertNotNull($response);
+			$this->assertSame(403, $response->getStatusCode());
+		}
+
+		// -------------------------------------------------------------------------
 		// Create vs update allowlists are independent
 		// -------------------------------------------------------------------------
 
@@ -210,23 +240,13 @@
 		}
 
 		// -------------------------------------------------------------------------
-		// Reflective-write opt-in: a private property existing is never enough by itself
+		// Reflective write fallback: allowlisting a setter-less field is itself
+		// the explicit opt-in — there is no second list to also update.
 		// -------------------------------------------------------------------------
 
-		public function testPropertyWithoutSetterIsUnknownWhenNotOptedIntoReflection(): void {
+		public function testPropertyWithoutSetterIsForbiddenWhenNotAllowlisted(): void {
 			$controller = $this->makeController();
-			$controller->writableFieldsForCreate = ['internalNotes']; // allowlisted, but no setter and no opt-in
-
-			$response = $controller->callValidateAttributes(new TestProductEntity(), ['internalNotes' => 'secret'], WriteOperation::Create);
-
-			$this->assertNotNull($response);
-			$this->assertSame(422, $response->getStatusCode());
-		}
-
-		public function testPropertyOptedIntoReflectionButNotAllowlistedIsStillForbidden(): void {
-			$controller = $this->makeController();
-			$controller->reflectivelyWritableFields = ['internalNotes'];
-			$controller->writableFieldsForCreate = []; // opt-in alone is not enough
+			$controller->writableFieldsForCreate = []; // 'internalNotes' has no setter and isn't listed
 
 			$response = $controller->callValidateAttributes(new TestProductEntity(), ['internalNotes' => 'secret'], WriteOperation::Create);
 
@@ -234,9 +254,8 @@
 			$this->assertSame(403, $response->getStatusCode());
 		}
 
-		public function testPropertyOptedIntoReflectionAndAllowlistedIsWrittenViaReflection(): void {
+		public function testPropertyWithoutSetterIsWrittenViaReflectionOnceAllowlisted(): void {
 			$controller = $this->makeController();
-			$controller->reflectivelyWritableFields = ['internalNotes'];
 			$controller->writableFieldsForCreate = ['internalNotes'];
 			$entity = new TestProductEntity();
 
@@ -260,15 +279,25 @@
 			$this->assertSame('Widget', $entity->getName());
 		}
 
-		public function testMapAttributesToEntityIgnoresAFieldWithoutSetterThatWasNeverOptedIn(): void {
-			// Defense in depth: validateAttributes() should already have rejected
-			// this, but mapAttributesToEntity() must not silently write it either.
+		public function testMapAttributesToEntityFallsBackToReflectionWhenNoSetterExists(): void {
+			// mapAttributesToEntity() trusts that validateAttributes() already
+			// gated this attribute against the allowlist; called directly, it
+			// writes any property it can reach via reflection.
 			$controller = $this->makeController();
 			$entity = new TestProductEntity();
 
 			$controller->callMapAttributesToEntity($entity, ['internalNotes' => 'secret']);
 
-			$this->assertNull($entity->getInternalNotes());
+			$this->assertSame('secret', $entity->getInternalNotes());
+		}
+
+		public function testMapAttributesToEntityIgnoresAKeyThatIsNotAPropertyAtAll(): void {
+			$controller = $this->makeController();
+			$entity = new TestProductEntity();
+
+			$controller->callMapAttributesToEntity($entity, ['doesNotExist' => 'x']);
+
+			$this->assertFalse(property_exists($entity, 'doesNotExist'));
 		}
 
 		// -------------------------------------------------------------------------
@@ -383,18 +412,19 @@
 			$this->assertSame('Widget', $entity->getName());
 		}
 
-		public function testUpdateResourceRejectsAnUnknownAttributeWithoutFlushing(): void {
+		public function testUpdateResourceIgnoresAnUnknownAttributeAndStillSucceeds(): void {
 			$entity = $this->entityWithId(5);
 			[$controller, $mockEm] = $this->makeControllerWithMock($entity);
 			$controller->writableFieldsForUpdate = ['name'];
-			$mockEm->expects($this->never())->method('flush');
+			$mockEm->expects($this->once())->method('flush');
 
 			$request = Request::create('/products/5', 'PUT', content: json_encode([
-				'data' => ['type' => 'products', 'id' => '5', 'attributes' => ['doesNotExist' => 'x']]
+				'data' => ['type' => 'products', 'id' => '5', 'attributes' => ['name' => 'Widget', 'doesNotExist' => 'x']]
 			]));
 
 			$response = $controller->callUpdateResource(5, $request);
 
-			$this->assertSame(422, $response->getStatusCode());
+			$this->assertSame(200, $response->getStatusCode());
+			$this->assertSame('Widget', $entity->getName());
 		}
 	}
