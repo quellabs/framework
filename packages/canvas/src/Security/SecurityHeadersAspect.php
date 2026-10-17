@@ -16,11 +16,12 @@
 	 * default, or the $policyClass given here to override it for this route only.
 	 * Falls back to the basic built-in BasicSecurityHeaderPolicy if neither is set.
 	 *
-	 * As an AfterAspectInterface, this only runs on a matched route (including a
-	 * before-aspect short circuit on that route, which AspectDispatcher still runs
-	 * after aspects against). A route miss or an exception that never reaches a
-	 * matched route's aspects is covered by DefaultErrorHandler instead, using the
-	 * same application-wide default policy.
+	 * As an AfterAspectInterface, this only runs when the controller method it's
+	 * attached to actually executes - a before-aspect short circuit on the same
+	 * route returns its own response untouched, same as for any other after-aspect.
+	 * A route miss or a thrown exception is covered by DefaultErrorHandler instead,
+	 * using the same application-wide default policy; a before-aspect short circuit
+	 * is neither - whatever short-circuited the route is responsible for its own headers.
 	 */
 	class SecurityHeadersAspect implements AfterAspectInterface {
 
