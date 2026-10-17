@@ -35,6 +35,7 @@
 			$response = new Response($content, $status, ['Content-Type' => 'text/html']);
 
 			if ($e instanceof MethodNotAllowedException) {
+				// RFC 7231 requires a 405 response to list the allowed methods
 				$response->headers->set('Allow', implode(', ', $e->getAllowedMethods()));
 			}
 
@@ -50,7 +51,8 @@
 			if ($e instanceof RouteNotFoundException) {
 				return Response::HTTP_NOT_FOUND;
 			}
-			
+
+			// Only accept the exception code if it's a valid HTTP status; otherwise fall back to 500
 			$code = $e->getCode();
 			return $code >= 400 && $code <= 599 ? $code : Response::HTTP_INTERNAL_SERVER_ERROR;
 		}
