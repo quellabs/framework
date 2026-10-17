@@ -18,45 +18,46 @@
 		// =========================================================================
 
 		public function testFixedWindowFirstRequestIsAdmitted(): void {
-			[$state, $result] = RateLimitMath::fixedWindow(null, 5, 60, 1000);
+			$admission = RateLimitMath::fixedWindow(null, 5, 60, 1000);
 
-			$this->assertSame(['count' => 1], $state);
-			$this->assertSame(1, $result->getCount());
-			$this->assertFalse($result->isExceeded());
+			$this->assertSame(['count' => 1], $admission->getState());
+			$this->assertSame(1, $admission->getResult()->getCount());
+			$this->assertFalse($admission->getResult()->isExceeded());
 		}
 
 		public function testFixedWindowAdmitsUpToTheLimitThenExceeds(): void {
 			$state = null;
 
 			for ($i = 1; $i <= 5; $i++) {
-				[$state, $result] = RateLimitMath::fixedWindow($state, 5, 60, 1000);
-				$this->assertFalse($result->isExceeded(), "request {$i} should be admitted");
+				$admission = RateLimitMath::fixedWindow($state, 5, 60, 1000);
+				$state = $admission->getState();
+				$this->assertFalse($admission->getResult()->isExceeded(), "request {$i} should be admitted");
 			}
 
-			[, $result] = RateLimitMath::fixedWindow($state, 5, 60, 1000);
+			$result = RateLimitMath::fixedWindow($state, 5, 60, 1000)->getResult();
 			$this->assertTrue($result->isExceeded());
 			$this->assertSame(6, $result->getCount());
 		}
 
 		public function testFixedWindowResetTimeIsTheWindowBoundaryNotNowPlusWindow(): void {
 			// window=60, now=1005 -> windowStart=960, reset=1020 (not 1065)
-			[, $result] = RateLimitMath::fixedWindow(null, 5, 60, 1005);
+			$result = RateLimitMath::fixedWindow(null, 5, 60, 1005)->getResult();
 
 			$this->assertSame(1020, $result->getResetTime());
 			$this->assertSame(15, $result->getRetryAfter());
 		}
 
 		public function testFixedWindowRollsOverToANewCounterInTheNextWindow(): void {
-			[$state] = RateLimitMath::fixedWindow(null, 5, 60, 1005);
+			$state = RateLimitMath::fixedWindow(null, 5, 60, 1005)->getState();
 
 			// Still the same window (960-1020): state carries over.
-			[$state2, $result2] = RateLimitMath::fixedWindow($state, 5, 60, 1010);
-			$this->assertSame(2, $result2->getCount());
+			$admission2 = RateLimitMath::fixedWindow($state, 5, 60, 1010);
+			$this->assertSame(2, $admission2->getResult()->getCount());
 
-			// A fresh call for the *next* window must not reuse $state2's count - the
+			// A fresh call for the *next* window must not reuse $admission2's count - the
 			// store is responsible for keying by window, so simulate that boundary by
 			// calling with state=null (as a new window's state file would start).
-			[, $result3] = RateLimitMath::fixedWindow(null, 5, 60, 1021);
+			$result3 = RateLimitMath::fixedWindow(null, 5, 60, 1021)->getResult();
 			$this->assertSame(1, $result3->getCount());
 		}
 
@@ -65,31 +66,32 @@
 		// =========================================================================
 
 		public function testSlidingWindowFirstRequestIsAdmitted(): void {
-			[$state, $result] = RateLimitMath::slidingWindow(null, 5, 60, 1000);
+			$admission = RateLimitMath::slidingWindow(null, 5, 60, 1000);
 
-			$this->assertSame(['timestamps' => [1000]], $state);
-			$this->assertFalse($result->isExceeded());
+			$this->assertSame(['timestamps' => [1000]], $admission->getState());
+			$this->assertFalse($admission->getResult()->isExceeded());
 		}
 
 		public function testSlidingWindowExpiresTimestampsOutsideTheWindow(): void {
-			[$state] = RateLimitMath::slidingWindow(null, 5, 60, 1000);
+			$state = RateLimitMath::slidingWindow(null, 5, 60, 1000)->getState();
 
 			// 61 seconds later, the first timestamp has rolled out of the window.
-			[$state2, $result] = RateLimitMath::slidingWindow($state, 5, 60, 1061);
+			$admission2 = RateLimitMath::slidingWindow($state, 5, 60, 1061);
 
-			$this->assertSame(['timestamps' => [1061]], $state2);
-			$this->assertSame(1, $result->getCount());
+			$this->assertSame(['timestamps' => [1061]], $admission2->getState());
+			$this->assertSame(1, $admission2->getResult()->getCount());
 		}
 
 		public function testSlidingWindowExceedsAfterTheLimitWithinTheWindow(): void {
 			$state = null;
 
 			for ($i = 0; $i < 5; $i++) {
-				[$state, $result] = RateLimitMath::slidingWindow($state, 5, 60, 1000 + $i);
-				$this->assertFalse($result->isExceeded());
+				$admission = RateLimitMath::slidingWindow($state, 5, 60, 1000 + $i);
+				$state = $admission->getState();
+				$this->assertFalse($admission->getResult()->isExceeded());
 			}
 
-			[, $result] = RateLimitMath::slidingWindow($state, 5, 60, 1004);
+			$result = RateLimitMath::slidingWindow($state, 5, 60, 1004)->getResult();
 			$this->assertTrue($result->isExceeded());
 			$this->assertSame(6, $result->getCount());
 			// retry_after: oldest (1000) + window (60) - now (1004) = 56
@@ -101,7 +103,7 @@
 
 			// Far more requests than the limit, all within the window: memory must stay bounded.
 			for ($i = 0; $i < 500; $i++) {
-				[$state] = RateLimitMath::slidingWindow($state, 5, 60, 1000);
+				$state = RateLimitMath::slidingWindow($state, 5, 60, 1000)->getState();
 			}
 
 			$timestamps = $state['timestamps'];
@@ -117,35 +119,37 @@
 			$state = null;
 
 			for ($i = 1; $i <= 5; $i++) {
-				[$state, $result] = RateLimitMath::tokenBucket($state, 5, 60, 1000);
-				$this->assertFalse($result->isExceeded(), "request {$i} should be admitted");
+				$admission = RateLimitMath::tokenBucket($state, 5, 60, 1000);
+				$state = $admission->getState();
+				$this->assertFalse($admission->getResult()->isExceeded(), "request {$i} should be admitted");
 			}
 
-			[, $result] = RateLimitMath::tokenBucket($state, 5, 60, 1000);
+			$result = RateLimitMath::tokenBucket($state, 5, 60, 1000)->getResult();
 			$this->assertTrue($result->isExceeded());
 		}
 
 		public function testTokenBucketRefillsOverTimeUpToCapacity(): void {
-			[$state] = RateLimitMath::tokenBucket(null, 5, 60, 1000);
+			$state = RateLimitMath::tokenBucket(null, 5, 60, 1000)->getState();
+
 			// Drain the remaining 4 tokens.
 			for ($i = 0; $i < 4; $i++) {
-				[$state] = RateLimitMath::tokenBucket($state, 5, 60, 1000);
+				$state = RateLimitMath::tokenBucket($state, 5, 60, 1000)->getState();
 			}
 
 			// Bucket should be empty now.
-			[, $exhausted] = RateLimitMath::tokenBucket($state, 5, 60, 1000);
+			$exhausted = RateLimitMath::tokenBucket($state, 5, 60, 1000)->getResult();
 			$this->assertTrue($exhausted->isExceeded());
 
 			// 12 seconds later at refill rate 5/60 = one token should be available.
-			[, $refilled] = RateLimitMath::tokenBucket($state, 5, 60, 1012);
+			$refilled = RateLimitMath::tokenBucket($state, 5, 60, 1012)->getResult();
 			$this->assertFalse($refilled->isExceeded());
 		}
 
 		public function testTokenBucketNeverExceedsCapacityEvenAfterLongIdlePeriod(): void {
-			[$state] = RateLimitMath::tokenBucket(null, 5, 60, 1000);
+			$state = RateLimitMath::tokenBucket(null, 5, 60, 1000)->getState();
 
 			// A day later, the bucket must still cap at 5, not overflow.
-			[, $result] = RateLimitMath::tokenBucket($state, 5, 60, 1000 + 86400);
+			$result = RateLimitMath::tokenBucket($state, 5, 60, 1000 + 86400)->getResult();
 
 			$this->assertFalse($result->isExceeded());
 			$this->assertSame(1, $result->getCount());
