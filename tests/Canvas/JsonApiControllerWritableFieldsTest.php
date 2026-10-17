@@ -15,12 +15,13 @@
 	use Symfony\Component\HttpFoundation\Request;
 
 	/**
-	 * Tests JsonApiController's writable-field policy: the deny-by-default
-	 * create/update allowlists, the hard identifier guard, the reflective
-	 * write fallback for setter-less properties, and the resource-authorization
-	 * hook. Uses a mocked EntityManager (metadata comes from a real EntityStore
-	 * over the fixture entity; persist/flush/find are controlled per test) so
-	 * these stay unit tests — nothing here touches a database.
+	 * Tests JsonApiController's write policy: allow-by-default once a setter
+	 * exists, isAttributeWritable() as the per-field override point, the hard
+	 * identifier guard, the no-setter-means-no-write rule, and the resource-
+	 * authorization hook. Uses a mocked EntityManager (metadata comes from a
+	 * real EntityStore over the fixture entity; persist/flush/find are
+	 * controlled per test) so these stay unit tests — nothing here touches a
+	 * database.
 	 */
 	class JsonApiControllerWritableFieldsTest extends TestCase {
 
@@ -90,19 +91,18 @@
 		}
 
 		// -------------------------------------------------------------------------
-		// validateAttributes(): allowed / unknown / forbidden
+		// validateAttributes(): allow-by-default once a setter exists
 		// -------------------------------------------------------------------------
 
-		public function testAllowedCreateFieldPassesValidation(): void {
+		public function testFieldWithSetterIsWritableByDefaultWithNoConfiguration(): void {
 			$controller = $this->makeController();
-			$controller->writableFieldsForCreate = ['name'];
 
 			$response = $controller->callValidateAttributes(new TestProductEntity(), ['name' => 'Widget'], WriteOperation::Create);
 
 			$this->assertNull($response);
 		}
 
-		public function testUnknownAttributeIsSilentlyIgnoredRatherThanRejected(): void {
+		public function testUnknownAttributeIsSilentlyIgnored(): void {
 			$controller = $this->makeController();
 
 			$response = $controller->callValidateAttributes(new TestProductEntity(), ['doesNotExist' => 'x'], WriteOperation::Create);
@@ -110,12 +110,11 @@
 			$this->assertNull($response);
 		}
 
-		public function testKnownButUnlistedAttributeIsRejectedWith403AndPerFieldPointer(): void {
-			// 'role' has a real setter — stands in for a server-owned field the
-			// controller simply never added to its allowlist. Deny-by-default
-			// must protect it: a setter existing is not enough to make it writable.
+		public function testDeniedFieldIsRejectedWith403AndPerFieldPointer(): void {
+			// 'role' has a real setter but is explicitly denied here — isAttributeWritable()
+			// is the only thing that can turn a setter-backed field into a hard 403.
 			$controller = $this->makeController();
-			$controller->writableFieldsForCreate = ['name'];
+			$controller->deniedFieldsForCreate = ['role'];
 
 			$response = $controller->callValidateAttributes(new TestProductEntity(), ['role' => 'admin'], WriteOperation::Create);
 
@@ -125,9 +124,9 @@
 			$this->assertSame('/data/attributes/role', $payload['errors'][0]['source']['pointer']);
 		}
 
-		public function testForbiddenAttributeFailsEvenWhenAnUnknownOneIsAlsoPresent(): void {
+		public function testDeniedAttributeFailsEvenWhenAnUnknownOneIsAlsoPresent(): void {
 			$controller = $this->makeController();
-			$controller->writableFieldsForCreate = ['name'];
+			$controller->deniedFieldsForCreate = ['role'];
 
 			$response = $controller->callValidateAttributes(
 				new TestProductEntity(),
@@ -138,9 +137,9 @@
 			$this->assertSame(403, $response->getStatusCode());
 		}
 
-		public function testMixedAllowedAndForbiddenAttributesRejectsTheWholeRequest(): void {
+		public function testMixedAllowedAndDeniedAttributesRejectsTheWholeRequest(): void {
 			$controller = $this->makeController();
-			$controller->writableFieldsForCreate = ['name'];
+			$controller->deniedFieldsForCreate = ['role'];
 
 			$response = $controller->callValidateAttributes(
 				new TestProductEntity(),
@@ -153,12 +152,12 @@
 		}
 
 		// -------------------------------------------------------------------------
-		// Identifiers: hard override, independent of what a controller declares
+		// Identifiers: hard override, independent of isAttributeWritable()
 		// -------------------------------------------------------------------------
 
-		public function testIdentifierAttributeIsForbiddenEvenWhenTheControllerListsIt(): void {
+		public function testIdentifierAttributeIsForbiddenEvenWhenIsAttributeWritableAllowsEverything(): void {
 			$controller = $this->makeController();
-			$controller->writableFieldsForCreate = ['id']; // careless controller config
+			$controller->isAttributeWritableCallback = fn() => true; // careless controller config
 
 			$response = $controller->callValidateAttributes(new TestProductEntity(), ['id' => 999], WriteOperation::Create);
 
@@ -180,92 +179,45 @@
 		}
 
 		// -------------------------------------------------------------------------
-		// getWritableFields(): shared default for create and update
+		// Create vs update denylists are independent
 		// -------------------------------------------------------------------------
 
-		public function testGetWritableFieldsForCreateDefaultsToTheSharedList(): void {
+		public function testFieldDeniedOnCreateIsStillWritableOnUpdate(): void {
 			$controller = $this->makeController();
-			$controller->writableFields = ['name'];
-
-			$response = $controller->callValidateAttributes(new TestProductEntity(), ['name' => 'Widget'], WriteOperation::Create);
-
-			$this->assertNull($response);
-		}
-
-		public function testGetWritableFieldsForUpdateDefaultsToTheSharedList(): void {
-			$controller = $this->makeController();
-			$controller->writableFields = ['name'];
+			$controller->deniedFieldsForCreate = ['name'];
 
 			$response = $controller->callValidateAttributes(new TestProductEntity(), ['name' => 'Widget'], WriteOperation::Update);
 
 			$this->assertNull($response);
 		}
 
-		public function testOverridingWritableFieldsForCreateTakesPriorityOverTheSharedList(): void {
+		public function testFieldDeniedOnUpdateIsStillWritableOnCreate(): void {
 			$controller = $this->makeController();
-			$controller->writableFields = ['name'];
-			$controller->writableFieldsForCreate = []; // explicit override wins over the shared default
+			$controller->deniedFieldsForUpdate = ['name'];
 
 			$response = $controller->callValidateAttributes(new TestProductEntity(), ['name' => 'Widget'], WriteOperation::Create);
 
-			$this->assertNotNull($response);
-			$this->assertSame(403, $response->getStatusCode());
+			$this->assertNull($response);
 		}
 
 		// -------------------------------------------------------------------------
-		// Create vs update allowlists are independent
+		// No setter means no write — isAttributeWritable() is never even consulted
 		// -------------------------------------------------------------------------
 
-		public function testFieldWritableOnCreateIsNotAutomaticallyWritableOnUpdate(): void {
+		public function testPropertyWithoutSetterIsIgnoredEvenWhenIsAttributeWritableAllowsEverything(): void {
 			$controller = $this->makeController();
-			$controller->writableFieldsForCreate = ['name'];
-			$controller->writableFieldsForUpdate = [];
-
-			$response = $controller->callValidateAttributes(new TestProductEntity(), ['name' => 'Widget'], WriteOperation::Update);
-
-			$this->assertNotNull($response);
-			$this->assertSame(403, $response->getStatusCode());
-		}
-
-		public function testFieldWritableOnUpdateIsNotAutomaticallyWritableOnCreate(): void {
-			$controller = $this->makeController();
-			$controller->writableFieldsForCreate = [];
-			$controller->writableFieldsForUpdate = ['name'];
-
-			$response = $controller->callValidateAttributes(new TestProductEntity(), ['name' => 'Widget'], WriteOperation::Create);
-
-			$this->assertNotNull($response);
-			$this->assertSame(403, $response->getStatusCode());
-		}
-
-		// -------------------------------------------------------------------------
-		// No setter means no write — there is no reflective fallback. A field
-		// that's genuinely unknown (not allowlisted, no setter) is silently
-		// ignored, but a controller allowlisting a setter-less field is a
-		// server-side misconfiguration and throws instead of silently no-op'ing.
-		// -------------------------------------------------------------------------
-
-		public function testUnallowlistedPropertyWithoutSetterIsSilentlyIgnored(): void {
-			$controller = $this->makeController();
-			$controller->writableFieldsForCreate = []; // 'internalNotes' has no setter and isn't listed either
+			$controller->isAttributeWritableCallback = fn() => true; // 'internalNotes' still has no setter
 			$entity = new TestProductEntity();
 
-			$validation = $controller->callValidateAttributes($entity, ['internalNotes' => 'secret'], WriteOperation::Create);
-			$this->assertNull($validation);
-		}
+			$response = $controller->callValidateAttributes($entity, ['internalNotes' => 'secret'], WriteOperation::Create);
+			$this->assertNull($response);
 
-		public function testAllowlistingASetterLessPropertyThrowsAsAMisconfiguration(): void {
-			$controller = $this->makeController();
-			$controller->writableFieldsForCreate = ['internalNotes']; // allowlisted, but 'internalNotes' has no setter
-
-			$this->expectException(\LogicException::class);
-			$this->expectExceptionMessageMatches('/internalNotes.*getWritableFieldsForCreate.*setInternalNotes/');
-
-			$controller->callValidateAttributes(new TestProductEntity(), ['internalNotes' => 'secret'], WriteOperation::Create);
+			$controller->callMapAttributesToEntity($entity, ['internalNotes' => 'secret']);
+			$this->assertNull($entity->getInternalNotes());
 		}
 
 		// -------------------------------------------------------------------------
-		// mapAttributesToEntity(): setter-preferred mechanism
+		// mapAttributesToEntity(): setter is the only write mechanism
 		// -------------------------------------------------------------------------
 
 		public function testMapAttributesToEntityUsesTheSetterWhenOneExists(): void {
@@ -326,7 +278,6 @@
 
 		public function testAuthorizationDenialShortCircuitsBeforeFieldValidation(): void {
 			[$controller, $mockEm] = $this->makeControllerWithMock();
-			$controller->writableFieldsForCreate = ['name'];
 			$controller->authorizeCallback = fn() => new \Symfony\Component\HttpFoundation\JsonResponse(['errors' => [['status' => '403']]], 403);
 			$mockEm->expects($this->never())->method('persist');
 
@@ -361,7 +312,6 @@
 
 		public function testCreateResourceSucceedsAndPersistsTheMappedEntity(): void {
 			[$controller, $mockEm] = $this->makeControllerWithMock();
-			$controller->writableFieldsForCreate = ['name'];
 			$mockEm->expects($this->once())
 				->method('persist')
 				->with($this->callback(fn(TestProductEntity $entity) => $entity->getName() === 'Widget'))
@@ -377,9 +327,9 @@
 			$this->assertSame(201, $response->getStatusCode());
 		}
 
-		public function testCreateResourceRejectsForbiddenAttributeWithoutPersisting(): void {
+		public function testCreateResourceRejectsDeniedAttributeWithoutPersisting(): void {
 			[$controller, $mockEm] = $this->makeControllerWithMock();
-			$controller->writableFieldsForCreate = ['name'];
+			$controller->deniedFieldsForCreate = ['role'];
 			$mockEm->expects($this->never())->method('persist');
 
 			$request = Request::create('/products', 'POST', content: json_encode([
@@ -394,7 +344,6 @@
 		public function testUpdateResourceSucceedsAndMapsOntoTheFetchedEntity(): void {
 			$entity = $this->entityWithId(5);
 			[$controller, $mockEm] = $this->makeControllerWithMock($entity);
-			$controller->writableFieldsForUpdate = ['name'];
 			$mockEm->expects($this->once())->method('flush');
 
 			$request = Request::create('/products/5', 'PUT', content: json_encode([
@@ -410,7 +359,6 @@
 		public function testUpdateResourceIgnoresAnUnknownAttributeAndStillSucceeds(): void {
 			$entity = $this->entityWithId(5);
 			[$controller, $mockEm] = $this->makeControllerWithMock($entity);
-			$controller->writableFieldsForUpdate = ['name'];
 			$mockEm->expects($this->once())->method('flush');
 
 			$request = Request::create('/products/5', 'PUT', content: json_encode([

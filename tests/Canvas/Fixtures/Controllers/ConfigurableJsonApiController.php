@@ -11,7 +11,7 @@
 	use Symfony\Component\HttpFoundation\Request;
 
 	/**
-	 * Test-only JsonApiController whose writable-field policy and
+	 * Test-only JsonApiController whose per-attribute write decision and
 	 * authorization decision are plain public properties, so each test can
 	 * configure exactly the scenario it needs without a new subclass.
 	 * Also exposes the protected methods under test as public wrappers,
@@ -19,14 +19,14 @@
 	 */
 	class ConfigurableJsonApiController extends JsonApiController {
 
-		/** @var list<string>|null Shared default used by both operations when the per-operation list below is null */
-		public ?array $writableFields = null;
+		/** @var list<string> Fields denied for create, on top of the allow-by-default base */
+		public array $deniedFieldsForCreate = [];
 
-		/** @var list<string>|null Null means "fall back to getWritableFields()", same as the base class */
-		public ?array $writableFieldsForCreate = null;
+		/** @var list<string> Fields denied for update, on top of the allow-by-default base */
+		public array $deniedFieldsForUpdate = [];
 
-		/** @var list<string>|null Null means "fall back to getWritableFields()", same as the base class */
-		public ?array $writableFieldsForUpdate = null;
+		/** @var \Closure(object, string, WriteOperation): bool|null Full override of isAttributeWritable() for scenarios the denylists above can't express */
+		public ?\Closure $isAttributeWritableCallback = null;
 
 		/** @var \Closure(Request, object, WriteOperation): ?JsonResponse|null */
 		public ?\Closure $authorizeCallback = null;
@@ -51,16 +51,13 @@
 			return 'products';
 		}
 
-		protected function getWritableFields(): array {
-			return $this->writableFields ?? [];
-		}
+		protected function isAttributeWritable(object $entity, string $key, WriteOperation $operation): bool {
+			if ($this->isAttributeWritableCallback !== null) {
+				return ($this->isAttributeWritableCallback)($entity, $key, $operation);
+			}
 
-		protected function getWritableFieldsForCreate(): array {
-			return $this->writableFieldsForCreate ?? parent::getWritableFieldsForCreate();
-		}
-
-		protected function getWritableFieldsForUpdate(): array {
-			return $this->writableFieldsForUpdate ?? parent::getWritableFieldsForUpdate();
+			$denied = $operation === WriteOperation::Create ? $this->deniedFieldsForCreate : $this->deniedFieldsForUpdate;
+			return !in_array($key, $denied, true);
 		}
 
 		protected function authorizeAttributeWrite(Request $request, object $entity, WriteOperation $operation): ?JsonResponse {
