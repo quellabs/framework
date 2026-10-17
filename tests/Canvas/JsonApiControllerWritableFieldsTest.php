@@ -239,21 +239,29 @@
 		}
 
 		// -------------------------------------------------------------------------
-		// No setter means no write — there is no reflective fallback, so an
-		// unlisted-and-setter-less field is treated like any other unknown
-		// attribute: silently ignored, even if a controller allowlists it.
+		// No setter means no write — there is no reflective fallback. A field
+		// that's genuinely unknown (not allowlisted, no setter) is silently
+		// ignored, but a controller allowlisting a setter-less field is a
+		// server-side misconfiguration and throws instead of silently no-op'ing.
 		// -------------------------------------------------------------------------
 
-		public function testPropertyWithoutSetterIsSilentlyIgnoredEvenWhenAllowlisted(): void {
+		public function testUnallowlistedPropertyWithoutSetterIsSilentlyIgnored(): void {
 			$controller = $this->makeController();
-			$controller->writableFieldsForCreate = ['internalNotes']; // allowlisted, but 'internalNotes' has no setter
+			$controller->writableFieldsForCreate = []; // 'internalNotes' has no setter and isn't listed either
 			$entity = new TestProductEntity();
 
 			$validation = $controller->callValidateAttributes($entity, ['internalNotes' => 'secret'], WriteOperation::Create);
 			$this->assertNull($validation);
+		}
 
-			$controller->callMapAttributesToEntity($entity, ['internalNotes' => 'secret']);
-			$this->assertNull($entity->getInternalNotes());
+		public function testAllowlistingASetterLessPropertyThrowsAsAMisconfiguration(): void {
+			$controller = $this->makeController();
+			$controller->writableFieldsForCreate = ['internalNotes']; // allowlisted, but 'internalNotes' has no setter
+
+			$this->expectException(\LogicException::class);
+			$this->expectExceptionMessageMatches('/internalNotes.*getWritableFieldsForCreate.*setInternalNotes/');
+
+			$controller->callValidateAttributes(new TestProductEntity(), ['internalNotes' => 'secret'], WriteOperation::Create);
 		}
 
 		// -------------------------------------------------------------------------
