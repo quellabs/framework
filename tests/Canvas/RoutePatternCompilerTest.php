@@ -263,60 +263,55 @@
 		}
 
 		// -------------------------------------------------------------------------
-		// compilePartialSegmentPattern / compileRoute — duplicate variable names
+		// compileRoute — duplicate variable names
+		//
+		// Checked once, directly against the raw route path, before any segment is
+		// compiled: a repeated variable name is the same problem whether both
+		// occurrences land in one segment ("{id}-{id}") or in separate segments
+		// ("/{id}/{id}") — there's no sound way to decide which occurrence wins.
 		// -------------------------------------------------------------------------
-
-		public function testCompilePartialSegmentPatternRejectsDuplicateVariableName(): void {
-			$this->expectException(InvalidRouteDefinitionException::class);
-			$this->compiler->compilePartialSegmentPattern('item-{id}-{id}');
-		}
-
-		public function testCompilePartialSegmentPatternRejectsDuplicateTypedVariableName(): void {
-			$this->expectException(InvalidRouteDefinitionException::class);
-			$this->compiler->compilePartialSegmentPattern('item-{id:int}-{id:int}');
-		}
-
-		public function testCompileRouteRejectsDuplicateVariableNameWithLiteralPrefix(): void {
-			// A literal prefix routes this through the partial-variable compiler
+		
+		public function testCompileRouteRejectsDuplicateVariableNameWithinOneSegment(): void {
 			$this->expectException(InvalidRouteDefinitionException::class);
 			$this->compiler->compileRoute('/item-{id}-{id}');
 		}
-
+		
+		public function testCompileRouteRejectsDuplicateTypedVariableNameWithinOneSegment(): void {
+			$this->expectException(InvalidRouteDefinitionException::class);
+			$this->compiler->compileRoute('/item-{id:int}-{id:int}');
+		}
+		
 		public function testCompileRouteRejectsDuplicateVariableNameWithNoLiteralText(): void {
 			// No literal prefix/suffix — must still be classified as a partial
 			// variable (not a single complete "{...}" variable) and rejected
 			$this->expectException(InvalidRouteDefinitionException::class);
 			$this->compiler->compileRoute('/{id}-{id}');
 		}
-
+		
 		public function testCompileRouteAllowsDistinctVariableNamesInOneSegment(): void {
 			$segments = $this->compiler->compileRoute('/{id}-{slug}');
 			$this->assertSame(SegmentTypes::PARTIAL_VARIABLE, $segments[0]['type']);
 			$this->assertContains('id', $segments[0]['variable_names']);
 			$this->assertContains('slug', $segments[0]['variable_names']);
 		}
-
-		// -------------------------------------------------------------------------
-		// compileRoute — duplicate variable names across separate segments
-		// -------------------------------------------------------------------------
-
+		
 		public function testCompileRouteRejectsDuplicateVariableNameAcrossSegments(): void {
 			// Each "{id}" segment compiles fine on its own — the collision only
 			// exists once both segments are matched and both try to bind "id".
 			$this->expectException(InvalidRouteDefinitionException::class);
 			$this->compiler->compileRoute('/{id}/{id}');
 		}
-
+		
 		public function testCompileRouteRejectsDuplicateVariableNameAcrossNonAdjacentSegments(): void {
 			$this->expectException(InvalidRouteDefinitionException::class);
 			$this->compiler->compileRoute('/{id}/posts/{id}');
 		}
-
+		
 		public function testCompileRouteRejectsDuplicateVariableNameBetweenPlainAndPartialSegments(): void {
 			$this->expectException(InvalidRouteDefinitionException::class);
 			$this->compiler->compileRoute('/{id}/item-{id}');
 		}
-
+		
 		public function testCompileRouteAllowsDistinctVariableNamesAcrossSegments(): void {
 			$segments = $this->compiler->compileRoute('/users/{id}/posts/{postId}');
 			$this->assertSame('id', $segments[1]['variable_name']);

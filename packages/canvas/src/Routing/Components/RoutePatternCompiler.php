@@ -99,6 +99,11 @@
 		 *         whether within one segment ("{id}-{id}") or across separate segments ("/{id}/{id}")
 		 */
 		public function compileRoute(string $routePath): array {
+			// A repeated variable name has no sound interpretation (which occurrence wins?),
+			// whether both occurrences are in the same segment or in separate ones — so this
+			// is checked once, directly against the raw path, before any segment is compiled.
+			$this->assertNoDuplicateVariableNames($routePath);
+
 			// Parse the route path into individual segments
 			// e.g., "/user/{id}/posts" becomes ["user", "{id}", "posts"]
 			$segments = $this->parseRoutePath($routePath);
@@ -142,56 +147,42 @@
 				$compiledSegments[$i] = $updated;
 			}
 
-			// A segment-local duplicate (e.g. "{id}-{id}") is already rejected while that
-			// segment is being compiled, since it breaks the segment's own regex. A duplicate
-			// across separate segments (e.g. "/{id}/{id}") compiles each segment just fine —
-			// the collision only shows up once both segments are matched and both write into
-			// the same variable — so it has to be checked here, across the whole route.
-			$this->assertNoDuplicateVariableNames($routePath, $compiledSegments);
-
 			return $compiledSegments;
 		}
 
 		/**
-		 * Ensures no two segments of a compiled route bind the same variable name.
-		 * @param string $routePath Original route path, used only for the error message
-		 * @param list<CompiledSegment> $segments
-		 * @throws InvalidRouteDefinitionException If a variable name is bound by more than one segment
+		 * Ensures no variable name is bound more than once anywhere in the route path —
+		 * whether both occurrences are in the same segment ("{id}-{id}") or in separate
+		 * segments ("/{id}/{id}"). Checked directly against the raw path string, since
+		 * that's a single, segment-agnostic fact: the same "{name...}" token appears twice.
+		 * @param string $routePath Raw route path, e.g. "/users/{id}/posts/{id}"
+		 * @throws InvalidRouteDefinitionException If a variable name occurs more than once
 		 */
-		private function assertNoDuplicateVariableNames(string $routePath, array $segments): void {
+		private function assertNoDuplicateVariableNames(string $routePath): void {
+			if (preg_match_all('/\{([^{}]+)}/', $routePath, $matches) === 0) {
+				return;
+			}
+
 			$seenNames = [];
 
-			foreach ($segments as $segment) {
-				foreach ($this->namedVariablesOf($segment) as $name) {
-					if (isset($seenNames[$name])) {
-						throw new InvalidRouteDefinitionException(
-							"Duplicate variable name \"{$name}\" in route \"{$routePath}\": " .
-							"each variable in a route must have a unique name."
-						);
-					}
+			foreach ($matches[1] as $variableContent) {
+				// Strip a type/wildcard suffix, e.g. "id:int" -> "id", "path:**" -> "path"
+				$name = explode(':', $variableContent, 2)[0];
 
-					$seenNames[$name] = true;
+				// '*' and '**' are anonymous wildcard sentinels, never a route author's chosen name
+				if ($name === '*' || $name === '**') {
+					continue;
 				}
-			}
-		}
 
-		/**
-		 * Returns the real, user-chosen variable names a compiled segment binds.
-		 * Excludes '*' and '**', which are sentinels for anonymous wildcards
-		 * (never a name the route author actually chose) rather than real names.
-		 * @param CompiledSegment $segment
-		 * @return list<string>
-		 */
-		private function namedVariablesOf(array $segment): array {
-			if ($segment['type'] === SegmentTypes::PARTIAL_VARIABLE) {
-				$names = $segment['variable_names'];
-			} elseif ($segment['variable_name'] !== null) {
-				$names = [$segment['variable_name']];
-			} else {
-				$names = [];
-			}
+				if (isset($seenNames[$name])) {
+					throw new InvalidRouteDefinitionException(
+						"Duplicate variable name \"{$name}\" in route \"{$routePath}\": " .
+						"each variable in a route must have a unique name."
+					);
+				}
 
-			return array_values(array_filter($names, static fn(string $name): bool => $name !== '*' && $name !== '**'));
+				$seenNames[$name] = true;
+			}
 		}
 
 		/**
@@ -200,7 +191,6 @@
 		 * corresponding regex patterns.
 		 * @param string $segment The route segment to compile (e.g., "/users/{id:\d+}")
 		 * @return PartialSegmentResult|null Returns compiled pattern result or null on failure
-		 * @throws InvalidRouteDefinitionException If the segment declares the same variable name more than once
 		 */
 		public function compilePartialSegmentPattern(string $segment): ?array {
 			// Initialize compilation state variables
@@ -209,7 +199,6 @@
 			$literalPrefix = '';            // Literal text before any variables
 			$literalSuffix = '';            // Literal text after the last variable
 			$variableNames = [];            // Array of variable names found in the segment
-			$usedGroupNames = [];           // Sanitized capture-group names seen so far, to catch duplicates
 			$hasFoundVariable = false;      // Flag to track if we've encountered any variables
 			$variableInfo = [];             // Detailed information about each variable
 			$segmentLength = strlen($segment);
@@ -233,22 +222,6 @@
 					// Parse the variable definition to extract name and regex pattern
 					// Example: "id:\d+" becomes ['name' => 'id', 'pattern' => '\d+']
 					$variableInformation = $this->parseVariableDefinition($variableContent);
-
-					// Reject a repeated variable name within the same segment (e.g. "{id}-{id}").
-					// Two capture groups with the same name produce an invalid regex, and even if
-					// they didn't, there's no sound way to decide which occurrence wins — this is
-					// a route-definition error, so fail loudly here instead of letting the regex
-					// compile silently fail and the route fall back to a broken match at request time.
-					$groupName = $this->sanitizeCaptureGroupName($variableInformation['name']);
-
-					if (in_array($groupName, $usedGroupNames, true)) {
-						throw new InvalidRouteDefinitionException(
-							"Duplicate variable name \"{$variableInformation['name']}\" in route segment \"{$segment}\": " .
-							"each variable in a segment must have a unique name."
-						);
-					}
-
-					$usedGroupNames[] = $groupName;
 
 					// Store variable metadata for later use
 					$hasFoundVariable = true;
@@ -426,7 +399,6 @@
 		 * Build a CompiledSegment for a partial-variable segment like "user-{id}-profile"
 		 * @param string $segment The original segment text
 		 * @return CompiledSegment
-		 * @throws InvalidRouteDefinitionException If the segment declares the same variable name more than once
 		 */
 		private function buildPartialVariableSegment(string $segment): array {
 			// Defaults used when compilePartialSegmentPattern() returns null (malformed segment).
