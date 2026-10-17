@@ -7,7 +7,7 @@
 	use Quellabs\Canvas\Exceptions\MethodNotAllowedException;
 	use Quellabs\Canvas\Exceptions\RateLimitException;
 	use Quellabs\Canvas\Exceptions\RouteNotFoundException;
-	use Quellabs\Canvas\Security\SecurityHeaderPolicy;
+	use Quellabs\Canvas\Security\SecurityHeaderPolicyInterface;
 
 	class DefaultErrorHandler {
 
@@ -18,14 +18,14 @@
 			500 => ['Server Error', 'Something went wrong. Please try again later.'],
 		];
 
-		/** @var SecurityHeaderPolicy|null Application-wide security header policy, null when not configured */
-		private ?SecurityHeaderPolicy $securityHeaderPolicy;
+		/** @var SecurityHeaderPolicyInterface|null Application-wide security header policy, null when not configured */
+		private ?SecurityHeaderPolicyInterface $securityHeaderPolicy;
 
 		/**
 		 * Constructor
-		 * @param SecurityHeaderPolicy|null $securityHeaderPolicy Policy to apply to every error response, or null to skip
+		 * @param SecurityHeaderPolicyInterface|null $securityHeaderPolicy Policy to apply to every error response, or null to skip
 		 */
-		public function __construct(?SecurityHeaderPolicy $securityHeaderPolicy = null) {
+		public function __construct(?SecurityHeaderPolicyInterface $securityHeaderPolicy = null) {
 			$this->securityHeaderPolicy = $securityHeaderPolicy;
 		}
 

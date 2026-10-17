@@ -4,29 +4,19 @@
 
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\Canvas\Security\SecurityHeaderPolicy;
-	use Quellabs\Contracts\Configuration\ConfigurationInterface;
+	use Quellabs\Canvas\Security\SecurityHeaderPolicyInterface;
 	use Symfony\Component\HttpFoundation\Request;
 	use Symfony\Component\HttpFoundation\Response;
 
 	/**
-	 * Unit tests for SecurityHeaderPolicy, the header-writing logic shared between
-	 * SecurityHeadersAspect (per-route) and DefaultErrorHandler (application-wide).
+	 * Unit tests for SecurityHeaderPolicy, the basic built-in SecurityHeaderPolicyInterface
+	 * implementation shared between SecurityHeadersAspect (per-route) and DefaultErrorHandler
+	 * (application-wide) as their default.
 	 */
 	class SecurityHeaderPolicyTest extends TestCase {
 
-		/**
-		 * @param array<string, mixed> $values
-		 */
-		private function makeConfig(array $values): ConfigurationInterface {
-			$config = $this->createMock(ConfigurationInterface::class);
-
-			$config->method('get')->willReturnCallback(
-				function (string $key, mixed $default = null) use ($values): mixed {
-					return $values[$key] ?? $default;
-				}
-			);
-
-			return $config;
+		public function testImplementsThePolicyInterface(): void {
+			$this->assertInstanceOf(SecurityHeaderPolicyInterface::class, new SecurityHeaderPolicy());
 		}
 
 		public function testDefaultsAddTheExpectedHeaders(): void {
@@ -90,32 +80,4 @@
 			$this->assertSame('origin', $response->headers->get('Referrer-Policy'));
 		}
 
-		public function testFromConfigReadsEachKeyWithFallback(): void {
-			$config = $this->makeConfig([
-				'frame_options'           => 'DENY',
-				'no_sniff'                => false,
-				'xss_protection'          => false,
-				'hsts_max_age'            => 0,
-				'hsts_include_subdomains' => false,
-				'referrer_policy'         => 'no-referrer',
-				'csp'                     => "default-src 'none'",
-			]);
-
-			$response = new Response();
-			SecurityHeaderPolicy::fromConfig($config)->apply(Request::create('/'), $response);
-
-			$this->assertSame('DENY', $response->headers->get('X-Frame-Options'));
-			$this->assertFalse($response->headers->has('X-Content-Type-Options'));
-			$this->assertFalse($response->headers->has('X-XSS-Protection'));
-			$this->assertSame('no-referrer', $response->headers->get('Referrer-Policy'));
-			$this->assertSame("default-src 'none'", $response->headers->get('Content-Security-Policy'));
-		}
-
-		public function testFromConfigFallsBackToDefaultsWhenKeysAreMissing(): void {
-			$response = new Response();
-			SecurityHeaderPolicy::fromConfig($this->makeConfig([]))->apply(Request::create('/'), $response);
-
-			$this->assertSame('SAMEORIGIN', $response->headers->get('X-Frame-Options'));
-			$this->assertSame('nosniff', $response->headers->get('X-Content-Type-Options'));
-		}
 	}

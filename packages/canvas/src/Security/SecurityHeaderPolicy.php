@@ -2,20 +2,20 @@
 
 	namespace Quellabs\Canvas\Security;
 
-	use Quellabs\Contracts\Configuration\ConfigurationInterface;
 	use Symfony\Component\HttpFoundation\Request;
 	use Symfony\Component\HttpFoundation\Response;
 
 	/**
-	 * Header-writing logic shared between SecurityHeadersAspect (per-route, via
-	 * @InterceptWith) and DefaultErrorHandler (for responses no controller/route
-	 * ever ran against). Extracted so both callers apply identical rules instead
-	 * of maintaining two copies.
+	 * The basic, built-in SecurityHeaderPolicyInterface implementation. Used as the
+	 * application-wide default (config/app.php's security_header_policy) unless an
+	 * application configures its own policy class, and as SecurityHeadersAspect's
+	 * fallback when neither a policyClass override nor an application-wide default
+	 * is configured.
 	 *
 	 * Every add* method only sets a header when one isn't already present, so
 	 * a route-specific value set earlier always wins over this policy's own.
 	 */
-	class SecurityHeaderPolicy {
+	class SecurityHeaderPolicy implements SecurityHeaderPolicyInterface {
 
 		/** @var string X-Frame-Options value (DENY, SAMEORIGIN, or ALLOW-FROM) */
 		private string $frameOptions;
@@ -64,23 +64,6 @@
 			$this->hstsIncludeSubdomains = $hstsIncludeSubdomains;
 			$this->referrerPolicy = $referrerPolicy;
 			$this->csp = $csp;
-		}
-
-		/**
-		 * Build a policy from a configuration source, e.g. config/security_headers.php
-		 * @param ConfigurationInterface $config
-		 * @return self
-		 */
-		public static function fromConfig(ConfigurationInterface $config): self {
-			return new self(
-				frameOptions: $config->get('frame_options', 'SAMEORIGIN'),
-				noSniff: $config->get('no_sniff', true),
-				xssProtection: $config->get('xss_protection', true),
-				hstsMaxAge: $config->get('hsts_max_age', 31536000),
-				hstsIncludeSubdomains: $config->get('hsts_include_subdomains', true),
-				referrerPolicy: $config->get('referrer_policy', 'strict-origin-when-cross-origin'),
-				csp: $config->get('csp', null)
-			);
 		}
 
 		/**

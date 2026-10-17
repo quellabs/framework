@@ -29,5 +29,10 @@
 		'signal_listeners_path'   => $srcDir . DIRECTORY_SEPARATOR . 'Listeners',
 		
 		// Whether to match routes with trailing slashes
-		'match_trailing_slashes'  => false
+		'match_trailing_slashes'  => false,
+
+		// Class implementing SecurityHeaderPolicyInterface, applied by both
+		// SecurityHeadersAspect (unless a route overrides it via policyClass)
+		// and DefaultErrorHandler. Set to null to disable the default entirely.
+		'security_header_policy'  => \Quellabs\Canvas\Security\SecurityHeaderPolicy::class
 	];

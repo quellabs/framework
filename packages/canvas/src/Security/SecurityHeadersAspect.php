@@ -3,62 +3,50 @@
 	namespace Quellabs\Canvas\Security;
 
 	use Quellabs\Canvas\AOP\Contracts\AfterAspectInterface;
+	use Quellabs\Canvas\Kernel;
 	use Quellabs\Canvas\Routing\Contracts\MethodContextInterface;
 	use Symfony\Component\HttpFoundation\Response;
 
 	/**
 	 * Security Headers Aspect
 	 *
-	 * Automatically adds security-related HTTP headers to protect against common attacks.
-	 * Implements OWASP security header recommendations for web applications.
-	 *
-	 * Headers added:
-	 * - X-Content-Type-Options: Prevents MIME type sniffing
-	 * - X-Frame-Options: Prevents clickjacking attacks
-	 * - X-XSS-Protection: Enables browser XSS filtering
-	 * - Strict-Transport-Security: Enforces HTTPS connections
-	 * - Referrer-Policy: Controls referrer information
-	 * - Content-Security-Policy: Prevents XSS and data injection
+	 * Adds security-related HTTP headers to protect against common attacks, via
+	 * a SecurityHeaderPolicyInterface: config/app.php's security_header_policy by
+	 * default, or the $policyClass given here to override it for this route only.
+	 * Falls back to the basic built-in SecurityHeaderPolicy if neither is set.
 	 *
 	 * As an AfterAspectInterface, this only runs on a matched route (including a
 	 * before-aspect short circuit on that route, which AspectDispatcher still runs
 	 * after aspects against). A route miss or an exception that never reaches a
-	 * matched route's aspects is covered by DefaultErrorHandler instead, via
-	 * config/security_headers.php, using the same SecurityHeaderPolicy.
+	 * matched route's aspects is covered by DefaultErrorHandler instead, using the
+	 * same application-wide default policy.
 	 */
 	class SecurityHeadersAspect implements AfterAspectInterface {
 
-		/** @var SecurityHeaderPolicy Shared header-writing logic */
-		private SecurityHeaderPolicy $policy;
+		/** @var SecurityHeaderPolicyInterface Policy applied to the response */
+		private SecurityHeaderPolicyInterface $policy;
 
 		/**
 		 * Constructor
-		 * @param string $frameOptions X-Frame-Options value (DENY, SAMEORIGIN, or ALLOW-FROM)
-		 * @param bool $noSniff Enable X-Content-Type-Options: nosniff
-		 * @param bool $xssProtection Enable X-XSS-Protection: 1; mode=block
-		 * @param int $hstsMaxAge HSTS max-age in seconds (0 disables HSTS)
-		 * @param bool $hstsIncludeSubdomains Include subdomains in HSTS
-		 * @param string $referrerPolicy Referrer-Policy value
-		 * @param string|null $csp Content-Security-Policy value (null disables CSP)
+		 * @param Kernel $kernel Supplies the application-wide default policy when $policyClass is null
+		 * @param string|null $policyClass Class implementing SecurityHeaderPolicyInterface to use for this route instead of the application-wide default
 		 */
-		public function __construct(
-			string  $frameOptions = 'SAMEORIGIN',
-			bool    $noSniff = true,
-			bool    $xssProtection = true,
-			int     $hstsMaxAge = 31536000, // 1 year
-			bool    $hstsIncludeSubdomains = true,
-			string  $referrerPolicy = 'strict-origin-when-cross-origin',
-			?string $csp = null
-		) {
-			$this->policy = new SecurityHeaderPolicy(
-				$frameOptions,
-				$noSniff,
-				$xssProtection,
-				$hstsMaxAge,
-				$hstsIncludeSubdomains,
-				$referrerPolicy,
-				$csp
-			);
+		public function __construct(Kernel $kernel, ?string $policyClass = null) {
+			if ($policyClass !== null) {
+				$policy = $kernel->getDependencyInjector()->make($policyClass);
+
+				if (!$policy instanceof SecurityHeaderPolicyInterface) {
+					throw new \InvalidArgumentException(sprintf(
+						"SecurityHeadersAspect's policyClass '%s' must implement %s.",
+						$policyClass,
+						SecurityHeaderPolicyInterface::class
+					));
+				}
+			} else {
+				$policy = $kernel->getDefaultSecurityHeaderPolicy();
+			}
+
+			$this->policy = $policy ?? new SecurityHeaderPolicy();
 		}
 
 		/**

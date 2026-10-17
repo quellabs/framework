@@ -39,6 +39,7 @@
 	use Quellabs\Canvas\Legacy\LegacyBridge;
 	use Quellabs\Canvas\Legacy\LegacyHandler;
 	use Quellabs\Canvas\Security\SecurityHeaderPolicy;
+	use Quellabs\Canvas\Security\SecurityHeaderPolicyInterface;
 	use Quellabs\Contracts\Configuration\ConfigProviderInterface;
 	use Quellabs\Contracts\Configuration\ConfigurationInterface;
 	use Quellabs\DependencyInjection\Container;
@@ -81,8 +82,8 @@
 		/** @var array<int, class-string<ErrorHandlerInterface>> */
 		private array $errorHandlers;
 
-		/** @var SecurityHeaderPolicy|null Applied by DefaultErrorHandler to responses no route/controller produced, null when not configured */
-		private ?SecurityHeaderPolicy $securityHeaderPolicy;
+		/** @var SecurityHeaderPolicyInterface|null Application-wide default, resolved from config/app.php's security_header_policy; null when explicitly disabled */
+		private ?SecurityHeaderPolicyInterface $defaultSecurityHeaderPolicy;
 
 		/**
 		 * Kernel constructor
@@ -149,14 +150,28 @@
 			// Initialize legacy support
 			$this->initializeLegacySupport();
 
-			// Applied by DefaultErrorHandler to error responses, which never ran through a
-			// route's own SecurityHeadersAspect; only built when config/security_headers.php
-			// explicitly enables it
-			$securityHeadersConfig = $this->configLoader->loadConfigFile("security_headers.php");
+			// Application-wide default policy: the single source of truth both
+			// SecurityHeadersAspect (when no $policyClass override is given) and
+			// DefaultErrorHandler apply, so a route's headers and an error page's
+			// headers never silently diverge. config/app.php can point this at a
+			// custom class, or set it to null to disable the default entirely.
+			$securityHeaderPolicyClass = $this->configuration->get('security_header_policy', SecurityHeaderPolicy::class);
 
-			$this->securityHeaderPolicy = $securityHeadersConfig->get('enabled', false)
-				? SecurityHeaderPolicy::fromConfig($securityHeadersConfig)
-				: null;
+			if ($securityHeaderPolicyClass === null) {
+				$this->defaultSecurityHeaderPolicy = null;
+			} else {
+				$policy = $this->dependencyInjector->make($securityHeaderPolicyClass);
+
+				if (!$policy instanceof SecurityHeaderPolicyInterface) {
+					throw new \RuntimeException(sprintf(
+						"Configured security_header_policy class '%s' must implement %s.",
+						$securityHeaderPolicyClass,
+						SecurityHeaderPolicyInterface::class
+					));
+				}
+
+				$this->defaultSecurityHeaderPolicy = $policy;
+			}
 		}
 		
 		/**
@@ -189,6 +204,14 @@
 		 */
 		public function getDependencyInjector(): Container {
 			return $this->dependencyInjector;
+		}
+
+		/**
+		 * Returns the application-wide default security header policy
+		 * @return SecurityHeaderPolicyInterface|null Null when config/app.php's security_header_policy is explicitly disabled
+		 */
+		public function getDefaultSecurityHeaderPolicy(): ?SecurityHeaderPolicyInterface {
+			return $this->defaultSecurityHeaderPolicy;
 		}
 		
 		/**
@@ -349,7 +372,7 @@
 			
 			// No custom handler found. Show a generic message
 			$isDevelopment = $this->configuration->get('debug_mode', false);
-			$defaultHandler = new DefaultErrorHandler($this->securityHeaderPolicy);
+			$defaultHandler = new DefaultErrorHandler($this->defaultSecurityHeaderPolicy);
 			return $defaultHandler->handle($exception, $request, $isDevelopment);
 		}
 		
