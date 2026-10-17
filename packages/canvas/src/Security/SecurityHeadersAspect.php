@@ -30,7 +30,7 @@
 		/**
 		 * Constructor
 		 * @param Kernel $kernel Supplies the application-wide default policy when $policyClass is null
-		 * @param string|null $policyClass Class implementing SecurityHeaderPolicyInterface to use for this route instead of the application-wide default
+		 * @param class-string<SecurityHeaderPolicyInterface>|null $policyClass Class implementing SecurityHeaderPolicyInterface to use for this route instead of the application-wide default
 		 */
 		public function __construct(Kernel $kernel, ?string $policyClass = null) {
 			if ($policyClass !== null) {
