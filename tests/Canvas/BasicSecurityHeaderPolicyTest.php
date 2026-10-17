@@ -27,14 +27,14 @@
 
 			$this->assertSame('SAMEORIGIN', $response->headers->get('X-Frame-Options'));
 			$this->assertSame('nosniff', $response->headers->get('X-Content-Type-Options'));
-			$this->assertSame('1; mode=block', $response->headers->get('X-XSS-Protection'));
+			$this->assertFalse($response->headers->has('X-XSS-Protection'));
 			$this->assertSame('strict-origin-when-cross-origin', $response->headers->get('Referrer-Policy'));
 			$this->assertFalse($response->headers->has('Content-Security-Policy'));
 			$this->assertFalse($response->headers->has('Strict-Transport-Security'));
 		}
 
 		public function testHstsIsOnlyAddedOverHttps(): void {
-			$policy = new BasicSecurityHeaderPolicy(hstsMaxAge: 1000, hstsIncludeSubdomains: true);
+			$policy = new BasicSecurityHeaderPolicy(hstsMaxAge: 1000);
 
 			$httpResponse = new Response();
 			$policy->apply(Request::create('http://example.test/'), $httpResponse);
@@ -44,11 +44,11 @@
 			$httpsRequest->server->set('HTTPS', 'on');
 			$httpsResponse = new Response();
 			$policy->apply($httpsRequest, $httpsResponse);
-			$this->assertSame('max-age=1000; includeSubDomains', $httpsResponse->headers->get('Strict-Transport-Security'));
+			$this->assertSame('max-age=1000', $httpsResponse->headers->get('Strict-Transport-Security'));
 		}
 
 		public function testHstsPreloadIsAppendedWhenEnabled(): void {
-			$policy = new BasicSecurityHeaderPolicy(hstsMaxAge: 1000, hstsIncludeSubdomains: true, hstsPreload: true);
+			$policy = new BasicSecurityHeaderPolicy(hstsMaxAge: 1000, hstsPreload: true);
 
 			$request = Request::create('https://example.test/');
 			$request->server->set('HTTPS', 'on');
@@ -56,7 +56,7 @@
 
 			$policy->apply($request, $response);
 
-			$this->assertSame('max-age=1000; includeSubDomains; preload', $response->headers->get('Strict-Transport-Security'));
+			$this->assertSame('max-age=1000; preload', $response->headers->get('Strict-Transport-Security'));
 		}
 
 		public function testZeroHstsMaxAgeDisablesHsts(): void {

@@ -19,6 +19,9 @@
 	 */
 	class StrictSecurityHeaderPolicy extends BasicSecurityHeaderPolicy {
 
+		/** @var bool Include subdomains in HSTS */
+		private bool $hstsIncludeSubdomains;
+
 		/** @var string Permissions-Policy value */
 		private string $permissionsPolicy;
 
@@ -35,7 +38,6 @@
 		 * Constructor
 		 * @param string $frameOptions X-Frame-Options value (DENY, SAMEORIGIN, or ALLOW-FROM)
 		 * @param bool $noSniff Enable X-Content-Type-Options: nosniff
-		 * @param bool $xssProtection Enable X-XSS-Protection: 1; mode=block
 		 * @param int $hstsMaxAge HSTS max-age in seconds (0 disables HSTS)
 		 * @param bool $hstsIncludeSubdomains Include subdomains in HSTS
 		 * @param bool $hstsPreload Add the preload directive to HSTS
@@ -49,7 +51,6 @@
 		public function __construct(
 			string $frameOptions = 'DENY',
 			bool   $noSniff = true,
-			bool   $xssProtection = true,
 			int    $hstsMaxAge = 63072000, // 2 years
 			bool   $hstsIncludeSubdomains = true,
 			bool   $hstsPreload = true,
@@ -63,14 +64,13 @@
 			parent::__construct(
 				$frameOptions,
 				$noSniff,
-				$xssProtection,
 				$hstsMaxAge,
-				$hstsIncludeSubdomains,
 				$hstsPreload,
 				$referrerPolicy,
 				$csp
 			);
 
+			$this->hstsIncludeSubdomains = $hstsIncludeSubdomains;
 			$this->permissionsPolicy = $permissionsPolicy;
 			$this->crossOriginOpenerPolicy = $crossOriginOpenerPolicy;
 			$this->crossOriginResourcePolicy = $crossOriginResourcePolicy;
@@ -101,5 +101,23 @@
 			if (!$response->headers->has('X-Permitted-Cross-Domain-Policies')) {
 				$response->headers->set('X-Permitted-Cross-Domain-Policies', $this->permittedCrossDomainPolicies);
 			}
+		}
+
+		/**
+		 * Builds the Strict-Transport-Security header value, adding includeSubDomains
+		 * @return string
+		 */
+		protected function buildHstsValue(): string {
+			$hsts = "max-age={$this->hstsMaxAge}";
+
+			if ($this->hstsIncludeSubdomains) {
+				$hsts .= '; includeSubDomains';
+			}
+
+			if ($this->hstsPreload) {
+				$hsts .= '; preload';
+			}
+
+			return $hsts;
 		}
 	}

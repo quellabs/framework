@@ -6,16 +6,18 @@
 	 * The medium tier of Canvas's three built-in SecurityHeaderPolicyInterface
 	 * implementations (BasicSecurityHeaderPolicy / medium / StrictSecurityHeaderPolicy).
 	 * Tightens BasicSecurityHeaderPolicy's defaults - a same-origin Content-Security-Policy
-	 * baseline, a 2-year HSTS, and a tighter Referrer-Policy - without denying framing
-	 * or adding headers BasicSecurityHeaderPolicy doesn't already model.
+	 * baseline, a 2-year HSTS with subdomains included, and a tighter Referrer-Policy -
+	 * without denying framing or adding headers BasicSecurityHeaderPolicy doesn't already model.
 	 */
 	class MediumSecurityHeaderPolicy extends BasicSecurityHeaderPolicy {
+
+		/** @var bool Include subdomains in HSTS */
+		private bool $hstsIncludeSubdomains;
 
 		/**
 		 * Constructor
 		 * @param string $frameOptions X-Frame-Options value (DENY, SAMEORIGIN, or ALLOW-FROM)
 		 * @param bool $noSniff Enable X-Content-Type-Options: nosniff
-		 * @param bool $xssProtection Enable X-XSS-Protection: 1; mode=block
 		 * @param int $hstsMaxAge HSTS max-age in seconds (0 disables HSTS)
 		 * @param bool $hstsIncludeSubdomains Include subdomains in HSTS
 		 * @param bool $hstsPreload Add the preload directive to HSTS
@@ -25,7 +27,6 @@
 		public function __construct(
 			string  $frameOptions = 'SAMEORIGIN',
 			bool    $noSniff = true,
-			bool    $xssProtection = true,
 			int     $hstsMaxAge = 63072000, // 2 years
 			bool    $hstsIncludeSubdomains = true,
 			bool    $hstsPreload = false,
@@ -35,12 +36,30 @@
 			parent::__construct(
 				$frameOptions,
 				$noSniff,
-				$xssProtection,
 				$hstsMaxAge,
-				$hstsIncludeSubdomains,
 				$hstsPreload,
 				$referrerPolicy,
 				$csp
 			);
+
+			$this->hstsIncludeSubdomains = $hstsIncludeSubdomains;
+		}
+
+		/**
+		 * Builds the Strict-Transport-Security header value, adding includeSubDomains
+		 * @return string
+		 */
+		protected function buildHstsValue(): string {
+			$hsts = "max-age={$this->hstsMaxAge}";
+
+			if ($this->hstsIncludeSubdomains) {
+				$hsts .= '; includeSubDomains';
+			}
+
+			if ($this->hstsPreload) {
+				$hsts .= '; preload';
+			}
+
+			return $hsts;
 		}
 	}

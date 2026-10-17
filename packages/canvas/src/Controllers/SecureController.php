@@ -14,8 +14,7 @@
 	 * All methods in controllers extending SecureController get:
 	 * - X-Frame-Options: SAMEORIGIN
 	 * - X-Content-Type-Options: nosniff
-	 * - X-XSS-Protection: 1; mode=block
-	 * - Strict-Transport-Security, 2 years (HTTPS only)
+	 * - Strict-Transport-Security, 2 years with subdomains included (HTTPS only)
 	 * - Referrer-Policy: strict-origin
 	 * - Content-Security-Policy: default-src 'self'
 	 *
