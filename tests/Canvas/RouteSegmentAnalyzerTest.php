@@ -71,34 +71,59 @@
 		public function testGetSegmentTypeReturnsPartialVariableForEmbeddedVariable(): void {
 			$this->assertSame(SegmentTypes::PARTIAL_VARIABLE, $this->analyzer->getSegmentType('file-{id}-data'));
 		}
-		
+
+		public function testGetSegmentTypeReturnsPartialVariableForTwoVariablesWithNoLiteralOutsideBraces(): void {
+			// "{id}-{id}" starts with '{' and ends with '}' like a complete variable,
+			// but contains two separate brace groups — it must be classified as a
+			// partial variable so each one is parsed individually, not trimmed into
+			// a single garbage variable name.
+			$this->assertSame(SegmentTypes::PARTIAL_VARIABLE, $this->analyzer->getSegmentType('{id}-{id}'));
+		}
+
+		public function testGetSegmentTypeReturnsPartialVariableForTwoAdjacentVariables(): void {
+			$this->assertSame(SegmentTypes::PARTIAL_VARIABLE, $this->analyzer->getSegmentType('{id}{slug}'));
+		}
+
 		// -------------------------------------------------------------------------
 		// isVariable / hasPartialVariable
 		// -------------------------------------------------------------------------
-		
+
 		public function testIsVariableReturnsTrueForCompleteVariable(): void {
 			$this->assertTrue($this->analyzer->isVariable('{id}'));
 		}
-		
+
+		public function testIsVariableReturnsTrueForTypedCompleteVariable(): void {
+			$this->assertTrue($this->analyzer->isVariable('{id:int}'));
+		}
+
 		public function testIsVariableReturnsFalseForPartialVariable(): void {
 			$this->assertFalse($this->analyzer->isVariable('v{id}'));
 		}
-		
+
 		public function testIsVariableReturnsFalseForStaticSegment(): void {
 			$this->assertFalse($this->analyzer->isVariable('users'));
 		}
-		
+
+		public function testIsVariableReturnsFalseForTwoBraceGroupsWithNoOuterLiteral(): void {
+			// Starts with '{' and ends with '}', but is not a SINGLE complete variable
+			$this->assertFalse($this->analyzer->isVariable('{id}-{id}'));
+		}
+
 		public function testHasPartialVariableReturnsTrueForPrefixedSegment(): void {
 			$this->assertTrue($this->analyzer->hasPartialVariable('v{version}'));
 		}
-		
+
 		public function testHasPartialVariableReturnsFalseForCompleteVariable(): void {
 			// {id} is a complete variable, not a partial one
 			$this->assertFalse($this->analyzer->hasPartialVariable('{id}'));
 		}
-		
+
 		public function testHasPartialVariableReturnsFalseForStaticSegment(): void {
 			$this->assertFalse($this->analyzer->hasPartialVariable('users'));
+		}
+
+		public function testHasPartialVariableReturnsTrueForTwoBraceGroupsWithNoOuterLiteral(): void {
+			$this->assertTrue($this->analyzer->hasPartialVariable('{id}-{id}'));
 		}
 		
 		// -------------------------------------------------------------------------
