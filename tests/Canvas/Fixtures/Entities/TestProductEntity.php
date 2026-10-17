@@ -10,7 +10,7 @@
 	 * Fixture entity for JsonApiController's writable-field tests. "role" stands
 	 * in for a server-owned field with a normal setter — deny-by-default must
 	 * protect it whenever a controller simply omits it from its allowlist.
-	 * "internalNotes" has no setter, exercising the reflective-write opt-in path.
+	 * "internalNotes" has no setter, exercising the no-setter-means-no-write path.
 	 * @Orm\Table(name="test_products")
 	 */
 	class TestProductEntity {

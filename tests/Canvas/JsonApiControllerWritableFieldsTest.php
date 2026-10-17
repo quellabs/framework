@@ -12,7 +12,6 @@
 	use Quellabs\ObjectQuel\Configuration;
 	use Quellabs\ObjectQuel\EntityManager;
 	use Quellabs\ObjectQuel\EntityStore;
-	use Quellabs\ObjectQuel\ReflectionManagement\PropertyHandler;
 	use Symfony\Component\HttpFoundation\Request;
 
 	/**
@@ -42,7 +41,7 @@
 
 			$container = $this->makeContainer($mockEm);
 
-			return new ConfigurableJsonApiController($container, new PropertyHandler(), TestProductEntity::class);
+			return new ConfigurableJsonApiController($container, TestProductEntity::class);
 		}
 
 		/**
@@ -62,7 +61,7 @@
 			$mockEm->method('find')->willReturn($findResult);
 
 			$container = $this->makeContainer($mockEm);
-			$controller = new ConfigurableJsonApiController($container, new PropertyHandler(), TestProductEntity::class);
+			$controller = new ConfigurableJsonApiController($container, TestProductEntity::class);
 
 			return [$controller, $mockEm];
 		}
@@ -240,30 +239,21 @@
 		}
 
 		// -------------------------------------------------------------------------
-		// Reflective write fallback: allowlisting a setter-less field is itself
-		// the explicit opt-in — there is no second list to also update.
+		// No setter means no write — there is no reflective fallback, so an
+		// unlisted-and-setter-less field is treated like any other unknown
+		// attribute: silently ignored, even if a controller allowlists it.
 		// -------------------------------------------------------------------------
 
-		public function testPropertyWithoutSetterIsForbiddenWhenNotAllowlisted(): void {
+		public function testPropertyWithoutSetterIsSilentlyIgnoredEvenWhenAllowlisted(): void {
 			$controller = $this->makeController();
-			$controller->writableFieldsForCreate = []; // 'internalNotes' has no setter and isn't listed
-
-			$response = $controller->callValidateAttributes(new TestProductEntity(), ['internalNotes' => 'secret'], WriteOperation::Create);
-
-			$this->assertNotNull($response);
-			$this->assertSame(403, $response->getStatusCode());
-		}
-
-		public function testPropertyWithoutSetterIsWrittenViaReflectionOnceAllowlisted(): void {
-			$controller = $this->makeController();
-			$controller->writableFieldsForCreate = ['internalNotes'];
+			$controller->writableFieldsForCreate = ['internalNotes']; // allowlisted, but 'internalNotes' has no setter
 			$entity = new TestProductEntity();
 
 			$validation = $controller->callValidateAttributes($entity, ['internalNotes' => 'secret'], WriteOperation::Create);
 			$this->assertNull($validation);
 
 			$controller->callMapAttributesToEntity($entity, ['internalNotes' => 'secret']);
-			$this->assertSame('secret', $entity->getInternalNotes());
+			$this->assertNull($entity->getInternalNotes());
 		}
 
 		// -------------------------------------------------------------------------
@@ -279,16 +269,13 @@
 			$this->assertSame('Widget', $entity->getName());
 		}
 
-		public function testMapAttributesToEntityFallsBackToReflectionWhenNoSetterExists(): void {
-			// mapAttributesToEntity() trusts that validateAttributes() already
-			// gated this attribute against the allowlist; called directly, it
-			// writes any property it can reach via reflection.
+		public function testMapAttributesToEntityIgnoresAFieldWithoutASetter(): void {
 			$controller = $this->makeController();
 			$entity = new TestProductEntity();
 
 			$controller->callMapAttributesToEntity($entity, ['internalNotes' => 'secret']);
 
-			$this->assertSame('secret', $entity->getInternalNotes());
+			$this->assertNull($entity->getInternalNotes());
 		}
 
 		public function testMapAttributesToEntityIgnoresAKeyThatIsNotAPropertyAtAll(): void {
