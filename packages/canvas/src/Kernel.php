@@ -155,7 +155,12 @@
 			// DefaultErrorHandler apply, so a route's headers and an error page's
 			// headers never silently diverge. config/app.php can point this at a
 			// custom class, or set it to null to disable the default entirely.
-			$securityHeaderPolicyClass = $this->configuration->get('security_header_policy', BasicSecurityHeaderPolicy::class);
+			// Configuration::get()'s null-coalescing default can't tell an omitted key
+			// from one explicitly set to null, so an explicit null (opting out of the
+			// default) must be checked for via has() rather than get()'s own fallback.
+			$securityHeaderPolicyClass = $this->configuration->has('security_header_policy')
+				? $this->configuration->get('security_header_policy')
+				: BasicSecurityHeaderPolicy::class;
 
 			if ($securityHeaderPolicyClass === null) {
 				$this->defaultSecurityHeaderPolicy = null;
