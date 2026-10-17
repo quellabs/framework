@@ -38,6 +38,8 @@
 	use Quellabs\Canvas\Inspector\Inspector;
 	use Quellabs\Canvas\Legacy\LegacyBridge;
 	use Quellabs\Canvas\Legacy\LegacyHandler;
+	use Quellabs\Canvas\Security\ResponseFinalizer;
+	use Quellabs\Canvas\Security\SecurityHeaderPolicy;
 	use Quellabs\Contracts\Configuration\ConfigProviderInterface;
 	use Quellabs\Contracts\Configuration\ConfigurationInterface;
 	use Quellabs\DependencyInjection\Container;
@@ -79,7 +81,10 @@
 		
 		/** @var array<int, class-string<ErrorHandlerInterface>> */
 		private array $errorHandlers;
-		
+
+		/** @var ResponseFinalizer Applies response-wide policies to every outgoing response */
+		private ResponseFinalizer $responseFinalizer;
+
 		/**
 		 * Kernel constructor
 		 * @param array<string, mixed> $configuration
@@ -144,6 +149,14 @@
 			
 			// Initialize legacy support
 			$this->initializeLegacySupport();
+
+			// Build the response finalizer, applying the application-wide security header
+			// policy only when config/security_headers.php explicitly enables it
+			$securityHeadersConfig = $this->configLoader->loadConfigFile("security_headers.php");
+
+			$this->responseFinalizer = new ResponseFinalizer(
+				$securityHeadersConfig->get('enabled', false) ? SecurityHeaderPolicy::fromConfig($securityHeadersConfig) : null
+			);
 		}
 		
 		/**
@@ -247,7 +260,17 @@
 				$this->dependencyInjector->unregister($sessionBinding);
 				$this->dependencyInjector->unregister($requestBinding);
 			}
-			
+
+			// Apply response-wide policies (e.g. application-wide security headers, and
+			// rate-limit headers that a before-aspect short circuit or thrown exception
+			// would otherwise have skipped) at the single point every response passes
+			// through, regardless of which path produced it. A policy failure here must
+			// never replace the application's own response with an unrelated error.
+			try {
+				$this->responseFinalizer->finalize($request, $response);
+			} catch (\Throwable $e) {
+			}
+
 			// Publish request telemetry
 			$route = $urlData !== null && $urlData['route'] instanceof Route ? $urlData['route'] : null;
 			
