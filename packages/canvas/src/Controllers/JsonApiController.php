@@ -24,21 +24,18 @@
 	 */
 	abstract class JsonApiController extends BaseController {
 		
-		/** @var PropertyHandler Handler for entity property manipulation via reflection */
-		protected PropertyHandler $propertyHandler;
-		
 		/** @var JsonApiSerializer Serializer for converting entities to JSON:API format */
 		protected JsonApiSerializer $serializer;
-		
+
+		/** @var PropertyHandler Handler for writing entity properties that have no setter */
+		protected PropertyHandler $propertyHandler;
+
 		/**
 		 * Constructor - initializes the controller with required dependencies
 		 * @param Container $container Dependency injector
 		 * @param PropertyHandler $propertyHandler Handler for dynamic property access
 		 */
-		public function __construct(
-			Container       $container,
-			PropertyHandler $propertyHandler
-		) {
+		public function __construct(Container $container, PropertyHandler $propertyHandler) {
 			parent::__construct($container);
 			$this->propertyHandler = $propertyHandler;
 			$this->serializer = $this->createSerializer();
@@ -55,8 +52,7 @@
 		}
 		
 		/**
-		 * Get the base URL for API endpoints
-		 * Can be overriden
+		 * Get the base URL for API endpoints. Can be overriden
 		 * @return string The base URL (e.g., "https://api.example.com")
 		 */
 		protected function getBaseUrl(): string {
@@ -74,7 +70,7 @@
 		 * Generic GET method for retrieving a single resource by ID
 		 * @param int $id The unique identifier of the resource to retrieve
 		 * @return JsonResponse JSON:API formatted response containing the resource or error
-		 * @throws QuelException
+		 * @throws QuelException|EntityResolutionException
 		 */
 		protected function getResource(int $id): JsonResponse {
 			// Fetch entity manager
@@ -131,20 +127,27 @@
 			// Create a new instance of the entity class
 			$entityClass = $this->getEntityClass();
 			$entity = new $entityClass();
-			
+
+			// Resource- or user-specific authorization beyond the per-attribute check
+			$authorizationResponse = $this->authorizeAttributeWrite($request, $entity, WriteOperation::Create);
+
+			if ($authorizationResponse) {
+				return $authorizationResponse;
+			}
+
 			// Extract attributes from the JSON:API request structure
 			$attributes = $this->extractAttributes($data);
-			
+
 			// Validate attributes before creating/updating
-			$validationResponse = $this->validateAttributes($entity, $attributes);
-			
+			$validationResponse = $this->validateAttributes($entity, $attributes, WriteOperation::Create);
+
 			if ($validationResponse) {
 				return $validationResponse;
 			}
-			
+
 			// Map the provided attributes to the entity properties
 			$this->mapAttributesToEntity($entity, $attributes);
-			
+
 			// Persist the new entity to the database
 			$em->persist($entity);
 			$em->flush();
@@ -159,7 +162,7 @@
 		 * @param int $id The unique identifier of the resource to update
 		 * @param Request $request The HTTP request containing JSON:API formatted update data
 		 * @return JsonResponse JSON:API formatted response with updated resource or errors
-		 * @throws OrmException|QuelException
+		 * @throws OrmException|QuelException|EntityResolutionException
 		 */
 		protected function updateResource(int $id, Request $request): JsonResponse {
 			// Fetch entity manager
@@ -203,13 +206,20 @@
 			if ($requestId !== null && $requestId !== (string)$id) {
 				return $this->createIdMismatchResponse();
 			}
-			
+
+			// Resource- or user-specific authorization beyond the per-attribute check
+			$authorizationResponse = $this->authorizeAttributeWrite($request, $entity, WriteOperation::Update);
+
+			if ($authorizationResponse) {
+				return $authorizationResponse;
+			}
+
 			// Extract attributes from the JSON:API request structure
 			$attributes = $this->extractAttributes($data);
-			
+
 			// Validate attributes before creating/updating
-			$validationResponse = $this->validateAttributes($entity, $attributes);
-			
+			$validationResponse = $this->validateAttributes($entity, $attributes, WriteOperation::Update);
+
 			if ($validationResponse) {
 				return $validationResponse;
 			}
@@ -329,58 +339,112 @@
 		}
 		
 		/**
-		 * Validate that all provided attributes can be mapped to entity properties
+		 * Validate every submitted attribute before anything is mapped onto the
+		 * entity. The primary key is always forbidden, regardless of what a
+		 * concrete controller does — a client can never reassign which row a
+		 * request writes to. An attribute that isn't a property on the entity at
+		 * all is silently ignored (typo, stale client field; mapAttributesToEntity()
+		 * is a no-op for it either way). Everything else — whether or not it has
+		 * a setter — is decided solely by isAttributeWritable(); that's the one
+		 * and only write gate.
 		 * @param object $entity The entity instance to validate against
 		 * @param array<string, mixed> $attributes Associative array of attribute name => value pairs
+		 * @param WriteOperation $operation Whether this is a create or an update
 		 * @return JsonResponse|null Error response if validation fails, null if valid
+		 * @throws EntityResolutionException
 		 */
-		protected function validateAttributes(object $entity, array $attributes): ?JsonResponse {
-			$unknownAttributes = [];
-			
+		protected function validateAttributes(object $entity, array $attributes, WriteOperation $operation): ?JsonResponse {
+			$metadata = $this->em()->getEntityStore()->getMetadata($entity);
+			$forbiddenAttributes = [];
+
 			foreach ($attributes as $key => $value) {
-				$setterMethod = 'set' . ucfirst($key);
-				
-				if (
-					!method_exists($entity, $setterMethod) &&
-					!$this->propertyHandler->exists($entity, $key)) {
-					$unknownAttributes[] = $key;
+				if ($metadata->isIdentifierKey($key)) {
+					$forbiddenAttributes[] = $key;
+					continue;
+				}
+
+				if (!$this->attributeExistsOnEntity($entity, $key)) {
+					continue;
+				}
+
+				if (!$this->isAttributeWritable($entity, $key, $operation)) {
+					$forbiddenAttributes[] = $key;
 				}
 			}
-			
-			if (!empty($unknownAttributes)) {
-				return $this->json([
-					"errors" => [[
-						"status" => "422",
-						"title"  => "Invalid attributes",
-						"detail" => "Unknown attributes: " . implode(', ', $unknownAttributes),
-						"source" => ["pointer" => "/data/attributes"]
-					]]
-				], 422);
+
+			if (!empty($forbiddenAttributes)) {
+				return $this->createForbiddenAttributesResponse($forbiddenAttributes);
 			}
-			
+
 			return null;
 		}
-		
+
 		/**
-		 * Map JSON:API attributes to entity properties
+		 * Map JSON:API attributes to entity properties: through the setter when
+		 * one exists (naming convention: setPropertyName), otherwise directly via
+		 * reflection. A key that isn't a property on the entity at all is a no-op.
 		 * @param object $entity The entity instance to update
 		 * @param array<string, mixed> $attributes Associative array of attribute name => value pairs
 		 */
 		protected function mapAttributesToEntity(object $entity, array $attributes): void {
 			foreach ($attributes as $key => $value) {
-				// Try using a setter method first (follows naming convention: setPropertyName)
 				$setterMethod = 'set' . ucfirst($key);
-				
+
 				if (method_exists($entity, $setterMethod)) {
-					// Use the setter method if it exists (preferred approach)
 					$entity->$setterMethod($value);
 				} elseif ($this->propertyHandler->exists($entity, $key)) {
-					// Fall back to direct property access if setter doesn't exist
 					$this->propertyHandler->set($entity, $key, $value);
 				}
 			}
 		}
-		
+
+		/**
+		 * Check whether an attribute corresponds to a real property on the
+		 * entity, through a setter or through reflection. Mirrors the write
+		 * mechanism mapAttributesToEntity() actually uses, so nothing can pass
+		 * validation here and then silently fail to be written.
+		 * @param object $entity
+		 * @param string $key
+		 * @return bool
+		 */
+		private function attributeExistsOnEntity(object $entity, string $key): bool {
+			return method_exists($entity, 'set' . ucfirst($key)) || $this->propertyHandler->exists($entity, $key);
+		}
+
+		/**
+		 * Authorize a write before any attribute is validated or mapped. The default
+		 * allows every create/update; override to add resource- or user-specific
+		 * checks (ownership, role, current entity state) that a per-attribute
+		 * decision can't express — for example, rejecting an update to a resource
+		 * the current user doesn't own, regardless of which fields were submitted.
+		 * @param Request $request The incoming HTTP request
+		 * @param object $entity The entity being created or updated
+		 * @param WriteOperation $operation Whether this is a create or an update
+		 * @return JsonResponse|null Error response (typically 403) to deny the write, or null to allow it
+		 */
+		protected function authorizeAttributeWrite(Request $request, object $entity, WriteOperation $operation): ?JsonResponse {
+			return null;
+		}
+
+		/**
+		 * Create a standardized 403 response for attributes that exist on the
+		 * entity but are denied for this operation — either by isAttributeWritable()
+		 * or because the attribute is the primary key, which is never writable
+		 * regardless of what a controller does.
+		 * @param list<string> $attributeNames
+		 * @return JsonResponse
+		 */
+		protected function createForbiddenAttributesResponse(array $attributeNames): JsonResponse {
+			return $this->json([
+				"errors" => array_map(fn(string $name) => [
+					"status" => "403",
+					"title"  => "Forbidden attribute",
+					"detail" => "Attribute '{$name}' is not writable for this operation",
+					"source" => ["pointer" => "/data/attributes/{$name}"]
+				], $attributeNames)
+			], 403);
+		}
+
 		/**
 		 * Create a standardized 404 Not Found response following JSON:API error format
 		 * @param string $resourceType The type of resource that was not found
@@ -419,11 +483,28 @@
 		 * @return class-string The fully qualified class name of the entity
 		 */
 		abstract protected function getEntityClass(): string;
-		
+
 		/**
 		 * Get the JSON:API resource type identifier for this controller
 		 * @return string The JSON:API resource type identifier
 		 */
 		abstract protected function getResourceType(): string;
-		
+
+		/**
+		 * Decide whether a specific attribute may be written for the given
+		 * operation. Only ever called for an attribute that already exists on
+		 * the entity (via a setter or directly as a property) — this is the
+		 * only write gate; a setter's presence or absence plays no role in the
+		 * decision. Defaults to allowing everything; override to deny specific
+		 * fields, operations or circumstances — for example: `return $key !== 'role';`
+		 * to keep a field server-owned, or `$operation !== WriteOperation::Update`
+		 * to allow it only on create.
+		 * @param object $entity The entity being created or updated
+		 * @param string $key The attribute name (already confirmed to exist on the entity)
+		 * @param WriteOperation $operation Whether this is a create or an update
+		 * @return bool Whether the client may set this attribute for this operation
+		 */
+		protected function isAttributeWritable(object $entity, string $key, WriteOperation $operation): bool {
+			return true;
+		}
 	}
