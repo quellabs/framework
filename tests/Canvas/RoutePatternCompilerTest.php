@@ -311,7 +311,14 @@
 			$this->expectException(InvalidRouteDefinitionException::class);
 			$this->compiler->compileRoute('/{id}/item-{id}');
 		}
-		
+
+		public function testCompileRouteRejectsNamesThatCollideOnlyAfterSanitization(): void {
+			// "my-id" and "my_id" are different raw names, but both become the same
+			// regex capture group ("my_id") once non-identifier characters are sanitized
+			$this->expectException(InvalidRouteDefinitionException::class);
+			$this->compiler->compileRoute('/{my-id}/{my_id}');
+		}
+
 		public function testCompileRouteAllowsDistinctVariableNamesAcrossSegments(): void {
 			$segments = $this->compiler->compileRoute('/users/{id}/posts/{postId}');
 			$this->assertSame('id', $segments[1]['variable_name']);

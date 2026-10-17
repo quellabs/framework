@@ -163,7 +163,7 @@
 				return;
 			}
 
-			$seenNames = [];
+			$seenGroupNames = [];
 
 			foreach ($matches[1] as $variableContent) {
 				// Strip a type/wildcard suffix, e.g. "id:int" -> "id", "path:**" -> "path"
@@ -174,14 +174,19 @@
 					continue;
 				}
 
-				if (isset($seenNames[$name])) {
+				// Compare sanitized names, since that's what actually becomes the regex capture
+				// group: "my-id" and "my_id" both sanitize to "my_id" and collide just the same,
+				// even though the raw names differ.
+				$groupName = $this->sanitizeCaptureGroupName($name);
+
+				if (isset($seenGroupNames[$groupName])) {
 					throw new InvalidRouteDefinitionException(
 						"Duplicate variable name \"{$name}\" in route \"{$routePath}\": " .
 						"each variable in a route must have a unique name."
 					);
 				}
 
-				$seenNames[$name] = true;
+				$seenGroupNames[$groupName] = true;
 			}
 		}
 
