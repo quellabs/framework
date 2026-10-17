@@ -184,23 +184,16 @@
 		 * @return void
 		 */
 		public function after(MethodContextInterface $context, Response $response): void {
-			self::applyHeadersFromRequest($context->getRequest(), $response);
+			$this->applyHeadersFromRequest($context->getRequest(), $response);
 		}
 
 		/**
-		 * Apply rate limit headers stored on the request to the given response.
-		 *
-		 * Reads from request attributes rather than instance state, so it can be called
-		 * wherever the originating request is available, independent of whether this
-		 * aspect's own after() ever ran: ResponseFinalizer uses it to cover a before-aspect
-		 * short circuit, a thrown RateLimitException, or any other exception path, since
-		 * before() sets these attributes before it throws.
-		 *
+		 * Apply rate limit headers stored on the request (by before()) to the given response.
 		 * @param Request $request The request that carries rate_limit_headers, if any.
 		 * @param Response $response HTTP response being returned to the client.
 		 * @return void
 		 */
-		public static function applyHeadersFromRequest(Request $request, Response $response): void {
+		private function applyHeadersFromRequest(Request $request, Response $response): void {
 			// Retrieve rate limit headers prepared during the before() phase.
 			$headers = $request->attributes->get('rate_limit_headers');
 

@@ -8,9 +8,9 @@
 
 	/**
 	 * Header-writing logic shared between SecurityHeadersAspect (per-route, via
-	 * @InterceptWith) and the kernel-level ResponseFinalizer (application-wide,
-	 * for responses no controller aspect ever ran against). Extracted so both
-	 * callers apply identical rules instead of maintaining two copies.
+	 * @InterceptWith) and DefaultErrorHandler (for responses no controller/route
+	 * ever ran against). Extracted so both callers apply identical rules instead
+	 * of maintaining two copies.
 	 *
 	 * Every add* method only sets a header when one isn't already present, so
 	 * a route-specific value set earlier always wins over this policy's own.

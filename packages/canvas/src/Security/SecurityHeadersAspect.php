@@ -20,10 +20,11 @@
 	 * - Referrer-Policy: Controls referrer information
 	 * - Content-Security-Policy: Prevents XSS and data injection
 	 *
-	 * As an AfterAspectInterface, this only runs when the route it's attached to
-	 * actually reaches that phase: a before-aspect short circuit, an exception, or
-	 * a route miss (404/405) never gets here. ResponseFinalizer covers those cases
-	 * application-wide, via config/security_headers.php, using the same SecurityHeaderPolicy.
+	 * As an AfterAspectInterface, this only runs on a matched route (including a
+	 * before-aspect short circuit on that route, which AspectDispatcher still runs
+	 * after aspects against). A route miss or an exception that never reaches a
+	 * matched route's aspects is covered by DefaultErrorHandler instead, via
+	 * config/security_headers.php, using the same SecurityHeaderPolicy.
 	 */
 	class SecurityHeadersAspect implements AfterAspectInterface {
 

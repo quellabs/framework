@@ -10,11 +10,15 @@
 	use Symfony\Component\HttpFoundation\Response;
 
 	/**
-	 * Unit tests for RateLimitAspect::applyHeadersFromRequest(), the static helper
-	 * extracted so ResponseFinalizer can apply rate-limit headers wherever the
-	 * originating request is available, independent of whether after() ever ran.
+	 * Unit tests for RateLimitAspect::after(), which applies the headers
+	 * before() computed and stored on the request's attributes.
 	 */
 	class RateLimitAspectHeaderPropagationTest extends TestCase {
+
+		private function makeAspect(): RateLimitAspect {
+			$cache = $this->createStub(CacheInterface::class);
+			return new RateLimitAspect($cache);
+		}
 
 		private function makeContext(Request $request): MethodContextInterface {
 			$context = $this->createStub(MethodContextInterface::class);
@@ -25,7 +29,7 @@
 		public function testNoHeadersAttributeIsANoOp(): void {
 			$response = new Response();
 
-			RateLimitAspect::applyHeadersFromRequest(Request::create('/'), $response);
+			$this->makeAspect()->after($this->makeContext(Request::create('/')), $response);
 
 			$this->assertSame([], $response->headers->all('x-ratelimit-limit'));
 		}
@@ -35,7 +39,7 @@
 			$request->attributes->set('rate_limit_headers', 'not-an-array');
 			$response = new Response();
 
-			RateLimitAspect::applyHeadersFromRequest($request, $response);
+			$this->makeAspect()->after($this->makeContext($request), $response);
 
 			$this->assertFalse($response->headers->has('X-RateLimit-Limit'));
 		}
@@ -49,23 +53,25 @@
 			]);
 			$response = new Response();
 
-			RateLimitAspect::applyHeadersFromRequest($request, $response);
+			$this->makeAspect()->after($this->makeContext($request), $response);
 
 			$this->assertSame('60', $response->headers->get('X-RateLimit-Limit'));
 			$this->assertSame('59', $response->headers->get('X-RateLimit-Remaining'));
 			$this->assertSame('1700000000', $response->headers->get('X-RateLimit-Reset'));
 		}
 
-		public function testAfterDelegatesToTheStaticHelper(): void {
-			$cache = $this->createStub(CacheInterface::class);
-			$aspect = new RateLimitAspect($cache);
-
+		public function testRetryAfterIsAppliedWhenExceeded(): void {
 			$request = Request::create('/');
-			$request->attributes->set('rate_limit_headers', ['X-RateLimit-Limit' => 5]);
-			$response = new Response();
+			$request->attributes->set('rate_limit_headers', [
+				'X-RateLimit-Limit'     => 10,
+				'X-RateLimit-Remaining' => 0,
+				'X-RateLimit-Reset'     => 1700000000,
+				'Retry-After'           => 42,
+			]);
+			$response = new Response('Too Many Requests', 429);
 
-			$aspect->after($this->makeContext($request), $response);
+			$this->makeAspect()->after($this->makeContext($request), $response);
 
-			$this->assertSame('5', $response->headers->get('X-RateLimit-Limit'));
+			$this->assertSame('42', $response->headers->get('Retry-After'));
 		}
 	}

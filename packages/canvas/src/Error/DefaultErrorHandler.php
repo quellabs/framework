@@ -1,21 +1,34 @@
 <?php
 	
 	namespace Quellabs\Canvas\Error;
-	
+
 	use Symfony\Component\HttpFoundation\Request;
 	use Symfony\Component\HttpFoundation\Response;
 	use Quellabs\Canvas\Exceptions\MethodNotAllowedException;
+	use Quellabs\Canvas\Exceptions\RateLimitException;
 	use Quellabs\Canvas\Exceptions\RouteNotFoundException;
-	
+	use Quellabs\Canvas\Security\SecurityHeaderPolicy;
+
 	class DefaultErrorHandler {
-		
+
 		/** @var array<int, array{string, string}> Default error messages */
 		const array ERRORS = [
 			403 => ['Access Denied', 'You do not have permission to access this page.'],
 			404 => ['Page Not Found', 'The page you requested could not be found.'],
 			500 => ['Server Error', 'Something went wrong. Please try again later.'],
 		];
-		
+
+		/** @var SecurityHeaderPolicy|null Application-wide security header policy, null when not configured */
+		private ?SecurityHeaderPolicy $securityHeaderPolicy;
+
+		/**
+		 * Constructor
+		 * @param SecurityHeaderPolicy|null $securityHeaderPolicy Policy to apply to every error response, or null to skip
+		 */
+		public function __construct(?SecurityHeaderPolicy $securityHeaderPolicy = null) {
+			$this->securityHeaderPolicy = $securityHeaderPolicy;
+		}
+
 		/**
 		 * Default error reporting
 		 * @param \Throwable $e Exception that was thrown
@@ -38,6 +51,18 @@
 				// RFC 7231 requires a 405 response to list the allowed methods
 				$response->headers->set('Allow', implode(', ', $e->getAllowedMethods()));
 			}
+
+			if ($e instanceof RateLimitException) {
+				// RateLimitAspect::before() computed these (including Retry-After) before
+				// throwing; this handler never recalculates rate-limit state itself.
+				foreach ($e->getHeaders() as $name => $value) {
+					$response->headers->set((string)$name, (string)$value);
+				}
+			}
+
+			// No route/controller ran for this response, so no SecurityHeadersAspect could
+			// have applied these; only ever sets a header that isn't already present above.
+			$this->securityHeaderPolicy?->apply($request, $response);
 
 			return $response;
 		}

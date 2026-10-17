@@ -1,9 +1,10 @@
 <?php
 
-	// Application-wide security headers, applied by Quellabs\Canvas\Security\ResponseFinalizer
-	// to every response - including a route miss (404/405), a before-aspect short circuit, and
-	// an exception response - which a per-route @InterceptWith(SecurityHeadersAspect::class) can't
-	// reach. A header already set by a route-specific aspect always takes precedence over this.
+	// Application-wide security headers, applied by Quellabs\Canvas\Error\DefaultErrorHandler
+	// to every error response (404, 405, 500, a thrown RateLimitException, ...) - cases where
+	// no route ever matched, so a per-route @InterceptWith(SecurityHeadersAspect::class) never
+	// ran. A header already set by that aspect, or by the error handler itself, always takes
+	// precedence over this.
 	//
 	// Disabled by default so adding this file has no effect until explicitly turned on.
 

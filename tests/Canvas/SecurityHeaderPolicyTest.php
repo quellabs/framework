@@ -10,7 +10,7 @@
 
 	/**
 	 * Unit tests for SecurityHeaderPolicy, the header-writing logic shared between
-	 * SecurityHeadersAspect (per-route) and ResponseFinalizer (application-wide).
+	 * SecurityHeadersAspect (per-route) and DefaultErrorHandler (application-wide).
 	 */
 	class SecurityHeaderPolicyTest extends TestCase {
 

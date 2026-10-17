@@ -55,26 +55,31 @@
 				// Phase 1: Transform the incoming request.
 				// Request aspects can modify headers, parameters, or add computed attributes
 				$this->handleRequestAspects($aspects, $context);
-				
+
 				// Phase 2: Execute pre-execution logic
 				// Before aspects can perform authorization, validation, or early returns
 				$this->handleBeforeAspects($aspects, $context);
-				
+
 				// Phase 3: Execute the controller method with interception
 				// Around aspects can modify execution, add caching, or replace method entirely
 				// The aspect will also call the controller's method
 				$result = $this->handleAroundAspects($aspects, $context);
-				
+
 				// Phase 4: Post-process the response
 				// After aspects can add headers, cookies, logging, or response transformations
 				$this->handleAfterAspects($aspects, $context, $result);
-				
+
 				// Return the final response after all aspect processing
 				return $result;
 			} catch (AopException $e) {
-				// Handle early termination from before aspects or other flow control
-				// AopException carries the response that should be returned immediately
-				return $e->getResponse();
+				// A before aspect short-circuited execution with its own response (e.g. a
+				// cache hit, a denied request). After aspects still run against it, the
+				// same as they would against a controller's response: a short circuit on
+				// a matched route is not a reason for response-wide after-aspects (security
+				// headers, rate-limit headers, ...) to be skipped.
+				$response = $e->getResponse();
+				$this->handleAfterAspects($aspects, $context, $response);
+				return $response;
 			}
 		}
 		

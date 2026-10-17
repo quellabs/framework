@@ -5,13 +5,16 @@
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\Canvas\Error\DefaultErrorHandler;
 	use Quellabs\Canvas\Exceptions\MethodNotAllowedException;
+	use Quellabs\Canvas\Exceptions\RateLimitException;
 	use Quellabs\Canvas\Exceptions\RouteNotFoundException;
+	use Quellabs\Canvas\Security\SecurityHeaderPolicy;
 	use Symfony\Component\HttpFoundation\Request;
 
 	/**
 	 * Unit tests for DefaultErrorHandler.
 	 *
-	 * Covers the status/Allow-header handling specific to method-aware routing;
+	 * Covers the status/Allow-header handling specific to method-aware routing,
+	 * RateLimitException's headers, and the optional global SecurityHeaderPolicy;
 	 * does not re-test unrelated error rendering already covered elsewhere.
 	 */
 	class DefaultErrorHandlerTest extends TestCase {
@@ -38,5 +41,45 @@
 
 			$this->assertSame(404, $response->getStatusCode());
 			$this->assertFalse($response->headers->has('Allow'));
+		}
+
+		public function testRateLimitExceptionAppliesItsOwnHeadersIncludingRetryAfter(): void {
+			$exception = new RateLimitException(
+				limit: 10,
+				remaining: 0,
+				retryAfter: 42,
+				resetTime: 1700000000,
+				strategy: 'fixed_window',
+				scope: 'ip',
+				headers: [
+					'X-RateLimit-Limit'     => 10,
+					'X-RateLimit-Remaining' => 0,
+					'X-RateLimit-Reset'     => 1700000000,
+					'Retry-After'           => 42,
+				]
+			);
+
+			$response = $this->handler->handle($exception, Request::create('/api/data'), false);
+
+			$this->assertSame(429, $response->getStatusCode());
+			$this->assertSame('42', $response->headers->get('Retry-After'));
+			$this->assertSame('10', $response->headers->get('X-RateLimit-Limit'));
+		}
+
+		public function testSecurityHeaderPolicyIsAppliedWhenConfigured(): void {
+			$handler = new DefaultErrorHandler(new SecurityHeaderPolicy(frameOptions: 'DENY'));
+			$exception = new RouteNotFoundException('Route not found');
+
+			$response = $handler->handle($exception, Request::create('/missing'), false);
+
+			$this->assertSame('DENY', $response->headers->get('X-Frame-Options'));
+		}
+
+		public function testNoSecurityHeaderPolicyLeavesHeadersUnset(): void {
+			$exception = new RouteNotFoundException('Route not found');
+
+			$response = $this->handler->handle($exception, Request::create('/missing'), false);
+
+			$this->assertFalse($response->headers->has('X-Frame-Options'));
 		}
 	}
