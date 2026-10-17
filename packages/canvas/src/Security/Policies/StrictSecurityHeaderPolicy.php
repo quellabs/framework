@@ -1,23 +1,23 @@
 <?php
 
-	namespace Quellabs\Canvas\Security;
+	namespace Quellabs\Canvas\Security\Policies;
 
 	use Symfony\Component\HttpFoundation\Request;
 	use Symfony\Component\HttpFoundation\Response;
 
 	/**
 	 * The strict tier of Canvas's three built-in SecurityHeaderPolicyInterface
-	 * implementations (SecurityHeaderPolicy / MediumSecurityHeaderPolicy / strict).
+	 * implementations (BasicSecurityHeaderPolicy / MediumSecurityHeaderPolicy / strict).
 	 * Denies all framing, a locked-down CSP, a 2-year preloaded HSTS, no referrer
 	 * leakage, and the modern cross-origin isolation headers on top of
-	 * SecurityHeaderPolicy's set: Permissions-Policy, Cross-Origin-Opener-Policy,
+	 * BasicSecurityHeaderPolicy's set: Permissions-Policy, Cross-Origin-Opener-Policy,
 	 * Cross-Origin-Resource-Policy, and X-Permitted-Cross-Domain-Policies.
 	 *
 	 * Deliberately leaves out Cross-Origin-Embedder-Policy: require-corp, since it
 	 * breaks any cross-origin embed/image that doesn't opt in via CORS, and that's
 	 * too likely to be a silent breakage for a built-in default.
 	 */
-	class StrictSecurityHeaderPolicy extends SecurityHeaderPolicy {
+	class StrictSecurityHeaderPolicy extends BasicSecurityHeaderPolicy {
 
 		/** @var string Permissions-Policy value */
 		private string $permissionsPolicy;
@@ -78,7 +78,7 @@
 		}
 
 		/**
-		 * Applies SecurityHeaderPolicy's set, then the additional strict-tier headers
+		 * Applies BasicSecurityHeaderPolicy's set, then the additional strict-tier headers
 		 * @param Request $request The request, needed to decide HSTS eligibility (HTTPS only)
 		 * @param Response $response The response to modify
 		 * @return void

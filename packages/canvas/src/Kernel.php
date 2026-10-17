@@ -38,7 +38,7 @@
 	use Quellabs\Canvas\Inspector\Inspector;
 	use Quellabs\Canvas\Legacy\LegacyBridge;
 	use Quellabs\Canvas\Legacy\LegacyHandler;
-	use Quellabs\Canvas\Security\SecurityHeaderPolicy;
+	use Quellabs\Canvas\Security\Policies\BasicSecurityHeaderPolicy;
 	use Quellabs\Canvas\Security\SecurityHeaderPolicyInterface;
 	use Quellabs\Contracts\Configuration\ConfigProviderInterface;
 	use Quellabs\Contracts\Configuration\ConfigurationInterface;
@@ -155,7 +155,7 @@
 			// DefaultErrorHandler apply, so a route's headers and an error page's
 			// headers never silently diverge. config/app.php can point this at a
 			// custom class, or set it to null to disable the default entirely.
-			$securityHeaderPolicyClass = $this->configuration->get('security_header_policy', SecurityHeaderPolicy::class);
+			$securityHeaderPolicyClass = $this->configuration->get('security_header_policy', BasicSecurityHeaderPolicy::class);
 
 			if ($securityHeaderPolicyClass === null) {
 				$this->defaultSecurityHeaderPolicy = null;

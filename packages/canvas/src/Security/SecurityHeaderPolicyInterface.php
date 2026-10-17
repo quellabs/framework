@@ -7,10 +7,10 @@
 
 	/**
 	 * A security-header policy: anything that can decorate a response with
-	 * security-related headers. Implemented by SecurityHeaderPolicy (the basic,
-	 * built-in default) and by any application-specific policy class configured
-	 * via config/app.php's security_header_policy or SecurityHeadersAspect's
-	 * policyClass parameter.
+	 * security-related headers. Implemented by the built-in tiers in
+	 * Quellabs\Canvas\Security\Policies (Basic/Medium/Strict) and by any
+	 * application-specific policy class configured via config/app.php's
+	 * security_header_policy or SecurityHeadersAspect's policyClass parameter.
 	 */
 	interface SecurityHeaderPolicyInterface {
 

@@ -5,6 +5,7 @@
 	use Quellabs\Canvas\AOP\Contracts\AfterAspectInterface;
 	use Quellabs\Canvas\Kernel;
 	use Quellabs\Canvas\Routing\Contracts\MethodContextInterface;
+	use Quellabs\Canvas\Security\Policies\BasicSecurityHeaderPolicy;
 	use Symfony\Component\HttpFoundation\Response;
 
 	/**
@@ -13,7 +14,7 @@
 	 * Adds security-related HTTP headers to protect against common attacks, via
 	 * a SecurityHeaderPolicyInterface: config/app.php's security_header_policy by
 	 * default, or the $policyClass given here to override it for this route only.
-	 * Falls back to the basic built-in SecurityHeaderPolicy if neither is set.
+	 * Falls back to the basic built-in BasicSecurityHeaderPolicy if neither is set.
 	 *
 	 * As an AfterAspectInterface, this only runs on a matched route (including a
 	 * before-aspect short circuit on that route, which AspectDispatcher still runs
@@ -46,7 +47,7 @@
 				$policy = $kernel->getDefaultSecurityHeaderPolicy();
 			}
 
-			$this->policy = $policy ?? new SecurityHeaderPolicy();
+			$this->policy = $policy ?? new BasicSecurityHeaderPolicy();
 		}
 
 		/**

@@ -5,7 +5,7 @@
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\Canvas\Kernel;
 	use Quellabs\Canvas\Routing\Contracts\MethodContextInterface;
-	use Quellabs\Canvas\Security\SecurityHeaderPolicy;
+	use Quellabs\Canvas\Security\Policies\BasicSecurityHeaderPolicy;
 	use Quellabs\Canvas\Security\SecurityHeadersAspect;
 	use Quellabs\DependencyInjection\Container;
 	use Symfony\Component\HttpFoundation\Request;
@@ -14,7 +14,7 @@
 	/**
 	 * Unit tests for SecurityHeadersAspect's policy resolution: a $policyClass
 	 * override, the kernel's application-wide default, or a fallback to the
-	 * basic built-in SecurityHeaderPolicy when neither is set.
+	 * basic built-in BasicSecurityHeaderPolicy when neither is set.
 	 */
 	class SecurityHeadersAspectTest extends TestCase {
 
@@ -25,7 +25,7 @@
 		}
 
 		public function testUsesTheKernelsApplicationWideDefaultWhenNoOverrideIsGiven(): void {
-			$policy = new SecurityHeaderPolicy(frameOptions: 'DENY');
+			$policy = new BasicSecurityHeaderPolicy(frameOptions: 'DENY');
 
 			$kernel = $this->createStub(Kernel::class);
 			$kernel->method('getDefaultSecurityHeaderPolicy')->willReturn($policy);
@@ -49,16 +49,16 @@
 		}
 
 		public function testPolicyClassOverridesTheKernelsDefault(): void {
-			$override = new SecurityHeaderPolicy(frameOptions: 'ALLOW-FROM');
+			$override = new BasicSecurityHeaderPolicy(frameOptions: 'ALLOW-FROM');
 
 			$container = $this->createStub(Container::class);
-			$container->method('make')->with(SecurityHeaderPolicy::class)->willReturn($override);
+			$container->method('make')->with(BasicSecurityHeaderPolicy::class)->willReturn($override);
 
 			$kernel = $this->createStub(Kernel::class);
 			$kernel->method('getDependencyInjector')->willReturn($container);
-			$kernel->method('getDefaultSecurityHeaderPolicy')->willReturn(new SecurityHeaderPolicy(frameOptions: 'DENY'));
+			$kernel->method('getDefaultSecurityHeaderPolicy')->willReturn(new BasicSecurityHeaderPolicy(frameOptions: 'DENY'));
 
-			$aspect = new SecurityHeadersAspect($kernel, SecurityHeaderPolicy::class);
+			$aspect = new SecurityHeadersAspect($kernel, BasicSecurityHeaderPolicy::class);
 			$response = new Response();
 			$aspect->after($this->makeContext(), $response);
 

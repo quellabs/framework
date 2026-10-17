@@ -3,24 +3,24 @@
 	namespace Quellabs\Canvas\Tests\Security;
 
 	use PHPUnit\Framework\TestCase;
-	use Quellabs\Canvas\Security\SecurityHeaderPolicy;
+	use Quellabs\Canvas\Security\Policies\BasicSecurityHeaderPolicy;
 	use Quellabs\Canvas\Security\SecurityHeaderPolicyInterface;
 	use Symfony\Component\HttpFoundation\Request;
 	use Symfony\Component\HttpFoundation\Response;
 
 	/**
-	 * Unit tests for SecurityHeaderPolicy, the basic built-in SecurityHeaderPolicyInterface
+	 * Unit tests for BasicSecurityHeaderPolicy, the basic built-in SecurityHeaderPolicyInterface
 	 * implementation shared between SecurityHeadersAspect (per-route) and DefaultErrorHandler
 	 * (application-wide) as their default.
 	 */
-	class SecurityHeaderPolicyTest extends TestCase {
+	class BasicSecurityHeaderPolicyTest extends TestCase {
 
 		public function testImplementsThePolicyInterface(): void {
-			$this->assertInstanceOf(SecurityHeaderPolicyInterface::class, new SecurityHeaderPolicy());
+			$this->assertInstanceOf(SecurityHeaderPolicyInterface::class, new BasicSecurityHeaderPolicy());
 		}
 
 		public function testDefaultsAddTheExpectedHeaders(): void {
-			$policy = new SecurityHeaderPolicy();
+			$policy = new BasicSecurityHeaderPolicy();
 			$response = new Response();
 
 			$policy->apply(Request::create('/'), $response);
@@ -34,7 +34,7 @@
 		}
 
 		public function testHstsIsOnlyAddedOverHttps(): void {
-			$policy = new SecurityHeaderPolicy(hstsMaxAge: 1000, hstsIncludeSubdomains: true);
+			$policy = new BasicSecurityHeaderPolicy(hstsMaxAge: 1000, hstsIncludeSubdomains: true);
 
 			$httpResponse = new Response();
 			$policy->apply(Request::create('http://example.test/'), $httpResponse);
@@ -48,7 +48,7 @@
 		}
 
 		public function testHstsPreloadIsAppendedWhenEnabled(): void {
-			$policy = new SecurityHeaderPolicy(hstsMaxAge: 1000, hstsIncludeSubdomains: true, hstsPreload: true);
+			$policy = new BasicSecurityHeaderPolicy(hstsMaxAge: 1000, hstsIncludeSubdomains: true, hstsPreload: true);
 
 			$request = Request::create('https://example.test/');
 			$request->server->set('HTTPS', 'on');
@@ -60,7 +60,7 @@
 		}
 
 		public function testZeroHstsMaxAgeDisablesHsts(): void {
-			$policy = new SecurityHeaderPolicy(hstsMaxAge: 0);
+			$policy = new BasicSecurityHeaderPolicy(hstsMaxAge: 0);
 
 			$request = Request::create('https://example.test/');
 			$request->server->set('HTTPS', 'on');
@@ -72,7 +72,7 @@
 		}
 
 		public function testCspIsAddedOnlyWhenConfigured(): void {
-			$policy = new SecurityHeaderPolicy(csp: "default-src 'self'");
+			$policy = new BasicSecurityHeaderPolicy(csp: "default-src 'self'");
 			$response = new Response();
 
 			$policy->apply(Request::create('/'), $response);
@@ -81,7 +81,7 @@
 		}
 
 		public function testExistingHeadersAreNeverOverwritten(): void {
-			$policy = new SecurityHeaderPolicy(frameOptions: 'DENY', referrerPolicy: 'no-referrer');
+			$policy = new BasicSecurityHeaderPolicy(frameOptions: 'DENY', referrerPolicy: 'no-referrer');
 			$response = new Response();
 			$response->headers->set('X-Frame-Options', 'SAMEORIGIN');
 			$response->headers->set('Referrer-Policy', 'origin');

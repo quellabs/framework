@@ -1,15 +1,15 @@
 <?php
 
-	namespace Quellabs\Canvas\Security;
+	namespace Quellabs\Canvas\Security\Policies;
 
 	/**
 	 * The medium tier of Canvas's three built-in SecurityHeaderPolicyInterface
-	 * implementations (SecurityHeaderPolicy / medium / StrictSecurityHeaderPolicy).
-	 * Tightens SecurityHeaderPolicy's defaults - a same-origin Content-Security-Policy
+	 * implementations (BasicSecurityHeaderPolicy / medium / StrictSecurityHeaderPolicy).
+	 * Tightens BasicSecurityHeaderPolicy's defaults - a same-origin Content-Security-Policy
 	 * baseline, a 2-year HSTS, and a tighter Referrer-Policy - without denying framing
-	 * or adding headers SecurityHeaderPolicy doesn't already model.
+	 * or adding headers BasicSecurityHeaderPolicy doesn't already model.
 	 */
-	class MediumSecurityHeaderPolicy extends SecurityHeaderPolicy {
+	class MediumSecurityHeaderPolicy extends BasicSecurityHeaderPolicy {
 
 		/**
 		 * Constructor

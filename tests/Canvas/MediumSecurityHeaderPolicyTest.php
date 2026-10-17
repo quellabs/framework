@@ -3,7 +3,7 @@
 	namespace Quellabs\Canvas\Tests\Security;
 
 	use PHPUnit\Framework\TestCase;
-	use Quellabs\Canvas\Security\MediumSecurityHeaderPolicy;
+	use Quellabs\Canvas\Security\Policies\MediumSecurityHeaderPolicy;
 	use Quellabs\Canvas\Security\SecurityHeaderPolicyInterface;
 	use Symfony\Component\HttpFoundation\Request;
 	use Symfony\Component\HttpFoundation\Response;

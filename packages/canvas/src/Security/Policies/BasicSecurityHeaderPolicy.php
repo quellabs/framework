@@ -1,7 +1,8 @@
 <?php
 
-	namespace Quellabs\Canvas\Security;
+	namespace Quellabs\Canvas\Security\Policies;
 
+	use Quellabs\Canvas\Security\SecurityHeaderPolicyInterface;
 	use Symfony\Component\HttpFoundation\Request;
 	use Symfony\Component\HttpFoundation\Response;
 
@@ -16,7 +17,7 @@
 	 * Every add* method only sets a header when one isn't already present, so
 	 * a route-specific value set earlier always wins over this policy's own.
 	 */
-	class SecurityHeaderPolicy implements SecurityHeaderPolicyInterface {
+	class BasicSecurityHeaderPolicy implements SecurityHeaderPolicyInterface {
 
 		/** @var string X-Frame-Options value (DENY, SAMEORIGIN, or ALLOW-FROM) */
 		private string $frameOptions;

@@ -7,7 +7,7 @@
 	use Quellabs\Canvas\Exceptions\MethodNotAllowedException;
 	use Quellabs\Canvas\Exceptions\RateLimitException;
 	use Quellabs\Canvas\Exceptions\RouteNotFoundException;
-	use Quellabs\Canvas\Security\SecurityHeaderPolicy;
+	use Quellabs\Canvas\Security\Policies\BasicSecurityHeaderPolicy;
 	use Symfony\Component\HttpFoundation\Request;
 
 	/**
@@ -67,7 +67,7 @@
 		}
 
 		public function testSecurityHeaderPolicyIsAppliedWhenConfigured(): void {
-			$handler = new DefaultErrorHandler(new SecurityHeaderPolicy(frameOptions: 'DENY'));
+			$handler = new DefaultErrorHandler(new BasicSecurityHeaderPolicy(frameOptions: 'DENY'));
 			$exception = new RouteNotFoundException('Route not found');
 
 			$response = $handler->handle($exception, Request::create('/missing'), false);
