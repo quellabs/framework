@@ -58,7 +58,6 @@
 	 * The resolver maintains full backward compatibility while providing significant
 	 * performance improvements, especially for applications with large numbers of routes.
 	 *
-	 * @phpstan-import-type RouteDefinition from RouteTypes
 	 * @phpstan-import-type RouteIndex from RouteTypes
 	 * @phpstan-import-type MatchedRoute from RouteTypes
 	 */
@@ -265,14 +264,12 @@
 				return $this->routeIndex;
 			}
 			
-			// Get all routes (from cache or fresh build)
-			/** @var list<RouteDefinition> $allRoutes */
-			$allRoutes = $this->cacheManager->getCachedRoutes(function () {
-				return $this->routeDiscovery->buildRoutesFromControllers();
+			// Get the built index itself (from cache or fresh build), not just the raw
+			// route list — this avoids rebuilding the index on every single request
+			return $this->routeIndex = $this->cacheManager->getCachedRouteIndex(function () {
+				$allRoutes = $this->routeDiscovery->buildRoutesFromControllers();
+				return $this->candidateFilter->buildRouteIndex($allRoutes);
 			});
-			
-			// Build and cache the index
-			return $this->routeIndex = $this->candidateFilter->buildRouteIndex($allRoutes);
 		}
 		
 		/**
