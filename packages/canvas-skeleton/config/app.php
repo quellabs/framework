@@ -27,11 +27,9 @@
 		
 		// Whether to match routes with trailing slashes
 		'match_trailing_slashes'  => false,
-
-		// Class implementing SecurityHeaderPolicyInterface, applied by both
-		// SecurityHeadersAspect (unless a route overrides it via policyClass)
-		// and DefaultErrorHandler. Set to null to disable the default entirely.
-		// Canvas ships three tiers in the Quellabs\Canvas\Security\Policies namespace:
-		// BasicSecurityHeaderPolicy, MediumSecurityHeaderPolicy, and StrictSecurityHeaderPolicy.
+		
+		// Default SecurityHeaderPolicyInterface implementation used by SecurityHeadersAspect
+		// (unless overridden per route) and DefaultErrorHandler. Set null to disable.
+		// Built-in policies: Basic, Medium, and Strict (Quellabs\Canvas\Security\Policies).
 		'security_header_policy'  => \Quellabs\Canvas\Security\Policies\BasicSecurityHeaderPolicy::class
 	];
