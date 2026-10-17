@@ -65,4 +65,32 @@
 
 			self::assertSame($params, $action->getParameters());
 		}
+
+		public function testLocalColumnsIsEmptyByDefault(): void {
+			$action = new ForeignKeyAction([]);
+
+			self::assertFalse($action->hasLocalColumns());
+			self::assertSame([], $action->getLocalColumns());
+		}
+
+		public function testLocalColumnsMustBeNonEmpty(): void {
+			$this->expectException(\InvalidArgumentException::class);
+			$this->expectExceptionMessage("'localColumns' must be a non-empty list");
+
+			new ForeignKeyAction(['localColumns' => []]);
+		}
+
+		public function testLocalColumnsEntriesMustBeNonEmptyStrings(): void {
+			$this->expectException(\InvalidArgumentException::class);
+			$this->expectExceptionMessage("'localColumns' entries must be non-empty strings");
+
+			new ForeignKeyAction(['localColumns' => ['orderTenantId', '']]);
+		}
+
+		public function testExplicitLocalColumnsIsHonoredInOrder(): void {
+			$action = new ForeignKeyAction(['localColumns' => ['orderTenantId', 'orderNumber']]);
+
+			self::assertTrue($action->hasLocalColumns());
+			self::assertSame(['orderTenantId', 'orderNumber'], $action->getLocalColumns());
+		}
 	}

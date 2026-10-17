@@ -64,4 +64,76 @@
 
 			self::assertSame($params, $fk->getParameters());
 		}
+
+		public function testColumnsCannotBeCombinedWithReferencedColumn(): void {
+			$this->expectException(\InvalidArgumentException::class);
+			$this->expectExceptionMessage("'columns' cannot be combined with 'referencedColumn'");
+
+			new ForeignKey([
+				'target'           => 'App\\Entities\\CustomerEntity',
+				'referencedColumn' => 'id',
+				'columns'          => ['customerId' => 'id'],
+			]);
+		}
+
+		public function testColumnsMustBeNonEmpty(): void {
+			$this->expectException(\InvalidArgumentException::class);
+			$this->expectExceptionMessage("'columns' must be a non-empty map");
+
+			new ForeignKey(['target' => 'App\\Entities\\CustomerEntity', 'columns' => []]);
+		}
+
+		public function testColumnsKeysMustBeNonEmptyStrings(): void {
+			$this->expectException(\InvalidArgumentException::class);
+			$this->expectExceptionMessage("'columns' keys must be non-empty local property names");
+
+			new ForeignKey(['target' => 'App\\Entities\\CustomerEntity', 'columns' => [0 => 'id']]);
+		}
+
+		public function testColumnsValuesMustBeNonEmptyStrings(): void {
+			$this->expectException(\InvalidArgumentException::class);
+			$this->expectExceptionMessage("'columns' values must be non-empty target property names");
+
+			new ForeignKey(['target' => 'App\\Entities\\CustomerEntity', 'columns' => ['customerId' => '']]);
+		}
+
+		public function testColumnsRejectsADuplicateTargetProperty(): void {
+			$this->expectException(\InvalidArgumentException::class);
+			$this->expectExceptionMessage("target property 'tenantId' is declared more than once");
+
+			new ForeignKey([
+				'target'  => 'App\\Entities\\OrderEntity',
+				'columns' => ['orderTenantId' => 'tenantId', 'orderNumber' => 'tenantId'],
+			]);
+		}
+
+		public function testSingleEntryColumnsBehavesLikeReferencedColumn(): void {
+			$fk = new ForeignKey([
+				'target'  => 'App\\Entities\\CustomerEntity',
+				'columns' => ['customerId' => 'id'],
+			]);
+
+			self::assertTrue($fk->hasColumns());
+			self::assertSame(['customerId' => 'id'], $fk->getColumns());
+			self::assertSame('id', $fk->getReferencedColumn());
+		}
+
+		public function testMultiEntryColumnsHasNoSingleReferencedColumn(): void {
+			$fk = new ForeignKey([
+				'target'  => 'App\\Entities\\OrderEntity',
+				'columns' => ['orderTenantId' => 'tenantId', 'orderNumber' => 'number'],
+			]);
+
+			self::assertTrue($fk->hasColumns());
+			self::assertSame(['orderTenantId' => 'tenantId', 'orderNumber' => 'number'], $fk->getColumns());
+			self::assertNull($fk->getReferencedColumn());
+		}
+
+		public function testNoColumnsAndNoReferencedColumnLeavesBothEmpty(): void {
+			$fk = new ForeignKey(['target' => 'App\\Entities\\CustomerEntity']);
+
+			self::assertFalse($fk->hasColumns());
+			self::assertSame([], $fk->getColumns());
+			self::assertNull($fk->getReferencedColumn());
+		}
 	}

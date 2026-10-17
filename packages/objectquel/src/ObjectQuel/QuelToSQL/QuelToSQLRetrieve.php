@@ -318,7 +318,7 @@
 			$primaryKeyInfo = PrimaryKeyInfo::fromRetrieve($retrieve, $this->entityStore);
 
 			try {
-				$visitor = new DetectPrimaryKeyInClause($primaryKeyInfo->range, $primaryKeyInfo->primaryKey);
+				$visitor = new DetectPrimaryKeyInClause($primaryKeyInfo->range, $primaryKeyInfo->primaryKeys[0]);
 				$retrieve->getConditions()?->accept($visitor);
 				return $this->getSortDefault($retrieve);
 			} catch (DetectPrimaryKeyInClauseException $exception) {

@@ -72,6 +72,25 @@
 			);
 		}
 
+		/**
+		 * A composite local column list with no referenced column list
+		 * resolves to the target's composite primary key, in order, since
+		 * the column counts match.
+		 */
+		public function testEmbeddedCompositeForeignKeyWithNoColumnListResolvesTheReferencedTablesCompositePrimaryKey(): void {
+			$capturedSql = [];
+			$connection = $this->mockConnection($capturedSql);
+			$connection->method('getPrimaryKeyColumns')->with('Orders')->willReturn(['tenant_id', 'number']);
+
+			(new CreateTableExecutor($connection, new FakePlatformCapabilities('mysql')))
+				->execute($this->parse('create OrderLines (order_tenant_id = integer, order_number = string(20), foreign key (order_tenant_id, order_number) references Orders)'), new ExecutionContext([]));
+
+			self::assertSame(
+				['CREATE TABLE `OrderLines` (`order_tenant_id` INT NOT NULL, `order_number` VARCHAR(20) NOT NULL, CONSTRAINT `fk_OrderLines_order_tenant_id_order_number` FOREIGN KEY (`order_tenant_id`, `order_number`) REFERENCES `Orders` (`tenant_id`, `number`) ON DELETE RESTRICT ON UPDATE NO ACTION) ENGINE=InnoDB'],
+				$capturedSql
+			);
+		}
+
 		public function testEmbeddedForeignKeyWithNoColumnListRejectsATargetWithNoPrimaryKey(): void {
 			$capturedSql = [];
 			$connection = $this->mockConnection($capturedSql);
