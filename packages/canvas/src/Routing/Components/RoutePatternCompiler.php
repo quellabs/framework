@@ -95,7 +95,8 @@
 		 * processing overhead.
 		 * @param string $routePath The original route path pattern (e.g., "/user/{id}/posts")
 		 * @return list<CompiledSegment> Array of compiled segment objects with pre-processed matching information
-		 * @throws InvalidRouteDefinitionException If a segment declares the same variable name more than once
+		 * @throws InvalidRouteDefinitionException If the same variable name is bound more than once,
+		 *         whether within one segment ("{id}-{id}") or across separate segments ("/{id}/{id}")
 		 */
 		public function compileRoute(string $routePath): array {
 			// Parse the route path into individual segments
@@ -140,10 +141,59 @@
 				$updated = [...$compiledSegments[$i], 'remaining_segments_count' => $remaining];
 				$compiledSegments[$i] = $updated;
 			}
-			
+
+			// A segment-local duplicate (e.g. "{id}-{id}") is already rejected while that
+			// segment is being compiled, since it breaks the segment's own regex. A duplicate
+			// across separate segments (e.g. "/{id}/{id}") compiles each segment just fine —
+			// the collision only shows up once both segments are matched and both write into
+			// the same variable — so it has to be checked here, across the whole route.
+			$this->assertNoDuplicateVariableNames($routePath, $compiledSegments);
+
 			return $compiledSegments;
 		}
-		
+
+		/**
+		 * Ensures no two segments of a compiled route bind the same variable name.
+		 * @param string $routePath Original route path, used only for the error message
+		 * @param list<CompiledSegment> $segments
+		 * @throws InvalidRouteDefinitionException If a variable name is bound by more than one segment
+		 */
+		private function assertNoDuplicateVariableNames(string $routePath, array $segments): void {
+			$seenNames = [];
+
+			foreach ($segments as $segment) {
+				foreach ($this->namedVariablesOf($segment) as $name) {
+					if (isset($seenNames[$name])) {
+						throw new InvalidRouteDefinitionException(
+							"Duplicate variable name \"{$name}\" in route \"{$routePath}\": " .
+							"each variable in a route must have a unique name."
+						);
+					}
+
+					$seenNames[$name] = true;
+				}
+			}
+		}
+
+		/**
+		 * Returns the real, user-chosen variable names a compiled segment binds.
+		 * Excludes '*' and '**', which are sentinels for anonymous wildcards
+		 * (never a name the route author actually chose) rather than real names.
+		 * @param CompiledSegment $segment
+		 * @return list<string>
+		 */
+		private function namedVariablesOf(array $segment): array {
+			if ($segment['type'] === SegmentTypes::PARTIAL_VARIABLE) {
+				$names = $segment['variable_names'];
+			} elseif ($segment['variable_name'] !== null) {
+				$names = [$segment['variable_name']];
+			} else {
+				$names = [];
+			}
+
+			return array_values(array_filter($names, static fn(string $name): bool => $name !== '*' && $name !== '**'));
+		}
+
 		/**
 		 * Takes a route segment like "/users/{id:int}/posts/{slug}" and converts it
 		 * into a regex pattern for matching URLs, extracting variable names and their

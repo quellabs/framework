@@ -295,4 +295,44 @@
 			$this->assertContains('id', $segments[0]['variable_names']);
 			$this->assertContains('slug', $segments[0]['variable_names']);
 		}
+
+		// -------------------------------------------------------------------------
+		// compileRoute — duplicate variable names across separate segments
+		// -------------------------------------------------------------------------
+
+		public function testCompileRouteRejectsDuplicateVariableNameAcrossSegments(): void {
+			// Each "{id}" segment compiles fine on its own — the collision only
+			// exists once both segments are matched and both try to bind "id".
+			$this->expectException(InvalidRouteDefinitionException::class);
+			$this->compiler->compileRoute('/{id}/{id}');
+		}
+
+		public function testCompileRouteRejectsDuplicateVariableNameAcrossNonAdjacentSegments(): void {
+			$this->expectException(InvalidRouteDefinitionException::class);
+			$this->compiler->compileRoute('/{id}/posts/{id}');
+		}
+
+		public function testCompileRouteRejectsDuplicateVariableNameBetweenPlainAndPartialSegments(): void {
+			$this->expectException(InvalidRouteDefinitionException::class);
+			$this->compiler->compileRoute('/{id}/item-{id}');
+		}
+
+		public function testCompileRouteAllowsDistinctVariableNamesAcrossSegments(): void {
+			$segments = $this->compiler->compileRoute('/users/{id}/posts/{postId}');
+			$this->assertSame('id', $segments[1]['variable_name']);
+			$this->assertSame('postId', $segments[3]['variable_name']);
+		}
+
+		public function testCompileRouteAllowsRepeatedAnonymousSingleWildcards(): void {
+			// Bare "*" segments are anonymous and discarded by the matching strategy —
+			// repeating them is not a named-variable collision.
+			$segments = $this->compiler->compileRoute('/files/*/*');
+			$this->assertCount(3, $segments);
+		}
+
+		public function testCompileRouteAllowsMultiWildcardFollowedByStaticSegment(): void {
+			// "**" alone is the anonymous multi-wildcard sentinel, not a user-chosen name
+			$segments = $this->compiler->compileRoute('/files/**/README.md');
+			$this->assertCount(3, $segments);
+		}
 	}
