@@ -3,6 +3,7 @@
 	namespace Quellabs\Canvas\Tests\Routing;
 	
 	use PHPUnit\Framework\TestCase;
+	use Quellabs\Canvas\Exceptions\InvalidRouteDefinitionException;
 	use Quellabs\Canvas\Routing\Components\RoutePatternCompiler;
 	use Quellabs\Canvas\Routing\Components\RouteSegmentAnalyzer;
 	use Quellabs\Canvas\Routing\SegmentTypes;
@@ -12,9 +13,11 @@
 	 *
 	 * Covers:
 	 * - parseRoutePath: path string → segment list
-	 * - resolveTypeToRegex: type name → regex string
 	 * - compileRoute: full compilation of route patterns into CompiledSegment arrays
 	 * - compilePartialSegmentPattern: partial segment regex generation
+	 *
+	 * Type constraint resolution (TypeConstraintResolver::resolveTypeToRegex) is
+	 * covered separately in TypeConstraintResolverTest.
 	 */
 	class RoutePatternCompilerTest extends TestCase {
 		
@@ -51,45 +54,6 @@
 		
 		public function testParseRoutePathPreservesVariableSegments(): void {
 			$this->assertSame(['users', '{id}', 'posts'], $this->compiler->parseRoutePath('/users/{id}/posts'));
-		}
-		
-		// -------------------------------------------------------------------------
-		// resolveTypeToRegex
-		// -------------------------------------------------------------------------
-		
-		public function testResolveTypeToRegexForInt(): void {
-			$this->assertSame('\d+', $this->compiler->resolveTypeToRegex('int'));
-		}
-		
-		public function testResolveTypeToRegexForInteger(): void {
-			$this->assertSame('\d+', $this->compiler->resolveTypeToRegex('integer'));
-		}
-		
-		public function testResolveTypeToRegexForAlpha(): void {
-			$this->assertSame('[a-zA-Z]+', $this->compiler->resolveTypeToRegex('alpha'));
-		}
-		
-		public function testResolveTypeToRegexForSlug(): void {
-			$this->assertSame('[a-zA-Z0-9-]+', $this->compiler->resolveTypeToRegex('slug'));
-		}
-		
-		public function testResolveTypeToRegexForUuid(): void {
-			$pattern = $this->compiler->resolveTypeToRegex('uuid');
-			// UUID pattern must match a valid UUID
-			$this->assertMatchesRegularExpression('/' . $pattern . '/', 'f47ac10b-58cc-4372-a567-0e02b2c3d479');
-		}
-		
-		public function testResolveTypeToRegexForSingleWildcard(): void {
-		$this->assertSame('[^\/]*', $this->compiler->resolveTypeToRegex('*'));
-		}
-		
-		public function testResolveTypeToRegexForMultiWildcard(): void {
-			$this->assertSame('.*', $this->compiler->resolveTypeToRegex('**'));
-		}
-		
-		public function testResolveTypeToRegexFallsBackToDefaultForUnknownType(): void {
-			// Unknown types fall back to [^/]+ (match any single segment)
-		$this->assertSame('[^\/]+', $this->compiler->resolveTypeToRegex('unknowntype'));
 		}
 		
 		// -------------------------------------------------------------------------
@@ -296,5 +260,39 @@
 		public function testCompilePartialSegmentPatternRegexRejectsNonMatchingValue(): void {
 			$result = $this->compiler->compilePartialSegmentPattern('{name}.json');
 			$this->assertDoesNotMatchRegularExpression($result['pattern'], 'report.xml');
+		}
+
+		// -------------------------------------------------------------------------
+		// compilePartialSegmentPattern / compileRoute — duplicate variable names
+		// -------------------------------------------------------------------------
+
+		public function testCompilePartialSegmentPatternRejectsDuplicateVariableName(): void {
+			$this->expectException(InvalidRouteDefinitionException::class);
+			$this->compiler->compilePartialSegmentPattern('item-{id}-{id}');
+		}
+
+		public function testCompilePartialSegmentPatternRejectsDuplicateTypedVariableName(): void {
+			$this->expectException(InvalidRouteDefinitionException::class);
+			$this->compiler->compilePartialSegmentPattern('item-{id:int}-{id:int}');
+		}
+
+		public function testCompileRouteRejectsDuplicateVariableNameWithLiteralPrefix(): void {
+			// A literal prefix routes this through the partial-variable compiler
+			$this->expectException(InvalidRouteDefinitionException::class);
+			$this->compiler->compileRoute('/item-{id}-{id}');
+		}
+
+		public function testCompileRouteRejectsDuplicateVariableNameWithNoLiteralText(): void {
+			// No literal prefix/suffix — must still be classified as a partial
+			// variable (not a single complete "{...}" variable) and rejected
+			$this->expectException(InvalidRouteDefinitionException::class);
+			$this->compiler->compileRoute('/{id}-{id}');
+		}
+
+		public function testCompileRouteAllowsDistinctVariableNamesInOneSegment(): void {
+			$segments = $this->compiler->compileRoute('/{id}-{slug}');
+			$this->assertSame(SegmentTypes::PARTIAL_VARIABLE, $segments[0]['type']);
+			$this->assertContains('id', $segments[0]['variable_names']);
+			$this->assertContains('slug', $segments[0]['variable_names']);
 		}
 	}

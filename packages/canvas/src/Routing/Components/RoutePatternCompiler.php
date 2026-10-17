@@ -1,9 +1,11 @@
 <?php
 	
 	namespace Quellabs\Canvas\Routing\Components;
-	
+
+	use Quellabs\Canvas\Exceptions\InvalidRouteDefinitionException;
 	use Quellabs\Canvas\Routing\RouteTypes;
 	use Quellabs\Canvas\Routing\SegmentTypes;
+	use Quellabs\Canvas\Routing\TypeConstraintResolver;
 	
 	/**
 	 * RoutePatternCompiler
@@ -77,42 +79,6 @@
 		
 		private RouteSegmentAnalyzer $segmentAnalyzer;
 		
-		// Static type pattern mappings for variable validation
-		private const array TYPE_PATTERNS = [
-			// Numeric types
-			'int'          => '\d+',
-			'integer'      => '\d+',
-			
-			// Text types
-			'alpha'        => '[a-zA-Z]+',
-			'alnum'        => '[a-zA-Z0-9]+',
-			'alphanumeric' => '[a-zA-Z0-9]+',
-			'word'         => '\w+',
-			'slug'         => '[a-zA-Z0-9-]+',
-			
-			// Identifiers
-			'uuid'         => '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}',
-			
-			// Web-specific
-			'email'        => '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}',
-			
-			// Version/Code patterns
-			'hex'          => '[a-fA-F0-9]+',
-			'base64'       => '[a-zA-Z0-9+/=]+',
-			
-			// Common business patterns
-			'sku'          => '[A-Z0-9\-]+',
-			'isbn'         => '\d{3}-\d{1,5}-\d{1,7}-\d{1,7}-\d{1}',
-			'phone'        => '\+?[0-9\-\s\(\)]+',
-			'postal'       => '[A-Z0-9\s\-]+',
-			
-			// Locale/Language
-			'locale'       => '[a-z]{2}(_[A-Z]{2})?',
-			'language'     => '[a-z]{2,3}',
-			'country'      => '[A-Z]{2}',
-			'currency'     => '[A-Z]{3}',
-		];
-		
 		/**
 		 * RouteSegmentAnalyzer constructor
 		 * @param RouteSegmentAnalyzer $segmentAnalyzer
@@ -129,6 +95,7 @@
 		 * processing overhead.
 		 * @param string $routePath The original route path pattern (e.g., "/user/{id}/posts")
 		 * @return list<CompiledSegment> Array of compiled segment objects with pre-processed matching information
+		 * @throws InvalidRouteDefinitionException If a segment declares the same variable name more than once
 		 */
 		public function compileRoute(string $routePath): array {
 			// Parse the route path into individual segments
@@ -183,6 +150,7 @@
 		 * corresponding regex patterns.
 		 * @param string $segment The route segment to compile (e.g., "/users/{id:\d+}")
 		 * @return PartialSegmentResult|null Returns compiled pattern result or null on failure
+		 * @throws InvalidRouteDefinitionException If the segment declares the same variable name more than once
 		 */
 		public function compilePartialSegmentPattern(string $segment): ?array {
 			// Initialize compilation state variables
@@ -191,6 +159,7 @@
 			$literalPrefix = '';            // Literal text before any variables
 			$literalSuffix = '';            // Literal text after the last variable
 			$variableNames = [];            // Array of variable names found in the segment
+			$usedGroupNames = [];           // Sanitized capture-group names seen so far, to catch duplicates
 			$hasFoundVariable = false;      // Flag to track if we've encountered any variables
 			$variableInfo = [];             // Detailed information about each variable
 			$segmentLength = strlen($segment);
@@ -214,7 +183,23 @@
 					// Parse the variable definition to extract name and regex pattern
 					// Example: "id:\d+" becomes ['name' => 'id', 'pattern' => '\d+']
 					$variableInformation = $this->parseVariableDefinition($variableContent);
-					
+
+					// Reject a repeated variable name within the same segment (e.g. "{id}-{id}").
+					// Two capture groups with the same name produce an invalid regex, and even if
+					// they didn't, there's no sound way to decide which occurrence wins — this is
+					// a route-definition error, so fail loudly here instead of letting the regex
+					// compile silently fail and the route fall back to a broken match at request time.
+					$groupName = $this->sanitizeCaptureGroupName($variableInformation['name']);
+
+					if (in_array($groupName, $usedGroupNames, true)) {
+						throw new InvalidRouteDefinitionException(
+							"Duplicate variable name \"{$variableInformation['name']}\" in route segment \"{$segment}\": " .
+							"each variable in a segment must have a unique name."
+						);
+					}
+
+					$usedGroupNames[] = $groupName;
+
 					// Store variable metadata for later use
 					$hasFoundVariable = true;
 					$variableNames[] = $variableInformation['name'];
@@ -261,21 +246,6 @@
 				'literal_suffix' => $literalSuffix,   // Static text after variables
 				'variable_info'  => $variableInfo     // Detailed variable metadata
 			];
-		}
-		
-		/**
-		 * Optimized regex lookup using cached patterns.
-		 * Static because PartialVariableStrategy also calls it at match time to
-		 * re-validate a type constraint when compilation fell back to legacy parsing.
-		 * @param string $type The type constraint (int, alpha, uuid, etc.)
-		 * @return string The corresponding regex pattern
-		 */
-		public static function resolveTypeToRegex(string $type): string {
-			return match ($type) {
-				'*' => '[^\/]*',     // Single wildcard - any chars except path separator
-				'**' => '.*',        // Multi-wildcard - any chars including path separators
-				default => self::TYPE_PATTERNS[$type] ?? '[^\/]+'
-			};
 		}
 		
 		/**
@@ -327,7 +297,7 @@
 			// Typed variable (e.g. {id:int}, {path:**})
 			if (str_contains($segment, ':')) {
 				$parts = explode(':', trim($segment, '{}'), 2);
-				$pattern = self::resolveTypeToRegex($parts[1]);
+				$pattern = TypeConstraintResolver::resolveTypeToRegex($parts[1]);
 				$isMultiWildcard = in_array($parts[1], ['**', '.*'], true); // {path:**} behaves like a multi-wildcard
 			} else {
 				// Untyped variable: matches any single segment
@@ -406,6 +376,7 @@
 		 * Build a CompiledSegment for a partial-variable segment like "user-{id}-profile"
 		 * @param string $segment The original segment text
 		 * @return CompiledSegment
+		 * @throws InvalidRouteDefinitionException If the segment declares the same variable name more than once
 		 */
 		private function buildPartialVariableSegment(string $segment): array {
 			// Defaults used when compilePartialSegmentPattern() returns null (malformed segment).
@@ -456,8 +427,8 @@
 		 */
 		private function buildVariablePattern(array $varInfo): string {
 			// Ensure the variable name is safe for regex
-			$safeVarName = preg_replace('/[^a-zA-Z0-9_]/', '_', $varInfo['name']);
-			
+			$safeVarName = $this->sanitizeCaptureGroupName($varInfo['name']);
+
 			// Regular variable with custom or default regex
 			if (!$varInfo['is_wildcard']) {
 				return "(?<{$safeVarName}>{$varInfo['regex']})";
@@ -471,7 +442,18 @@
 			// Single wildcard (*) - matches within single path segment
 			return "(?<{$safeVarName}>[^\/]*)"; // Direct pattern instead of using varInfo['regex']
 		}
-		
+
+		/**
+		 * Sanitizes a variable name into a valid PCRE named-capture-group name.
+		 * Used both to build each group and to detect collisions between two
+		 * variables that would otherwise produce the same group name.
+		 * @param string $name Raw variable name
+		 * @return string Name safe for use in (?<name>...)
+		 */
+		private function sanitizeCaptureGroupName(string $name): string {
+			return preg_replace('/[^a-zA-Z0-9_]/', '_', $name) ?? $name;
+		}
+
 		/**
 		 * Processes a literal character and updates the pattern and prefix/suffix tracking.
 		 * @param string $char The literal character to process
@@ -663,7 +645,7 @@
 			return [
 				'name'              => $parts[0],
 				'clean_name'        => $parts[0],
-				'regex'             => self::resolveTypeToRegex($parts[1]),
+				'regex'             => TypeConstraintResolver::resolveTypeToRegex($parts[1]),
 				'is_wildcard'       => false,
 				'is_multi_wildcard' => false,
 				'original_content'  => $content

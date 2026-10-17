@@ -2,10 +2,10 @@
 
 	namespace Quellabs\Canvas\Routing\Strategies;
 
-	use Quellabs\Canvas\Routing\Components\RoutePatternCompiler;
 	use Quellabs\Canvas\Routing\MatchingContext;
 	use Quellabs\Canvas\Routing\MatchResult;
 	use Quellabs\Canvas\Routing\RouteTypes;
+	use Quellabs\Canvas\Routing\TypeConstraintResolver;
 
 	/**
 	 * Strategy for matching URL segments containing partial variables.
@@ -200,7 +200,7 @@
 			// Enforce the type constraint manually: this path only runs because the
 			// compiled regex that would normally validate it could not be built.
 			if ($typeConstraint !== null) {
-				$typePattern = RoutePatternCompiler::resolveTypeToRegex($typeConstraint);
+				$typePattern = TypeConstraintResolver::resolveTypeToRegex($typeConstraint);
 
 				if (!preg_match('~^' . $typePattern . '$~', $variableValue)) {
 					return MatchResult::NO_MATCH;
