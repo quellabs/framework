@@ -15,9 +15,9 @@
 	use Symfony\Component\HttpFoundation\Request;
 
 	/**
-	 * Tests JsonApiController's write policy: allow-by-default once a setter
-	 * exists, isAttributeWritable() as the per-field override point, the hard
-	 * identifier guard, the no-setter-means-no-write rule, and the resource-
+	 * Tests JsonApiController's write policy: allow-by-default for any existing
+	 * property, isAttributeWritable() as the sole write gate (independent of
+	 * whether a setter exists), the hard primary-key guard, and the resource-
 	 * authorization hook. Uses a mocked EntityManager (metadata comes from a
 	 * real EntityStore over the fixture entity; persist/flush/find are
 	 * controlled per test) so these stay unit tests — nothing here touches a
@@ -91,7 +91,7 @@
 		}
 
 		// -------------------------------------------------------------------------
-		// validateAttributes(): allow-by-default once a setter exists
+		// validateAttributes(): allow-by-default for any existing property
 		// -------------------------------------------------------------------------
 
 		public function testFieldWithSetterIsWritableByDefaultWithNoConfiguration(): void {
@@ -201,23 +201,32 @@
 		}
 
 		// -------------------------------------------------------------------------
-		// No setter means no write — isAttributeWritable() is never even consulted
+		// Setter presence plays no role — isAttributeWritable() is the only gate
 		// -------------------------------------------------------------------------
 
-		public function testPropertyWithoutSetterIsIgnoredEvenWhenIsAttributeWritableAllowsEverything(): void {
+		public function testPropertyWithoutSetterIsWritableByDefaultViaReflection(): void {
 			$controller = $this->makeController();
-			$controller->isAttributeWritableCallback = fn() => true; // 'internalNotes' still has no setter
 			$entity = new TestProductEntity();
 
 			$response = $controller->callValidateAttributes($entity, ['internalNotes' => 'secret'], WriteOperation::Create);
 			$this->assertNull($response);
 
 			$controller->callMapAttributesToEntity($entity, ['internalNotes' => 'secret']);
-			$this->assertNull($entity->getInternalNotes());
+			$this->assertSame('secret', $entity->getInternalNotes());
+		}
+
+		public function testPropertyWithoutSetterCanStillBeDeniedByIsAttributeWritable(): void {
+			$controller = $this->makeController();
+			$controller->deniedFieldsForCreate = ['internalNotes'];
+
+			$response = $controller->callValidateAttributes(new TestProductEntity(), ['internalNotes' => 'secret'], WriteOperation::Create);
+
+			$this->assertNotNull($response);
+			$this->assertSame(403, $response->getStatusCode());
 		}
 
 		// -------------------------------------------------------------------------
-		// mapAttributesToEntity(): setter is the only write mechanism
+		// mapAttributesToEntity(): setter when present, reflection otherwise
 		// -------------------------------------------------------------------------
 
 		public function testMapAttributesToEntityUsesTheSetterWhenOneExists(): void {
@@ -229,13 +238,13 @@
 			$this->assertSame('Widget', $entity->getName());
 		}
 
-		public function testMapAttributesToEntityIgnoresAFieldWithoutASetter(): void {
+		public function testMapAttributesToEntityUsesReflectionWhenNoSetterExists(): void {
 			$controller = $this->makeController();
 			$entity = new TestProductEntity();
 
 			$controller->callMapAttributesToEntity($entity, ['internalNotes' => 'secret']);
 
-			$this->assertNull($entity->getInternalNotes());
+			$this->assertSame('secret', $entity->getInternalNotes());
 		}
 
 		public function testMapAttributesToEntityIgnoresAKeyThatIsNotAPropertyAtAll(): void {

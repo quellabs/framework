@@ -6,6 +6,7 @@
 	use Quellabs\Canvas\Controllers\WriteOperation;
 	use Quellabs\Canvas\Tests\Fixtures\Serializers\StubJsonApiSerializer;
 	use Quellabs\DependencyInjection\Container;
+	use Quellabs\ObjectQuel\ReflectionManagement\PropertyHandler;
 	use Quellabs\ObjectQuel\Serialization\Serializers\JsonApiSerializer;
 	use Symfony\Component\HttpFoundation\JsonResponse;
 	use Symfony\Component\HttpFoundation\Request;
@@ -36,7 +37,7 @@
 
 		public function __construct(Container $container, string $entityClass) {
 			$this->entityClass = $entityClass;
-			parent::__construct($container);
+			parent::__construct($container, new PropertyHandler());
 		}
 
 		protected function createSerializer(): JsonApiSerializer {

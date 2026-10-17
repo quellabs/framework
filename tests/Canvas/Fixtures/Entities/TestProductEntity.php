@@ -10,7 +10,8 @@
 	 * Fixture entity for JsonApiController's writable-field tests. "role" stands
 	 * in for a field with a normal setter that a controller explicitly denies
 	 * via isAttributeWritable() despite the setter existing. "internalNotes" has
-	 * no setter, exercising the no-setter-means-no-write path.
+	 * no setter, exercising the reflection-based write path — isAttributeWritable()
+	 * is still the only gate for it.
 	 * @Orm\Table(name="test_products")
 	 */
 	class TestProductEntity {
