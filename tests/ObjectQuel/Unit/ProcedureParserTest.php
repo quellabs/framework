@@ -83,6 +83,15 @@
 		}
 
 		/**
+		 * Numeric directive values retain their signs and numeric types.
+		 * @return void
+		 */
+		public function testParsesNumericDirectiveValues(): void {
+			$routine = $this->parse('@count 2 @offset -1 @ratio 1.5 define function f () void { }');
+			self::assertSame(['count' => 2, 'offset' => -1, 'ratio' => 1.5], $routine->getDirectives());
+		}
+
+		/**
 		 * A routine with no leading directive carries none.
 		 * @return void
 		 */
@@ -425,11 +434,38 @@
 			')->getBody();
 
 			self::assertInstanceOf(AstContinue::class, $body[1]->getBody()[0]);
+			self::assertSame(1, $body[1]->getBody()[0]->getLevels());
 
 			$loopBody = $body[2]->getBody();
 			self::assertInstanceOf(AstBreak::class, $loopBody[0]->getThenBody()[0]);
+			self::assertSame(1, $loopBody[0]->getThenBody()[0]->getLevels());
 			self::assertInstanceOf(AstContinue::class, $loopBody[0]->getElseBody()[0]);
+			self::assertSame(1, $loopBody[0]->getElseBody()[0]->getLevels());
 			self::assertInstanceOf(AstBreak::class, $loopBody[1]);
+			self::assertSame(1, $loopBody[1]->getLevels());
+		}
+
+		/**
+		 * Numeric levels are stored in the AST for semantic validation.
+		 * @return void
+		 */
+		public function testParsesLoopJumpLevels(): void {
+			$body = $this->parse('define function f () void { break 2; continue 3; break 1; continue 1; break -1; continue 0; break 1.5; continue -2.5 }')->getBody();
+
+			self::assertInstanceOf(AstBreak::class, $body[0]);
+			self::assertSame(2, $body[0]->getLevels());
+			self::assertSame(2, $body[0]->deepClone()->getLevels());
+			self::assertInstanceOf(AstContinue::class, $body[1]);
+			self::assertSame(3, $body[1]->getLevels());
+			self::assertSame(3, $body[1]->deepClone()->getLevels());
+			self::assertSame(1, $body[2]->getLevels());
+			self::assertSame(1, $body[3]->getLevels());
+			self::assertSame(-1, $body[4]->getLevels());
+			self::assertSame(0, $body[5]->getLevels());
+			self::assertSame(1.5, $body[6]->getLevels());
+			self::assertSame(-2.5, $body[7]->getLevels());
+			self::assertSame(1.5, $body[6]->deepClone()->getLevels());
+			self::assertSame(-2.5, $body[7]->deepClone()->getLevels());
 		}
 
 		/**
