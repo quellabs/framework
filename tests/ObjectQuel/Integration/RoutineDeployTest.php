@@ -254,6 +254,66 @@
 		}
 
 		/**
+		 * A two-level continue closes the inner cursor so the next outer iteration can reopen it.
+		 * @return void
+		 */
+		public function testContinueTwoReopensForeachCursor(): void {
+			$firstId = $this->seedUser("{$this->name}_first");
+			self::em()->executeQuery("
+				range of u is UserEntity
+				define function {$this->name} (int minId) integer {
+					integer rounds = 2
+					integer total = 0
+					cursor users = retrieve (u.id) where u.id >= minId
+					while (rounds > 0) {
+						rounds = rounds - 1
+						foreach (users as row) {
+							total = total + 1
+							continue 2
+						}
+					}
+					return total
+				}
+			");
+
+			self::assertSame(2, $this->callFunction($firstId));
+		}
+
+		/**
+		 * A two-level break leaves the outer loop and returns the number of bounded user rows.
+		 * @return void
+		 */
+		public function testBreakTwoMatchesPlainQuery(): void {
+			$firstId = $this->seedUser("{$this->name}_first");
+			$lastId = $this->seedUser("{$this->name}_last");
+			self::em()->executeQuery("
+				range of u is UserEntity
+				define function {$this->name} (int minId) integer {
+					integer rounds = 3
+					integer total = 0
+					cursor users = retrieve (u.id) where u.id >= minId and u.id <= {$lastId}
+					while (rounds > 0) {
+						rounds = rounds - 1
+						foreach (users as row) {
+							total = total + 1
+							if (row.id = {$lastId}) {
+								break 2
+							}
+						}
+					}
+					return total
+				}
+			");
+
+			$expected = self::em()->executeQuery(
+				'range of u is UserEntity retrieve (n = count(u.id)) where u.id >= :firstId and u.id <= :lastId',
+				['firstId' => $firstId, 'lastId' => $lastId]
+			);
+			self::assertNotNull($expected);
+			self::assertSame((int)$expected[0]['n'], $this->callFunction($firstId));
+		}
+
+		/**
 		 * A labelled WHILE accepts ITERATE, which re-checks the condition.
 		 * @return void
 		 */

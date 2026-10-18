@@ -27,6 +27,8 @@ $connection->execute('CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, 
 $connection->execute('CREATE TABLE posts (id INTEGER PRIMARY KEY AUTOINCREMENT, title VARCHAR(255) NOT NULL, content TEXT NOT NULL DEFAULT \'\', published BOOLEAN NOT NULL DEFAULT 0, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, test_enum VARCHAR(50), test_json TEXT, user_id INTEGER, deleted_at DATETIME NULL)');
 $connection->execute('CREATE TABLE versioned_entities (id INTEGER PRIMARY KEY AUTOINCREMENT, label VARCHAR(255) NOT NULL, version INTEGER NOT NULL)');
 $connection->execute('CREATE TABLE uuid_versioned_entities (id INTEGER PRIMARY KEY AUTOINCREMENT, label VARCHAR(255) NOT NULL, token VARCHAR(36) NOT NULL)');
+$connection->execute('CREATE TABLE sequence_component_entities (token VARCHAR(36) NOT NULL, seq INTEGER NOT NULL, amount INTEGER NOT NULL, PRIMARY KEY (token, seq))');
+$connection->execute('CREATE TABLE string_pk_entities (code VARCHAR(20) PRIMARY KEY, position INTEGER NOT NULL)');
 $connection->execute('CREATE TABLE sti_vehicles (id INTEGER PRIMARY KEY AUTOINCREMENT, name VARCHAR(100) NOT NULL, vehicle_type VARCHAR(50) NOT NULL)');
 $connection->execute('CREATE TABLE default_column_test (id INTEGER PRIMARY KEY AUTOINCREMENT, name VARCHAR(100) NOT NULL, priority INTEGER NOT NULL DEFAULT 99)');
 $connection->execute('CREATE TABLE accounts (id INTEGER PRIMARY KEY AUTOINCREMENT, label VARCHAR(255) NOT NULL)');
@@ -66,12 +68,15 @@ $relationshipTables = [
 foreach ($relationshipTables as $table => $columns) {
 	$connection->execute("CREATE TABLE {$table} (id INTEGER PRIMARY KEY AUTOINCREMENT{$columns})");
 }
+$connection->execute('CREATE TABLE non_pk_ref_users (id INTEGER PRIMARY KEY AUTOINCREMENT, email VARCHAR(255) NOT NULL)');
+$connection->execute('CREATE TABLE non_pk_ref_profiles (id INTEGER PRIMARY KEY AUTOINCREMENT, user_email VARCHAR(255) NOT NULL)');
 
 $configuration = new Configuration();
 $configuration->setEntityNamespace('App\\Entities');
 $configuration->setEntityPath(__DIR__ . '/../src/Entities');
 $configuration->setProxyDir(sys_get_temp_dir() . '/objectquel-sqlite-phpunit-proxies');
 $configuration->addAdditionalEntityPath(__DIR__ . '/ObjectQuel/Fixtures/RelationshipEntities');
+$configuration->addAdditionalEntityPath(__DIR__ . '/ObjectQuel/Fixtures/NonPkReferenceEntities');
 $GLOBALS['test_em'] = new EntityManager($configuration, $connection);
 $GLOBALS['test_connection'] = $connection;
 
