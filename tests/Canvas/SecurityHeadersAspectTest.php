@@ -65,6 +65,20 @@
 			$this->assertSame('ALLOW-FROM', $response->headers->get('X-Frame-Options'));
 		}
 
+		public function testMarksTheRequestSoKernelSkipsItsOwnBlanketDefault(): void {
+			$kernel = $this->createStub(Kernel::class);
+			$kernel->method('getDefaultSecurityHeaderPolicy')->willReturn(new NullSecurityHeaderPolicy());
+
+			$aspect = new SecurityHeadersAspect($kernel);
+			$request = Request::create('/');
+			$context = $this->createStub(MethodContextInterface::class);
+			$context->method('getRequest')->willReturn($request);
+
+			$aspect->after($context, new Response());
+
+			$this->assertTrue($request->attributes->get('security_headers_applied'));
+		}
+
 		public function testPolicyClassNotImplementingTheInterfaceIsRejected(): void {
 			$container = $this->createStub(Container::class);
 			$container->method('make')->willReturn(new \stdClass());
