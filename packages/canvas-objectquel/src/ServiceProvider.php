@@ -97,8 +97,7 @@
 		 * 2. Build a map of parameter name -> routeParam from @ResolveEntity annotations on the method
 		 * 3. Look up that map by the parameter name found in step 1
 		 * 4. If no annotation targets this parameter, use the parameter's own name as the
-		 *    route parameter (Laravel/Symfony-style implicit binding); fall back to "id" only
-		 *    if the parameter name itself could not be determined
+		 *    route parameter (Laravel/Symfony-style implicit binding)
 		 * 5. Fetch and return the entity via EntityManager::find(), or null if not found
 		 *
 		 * @param string $className Fully qualified entity class name to resolve
@@ -123,6 +122,12 @@
 			// before calling into this provider — no need to guess it via reflection
 			$parameterName = $methodContext->getParameterName();
 
+			// Null here means the context isn't in the middle of resolving a parameter
+			// (e.g. used outside the autowiring loop) — nothing to bind to
+			if ($parameterName === null) {
+				return null;
+			}
+
 			// Build a map of parameter name -> routeParam from @ResolveEntity annotations
 			$annotations = $annotationReader->getMethodAnnotations(
 				$methodContext->getClassName(),
@@ -142,16 +147,8 @@
 			}
 
 			// Use the routeParam from the annotation targeting this parameter, if any;
-			// otherwise bind implicitly by the parameter's own name; "id" is a last-resort
-			// fallback for the edge case where the parameter name couldn't be determined
-			if ($parameterName !== null && isset($routeParamByParameter[$parameterName])) {
-				$routeParam = $routeParamByParameter[$parameterName];
-			} elseif ($parameterName !== null) {
-				$routeParam = $parameterName;
-			} else {
-				$routeParam = 'id';
-			}
-
+			// otherwise bind implicitly by the parameter's own name
+			$routeParam = $routeParamByParameter[$parameterName] ?? $parameterName;
 			$value = $arguments[$routeParam] ?? null;
 
 			// A null primary key would cause EntityManager::find() to throw — return

@@ -16,8 +16,8 @@
 	 * Unit tests for ServiceProvider::createInstance().
 	 *
 	 * Covers the DI-provided parameter name as the resolution key, the implicit
-	 * {parameterName} binding convention, the "id" last-resort fallback, and
-	 * @ResolveEntity annotation overrides matched by parameter name.
+	 * {parameterName} binding convention, and @ResolveEntity annotation overrides
+	 * matched by parameter name.
 	 */
 	class ResolveEntityServiceProviderTest extends TestCase {
 
@@ -98,19 +98,14 @@
 			$this->assertSame($entity, $provider->createInstance('App\\Entities\\PostEntity', [], [], $context));
 		}
 
-		public function testFallsBackToIdWhenParameterNameCannotBeDetermined(): void {
-			$entity = new \stdClass();
-
+		public function testReturnsNullWhenParameterNameCannotBeDetermined(): void {
 			$entityManager = $this->createMock(EntityManager::class);
-			$entityManager->expects($this->once())
-				->method('find')
-				->with('App\\Entities\\PostEntity', 42)
-				->willReturn($entity);
+			$entityManager->expects($this->never())->method('find');
 
 			$provider = $this->makeProvider($entityManager);
 			$context = $this->makeContext(null, ['id' => 42]);
 
-			$this->assertSame($entity, $provider->createInstance('App\\Entities\\PostEntity', [], [], $context));
+			$this->assertNull($provider->createInstance('App\\Entities\\PostEntity', [], [], $context));
 		}
 
 		public function testReturnsNullWhenRouteArgumentIsMissing(): void {
