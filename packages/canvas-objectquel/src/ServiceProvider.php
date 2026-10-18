@@ -18,30 +18,25 @@
 	 *
 	 * When Canvas needs to resolve a controller parameter typed as an entity class,
 	 * this provider intercepts the resolution, reads any @ResolveEntity annotations
-	 * on the method to determine which route parameter holds the primary key, and
-	 * fetches the entity via the EntityManager.
+	 * on the method — matched to the parameter by name, not by entity class — to
+	 * determine which route parameter holds the primary key, and fetches the entity
+	 * via the EntityManager.
 	 *
-	 * Convention: if no @ResolveEntity annotation is present, {id} is used as the
-	 * route parameter name. The annotation is only required when the route parameter
-	 * name differs from "id" or when multiple entity parameters need to be disambiguated.
+	 * Convention: if no @ResolveEntity annotation targets the parameter, the route
+	 * parameter with the same name as the controller parameter is used (e.g. route
+	 * "/posts/{slug}" binds to "function show(PostEntity $slug)" with no annotation
+	 * needed). The annotation is only required when the route parameter name differs
+	 * from the controller parameter's name.
 	 */
 	class ServiceProvider implements ServiceProviderInterface {
 		
 		private ContainerInterface $container;
 		private ?Kernel $kernel;
 		private ?EntityManager $entityManager;
-		
+
 		/** @var array<string, mixed> */
 		private array $config;
-		
-		/**
-		 * Cache of resolved parameter names, keyed by "contextClass::method::entityClass".
-		 * Avoids repeated reflection on the same controller method across multiple
-		 * entity resolutions within the same request.
-		 * @var array<string, string|null>
-		 */
-		private array $parameterCache = [];
-		
+
 		/**
 		 * @param ContainerInterface $container
 		 */
@@ -98,10 +93,11 @@
 		 * Resolves a controller method parameter to an entity instance.
 		 *
 		 * Resolution order:
-		 * 1. Reflect on the method signature to find which parameter corresponds to $className
-		 * 2. Look for a @ResolveEntity annotation whose target matches that parameter name
-		 * 3. If found, use the annotation's routeParam to read the primary key from route arguments
-		 * 4. If not found, fall back to the conventional {id} route parameter
+		 * 1. Read the name of the parameter currently being autowired from the method context
+		 * 2. Build a map of parameter name -> routeParam from @ResolveEntity annotations on the method
+		 * 3. Look up that map by the parameter name found in step 1
+		 * 4. If no annotation targets this parameter, use the parameter's own name as the
+		 *    route parameter (Laravel/Symfony-style implicit binding)
 		 * 5. Fetch and return the entity via EntityManager::find(), or null if not found
 		 *
 		 * @param string $className Fully qualified entity class name to resolve
@@ -112,106 +108,57 @@
 		 * @throws AnnotationReaderException If annotation parsing fails
 		 * @throws EntityResolutionException If the entity cannot be resolved
 		 * @throws QuelException If the ObjectQuel query fails
-		 * @throws \ReflectionException If the controller method cannot be reflected
 		 */
 		public function createInstance(string $className, array $dependencies, array $metadata, ?MethodContextInterface $methodContext = null): ?object {
 			// No method context means we're not in a request cycle — nothing to resolve
 			if ($methodContext === null) {
 				return null;
 			}
-			
+
 			$annotationReader = $this->getKernel()->getAnnotationsReader();
 			$arguments = $methodContext->getArguments();
-			
-			// Determine which parameter name on this method corresponds to $className,
-			// so we can match it against @ResolveEntity annotations by target name
-			$parameterName = $this->getParameterNameForClass(
-				$className,
-				$methodContext->getClassName(),
-				$methodContext->getMethodName()
-			);
-			
-			// Find a @ResolveEntity annotation whose target matches the parameter name
+
+			// The autowirer sets this to the exact parameter currently being resolved
+			// before calling into this provider — no need to guess it via reflection
+			$parameterName = $methodContext->getParameterName();
+
+			// Null here means the context isn't in the middle of resolving a parameter
+			// (e.g. used outside the autowiring loop) — nothing to bind to
+			if ($parameterName === null) {
+				return null;
+			}
+
+			// Build a map of parameter name -> routeParam from @ResolveEntity annotations
 			$annotations = $annotationReader->getMethodAnnotations(
 				$methodContext->getClassName(),
 				$methodContext->getMethodName(),
 				ResolveEntity::class
 			);
-			
+
+			$routeParamByParameter = [];
+
 			foreach ($annotations as $annotation) {
 				// AnnotationReader returns object[]; narrow to ResolveEntity before use
 				if (!$annotation instanceof ResolveEntity) {
 					continue;
 				}
-				
-				// Wrong class type
-				if ($annotation->getEntityClass() !== $className) {
-					continue;
-				}
-				
-				// Use the route parameter specified in the annotation
-				$value = $arguments[$annotation->getRouteParam()] ?? null;
-				
-				// A null primary key would cause EntityManager::find() to throw — return
-				// null instead so the controller receives null and can handle it gracefully
-				if (!is_string($value) && !is_int($value)) {
-					return null;
-				}
-				
-				/** @var class-string<object> $className */
-				return $this->getEntityManager()->find($className, $value);
+
+				$routeParamByParameter[$annotation->getParameter()] = $annotation->getRouteParam();
 			}
-			
-			// Convention fallback: no annotation matched, assume the primary key
-			// is carried by the {id} route parameter
-			$value = $arguments['id'] ?? null;
-			
+
+			// Use the routeParam from the annotation targeting this parameter, if any;
+			// otherwise bind implicitly by the parameter's own name
+			$routeParam = $routeParamByParameter[$parameterName] ?? $parameterName;
+			$value = $arguments[$routeParam] ?? null;
+
+			// A null primary key would cause EntityManager::find() to throw — return
+			// null instead so the controller receives null and can handle it gracefully
 			if (!is_string($value) && !is_int($value)) {
 				return null;
 			}
-			
+
 			/** @var class-string<object> $className */
 			return $this->getEntityManager()->find($className, $value);
-		}
-		
-		/**
-		 * Finds the name of the method parameter typed as $className, using reflection.
-		 *
-		 * Results are cached per class+method+entityClass combination to avoid
-		 * repeated reflection on the same controller method within a request.
-		 *
-		 * @param string $className Fully qualified entity class name to look for
-		 * @param string $contextClass Fully qualified controller class name
-		 * @param string $contextMethod Controller method name
-		 * @return string|null The parameter name, or null if no matching parameter is found
-		 * @throws \ReflectionException If the method does not exist
-		 */
-		private function getParameterNameForClass(string $className, string $contextClass, string $contextMethod): ?string {
-			$cacheKey = "{$contextClass}::{$contextMethod}::{$className}";
-			
-			// Return cached result if this combination has been reflected before
-			if (array_key_exists($cacheKey, $this->parameterCache)) {
-				return $this->parameterCache[$cacheKey];
-			}
-			
-			$reflection = new \ReflectionMethod($contextClass, $contextMethod);
-			
-			foreach ($reflection->getParameters() as $parameter) {
-				$type = $parameter->getType();
-				
-				// Skip untyped parameters and union/intersection types — only named
-				// types can match an entity class name
-				if (!$type instanceof \ReflectionNamedType) {
-					continue;
-				}
-				
-				if ($type->getName() === $className) {
-					return $this->parameterCache[$cacheKey] = $parameter->getName();
-				}
-			}
-			
-			// No parameter found for this class; cache null to avoid re-reflecting
-			return $this->parameterCache[$cacheKey] = null;
 		}
 		
 		/**

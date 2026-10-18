@@ -7,55 +7,55 @@
 	/**
 	 * @Annotation
 	 * @Target("METHOD")
-	 * ResolveEntity annotation class for ORM <--> Canvas glue
+	 * Targets a controller parameter by name and maps it to a route parameter.
+	 * Usage: @ResolveEntity(parameter="post", routeParam="slug")
 	 */
 	class ResolveEntity implements AnnotationInterface {
-		
-		/** @var class-string */
-		private string $entityClass;
+
+		private string $parameter;
 		private string $routeParam;
-		
+
 		/** @var array<string, mixed> */
 		private array $parameters;
-		
+
 		/**
-		 * Column constructor
-		 * @param array<string, mixed> $parameters Associative array of column parameters
+		 * ResolveEntity constructor
+		 * @param array<string, mixed> $parameters Associative array of annotation parameters
 		 * @throws \InvalidArgumentException
 		 */
 		public function __construct(array $parameters) {
-			$entityClass = $parameters['value'] ?? null;
+			$parameter = $parameters['parameter'] ?? null;
 			$routeParam = $parameters['routeParam'] ?? 'id';
-			
-			if (!is_string($entityClass) || !class_exists($entityClass)) {
-				throw new \InvalidArgumentException('ResolveEntity requires a valid entity class as first argument');
+
+			if (!is_string($parameter) || $parameter === '') {
+				throw new \InvalidArgumentException('ResolveEntity annotation requires a non-empty "parameter" string');
 			}
-			
+
 			if (!is_string($routeParam)) {
 				throw new \InvalidArgumentException('ResolveEntity annotation requires "routeParam" to be string');
 			}
-			
-			$this->entityClass = $entityClass;
+
+			$this->parameter = $parameter;
 			$this->routeParam = $routeParam;
 			$this->parameters = $parameters;
 		}
-		
+
 		/**
-		 * Returns all parameters for this column annotation
+		 * Returns all parameters for this annotation
 		 * @return array<string, mixed> The complete parameters array
 		 */
 		public function getParameters(): array {
 			return $this->parameters;
 		}
-		
+
 		/**
-		 * Gets the target name
-		 * @return class-string
+		 * Gets the name of the controller parameter this annotation targets
+		 * @return string
 		 */
-		public function getEntityClass(): string {
-			return $this->entityClass;
+		public function getParameter(): string {
+			return $this->parameter;
 		}
-		
+
 		/**
 		 * Gets the routeParam name
 		 * @return string
