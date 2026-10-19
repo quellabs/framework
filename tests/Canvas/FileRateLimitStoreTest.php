@@ -169,6 +169,43 @@
 			$store->incrementFixedWindow('k', 5, 1000, 1005);
 		}
 
+		public function testFailedWriteLeavesPreviousStateIntactRatherThanAppearingFresh(): void {
+			$store = $this->makeStore();
+
+			$store->incrementFixedWindow('k', 5, 1000, 1000);
+			$store->incrementFixedWindow('k', 5, 1000, 1005);
+
+			$files = glob($this->storagePath . '/*.state') ?: [];
+			$this->assertCount(1, $files);
+
+			// Simulate a write that cannot land: a read-only handle makes fwrite()
+			// inside writeState() fail without touching the file's existing content.
+			$readOnlyHandle = fopen($files[0], 'r');
+			$this->assertIsResource($readOnlyHandle);
+
+			$method = new \ReflectionMethod($store, 'writeState');
+			$method->setAccessible(true);
+			$threw = false;
+
+			try {
+				// The underlying fwrite() on a read-only handle raises a PHP warning on
+				// top of the store's own exception; suppressed here since the warning
+				// itself isn't what this test is verifying.
+				@$method->invoke($store, $readOnlyHandle, ['count' => 999, 'window_start' => 1000]);
+			} catch (RateLimitStoreUnavailableException) {
+				$threw = true;
+			} finally {
+				fclose($readOnlyHandle);
+			}
+
+			$this->assertTrue($threw, 'a write that cannot land must throw rather than silently succeed');
+
+			// The failed write must not have reset the key's state to look like a
+			// brand-new key: the next real admission continues from where it left off.
+			$result = $store->incrementFixedWindow('k', 5, 1000, 1010);
+			$this->assertSame(3, $result->getCount());
+		}
+
 		public function testGarbageCollectionNeverRemovesAFileHeldByAnInProgressAdmission(): void {
 			$store = $this->makeStore();
 
@@ -183,10 +220,15 @@
 			$this->assertIsResource($handle);
 			$this->assertTrue(flock($handle, LOCK_EX | LOCK_NB));
 
+			// A staleBefore in the future so the age recheck under the lock, were it
+			// ever reached, would also consider the file stale - isolating this test
+			// to the lock-held guard rather than the age check.
+			$staleBefore = time() + 3600;
+
 			try {
 				$method = new \ReflectionMethod($store, 'deleteIfUnlocked');
 				$method->setAccessible(true);
-				$method->invoke($store, $files[0]);
+				$method->invoke($store, $files[0], $staleBefore);
 
 				$this->assertFileExists($files[0], 'a locked state file must survive garbage collection');
 			} finally {
@@ -197,8 +239,29 @@
 			// Once the lock is released, garbage collection may remove it.
 			$method = new \ReflectionMethod($store, 'deleteIfUnlocked');
 			$method->setAccessible(true);
-			$method->invoke($store, $files[0]);
+			$method->invoke($store, $files[0], $staleBefore);
 			$this->assertFileDoesNotExist($files[0]);
+		}
+
+		public function testDeleteIfUnlockedRechecksAgeUnderTheLockAndSparesARefreshedKey(): void {
+			$store = $this->makeStore();
+
+			$store->incrementFixedWindow('refreshed-key', 5, 60, 1000);
+
+			$files = glob($this->storagePath . '/*.state') ?: [];
+			$this->assertCount(1, $files);
+
+			// Simulate the race: the unlocked age check in maybeGarbageCollect() read
+			// this file as stale, but by the time the lock is acquired here the key
+			// has been refreshed (mtime is now recent). staleBefore reflects the
+			// original, now-outdated check and must not cause deletion.
+			$staleBefore = time() - 1;
+
+			$method = new \ReflectionMethod($store, 'deleteIfUnlocked');
+			$method->setAccessible(true);
+			$method->invoke($store, $files[0], $staleBefore);
+
+			$this->assertFileExists($files[0], 'a key refreshed after the unlocked age check must survive cleanup');
 		}
 
 		// =========================================================================

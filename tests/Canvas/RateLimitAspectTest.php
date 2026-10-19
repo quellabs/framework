@@ -204,4 +204,28 @@
 			$this->assertCount(2, $keys);
 			$this->assertNotSame($keys[0], $keys[1]);
 		}
+
+		public function testRawIdentifierDoesNotCollideWithAnotherIdentifiersSanitizedOutput(): void {
+			// 'a:b' sanitizes (replace + hash-of-'a:b' suffix) to 'a_b_6783a31eabf68ccc'.
+			// A raw identifier equal to that literal sanitized string must not produce
+			// the same cache key, since it is itself already a valid, unchanged input.
+			$keys = [];
+			$capture = function (string $key) use (&$keys): RateLimitResult {
+				$keys[] = $key;
+				return new RateLimitResult(1, false, 2000, 0);
+			};
+
+			$storeA = $this->createMock(RateLimitStoreInterface::class);
+			$storeA->method('incrementFixedWindow')->willReturnCallback($capture);
+			(new RateLimitAspect($storeA, scope: 'custom', identifier: 'a:b'))
+				->before($this->makeContext(Request::create('/', 'POST')));
+
+			$storeB = $this->createMock(RateLimitStoreInterface::class);
+			$storeB->method('incrementFixedWindow')->willReturnCallback($capture);
+			(new RateLimitAspect($storeB, scope: 'custom', identifier: 'a_b_6783a31eabf68ccc'))
+				->before($this->makeContext(Request::create('/', 'POST')));
+
+			$this->assertCount(2, $keys);
+			$this->assertNotSame($keys[0], $keys[1]);
+		}
 	}
