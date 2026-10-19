@@ -243,6 +243,43 @@
 			$this->assertFileDoesNotExist($files[0]);
 		}
 
+		public function testSameFileDetectsAHandleOrphanedByAnUnlinkAndRecreate(): void {
+			$store = $this->makeStore();
+
+			$store->incrementFixedWindow('k', 5, 60, 1000);
+
+			$files = glob($this->storagePath . '/*.state') ?: [];
+			$this->assertCount(1, $files);
+			$originalPath = $files[0];
+
+			// Reproduces an orphaned handle via two distinct files rather than actually
+			// unlinking an open one - that relies on delete-while-open semantics POSIX
+			// guarantees but Windows does not, which would make this test flaky there.
+			$handleOnOriginal = fopen($originalPath, 'r+');
+			$this->assertIsResource($handleOnOriginal);
+
+			$otherPath = $this->storagePath . '/different.state';
+			file_put_contents($otherPath, 'a different file');
+
+			$sameFile = new \ReflectionMethod($store, 'sameFile');
+			$sameFile->setAccessible(true);
+
+			try {
+				$this->assertFalse(
+					$sameFile->invoke($store, $handleOnOriginal, $otherPath),
+					'a handle must not be treated as current for a path pointing at a different file'
+				);
+
+				$this->assertTrue(
+					$sameFile->invoke($store, $handleOnOriginal, $originalPath),
+					'a handle must be treated as current for the path it was actually opened from'
+				);
+			} finally {
+				fclose($handleOnOriginal);
+				@unlink($otherPath);
+			}
+		}
+
 		public function testDeleteIfUnlockedRechecksAgeUnderTheLockAndSparesARefreshedKey(): void {
 			$store = $this->makeStore();
 
