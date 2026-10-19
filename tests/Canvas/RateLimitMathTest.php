@@ -94,8 +94,32 @@
 			$result = RateLimitMath::slidingWindow($state, 5, 60, 1004)->getResult();
 			$this->assertTrue($result->isExceeded());
 			$this->assertSame(6, $result->getCount());
-			// retry_after: oldest (1000) + window (60) - now (1004) = 56
-			$this->assertSame(56, $result->getRetryAfter());
+			// 6 timestamps (1000,1001,1002,1003,1004,1004) for limit 5: admitting one
+			// more needs the (count-limit)=1st-indexed entry (1001) to expire, not
+			// just the absolute oldest (1000) - retry_after: 1001 + 60 - 1004 = 57.
+			$this->assertSame(57, $result->getRetryAfter());
+		}
+
+		public function testSlidingWindowRetryAfterReflectsWhenEnoughEntriesHaveExpired(): void {
+			$state = null;
+
+			foreach ([1000, 1001, 1002, 1003, 1004] as $ts) {
+				$state = RateLimitMath::slidingWindow($state, 5, 60, $ts)->getState();
+			}
+
+			$rejected = RateLimitMath::slidingWindow($state, 5, 60, 1004);
+			$this->assertTrue($rejected->getResult()->isExceeded());
+			$this->assertSame(57, $rejected->getResult()->getRetryAfter());
+
+			// The naive "single oldest timestamp" estimate (1000 + 60 = 1060) is still
+			// too early: five of the six recorded timestamps (1001,1002,1003,1004,1004)
+			// remain within the window at that instant.
+			$stillTooEarly = RateLimitMath::slidingWindow($rejected->getState(), 5, 60, 1060)->getResult();
+			$this->assertTrue($stillTooEarly->isExceeded(), 'retry at the naive oldest-only estimate must still be rejected');
+
+			// At the corrected retry time, the request is admitted.
+			$admitted = RateLimitMath::slidingWindow($rejected->getState(), 5, 60, 1061)->getResult();
+			$this->assertFalse($admitted->isExceeded(), 'retry at the corrected estimate must be admitted');
 		}
 
 		public function testSlidingWindowCapsTrackedTimestampsUnderSustainedAbuse(): void {

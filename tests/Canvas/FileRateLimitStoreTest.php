@@ -103,7 +103,9 @@
 		}
 
 		public function testGarbageCollectionSweepsStaleStateFilesWithoutTouchingFreshOnes(): void {
-			$store = $this->makeStore(['stale_after' => 1]);
+			// stale_after must exceed the fixed window (1000s) or the store rejects
+			// the call as a misconfiguration - see testWindowNotSmallerThanStaleAfterThrows.
+			$store = $this->makeStore(['stale_after' => 1100]);
 
 			$store->incrementFixedWindow('stale-key', 5, 1000, 1000);
 
@@ -111,7 +113,7 @@
 			$this->assertCount(1, $files);
 
 			// Back-date the state file's mtime so it looks older than stale_after.
-			touch($files[0], time() - 10);
+			touch($files[0], time() - 1200);
 
 			// GC is probabilistic (~1/500); force it deterministically via reflection
 			// rather than looping thousands of times for a 1-in-500 chance to fire.
@@ -143,6 +145,60 @@
 			} finally {
 				@unlink($blockingFile);
 			}
+		}
+
+		public function testWindowNotSmallerThanStaleAfterThrows(): void {
+			$store = $this->makeStore(['stale_after' => 60]);
+
+			$this->expectException(RateLimitStoreUnavailableException::class);
+			$store->incrementFixedWindow('k', 5, 60, 1000);
+		}
+
+		public function testCorruptStateFileThrowsInsteadOfResettingTheCounter(): void {
+			$store = $this->makeStore();
+
+			// Establish real state, then corrupt its on-disk representation in place -
+			// a foreign-format or truncated entry must never be read back as "no state".
+			$store->incrementFixedWindow('k', 5, 1000, 1000);
+
+			$files = glob($this->storagePath . '/*.state') ?: [];
+			$this->assertCount(1, $files);
+			file_put_contents($files[0], 'not a valid serialized payload');
+
+			$this->expectException(RateLimitStoreUnavailableException::class);
+			$store->incrementFixedWindow('k', 5, 1000, 1005);
+		}
+
+		public function testGarbageCollectionNeverRemovesAFileHeldByAnInProgressAdmission(): void {
+			$store = $this->makeStore();
+
+			$store->incrementFixedWindow('held-key', 5, 60, 1000);
+
+			$files = glob($this->storagePath . '/*.state') ?: [];
+			$this->assertCount(1, $files);
+
+			// Simulate another request's in-progress admission still holding the
+			// per-key lock that withLock() takes for the whole read-decide-write cycle.
+			$handle = fopen($files[0], 'r+');
+			$this->assertIsResource($handle);
+			$this->assertTrue(flock($handle, LOCK_EX | LOCK_NB));
+
+			try {
+				$method = new \ReflectionMethod($store, 'deleteIfUnlocked');
+				$method->setAccessible(true);
+				$method->invoke($store, $files[0]);
+
+				$this->assertFileExists($files[0], 'a locked state file must survive garbage collection');
+			} finally {
+				flock($handle, LOCK_UN);
+				fclose($handle);
+			}
+
+			// Once the lock is released, garbage collection may remove it.
+			$method = new \ReflectionMethod($store, 'deleteIfUnlocked');
+			$method->setAccessible(true);
+			$method->invoke($store, $files[0]);
+			$this->assertFileDoesNotExist($files[0]);
 		}
 
 		// =========================================================================
