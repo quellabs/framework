@@ -70,6 +70,11 @@
 			new StepUpAuthenticationAspect(maxAge: -1);
 		}
 
+		public function testConstructorThrowsWhenClockSkewIsNegative(): void {
+			$this->expectException(\InvalidArgumentException::class);
+			new StepUpAuthenticationAspect(clockSkew: -1);
+		}
+
 		// =========================================================================
 		// Attribute mode — recency check
 		// =========================================================================
@@ -117,6 +122,25 @@
 
 		public function testFloatAuthTimeIsAccepted(): void {
 			$request = $this->makeAuthenticatedRequest((float)time());
+
+			(new StepUpAuthenticationAspect(maxAge: 300))->before($this->makeContext($request));
+
+			$this->assertNull($request->attributes->get('recent_auth_error'));
+		}
+
+		public function testFutureAuthTimeBeyondClockSkewSetsRecentAuthError(): void {
+			// auth_time 10 seconds in the future, default clock skew is 5 — a future
+			// timestamp must not satisfy the freshness check indefinitely
+			$request = $this->makeAuthenticatedRequest(time() + 10);
+
+			(new StepUpAuthenticationAspect(maxAge: 300))->before($this->makeContext($request));
+
+			$this->assertNotNull($request->attributes->get('recent_auth_error'));
+		}
+
+		public function testFutureAuthTimeWithinClockSkewIsAccepted(): void {
+			// auth_time 3 seconds in the future, default clock skew is 5 — should be accepted
+			$request = $this->makeAuthenticatedRequest(time() + 3);
 
 			(new StepUpAuthenticationAspect(maxAge: 300))->before($this->makeContext($request));
 

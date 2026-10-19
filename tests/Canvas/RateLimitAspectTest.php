@@ -177,4 +177,31 @@
 			$this->expectException(\InvalidArgumentException::class);
 			new RateLimitAspect($store, onStoreFailure: 'bogus');
 		}
+
+		// =========================================================================
+		// Cache key isolation
+		// =========================================================================
+
+		public function testIdentifiersThatSanitizeToTheSameStringProduceDifferentKeys(): void {
+			// Both 'a:b' and 'a/b' collapse to 'a_b' under the sanitizer's
+			// disallowed-character replacement; they must still produce distinct keys.
+			$keys = [];
+			$capture = function (string $key) use (&$keys): RateLimitResult {
+				$keys[] = $key;
+				return new RateLimitResult(1, false, 2000, 0);
+			};
+
+			$storeA = $this->createMock(RateLimitStoreInterface::class);
+			$storeA->method('incrementFixedWindow')->willReturnCallback($capture);
+			(new RateLimitAspect($storeA, scope: 'custom', identifier: 'a:b'))
+				->before($this->makeContext(Request::create('/', 'POST')));
+
+			$storeB = $this->createMock(RateLimitStoreInterface::class);
+			$storeB->method('incrementFixedWindow')->willReturnCallback($capture);
+			(new RateLimitAspect($storeB, scope: 'custom', identifier: 'a/b'))
+				->before($this->makeContext(Request::create('/', 'POST')));
+
+			$this->assertCount(2, $keys);
+			$this->assertNotSame($keys[0], $keys[1]);
+		}
 	}
