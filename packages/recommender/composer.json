@@ -10,7 +10,7 @@
     }
   ],
   "require": {
-    "php": ">=8.2",
+    "php": ">=8.3",
     "cakephp/database": "^5.0",
     "quellabs/contracts": "^1.",
     "quellabs/discover": "^1.",

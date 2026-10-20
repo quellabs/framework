@@ -501,6 +501,17 @@ class ReconciliationTest extends IntegrationTestCase {
         $this->reconciler()->slate(Subject::member(1), $request);
     }
 
+    /** The standalone factory wires the same sources a manually-assembled reconciler would. @return void */
+    public function testFromConnectionBuildsAWorkingReconciler(): void {
+        $this->insertRating(1, 10, 0.9);
+        $this->insertLink(10, 20, 3);
+        $reconciler = RecommendationReconciler::fromConnection($this->connection, $this->config);
+        $request = new ReconciliationRequest(new ArrayEligibilityProvider([20]),
+            [RecommendationSource::ItemLinks], 5, 'home');
+        $list = $reconciler->slate(Subject::member(1), $request);
+        $this->assertSame([20], array_map(fn($item) => $item->productId, $list->items));
+    }
+
     /** @return void */
     public function testCanvasProviderRegistersNewServices(): void {
         $provider = new ServiceProvider();

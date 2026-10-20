@@ -1,6 +1,6 @@
 # quellabs/recommender
 
-Collaborative filtering recommendations for PHP 8.2+, built on the CakePHP 5 database layer. Member ratings
+Collaborative filtering recommendations for PHP 8.3+, built on the CakePHP 5 database layer. Member ratings
 become "people who liked A also liked B" suggestions and rating predictions for unrated items, with no
 machine-learning infrastructure required.
 
@@ -14,7 +14,7 @@ Based on the [Vogoo PHP recommendation engine](http://www.vogoo.net/) (2007–20
 
 ## Requirements
 
-- PHP 8.2+
+- PHP 8.3+
 - `cakephp/database` ^5.0
 - MySQL
 
@@ -46,20 +46,15 @@ use Quellabs\Recommender\RecommendationSource;
 use Quellabs\Recommender\Reconciliation\ReconciliationRequest;
 use Quellabs\Recommender\Reconciliation\RecommendationReconciler;
 use Quellabs\Recommender\Evaluation\ModelScorerResolver;
-use Quellabs\Recommender\Internal\Reconciliation\RequestSourcesFactory;
-use Quellabs\Recommender\Internal\UserSimilarity;
 use Quellabs\Recommender\MemberId;
 use Quellabs\Recommender\ProductId;
 use Quellabs\Recommender\RecommendationEngine;
 use Quellabs\Recommender\Subject;
 
 // $connection is the application's Cake\Database\Connection.
-$config        = new RecommendationConfig(directLinks: true);
-$engine        = new RecommendationEngine($connection, $config);
-$similarity    = new UserSimilarity($connection, $config, $engine);
-$sourceFactory = new RequestSourcesFactory($connection, $config, $similarity);
-$scorers       = new ModelScorerResolver($connection);
-$reconciler    = new RecommendationReconciler($config, $sourceFactory, $scorers);
+$config     = new RecommendationConfig(directLinks: true);
+$engine     = new RecommendationEngine($connection, $config);
+$reconciler = RecommendationReconciler::fromConnection($connection, $config, new ModelScorerResolver($connection));
 
 $engine->setRating(MemberId::of(1), ProductId::of(101), 0.9);
 $engine->setRating(MemberId::of(2), ProductId::of(101), 0.8);
@@ -69,6 +64,10 @@ $slate = $reconciler->slate(Subject::member(1), new ReconciliationRequest(
     new ArrayEligibilityProvider([102]), [RecommendationSource::ItemLinks], 5, 'home'));
 echo $slate->items[0]->productId; // 102
 ```
+
+`RecommendationReconciler::fromConnection()` is the standalone construction path, for applications without a
+DI container. A Canvas application should instead get `RecommendationReconciler` through discovery, which wires
+the same dependencies from `config/recommender.php`.
 
 Ratings run from 0.0 to 1.0, and -1.0 marks "not interested".
 

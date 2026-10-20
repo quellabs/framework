@@ -1,21 +1,24 @@
 <?php
 	
 	namespace Quellabs\Recommender\Reconciliation;
-	
+
+	use Cake\Database\Connection;
 	use Quellabs\Recommender\Config\RecommendationConfig;
 	use Quellabs\Recommender\Internal\Reconciliation\CandidateRoundState;
 	use Quellabs\Recommender\Internal\Reconciliation\RequestSources;
 	use Quellabs\Recommender\Internal\Reconciliation\RequestSourcesFactory;
 	use Quellabs\Recommender\Internal\Reconciliation\SourceFeatures;
 	use Quellabs\Recommender\Internal\Eligibility\EligibilityFilter;
-	
-	
+	use Quellabs\Recommender\Internal\UserSimilarity;
+
+
+	use Quellabs\Recommender\RecommendationEngine;
 	use Quellabs\Recommender\RecommendationList;
 	use Quellabs\Recommender\RecommendationResult;
 	use Quellabs\Recommender\ScoreKind;
-	
+
 	use Quellabs\Recommender\RecommendationSource;
-	
+
 	use Quellabs\Recommender\Subject;
 	use Quellabs\Recommender\SubjectKind;
 	
@@ -54,7 +57,23 @@
 			$this->filter = new EligibilityFilter($config);
 			$this->rankFusion = new RankFusionScorer();
 		}
-		
+
+		/**
+		 * Build a reconciler from a connection and config alone, wiring the internal source factory and
+		 * user-similarity lookup that a Canvas application would otherwise get through DI.
+		 * @param Connection $connection Ratings database connection
+		 * @param RecommendationConfig $config Recommender settings
+		 * @param ScorerResolver|null $scorers Chooses the active scorer per partition, or null to use rank fusion only
+		 * @return self Reconciler ready to serve requests
+		 */
+		public static function fromConnection(Connection $connection, RecommendationConfig $config, ?ScorerResolver $scorers = null): self {
+			$engine = new RecommendationEngine($connection, $config);
+			$similarity = new UserSimilarity($connection, $config, $engine);
+			$sourceFactory = new RequestSourcesFactory($connection, $config, $similarity);
+
+			return new self($config, $sourceFactory, $scorers);
+		}
+
 		/**
 		 * Return the displayed slate of up to the requested limit for a member or visitor.
 		 * @param Subject $subject Member or visitor
