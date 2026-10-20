@@ -78,4 +78,38 @@
 			$this->assertSame(100, $rows[0]['o.amount']);
 			$this->assertNull($rows[1]['o.amount']);
 		}
+
+		/**
+		 * A manually written `via` condition names the same mapped properties
+		 * as the composite @RequiredRelation ('ol.order') but joins the second
+		 * component with `<>` instead of `=`. It must stay a LEFT JOIN: line 1
+		 * ('A-1') never matches the order on this condition (its number equals
+		 * the order's, so `<>` fails) and must survive with a NULL 'o.amount'.
+		 * Promoting this to an INNER JOIN — the bug extractEqualityPairs()
+		 * previously had, by ignoring the operator — would drop it.
+		 */
+		public function testNonEqualityConditionOnRequiredRelationRemainsALeftJoin(): void {
+			$plan = $this->em->explainQuery("
+				range of ol is Quellabs\\ObjectQuel\\Tests\\Fixtures\\CompositeKeyRelationshipEntities\\CkRequiredOrderLineEntity
+				range of o is Quellabs\\ObjectQuel\\Tests\\Fixtures\\CompositeKeyRelationshipEntities\\CkRequiredOrderEntity via ol.orderTenantId = o.tenantId and ol.orderNumber <> o.number
+				retrieve (ol.id, o.amount)
+				sort by ol.id asc
+			");
+
+			$this->assertStringContainsString('LEFT JOIN', $plan->getSql()[0]);
+
+			$rows = $this->em->getAll("
+				range of ol is Quellabs\\ObjectQuel\\Tests\\Fixtures\\CompositeKeyRelationshipEntities\\CkRequiredOrderLineEntity
+				range of o is Quellabs\\ObjectQuel\\Tests\\Fixtures\\CompositeKeyRelationshipEntities\\CkRequiredOrderEntity via ol.orderTenantId = o.tenantId and ol.orderNumber <> o.number
+				retrieve (ol.id, o.amount)
+				sort by ol.id asc
+			");
+
+			// Line 1 ('A-1') doesn't satisfy the `<>` branch against the only
+			// order ('A-1') and must survive with a NULL 'o.amount'. Line 2
+			// ('A-2') does satisfy it and picks up the order's amount.
+			$this->assertCount(2, $rows);
+			$this->assertNull($rows[0]['o.amount']);
+			$this->assertSame(100, $rows[1]['o.amount']);
+		}
 	}

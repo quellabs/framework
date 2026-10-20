@@ -80,4 +80,21 @@
 
 			self::assertFalse($this->findRange($ast, 'o')->isRequired());
 		}
+
+		/**
+		 * A literal `via` condition naming the same mapped properties as the
+		 * composite `@RequiredRelation` but joined with `<>` instead of `=` on
+		 * one branch is not the relation's equality join and must not be
+		 * promoted to an inner join, even though it mentions the exact same
+		 * property pairs extractEqualityPairs() would otherwise match.
+		 */
+		public function testNonEqualityConditionOnRequiredRelationStaysOptional(): void {
+			$ast = $this->planQuery('
+				range of ol is Quellabs\\ObjectQuel\\Tests\\Fixtures\\CompositeKeyRelationshipEntities\\CkRequiredOrderLineEntity
+				range of o is Quellabs\\ObjectQuel\\Tests\\Fixtures\\CompositeKeyRelationshipEntities\\CkRequiredOrderEntity via ol.orderTenantId = o.tenantId and ol.orderNumber <> o.number
+				retrieve (ol.id, o.amount)
+			');
+
+			self::assertFalse($this->findRange($ast, 'o')->isRequired());
+		}
 	}
