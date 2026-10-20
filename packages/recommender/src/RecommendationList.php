@@ -7,7 +7,14 @@
 	
 	use Quellabs\Recommender\Reconciliation\ReconciledRecommendation;
 	
-	/** Immutable ordered candidates or the application's selected display. */
+	/**
+	 * Immutable ordered candidates or the application's selected display.
+	 *
+	 * A ranked list's `rankingScore` is on one of two different scales, told apart by `scorerId`: null means
+	 * reciprocal-rank fusion, a non-null ID means the named model's predicted click probability at the item's
+	 * display position, which is computed when `EvaluationRecorder::recordImpression()` records the list.
+	 * Scores from rank fusion and from a model, or from two different models, are not comparable.
+	 */
 	readonly class RecommendationList {
 		
 		/** @var int Resolved category */
@@ -25,7 +32,7 @@
 		/** @var ScoreKind How the item scores are interpreted */
 		public ScoreKind $scoreKind;
 		
-		/** @var string|null ID of the scorer that ranked the items, null for rank fusion */
+		/** @var string|null ID of the scorer that ranked the items; null means rankingScore is a rank-fusion score, non-null means a model position probability */
 		public ?string $scorerId;
 		
 		/** @var array<int, ReconciledRecommendation> Ordered results */

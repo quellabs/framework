@@ -5620,81 +5620,35 @@
         "category": 1,
         "placement": "home",
         "sources": [
-            "top_rated"
+            "new_products"
         ],
         "contextKey": "parity",
         "scoreKind": "ranked",
         "scorerId": null,
         "items": [
             {
-                "productId": 10,
+                "productId": 12,
                 "rankingScore": 0.016393443,
                 "evidence": [
                     {
-                        "source": "top_rated",
-                        "rawScore": 0.866666655,
+                        "source": "new_products",
+                        "rawScore": null,
                         "sourceRank": 1,
-                        "supportCount": 3,
+                        "supportCount": null,
                         "contributingProductIds": [],
                         "logOddsContribution": null
                     }
                 ]
             },
             {
-                "productId": 13,
-                "rankingScore": 0.016129032,
-                "evidence": [
-                    {
-                        "source": "top_rated",
-                        "rawScore": 0.799999982,
-                        "sourceRank": 2,
-                        "supportCount": 2,
-                        "contributingProductIds": [],
-                        "logOddsContribution": null
-                    }
-                ]
+                "productId": 26,
+                "rankingScore": 0.0,
+                "evidence": []
             },
             {
-                "productId": 17,
-                "rankingScore": 0.015873016,
-                "evidence": [
-                    {
-                        "source": "top_rated",
-                        "rawScore": 0.799999982,
-                        "sourceRank": 3,
-                        "supportCount": 2,
-                        "contributingProductIds": [],
-                        "logOddsContribution": null
-                    }
-                ]
-            },
-            {
-                "productId": 14,
-                "rankingScore": 0.015625,
-                "evidence": [
-                    {
-                        "source": "top_rated",
-                        "rawScore": 0.75,
-                        "sourceRank": 4,
-                        "supportCount": 2,
-                        "contributingProductIds": [],
-                        "logOddsContribution": null
-                    }
-                ]
-            },
-            {
-                "productId": 12,
-                "rankingScore": 0.015384615,
-                "evidence": [
-                    {
-                        "source": "top_rated",
-                        "rawScore": 0.650000006,
-                        "sourceRank": 5,
-                        "supportCount": 2,
-                        "contributingProductIds": [],
-                        "logOddsContribution": null
-                    }
-                ]
+                "productId": 31,
+                "rankingScore": 0.0,
+                "evidence": []
             }
         ],
         "limit": 5
@@ -5703,105 +5657,21 @@
         "category": 1,
         "placement": "home",
         "sources": [
-            "top_rated"
+            "new_products"
         ],
         "contextKey": "parity",
         "scoreKind": "ranked",
         "scorerId": null,
         "items": [
             {
-                "productId": 10,
+                "productId": 12,
                 "rankingScore": 0.016393443,
                 "evidence": [
                     {
-                        "source": "top_rated",
-                        "rawScore": 0.866666655,
+                        "source": "new_products",
+                        "rawScore": null,
                         "sourceRank": 1,
-                        "supportCount": 3,
-                        "contributingProductIds": [],
-                        "logOddsContribution": null
-                    }
-                ]
-            },
-            {
-                "productId": 13,
-                "rankingScore": 0.016129032,
-                "evidence": [
-                    {
-                        "source": "top_rated",
-                        "rawScore": 0.799999982,
-                        "sourceRank": 2,
-                        "supportCount": 2,
-                        "contributingProductIds": [],
-                        "logOddsContribution": null
-                    }
-                ]
-            },
-            {
-                "productId": 17,
-                "rankingScore": 0.015873016,
-                "evidence": [
-                    {
-                        "source": "top_rated",
-                        "rawScore": 0.799999982,
-                        "sourceRank": 3,
-                        "supportCount": 2,
-                        "contributingProductIds": [],
-                        "logOddsContribution": null
-                    }
-                ]
-            },
-            {
-                "productId": 14,
-                "rankingScore": 0.015625,
-                "evidence": [
-                    {
-                        "source": "top_rated",
-                        "rawScore": 0.75,
-                        "sourceRank": 4,
-                        "supportCount": 2,
-                        "contributingProductIds": [],
-                        "logOddsContribution": null
-                    }
-                ]
-            },
-            {
-                "productId": 12,
-                "rankingScore": 0.015384615,
-                "evidence": [
-                    {
-                        "source": "top_rated",
-                        "rawScore": 0.650000006,
-                        "sourceRank": 5,
-                        "supportCount": 2,
-                        "contributingProductIds": [],
-                        "logOddsContribution": null
-                    }
-                ]
-            },
-            {
-                "productId": 15,
-                "rankingScore": 0.015151515,
-                "evidence": [
-                    {
-                        "source": "top_rated",
-                        "rawScore": 0.550000012,
-                        "sourceRank": 6,
-                        "supportCount": 2,
-                        "contributingProductIds": [],
-                        "logOddsContribution": null
-                    }
-                ]
-            },
-            {
-                "productId": 11,
-                "rankingScore": 0.014925373,
-                "evidence": [
-                    {
-                        "source": "top_rated",
-                        "rawScore": 0.549999997,
-                        "sourceRank": 7,
-                        "supportCount": 2,
+                        "supportCount": null,
                         "contributingProductIds": [],
                         "logOddsContribution": null
                     }
@@ -5916,81 +5786,21 @@
         "category": 1,
         "placement": "home",
         "sources": [
-            "top_rated"
+            "new_products"
         ],
         "contextKey": "parity",
         "scoreKind": "ranked",
         "scorerId": null,
         "items": [
             {
-                "productId": 10,
-                "rankingScore": 0.016393443,
-                "evidence": [
-                    {
-                        "source": "top_rated",
-                        "rawScore": 0.866666655,
-                        "sourceRank": 1,
-                        "supportCount": 3,
-                        "contributingProductIds": [],
-                        "logOddsContribution": null
-                    }
-                ]
+                "productId": 26,
+                "rankingScore": 0.0,
+                "evidence": []
             },
             {
-                "productId": 13,
-                "rankingScore": 0.016129032,
-                "evidence": [
-                    {
-                        "source": "top_rated",
-                        "rawScore": 0.799999982,
-                        "sourceRank": 2,
-                        "supportCount": 2,
-                        "contributingProductIds": [],
-                        "logOddsContribution": null
-                    }
-                ]
-            },
-            {
-                "productId": 17,
-                "rankingScore": 0.015873016,
-                "evidence": [
-                    {
-                        "source": "top_rated",
-                        "rawScore": 0.799999982,
-                        "sourceRank": 3,
-                        "supportCount": 2,
-                        "contributingProductIds": [],
-                        "logOddsContribution": null
-                    }
-                ]
-            },
-            {
-                "productId": 14,
-                "rankingScore": 0.015625,
-                "evidence": [
-                    {
-                        "source": "top_rated",
-                        "rawScore": 0.75,
-                        "sourceRank": 4,
-                        "supportCount": 2,
-                        "contributingProductIds": [],
-                        "logOddsContribution": null
-                    }
-                ]
-            },
-            {
-                "productId": 11,
-                "rankingScore": 0.015384615,
-                "evidence": [
-                    {
-                        "source": "top_rated",
-                        "rawScore": 0.549999997,
-                        "sourceRank": 5,
-                        "supportCount": 2,
-                        "contributingProductIds": [],
-                        "logOddsContribution": null
-                    }
-                ]
+                "productId": 31,
+                "rankingScore": 0.0,
+                "evidence": []
             }
         ],
         "limit": 5
@@ -5999,82 +5809,12 @@
         "category": 1,
         "placement": "home",
         "sources": [
-            "top_rated"
+            "new_products"
         ],
         "contextKey": "parity",
         "scoreKind": "ranked",
         "scorerId": null,
         "items": [
-            {
-                "productId": 10,
-                "rankingScore": 0.016393443,
-                "evidence": [
-                    {
-                        "source": "top_rated",
-                        "rawScore": 0.866666655,
-                        "sourceRank": 1,
-                        "supportCount": 3,
-                        "contributingProductIds": [],
-                        "logOddsContribution": null
-                    }
-                ]
-            },
-            {
-                "productId": 13,
-                "rankingScore": 0.016129032,
-                "evidence": [
-                    {
-                        "source": "top_rated",
-                        "rawScore": 0.799999982,
-                        "sourceRank": 2,
-                        "supportCount": 2,
-                        "contributingProductIds": [],
-                        "logOddsContribution": null
-                    }
-                ]
-            },
-            {
-                "productId": 17,
-                "rankingScore": 0.015873016,
-                "evidence": [
-                    {
-                        "source": "top_rated",
-                        "rawScore": 0.799999982,
-                        "sourceRank": 3,
-                        "supportCount": 2,
-                        "contributingProductIds": [],
-                        "logOddsContribution": null
-                    }
-                ]
-            },
-            {
-                "productId": 14,
-                "rankingScore": 0.015625,
-                "evidence": [
-                    {
-                        "source": "top_rated",
-                        "rawScore": 0.75,
-                        "sourceRank": 4,
-                        "supportCount": 2,
-                        "contributingProductIds": [],
-                        "logOddsContribution": null
-                    }
-                ]
-            },
-            {
-                "productId": 11,
-                "rankingScore": 0.015384615,
-                "evidence": [
-                    {
-                        "source": "top_rated",
-                        "rawScore": 0.549999997,
-                        "sourceRank": 5,
-                        "supportCount": 2,
-                        "contributingProductIds": [],
-                        "logOddsContribution": null
-                    }
-                ]
-            },
             {
                 "productId": 26,
                 "rankingScore": 0.0,
@@ -6943,12 +6683,35 @@
         "category": 1,
         "placement": "home",
         "sources": [
-            "top_rated"
+            "top_rated",
+            "new_products"
         ],
         "contextKey": "parity",
         "scoreKind": "ranked",
         "scorerId": null,
         "items": [
+            {
+                "productId": 12,
+                "rankingScore": 0.031778058,
+                "evidence": [
+                    {
+                        "source": "top_rated",
+                        "rawScore": 0.650000006,
+                        "sourceRank": 5,
+                        "supportCount": 2,
+                        "contributingProductIds": [],
+                        "logOddsContribution": null
+                    },
+                    {
+                        "source": "new_products",
+                        "rawScore": null,
+                        "sourceRank": 1,
+                        "supportCount": null,
+                        "contributingProductIds": [],
+                        "logOddsContribution": null
+                    }
+                ]
+            },
             {
                 "productId": 10,
                 "rankingScore": 0.016393443,
@@ -6999,20 +6762,6 @@
                         "source": "top_rated",
                         "rawScore": 0.75,
                         "sourceRank": 4,
-                        "supportCount": 2,
-                        "contributingProductIds": [],
-                        "logOddsContribution": null
-                    }
-                ]
-            },
-            {
-                "productId": 12,
-                "rankingScore": 0.015384615,
-                "evidence": [
-                    {
-                        "source": "top_rated",
-                        "rawScore": 0.650000006,
-                        "sourceRank": 5,
                         "supportCount": 2,
                         "contributingProductIds": [],
                         "logOddsContribution": null
@@ -7026,12 +6775,35 @@
         "category": 1,
         "placement": "home",
         "sources": [
-            "top_rated"
+            "top_rated",
+            "new_products"
         ],
         "contextKey": "parity",
         "scoreKind": "ranked",
         "scorerId": null,
         "items": [
+            {
+                "productId": 12,
+                "rankingScore": 0.031778058,
+                "evidence": [
+                    {
+                        "source": "top_rated",
+                        "rawScore": 0.650000006,
+                        "sourceRank": 5,
+                        "supportCount": 2,
+                        "contributingProductIds": [],
+                        "logOddsContribution": null
+                    },
+                    {
+                        "source": "new_products",
+                        "rawScore": null,
+                        "sourceRank": 1,
+                        "supportCount": null,
+                        "contributingProductIds": [],
+                        "logOddsContribution": null
+                    }
+                ]
+            },
             {
                 "productId": 10,
                 "rankingScore": 0.016393443,
@@ -7082,20 +6854,6 @@
                         "source": "top_rated",
                         "rawScore": 0.75,
                         "sourceRank": 4,
-                        "supportCount": 2,
-                        "contributingProductIds": [],
-                        "logOddsContribution": null
-                    }
-                ]
-            },
-            {
-                "productId": 12,
-                "rankingScore": 0.015384615,
-                "evidence": [
-                    {
-                        "source": "top_rated",
-                        "rawScore": 0.650000006,
-                        "sourceRank": 5,
                         "supportCount": 2,
                         "contributingProductIds": [],
                         "logOddsContribution": null
@@ -7807,7 +7565,8 @@
         "category": 1,
         "placement": "home",
         "sources": [
-            "top_rated"
+            "top_rated",
+            "new_products"
         ],
         "contextKey": "parity",
         "scoreKind": "ranked",
@@ -7890,7 +7649,8 @@
         "category": 1,
         "placement": "home",
         "sources": [
-            "top_rated"
+            "top_rated",
+            "new_products"
         ],
         "contextKey": "parity",
         "scoreKind": "ranked",
@@ -10890,81 +10650,35 @@
         "category": 1,
         "placement": "home",
         "sources": [
-            "top_rated"
+            "new_products"
         ],
         "contextKey": "parity",
         "scoreKind": "ranked",
         "scorerId": null,
         "items": [
             {
-                "productId": 10,
+                "productId": 12,
                 "rankingScore": 0.016393443,
                 "evidence": [
                     {
-                        "source": "top_rated",
-                        "rawScore": 0.866666655,
+                        "source": "new_products",
+                        "rawScore": null,
                         "sourceRank": 1,
-                        "supportCount": 3,
+                        "supportCount": null,
                         "contributingProductIds": [],
                         "logOddsContribution": null
                     }
                 ]
             },
             {
-                "productId": 13,
-                "rankingScore": 0.016129032,
-                "evidence": [
-                    {
-                        "source": "top_rated",
-                        "rawScore": 0.799999982,
-                        "sourceRank": 2,
-                        "supportCount": 2,
-                        "contributingProductIds": [],
-                        "logOddsContribution": null
-                    }
-                ]
+                "productId": 26,
+                "rankingScore": 0.0,
+                "evidence": []
             },
             {
-                "productId": 17,
-                "rankingScore": 0.015873016,
-                "evidence": [
-                    {
-                        "source": "top_rated",
-                        "rawScore": 0.799999982,
-                        "sourceRank": 3,
-                        "supportCount": 2,
-                        "contributingProductIds": [],
-                        "logOddsContribution": null
-                    }
-                ]
-            },
-            {
-                "productId": 14,
-                "rankingScore": 0.015625,
-                "evidence": [
-                    {
-                        "source": "top_rated",
-                        "rawScore": 0.75,
-                        "sourceRank": 4,
-                        "supportCount": 2,
-                        "contributingProductIds": [],
-                        "logOddsContribution": null
-                    }
-                ]
-            },
-            {
-                "productId": 12,
-                "rankingScore": 0.015384615,
-                "evidence": [
-                    {
-                        "source": "top_rated",
-                        "rawScore": 0.650000006,
-                        "sourceRank": 5,
-                        "supportCount": 2,
-                        "contributingProductIds": [],
-                        "logOddsContribution": null
-                    }
-                ]
+                "productId": 31,
+                "rankingScore": 0.0,
+                "evidence": []
             }
         ],
         "limit": 5
@@ -10973,105 +10687,21 @@
         "category": 1,
         "placement": "home",
         "sources": [
-            "top_rated"
+            "new_products"
         ],
         "contextKey": "parity",
         "scoreKind": "ranked",
         "scorerId": null,
         "items": [
             {
-                "productId": 10,
+                "productId": 12,
                 "rankingScore": 0.016393443,
                 "evidence": [
                     {
-                        "source": "top_rated",
-                        "rawScore": 0.866666655,
+                        "source": "new_products",
+                        "rawScore": null,
                         "sourceRank": 1,
-                        "supportCount": 3,
-                        "contributingProductIds": [],
-                        "logOddsContribution": null
-                    }
-                ]
-            },
-            {
-                "productId": 13,
-                "rankingScore": 0.016129032,
-                "evidence": [
-                    {
-                        "source": "top_rated",
-                        "rawScore": 0.799999982,
-                        "sourceRank": 2,
-                        "supportCount": 2,
-                        "contributingProductIds": [],
-                        "logOddsContribution": null
-                    }
-                ]
-            },
-            {
-                "productId": 17,
-                "rankingScore": 0.015873016,
-                "evidence": [
-                    {
-                        "source": "top_rated",
-                        "rawScore": 0.799999982,
-                        "sourceRank": 3,
-                        "supportCount": 2,
-                        "contributingProductIds": [],
-                        "logOddsContribution": null
-                    }
-                ]
-            },
-            {
-                "productId": 14,
-                "rankingScore": 0.015625,
-                "evidence": [
-                    {
-                        "source": "top_rated",
-                        "rawScore": 0.75,
-                        "sourceRank": 4,
-                        "supportCount": 2,
-                        "contributingProductIds": [],
-                        "logOddsContribution": null
-                    }
-                ]
-            },
-            {
-                "productId": 12,
-                "rankingScore": 0.015384615,
-                "evidence": [
-                    {
-                        "source": "top_rated",
-                        "rawScore": 0.650000006,
-                        "sourceRank": 5,
-                        "supportCount": 2,
-                        "contributingProductIds": [],
-                        "logOddsContribution": null
-                    }
-                ]
-            },
-            {
-                "productId": 15,
-                "rankingScore": 0.015151515,
-                "evidence": [
-                    {
-                        "source": "top_rated",
-                        "rawScore": 0.550000012,
-                        "sourceRank": 6,
-                        "supportCount": 2,
-                        "contributingProductIds": [],
-                        "logOddsContribution": null
-                    }
-                ]
-            },
-            {
-                "productId": 11,
-                "rankingScore": 0.014925373,
-                "evidence": [
-                    {
-                        "source": "top_rated",
-                        "rawScore": 0.549999997,
-                        "sourceRank": 7,
-                        "supportCount": 2,
+                        "supportCount": null,
                         "contributingProductIds": [],
                         "logOddsContribution": null
                     }
@@ -11186,81 +10816,21 @@
         "category": 1,
         "placement": "home",
         "sources": [
-            "top_rated"
+            "new_products"
         ],
         "contextKey": "parity",
         "scoreKind": "ranked",
         "scorerId": null,
         "items": [
             {
-                "productId": 10,
-                "rankingScore": 0.016393443,
-                "evidence": [
-                    {
-                        "source": "top_rated",
-                        "rawScore": 0.866666655,
-                        "sourceRank": 1,
-                        "supportCount": 3,
-                        "contributingProductIds": [],
-                        "logOddsContribution": null
-                    }
-                ]
+                "productId": 26,
+                "rankingScore": 0.0,
+                "evidence": []
             },
             {
-                "productId": 13,
-                "rankingScore": 0.016129032,
-                "evidence": [
-                    {
-                        "source": "top_rated",
-                        "rawScore": 0.799999982,
-                        "sourceRank": 2,
-                        "supportCount": 2,
-                        "contributingProductIds": [],
-                        "logOddsContribution": null
-                    }
-                ]
-            },
-            {
-                "productId": 17,
-                "rankingScore": 0.015873016,
-                "evidence": [
-                    {
-                        "source": "top_rated",
-                        "rawScore": 0.799999982,
-                        "sourceRank": 3,
-                        "supportCount": 2,
-                        "contributingProductIds": [],
-                        "logOddsContribution": null
-                    }
-                ]
-            },
-            {
-                "productId": 14,
-                "rankingScore": 0.015625,
-                "evidence": [
-                    {
-                        "source": "top_rated",
-                        "rawScore": 0.75,
-                        "sourceRank": 4,
-                        "supportCount": 2,
-                        "contributingProductIds": [],
-                        "logOddsContribution": null
-                    }
-                ]
-            },
-            {
-                "productId": 11,
-                "rankingScore": 0.015384615,
-                "evidence": [
-                    {
-                        "source": "top_rated",
-                        "rawScore": 0.549999997,
-                        "sourceRank": 5,
-                        "supportCount": 2,
-                        "contributingProductIds": [],
-                        "logOddsContribution": null
-                    }
-                ]
+                "productId": 31,
+                "rankingScore": 0.0,
+                "evidence": []
             }
         ],
         "limit": 5
@@ -11269,82 +10839,12 @@
         "category": 1,
         "placement": "home",
         "sources": [
-            "top_rated"
+            "new_products"
         ],
         "contextKey": "parity",
         "scoreKind": "ranked",
         "scorerId": null,
         "items": [
-            {
-                "productId": 10,
-                "rankingScore": 0.016393443,
-                "evidence": [
-                    {
-                        "source": "top_rated",
-                        "rawScore": 0.866666655,
-                        "sourceRank": 1,
-                        "supportCount": 3,
-                        "contributingProductIds": [],
-                        "logOddsContribution": null
-                    }
-                ]
-            },
-            {
-                "productId": 13,
-                "rankingScore": 0.016129032,
-                "evidence": [
-                    {
-                        "source": "top_rated",
-                        "rawScore": 0.799999982,
-                        "sourceRank": 2,
-                        "supportCount": 2,
-                        "contributingProductIds": [],
-                        "logOddsContribution": null
-                    }
-                ]
-            },
-            {
-                "productId": 17,
-                "rankingScore": 0.015873016,
-                "evidence": [
-                    {
-                        "source": "top_rated",
-                        "rawScore": 0.799999982,
-                        "sourceRank": 3,
-                        "supportCount": 2,
-                        "contributingProductIds": [],
-                        "logOddsContribution": null
-                    }
-                ]
-            },
-            {
-                "productId": 14,
-                "rankingScore": 0.015625,
-                "evidence": [
-                    {
-                        "source": "top_rated",
-                        "rawScore": 0.75,
-                        "sourceRank": 4,
-                        "supportCount": 2,
-                        "contributingProductIds": [],
-                        "logOddsContribution": null
-                    }
-                ]
-            },
-            {
-                "productId": 11,
-                "rankingScore": 0.015384615,
-                "evidence": [
-                    {
-                        "source": "top_rated",
-                        "rawScore": 0.549999997,
-                        "sourceRank": 5,
-                        "supportCount": 2,
-                        "contributingProductIds": [],
-                        "logOddsContribution": null
-                    }
-                ]
-            },
             {
                 "productId": 26,
                 "rankingScore": 0.0,
@@ -11977,12 +11477,35 @@
         "category": 1,
         "placement": "home",
         "sources": [
-            "top_rated"
+            "top_rated",
+            "new_products"
         ],
         "contextKey": "parity",
         "scoreKind": "ranked",
         "scorerId": null,
         "items": [
+            {
+                "productId": 12,
+                "rankingScore": 0.031778058,
+                "evidence": [
+                    {
+                        "source": "top_rated",
+                        "rawScore": 0.650000006,
+                        "sourceRank": 5,
+                        "supportCount": 2,
+                        "contributingProductIds": [],
+                        "logOddsContribution": null
+                    },
+                    {
+                        "source": "new_products",
+                        "rawScore": null,
+                        "sourceRank": 1,
+                        "supportCount": null,
+                        "contributingProductIds": [],
+                        "logOddsContribution": null
+                    }
+                ]
+            },
             {
                 "productId": 10,
                 "rankingScore": 0.016393443,
@@ -12033,20 +11556,6 @@
                         "source": "top_rated",
                         "rawScore": 0.75,
                         "sourceRank": 4,
-                        "supportCount": 2,
-                        "contributingProductIds": [],
-                        "logOddsContribution": null
-                    }
-                ]
-            },
-            {
-                "productId": 12,
-                "rankingScore": 0.015384615,
-                "evidence": [
-                    {
-                        "source": "top_rated",
-                        "rawScore": 0.650000006,
-                        "sourceRank": 5,
                         "supportCount": 2,
                         "contributingProductIds": [],
                         "logOddsContribution": null
@@ -12060,12 +11569,35 @@
         "category": 1,
         "placement": "home",
         "sources": [
-            "top_rated"
+            "top_rated",
+            "new_products"
         ],
         "contextKey": "parity",
         "scoreKind": "ranked",
         "scorerId": null,
         "items": [
+            {
+                "productId": 12,
+                "rankingScore": 0.031778058,
+                "evidence": [
+                    {
+                        "source": "top_rated",
+                        "rawScore": 0.650000006,
+                        "sourceRank": 5,
+                        "supportCount": 2,
+                        "contributingProductIds": [],
+                        "logOddsContribution": null
+                    },
+                    {
+                        "source": "new_products",
+                        "rawScore": null,
+                        "sourceRank": 1,
+                        "supportCount": null,
+                        "contributingProductIds": [],
+                        "logOddsContribution": null
+                    }
+                ]
+            },
             {
                 "productId": 10,
                 "rankingScore": 0.016393443,
@@ -12116,20 +11648,6 @@
                         "source": "top_rated",
                         "rawScore": 0.75,
                         "sourceRank": 4,
-                        "supportCount": 2,
-                        "contributingProductIds": [],
-                        "logOddsContribution": null
-                    }
-                ]
-            },
-            {
-                "productId": 12,
-                "rankingScore": 0.015384615,
-                "evidence": [
-                    {
-                        "source": "top_rated",
-                        "rawScore": 0.650000006,
-                        "sourceRank": 5,
                         "supportCount": 2,
                         "contributingProductIds": [],
                         "logOddsContribution": null
@@ -12682,7 +12200,8 @@
         "category": 1,
         "placement": "home",
         "sources": [
-            "top_rated"
+            "top_rated",
+            "new_products"
         ],
         "contextKey": "parity",
         "scoreKind": "ranked",
@@ -12765,7 +12284,8 @@
         "category": 1,
         "placement": "home",
         "sources": [
-            "top_rated"
+            "top_rated",
+            "new_products"
         ],
         "contextKey": "parity",
         "scoreKind": "ranked",

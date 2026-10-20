@@ -37,6 +37,20 @@ If you already have ratings, rebuild the link tables from them:
 sculpt recommender:rebuild-links
 ```
 
+### Keeping derived pairs fresh
+
+`direct_links` and `direct_slope` each control incremental maintenance of one derived measure, independently:
+
+| Write path                                   | `vogoo_links` (liked count)              | Slope One pair stats                      |
+|-----------------------------------------------|-------------------------------------------|--------------------------------------------|
+| `RecommendationEngine::setRating()`/`deleteRating()` | Updated only when `direct_links` is `true` (default `false`) | Updated only when `direct_slope` is `true` (default `true`) |
+| A bulk import written directly to `vogoo_ratings` (bypassing the engine) | Never updated                             | Never updated                              |
+| `sculpt recommender:rebuild-links`           | Always rebuilt from `vogoo_ratings`       | Always rebuilt from `vogoo_ratings`        |
+
+A flag being off does not clear existing rows; `ItemLinksSource` and `SlopeOneSource` keep reading whatever is
+there, and it goes stale until the next rebuild. With the defaults, a fresh rating updates Slope One immediately
+but leaves `vogoo_links` stale until you run `recommender:rebuild-links`.
+
 ## Quick start
 
 ```php
@@ -71,6 +85,14 @@ the same dependencies from `config/recommender.php`.
 
 Ratings run from 0.0 to 1.0, and -1.0 marks "not interested".
 
+### Cold start
+
+Below `ReconciliationTuning::$minHistory` genuine ratings (default 1), a subject is "cold": personal sources
+(`ItemLinks`, `SlopeOne`, `UserSimilarity`) are dropped because they have no history to read, and only the
+non-personal sources the request already asked for (`TopRated`, `NewProducts`) are kept. Requesting only personal
+sources for a cold subject falls back to `TopRated` alone, so the slate is never silently empty. Set
+`ReconciliationTuning::$coldStartSources` to a fixed source list to override this per request instead.
+
 ## API at a glance
 
 | Task                                                                       | Method                                                                                       | Returns                                                                  |
@@ -82,7 +104,7 @@ Ratings run from 0.0 to 1.0, and -1.0 marks "not interested".
 | Predicted ratings for all unrated products                                 | `SlopeOneSource::candidates()` with `Subject::member()`                                      | `RecommendationResult[]`, with the rating in `score`                     |
 | Displayed slate for a member or visitor, filtered by catalogue eligibility | `RecommendationReconciler::slate()` with `Subject::member()` or `Subject::visitor()`         | `RecommendationList`                                                     |
 | Record a visitor purchase or click in session state                        | `VisitorContext::recordPurchase()`, `recordClick()`                                          | `void`                                                                   |
-| Full bounded eligible pool, not cut to `limit`                             | `RecommendationReconciler::candidatePool()` with `Subject::member()` or `Subject::visitor()` | `RecommendationList`                                                     |
+| Ranked, eligible pool found by the bounded search, not cut to `limit`      | `RecommendationReconciler::candidatePool()` with `Subject::member()` or `Subject::visitor()` | `RecommendationList`                                                     |
 
 Visitor requests use the same `ReconciliationRequest`. A visitor request that includes
 `RecommendationSource::UserSimilarity` throws `InvalidArgumentException`, because user similarity needs a persisted
@@ -116,8 +138,10 @@ takes a `Subject`, which is a member, a visitor or a product:
   `limit` without an error. Check the count when the list must be full.
 - `limit = 0` with an eligibility provider checks every candidate, which costs more on large catalogues.
 - `RecommendationReconciler` `limit` is the size of the displayed slate, from 1 to 100. Zero is rejected, because a
-  slate
-  is always bounded.
+  slate is always bounded. It also doubles as the backfill stopping target for `candidatePool()`: the bounded search
+  widens per-source depth across rounds only until `limit` eligible candidates are found or the depth/round caps are
+  reached, so a higher `max_candidate_depth` alone does not make `candidatePool()` return every eligible candidate in
+  the catalogue — raise `limit` too if you need a larger pool.
 
 ### Missing values and eligibility
 
@@ -136,9 +160,69 @@ takes a `Subject`, which is a member, a visitor or a product:
 |------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `ItemLinksSource::candidates()` for a product                          | Liked count of the co-occurrence link                                                                                                                                                                             |
 | `SlopeOneSource::candidates()` for a product                           | Average Slope One difference, which can be negative                                                                                                                                                               |
-| `RecommendationReconciler` slates                                      | `rankingScore` is the fused rank score. Each `evidence` entry's `rawScore` is the source's native score: for item links, the sum of liked count times (rating minus threshold); for top-rated, the average rating |
+| `RecommendationReconciler` slates                                      | `rankingScore`; see below. Each `evidence` entry's `rawScore` is the source's native score: for item links, the sum of liked count times (rating minus threshold); for top-rated, the average rating |
 | `SlopeOneSource::candidates()` and `predict()` for a member or visitor | The predicted rating, in `[0, 1]`                                                                                                                                                                                 |
 | `ItemLinksSource::reasons()`                                           | Liked count of the link to the given product                                                                                                                                                                      |
+
+A reconciled list's `rankingScore` is on one of two scales, told apart by `RecommendationList::$scorerId`:
+
+- `scorerId === null`: reciprocal-rank fusion score (no active click model).
+- `scorerId !== null`: the named model's predicted click probability at the item's display position, computed
+  when `EvaluationRecorder::recordImpression()` records the list.
+
+Scores from rank fusion and from a model, or from two different models, are not on a shared scale and must not be
+compared against each other.
+
+### Identifiers
+
+Two calling conventions coexist. Both validate their range; neither is safer than the other.
+
+| Takes `MemberId`/`ProductId`         | Takes plain `int`                                                                  |
+|---------------------------------------|--------------------------------------------------------------------------------------|
+| `RecommendationEngine::setRating()`   | `RecommendationEngine::memberRatings()`, `productRatings()`, `deleteMember()`, `deleteProduct()`, `productNumRatings()`, `productAverageRating()` |
+| `RecommendationEngine::memberRating()`| `Subject::member()`, `Subject::product()`, `VisitorContext` methods                |
+
+### Evaluation
+
+Evaluation is opt-in and separate from serving a slate: generating a slate never records anything by itself.
+
+```bash
+sculpt recommender:init-evaluation-db   # create the evaluation tables, once
+```
+
+```php
+use Quellabs\Recommender\Evaluation\EvaluationRecorder;
+use Quellabs\Recommender\Evaluation\OutcomeType;
+use DateTimeImmutable;
+
+$recorder = new EvaluationRecorder($connection);
+
+// 1. Build the slate with diagnostics so it can be recorded.
+$slate = $reconciler->slate(Subject::member(1), new ReconciliationRequest(
+    $eligibility, [RecommendationSource::ItemLinks], 5, 'home', diagnostics: true));
+
+// 2. Record the subset and order actually displayed, not the full pool.
+$shown = $slate->selectDisplayedProducts([102, 104, 103]);
+$impressionId = $recorder->recordImpression($shown, member: 1);
+
+// 3. Record outcomes later, with a stable event ID so retries don't double-count.
+$recorder->recordOutcome($impressionId, 102, 'click:102:' . time(), OutcomeType::Click, new DateTimeImmutable());
+```
+
+Outcomes and implicit ratings are separate calls: recording a click here does not call
+`RecommendationEngine::recordClick()`, and vice versa. `EvaluationReport::summary()` reports rates over shown
+items under your display policy, not over the whole catalogue.
+
+Training and activating a click model is optional and separate from recording impressions and outcomes:
+
+```bash
+sculpt recommender:train-click-model --category=1 --placement=home --sources=item_links \
+  --from=2026-09-01T00:00:00Z --to=2026-10-01T00:00:00Z --as-of=2026-10-08T00:00:00Z --click-window-seconds=86400
+sculpt recommender:activate-click-model --id=<HEX ID PRINTED ABOVE>
+```
+
+Once a model is active for a partition, reconciliation automatically scores matching requests with it instead of
+rank fusion, and `rankingScore` switches to that model's position probability (see Scores above).
 
 ## Documentation
 

@@ -41,12 +41,44 @@ class ReconciliationTest extends IntegrationTestCase {
         $this->assertSame(1, $list->items[0]->evidence[0]->sourceRank);
     }
 
-    /** A subject with no ratings gets only the top-rated source, whatever sources were requested. @return void */
-    public function testColdMemberGetsOnlyTopRated(): void {
+    /** A cold subject drops personal sources but keeps the non-personal ones it requested. @return void */
+    public function testColdMemberKeepsNonPersonalSources(): void {
         $this->insertRating(2, 20, 0.9);
         $this->insertRating(3, 20, 0.8);
         $request = new ReconciliationRequest(new ArrayEligibilityProvider([20, 30]),
             [RecommendationSource::NewProducts, RecommendationSource::ItemLinks, RecommendationSource::TopRated], 5, 'home', [30]);
+        $list = $this->reconciler()->slate(Subject::member(1), $request);
+        $this->assertSame([RecommendationSource::TopRated, RecommendationSource::NewProducts], $list->sources);
+        $this->assertSame([20, 30], array_map(fn($item) => $item->productId, $list->items));
+    }
+
+    /** A cold subject requesting only non-personal sources keeps them unchanged, even with no TopRated requested. @return void */
+    public function testColdMemberRequestingOnlyNewProductsKeepsThem(): void {
+        $request = new ReconciliationRequest(new ArrayEligibilityProvider([30]),
+            [RecommendationSource::NewProducts], 5, 'home', [30]);
+        $list = $this->reconciler()->slate(Subject::member(1), $request);
+        $this->assertSame([RecommendationSource::NewProducts], $list->sources);
+        $this->assertSame([30], array_map(fn($item) => $item->productId, $list->items));
+    }
+
+    /** A cold subject requesting only personal sources falls back to top-rated alone. @return void */
+    public function testColdMemberRequestingOnlyPersonalSourcesFallsBackToTopRated(): void {
+        $this->insertRating(2, 20, 0.9);
+        $this->insertRating(3, 20, 0.8);
+        $request = new ReconciliationRequest(new ArrayEligibilityProvider([20]),
+            [RecommendationSource::ItemLinks], 5, 'home');
+        $list = $this->reconciler()->slate(Subject::member(1), $request);
+        $this->assertSame([RecommendationSource::TopRated], $list->sources);
+        $this->assertSame([20], array_map(fn($item) => $item->productId, $list->items));
+    }
+
+    /** tuning->coldStartSources overrides the request's own sources for a cold subject. @return void */
+    public function testColdStartSourcesTuningOverridesTheFallback(): void {
+        $this->insertRating(2, 20, 0.9);
+        $this->insertRating(3, 20, 0.8);
+        $request = new ReconciliationRequest(new ArrayEligibilityProvider([20, 30]),
+            [RecommendationSource::NewProducts], 5, 'home', [30],
+            tuning: new ReconciliationTuning(coldStartSources: [RecommendationSource::TopRated]));
         $list = $this->reconciler()->slate(Subject::member(1), $request);
         $this->assertSame([RecommendationSource::TopRated], $list->sources);
         $this->assertSame([20], array_map(fn($item) => $item->productId, $list->items));

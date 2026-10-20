@@ -10,7 +10,7 @@
 		/** @var int Catalog ID */
 		public int $productId;
 		
-		/** @var float|null Rank-fusion score or reference-position probability */
+		/** @var float|null Rank-fusion score, or the active model's display-position probability when the list's scorerId is set; see RecommendationList */
 		public ?float $rankingScore;
 		
 		/** @var array<int, SourceEvidence> Available source signals */
@@ -22,7 +22,7 @@
 		/**
 		 * Build a ranked candidate, rejecting values outside their allowed ranges.
 		 * @param int $productId Catalog ID, an unsigned 32-bit integer
-		 * @param float|null $rankingScore Rank-fusion score or reference-position probability
+		 * @param float|null $rankingScore Rank-fusion score, or the active model's display-position probability when the list's scorerId is set
 		 * @param array<mixed> $evidence Available source signals
 		 * @param ReconciliationDiagnostics|null $diagnostics Features and depths, or null when not requested
 		 * @throws \InvalidArgumentException When a value is outside its allowed range

@@ -28,7 +28,10 @@
 	 * @phpstan-import-type CandidateRow from CandidateRoundState
 	 */
 	readonly class RecommendationReconciler {
-		
+
+		/** @var array<int, RecommendationSource> Sources that need no rating history to run */
+		private const array NON_PERSONAL_SOURCES = [RecommendationSource::TopRated, RecommendationSource::NewProducts];
+
 		/** @var RecommendationConfig Recommender settings */
 		private RecommendationConfig $config;
 		
@@ -86,10 +89,13 @@
 		}
 		
 		/**
-		 * Return the full bounded eligible pool for a member or visitor.
+		 * Return the ranked, eligible pool found by the bounded search for a member or visitor. `limit` sets both
+		 * the eventual display capacity and the backfill stopping target: the search keeps widening per-source depth
+		 * until enough eligible candidates exist for `limit` or the depth/round caps are reached, so this is a
+		 * result of the searches actually performed, not an exhaustive scan of the catalogue.
 		 * @param Subject $subject Member or visitor
 		 * @param ReconciliationRequest $request Candidate request
-		 * @return RecommendationList Full bounded eligible pool
+		 * @return RecommendationList Ranked, eligible pool found by the bounded search
 		 * @throws \InvalidArgumentException When a visitor requests user similarity
 		 */
 		public function candidatePool(Subject $subject, ReconciliationRequest $request): RecommendationList {
@@ -130,7 +136,7 @@
 		 * @param ReconciliationRequest $request Request
 		 * @param int $category Resolved category
 		 * @param Subject $subject Member or visitor
-		 * @return RecommendationList Full bounded eligible pool
+		 * @return RecommendationList Ranked, eligible pool found by the bounded search
 		 * @throws \RuntimeException When a source changes its candidate order during depth backfill
 		 */
 		private function rank(ReconciliationRequest $request, int $category, Subject $subject): RecommendationList {
@@ -165,21 +171,30 @@
 				$active?->id, $items, $request->limit
 			);
 		}
-		
+
 		/**
-		 * Limit a subject below the minimum history to the top-rated source.
+		 * Below the minimum history, drop personal sources (item links, Slope One, user similarity) and keep only the
+		 * request's own non-personal sources, or `tuning->coldStartSources` when the caller set a fixed fallback.
+		 * Falls back to top-rated alone when neither non-personal source was requested.
 		 * @param ReconciliationRequest $request Request as the caller made it
 		 * @param array<int, float> $ratings Seen ratings, where negative values are not-interested entries
 		 * @return ReconciliationRequest Request with the source set narrowed when the subject is cold
 		 */
 		private function applyColdStart(ReconciliationRequest $request, array $ratings): ReconciliationRequest {
 			$history = count(array_filter($ratings, fn(float $rating): bool => $rating >= 0.0));
-			
+
 			if ($history >= $request->tuning->minHistory) {
 				return $request;
 			}
-			
-			return $request->withSources([RecommendationSource::TopRated]);
+
+			if ($request->tuning->coldStartSources !== null) {
+				return $request->withSources($request->tuning->coldStartSources);
+			}
+
+			$nonPersonal = array_values(array_filter($request->sources,
+				fn(RecommendationSource $source): bool => in_array($source, self::NON_PERSONAL_SOURCES, true)));
+
+			return $request->withSources($nonPersonal !== [] ? $nonPersonal : [RecommendationSource::TopRated]);
 		}
 		
 		/**
