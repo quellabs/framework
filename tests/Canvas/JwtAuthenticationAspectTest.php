@@ -513,9 +513,33 @@
 			$token   = $this->makeToken($this->makePayload(['iat' => (float)time()]));
 			$request = Request::create('/');
 			$request->headers->set('Authorization', 'Bearer ' . $token);
-			
+
 			$this->makeAspect()->before($this->makeContext($request));
-			
+
+			$this->assertNull($request->attributes->get('jwt_error'));
+		}
+
+		public function testIatInFutureBeyondClockSkewSetsJwtError(): void {
+			// iat 40 seconds in the future, clock skew is 30 — should be rejected.
+			// auth_time (copied verbatim from iat) must not be forgeable into the
+			// future, since StepUpAuthenticationAspect treats it as proof of recency.
+			$token   = $this->makeToken($this->makePayload(['iat' => time() + 40]));
+			$request = Request::create('/');
+			$request->headers->set('Authorization', 'Bearer ' . $token);
+
+			$this->makeAspect(clockSkew: 30)->before($this->makeContext($request));
+
+			$this->assertNotNull($request->attributes->get('jwt_error'));
+		}
+
+		public function testIatWithinClockSkewIsAccepted(): void {
+			// iat 20 seconds in the future, clock skew is 30 — should be accepted
+			$token   = $this->makeToken($this->makePayload(['iat' => time() + 20]));
+			$request = Request::create('/');
+			$request->headers->set('Authorization', 'Bearer ' . $token);
+
+			$this->makeAspect(clockSkew: 30)->before($this->makeContext($request));
+
 			$this->assertNull($request->attributes->get('jwt_error'));
 		}
 		
@@ -671,7 +695,44 @@
 			$request->headers->set('Authorization', 'Bearer ' . $headerB64 . '.' . $payloadB64 . '.' . $sigB64);
 			
 			$this->makeAspect()->before($this->makeContext($request));
-			
+
+			$this->assertNotNull($request->attributes->get('jwt_error'));
+		}
+
+		public function testEmptyJsonObjectPayloadIsAccepted(): void {
+			// "{}" and "[]" both decode to an empty PHP array under json_decode's
+			// assoc mode, so an empty JSON object must not be rejected as if it
+			// were the empty JSON array case above.
+			$header  = ['alg' => 'HS256', 'typ' => 'JWT'];
+			$encode  = fn(mixed $data): string => rtrim(strtr(base64_encode(json_encode($data)), '+/', '-_'), '=');
+
+			$headerB64  = $encode($header);
+			$payloadB64 = $encode(new \stdClass()); // "{}"
+			$sig        = hash_hmac('sha256', $headerB64 . '.' . $payloadB64, $this->secret, true);
+			$sigB64     = rtrim(strtr(base64_encode($sig), '+/', '-_'), '=');
+
+			$request = Request::create('/');
+			$request->headers->set('Authorization', 'Bearer ' . $headerB64 . '.' . $payloadB64 . '.' . $sigB64);
+
+			$this->makeAspect()->before($this->makeContext($request));
+
+			$this->assertNull($request->attributes->get('jwt_error'));
+		}
+
+		public function testEmptyJsonArrayPayloadSetsJwtError(): void {
+			$header  = ['alg' => 'HS256', 'typ' => 'JWT'];
+			$encode  = fn(mixed $data): string => rtrim(strtr(base64_encode(json_encode($data)), '+/', '-_'), '=');
+
+			$headerB64  = $encode($header);
+			$payloadB64 = $encode([]); // "[]"
+			$sig        = hash_hmac('sha256', $headerB64 . '.' . $payloadB64, $this->secret, true);
+			$sigB64     = rtrim(strtr(base64_encode($sig), '+/', '-_'), '=');
+
+			$request = Request::create('/');
+			$request->headers->set('Authorization', 'Bearer ' . $headerB64 . '.' . $payloadB64 . '.' . $sigB64);
+
+			$this->makeAspect()->before($this->makeContext($request));
+
 			$this->assertNotNull($request->attributes->get('jwt_error'));
 		}
 	}
