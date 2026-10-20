@@ -84,6 +84,16 @@ class ReconciliationTest extends IntegrationTestCase {
         $this->assertSame([20], array_map(fn($item) => $item->productId, $list->items));
     }
 
+    /** A coldStartSources override containing user similarity is rejected for a cold visitor, not just the original request. @return void */
+    public function testColdStartSourcesOverrideIsValidatedAgainstTheVisitor(): void {
+        $request = new ReconciliationRequest(new ArrayEligibilityProvider([20]),
+            [RecommendationSource::NewProducts], 1, 'home',
+            tuning: new ReconciliationTuning(coldStartSources: [RecommendationSource::UserSimilarity]));
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->reconciler()->slate(Subject::visitor(new VisitorContext($this->config)), $request);
+    }
+
     /** Ratings below the configured minimum history make a subject cold, and the minimum counts only non-negative ratings. @return void */
     public function testMinimumHistoryDecidesColdStart(): void {
         $this->insertRating(1, 10, 0.9);

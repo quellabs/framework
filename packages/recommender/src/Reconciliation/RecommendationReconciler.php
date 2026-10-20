@@ -99,16 +99,16 @@
 		 * @throws \InvalidArgumentException When a visitor requests user similarity
 		 */
 		public function candidatePool(Subject $subject, ReconciliationRequest $request): RecommendationList {
-			$this->assertSourcesFitSubject($subject, $request);
 			$category = $this->config->resolveCategory($request->category);
-			
+
 			return $this->rank($request, $category, $subject);
 		}
-		
+
 		/**
-		 * Reject a visitor request that includes user similarity, which needs a persisted member.
+		 * Reject a visitor request whose effective source set, after cold-start selection, includes user
+		 * similarity, which needs a persisted member.
 		 * @param Subject $subject Member or visitor
-		 * @param ReconciliationRequest $request Candidate request
+		 * @param ReconciliationRequest $request Request after cold-start source selection
 		 * @return void
 		 * @throws \InvalidArgumentException When a visitor requests user similarity
 		 */
@@ -143,6 +143,7 @@
 			$sources = $this->sourceFactory->create();
 			$ratings = $sources->ratings->seen($subject, $category);
 			$request = $this->applyColdStart($request, $ratings);
+			$this->assertSourcesFitSubject($subject, $request);
 			$depthCap = $request->tuning->maxCandidateDepth ?? $this->config->maxCandidateDepth();
 			$roundCap = $this->config->maxBackfillRounds();
 			$batchSize = max(1, $request->tuning->maxEligibilityBatchSize ?? $this->config->maxEligibilityBatchSize());

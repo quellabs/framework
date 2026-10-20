@@ -17,7 +17,7 @@
 		/** @var int|null Maximum IDs per eligibility call override, or null for the configured default */
 		public ?int $maxEligibilityBatchSize;
 
-		/** @var int Minimum ratings before personal sources are used; below it only the top-rated source runs */
+		/** @var int Minimum genuine ratings before personal sources run; below it, cold start keeps only non-personal sources (see RecommendationReconciler::applyColdStart()) */
 		public int $minHistory;
 
 		/** @var array<int, RecommendationSource>|null Fixed cold-start source set, or null to keep the request's own non-personal sources */

@@ -10,7 +10,7 @@ machine-learning infrastructure required.
 - **Opt-in evaluation** of displayed recommendations and a click model
 
 Based on the [Vogoo PHP recommendation engine](http://www.vogoo.net/) (2007–2008) by Stéphane Droux, modernised for PHP
-8.2+ and the Quellabs ecosystem.
+8.3+ and the Quellabs ecosystem.
 
 ## Requirements
 
@@ -90,8 +90,9 @@ Ratings run from 0.0 to 1.0, and -1.0 marks "not interested".
 Below `ReconciliationTuning::$minHistory` genuine ratings (default 1), a subject is "cold": personal sources
 (`ItemLinks`, `SlopeOne`, `UserSimilarity`) are dropped because they have no history to read, and only the
 non-personal sources the request already asked for (`TopRated`, `NewProducts`) are kept. Requesting only personal
-sources for a cold subject falls back to `TopRated` alone, so the slate is never silently empty. Set
-`ReconciliationTuning::$coldStartSources` to a fixed source list to override this per request instead.
+sources for a cold subject falls back to trying `TopRated` alone; `TopRated` can still return no products, for
+example when none meet `topRatedMinRatings` or eligibility rejects them all, so handle an empty list regardless.
+Set `ReconciliationTuning::$coldStartSources` to a fixed source list to override this per request instead.
 
 ## API at a glance
 
@@ -167,11 +168,13 @@ takes a `Subject`, which is a member, a visitor or a product:
 A reconciled list's `rankingScore` is on one of two scales, told apart by `RecommendationList::$scorerId`:
 
 - `scorerId === null`: reciprocal-rank fusion score (no active click model).
-- `scorerId !== null`: the named model's predicted click probability at the item's display position, computed
-  when `EvaluationRecorder::recordImpression()` records the list.
+- `scorerId !== null`: the active model's click probability at the fixed reference position (position one), used
+  to rank every candidate the same way regardless of where it ends up displayed.
 
-Scores from rank fusion and from a model, or from two different models, are not on a shared scale and must not be
-compared against each other.
+The model's probability at an item's actual displayed position is a separate value, recorded only when
+`EvaluationRecorder::recordImpression()` stores the impression — it is not `rankingScore` and is not returned by
+reconciliation. Scores from rank fusion and from a model, or from two different models, are not on a shared scale
+and must not be compared against each other.
 
 ### Identifiers
 
@@ -197,16 +200,16 @@ use DateTimeImmutable;
 
 $recorder = new EvaluationRecorder($connection);
 
-// 1. Build the slate with diagnostics so it can be recorded.
+// Continuing the Quick start example: same $reconciler and ratings. diagnostics: true is required to record it.
 $slate = $reconciler->slate(Subject::member(1), new ReconciliationRequest(
-    $eligibility, [RecommendationSource::ItemLinks], 5, 'home', diagnostics: true));
+    new ArrayEligibilityProvider([102]), [RecommendationSource::ItemLinks], 5, 'home', diagnostics: true));
 
-// 2. Record the subset and order actually displayed, not the full pool.
-$shown = $slate->selectDisplayedProducts([102, 104, 103]);
+// Record the subset and order actually displayed, not the full pool; here $slate->items is just [102].
+$shown = $slate->selectDisplayedProducts(array_map(fn($item) => $item->productId, $slate->items));
 $impressionId = $recorder->recordImpression($shown, member: 1);
 
-// 3. Record outcomes later, with a stable event ID so retries don't double-count.
-$recorder->recordOutcome($impressionId, 102, 'click:102:' . time(), OutcomeType::Click, new DateTimeImmutable());
+// Record outcomes later. $orderLineId is your own persisted event/order ID, so a retry doesn't double-count.
+$recorder->recordOutcome($impressionId, 102, $orderLineId, OutcomeType::Click, new DateTimeImmutable());
 ```
 
 Outcomes and implicit ratings are separate calls: recording a click here does not call
@@ -222,7 +225,7 @@ sculpt recommender:activate-click-model --id=<HEX ID PRINTED ABOVE>
 ```
 
 Once a model is active for a partition, reconciliation automatically scores matching requests with it instead of
-rank fusion, and `rankingScore` switches to that model's position probability (see Scores above).
+rank fusion, and `rankingScore` switches to that model's position-one reference probability (see Scores above).
 
 ## Documentation
 

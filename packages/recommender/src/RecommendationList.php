@@ -11,9 +11,12 @@
 	 * Immutable ordered candidates or the application's selected display.
 	 *
 	 * A ranked list's `rankingScore` is on one of two different scales, told apart by `scorerId`: null means
-	 * reciprocal-rank fusion, a non-null ID means the named model's predicted click probability at the item's
-	 * display position, which is computed when `EvaluationRecorder::recordImpression()` records the list.
-	 * Scores from rank fusion and from a model, or from two different models, are not comparable.
+	 * reciprocal-rank fusion, a non-null ID means the active model's click probability at the fixed reference
+	 * position (position one), used to rank every candidate the same way regardless of where it ends up
+	 * displayed. The model's probability at an item's actual displayed position is a separate value, recorded
+	 * only when `EvaluationRecorder::recordImpression()` stores the impression; it is not `rankingScore` and is
+	 * not returned by reconciliation. Scores from rank fusion and from a model, or from two different models,
+	 * are not comparable.
 	 */
 	readonly class RecommendationList {
 		
@@ -32,7 +35,7 @@
 		/** @var ScoreKind How the item scores are interpreted */
 		public ScoreKind $scoreKind;
 		
-		/** @var string|null ID of the scorer that ranked the items; null means rankingScore is a rank-fusion score, non-null means a model position probability */
+		/** @var string|null ID of the scorer that ranked the items; null means rankingScore is a rank-fusion score, non-null means the model's position-one reference probability */
 		public ?string $scorerId;
 		
 		/** @var array<int, ReconciledRecommendation> Ordered results */
