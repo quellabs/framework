@@ -185,6 +185,8 @@ Prioritize correctness, clarity, maintainability, and appropriate scope over cle
 
 Constructors: declare properties explicitly and assign them in the constructor body. Do not use PHP 8 constructor property promotion (`private readonly Type $x` in the parameter list).
 
+Do not use array destructuring (`[$a, $b] = expr()`, including the skip-slot form `[, $b] = expr()`, or `list($a, $b) = expr()`). When a function would naturally return multiple values, return a small value object with named getters and access the values by name at the call site instead.
+
 Do not nest ternary operators (a ternary whose branch is itself a ternary). Use an if/elseif/else chain instead. A single, non-nested ternary is fine.
 
 # Code Documentation Instructions
