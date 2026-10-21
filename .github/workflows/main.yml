@@ -176,6 +176,7 @@ jobs:
         id: sync
         env:
           DRY_RUN: ${{ github.event.inputs.dry_run == 'true' && 'true' || 'false' }}
+          SYNC_TOKEN: ${{ secrets.SYNC_TOKEN }}
         run: |
           set -e
 
@@ -200,8 +201,13 @@ jobs:
             exit 1
           fi
 
-          if ! git push --force \
-            "https://${{ secrets.SYNC_TOKEN }}@github.com/quellabs/${{ matrix.package }}.git" \
+          # Auth via a header scoped to github.com, not embedded in the URL — the
+          # URL form gets silently stripped of credentials when git follows the
+          # https://github.com/... -> https://github.com/.../ redirect.
+          auth_header="AUTHORIZATION: basic $(printf '%s' "x-access-token:${SYNC_TOKEN}" | base64 -w0)"
+
+          if ! git -c "http.https://github.com/.extraheader=$auth_header" push --force \
+            "https://github.com/quellabs/${{ matrix.package }}.git" \
             "$sha:refs/heads/main"; then
             echo "❌ Sync failed"
             exit 1
@@ -302,6 +308,7 @@ jobs:
           DRY_RUN: ${{ github.event.inputs.dry_run == 'true' && 'true' || 'false' }}
           TARGET_VERSION: ${{ steps.check_release.outputs.target_version }}
           SPLIT_SHA: ${{ steps.sync.outputs.split_sha }}
+          SYNC_TOKEN: ${{ secrets.SYNC_TOKEN }}
         run: |
           set -e
 
@@ -312,7 +319,14 @@ jobs:
 
           rm -rf "temp-${{ matrix.package }}"
 
-          if ! git clone "https://${{ secrets.SYNC_TOKEN }}@github.com/quellabs/${{ matrix.package }}.git" "temp-${{ matrix.package }}" 2>/dev/null; then
+          # Auth via a header scoped to github.com, not embedded in the URL — the
+          # URL form gets silently stripped of credentials when git follows the
+          # https://github.com/... -> https://github.com/.../ redirect. `-c` on
+          # clone persists this into the new repo's config, so the push below
+          # inherits it too.
+          auth_header="AUTHORIZATION: basic $(printf '%s' "x-access-token:${SYNC_TOKEN}" | base64 -w0)"
+
+          if ! git -c "http.https://github.com/.extraheader=$auth_header" clone "https://github.com/quellabs/${{ matrix.package }}.git" "temp-${{ matrix.package }}" 2>/dev/null; then
             echo "❌ Failed to clone repository"
             exit 1
           fi
