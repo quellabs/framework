@@ -7,6 +7,7 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAlterTable;
 	use Quellabs\ObjectQuel\ObjectQuel\Lexer;
 	use Quellabs\ObjectQuel\ObjectQuel\Parser;
+	use Quellabs\ObjectQuel\ObjectQuel\ParserException;
 	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQL\QuelToSQLAlter;
 	use Quellabs\ObjectQuel\Tests\Support\FakePlatformCapabilities;
 
@@ -358,6 +359,38 @@
 
 			$this->expectException(QuelException::class);
 			$this->compile($ast, 'sqlite');
+		}
+
+		/**
+		 * A composite local/referenced column list, positionally paired —
+		 * the derived constraint name joins every local column in order.
+		 */
+		public function testAddCompositeForeignKey(): void {
+			$ast = $this->parse('alter OrderLines (add foreign key (order_tenant_id, order_number) references Orders (tenant_id, number))');
+
+			self::assertSame(
+				['ALTER TABLE `OrderLines` ADD CONSTRAINT `fk_OrderLines_order_tenant_id_order_number` FOREIGN KEY (`order_tenant_id`, `order_number`) REFERENCES `Orders` (`tenant_id`, `number`) ON DELETE RESTRICT ON UPDATE NO ACTION'],
+				$this->compile($ast, 'mysql')
+			);
+		}
+
+		/**
+		 * A composite local column list whose referenced column list has a
+		 * different length is rejected at parse time.
+		 */
+		public function testRejectsAnAddForeignKeyWhoseLocalAndReferencedColumnListsHaveDifferentLengths(): void {
+			$this->expectException(ParserException::class);
+
+			$this->parse('alter OrderLines (add foreign key (order_tenant_id, order_number) references Orders (tenant_id))');
+		}
+
+		public function testDropCompositeForeignKeyUsesDropForeignKeyOnMysql(): void {
+			$ast = $this->parse('alter OrderLines (drop foreign key (order_tenant_id, order_number))');
+
+			self::assertSame(
+				['ALTER TABLE `OrderLines` DROP FOREIGN KEY `fk_OrderLines_order_tenant_id_order_number`'],
+				$this->compile($ast, 'mysql')
+			);
 		}
 
 		/**

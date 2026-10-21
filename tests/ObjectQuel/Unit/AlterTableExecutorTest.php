@@ -151,6 +151,25 @@
 			);
 		}
 
+		/**
+		 * A composite local column list with no referenced column list
+		 * resolves to the target's composite primary key, in order, since
+		 * the column counts match.
+		 */
+		public function testAddCompositeForeignKeyWithNoColumnListResolvesTheReferencedTablesCompositePrimaryKey(): void {
+			$capturedSql = [];
+			$connection = $this->mockConnection($capturedSql);
+			$connection->method('getPrimaryKeyColumns')->with('Orders')->willReturn(['tenant_id', 'number']);
+
+			(new AlterTableExecutor($connection, new FakePlatformCapabilities('mysql')))
+				->execute($this->parse('alter OrderLines (add foreign key (order_tenant_id, order_number) references Orders)'), new ExecutionContext([]));
+
+			self::assertSame(
+				['ALTER TABLE `OrderLines` ADD CONSTRAINT `fk_OrderLines_order_tenant_id_order_number` FOREIGN KEY (`order_tenant_id`, `order_number`) REFERENCES `Orders` (`tenant_id`, `number`) ON DELETE RESTRICT ON UPDATE NO ACTION'],
+				$capturedSql
+			);
+		}
+
 		public function testAddForeignKeyWithNoColumnListRejectsATargetWithNoPrimaryKey(): void {
 			$capturedSql = [];
 			$connection = $this->mockConnection($capturedSql);
