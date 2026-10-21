@@ -7,11 +7,8 @@
 	use Quellabs\ObjectQuel\Annotations\Orm\Table;
 
 	/**
-	 * Fixture entity whose setRole() writes a differently named property
-	 * ($roleInternal) with no backing "role" property at all. Exists solely
-	 * to regression-test that a request key submitted with different casing
-	 * (e.g. "ROLE") cannot bypass isAttributeWritable() just because PHP's
-	 * method lookup finds setRole() case-insensitively.
+	 * Fixture with a setter whose name has no matching property. JSON:API
+	 * validation must reject that setter-only attribute.
 	 * @Orm\Table(name="test_products_with_setter_only_role")
 	 */
 	class TestProductWithSetterOnlyRoleEntity {
