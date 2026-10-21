@@ -90,9 +90,9 @@
 			$code = "<?php\n";
 			$code .= $invoke('generateNamespace');
 			$code .= $invoke('generateImports');
-			$code .= $invoke('generateClassDocBlock', [$table, $camelCase]);
+			$code .= $invoke('generateClassDocBlock', [$table, $camelCase, $foreignKeys['composite']]);
 			$code .= "    class {$camelCase}Entity {\n";
-			$code .= $invoke('generateMemberVariables', [$tableDescription, $foreignKeys]);
+			$code .= $invoke('generateMemberVariables', [$tableDescription, $foreignKeys['single']]);
 			$code .= $invoke('generateGettersAndSetters', [$tableDescription]);
 			$code .= "    }\n";
 

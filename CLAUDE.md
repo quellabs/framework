@@ -181,6 +181,8 @@ Prioritize correctness, clarity, maintainability, and appropriate scope over cle
 
 Constructors: declare properties explicitly and assign them in the constructor body. Do not use PHP 8 constructor property promotion (`private readonly Type $x` in the parameter list).
 
+Do not use array destructuring (`[$a, $b] = expr()`, including the skip-slot form `[, $b] = expr()`, or `list($a, $b) = expr()`). When a function would naturally return multiple values, return a small value object with named getters and access the values by name at the call site instead.
+
 Do not nest ternary operators (a ternary whose branch is itself a ternary). Use an if/elseif/else chain instead. A single, non-nested ternary is fine.
 
 # Code Documentation Instructions
@@ -214,3 +216,35 @@ implementation.
 developer to understand the code, its purpose, and any non-obvious
 behavior. Do not add documentation merely because there is an
 opportunity to do so.
+
+## Testing
+
+Before considering a task complete:
+
+- Independently identify all direct and indirect behavior that may be affected by the change. 
+  Do not limit testing to the files or behavior explicitly mentioned in the task.
+- Run the relevant existing tests for all affected paths.
+- Add or update tests when behavior changes.
+- Consider edge cases and regression scenarios, not only the happy path.
+- Run the broader related test suite when the change can affect adjacent behavior.
+- Do not report completion while relevant tests are failing.
+
+## Architecture Decisions
+
+Before changing the architecture, inspect the relevant code and documentation for an established design. Follow an explicit user decision or an existing project convention without asking again.
+
+If the choice is still open and would materially affect public contracts, data storage or migration, module or service boundaries, major dependencies, deployment, or backward compatibility, present the viable options, recommend one with a brief reason, and ask the user to choose before implementing that part. Continue independent investigation or work that does not depend on the decision.
+
+Choose routine implementation details yourself when they fit the established design and do not materially constrain future work. Do not ask about naming, small refactors, local algorithms, or other readily reversible details unless they affect a material requirement.
+
+## Reuse Existing Behavior
+
+Before adding or overriding a method, inspect the current class, its parent classes, traits, interfaces, and relevant collaborators for behavior that already solves the task. Search nearby implementations, call sites, and tests by behavior as well as by method name. Use an inherited protected method directly when it already provides the needed behavior; do not copy its implementation into the child class.
+
+If existing behavior is close but insufficient, extend it through the intended hook or a small change at the owning layer. Add a separate implementation only after identifying the specific gap, and explain that gap in the change summary. Keep this investigation proportional to the affected code; routine changes do not require an exhaustive repository search.
+
+## ObjectQuel Pipeline
+
+Respect the existing boundary between parsing and execution. `packages/objectquel/src/ObjectQuel/Lexer.php`, `Parser.php`, and the `Rules/` classes recognize ObjectQuel syntax and produce the AST. Code under `packages/objectquel/src/Execution/` and the `QuelToSQL/` classes work from that AST to plan, generate SQL, and execute it. `QueryExecutor` may call the parser as an entry point; it must not implement or duplicate grammar rules, inspect query text to recognize syntax, or repair an AST because syntax was parsed elsewhere.
+
+For a language feature, trace the query from source text through the AST to SQL before editing. Put each change in the stage that owns it, and test the parsed AST separately from the resulting SQL or execution when both stages change. If a proposed solution needs to move syntax handling across this boundary, explain why and ask the user before implementing that design change.

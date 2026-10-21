@@ -5,7 +5,7 @@
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\Canvas\Routing\Contracts\MethodContextInterface;
 	use Quellabs\Canvas\Security\RateLimitAspect;
-	use Quellabs\Contracts\Cache\CacheInterface;
+	use Quellabs\Canvas\Security\RateLimit\RateLimitStoreInterface;
 	use Symfony\Component\HttpFoundation\Request;
 	use Symfony\Component\HttpFoundation\Response;
 
@@ -16,8 +16,8 @@
 	class RateLimitAspectHeaderPropagationTest extends TestCase {
 
 		private function makeAspect(): RateLimitAspect {
-			$cache = $this->createStub(CacheInterface::class);
-			return new RateLimitAspect($cache);
+			$store = $this->createStub(RateLimitStoreInterface::class);
+			return new RateLimitAspect($store);
 		}
 
 		private function makeContext(Request $request): MethodContextInterface {

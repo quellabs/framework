@@ -45,9 +45,9 @@
 
 			$serializer = new JsonApiSerializer($entityManager, new JsonApiUrlBuilder('https://example.test'));
 
-			// $identifierValue (1) is the profile's own PK. The FK column (userId = 42)
-			// is what must drive the RelUserEntity lookup.
-			$serializer->serializeRelationships($profile, 1);
+			// The profile's own PK (id = 1) must have no bearing here. The FK column
+			// (userId = 42) is what must drive the RelUserEntity lookup.
+			$serializer->serializeRelationships($profile);
 
 			$this->assertSame(['id' => 42], $capturedCriteria);
 		}

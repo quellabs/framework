@@ -256,16 +256,27 @@
 		}
 
 		/**
-		 * Single column each side, never a list — see
-		 * objectquel-foreign-key-design.md, decision 3. A comma inside the
-		 * local column list fails the same way any other malformed clause
-		 * does: the parser expects a closing paren right after the one
-		 * identifier.
+		 * A composite local/referenced column list, positionally paired —
+		 * both lists are equal length, so no mismatch error fires.
 		 */
-		public function testRejectsACompositeForeignKeyColumnList(): void {
-			$this->expectException(\Throwable::class);
+		public function testEmbeddedCompositeForeignKey(): void {
+			$ast = $this->parse('create OrderLines (order_tenant_id = integer, order_number = string(20), primary key (order_tenant_id, order_number), foreign key (order_tenant_id, order_number) references Orders (tenant_id, number))');
 
-			$this->parse('create Posts (id = integer, tenant_id = integer, foreign key (id, tenant_id) references Users (id))');
+			self::assertSame(
+				'CREATE TABLE `OrderLines` (`order_tenant_id` INT NOT NULL, `order_number` VARCHAR(20) NOT NULL, PRIMARY KEY (`order_tenant_id`, `order_number`), CONSTRAINT `fk_OrderLines_order_tenant_id_order_number` FOREIGN KEY (`order_tenant_id`, `order_number`) REFERENCES `Orders` (`tenant_id`, `number`) ON DELETE RESTRICT ON UPDATE NO ACTION) ENGINE=InnoDB',
+				$this->compile($ast, 'mysql')
+			);
+		}
+
+		/**
+		 * A composite local column list whose referenced column list has a
+		 * different length is rejected at parse time — the two lists must
+		 * pair up one-to-one.
+		 */
+		public function testRejectsAForeignKeyWhoseLocalAndReferencedColumnListsHaveDifferentLengths(): void {
+			$this->expectException(ParserException::class);
+
+			$this->parse('create OrderLines (order_tenant_id = integer, order_number = string(20), foreign key (order_tenant_id, order_number) references Orders (tenant_id))');
 		}
 
 		public function testRejectsAnInvalidForeignKeyAction(): void {
