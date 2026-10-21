@@ -15,6 +15,10 @@
 	 */
 	class PacCanvasControllerGeneratorTest extends TestCase {
 
+		/**
+		 * Build an EntityStore reading fixture entities from the test fixtures directory.
+		 * @return EntityStore
+		 */
 		private function makeEntityStore(): EntityStore {
 			$configuration = new Configuration();
 			$configuration->setEntityPath(__DIR__ . '/../../Fixtures/Entities');
@@ -23,6 +27,11 @@
 			return new EntityStore($configuration);
 		}
 
+		/**
+		 * The generated isAttributeWritable() stub allows everything and lists
+		 * the entity's non-identifier properties as a review starting point.
+		 * @return void
+		 */
 		public function testGeneratedControllerAllowsEverythingByDefaultAndListsNonIdentifierProperties(): void {
 			$generator = new PacCanvasControllerGenerator(GenPacProductEntity::class, $this->makeEntityStore());
 

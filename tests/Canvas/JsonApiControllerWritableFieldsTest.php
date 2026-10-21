@@ -8,6 +8,7 @@
 	use Quellabs\Canvas\Tests\Fixtures\Controllers\ConfigurableJsonApiController;
 	use Quellabs\Canvas\Tests\Fixtures\Controllers\ControllerWithMock;
 	use Quellabs\Canvas\Tests\Fixtures\Entities\TestProductEntity;
+	use Quellabs\Canvas\Tests\Fixtures\Entities\TestProductWithAcronymSettersEntity;
 	use Quellabs\Canvas\Tests\Fixtures\Entities\TestProductWithIdSetterEntity;
 	use Quellabs\DependencyInjection\Container;
 	use Quellabs\DependencyInjection\Provider\SimpleBinding;
@@ -154,6 +155,11 @@
 		// validateAttributes(): allow-by-default for any existing property
 		// -------------------------------------------------------------------------
 
+		/**
+		 * A setter-backed field is writable by default when the concrete
+		 * controller configures no denylist and no isAttributeWritable() override.
+		 * @return void
+		 */
 		public function testFieldWithSetterIsWritableByDefaultWithNoConfiguration(): void {
 			$controller = $this->makeController();
 
@@ -162,6 +168,11 @@
 			$this->assertNull($response);
 		}
 
+		/**
+		 * A key that isn't a property on the entity at all, through a setter or
+		 * directly, is rejected with 422 rather than silently ignored.
+		 * @return void
+		 */
 		public function testUnknownAttributeIsRejectedWith422(): void {
 			$controller = $this->makeController();
 
@@ -171,9 +182,12 @@
 			$this->assertSame(422, $response->getStatusCode());
 		}
 
+		/**
+		 * 'role' has a real setter but is explicitly denied here — isAttributeWritable()
+		 * is the only thing that can turn a setter-backed field into a hard 403.
+		 * @return void
+		 */
 		public function testDeniedFieldIsRejectedWith403AndPerFieldPointer(): void {
-			// 'role' has a real setter but is explicitly denied here — isAttributeWritable()
-			// is the only thing that can turn a setter-backed field into a hard 403.
 			$controller = $this->makeController();
 			$controller->deniedFieldsForCreate = ['role'];
 
@@ -185,9 +199,12 @@
 			$this->assertSame('/data/attributes/role', $this->errorPointer($payload, 0));
 		}
 
+		/**
+		 * Unknown attributes are rejected before isAttributeWritable() is ever
+		 * consulted, so a request mixing the two gets the 422, not the 403.
+		 * @return void
+		 */
 		public function testUnknownAttributeTakesPrecedenceOverADeniedOne(): void {
-			// Unknown attributes are rejected before isAttributeWritable() is ever
-			// consulted, so a request mixing the two gets the 422, not the 403.
 			$controller = $this->makeController();
 			$controller->deniedFieldsForCreate = ['role'];
 
@@ -201,6 +218,11 @@
 			$this->assertSame(422, $response->getStatusCode());
 		}
 
+		/**
+		 * A request mixing an allowed and a denied attribute is rejected as a
+		 * whole, not partially mapped.
+		 * @return void
+		 */
 		public function testMixedAllowedAndDeniedAttributesRejectsTheWholeRequest(): void {
 			$controller = $this->makeController();
 			$controller->deniedFieldsForCreate = ['role'];
@@ -219,6 +241,11 @@
 		// Identifiers: hard override, independent of isAttributeWritable()
 		// -------------------------------------------------------------------------
 
+		/**
+		 * The primary key is always forbidden, even when a careless controller's
+		 * isAttributeWritable() override allows everything.
+		 * @return void
+		 */
 		public function testIdentifierAttributeIsForbiddenEvenWhenIsAttributeWritableAllowsEverything(): void {
 			$controller = $this->makeController();
 			$controller->isAttributeWritableCallback = fn() => true; // careless controller config
@@ -229,12 +256,15 @@
 			$this->assertSame(403, $response->getStatusCode());
 		}
 
+		/**
+		 * PHP resolves method calls case-insensitively, so a naive lookup of
+		 * "set" . ucfirst('ID') would find setId() while a strict name
+		 * comparison against the identifier property ('id') would not. The
+		 * identifier guard must resolve the key to its canonical property
+		 * name before deciding, not compare the raw request key.
+		 * @return void
+		 */
 		public function testDifferentlyCasedIdentifierKeyIsStillForbiddenWhenTheEntityHasAnIdSetter(): void {
-			// PHP resolves method calls case-insensitively, so a naive lookup of
-			// "set" . ucfirst('ID') would find setId() while a strict name
-			// comparison against the identifier property ('id') would not. The
-			// identifier guard must resolve the key to its canonical property
-			// name before deciding, not compare the raw request key.
 			$controller = $this->makeController(entityClass: TestProductWithIdSetterEntity::class);
 			$controller->isAttributeWritableCallback = fn() => true; // careless controller config
 
@@ -244,6 +274,45 @@
 			$this->assertSame(403, $response->getStatusCode());
 		}
 
+		/**
+		 * Same as above, but with a setter capitalized as an acronym (setID()).
+		 * Unmangling the setter name itself (lcfirst(substr('setID', 3)) === 'iD')
+		 * would miss the identifier property ('id'); resolving against the
+		 * entity's actual declared properties must not.
+		 * @return void
+		 */
+		public function testAcronymCapitalizedSetterIdentifierKeyIsStillForbidden(): void {
+			$controller = $this->makeController(entityClass: TestProductWithAcronymSettersEntity::class);
+			$controller->isAttributeWritableCallback = fn() => true; // careless controller config
+
+			$response = $controller->callValidateAttributes(new TestProductWithAcronymSettersEntity(), ['ID' => 999], WriteOperation::Create);
+
+			$this->assertNotNull($response);
+			$this->assertSame(403, $response->getStatusCode());
+		}
+
+		/**
+		 * Same unmangling flaw, now against isAttributeWritable() rather than the
+		 * identifier guard: a denylist keyed on the real property name ('role')
+		 * must still catch a request using a differently-cased key ('ROLE')
+		 * against a setROLE() setter.
+		 * @return void
+		 */
+		public function testAcronymCapitalizedSetterWritePolicyDenialIsStillEnforced(): void {
+			$controller = $this->makeController(entityClass: TestProductWithAcronymSettersEntity::class);
+			$controller->deniedFieldsForCreate = ['role'];
+
+			$response = $controller->callValidateAttributes(new TestProductWithAcronymSettersEntity(), ['ROLE' => 'admin'], WriteOperation::Create);
+
+			$this->assertNotNull($response);
+			$this->assertSame(403, $response->getStatusCode());
+		}
+
+		/**
+		 * A request body `id` that disagrees with the URL's resource ID is
+		 * rejected before any attribute is validated or mapped.
+		 * @return void
+		 */
 		public function testBodyIdMismatchIsStillRejectedBeforeAnyAttributeIsLookedAt(): void {
 			$built = $this->makeControllerWithMock($this->entityWithId(5));
 			$controller = $built->getController();
@@ -262,6 +331,11 @@
 		// Create vs update denylists are independent
 		// -------------------------------------------------------------------------
 
+		/**
+		 * The create and update denylists are independent: a field denied for
+		 * create is still writable on update.
+		 * @return void
+		 */
 		public function testFieldDeniedOnCreateIsStillWritableOnUpdate(): void {
 			$controller = $this->makeController();
 			$controller->deniedFieldsForCreate = ['name'];
@@ -271,6 +345,11 @@
 			$this->assertNull($response);
 		}
 
+		/**
+		 * Symmetric to the above: a field denied for update is still writable
+		 * on create.
+		 * @return void
+		 */
 		public function testFieldDeniedOnUpdateIsStillWritableOnCreate(): void {
 			$controller = $this->makeController();
 			$controller->deniedFieldsForUpdate = ['name'];
@@ -284,6 +363,11 @@
 		// Setter presence plays no role — isAttributeWritable() is the only gate
 		// -------------------------------------------------------------------------
 
+		/**
+		 * A property with no setter is still writable by default, via the
+		 * reflection-based mapping path — setter presence plays no role.
+		 * @return void
+		 */
 		public function testPropertyWithoutSetterIsWritableByDefaultViaReflection(): void {
 			$controller = $this->makeController();
 			$entity = new TestProductEntity();
@@ -295,6 +379,11 @@
 			$this->assertSame('secret', $entity->getInternalNotes());
 		}
 
+		/**
+		 * A property with no setter can still be denied by isAttributeWritable(),
+		 * confirming it (not setter presence) is the sole write gate.
+		 * @return void
+		 */
 		public function testPropertyWithoutSetterCanStillBeDeniedByIsAttributeWritable(): void {
 			$controller = $this->makeController();
 			$controller->deniedFieldsForCreate = ['internalNotes'];
@@ -309,6 +398,10 @@
 		// mapAttributesToEntity(): setter when present, reflection otherwise
 		// -------------------------------------------------------------------------
 
+		/**
+		 * mapAttributesToEntity() uses the setter when one exists for the key.
+		 * @return void
+		 */
 		public function testMapAttributesToEntityUsesTheSetterWhenOneExists(): void {
 			$controller = $this->makeController();
 			$entity = new TestProductEntity();
@@ -318,6 +411,11 @@
 			$this->assertSame('Widget', $entity->getName());
 		}
 
+		/**
+		 * mapAttributesToEntity() falls back to direct reflection when the key
+		 * has no setter.
+		 * @return void
+		 */
 		public function testMapAttributesToEntityUsesReflectionWhenNoSetterExists(): void {
 			$controller = $this->makeController();
 			$entity = new TestProductEntity();
@@ -327,6 +425,11 @@
 			$this->assertSame('secret', $entity->getInternalNotes());
 		}
 
+		/**
+		 * mapAttributesToEntity() is a no-op for a key that isn't a property on
+		 * the entity at all, through a setter or directly.
+		 * @return void
+		 */
 		public function testMapAttributesToEntityIgnoresAKeyThatIsNotAPropertyAtAll(): void {
 			$controller = $this->makeController();
 			$entity = new TestProductEntity();
@@ -340,6 +443,10 @@
 		// Authorization hook
 		// -------------------------------------------------------------------------
 
+		/**
+		 * authorizeAttributeWrite() allows every create/update by default.
+		 * @return void
+		 */
 		public function testAuthorizationHookAllowsByDefault(): void {
 			$controller = $this->makeController();
 
@@ -349,6 +456,11 @@
 			$this->assertNull($response);
 		}
 
+		/**
+		 * authorizeAttributeWrite() can deny based on the current entity's state
+		 * (e.g. ownership), independent of which attributes were submitted.
+		 * @return void
+		 */
 		public function testAuthorizationHookCanDenyBasedOnCurrentEntityState(): void {
 			$controller = $this->makeController();
 			$controller->authorizeCallback = function (Request $request, object $entity, WriteOperation $operation) {
@@ -365,13 +477,17 @@
 			$this->assertNull($allowedResponse);
 		}
 
+		/**
+		 * A denial from authorizeAttributeWrite() short-circuits before field
+		 * validation: even a fully valid, allowed attribute must not reach it.
+		 * @return void
+		 */
 		public function testAuthorizationDenialShortCircuitsBeforeFieldValidation(): void {
 			$built = $this->makeControllerWithMock();
 			$controller = $built->getController();
 			$controller->authorizeCallback = fn() => new \Symfony\Component\HttpFoundation\JsonResponse(['errors' => [['status' => '403']]], 403);
 			$built->getMockEm()->expects($this->never())->method('persist');
 
-			// Even a fully valid, allowed attribute must not reach field validation.
 			$request = Request::create('/products', 'POST', content: $this->jsonBody([
 				'data' => ['type' => 'products', 'attributes' => ['name' => 'Widget']]
 			]));
@@ -411,6 +527,11 @@
 		// Full createResource()/updateResource() flow
 		// -------------------------------------------------------------------------
 
+		/**
+		 * createResource() maps the request's attributes onto a new entity and
+		 * persists it on success.
+		 * @return void
+		 */
 		public function testCreateResourceSucceedsAndPersistsTheMappedEntity(): void {
 			$built = $this->makeControllerWithMock();
 			$controller = $built->getController();
@@ -429,6 +550,11 @@
 			$this->assertSame(201, $response->getStatusCode());
 		}
 
+		/**
+		 * createResource() rejects a denied attribute with 403 and never
+		 * persists the entity.
+		 * @return void
+		 */
 		public function testCreateResourceRejectsDeniedAttributeWithoutPersisting(): void {
 			$built = $this->makeControllerWithMock();
 			$controller = $built->getController();
@@ -444,6 +570,11 @@
 			$this->assertSame(403, $response->getStatusCode());
 		}
 
+		/**
+		 * updateResource() maps the request's attributes onto the fetched
+		 * entity and flushes on success.
+		 * @return void
+		 */
 		public function testUpdateResourceSucceedsAndMapsOntoTheFetchedEntity(): void {
 			$entity = $this->entityWithId(5);
 			$built = $this->makeControllerWithMock($entity);
@@ -460,6 +591,11 @@
 			$this->assertSame('Widget', $entity->getName());
 		}
 
+		/**
+		 * updateResource() rejects an unknown attribute with 422 and never
+		 * flushes the entity.
+		 * @return void
+		 */
 		public function testUpdateResourceRejectsAnUnknownAttributeWithoutFlushing(): void {
 			$entity = $this->entityWithId(5);
 			$built = $this->makeControllerWithMock($entity);

@@ -37,26 +37,46 @@
 		 */
 		protected ?string $internalNotes = null;
 
+		/**
+		 * @return int|null
+		 */
 		public function getId(): ?int {
 			return $this->id;
 		}
 
+		/**
+		 * @return string
+		 */
 		public function getName(): string {
 			return $this->name;
 		}
 
+		/**
+		 * @param string $name
+		 * @return void
+		 */
 		public function setName(string $name): void {
 			$this->name = $name;
 		}
 
+		/**
+		 * @return string
+		 */
 		public function getRole(): string {
 			return $this->role;
 		}
 
+		/**
+		 * @param string $role
+		 * @return void
+		 */
 		public function setRole(string $role): void {
 			$this->role = $role;
 		}
 
+		/**
+		 * @return string|null
+		 */
 		public function getInternalNotes(): ?string {
 			return $this->internalNotes;
 		}
