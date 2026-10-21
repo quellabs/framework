@@ -35,23 +35,42 @@
 		/** @var class-string */
 		private string $entityClass;
 
+		/**
+		 * @param Container $container
+		 * @param class-string $entityClass
+		 */
 		public function __construct(Container $container, string $entityClass) {
 			$this->entityClass = $entityClass;
 			parent::__construct($container, new PropertyHandler());
 		}
 
+		/**
+		 * @return JsonApiSerializer
+		 */
 		protected function createSerializer(): JsonApiSerializer {
 			return new StubJsonApiSerializer();
 		}
 
+		/**
+		 * @return class-string
+		 */
 		protected function getEntityClass(): string {
 			return $this->entityClass;
 		}
 
+		/**
+		 * @return string
+		 */
 		protected function getResourceType(): string {
 			return 'products';
 		}
 
+		/**
+		 * @param object $entity
+		 * @param string $key
+		 * @param WriteOperation $operation
+		 * @return bool
+		 */
 		protected function isAttributeWritable(object $entity, string $key, WriteOperation $operation): bool {
 			if ($this->isAttributeWritableCallback !== null) {
 				return ($this->isAttributeWritableCallback)($entity, $key, $operation);
@@ -61,22 +80,48 @@
 			return !in_array($key, $denied, true);
 		}
 
+		/**
+		 * @param Request $request
+		 * @param object $entity
+		 * @param WriteOperation $operation
+		 * @return JsonResponse|null
+		 */
 		protected function authorizeAttributeWrite(Request $request, object $entity, WriteOperation $operation): ?JsonResponse {
 			return $this->authorizeCallback !== null ? ($this->authorizeCallback)($request, $entity, $operation) : null;
 		}
 
+		/**
+		 * @param object $entity
+		 * @param array<string, mixed> $attributes
+		 * @param WriteOperation $operation
+		 * @return JsonResponse|null
+		 */
 		public function callValidateAttributes(object $entity, array $attributes, WriteOperation $operation): ?JsonResponse {
 			return $this->validateAttributes($entity, $attributes, $operation);
 		}
 
+		/**
+		 * @param object $entity
+		 * @param array<string, mixed> $attributes
+		 * @return void
+		 */
 		public function callMapAttributesToEntity(object $entity, array $attributes): void {
 			$this->mapAttributesToEntity($entity, $attributes);
 		}
 
+		/**
+		 * @param Request $request
+		 * @return JsonResponse
+		 */
 		public function callCreateResource(Request $request): JsonResponse {
 			return $this->createResource($request);
 		}
 
+		/**
+		 * @param int $id
+		 * @param Request $request
+		 * @return JsonResponse
+		 */
 		public function callUpdateResource(int $id, Request $request): JsonResponse {
 			return $this->updateResource($id, $request);
 		}

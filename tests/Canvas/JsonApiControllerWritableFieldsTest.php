@@ -6,7 +6,9 @@
 	use Quellabs\Canvas\Controllers\WriteOperation;
 	use Quellabs\Canvas\Kernel;
 	use Quellabs\Canvas\Tests\Fixtures\Controllers\ConfigurableJsonApiController;
+	use Quellabs\Canvas\Tests\Fixtures\Controllers\ControllerWithMock;
 	use Quellabs\Canvas\Tests\Fixtures\Entities\TestProductEntity;
+	use Quellabs\Canvas\Tests\Fixtures\Entities\TestProductWithIdSetterEntity;
 	use Quellabs\DependencyInjection\Container;
 	use Quellabs\DependencyInjection\Provider\SimpleBinding;
 	use Quellabs\ObjectQuel\Configuration;
@@ -27,8 +29,9 @@
 
 		/**
 		 * @param object|null $findResult What a mocked EntityManager::find() should return
+		 * @param class-string $entityClass The entity class the controller operates on
 		 */
-		private function makeController(?object $findResult = null): ConfigurableJsonApiController {
+		private function makeController(?object $findResult = null, string $entityClass = TestProductEntity::class): ConfigurableJsonApiController {
 			$configuration = new Configuration();
 			$configuration->setEntityPath(__DIR__ . '/Fixtures/Entities');
 			$configuration->setEntityNameSpace('Quellabs\\Canvas\\Tests\\Fixtures\\Entities');
@@ -42,15 +45,16 @@
 
 			$container = $this->makeContainer($mockEm);
 
-			return new ConfigurableJsonApiController($container, TestProductEntity::class);
+			return new ConfigurableJsonApiController($container, $entityClass);
 		}
 
 		/**
 		 * Same as makeController(), but returns the mock too so a test can set
 		 * call expectations (e.g. persist() must never be invoked).
-		 * @return array{0: ConfigurableJsonApiController, 1: EntityManager&\PHPUnit\Framework\MockObject\MockObject}
+		 * @param object|null $findResult What a mocked EntityManager::find() should return
+		 * @return ControllerWithMock
 		 */
-		private function makeControllerWithMock(?object $findResult = null): array {
+		private function makeControllerWithMock(?object $findResult = null): ControllerWithMock {
 			$configuration = new Configuration();
 			$configuration->setEntityPath(__DIR__ . '/Fixtures/Entities');
 			$configuration->setEntityNameSpace('Quellabs\\Canvas\\Tests\\Fixtures\\Entities');
@@ -64,9 +68,13 @@
 			$container = $this->makeContainer($mockEm);
 			$controller = new ConfigurableJsonApiController($container, TestProductEntity::class);
 
-			return [$controller, $mockEm];
+			return new ControllerWithMock($controller, $mockEm);
 		}
 
+		/**
+		 * @param object $mockEm
+		 * @return Container
+		 */
 		private function makeContainer(object $mockEm): Container {
 			// A plain `new Container()` eagerly discovers every "di" provider declared
 			// by this real app's installed packages, some of which need constructor
@@ -83,11 +91,63 @@
 		 * Build an entity as if the ORM had already hydrated it with an existing
 		 * identifier — "id" has no setter by design, so this uses reflection the
 		 * same way ORM hydration would, not the controller's own write path.
+		 * @param int $id
+		 * @return TestProductEntity
 		 */
 		private function entityWithId(int $id): TestProductEntity {
 			$entity = new TestProductEntity();
 			(new \ReflectionProperty($entity, 'id'))->setValue($entity, $id);
 			return $entity;
+		}
+
+		/**
+		 * Decode a JsonResponse body into an array, failing the test with a clear
+		 * message if the body isn't the JSON object these responses always are.
+		 * @param \Symfony\Component\HttpFoundation\JsonResponse $response
+		 * @return array<array-key, mixed>
+		 */
+		private function decodeJsonBody(\Symfony\Component\HttpFoundation\JsonResponse $response): array {
+			$payload = json_decode((string)$response->getContent(), true);
+
+			if (!is_array($payload)) {
+				$this->fail('Expected the response body to decode to a JSON object.');
+			}
+
+			return $payload;
+		}
+
+		/**
+		 * Extract the `source.pointer` of one error object from a JSON:API error
+		 * response body, failing the test with a clear message if the shape
+		 * doesn't match.
+		 * @param array<array-key, mixed> $payload
+		 * @param int $index
+		 * @return string
+		 */
+		private function errorPointer(array $payload, int $index): string {
+			$errors = $payload['errors'] ?? null;
+
+			if (!is_array($errors) || !isset($errors[$index]) || !is_array($errors[$index])) {
+				$this->fail('Expected the response body to contain an errors array.');
+			}
+
+			$source = $errors[$index]['source'] ?? null;
+
+			if (!is_array($source) || !isset($source['pointer']) || !is_string($source['pointer'])) {
+				$this->fail('Expected the error object to contain a string source.pointer.');
+			}
+
+			return $source['pointer'];
+		}
+
+		/**
+		 * Encode a JSON:API request body, throwing instead of silently passing
+		 * through a `false` on encode failure.
+		 * @param array<mixed> $data
+		 * @return string
+		 */
+		private function jsonBody(array $data): string {
+			return json_encode($data, JSON_THROW_ON_ERROR);
 		}
 
 		// -------------------------------------------------------------------------
@@ -102,12 +162,13 @@
 			$this->assertNull($response);
 		}
 
-		public function testUnknownAttributeIsSilentlyIgnored(): void {
+		public function testUnknownAttributeIsRejectedWith422(): void {
 			$controller = $this->makeController();
 
 			$response = $controller->callValidateAttributes(new TestProductEntity(), ['doesNotExist' => 'x'], WriteOperation::Create);
 
-			$this->assertNull($response);
+			$this->assertNotNull($response);
+			$this->assertSame(422, $response->getStatusCode());
 		}
 
 		public function testDeniedFieldIsRejectedWith403AndPerFieldPointer(): void {
@@ -120,11 +181,13 @@
 
 			$this->assertNotNull($response);
 			$this->assertSame(403, $response->getStatusCode());
-			$payload = json_decode((string)$response->getContent(), true);
-			$this->assertSame('/data/attributes/role', $payload['errors'][0]['source']['pointer']);
+			$payload = $this->decodeJsonBody($response);
+			$this->assertSame('/data/attributes/role', $this->errorPointer($payload, 0));
 		}
 
-		public function testDeniedAttributeFailsEvenWhenAnUnknownOneIsAlsoPresent(): void {
+		public function testUnknownAttributeTakesPrecedenceOverADeniedOne(): void {
+			// Unknown attributes are rejected before isAttributeWritable() is ever
+			// consulted, so a request mixing the two gets the 422, not the 403.
 			$controller = $this->makeController();
 			$controller->deniedFieldsForCreate = ['role'];
 
@@ -134,7 +197,8 @@
 				WriteOperation::Create
 			);
 
-			$this->assertSame(403, $response->getStatusCode());
+			$this->assertNotNull($response);
+			$this->assertSame(422, $response->getStatusCode());
 		}
 
 		public function testMixedAllowedAndDeniedAttributesRejectsTheWholeRequest(): void {
@@ -165,11 +229,27 @@
 			$this->assertSame(403, $response->getStatusCode());
 		}
 
-		public function testBodyIdMismatchIsStillRejectedBeforeAnyAttributeIsLookedAt(): void {
-			[$controller, $mockEm] = $this->makeControllerWithMock($this->entityWithId(5));
-			$mockEm->expects($this->never())->method('flush');
+		public function testDifferentlyCasedIdentifierKeyIsStillForbiddenWhenTheEntityHasAnIdSetter(): void {
+			// PHP resolves method calls case-insensitively, so a naive lookup of
+			// "set" . ucfirst('ID') would find setId() while a strict name
+			// comparison against the identifier property ('id') would not. The
+			// identifier guard must resolve the key to its canonical property
+			// name before deciding, not compare the raw request key.
+			$controller = $this->makeController(entityClass: TestProductWithIdSetterEntity::class);
+			$controller->isAttributeWritableCallback = fn() => true; // careless controller config
 
-			$request = Request::create('/products/5', 'PUT', content: json_encode([
+			$response = $controller->callValidateAttributes(new TestProductWithIdSetterEntity(), ['ID' => 999], WriteOperation::Create);
+
+			$this->assertNotNull($response);
+			$this->assertSame(403, $response->getStatusCode());
+		}
+
+		public function testBodyIdMismatchIsStillRejectedBeforeAnyAttributeIsLookedAt(): void {
+			$built = $this->makeControllerWithMock($this->entityWithId(5));
+			$controller = $built->getController();
+			$built->getMockEm()->expects($this->never())->method('flush');
+
+			$request = Request::create('/products/5', 'PUT', content: $this->jsonBody([
 				'data' => ['type' => 'products', 'id' => '999', 'attributes' => ['name' => 'Widget']]
 			]));
 
@@ -253,7 +333,7 @@
 
 			$controller->callMapAttributesToEntity($entity, ['doesNotExist' => 'x']);
 
-			$this->assertFalse(property_exists($entity, 'doesNotExist'));
+			$this->assertArrayNotHasKey('doesNotExist', get_object_vars($entity));
 		}
 
 		// -------------------------------------------------------------------------
@@ -286,12 +366,13 @@
 		}
 
 		public function testAuthorizationDenialShortCircuitsBeforeFieldValidation(): void {
-			[$controller, $mockEm] = $this->makeControllerWithMock();
+			$built = $this->makeControllerWithMock();
+			$controller = $built->getController();
 			$controller->authorizeCallback = fn() => new \Symfony\Component\HttpFoundation\JsonResponse(['errors' => [['status' => '403']]], 403);
-			$mockEm->expects($this->never())->method('persist');
+			$built->getMockEm()->expects($this->never())->method('persist');
 
 			// Even a fully valid, allowed attribute must not reach field validation.
-			$request = Request::create('/products', 'POST', content: json_encode([
+			$request = Request::create('/products', 'POST', content: $this->jsonBody([
 				'data' => ['type' => 'products', 'attributes' => ['name' => 'Widget']]
 			]));
 
@@ -303,6 +384,11 @@
 		/**
 		 * authorizeAttributeWrite() is protected; call it the same way createResource()/
 		 * updateResource() do, via reflection, since these tests live outside the hierarchy.
+		 * @param ConfigurableJsonApiController $controller
+		 * @param Request $request
+		 * @param object $entity
+		 * @param WriteOperation $operation
+		 * @return \Symfony\Component\HttpFoundation\JsonResponse|null
 		 */
 		private function invokeAuthorize(
 			ConfigurableJsonApiController $controller,
@@ -312,7 +398,13 @@
 		): ?\Symfony\Component\HttpFoundation\JsonResponse {
 			$method = new \ReflectionMethod($controller, 'authorizeAttributeWrite');
 			$method->setAccessible(true);
-			return $method->invoke($controller, $request, $entity, $operation);
+			$result = $method->invoke($controller, $request, $entity, $operation);
+
+			if ($result !== null && !$result instanceof \Symfony\Component\HttpFoundation\JsonResponse) {
+				$this->fail('authorizeAttributeWrite() returned an unexpected type.');
+			}
+
+			return $result;
 		}
 
 		// -------------------------------------------------------------------------
@@ -320,14 +412,15 @@
 		// -------------------------------------------------------------------------
 
 		public function testCreateResourceSucceedsAndPersistsTheMappedEntity(): void {
-			[$controller, $mockEm] = $this->makeControllerWithMock();
-			$mockEm->expects($this->once())
+			$built = $this->makeControllerWithMock();
+			$controller = $built->getController();
+			$built->getMockEm()->expects($this->once())
 				->method('persist')
 				->with($this->callback(fn(TestProductEntity $entity) => $entity->getName() === 'Widget'))
 				->willReturn(true);
-			$mockEm->expects($this->once())->method('flush');
+			$built->getMockEm()->expects($this->once())->method('flush');
 
-			$request = Request::create('/products', 'POST', content: json_encode([
+			$request = Request::create('/products', 'POST', content: $this->jsonBody([
 				'data' => ['type' => 'products', 'attributes' => ['name' => 'Widget']]
 			]));
 
@@ -337,11 +430,12 @@
 		}
 
 		public function testCreateResourceRejectsDeniedAttributeWithoutPersisting(): void {
-			[$controller, $mockEm] = $this->makeControllerWithMock();
+			$built = $this->makeControllerWithMock();
+			$controller = $built->getController();
 			$controller->deniedFieldsForCreate = ['role'];
-			$mockEm->expects($this->never())->method('persist');
+			$built->getMockEm()->expects($this->never())->method('persist');
 
-			$request = Request::create('/products', 'POST', content: json_encode([
+			$request = Request::create('/products', 'POST', content: $this->jsonBody([
 				'data' => ['type' => 'products', 'attributes' => ['name' => 'Widget', 'role' => 'admin']]
 			]));
 
@@ -352,10 +446,11 @@
 
 		public function testUpdateResourceSucceedsAndMapsOntoTheFetchedEntity(): void {
 			$entity = $this->entityWithId(5);
-			[$controller, $mockEm] = $this->makeControllerWithMock($entity);
-			$mockEm->expects($this->once())->method('flush');
+			$built = $this->makeControllerWithMock($entity);
+			$controller = $built->getController();
+			$built->getMockEm()->expects($this->once())->method('flush');
 
-			$request = Request::create('/products/5', 'PUT', content: json_encode([
+			$request = Request::create('/products/5', 'PUT', content: $this->jsonBody([
 				'data' => ['type' => 'products', 'id' => '5', 'attributes' => ['name' => 'Widget']]
 			]));
 
@@ -365,18 +460,19 @@
 			$this->assertSame('Widget', $entity->getName());
 		}
 
-		public function testUpdateResourceIgnoresAnUnknownAttributeAndStillSucceeds(): void {
+		public function testUpdateResourceRejectsAnUnknownAttributeWithoutFlushing(): void {
 			$entity = $this->entityWithId(5);
-			[$controller, $mockEm] = $this->makeControllerWithMock($entity);
-			$mockEm->expects($this->once())->method('flush');
+			$built = $this->makeControllerWithMock($entity);
+			$controller = $built->getController();
+			$built->getMockEm()->expects($this->never())->method('flush');
 
-			$request = Request::create('/products/5', 'PUT', content: json_encode([
+			$request = Request::create('/products/5', 'PUT', content: $this->jsonBody([
 				'data' => ['type' => 'products', 'id' => '5', 'attributes' => ['name' => 'Widget', 'doesNotExist' => 'x']]
 			]));
 
 			$response = $controller->callUpdateResource(5, $request);
 
-			$this->assertSame(200, $response->getStatusCode());
-			$this->assertSame('Widget', $entity->getName());
+			$this->assertSame(422, $response->getStatusCode());
+			$this->assertSame('', $entity->getName());
 		}
 	}

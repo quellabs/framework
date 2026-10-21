@@ -12,10 +12,17 @@
 	 */
 	class StubJsonApiSerializer extends JsonApiSerializer {
 
+		/**
+		 * Skips the parent constructor; this stub never touches the ORM.
+		 */
 		public function __construct() {
 		}
 
+		/**
+		 * @param object $entity
+		 * @return array{data: array{type: string, id: string, attributes: array<string, mixed>, links: array{self: string}}}
+		 */
 		public function serialize(object $entity): array {
-			return ['data' => ['type' => 'stub', 'id' => '0', 'attributes' => []]];
+			return ['data' => ['type' => 'stub', 'id' => '0', 'attributes' => [], 'links' => ['self' => '/stub/0']]];
 		}
 	}
