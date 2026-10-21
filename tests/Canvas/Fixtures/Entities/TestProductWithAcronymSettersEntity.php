@@ -30,6 +30,7 @@
 		protected string $role = 'user';
 
 		/**
+		 * Returns the product's identifier.
 		 * @return int|null
 		 */
 		public function getId(): ?int {
@@ -37,6 +38,7 @@
 		}
 
 		/**
+		 * Sets the product's identifier.
 		 * @param int $id
 		 * @return void
 		 */
@@ -45,6 +47,7 @@
 		}
 
 		/**
+		 * Returns the product's role.
 		 * @return string
 		 */
 		public function getRole(): string {
@@ -52,6 +55,7 @@
 		}
 
 		/**
+		 * Sets the product's role.
 		 * @param string $role
 		 * @return void
 		 */

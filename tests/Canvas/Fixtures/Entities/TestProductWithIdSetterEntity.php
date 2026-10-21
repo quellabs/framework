@@ -21,6 +21,7 @@
 		protected ?int $id = null;
 
 		/**
+		 * Returns the product's identifier.
 		 * @return int|null
 		 */
 		public function getId(): ?int {
@@ -28,6 +29,7 @@
 		}
 
 		/**
+		 * Sets the product's identifier.
 		 * @param int $id
 		 * @return void
 		 */

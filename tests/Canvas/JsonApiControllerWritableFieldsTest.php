@@ -10,6 +10,7 @@
 	use Quellabs\Canvas\Tests\Fixtures\Entities\TestProductEntity;
 	use Quellabs\Canvas\Tests\Fixtures\Entities\TestProductWithAcronymSettersEntity;
 	use Quellabs\Canvas\Tests\Fixtures\Entities\TestProductWithIdSetterEntity;
+	use Quellabs\Canvas\Tests\Fixtures\Entities\TestProductWithSetterOnlyRoleEntity;
 	use Quellabs\DependencyInjection\Container;
 	use Quellabs\DependencyInjection\Provider\SimpleBinding;
 	use Quellabs\ObjectQuel\Configuration;
@@ -29,6 +30,7 @@
 	class JsonApiControllerWritableFieldsTest extends TestCase {
 
 		/**
+		 * Builds a configurable controller backed by a real EntityStore (for metadata) and a mocked EntityManager.
 		 * @param object|null $findResult What a mocked EntityManager::find() should return
 		 * @param class-string $entityClass The entity class the controller operates on
 		 */
@@ -73,6 +75,7 @@
 		}
 
 		/**
+		 * Builds a real DI container (via Kernel) with the mocked EntityManager bound in.
 		 * @param object $mockEm
 		 * @return Container
 		 */
@@ -200,8 +203,9 @@
 		}
 
 		/**
-		 * Unknown attributes are rejected before isAttributeWritable() is ever
-		 * consulted, so a request mixing the two gets the 422, not the 403.
+		 * isAttributeWritable() may still be consulted for other attributes in
+		 * the same request, but an unknown attribute always wins the response:
+		 * a request mixing the two gets the 422, not the 403.
 		 * @return void
 		 */
 		public function testUnknownAttributeTakesPrecedenceOverADeniedOne(): void {
@@ -303,6 +307,58 @@
 			$controller->deniedFieldsForCreate = ['role'];
 
 			$response = $controller->callValidateAttributes(new TestProductWithAcronymSettersEntity(), ['ROLE' => 'admin'], WriteOperation::Create);
+
+			$this->assertNotNull($response);
+			$this->assertSame(403, $response->getStatusCode());
+		}
+
+		/**
+		 * Same risk, now for an attribute with no backing property at all:
+		 * setRole() writes $roleInternal and there is no "role" property to
+		 * match against. A differently-cased key ('ROLE') doesn't exactly
+		 * match the real setter's own casing (setRole()), so it's forbidden
+		 * by the case check itself — isAttributeWritable() is never even
+		 * reached, let alone bypassed by it.
+		 * @return void
+		 */
+		public function testSetterOnlyAttributeWithDifferentCasingIsForbiddenEvenWhenIsAttributeWritableAllowsEverything(): void {
+			$controller = $this->makeController(entityClass: TestProductWithSetterOnlyRoleEntity::class);
+			$controller->isAttributeWritableCallback = fn() => true; // careless controller config
+
+			$response = $controller->callValidateAttributes(new TestProductWithSetterOnlyRoleEntity(), ['ROLE' => 'admin'], WriteOperation::Create);
+
+			$this->assertNotNull($response);
+			$this->assertSame(403, $response->getStatusCode());
+		}
+
+		/**
+		 * The exact casing a setter-only attribute's own setter implies
+		 * (setRole() -> 'role') is allowed and reaches the real setter when
+		 * not denied, confirming the case check doesn't also block the
+		 * correctly-cased request.
+		 * @return void
+		 */
+		public function testSetterOnlyAttributeWithExactCasingIsAllowedAndMappedWhenNotDenied(): void {
+			$controller = $this->makeController(entityClass: TestProductWithSetterOnlyRoleEntity::class);
+			$entity = new TestProductWithSetterOnlyRoleEntity();
+
+			$response = $controller->callValidateAttributes($entity, ['role' => 'admin'], WriteOperation::Create);
+			$this->assertNull($response);
+
+			$controller->callMapAttributesToEntity($entity, ['role' => 'admin']);
+			$this->assertSame('admin', $entity->getRoleInternal());
+		}
+
+		/**
+		 * The same setter-only attribute, with its exact casing, is still
+		 * denied by isAttributeWritable() like any other known attribute.
+		 * @return void
+		 */
+		public function testSetterOnlyAttributeWithExactCasingIsStillDeniedByIsAttributeWritable(): void {
+			$controller = $this->makeController(entityClass: TestProductWithSetterOnlyRoleEntity::class);
+			$controller->deniedFieldsForCreate = ['role'];
+
+			$response = $controller->callValidateAttributes(new TestProductWithSetterOnlyRoleEntity(), ['role' => 'admin'], WriteOperation::Create);
 
 			$this->assertNotNull($response);
 			$this->assertSame(403, $response->getStatusCode());

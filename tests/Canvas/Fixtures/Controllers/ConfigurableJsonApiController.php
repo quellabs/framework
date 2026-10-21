@@ -36,6 +36,7 @@
 		private string $entityClass;
 
 		/**
+		 * Builds the controller for a given entity class, with a real PropertyHandler.
 		 * @param Container $container
 		 * @param class-string $entityClass
 		 */
@@ -45,6 +46,7 @@
 		}
 
 		/**
+		 * Returns a stub serializer instead of a real one, keeping these tests off the database.
 		 * @return JsonApiSerializer
 		 */
 		protected function createSerializer(): JsonApiSerializer {
@@ -52,6 +54,7 @@
 		}
 
 		/**
+		 * Returns the entity class configured for this controller instance.
 		 * @return class-string
 		 */
 		protected function getEntityClass(): string {
@@ -59,6 +62,7 @@
 		}
 
 		/**
+		 * Returns the fixed JSON:API resource type used by these tests.
 		 * @return string
 		 */
 		protected function getResourceType(): string {
@@ -66,6 +70,7 @@
 		}
 
 		/**
+		 * Decides per-attribute writability via the callback override when set, otherwise the denylist for the operation.
 		 * @param object $entity
 		 * @param string $key
 		 * @param WriteOperation $operation
@@ -81,6 +86,7 @@
 		}
 
 		/**
+		 * Delegates to the authorize callback override when set, otherwise allows the write.
 		 * @param Request $request
 		 * @param object $entity
 		 * @param WriteOperation $operation
@@ -91,6 +97,7 @@
 		}
 
 		/**
+		 * Public wrapper exposing the protected validateAttributes() to tests outside the class hierarchy.
 		 * @param object $entity
 		 * @param array<string, mixed> $attributes
 		 * @param WriteOperation $operation
@@ -101,6 +108,7 @@
 		}
 
 		/**
+		 * Public wrapper exposing the protected mapAttributesToEntity() to tests outside the class hierarchy.
 		 * @param object $entity
 		 * @param array<string, mixed> $attributes
 		 * @return void
@@ -110,6 +118,7 @@
 		}
 
 		/**
+		 * Public wrapper exposing the protected createResource() to tests outside the class hierarchy.
 		 * @param Request $request
 		 * @return JsonResponse
 		 */
@@ -118,6 +127,7 @@
 		}
 
 		/**
+		 * Public wrapper exposing the protected updateResource() to tests outside the class hierarchy.
 		 * @param int $id
 		 * @param Request $request
 		 * @return JsonResponse

@@ -19,6 +19,7 @@
 		}
 
 		/**
+		 * Ignores the entity and returns a fixed, predictable JSON:API payload.
 		 * @param object $entity
 		 * @return array{data: array{type: string, id: string, attributes: array<string, mixed>, links: array{self: string}}}
 		 */

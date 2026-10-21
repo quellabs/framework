@@ -18,6 +18,7 @@
 		private EntityManager $mockEm;
 
 		/**
+		 * Pairs the two together so a test can retrieve either one after construction.
 		 * @param ConfigurableJsonApiController $controller
 		 * @param EntityManager&MockObject $mockEm
 		 */
@@ -27,6 +28,7 @@
 		}
 
 		/**
+		 * Returns the controller under test.
 		 * @return ConfigurableJsonApiController
 		 */
 		public function getController(): ConfigurableJsonApiController {
@@ -34,6 +36,7 @@
 		}
 
 		/**
+		 * Returns the mocked EntityManager the controller was built with.
 		 * @return EntityManager&MockObject
 		 */
 		public function getMockEm(): EntityManager {

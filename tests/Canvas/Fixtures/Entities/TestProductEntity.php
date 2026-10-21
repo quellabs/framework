@@ -38,6 +38,7 @@
 		protected ?string $internalNotes = null;
 
 		/**
+		 * Returns the product's identifier.
 		 * @return int|null
 		 */
 		public function getId(): ?int {
@@ -45,6 +46,7 @@
 		}
 
 		/**
+		 * Returns the product's name.
 		 * @return string
 		 */
 		public function getName(): string {
@@ -52,6 +54,7 @@
 		}
 
 		/**
+		 * Sets the product's name.
 		 * @param string $name
 		 * @return void
 		 */
@@ -60,6 +63,7 @@
 		}
 
 		/**
+		 * Returns the product's role.
 		 * @return string
 		 */
 		public function getRole(): string {
@@ -67,6 +71,7 @@
 		}
 
 		/**
+		 * Sets the product's role.
 		 * @param string $role
 		 * @return void
 		 */
@@ -75,6 +80,7 @@
 		}
 
 		/**
+		 * Returns the product's internal notes.
 		 * @return string|null
 		 */
 		public function getInternalNotes(): ?string {
