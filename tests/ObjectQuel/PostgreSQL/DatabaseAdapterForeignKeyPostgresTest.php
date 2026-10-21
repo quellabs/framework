@@ -14,7 +14,8 @@
 	 * DatabaseAdapter::getForeignKeys()'s PostgreSQL branch (getPostgresForeignKeys()).
 	 * No pdo_pgsql driver is available here, so DatabaseAdapter is partial-mocked
 	 * with execute()/getDatabaseType() stubbed to return canned rows shaped like
-	 * the real information_schema join, letting the real row-parsing logic run.
+	 * the real pg_constraint/conkey/confkey query, letting the real
+	 * row-parsing logic run.
 	 */
 	class DatabaseAdapterForeignKeyPostgresTest extends TestCase {
 		use FkTestSupport;
@@ -60,17 +61,17 @@
 		}
 
 		/**
-		 * A composite FK's columns join into a cross product here (2 local x 2
-		 * referenced = 4 rows), so it's omitted as ambiguous rather than risk a
-		 * wrong pairing; an unrelated single-column constraint in the same
-		 * result set still reads back correctly.
+		 * The real query pairs each composite constraint's local/referenced
+		 * columns via pg_constraint's conkey/confkey ordinality, so the rows
+		 * fed to the parser here are already one-row-per-position, correctly
+		 * paired — never the every-combination cross product the old
+		 * information_schema join produced. An unrelated single-column
+		 * constraint in the same result set still reads back correctly.
 		 */
-		public function testCompositeConstraintIsOmittedButSingleColumnSiblingSurvives(): void {
+		public function testCompositeConstraintReadsBackWithOrderedPairingAndSingleColumnSiblingSurvives(): void {
 			$adapter = $this->makeAdapter([
-				// fk_orders_shipment (composite: shipment_id + shipment_line -> shipments(id, line))
+				// fk_orders_shipment (composite: shipment_id, shipment_line -> shipments(id, line))
 				['constraint_name' => 'fk_orders_shipment', 'column_name' => 'shipment_id', 'referenced_table' => 'shipments', 'referenced_column' => 'id', 'delete_rule' => 'CASCADE', 'update_rule' => 'NO ACTION'],
-				['constraint_name' => 'fk_orders_shipment', 'column_name' => 'shipment_id', 'referenced_table' => 'shipments', 'referenced_column' => 'line', 'delete_rule' => 'CASCADE', 'update_rule' => 'NO ACTION'],
-				['constraint_name' => 'fk_orders_shipment', 'column_name' => 'shipment_line', 'referenced_table' => 'shipments', 'referenced_column' => 'id', 'delete_rule' => 'CASCADE', 'update_rule' => 'NO ACTION'],
 				['constraint_name' => 'fk_orders_shipment', 'column_name' => 'shipment_line', 'referenced_table' => 'shipments', 'referenced_column' => 'line', 'delete_rule' => 'CASCADE', 'update_rule' => 'NO ACTION'],
 				// fk_orders_customer_id (single-column, unaffected)
 				['constraint_name' => 'fk_orders_customer_id', 'column_name' => 'customer_id', 'referenced_table' => 'customers', 'referenced_column' => 'id', 'delete_rule' => 'RESTRICT', 'update_rule' => 'NO ACTION'],
@@ -78,7 +79,13 @@
 
 			$foreignKeys = $adapter->getForeignKeys('orders');
 
-			self::assertArrayNotHasKey('fk_orders_shipment', $foreignKeys);
+			self::assertArrayHasKey('fk_orders_shipment', $foreignKeys);
+
+			$composite = $foreignKeys['fk_orders_shipment'];
+			self::assertSame(['shipment_id', 'shipment_line'], $composite->columns);
+			self::assertSame('shipments', $composite->referencedTable);
+			self::assertSame(['id', 'line'], $composite->referencedColumns);
+
 			self::assertArrayHasKey('fk_orders_customer_id', $foreignKeys);
 			self::assertSame(['customer_id'], $foreignKeys['fk_orders_customer_id']->columns);
 		}

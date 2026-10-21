@@ -52,6 +52,33 @@
 			self::assertSame([], $adapter->getForeignKeys('standalone'));
 		}
 
+		/**
+		 * PRAGMA foreign_key_list() reports one row per column, ordered by
+		 * 'seq' — reads back in the declared order. The declared order here
+		 * ('tenant_id' before 'line') is not alphabetical, so a regression
+		 * that dropped the ksort()-by-seq step (e.g. reordered by name or
+		 * raw row-fetch order) would be caught.
+		 */
+		public function testGetForeignKeysReadsBackACompositeConstraintInDeclaredColumnOrder(): void {
+			$adapter = $this->makeSqliteAdapter();
+			$adapter->execute('CREATE TABLE shipments (tenant_id INTEGER, line INTEGER, PRIMARY KEY (tenant_id, line))');
+			$adapter->execute(
+				'CREATE TABLE orders (' .
+				'shipment_tenant_id INTEGER NOT NULL, shipment_line INTEGER NOT NULL, ' .
+				'FOREIGN KEY (shipment_tenant_id, shipment_line) REFERENCES shipments(tenant_id, line) ON DELETE CASCADE ON UPDATE RESTRICT' .
+				')'
+			);
+
+			$foreignKeys = $adapter->getForeignKeys('orders');
+
+			self::assertArrayHasKey('fk_orders_shipment_tenant_id_shipment_line', $foreignKeys);
+
+			$fk = $foreignKeys['fk_orders_shipment_tenant_id_shipment_line'];
+			self::assertSame(['shipment_tenant_id', 'shipment_line'], $fk->columns);
+			self::assertSame('shipments', $fk->referencedTable);
+			self::assertSame(['tenant_id', 'line'], $fk->referencedColumns);
+		}
+
 		public function testPragmaActuallyEnforcesTheConstraintNotJustDeclaresIt(): void {
 			$adapter = $this->makeSqliteAdapter();
 			$adapter->execute('CREATE TABLE customers (id INTEGER PRIMARY KEY)');
