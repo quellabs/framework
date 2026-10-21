@@ -176,7 +176,6 @@ jobs:
         id: sync
         env:
           DRY_RUN: ${{ github.event.inputs.dry_run == 'true' && 'true' || 'false' }}
-          SYNC_TOKEN: ${{ secrets.SYNC_TOKEN }}
         run: |
           set -e
 
@@ -201,12 +200,12 @@ jobs:
             exit 1
           fi
 
-          # Auth via a header scoped to github.com, not embedded in the URL — the
-          # URL form gets silently stripped of credentials when git follows the
-          # https://github.com/... -> https://github.com/.../ redirect.
-          auth_header="AUTHORIZATION: basic $(printf '%s' "x-access-token:${SYNC_TOKEN}" | base64 -w0)"
-
-          if ! git -c "http.https://github.com/.extraheader=$auth_header" push --force \
+          # No credential needed here: the checkout step's `token:` input already
+          # configured a local http.https://github.com/.extraheader for this job,
+          # which covers any https://github.com/... request, including this push
+          # to a sibling repo. Adding another one would duplicate the header and
+          # get rejected by GitHub with a 400.
+          if ! git push --force \
             "https://github.com/quellabs/${{ matrix.package }}.git" \
             "$sha:refs/heads/main"; then
             echo "❌ Sync failed"
