@@ -1,7 +1,7 @@
 {
-  "annotation-reader": "1.5.0",
+  "annotation-reader": "1.5.1",
   "cache": "1.0.4",
-  "canvas": "1.15.0",
+  "canvas": "1.17.0",
   "canvas-blade": "1.1.1",
   "canvas-database": "1.0.2",
   "canvas-handlebars": "1.1.1",
@@ -37,7 +37,7 @@
   "contracts": "1.2.4",
   "dependency-injection": "1.2.5",
   "discover": "1.1.1",
-  "objectquel": "2.18.0",
+  "objectquel": "2.18.1",
   "recommender": "1.1.0",
   "sculpt": "1.0.31",
   "signal-hub": "1.1.1",

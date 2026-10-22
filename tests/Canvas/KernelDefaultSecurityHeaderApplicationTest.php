@@ -69,4 +69,32 @@
 
 			$this->assertFalse($response->headers->has('X-Frame-Options'));
 		}
+
+		public function testAnApplicationWideOrderedArrayDefaultIsAppliedAsOneComposite(): void {
+			$kernel = new Kernel(['security_header_policy' => [
+				StrictSecurityHeaderPolicy::class,
+				NullSecurityHeaderPolicy::class,
+			]]);
+
+			$response = new Response();
+
+			$this->apply($kernel, Request::create('/'), $response);
+
+			$this->assertSame('DENY', $response->headers->get('X-Frame-Options'));
+		}
+
+		public function testARouteThatAlreadyRanSecurityHeadersAspectWithAnArrayOverrideIsLeftUntouched(): void {
+			$kernel = new Kernel(['security_header_policy' => StrictSecurityHeaderPolicy::class]);
+			$response = new Response();
+
+			// Simulates SecurityHeadersAspect having run with a route-specific array
+			// override that replaced the application-wide default entirely.
+			$request = Request::create('/');
+			(new NullSecurityHeaderPolicy())->apply($request, $response);
+			$request->attributes->set('security_headers_applied', true);
+
+			$this->apply($kernel, $request, $response);
+
+			$this->assertFalse($response->headers->has('X-Frame-Options'));
+		}
 	}

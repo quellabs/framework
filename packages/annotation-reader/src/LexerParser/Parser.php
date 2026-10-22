@@ -382,10 +382,16 @@
 					continue;
 				}
 				
+				// Handle a class constant reference as a plain array element (e.g. {A::class, B::class})
+				if ($this->isClassConstant()) {
+					$attributes[] = $this->parseClassConstant();
+					continue;
+				}
+
 				// Try to match a string token for the attribute key
 				// If not a string, try to match a number token
 				$peekType = $this->lexer->peek()->getType();
-				
+
 				// If neither string nor number, throw an exception
 				if ($peekType !== Token::String && $peekType !== Token::Number) {
 					$next = $this->lexer->peek();

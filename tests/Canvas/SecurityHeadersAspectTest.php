@@ -7,6 +7,7 @@
 	use Quellabs\Canvas\Routing\Contracts\MethodContextInterface;
 	use Quellabs\Canvas\Security\Policies\BasicSecurityHeaderPolicy;
 	use Quellabs\Canvas\Security\Policies\NullSecurityHeaderPolicy;
+	use Quellabs\Canvas\Security\Policies\StrictSecurityHeaderPolicy;
 	use Quellabs\Canvas\Security\SecurityHeadersAspect;
 	use Quellabs\DependencyInjection\Container;
 	use Symfony\Component\HttpFoundation\Request;
@@ -89,5 +90,37 @@
 			$this->expectException(\InvalidArgumentException::class);
 
 			new SecurityHeadersAspect($kernel, \stdClass::class);
+		}
+
+		public function testPolicyClassArrayOverrideBuildsACompositeAppliedInDeclaredOrder(): void {
+			// A real Kernel (rather than a stub) so array entries are actually
+			// resolved through its container, matching production behavior.
+			$kernel = new Kernel();
+
+			$aspect = new SecurityHeadersAspect($kernel, [
+				StrictSecurityHeaderPolicy::class,
+				BasicSecurityHeaderPolicy::class,
+			]);
+
+			$response = new Response();
+			$aspect->after($this->makeContext(), $response);
+
+			$this->assertSame('DENY', $response->headers->get('X-Frame-Options'));
+		}
+
+		public function testEmptyArrayPolicyClassOverrideIsRejected(): void {
+			$kernel = new Kernel();
+
+			$this->expectException(\InvalidArgumentException::class);
+
+			new SecurityHeadersAspect($kernel, []);
+		}
+
+		public function testArrayPolicyClassOverrideWithAnInvalidEntryIsRejected(): void {
+			$kernel = new Kernel();
+
+			$this->expectException(\InvalidArgumentException::class);
+
+			new SecurityHeadersAspect($kernel, [\stdClass::class]);
 		}
 	}
