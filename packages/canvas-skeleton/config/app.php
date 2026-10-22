@@ -28,8 +28,12 @@
 		// Whether to match routes with trailing slashes
 		'match_trailing_slashes'  => false,
 		
-		// Default SecurityHeaderPolicyInterface implementation used by SecurityHeadersAspect
-		// (unless overridden per route) and DefaultErrorHandler. Set null to disable.
-		// Built-in policies: Basic, Medium, and Strict (Quellabs\Canvas\Security\Policies).
+		// Default SecurityHeaderPolicyInterface implementation(s) used by SecurityHeadersAspect
+		// (unless overridden per route) and DefaultErrorHandler. A single class behaves as
+		// below; an ordered list applies each to the same response (e.g. add
+		// CorsSecurityHeaderPolicy::class to opt into CORS - see config/cors.php via
+		// `php sculpt cors:init`). NullSecurityHeaderPolicy::class opts out of headers
+		// entirely; the key itself must not be null.
+		// Built-in policies: Basic, Medium, Strict, Cors, Null (Quellabs\Canvas\Security\Policies).
 		'security_header_policy'  => \Quellabs\Canvas\Security\Policies\BasicSecurityHeaderPolicy::class
 	];
