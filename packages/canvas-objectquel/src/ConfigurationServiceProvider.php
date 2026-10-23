@@ -44,6 +44,7 @@
 				'proxy_namespace'      => 'Quellabs\\ObjectQuel\\Proxy\\Runtime', // Namespace for generated proxy classes
 				'proxy_path'           => null,                                    // Directory for generated proxy classes
 				'metadata_cache_path'  => '',                                      // Path for cached entity metadata
+				'annotation_source'    => \Quellabs\AnnotationReader\Configuration::SOURCE_DOCBLOCKS,
 				'slow_query_log'       => null,                                    // Absolute path to slow query log file; null to disable
 				'slow_query_threshold' => 0.0                                     // Minimum query time in seconds to log; 0.0 logs all queries
 			];
@@ -92,6 +93,11 @@
 			$defaultMetadataCachePath = ComposerUtils::getProjectRoot() . DIRECTORY_SEPARATOR . 'storage' . DIRECTORY_SEPARATOR . 'objectquel' . DIRECTORY_SEPARATOR . 'annotations';
 			$metadataCachePath = $configData["metadata_cache_path"] ?? $defaults["metadata_cache_path"] ?? $defaultMetadataCachePath;
 			$config->setMetadataCachePath((is_string($metadataCachePath) && $metadataCachePath !== '') ? $metadataCachePath : $defaultMetadataCachePath);
+			$annotationSource = $configData['annotation_source'] ?? $defaults['annotation_source'];
+			if (!is_string($annotationSource)) {
+				throw new \InvalidArgumentException('annotation_source must be a string');
+			}
+			$config->setAnnotationSource($annotationSource);
 			
 			// Configure entity class namespace
 			$defaultEntityNamespace = 'App\\Entities';

@@ -1,4 +1,6 @@
 <?php
+
+declare(strict_types=1);
 	
 	namespace Quellabs\Canvas\Tests\Annotations;
 	
@@ -18,28 +20,28 @@
 		// -------------------------------------------------------------------------
 		
 		public function testConstructorThrowsWhenValueMissing(): void {
-			$this->expectException(\InvalidArgumentException::class);
-			new Route([]);
+			$this->expectException(\ArgumentCountError::class);
+			new Route();
 		}
 		
 		public function testConstructorThrowsWhenValueIsNotString(): void {
-			$this->expectException(\InvalidArgumentException::class);
-			new Route(['value' => 123]);
+			$this->expectException(\TypeError::class);
+			new Route(value: 123);
 		}
 		
 		public function testConstructorThrowsWhenFallbackIsNotString(): void {
-			$this->expectException(\InvalidArgumentException::class);
-			new Route(['value' => '/users', 'fallback' => 42]);
+			$this->expectException(\TypeError::class);
+			new Route(value: '/users', fallback: 42);
 		}
 		
 		public function testConstructorThrowsWhenMethodsIsNotArray(): void {
-			$this->expectException(\InvalidArgumentException::class);
-			new Route(['value' => '/users', 'methods' => 'GET']);
+			$this->expectException(\TypeError::class);
+			new Route(value: '/users', methods: 'GET');
 		}
 		
 		public function testConstructorThrowsWhenMethodsContainsNonString(): void {
 			$this->expectException(\InvalidArgumentException::class);
-			new Route(['value' => '/users', 'methods' => [1, 2]]);
+			new Route(value: '/users', methods: [1, 2]);
 		}
 		
 		// -------------------------------------------------------------------------
@@ -47,23 +49,23 @@
 		// -------------------------------------------------------------------------
 		
 		public function testGetRouteReturnsPlainPath(): void {
-			$route = new Route(['value' => '/users/{id}']);
+			$route = new Route(value: '/users/{id}');
 			$this->assertSame('/users/{id}', $route->getRoute());
 		}
 		
 		public function testGetRouteStripsHttpSchemeAndHost(): void {
-			$route = new Route(['value' => 'http://example.com/api/users']);
+			$route = new Route(value: 'http://example.com/api/users');
 			$this->assertSame('/api/users', $route->getRoute());
 		}
 		
 		public function testGetRouteStripsHttpsSchemeAndHost(): void {
-			$route = new Route(['value' => 'https://example.com/api/v1/items']);
+			$route = new Route(value: 'https://example.com/api/v1/items');
 			$this->assertSame('/api/v1/items', $route->getRoute());
 		}
 		
 		public function testGetRoutePreservesConfigReference(): void {
 			// Config references like "mollie::redirectUrl" must not be parsed as URLs
-			$route = new Route(['value' => 'mollie::redirectUrl']);
+			$route = new Route(value: 'mollie::redirectUrl');
 			$this->assertSame('mollie::redirectUrl', $route->getRoute());
 		}
 		
@@ -72,17 +74,17 @@
 		// -------------------------------------------------------------------------
 		
 		public function testGetMethodsDefaultsToGetAndHead(): void {
-			$route = new Route(['value' => '/users']);
+			$route = new Route(value: '/users');
 			$this->assertSame(['GET', 'HEAD'], $route->getMethods());
 		}
 		
 		public function testGetMethodsDefaultsToGetAndHeadForEmptyMethodsArray(): void {
-			$route = new Route(['value' => '/users', 'methods' => []]);
+			$route = new Route(value: '/users', methods: []);
 			$this->assertSame(['GET', 'HEAD'], $route->getMethods());
 		}
 		
 		public function testGetMethodsReturnsSpecifiedMethods(): void {
-			$route = new Route(['value' => '/users', 'methods' => ['POST', 'PUT']]);
+			$route = new Route(value: '/users', methods: ['POST', 'PUT']);
 			$this->assertSame(['POST', 'PUT'], $route->getMethods());
 		}
 		
@@ -91,23 +93,33 @@
 		// -------------------------------------------------------------------------
 		
 		public function testGetNameReturnsRouteValue(): void {
-			$route = new Route(['value' => '/users']);
+			$route = new Route(value: '/users');
 			$this->assertSame('/users', $route->getName());
 		}
 		
 		public function testGetFallbackReturnsNullWhenNotSet(): void {
-			$route = new Route(['value' => '/users']);
+			$route = new Route(value: '/users');
 			$this->assertNull($route->getFallback());
 		}
 		
 		public function testGetFallbackReturnsProvidedString(): void {
-			$route = new Route(['value' => '/users', 'fallback' => '/home']);
+			$route = new Route(value: '/users', fallback: '/home');
 			$this->assertSame('/home', $route->getFallback());
 		}
 		
 		public function testGetParametersReturnsFullArray(): void {
 			$params = ['value' => '/users', 'methods' => ['GET']];
-			$route  = new Route($params);
+			$route  = new Route(...$params);
 			$this->assertSame($params, $route->getParameters());
+		}
+
+		public function testGetParametersOmitsKeysTheCallerDidNotSupply(): void {
+			$route = new Route(value: '/users');
+			$this->assertSame(['value' => '/users'], $route->getParameters());
+		}
+
+		public function testGetParametersIncludesExplicitlyPassedDefaultValue(): void {
+			$route = new Route(value: '/users', fallback: null);
+			$this->assertSame(['value' => '/users', 'fallback' => null], $route->getParameters());
 		}
 	}

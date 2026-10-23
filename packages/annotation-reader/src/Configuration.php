@@ -6,6 +6,30 @@
 	 * Configuration class for AnnotationReader
 	 */
 	class Configuration {
+		public const SOURCE_DOCBLOCKS = 'docblocks';
+		public const SOURCE_ATTRIBUTES = 'attributes';
+
+		private string $source = self::SOURCE_DOCBLOCKS;
+
+		/**
+		 * Returns the selected metadata source.
+		 * @return string
+		 */
+		public function getSource(): string {
+			return $this->source;
+		}
+
+		/**
+		 * Selects the metadata source for new readers.
+		 * @param string $source
+		 * @return void
+		 */
+		public function setSource(string $source): void {
+			if (!in_array($source, [self::SOURCE_DOCBLOCKS, self::SOURCE_ATTRIBUTES], true)) {
+				throw new \InvalidArgumentException("Unknown annotation source: {$source}");
+			}
+			$this->source = $source;
+		}
 		
 		/**
 		 * @var bool True if cache should be used, false if not

@@ -46,8 +46,8 @@
 		private function versionColumn(string $columnName, array $columnParams): array {
 			return [
 				'name'    => $columnName,
-				'column'  => new Column(array_merge(['name' => $columnName], $columnParams)),
-				'version' => new Version([]),
+				'column'  => new Column(...array_merge(['name' => $columnName], $columnParams)),
+				'version' => new Version(),
 			];
 		}
 

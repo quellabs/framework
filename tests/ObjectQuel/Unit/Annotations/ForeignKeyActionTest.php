@@ -13,14 +13,14 @@
 	class ForeignKeyActionTest extends TestCase {
 
 		public function testDefaultsAreAppliedWhenOmitted(): void {
-			$action = new ForeignKeyAction([]);
+			$action = new ForeignKeyAction();
 
 			self::assertSame('RESTRICT', $action->getOnDelete());
 			self::assertSame('NO ACTION', $action->getOnUpdate());
 		}
 
 		public function testExplicitParametersAreHonored(): void {
-			$action = new ForeignKeyAction(['onDelete' => 'CASCADE', 'onUpdate' => 'SET NULL']);
+			$action = new ForeignKeyAction(onDelete: 'CASCADE', onUpdate: 'SET NULL');
 
 			self::assertSame('CASCADE', $action->getOnDelete());
 			self::assertSame('SET NULL', $action->getOnUpdate());
@@ -30,7 +30,7 @@
 		 * @dataProvider validActionProvider
 		 */
 		public function testAllFourActionsAreAcceptedForOnDeleteAndOnUpdate(string $action): void {
-			$fkAction = new ForeignKeyAction(['onDelete' => $action, 'onUpdate' => $action]);
+			$fkAction = new ForeignKeyAction(onDelete: $action, onUpdate: $action);
 
 			self::assertSame($action, $fkAction->getOnDelete());
 			self::assertSame($action, $fkAction->getOnUpdate());
@@ -49,25 +49,25 @@
 			$this->expectException(\InvalidArgumentException::class);
 			$this->expectExceptionMessage("'onDelete' must be one of");
 
-			new ForeignKeyAction(['onDelete' => 'SET_NULL']);
+			new ForeignKeyAction(onDelete: 'SET_NULL');
 		}
 
 		public function testInvalidOnUpdateValueIsRejected(): void {
 			$this->expectException(\InvalidArgumentException::class);
 			$this->expectExceptionMessage("'onUpdate' must be one of");
 
-			new ForeignKeyAction(['onUpdate' => 'DO_NOTHING']);
+			new ForeignKeyAction(onUpdate: 'DO_NOTHING');
 		}
 
-		public function testGetParametersReturnsOriginalParameterArray(): void {
-			$params = ['onDelete' => 'CASCADE', 'onUpdate' => 'RESTRICT'];
-			$action = new ForeignKeyAction($params);
+		public function testGetParametersReturnsResolvedParameterArray(): void {
+			$params = ['onDelete' => 'CASCADE', 'onUpdate' => 'RESTRICT', 'localColumns' => null];
+			$action = new ForeignKeyAction(...$params);
 
 			self::assertSame($params, $action->getParameters());
 		}
 
 		public function testLocalColumnsIsEmptyByDefault(): void {
-			$action = new ForeignKeyAction([]);
+			$action = new ForeignKeyAction();
 
 			self::assertFalse($action->hasLocalColumns());
 			self::assertSame([], $action->getLocalColumns());
@@ -77,18 +77,18 @@
 			$this->expectException(\InvalidArgumentException::class);
 			$this->expectExceptionMessage("'localColumns' must be a non-empty list");
 
-			new ForeignKeyAction(['localColumns' => []]);
+			new ForeignKeyAction(localColumns: []);
 		}
 
 		public function testLocalColumnsEntriesMustBeNonEmptyStrings(): void {
 			$this->expectException(\InvalidArgumentException::class);
 			$this->expectExceptionMessage("'localColumns' entries must be non-empty strings");
 
-			new ForeignKeyAction(['localColumns' => ['orderTenantId', '']]);
+			new ForeignKeyAction(localColumns: ['orderTenantId', '']);
 		}
 
 		public function testExplicitLocalColumnsIsHonoredInOrder(): void {
-			$action = new ForeignKeyAction(['localColumns' => ['orderTenantId', 'orderNumber']]);
+			$action = new ForeignKeyAction(localColumns: ['orderTenantId', 'orderNumber']);
 
 			self::assertTrue($action->hasLocalColumns());
 			self::assertSame(['orderTenantId', 'orderNumber'], $action->getLocalColumns());

@@ -3,25 +3,39 @@
 	namespace Quellabs\AnnotationReader\AnnotationTest;
 	
 	use Quellabs\AnnotationReader\AnnotationInterface;
+	use Quellabs\AnnotationReader\Annotation\ReflectsAnnotationParameters;
 	
+	#[\Attribute(\Attribute::TARGET_CLASS)]
 	class AnotherTest implements AnnotationInterface {
-		
-		/** @var array<string, mixed> */
-		protected array $parameters;
+		use ReflectsAnnotationParameters;
+
+		private int $id;
+		private ?string $priority;
 		
 		/**
-		 * Table constructor.
-		 * @param array<string, mixed> $parameters
+		 * Sets the fixture identifier and optional priority.
+		 * @param int $id
+		 * @param string|null $priority
+		 * @return void
 		 */
-		public function __construct(array $parameters) {
-			$this->parameters = $parameters;
+		public function __construct(int $id, ?string $priority = null) {
+			$this->id = $id;
+			$this->priority = $priority;
 		}
-		
+
 		/**
-		 * Returns the parameters for this annotation
-		 * @return array<string, mixed>
+		 * Returns the fixture identifier.
+		 * @return int
 		 */
-		public function getParameters(): array {
-			return $this->parameters;
+		public function getId(): int {
+			return $this->id;
+		}
+
+		/**
+		 * Returns the optional fixture priority.
+		 * @return string|null
+		 */
+		public function getPriority(): ?string {
+			return $this->priority;
 		}
 	}

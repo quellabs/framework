@@ -141,7 +141,7 @@
 				->with('App\\Entities\\PostEntity', 'hello-world')
 				->willReturn($entity);
 
-			$annotation = new ResolveEntity(['parameter' => 'post', 'routeParam' => 'slug']);
+			$annotation = new ResolveEntity(parameter: 'post', routeParam: 'slug');
 			$provider = $this->makeProvider($entityManager, [$annotation]);
 			$context = $this->makeContext('post', ['slug' => 'hello-world', 'post' => 'ignored']);
 
@@ -157,7 +157,7 @@
 				->with('App\\Entities\\PostEntity', 'hello-world')
 				->willReturn($entity);
 
-			$annotation = new ResolveEntity(['parameter' => 'category', 'routeParam' => 'categorySlug']);
+			$annotation = new ResolveEntity(parameter: 'category', routeParam: 'categorySlug');
 			$provider = $this->makeProvider($entityManager, [$annotation]);
 			$context = $this->makeContext('post', ['post' => 'hello-world']);
 
@@ -174,8 +174,8 @@
 				->willReturn($entity);
 
 			$annotations = [
-				new ResolveEntity(['parameter' => 'post', 'routeParam' => 'slug']),
-				new ResolveEntity(['parameter' => 'category', 'routeParam' => 'categorySlug']),
+				new ResolveEntity(parameter: 'post', routeParam: 'slug'),
+				new ResolveEntity(parameter: 'category', routeParam: 'categorySlug'),
 			];
 
 			$provider = $this->makeProvider($entityManager, $annotations);

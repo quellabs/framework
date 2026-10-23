@@ -201,6 +201,9 @@ implementation.
     comments.
 -   Every method gets a docblock, containing briefly what the code does and
     parameter + return type docs. Even when the comment merely restates the code.
+-   Start every PHP docblock with `/**` on its own line. Put the summary and
+    each `@param`, `@return`, or other tag on a following ` * ` line, including
+    short class and property docblocks. Never put text on the opening line.
 -   Document non-obvious business rules, constraints, side effects,
     workarounds, and important edge cases when they cannot be adequately
     expressed through the code itself.

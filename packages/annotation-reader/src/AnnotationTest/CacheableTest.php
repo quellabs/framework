@@ -3,25 +3,28 @@
 	namespace Quellabs\AnnotationReader\AnnotationTest;
 	
 	use Quellabs\AnnotationReader\AnnotationInterface;
+	use Quellabs\AnnotationReader\Annotation\ReflectsAnnotationParameters;
 	
+	#[\Attribute(\Attribute::TARGET_CLASS)]
 	class CacheableTest implements AnnotationInterface {
-		
-		/** @var array<string, mixed> */
-		protected array $parameters;
+		use ReflectsAnnotationParameters;
+
+		private int $ttl;
 		
 		/**
-		 * CacheableTest constructor.
-		 * @param array<string, mixed> $parameters
+		 * Sets the fixture cache lifetime.
+		 * @param int $ttl
+		 * @return void
 		 */
-		public function __construct(array $parameters) {
-			$this->parameters = $parameters;
+		public function __construct(int $ttl) {
+			$this->ttl = $ttl;
 		}
-		
+
 		/**
-		 * Returns the parameters for this annotation
-		 * @return array<string, mixed>
+		 * Returns the fixture cache lifetime.
+		 * @return int
 		 */
-		public function getParameters(): array {
-			return $this->parameters;
+		public function getTtl(): int {
+			return $this->ttl;
 		}
 	}

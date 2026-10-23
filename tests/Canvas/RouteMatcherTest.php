@@ -37,7 +37,7 @@
 				'http_methods'     => $methods,
 				'controller'       => 'FixtureController',
 				'method'           => 'action',
-				'route'            => new Route(['value' => $path, 'methods' => $methods]),
+				'route'            => new Route(value: $path, methods: $methods),
 				'route_path'       => $path,
 				'priority'         => $this->analyzer->calculateRoutePriority($path),
 				'compiled_pattern' => $this->compiler->compileRoute($path),

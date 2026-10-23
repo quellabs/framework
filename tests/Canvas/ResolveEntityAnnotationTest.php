@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 	namespace Quellabs\Canvas\Tests\ObjectQuel;
 
 	use PHPUnit\Framework\TestCase;
@@ -15,42 +17,42 @@
 	class ResolveEntityAnnotationTest extends TestCase {
 
 		public function testThrowsWhenParameterMissing(): void {
-			$this->expectException(\InvalidArgumentException::class);
-			new ResolveEntity([]);
+			$this->expectException(\ArgumentCountError::class);
+			new ResolveEntity();
 		}
 
 		public function testThrowsWhenParameterIsNotString(): void {
-			$this->expectException(\InvalidArgumentException::class);
-			new ResolveEntity(['parameter' => 42]);
+			$this->expectException(\TypeError::class);
+			new ResolveEntity(parameter: 42);
 		}
 
 		public function testThrowsWhenParameterIsEmptyString(): void {
 			$this->expectException(\InvalidArgumentException::class);
-			new ResolveEntity(['parameter' => '']);
+			new ResolveEntity(parameter: '');
 		}
 
 		public function testThrowsWhenRouteParamIsNotString(): void {
-			$this->expectException(\InvalidArgumentException::class);
-			new ResolveEntity(['parameter' => 'post', 'routeParam' => 42]);
+			$this->expectException(\TypeError::class);
+			new ResolveEntity(parameter: 'post', routeParam: 42);
 		}
 
 		public function testGetParameterReturnsName(): void {
-			$annotation = new ResolveEntity(['parameter' => 'post', 'routeParam' => 'slug']);
+			$annotation = new ResolveEntity(parameter: 'post', routeParam: 'slug');
 			$this->assertSame('post', $annotation->getParameter());
 		}
 
 		public function testGetRouteParamReturnsProvidedValue(): void {
-			$annotation = new ResolveEntity(['parameter' => 'post', 'routeParam' => 'slug']);
+			$annotation = new ResolveEntity(parameter: 'post', routeParam: 'slug');
 			$this->assertSame('slug', $annotation->getRouteParam());
 		}
 
 		public function testGetRouteParamDefaultsToId(): void {
-			$annotation = new ResolveEntity(['parameter' => 'post']);
+			$annotation = new ResolveEntity(parameter: 'post');
 			$this->assertSame('id', $annotation->getRouteParam());
 		}
 
 		public function testGetParametersReturnsFullArray(): void {
 			$params = ['parameter' => 'post', 'routeParam' => 'slug'];
-			$this->assertSame($params, (new ResolveEntity($params))->getParameters());
+			$this->assertSame($params, (new ResolveEntity(...$params))->getParameters());
 		}
 	}

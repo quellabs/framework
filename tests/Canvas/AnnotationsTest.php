@@ -1,4 +1,6 @@
 <?php
+
+declare(strict_types=1);
 	
 	namespace Quellabs\Canvas\Tests\Annotations;
 	
@@ -24,83 +26,83 @@
 		// =========================================================================
 		
 		public function testRouteThrowsWhenValueMissing(): void {
-			$this->expectException(\InvalidArgumentException::class);
-			new Route([]);
+			$this->expectException(\ArgumentCountError::class);
+			new Route();
 		}
 		
 		public function testRouteThrowsWhenValueIsNotString(): void {
-			$this->expectException(\InvalidArgumentException::class);
-			new Route(['value' => 123]);
+			$this->expectException(\TypeError::class);
+			new Route(value: 123);
 		}
 		
 		public function testRouteThrowsWhenFallbackIsNotString(): void {
-			$this->expectException(\InvalidArgumentException::class);
-			new Route(['value' => '/users', 'fallback' => 42]);
+			$this->expectException(\TypeError::class);
+			new Route(value: '/users', fallback: 42);
 		}
 		
 		public function testRouteThrowsWhenMethodsIsNotArray(): void {
-			$this->expectException(\InvalidArgumentException::class);
-			new Route(['value' => '/users', 'methods' => 'GET']);
+			$this->expectException(\TypeError::class);
+			new Route(value: '/users', methods: 'GET');
 		}
 		
 		public function testRouteThrowsWhenMethodsContainsNonString(): void {
 			$this->expectException(\InvalidArgumentException::class);
-			new Route(['value' => '/users', 'methods' => [1, 2]]);
+			new Route(value: '/users', methods: [1, 2]);
 		}
 		
 		public function testRouteGetRouteReturnsPlainPath(): void {
-			$route = new Route(['value' => '/users/{id}']);
+			$route = new Route(value: '/users/{id}');
 			$this->assertSame('/users/{id}', $route->getRoute());
 		}
 		
 		public function testRouteGetRouteStripsHttpSchemeAndHost(): void {
-			$route = new Route(['value' => 'http://example.com/api/users']);
+			$route = new Route(value: 'http://example.com/api/users');
 			$this->assertSame('/api/users', $route->getRoute());
 		}
 		
 		public function testRouteGetRouteStripsHttpsSchemeAndHost(): void {
-			$route = new Route(['value' => 'https://example.com/api/v1/items']);
+			$route = new Route(value: 'https://example.com/api/v1/items');
 			$this->assertSame('/api/v1/items', $route->getRoute());
 		}
 		
 		public function testRouteGetRoutePreservesConfigReference(): void {
-			$route = new Route(['value' => 'mollie::redirectUrl']);
+			$route = new Route(value: 'mollie::redirectUrl');
 			$this->assertSame('mollie::redirectUrl', $route->getRoute());
 		}
 		
 		public function testRouteGetMethodsDefaultsToGetAndHead(): void {
-			$route = new Route(['value' => '/users']);
+			$route = new Route(value: '/users');
 			$this->assertSame(['GET', 'HEAD'], $route->getMethods());
 		}
 		
 		public function testRouteGetMethodsDefaultsToGetAndHeadForEmptyArray(): void {
-			$route = new Route(['value' => '/users', 'methods' => []]);
+			$route = new Route(value: '/users', methods: []);
 			$this->assertSame(['GET', 'HEAD'], $route->getMethods());
 		}
 		
 		public function testRouteGetMethodsReturnsSpecifiedMethods(): void {
-			$route = new Route(['value' => '/users', 'methods' => ['POST', 'PUT']]);
+			$route = new Route(value: '/users', methods: ['POST', 'PUT']);
 			$this->assertSame(['POST', 'PUT'], $route->getMethods());
 		}
 		
 		public function testRouteGetNameReturnsRouteValue(): void {
-			$route = new Route(['value' => '/users']);
+			$route = new Route(value: '/users');
 			$this->assertSame('/users', $route->getName());
 		}
 		
 		public function testRouteGetFallbackReturnsNullWhenNotSet(): void {
-			$route = new Route(['value' => '/users']);
+			$route = new Route(value: '/users');
 			$this->assertNull($route->getFallback());
 		}
 		
 		public function testRouteGetFallbackReturnsProvidedString(): void {
-			$route = new Route(['value' => '/users', 'fallback' => '/home']);
+			$route = new Route(value: '/users', fallback: '/home');
 			$this->assertSame('/home', $route->getFallback());
 		}
 		
 		public function testRouteGetParametersReturnsFullArray(): void {
-			$params = ['value' => '/users', 'methods' => ['GET']];
-			$this->assertSame($params, (new Route($params))->getParameters());
+			$params = ['value' => '/users', 'methods' => ['GET'], 'fallback' => null];
+			$this->assertSame($params, (new Route(...$params))->getParameters());
 		}
 		
 		// =========================================================================
@@ -108,38 +110,38 @@
 		// =========================================================================
 		
 		public function testRoutePrefixThrowsWhenValueMissing(): void {
-			$this->expectException(\InvalidArgumentException::class);
-			new RoutePrefix([]);
+			$this->expectException(\ArgumentCountError::class);
+			new RoutePrefix();
 		}
 		
 		public function testRoutePrefixThrowsWhenValueIsNotString(): void {
-			$this->expectException(\InvalidArgumentException::class);
-			new RoutePrefix(['value' => 42]);
+			$this->expectException(\TypeError::class);
+			new RoutePrefix(value: 42);
 		}
 		
 		public function testRoutePrefixGetRoutePrefixReturnsValue(): void {
-			$prefix = new RoutePrefix(['value' => 'api']);
+			$prefix = new RoutePrefix(value: 'api');
 			$this->assertSame('api', $prefix->getRoutePrefix());
 		}
 		
 		public function testRoutePrefixStripsLeadingSlash(): void {
-			$prefix = new RoutePrefix(['value' => '/api']);
+			$prefix = new RoutePrefix(value: '/api');
 			$this->assertSame('api', $prefix->getRoutePrefix());
 		}
 		
 		public function testRoutePrefixStripsTrailingSlash(): void {
-			$prefix = new RoutePrefix(['value' => 'api/']);
+			$prefix = new RoutePrefix(value: 'api/');
 			$this->assertSame('api', $prefix->getRoutePrefix());
 		}
 		
 		public function testRoutePrefixStripsBothSlashes(): void {
-			$prefix = new RoutePrefix(['value' => '/api/v1/']);
+			$prefix = new RoutePrefix(value: '/api/v1/');
 			$this->assertSame('api/v1', $prefix->getRoutePrefix());
 		}
 		
 		public function testRoutePrefixGetParametersReturnsFullArray(): void {
 			$params = ['value' => '/api'];
-			$this->assertSame($params, (new RoutePrefix($params))->getParameters());
+			$this->assertSame($params, (new RoutePrefix(...$params))->getParameters());
 		}
 		
 		// =========================================================================
@@ -183,38 +185,38 @@
 		// =========================================================================
 		
 		public function testListenToThrowsWhenValueMissing(): void {
-			$this->expectException(\InvalidArgumentException::class);
-			new ListenTo([]);
+			$this->expectException(\ArgumentCountError::class);
+			new ListenTo();
 		}
 		
 		public function testListenToThrowsWhenValueIsNotString(): void {
-			$this->expectException(\InvalidArgumentException::class);
-			new ListenTo(['value' => 123]);
+			$this->expectException(\TypeError::class);
+			new ListenTo(value: 123);
 		}
 		
 		public function testListenToThrowsWhenPriorityIsNotInteger(): void {
-			$this->expectException(\InvalidArgumentException::class);
-			new ListenTo(['value' => 'user.created', 'priority' => 'high']);
+			$this->expectException(\TypeError::class);
+			new ListenTo(value: 'user.created', priority: 'high');
 		}
 		
 		public function testListenToGetNameReturnsSignalName(): void {
-			$listenTo = new ListenTo(['value' => 'user.created']);
+			$listenTo = new ListenTo(value: 'user.created');
 			$this->assertSame('user.created', $listenTo->getName());
 		}
 		
 		public function testListenToGetPriorityDefaultsToZero(): void {
-			$listenTo = new ListenTo(['value' => 'user.created']);
+			$listenTo = new ListenTo(value: 'user.created');
 			$this->assertSame(0, $listenTo->getPriority());
 		}
 		
 		public function testListenToGetPriorityReturnsProvidedValue(): void {
-			$listenTo = new ListenTo(['value' => 'user.created', 'priority' => 10]);
+			$listenTo = new ListenTo(value: 'user.created', priority: 10);
 			$this->assertSame(10, $listenTo->getPriority());
 		}
 		
 		public function testListenToGetParametersReturnsFullArray(): void {
 			$params = ['value' => 'user.created', 'priority' => 5];
-			$this->assertSame($params, (new ListenTo($params))->getParameters());
+			$this->assertSame($params, (new ListenTo(...$params))->getParameters());
 		}
 		
 		// =========================================================================

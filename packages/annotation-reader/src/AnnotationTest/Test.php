@@ -3,25 +3,28 @@
 	namespace Quellabs\AnnotationReader\AnnotationTest;
 	
 	use Quellabs\AnnotationReader\AnnotationInterface;
+	use Quellabs\AnnotationReader\Annotation\ReflectsAnnotationParameters;
 	
+	#[\Attribute(\Attribute::TARGET_METHOD | \Attribute::TARGET_PROPERTY)]
 	class Test implements AnnotationInterface {
-		
-		/** @var array<string, mixed> */
-		protected array $parameters;
+		use ReflectsAnnotationParameters;
+
+		private string $name;
 		
 		/**
-		 * Table constructor.
-		 * @param array<string, mixed> $parameters
+		 * Names the annotated fixture member.
+		 * @param string $name
+		 * @return void
 		 */
-		public function __construct(array $parameters) {
-			$this->parameters = $parameters;
+		public function __construct(string $name) {
+			$this->name = $name;
 		}
-		
+
 		/**
-		 * Returns the parameters for this annotation
-		 * @return array<string, mixed>
+		 * Returns the fixture member name.
+		 * @return string
 		 */
-		public function getParameters(): array {
-			return $this->parameters;
+		public function getName(): string {
+			return $this->name;
 		}
 	}
