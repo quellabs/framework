@@ -25,7 +25,7 @@
 		/**
 		 * @Route("/posts/")
 		 * @WithContext(parameter="engine", context="blade")
-		 * @InterceptWith(TrackingParamsAspect ::class)
+		 * @InterceptWith(TrackingParamsAspect::class)
 		 * @return Response
 		 * @throws EntityResolutionException
 		 * @throws QuelException
