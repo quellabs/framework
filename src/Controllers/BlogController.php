@@ -42,19 +42,19 @@
 		
 		/**
 		 * @Route("/posts/{id:int}")
-		 * @param PostEntity|null $entity
+		 * @param PostEntity|null $id
 		 * @return Response
 		 * @throws TemplateRenderException
 		 * @throws EntityResolutionException
 		 * @throws QuelException
 		 */
-		public function show(?PostEntity $entity): Response {
-			if (!$entity) {
+		public function show(?PostEntity $id): Response {
+			if (!$id) {
 				return $this->notFound('Post does not exist.');
 			}
-			
+
 			return $this->render("blog/show.tpl", [
-				'post' => $entity
+				'post' => $id
 			]);
 		}
 	}
