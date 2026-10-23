@@ -155,14 +155,16 @@
 		): mixed {
 			$paramName = $param['name'];
 			$paramTypes = $param['types'] ?? [];
-			
-			// Strategy 1: Direct parameter name match
-			if (isset($parameters[$paramName])) {
+
+			// Strategy 1: Direct parameter name match. A raw scalar (e.g. a route
+			// argument) must not satisfy a class-typed parameter - those are left
+			// for Strategy 3 so providers (e.g. entity resolution) get a chance.
+			if (isset($parameters[$paramName]) && $this->valueSatisfiesTypes($parameters[$paramName], $paramTypes)) {
 				return $parameters[$paramName];
 			}
-			
+
 			// Strategy 2: Snake case conversion
-			if (isset($parameters[$this->camelToSnake($paramName)])) {
+			if (isset($parameters[$this->camelToSnake($paramName)]) && $this->valueSatisfiesTypes($parameters[$this->camelToSnake($paramName)], $paramTypes)) {
 				return $parameters[$this->camelToSnake($paramName)];
 			}
 			
@@ -357,6 +359,34 @@
 		 */
 		protected function isBuiltinType(string $type): bool {
 			return in_array($type, self::BUILTIN_TYPES);
+		}
+
+		/**
+		 * Checks whether a value is acceptable for a parameter's declared type(s).
+		 * Untyped and builtin-typed parameters accept any value (PHP coerces or the
+		 * caller's intent is scalar). A class-typed parameter requires the value to
+		 * already be an instance of one of the declared types, so a raw scalar (e.g.
+		 * a route argument) cannot satisfy it and is left for provider resolution.
+		 * @param mixed $value
+		 * @param array<int, string> $types
+		 * @return bool
+		 */
+		protected function valueSatisfiesTypes(mixed $value, array $types): bool {
+			if (empty($types)) {
+				return true;
+			}
+
+			foreach ($types as $type) {
+				if ($this->isBuiltinType($type) || $type === 'null') {
+					return true;
+				}
+
+				if ($value instanceof $type) {
+					return true;
+				}
+			}
+
+			return false;
 		}
 		
 		/**
