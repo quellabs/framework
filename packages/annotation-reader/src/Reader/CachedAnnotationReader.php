@@ -12,7 +12,7 @@
 	use Quellabs\AnnotationReader\Exception\ParserException;
 	use Quellabs\AnnotationReader\LexerParser\Lexer;
 	use Quellabs\AnnotationReader\LexerParser\Parser;
-
+	
 	/**
 	 * @phpstan-type AnnotationSet array{
 	 *    class: AnnotationCollection,
@@ -238,19 +238,19 @@
 			if (!is_dir($this->annotationCachePath)) {
 				return;
 			}
-
+			
 			$files = glob($this->annotationCachePath . DIRECTORY_SEPARATOR . $this->cacheFilePattern());
-
+			
 			if ($files === false) {
 				return;
 			}
-
+			
 			foreach ($files as $cachePath) {
 				if (!$this->ownsCacheFile($cachePath)) {
 					continue;
 				}
 				$annotations = $this->readCacheFromFile(basename($cachePath));
-
+				
 				if (
 					($annotations !== null && $this->annotationSetHasClass($annotations, $annotationClass)) ||
 					($annotations === null && $this->legacyCacheFileHasClass($cachePath, $annotationClass))
@@ -259,7 +259,7 @@
 				}
 			}
 		}
-
+		
 		/**
 		 * Checks whether an AnnotationSet contains at least one instance of the given
 		 * annotation class, at the class, method, or property level.
@@ -271,16 +271,16 @@
 			if (!$annotations['class']->filter(static fn($a) => $a instanceof $annotationClass)->isEmpty()) {
 				return true;
 			}
-
+			
 			foreach ([...$annotations['methods'], ...$annotations['properties']] as $collection) {
 				if (!$collection->filter(static fn($a) => $a instanceof $annotationClass)->isEmpty()) {
 					return true;
 				}
 			}
-
+			
 			return false;
 		}
-
+		
 		/**
 		 * Deletes all annotation cache files, so the next request rebuilds
 		 * everything from scratch. Used by the catch-all cache clear CLI command.
@@ -291,20 +291,20 @@
 			if (!is_dir($this->annotationCachePath)) {
 				return;
 			}
-
+			
 			$files = glob($this->annotationCachePath . DIRECTORY_SEPARATOR . $this->cacheFilePattern());
-
+			
 			if ($files === false) {
 				return;
 			}
-
+			
 			foreach ($files as $file) {
 				if (is_file($file) && $this->ownsCacheFile($file)) {
 					unlink($file);
 				}
 			}
 		}
-
+		
 		/**
 		 * Checks old cache files before removing entries for one annotation class.
 		 * @param string $cachePath
@@ -341,14 +341,14 @@
 			}
 			return false;
 		}
-
+		
 		/**
 		 * @return string
 		 */
 		protected function cacheFilePattern(): string {
 			return '*.cache';
 		}
-
+		
 		/**
 		 * @param string $file
 		 * @return bool
@@ -500,7 +500,7 @@
 				return null;
 			}
 		}
-
+		
 		/**
 		 * Validates a collection before reconstructing any cached objects.
 		 * @param mixed $data
@@ -584,7 +584,7 @@
 			
 			return $written;
 		}
-
+		
 		/**
 		 * Rejects values JSON cannot restore to the same constructor arguments.
 		 * @param mixed $value
@@ -648,7 +648,7 @@
 		 * @return AnnotationSet
 		 */
 		abstract protected function readAllObjectAnnotations(\ReflectionClass $reflection): array;
-
+		
 		/**
 		 * Retrieve all annotations for a given class, caching the results for performance.
 		 * @param class-string|object $class The fully qualified class name to get annotations for.
@@ -684,10 +684,10 @@
 				
 				// No valid cache — parse from source
 				$annotations = $this->readAllObjectAnnotations($reflection);
-
+				
 				// Write to disk cache for subsequent requests
 				$this->writeCacheToFile($cacheFilename, $annotations);
-
+				
 				// Populate memory cache for this request lifecycle
 				$this->cached_annotations[$cacheFilename] = $annotations;
 				

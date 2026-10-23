@@ -85,7 +85,7 @@
 				return array_key_exists($key, $constants) ? $constants[$key] : false;
 			}
 			
-			foreach($constants as $k => $v) {
+			foreach ($constants as $k => $v) {
 				if (strcasecmp($key, $k) === 0) {
 					return $v;
 				}

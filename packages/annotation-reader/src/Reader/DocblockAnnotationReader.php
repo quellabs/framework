@@ -1,19 +1,21 @@
 <?php
-namespace Quellabs\AnnotationReader\Reader;
-
-
-use Quellabs\AnnotationReader\Collection\AnnotationCollection;
-use Quellabs\AnnotationReader\Exception\AnnotationReaderException;
-use Quellabs\AnnotationReader\Exception\LexerException;
-use Quellabs\AnnotationReader\Exception\ParserException;
-use Quellabs\AnnotationReader\LexerParser\Lexer;
-use Quellabs\AnnotationReader\LexerParser\Parser;
-
-/**
- * Reads annotations from PHP docblocks.
- * @phpstan-import-type AnnotationSet from CachedAnnotationReader
- */
-final class DocblockAnnotationReader extends CachedAnnotationReader {
+	
+	namespace Quellabs\AnnotationReader\Reader;
+	
+	
+	use Quellabs\AnnotationReader\Collection\AnnotationCollection;
+	use Quellabs\AnnotationReader\Exception\AnnotationReaderException;
+	use Quellabs\AnnotationReader\Exception\LexerException;
+	use Quellabs\AnnotationReader\Exception\ParserException;
+	use Quellabs\AnnotationReader\LexerParser\Lexer;
+	use Quellabs\AnnotationReader\LexerParser\Parser;
+	
+	/**
+	 * Reads annotations from PHP docblocks.
+	 * @phpstan-import-type AnnotationSet from CachedAnnotationReader
+	 */
+	final class DocblockAnnotationReader extends CachedAnnotationReader {
+		
 		/**
 		 * Parses class-level annotations from a docblock comment
 		 * @param \ReflectionClass<object> $reflection Reflection class
@@ -101,5 +103,5 @@ final class DocblockAnnotationReader extends CachedAnnotationReader {
 			return $result;
 		}
 		
-
-}
+		
+	}

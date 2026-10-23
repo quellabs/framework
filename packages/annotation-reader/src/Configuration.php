@@ -8,9 +8,9 @@
 	class Configuration {
 		public const SOURCE_DOCBLOCKS = 'docblocks';
 		public const SOURCE_ATTRIBUTES = 'attributes';
-
+		
 		private string $source = self::SOURCE_DOCBLOCKS;
-
+		
 		/**
 		 * Returns the selected metadata source.
 		 * @return string
@@ -18,7 +18,7 @@
 		public function getSource(): string {
 			return $this->source;
 		}
-
+		
 		/**
 		 * Selects the metadata source for new readers.
 		 * @param string $source
