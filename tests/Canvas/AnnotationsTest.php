@@ -149,35 +149,35 @@ declare(strict_types=1);
 		// =========================================================================
 		
 		public function testWithContextThrowsWhenParameterMissing(): void {
-			$this->expectException(\InvalidArgumentException::class);
-			new WithContext([]);
+			$this->expectException(\ArgumentCountError::class);
+			new WithContext();
 		}
-		
+
 		public function testWithContextThrowsWhenParameterIsNotString(): void {
-			$this->expectException(\InvalidArgumentException::class);
-			new WithContext(['parameter' => 42]);
+			$this->expectException(\TypeError::class);
+			new WithContext(parameter: 42);
 		}
-		
+
 		public function testWithContextGetParameterReturnsName(): void {
-			$wc = new WithContext(['parameter' => 'templateEngine', 'context' => 'blade']);
+			$wc = new WithContext(parameter: 'templateEngine', context: 'blade');
 			$this->assertSame('templateEngine', $wc->getParameter());
 		}
-		
+
 		public function testWithContextGetContextExcludesParameterKey(): void {
-			$wc      = new WithContext(['parameter' => 'db', 'context' => 'readonly']);
+			$wc      = new WithContext(parameter: 'db', context: 'readonly');
 			$context = $wc->getContext();
 			$this->assertArrayNotHasKey('parameter', $context);
 		}
-		
+
 		public function testWithContextGetContextPreservesOtherKeys(): void {
-			$wc      = new WithContext(['parameter' => 'db', 'context' => 'readonly', 'extra' => 'value']);
+			$wc      = new WithContext(parameter: 'db', context: 'readonly', extra: 'value');
 			$context = $wc->getContext();
 			$this->assertSame('value', $context['extra']);
 		}
-		
+
 		public function testWithContextGetParametersReturnsFullArray(): void {
 			$params = ['parameter' => 'db', 'context' => 'readonly'];
-			$this->assertSame($params, (new WithContext($params))->getParameters());
+			$this->assertSame($params, (new WithContext(...$params))->getParameters());
 		}
 		
 		// =========================================================================
@@ -224,63 +224,68 @@ declare(strict_types=1);
 		// =========================================================================
 		
 		public function testInterceptWithThrowsWhenValueMissing(): void {
-			$this->expectException(\InvalidArgumentException::class);
-			new InterceptWith([]);
+			$this->expectException(\ArgumentCountError::class);
+			new InterceptWith();
 		}
-		
+
 		public function testInterceptWithThrowsWhenValueIsNotString(): void {
-			$this->expectException(\InvalidArgumentException::class);
-			new InterceptWith(['value' => 123]);
+			$this->expectException(\TypeError::class);
+			new InterceptWith(value: 123);
 		}
-		
+
 		public function testInterceptWithThrowsWhenClassDoesNotExist(): void {
 			$this->expectException(\InvalidArgumentException::class);
-			new InterceptWith(['value' => 'NonExistent\\Class\\That\\Does\\Not\\Exist']);
+			new InterceptWith(value: 'NonExistent\\Class\\That\\Does\\Not\\Exist');
 		}
-		
+
 		public function testInterceptWithThrowsWhenPriorityIsNotInteger(): void {
-			$this->expectException(\InvalidArgumentException::class);
-			new InterceptWith(['value' => \stdClass::class, 'priority' => 'high']);
+			$this->expectException(\TypeError::class);
+			new InterceptWith(value: \stdClass::class, priority: 'high');
 		}
-		
+
 		public function testInterceptWithGetInterceptClassReturnsClassName(): void {
-			$iw = new InterceptWith(['value' => \stdClass::class]);
+			$iw = new InterceptWith(value: \stdClass::class);
 			$this->assertSame(\stdClass::class, $iw->getInterceptClass());
 		}
-		
+
 		public function testInterceptWithGetPriorityDefaultsToZero(): void {
-			$iw = new InterceptWith(['value' => \stdClass::class]);
+			$iw = new InterceptWith(value: \stdClass::class);
 			$this->assertSame(0, $iw->getPriority());
 		}
-		
+
 		public function testInterceptWithGetPriorityReturnsProvidedValue(): void {
-			$iw = new InterceptWith(['value' => \stdClass::class, 'priority' => 100]);
+			$iw = new InterceptWith(value: \stdClass::class, priority: 100);
 			$this->assertSame(100, $iw->getPriority());
 		}
-		
+
 		public function testInterceptWithGetParametersReturnsFullArray(): void {
 			$params = ['value' => \stdClass::class, 'priority' => 50];
-			$this->assertSame($params, (new InterceptWith($params))->getParameters());
+			$this->assertSame($params, (new InterceptWith(...$params))->getParameters());
 		}
-		
+
+		public function testInterceptWithPreservesArbitraryKeys(): void {
+			$iw = new InterceptWith(value: \stdClass::class, priority: 10, ttl: 300, channel: 'admin');
+			$this->assertSame(['value' => \stdClass::class, 'priority' => 10, 'ttl' => 300, 'channel' => 'admin'], $iw->getParameters());
+		}
+
 		// =========================================================================
 		// CacheContext
 		// =========================================================================
-		
+
 		public function testCacheContextAcceptsEmptyParameters(): void {
 			// CacheContext has no required parameters
-			$cc = new CacheContext([]);
+			$cc = new CacheContext();
 			$this->assertSame([], $cc->getParameters());
 		}
-		
+
 		public function testCacheContextGetParametersReturnsProvidedArray(): void {
 			$params = ['namespace' => 'products', 'ttl' => 3600];
-			$cc     = new CacheContext($params);
+			$cc     = new CacheContext(...$params);
 			$this->assertSame($params, $cc->getParameters());
 		}
-		
+
 		public function testCacheContextPreservesArbitraryKeys(): void {
-			$cc = new CacheContext(['foo' => 'bar', 'baz' => 42]);
+			$cc = new CacheContext(foo: 'bar', baz: 42);
 			$this->assertSame('bar', $cc->getParameters()['foo']);
 			$this->assertSame(42, $cc->getParameters()['baz']);
 		}

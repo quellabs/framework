@@ -127,6 +127,13 @@ class DocblockOnlyAspectFixture {
     public function run(): void {}
 }
 
+class NativeAttributeAspectFixture {
+    #[InterceptWith('stdClass', ttl: 30)]
+    #[CacheContext(namespace: 'users', driver: 'redis')]
+    #[WithContext('engine', context: 'blade')]
+    public function run(): void {}
+}
+
 #[\Attribute(\Attribute::TARGET_CLASS)]
 class NestedMarker implements AnnotationInterface {
     use ReflectsAnnotationParameters;
@@ -407,17 +414,22 @@ class NativeAttributeReaderTest extends TestCase {
     public function testAspectResolverKeepsOpenEndedInterceptWithInDocblockMode(): void {
         $docblockAspects = (new AspectResolver($this->reader(Configuration::SOURCE_DOCBLOCKS)))->resolve(DocblockOnlyAspectFixture::class, 'run');
         self::assertSame(['ttl' => 30], $docblockAspects[0]['parameters']);
+
+        // DocblockOnlyAspectFixture declares only docblock metadata, so reading it in
+        // attribute mode legitimately finds nothing — this is about the fixture, not
+        // about whether InterceptWith itself supports native attributes (it does; see
+        // testOpenEndedCanvasAnnotationsWorkIdenticallyAsNativeAttributes below).
         $attributeAspects = (new AspectResolver($this->reader(Configuration::SOURCE_ATTRIBUTES)))->resolve(DocblockOnlyAspectFixture::class, 'run');
         self::assertSame([], $attributeAspects);
     }
 
     /**
-     * CacheContext, InterceptWith, and WithContext accept arbitrary caller-defined keys and so
-     * have no fixed constructor shape to expose as a native PHP attribute — they stay
-     * docblock-only, reading correctly in docblock mode and simply absent in attribute mode.
+     * CacheContext, InterceptWith, and WithContext accept arbitrary caller-defined keys
+     * through a variadic constructor tail, so the exact same named arguments work whether
+     * declared as a docblock annotation or as a native PHP attribute.
      * @return void
      */
-    public function testOpenEndedCanvasAnnotationsStayDocblockOnly(): void {
+    public function testOpenEndedCanvasAnnotationsWorkIdenticallyAsNativeAttributes(): void {
         $docblocks = $this->reader(Configuration::SOURCE_DOCBLOCKS);
         $cache = $docblocks->getMethodAnnotations(DocblockOnlyAspectFixture::class, 'run', CacheContext::class)->first();
         self::assertSame(['namespace' => 'users', 'driver' => 'redis'], $cache->getParameters());
@@ -427,9 +439,17 @@ class NativeAttributeReaderTest extends TestCase {
         self::assertSame(['context' => 'blade'], $context->getContext());
 
         $attributes = $this->reader(Configuration::SOURCE_ATTRIBUTES);
-        self::assertCount(0, $attributes->getMethodAnnotations(DocblockOnlyAspectFixture::class, 'run', CacheContext::class));
-        self::assertCount(0, $attributes->getMethodAnnotations(DocblockOnlyAspectFixture::class, 'run', WithContext::class));
-        self::assertCount(0, $attributes->getMethodAnnotations(DocblockOnlyAspectFixture::class, 'run', InterceptWith::class));
+
+        $nativeCache = $attributes->getMethodAnnotations(NativeAttributeAspectFixture::class, 'run', CacheContext::class)->first();
+        self::assertSame(['namespace' => 'users', 'driver' => 'redis'], $nativeCache->getParameters());
+
+        $nativeContext = $attributes->getMethodAnnotations(NativeAttributeAspectFixture::class, 'run', WithContext::class)->first();
+        self::assertSame('engine', $nativeContext->getParameter());
+        self::assertSame(['context' => 'blade'], $nativeContext->getContext());
+
+        $nativeAspects = (new AspectResolver($attributes))->resolve(NativeAttributeAspectFixture::class, 'run');
+        self::assertSame(\stdClass::class, $nativeAspects[0]['class']);
+        self::assertSame(['ttl' => 30], $nativeAspects[0]['parameters']);
     }
 
     /**
