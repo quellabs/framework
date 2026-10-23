@@ -145,6 +145,7 @@
 		 * @param string $className Class name for error reporting
 		 * @param string $methodName Method name for error reporting
 		 * @return mixed The resolved parameter value
+		 * @throws AnnotationReaderException
 		 */
 		protected function resolveParameter(
 			array                   $param,
