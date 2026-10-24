@@ -7,6 +7,7 @@ declare(strict_types=1);
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\Canvas\Annotations\CacheContext;
 	use Quellabs\Canvas\Annotations\InterceptWith;
+	use Quellabs\Canvas\Cache\CacheAspect;
 	use Quellabs\Canvas\Annotations\ListenTo;
 	use Quellabs\Canvas\Annotations\Route;
 	use Quellabs\Canvas\Annotations\RoutePrefix;
@@ -238,34 +239,39 @@ declare(strict_types=1);
 			new InterceptWith(value: 'NonExistent\\Class\\That\\Does\\Not\\Exist');
 		}
 
+		public function testInterceptWithThrowsWhenClassIsNotAnAspect(): void {
+			$this->expectException(\InvalidArgumentException::class);
+			new InterceptWith(value: \stdClass::class);
+		}
+
 		public function testInterceptWithThrowsWhenPriorityIsNotInteger(): void {
 			$this->expectException(\TypeError::class);
-			new InterceptWith(value: \stdClass::class, priority: 'high');
+			new InterceptWith(value: CacheAspect::class, priority: 'high');
 		}
 
 		public function testInterceptWithGetInterceptClassReturnsClassName(): void {
-			$iw = new InterceptWith(value: \stdClass::class);
-			$this->assertSame(\stdClass::class, $iw->getInterceptClass());
+			$iw = new InterceptWith(value: CacheAspect::class);
+			$this->assertSame(CacheAspect::class, $iw->getInterceptClass());
 		}
 
 		public function testInterceptWithGetPriorityDefaultsToZero(): void {
-			$iw = new InterceptWith(value: \stdClass::class);
+			$iw = new InterceptWith(value: CacheAspect::class);
 			$this->assertSame(0, $iw->getPriority());
 		}
 
 		public function testInterceptWithGetPriorityReturnsProvidedValue(): void {
-			$iw = new InterceptWith(value: \stdClass::class, priority: 100);
+			$iw = new InterceptWith(value: CacheAspect::class, priority: 100);
 			$this->assertSame(100, $iw->getPriority());
 		}
 
 		public function testInterceptWithGetParametersReturnsFullArray(): void {
-			$params = ['value' => \stdClass::class, 'priority' => 50];
+			$params = ['value' => CacheAspect::class, 'priority' => 50];
 			$this->assertSame($params, (new InterceptWith(...$params))->getParameters());
 		}
 
 		public function testInterceptWithPreservesArbitraryKeys(): void {
-			$iw = new InterceptWith(value: \stdClass::class, priority: 10, ttl: 300, channel: 'admin');
-			$this->assertSame(['value' => \stdClass::class, 'priority' => 10, 'ttl' => 300, 'channel' => 'admin'], $iw->getParameters());
+			$iw = new InterceptWith(value: CacheAspect::class, priority: 10, ttl: 300, channel: 'admin');
+			$this->assertSame(['value' => CacheAspect::class, 'priority' => 10, 'ttl' => 300, 'channel' => 'admin'], $iw->getParameters());
 		}
 
 		// =========================================================================

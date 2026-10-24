@@ -17,6 +17,7 @@ use Quellabs\Canvas\Annotations\InterceptWith;
 use Quellabs\Canvas\Annotations\CacheContext;
 use Quellabs\Canvas\Annotations\WithContext;
 use Quellabs\Canvas\AOP\AspectResolver;
+use Quellabs\Canvas\Cache\CacheAspect;
 use Quellabs\Canvas\Kernel;
 use Quellabs\Canvas\Routing\Components\ControllersDiscovery;
 use Quellabs\Canvas\Routing\Components\RouteDiscovery;
@@ -120,7 +121,7 @@ class NativeCanvasController {
 
 class DocblockOnlyAspectFixture {
     /**
-     * @InterceptWith("stdClass", ttl=30)
+     * @InterceptWith(CacheAspect::class, ttl=30)
      * @CacheContext(namespace="users", driver="redis")
      * @WithContext(parameter="engine", context="blade")
      */
@@ -128,7 +129,7 @@ class DocblockOnlyAspectFixture {
 }
 
 class NativeAttributeAspectFixture {
-    #[InterceptWith('stdClass', ttl: 30)]
+    #[InterceptWith(CacheAspect::class, ttl: 30)]
     #[CacheContext(namespace: 'users', driver: 'redis')]
     #[WithContext('engine', context: 'blade')]
     public function run(): void {}
@@ -448,7 +449,7 @@ class NativeAttributeReaderTest extends TestCase {
         self::assertSame(['context' => 'blade'], $nativeContext->getContext());
 
         $nativeAspects = (new AspectResolver($attributes))->resolve(NativeAttributeAspectFixture::class, 'run');
-        self::assertSame(\stdClass::class, $nativeAspects[0]['class']);
+        self::assertSame(CacheAspect::class, $nativeAspects[0]['class']);
         self::assertSame(['ttl' => 30], $nativeAspects[0]['parameters']);
     }
 
