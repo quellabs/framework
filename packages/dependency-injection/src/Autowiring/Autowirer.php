@@ -212,7 +212,6 @@
 		 * @param array<int, string> $types Array of type hints to attempt resolution for
 		 * @param MethodContextInterface|null $methodContext
 		 * @return mixed The resolved value, or the unresolved sentinel
-		 * @throws AnnotationReaderException
 		 */
 		protected function resolveParameterFromTypes(string $paramName, array $types, ?MethodContextInterface $methodContext = null): mixed {
 			// Early return sentinel if no types provided - nothing to resolve
@@ -223,7 +222,7 @@
 			// Filter out built-in PHP types (int, string, bool, etc.) and null type
 			// as these cannot be resolved through dependency injection
 			/** @var list<class-string> $resolvableTypes */
-			$resolvableTypes = array_values(array_filter($types, fn($type) => !$this->isBuiltinType($type) && $type !== 'null'));
+			$resolvableTypes = array_values(array_filter($types, fn($type) => $type !== 'null' && !$this->isBuiltinType($type)));
 			
 			// If all types are built-in or null, there's nothing we can resolve via DI
 			if (empty($resolvableTypes)) {
@@ -240,8 +239,6 @@
 					if ($instance !== null) {
 						return $instance;
 					}
-				} catch (AnnotationReaderException $e) {
-					throw $e;
 				} catch (\Throwable) {
 					// Resolution threw — this type is not resolvable, try the next one
 				}
