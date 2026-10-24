@@ -1,7 +1,11 @@
 <?php
 	
-	namespace Quellabs\AnnotationReader\AnnotationTest;
-	
+	namespace Quellabs\AnnotationReader\Tests\Fixtures\Services;
+
+	use Quellabs\AnnotationReader\Tests\Fixtures\Annotations\AnotherTest;
+	use Quellabs\AnnotationReader\Tests\Fixtures\Annotations\CacheableTest;
+	use Quellabs\AnnotationReader\Tests\Fixtures\Annotations\Test;
+
 	/**
 	 * @CacheableTest(ttl=3600)
 	 * @AnotherTest(id=100)

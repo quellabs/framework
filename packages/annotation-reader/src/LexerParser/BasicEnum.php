@@ -1,6 +1,6 @@
 <?php
 	
-	namespace Quellabs\AnnotationReader\Annotation;
+	namespace Quellabs\AnnotationReader\LexerParser;
 	
 	/**
 	 * Abstract base class that provides enumeration functionality for PHP.

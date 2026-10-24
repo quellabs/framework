@@ -1,6 +1,6 @@
 <?php
 	
-	namespace Quellabs\AnnotationReader\AnnotationTest;
+	namespace Quellabs\AnnotationReader\Tests\Fixtures\Annotations;
 	
 	use Quellabs\AnnotationReader\AnnotationInterface;
 	use Quellabs\AnnotationReader\Annotation\ReflectsAnnotationParameters;

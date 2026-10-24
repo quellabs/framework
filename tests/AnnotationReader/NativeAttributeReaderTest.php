@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Quellabs\Canvas\Tests\AnnotationReader;
+namespace Quellabs\AnnotationReader\Tests;
 
 use PHPUnit\Framework\TestCase;
 use Quellabs\AnnotationReader\AnnotationInterface;
@@ -27,11 +27,11 @@ use Quellabs\Canvas\Signals\SignalConnector;
 use Quellabs\ObjectQuel\Annotations\Orm\Column;
 use Quellabs\ObjectQuel\Annotations\Orm\Table;
 use Quellabs\ObjectQuel\Annotations\Validation\Length;
-use Quellabs\AnnotationReader\AnnotationTest\AnotherTest;
-use Quellabs\AnnotationReader\AnnotationTest\BaseService;
-use Quellabs\AnnotationReader\AnnotationTest\CacheableTest;
-use Quellabs\AnnotationReader\AnnotationTest\Test as FixtureTest;
-use Quellabs\AnnotationReader\AnnotationTest\UserService;
+use Quellabs\AnnotationReader\Tests\Fixtures\Annotations\AnotherTest;
+use Quellabs\AnnotationReader\Tests\Fixtures\Annotations\CacheableTest;
+use Quellabs\AnnotationReader\Tests\Fixtures\Annotations\Test as FixtureTest;
+use Quellabs\AnnotationReader\Tests\Fixtures\Services\BaseService;
+use Quellabs\AnnotationReader\Tests\Fixtures\Services\UserService;
 
 #[\Attribute(\Attribute::TARGET_CLASS | \Attribute::TARGET_METHOD | \Attribute::TARGET_PROPERTY | \Attribute::IS_REPEATABLE)]
 class CustomMarker implements AnnotationInterface {

@@ -1,7 +1,10 @@
 <?php
 	
-	namespace Quellabs\AnnotationReader\AnnotationTest;
-	
+	namespace Quellabs\AnnotationReader\Tests\Fixtures\Services;
+
+	use Quellabs\AnnotationReader\Tests\Fixtures\Annotations\AnotherTest;
+	use Quellabs\AnnotationReader\Tests\Fixtures\Annotations\Test;
+
 	/**
 	 * @AnotherTest(id=200, priority="high")
 	 */
