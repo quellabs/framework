@@ -3,42 +3,27 @@
 	namespace Quellabs\ObjectQuel\Annotations\Orm;
 	
 	use Quellabs\AnnotationReader\AnnotationInterface;
+	use Quellabs\AnnotationReader\Annotation\ReflectsAnnotationParameters;
 	
 	/**
 	 * @Annotation
 	 */
+	#[\Attribute(\Attribute::TARGET_PROPERTY)]
 	class PrimaryKeyStrategy implements AnnotationInterface {
+		use ReflectsAnnotationParameters;
 		
-		/** @var array<string, mixed> */
-		protected array $parameters;
-		
-		/** @var string Strategy type */
+		/**
+		 * @var string Strategy type
+		 */
 		private string $strategy;
 		
 		/**
-		 * PrimaryKeyStrategy constructor.
-		 * @param array<string, mixed> $parameters
-		 * @throws \InvalidArgumentException
+		 * Constructs the PrimaryKeyStrategy annotation.
+		 * @param string $strategy
+		 * @return void
 		 */
-		public function __construct(array $parameters) {
-			$strategy = $parameters['strategy'] ?? 'identity';
-			
-			if (!is_string($strategy)) {
-				throw new \InvalidArgumentException(
-					'PrimaryKeyStrategy: strategy must be a string'
-				);
-			}
-			
-			$this->parameters = $parameters;
+		public function __construct(string $strategy = 'identity') {
 			$this->strategy = $strategy;
-		}
-		
-		/**
-		 * Returns the parameters for this annotation
-		 * @return array<string, mixed>
-		 */
-		public function getParameters(): array {
-			return $this->parameters;
 		}
 		
 		/**

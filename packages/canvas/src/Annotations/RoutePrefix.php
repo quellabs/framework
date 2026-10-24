@@ -3,10 +3,11 @@
 	namespace Quellabs\Canvas\Annotations;
 	
 	use Quellabs\AnnotationReader\AnnotationInterface;
+	use Quellabs\AnnotationReader\Annotation\ReflectsAnnotationParameters;
 	
 	/**
 	 * @Annotation
-     *
+	 *
 	 * RoutePrefix Annotation Class
 	 *
 	 * This class implements an annotation interface for defining route prefixes
@@ -16,39 +17,20 @@
 	 * Used as an annotation to define route prefixes for controllers or methods
 	 * in a web application routing system.
 	 */
+	#[\Attribute(\Attribute::TARGET_CLASS)]
 	class RoutePrefix implements AnnotationInterface {
-		
-		/**
-		 * Array of route parameters including route path and HTTP methods
-		 * @var array<string, mixed>
-		 */
-		private array $parameters;
+		use ReflectsAnnotationParameters;
 		
 		/** @var string The route prefix */
-		private string $routePrefix;
+		private string $value;
 		
 		/**
-		 * Initializes the RoutePrefix annotation with the provided parameters.
-		 * The parameter array should contain at minimum a "value" key with the route path.
-		 * @param array<string, mixed> $parameters An associative array of route configuration parameters
+		 * Constructs the RoutePrefix annotation.
+		 * @param string $value
+		 * @return void
 		 */
-		public function __construct(array $parameters) {
-			$value = $parameters['value'] ?? null;
-			
-			if (!isset($value) || !is_string($value)) {
-				throw new \InvalidArgumentException("RoutePrefix needs a prefix");
-			}
-			
-			$this->parameters = $parameters;
-			$this->routePrefix = $value;
-		}
-		
-		/**
-		 * Returns all route parameters
-		 * @return array<string, mixed> The complete array of route parameters
-		 */
-		public function getParameters(): array {
-			return $this->parameters;
+		public function __construct(string $value) {
+			$this->value = $value;
 		}
 		
 		/**
@@ -56,6 +38,6 @@
 		 * @return string The route prefix
 		 */
 		public function getRoutePrefix(): string {
-			return trim($this->routePrefix, '/ ');
+			return trim($this->value, '/ ');
 		}
 	}

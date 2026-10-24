@@ -3,33 +3,20 @@
 	namespace Quellabs\ObjectQuel\Annotations\Orm;
 	
 	use Quellabs\AnnotationReader\AnnotationInterface;
+	use Quellabs\AnnotationReader\Annotation\ReflectsAnnotationParameters;
 	
 	/**
 	 * @Annotation
 	 * Class Version
 	 */
+	#[\Attribute(\Attribute::TARGET_PROPERTY)]
 	class Version implements AnnotationInterface {
+		use ReflectsAnnotationParameters;
 		
 		/**
-		 * Contains all parameters defined in the annotation
-		 * Example: @Orm\Cascade(operations={"remove"}, strategy="database")
-		 * @var array<string, mixed>
+		 * Constructs the Version annotation.
+		 * @return void
 		 */
-		protected array $parameters;
-		
-		/**
-		 * Cascade constructor.
-		 * @param array<string, mixed> $parameters Array of parameters from the annotation
-		 */
-		public function __construct(array $parameters) {
-			$this->parameters = $parameters;
-		}
-		
-		/**
-		 * Returns the parameters for this annotation
-		 * @return array<string, mixed>
-		 */
-		public function getParameters(): array {
-			return $this->parameters;
+		public function __construct() {
 		}
 	}

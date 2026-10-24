@@ -16,11 +16,7 @@
 	class ColumnTest extends TestCase {
 
 		private function column(mixed $default): Column {
-			return new Column([
-				'name' => 'col',
-				'type' => 'integer',
-				'default' => $default,
-			]);
+			return new Column(name: 'col', type: 'integer', default: $default);
 		}
 
 		public function testHasDefaultIsTrueForFalsyDefaults(): void {
@@ -32,7 +28,7 @@
 
 		public function testHasDefaultIsFalseWhenNoDefaultIsDeclared(): void {
 			self::assertFalse($this->column(null)->hasDefault());
-			self::assertFalse((new Column(['name' => 'col', 'type' => 'integer']))->hasDefault());
+			self::assertFalse((new Column(name: 'col', type: 'integer'))->hasDefault());
 		}
 
 		public function testGetDefaultReturnsTheDeclaredValueUnchanged(): void {

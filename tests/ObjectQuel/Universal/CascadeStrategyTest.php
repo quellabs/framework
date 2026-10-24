@@ -37,14 +37,14 @@
 		}
 
 		public function testRemoveOperationPresentCascadesInPhp(): void {
-			self::assertTrue($this->invokeShouldCascadeRemove(new Cascade(['operations' => ['remove']])));
+			self::assertTrue($this->invokeShouldCascadeRemove(new Cascade(operations: ['remove'])));
 		}
 
 		public function testRemoveOperationAbsentDoesNotCascadeInPhp(): void {
-			self::assertFalse($this->invokeShouldCascadeRemove(new Cascade(['operations' => ['persist']])));
+			self::assertFalse($this->invokeShouldCascadeRemove(new Cascade(operations: ['persist'])));
 		}
 
 		public function testNoOperationsAtAllDoesNotCascadeInPhp(): void {
-			self::assertFalse($this->invokeShouldCascadeRemove(new Cascade([])));
+			self::assertFalse($this->invokeShouldCascadeRemove(new Cascade()));
 		}
 	}
