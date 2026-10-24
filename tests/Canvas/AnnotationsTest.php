@@ -71,14 +71,14 @@ declare(strict_types=1);
 			$this->assertSame('mollie::redirectUrl', $route->getRoute());
 		}
 		
-		public function testRouteGetMethodsDefaultsToGetAndHead(): void {
+		public function testRouteGetMethodsDefaultsToGet(): void {
 			$route = new Route(value: '/users');
-			$this->assertSame(['GET', 'HEAD'], $route->getMethods());
+			$this->assertSame(['GET'], $route->getMethods());
 		}
-		
-		public function testRouteGetMethodsDefaultsToGetAndHeadForEmptyArray(): void {
+
+		public function testRouteGetMethodsDefaultsToGetForEmptyArray(): void {
 			$route = new Route(value: '/users', methods: []);
-			$this->assertSame(['GET', 'HEAD'], $route->getMethods());
+			$this->assertSame(['GET'], $route->getMethods());
 		}
 		
 		public function testRouteGetMethodsReturnsSpecifiedMethods(): void {

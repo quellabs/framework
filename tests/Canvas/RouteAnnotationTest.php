@@ -73,14 +73,14 @@ declare(strict_types=1);
 		// getMethods — defaulting and parsing
 		// -------------------------------------------------------------------------
 		
-		public function testGetMethodsDefaultsToGetAndHead(): void {
+		public function testGetMethodsDefaultsToGet(): void {
 			$route = new Route(value: '/users');
-			$this->assertSame(['GET', 'HEAD'], $route->getMethods());
+			$this->assertSame(['GET'], $route->getMethods());
 		}
-		
-		public function testGetMethodsDefaultsToGetAndHeadForEmptyMethodsArray(): void {
+
+		public function testGetMethodsDefaultsToGetForEmptyMethodsArray(): void {
 			$route = new Route(value: '/users', methods: []);
-			$this->assertSame(['GET', 'HEAD'], $route->getMethods());
+			$this->assertSame(['GET'], $route->getMethods());
 		}
 		
 		public function testGetMethodsReturnsSpecifiedMethods(): void {
