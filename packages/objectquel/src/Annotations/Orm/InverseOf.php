@@ -3,6 +3,7 @@
 	namespace Quellabs\ObjectQuel\Annotations\Orm;
 	
 	use Quellabs\AnnotationReader\AnnotationInterface;
+	use Quellabs\AnnotationReader\Annotation\ReflectsAnnotationParameters;
 	
 	/**
 	 * @Annotation
@@ -29,13 +30,9 @@
 	 *       public ?UserEntity $user = null;
 	 *   }
 	 */
+	#[\Attribute(\Attribute::TARGET_PROPERTY)]
 	class InverseOf implements AnnotationInterface {
-		
-		/**
-		 * Array containing all column parameters
-		 * @var array<string, mixed>
-		 */
-		protected array $parameters;
+		use ReflectsAnnotationParameters;
 		
 		/**
 		 * Fully qualified class name of the entity that owns the relationship.
@@ -53,37 +50,26 @@
 		private string $relation;
 		
 		/**
-		 * InverseOf constructor.
-		 * @param array<string, mixed> $parameters Annotation parameters
-		 * @throws \InvalidArgumentException When required parameters are missing or invalid
+		 * Constructs the InverseOf annotation.
+		 * @param string $targetEntity
+		 * @param string $relation
+		 * @return void
 		 */
-		public function __construct(array $parameters) {
-			$targetEntity = $parameters['targetEntity'] ?? null;
-			$relation = $parameters['relation'] ?? null;
-			
-			if (!is_string($targetEntity) || $targetEntity === '') {
+		public function __construct(string $targetEntity, string $relation) {
+			if ($targetEntity === '') {
 				throw new \InvalidArgumentException(
 					'InverseOf annotation requires a "targetEntity" parameter'
 				);
 			}
 			
-			if (!is_string($relation) || $relation === '') {
+			if ($relation === '') {
 				throw new \InvalidArgumentException(
 					'InverseOf annotation requires a "relation" parameter'
 				);
 			}
 			
-			$this->parameters = $parameters;
 			$this->targetEntity = $targetEntity;
 			$this->relation = $relation;
-		}
-		
-		/**
-		 * Returns all parameters for this column annotation
-		 * @return array<string, mixed> The complete parameters array
-		 */
-		public function getParameters(): array {
-			return $this->parameters;
 		}
 		
 		/**

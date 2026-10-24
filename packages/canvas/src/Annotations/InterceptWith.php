@@ -3,45 +3,70 @@
 	namespace Quellabs\Canvas\Annotations;
 	
 	use Quellabs\AnnotationReader\AnnotationInterface;
+	use Quellabs\Canvas\AOP\Contracts\AspectAnnotationInterface;
 	
 	/**
 	 * @Annotation
+	 * @Target("CLASS")
 	 * @Target("METHOD")
-	 * Annotation for declaring aspect-oriented method interception
+	 * Annotation for declaring aspect-oriented method interception. Accepts arbitrary
+	 * aspect-specific keys via the variadic tail, so the same named arguments work
+	 * identically as a docblock annotation or a native PHP attribute.
 	 */
+	#[\Attribute(\Attribute::TARGET_CLASS | \Attribute::TARGET_METHOD | \Attribute::IS_REPEATABLE)]
 	class InterceptWith implements AnnotationInterface {
-		
+
 		/**
-		 * Raw annotation parameters from the docblock
+		 * Raw annotation parameters, including aspect-specific ones
 		 * @var array<string, mixed>
 		 */
 		private array $parameters;
-		
-		/** @var string The aspect class to use for this interception */
-		private string $interceptClass;
-		
-		/** @var int Priority */
-		private int $priority;
-		
+
 		/**
-		 * Constructs the annotation with parameters parsed from the docblock
-		 * @param array<string, mixed> $parameters Parsed annotation parameters (value, type, priority, and aspect-specific params)
+		 * @var string The aspect class to use for this interception
 		 */
-		public function __construct(array $parameters) {
-			$value = $parameters['value'] ?? null;
-			$priority = $parameters['priority'] ?? null;
-			
-			if (!isset($value) || !is_string($value) || !class_exists($value)) {
+		private string $interceptClass;
+
+		/**
+		 * @var int Priority
+		 */
+		private int $priority;
+
+		/**
+		 * Constructs the annotation
+		 * @param string $value The aspect class to execute
+		 * @param int $priority Execution priority; higher runs first
+		 * @param mixed ...$options Arbitrary aspect-specific parameters
+		 */
+		public function __construct(string $value, int $priority = 0, mixed ...$options) {
+			if (!class_exists($value)) {
 				throw new \InvalidArgumentException("InterceptWith needs a valid aspect class");
 			}
-			
-			if (isset($priority) && !is_integer($priority)) {
-				throw new \InvalidArgumentException("Invalid priority for InterceptWith. Needs to be an integer");
+
+			if (!is_subclass_of($value, AspectAnnotationInterface::class)) {
+				throw new \InvalidArgumentException(sprintf(
+					"InterceptWith class '%s' must implement %s (via BeforeAspectInterface, AfterAspectInterface, AroundAspectInterface, or RequestAspectInterface)",
+					$value,
+					AspectAnnotationInterface::class
+				));
 			}
 			
+			$parameters = [
+				'value'    => $value,
+				'priority' => $priority
+			];
+
+			foreach ($options as $key => $optionValue) {
+				if (!is_string($key)) {
+					throw new \InvalidArgumentException("InterceptWith aspect-specific options must be named arguments");
+				}
+
+				$parameters[$key] = $optionValue;
+			}
+
 			$this->parameters = $parameters;
 			$this->interceptClass = $value;
-			$this->priority = is_integer($priority) ? $priority : 0;
+			$this->priority = $priority;
 		}
 		
 		/**

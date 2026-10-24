@@ -4,7 +4,7 @@
 [![License](https://img.shields.io/badge/license-MIT-brightgreen.svg)](LICENSE)
 [![Downloads](https://img.shields.io/packagist/dt/quellabs/annotation-reader.svg)](https://packagist.org/packages/quellabs/signal-hub)
 
-A powerful PHP annotation reader for parsing, processing, and caching docblock annotations in PHP classes.
+A PHP metadata reader for docblock annotations or native PHP attributes.
 
 ## Overview
 
@@ -31,7 +31,7 @@ composer require quellabs/annotation-reader
 ### Basic Usage
 
 ```php
-use Quellabs\AnnotationReader\AnnotationsReader;
+use Quellabs\AnnotationReader\AnnotationReader;
 use Quellabs\AnnotationReader\Configuration;
 
 // Create configuration
@@ -40,7 +40,7 @@ $config->setAnnotationCachePath(__DIR__ . '/cache');
 $config->setUseAnnotationCache(true);
 
 // Create annotation reader
-$reader = new AnnotationsReader($config);
+$reader = new AnnotationReader($config);
 
 // Get annotations for a class
 $classAnnotations = $reader->getClassAnnotations(MyClass::class);
@@ -378,6 +378,34 @@ The AnnotationReader requires a Configuration object that specifies:
 
 - Whether to use annotation caching
 - The path to store annotation cache files
+- The metadata source (`docblocks` by default, or `attributes`)
+
+Select native attributes for class, method, and property reads:
+
+```php
+$config = new Configuration();
+$config->setSource(Configuration::SOURCE_ATTRIBUTES);
+$reader = new AnnotationReader($config);
+
+#[\Quellabs\Canvas\Annotations\RoutePrefix('api')]
+class ApiController {
+    #[\Quellabs\Canvas\Annotations\Route('/users', methods: ['GET'])]
+    public function users(): void {}
+}
+```
+
+The equivalent docblock metadata is `@RoutePrefix("api")` on the class and `@Route("/users", methods={"GET"})` on the method. Each reader uses one source for reflected metadata. `getAnnotations($docblock)` always parses the supplied string as docblock text. Disk caches use separate filenames for each source.
+
+For application-defined attributes, implement `AnnotationInterface`, add a PHP `#[\Attribute(...)]` declaration with the correct targets, and use constructor parameter names that match the keys returned by `getParameters()`. `Quellabs\AnnotationReader\Annotation\ReflectsAnnotationParameters` provides a dense `getParameters()` when each constructor parameter has a same-named declared property. A constructor with exactly one plain `array` parameter is reserved for legacy annotations; use a nullable array parameter if that is the sole natural argument. Legacy annotations continue to work in docblock mode. Canvas `CacheContext`, `InterceptWith`, and `WithContext` also support native attributes with arbitrary named options; their variadic constructors preserve the flat parameter arrays used by cache, AOP, and dependency injection.
+
+```php
+#[\Quellabs\Canvas\Annotations\CacheContext(namespace: 'users', driver: 'redis')]
+#[\Quellabs\Canvas\Annotations\InterceptWith(\App\Aspects\AuditAspect::class, priority: 10, channel: 'admin')]
+#[\Quellabs\Canvas\Annotations\WithContext('engine', context: 'blade')]
+public function show(): void {}
+```
+
+Changing a repository annotation class to a named constructor changes direct construction from `new Route(['value' => '/users'])` to `new Route(value: '/users')`. Canvas accepts `annotation_source` in its configuration; ObjectQuel accepts `Configuration::setAnnotationSource()` and the same `annotation_source` config key through Canvas-ObjectQuel or Sculpt.
 
 ## Contributing
 

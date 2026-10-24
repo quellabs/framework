@@ -16,7 +16,7 @@
 		 * @param array<string, mixed> $extra
 		 */
 		private function make(array $extra = []): ManyToOne {
-			return new ManyToOne(array_merge(['targetEntity' => 'App\\Entities\\OrderEntity'], $extra));
+			return new ManyToOne(...array_merge(['targetEntity' => 'App\\Entities\\OrderEntity'], $extra));
 		}
 
 		public function testDefaultsToNoCompositeColumns(): void {

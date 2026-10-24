@@ -34,6 +34,10 @@
         <testsuite name="Canvas">
             <directory>tests/Canvas</directory>
         </testsuite>
+        <testsuite name="AnnotationReader">
+            <directory>tests/AnnotationReader</directory>
+            <exclude>tests/AnnotationReader/Fixtures</exclude>
+        </testsuite>
         <testsuite name="CanvasSchedulerRabbitMQ">
             <directory>tests/SchedulerRabbitMQ</directory>
         </testsuite>

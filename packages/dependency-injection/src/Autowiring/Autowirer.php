@@ -159,29 +159,24 @@
 
 			// Strategy 1: Direct parameter name match. A raw scalar (e.g. a route
 			// argument) must not satisfy a class-typed parameter - those are left
-			// for Strategy 3 so providers (e.g. entity resolution) get a chance.
+			// for Strategy 2 so providers (e.g. entity resolution) get a chance.
 			if (isset($parameters[$paramName]) && $this->valueSatisfiesTypes($parameters[$paramName], $paramTypes)) {
 				return $parameters[$paramName];
 			}
 
-			// Strategy 2: Snake case conversion
-			if (isset($parameters[$this->camelToSnake($paramName)]) && $this->valueSatisfiesTypes($parameters[$this->camelToSnake($paramName)], $paramTypes)) {
-				return $parameters[$this->camelToSnake($paramName)];
-			}
-			
-			// Strategy 3: Dependency injection — sentinel means unresolved, null means resolved-to-null
+			// Strategy 2: Dependency injection — sentinel means unresolved, null means resolved-to-null
 			$resolved = $this->resolveParameterFromTypes($paramName, $paramTypes, $methodContext);
-			
+
 			if ($resolved !== self::unresolved()) {
 				return $resolved;
 			}
-			
-			// Strategy 4: Default value from method signature
+
+			// Strategy 3: Default value from method signature
 			if (array_key_exists('default_value', $param)) {
 				return $param['default_value'];
 			}
-			
-			// Strategy 5: Empty array for array-typed parameters
+
+			// Strategy 4: Empty array for array-typed parameters
 			// Prevents a crash in CakePHP Database connection when autowiring the config
 			if (in_array("array", $paramTypes, true)) {
 				return [];
@@ -217,7 +212,6 @@
 		 * @param array<int, string> $types Array of type hints to attempt resolution for
 		 * @param MethodContextInterface|null $methodContext
 		 * @return mixed The resolved value, or the unresolved sentinel
-		 * @throws AnnotationReaderException
 		 */
 		protected function resolveParameterFromTypes(string $paramName, array $types, ?MethodContextInterface $methodContext = null): mixed {
 			// Early return sentinel if no types provided - nothing to resolve
@@ -228,7 +222,7 @@
 			// Filter out built-in PHP types (int, string, bool, etc.) and null type
 			// as these cannot be resolved through dependency injection
 			/** @var list<class-string> $resolvableTypes */
-			$resolvableTypes = array_values(array_filter($types, fn($type) => !$this->isBuiltinType($type) && $type !== 'null'));
+			$resolvableTypes = array_values(array_filter($types, fn($type) => $type !== 'null' && !$this->isBuiltinType($type)));
 			
 			// If all types are built-in or null, there's nothing we can resolve via DI
 			if (empty($resolvableTypes)) {
@@ -245,8 +239,6 @@
 					if ($instance !== null) {
 						return $instance;
 					}
-				} catch (AnnotationReaderException $e) {
-					throw $e;
 				} catch (\Throwable) {
 					// Resolution threw — this type is not resolvable, try the next one
 				}
@@ -400,24 +392,5 @@
 		 */
 		protected function resolveType(string $type, array $parameters, ?MethodContextInterface $methodContext): ?object {
 			return $this->container->get($type, [], $methodContext);
-		}
-		
-		/**
-		 * Converts camelCase to snake_case.
-		 * @param string $input
-		 * @return string
-		 */
-		protected function camelToSnake(string $input): string {
-			// Handle empty strings - return as-is to avoid errors
-			if (empty($input)) {
-				return $input;
-			}
-			
-			// Use regex to find uppercase letters that are not at the start of the string
-			// (?<!^) - negative lookbehind assertion: ensures we don't match the first character
-			// [A-Z]  - matches any uppercase letter A through Z
-			// '_$0'  - replacement: underscore followed by the matched uppercase letter
-			// Then convert the entire result to lowercase
-			return strtolower(preg_replace('/(?<!^)[A-Z]/', '_$0', $input) ?? $input);
 		}
 	}

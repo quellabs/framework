@@ -375,7 +375,8 @@
       "Quellabs\\Canvas\\Tests\\": "tests/Canvas/",
       "Quellabs\\Support\\Tests\\": "tests/Support/",
       "Quellabs\\Discover\\Tests\\": "tests/Discover/",
-      "Quellabs\\Recommender\\Tests\\": "tests/Recommender/"
+      "Quellabs\\Recommender\\Tests\\": "tests/Recommender/",
+      "Quellabs\\AnnotationReader\\Tests\\": "tests/AnnotationReader/"
     }
   },
   "scripts": {
