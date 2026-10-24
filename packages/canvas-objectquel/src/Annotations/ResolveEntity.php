@@ -15,7 +15,6 @@
 	class ResolveEntity implements AnnotationInterface {
 		use ReflectsAnnotationParameters;
 
-
 		private string $parameter;
 		private string $routeParam;
 
@@ -25,15 +24,18 @@
 		 * @param string $routeParam
 		 * @return void
 		 */
-		public function __construct(string $parameter, string $routeParam = 'id') {
+		public function __construct(string $parameter, string $routeParam) {
 			if ($parameter === '') {
 				throw new \InvalidArgumentException('ResolveEntity annotation requires a non-empty "parameter" string');
+			}
+
+			if ($routeParam === '') {
+				throw new \InvalidArgumentException('ResolveEntity annotation requires a non-empty "routeParam" string');
 			}
 
 			$this->parameter = $parameter;
 			$this->routeParam = $routeParam;
 		}
-
 
 
 		/**

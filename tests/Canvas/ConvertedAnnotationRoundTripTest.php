@@ -21,7 +21,7 @@ class ConvertedAnnotationRoundTripTest extends TestCase {
             Canvas\Route::class => ['value' => '/users'],
             Canvas\RoutePrefix::class => ['value' => '/api'],
             Canvas\ListenTo::class => ['value' => 'users.created'],
-            CanvasObjectQuel\ResolveEntity::class => ['parameter' => 'user'],
+            CanvasObjectQuel\ResolveEntity::class => ['parameter' => 'user', 'routeParam' => 'id'],
             Orm\Cascade::class => ['operations' => ['remove']],
             Orm\Column::class => ['name' => 'id', 'type' => 'integer'],
             Orm\DiscriminatorColumn::class => ['name' => 'kind'],
