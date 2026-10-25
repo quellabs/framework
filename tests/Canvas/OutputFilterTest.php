@@ -80,6 +80,20 @@
 		}
 
 		/**
+		 * A tag-like substring inside a quoted attribute value must not be mistaken
+		 * for a real element, nor steal the closing tag of a real one that follows.
+		 * @return void
+		 */
+		public function testHtmlMinifierIgnoresTagLikeAttributeValues(): void {
+			$html = '<div data-code="<script>">text</div><script>const x = "a  b";</script>';
+			$response = new Response($html, 200, ['Content-Type' => 'text/html']);
+
+			(new HtmlMinifyFilter())->filter(Request::create('/'), $response);
+
+			$this->assertSame($html, $response->getContent());
+		}
+
+		/**
 		 * Collapses page indentation while keeping inline word spacing and attributes.
 		 * @return void
 		 */
