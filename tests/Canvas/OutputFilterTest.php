@@ -80,6 +80,19 @@
 		}
 
 		/**
+		 * Collapses page indentation while keeping inline word spacing and attributes.
+		 * @return void
+		 */
+		public function testHtmlMinifierCollapsesFormattedPage(): void {
+			$html = "<html>\n<head>\n<title>My  page</title>\n</head>\n<body>\n<div title=\"a > b\">\n  <span>First</span>\n  <span>Second</span>\n</div>\n</body>\n</html>";
+			$response = new Response($html, 200, ['Content-Type' => 'text/html']);
+
+			(new HtmlMinifyFilter())->filter(Request::create('/'), $response);
+
+			$this->assertSame('<html><head> <title>My page</title> </head><body><div title="a > b"> <span>First</span> <span>Second</span> </div></body></html>', $response->getContent());
+		}
+
+		/**
 		 * Leaves non-HTML, streamed, and no-transform responses untouched.
 		 * @return void
 		 */
