@@ -14,6 +14,21 @@
 	class OutputFilterTest extends TestCase {
 
 		/**
+		 * Returns the response body as a string, failing the test if none is set.
+		 * @param Response $response
+		 * @return string
+		 */
+		private function contentOf(Response $response): string {
+			$content = $response->getContent();
+
+			if (!is_string($content)) {
+				$this->fail('Response has no content.');
+			}
+
+			return $content;
+		}
+
+		/**
 		 * Confirms that a configured filter runs on the completed response.
 		 * @return void
 		 */
@@ -70,12 +85,13 @@
 			]);
 
 			(new HtmlMinifyFilter())->filter(Request::create('/'), $response);
+			$content = $this->contentOf($response);
 
-			$this->assertStringContainsString('<html><body><div>one</div> <span>two</span>', $response->getContent());
-			$this->assertStringContainsString('<pre><div>  keep  </div></pre>', $response->getContent());
-			$this->assertStringContainsString('<!-- keep <div>  text </div> -->', $response->getContent());
-			$this->assertStringContainsString('const x = "</div>  <div>";', $response->getContent());
-			$this->assertSame((string)strlen($response->getContent()), $response->headers->get('Content-Length'));
+			$this->assertStringContainsString('<html><body><div>one</div> <span>two</span>', $content);
+			$this->assertStringContainsString('<pre><div>  keep  </div></pre>', $content);
+			$this->assertStringContainsString('<!-- keep <div>  text </div> -->', $content);
+			$this->assertStringContainsString('const x = "</div>  <div>";', $content);
+			$this->assertSame((string)strlen($content), $response->headers->get('Content-Length'));
 			$this->assertFalse($response->headers->has('ETag'));
 		}
 
@@ -116,9 +132,10 @@
 			$response = new Response('<html><head><style>' . $css . '</style><script>' . $script . '</script></head></html>', 200, ['Content-Type' => 'text/html']);
 
 			(new HtmlMinifyFilter())->filter(Request::create('/'), $response);
+			$content = $this->contentOf($response);
 
-			$this->assertStringContainsString('<style>.card .title { content: "a  b"; width: calc(100% - 2px); /* keep' . "\n" . '       this comment */ }', $response->getContent());
-			$this->assertStringContainsString('<script>' . $script . '</script>', $response->getContent());
+			$this->assertStringContainsString('<style>.card .title { content: "a  b"; width: calc(100% - 2px); /* keep' . "\n" . '       this comment */ }', $content);
+			$this->assertStringContainsString('<script>' . $script . '</script>', $content);
 		}
 
 		/**
@@ -131,7 +148,20 @@
 
 			(new HtmlMinifyFilter())->filter(Request::create('/'), $response);
 
-			$this->assertStringContainsString($style, $response->getContent());
+			$this->assertStringContainsString($style, $this->contentOf($response));
+		}
+
+		/**
+		 * Ignores type-like text inside another style attribute when selecting CSS.
+		 * @return void
+		 */
+		public function testHtmlMinifierIgnoresTypeInsideOtherAttribute(): void {
+			$html = '<style data-note="type=text/less">  .card { color: red; }  </style>';
+			$response = new Response($html, 200, ['Content-Type' => 'text/html']);
+
+			(new HtmlMinifyFilter())->filter(Request::create('/'), $response);
+
+			$this->assertSame('<style data-note="type=text/less">.card { color: red; }</style>', $response->getContent());
 		}
 
 		/**
