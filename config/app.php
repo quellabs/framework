@@ -13,6 +13,9 @@
 		// Template engine
 		'template_engine'         => 'smarty',
 		
+		// Output filter
+		'output_filter'           => \Quellabs\Canvas\Output\HtmlMinifyFilter::class,
+		
 		// Path to controller classes
 		'controller_directory'    => $srcDir . DIRECTORY_SEPARATOR . 'Controllers',
 		
