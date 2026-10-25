@@ -93,6 +93,34 @@
 		}
 
 		/**
+		 * Minifies CSS without changing strings, comments, or JavaScript.
+		 * @return void
+		 */
+		public function testHtmlMinifierCollapsesCssInStyleElements(): void {
+			$css = "\n  .card  .title {\n    content: \"a  b\";\n    width: calc(100% - 2px);\n    /* keep\n       this comment */\n  }\n";
+			$script = "\n  const text = 'a  b';\n";
+			$response = new Response('<html><head><style>' . $css . '</style><script>' . $script . '</script></head></html>', 200, ['Content-Type' => 'text/html']);
+
+			(new HtmlMinifyFilter())->filter(Request::create('/'), $response);
+
+			$this->assertStringContainsString('<style>.card .title { content: "a  b"; width: calc(100% - 2px); /* keep' . "\n" . '       this comment */ }', $response->getContent());
+			$this->assertStringContainsString('<script>' . $script . '</script>', $response->getContent());
+		}
+
+		/**
+		 * Leaves style blocks with a different type unchanged.
+		 * @return void
+		 */
+		public function testHtmlMinifierSkipsNonCssStyleElements(): void {
+			$style = "<style type=\"text/less\">\n  @variable:  1;\n</style>";
+			$response = new Response('<html><head>' . $style . '</head></html>', 200, ['Content-Type' => 'text/html']);
+
+			(new HtmlMinifyFilter())->filter(Request::create('/'), $response);
+
+			$this->assertStringContainsString($style, $response->getContent());
+		}
+
+		/**
 		 * Leaves non-HTML, streamed, and no-transform responses untouched.
 		 * @return void
 		 */
