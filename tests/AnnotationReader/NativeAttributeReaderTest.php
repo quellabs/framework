@@ -7,6 +7,7 @@ namespace Quellabs\AnnotationReader\Tests;
 use PHPUnit\Framework\TestCase;
 use Quellabs\AnnotationReader\AnnotationInterface;
 use Quellabs\AnnotationReader\AnnotationReader;
+use Quellabs\AnnotationReader\Collection\AnnotationCollection;
 use Quellabs\AnnotationReader\Configuration;
 use Quellabs\AnnotationReader\Exception\AnnotationReaderException;
 use Quellabs\AnnotationReader\Annotation\ReflectsAnnotationParameters;
@@ -194,6 +195,21 @@ class NativeAttributeReaderTest extends TestCase {
     }
 
     /**
+     * Returns a collection's first annotation, failing the test if it is absent.
+     * @param AnnotationCollection $annotations
+     * @return AnnotationInterface
+     */
+    private function firstOf(AnnotationCollection $annotations): AnnotationInterface {
+        $first = $annotations->first();
+
+        if ($first === null) {
+            self::fail('Expected at least one annotation.');
+        }
+
+        return $first;
+    }
+
+    /**
      * @return void
      */
     public function testDefaultModeAndLegacyConstructor(): void {
@@ -302,10 +318,10 @@ class NativeAttributeReaderTest extends TestCase {
             self::assertSame([], glob($this->cacheDirectory . DIRECTORY_SEPARATOR . '*.cache') ?: []);
 
             $cached = $this->reader($source, true);
-            $parameters = $cached->getClassAnnotations(MixedMetadataFixture::class)->first()->getParameters();
+            $parameters = $this->firstOf($cached->getClassAnnotations(MixedMetadataFixture::class))->getParameters();
             $files = glob($this->cacheDirectory . DIRECTORY_SEPARATOR . '*.cache') ?: [];
             self::assertCount(1, $files);
-            self::assertSame($parameters, $this->reader($source, true)->getClassAnnotations(MixedMetadataFixture::class)->first()->getParameters());
+            self::assertSame($parameters, $this->firstOf($this->reader($source, true)->getClassAnnotations(MixedMetadataFixture::class))->getParameters());
 
             // Debug mode rebuilds the cache only when the source file is newer than
             // it; back-date the cache and force the source newer than that, instead
